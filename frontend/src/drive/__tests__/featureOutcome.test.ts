@@ -117,6 +117,15 @@ describe('blocksExport', () => {
     })).toBe(false)
   })
 
+  it('tolerates a built shell whose sharp corners were replaced by an arc join', () => {
+    // The 2026-11-12 report: the body is valid, so the yellow mark must not
+    // turn a sound export into a failed one. It still shows under `features`.
+    expect(blocksExport({
+      id: 'sh1', kind: 'shell', status: 'ok',
+      message: 'shell: the sharp join was refused (build_not_done); corners were rounded.',
+    })).toBe(false)
+  })
+
   it('still blocks every other problem row', () => {
     const blocked: Array<[string, string]> = [
       ['sketch', 'overconstrained'],

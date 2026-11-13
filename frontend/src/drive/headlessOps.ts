@@ -399,9 +399,10 @@ export async function exportHeadless(doc: PartDoc, opts: HeadlessExportOptions):
   const features = featureProblems(doc, outcomes)
   const frames = featureFrames(doc, outcome.response.result)
   // No file is not a successful export: ok names the outcome the caller acts
-  // on, and callers keep their own bytes guard for the message. An
-  // underconstrained sketch is the one tolerated row (see blocksExport): its
-  // warning is reported, but it does not turn a sound file into a failed one.
+  // on, and callers keep their own bytes guard for the message. A sketch build
+  // warning and a built shell's corner substitution are the tolerated rows (see
+  // blocksExport): their warnings are reported, but they do not turn a sound
+  // file into a failed one.
   return {
     bytes: outcome.bytes,
     features,

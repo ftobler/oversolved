@@ -142,6 +142,16 @@ describe('featureFailure', () => {
       .toEqual({ failed: true, level: 'warning', message: 'used blind distance' })
   })
 
+  it('marks a shell whose sharp corners were replaced by an arc join', () => {
+    // The 2026-11-12 report: the shell built, but with rounded corners the user
+    // never asked for. It used to be a solver_note, which this file deliberately
+    // ignores, so the tree stayed green while the geometry was substituted.
+    const warning = 'shell: the sharp join was refused (build_not_done); corners were rounded. ' +
+      'Set Corners to Round to accept this, or change the geometry'
+    expect(featureFailure('sh1', { sh1: { status: 'ok', body_id: 'body_ex1', solver_warning: warning } }, {}))
+      .toEqual({ failed: true, level: 'warning', message: warning })
+  })
+
   it('does not mark a solver note: it describes geometry the solve did build', () => {
     // The tangent chain a blend ran along is informational, so the tree row and
     // the open editor stay unmarked.

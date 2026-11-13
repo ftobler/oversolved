@@ -20,7 +20,7 @@
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'
-import { makeBox, makeCylinderWithFaces, faceCentroid } from '../primitives'
+import { makeBox, makeCylinder, makeCylinderWithFaces, faceCentroid } from '../primitives'
 import { volumeOf } from '../volume'
 import { canonicalFaces, canonicalEdges, canonicalVertices } from '../bodyNames'
 import { booleanWithDiff } from '../booleans'
@@ -260,6 +260,36 @@ describe.skipIf(!oc)('thickSolid phase-1 probe (real OCC)', () => {
       expect(vertexImages.filter((n) => n > 0)).toHaveLength(8)
       expect(edgeImages.reduce((a, b) => a + b, 0)).toBe(12)
       expect(vertexImages.reduce((a, b) => a + b, 0)).toBe(8)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('a boss inscribed in a plate: sharp refuses on the tangent contacts, arc builds', { timeout: 120_000 }, () => {
+    // The 2026-11-12 report body: a 10 x 10 x 2 plate with a D10 boss 1 high.
+    // The circle touches all four plate sides, so the plate top is pinched into
+    // four corner pieces and OCC's intersection join cannot offset across the
+    // contacts. The adapter must retry arc and keep the sharp refusal's reason,
+    // which is the text the shell leaf turns into a warning.
+    const module = setup()
+    const scope = new DisposeScope()
+    try {
+      const plate = makeBox(module, scope, 10, 10, 2)
+      const boss = makeCylinder(module, scope, [5, 5, 2], [0, 0, 1], 5, 1)
+      const body = scope.track(booleanWithDiff(module, scope, plate, boss, 'fuse').shape)
+      const top = topFace(module, scope, body)
+
+      const sharp = applyShellWithLineage(module, scope, body, [top], 0.5, 'inward', null, 'sharp')
+      expect(sharp.success).toBe(true)
+      expect(sharp.usedJoin).toBe('arc')
+      expect(sharp.sharpReason).toBe('build_not_done')
+      expect(volumeOf(module, scope, scope.track(sharp.shape))).toBeCloseTo(100.9553, 4)
+
+      // An explicit arc request never tries sharp, so it reports no substitution.
+      const arc = applyShellWithLineage(module, scope, body, [top], 0.5, 'inward', null, 'arc')
+      expect(arc.success).toBe(true)
+      expect(arc.usedJoin).toBe('arc')
+      expect(arc.sharpReason).toBeNull()
     } finally {
       scope.dispose()
     }

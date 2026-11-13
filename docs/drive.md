@@ -1017,7 +1017,10 @@ banner on stdout, so a client config must use the direct node invocation.
   `kind="arc"`: on a 2 mm cube shelled 0.05 outward `Ex017` measures 1.0405
   with the default against CadQuery's 1.031678, and 1.031678 with
   `join: "arc"`. A default sharp build still falls back to arc when the sharp
-  offset refuses, and reports that in the reply's `notes`;
+  offset refuses, and reports that as a warning row in the reply's `features`
+  (the body still builds and an export is unaffected, but the corners are not
+  the authored ones); a refused `arc` is a feature error naming the cause,
+  never a silent sharp fallback;
   `add_split` takes `bodies`, `plane` and `keep` inline, `above` is the side the
   plane normal points to (a picked face's
   normal is outward, so `above` of a face pick is its air side), and with

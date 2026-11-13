@@ -15,7 +15,7 @@ import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'
 import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
-import { makeBox, makeBoxAt, makeCylinderWithFaces, faceCentroid } from '../../occ/primitives'
+import { makeBox, makeBoxAt, makeCylinder, makeCylinderWithFaces, faceCentroid } from '../../occ/primitives'
 import { volumeOf, surfaceAreaOf } from '../../occ/volume'
 import { booleanWithDiff } from '../../occ/booleans'
 import { canonicalEdges, canonicalFaces, namesFromArray, namesToArray } from '../../occ/bodyNames'
@@ -67,6 +67,16 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
     const outer = makeBox(occ, scope, 10, 10, 10)
     const notch = makeBoxAt(occ, scope, [4, 4, 0], 6, 6, 10)
     const { shape } = booleanWithDiff(occ, scope, outer, notch, 'cut')
+    return namedBody(scope, table, scope.track(shape))
+  }
+
+  // The report body (2026-11-12): a 10 x 10 x 2 plate with a D10 boss 1 high on
+  // its top face. The boss is inscribed, so its wall touches each plate side in
+  // a tangent contact and the plate top is pinched into four corner pieces.
+  function reportBody(scope: DisposeScope, table: HandleTable, diameter = 10): Record<string, Body> {
+    const plate = makeBox(occ, scope, 10, 10, 2)
+    const boss = makeCylinder(occ, scope, [5, 5, 2], [0, 0, 1], diameter / 2, 1)
+    const { shape } = booleanWithDiff(occ, scope, plate, boss, 'fuse')
     return namedBody(scope, table, scope.track(shape))
   }
 
@@ -305,7 +315,7 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
     }
   })
 
-  it('the sharp-to-arc fallback reports a note, and an explicit arc does not', () => {
+  it('the sharp-to-arc fallback warns, and an explicit arc does not', { timeout: 120_000 }, () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
@@ -326,7 +336,7 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
         expect(fillet.status).toBe('ok')
         return bodyStore
       }
-      const shell = (join?: 'sharp' | 'arc'): { volume: number; note?: string } => {
+      const shell = (join?: 'sharp' | 'arc'): { volume: number; warning?: string; note?: string } => {
         const bodyStore = build()
         const body = bodyStore.body_b
         const topUuid = body.face_uuids![topFaceIndex(scope, table, body)]!
@@ -334,13 +344,128 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
           id: 'sh1', shell: { faces: [faceQuery(topUuid)], thickness: 0.75, direction: 'inward', join },
         }, new Repository(), bodyStore)
         expect(res.status).toBe('ok')
-        return { volume: volumeOf(occ, scope, shelledShape(scope, table, body)), note: res.solver_note }
+        return {
+          volume: volumeOf(occ, scope, shelledShape(scope, table, body)),
+          warning: typeof res.solver_warning === 'string' ? res.solver_warning : undefined,
+          note: typeof res.solver_note === 'string' ? res.solver_note : undefined,
+        }
       }
       const fallback = shell(undefined)
-      expect(fallback.note).toBe('shell: the sharp join was refused; corners were rounded (join: arc)')
+      expect(fallback.warning).toMatch(/the sharp join was refused \(build_not_done\)/)
+      expect(fallback.warning).toMatch(/corners were rounded/)
+      // The note channel is deliberately unmarked by featureFailure, so a
+      // substitution must not ride there: it has to be a warning.
+      expect(fallback.note).toBeUndefined()
       const arc = shell('arc')
-      expect(arc.note).toBeUndefined()
+      expect(arc.warning).toBeUndefined()
       expect(arc.volume).toBeCloseTo(fallback.volume, 6)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('a sharp request on a tangent-contact body warns instead of silently rounding', { timeout: 120_000 }, () => {
+    // The 2026-11-12 report: a D10 boss inscribed in a 10 x 10 plate. The sharp
+    // join cannot offset across the four tangent contacts, and the old silent
+    // arc retry built rounded corners behind an ok status.
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const shell = (diameter: number, direction: 'inward' | 'outward'): { volume: number; warning?: string; note?: string } => {
+        const bodyStore = reportBody(scope, table, diameter)
+        const body = bodyStore.body_b
+        const q = faceQuery(body.face_uuids![topFaceIndex(scope, table, body)]!)
+        const res = solveShell(occ, scope, table, {
+          id: 'sh1', shell: { faces: [q], thickness: 0.5, direction },
+        }, new Repository(), bodyStore)
+        expect(res.status, direction).toBe('ok')
+        return {
+          volume: volumeOf(occ, scope, shelledShape(scope, table, body)),
+          warning: typeof res.solver_warning === 'string' ? res.solver_warning : undefined,
+          note: typeof res.solver_note === 'string' ? res.solver_note : undefined,
+        }
+      }
+      for (const direction of ['inward', 'outward'] as const) {
+        const fallback = shell(10, direction)
+        expect(fallback.warning, direction).toMatch(/the sharp join was refused/)
+        expect(fallback.note, direction).toBeUndefined()
+      }
+      // The report's measured arc volumes: the fallback is what it always was.
+      expect(shell(10, 'inward').volume).toBeCloseTo(100.9553, 4)
+      expect(shell(10, 'outward').volume).toBeCloseTo(127.2053, 4)
+
+      // D8 leaves the boss clear of the plate walls: no tangent contact, so the
+      // sharp join builds and there is nothing to warn about.
+      for (const [direction, volume] of [['inward', 111.5387], ['outward', 144.5431]] as const) {
+        const sharp = shell(8, direction)
+        expect(sharp.warning, direction).toBeUndefined()
+        expect(sharp.volume, direction).toBeCloseTo(volume, 4)
+      }
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('a sharp closed hollow whose offset is refused warns when arc replaces it', { timeout: 120_000 }, () => {
+    // The same report body with no faces: the sharp offset cannot be used as a
+    // boolean tool, so the arc retry offsets the whole body, its lone shell is
+    // wrapped into a solid, and the wall is cut out of it. The substitution must
+    // warn exactly like the opened-face fallback.
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const bodyStore = reportBody(scope, table)
+      const res = solveShell(occ, scope, table, {
+        id: 'sh1', shell: { faces: [], thickness: 0.5, direction: 'inward', source_body: '@body_b' },
+      }, new Repository(), bodyStore)
+      expect(res.status).toBe('ok')
+      expect(res.solver_warning).toMatch(/the sharp join was refused \(the operation produced invalid geometry/)
+      expect(res.solver_note).toBeUndefined()
+      expect(volumeOf(occ, scope, shelledShape(scope, table, bodyStore.body_b))).toBeCloseTo(132.7639, 3)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('an outward arc join across a concave edge refuses by name and never falls back to sharp', () => {
+    // A 20 x 20 x 12 L block with a 2 mm notch: an arc round of radius 2 cannot
+    // span the notch. The sharp join builds, but an explicit arc must refuse
+    // with the cause rather than substitute the user's choice silently.
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const lBlock = (): Record<string, Body> => {
+        const outer = makeBox(occ, scope, 20, 20, 12)
+        const notch = makeBoxAt(occ, scope, [18, 18, 0], 2, 2, 12)
+        const { shape } = booleanWithDiff(occ, scope, outer, notch, 'cut')
+        return namedBody(scope, table, scope.track(shape))
+      }
+      const bodyStore = lBlock()
+      const body = bodyStore.body_b
+      const q = faceQuery(body.face_uuids![topFaceIndex(scope, table, body)]!)
+      // The same body and thickness build sharp.
+      const sharp = solveShell(occ, scope, table, {
+        id: 'sh2', shell: { faces: [q], thickness: 2, direction: 'outward', join: 'sharp' },
+      }, new Repository(), bodyStore)
+      expect(sharp.status).toBe('ok')
+
+      const arcStore = lBlock()
+      const arcBody = arcStore.body_b
+      const arcQuery = faceQuery(arcBody.face_uuids![topFaceIndex(scope, table, arcBody)]!)
+      let threw: unknown = null
+      try {
+        solveShell(occ, scope, table, {
+          id: 'sh3', shell: { faces: [arcQuery], thickness: 2, direction: 'outward', join: 'arc' },
+        }, new Repository(), arcStore)
+      } catch (e) {
+        threw = e
+      }
+      expect((threw as Error).message).toBe(
+        'shell: the arc join cannot round an outward wall across a concave edge at thickness 2; ' +
+          'use Corners: Sharp, or a smaller thickness',
+      )
+      // The body is untouched: a refusal is not a quiet sharp shell.
+      expect(arcBody.modified_by).toEqual([])
     } finally {
       scope.dispose()
     }
