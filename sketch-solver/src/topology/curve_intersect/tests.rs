@@ -907,4 +907,14 @@ fn a_negative_semi_axis_keeps_its_sign_in_the_recovered_parameter() {
     // Local x' = -3 with x'/a = 1 at the left end, x'/a = -1 at the right one.
     assert_eq!(param_of(&e, [-3.0, 0.0]), 0.0);
     assert!((param_of(&e, [3.0, 0.0]) - std::f64::consts::PI).abs() < 1e-12);
+    // Below the floor the magnitude is raised but the sign is kept: -1e-9 must
+    // reach -floor, not the folded +floor, so the left end still recovers 0.
+    let tiny = Curve::Ellipse {
+        c: [0.0, 0.0],
+        a: -1e-9,
+        b: 1.0,
+        theta: 0.0,
+    };
+    assert_eq!(usable_semi_axis(-1e-9, 1e-6), -1e-6);
+    assert_eq!(param_of(&tiny, [-1e-9, 0.0]), 0.0);
 }

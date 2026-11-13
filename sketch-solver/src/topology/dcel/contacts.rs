@@ -23,7 +23,7 @@
 
 use std::collections::HashMap;
 
-use super::super::curve_intersect::Curve;
+use super::super::curve_intersect::{usable_semi_axis, Curve};
 use super::super::curve_split::{bezier_point, ellipse_point_at};
 use super::super::profile_loops::Vec2;
 use super::super::{TOL_TOPOLOGY_EPS as EPS, TOL_TOPOLOGY_MERGE as MERGE, TWO_PI};
@@ -274,7 +274,7 @@ fn closest_param(e: &TopoEntity, p: Vec2) -> Option<f64> {
             let dy = p[1] - center[1];
             let xl = dx * cr + dy * sr;
             let yl = -dx * sr + dy * cr;
-            let raw = (yl / b.max(EPS)).atan2(xl / a.max(EPS));
+            let raw = (yl / usable_semi_axis(b, EPS)).atan2(xl / usable_semi_axis(a, EPS));
             // The eccentric-angle parameter is periodic; refine the coarse
             // angle against the true nearest point so a heavily eccentric
             // ellipse does not weld at the wrong foot.
@@ -762,5 +762,21 @@ mod tests {
             ),
         ];
         assert!((contact_scale(&geometry) - 5.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn a_negative_semi_axis_welds_the_contact_at_its_own_end() {
+        // Direct Rust only: the solved-size rule keeps a negative-axis ellipse
+        // out of a profile, so no document reaches this. The shared axis rule
+        // still must not fold the sign and weld the contact at the opposite end.
+        let e = TopoEntity::Ellipse {
+            construction: false,
+            center: [0.0, 0.0],
+            a: -3.0,
+            b: 1.0,
+            theta: Some(0.0),
+        };
+        let t = closest_param(&e, [-3.0, 0.0]).expect("the foot is a finite end");
+        assert!(t.abs() < 1e-6, "welded at {t}, the far end");
     }
 }
