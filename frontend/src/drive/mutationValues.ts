@@ -630,21 +630,31 @@ function setConstraintPos(raw: RawStep): ValueViolation | null {
 const DELETE_FORMS =
   '"entity:<sketchId>:<entityId>", "vertex:<sketchId>:<entityId>:<vertexKey>" or "constraint:<sketchId>:<constraintId>"'
 
+/** One sketch-content wire ref: 'entity:<sk>:<e>', 'vertex:<sk>:<e>:<key>' or
+ *  'constraint:<sk>:<c>'. Shared with the run reply's touched parse, so a
+ *  malformed or over-long target cannot name a sketch on one surface and not
+ *  the other. */
+export function parseSketchTarget(target: unknown): { kind: 'entity' | 'vertex' | 'constraint'; featureId: string } | null {
+  if (typeof target !== 'string') return null
+  const parts = target.split(':')
+  const kind = parts[0]
+  if (kind !== 'entity' && kind !== 'vertex' && kind !== 'constraint') return null
+  const expected = kind === 'vertex' ? 4 : 3
+  if (parts.length !== expected || parts.slice(1).some(part => part.length === 0)) return null
+  return { kind, featureId: parts[1] }
+}
+
 function deleteTargetProblem(value: unknown, index: number): string | null {
   if (typeof value !== 'string') return `delete target ${index} must be a reference string, got ${json(value)}`
-  const parts = value.split(':')
-  const kind = parts[0]
+  if (parseSketchTarget(value) !== null) return null
+  const kind = value.split(':')[0]
   if (kind !== 'entity' && kind !== 'vertex' && kind !== 'constraint') {
     const featureHint = value.startsWith('@') || value.length === 0 || value.includes(':') === false
       ? ' (features are deleted with delete_feature, not with a sketch target)'
       : ''
     return `delete target ${index} ${json(value)} is not a sketch target; use ${DELETE_FORMS}${featureHint}`
   }
-  const expected = kind === 'vertex' ? 4 : 3
-  if (parts.length !== expected || parts.slice(1).some(part => part.length === 0)) {
-    return `delete target ${index} ${json(value)} is malformed; use ${DELETE_FORMS}`
-  }
-  return null
+  return `delete target ${index} ${json(value)} is malformed; use ${DELETE_FORMS}`
 }
 
 function deleteRule(raw: RawStep, ctx: ValueContext): ValueViolation | null {

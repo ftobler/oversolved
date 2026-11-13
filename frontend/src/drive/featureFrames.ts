@@ -39,7 +39,8 @@ export interface FeatureFrameOptions {
   // The input document's solve: a frame that matches it did not change.
   baseline?: FeatureFrameMap | null
   // Feature ids the steps created or named; such a frame is reported even when
-  // it did not move, because the call is what authored it.
+  // it did not move, because the call authored it or changed its contents (a
+  // delete names its sketch only in the target refs).
   touched?: ReadonlySet<string>
   // 'all' lists every resolved frame (the inspection opt-in); 'changed' keeps
   // only what this call touched or moved. Omitting the options keeps the

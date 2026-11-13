@@ -152,14 +152,149 @@ describe('featureDeltaRows', () => {
     } as unknown as PartDoc
     const measures: FeatureMeasure[] = [...MEASURES, { id: 'ex3', volume: 15000, bbox: [0, 0, 0, 60, 10, 30] }]
     const outcomes: Record<string, FeatureOutcome> = { ...CLEAN, ex3: { status: 'ok' } }
-    // sk1 and fi1 were named by the steps; sk1 is a sketch (its row stays out),
-    // fi1 is solid-producing and keeps its row even though the measure matches.
+    // fi1 was named by the steps and is solid-producing, so it keeps its row
+    // even though the measure matches; ex3 is new and has no baseline row.
     const rows = featureDeltaRows(withAdded, measures, outcomes, {
       baseline: MEASURES,
-      touched: new Set(['sk1', 'fi1']),
+      touched: new Set(['fi1']),
       mode: 'changed',
     })
     expect(rows.map(row => row.id)).toEqual(['fi1', 'ex3'])
+  })
+
+  // The sketch-protection probe: one add_projected_entity into an existing,
+  // fully constrained sketch. Nothing the checkpoint measures moved, yet the
+  // author needs the row to see the projection kept the sketch at dof 0.
+  it('changed mode lists a touched clean sketch so its dof reads in one call', () => {
+    const outcomes: Record<string, FeatureOutcome> = {
+      ...CLEAN,
+      sk1: { status: 'fully_constrained', dof: 0 },
+    }
+    const rows = featureDeltaRows(DOC, MEASURES, outcomes, {
+      baseline: MEASURES,
+      touched: new Set(['sk1']),
+      mode: 'changed',
+    })
+    expect(rows).toEqual([expect.objectContaining({
+      id: 'sk1',
+      status: 'fully_constrained',
+      dof: 0,
+      volumeDelta: 0,
+      bboxDelta: null,
+    })])
+  })
+
+  it('changed mode lists a touched plane whose own delta is zero', () => {
+    const doc = {
+      version: 1,
+      kind: 'part',
+      features: [{ id: 'sk1', kind: 'sketch' }, { id: 'pl1', kind: 'plane' }],
+    } as unknown as PartDoc
+    const measures: FeatureMeasure[] = [
+      { id: 'sk1', volume: 0, bbox: null },
+      { id: 'pl1', volume: 0, bbox: null },
+    ]
+    const outcomes: Record<string, FeatureOutcome> = {
+      sk1: { status: 'ok' },
+      pl1: { status: 'ok' },
+    }
+    // A set_plane_definition_field step names the plane; the zero rule must not
+    // hide it.
+    const rows = featureDeltaRows(doc, measures, outcomes, {
+      baseline: measures,
+      touched: new Set(['pl1']),
+      mode: 'changed',
+    })
+    expect(rows).toEqual([expect.objectContaining({
+      id: 'pl1',
+      status: 'ok',
+      volumeDelta: 0,
+      bboxDelta: null,
+    })])
+  })
+
+  // The admission is additive: a warned feature the steps touched kept its row
+  // before the reference rule, and a non-reference kind must not lose it now.
+  it('changed mode keeps a touched warned non-reference row', () => {
+    const doc = {
+      ...DOC,
+      features: [{ id: 'hx1', kind: 'helix' }],
+    } as unknown as PartDoc
+    const measures: FeatureMeasure[] = [{ id: 'hx1', volume: 0, bbox: null }]
+    const warning = 'the helix ran past the height its sweep uses'
+    const outcomes: Record<string, FeatureOutcome> = {
+      hx1: { status: 'ok', warning },
+    }
+    const rows = featureDeltaRows(doc, measures, outcomes, {
+      baseline: measures,
+      touched: new Set(['hx1']),
+      mode: 'changed',
+    })
+    expect(rows).toEqual([expect.objectContaining({ id: 'hx1', warning })])
+  })
+
+  // The admission is additive, not a blanket one: an untouched warned feature
+  // still waits for the inspection opt-in.
+  it('changed mode leaves an untouched warned non-reference feature out', () => {
+    const doc = {
+      ...DOC,
+      features: [{ id: 'hx1', kind: 'helix' }],
+    } as unknown as PartDoc
+    const measures: FeatureMeasure[] = [{ id: 'hx1', volume: 0, bbox: null }]
+    const outcomes: Record<string, FeatureOutcome> = {
+      hx1: { status: 'ok', warning: 'the helix ran past its height' },
+    }
+    const changed = featureDeltaRows(doc, measures, outcomes, { baseline: measures, mode: 'changed' })
+    expect(changed).toEqual([])
+    const all = featureDeltaRows(doc, measures, outcomes, { baseline: measures, mode: 'all' })
+    expect(all.map(row => row.id)).toEqual(['hx1'])
+  })
+
+  // Bearing notes: a variable edit moves every downstream checkpoint, so each
+  // sketch after the first extrude showed up as a zero-contribution row. The
+  // edit touches the variable, not the sketches; the sketches stay out.
+  it('changed mode leaves every downstream sketch out of a variable edit', () => {
+    const doc = {
+      ...DOC,
+      features: [
+        { id: 'var1', kind: 'variable' },
+        { id: 'sk1', kind: 'sketch' },
+        { id: 'ex1', kind: 'extrude' },
+        { id: 'sk2', kind: 'sketch' },
+        { id: 'sk3', kind: 'sketch' },
+        { id: 'sk4', kind: 'sketch' },
+      ],
+    } as unknown as PartDoc
+    const before: FeatureMeasure[] = [
+      { id: 'var1', volume: 0, bbox: null },
+      { id: 'sk1', volume: 0, bbox: null },
+      { id: 'ex1', volume: 12000, bbox: [0, 0, 0, 40, 10, 30] },
+      { id: 'sk2', volume: 12000, bbox: [0, 0, 0, 40, 10, 30] },
+      { id: 'sk3', volume: 12000, bbox: [0, 0, 0, 40, 10, 30] },
+      { id: 'sk4', volume: 12000, bbox: [0, 0, 0, 40, 10, 30] },
+    ]
+    const after: FeatureMeasure[] = [
+      { id: 'var1', volume: 0, bbox: null },
+      { id: 'sk1', volume: 0, bbox: null },
+      { id: 'ex1', volume: 24000, bbox: [0, 0, 0, 40, 20, 30] },
+      { id: 'sk2', volume: 24000, bbox: [0, 0, 0, 40, 20, 30] },
+      { id: 'sk3', volume: 24000, bbox: [0, 0, 0, 40, 20, 30] },
+      { id: 'sk4', volume: 24000, bbox: [0, 0, 0, 40, 20, 30] },
+    ]
+    const outcomes: Record<string, FeatureOutcome> = {
+      var1: { status: 'ok' },
+      sk1: { status: 'ok' },
+      ex1: { status: 'ok' },
+      sk2: { status: 'ok' },
+      sk3: { status: 'ok' },
+      sk4: { status: 'ok' },
+    }
+    const rows = featureDeltaRows(doc, after, outcomes, {
+      baseline: before,
+      touched: new Set(['var1']),
+      mode: 'changed',
+    })
+    expect(rows.map(row => row.id)).toEqual(['ex1'])
   })
 
   // Bearing notes: a variable edit moved every downstream checkpoint, so each
@@ -548,5 +683,68 @@ describe('featureDeltaRows', () => {
       [{ index: 0, ok: true, createdIds: [], createdCount: 12 }],
     )
     expect([...touched]).toEqual(['sk_import'])
+  })
+
+  it('reads a delete step\'s sketch from its wire refs', () => {
+    // A delete carries no featureId: the sketch is the second segment of each
+    // 'entity:sk1:l2' / 'vertex:sk1:l2:start' / 'constraint:sk1:c1' target. An
+    // over-long ref is malformed and names no sketch.
+    const touched = touchedFeatureIds(
+      [{
+        mutation: {
+          type: 'delete',
+          targets: ['constraint:sk1:c1', 'entity:sk1:l2', 'vertex:sk2:l1:start', 'entity:sk9:l2:extra'],
+        },
+      }],
+      [{ index: 0, ok: true, createdIds: [] }],
+    )
+    expect([...touched].sort()).toEqual(['sk1', 'sk2'])
+  })
+
+  it('reads a construction toggle step\'s sketch from its wire refs', () => {
+    // The toggle names entities the same way and carries no featureId either.
+    const touched = touchedFeatureIds(
+      [{ mutation: { type: 'toggle_construction', targets: ['entity:sk3:l1', 'entity:sk3:l2'] } }],
+      [{ index: 0, ok: true, createdIds: [] }],
+    )
+    expect([...touched]).toEqual(['sk3'])
+  })
+
+  it('names a copy-mode pattern\'s target sketch, not its read-only source', () => {
+    // The pattern copies sk1's entities into sk2; only sk2 was authored, so a
+    // row for the untouched source would be the zero noise the rule drops.
+    const touched = touchedFeatureIds(
+      [{
+        mutation: {
+          type: 'pattern_entities', featureId: 'sk1', targetFeatureId: 'sk2',
+          sourceIds: ['l1'], mode: 'copy', translate: [10, 0],
+        },
+      }],
+      [{ index: 0, ok: true, createdIds: [] }],
+    )
+    expect([...touched]).toEqual(['sk2'])
+  })
+
+  it('keeps the source sketch for a pattern that repeats inside it', () => {
+    const touched = touchedFeatureIds(
+      [{
+        mutation: {
+          type: 'pattern_entities', featureId: 'sk1', sourceIds: ['l1'],
+          mode: 'linear', count: 2, pitch: 10,
+        },
+      }],
+      [{ index: 0, ok: true, createdIds: [] }],
+    )
+    expect([...touched]).toEqual(['sk1'])
+  })
+
+  it('keeps featureId when another mutation carries targetFeatureId', () => {
+    // Only a pattern's targetFeatureId names the authored sketch; a raw key on
+    // any other mutation must not hide the feature it does name.
+    const touched = touchedFeatureIds(
+      [{ mutation: { type: 'set_extrude_field', featureId: 'ex1', targetFeatureId: 'sk2' } }],
+      [{ index: 0, ok: true, createdIds: [] }],
+    )
+    expect([...touched]).toEqual(['ex1'])
   })
 })

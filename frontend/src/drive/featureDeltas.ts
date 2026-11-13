@@ -7,17 +7,20 @@
 // does get a row, carrying the kernel's `warning`, so the volume of a partial
 // tool list is readable without a second `measure` call.
 //
-// A chained call must not repeat the whole history: a plane or an untouched
+// A chained call must not repeat the whole history: an untouched plane or
 // sketch did not change because a later call added one feature. The reply
-// keeps a row only when the feature's checkpoint differs from the input
-// document's solve, or when the steps touched a feature that produces solids
-// (so an edit that happens to leave the same volume still shows its zero
-// contribution). `mode: 'all'` is the inspection opt-in that restores the
-// whole history.
+// keeps a row when the feature's checkpoint differs from the input document's
+// solve, or when the steps touched it: a solid feature (so an edit that
+// happens to leave the same volume still shows its zero contribution), the
+// sketch or plane the step touched or authored (so its remaining dof or verdict
+// reads back without a second call), or a touched feature that built with a
+// warning (so its warning text stays on the row). `mode: 'all'` is the
+// inspection opt-in that restores the whole history.
 
 import type { PartDoc } from '@/types/cad'
 import type { FeatureMeasure, FeatureMeasureBody } from '@/kernel/solveLocally'
 import { isBuiltOutcome, type FeatureOutcome } from '@/drive/featureOutcome'
+import { parseSketchTarget } from '@/drive/mutationValues'
 
 export interface FeatureDelta {
   id: string
@@ -56,8 +59,9 @@ export interface FeatureDeltaOptions {
   // The input document's solve, when it could be measured. A feature whose
   // checkpoint matches it was not changed by this run.
   baseline?: readonly FeatureMeasure[] | null
-  // Feature ids the steps created or named. Solid-producing entries get a row
-  // even when their measure did not move, so a no-op edit is visible.
+  // Feature ids the steps created or named. Solid-producing entries and the
+  // touched sketch or plane get a row even when their measure did not move, so
+  // a no-op edit is visible and a sketch's dof reads back.
   touched?: ReadonlySet<string>
   // 'all' lists every built feature (the inspection opt-in); 'changed' keeps
   // only what this run changed or touched. Omitting the whole options object
@@ -70,6 +74,13 @@ const ZERO_BBOX = [0, 0, 0, 0, 0, 0]
 // A feature that only authors reference geometry. Everything else puts a body
 // in the checkpoint or changes one, and a touched one is worth reporting.
 const NON_SOLID_KINDS: ReadonlySet<string> = new Set<string>(['origin', 'sketch', 'plane', 'variable', 'helix'])
+
+// The non-solid kinds a touched row answers for: a sketch carries its
+// remaining dof and a plane its solve verdict, so a step that touched one
+// reads back even with no measure change. An unwarned touched variable, origin
+// or helix carries nothing this row has a field for, so the zero rule drops
+// it; a warned one is still admitted by the warning rule in the loop.
+const REFERENCE_KINDS: ReadonlySet<string> = new Set<string>(['sketch', 'plane'])
 
 export function isSolidProducingKind(kind: string): boolean {
   return !NON_SOLID_KINDS.has(kind)
@@ -184,11 +195,15 @@ export function featureDeltaRows(
       const kind = typeof feature.kind === 'string' ? feature.kind : 'unknown'
       const volumeDelta = measure.volume - previousVolume
       const bboxDelta = subtractBbox(measure.bbox, previousBbox)
-      // A warned reference feature the steps touched is worth a row even though
-      // it has no volume: an author who just added a constraint to an
-      // underconstrained sketch reads its shrunk `dof` without a second call.
+      // A reference feature the steps touched is worth a row even though it has
+      // no volume: an author who just projected an edge into a sketch, or moved
+      // a plane, reads its remaining dof or verdict without a second call. A
+      // warned touched feature of any other kind keeps the row it always had,
+      // and a solid keeps its own touched rule inside includeRow.
+      const referenceTouched = touched.has(id) && REFERENCE_KINDS.has(kind)
       const warnedTouched = outcome.warning !== undefined && touched.has(id)
-      if (mode === 'all' || warnedTouched || includeRow(id, kind, measure, volumeDelta, bboxDelta)) {
+      if (mode === 'all' || referenceTouched || warnedTouched
+        || includeRow(id, kind, measure, volumeDelta, bboxDelta)) {
         const solid = isSolidProducingKind(kind)
         const bodyId = solid ? outcome.bodyId : undefined
         const changed = solid && measure.bodies !== undefined
@@ -221,10 +236,10 @@ export function featureDeltaRows(
   // it cannot call anything unchanged; showing every built row is the honest
   // fallback. Otherwise a feature is included when its checkpoint moved, when
   // it was added (no baseline row), or when the steps touched a solid feature.
-  // An existing reference feature (sketch, plane) whose own delta is zero is
+  // An untouched reference feature (sketch, plane) whose own delta is zero is
   // left out: its cumulative checkpoint moves with every upstream edit, so a
   // variable edit listed each downstream sketch as a zero row (bearing notes).
-  // A newly added one keeps its row, which is how a run sees what it added.
+  // A touched one is admitted above; a newly added one keeps its row here.
   function includeRow(
     id: string,
     kind: string,
@@ -242,16 +257,37 @@ export function featureDeltaRows(
   }
 }
 
-/** The feature ids the steps named or created; `add_*` and `set_*_field`
- *  mutations carry a featureId, and every handler reports what it created. */
+/** The feature ids the steps authored or created: a mutation's `featureId`, a
+ *  copy-mode pattern's `targetFeatureId` (its source sketch is read-only), the
+ *  sketch a delete or construction toggle names in its wire refs, and every id
+ *  a handler reports it created. */
 export function touchedFeatureIds(steps: readonly unknown[], outcomeSteps: readonly unknown[]): Set<string> {
   const ids = new Set<string>()
   for (const step of steps) {
     if (typeof step !== 'object' || step === null) continue
     const mutation = (step as { mutation?: unknown }).mutation
     if (typeof mutation !== 'object' || mutation === null) continue
+    const type = (mutation as { type?: unknown }).type
     const featureId = (mutation as { featureId?: unknown }).featureId
-    if (typeof featureId === 'string' && featureId.length > 0) ids.add(featureId)
+    // A copy-mode pattern writes into targetFeatureId; featureId then names the
+    // read-only source sketch. Any other mutation carrying the key still names
+    // its own featureId.
+    const writeTarget = type === 'pattern_entities'
+      ? (mutation as { targetFeatureId?: unknown }).targetFeatureId
+      : undefined
+    const authored = typeof writeTarget === 'string' && writeTarget.length > 0 ? writeTarget : featureId
+    if (typeof authored === 'string' && authored.length > 0) ids.add(authored)
+    // A delete or construction toggle has no featureId: its targets name the
+    // sketch in each wire ref.
+    if (type === 'delete' || type === 'toggle_construction') {
+      const targets = (mutation as { targets?: unknown }).targets
+      if (Array.isArray(targets)) {
+        for (const target of targets) {
+          const parsed = parseSketchTarget(target)
+          if (parsed !== null) ids.add(parsed.featureId)
+        }
+      }
+    }
   }
   for (const outcome of outcomeSteps) {
     if (typeof outcome !== 'object' || outcome === null) continue

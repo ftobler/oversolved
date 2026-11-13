@@ -447,8 +447,8 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + 'missing and makes ok false, as does a kernel fault, which also sets solve.lastError. featureDeltas gives volume and bbox after each feature this call '
       + 'changed or touched, with the change from the previous checkpoint, so an additive step\'s contribution '
       + 'is visible without repeating the whole history; a partial or exception feature has no delta row, while a warned feature '
-      + 'that built follows the same changed/touched rule and carries the warning text (a warned sketch the steps touched is '
-      + 'listed even when its checkpoint did not move, so its dof reads in the same call). '
+      + 'that built follows the same changed/touched rule and carries the warning text. A sketch or plane the steps touched is '
+      + 'listed even when its checkpoint did not move, so a sketch\'s dof reads in the same call. '
       + 'A row\'s volume is the total over every live body; body and bodyVolume name a body the feature '
       + 'changed (its own reported body when that one changed, e.g. a merge_target cut\'s receiving body), and '
       + 'bodyVolume is that body\'s own volume. changedBodyCount is set when more than one body changed, and then '
@@ -497,7 +497,7 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
         parts: PARTS_SCHEMA,
         steps: { type: 'array', items: { type: 'object' }, description: 'Script steps: {command,params} or {mutation}; mutation types: see the `mutations` tool (part and assembly).' },
         returnDoc: { type: 'boolean', description: 'Include the full final document in the reply (default false; the docHash resource serves it either way).' },
-        featureDeltas: { type: 'string', enum: ['all'], description: 'Pass "all" to list every built feature; the default lists only features this call changed or touched. A warned feature that built is included under the same rule and carries the warning text.' },
+        featureDeltas: { type: 'string', enum: ['all'], description: 'Pass "all" to list every built feature; the default lists only features this call changed or touched. A warned feature that built is included under the same rule and carries the warning text, and a sketch or plane the steps touched is listed even when its measure did not move.' },
         frames: { type: 'string', enum: ['all'], description: 'Pass "all" to list every resolved sketch and plane frame; the default lists only frames this call touched or moved.' },
         detail: DETAIL_SCHEMA,
         out: { type: 'string', description: 'Write the final document here. YAML or JSON by extension, or .zip for a workspace zip of the assembly and its parts; the path must resolve inside tmp/ or bugreports/ (relative paths resolve against the repo root).' },
