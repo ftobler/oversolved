@@ -63,12 +63,16 @@ describe.skipIf(!oc || !solveBytes)('project a body edge into a sketch (real OCC
     const edgeQueries = (h.body(r1, 'body_ex1').edge_queries as string[]) ?? []
     expect(edgeQueries.length).toBeGreaterThan(0)
     const edgeSource = edgeQueries[0]
-    // straightedge -> drawLogic lowers it to a 'line' projected entity.
+    // straightedge -> drawLogic lowers it to a 'line' projected entity. The
+    // projection is authored the way `applyAddProjectedEntity` writes it: the
+    // entity row plus the constraint that holds it.
     const sk2 = {
       id: 'sk2', kind: 'sketch' as const, plane: '@builtin_plane_front',
-      entities: [{ id: 'proj0', kind: 'line' as const, source: edgeSource }],
+      entities: [{ id: 'proj0', kind: 'line' as const }],
       initial: {},
-      constraints: [],
+      constraints: [
+        { id: 'proj_proj0', kind: 'projection' as const, target: '$proj0', source: edgeSource },
+      ],
     }
     const r2 = h.run({ features: [sk1, ex1, sk2] }, { prevState: r1._build_state })
 
@@ -79,7 +83,7 @@ describe.skipIf(!oc || !solveBytes)('project a body edge into a sketch (real OCC
     const projErrors = (sk2res.projection_errors as string[]) ?? []
     const geometry = (sk2res.geometry as Record<string, number[]>) ?? {}
     // The whole point: the picked edge must resolve, not be dropped.
-    expect(projErrors).not.toContain('proj0')
+    expect(projErrors).not.toContain('proj_proj0')
     expect(geometry.proj0).toBeDefined()
   })
 })
