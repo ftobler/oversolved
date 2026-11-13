@@ -1,10 +1,11 @@
 // @vitest-environment node
 //
 // The pure half of selector picks in `add_sketch.plane` /
-// `set_feature_plane.plane`, `add_shell.faces` and `add_fillet.edges` /
-// `add_chamfer.edges`: resolveSelectionAids and usesSelectionAid against
-// synthetic solve results. The real half proves the one-step drive path, the
-// chained run's first-step solve, and the refusals (selectionAidsReal.test.ts).
+// `set_feature_plane.plane`, `add_shell.faces`, `add_fillet.edges` /
+// `add_chamfer.edges` and `add_projected_entity.source`: resolveSelectionAids
+// and usesSelectionAid against synthetic solve results. The real half proves the
+// one-step drive path, the chained run's first-step solve, and the refusals
+// (selectionAidsReal.test.ts).
 
 import { describe, it, expect } from 'vitest'
 import type { BodyResult, FaceData, EdgeData, PartDoc } from '@/types/cad'
@@ -40,6 +41,26 @@ function bodiesWithEdges(): Record<string, BodyResult> {
   return bodies
 }
 const zEdgeSelector = { selector: { kind: 'edge', where: { parallel: [0, 0, 1] } } }
+// The middle of body_a's two Z-parallel edges sits at x=10, so this narrows the
+// pair to one: a projection source is exactly one element.
+const oneEdgeSelector = {
+  selector: { kind: 'edge', where: { and: [{ parallel: [0, 0, 1] }, { center: { axis: 'x', at: 10 } }] } },
+}
+// One circle edge and one corner vertex on body_a, for the projection source:
+// an edge selector's own kind picks the curve kind, a vertex's the point kind.
+function bodiesWithSourceShapes(): Record<string, BodyResult> {
+  const bodies = twoBodies()
+  bodies.body_a.edges = [{
+    kind: 'circle', center: [5, 5, 0], radius: 4, axis: [0, 0, 1],
+    x_axis: [1, 0, 0], angle_start: 0, angle_end: 360,
+  }]
+  bodies.body_a.edge_queries = [q('body_a', ['@u|e_c'], 'circleedge')]
+  bodies.body_a.vertices = [[0, 0, 10]]
+  bodies.body_a.vertex_queries = [q('body_a', ['@u|v_0'], 'vertex')]
+  return bodies
+}
+const circleEdgeSelector = { selector: { kind: 'edge', where: { type: 'circle' } } }
+const cornerVertexSelector = { selector: { kind: 'vertex' } }
 function twoBodies(): Record<string, BodyResult> {
   const body = (id: string, faces: FaceData[]): BodyResult => ({
     id,
@@ -290,6 +311,129 @@ describe('resolveSelectionAids', () => {
     expect(resolved.message).toContain('parallel')
   })
 
+  it('rewrites a projection source selector into the one edge query it matched', () => {
+    const resolved = resolveSelectionAids(
+      { type: 'add_projected_entity', featureId: 'sk2', kind: 'line', source: oneEdgeSelector },
+      bodiesWithEdges(),
+    )
+    expect(resolved.ok).toBe(true)
+    if (!resolved.ok) return
+    expect(resolved.mutation).toEqual({
+      type: 'add_projected_entity', featureId: 'sk2', kind: 'line',
+      source: q('body_a', ['@u|e_1'], 'straightedge'),
+    })
+  })
+
+  it('refuses a projection source matching two edges with its own one-element rule', () => {
+    const resolved = resolveSelectionAids(
+      { type: 'add_projected_entity', featureId: 'sk2', kind: 'line', source: zEdgeSelector },
+      bodiesWithEdges(),
+    )
+    expect(resolved.ok).toBe(false)
+    if (resolved.ok) return
+    expect(resolved.code).toBe('unresolved-ref')
+    expect(resolved.message).toContain('a projection source is exactly one edge, vertex or face')
+    expect(resolved.message).toContain('matched 2 items')
+  })
+
+  it('keeps the select engine nearest-miss text for a source that matches nothing', () => {
+    const resolved = resolveSelectionAids(
+      {
+        type: 'add_projected_entity', featureId: 'sk2', kind: 'line',
+        source: { selector: { kind: 'edge', where: { parallel: [1, 1, 1] } } },
+      },
+      bodiesWithEdges(),
+    )
+    expect(resolved.ok).toBe(false)
+    if (resolved.ok) return
+    expect(resolved.code).toBe('unresolved-ref')
+    expect(resolved.message).toContain('add_projected_entity source')
+    expect(resolved.message).toContain('matched no edges')
+  })
+
+  it('names the selector shape for a malformed projection source', () => {
+    const resolved = resolveSelectionAids(
+      { type: 'add_projected_entity', featureId: 'sk2', kind: 'line', source: { selector: { type: 'line' } } },
+      bodiesWithEdges(),
+    )
+    expect(resolved.ok).toBe(false)
+    if (resolved.ok) return
+    expect(resolved.code).toBe('invalid-ref')
+    expect(resolved.message).toContain('add_projected_entity source: selector has unknown key "type"')
+    expect(resolved.message).toContain('{selector: {kind: "edge", where: {type: "line"}}}')
+  })
+
+  it('takes the example kind from a malformed face selector itself', () => {
+    // A projection source accepts any element kind, so the hint cannot assume
+    // edge: this selector says face, and a face's type predicate is a surface.
+    const resolved = resolveSelectionAids(
+      {
+        type: 'add_projected_entity', featureId: 'sk2', kind: 'point',
+        source: { selector: { kind: 'face', type: 'flatface' } },
+      },
+      twoBodies(),
+    )
+    expect(resolved.ok).toBe(false)
+    if (resolved.ok) return
+    expect(resolved.code).toBe('invalid-ref')
+    expect(resolved.message).toContain('{selector: {kind: "face", where: {type: "flatface"}}}')
+  })
+
+  it('leaves a present non-string kind for the value rules to refuse', () => {
+    const resolved = resolveSelectionAids(
+      { type: 'add_projected_entity', featureId: 'sk2', kind: 5, source: oneEdgeSelector },
+      bodiesWithEdges(),
+    )
+    expect(resolved.ok).toBe(true)
+    if (!resolved.ok) return
+    const mutation = resolved.mutation as { kind: unknown; source: string }
+    expect(mutation.kind).toBe(5)
+    expect(mutation.source).toBe(q('body_a', ['@u|e_1'], 'straightedge'))
+  })
+
+  it('passes a string projection source through untouched', () => {
+    // `select` walks bodies only, so the origin and another sketch's geometry
+    // are already the stored form and have no selector spelling.
+    for (const source of ['@builtin_origin', '@sk2/l1', '?body_a:edge:1']) {
+      const step = { type: 'add_projected_entity', featureId: 'sk2', kind: 'point', source }
+      const resolved = resolveSelectionAids(step, bodiesWithEdges())
+      expect(resolved.ok, source).toBe(true)
+      expect(resolved.ok && resolved.mutation, source).toBe(step)
+    }
+  })
+
+  it('infers the projection entity kind from the element the selector matched', () => {
+    // The same mapping the UI's projection path uses: an edge keeps its curve
+    // kind, a vertex or face projects as its own point.
+    const cases: Array<[Record<string, BodyResult>, Record<string, unknown>, string, string]> = [
+      [bodiesWithEdges(), oneEdgeSelector, 'line', q('body_a', ['@u|e_1'], 'straightedge')],
+      [bodiesWithSourceShapes(), circleEdgeSelector, 'circle', q('body_a', ['@u|e_c'], 'circleedge')],
+      [bodiesWithSourceShapes(), cornerVertexSelector, 'point', q('body_a', ['@u|v_0'], 'vertex')],
+      [twoBodies(), { selector: { kind: 'face', from: 'body_b' } }, 'point', q('body_b', ['@u|f_0'], 'flatface')],
+    ]
+    for (const [bodies, source, kind, query] of cases) {
+      const resolved = resolveSelectionAids(
+        { type: 'add_projected_entity', featureId: 'sk2', source },
+        bodies,
+      )
+      expect(resolved.ok, JSON.stringify(source)).toBe(true)
+      if (!resolved.ok) continue
+      expect(resolved.mutation, JSON.stringify(source)).toEqual({
+        type: 'add_projected_entity', featureId: 'sk2', kind, source: query,
+      })
+    }
+  })
+
+  it('keeps a declared kind instead of inferring one', () => {
+    const resolved = resolveSelectionAids(
+      { type: 'add_projected_entity', featureId: 'sk2', kind: 'point', source: circleEdgeSelector },
+      bodiesWithSourceShapes(),
+    )
+    expect(resolved.ok).toBe(true)
+    if (!resolved.ok) return
+    expect((resolved.mutation as { kind: string }).kind).toBe('point')
+  })
+
   it('reports whether a step needs a solve for its selector', () => {
     expect(usesSelectionAid({ type: 'add_sketch', plane: planeSelector })).toBe(true)
     expect(usesSelectionAid({ type: 'add_sketch', plane: '@builtin_plane_top' })).toBe(false)
@@ -298,6 +442,8 @@ describe('resolveSelectionAids', () => {
     expect(usesSelectionAid({ type: 'add_fillet', edges: [zEdgeSelector] })).toBe(true)
     expect(usesSelectionAid({ type: 'add_fillet', edges: ['?q'] })).toBe(false)
     expect(usesSelectionAid({ type: 'add_chamfer', edges: [zEdgeSelector] })).toBe(true)
+    expect(usesSelectionAid({ type: 'add_projected_entity', source: oneEdgeSelector })).toBe(true)
+    expect(usesSelectionAid({ type: 'add_projected_entity', source: '@builtin_origin' })).toBe(false)
     expect(usesSelectionAid({ type: 'add_mirror', plane: planeSelector })).toBe(false)
   })
 
@@ -309,5 +455,13 @@ describe('resolveSelectionAids', () => {
       type: 'add_sketch', featureId: 'sk1', plane: { selector: { kind: 'face' } },
     })).toThrow(/selector/)
     expect(doc.features?.some(feature => feature.id === 'sk1')).toBe(false)
+    // A projection pair is filled by the drive: a selector source and an omitted
+    // kind are both refused here rather than stored as an unresolved constraint.
+    expect(() => mutationHandlers.add_projected_entity(doc, {
+      type: 'add_projected_entity', featureId: 'sk1', kind: 'line', source: { selector: { kind: 'edge' } },
+    })).toThrow(/selector/)
+    expect(() => mutationHandlers.add_projected_entity(doc, {
+      type: 'add_projected_entity', featureId: 'sk1', source: '?edge',
+    })).toThrow(/kind/)
   })
 })

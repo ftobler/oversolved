@@ -1,12 +1,13 @@
 // @vitest-environment node
 //
 // The real-kernel half of selector picks in `add_sketch.plane` /
-// `set_feature_plane.plane`, `add_shell.faces` and `add_fillet.edges` /
-// `add_chamfer.edges`: the headless drive resolves the `select` selector against
-// the settled solve and stores the query strings, so an agent does not paste a
-// long `?...` string per sketch or pick (batch B friction). This half proves
-// the one-step path, the chained run's first-step solve, and the refusals; the
-// synthetic-input half is selectionAids.test.ts.
+// `set_feature_plane.plane`, `add_shell.faces`, `add_fillet.edges` /
+// `add_chamfer.edges` and `add_projected_entity.source`: the headless drive
+// resolves the `select` selector against the settled solve and stores the query
+// strings, so an agent does not paste a long `?...` string per sketch or pick
+// (batch B friction). This half proves the one-step path, the chained run's
+// first-step solve, and the refusals; the synthetic-input half is
+// selectionAids.test.ts.
 
 import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
@@ -17,6 +18,7 @@ import { MUTATION_EXAMPLES } from '../mutationExamples'
 import { createDriveJournal } from '../journal'
 import { replayJournal } from '../replay'
 import { docHashOf } from '../docHash'
+import { featureById } from '@/testing/featureAccess'
 import { loadOcc } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
@@ -230,5 +232,68 @@ describe.skipIf(!ready)('selector picks through the headless drive (real OCC)', 
     if (feature?.kind !== 'chamfer') return
     expect(feature.chamfer.edges).toEqual(edges)
     expect(feature.chamfer.edges.length).toBeGreaterThan(1)
+  }, 240_000)
+
+  it('projects a body edge named by a selector in one step, matching the pasted query', async () => {
+    const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
+    const built = await runHeadless({ doc: emptyDoc(), steps: box.steps })
+    expect(built.ok).toBe(true)
+    const base = built.doc!
+    const faceSelector = {
+      kind: 'face',
+      where: { and: [{ parallel: [0, 1, 0] }, { extreme: { axis: [0, 1, 0], side: 'max' } }] },
+    }
+    // A single edge of the box's top face: four of its edges run along x, the Y
+    // extreme keeps the two on the face, and the Z extreme keeps the one whose
+    // midpoint is highest in z. The Top plane's y axis is -Z, so the rect spans
+    // z -30..0 and that edge runs (0,10,0)-(40,10,0); the test asserts its 2D
+    // position below, so a changed frame fails here rather than passing quietly.
+    const edgeSelector = {
+      kind: 'edge',
+      where: {
+        and: [
+          { type: 'line' },
+          { parallel: [1, 0, 0] },
+          { extreme: { axis: [0, 1, 0], side: 'max' } },
+          { extreme: { axis: [0, 0, 1], side: 'max' } },
+        ],
+      },
+    }
+    const faces = (await selectHeadless(base, faceSelector))!.queries
+    const edges = (await selectHeadless(base, edgeSelector))!.queries
+    expect(faces).toHaveLength(1)
+    expect(edges).toHaveLength(1)
+
+    const start = [
+      step({ type: 'add_sketch', featureId: 'sk2', label: 'On face', plane: { selector: faceSelector } }),
+      step({ type: 'add_projected_entity', featureId: 'sk2', source: { selector: edgeSelector }, entityId: 'pe1' }),
+    ]
+    const pasted = [
+      step({ type: 'add_sketch', featureId: 'sk2', label: 'On face', plane: faces[0] }),
+      step({ type: 'add_projected_entity', featureId: 'sk2', kind: 'line', source: edges[0], entityId: 'pe1' }),
+    ]
+    const bySelector = await runHeadless({ doc: structuredClone(base), steps: start })
+    const byQuery = await runHeadless({ doc: structuredClone(base), steps: pasted })
+    expect(bySelector.ok).toBe(true)
+    expect(byQuery.ok).toBe(true)
+    expect(bySelector.part.solveOutcomes().sk2.status).toBe('fully_constrained')
+    expect(byQuery.part.solveOutcomes().sk2.status).toBe('fully_constrained')
+
+    // The document stores the query `select` returned, never the selector, and
+    // the omitted kind was inferred from the matched line edge.
+    const sketch = featureById(bySelector.doc!, 'sk2', 'sketch')
+    const projection = sketch.constraints!.find(constraint => constraint.kind === 'projection')!
+    expect(projection.source).toBe(edges[0])
+    expect(sketch.entities!.find(entity => entity.id === 'pe1')!.kind).toBe('line')
+    // The projection holds the edge's own 2D position in the face frame, whose
+    // origin is the face centroid: the 40-long edge spans x -20..20 and sits 15
+    // off the centroid across it, not at the origin an unanchored sketch uses.
+    const params = sketch.initial!.pe1
+    expect(Math.min(params[0], params[2])).toBeCloseTo(-20, 6)
+    expect(Math.max(params[0], params[2])).toBeCloseTo(20, 6)
+    expect(params[1]).toBeCloseTo(params[3], 9)
+    expect(Math.abs(params[1])).toBeCloseTo(15, 6)
+
+    expect(docHashOf(bySelector.doc!)).toBe(docHashOf(byQuery.doc!))
   }, 240_000)
 })

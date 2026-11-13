@@ -1170,7 +1170,12 @@ banner on stdout, so a client config must use the direct node invocation.
   several faces, and per `add_fillet.edges` / `add_chamfer.edges` entry, where
   it expands to every edge it matches; a selector is never stored. `edges` is a
   list field, so spell a lone selector `edges: [{selector: ...}]`; the object
-  form is refused as a non-array.
+  form is refused as a non-array. `add_projected_entity.source` takes one too,
+  `{selector: <a select selector naming exactly one edge, vertex or face>}`, and
+  may then omit `kind`: the drive infers it from the matched element (an edge
+  keeps its curve kind; a vertex or face projects as `point`). Only a body
+  element can be a selector source, because `select` walks bodies;
+  `@builtin_origin` and `@<sketchId>/<entityId>` are plain strings.
 - A sketch on a face uses that face's frame: origin at the face centroid, and
   the in-plane axes from the face normal by `normalToFrame` (the same rule
   every body face is registered with). For the six world-axis normals:

@@ -1,9 +1,10 @@
 // A selector in a pick field is an authoring aid: `select`'s grammar names the
 // pick, but the document stores only the query string it resolved to. The
 // headless drive resolves it against the settled solve before the mutation is
-// validated and applied, so one step can name a face without a select round
-// trip and a long paste (batch B F2). A selector is never stored, and a surface
-// with no solved body set refuses it by name rather than guessing.
+// validated and applied, so one step can name a face or a projection source
+// without a select round trip and a long paste (batch B F2). A selector is never
+// stored, and a surface with no solved body set refuses it by name rather than
+// guessing.
 //
 // The part side of the same idea as drive/assemblyRefs.ts: a selector is
 // validated by the kernel grammar, compared against the solve output, and the
@@ -11,8 +12,9 @@
 
 import type { BodyResult } from '@/types/cad'
 import {
-  PREDICATE_KEYS, selectByPredicate, SelectorError, validateSelector, type SelectKind, type Selector,
+  PREDICATE_KEYS, selectByPredicate, SelectorError, validateSelector, type SelectItem, type SelectKind, type Selector,
 } from '@/kernel/select'
+import { projectedKindForEdge } from '@/tools/operandProjection'
 
 export type SelectionAidResolution =
   | { ok: true; mutation: unknown }
@@ -47,13 +49,29 @@ function pickOf(value: unknown): boolean {
 // different mistake and must keep its plain message.
 const UNKNOWN_SELECTOR_KEY = /^selector has unknown key "([^"]+)"/
 
+const SELECT_KINDS: readonly SelectKind[] = ['edge', 'face', 'vertex']
+
+/** The kind a raw `{selector}` pick declares, when it names a valid one. A
+ *  malformed selector is exactly the case a hint is needed for, so this reads
+ *  the declared kind without trusting the grammar to validate. */
+export function declaredSelectorKind(value: unknown): SelectKind | null {
+  if (!isRecord(value) || !isRecord(value.selector)) return null
+  const kind = value.selector.kind
+  // The list is a const tuple, so a string membership check needs the widening.
+  return typeof kind === 'string' && (SELECT_KINDS as readonly string[]).includes(kind)
+    ? kind as SelectKind
+    : null
+}
+
 /**
  * A predicate key placed at the selector's top level is a real practice-round
  * mistake: `{selector: {type: "flatface"}}`. The kernel names the unknown key
  * but not the shape, so add the shape and the corrected spelling. The predicate
  * list is the grammar's own PREDICATE_KEYS, so a new predicate cannot drift.
+ * Exported so the browser bridge (mutationValues) gives the same correction as
+ * the drive, off the selector's own declared kind.
  */
-function selectorShapeHint(message: string, kind: SelectKind): string {
+export function selectorShapeHint(message: string, kind: SelectKind): string {
   const key = UNKNOWN_SELECTOR_KEY.exec(message)?.[1]
   // The list is a const tuple, so a string membership check needs the widening.
   if (key === undefined || !(PREDICATE_KEYS as readonly string[]).includes(key)) return message
@@ -77,6 +95,8 @@ export function usesSelectionAid(raw: unknown): boolean {
     case 'add_fillet':
     case 'add_chamfer':
       return Array.isArray(raw.edges) && raw.edges.some(pickOf)
+    case 'add_projected_entity':
+      return pickOf(raw.source)
     default:
       return false
   }
@@ -85,6 +105,9 @@ export function usesSelectionAid(raw: unknown): boolean {
 interface PickQueries {
   ok: true
   queries: string[]
+  // The matched elements, for a field whose stored value depends on the element
+  // itself (a projection's entity kind) rather than on the query alone.
+  items: SelectItem[]
 }
 
 interface PickRefusal {
@@ -93,23 +116,41 @@ interface PickRefusal {
   message: string
 }
 
-/** Resolve one `{selector}` pick to the queries it matches. `kind` is the
- *  element the field accepts; `exactlyOne` is a sketch plane's rule: a plane
- *  sits on one face, while a shell opening or fillet edge list may name
- *  several. */
+/** How a field holds its picks. `kind: null` accepts whatever element kind the
+ *  selector names, because the field takes more than one (a projection source is
+ *  an edge, vertex or face) and the caller reads the matched kind back off the
+ *  item. `oneOnly` is the sentence a multi-match refusal carries, naming what
+ *  the field sits on; null means the field expands to every match. */
+interface PickRule {
+  kind: SelectKind | null
+  oneOnly: string | null
+}
+
+const PLANE_PICK: PickRule = { kind: 'face', oneOnly: 'a sketch plane sits on exactly one face' }
+const PROJECTION_SOURCE_PICK: PickRule = {
+  kind: null,
+  oneOnly: 'a projection source is exactly one edge, vertex or face',
+}
+
+/** Resolve one `{selector}` pick to the queries it matches. */
 function resolvePick(
   value: unknown,
   bodies: Record<string, BodyResult> | null,
   label: string,
-  kind: SelectKind,
-  exactlyOne: boolean,
+  rule: PickRule,
 ): PickQueries | PickRefusal {
   let selector: Selector | null
   try {
     selector = selectorOf(value)
   } catch (e) {
     if (e instanceof SelectorError) {
-      return { ok: false, code: 'invalid-ref', message: `${label}: ${selectorShapeHint(e.message, kind)}` }
+      // The selector's own kind is the example the hint should suggest, and the
+      // grammar check that just failed may be why it is not listed in the rule.
+      return {
+        ok: false,
+        code: 'invalid-ref',
+        message: `${label}: ${selectorShapeHint(e.message, declaredSelectorKind(value) ?? rule.kind ?? 'edge')}`,
+      }
     }
     throw e
   }
@@ -140,31 +181,55 @@ function resolvePick(
     if (!(e instanceof SelectorError)) throw e
     return { ok: false, code: 'unresolved-ref', message: `${label}: ${e.message}` }
   }
-  if (exactlyOne && items.length > 1) {
+  if (rule.oneOnly !== null && items.length > 1) {
     return {
       ok: false,
       code: 'unresolved-ref',
-      message: `${label} selector matched ${items.length} items; a sketch plane sits on exactly one face, `
+      message: `${label} selector matched ${items.length} items; ${rule.oneOnly}, `
         + `so narrow the selector or ${SELECTOR_HINT}`,
     }
   }
-  const wrongKind = items.filter(item => item.kind !== kind)
-  if (wrongKind.length > 0) {
-    return {
-      ok: false,
-      code: 'unresolved-ref',
-      message: `${label} selector matched ${wrongKind.length} non-${kind} item(s) `
-        + `(${wrongKind.map(item => item.kind).join(', ')}); only ${kind}s are picks here`,
+  if (rule.kind !== null) {
+    const wrongKind = items.filter(item => item.kind !== rule.kind)
+    if (wrongKind.length > 0) {
+      return {
+        ok: false,
+        code: 'unresolved-ref',
+        message: `${label} selector matched ${wrongKind.length} non-${rule.kind} item(s) `
+          + `(${wrongKind.map(item => item.kind).join(', ')}); only ${rule.kind}s are picks here`,
+      }
     }
   }
-  return { ok: true, queries: items.map(item => item.query) }
+  return { ok: true, queries: items.map(item => item.query), items }
 }
 
 function planeStep(raw: RawStep, bodies: Record<string, BodyResult> | null): SelectionAidResolution {
   if (!pickOf(raw.plane)) return { ok: true, mutation: raw }
-  const pick = resolvePick(raw.plane, bodies, `${raw.type as string} plane`, 'face', true)
+  const pick = resolvePick(raw.plane, bodies, `${raw.type as string} plane`, PLANE_PICK)
   if (!pick.ok) return pick
   return { ok: true, mutation: { ...raw, plane: pick.queries[0] } }
+}
+
+/** The sketch entity kind an omitted projection `kind` infers from the element
+ *  the selector matched. An edge uses the UI's own mapping (projectedKindForEdge),
+ *  so the drive and the project tool cannot declare different curve kinds for
+ *  one edge. A vertex projects as its point. A face is the one divergence: the
+ *  drive infers a point (its centroid, what the lowerer reads), while the UI
+ *  expands a face pick into its boundary wire when the body reports one. The
+ *  kind is a pick-time hint either way, so the lowerer's resolved geometry wins. */
+function projectedKindOf(item: SelectItem): string {
+  return item.kind === 'edge' ? projectedKindForEdge(item.geometry.kind) : 'point'
+}
+
+function sourceStep(raw: RawStep, bodies: Record<string, BodyResult> | null): SelectionAidResolution {
+  if (!pickOf(raw.source)) return { ok: true, mutation: raw }
+  const pick = resolvePick(raw.source, bodies, `${raw.type as string} source`, PROJECTION_SOURCE_PICK)
+  if (!pick.ok) return pick
+  // Fill only a missing kind. A present but wrong one (kind: 5) is left for the
+  // value rules to refuse rather than silently corrected here, the same refusal
+  // the string source form gets.
+  const kind = raw.kind === undefined ? projectedKindOf(pick.items[0]) : raw.kind
+  return { ok: true, mutation: { ...raw, kind, source: pick.queries[0] } }
 }
 
 // A pick list keeps the authored order: a string entry is already the stored
@@ -187,7 +252,7 @@ function pickListStep(
       queries.push(entry)
       continue
     }
-    const pick = resolvePick(entry, bodies, `${raw.type as string} ${field}[${i}]`, kind, false)
+    const pick = resolvePick(entry, bodies, `${raw.type as string} ${field}[${i}]`, { kind, oneOnly: null })
     if (!pick.ok) return pick
     for (const query of pick.queries) {
       if (!queries.includes(query)) queries.push(query)
@@ -221,6 +286,8 @@ export function resolveSelectionAids(
     case 'add_fillet':
     case 'add_chamfer':
       return edgeStep(raw, bodies)
+    case 'add_projected_entity':
+      return sourceStep(raw, bodies)
     default:
       return { ok: true, mutation: raw }
   }

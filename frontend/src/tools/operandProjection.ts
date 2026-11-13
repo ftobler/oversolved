@@ -88,11 +88,16 @@ export function findProjectionOf(input: unknown, source: string): string | null 
 
 export interface BrepDimensionPlan {
   // Empty when an existing projection of the same source is reused.
-  mutations: ProjectedEntityMutation[]
+  mutations: PlannedProjectionMutation[]
   pick: DimensionPick
 }
 
 export type ProjectedEntityMutation = Extract<Mutation, { type: 'add_projected_entity' }>
+
+/** A projection the UI plans from a clicked element. The click already named the
+ *  element kind and its query, so a planned projection is always the stored form
+ *  and never the `{selector}` aid a script may send. */
+export type PlannedProjectionMutation = ProjectedEntityMutation & { kind: string; source: string }
 
 /** One projection already planned earlier in the same act, or a pending
  *  dimension pick. The source is absent on a plain sketch pick, which the
@@ -138,7 +143,7 @@ export interface ProjectedOperandPlanInput {
 
 export interface ProjectedOperandPlan {
   // Empty when an existing projection of the same source is reused.
-  mutations: ProjectedEntityMutation[]
+  mutations: PlannedProjectionMutation[]
   // The operand that was planned, so the caller can feed the plan straight back
   // in as `pending` for the next operand of the same act.
   source: string
@@ -229,7 +234,7 @@ export function planProjectedOperand(input: ProjectedOperandPlanInput): Projecte
     ?? (isVertexPick ? 'point' : projectedKindForEdge(sourceKind))
   const entityId = existing?.entityId ?? newEntityId()
 
-  const mutations: ProjectedEntityMutation[] = existing
+  const mutations: PlannedProjectionMutation[] = existing
     ? []
     : [{ type: 'add_projected_entity', featureId, kind, source: query, entityId }]
 

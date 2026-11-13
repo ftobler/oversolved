@@ -37,6 +37,8 @@ import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/per
 import { arrayCountProblem } from '@/persistence/docSchema'
 import { pickedSketchEntity } from '@/kernel/features/shared/bodyRef'
 import { circleDrillSiteReason } from '@/kernel/features/shared/drillSite'
+import { SelectorError, validateSelector } from '@/kernel/select'
+import { declaredSelectorKind, selectorShapeHint } from '@/drive/selectionAids'
 
 export type ValueViolationCode = 'invalid-mutation' | 'unknown-target'
 
@@ -799,11 +801,25 @@ function addEntityWithConstraint(raw: RawStep, ctx: ValueContext): ValueViolatio
 
 function addProjectedEntity(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const kind = raw.kind
-  if (typeof kind !== 'string') return invalid(`kind must be an entity kind string, got ${json(kind)}`)
-  const kindProblem = entityKindProblem(kind, 'add_projected_entity')
-  if (kindProblem !== null) return invalid(kindProblem)
   const source = raw.source
-  const sourceProblem = pickQueryProblem(source, 'source')
+  if (kind === undefined) {
+    // The drive infers the kind from the element a selector matched; the stored
+    // string form has no element to read, so the author names it.
+    if (!isRecord(source)) {
+      return invalid(
+        'kind must be an entity kind string such as "line", or omitted with a {selector} source '
+        + 'the drive resolves and infers it from',
+      )
+    }
+  } else {
+    if (typeof kind !== 'string') return invalid(`kind must be an entity kind string, got ${json(kind)}`)
+    const kindProblem = entityKindProblem(kind, 'add_projected_entity')
+    if (kindProblem !== null) return invalid(kindProblem)
+  }
+  // A record source is a `{selector}` the drive resolves before this boundary
+  // runs, so one that survives to here is on a surface with no solved bodies
+  // (the browser bridge) and is refused by name rather than stored.
+  const sourceProblem = isRecord(source) ? selectorRefProblem(source, 'source') : pickQueryProblem(source, 'source')
   if (sourceProblem !== null) return invalid(sourceProblem)
   const idProblem = entityIdProblem(raw, ctx)
   return idProblem === null ? null : invalid(idProblem)
@@ -1102,7 +1118,8 @@ function planeTargetProblem(value: string, ctx: ValueContext): string | null {
 // A `{selector}` pick is an authoring aid: the headless drive resolves it
 // against the settled solve before this boundary runs, so an object that still
 // reaches the value rules is on a surface with no solved body set (the browser
-// bridge). Refuse it by name instead of storing the object in the document.
+// bridge). Refuse it by name instead of storing the object in the document. A
+// malformed grammar is corrected first, with the same shape hint the drive uses.
 const UNRESOLVED_SELECTOR =
   'a {selector} pick needs the solved bodies; the headless drive resolves it before the step runs, '
   + 'so pass the query string `select` returned instead'
@@ -1112,6 +1129,14 @@ function selectorRefProblem(value: unknown, label: string): string | null {
   const keys = Object.keys(value)
   if (keys.length !== 1 || !isRecord(value.selector)) {
     return `${label} must be {selector: <a select selector>} and carry nothing else, got ${json(value)}`
+  }
+  try {
+    validateSelector(value.selector)
+  } catch (e) {
+    if (e instanceof SelectorError) {
+      return `${label}: ${selectorShapeHint(e.message, declaredSelectorKind(value) ?? 'edge')}`
+    }
+    throw e
   }
   return `${label}: ${UNRESOLVED_SELECTOR}`
 }
