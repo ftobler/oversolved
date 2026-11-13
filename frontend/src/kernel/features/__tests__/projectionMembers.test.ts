@@ -7,6 +7,7 @@ import {
   boundaryFromFaceEdges,
   deriveMemberIds,
   edgeUuidToken,
+  faceBoundaryFromBodies,
   faceProjectionConstraintId,
   freezeRowsForDelete,
   isFaceProjectionSource,
@@ -188,9 +189,28 @@ describe('boundary adapters', () => {
     expect(fromEdges?.edges).toEqual([{ token: TOKENS[0], query: edgeQuery(TOKENS[0]), kind: 'line' }])
     expect(boundaryFromFaceEdges(null)).toBeNull()
   })
+
+  it('finds a face by UUID when the stored query drifted', () => {
+    const edgeQueryText = edgeQuery(TOKENS[0])
+    const lookup = faceBoundaryFromBodies(() => ({
+      b1: {
+        mesh: {
+          face_queries: ['?stale;drifted:flatface'],
+          face_uuids: [TOKENS[0].slice(2)],
+          face_edge_queries: [[edgeQueryText]],
+          face_seam_queries: [[]],
+        },
+        edge_queries: [edgeQueryText],
+        edges: [{ kind: 'line' }],
+      },
+    }))
+    const source = edgeQuery(TOKENS[0], 'flatface')
+    expect(lookup(source)?.edges).toEqual([{ token: TOKENS[0], query: edgeQueryText, kind: 'line' }])
+  })
 })
 
-describe('freezeRowsForDelete', () => {  const members = deriveMemberIds(CID, TOKENS)
+describe('freezeRowsForDelete', () => {
+  const members = deriveMemberIds(CID, TOKENS)
   const feature = {
     constraints: [{ id: CID, kind: 'projection', members }],
   }

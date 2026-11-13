@@ -35,6 +35,7 @@ interface FaceFixture {
   frontFace: string
   cid: string
   member: string
+  memberIds: string[]
   steps: ScriptStep[]
 }
 
@@ -61,7 +62,7 @@ function faceFixture(): FaceFixture {
       },
     },
   ]
-  return { frontFace: geometry.frontFace, cid, member: ids[line.token], steps }
+  return { frontFace: geometry.frontFace, cid, member: ids[line.token], memberIds: Object.values(ids), steps }
 }
 
 function part(doc: PartDoc = projectionBaseDoc(), journal?: CommandJournal) {
@@ -157,6 +158,15 @@ describe.skipIf(!oc || !solveBytes)('face projection replay', () => {
     expect(sketch.constraints?.filter(c => c.kind === 'projection').map(c => c.id)).toEqual([`${fixture.cid}_2`])
 
     const repro = journal.repro()!
+    const repickEntry = repro.journal
+      .flatMap(entry => Array.isArray(entry.payload) ? entry.payload : [entry.payload])
+      .find(payload => (payload as { constraintId?: string }).constraintId === `${fixture.cid}_2`)
+    // The journal records the suffixed id and the map it was derived with; a
+    // replay must not have to re-derive either from a boundary.
+    expect(repickEntry).toBeDefined()
+    const recordedMembers = (repickEntry as { members?: Record<string, string> }).members ?? {}
+    expect(Object.keys(recordedMembers)).toHaveLength(fixture.memberIds.length)
+    expect(Object.values(recordedMembers).every(id => id.startsWith(`${fixture.cid}_2.`))).toBe(true)
     const fresh = part(repro.doc as PartDoc)
     const replay = await replayJournal(repro, fresh.session, () => fresh.idle())
     expect(replay.ok).toBe(true)
@@ -164,5 +174,22 @@ describe.skipIf(!oc || !solveBytes)('face projection replay', () => {
     const replayed = (fresh.getDoc()?.features ?? []).find(f => f.id === 'skP')
     if (replayed?.kind !== 'sketch') throw new Error('no replayed sketch')
     expect(replayed.constraints?.filter(c => c.kind === 'projection').map(c => c.id)).toEqual([`${fixture.cid}_2`])
+  })
+
+  it('22. a headless delete freezes a face projection without a hand-written payload', async () => {
+    const fixture = faceFixture()
+    const p = part()
+    expect((await p.run(fixture.steps)).ok).toBe(true)
+    const removed = await p.run([{
+      mutation: { type: 'delete', targets: [`constraint:skP:${fixture.cid}`] },
+    }])
+    expect(removed.ok).toBe(true)
+
+    const sketch = (p.getDoc()?.features ?? []).find(f => f.id === 'skP')
+    if (sketch?.kind !== 'sketch') throw new Error('no projection sketch')
+    expect(sketch.constraints?.some(c => c.id === fixture.cid)).toBe(false)
+    const frozen = (sketch.entities ?? []).map(e => e.id).filter(id => fixture.memberIds.includes(id))
+    expect(frozen.sort()).toEqual([...fixture.memberIds].sort())
+    for (const id of fixture.memberIds) expect(sketch.initial?.[id]).toBeDefined()
   })
 })

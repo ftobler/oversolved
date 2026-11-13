@@ -1112,9 +1112,10 @@ export const MUTATION_CATALOG = {
     fields: {
       featureId: str(),
       kind: optStr(
-        'Entity kind: line, circle, arc, ellipse, spline or point. Omit it for a face source (members are '
-        + 'derived), or with a {selector} source: the drive infers the kind from the element the selector '
-        + 'matched (an edge keeps its curve kind, a vertex or face projects as point).',
+        'Entity kind: line, circle, arc, ellipse, spline or point. Omit it for a face source (the whole '
+        + 'wire is derived; a supplied kind is ignored, so pick one edge if you want a centre point), or '
+        + 'with a {selector} source: the drive infers the kind from the element the selector matched '
+        + '(an edge keeps its curve kind, a vertex or face projects as point).',
       ),
       source: queryOrSelector(PROJECTION_SOURCE_NOTE),
       entityId: optStr(),

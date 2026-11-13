@@ -171,7 +171,12 @@ export function applyRemoveDanglingContent(
     if (feature.constraints) {
       const superfluous = new Set(constraints)
       feature.constraints = feature.constraints.filter(
-        c => !(superfluous.has(c.id)) && !(flagged.has(c.id) && c.kind === 'projection'),
+        c => !(superfluous.has(c.id))
+          // A live face projection is reported while its face is transiently
+          // unresolved; cleaning it would delete the constraint and its wire for
+          // good. Only the user's explicit delete (which freezes) removes it.
+          && !(flagged.has(c.id) && c.kind === 'projection'
+            && (c.target !== undefined || c.members === undefined)),
       )
     }
   }
@@ -188,7 +193,8 @@ export function hasDanglingContentInDoc(
   for (const [featureId, { projections, constraints }] of Object.entries(perFeature)) {
     const feature = (doc.features ?? []).find(f => f.id === featureId)
     if (feature?.kind !== 'sketch') continue
-    if (projections.some(cid => (feature.constraints ?? []).some(c => c.id === cid && c.kind === 'projection'))) return true
+    if (projections.some(cid => (feature.constraints ?? []).some(c =>
+      c.id === cid && c.kind === 'projection' && (c.target !== undefined || c.members === undefined)))) return true
     if (constraints.some(cid => (feature.constraints ?? []).some(c => c.id === cid))) return true
   }
   return false

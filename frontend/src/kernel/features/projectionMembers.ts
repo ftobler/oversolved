@@ -215,6 +215,15 @@ export interface ProjectionMemberReport {
   orphans: string[]
 }
 
+/** The one sentence both delete paths show when a face projection has no rows
+ *  to freeze. Neutral on purpose: the projection may be unresolved, a member
+ *  may have failed to project, or it may have been added since the last solve. */
+export const PROJECTION_NOT_FROZEN_TITLE = 'Projection not frozen'
+
+export function projectionNotFrozenMessage(constraintId: string): string {
+  return `projection ${constraintId} has no solved member rows to freeze; it was removed without materializing geometry`
+}
+
 /** The member rows a delete of a face projection should freeze, read from the
  *  last solve's report: only ids the targeted constraint still owns and that are
  *  not excluded. Undefined when the selection holds no face projection with a
@@ -269,6 +278,9 @@ export function boundaryFromFaceEdges(
 export interface FaceBoundaryBodyLike {
   mesh?: {
     face_queries?: string[]
+    // The canonical face UUIDs; the solve-time lookup falls back to these when
+    // a stored query drifted, and the headless lookup must agree.
+    face_uuids?: (string | null)[]
     face_edge_queries?: string[][]
     face_seam_queries?: string[][]
   }
@@ -288,7 +300,15 @@ export function faceBoundaryFromBodies(
   return (source) => {
     for (const body of Object.values(getBodies() ?? {})) {
       const mesh = body.mesh
-      const faceIndex = mesh?.face_queries?.indexOf(source) ?? -1
+      let faceIndex = mesh?.face_queries?.indexOf(source) ?? -1
+      if (faceIndex < 0) {
+        // A stored query can drift while the face's construction UUID still
+        // names it; the solve-time lookup already falls back to `face_uuids`,
+        // so the drive must not refuse what the UI resolves.
+        const token = edgeUuidToken(source)
+        const uuid = token === null ? null : token.slice(2)
+        faceIndex = uuid === null ? -1 : mesh?.face_uuids?.indexOf(uuid) ?? -1
+      }
       if (faceIndex < 0) continue
       const queries = mesh?.face_edge_queries?.[faceIndex]
       if (queries === undefined || queries.length === 0) return null

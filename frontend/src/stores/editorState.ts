@@ -19,7 +19,7 @@ import { computeNaturalDimensionValue, computeAnchorRelativePos, resolveDimPoint
 import { deriveSelectionDomain, devOnly, testMode, failLoud } from './stateInvariants'
 import { isDrawingTool } from '@/registry/toolRegistry'
 import { getToolPickConfig } from '@/registry/toolPickConfig'
-import { freezeRowsForDelete } from '@/kernel/features/projectionMembers'
+import { freezeRowsForDelete, PROJECTION_NOT_FROZEN_TITLE, projectionNotFrozenMessage } from '@/kernel/features/projectionMembers'
 import { planBrepDimensionPick, planProjectedOperand, classifyBrepOperand, refreshProjectedPickKinds, type PlannedProjection, type PlannedProjectionMutation } from '@/tools/operandProjection'
 import { commitDrawGesture } from '@/tools/commitDrawGesture'
 import { computeDrawFinish } from '@/utils/geometry/drawFinish'
@@ -961,8 +961,8 @@ export const editorState = createStore<EditorState>((set, get) => ({
     onMutation(mutation)
     if (frozenNothing !== undefined) {
       sketchCallbacks.showMessage?.({
-        title: 'Projection not frozen',
-        message: `the face did not resolve this solve, so ${frozenNothing} was removed without materializing its members`,
+        title: PROJECTION_NOT_FROZEN_TITLE,
+        message: projectionNotFrozenMessage(frozenNothing),
         variant: 'info',
       })
     }

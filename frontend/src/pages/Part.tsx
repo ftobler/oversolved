@@ -8,6 +8,7 @@ import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
 import { findEdgeKindForQuery } from '@/picking/bodyDispatchCallbacks'
 import { classifyPendingAdd } from '@/kernel/features/constraintProbe'
+import { PROJECTION_NOT_FROZEN_TITLE, projectionNotFrozenMessage } from '@/kernel/features/projectionMembers'
 import { resolvedKindsOfSketch } from '@/kernel/features/sketch'
 import { docVisibleFeatureIds, visibleFeatureIds } from '@/utils/featureVisibility'
 import { useSketchEditorStore, useSketchUiStore, setSketchCallback, clearSketchCallbacks, sketchOwnedDeleteTargets, deleteMutationFor, type PendingConstraint } from '@/stores/sketchEditorStore'
@@ -713,8 +714,8 @@ export default function Part() {
       const mutations: Mutation[] = frozen !== null ? [frozen.mutation, ...threeD] : threeD
       if (frozen?.frozenNothing !== undefined) {
         showMessage({
-          title: 'Projection not frozen',
-          message: `the face did not resolve this solve, so ${frozen.frozenNothing} was removed without materializing its members`,
+          title: PROJECTION_NOT_FROZEN_TITLE,
+          message: projectionNotFrozenMessage(frozen.frozenNothing),
           variant: 'info',
         })
       }

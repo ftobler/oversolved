@@ -13,7 +13,8 @@
 
 import type { PartDoc, Mutation, SketchData, BodyResult } from '@/types/cad'
 import {
-  faceBoundaryFromBodies, isFaceProjectionSource, type FaceBoundaryBodyLike,
+  faceBoundaryFromBodies, freezeRowsForDelete, isFaceProjectionSource, type FaceBoundaryBodyLike,
+  type ProjectionMemberEntity,
 } from '@/kernel/features/projectionMembers'
 import { createDocSession, type DocSession } from '@/session/DocSession'
 import type { SolveOptions, SolveSchedulerState } from '@/session/SolveScheduler'
@@ -185,6 +186,37 @@ function isFaceProjectionStep(mutation: unknown): boolean {
   return step.type === 'add_projected_entity'
     && typeof step.source === 'string'
     && isFaceProjectionSource(step.source)
+}
+
+/** Fill a drive `delete` of a face projection with the member rows the last
+ *  solve derived, the headless twin of the editor's freeze payload. Without it a
+ *  script that deletes the constraint silently discards the wire. */
+function withProjectionFreeze(
+  mutation: Mutation,
+  doc: PartDoc | null,
+  result: Record<string, unknown> | undefined,
+): Mutation {
+  if (mutation.type !== 'delete' || mutation.materialize !== undefined || doc === null) return mutation
+  const features = new Set<string>()
+  for (const target of mutation.targets) {
+    if (!target.startsWith('constraint:')) continue
+    const parts = target.split(':')
+    if (parts[1] !== undefined && parts[2] !== undefined) features.add(parts[1])
+  }
+  const rows: ProjectionMemberEntity[] = []
+  for (const featureId of features) {
+    const feature = (doc.features ?? []).find(candidate => candidate.id === featureId)
+    if (feature?.kind !== 'sketch') continue
+    const found = freezeRowsForDelete(
+      featureId,
+      feature,
+      mutation.targets,
+      (result?.[featureId] as { projection_members?: Record<string, { entities: ProjectionMemberEntity[] }> } | undefined)
+        ?.projection_members,
+    )
+    if (found !== undefined) rows.push(...found)
+  }
+  return rows.length > 0 ? { ...mutation, materialize: rows } : mutation
 }
 
 export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
@@ -413,7 +445,8 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
           // the layer rows the step reply reports.
           const importable = resolveDxfFile(validated.mutation, opts.files, docBox.current)
           if (!importable.ok) return { ok: false, code: importable.code, message: importable.message }
-          const applied = session.execute(importable.mutation)
+          const frozen = withProjectionFreeze(importable.mutation, docBox.current, responseBox.current?.result)
+          const applied = session.execute(frozen)
           // A refused filter is a no-op: the step says no-change instead of
           // reporting layer rows for an import that did not happen.
           return importable.reply !== null && applied.ok && applied.noOp !== true
