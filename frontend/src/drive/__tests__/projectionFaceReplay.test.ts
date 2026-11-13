@@ -36,6 +36,7 @@ interface FaceFixture {
   cid: string
   member: string
   memberIds: string[]
+  members: Record<string, string>
   steps: ScriptStep[]
 }
 
@@ -62,7 +63,10 @@ function faceFixture(): FaceFixture {
       },
     },
   ]
-  return { frontFace: geometry.frontFace, cid, member: ids[line.token], memberIds: Object.values(ids), steps }
+  return {
+    frontFace: geometry.frontFace, cid, member: ids[line.token],
+    memberIds: Object.values(ids), members: ids, steps,
+  }
 }
 
 function part(doc: PartDoc = projectionBaseDoc(), journal?: CommandJournal) {
@@ -161,8 +165,9 @@ describe.skipIf(!oc || !solveBytes)('face projection replay', () => {
     const repickEntry = repro.journal
       .flatMap(entry => Array.isArray(entry.payload) ? entry.payload : [entry.payload])
       .find(payload => (payload as { constraintId?: string }).constraintId === `${fixture.cid}_2`)
-    // The journal records the suffixed id and the map it was derived with; a
-    // replay must not have to re-derive either from a boundary.
+    // Pin the recorded payload: the suffixed id and the map it was derived
+    // with. A replay could re-derive the same suffix from a boundary, so this is
+    // not proof of replay independence.
     expect(repickEntry).toBeDefined()
     const recordedMembers = (repickEntry as { members?: Record<string, string> }).members ?? {}
     expect(Object.keys(recordedMembers)).toHaveLength(fixture.memberIds.length)
@@ -191,5 +196,23 @@ describe.skipIf(!oc || !solveBytes)('face projection replay', () => {
     const frozen = (sketch.entities ?? []).map(e => e.id).filter(id => fixture.memberIds.includes(id))
     expect(frozen.sort()).toEqual([...fixture.memberIds].sort())
     for (const id of fixture.memberIds) expect(sketch.initial?.[id]).toBeDefined()
+  })
+
+  it('23. a drive delete with no rows notes that nothing was frozen', async () => {
+    const fixture = faceFixture()
+    const p = part()
+    expect((await p.run([fixture.steps[0]])).ok).toBe(true)
+    // A valid map added directly leaves the last solve without a report for
+    // this constraint, which is the unresolved/just-added case.
+    const added = p.session.execute({
+      type: 'add_projected_entity', featureId: 'skP', source: fixture.frontFace,
+      members: fixture.members, constraintId: fixture.cid,
+    })
+    expect(added.ok).toBe(true)
+    const removed = await p.run([{
+      mutation: { type: 'delete', targets: [`constraint:skP:${fixture.cid}`] },
+    }])
+    expect(removed.ok).toBe(true)
+    expect(removed.steps[0].note).toContain('no solved member rows')
   })
 })

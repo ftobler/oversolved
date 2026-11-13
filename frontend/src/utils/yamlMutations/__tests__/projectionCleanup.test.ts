@@ -35,15 +35,17 @@ function constraints(d: PartDoc): string[] {
 }
 
 describe('cleanup and a live face projection', () => {
-  it('keeps a targetless projection that carries a member map', () => {
+  it('keeps a targetless projection even when its member map is empty', () => {
     const d = doc()
     applyRemoveDanglingContent(d, { sk1: { projections: [FACE, EDGE, EMPTY], constraints: [] } })
-    expect(constraints(d)).toEqual([FACE])
+    // A targetless projection is the live face form, whether its map is empty
+    // after every member was excluded or because it has not solved yet.
+    expect(constraints(d)).toEqual([FACE, EMPTY])
   })
 
-  it('does not report the kept face projection as removable', () => {
+  it('does not report a kept face projection as removable', () => {
     expect(hasDanglingContentInDoc(doc(), { sk1: { projections: [FACE], constraints: [] } })).toBe(false)
     expect(hasDanglingContentInDoc(doc(), { sk1: { projections: [EDGE], constraints: [] } })).toBe(true)
-    expect(hasDanglingContentInDoc(doc(), { sk1: { projections: [EMPTY], constraints: [] } })).toBe(true)
+    expect(hasDanglingContentInDoc(doc(), { sk1: { projections: [EMPTY], constraints: [] } })).toBe(false)
   })
 })

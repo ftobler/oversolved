@@ -1172,7 +1172,9 @@ banner on stdout, so a client config must use the direct node invocation.
   form is refused as a non-array. `add_projected_entity.source` takes one too,
   `{selector: <a select selector naming exactly one edge, vertex or face>}`, and
   may then omit `kind`: the drive infers it from the matched element (an edge
-  keeps its curve kind; a vertex or face projects as `point`). Only a body
+  keeps its curve kind; a vertex or face projects as `point`). A FACE source's
+  wire is derived as a whole, so a supplied `kind` is ignored; pick one edge if
+  you want a curve or its centre. Only a body
   element can be a selector source, because `select` walks bodies;
   `@builtin_origin` and `@<sketchId>/<entityId>` are plain strings.
 - A sketch on a face uses that face's frame: origin at the face centroid, and

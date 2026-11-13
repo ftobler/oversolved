@@ -172,11 +172,11 @@ export function applyRemoveDanglingContent(
       const superfluous = new Set(constraints)
       feature.constraints = feature.constraints.filter(
         c => !(superfluous.has(c.id))
-          // A live face projection is reported while its face is transiently
-          // unresolved; cleaning it would delete the constraint and its wire for
-          // good. Only the user's explicit delete (which freezes) removes it.
-          && !(flagged.has(c.id) && c.kind === 'projection'
-            && (c.target !== undefined || c.members === undefined)),
+          // A targetless projection is a live face projection (the schema
+          // reserves that form for it), even when its member map is empty after
+          // all members were excluded. Cleaning it would delete the constraint
+          // and its wire for good; only the user's explicit delete freezes it.
+          && !(flagged.has(c.id) && c.kind === 'projection' && c.target !== undefined),
       )
     }
   }
@@ -194,7 +194,7 @@ export function hasDanglingContentInDoc(
     const feature = (doc.features ?? []).find(f => f.id === featureId)
     if (feature?.kind !== 'sketch') continue
     if (projections.some(cid => (feature.constraints ?? []).some(c =>
-      c.id === cid && c.kind === 'projection' && (c.target !== undefined || c.members === undefined)))) return true
+      c.id === cid && c.kind === 'projection' && c.target !== undefined))) return true
     if (constraints.some(cid => (feature.constraints ?? []).some(c => c.id === cid))) return true
   }
   return false

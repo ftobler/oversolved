@@ -93,4 +93,28 @@ describe('deleteSelected freeze route', () => {
     expect(mutations).toHaveLength(1)
     expect(messages).toEqual([])
   })
+
+  it('notes a mixed selection where only one face projection has rows to freeze', () => {
+    const second = 'proj_face2'
+    const mixed = doc()
+    const sketch = mixed.features![0]
+    if (sketch.kind !== 'sketch') throw new Error('not a sketch')
+    sketch.constraints!.push({
+      id: second, kind: 'projection', source: '?face2',
+      members: { 'u|e_bbbb': 'proj_face2.bbbbbbbb' },
+    })
+    setSketchCallback('getDoc', () => mixed)
+    editorState.setState({
+      activeFeatureId: 'sk1',
+      normalSelection: new Set([`constraint:sk1:${CID}`, `constraint:sk1:${second}`]),
+    })
+    members = reports([{ id: MEMBER, kind: 'line', params: [0, 0, 10, 0] }])
+    editorState.getState().deleteSelected()
+    expect(mutations).toHaveLength(1)
+    expect((mutations[0] as { materialize?: unknown }).materialize).toEqual([
+      { id: MEMBER, kind: 'line', params: [0, 0, 10, 0] },
+    ])
+    expect(messages).toHaveLength(1)
+    expect(messages[0].message).toContain(second)
+  })
 })

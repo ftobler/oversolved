@@ -19,7 +19,9 @@ import { computeNaturalDimensionValue, computeAnchorRelativePos, resolveDimPoint
 import { deriveSelectionDomain, devOnly, testMode, failLoud } from './stateInvariants'
 import { isDrawingTool } from '@/registry/toolRegistry'
 import { getToolPickConfig } from '@/registry/toolPickConfig'
-import { freezeRowsForDelete, PROJECTION_NOT_FROZEN_TITLE, projectionNotFrozenMessage } from '@/kernel/features/projectionMembers'
+import {
+  freezeRowsForDelete, PROJECTION_NOT_FROZEN_TITLE, projectionNotFrozenMessage, projectionsFreezingNothing,
+} from '@/kernel/features/projectionMembers'
 import { planBrepDimensionPick, planProjectedOperand, classifyBrepOperand, refreshProjectedPickKinds, type PlannedProjection, type PlannedProjectionMutation } from '@/tools/operandProjection'
 import { commitDrawGesture } from '@/tools/commitDrawGesture'
 import { computeDrawFinish } from '@/utils/geometry/drawFinish'
@@ -75,32 +77,20 @@ export function deleteMutationFor(
 ): { mutation: Mutation; frozenNothing?: string } {
   const targetsCopy = [...targets]
   const emptyMutation: Mutation = { type: 'delete', targets: targetsCopy }
-  const empty = { mutation: emptyMutation }
-  if (activeFeatureId === null) return empty
+  if (activeFeatureId === null) return { mutation: emptyMutation }
   const feature = (sketchCallbacks.getDoc?.()?.features ?? []).find(candidate => candidate.id === activeFeatureId)
-  if (feature?.kind !== 'sketch') return empty
+  if (feature?.kind !== 'sketch') return { mutation: emptyMutation }
   const reports = sketchCallbacks.getProjectionMembers?.(activeFeatureId) ?? null
   const rows = freezeRowsForDelete(activeFeatureId, feature, targets, reports)
-  if (rows !== undefined) return { mutation: { type: 'delete', targets: targetsCopy, materialize: rows } }
-  // A live face projection whose face did not resolve has no member bytes to
-  // freeze. The delete still removes the constraint, but the caller is told why
-  // nothing was materialized instead of the rows silently missing.
-  const unresolved = targets.find((target) => {
-    if (!target.startsWith('constraint:')) return false
-    const [kind, sketchId, constraintId] = target.split(':')
-    if (kind !== 'constraint' || sketchId !== activeFeatureId || constraintId === undefined) return false
-    const constraint = feature.constraints?.find(candidate => candidate.id === constraintId)
-    if (constraint?.kind !== 'projection' || constraint.target !== undefined) return false
-    const excluded = new Set(constraint.excluded ?? [])
-    const orphans = new Set(reports?.[constraintId]?.orphans ?? [])
-    const hasLiveMember = Object.keys(constraint.members ?? {})
-      .some(token => !excluded.has(token) && !orphans.has(token))
-    // An all-excluded (or all-orphan, or map-less) face projection is
-    // intentionally empty; only one with live members that did not resolve is
-    // "not frozen".
-    return hasLiveMember && (reports?.[constraintId]?.entities.length ?? 0) === 0
-  })
-  return unresolved === undefined ? empty : { ...empty, frozenNothing: unresolved }
+  // A mixed selection can freeze some projections and leave another unresolved;
+  // the note must fire for that one even when rows exist.
+  const empty = projectionsFreezingNothing(activeFeatureId, feature, targets, reports)
+  return {
+    mutation: rows === undefined
+      ? emptyMutation
+      : { type: 'delete', targets: targetsCopy, materialize: rows },
+    ...(empty.length > 0 ? { frozenNothing: empty[0] } : {}),
+  }
 }
 
 // The selection contract of mirror_entities: the selected entities are the

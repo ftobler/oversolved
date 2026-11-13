@@ -224,6 +224,47 @@ export function projectionNotFrozenMessage(constraintId: string): string {
   return `projection ${constraintId} has no solved member rows to freeze; it was removed without materializing geometry`
 }
 
+/** The targeted face projections a delete will freeze nothing for: each has
+ *  live (non-excluded, non-orphan) members but no resolved entity rows. Used by
+ *  the editor to warn on a mixed selection and by the drive to note a delete
+ *  that discards an unresolved wire. */
+export function projectionsFreezingNothing(
+  featureId: string | null,
+  documents: {
+    constraints?: ReadonlyArray<{
+      id: string
+      kind: string
+      target?: unknown
+      members?: Record<string, string>
+      excluded?: readonly string[]
+    }>
+  } | null | undefined,
+  targets: readonly string[],
+  reports: Readonly<Record<string, { entities: readonly ProjectionMemberEntity[]; orphans?: readonly string[] }>>
+    | null | undefined,
+): string[] {
+  if (featureId === null || documents === null || documents === undefined) return []
+  const empty: string[] = []
+  for (const target of targets) {
+    if (!target.startsWith('constraint:')) continue
+    const [kind, sketchId, constraintId] = target.split(':')
+    if (kind !== 'constraint' || sketchId !== featureId || constraintId === undefined) continue
+    const constraint = documents.constraints?.find(candidate => candidate.id === constraintId)
+    if (constraint?.kind !== 'projection' || constraint.target !== undefined) continue
+    const report = reports?.[constraintId]
+    const excluded = new Set(constraint.excluded ?? [])
+    const orphans = new Set(report?.orphans ?? [])
+    const live = Object.keys(constraint.members ?? {})
+      .filter(token => !excluded.has(token) && !orphans.has(token))
+    if (live.length === 0) continue  // intentionally empty, not a failed freeze
+    const frozen = new Set((report?.entities ?? []).map(entity => entity.id))
+    const hasFrozenRow = Object.entries(constraint.members ?? {})
+      .some(([token, id]) => live.includes(token) && frozen.has(id))
+    if (!hasFrozenRow && !empty.includes(constraintId)) empty.push(constraintId)
+  }
+  return empty
+}
+
 /** The member rows a delete of a face projection should freeze, read from the
  *  last solve's report: only ids the targeted constraint still owns and that are
  *  not excluded. Undefined when the selection holds no face projection with a

@@ -13,8 +13,9 @@
 
 import type { PartDoc, Mutation, SketchData, BodyResult } from '@/types/cad'
 import {
-  faceBoundaryFromBodies, freezeRowsForDelete, isFaceProjectionSource, type FaceBoundaryBodyLike,
-  type ProjectionMemberEntity,
+  faceBoundaryFromBodies, freezeRowsForDelete, isFaceProjectionSource,
+  projectionNotFrozenMessage, projectionsFreezingNothing,
+  type FaceBoundaryBodyLike, type ProjectionMemberEntity,
 } from '@/kernel/features/projectionMembers'
 import { createDocSession, type DocSession } from '@/session/DocSession'
 import type { SolveOptions, SolveSchedulerState } from '@/session/SolveScheduler'
@@ -195,8 +196,8 @@ function withProjectionFreeze(
   mutation: Mutation,
   doc: PartDoc | null,
   result: Record<string, unknown> | undefined,
-): Mutation {
-  if (mutation.type !== 'delete' || mutation.materialize !== undefined || doc === null) return mutation
+): { mutation: Mutation; frozenNothing?: string } {
+  if (mutation.type !== 'delete' || doc === null) return { mutation }
   const features = new Set<string>()
   for (const target of mutation.targets) {
     if (!target.startsWith('constraint:')) continue
@@ -204,19 +205,19 @@ function withProjectionFreeze(
     if (parts[1] !== undefined && parts[2] !== undefined) features.add(parts[1])
   }
   const rows: ProjectionMemberEntity[] = []
+  const empty: string[] = []
   for (const featureId of features) {
     const feature = (doc.features ?? []).find(candidate => candidate.id === featureId)
     if (feature?.kind !== 'sketch') continue
-    const found = freezeRowsForDelete(
-      featureId,
-      feature,
-      mutation.targets,
-      (result?.[featureId] as { projection_members?: Record<string, { entities: ProjectionMemberEntity[] }> } | undefined)
-        ?.projection_members,
-    )
+    const reports = (result?.[featureId] as {
+      projection_members?: Record<string, { entities: ProjectionMemberEntity[]; orphans?: string[] }>
+    } | undefined)?.projection_members
+    const found = freezeRowsForDelete(featureId, feature, mutation.targets, reports)
     if (found !== undefined) rows.push(...found)
+    empty.push(...projectionsFreezingNothing(featureId, feature, mutation.targets, reports))
   }
-  return rows.length > 0 ? { ...mutation, materialize: rows } : mutation
+  const frozen = rows.length > 0 ? { ...mutation, materialize: rows } : mutation
+  return empty.length > 0 ? { mutation: frozen, frozenNothing: empty[0] } : { mutation: frozen }
 }
 
 export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
@@ -446,12 +447,15 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
           const importable = resolveDxfFile(validated.mutation, opts.files, docBox.current)
           if (!importable.ok) return { ok: false, code: importable.code, message: importable.message }
           const frozen = withProjectionFreeze(importable.mutation, docBox.current, responseBox.current?.result)
-          const applied = session.execute(frozen)
+          const applied = session.execute(frozen.mutation)
+          const noted = frozen.frozenNothing !== undefined && applied.ok
+            ? { ...applied, note: projectionNotFrozenMessage(frozen.frozenNothing) }
+            : applied
           // A refused filter is a no-op: the step says no-change instead of
           // reporting layer rows for an import that did not happen.
-          return importable.reply !== null && applied.ok && applied.noOp !== true
-            ? { ...applied, ...importable.reply }
-            : applied
+          return importable.reply !== null && noted.ok && noted.noOp !== true
+            ? { ...noted, ...importable.reply }
+            : noted
         },
         async (outcomes: readonly ScriptStepOutcome[]) => {
           // A deferred request is not pending yet, so this only drains a solve
