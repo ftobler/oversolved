@@ -123,7 +123,10 @@ extrusion direction and negative widens it. Oversolved applies the same draft to
 every lateral wall, holes included, so a washer's hole wall leans the opposite
 way from its outer wall. The angle is refused with `termination: up_to`, `up_to_next` or
 `through_all` and with `direction: symmetric`; a taper that collapses the
-profile before the distance is refused with the height it would collapse at.
+profile before the distance is refused with the height it would collapse at. A
+taper whose angle closes the profile exactly at the distance builds to an apex
+(a pyramid, a cone) rather than being refused; one that closes to a ridge (a
+non-square rectangle) is refused by name.
 
 CadQuery `Workplane.until` / build123d `Until.NEXT` maps to
 `termination: up_to_next`; `until=` a face maps to `termination: up_to` with

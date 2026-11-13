@@ -59,7 +59,7 @@ import {
   type SplitChild,
 } from '../constructionName'
 import { sketchLoopsToFace, canonicalizeFaceCircles } from './prismProfile'
-import { draftPrismBuilder } from './draftPrism'
+import { draftPrismBuilder, type DraftPrismBuilder } from './draftPrism'
 import { entityForEdges, derivePrismEdgeNames } from './prismEdgeNaming'
 import { swallowUnlessTrap } from '../errors'
 
@@ -73,7 +73,12 @@ export { sketchLoopsToFace, canonicalizeFaceCirclesWith } from './prismProfile'
 export type LineageMaps = ShapeNames
 
 /** A built solid plus its construction-name maps. */
-export type LineageResult = LineageMaps & { solid: OccShape }
+export type LineageResult = LineageMaps & {
+  solid: OccShape
+  /** The apex an extrude's taper closed to, when it closed to a point: there is
+   *  no top face to register on such a body. Absent on every other producer. */
+  apex?: Vec3 | null
+}
 
 /** Faces of the builder's FirstShape()/LastShape(), the sweep caps, by IsSame. */
 function capGeneratedFaces(
@@ -608,6 +613,7 @@ function prismFaceWithLineage(
       ) as OccPrismBuilder
     : draftPrismBuilder(oc, scope, profileFace, directionVec, distance, taperRad)
   if (!builder.IsDone()) throw new Error('prism builder did not complete')
+  const apex = (builder as Partial<DraftPrismBuilder>).apex ?? null
   const solid = builder.Shape()
   // The profile face is read one last time here; afterwards the solid keeps
   // the shared TShapes alive, so the proxy itself can go.
@@ -615,7 +621,7 @@ function prismFaceWithLineage(
   const lineage = buildPrismLineageMap(oc, scope, face, builder, lineageLoops, plane, createdBy, sketchId)
   prefixLineageMaps(lineage, tokenPrefix)
   scope.release(face)
-  return { solid, ...lineage }
+  return { solid, apex, ...lineage }
 }
 
 /**
@@ -696,6 +702,9 @@ function perGroupPrismWithLineage(
   taperRad = 0,
 ): LineageResult {
   const fuse = namedFuse(oc, scope)
+  // A group that closes to a point has no top face; the feature registers none
+  // even when its other groups end in one.
+  let apex: Vec3 | null = null
 
   for (let groupIdx = 0; groupIdx < groups.length; groupIdx++) {
     const [outer, holes] = groups[groupIdx]
@@ -717,6 +726,7 @@ function perGroupPrismWithLineage(
         ) as OccPrismBuilder
       : draftPrismBuilder(oc, scope, face, directionVec, distance, taperRad)
     if (!builder.IsDone()) throw new Error('prism builder did not complete')
+    apex ??= (builder as Partial<DraftPrismBuilder>).apex ?? null
     const part = builder.Shape()
     // Each group's prism and each fuse output is consumed by the next fuse
     // except the survivor returned at the end; scope-own them all here and
@@ -734,7 +744,7 @@ function perGroupPrismWithLineage(
   // fallback path here) UnifySameDomain can occasionally reject the compound;
   // the un-merged raw solid is kept in that rare case rather than crash the
   // feature -- the caller side splits multi-solids.
-  return fuse.finish(groups.length > 1, 'no loops to extrude')
+  return { ...fuse.finish(groups.length > 1, 'no loops to extrude'), apex }
 }
 
 /**

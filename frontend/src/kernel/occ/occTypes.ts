@@ -108,10 +108,13 @@ export interface OccListOfShape extends OccDisposable {
 /** BRepOffsetAPI_ThruSections: the loft between two or more section wires. The
  *  extrude taper fallback uses the solid form with two wires (profile and its
  *  offset moved to the top). `AddWire` is the one-argument overload in this
- *  build. */
+ *  build, and `AddVertex` is the TopoDS_Vertex overload only (a gp_Pnt throws a
+ *  BindingError): the apex section of a taper that closes at its distance is a
+ *  vertex from `BRepBuilderAPI_MakeVertex`. */
 export interface OccThruSectionsBuilder extends OccDisposable {
   CheckCompatibility(check: boolean): void
   AddWire(wire: OccShape): void
+  AddVertex(vertex: OccShape): void
   Build(): void
   IsDone(): boolean
   Shape(): OccShape
@@ -581,6 +584,11 @@ export interface OccWireBuilder extends OccDisposable {
   Wire(): OccShape
 }
 
+/** BRepBuilderAPI_MakeVertex: the vertex a loft uses as its apex section. */
+export interface OccVertexBuilder extends OccDisposable {
+  Vertex(): OccShape
+}
+
 export interface OccShapeFixFace extends OccDisposable {
   FixOrientation_1(): boolean
   Perform(): void
@@ -791,6 +799,7 @@ export interface OccModule extends OccBaseModule {
   // Geom_Ellipse(elips): the parametric ellipse curve.
   Geom_Ellipse_1: new (elips: OccDisposable) => OccDisposable
   BRepBuilderAPI_MakeEdge_3: new (p1: OccPnt, p2: OccPnt) => OccEdgeBuilder
+  BRepBuilderAPI_MakeVertex: new (point: OccPnt) => OccVertexBuilder
   BRepBuilderAPI_MakeEdge_8: new (circle: OccDisposable) => OccEdgeBuilder
   BRepBuilderAPI_MakeEdge_24: new (curve: OccDisposable) => OccEdgeBuilder
   BRepBuilderAPI_MakeWire_1: new () => OccWireBuilder
