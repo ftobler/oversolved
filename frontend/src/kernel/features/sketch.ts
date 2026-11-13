@@ -265,6 +265,22 @@ export function resetSketchSolverAfterTrap(): boolean {
 }
 
 /**
+ * True when a stored `initial` block is exactly the kind's default block. The
+ * projection fallback used to bake that block for a source that never resolved,
+ * so a document written by the old fallback looks like it has a position -- the
+ * reported bug is an all-zero spline at the sketch origin. No genuine projection
+ * produces the block: the defaults are a zero-length line/circle/arc/spline, or
+ * a two-point fit spline, which a resolved source would have to collapse onto
+ * itself to match.
+ */
+function isDefaultParamsBlock(params: unknown, kind: string): boolean {
+  if (!Array.isArray(params)) return false
+  const defaults = getDefaultParams ? getDefaultParams(kind) : []
+  if (!defaults.length || params.length !== defaults.length) return false
+  return params.every((v, i) => v === defaults[i])
+}
+
+/**
  * Lower every projected entity (one carrying a ``source`` ancestry query) in a
  * sketch feature: resolve the source geometry via the repository, project it
  * onto the sketch plane, and fold the resulting 2D params into ``initial``.
@@ -335,8 +351,10 @@ function lowerProjectionConstraints(
     const ent = entities.find((e) => e.id === targetId)
     const declaredKind = (ent?.kind as string) ?? 'point'
     // Read before any branch writes `initial`: an unresolved projection can only
-    // "keep its last position" if it had one on entry.
-    const hadPosition = initial[targetId] !== undefined
+    // "keep its last position" if it had one on entry. A block equal to the kind
+    // defaults is the old fallback's baked zero curve, not a position.
+    const stored = initial[targetId]
+    const hadPosition = stored !== undefined && !isDefaultParamsBlock(stored, declaredKind)
     let resolved = false
     try {
       if (source.startsWith('$')) {
@@ -670,7 +688,8 @@ export function solveSketch(
     const params = out.paramsSolved.slice(ent.offset, ent.offset + ent.size)
     if (ent.id === ORIGIN_ID) continue
     // Keep its solved status so the tree does not read it as underconstrained,
-    // but give it no geometry: there is nothing to draw or profile.
+    // but give it no geometry: there is nothing to profile. The sketch view still
+    // draws it, at the default block unflattenGeometry fills in for a missing id.
     if (unpositioned.has(ent.id)) {
       features[ent.id] = { status: STATUS_NAME[out.entityStatus[i]] }
       continue

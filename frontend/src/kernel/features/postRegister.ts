@@ -412,7 +412,12 @@ function registerTopologySurfaces(
   }
 }
 
-/** Register each topology edge with its ancestry query. */
+/** Register each topology edge with its ancestry query.
+ *
+ *  The second global-repo edge payload builder, and not projection-facing like
+ *  `edgeAncestryPayload` (builderAncestry.ts): it registers sketch topology for
+ *  downstream feature resolution, and its spline edges carry handles (`c1`/`c2`),
+ *  not the sampled `points` a projection fits. */
 function registerTopologyEdges(
   globalRepo: Repository,
   topology: Dict,
