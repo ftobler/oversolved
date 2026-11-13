@@ -7,8 +7,8 @@
 // pass both opt-ins.
 //
 // A selector step needs solved bodies, so it flushes first; a command step is
-// registry code, so it flushes before it runs. A refused-only script owes
-// nothing and is never force-solved.
+// registry code, so it flushes before it runs. A refused-only script owes no
+// step solve; the run asks for the input document's verdict explicitly.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { BodyResult, PartDoc } from '@/types/cad'
@@ -222,7 +222,7 @@ describe('the headless run solves once per flush', () => {
     expect(result.features).toEqual([])
   })
 
-  it('a refused-only script is never force-solved', async () => {
+  it('a refused-only script settles the input document once', async () => {
     const result = await runHeadless({
       doc: emptyDriveDoc(),
       steps: [{ command: 'noop_probe' }],
@@ -230,8 +230,10 @@ describe('the headless run solves once per flush', () => {
       frames: 'all',
     })
     expect(result.outcome.ok).toBe(false)
-    expect(result.solved).toBe(false)
-    expect(kernel.solveLocally).not.toHaveBeenCalled()
+    // No step landed, so no step requested a solve; the run still asks for the
+    // input document's verdict, which is the one solve.
+    expect(result.solved).toBe(true)
+    expect(kernel.solveLocally).toHaveBeenCalledTimes(1)
   })
 
   it('an empty-steps run still solves once', async () => {

@@ -448,7 +448,7 @@ describe('the no-op guard', () => {
   it('N01: a same-value setter is a dead step', () => {
     const { session, solve } = makeSession()
 
-    expect(session.execute(rename('first'))).toEqual({ ok: true, createdIds: [] })
+    expect(session.execute(rename('first'))).toEqual({ ok: true, createdIds: [], noOp: true })
     expect(session.inspect().history.undo).toEqual([])
     expect(session.isDirty()).toBe(false)
     expect(solve.calls).toHaveLength(0)
@@ -461,7 +461,7 @@ describe('the no-op guard', () => {
     })
 
     expect(session.execute({ type: 'set_part_color', bodyId: 'b1', color: '#ff0000' }))
-      .toEqual({ ok: true, createdIds: [] })
+      .toEqual({ ok: true, createdIds: [], noOp: true })
     expect(session.inspect().history.undo).toEqual([])
     expect(session.isDirty()).toBe(false)
     expect(solve.calls).toHaveLength(0)
@@ -472,7 +472,7 @@ describe('the no-op guard', () => {
 
     expect(session.execute({
       type: 'add_constraint', featureId: 'sk1', kind: 'coincident', targets: ['dock:sk1:noSuchHost'],
-    })).toEqual({ ok: true, createdIds: [] })
+    })).toEqual({ ok: true, createdIds: [], noOp: true })
     expect(session.inspect().history.undo).toEqual([])
     expect(session.isDirty()).toBe(false)
     expect(solve.calls).toHaveLength(0)
@@ -482,10 +482,33 @@ describe('the no-op guard', () => {
     const { session, solve } = makeSession(pointSketchDoc())
 
     expect(session.execute({ type: 'delete', targets: ['entity:sk1:ghost'] }))
-      .toEqual({ ok: true, createdIds: [] })
+      .toEqual({ ok: true, createdIds: [], noOp: true })
     expect(session.inspect().history.undo).toEqual([])
     expect(session.isDirty()).toBe(false)
     expect(solve.calls).toHaveLength(0)
+  })
+
+  it('a refused creator is a dead step, so the headless net can name it', () => {
+    const doc = pointSketchDoc()
+    sketchAt(doc).entities!.push({ id: 'pt1', kind: 'point' })
+    sketchAt(doc).initial!.pt1 = [2, 3]
+    const { session, solve } = makeSession(doc)
+    const projection = {
+      type: 'add_projected_entity' as const,
+      featureId: 'sk1', kind: 'point', source: '@builtin_origin', entityId: 'o',
+    }
+    const first = session.execute(projection)
+    expect(first).toMatchObject({ ok: true })
+    expect(first.ok && first.createdIds).toContain('o')
+    expect(session.inspect().history.undo).toHaveLength(1)
+    const before = structuredClone(session.getDoc())
+
+    // The applier refuses a second projection on the same entity. The UI still
+    // gets an ok (the user's pick simply did nothing) and no second entry.
+    expect(session.execute(projection)).toEqual({ ok: true, createdIds: [], noOp: true })
+    expect(session.getDoc()).toEqual(before)
+    expect(session.inspect().history.undo).toHaveLength(1)
+    expect(solve.calls).toHaveLength(1)
   })
 
   it('N04: a deliberately unguarded no-op still lands its entry', () => {
@@ -527,7 +550,7 @@ describe('executeGroup', () => {
   it('G02: an all-no-op group pushes nothing and stays clean', () => {
     const { session, solve } = makeSession()
 
-    expect(session.executeGroup([rename('first')])).toEqual({ ok: true, createdIds: [] })
+    expect(session.executeGroup([rename('first')])).toEqual({ ok: true, createdIds: [], noOp: true })
     expect(session.inspect().history.undo).toEqual([])
     expect(session.isDirty()).toBe(false)
     expect(solve.calls).toHaveLength(0)

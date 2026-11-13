@@ -22,7 +22,7 @@ vi.mock('@/kernel/solveLocally', async importOriginal => {
 import { finalLiveBodyIds } from '@/kernel/solveLocally'
 import { runHeadless } from '../headlessOps'
 import { DocHandleStore } from '../docHandleStore'
-import { runReply } from '../mcpDocRef'
+import { runReply, summarizeDoc } from '../mcpDocRef'
 import type { FeatureDelta } from '../featureDeltas'
 
 const kernel = await import('@/kernel/solveLocally')
@@ -132,14 +132,22 @@ describe('the run summary body source', () => {
     expect(summary).toContain(`bodies: ${result.bodies?.join(', ')}`)
   })
 
-  it('keeps not solved and none as different answers', async () => {
+  it('keeps a refused step and an empty settle as different answers', async () => {
     const refused = await runHeadless({
       doc: twoFeatureDoc(),
       steps: [{ command: 'noop_probe' }],
       featureDeltas: 'all',
     })
-    expect(refused.bodies).toBeNull()
-    expect(runReply(refused, false, new DocHandleStore()).summary)
+    // A refused-only script settles the input document, so the reply carries
+    // that live set and says which step was refused, not "not solved".
+    expect(refused.bodies).toEqual(['body_rvA', 'body_rvB', 'body_rvC', 'body_swD'])
+    expect(refused.solved).toBe(true)
+    const summary = String(runReply(refused, false, new DocHandleStore()).summary)
+    expect(summary).toContain('step 0 refused, not applied')
+    expect(summary).not.toContain('not solved')
+    // summarizeDoc still words a solve that never ran, for a caller that hands
+    // it no live set; a refused run now always has one.
+    expect(summarizeDoc(twoFeatureDoc(), null, { index: 0, code: 'invalid-mutation', id: 'noop_probe' }))
       .toContain('bodies: not solved (step 0 refused)')
 
     vi.mocked(kernel.solveLocally).mockResolvedValue({

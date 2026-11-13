@@ -21,6 +21,10 @@ export interface SessionFailure {
 export interface SessionSuccess {
   ok: true
   createdIds: string[]
+  // Present only when the apply changed nothing. The UI still treats it as a
+  // success (no undo entry); a headless step uses it to report a creator whose
+  // applier refused the pick instead of an ok that changed nothing.
+  noOp?: boolean
   // Present only when createdIds leaves the constraints out: how many the
   // mutation minted (the rect/n-gon helpers and the mirror/pattern/fillet
   // sketch copy sugar).
@@ -62,6 +66,13 @@ export function okResult(
 
 export function openedResult(id: string): OpenedSuccess {
   return { ok: true, id }
+}
+
+/** The success a dispatch returns when the apply left the document byte for
+ *  byte as it was. The UI ignores the flag (no undo entry, no doc swap); the
+ *  headless step outcome reads it to name a refused creator. */
+export function noOpResult(): SessionSuccess {
+  return { ok: true, createdIds: [], noOp: true }
 }
 
 export function errorResult(code: SessionErrorCode, message: string): SessionFailure {

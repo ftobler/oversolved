@@ -9,6 +9,7 @@
 // record, not production code to change.
 import { describe, it, expect, vi } from 'vitest'
 import { IDEMPOTENT_MUTATION } from '@/hooks/mutationIdempotence'
+import { CREATING_MUTATION_TYPES } from '@/types/mutationKinds'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import { MUTATION_EXAMPLES, type MutationExample } from './mutationExamples'
 import { runPartTranscript, type TranscriptStep } from './historyTranscript'
@@ -68,23 +69,30 @@ describe.each(entries)('history properties: %s', (type, example) => {
   })
 
   it('a second dispatch obeys the no-op guard contract', () => {
-    const afterFirst = runPartTranscript(pre, [step])
-    const afterSecond = runPartTranscript(pre, [step, save, step])
-    expect(afterFirst.undoLabels).toHaveLength(1)
-    const added = afterSecond.undoLabels.length - afterFirst.undoLabels.length
+    // One run, so a handler that mints random ids is compared against its own
+    // first dispatch rather than a sibling run's ids.
+    const docs: (PartDoc | null)[] = []
+    const afterSecond = runPartTranscript(pre, [step, save, step], {
+      onStep: (doc) => { docs.push(doc) },
+    })
+    const firstDoc = docs[0]
+    const secondDoc = docs[2]
+    const added = afterSecond.undoLabels.length - 1
     const guarded = IDEMPOTENT_MUTATION[type] === true || type === 'add_constraint' || type === 'delete'
+      || CREATING_MUTATION_TYPES.has(type)
     if (guarded) {
-      // The slice compare (or the whole-doc compare for add_constraint and
-      // delete) may swallow the second dispatch only when it left the doc
-      // deep-equal; a real change must always land its entry. The branch is
-      // taken from the entry count so the doc assertion is what catches a
-      // swallowed change, never an assumption about which case applies.
+      // The slice compare (or the whole-doc compare for a creator, add_constraint
+      // and delete) may swallow the second dispatch only when it left the doc
+      // deep-equal; a real change must always land its entry. A creator that
+      // adds nothing was refused by its applier, so it is dead like a setter.
+      // The branch is taken from the entry count so the doc assertion is what
+      // catches a swallowed change, never an assumption about which case applies.
       expect([0, 1]).toContain(added)
       if (added === 0) {
-        expect(afterSecond.doc).toEqual(afterFirst.doc)
+        expect(secondDoc).toEqual(firstDoc)
         expect(afterSecond.dirty).toBe(false)
       } else {
-        expect(afterSecond.doc).not.toEqual(afterFirst.doc)
+        expect(secondDoc).not.toEqual(firstDoc)
         expect(afterSecond.dirty).toBe(true)
       }
     } else {

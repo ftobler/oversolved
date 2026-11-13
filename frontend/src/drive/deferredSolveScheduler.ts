@@ -18,8 +18,10 @@ export interface DeferredSolveScheduler<Doc> extends SolveScheduler<Doc> {
   // Whether a solve is owed and has not been started.
   owed(): boolean
   // Solve the latest owed document through the base scheduler and wait for it.
-  // Nothing owed is a no-op, which is what keeps a refused-only script from
-  // being force-solved.
+  // Nothing owed is a no-op: the scheduler never invents a solve. A run that
+  // needs the input document's verdict after a refused-only script asks the
+  // session for one explicitly, so the deferral still spends exactly the
+  // requests the steps (and that explicit request) made.
   flush(): Promise<void>
 }
 

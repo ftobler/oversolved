@@ -246,6 +246,13 @@ const VERTEX_REF_NOTE =
   + 'center/major1/major2/minor1/minor2 on an ellipse, start/c1/c2/end on a spline, '
   + 'start/fit<k>/end/c1/c2 on a fit_spline, and xy on a point. Builtin refs such as @builtin_origin are also accepted.'
 
+// The midpoint overload, spelled where a hand-written script reads it: the
+// applier classifies each target by what it names, so every spelling above is
+// valid in either slot.
+const MIDPOINT_TARGET_NOTE =
+  'A `midpoint` takes one line and one point in either order (`line` + `point`), or three points '
+  + '(`point_a`, `point_b`, `point`); any other pick is refused.'
+
 // A constraint is a plain doc op and still accepts `@builtin_origin`, so old
 // documents and headless authors keep working. The UI command path projects the
 // operand instead, which is what leaves something visible in the sketch.
@@ -937,7 +944,7 @@ export const MUTATION_CATALOG = {
   },
   add_constraint: {
     summary: 'Add a sketch constraint over entity refs.',
-    note: VERTEX_REF_NOTE + CONSTRAINT_PROJECTION_NOTE + ' ' + ANGLE_VALUE_NOTE,
+    note: VERTEX_REF_NOTE + ' ' + MIDPOINT_TARGET_NOTE + CONSTRAINT_PROJECTION_NOTE + ' ' + ANGLE_VALUE_NOTE,
     fields: {
       featureId: str(),
       kind: str(CONSTRAINT_KIND_NOTE),

@@ -11,9 +11,11 @@ import { isDimensionKind } from '@/registry/constraintRegistry'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import { History, type HistoryEntry } from '@/session/History'
 import { BODY_STYLE_MUTATION_TYPES, GUARD_BYPASS, noOpSliceFor } from '@/session/noOpGuard'
+import { CREATING_MUTATION_TYPES } from '@/types/mutationKinds'
 import { reconcileDirty, type DirtyFacts, type DirtyPin } from '@/session/dirty'
 import {
   errorResult,
+  noOpResult,
   okResult,
   openedResult,
   type OpenedResult,
@@ -216,7 +218,9 @@ const PREVIEW_COMMIT_FALLBACK: Mutation = { type: 'preview_commit', description:
 
 // The mutations that can add a doc-addressable id (a feature, an entity, a
 // constraint). The id set is only diffed for dispatches that contain one, so
-// the drag path pays nothing for a field it can never fill.
+// the drag path pays nothing for a field it can never fill. The list itself
+// lives in types/mutationKinds because the headless step outcome needs the same
+// creator set to tell a refused creator from a legitimate no-op edit.
 // The helpers whose reply lists entities and counts constraints instead of
 // naming every constraint id.
 const COMPACT_CREATED_TYPES = new Set<Mutation['type']>([
@@ -224,21 +228,6 @@ const COMPACT_CREATED_TYPES = new Set<Mutation['type']>([
   // The copy/trim sugar carries a constraint per copy or corner; the reply
   // keeps the entity order and collapses those to a count like a rect.
   'mirror_entities', 'pattern_entities', 'fillet_corners',
-])
-
-const CREATING_MUTATION_TYPES = new Set<Mutation['type']>([
-  'add_constraint',
-  'add_entity', 'add_entity_with_constraint', 'add_projected_entity', 'import_dxf', 'add_text',
-  'add_rect', 'add_center_rect', 'add_ngon', 'add_three_point_arc', 'apply_offset',
-  'mirror_entities', 'pattern_entities', 'fillet_corners',
-  'add_sketch', 'add_plane', 'add_import_step',
-  'add_extrude', 'add_revolve', 'add_sweep',
-  'add_fillet', 'add_chamfer', 'add_boolean',
-  'add_shell',
-  'add_move_face',
-  'add_delete_face',
-  'add_pattern', 'add_delete_body', 'add_hole',
-  'add_transform', 'add_mirror', 'add_split', 'add_variable', 'add_helix',
 ])
 
 function contentIds(doc: PartDoc): Set<string> {
@@ -603,9 +592,11 @@ export class DocSession {
     const applied = this.runMutations(current, mutations)
     if (this.isNoOp(mutations, current, applied.next, group)) {
       // A no-op is still "the next mutation" as far as the brep arm is
-      // concerned, so the arm is consumed here too.
+      // concerned, so the arm is consumed here too. The result says so
+      // explicitly: a headless step has to report a refused creator instead of
+      // the ok the UI wants (a refused add must record no undo entry).
       this.consumeBrepArm(current)
-      return okResult()
+      return noOpResult()
     }
     const result = this.landMutations(mutations, current, applied)
     this.reportDocChange(mutations, group, current, applied.next, unsettled)
@@ -795,10 +786,12 @@ export class DocSession {
       return slice !== GUARD_BYPASS
         && JSON.stringify(slice) === JSON.stringify(noOpSliceFor(m, next))
     }
-    if (m.type === 'add_constraint' || m.type === 'delete') {
-      // These two are classified false because their real targets can span
+    if (m.type === 'delete' || CREATING_MUTATION_TYPES.has(m.type)) {
+      // These are classified false because their real targets can span
       // features; their handlers can still leave the doc byte-identical, so
-      // compare the whole doc.
+      // compare the whole doc. A create handler that refuses a pick (a
+      // duplicate projection, an unrecognizable midpoint) writes nothing, and
+      // the noOp result is what tells a headless step that was a refusal.
       return JSON.stringify(current) === JSON.stringify(next)
     }
     return false

@@ -143,8 +143,9 @@ export interface HeadlessPart {
   // Whether a settle was attempted for the document this session now holds.
   // Set when reSolve is entered, not when it completes: a faulted settle still
   // answered nothing for its features, which is a problem to report. Reset at
-  // the start of every run, so a refused-only script (no mutation landed, no
-  // solve requested) is the one false case.
+  // the start of every run; a refused-only run leaves it false, because the run
+  // loop itself never forces a solve (runHeadless asks for the input document's
+  // verdict after such a script).
   solveAttempted(): boolean
   // The resolved frame of every sketch and plane feature in the last solve,
   // keyed by feature id. Null when no solve has run yet. The options filter the
@@ -408,7 +409,8 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     } finally {
       // Every reply is built from a settled document; a solve still owed would
       // report the authored state. A refused-only script owes nothing, so this
-      // is a no-op there and it stays unsolved.
+      // is a no-op there; the run caller decides whether to ask for the input
+      // document's verdict (runHeadless does).
       if (solve.owed()) await solve.flush()
     }
   }
