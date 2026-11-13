@@ -628,7 +628,9 @@ banner on stdout, so a client config must use the direct node invocation.
   and its `featureDeltas` row carries the same `dof`. Neither makes a run or a
   measure `ok` false, and both are sketch warning rows an export tolerates (see
   below). `fixed` makes a sketch read fully constrained but carries no design
-  intent: dimension against projected geometry (`add_projected_entity`; deleting the projection constraint frees the entity) or
+  intent: dimension against projected geometry (`add_projected_entity`; a face
+  projection follows later edits, and deleting the projection constraint freezes
+  its derived members into ordinary geometry) or
   `@builtin_origin` instead, and reserve `fixed` for deliberately frozen
   geometry such as an imported DXF. An `overconstrained` sketch is a real
   failure and is listed; the tree and the open editor add the number of

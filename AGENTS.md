@@ -112,7 +112,7 @@ just fuzz-sketch 0 300       # harvest a sketch range (writes fixtures)
 - CAD solver/core is 'blind and deaf'. It communicates via structured-clone postMessage from Web Workers to the main thread.
 - Every change to the document is a `Mutation` applied through its editor's doc hook (`usePartDoc`, `useAssemblyUndoRedo`), the only path undo/redo records; commands are the named user actions that may produce one, and state not stored in the document (selection, hover, active tool, keybindings) is exempt.
 - Sketches in examples, catalog scripts and practice runs are fully constrained; a feature-specific test whose subject is not the sketch may keep a free fixture profile and filter only its underconstrained warning. An underconstrained sketch is a build warning, never a failed export.
-- The one doc write outside that path is the solver write-back (`useSolver`'s `applySolveResult`). It bakes solved geometry and reconciles `part_style` from the solve, which is derived from the authored spec, not user intent, so it records no undo entry; undo re-solves to re-derive it. Do not route new user edits through it.
+- The one doc write outside that path is the solver write-back (`useSolver`'s `applySolveResult`). It bakes solved geometry, installs the kind a projected entity resolved to, reconciles a face projection's derived member id map, and reconciles `part_style` from the solve, which is derived from the authored spec, not user intent, so it records no undo entry; undo re-solves to re-derive it. Do not route new user edits through it.
 - Commit style, start the comment as a normal sentence. E.g don't do `fix(solver): split the...` but do: `Fix split in solver...`. Keep it short: a few lines, not a large paragraph.
 
 ## Feature planning / implementing

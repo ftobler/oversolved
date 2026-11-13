@@ -111,6 +111,7 @@ export function useSolver(
       thread?: import('@/types/cad').ThreadDisplayData
       solve_ms?: number
       projection_errors?: string[]
+      projection_members?: Record<string, import('@/types/cad').ProjectionMemberReportData>
       dropped_constraints?: import('@/types/cad').DroppedSketchConstraint[]
       dof?: number
     }>
@@ -131,15 +132,22 @@ export function useSolver(
           // older cached result) has no report, so every entity has to pass the
           // exact no-op test on its own.
           const moved = Array.isArray(feature.entity_moved) ? new Set(feature.entity_moved) : undefined
-          applyGeometryToFeature(cloned, id, feature.geometry, moved)
+          applyGeometryToFeature(cloned, id, feature.geometry, moved, {
+            resolvedKinds: feature.resolved_kinds,
+            projectionMembers: feature.projection_members,
+          })
         }
         // A projection can resolve to a different kind than was declared at pick
         // time (a tilted circle -> ellipse, a partial ellipse -> spline). The
-        // resolved kind shapes the rendered sketch here without rewriting the
-        // authored entity kind in the doc on every solve.
+        // write-back adopts that kind on the document row; this render list
+        // additionally carries the derived face-projection members, which are
+        // not rows at all and must come from the solve report.
+        const derived = Object.values(feature.projection_members ?? {})
+          .flatMap(report => report.entities.map(e => ({ id: e.id, kind: e.kind })))
+        const baseEntities = [...(sketchDef?.entities ?? []), ...derived]
         const resolvedEntities = feature.resolved_kinds
-          ? (sketchDef?.entities ?? []).map(e => ({ ...e, kind: feature.resolved_kinds?.[e.id] ?? e.kind }))
-          : sketchDef?.entities
+          ? baseEntities.map(e => ({ ...e, kind: feature.resolved_kinds?.[e.id] ?? e.kind }))
+          : baseEntities
         const solved = unflattenGeometry(feature.geometry, resolvedEntities)
         const docPosById = new Map(
           (sketchDef?.constraints ?? [])
@@ -178,6 +186,7 @@ export function useSolver(
           ...(feature.originLocal && { originLocal: feature.originLocal }),
           ...(feature.plane_transform && { plane_transform: feature.plane_transform }),
           ...(feature.projection_errors?.length && { projection_errors: feature.projection_errors }),
+          ...(feature.projection_members && { projection_members: feature.projection_members }),
           // The constraints the solve had to ignore: the editor tiles and the
           // cleanup command read them. Solve-time facts like projection_errors,
           // so they are never written into the doc.

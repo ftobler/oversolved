@@ -16,18 +16,41 @@ export function docHashOf(doc: unknown): string {
 
 /**
  * The hash of what the author wrote, invariant under the solver write-back.
- * That write-back bakes solved geometry into each feature's `initial` and
- * reconciles `part_style`, so neither field says anything about the authored
- * document a step seeds from or a journal entry compares against. The
- * projection is shallow on purpose: `stableJson` only reads the features, and a
- * deep clone would cost the whole document on every step.
+ * That write-back bakes solved geometry into each feature's `initial`,
+ * reconciles `part_style`, adopts the kind a projected entity resolved to, and
+ * reconciles a face projection's member map. None of those is authored, so this
+ * projection removes them: `initial` and `part_style` wholesale, `members` from
+ * a projection constraint, and the `kind` of any entity a projection holds (the
+ * pick-time kind is a hint; the solve owns the resolved one). The projection is
+ * shallow on purpose: `stableJson` only reads the features, and a deep clone
+ * would cost the whole document on every step.
  */
 export function authoredHashOf(doc: PartDoc): string {
   const { part_style: _partStyle, ...authored } = doc
   if (Array.isArray(doc.features)) {
     authored.features = doc.features.map((feature) => {
-      if (!('initial' in feature)) return feature
-      const { initial: _initial, ...authoredFeature } = feature
+      const { initial: _initial, ...authoredFeature } = feature as typeof feature & Record<string, unknown>
+      const constraints = Array.isArray(authoredFeature.constraints)
+        ? authoredFeature.constraints as Array<Record<string, unknown>>
+        : undefined
+      const held = new Set<string>()
+      if (constraints !== undefined) {
+        authoredFeature.constraints = constraints.map((constraint) => {
+          if (constraint?.kind === 'projection' && typeof constraint.target === 'string') {
+            held.add(constraint.target.replace(/^\$/, ''))
+          }
+          if (constraint?.members === undefined) return constraint
+          const { members: _members, ...rest } = constraint
+          return rest
+        })
+      }
+      if (held.size > 0 && Array.isArray(authoredFeature.entities)) {
+        authoredFeature.entities = (authoredFeature.entities as Array<Record<string, unknown>>).map((entity) => {
+          if (!held.has(String(entity.id))) return entity
+          const { kind: _kind, ...rest } = entity
+          return rest
+        })
+      }
       return authoredFeature as typeof feature
     })
   }
