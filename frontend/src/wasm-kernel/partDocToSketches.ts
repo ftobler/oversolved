@@ -18,6 +18,7 @@
 import type { PartConstraint, PartFeature, SketchFeature, DroppedSketchConstraint } from '@/types/cad'
 import { resolveVertexRef } from '@/types/vertexRef'
 import { colinearShapeProblem, constraintOperandSide } from '@/utils/constraintOperands'
+import { entityPointKeys } from '@/registry/entityRegistry'
 import { isConstraintKindName } from './codec'
 import type { SketchInput } from './lowerSketch'
 
@@ -78,9 +79,19 @@ function isFiniteNumber(v: unknown): v is number {
   return typeof v === 'number' && Number.isFinite(v)
 }
 
+/** What the key-existence check needs to know about a target entity: its
+ *  current kind and, for a variable `fit_spline`, the authored block shape. */
+interface EntityLowerInfo {
+  kind: string
+  nParams?: number
+  handles?: 'start' | 'end' | 'both'
+}
+
 /**
  * Lower one constraint to dict-ref form. Returns null (drop the constraint) when
- * any present ref does not resolve to a local entity -- matching the historical behavior.
+ * any present ref does not resolve to a local entity, or when it names a point
+ * key the target entity's current kind does not have -- matching the historical
+ * behavior for stale refs and refusing a silent key rebind.
  */
 function lowerConstraint(
   c: PartConstraint,
@@ -88,6 +99,7 @@ function lowerConstraint(
   originLocal: [number, number],
   dropped: DroppedConstraint[],
   authoredKind: string,
+  entityInfo: ReadonlyMap<string, EntityLowerInfo>,
 ): Record<string, unknown> | null {
   const out: Record<string, unknown> = { id: c.id, kind: c.kind }
   for (const key of REF_KEYS) {
@@ -99,6 +111,23 @@ function lowerConstraint(
       // have substituted (`colinear` arrives here as `coincident`).
       dropped.push({ id: c.id, kind: authoredKind, reason: 'stale reference' })
       return null
+    }
+    // A point key the target's CURRENT kind does not have is not a meaningful
+    // operand. The solver would fall back to the entity's first point (`center`
+    // on a line binds its start), silently changing what the user asked for, so
+    // the row is dropped and named instead. The document keeps the row, so a
+    // source that changes back re-enables it on the next solve. This is the
+    // key-existence half of feature/projection-kind-change-operands.md; that
+    // plan generalises it to the full kind-applicability table.
+    if ('entity' in resolved && resolved.point !== undefined) {
+      const info = entityInfo.get(resolved.entity)
+      if (info) {
+        const keys = entityPointKeys(info.kind, info.nParams, info.handles)
+        if (keys && !keys.has(resolved.point)) {
+          dropped.push({ id: c.id, kind: authoredKind, reason: `operand ${resolved.point} not on ${info.kind}` })
+          return null
+        }
+      }
     }
     out[key] = resolved
   }
@@ -310,12 +339,16 @@ export function partDocToSketches(
     }
 
     const entityIds = new Set(entities.map((e) => e.id))
+    const entityInfo = new Map<string, EntityLowerInfo>(entities.map((e) => [
+      e.id,
+      { kind: e.kind, nParams: feature.initial?.[e.id]?.length, handles: e.handles },
+    ]))
     const authoredKinds = new Map((feature.constraints ?? []).map((c) => [c.id, c.kind]))
     const constraints: Array<Record<string, unknown>> = []
     const droppedConstraints: DroppedConstraint[] = []
     for (const c of expandSugarConstraints(feature, droppedConstraints)) {
       const authoredKind = authoredKinds.get(c.id) ?? c.kind
-      const lowered = lowerConstraint(c, entityIds, originLocal, droppedConstraints, authoredKind)
+      const lowered = lowerConstraint(c, entityIds, originLocal, droppedConstraints, authoredKind, entityInfo)
       if (lowered) constraints.push(lowered)
     }
 

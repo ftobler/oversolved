@@ -291,25 +291,51 @@ describe('edge-on conic projection', () => {
     expect(l.length).toBeCloseTo(6)
     expect(l.midX).toBeCloseTo(1)
     expect(l.midY).toBeCloseTo(2)
+    // Endpoint order is canonical (left to right, or upward when vertical), so
+    // the same segment spells its start/end the same way whichever side of the
+    // branch cut the source's x_axis lands on.
+    expect(out.params).toEqual([
+      expect.closeTo(1), expect.closeTo(-1), expect.closeTo(1), expect.closeTo(5),
+    ])
+    const reversed = resolve3dGeometry(
+      { type: 'edge', kind: 'circle', center: [1, 2, 0], radius: 3, axis: [1, 0, 0], x_axis: [0, -1, 0] })!
+    expect(projectTo2d(reversed, XY)!.params).toEqual([
+      expect.closeTo(1), expect.closeTo(-1), expect.closeTo(1), expect.closeTo(5),
+    ])
   })
 
   it('2. collapses on the projected WIDTH, not the tilt angle', () => {
-    // A big circle a hair off edge-on leaves a sliver the area builder also
-    // chokes on, so the test is the projected minor semi-axis (R*|axis.n|)
-    // against the topology-merge tolerance.
-    const nearAxis = (width: number) => {
-      const alpha = Math.acos(width / 3)
-      return [0, Math.sin(alpha), Math.cos(alpha)]
+    // The projected minor semi-axis is R*|axis.n|. These pairs separate "width"
+    // from "angle": one width at very different radii and tilts classifies the
+    // same, while one tilt at two radii classifies differently, so a pure angle
+    // threshold cannot pass.
+    const axisAtWidth = (R: number, width: number) => {
+      const cosAlpha = width / R
+      return [0, Math.sqrt(1 - cosAlpha * cosAlpha), cosAlpha]
     }
-    const near = resolve3dGeometry(
-      { type: 'edge', kind: 'circle', center: [0, 0, 0], radius: 3, axis: nearAxis(5e-6), x_axis: [1, 0, 0] })!
-    expect(projectTo2d(near, XY)!.kind).toBe('line')
+    const at = (R: number, width: number) => resolve3dGeometry(
+      { type: 'edge', kind: 'circle', center: [0, 0, 0], radius: R, axis: axisAtWidth(R, width), x_axis: [1, 0, 0] })!
 
-    const above = resolve3dGeometry(
-      { type: 'edge', kind: 'circle', center: [0, 0, 0], radius: 3, axis: nearAxis(1e-3), x_axis: [1, 0, 0] })!
-    const out = projectTo2d(above, XY)!
-    expect(out.kind).toBe('ellipse')
-    expect(out.params[3]).toBeCloseTo(1e-3, 8)
+    // Same width above the rung, at a small and a 1000x larger radius/angle:
+    // both stay ellipses with that width.
+    for (const R of [3, 3000]) {
+      const out = projectTo2d(at(R, 1e-3), XY)!
+      expect(out.kind).toBe('ellipse')
+      expect(out.params[3]).toBeCloseTo(1e-3, 8)
+    }
+    // Same width under the rung, same two angles: both collapse.
+    for (const R of [3, 3000]) expect(projectTo2d(at(R, 5e-6), XY)!.kind).toBe('line')
+
+    // One tilt, two radii: the small circle's width is under the rung and the
+    // large one's is over it, so the same angle gives different answers.
+    const cosAlpha = 8.5e-6
+    const sameAngle = (R: number) => resolve3dGeometry(
+      {
+        type: 'edge', kind: 'circle', center: [0, 0, 0], radius: R,
+        axis: [0, Math.sqrt(1 - cosAlpha * cosAlpha), cosAlpha], x_axis: [1, 0, 0],
+      })!
+    expect(projectTo2d(sameAngle(1), XY)!.kind).toBe('line')
+    expect(projectTo2d(sameAngle(10), XY)!.kind).toBe('ellipse')
   })
 
   it('3. a full ellipse seen edge-on keeps the extent that is still in the sketch plane', () => {
@@ -377,6 +403,38 @@ describe('edge-on conic projection', () => {
     const l = line(out.params)
     expect(l.xMin).toBeCloseTo(0)
     expect(l.xMax).toBeCloseTo(4)
+  })
+
+  it('7. a seam-crossing edge-on arc follows the counter-clockwise sweep', () => {
+    // 270 -> 90 deg wraps once through 2*pi, so the arc covers the +x half of
+    // the circle. Sampling a0 -> a1 directly would walk backwards over the
+    // complement and report the wrong extent.
+    const g = resolve3dGeometry(
+      {
+        type: 'edge', kind: 'arc', center: [0, 0, 0], radius: 5,
+        axis: [0, 1, 0], x_axis: [1, 0, 0], angle_start: 3 * Math.PI / 2, angle_end: Math.PI / 2,
+      })!
+    const out = projectTo2d(g, XY)!
+    expect(out.kind).toBe('line')
+    const l = line(out.params)
+    expect(l.xMin).toBeCloseTo(0)
+    expect(l.xMax).toBeCloseTo(5)
+  })
+
+  it('8. a collapsed conic has no silhouette, so it reports instead of a zero-length line', () => {
+    // A zero-radius circle and a zero-sweep arc both project to a single point;
+    // storing that as a line would be the same degenerate entity this rule
+    // exists to remove, so the lowering refuses it (a projection error upstream).
+    const zeroCircle = resolve3dGeometry(
+      { type: 'edge', kind: 'circle', center: [1, 2, 0], radius: 0, axis: [1, 0, 0], x_axis: [0, 1, 0] })!
+    expect(projectTo2d(zeroCircle, XY)).toBeNull()
+
+    const zeroArc = resolve3dGeometry(
+      {
+        type: 'edge', kind: 'arc', center: [0, 0, 0], radius: 5,
+        axis: [0, 1, 0], x_axis: [1, 0, 0], angle_start: Math.PI / 2, angle_end: Math.PI / 2,
+      })!
+    expect(projectTo2d(zeroArc, XY)).toBeNull()
   })
 })
 

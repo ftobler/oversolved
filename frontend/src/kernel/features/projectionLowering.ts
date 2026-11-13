@@ -17,7 +17,7 @@ import { dot as dot3, cross as cross3 } from '@/utils/vec3'
 import { worldToSketch2d, sketchToWorld2d } from './shared/planes'
 import type { PlaneLike } from './shared/planes'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
-import { TOL_TOPOLOGY_MERGE } from '@/kernel/solverConstants'
+import { TOL_LENGTH_SLACK, TOL_TOPOLOGY_MERGE } from '@/kernel/solverConstants'
 
 type Dict = Record<string, unknown>
 
@@ -153,11 +153,30 @@ function isEdgeOn(ellipseParams: number[]): boolean {
 }
 
 /** The silhouette of a full projected conic: the segment along its major axis,
- *  whose midpoint is the projected centre by symmetry. */
-function conicSilhouetteLine(ellipseParams: number[]): ProjectedParams {
+ *  whose midpoint is the projected centre by symmetry. The direction is
+ *  canonicalised so start/end cannot swap as the source rotates through the
+ *  branch cut, and a collapsed (zero major axis) conic has no line to give, so
+ *  the caller reports a projection error instead of storing a zero-length
+ *  entity. */
+function conicSilhouetteLine(ellipseParams: number[]): ProjectedParams | null {
   const [cx, cy, a] = ellipseParams
   const [dx, dy] = dirAt(ellipseParams[4])
-  return { kind: 'line', params: [cx - a * dx, cy - a * dy, cx + a * dx, cy + a * dy] }
+  if (!(a > 0)) return null
+  return canonicalLine(cx - a * dx, cy - a * dy, cx + a * dx, cy + a * dy)
+}
+
+/**
+ * Spell a line with a stable endpoint order: left to right, or upward when it
+ * is vertical. The segment is the same either way; the stable order keeps a
+ * `start`/`end` vertex ref (and the document hash) from swapping when a source
+ * rotates through the branch cut between the two spellings. A horizontal delta
+ * under the length-slack rung is numerical noise from the angle derivation, so
+ * it reads as vertical rather than deciding the order on its sign.
+ */
+function canonicalLine(x0: number, y0: number, x1: number, y1: number): ProjectedParams {
+  const dx = x1 - x0
+  const flip = Math.abs(dx) > TOL_LENGTH_SLACK ? dx < 0 : y1 < y0
+  return { kind: 'line', params: flip ? [x1, y1, x0, y0] : [x0, y0, x1, y1] }
 }
 
 /**
@@ -168,7 +187,14 @@ function conicSilhouetteLine(ellipseParams: number[]): ProjectedParams {
  *
  * The ends are the true covered extent, not the source's projected ends: an arc
  * sweeping across the edge-on extremum projects out and back over the same
- * segment, and that segment is what the user sees.
+ * segment, and that segment is what the user sees. A sweep that gives no extent
+ * (a zero-radius source or a zero-length sweep) has no line, so it lowers to a
+ * projection error rather than a zero-length entity.
+ *
+ * The arc convention is counter-clockwise from `a0` to `a1`, so a sweep whose
+ * end angle is below its start wraps once through 2*pi. The wrap-adjusted end
+ * is computed once and both the sample grid and the extrema window read it, so
+ * a seam-crossing arc cannot be sampled backwards.
  */
 function sampledSilhouetteLine(
   pointAt: (t: number) => number[],
@@ -176,17 +202,18 @@ function sampledSilhouetteLine(
   c2d: number[],
   dir: number[],
   plane: PlaneFrame,
-): ProjectedParams {
+): ProjectedParams | null {
   const { a0, a1, phase } = sweep
   const N = 32
+  const TWO_PI = 2 * Math.PI
+  const end = a1 >= a0 ? a1 : a1 + TWO_PI
   const angles: number[] = []
-  for (let i = 0; i <= N; i++) angles.push(a0 + (a1 - a0) * (i / N))
+  for (let i = 0; i <= N; i++) angles.push(a0 + (end - a0) * (i / N))
   // The projected coordinate along `dir` is a sinusoid, so its extrema sit at
-  // phase + k*pi; keep the ones the sweep actually covers.
-  const end = a1 > a0 ? a1 : a1 + 2 * Math.PI
+  // phase + k*pi; fold each into [a0, a0 + 2*pi) in one step and keep the ones
+  // the sweep actually covers.
   for (const k of [0, 1]) {
-    let t = phase + k * Math.PI
-    while (t < a0) t += 2 * Math.PI
+    const t = a0 + (((phase + k * Math.PI - a0) % TWO_PI) + TWO_PI) % TWO_PI
     if (t <= end) angles.push(t)
   }
   let tMin = Infinity
@@ -197,13 +224,11 @@ function sampledSilhouetteLine(
     if (s < tMin) tMin = s
     if (s > tMax) tMax = s
   }
-  return {
-    kind: 'line',
-    params: [
-      c2d[0] + tMin * dir[0], c2d[1] + tMin * dir[1],
-      c2d[0] + tMax * dir[0], c2d[1] + tMax * dir[1],
-    ],
-  }
+  if (!(tMax - tMin > 0)) return null
+  return canonicalLine(
+    c2d[0] + tMin * dir[0], c2d[1] + tMin * dir[1],
+    c2d[0] + tMax * dir[0], c2d[1] + tMax * dir[1],
+  )
 }
 
 /** A 3D frame lookup for a sketch id: the `_pt_<sketchId>` registration, which
@@ -349,12 +374,14 @@ export function resolve3dGeometry(data: Dict, sketchFrame?: SketchFrameLookup): 
 
 /**
  * Project resolved 3D geometry to entity params on the sketch plane. Branches on
- * the *resolved* geometry kind (`g3d.kindH`), never the declared entity kind:
- * the declared kind is only a pick-time hint and can disagree with the source
- * (e.g. after this very function promotes a circle to an ellipse, the doc entity
- * becomes an ellipse while its source edge is still a circle). Returns the
- * resolved kind plus params; a tilted circle lowers to 'ellipse', a partial
- * ellipse to 'spline'.
+ * the *resolved* geometry kind (`g3d.kindH`): the declared entity kind is only a
+ * pick-time hint and can disagree with the source (e.g. after this very function
+ * promotes a circle to an ellipse, the doc entity becomes an ellipse while its
+ * source edge is still a circle). The one declared-kind rule lives in the
+ * caller, not here: `lowerProjectionConstraints` substitutes `projectCenter` for
+ * a projection declared `point` on a curved source. Returns the resolved kind
+ * plus params; a tilted circle lowers to 'ellipse', a partial ellipse to
+ * 'spline', and an edge-on curve to its silhouette 'line'.
  */
 export function projectTo2d(
   g3d: Resolved3dGeometry,

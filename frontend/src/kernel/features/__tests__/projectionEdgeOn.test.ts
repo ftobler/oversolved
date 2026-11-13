@@ -162,13 +162,55 @@ describe('solveSketch projects a declared point on a curved source as its centre
     expect(out.resolved_kinds).toBeUndefined()
   })
 
-  // Recorded today (2026-11-13), as the pin for the plan that owns this rule:
-  // after the source turns edge-on the projected entity lowers to a line, and a
-  // coincident on `$<proj>center` is NOT dropped. The key silently resolves to
-  // the line's start vertex, so the user point lands on an end of the
-  // silhouette and the sketch still reads fully_constrained. Which dropped row
-  // a kind change should produce is `feature/projection-kind-change-operands.md`'s
-  // call, so this stays a todo instead of inventing the rule here.
-  it.todo('15. a constraint on $<proj>center survives the circle -> line kind change '
-    + '(feature/projection-kind-change-operands.md)')
+  it('11e. the /center vertex spelling reads the same point through external_xy', () => {
+    if (!solveBytes) return
+    // A vertex ref resolves to `external_xy` before `resolve3dGeometry` runs, a
+    // separate lift; the centre must land on the same point as 11d.
+    const right = { origin: [0, 0, 0], x_axis: [0, 0, -1], y_axis: [0, 1, 0], normal: [1, 0, 0] }
+    const out = solveSketch(
+      projected('point', '@sk1/c0/center'),
+      repoOf({
+        'sk1/c0/center': { external_xy: [0, 5], sketch_id: 'sk1' },
+        _pt_sk1: right,
+      }),
+      {} as Record<string, Body>,
+    )
+    expect(out.projection_errors).toBeUndefined()
+    expect(out.geometry?.e0).toEqual([0, 5])
+  })
+
+  it('15a. a circle -> line kind change keeps the contract row and drops it by name', () => {
+    if (!solveBytes) return
+    // Executable pin of today's observable: the projected entity resolves to a
+    // line, the coincident on its `center` is dropped with the key named (not
+    // rebound to the line's start), and the document keeps the row so tilting
+    // the source back re-enables it.
+    const feature = sketchWith({
+      entities: [{ id: 'c0', kind: 'circle' }, { id: 'p0', kind: 'point' }],
+      initial: { p0: [10, 10] },
+      constraints: [
+        { id: 'proj_c0', kind: 'projection', target: '$c0', source: '?edge;circle' },
+        { id: 'cc', kind: 'coincident', a: '$p0xy', b: '$c0center' },
+      ],
+    })
+    const edgeOnCircle: Dict = {
+      type: 'edge', kind: 'circle', center: [0, 0, 0], radius: 5, axis: [1, 0, 0], x_axis: [0, 1, 0],
+    }
+    const out = solveSketch(feature, stubRepo(edgeOnCircle), {} as Record<string, Body>)
+    expect(out.resolved_kinds).toEqual({ c0: 'line' })
+    expect(out.dropped_constraints).toEqual([
+      { id: 'cc', kind: 'coincident', reason: 'operand center not on line' },
+    ])
+    expect(feature.constraints).toHaveLength(2)
+    // The free point is not dragged onto the silhouette's start.
+    expect(out.geometry?.p0).toEqual([10, 10])
+  })
+
+  // The remaining generalisation: which keys a kind has is validated at
+  // lowering, but the full kind-applicability table (and the dropped-row reason
+  // wording for every key) is that plan's call. Before it, a key that a LINE
+  // does have (for example `start`) can still change meaning across a kind
+  // change without a dropped row.
+  it.todo('15. no kind change silently rebinds an operand key; generalise the key-existence drop '
+    + 'to the full applicability table (feature/projection-kind-change-operands.md)')
 })
