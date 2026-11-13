@@ -76,7 +76,8 @@ export interface SketchResult {
    *  empty); the drag path commits through a mutation, not this report. */
   entity_moved?: string[]
   /** Entity ids of projected entities whose source query could not be resolved
-   *  this solve; they were dropped so the rest of the sketch could build. */
+   *  this solve. An unresolved projection with a cached position keeps it; one
+   *  that never had a position is also left out of the geometry and the profile. */
   projection_errors?: string[]
   /** The authored constraints this solve could not use, from both drop routes
    *  (the live-doc lowering and the solver's survivors filter). The sketch
@@ -273,8 +274,11 @@ export function resetSketchSolverAfterTrap(): boolean {
  *
  * Returns the mutated feature plus the bookkeeping the caller surfaces to the
  * doc (resolved kinds for tilted-circle/partial-ellipse lowering) and to the
- * UI (ids of projections that could not be resolved this solve, dropped so the
- * rest of the sketch still builds). Mirrors Python's
+ * UI (ids of projections that could not be resolved this solve). An unresolved
+ * projection that already had a position keeps it; one that never had any is
+ * reported in `unpositionedIds` so the solve can leave its default all-zero
+ * params out of the geometry and the profile.
+ * Mirrors Python's
  * ``_project_source_to_params`` + ``_resolve_source_geometry``.
  */
 function lowerProjectionConstraints(
@@ -287,6 +291,7 @@ function lowerProjectionConstraints(
   projectionErrors: string[]
   projectionWarnings: string[]
   pinnedIds: string[]
+  unpositionedIds: string[]
 } {
   const entities = (feature.entities as Array<Dict>) ?? []
   const constraints = [...((feature.constraints as Array<Dict>) ?? [])]
@@ -308,9 +313,12 @@ function lowerProjectionConstraints(
   const projectionErrors: string[] = []
   const projectionWarnings: string[] = []
   const pinnedIds: string[] = []
+  const unpositionedIds: string[] = []
 
   if (projections.length === 0) {
-    return { loweredFeature: feature, resolvedKinds, projectionErrors, projectionWarnings, pinnedIds }
+    return {
+      loweredFeature: feature, resolvedKinds, projectionErrors, projectionWarnings, pinnedIds, unpositionedIds,
+    }
   }
 
   const initial: Record<string, number[]> = { ...((feature.initial as Record<string, number[]>) ?? {}) }
@@ -326,6 +334,9 @@ function lowerProjectionConstraints(
     const source = typeof pc.source === 'string' ? pc.source : ''
     const ent = entities.find((e) => e.id === targetId)
     const declaredKind = (ent?.kind as string) ?? 'point'
+    // Read before any branch writes `initial`: an unresolved projection can only
+    // "keep its last position" if it had one on entry.
+    const hadPosition = initial[targetId] !== undefined
     let resolved = false
     try {
       if (source.startsWith('$')) {
@@ -372,11 +383,21 @@ function lowerProjectionConstraints(
     if (!resolved) {
       projectionErrors.push(cid)
       // Named, not silent: the drive reply reads this as a warning row on the
-      // sketch, so an unresolved projection cannot read as a clean build.
-      projectionWarnings.push(
-        `projection ${cid} source ${source === '' ? '(none)' : source} did not resolve; `
-        + 'the entity keeps its last position',
-      )
+      // sketch, so an unresolved projection cannot read as a clean build. The
+      // sentence has to say which of the two states the entity is in, because
+      // only one of them keeps its geometry.
+      if (hadPosition) {
+        projectionWarnings.push(
+          `projection ${cid} source ${source === '' ? '(none)' : source} did not resolve; `
+          + 'the entity keeps its last position',
+        )
+      } else {
+        projectionWarnings.push(
+          `projection ${cid} source ${source === '' ? '(none)' : source} did not resolve; `
+          + 'the entity has no position yet and is left out of the profile',
+        )
+        unpositionedIds.push(targetId)
+      }
     }
   }
 
@@ -386,6 +407,7 @@ function lowerProjectionConstraints(
     projectionErrors,
     projectionWarnings,
     pinnedIds,
+    unpositionedIds,
   }
 }
 
@@ -599,8 +621,13 @@ export function solveSketch(
     globalRepo,
     { sketchId: featureId, featuresById },
   )
-  const { loweredFeature, resolvedKinds, projectionErrors, projectionWarnings, pinnedIds } =
+  const { loweredFeature, resolvedKinds, projectionErrors, projectionWarnings, pinnedIds, unpositionedIds } =
     lowerProjectionConstraints(feature, plane, globalRepo)
+  // A projection that never had a position stays pinned in the solve but is kept
+  // out of the solved geometry below, and therefore out of the profile topology:
+  // baking its default all-zero params would make that degenerate curve both a
+  // profile edge and the "last position" every later failed solve claims to keep.
+  const unpositioned = new Set(unpositionedIds)
 
   // ─── Lower the live PartDoc feature to SketchInput ───
   // Express the document origin (0,0,0) in this sketch's local 2D frame so a
@@ -640,9 +667,15 @@ export function solveSketch(
   const pointPositions: [number, number][] = []
   for (let i = 0; i < layout.length; i++) {
     const ent = layout[i]
-    if ((out.entityMoved[i >> 3] >> (i & 7)) & 1) entityMoved.push(ent.id)
     const params = out.paramsSolved.slice(ent.offset, ent.offset + ent.size)
     if (ent.id === ORIGIN_ID) continue
+    // Keep its solved status so the tree does not read it as underconstrained,
+    // but give it no geometry: there is nothing to draw or profile.
+    if (unpositioned.has(ent.id)) {
+      features[ent.id] = { status: STATUS_NAME[out.entityStatus[i]] }
+      continue
+    }
+    if ((out.entityMoved[i >> 3] >> (i & 7)) & 1) entityMoved.push(ent.id)
     if (Math.abs(params[0]) > 1e-12 || params.length > 1) {
       geometry[ent.id] = [...params]
     }

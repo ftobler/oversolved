@@ -32,6 +32,12 @@ function deadRepo(): Repository {
   return { query: () => null, elements: new Map() } as unknown as Repository
 }
 
+/** The entity ids the sketch solve left in its profile topology. */
+type ProfileTopology = { edges?: Array<{ entity_id: string }> }
+function profileEntityIds(out: Dict): string[] {
+  return ((out.topology as ProfileTopology | undefined)?.edges ?? []).map((e) => e.entity_id)
+}
+
 describe('solveSketch projection lowering', () => {
   beforeEach(() => {
     resetSketchSolver()
@@ -147,9 +153,37 @@ describe('solveSketch projection lowering', () => {
     // The drawn circle solved and renders.
     expect(out.geometry?.drawn).toBeDefined()
     expect(out.geometry?.drawn?.[2]).toBeCloseTo(4)
-    // The stale projection stays pinned at its cached/default params and is reported.
-    expect(out.geometry?.stale).toBeDefined()
     expect(out.projection_errors).toContain('proj_stale')
+    // It never had a position, so nothing is baked and nothing reaches the
+    // profile: an all-zero curve at the origin must not become a profile edge.
+    expect(out.geometry?.stale).toBeUndefined()
+    const profileIds = profileEntityIds(out)
+    expect(profileIds).not.toContain('stale')
+    expect(out.solver_warning).toContain(
+      'projection proj_stale source ?edge;gone did not resolve; '
+      + 'the entity has no position yet and is left out of the profile',
+    )
+  })
+
+  it('keeps an unresolved projection with a cached position in the solve and the profile', () => {
+    if (!solveBytes) return
+    // The other half of the rule: a projection whose source died still holds its
+    // last resolved position, so it stays a pinned, valid profile edge.
+    const feature: Dict = {
+      id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [
+        { id: 'drawn', kind: 'line' },
+        { id: 'held', kind: 'line', source: '?edge;gone' },
+      ],
+      initial: { drawn: [0, 0, 4, 0], held: [0, 2, 4, 2] },
+      constraints: [],
+    }
+    const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
+    expect(out.geometry?.held).toEqual([0, 2, 4, 2])
+    expect(out.solver_warning).toContain(
+      'projection proj_held source ?edge;gone did not resolve; the entity keeps its last position',
+    )
+    expect(profileEntityIds(out)).toContain('held')
   })
 
   it('runs a line body (not its endpoint) through the document origin on an offset plane', () => {
