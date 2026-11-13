@@ -131,6 +131,9 @@ export async function partDocMockModule(overrides: Record<string, unknown> = {})
   const { usePartEditorStore } = await import('@/stores/partEditorStore')
   const { useEffect, useMemo } = await import('react')
   const emptyDoc = () => ({ version: 1, kind: 'part', features: [], part_style: {} })
+  // The real hook always returns a map; the mock's default must too, and it must
+  // keep one identity so the Part effect does not re-run on every render.
+  const EMPTY_SOLVE_RESULTS: Record<string, unknown> = {}
   return {
     BUILTIN_FEATURE_DEFAULTS,
     BUILTIN_FEATURE_IDS,
@@ -140,9 +143,10 @@ export async function partDocMockModule(overrides: Record<string, unknown> = {})
     usePartDoc: () => {
       // A function override lets a page test replace the solve map between
       // renders, which is how the callback effect's re-registration is driven.
-      const solveResults = typeof overrides.solveResults === 'function'
+      const supplied = typeof overrides.solveResults === 'function'
         ? (overrides.solveResults as () => unknown)()
         : overrides.solveResults
+      const solveResults = supplied ?? EMPTY_SOLVE_RESULTS
       const value = useMemo(() => ({
       doc: emptyDoc(),
       docRef: { current: emptyDoc() },
