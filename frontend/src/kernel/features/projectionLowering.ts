@@ -9,7 +9,9 @@
  * or ellipse whose plane is not parallel to the sketch plane projects as an
  * *ellipse*, not a circle with the wrong radius. A conic seen edge-on has a
  * zero-width projection, so it lowers to its silhouette line instead (its true
- * shape); a declared `point` on a curved source is that curve's centre.
+ * shape); a straight line seen end-on has zero projected length, so it lowers to
+ * the point at its midpoint. A declared `point` on a curved source is that
+ * curve's centre.
  */
 
 import { CONIC_TRUTH_STEPS, lowerProjectedCurve } from '@/utils/geometry/projectedCurveFit'
@@ -36,9 +38,9 @@ export interface Resolved3dGeometry {
 
 /** A lowered projection: the resolved entity kind plus its 2D params. The kind
  *  can differ from the declared kind: a tilted circle lowers to an ellipse, an
- *  edge-on one to a line, and a declared point on a curve to its centre. Arc
- *  params are always the counter-clockwise spelling, the only one the sketch
- *  arc entity has. */
+ *  edge-on one to a line, a line perpendicular to the plane to a point, and a
+ *  declared point on a curve to its centre. Arc params are always the
+ *  counter-clockwise spelling, the only one the sketch arc entity has. */
 interface ProjectedParams {
   kind: string
   params: number[]
@@ -180,6 +182,22 @@ function fitProjectedCurve(truth: Pt[], seed: Pt[]): ProjectedParams | null {
  */
 function isEdgeOn(ellipseParams: number[]): boolean {
   return ellipseParams[3] <= TOL_TOPOLOGY_MERGE
+}
+
+/**
+ * The projection of a line seen end-on: a straight source perpendicular to the
+ * sketch plane has zero projected length, and its true projection is the one
+ * point both ends land on. The test is the projected width, not the source
+ * angle, so a long line a hair off perpendicular (whose sliver the area builder
+ * would choke on just the same) collapses with it. The midpoint is the point, so
+ * neither source end is privileged. Null while the projection is still a real
+ * segment.
+ */
+function collapsedPoint(s2d: number[], e2d: number[]): ProjectedParams | null {
+  // The negated test keeps a non-finite endpoint on the old path (NaN fails
+  // every comparison) instead of collapsing it to a NaN point.
+  if (!(len2d([e2d[0] - s2d[0], e2d[1] - s2d[1]]) <= TOL_TOPOLOGY_MERGE)) return null
+  return { kind: 'point', params: [(s2d[0] + e2d[0]) / 2, (s2d[1] + e2d[1]) / 2] }
 }
 
 /** The silhouette of a full projected conic: the segment along its major axis,
@@ -413,8 +431,9 @@ export function resolve3dGeometry(data: Dict, sketchFrame?: SketchFrameLookup): 
  * caller, not here: `lowerProjectionConstraints` substitutes `projectCenter` for
  * a projection declared `point` on a curved source. Returns the resolved kind
  * plus params; a tilted circle lowers to 'ellipse', a sampled curve to a
- * 'spline' or, when one cubic cannot follow it, a 'fit_spline', and an edge-on
- * curve to its silhouette 'line'.
+ * 'spline' or, when one cubic cannot follow it, a 'fit_spline', an edge-on
+ * curve to its silhouette 'line', and a line perpendicular to the plane to its
+ * collapsed 'point'.
  */
 export function projectTo2d(
   g3d: Resolved3dGeometry,
@@ -428,7 +447,7 @@ export function projectTo2d(
   if (kindH === 'line') {
     const s2d = worldToSketch2d(data.start as number[], plane)
     const e2d = worldToSketch2d(data.end as number[], plane)
-    return { kind: 'line', params: [...s2d, ...e2d] }
+    return collapsedPoint(s2d, e2d) ?? { kind: 'line', params: [...s2d, ...e2d] }
   }
   if (kindH === 'circle') {
     const center = data.center as number[]

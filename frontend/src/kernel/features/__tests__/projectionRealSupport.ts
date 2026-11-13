@@ -18,7 +18,7 @@ import { DisposeScope } from '../../occ/disposeScope'
 import { volumeOf } from '../../occ/booleans'
 import type { SharedHarness } from '../../occ/sharedHarness'
 import type { BuildResponse } from '../../builder'
-import type { EdgeData, PartDoc } from '@/types/cad'
+import type { DroppedSketchConstraint, EdgeData, PartDoc } from '@/types/cad'
 import type { OccShape } from '../../occ/occTypes'
 
 export { oc, solveBytes } from '../extrudeRealSupport'
@@ -78,6 +78,9 @@ export interface BaseGeometry {
   // The four straight edges bounding the +y cap, ordered by x then z so the
   // assignment of projected entity ids does not depend on kernel order.
   topFaceEdges: string[]
+  // The edge along world y at (width, y, -height): perpendicular to Top, whose
+  // normal is +y, so it projects onto Top as one point.
+  verticalEdge: string
   // The cut opening at z = 0: centre (20, 5, 0), radius 3.
   holeFrontCircle: string
   // The flat face at z = 0 (outward normal +z).
@@ -112,6 +115,20 @@ export function projectionTestHarness(): ProjectionHarness {
       return cached
     },
   }
+}
+
+/** The sketch solve fields the projection pins read. */
+export interface SketchOut {
+  geometry?: Record<string, number[]>
+  projection_errors?: string[]
+  resolved_kinds?: Record<string, string>
+  dropped_constraints?: DroppedSketchConstraint[]
+  status?: string
+}
+
+/** One sketch's solve result by feature id, typed to the fields above. */
+export function sketchOut(h: SharedHarness, result: BuildResponse, id: string): SketchOut {
+  return h.res(result, id) as SketchOut
 }
 
 /** Volume of one body a feature produced, read from that feature's checkpoint. */
@@ -156,6 +173,13 @@ function readBaseGeometry(h: SharedHarness, result: BuildResponse): BaseGeometry
   return {
     topFrontEdge,
     topFaceEdges: sortEdgesByMidpoint(topFaceEdges, edges, edgeQueries),
+    verticalEdge: only(
+      edges.flatMap((e, i) => {
+        const mid = lineMidpoint(e)
+        return mid && near(mid, [BOX.width, BOX.depth / 2, -BOX.height]) ? [edgeQueries[i]] : []
+      }),
+      'vertical edge',
+    ),
     holeFrontCircle: only(
       edges.flatMap((e, i) => (
         (e.kind === 'circle' || e.kind === 'arc')
