@@ -43,7 +43,8 @@ interface ProjectedParams {
   kind: string
   params: number[]
   /** A lowering fact the caller reports on the sketch warning channel (an
-   *  adaptive curve fit that stopped at its point cap). */
+   *  adaptive curve fit that stopped at its point cap or could not meet its
+   *  tolerance after the closure moved the curve). */
   warning?: string
 }
 

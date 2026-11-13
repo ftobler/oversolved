@@ -119,10 +119,11 @@ describe('solveSketch projection lowering', () => {
     expect(g).toBeDefined()
     expect(g!.length).toBeGreaterThan(8)
     expect(g!.length % 2).toBe(0)
-    expect(g![0]).toBeCloseTo(4)
-    expect(g![1]).toBeCloseTo(0)
-    expect(g![g!.length - 2]).toBeCloseTo(0)
-    expect(g![g!.length - 1]).toBeCloseTo(2)
+    // The fit points ARE the projected ends, exact to f64.
+    expect(g![0]).toBeCloseTo(4, 12)
+    expect(g![1]).toBeCloseTo(0, 12)
+    expect(g![g!.length - 2]).toBeCloseTo(4 * Math.cos(Math.PI / 2), 12)
+    expect(g![g!.length - 1]).toBeCloseTo(2, 12)
     expect(out.resolved_kinds?.ell0).toBe('fit_spline')
   })
 
@@ -172,7 +173,7 @@ describe('solveSketch projection lowering', () => {
     expect(out.status).not.toBe('error')
     expect(out.geometry?.sp0.length).toBeGreaterThan(8)
     expect(out.geometry!.sp0.length).toBeLessThanOrEqual(132)
-    expect(out.solver_warning).toContain('projected curve fit used')
+    expect(out.solver_warning).toContain('projection proj_sp0: curve fit stopped at')
     expect(out.solver_warning).toContain('the closest fit is kept')
   })
 
@@ -185,6 +186,12 @@ describe('solveSketch projection lowering', () => {
     // move what the user asked for. The general kind-applicability table is
     // feature/projection-kind-change-operands.md; this pins the half the
     // lowering already owns.
+    //
+    // Today the resolved kind reaches partDocToSketches only through the
+    // in-place kind write in lowerProjectionConstraints, which
+    // feature/projection-lowering-hygiene removes. After that lands the
+    // resolved kinds must be threaded into partDocToSketches for this drop to
+    // keep firing; that threading is not this change's job.
     const partialEllipse: Dict = {
       type: 'edge', kind: 'ellipse', center: [0, 0, 0], a: 4, b: 2,
       axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI / 2,
@@ -212,6 +219,11 @@ describe('solveSketch projection lowering', () => {
     })
     // The dropped row carries no residual: the free point keeps its position.
     expect(out.geometry?.p0).toEqual([1, 1])
+    // The drop is solve-time only: the authored row stays in the document, so a
+    // source that resolves back re-enables it on the next solve.
+    const kept = (feature.constraints as Dict[]).filter(c => c.id === 'c_p0_c1')
+    expect(kept).toHaveLength(1)
+    expect(kept[0].kind).toBe('coincident')
   })
 
   it('drops an unresolvable projection and still solves the rest of the sketch', () => {

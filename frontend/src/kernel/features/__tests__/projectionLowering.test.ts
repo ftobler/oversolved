@@ -18,6 +18,8 @@ import {
 } from '@/utils/geometry/projectedCurveFit'
 import { interpolateFitSpline, type Pt } from '@/utils/geometry/fitSpline'
 import { fitCubicBezier } from '@/utils/geometry/bezierFit'
+import { cross } from '@/utils/vec3'
+import { worldToSketch2d } from '../shared/planes'
 
 // XY sketch plane: normal = +Z.
 const XY: PlaneFrame = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0] }
@@ -176,12 +178,13 @@ describe('ellipse edge projection', () => {
     const out = projectTo2d(g, XY)!
     expect(out.kind).toBe('fit_spline')
     const p = out.params
-    // Fit-point block, both endpoints exact: t=0 -> [4,0], t=pi/2 -> [0,2].
+    // Fit-point block, both endpoints exact to f64: the fit points ARE the
+    // projected source ends, t=0 -> [4,0], t=pi/2 -> [4 cos(pi/2), 2].
     expect(p.length).toBeGreaterThan(8)
-    expect(p[0]).toBeCloseTo(4)
-    expect(p[1]).toBeCloseTo(0)
-    expect(p[p.length - 2]).toBeCloseTo(0)
-    expect(p[p.length - 1]).toBeCloseTo(2)
+    expect(p[0]).toBeCloseTo(4, 12)
+    expect(p[1]).toBeCloseTo(0, 12)
+    expect(p[p.length - 2]).toBeCloseTo(4 * Math.cos(Math.PI / 2), 12)
+    expect(p[p.length - 1]).toBeCloseTo(2, 12)
   })
 
   it('a rotated in-plane ellipse reports its rotation', () => {
@@ -264,12 +267,12 @@ describe('arc projection (3D body arc)', () => {
     expect(out.kind).toBe('fit_spline')
     const p = out.params
     expect(p.length).toBeGreaterThan(8)
-    // Endpoints survive exactly: t=0 -> (5,0); t=pi/2 -> y-axis of the source
-    // frame is (0, cos phi, sin phi), projected to (0, 5 cos phi).
-    expect(p[0]).toBeCloseTo(5)
-    expect(p[1]).toBeCloseTo(0)
-    expect(p[p.length - 2]).toBeCloseTo(0)
-    expect(p[p.length - 1]).toBeCloseTo(5 * Math.cos(phi))
+    // Endpoints survive exactly to f64: t=0 -> (5,0); t=pi/2 -> y-axis of the
+    // source frame is (0, cos phi, sin phi), projected to (0, 5 cos phi).
+    expect(p[0]).toBeCloseTo(5, 12)
+    expect(p[1]).toBeCloseTo(0, 12)
+    expect(p[p.length - 2]).toBeCloseTo(0, 12)
+    expect(p[p.length - 1]).toBeCloseTo(5 * Math.cos(phi), 12)
   })
 })
 
@@ -636,17 +639,23 @@ describe('sampled curve fitting', () => {
     expect(out.params[1]).toBeCloseTo(0)
     expect(out.params[6]).toBeCloseTo(0)
     expect(out.params[7]).toBeCloseTo(5 * Math.cos(PHI))
-    // The legacy 33-point fit of the same curve: no stored quarter arc changes
-    // its shape when a document re-solves after this feature lands. The two
-    // agree to 1e-12 rather than bit for bit because the projection reaches the
-    // 2D point through the source frame's arithmetic.
+    // The legacy 33-point seed, built through the production 3D frame and
+    // projection (not an analytic reimplementation): no stored quarter arc
+    // changes its shape when a document re-solves after this feature lands.
+    const ax = [1, 0, 0]
+    const yAxis = cross(TILT_AXIS, ax)
     const seed: Pt[] = []
     for (let i = 0; i <= 32; i++) {
       const t = (Math.PI / 2) * (i / 32)
-      seed.push([5 * Math.cos(t), 5 * Math.cos(PHI) * Math.sin(t)])
+      const c = Math.cos(t)
+      const s = Math.sin(t)
+      seed.push(worldToSketch2d([
+        5 * (c * ax[0] + s * yAxis[0]),
+        5 * (c * ax[1] + s * yAxis[1]),
+        5 * (c * ax[2] + s * yAxis[2]),
+      ], XY) as Pt)
     }
-    const legacy = fitCubicBezier(seed)!
-    for (let i = 0; i < legacy.length; i++) expect(out.params[i]).toBeCloseTo(legacy[i], 12)
+    expect(out.params).toEqual(fitCubicBezier(seed))
   })
 
   it('lowers a tilted half arc to a fit_spline', () => {
@@ -709,21 +718,26 @@ describe('sampled curve fitting', () => {
     expect(out.params[out.params.length - 1]).toBeCloseTo(0, 12)
   })
 
-  it('merges the ends of a closed sampled loop', () => {
+  it('closes a literally closed sampled loop', () => {
     // A closed B-spline edge (the Resin_Mold breakout loop) repeats its first
-    // sample. One cubic cannot close a loop, so the fit spline keeps the loop
-    // closed with its last fit point set exactly on the first.
+    // sample bit for bit. One cubic cannot close a loop, and feeding the
+    // duplicate sample to the interpolating spline would make its first chord
+    // zero, so the open chain is fitted and the first point repeated at the end.
     const samples: Pt[] = []
     for (let i = 0; i <= 32; i++) {
       const t = (2 * Math.PI * i) / 32
       samples.push([3 * Math.cos(t), 3 * Math.sin(t)])
     }
+    samples[samples.length - 1] = [samples[0][0], samples[0][1]]
     const out = projectTo2d(
       { kindH: 'spline', data: { points: samples.map(p => [p[0], p[1], 0]) } }, XY)!
     expect(out.kind).toBe('fit_spline')
+    expect(out.warning).toBeUndefined()
     const p = out.params
+    expect(p.length).toBeGreaterThan(4)
     expect(p[p.length - 2]).toBe(p[0])
     expect(p[p.length - 1]).toBe(p[1])
+    expectFollows(out, samples)
   })
 
   it('lowers the same source to identical params twice', () => {

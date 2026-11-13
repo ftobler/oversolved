@@ -10,6 +10,7 @@ import {
   lowerProjectedCurve,
   maxDeviationToCubic,
   maxDeviationToFitSpline,
+  PROJECTED_CURVE_FIT_TOL,
 } from '../projectedCurveFit'
 import { MAX_FIT_POINTS, interpolateFitSpline, type Pt } from '../fitSpline'
 
@@ -54,7 +55,66 @@ describe('adaptiveFitPoints', () => {
   })
 })
 
+function pairs(flat: readonly number[]): Pt[] {
+  const out: Pt[] = []
+  for (let i = 0; i + 1 < flat.length; i += 2) out.push([flat[i], flat[i + 1]])
+  return out
+}
+
 describe('lowerProjectedCurve', () => {
+  it('closes a source whose last sample is bit-identical to its first', () => {
+    // The headline closed-source case: a sampled loop that repeats its first
+    // point literally. Fitting the open chain and restoring the closure keeps
+    // this a real loop instead of a zero-extent two-point edge.
+    const truth = circleSamples(3, 32)
+    truth[truth.length - 1] = [truth[0][0], truth[0][1]]
+    const out = lowerProjectedCurve(truth, truth)!
+    expect(out.kind).toBe('fit_spline')
+    expect(out.params.length).toBeGreaterThan(4)
+    expect(out.warning).toBeUndefined()
+    const points = pairs(out.params)
+    expect(points[points.length - 1]).toEqual(points[0])
+    expect(maxDeviationToFitSpline(truth, points)).toBeLessThanOrEqual(
+      PROJECTED_CURVE_FIT_TOL * curveScale(truth),
+    )
+  })
+
+  it('keeps a nearly closed source open', () => {
+    // A 0.1 degree gap is far above the loop-closure rung, so this arc must not
+    // be welded into a closed loop by the fit tolerance.
+    const steps = 200
+    const sweep = 2 * Math.PI * (359.9 / 360)
+    const truth: Pt[] = []
+    for (let i = 0; i <= steps; i++) {
+      const t = (sweep * i) / steps
+      truth.push([3 * Math.cos(t), 3 * Math.sin(t)])
+    }
+    const out = lowerProjectedCurve(truth, truth)!
+    expect(out.kind).toBe('fit_spline')
+    const points = pairs(out.params)
+    const gap = Math.hypot(
+      points[points.length - 1][0] - points[0][0],
+      points[points.length - 1][1] - points[0][1],
+    )
+    expect(gap).toBeGreaterThan(1e-3)
+  })
+
+  it('meets the tolerance on a dense payload without keeping every sample', () => {
+    // A helix or B-spline payload can carry thousands of samples; the truth is
+    // decimated to the conic grid, so the re-solve cost does not scale with it.
+    const truth = circleSamples(4, 2000)
+    truth[truth.length - 1] = [truth[0][0], truth[0][1]]
+    const out = lowerProjectedCurve(truth, truth)!
+    expect(out.kind).toBe('fit_spline')
+    expect(out.warning).toBeUndefined()
+    expect(out.params.length / 2).toBeLessThan(MAX_FIT_POINTS)
+    const points = pairs(out.params)
+    expect(points[points.length - 1]).toEqual(points[0])
+    expect(maxDeviationToFitSpline(truth, points)).toBeLessThanOrEqual(
+      PROJECTED_CURVE_FIT_TOL * curveScale(truth),
+    )
+  })
+
   it('warns and keeps the best fit when the cap is hit', () => {
     const truth = zigzag(200, 1)
     const out = lowerProjectedCurve(truth, truth)!

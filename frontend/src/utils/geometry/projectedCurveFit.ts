@@ -15,10 +15,17 @@
  * The tolerance is relative to the curve's own size, so the same rule judges a
  * 1 mm fillet and a 1 m fetched curve on the same footing. In absolute terms it
  * never goes under the vertex-merge rung: a deviation that small is invisible
- * to the area builder anyway.
+ * to the area builder anyway. It is deliberately a kind-stability rung rather
+ * than the last accuracy rung: a tighter 1e-4 would flip the common 30 degree
+ * tilted quarter arc to a fit spline, changing an existing document's projection
+ * kind for an error no user can see.
+ *
+ * A closed source (its last sample returns to the first) never gets the cubic
+ * trial: one cubic cannot represent a loop, so it fits the open chain and
+ * restores the closure with a repeated first fit point.
  */
 
-import { TOL_TOPOLOGY_MERGE } from '@/kernel/solverConstants'
+import { TOL_LOOP_CLOSURE, TOL_TOPOLOGY_MERGE } from '@/kernel/solverConstants'
 import { fitCubicBezier } from './bezierFit'
 import {
   bezierClosestT,
@@ -34,9 +41,10 @@ export type ProjectedCurveKind = 'spline' | 'fit_spline'
 export interface ProjectedCurve {
   kind: ProjectedCurveKind
   params: number[]
-  /** Set when the adaptive fit reached the fit-point cap without meeting the
-   *  tolerance. The caller surfaces it as a projection warning; the geometry is
-   *  still the best fit found, never a refusal. */
+  /** Set when the adaptive fit stopped without meeting the tolerance (the
+   *  point cap, or a closure that moved the curve). The caller surfaces it as
+   *  a projection warning; the geometry is still the best fit found, never a
+   *  refusal. */
   warning?: string
 }
 
@@ -58,8 +66,9 @@ export interface ProjectedCurve {
  */
 export const PROJECTED_CURVE_FIT_TOL = 1.5e-3
 
-/** Dense truth samples per conic sweep. The 32-point legacy fit grid stays the
- *  seed for the one-cubic trial, so an existing quarter arc keeps its params. */
+/** Dense truth samples per conic sweep, and the ceiling a dense payload is
+ *  decimated to. The 32-point legacy fit grid stays the seed for the one-cubic
+ *  trial, so an existing quarter arc keeps its params. */
 export const CONIC_TRUTH_STEPS = 128
 
 /** Curve size: the diagonal of the sample bounding box. Unlike the end-to-end
@@ -185,20 +194,35 @@ export function adaptiveFitPoints(
   }
 }
 
-/** Make a closed source a closed spline: the last fit point is the first, so the
- *  chain ends exactly where it starts and the closing joint is one point. */
-function mergeEnds(points: readonly Pt[]): Pt[] {
-  if (points.length < 3) return points.map(p => [p[0], p[1]])
-  const last = points[points.length - 1]
-  if (pointDistance(last, points[0]) === 0) return points.map(p => [p[0], p[1]])
-  const merged = points.map(p => [p[0], p[1]] as Pt)
-  merged[merged.length - 1] = [points[0][0], points[0][1]]
-  // Merging moves the closing point, so a penultimate point sitting on the
-  // start would make the last span zero length; keep the sampled end instead.
-  if (pointDistance(merged[merged.length - 2], merged[merged.length - 1]) === 0) {
-    return points.map(p => [p[0], p[1]])
+/**
+ * Restore a closed loop on an open fitted chain: repeat the first fit point at
+ * the end. Nothing is moved, so every chosen sample stays where the fit put it;
+ * the closing span then follows the source's own closing segment.
+ */
+function closeLoop(points: readonly Pt[]): Pt[] {
+  if (points.length < 2) return points.map(p => [p[0], p[1]])
+  const closed = points.map(p => [p[0], p[1]] as Pt)
+  closed.push([points[0][0], points[0][1]])
+  return closed
+}
+
+/**
+ * Keep at most `CONIC_TRUTH_STEPS + 1` truth samples, spaced evenly by index
+ * with both endpoints included. A payload can carry thousands of samples (a
+ * helix or a fine B-spline tessellation); the adaptive fit must not scale its
+ * per-solve cost with that, and 129 samples already describe a conic sweep.
+ * Index spacing, not arc length: a payload is a traversal of one curve, so its
+ * samples are dense where the source was dense.
+ */
+function decimateTruth(points: readonly Pt[]): Pt[] {
+  const limit = CONIC_TRUTH_STEPS + 1
+  if (points.length <= limit) return points.slice()
+  const out: Pt[] = []
+  for (let i = 0; i < limit; i++) {
+    const index = Math.round((i * (points.length - 1)) / (limit - 1))
+    out.push([points[index][0], points[index][1]])
   }
-  return merged
+  return out
 }
 
 /**
@@ -213,10 +237,13 @@ export function lowerProjectedCurve(
   truth: readonly Pt[],
   fitSamples: readonly Pt[],
 ): ProjectedCurve | null {
-  const samples = dropRepeatedNeighbours(truth)
+  const samples = dropRepeatedNeighbours(decimateTruth(truth))
   if (samples.length < 2) return null
   const tolerance = Math.max(PROJECTED_CURVE_FIT_TOL * curveScale(samples), TOL_TOPOLOGY_MERGE)
-  const closed = isClosedLoop(samples, tolerance)
+  // Closure is a topology fact, not a fit-accuracy one: a 0.1 degree gap is a
+  // real gap even when it sits under the curve's fit rung, so the loop-closure
+  // rung is the ceiling here.
+  const closed = isClosedLoop(samples, Math.min(tolerance, TOL_LOOP_CLOSURE))
   if (!closed) {
     const cubic = fitCubicBezier(fitSamples.map(p => [p[0], p[1]] as Pt))
     // A cubic through a straight or nearly straight sample set is the right
@@ -229,16 +256,31 @@ export function lowerProjectedCurve(
       if (maxDeviationToCubic(samples, ctrl) <= tolerance) return { kind: 'spline', params: cubic }
     }
   }
-  const fit = adaptiveFitPoints(samples, tolerance)
-  const points = closed ? mergeEnds(fit.points) : fit.points
+  // Fitting the open chain and closing it afterwards keeps the closing sample
+  // out of the interpolation, where repeating the first point would make the
+  // first chord zero length and the spline refuse the block.
+  const chain = closed ? samples.slice(0, -1) : samples
+  if (chain.length < 2) return null
+  const fit = adaptiveFitPoints(chain, tolerance)
+  const points = closed ? closeLoop(fit.points) : fit.points
   if (points.length < 2) return null
+  // The closure re-solves the whole chain, so the chain's converged verdict is
+  // not the final curve's. Re-measure the finished fit before reporting it.
+  let converged = fit.converged
+  if (closed && converged) {
+    try {
+      converged = maxDeviationToFitSpline(samples, points) <= tolerance
+    } catch {
+      converged = false
+    }
+  }
   const params: number[] = []
   for (const p of points) params.push(p[0], p[1])
-  if (fit.converged) return { kind: 'fit_spline', params }
+  if (converged) return { kind: 'fit_spline', params }
   return {
     kind: 'fit_spline',
     params,
-    warning: `projected curve fit used ${points.length} fit points without meeting its tolerance; `
+    warning: `curve fit stopped at ${points.length} fit points without meeting its tolerance; `
       + 'the closest fit is kept',
   }
 }
