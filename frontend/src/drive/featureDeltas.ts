@@ -195,9 +195,12 @@ export function featureDeltaRows(
       // A reference feature the steps touched is worth a row even though it has
       // no volume: an author who just projected an edge into a sketch, or moved
       // a plane, reads its remaining dof or verdict without a second call. A
-      // solid keeps its own touched rule inside includeRow.
+      // warned touched feature of any other kind keeps the row it always had,
+      // and a solid keeps its own touched rule inside includeRow.
       const referenceTouched = touched.has(id) && REFERENCE_KINDS.has(kind)
-      if (mode === 'all' || referenceTouched || includeRow(id, kind, measure, volumeDelta, bboxDelta)) {
+      const warnedTouched = outcome.warning !== undefined && touched.has(id)
+      if (mode === 'all' || referenceTouched || warnedTouched
+        || includeRow(id, kind, measure, volumeDelta, bboxDelta)) {
         const solid = isSolidProducingKind(kind)
         const bodyId = solid ? outcome.bodyId : undefined
         const changed = solid && measure.bodies !== undefined
@@ -251,8 +254,22 @@ export function featureDeltaRows(
   }
 }
 
-/** The feature ids the steps named or created; `add_*` and `set_*_field`
- *  mutations carry a featureId, and every handler reports what it created. */
+// A delete step has no featureId: its wire refs carry the sketch as the second
+// segment ('entity:sk1:l2', 'vertex:sk1:l2:start', 'constraint:sk1:c1'). Only
+// those three namespaces name sketch content, so an unfamiliar prefix names no
+// sketch here.
+const SKETCH_TARGET_KINDS: ReadonlySet<string> = new Set<string>(['entity', 'vertex', 'constraint'])
+
+function deleteTargetFeatureId(target: unknown): string {
+  if (typeof target !== 'string') return ''
+  const [kind, featureId] = target.split(':')
+  if (featureId === undefined || !SKETCH_TARGET_KINDS.has(kind)) return ''
+  return featureId
+}
+
+/** The feature ids the steps authored or created: a mutation's `featureId`, a
+ *  copy-mode pattern's `targetFeatureId` (its source sketch is read-only), a
+ *  delete's wire refs, and every id a handler reports it created. */
 export function touchedFeatureIds(steps: readonly unknown[], outcomeSteps: readonly unknown[]): Set<string> {
   const ids = new Set<string>()
   for (const step of steps) {
@@ -260,7 +277,20 @@ export function touchedFeatureIds(steps: readonly unknown[], outcomeSteps: reado
     const mutation = (step as { mutation?: unknown }).mutation
     if (typeof mutation !== 'object' || mutation === null) continue
     const featureId = (mutation as { featureId?: unknown }).featureId
-    if (typeof featureId === 'string' && featureId.length > 0) ids.add(featureId)
+    // A copy-mode pattern writes into targetFeatureId; featureId then names the
+    // read-only source sketch, which this call did not change.
+    const writeTarget = (mutation as { targetFeatureId?: unknown }).targetFeatureId
+    const authored = typeof writeTarget === 'string' && writeTarget.length > 0 ? writeTarget : featureId
+    if (typeof authored === 'string' && authored.length > 0) ids.add(authored)
+    if ((mutation as { type?: unknown }).type === 'delete') {
+      const targets = (mutation as { targets?: unknown }).targets
+      if (Array.isArray(targets)) {
+        for (const target of targets) {
+          const touchedId = deleteTargetFeatureId(target)
+          if (touchedId !== '') ids.add(touchedId)
+        }
+      }
+    }
   }
   for (const outcome of outcomeSteps) {
     if (typeof outcome !== 'object' || outcome === null) continue

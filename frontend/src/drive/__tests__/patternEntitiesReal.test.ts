@@ -105,11 +105,21 @@ describe.skipIf(!ready)('pattern_entities extrudes to the hand-authored solid (r
   it('the playing_cards plan copied into a second Front sketch, independent of the source', async () => {
     const plan = roundedRectProfile('', 0, 0, 71.5, 96.9, 4.233)
     const empty: ProfileBlocks = { entities: [], initial: {}, constraints: [] }
+    const copyStep: ScriptStep = {
+      mutation: { type: 'pattern_entities', featureId: 'sk1', sourceIds: TOOTH_IDS, mode: 'copy', targetFeatureId: 'sk2' },
+    }
+    const copied = await runHeadless({
+      doc: docOf(sketch('sk1', '@builtin_plane_front', plan), sketch('sk2', 'Front', empty)),
+      steps: [copyStep],
+    })
+    // The source sketch is read-only for a copy, so the reply names sk2 only:
+    // a sk1 row would report a zero the call did not author.
+    expect(copied.featureDeltas?.map(row => row.id)).toEqual(['sk2'])
     const built = await volumeOf(docOf(
       sketch('sk1', '@builtin_plane_front', plan),
       sketch('sk2', 'Front', empty),
     ), [
-      { mutation: { type: 'pattern_entities', featureId: 'sk1', sourceIds: TOOTH_IDS, mode: 'copy', targetFeatureId: 'sk2' } },
+      copyStep,
       extrude('sk2', 2),
     ])
     const sk2 = featureById(built.doc, 'sk2', 'sketch')

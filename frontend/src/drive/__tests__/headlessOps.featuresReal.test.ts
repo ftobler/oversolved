@@ -165,6 +165,7 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
     // zero rule dropped the row and the reply said nothing about the sketch.
     const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
     const built = await runHeadless({ doc: emptyDoc(), steps: box.steps })
+    expect(built.ok).toBe(true)
     const result = await runHeadless({
       doc: built.doc!,
       steps: [{

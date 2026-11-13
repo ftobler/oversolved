@@ -198,7 +198,8 @@ describe('featureDeltaRows', () => {
       sk1: { status: 'ok' },
       pl1: { status: 'ok' },
     }
-    // A set_plane_field step names the plane; the zero rule must not hide it.
+    // A set_plane_definition_field step names the plane; the zero rule must not
+    // hide it.
     const rows = featureDeltaRows(doc, measures, outcomes, {
       baseline: measures,
       touched: new Set(['pl1']),
@@ -210,6 +211,26 @@ describe('featureDeltaRows', () => {
       volumeDelta: 0,
       bboxDelta: null,
     })])
+  })
+
+  // The admission is additive: a warned feature the steps touched kept its row
+  // before the reference rule, and a non-reference kind must not lose it now.
+  it('changed mode keeps a touched warned non-reference row', () => {
+    const doc = {
+      ...DOC,
+      features: [{ id: 'hx1', kind: 'helix' }],
+    } as unknown as PartDoc
+    const measures: FeatureMeasure[] = [{ id: 'hx1', volume: 0, bbox: null }]
+    const warning = 'the helix ran past the height its sweep uses'
+    const outcomes: Record<string, FeatureOutcome> = {
+      hx1: { status: 'ok', warning },
+    }
+    const rows = featureDeltaRows(doc, measures, outcomes, {
+      baseline: measures,
+      touched: new Set(['hx1']),
+      mode: 'changed',
+    })
+    expect(rows).toEqual([expect.objectContaining({ id: 'hx1', warning })])
   })
 
   // Bearing notes: a variable edit moves every downstream checkpoint, so each
@@ -645,5 +666,48 @@ describe('featureDeltaRows', () => {
       [{ index: 0, ok: true, createdIds: [], createdCount: 12 }],
     )
     expect([...touched]).toEqual(['sk_import'])
+  })
+
+  it('reads a delete step\'s sketch from its wire refs', () => {
+    // A delete carries no featureId: the sketch is the second segment of each
+    // 'entity:sk1:l2' / 'vertex:sk1:l2:start' / 'constraint:sk1:c1' target.
+    const touched = touchedFeatureIds(
+      [{
+        mutation: {
+          type: 'delete',
+          targets: ['constraint:sk1:c1', 'entity:sk1:l2', 'vertex:sk2:l1:start'],
+        },
+      }],
+      [{ index: 0, ok: true, createdIds: [] }],
+    )
+    expect([...touched].sort()).toEqual(['sk1', 'sk2'])
+  })
+
+  it('names a copy-mode pattern\'s target sketch, not its read-only source', () => {
+    // The pattern copies sk1's entities into sk2; only sk2 was authored, so a
+    // row for the untouched source would be the zero noise the rule drops.
+    const touched = touchedFeatureIds(
+      [{
+        mutation: {
+          type: 'pattern_entities', featureId: 'sk1', targetFeatureId: 'sk2',
+          sourceIds: ['l1'], mode: 'copy', count: 2, translate: [10, 0],
+        },
+      }],
+      [{ index: 0, ok: true, createdIds: [] }],
+    )
+    expect([...touched]).toEqual(['sk2'])
+  })
+
+  it('keeps the source sketch for a pattern that repeats inside it', () => {
+    const touched = touchedFeatureIds(
+      [{
+        mutation: {
+          type: 'pattern_entities', featureId: 'sk1', sourceIds: ['l1'],
+          mode: 'linear', count: 2, pitch: 10,
+        },
+      }],
+      [{ index: 0, ok: true, createdIds: [] }],
+    )
+    expect([...touched]).toEqual(['sk1'])
   })
 })
