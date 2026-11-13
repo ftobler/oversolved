@@ -309,7 +309,7 @@ npm run drive -- replay repro.json
 - `run` builds a document from mutation steps and/or command steps through one
   `DocSession` and the real kernel, optionally writes the final document (`--out`)
   and the journal (`--repro`), and prints steps, document hash, solve state,
-  `solved` (whether a settle was attempted), the
+  `solved` (whether a settle ran for the reply's document), the
   feature problems (`features`, see the MCP section), the informational
   `notes`, the document's `length_unit` and the sketch and plane `frames` (also
   described there), which by default are only the ones this call touched or
@@ -586,16 +586,19 @@ banner on stdout, so a client config must use the direct node invocation.
   tessellation failed is still solved and measured even though it does not
   render, so the summary includes it. The reply must not name what
   the measure tool no longer counts. A refused script has two states: when no
-  settle was attempted (every step refused before a mutation landed), the
-  summary says `bodies: not solved (step N refused)` and `solved` is false,
-  because the document was never solved and there are no verdicts to list; when
-  an accepted prefix settled and the next step was refused, the summary names
-  that live set plus `solved through step N-1; step N refused, not applied`, and
-  `solved` is true. A step whose solve hit the stall budget says `step N timed
-  out` instead of refused. `solved` is the one state flag: it means a settle was
-  attempted for the document the reply describes, so a faulted settle still
-  lists its missing verdicts. Chaining by hash is the intended flow: a
-  modelling session does not re-send the part on every call.
+  mutation landed, the input document is still settled for the verdict, so the
+  reply's `features` lists its existing warning rows (an underconstrained
+  sketch) and `solved` is true; the summary names the live set with the refused
+  step (for a first-step refusal, `bodies: none (step 0 refused, not applied)`).
+  When an accepted
+  prefix settled and the next step was refused, the summary names that live set
+  plus `solved through step N-1; step N refused, not applied`, and `solved` is
+  true. A step whose solve hit the stall budget says `step N timed
+  out` instead of refused. `solved` is the one state flag: it means a settle ran
+  for the document the reply describes, so it is false only when no solve was
+  attempted at all, and a faulted settle still lists its missing verdicts.
+  Chaining by hash is the intended flow: a modelling session does not re-send
+  the part on every call.
 - The full document behind any reply's `docHash` is also a resource:
   `resources/templates/list` advertises `oversolved://doc/{docHash}`, and
   `resources/read` on `oversolved://doc/<hash>` returns the document as JSON.
@@ -635,10 +638,11 @@ banner on stdout, so a client config must use the direct node invocation.
   from the solve`, and makes `ok` false: an empty solve result must never read
   as a clean build. A kernel fault (a WASM trap that repeated on the reloaded
   module) is also `ok: false`, with `solve.lastError` naming the fault. A script
-  whose steps were all refused before any mutation landed is the one case with
-  no verdicts to report: `solved` is false, `features` is empty, and `ok` is
-  false because the steps did not apply. The caller's action is to fix the step;
-  a `run` with `steps: []` is how to ask that document for its verdicts.
+  whose steps were all refused still settles the input document, so its warning
+  rows reach `features`; `solved` is false only when no solve was attempted at
+  all, because the steps never edited anything. `ok` is false because the steps
+  did not apply. The caller's action is to fix the step; a `run` with `steps: []`
+  is the other way to ask a document for its verdicts.
   `export` is the one reply whose `ok` is stricter than a run's: the file is
   the answer, so any feature in `features` (failed, partial or warned) makes it
   `ok: false` even though the bytes are still written; the carve-out is a

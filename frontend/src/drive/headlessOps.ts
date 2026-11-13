@@ -89,10 +89,10 @@ export interface HeadlessRunOptions {
 
 export interface HeadlessRunResult {
   ok: boolean
-  // Whether a settle was attempted for the document this reply describes: set
-  // when the solve starts, reset per run. False is a refused-only script, the
-  // one case where an empty `features` list is honest; a faulted settle is
-  // true, because it attempted the answer and failed to give one.
+  // Whether a settle ran for the document this reply describes: set when the
+  // solve starts, reset per run. A script that lands no mutation still settles
+  // the input document, so its existing warnings reach `features`; false means
+  // no solve was attempted at all (a script whose steps never edit anything).
   solved: boolean
   outcome: ScriptRunOutcome
   doc: PartDoc | null
@@ -154,6 +154,16 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
     ...(opts.onStepSettled && { onStepSettled: opts.onStepSettled }),
   })
   const outcome = await part.run(opts.steps)
+  // A script that lands no mutation requests no solve, yet a caller whose step
+  // was just refused needs the document's verdict most: the refusal is often
+  // why an underconstrained sketch still has free DOF. Settle the input
+  // document so `features` lists its warning rows instead of reading as a clean
+  // build beside `solved: false`. The explicit request is what keeps this from
+  // being the deferred scheduler's job: flush alone never forces a solve.
+  if (!part.solveAttempted() && outcome.steps.some(step => !step.ok)) {
+    part.session.refreshSolve()
+    await part.idle()
+  }
   const solved = part.solveAttempted()
   const doc = part.getDoc()
   const solve = part.solve.state()
@@ -185,8 +195,9 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
   // A missing verdict means the settle did not answer for a feature at all;
   // that is a failed run, unlike a feature that answered `exception` (data the
   // caller reads from `features`). Without this the wedged-kernel reply was
-  // ok:true with an empty result. Only a settle that was attempted can have
-  // missing verdicts: a refused-only script never asked, so it has none.
+  // ok:true with an empty result. Only a settle that ran can have missing
+  // verdicts: a script that never edited anything may leave `solved` false and
+  // then has no verdicts to miss.
   const missingVerdict = features.some(problem => problem.status === MISSING_VERDICT_STATUS)
   return {
     ok: outcome.ok && solve.lastError === null && !missingVerdict && measureFault === null,

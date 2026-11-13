@@ -9,6 +9,7 @@
 import type { Mutation } from '@/types/cad'
 import type { CommandResult } from '@/utils/core/commandSpec'
 import type { Result } from '@/session/result'
+import { CREATING_MUTATION_TYPES } from '@/types/mutationKinds'
 
 // A failure from outside the registry/session vocabularies: the bridge's own
 // guard for a throwing executor. Kept here so the runner accepts it without
@@ -185,6 +186,18 @@ function outcomeFor(index: number, step: unknown, result: ScriptStepResult): Scr
     }
   }
   if (result.ok) {
+    // A creator whose applier refused the pick leaves the document untouched
+    // and the session marks the apply as a no-op. The UI wants that ok (a
+    // refused add records no undo entry); a script step must say the document
+    // did not change, or the refusal reads as a clean step with no ids. A
+    // non-creating no-op (a field set to the value it already has) stays ok.
+    if (kind === 'mutation' && 'noOp' in result && result.noOp === true
+        && CREATING_MUTATION_TYPES.has(id as Mutation['type'])) {
+      return {
+        index, kind, id, ok: false, createdIds: [],
+        error: { code: 'no-change', message: `${id} changed nothing: the applier refused it` },
+      }
+    }
     // The registry's CommandResult and the session's Result both carry
     // createdIds on success; the failure shapes carry code/message. The two
     // assembly annotations ride only on the decorated success, so a step that

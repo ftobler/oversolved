@@ -30,7 +30,7 @@ import { DxfImportError, parseDxfProfile } from '@/utils/dxfImport'
 import { textFieldsProblem } from '@/utils/geometry/textExpand'
 import { planAddText, type AddTextFields } from '@/utils/yamlMutations/sketchText'
 import { pointDistanceZeroProblem } from '@/utils/yamlMutations/helpers'
-import { COLINEAR_SHAPE_REASON, colinearShapeProblem, constraintOperandSide, type ConstraintOperandSide } from '@/utils/constraintOperands'
+import { addConstraintProblem } from '@/utils/constraintProblems'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { lengthUnitOf } from '@/utils/lengthUnit'
 import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/persistence/partDocSchema'
@@ -540,45 +540,47 @@ function targetProblem(value: unknown, index: number): string | null {
 
 // ─── specific rules ───
 
-/** The side a step's target spelling names, for the colinear shape rule. The
- *  inferred (`dock:`/`isect:`) and B-rep (`face:`/`edge:`) forms name no stored
- *  sketch operand, so their shape is left to the applier's materialization. */
-function stepTargetSide(
-  target: unknown,
-  featureId: string,
-  entityIds: ReadonlySet<string>,
-  kindById: ReadonlyMap<string, string>,
-): ConstraintOperandSide {
-  if (typeof target !== 'string') return 'unresolved'
-  if (target === '@builtin_origin') return 'point'
-  if (target.startsWith('$')) return constraintOperandSide(target, entityIds, kindById)
-  const parts = target.split(':')
-  if (parts[0] === 'entity' && parts[1] === featureId) {
-    return constraintOperandSide({ entity: parts[2] }, entityIds, kindById)
+/** `add_constraint` has one refusal source with the applier: the shape rules
+ *  live in utils/constraintProblems, so a drive or MCP caller learns the same
+ *  sentence the applier would warn about instead of an ok that changed
+ *  nothing. The zero point_distance rule is checked without a document too. */
+function addConstraint(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const kind = raw.kind
+  if (typeof kind === 'string' && !CONSTRAINT_BY_KIND.has(kind)) {
+    return invalid(
+      `constraint kind ${json(kind)} is not a sketch constraint; use one of ${[...CONSTRAINT_BY_KIND.keys()].join(', ')}`,
+    )
   }
-  if (parts[0] === 'vertex' && parts[1] === featureId) return 'point'
-  return 'unresolved'
-}
-
-/** `colinear` only has a row as two lines or a point and a line. The applier
- *  refuses any other pick; this names the same rule in the step reply so a
- *  drive or MCP caller does not learn it from an authored no-op. */
-function colinearProblem(raw: RawStep, ctx: ValueContext): string | null {
   const targets = raw.targets
-  if (!Array.isArray(targets) || targets.length !== 2) return COLINEAR_SHAPE_REASON
-  const featureId = raw.featureId
-  // A shape-only caller has no document to read the operands' entity kinds
-  // from, so only the operand count can be judged there.
-  if (ctx.doc === null || typeof featureId !== 'string') return null
-  const sketch = sketchOf(ctx.doc, featureId)
-  if (sketch === undefined) return null
-  const entityIds = new Set((sketch.entities ?? []).map(e => e.id))
-  const kindById = new Map((sketch.entities ?? []).map(e => [e.id, e.kind]))
-  return colinearShapeProblem(
-    targets[0],
-    targets[1],
-    (target) => stepTargetSide(target, featureId, entityIds, kindById),
-  )
+  if (!Array.isArray(targets)) return invalid(`targets must be a list of references, got ${json(targets)}`)
+  if (targets.length === 0) return invalid('targets must name at least one entity or vertex reference')
+  const refs: string[] = []
+  for (let i = 0; i < targets.length; i++) {
+    const problem = targetProblem(targets[i], i)
+    if (problem !== null) return invalid(problem)
+    refs.push(targets[i] as string)
+  }
+  if (raw.pos !== undefined) {
+    const problem = finitePointProblem(raw.pos, 'pos')
+    if (problem !== null) return invalid(problem)
+  }
+  // One refusal source, with or without a document. A shape-only caller has no
+  // entity kinds to read, so addConstraintProblem still judges the zero rule
+  // and the operand counts but passes every shape it cannot see; the applier
+  // gets the same sentence once it can materialize the operands.
+  if (typeof kind === 'string') {
+    const sketch = ctx.doc !== null && typeof raw.featureId === 'string'
+      ? sketchOf(ctx.doc, raw.featureId)
+      : undefined
+    const problem = addConstraintProblem(
+      sketch,
+      kind,
+      refs,
+      isFiniteNumber(raw.value) ? raw.value : undefined,
+    )
+    if (problem !== null) return invalid(problem)
+  }
+  return null
 }
 
 function moveEntity(raw: RawStep): ValueViolation | null {
@@ -602,38 +604,6 @@ function resizeCircle(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   }
   if (entity.kind !== 'circle') {
     return invalid(`resize_circle target ${json(entityId)} is a ${entity.kind}, not a circle`)
-  }
-  return null
-}
-
-function addConstraint(raw: RawStep, ctx: ValueContext): ValueViolation | null {
-  const kind = raw.kind
-  if (typeof kind === 'string' && !CONSTRAINT_BY_KIND.has(kind)) {
-    return invalid(
-      `constraint kind ${json(kind)} is not a sketch constraint; use one of ${[...CONSTRAINT_BY_KIND.keys()].join(', ')}`,
-    )
-  }
-  const targets = raw.targets
-  if (!Array.isArray(targets)) return invalid(`targets must be a list of references, got ${json(targets)}`)
-  if (targets.length === 0) return invalid('targets must name at least one entity or vertex reference')
-  for (let i = 0; i < targets.length; i++) {
-    const problem = targetProblem(targets[i], i)
-    if (problem !== null) return invalid(problem)
-  }
-  if (kind === 'colinear') {
-    const problem = colinearProblem(raw, ctx)
-    if (problem !== null) return invalid(problem)
-  }
-  if (raw.pos !== undefined) {
-    const problem = finitePointProblem(raw.pos, 'pos')
-    if (problem !== null) return invalid(problem)
-  }
-  // A zero point_distance is a coincident, not a dimension: the applier refuses
-  // it too, and this names the reason in the step reply instead of an ok that
-  // changed nothing.
-  if (isFiniteNumber(raw.value) && typeof kind === 'string' && isConstraintKindName(kind)) {
-    const zero = pointDistanceZeroProblem(kind, raw.value)
-    if (zero !== null) return invalid(zero)
   }
   return null
 }

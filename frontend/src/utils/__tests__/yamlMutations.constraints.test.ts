@@ -268,6 +268,96 @@ describe('applyAddConstraint midpoint', () => {
   })
 })
 
+// The catalog promises every spelling it lists for a constraint target, but the
+// midpoint applied only the `entity:`/`vertex:` prefix pair. A `$<id>` line, a
+// `$<id><key>` vertex, a whole point entity and `@builtin_origin` all name the
+// same operands, so each pair must author the same line/point keys.
+describe('applyAddConstraint midpoint target spellings', () => {
+  let warnSpy: ReturnType<typeof vi.spyOn>
+
+  const midpointDoc = (): PartDoc => ({
+    version: 1,
+    kind: 'part',
+    features: [{
+      id: 'sk1',
+      kind: 'sketch',
+      initial: { ax: [-2, 0, 2, 0], o: [1, 1], p: [3, 3] },
+      entities: [
+        { id: 'ax', kind: 'line' },
+        { id: 'o', kind: 'point' },
+        { id: 'p', kind: 'point' },
+      ],
+      constraints: [],
+    }],
+  })
+
+  const midpointOf = (targets: string[]) => {
+    const doc = midpointDoc()
+    applyAddConstraint(doc, 'sk1', 'midpoint', targets)
+    return constraints0(doc).find(c => c.kind === 'midpoint')
+  }
+
+  beforeEach(() => {
+    warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+  })
+
+  afterEach(() => {
+    warnSpy.mockRestore()
+  })
+
+  it.each([
+    ['@builtin_origin first', ['@builtin_origin', '$ax']],
+    ['@builtin_origin last', ['$ax', '@builtin_origin']],
+  ])('stores the builtin origin and a stored line, %s', (_label, targets) => {
+    const added = midpointOf(targets)
+    expect(added).toBeDefined()
+    expect(added!.line).toBe('$ax')
+    expect(added!.point).toBe('@builtin_origin')
+    expect(warnSpy).not.toHaveBeenCalled()
+  })
+
+  it('stores an explicit entity line with a stored vertex key', () => {
+    const added = midpointOf(['entity:sk1:ax', '$oxy'])
+    expect(added!.line).toBe('$ax')
+    expect(added!.point).toBe('$oxy')
+  })
+
+  it.each([
+    ['vertex first', ['vertex:sk1:o:xy', '$ax']],
+    ['stored line first', ['$ax', 'vertex:sk1:o:xy']],
+  ])('stores the mixed stored/vertex pair, %s', (_label, targets) => {
+    const added = midpointOf(targets)
+    expect(added!.line).toBe('$ax')
+    expect(added!.point).toBe('$oxy')
+  })
+
+  it('stores a whole point entity as the point operand', () => {
+    const added = midpointOf(['$o', '$ax'])
+    expect(added!.line).toBe('$ax')
+    expect(added!.point).toBe('$o')
+  })
+
+  it('stores three stored vertex refs as point_a/point_b/point', () => {
+    const added = midpointOf(['$axstart', '$axend', '$oxy'])
+    expect(added!.point_a).toBe('$axstart')
+    expect(added!.point_b).toBe('$axend')
+    expect(added!.point).toBe('$oxy')
+  })
+
+  it('still refuses two points and a curve with a line', () => {
+    expect(midpointOf(['$o', '$p'])).toBeUndefined()
+    const doc = midpointDoc()
+    sketchAt(doc).entities!.push({ id: 'c1', kind: 'circle' })
+    sketchAt(doc).initial!.c1 = [0, 0, 2]
+    applyAddConstraint(doc, 'sk1', 'midpoint', ['$ax', '$c1'])
+    expect(constraints0(doc).find(c => c.kind === 'midpoint')).toBeUndefined()
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('midpoint needs a line and a point, or three points'),
+      expect.anything(),
+    )
+  })
+})
+
 // A generic kind used to fall through every branch when its target list was
 // empty (or a single pick for coincident), authoring an operand-less constraint.
 describe('applyAddConstraint operand guards', () => {

@@ -2,9 +2,10 @@
 //
 // A failed run must report the state it holds, not invent per-feature verdicts
 // for a document that was never solved. The two states are pinned here: a
-// script refused before any mutation landed (solved false, no problem rows) and
-// an inspect call that did settle (solved true, the real verdicts). The kernel
-// is stubbed so the boundary's own decision is tested, not a build.
+// script refused before any mutation landed (it settles the input document, so
+// its existing warning rows reach `features`) and an inspect call that did
+// settle (solved true, the real verdicts). The kernel is stubbed so the
+// boundary's own decision is tested, not a build.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import type { PartDoc } from '@/types/cad'
@@ -65,24 +66,35 @@ describe('the state a run reports', () => {
     vi.mocked(kernel.measureSolveFeatures).mockResolvedValue([])
   })
 
-  it('a refused-only script is unsolved and has no verdicts to report', async () => {
+  it('a refused-only script settles the input document for its verdict', async () => {
+    // The real kernel carries an underconstrained sketch's warning text; the
+    // stub mirrors that so the row proves the verdict landed on the reply.
+    vi.mocked(kernel.solveLocally).mockResolvedValue({
+      ...cleanBuild,
+      result: {
+        ...cleanBuild.result,
+        sk1: { status: 'underconstrained', solver_warning: 'Underconstrained: 4 degree(s) of freedom.' },
+      },
+    } as never)
     const result = await runHeadless({
       doc: twoFeatureDoc(),
       // An unknown command is refused at the registry, before any mutation
-      // lands, so no solve is requested for this document at all.
+      // lands, so the steps request no solve. The reply still settles the input
+      // document: the sketch is underconstrained, and that must not read as a
+      // clean build.
       steps: [{ command: 'noop_probe' }],
     })
     expect(result.ok).toBe(false)
-    expect(result.solved).toBe(false)
-    expect(result.features).toEqual([])
-    expect(result.bodies).toBeNull()
-    expect(result.featureDeltas).toBeNull()
-    expect(result.frames).toBeNull()
+    expect(result.solved).toBe(true)
+    expect(result.features).toContainEqual(expect.objectContaining({ id: 'sk1', status: 'underconstrained' }))
+    expect(result.bodies).toEqual(['body_ex1'])
     expect(result.solve.lastError).toBeNull()
 
     const reply = runReply(result, false, new DocHandleStore())
-    expect(reply.solved).toBe(false)
-    expect(reply.summary).toBe('features: sk1 (sketch), ex1 (extrude); bodies: not solved (step 0 refused)')
+    expect(reply.solved).toBe(true)
+    expect(reply.summary).toContain('sk1 (sketch)')
+    expect(reply.summary).toContain('step 0 refused')
+    expect(reply.summary).not.toContain('not solved')
   })
 
   it('an inspect call holds solved verdicts and the live bodies', async () => {

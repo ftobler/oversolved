@@ -7,7 +7,9 @@ import {
   pointDistanceZeroProblem,
 } from './helpers'
 import { resolveVertexRef } from '@/types/vertexRef'
-import { colinearShapeProblem, constraintOperandSide } from '@/utils/constraintOperands'
+import {
+  addConstraintProblem, constraintTargetSide, midpointOperands, midpointShapeReason,
+} from '@/utils/constraintProblems'
 import { dockLocationOf } from '@/utils/geometry/dockHosts'
 import { angleStoredValue } from '@/utils/geometry/dimensionNaturalValue'
 import { unflattenGeometry } from '@/utils/geometry/geometryMapping'
@@ -66,26 +68,29 @@ function _refsDeletedEntity(c: PartConstraint, deletedIds: Set<string>): boolean
 // midpoint needs specific keys depending on selection:
 //   entity + vertex  → line: $entity,  point: $vertex
 //   3 vertices       → point_a: $v1, point_b: $v2, point: $v3
+// The operands are classified by what they name, not by the `entity:`/`vertex:`
+// prefix: the catalog also accepts a stored `$<entityId>`, a `$<entityId><key>`
+// vertex and `@builtin_origin`, so all of those spell the same two shapes.
 // Returns false when the target combination is unrecognized.
 function applyMidpointConstraint(
   c: PartConstraint,
   targets: string[],
   pt: (t: string) => PartTarget,
+  featureId: string,
+  entityIds: ReadonlySet<string>,
+  kindById: ReadonlyMap<string, string>,
 ): boolean {
-  const entityTargets = targets.filter(t => t.startsWith('entity:'))
-  const vertexTargets = targets.filter(t => t.startsWith('vertex:'))
-  if (entityTargets.length === 1 && vertexTargets.length === 1) {
-    c.line = pt(entityTargets[0])
-    c.point = pt(vertexTargets[0])
+  const operands = midpointOperands(targets, t => constraintTargetSide(t, featureId, entityIds, kindById))
+  if (!operands) return false
+  if ('line' in operands) {
+    c.line = pt(operands.line)
+    c.point = pt(operands.point)
     return true
   }
-  if (entityTargets.length === 0 && vertexTargets.length === 3) {
-    c.point_a = pt(vertexTargets[0])
-    c.point_b = pt(vertexTargets[1])
-    c.point   = pt(vertexTargets[2])
-    return true
-  }
-  return false
+  c.point_a = pt(operands.point_a)
+  c.point_b = pt(operands.point_b)
+  c.point   = pt(operands.point)
+  return true
 }
 
 // ─── Sketch mutations ───
@@ -226,7 +231,11 @@ export function applyAddConstraint(
   pos?: [number, number],
   sign?: number,
 ): void {
-  const feature = resolveSketch(doc, featureId, 'constraints')
+  // A missing feature is a stale id, not a refusal: nothing can be authored.
+  // The containers are deliberately not materialized here, so every refusal
+  // below leaves the document byte-identical and the session can classify it as
+  // a no-op. The constraint list is created only when the constraint is pushed.
+  const feature = findSketchFeature(doc, featureId)
   if (!feature) return
   // Checked before any target is materialized: a refused zero dimension must
   // not leave a promoted point behind.
@@ -246,6 +255,14 @@ export function applyAddConstraint(
     return
   }
   targets = resolved
+  // One refusal source with the drive rule: the checks used to live in the
+  // branches below, so the drive copied only the colinear and zero ones and
+  // reported every other refusal as an ok that changed nothing.
+  const problem = addConstraintProblem(feature, kind, targets, value)
+  if (problem !== null) {
+    warn(`applyAddConstraint: ${problem}`, { featureId, kind, targets })
+    return
+  }
   // The solver reads `a` as the line for line_distance; a point-first pick was
   // stored inert. Canonicalise here as well as in the editor path, so a drive
   // or MCP mutation cannot author the dropped spelling either, whether it names
@@ -264,67 +281,33 @@ export function applyAddConstraint(
     if (ref.point !== undefined || isPointLikeEntityKind(ek)) return 'point'
     return ek === 'line' ? 'line' : undefined
   })
-  const cid = uniqueConstraintId(feature.constraints, kind)
+  const cid = uniqueConstraintId(feature.constraints ?? [], kind)
   const c: PartConstraint = { id: cid, kind }
   const pt = (t: string) => parseTarget(t, featureId)
   if (kind === 'midpoint') {
-    if (!applyMidpointConstraint(c, targets, pt)) {
-      warn('applyAddConstraint: unrecognized midpoint target combination', targets)
+    if (!applyMidpointConstraint(c, targets, pt, featureId, entityIds, kindById)) {
+      warn(`applyAddConstraint: ${midpointShapeReason(targets)}`, { featureId, targets })
       return
     }
   } else if (kind === 'horizontal' || kind === 'vertical') {
     // Overloaded: one line -> `target` (make the line axis-aligned); two points
-    // -> `a`/`b` (share a coordinate). The a/b form is only meaningful for two
-    // points: a whole-entity operand (a circle or extra line picked up alongside
-    // the real target) resolves to a single sub-point and yields a degenerate
-    // residual that is often already satisfied, so the line never turns vertical.
-    // Reject that combination instead of authoring a dead constraint.
-    // See bugreports/vertical_constraint_20260621_102915.md.
-    // Same min-guard as the generic branch below: an empty pick falls through
-    // both forms and would author an operand-less constraint the solver can
-    // only read as garbage.
-    if (targets.length < 1) {
-      warn(`applyAddConstraint: ${kind} needs a target`, targets)
-      return
-    }
+    // -> `a`/`b` (share a coordinate). addConstraintProblem refused the empty
+    // pick and the whole-entity a/b slot, so only the two forms remain.
     if (targets.length >= 2) {
-      if (targets[0].startsWith('entity:') || targets[1].startsWith('entity:')) {
-        warn(`applyAddConstraint: ${kind} needs one line or two points, got`, targets)
-        return
-      }
       c.a = pt(targets[0])
       c.b = pt(targets[1])
-    } else if (targets.length === 1) {
+    } else {
       c.target = pt(targets[0])
     }
   } else if (kind === 'colinear') {
     // A colinear is lowered to the solver's coincident (partDocToSketches): two
     // lines read as the collinear row pair, a point and a line as point-on-line.
-    // Any other pick has no row and used to be stored, then dropped with no
-    // residual, so it is refused here like the axis and midpoint guards above.
-    if (targets.length !== 2) {
-      warn('applyAddConstraint: colinear needs two targets, got', targets)
-      return
-    }
-    const a = pt(targets[0])
-    const b = pt(targets[1])
-    const problem = colinearShapeProblem(a, b, (ref) => constraintOperandSide(ref, entityIds, kindById))
-    if (problem !== null) {
-      warn(`applyAddConstraint: ${problem}`, targets)
-      return
-    }
-    c.a = a
-    c.b = b
+    // addConstraintProblem refused every pick with no row.
+    c.a = pt(targets[0])
+    c.b = pt(targets[1])
   } else {
-    // Generic kinds need operands: coincident pairs two refs, everything else
-    // at least one. An empty (or single-target coincident) pick used to fall
-    // through every branch and author an operand-less -- or half-authored --
-    // constraint the solver can only read as garbage.
-    const min = kind === 'coincident' ? 2 : 1
-    if (targets.length < min) {
-      warn(`applyAddConstraint: ${kind} needs ${min === 1 ? 'a target' : 'two targets'}, got`, targets)
-      return
-    }
+    // addConstraintProblem guaranteed the operand count: coincident pairs two
+    // refs, everything else at least one.
     if (targets.length >= 2) {
       c.a = pt(targets[0])
       c.b = pt(targets[1])
@@ -362,6 +345,7 @@ export function applyAddConstraint(
   if (storedValue !== undefined && Number.isFinite(storedValue)) c.value = round(storedValue)
   if (storedPos !== undefined && Number.isFinite(storedPos[0]) && Number.isFinite(storedPos[1])) c.pos = [round(storedPos[0]), round(storedPos[1])]
   if (sign !== undefined && Number.isFinite(sign)) c.sign = sign < 0 ? -1 : 1
+  if (!feature.constraints) feature.constraints = []
   feature.constraints.push(c)
 }
 
@@ -531,15 +515,16 @@ export function applyAddEntity(
     applyAddFitSpline(doc, featureId, params, entityId, fit)
     return
   }
-  const feature = resolveSketch(doc, featureId, 'entities', 'initial')
-  if (!feature) return
   // The seed params are stored at the document's number precision. round(NaN)
   // is still NaN, so a non-finite coordinate would survive into the YAML and
-  // every later solve seeded from it.
+  // every later solve seeded from it. Refused before any container is
+  // materialized, so the refusal leaves the doc unchanged for the step net.
   if (!allFinite(params)) {
     warn('applyAddEntity: ignoring non-finite seed params', { featureId, kind, params })
     return
   }
+  const feature = resolveSketch(doc, featureId, 'entities', 'initial')
+  if (!feature) return
   const eid = mintEntityId(feature.entities, entityId)
   feature.entities.push({ id: eid, kind })
   feature.initial[eid] = params.map(round)
@@ -618,15 +603,16 @@ export function applyAddEntityWithConstraint(
     ])
     return
   }
-  const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
-  if (!feature) return
   // Seed params are stored at the document's number precision (same gate as
   // applyAddEntity); refusing here keeps the snap constraint from being authored
-  // against an entity that was never created.
+  // against an entity that was never created. Before resolveSketch, so the skip
+  // itself adds no empty container to the document.
   if (!allFinite(params)) {
     warn('applyAddEntityWithConstraint: ignoring non-finite seed params', { featureId, kind, params })
     return
   }
+  const feature = resolveSketch(doc, featureId, 'entities', 'initial', 'constraints')
+  if (!feature) return
   const eid = mintEntityId(feature.entities, entityId)
   feature.entities.push({ id: eid, kind })
   feature.initial[eid] = params.map(round)
@@ -670,16 +656,17 @@ export function applyAddPointAtIntersection(
   at: [number, number],
   curveEntityIds: string[],
 ): string | null {
-  const feature = resolveSketch(doc, featureId, 'entities', 'initial')
-  if (!feature) return null
   // The contact location becomes the point's seed at the document's number
   // precision. A malformed `isect:` handle parses to NaN upstream, so the gate
-  // lives here rather than at the one call seam: null tells the caller nothing
-  // was materialized.
+  // lives here rather than at the one call seam, and before resolveSketch: a
+  // refused handle must not leave an empty container behind. Null tells the
+  // caller nothing was materialized.
   if (!allFinite(at)) {
     warn('applyAddPointAtIntersection: ignoring non-finite location', { featureId, at })
     return null
   }
+  const feature = resolveSketch(doc, featureId, 'entities', 'initial')
+  if (!feature) return null
 
   // Usable loci: distinct, existing, non-point curves. A point entity has no
   // locus to lie on; construction curves are allowed (a construction tangency is

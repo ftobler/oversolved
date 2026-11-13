@@ -2,7 +2,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { runScript, type AnyScriptStep, type ScriptStep } from '../scriptRunner'
-import { okResult, errorResult } from '@/session/result'
+import { okResult, errorResult, noOpResult } from '@/session/result'
 
 const step = (command: string, continueOnError = false): ScriptStep => ({ command, continueOnError })
 const mutationStep = (continueOnError = false): ScriptStep =>
@@ -102,6 +102,33 @@ describe('runScript', () => {
     const outcome = await runScript([step('a')], () => null)
     expect(outcome.ok).toBe(false)
     expect(outcome.steps[0].error).toMatchObject({ code: 'no-document' })
+  })
+
+  it('reports a creating mutation the session classified as a no-op as a refusal', async () => {
+    const outcome = await runScript(
+      [{
+        mutation: {
+          type: 'add_projected_entity', featureId: 'sk1', kind: 'point',
+          source: '@builtin_origin', entityId: 'o',
+        },
+      }],
+      () => noOpResult(),
+    )
+    expect(outcome.ok).toBe(false)
+    expect(outcome.steps[0].ok).toBe(false)
+    expect(outcome.steps[0].error).toEqual({
+      code: 'no-change',
+      message: 'add_projected_entity changed nothing: the applier refused it',
+    })
+  })
+
+  it('keeps a legitimate non-creating no-op as a success', async () => {
+    // Setting a field to the value it already has changes nothing on purpose;
+    // only a creator that added nothing was refused by its applier.
+    const outcome = await runScript([mutationStep()], () => noOpResult())
+    expect(outcome.ok).toBe(true)
+    expect(outcome.steps[0].ok).toBe(true)
+    expect(outcome.steps[0].createdIds).toEqual([])
   })
 
   it('turns more than 200 created ids into a count', async () => {

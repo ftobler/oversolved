@@ -407,8 +407,54 @@ describe('finding 5: add_constraint target spelling', () => {
   })
 })
 
-describe('colinear operand shapes', () => {
-  function colinearDoc(): PartDoc {
+// The repro from the practice runs: `add_constraint midpoint` accepted a
+// `$<id>` line and a builtin origin, refused them, and still reported ok with
+// no ids. The accepted spellings must pass the rule; a midpoint of two points
+// or two lines must be refused by name.
+describe('midpoint operand shapes', () => {
+  function midpointDoc(): PartDoc {
+    return seedBuiltins({
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [{ id: 'ax', kind: 'line' }, { id: 'o', kind: 'point' }, { id: 'p', kind: 'point' }],
+        initial: { ax: [-2, 0, 2, 0], o: [1, 1], p: [3, 3] },
+      }],
+    })
+  }
+
+  it('accepts a stored line with the builtin origin in either order', () => {
+    const doc = midpointDoc()
+    for (const targets of [['@builtin_origin', '$ax'], ['$ax', '@builtin_origin']]) {
+      expect(validateMutation({
+        type: 'add_constraint', featureId: 'sk1', kind: 'midpoint', targets,
+      }, { doc }), JSON.stringify(targets)).toMatchObject({ ok: true })
+    }
+  })
+
+  it('refuses a midpoint of two points, naming the accepted shapes', () => {
+    const error = refusal({
+      type: 'add_constraint', featureId: 'sk1', kind: 'midpoint',
+      targets: ['vertex:sk1:ax:start', 'vertex:sk1:ax:end'],
+    }, midpointDoc())
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('midpoint needs a line and a point, or three points')
+  })
+
+  it('refuses a horizontal with a whole entity in the a/b slot', () => {
+    const error = refusal({
+      type: 'add_constraint', featureId: 'sk1', kind: 'horizontal',
+      targets: ['entity:sk1:ax', 'vertex:sk1:ax:start'],
+    }, midpointDoc())
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('horizontal needs one line or two points')
+  })
+})
+
+describe('colinear operand shapes', () => {  function colinearDoc(): PartDoc {
     return seedBuiltins({
       version: 1,
       kind: 'part',
@@ -448,6 +494,15 @@ describe('colinear operand shapes', () => {
       { type: 'add_constraint', featureId: 'sk1', kind: 'colinear', targets: ['entity:sk1:l1'] },
       colinearDoc(),
     )
+    expect(error.message).toContain('two lines or a point and a line')
+  })
+
+  it('judges the colinear operand count without a document', () => {
+    // A shape-only caller cannot read entity kinds, but the count rule holds.
+    const error = refusal({
+      type: 'add_constraint', featureId: 'sk1', kind: 'colinear', targets: ['entity:sk1:l1'],
+    })
+    expect(error.code).toBe('invalid-mutation')
     expect(error.message).toContain('two lines or a point and a line')
   })
 })

@@ -255,8 +255,9 @@ export function replyUnits(doc: PartDoc | null | undefined): { length_unit: Leng
 
 export interface RunReplySource {
   ok: boolean
-  // Whether a settle was attempted for this document; false only for a script
-  // whose every step was refused before any mutation landed.
+  // Whether a settle ran for this document. A script that lands no mutation
+  // still settles the input document, so `features` can carry its warnings; a
+  // false here means no solve was attempted at all.
   solved: boolean
   outcome: { steps: unknown[] }
   doc: PartDoc | null
@@ -293,8 +294,9 @@ export interface RunReplySource {
  * `ok` means the steps applied and the solve ran; a failed feature is data,
  * not a failed call. The features list and the summary's `problems:` suffix
  * are how a client that reads only one line still learns about it. `solved`
- * separates "the settle answered" from "it was never asked": a refused script
- * carries no verdicts rather than a row per authored feature. Every reply names
+ * separates "a settle ran" from "none was attempted": a script that lands no
+ * mutation settles the input document for its verdict, so a refused step never
+ * leaves an empty features list reading as a clean build. Every reply names
  * the document's `length_unit`, and a `frames` or `curves` map with nothing to
  * report is omitted rather than printed empty.
  */
