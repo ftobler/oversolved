@@ -63,12 +63,15 @@ describe.skipIf(!oc || !solveBytes)('a projected fillet arc keeps its sweep (rea
     const sk2 = {
       id: 'sk2', kind: 'sketch', plane: cap[0],
       entities: [
-        { id: 'p0', kind: 'arc', source: arc[0] },
+        { id: 'p0', kind: 'arc' },
         { id: 'l1', kind: 'line' },
         { id: 'l2', kind: 'line' },
       ],
       initial: { l1: [0, 0, 1, 0], l2: [0, 1, 0, 0] },
       constraints: [
+        // The projection is the entity plus the constraint that holds it, the
+        // shape `applyAddProjectedEntity` writes.
+        { id: 'proj_p0', kind: 'projection', target: '$p0', source: arc[0] },
         { id: 'k1', kind: 'coincident', a: '$p0center', b: '$l1start' },
         { id: 'k2', kind: 'coincident', a: '$p0start', b: '$l1end' },
         { id: 'k3', kind: 'coincident', a: '$p0end', b: '$l2start' },

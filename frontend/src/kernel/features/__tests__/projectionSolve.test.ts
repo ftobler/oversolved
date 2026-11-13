@@ -53,9 +53,11 @@ describe('solveSketch projection lowering', () => {
     if (!solveBytes) return  // solver wasm absent: skip
     const feature: Dict = {
       id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
-      entities: [{ id: 'c0', kind: 'circle', source: '?edge;circle' }],
+      entities: [{ id: 'c0', kind: 'circle' }],
       initial: {},
-      constraints: [],
+      constraints: [
+        { id: 'proj_c0', kind: 'projection', target: '$c0', source: '?edge;circle' },
+      ],
     }
     const out = solveSketch(feature, stubRepo(onParallelCircle), {} as Record<string, Body>)
     expect(out.status).not.toBe('error')
@@ -75,9 +77,11 @@ describe('solveSketch projection lowering', () => {
     }
     const feature: Dict = {
       id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
-      entities: [{ id: 'e0', kind: 'circle', source: '?edge;circle' }],
+      entities: [{ id: 'e0', kind: 'circle' }],
       initial: {},
-      constraints: [],
+      constraints: [
+        { id: 'proj_e0', kind: 'projection', target: '$e0', source: '?edge;circle' },
+      ],
     }
     const out = solveSketch(feature, stubRepo(tilted), {} as Record<string, Body>)
     expect(out.status).not.toBe('error')
@@ -100,9 +104,11 @@ describe('solveSketch projection lowering', () => {
     }
     const feature: Dict = {
       id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
-      entities: [{ id: 'ell0', kind: 'ellipse', source: '?edge;ellipse' }],
+      entities: [{ id: 'ell0', kind: 'ellipse' }],
       initial: {},
-      constraints: [],
+      constraints: [
+        { id: 'proj_ell0', kind: 'projection', target: '$ell0', source: '?edge;ellipse' },
+      ],
     }
     const out = solveSketch(feature, stubRepo(partialEllipse), {} as Record<string, Body>)
     expect(out.status).not.toBe('error')
@@ -124,9 +130,11 @@ describe('solveSketch projection lowering', () => {
     }
     const feature: Dict = {
       id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
-      entities: [{ id: 'ell0', kind: 'spline', source: '?edge;ellipse' }],
+      entities: [{ id: 'ell0', kind: 'spline' }],
       initial: {},
-      constraints: [],
+      constraints: [
+        { id: 'proj_ell0', kind: 'projection', target: '$ell0', source: '?edge;ellipse' },
+      ],
     }
     const out = solveSketch(feature, stubRepo(partialEllipse), {} as Record<string, Body>)
     expect(out.status).not.toBe('error')
@@ -144,13 +152,15 @@ describe('solveSketch projection lowering', () => {
     // edge, so this pins the exclusion rather than a curve that dies on its own.
     const entities = [
       { id: 'drawn', kind: 'circle' },
-      { id: 'stale', kind: 'fit_spline', source: '?edge;gone' },
+      { id: 'stale', kind: 'fit_spline' },
     ]
     const feature: Dict = {
       id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
       entities,
       initial: { drawn: [2, 3, 4] },
-      constraints: [],
+      constraints: [
+        { id: 'proj_stale', kind: 'projection', target: '$stale', source: '?edge;gone' },
+      ],
     }
     const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
     expect(out.status).not.toBe('exception')
@@ -184,10 +194,12 @@ describe('solveSketch projection lowering', () => {
       id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
       entities: [
         { id: 'drawn', kind: 'circle' },
-        { id: 'stale', kind: 'spline', source: '?edge;gone' },
+        { id: 'stale', kind: 'spline' },
       ],
       initial: { drawn: [2, 3, 4], stale: [0, 0, 0, 0, 0, 0, 0, 0] },
-      constraints: [],
+      constraints: [
+        { id: 'proj_stale', kind: 'projection', target: '$stale', source: '?edge;gone' },
+      ],
     }
     const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
     expect(out.geometry?.stale).toBeUndefined()
@@ -206,10 +218,12 @@ describe('solveSketch projection lowering', () => {
       id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
       entities: [
         { id: 'drawn', kind: 'line' },
-        { id: 'held', kind: 'line', source: '?edge;gone' },
+        { id: 'held', kind: 'line' },
       ],
       initial: { drawn: [0, 0, 4, 0], held: [0, 2, 4, 2] },
-      constraints: [],
+      constraints: [
+        { id: 'proj_held', kind: 'projection', target: '$held', source: '?edge;gone' },
+      ],
     }
     const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
     expect(out.geometry?.held).toEqual([0, 2, 4, 2])
@@ -263,9 +277,11 @@ describe('solveSketch projection lowering', () => {
     if (!solveBytes) return
     const feature: Dict = {
       id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
-      entities: [{ id: 'c0', kind: 'circle', source: '?edge;circle' }],
+      entities: [{ id: 'c0', kind: 'circle' }],
       initial: {},
-      constraints: [],
+      constraints: [
+        { id: 'proj_c0', kind: 'projection', target: '$c0', source: '?edge;circle' },
+      ],
     }
     const out = solveSketch(feature, stubRepo(onParallelCircle), {} as Record<string, Body>)
     // Parallel circle stays a circle -> no kind change -> no resolved_kinds.
@@ -284,9 +300,11 @@ describe('solveSketch projection lowering', () => {
     }
     const feature: Dict = {
       id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
-      entities: [{ id: 'a0', kind: 'arc', source: '?edge;arc' }],
+      entities: [{ id: 'a0', kind: 'arc' }],
       initial: {},
-      constraints: [],
+      constraints: [
+        { id: 'proj_a0', kind: 'projection', target: '$a0', source: '?edge;arc' },
+      ],
     }
     const out = solveSketch(feature, stubRepo(projArc), {} as Record<string, Body>)
     expect(out.status).not.toBe('error')
@@ -299,6 +317,32 @@ describe('solveSketch projection lowering', () => {
     expect(r).toBeCloseTo(5)
     expect(sa).toBeCloseTo(0)
     expect(ea).toBeCloseTo(90, 1)
+  })
+
+  it('legacy v5 row: an entity `source` still folds into a projection constraint', () => {
+    if (!solveBytes) return
+    // Documents written before the projection constraint carry `source` on the
+    // entity. `lowerProjectionConstraints` folds that row into the constraint
+    // form, and this is the one test that pins the fold itself rather than the
+    // production spelling every other projection test authors.
+    const legacy: Dict = {
+      id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [{ id: 'c0', kind: 'circle', source: '?edge;circle' }],
+      initial: {},
+      constraints: [],
+    }
+    const constraintForm: Dict = {
+      id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [{ id: 'c0', kind: 'circle' }],
+      initial: {},
+      constraints: [
+        { id: 'proj_c0', kind: 'projection', target: '$c0', source: '?edge;circle' },
+      ],
+    }
+    const folded = solveSketch(legacy, stubRepo(onParallelCircle), {} as Record<string, Body>)
+    const explicit = solveSketch(constraintForm, stubRepo(onParallelCircle), {} as Record<string, Body>)
+    expect(folded.geometry?.c0).toEqual(explicit.geometry?.c0)
+    expect(folded.projection_errors).toBeUndefined()
   })
 })
 
@@ -505,11 +549,13 @@ describe('solveSketch pins projected entities (fix-projected-entities-pinned)', 
     const feature: Dict = {
       id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
       entities: [
-        { id: 'c0', kind: 'circle', source: '?edge;circle' },
+        { id: 'c0', kind: 'circle' },
         { id: 'ln', kind: 'line' },  // underconstrained user line
       ],
       initial: { ln: [0, 0, 8, 1] },
-      constraints: [],
+      constraints: [
+        { id: 'proj_c0', kind: 'projection', target: '$c0', source: '?edge;circle' },
+      ],
     }
     const out = solveSketch(feature, stubRepo(projCircle), {} as Record<string, Body>)
     expect(out.status).not.toBe('error')
@@ -527,11 +573,14 @@ describe('solveSketch pins projected entities (fix-projected-entities-pinned)', 
     const feature: Dict = {
       id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
       entities: [
-        { id: 'c0', kind: 'circle', source: '?edge;circle' },
+        { id: 'c0', kind: 'circle' },
         { id: 'p0', kind: 'point' },
       ],
       initial: { p0: [10, 10] },
-      constraints: [{ id: 'cc', kind: 'coincident', a: '$p0', b: '$c0center' }],
+      constraints: [
+        { id: 'proj_c0', kind: 'projection', target: '$c0', source: '?edge;circle' },
+        { id: 'cc', kind: 'coincident', a: '$p0', b: '$c0center' },
+      ],
     }
     const out = solveSketch(feature, stubRepo(projCircle), {} as Record<string, Body>)
     expect(out.status).not.toBe('error')
@@ -548,11 +597,14 @@ describe('solveSketch pins projected entities (fix-projected-entities-pinned)', 
     const feature: Dict = {
       id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
       entities: [
-        { id: 'c0', kind: 'circle', source: '?edge;circle' },
+        { id: 'c0', kind: 'circle' },
         { id: 'p0', kind: 'point' },
       ],
       initial: { p0: [10, 10] },
-      constraints: [{ id: 'cc', kind: 'coincident', a: '$p0', b: '$c0center' }],
+      constraints: [
+        { id: 'proj_c0', kind: 'projection', target: '$c0', source: '?edge;circle' },
+        { id: 'cc', kind: 'coincident', a: '$p0', b: '$c0center' },
+      ],
     }
     const a = solveSketch(feature, stubRepo(projCircle), {} as Record<string, Body>)
     const b = solveSketch(feature, stubRepo(projCircle), {} as Record<string, Body>)
@@ -562,16 +614,19 @@ describe('solveSketch pins projected entities (fix-projected-entities-pinned)', 
   it('d. a drag preview keeps the projected entity pinned', () => {
     if (!solveBytes) return
     // The projected entity's last resolved params live in `initial`; the drag
-    // path strips `source` and must still pin them so the dragged user geometry
-    // cannot pull the projection along.
+    // path strips the projection and must still pin them so the dragged user
+    // geometry cannot pull the projection along.
     const feature = {
       id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
       entities: [
-        { id: 'c0', kind: 'circle', source: '?edge;circle' },
+        { id: 'c0', kind: 'circle' },
         { id: 'ln', kind: 'line' },
       ],
       initial: { c0: [3, 4, 5], ln: [0, 0, 1, 0] },
-      constraints: [{ id: 'cc', kind: 'coincident', a: '$lnend', b: '$c0center' }],
+      constraints: [
+        { id: 'proj_c0', kind: 'projection', target: '$c0', source: '?edge;circle' },
+        { id: 'cc', kind: 'coincident', a: '$lnend', b: '$c0center' },
+      ],
     } as unknown as SketchFeature
 
     const ctx = prepareDragContext(feature, 'ln', null)
