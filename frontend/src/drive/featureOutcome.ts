@@ -107,15 +107,19 @@ export function isBuiltOutcome(outcome: FeatureOutcome): boolean {
  * tolerated in a file: an underconstrained sketch still has sound geometry, and
  * a fully constrained sketch carrying an ignored-constraint warning is a
  * complete sketch with one dead row. Refusing either would make a yellow build
- * mark a hard export error by the back door. An overconstrained sketch is a
- * failed solve, and every other row the problem list carries -- a partial or
+ * mark a hard export error by the back door. A built shell's corner
+ * substitution is the same kind of row: the asked-for sharp join was replaced
+ * by a rounded one, but the solid is valid and the geometry is complete, so the
+ * warning marks the tree without failing the file. An overconstrained sketch is
+ * a failed solve, and every other row the problem list carries -- a partial or
  * failed sibling, a missing verdict -- still fails it.
  */
 export function blocksExport(problem: FeatureProblem): boolean {
   const toleratedSketch = problem.kind === 'sketch'
     && (problem.status === STATUS_NAME[Status.underconstrained]
       || problem.status === STATUS_NAME[Status.fully_constrained])
-  return !toleratedSketch
+  const toleratedShell = problem.kind === 'shell' && problem.status === 'ok'
+  return !toleratedSketch && !toleratedShell
 }
 
 /**

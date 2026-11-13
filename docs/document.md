@@ -451,10 +451,14 @@ sharp edge, so a shell keeps the part's authored corners. `arc` rounds the
 opened gap with a quarter cylinder of radius equal to the thickness (and a
 sphere patch at a corner): outward that rounds the outer corners, inward it
 rounds a concave inner corner such as an L brace. A sharp build the kernel
-refuses (a removed face whose boundary is filleted) still retries arc and
-reports the fallback in `solver_note`; an explicit `arc` never falls back, so a
-refusal is a feature error. CadQuery's `shell()` takes a signed thickness and
-defaults to `kind="arc"`, which maps to `join: arc`; `kind="intersection"` maps
+refuses (a removed face whose boundary is filleted, or a tangent contact
+between faces) still retries arc and reports the substitution as a
+`solver_warning`: the body is valid and an export is unaffected, but the
+corners are not the authored ones, so the feature tree marks the row and the
+drive lists it under `features`. An explicit `arc` never falls back, so a
+refusal is a feature error naming the cause (a round that cannot cross a
+concave edge, or one past a wall's radius). CadQuery's `shell()` takes a
+signed thickness and defaults to `kind="arc"`, which maps to `join: arc`; `kind="intersection"` maps
 to the default. The sign maps as positive -> `outward` and negative -> `inward`,
 with the magnitude as `thickness`.
 

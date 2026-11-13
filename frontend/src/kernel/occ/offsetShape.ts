@@ -70,6 +70,20 @@ function wrapShellAsSolid(oc: OccModule, scope: DisposeScope, shell: OccShape): 
 }
 
 /**
+ * Normalise a raw offset result into a boolean-ready solid: a SOLID is used as
+ * is, a lone SHELL is wrapped, and a COMPOUND or anything else is refused with
+ * null. Skin mode returns a shell for non-primitive input, and the shell
+ * route's closed hollow offsets the whole body before cutting the wall out of
+ * it, so both callers need the same promotion.
+ */
+export function offsetResultSolid(oc: OccModule, scope: DisposeScope, raw: OccShape): OccShape | null {
+  const kind = shapeKind(oc, raw)
+  if (kind === 'solid') return raw
+  if (kind === 'shell') return wrapShellAsSolid(oc, scope, raw)
+  return null
+}
+
+/**
  * Offset `shape` by the signed distance `d` with sharp joins, returning the
  * normalised solid plus the one-to-one image of every source face. `d` must be
  * non-zero (the feature never calls it with zero). Throws [[OffsetError]] when
@@ -102,15 +116,8 @@ export function offsetSolid(
   // Normalise: a SOLID is used as is; a lone SHELL (non-primitive input) is
   // wrapped into a solid; a COMPOUND or anything else is refused (the negative
   // slot case is a compound with invalid topology).
-  const kind = shapeKind(oc, raw)
-  let result: OccShape
-  if (kind === 'solid') {
-    result = raw
-  } else if (kind === 'shell') {
-    result = wrapShellAsSolid(oc, scope, raw)
-  } else {
-    throw new OffsetError('the offset did not produce a solid or a single shell')
-  }
+  let result = offsetResultSolid(oc, scope, raw)
+  if (result === null) throw new OffsetError('the offset did not produce a solid or a single shell')
 
   // A wrapped shell, or an offset that folds, can come back inside out: the
   // signed volume is negative while every face is correct. Reverse the solid so

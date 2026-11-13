@@ -11,12 +11,14 @@ import type { Body } from '../types3d'
 import type { Repository } from '../query'
 import { resolveBody } from './shared/bodyResolution'
 import { resplitBody } from './bodySplit'
-import { readBodyNames, type UuidArray } from '../occ/bodyNames'
+import { readBodyNames, canonicalEdges, type UuidArray } from '../occ/bodyNames'
 import { SubShapeDedup } from '../occ/primitives'
 import { applyShellWithLineage, type ShellDirection, type ShellJoin } from '../occ/thickSolid'
 import { exploreFaces } from '../occ/edgeModifier'
+import { classifyFaceEdges } from '../occ/moveFace'
 import { bodyOfQuery, makeFaceIndexCache, resolveFacesByQuery } from './shared/faceResolution'
 import { OCC_CONFUSION, TOL_LENGTH_SLACK } from '../solverConstants'
+import { swallowUnlessTrap } from '../errors'
 
 type Dict = Record<string, unknown>
 
@@ -33,9 +35,11 @@ interface ShellResult {
   // per-face failure; the field stays for the shared pick-chip contract.
   failed_faces?: string[]
   exception?: string
-  // Informational: sharp was asked but the kernel built arc. Not a warning, so
-  // the body stays ok and an export is unaffected.
-  solver_note?: string
+  // The user asked for sharp corners and the kernel built rounded ones. The
+  // body is valid and an export is unaffected, but the authored corner
+  // treatment was substituted, so the tree marks it and the drive lists it
+  // under `features` like any other build warning.
+  solver_warning?: string
 }
 
 function named(uuids: UuidArray | undefined): boolean {
@@ -114,6 +118,60 @@ function smallestConvexRoundRadius(
     if (smallest === null || radius < smallest) smallest = radius
   }
   return smallest
+}
+
+/**
+ * Whether the body has a concave edge. An arc join spans the offset gap with a
+ * round of radius = thickness; across a concave edge that round must fit
+ * between two walls, and it is the case an L brace's inner corner exposes. The
+ * arc-only path has no second attempt, so this turns OCC's bare build_not_done
+ * into a message that names the geometry the user can change.
+ */
+function hasConcaveEdge(oc: OccModule, scope: DisposeScope, shape: OccShape): boolean {
+  try {
+    const kindOf = classifyFaceEdges(oc, scope, shape)
+    return (canonicalEdges(oc, scope, shape) as OccShape[]).some((e) => kindOf(e) === 'concave')
+  } catch (e) {
+    // The message is a diagnostic for a build that already failed; an analyse
+    // throw must not replace the real shell refusal.
+    swallowUnlessTrap(e)
+    return false
+  }
+}
+
+/**
+ * The sentence a refused arc join gets. `sharp` is the fix because the sharp
+ * join extends the walls instead of rounding them, so it does not need the
+ * round to fit; a smaller thickness is the other way to make the round fit.
+ */
+function arcJoinRefusal(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+  direction: ShellDirection,
+  thickness: number,
+  reason: string,
+): string {
+  if (hasConcaveEdge(oc, scope, shape)) {
+    return `shell: the arc join cannot round an ${direction} wall across a concave edge at thickness ${thickness}; ` +
+      'use Corners: Sharp, or a smaller thickness'
+  }
+  return `shell: the arc join was refused (${reason}); the corner round does not fit at thickness ${thickness}; ` +
+    'use Corners: Sharp, or a smaller thickness'
+}
+
+/**
+ * The warning a sharp request gets when the kernel built the arc join instead.
+ * Substituting the authored corner treatment is a warning, not a note: the body
+ * is valid, but it is not what was asked for, so the tree must mark it. The
+ * cause hint is the two shapes that block OCC's intersection join in practice.
+ */
+function sharpFallbackWarning(sharpReason: string | null | undefined, sealed: boolean): string {
+  const cause = sealed
+    ? 'a tangent contact between faces can block the sharp offset'
+    : 'a tangent contact between faces or a filleted opening edge can block the sharp offset'
+  return `shell: the sharp join was refused (${sharpReason ?? 'the kernel refused it'}); corners were rounded. ` +
+    `Set Corners to Round to accept this, or change the geometry (${cause})`
 }
 
 /**
@@ -203,6 +261,7 @@ export function solveShell(
           'shell outward or use a smaller thickness',
       )
     }
+    if (join === 'arc') throw new Error(arcJoinRefusal(oc, scope, oldShape, direction, thickness, res.reason ?? 'unknown failure'))
     throw new Error(`shell: ${res.reason ?? 'unknown failure'}`)
   }
 
@@ -211,8 +270,8 @@ export function solveShell(
   body.brep_diff = res.diff
   body.modified_by.push(featureId)
 
-  const fallbackNote = (join === 'sharp' && res.usedJoin === 'arc')
-    ? 'shell: the sharp join was refused; corners were rounded (join: arc)'
+  const fallbackWarning = (join === 'sharp' && res.usedJoin === 'arc')
+    ? sharpFallbackWarning(res.sharpReason, topoFaces.length === 0)
     : undefined
 
   if (unresolved.length > 0) {
@@ -223,8 +282,8 @@ export function solveShell(
       unresolved_faces: [...new Set(unresolved)],
       failed_faces: [],
       exception: `shell: ${unresolved.length} face(s) could not be resolved`,
-      ...(fallbackNote !== undefined && { solver_note: fallbackNote }),
+      ...(fallbackWarning !== undefined && { solver_warning: fallbackWarning }),
     }
   }
-  return { status: 'ok', body_id: ids[0], body_ids: ids, ...(fallbackNote !== undefined && { solver_note: fallbackNote }) }
+  return { status: 'ok', body_id: ids[0], body_ids: ids, ...(fallbackWarning !== undefined && { solver_warning: fallbackWarning }) }
 }

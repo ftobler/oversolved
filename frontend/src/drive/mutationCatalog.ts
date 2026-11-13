@@ -823,8 +823,10 @@ const SHELL_SIGN_NOTE =
   '`arc` (fills the offset gap with a quarter cylinder of radius = thickness: outward rounds convex outer ' +
   'corners, inward rounds concave inner ones; CadQuery\'s default `kind="arc"` maps to `join: "arc"`, and ' +
   '`kind="intersection"` to the default). ' +
-  'The sharp build falls back to arc only when it genuinely refuses (a removed face bounded by fillets); with ' +
-  '`join: "arc"` the arc build is used directly and no fallback note is emitted.'
+  'The sharp build falls back to arc only when it genuinely refuses (a tangent contact between faces or a removed ' +
+  'face bounded by fillets); the reply reports the substitution in `solver_warning`, because the corners are not ' +
+  'the authored ones even though the body built. With `join: "arc"` the arc build is used directly: a refused arc ' +
+  'is a feature error naming the cause and never a silent sharp fallback.'
 
 const SHELL_BULK_NOTE =
   'One call may carry the whole pick: `faces` appends the query strings `select` returned, and `thickness`, ' +

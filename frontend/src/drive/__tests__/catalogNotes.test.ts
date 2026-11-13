@@ -418,13 +418,17 @@ describe('Ex017: the shell note names the join', () => {
     }
   })
 
-  it('names the sharp-to-arc fallback the kernel still uses', () => {
+  it('names the sharp-to-arc fallback the kernel still uses, as a warning', () => {
     // `join` is now a choice, but the default sharp build still retries arc
-    // when the sharp offset genuinely refuses; the note says so.
+    // when the sharp offset genuinely refuses; the note says so and says the
+    // substitution is reported as a warning, because the corners are not the
+    // authored ones.
     for (const type of ['add_shell', 'set_shell_field'] as const) {
       const note = mutationInfoOf(type).note!
       expect(note, type).toContain('falls back to arc only when it genuinely refuses')
+      expect(note, type).toContain('solver_warning')
       expect(note, type).toContain('join: "arc"')
+      expect(note, type).toContain('never a silent sharp fallback')
     }
   })
 })

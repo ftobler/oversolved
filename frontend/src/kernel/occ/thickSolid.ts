@@ -28,6 +28,7 @@ import { SubShapeDedup, SubShapeMap } from './subshapeIdentity'
 import { SubShapeIndexMap, faceCentroid } from './primitives'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 import { booleanWithDiff } from './booleans'
+import { offsetResultSolid } from './offsetShape'
 import { mintFaceUuid, shellFacePath, splitFacePath, orderSplitChildren, type SplitChild, type ShellFaceRole } from '../constructionName'
 import {
   builtFaceOf,
@@ -57,6 +58,12 @@ export interface ShellResult {
   names: NewNames | null
   diff: BrepDiff
   usedJoin?: ShellJoin
+  // The sharp attempt's own failure when the arc join replaced it. The sharp
+  // build is tried first and its refusal is the reason the user's authored
+  // corners were not built, so the leaf must be able to say it rather than
+  // leaving the substitution to `usedJoin` alone. Null when no substitution
+  // happened (including an explicit arc request, which never tries sharp).
+  sharpReason?: string | null
 }
 
 function fail(shape: OccShape, reason: string): ShellResult {
@@ -223,11 +230,21 @@ function applySealedShell(
   let off: OccShape | null = null
   let offMaker: OccModifierHistory | null = null
   let lastReason = 'build_not_done'
+  // A Build() that reports done can still hand back a shape that is not a
+  // usable solid: the sharp offset on a body with tangent contacts comes back as
+  // an invalid compound, which used to be taken as success and failed in the
+  // boolean below. The validity gate mirrors the thick-solid path, so the arc
+  // join gets its turn on the same evidence.
+  let invalidReason: string | null = null
+  // First refusal wins: a later arc that also refuses must not overwrite the
+  // sharp diagnosis the leaf reports.
+  let sharpReason: string | null = null
   const joins = join === 'arc'
     ? [oc.GeomAbs_JoinType.GeomAbs_Arc]
     : [oc.GeomAbs_JoinType.GeomAbs_Intersection, oc.GeomAbs_JoinType.GeomAbs_Arc]
   let usedJoin: ShellJoin = join === 'arc' ? 'arc' : 'sharp'
   for (const j of joins) {
+    const isSharp = j === oc.GeomAbs_JoinType.GeomAbs_Intersection
     try {
       const maker = scope.track(new oc.BRepOffsetAPI_MakeOffsetShape_1())
       maker.PerformByJoin(
@@ -237,18 +254,39 @@ function applySealedShell(
       maker.Build()
       if (!maker.IsDone()) {
         lastReason = 'build_not_done'
+        if (isSharp) sharpReason ??= lastReason
         continue
       }
-      off = scope.track(maker.Shape())
+      const candidate = scope.track(maker.Shape())
+      // Skin mode hands back a lone SHELL for non-primitive input; it is not a
+      // boolean tool until it is wrapped, and the cut below is the whole point.
+      // A raw offset can also be a compound the reader cannot classify (a
+      // binding-level throw on a tangent-contact body), which is an unusable
+      // offset, not a crash of the whole shell.
+      let solid: OccShape | null = null
+      try {
+        solid = offsetResultSolid(oc, scope, candidate)
+      } catch (e) {
+        swallowUnlessTrap(e)
+      }
+      if (solid === null || !isValidShape(oc, scope, solid)) {
+        if (solid !== null && solid !== candidate) scope.release(solid)
+        scope.release(candidate)
+        invalidReason = 'the operation produced invalid geometry; try a smaller thickness'
+        if (isSharp) sharpReason ??= invalidReason
+        continue
+      }
+      off = solid
       offMaker = maker
-      usedJoin = j === oc.GeomAbs_JoinType.GeomAbs_Arc ? 'arc' : 'sharp'
+      usedJoin = isSharp ? 'sharp' : 'arc'
       break
     } catch (e) {
       swallowUnlessTrap(e)
       lastReason = 'build_failed'
+      if (isSharp) sharpReason ??= lastReason
     }
   }
-  if (off === null || offMaker === null) return fail(shape, lastReason)
+  if (off === null || offMaker === null) return fail(shape, invalidReason ?? lastReason)
 
   // Offset images keyed by source face UUID, so the cut origin can name them.
   const offsetUuid: SubShapeMap<string> = new SubShapeMap()
@@ -344,7 +382,11 @@ function applySealedShell(
   }
   // The repaired shape is already detached by healShape; the raw build is
   // scope-tracked, so hand it out untracked either way.
-  return { shape: scope.isTracked(built) ? scope.detach(built) : built, success: true, reason: null, names, diff, usedJoin }
+  return {
+    shape: scope.isTracked(built) ? scope.detach(built) : built,
+    success: true, reason: null, names, diff, usedJoin,
+    sharpReason: usedJoin === 'arc' ? sharpReason : null,
+  }
 }
 
 /**
@@ -390,12 +432,15 @@ export function applyShellWithLineage(
   // A produced-but-invalid shape is the more useful diagnosis when a later
   // join also refuses outright, so it outranks build_not_done/build_failed.
   let invalidReason: string | null = null
+  // The sharp attempt's own refusal, kept for the leaf once arc replaces it.
+  let sharpReason: string | null = null
   const joinList = join === 'arc'
     ? [oc.GeomAbs_JoinType.GeomAbs_Arc]
     : [oc.GeomAbs_JoinType.GeomAbs_Intersection, oc.GeomAbs_JoinType.GeomAbs_Arc]
   let usedJoin: ShellJoin = join === 'arc' ? 'arc' : 'sharp'
   let healed: ReturnType<typeof healShape> = null
   for (const j of joinList) {
+    const isSharp = j === oc.GeomAbs_JoinType.GeomAbs_Intersection
     try {
       const mk = scope.track(new oc.BRepOffsetAPI_MakeThickSolid_1())
       const list = scope.track(new oc.TopTools_ListOfShape_1())
@@ -407,6 +452,7 @@ export function applyShellWithLineage(
       mk.Build()
       if (!mk.IsDone()) {
         lastReason = 'build_not_done'
+        if (isSharp) sharpReason ??= lastReason
         continue
       }
       const candidate = scope.track(mk.Shape())
@@ -420,6 +466,7 @@ export function applyShellWithLineage(
           // Invalid and unhealable: drop it and let the next join try.
           scope.release(candidate)
           invalidReason = 'the operation produced invalid geometry; try a smaller thickness or fewer removed faces'
+          if (isSharp) sharpReason ??= invalidReason
           continue
         }
         built = candidate
@@ -429,11 +476,12 @@ export function applyShellWithLineage(
         // the naming pass still frees it, and hand it out detached below.
         scope.track(heal.shape)
       }
-      usedJoin = j === oc.GeomAbs_JoinType.GeomAbs_Arc ? 'arc' : 'sharp'
+      usedJoin = isSharp ? 'sharp' : 'arc'
       break
     } catch (e) {
       swallowUnlessTrap(e)
       lastReason = 'build_failed'
+      if (isSharp) sharpReason ??= lastReason
     }
   }
   if (maker === null || built === null) return fail(shape, invalidReason ?? lastReason)
@@ -488,8 +536,12 @@ export function applyShellWithLineage(
     diff = rebaseDiff(diff, healed.rebase)
     const shape = scope.detach(healed.shape)
     scope.release(built)
-    return { shape, success: true, reason: null, names: rebased, diff, usedJoin }
+    return { shape, success: true, reason: null, names: rebased, diff, usedJoin, sharpReason: usedJoin === 'arc' ? sharpReason : null }
   }
 
-  return { shape: scope.detach(built), success: true, reason: null, names, diff, usedJoin }
+  return {
+    shape: scope.detach(built),
+    success: true, reason: null, names, diff, usedJoin,
+    sharpReason: usedJoin === 'arc' ? sharpReason : null,
+  }
 }
