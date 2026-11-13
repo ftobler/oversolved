@@ -181,10 +181,10 @@ describe('ellipse edge projection', () => {
     // Fit-point block, both endpoints exact to f64: the fit points ARE the
     // projected source ends, t=0 -> [4,0], t=pi/2 -> [4 cos(pi/2), 2].
     expect(p.length).toBeGreaterThan(8)
-    expect(p[0]).toBeCloseTo(4, 12)
-    expect(p[1]).toBeCloseTo(0, 12)
-    expect(p[p.length - 2]).toBeCloseTo(4 * Math.cos(Math.PI / 2), 12)
-    expect(p[p.length - 1]).toBeCloseTo(2, 12)
+    expect(p[0]).toBe(4)
+    expect(p[1]).toBe(0)
+    expect(p[p.length - 2]).toBe(4 * Math.cos(Math.PI / 2))
+    expect(p[p.length - 1]).toBe(2)
   })
 
   it('a rotated in-plane ellipse reports its rotation', () => {
@@ -268,11 +268,11 @@ describe('arc projection (3D body arc)', () => {
     const p = out.params
     expect(p.length).toBeGreaterThan(8)
     // Endpoints survive exactly to f64: t=0 -> (5,0); t=pi/2 -> y-axis of the
-    // source frame is (0, cos phi, sin phi), projected to (0, 5 cos phi).
-    expect(p[0]).toBeCloseTo(5, 12)
-    expect(p[1]).toBeCloseTo(0, 12)
-    expect(p[p.length - 2]).toBeCloseTo(0, 12)
-    expect(p[p.length - 1]).toBeCloseTo(5 * Math.cos(phi), 12)
+    // source frame is (0, cos phi, sin phi), projected to (5 cos(pi/2), 5 cos phi).
+    expect(p[0]).toBe(5)
+    expect(p[1]).toBe(0)
+    expect(p[p.length - 2]).toBe(5 * Math.cos(Math.PI / 2))
+    expect(p[p.length - 1]).toBe(5 * Math.cos(phi))
   })
 })
 
@@ -634,11 +634,11 @@ describe('sampled curve fitting', () => {
     expect(out.kind).toBe('spline')
     expect(out.params).toHaveLength(8)
     expectFollows(out, truth)
-    // Endpoints stay exact: t=0 -> (5, 0), t=pi/2 -> (0, 5 cos(phi)).
-    expect(out.params[0]).toBeCloseTo(5)
-    expect(out.params[1]).toBeCloseTo(0)
-    expect(out.params[6]).toBeCloseTo(0)
-    expect(out.params[7]).toBeCloseTo(5 * Math.cos(PHI))
+    // Endpoints stay exact: t=0 -> (5, 0), t=pi/2 -> (5 cos(pi/2), 5 cos(phi)).
+    expect(out.params[0]).toBe(5)
+    expect(out.params[1]).toBe(0)
+    expect(out.params[6]).toBe(5 * Math.cos(Math.PI / 2))
+    expect(out.params[7]).toBe(5 * Math.cos(PHI))
     // The legacy 33-point seed, built through the production 3D frame and
     // projection (not an analytic reimplementation): no stored quarter arc
     // changes its shape when a document re-solves after this feature lands.
@@ -677,10 +677,10 @@ describe('sampled curve fitting', () => {
     expectFollows(out, truth)
     // The joints of a closed profile depend on these: the first and last fit
     // points are the projected source ends, not a fitted approximation.
-    expect(out.params[0]).toBeCloseTo(5, 12)
-    expect(out.params[1]).toBeCloseTo(0, 12)
-    expect(out.params[out.params.length - 2]).toBeCloseTo(0, 12)
-    expect(out.params[out.params.length - 1]).toBeCloseTo(-5 * Math.cos(PHI), 12)
+    expect(out.params[0]).toBe(5)
+    expect(out.params[1]).toBe(0)
+    expect(out.params[out.params.length - 2]).toBe(5 * Math.cos((3 * Math.PI) / 2))
+    expect(out.params[out.params.length - 1]).toBe(-5 * Math.cos(PHI))
   })
 
   it('lowers a partial ellipse over pi to a fit_spline', () => {
@@ -693,10 +693,10 @@ describe('sampled curve fitting', () => {
     const truth = ellipseTruth(4, 2, 0, Math.PI)
     expect(out.kind).toBe('fit_spline')
     expectFollows(out, truth)
-    expect(out.params[0]).toBeCloseTo(4, 12)
-    expect(out.params[1]).toBeCloseTo(0, 12)
-    expect(out.params[out.params.length - 2]).toBeCloseTo(-4, 12)
-    expect(out.params[out.params.length - 1]).toBeCloseTo(0, 12)
+    expect(out.params[0]).toBe(4)
+    expect(out.params[1]).toBe(0)
+    expect(out.params[out.params.length - 2]).toBe(4 * Math.cos(Math.PI))
+    expect(out.params[out.params.length - 1]).toBe(2 * Math.sin(Math.PI))
   })
 
   it('lowers a sampled three-inflection B-spline to a fit_spline', () => {
@@ -712,17 +712,18 @@ describe('sampled curve fitting', () => {
       { kindH: 'spline', data: { points: samples.map(p => [p[0], p[1], 0]) } }, XY)!
     expect(out.kind).toBe('fit_spline')
     expectFollows(out, samples)
-    expect(out.params[0]).toBeCloseTo(0, 12)
-    expect(out.params[1]).toBeCloseTo(0, 12)
-    expect(out.params[out.params.length - 2]).toBeCloseTo(5, 12)
-    expect(out.params[out.params.length - 1]).toBeCloseTo(0, 12)
+    expect(out.params[0]).toBe(0)
+    expect(out.params[1]).toBe(0)
+    expect(out.params[out.params.length - 2]).toBe(5)
+    expect(out.params[out.params.length - 1]).toBe(0)
   })
 
   it('closes a literally closed sampled loop', () => {
     // A closed B-spline edge (the Resin_Mold breakout loop) repeats its first
-    // sample bit for bit. One cubic cannot close a loop, and feeding the
-    // duplicate sample to the interpolating spline would make its first chord
-    // zero, so the open chain is fitted and the first point repeated at the end.
+    // sample bit for bit. One cubic cannot close a loop, and the duplicate
+    // sample as an endpoint-only seed is a single zero chord the interpolating
+    // spline refuses, so the open chain is fitted and the first point repeated
+    // at the end.
     const samples: Pt[] = []
     for (let i = 0; i <= 32; i++) {
       const t = (2 * Math.PI * i) / 32

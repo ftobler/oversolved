@@ -23,6 +23,7 @@ import { sketchToWorld2d, worldToSketch2d } from '@/kernel/features/shared/plane
 import type { PlaneLike } from '@/kernel/features/shared/planes'
 import { interpolateFitSpline, type Pt } from '@/utils/geometry/fitSpline'
 import {
+  CONIC_TRUTH_STEPS,
   curveScale,
   maxDeviationToFitSpline,
   PROJECTED_CURVE_FIT_TOL,
@@ -195,9 +196,11 @@ describe.skipIf(!ready)('projected sampled curve fit (real OCC + Rust solver)', 
     })
     expect(picked?.items).toHaveLength(1)
     const cap = picked!.items[0]
-    // A closed B-spline tessellates to far more samples than the conic grid;
-    // the lowering decimates them, which is what keeps a re-solve cheap.
-    expect((cap.geometry as { point_count?: number }).point_count).toBeGreaterThan(64)
+    // A closed B-spline tessellates to far more samples than the conic grid, so
+    // this test really exercises the decimation branch; the lowering is what
+    // keeps a re-solve from scaling with the payload.
+    expect((cap.geometry as { point_count?: number }).point_count)
+      .toBeGreaterThan(CONIC_TRUTH_STEPS + 1)
 
     const projected = await runHeadless({
       doc: structuredClone(solid.doc!),

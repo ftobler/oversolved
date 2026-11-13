@@ -22,7 +22,11 @@
  *
  * A closed source (its last sample returns to the first) never gets the cubic
  * trial: one cubic cannot represent a loop, so it fits the open chain and
- * restores the closure with a repeated first fit point.
+ * restores the closure with a repeated first fit point. The seam is C0 only:
+ * the position is exact because it is the same point, but the tangent is
+ * whatever the two chain ends' interpolation gives, not a periodic condition.
+ * A closed chain is capped one point lower than an open one, so the repeated
+ * closure point still fits the document's 64-point block.
  */
 
 import { TOL_LOOP_CLOSURE, TOL_TOPOLOGY_MERGE } from '@/kernel/solverConstants'
@@ -160,12 +164,15 @@ function worstSpan(curve: FitSplineCurve, chosen: readonly number[], samples: re
  * runs spans then samples in order. Returns the best point set found and whether
  * it met the tolerance before the cap.
  *
- * The cap is `MAX_FIT_POINTS`, so the flat block is at most 128 scalars, under
- * `MAX_INITIAL_PARAMS` (132) even before any end handle is added.
+ * `maxPoints` defaults to `MAX_FIT_POINTS`. A closed loop passes one less so its
+ * repeated closure point still lands inside the 64-point block, which keeps the
+ * flat params at 128 scalars, under `MAX_INITIAL_PARAMS` (132) even before any
+ * end handle is added.
  */
 export function adaptiveFitPoints(
   samples: readonly Pt[],
   tolerance: number,
+  maxPoints = MAX_FIT_POINTS,
 ): { points: Pt[]; converged: boolean } {
   const candidates = dropRepeatedNeighbours(samples)
   if (candidates.length < 2) return { points: candidates, converged: false }
@@ -183,7 +190,7 @@ export function adaptiveFitPoints(
     }
     const worst = worstSpan(curve, chosen, candidates)
     if (worst.deviation <= tolerance) return { points, converged: true }
-    if (chosen.length >= MAX_FIT_POINTS) return { points, converged: false }
+    if (chosen.length >= maxPoints) return { points, converged: false }
     best = points
     // Every remaining span is a single sample wide: the candidate set itself
     // cannot describe the curve more finely.
@@ -241,9 +248,9 @@ export function lowerProjectedCurve(
   if (samples.length < 2) return null
   const tolerance = Math.max(PROJECTED_CURVE_FIT_TOL * curveScale(samples), TOL_TOPOLOGY_MERGE)
   // Closure is a topology fact, not a fit-accuracy one: a 0.1 degree gap is a
-  // real gap even when it sits under the curve's fit rung, so the loop-closure
-  // rung is the ceiling here.
-  const closed = isClosedLoop(samples, Math.min(tolerance, TOL_LOOP_CLOSURE))
+  // real gap even when it sits under the curve's fit rung, so the absolute
+  // loop-closure rung decides it, never the (always looser) fit tolerance.
+  const closed = isClosedLoop(samples, TOL_LOOP_CLOSURE)
   if (!closed) {
     const cubic = fitCubicBezier(fitSamples.map(p => [p[0], p[1]] as Pt))
     // A cubic through a straight or nearly straight sample set is the right
@@ -257,11 +264,15 @@ export function lowerProjectedCurve(
     }
   }
   // Fitting the open chain and closing it afterwards keeps the closing sample
-  // out of the interpolation, where repeating the first point would make the
-  // first chord zero length and the spline refuse the block.
+  // out of the interpolation: as an endpoint-only seed a closed chain is just
+  // `[p0, p0]`, one zero chord the spline cannot interpolate. The chain cap is
+  // one lower so the repeated closure point still fits the 64-point block.
   const chain = closed ? samples.slice(0, -1) : samples
   if (chain.length < 2) return null
-  const fit = adaptiveFitPoints(chain, tolerance)
+  // A three-sample closed source leaves a two-point chain: one span with no
+  // interior sample, so the fit reports converged without a deviation check.
+  // That is the payload's whole information content, not a silent fallback.
+  const fit = adaptiveFitPoints(chain, tolerance, closed ? MAX_FIT_POINTS - 1 : MAX_FIT_POINTS)
   const points = closed ? closeLoop(fit.points) : fit.points
   if (points.length < 2) return null
   // The closure re-solves the whole chain, so the chain's converged verdict is
@@ -277,10 +288,13 @@ export function lowerProjectedCurve(
   const params: number[] = []
   for (const p of points) params.push(p[0], p[1])
   if (converged) return { kind: 'fit_spline', params }
+  // The repeated closure point is one point written twice, not a second fit
+  // point; the warning counts the distinct set.
+  const fitPointCount = points.length - (closed ? 1 : 0)
   return {
     kind: 'fit_spline',
     params,
-    warning: `curve fit stopped at ${points.length} fit points without meeting its tolerance; `
+    warning: `curve fit stopped at ${fitPointCount} fit points without meeting its tolerance; `
       + 'the closest fit is kept',
   }
 }

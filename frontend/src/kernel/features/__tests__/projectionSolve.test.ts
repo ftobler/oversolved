@@ -119,11 +119,12 @@ describe('solveSketch projection lowering', () => {
     expect(g).toBeDefined()
     expect(g!.length).toBeGreaterThan(8)
     expect(g!.length % 2).toBe(0)
-    // The fit points ARE the projected ends, exact to f64.
-    expect(g![0]).toBeCloseTo(4, 12)
-    expect(g![1]).toBeCloseTo(0, 12)
-    expect(g![g!.length - 2]).toBeCloseTo(4 * Math.cos(Math.PI / 2), 12)
-    expect(g![g!.length - 1]).toBeCloseTo(2, 12)
+    // The fit points ARE the projected ends, and a pinned projection passes the
+    // solver round trip bit for bit.
+    expect(g![0]).toBe(4)
+    expect(g![1]).toBe(0)
+    expect(g![g!.length - 2]).toBe(4 * Math.cos(Math.PI / 2))
+    expect(g![g!.length - 1]).toBe(2)
     expect(out.resolved_kinds?.ell0).toBe('fit_spline')
   })
 

@@ -123,6 +123,42 @@ describe('lowerProjectedCurve', () => {
     expect(out.warning).toContain('the closest fit is kept')
   })
 
+  it('keeps a closed fit inside the 64 point block when the cap is hit', () => {
+    // A 100-tooth star, closed literally: no 63-span spline can follow it, so
+    // the open chain hits its cap. The closure adds one point, and the closed
+    // block must still pass the 64-point document limit and interpolate.
+    const truth: Pt[] = []
+    const steps = 200
+    for (let i = 0; i <= steps; i++) {
+      const t = (2 * Math.PI * i) / steps
+      const radius = i % 2 === 0 ? 3 : 2
+      truth.push([radius * Math.cos(t), radius * Math.sin(t)])
+    }
+    truth[truth.length - 1] = [truth[0][0], truth[0][1]]
+    const out = lowerProjectedCurve(truth, truth)!
+    expect(out.kind).toBe('fit_spline')
+    expect(out.params.length / 2).toBe(MAX_FIT_POINTS)
+    // 63 distinct fit points plus the repeated closure point: the warning names
+    // the distinct set, the block carries all 64.
+    expect(out.warning).toContain('at 63 fit points')
+    const points = pairs(out.params)
+    expect(points[points.length - 1]).toEqual(points[0])
+    expect(() => interpolateFitSpline(points)).not.toThrow()
+  })
+
+  it('accepts a three-sample closed loop as the minimum-information loop', () => {
+    // Two distinct samples: the open chain is a single span with no interior
+    // point to contradict the tolerance, so the closed fit is that span plus
+    // the repeated start. It is degenerate by construction, not by a fallback.
+    const truth: Pt[] = [[0, 0], [2, 1], [0, 0]]
+    const out = lowerProjectedCurve(truth, truth)!
+    expect(out.kind).toBe('fit_spline')
+    expect(out.warning).toBeUndefined()
+    expect(out.params.length / 2).toBe(3)
+    const points = pairs(out.params)
+    expect(points[points.length - 1]).toEqual(points[0])
+  })
+
   it('returns null with no curve to lower', () => {
     expect(lowerProjectedCurve([], [])).toBeNull()
     expect(lowerProjectedCurve([[1, 2]], [[1, 2]])).toBeNull()
