@@ -112,6 +112,35 @@ function addWithNothingMessage(opName: string, hadBodies: boolean): string {
 }
 
 /**
+ * Whether a cut that consumed whole bodies owes the user a word.
+ *
+ * A body vanishing under a cut is only news when the user aimed at it, or when
+ * nothing is left for a later feature to work on. An automatic cut reaches
+ * every body, so a lump in its path is removed by design: the practice run
+ * `01_openscad__openscad-official-examples__examples__Old__example008.scad`
+ * leaves a disconnected 10 mm lump from a three-way intersect, the automatic
+ * 20 mm core cut swallows it, and the model was correct while the document
+ * could never read clean. Keeping the warning for every consumption turned a
+ * routine boolean into a permanent red row.
+ *
+ * `mergeTarget` is the authored field, not the resolved ids: an explicit target
+ * makes the cut's target list exactly the bodies that ref names, so any
+ * consumption under it is a body the user picked. Other CAD does not warn about
+ * this at all (user decision 2026-11-12); these two cases are the ones where
+ * the deletion is a surprise rather than the asked-for result.
+ */
+function cutConsumptionIsWorthReporting(
+  mergeTarget: string | null,
+  bodyStore: Record<string, Body>,
+): boolean {
+  if (mergeTarget) return true
+  // A body with no shape is a placeholder, not material: it cannot be what a
+  // user or a later feature builds on, so only a shaped survivor counts as
+  // "the part is not empty".
+  return !Object.values(bodyStore).some((body) => body.shape !== null)
+}
+
+/**
  * Apply a boolean body operation (add / cut / new) using `toolShape`.
  * Mirrors `_apply_body_operation`; raises (throws) for user-facing errors which
  * the caller catches and records as status. Guaranteed result keys: status,
@@ -270,11 +299,15 @@ export function applyBodyOperation(
     result.body_id = cutBodyId ?? bodyId
     result.body_ids = cutBodyIds
     result.operation = 'cut'
+    // `cutBodyId` is only ever set for a body that still holds a solid (the
+    // consumed branch continues before it), so this reads the body the feature
+    // actually changed and never a deleted one. A cut whose only effect was a
+    // consumption therefore leaves this undefined and the check silent.
     const cutBody = cutBodyId !== null ? bodyStore[cutBodyId] : undefined
     if (cutBody && brepDiffIsEmpty(cutBody.brep_diff)) {
       result.solver_warning = `${opName}: operation produced no geometry change`
     }
-    if (consumedBodyIds.length > 0) {
+    if (consumedBodyIds.length > 0 && cutConsumptionIsWorthReporting(mergeTarget, bodyStore)) {
       // The bodies are gone, so body_ids must not name them. This is the same
       // deletion event hole and array report, with the same wording.
       const deleted = consumedBodyIds

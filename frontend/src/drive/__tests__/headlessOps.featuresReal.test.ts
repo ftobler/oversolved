@@ -9,6 +9,8 @@ import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { runHeadless, measureHeadless, seedBuiltins } from '../headlessOps'
+import { DocHandleStore } from '../docHandleStore'
+import { runReply } from '../mcpDocRef'
 import { MUTATION_EXAMPLES } from '../mutationExamples'
 import { HOLE_ALL_SITES_MISS, HOLE_ON_LINE_SKETCH } from './featureFixtures'
 import { nonSketchProblems } from './buildProblems'
@@ -51,6 +53,89 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
     // so there is no underconstrained warning row to explain away.
     expect(result.part.solveOutcomes().sk1?.status).toBe('fully_constrained')
     expect(result.part.solveOutcomes().sk1?.dof).toBe(0)
+  }, 120_000)
+
+  it('keeps an automatic cut that eats a split lump out of the problems list', async () => {
+    // The example008 practice shape in miniature: a plate, a slot that severs
+    // it into two lumps, then an automatic cut whose footprint reaches only the
+    // small lump and swallows it. The model is right -- the cut was sized from
+    // the part, not aimed at a body -- so the reply must read clean, not carry
+    // "the cut removed all of body ..." forever. The three sketches are fully
+    // constrained (anchored and dimensioned) so no sketch row joins the list.
+    const result = await runHeadless({
+      doc: emptyDoc(),
+      steps: [
+        { mutation: { type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_top' } },
+        {
+          mutation: {
+            type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [40, 30],
+            p0Ref: '@builtin_origin', dimensions: true,
+          },
+        },
+        { mutation: { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 10, operation: 'new' } },
+        // Slot across the plate at x 30..32: a 30 mm lump and an 8 mm one.
+        { mutation: { type: 'add_sketch', featureId: 'sk2', plane: '@builtin_plane_top' } },
+        {
+          mutation: {
+            type: 'add_rect', featureId: 'sk2', p0: [30, 0], p1: [32, 30],
+            entityIds: ['slot_b', 'slot_r', 'slot_t', 'slot_l'], dimensions: true,
+          },
+        },
+        {
+          mutation: {
+            type: 'add_constraint', featureId: 'sk2', kind: 'point_distance_x',
+            targets: ['vertex:sk2:slot_b:start', '@builtin_origin'], value: 30, sign: -1,
+          },
+        },
+        {
+          mutation: {
+            type: 'add_constraint', featureId: 'sk2', kind: 'point_distance_y',
+            targets: ['vertex:sk2:slot_b:start', '@builtin_origin'], value: 0, sign: -1,
+          },
+        },
+        {
+          mutation: {
+            type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2', distance: 20,
+            operation: 'cut', direction: 'symmetric',
+          },
+        },
+        // Reach only the small lump (x 32..40) and enclose it: the symmetric
+        // span also covers the plate's 10 mm thickness on both sides.
+        { mutation: { type: 'add_sketch', featureId: 'sk3', plane: '@builtin_plane_top' } },
+        {
+          mutation: {
+            type: 'add_rect', featureId: 'sk3', p0: [31, 0], p1: [41, 30],
+            entityIds: ['eat_b', 'eat_r', 'eat_t', 'eat_l'], dimensions: true,
+          },
+        },
+        {
+          mutation: {
+            type: 'add_constraint', featureId: 'sk3', kind: 'point_distance_x',
+            targets: ['vertex:sk3:eat_b:start', '@builtin_origin'], value: 31, sign: -1,
+          },
+        },
+        {
+          mutation: {
+            type: 'add_constraint', featureId: 'sk3', kind: 'point_distance_y',
+            targets: ['vertex:sk3:eat_b:start', '@builtin_origin'], value: 0, sign: -1,
+          },
+        },
+        {
+          mutation: {
+            type: 'add_extrude', featureId: 'ex3', sketchQuery: '$sk3', distance: 20,
+            operation: 'cut', direction: 'symmetric',
+          },
+        },
+      ],
+    })
+    expect(result.ok).toBe(true)
+    // The small lump is gone and the big one survives.
+    expect(result.bodies).toHaveLength(1)
+    expect(result.features).toEqual([])
+    expect(result.part.solveOutcomes().ex3?.warning).toBeUndefined()
+    // The summary a one-line client reads has nothing to act on either.
+    const reply = runReply(result, false, new DocHandleStore())
+    expect(String(reply.summary)).not.toContain('problems:')
   }, 120_000)
 
   it('lists an underconstrained sketch as a warning row without flipping ok', async () => {
