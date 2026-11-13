@@ -96,7 +96,7 @@ describe('solveSketch projection lowering', () => {
     expect(out.resolved_kinds?.e0).toBe('ellipse')
   })
 
-  it('surfaces resolved_kinds=spline for a partial elliptical edge (declared ellipse)', () => {
+  it('surfaces resolved_kinds=fit_spline for a partial elliptical edge (declared ellipse)', () => {
     if (!solveBytes) return
     const partialEllipse: Dict = {
       type: 'edge', kind: 'ellipse', center: [0, 0, 0], a: 4, b: 2,
@@ -112,16 +112,24 @@ describe('solveSketch projection lowering', () => {
     }
     const out = solveSketch(feature, stubRepo(partialEllipse), {} as Record<string, Body>)
     expect(out.status).not.toBe('error')
-    // 8 params => lowered to a spline; the doc entity must adopt 'spline' or a
-    // declared-'ellipse' entity renders 8 spline numbers as [cx,cy,a,b,theta].
-    expect(out.geometry?.ell0).toHaveLength(8)
-    expect(out.resolved_kinds?.ell0).toBe('spline')
+    // A quarter of this eccentric ellipse misses one cubic by 2.9e-3 of its
+    // size, so it lowers to a fit spline: a 2N-point block the doc entity must
+    // render as that kind, not as [cx,cy,a,b,theta].
+    const g = out.geometry?.ell0
+    expect(g).toBeDefined()
+    expect(g!.length).toBeGreaterThan(8)
+    expect(g!.length % 2).toBe(0)
+    expect(g![0]).toBeCloseTo(4)
+    expect(g![1]).toBeCloseTo(0)
+    expect(g![g!.length - 2]).toBeCloseTo(0)
+    expect(g![g!.length - 1]).toBeCloseTo(2)
+    expect(out.resolved_kinds?.ell0).toBe('fit_spline')
   })
 
-  it('converges: a doc entity already adopted as spline re-solves from an ellipse source', () => {
+  it('converges: a doc entity already a fit_spline re-solves from an ellipse source', () => {
     if (!solveBytes) return
-    // Second solve after convergence: the doc entity kind is now 'spline' (it
-    // adopted the resolved kind last solve) but its source edge is still an
+    // Second solve after convergence: the doc entity kind is now 'fit_spline'
+    // (it adopted the resolved kind last solve) but its source edge is still an
     // ellipse. Projection must branch on the resolved geometry, not the declared
     // kind, or the spline branch reads a non-existent points array and fails.
     const partialEllipse: Dict = {
@@ -130,7 +138,7 @@ describe('solveSketch projection lowering', () => {
     }
     const feature: Dict = {
       id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
-      entities: [{ id: 'ell0', kind: 'spline' }],
+      entities: [{ id: 'ell0', kind: 'fit_spline' }],
       initial: {},
       constraints: [
         { id: 'proj_ell0', kind: 'projection', target: '$ell0', source: '?edge;ellipse' },
@@ -138,8 +146,72 @@ describe('solveSketch projection lowering', () => {
     }
     const out = solveSketch(feature, stubRepo(partialEllipse), {} as Record<string, Body>)
     expect(out.status).not.toBe('error')
-    expect(out.geometry?.ell0).toHaveLength(8)
-    expect(out.resolved_kinds).toBeUndefined()  // already spline -> no further change
+    expect(out.geometry?.ell0!.length).toBeGreaterThan(8)
+    expect(out.resolved_kinds).toBeUndefined()  // already fit_spline -> no further change
+  })
+
+  it('warns when a sampled curve fit cannot meet its tolerance', () => {
+    if (!solveBytes) return
+    // A sawtooth payload no 64-point interpolating spline can follow: the fit
+    // must stop at the cap, keep its best effort, and still solve. The warning
+    // is what keeps the accuracy loss visible on the sketch instead of shipping
+    // a silently coarse curve.
+    const points: number[][] = []
+    for (let i = 0; i <= 200; i++) points.push([i / 200, i % 2 === 0 ? 1 : -1, 0])
+    const feature: Dict = {
+      id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [{ id: 'sp0', kind: 'spline' }],
+      initial: {},
+      constraints: [
+        { id: 'proj_sp0', kind: 'projection', target: '$sp0', source: '?edge;spline' },
+      ],
+    }
+    const out = solveSketch(
+      feature, stubRepo({ type: 'edge', kind: 'spline', points }), {} as Record<string, Body>,
+    )
+    expect(out.status).not.toBe('error')
+    expect(out.geometry?.sp0.length).toBeGreaterThan(8)
+    expect(out.geometry!.sp0.length).toBeLessThanOrEqual(132)
+    expect(out.solver_warning).toContain('projected curve fit used')
+    expect(out.solver_warning).toContain('the closest fit is kept')
+  })
+
+  it('drops a spline control-point constraint when the projection resolves to fit_spline', () => {
+    if (!solveBytes) return
+    // A `spline`'s c1/c2 are Bezier controls, not points on the interpolating
+    // spline a fit_spline describes. Once the projection resolves the entity to
+    // fit_spline, the key-existence rule in partDocToSketches must drop the row
+    // by name instead of binding it to the first fit point, which would silently
+    // move what the user asked for. The general kind-applicability table is
+    // feature/projection-kind-change-operands.md; this pins the half the
+    // lowering already owns.
+    const partialEllipse: Dict = {
+      type: 'edge', kind: 'ellipse', center: [0, 0, 0], a: 4, b: 2,
+      axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI / 2,
+    }
+    const feature: Dict = {
+      id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [
+        { id: 'sp0', kind: 'spline' },
+        { id: 'p0', kind: 'point' },
+      ],
+      initial: { p0: [1, 1] },
+      constraints: [
+        { id: 'proj_sp0', kind: 'projection', target: '$sp0', source: '?edge;ellipse' },
+        {
+          id: 'c_p0_c1', kind: 'coincident',
+          a: { entity: 'p0', point: 'xy' }, b: { entity: 'sp0', point: 'c1' },
+        },
+      ],
+    }
+    const out = solveSketch(feature, stubRepo(partialEllipse), {} as Record<string, Body>)
+    expect(out.status).not.toBe('error')
+    expect(out.resolved_kinds?.sp0).toBe('fit_spline')
+    expect(out.dropped_constraints).toContainEqual({
+      id: 'c_p0_c1', kind: 'coincident', reason: 'operand c1 not on fit_spline',
+    })
+    // The dropped row carries no residual: the free point keeps its position.
+    expect(out.geometry?.p0).toEqual([1, 1])
   })
 
   it('drops an unresolvable projection and still solves the rest of the sketch', () => {

@@ -12,7 +12,8 @@
  * shape); a declared `point` on a curved source is that curve's centre.
  */
 
-import { fitCubicBezier } from '@/utils/geometry/bezierFit'
+import { CONIC_TRUTH_STEPS, lowerProjectedCurve } from '@/utils/geometry/projectedCurveFit'
+import type { Pt } from '@/utils/geometry/fitSpline'
 import { dot as dot3, cross as cross3 } from '@/utils/vec3'
 import { worldToSketch2d, sketchToWorld2d } from './shared/planes'
 import type { PlaneLike } from './shared/planes'
@@ -41,6 +42,9 @@ export interface Resolved3dGeometry {
 interface ProjectedParams {
   kind: string
   params: number[]
+  /** A lowering fact the caller reports on the sketch warning channel (an
+   *  adaptive curve fit that stopped at its point cap). */
+  warning?: string
 }
 
 function len3(a: number[]): number {
@@ -139,6 +143,31 @@ function dirAt(thetaDeg: number): number[] {
 /** The 2D components of a world direction in the sketch frame. */
 function dirTo2d(u: number[], plane: PlaneFrame): number[] {
   return [dot3(u, plane.x_axis), dot3(u, plane.y_axis)]
+}
+
+/** A sampled curve in the sketch frame. The `steps` grid is the caller's: the
+ *  legacy 32-point one-cubic seed and the dense truth sample share this loop so
+ *  their first and last points are the same values. */
+function sampleCurve2d(
+  pointAt: (t: number) => number[],
+  plane: PlaneFrame,
+  t0: number,
+  t1: number,
+  steps: number,
+): Pt[] {
+  const out: Pt[] = []
+  for (let i = 0; i <= steps; i++) {
+    out.push(worldToSketch2d(pointAt(t0 + (t1 - t0) * (i / steps)), plane) as Pt)
+  }
+  return out
+}
+
+/** The lowered form of a sampled curve: the kind plus the flat params, with the
+ *  cap warning riding along when the fit could not meet its tolerance. */
+function fitProjectedCurve(truth: Pt[], seed: Pt[]): ProjectedParams | null {
+  const fit = lowerProjectedCurve(truth, seed)
+  if (!fit) return null
+  return { kind: fit.kind, params: fit.params, ...(fit.warning ? { warning: fit.warning } : {}) }
 }
 
 /**
@@ -382,8 +411,9 @@ export function resolve3dGeometry(data: Dict, sketchFrame?: SketchFrameLookup): 
  * source edge is still a circle). The one declared-kind rule lives in the
  * caller, not here: `lowerProjectionConstraints` substitutes `projectCenter` for
  * a projection declared `point` on a curved source. Returns the resolved kind
- * plus params; a tilted circle lowers to 'ellipse', a partial ellipse to
- * 'spline', and an edge-on curve to its silhouette 'line'.
+ * plus params; a tilted circle lowers to 'ellipse', a sampled curve to a
+ * 'spline' or, when one cubic cannot follow it, a 'fit_spline', and an edge-on
+ * curve to its silhouette 'line'.
  */
 export function projectTo2d(
   g3d: Resolved3dGeometry,
@@ -453,14 +483,11 @@ export function projectTo2d(
       return sampledSilhouetteLine(pointAt, { a0: a0 as number, a1: a1 as number, phase },
         [fullParams[0], fullParams[1]], dir, plane)
     }
-    const N = 32
-    const pts2d: [number, number][] = []
-    for (let i = 0; i <= N; i++) {
-      const t = (a0 as number) + ((a1 as number) - (a0 as number)) * (i / N)
-      pts2d.push(worldToSketch2d(pointAt(t), plane) as [number, number])
-    }
-    const params = fitCubicBezier(pts2d)
-    return params ? { kind: 'spline', params } : null
+    // A 32-point grid is the legacy one-cubic seed; a denser sample is the
+    // truth its deviation is judged against.
+    const seed = sampleCurve2d(pointAt, plane, a0 as number, a1 as number, 32)
+    const truth = sampleCurve2d(pointAt, plane, a0 as number, a1 as number, CONIC_TRUTH_STEPS)
+    return fitProjectedCurve(truth, seed)
   }
   if (kindH === 'arc') {
     const center = data.center as number[]
@@ -509,15 +536,11 @@ export function projectTo2d(
       // Otherwise there is no 2D ellipse-arc entity, and a circular arc through
       // the projected endpoints would invent a radius (the chord endpoints are
       // at different distances from the projected center) and an arbitrary
-      // side. Sample and fit a cubic Bezier instead, mirroring the
-      // partial-ellipse branch above.
-      const N = 32
-      const pts2d: [number, number][] = []
-      for (let i = 0; i <= N; i++) {
-        pts2d.push(worldToSketch2d(pointAt(a0 + (a1 - a0) * (i / N)), plane) as [number, number])
-      }
-      const params = fitCubicBezier(pts2d)
-      return params ? { kind: 'spline', params } : null
+      // side. Sample and lower to the curve entity that follows it instead,
+      // mirroring the partial-ellipse branch above.
+      const seed = sampleCurve2d(pointAt, plane, a0, a1, 32)
+      const truth = sampleCurve2d(pointAt, plane, a0, a1, CONIC_TRUTH_STEPS)
+      return fitProjectedCurve(truth, seed)
     }
 
     const s2d = worldToSketch2d(pointAt(a0), plane)
@@ -538,13 +561,12 @@ export function projectTo2d(
     return { kind: 'arc', params: mirrored ? [...c2d, r2d, ea, sa] : [...c2d, r2d, sa, ea] }
   }
   if (kindH === 'spline') {
-    // Any sampled 3D curve (spline/NURBS) projects to 2D points, then a cubic
-    // Bezier is least-squares fit to them -> the 8-param spline entity.
+    // The payload's sampled polyline is both the truth and the one-cubic seed:
+    // it is all the source tells us, and the legacy fit used exactly it.
     const pts3d = data.points as number[][] | undefined
     if (!pts3d || pts3d.length < 2) return null
-    const pts2d = pts3d.map((p) => worldToSketch2d(p, plane) as [number, number])
-    const params = fitCubicBezier(pts2d)
-    return params ? { kind: 'spline', params } : null
+    const pts2d = pts3d.map((p) => worldToSketch2d(p, plane) as Pt)
+    return fitProjectedCurve(pts2d, pts2d)
   }
   return null
 }
