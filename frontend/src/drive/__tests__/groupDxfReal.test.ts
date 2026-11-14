@@ -1,9 +1,10 @@
 // @vitest-environment node
 //
-// A DXF import is held by one Group constraint, so the profile arrives at 2 DOF
+// A DXF import is held by one Group constraint, so the profile arrives at 3 DOF
 // and keeps its shape through the solve and the write-back. Pinning one vertex
-// to the origin closes the last 2, an extrude then measures the authored square
-// with its circular hole (the volume is the test: any deformation changes it).
+// to the origin and a horizontal on the anchor line close them, an extrude then
+// measures the authored square with its circular hole (the volume is the test:
+// any deformation changes it).
 //
 // Gated like the other real drive suites: skips when OCC.js or the Rust node
 // build is absent.
@@ -75,8 +76,9 @@ describe.skipIf(!ready)('grouped DXF import, pin and extrude (real OCC + Rust so
     const ids = (feature.entities ?? []).map(e => e.id)
     expect(ids).toHaveLength(5)
 
-    // Pin the first imported line's start (the group's anchor) to the origin,
-    // then extrude the profile by 2.
+    // Pin the first imported line's start (the group's anchor) to the origin
+    // and stop the profile's free turn with a horizontal on that line, then
+    // extrude the profile by 2.
     const built = await runHeadless({
       doc: firstDoc,
       steps: [
@@ -84,6 +86,7 @@ describe.skipIf(!ready)('grouped DXF import, pin and extrude (real OCC + Rust so
           type: 'add_constraint', featureId: 'sk', kind: 'coincident',
           targets: [`vertex:sk:${ids[0]}:start`, '@builtin_origin'],
         }),
+        m({ type: 'add_constraint', featureId: 'sk', kind: 'horizontal', targets: [`entity:sk:${ids[0]}`] }),
         m({ type: 'add_extrude', featureId: 'ex', label: 'Plate', sketchQuery: '$sk', distance: 2, operation: 'new' }),
       ],
       docId: 'group-dxf-build',

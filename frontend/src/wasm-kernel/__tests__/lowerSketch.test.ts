@@ -433,4 +433,104 @@ describe('lowerSketch group', () => {
       constraints: [{ id: 'g1', kind: 'group', refs: [{ entity: 'gone' }] }],
     })).toThrow("group 'g1' names unknown entity 'gone'")
   })
+
+  // ─── The rotation carrier ───
+
+  const carrierOf = (c: { refs: Array<{ role: number; ref: unknown }> }) =>
+    c.refs.find(r => r.role === Role.b || r.role === Role.arc)?.ref
+
+  it('names the farthest candidate as the carrier on every row of the group', () => {
+    const { input, layout } = lowerSketch({
+      id: 'S1',
+      entities: [
+        { id: 'l1', kind: 'line' },
+        { id: 'c1', kind: 'circle' },
+      ],
+      initial: { l1: [0, 0, 4, 0], c1: [30, 0, 2] },
+      constraints: [{
+        id: 'g1', kind: 'group', refs: [{ entity: 'l1' }, { entity: 'c1' }],
+      }],
+    })
+    const groups = input.constraints.filter(c => c.kind === ConstraintKindCode.group)
+    expect(groups).toHaveLength(2)
+    // The circle centre is 30 from the anchor, the line end only 4: the far
+    // point conditions the turn best.
+    const want = { kind: 'entity', index: layout.findIndex(l => l.id === 'c1'), point: Sel.center }
+    for (const group of groups) expect(carrierOf(group)).toEqual(want)
+  })
+
+  it('breaks a carrier tie by member order and then selector order', () => {
+    const { input, layout } = lowerSketch({
+      id: 'S1',
+      entities: [
+        { id: 'a', kind: 'line' },
+        { id: 'b', kind: 'line' },
+      ],
+      initial: { a: [0, 0, 5, 0], b: [0, 0, -5, 0] },
+      constraints: [{ id: 'g1', kind: 'group', refs: [{ entity: 'a' }, { entity: 'b' }] }],
+    })
+    const groups = input.constraints.filter(c => c.kind === ConstraintKindCode.group)
+    // Both line ends sit 5 from the anchor; the first member's end wins.
+    for (const group of groups) {
+      expect(carrierOf(group)).toEqual({
+        kind: 'entity', index: layout.findIndex(l => l.id === 'a'), point: Sel.end,
+      })
+    }
+  })
+
+  it('does not choose a derived point of a whole member as the carrier', () => {
+    const { input, layout } = lowerSketch({
+      id: 'S1',
+      entities: [
+        { id: 'p', kind: 'point' },
+        { id: 'a', kind: 'arc' },
+        { id: 'l', kind: 'line' },
+      ],
+      // The arc's drawn start is 10 from the anchor while its centre sits on
+      // it. A derived point has no param pair of its own, so the farthest
+      // candidate that can carry the row replacement is the line's end.
+      initial: { p: [0, 0], a: [0, 0, 10, 0, 90], l: [-5, 0, -5.5, 0] },
+      constraints: [{
+        id: 'g1', kind: 'group', refs: [{ entity: 'p' }, { entity: 'a' }, { entity: 'l' }],
+      }],
+    })
+    const groups = input.constraints.filter(c => c.kind === ConstraintKindCode.group)
+    expect(groups).toHaveLength(3)
+    for (const group of groups) {
+      expect(carrierOf(group)).toEqual({
+        kind: 'entity', index: layout.findIndex(l => l.id === 'l'), point: Sel.end,
+      })
+    }
+  })
+
+  it('falls back to an arc angle when every candidate sits on the anchor', () => {
+    const { input, layout } = lowerSketch({
+      id: 'S1',
+      entities: [
+        { id: 'a', kind: 'arc' },
+        { id: 'b', kind: 'arc' },
+      ],
+      initial: { a: [0, 0, 3, 0, 90], b: [0, 0, 2, 10, 80] },
+      constraints: [{ id: 'g1', kind: 'group', refs: [{ entity: 'a' }, { entity: 'b' }] }],
+    })
+    const groups = input.constraints.filter(c => c.kind === ConstraintKindCode.group)
+    expect(groups).toHaveLength(2)
+    const arcIndex = layout.findIndex(l => l.id === 'a')
+    for (const group of groups) {
+      // Concentric arcs: the first whole member's start angle carries the turn.
+      expect(carrierOf(group)).toEqual({ kind: 'entity', index: arcIndex, point: Sel.absent })
+    }
+  })
+
+  it('lowers a lone circle with no carrier and keeps its old rows', () => {
+    const { input } = lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'c1', kind: 'circle' }],
+      initial: { c1: [4, 3, 2] },
+      constraints: [{ id: 'g1', kind: 'group', refs: [{ entity: 'c1' }] }],
+    })
+    const groups = input.constraints.filter(c => c.kind === ConstraintKindCode.group)
+    expect(groups).toHaveLength(1)
+    expect(carrierOf(groups[0])).toBeUndefined()
+  })
 })
