@@ -1042,6 +1042,32 @@ fn the_rev_6_output_magic_is_rejected() {
 }
 
 #[test]
+fn the_rev_8_magics_are_rejected() {
+    // Rev 8's layout matches, which is why the magic has to carry the meaning:
+    // its solver holds a Group row as a pure translation, so a buffer it solved
+    // must never be handed to this one as if the group could turn.
+    let mut input_bytes = encode_input(&sample_input());
+    input_bytes[0..4].copy_from_slice(&MAGIC_SKG8.to_le_bytes());
+    assert_eq!(
+        decode_input(&input_bytes).unwrap_err(),
+        CodecError::BadMagic
+    );
+    let out = Output {
+        params_solved: vec![1.0],
+        entity_status: vec![0],
+        overall_status: 0,
+        vertex_freedom: Vec::new(),
+        constraint_flags: Vec::new(),
+        constraint_miss: Vec::new(),
+        entity_moved: Vec::new(),
+        diagnostics: Diagnostics::default(),
+    };
+    let mut bytes = encode_output(&out);
+    bytes[0..4].copy_from_slice(&MAGIC_OUT_SKR8.to_le_bytes());
+    assert_eq!(decode_output(&bytes).unwrap_err(), CodecError::BadMagic);
+}
+
+#[test]
 fn the_rev_7_magics_are_rejected() {
     // Rev 7's diagnostics stop at `ms`: a reader expecting the two realised
     // precision fields would run off the end of the buffer, and a writer of

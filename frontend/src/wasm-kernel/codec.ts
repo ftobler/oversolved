@@ -93,13 +93,18 @@ export const CONSTRAINT_FLAG = {
   dropped: 1 << 1,
 } as const
 
-// Rev 8 of the wire layout. `SKR8` appends the contract's realised precision
-// to the output diagnostics (`angularMiss`, `linearMiss`, NaN for an
-// unsatisfied solve), so an older reader stops at `ms` and an older writer
-// leaves the two fields unread: the magic moves on both sides. Rev 7 (`SKG7`)
-// added the input's optional reference param block (`paramsReference`): `fixed`
-// and `group` hold it when present and `params` otherwise, so a drag can seed
-// from the previous frame while the constraints still hold the last hard
+// Rev 9 of the wire layout. A `Group` row's third ref now names the member
+// point (role `b`) or the whole arc/ellipse angle (role `arc`) the group's
+// rotation is measured from, so one coordinate pair holds its distance instead
+// of its two coordinates. The record layout is unchanged, which is exactly why
+// the magic has to move: a rev 8 solver would hold every group as a pure
+// translation and report one free DOF that does not exist. Rev 8 (`SKR8`)
+// appended the contract's realised precision to the output diagnostics
+// (`angularMiss`, `linearMiss`, NaN for an unsatisfied solve), so an older
+// reader stops at `ms` and an older writer leaves the two fields unread. Rev 7
+// (`SKG7`) added the input's optional reference param block (`paramsReference`):
+// `fixed` and `group` hold it when present and `params` otherwise, so a drag can
+// seed from the previous frame while the constraints still hold the last hard
 // solve's shape. Rev 6 (`SKG6`/`SKR6`) carried the dropped verdict bit: the
 // layout was unchanged but the meaning of `constraint_flags` grew, and an older
 // solver would read a dropped constraint as unflagged. `SKG5` added the
@@ -113,8 +118,8 @@ export const CONSTRAINT_FLAG = {
 // on any layout or verdict-semantics change. Invalidating stale cached payloads
 // is acceptable and safe post-wave-1: bundle-cache reads degrade to cold
 // rebuilds.
-const MAGIC_IN = 0x38474b53  // "SKG8", little-endian on the wire
-const MAGIC_OUT = 0x38524b53  // "SKR8"
+const MAGIC_IN = 0x39474b53  // "SKG9", little-endian on the wire
+const MAGIC_OUT = 0x39524b53  // "SKR9"
 
 export interface FlatEntity {
   kind: number

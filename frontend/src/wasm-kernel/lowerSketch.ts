@@ -25,6 +25,8 @@ import {
   Sel,
 } from './codec'
 import { fitPointIndex } from '@/types/vertexKeys'
+import { unflattenGeometry, geomPoint } from '@/utils/geometry/geometryMapping'
+import { TOL_TOPOLOGY_MERGE } from '@/kernel/solverConstants'
 import { DOC_GRID } from '@/utils/yamlMutations/helpers'
 
 const ENTITY_SIZES: Record<string, number> = { line: 4, circle: 3, arc: 5, point: 2, ellipse: 5, spline: 8 }
@@ -150,6 +152,83 @@ function firstPointSelector(kind: string): number {
   }
 }
 
+/** The vertex key of the same first point, for the reference-point reader. */
+function firstPointName(kind: string): string {
+  switch (kind) {
+    case 'line':
+    case 'spline':
+    case 'fit_spline':
+      return 'start'
+    case 'circle':
+    case 'arc':
+    case 'ellipse':
+      return 'center'
+    case 'point':
+      return 'xy'
+    default:
+      throw new Error(`lowerSketch: no group anchor point for entity kind '${kind}'`)
+  }
+}
+
+/** One carrier candidate: a vertex key on a member and its reference position. */
+interface CarrierCandidate {
+  entity: string
+  point: string
+  xy: [number, number]
+}
+
+/**
+ * The coordinate pairs a whole member offers as a group carrier, in selector
+ * order. Derived points (an arc's ends, an ellipse's axis ends) are left out: a
+ * whole-entity row replacement has to map onto a param pair, and a derived point
+ * owns none. A point member naming a derived point is still a candidate; its
+ * rows are already point rows.
+ */
+function wholeMemberPairs(
+  layout: EntityLayout,
+  params: number[],
+): Array<{ point: string; xy: [number, number] }> {
+  const pairAt = (pair: number): [number, number] => [
+    params[layout.offset + 2 * pair] ?? 0,
+    params[layout.offset + 2 * pair + 1] ?? 0,
+  ]
+  switch (layout.kind) {
+    case 'line':
+      return [{ point: 'start', xy: pairAt(0) }, { point: 'end', xy: pairAt(1) }]
+    case 'circle':
+    case 'arc':
+    case 'ellipse':
+      return [{ point: 'center', xy: pairAt(0) }]
+    case 'point':
+      return [{ point: 'xy', xy: pairAt(0) }]
+    case 'spline':
+      return [
+        { point: 'start', xy: pairAt(0) },
+        { point: 'c1', xy: pairAt(1) },
+        { point: 'c2', xy: pairAt(2) },
+        { point: 'end', xy: pairAt(3) },
+      ]
+    case 'fit_spline': {
+      const hasStart = (layout.flags & 1) !== 0
+      const hasEnd = (layout.flags & 2) !== 0
+      const handles = (hasStart ? 1 : 0) + (hasEnd ? 1 : 0)
+      const points = (layout.size - 2 * handles) / 2
+      const out: Array<{ point: string; xy: [number, number] }> = []
+      for (let k = 0; k < points; k++) {
+        // The wire names the ends Start/End and only the interior points Fit(k),
+        // exactly what the solver's point() reads back.
+        const point = k === 0 ? 'start' : k === points - 1 ? 'end' : `fit${k}`
+        out.push({ point, xy: pairAt(k) })
+      }
+      if (hasStart) out.push({ point: 'c1', xy: pairAt(points) })
+      if (hasEnd) out.push({ point: 'c2', xy: pairAt(points + handles - 1) })
+      return out
+    }
+    default:
+      throw new Error(`lowerSketch: no group carrier point for entity kind '${layout.kind}'`)
+  }
+}
+
 /**
  * Build the solver's `pinned_mask`: `ceil(nParams / 8)` bytes, LSB-first within
  * each byte (matching `codec.rs`), with a set bit for every param of every
@@ -229,6 +308,11 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
     count: l.size,
   }))
 
+  // The reference geometry the group carrier is measured in. Built once from
+  // the same `initial` block the solver reads as its reference, so a carrier
+  // choice and the angle the solver derives describe the same shape.
+  const referenceSketch = unflattenGeometry(sk.initial, sk.entities)
+
   const lowerRef = (refDict: Record<string, unknown>): FlatRef => {
     if (Array.isArray(refDict.external_xy)) {
       const xy = refDict.external_xy as number[]
@@ -267,6 +351,14 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
    * translation and contributes no row; the residual builder knows that from
    * the selector.
    *
+   * Every group also turns, so one carrier names where the angle is measured:
+   * a member point farthest from the anchor, or (when every point sits on the
+   * anchor) an arc's or ellipse's own angle. Every row of the one document
+   * group carries the same third ref, and the row whose target holds the
+   * carrier pair swaps its two coordinate rows for the one distance row that
+   * leaves the turn free. With neither, rotation is not observable (a lone
+   * circle) and the rows stay what they were.
+   *
    * The first target is the anchor. A whole-entity anchor takes the entity
    * kind's first point (line/spline start, the centre of a circle/arc/ellipse,
    * a point's xy, a fit spline's first fit point); a point member anchor takes
@@ -277,7 +369,7 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
     if (!Array.isArray(c.refs)) {
       throw new Error(`lowerSketch: group '${id}' has no member refs`)
     }
-    const members: Array<{ index: number; point: number }> = []
+    const members: Array<{ index: number; point: number; name?: string }> = []
     const seen = new Set<string>()
     for (const raw of c.refs) {
       if (!isRefDict(raw) || typeof raw.entity !== 'string' || raw.external_xy !== undefined) {
@@ -293,20 +385,80 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
       const key = `${lowered.index}:${lowered.point}`
       if (seen.has(key)) continue
       seen.add(key)
-      members.push({ index: lowered.index, point: lowered.point })
+      members.push({
+        index: lowered.index,
+        point: lowered.point,
+        name: typeof raw.point === 'string' ? raw.point : undefined,
+      })
     }
     if (members.length === 0) throw new Error(`lowerSketch: group '${id}' has no members`)
     const anchor = members[0]
+    const anchorName = anchor.name ?? firstPointName(layout[anchor.index].kind)
     const anchorPoint = anchor.point !== Sel.absent
       ? anchor.point
       : firstPointSelector(layout[anchor.index].kind)
-    return members.map((member) => ({
-      kind: ConstraintKindCode.group,
-      refs: [
+    const anchorXY = geomPoint(referenceSketch, { entity: layout[anchor.index].id, point: anchorName })
+    if (anchorXY === null) {
+      throw new Error(`lowerSketch: group '${id}' has no reference point for its anchor`)
+    }
+
+    // The carrier is the farthest own point of any member, in member then
+    // selector order so ties and cell-sized sketches stay deterministic.
+    let carrier: { role: number; ref: FlatRef } | null = null
+    let farthest = -1
+    let best: CarrierCandidate | null = null
+    for (const member of members) {
+      const entity = layout[member.index]
+      let candidates: CarrierCandidate[]
+      if (member.name !== undefined) {
+        const xy = geomPoint(referenceSketch, { entity: entity.id, point: member.name })
+        candidates = xy === null ? [] : [{ entity: entity.id, point: member.name, xy }]
+      } else {
+        candidates = wholeMemberPairs(entity, params).map(p => ({ entity: entity.id, ...p }))
+      }
+      for (const candidate of candidates) {
+        // Strictly greater, so the first candidate wins a tie.
+        const distance = Math.hypot(candidate.xy[0] - anchorXY[0], candidate.xy[1] - anchorXY[1])
+        if (distance > farthest) {
+          farthest = distance
+          best = candidate
+        }
+      }
+    }
+    if (best !== null && farthest > TOL_TOPOLOGY_MERGE) {
+      carrier = { role: Role.b, ref: lowerRef({ entity: best.entity, point: best.point }) }
+    } else {
+      // Every candidate sits on the anchor (concentric arcs): only a whole
+      // member's own orientation can tell that the set turned. A circular
+      // ellipse has no observable orientation, so it is not a carrier.
+      for (const member of members) {
+        const entity = layout[member.index]
+        if (member.name !== undefined) continue
+        if (entity.kind === 'arc') {
+          carrier = { role: Role.arc, ref: { kind: 'entity', index: member.index, point: Sel.absent } }
+          break
+        }
+        if (entity.kind === 'ellipse') {
+          const a = params[entity.offset + 2] ?? 0
+          const b = params[entity.offset + 3] ?? 0
+          if (Math.abs(a - b) > TOL_TOPOLOGY_MERGE) {
+            carrier = { role: Role.arc, ref: { kind: 'entity', index: member.index, point: Sel.absent } }
+            break
+          }
+        }
+      }
+    }
+
+    return members.map((member) => {
+      const refs: FlatConstraint['refs'] = [
         { role: Role.target, ref: { kind: 'entity', index: member.index, point: member.point } },
         { role: Role.a, ref: { kind: 'entity', index: anchor.index, point: anchorPoint } },
-      ],
-    }))
+      ]
+      // Every row of one document group reads the same carrier, so they all
+      // derive one phi.
+      if (carrier !== null) refs.push({ role: carrier.role, ref: carrier.ref })
+      return { kind: ConstraintKindCode.group, refs }
+    })
   }
 
   const lowerConstraint = (c: RawConstraint): FlatConstraint[] => {

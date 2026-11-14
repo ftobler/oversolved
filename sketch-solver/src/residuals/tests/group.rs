@@ -612,6 +612,418 @@ fn a_whole_member_holds_against_a_point_anchor() {
     assert_eq!(solve_sketch(&inp).diagnostics.dof, 8);
 }
 
+// ─── Rotation: every group is a 3 DOF rigid body ───
+
+/// One wire group row carrying a point carrier: the group's rotation is the
+/// angle that turns `carrier0 - anchor0` onto `carrier - anchor`.
+fn group_carried(
+    member: u32,
+    anchor: u32,
+    anchor_point: PointSelector,
+    carrier: Ref,
+) -> Constraint {
+    cons(
+        ConstraintKind::Group,
+        vec![
+            target(member, PointSelector::Absent),
+            (RefRole::A, e_ref(anchor, anchor_point)),
+            (RefRole::B, carrier),
+        ],
+    )
+}
+
+/// One wire group row over a point member that is itself the carrier.
+fn point_group_carried(
+    member: u32,
+    member_point: PointSelector,
+    anchor: u32,
+    anchor_point: PointSelector,
+) -> Constraint {
+    cons(
+        ConstraintKind::Group,
+        vec![
+            target(member, member_point),
+            (RefRole::A, e_ref(anchor, anchor_point)),
+            (RefRole::B, e_ref(member, member_point)),
+        ],
+    )
+}
+
+/// One wire group row whose rotation an arc's `a0` or an ellipse's `theta`
+/// carries: the fallback for a group whose points all sit on the anchor, where
+/// only the shape's own orientation can tell that the set has turned.
+fn group_angle_carried(
+    member: u32,
+    anchor: u32,
+    anchor_point: PointSelector,
+    carrier: u32,
+) -> Constraint {
+    cons(
+        ConstraintKind::Group,
+        vec![
+            target(member, PointSelector::Absent),
+            (RefRole::A, e_ref(anchor, anchor_point)),
+            (RefRole::Arc, e_ref(carrier, PointSelector::Absent)),
+        ],
+    )
+}
+
+/// The group's motion: every entity's coordinate pairs turn about `about` by
+/// `deg` degrees, its degree-valued slots gain the same turn, then the whole
+/// image translates by `t`. This is exactly the motion the rows must not
+/// resist.
+fn rigid_image(inp: &Input, about: [f64; 2], deg: f64, t: [f64; 2]) -> Vec<f64> {
+    let mut out = inp.params_initial.clone();
+    let (c, s) = (deg.to_radians().cos(), deg.to_radians().sin());
+    for e in &inp.entities {
+        let off = e.param_offset;
+        let coords = match e.kind {
+            Kind::Line => 4,
+            Kind::Circle | Kind::Arc | Kind::Ellipse | Kind::Point => 2,
+            Kind::Spline => 8,
+            Kind::FitSpline => e.param_count,
+        };
+        for k in 0..coords / 2 {
+            let (x, y) = (out[off + 2 * k] - about[0], out[off + 2 * k + 1] - about[1]);
+            out[off + 2 * k] = about[0] + c * x - s * y + t[0];
+            out[off + 2 * k + 1] = about[1] + s * x + c * y + t[1];
+        }
+        match e.kind {
+            Kind::Arc => {
+                out[off + 3] += deg;
+                out[off + 4] += deg;
+            }
+            Kind::Ellipse => out[off + 4] += deg,
+            _ => {}
+        }
+    }
+    out
+}
+
+/// The analytic group Jacobian at `x` against finite differences, flat.
+fn assert_group_jacobian(inp: &Input, x: &[f64], label: &str) {
+    let problem = Problem::new(inp);
+    let m = problem.residuals(x).len();
+    let analytic = problem.jacobian(x, x.len());
+    let fd = solver_core::lm::fd_jacobian(&|xx: &[f64]| problem.residuals(xx), x, m);
+    for r in 0..m {
+        for col in 0..x.len() {
+            assert!(
+                (analytic[(r, col)] - fd[(r, col)]).abs() < 1e-6,
+                "{label} ({r},{col}): analytic {} fd {}",
+                analytic[(r, col)],
+                fd[(r, col)],
+            );
+        }
+    }
+}
+
+/// A line anchor (params 0..4) and a member of `kind`, both held by one group
+/// whose carrier is the line end.
+fn carried_member_fixture(kind: Kind, member_params: Vec<f64>, flags: u8) -> Input {
+    let mut params = vec![1.0, 2.0, 5.0, 2.0];
+    params.extend(&member_params);
+    let member = crate::Entity {
+        kind,
+        param_offset: 4,
+        param_count: member_params.len(),
+        flags,
+    };
+    input(
+        vec![line(0), member],
+        params,
+        vec![
+            group_carried(0, 0, PointSelector::Start, e_ref(0, PointSelector::End)),
+            group_carried(1, 0, PointSelector::Start, e_ref(0, PointSelector::End)),
+        ],
+    )
+}
+
+/// The one row each member kind's shape still owns under a turning group: a
+/// length scalar, or a coordinate the carrier does not itself name.
+fn shape_slot(kind: Kind) -> usize {
+    match kind {
+        Kind::Circle | Kind::Arc | Kind::Ellipse => 2,
+        Kind::Point => 1,
+        Kind::Spline => 5,
+        Kind::FitSpline => 5,
+        Kind::Line => 3,
+    }
+}
+
+#[test]
+fn a_group_turns_rigidly_through_any_angle() {
+    // Line anchor (0,0)-(10,0) and a circle at (10,4). The line end is the
+    // carrier, so the pair keeps its length and the whole set turns with it.
+    let inp = input(
+        vec![line(0), ent(Kind::Circle, 4)],
+        vec![0.0, 0.0, 10.0, 0.0, 10.0, 4.0, 2.5],
+        vec![
+            group_carried(0, 0, PointSelector::Start, e_ref(0, PointSelector::End)),
+            group_carried(1, 0, PointSelector::Start, e_ref(0, PointSelector::End)),
+        ],
+    );
+    let problem = Problem::new(&inp);
+    assert_eq!(problem.constraints().len(), 2, "a group was dropped");
+    for (deg, t) in [
+        (0.0, [0.0, 0.0]),
+        (0.0, [3.0, -2.0]),
+        (30.0, [0.0, 0.0]),
+        (200.0, [0.0, 0.0]),
+        (30.0, [3.0, -2.0]),
+        (-120.0, [1.0, 4.0]),
+    ] {
+        let moved = rigid_image(&inp, [0.0, 0.0], deg, t);
+        assert!(
+            problem.residuals(&moved).iter().all(|r| r.abs() < 1e-9),
+            "deg {deg} t {t:?}: the rigid image is resisted"
+        );
+        assert_group_jacobian(&inp, &moved, "line+circle");
+    }
+    assert_eq!(
+        solve_sketch(&inp).diagnostics.dof,
+        3,
+        "a turning group leaves its two translations and one rotation"
+    );
+}
+
+#[test]
+fn every_member_kind_turns_with_the_group_and_keeps_its_shape() {
+    let fixtures: Vec<(Kind, Vec<f64>, u8)> = vec![
+        (Kind::Circle, vec![12.0, 4.0, 3.0], 0),
+        (Kind::Arc, vec![12.0, 4.0, 3.0, 20.0, 130.0], 0),
+        (Kind::Ellipse, vec![12.0, 4.0, 4.0, 2.0, 30.0], 0),
+        (Kind::Point, vec![12.0, 4.0], 0),
+        (
+            Kind::Spline,
+            vec![12.0, 4.0, 13.0, 5.0, 14.0, 4.0, 15.0, 3.0],
+            0,
+        ),
+        (Kind::FitSpline, vec![12.0, 4.0, 13.0, 5.0, 14.0, 3.0], 0),
+        (
+            Kind::FitSpline,
+            vec![12.0, 4.0, 13.0, 5.0, 14.0, 3.0, -1.0, -1.0, 5.0, 1.0],
+            3,
+        ),
+    ];
+    for (kind, member_params, flags) in fixtures {
+        let inp = carried_member_fixture(kind, member_params, flags);
+        let problem = Problem::new(&inp);
+        assert_eq!(problem.constraints().len(), 2, "{kind:?}: dropped");
+        // 200 degrees exercises the wrap on an arc's or ellipse's angle rows
+        // without changing the geometry the rigid image holds.
+        for deg in [30.0, 200.0] {
+            let moved = rigid_image(&inp, [1.0, 2.0], deg, [0.5, -1.0]);
+            assert!(
+                problem.residuals(&moved).iter().all(|r| r.abs() < 1e-9),
+                "{kind:?} at {deg}: the rigid image is resisted"
+            );
+            assert_group_jacobian(&inp, &moved, &format!("{kind:?} at {deg}"));
+        }
+        assert_eq!(
+            solve_sketch(&inp).diagnostics.dof,
+            3,
+            "{kind:?}: a turning group must leave 3 DOF"
+        );
+
+        // The shape the group still owns is a deformation, not a turn.
+        let mut deformed = inp.params_initial.clone();
+        deformed[4 + shape_slot(kind)] += 1.0;
+        assert!(
+            problem.residuals(&deformed).iter().any(|r| r.abs() > 1e-6),
+            "{kind:?}: a deformation was not held"
+        );
+    }
+}
+
+#[test]
+fn a_point_member_on_a_derived_arc_end_carries_the_turn() {
+    // The anchor is a point, the line is a whole member and the arc start is a
+    // point member and the carrier. A derived point has no param pair of its
+    // own, so its two rows are one distance row; the line still turns.
+    let inp = input(
+        vec![point(0), line(2), ent(Kind::Arc, 6)],
+        vec![0.0, 0.0, 5.0, 1.0, 9.0, 1.0, 4.0, 0.0, 2.0, 10.0, 130.0],
+        vec![
+            group_carried(1, 0, PointSelector::Xy, e_ref(2, PointSelector::Start)),
+            point_group_carried(2, PointSelector::Start, 0, PointSelector::Xy),
+        ],
+    );
+    let moved = rigid_image(&inp, [2.0, 3.0], 30.0, [1.0, -1.0]);
+    let problem = Problem::new(&inp);
+    assert_eq!(problem.constraints().len(), 2, "a group was dropped");
+    assert!(
+        problem.residuals(&moved).iter().all(|r| r.abs() < 1e-9),
+        "the derived carrier is resisted"
+    );
+    assert_group_jacobian(&inp, &moved, "derived carrier");
+}
+
+#[test]
+fn a_derived_anchor_measures_the_turn_from_its_own_point() {
+    // The anchor is the arc's end angle point, not a param pair: the line's
+    // rows measure against the point the arc actually draws.
+    let inp = input(
+        vec![ent(Kind::Arc, 0), line(5)],
+        vec![1.0, 2.0, 3.0, 10.0, 130.0, 5.0, 1.0, 9.0, 1.0],
+        vec![group_carried(
+            1,
+            0,
+            PointSelector::End,
+            e_ref(1, PointSelector::End),
+        )],
+    );
+    let moved = rigid_image(&inp, [1.0, 2.0], 30.0, [2.0, 0.5]);
+    let problem = Problem::new(&inp);
+    assert!(
+        problem.residuals(&moved).iter().all(|r| r.abs() < 1e-9),
+        "the derived anchor is resisted"
+    );
+    assert_group_jacobian(&inp, &moved, "derived anchor");
+}
+
+#[test]
+fn a_lone_arc_or_ellipse_carries_its_own_angle() {
+    // One member is its own anchor, so every candidate point sits on the
+    // anchor and only the shape's own orientation can carry the turn.
+    let arc = input(
+        vec![ent(Kind::Arc, 0)],
+        vec![2.0, 3.0, 4.0, 10.0, 80.0],
+        vec![group_angle_carried(0, 0, PointSelector::Center, 0)],
+    );
+    let problem = Problem::new(&arc);
+    for deg in [30.0, 200.0] {
+        let moved = rigid_image(&arc, [2.0, 3.0], deg, [1.0, -1.0]);
+        assert!(
+            problem.residuals(&moved).iter().all(|r| r.abs() < 1e-9),
+            "a lone arc resists {deg}"
+        );
+        assert_group_jacobian(&arc, &moved, "lone arc");
+    }
+    assert_eq!(solve_sketch(&arc).diagnostics.dof, 3);
+
+    // A non-circular ellipse's theta is observable the same way; the circular
+    // case is the lowering's decision (it names no carrier), not this walk's.
+    let ellipse = input(
+        vec![ellipse(0)],
+        vec![2.0, 3.0, 5.0, 2.0, 10.0],
+        vec![group_angle_carried(0, 0, PointSelector::Center, 0)],
+    );
+    let problem = Problem::new(&ellipse);
+    for deg in [30.0, 200.0] {
+        let moved = rigid_image(&ellipse, [2.0, 3.0], deg, [1.0, -1.0]);
+        assert!(
+            problem.residuals(&moved).iter().all(|r| r.abs() < 1e-9),
+            "a lone ellipse resists {deg}"
+        );
+        assert_group_jacobian(&ellipse, &moved, "lone ellipse");
+    }
+    assert_eq!(solve_sketch(&ellipse).diagnostics.dof, 3);
+}
+
+#[test]
+fn concentric_arcs_turn_on_their_shared_angle_carrier() {
+    // Every point sits on the shared centre, so the angle is not observable
+    // from any offset. The arc's own start angle carries it instead.
+    let inp = input(
+        vec![ent(Kind::Arc, 0), ent(Kind::Arc, 5)],
+        vec![0.0, 0.0, 3.0, 0.0, 90.0, 0.0, 0.0, 2.0, 10.0, 80.0],
+        vec![
+            group_angle_carried(0, 0, PointSelector::Center, 0),
+            group_angle_carried(1, 0, PointSelector::Center, 0),
+        ],
+    );
+    let problem = Problem::new(&inp);
+    assert_eq!(problem.constraints().len(), 2, "a group was dropped");
+    for deg in [30.0, 200.0] {
+        let moved = rigid_image(&inp, [0.0, 0.0], deg, [1.5, -2.0]);
+        assert!(
+            problem.residuals(&moved).iter().all(|r| r.abs() < 1e-9),
+            "the angle carrier is resisted at {deg}"
+        );
+        assert_group_jacobian(&inp, &moved, "concentric arcs");
+    }
+    assert_eq!(solve_sketch(&inp).diagnostics.dof, 3);
+}
+
+#[test]
+fn a_group_without_a_carrier_keeps_the_two_translations() {
+    // A lone circle is rotationally symmetric: there is no point to measure a
+    // turn from and no angle slot to carry one. It still translates freely and
+    // must not claim a third DOF nothing can move.
+    let inp = input(
+        vec![ent(Kind::Circle, 0)],
+        vec![4.0, 3.0, 2.0],
+        vec![group(0, 0, PointSelector::Center)],
+    );
+    let out = solve_sketch(&inp);
+    assert_eq!(out.overall_status, Status::Underconstrained.to_u8());
+    // Two translations and no third: a rotation row here would be a pure null
+    // direction the solver reports as free while the circle cannot show it.
+    assert_eq!(out.diagnostics.dof, 2);
+}
+
+#[test]
+fn the_carrier_leaves_three_dof_that_two_ordinary_rows_close() {
+    let params = vec![0.0, 0.0, 10.0, 0.0, 10.0, 4.0, 2.5];
+    let mut inp = input(
+        vec![line(0), ent(Kind::Circle, 4)],
+        params,
+        vec![
+            group_carried(0, 0, PointSelector::Start, e_ref(0, PointSelector::End)),
+            group_carried(1, 0, PointSelector::Start, e_ref(0, PointSelector::End)),
+        ],
+    );
+    assert_eq!(solve_sketch(&inp).diagnostics.dof, 3);
+
+    // Pin the anchor to a fixed world point: two of the three.
+    inp.constraints.push(Constraint {
+        kind_code: ConstraintKind::Coincident.to_u8(),
+        refs: ab(
+            e_ref(0, PointSelector::Start),
+            Ref::External { x: 5.0, y: 5.0 },
+        ),
+        ..Default::default()
+    });
+    assert_eq!(solve_sketch(&inp).diagnostics.dof, 1);
+
+    // The line's direction is the last one, and the group does not already
+    // state it: the horizontal is the closing row, not a redundant echo.
+    inp.constraints.push(c_target(
+        ConstraintKind::Horizontal,
+        0,
+        PointSelector::Absent,
+    ));
+    let out = solve_sketch(&inp);
+    assert_eq!(out.overall_status, Status::FullyConstrained.to_u8());
+    assert_eq!(out.diagnostics.dof, 0);
+    assert_eq!(
+        out.constraint_flags[3] & crate::CONSTRAINT_FLAG_REDUNDANT,
+        0,
+        "the horizontal closes the rotation and is not redundant"
+    );
+}
+
+#[test]
+fn a_length_that_disagrees_with_a_turning_group_is_overconstrained() {
+    // The carrier pair already holds the line's length, so the same length at
+    // another value is unsatisfiable, exactly as before the turn was allowed.
+    let params = vec![0.0, 0.0, 4.0, 0.0, 10.0, 0.0, 2.5];
+    let mut inp = input(
+        vec![line(0), ent(Kind::Circle, 4)],
+        params,
+        vec![
+            group_carried(0, 0, PointSelector::Start, e_ref(0, PointSelector::End)),
+            group_carried(1, 0, PointSelector::Start, e_ref(0, PointSelector::End)),
+        ],
+    );
+    let mut length = c_target(ConstraintKind::Length, 0, PointSelector::Absent);
+    length.value = Some(4.2);
+    inp.constraints.push(length);
+    let out = solve_sketch(&inp);
+    assert_eq!(out.overall_status, Status::Overconstrained.to_u8());
+}
+
 #[test]
 fn a_spline_grouped_by_two_control_points_keeps_its_endpoints_free() {
     // The group is the two off-curve controls only: the on-curve endpoints are

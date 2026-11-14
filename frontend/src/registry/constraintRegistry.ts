@@ -258,7 +258,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
   {
     kind: 'group',
     label: 'Group',
-    description: 'Glues the selected entities into their current shape; the group can still move. Delete the constraint to edit the entities freely.',
+    description: 'Glues the selected entities into their current shape; the group can still move and rotate. Delete the constraint to edit the entities freely.',
     category: 'geometric',
     hasValue: false,
     refPattern: 'targets',

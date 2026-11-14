@@ -19,7 +19,7 @@
 //! quietly granting the row a looser target.
 
 use super::geom::is_curve;
-use super::misc::GroupWalk;
+use super::misc::{is_angle_param, GroupWalk};
 use super::Problem;
 use crate::constraints::{Axis, Constraint, ConstraintKind, Ref, RefRole};
 use crate::tolerance::{contract_angular, contract_positional};
@@ -73,10 +73,10 @@ fn angular(n: usize, seed_len: f64) -> Vec<RowClass> {
 /// trailing degree slots are the only non-world scalars. Everything else is a
 /// position, a length or a control point.
 fn param_class(kind: Kind, index: usize) -> RowClass {
-    match kind {
-        Kind::Arc if index >= 3 => RowClass::Parameter,
-        Kind::Ellipse if index == 4 => RowClass::Parameter,
-        _ => RowClass::Positional,
+    if is_angle_param(kind, index) {
+        RowClass::Parameter
+    } else {
+        RowClass::Positional
     }
 }
 
@@ -353,25 +353,44 @@ impl Problem<'_> {
     }
 
     /// Classify from the same `GroupWalk` the residual and Jacobian use. A
-    /// point member's two rows are world coordinates; a whole member's rows
-    /// follow its param slots, with the anchor's own first pair skipped.
+    /// point member's rows are its two world coordinates, or one positional row
+    /// when it IS the carrier; a whole member's rows follow its param slots,
+    /// with the anchor's own first pair skipped, the carrier pair collapsed to
+    /// one positional row and the carrier's angle slot omitted.
     fn class_group(&self, c: &Constraint) -> Vec<RowClass> {
         let Some(walk) = GroupWalk::of(self, c) else {
             return Vec::new();
         };
         match walk {
-            GroupWalk::Point { .. } => positional(2),
+            GroupWalk::Point { is_carrier, .. } => positional(if is_carrier { 1 } else { 2 }),
             GroupWalk::Whole {
                 member,
                 size,
+                coords,
                 skip_first_pair,
+                carrier_pair,
+                carrier_angle,
                 ..
             } => {
                 let kind = self.kind_of(member);
-                (0..size)
-                    .skip(if skip_first_pair { 2 } else { 0 })
-                    .map(|i| param_class(kind, i))
-                    .collect()
+                let mut out = Vec::new();
+                for pair in 0..coords / 2 {
+                    if skip_first_pair && pair == 0 {
+                        continue;
+                    }
+                    if Some(pair) == carrier_pair {
+                        out.push(RowClass::Positional);
+                    } else {
+                        out.extend(positional(2));
+                    }
+                }
+                for i in coords..size {
+                    if carrier_angle == Some(i) {
+                        continue;
+                    }
+                    out.push(param_class(kind, i));
+                }
+                out
             }
         }
     }
@@ -909,7 +928,77 @@ mod tests {
         };
         assert!(classes_of(&problem, &lone).is_empty());
 
-        // Mixed whole plus point members in one group: one class per solved row.
+        // A point carrier collapses its pair's two positional rows to one, on
+        // every row of the group; an angle carrier drops that one slot and
+        // turns the shape's other angle rows with it.
+        let carried = |member: Ref, anchor: Ref, carrier: (RefRole, Ref)| Constraint {
+            kind_code: ConstraintKind::Group.to_u8(),
+            refs: vec![(RefRole::Target, member), (RefRole::A, anchor), carrier],
+            ..Default::default()
+        };
+        assert_eq!(
+            classes_of(
+                &problem,
+                &carried(
+                    e_ref(1, PointSelector::Absent),
+                    line_start,
+                    (RefRole::B, e_ref(1, PointSelector::End)),
+                ),
+            ),
+            positional(3),
+        );
+        assert_eq!(
+            classes_of(
+                &problem,
+                &carried(
+                    e_ref(3, PointSelector::Absent),
+                    line_start,
+                    (RefRole::B, e_ref(3, PointSelector::Center)),
+                ),
+            ),
+            // The arc's centre is the carrier pair (one row), then its radius
+            // holds and its two angles follow the turn.
+            vec![
+                RowClass::Positional,
+                RowClass::Positional,
+                RowClass::Parameter,
+                RowClass::Parameter,
+            ],
+        );
+        // A derived point (an arc's start) owns no pair, so it cannot collapse
+        // a whole member's row: the member keeps its coordinate rows.
+        assert_eq!(
+            classes_of(
+                &problem,
+                &carried(
+                    e_ref(3, PointSelector::Absent),
+                    line_start,
+                    (RefRole::B, e_ref(3, PointSelector::Start)),
+                ),
+            ),
+            vec![
+                RowClass::Positional,
+                RowClass::Positional,
+                RowClass::Positional,
+                RowClass::Parameter,
+                RowClass::Parameter,
+            ],
+        );
+        assert_eq!(
+            classes_of(
+                &problem,
+                &carried(
+                    e_ref(3, PointSelector::Absent),
+                    e_ref(3, PointSelector::Center),
+                    (RefRole::Arc, e_ref(3, PointSelector::Absent)),
+                ),
+            ),
+            // The arc's centre pair is the anchor, its start angle IS the turn,
+            // its radius holds and its end angle follows the turn: two rows.
+            vec![RowClass::Positional, RowClass::Parameter],
+        );
+
+        // A mixed whole plus point members in one group: one class per solved row.
         let mut inp = input(entities(), params(), vec![]);
         inp.constraints = vec![
             group(e_ref(1, PointSelector::Absent), line_start),
