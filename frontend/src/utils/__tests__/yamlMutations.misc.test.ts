@@ -143,29 +143,29 @@ describe('applyAddEntity', () => {
 describe('applyAddProjectedEntity', () => {
   it('adds a projected entity with a projection constraint', () => {
     const doc = makeSketchDoc()
-    applyAddProjectedEntity(doc, 'Sketch1', 'line', '@otherSketch/edge/0')
+    applyAddProjectedEntity(doc, 'Sketch1', 'line', '@builtin_origin')
     expect(entities0(doc)).toHaveLength(3)
     const added = entities0(doc)[2]
     expect(added.kind).toBe('line')
     const constraints = (doc.features?.[0] as { constraints?: { kind: string; source?: string }[] })?.constraints ?? []
-    expect(constraints.some(c => c.kind === 'projection' && c.source === '@otherSketch/edge/0')).toBe(true)
+    expect(constraints.some(c => c.kind === 'projection' && c.source === '@builtin_origin')).toBe(true)
   })
 
   it('honours a caller-supplied entity id', () => {
     const doc = makeSketchDoc()
-    applyAddProjectedEntity(doc, 'Sketch1', 'line', '@otherSketch/edge/0', 'proj1')
+    applyAddProjectedEntity(doc, 'Sketch1', 'line', '@builtin_origin', 'proj1')
     expect(entities0(doc)[2].id).toBe('proj1')
   })
 
   it('no-ops for unknown feature', () => {
     const doc = makeSketchDoc()
-    applyAddProjectedEntity(doc, 'NoSuchFeature', 'line', '@other/edge/0')
+    applyAddProjectedEntity(doc, 'NoSuchFeature', 'line', '@builtin_origin')
     expect(entities0(doc)).toHaveLength(2)
   })
 
   it('initializes entities array if missing', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'S1', kind: 'sketch' }] }
-    applyAddProjectedEntity(doc, 'S1', 'circle', '@other/edge/1')
+    applyAddProjectedEntity(doc, 'S1', 'circle', '@builtin_origin')
     expect(entities0(doc)).toHaveLength(1)
   })
 })

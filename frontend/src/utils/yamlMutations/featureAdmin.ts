@@ -5,12 +5,13 @@
 
 import type { LengthUnit, PartDoc, PartFeature } from '@/types/cad'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
-import { findFeature, warn } from './helpers'
+import { findFeature, warn, MutationRefusal } from './helpers'
 import { roundNumericFields, storedNumber, type FieldBag } from './featureDefs'
 import { isValidVariableName } from '@/kernel/features/variable'
 import { allConsumedSketchIds } from '@/utils/query/consumedSketches'
 import { docVisibleFeatureIds, isPlaneVisibilityTarget } from '@/utils/featureVisibility'
 import { isSketchClassFeature } from '@/utils/sketchClass'
+import { parseProjectionSketchSource } from '@/kernel/features/projectionMembers'
 
 export function applyAddSketch(doc: PartDoc, featureId: string, label?: string, plane?: string): void {
   if (!doc.features) doc.features = []
@@ -62,12 +63,59 @@ export function applyReorderFeatures(doc: PartDoc, featureId: string, toIndex: n
   const clampedTo = Math.max(toIndex, BUILTIN_FEATURE_IDS.size)
   // Dropping on the feature itself or its immediate successor is a no-op.
   if (fromIndex === clampedTo || fromIndex + 1 === clampedTo) return
+  // A sketch projection reads an earlier sketch, so the move is refused before
+  // the order changes: undoing a half-applied move is not the caller's job.
+  const problem = reorderProjectionProblem(doc, featureId, clampedTo)
+  if (problem !== null) throw new MutationRefusal(problem)
   const [feature] = doc.features.splice(fromIndex, 1)
   // After removal, if the original fromIndex was before the target,
   // everything shifted left by 1, so we insert at clampedTo - 1 to land
   // at the same effective position the user hovered over.
   const insertIndex = fromIndex < clampedTo ? clampedTo - 1 : clampedTo
   doc.features.splice(insertIndex, 0, feature)
+}
+
+/**
+ * Why moving `featureId` into the slot `toIndex` (already clamped) would put a
+ * projection's consumer sketch at or before its source sketch, or null when the
+ * move is free. Only sketch-to-sketch projection sources constrain the order; a
+ * body query or a plane/face dependency of another kind is out of scope.
+ *
+ * The check runs on the post-move order, so both directions are one rule:
+ * moving a consumer above its source and moving a source below its consumer
+ * both leave sourceAt >= consumerAt.
+ */
+export function reorderProjectionProblem(doc: PartDoc, featureId: string, toIndex: number): string | null {
+  const features = doc.features ?? []
+  const fromIndex = features.findIndex(f => f.id === featureId)
+  if (fromIndex === -1) return null
+  const clampedTo = Math.max(toIndex, BUILTIN_FEATURE_IDS.size)
+  if (fromIndex === clampedTo || fromIndex + 1 === clampedTo) return null
+  const order = features.map(f => f.id)
+  const [moving] = order.splice(fromIndex, 1)
+  const insertIndex = fromIndex < clampedTo ? clampedTo - 1 : clampedTo
+  order.splice(insertIndex, 0, moving)
+  for (const [consumerAt, consumerId] of order.entries()) {
+    const consumer = features.find(f => f.id === consumerId)
+    if (consumer?.kind !== 'sketch') continue
+    for (const constraint of consumer.constraints ?? []) {
+      if (constraint.kind !== 'projection' || typeof constraint.source !== 'string') continue
+      const source = parseProjectionSketchSource(constraint.source)
+      if (source === null) continue
+      // Only pairs the move itself can affect: another feature's projection is
+      // untouched by a single splice, and a document already carrying a bad
+      // pair must remain repairable by moving one of that pair.
+      if (consumerId !== featureId && source.sketchId !== featureId) continue
+      const sourceAt = order.indexOf(source.sketchId)
+      if (sourceAt < 0 || sourceAt < consumerAt) continue
+      const relation = featureId === consumerId
+        ? `above ${source.sketchId}`
+        : featureId === source.sketchId ? `below ${consumerId}` : 'to that position'
+      return `cannot move ${featureId} ${relation}: ${consumerId} projects ${constraint.source} `
+        + '(a sketch can only project earlier sketches)'
+    }
+  }
+  return null
 }
 
 // Persists where the user parked the rollback bar. "At the end of the stack"

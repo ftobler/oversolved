@@ -732,6 +732,84 @@ describe('solveSketch projects another sketch\'s whole entity', () => {
   })
 })
 
+describe('solveSketch names the cause of an unresolvable sketch source', () => {
+  beforeEach(() => {
+    resetSketchSolver()
+    if (solveBytes) setSketchSolver(solveBytes)
+  })
+
+  const sk1 = {
+    id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+    entities: [{ id: 'l1', kind: 'line' }],
+    initial: { l1: [0, 0, 10, 0] },
+    constraints: [],
+  }
+
+  const held = (id: string, source: string, initial: Record<string, number[]> = {}): Dict => ({
+    id, kind: 'sketch', plane: '@builtin_plane_front',
+    entities: [{ id: 'held', kind: 'point' }],
+    initial,
+    constraints: [{ id: 'proj_held', kind: 'projection', target: '$held', source }],
+  })
+
+  const solve = (feature: Dict, featuresById: Record<string, Dict>): Dict =>
+    solveSketch(feature, deadRepo(), {} as Record<string, Body>, featuresById)
+
+  it('names a self reference', () => {
+    if (!solveBytes) return
+    const feature = held('sk1', '@sk1/l1')
+    const out = solve(feature, { sk1: feature })
+    expect(out.solver_warning).toContain('did not resolve; self reference')
+    expect(out.projection_errors).toEqual(['proj_held'])
+    // It never had a position, so the structured field names the same row.
+    expect(out.projection_unpositioned).toEqual(['proj_held'])
+  })
+
+  it('names an unknown sketch', () => {
+    if (!solveBytes) return
+    const feature = held('sk2', '@sk9/nope')
+    const out = solve(feature, { sk1, sk2: feature })
+    expect(out.solver_warning).toContain('did not resolve; unknown sketch')
+  })
+
+  it('names an unknown entity', () => {
+    if (!solveBytes) return
+    const feature = held('sk2', '@sk1/nope')
+    const out = solve(feature, { sk1, sk2: feature })
+    expect(out.solver_warning).toContain('did not resolve; unknown entity')
+  })
+
+  it('names a forward reference', () => {
+    if (!solveBytes) return
+    const feature = held('sk2', '@sk3/q3')
+    const sk3 = {
+      id: 'sk3', kind: 'sketch', plane: '@builtin_plane_top',
+      entities: [{ id: 'q3', kind: 'point' }], initial: { q3: [3, 3] }, constraints: [],
+    }
+    const out = solve(feature, { sk1, sk2: feature, sk3 })
+    expect(out.solver_warning).toContain('did not resolve; forward reference')
+  })
+
+  it('names a cycle, including an existing one the new row would join', () => {
+    if (!solveBytes) return
+    // Both rows already source each other. Neither has a position, so both are
+    // unpositioned and the cause is the cycle, not the missing geometry.
+    const cyclic: Dict = {
+      id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [{ id: 'qa', kind: 'point' }, { id: 'qb', kind: 'point' }],
+      initial: {},
+      constraints: [
+        { id: 'p_qa', kind: 'projection', target: '$qa', source: '$qb' },
+        { id: 'p_qb', kind: 'projection', target: '$qb', source: '$qa' },
+      ],
+    }
+    const out = solve(cyclic, { sk1: cyclic })
+    expect(out.solver_warning).toContain('did not resolve; cycle')
+    expect(out.projection_errors).toEqual(['p_qa'])
+    expect(out.projection_unpositioned).toEqual(['p_qa'])
+  })
+})
+
 describe('solveSketch reports the constraints it could not use', () => {
   beforeEach(() => {
     resetSketchSolver()

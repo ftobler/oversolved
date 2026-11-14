@@ -111,6 +111,7 @@ export function useSolver(
       thread?: import('@/types/cad').ThreadDisplayData
       solve_ms?: number
       projection_errors?: string[]
+      projection_unpositioned?: string[]
       projection_members?: Record<string, import('@/types/cad').ProjectionMemberReportData>
       dropped_constraints?: import('@/types/cad').DroppedSketchConstraint[]
       dof?: number
@@ -186,6 +187,7 @@ export function useSolver(
           ...(feature.originLocal && { originLocal: feature.originLocal }),
           ...(feature.plane_transform && { plane_transform: feature.plane_transform }),
           ...(feature.projection_errors?.length && { projection_errors: feature.projection_errors }),
+          ...(feature.projection_unpositioned?.length && { projection_unpositioned: feature.projection_unpositioned }),
           ...(feature.projection_members && { projection_members: feature.projection_members }),
           // The constraints the solve had to ignore: the editor tiles and the
           // cleanup command read them. Solve-time facts like projection_errors,

@@ -7,6 +7,7 @@ import { faceBoundaryLookup } from '@/picking/bodyDispatchCallbacks'
 import type { Result, SessionFailure } from '@/session/result'
 import type { SolveOptions, SolveOutcome } from '@/session/SolveScheduler'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
+import { MutationRefusal } from '@/utils/yamlMutations/helpers'
 import { createWorkerSolveScheduler, type ReSolveFn } from '@/hooks/workerSolveScheduler'
 import { failLoud } from '@/stores/stateInvariants'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
@@ -32,7 +33,7 @@ const labelCarrier = (label: string): Mutation => ({ type: 'preview_commit', des
 
 type StackEntry = { doc: PartDoc; mutation: Mutation }
 
-export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFirstSolve, workspace, journal }: { solveOnLoad?: boolean; onFirstSolve?: () => void; workspace?: string; journal?: SessionJournalSink } = {}) {
+export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFirstSolve, workspace, journal, onRefusal }: { solveOnLoad?: boolean; onFirstSolve?: () => void; workspace?: string; journal?: SessionJournalSink; onRefusal?: (message: string) => void } = {}) {
   const reSolveRef = useRef<ReSolveFn | null>(null)
   // Set by the page: the transient editor state that does not live in the
   // session (forced visibility, sketch-editor selection/pick, popovers, panel
@@ -174,24 +175,41 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
   }, [])
 
   // Returns the session Result so a command spec can report the ids its
-  // mutation created; null is the no-document no-op, exactly the old guard.
+  // mutation created; null is the no-document no-op, exactly the old guard. An
+  // applier refusal is an Error (a reorder that would invert a projection's
+  // order, a source that cannot resolve): it becomes a failure Result so the
+  // editor voices it and the document keeps its previous state.
   const handleMutation = useCallback((m: Mutation): Result | null => {
     setSolveError(null)
     // No document yet: a silent no-op, exactly as the old funnel's null guard.
     if (!session.getDoc()) return null
-    const result = session.execute(m)
+    let result: Result
+    try {
+      result = session.execute(m)
+    } catch (e) {
+      if (!(e instanceof MutationRefusal)) throw e
+      onRefusal?.(e.message)
+      return { ok: false, code: 'refused', message: e.message }
+    }
     if (!result.ok) reportFailure(result)
     mirrorDirty()
     return result
-  }, [session, setSolveError, reportFailure, mirrorDirty])
+  }, [session, setSolveError, reportFailure, mirrorDirty, onRefusal])
 
   const commitMutationGroup = useCallback((ms: Mutation[]) => {
     setSolveError(null)
     if (!session.getDoc() || ms.length === 0) return
-    const result = session.executeGroup(ms)
+    let result: Result
+    try {
+      result = session.executeGroup(ms)
+    } catch (e) {
+      if (!(e instanceof MutationRefusal)) throw e
+      onRefusal?.(e.message)
+      return
+    }
     if (!result.ok) reportFailure(result)
     mirrorDirty()
-  }, [session, setSolveError, reportFailure, mirrorDirty])
+  }, [session, setSolveError, reportFailure, mirrorDirty, onRefusal])
 
   const findTransaction = useCallback((kind: 'preview' | 'edit' | 'brep'): string | null =>
     session.transactions().find(txn => txn.kind === kind)?.id ?? null, [session])

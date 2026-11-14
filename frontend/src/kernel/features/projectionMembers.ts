@@ -14,6 +14,8 @@
 
 import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/faceTypes'
+import { entityVertexIndices } from '@/registry'
+import type { PartDoc } from '@/types/cad'
 
 /** Hex characters of the construction UUID a member id starts with. */
 export const MEMBER_ID_HEX = 8
@@ -76,6 +78,290 @@ export function isFaceProjectionSource(source: string): boolean {
     return parsed.kind === 'ancestry' && isFaceRestriction(parsed.typeRestriction)
   } catch {
     return false
+  }
+}
+
+/** The five causes an authored sketch projection can name at its own boundary.
+ *  `unpositioned` is the sixth: the named entity exists but the document holds
+ *  no position for it yet, which is what a stored never-resolved projection
+ *  looks like. */
+export type ProjectionSourceProblemKind =
+  | 'self reference'
+  | 'unknown sketch'
+  | 'unknown entity'
+  | 'forward reference'
+  | 'cycle'
+  | 'unpositioned'
+
+export interface ProjectionSourceProblem {
+  // The short cause the solve warning substitutes for its generic tail.
+  kind: ProjectionSourceProblemKind
+  // The one-sentence refusal the applier throws.
+  message: string
+}
+
+/** The parts of `@<sketchId>/<entityId>[/vertex]` a sketch projection names. */
+export interface ProjectionSketchSource {
+  sketchId: string
+  entityId: string
+  vertexKey?: string
+}
+
+/** Parse a whole-entity or vertex sketch source; null for a body query, a
+ *  builtin ref, a local `$` ref or an unrecognizable spelling. */
+export function parseProjectionSketchSource(source: string): ProjectionSketchSource | null {
+  if (!source.startsWith('@') || source.startsWith('@builtin_')) return null
+  const [sketchId, entityId, vertexKey] = source.slice(1).split('/')
+  if (!sketchId || !entityId) return null
+  return { sketchId, entityId, ...(vertexKey ? { vertexKey } : {}) }
+}
+
+/** `$<entity>` names an entity of the target sketch itself. */
+function localProjectionSource(source: string): string | null {
+  return source.startsWith('$') && source.length > 1 ? source.slice(1) : null
+}
+
+/** Spell a local entity ref for a refusal sentence. Composed without the
+ *  template form the doc-ref ratchet recognizes as a wire writer. */
+function dollarRef(id: string): string {
+  return `${'$'}${id}`
+}
+
+function chainLabel(ids: readonly string[]): string {
+  return ids.map(dollarRef).join(' -> ')
+}
+
+/** The projection rows of a sketch, as a target -> source map for a `$` chain. */
+function localProjectionChains(feature: unknown): Map<string, string> {
+  const chains = new Map<string, string>()
+  const constraints = typeof feature === 'object' && feature !== null
+    ? (feature as { constraints?: unknown }).constraints
+    : undefined
+  const rows = Array.isArray(constraints) ? constraints : []
+  for (const row of rows) {
+    if (typeof row !== 'object' || row === null) continue
+    const c = row as { kind?: unknown; target?: unknown; source?: unknown }
+    if (c.kind !== 'projection' || typeof c.target !== 'string' || !c.target.startsWith('$')) continue
+    if (typeof c.source !== 'string') continue
+    chains.set(c.target.slice(1), c.source)
+  }
+  return chains
+}
+
+/**
+ * Why a sketch projection source can never resolve, or null when it is a
+ * plausible source. Pure over the document: the loader and the solve reuse it
+ * to name the cause of a stored dangling row, and the applier refuses a new row
+ * with the same sentence.
+ *
+ * `targetId` names the entity the projection will hold, when the caller knows
+ * it (the applier's authored id, or the solve's target). Without it a `$`
+ * self-reference cannot be told from any other chain, and the fresh mint is
+ * never an existing chain member anyway.
+ */
+export function classifyProjectionSource(
+  doc: PartDoc,
+  featureId: string,
+  source: string,
+  targetId?: string,
+): ProjectionSourceProblem | null {
+  if (!source || source.startsWith('?')) return null
+  if (source === '@builtin_origin') return null
+  if (isFaceProjectionSource(source)) return null
+  const features = doc.features ?? []
+  const target = features.find(feature => feature.id === featureId)
+  if (target === undefined || target.kind !== 'sketch') return null
+
+  const local = localProjectionSource(source)
+  if (local !== null) {
+    const entities = target.entities ?? []
+    const targetEid = targetId ?? null
+    if (targetEid !== null && local === targetEid) {
+      return {
+        kind: 'self reference',
+        message: `a projection cannot source itself ('${source}')`,
+      }
+    }
+    // The chain the new row would close: `$` sources are copied verbatim, so a
+    // walk from the named entity that reaches the target makes both rows cyclic.
+    const chains = localProjectionChains(target)
+    const visited: string[] = []
+    let current = local
+    while (true) {
+      if (targetEid !== null && current === targetEid) {
+        return {
+          kind: 'cycle',
+          message: `cycle: ${source} follows ${chainLabel(visited)} back to ${dollarRef(targetEid)}`,
+        }
+      }
+      if (visited.includes(current)) {
+        return {
+          kind: 'cycle',
+          message: `cycle: ${source} follows ${chainLabel(visited)} back to ${dollarRef(current)}`,
+        }
+      }
+      visited.push(current)
+      const next = chains.get(current)
+      if (next === undefined || !next.startsWith('$') || next.length < 2) break
+      current = next.slice(1)
+    }
+    if (!entities.some(entity => entity.id === local)) {
+      return {
+        kind: 'unknown entity',
+        message: `projection source ${source} names no entity '${local}' in sketch '${featureId}'; `
+          + `entities: ${entities.map(entity => entity.id).join(', ') || 'none'}`,
+      }
+    }
+    if (target.initial?.[local] === undefined) {
+      return {
+        kind: 'unpositioned',
+        message: `projection source ${source} names '${featureId}/${local}', which has no position yet; `
+          + 'solve that sketch before projecting it',
+      }
+    }
+    return null
+  }
+
+  const parsed = parseProjectionSketchSource(source)
+  if (parsed === null) return null
+  const { sketchId, entityId } = parsed
+  if (sketchId === featureId) {
+    return {
+      kind: 'self reference',
+      message: `a sketch cannot project its own entity ('${source}'); draw it, or project the body edge it came from`,
+    }
+  }
+  const sourceFeature = features.find(feature => feature.id === sketchId)
+  if (sourceFeature === undefined) {
+    const sketches = features.filter(feature => feature.kind === 'sketch').map(feature => feature.id)
+    return {
+      kind: 'unknown sketch',
+      message: `projection source ${source} names no sketch '${sketchId}'; `
+        + `existing sketches: ${sketches.join(', ') || 'none'}`,
+    }
+  }
+  if (sourceFeature.kind !== 'sketch') {
+    return {
+      kind: 'unknown sketch',
+      message: `projection source ${source} names '${sketchId}', which is not a sketch`,
+    }
+  }
+  const sourceAt = features.findIndex(feature => feature.id === sketchId)
+  const targetAt = features.findIndex(feature => feature.id === featureId)
+  if (sourceAt >= 0 && targetAt >= 0 && sourceAt >= targetAt) {
+    return {
+      kind: 'forward reference',
+      message: `forward reference: '${sketchId}' comes later than '${featureId}'; `
+        + 'reorder or project in the other direction',
+    }
+  }
+  const entities = sourceFeature.entities ?? []
+  const entity = entities.find(candidate => candidate.id === entityId)
+  if (entity === undefined) {
+    // A face projection derives member ids with no document row; a projection of
+    // one of those is the visible member the solve produced, so it resolves.
+    const member = (sourceFeature.constraints ?? []).some(constraint =>
+      constraint.kind === 'projection'
+      && constraint.members !== undefined
+      && Object.values(constraint.members).includes(entityId))
+    if (member) return null
+    return {
+      kind: 'unknown entity',
+      message: `projection source ${source} names no entity '${entityId}' in sketch '${sketchId}'; `
+        + `entities: ${entities.map(candidate => candidate.id).join(', ') || 'none'}`,
+    }
+  }
+  if (sourceFeature.initial?.[entityId] === undefined) {
+    return {
+      kind: 'unpositioned',
+      message: `projection source ${source} names '${sketchId}/${entityId}', which has no position yet; `
+        + 'solve that sketch before projecting it',
+    }
+  }
+  // A vertex suffix is checked against the kind's own keys: `/nope` on a line
+  // can never resolve, so it is a document authoring mistake, not a solve miss.
+  if (parsed.vertexKey !== undefined) {
+    const params = sourceFeature.initial?.[entityId] ?? []
+    const keys = entityVertexIndices(entity.kind, params.length, entity.handles)
+    if (keys !== undefined && keys[parsed.vertexKey] === undefined) {
+      return {
+        kind: 'unknown entity',
+        message: `projection source ${source} names no vertex '${parsed.vertexKey}' on `
+          + `${sketchId}/${entityId} (${entity.kind}); vertices: ${Object.keys(keys).join(', ')}`,
+      }
+    }
+  }
+  return null
+}
+
+/** The refusal sentence for a new projection row, or null when it may land. */
+export function describeProjectionSourceProblem(
+  doc: PartDoc,
+  featureId: string,
+  source: string,
+  targetId?: string,
+): string | null {
+  return classifyProjectionSource(doc, featureId, source, targetId)?.message ?? null
+}
+
+/** What a delete does to projections that source the removed geometry. */
+export interface ProjectionDependentsReport {
+  // `sk2/p1, sk3/q3 projected sk1/l1 and keep their last position`.
+  text: string
+  // The consuming sketches, in feature order, for the note's ids.
+  ids: string[]
+}
+
+/**
+ * The projections a delete freezes: every stored row whose source names one of
+ * the deleted sketch entities. `@sk/ent` crosses sketches and `$ent` stays in
+ * the deleted entity's own sketch, so both spellings are scanned. The note is
+ * informational: the delete proceeds and those rows keep their last position.
+ */
+export function projectionDependentsReport(
+  doc: PartDoc,
+  targets: readonly string[],
+): ProjectionDependentsReport | null {
+  const deleted = new Map<string, Set<string>>()
+  for (const target of targets) {
+    const parts = target.split(':')
+    if (parts[0] !== 'entity' && parts[0] !== 'vertex') continue
+    const featureId = parts[1]
+    const entityId = parts[2]
+    if (!featureId || !entityId) continue
+    const held = deleted.get(featureId) ?? new Set<string>()
+    held.add(entityId)
+    deleted.set(featureId, held)
+  }
+  if (deleted.size === 0) return null
+  const dependents: string[] = []
+  const sources: string[] = []
+  const ids: string[] = []
+  for (const feature of doc.features ?? []) {
+    if (feature.kind !== 'sketch') continue
+    for (const constraint of feature.constraints ?? []) {
+      if (constraint.kind !== 'projection' || typeof constraint.source !== 'string') continue
+      const target = typeof constraint.target === 'string' && constraint.target.startsWith('$')
+        ? constraint.target.slice(1)
+        : null
+      if (target === null) continue
+      const sketchSource = parseProjectionSketchSource(constraint.source)
+      const local = localProjectionSource(constraint.source)
+      const sourceId = sketchSource?.sketchId ?? (local === null ? null : feature.id)
+      const entityId = sketchSource?.entityId ?? local
+      if (sourceId === null || entityId === null) continue
+      if (!deleted.get(sourceId)?.has(entityId)) continue
+      const dependent = `${feature.id}/${target}`
+      const source = `${sourceId}/${entityId}`
+      if (!dependents.includes(dependent)) dependents.push(dependent)
+      if (!sources.includes(source)) sources.push(source)
+      if (!ids.includes(feature.id)) ids.push(feature.id)
+    }
+  }
+  if (dependents.length === 0) return null
+  return {
+    text: `${dependents.join(', ')} projected ${sources.join(', ')} and keep their last position`,
+    ids,
   }
 }
 

@@ -118,7 +118,7 @@ describe('sketch preamble: container materialization is per mutation', () => {
 
   it('applyAddProjectedEntity creates an entity and a projection constraint', () => {
     const doc = bareDoc()
-    applyAddProjectedEntity(doc, 'Sketch1', 'line', '@some/edge/0')
+    applyAddProjectedEntity(doc, 'Sketch1', 'line', '@builtin_origin')
     expect(sketch(doc).entities).toHaveLength(1)
     expect(Object.keys(sketch(doc).entities![0])).toEqual(['id', 'kind'])
     expect(sketch(doc).constraints).toHaveLength(1)

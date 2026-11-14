@@ -1,6 +1,7 @@
 import { stringify as stringifyYaml } from 'yaml'
 import type { PartDoc, Mutation, PartFeature, SketchData } from '@/types/cad'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
+import type { MutationContext } from '@/hooks/mutationDispatch'
 import type { FaceBoundaryLookup } from '@/kernel/features/faceBoundary'
 import { IDEMPOTENT_MUTATION } from '@/hooks/mutationIdempotence'
 import { describeMutation } from '@/utils/core/mutationDescriptions'
@@ -112,6 +113,10 @@ export interface DocSessionDeps {
   // current boundary. The host injects the lookup (UI: the body registry;
   // headless: the last solved bodies), keeping the session free of geometry.
   projectionBoundary?: FaceBoundaryLookup
+  // A projection's body source resolves only in the settled solve; the headless
+  // host answers from its last build's repository. Absent in the editor and the
+  // unit suites, where the document check and the pick's own scene are the gate.
+  projectionResolves?: MutationContext['projectionResolves']
   // The journal sink (the part editor, the headless CLI). Absent in the unit
   // suites and the assembly editor: no sink, no bookkeeping. The part editor
   // supplies one in every build, because the recovery autosave borrows its
@@ -339,7 +344,7 @@ function dragAnchorFor(m: Mutation): { featureId: string; entityId: string } | u
 type AnyHandler = (
   doc: PartDoc,
   m: Mutation,
-  ctx?: { projectionBoundary?: FaceBoundaryLookup },
+  ctx?: MutationContext,
 ) => Mutation | void
 
 // The result of running a mutation set on one clone, with the pruned solve
@@ -758,7 +763,10 @@ export class DocSession {
         const addedId = insertAt !== undefined && 'featureId' in m && !next.features?.some(f => f.id === m.featureId)
           ? m.featureId
           : null
-        const enriched = handler?.(next, m, { projectionBoundary: this.deps.projectionBoundary })
+        const enriched = handler?.(next, m, {
+          projectionBoundary: this.deps.projectionBoundary,
+          projectionResolves: this.deps.projectionResolves,
+        })
         if (enriched !== undefined) appliedMutations[index] = enriched
         if (addedId !== null && insertAt !== undefined && insertFeatureAt(next, addedId, insertAt)) {
           insertedIds.push(addedId)

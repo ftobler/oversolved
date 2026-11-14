@@ -10,6 +10,17 @@ import { failLoud } from '@/utils/invariants'
 // child and the document test fixtures, where import.meta.env is undefined.
 export const warn = import.meta.env?.DEV ? (...args: unknown[]) => console.warn(...args) : () => undefined
 
+/** A user-facing refusal from a mutation applier: the mutation names a row or a
+ *  state the document must not hold, and the caller shows the message instead of
+ *  treating it as a programmer error. The drive reports it as a failed step; the
+ *  editor routes it to its refusal toast. */
+export class MutationRefusal extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'MutationRefusal'
+  }
+}
+
 /** Round to the given quantum; the document's stored grid is `round` below.
  *  Two edge spellings are folded here because every caller persists what this
  *  returns: a tiny negative would reach the YAML as `-0`, which the repo
