@@ -126,7 +126,10 @@ describe('face projection write-back', () => {
     expect(applyGeometryToFeature(doc, 'sk1', geometry, undefined, edits)).toBe(false)
   })
 
-  it('adopts a single-edge resolved kind through the write-back, not the lowering', () => {
+  // Needs the solver (absent in CI without a WASM build), so it skips with the other solving suites.
+  it.skipIf(!solveBytes)('adopts a single-edge resolved kind through the write-back, not the lowering', () => {
+    resetSketchSolver()
+    if (solveBytes) setSketchSolver(solveBytes)
     const phi = Math.PI / 3
     const payload = {
       type: 'edge', kind: 'circle', center: [0, 0, 0], radius: 5,
