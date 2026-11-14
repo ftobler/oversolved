@@ -456,6 +456,37 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
     expect(measured!.measures.volume).toBeCloseTo(12000 - 25 * 10, 2)
   }, 120_000)
 
+  it('warns when set_extrude_field stores a distance on a through_all feature', async () => {
+    const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
+    const result = await runHeadless({
+      doc: emptyDoc(),
+      steps: [
+        ...box.steps,
+        { mutation: { type: 'add_sketch', featureId: 'sk2', plane: '@builtin_plane_top' } },
+        { mutation: { type: 'add_rect', featureId: 'sk2', p0: [10, 10], p1: [15, 15] } },
+        {
+          mutation: {
+            type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2',
+            operation: 'cut', termination: 'through_all',
+          },
+        },
+        // The setter accepts and stores the field; the solve is what reports
+        // that a through_all cut does not read it.
+        { mutation: { type: 'set_extrude_field', featureId: 'ex2', field: 'distance', value: 5 } },
+      ],
+    })
+    expect(result.ok).toBe(true)
+    const stored = result.doc?.features?.find(feature => feature.id === 'ex2')
+    expect(stored?.kind === 'extrude' && stored.extrude.distance).toBe(5)
+    const problem = result.features.find(feature => feature.id === 'ex2')
+    expect(problem?.status).toBe('ok')
+    expect(problem?.message).toBe(
+      'extrude: through_all takes no distance; the stored value is ignored',
+    )
+    const measured = await measureHeadless(result.doc!)
+    expect(measured!.measures.volume).toBeCloseTo(12000 - 25 * 10, 2)
+  }, 120_000)
+
   it('cuts a symmetric through_all extrude through the whole box from its bottom face', async () => {
     // The MCP practice repro: a 20 x 20 x 10 plate on Front, then a r=5 circle
     // on the same plane (z=0, the bottom face) cut through_all symmetric. The
