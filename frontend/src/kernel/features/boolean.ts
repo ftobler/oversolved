@@ -23,6 +23,7 @@ import type { Repository } from '../query'
 import { resolveBody } from './shared/bodyResolution'
 import { brepDiffIsEmpty } from './shared/brepDiff'
 import { booleanWithDiff, volumeOf, shapesIntersect, BooleanSoundnessError } from '../occ/booleans'
+import { maxPrecision, precisionCeilingWarning, type KernelPrecision } from '../precision'
 import { nearCoaxialCylinderWarning } from '../occ/nearCoaxial'
 import { offsetSolid, OffsetError } from '../occ/offsetShape'
 import { SubShapeMap } from '../occ/subshapeIdentity'
@@ -257,6 +258,9 @@ export function solveBoolean(
   let { faceNames, edgeNames, faceAncestry, edgeAncestry, capAncestry, faceOwner, edgeOwner } =
     readBodyNames(oc, scope, resultShape, targetBody)
   const result: BooleanResult = { status: 'ok', body_id: targetBody.id, body_ids: [], operation }
+  // The merge widens by the max reported precision over the target and every
+  // tool that actually contributes, up to the ceiling (kernel/precision.ts).
+  let precision: KernelPrecision | null = targetBody.precision ?? null
   const warn = (msg: string): void => {
     result.solver_warning = result.solver_warning === undefined ? msg : `${result.solver_warning}; ${msg}`
   }
@@ -330,10 +334,13 @@ export function solveBoolean(
       }
     }
 
+    // Only a tool that reaches the target contributes to the merge, and with it
+    // its own reported precision.
+    precision = maxPrecision(precision, toolBody.precision)
     const prevShape = resultShape
     let res
     try {
-      res = booleanWithDiff(oc, scope, resultShape, cutTool, op, { unifyFaces })
+      res = booleanWithDiff(oc, scope, resultShape, cutTool, op, { unifyFaces, precision })
     } catch (e) {
       // A clearance growth can push the cut into a tangency the kernel cannot
       // resolve; name the clearance rather than the generic nudge message.
@@ -420,7 +427,10 @@ export function solveBoolean(
 
   const bodyIds = resplitBody(oc, scope, table, bodyStore, targetBody, resultShape, featureId, {
     faceNames, edgeNames, faceAncestry, edgeAncestry, faceOwner, edgeOwner,
-  })
+  }, null, precision)
+
+  const ceiling = foldedAny && precision !== null ? precisionCeilingWarning(precision) : null
+  if (ceiling !== null) warn(ceiling)
 
   if (bodyIds.length === 0) {
     // The operation ate the whole target (a subtract whose tool swallows it).

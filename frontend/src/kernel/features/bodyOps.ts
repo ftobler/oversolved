@@ -24,6 +24,7 @@ import { transferBooleanNames } from './booleanLineage'
 import { registerSplitBodies, resplitBody, solidHoldingFaces } from './bodySplit'
 import { readBodyNames } from '../occ/bodyNames'
 import type { SubShapeMap } from '../occ/subshapeIdentity'
+import { maxPrecision, precisionCeilingWarning, type KernelPrecision } from '../precision'
 import { swallowUnlessTrap } from '../errors'
 
 export type BodyOperation = 'add' | 'cut' | 'new'
@@ -60,6 +61,10 @@ export interface ApplyBodyOperationInput {
   // body, which extrude no longer wants: an extrude that joins nothing is a
   // silently misplaced profile, not a new part.
   addRequiresExisting?: boolean
+  /** The tool geometry's realised precision (kernel/precision.ts): what the
+   *  leaf's sketch solve reported. A merge widens the clean by the max of this
+   *  and the target body's record; a new body carries it. */
+  precision?: KernelPrecision | null
 }
 
 export interface ApplyBodyOperationResult {
@@ -171,6 +176,7 @@ export function applyBodyOperation(
     edgeOwner = null,
     oppositeProbe,
     addRequiresExisting = false,
+    precision: toolPrecision = null,
   } = input
 
   // The tool body's construction-name maps, carried onto a body the tool becomes
@@ -179,6 +185,21 @@ export function applyBodyOperation(
   const toolNames = { faceNames, edgeNames, faceAncestry, edgeAncestry, capAncestry, faceOwner, edgeOwner }
 
   const result: ApplyBodyOperationResult = { status: 'ok', body_id: bodyId }
+  // One message per missing sketch precision, however many targets a cut
+  // reaches: the same body record usually drives them all.
+  const ceilingWarnings = new Set<string>()
+  const noteCeiling = (p: KernelPrecision | null): void => {
+    if (p === null) return
+    const warning = precisionCeilingWarning(p)
+    if (warning !== null) ceilingWarnings.add(warning)
+  }
+  const appendCeilingWarnings = (): void => {
+    if (ceilingWarnings.size === 0) return
+    const joined = [...ceilingWarnings].join('; ')
+    result.solver_warning = result.solver_warning === undefined
+      ? joined
+      : `${result.solver_warning}; ${joined}`
+  }
 
   // The tool is checked lazily: the OCC-free early branches (a cut with no
   // target, an unresolvable merge target) never touch either handle, and the
@@ -227,7 +248,10 @@ export function applyBodyOperation(
       // returns true, so nothing here can skip on a throw.
       if (!shapesIntersect(oc, oldShape, toolShape)) continue
 
-      const unifyOpts = { unifyFaces: !existingBody.imported }
+      // Widen the merge by what the solver reported for this body and this
+      // tool, up to the ceiling; a clamped merge is named on the result.
+      const mergePrecision = maxPrecision(existingBody.precision, toolPrecision)
+      const unifyOpts = { unifyFaces: !existingBody.imported, precision: mergePrecision }
       requireToolVolume()
       const { shape: newShape, diff, faceOrigin } = booleanWithDiff(oc, scope, oldShape, toolShape, 'cut', unifyOpts)
       scope.track(newShape)
@@ -279,7 +303,10 @@ export function applyBodyOperation(
       // A cut is the classic disconnector, and the sibling bodies inherit the
       // names just transferred onto `newShape`, narrowed to the faces each one
       // actually owns.
-      cutBodyIds.push(...resplitBody(oc, scope, table, bodyStore, existingBody, newShape, featureId, names))
+      cutBodyIds.push(...resplitBody(
+        oc, scope, table, bodyStore, existingBody, newShape, featureId, names, null, mergePrecision,
+      ))
+      noteCeiling(mergePrecision)
     }
     if (!cutAnything) {
       const flipped = oppositeProbe?.tool() ?? null
@@ -317,13 +344,14 @@ export function applyBodyOperation(
         ? deleted
         : `${result.solver_warning}; ${deleted}`
     }
+    appendCeilingWarnings()
     return result
   }
 
   if (operation === 'new') {
     requireToolVolume()
     const bodyIds = registerSplitBodies(oc, scope, table, bodyStore, toolShape, {
-      id: bodyId, createdBy: featureId, sketchId, profileQueries, ...toolNames,
+      id: bodyId, createdBy: featureId, sketchId, profileQueries, precision: toolPrecision, ...toolNames,
     })
     result.body_id = bodyIds[0]
     result.body_ids = bodyIds
@@ -345,10 +373,15 @@ export function applyBodyOperation(
       let newShape: OccShape
       let diff
       let faceOrigin
+      // The merge widens by what the solver reported for this body and this
+      // tool, up to the ceiling; a clamped merge is named on the result.
+      const mergePrecision = maxPrecision(existingBody.precision, toolPrecision)
       try {
         requireToolVolume()
         // Imported bodies skip the face merge (hang guard); see booleanWithDiff.
-        const res = booleanWithDiff(oc, scope, oldShape, toolShape, 'fuse', { unifyFaces: !existingBody.imported })
+        const res = booleanWithDiff(oc, scope, oldShape, toolShape, 'fuse', {
+          unifyFaces: !existingBody.imported, precision: mergePrecision,
+        })
         newShape = res.shape
         diff = res.diff
         faceOrigin = res.faceOrigin
@@ -402,11 +435,14 @@ export function applyBodyOperation(
       // explicit merge target may leave an island. resplitBody hands the target
       // material the existing id through preferredFirst and mints the island as
       // a sibling.
-      fusedIds = resplitBody(oc, scope, table, bodyStore, existingBody, newShape, featureId, names, preferredFirst)
+      fusedIds = resplitBody(
+        oc, scope, table, bodyStore, existingBody, newShape, featureId, names, preferredFirst, mergePrecision,
+      )
       existingBody.modified_by.push(featureId)
       existingBody.brep_diff = diff
       fused = true
       fusedBodyId = bid
+      noteCeiling(mergePrecision)
       break
     }
   }
@@ -424,6 +460,7 @@ export function applyBodyOperation(
         ? nearCoaxial
         : `${result.solver_warning}; ${nearCoaxial}`
     }
+    appendCeilingWarnings()
     return result
   }
   if (mergeTarget) {
@@ -433,7 +470,7 @@ export function applyBodyOperation(
   // No target body: the tool becomes its own body (one per solid).
   requireToolVolume()
   const bodyIds = registerSplitBodies(oc, scope, table, bodyStore, toolShape, {
-    id: bodyId, createdBy: featureId, sketchId, profileQueries, ...toolNames,
+    id: bodyId, createdBy: featureId, sketchId, profileQueries, precision: toolPrecision, ...toolNames,
   })
   result.body_id = bodyIds[0]
   result.body_ids = bodyIds

@@ -48,6 +48,7 @@ import {
   canonicalFaces, canonicalIndex, carryFaceNames, emptyShapeNames, mergeShapeNames,
 } from '../occ/bodyNames'
 import { swallowUnlessTrap } from '../errors'
+import { maxPrecision, sketchPrecision, type KernelPrecision } from '../precision'
 
 type Dict = Record<string, unknown>
 
@@ -339,6 +340,10 @@ export function solveExtrude(
   let firstSketchId = ''
   let firstSurfaces: Dict[] | undefined
   let firstPtData: PlaneLike | undefined
+  // The realised precision of every sketch whose profile this feature builds
+  // from: a body carries the max over them (kernel/precision.ts). A face or edge
+  // pick has no sketch of its own and contributes nothing.
+  let precision: KernelPrecision | null = null
   const profileErrors: string[] = []
   const profileQueries: string[] = []
   const unbuildableReasons: string[] = []
@@ -388,6 +393,9 @@ export function solveExtrude(
         )
       }
     }
+    // The sketch's own solve precision, read from the registration postRegister
+    // publishes beside its topology. Accumulated across profile refs.
+    precision = maxPrecision(precision, sketchPrecision(globalRepo, resolved.sketchId))
     const topo = (globalRepo.elements.get('_topo_' + resolved.sketchId) as Dict | undefined) ?? {}
     // Why an area the user could see and pick did not build. Scoped to the
     // areas this reference names: an unpicked area is not unbuildable. The
@@ -761,6 +769,7 @@ export function solveExtrude(
       firstSketchId,
       featureId,
       taperDeg,
+      precision,
     )
     // A planar up_to keeps the old top-face registration at the blind distance;
     // a curved face or a next stop has no honest flat frame to register. An
@@ -873,6 +882,7 @@ export function solveExtrude(
       faceAncestry: names.faceAncestry,
       edgeAncestry: names.edgeAncestry,
       capAncestry: names.capAncestry,
+      precision,
       // An add extends the part; a profile that reaches no existing body is a
       // misplaced sketch, not a second part. `operation: new` is the way to start
       // one, and it is the only way (an add mints nothing).

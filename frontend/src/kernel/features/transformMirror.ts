@@ -20,6 +20,7 @@ import { transformCopyWithMapping, rekeyNamesForTransformedBody, rebuildNamesFor
 import { transferBooleanNames } from './booleanLineage'
 import { registerSplitBodies, resplitBody } from './bodySplit'
 import { readBodyNames } from '../occ/bodyNames'
+import { precisionCeilingWarning } from '../precision'
 import { quatFromEulerXyz, quatToAxisAngle } from '@/utils/transform3d'
 
 type Dict = Record<string, unknown>
@@ -246,7 +247,7 @@ export function solveTransform(
     const names = rebuildNamesForTransformedCopy(oc, scope, newShape, rows, featureId, index, builder)
     bodyIds.push(...registerSplitBodies(oc, scope, table, bodyStore, scope.track(newShape), {
       id: 'body_' + featureId, createdBy: featureId, sketchId: sourceBody.sketch_id,
-      profileQueries: sourceBody.profile_queries, ...names,
+      profileQueries: sourceBody.profile_queries, precision: sourceBody.precision, ...names,
     }))
   })
   if (bodyIds.length === 0 && consumedReplace !== null) {
@@ -327,7 +328,12 @@ export function solveMirror(
   }
 
   if (merge) {
-    const res = booleanWithDiff(oc, scope, sourceShape, mirrored, 'fuse', { unifyFaces: !sourceBody.imported })
+    // A mirror is a fuse, so the merge reads the same reported precision the
+    // source body carries: the mirrored copy is the same geometry.
+    const precision = sourceBody.precision
+    const res = booleanWithDiff(oc, scope, sourceShape, mirrored, 'fuse', {
+      unifyFaces: !sourceBody.imported, precision,
+    })
     const names = transferBooleanNames(oc, scope, {
       bodyShape: res.shape,
       faceOrigin: res.faceOrigin,
@@ -347,7 +353,9 @@ export function solveMirror(
     })
     // "merge" is a fuse, and a body mirrored across a plane it does not reach
     // fuses into two disjoint solids: two parts, not one merged part.
-    const bodyIds = resplitBody(oc, scope, table, bodyStore, sourceBody, scope.track(res.shape), featureId, names)
+    const bodyIds = resplitBody(
+      oc, scope, table, bodyStore, sourceBody, scope.track(res.shape), featureId, names, null, precision,
+    )
     if (bodyIds.length === 0) {
       // Defensive: a fuse of a body with its mirror cannot consume it, but if
       // the resplit ever deleted it, report the deletion rather than a live id.
@@ -361,13 +369,20 @@ export function solveMirror(
     }
     sourceBody.modified_by.push(featureId)
     sourceBody.brep_diff = res.diff
-    return { status: 'ok', body_id: bodyIds[0], body_ids: bodyIds, operation: 'merge' }
+    const ceiling = precision ? precisionCeilingWarning(precision) : null
+    return {
+      status: 'ok',
+      body_id: bodyIds[0],
+      body_ids: bodyIds,
+      operation: 'merge',
+      ...(ceiling !== null ? { solver_warning: ceiling } : {}),
+    }
   }
 
   const newBodyId = 'body_' + featureId
   const newIds = registerSplitBodies(oc, scope, table, bodyStore, scope.track(mirrored), {
     id: newBodyId, createdBy: featureId, sketchId: sourceBody.sketch_id,
-    profileQueries: sourceBody.profile_queries, ...mirroredNames,
+    profileQueries: sourceBody.profile_queries, precision: sourceBody.precision, ...mirroredNames,
   })
   return { status: 'ok', body_id: newIds[0], body_ids: newIds, operation: 'new' }
 }

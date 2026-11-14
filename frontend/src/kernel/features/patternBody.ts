@@ -102,7 +102,8 @@ export function applyBodyPattern(
     const bodyIds: string[] = []
     for (const inst of instances) {
       bodyIds.push(...registerSplitBodies(oc, scope, table, bodyStore, inst.shape, {
-        id: resultBodyId, createdBy: featureId, profileQueries: body.profile_queries, ...inst.names,
+        id: resultBodyId, createdBy: featureId, profileQueries: body.profile_queries,
+        precision: body.precision, ...inst.names,
       }))
     }
     return { status: 'ok', body_id: bodyIds[0], body_ids: bodyIds, operation: 'new' }
@@ -162,7 +163,8 @@ export function applyBodyPattern(
       const toolNames = emptyShapeNames()
       for (const copy of group) mergeShapeNames(toolNames, copy.names)
       const r = booleanWithDiffMany(
-        oc, scope, fused, group.map((copy) => copy.shape), 'fuse', { unifyFaces: !body.imported },
+        oc, scope, fused, group.map((copy) => copy.shape), 'fuse',
+        { unifyFaces: !body.imported, precision: body.precision ?? null },
       )
       const nextFused = scope.track(r.shape)
       const next: OccShape[] = []
@@ -220,7 +222,7 @@ export function applyBodyPattern(
   // keeps body.id on that material instead of re-ranking siblings by centroid.
   const bodyIds = resplitBody(
     oc, scope, table, bodyStore, body, fused, featureId, fusedNames,
-    solidHoldingFaces(oc, scope, fused, sourceFaces),
+    solidHoldingFaces(oc, scope, fused, sourceFaces), body.precision ?? null,
   )
   if (bodyIds.length === 0) {
     // A union can only be empty through a failed boolean, so this is defensive:

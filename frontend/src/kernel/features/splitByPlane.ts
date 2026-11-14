@@ -140,6 +140,8 @@ export function solveSplit(
     // BSPLINE-surfaced body, which would make its own halves miss.
     const sourceVolume = Math.abs(volumeForMeasure(oc, scope, shape))
     const unifyFaces = !body.imported
+    // The body's inherited precision widens the cut's clean like any merge.
+    const precision = body.precision ?? null
 
     // `above` keeps the normal side, so it cuts away a box on the opposite
     // normal and its cap is that box's base; `below` is the mirror image.
@@ -150,7 +152,7 @@ export function solveSplit(
         ? [-normal[0], -normal[1], -normal[2]]
         : [normal[0], normal[1], normal[2]]
       const box = makeHalfSpaceBox(oc, scope, origin, boxNormal, shape)
-      const res = booleanWithDiff(oc, scope, shape, box.shape, 'cut', { unifyFaces })
+      const res = booleanWithDiff(oc, scope, shape, box.shape, 'cut', { unifyFaces, precision })
       return {
         side,
         shape: scope.track(res.shape),

@@ -29,6 +29,7 @@ import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
+import type { KernelPrecision } from '../precision'
 import { exploreSolids } from '../occ/booleans'
 import { solidCentroid } from '../occ/primitives'
 import { canonicalEdges, canonicalFaces, namesToArray, type UuidArray } from '../occ/bodyNames'
@@ -55,6 +56,9 @@ export interface BodyTemplate extends ProducedNames {
   sketchId?: string
   profileQueries?: string[]
   imported?: boolean
+  /** The realised precision of the geometry the shape was built from
+   *  (kernel/precision.ts); a copied body carries its source's. */
+  precision?: KernelPrecision | null
 }
 
 /** The names one body stores, read off the solid it was given. */
@@ -274,6 +278,7 @@ export function registerSplitBodies(
       profile_queries: [...(template.profileQueries ?? [])],
       ...names,
       ...(template.imported ? { imported: true } : {}),
+      ...(template.precision ? { precision: { ...template.precision } } : {}),
     }
     ids.push(id)
   })
@@ -311,6 +316,11 @@ export function registerSplitBodies(
  * stays on that material instead of on whichever sibling the relative centroid
  * order ranks first. Null keeps the geometric order; see `orderedSolidsWithPreferred`.
  *
+ * `precision` is the realised precision of the shape's producing solves when the
+ * caller just ran a merge (kernel/precision.ts). Absent keeps the body's own
+ * record, which is what a modifier that reuses the same sketch geometry wants;
+ * siblings inherit whichever record the parent ends up with.
+ *
  * An EMPTY result (the new shape holds no solid) deletes the body from the
  * store and returns `[]`, so a caller that re-resolves the old id later fails
  * with "body not found" instead of reading a `shape: null`. The one invariant
@@ -332,10 +342,14 @@ export function resplitBody(
   featureId: string,
   produced: ProducedNames,
   preferredFirst: OccShape | null = null,
+  precision?: KernelPrecision | null,
 ): string[] {
   const solids = orderedSolidsWithPreferred(oc, scope, newShape, preferredFirst)
   const oldHandle = body.shape
   const ids = [body.id]
+  // A merge passes the max of its operands; a modifier passes nothing and the
+  // body keeps the precision of the sketches that made its geometry.
+  const carriedPrecision = precision ?? body.precision
 
   // The superseded handle's owner tag is the feature that minted the shape
   // being replaced, never `featureId` (a modifier re-seating another feature's
@@ -366,6 +380,7 @@ export function resplitBody(
     }
     Object.assign(body, namesForSolid(oc, scope, solids[0], produced, false))
     body.shape = table.register(scope.detach(solids[0]), featureId)
+    if (precision) body.precision = { ...precision }
     if (oldHandle !== null) table.releaseFor(oldHandle, oldProducer)
     return ids
   }
@@ -374,6 +389,7 @@ export function resplitBody(
   // either way every sibling ends up with the same history the parent has.
   Object.assign(body, namesForSolid(oc, scope, solids[0], produced, true))
   body.shape = table.register(scope.detach(solids[0]), featureId)
+  if (precision) body.precision = { ...precision }
   if (oldHandle !== null) table.releaseFor(oldHandle, oldProducer)
 
   // The split this sibling line began in. Deliberately NOT inherited by a
@@ -395,6 +411,7 @@ export function resplitBody(
       split_from: { ...splitFrom },
       ...namesForSolid(oc, scope, solids[i], produced, true),
       ...(body.imported ? { imported: true } : {}),
+      ...(carriedPrecision ? { precision: { ...carriedPrecision } } : {}),
     }
     ids.push(id)
   }

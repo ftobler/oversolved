@@ -9,15 +9,16 @@
 // seeded OPEN and closed only by its constraints, so a build that read the
 // stored seed would fail to close the profile.
 //
-// Its one seam measurement is a PIN, not a pass. The solver's row contract is
-// met on this sketch, and one edge is still left in x = 0 between two nearly
-// coplanar faces: on the report's sketch the 1.28e-9 rad the kernel sees is a
-// free absolute tilt, not a residual row, so no row-precision finish can close
-// it. The decided mechanism (2026-11-14) is an authored `horizontal`, a row that
+// Its seam measurements are PINS, not passes. The solver's row contract is met
+// on this sketch, and edges are still left in x = 0 between nearly coplanar
+// faces: on the report's sketch the 1.28e-9 rad the kernel sees is a free
+// absolute tilt, not a residual row, so no row-precision finish closes it. The
+// decided mechanism (2026-11-14) is an authored `horizontal`, a row that
 // measures the direction; no orientation-uncertainty signal is added. The
-// kernel half (reading a report and applying it per call) is
-// `feature/kernel-unify-within-contract.md`, and this suite is where a no-seam
-// assertion on the authored-horizontal document turns green.
+// kernel half reads a solve's reported precision and widens its own call by it,
+// but the report's miss is zero (within contract), so this seam is outside what
+// that rule can honestly reach. A free tilt stays split: that is the rule, not a
+// gap in it.
 
 import { describe, it, expect, afterAll } from 'vitest'
 import type { BuildResponse } from '../../builder'
@@ -28,7 +29,7 @@ import { DisposeScope } from '../../occ/disposeScope'
 import {
   oc, solveBytes, extrudeTestHarness, rectSketchSk, extrudeSpec,
 } from '../extrudeRealSupport'
-import { OCC_ANGULAR } from '../../solverConstants'
+import { OCC_ANGULAR, TOL_SURFACE_PARALLEL } from '../../solverConstants'
 import mirrorSeams from '../__fixtures__/mirrorSeams.json'
 
 type Vec3 = [number, number, number]
@@ -241,11 +242,10 @@ describe.skipIf(!oc || !solveBytes)('sketch precision contract (real OCC)', () =
     // coplanar faces: the bottom wall through xip0, at a 1.8e-9 normal sine
     // (the report measured 1.10e-9 to 1.60e-9 on its variants). That residual
     // is the free absolute tilt, not a row: it is OCC's own surface/merge
-    // decision on geometry the solver already reports as within contract, which
-    // is why the no-seam assertion is plan 2's
-    // (`feature/kernel-unify-within-contract.md`). The seam exceeds plan 2's
-    // 1e-9 ceiling as that plan is currently written, so widening by the
-    // reported row miss (0 here) cannot be its whole mechanism.
+    // decision on geometry the solver already reports as within contract. The
+    // kernel half widens by that reported miss, which is zero here, so the seam
+    // is outside what report-driven widening can honestly reach. The author's
+    // fix is a row that measures the direction (see the raw-document test).
     const result = h.run(reportWithHorizontal())
     const row = h.res(result, 'sk1')
     expect(row.status).toBe('underconstrained')
@@ -269,5 +269,29 @@ describe.skipIf(!oc || !solveBytes)('sketch precision contract (real OCC)', () =
     expect(bottom[0].sine).toBeGreaterThan(1e-9)
   })
 
-  it.todo('mirrors without a seam across x = 0: feature/kernel-unify-within-contract.md, whose decided mechanism is an authored horizontal, not an orientation-uncertainty signal')
+  it('keeps the raw report\'s free-tilt seams: a miss the solver did not measure stays split', () => {
+    // The report as authored. Its rows meet the contract (the assertion below),
+    // so `_precision_sk1` floors at the contract pair and the mirror merge runs
+    // at OCC's own angular tolerance. The two near-coplanar wall pairs are a free
+    // absolute tilt of the unconstrained edges l1/xip0, which no row measures:
+    // widening by what was reported cannot fold them, and no fixed-rung or
+    // orientation-uncertainty widening is allowed to. They stay two seams.
+    const result = h.run({ features: doc.features, part_style: doc.part_style })
+    const row = h.res(result, 'sk1')
+    expect(Number(row.angular_miss)).toBeLessThanOrEqual(OCC_ANGULAR)
+    // The body carries the reported (floored) precision: the record the merge
+    // read, not a guess.
+    const state = result._build_state as BuildState
+    const last = state.feature_order[state.feature_order.length - 1]
+    const body = state.checkpoints[last].body_store_snapshot.body_ex1
+    expect(body.precision?.angular).toBe(OCC_ANGULAR)
+    expect(body.precision?.sketch).toBe('sk1')
+    const shape = lastBodyShape(h, result, 'body_ex1')
+    expect(shape).not.toBeNull()
+    const seams = seamEdges(oc!, scope, shape!)
+    expect(seams).toHaveLength(2)
+    // Both are real free tilts (the report measured 1.10e-9 to 1.60e-9 on its
+    // variants), above the contract and above the merge's 1e-12 read.
+    for (const seam of seams) expect(seam.sine).toBeGreaterThan(TOL_SURFACE_PARALLEL)
+  })
 })
