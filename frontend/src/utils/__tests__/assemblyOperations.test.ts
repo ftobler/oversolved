@@ -27,7 +27,7 @@ const EXPECTED: Array<Pick<
   { id: 'set_part_fixed_oneshot', label: 'Fix/unfix part', bake: true, undo: 'one-shot', solve: 'skip' },
   { id: 'set_part_position', label: 'Set position', bake: true, undo: 'fold', solve: 'solve' },
   { id: 'set_part_rotation', label: 'Set rotation', bake: true, undo: 'fold', solve: 'solve' },
-  { id: 'set_part_doc', label: 'Set part document', bake: true, undo: 'one-shot', solve: 'solve' },
+  { id: 'set_part_doc', label: 'Set part document', bake: true, undo: 'fold', solve: 'solve' },
   { id: 'add_mate', label: 'Add mate', bake: false, undo: 'one-shot', solve: 'skip' },
   { id: 'set_mate_ref', label: 'Pick mate reference', bake: false, undo: 'fold', solve: 'defer' },
   { id: 'delete_mate', label: 'Delete mate', bake: true, undo: 'one-shot', solve: 'solve' },

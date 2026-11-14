@@ -186,8 +186,11 @@ export const ASSEMBLY_OPERATIONS: {
   set_part_doc: {
     // A rebind changes the geometry behind the placement, so the bake keeps the
     // pose on screen as the placement seed and the solve re-resolves every mate
-    // that names this instance. Structural like add/delete: its own step.
-    id: 'set_part_doc', label: ASSEMBLY_UNDO_LABELS.setPartDoc, bake: true, undo: 'one-shot', solve: 'solve',
+    // that names this instance. It FOLDS like the other instance-editor
+    // controls: a pick inside the open editor must be reverted by that editor's
+    // Cancel. With no session open (the store path, the headless host) the fold
+    // policy still lands as its own step.
+    id: 'set_part_doc', label: ASSEMBLY_UNDO_LABELS.setPartDoc, bake: true, undo: 'fold', solve: 'solve',
     apply: (doc, input) => setInstancePartDoc(doc, input.handle, input.docId),
   },
   add_mate: {

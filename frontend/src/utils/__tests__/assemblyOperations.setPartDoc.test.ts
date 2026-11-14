@@ -76,14 +76,14 @@ describe('setInstancePartDoc', () => {
 })
 
 describe('set_part_doc operation', () => {
-  it('is a structural one-shot that re-solves and labels the undo step', () => {
+  it('folds into the editor session, re-solves and labels the undo step', () => {
     const plan = planAssemblyOperation(
       'set_part_doc',
       { handle: 'left', docId: 'new-part' },
       { doc: docWith(), transforms: {} },
     )!
     expect(plan.label).toBe('Set part document')
-    expect(plan.undo).toBe('one-shot')
+    expect(plan.undo).toBe('fold')
     expect(plan.solve).toBe('solve')
     expect(plan.changed).toBe(true)
     expect(findInstance(plan.doc, 'left')!.doc_id).toBe('new-part')
@@ -105,7 +105,8 @@ describe('set_part_doc operation', () => {
     )).toThrow(/non-empty part doc_id/)
   })
 
-  it('refuses pointing the instance at the assembly that owns it', () => {    expect(() => planAssemblyOperation(
+  it('refuses pointing the instance at the assembly that owns it', () => {
+    expect(() => planAssemblyOperation(
       'set_part_doc',
       { handle: 'left', docId: 'assembly-1' },
       {
@@ -115,28 +116,39 @@ describe('set_part_doc operation', () => {
     )).toThrow(/cannot point at the assembly it belongs to: assembly-1/)
   })
 
-  it('undo restores the previous doc_id through the edit funnel', () => {
+  it('rewinds with the open session and undoes after that session commits', () => {
     const history = new History<AssemblyDoc>({ cloneDoc: d => structuredClone(d), cap: 100 })
     let current = docWith()
+    // The hook's session pin: the first fold of an open editor pins the
+    // pre-session doc, and closing the editor pushes that pin as one entry.
+    let pinned: AssemblyDoc | null = null
     const host: AssemblyOperationHost = {
       doc: current,
       transforms: {},
       knownPartIds: new Set(['new-part']),
-      mutateSession: () => { throw new Error('set_part_doc must be one-shot') },
-      mutateOneShot: (label, fn) => {
+      mutateSession: (label, fn) => {
         const next = fn(current)
-        const outcome = applyAssemblyEdit(history, current, label, next, false)
-        if (outcome.doc) current = outcome.doc
+        const outcome = applyAssemblyEdit(history, current, label, next, true)
+        if (!outcome.doc) return
+        if (outcome.decision === 'fold' && pinned === null) pinned = current
+        current = outcome.doc
+      },
+      mutateOneShot: () => {
+        throw new Error('set_part_doc must fold, not push')
       },
       requestSolve: () => undefined,
       requestSolveOrDefer: () => undefined,
     }
     runAssemblyOperation('set_part_doc', { handle: 'left', docId: 'new-part' }, host)
     expect(findInstance(current, 'left')!.doc_id).toBe('new-part')
-    expect(history.undoLabels()).toEqual(['Set part document'])
+    // The open session owns the edit until it closes, which is what makes the
+    // editor's Cancel a rewind instead of a second history entry.
+    expect(history.undoLength()).toBe(0)
 
-    const undone = history.undo(current)!
-    current = undone.doc
+    expect(pinned).not.toBeNull()
+    history.push('Set part document', pinned!)
+    expect(history.undoLabels()).toEqual(['Set part document'])
+    current = history.undo(current)!.doc
     expect(findInstance(current, 'left')!.doc_id).toBe('old-part')
   })
 })
