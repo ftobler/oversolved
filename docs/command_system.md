@@ -99,7 +99,7 @@ Snap rules for drag; measurement rules for on-canvas display.
 
 ### Command Tables (`commandEntries.ts`, `assemblyCommandEntries.ts`)
 
-`PART_COMMAND_SPECS` (the sketch/part editor, 56 specs) and
+`PART_COMMAND_SPECS` (the sketch/part editor, 57 specs) and
 `ASSEMBLY_COMMAND_SPECS` (the assembly editor, 29 specs) are the single source
 of truth for which commands each editor registers. Both are static data: every
 body reads its inputs from the `CommandContext` it is handed, so the table is
@@ -242,7 +242,7 @@ Main page: uses `usePartDoc()`, builds a `PartCommandContext` around the session
 
 - **`set_tool_*`** - activate tools (dispatch via shortcuts from `ENTITY_SHORTCUTS` / `CORE_KEYBINDINGS`)
 - **`apply_*`** - apply constraints (dispatch via `CONSTRAINT_SHORTCUTS`)
-- **Other**: `undo`, `redo`, `delete_selected`, `toggle_construction`, `toggle_sketch_plane_visibility`, `toggle_plane_visibility`, `cancel_draw`, `finish_draw`, `apply_offset`, `add_extrude`, `add_hole`, `add_transform`
+- **Other**: `undo`, `redo`, `delete_selected`, `toggle_construction`, `freeze_projection`, `toggle_sketch_plane_visibility`, `toggle_plane_visibility`, `cancel_draw`, `finish_draw`, `apply_offset`, `add_extrude`, `add_hole`, `add_transform`
 
 `finish_draw` is the drawing tool's stamp-down action. While a fit spline is being placed, Enter, a right click on the draw plane and a double click all call the same store action (`editorState.finishDraw`), which emits the `add_entity` and every snapped-point constraint as one batch. The keyboard half lives in `SKETCH_KEYMAP`, not `CORE_KEYBINDINGS`, so Enter stays inert outside sketch-edit mode and a focused button keeps its activation there; inside a sketch Enter is the stamp-down. A stationary right click stamps and suppresses the context menu, while a right-drag still orbits. It does nothing for a gesture with fewer than two distinct points; clicking the last point (finish) or the first point (close) already finishes on the pointer path.
 
@@ -301,6 +301,7 @@ the three shared names). Regenerate with `npm run docs:commands`;
 | `export_assembly` | Export assembly | - | no | assembly |
 | `fillet_corners` | Fillet corners | `shift+f` | yes | sketch/part |
 | `finish_draw` | Finish drawing | `enter` | yes | sketch/part |
+| `freeze_projection` | Convert projection to fixed | - | yes | sketch/part |
 | `insert_mate_copy_rotation` | Insert Copy rotation mate | - | yes | assembly |
 | `insert_mate_fixed` | Insert Fixed mate | - | yes | assembly |
 | `insert_mate_parallel` | Insert Parallel mate | - | yes | assembly |

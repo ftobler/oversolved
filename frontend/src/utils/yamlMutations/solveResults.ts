@@ -15,6 +15,7 @@ function featureIdsTouched(m: Mutation): string[] {
   }
   switch (m.type) {
     case 'delete_feature':
+    case 'freeze_projection':
     case 'add_delete_body':
     case 'set_feature_suppression':
     case 'remove_delete_body_ref':

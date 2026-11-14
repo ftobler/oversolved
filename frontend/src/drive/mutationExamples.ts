@@ -91,6 +91,40 @@ const PROJECTION_STEPS: ScriptStep[] = [
   },
 ]
 
+// The frozen variant of the projection path: the boss sketch is unlinked from
+// the box before the box moves. `freeze_projection` writes the projected line as
+// ordinary fixed geometry, so the boss stays where the user saw it while the
+// source body translates +20 in X; the volume therefore stays 13000 mm3.
+const PROJECTION_FREEZE_STEPS: ScriptStep[] = [
+  ...BOX_STEPS,
+  { mutation: { type: 'add_sketch', featureId: 'sk2', label: 'Boss', plane: TOP_FACE } },
+  {
+    mutation: {
+      type: 'add_projected_entity', featureId: 'sk2', kind: 'line',
+      source: TOP_EDGE, entityId: 'pe1',
+    },
+  },
+  { mutation: { type: 'freeze_projection', featureId: 'sk2', target: 'pe1', mode: 'fixed' } },
+  {
+    mutation: {
+      type: 'add_rect', featureId: 'sk2', p0: [0, 0], p1: [20, 10],
+      p0Ref: 'vertex:sk2:pe1:start', dimensions: true,
+    },
+  },
+  {
+    mutation: {
+      type: 'add_extrude', featureId: 'ex2', label: 'Boss',
+      sketchQuery: '$sk2', distance: 5, operation: 'add',
+    },
+  },
+  {
+    mutation: {
+      type: 'add_transform', featureId: 'tr1', label: 'Move source',
+      bodies: ['@body_ex1'], operation: 'replace', translation: [20, 0, 0],
+    },
+  },
+]
+
 // The user's emboss workflow: a cylinder, a footprint on a plane in front of
 // its curved wall, and `add` up to that wall with a +0.5 surface slab. Face 2 of
 // the sorted cylinder is the lateral face (the two discs are flat, so they sort
@@ -163,6 +197,11 @@ export const MUTATION_EXAMPLES: readonly MutationExample[] = [
     name: 'projection',
     summary: 'A 20 x 10 boss on the box top, its corner anchored to a projected face edge: 13000 mm3.',
     steps: PROJECTION_STEPS,
+  },
+  {
+    name: 'projection-freeze',
+    summary: 'The same boss frozen to fixed geometry before its source body moves +20 in X: still 13000 mm3.',
+    steps: PROJECTION_FREEZE_STEPS,
   },
   {
     name: 'emboss-on-cylinder',

@@ -150,6 +150,10 @@ export const IDEMPOTENT_MUTATION = {
   add_constraint: false,
   toggle_construction: false,
   delete: false,
+  // Freezing removes a projection and appends a fixed row (or materialized
+  // member rows), so a repeat is a real change or a refusal, never a no-op a
+  // slice could prove.
+  freeze_projection: false,
 
   // Feature creation: each pushes a new row under an id the caller minted, so it
   // is never a value no-op.

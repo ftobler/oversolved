@@ -20,8 +20,10 @@ import { deriveSelectionDomain, devOnly, testMode, failLoud } from './stateInvar
 import { isDrawingTool } from '@/registry/toolRegistry'
 import { getToolPickConfig } from '@/registry/toolPickConfig'
 import {
-  freezeRowsForDelete, PROJECTION_NOT_FROZEN_TITLE, projectionNotFrozenMessage, projectionsFreezingNothing,
+  freezeRowsForDelete, PROJECTION_NOT_FROZEN_TITLE, projectionNoRowsToFreezeMessage,
+  projectionNotFrozenMessage, projectionsFreezingNothing,
 } from '@/kernel/features/projectionMembers'
+import { freezeSelectionPlan } from '@/utils/yamlMutations/freezeProjection'
 import { planBrepDimensionPick, planProjectedOperand, classifyBrepOperand, refreshProjectedPickKinds, type PlannedProjection, type PlannedProjectionMutation } from '@/tools/operandProjection'
 import { commitDrawGesture } from '@/tools/commitDrawGesture'
 import { computeDrawFinish } from '@/utils/geometry/drawFinish'
@@ -966,6 +968,33 @@ export const editorState = createStore<EditorState>((set, get) => ({
       })
     }
     get().clearSelectionAfterDelete()
+  },
+
+  freezeProjection: (mode) => {
+    const { normalSelection: selection, activeFeatureId } = get()
+    const onMutation = requireMutation('freezeProjection')
+    if (!onMutation || activeFeatureId === null || selection.size === 0) return
+    const doc = sketchCallbacks.getDoc?.() ?? null
+    const feature = (doc?.features ?? []).find(candidate => candidate.id === activeFeatureId)
+    if (feature?.kind !== 'sketch') return
+    const reports = sketchCallbacks.getProjectionMembers?.(activeFeatureId) ?? null
+    const plan = freezeSelectionPlan(feature, selection, mode, reports)
+    if (plan.mutations.length > 0) {
+      const batch = sketchCallbacks.onMutationBatch
+      if (plan.mutations.length === 1) onMutation(plan.mutations[0])
+      else if (batch) batch(plan.mutations)
+      else for (const mutation of plan.mutations) onMutation(mutation)
+    }
+    const parts: string[] = []
+    if (plan.notFrozen.length > 0) parts.push(projectionNoRowsToFreezeMessage(plan.notFrozen))
+    parts.push(...plan.refused)
+    if (parts.length > 0) {
+      sketchCallbacks.showMessage?.({
+        title: PROJECTION_NOT_FROZEN_TITLE,
+        message: parts.join(' '),
+        variant: 'info',
+      })
+    }
   },
 
   addDrawPoint: (pt) => set(s => ({ drawPoints: [...s.drawPoints, pt] })),

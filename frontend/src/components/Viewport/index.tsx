@@ -94,6 +94,10 @@ const PARENT_STYLE: React.CSSProperties = { position: 'absolute', top: 0, left: 
 
 export interface ViewportProps {
   onRightClick?: (pos: [number, number]) => void
+  // A DOM overlay's own right-click (a constraint tile): the pane's canvas
+  // listener never sees it, so the overlay names the selection it picked and the
+  // page can open the same menu with that target.
+  onSelectionContextMenu?: (selectionId: string, pos: [number, number]) => void
   // Bottom-right overlay content, stacked under the orientation cube (the
   // measurement readout). A node rather than a fixed component so the part and
   // assembly editors can each hand in their own readout.
@@ -131,6 +135,7 @@ export interface ViewportHandle {
 
 export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   onRightClick,
+  onSelectionContextMenu,
   hud,
   viewOptions,
 }: ViewportProps, ref) {
@@ -735,6 +740,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
               otherSketches={isActiveFeature ? combinedOtherSketches : undefined}
               featureDef={fullFeatureDef}
               droppedConstraints={solveResult?.dropped_constraints}
+              onSelectionContextMenu={onSelectionContextMenu}
             />
           )
         })}

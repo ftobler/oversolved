@@ -1323,6 +1323,15 @@ export type Mutation =
   | { type: 'set_constraint_pos'; featureId: string; constraintId: string; pos: Point }
   | { type: 'set_constraint_sign'; featureId: string; constraintId: string; sign: number }
   | { type: 'delete'; targets: string[]; materialize?: ProjectionMemberEntityData[] }
+  // Convert a projected entity, a projection constraint, or a face member to
+  // ordinary geometry. `fixed` (the default) pins the baked position with one
+  // whole-entity fixed row per frozen entity; `free` removes only the link.
+  // A face projection carries its solved member rows in `materialize`, exactly
+  // as a materialize delete does, so a replay never solves.
+  | {
+      type: 'freeze_projection'; featureId: string; target: string
+      mode?: 'fixed' | 'free'; materialize?: ProjectionMemberEntityData[]
+    }
   | { type: 'add_entity'; featureId: string; kind: string; params: number[]; entityId?: string; dimensions?: boolean; tangents?: [Point | null, Point | null]; tangentScale?: boolean }
   // The optional `layers` filter names the layers to import; absent imports
   // every layer. The filter runs first, so an entity on an unpicked layer

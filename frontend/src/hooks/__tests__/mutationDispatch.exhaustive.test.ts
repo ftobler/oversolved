@@ -10,6 +10,7 @@ const ALL_MUTATION_TYPES = [
   'set_constraint_pos',
   'set_constraint_sign',
   'delete',
+  'freeze_projection',
   'add_entity',
   'import_dxf',
   'add_text',

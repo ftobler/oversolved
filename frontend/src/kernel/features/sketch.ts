@@ -29,7 +29,7 @@ import {
   encodeInput, decodeOutput, STATUS_NAME, Status, CONSTRAINT_FLAG, ConstraintKindCode,
   type FlatConstraint, type FlatInput, type SolverOutput,
 } from '@/wasm-kernel/codec'
-import { entityVertexIndices, entityCoordPairs, fitSplineHandlesFromFlags, getDefaultParams, ENTITY_BY_KIND } from '@/registry'
+import { entityVertexIndices, entityCoordPairs, fitSplineHandlesFromFlags } from '@/registry'
 import { deriveConstraints, unflattenGeometry } from '@/utils/geometry/geometryMapping'
 import { ellipseAxisDrag, isEllipseAxisKey, type EllipseAxisKey } from '@/utils/geometry/ellipseAxis'
 import { ignoredConstraintWarning } from '@/utils/constraintProblems'
@@ -45,7 +45,7 @@ import { isKernelTrap, swallowUnlessTrap } from '../errors'
 import { memoizedLoad } from '../occ/memoizedLoad'
 import { resolveDragMode, PROBE_STEP_REL, type CircleDragMode } from './circleDragMode'
 import { resolve3dGeometry, projectTo2d, projectCenter, type PlaneFrame } from './projectionLowering'
-import { reconcileFaceProjection, classifyProjectionSource, type ProjectionMemberEntity, type ProjectionMemberReport } from './projectionMembers'
+import { reconcileFaceProjection, classifyProjectionSource, isProjectionPosition, defaultProjectionBlock, isDefaultProjectionBlock, type ProjectionMemberEntity, type ProjectionMemberReport } from './projectionMembers'
 import type { FaceBoundaryLookup } from './faceBoundary'
 import type { PlaneLike } from './shared/planes'
 import type { SolveBytes } from '@/wasm-kernel/codec'
@@ -293,67 +293,6 @@ export function resetSketchSolverAfterTrap(): boolean {
   return true
 }
 
-/** End handles a fit spline entity stores: 0, 2 or 4 scalars (one x/y pair
- *  each). `lowerSketch` derives the same count from the entity's `handles`. */
-function fitHandleCount(handles: unknown): number {
-  return (handles === 'start' || handles === 'both' ? 1 : 0)
-    + (handles === 'end' || handles === 'both' ? 1 : 0)
-}
-
-/** The block a projection of `kind` displays when it has no position: the
- *  registry default, extended with zero end handles for a handled fit spline so
- *  the block matches the layout `lowerSketch` builds from `handles`. */
-function defaultPositionBlock(kind: string, handles?: unknown): number[] {
-  const defaults = [...(getDefaultParams ? getDefaultParams(kind) : [])]
-  for (let i = 2 * fitHandleCount(handles); i > 0; i--) defaults.push(0)
-  return defaults
-}
-
-/**
- * True when a stored `initial` block is exactly the kind's default block. The
- * projection fallback used to bake that block for a source that never resolved,
- * so a document written by the old fallback looks like it has a position -- the
- * reported bug is an all-zero spline at the sketch origin. No genuine projection
- * produces the block: the defaults are a zero-length line/circle/arc/spline, or
- * a two-point fit spline, which a resolved source would have to collapse onto
- * itself to match.
- */
-function isDefaultParamsBlock(params: unknown, kind: string, handles?: unknown): boolean {
-  if (!Array.isArray(params)) return false
-  const defaults = defaultPositionBlock(kind, handles)
-  if (!defaults.length || params.length !== defaults.length) return false
-  return params.every((v, i) => v === defaults[i])
-}
-
-/**
- * True when a stored `initial` block is a position in the declared kind's own
- * layout. A projection keeps its last position only on this answer.
- *
- * The block can belong to another kind: a projection declared `line` that
- * resolved to a `point` (an end-on source) caches 2 params, one declared
- * `spline` that resolved to `fit_spline` caches 2N. Padding or truncating that
- * block to the declared kind's arity invents geometry at the stale position,
- * which the "keep the last position" rule then makes permanent.
- *
- * A `fit_spline` block is its own layout, so the test is its handle slots plus
- * at least two fit points, both even. That still cannot tell a four-point fit
- * block (8 scalars) from a cubic spline of the same length; a row still
- * declared `spline` is read as the cubic it claims. This app does not write
- * that disagreement: the write-back adopts the resolved kind in the same pass
- * that installs the block. It can only come from a pre-adoption or hand-edited
- * document, which carries no provenance to decide it.
- */
-function isProjectionPosition(stored: unknown, kind: string, handles?: unknown): boolean {
-  if (!Array.isArray(stored) || isDefaultParamsBlock(stored, kind, handles)) return false
-  const def = ENTITY_BY_KIND.get(kind)
-  if (def === undefined) return false
-  if (def.variableParams) {
-    const fitParams = stored.length - 2 * fitHandleCount(handles)
-    return fitParams >= def.paramCount && fitParams % 2 === 0
-  }
-  return stored.length === def.paramCount
-}
-
 /**
  * Project one body/sketch source query; `declaredPoint` asks for the curve
  * centre when the source is curved (a projection declared `point`).
@@ -496,7 +435,7 @@ function lowerProjectionConstraints(
         projectionErrors.push(cid)
         projectionWarnings.push(
           `projection ${cid} source ${source === '' ? '(none)' : source} did not resolve; `
-          + 'no face members are derived this solve',
+          + 'no face members are derived this solve, so there is nothing to freeze',
         )
         continue
       }
@@ -585,7 +524,7 @@ function lowerProjectionConstraints(
     // solver pad or truncate it to this kind's arity. The projection constraint
     // id is reported as an error only when unresolved.
     if (!resolved && !hadPosition) {
-      initial[targetId] = defaultPositionBlock(declaredKind, ent?.handles)
+      initial[targetId] = defaultProjectionBlock(declaredKind, ent?.handles)
     }
     pinnedIds.push(targetId)
     if (!resolved) {
@@ -598,8 +537,8 @@ function lowerProjectionConstraints(
         ? null
         : classifyProjectionSource(documentForSources(), featureId, source, targetId)
       const stateText = hadPosition
-        ? 'the entity keeps its last position'
-        : 'the entity has no position yet and is left out of the profile'
+        ? 'the entity keeps its last position; convert the projection to fixed to unlink it'
+        : 'the entity has no position yet and is left out of the profile; delete the projection, there is nothing to freeze'
       // Named, not silent: the drive reply reads this as a warning row on the
       // sketch, so an unresolved projection cannot read as a clean build. The
       // sentence has to say which of the two states the entity is in, because
@@ -1152,9 +1091,9 @@ export function pinProjectionTargets(
       const entity = entityById.get(id)
       if (block === undefined || entity === undefined) continue
       if (isProjectionPosition(block, entity.kind, entity.handles)) continue
-      if (isDefaultParamsBlock(block, entity.kind, entity.handles)) continue
+      if (isDefaultProjectionBlock(block, entity.kind, entity.handles)) continue
       replaced ??= { ...initial }
-      replaced[id] = defaultPositionBlock(entity.kind, entity.handles)
+      replaced[id] = defaultProjectionBlock(entity.kind, entity.handles)
     }
     if (replaced !== null) initial = replaced
   }

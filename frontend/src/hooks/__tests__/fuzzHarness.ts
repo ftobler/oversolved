@@ -14,6 +14,7 @@ import { createDocSession, type EditorFacts } from '@/session/DocSession'
 import type { SolveScheduler } from '@/session/SolveScheduler'
 import type { DirtyFacts } from '@/session/dirty'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
+import { MutationRefusal } from '@/utils/yamlMutations/helpers'
 import { MUTATION_EXAMPLES } from './mutationExamples'
 import { makeDoc } from '@/utils/core/testFixture'
 import { makePrng } from '@/utils/core/prng'
@@ -262,8 +263,18 @@ export async function runFuzzSequence(
       // on a full undo stack, and one landed mutation pushes exactly one entry,
       // so the depth read before the execute says whether this push dropped.
       const undoDepthBefore = session.historyEntries().undo.length
-      const result = session.execute(mutation)
-      if (!result.ok) push(stepIndex, `execute(${step.type}) refused: ${result.code}`)
+      // A named refusal is a legitimate outcome the UI voices instead of a
+      // landed entry (a freeze whose projection another step already removed,
+      // an add whose source a later step deleted). It is not a fuzz violation:
+      // the invariants below still run on the unchanged document.
+      try {
+        const result = session.execute(mutation)
+        if (!result.ok && result.code !== 'refused') {
+          push(stepIndex, `execute(${step.type}) refused: ${result.code}`)
+        }
+      } catch (e) {
+        if (!(e instanceof MutationRefusal)) throw e
+      }
       if (mirrorDirty() === true) {
         landedSteps++
         if (undoDepthBefore >= MAX_UNDO_DEPTH) droppedEntries++

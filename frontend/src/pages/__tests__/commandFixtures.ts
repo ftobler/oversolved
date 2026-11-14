@@ -96,6 +96,7 @@ const PART_PARAMS: Readonly<Record<string, unknown>> = {
   apply_offset: { distance: 5 },
   fillet_corners: { radius: 5 },
   pattern_entities: { count: 3, pitch: 10 },
+  freeze_projection: { mode: 'fixed' },
 }
 
 const ASSEMBLY_PARAMS: Readonly<Record<string, unknown>> = {

@@ -109,6 +109,7 @@ import {
   applySetLengthUnit,
 } from '@/utils/yamlMutations'
 import { applyRemoveDanglingContent } from '@/utils/yamlMutations/solveResult'
+import { applyFreezeProjection } from '@/utils/yamlMutations/freezeProjection'
 import { MutationRefusal } from '@/utils/yamlMutations/helpers'
 
 type MutationHandlers = {
@@ -196,6 +197,8 @@ export const mutationHandlers: MutationHandlers = {
     // (the rows are gone afterwards); the applier's report is for direct tests.
     applyDeleteElements(next, m.targets, m.materialize)
   },
+  freeze_projection: (next, m) =>
+    applyFreezeProjection(next, m.featureId, m.target, m.mode, m.materialize),
   add_entity: (next, m) =>
     applyAddEntity(next, m.featureId, m.kind, m.params, m.entityId, {
       tangents: m.tangents, tangentScale: m.tangentScale,

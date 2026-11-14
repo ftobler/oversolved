@@ -69,7 +69,8 @@ describe('doc-ref-canon ratchets', () => {
   // `'$' + featureId` or `` `$${featureId}` `` is the regression.
   const DOLLAR_EMIT_TOKENS = ["'$' +", '"$" +', '`$${']
   // The legitimate host-local emitters: constraint-operand targets, a local
-  // vertex ref in the drag loop, and the wire codec's own local branch.
+  // vertex ref in the drag loop, the wire codec's own local branch, and the
+  // freeze applier's whole-entity fixed target.
   const DOLLAR_EMIT_ALLOWLIST = new Set([
     'utils/yamlMutations/helpers.ts',
     'utils/yamlMutations/sketchMirror.ts',
@@ -79,6 +80,7 @@ describe('doc-ref-canon ratchets', () => {
     'tools/operandProjection.ts',
     'utils/yamlMigrations.ts',
     'utils/yamlMutations/sketch.ts',
+    'utils/yamlMutations/freezeProjection.ts',
   ])
 
   it('only the host-local emitters build a $ ref', () => {

@@ -20,6 +20,8 @@ export function describeMutation(m: Mutation): string {
       return `flip ${m.constraintId} side in ${m.featureId}`
     case 'delete':
       return `delete ${m.targets.length} element(s)`
+    case 'freeze_projection':
+      return `freeze projection ${m.target} in ${m.featureId}`
     case 'add_entity':
       return `add ${m.kind} in ${m.featureId}`
     case 'import_dxf':

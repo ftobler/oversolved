@@ -2,6 +2,7 @@
 // module reads as behavior, and so the pure helper modules can depend on the
 // shape without reaching into the store's runtime.
 import type { ActiveTool, SelectionDomain } from '@/types/cad'
+import type { FreezeProjectionMode } from '@/utils/yamlMutations/freezeProjection'
 import type { SnapKind, DimensionPick } from '@/registry'
 import type { SnapTarget } from '@/utils/geometry/snapDetection'
 import type { FilletCornerMap } from '@/utils/geometry/filletCorner'
@@ -317,6 +318,11 @@ export interface SketchEditorState {
   patternEntities: (count: number, pitch: number) => string | null
   toggleConstruction: () => void
   deleteSelected: () => void
+  // Convert every projected entity and projection tile in the selection to
+  // ordinary geometry: `fixed` pins the baked position, `free` only breaks the
+  // link. One undo entry for the whole selection; a target that cannot freeze
+  // is reported through the sketch message port.
+  freezeProjection: (mode: FreezeProjectionMode) => void
   addDimensionPick: (pick: DimensionPick) => void
   addBrepDimensionPick: (query: string, opts: { isVertexPick: boolean; sourceKind?: string | null }) => void
   clearDimensionPicks: () => void

@@ -999,6 +999,31 @@ export const MUTATION_CATALOG = {
     summary: 'Flip a signed dimension: sets +1 or -1; any negative value is -1, anything else +1.',
     fields: { featureId: str(), constraintId: str(), sign: num(CONSTRAINT_SIGN_NOTE) },
   },
+  freeze_projection: {
+    summary: 'Convert a projected entity or projection constraint to ordinary geometry, fixed by default.',
+    note: 'Removes the live `projection` row and keeps the geometry it held: `fixed` (the default) pins the '
+      + 'baked position with one whole-entity `fixed` constraint per frozen entity, so a later source edit, '
+      + 'delete or reorder cannot move it; `free` removes only the link. `target` is a projected entity id, '
+      + 'a projection constraint id, or one of a face projection\'s derived member ids (that freezes the '
+      + 'whole face). A face projection needs the solved member rows in `materialize`, exactly as a '
+      + 'materialize delete does; the drive fills it from the last settle, so a script need not. The step '
+      + 'reply names the new fixed constraint ids in `createdIds`. A target that names no projection, or a '
+      + 'projection whose entity never had a position, is refused by name and leaves the document untouched; '
+      + 'the remedy there is deleting the projection.',
+    fields: {
+      featureId: str('The sketch feature the projection lives in.'),
+      target: str(
+        'The projected entity id, the projection constraint id, or one of a face projection\'s derived '
+        + 'member ids.',
+      ),
+      mode: optStr('fixed (default) pins the baked position; free removes only the link and leaves the geometry free.'),
+      materialize: optArr(
+        'Face projections only: the member rows the last solve derived, as [{id, kind, params}]. The drive '
+        + 'fills this from the last settle, so a script normally omits it. The rows keep their derived ids, '
+        + 'so constraints naming a member keep working.',
+      ),
+    },
+  },
   delete: {
     summary: 'Delete sketch entities, vertices or constraints by `targets` refs '
       + '(entity:/vertex:/constraint: <sketchId>:...), not featureId + ids.',
@@ -1012,7 +1037,9 @@ export const MUTATION_CATALOG = {
       materialize: optArr(
         'Freezing a face projection: the member rows the last solve derived, as ' +
         '[{id, kind, params}]. Delete the projection constraint in the same call; the rows keep the ' +
-        'same ids, so constraints naming them keep working and later upstream edits no longer move them.',
+        'same ids, so constraints naming them keep working and later upstream edits no longer move them. ' +
+        '`freeze_projection` is the same write with a fixed pin, and is the better spelling when the ' +
+        'geometry is meant to stay.',
       ),
     },
   },
@@ -1110,7 +1137,8 @@ export const MUTATION_CATALOG = {
       + 'members on every solve, so a later fillet or cut adds or removes members without a new pick. A supplied '
       + '`kind` is ignored for a face source (the whole wire is derived). Seam edges are skipped. Members are not '
       + 'document rows; their ids live in the constraint\'s `members` map and a deleted member is recorded in '
-      + '`excluded`. Delete the constraint to freeze the members into ordinary geometry. The kind is re-resolved '
+      + '`excluded`. Delete the constraint to freeze the members into ordinary geometry, or `freeze_projection` '
+      + 'to unlink and pin them in one step. The kind is re-resolved '
       + 'on every solve, and a constraint that names a point key or a kind the projection\'s CURRENT kind does '
       + 'not have is ignored and reported in `dropped_constraints` (a `diameter` on a circle that tilted to an '
       + 'ellipse); the document keeps the constraint, so a source that changes back re-enables it.',
@@ -1804,6 +1832,7 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   set_constraint_pos: 'sketch',
   set_constraint_sign: 'sketch',
   delete: 'sketch',
+  freeze_projection: 'sketch',
   add_entity: 'sketch',
   add_entity_with_constraint: 'sketch',
   import_dxf: 'sketch',
