@@ -70,6 +70,13 @@
 //!                 f64 angular_miss, f64 linear_miss
 //! ```
 //!
+//! The `SKG9`/`SKR9` pair changes what a `Group` row means: the third ref names
+//! the member point (or the whole arc/ellipse angle) the group's rotation is
+//! measured from, so one coordinate pair holds its distance instead of its two
+//! coordinates. The record layout does not move, so the magic must carry the
+//! meaning: a rev 8 solver would silently solve every document group as a pure
+//! translation and report one extra degree of freedom.
+//!
 //! The `SKG8`/`SKR8` pair appends the contract's realised precision to the
 //! diagnostics: `angular_miss` (radians) and `linear_miss` (document units).
 //! NaN means no measured miss for the shipped params: an unsatisfied solve, the
@@ -100,8 +107,8 @@
 //! of the boundary (this file and frontend/src/wasm-kernel/codec.ts) on any
 //! layout change. Invalidating old cached payloads is acceptable and safe
 //! post-wave-1: bundle-cache reads of stale buffers degrade to cold rebuilds.
-pub const MAGIC: u32 = 0x3847_4B53; // "SKG8" in LE memory order
-pub const MAGIC_OUT: u32 = 0x3852_4B53; // "SKR8" in LE memory order
+pub const MAGIC: u32 = 0x3947_4B53; // "SKG9" in LE memory order
+pub const MAGIC_OUT: u32 = 0x3952_4B53; // "SKR9" in LE memory order
 
 /// The rev 1 and rev 2 values (and rev 3, whose output lacked the
 /// per-constraint verdicts). Kept only so tests can assert a stale pairing
@@ -150,6 +157,14 @@ pub const MAGIC_OUT_SKR6: u32 = 0x3652_4B53;
 pub const MAGIC_SKG7: u32 = 0x3747_4B53;
 #[cfg(test)]
 pub const MAGIC_OUT_SKR7: u32 = 0x3752_4B53;
+/// The rev 8 pair. Its record layout is byte-identical to rev 9, which is
+/// exactly the danger: a rev 8 solver reads a `Group` row as a pure translation
+/// and would silently solve a document group at 2 DOF. The version handshake is
+/// the only thing that can tell them apart, so the magic moves with the meaning.
+#[cfg(test)]
+pub const MAGIC_SKG8: u32 = 0x3847_4B53;
+#[cfg(test)]
+pub const MAGIC_OUT_SKR8: u32 = 0x3852_4B53;
 
 use solver_core::bytes::{Eof, Reader, Writer};
 

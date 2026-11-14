@@ -6,8 +6,9 @@
 // buffers stamped with superseded revisions (1: pre-sign, 2: f32 scalars, 3:
 // no per-constraint verdicts, SKG4/SKR4: no storage quantum / moved report,
 // SKG5/SKR5: no dropped verdict bit, SKG6/SKR6: no reference params,
-// SKG7/SKR7: no realised-precision diagnostics) are refused instead of decoded
-// with shifted offsets or misread verdicts.
+// SKG7/SKR7: no realised-precision diagnostics, SKG8/SKR8: a Group row holds no
+// rotation carrier) are refused instead of decoded with shifted offsets or
+// misread verdicts.
 
 import { describe, it, expect } from 'vitest'
 import {
@@ -19,8 +20,9 @@ import { OCC_ANGULAR, OCC_CONFUSION } from '@/kernel/solverConstants'
 
 const solveBytes = loadSolver()
 
-const MAGIC_IN = 0x38474b53  // "SKG8"
-const MAGIC_OUT = 0x38524b53  // "SKR8"
+const MAGIC_IN = 0x39474b53  // "SKG9"
+const MAGIC_OUT = 0x39524b53  // "SKR9"
+const MAGIC_OUT_SKR8 = 0x38524b53  // "SKR8" (a Group row holds no rotation carrier)
 const MAGIC_OUT_SKR7 = 0x37524b53  // "SKR7" (diagnostics stop at ms)
 const MAGIC_OUT_SKR6 = 0x36524b53  // "SKR6" (no reference params in the input)
 const MAGIC_OUT_SKR5 = 0x35524b53  // "SKR5" (no dropped verdict bit)
@@ -136,6 +138,12 @@ describe('sketch wire magic', () => {
     expect(Number.isNaN(out.diagnostics.linearMiss)).toBe(true)
   })
 
+  it('decodeOutput rejects the rev 8 (SKR8) output magic', () => {
+    // Rev 8's layout matches, which is exactly why the magic carries the
+    // meaning: its solver holds a Group row as a pure translation.
+    expect(() => decodeOutput(outputBytes(MAGIC_OUT_SKR8))).toThrow('bad output magic')
+  })
+
   it('decodeOutput rejects the rev 7 (SKR7) output magic', () => {
     // Rev 7's diagnostics stop at `ms`: this reader would read the two
     // precision fields past the end of the buffer.
@@ -193,6 +201,14 @@ describe.skipIf(!solveBytes)('sketch wire stale input magic', () => {
     // shift every following block.
     const bytes = encodeInput(emptyInput())
     bytes.set([0x53, 0x4b, 0x47, 0x36], 0)  // "SKG6"
+    expect(() => solveBytes!(bytes)).toThrow()
+  })
+
+  it('rejects a SKG8 buffer, whose solver cannot read a rotation carrier', () => {
+    // The record layout is unchanged; accepting the buffer would silently solve
+    // every document group as a pure translation.
+    const bytes = encodeInput(emptyInput())
+    bytes.set([0x53, 0x4b, 0x47, 0x38], 0)  // "SKG8"
     expect(() => solveBytes!(bytes)).toThrow()
   })
 })

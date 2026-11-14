@@ -543,15 +543,6 @@ impl<'a> Problem<'a> {
         }
     }
 
-    /// The group's translation: the anchor point's movement from the reference
-    /// to `x`. The group constraints of one document group share it, so every
-    /// member moves by the same vector.
-    fn translation(&self, x: &[f64], anchor: Ref) -> P2 {
-        let now = self.point(x, anchor);
-        let held = self.point(&self.reference, anchor);
-        [now[0] - held[0], now[1] - held[1]]
-    }
-
     /// Unit radius direction at a contact point. Both circles and arcs measure
     /// the radial from the centre to the ACTUAL contact: an arc's start/end
     /// angle params describe its own endpoints, not wherever a pinned line foot

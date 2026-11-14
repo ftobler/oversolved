@@ -1,7 +1,7 @@
 //! Analytic and finite-difference Jacobian rows for the constraint set.
 
 use super::geom::is_curve;
-use super::misc::GroupWalk;
+use super::misc::{is_angle_param, GroupCarrier, GroupFrame, GroupWalk};
 use super::Problem;
 use crate::constraints::{Constraint, ConstraintKind, PointSelector, Ref, RefRole};
 use crate::fit_spline::ParamLayout;
@@ -243,7 +243,7 @@ impl Problem<'_> {
 
     /// Jacobian of a 2D point reference w.r.t. its entity params: a list of
     /// `(param_index, d(point.x), d(point.y))`. External refs contribute nothing.
-    fn point_jac(&self, x: &[f64], r: Ref) -> Vec<(usize, f64, f64)> {
+    pub(super) fn point_jac(&self, x: &[f64], r: Ref) -> Vec<(usize, f64, f64)> {
         match r {
             Ref::External { .. } => Vec::new(),
             Ref::Entity { index, point } => {
@@ -733,29 +733,51 @@ impl Problem<'_> {
         )
     }
 
-    /// Analytic rows for the rigid group, mirroring `r_group` row for row: the
-    /// member param's own +1, and (for a coordinate row) the anchor point's
-    /// point Jacobian negated on the row's axis. A point member's two rows are
-    /// `point_jac(target) - point_jac(anchor)`, the same reference-offset-plus-
-    /// transform shape the residual uses.
+    /// Analytic rows for the rigid group, mirroring `r_group` row for row: a
+    /// coordinate pair's own +I, the anchor's point Jacobian negated, and the
+    /// turn's derivative through the carrier; a point member's two rows are
+    /// `point_jac(target) - point_jac(anchor)` plus the same turn term, and the
+    /// carrier pair's two rows collapse to one distance row.
     fn jac_group(&self, c: &Constraint, x: &[f64], rows: &mut Vec<SparseRow>) {
         let Some(walk) = GroupWalk::of(self, c) else {
             return;
         };
+        let frame = self.group_frame(x, walk);
+        let phi_grad = self.group_phi_grad(x, walk, &frame);
+        let carrier_point = match walk.carrier() {
+            Some(GroupCarrier::Point { at }) => Some(at),
+            _ => None,
+        };
         match walk {
-            GroupWalk::Point { member, anchor } => {
-                let mut rx = RowBuf::new();
-                let mut ry = RowBuf::new();
-                for (col, dpx, dpy) in self.point_jac(x, member) {
-                    rx.add(col, dpx);
-                    ry.add(col, dpy);
+            GroupWalk::Point {
+                member,
+                anchor,
+                is_carrier,
+                ..
+            } => {
+                if is_carrier {
+                    rows.push(self.carrier_length_row(x, &frame, member, anchor));
+                } else {
+                    let held = self.point(&self.reference, member);
+                    let v0 = [held[0] - frame.anchor0[0], held[1] - frame.anchor0[1]];
+                    let rv = frame.rotate_derivative(v0);
+                    let mut rx = RowBuf::new();
+                    let mut ry = RowBuf::new();
+                    for (col, dpx, dpy) in self.point_jac(x, member) {
+                        rx.add(col, dpx);
+                        ry.add(col, dpy);
+                    }
+                    for (col, dpx, dpy) in self.point_jac(x, anchor) {
+                        rx.add(col, -dpx);
+                        ry.add(col, -dpy);
+                    }
+                    for &(col, g) in &phi_grad {
+                        rx.add(col, -rv[0] * g);
+                        ry.add(col, -rv[1] * g);
+                    }
+                    rows.push(rx.finish());
+                    rows.push(ry.finish());
                 }
-                for (col, dpx, dpy) in self.point_jac(x, anchor) {
-                    rx.add(col, -dpx);
-                    ry.add(col, -dpy);
-                }
-                rows.push(rx.finish());
-                rows.push(ry.finish());
             }
             GroupWalk::Whole {
                 member,
@@ -763,23 +785,85 @@ impl Problem<'_> {
                 coords,
                 skip_first_pair,
                 anchor,
+                carrier_pair,
+                carrier_angle,
+                ..
             } => {
                 let off = self.offset_of(member);
-                for i in 0..size {
-                    if skip_first_pair && i < 2 {
+                let kind = self.kind_of(member);
+                // The angle rows carry degrees; `phi_grad` is radians per param.
+                let rad_to_deg = 1.0 / DEG2RAD;
+                for pair in 0..coords / 2 {
+                    if skip_first_pair && pair == 0 {
+                        continue;
+                    }
+                    if Some(pair) == carrier_pair {
+                        let carrier = carrier_point.expect("the carrier pair has a point carrier");
+                        rows.push(self.carrier_length_row(x, &frame, carrier, anchor));
+                        continue;
+                    }
+                    let v0 = [
+                        self.reference[off + 2 * pair] - frame.anchor0[0],
+                        self.reference[off + 2 * pair + 1] - frame.anchor0[1],
+                    ];
+                    let rv = frame.rotate_derivative(v0);
+                    let mut rx = RowBuf::new();
+                    let mut ry = RowBuf::new();
+                    rx.add(off + 2 * pair, 1.0);
+                    ry.add(off + 2 * pair + 1, 1.0);
+                    for (col, dpx, dpy) in self.point_jac(x, anchor) {
+                        rx.add(col, -dpx);
+                        ry.add(col, -dpy);
+                    }
+                    for &(col, g) in &phi_grad {
+                        rx.add(col, -rv[0] * g);
+                        ry.add(col, -rv[1] * g);
+                    }
+                    rows.push(rx.finish());
+                    rows.push(ry.finish());
+                }
+                for i in coords..size {
+                    // The carrier's own angle slot IS the free turn.
+                    if carrier_angle == Some(i) {
                         continue;
                     }
                     let mut row = RowBuf::new();
                     row.add(off + i, 1.0);
-                    if i < coords {
-                        for (col, dpx, dpy) in self.point_jac(x, anchor) {
-                            row.add(col, -(if i % 2 == 0 { dpx } else { dpy }));
+                    if is_angle_param(kind, i) {
+                        for &(col, g) in &phi_grad {
+                            row.add(col, -g * rad_to_deg);
                         }
                     }
                     rows.push(row.finish());
                 }
             }
         }
+    }
+
+    /// The carrier pair's one row, `|P - A| - |P0 - A0|`: `u/|u|` on the
+    /// carrier point and its negative on the anchor. A pair collapsed below the
+    /// positional contract has no direction, so the row stays empty for that
+    /// step (matching the residual, which reads identity).
+    fn carrier_length_row(
+        &self,
+        x: &[f64],
+        frame: &GroupFrame,
+        carrier: Ref,
+        anchor: Ref,
+    ) -> SparseRow {
+        let mut row = RowBuf::new();
+        let u = frame.u;
+        let len = (u[0] * u[0] + u[1] * u[1]).sqrt();
+        if len > crate::tolerance::contract_positional() {
+            let (ux, uy) = (u[0] / len, u[1] / len);
+            for (col, dpx, dpy) in self.point_jac(x, carrier) {
+                row.add(col, ux * dpx + uy * dpy);
+            }
+            for (col, dpx, dpy) in self.point_jac(x, anchor) {
+                row.add(col, -(ux * dpx + uy * dpy));
+            }
+        }
+        row.finish()
     }
 
     fn jac_fixed(&self, c: &Constraint, x: &[f64], rows: &mut Vec<SparseRow>) {
