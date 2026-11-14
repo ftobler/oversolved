@@ -883,6 +883,45 @@ fn a_derived_anchor_measures_the_turn_from_its_own_point() {
 }
 
 #[test]
+fn a_lone_arc_or_ellipse_carries_its_own_angle() {
+    // One member is its own anchor, so every candidate point sits on the
+    // anchor and only the shape's own orientation can carry the turn.
+    let arc = input(
+        vec![ent(Kind::Arc, 0)],
+        vec![2.0, 3.0, 4.0, 10.0, 80.0],
+        vec![group_angle_carried(0, 0, PointSelector::Center, 0)],
+    );
+    let problem = Problem::new(&arc);
+    for deg in [30.0, 200.0] {
+        let moved = rigid_image(&arc, [2.0, 3.0], deg, [1.0, -1.0]);
+        assert!(
+            problem.residuals(&moved).iter().all(|r| r.abs() < 1e-9),
+            "a lone arc resists {deg}"
+        );
+        assert_group_jacobian(&arc, &moved, "lone arc");
+    }
+    assert_eq!(solve_sketch(&arc).diagnostics.dof, 3);
+
+    // A non-circular ellipse's theta is observable the same way; the circular
+    // case is the lowering's decision (it names no carrier), not this walk's.
+    let ellipse = input(
+        vec![ellipse(0)],
+        vec![2.0, 3.0, 5.0, 2.0, 10.0],
+        vec![group_angle_carried(0, 0, PointSelector::Center, 0)],
+    );
+    let problem = Problem::new(&ellipse);
+    for deg in [30.0, 200.0] {
+        let moved = rigid_image(&ellipse, [2.0, 3.0], deg, [1.0, -1.0]);
+        assert!(
+            problem.residuals(&moved).iter().all(|r| r.abs() < 1e-9),
+            "a lone ellipse resists {deg}"
+        );
+        assert_group_jacobian(&ellipse, &moved, "lone ellipse");
+    }
+    assert_eq!(solve_sketch(&ellipse).diagnostics.dof, 3);
+}
+
+#[test]
 fn concentric_arcs_turn_on_their_shared_angle_carrier() {
     // Every point sits on the shared centre, so the angle is not observable
     // from any offset. The arc's own start angle carries it instead.

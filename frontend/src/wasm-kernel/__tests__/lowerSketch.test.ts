@@ -533,4 +533,29 @@ describe('lowerSketch group', () => {
     expect(groups).toHaveLength(1)
     expect(carrierOf(groups[0])).toBeUndefined()
   })
+
+  it('falls back to a non-circular ellipse theta when every point sits on the anchor', () => {
+    const { input, layout } = lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'e1', kind: 'ellipse' }],
+      initial: { e1: [0, 0, 4, 2, 30] },
+      constraints: [{ id: 'g1', kind: 'group', refs: [{ entity: 'e1' }] }],
+    })
+    const groups = input.constraints.filter(c => c.kind === ConstraintKindCode.group)
+    expect(carrierOf(groups[0])).toEqual({
+      kind: 'entity', index: layout.findIndex(l => l.id === 'e1'), point: Sel.absent,
+    })
+  })
+
+  it('does not make a circular ellipse its own angle carrier', () => {
+    const { input } = lowerSketch({
+      id: 'S1',
+      entities: [{ id: 'e1', kind: 'ellipse' }],
+      initial: { e1: [0, 0, 3, 3, 30] },
+      constraints: [{ id: 'g1', kind: 'group', refs: [{ entity: 'e1' }] }],
+    })
+    const groups = input.constraints.filter(c => c.kind === ConstraintKindCode.group)
+    expect(groups).toHaveLength(1)
+    expect(carrierOf(groups[0])).toBeUndefined()
+  })
 })
