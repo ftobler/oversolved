@@ -18,7 +18,7 @@ describe('add_pattern / add_mirror inline fields', () => {
   it('publishes the inline fields and the one-call note', () => {
     const pattern = mutationInfoOf('add_pattern')
     for (const field of [
-      'subject', 'source_body', 'source_feature', 'operation', 'count', 'pitch',
+      'subject', 'source_body', 'source_features', 'source_feature', 'operation', 'count', 'pitch',
       'direction_query', 'invert', 'count_x', 'pitch_x', 'direction_x_query', 'invert_x',
       'count_y', 'pitch_y', 'direction_y_query', 'invert_y', 'step_angle', 'axis',
     ]) {

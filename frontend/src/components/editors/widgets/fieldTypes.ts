@@ -70,18 +70,15 @@ export interface PickFieldDef extends BaseFieldDef {
   removeValueIsIndex?: boolean
   removeValue?: unknown
   emptyText?: string
+  // A one-line explanation under the chip for a field whose meaning is not
+  // obvious from its label (the pattern's multi-source seed rule).
+  hint?: string
   normalize?: (value: unknown) => unknown
 }
 
-// A feature-to-feature reference chosen from the document's own rows, not from
-// a viewport pick. The options are the live features (filtered by `kinds`), so
-// a pattern can name the extrude it repeats without a second pick surface.
-export interface FeatureSelectFieldDef extends BaseFieldDef {
-  type: 'featureSelect'
-  kinds?: readonly string[]
-  default?: string
-  emptyText?: string
-}
+// A feature-to-feature reference chosen from the document's own rows is a plain
+// `pick` field: the feature tree writes `@<id>` into normalSelection, the same
+// pick path every other chip consumes.
 
 export interface TextFieldDef extends BaseFieldDef {
   type: 'text'
@@ -97,7 +94,6 @@ export type EditorFieldDef =
   | SelectFieldDef
   | CheckboxFieldDef
   | PickFieldDef
-  | FeatureSelectFieldDef
   | TextFieldDef
 
 // ─── shared prop fragments ───

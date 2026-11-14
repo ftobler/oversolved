@@ -100,7 +100,7 @@ const booleanDoc = (): PartDoc => makeDoc({
 const patternDoc = (): PartDoc => makeDoc({
   id: 'pt1', kind: 'pattern', label: 'Pattern',
   pattern: {
-    subject: 'feature', source_feature: '@ex1', mode: 'linear',
+    subject: 'feature', source_features: ['@ex1'], mode: 'linear',
     count: 3, pitch: 20, direction: [1, 0, 0],
   },
 })
@@ -493,6 +493,14 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
   set_pattern_field: {
     makeDoc: patternDoc,
     mutation: { type: 'set_pattern_field', featureId: 'pt1', field: 'count', value: 5 },
+  },
+  add_pattern_source: {
+    makeDoc: patternDoc,
+    mutation: { type: 'add_pattern_source', featureId: 'pt1', sourceFeature: '@ex2' },
+  },
+  remove_pattern_source: {
+    makeDoc: patternDoc,
+    mutation: { type: 'remove_pattern_source', featureId: 'pt1', index: 0 },
   },
 
   // hole

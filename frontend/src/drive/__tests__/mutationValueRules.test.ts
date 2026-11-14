@@ -168,6 +168,8 @@ describe('value rules cover the catalog', () => {
     ['remove_boolean_tool', { type: 'remove_boolean_tool', featureId: 'bo1', tool: '' }],
     ['add_pattern', { type: 'add_pattern', featureId: 'pt1', mode: 'polar' }],
     ['add_pattern', { type: 'add_pattern', featureId: 'pt2', subject: 'body', operation: 'cut' }],
+    ['add_pattern_source', { type: 'add_pattern_source', featureId: 'pt1', sourceFeature: '' }],
+    ['remove_pattern_source', { type: 'remove_pattern_source', featureId: 'pt1', index: -1 }],
     ['set_pattern_field', { type: 'set_pattern_field', featureId: 'pt1', field: 'mode', value: 'polar' }],
     ['set_pattern_field', { type: 'set_pattern_field', featureId: 'pt1', field: 'operation', value: 'cut' }],
     ['add_delete_body', { type: 'add_delete_body', featureId: 'db1', bodies: [''] }],

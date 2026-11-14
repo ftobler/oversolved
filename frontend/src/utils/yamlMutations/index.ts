@@ -80,6 +80,8 @@ export {
   applyRemoveBooleanTool,
   applyAddPattern,
   applySetPatternField,
+  applyAddPatternSource,
+  applyRemovePatternSource,
   applyAddDeleteBody,
   applyAddDeleteBodyRef,
   applyRemoveDeleteBodyRef,

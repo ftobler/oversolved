@@ -160,10 +160,10 @@ features:
 // document alone. The literal version is cross-checked against CURRENT_DOC_VERSION in
 // the load suite, so bumping the loader's version without adding a fixture for
 // the new stamp fails loudly instead of silently never exercising the gate.
-export const CURRENT_V7_PART: HistoricalDocument = {
-  name: 'current v7 part',
+export const CURRENT_V8_PART: HistoricalDocument = {
+  name: 'current v8 part',
   note: 'stamped at the ladder current version, nothing to migrate',
-  text: `version: 7
+  text: `version: 8
 kind: part
 features:
   - id: Origin
@@ -269,7 +269,7 @@ export const ALL_HISTORICAL_PART_DOCS: HistoricalDocument[] = [
   CURRENT_PART,
   CURRENT_V2_PART,
   CURRENT_V3_PART,
-  CURRENT_V7_PART,
+  CURRENT_V8_PART,
 ]
 
 export const ALL_HISTORICAL_ASSEMBLY_DOCS: HistoricalDocument[] = [

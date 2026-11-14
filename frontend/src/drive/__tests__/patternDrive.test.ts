@@ -31,9 +31,10 @@ describe('the pattern mutation catalog', () => {
 
   it('publishes add_pattern fields and set_pattern_field as a setter', () => {
     const add = mutationInfoOf('add_pattern')
-    for (const field of ['source_feature', 'mode', 'count', 'pitch', 'direction', 'step_angle', 'axis', 'target_body']) {
+    for (const field of ['source_features', 'source_feature', 'mode', 'count', 'pitch', 'direction', 'step_angle', 'axis', 'target_body']) {
       expect(add.fields[field], field).toBeDefined()
     }
+    expect(mutationInfoOf('set_pattern_field').fields.field.note).toContain('source_features')
     expect(mutationInfoOf('set_pattern_field').fields.field.note).toContain('source_feature')
     expect(PART_DOC_SCHEMA_JSON).toContain('"pattern"')
     expect(PART_DOC_SCHEMA_JSON).toContain('"circular"')
@@ -49,6 +50,7 @@ describe('pattern boundary refusals', () => {
 
   it('refuses a sketch-local source ref', () => {
     expect(refusal({ type: 'add_pattern', featureId: 'pt1', source_feature: '$ex1' })).toContain('"$"')
+    expect(refusal({ type: 'add_pattern', featureId: 'pt1', source_features: ['$ex1'] })).toContain('"$"')
   })
 
   it('refuses a malformed direction and a non-list value', () => {
@@ -87,20 +89,31 @@ describe('pattern boundary refusals', () => {
 })
 
 describe('one inline add lands the whole pattern', () => {
-  it('stores the source, mode, count, pitch and direction in one call', () => {
+  it('stores the source list, mode, count, pitch and direction in one call', () => {
     const doc: PartDoc = emptyDriveDoc()
     mutationHandlers.add_pattern(doc, {
       type: 'add_pattern', featureId: 'pt1', label: 'Pattern', subject: 'feature',
-      source_feature: '@ex1', mode: 'linear', count: 4, pitch: 8,
+      source_features: ['@ex1', '@ex2'], mode: 'linear', count: 4, pitch: 8,
       direction: [1, 0, 0], invert: true, target_body: '@body_ex1',
     })
     const feature = doc.features?.find((entry) => entry.id === 'pt1')
     expect(feature).toMatchObject({
       kind: 'pattern',
       pattern: {
-        subject: 'feature', source_feature: '@ex1', mode: 'linear', count: 4, pitch: 8,
+        subject: 'feature', source_features: ['@ex1', '@ex2'], mode: 'linear', count: 4, pitch: 8,
         direction: [1, 0, 0], invert: true, target_body: '@body_ex1',
       },
     })
+  })
+
+  it('keeps the legacy single source working and lands a one-element list', () => {
+    const doc: PartDoc = emptyDriveDoc()
+    mutationHandlers.add_pattern(doc, {
+      type: 'add_pattern', featureId: 'pt1', label: 'Pattern', subject: 'feature',
+      source_feature: '@ex1', count: 3, pitch: 8,
+    })
+    const feature = doc.features?.find((entry) => entry.id === 'pt1')
+    expect(feature).toMatchObject({ pattern: { source_features: ['@ex1'] } })
+    expect((feature as { pattern: Record<string, unknown> }).pattern.source_feature).toBeUndefined()
   })
 })

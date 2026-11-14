@@ -240,7 +240,10 @@ export const FEATURE_SCHEMA_BY_KIND = {
       // old document that carries it.
       source_body: REF,
       operation: { enum: ['add', 'new'] },
-      // Feature subject.
+      // Feature subject. `source_features` is the current form: every source is
+      // applied at each grid instance, in document order. The singular
+      // `source_feature` is the pre-2026-11 spelling the loader folds.
+      source_features: REF_LIST,
       source_feature: REF,
       target_body: REF,
       // Instance grid.

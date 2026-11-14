@@ -109,6 +109,7 @@ export const IDEMPOTENT_MUTATION = {
   remove_delete_body_ref: true,
   remove_transform_body: true,
   remove_split_body: true,
+  remove_pattern_source: true,
 
   // ─── Deliberately excluded ───
 
@@ -175,7 +176,8 @@ export const IDEMPOTENT_MUTATION = {
   add_helix: false,
 
   // The add_* toggle family (add_*_profile, add_sweep_path, add_*_edge,
-  // add_boolean_tool, add_delete_body_ref, add_transform_body): re-applying an
+  // add_boolean_tool, add_delete_body_ref, add_transform_body,
+  // add_pattern_source): re-applying an
   // already-listed entry TOGGLES it back out, which is a real change, so a guard
   // would swallow the user's own click. It is the mirror image of the remove_*
   // block above.
@@ -192,6 +194,7 @@ export const IDEMPOTENT_MUTATION = {
   add_delete_body_ref: false,
   add_transform_body: false,
   add_split_body: false,
+  add_pattern_source: false,
 
   // Whole-feature delete and the global plane toggles. These CAN leave the doc
   // byte-identical (a delete of an absent or builtin id, a toggle with no

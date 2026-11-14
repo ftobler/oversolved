@@ -4,7 +4,7 @@
 // Mirrors dropDeadAxisConstraints (mutate in place, return the count rewritten).
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
-import { migrateLegacyBodyPicks } from '@/utils/yamlMigrations'
+import { migrateLegacyBodyPicks, migratePatternSourceFeatures } from '@/utils/yamlMigrations'
 
 // The singular `body` pick is a pre-pluralization artifact (transform from
 // 2026-07-29, delete_body from 2026-07-27); these docs are written in that
@@ -134,5 +134,53 @@ describe('migrateLegacyBodyPicks', () => {
       ],
     } as unknown as PartDoc
     expect(migrateLegacyBodyPicks(doc)).toBe(1)
+  })
+})
+
+describe('migratePatternSourceFeatures', () => {
+  function patternDoc(pattern: Record<string, unknown>): PartDoc {
+    return {
+      version: 7,
+      kind: 'part',
+      features: [{ id: 'pt1', kind: 'pattern', pattern }],
+    } as unknown as PartDoc
+  }
+
+  it('folds the single legacy source into a one-element list', () => {
+    const doc = patternDoc({ subject: 'feature', source_feature: '@ex1' })
+    expect(migratePatternSourceFeatures(doc)).toBe(1)
+    const sub = (doc.features![0] as unknown as { pattern: Record<string, unknown> }).pattern
+    expect(sub.source_features).toEqual(['@ex1'])
+    expect('source_feature' in sub).toBe(false)
+  })
+
+  it('drops an empty legacy source without inventing one', () => {
+    const doc = patternDoc({ subject: 'feature', source_feature: '' })
+    expect(migratePatternSourceFeatures(doc)).toBe(1)
+    const sub = (doc.features![0] as unknown as { pattern: Record<string, unknown> }).pattern
+    expect(sub.source_features).toEqual([])
+    expect('source_feature' in sub).toBe(false)
+  })
+
+  it('keeps a multi-source list and drops a stale scalar beside it', () => {
+    const doc = patternDoc({ source_features: ['@ex1', '@rv1'], source_feature: '@ex2' })
+    expect(migratePatternSourceFeatures(doc)).toBe(1)
+    const sub = (doc.features![0] as unknown as { pattern: Record<string, unknown> }).pattern
+    expect(sub.source_features).toEqual(['@ex1', '@rv1'])
+    expect('source_feature' in sub).toBe(false)
+  })
+
+  it('leaves a malformed scalar for the validator to refuse', () => {
+    const doc = patternDoc({ source_feature: 5 })
+    expect(migratePatternSourceFeatures(doc)).toBe(0)
+    expect((doc.features![0] as unknown as { pattern: Record<string, unknown> }).pattern.source_feature).toBe(5)
+  })
+
+  it('is idempotent and leaves a list-only pattern alone', () => {
+    const doc = patternDoc({ source_features: ['@ex1'] })
+    expect(migratePatternSourceFeatures(doc)).toBe(0)
+    const once = patternDoc({ source_feature: '@ex1' })
+    expect(migratePatternSourceFeatures(once)).toBe(1)
+    expect(migratePatternSourceFeatures(once)).toBe(0)
   })
 })

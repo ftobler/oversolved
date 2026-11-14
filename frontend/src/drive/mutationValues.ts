@@ -2151,6 +2151,8 @@ export const MUTATION_VALUE_RULES = {
   remove_boolean_tool: queryField('tool'),
   add_pattern: addPattern,
   set_pattern_field: setPatternField,
+  add_pattern_source: queryField('sourceFeature'),
+  remove_pattern_source: indexField('index'),
   add_delete_body: addDeleteBody,
   add_delete_body_ref: queryField('bodyQuery'),
   remove_delete_body_ref: indexField('index'),

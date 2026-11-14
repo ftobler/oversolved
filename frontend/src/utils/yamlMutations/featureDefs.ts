@@ -85,6 +85,22 @@ function _ensureBodies(sub: { bodies?: string[]; body?: string }): string[] {
   return sub.bodies
 }
 
+/** Materialize the multi-source list a pattern mutation indexes. A legacy row
+ *  carries the singular `source_feature`; seed the list from it so a pick edit
+ *  does not silently drop the source the pattern still solved with. */
+function _ensurePatternSources(sub: PatternFeatureDef): string[] {
+  const current: unknown = sub.source_features
+  if (Array.isArray(current)) {
+    delete sub.source_feature
+    return current as string[]
+  }
+  const single = typeof current === 'string' ? current : sub.source_feature
+  const list: string[] = typeof single === 'string' && single ? [single] : []
+  sub.source_features = list
+  delete sub.source_feature
+  return list
+}
+
 // ─── Set Feature Field (generic) ───
 
 // Shared body for the `applySet<Kind>Field` mutators that warn when the
@@ -696,7 +712,7 @@ function inlineCountProblem(inline: object): { field: 'count' | 'count_x' | 'cou
 }
 
 const PATTERN_FIELDS: readonly string[] = [
-  'subject', 'source_body', 'operation', 'source_feature', 'target_body',
+  'subject', 'source_body', 'operation', 'source_features', 'source_feature', 'target_body',
   'mode', 'count', 'pitch', 'direction', 'direction_query', 'invert',
   'count_x', 'count_y', 'pitch_x', 'pitch_y',
   'direction_x', 'direction_x_query', 'invert_x', 'direction_y', 'direction_y_query', 'invert_y',
@@ -762,6 +778,17 @@ export function applyAddPattern(
   const accepted = Object.fromEntries(
     Object.entries(inline).filter(([field]) => PATTERN_FIELDS.includes(field)),
   ) as Partial<PatternFeatureDef>
+  // The legacy single source lands in the multi-source list the kernel reads.
+  // When both are sent the list wins, so an old alias cannot silently override
+  // the authored set. A string list is the same legacy spelling a replay may
+  // carry.
+  if (typeof accepted.source_features === 'string') {
+    accepted.source_features = accepted.source_features === '' ? [] : [accepted.source_features]
+  }
+  if (!Array.isArray(accepted.source_features) && typeof accepted.source_feature === 'string') {
+    accepted.source_features = accepted.source_feature === '' ? [] : [accepted.source_feature]
+  }
+  delete accepted.source_feature
   // The inline counts are judged before the merge rounds them.
   const problem = inlineCountProblem(accepted)
   if (problem !== null) {
@@ -800,13 +827,50 @@ export function applySetPatternField(
     return
   }
   if (refusePatternCount(sub, field, value, 'applySetPatternField')) return
-  if (!setSubFeatureField(featureId, 'pattern', sub, field, value, 'applySetPatternField', PATTERN_FIELDS)) return
+  // The drive still accepts the old single-source name for compatibility; it
+  // means a one-element list. Writing the list always drops the legacy scalar,
+  // so a document does not keep both spellings.
+  const targetField = field === 'source_feature' ? 'source_features' : field
+  const sourceList = (raw: unknown): string[] => {
+    if (Array.isArray(raw)) return raw.filter((ref): ref is string => typeof ref === 'string')
+    return typeof raw === 'string' && raw !== '' ? [raw] : []
+  }
+  const targetValue = targetField === 'source_features' ? sourceList(value) : value
+  if (!setSubFeatureField(featureId, 'pattern', sub, targetField, targetValue, 'applySetPatternField', PATTERN_FIELDS)) return
+  delete sub.source_feature
   // The retired flag is accepted on load for old documents but is not authored
   // any more. Any edit lands the pattern on the current shape, so drop it here
   // rather than carrying a key the kernel ignores.
   delete (sub as { include_source?: boolean }).include_source
   if (field === 'mode') seedPatternMode(sub)
   if (field === 'subject' && value === 'feature') delete sub.operation
+}
+
+/** Add a feature to a pattern's sources, toggling like every other multi pick:
+ *  re-picking a source already in the list drops it again. */
+export function applyAddPatternSource(doc: PartDoc, featureId: string, sourceFeature: string): void {
+  const feature = findFeature(doc, featureId)
+  const sub = feature?.kind === 'pattern' ? feature.pattern : undefined
+  if (!sub) {
+    warn(`applyAddPatternSource: feature ${featureId} has no pattern`)
+    return
+  }
+  const sources = _ensurePatternSources(sub)
+  const index = sources.indexOf(sourceFeature)
+  if (index >= 0) sources.splice(index, 1)
+  else sources.push(sourceFeature)
+}
+
+export function applyRemovePatternSource(doc: PartDoc, featureId: string, index: number): void {
+  const feature = findFeature(doc, featureId)
+  const sub = feature?.kind === 'pattern' ? feature.pattern : undefined
+  if (!sub) {
+    warn(`applyRemovePatternSource: feature ${featureId} has no pattern`)
+    return
+  }
+  const sources = _ensurePatternSources(sub)
+  if (!removableIndex(sources, index)) return
+  sources.splice(index, 1)
 }
 
 // ─── Delete Body ───

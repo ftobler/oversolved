@@ -93,7 +93,7 @@ describe.skipIf(!ready)('add_pattern through the drive (real OCC + Rust solver)'
     expect(feature).toMatchObject({
       kind: 'pattern',
       pattern: {
-        subject: 'feature', source_feature: '@ex_slot', mode: 'linear', count: 4, pitch: 8, direction: [1, 0, 0],
+        subject: 'feature', source_features: ['@ex_slot'], mode: 'linear', count: 4, pitch: 8, direction: [1, 0, 0],
       },
     })
     // The reply's own feature list: the pattern reported clean, and it changed
@@ -104,6 +104,46 @@ describe.skipIf(!ready)('add_pattern through the drive (real OCC + Rust solver)'
     expect(measured?.ok).toBe(true)
     expect(measured!.features.find((problem) => problem.id === 'pt1')).toBeUndefined()
     // 40 x 20 x 5 minus four 4 x 4 x 5 slots.
+    expect(measured!.measures.volume).toBeCloseTo(4000 - 320, 4)
+    expect(measured!.measures.bodies).toBe(1)
+  }, 240_000)
+
+  it('patterns several sources through one inline source_features list', async () => {
+    // Two slots on the plate, each its own cut source; one call names both and
+    // repeats both at the same grid. The reply must land both source lists and
+    // measure four slots in the one plate body.
+    const doc = seedBuiltins({
+      version: 1,
+      kind: 'part',
+      features: [
+        rectSketch('sk_plate', 40, 20),
+        { id: 'ex_plate', kind: 'extrude', extrude: { sketch: '@sk_plate', distance: 5, direction: 'normal', operation: 'new' } },
+        rectSketch('sk_slot_a', 4, 4, 6, 2),
+        { id: 'ex_slot_a', kind: 'extrude', extrude: { sketch: '@sk_slot_a', distance: 10, direction: 'normal', operation: 'cut' } },
+        rectSketch('sk_slot_b', 4, 4, 6, 14),
+        { id: 'ex_slot_b', kind: 'extrude', extrude: { sketch: '@sk_slot_b', distance: 10, direction: 'normal', operation: 'cut' } },
+      ],
+    } as PartDoc)
+    const run = await runHeadless({
+      doc,
+      steps: [step({
+        type: 'add_pattern', featureId: 'pt1', label: 'Pattern', subject: 'feature',
+        source_features: ['@ex_slot_a', '@ex_slot_b'], mode: 'linear', count: 2, pitch: 8,
+        direction: [1, 0, 0],
+      })],
+    })
+    expect(run.ok).toBe(true)
+    const feature = run.doc?.features?.find((entry) => entry.id === 'pt1')
+    expect(feature).toMatchObject({
+      kind: 'pattern',
+      pattern: { subject: 'feature', source_features: ['@ex_slot_a', '@ex_slot_b'] },
+    })
+    expect(run.features.find((problem) => problem.id === 'pt1')).toBeUndefined()
+
+    const measured = await measureHeadless(run.doc!)
+    expect(measured?.ok).toBe(true)
+    expect(measured!.features.find((problem) => problem.id === 'pt1')).toBeUndefined()
+    // 40 x 20 x 5 minus four 4 x 4 x 5 slots: two sources and two copies.
     expect(measured!.measures.volume).toBeCloseTo(4000 - 320, 4)
     expect(measured!.measures.bodies).toBe(1)
   }, 240_000)

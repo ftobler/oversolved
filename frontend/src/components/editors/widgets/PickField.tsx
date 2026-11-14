@@ -106,6 +106,7 @@ export function PickFieldWidget({
         unresolvedValues={unresolvedValues}
         failedValues={failedValues}
       />
+      {field.hint !== undefined && <span className="feature-field-hint">{field.hint}</span>}
       <StatusMessage mark={pickState.refusal} />
     </div>
   )

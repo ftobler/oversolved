@@ -1,12 +1,13 @@
-// The pattern editor schema: the source is chosen from the document's own
-// extrude/revolve/sweep rows (not from a viewport pick), the linear fields show
-// the direction and pitch, and the circular fields show the axis and step.
+// The pattern editor schema: the source is chosen as one or more feature rows
+// from the document (not a viewport pick), the linear fields show the direction
+// and pitch, and the circular fields show the axis and step.
 import { describe, it, expect, vi } from 'vitest'
-import { render, fireEvent, screen } from '@testing-library/react'
+import { render, fireEvent, screen, act } from '@testing-library/react'
 import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import { PATTERN_SCHEMA, EDITOR_SCHEMAS } from '@/components/editors/featureEditorSchemas'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { PartFeature } from '@/types/cad'
-import type { NumberFieldDef } from '@/components/editors/widgets/fieldTypes'
+import type { NumberFieldDef, PickFieldDef } from '@/components/editors/widgets/fieldTypes'
 import { validateNumberFieldValue } from '@/components/editors/widgets/numberFieldValidate'
 
 const FEATURES: PartFeature[] = [
@@ -14,7 +15,7 @@ const FEATURES: PartFeature[] = [
   { id: 'rv1', kind: 'revolve', label: 'Revolve 1', revolve: { sketch: [], angle: 90 } },
   { id: 'sk1', kind: 'sketch', label: 'Sketch 1', entities: [], initial: {} },
   // The editor rows from here on are at or after the edited pattern: neither is
-  // a legal source, and the options must not offer them.
+  // a legal source, and the order rule must refuse them.
   { id: 'pt1', kind: 'pattern', label: 'Pattern', pattern: {} },
   { id: 'ex2', kind: 'extrude', label: 'Extrude 2', extrude: { sketch: [], distance: 1 } },
 ]
@@ -25,7 +26,7 @@ function makeFeature(over: Record<string, unknown> = {}): PartFeature {
     kind: 'pattern',
     label: 'Pattern',
     pattern: {
-      subject: 'feature', source_feature: '', mode: 'linear', count: 2, pitch: 20, ...over,
+      subject: 'feature', source_features: [], mode: 'linear', count: 2, pitch: 20, ...over,
     },
   } as unknown as PartFeature
 }
@@ -46,15 +47,24 @@ describe('PATTERN_SCHEMA', () => {
     expect(EDITOR_SCHEMAS.pattern).toBe(PATTERN_SCHEMA)
     expect(PATTERN_SCHEMA.subKey).toBe('pattern')
     expect(PATTERN_SCHEMA.defaults).toEqual({
-      subject: 'body', mode: 'linear', operation: 'add', count: 2, pitch: 20,
+      subject: 'body', mode: 'linear', operation: 'add', count: 2, pitch: 20, source_features: [],
     })
     expect(PATTERN_SCHEMA.fields.map((f) => f.key)).toEqual([
-      'subject', 'source_body', 'source_feature', 'target_body', 'operation',
+      'subject', 'source_body', 'source_features', 'target_body', 'operation',
       'mode', 'count', 'direction_query', 'invert', 'pitch',
       'direction_x_query', 'invert_x', 'count_x', 'pitch_x',
       'direction_y_query', 'invert_y', 'count_y', 'pitch_y',
       '_evenly_spaced', 'step_angle', 'axis', 'invert_axis',
     ])
+  })
+
+  it('is a multi pick chip, not a dropdown', () => {
+    const source = field('source_features') as PickFieldDef
+    expect(source.type).toBe('pick')
+    expect(source.multi).toBe(true)
+    expect(source.addMutationType).toBe('add_pattern_source')
+    expect(source.addValueKey).toBe('sourceFeature')
+    expect(source.removeMutationType).toBe('remove_pattern_source')
   })
 
   it('does not offer the retired include-source option', () => {
@@ -63,19 +73,49 @@ describe('PATTERN_SCHEMA', () => {
     expect(PATTERN_SCHEMA.fields.some((f) => f.key === 'include_source')).toBe(false)
   })
 
-  it('offers only the repeatable feature kinds as the source, excluding itself', () => {
-    renderEditor(makeFeature({ subject: 'feature' }))
-    const select = screen.getByLabelText('Source Feature') as HTMLSelectElement
-    expect([...select.options].map((o) => o.value)).toEqual(['', '@ex1', '@rv1'])
+  it('refuses a source that is not an earlier extrude, revolve or sweep', () => {
+    const source = field('source_features') as PickFieldDef
+    expect(source.validatePick!('@ex1', FEATURES)).toBeNull()
+    expect(source.validatePick!('@rv1', FEATURES)).toBeNull()
+    expect(source.validatePick!('@sk1', FEATURES)).toContain('extrude, revolve or sweep')
+    expect(source.validatePick!('@body_ex1', FEATURES)).toContain('feature row')
+    expect(source.validatePick!('@ex1/face/0', FEATURES)).toContain('feature row')
   })
 
-  it('writes the source feature id with the sigil', () => {
-    const onMutation = renderEditor(makeFeature({ subject: 'feature' }))
-    const select = screen.getByLabelText('Source Feature') as HTMLSelectElement
-    fireEvent.change(select, { target: { value: '@ex1' } })
-    expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_pattern_field', featureId: 'pt1', field: 'source_feature', value: '@ex1',
+  it('shows every source as its own chip', () => {
+    renderEditor(makeFeature({ source_features: ['@ex1', '@rv1'] }))
+    expect(screen.getByText('Extrude 1')).not.toBeNull()
+    expect(screen.getByText('Revolve 1')).not.toBeNull()
+  })
+
+  it('adds a picked feature through the pattern source mutation', () => {
+    const onMutation = renderEditor(makeFeature({ source_features: ['@ex1'] }))
+    fireEvent.click(screen.getByText('Extrude 1'))
+    act(() => {
+      useSketchEditorStore.setState({ normalSelection: new Set(['@rv1']) })
     })
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'add_pattern_source', featureId: 'pt1', sourceFeature: '@rv1',
+    })
+  })
+
+  it('removes a chip through the pattern source mutation', () => {
+    const onMutation = renderEditor(makeFeature({ source_features: ['@ex1', '@rv1'] }))
+    const removes = document.querySelectorAll('.feature-pick-chip-item-remove')
+    fireEvent.click(removes[1])
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'remove_pattern_source', featureId: 'pt1', index: 1,
+    })
+  })
+
+  it('shows a legacy single source as one chip', () => {
+    // A row written before the source became a list names source_feature and no
+    // source_features; it must render its source, not an empty chip.
+    renderEditor(makeFeature({ subject: undefined, source_features: undefined, source_feature: '@ex1' }))
+    expect(screen.getByText('Extrude 1')).not.toBeNull()
+    const labels = [...document.querySelectorAll('.feature-field-label')].map((n) => n.textContent)
+    expect(labels).toContain('Source Features')
+    expect(labels).not.toContain('Body')
   })
 
   it('hides the body source when the subject is a feature', () => {
@@ -83,16 +123,7 @@ describe('PATTERN_SCHEMA', () => {
     const labels = [...document.querySelectorAll('.feature-field-label')].map((n) => n.textContent)
     expect(labels).not.toContain('Body')
     expect(labels).not.toContain('Operation')
-    expect(labels).toContain('Source Feature')
-  })
-
-  it('shows a legacy feature pattern with its inferred feature subject', () => {
-    // A row written before the subject field names source_feature and no
-    // source_body; it must not render as a body pattern asking for a body.
-    renderEditor(makeFeature({ subject: undefined, source_feature: '@ex1' }))
-    const labels = [...document.querySelectorAll('.feature-field-label')].map((n) => n.textContent)
-    expect(labels).toContain('Source Feature')
-    expect(labels).not.toContain('Body')
+    expect(labels).toContain('Source Features')
   })
 
   it('shows the linear fields in linear mode and the circular fields in circular mode', () => {
