@@ -19,7 +19,8 @@ import type { HandleTable } from '../occ/handleTable'
 import { resolveMergeTargets } from './shared/bodyResolution'
 import { brepDiffIsEmpty } from './shared/brepDiff'
 import { booleanWithDiff, countSolids, shapesIntersect, volumeOf } from '../occ/booleans'
-import { nearCoaxialCylinderWarning } from '../occ/nearCoaxial'
+import { nearCoaxialCylinderWarning, shapeHasCoaxialCylinder } from '../occ/nearCoaxial'
+import type { HelixAxis } from './shared/helixPath'
 import { transferBooleanNames } from './booleanLineage'
 import { registerSplitBodies, resplitBody, solidHoldingFaces } from './bodySplit'
 import { readBodyNames } from '../occ/bodyNames'
@@ -65,6 +66,10 @@ export interface ApplyBodyOperationInput {
    *  leaf's sketch solve reported. A merge widens the clean by the max of this
    *  and the target body's record; a new body carries it. */
   precision?: KernelPrecision | null
+  /** Set by the sweep leaf when the tool follows a helix. The merge into a
+   *  coaxial cylinder skips the clean's face merge, which spins forever on that
+   *  geometry (see booleanWithDiffMany). */
+  helixAxis?: HelixAxis | null
 }
 
 export interface ApplyBodyOperationResult {
@@ -177,6 +182,7 @@ export function applyBodyOperation(
     oppositeProbe,
     addRequiresExisting = false,
     precision: toolPrecision = null,
+    helixAxis = null,
   } = input
 
   // The tool body's construction-name maps, carried onto a body the tool becomes
@@ -211,6 +217,13 @@ export function applyBodyOperation(
     toolVolumeChecked = true
     assertPositiveVolume(oc, scope, toolShape, 'the tool solid', opName)
   }
+
+  // A helical tool meeting the wall of the cylinder it winds around is the one
+  // geometry the clean's face merge cannot finish (kernel/occ/nearCoaxial.ts).
+  // Only the face merge is skipped: the edge merge, the volume guard and the
+  // whole-shape validity check still run on the result.
+  const skipFaceMerge = (target: OccShape): boolean =>
+    helixAxis !== null && shapeHasCoaxialCylinder(oc, scope, target, helixAxis)
 
   let needNewBody = false
   let targetIds: string[] = []
@@ -251,7 +264,10 @@ export function applyBodyOperation(
       // Widen the merge by what the solver reported for this body and this
       // tool, up to the ceiling; a clamped merge is named on the result.
       const mergePrecision = maxPrecision(existingBody.precision, toolPrecision)
-      const unifyOpts = { unifyFaces: !existingBody.imported, precision: mergePrecision }
+      const unifyOpts = {
+        unifyFaces: !existingBody.imported && !skipFaceMerge(oldShape),
+        precision: mergePrecision,
+      }
       requireToolVolume()
       const { shape: newShape, diff, faceOrigin } = booleanWithDiff(oc, scope, oldShape, toolShape, 'cut', unifyOpts)
       scope.track(newShape)
@@ -380,7 +396,7 @@ export function applyBodyOperation(
         requireToolVolume()
         // Imported bodies skip the face merge (hang guard); see booleanWithDiff.
         const res = booleanWithDiff(oc, scope, oldShape, toolShape, 'fuse', {
-          unifyFaces: !existingBody.imported, precision: mergePrecision,
+          unifyFaces: !existingBody.imported && !skipFaceMerge(oldShape), precision: mergePrecision,
         })
         newShape = res.shape
         diff = res.diff

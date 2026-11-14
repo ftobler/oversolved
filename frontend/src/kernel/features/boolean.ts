@@ -24,7 +24,8 @@ import { resolveBody } from './shared/bodyResolution'
 import { brepDiffIsEmpty } from './shared/brepDiff'
 import { booleanWithDiff, volumeOf, shapesIntersect, BooleanSoundnessError } from '../occ/booleans'
 import { maxPrecision, precisionCeilingWarning, type KernelPrecision } from '../precision'
-import { nearCoaxialCylinderWarning } from '../occ/nearCoaxial'
+import { nearCoaxialCylinderWarning, shapeHasCoaxialCylinder } from '../occ/nearCoaxial'
+import { helixAxisOfSweepDef } from './shared/helixPath'
 import { offsetSolid, OffsetError } from '../occ/offsetShape'
 import { SubShapeMap } from '../occ/subshapeIdentity'
 import { resplitBody } from './bodySplit'
@@ -214,7 +215,7 @@ export function solveBoolean(
   scope: DisposeScope,
   table: HandleTable,
   feature: Dict,
-  _globalRepo: Repository,
+  globalRepo: Repository,
   bodyStore: Record<string, Body>,
   featuresById: Record<string, Dict> = {},
 ): BooleanResult {
@@ -292,7 +293,16 @@ export function solveBoolean(
       )
     }
     const toolShape = table.get<OccShape>(toolBody.shape)
-    const unifyFaces = !(targetBody.imported || toolBody.imported)
+    // A helical band meeting the wall of its coaxial cylinder makes the clean's
+    // face merge (ShapeUpgrade_UnifySameDomain with unifyFaces) spin forever;
+    // the edge merge is safe, so only the face merge is skipped for that
+    // geometry. `created_by` names the sweep, and the repo descriptor its path
+    // registered is the same curve the sweep built.
+    const targetAxis = helixAxisOfSweepDef(featuresById[targetBody.created_by], globalRepo)
+    const toolAxis = helixAxisOfSweepDef(featuresById[toolBody.created_by], globalRepo)
+    const coaxialHelix = (targetAxis !== null && shapeHasCoaxialCylinder(oc, scope, toolShape, targetAxis))
+      || (toolAxis !== null && shapeHasCoaxialCylinder(oc, scope, resultShape, toolAxis))
+    const unifyFaces = !(targetBody.imported || toolBody.imported) && !coaxialHelix
 
     // A subtract grows each tool before the cut (clearance > 0) or shrinks it
     // (clearance < 0). The grown shape is a transient operand of this step: the

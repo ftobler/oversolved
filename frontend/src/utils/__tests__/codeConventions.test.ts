@@ -49,16 +49,24 @@ describe('code conventions', () => {
     expect(violations).toEqual([])
   })
 
+  // The action-matrix shard dispatch is Node-only test scaffolding (the shard
+  // test files import it; the product bundle never does), and it reads the
+  // fork/range controls straight from process.env. It sits in src/testing, not
+  // in a __tests__ directory, so the file predicate cannot see it.
+  const PROCESS_ENV_ALLOWLIST = new Set([
+    'testing/actionMatrix/actionMatrixRealShard.ts',
+    'testing/actionMatrix/actionMatrixShards.ts',
+  ])
+
   it('no process.env in source files (use import.meta.env)', () => {
     // The action-matrix shard driver is node-only test support: it reads the
     // runner's ACTION_MATRIX_* variables to choose a fork slice and is imported
     // by nothing the browser bundles, so process.env is its correct seam.
-    const actionMatrix = join(SRC, 'testing', 'actionMatrix')
     const violations: string[] = []
     for (const file of srcOnlyFiles) {
-      if (file.startsWith(actionMatrix)) continue
+      const rel = file.replace(SRC, 'src/').slice('src/'.length)
       const src = readFileSync(file, 'utf8')
-      if (src.includes('process.env')) {
+      if (src.includes('process.env') && !PROCESS_ENV_ALLOWLIST.has(rel)) {
         violations.push(file.replace(SRC, 'src/'))
       }
     }

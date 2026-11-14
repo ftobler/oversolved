@@ -10,6 +10,7 @@ import type { Mutation } from '@/types/cad'
 import type { CommandResult } from '@/utils/core/commandSpec'
 import type { Result } from '@/session/result'
 import { CREATING_MUTATION_TYPES } from '@/types/mutationKinds'
+import { isKernelTrap, KernelFault } from '@/kernel/errors'
 
 // A failure from outside the registry/session vocabularies: the bridge's own
 // guard for a throwing executor. Kept here so the runner accepts it without
@@ -289,6 +290,11 @@ export async function runScript<S extends AnyScriptStep = ScriptStep>(
       try {
         outcome = outcomeFor(index, step, await run(step))
       } catch (e) {
+        // A trap is not this step's verdict: the kernel is dead, and recording
+        // it as a step error would let the script (and the run) carry on as if
+        // only a mutation was refused. Let it reach the run boundary, which
+        // reports it as the solve's fault.
+        if (isKernelTrap(e) || e instanceof KernelFault) throw e
         outcome = {
           index,
           kind: stepKind(step),

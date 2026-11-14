@@ -1,4 +1,6 @@
-// Warning for a boolean result that kept two near-coaxial cylinder faces.
+// Warning for a boolean result that kept two near-coaxial cylinder faces, and
+// the same face read as a guard for the boolean clean (see the coaxial test at
+// the bottom).
 //
 // The fuse keeps two analytic cylinder faces when their radii or axes differ
 // at all: ShapeUpgrade_UnifySameDomain only merges faces that share the same
@@ -20,6 +22,7 @@ import type { DisposeScope } from './disposeScope'
 import type { OccModule, OccShape } from './occTypes'
 import { exploreFaces } from './edgeModifier'
 import { faceSurfaceFrame } from './primitives'
+import { swallowUnlessTrap } from '../errors'
 
 /** The largest radius/axis difference still read as a near-miss, as a share of
  *  the larger radius. Anchoring on the larger one keeps the band symmetric for
@@ -30,6 +33,10 @@ const NEAR_COAXIAL_REL = 1e-4
 const NEAR_COAXIAL_MIN = 5e-7
 /** Parallel-axis gate, the same as canonicalSurfaces' sameCylinder. */
 const AXIS_PARALLEL_EPS = 1e-9
+/** How far apart two axis lines may be and still be one line. A coaxial wall
+ *  read from the surface it was built on lands on the shared axis exactly; the
+ *  document's own 1e-6 storage grid bounds any rounding. */
+const COAXIAL_GAP = 1e-6
 
 type Vec3 = [number, number, number]
 
@@ -58,6 +65,50 @@ function axisGap(a: Cylinder, b: Cylinder): number | null {
   return norm(perpendicular)
 }
 
+/** The analytic cylinder faces of `shape`, with the surface frame's own radius,
+ *  axis and axis point. Cones, spheres and tori carry a radius too, so the
+ *  surface type is checked before the frame is read. */
+function cylinderFaces(oc: OccModule, scope: DisposeScope, shape: OccShape): Cylinder[] {
+  const cylinders: Cylinder[] = []
+  const cylinderType = oc.GeomAbs_SurfaceType.GeomAbs_Cylinder.value
+  for (const face of exploreFaces(oc, scope, shape)) {
+    const adaptor = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
+    if (adaptor.GetType().value !== cylinderType) continue
+    const frame = faceSurfaceFrame(oc, scope, face)
+    if (frame === null || frame.radius === undefined) continue
+    cylinders.push({ radius: frame.radius, origin: frame.origin as Vec3, axis: frame.axis as Vec3 })
+  }
+  return cylinders
+}
+
+/**
+ * Whether `shape` carries a cylinder coaxial with the given axis line. Used by
+ * the boolean pipeline to recognise the geometry whose face merge
+ * (ShapeUpgrade_UnifySameDomain with unifyFaces) spins forever: a helical sweep
+ * cut by the wall of the cylinder it winds around. The guard is geometric
+ * because the boolean leaf reads whole bodies, not the sweep feature.
+ */
+export function shapeHasCoaxialCylinder(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+  line: { origin: Vec3; axis: Vec3 },
+): boolean {
+  try {
+    const target = { radius: 0, origin: line.origin, axis: line.axis }
+    for (const cylinder of cylinderFaces(oc, scope, shape)) {
+      const gap = axisGap(cylinder, target)
+      if (gap !== null && gap <= COAXIAL_GAP) return true
+    }
+    return false
+  } catch (e) {
+    swallowUnlessTrap(e)
+    // A read that cannot run is not evidence of a coaxial wall; the boolean
+    // keeps its normal clean and the kernel fault, if any, surfaces there.
+    return false
+  }
+}
+
 /**
  * A warning when `shape` keeps two cylindrical faces on the same axis whose
  * radii or axes are near-coaxial, or null when every such pair is far enough
@@ -72,17 +123,7 @@ export function nearCoaxialCylinderWarning(
   // warning is worth having, not worth throwing for.
   if (!oc) return null
   try {
-    const cylinders: Cylinder[] = []
-    const cylinderType = oc.GeomAbs_SurfaceType.GeomAbs_Cylinder.value
-    for (const face of exploreFaces(oc, scope, shape)) {
-      // faceSurfaceFrame also gives a radius for cones, spheres and tori; this
-      // warning is about cylinders only.
-      const adaptor = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
-      if (adaptor.GetType().value !== cylinderType) continue
-      const frame = faceSurfaceFrame(oc, scope, face)
-      if (frame === null || frame.radius === undefined) continue
-      cylinders.push({ radius: frame.radius, origin: frame.origin as Vec3, axis: frame.axis as Vec3 })
-    }
+    const cylinders = cylinderFaces(oc, scope, shape)
     for (let i = 0; i < cylinders.length; i++) {
       for (let j = i + 1; j < cylinders.length; j++) {
         const a = cylinders[i]

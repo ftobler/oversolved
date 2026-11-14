@@ -26,6 +26,7 @@ import { classifyLoops } from '../profileLoops'
 import { makeLineEdge, makeArcEdge, makeEllipseEdge, makeBezierEdge, makeBSplineChainEdge, type Vec3 } from '../occ/primitives'
 import { buildCurveEdge } from '../occ/helixEdge'
 import { descriptorFromRepo } from './helix'
+import type { HelixAxis } from './shared/helixPath'
 import { stripRefSigil } from '@/utils/refSigil'
 import { TOL_LENGTH_SLACK, TOL_LOOP_CLOSURE } from '../solverConstants'
 import { maxPrecision, sketchPrecision, type KernelPrecision } from '../precision'
@@ -991,6 +992,8 @@ export function solveSweep(
   let binormal: Vec3 | null = null
   let helixPath = false
   let helixPitch: number | null = null
+  // A helix sweep's axis line, for the boolean clean's coaxial-wall guard.
+  let helixAxis: HelixAxis | null = null
   if (helixIds.length > 0) {
     if (pathRefs.length !== helixIds.length || helixIds.length > 1) {
       throw new Error('sweep: a helix path must stand alone; mixing it with other path edges is not supported')
@@ -1001,6 +1004,7 @@ export function solveSweep(
     binormal = desc.axis
     helixPitch = Math.abs(desc.pitch)
     helixPath = true
+    helixAxis = { origin: desc.origin, axis: desc.axis }
   } else {
     const hint = pathReorderHint(pathRefs, globalRepo, featureId, featuresById)
     if (hint !== null) throw new Error(hint)
@@ -1084,6 +1088,7 @@ export function solveSweep(
     edgeAncestry: lineage.edgeAncestry,
     capAncestry: lineage.capAncestry,
     precision,
+    helixAxis,
   })
   Object.assign(result, opResult)
 

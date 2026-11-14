@@ -143,9 +143,20 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
   // so a chain by docHash is not a second full build. Only when both opt-ins ask
   // for everything is there nothing to compare against: one 'all' must not
   // silently switch the other filter off.
-  const baseline = opts.featureDeltas === 'all' && opts.frames === 'all'
-    ? null
-    : await measureBaselineFeatures(opts)
+  let baseline: BaselineSolve | null = null
+  let baselineFault: string | null = null
+  if (!(opts.featureDeltas === 'all' && opts.frames === 'all')) {
+    try {
+      baseline = await measureBaselineFeatures(opts)
+    } catch (e) {
+      // A trap is not a baseline that failed to measure. solveLocally has
+      // already replaced the module, so the script below can still run, but the
+      // reply must carry the fault: a run that hides it answered ok:true and
+      // left the caller to meet the dead kernel on its next call.
+      if (!(e instanceof KernelFault)) throw e
+      baselineFault = e.message
+    }
+  }
   const part = createHeadlessPart({
     doc: opts.doc,
     docId: opts.docId,
@@ -153,7 +164,18 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
     journal: opts.journal,
     ...(opts.onStepSettled && { onStepSettled: opts.onStepSettled }),
   })
-  const outcome = await part.run(opts.steps)
+  let outcome: ScriptRunOutcome
+  let runFault: string | null = null
+  try {
+    outcome = await part.run(opts.steps)
+  } catch (e) {
+    // A trap that escaped the step loop (a step's own settle, the final flush)
+    // is the run's verdict too. The scheduler usually records it first; this
+    // catch keeps the reply structured instead of rejecting the call.
+    if (!(e instanceof KernelFault)) throw e
+    runFault = e.message
+    outcome = { ok: false, steps: [] }
+  }
   // A script that lands no mutation requests no solve, yet a caller whose step
   // was just refused needs the document's verdict most: the refusal is often
   // why an underconstrained sketch still has free DOF. Settle the input
@@ -166,7 +188,7 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
   }
   const solved = part.solveAttempted()
   const doc = part.getDoc()
-  const solve = part.solve.state()
+  const schedulerState = part.solve.state()
   let measures: Awaited<ReturnType<HeadlessPart['featureMeasures']>> = null
   let measureFault: string | null = null
   if (part.bodyIds() !== null) {
@@ -208,13 +230,17 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
   // verdicts: a script that never edited anything may leave `solved` false and
   // then has no verdicts to miss.
   const missingVerdict = features.some(problem => problem.status === MISSING_VERDICT_STATUS)
+  // One fault per reply, from the innermost source: a measuring trap describes
+  // the reply's own deltas, the scheduler holds the settle's, and the last two
+  // are faults the scheduler never saw (a baseline solve, a step's settle).
+  const lastError = measureFault ?? schedulerState.lastError ?? runFault ?? baselineFault
   return {
-    ok: outcome.ok && solve.lastError === null && !missingVerdict && measureFault === null,
+    ok: outcome.ok && lastError === null && !missingVerdict,
     solved,
     outcome,
     doc,
     docHash: doc ? docHashOf(doc) : null,
-    solve: measureFault === null ? solve : { ...solve, lastError: measureFault },
+    solve: lastError === null ? schedulerState : { ...schedulerState, lastError },
     bodies: part.bodyIds(),
     features,
     notes,
@@ -260,7 +286,11 @@ async function measureBaselineFeatures(opts: HeadlessRunOptions): Promise<Baseli
       measures: await measureSolveFeatures(response),
       frames: featureFrames(opts.doc, response.result),
     }
-  } catch {
+  } catch (e) {
+    // A document the kernel refuses is a baseline of "nothing to compare"; a
+    // trap is a dead-kernel verdict and must not disappear here (the run
+    // reports it, then continues on the reloaded module).
+    if (e instanceof KernelFault) throw e
     return null
   }
 }
