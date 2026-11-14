@@ -55,12 +55,14 @@ function rectSketch(id: string, w: number, h: number, x0 = 0, y0 = 0): PartFeatu
   return { id, kind: 'sketch', plane: '@builtin_plane_front', entities, initial, constraints } as unknown as PartFeature
 }
 
-/** A 40 x 20 x 5 plate with one 4 x 4 slot cut through it at (6, 6). */
+/** A 40 x 20 x 5 plate with one 4 x 4 slot cut through it at (6, 6). A
+ *  through_all cut stores no distance. */
 function slottedPlate(cut: {
   distance?: number
   termination?: 'blind' | 'through_all'
   direction?: 'normal' | 'reverse' | 'symmetric'
 } = {}): PartDoc {
+  const distance = cut.termination === 'through_all' ? {} : { distance: cut.distance ?? 10 }
   return seedBuiltins({
     version: 1,
     kind: 'part',
@@ -71,7 +73,7 @@ function slottedPlate(cut: {
       {
         id: 'ex_slot', kind: 'extrude',
         extrude: {
-          sketch: '@sk_slot', distance: cut.distance ?? 10, direction: cut.direction ?? 'normal', operation: 'cut',
+          sketch: '@sk_slot', ...distance, direction: cut.direction ?? 'normal', operation: 'cut',
           ...(cut.termination === undefined ? {} : { termination: cut.termination }),
         },
       },
@@ -160,7 +162,7 @@ describe.skipIf(!ready)('add_pattern through the drive (real OCC + Rust solver)'
         source_feature: '@ex_slot', mode: 'linear', count: 4, pitch: 8, direction: [1, 0, 0],
       })],
     })
-    const through = await run(slottedPlate({ distance: 1, termination: 'through_all' }))
+    const through = await run(slottedPlate({ termination: 'through_all' }))
     const blind = await run(slottedPlate({ distance: 10 }))
     expect(through.ok).toBe(true)
     expect(through.features.find(problem => problem.id === 'pt1')).toBeUndefined()
@@ -170,7 +172,7 @@ describe.skipIf(!ready)('add_pattern through the drive (real OCC + Rust solver)'
     expect(throughMeasured?.ok).toBe(true)
     expect(blindMeasured?.ok).toBe(true)
     // 40 x 20 x 5 minus four 4 x 4 x 5 slots, each copy cutting the whole
-    // thickness even though the through_all source stores distance 1.
+    // thickness even though the through_all source stores no distance.
     expect(throughMeasured!.measures.volume).toBeCloseTo(4000 - 4 * 4 * 5 * 4, 4)
     expect(throughMeasured!.measures.volume).toBeCloseTo(blindMeasured!.measures.volume, 4)
   }, 240_000)
@@ -180,7 +182,7 @@ describe.skipIf(!ready)('add_pattern through the drive (real OCC + Rust solver)'
     // symmetric tool sized from the union span alone covers only half the 5 mm
     // plate, so both copies would leave a blind pocket.
     const run = await runHeadless({
-      doc: slottedPlate({ distance: 1, termination: 'through_all', direction: 'symmetric' }),
+      doc: slottedPlate({ termination: 'through_all', direction: 'symmetric' }),
       steps: [step({
         type: 'add_pattern', featureId: 'pt1', label: 'Pattern', subject: 'feature',
         source_feature: '@ex_slot', mode: 'linear', count: 2, pitch: 8, direction: [1, 0, 0],

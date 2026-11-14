@@ -260,6 +260,68 @@ describe('the third extrude termination survives the loader', () => {
     const feature = (result.doc.features as Array<{ extrude: { termination: string } }>)[0]
     expect(feature.extrude.termination).toBe('through_all')
   })
+
+  it('accepts a through_all extrude with no distance and keeps it absent', () => {
+    const result = loadPartDoc({
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'ex1', kind: 'extrude',
+        extrude: { sketch: '@sk1', operation: 'cut', termination: 'through_all' },
+      }],
+    }, { name: 'Through All Bare' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const extra = (result.doc.features as Array<{ extrude: Record<string, unknown> }>)[0].extrude
+    expect(extra).not.toHaveProperty('distance')
+  })
+
+  it('reads the legacy depth spelling as the required distance', () => {
+    // A pre-rename document stored the same field as `depth`; requiring
+    // `distance` by name would refuse a document the kernel still solves.
+    for (const termination of [undefined, 'blind']) {
+      const result = loadPartDoc({
+        version: 1,
+        kind: 'part',
+        features: [{
+          id: 'ex1', kind: 'extrude',
+          extrude: {
+            sketch: '@sk1', depth: 5, operation: 'cut',
+            ...(termination === undefined ? {} : { termination }),
+          },
+        }],
+      }, { name: 'Legacy Depth' })
+      expect(result.ok, String(termination)).toBe(true)
+      if (!result.ok) continue
+      const extra = (result.doc.features as Array<{ extrude: Record<string, unknown> }>)[0].extrude
+      expect(extra.depth).toBe(5)
+      expect(extra).not.toHaveProperty('distance')
+    }
+  })
+
+  it('now refuses a blind extrude with no distance', () => {
+    // A blind extrude sizes itself from the field, so the absence is a missing
+    // requirement, not the through_all contract. The schema already said
+    // `distance` was required, but checkExtrude did not enforce it before this
+    // branch; the format is tightened here deliberately, and a kernel default
+    // of 1 no longer builds a part nobody authored.
+    for (const termination of [undefined, 'blind', 'up_to']) {
+      const result = loadPartDoc({
+        version: 1,
+        kind: 'part',
+        features: [{
+          id: 'ex1', kind: 'extrude',
+          extrude: {
+            sketch: '@sk1', operation: 'cut',
+            ...(termination === undefined ? {} : { termination }),
+          },
+        }],
+      }, { name: 'Blind Bare' })
+      expect(result.ok, String(termination)).toBe(false)
+      if (result.ok) throw new Error(`expected a refusal for ${String(termination)}`)
+      expect(result.error.field).toBe('features[0].extrude.distance')
+    }
+  })
 })
 
 describe('constraint operands carry the real wire and dict forms', () => {

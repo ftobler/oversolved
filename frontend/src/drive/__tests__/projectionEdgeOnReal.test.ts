@@ -102,7 +102,7 @@ function boxWithThroughHole() {
         targets: ['vertex:skh:h1:center', '@builtin_origin'], value: 5,
       },
       {
-        type: 'add_extrude', featureId: 'exh', label: 'Hole', sketchQuery: '$skh', distance: 1,
+        type: 'add_extrude', featureId: 'exh', label: 'Hole', sketchQuery: '$skh',
         operation: 'cut', termination: 'through_all', direction: 'symmetric',
       },
     ].map(step),
@@ -142,7 +142,7 @@ function blindHoleWithSlottedBottom() {
         targets: ['vertex:skp:sb:start', '@builtin_origin'], value: 4,
       },
       {
-        type: 'add_extrude', featureId: 'exp', label: 'Slot', sketchQuery: '$skp', distance: 1,
+        type: 'add_extrude', featureId: 'exp', label: 'Slot', sketchQuery: '$skp',
         operation: 'cut', termination: 'through_all', direction: 'symmetric',
       },
     ].map(step),

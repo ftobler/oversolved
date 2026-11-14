@@ -200,9 +200,12 @@ describe('mutation catalog', () => {
 
   it('lets add_extrude carry every field the extrude schema defines', () => {
     // The value rules loop the schema fields, so the catalog row has to publish
-    // every one too. `sketch` is spelled `sketchQuery` in an add payload.
+    // every one too. `sketch` is spelled `sketchQuery` in an add payload. The
+    // deprecated `depth` alias is served for the loader, not offered by an add.
     const schema = featureParamsSchema('extrude')!
-    const schemaFields = Object.keys(schema.properties as Record<string, unknown>)
+    const schemaFields = Object.entries(schema.properties as Record<string, { deprecated?: boolean }>)
+      .filter(([, property]) => property.deprecated !== true)
+      .map(([name]) => name)
     const fields = mutationInfoOf('add_extrude').fields
     for (const name of schemaFields) {
       const inlineName = name === 'sketch' ? 'sketchQuery' : name

@@ -254,7 +254,7 @@ them itself.
   kind: extrude
   extrude:
     sketch: "@sk1"              # or list of refs
-    distance: 10.0              # required; the legacy `depth` spelling is read as an alias
+    distance: 10.0              # required unless termination is through_all, which stores none; the legacy `depth` spelling is an alias
     taper: 0                    # degrees, + narrows / - widens; absent or 0 is a straight prism
     direction: normal           # normal | reverse | symmetric
     operation: new              # new | add | cut
@@ -334,9 +334,10 @@ Without `up_to_start: surface`, a sketch behind the surface (inside the body)
 with `add`, `up_to` and a positive offset gives the same emboss, and a sketch in
 front with `cut` and a negative offset the same deboss.
 
-`through_all` is a cut that is sized from the live bodies instead of from
-`distance`, which it ignores: a part that later grows is still cut through. With
-no `merge_target` every body is a candidate, and `merge_target` narrows both the
+`through_all` is a cut that is sized from the live bodies and stores no
+`distance`: a part that later grows is still cut through. A stored `distance` on
+an old document is ignored with a warning on the feature; omit it. With no
+`merge_target` every body is a candidate, and `merge_target` narrows both the
 measurement and the cut to one body. It needs a body to cut through, and
 `operation` must be `cut`; add, new and intersect are refused. `normal` and
 `reverse` sweep the measured length from the profile plane, and `symmetric`

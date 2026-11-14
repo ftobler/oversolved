@@ -172,7 +172,7 @@ describe.skipIf(!oc || !solveBytes)('face projection (real OCC + Rust solver)', 
     } as unknown as PartFeature, {
       id: 'exCut', kind: 'extrude', label: 'Notch',
       extrude: {
-        sketch: '@skCut', distance: 20, direction: 'reverse',
+        sketch: '@skCut', direction: 'reverse',
         termination: 'through_all', operation: 'cut',
       },
     } as unknown as PartFeature)

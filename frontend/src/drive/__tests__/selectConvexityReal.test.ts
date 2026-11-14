@@ -62,7 +62,7 @@ function plateSteps(): ScriptStep[] {
     step({ type: 'add_rect', featureId: 'sk2', p0: [14, -13], p1: [26, -7] }),
     step({ type: 'add_rect', featureId: 'sk2', p0: [-26, 7], p1: [-14, 13] }),
     step({ type: 'add_rect', featureId: 'sk2', p0: [14, 7], p1: [26, 13] }),
-    step({ type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2', distance: 8, operation: 'cut', termination: 'through_all' }),
+    step({ type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2', operation: 'cut', termination: 'through_all' }),
   ]
 }
 

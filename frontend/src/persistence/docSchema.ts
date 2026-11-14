@@ -889,12 +889,22 @@ function checkInitial(value: unknown, field: string): void {
 function checkExtrude(sub: DocRecord, field: string): void {
   checkOptional(sub, 'sketch', field, checkRefOrRefList)
   checkOptional(sub, 'distance', field, checkExpr)
+  // `depth` is the kernel's legacy alias for the same field, so a document that
+  // stores it is held to the same expression contract.
+  checkOptional(sub, 'depth', field, checkExpr)
   // An empty taper is the documented clear, not a zero angle: drop it so the
   // loaded document reads exactly like one that never authored the key.
   if (sub.taper === '') delete sub.taper
   else checkOptional(sub, 'taper', field, checkExpr)
   checkOptional(sub, 'direction', field, (v, f) => checkEnum(v, f, DIRECTIONS))
   checkOptional(sub, 'termination', field, (v, f) => checkEnum(v, f, ['blind', 'up_to', 'up_to_next', 'through_all']))
+  // A through_all cut is sized from the bodies, so no distance is required
+  // (and none is stored). Every other termination reads it, directly or as the
+  // up-to fallback; either spelling satisfies the requirement.
+  const storedDistance = sub.distance ?? sub.depth
+  if (sub.termination !== 'through_all' && storedDistance === undefined) {
+    fail(`${field}.distance`, 'is required unless termination is through_all')
+  }
   checkOptional(sub, 'up_to', field, checkRef)
   checkOptional(sub, 'up_to_offset', field, checkExpr)
   checkOptional(sub, 'up_to_start', field, (v, f) => checkEnum(v, f, ['sketch', 'surface']))

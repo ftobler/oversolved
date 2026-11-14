@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
+import type { Mutation, PartDoc } from '@/types/cad'
 import { docRef, renameTo, resetHarness } from './usePartDoc.undoHarness'
 
 vi.mock('@/hooks/useDocumentState', async () => {
@@ -56,6 +57,40 @@ describe('usePartDoc undo/redo integration', () => {
     }
     expect(result.current.undoStack).toHaveLength(3)
     expect(result.current.redoStack).toHaveLength(0)
+  })
+
+  it('undoes a termination switch and its distance clear as one entry', () => {
+    // Switching to through_all deletes the hidden distance in the same
+    // mutation. The undo must restore both the termination and the number, and
+    // the redo must remove it again, with one history entry either way.
+    resetHarness()
+    docRef.current = {
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'ex1', kind: 'extrude',
+        extrude: { sketch: '$sk1', distance: 10, operation: 'cut' },
+      }],
+    } as PartDoc
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+    const extrudeOf = (): Record<string, unknown> =>
+      (docRef.current.features?.[0] as { extrude: Record<string, unknown> }).extrude
+
+    act(() => {
+      result.current.handleMutation({
+        type: 'set_extrude_field', featureId: 'ex1', field: 'termination', value: 'through_all',
+      } as Mutation)
+    })
+    expect(extrudeOf().termination).toBe('through_all')
+    expect(extrudeOf()).not.toHaveProperty('distance')
+    expect(result.current.undoStack).toHaveLength(1)
+
+    act(() => { result.current.handleUndo() })
+    expect(extrudeOf()).toEqual({ sketch: '$sk1', distance: 10, operation: 'cut' })
+
+    act(() => { result.current.handleRedo() })
+    expect(extrudeOf().termination).toBe('through_all')
+    expect(extrudeOf()).not.toHaveProperty('distance')
   })
 
   it('the stack limit drops the oldest entries when exceeding max size', () => {

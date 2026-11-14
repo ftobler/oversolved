@@ -281,6 +281,12 @@ function throughAllSweepExtent(
 }
 
 /** Solve an extrude feature into the body store (mirrors `_solve_extrude`). */
+/** The soft failure a through_all cut reports when an old document still stores
+ *  a distance. The drive tolerates this exact warning on an otherwise ok row so
+ *  the geometry stays exportable; keep the text in one place. */
+export const THROUGH_ALL_DISTANCE_WARNING =
+  'extrude: through_all takes no distance; the stored value is ignored'
+
 export function solveExtrude(
   oc: OccModule,
   scope: DisposeScope,
@@ -301,6 +307,13 @@ export function solveExtrude(
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.extrude as Dict) ?? {}
   const mergeTarget = (sub.merge_target as string) ?? null
+  // The termination decides whether `distance` means anything at all, so it is
+  // read before the distance default and its validation: a through_all cut is
+  // sized from the bodies and stores no distance.
+  const termination = (sub.termination as string) ?? 'blind'
+  if (termination !== 'blind' && termination !== 'up_to' && termination !== 'up_to_next' && termination !== 'through_all') {
+    throw new Error(`extrude: unknown termination ${JSON.stringify(termination)}`)
+  }
 
   const sketchRaw = sub.sketch
   const sketchRefs: string[] = Array.isArray(sketchRaw)
@@ -314,7 +327,22 @@ export function solveExtrude(
     (sub.distance as number | null | undefined) ?? (sub.depth as number | null | undefined) ?? 1.0,
   )
 
-  if (!Number.isFinite(distance) || distance === 0) throw new Error('extrude: distance must be non-zero')
+  // A through_all solve never reads the distance, so a stored one (an old
+  // document, a script that set it after the termination) is a soft failure:
+  // the feature still builds from the bodies, and the warning says the stored
+  // value is ignored. Blind reads it directly, and up_to falls back to it when
+  // its target does not resolve. up_to_next sizes itself at the first body it
+  // meets (UP_TO_REACH) and never reads the value, but the document format
+  // still requires it outside through_all, so a zero is refused there.
+  let distanceWarning: string | undefined
+  if (termination === 'through_all') {
+    const storedDistance = sub.distance ?? sub.depth
+    if (storedDistance !== undefined && storedDistance !== null) {
+      distanceWarning = THROUGH_ALL_DISTANCE_WARNING
+    }
+  } else if (!Number.isFinite(distance) || distance === 0) {
+    throw new Error('extrude: distance must be non-zero')
+  }
   // Absent or 0 is the straight prism this feature has always built; only a
   // non-zero angle takes the draft path.
   const taper = Number(sub.taper ?? 0)
@@ -492,10 +520,6 @@ export function solveExtrude(
 
   // Up-to termination: resolve the target once, using a representative extrude
   // direction so a point target can take the extrude direction as its normal.
-  const termination = (sub.termination as string) ?? 'blind'
-  if (termination !== 'blind' && termination !== 'up_to' && termination !== 'up_to_next' && termination !== 'through_all') {
-    throw new Error(`extrude: unknown termination ${JSON.stringify(termination)}`)
-  }
   if (taperDeg !== 0 && (termination === 'up_to' || termination === 'up_to_next' || termination === 'through_all')) {
     throw new Error(
       `extrude: taper is not supported with termination ${termination}; use termination blind`,
@@ -577,7 +601,7 @@ export function solveExtrude(
   // sweep the union span ahead of the plane; symmetric is both-sided, so it
   // straddles the plane by the larger of the reach ahead and behind. Sizing by
   // the union span alone under-cuts symmetric whenever the plane is off-centre.
-  let sweepDistance = distance
+  let sweepDistance: number
   if (termination === 'through_all') {
     const frameNormal: Vec3 = usingFaces
       ? profileNormal()
@@ -600,6 +624,8 @@ export function solveExtrude(
     sweepDistance = direction === 'symmetric'
       ? 2 * Math.max(extent.ahead, extent.behind)
       : extent.span
+  } else {
+    sweepDistance = distance
   }
 
   let toolShape: OccShape
@@ -926,6 +952,11 @@ export function solveExtrude(
 
   // The body operation may have written its own warning (a no-op cut/add).
   // Compose rather than assign so the up-to fallback is not lost.
+  if (distanceWarning !== undefined) {
+    result.solver_warning = result.solver_warning === undefined
+      ? distanceWarning
+      : `${distanceWarning}; ${result.solver_warning}`
+  }
   if (upToWarning !== undefined) {
     result.solver_warning = result.solver_warning === undefined
       ? upToWarning

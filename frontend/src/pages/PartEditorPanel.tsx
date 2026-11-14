@@ -5,6 +5,7 @@ import SketchToolbar from '@/components/Toolbar/SketchToolbar'
 import LoadingOverlay from '@/components/dialogs/LoadingOverlay'
 import { PanelsToggle } from '@/components/layout/PanelsToggle'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
+import { DEFAULT_EXTRUDE_DISTANCE } from '@/utils/yamlMutations'
 
 import featureExtrudeIcon from '@/assets/icons/feature-extrude.svg'
 import featureRevolveIcon from '@/assets/icons/feature-revolve.svg'
@@ -111,7 +112,7 @@ export default function PartEditorPanel({
 
               <div className="toolbar-separator" />
 
-              <button className="editor-btn" title="Add Extrude (E)" onClick={() => handleAddFeature('extrude', { sketchQuery: '', distance: 10 })}><img src={featureExtrudeIcon} alt="Add Extrude" /></button>
+              <button className="editor-btn" title="Add Extrude (E)" onClick={() => handleAddFeature('extrude', { sketchQuery: '', distance: DEFAULT_EXTRUDE_DISTANCE })}><img src={featureExtrudeIcon} alt="Add Extrude" /></button>
               <button className="editor-btn" title="Add Revolve" onClick={() => handleAddFeature('revolve', { sketchQuery: '', angle: 360 })}><img src={featureRevolveIcon} alt="Add Revolve" /></button>
               <button className="editor-btn" title="Add Sweep" onClick={() => handleAddFeature('sweep', { sketchQuery: '', pathQuery: '' })}><img src={featureSweepIcon} alt="Add Sweep" /></button>
               <button className="editor-btn" title="Add Helix" onClick={() => handleAddFeature('helix')}><img src={featureHelixIcon} alt="Add Helix" /></button>

@@ -7,7 +7,7 @@
 // items/oneOf/anyOf, and importing ajv (a transitive package, not a declared
 // one) would break the undeclared-dependency convention test.
 import { describe, it, expect } from 'vitest'
-import { PART_DOC_SCHEMA, PART_DOC_SCHEMA_JSON, PART_DOC_SCHEMA_URI } from '@/persistence/partDocSchema'
+import { PART_DOC_SCHEMA, PART_DOC_SCHEMA_JSON, PART_DOC_SCHEMA_URI, featureParamsSchema } from '@/persistence/partDocSchema'
 import { listOracleCases } from '@/oracle/corpus'
 import { partSpecFromText } from '@/utils/partExport'
 import type { FeatureKind } from '@/types/cad'
@@ -139,6 +139,22 @@ describe('part-document schema', () => {
       if (errors.length > 0) failures.push(`${oracleCase.name}: ${errorsText(errors)}`)
     }
     expect(failures).toEqual([])
+  })
+
+  it('requires an extrude distance only outside through_all', () => {
+    const params = featureParamsSchema('extrude')
+    expect(params).not.toBeNull()
+    if (params === null) return
+    expect(params.required).toEqual(['sketch'])
+    // The legacy alias the loader still reads is served too, so strictDoc does
+    // not reject a document the loader accepts.
+    expect(params.properties).toHaveProperty('depth')
+    expect(params.allOf).toEqual([
+      {
+        if: { properties: { termination: { const: 'through_all' } }, required: ['termination'] },
+        else: { required: ['distance'] },
+      },
+    ])
   })
 
   it('rejects a flat param, naming the field', () => {

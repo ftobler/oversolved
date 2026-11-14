@@ -103,6 +103,10 @@ function _ensurePatternSources(sub: PatternFeatureDef): string[] {
 
 // ─── Set Feature Field (generic) ───
 
+// The distance a fresh blind extrude starts with. Shared with the editor schema
+// so leaving through_all cannot show one number and store another.
+export const DEFAULT_EXTRUDE_DISTANCE = 10
+
 // Shared body for the `applySet<Kind>Field` mutators that warn when the
 // sub-feature is absent and clear-on-empty via setFeatureField. `kind` is the
 // sub-feature key (which also reads as the word in the warning); `fn` keeps the
@@ -137,6 +141,21 @@ export function applySetExtrudeField(doc: PartDoc, featureId: string, field: key
   // refuses a stored surface mode there; clear it with the termination so a
   // hidden field cannot strand the feature.
   if (field === 'termination' && value !== 'up_to' && value !== 'up_to_next') delete sub.up_to_start
+  // A through_all cut stores no distance, so the hidden field is deleted rather
+  // than left behind to warn the solve. The loader reads `depth` as the legacy
+  // alias of the same field, so both spellings go; leaving the termination
+  // settles a legacy `depth` under the current name, then re-seeds the editor
+  // default only when neither spelling held a number.
+  if (field === 'termination') {
+    if (value === 'through_all') {
+      delete sub.distance
+      delete sub.depth
+    } else {
+      if (sub.distance === undefined && sub.depth !== undefined) sub.distance = sub.depth
+      delete sub.depth
+      if (sub.distance === undefined) sub.distance = DEFAULT_EXTRUDE_DISTANCE
+    }
+  }
 }
 
 export function applySetRevolveField(doc: PartDoc, featureId: string, field: keyof RevolveFeatureDef, value: unknown): void {
@@ -250,7 +269,7 @@ export function applyAddExtrude(
   featureId: string,
   label: string | undefined,
   sketchQuery: string,
-  distance: number,
+  distance: number | undefined,
   inline: Pick<ExtrudeFeatureDef, 'direction' | 'operation' | 'merge_target' | 'taper'> & {
     // The setter's applier deletes the key on null or an empty string; the
     // inline add has no key yet, so the same inputs simply write no key.
@@ -260,15 +279,23 @@ export function applyAddExtrude(
     up_to_start?: ExtrudeFeatureDef['up_to_start'] | null
   } = {},
 ): void {
-  // The distance crosses the same rounding boundary as every stored feature
-  // scalar (setFeatureField's rule; the required field is written straight into
-  // the def here). round(NaN) is still NaN, so a non-finite distance would seed
-  // a broken extrude. Refuse before the feature is pushed.
-  if (!Number.isFinite(distance)) {
+  const termination = inline.termination === null || inline.termination === '' ? undefined : inline.termination
+  // A through_all cut stores no distance: the caller omits it and no key is
+  // written. Every other termination reads the field, so its absence is the
+  // boundary's refusal rather than a silent default depth.
+  if (distance === undefined) {
+    if (termination !== 'through_all') {
+      warn('applyAddExtrude: distance is required unless termination is through_all', { featureId })
+      return
+    }
+  } else if (!Number.isFinite(distance)) {
+    // The distance crosses the same rounding boundary as every stored feature
+    // scalar (setFeatureField's rule; the required field is written straight into
+    // the def here). round(NaN) is still NaN, so a non-finite distance would seed
+    // a broken extrude. Refuse before the feature is pushed.
     warn('applyAddExtrude: ignoring non-finite distance', { featureId, distance })
     return
   }
-  const termination = inline.termination === null || inline.termination === '' ? undefined : inline.termination
   const upTo = inline.up_to === null || inline.up_to === '' ? undefined : inline.up_to
   // A zero offset is the clear, like an empty up_to: the key is only written
   // when the author asked for a moved stop.
@@ -288,7 +315,7 @@ export function applyAddExtrude(
     label: label ?? 'Extrude',
     extrude: {
       sketch: sketchQuery ? [sketchQuery] : [],
-      distance: round(distance),
+      ...(distance !== undefined && { distance: round(distance) }),
       direction: inline.direction ?? 'normal',
       // Absent keys stay absent, so a plain add writes the document it always did.
       ...(storedTaper !== undefined && { taper: storedTaper }),
