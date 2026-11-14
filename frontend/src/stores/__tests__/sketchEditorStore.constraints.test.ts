@@ -901,6 +901,30 @@ describe('sketchEditorStore', () => {
         })
       })
 
+      it('authors nothing when the selection names no member', () => {
+        const handler = vi.fn()
+        setSketchCallback('onMutation', handler)
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        select('constraint:S1:C1', 'dock:constraint:1')
+
+        // No mutation at all: an empty `targets` list would reach the applier
+        // and is one shape rule away from a stored `refs: []`.
+        expect(useSketchEditorStore.getState().applyConstraint('group')).toBeNull()
+        expect(handler).not.toHaveBeenCalled()
+      })
+
+      it('refuses a member from another sketch', () => {
+        const handler = vi.fn()
+        setSketchCallback('onMutation', handler)
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        select('entity:Other:L9', 'entity:S1:L1')
+
+        const reason = useSketchEditorStore.getState().applyConstraint('group')
+
+        expect(reason).toContain('another sketch')
+        expect(handler).not.toHaveBeenCalled()
+      })
+
       it('refuses projected geometry when it is all that is selected', () => {
         const handler = vi.fn()
         setSketchCallback('onMutation', handler)

@@ -108,17 +108,26 @@ describe('groupMembersFromSelection', () => {
     expect(read(['dock:constraint:1', 'constraint:S1:C2'])).toEqual({ targets: [] })
   })
 
-  it('ignores a foreign whole-entity pick no more than it already did', () => {
-    // A foreign member is the applier's named refusal; the command keeps the
-    // pick so that refusal can say which sketch it belongs to.
+  it('refuses a foreign whole-entity pick instead of relying on the applier', () => {
+    // The applier projects a foreign ref into this sketch before the shape
+    // rule runs, and groupProblem skips an id not yet in entityIds, so the
+    // member would be stored and the loader would refuse the whole document.
     expect(read(['entity:Other:L9', 'entity:S1:L1'])).toEqual({
-      targets: ['entity:Other:L9', 'entity:S1:L1'],
+      reason: "Group cannot hold geometry from another sketch; select this sketch's entities and points.",
     })
   })
 
-  it('does not let a foreign entity with the same id cover a local marker', () => {
+  it('refuses a foreign pick even when its id matches a local marker', () => {
     expect(read(['vertex:S1:L1:start', 'entity:Other:L1'])).toEqual({
-      targets: ['vertex:S1:L1:start', 'entity:Other:L1'],
+      reason: "Group cannot hold geometry from another sketch; select this sketch's entities and points.",
+    })
+  })
+
+  it('does not promote a non-xy key on a Point to the whole entity', () => {
+    // A hand-built `center` on a Point has no such point; it stays a point
+    // member so the shape rule and the loader can refuse it.
+    expect(read(['vertex:S1:P1:center', 'entity:S1:L1'])).toEqual({
+      targets: ['vertex:S1:P1:center', 'entity:S1:L1'],
     })
   })
 })

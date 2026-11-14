@@ -366,6 +366,29 @@ fn point_rows() -> Vec<PointRow> {
         translate: &[0, 1, 2, 3, 4, 5],
     });
     for (label, selector, deps) in [
+        ("fit spline start", PointSelector::Start, &[0usize, 1][..]),
+        ("fit spline end", PointSelector::End, &[4usize, 5][..]),
+    ] {
+        rows.push(PointRow {
+            label,
+            kind: Kind::FitSpline,
+            params: vec![0.0, 0.0, 2.0, 1.0, 4.0, 0.0],
+            flags: 0,
+            selector,
+            deps,
+            translate: &[0, 1, 2, 3, 4, 5],
+        });
+    }
+    rows.push(PointRow {
+        label: "fit spline fit2",
+        kind: Kind::FitSpline,
+        params: vec![0.0, 0.0, 2.0, 1.0, 4.0, -1.0, 6.0, 0.0],
+        flags: 0,
+        selector: PointSelector::Fit(2),
+        deps: &[4, 5],
+        translate: &[0, 1, 2, 3, 4, 5, 6, 7],
+    });
+    for (label, selector, deps) in [
         ("fit spline c1", PointSelector::C1, &[6usize, 7][..]),
         ("fit spline c2", PointSelector::C2, &[8usize, 9][..]),
     ] {

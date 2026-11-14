@@ -303,15 +303,19 @@ function computeConstraintRenderCore(
   // the solver measures the group's translation from.
   if (kind === 'group') {
     const rawRefs = Array.isArray(constraint.refs) ? constraint.refs : []
-    const members: string[] = []
+    const whole: string[] = []
+    const points: string[] = []
+    const seen = new Set<string>()
     let anchor: ResolvedRef = null
     for (const raw of rawRefs) {
       const ref = typeof raw === 'string' ? normalize(raw) : raw as ResolvedRef
       const eid = ref?.entity
       if (!eid || eid === ORIGIN_REF) continue
       const member = ref?.point ? `${eid}:${ref.point}` : eid
-      if (members.includes(member)) continue
-      members.push(member)
+      if (seen.has(member)) continue
+      seen.add(member)
+      if (ref?.point) points.push(member)
+      else whole.push(member)
       anchor ??= ref
     }
     const anchorId = anchor?.entity
@@ -324,7 +328,9 @@ function computeConstraintRenderCore(
     const key = anchor?.point ?? groupAnchorPointKey(getEntityKind(anchorEntity))
     const at = geomPoint(sketch, { entity: anchorId, point: key })
     if (!at) return { kind: 'unknown' }
-    return { kind: 'symbol_group', at, entity: anchorId, entities: members }
+    // The split is the count the tile names: a member id carrying `:` is a
+    // point, and an entity id that happens to contain `:` must not be miscounted.
+    return { kind: 'symbol_group', at, entity: anchorId, entities: whole, points }
   }
 
   // horizontal/vertical share the same anchoring; only the glyph differs.

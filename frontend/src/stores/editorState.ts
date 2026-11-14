@@ -731,6 +731,11 @@ export const editorState = createStore<EditorState>((set, get) => ({
       : null
     if (groupPlan !== null && 'reason' in groupPlan) return groupPlan.reason
     const groupTargets = groupPlan !== null ? groupPlan.targets : null
+    // A group whose selection names nothing the command can hold (a constraint
+    // or handle pick) authors nothing. Emitting `targets: []` would reach the
+    // applier and, if the shape rule ever let it through, store `refs: []`,
+    // which the loader refuses.
+    if (groupTargets !== null && groupTargets.length === 0) return null
 
     // A constraint can only name sketch operands. The origin and a B-rep
     // vertex/edge are projected into the active sketch and the constraint names

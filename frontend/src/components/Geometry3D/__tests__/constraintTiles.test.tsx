@@ -375,6 +375,26 @@ describe('ConstraintTile group', () => {
     // The held endpoint is a vertex marker, not its whole line.
     expect(useSketchEditorStore.getState().hoveredConstraintEntityIds).toEqual(new Set(['l1:start', 'l2']))
   })
+
+  it('counts an entity id containing a colon as a whole member', () => {
+    const sketch: Sketch = {
+      'l:1': { start: [0, 0], end: [10, 0] } as Sketch[string],
+      l2: { start: [0, 2], end: [10, 2] } as Sketch[string],
+    }
+    const constraint: PartConstraint = { id: 'g1', kind: 'group', refs: ['$l:1', '$l2start'] }
+    const constraints: Constraints = {
+      g1: { render: computeConstraintRender(constraint, sketch), residual: 0 } as Constraints[string],
+    }
+    const { container } = render(
+      <ConstraintOverlays
+        constraints={constraints}
+        sketch={sketch}
+        extent={10}
+        featureId="feat1"
+      />,
+    )
+    expect(container.querySelector('img')!.parentElement!.title).toBe('Group (1 entity, 1 point)')
+  })
 })
 
 describe('ConstraintTile click selection and unmount cleanup', () => {

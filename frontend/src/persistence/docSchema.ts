@@ -764,12 +764,14 @@ function checkConstraint(value: unknown, field: string): void {
 }
 
 /**
- * A group's members are whole authored entities or single points of one sketch.
- * A member that names no entity, a point key the entity's kind does not carry,
- * an entity held by a `projection`, a repeated whole-plus-point pair, or a lone
- * point cannot be held rigidly: the solver would either drop the group row (the
+ * A group's members are whole authored entities or single points of one sketch,
+ * spelled the way every writer emits them: `$<eid>` or `$<eid><key>`. A member
+ * that names no entity, a point key the entity's kind does not carry, an entity
+ * held by a `projection`, a repeated whole-plus-point pair, or a lone point
+ * cannot be held rigidly: the solver would either drop the group row (the
  * stale-ref path) or fight the projection's pin, so the document is refused by
- * field instead of loading a constraint that cannot solve.
+ * field instead of loading a constraint that cannot solve. A dict member is
+ * refused too: `PartTarget` is a string and no walker reads the pair form.
  */
 function checkGroupConstraints(feature: DocRecord, field: string): void {
   if (feature.kind !== 'sketch') return
@@ -804,28 +806,23 @@ function checkGroupConstraints(feature: DocRecord, field: string): void {
       fail(refsField, 'a group needs at least one member')
     }
     const whole = new Set<string>()
+    // A Point's `xy` and its bare entity ref are the same whole member, so the
+    // two spellings together are a duplicate like any other whole-plus-point.
+    const bareWhole = new Set<string>()
+    const xyWhole = new Set<string>()
     const points = new Map<string, string[]>()
     for (let j = 0; j < constraint.refs.length; j++) {
       const ref = constraint.refs[j]
       const refField = `${refsField}[${j}]`
       let id: string | null = null
       let point: string | undefined
+      // Every writer emits the wire form `$<eid>` / `$<eid><key>`; a dict ref
+      // would resolve here but no walker reads it (`PartTarget` is a string).
       if (typeof ref === 'string' && ref.startsWith('$')) {
         const resolved = resolveVertexRef(entityIds, ref)
         if (resolved === null) fail(refField, `names no entity in this sketch, got ${JSON.stringify(ref)}`)
         id = resolved.entity
         point = resolved.point
-      } else if (isRecord(ref) && typeof ref.entity === 'string') {
-        if (!entityIds.has(ref.entity)) {
-          fail(refField, `names no entity in this sketch, got ${JSON.stringify(ref)}`)
-        }
-        id = ref.entity
-        if (ref.point !== undefined && ref.point !== null) {
-          if (typeof ref.point !== 'string' || !isVertexPointKey(ref.point)) {
-            fail(`${refField}.point`, `must be a vertex-point key, got ${JSON.stringify(ref.point)}`)
-          }
-          point = ref.point
-        }
       } else {
         fail(refField, `must name an authored entity or point, got ${JSON.stringify(ref)}`)
       }
@@ -842,11 +839,19 @@ function checkGroupConstraints(feature: DocRecord, field: string): void {
         // A Point's single vertex `xy` is the entity itself; the applier stores
         // it as `$P`, so the whole/point rules read the same either way.
         if (info?.kind === 'point' && point === 'xy') {
+          if (bareWhole.has(id)) {
+            fail(refsField, `names entity ${JSON.stringify(id)} both whole and by point; drop the duplicate`)
+          }
+          xyWhole.add(id)
           whole.add(id)
           continue
         }
         points.set(id, [...(points.get(id) ?? []), point])
       } else {
+        if (xyWhole.has(id)) {
+          fail(refsField, `names entity ${JSON.stringify(id)} both whole and by point; drop the duplicate`)
+        }
+        bareWhole.add(id)
         whole.add(id)
       }
     }

@@ -8,10 +8,13 @@
 //  - a Point entity's `xy` is the entity, so it becomes a whole member;
 //  - the origin, dock/isect handles and projected geometry are skipped before
 //    the command plans any projection, because they are not group members;
+//  - another sketch's geometry is refused: the applier would otherwise project
+//    it into this sketch and store a member the loader refuses;
 //  - a lone point holds nothing (its own pair is the translation), so it is
 //    refused with one sentence.
 
 const TOO_SMALL = 'Group needs at least two points, or one whole entity.'
+const FOREIGN = 'Group cannot hold geometry from another sketch; select this sketch\'s entities and points.'
 
 export type GroupMembersResult = { targets: string[] } | { reason: string }
 
@@ -46,10 +49,11 @@ export function groupMembersFromSelection(
 ): GroupMembersResult {
   const picks = [...selection]
   const order: string[] = []
-  const wholeByEntity = new Map<string, string>()  // feature:entity -> target
+  const whole = new Set<string>()  // feature:entity
   const pointKeys = new Set<string>()
   let sawProjected = false
   let sawOrigin = false
+  let sawForeign = false
   // Entity ids are only unique inside their sketch, so the member key carries
   // the feature too: a foreign entity with the same id is not the same member.
   const memberKey = (feature: string, entityId: string) => `${feature}:${entityId}`
@@ -63,19 +67,27 @@ export function groupMembersFromSelection(
     if (pick.startsWith('dock:') || pick.startsWith('isect:')) continue
     const entity = parseEntityPick(pick)
     if (entity !== null) {
+      if (entity.featureId !== featureId) {
+        sawForeign = true
+        continue
+      }
       if (isProjected(entity.featureId, entity.entityId)) {
         sawProjected = true
         continue
       }
       const key = memberKey(entity.featureId, entity.entityId)
-      if (!wholeByEntity.has(key)) {
-        wholeByEntity.set(key, pick)
+      if (!whole.has(key)) {
+        whole.add(key)
         order.push(pick)
       }
       continue
     }
     const vertex = parseVertexPick(pick)
     if (vertex === null) continue
+    if (vertex.featureId !== featureId) {
+      sawForeign = true
+      continue
+    }
     if (isProjected(vertex.featureId, vertex.entityId)) {
       sawProjected = true
       continue
@@ -83,16 +95,15 @@ export function groupMembersFromSelection(
     const key = memberKey(vertex.featureId, vertex.entityId)
     // A marker on an entity that is already a member adds rows that duplicate
     // the entity's own: the pick is kept, the marker dropped.
-    if (wholeByEntity.has(key)) continue
-    const kind = vertex.featureId === featureId
-      ? entityKindMap[`entity:${featureId}:${vertex.entityId}`]
-      : undefined
-    if (kind === 'point') {
-      // `vertex:<P>:xy` is the whole Point primitive, and `$P` is how a whole
-      // member is stored. Two picks cannot both name it.
-      const whole = `entity:${vertex.featureId}:${vertex.entityId}`
-      wholeByEntity.set(key, whole)
-      order.push(whole)
+    if (whole.has(key)) continue
+    const kind = entityKindMap[`entity:${featureId}:${vertex.entityId}`]
+    // `vertex:<P>:xy` is the whole Point primitive, and `$P` is how a whole
+    // member is stored. Another key on a Point is not a point of that kind; it
+    // stays a point member so the shape rule and the loader can refuse it.
+    if (kind === 'point' && vertex.key === 'xy') {
+      const wholePick = `entity:${vertex.featureId}:${vertex.entityId}`
+      whole.add(key)
+      order.push(wholePick)
       continue
     }
     if (!pointKeys.has(pick)) {
@@ -100,12 +111,13 @@ export function groupMembersFromSelection(
       order.push(pick)
     }
   }
+  if (sawForeign) return { reason: FOREIGN }
   // A whole pick may arrive after a marker on the same entity (a set keeps the
   // click order), so the covered-marker rule runs once the whole set is known.
   const targets = order.filter(pick => {
     const vertex = parseVertexPick(pick)
     return vertex === null
-      || !wholeByEntity.has(memberKey(vertex.featureId, vertex.entityId))
+      || !whole.has(memberKey(vertex.featureId, vertex.entityId))
   })
   if (targets.length === 0) {
     if (sawProjected) return { reason: 'Group cannot hold projected geometry; select an authored entity or point.' }

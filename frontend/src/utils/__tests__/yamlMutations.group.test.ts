@@ -1,8 +1,8 @@
 // The Group constraint at the document layer: authoring stores the whole and
-// point member list in `refs` (anchor first), a projected/origin/value pick and
-// a duplicate or lone point are refused, deleting a member shrinks the group
-// instead of cascading, the mirror and pattern copy one group per copy, and
-// fillet_corners refuses a grouped side.
+// point member list in `refs` (anchor first), a projected/origin/value pick,
+// another sketch's member and a duplicate or lone point are refused, deleting
+// a member shrinks the group instead of cascading, the mirror and pattern copy
+// one group per copy, and fillet_corners refuses a grouped side.
 import { describe, it, expect } from 'vitest'
 import type { FilletCorner, PartConstraint, PartDoc, SketchData } from '@/types/cad'
 import { createDocSession, type DocSession, type EditorFacts } from '@/session/DocSession'
@@ -101,6 +101,21 @@ describe('group add_constraint', () => {
     expect(JSON.stringify(projected)).toBe(before)
   })
 
+  it('refuses a group member from another sketch without projecting it', () => {
+    const doc = makeDoc(
+      makeSketch('a', { entities: [{ id: 'l9', kind: 'line' }], initial: { l9: [0, 5, 4, 5] } }),
+      makeSketch('sk', {
+        entities: [{ id: 'l1', kind: 'line' }],
+        initial: { l1: [0, 0, 4, 0] },
+      }),
+    )
+    const before = JSON.stringify(doc)
+    applyAddConstraint(doc, 'sk', 'group', ['entity:a:l9', 'entity:sk:l1'])
+    // The foreign pick would project `l9` into `sk` and then store a member the
+    // loader refuses, so neither the projection nor the group may land.
+    expect(JSON.stringify(doc)).toBe(before)
+  })
+
   it('refuses an entity named both whole and by point, naming the duplicate', () => {
     const doc = groupDoc()
     const before = JSON.stringify(doc)
@@ -156,7 +171,7 @@ describe('group deletion', () => {
     expect(sketch(doc).constraints ?? []).toEqual([])
   })
 
-  it('deleting a spline that holds two point members removes the group', () => {
+  it('shrinks to the whole member when a spline\'s point members go', () => {
     const doc = makeDoc(makeSketch('sk', {
       entities: [
         { id: 'sp', kind: 'spline' },
@@ -167,6 +182,12 @@ describe('group deletion', () => {
     }))
     applyDeleteElements(doc, ['entity:sk:sp'])
     expect(sketch(doc).constraints?.[0].refs).toEqual(['$l1'])
+  })
+
+  it('deleting the only entity of a two-point group removes the group', () => {
+    const doc = withGroup(['l1start', 'l1end'])
+    applyDeleteElements(doc, ['entity:sk:l1'])
+    expect(sketch(doc).constraints ?? []).toEqual([])
   })
 
   it('deleting one of two point-member entities removes the group', () => {

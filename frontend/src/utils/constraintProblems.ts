@@ -109,9 +109,10 @@ export function midpointOperands(
 
 /** The sketch fields a shape rule reads. `constraints` and `initial` are
  *  optional so a shape-only caller (the drive rule without a live document) can
- *  omit them. */
-type SketchShape = Pick<SketchFeature, 'id'>
-  & Pick<Partial<SketchFeature>, 'entities' | 'constraints' | 'initial'>
+ *  omit them; `entities` is not, because every rule that reads one needs the
+ *  entity list and a shape-only caller still has it. */
+type SketchShape = Pick<SketchFeature, 'id' | 'entities'>
+  & Pick<Partial<SketchFeature>, 'constraints' | 'initial'>
 
 /**
  * Why a `group` pick has no solver rows, or null. A group holds whole authored

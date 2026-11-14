@@ -446,6 +446,14 @@ export function applyAddConstraint(
     warn('applyAddConstraint: dropping a pick whose foreign operand does not resolve', { featureId, kind, targets })
     return
   }
+  // A group cannot hold a projection: the projected entity is pinned by its
+  // projection, so the group row would fight it, and the loader refuses a
+  // document whose group names one. The command refuses a foreign pick before
+  // it gets here; this guards a drive or MCP mutation that names one directly.
+  if (kind === 'group' && projectionPlan.created.length > 0) {
+    warn('applyAddConstraint: a group cannot hold geometry projected from another sketch', { featureId, targets })
+    return
+  }
   targets = projectionPlan.targets
   const problem = addConstraintProblem(feature, kind, targets, value)
   if (problem !== null) {
