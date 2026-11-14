@@ -370,6 +370,36 @@ describe('a through_all extrude carries no distance', () => {
     expect(extrude0(doc).distance).toBe(10)
   })
 
+  it('deletes the legacy depth alias when termination becomes through_all', () => {
+    // A pre-rename document stores `depth`; the loader reads it as the same
+    // field, so a switch that only deleted `distance` would leave the old
+    // spelling behind to warn the solve forever.
+    const doc: PartDoc = {
+      features: [{
+        id: 'ex1', kind: 'extrude',
+        extrude: { sketch: '$sk1', depth: 5, operation: 'cut', termination: 'blind' },
+      }],
+    }
+    applySetExtrudeField(doc, 'ex1', 'termination', 'through_all')
+    expect(extrude0(doc)).not.toHaveProperty('distance')
+    expect(extrude0(doc)).not.toHaveProperty('depth')
+  })
+
+  it('carries a legacy depth into distance when termination leaves through_all', () => {
+    // The stale number the hidden field held is what the author last meant, so
+    // leaving through_all must show it again rather than overwrite it with the
+    // editor default.
+    const doc: PartDoc = {
+      features: [{
+        id: 'ex1', kind: 'extrude',
+        extrude: { sketch: '$sk1', depth: 5, operation: 'cut', termination: 'through_all' },
+      }],
+    }
+    applySetExtrudeField(doc, 'ex1', 'termination', 'blind')
+    expect(extrude0(doc).distance).toBe(5)
+    expect(extrude0(doc)).not.toHaveProperty('depth')
+  })
+
   it('writes no distance key on an inline through_all add', () => {
     const doc: PartDoc = structuredClone(baseDoc)
     applyAddExtrude(doc, 'ex1', undefined, '$sk1', undefined, {

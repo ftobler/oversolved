@@ -142,11 +142,19 @@ export function applySetExtrudeField(doc: PartDoc, featureId: string, field: key
   // hidden field cannot strand the feature.
   if (field === 'termination' && value !== 'up_to' && value !== 'up_to_next') delete sub.up_to_start
   // A through_all cut stores no distance, so the hidden field is deleted rather
-  // than left behind to fail or warn the solve. Leaving the termination re-seeds
-  // the editor default, never the stale number the hidden field held.
+  // than left behind to warn the solve. The loader reads `depth` as the legacy
+  // alias of the same field, so both spellings go; leaving the termination
+  // settles a legacy `depth` under the current name, then re-seeds the editor
+  // default only when neither spelling held a number.
   if (field === 'termination') {
-    if (value === 'through_all') delete sub.distance
-    else if (sub.distance === undefined) sub.distance = DEFAULT_EXTRUDE_DISTANCE
+    if (value === 'through_all') {
+      delete sub.distance
+      delete sub.depth
+    } else {
+      if (sub.distance === undefined && sub.depth !== undefined) sub.distance = sub.depth
+      delete sub.depth
+      if (sub.distance === undefined) sub.distance = DEFAULT_EXTRUDE_DISTANCE
+    }
   }
 }
 

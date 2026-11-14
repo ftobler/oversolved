@@ -179,7 +179,11 @@ export const FEATURE_SCHEMA_BY_KIND = {
       },
     ],
     properties: {
-      sketch: REF_OR_LIST, distance: NUMBER_OR_EXPR, taper: NUMBER_OR_EXPR, direction: { enum: ['normal', 'reverse', 'symmetric'] },
+      sketch: REF_OR_LIST, distance: NUMBER_OR_EXPR,
+      // The legacy spelling of `distance`, kept because the loader reads it as
+      // the same field on a pre-rename document.
+      depth: NUMBER_OR_EXPR,
+      taper: NUMBER_OR_EXPR, direction: { enum: ['normal', 'reverse', 'symmetric'] },
       termination: { enum: ['blind', 'up_to', 'up_to_next', 'through_all'] }, up_to: REF,
       up_to_offset: NUMBER_OR_EXPR, up_to_start: { enum: ['sketch', 'surface'] }, operation: { enum: ['add', 'cut', 'new'] }, merge_target: REF,
     },

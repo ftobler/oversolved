@@ -310,8 +310,11 @@ function describeSchema(schema: JsonSchema): string {
  * Validate a setter value against the schema definition of the field it names.
  * The subset covers every keyword the part-document schema uses for one
  * authored field: enum, const, type, pattern, anyOf, items, min/max items,
- * properties/required/additionalProperties and the numeric bounds. Null is the
- * documented clear and is handled by the caller, not here.
+ * properties/required/additionalProperties and the numeric bounds. It does not
+ * walk `allOf`/`if`/`else`: a cross-field requirement inside one param object
+ * (an extrude distance unless through_all, a hole depth when blind) is proven
+ * by the loader, not by this per-field check. Null is the documented clear and
+ * is handled by the caller, not here.
  */
 export function schemaValueProblem(value: unknown, schema: JsonSchema, label: string): string | null {
   if (Array.isArray(schema.anyOf)) {

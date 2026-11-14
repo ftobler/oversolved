@@ -146,6 +146,9 @@ describe('part-document schema', () => {
     expect(params).not.toBeNull()
     if (params === null) return
     expect(params.required).toEqual(['sketch'])
+    // The legacy alias the loader still reads is served too, so strictDoc does
+    // not reject a document the loader accepts.
+    expect(params.properties).toHaveProperty('depth')
     expect(params.allOf).toEqual([
       {
         if: { properties: { termination: { const: 'through_all' } }, required: ['termination'] },

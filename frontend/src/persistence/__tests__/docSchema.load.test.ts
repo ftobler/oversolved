@@ -276,10 +276,35 @@ describe('the third extrude termination survives the loader', () => {
     expect(extra).not.toHaveProperty('distance')
   })
 
-  it('still refuses a blind extrude with no distance', () => {
+  it('reads the legacy depth spelling as the required distance', () => {
+    // A pre-rename document stored the same field as `depth`; requiring
+    // `distance` by name would refuse a document the kernel still solves.
+    for (const termination of [undefined, 'blind']) {
+      const result = loadPartDoc({
+        version: 1,
+        kind: 'part',
+        features: [{
+          id: 'ex1', kind: 'extrude',
+          extrude: {
+            sketch: '@sk1', depth: 5, operation: 'cut',
+            ...(termination === undefined ? {} : { termination }),
+          },
+        }],
+      }, { name: 'Legacy Depth' })
+      expect(result.ok, String(termination)).toBe(true)
+      if (!result.ok) continue
+      const extra = (result.doc.features as Array<{ extrude: Record<string, unknown> }>)[0].extrude
+      expect(extra.depth).toBe(5)
+      expect(extra).not.toHaveProperty('distance')
+    }
+  })
+
+  it('now refuses a blind extrude with no distance', () => {
     // A blind extrude sizes itself from the field, so the absence is a missing
-    // requirement, not the through_all contract. The old silent default of 1
-    // built a part nobody authored.
+    // requirement, not the through_all contract. The schema already said
+    // `distance` was required, but checkExtrude did not enforce it before this
+    // branch; the format is tightened here deliberately, and a kernel default
+    // of 1 no longer builds a part nobody authored.
     for (const termination of [undefined, 'blind', 'up_to']) {
       const result = loadPartDoc({
         version: 1,

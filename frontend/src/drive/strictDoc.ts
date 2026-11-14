@@ -3,7 +3,9 @@
 // older build), but an MCP or CLI caller authoring a document by hand needs the
 // opposite: a typo such as `distanse` must be refused by its path rather than
 // silently ignored while the solve succeeds. The served JSON Schema is the
-// contract, so this checks exactly what it promises.
+// contract, so this checks its shape, its field types and its unknown keys. It
+// does not walk `allOf`/`if`/`else`, so a cross-field requirement (an extrude
+// distance unless through_all, a hole depth when blind) is left to the loader.
 import { schemaValueProblem } from '@/drive/mutationValues'
 import { PART_DOC_SCHEMA } from '@/persistence/partDocSchema'
 import { ASSEMBLY_DOC_SCHEMA } from '@/persistence/assemblyDocSchema'
