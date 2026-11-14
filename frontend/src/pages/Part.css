@@ -15,11 +15,12 @@
      long one scrolls inside. Together they fill this share of the column; the
      leftover splits around them, and that is what centers the pair on the
      left side. The Features card takes the larger part of the share
-     (58/42, .document-panel below). */
+     (64/36, .document-panel below): the parts list holds few rows, the
+     features list is the one that scrolls. */
   --left-cards-height: 85%;
   /* A side panel list row is its content plus twice this block padding. Trimmed
-     from 8px so a few more feature rows fit before the list scrolls; the parts
-     list takes the same token when it gets the shared rhythm. */
+     from 8px so a few more rows fit before a list scrolls; the features and
+     parts lists both take it, so the two row rhythms cannot drift apart. */
   --list-row-pad-block: 7px;
 }
 
@@ -102,7 +103,8 @@
    column between them (the gap comes out of that share, it is a flex gap
    inside the panel): each reserves its height up front, so a short list
    keeps its card at size and a long one scrolls internally. The Features
-   card takes the larger part, 58/42, the balance the old 60% cap gave it.
+   card takes the larger part, 64/36: it is the list that scrolls, while the
+   parts list is usually a handful of rows the user still needs reachable.
    The panel itself carries that share and centers in the column (the
    .floating-left rule above). */
 .document-panel {
@@ -114,12 +116,12 @@
 }
 
 .document-panel > .sidebar-top {
-  flex: 58 1 0;
+  flex: 64 1 0;
   min-height: 0;
 }
 
 .document-panel > .sidebar-bottom {
-  flex: 42 1 0;
+  flex: 36 1 0;
   min-height: 0;
 }
 
@@ -237,7 +239,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 8px 8px;
+  padding: var(--list-row-pad-block) 8px;
   margin: 2px 0;
   border-radius: 4px;
   font-size: 14px;
