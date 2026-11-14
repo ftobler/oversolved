@@ -262,44 +262,48 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
    * The document carries the member refs only; the shape to hold is the
    * sketch's `initial` block, which the solver reads as its reference (the hard
    * solve's `params`; a drag sends it explicitly). So each member becomes one
-   * `Group` row set: its own entity as the target and the group's anchor point
-   * as the `a` ref. The anchor's own first pair is that shared translation and
-   * contributes no row; the residual builder knows that from the selector.
+   * `Group` row set: its own entity and point selector as the target and the
+   * group's anchor point as the `a` ref. The anchor's own pair is that shared
+   * translation and contributes no row; the residual builder knows that from
+   * the selector.
    *
-   * The first target is the anchor. Its first point (line/spline start, the
-   * centre of a circle/arc/ellipse, a point's xy, a fit spline's first fit
-   * point) names the point whose motion is the group's translation.
+   * The first target is the anchor. A whole-entity anchor takes the entity
+   * kind's first point (line/spline start, the centre of a circle/arc/ellipse,
+   * a point's xy, a fit spline's first fit point); a point member anchor takes
+   * that point's own selector.
    */
   const lowerGroupConstraint = (c: RawConstraint): FlatConstraint[] => {
     const id = typeof c.id === 'string' ? c.id : '?'
     if (!Array.isArray(c.refs)) {
       throw new Error(`lowerSketch: group '${id}' has no member refs`)
     }
-    const members: Array<{ id: string; index: number }> = []
+    const members: Array<{ index: number; point: number }> = []
     const seen = new Set<string>()
     for (const raw of c.refs) {
       if (!isRefDict(raw) || typeof raw.entity !== 'string' || raw.external_xy !== undefined) {
         throw new Error(`lowerSketch: group '${id}' has a member that is not a local entity ref`)
       }
-      // A group holds whole entities: a vertex ref would name a row the group
-      // cannot hold (it would move with the member, not with the group).
-      if (raw.point !== undefined && raw.point !== null) {
-        throw new Error(`lowerSketch: group '${id}' member '${raw.entity}' names a vertex, not an entity`)
+      if (!idToIndex.has(raw.entity)) {
+        throw new Error(`lowerSketch: group '${id}' names unknown entity '${raw.entity}'`)
       }
-      if (seen.has(raw.entity)) continue
-      seen.add(raw.entity)
-      const index = idToIndex.get(raw.entity)
-      if (index === undefined) throw new Error(`lowerSketch: group '${id}' names unknown entity '${raw.entity}'`)
-      members.push({ id: raw.entity, index })
+      const lowered = lowerRef(raw)
+      if (lowered.kind !== 'entity') {
+        throw new Error(`lowerSketch: group '${id}' has a member that is not a local entity ref`)
+      }
+      const key = `${lowered.index}:${lowered.point}`
+      if (seen.has(key)) continue
+      seen.add(key)
+      members.push({ index: lowered.index, point: lowered.point })
     }
     if (members.length === 0) throw new Error(`lowerSketch: group '${id}' has no members`)
     const anchor = members[0]
-    const anchorKind = layout[anchor.index].kind
-    const anchorPoint = firstPointSelector(anchorKind)
+    const anchorPoint = anchor.point !== Sel.absent
+      ? anchor.point
+      : firstPointSelector(layout[anchor.index].kind)
     return members.map((member) => ({
       kind: ConstraintKindCode.group,
       refs: [
-        { role: Role.target, ref: { kind: 'entity', index: member.index, point: Sel.absent } },
+        { role: Role.target, ref: { kind: 'entity', index: member.index, point: member.point } },
         { role: Role.a, ref: { kind: 'entity', index: anchor.index, point: anchorPoint } },
       ],
     }))

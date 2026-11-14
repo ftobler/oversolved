@@ -70,6 +70,65 @@ describe.skipIf(!bytes)('group on the real solver', () => {
     // pin. The conflicting length carries a nonzero miss.
     expect(out.constraintMiss[2]).toBeGreaterThan(0)
   })
+
+  it('a spline grouped by c1 and c2 moves c2 with the dragged c1 only', () => {
+    const doc: PartDoc = {
+      features: [{
+        id: 'sk', kind: 'sketch', plane: '@builtin_plane_front',
+        entities: [{ id: 'sp', kind: 'spline' }],
+        initial: { sp: [0, 0, 1, 2, 3, 4, 5, 6] },
+        constraints: [{ id: 'g1', kind: 'group', refs: ['$spc1', '$spc2'] }],
+      }],
+    }
+    const { sketches, skipped } = partDocToSketches(doc.features)
+    expect(skipped).toHaveLength(0)
+    const { input, layout } = lowerSketch(sketches[0].sketch)
+    const off = layout.find(l => l.id === 'sp')!.offset
+    const reference = [...input.params]
+    input.params[off + 2] += 2
+    input.params[off + 3] -= 1
+    input.paramsReference = reference
+    // The drag holds the point under the cursor; without the pin the solve may
+    // split the translation between the two points.
+    input.pinnedMask = [0b0000_1100]
+    const out = decodeOutput(bytes!(encodeInput(input)))
+    expect(out.overallStatus).toBe(Status.underconstrained)
+    const p = out.paramsSolved
+    expect(p[off + 4]).toBeCloseTo(reference[off + 4] + 2, 6)
+    expect(p[off + 5]).toBeCloseTo(reference[off + 5] - 1, 6)
+    for (const i of [0, 1, 6, 7]) {
+      expect(p[off + i]).toBeCloseTo(reference[off + i], 6)
+    }
+  })
+
+  it('groups two free endpoints: only the held endpoint follows the drag', () => {
+    const doc: PartDoc = {
+      features: [{
+        id: 'sk', kind: 'sketch', plane: '@builtin_plane_front',
+        entities: [{ id: 'a', kind: 'line' }, { id: 'b', kind: 'line' }],
+        initial: { a: [0, 0, 4, 0], b: [6, 0, 10, 0] },
+        constraints: [{ id: 'g1', kind: 'group', refs: ['$aend', '$bstart'] }],
+      }],
+    }
+    const { sketches } = partDocToSketches(doc.features)
+    const { input, layout } = lowerSketch(sketches[0].sketch)
+    const a = layout.find(l => l.id === 'a')!.offset
+    const b = layout.find(l => l.id === 'b')!.offset
+    const reference = [...input.params]
+    input.params[a + 2] += 2
+    input.params[a + 3] += 1
+    input.paramsReference = reference
+    input.pinnedMask = [0b0000_1100]  // a.end is the dragged pair
+    const out = decodeOutput(bytes!(encodeInput(input)))
+    const p = out.paramsSolved
+    expect(p[b]).toBeCloseTo(reference[b] + 2, 6)
+    expect(p[b + 1]).toBeCloseTo(reference[b + 1] + 1, 6)
+    // The other endpoints are not members and stay put.
+    expect(p[a]).toBeCloseTo(reference[a], 6)
+    expect(p[a + 1]).toBeCloseTo(reference[a + 1], 6)
+    expect(p[b + 2]).toBeCloseTo(reference[b + 2], 6)
+    expect(p[b + 3]).toBeCloseTo(reference[b + 3], 6)
+  })
 })
 
 /** A minimal DXF with two lines and a circle, the import writer's input. */

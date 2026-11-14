@@ -122,19 +122,25 @@ function rewriteRef(ref: string, plan: MirrorPlan): { ref: string; copy: boolean
 function cloneMirrorConstraint(c: PartConstraint, plan: MirrorPlan, constraints: PartConstraint[]): PartConstraint | null {
   const cloned: PartConstraint = { ...c }
 
-  // A group is one constraint over N whole members. It copies as one group over
-  // the copies, and only when every member is a source: a member left behind
-  // would tie the copy to the original's half, which is a relation the user did
-  // not ask for. The mirrored shape is the copies' own `initial` (mirroring an
-  // entity's initial block is what puts it there), so the reference needs no
-  // rewrite.
+  // A group is one constraint over N whole entities and/or points. It copies as
+  // one group over the copies, and only when every member is a source: a member
+  // left behind would tie the copy to the original's half, which is a relation
+  // the user did not ask for. A point member's image is the mirrored point
+  // (start/end trade places where the mirror already does that), so rewriteRef
+  // does the same suffix mapping it does for the other constraints.
   if (c.kind === 'group') {
     const refs = Array.isArray(c.refs) ? c.refs : []
     if (refs.length === 0) return null
     const copiedRefs: string[] = []
     let namesCopy = false
     for (const ref of refs) {
-      if (typeof ref !== 'string' || !ref.startsWith('$') || !plan.idMap.has(ref.slice(1))) {
+      if (typeof ref !== 'string') {
+        warn('mirror_entities: group has a member outside the mirror set, dropped', { id: c.id })
+        return null
+      }
+      const wire = ref.startsWith('$') || ref.startsWith('@')
+      const namesSource = [...plan.idMap.keys()].some(src => refMatchesEntity(wire ? ref : `$${ref}`, src))
+      if (!namesSource) {
         warn('mirror_entities: group has a member outside the mirror set, dropped', { id: c.id })
         return null
       }

@@ -7,6 +7,7 @@
 import type { SketchFeature } from '@/types/cad'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { resolveVertexRef } from '@/types/vertexRef'
+import { entityPointKeys } from '@/registry/entityRegistry'
 import {
   constraintEntityKindProblem,
   type ConstraintKindOperand,
@@ -106,16 +107,20 @@ export function midpointOperands(
   return null
 }
 
-/** The sketch fields a shape rule reads. `constraints` is optional so a
- *  shape-only caller (the drive rule without a live document) can omit it. */
-type SketchShape = Pick<SketchFeature, 'id' | 'entities'> & Pick<Partial<SketchFeature>, 'constraints'>
+/** The sketch fields a shape rule reads. `constraints` and `initial` are
+ *  optional so a shape-only caller (the drive rule without a live document) can
+ *  omit them; `entities` is not, because every rule that reads one needs the
+ *  entity list and a shape-only caller still has it. */
+type SketchShape = Pick<SketchFeature, 'id' | 'entities'>
+  & Pick<Partial<SketchFeature>, 'constraints' | 'initial'>
 
 /**
  * Why a `group` pick has no solver rows, or null. A group holds whole authored
- * entities of one sketch: a vertex, the projected origin, or an entity already
- * held by a `projection` has no rigid-group reading (its params are pinned
- * elsewhere or the pick is not an entity). The count rule and the value refusal
- * apply without a document; the per-entity checks need one.
+ * entities and single points of one sketch. The origin, a point key the entity's
+ * kind does not carry, an entity held by a `projection`, a repeated whole-plus-
+ * point pair and a lone point all have no rigid-group reading. The count rule
+ * and the value refusal apply without a document; the per-entity checks need
+ * one.
  */
 function groupProblem(
   feature: SketchShape | undefined,
@@ -128,7 +133,13 @@ function groupProblem(
     return 'group takes no value; delete the Group constraint to edit the entities freely'
   }
   if (!feature) return null
-  const entityIds = new Set((feature.entities ?? []).map(e => e.id))
+  const entities = feature.entities ?? []
+  const entityIds = new Set(entities.map(e => e.id))
+  const infoById = new Map(entities.map(e => [e.id, {
+    kind: e.kind,
+    nParams: feature.initial?.[e.id]?.length,
+    handles: e.handles,
+  }]))
   const projected = new Set(
     (feature.constraints ?? [])
       .filter(c => c.kind === 'projection' && typeof c.target === 'string')
@@ -141,33 +152,65 @@ function groupProblem(
       .filter(c => c.kind === 'projection')
       .flatMap(c => Object.values(c.members ?? {})),
   )
+  const whole = new Set<string>()
+  const points = new Map<string, string[]>()
   for (const target of targets) {
     if (target === '@builtin_origin') {
-      return 'group holds whole sketch entities; the origin is not one'
-    }
-    if (target.startsWith('vertex:')) {
-      return 'group holds whole sketch entities, not a vertex'
+      return 'group holds entities and points; the origin is not one'
     }
     // A dock/isect handle materializes into a point before the applier judges
     // it; the applier re-runs this rule on the resolved targets.
     if (target.startsWith('dock:') || target.startsWith('isect:')) continue
     let id: string | null = null
-    if (target.startsWith('entity:')) {
+    let point: string | undefined
+    if (target.startsWith('vertex:')) {
+      const parts = target.split(':')
+      if (parts[1] !== featureId || !parts[2] || !parts[3]) continue
+      id = parts[2]
+      point = parts[3]
+    } else if (target.startsWith('entity:')) {
       const parts = target.split(':')
       if (parts[0] === 'entity' && parts[1] === featureId && parts[2]) id = parts[2]
     } else {
       const resolved = resolveVertexRef(entityIds, target)
-      if (resolved?.point !== undefined) {
-        return 'group holds whole sketch entities, not a vertex'
-      }
       id = resolved?.entity ?? null
+      point = resolved?.point
     }
-    if (id !== null && projected.has(id)) {
-      return `group cannot include the projected entity "${id}"; delete its projection first`
-    }
-    if (id !== null && projectedMembers.has(id)) {
+    if (id === null) continue
+    // A face projection's members are derived solve entities, never document
+    // rows, so they are not in `entityIds` at all.
+    if (projectedMembers.has(id)) {
       return `group cannot include the projected member "${id}"; delete its projection first`
     }
+    if (!entityIds.has(id)) continue
+    if (projected.has(id)) {
+      return `group cannot include the projected entity "${id}"; delete its projection first`
+    }
+    if (point !== undefined) {
+      const info = infoById.get(id)
+      const keys = info === undefined ? undefined : entityPointKeys(info.kind, info.nParams, info.handles)
+      if (info !== undefined && keys !== undefined && !keys.has(point)) {
+        return `group cannot hold point "${point}" of ${info.kind} "${id}"; it has no such point`
+      }
+      // A Point's single vertex `xy` is the entity itself: the member is whole,
+      // and the applier stores it as `$P`.
+      if (info?.kind === 'point' && point === 'xy') {
+        whole.add(id)
+        continue
+      }
+      points.set(id, [...(points.get(id) ?? []), point])
+    } else {
+      whole.add(id)
+    }
+  }
+  for (const id of whole) {
+    if (points.has(id)) {
+      return `group names entity "${id}" both whole and by point; drop the duplicate`
+    }
+  }
+  const pointCount = [...points.values()].reduce((n, list) => n + list.length, 0)
+  if (whole.size === 0 && pointCount === 1) {
+    return 'group needs at least two points, or one whole entity'
   }
   return null
 }

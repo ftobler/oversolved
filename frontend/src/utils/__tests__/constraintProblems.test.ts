@@ -169,6 +169,28 @@ const cases: Case[] = [
   // A vertex names a point operand, not an entity kind: the group table has
   // nothing to say about it.
   { name: 'radius named by a vertex', kind: 'radius', targets: ['vertex:sk1:c1:center'], value: 3, problem: null },
+  // A group holds whole entities and single points. The applier parity run
+  // below proves a legal point member is authored and a duplicate/lone point is
+  // not.
+  { name: 'group whole line and circle', kind: 'group', targets: ['entity:sk1:ax', 'entity:sk1:c1'], problem: null },
+  { name: 'group two point members', kind: 'group', targets: ['$axend', '$c1center'], problem: null },
+  { name: 'group a point entity by its xy', kind: 'group', targets: ['$oxy'], problem: null },
+  {
+    name: 'group a whole entity and its own point', kind: 'group', targets: ['entity:sk1:ax', '$axend'],
+    problem: 'group names entity "ax" both whole and by point; drop the duplicate',
+  },
+  {
+    name: 'group a lone point member', kind: 'group', targets: ['$axend'],
+    problem: 'group needs at least two points, or one whole entity',
+  },
+  {
+    name: 'group a point key the kind lacks', kind: 'group', targets: ['$axc1', '$c1'],
+    problem: 'group cannot hold point "c1" of line "ax"; it has no such point',
+  },
+  {
+    name: 'group the origin', kind: 'group', targets: ['$ax', '@builtin_origin'],
+    problem: 'group holds entities and points; the origin is not one',
+  },
 ]
 
 describe('addConstraintProblem', () => {

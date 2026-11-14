@@ -746,13 +746,15 @@ describe('sketchEditorStore', () => {
     })
 
     describe('group', () => {
+      function select(...picks: string[]) {
+        for (const pick of picks) useSketchEditorStore.getState().toggleNormalSelection(pick)
+      }
+
       it('dispatches one add_constraint over every selected entity', () => {
         const handler = vi.fn()
         setSketchCallback('onMutation', handler)
         useSketchEditorStore.getState().setActiveFeatureId('S1')
-        useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
-        useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L2')
-        useSketchEditorStore.getState().toggleNormalSelection('entity:S1:C1')
+        select('entity:S1:L1', 'entity:S1:L2', 'entity:S1:C1')
 
         expect(useSketchEditorStore.getState().applyConstraint('group')).toBeNull()
         expect(handler).toHaveBeenCalledOnce()
@@ -764,29 +766,175 @@ describe('sketchEditorStore', () => {
         })
       })
 
-      it('refuses a projected member by name before creating a mutation', () => {
+      it('drops a circle center covered by its own circle', () => {
+        const handler = vi.fn()
+        setSketchCallback('onMutation', handler)
+        useEditorState.setState({ entityKindMap: { 'entity:S1:C1': 'circle' } })
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        select('entity:S1:C1', 'vertex:S1:C1:center')
+
+        expect(useSketchEditorStore.getState().applyConstraint('group')).toBeNull()
+        expect(handler).toHaveBeenCalledWith({
+          type: 'add_constraint',
+          featureId: 'S1',
+          kind: 'group',
+          targets: ['entity:S1:C1'],
+        })
+      })
+
+      it('drops all four endpoints covered by their two lines', () => {
+        const handler = vi.fn()
+        setSketchCallback('onMutation', handler)
+        useEditorState.setState({
+          entityKindMap: { 'entity:S1:L1': 'line', 'entity:S1:L2': 'line' },
+        })
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        select(
+          'entity:S1:L1', 'entity:S1:L2',
+          'vertex:S1:L1:start', 'vertex:S1:L1:end',
+          'vertex:S1:L2:start', 'vertex:S1:L2:end',
+        )
+
+        expect(useSketchEditorStore.getState().applyConstraint('group')).toBeNull()
+        expect(handler).toHaveBeenCalledWith({
+          type: 'add_constraint',
+          featureId: 'S1',
+          kind: 'group',
+          targets: ['entity:S1:L1', 'entity:S1:L2'],
+        })
+      })
+
+      it('groups uncovered control points as point members', () => {
+        const handler = vi.fn()
+        setSketchCallback('onMutation', handler)
+        useEditorState.setState({ entityKindMap: { 'entity:S1:SP': 'spline' } })
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        select('vertex:S1:SP:c1', 'vertex:S1:SP:c2')
+
+        expect(useSketchEditorStore.getState().applyConstraint('group')).toBeNull()
+        expect(handler).toHaveBeenCalledWith({
+          type: 'add_constraint',
+          featureId: 'S1',
+          kind: 'group',
+          targets: ['vertex:S1:SP:c1', 'vertex:S1:SP:c2'],
+        })
+      })
+
+      it('keeps a line whole and the orphan endpoint of another line a point', () => {
+        const handler = vi.fn()
+        setSketchCallback('onMutation', handler)
+        useEditorState.setState({
+          entityKindMap: { 'entity:S1:L1': 'line', 'entity:S1:L2': 'line' },
+        })
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        select('entity:S1:L1', 'vertex:S1:L2:end')
+
+        expect(useSketchEditorStore.getState().applyConstraint('group')).toBeNull()
+        expect(handler).toHaveBeenCalledWith({
+          type: 'add_constraint',
+          featureId: 'S1',
+          kind: 'group',
+          targets: ['entity:S1:L1', 'vertex:S1:L2:end'],
+        })
+      })
+
+      it('stores a lone Point as its whole entity', () => {
+        const handler = vi.fn()
+        setSketchCallback('onMutation', handler)
+        useEditorState.setState({ entityKindMap: { 'entity:S1:P1': 'point' } })
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        select('vertex:S1:P1:xy')
+
+        expect(useSketchEditorStore.getState().applyConstraint('group')).toBeNull()
+        expect(handler).toHaveBeenCalledWith({
+          type: 'add_constraint',
+          featureId: 'S1',
+          kind: 'group',
+          targets: ['entity:S1:P1'],
+        })
+      })
+
+      it('stores a Point and a line both whole', () => {
+        const handler = vi.fn()
+        setSketchCallback('onMutation', handler)
+        useEditorState.setState({
+          entityKindMap: { 'entity:S1:P1': 'point', 'entity:S1:L2': 'line' },
+        })
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        select('vertex:S1:P1:xy', 'entity:S1:L2')
+
+        expect(useSketchEditorStore.getState().applyConstraint('group')).toBeNull()
+        expect(handler).toHaveBeenCalledWith({
+          type: 'add_constraint',
+          featureId: 'S1',
+          kind: 'group',
+          targets: ['entity:S1:P1', 'entity:S1:L2'],
+        })
+      })
+
+      it('refuses a single sub-point with the at-least-two-points sentence', () => {
+        const handler = vi.fn()
+        setSketchCallback('onMutation', handler)
+        useEditorState.setState({ entityKindMap: { 'entity:S1:SP': 'spline' } })
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        select('vertex:S1:SP:c1')
+
+        const reason = useSketchEditorStore.getState().applyConstraint('group')
+
+        expect(reason).toContain('at least two points')
+        expect(handler).not.toHaveBeenCalled()
+      })
+
+      it('skips a projected member in a mixed selection', () => {
         const handler = vi.fn()
         setSketchCallback('onMutation', handler)
         setSketchCallback('getProjectedSources', () => [{ entityId: 'L1', kind: 'line' }])
         useSketchEditorStore.getState().setActiveFeatureId('S1')
-        useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
-        useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L2')
+        select('entity:S1:L1', 'entity:S1:L2')
 
-        const reason = useSketchEditorStore.getState().applyConstraint('group')
-
-        expect(reason).toContain('projected entity "L1"')
-        expect(handler).not.toHaveBeenCalled()
+        expect(useSketchEditorStore.getState().applyConstraint('group')).toBeNull()
+        expect(handler).toHaveBeenCalledWith({
+          type: 'add_constraint',
+          featureId: 'S1',
+          kind: 'group',
+          targets: ['entity:S1:L2'],
+        })
       })
 
-      it('refuses a vertex pick by name', () => {
+      it('authors nothing when the selection names no member', () => {
         const handler = vi.fn()
         setSketchCallback('onMutation', handler)
         useSketchEditorStore.getState().setActiveFeatureId('S1')
-        useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L1:start')
+        select('constraint:S1:C1', 'dock:constraint:1')
+
+        // No mutation at all: an empty `targets` list would reach the applier
+        // and is one shape rule away from a stored `refs: []`.
+        expect(useSketchEditorStore.getState().applyConstraint('group')).toBeNull()
+        expect(handler).not.toHaveBeenCalled()
+      })
+
+      it('refuses a member from another sketch', () => {
+        const handler = vi.fn()
+        setSketchCallback('onMutation', handler)
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        select('entity:Other:L9', 'entity:S1:L1')
 
         const reason = useSketchEditorStore.getState().applyConstraint('group')
 
-        expect(reason).toContain('whole sketch entities')
+        expect(reason).toContain('another sketch')
+        expect(handler).not.toHaveBeenCalled()
+      })
+
+      it('refuses projected geometry when it is all that is selected', () => {
+        const handler = vi.fn()
+        setSketchCallback('onMutation', handler)
+        setSketchCallback('getProjectedSources', () => [{ entityId: 'L1', kind: 'line' }])
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        select('entity:S1:L1')
+
+        const reason = useSketchEditorStore.getState().applyConstraint('group')
+
+        expect(reason).toContain('projected geometry')
         expect(handler).not.toHaveBeenCalled()
       })
     })

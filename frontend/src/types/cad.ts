@@ -982,6 +982,9 @@ export interface SymbolRender {
   at: Point
   entity?: string
   entities?: string[]
+  /** A group's point members as `entity:vertexKey` highlight ids. They are not
+   *  whole entities, so they live beside `entities` rather than inside it. */
+  points?: string[]
 }
 
 export interface DimLinearRender {

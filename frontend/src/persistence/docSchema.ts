@@ -13,6 +13,8 @@
 import { parse as parseYaml } from 'yaml'
 import type { AssemblyDoc, PartDoc } from '@/types/cad'
 import { isVertexPointKey, MAX_FIT_POINT_KEY } from '@/types/vertexKeys'
+import { entityPointKeys } from '@/registry/entityRegistry'
+import { resolveVertexRef } from '@/types/vertexRef'
 import { errorMessage } from '@/utils/core/errorMessage'
 import { evalExpr } from '@/kernel/evalExpr'
 import { threadEntry } from '@/kernel/threadTable'
@@ -762,17 +764,32 @@ function checkConstraint(value: unknown, field: string): void {
 }
 
 /**
- * A group's members must be whole authored entities of the same sketch. A
- * member that names no entity, a vertex suffix, or an entity held by a
- * `projection` cannot be held rigidly: the solver would either drop the group
- * row (the stale-ref path) or fight the projection's pin, so the document is
- * refused by field instead of loading a constraint that cannot solve.
+ * A group's members are whole authored entities or single points of one sketch,
+ * spelled the way every writer emits them: `$<eid>` or `$<eid><key>`. A member
+ * that names no entity, a point key the entity's kind does not carry, an entity
+ * held by a `projection`, a repeated whole-plus-point pair, or a lone point
+ * cannot be held rigidly: the solver would either drop the group row (the
+ * stale-ref path) or fight the projection's pin, so the document is refused by
+ * field instead of loading a constraint that cannot solve. A dict member is
+ * refused too: `PartTarget` is a string and no walker reads the pair form.
  */
 function checkGroupConstraints(feature: DocRecord, field: string): void {
   if (feature.kind !== 'sketch') return
   const entityIds = new Set<string>()
+  const infoById = new Map<string, { kind: string; nParams?: number; handles?: 'start' | 'end' | 'both' }>()
+  const initial = isRecord(feature.initial) ? feature.initial : {}
   for (const entity of Array.isArray(feature.entities) ? feature.entities : []) {
-    if (isRecord(entity) && typeof entity.id === 'string') entityIds.add(entity.id)
+    if (!isRecord(entity) || typeof entity.id !== 'string' || typeof entity.kind !== 'string') continue
+    entityIds.add(entity.id)
+    const handles = entity.handles === 'start' || entity.handles === 'end' || entity.handles === 'both'
+      ? entity.handles
+      : undefined
+    const params = initial[entity.id]
+    infoById.set(entity.id, {
+      kind: entity.kind,
+      nParams: Array.isArray(params) ? params.length : undefined,
+      handles,
+    })
   }
   const constraints = Array.isArray(feature.constraints) ? feature.constraints : []
   const projected = new Set<string>()
@@ -788,23 +805,66 @@ function checkGroupConstraints(feature: DocRecord, field: string): void {
     if (!Array.isArray(constraint.refs) || constraint.refs.length === 0) {
       fail(refsField, 'a group needs at least one member')
     }
+    const whole = new Set<string>()
+    // A Point's `xy` and its bare entity ref are the same whole member, so the
+    // two spellings together are a duplicate like any other whole-plus-point.
+    const bareWhole = new Set<string>()
+    const xyWhole = new Set<string>()
+    const points = new Map<string, string[]>()
     for (let j = 0; j < constraint.refs.length; j++) {
       const ref = constraint.refs[j]
+      const refField = `${refsField}[${j}]`
       let id: string | null = null
+      let point: string | undefined
+      // Every writer emits the wire form `$<eid>` / `$<eid><key>`; a dict ref
+      // would resolve here but no walker reads it (`PartTarget` is a string).
       if (typeof ref === 'string' && ref.startsWith('$')) {
-        id = ref.slice(1)
-      } else if (isRecord(ref) && typeof ref.entity === 'string'
-        && (ref.point === undefined || ref.point === null)) {
-        id = ref.entity
+        const resolved = resolveVertexRef(entityIds, ref)
+        if (resolved === null) fail(refField, `names no entity in this sketch, got ${JSON.stringify(ref)}`)
+        id = resolved.entity
+        point = resolved.point
       } else {
-        fail(`${refsField}[${j}]`, `must name a whole sketch entity, got ${JSON.stringify(ref)}`)
+        fail(refField, `must name an authored entity or point, got ${JSON.stringify(ref)}`)
       }
-      if (id === null || !entityIds.has(id)) {
-        fail(`${refsField}[${j}]`, `names no entity in this sketch, got ${JSON.stringify(ref)}`)
-      }
+      if (id === null) fail(refField, `must name an authored entity or point, got ${JSON.stringify(ref)}`)
       if (projected.has(id)) {
-        fail(`${refsField}[${j}]`, `names projected entity ${JSON.stringify(id)}; a group holds authored entities`)
+        fail(refField, `names projected entity ${JSON.stringify(id)}; a group holds authored entities`)
       }
+      if (point !== undefined) {
+        const info = infoById.get(id)
+        const keys = info === undefined ? undefined : entityPointKeys(info.kind, info.nParams, info.handles)
+        if (info !== undefined && keys !== undefined && !keys.has(point)) {
+          fail(refField, `names point ${JSON.stringify(point)}, not a point of ${info.kind} ${JSON.stringify(id)}`)
+        }
+        // A Point's single vertex `xy` is the entity itself; the applier stores
+        // it as `$P`, so the whole/point rules read the same either way.
+        if (info?.kind === 'point' && point === 'xy') {
+          if (bareWhole.has(id)) {
+            fail(refsField, `names entity ${JSON.stringify(id)} both whole and by point; drop the duplicate`)
+          }
+          xyWhole.add(id)
+          whole.add(id)
+          continue
+        }
+        points.set(id, [...(points.get(id) ?? []), point])
+      } else {
+        if (xyWhole.has(id)) {
+          fail(refsField, `names entity ${JSON.stringify(id)} both whole and by point; drop the duplicate`)
+        }
+        bareWhole.add(id)
+        whole.add(id)
+      }
+    }
+    for (const id of whole) {
+      if (points.has(id)) {
+        fail(refsField, `names entity ${JSON.stringify(id)} both whole and by point; drop the duplicate`)
+      }
+    }
+    // A single point removes no DOF of its own: the pair is the group's whole
+    // translation. One whole entity stays legal because it also holds a shape.
+    const pointCount = [...points.values()].reduce((n, list) => n + list.length, 0)
+    if (whole.size === 0 && pointCount === 1) {
+      fail(refsField, 'a group needs at least two points, or one whole entity')
     }
   }
 }

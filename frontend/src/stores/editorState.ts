@@ -26,6 +26,7 @@ import { planBrepDimensionPick, planProjectedOperand, classifyBrepOperand, refre
 import { commitDrawGesture } from '@/tools/commitDrawGesture'
 import { computeDrawFinish } from '@/utils/geometry/drawFinish'
 import { randomId, canonicalLineDistanceTargets, isPointLikeEntityKind, pointDistanceZeroProblem } from '@/utils/yamlMutations/helpers'
+import { groupMembersFromSelection } from '@/utils/groupMembers'
 import { COLINEAR_SHAPE_REASON, colinearShapeProblem } from '@/utils/constraintOperands'
 import { dimensionValueRule } from '@/utils/core/dimensionValueRules'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
@@ -716,6 +717,26 @@ export const editorState = createStore<EditorState>((set, get) => ({
     )
     if (picked.length === 0) return null
 
+    // The Group command reads its selection before any projection planning:
+    // the origin, dock/isect handles and projected geometry are not members, and
+    // a vertex marker next to its own entity is a duplicate, so none of them
+    // should be projected for a group only to be refused afterwards.
+    const groupPlan = kind === 'group'
+      ? groupMembersFromSelection(
+        picked,
+        activeFeatureId,
+        entityKindMap,
+        new Set((sketchCallbacks.getProjectedSources?.(activeFeatureId) ?? []).map(p => p.entityId)),
+      )
+      : null
+    if (groupPlan !== null && 'reason' in groupPlan) return groupPlan.reason
+    const groupTargets = groupPlan !== null ? groupPlan.targets : null
+    // A group whose selection names nothing the command can hold (a constraint
+    // or handle pick) authors nothing. Emitting `targets: []` would reach the
+    // applier and, if the shape rule ever let it through, store `refs: []`,
+    // which the loader refuses.
+    if (groupTargets !== null && groupTargets.length === 0) return null
+
     // A constraint can only name sketch operands. The origin and a B-rep
     // vertex/edge are projected into the active sketch and the constraint names
     // the projection: the sketch keeps a visible, deletable entity instead of a
@@ -726,7 +747,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
     const planned: PlannedProjection[] = []
     const projections: PlannedProjectionMutation[] = []
     const kindByTarget = new Map<string, string>()
-    const resolved = picked.map(t => {
+    const resolved = groupTargets ?? picked.map(t => {
       const brep = projectableOperand(t)
       if (brep === null) return t
       const plan = planProjectedOperand({
@@ -752,7 +773,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
 
     // The redundancy probe and the mutation both see the canonical order, so a
     // point-first line_distance is tested (and stored) as line-first.
-    const targets = canonicalLineDistanceTargets(kind, resolved, t => {
+    const targets = groupTargets ?? canonicalLineDistanceTargets(kind, resolved, t => {
       if (t.startsWith('vertex:')) return 'point'
       if (!t.startsWith('entity:')) return undefined
       const ek = kindOf(t)
@@ -761,23 +782,6 @@ export const editorState = createStore<EditorState>((set, get) => ({
 
     const def = CONSTRAINT_BY_KIND.get(kind)
     const label = def?.label ?? kind
-    // A group holds whole authored entities: a vertex pick, the origin, or an
-    // entity already held by a projection (or projected by this very click) has
-    // no rigid-group reading. The applier and the drive rule refuse the same
-    // picks; naming it here is what the command's temp message shows the user.
-    if (kind === 'group') {
-      const recordedProjections = sketchCallbacks.getProjectedSources?.(activeFeatureId) ?? []
-      const projectedIds = new Set(recordedProjections.map(p => p.entityId))
-      for (const t of targets) {
-        if (t === '@builtin_origin' || t.startsWith('vertex:')) {
-          return `${label} holds whole sketch entities, not a vertex or the origin.`
-        }
-        const eid = t.startsWith('entity:') ? t.split(':')[2] : undefined
-        if (eid !== undefined && (kindByTarget.has(t) || projectedIds.has(eid))) {
-          return `${label} cannot include the projected entity "${eid}"; delete its projection first.`
-        }
-      }
-    }
 
     // Reject operand kinds the constraint cannot represent before authoring it.
     // A parallel between two arcs (or a concentric on a line) otherwise lands in

@@ -110,8 +110,12 @@ function droppedConstraintTiles(
     const defKind = CONSTRAINT_BY_KIND.get(entry.kind)?.renderKind ?? ''
     const url = getIconUrl(renderKind) ?? getIconUrl(defKind) ?? getIconUrl('symbol_unknown')
     if (!url) continue
-    const highlighted = 'entities' in render && render.entities?.length
-      ? render.entities
+    const memberIds = [
+      ...('entities' in render ? render.entities ?? [] : []),
+      ...('points' in render ? render.points ?? [] : []),
+    ]
+    const highlighted = memberIds.length > 0
+      ? memberIds
       : 'entity' in render && typeof render.entity === 'string'
         ? [render.entity]
         : findEntitiesAtPoint(sketch, at)
@@ -146,7 +150,7 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
     const atGroups = new Map<string, { at: [number, number]; icons: { url: string; title: string; key: string; highlightIds: string[]; superfluous?: boolean; culprit?: boolean }[] }>()
 
     for (const [cid, c] of clist) {
-      const r = c.render as { kind: string; at?: [number, number]; point?: string; entities?: string[]; [key: string]: unknown }
+      const r = c.render as { kind: string; at?: [number, number]; point?: string; entities?: string[]; points?: string[]; [key: string]: unknown }
 
       if (showConstraintTiles && !isDragging && r.kind.startsWith('symbol_')) {
         const url = getIconUrl(r.kind)
@@ -165,13 +169,15 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
         if (r.point != null) {
           // Vertex-targeted (e.g. fixed on a specific endpoint), use "entityId:vertexKey" format
           highlightIds = [`${eid}:${r.point}`]
-        } else if (r.entities?.length) {
-          highlightIds = r.entities
+        } else if (r.points?.length || r.entities?.length) {
+          highlightIds = [...(r.entities ?? []), ...(r.points ?? [])]
         } else {
           const atEntities = findEntitiesAtPoint(sketch, at)
           highlightIds = atEntities.length > 0 ? atEntities : [eid]
         }
-        const title = constraintTileLabel(r.kind, c, r.entities?.length)
+        // A group's whole members and point members are already split by the
+        // render, so the counts cannot miscount an entity id containing `:`.
+        const title = constraintTileLabel(r.kind, c, r.entities?.length ?? 0, r.points?.length ?? 0)
         atGroups.get(atKey)!.icons.push({ url, title, key: cid, highlightIds, superfluous: c.superfluous, culprit: c.culprit })
 
       } else {

@@ -735,27 +735,47 @@ impl Problem<'_> {
 
     /// Analytic rows for the rigid group, mirroring `r_group` row for row: the
     /// member param's own +1, and (for a coordinate row) the anchor point's
-    /// point Jacobian negated on the row's axis.
+    /// point Jacobian negated on the row's axis. A point member's two rows are
+    /// `point_jac(target) - point_jac(anchor)`, the same reference-offset-plus-
+    /// transform shape the residual uses.
     fn jac_group(&self, c: &Constraint, x: &[f64], rows: &mut Vec<SparseRow>) {
         let (
-            Some(Ref::Entity { index: member, .. }),
+            Some(Ref::Entity {
+                index: member,
+                point: member_point,
+            }),
             Some(
                 anchor @ Ref::Entity {
                     index: anchor_index,
-                    ..
+                    point: anchor_point,
                 },
             ),
         ) = (c.ref_for(RefRole::Target), c.ref_for(RefRole::A))
         else {
             return;
         };
-        let Ref::Entity {
-            point: anchor_point,
-            ..
-        } = anchor
-        else {
+        if member_point.is_present() {
+            let target = Ref::Entity {
+                index: member,
+                point: member_point,
+            };
+            if target == anchor {
+                return;
+            }
+            let mut rx = RowBuf::new();
+            let mut ry = RowBuf::new();
+            for (col, dpx, dpy) in self.point_jac(x, target) {
+                rx.add(col, dpx);
+                ry.add(col, dpy);
+            }
+            for (col, dpx, dpy) in self.point_jac(x, anchor) {
+                rx.add(col, -dpx);
+                ry.add(col, -dpy);
+            }
+            rows.push(rx.finish());
+            rows.push(ry.finish());
             return;
-        };
+        }
         let off = self.offset_of(member);
         let size = self.param_count_of(member);
         let coords = group_coord_count(self.kind_of(member), size);
