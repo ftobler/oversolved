@@ -72,13 +72,12 @@
 //! the 1.28e-9 rad the kernel saw was the free profile's absolute tilt, a null
 //! direction of the anchored solve with no residual row measuring it, so no
 //! row width can close it. The finish tightens rows (parallel pairs agree to
-//! 1e-12 here); it cannot pin a free global direction. The consequence for
-//! `feature/kernel-unify-within-contract.md` is that its widening reads the
-//! reported row miss, which is 0 on that sketch, so it cannot merge the seam by
-//! itself: the seam needs an authored `horizontal` (a row that does measure the
-//! direction) or a separate orientation-uncertainty signal the solver does not
-//! have today. Which of the two the kernel half takes is its decision, not this
-//! crate's, and no code here can substitute for it.
+//! 1e-12 here); it cannot pin a free global direction. The decision of
+//! 2026-11-14 is the authored `horizontal`: the report document closes its seam
+//! with a row that measures the direction. No orientation-uncertainty signal is
+//! added, and the kernel half does not widen to a fixed rung, so
+//! `feature/kernel-unify-within-contract.md`'s widening cannot merge the raw
+//! report document by itself.
 //!
 //! The area builder's sampled scan (`topology::curve_intersect`) is the one
 //! place where an absolute RESOLUTION is deliberate rather than derived:

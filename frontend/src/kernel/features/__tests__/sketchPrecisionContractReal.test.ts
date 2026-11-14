@@ -13,9 +13,11 @@
 // met on this sketch, and one edge is still left in x = 0 between two nearly
 // coplanar faces: on the report's sketch the 1.28e-9 rad the kernel sees is a
 // free absolute tilt, not a residual row, so no row-precision finish can close
-// it. The kernel half (reading a report and applying it per call) is
-// `feature/kernel-unify-within-contract.md`; the seam must be closed there (or
-// by an authored `horizontal`), and this suite is where that turns green.
+// it. The decided mechanism (2026-11-14) is an authored `horizontal`, a row that
+// measures the direction; no orientation-uncertainty signal is added. The
+// kernel half (reading a report and applying it per call) is
+// `feature/kernel-unify-within-contract.md`, and this suite is where a no-seam
+// assertion on the authored-horizontal document turns green.
 
 import { describe, it, expect, afterAll } from 'vitest'
 import type { BuildResponse } from '../../builder'
@@ -26,6 +28,7 @@ import { DisposeScope } from '../../occ/disposeScope'
 import {
   oc, solveBytes, extrudeTestHarness, rectSketchSk, extrudeSpec,
 } from '../extrudeRealSupport'
+import { OCC_ANGULAR } from '../../solverConstants'
 import mirrorSeams from '../__fixtures__/mirrorSeams.json'
 
 type Vec3 = [number, number, number]
@@ -246,10 +249,16 @@ describe.skipIf(!oc || !solveBytes)('sketch precision contract (real OCC)', () =
     const result = h.run(reportWithHorizontal())
     const row = h.res(result, 'sk1')
     expect(row.status).toBe('underconstrained')
-    expect(Number(row.angular_miss)).toBeLessThanOrEqual(1e-12)
+    expect(Number(row.angular_miss)).toBeLessThanOrEqual(OCC_ANGULAR)
     const shape = lastBodyShape(h, result, 'body_ex1')
     expect(shape).not.toBeNull()
     const seams = seamEdges(oc!, scope, shape!)
+    // The authored horizontal pins the top wall's merge too, so the whole body
+    // carries exactly ONE seam: the bottom wall through xip0 at y = -4. Counting
+    // only the y = -4 seam let a reopened top-wall seam pass unnoticed, so the
+    // total and "nothing above the bottom wall" are both asserted.
+    expect(seams).toHaveLength(1)
+    expect(seams.filter((s) => s.at[1] > -4 + 1e-6)).toHaveLength(0)
     // Locate the seam by geometry, not by a formatted string: the one on the
     // bottom wall sits at y = -4.
     const bottom = seams.filter((s) => Math.abs(s.at[1] + 4) <= 1e-6)
@@ -260,5 +269,5 @@ describe.skipIf(!oc || !solveBytes)('sketch precision contract (real OCC)', () =
     expect(bottom[0].sine).toBeGreaterThan(1e-9)
   })
 
-  it.todo('mirrors without a seam across x = 0: feature/kernel-unify-within-contract.md, which needs an authored horizontal or an orientation-uncertainty signal, not the row miss')
+  it.todo('mirrors without a seam across x = 0: feature/kernel-unify-within-contract.md, whose decided mechanism is an authored horizontal, not an orientation-uncertainty signal')
 })

@@ -267,13 +267,14 @@ fn report_sketch_parallel_meets_angular_contract() {
     let p = &out.params_solved;
     let l1 = angle_between(direction(p, 0), [1.0, 0.0]).abs();
     let xip0 = angle_between(direction(p, 22), [1.0, 0.0]).abs();
-    // Each row is allowed `OCC_ANGULAR * its OWN seed length`, so an absolute
-    // direction can legally read up to twice the width when the pair's seed
-    // length (the geometric mean) differs from the line's `len0` by up to 2x.
-    // The reported `angular_miss` is the row-normalised value and stays at one
-    // width; the absolute tilt gets the pair factor.
+    // l1's tilt is exactly its own horizontal row, measured over its own seed
+    // length, so it gets one contract width. xip0's absolute direction is l1's
+    // direction PLUS the pair angle: two rows of one width each, so up to two.
+    // The pair row's seed length (the geometric mean) is not a factor here:
+    // both lines are equal on this fixture, and `sqrt(L1*L2)/L1` is unbounded
+    // in general, so it cannot bound the absolute direction.
     assert!(
-        l1 <= 2.0 * crate::tolerance::OCC_ANGULAR,
+        l1 <= crate::tolerance::OCC_ANGULAR,
         "l1 is {l1:e} off horizontal"
     );
     assert!(
@@ -610,6 +611,83 @@ fn an_unsatisfied_recompute_restores_the_pre_finish_params() {
     assert_eq!(bogus.x, pre);
     assert!(bogus.residual_norm.is_finite());
     assert!(satisfied(bogus.residual_norm, problem.scale()));
+}
+
+/// The fixture the restore exists for: a line 2e-8 long (its angular rows are
+/// floored at `MIN_LEN_REL * scale`, so a horizontal row of 2e-8 reads about
+/// 1e12 of its target) tangent to an arc. The plain solve stops on LM's
+/// relative-step test with the stacked norm already at 0.83 of the verdict
+/// width, so one minimum-norm step is both available and large enough for its
+/// nonlinearity to matter. That step trades the tiny line's angular row for
+/// positional error in the tangency row: the worst SCALED row drops (the step is
+/// accepted) while the stacked norm climbs from 2.9e-8 to 4.2e-2, six orders
+/// past the verdict width.
+fn a_finish_that_would_flip_the_verdict() -> Input {
+    input(
+        vec![line(0), ent(Kind::Arc, 4)],
+        vec![
+            // The tiny line, 2.1e-8 long.
+            0.3843407313850278,
+            0.31762094221989035,
+            0.38434071205003706,
+            0.31762094551427533,
+            // Its tangent partner: centre, radius, and the two endpoint angles.
+            0.7041520394514447,
+            0.3755551353391924,
+            0.015576591559323262,
+            -163.16601422323637,
+            -83.71045920096522,
+        ],
+        vec![
+            cons(
+                ConstraintKind::Tangent,
+                ab(
+                    e_ref(0, PointSelector::Absent),
+                    e_ref(1, PointSelector::Absent),
+                ),
+            ),
+            c_target(ConstraintKind::Horizontal, 0, PointSelector::Absent),
+        ],
+    )
+}
+
+#[test]
+fn a_finish_that_would_flip_the_verdict_restores_the_plain_solve() {
+    // The post-finish guard at the boundary the cold solve calls it from: the
+    // finish DOES take a step, that step reads worse on the stacked norm, and
+    // `solve_sketch` must ship the pre-finish params with NaN precision and the
+    // same rank/dof the plain solve gives them. This is the case the helper
+    // test above can only simulate.
+    let inp = a_finish_that_would_flip_the_verdict();
+    let (problem, pre) = solve_raw(&inp);
+    let verdict = crate::tolerance::verdict_tol(problem.scale());
+    assert!(satisfied(pre.residual_norm, problem.scale()), "pre is red");
+    let mut post = pre.x.clone();
+    let finish = finish_contract(&inp, &problem, &mut post);
+    assert!(
+        finish.steps > 0,
+        "the fixture stopped giving the finish work to do"
+    );
+    let post_norm = norm(&problem.residuals(&post));
+    assert!(
+        post_norm > verdict,
+        "the fixture no longer flips the verdict: {post_norm:e} vs {verdict:e}"
+    );
+
+    let out = solve_sketch(&inp);
+    assert_eq!(out.overall_status, Status::Underconstrained.to_u8());
+    // The restored params are the plain solve's, not the finished ones.
+    assert_eq!(out.params_solved, pre.x);
+    assert_ne!(out.params_solved, post);
+    assert!(out.diagnostics.angular_miss.is_nan());
+    assert!(out.diagnostics.linear_miss.is_nan());
+    // Rank and dof are read from the restored Jacobian, so they match the plain
+    // solve's spectrum and add up to the param count.
+    let n = inp.params_initial.len();
+    let restored_jac = problem.jacobian(&out.params_solved, n);
+    let spectrum = Spectrum::of(&restored_jac, n, false);
+    assert_eq!(out.diagnostics.rank as usize, spectrum.rank);
+    assert_eq!(out.diagnostics.dof as usize, n - spectrum.rank);
 }
 
 /// Two arcs tangent through a coincident, the second a million times larger.

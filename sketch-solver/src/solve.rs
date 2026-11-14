@@ -237,7 +237,7 @@ pub fn solve_sketch(input: &Input) -> Output {
     // An overconstrained solve (including one whose seed already held invalid
     // geometry) has no precision to promise: NaN, never the finish's last
     // reading.
-    finish = if finish.ran() && status != Status::Overconstrained {
+    finish = if finish.has_measured_miss() && status != Status::Overconstrained {
         Finish::from_misses(finish.steps, problem.contract_misses(&params_solved))
     } else {
         Finish::unsatisfied()
@@ -330,12 +330,30 @@ const FINISH_STEPS: u32 = 8;
 /// direction: those steps are rejected, and the row stays honestly above the
 /// contract instead of the geometry being yanked. Ten times the verdict width
 /// leaves every real correction room.
+///
+/// The cap reads every param delta as a WORLD LENGTH, whatever the param means.
+/// An arc's endpoint angles and an ellipse's rotation are degrees, so the same
+/// numeric cap allows `pi/180` of the angular move a radian-valued one would:
+/// their effective angular allowance is 57.3x tighter. That is accepted rather
+/// than corrected by an angular variant, because a legitimate angle correction
+/// is tiny in radians: the angular rows are the contract's own
+/// (`1e-12 * seed_len`), so closing one from the verdict width needs ~1e-7 rad,
+/// i.e. ~1.7e-9 of a degree, orders under the tightened cap at any modelled
+/// scale. Only a large angle move is refused, and a large angle move is never a
+/// precision tightening.
+///
+/// The same cap refuses a correction whose singular value is under ~0.1: a row
+/// miss at the verdict width (`1e-7 * scale`) divided by it asks for more than
+/// `1e-6 * scale`. Both refusals cost precision, and the wire reports the loss
+/// honestly as the realised miss above the contract.
 const FINISH_STEP_REL: f64 = 1e-6;
 
 /// The contract finish's outcome: how many steps it took and the precision the
 /// shipped geometry realised. `angular_miss` is radians (the largest
 /// `|row| / seed_len` over angular rows); `linear_miss` is the largest
-/// positional row in document units. Both NaN when the finish never ran.
+/// positional row in document units. Both NaN when there is no measured miss
+/// for the shipped params: the solve never reached the finish, or its finished
+/// result was restored (it would have flipped the verdict).
 struct Finish {
     steps: u32,
     angular_miss: f64,
@@ -351,9 +369,11 @@ impl Finish {
         }
     }
 
-    /// True when the finish actually ran on a satisfied solve (step count can
-    /// be zero: the rows were already inside the contract).
-    fn ran(&self) -> bool {
+    /// True when the finish left a measured miss: a satisfied solve whose rows
+    /// it read (step count can be zero, the rows were already inside the
+    /// contract). Not "it ran": a result restored after the post-finish guard
+    /// has no measured miss for the params it ships, so it reports NaN.
+    fn has_measured_miss(&self) -> bool {
         !(self.angular_miss.is_nan() && self.linear_miss.is_nan())
     }
 

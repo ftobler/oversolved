@@ -375,7 +375,10 @@ impl Problem<'_> {
 
     /// The class of the param at absolute index `i`, found by the entity block
     /// that contains it. Pin rows name params, not constraints, so this is the
-    /// only way to tell an arc's angle pin from its radius pin.
+    /// only way to tell an arc's angle pin from its radius pin. An index no
+    /// block owns is a classification failure (`Unclassified`, never
+    /// `Positional`): a targetless row cannot be read as a world distance just
+    /// because the owner could not be found.
     fn param_class_at(&self, i: usize) -> RowClass {
         for entity in self.entities {
             let end = entity.param_offset + entity.param_count;
@@ -383,7 +386,7 @@ impl Problem<'_> {
                 return param_class(entity.kind, i - entity.param_offset);
             }
         }
-        RowClass::Positional
+        RowClass::Unclassified
     }
 
     /// Every residual row with the class the contract reads it as, in wire
@@ -976,6 +979,54 @@ mod tests {
             linear < 1e-15,
             "a degree row leaked into linear_miss: {linear}"
         );
+    }
+
+    #[test]
+    fn a_pinned_arc_angle_is_a_parameter_row() {
+        // A pin has no constraint behind it, so its class comes from the entity
+        // block that owns the index. An arc's angles are degrees: reading a pin
+        // there as a world distance would put a 90 into `linear_miss` and ask
+        // the finish to close it as if it were 90 mm.
+        let mut inp = input(
+            vec![ent(Kind::Arc, 0)],
+            vec![20.0, 20.0, 5.0, 0.0, 90.0],
+            vec![],
+        );
+        inp.pinned_mask = vec![1 << 3]; // param 3 is the arc's start angle
+        let problem = Problem::new(&inp);
+        assert_eq!(
+            problem.contract_rows(&problem.x0),
+            vec![(0.0, RowClass::Parameter)]
+        );
+        // The same rows over a moved angle: still no miss of either kind, while
+        // a radius pin on the same arc does feed `linear_miss`.
+        let mut moved = problem.x0.clone();
+        moved[3] += 90.0;
+        assert_eq!(problem.contract_misses(&moved), (0.0, 0.0));
+        let mut radius_pinned = inp.clone();
+        radius_pinned.pinned_mask = vec![1 << 2];
+        let radius_problem = Problem::new(&radius_pinned);
+        assert_eq!(radius_problem.contract_misses(&radius_problem.x0).1, 0.0);
+        let mut moved = radius_problem.x0.clone();
+        moved[2] += 1.0;
+        assert_eq!(radius_problem.contract_misses(&moved).1, 1.0);
+    }
+
+    #[test]
+    fn a_pin_outside_every_entity_block_is_unclassified() {
+        // A param no entity block owns is a programming error. It must not fall
+        // through to `Positional` (that would hand the row a world target and
+        // quietly grant a looser contract); the failure reads as non-finite
+        // misses so no caller mistakes it for satisfied precision.
+        let mut inp = input(vec![line(0)], vec![0.0, 0.0, 10.0, 0.0, 5.0], vec![]);
+        inp.pinned_mask = vec![1 << 4]; // param 4 is outside the line's block
+        let problem = Problem::new(&inp);
+        assert_eq!(
+            problem.contract_rows(&problem.x0),
+            vec![(0.0, RowClass::Unclassified)]
+        );
+        let (angular, linear) = problem.contract_misses(&problem.x0);
+        assert!(angular.is_infinite() && linear.is_infinite());
     }
 
     #[test]

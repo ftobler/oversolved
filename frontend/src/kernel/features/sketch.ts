@@ -61,12 +61,15 @@ export interface SketchResult {
    *  tree and editor read the warning text. */
   dof?: number
   /** Realised angular precision of the solved geometry, in radians, from the
-   *  solver's contract finish (the target is `OCC_ANGULAR`). NaN on an
-   *  unsatisfied solve. The kernel half reads this to widen its own angular
-   *  calls by what the solve actually reached. */
+   *  solver's contract finish (the target is `OCC_ANGULAR`). NaN means no
+   *  measured miss for the shipped params: an unsatisfied solve, a drag frame,
+   *  or a green solve whose finish was restored because it would have flipped
+   *  the verdict. INFINITY is the solver's row-classification failure. The
+   *  kernel half reads this to widen its own angular calls by what the solve
+   *  actually reached. */
   angular_miss?: number
   /** Realised positional precision, in document length units (target
-   *  `OCC_CONFUSION * 1e-2`). NaN like `angular_miss`. */
+   *  `OCC_CONFUSION * 1e-2`). NaN and INFINITY as `angular_miss`. */
   linear_miss?: number
   geometry?: Record<string, number[]>
   features?: Record<string, { status: string }>

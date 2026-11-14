@@ -71,10 +71,13 @@
 //! ```
 //!
 //! The `SKG8`/`SKR8` pair appends the contract's realised precision to the
-//! diagnostics: `angular_miss` (radians) and `linear_miss` (document units),
-//! NaN for an unsatisfied solve. The meaning is new, not just the layout, so
-//! the magic moves on both sides: an older reader would stop at `ms` and an
-//! older writer would leave the two fields' bytes unread.
+//! diagnostics: `angular_miss` (radians) and `linear_miss` (document units).
+//! NaN means no measured miss for the shipped params: an unsatisfied solve, the
+//! drag fast path, or a green solve whose finish was restored before it could
+//! flip the verdict. INFINITY is a row-classification failure. The meaning is
+//! new, not just the layout, so the magic moves on both sides: an older reader
+//! would stop at `ms` and an older writer would leave the two fields' bytes
+//! unread.
 //!
 //! The `SKG7`/`SKR7` pair adds the input's optional reference params: `fixed`
 //! and `group` hold them when they are present, and `params_initial` otherwise.
