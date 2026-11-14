@@ -857,10 +857,11 @@ banner on stdout, so a client config must use the direct node invocation.
   leave a visible, deletable entity in the sketch, project the operand first
   with `add_projected_entity` (kind `point` for the origin) and name the
   projection as the target. A bare `@builtin_origin` solves but creates no
-  entity, so there is nothing to select or delete. `group` takes one or more
-  whole authored entities of the sketch (no vertex, origin or projected entity)
-  and glues them into their current shape while leaving the set free to move and
-  rotate; it carries no value, and deleting it frees the entities. An
+  entity, so there is nothing to select or delete. `group` takes whole authored
+  entities of the sketch or single pickable points of them (not the origin or a
+  projected entity) and glues them into their current shape while leaving the
+  set free to move and rotate; it carries no value, and deleting it frees the
+  entities. An
   `angle` value is the
   corner the label shows, the angle between the two lines as drawn; without
   `pos` the corner nearest the authored geometry is taken and a label `pos` is
