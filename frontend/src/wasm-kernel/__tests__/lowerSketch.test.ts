@@ -376,13 +376,56 @@ describe('lowerSketch group', () => {
       .toEqual([index('c1'), index('a1'), index('e1'), index('p1')])
   })
 
-  it('fails loud on a member that is not a local whole-entity ref', () => {
-    expect(() => lowerSketch({
+  it('lowers a point member with its own selector and anchors on it', () => {
+    const { input, layout } = lowerSketch({
       id: 'S1',
-      entities: [{ id: 'l1', kind: 'line' }],
-      initial: { l1: [0, 0, 1, 0] },
-      constraints: [{ id: 'g1', kind: 'group', refs: [{ entity: 'l1', point: 'start' }] }],
-    })).toThrow("group 'g1' member 'l1' names a vertex")
+      entities: [
+        { id: 'l1', kind: 'line' },
+        { id: 'sp', kind: 'spline' },
+      ],
+      initial: { l1: [0, 3, 4, 3], sp: [0, 0, 1, 2, 3, 4, 5, 6] },
+      constraints: [{
+        id: 'g1', kind: 'group',
+        refs: [{ entity: 'sp', point: 'c1' }, { entity: 'l1' }],
+      }],
+    })
+    const spIndex = layout.findIndex(l => l.id === 'sp')
+    const lineIndex = layout.findIndex(l => l.id === 'l1')
+    const groups = input.constraints.filter(c => c.kind === ConstraintKindCode.group)
+    expect(groups).toHaveLength(2)
+    // The first member is a point anchor: the shared translation is that
+    // point's motion, and the whole line holds against it.
+    expect(groups[0].refs[0].ref).toEqual({ kind: 'entity', index: spIndex, point: Sel.c1 })
+    expect(groups[0].refs[1].ref).toEqual({ kind: 'entity', index: spIndex, point: Sel.c1 })
+    expect(groups[1].refs[0].ref).toEqual({ kind: 'entity', index: lineIndex, point: Sel.absent })
+    expect(groups[1].refs[1].ref).toEqual({ kind: 'entity', index: spIndex, point: Sel.c1 })
+  })
+
+  it('lowers a whole-entity anchor beside a point member at its first point', () => {
+    const { input, layout } = lowerSketch({
+      id: 'S1',
+      entities: [
+        { id: 'c1', kind: 'circle' },
+        { id: 'sp', kind: 'spline' },
+      ],
+      initial: { c1: [5, 5, 1], sp: [0, 0, 1, 2, 3, 4, 5, 6] },
+      constraints: [{
+        id: 'g1', kind: 'group',
+        refs: [{ entity: 'c1' }, { entity: 'sp', point: 'c2' }],
+      }],
+    })
+    const spIndex = layout.findIndex(l => l.id === 'sp')
+    const groups = input.constraints.filter(c => c.kind === ConstraintKindCode.group)
+    expect(groups[0].refs[1].ref).toEqual({
+      kind: 'entity', index: layout.findIndex(l => l.id === 'c1'), point: Sel.center,
+    })
+    expect(groups[1].refs[0].ref).toEqual({ kind: 'entity', index: spIndex, point: Sel.c2 })
+    expect(groups[1].refs[1].ref).toEqual({
+      kind: 'entity', index: layout.findIndex(l => l.id === 'c1'), point: Sel.center,
+    })
+  })
+
+  it('fails loud on a member that is not a local entity ref', () => {
     expect(() => lowerSketch({
       id: 'S1',
       entities: [{ id: 'l1', kind: 'line' }],

@@ -479,11 +479,37 @@ export function applyAddConstraint(
       return
     }
   } else if (kind === 'group') {
-    // A group stores its whole member list in `refs` (the n-ary spelling the
-    // ngon sugar uses, and the one the lowering reads). The first member is the
-    // anchor. addConstraintProblem refused a vertex, the origin and a projected
-    // member, so every target is an authored entity of this sketch.
-    c.refs = [...new Set(targets.map(pt))]
+    // A group stores its whole and point members in `refs` (the n-ary spelling
+    // the lowering reads). The first member is the anchor. addConstraintProblem
+    // refused the origin, a projected member, a point key the kind lacks, a
+    // whole-plus-point duplicate and a lone point, so every target here is an
+    // authored entity or point of this sketch.
+    const refs: string[] = []
+    const seen = new Set<string>()
+    for (const target of targets) {
+      let ref: string
+      let eid: string | undefined
+      let point: string | undefined
+      if (target.startsWith('entity:') || target.startsWith('vertex:')) {
+        const parts = target.split(':')
+        eid = parts[2]
+        point = target.startsWith('vertex:') ? parts[3] : undefined
+      } else {
+        const resolved = resolveVertexRef(entityIds, target)
+        eid = resolved?.entity
+        point = resolved?.point
+      }
+      // A point entity's single vertex `xy` IS the entity: store it whole so a
+      // point member can never cover a whole member of the same entity.
+      const wholePoint = point === 'xy' && eid !== undefined && kindById.get(eid) === 'point'
+      if (eid === undefined) ref = pt(target)
+      else if (wholePoint || point === undefined) ref = `$${eid}`
+      else ref = `$${eid}${point}`
+      if (seen.has(ref)) continue
+      seen.add(ref)
+      refs.push(ref)
+    }
+    c.refs = refs
   } else if (kind === 'horizontal' || kind === 'vertical') {
     // Overloaded: one line -> `target` (make the line axis-aligned); two points
     // -> `a`/`b` (share a coordinate). addConstraintProblem refused the empty or
@@ -681,17 +707,23 @@ export function applyDeleteElements(
     if (entsToDelete.size > 0) {
       if (feature.entities) feature.entities = feature.entities.filter(e => !entsToDelete.has(e.id))
       if (feature.initial) for (const eid of entsToDelete) delete feature.initial[eid]
-      // Garbage-collect constraints that reference deleted entities.
+      // A group survives losing a member: it shrinks, and the first remaining
+      // member becomes the anchor (the residual reads the first target). A lone
+      // point left behind removes the group: its own pair is the whole
+      // translation, so it holds nothing. Only the last member's removal and
+      // that point case delete the group, the one place a constraint outlives
+      // the usual cascade.
+      const remainingIds = new Set((feature.entities ?? []).map(e => e.id))
       if (feature.constraints) {
         for (const c of feature.constraints) {
-          // A group survives losing a member: it shrinks, and the first
-          // remaining member becomes the anchor (the residual reads the first
-          // target). Only the last member's removal deletes the group, which is
-          // the one place a constraint outlives the usual cascade.
           if (c.kind === 'group' && Array.isArray(c.refs)) {
             const kept = c.refs.filter(r => !_refMatchesDeleted(r, entsToDelete))
             if (kept.length === 0) consToDelete.add(c.id)
-            else if (kept.length !== c.refs.length) c.refs = kept
+            else if (kept.length !== c.refs.length) {
+              const lone = kept.length === 1 ? resolveVertexRef(remainingIds, kept[0]) : null
+              if (lone?.point !== undefined) consToDelete.add(c.id)
+              else c.refs = kept
+            }
             continue
           }
           if (_refsDeletedEntity(c, entsToDelete)) consToDelete.add(c.id)

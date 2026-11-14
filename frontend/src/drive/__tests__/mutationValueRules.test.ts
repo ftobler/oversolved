@@ -2320,7 +2320,7 @@ describe('add_constraint group values', () => {
     expect(error.message).toContain('takes no value')
   })
 
-  it('refuses a projected member and a vertex', () => {
+  it('refuses a projected member and a lone point, and admits point members', () => {
     expect(refusal(
       { type: 'add_constraint', featureId: 'sk1', kind: 'group', targets: ['$l1', '$p1'] },
       projectedDoc(),
@@ -2328,6 +2328,11 @@ describe('add_constraint group values', () => {
     expect(refusal(
       { type: 'add_constraint', featureId: 'sk1', kind: 'group', targets: ['vertex:sk1:l1:start'] },
       projectedDoc(),
-    ).message).toContain('not a vertex')
+    ).message).toContain('at least two points')
+    const ok = validateMutation(
+      { type: 'add_constraint', featureId: 'sk1', kind: 'group', targets: ['$l1start', '$l1end'] },
+      { doc: projectedDoc() },
+    )
+    expect(ok.ok).toBe(true)
   })
 })

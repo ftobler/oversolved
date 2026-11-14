@@ -397,8 +397,10 @@ export function planFilletCorners(
 
       // Trimming changes the side's held shape, which is exactly what a Group
       // constraint forbids: the corner cannot be rounded while the entity is
-      // glued to its current form.
-      const group = constraints.find(c => c.kind === 'group' && touchesEntity(c, side.id))
+      // glued to its current form, whether the group holds the whole entity or
+      // only the corner point that the trim moves.
+      const group = constraints.find(c => c.kind === 'group'
+        && (touchesEntity(c, side.id) || touchesVertex(c, side.id, side.key)))
       if (group !== undefined) {
         return {
           code: 'invalid',

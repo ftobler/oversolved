@@ -61,10 +61,11 @@ interface CarryTemplate {
   // prefix is the stored ref's own leading `$` (or nothing for a bare id),
   // kept so the clone is spelled like its source.
   operands: { field: keyof PartConstraint; sourceId: string; key: string; prefix: string }[]
-  /** A group's member refs, in anchor-first order. Pooled separately from
-   *  `operands` because a group has no single-ref field: each member is one
-   *  entry of its `refs` array. */
-  groupRefs?: { sourceId: string; prefix: string }[]
+  /** A group's member refs, in anchor-first order, with each member's point key
+   *  so the copy names the transformed image. Pooled separately from `operands`
+   *  because a group has no single-ref field: each member is one entry of its
+   *  `refs` array. */
+  groupRefs?: { sourceId: string; key: string; prefix: string }[]
 }
 
 /** A sketch's plane ref in one spelling: `Front`, `builtin_plane_front` and
@@ -102,16 +103,18 @@ function carryTemplates(constraints: readonly PartConstraint[], sourceIds: reado
   for (const c of constraints) {
     if (c.kind === 'projection') continue
     // A group copies as one group per instance, over that instance's copies of
-    // its members, and only when every member is a source. Every member ref
-    // must be a bare entity (no vertex key): the group holds whole entities.
+    // its members, and only when every member is a source. A member may be a
+    // whole entity or a single point of one; the point key rides along so the
+    // copy names the transformed point (a rigid motion keeps a named point in
+    // its slot).
     if (c.kind === 'group') {
       const refs = Array.isArray(c.refs) ? c.refs : []
-      const groupRefs: { sourceId: string; prefix: string }[] = []
+      const groupRefs: { sourceId: string; key: string; prefix: string }[] = []
       let outside = refs.length === 0
       for (const ref of refs) {
         const hit = typeof ref === 'string' ? operandSource(ref, sourceIds) : null
-        if (hit === null || hit.key !== '') { outside = true; break }
-        groupRefs.push({ sourceId: hit.sourceId, prefix: hit.prefix })
+        if (hit === null) { outside = true; break }
+        groupRefs.push({ sourceId: hit.sourceId, key: hit.key, prefix: hit.prefix })
       }
       if (outside) {
         warn('pattern_entities: group has a member outside the source set, left on the source', { id: c.id })
@@ -167,7 +170,10 @@ function instantiate(
   const c = template.constraint
   const cloned: PartConstraint = { ...c }
   if (template.groupRefs !== undefined) {
-    cloned.refs = template.groupRefs.map(g => g.prefix + idMap.get(g.sourceId)!)
+    cloned.refs = template.groupRefs.map(g => {
+      const key = g.key === '' ? '' : transformVertexKey(kindOf.get(g.sourceId) ?? '', g.key)
+      return g.prefix + idMap.get(g.sourceId)! + key
+    })
   }
   for (const op of template.operands) {
     const key = op.key === '' ? '' : transformVertexKey(kindOf.get(op.sourceId) ?? '', op.key)

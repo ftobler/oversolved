@@ -181,6 +181,23 @@ function lowerConstraint(
         dropped.push({ id: c.id, kind: authoredKind, reason: 'unresolvable group member' })
         return null
       }
+      // A point member names a point the entity's CURRENT kind must still have:
+      // the solver's `point()` falls back to the first point for a selector the
+      // kind lacks, which would silently hold a different point than the user
+      // picked. The document keeps the row, like the single-ref operand path.
+      if (resolved.point !== undefined) {
+        const info = entityInfo.get(resolved.entity)
+        if (info !== undefined) {
+          const keys = entityPointKeys(info.kind, info.nParams, info.handles)
+          if (keys !== undefined && !keys.has(resolved.point)) {
+            dropped.push({
+              id: c.id, kind: authoredKind,
+              reason: `operand ${resolved.point} not on ${info.kind}`,
+            })
+            return null
+          }
+        }
+      }
       refs.push(resolved)
     }
     if (refs.length === 0) {
