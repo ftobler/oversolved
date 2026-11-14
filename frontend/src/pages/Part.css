@@ -17,6 +17,10 @@
      left side. The Features card takes the larger part of the share
      (58/42, .document-panel below). */
   --left-cards-height: 85%;
+  /* A side panel list row is its content plus twice this block padding. Trimmed
+     from 8px so a few more feature rows fit before the list scrolls; the parts
+     list takes the same token when it gets the shared rhythm. */
+  --list-row-pad-block: 7px;
 }
 
 .document-viewer {
@@ -423,7 +427,7 @@
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 8px 8px;
+  padding: var(--list-row-pad-block) 8px;
   margin: 2px 0;
   border-radius: 4px;
   font-size: 14px;
