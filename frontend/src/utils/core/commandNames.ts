@@ -80,6 +80,7 @@ export const COMMAND_NAMES = [
   'set_part_fixed_oneshot',
   'set_part_position',
   'set_part_rotation',
+  'set_part_doc',
   'delete_mate',
   'update_mate',
   'reorder_part',

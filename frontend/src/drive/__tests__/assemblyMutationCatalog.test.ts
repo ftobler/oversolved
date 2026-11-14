@@ -236,6 +236,41 @@ describe('validateAssemblyMutation refusals', () => {
     expect(!result.ok && result.error.message).toContain('does not read offset')
   })
 
+  it('validates a part rebind and keeps the mate rows untouched', () => {
+    const validated = validate({ type: 'set_part_doc', handle: 'left', part: 'panel' })
+    expect(validated.ok).toBe(true)
+    if (!validated.ok || 'macro' in validated) throw new Error('unreachable')
+    expect(validated.operation).toBe('set_part_doc')
+    expect(validated.input).toEqual({ handle: 'left', docId: 'panel' })
+
+    const plan = planAssemblyOperation('set_part_doc', validated.input as never, {
+      doc: docWithLeft(), transforms: {},
+    })!
+    expect(plan.doc.features![0].instance!.doc_id).toBe('panel')
+    expect(plan.doc.features![2]).toEqual(docWithLeft().features![2])
+
+    const unbound = validate({ type: 'set_part_doc', handle: 'left', part: 'ghost' })
+    expect(unbound).toMatchObject({ ok: false, error: { code: 'unknown-target' } })
+    expect(!unbound.ok && unbound.error.message).toContain('bound parts: panel, rail_400')
+
+    const empty = validate({ type: 'set_part_doc', handle: 'left', part: '' })
+    expect(empty).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+    expect(!empty.ok && empty.error.message).toContain('non-empty doc_id')
+  })
+
+  it('states that a rebind leaves mate refs to the solver stale rules', () => {
+    const note = ASSEMBLY_MUTATION_CATALOG.set_part_doc.note!
+    expect(note).toContain('keep their ref rows unchanged')
+    expect(note).toContain('anchorByGeomHash')
+    expect(note).toContain('anchor descriptor')
+    expect(note).toContain('the mate reports stale')
+    // The refusal asymmetry: the bound check is the validator's, the cycle
+    // check only exists where the assembly id is known.
+    expect(note).toContain('shape-only')
+    expect(note).toContain('`thrown`')
+    expect(note).toContain('self/cycle refusal lives only in the operation layer')
+  })
+
   it('accepts a null parameter as the documented delete', () => {
     const result = validate({ type: 'update_mate', featureId: 'm1', angle: null })
     expect(result.ok).toBe(true)

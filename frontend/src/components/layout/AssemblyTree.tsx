@@ -236,6 +236,12 @@ export function AssemblyTree({
             const editing = editingInstanceHandle === inst.handle
             const failMark = partFailure(inst.handle, status ?? null)
             const menuItems: ContextMenuItem[] = [
+              // A failed part is the one row with a repair action of its own:
+              // its editor holds the Part picker, which waits on the missing
+              // doc_id as soon as the row opens.
+              ...(failMark.failed
+                ? [{ label: 'Rebind part', icon: featurePartIcon, onClick: () => onEditInstance(inst.handle) }]
+                : []),
               { label: 'Open in new tab', icon: featurePartIcon, onClick: () => onOpenPartNewTab(inst.handle) },
               { label: 'Duplicate', icon: contextDuplicateIcon, onClick: () => onDuplicateInstance(inst.handle) },
               {

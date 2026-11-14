@@ -109,6 +109,7 @@ const ASSEMBLY_PARAMS: Readonly<Record<string, unknown>> = {
   set_part_fixed_oneshot: { handle: 'handle-1', fixed: false },
   set_part_position: { handle: 'handle-1', pos: { tx: 0, ty: 0, tz: 0 } },
   set_part_rotation: { handle: 'handle-1', euler: { rx: 0, ry: 0, rz: 0 } },
+  set_part_doc: { handle: 'handle-1', docId: 'part-1' },
   delete_mate: 'mate-1',
   update_mate: { id: 'mate-1', patch: { flip: true } },
   reorder_part: { movingHandle: 'handle-1', beforeHandle: null },

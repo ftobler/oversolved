@@ -392,6 +392,16 @@ export function setInstanceRotation(doc: AssemblyDoc, handle: string, euler: Eul
   }))
 }
 
+// Point an instance at a different part document. The handle, pose, visibility
+// and fixed flag describe the PLACEMENT, not the part, so they stay; `doc_rev`
+// was the old part's placement provenance and says nothing about the new one,
+// so it resets. Mates name the instance by handle, so their ref rows are left
+// untouched: the solve re-resolves each anchor against the new part and reports
+// a mate stale when it cannot (fail-safe over fail-wrong).
+export function setInstancePartDoc(doc: AssemblyDoc, handle: string, docId: string): AssemblyDoc {
+  return updateInstance(doc, handle, inst => ({ ...inst, doc_id: docId, doc_rev: 0 }))
+}
+
 /** A transform's orientation as the editor's degree triple. */
 export function rotationFromTransform(t: Transform3D): EulerDeg {
   const [rx, ry, rz] = quatToEulerXyz([t.qx, t.qy, t.qz, t.qw])

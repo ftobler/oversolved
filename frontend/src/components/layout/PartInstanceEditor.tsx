@@ -5,7 +5,9 @@
 //
 // Presentational: the fixed flag, position and rotation edits leave through
 // callbacks, so the logic (assemblyMutations.ts) stays viewport-free and
-// unit-tested.
+// unit-tested. The Part picker takes the same path: it only reports the picked
+// doc id, and set_part_doc does the rebind, so the repair for an instance whose
+// doc_id resolves to nothing stays testable without the Viewport.
 //
 // The rotation row is the ONLY orientation control a fixed part has: the
 // triad gizmo is refused for a `fixed` instance (isManipulable,
@@ -28,9 +30,21 @@ interface PartInstanceEditorProps {
   // the bake. Optional so a pure-seed caller (a test, a future inline use) still
   // works.
   pose?: Transform3D
+  // The workspace's live part documents, so the instance can be rebound when
+  // its doc_id resolves to nothing. `undefined` means the list has not landed
+  // (or the caller does not offer a pick); an empty array is the real answer
+  // "no parts". Optional with onSetPartDoc so the rotation and pose callers stay
+  // a pure editor of the placement.
+  partOptions?: readonly PartOption[]
+  onSetPartDoc?: (docId: string) => void
   onSetFixed: (fixed: boolean) => void
   onSetPosition: (pos: { tx: number; ty: number; tz: number }) => void
   onSetRotation: (euler: EulerDeg) => void
+}
+
+export interface PartOption {
+  id: string
+  name: string
 }
 
 type Axis = 'tx' | 'ty' | 'tz'
@@ -50,7 +64,7 @@ function round3(v: number): number {
 }
 
 export function PartInstanceEditor({
-  instance, pose, onSetFixed, onSetPosition, onSetRotation,
+  instance, pose, partOptions, onSetPartDoc, onSetFixed, onSetPosition, onSetRotation,
 }: PartInstanceEditorProps) {
   // The drawn pose is the basis, not the seed: the seed can sit where the part
   // was placed while the viewport draws it pulled onto its mates.
@@ -104,6 +118,13 @@ export function PartInstanceEditor({
     setRotText({ rx: String(round3(r.rx)), ry: String(round3(r.ry)), rz: String(round3(r.rz)) })
   }
 
+  // `undefined` is "the part list has not landed"; an empty array is the real
+  // answer "this workspace holds no parts", so only a landed list can call the
+  // current doc_id dangling.
+  const listedParts = partOptions ?? []
+  const partKnown = listedParts.some(option => option.id === instance.doc_id)
+  const partMissing = partOptions !== undefined && !partKnown
+
   const commitRot = (axis: RotAxis, raw: string) => {
     const nextText = { ...rotText, [axis]: raw }
     setRotText(nextText)
@@ -131,6 +152,38 @@ export function PartInstanceEditor({
   return (
     // Clicks inside the editor must not bubble to the row's select handler.
     <div className="instance-editor" onClick={e => e.stopPropagation()}>
+      {onSetPartDoc && (
+        <>
+          <label className="feature-field-row">
+            <span className="feature-field-label instance-label--wide">Part</span>
+            {/* A dangling id stays visible as the placeholder, but it is not a
+                value the user can re-commit: only a live pick writes. */}
+            <select
+              className="feature-field-select"
+              aria-label="Part document"
+              value={partMissing ? '' : instance.doc_id}
+              autoFocus={partMissing}
+              onChange={e => {
+                const picked = e.target.value
+                if (picked !== '') onSetPartDoc(picked)
+              }}
+            >
+              {partMissing && <option value="">{instance.doc_id} (missing)</option>}
+              {!partKnown && !partMissing && <option value={instance.doc_id}>{instance.doc_id}</option>}
+              {listedParts.map(option => (
+                <option key={option.id} value={option.id}>{option.name}</option>
+              ))}
+            </select>
+          </label>
+          {partMissing && (
+            <p className="instance-part-missing" role="status">
+              {listedParts.length === 0
+                ? 'This part is missing, and this workspace has no parts to rebind it to.'
+                : 'This part is missing. Pick a part to rebind the instance.'}
+            </p>
+          )}
+        </>
+      )}
       <label className="feature-field-row">
         <span className="feature-field-label instance-label--wide">Fixed</span>
         <input

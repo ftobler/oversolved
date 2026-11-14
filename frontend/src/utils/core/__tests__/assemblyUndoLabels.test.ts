@@ -19,6 +19,7 @@ const ALL_ASSEMBLY_UNDO_LABELS = [
   'Rename mate',
   'Reorder mate',
   'Reorder part',
+  'Set part document',
   'Set position',
   'Set rotation',
   'Toggle built-in visibility',

@@ -93,6 +93,21 @@ import { backendBundle } from '@/adapters/backend'
 import { MAX_STEP_IMPORT_BYTES } from '@/stores/documentStore/stepImport'
 import { tick, renderEditor, installSessionFromList, insertPart } from './AssemblyEditor.harness'
 
+// A document a partial import leaves behind: the instance names a part the
+// workspace does not hold, which is the state the picker exists to repair.
+const DANGLING_ASSEMBLY = [
+  'kind: assembly',
+  'features:',
+  '  - id: inst_left',
+  '    kind: part_instance',
+  '    instance:',
+  '      handle: left',
+  '      doc_id: ghost',
+  '      doc_rev: 3',
+  '      transform: { tx: 10, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }',
+  '',
+].join('\n')
+
 describe('AssemblyEditor (Stage 6b)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -217,6 +232,77 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(instances).toHaveLength(1)
     expect(instances[0].doc_id).toBe('part-1')
     expect(instances[0].doc_rev).toBe(5)
+  })
+
+  // The repair for a partial import: the instance names a part the workspace
+  // does not hold, so the picker offers the live parts (minus the assembly) and
+  // a pick dispatches set_part_doc with the instance handle and that doc id.
+  it('rebinds a dangling instance from the picker and undo restores the old doc_id', async () => {
+    h.loadContent = DANGLING_ASSEMBLY
+    h.list = [
+      { uuid: 'part-1', name: 'Bracket', kind: 'part', meta: { rev: 5 } },
+      { uuid: 'part-2', name: 'Bolt', kind: 'part', meta: { rev: 2 } },
+      // The assembly itself is in the workspace list but is not insertable or
+      // rebindable, so it must not be an option.
+      { uuid: 'asm-1', name: 'My Assembly', kind: 'assembly' },
+    ]
+    await renderLoaded()
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+
+    const picker = screen.getByLabelText('Part document') as HTMLSelectElement
+    expect([...picker.options].map(option => option.textContent)).toEqual([
+      'ghost (missing)', 'Bolt', 'Bracket',
+    ])
+    expect([...picker.options].map(option => option.value)).not.toContain('asm-1')
+
+    fireEvent.change(picker, { target: { value: 'part-1' } })
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].doc_id).toBe('part-1')
+    // The pick folds into the open editor, so it owns no entry until OK.
+    expect(useAssemblyStore.getState().undoStack).toHaveLength(0)
+
+    fireEvent.click(screen.getByTitle('OK'))
+    await tick()
+    expect(useAssemblyStore.getState().undoStack).toHaveLength(1)
+    expect(useAssemblyStore.getState().undoStack[0].label).toBe('Set part document')
+
+    act(() => { executeCommand('undo') })
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].doc_id).toBe('ghost')
+  })
+
+  // The picker sits in the instance editor, and that editor's Cancel promises
+  // to revert its own edits; a rebind must join the session rather than land as
+  // its own step the Cancel cannot reach.
+  it('Cancel reverts a rebind like the editor\'s other edits', async () => {
+    h.loadContent = DANGLING_ASSEMBLY
+    await renderLoaded()
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+
+    fireEvent.change(screen.getByLabelText('Part document'), { target: { value: 'part-2' } })
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].doc_id).toBe('part-2')
+
+    fireEvent.click(screen.getByTitle('Cancel'))
+    await tick()
+    expect(useAssemblyStore.getState().instances[0].doc_id).toBe('ghost')
+    expect(useAssemblyStore.getState().undoStack).toHaveLength(0)
+  })
+
+  // A part deleted in another tab is still in the mount-time list. Opening the
+  // editor re-reads the workspace, so the option is gone before it can be
+  // picked (and the operation guard would refuse it by name if it were not).
+  it('refreshes the rebind options when the instance editor opens', async () => {
+    h.loadContent = DANGLING_ASSEMBLY
+    await renderLoaded()
+    h.list = h.list.filter(entry => entry.uuid !== 'part-2')
+
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+    await tick()
+    await tick()
+
+    const picker = screen.getByLabelText('Part document') as HTMLSelectElement
+    expect([...picker.options].map(option => option.value)).not.toContain('part-2')
   })
 
   it('lists the assembly origin planes hidden by default and toggles one visible', async () => {
@@ -490,6 +576,27 @@ describe('AssemblyEditor (Stage 6b)', () => {
     const instances = useAssemblyStore.getState().instances
     expect(instances).toHaveLength(1)
     expect(instances[0]).toMatchObject({ doc_id: 'step-part' })
+  })
+
+  it('offers a STEP part imported while the assembly is open to the rebind picker', async () => {
+    h.loadContent = DANGLING_ASSEMBLY
+    // The workspace write the import performs is what a later list sees.
+    h.addStepPart.mockImplementation(async () => {
+      h.list = [...h.list, { uuid: 'step-part', name: 'Housing', kind: 'part', meta: { rev: 0 } }]
+      return { partId: 'step-part', fileId: 'step-file', name: 'Housing', reused: false }
+    })
+    await renderLoaded()
+
+    const bytes = new Uint8Array([1, 2, 3])
+    await importStepFile({ name: 'housing.step', size: 3, arrayBuffer: async () => bytes.buffer })
+    await tick()
+    await tick()  // the refresh the import asks for
+
+    // The dangling row is first; the imported instance follows it.
+    fireEvent.click(screen.getAllByLabelText('Edit part instance')[0])
+    const picker = screen.getByLabelText('Part document') as HTMLSelectElement
+    expect([...picker.options].map(option => option.value)).toContain('step-part')
+    expect([...picker.options].map(option => option.textContent)).toContain('Housing')
   })
 
   it('rejects an oversize STEP before reading it', async () => {

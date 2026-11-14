@@ -292,6 +292,7 @@ are user-entered takes them as data and the dialog is only a front end.
 | `add_part_pattern` (drive only) | One instance plus mate per hole a selector matches, one undo entry |
 | `add_step_part` (drive only) | Import a STEP from the files map as a part document and instance it, one undo entry |
 | `set_part_visible` / `set_part_fixed*` | Toggle visibility or the fixed flag |
+| `set_part_doc` | Rebind an instance to another part document (repairs a dangling ref) |
 | `insert_mate_<kind>` / `update_mate` / `delete_mate` | Mate authoring |
 | `export_assembly` / `cancel_edit` | Assembly-level actions |
 

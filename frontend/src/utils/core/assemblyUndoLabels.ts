@@ -12,6 +12,7 @@ export const ASSEMBLY_UNDO_LABELS = {
   togglePlaneVisibility: 'Toggle plane visibility',
   toggleOriginVisibility: 'Toggle origin visibility',
   toggleBuiltinVisibility: 'Toggle built-in visibility',
+  setPartDoc: 'Set part document',
   fixUnfixPart: 'Fix/unfix part',
   setPosition: 'Set position',
   setRotation: 'Set rotation',

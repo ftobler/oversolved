@@ -27,6 +27,7 @@ import {
 import { runAssemblyOperation, type AssemblyOperationId, type AssemblyOperationInputs } from '@/utils/assemblyOperations'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { interpretEntry } from '@/workspace/kinds'
+import type { EntryMeta } from '@/workspace/types'
 import { addStepPart } from '@/workspace/stepPart'
 import { stepImportLimitError } from '@/stores/documentStore/stepImport'
 import type { AssemblySubject } from '@/utils/assemblySelection'
@@ -36,7 +37,7 @@ import { AssemblyTree } from '@/components/layout/AssemblyTree'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { PanelsToggle } from '@/components/layout/PanelsToggle'
 import { MateEditor } from '@/components/layout/MateEditor'
-import { PartInstanceEditor } from '@/components/layout/PartInstanceEditor'
+import { PartInstanceEditor, type PartOption } from '@/components/layout/PartInstanceEditor'
 import AssemblyPartPicker from '@/components/dialogs/AssemblyPartPicker'
 import RenameDialog from '@/components/dialogs/RenameDialog'
 import RawDocumentDialog from '@/components/dialogs/RawDocumentDialog'
@@ -72,6 +73,17 @@ const MATE_KIND_ICONS: Record<MateKind, string> = {
   parallel_plane_distance: mateParallelPlaneDistanceIcon,
   tangential: mateTangentialIcon,
   copy_rotation: mateCopyRotationIcon,
+}
+
+// The empty view shared by every render before the workspace list lands.
+const NO_DOC_NAMES: Record<string, string> = {}
+
+// One entry list read three ways: tree labels, the live-part set the mutation
+// guard checks, and the instance editor's rebind options. They are built
+// together so no path can update two of the three.
+interface PartListView {
+  names: Record<string, string>
+  options: PartOption[]
 }
 
 export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; workspaceId?: string }) {
@@ -150,38 +162,57 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   // reaches across the library.
   const session = useWorkspaceSessionStore(s => s.session)
 
-  // Part document names, so the tree shows 'Bracket' rather than the raw uuid.
+  // Part document names, so the tree shows 'Bracket' rather than the raw uuid,
+  // plus the instance editor's rebind options: this workspace's parts, minus
+  // the assembly itself (pointing an instance at its own assembly is a cycle).
   // A failed list is swallowed on purpose: names are a nicety here and the tree
   // falls back to the uuid, which is worse to read but never wrong. The same
-  // fetch is where the add_part guard's live-part set comes from, so the two can
-  // never disagree about which parts this workspace holds.
-  const [docNames, setDocNames] = useState<Record<string, string>>({})
+  // fetch is where the add_part guard's live-part set comes from, so the names,
+  // the guard and the picker can never disagree about which parts exist.
+  const [partList, setPartList] = useState<PartListView | null>(null)
+  const docNames = partList?.names ?? NO_DOC_NAMES
   // Null until the list lands: an empty set would be a real answer (no parts),
   // but an unloaded one must not refuse a pick the user just made.
   const knownPartIds = useRef<ReadonlySet<string> | null>(null)
-  useEffect(() => {
+
+  const applyPartList = useCallback((list: readonly EntryMeta[]) => {
+    const names: Record<string, string> = {}
+    const ids = new Set<string>()
+    const options: PartOption[] = []
+    for (const entry of list) {
+      names[entry.id] = entry.name
+      const interpreted = interpretEntry({ kind: entry.kind, name: entry.name, docKind: entry.docKind })
+      if (interpreted.ok && interpreted.docKind === 'part') {
+        ids.add(entry.id)
+        if (entry.id !== uuid) options.push({ id: entry.id, name: entry.name })
+      }
+    }
+    options.sort((a, b) => a.name.localeCompare(b.name))
+    knownPartIds.current = ids
+    setPartList({ names, options })
+  }, [uuid])
+
+  // The list is a view, not the document: refresh it on mount, when the inline
+  // editor opens, and after a STEP import, so a part added or deleted in
+  // another tab is pickable (or gone) without reopening the assembly.
+  const refreshPartList = useCallback((isCancelled: () => boolean = () => false) => {
     if (!session) {
       knownPartIds.current = null
+      // Deferred a microtask: a synchronous clear here is a setState inside the
+      // mount effect's body, and nothing may be picked before it lands anyway.
+      queueMicrotask(() => { if (!isCancelled()) setPartList(null) })
       return
     }
-    knownPartIds.current = null
-    let cancelled = false
     session.listEntries()
-      .then(list => {
-        if (cancelled) return
-        const names: Record<string, string> = {}
-        const parts = new Set<string>()
-        for (const entry of list) {
-          names[entry.id] = entry.name
-          const interpreted = interpretEntry({ kind: entry.kind, name: entry.name, docKind: entry.docKind })
-          if (interpreted.ok && interpreted.docKind === 'part') parts.add(entry.id)
-        }
-        setDocNames(names)
-        knownPartIds.current = parts
-      })
+      .then(list => { if (!isCancelled()) applyPartList(list) })
       .catch(() => undefined)
+  }, [session, applyPartList])
+
+  useEffect(() => {
+    let cancelled = false
+    refreshPartList(() => cancelled)
     return () => { cancelled = true }
-  }, [session])
+  }, [refreshPartList])
 
   // The hook's memo is what goes into the store, not a second extraction of the
   // same features. This is a de-duplication and nothing more: the memo is keyed
@@ -321,12 +352,15 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
       // I8: the outward link a part instance authors is refused at the mutation
       // unless the doc it names is a live part entry in this workspace.
       knownPartIds: knownPartIds.current ?? undefined,
+      // The rebind's cycle guard: an instance may not point at the assembly
+      // that carries it.
+      assemblyDocId: uuid,
       mutateSession: mutate,
       mutateOneShot,
       requestSolve,
       requestSolveOrDefer: () => useAssemblyStore.getState().requestSolveOrDefer(),
     })
-  }, [docRef, mutate, mutateOneShot, requestSolve])
+  }, [docRef, mutate, mutateOneShot, requestSolve, uuid])
 
   // Insert a mate with both references empty, open its editor and arm ref_a, so
   // the very next click in the viewport aims the first reference. The append
@@ -392,9 +426,20 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
       try {
         const imported = await addStepPart(workspace, bytes, { fileName: file.name })
         // The add_part guard reads this set, so the new part must be in it
-        // before the command runs.
+        // before the command runs. The picker's view gets the same entry, so
+        // the part this gesture just created can be chosen for a rebind too.
         if (knownPartIds.current) knownPartIds.current = new Set([...knownPartIds.current, imported.partId])
-        setDocNames(names => ({ ...names, [imported.partId]: imported.name }))
+        setPartList(prev => prev === null ? prev : {
+          names: { ...prev.names, [imported.partId]: imported.name },
+          options: prev.options.some(option => option.id === imported.partId)
+            ? prev.options
+            : [...prev.options, { id: imported.partId, name: imported.name }]
+              .sort((a, b) => a.name.localeCompare(b.name)),
+        })
+        // A list fetched before the import landed does not name the new part;
+        // ask the workspace again so the optimistic entry and the stored one
+        // cannot drift.
+        refreshPartList()
         const added = executeCommand('add_part', { docId: imported.partId, docRev: 0 })
         if (!added.ok) setError(added.message)
       } catch (e) {
@@ -402,7 +447,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
       }
     }
     input.click()
-  }, [uuid, workspaceId, session, setError])
+  }, [uuid, workspaceId, session, setError, refreshPartList])
 
   const openEntryInNewTab = useOpenEntryInNewTab(workspaceId ?? uuid)
   const handleOpenPartNewTab = useCallback((handle: string) => {
@@ -420,6 +465,10 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   // the hook pins the whole pre-session doc on the session's first edit.
   const handleEditInstance = useCallback((handle: string) => {
     closeOpenEditor()
+    // The picker's source is a view of the workspace, not the document: refresh
+    // it on open so a part added or deleted in another tab is pickable, or
+    // refused before it can be written.
+    refreshPartList()
     useAssemblyStore.getState().openInstanceEditor(handle)
     useAssemblyStore.getState().selectPart(handle)
     // Freeze the drawn pose here, before any edit this session can trigger a
@@ -430,7 +479,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
       handle,
       pose: useAssemblyStore.getState().settledPose(handle) ?? (doc ? findInstance(doc, handle)?.transform : undefined),
     })
-  }, [closeOpenEditor, docRef])
+  }, [closeOpenEditor, docRef, refreshPartList])
 
   const handleCommitInstance = useCallback(() => {
     // Accept closes the coalescing session: every live position/rotation/fixed
@@ -617,11 +666,24 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     <PartInstanceEditor
       instance={inst}
       pose={(poseBasis?.handle === inst.handle ? poseBasis.pose : undefined) ?? inst.transform}
+      partOptions={partList?.options}
+      onSetPartDoc={docId => {
+        if (!docId) return  // the missing placeholder is not a choice
+        try {
+          const result = executeCommand('set_part_doc', { handle: inst.handle, docId })
+          if (!result.ok) setError(result.message)
+        } catch (e) {
+          // The operation guard throws by name for a part that is no longer a
+          // live entry (deleted since the list landed) or the assembly itself; a
+          // React event handler must report that rather than unwind the tree.
+          setError(errorMessage(e, 'Failed to rebind part'))
+        }
+      }}
       onSetFixed={f => executeCommand('set_part_fixed', { handle: inst.handle, fixed: f })}
       onSetPosition={pos => executeCommand('set_part_position', { handle: inst.handle, pos })}
       onSetRotation={euler => executeCommand('set_part_rotation', { handle: inst.handle, euler })}
     />
-  ), [poseBasis])
+  ), [poseBasis, partList, setError])
 
   const renderMateEditor = useCallback((mate: { id: string; mate: MateFeatureDef }) => (
     <MateEditor
