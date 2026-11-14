@@ -514,6 +514,38 @@ fn a_point_member_translates_with_the_group_and_leaves_its_other_params_free() {
 }
 
 #[test]
+fn a_distance_between_two_held_points_is_redundant() {
+    // The group already holds the circle centre at a fixed offset from the
+    // line end, so an explicit distance between those two points adds no rank.
+    // This is the redundancy probe and the DOF report agreeing on a point group.
+    let params = vec![0.0, 0.0, 10.0, 0.0, 10.0, 4.0, 2.0];
+    let inp = input(
+        vec![line(0), ent(Kind::Circle, 4)],
+        params,
+        vec![
+            point_group(1, PointSelector::Center, 0, PointSelector::End),
+            cons_v(
+                ConstraintKind::PointDistance,
+                vec![
+                    (RefRole::A, e_ref(0, PointSelector::End)),
+                    (RefRole::B, e_ref(1, PointSelector::Center)),
+                ],
+                4.0,
+            ),
+        ],
+    );
+    let out = solve_sketch(&inp);
+    assert_eq!(out.overall_status, Status::Underconstrained.to_u8());
+    // Seven params minus the two held rows: the line keeps its other endpoint
+    // and the circle its radius, all still free.
+    assert_eq!(out.diagnostics.dof, 5);
+    assert_eq!(
+        out.constraint_flags[1] & crate::CONSTRAINT_FLAG_REDUNDANT,
+        crate::CONSTRAINT_FLAG_REDUNDANT
+    );
+}
+
+#[test]
 fn a_whole_member_holds_against_a_point_anchor() {
     // The anchor is a spline control point, not the line's own start, so the
     // whole line's four coordinate rows all measure against `point_jac(anchor)`.
