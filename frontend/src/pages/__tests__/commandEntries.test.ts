@@ -20,6 +20,7 @@ const PROGRAMMATIC_ONLY = new Set([
   'set_tool_center_rect',
   'set_tool_ngon',  // toolbar-only compound tool (no keyboard shortcut)
   'apply_offset',   // selection action triggered from the toolbar
+  'freeze_projection',  // context menu and command palette only (no shortcut)
   'add_hole',
   'add_transform',
   'add_shell',  // toolbar-only (no keyboard shortcut)

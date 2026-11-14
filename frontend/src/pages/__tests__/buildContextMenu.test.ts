@@ -23,6 +23,7 @@ function defaultInput(overrides?: Partial<BuildContextMenuInput>): BuildContextM
     partLabels: {},
     builtInIds: new Set(),
     hasDanglingContent: false,
+    projectedTargetIds: [],
     ...overrides,
   }
 }
@@ -44,6 +45,7 @@ function defaultCallbacks(): BuildContextMenuCallbacks {
     onToggleConstraintTiles: () => {},
     onExportBody: () => {},
     onNewSketchOnPlane: () => {},
+    onFreezeProjection: () => {},
     onShowContextMenu: () => {},
   }
 }
@@ -742,6 +744,40 @@ describe('buildContextMenu', () => {
         defaultCallbacks(),
       )
       expect(findLabel(result.items, 'Normal to')!.disabled).toBe(true)
+    })
+  })
+
+  describe('frozen projection items', () => {
+    it('offers Convert to fixed and Break link only for a projected target', () => {
+      const callbacks = defaultCallbacks()
+      const seen: Array<['fixed' | 'free', readonly string[]]> = []
+      callbacks.onFreezeProjection = (mode, targets) => { seen.push([mode, targets]) }
+      const result = buildContextMenu(
+        defaultInput({
+          activeSketchFeatureId: 'sketch1',
+          projectedTargetIds: ['entity:sketch1:pe1'],
+        }),
+        callbacks,
+      )
+      const fixed = findLabel(result.items, 'Convert to fixed')
+      const free = findLabel(result.items, 'Break link (keep free)')
+      expect(fixed).toBeTruthy()
+      expect(free).toBeTruthy()
+      fixed!.onClick()
+      free!.onClick()
+      expect(seen).toEqual([
+        ['fixed', ['entity:sketch1:pe1']],
+        ['free', ['entity:sketch1:pe1']],
+      ])
+    })
+
+    it('keeps both items out of the board when nothing projected is picked', () => {
+      const result = buildContextMenu(
+        defaultInput({ activeSketchFeatureId: 'sketch1', projectedTargetIds: [] }),
+        defaultCallbacks(),
+      )
+      expect(findLabel(result.items, 'Convert to fixed')).toBeUndefined()
+      expect(findLabel(result.items, 'Break link (keep free)')).toBeUndefined()
     })
   })
 

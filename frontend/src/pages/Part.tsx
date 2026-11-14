@@ -9,6 +9,8 @@ import { isFaceRestriction } from '@/kernel/occ/primitives'
 import { findEdgeKindForQuery } from '@/picking/bodyDispatchCallbacks'
 import { classifyPendingAdd } from '@/kernel/features/constraintProbe'
 import { PROJECTION_NOT_FROZEN_TITLE, projectionNotFrozenMessage } from '@/kernel/features/projectionMembers'
+import { projectedSelectionTargets } from '@/utils/yamlMutations/freezeProjection'
+import { executeCommand } from '@/utils/core/commandRegistry'
 import { resolvedKindsOfSketch } from '@/kernel/features/sketch'
 import { docVisibleFeatureIds, visibleFeatureIds } from '@/utils/featureVisibility'
 import { useSketchEditorStore, useSketchUiStore, setSketchCallback, clearSketchCallbacks, sketchOwnedDeleteTargets, deleteMutationFor, type PendingConstraint } from '@/stores/sketchEditorStore'
@@ -1462,8 +1464,25 @@ export default function Part() {
     enterEditSketch(featureId)
   }, [features, enterEditSketch])
 
-  const handleRightClick = useCallback((pos: [number, number], targetId?: string) => {
+  const handleRightClick = useCallback((pos: [number, number], targetId?: string, pickedSelectionId?: string) => {
     const store = useSketchEditorStore.getState()
+    // The freeze items act on the picked sketch entity or constraint tile, then
+    // on the current selection for a bare viewport right-click. A feature-tree
+    // target is a feature, never a projected element, so it offers neither.
+    const picked = pickedSelectionId ?? (targetId ? null : store.hoveredSelectionId)
+    // A picked target already in the selection acts on the whole selection;
+    // otherwise the picked one is the target and the callback selects it.
+    const candidates = picked !== null
+      ? (store.normalSelection.has(picked) ? store.normalSelection : new Set([picked]))
+      : targetId
+        ? new Set<string>()
+        : store.normalSelection
+    const activeFeature = activeSketchFeatureId
+      ? features.find(feature => feature.id === activeSketchFeatureId)
+      : undefined
+    const projectedTargetIds = activeFeature?.kind === 'sketch'
+      ? projectedSelectionTargets(activeFeature, candidates)
+      : []
     const input: BuildContextMenuInput = {
       pos,
       targetId,
@@ -1482,6 +1501,7 @@ export default function Part() {
       partLabels,
       builtInIds: BUILT_IN_IDS,
       hasDanglingContent,
+      projectedTargetIds,
     }
     const callbacks: BuildContextMenuCallbacks = {
       onRebuild: handleRebuild,
@@ -1502,6 +1522,13 @@ export default function Part() {
       onSetPartColorPopover: handleSetPartColorPopover,
       onExportBody: (bodyId, name) => exportImportRef.current?.openExport(bodyId, name),
       onNewSketchOnPlane: handleNewSketchOnPlane,
+      onFreezeProjection: (mode, targets) => {
+        // The command is selection-driven, so land the picked target first and
+        // then dispatch: no hover is needed once the menu item fires.
+        useSketchEditorStore.getState().setNormalSelection(new Set(targets))
+        executeCommand('freeze_projection', { mode })
+        setContextMenu(null)
+      },
       onShowContextMenu: (items, tid) => setContextMenu({ position: pos, targetId: tid, items }),
     }
     const { items } = buildContextMenu(input, callbacks)

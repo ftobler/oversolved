@@ -18,7 +18,8 @@ import { evalExpr } from '@/kernel/evalExpr'
 import { planPatternEntities } from '@/utils/yamlMutations/sketchPattern'
 import { MAX_PATTERN_INSTANCES } from '@/utils/geometry/sketchPattern'
 import type { CommandName } from '@/utils/core/commandNames'
-import { noParams, objectParams, Field, type CommandResult, type ErasedCommandSpec, type CommandSpec } from '@/utils/core/commandSpec'
+import { noParams, objectParams, Field, type CommandResult, type ErasedCommandSpec, type CommandSpec, type FieldSpec, type ParseOutcome } from '@/utils/core/commandSpec'
+import { projectedSelectionTargets, type FreezeProjectionMode } from '@/utils/yamlMutations/freezeProjection'
 
 // The four ordered outcomes of the Escape key in the sketch editor. The first
 // matching rule wins, so this is the single source of truth the `cancel_draw`
@@ -285,6 +286,41 @@ const toggleConstructionSpec: PartCommandSpec = {
   enabled: () => true,
   run: ctx => {
     ctx.state().toggleConstruction()
+    return okResult()
+  },
+}
+
+const freezeModeField: FieldSpec<FreezeProjectionMode> = {
+  type: '"fixed" | "free"',
+  parse: (raw): ParseOutcome<FreezeProjectionMode> => raw === 'fixed' || raw === 'free'
+    ? { ok: true, value: raw }
+    : { ok: false, error: 'expected "fixed" or "free"' },
+}
+
+// The freeze command is selection-driven: the context menu selects its picked
+// entity or tile first, and the command palette uses the current selection.
+// `enabled` reads the document because only a projection row (or a face
+// projection's member) can be frozen; a plain entity selection is not enough.
+const freezeProjectionSpec: CommandSpec<PartCommandContext, { mode: FreezeProjectionMode }> = {
+  id: 'freeze_projection',
+  label: 'Convert projection to fixed',
+  shortcut: partShortcut('freeze_projection'),
+  params: objectParams({ mode: freezeModeField }),
+  undoable: true,
+  enabled: ctx => {
+    const st = ctx.state()
+    if (st.activeFeatureId === null || st.normalSelection.size === 0) {
+      return 'no projected entity or projection selected'
+    }
+    const feature = (ctx.session?.getDoc()?.features ?? [])
+      .find(candidate => candidate.id === st.activeFeatureId)
+    if (feature?.kind !== 'sketch') return 'no projected entity or projection selected'
+    return projectedSelectionTargets(feature, st.normalSelection).length > 0
+      ? true
+      : 'no projected entity or projection selected'
+  },
+  run: (ctx, { mode }) => {
+    ctx.state().freezeProjection(mode)
     return okResult()
   },
 }
@@ -604,6 +640,7 @@ export const PART_COMMAND_SPECS: readonly ErasedCommandSpec<PartCommandContext>[
   ngonToolSpec,
   dimensionToolSpec,
   toggleConstructionSpec,
+  freezeProjectionSpec,
   ...constraintSpecs,
   finishDrawSpec,
   cancelDrawSpec,

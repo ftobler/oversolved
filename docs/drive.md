@@ -143,8 +143,9 @@ A script is an array (or `{ steps: [...] }`) of steps:
 - A successful step can also carry `captured` (the orientation an assembly
   mate measured), `poseKept` (a fixed toggle's kept pose), `part` (the part an
   `add_step_part` bound and instanced), `note` (a caveat beside `ok`, such as
-  a face projection deleted without rows to freeze, or projections left at
-  their last position after a source delete) and `noteIds` (the features that
+  a face projection deleted without rows to materialize, or projections left at
+  their last position after a source delete; `freeze_projection` unlinks those
+  and pins their position) and `noteIds` (the features that
   note is about, so the reply's top-level `notes` can sort it). The table entry
   above is the full field list.
 
@@ -637,8 +638,9 @@ banner on stdout, so a client config must use the direct node invocation.
   below). `fixed` makes a sketch read fully constrained but carries no design
   intent: dimension against projected geometry (`add_projected_entity`; a face
   projection follows later edits, and deleting the projection constraint freezes
-  its derived members into ordinary geometry) or
-  `@builtin_origin` instead, and reserve `fixed` for deliberately frozen
+  its derived members into ordinary geometry), freeze the projection with
+  `freeze_projection` to unlink it while keeping its position as fixed geometry,
+  or use `@builtin_origin` instead, and reserve `fixed` for deliberately frozen
   geometry such as an imported DXF. An `overconstrained` sketch is a real
   failure and is listed; the tree and the open editor add the number of
   conflicting constraints. A feature
@@ -844,10 +846,10 @@ banner on stdout, so a client config must use the direct node invocation.
 - `mutations` is the discovery path for the script vocabulary: `commands` act
   on the current selection, while mutation steps author geometry with explicit
   feature and entity ids. Each visible entry carries its fields and a summary,
-  and the examples are five scripts (`box`, `filleted-box`, `tapered-block`,
-  `projection`, `emboss-on-cylinder`); the catalog tests build all five through
-  the real kernel. The catalog is generated where
-  it can be: `add_entity`
+  and the examples are six scripts (`box`, `filleted-box`, `tapered-block`,
+  `projection`, `projection-freeze`, `emboss-on-cylinder`); the catalog tests
+  build all six through the real kernel. The catalog is generated where it can
+  be: `add_entity`
   lists the params slot order of every entity kind from the entity registry
   (`line [x1, y1, x2, y2]`, `circle [cx, cy, r]`,
   `arc [cx, cy, r, a0_deg, a1_deg]`, and so on, with arc and ellipse angles in

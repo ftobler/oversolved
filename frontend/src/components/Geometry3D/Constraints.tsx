@@ -10,12 +10,18 @@ import { constraintTileLabel, CONSTRAINT_BY_KIND } from '@/registry/constraintRe
 import { computeConstraintRender } from '@/utils/geometry/geometryMapping'
 import { ignoredConstraintWarning } from '@/utils/constraintProblems'
 
-function ConstraintTile({ url, title, id, featureId, highlightIds, superfluous, culprit }: { url: string; title: string; id: string; featureId: string; highlightIds: string[]; superfluous?: boolean; culprit?: boolean }) {
+function ConstraintTile({ url, title, id, featureId, highlightIds, superfluous, culprit, onContextMenu }: { url: string; title: string; id: string; featureId: string; highlightIds: string[]; superfluous?: boolean; culprit?: boolean; onContextMenu?: (pos: [number, number]) => void }) {
   const [hovered, setHovered] = useState(false)
   const wasHoveredRef = useRef(false)
   const cId = `constraint:${featureId}:${id}`
   const selected = useSketchEditorStore(s => s.normalSelection.has(cId))
   const setHoveredConstraintEntities = useSketchEditorStore(s => s.setHoveredConstraintEntities)
+
+  const selectSelf = () => {
+    const s = useSketchEditorStore.getState()
+    s.clearNormalSelection()
+    s.addToNormalSelection(cId)
+  }
 
   // Clear hover state on unmount so deleting a hovered constraint tile does not
   // leave the geometry stuck in the constraint-highlight color.
@@ -47,7 +53,16 @@ function ConstraintTile({ url, title, id, featureId, highlightIds, superfluous, 
       title={title}
       onMouseEnter={() => { wasHoveredRef.current = true; setHovered(true); setHoveredConstraintEntities(new Set(highlightIds)) }}
       onMouseLeave={() => { wasHoveredRef.current = false; setHovered(false); setHoveredConstraintEntities(new Set()) }}
-      onClick={(e) => { e.stopPropagation(); const s = useSketchEditorStore.getState(); s.clearNormalSelection(); s.addToNormalSelection(cId) }}
+      onClick={(e) => { e.stopPropagation(); selectSelf() }}
+      onContextMenu={(e) => {
+        // The tile is a DOM overlay, so the canvas right-click listener never
+        // sees this event. Select the tile first, exactly as a click does, and
+        // hand the page the picked constraint so the menu can act without a hover.
+        e.preventDefault()
+        e.stopPropagation()
+        selectSelf()
+        onContextMenu?.([e.clientX, e.clientY])
+      }}
       onPointerDown={(e) => e.stopPropagation()}
       style={{
         width: ICON_SIZE,
@@ -90,6 +105,9 @@ interface ConstraintOverlaysProps {
   /** The authored constraint bodies, the only place a dropped constraint's
    *  operands still live; the solved map has no render for it. */
   authoredConstraints?: readonly PartConstraint[]
+  /** A tile's own right-click: the page opens its context menu with the picked
+   *  constraint, so a projected tile can offer the freeze actions. */
+  onSelectionContextMenu?: (selectionId: string, pos: [number, number]) => void
 }
 
 /** One red tile per dropped constraint: the glyph the constraint would have had,
@@ -130,7 +148,7 @@ function droppedConstraintTiles(
   return tiles
 }
 
-export function ConstraintOverlays({ constraints, sketch, extent, featureId, planeTransform, droppedConstraints, authoredConstraints }: ConstraintOverlaysProps) {
+export function ConstraintOverlays({ constraints, sketch, extent, featureId, planeTransform, droppedConstraints, authoredConstraints, onSelectionContextMenu }: ConstraintOverlaysProps) {
   const drag = useSketchEditorStore(s => s.drag)
   const isDragging = drag !== null
   const showConstraintTiles = useSketchUiStore(s => s.showConstraintTiles)
@@ -199,7 +217,7 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
         <Html key={`icons-${eid}-${atKey}`} position={[at[0], at[1], LABEL_Z_OFFSET]} style={{ pointerEvents: 'none' }}>
           <div style={{ marginLeft: 20, marginTop: -8, display: 'flex', flexWrap: 'wrap', width: groupWidth, gap: 2 }}>
             {icons.map(({ url, title, key, highlightIds, superfluous, culprit }) => (
-              <ConstraintTile key={key} url={url} title={title} id={key} featureId={featureId} highlightIds={highlightIds} superfluous={superfluous} culprit={culprit} />
+              <ConstraintTile key={key} url={url} title={title} id={key} featureId={featureId} highlightIds={highlightIds} superfluous={superfluous} culprit={culprit} onContextMenu={onSelectionContextMenu ? pos => onSelectionContextMenu(`constraint:${featureId}:${key}`, pos) : undefined} />
             ))}
           </div>
         </Html>

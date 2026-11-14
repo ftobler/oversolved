@@ -261,6 +261,26 @@ function childIds(feature: PartFeature): Set<string> {
   return ids
 }
 
+/** The ids of the fixed constraints a freeze added. The plan's reply contract
+ *  names those, not the member rows a face freeze also writes, so a freeze step
+ *  reports the pins that hold the geometry rather than the baked rows. */
+function createdFixedConstraintIds(before: PartDoc, after: PartDoc): string[] {
+  const out: string[] = []
+  for (const feature of after.features ?? []) {
+    if (feature.kind !== 'sketch') continue
+    const beforeFeature = before.features?.find(candidate => candidate.id === feature.id)
+    const held = new Set(
+      beforeFeature?.kind === 'sketch'
+        ? (beforeFeature.constraints ?? []).map(constraint => constraint.id)
+        : [],
+    )
+    for (const constraint of feature.constraints ?? []) {
+      if (constraint.kind === 'fixed' && !held.has(constraint.id)) out.push(constraint.id)
+    }
+  }
+  return out
+}
+
 function createdIdsBetween(before: PartDoc, after: PartDoc): string[] {
   const beforeIds = contentIds(before)
   const beforeChildren = new Map<string, Set<string>>()
@@ -843,6 +863,12 @@ export class DocSession {
   }
 
   private createdIdsFor(mutations: Mutation[], before: PartDoc, after: PartDoc): SessionSuccess {
+    // A freeze's reply names the fixed constraints that now pin the geometry.
+    // A face freeze also writes member entity rows; those keep derived ids the
+    // caller already knows, and reporting them would bury the pins.
+    if (mutations.length > 0 && mutations.every(m => m.type === 'freeze_projection')) {
+      return okResult(createdFixedConstraintIds(before, after))
+    }
     if (!mutations.some(m => CREATING_MUTATION_TYPES.has(m.type))) return okResult()
     const created = createdIdsBetween(before, after)
     // An import's group is a constraint, not an imported entity: the reply

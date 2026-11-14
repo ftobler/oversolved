@@ -38,7 +38,8 @@ import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/per
 import { arrayCountProblem } from '@/persistence/docSchema'
 import { pickedSketchEntity } from '@/kernel/features/shared/bodyRef'
 import { circleDrillSiteReason } from '@/kernel/features/shared/drillSite'
-import { isFaceProjectionSource } from '@/kernel/features/projectionMembers'
+import { isFaceProjectionSource, isProjectionPosition } from '@/kernel/features/projectionMembers'
+import { projectionTargetRef } from '@/utils/yamlMutations/freezeProjection'
 import { SelectorError, validateSelector } from '@/kernel/select'
 import { declaredSelectorKind, selectorShapeHint } from '@/drive/selectionAids'
 
@@ -706,6 +707,62 @@ function deleteRule(raw: RawStep, ctx: ValueContext): ValueViolation | null {
       const what = target.kind === 'constraint' ? 'constraint' : 'entity'
       return unknownTarget(`delete target names no ${what} ${json(target.id)} in sketch ${target.featureId}`)
     }
+  }
+  return null
+}
+
+/** The freeze target must name a projection row in the sketch, and a
+ *  single-entity projection must already hold a baked position; a face
+ *  projection's member rows are the drive's/applier's check because the payload
+ *  is filled from the settle right before dispatch. */
+function freezeProjectionRule(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const target = raw.target
+  if (typeof target !== 'string' || target === '') {
+    return invalid(`freeze_projection target must be a non-empty id, got ${json(target)}`)
+  }
+  if (raw.mode !== undefined && raw.mode !== 'fixed' && raw.mode !== 'free') {
+    return invalid(`freeze_projection mode must be "fixed" or "free", got ${json(raw.mode)}`)
+  }
+  if (raw.materialize !== undefined) {
+    if (!Array.isArray(raw.materialize) || raw.materialize.length === 0) {
+      return invalid(`materialize must be a non-empty list of member rows, got ${json(raw.materialize)}`)
+    }
+    for (let i = 0; i < raw.materialize.length; i++) {
+      const row = raw.materialize[i]
+      if (!isRecord(row) || typeof row.id !== 'string' || row.id === ''
+        || typeof row.kind !== 'string' || row.kind === ''
+        || !Array.isArray(row.params) || !row.params.every(isFiniteNumber)) {
+        return invalid(`materialize[${i}] must be {id, kind, params} with a finite param list, got ${json(row)}`)
+      }
+    }
+  }
+  if (ctx.doc === null) return null
+  const featureId = raw.featureId
+  if (typeof featureId !== 'string') {
+    return invalid(`freeze_projection featureId must be a sketch id, got ${json(featureId)}`)
+  }
+  const sketch = sketchOf(ctx.doc, featureId)
+  if (sketch === undefined) {
+    return unknownTarget(`freeze_projection names no sketch feature ${json(featureId)}`)
+  }
+  const constraints = sketch.constraints ?? []
+  const constraint = constraints.find(c => c.id === target && c.kind === 'projection')
+    ?? constraints.find(c => c.kind === 'projection' && c.target === projectionTargetRef(target))
+    ?? constraints.find(c => c.kind === 'projection' && c.target === undefined
+      && Object.values(c.members ?? {}).includes(target))
+  if (constraint === undefined) {
+    return unknownTarget(
+      `freeze_projection target ${json(target)} names no projection in sketch ${json(featureId)}`,
+    )
+  }
+  if (constraint.target === undefined) return null
+  const entityId = constraint.target.startsWith('$') ? constraint.target.slice(1) : constraint.target
+  const entity = (sketch.entities ?? []).find(candidate => candidate.id === entityId)
+  if (entity === undefined || !isProjectionPosition(sketch.initial?.[entityId], entity.kind, entity.handles)) {
+    return unknownTarget(
+      `freeze_projection target ${json(target)} holds ${json(entityId)}, which has no position to freeze; `
+      + 'delete the projection instead',
+    )
   }
   return null
 }
@@ -2086,6 +2143,7 @@ export const MUTATION_VALUE_RULES = {
   set_constraint_pos: setConstraintPos,
   set_constraint_sign: 'none',
   delete: deleteRule,
+  freeze_projection: freezeProjectionRule,
   add_entity: addEntity,
   add_entity_with_constraint: addEntityWithConstraint,
   import_dxf: importDxf,

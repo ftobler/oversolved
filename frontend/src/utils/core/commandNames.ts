@@ -66,6 +66,7 @@ export const COMMAND_NAMES = [
   'apply_angle',
   'apply_radius_difference',
   'apply_projection',
+  'freeze_projection',
 
   // Assembly editor. Mate insertion is insert_mate_<MateKind>.
   'export_assembly',

@@ -14,11 +14,72 @@
 
 import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/faceTypes'
-import { entityVertexIndices } from '@/registry'
+import { entityVertexIndices, getDefaultParams, ENTITY_BY_KIND } from '@/registry'
 import type { PartDoc } from '@/types/cad'
 
 /** Hex characters of the construction UUID a member id starts with. */
 export const MEMBER_ID_HEX = 8
+
+/** End handles a fit spline entity stores: 0, 2 or 4 scalars (one x/y pair
+ *  each). `lowerSketch` derives the same count from the entity's `handles`. */
+export function fitHandleCount(handles: unknown): number {
+  return (handles === 'start' || handles === 'both' ? 1 : 0)
+    + (handles === 'end' || handles === 'both' ? 1 : 0)
+}
+
+/** The block a projection of `kind` displays when it has no position: the
+ *  registry default, extended with zero end handles for a handled fit spline so
+ *  the block matches the layout `lowerSketch` builds from `handles`. */
+export function defaultProjectionBlock(kind: string, handles?: unknown): number[] {
+  const defaults = [...getDefaultParams(kind)]
+  for (let i = 2 * fitHandleCount(handles); i > 0; i--) defaults.push(0)
+  return defaults
+}
+
+/**
+ * True when a stored `initial` block is exactly the kind's default block. The
+ * projection fallback used to bake that block for a source that never resolved,
+ * so a document written by the old fallback looks like it has a position -- the
+ * reported bug is an all-zero spline at the sketch origin. No genuine projection
+ * produces the block: the defaults are a zero-length line/circle/arc/spline, or
+ * a two-point fit spline, which a resolved source would have to collapse onto
+ * itself to match.
+ */
+export function isDefaultProjectionBlock(params: unknown, kind: string, handles?: unknown): boolean {
+  if (!Array.isArray(params)) return false
+  const defaults = defaultProjectionBlock(kind, handles)
+  if (!defaults.length || params.length !== defaults.length) return false
+  return params.every((v, i) => v === defaults[i])
+}
+
+/**
+ * True when a stored `initial` block is a position in the declared kind's own
+ * layout. A projection keeps its last position only on this answer.
+ *
+ * The block can belong to another kind: a projection declared `line` that
+ * resolved to a `point` (an end-on source) caches 2 params, one declared
+ * `spline` that resolved to `fit_spline` caches 2N. Padding or truncating that
+ * block to the declared kind's arity invents geometry at the stale position,
+ * which the "keep the last position" rule then makes permanent.
+ *
+ * A `fit_spline` block is its own layout, so the test is its handle slots plus
+ * at least two fit points, both even. That still cannot tell a four-point fit
+ * block (8 scalars) from a cubic spline of the same length; a row still
+ * declared `spline` is read as the cubic it claims. This app does not write
+ * that disagreement: the write-back adopts the resolved kind in the same pass
+ * that installs the block. It can only come from a pre-adoption or hand-edited
+ * document, which carries no provenance to decide it.
+ */
+export function isProjectionPosition(stored: unknown, kind: string, handles?: unknown): boolean {
+  if (!Array.isArray(stored) || isDefaultProjectionBlock(stored, kind, handles)) return false
+  const def = ENTITY_BY_KIND.get(kind)
+  if (def === undefined) return false
+  if (def.variableParams) {
+    const fitParams = stored.length - 2 * fitHandleCount(handles)
+    return fitParams >= def.paramCount && fitParams % 2 === 0
+  }
+  return stored.length === def.paramCount
+}
 
 /** One boundary edge of a face, resolved from the body's mesh or B-rep. */
 export interface FaceBoundaryEdge {
@@ -306,7 +367,8 @@ export function describeProjectionSourceProblem(
 
 /** What a delete does to projections that source the removed geometry. */
 export interface ProjectionDependentsReport {
-  // `sk2/p1, sk3/q3 projected sk1/l1 and keep their last position`.
+  // `sk2/p1, sk3/q3 projected sk1/l1 and keep their last position; convert
+  // them to fixed to unlink them`.
   text: string
   // The consuming sketches, in feature order, for the note's ids.
   ids: string[]
@@ -360,7 +422,8 @@ export function projectionDependentsReport(
   }
   if (dependents.length === 0) return null
   return {
-    text: `${dependents.join(', ')} projected ${sources.join(', ')} and keep their last position`,
+    text: `${dependents.join(', ')} projected ${sources.join(', ')} and keep their last position; `
+      + 'convert them to fixed to unlink them',
     ids,
   }
 }
@@ -514,6 +577,15 @@ export function projectionNotFrozenMessage(constraintIds: readonly string[]): st
   const plural = constraintIds.length === 1 ? 'projection' : 'projections'
   return `${plural} ${named} ${constraintIds.length === 1 ? 'has' : 'have'} no solved member rows to freeze; `
     + 'removed without materializing geometry'
+}
+
+/** The freeze command's version of the same note: the projection is deliberately
+ *  left in place, which is the opposite of what the delete note promises. */
+export function projectionNoRowsToFreezeMessage(constraintIds: readonly string[]): string {
+  const named = constraintIds.join(', ')
+  const plural = constraintIds.length === 1 ? 'projection' : 'projections'
+  return `${plural} ${named} ${constraintIds.length === 1 ? 'has' : 'have'} no solved member rows to freeze; `
+    + 'left in place'
 }
 
 /** The targeted face projections a delete will freeze nothing for: each has

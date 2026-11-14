@@ -82,6 +82,8 @@ describe('value rules cover the catalog', () => {
     ['set_constraint_pos', { type: 'set_constraint_pos', featureId: 'sk1', constraintId: 'c1', pos: [0] }],
     ['set_constraint_value', { type: 'set_constraint_value', featureId: 'sk1', constraintId: 'c_dist', value: 0 }, pointDistanceDoc()],
     ['delete', { type: 'delete', targets: ['sk1/l1'] }],
+    ['freeze_projection', { type: 'freeze_projection', featureId: 'sk1', target: '' }],
+    ['freeze_projection', { type: 'freeze_projection', featureId: 'sk1', target: 'e1', mode: 'pinned' }],
     ['add_entity', { type: 'add_entity', featureId: 'sk1', kind: 'arc', params: [0, 0, 1, 0, 90, 180] }],
     ['insert_fit_point', { type: 'insert_fit_point', featureId: 'sk1', entityId: 'sp1', index: -1, point: [0, 0] }],
     ['set_fit_spline_handle', { type: 'set_fit_spline_handle', featureId: 'sk1', entityId: 'sp1', end: 'middle', handle: [0, 0] }],

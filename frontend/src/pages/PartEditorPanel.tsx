@@ -58,7 +58,7 @@ interface PartEditorPanelProps {
   // import greyed out even when the page's mode still reads sketch.
   canImportDxf: boolean
   viewportRef: React.RefObject<ViewportHandle | null>
-  handleRightClick: (pos: [number, number], targetId?: string) => void
+  handleRightClick: (pos: [number, number], targetId?: string, pickedSelectionId?: string) => void
   // Bottom-right in-viewport overlay (the measurement readout).
   viewportHud?: ReactNode
   // The viewer options button, stacked above the orientation cube.
@@ -140,7 +140,13 @@ export default function PartEditorPanel({
         )}
         <div className="viewport-stage">
           <EditorErrorBoundary label="viewport">
-            <Viewport ref={viewportRef} onRightClick={(pos) => handleRightClick(pos)} hud={viewportHud} viewOptions={viewportViewOptions} />
+            <Viewport
+              ref={viewportRef}
+              onRightClick={(pos) => handleRightClick(pos)}
+              onSelectionContextMenu={(selectionId, pos) => handleRightClick(pos, undefined, selectionId)}
+              hud={viewportHud}
+              viewOptions={viewportViewOptions}
+            />
           </EditorErrorBoundary>
           <LoadingOverlay isDocumentLoading={loading} />
           {/* The overlay containers are positioning-only and click-through;

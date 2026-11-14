@@ -175,7 +175,7 @@ describe('applyDeleteElements names projections that keep their last position', 
     if (sk2.kind !== 'sketch') throw new Error('not a sketch')
     sk2.constraints = [{ id: 'p_q2', kind: 'projection', target: '$q2', source: '@sk1/l1' }]
     expect(applyDeleteElements(d, ['entity:sk1:l1'])).toEqual({
-      text: 'sk2/q2 projected sk1/l1 and keep their last position',
+      text: 'sk2/q2 projected sk1/l1 and keep their last position; convert them to fixed to unlink them',
       ids: ['sk2'],
     })
   })
@@ -186,7 +186,7 @@ describe('applyDeleteElements names projections that keep their last position', 
     if (sk1.kind !== 'sketch') throw new Error('not a sketch')
     sk1.constraints = [{ id: 'p_p1', kind: 'projection', target: '$p1', source: '$l1' }]
     expect(applyDeleteElements(d, ['entity:sk1:l1'])).toEqual({
-      text: 'sk1/p1 projected sk1/l1 and keep their last position',
+      text: 'sk1/p1 projected sk1/l1 and keep their last position; convert them to fixed to unlink them',
       ids: ['sk1'],
     })
   })

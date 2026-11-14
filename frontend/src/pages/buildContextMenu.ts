@@ -13,7 +13,10 @@ import contextColorIcon from '@/assets/icons/context-color.svg'
 import iconRenameIcon from '@/assets/icons/rename.svg'
 import featureExportIcon from '@/assets/icons/icon-download.svg'
 import constraintTileIcon from '@/assets/icons/constraint-coincident.svg'
+import constraintFixedIcon from '@/assets/icons/constraint-fixed.svg'
+import constraintProjectionIcon from '@/assets/icons/constraint-projection.svg'
 import featureSketchIcon from '@/assets/icons/feature-sketch.svg'
+import type { FreezeProjectionMode } from '@/utils/yamlMutations/freezeProjection'
 
 // The query a sketch stores to reference a plane. Built-in planes carry a fixed
 // query id that differs from their feature id ('Front' -> '@builtin_plane_front').
@@ -76,6 +79,11 @@ export interface BuildContextMenuInput {
   // Whether the last solve flagged any dangling projections or superfluous
   // constraints; gates the cleanup item so an empty command is never offered.
   hasDanglingContent: boolean
+  // The selection ids of the projected entities and projection tiles the
+  // right-click acts on, resolved by the caller from the picked entity/tile
+  // first and then the current selection. Empty keeps the freeze items out of
+  // the board; the command selects these before it runs.
+  projectedTargetIds: readonly string[]
 }
 
 export interface BuildContextMenuCallbacks {
@@ -94,6 +102,7 @@ export interface BuildContextMenuCallbacks {
   onSetPartColorPopover: (opts: { bodyId: string; position: [number, number] } | null) => void
   onExportBody: (bodyId: string, name: string) => void
   onNewSketchOnPlane: (planeQuery: string) => void
+  onFreezeProjection: (mode: FreezeProjectionMode, targets: readonly string[]) => void
   onShowContextMenu: (items: ContextMenuItem[], targetId?: string) => void
 }
 
@@ -116,6 +125,7 @@ export function buildContextMenu(
       ...surfaceItems(ctx),
       ...rebuildItems(ctx),
       ...sketchSessionItems(ctx),
+      ...freezeProjectionItems(ctx),
       ...visibilityItems(ctx),
       ...managementItems(ctx),
     ],
@@ -361,6 +371,29 @@ function sketchSessionItems(ctx: MenuContext): ContextMenuItem[] {
       onClick: () => {
         if (canNormalToSketch) callbacks.onAlignCameraToSketchPlane()
       },
+    },
+  ]
+}
+
+// The two freeze gestures are only meaningful on a projection, so they are the
+// one pair the board adds and drops instead of greying: an empty projection
+// pick must not grow two always-dead slots in every sketch menu. The item
+// passes the resolved target ids so the page can select them before the command
+// runs, which keeps the action independent of a live hover.
+function freezeProjectionItems(ctx: MenuContext): ContextMenuItem[] {
+  const { callbacks, input } = ctx
+  if (input.activeSketchFeatureId === undefined || input.projectedTargetIds.length === 0) return []
+  const targets = input.projectedTargetIds
+  return [
+    {
+      label: 'Convert to fixed',
+      icon: constraintFixedIcon,
+      onClick: () => callbacks.onFreezeProjection('fixed', targets),
+    },
+    {
+      label: 'Break link (keep free)',
+      icon: constraintProjectionIcon,
+      onClick: () => callbacks.onFreezeProjection('free', targets),
     },
   ]
 }

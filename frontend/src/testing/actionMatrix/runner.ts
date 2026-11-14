@@ -33,6 +33,7 @@ const MINIMAL_PARAMS: Partial<Record<CommandName, unknown>> = {
   apply_offset: { distance: 5 },
   fillet_corners: { radius: 5 },
   pattern_entities: { count: 3, pitch: 10 },
+  freeze_projection: { mode: 'fixed' },
 }
 
 export interface MatrixSweep {

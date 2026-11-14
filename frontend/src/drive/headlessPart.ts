@@ -24,6 +24,9 @@ import { projectSourceQuery } from '@/kernel/features/sketch'
 import { createDocSession, type DocSession } from '@/session/DocSession'
 import type { SolveOptions, SolveSchedulerState } from '@/session/SolveScheduler'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
+import { MutationRefusal } from '@/utils/yamlMutations/helpers'
+import { projectionTargetRef } from '@/utils/yamlMutations/freezeProjection'
+import { errorResult } from '@/session/result'
 import { createWorkerSolveScheduler, type ReSolveFn } from '@/hooks/workerSolveScheduler'
 import { createDeferredSolveScheduler, type DeferredSolveScheduler } from '@/drive/deferredSolveScheduler'
 import { finalLiveBodyIds, measureSolveFeatures, solveLocally, type FeatureMeasure } from '@/kernel/solveLocally'
@@ -188,6 +191,10 @@ export interface HeadlessPart {
 function isFaceProjectionStep(mutation: unknown): boolean {
   if (typeof mutation !== 'object' || mutation === null) return false
   const step = mutation as { type?: unknown; source?: unknown }
+  // A freeze reads the last settle for a face projection's member rows (and the
+  // drive flushes first by contract), so it joins the body-query step here even
+  // when the target turns out to be a single-entity projection.
+  if (step.type === 'freeze_projection') return true
   return step.type === 'add_projected_entity'
     && typeof step.source === 'string'
     && isFaceProjectionSource(step.source)
@@ -284,6 +291,34 @@ function withProjectionFreeze(
   }
   const frozen = rows.length > 0 ? { ...mutation, materialize: rows } : mutation
   return empty.length > 0 ? { mutation: frozen, frozenNothing: empty } : { mutation: frozen }
+}
+
+/** Fill a drive `freeze_projection` of a face projection with the member rows
+ *  the last solve derived, the headless twin of the editor's published-solve
+ *  payload. A single-entity projection needs no rows; an unresolved face keeps
+ *  the mutation bare so the applier's named refusal is what the step reports. */
+function withFreezeMaterialize(
+  mutation: Mutation,
+  doc: PartDoc | null,
+  result: BuildResponse['result'] | undefined,
+): Mutation {
+  if (mutation.type !== 'freeze_projection' || mutation.materialize !== undefined || doc === null) {
+    return mutation
+  }
+  const feature = (doc.features ?? []).find(candidate => candidate.id === mutation.featureId)
+  if (feature?.kind !== 'sketch') return mutation
+  const constraints = feature.constraints ?? []
+  const target = mutation.target
+  const constraint = constraints.find(c => c.id === target && c.kind === 'projection')
+    ?? constraints.find(c => c.kind === 'projection' && c.target === projectionTargetRef(target))
+    ?? constraints.find(c => c.kind === 'projection' && c.target === undefined
+      && Object.values(c.members ?? {}).includes(target))
+  if (constraint === undefined || constraint.target !== undefined) return mutation
+  const reports = (result?.[feature.id] as {
+    projection_members?: Record<string, { entities: ProjectionMemberEntity[]; orphans?: string[] }>
+  } | undefined)?.projection_members
+  const rows = freezeRowsForDelete(feature.id, feature, [`constraint:${feature.id}:${constraint.id}`], reports)
+  return rows === undefined ? mutation : { ...mutation, materialize: rows }
 }
 
 export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
@@ -516,18 +551,32 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
           // the layer rows the step reply reports.
           const importable = resolveDxfFile(validated.mutation, opts.files, docBox.current)
           if (!importable.ok) return { ok: false, code: importable.code, message: importable.message }
-          const frozen = withProjectionFreeze(importable.mutation, docBox.current, responseBox.current?.result)
+          const projected = withProjectionFreeze(importable.mutation, docBox.current, responseBox.current?.result)
+          // A face freeze records the member rows from the settle the step
+          // flushed above, so a journal replay writes the same bytes without a
+          // live solve.
+          const mutation = projected.mutation.type === 'freeze_projection'
+            ? withFreezeMaterialize(projected.mutation, docBox.current, responseBox.current?.result)
+            : projected.mutation
           // The downstream-projection note reads the rows before the delete:
           // afterwards the source is gone and the note has nothing to name.
-          const dependents = frozen.mutation.type === 'delete' && docBox.current !== null
-            ? projectionDependentsReport(docBox.current, frozen.mutation.targets)
+          const dependents = mutation.type === 'delete' && docBox.current !== null
+            ? projectionDependentsReport(docBox.current, mutation.targets)
             : null
-          const applied = session.execute(frozen.mutation)
+          let applied
+          try {
+            applied = session.execute(mutation)
+          } catch (e) {
+            // The applier's named refusal is a step failure, not a thrown
+            // crash: a script learns which target could not freeze.
+            if (!(e instanceof MutationRefusal)) throw e
+            return errorResult('refused', e.message)
+          }
           const noteParts: string[] = []
           const noteIds: string[] = []
-          if (frozen.frozenNothing !== undefined && applied.ok) {
-            noteParts.push(projectionNotFrozenMessage(frozen.frozenNothing))
-            for (const target of frozen.mutation.type === 'delete' ? frozen.mutation.targets : []) {
+          if (projected.frozenNothing !== undefined && applied.ok) {
+            noteParts.push(projectionNotFrozenMessage(projected.frozenNothing))
+            for (const target of mutation.type === 'delete' ? mutation.targets : []) {
               const [kind, featureId] = target.split(':')
               if (kind === 'constraint' && featureId !== undefined && !noteIds.includes(featureId)) {
                 noteIds.push(featureId)

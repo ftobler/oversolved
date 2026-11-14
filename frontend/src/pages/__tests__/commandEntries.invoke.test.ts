@@ -716,3 +716,78 @@ describe('apply_offset data command and its dialog front end', () => {
     expect(closeDialog).toHaveBeenCalledOnce()
   })
 })
+
+describe('freeze_projection command', () => {
+  const doc = {
+    features: [{
+      id: 'Sketch1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [{ id: 'P1', kind: 'line' }, { id: 'P2', kind: 'line' }],
+      initial: { P1: [0, 0, 1, 0] },
+      constraints: [
+        { id: 'proj_P1', kind: 'projection', target: '$P1', source: '@sk0/edge' },
+        { id: 'proj_P2', kind: 'projection', target: '$P2', source: '@sk0/edge2' },
+      ],
+    }],
+  }
+
+  afterEach(() => {
+    setSketchCallback('onMutation', null)
+    setSketchCallback('getDoc', null)
+    setSketchCallback('showMessage', null)
+    useEditorState.setState({ normalSelection: new Set(), activeFeatureId: null })
+  })
+
+  it('dispatches the picked projected entity with the requested mode', () => {
+    const handler = vi.fn()
+    const showMessage = vi.fn()
+    setSketchCallback('onMutation', handler)
+    setSketchCallback('getDoc', () => doc as never)
+    setSketchCallback('showMessage', showMessage)
+    useEditorState.setState({
+      normalSelection: new Set(['entity:Sketch1:P1']),
+      activeFeatureId: 'Sketch1',
+    })
+
+    execute('freeze_projection', partContext(), { mode: 'free' })
+
+    expect(handler).toHaveBeenCalledOnce()
+    expect(handler).toHaveBeenCalledWith({
+      type: 'freeze_projection', featureId: 'Sketch1', target: 'P1', mode: 'free',
+    })
+    expect(showMessage).not.toHaveBeenCalled()
+  })
+
+  it('reports a never-positioned projection instead of dispatching it', () => {
+    const handler = vi.fn()
+    const showMessage = vi.fn()
+    setSketchCallback('onMutation', handler)
+    setSketchCallback('getDoc', () => doc as never)
+    setSketchCallback('showMessage', showMessage)
+    useEditorState.setState({
+      normalSelection: new Set(['entity:Sketch1:P2']),
+      activeFeatureId: 'Sketch1',
+    })
+
+    execute('freeze_projection', partContext(), { mode: 'fixed' })
+
+    expect(handler).not.toHaveBeenCalled()
+    expect(showMessage).toHaveBeenCalledOnce()
+    expect(showMessage.mock.calls[0][0].message).toContain('no position')
+  })
+
+  it('is disabled without a projected selection', () => {
+    setSketchCallback('getDoc', () => doc as never)
+    useEditorState.setState({
+      normalSelection: new Set(['entity:Sketch1:P1']),
+      activeFeatureId: 'Sketch1',
+    })
+    const registry = partRegistry(partContext({ session: { getDoc: () => doc } as never }))
+    expect(registry.enabled('freeze_projection')).toBe(true)
+
+    useEditorState.setState({ normalSelection: new Set(), activeFeatureId: 'Sketch1' })
+    expect(registry.enabled('freeze_projection')).not.toBe(true)
+
+    useEditorState.setState({ normalSelection: new Set(['entity:Sketch1:X']), activeFeatureId: 'Sketch1' })
+    expect(registry.enabled('freeze_projection')).not.toBe(true)
+  })
+})

@@ -202,6 +202,7 @@ const danglingDoc = (): PartDoc => makeDoc(makeSketch('sk1', {
     { id: 'l1', kind: 'line' },
     { id: 'proj1', kind: 'line' },
   ],
+  initial: { l1: [0, 0, 10, 0], proj1: [0, 5, 10, 5] },
   constraints: [
     { id: 'proj_proj1', kind: 'projection', target: '$proj1', source: '?edge;x' },
     { id: 'c_super', kind: 'horizontal', target: '$l1' },
@@ -701,6 +702,10 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
   remove_dangling_content: {
     makeDoc: danglingDoc,
     mutation: { type: 'remove_dangling_content', features: { sk1: { projections: ['proj_proj1'], constraints: ['c_super'] } } },
+  },
+  freeze_projection: {
+    makeDoc: danglingDoc,
+    mutation: { type: 'freeze_projection', featureId: 'sk1', target: 'proj1' },
   },
 
   // label-only carriers: the entry they label is the whole effect

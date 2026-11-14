@@ -79,9 +79,13 @@ export interface Geometry3DProps {
   /** The authored constraints this sketch's solve could not use; each draws a
    *  red, selectable tile so the dead row can be found and deleted. */
   droppedConstraints?: readonly DroppedSketchConstraint[]
+  // A constraint tile's own right-click; the tile owns a DOM overlay the canvas
+  // listener never sees, so it hands the picked selection id and cursor to the
+  // page.
+  onSelectionContextMenu?: (selectionId: string, pos: [number, number]) => void
 }
 
-export default function Geometry3D({ featureId, solved, entities, projectionMembers, constraints, topology, activeFeatureId, plane, planeTransform, originLocal, solveStatus, entityStatus, otherSketches, featureDef, droppedConstraints }: Geometry3DProps) {
+export default function Geometry3D({ featureId, solved, entities, projectionMembers, constraints, topology, activeFeatureId, plane, planeTransform, originLocal, solveStatus, entityStatus, otherSketches, featureDef, droppedConstraints, onSelectionContextMenu }: Geometry3DProps) {
   const groupRef = useRef<THREE.Group>(null)
   const drag = useSketchEditorStore(s => s.drag)
   const isDraggingThis = !!drag && drag.featureId === featureId
@@ -324,7 +328,7 @@ export default function Geometry3D({ featureId, solved, entities, projectionMemb
     <group ref={groupRef} rotation={rot} position={pos ?? [0, 0, 0]}>
       {topology && !stale && <TopologySurfaces topology={topology} isEditing={isEditing} activeFeatureId={activeFeatureId} />}
       <EntityLines sketch={displaySketch} featureId={featureId} color={entityStatus ? getEntityColor : baseColor} lineWidth={2} isEditing={isEditing} constraints={featureDef?.constraints} />
-      {(constraints || droppedConstraints?.length) && isEditing && <ConstraintOverlays constraints={constraints ?? {}} sketch={displaySketch} extent={extent} featureId={featureId} planeTransform={resolvedPlaneTransform} droppedConstraints={droppedConstraints} authoredConstraints={featureDef?.constraints} />}
+      {(constraints || droppedConstraints?.length) && isEditing && <ConstraintOverlays constraints={constraints ?? {}} sketch={displaySketch} extent={extent} featureId={featureId} planeTransform={resolvedPlaneTransform} droppedConstraints={droppedConstraints} authoredConstraints={featureDef?.constraints} onSelectionContextMenu={onSelectionContextMenu} />}
       {isEditing && !stale && <InferredContactMarkers candidates={inferredCandidates} />}
       {isEditing && <DragPlane featureId={featureId} sketch={displaySketch} sketchGroupRef={groupRef} otherSketches={otherSketches} constraints={featureDef?.constraints} topology={stale ? undefined : topology} />}
       {isEditing && <DragSnapIndicator />}
