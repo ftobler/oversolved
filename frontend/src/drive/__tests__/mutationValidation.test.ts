@@ -178,11 +178,20 @@ describe('validateMutation', () => {
     expect(validateMutation({
       type: 'set_revolve_field', featureId: 'rv1', field: 'angle', value: null,
     })).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
-    // An extrude distance is required only outside through_all, so it takes the
-    // clear the way a blind hole's depth does; the loader owns the blind rule.
+    // An extrude distance is required only outside through_all, so only the
+    // stored through_all feature takes the clear; a blind one still refuses it
+    // (mutationValueRules pins both sides against the live document).
+    const throughAll = seedBuiltins({
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'ex1', kind: 'extrude',
+        extrude: { sketch: '$sk1', operation: 'cut', termination: 'through_all' },
+      }],
+    })
     expect(validateMutation({
       type: 'set_extrude_field', featureId: 'ex1', field: 'distance', value: null,
-    })).toMatchObject({ ok: true })
+    }, { doc: throughAll })).toMatchObject({ ok: true })
     // Internal plumbing is allowed only on the replay path, where the app's
     // own set_rollback payload can legitimately carry a null position.
     expect(validateMutation({ type: 'set_rollback', position: null }, { allowInternal: true }))

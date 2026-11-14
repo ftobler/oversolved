@@ -67,6 +67,22 @@ function refusal(raw: unknown, doc: PartDoc | null = null, fileIds?: ReadonlySet
   return result.error
 }
 
+function extrudeDoc(extrude: Record<string, unknown>): PartDoc {
+  return seedBuiltins({
+    version: 1,
+    kind: 'part',
+    features: [{ id: 'ex1', kind: 'extrude', extrude: { sketch: '$sk1', ...extrude } }],
+  })
+}
+
+function holeDoc(hole: Record<string, unknown>): PartDoc {
+  return seedBuiltins({
+    version: 1,
+    kind: 'part',
+    features: [{ id: 'h1', kind: 'hole', hole: { sketch: '@sk1', diameter: 4, ...hole } }],
+  })
+}
+
 describe('value rules cover the catalog', () => {
   it('has one row per mutation type', () => {
     expect(Object.keys(MUTATION_VALUE_RULES).sort()).toEqual(Object.keys(MUTATION_CATALOG).sort())
@@ -376,12 +392,49 @@ describe('findings 3 and 4: setter values and REF fields', () => {
   it('still clears an optional or only conditionally required field with null', () => {
     expect(validateMutation({ type: 'set_extrude_field', featureId: 'ex1', field: 'up_to', value: null }))
       .toMatchObject({ ok: true })
-    expect(validateMutation({ type: 'set_hole_field', featureId: 'h1', field: 'depth', value: null }))
-      .toMatchObject({ ok: true })
-    // An extrude distance is required only outside through_all, so it takes the
-    // clear like a blind hole's depth; the loader owns the blind requirement.
-    expect(validateMutation({ type: 'set_extrude_field', featureId: 'ex1', field: 'distance', value: null }))
-      .toMatchObject({ ok: true })
+    // The conditional requirement is read from the stored feature: a
+    // through_all extrude stores no distance and a through_all bore no depth,
+    // so the clear is exactly the state those features already have.
+    const throughAllExtrude = extrudeDoc({ operation: 'cut', termination: 'through_all' })
+    const throughAllHole = holeDoc({ depth_mode: 'through_all' })
+    expect(validateMutation(
+      { type: 'set_extrude_field', featureId: 'ex1', field: 'distance', value: null },
+      { doc: throughAllExtrude },
+    )).toMatchObject({ ok: true })
+    expect(validateMutation(
+      { type: 'set_hole_field', featureId: 'h1', field: 'depth', value: null },
+      { doc: throughAllHole },
+    )).toMatchObject({ ok: true })
+  })
+
+  it('refuses a null distance or depth where the stored feature still needs it', () => {
+    // A blind extrude and a blind bore size themselves from the cleared field,
+    // so the applier would delete a key the loader requires and the document
+    // would fail to reopen. The default termination is blind too.
+    for (const termination of [undefined, 'blind', 'up_to', 'up_to_next'] as const) {
+      const doc = extrudeDoc({
+        distance: 10,
+        ...(termination === undefined ? {} : { termination }),
+      })
+      const error = refusal(
+        { type: 'set_extrude_field', featureId: 'ex1', field: 'distance', value: null },
+        doc,
+      )
+      expect(error.code, String(termination)).toBe('invalid-mutation')
+      expect(error.message, String(termination)).toContain('distance')
+    }
+    for (const depthMode of [undefined, 'blind'] as const) {
+      const doc = holeDoc({
+        depth: 20,
+        ...(depthMode === undefined ? {} : { depth_mode: depthMode }),
+      })
+      const error = refusal(
+        { type: 'set_hole_field', featureId: 'h1', field: 'depth', value: null },
+        doc,
+      )
+      expect(error.code, String(depthMode)).toBe('invalid-mutation')
+      expect(error.message, String(depthMode)).toContain('depth')
+    }
   })
 })
 

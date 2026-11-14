@@ -2004,6 +2004,22 @@ function setExtrudeField(raw: RawStep, ctx: ValueContext): ValueViolation | null
   const field = raw.field
   if (typeof field !== 'string') return null
   const stored = storedExtrudeDef(raw, ctx)
+  if (field === 'distance' && (raw.value === null || raw.value === undefined)) {
+    // The distance is required outside through_all, so the clear would delete a
+    // key the loader needs. The setter's null is the clear of an optional
+    // field; a conditional requirement is judged against the stored feature,
+    // the same way the taper rule reads the stored termination. A shape-only
+    // caller has no document to read, so it cannot judge and leaves it.
+    if (stored === null) return null
+    const termination = (stored.termination as string | undefined) ?? 'blind'
+    if (termination !== 'through_all') {
+      return invalid(
+        `set_extrude_field field "distance": termination is ${termination}; a distance is required there, ` +
+          'so null cannot clear it',
+      )
+    }
+    return null
+  }
   if (field === 'taper') {
     const problem = taperValueProblem(raw.value, 'set_extrude_field field "taper"')
     if (problem !== null) return invalid(problem)
@@ -2087,11 +2103,38 @@ function setExtrudeField(raw: RawStep, ctx: ValueContext): ValueViolation | null
   return null
 }
 
+/** The stored hole sub-definition of the feature a setter names, or null when
+ *  the caller has no document (or the feature is not a hole). */
+function storedHoleDef(raw: RawStep, ctx: ValueContext): RawStep | null {
+  if (ctx.doc === null) return null
+  const feature = (ctx.doc.features ?? []).find(entry => entry.id === raw.featureId)
+  if (feature === undefined || feature.kind !== 'hole') return null
+  const sub = (feature as { hole?: unknown }).hole
+  return isRecord(sub) ? sub : null
+}
+
 // A hole's `target` is a pick the solve can derive instead: with no target the
 // hole drills the body its drill sites sit on, so an empty string is the clear
 // the note promises rather than a refused reference.
 function setHoleField(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   if (clearsOnEmpty(raw.type as Mutation['type'], raw.field as string, raw.value)) return null
+  if (raw.field === 'depth' && (raw.value === null || raw.value === undefined)) {
+    // A blind bore sizes itself from the depth, so null would delete a key the
+    // loader requires. A through_all bore stores none, so its clear is legal.
+    // The kernel reads an absent depth_mode as blind, the same default the
+    // loader's requirement needs guarded here.
+    const stored = storedHoleDef(raw, ctx)
+    if (stored !== null) {
+      const mode = (stored.depth_mode as string | undefined) ?? 'blind'
+      if (mode !== 'through_all') {
+        return invalid(
+          `set_hole_field field "depth": depth_mode is ${mode}; a depth is required for a blind hole, ` +
+            'so null cannot clear it',
+        )
+      }
+    }
+    return null
+  }
   const generic = fieldValue(raw, ctx)
   if (generic !== null) return generic
   if (raw.field !== 'sketch') return null
