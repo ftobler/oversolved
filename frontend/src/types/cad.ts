@@ -28,6 +28,10 @@ export type ExtrudeFeatureDef = {
   // body it meets). A through_all cut sizes itself from the bodies and stores
   // no distance; a stored one is ignored with a warning.
   distance?: NumberOrExpr
+  // Legacy spelling of `distance` a pre-rename document may still store; the
+  // loader and the kernel read it as the same field. Never written by a new
+  // edit, and the termination switch settles it under `distance`.
+  depth?: NumberOrExpr
   // Degrees of draft along the sweep: positive narrows the profile, negative
   // widens it, and every lateral wall (holes included) drafts with it. Absent
   // or 0 is the straight prism.

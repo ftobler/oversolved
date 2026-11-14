@@ -76,11 +76,13 @@ function extrudeDoc(extrude: Record<string, unknown>): PartDoc {
 }
 
 function holeDoc(hole: Record<string, unknown>): PartDoc {
-  return seedBuiltins({
+  // The fixture deliberately omits depth_mode in one case, which the required
+  // HoleFeatureDef no longer allows in the type; the check reads the stored bag.
+  return {
     version: 1,
     kind: 'part',
     features: [{ id: 'h1', kind: 'hole', hole: { sketch: '@sk1', diameter: 4, ...hole } }],
-  })
+  } as unknown as PartDoc
 }
 
 describe('value rules cover the catalog', () => {
