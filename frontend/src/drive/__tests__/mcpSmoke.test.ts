@@ -562,14 +562,14 @@ describe.skipIf(driveUnavailable)('MCP server (real OCC + Rust solver)', () => {
     const client = spawnMcp({
       // Roomy enough that the OCC load under a loaded full suite never trips
       // it before the first feature mark; the worker boot is warmed below.
-      OVERSOLVED_MCP_SOLVE_BUDGET_MS: '10000',
+      OVERSOLVED_MCP_SOLVE_BUDGET_MS: '20000',
       OVERSOLVED_MCP_TEST_HANG_FEATURE: 'ex_stuck',
     })
     try {
       await client.request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'cliSmoke', version: '0' } })
       // Warm the worker first. A fresh worker's boot counts against the budget
       // and posts no checkpoint, so on a loaded runner (seen on Node 22) a cold
-      // boot alone could spend the 10 s and answer with the bare timeout this
+      // boot alone could spend the 20 s and answer with the bare timeout this
       // test is not about. Warm, the steps settle at once and the stall lands
       // in the final flush, after every checkpoint is posted.
       const warm = toolPayload(await client.request('tools/call', { name: 'run', arguments: { steps: BOX_SCRIPT.steps } }))
@@ -580,7 +580,7 @@ describe.skipIf(driveUnavailable)('MCP server (real OCC + Rust solver)', () => {
       rmSync(outFile, { force: true })
       const t0 = performance.now()
       const stuck = await client.request('tools/call', { name: 'run', arguments: { steps: stuckSteps, out: outFile } })
-      expect(performance.now() - t0).toBeLessThan(60_000)
+      expect(performance.now() - t0).toBeLessThan(120_000)
       expect(stuck.error).toBeUndefined()
       const stuckResult = errorPayload(stuck)
       expect(stuckResult.ok).toBe(false)
@@ -599,11 +599,11 @@ describe.skipIf(driveUnavailable)('MCP server (real OCC + Rust solver)', () => {
         kind: 'mutation',
         id: 'final solve',
         ok: false,
-        error: { code: 'solve-timeout', message: 'solve timed out after 10 s in feature ex_stuck' },
+        error: { code: 'solve-timeout', message: 'solve timed out after 20 s in feature ex_stuck' },
       })
       expect(typeof stuckResult.docHash).toBe('string')
       expect((stuckResult.solve as { lastError: string | null }).lastError)
-        .toBe('solve timed out after 10 s in feature ex_stuck')
+        .toBe('solve timed out after 20 s in feature ex_stuck')
       expect(stuckResult.featureDeltas).toBeNull()
       expect(stuckResult.frames).toBeNull()
       expect(stuckResult.summary).toContain('bodies: not solved (final solve timed out)')
@@ -633,7 +633,7 @@ describe.skipIf(driveUnavailable)('MCP server (real OCC + Rust solver)', () => {
     // din_rail: the hang hits the call's first solve (steps: []), so there is no
     // checkpoint. The input document is also the final document and is saved.
     const client = spawnMcp({
-      OVERSOLVED_MCP_SOLVE_BUDGET_MS: '10000',
+      OVERSOLVED_MCP_SOLVE_BUDGET_MS: '20000',
       OVERSOLVED_MCP_TEST_HANG_FEATURE: 'ex_stuck',
     })
     try {
@@ -661,7 +661,7 @@ describe.skipIf(driveUnavailable)('MCP server (real OCC + Rust solver)', () => {
       expect(stalled.ok).toBe(false)
       expect(stalled.solved).toBe(false)
       expect(stalled.docHash).toBe(inputHash)
-      expect(stalled.error).toBe('solve timed out after 10 s in feature ex_stuck')
+      expect(stalled.error).toBe('solve timed out after 20 s in feature ex_stuck')
       expect(stalled.file).toBe(outFile)
       expect(stalled.format).toBe('yaml')
 

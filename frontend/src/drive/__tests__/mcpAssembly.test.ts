@@ -433,7 +433,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP assembly protocol (real 
     extrude.id = 'ex_stuck'
 
     const stalling = spawnMcp({
-      OVERSOLVED_MCP_SOLVE_BUDGET_MS: '10000',
+      OVERSOLVED_MCP_SOLVE_BUDGET_MS: '20000',
       OVERSOLVED_MCP_TEST_HANG_FEATURE: 'ex_stuck',
     })
     try {
