@@ -297,13 +297,22 @@ describe('arc projection (3D body arc)', () => {
     expect(ea).toBeCloseTo(0)
   })
 
-  it('projects a sketch-local arc (2D angles, no 3D axis) straight through', () => {
-    // A sketch-to-sketch projection carries the source arc's 2D angles already;
-    // rebuilding them from a 3D axis would be both unnecessary and wrong.
-    const g = resolve3dGeometry(
+  it('refuses an arc payload with no axis or no sweep', () => {
+    // The OCC reader always writes the circle's axis/x_axis and the sketch lift
+    // supplies the owning frame's normal and both angles, so a projectable arc
+    // always carries its plane. An axis-less payload was reachable only from a
+    // hand-built test, and its old pass-through branch mixed radian angles into
+    // degree slots. postRegister's topology-edge registration is the real
+    // axis-less, angle-less shape: center/radius only, refused here too.
+    const axisless = resolve3dGeometry(
       { type: 'edge', kind: 'arc', center: [1, 2, 0], radius: 5, angle_start: 30, angle_end: 120 })!
-    const out = projectTo2d(g, XY)!
-    expect(out).toEqual({ kind: 'arc', params: [1, 2, 5, 30, 120] })
+    expect(axisless.kindH).toBe('arc')
+    expect(projectTo2d(axisless, XY)).toBeNull()
+
+    const topologyEdge = resolve3dGeometry(
+      { type: 'edge', kind: 'arc', center: [3, 4, 0], radius: 2 })!
+    expect(topologyEdge.kindH).toBe('arc')
+    expect(projectTo2d(topologyEdge, XY)).toBeNull()
   })
 
   it('lowers a tilted source arc to a sampled curve, not a fake circular arc', () => {

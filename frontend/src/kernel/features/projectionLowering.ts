@@ -514,13 +514,12 @@ export function projectTo2d(
     const radius = data.radius as number
     const c2d = worldToSketch2d(center, plane)
 
-    if (typeof data.angle_start === 'number' && typeof data.angle_end === 'number' && !data.axis) {
-      // Sketch-to-sketch arc projection (source arc has 2D angles already).
-      return { kind: 'arc', params: [...c2d, radius, data.angle_start as number, data.angle_end as number] }
-    }
-
     // 3D body arc: resolve endpoints in 3D, project to 2D, then compute
     // angles relative to the projected center. Mirrors `_project_3d_arc_to_params`.
+    // A projected sweep needs the source plane: the OCC reader supplies
+    // axis/x_axis, and the `external_params` lift supplies the owning sketch's
+    // frame normal. A payload with no plane or no sweep has nothing to project
+    // and is refused; `postRegister`'s topology edges are that shape.
     const axis = data.axis as number[]
     const ax = data.x_axis as number[]
     const a0 = data.angle_start as number

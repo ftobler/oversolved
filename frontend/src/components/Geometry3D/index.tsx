@@ -103,7 +103,9 @@ export default function Geometry3D({ featureId, solved, entities, projectionMemb
   // a line); the drag preview lowers the stored feature, so it needs this to
   // read the baked params in the kind they were written as. Keyed on `solved`
   // so the identity is stable across a drag's frames (the memo key above warns
-  // that a fresh object per render would rebuild the context mid-drag).
+  // that a fresh object per render would rebuild the context mid-drag). With no
+  // last solve this is empty, and the document's pick-time kind is the honest
+  // answer for the preview: the params are still the ones the document holds.
   const resolvedKinds = useMemo(() => resolvedKindsOfSketch(solved), [solved])
   const derivedMembers = useMemo(
     () => Object.values(projectionMembers ?? {}).flatMap(report => report.entities),

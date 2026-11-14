@@ -156,11 +156,14 @@ describe.skipIf(!oc || !solveBytes)('projection against a real body (real OCC + 
     applySetPlaneDefinitionField(flatDoc, 'pl0', 'rotation_angle', 30)
     const tilted = run(flatDoc)
     const tiltedSketch = sketchOf(tilted, 'skK')
-    // The row adopts the resolved kind through the write-back; the solve fact is
-    // the ellipse projection.
+    // The row keeps its pick-time kind through the solve: only the write-back
+    // adopts the resolved one, and the solve fact names the ellipse.
+    const pc = sketchFeature(flatDoc, 'skK').entities!.find(e => e.id === 'pc')!
+    expect(pc.kind).toBe('circle')
     expect(tiltedSketch.resolved_kinds).toEqual({ pc: 'ellipse' })
     expectRelative(bodyVolume(h, tilted, 'exK', 'body_exK'), Math.PI * (25 - 9 * Math.cos(Math.PI / 6)) * 2)
     const tiltedDoc = applySolveToDoc(flatDoc, tilted).doc
+    expect(sketchFeature(tiltedDoc, 'skK').entities!.find(e => e.id === 'pc')!.kind).toBe('ellipse')
 
     applySetPlaneDefinitionField(tiltedDoc, 'pl0', 'rotation_angle', 0)
     const backDoc = applySolveToDoc(tiltedDoc, run(tiltedDoc)).doc
