@@ -46,6 +46,23 @@ const BOX: ScriptStep[] = [
   m({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5, operation: 'new' }),
 ]
 
+// A box cut through with a stored distance: the old-document shape the
+// through_all warning exists for. The geometry is complete, so an export must
+// stay ok and only report the row.
+const THROUGH_ALL_WARNING = 'extrude: through_all takes no distance; the stored value is ignored'
+
+async function throughAllWithStoredDistance(): Promise<PartDoc> {
+  return build([
+    ...BOX,
+    m({ type: 'add_sketch', featureId: 'sk2', plane: '@builtin_plane_top' }),
+    m({ type: 'add_rect', featureId: 'sk2', p0: [2, 2], p1: [4, 4] }),
+    m({
+      type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2', distance: 0,
+      operation: 'cut', termination: 'through_all',
+    }),
+  ])
+}
+
 // A 2 mm plate under a 10 mm block: a radius-3 fillet fits the block's top
 // edges but not the plate's rim, so the feature applies only part of its work
 // and reports `partial` (the same shape edgeFailureMessages pins).
@@ -217,6 +234,20 @@ describeReal('export honesty (real OCC + Rust solvers)', () => {
     expect(exported!.features).toContainEqual(expect.objectContaining({ id: 'sk_free', status: 'underconstrained' }))
   }, 180_000)
 
+  it('exports ok true when a through_all cut only stores an ignored distance', async () => {
+    const doc = await throughAllWithStoredDistance()
+    const exported = await exportHeadless(doc, { format: 'step' })
+    expect(exported).not.toBeNull()
+    expect(exported!.ok).toBe(true)
+    expect(exported!.features).toContainEqual(expect.objectContaining({
+      id: 'ex2',
+      kind: 'extrude',
+      status: 'ok',
+      message: THROUGH_ALL_WARNING,
+    }))
+    expect(exported!.bytes!.byteLength).toBeGreaterThan(0)
+  }, 180_000)
+
   it('reports a failed hole in features and ok false, and still writes the solid it built', async () => {
     const doc = await build(HOLE_ON_LINE_SKETCH)
     const exported = await exportHeadless(doc, { format: 'step' })
@@ -320,6 +351,28 @@ describeReal('export honesty (real OCC + Rust solvers)', () => {
       expect.objectContaining({ kind: 'sketch', status: 'underconstrained' }),
     )
     expect(exported!.solve.verdict).not.toBe('failed')
+    expect(exported!.bytes!.byteLength).toBeGreaterThan(0)
+  }, 180_000)
+
+  it('exports an assembly whose part only stores an ignored through_all distance', async () => {
+    // The same soft failure must not fail the assembly file: the part is the
+    // model the document asks for, and the warning still rides its part row.
+    const warned = await throughAllWithStoredDistance()
+    const parts = new Map([...PARTS, ['warned', warned]])
+    const run = await runAssemblyHeadless({
+      doc: emptyDriveAssemblyDoc(),
+      parts,
+      steps: [{ mutation: { type: 'add_part', handle: 'warned', part: 'warned', fixed: true } }],
+    })
+    const exported = await exportAssemblyHeadless(run.doc, parts, { format: 'step' })
+    expect(exported).not.toBeNull()
+    expect(exported!.ok).toBe(true)
+    const part = exported!.parts.find(entry => entry.docId === 'warned')
+    expect(part?.features).toContainEqual(expect.objectContaining({
+      id: 'ex2',
+      status: 'ok',
+      message: THROUGH_ALL_WARNING,
+    }))
     expect(exported!.bytes!.byteLength).toBeGreaterThan(0)
   }, 180_000)
 

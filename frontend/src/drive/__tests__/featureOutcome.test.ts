@@ -126,6 +126,25 @@ describe('blocksExport', () => {
     })).toBe(false)
   })
 
+  it('tolerates a through_all cut that only ignores a stored distance', () => {
+    // The user decision: a stored distance on a through_all feature is a soft
+    // failure. The body is cut through and the file is the model the document
+    // asks for, so this exact warning must not fail an export.
+    expect(blocksExport({
+      id: 'ex1', kind: 'extrude', status: 'ok',
+      message: 'extrude: through_all takes no distance; the stored value is ignored',
+    })).toBe(false)
+  })
+
+  it('still blocks another extrude warning with the same status', () => {
+    // Only the through_all distance text is carved out: a warning that says a
+    // fallback was used is a different model and still blocks the export.
+    expect(blocksExport({
+      id: 'ex1', kind: 'extrude', status: 'ok',
+      message: "extrude: up_to target '@pl1' did not resolve; used blind distance",
+    })).toBe(true)
+  })
+
   it('still blocks every other problem row', () => {
     const blocked: Array<[string, string]> = [
       ['sketch', 'overconstrained'],

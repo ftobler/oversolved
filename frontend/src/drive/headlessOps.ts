@@ -450,9 +450,9 @@ export async function exportHeadless(doc: PartDoc, opts: HeadlessExportOptions):
   const frames = featureFrames(doc, outcome.response.result)
   // No file is not a successful export: ok names the outcome the caller acts
   // on, and callers keep their own bytes guard for the message. A sketch build
-  // warning and a built shell's corner substitution are the tolerated rows (see
-  // blocksExport): their warnings are reported, but they do not turn a sound
-  // file into a failed one.
+  // warning, a built shell's corner substitution and a through_all cut's
+  // ignored stored distance are the tolerated rows (see blocksExport): their
+  // warnings are reported, but they do not turn a sound file into a failed one.
   return {
     bytes: outcome.bytes,
     features,
@@ -712,9 +712,10 @@ export async function exportAssemblyHeadless(
   const bytes = await exportAssemblyLocally(assemblySpecs(doc, parts, response.transforms), exportOpts, files)
   return {
     bytes,
-    // A part's underconstrained sketch is a warning row in `parts` but the file
-    // is sound, so only a part error or a blocking feature row fails the export
-    // (the same carve-out a part export makes).
+    // A part's underconstrained sketch or ignored through_all distance is a
+    // warning row in `parts` but the file is sound, so only a part error or a
+    // blocking feature row fails the export (the same carve-out a part export
+    // makes).
     ok: bytes !== null
       && !solveFailed(response.status)
       && state.mates.length === 0

@@ -281,6 +281,12 @@ function throughAllSweepExtent(
 }
 
 /** Solve an extrude feature into the body store (mirrors `_solve_extrude`). */
+/** The soft failure a through_all cut reports when an old document still stores
+ *  a distance. The drive tolerates this exact warning on an otherwise ok row so
+ *  the geometry stays exportable; keep the text in one place. */
+export const THROUGH_ALL_DISTANCE_WARNING =
+  'extrude: through_all takes no distance; the stored value is ignored'
+
 export function solveExtrude(
   oc: OccModule,
   scope: DisposeScope,
@@ -330,7 +336,7 @@ export function solveExtrude(
   if (termination === 'through_all') {
     const storedDistance = sub.distance ?? sub.depth
     if (storedDistance !== undefined && storedDistance !== null) {
-      distanceWarning = 'extrude: through_all takes no distance; the stored value is ignored'
+      distanceWarning = THROUGH_ALL_DISTANCE_WARNING
     }
   } else if (!Number.isFinite(distance) || distance === 0) {
     throw new Error('extrude: distance must be non-zero')
