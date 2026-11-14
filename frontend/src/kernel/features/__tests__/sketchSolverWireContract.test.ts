@@ -26,6 +26,7 @@ import {
   isSketchSolverReady,
 } from '../sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
+import { OCC_ANGULAR, OCC_CONFUSION } from '@/kernel/solverConstants'
 import { initGlobalRepo } from '../../query'
 import type { EntityLayout } from '@/wasm-kernel/lowerSketch'
 import type { SolverOutput } from '@/wasm-kernel/codec'
@@ -47,7 +48,7 @@ function outputOf(over: Partial<SolverOutput> = {}): SolverOutput {
     constraintFlags: [],
     constraintMiss: [],
     entityMoved: [],
-    diagnostics: { residualNorm: 0, rank: 2, dof: 0, iters: 3, ms: 0.1 },
+    diagnostics: { residualNorm: 0, rank: 2, dof: 0, iters: 3, ms: 0.1, angularMiss: 0, linearMiss: 0 },
     ...over,
   }
 }
@@ -203,6 +204,73 @@ describe.skipIf(!solveBytes)('solveSketch refuses a skewed solver output', () =>
     })
     expect(() => solveSketch(constrained as unknown as Record<string, unknown>, initGlobalRepo(), {}))
       .toThrow(/constraint flags and .*constraint misses, expected/)
+  })
+})
+
+describe.skipIf(!solveBytes)('solveSketch reports the kernel precision contract', () => {
+  beforeAll(() => resetSketchSolver())
+  afterAll(() => resetSketchSolver())
+
+  const rect = (id: string, constraints: unknown[] = []): PartFeature => ({
+    id, kind: 'sketch', label: 'Rectangle', plane: '@builtin_plane_front',
+    entities: [
+      { id: 'bottom', kind: 'line' }, { id: 'right', kind: 'line' },
+      { id: 'top', kind: 'line' }, { id: 'left', kind: 'line' },
+    ],
+    initial: { bottom: [0, 0, 10, 0], right: [10, 0, 10, 6], top: [10, 6, 0, 6], left: [0, 6, 0, 0] },
+    constraints,
+  } as unknown as PartFeature)
+
+  const square = [
+    { id: 'c1', kind: 'horizontal', target: { entity: 'bottom' } },
+    { id: 'c2', kind: 'vertical', target: { entity: 'right' } },
+    { id: 'c3', kind: 'parallel', a: { entity: 'top' }, b: { entity: 'bottom' } },
+    { id: 'c4', kind: 'parallel', a: { entity: 'left' }, b: { entity: 'right' } },
+  ]
+
+  it('carries the realised misses on a satisfied sketch', () => {
+    setSketchSolver(solveBytes!)
+    const out = solveSketch(rect('precision', square) as unknown as Record<string, unknown>, initGlobalRepo(), {})
+    expect(typeof out.angular_miss).toBe('number')
+    expect(typeof out.linear_miss).toBe('number')
+    expect(Number.isFinite(out.angular_miss)).toBe(true)
+    expect(Number.isFinite(out.linear_miss)).toBe(true)
+    // The contract's own targets, read off the ladder: the solver promises to
+    // finish inside them or to report honestly.
+    expect(out.angular_miss!).toBeLessThanOrEqual(OCC_ANGULAR)
+    expect(out.linear_miss!).toBeLessThanOrEqual(OCC_CONFUSION * 1e-2)
+  })
+
+  it('reports NaN for an overconstrained sketch', () => {
+    setSketchSolver(solveBytes!)
+    const conflict = [
+      { id: 'c1', kind: 'horizontal', target: { entity: 'bottom' } },
+      { id: 'c2', kind: 'length', target: { entity: 'bottom' }, value: 10 },
+      { id: 'c3', kind: 'length', target: { entity: 'bottom' }, value: 10.1 },
+    ]
+    const out = solveSketch(rect('conflict', conflict) as unknown as Record<string, unknown>, initGlobalRepo(), {})
+    expect(out.status).toBe('overconstrained')
+    expect(Number.isNaN(out.angular_miss)).toBe(true)
+    expect(Number.isNaN(out.linear_miss)).toBe(true)
+  })
+
+  it('re-solves a 6 dp baked seed back to the contract', () => {
+    // The write-back stores 6 decimals (`roundGeometry`), so a reload seeds
+    // from a quantised copy of the last solve. The kernel still builds from the
+    // new solve's params, but only if that solve lands back inside the contract;
+    // a 1e-6 grid step on a 10 mm edge is a 1e-7 rad tilt, 100000x the angular
+    // target, so the finish has to reclaim it and the assertion is real.
+    setSketchSolver(solveBytes!)
+    const first = solveSketch(rect('reload', square) as unknown as Record<string, unknown>, initGlobalRepo(), {})
+    expect(Number.isFinite(first.angular_miss)).toBe(true)
+    const baked: Record<string, number[]> = {}
+    for (const [id, params] of Object.entries(first.geometry ?? {})) {
+      baked[id] = params.map((v) => Math.round(v * 1e6) / 1e6)
+    }
+    const reloaded = { ...(rect('reload2', square) as unknown as Record<string, unknown>), initial: baked }
+    const again = solveSketch(reloaded, initGlobalRepo(), {})
+    expect(again.angular_miss!).toBeLessThanOrEqual(OCC_ANGULAR)
+    expect(again.linear_miss!).toBeLessThanOrEqual(OCC_CONFUSION * 1e-2)
   })
 })
 

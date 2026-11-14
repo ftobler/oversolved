@@ -34,8 +34,22 @@ export const TOL_MOVE_FACE_TANGENT = 1e-3
 // OCC_CONFUSION < TOL_LOOP_CLOSURE <= TOL_TOPOLOGY_MERGE -- is stated in one
 // place and testable (solverConstants.test.ts). Deliberately NOT a TOL_* name:
 // the Rust mirror test parses `TOL_*` out of sketch-solver and asserts an exact
-// count, and this constant has no Rust twin.
+// count, and this constant has no TOL-shaped twin (its Rust twin is spelled
+// `OCC_CONFUSION` in sketch-solver/src/tolerance.rs and pinned by the test
+// beside that count).
 export const OCC_CONFUSION = 1e-7
+
+// OCC's Precision::Angular(), the width under which the kernel reads two
+// directions as one. Also compiled into opencascade.js@1.1.1 and not ours to
+// choose: the face merge (ShapeUpgrade_UnifySameDomain and the BOP fuse) reads
+// it, so two planar faces whose normals differ by more than this stay separate
+// domains -- a visible seam -- however straight the sketch looked. The sketch
+// solver's contract finish drives its angular rows to this (`OCC_ANGULAR *
+// seed_len` per row) and reports the realised miss when it cannot, which is
+// what the kernel half reads to widen its own call. Same non-TOL_ name rule as
+// OCC_CONFUSION; its Rust twin is `OCC_ANGULAR` in
+// sketch-solver/src/tolerance.rs.
+export const OCC_ANGULAR = 1e-12
 
 // How long a kernel host waits for the next feature progress mark
 // (featureProgress.ts) before it presumes the solve stuck, kills its worker and
@@ -71,9 +85,11 @@ export const TOL_SURFACE_IDENTITY = 1e-6
 
 // The angular companion of the surface-identity rung: the unit axes of two
 // analytic surfaces must be this parallel before the surfaces count as the
-// same one. Far tighter than select's rung because these axes come out of an
-// analytic solve exact in f64; the tolerance absorbs arithmetic noise only,
-// never authoring slack.
+// same one. It absorbs the arithmetic noise of the OCC reads that produce the
+// axes, not authoring slack; it is deliberately LOOSER than the solver's
+// contract target (OCC_ANGULAR), because a solved analytic axis carries the
+// solver's realised precision plus the kernel's own normal read, and the
+// kernel half widens a call by the reported miss rather than by this rung.
 export const TOL_SURFACE_PARALLEL = 1e-9
 
 // Length slack: how far past exact a comparison between two authored lengths
