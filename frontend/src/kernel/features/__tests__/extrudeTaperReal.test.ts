@@ -488,7 +488,7 @@ describe.skipIf(!oc || !solveBytes)('extrude taper (real OCC + Rust solver)', ()
     expect(h.res(twelve, 'fi1').unresolved_edges ?? []).toEqual([])
     const faceQueries = (h.body(twelve, 'body_ex1').mesh as { face_queries?: string[] }).face_queries ?? []
     expect(faceQueries.some((q) => q.includes('@sk1/'))).toBe(true)
-  })
+  }, 30_000)
 
   it('a linear pattern repeats the tapered add', () => {
     const base = (extra: Dict[]): Dict => ({

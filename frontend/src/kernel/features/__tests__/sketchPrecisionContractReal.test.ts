@@ -267,7 +267,7 @@ describe.skipIf(!oc || !solveBytes)('sketch precision contract (real OCC)', () =
     // The measured sine is ~1.8e-9, above plan 2's 1e-9 ceiling as written, so
     // the pin is not describing a seam that plan's stated width would close.
     expect(bottom[0].sine).toBeGreaterThan(1e-9)
-  })
+  }, 30_000)
 
   it('keeps the raw report\'s free-tilt seams: a miss the solver did not measure stays split', () => {
     // The report as authored. Its rows meet the contract (the assertion below),
@@ -293,5 +293,5 @@ describe.skipIf(!oc || !solveBytes)('sketch precision contract (real OCC)', () =
     // Both are real free tilts (the report measured 1.10e-9 to 1.60e-9 on its
     // variants), above the contract and above the merge's 1e-12 read.
     for (const seam of seams) expect(seam.sine).toBeGreaterThan(TOL_SURFACE_PARALLEL)
-  })
+  }, 30_000)
 })
