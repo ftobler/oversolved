@@ -463,7 +463,7 @@ banner on stdout, so a client config must use the direct node invocation.
 |---|---|---|
 | `commands` | optional `kind` (`part` default, or `assembly`) | the command catalog for that editor |
 | `mutations` | optional `kind`, optional `family` (`sketch`, `features`, `picks`, `part style`, `document`, `parts`, `mates`), optional `type` (one name or array), optional `detail` (`full` or `index`) | the mutation vocabularies grouped by family plus ready-to-run example scripts; no argument returns both whole (about 90 kB); `type` fetches one row, `detail: "index"` lists `{type, summary}` only, a filter returns only that slice; an unknown family is refused with the valid list and an unknown type with a did-you-mean when a close name exists |
-| `run` | `steps`, optional `doc` or `docHash`, `kind` (fresh only), `parts`, `returnDoc`, `featureDeltas: "all"`, `frames: "all"`, `out`, `detail` (assembly), `docId`, `files` | part: `{ ok, solved, steps, docHash, solve, features, notes, featureDeltas, frames, curves, length_unit, summary, doc?, file?, format? }`; assembly: `{ ok, kind: "assembly", steps, docHash, solve, mates, parts, instances, mateFrames, summary, doc?, file?, format? }` |
+| `run` | `steps`, optional `doc` or `docHash`, `kind` (fresh only), `parts`, `returnDoc`, `featureDeltas: "all"`, `frames: "all"`, `out`, `detail` (assembly), `docId`, `files` | part: `{ ok, solved, steps, docHash, solve, features, notes, featureDeltas, frames, curves, length_unit, summary, doc?, file?, format? }`; assembly: `{ ok, kind: "assembly", steps, docHash, solve, mates, parts, instances, mateFrames, summary, notes, doc?, file?, format?, bytes? }`; on an assembly `bytes` is set only when `format` is `zip` |
 | `measure` | `doc` or `docHash`, optional `parts`, `detail` (assembly), `docId`, `files` | part: the `MeasureRecord` plus `features`/`notes`/`frames`/`curves`/`length_unit`; assembly: `{ ok, kind, docHash, ...MeasureRecord, instances, solve, mates, parts }`; under `detail: "summary"` or `"changed"` the aggregate measures, the solve verdict, and the mates and parts problem rows survive, and `perBody` and `instances` are dropped |
 | `compare` | `doc` or `docHash`, optional `parts`, `reference` (inline) or `referencePath`, optional `docId`, `files` | `{ ok, docHash, pass, rows, measures, length_unit, compared_in }`; a failing row is data, not an MCP error |
 | `export` | `doc` or `docHash`, optional `parts`, `format` (step/stl), `out`, optional `body`, `detail` (assembly), `docId`, `files` | writes the file, returns `{ ok, docHash, features, notes, length_unit, file_unit, file, format, bytes }` for a part or `{ ok, kind: "assembly", docHash, solve, mates, parts, instances, summary, file, format, bytes }`; an assembly `detail: "summary"` (or `"changed"`) keeps the file fields, solve, problem rows and summary and drops `instances` |
@@ -766,7 +766,10 @@ banner on stdout, so a client config must use the direct node invocation.
 - `run` with `out` writes the final document (the step's own document after a
   refused script, or the checkpoint's document after a stalled one) as JSON for
   a `.json` path and YAML otherwise, and adds
-  `file` and `format` to the reply. A stalled call whose first solve never
+  `file` and `format` to the reply. That extension rule is the part rule: an
+  assembly `out` follows the assembly bullet below. The reply's `file` is the
+  path written; a no-extension assembly path gains `.zip`, so a file already at
+  the old path stays as a stale sibling. A stalled call whose first solve never
   settled applied no step, so its input document is also its final document; it
   is written with `solved: false`. `compare` with `referencePath` reads the
   reference from a file instead of inline. `run`'s `out`, `export`'s `out` and
@@ -1575,9 +1578,15 @@ authors `flip: true` by hand is equally valid.
   part doc), places it, and reports per-body ids `<handle>/<bodyId>`, so
   `compare` works unchanged against a CadQuery assembly reference. `export`
   writes the placed compound as one STEP/STL; `body` is refused for an assembly.
-- `run` with `out` ending in `.zip` writes a workspace archive with the
-  assembly, every bound part and every `files` entry, ready to import in the
-  browser. YAML/JSON `out` writes the assembly document alone.
+- `run` with `out` on an assembly defaults to the workspace zip: a path with no
+  extension (or ending in `/`, or in `.zip` in any case) writes one archive with
+  the assembly, every bound part and every `files` entry, ready to import in the
+  browser. That reply's `format` is `zip` and `bytes` is set; the bare-document
+  form has no `bytes`. An explicit `.yaml` or `.json` path instead writes the
+  assembly document alone; the reply's `notes` names the part documents its
+  `part_instance.doc_id` values cannot resolve there, and says to use a `.zip`
+  path for a self-contained hand-off. A part document keeps YAML/JSON by
+  extension and refuses `.zip` (any case).
 - `select` stays part-only: it refuses an assembly handle and points at the
   part's docHash.
 - Non-goals: sub-assemblies, world-space or cross-instance selection, mate

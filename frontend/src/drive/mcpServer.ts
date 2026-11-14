@@ -72,8 +72,10 @@ export interface McpRunRequest extends McpDocArguments {
   // 'all' lists every resolved frame instead of the ones this call touched or
   // moved.
   frames?: 'all'
-  // Write the final document here (YAML or JSON by extension). Project paths
-  // only; the entry script resolves and enforces the directory rule.
+  // Write the final document here: a part path is YAML or JSON by extension, an
+  // assembly path is the workspace zip unless it names a document extension.
+  // Project paths only; the entry script resolves and enforces the directory
+  // rule.
   out?: string
   // Assembly replies only; undefined means the default (full).
   detail?: AssemblyDetail
@@ -486,7 +488,10 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + 'saves the input document, with solved false. '
       + 'For an assembly, pass kind: "assembly" and parts to bind each instance doc_id; the reply carries solve, mates, parts, instances and mateFrames instead of features. An add_step_part step imports a STEP from the files map as the part document that owns it and instances it, so no hand-made part document is needed; importing the same file id again reuses that part. The full document is not returned by default (returnDoc: false); pass returnDoc: true, or read the '
       + 'resource ' + MCP_DOC_RESOURCE_TEMPLATE + ' with that docHash, when you need the bytes. Pass out to write '
-      + 'the final document (YAML or JSON by extension) inside tmp/ or bugreports/. ',
+      + 'the final document inside tmp/ or bugreports/. For an assembly, out defaults to the workspace zip (the '
+      + 'assembly plus every bound part and file): a path with no extension or ending in .zip writes it, while an '
+      + 'explicit .yaml or .json writes the assembly document alone and the reply\'s notes name the part documents '
+      + 'whose part_instance doc_ids then do not resolve there. A part\'s out is YAML or JSON by extension. ',
     inputSchema: {
       type: 'object',
       required: ['steps'],
@@ -500,7 +505,7 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
         featureDeltas: { type: 'string', enum: ['all'], description: 'Pass "all" to list every built feature; the default lists only features this call changed or touched. A warned feature that built is included under the same rule and carries the warning text, and a sketch or plane the steps touched is listed even when its measure did not move.' },
         frames: { type: 'string', enum: ['all'], description: 'Pass "all" to list every resolved sketch and plane frame; the default lists only frames this call touched or moved.' },
         detail: DETAIL_SCHEMA,
-        out: { type: 'string', description: 'Write the final document here. YAML or JSON by extension, or .zip for a workspace zip of the assembly and its parts; the path must resolve inside tmp/ or bugreports/ (relative paths resolve against the repo root).' },
+        out: { type: 'string', description: 'assembly: workspace zip (the assembly plus every bound part and file) for a path with no extension or ending in .zip; an explicit .yaml or .json writes the assembly document alone, and the reply\'s notes name the part documents whose doc_id then does not resolve. part: YAML or JSON by extension, and .zip needs an assembly. The path must resolve inside tmp/ or bugreports/ (relative paths resolve against the repo root).' },
         docId: { type: 'string' },
         files: FILE_LIST_SCHEMA,
       },
