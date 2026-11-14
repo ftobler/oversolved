@@ -294,6 +294,18 @@ describe('phone-width chrome', () => {
     expect(pinned(css, 'max-width', plainCurrent, NARROW)).toBe('110px')
   })
 
+  it('gives the workspace search an inset from the wordmark, and none once it is gone', () => {
+    // The search group is the page's fill for the header's children slot. The
+    // trail and the document name bring their own horizontal inset; the group
+    // brings none, so at the button gap it sat hard against the wordmark.
+    const css = 'components/layout/AppHeader.css'
+    const controls = chain('app-header', 'app-header-left', 'doc-controls')
+    expect(pinned(css, 'margin-left', controls, TOP_LEVEL)).toBe('12px')
+    // The wordmark is hidden on a phone, so the group follows the burger there
+    // and the inset would read as a hole in the row.
+    expect(pinned(css, 'margin-left', controls, NARROW)).toBe('0')
+  })
+
   it('stacks the library rail above the grid instead of beside it', () => {
     const css = 'pages/Documents.css'
     expect(pinned(css, 'flex-direction', chain('documents-layout'), NARROW)).toBe('column')
