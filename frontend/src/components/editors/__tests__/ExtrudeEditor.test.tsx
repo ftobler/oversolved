@@ -262,7 +262,8 @@ describe('termination select', () => {
     })
   })
 
-  it('shows the up-to pick chip (not the distance input) when termination is up_to', () => {    const upToFeature: PartFeature = {
+  it('shows the up-to pick chip (not the distance input) when termination is up_to', () => {
+    const upToFeature: PartFeature = {
       id: 'ex1', kind: 'extrude',
       extrude: { sketch: '$sk1', distance: 10, termination: 'up_to' },
     }

@@ -398,6 +398,44 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
     expect(Math.abs(volume - expected) / expected).toBeLessThan(1e-3)
   }, 240_000)
 
+  it('replays the symmetric through_all bars of Old example 024', () => {
+    // The practice bug doc: a centred 100 cube on Top and three centred bars
+    // on Top, Front and Right, each through_all symmetric with a stored
+    // distance of 0. The symmetric tool straddles its plane, so every bar cuts
+    // through the cube, and the stored zero only produces the soft warning.
+    const T = 100 / 3
+    const H = T / 2
+    const bar = (id: string, sketch: string): Dict => ({
+      id, kind: 'extrude', label: 'Through',
+      extrude: {
+        sketch: '@' + sketch, distance: 0, direction: 'symmetric', operation: 'cut',
+        termination: 'through_all',
+      },
+    })
+    const result = h.run({
+      features: [
+        rectAt('skCube', -50, -50, 50, 50, '@builtin_plane_top'),
+        extrudeSpec('skCube', 'exCube', { distance: 100, direction: 'symmetric' }),
+        rectAt('skY', -H, -H, H, H, '@builtin_plane_top'),
+        bar('exY', 'skY'),
+        rectAt('skZ', -H, -H, H, H, FRONT),
+        bar('exZ', 'skZ'),
+        rectAt('skX', -H, -H, H, H, '@builtin_plane_right'),
+        bar('exX', 'skX'),
+      ],
+    })
+    for (const id of ['exY', 'exZ', 'exX']) {
+      const res = h.res(result, id)
+      expect(res.status, id).toBe('ok')
+      expect(String(res.solver_warning), id).toBe(
+        'extrude: through_all takes no distance; the stored value is ignored',
+      )
+    }
+    const expected = 1e6 - 259259.2592592593
+    const volume = bodyVolume(h, result, 'exX', 'body_exCube')
+    expect(Math.abs(volume - expected) / expected).toBeLessThan(1e-3)
+  }, 240_000)
+
   it('registers no top_face, so a later plane naming one is refused', () => {
     const result = h.run({
       features: [

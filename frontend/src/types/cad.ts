@@ -23,9 +23,10 @@ export type ExtrudeTermination = 'blind' | 'up_to' | 'up_to_next' | 'through_all
 
 export type ExtrudeFeatureDef = {
   sketch: string | string[]
-  // Required for blind and the up-to stops (the documented fallback when an
-  // up-to target does not resolve). A through_all cut sizes itself from the
-  // bodies and stores no distance; a stored one is ignored with a warning.
+  // Required for blind and both up-to stops; only up_to uses it as the fallback
+  // when its target does not resolve (up_to_next sizes itself from the first
+  // body it meets). A through_all cut sizes itself from the bodies and stores
+  // no distance; a stored one is ignored with a warning.
   distance?: NumberOrExpr
   // Degrees of draft along the sweep: positive narrows the profile, negative
   // widens it, and every lateral wall (holes included) drafts with it. Absent

@@ -76,8 +76,10 @@ describe('solveExtrude guard paths', () => {
   })
 
   it('keeps the non-zero distance rule for up_to and up_to_next', () => {
-    // Both fall back to the blind distance when their target does not resolve,
-    // so the field still means something there and a zero is still refused.
+    // Only up_to falls back to the blind distance when its target does not
+    // resolve; up_to_next sizes itself from the first body it meets and never
+    // reads the field. The document format still requires a distance outside
+    // through_all, so a zero is refused for both.
     const repo = new Repository()
     for (const termination of ['up_to', 'up_to_next']) {
       expect(() =>
@@ -92,8 +94,9 @@ describe('solveExtrude guard paths', () => {
 
   it('does not validate distance on a through_all solve', () => {
     // A through_all cut is sized from the bodies and stores no distance, so a
-    // stale zero on an old document must not reach the blind refusal. The empty
-    // topology walks past the distance check to the no-profile verdict.
+    // stale zero on an old document must not reach the blind refusal. The
+    // repository keys a sketch's plane and topology as `_pt_<id>`/`_topo_<id>`,
+    // so `$sk` resolves through these two and reaches the no-profile verdict.
     const repo = new Repository()
     repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
     repo.register('_topo_sk', { surfaces: [] })

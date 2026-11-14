@@ -330,8 +330,10 @@ export function solveExtrude(
   // A through_all solve never reads the distance, so a stored one (an old
   // document, a script that set it after the termination) is a soft failure:
   // the feature still builds from the bodies, and the warning says the stored
-  // value is ignored. Blind and the two up-to stops still require it; the
-  // up-to fallback is the blind distance when the target does not resolve.
+  // value is ignored. Blind reads it directly, and up_to falls back to it when
+  // its target does not resolve. up_to_next sizes itself at the first body it
+  // meets (UP_TO_REACH) and never reads the value, but the document format
+  // still requires it outside through_all, so a zero is refused there.
   let distanceWarning: string | undefined
   if (termination === 'through_all') {
     const storedDistance = sub.distance ?? sub.depth
@@ -599,7 +601,7 @@ export function solveExtrude(
   // sweep the union span ahead of the plane; symmetric is both-sided, so it
   // straddles the plane by the larger of the reach ahead and behind. Sizing by
   // the union span alone under-cuts symmetric whenever the plane is off-centre.
-  let sweepDistance = distance
+  let sweepDistance: number
   if (termination === 'through_all') {
     const frameNormal: Vec3 = usingFaces
       ? profileNormal()
@@ -622,6 +624,8 @@ export function solveExtrude(
     sweepDistance = direction === 'symmetric'
       ? 2 * Math.max(extent.ahead, extent.behind)
       : extent.span
+  } else {
+    sweepDistance = distance
   }
 
   let toolShape: OccShape

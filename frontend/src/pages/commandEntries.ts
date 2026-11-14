@@ -20,6 +20,7 @@ import { MAX_PATTERN_INSTANCES } from '@/utils/geometry/sketchPattern'
 import type { CommandName } from '@/utils/core/commandNames'
 import { noParams, objectParams, Field, type CommandResult, type ErasedCommandSpec, type CommandSpec, type FieldSpec, type ParseOutcome } from '@/utils/core/commandSpec'
 import { projectedSelectionTargets, type FreezeProjectionMode } from '@/utils/yamlMutations/freezeProjection'
+import { DEFAULT_EXTRUDE_DISTANCE } from '@/utils/yamlMutations'
 
 // The four ordered outcomes of the Escape key in the sketch editor. The first
 // matching rule wins, so this is the single source of truth the `cancel_draw`
@@ -611,7 +612,7 @@ function addFeatureSpec(id: CommandName, label: string, kind: string, extra?: Re
   }
 }
 
-const addExtrudeSpec = addFeatureSpec('add_extrude', 'Add extrude', 'extrude', { sketchQuery: '', distance: 10 })
+const addExtrudeSpec = addFeatureSpec('add_extrude', 'Add extrude', 'extrude', { sketchQuery: '', distance: DEFAULT_EXTRUDE_DISTANCE })
 const addHoleSpec = addFeatureSpec('add_hole', 'Add hole', 'hole')
 const addTransformSpec = addFeatureSpec('add_transform', 'Add transform', 'transform')
 const addShellSpec = addFeatureSpec('add_shell', 'Add shell', 'shell')
