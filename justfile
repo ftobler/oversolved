@@ -193,7 +193,7 @@ fuzz-session seeds="200" steps="40" shards="4":
 [working-directory: "frontend"]
 action-matrix:
     mkdir -p ../tmp
-    ACTION_MATRIX_FULL=1 npx vitest run src/testing/actionMatrix/actionMatrixReal.test.ts 2>&1 | tee ../tmp/action_matrix.log
+    ACTION_MATRIX_FULL=1 ACTION_MATRIX_SHARDS=4 npx vitest run src/testing/actionMatrix/actionMatrixReal.test.ts src/testing/actionMatrix/actionMatrixShard1Real.test.ts src/testing/actionMatrix/actionMatrixShard2Real.test.ts src/testing/actionMatrix/actionMatrixShard3Real.test.ts 2>&1 | tee ../tmp/action_matrix.log
 
 # The geometry fuzz: random realistic feature chains and primitive boolean
 # pairs against the real kernel, checked after every step (validity, volume,
