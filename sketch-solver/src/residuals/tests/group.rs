@@ -1064,3 +1064,25 @@ fn a_spline_grouped_by_two_control_points_keeps_its_endpoints_free() {
         );
     }
 }
+
+#[test]
+fn a_degenerate_reference_carrier_keeps_no_turn_gradient() {
+    // A hand-built wire can name a carrier that sat on the anchor in the
+    // reference (a zero-length line here). The frame reads the turn as identity
+    // there because a direction is unobservable below the positional contract,
+    // so the Jacobian has to agree: no phi column may claim a dependence the
+    // residual does not have. The lowering never emits this carrier (it picks
+    // one more than `TOL_TOPOLOGY_MERGE` away), so the test pins the guard.
+    let inp = input(
+        vec![line(0), ent(Kind::Circle, 4)],
+        vec![0.0, 0.0, 0.0, 0.0, 4.0, 3.0, 2.5],
+        vec![
+            group_carried(0, 0, PointSelector::Start, e_ref(0, PointSelector::End)),
+            group_carried(1, 0, PointSelector::Start, e_ref(0, PointSelector::End)),
+        ],
+    );
+    // Move the carrier apart after the reference: the rows still hold the
+    // reference shape, while the turn stays unobservable in the reference.
+    let x = vec![0.0, 0.0, 3.0, 4.0, 4.0, 3.0, 2.5];
+    assert_group_jacobian(&inp, &x, "degenerate reference carrier");
+}

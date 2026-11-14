@@ -42,9 +42,10 @@ fn angle_carrier_slot(kind: Kind) -> Option<usize> {
     }
 }
 
-/// Fold an angle difference into `(-180, 180]` degrees. A group turned past
+/// Fold an angle difference into `[-180, 180)` degrees. A group turned past
 /// half a turn would otherwise see its held angle jump a whole turn; the
-/// derivative is unchanged except at the seam.
+/// derivative is unchanged except at the seam, where the half-away-from-zero
+/// rounding sends an exact +180 to -180.
 fn wrap180(deg: f64) -> f64 {
     deg - 360.0 * (deg / 360.0).round()
 }
@@ -529,11 +530,15 @@ impl GroupFrame {
     }
 
     /// `d(phi)/dP`; the anchor's derivative is its negative. Zero when the
-    /// carrier collapsed onto the anchor (below the positional contract).
+    /// carrier pair is not observable: either its current offset or its
+    /// reference offset is below the positional contract, the same predicate
+    /// the frame uses to read the turn as identity. A reference offset that is
+    /// degenerate makes `phi` undefined, so the row keeps no gradient either.
     fn dphi_dp(self) -> P2 {
         let d = self.u[0] * self.u[0] + self.u[1] * self.u[1];
+        let d0 = (self.u0[0] * self.u0[0] + self.u0[1] * self.u0[1]).sqrt();
         let floor = contract_positional();
-        if d <= floor * floor {
+        if d0 <= floor || d <= floor * floor {
             [0.0, 0.0]
         } else {
             [-self.u[1] / d, self.u[0] / d]

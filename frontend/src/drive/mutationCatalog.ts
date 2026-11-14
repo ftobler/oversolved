@@ -522,8 +522,9 @@ const CONSTRAINT_KIND_NOTE =
   'points are a `coincident` constraint, not a dimension. `line_distance` takes a line and a point in either order ' +
   '(the document stores the line first, the order the solver reads). `colinear` takes two lines (parallel and on ' +
   'one line) or a point and a line (the point on the line\'s infinite extension). `group` takes one or more ' +
-  'whole authored entities of the sketch (no vertex, origin or projected entity) and glues them into their ' +
-  'current shape, leaving the set free to move and rotate; it carries no value and deleting it frees the entities.'
+  'whole authored entities of the sketch or single pickable points of them (not the origin or a projected ' +
+  'entity) and glues them into their current shape, leaving the set free to move and rotate; it carries no ' +
+  'value and deleting it frees the entities.'
 
 // An angle is the one dimension whose stored value is not the number the label
 // shows: the solver stores the unsigned angle between the two lines' direction
