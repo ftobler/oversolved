@@ -269,6 +269,8 @@ fn output_round_trips() {
             dof: 1,
             iters: 7,
             ms: 0.42,
+            angular_miss: 2.5e-13,
+            linear_miss: 3.5e-10,
         },
     };
     let decoded = decode_output(&encode_output(&out)).unwrap();
@@ -281,6 +283,32 @@ fn output_round_trips() {
     assert_eq!(decoded.diagnostics.rank, 5);
     assert_eq!(decoded.diagnostics.iters, 7);
     assert!((decoded.diagnostics.residual_norm - 1.25e-9).abs() < 1e-18);
+    assert_eq!(decoded.diagnostics.angular_miss, 2.5e-13);
+    assert_eq!(decoded.diagnostics.linear_miss, 3.5e-10);
+}
+
+#[test]
+fn output_round_trips_a_nan_precision_report() {
+    // An unsatisfied solve reports NaN in both fields; NaN must survive the
+    // byte codec exactly (no `finite` gate on the output side), or the host
+    // would read a finite precision the solver never realised.
+    let out = Output {
+        params_solved: vec![0.0],
+        entity_status: vec![2],
+        overall_status: 2,
+        vertex_freedom: Vec::new(),
+        constraint_flags: vec![0],
+        constraint_miss: vec![0.5],
+        entity_moved: vec![0],
+        diagnostics: Diagnostics {
+            angular_miss: f64::NAN,
+            linear_miss: f64::NAN,
+            ..Diagnostics::default()
+        },
+    };
+    let decoded = decode_output(&encode_output(&out)).unwrap();
+    assert!(decoded.diagnostics.angular_miss.is_nan());
+    assert!(decoded.diagnostics.linear_miss.is_nan());
 }
 
 #[test]
@@ -1010,5 +1038,31 @@ fn the_rev_6_output_magic_is_rejected() {
     };
     let mut bytes = encode_output(&out);
     bytes[0..4].copy_from_slice(&MAGIC_OUT_SKR6.to_le_bytes());
+    assert_eq!(decode_output(&bytes).unwrap_err(), CodecError::BadMagic);
+}
+
+#[test]
+fn the_rev_7_magics_are_rejected() {
+    // Rev 7's diagnostics stop at `ms`: a reader expecting the two realised
+    // precision fields would run off the end of the buffer, and a writer of
+    // that pair would leave them unread. The handshake moves on both sides.
+    let mut input_bytes = encode_input(&sample_input());
+    input_bytes[0..4].copy_from_slice(&MAGIC_SKG7.to_le_bytes());
+    assert_eq!(
+        decode_input(&input_bytes).unwrap_err(),
+        CodecError::BadMagic
+    );
+    let out = Output {
+        params_solved: vec![1.0],
+        entity_status: vec![0],
+        overall_status: 0,
+        vertex_freedom: Vec::new(),
+        constraint_flags: Vec::new(),
+        constraint_miss: Vec::new(),
+        entity_moved: Vec::new(),
+        diagnostics: Diagnostics::default(),
+    };
+    let mut bytes = encode_output(&out);
+    bytes[0..4].copy_from_slice(&MAGIC_OUT_SKR7.to_le_bytes());
     assert_eq!(decode_output(&bytes).unwrap_err(), CodecError::BadMagic);
 }

@@ -66,8 +66,15 @@
 //! constraint_flags: n_constraints_status x u8
 //! constraint_miss:  n_constraints_status x f64
 //! entity_moved:   n_entity_moved bytes (one bit per entity, LSB-first)
-//! diagnostics:    f64 residual_norm, u32 rank, u32 dof, u32 iters, f64 ms
+//! diagnostics:    f64 residual_norm, u32 rank, u32 dof, u32 iters, f64 ms,
+//!                 f64 angular_miss, f64 linear_miss
 //! ```
+//!
+//! The `SKG8`/`SKR8` pair appends the contract's realised precision to the
+//! diagnostics: `angular_miss` (radians) and `linear_miss` (document units),
+//! NaN for an unsatisfied solve. The meaning is new, not just the layout, so
+//! the magic moves on both sides: an older reader would stop at `ms` and an
+//! older writer would leave the two fields' bytes unread.
 //!
 //! The `SKG7`/`SKR7` pair adds the input's optional reference params: `fixed`
 //! and `group` hold them when they are present, and `params_initial` otherwise.
@@ -90,8 +97,8 @@
 //! of the boundary (this file and frontend/src/wasm-kernel/codec.ts) on any
 //! layout change. Invalidating old cached payloads is acceptable and safe
 //! post-wave-1: bundle-cache reads of stale buffers degrade to cold rebuilds.
-pub const MAGIC: u32 = 0x3747_4B53; // "SKG7" in LE memory order
-pub const MAGIC_OUT: u32 = 0x3752_4B53; // "SKR7" in LE memory order
+pub const MAGIC: u32 = 0x3847_4B53; // "SKG8" in LE memory order
+pub const MAGIC_OUT: u32 = 0x3852_4B53; // "SKR8" in LE memory order
 
 /// The rev 1 and rev 2 values (and rev 3, whose output lacked the
 /// per-constraint verdicts). Kept only so tests can assert a stale pairing
@@ -133,6 +140,13 @@ pub const MAGIC_OUT_SKR5: u32 = 0x3552_4B53;
 pub const MAGIC_SKG6: u32 = 0x3647_4B53;
 #[cfg(test)]
 pub const MAGIC_OUT_SKR6: u32 = 0x3652_4B53;
+/// The rev 7 pair. Its output diagnostics stop at `ms`: a rev 7 buffer has no
+/// realised-precision fields, and a reader expecting them would run off the
+/// end of the buffer.
+#[cfg(test)]
+pub const MAGIC_SKG7: u32 = 0x3747_4B53;
+#[cfg(test)]
+pub const MAGIC_OUT_SKR7: u32 = 0x3752_4B53;
 
 use solver_core::bytes::{Eof, Reader, Writer};
 
@@ -479,6 +493,8 @@ pub fn encode_output(out: &Output) -> Vec<u8> {
     w.u32(out.diagnostics.dof);
     w.u32(out.diagnostics.iters);
     w.f64(out.diagnostics.ms);
+    w.f64(out.diagnostics.angular_miss);
+    w.f64(out.diagnostics.linear_miss);
     w.into_bytes()
 }
 
@@ -519,6 +535,8 @@ pub fn decode_output(buf: &[u8]) -> Result<Output, CodecError> {
     let dof = r.u32()?;
     let iters = r.u32()?;
     let ms = r.f64()?;
+    let angular_miss = r.f64()?;
+    let linear_miss = r.f64()?;
     Ok(Output {
         params_solved,
         entity_status,
@@ -533,6 +551,8 @@ pub fn decode_output(buf: &[u8]) -> Result<Output, CodecError> {
             dof,
             iters,
             ms,
+            angular_miss,
+            linear_miss,
         },
     })
 }

@@ -255,6 +255,18 @@ pub struct Diagnostics {
     pub dof: u32,
     pub iters: u32,
     pub ms: f64,
+    /// The realised angular precision of the shipped geometry: the largest
+    /// `|row| / seed_len` over the angular rows, in radians. This is OCC's
+    /// `Precision::Angular()` read as a target (see `tolerance::OCC_ANGULAR`),
+    /// not the verdict: a satisfied sketch may report more than the target, and
+    /// the kernel half then knows how far to widen its own merge. NaN on an
+    /// unsatisfied solve (nothing was realised) and on the drag fast path.
+    pub angular_miss: f64,
+    /// The realised positional precision: the largest positional row, in
+    /// document length units. The target is `OCC_CONFUSION * 1e-2`, two orders
+    /// under the kernel's point identity. NaN on an unsatisfied solve (nothing
+    /// was realised) and on the drag fast path.
+    pub linear_miss: f64,
 }
 
 /// Bit values of `Output::constraint_flags`. One byte per input constraint, in
