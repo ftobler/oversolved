@@ -34,6 +34,7 @@ import { PART_DOC_SCHEMA_JSON } from '@/persistence/partDocSchema'
 import { ASSEMBLY_DOC_SCHEMA_JSON } from '@/persistence/assemblyDocSchema'
 import { createHeadlessAssembly, emptyDriveAssemblyDoc, type AssemblyScriptStep } from '@/drive/headlessAssembly'
 import { buildAssemblyWorkspaceZip } from '@/drive/assemblyWorkspaceZip'
+import { assemblyBareOutNote } from '@/drive/assemblyOut'
 import { docHashOf } from '@/drive/docHash'
 import type { ScriptStep, ScriptStepOutcome } from '@/drive/scriptRunner'
 import type { SelectResult } from '@/kernel/select'
@@ -333,7 +334,11 @@ const ops: McpCadOps = {
         return { ...reply, file: out, format: 'zip', bytes: bytes.byteLength }
       }
       const written = writeDocFile(out, result.doc)
-      return { ...reply, file: written.file, format: written.format }
+      // A bare assembly file is legitimate (inspection, a replay), but its
+      // part_instance ids name documents it does not carry: say so instead of
+      // letting the file fail to open with no warning.
+      const note = assemblyBareOutNote(result.doc)
+      return { ...reply, file: written.file, format: written.format, ...(note !== null && { notes: [note] }) }
     } catch (e) {
       return { ...reply, ok: false, error: e instanceof Error ? e.message : String(e) }
     }

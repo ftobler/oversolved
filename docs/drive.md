@@ -463,7 +463,7 @@ banner on stdout, so a client config must use the direct node invocation.
 |---|---|---|
 | `commands` | optional `kind` (`part` default, or `assembly`) | the command catalog for that editor |
 | `mutations` | optional `kind`, optional `family` (`sketch`, `features`, `picks`, `part style`, `document`, `parts`, `mates`), optional `type` (one name or array), optional `detail` (`full` or `index`) | the mutation vocabularies grouped by family plus ready-to-run example scripts; no argument returns both whole (about 90 kB); `type` fetches one row, `detail: "index"` lists `{type, summary}` only, a filter returns only that slice; an unknown family is refused with the valid list and an unknown type with a did-you-mean when a close name exists |
-| `run` | `steps`, optional `doc` or `docHash`, `kind` (fresh only), `parts`, `returnDoc`, `featureDeltas: "all"`, `frames: "all"`, `out`, `detail` (assembly), `docId`, `files` | part: `{ ok, solved, steps, docHash, solve, features, notes, featureDeltas, frames, curves, length_unit, summary, doc?, file?, format? }`; assembly: `{ ok, kind: "assembly", steps, docHash, solve, mates, parts, instances, mateFrames, summary, doc?, file?, format? }` |
+| `run` | `steps`, optional `doc` or `docHash`, `kind` (fresh only), `parts`, `returnDoc`, `featureDeltas: "all"`, `frames: "all"`, `out`, `detail` (assembly), `docId`, `files` | part: `{ ok, solved, steps, docHash, solve, features, notes, featureDeltas, frames, curves, length_unit, summary, doc?, file?, format? }`; assembly: `{ ok, kind: "assembly", steps, docHash, solve, mates, parts, instances, mateFrames, summary, notes, doc?, file?, format?, bytes? }` |
 | `measure` | `doc` or `docHash`, optional `parts`, `detail` (assembly), `docId`, `files` | part: the `MeasureRecord` plus `features`/`notes`/`frames`/`curves`/`length_unit`; assembly: `{ ok, kind, docHash, ...MeasureRecord, instances, solve, mates, parts }`; under `detail: "summary"` or `"changed"` the aggregate measures, the solve verdict, and the mates and parts problem rows survive, and `perBody` and `instances` are dropped |
 | `compare` | `doc` or `docHash`, optional `parts`, `reference` (inline) or `referencePath`, optional `docId`, `files` | `{ ok, docHash, pass, rows, measures, length_unit, compared_in }`; a failing row is data, not an MCP error |
 | `export` | `doc` or `docHash`, optional `parts`, `format` (step/stl), `out`, optional `body`, `detail` (assembly), `docId`, `files` | writes the file, returns `{ ok, docHash, features, notes, length_unit, file_unit, file, format, bytes }` for a part or `{ ok, kind: "assembly", docHash, solve, mates, parts, instances, summary, file, format, bytes }`; an assembly `detail: "summary"` (or `"changed"`) keeps the file fields, solve, problem rows and summary and drops `instances` |
@@ -1577,7 +1577,9 @@ authors `flip: true` by hand is equally valid.
   writes the placed compound as one STEP/STL; `body` is refused for an assembly.
 - `run` with `out` ending in `.zip` writes a workspace archive with the
   assembly, every bound part and every `files` entry, ready to import in the
-  browser. YAML/JSON `out` writes the assembly document alone.
+  browser. A YAML/JSON `out` writes the assembly document alone; the reply's
+  `notes` names the part documents its `part_instance.doc_id` values cannot
+  resolve there, and says to use a `.zip` path for a self-contained hand-off.
 - `select` stays part-only: it refuses an assembly handle and points at the
   part's docHash.
 - Non-goals: sub-assemblies, world-space or cross-instance selection, mate
