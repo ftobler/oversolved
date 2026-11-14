@@ -279,6 +279,9 @@ export function planAssemblyOperation<K extends AssemblyOperationId>(
   // assembly id reports as a cycle rather than as an unknown part.
   if (id === 'set_part_doc') {
     const { docId } = input as AssemblyOperationInputs['set_part_doc']
+    if (docId === '') {
+      throw new Error('A part instance needs a non-empty part doc_id')
+    }
     if (ctx.assemblyDocId !== undefined && docId === ctx.assemblyDocId) {
       throw new Error(`A part instance cannot point at the assembly it belongs to: ${docId}`)
     }

@@ -911,6 +911,7 @@ function validateValues(
       const operation = ASSEMBLY_OPERATION_BY_MUTATION[type]
       if (type === 'delete_part') return { ok: true, operation, input: handle }
       if (type === 'set_part_doc') {
+        if (raw.part === '') return fail('invalid-mutation', 'part must be a non-empty doc_id')
         const partProblem = boundProblem(ctx, raw.part as string)
         if (partProblem !== null) return fail('unknown-target', partProblem)
         return { ok: true, operation, input: { handle, docId: raw.part as string } }

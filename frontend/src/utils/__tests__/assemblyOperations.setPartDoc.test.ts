@@ -97,8 +97,15 @@ describe('set_part_doc operation', () => {
     )).toThrow(/not a live entry in this workspace: ghost/)
   })
 
-  it('refuses pointing the instance at the assembly that owns it', () => {
+  it('refuses an empty doc_id with a named cause', () => {
     expect(() => planAssemblyOperation(
+      'set_part_doc',
+      { handle: 'left', docId: '' },
+      { doc: docWith(), transforms: {} },
+    )).toThrow(/non-empty part doc_id/)
+  })
+
+  it('refuses pointing the instance at the assembly that owns it', () => {    expect(() => planAssemblyOperation(
       'set_part_doc',
       { handle: 'left', docId: 'assembly-1' },
       {

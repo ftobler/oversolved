@@ -252,6 +252,10 @@ describe('validateAssemblyMutation refusals', () => {
     const unbound = validate({ type: 'set_part_doc', handle: 'left', part: 'ghost' })
     expect(unbound).toMatchObject({ ok: false, error: { code: 'unknown-target' } })
     expect(!unbound.ok && unbound.error.message).toContain('bound parts: panel, rail_400')
+
+    const empty = validate({ type: 'set_part_doc', handle: 'left', part: '' })
+    expect(empty).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+    expect(!empty.ok && empty.error.message).toContain('non-empty doc_id')
   })
 
   it('states that a rebind leaves mate refs to the solver stale rules', () => {
