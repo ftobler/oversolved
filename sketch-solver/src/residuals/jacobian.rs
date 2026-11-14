@@ -1,7 +1,7 @@
 //! Analytic and finite-difference Jacobian rows for the constraint set.
 
 use super::geom::is_curve;
-use super::misc::{anchor_is_first_pair, group_coord_count};
+use super::misc::GroupWalk;
 use super::Problem;
 use crate::constraints::{Constraint, ConstraintKind, PointSelector, Ref, RefRole};
 use crate::fit_spline::ParamLayout;
@@ -739,60 +739,46 @@ impl Problem<'_> {
     /// `point_jac(target) - point_jac(anchor)`, the same reference-offset-plus-
     /// transform shape the residual uses.
     fn jac_group(&self, c: &Constraint, x: &[f64], rows: &mut Vec<SparseRow>) {
-        let (
-            Some(Ref::Entity {
-                index: member,
-                point: member_point,
-            }),
-            Some(
-                anchor @ Ref::Entity {
-                    index: anchor_index,
-                    point: anchor_point,
-                },
-            ),
-        ) = (c.ref_for(RefRole::Target), c.ref_for(RefRole::A))
-        else {
+        let Some(walk) = GroupWalk::of(self, c) else {
             return;
         };
-        if member_point.is_present() {
-            let target = Ref::Entity {
-                index: member,
-                point: member_point,
-            };
-            if target == anchor {
-                return;
-            }
-            let mut rx = RowBuf::new();
-            let mut ry = RowBuf::new();
-            for (col, dpx, dpy) in self.point_jac(x, target) {
-                rx.add(col, dpx);
-                ry.add(col, dpy);
-            }
-            for (col, dpx, dpy) in self.point_jac(x, anchor) {
-                rx.add(col, -dpx);
-                ry.add(col, -dpy);
-            }
-            rows.push(rx.finish());
-            rows.push(ry.finish());
-            return;
-        }
-        let off = self.offset_of(member);
-        let size = self.param_count_of(member);
-        let coords = group_coord_count(self.kind_of(member), size);
-        let skip_anchor_pair =
-            member == anchor_index && size >= 2 && anchor_is_first_pair(anchor_point);
-        for i in 0..size {
-            if skip_anchor_pair && i < 2 {
-                continue;
-            }
-            let mut row = RowBuf::new();
-            row.add(off + i, 1.0);
-            if i < coords {
+        match walk {
+            GroupWalk::Point { member, anchor } => {
+                let mut rx = RowBuf::new();
+                let mut ry = RowBuf::new();
+                for (col, dpx, dpy) in self.point_jac(x, member) {
+                    rx.add(col, dpx);
+                    ry.add(col, dpy);
+                }
                 for (col, dpx, dpy) in self.point_jac(x, anchor) {
-                    row.add(col, -(if i % 2 == 0 { dpx } else { dpy }));
+                    rx.add(col, -dpx);
+                    ry.add(col, -dpy);
+                }
+                rows.push(rx.finish());
+                rows.push(ry.finish());
+            }
+            GroupWalk::Whole {
+                member,
+                size,
+                coords,
+                skip_first_pair,
+                anchor,
+            } => {
+                let off = self.offset_of(member);
+                for i in 0..size {
+                    if skip_first_pair && i < 2 {
+                        continue;
+                    }
+                    let mut row = RowBuf::new();
+                    row.add(off + i, 1.0);
+                    if i < coords {
+                        for (col, dpx, dpy) in self.point_jac(x, anchor) {
+                            row.add(col, -(if i % 2 == 0 { dpx } else { dpy }));
+                        }
+                    }
+                    rows.push(row.finish());
                 }
             }
-            rows.push(row.finish());
         }
     }
 
