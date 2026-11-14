@@ -67,6 +67,19 @@
 //! reports the realised miss instead of failing, so the kernel half can widen
 //! its own call for exactly the reported amount.
 //!
+//! This is a ROW-precision contract, not an absolute-orientation fix, and the
+//! distinction is load-bearing. The mirror-seam report's sketch already met it:
+//! the 1.28e-9 rad the kernel saw was the free profile's absolute tilt, a null
+//! direction of the anchored solve with no residual row measuring it, so no
+//! row width can close it. The finish tightens rows (parallel pairs agree to
+//! 1e-12 here); it cannot pin a free global direction. The consequence for
+//! `feature/kernel-unify-within-contract.md` is that its widening reads the
+//! reported row miss, which is 0 on that sketch, so it cannot merge the seam by
+//! itself: the seam needs an authored `horizontal` (a row that does measure the
+//! direction) or a separate orientation-uncertainty signal the solver does not
+//! have today. Which of the two the kernel half takes is its decision, not this
+//! crate's, and no code here can substitute for it.
+//!
 //! The area builder's sampled scan (`topology::curve_intersect`) is the one
 //! place where an absolute RESOLUTION is deliberate rather than derived:
 //! `SCAN_SAMPLES` samples the scanned curve's parameter domain, ~1/80 of its
@@ -128,20 +141,24 @@ pub fn verdict_tol(scale: f64) -> f64 {
 
 /// OCC's `Precision::Confusion()`: the world width under which the kernel reads
 /// two points as one. Deliberately ABSOLUTE, and deliberately not ours to
-/// choose: it is compiled into opencascade.js@1.1.1 (OCCT 7.4.0p1), and every
-/// OCC call this app does not pass an explicit tolerance to reads it -- the
-/// profile's `MakeWire`, the BOP fuse, `ShapeUpgrade_UnifySameDomain`'s
-/// defaults. A relative width would disagree with those calls on every sketch
-/// but one size. Mirrored on the TS side as `OCC_CONFUSION`
-/// (`frontend/src/kernel/solverConstants.ts`); that test pins the pair equal.
+/// choose: it is compiled into opencascade.js@1.1.1 (OCCT 7.4.0p1). The
+/// profile's `MakeWire` reads it as its default LINEAR tolerance (for endpoint
+/// identity), and every other call this app does not pass an explicit
+/// tolerance to reads it for point identity too, the BOP fuse and
+/// `ShapeUpgrade_UnifySameDomain` included. A relative width would disagree
+/// with those calls on every sketch but one size. Mirrored on the TS side as
+/// `OCC_CONFUSION` (`frontend/src/kernel/solverConstants.ts`); that test pins
+/// the pair equal.
 pub const OCC_CONFUSION: f64 = 1e-7;
 
 /// OCC's `Precision::Angular()`: the angle under which the kernel reads two
 /// directions as one, compiled into the same build as [`OCC_CONFUSION`]. The
 /// consumer is the face merge: two planar faces whose normals differ by more
 /// than this are not the same domain, so a "parallel" the solver left a
-/// nanoradian short reads as two faces with a visible seam. Mirrored on the TS
-/// side as `OCC_ANGULAR`.
+/// nanoradian short reads as two faces with a visible seam. The same calls read
+/// [`OCC_CONFUSION`] for point identity; `MakeWire`'s DEFAULT tolerance is that
+/// linear one, not this angular width. Mirrored on the TS side as
+/// `OCC_ANGULAR`.
 ///
 /// Reachable on purpose: f64 resolves a line direction from endpoints at
 /// magnitude `m` to about `eps * m / len` (3e-16 rad for an 80 mm line at

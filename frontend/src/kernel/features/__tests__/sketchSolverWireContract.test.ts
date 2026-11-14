@@ -254,12 +254,14 @@ describe.skipIf(!solveBytes)('solveSketch reports the kernel precision contract'
     expect(Number.isNaN(out.linear_miss)).toBe(true)
   })
 
-  it('re-solves a 6 dp baked seed back to the contract', () => {
+  it('re-solves an off-grid 6 dp baked seed back to the contract', () => {
     // The write-back stores 6 decimals (`roundGeometry`), so a reload seeds
     // from a quantised copy of the last solve. The kernel still builds from the
-    // new solve's params, but only if that solve lands back inside the contract;
-    // a 1e-6 grid step on a 10 mm edge is a 1e-7 rad tilt, 100000x the angular
-    // target, so the finish has to reclaim it and the assertion is real.
+    // new solve's params, but only if that solve lands back inside the contract.
+    // An exact solve rounds onto the grid unchanged, which would prove nothing,
+    // so one endpoint is moved by 3e-7 after the bake: a 10 mm line then starts
+    // 3e-8 rad off horizontal, 30000x the 1e-12 row target, and the finish has
+    // to reclaim it.
     setSketchSolver(solveBytes!)
     const first = solveSketch(rect('reload', square) as unknown as Record<string, unknown>, initGlobalRepo(), {})
     expect(Number.isFinite(first.angular_miss)).toBe(true)
@@ -267,10 +269,24 @@ describe.skipIf(!solveBytes)('solveSketch reports the kernel precision contract'
     for (const [id, params] of Object.entries(first.geometry ?? {})) {
       baked[id] = params.map((v) => Math.round(v * 1e6) / 1e6)
     }
+    baked.bottom[3] += 3e-7
+    // What the reloaded solve starts from: the report measures solved geometry,
+    // not its seed, so the seed's own tilt is computed here.
+    const seedTilt = Math.abs(
+      Math.atan2(baked.bottom[3] - baked.bottom[1], baked.bottom[2] - baked.bottom[0]),
+    )
+    expect(seedTilt).toBeGreaterThan(OCC_ANGULAR)
     const reloaded = { ...(rect('reload2', square) as unknown as Record<string, unknown>), initial: baked }
     const again = solveSketch(reloaded, initGlobalRepo(), {})
     expect(again.angular_miss!).toBeLessThanOrEqual(OCC_ANGULAR)
     expect(again.linear_miss!).toBeLessThanOrEqual(OCC_CONFUSION * 1e-2)
+    // And the solved bottom edge is horizontal within the legal pair bound,
+    // not merely reported so.
+    const bottom = again.geometry!.bottom
+    const solvedTilt = Math.abs(
+      Math.atan2(bottom[3] - bottom[1], bottom[2] - bottom[0]),
+    )
+    expect(solvedTilt).toBeLessThanOrEqual(2 * OCC_ANGULAR)
   })
 })
 

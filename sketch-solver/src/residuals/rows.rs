@@ -12,10 +12,11 @@
 //! residual builders push bare f64s (and `jacobian.rs` mirrors their count), so
 //! a parallel tag vector would be a third thing to keep in sync. This walk
 //! mirrors `residual_one`'s branch structure instead, and `row_tags_cover_every_kind`
-//! plus the per-kind count assertions pin it to the builders. A row this walk
-//! does not classify is POSITIONAL: the stricter (absolute) of the two targets
-//! is the safe default, and a mismatch between the two counts is a programming
-//! error the tests catch.
+//! plus the per-kind count assertions pin it to the builders. The counts are a
+//! HARD invariant: `contract_rows` asserts one class per pushed row in debug
+//! builds, and a release build that somehow hit a mismatch reads the row as
+//! `RowClass::Unclassified`, which makes both misses non-finite rather than
+//! quietly granting the row a looser target.
 
 use super::geom::is_curve;
 use super::Problem;
@@ -31,14 +32,27 @@ pub enum RowClass {
     Angular { seed_len: f64 },
     /// A world distance (a coincidence, a dimension, a radius, a pin).
     Positional,
+    /// A non-world scalar: an arc's endpoint angle or an ellipse's rotation, in
+    /// degrees. The contract is about lengths and angles in the kernel's units,
+    /// so a degree-valued row has no honest width here and is excluded from
+    /// both misses rather than compared as if it were a world distance.
+    Parameter,
+    /// A row the walk did not classify. This is a programming error (the debug
+    /// assertion in `contract_rows` catches it in tests); in a release build it
+    /// reads as non-finite misses so no caller mistakes it for a satisfied
+    /// contract. It is never a target.
+    Unclassified,
 }
 
 impl RowClass {
-    /// The absolute row width the contract asks of this class.
+    /// The absolute row width the contract asks of this class. `Parameter` and
+    /// `Unclassified` have none: the first is excluded from the contract, the
+    /// second is a failure.
     pub fn target(self) -> f64 {
         match self {
             RowClass::Angular { seed_len } => contract_angular(seed_len),
             RowClass::Positional => contract_positional(),
+            RowClass::Parameter | RowClass::Unclassified => 0.0,
         }
     }
 }
@@ -51,6 +65,18 @@ fn positional(n: usize) -> Vec<RowClass> {
 /// `n` angular rows over one seed length.
 fn angular(n: usize, seed_len: f64) -> Vec<RowClass> {
     vec![RowClass::Angular { seed_len }; n]
+}
+
+/// The class of one raw param of an entity of `kind`: `Kind::Arc` stores
+/// `(cx, cy, r, a0, a1)` and `Kind::Ellipse` `(cx, cy, rx, ry, theta)`, so the
+/// trailing degree slots are the only non-world scalars. Everything else is a
+/// position, a length or a control point.
+fn param_class(kind: Kind, index: usize) -> RowClass {
+    match kind {
+        Kind::Arc if index >= 3 => RowClass::Parameter,
+        Kind::Ellipse if index == 4 => RowClass::Parameter,
+        _ => RowClass::Positional,
+    }
 }
 
 impl Problem<'_> {
@@ -309,9 +335,9 @@ impl Problem<'_> {
     }
 
     /// A fixed row set: a named point gives a coordinate pair, the bare entity
-    /// pins every param. A pinned shape scalar (an arc angle in degrees) is not
-    /// a world distance, but the row is linear, so it is zeroed in the same
-    /// step; the positional class is the strictest reading the contract has.
+    /// pins every param. A pinned shape scalar (an arc angle in degrees, an
+    /// ellipse's rotation) is not a world distance and is classed as
+    /// `Parameter`, not read as one.
     fn class_fixed(&self, c: &Constraint) -> Vec<RowClass> {
         let Some(Ref::Entity { index, point }) = c.ref_for(RefRole::Target) else {
             return Vec::new();
@@ -319,7 +345,10 @@ impl Problem<'_> {
         if point.is_present() || c.xy.is_some() {
             return positional(2);
         }
-        positional(self.param_count_of(index))
+        let kind = self.kind_of(index);
+        (0..self.param_count_of(index))
+            .map(|i| param_class(kind, i))
+            .collect()
     }
 
     fn class_group(&self, c: &Constraint) -> Vec<RowClass> {
@@ -335,9 +364,26 @@ impl Problem<'_> {
             return Vec::new();
         };
         let size = self.param_count_of(member);
+        let kind = self.kind_of(member);
         let skip_pair =
             member == anchor_index && size >= 2 && super::misc::anchor_is_first_pair(anchor_point);
-        positional(size.saturating_sub(if skip_pair { 2 } else { 0 }))
+        (0..size)
+            .skip(if skip_pair { 2 } else { 0 })
+            .map(|i| param_class(kind, i))
+            .collect()
+    }
+
+    /// The class of the param at absolute index `i`, found by the entity block
+    /// that contains it. Pin rows name params, not constraints, so this is the
+    /// only way to tell an arc's angle pin from its radius pin.
+    fn param_class_at(&self, i: usize) -> RowClass {
+        for entity in self.entities {
+            let end = entity.param_offset + entity.param_count;
+            if (entity.param_offset..end).contains(&i) {
+                return param_class(entity.kind, i - entity.param_offset);
+            }
+        }
+        RowClass::Positional
     }
 
     /// Every residual row with the class the contract reads it as, in wire
@@ -349,21 +395,26 @@ impl Problem<'_> {
             rows.clear();
             self.residual_one(c, x, &mut rows);
             let classes = self.row_classes(c);
+            debug_assert_eq!(
+                classes.len(),
+                rows.len(),
+                "constraint {:?}: {} classes for {} rows",
+                c.kind(),
+                classes.len(),
+                rows.len()
+            );
             for (i, &residual) in rows.iter().enumerate() {
-                // A row the walk does not classify is positional: the stricter
-                // absolute target. The count test makes that a fallback, not a
-                // silent drift.
-                out.push((
-                    residual,
-                    classes.get(i).copied().unwrap_or(RowClass::Positional),
-                ));
+                // A mismatch is impossible on a correct build (and asserted
+                // above); in release it is a failure, never a looser target.
+                let class = classes.get(i).copied().unwrap_or(RowClass::Unclassified);
+                out.push((residual, class));
             }
         }
         for &i in &self.pinned_indices {
-            out.push((x[i] - self.x0[i], RowClass::Positional));
+            out.push((x[i] - self.x0[i], self.param_class_at(i)));
         }
         for &(i, target) in &self.equality_pins {
-            out.push((x[i] - target, RowClass::Positional));
+            out.push((x[i] - target, self.param_class_at(i)));
         }
         out
     }
@@ -371,7 +422,9 @@ impl Problem<'_> {
     /// The realised precision at `x`, as the two numbers the wire reports:
     /// `(angular_miss, linear_miss)`. The angular miss is the largest
     /// `|row| / seed_len` (radians); the linear miss is the largest positional
-    /// row (a world length). Both 0 when no row of that class exists.
+    /// row (a world length). Degree-valued shape scalars are excluded (see
+    /// `RowClass::Parameter`). Both 0 when no row of that class exists, both
+    /// non-finite when the classification invariant broke.
     pub fn contract_misses(&self, x: &[f64]) -> (f64, f64) {
         let mut angular_miss = 0.0_f64;
         let mut linear_miss = 0.0_f64;
@@ -382,6 +435,8 @@ impl Problem<'_> {
                     angular_miss = angular_miss.max(residual.abs() / divisor);
                 }
                 RowClass::Positional => linear_miss = linear_miss.max(residual.abs()),
+                RowClass::Parameter => {}
+                RowClass::Unclassified => return (f64::INFINITY, f64::INFINITY),
             }
         }
         (angular_miss, linear_miss)
@@ -650,6 +705,39 @@ mod tests {
                 ),
             ),
         ));
+        v.push((
+            ConstraintKind::Horizontal,
+            cons(
+                ConstraintKind::Horizontal,
+                ab(
+                    e_ref(0, PointSelector::Start),
+                    e_ref(1, PointSelector::Start),
+                ),
+            ),
+        ));
+        // The builder arms the class walk mirrors: line/spline,
+        // line/fit-spline, line/ellipse and a pinned curve/curve contact.
+        v.push((
+            ConstraintKind::Tangent,
+            cons(
+                ConstraintKind::Tangent,
+                ab(line0, e_ref(5, PointSelector::Absent)),
+            ),
+        ));
+        v.push((
+            ConstraintKind::Tangent,
+            cons(
+                ConstraintKind::Tangent,
+                ab(line0, e_ref(6, PointSelector::Absent)),
+            ),
+        ));
+        v.push((
+            ConstraintKind::Tangent,
+            cons(
+                ConstraintKind::Tangent,
+                ab(line0, e_ref(4, PointSelector::Absent)),
+            ),
+        ));
         v
     }
 
@@ -751,9 +839,143 @@ mod tests {
             // row; only the anchor's own first pair is exempt.
             vec![false; 4],
         );
-        // A kind the tagger does not know is positional: the strictest target.
+        // The anchor-skip arm: the member IS the anchor and its selector is the
+        // first pair, so only the two trailing params row.
+        let anchor_skip = Constraint {
+            kind_code: ConstraintKind::Group.to_u8(),
+            refs: vec![
+                (RefRole::Target, e_ref(1, PointSelector::Absent)),
+                (RefRole::A, e_ref(1, PointSelector::Start)),
+            ],
+            ..Default::default()
+        };
+        expect(&anchor_skip, vec![false; 2]);
+        // A kind the tagger does not know has no target (and an invariant
+        // failure is non-finite, never a looser width).
+        assert_eq!(RowClass::Parameter.target(), 0.0);
+        assert_eq!(RowClass::Unclassified.target(), 0.0);
         assert_eq!(RowClass::Positional.target(), contract_positional());
         assert!(matches!(angle(2.0), RowClass::Angular { seed_len } if seed_len == 2.0));
+    }
+
+    #[test]
+    fn the_two_point_lever_is_the_tilt_arm() {
+        // Horizontal reads the x separation, vertical the y separation: that is
+        // the distance the tilt acts over, not the sketch scale.
+        let problem = problem();
+        let a = e_ref(0, PointSelector::Start);
+        let b = e_ref(1, PointSelector::Start);
+        let horizontal = classes_of(&problem, &cons(ConstraintKind::Horizontal, ab(a, b)));
+        // Both starts are at x = 0, so the floor (min_len) applies.
+        let RowClass::Angular { seed_len } = horizontal[0] else {
+            panic!("two-point horizontal is not angular");
+        };
+        assert!((seed_len - problem.min_len()).abs() < f64::EPSILON);
+        let vertical = classes_of(&problem, &cons(ConstraintKind::Vertical, ab(a, b)));
+        let RowClass::Angular { seed_len } = vertical[0] else {
+            panic!("two-point vertical is not angular");
+        };
+        assert!((seed_len - 5.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn the_tangent_builder_arms_are_classified() {
+        let problem = problem();
+        let line0 = e_ref(0, PointSelector::Absent);
+        let tangent = |b: Ref| cons(ConstraintKind::Tangent, ab(line0, b));
+        // Line/spline and line/fit-spline are direction rows over their own
+        // seed length; line/ellipse is the body-distance form, positional.
+        let spline = classes_of(&problem, &tangent(e_ref(5, PointSelector::Absent)));
+        assert!(matches!(
+            spline[0],
+            RowClass::Angular { seed_len } if (seed_len - problem.line_len0(0)).abs() < f64::EPSILON
+        ));
+        let fit = classes_of(&problem, &tangent(e_ref(6, PointSelector::Absent)));
+        assert!(matches!(
+            fit[0],
+            RowClass::Angular { seed_len } if (seed_len - problem.fit_len0(6)).abs() < f64::EPSILON
+        ));
+        let ellipse = classes_of(&problem, &tangent(e_ref(4, PointSelector::Absent)));
+        assert_eq!(ellipse, vec![RowClass::Positional]);
+    }
+
+    #[test]
+    fn a_pinned_curve_contact_is_angular() {
+        // The contact form is `seed_radius * sin(angle between the radials)`,
+        // which only the coincident makes reachable: a Problem without it builds
+        // the centre-distance body form instead.
+        let entities = entities();
+        let params = params();
+        let coincident = cons(
+            ConstraintKind::Coincident,
+            ab(
+                e_ref(3, PointSelector::End),
+                e_ref(2, PointSelector::Absent),
+            ),
+        );
+        let tangent = cons(
+            ConstraintKind::Tangent,
+            ab(
+                e_ref(2, PointSelector::Absent),
+                e_ref(3, PointSelector::Absent),
+            ),
+        );
+        let inp: &'static Input = Box::leak(Box::new(input(
+            entities,
+            params,
+            vec![coincident, tangent.clone()],
+        )));
+        let problem = Problem::new(inp);
+        let classes = classes_of(&problem, &tangent);
+        assert!(matches!(
+            classes[0],
+            RowClass::Angular { seed_len }
+                if (seed_len - problem.curve_pair_radius0(3, 2)).abs() < f64::EPSILON
+        ));
+    }
+
+    #[test]
+    fn a_fixed_arc_shape_scalar_is_parameter_not_a_world_distance() {
+        // A bare `fixed` on an arc pins all five params: the centre and radius
+        // are world lengths, the two endpoint angles are degrees. Reading the
+        // angles as world distances would put a 90 into `linear_miss`.
+        let fixed_arc = c_target(ConstraintKind::Fixed, 3, PointSelector::Absent);
+        let fixed_ellipse = c_target(ConstraintKind::Fixed, 4, PointSelector::Absent);
+        let inp: &'static Input = Box::leak(Box::new(input(
+            entities(),
+            params(),
+            vec![fixed_arc.clone(), fixed_ellipse.clone()],
+        )));
+        let problem = Problem::new(inp);
+        assert_eq!(
+            classes_of(&problem, &fixed_arc),
+            vec![
+                RowClass::Positional,
+                RowClass::Positional,
+                RowClass::Positional,
+                RowClass::Parameter,
+                RowClass::Parameter,
+            ]
+        );
+        assert_eq!(
+            classes_of(&problem, &fixed_ellipse),
+            vec![
+                RowClass::Positional,
+                RowClass::Positional,
+                RowClass::Positional,
+                RowClass::Positional,
+                RowClass::Parameter,
+            ]
+        );
+        // A moved endpoint angle alone must not appear as a world distance.
+        let mut moved = problem.x0.clone();
+        moved[14] += 90.0; // arc 3's a0 (offset 11: cx, cy, r, a0, a1)
+        let (angular, linear) = problem.contract_misses(&moved);
+        assert_eq!(angular, 0.0);
+        assert!(
+            linear < 1e-15,
+            "a degree row leaked into linear_miss: {linear}"
+        );
     }
 
     #[test]

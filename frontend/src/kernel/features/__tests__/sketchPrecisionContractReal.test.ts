@@ -4,19 +4,18 @@
 // seam report's own document (`__fixtures__/mirrorSeams.json`, a faithful copy
 // of the document block in `bugreports/20261114_0039_mirror_seams.md`).
 //
-// Two things are pinned here:
-//   1. The kernel builds from the solve's f64 `paramsSolved`, never from the
-//      6 dp baked document. The sketch below is seeded OPEN and closed only by
-//      its constraints, so a build that read the stored seed would fail to
-//      close the profile.
-//   2. No edge lying on the mirror plane separates two planar faces with
-//      (near-)parallel normals: that edge is the seam the report saw.
+// This suite pins the kernel BUILD INPUT: the profile comes from the solve's
+// f64 `paramsSolved`, never from the 6 dp baked document. The sketch below is
+// seeded OPEN and closed only by its constraints, so a build that read the
+// stored seed would fail to close the profile.
 //
-// The seam assertion is `.todo`: on this tree the solver's contract finish
-// lands the pair inside `OCC_ANGULAR`, but the kernel half (reading that report
-// and applying it per call) is `feature/kernel-unify-within-contract.md`. If
-// the seam survives here, that plan owns it; this suite is where it turns
-// green.
+// Its one seam measurement is a PIN, not a pass. The solver's row contract is
+// met on this sketch, and one edge is still left in x = 0 between two nearly
+// coplanar faces: on the report's sketch the 1.28e-9 rad the kernel sees is a
+// free absolute tilt, not a residual row, so no row-precision finish can close
+// it. The kernel half (reading a report and applying it per call) is
+// `feature/kernel-unify-within-contract.md`; the seam must be closed there (or
+// by an authored `horizontal`), and this suite is where that turns green.
 
 import { describe, it, expect, afterAll } from 'vitest'
 import type { BuildResponse } from '../../builder'
@@ -24,7 +23,6 @@ import type { BuildState } from '../../types3d'
 import type { OccModule, OccShape, OccSubShape } from '../../occ/occTypes'
 import { exploreEdges, exploreFaces } from '../../occ/edgeModifier'
 import { DisposeScope } from '../../occ/disposeScope'
-import { TOL_SELECT_DIRECTION } from '../../solverConstants'
 import {
   oc, solveBytes, extrudeTestHarness, rectSketchSk, extrudeSpec,
 } from '../extrudeRealSupport'
@@ -232,15 +230,19 @@ describe.skipIf(!oc || !solveBytes)('sketch precision contract (real OCC)', () =
     expect(h.res(result, 'ex1').status).toBe('ok')
   })
 
-  it('finds the bottom seam surviving the solver contract (plan 2)', () => {
+  it('pins the bottom seam left after the solver contract (plan 2)', () => {
     // The report's experiment: `horizontal` on l1 gives the top edge an
-    // absolute direction. The solver meets the contract on this sketch (the
+    // absolute direction. The solver meets its ROW contract on this sketch (the
     // assertion below is the boundary between the two halves), the top wall
     // pair merges, and one edge is still left in x = 0 between two nearly
-    // coplanar faces: the bottom wall through xip0, at a 1.8e-9 normal sine.
-    // That residual is OCC's own surface/merge decision, not the solve, which
+    // coplanar faces: the bottom wall through xip0, at a 1.8e-9 normal sine
+    // (the report measured 1.10e-9 to 1.60e-9 on its variants). That residual
+    // is the free absolute tilt, not a row: it is OCC's own surface/merge
+    // decision on geometry the solver already reports as within contract, which
     // is why the no-seam assertion is plan 2's
-    // (`feature/kernel-unify-within-contract.md`).
+    // (`feature/kernel-unify-within-contract.md`). The seam exceeds plan 2's
+    // 1e-9 ceiling as that plan is currently written, so widening by the
+    // reported row miss (0 here) cannot be its whole mechanism.
     const result = h.run(reportWithHorizontal())
     const row = h.res(result, 'sk1')
     expect(row.status).toBe('underconstrained')
@@ -248,14 +250,15 @@ describe.skipIf(!oc || !solveBytes)('sketch precision contract (real OCC)', () =
     const shape = lastBodyShape(h, result, 'body_ex1')
     expect(shape).not.toBeNull()
     const seams = seamEdges(oc!, scope, shape!)
-    // The pin records today's seam so plan 2's fix cannot pass unnoticed: when
-    // it discriminates the pair, this list empties and the `.todo` below is
-    // the assertion that takes over.
-    const summary = seams.map((s) => `edge at [${s.at.join(', ')}] sine ${s.sine.toExponential(2)}`)
-    expect(summary).toHaveLength(1)
-    expect(summary[0]).toContain('0, -4')
-    expect(seams[0].sine).toBeLessThan(TOL_SELECT_DIRECTION)
+    // Locate the seam by geometry, not by a formatted string: the one on the
+    // bottom wall sits at y = -4.
+    const bottom = seams.filter((s) => Math.abs(s.at[1] + 4) <= 1e-6)
+    expect(bottom).toHaveLength(1)
+    expect(bottom[0].sine).toBeLessThan(1e-8)
+    // The measured sine is ~1.8e-9, above plan 2's 1e-9 ceiling as written, so
+    // the pin is not describing a seam that plan's stated width would close.
+    expect(bottom[0].sine).toBeGreaterThan(1e-9)
   })
 
-  it.todo('mirrors without a seam across x = 0: feature/kernel-unify-within-contract.md')
+  it.todo('mirrors without a seam across x = 0: feature/kernel-unify-within-contract.md, which needs an authored horizontal or an orientation-uncertainty signal, not the row miss')
 })
