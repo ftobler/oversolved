@@ -89,8 +89,9 @@ function extrude(id: string, sketch: string, distance: number, operation = 'new'
   return { id, kind: 'extrude', extrude: { sketch, distance, direction: 'normal', operation } }
 }
 
-function pattern(id: string, sourceFeature: string, fields: Dict): Dict {
-  return { id, kind: 'pattern', pattern: { subject: 'feature', source_feature: `@${sourceFeature}`, ...fields } }
+function pattern(id: string, sourceFeatures: string | string[], fields: Dict): Dict {
+  const refs = ([] as string[]).concat(sourceFeatures).map((ref) => ref.startsWith('@') ? ref : `@${ref}`)
+  return { id, kind: 'pattern', pattern: { subject: 'feature', source_features: refs, ...fields } }
 }
 
 function linear(fields: Dict): Dict {
@@ -487,6 +488,146 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
     expect(volumeAt(named, 'pt1', 'body_ex_a')).toBeCloseTo(500 - 60 - 60, 6)
     expect(volumeAt(named, 'pt1', 'body_ex_b')).toBeCloseTo(500 - 60, 6)
     expect(bboxAt(named, 'pt1', 'body_ex_b').min[0]).toBeCloseTo(20, 6)
+  })
+
+  it('repeats several sources as the union of their tools', () => {
+    // Two slot cuts on the same plate, each a source; one pattern repeats both
+    // at every grid instance. Each source already cut once, so the pattern adds
+    // one copy of each.
+    const twoSlots = (patternFeature?: Dict): { features: Dict[] } => ({
+      features: [
+        rectSketch('sk_plate', 40, 20),
+        extrude('ex_plate', '$sk_plate', 5),
+        rectSketch('sk_slot_a', 4, 4, 6, 2),
+        extrude('ex_slot_a', '$sk_slot_a', 10, 'cut'),
+        rectSketch('sk_slot_b', 4, 4, 6, 14),
+        extrude('ex_slot_b', '$sk_slot_b', 10, 'cut'),
+        ...(patternFeature === undefined ? [] : [patternFeature]),
+      ],
+    })
+    const r = h.run(twoSlots(pattern('pt1', ['ex_slot_a', 'ex_slot_b'], linear({ count: 2, pitch: 8 }))))
+    const res = h.res(r, 'pt1')
+    expect(res.status).toBe('ok')
+    expect(res.operation).toBe('cut')
+    expect(res.body_ids).toEqual(['body_ex_plate'])
+    // Four slots in all: two applied by the sources and two copies.
+    expect(volumeAt(r, 'pt1', 'body_ex_plate')).toBeCloseTo(4000 - 4 * 80, 6)
+    expect(faceCountAt(r, 'pt1', 'body_ex_plate')).toBe(6 + 4 * 4)
+    expectUniqueFaceUuids(r, 'pt1')
+  })
+
+  it('keeps the multi-source ids stable across a rebuild', () => {
+    const spec = (): { features: Dict[] } => ({
+      features: [
+        rectSketch('sk_plate', 40, 20),
+        extrude('ex_plate', '$sk_plate', 5),
+        rectSketch('sk_slot_a', 4, 4, 6, 2),
+        extrude('ex_slot_a', '$sk_slot_a', 10, 'cut'),
+        rectSketch('sk_slot_b', 4, 4, 6, 14),
+        extrude('ex_slot_b', '$sk_slot_b', 10, 'cut'),
+        pattern('pt1', ['ex_slot_a', 'ex_slot_b'], linear({ count: 2, pitch: 8 })),
+      ],
+    })
+    const first = h.run(spec())
+    const second = h.run(spec())
+    expect(h.res(first, 'pt1').status).toBe('ok')
+    expect(h.res(second, 'pt1').status).toBe('ok')
+    expect(liveFaceUuids(second, 'body_ex_plate')).toEqual(liveFaceUuids(first, 'body_ex_plate'))
+  })
+
+  it('numbers instances in feature-log order, not chip order', () => {
+    const spec = (refs: string[]): { features: Dict[] } => ({
+      features: [
+        rectSketch('sk_plate', 40, 20),
+        extrude('ex_plate', '$sk_plate', 5),
+        rectSketch('sk_slot_a', 4, 4, 6, 2),
+        extrude('ex_slot_a', '$sk_slot_a', 10, 'cut'),
+        rectSketch('sk_slot_b', 4, 4, 6, 14),
+        extrude('ex_slot_b', '$sk_slot_b', 10, 'cut'),
+        pattern('pt1', refs, linear({ count: 2, pitch: 8 })),
+      ],
+    })
+    const forward = h.run(spec(['@ex_slot_a', '@ex_slot_b']))
+    const reversed = h.run(spec(['@ex_slot_b', '@ex_slot_a']))
+    expect(h.res(forward, 'pt1').status).toBe('ok')
+    expect(h.res(reversed, 'pt1').status).toBe('ok')
+    expect(liveFaceUuids(reversed, 'body_ex_plate')).toEqual(liveFaceUuids(forward, 'body_ex_plate'))
+  })
+
+  it('drops a missing or reordered source with a named warning', () => {
+    const missing = h.run({
+      features: [
+        rectSketch('sk_plate', 40, 20),
+        extrude('ex_plate', '$sk_plate', 5),
+        rectSketch('sk_slot', 4, 4, 6, 6),
+        extrude('ex_slot', '$sk_slot', 10, 'cut'),
+        pattern('pt1', ['ex_slot', 'gone'], linear({ count: 2, pitch: 8 })),
+      ],
+    })
+    const missingRes = h.res(missing, 'pt1')
+    expect(missingRes.status).toBe('ok')
+    expect(String(missingRes.solver_warning)).toContain("source feature 'gone' does not exist")
+    expect(String(missingRes.solver_warning)).toContain('was dropped')
+    // The surviving source still repeats once.
+    expect(volumeAt(missing, 'pt1', 'body_ex_plate')).toBeCloseTo(4000 - 2 * 80, 6)
+
+    const reordered = h.run({
+      features: [
+        rectSketch('sk_plate', 40, 20),
+        extrude('ex_plate', '$sk_plate', 5),
+        rectSketch('sk_slot', 4, 4, 6, 6),
+        extrude('ex_slot', '$sk_slot', 10, 'cut'),
+        pattern('pt1', ['ex_slot', 'later'], linear({ count: 2, pitch: 8 })),
+        rectSketch('sk_later', 4, 4, 6, 14),
+        extrude('later', '$sk_later', 10, 'cut'),
+      ],
+    })
+    const reorderedRes = h.res(reordered, 'pt1')
+    expect(reorderedRes.status).toBe('ok')
+    expect(String(reorderedRes.solver_warning)).toContain("'later' comes after this pattern")
+    expect(String(reorderedRes.solver_warning)).toContain('was dropped')
+    expect(volumeAt(reordered, 'pt1', 'body_ex_plate')).toBeCloseTo(4000 - 2 * 80, 6)
+  })
+
+  it('refuses a pattern whose sources all dropped', () => {
+    const r = h.run({
+      features: [
+        rectSketch('sk_plate', 40, 20),
+        extrude('ex_plate', '$sk_plate', 5),
+        pattern('pt1', ['gone', 'also_gone'], linear({})),
+      ],
+    })
+    const res = h.res(r, 'pt1')
+    expect(res.status).toBe('exception')
+    expect(String(res.exception)).toContain('no source features remain')
+    expect(String(res.exception)).toContain("source feature 'gone' does not exist")
+  })
+
+  it('applies every source to an explicit target body', () => {
+    // Two sources on A, plus an untouched block B. The named target is the
+    // branch that sends every source to one body; the sources apply in log
+    // order and the pattern repeats both.
+    const features = (): Dict[] => [
+      rectSketch('sk_a', 20, 10),
+      extrude('ex_a', '$sk_a', 5),
+      rectSketch('sk_b', 10, 10, 30, 0),
+      extrude('ex_b', '$sk_b', 5),
+      rectSketch('sk_slot_a', 2, 2, 2, 2),
+      extrude('ex_slot_a', '$sk_slot_a', 10, 'cut'),
+      rectSketch('sk_slot_b', 2, 2, 10, 2),
+      extrude('ex_slot_b', '$sk_slot_b', 10, 'cut'),
+      pattern('pt1', ['ex_slot_a', 'ex_slot_b'], linear({
+        count: 2, pitch: 3, direction: [1, 0, 0], target_body: '@body_ex_a',
+      })),
+    ]
+    const r = h.run({ features: features() })
+    const res = h.res(r, 'pt1')
+    expect(res.status, String(res.exception)).toBe('ok')
+    expect(res.body_ids).toEqual(['body_ex_a'])
+    // A: 1000 minus four 2 x 2 x 5 slots (two sources and their two copies).
+    expect(volumeAt(r, 'pt1', 'body_ex_a')).toBeCloseTo(1000 - 4 * 20, 6)
+    // B is untouched: neither source shaped it, so no copy lands there.
+    expect(volumeAt(r, 'pt1', 'body_ex_b')).toBeCloseTo(500, 6)
   })
 
   it('resolves the source expressions and its own count through the variable table', () => {

@@ -8,10 +8,12 @@ export function patternSubject(sub: Record<string, unknown> | undefined | null):
   if (sub === undefined || sub === null) return 'body'
   const explicit = sub.subject
   if (explicit === 'body' || explicit === 'feature') return explicit
+  const sourceFeatures = sub.source_features
   const sourceFeature = sub.source_feature
   const sourceBody = sub.source_body
-  return typeof sourceFeature === 'string' && sourceFeature !== ''
-    && !(typeof sourceBody === 'string' && sourceBody !== '')
+  const namesFeatures = (Array.isArray(sourceFeatures) && sourceFeatures.length > 0)
+    || (typeof sourceFeature === 'string' && sourceFeature !== '')
+  return namesFeatures && !(typeof sourceBody === 'string' && sourceBody !== '')
     ? 'feature'
     : 'body'
 }

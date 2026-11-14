@@ -98,10 +98,10 @@ export type BooleanFeatureDef = {
   clearance?: NumberOrExpr
 }
 
-// A pattern repeats either a whole body or one earlier solid-producing
-// feature's own add/cut. The subject selects which, and the mode selects the
+// A pattern repeats either a whole body or one or more earlier solid-producing
+// features' own add/cut. The subject selects which, and the mode selects the
 // instance grid. A body pattern copies the source body with `operation` add or
-// new; a feature pattern reapplies the source feature's tool inside the body it
+// new; a feature pattern reapplies each source feature's tool inside the body it
 // already shaped, inheriting that feature's own operation.
 //
 // `count` is the total instance count for linear and circular modes, the
@@ -117,9 +117,14 @@ export type PatternFeatureDef = {
   // Body subject.
   source_body?: string
   operation?: 'add' | 'new'
-  // Feature subject.
+  // Feature subject. Every source is reapplied at each grid instance; instance
+  // and UUID order follows the features' order in the log, not this list's order.
+  source_features?: string[]
+  // The pre-multi-source spelling. The loader folds it into `source_features`;
+  // the kernel still reads it as a one-element list for a document that skipped
+  // the ladder, and the drive accepts the old name for compatibility.
   source_feature?: string
-  // The body to apply to when the source feature touched more than one.
+  // The body to apply to when the source features touched more than one.
   target_body?: string
   // Instance grid.
   mode?: 'linear' | 'rectangular' | 'circular'
@@ -1415,6 +1420,8 @@ export type Mutation =
   | { type: 'remove_boolean_tool'; featureId: string; tool: string }
   | ({ type: 'add_pattern'; featureId: string; label?: string } & Partial<PatternFeatureDef> & FeatureInsertion)
   | { type: 'set_pattern_field'; featureId: string; field: keyof PatternFeatureDef; value: unknown }
+  | { type: 'add_pattern_source'; featureId: string; sourceFeature: string }
+  | { type: 'remove_pattern_source'; featureId: string; index: number }
   | ({ type: 'add_delete_body'; featureId: string; bodies?: string[]; label?: string } & FeatureInsertion)
   | { type: 'add_delete_body_ref'; featureId: string; bodyQuery: string }
   | { type: 'remove_delete_body_ref'; featureId: string; index: number }

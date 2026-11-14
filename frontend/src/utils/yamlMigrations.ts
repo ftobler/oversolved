@@ -64,6 +64,36 @@ export function migrateLegacyBodyPicks(doc: PartDoc): number {
   return rewritten
 }
 
+// The feature pattern's source became a LIST in 2026-11: one pattern may now
+// repeat several earlier features. Documents authored before that carry the
+// singular `source_feature`; the kernel reads `source_features` (with the old
+// scalar as a fallback), so the loader folds it here. A malformed scalar is
+// left for the validator to refuse by field rather than silently dropped.
+// Idempotent, mutate in place, returns the count of features rewritten.
+export function migratePatternSourceFeatures(doc: PartDoc): number {
+  let rewritten = 0
+  for (const feature of doc.features ?? []) {
+    if (feature.kind !== 'pattern') continue
+    const sub = feature.pattern as { source_features?: unknown; source_feature?: unknown } | undefined
+    if (sub === null || typeof sub !== 'object' || Array.isArray(sub)) continue
+    const list = sub.source_features
+    if (Array.isArray(list)) {
+      // A stale scalar beside a real list has no meaning; the list wins.
+      if ('source_feature' in sub) {
+        delete sub.source_feature
+        rewritten += 1
+      }
+      continue
+    }
+    const scalar = sub.source_feature
+    if (typeof scalar !== 'string') continue
+    sub.source_features = scalar === '' ? [] : [scalar]
+    delete sub.source_feature
+    rewritten += 1
+  }
+  return rewritten
+}
+
 // Self-cleanup for stale documents: drop horizontal/vertical constraints whose
 // two-point (a/b) form references a whole non-point entity (e.g. a circle or an
 // extra line picked up alongside the real target). Such an operand resolves to a

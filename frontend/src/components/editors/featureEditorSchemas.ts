@@ -456,26 +456,64 @@ function siblingCount(other: unknown, mode: unknown): number | string | null {
     : null
 }
 
+/**
+ * The pattern source chip's own rule: a source is a whole feature row, not a
+ * viewport pick. Only an earlier extrude, revolve or sweep produces a tool the
+ * pattern can reapply (the order and self-reference rule is the pick hook's,
+ * shared with every other feature-reference field).
+ */
+const PATTERN_SOURCE_KINDS = ['extrude', 'revolve', 'sweep'] as const
+
+function patternSourcePickRefusal(id: string, features?: readonly PartFeature[]): string | null {
+  if (!id.startsWith('@') || id.includes('/')) {
+    return 'pick a feature row (an extrude, revolve or sweep) in the Features list, not viewport geometry'
+  }
+  if (features === undefined) return null
+  const feature = features.find((candidate) => candidate.id === id.slice(1))
+  if (feature === undefined) {
+    return 'pick a feature row (an extrude, revolve or sweep) in the Features list'
+  }
+  return (PATTERN_SOURCE_KINDS as readonly string[]).includes(feature.kind)
+    ? null
+    : 'a pattern source is an extrude, revolve or sweep'
+}
+
 export const PATTERN_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_pattern',
   subKey: 'pattern',
-  defaults: { subject: 'body', mode: 'linear', operation: 'add', count: 2, pitch: 20 },
+  defaults: { subject: 'body', mode: 'linear', operation: 'add', count: 2, pitch: 20, source_features: [] },
   // Show a legacy feature pattern with its inferred subject, so its rows and
-  // fields are the ones it actually solves with.
-  normalize: (raw) => ({ ...raw, subject: patternSubject(raw) }),
+  // fields are the ones it actually solves with. The legacy single-source
+  // scalar is shown as the one-element list it means, without rewriting the
+  // document: the first chip edit writes `source_features`.
+  normalize: (raw) => {
+    const data: SchemaData = { ...raw, subject: patternSubject(raw) }
+    if (!Array.isArray(data.source_features)) {
+      const legacy = data.source_feature
+      data.source_features = typeof legacy === 'string' && legacy !== '' ? [legacy] : []
+    }
+    return data
+  },
   fields: [
     // One feature, two subjects: a body pattern copies a whole body, a feature
-    // pattern reapplies one earlier solid producer's own add or cut.
+    // pattern reapplies earlier solid producers' own add or cut.
     { type: 'select', key: 'subject', label: 'Subject', default: 'body',
       options: [{ value: 'body', label: 'Body' }, { value: 'feature', label: 'Feature' }] },
     { type: 'pick', key: 'source_body', label: 'Body', transform: resolveBodyPickRef,
       showWhen: (d) => d.subject !== 'feature', emptyText: '(pick the body to copy)' },
-    // The source is a FEATURE row, not a viewport pick: the options are the
-    // document's own extrude/revolve/sweep rows, which are exactly the leaves
-    // whose tool the pattern can repeat.
-    { type: 'featureSelect', key: 'source_feature', label: 'Source Feature',
-      kinds: ['extrude', 'revolve', 'sweep'], showWhen: (d) => d.subject === 'feature',
-      emptyText: '(pick the feature to repeat)' },
+    // The sources are FEATURE rows, not viewport picks: the chip shows the picked
+    // extrude/revolve/sweep rows and the feature tree is the pick surface. Every
+    // source is reapplied at each grid instance, in the order the sources sit in
+    // the feature log; the earliest source's first produced body is the instance-0
+    // seed (the count includes it and the grid leaves it in place). The chip's own
+    // order is presentation only, because the kernel sorts by the log.
+    { type: 'pick', key: 'source_features', label: 'Source Features', multi: true,
+      addMutationType: 'add_pattern_source', addValueKey: 'sourceFeature',
+      removeMutationType: 'remove_pattern_source',
+      validatePick: patternSourcePickRefusal,
+      showWhen: (d) => d.subject === 'feature',
+      emptyText: '(pick one or more features; the earliest heads the seed)',
+      hint: 'Repeated in feature-log order; the earliest source heads the seed slot.' },
     { type: 'pick', key: 'target_body', label: 'Target body', transform: resolveBodyPickRef,
       showWhen: (d) => d.subject === 'feature', emptyText: '(the body the source shaped)' },
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',

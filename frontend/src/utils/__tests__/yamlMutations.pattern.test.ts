@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { PartDoc, PartFeature } from '@/types/cad'
-import { applyAddPattern, applySetPatternField } from '@/utils/yamlMutations'
+import { applyAddPattern, applyAddPatternSource, applyRemovePatternSource, applyReorderPickField, applySetPatternField } from '@/utils/yamlMutations'
 import { featureAt } from '@/testing/featureAccess'
 import { loadPartDoc } from '@/persistence/docSchema'
 
@@ -28,14 +28,21 @@ describe('Pattern mutations', () => {
     it('merges inline fields like the setters, an empty value clearing a key', () => {
       const doc = makeDoc()
       applyAddPattern(doc, 'pt1', 'Ring', {
-        subject: 'feature', source_feature: '@ex1', count: 4, pitch: 8, direction: [1, 0, 0],
+        subject: 'feature', source_features: ['@ex1', '@ex2'], count: 4, pitch: 8, direction: [1, 0, 0],
       })
       expect(pattern0(doc)).toEqual({
         subject: 'feature', mode: 'linear', count: 4, pitch: 8,
-        source_feature: '@ex1', direction: [1, 0, 0],
+        source_features: ['@ex1', '@ex2'], direction: [1, 0, 0],
       })
       applyAddPattern(doc, 'pt2', undefined, { count: 3, pitch: '' })
       expect(featureAt(doc, 1, 'pattern').pattern.pitch).toBeUndefined()
+    })
+
+    it('folds the legacy single source into the list', () => {
+      const doc = makeDoc()
+      applyAddPattern(doc, 'pt1', undefined, { subject: 'feature', source_feature: '@ex1' })
+      expect(pattern0(doc).source_features).toEqual(['@ex1'])
+      expect(pattern0(doc)).not.toHaveProperty('source_feature')
     })
 
     it('drops an unknown inline key such as the retired include_source', () => {
@@ -57,16 +64,57 @@ describe('Pattern mutations', () => {
   describe('applySetPatternField', () => {
     it('writes the known fields and clears on empty', () => {
       const doc = makeDoc()
-      applyAddPattern(doc, 'pt1', undefined, { subject: 'feature', source_feature: '@ex1' })
+      applyAddPattern(doc, 'pt1', undefined, { subject: 'feature', source_features: ['@ex1'] })
       applySetPatternField(doc, 'pt1', 'count', 5)
       applySetPatternField(doc, 'pt1', 'mode', 'circular')
       applySetPatternField(doc, 'pt1', 'step_angle', 45)
       applySetPatternField(doc, 'pt1', 'axis_direction', [0, 0, 1])
       expect(pattern0(doc)).toMatchObject({
-        source_feature: '@ex1', count: 5, mode: 'circular', step_angle: 45, axis_direction: [0, 0, 1],
+        source_features: ['@ex1'], count: 5, mode: 'circular', step_angle: 45, axis_direction: [0, 0, 1],
       })
+      // The legacy setter name writes a one-element list, and a clear empties it.
+      applySetPatternField(doc, 'pt1', 'source_feature', '@ex2')
+      expect(pattern0(doc).source_features).toEqual(['@ex2'])
+      expect(pattern0(doc)).not.toHaveProperty('source_feature')
       applySetPatternField(doc, 'pt1', 'source_feature', '')
-      expect(pattern0(doc).source_feature).toBeUndefined()
+      expect(pattern0(doc).source_features).toEqual([])
+    })
+
+    it('writes a whole source list through the setter', () => {
+      const doc = makeDoc()
+      applyAddPattern(doc, 'pt1', undefined, { subject: 'feature', source_features: ['@ex1'] })
+      applySetPatternField(doc, 'pt1', 'source_features', ['@ex1', '@rv1'])
+      expect(pattern0(doc).source_features).toEqual(['@ex1', '@rv1'])
+    })
+
+    it('toggles a source on add and splices one off by index', () => {
+      const doc = makeDoc()
+      applyAddPattern(doc, 'pt1', undefined, { subject: 'feature', source_features: ['@ex1'] })
+      applyAddPatternSource(doc, 'pt1', '@rv1')
+      expect(pattern0(doc).source_features).toEqual(['@ex1', '@rv1'])
+      applyAddPatternSource(doc, 'pt1', '@ex1')
+      expect(pattern0(doc).source_features).toEqual(['@rv1'])
+      applyRemovePatternSource(doc, 'pt1', 0)
+      expect(pattern0(doc).source_features).toEqual([])
+      applyRemovePatternSource(doc, 'pt1', 4)
+      expect(pattern0(doc).source_features).toEqual([])
+    })
+
+    it('reorders the source chips and heals a legacy scalar first', () => {
+      const doc = makeDoc()
+      applyAddPattern(doc, 'pt1', undefined, { subject: 'feature', source_features: ['@ex1', '@rv1'] })
+      applyReorderPickField(doc, 'pt1', 'source_features', 0, 1)
+      expect(pattern0(doc).source_features).toEqual(['@rv1', '@ex1'])
+
+      const legacy: PartDoc = {
+        features: [{
+          id: 'pt2', kind: 'pattern',
+          pattern: { subject: 'feature', source_feature: '@ex2', mode: 'linear' },
+        } as unknown as PartFeature],
+      }
+      applyReorderPickField(legacy, 'pt2', 'source_features', 0, 0)
+      expect(pattern0(legacy)).toMatchObject({ source_features: ['@ex2'] })
+      expect(pattern0(legacy)).not.toHaveProperty('source_feature')
     })
 
     it('refuses an unknown field by name and a count the loader would refuse', () => {

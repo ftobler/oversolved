@@ -1392,6 +1392,15 @@
   height: auto;
 }
 
+/* A one-line explanation under a pick chip whose label does not carry the whole
+   rule (the pattern's multi-source seed). */
+.feature-field-hint {
+  font-size: 11px;
+  color: #6a5a6a;
+  padding: 0 4px;
+  flex-basis: 100%;
+}
+
 .feature-pick-chip {
   flex: 1;
   display: flex;

@@ -2,7 +2,7 @@
 // payload, and the shapes the kernel would have to guess at (an unknown mode, a
 // non-ref source, a count the solve cannot use) are refused by field.
 import { describe, it, expect } from 'vitest'
-import { loadPartDoc } from '@/persistence/docSchema'
+import { CURRENT_DOC_VERSION, loadPartDoc } from '@/persistence/docSchema'
 import { FEATURE_SCHEMA_BY_KIND, featureParamsSchema } from '@/persistence/partDocSchema'
 
 function doc(pattern: unknown): Record<string, unknown> {
@@ -10,16 +10,47 @@ function doc(pattern: unknown): Record<string, unknown> {
 }
 
 describe('pattern document validation', () => {
-  it('accepts a valid linear pattern and keeps its payload', () => {
+  it('loads an old single source as a one-element list', () => {
     const result = loadPartDoc(doc({
       subject: 'feature', source_feature: '@ex1', mode: 'linear', count: 3, pitch: 20, direction: [1, 0, 0],
     }))
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    expect((result.doc.features as Record<string, unknown>[])[0].pattern).toEqual({
-      subject: 'feature', source_feature: '@ex1', mode: 'linear', count: 3, pitch: 20, direction: [1, 0, 0],
+    const pattern = (result.doc.features as Record<string, unknown>[])[0].pattern
+    expect(pattern).toEqual({
+      subject: 'feature', source_features: ['@ex1'], mode: 'linear', count: 3, pitch: 20, direction: [1, 0, 0],
     })
+    expect(result.migrations).toContain('pattern-source-features')
   })
+
+  it('accepts a multi-source list and keeps its order', () => {
+    const result = loadPartDoc(doc({
+      subject: 'feature', source_features: ['@ex1', '@rv1'], mode: 'linear', count: 3, pitch: 20,
+      direction: [1, 0, 0],
+    }))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect((result.doc.features as Record<string, unknown>[])[0].pattern).toMatchObject({
+      source_features: ['@ex1', '@rv1'],
+    })
+    expect(result.migrations).not.toContain('pattern-source-features')
+  })
+
+  it('keeps the legacy scalar on a document already stamped current', () => {
+    // The stamp is the document's promise that it is current; the loader does
+    // not second-guess it, and the kernel still accepts the old spelling.
+    const result = loadPartDoc({
+      version: CURRENT_DOC_VERSION,
+      kind: 'part',
+      features: [{ id: 'pt1', kind: 'pattern', pattern: { subject: 'feature', source_feature: '@ex1' } }],
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const pattern = (result.doc.features as Record<string, unknown>[])[0].pattern
+    expect(pattern).toMatchObject({ source_feature: '@ex1' })
+    expect(pattern).not.toHaveProperty('source_features')
+  })
+
 
   it('accepts a circular pattern with the stored axis pair', () => {
     expect(loadPartDoc(doc({
@@ -75,7 +106,11 @@ describe('pattern document validation', () => {
     expect(source.ok).toBe(false)
     if (!source.ok) expect(source.error.field).toBe('features[0].pattern.source_feature')
 
-    const direction = loadPartDoc(doc({ subject: 'feature', source_feature: '@ex1', direction: [1, 0] }))
+    const list = loadPartDoc(doc({ subject: 'feature', source_features: '@ex1' }))
+    expect(list.ok).toBe(false)
+    if (!list.ok) expect(list.error.field).toBe('features[0].pattern.source_features')
+
+    const direction = loadPartDoc(doc({ subject: 'feature', source_features: ['@ex1'], direction: [1, 0] }))
     expect(direction.ok).toBe(false)
     if (!direction.ok) expect(direction.error.field).toBe('features[0].pattern.direction')
   })
@@ -87,8 +122,8 @@ describe('pattern document validation', () => {
     expect(properties).toHaveProperty('pattern')
     expect(properties).not.toHaveProperty('source_feature')
     const params = featureParamsSchema('pattern')!
-    const source = (params.properties as Record<string, Record<string, unknown>>).source_feature
-    const pattern = new RegExp(source.pattern as string)
+    const source = (params.properties as Record<string, Record<string, unknown>>).source_features
+    const pattern = new RegExp((source.items as Record<string, unknown>).pattern as string)
     expect(pattern.test('$ex1')).toBe(false)
     expect(pattern.test('@ex1')).toBe(true)
   })

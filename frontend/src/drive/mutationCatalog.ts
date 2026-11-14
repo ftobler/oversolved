@@ -492,9 +492,15 @@ const PLANE_MODE_NOTE =
 const PATTERN_NOTE =
   '`subject` selects what is repeated. `body` (the default) copies `source_body`; `operation: add` unions each ' +
   'copy into the source body when they intersect, while disjoint copies become separate bodies with `_1`, `_2`... ' +
-  'siblings and `operation: new` mints one body per copy. `feature` reapplies one earlier extrude, revolve or ' +
-  'sweep whose operation is add or cut, inside the body that feature shaped (`source_feature`; `target_body` ' +
-  'chooses the body when the source touched more than one). For either subject `count` is the TOTAL instance ' +
+  'siblings and `operation: new` mints one body per copy. `feature` reapplies one or more earlier extrudes, revolves ' +
+  'or sweeps whose operation is add or cut, inside the body each source shaped. Name them as a list in ' +
+  '`source_features`, e.g. ["@ex1", "@ex2"]; the legacy single `source_feature` is still accepted and means a ' +
+  'one-element list. Every source is repeated at each grid instance, in the order the sources sit in the feature log; ' +
+  'the first source\'s first produced body is the instance-0 seed. `target_body` ' +
+  'chooses the body when a source touched more than one; without it each source applies to the body it shaped, ' +
+  'so sources that shaped different bodies keep their own. A source that no longer exists or now comes after ' +
+  'the pattern is dropped with a named warning; a pattern with no sources left is refused. For either subject ' +
+  '`count` is the TOTAL instance ' +
   'count on one axis and always includes the source\'s own slot: 2 makes one new copy, and count 0 or 1 is ' +
   'refused because the count includes the source. Rectangular mode counts its two axes in `count_x` and ' +
   '`count_y`, always leaves the seed cell to the source, and needs at least one other cell, so 1x1 is refused ' +
@@ -1536,8 +1542,9 @@ export const MUTATION_CATALOG = {
       subject: optStr('body | feature; defaults to body.'),
       source_body: optStr('Body subject: the body to copy, e.g. body_ex2.'),
       operation: optStr('Body subject: add | new; defaults to add.'),
-      source_feature: optStr('Feature subject: the feature to repeat, e.g. @ex1: an extrude, revolve or sweep with operation add or cut.'),
-      target_body: optStr('Feature subject: the body to apply to when the source feature touched more than one.'),
+      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve or sweep with operation add or cut.'),
+      source_feature: optStr('Feature subject: the legacy single-source form of source_features, e.g. @ex1. Still accepted; a list or the singular key, not both.'),
+      target_body: optStr('Feature subject: applies every source to this body instead of the body each source shaped.'),
       mode: optStr('linear | rectangular | circular; defaults to linear.'),
       count: optScalar(),
       pitch: optScalar(),
@@ -1565,6 +1572,15 @@ export const MUTATION_CATALOG = {
     summary: 'Set one pattern field, e.g. count, pitch or axis.',
     note: PATTERN_NOTE,
     fields: { featureId: str(), field: fieldOf('pattern', 'set_pattern_field'), value: setterValue('pattern') },
+  },
+  add_pattern_source: {
+    summary: 'Add a source feature to a feature pattern (toggles an already-listed source out).',
+    note: PATTERN_NOTE,
+    fields: { featureId: str(), sourceFeature: str('A feature ref, e.g. @ex1: an extrude, revolve or sweep with operation add or cut.') },
+  },
+  remove_pattern_source: {
+    summary: 'Remove a pattern source by index.',
+    fields: { featureId: str(), index: num() },
   },
   add_delete_body: {
     summary: 'Add a delete-body feature, optionally naming bodies.',
@@ -1869,6 +1885,8 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   remove_boolean_tool: 'picks',
   add_pattern: 'features',
   set_pattern_field: 'features',
+  add_pattern_source: 'picks',
+  remove_pattern_source: 'picks',
   add_delete_body: 'features',
   add_delete_body_ref: 'picks',
   remove_delete_body_ref: 'picks',

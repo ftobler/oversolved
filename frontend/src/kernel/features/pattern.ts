@@ -1,74 +1,41 @@
-// The pattern leaf. It repeats one subject through a grid of rigid instance
-// transforms. The subject is the authored choice:
+// The pattern leaf. It repeats one or more subjects through a grid of rigid
+// instance transforms. The subject is the authored choice:
 //
 // - `body` copies a whole body. `operation: add` fuses the copies into the
 //   source body and `operation: new` mints one body per copy; that half lives in
 //   patternBody.ts.
-// - `feature` repeats an earlier solid-producing feature's own add or cut
-//   inside the body that feature already shaped. A body array plus a boolean
+// - `feature` repeats one or more earlier solid-producing features' own add or
+//   cut inside the body each feature already shaped. A body array plus a boolean
 //   can produce the same geometry, but it needs the material as its own body
-//   first and a merge afterwards; this subject asks the kernel for the source
-//   feature's tool once and applies that tool at each copy position through the
+//   first and a merge afterwards; this subject asks the kernel for each source
+//   feature's tool once and applies those tools at each copy position through the
 //   same `applyBodyOperation` every producer uses.
 //
-// The source feature's tool is obtained by re-solving the source feature with
+// Each source feature's tool is obtained by re-solving the source feature with
 // its operation forced to `new` into a throwaway body store: the same leaf, the
 // same profile resolution and the same names, with no second geometry builder.
 // Those scratch bodies are released at the end of this solve; they never enter
 // the real store, so no part row or checkpoint sees them.
+//
+// Several sources are a union: every source's tool is applied at every grid
+// instance, in the order the sources sit in the feature log (then each source's
+// own output order). The first source's first produced body is the instance-0
+// seed, because the grid always leaves the seed slot to the sources. A source
+// that no longer exists or now sits after the pattern is dropped with a named
+// warning on the result; a pattern left with no source is refused by name.
 
 import type { DisposeScope } from '../occ/disposeScope'
-import type { OccModule, OccShape, OccTrsf } from '../occ/occTypes'
+import type { OccModule, OccTrsf } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import type { Repository } from '../query'
-import { AmbiguousBodyRefError, resolveBody } from './shared/bodyResolution'
-import { applyBodyOperation } from './bodyOps'
 import { applyBodyPattern, resolvePatternSourceBody, type BodyPatternResult } from './patternBody'
 import { resolveDirectionQueryStrict, resolveAxisQueryStrict } from './shared/directionQuery'
 import { makeTranslationTrsf, makeRotationTrsf } from '../occ/transforms'
-import {
-  readSourceFaceRows, rebuildNamesForTransformedCopy, transformCopyWithMapping, type NameMaps,
-} from '../occ/transformLineage'
-import { emptyShapeNames, mergeShapeNames, readBodyNames } from '../occ/bodyNames'
-import { booleanWithDiffMany, countSolids, shapesIntersect, toolsThatShaped } from '../occ/booleans'
-import { transferBooleanNames } from './booleanLineage'
-import { resplitBody, solidHoldingFaces } from './bodySplit'
-import { brepDiffIsEmpty } from './shared/brepDiff'
-import { markFeatureStart, markFeatureProgress } from '../featureProgress'
-import { resolveFeatureExpressions } from '../featureExpressions'
-import { solveExtrude } from './extrude'
-import { solveRevolve } from './revolve'
-import { solveSweep } from './sweep'
-import { extractErrorMessage, swallowUnlessTrap } from '../errors'
-import { stripRefSigil } from '@/utils/refSigil'
+import { solveFeaturePattern, type PatternResult } from './patternFeature'
 import { patternSubject } from '@/utils/core/patternSubject'
 
-type Dict = Record<string, unknown>
-
-interface PatternResult {
-  [key: string]: unknown
-  status: string
-  body_id: string
-  body_ids: string[]
-  operation?: string
-  solver_warning?: string
-  exception?: string
-}
-
-/** The kinds whose leaf builds a tool and routes it through applyBodyOperation
- *  with add/cut/new, so `operation: new` hands the same tool back as a body. */
-const TOOL_LEAVES = {
-  extrude: solveExtrude,
-  revolve: solveRevolve,
-  sweep: solveSweep,
-} as const
-
-type ToolKind = keyof typeof TOOL_LEAVES
-
-function isToolKind(kind: string): kind is ToolKind {
-  return Object.hasOwn(TOOL_LEAVES, kind)
-}
+export type Dict = Record<string, unknown>
 
 /**
  * Resolve a required linear direction, applying an invert toggle. An explicit
@@ -284,433 +251,6 @@ export function buildPatternTransforms(
 }
 
 /**
- * The earlier feature a feature-subject pattern repeats, with its expressions
- * resolved the way its own solve resolved them. A feature that is suppressed,
- * later in the log than this pattern, or not a solid producer is refused by
- * name: each has a one-step fix, and none may silently pattern nothing.
- */
-function resolveSource(
-  patternFeatureId: string,
-  ref: string,
-  featuresById: Record<string, Dict>,
-  variables: Record<string, number>,
-  laterVariables: Record<string, number>,
-): { id: string; kind: ToolKind; feature: Dict } {
-  if (!ref) {
-    throw new Error('pattern: source_feature is required; pick the feature to repeat')
-  }
-  const sourceId = stripRefSigil(ref, '@')
-  const source = featuresById[sourceId]
-  if (source === undefined) {
-    throw new Error(`pattern: source feature '${sourceId}' does not exist`)
-  }
-  const order = Object.keys(featuresById)
-  const patternAt = order.indexOf(patternFeatureId)
-  if (patternAt >= 0 && order.indexOf(sourceId) > patternAt) {
-    throw new Error(
-      `pattern: the source feature '${sourceId}' comes after this pattern; move it up with ` +
-        `reorder_features {featureId: '${sourceId}', before: '${patternFeatureId}'}`,
-    )
-  }
-  if (source.suppressed === true) {
-    throw new Error(`pattern: the source feature '${sourceId}' is suppressed; unsuppress it to pattern it`)
-  }
-  const kind = String(source.kind ?? '')
-  if (!isToolKind(kind)) {
-    throw new Error(
-      `pattern: '${sourceId}' is a ${kind || 'feature without a kind'}; ` +
-        'a feature pattern repeats an extrude, revolve or sweep',
-    )
-  }
-  const resolved = resolveFeatureExpressions(source, variables, laterVariables)
-  if ('exception' in resolved) {
-    throw new Error(`pattern: the source feature '${sourceId}' has an unresolved value: ${resolved.exception}`)
-  }
-  const feature = resolved.feature
-  const sub = (feature[kind] as Dict | undefined) ?? {}
-  const operation = (sub.operation as string) ?? 'add'
-  if (operation !== 'add' && operation !== 'cut') {
-    throw new Error(
-      `pattern: the source feature '${sourceId}' has operation '${operation}'; ` +
-        'pattern an add or a cut, not a feature that starts a new body',
-    )
-  }
-  if (kind === 'extrude' && ((sub.termination as string) === 'up_to' || (sub.termination as string) === 'up_to_next')) {
-    throw new Error(
-      `pattern: the source feature '${sourceId}' terminates ${sub.termination}, so its tool is trimmed once and the trim ` +
-        'would travel with every copy; pattern a blind or through_all extrude instead',
-    )
-  }
-  return { id: sourceId, kind, feature }
-}
-
-/**
- * The body a feature-subject pattern already shaped. An authored target wins.
- * Without one, the candidates are the bodies the source created or modified;
- * one is the answer, none and several are refusals that name the fix rather than
- * picking a body by store order.
- */
-function resolvePatternTarget(
-  sourceId: string,
-  explicitRef: string,
-  bodyStore: Record<string, Body>,
-): Body {
-  if (explicitRef) {
-    try {
-      return resolveBody(explicitRef, bodyStore)
-    } catch (e) {
-      swallowUnlessTrap(e)
-      // A ref naming several bodies is a different diagnosis from a missing
-      // one, and its own message lists the ids to choose between.
-      if (e instanceof AmbiguousBodyRefError) throw e
-      throw new Error(`pattern: target_body '${explicitRef}' does not name one body (${extractErrorMessage(e)})`)
-    }
-  }
-  const candidates = Object.values(bodyStore).filter(
-    (body) => body.created_by === sourceId || body.modified_by.includes(sourceId),
-  )
-  if (candidates.length === 0) {
-    throw new Error(
-      `pattern: the source feature '${sourceId}' produced no body; ` +
-        'check that it solved and comes before this pattern',
-    )
-  }
-  if (candidates.length > 1) {
-    throw new Error(
-      `pattern: the source feature '${sourceId}' touched ${candidates.length} bodies ` +
-        `(${candidates.map((body) => body.id).join(', ')}); set target_body to one of them`,
-    )
-  }
-  return candidates[0]
-}
-
-/** Release the scratch bodies a forced `new` solve registered, and their shapes. */
-function releaseScratch(table: HandleTable, tools: Body[]): void {
-  for (const body of tools) {
-    if (body.shape !== null && table.has(body.shape)) table.release(body.shape)
-  }
-}
-
-/** One transformed tool copy: the shape and the identities it was minted with. */
-interface CopyInstance {
-  copy: number
-  shape: OccShape
-  names: NameMaps
-}
-
-/** Merge every selected copy's name maps into one tool map for the batch. */
-function mergeCopyNames(copies: readonly CopyInstance[]): NameMaps {
-  const merged = emptyShapeNames()
-  for (const copy of copies) mergeShapeNames(merged, copy.names)
-  return merged
-}
-
-/** Group instances by the 1-based copy number the failure text names. */
-function groupByCopy(copies: readonly CopyInstance[]): Map<number, CopyInstance[]> {
-  const groups = new Map<number, CopyInstance[]>()
-  for (const copy of copies) {
-    const group = groups.get(copy.copy)
-    if (group === undefined) groups.set(copy.copy, [copy])
-    else group.push(copy)
-  }
-  return groups
-}
-
-/**
- * Solve a feature-subject pattern. The source feature's operation is applied
- * `count - 1` more times, each with the source's tool rigidly transformed.
- * Copies that refuse are named: some applied and some not is a `partial`
- * result, none applied is an error, so a half-applied pattern never reads as
- * complete.
- */
-function solveFeaturePattern(
-  oc: OccModule,
-  scope: DisposeScope,
-  table: HandleTable,
-  feature: Dict,
-  globalRepo: Repository,
-  bodyStore: Record<string, Body>,
-  featuresById: Record<string, Dict>,
-  solveContext: { variables: Record<string, number>; laterVariables: Record<string, number> },
-): PatternResult {
-  const featureId = (feature.id as string) ?? ''
-  const sub = (feature.pattern as Dict) ?? {}
-  const source = resolveSource(
-    featureId,
-    (sub.source_feature as string) ?? '',
-    featuresById,
-    solveContext.variables,
-    solveContext.laterVariables,
-  )
-  const sourceSub = (source.feature[source.kind] as Dict) ?? {}
-  const operation = ((sourceSub.operation as string) ?? 'add') as 'add' | 'cut'
-  const transforms = buildPatternTransforms(oc, scope, sub, globalRepo, bodyStore)
-  const target = resolvePatternTarget(source.id, (sub.target_body as string) ?? '', bodyStore)
-  const targetId = target.id
-
-  // The source solved before this feature, so its own operation already sits in
-  // the body; only the remaining instances are added here.
-  const scratch: Record<string, Body> = {}
-  // A through_all cut sizes its tool from the bodies its copies will cut, which
-  // is this solve's real store rather than the empty scratch one. The forced
-  // `new` is only how the tool is handed back, so the cut-only rule judges the
-  // source's own operation. Keep the source's merge_target so its own narrowing
-  // still applies; `new` ignores that key when it registers the tool.
-  const throughAllSource = source.kind === 'extrude' && (sourceSub.termination as string) === 'through_all'
-    ? { operation, bodies: bodyStore }
-    : undefined
-  const toolSub: Dict = { ...sourceSub, operation: 'new' }
-  if (throughAllSource === undefined) delete toolSub.merge_target
-  const toolFeature: Dict = { ...source.feature, id: source.id, [source.kind]: toolSub }
-  const tools: Body[] = []
-  try {
-    const built = source.kind === 'extrude'
-      ? solveExtrude(
-          oc, scope, table, toolFeature, globalRepo, scratch, undefined,
-          throughAllSource === undefined ? undefined : { ...solveContext, throughAllSource },
-        )
-      : TOOL_LEAVES[source.kind](oc, scope, table, toolFeature, globalRepo, scratch)
-    if (built.status !== 'ok') {
-      throw new Error(
-        `pattern: the source feature '${source.id}' could not provide its tool: ` +
-          `${String(built.exception ?? built.status)}`,
-      )
-    }
-    tools.push(...Object.values(scratch))
-    if (tools.length === 0) {
-      throw new Error(`pattern: the source feature '${source.id}' produced no solid to repeat`)
-    }
-
-    // Read once per tool, not per instance: the tool shape does not change
-    // between copies.
-    const toolShapes: Array<{ shape: OccShape; rows: ReturnType<typeof readSourceFaceRows> }> = []
-    for (const body of tools) {
-      const shape = table.get<OccShape>(body.shape!)
-      const names = readBodyNames(oc, scope, shape, body)
-      toolShapes.push({
-        shape,
-        rows: readSourceFaceRows(oc, scope, shape, names.faceNames, names.faceAncestry, names.capAncestry),
-      })
-    }
-
-    const total = transforms.length
-    const failures: string[] = []
-    const notes: string[] = []
-    let instance = 0
-    // Every copy is built before the first boolean. The batch below fuses or
-    // cuts the whole hit set in one operation, which is where the per-copy
-    // quadratic went: one history, one name transfer, one resplit.
-    const copies: CopyInstance[] = []
-    for (let copy = 1; copy <= total; copy++) {
-      markFeatureStart(featureId)
-      for (const tool of toolShapes) {
-        const { shape: rawShape, builder } = transformCopyWithMapping(oc, scope, tool.shape, transforms[copy - 1])
-        const shape = scope.track(rawShape)
-        copies.push({
-          copy,
-          shape,
-          names: rebuildNamesForTransformedCopy(oc, scope, shape, tool.rows, featureId, instance, builder),
-        })
-        instance++
-      }
-    }
-
-    // A missed cut leaves the solid count unchanged, so a miss needs a signal.
-    // The batch answers it from its own face history: a copy that removes
-    // nothing contributes no tool face, so `toolsThatShaped` names the hit set
-    // after the fact. The old per-copy Common probe cost 44 ms a copy (about
-    // 14 s of the 325-hole pattern), so it is now paid only by the per-copy
-    // fallback, which has no batch history to read. Add copies are never
-    // misses: a disjoint one is a regular island, and the batch fallback below
-    // lets the per-copy path mint it.
-    const probeCutHits = (): CopyInstance[] => {
-      const targetShape = table.get<OccShape>(target.shape!)
-      const hits: CopyInstance[] = []
-      for (const [copyNo, group] of groupByCopy(copies)) {
-        // One heartbeat per copy: the probe is a full Common each, so this loop
-        // alone is a long pass at high counts.
-        markFeatureProgress()
-        const overlapping = group.filter((copy) => shapesIntersect(oc, targetShape, copy.shape))
-        if (overlapping.length === 0) {
-          failures.push(`copy ${copyNo}: cut does not intersect any target body - nothing to remove`)
-        } else {
-          hits.push(...overlapping)
-        }
-      }
-      return hits
-    }
-    let selected = copies
-
-    // The old per-copy path, kept for the two shapes a batch cannot report per
-    // copy: a copy that consumes the target, and a union that leaves islands.
-    const applyIndividually = (): PatternResult => {
-      const attempted = operation === 'cut' ? probeCutHits() : selected
-      let appliedCopies = 0
-      const live = new Set<string>([targetId])
-      let consumed = false
-      for (const [copyNo, group] of groupByCopy(attempted)) {
-        if (consumed) break
-        markFeatureStart(featureId)
-        let copyApplied = false
-        for (const inst of group) {
-          try {
-            const result = applyBodyOperation(oc, scope, table, {
-              toolShape: inst.shape,
-              bodyStore,
-              operation,
-              mergeTarget: targetId,
-              bodyId: 'body_' + featureId,
-              featureId,
-              sketchId: target.sketch_id,
-              profileQueries: target.profile_queries,
-              faceNames: inst.names.faceNames,
-              edgeNames: inst.names.edgeNames,
-              faceAncestry: inst.names.faceAncestry,
-              edgeAncestry: inst.names.edgeAncestry,
-              capAncestry: inst.names.capAncestry,
-              faceOwner: inst.names.faceOwner,
-              edgeOwner: inst.names.edgeOwner,
-              opName: 'pattern',
-              // A pattern copy is the same geometry as its source body.
-              precision: target.precision ?? null,
-            })
-            copyApplied = true
-            const ids = result.body_ids ?? (result.body_id ? [result.body_id] : [])
-            if (ids.length === 0) {
-              // The copy consumed the whole target: nothing keeps the id and no
-              // later copy has a body to land on.
-              live.delete(targetId)
-              consumed = true
-              notes.push(`pattern: copy ${copyNo} removed all of body '${targetId}'; later copies were not applied`)
-              break
-            }
-            for (const id of ids) live.add(id)
-            if (result.solver_warning !== undefined && !notes.includes(result.solver_warning)) {
-              notes.push(result.solver_warning)
-            }
-          } catch (e) {
-            swallowUnlessTrap(e)
-            // applyBodyOperation already prefixes its message with opName; the
-            // copy prefix is the part the user needs, so drop the repeated name.
-            const reason = extractErrorMessage(e).replace(/^pattern: /, '')
-            failures.push(`copy ${copyNo}: ${reason}`)
-          }
-        }
-        if (copyApplied) appliedCopies++
-      }
-      if (appliedCopies === 0) {
-        throw new Error(`pattern: no copy was applied; ${failures[0] ?? 'nothing to apply'}`)
-      }
-      const liveIds = [...live]
-      const result: PatternResult = {
-        status: failures.length > 0 ? 'partial' : 'ok',
-        body_id: liveIds[0] ?? targetId,
-        body_ids: liveIds,
-        operation,
-      }
-      if (failures.length > 0) {
-        result.exception = `pattern: ${appliedCopies}/${total} copies applied; ${failures.join('; ')}`
-      }
-      if (notes.length > 0) result.solver_warning = notes.join('; ')
-      return result
-    }
-
-    // One boolean over every copy. A throw, a consumed target, or a result that
-    // gained solids (the island case) falls back to the per-copy path so the
-    // warning and the refusal stay exactly as they were.
-    markFeatureStart(featureId)
-    const targetShape = table.get<OccShape>(target.shape!)
-    const targetNames = readBodyNames(oc, scope, targetShape, target)
-    let batched
-    try {
-      batched = booleanWithDiffMany(
-        oc, scope, targetShape, selected.map((copy) => copy.shape),
-        operation === 'add' ? 'fuse' : 'cut',
-        { unifyFaces: !target.imported, precision: target.precision ?? null },
-      )
-    } catch (e) {
-      swallowUnlessTrap(e)
-      return applyIndividually()
-    }
-    const newShape = scope.track(batched.shape)
-    const oldSolids = countSolids(oc, scope, targetShape)
-    const newSolids = countSolids(oc, scope, newShape)
-    if (newSolids === 0 || newSolids > oldSolids) return applyIndividually()
-
-    // The batch's history is the cut-miss classification: a copy whose tool
-    // left no face of its own removed nothing. Failures name the copy the same
-    // way the probe did, and the batch result is unchanged (a disjoint tool is
-    // a no-op in the cut).
-    if (operation === 'cut') {
-      const shaped = toolsThatShaped(oc, scope, selected.map((copy) => copy.shape), batched.faceOrigin)
-      const applied = new Set<number>()
-      selected.forEach((copy, index) => {
-        if (shaped.has(index)) applied.add(copy.copy)
-      })
-      for (const copyNo of groupByCopy(copies).keys()) {
-        if (!applied.has(copyNo)) {
-          failures.push(`copy ${copyNo}: cut does not intersect any target body - nothing to remove`)
-        }
-      }
-      if (applied.size === 0) {
-        throw new Error(`pattern: no copy was applied; ${failures[0] ?? 'nothing to apply'}`)
-      }
-      selected = copies.filter((copy) => applied.has(copy.copy))
-    }
-
-    const toolNames = mergeCopyNames(selected)
-    const names = transferBooleanNames(oc, scope, {
-      bodyShape: newShape,
-      faceOrigin: batched.faceOrigin,
-      targetFaceNames: targetNames.faceNames,
-      targetFaceAncestry: target.face_ancestry ?? {},
-      targetCapAncestry: target.face_cap_ancestry ?? {},
-      targetFaceOwner: targetNames.faceOwner,
-      targetEdgeOwner: targetNames.edgeOwner,
-      toolFaceNames: toolNames.faceNames,
-      toolFaceAncestry: toolNames.faceAncestry,
-      toolCapAncestry: toolNames.capAncestry,
-      toolFaceOwner: toolNames.faceOwner,
-      toolEdgeOwner: toolNames.edgeOwner,
-      // Every copy was already remapped to its own UUIDs, so nothing collides.
-      toolCreatedBy: featureId,
-      toolUuidScope: null,
-    })
-    let preferredFirst: OccShape | null = null
-    if (operation === 'add') {
-      const targetFaces = batched.faceOrigin
-        .filter((origin) => !origin.fromTool)
-        .map((origin) => origin.output as OccShape)
-      preferredFirst = solidHoldingFaces(oc, scope, newShape, targetFaces)
-    }
-    const bodyIds = resplitBody(
-      oc, scope, table, bodyStore, target, newShape, featureId, names, preferredFirst,
-      target.precision ?? null,
-    )
-    target.modified_by.push(featureId)
-    target.brep_diff = batched.diff
-    if (brepDiffIsEmpty(batched.diff)) notes.push('pattern: operation produced no geometry change')
-
-    const appliedCopies = groupByCopy(selected).size
-    const result: PatternResult = {
-      status: failures.length > 0 ? 'partial' : 'ok',
-      body_id: bodyIds[0] ?? targetId,
-      body_ids: bodyIds,
-      operation,
-    }
-    if (failures.length > 0) {
-      result.exception = `pattern: ${appliedCopies}/${total} copies applied; ${failures.join('; ')}`
-    }
-    if (notes.length > 0) result.solver_warning = notes.join('; ')
-    return result
-  } finally {
-    // Every scratch body the forced `new` solve registered, including any made
-    // before a throw: they are this leaf's transient tool, never part rows.
-    releaseScratch(table, Object.values(scratch))
-  }
-}
-
-/**
  * Solve a pattern of either subject. A body pattern copies a body through the
  * grid; a feature pattern reapplies an earlier feature's own add or cut.
  */
@@ -741,7 +281,8 @@ export function solvePattern(
   }
 
   if (subject === 'feature') {
-    return solveFeaturePattern(oc, scope, table, feature, globalRepo, bodyStore, featuresById, solveContext)
+    const transforms = buildPatternTransforms(oc, scope, sub, globalRepo, bodyStore)
+    return solveFeaturePattern(oc, scope, table, feature, globalRepo, bodyStore, featuresById, solveContext, transforms)
   }
 
   throw new Error(`pattern: unknown subject '${subject}'; choose body or feature`)

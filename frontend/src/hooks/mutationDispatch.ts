@@ -75,6 +75,8 @@ import {
   applyRemoveBooleanTool,
   applyAddPattern,
   applySetPatternField,
+  applyAddPatternSource,
+  applyRemovePatternSource,
   applyAddDeleteBody,
   applyAddDeleteBodyRef,
   applyRemoveDeleteBodyRef,
@@ -388,6 +390,10 @@ export const mutationHandlers: MutationHandlers = {
   },
   set_pattern_field: (next, m) =>
     applySetPatternField(next, m.featureId, m.field, m.value),
+  add_pattern_source: (next, m) =>
+    applyAddPatternSource(next, m.featureId, m.sourceFeature),
+  remove_pattern_source: (next, m) =>
+    applyRemovePatternSource(next, m.featureId, m.index),
   set_body_visibility: (next, m) =>
     applySetBodyVisibility(next, m.bodyId, m.visible),
   add_delete_body: (next, m) =>

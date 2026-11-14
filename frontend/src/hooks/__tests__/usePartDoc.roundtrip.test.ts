@@ -122,7 +122,7 @@ const patternDoc = (): PartDoc => ({
   kind: 'part',
   features: [{
     id: 'pt1', kind: 'pattern', label: 'Pattern',
-    pattern: { subject: 'feature', source_feature: '@ex1', mode: 'linear', count: 3, pitch: 20, direction: [1, 0, 0] },
+    pattern: { subject: 'feature', source_features: ['@ex1'], mode: 'linear', count: 3, pitch: 20, direction: [1, 0, 0] },
   }],
 })
 

@@ -75,6 +75,8 @@ const ALL_MUTATION_TYPES = [
   'remove_boolean_tool',
   'add_pattern',
   'set_pattern_field',
+  'add_pattern_source',
+  'remove_pattern_source',
   'set_body_visibility',
   'add_delete_body',
   'add_delete_body_ref',

@@ -148,6 +148,10 @@ export function describeMutation(m: Mutation): string {
       return `add pattern ${m.label ?? m.featureId}`
     case 'set_pattern_field':
       return `set pattern ${m.field} to ${m.value}`
+    case 'add_pattern_source':
+      return `add pattern source ${m.sourceFeature}`
+    case 'remove_pattern_source':
+      return `remove pattern source at index ${m.index}`
     case 'add_delete_body':
       return `add delete body ${m.label ?? m.featureId}`
     case 'add_delete_body_ref':

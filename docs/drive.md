@@ -1106,7 +1106,8 @@ banner on stdout, so a client config must use the direct node invocation.
   pattern's `operation: add` only fuses copies that touch, so disjoint copies
   split into bodies named with `_1`, `_2`... suffixes. `add_pattern` and
   `add_mirror` take their whole payload inline: `add_pattern` takes every
-  pattern field (`subject`, `source_body`, `source_feature`, `mode`,
+  pattern field (`subject`, `source_body`, `source_features` (a list; the legacy
+  `source_feature` single id is still accepted), `mode`,
   `operation`, the one-axis `count`/`pitch`/`direction`
   family, the rectangular `count_x`/`count_y`/`pitch_x`/`pitch_y`/`direction_x_query`/`direction_y_query`
   family, `step_angle`, `axis`/`axis_origin`/`axis_direction` and the invert
@@ -1121,18 +1122,24 @@ banner on stdout, so a client config must use the direct node invocation.
   count 0 or 1 is refused because the count includes the source. Rectangular
   mode leaves the seed cell to the source, so 1xN is a legitimate row and 1x1
   is refused.
-- `add_pattern` with `subject: feature` repeats one earlier FEATURE's own add
-  or cut inside the body it already shaped, so a repeated slot or boss needs no
-  separate body and boolean. `source_feature` names an earlier `extrude`,
-  `revolve` or `sweep` whose operation is `add` or `cut`. `count` is the TOTAL
-  instance count, including the source's own application (count 2 adds one
-  copy and count 1 is refused). Linear mode reads `pitch` plus `direction` or
+- `add_pattern` with `subject: feature` repeats one or more earlier FEATUREs'
+  own add or cut inside the body each feature already shaped, so a repeated slot
+  or boss needs no separate body and boolean. `source_features` names a list of
+  earlier `extrude`, `revolve` or `sweep` features whose operation is `add` or
+  `cut`, e.g. `["@ex1", "@ex2"]`; the legacy single `source_feature` is still
+  accepted and means a one-element list. Every source is repeated at every grid
+  instance in the order the sources sit in the feature log (not the list order),
+  and the first source's first produced body is the instance-0 seed. `count` is
+  the TOTAL instance count, including the sources' own application (count 2 adds
+  one copy and count 1 is refused). Linear mode reads `pitch` plus `direction` or
   `direction_query`; rectangular mode reads the two `count_x`/`count_y` axes;
   circular mode reads `step_angle` (absent means `360/count`) plus `axis` or
-  `axis_origin` + `axis_direction`. `target_body` names the body when the
-  source feature touched more than one; otherwise the one body the source
-  created or modified is used, and zero or several candidates are refused with
-  the list. A copy that cannot apply is named: some applied is a `partial`
+  `axis_origin` + `axis_direction`. `target_body` names the body when a source
+  touched more than one and sends every source there; otherwise each source
+  applies to the body it shaped, so sources that shaped different bodies keep
+  their own. A source that no longer exists or now comes after the pattern is
+  dropped with a named warning on the feature; a pattern with no source left is
+  refused by name. A copy that cannot apply is named: some applied is a `partial`
   feature listing how many copies landed and which copy failed, none applied is
   an error. An add copy that does not touch the target becomes its own body; a
   cut copy that misses is still named. A source with `operation: new` or an

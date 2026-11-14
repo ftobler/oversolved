@@ -22,9 +22,9 @@ import { isLengthUnit } from '@/utils/lengthUnit'
 import { normalizeMateLimitDeg } from '@/utils/mateKinds'
 import { isDocumentConstraintKind } from '@/wasm-kernel/partDocToSketches'
 import { deriveMemberIds, isFaceProjectionSource } from '@/kernel/features/projectionMembers'
-import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateLegacyBodyPicks, canonicalizeFeatureParams, migrateProjectionConstraints, migrateLineDistanceOperandOrder } from '@/utils/yamlMigrations'
+import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateLegacyBodyPicks, migratePatternSourceFeatures, canonicalizeFeatureParams, migrateProjectionConstraints, migrateLineDistanceOperandOrder } from '@/utils/yamlMigrations'
 
-// The version the ladder migrates to. A document carrying `version` 7 or newer
+// The version the ladder migrates to. A document carrying `version` 8 or newer
 // skips every step; anything older (including an unstamped document, reads as 0)
 // runs the steps whose target version it is behind. The step at 3 canonicalizes
 // the two spellings the format used to tolerate (feature refs `$id` -> `@id`,
@@ -32,10 +32,11 @@ import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateLegacyBod
 // plus convention and stamps the document it changed (see the step's own note);
 // the step at 5 folds authored rotating joint limits into the solver's signed
 // (-180, 180] roll coordinate; the step at 7 puts a stored point-first
-// `line_distance` back in the line-first order the solver reads.
+// `line_distance` back in the line-first order the solver reads; the step at 8
+// folds a pattern's single legacy source into the multi-source list.
 // The historic heals target 2 deliberately: the version stamps predate them, so
 // a document stamped 1 can still carry the stale shapes they fix.
-export const CURRENT_DOC_VERSION = 7
+export const CURRENT_DOC_VERSION = 8
 
 // Caps. Chosen far above what a real document holds while well below what would
 // hang a solve: an entity list of 10k is already far past a hand-authored
@@ -111,6 +112,7 @@ interface MigrationStep {
 // touches and skips anything that does not have the shape it heals: a garbage
 // document just reaches the validator untouched and is rejected there.
 const MIGRATION_STEPS: MigrationStep[] = [
+  { id: 'pattern-source-features', to: 8, apply: stepPatternSourceFeatures },
   { id: 'line-distance-operand-order', to: 7, apply: stepLineDistanceOperandOrder },
   { id: 'projection-constraint', to: 6, apply: stepProjectionConstraint },
   // The rotating-limit normalization. It is idempotent, so unlike the offset
@@ -180,6 +182,11 @@ function stepDropDeadAxisConstraints(doc: DocRecord): number {
 function stepPluralBodyPicks(doc: DocRecord): number {
   const part = migratablePartDoc(doc)
   return part ? migrateLegacyBodyPicks(part) : 0
+}
+
+function stepPatternSourceFeatures(doc: DocRecord): number {
+  const part = migratablePartDoc(doc)
+  return part ? migratePatternSourceFeatures(part) : 0
 }
 
 function stepLineDistanceOperandOrder(doc: DocRecord): number {
@@ -1096,6 +1103,11 @@ function checkSplit(sub: DocRecord, field: string): void {
 function checkPattern(sub: DocRecord, field: string): void {
   checkOptional(sub, 'subject', field, (v, f) => checkEnum(v, f, ['body', 'feature']))
   checkOptional(sub, 'source_body', field, checkRef)
+  // The current multi-source list, and the singular spelling a document written
+  // before 2026-11 carries. The loader's ladder folds the scalar, but a stamped
+  // document skips the ladder, so the boundary still accepts it and the kernel
+  // reads it as a one-element list.
+  checkOptional(sub, 'source_features', field, checkRefList)
   checkOptional(sub, 'source_feature', field, checkRef)
   checkOptional(sub, 'target_body', field, checkRef)
   checkOptional(sub, 'operation', field, (v, f) => checkEnum(v, f, ['add', 'new']))

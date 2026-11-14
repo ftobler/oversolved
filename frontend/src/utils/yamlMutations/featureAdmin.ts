@@ -368,6 +368,21 @@ export function applyReorderPickField(doc: PartDoc, featureId: string, field: st
         arr = normalizeStoredRefList(feature.sweep, 'path')
       }
       break
+    case 'source_features':
+      // The chip reorders the authored list. The kernel still unions the
+      // sources in feature-log order, so this is a presentation edit; the
+      // legacy scalar is normalized in place before the splice.
+      if (feature.kind === 'pattern') {
+        const sub: { source_features?: string[]; source_feature?: string } = feature.pattern ?? {}
+        if (!Array.isArray(sub.source_features)) {
+          sub.source_features = typeof sub.source_feature === 'string' && sub.source_feature
+            ? [sub.source_feature]
+            : []
+          delete sub.source_feature
+        }
+        arr = sub.source_features
+      }
+      break
     default:
       return
   }
