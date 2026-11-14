@@ -29,6 +29,91 @@ pub(super) fn anchor_is_first_pair(point: PointSelector) -> bool {
     )
 }
 
+/// The row shape of one group constraint, shared by `r_group`, its analytic
+/// Jacobian and the precision classifier so their counts cannot drift.
+///
+/// A whole member emits one row per param, minus the anchor entity's own first
+/// pair when that pair IS the translation. A point member emits its two world
+/// coordinates and nothing else, so the rest of its entity stays free; naming
+/// the anchor's own pair is the translation itself and emits no row.
+#[derive(Clone, Copy)]
+pub(super) enum GroupWalk {
+    /// The held point's `(x, y)`, both positional rows relative to `anchor`.
+    Point { member: Ref, anchor: Ref },
+    /// Every member param, the first pair skipped when it is the anchor's own.
+    Whole {
+        member: u32,
+        size: usize,
+        /// Leading params that are coordinates, so a translation shifts them.
+        coords: usize,
+        skip_first_pair: bool,
+        anchor: Ref,
+    },
+}
+
+impl GroupWalk {
+    /// The walk for `c`, or `None` when the constraint names no usable operands
+    /// or its point member is the anchor's own pair. Those are the shapes that
+    /// contribute no row anywhere.
+    pub(super) fn of(problem: &Problem, c: &Constraint) -> Option<Self> {
+        let (
+            Some(Ref::Entity {
+                index: member,
+                point: member_point,
+            }),
+            Some(
+                anchor @ Ref::Entity {
+                    index: anchor_index,
+                    point: anchor_point,
+                },
+            ),
+        ) = (c.ref_for(RefRole::Target), c.ref_for(RefRole::A))
+        else {
+            return None;
+        };
+        if member_point.is_present() {
+            let target = Ref::Entity {
+                index: member,
+                point: member_point,
+            };
+            // The anchor's own pair IS the translation, so it adds no row. Any
+            // other point on the anchor entity is a distinct held point.
+            if target == anchor {
+                return None;
+            }
+            return Some(GroupWalk::Point {
+                member: target,
+                anchor,
+            });
+        }
+        // A whole member of the anchor entity under a point anchor is the pair
+        // the host's dedup rule forbids (the anchor point already holds it), so
+        // it can only arrive from a hand-built wire: fail the test build rather
+        // than author a second, redundant hold.
+        debug_assert!(
+            member != anchor_index || anchor_is_first_pair(anchor_point),
+            "group names a whole entity and a point member of the same entity"
+        );
+        let size = problem.param_count_of(member);
+        Some(GroupWalk::Whole {
+            member,
+            size,
+            coords: group_coord_count(problem.kind_of(member), size),
+            skip_first_pair: member == anchor_index
+                && size >= 2
+                && anchor_is_first_pair(anchor_point),
+            anchor,
+        })
+    }
+
+    /// The anchor point the group translation is measured from.
+    pub(super) fn anchor(self) -> Ref {
+        match self {
+            GroupWalk::Point { anchor, .. } | GroupWalk::Whole { anchor, .. } => anchor,
+        }
+    }
+}
+
 impl Problem<'_> {
     pub(super) fn r_midpoint(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
         let mid: P2 = if let Some(Ref::Entity { index, .. }) = c.ref_for(RefRole::Line) {
@@ -112,62 +197,38 @@ impl Problem<'_> {
     /// transform" shape as the whole-entity rows below, so a later rotatable
     /// group changes the transform in one place.
     pub(super) fn r_group(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
-        let (
-            Some(Ref::Entity {
-                index: member,
-                point: member_point,
-            }),
-            Some(
-                anchor @ Ref::Entity {
-                    index: anchor_index,
-                    point: anchor_point,
-                },
-            ),
-        ) = (c.ref_for(RefRole::Target), c.ref_for(RefRole::A))
-        else {
+        let Some(walk) = GroupWalk::of(self, c) else {
             return;
         };
-        let t = self.translation(x, anchor);
-        if member_point.is_present() {
-            let target = Ref::Entity {
-                index: member,
-                point: member_point,
-            };
-            // The anchor's own pair IS the translation, so it adds no row. Any
-            // other point on the anchor entity is a distinct held point.
-            if target == anchor {
-                return;
+        let t = self.translation(x, walk.anchor());
+        match walk {
+            GroupWalk::Point { member, .. } => {
+                let now = self.point(x, member);
+                let held = self.point(&self.reference, member);
+                r.push(now[0] - held[0] - t[0]);
+                r.push(now[1] - held[1] - t[1]);
             }
-            let now = self.point(x, target);
-            let held = self.point(&self.reference, target);
-            r.push(now[0] - held[0] - t[0]);
-            r.push(now[1] - held[1] - t[1]);
-            return;
-        }
-        // A whole member of the anchor entity under a point anchor is the pair
-        // the host's dedup rule forbids (the anchor point already holds it), so
-        // it can only arrive from a hand-built wire: fail the test build rather
-        // than author a second, redundant hold.
-        debug_assert!(
-            member != anchor_index || anchor_is_first_pair(anchor_point),
-            "group names a whole entity and a point member of the same entity"
-        );
-        let off = self.offset_of(member);
-        let size = self.param_count_of(member);
-        let coords = group_coord_count(self.kind_of(member), size);
-        let skip_anchor_pair =
-            member == anchor_index && size >= 2 && anchor_is_first_pair(anchor_point);
-        for i in 0..size {
-            if skip_anchor_pair && i < 2 {
-                continue;
+            GroupWalk::Whole {
+                member,
+                size,
+                coords,
+                skip_first_pair,
+                ..
+            } => {
+                let off = self.offset_of(member);
+                for i in 0..size {
+                    if skip_first_pair && i < 2 {
+                        continue;
+                    }
+                    let held = self.reference[off + i];
+                    let residual = if i < coords {
+                        x[off + i] - held - t[i % 2]
+                    } else {
+                        x[off + i] - held
+                    };
+                    r.push(residual);
+                }
             }
-            let held = self.reference[off + i];
-            let residual = if i < coords {
-                x[off + i] - held - t[i % 2]
-            } else {
-                x[off + i] - held
-            };
-            r.push(residual);
         }
     }
 }

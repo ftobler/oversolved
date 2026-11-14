@@ -19,6 +19,7 @@
 //! quietly granting the row a looser target.
 
 use super::geom::is_curve;
+use super::misc::GroupWalk;
 use super::Problem;
 use crate::constraints::{Axis, Constraint, ConstraintKind, Ref, RefRole};
 use crate::tolerance::{contract_angular, contract_positional};
@@ -351,26 +352,28 @@ impl Problem<'_> {
             .collect()
     }
 
+    /// Classify from the same `GroupWalk` the residual and Jacobian use. A
+    /// point member's two rows are world coordinates; a whole member's rows
+    /// follow its param slots, with the anchor's own first pair skipped.
     fn class_group(&self, c: &Constraint) -> Vec<RowClass> {
-        let (
-            Some(Ref::Entity { index: member, .. }),
-            Some(Ref::Entity {
-                index: anchor_index,
-                point: anchor_point,
-                ..
-            }),
-        ) = (c.ref_for(RefRole::Target), c.ref_for(RefRole::A))
-        else {
+        let Some(walk) = GroupWalk::of(self, c) else {
             return Vec::new();
         };
-        let size = self.param_count_of(member);
-        let kind = self.kind_of(member);
-        let skip_pair =
-            member == anchor_index && size >= 2 && super::misc::anchor_is_first_pair(anchor_point);
-        (0..size)
-            .skip(if skip_pair { 2 } else { 0 })
-            .map(|i| param_class(kind, i))
-            .collect()
+        match walk {
+            GroupWalk::Point { .. } => positional(2),
+            GroupWalk::Whole {
+                member,
+                size,
+                skip_first_pair,
+                ..
+            } => {
+                let kind = self.kind_of(member);
+                (0..size)
+                    .skip(if skip_first_pair { 2 } else { 0 })
+                    .map(|i| param_class(kind, i))
+                    .collect()
+            }
+        }
     }
 
     /// The class of the param at absolute index `i`, found by the entity block
@@ -859,6 +862,67 @@ mod tests {
         assert_eq!(RowClass::Unclassified.target(), 0.0);
         assert_eq!(RowClass::Positional.target(), contract_positional());
         assert!(matches!(angle(2.0), RowClass::Angular { seed_len } if seed_len == 2.0));
+    }
+
+    #[test]
+    fn a_group_row_class_follows_the_residual_walk() {
+        // The group classifier used to assume a whole-entity member, so a point
+        // member (two rows) and the anchor's own pair (no rows) drifted apart.
+        // Both now read the same `GroupWalk`, so every shape stays aligned.
+        let problem = problem();
+        let group = |member: Ref, anchor: Ref| Constraint {
+            kind_code: ConstraintKind::Group.to_u8(),
+            refs: vec![(RefRole::Target, member), (RefRole::A, anchor)],
+            ..Default::default()
+        };
+        let line = e_ref(0, PointSelector::Absent);
+        let line_start = e_ref(0, PointSelector::Start);
+
+        // A point member is two positional rows whatever its entity kind.
+        assert_eq!(
+            classes_of(
+                &problem,
+                &group(e_ref(2, PointSelector::Center), line_start)
+            ),
+            positional(2)
+        );
+        // The anchor's own pair IS the translation, so it contributes no row.
+        assert!(classes_of(&problem, &group(line_start, line_start)).is_empty());
+        // A whole fit spline translates as one block: every param rows.
+        assert_eq!(
+            classes_of(
+                &problem,
+                &group(e_ref(6, PointSelector::Absent), line_start)
+            ),
+            positional(8)
+        );
+        // A whole member against a point anchor still rows per param.
+        assert_eq!(
+            classes_of(&problem, &group(line, e_ref(5, PointSelector::C1))),
+            positional(4)
+        );
+        // A lone member with no anchor is no row, exactly like the residual.
+        let lone = Constraint {
+            kind_code: ConstraintKind::Group.to_u8(),
+            refs: vec![(RefRole::Target, line)],
+            ..Default::default()
+        };
+        assert!(classes_of(&problem, &lone).is_empty());
+
+        // Mixed whole plus point members in one group: one class per solved row.
+        let mut inp = input(entities(), params(), vec![]);
+        inp.constraints = vec![
+            group(e_ref(1, PointSelector::Absent), line_start),
+            group(e_ref(2, PointSelector::Center), line_start),
+        ];
+        let inp: &'static Input = Box::leak(Box::new(inp));
+        let mixed = Problem::new(inp);
+        let stacked = mixed.contract_rows(&mixed.x0);
+        assert_eq!(stacked.len(), mixed.residuals(&mixed.x0).len());
+        assert_eq!(stacked.len(), 6);
+        assert!(stacked
+            .iter()
+            .all(|(_, class)| *class == RowClass::Positional));
     }
 
     #[test]
