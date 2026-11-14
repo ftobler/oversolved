@@ -11,10 +11,10 @@ import { allFinite, mintEntityId, parseTarget, resolveSketch, round, uniqueConst
 /**
  * The DXF profile writer: one mutation appends every parsed entity to a sketch
  * as authored geometry, held by one Group constraint so the import arrives at
- * exactly its two translations of freedom. Deleting that one constraint hands
- * back free-form geometry; `group: false` imports without it for a client that
- * wants to constrain the rows itself. Either way the whole import is one undo
- * entry.
+ * its two translations and one rotation of freedom. Deleting that one constraint
+ * hands back free-form geometry; `group: false` imports without it for a client
+ * that wants to constrain the rows itself. Either way the whole import is one
+ * undo step.
  */
 export function applyImportDxf(
   doc: PartDoc,

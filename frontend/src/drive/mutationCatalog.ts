@@ -234,8 +234,8 @@ const DXF_IMPORT_NOTE =
   + 'converts to the document unit (0 unitless, 1 inch, 2 foot, 4 mm, 5 cm, 6 m; unitless means document '
   + 'units). Layer names are not stored; repeated entities are kept. '
   + 'Unless `group: false`, the imported rows are held by one Group constraint whose anchor is the first '
-  + 'imported entity (2 DOF left: pin one vertex, e.g. coincident to the origin projection, to fully '
-  + 'constrain; delete the constraint to edit the entities freely). '
+  + 'imported entity (3 DOF left: pin one vertex, e.g. coincident to the origin projection, and add a '
+  + 'horizontal or angle on a member line to fully constrain; delete the constraint to edit the entities freely). '
   + 'The step reply reports `createdIds: []` and `createdCount`, plus `layers` (imported rows per layer), '
   + '`groupId` (the authored Group constraint, absent with `group: false`) '
   + 'and `otherLayers` when a filter left file layers out: the import is a bulk add, so the reply '
@@ -523,7 +523,7 @@ const CONSTRAINT_KIND_NOTE =
   '(the document stores the line first, the order the solver reads). `colinear` takes two lines (parallel and on ' +
   'one line) or a point and a line (the point on the line\'s infinite extension). `group` takes one or more ' +
   'whole authored entities of the sketch (no vertex, origin or projected entity) and glues them into their ' +
-  'current shape, leaving the set free to translate; it carries no value and deleting it frees the entities.'
+  'current shape, leaving the set free to move and rotate; it carries no value and deleting it frees the entities.'
 
 // An angle is the one dimension whose stored value is not the number the label
 // shows: the solver stores the unsigned angle between the two lines' direction
@@ -1042,7 +1042,8 @@ export const MUTATION_CATALOG = {
       ),
       group: optBool(
         'Hold every imported entity in one Group constraint (default true), so the profile keeps its '
-        + 'shape and arrives with 2 DOF. `false` imports plain entities the caller constrains itself.',
+        + 'shape and arrives with 3 DOF (two translations and a rotation). `false` imports plain entities '
+        + 'the caller constrains itself.',
       ),
     },
   },

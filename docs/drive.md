@@ -859,8 +859,8 @@ banner on stdout, so a client config must use the direct node invocation.
   projection as the target. A bare `@builtin_origin` solves but creates no
   entity, so there is nothing to select or delete. `group` takes one or more
   whole authored entities of the sketch (no vertex, origin or projected entity)
-  and glues them into their current shape while leaving the set free to
-  translate; it carries no value, and deleting it frees the entities. An
+  and glues them into their current shape while leaving the set free to move and
+  rotate; it carries no value, and deleting it frees the entities. An
   `angle` value is the
   corner the label shows, the angle between the two lines as drawn; without
   `pos` the corner nearest the authored geometry is taken and a label `pos` is
@@ -878,8 +878,8 @@ banner on stdout, so a client config must use the direct node invocation.
   including ones that would otherwise refuse the file, and an unknown name is a
   step failure naming the file's layers and their entity counts. The imported
   rows are held by one `group` constraint in the same undo entry, anchored on
-  the first imported row, so the profile arrives at 2 DOF; `group: false`
-  imports plain rows instead. Its step reply
+  the first imported row, so the profile arrives at 3 DOF (two translations and
+  a rotation); `group: false` imports plain rows instead. Its step reply
   is compact: `createdIds: []` and `createdCount`, plus `layers` (the imported
   rows per layer), `groupId` (the authored group, absent with `group: false`) and,
   when a filter left file layers out, `otherLayers` with
