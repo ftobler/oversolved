@@ -7,7 +7,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import {
   solveSketch, setSketchSolver, resetSketchSolver,
-  prepareDragContext, solveSketchDrag, pinProjectionTargets,
+  prepareDragContext, solveSketchDrag, pinProjectionTargets, probeRedundantConstraint,
 } from '../sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { worldToSketch2d } from '../shared/planes'
@@ -311,7 +311,10 @@ describe('solveSketch projection lowering', () => {
         { id: 'proj_held', kind: 'projection', target: '$held', source: '?edge;gone' },
       ],
     }
+    const before = structuredClone(feature)
     const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
+    // The lowering is solve-local: the document row keeps its block and kind.
+    expect(feature).toEqual(before)
     expect(out.status).not.toBe('exception')
     expect(out.geometry?.held).toBeUndefined()
     expect(profileEntityIds(out)).not.toContain('held')
@@ -325,9 +328,8 @@ describe('solveSketch projection lowering', () => {
     if (!solveBytes) return
     // A spline declaration can resolve to a fit_spline, whose cache is 2N
     // params. Under the declared cubic spline's 8 slots a truncation read the
-    // first four fit points as a cubic and pinned that curve. Any legal fit
-    // block (2N, N >= 2, even) belongs to the variable-size kind, never to the
-    // fixed one.
+    // first four fit points as a cubic and pinned that curve. This 10-param
+    // block is longer than any cubic, so the arity rule can tell it apart.
     const fitBlock = [0, 0, 2, 1, 4, -1, 6, 1, 8, 0]
     const feature: Dict = {
       id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
@@ -340,7 +342,71 @@ describe('solveSketch projection lowering', () => {
         { id: 'proj_held', kind: 'projection', target: '$held', source: '?edge;gone' },
       ],
     }
+    const before = structuredClone(feature)
     const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
+    expect(feature).toEqual(before)
+    expect(out.status).not.toBe('exception')
+    expect(out.geometry?.held).toBeUndefined()
+    expect(profileEntityIds(out)).not.toContain('held')
+    expect(out.solver_warning).toContain(
+      'projection proj_held source ?edge;gone did not resolve; '
+      + 'the entity has no position yet and is left out of the profile',
+    )
+  })
+
+  it('cannot tell an 8-param fit block from a cubic spline by arity alone', () => {
+    if (!solveBytes) return
+    // The arity rule's one blind spot: a four-point fit block is exactly eight
+    // scalars, the same as a cubic spline's block. A row still declared `spline`
+    // is read as the cubic it claims and pinned; the same block under the
+    // adopted `fit_spline` kind takes the variable branch. The app does not
+    // write the disagreement (the write-back adopts the kind and installs the
+    // block in one pass); a pre-adoption or hand-edited row carries no
+    // provenance to decide it, and a failed source has no solve fact to ask.
+    const fitBlock = [0, 0, 2, 1, 4, -1, 6, 1]
+    const build = (kind: string): Dict => ({
+      id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [
+        { id: 'drawn', kind: 'circle' },
+        { id: 'held', kind },
+      ],
+      initial: { drawn: [2, 3, 4], held: fitBlock },
+      constraints: [
+        { id: 'proj_held', kind: 'projection', target: '$held', source: '?edge;gone' },
+      ],
+    })
+    const stale = build('spline')
+    const before = structuredClone(stale)
+    const staleOut = solveSketch(stale, deadRepo(), {} as Record<string, Body>)
+    expect(stale).toEqual(before)
+    expect(staleOut.geometry?.held).toEqual(fitBlock)
+    expect(staleOut.solver_warning).toContain('the entity keeps its last position')
+
+    const adoptedOut = solveSketch(build('fit_spline'), deadRepo(), {} as Record<string, Body>)
+    expect(adoptedOut.geometry?.held).toEqual(fitBlock)
+    expect(adoptedOut.solver_warning).toContain('the entity keeps its last position')
+  })
+
+  it('leaves a handled fit spline without a position on a short cache instead of throwing', () => {
+    if (!solveBytes) return
+    // A handled fit spline needs 2N + 2h params; a 3-point cache (6) has no
+    // slots for both handles. The fallback must write the handle-padded default
+    // (8 here), or lowerSketch refuses the block and the whole sketch fails
+    // instead of leaving the projection out with the no-position warning.
+    const feature: Dict = {
+      id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [
+        { id: 'drawn', kind: 'circle' },
+        { id: 'held', kind: 'fit_spline', handles: 'both' },
+      ],
+      initial: { drawn: [2, 3, 4], held: [0, 0, 2, 1, 4, 0] },
+      constraints: [
+        { id: 'proj_held', kind: 'projection', target: '$held', source: '?edge;gone' },
+      ],
+    }
+    const before = structuredClone(feature)
+    const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
+    expect(feature).toEqual(before)
     expect(out.status).not.toBe('exception')
     expect(out.geometry?.held).toBeUndefined()
     expect(profileEntityIds(out)).not.toContain('held')
@@ -836,6 +902,11 @@ describe('solveSketch pins projected entities (fix-projected-entities-pinned)', 
     const stale = prepareDragContext(feature, 'p0', 'xy', [0, 0])
     expect(stale).not.toBeNull()
     expect(stale!.layout.find(e => e.id === 'pc')).toMatchObject({ kind: 'circle', size: 3 })
+    // A circle declaration with a 4-param line cache is not a circle position:
+    // without a resolved kind the block is dropped for the circle default, not
+    // padded into a 4-param segment the hard solve would leave out.
+    const pcOffset = stale!.layout.find(e => e.id === 'pc')!.offset
+    expect(stale!.params0.slice(pcOffset, pcOffset + 3)).toEqual([0, 0, 0])
 
     const adopted = prepareDragContext(feature, 'p0', 'xy', [0, 0], { pc: 'line' })
     expect(adopted).not.toBeNull()
@@ -843,7 +914,56 @@ describe('solveSketch pins projected entities (fix-projected-entities-pinned)', 
 
     expect(pinProjectionTargets(feature, { pc: 'line' }).loweredFeature.entities
       ?.find(e => e.id === 'pc')?.kind).toBe('line')
-    // Without the resolved kinds the stored feature is returned untouched.
-    expect(pinProjectionTargets(feature).loweredFeature).toBe(feature)
+    // The foreign block is dropped from the copy even without a resolved kind;
+    // the entities survive untouched.
+    const pinned = pinProjectionTargets(feature)
+    expect(pinned.loweredFeature).not.toBe(feature)
+    expect(pinned.loweredFeature.initial?.pc).toEqual([0, 0, 0])
+  })
+
+  it('f. drops a foreign projection block from the drag preview', () => {
+    if (!solveBytes) return
+    // A declared line whose cache is a point's two params is not a line
+    // position; the hard solve leaves it out. The drag preview must not read it
+    // as (40,30)->(0,0), so the shared check drops it for the line's zero
+    // default before lowering.
+    const feature = {
+      id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [
+        { id: 'held', kind: 'line' },
+      ],
+      initial: { held: [40, 30] },
+      constraints: [
+        { id: 'proj_held', kind: 'projection', target: '$held', source: '?edge;gone' },
+      ],
+    } as unknown as SketchFeature
+
+    expect(pinProjectionTargets(feature).loweredFeature.initial?.held).toEqual([0, 0, 0, 0])
+
+    const ctx = prepareDragContext(feature, 'held', 'end')
+    expect(ctx).not.toBeNull()
+    const heldOffset = ctx!.layout.find(e => e.id === 'held')!.offset
+    expect(ctx!.params0.slice(heldOffset, heldOffset + 4)).toEqual([0, 0, 0, 0])
+  })
+
+  it('g. probes a handled fit spline with a short cache instead of returning null', () => {
+    if (!solveBytes) return
+    // Both handles need four param slots, so a 6-param cache is short. The
+    // handle-padded default lets the drag and the probe lay the block out;
+    // before, lowerSketch refused it and both paths swallowed the throw.
+    const feature = {
+      id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+      entities: [
+        { id: 'held', kind: 'fit_spline', handles: 'both' },
+        { id: 'd1', kind: 'line' },
+      ],
+      initial: { held: [0, 0, 2, 1, 4, 0], d1: [0, 0, 10, 0] },
+      constraints: [
+        { id: 'proj_held', kind: 'projection', target: '$held', source: '?edge;gone' },
+        { id: 'c_len', kind: 'length', target: '$d1', value: 10 },
+      ],
+    } as unknown as SketchFeature
+    expect(probeRedundantConstraint(feature, 'c_len')).not.toBeNull()
+    expect(prepareDragContext(feature, 'd1', 'end')).not.toBeNull()
   })
 })

@@ -516,9 +516,10 @@ export function projectTo2d(
 
     // 3D body arc: resolve endpoints in 3D, project to 2D, then compute
     // angles relative to the projected center. Mirrors `_project_3d_arc_to_params`.
-    // Every arc payload carries its plane (the OCC reader's axis/x_axis, or the
-    // owning sketch's frame normal from the `external_params` lift), because the
-    // projected sweep is only defined against that plane.
+    // A projected sweep needs the source plane: the OCC reader supplies
+    // axis/x_axis, and the `external_params` lift supplies the owning sketch's
+    // frame normal. A payload with no plane or no sweep has nothing to project
+    // and is refused; `postRegister`'s topology edges are that shape.
     const axis = data.axis as number[]
     const ax = data.x_axis as number[]
     const a0 = data.angle_start as number

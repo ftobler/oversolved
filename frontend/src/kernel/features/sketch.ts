@@ -279,6 +279,22 @@ export function resetSketchSolverAfterTrap(): boolean {
   return true
 }
 
+/** End handles a fit spline entity stores: 0, 2 or 4 scalars (one x/y pair
+ *  each). `lowerSketch` derives the same count from the entity's `handles`. */
+function fitHandleCount(handles: unknown): number {
+  return (handles === 'start' || handles === 'both' ? 1 : 0)
+    + (handles === 'end' || handles === 'both' ? 1 : 0)
+}
+
+/** The block a projection of `kind` displays when it has no position: the
+ *  registry default, extended with zero end handles for a handled fit spline so
+ *  the block matches the layout `lowerSketch` builds from `handles`. */
+function defaultPositionBlock(kind: string, handles?: unknown): number[] {
+  const defaults = [...(getDefaultParams ? getDefaultParams(kind) : [])]
+  for (let i = 2 * fitHandleCount(handles); i > 0; i--) defaults.push(0)
+  return defaults
+}
+
 /**
  * True when a stored `initial` block is exactly the kind's default block. The
  * projection fallback used to bake that block for a source that never resolved,
@@ -288,9 +304,9 @@ export function resetSketchSolverAfterTrap(): boolean {
  * a two-point fit spline, which a resolved source would have to collapse onto
  * itself to match.
  */
-function isDefaultParamsBlock(params: unknown, kind: string): boolean {
+function isDefaultParamsBlock(params: unknown, kind: string, handles?: unknown): boolean {
   if (!Array.isArray(params)) return false
-  const defaults = getDefaultParams ? getDefaultParams(kind) : []
+  const defaults = defaultPositionBlock(kind, handles)
   if (!defaults.length || params.length !== defaults.length) return false
   return params.every((v, i) => v === defaults[i])
 }
@@ -301,18 +317,26 @@ function isDefaultParamsBlock(params: unknown, kind: string): boolean {
  *
  * The block can belong to another kind: a projection declared `line` that
  * resolved to a `point` (an end-on source) caches 2 params, one declared
- * `spline` that resolved to a `fit_spline` caches 2N. Padding or truncating
- * that block to the declared kind's arity invents geometry at the stale
- * position, which the "keep the last position" rule then makes permanent. A
- * variable-size kind (`fit_spline`) has no arity to compare against: its block
- * IS the layout, so any legal fit block is its own position and `lowerSketch`
- * owns the exact point/handle count.
+ * `spline` that resolved to `fit_spline` caches 2N. Padding or truncating that
+ * block to the declared kind's arity invents geometry at the stale position,
+ * which the "keep the last position" rule then makes permanent.
+ *
+ * A `fit_spline` block is its own layout, so the test is its handle slots plus
+ * at least two fit points, both even. That still cannot tell a four-point fit
+ * block (8 scalars) from a cubic spline of the same length; a row still
+ * declared `spline` is read as the cubic it claims. This app does not write
+ * that disagreement: the write-back adopts the resolved kind in the same pass
+ * that installs the block. It can only come from a pre-adoption or hand-edited
+ * document, which carries no provenance to decide it.
  */
-function isProjectionPosition(stored: unknown, kind: string): boolean {
-  if (!Array.isArray(stored) || isDefaultParamsBlock(stored, kind)) return false
+function isProjectionPosition(stored: unknown, kind: string, handles?: unknown): boolean {
+  if (!Array.isArray(stored) || isDefaultParamsBlock(stored, kind, handles)) return false
   const def = ENTITY_BY_KIND.get(kind)
   if (def === undefined) return false
-  if (def.variableParams) return stored.length >= def.paramCount && stored.length % 2 === 0
+  if (def.variableParams) {
+    const fitParams = stored.length - 2 * fitHandleCount(handles)
+    return fitParams >= def.paramCount && fitParams % 2 === 0
+  }
   return stored.length === def.paramCount
 }
 
@@ -493,7 +517,7 @@ function lowerProjectionConstraints(
     // arity is a cache of a resolve that lowered to a different kind; neither is
     // a position in this kind's slots.
     const stored = initial[targetId]
-    const hadPosition = isProjectionPosition(stored, declaredKind)
+    const hadPosition = isProjectionPosition(stored, declaredKind, ent?.handles)
     let resolved = false
     try {
       if (source.startsWith('$')) {
@@ -527,8 +551,8 @@ function lowerProjectionConstraints(
     // A foreign block is replaced rather than kept: passing it on would make the
     // solver pad or truncate it to this kind's arity. The projection constraint
     // id is reported as an error only when unresolved.
-    if (initial[targetId] === undefined || (!resolved && !hadPosition)) {
-      initial[targetId] = [...(getDefaultParams ? getDefaultParams(declaredKind) : [])]
+    if (!resolved && !hadPosition) {
+      initial[targetId] = defaultPositionBlock(declaredKind, ent?.handles)
     }
     pinnedIds.push(targetId)
     if (!resolved) {
@@ -1024,10 +1048,9 @@ export function resolvedKindsOfSketch(sketch: Sketch | null | undefined): Record
  *  entity still says the pick-time kind while its baked params are the resolved
  *  one (a circle seen edge-on is a 4-param line). Adopting the render kind here
  *  keeps those paths reading the params in the kind they were written as,
- *  instead of binding a `center` ref to the line's start. A path with no last
- *  solve (a freshly opened sketch, or one still waiting on its first solve)
- *  passes no map: the document's pick-time kind is then the honest answer, and
- *  the params are whatever the document holds for it.
+ *  instead of binding a `center` ref to the line's start. Part.tsx passes the
+ *  map even when empty (no last solve has landed); an absent map means the same
+ *  thing, and the document's stored kind and params are then the honest answer.
  */
 export function pinProjectionTargets(
   feature: SketchFeature,
@@ -1072,6 +1095,25 @@ export function pinProjectionTargets(
       const kind = resolvedKinds[e.id]
       return kind && kind !== e.kind ? { ...e, kind } : e
     })
+  }
+  // A foreign stored block (a point cache under a declared line, a fit cache
+  // under a declared spline) must not reach the preview as a zero-padded
+  // segment the hard solve leaves out of its geometry. Drop it for the kind's
+  // default -- the same fallback the solve uses -- and leave a block that is
+  // already that default alone.
+  if (initial !== undefined && pinned.size > 0) {
+    const entityById = new Map(entities.map(e => [e.id, e]))
+    let replaced: Record<string, number[]> | null = null
+    for (const id of pinned) {
+      const block = (replaced ?? initial)[id]
+      const entity = entityById.get(id)
+      if (block === undefined || entity === undefined) continue
+      if (isProjectionPosition(block, entity.kind, entity.handles)) continue
+      if (isDefaultParamsBlock(block, entity.kind, entity.handles)) continue
+      replaced ??= { ...initial }
+      replaced[id] = defaultPositionBlock(entity.kind, entity.handles)
+    }
+    if (replaced !== null) initial = replaced
   }
   const loweredFeature = entities === feature.entities && initial === feature.initial
     ? feature

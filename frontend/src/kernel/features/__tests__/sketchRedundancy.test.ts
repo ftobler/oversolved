@@ -14,7 +14,7 @@
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { solveSketch, probeRedundantConstraint, setSketchSolver, resetSketchSolver } from '../sketch'
-import { classifyPendingAdd, draftPendingConstraint, wouldOverconstrain } from '../constraintProbe'
+import { classifyPendingAdd, draftPendingConstraint } from '../constraintProbe'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { initGlobalRepo } from '../../query'
 import type { PartDoc, SketchFeature } from '@/types/cad'
@@ -181,9 +181,14 @@ describe.skipIf(!solveBytes)('authoring probe', () => {
   })
 })
 
-describe.skipIf(!solveBytes)('wouldOverconstrain (the store gate)', () => {
+describe.skipIf(!solveBytes)('the authoring gate (classifyPendingAdd)', () => {
   beforeAll(() => setSketchSolver(solveBytes!))
   afterAll(() => resetSketchSolver())
+
+  /** The gate's question in the page's own form: Part.tsx refuses the add when
+   *  `classifyPendingAdd` answers `redundant`. */
+  const redundant = (doc: PartDoc | null, pending: Parameters<typeof classifyPendingAdd>[1]): boolean =>
+    classifyPendingAdd(doc, pending) === 'redundant'
 
   const docWith = (constraints: Dict[]): PartDoc =>
     ({ id: 'd1', features: [lineSketch(constraints)] }) as unknown as PartDoc
@@ -205,7 +210,7 @@ describe.skipIf(!solveBytes)('wouldOverconstrain (the store gate)', () => {
     // gate (value/pos/sign), pinned end to end by the store suite; the value is
     // what makes the duplicate a probe candidate at all.
     const doc = docWith([originPin, horizontal, length('c_len', 10)])
-    expect(wouldOverconstrain(doc, {
+    expect(redundant(doc, {
       featureId: 'sk1', kind: 'length', targets: ['entity:sk1:l1'], value: 10,
     })).toBe(true)
   })
@@ -215,14 +220,14 @@ describe.skipIf(!solveBytes)('wouldOverconstrain (the store gate)', () => {
     // no solver rows, so the gate must not claim redundancy and the add
     // proceeds (the solve reports whatever the value-less dimension means).
     const doc = docWith([originPin, horizontal, length('c_len', 10)])
-    expect(wouldOverconstrain(doc, {
+    expect(redundant(doc, {
       featureId: 'sk1', kind: 'length', targets: ['entity:sk1:l1'],
     })).toBe(false)
   })
 
   it('ignores the label pos in the verdict', () => {
     const doc = docWith([originPin, horizontal, length('c_len', 10)])
-    expect(wouldOverconstrain(doc, {
+    expect(redundant(doc, {
       featureId: 'sk1', kind: 'length', targets: ['entity:sk1:l1'], value: 10, pos: [0, 7],
     })).toBe(true)
   })
@@ -231,14 +236,14 @@ describe.skipIf(!solveBytes)('wouldOverconstrain (the store gate)', () => {
     // A different value on the same line is a conflict: most CAD lets it land
     // and reports the overconstraint, which is what this solver does too.
     const doc = docWith([originPin, horizontal, length('c_len', 10)])
-    expect(wouldOverconstrain(doc, {
+    expect(redundant(doc, {
       featureId: 'sk1', kind: 'length', targets: ['entity:sk1:l1'], value: 12,
     })).toBe(false)
   })
 
   it('allows a genuinely new driver', () => {
     // The second line is undriven, so a length on it adds rank.
-    expect(wouldOverconstrain(twoLineDoc(), {
+    expect(redundant(twoLineDoc(), {
       featureId: 'sk1', kind: 'length', targets: ['entity:sk1:l2'], value: 4,
     })).toBe(false)
   })
@@ -248,7 +253,7 @@ describe.skipIf(!solveBytes)('wouldOverconstrain (the store gate)', () => {
     // which is a conflict, not redundancy, so the gate lets it through and the
     // solve marks the culprits.
     const doc = docWith([originPin, horizontal, length('c_len', 10)])
-    expect(wouldOverconstrain(doc, {
+    expect(redundant(doc, {
       featureId: 'sk1', kind: 'vertical', targets: ['entity:sk1:l1'],
     })).toBe(false)
   })
@@ -256,7 +261,7 @@ describe.skipIf(!solveBytes)('wouldOverconstrain (the store gate)', () => {
   it('leaves the live document untouched', () => {
     const base = docWith([originPin, horizontal, length('c_len', 10)])
     const before = JSON.stringify(base)
-    wouldOverconstrain(base, {
+    redundant(base, {
       featureId: 'sk1', kind: 'length', targets: ['entity:sk1:l1'], value: 10,
     })
     expect(JSON.stringify(base)).toBe(before)
@@ -308,9 +313,9 @@ describe.skipIf(!solveBytes)('wouldOverconstrain (the store gate)', () => {
   it('answers false without a document, a feature or a solver', () => {
     const doc = docWith([originPin, horizontal, length('c_len', 10)])
     const pending = { featureId: 'sk1', kind: 'length', targets: ['entity:sk1:l1'], value: 10 }
-    expect(wouldOverconstrain(null, pending)).toBe(false)
-    expect(wouldOverconstrain(doc, { ...pending, featureId: 'nope' })).toBe(false)
+    expect(redundant(null, pending)).toBe(false)
+    expect(redundant(doc, { ...pending, featureId: 'nope' })).toBe(false)
     resetSketchSolver()
-    expect(wouldOverconstrain(doc, pending)).toBe(false)
+    expect(redundant(doc, pending)).toBe(false)
   })
 })

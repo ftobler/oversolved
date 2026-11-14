@@ -90,10 +90,12 @@ export type PendingConstraintVerdict = 'ok' | 'redundant' | 'dropped'
  * projections.
  *
  * `resolvedKinds` and `derivedMembers` are the last solve's render kinds and
- * face-projection rows. A caller that holds that solve must pass them: with the
- * document kind no longer following the resolution, the probe would otherwise
- * read a projected entity in its pick-time kind. A caller with no last solve
- * passes nothing, and the document's stored kind is then the honest answer.
+ * face-projection rows. A caller that holds that solve must pass them: the
+ * document kind only follows the resolution through the write-back, so the
+ * probe would otherwise read a projected entity in a stale pick-time kind.
+ * Part.tsx passes the render map even when empty (no solve has landed yet);
+ * absent and empty mean the same thing, and the document's stored kind is then
+ * the honest answer.
  */
 export function classifyPendingAdd(
   doc: PartDoc | null,
@@ -107,23 +109,4 @@ export function classifyPendingAdd(
   const drafted = draftPendingConstraint(doc, pending)
   if (!drafted) return 'dropped'
   return probeRedundantConstraint(drafted.probeFeature, drafted.draft.id, resolvedKinds, derivedMembers) === true ? 'redundant' : 'ok'
-}
-
-/**
- * True when adding the pending constraint to `doc` would add no new rank.
- * Anything that cannot be decided (no doc, a non-sketch feature, no solver, an
- * unsatisfied draft set) answers false: the add proceeds and the next solve
- * reports whatever it finds.
- *
- * The optional solve facts are the same ones `classifyPendingAdd` documents;
- * this wrapper forwards them so a caller holding a solve does not silently
- * degrade the probe to the document kinds.
- */
-export function wouldOverconstrain(
-  doc: PartDoc | null,
-  pending: PendingConstraintAdd,
-  resolvedKinds?: Readonly<Record<string, string>>,
-  derivedMembers?: readonly ProjectionMemberEntity[],
-): boolean {
-  return classifyPendingAdd(doc, pending, resolvedKinds, derivedMembers) === 'redundant'
 }
