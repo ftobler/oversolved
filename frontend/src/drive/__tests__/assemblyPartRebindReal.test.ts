@@ -169,9 +169,10 @@ describeReal('rebinding a part instance to a live part document', () => {
 
   it('reports the mate stale when the new part cannot carry its anchor', async () => {
     const built = await runAssemblyHeadless({ doc: emptyDriveAssemblyDoc(), parts: PARTS, steps: STEPS })
-    // A part built by a different feature has a different anchor identity and
-    // creation bucket: neither the stored anchor id nor its descriptor can
-    // re-find the old element, so the mate reports stale.
+    // A different part document brings its own anchors: another anchor id and
+    // another creation bucket (the feature that built the body), so neither the
+    // stored id nor its descriptor can re-find the old element and the mate goes
+    // stale. That is the same rule a user meets after swapping in another part.
     const shortened = new Map<string, PartDoc>([
       ['cube', section(20)],
       ['rail_other', section(200, '_other')],
