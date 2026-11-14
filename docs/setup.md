@@ -10,7 +10,7 @@ own lint/test gates. It is never deployed.
 
 ## Prerequisites
 
-- Node.js >= 20.19
+- Node.js >= 22.12
 - npm
 - Python 3.13 (build tooling only; CI tests this version only)
 - Rust + `wasm-pack` (only to rebuild the solver crates)

@@ -118,7 +118,7 @@ def test_env_example_is_gone() -> None:
 def test_frontend_package_json_declares_node_floor() -> None:
     # AR-L1: pin the Node floor Vite 8 actually requires.
     pkg = json.loads(_read("frontend/package.json"))
-    assert pkg.get("engines", {}).get("node") == ">=20.19.0"
+    assert pkg.get("engines", {}).get("node") == ">=22.12.0"
 
 
 def test_runtime_config_file_is_gone() -> None:
@@ -138,7 +138,7 @@ def test_runtime_config_file_is_gone() -> None:
 def test_setup_doc_states_node_floor() -> None:
     # AR-N (stale floor): Node.js >= 18 no longer builds with Vite 8.
     text = _read("docs/setup.md")
-    assert "Node.js >= 20.19" in text
+    assert "Node.js >= 22.12" in text
 
 
 def test_setup_doc_quotes_the_mypy_recipe() -> None:

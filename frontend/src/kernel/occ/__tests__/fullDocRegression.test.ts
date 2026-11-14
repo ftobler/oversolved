@@ -55,7 +55,8 @@ const solveBytes = loadSolver()
 const topologyBytes = loadTopology()
 
 // The solve child runs the TS sources through --experimental-strip-types,
-// which Node only has from 22.6. package.json still allows 20.19, so on an
+// which Node only has from 22.6. The package floor is now 22.12, so a local
+// checkout is always new enough; the guard is retained defensively. On an
 // older Node the documents cannot be solved here at all; skip them rather than
 // report every entry as a null solve.
 const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number)

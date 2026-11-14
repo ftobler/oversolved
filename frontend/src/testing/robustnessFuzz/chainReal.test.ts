@@ -37,10 +37,10 @@ import { writeMinimalRecipe, defaultRegressionsDir } from './regressions'
 import { envInt } from '@/testing/__tests__/envInt'
 
 // The watchdog child runs the sources through --experimental-strip-types,
-// which Node only has from 22.6. package.json still allows 20.19, so a local
-// checkout may be older than the child needs: skip rather than report every
-// seed as a crash. Same guard as fullDocRegression. No CI leg is that old (the
-// matrix runs 22, 24 and 26).
+// which Node only has from 22.6. The package floor is now 22.12, so a local
+// checkout is always new enough; the guard is retained defensively. Same
+// guard as fullDocRegression. No CI leg is that old (the matrix runs 22, 24
+// and 26).
 const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number)
 const stripTypes = nodeMajor > 22 || (nodeMajor === 22 && nodeMinor >= 6)
 

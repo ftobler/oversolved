@@ -147,7 +147,7 @@ reached again, a completed one also reports references it never reached.
   needs a fresh 1500-seed triage in the same batch.
 - PR gate: bounded 24 chain seeds and 32 identity seeds. A local Node below
   22.6 cannot start the watchdog child (`--experimental-strip-types`), so the
-  chain sweep skips there rather than fail; the package floor is still 20.19,
+  chain sweep skips there rather than fail; the package floor is now 22.12,
   but no CI leg is that old (the matrix runs 22, 24 and 26).
 - Long run: `just fuzz-geometry <seeds> <workers>` (chain default 200, the
   plan's acceptance range; identity a quarter of it, floored at 32), 1500 in

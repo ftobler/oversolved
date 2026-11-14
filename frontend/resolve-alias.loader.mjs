@@ -6,9 +6,10 @@
  * hooks.
  *
  * Paired with --experimental-strip-types, which Node only has from 22.6. The
- * package floor stays 20.19 for the app and vitest, so a local checkout below
- * 22.6 cannot start the forked watchdog children at all; those suites skip
- * there rather than report every seed as a crash.
+ * package floor is now 22.12, so a local checkout is always new enough to
+ * start the forked watchdog children; the guard below is retained as a
+ * defensive check. Those suites skip rather than report every seed as a crash
+ * if it ever is not.
  *
  * Two forms of the same hook: `resolve` for the off-thread `register()` API
  * and `resolveSync` for the in-thread `registerHooks()` API. The off-thread
