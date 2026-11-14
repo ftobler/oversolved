@@ -169,7 +169,15 @@ export const FEATURE_SCHEMA_BY_KIND = {
   plane: feature('plane', { key: 'definition', optional: true, properties: PLANE_DEF.properties as JsonSchema }),
   extrude: feature('extrude', {
     key: 'extrude',
-    required: ['sketch', 'distance'],
+    // distance sizes a blind sweep (and is the up-to fallback); a through_all
+    // cut is sized by the bodies it reaches and stores no distance at all.
+    required: ['sketch'],
+    allOf: [
+      {
+        if: { properties: { termination: { const: 'through_all' } }, required: ['termination'] },
+        else: { required: ['distance'] },
+      },
+    ],
     properties: {
       sketch: REF_OR_LIST, distance: NUMBER_OR_EXPR, taper: NUMBER_OR_EXPR, direction: { enum: ['normal', 'reverse', 'symmetric'] },
       termination: { enum: ['blind', 'up_to', 'up_to_next', 'through_all'] }, up_to: REF,

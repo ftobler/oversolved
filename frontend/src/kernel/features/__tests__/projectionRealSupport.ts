@@ -63,7 +63,7 @@ export function projectionBaseDoc(boxDepth: number = BOX.depth): PartDoc {
     {
       id: HOLE_EXTRUDE_ID, kind: 'extrude' as const, label: 'Hole',
       extrude: {
-        sketch: `@${HOLE_SKETCH_ID}`, distance: 10, direction: 'symmetric' as const,
+        sketch: `@${HOLE_SKETCH_ID}`, direction: 'symmetric' as const,
         termination: 'through_all' as const, operation: 'cut' as const,
       },
     },

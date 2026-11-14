@@ -728,9 +728,9 @@ const EXTRUDE_UP_TO_START_NOTE =
 // the kcl 80-20 rail); a part that later grows past the guess silently stops
 // being cut. The termination sizes from the bodies instead.
 const EXTRUDE_THROUGH_ALL_NOTE =
-  '`termination: through_all` is a CUT that is sized from the bodies it can reach instead of from ' +
-  '`distance`, which it ignores: `merge_target` narrows the reach and the cut to one body, and with no ' +
-  'target every body is a candidate, so a body farther along the same axis only makes the tool longer. ' +
+  '`termination: through_all` is a CUT that is sized from the bodies it can reach and stores no `distance` ' +
+  '(a stored one is ignored with a warning): `merge_target` narrows the reach and the cut to one body, and ' +
+  'with no target every body is a candidate, so a body farther along the same axis only makes the tool longer. ' +
   '`direction: normal` and `reverse` cut one side of the profile plane; `direction: symmetric` cuts ' +
   'through all material on BOTH sides of it. ' +
   'It needs a body to cut through, and `operation` must be `cut`; add, new and intersect are refused.'
@@ -1347,10 +1347,10 @@ export const MUTATION_CATALOG = {
     fields: {
       ...featureAddFields(),
       sketchQuery: sketchQuery(),
-      distance: num(),
+      distance: optNum('Required unless `termination` is `through_all`, which stores no distance at all (the key the document stores as extrude.distance).'),
       taper: optScalar('Degrees of draft along the extrude direction: positive narrows the profile, negative widens it, and every lateral wall (holes included) drafts. Needs termination blind and direction normal or reverse; an angle that closes the profile exactly at `distance` builds to an apex (a pyramid, a cone), one that closes to a ridge is refused, and one that collapses the profile before `distance` is refused with the height it would collapse at (the key the document stores as extrude.taper).'),
       direction: optStr('normal | reverse | symmetric; defaults to normal (the key the document stores as extrude.direction).'),
-      termination: optNullableStr('blind | up_to | up_to_next | through_all; defaults to blind. `up_to` ends the extrude at the `up_to` element instead of at `distance`; `up_to_next` stops at the first body it meets; `through_all` is a cut sized from the bodies it can reach, so `distance` is ignored and `merge_target` narrows the reach, with `direction: symmetric` cutting both sides of the plane and normal/reverse cutting one (the key the document stores as extrude.termination). A null value clears it, so the add writes no key.'),
+      termination: optNullableStr('blind | up_to | up_to_next | through_all; defaults to blind. `up_to` ends the extrude at the `up_to` element instead of at `distance`; `up_to_next` stops at the first body it meets; `through_all` is a cut sized from the bodies it can reach and stores no `distance` (omit it; a stored one is ignored with a warning), and `merge_target` narrows the reach, with `direction: symmetric` cutting both sides of the plane and normal/reverse cutting one (the key the document stores as extrude.termination). A null value clears it, so the add writes no key.'),
       up_to: optNullableStr('The element an up_to extrude stops at: `@<planeId>`, `@builtin_plane_front`, any body face planar or curved (a face query from `select`, or the viewport\'s `@<bodyId>/face/<n>` fallback), a `select` vertex query, or a sketch point ref (`@<sketchId>/<entityId>/xy`) (the key the document stores as extrude.up_to). Read only when `termination` is `up_to`; otherwise it is ignored. A null or empty value clears it.'),
       up_to_offset: optNullableScalar('Material-signed distance moved on the stop surface of `up_to` or `up_to_next`: positive outward of the target body\'s material, negative into it; a datum plane or point has no material side, so positive is past it along the extrude. It is a true surface offset along the target normal. Default 0. (the key the document stores as extrude.up_to_offset)'),
       up_to_start: optNullableStr('sketch | surface; absent is sketch. `surface` builds only the slab between the stop surface and its offset, clipped to the profile footprint: the emboss/deboss mode, needing a face target and a non-zero up_to_offset; refused with direction symmetric and a taper (the key the document stores as extrude.up_to_start).'),

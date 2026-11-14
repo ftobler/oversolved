@@ -342,6 +342,58 @@ describe('set_extrude_direction and termination clear an invisible taper', () =>
   })
 })
 
+describe('a through_all extrude carries no distance', () => {
+  const throughAll = (extrude: Record<string, unknown> = {}): PartDoc => ({
+    features: [{
+      id: 'ex1', kind: 'extrude',
+      extrude: { sketch: '$sk1', distance: 10, operation: 'cut', termination: 'through_all', ...extrude },
+    }],
+  })
+
+  it('deletes a stored distance when termination becomes through_all', () => {
+    const doc = throughAll({ termination: 'blind' })
+    applySetExtrudeField(doc, 'ex1', 'termination', 'through_all')
+    expect(extrude0(doc).termination).toBe('through_all')
+    expect(extrude0(doc)).not.toHaveProperty('distance')
+  })
+
+  it('re-seeds the editor default when termination returns to blind', () => {
+    const doc = throughAll()
+    applySetExtrudeField(doc, 'ex1', 'termination', 'blind')
+    expect(extrude0(doc).termination).toBe('blind')
+    expect(extrude0(doc).distance).toBe(10)
+  })
+
+  it('re-seeds the fallback distance for an up_to switch too', () => {
+    const doc = throughAll()
+    applySetExtrudeField(doc, 'ex1', 'termination', 'up_to')
+    expect(extrude0(doc).distance).toBe(10)
+  })
+
+  it('writes no distance key on an inline through_all add', () => {
+    const doc: PartDoc = structuredClone(baseDoc)
+    applyAddExtrude(doc, 'ex1', undefined, '$sk1', undefined, {
+      termination: 'through_all', operation: 'cut',
+    })
+    expect(extrude0(doc).termination).toBe('through_all')
+    expect(extrude0(doc)).not.toHaveProperty('distance')
+  })
+
+  it('stores a distance an inline through_all add was handed, so the solve can warn', () => {
+    const doc: PartDoc = structuredClone(baseDoc)
+    applyAddExtrude(doc, 'ex1', undefined, '$sk1', 0, {
+      termination: 'through_all', operation: 'cut',
+    })
+    expect(extrude0(doc).distance).toBe(0)
+  })
+
+  it('refuses an absent distance on an inline add that is not through_all', () => {
+    const doc: PartDoc = structuredClone(baseDoc)
+    applyAddExtrude(doc, 'ex1', undefined, '$sk1', undefined)
+    expect(doc.features).toEqual([])
+  })
+})
+
 describe('set_extrude_operation', () => {
   it('updates extrude operation to cut', () => {
     const doc: PartDoc = {

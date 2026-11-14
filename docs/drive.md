@@ -895,8 +895,8 @@ banner on stdout, so a client config must use the direct node invocation.
   (`operation: add|cut|new`, `direction: normal|reverse|symmetric`,
   `termination: blind|up_to|up_to_next|through_all`, `operation: new|replace`),
   and an extrude's `through_all` termination is a cut sized from the bodies it
-  can reach, so `distance` is ignored and `merge_target` narrows the reach to one
-  body. `up_to_next` stops at the first body it meets. `up_to_offset` is the
+  can reach, so it stores no `distance` (a stored one is ignored with a warning)
+  and `merge_target` narrows the reach to one body. `up_to_next` stops at the first body it meets. `up_to_offset` is the
   material-signed stop offset (a true surface offset along the target's normal),
   and `up_to_start: surface` builds the slab between the stop surface and its
   offset: the emboss/deboss mode, `add` with a positive offset or `cut` with a

@@ -395,7 +395,7 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
     expect(problem!.message).toContain('may touch the profile but not cut through it')
   }, 120_000)
 
-  it('cuts a through_all extrude through the whole box with distance 1 ignored', async () => {
+  it('cuts a through_all extrude through the whole box with no stored distance', async () => {
     const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
     const result = await runHeadless({
       doc: emptyDoc(),
@@ -405,19 +405,53 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
         { mutation: { type: 'add_rect', featureId: 'sk2', p0: [10, 10], p1: [15, 15] } },
         {
           mutation: {
-            type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2', distance: 1,
+            type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2',
             operation: 'cut', termination: 'through_all',
           },
         },
       ],
     })
     expect(result.ok).toBe(true)
-    // The step is accepted and the reply is clean: distance is stored because
-    // the row requires it, but the solve sizes the cut from the 10 mm box.
+    // The reply is clean and the row stores no distance: the field is absent,
+    // not a sentinel the solve would have to ignore.
     expect(nonSketchProblems(result.features)).toEqual([])
+    const storedFeature = result.doc?.features?.find(feature => feature.id === 'ex2')
+    const stored = storedFeature?.kind === 'extrude' ? storedFeature.extrude : undefined
+    expect(stored).toBeDefined()
+    expect(stored).not.toHaveProperty('distance')
     const row = result.featureDeltas?.find(entry => entry.id === 'ex2')
     expect(row?.volumeDelta).toBeCloseTo(-25 * 10, 6)
     expect(row?.bodyVolume).toBeCloseTo(12000 - 25 * 10, 6)
+    const measured = await measureHeadless(result.doc!)
+    expect(measured!.measures.volume).toBeCloseTo(12000 - 25 * 10, 2)
+  }, 120_000)
+
+  it('warns and still cuts when a through_all add is handed a distance', async () => {
+    const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
+    const result = await runHeadless({
+      doc: emptyDoc(),
+      steps: [
+        ...box.steps,
+        { mutation: { type: 'add_sketch', featureId: 'sk2', plane: '@builtin_plane_top' } },
+        { mutation: { type: 'add_rect', featureId: 'sk2', p0: [10, 10], p1: [15, 15] } },
+        {
+          mutation: {
+            type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2', distance: 0,
+            operation: 'cut', termination: 'through_all',
+          },
+        },
+      ],
+    })
+    // A stored distance is a soft failure: the step lands, the run stays ok, and
+    // the extrude row is listed with the warning rather than an exception.
+    expect(result.ok).toBe(true)
+    const problem = result.features.find(feature => feature.id === 'ex2')
+    expect(problem?.status).toBe('ok')
+    expect(problem?.message).toBe(
+      'extrude: through_all takes no distance; the stored value is ignored',
+    )
+    expect(result.featureDeltas?.find(entry => entry.id === 'ex2')?.warning)
+      .toBe('extrude: through_all takes no distance; the stored value is ignored')
     const measured = await measureHeadless(result.doc!)
     expect(measured!.measures.volume).toBeCloseTo(12000 - 25 * 10, 2)
   }, 120_000)
@@ -436,7 +470,7 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
         { mutation: { type: 'add_entity', featureId: 'sk2', kind: 'circle', params: [0, 0, 5], entityId: 'c1' } },
         {
           mutation: {
-            type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2', distance: 1, operation: 'cut',
+            type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2', operation: 'cut',
             termination: 'through_all', direction: 'symmetric',
           },
         },
@@ -463,7 +497,7 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
           { mutation: { type: 'add_rect', featureId: 'sk2', p0: [10, 10], p1: [15, 15] } },
           {
             mutation: {
-              type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2', distance: 1,
+              type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2',
               termination: 'through_all', ...(operation === undefined ? {} : { operation }),
             },
           },
@@ -488,7 +522,7 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
         { mutation: { type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [5, 5] } },
         {
           mutation: {
-            type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 1,
+            type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1',
             operation: 'cut', termination: 'through_all',
           },
         },
@@ -523,6 +557,12 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
     expect(problem?.status).toBe('exception')
     expect(problem?.message).toContain('through_all')
     expect(problem?.message).toContain('cut')
+    // The setter clears the now-hidden distance in the same mutation, so the
+    // stored row cannot carry a value the field no longer has.
+    const switched = result.doc?.features?.find(feature => feature.id === 'ex1')
+    expect(switched?.kind).toBe('extrude')
+    if (switched?.kind !== 'extrude') return
+    expect(switched.extrude).not.toHaveProperty('distance')
   }, 120_000)
 
   it('solves a passed document once when the script is empty', async () => {

@@ -8,6 +8,7 @@ import { usePartEditorStore } from '@/stores/partEditorStore'
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
 import type { PartEditorCallbacks } from '@/contexts/PartEditorContext'
 import { useEditorState } from '@/hooks/useEditorState'
+import { EXTRUDE_SCHEMA } from '@/components/editors/featureEditorSchemas'
 
 function makeCallbacks(overrides: Partial<PartEditorCallbacks> = {}): PartEditorCallbacks {
   return {
@@ -261,8 +262,7 @@ describe('termination select', () => {
     })
   })
 
-  it('shows the up-to pick chip (not the distance input) when termination is up_to', () => {
-    const upToFeature: PartFeature = {
+  it('shows the up-to pick chip (not the distance input) when termination is up_to', () => {    const upToFeature: PartFeature = {
       id: 'ex1', kind: 'extrude',
       extrude: { sketch: '$sk1', distance: 10, termination: 'up_to' },
     }
@@ -273,6 +273,31 @@ describe('termination select', () => {
     })
     expect(screen.queryByRole('textbox', { name: 'Distance' })).toBeNull()
     expect(screen.getByText('(pick plane, point, or face)')).toBeInTheDocument()
+  })
+
+  it('hides the distance input when termination is through_all', () => {
+    const throughAllFeature: PartFeature = {
+      id: 'ex1', kind: 'extrude',
+      extrude: { sketch: '$sk1', operation: 'cut', termination: 'through_all' },
+    }
+    renderSidebar({
+      features: [throughAllFeature],
+      visibleFeatures: new Set(['ex1']),
+      editingFeatureId: 'ex1',
+    })
+    expect(screen.queryByRole('textbox', { name: 'Distance' })).toBeNull()
+  })
+
+  it('keeps the schema distance default for the blind switch back', () => {
+    // The applier deletes the stored distance on a through_all switch, so the
+    // field a blind extrude shows again is the schema default, never the stale
+    // number that was hidden.
+    const distance = EXTRUDE_SCHEMA.fields.find(field => field.key === 'distance')
+    expect(distance?.type).toBe('number')
+    if (distance?.type !== 'number') return
+    expect(distance.default).toBe(10)
+    expect(distance.showWhen?.({ termination: 'through_all' })).toBe(false)
+    expect(distance.showWhen?.({})).toBe(true)
   })
 
   it('switches to up_to_next and shows the offset and emboss controls', () => {

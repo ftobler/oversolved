@@ -85,7 +85,7 @@ function slotSteps(value: number, sign?: number): ScriptStep[] {
     angle('l1', 'l2'),
     angle('l4', 'l1'),
     m({ type: 'add_constraint', featureId: 'sk2', kind: 'line_distance', targets: ['entity:sk2:l1', 'vertex:sk2:l3:start'], value: 0.5 }),
-    m({ type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2', distance: 4, termination: 'through_all', operation: 'cut' }),
+    m({ type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2', termination: 'through_all', operation: 'cut' }),
   ]
 }
 

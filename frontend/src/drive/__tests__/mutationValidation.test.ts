@@ -176,8 +176,13 @@ describe('validateMutation', () => {
       type: 'set_extrude_field', featureId: 'ex1', field: 'up_to', value: null,
     })).toMatchObject({ ok: true })
     expect(validateMutation({
-      type: 'set_extrude_field', featureId: 'ex1', field: 'distance', value: null,
+      type: 'set_revolve_field', featureId: 'rv1', field: 'angle', value: null,
     })).toMatchObject({ ok: false, error: { code: 'invalid-mutation' } })
+    // An extrude distance is required only outside through_all, so it takes the
+    // clear the way a blind hole's depth does; the loader owns the blind rule.
+    expect(validateMutation({
+      type: 'set_extrude_field', featureId: 'ex1', field: 'distance', value: null,
+    })).toMatchObject({ ok: true })
     // Internal plumbing is allowed only on the replay path, where the app's
     // own set_rollback payload can legitimately carry a null position.
     expect(validateMutation({ type: 'set_rollback', position: null }, { allowInternal: true }))

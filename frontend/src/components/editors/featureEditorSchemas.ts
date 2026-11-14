@@ -1,6 +1,7 @@
 import type { FeatureEditorSchema } from './FeatureEditor'
 import {
   normalizeRefList,
+  DEFAULT_EXTRUDE_DISTANCE,
 } from '@/utils/yamlMutations'
 import { THREAD_TABLE, threadEntry, threadLabel, threadDesignations, DRILL_POINT_ANGLE } from '@/kernel/threadTable'
 import { pickedSketchEntity } from '@/kernel/features/shared/bodyRef'
@@ -20,7 +21,7 @@ const showMergeTarget = (d: SchemaData) => d.operation !== 'new'
 export const EXTRUDE_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_extrude',
   subKey: 'extrude',
-  defaults: { sketch: [], distance: 10, direction: 'normal' },
+  defaults: { sketch: [], distance: DEFAULT_EXTRUDE_DISTANCE, direction: 'normal' },
   normalize: (raw) => ({ ...raw, sketch: normalizeRefList(raw.sketch) }),
   fields: [
     { type: 'pick', key: 'sketch', label: 'Profile', multi: true,
@@ -50,9 +51,9 @@ export const EXTRUDE_SCHEMA: FeatureEditorSchema = {
       showWhen: (d) => d.termination === 'up_to' || d.termination === 'up_to_next',
       isChecked: (d) => d.up_to_start === 'surface',
       getMutation: (checked) => ({ field: 'up_to_start', value: checked ? 'surface' : null }) },
-    { type: 'number', key: 'distance', label: 'Distance', default: 10,
+    { type: 'number', key: 'distance', label: 'Distance', default: DEFAULT_EXTRUDE_DISTANCE,
       // An absent termination is the blind default, so the distance stays for
-      // a document that never wrote the key.
+      // a document that never wrote the key. A through_all cut stores none.
       showWhen: (d) => (d.termination ?? 'blind') === 'blind', validate: positive },
     { type: 'number', key: 'taper', label: 'Taper (deg)', default: 0,
       // A draft is only defined for a one-sided blind sweep: symmetric splits

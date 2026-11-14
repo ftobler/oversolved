@@ -23,7 +23,10 @@ export type ExtrudeTermination = 'blind' | 'up_to' | 'up_to_next' | 'through_all
 
 export type ExtrudeFeatureDef = {
   sketch: string | string[]
-  distance: NumberOrExpr
+  // Required for blind and the up-to stops (the documented fallback when an
+  // up-to target does not resolve). A through_all cut sizes itself from the
+  // bodies and stores no distance; a stored one is ignored with a warning.
+  distance?: NumberOrExpr
   // Degrees of draft along the sweep: positive narrows the profile, negative
   // widens it, and every lateral wall (holes included) drafts with it. Absent
   // or 0 is the straight prism.
@@ -32,7 +35,7 @@ export type ExtrudeFeatureDef = {
   // 'blind' (default) extrudes by `distance`; 'up_to' terminates at the element
   // referenced by `up_to` (a plane, point, or any face); 'up_to_next' stops at
   // the first body it meets; 'through_all' is a cut sized from the live bodies,
-  // so `distance` is ignored.
+  // which is why it carries no distance at all.
   termination?: ExtrudeTermination
   up_to?: string
   // Material-signed stop offset for up_to and up_to_next: positive is outward
@@ -1389,7 +1392,7 @@ export type Mutation =
   | { type: 'rename_feature'; featureId: string; label: string }
   | { type: 'toggle_sketch_plane_visibility' }
   | { type: 'toggle_plane_visibility' }
-  | ({ type: 'add_extrude'; featureId: string; label?: string; sketchQuery: string; distance: number; taper?: NumberOrExpr; direction?: ExtrudeDirection; termination?: ExtrudeTermination | null; up_to?: string | null; up_to_offset?: NumberOrExpr | null; up_to_start?: ExtrudeFeatureDef['up_to_start'] | null; operation?: ExtrudeOperation; merge_target?: string } & FeatureInsertion)
+  | ({ type: 'add_extrude'; featureId: string; label?: string; sketchQuery: string; distance?: number; taper?: NumberOrExpr; direction?: ExtrudeDirection; termination?: ExtrudeTermination | null; up_to?: string | null; up_to_offset?: NumberOrExpr | null; up_to_start?: ExtrudeFeatureDef['up_to_start'] | null; operation?: ExtrudeOperation; merge_target?: string } & FeatureInsertion)
   | { type: 'set_extrude_field'; featureId: string; field: keyof ExtrudeFeatureDef; value: unknown }
   | { type: 'add_extrude_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_extrude_profile'; featureId: string; index: number }

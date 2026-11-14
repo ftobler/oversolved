@@ -93,7 +93,7 @@ const CIRCLE_CUT_STEPS: ScriptStep[] = [
   {
     mutation: {
       type: 'add_extrude', featureId: 'ex2', label: 'Bore cut', sketchQuery: 'entity:sk2:c1',
-      distance: 1, operation: 'cut', termination: 'through_all', direction: 'symmetric',
+      operation: 'cut', termination: 'through_all', direction: 'symmetric',
     },
   },
 ]

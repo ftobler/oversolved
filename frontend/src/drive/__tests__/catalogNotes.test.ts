@@ -153,23 +153,27 @@ describe('extrude taper notes', () => {
 })
 
 describe('through-all termination on both extrude rows', () => {
-  it('names through_all, the ignored distance and the merge_target narrowing', () => {
+  it('names through_all, the absent distance and the merge_target narrowing', () => {
     for (const type of ['add_extrude', 'set_extrude_field'] as const) {
       const note = mutationInfoOf(type).note!
       expect(note, type).toContain('`termination: through_all`')
-      expect(note, type).toContain('`distance`, which it ignores')
+      expect(note, type).toContain('stores no `distance`')
+      expect(note, type).toContain('ignored with a warning')
       expect(note, type).toContain('`merge_target` narrows the reach')
       expect(note, type).toContain('`operation` must be `cut`')
       expect(note, type).toContain('`direction: symmetric` cuts through all material on BOTH sides')
     }
   })
 
-  it('lists through_all on the inline add field', () => {
+  it('lists through_all on the inline add field and marks distance optional there', () => {
     const note = mutationInfoOf('add_extrude').fields.termination.note!
     expect(note).toContain('blind | up_to | up_to_next | through_all')
-    expect(note).toContain('`distance` is ignored')
+    expect(note).toContain('stores no `distance`')
     expect(note).toContain('`merge_target` narrows the reach')
     expect(note).toContain('`direction: symmetric` cutting both sides')
+    const distance = mutationInfoOf('add_extrude').fields.distance
+    expect(distance.required).toBe(false)
+    expect(distance.note).toContain('unless `termination` is `through_all`')
   })
 })
 

@@ -1406,7 +1406,16 @@ function storedExtrudeDef(raw: RawStep, ctx: ValueContext): RawStep | null {
 function addExtrude(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const problem = profileRefProblem(raw.sketchQuery, 'sketchQuery')
   if (problem !== null) return invalid(problem)
-  if (!isFiniteNumber(raw.distance)) return invalid(`distance must be a finite number, got ${json(raw.distance)}`)
+  // A through_all cut is sized from the bodies and takes no distance; every
+  // other termination reads it, so its absence there is the missing required
+  // field rather than a silent default depth.
+  if (raw.distance === undefined) {
+    if (raw.termination !== 'through_all') {
+      return invalid('distance is required unless termination is "through_all"')
+    }
+  } else if (!isFiniteNumber(raw.distance)) {
+    return invalid(`distance must be a finite number, got ${json(raw.distance)}`)
+  }
   const taperProblemText = taperValueProblem(raw.taper, 'taper')
   if (taperProblemText !== null) return invalid(taperProblemText)
   if (taperIsSet(raw.taper)) {

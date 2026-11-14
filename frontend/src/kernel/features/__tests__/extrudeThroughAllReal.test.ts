@@ -31,12 +31,14 @@ function slotSketch(plane = FRONT): Dict {
   return rectSketchSk('sk2', 5, 5, plane)
 }
 
-/** A 5 x 5 cut along the plane normal. */
+/** A 5 x 5 cut along the plane normal. A through_all cut stores no distance:
+ *  the field is absent, not a sentinel the solve would have to ignore. */
 function cut(termination: string, extra: Dict = {}): Dict {
+  const withDistance = termination === 'blind' ? { distance: 1 } : {}
   return {
     id: 'ex2', kind: 'extrude', label: 'Cut',
     extrude: {
-      sketch: '@sk2', distance: 1, direction: 'normal', operation: 'cut', termination, ...extra,
+      sketch: '@sk2', direction: 'normal', operation: 'cut', termination, ...withDistance, ...extra,
     },
   }
 }
@@ -44,6 +46,42 @@ function cut(termination: string, extra: Dict = {}): Dict {
 /** A construction plane offset from Front by `offset`. */
 function offsetPlane(id: string, offset: number): Dict {
   return { id, kind: 'plane', definition: { mode: 'offset', plane: FRONT, offset } }
+}
+
+/** A fully constrained rectangle at arbitrary sketch-local coordinates. */
+function rectAt(
+  sketchId: string,
+  x0: number,
+  y0: number,
+  x1: number,
+  y1: number,
+  plane = FRONT,
+): Dict {
+  return {
+    id: sketchId, kind: 'sketch', label: 'Rectangle', plane,
+    entities: [
+      { id: 'bottom', kind: 'line' }, { id: 'right', kind: 'line' },
+      { id: 'top', kind: 'line' }, { id: 'left', kind: 'line' },
+    ],
+    initial: {
+      bottom: [x0, y0, x1, y0],
+      right: [x1, y0, x1, y1],
+      top: [x1, y1, x0, y1],
+      left: [x0, y1, x0, y0],
+    },
+    constraints: [
+      { id: 'c1', kind: 'coincident', a: { entity: 'bottom', point: 'end' }, b: { entity: 'right', point: 'start' } },
+      { id: 'c2', kind: 'coincident', a: { entity: 'right', point: 'end' }, b: { entity: 'top', point: 'start' } },
+      { id: 'c3', kind: 'coincident', a: { entity: 'top', point: 'end' }, b: { entity: 'left', point: 'start' } },
+      { id: 'c4', kind: 'coincident', a: { entity: 'left', point: 'end' }, b: { entity: 'bottom', point: 'start' } },
+      { id: 'c5', kind: 'horizontal', target: { entity: 'bottom' } },
+      { id: 'c6', kind: 'horizontal', target: { entity: 'top' } },
+      { id: 'c7', kind: 'vertical', target: { entity: 'right' } },
+      { id: 'c8', kind: 'vertical', target: { entity: 'left' } },
+      { id: 'c9', kind: 'length', target: { entity: 'bottom' }, value: x1 - x0 },
+      { id: 'c10', kind: 'length', target: { entity: 'left' }, value: y1 - y0 },
+    ],
+  }
 }
 
 /** The live body's own volume at the checkpoint a feature left behind. */
@@ -62,10 +100,31 @@ function bodyVolume(h: SharedHarness, result: BuildResponse, featureId: string, 
 describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver)', () => {
   const h = extrudeTestHarness()
 
-  it('cuts the whole 10 mm thickness even with a stored distance of 1', () => {
+  it('cuts the whole 10 mm thickness with no stored distance', () => {
     const result = h.run({ features: [...plate(10), slotSketch(), cut('through_all')] })
     expect(h.res(result, 'ex2').status).toBe('ok')
+    expect(h.res(result, 'ex2').solver_warning).toBeUndefined()
     // 12000 - 25 * 10. The blind control below leaves the 1 mm pocket.
+    expect(bodyVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
+  }, 240_000)
+
+  it('builds the same cut when a stored distance is 0 and warns instead of failing', () => {
+    const result = h.run({ features: [...plate(10), slotSketch(), cut('through_all', { distance: 0 })] })
+    const res = h.res(result, 'ex2')
+    expect(res.status).toBe('ok')
+    expect(String(res.solver_warning)).toBe(
+      'extrude: through_all takes no distance; the stored value is ignored',
+    )
+    expect(bodyVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
+  }, 240_000)
+
+  it('builds the same cut when a stored distance is 5 and warns the same way', () => {
+    const result = h.run({ features: [...plate(10), slotSketch(), cut('through_all', { distance: 5 })] })
+    const res = h.res(result, 'ex2')
+    expect(res.status).toBe('ok')
+    expect(String(res.solver_warning)).toBe(
+      'extrude: through_all takes no distance; the stored value is ignored',
+    )
     expect(bodyVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
   }, 240_000)
 
@@ -105,7 +164,7 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
         {
           id: 'exC', kind: 'extrude', label: 'Cut',
           extrude: {
-            sketch: '@skC', distance: 1, direction: 'normal', operation: 'cut',
+            sketch: '@skC', direction: 'normal', operation: 'cut',
             termination: 'through_all', merge_target: 'body_exA',
           },
         },
@@ -127,7 +186,7 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
         {
           id: 'exC', kind: 'extrude', label: 'Cut',
           extrude: {
-            sketch: '@skC', distance: 1, direction: 'normal', operation: 'cut',
+            sketch: '@skC', direction: 'normal', operation: 'cut',
             termination: 'through_all', merge_target: 'body_missing',
           },
         },
@@ -189,6 +248,7 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
       ],
     })
     expect(h.res(result, 'ex2').status).toBe('ok')
+    expect(h.res(result, 'ex2').solver_warning).toBeUndefined()
     expect(bodyVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
   }, 240_000)
 
@@ -259,7 +319,7 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
         {
           id: 'exCut', kind: 'extrude', label: 'Cut',
           extrude: {
-            sketch: `@body_ex1/face/${bottomIdx}`, distance: 1, direction: 'symmetric',
+            sketch: `@body_ex1/face/${bottomIdx}`, direction: 'symmetric',
             operation: 'cut', termination: 'through_all',
           },
         },
@@ -283,6 +343,7 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
       ],
     })
     expect(h.res(result, 'ex2').status).toBe('ok')
+    expect(h.res(result, 'ex2').solver_warning).toBeUndefined()
     expect(bodyVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(12000 - 25 * 4, 6)
   }, 240_000)
 
@@ -299,6 +360,42 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
     })
     expect(h.res(result, 'ex2').status).toBe('ok')
     expect(bodyVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(12000 - 25 * 6, 6)
+  }, 240_000)
+
+  it('replays the three-axis through_all cuts from Old example 024', () => {
+    // The MCP practice case: a 100 cube crossed by three centred bars, one per
+    // axis, each a through_all cut with no stored distance. The three bars
+    // remove 3 * (100/3)^2 * 100, add back the three pairwise cubes, and drop
+    // the triple overlap: 1000000 - 259259.26 = 740740.74.
+    const T = 100 / 3
+    const bar = (id: string, sketch: string): Dict => ({
+      id, kind: 'extrude', label: 'Through',
+      extrude: {
+        sketch: '@' + sketch, direction: 'normal', operation: 'cut', termination: 'through_all',
+      },
+    })
+    const result = h.run({
+      features: [
+        rectAt('skCube', 0, 0, 100, 100, FRONT),
+        extrudeSpec('skCube', 'exCube', { distance: 100 }),
+        rectAt('skZ', T, T, 2 * T, 2 * T, FRONT),
+        bar('exZ', 'skZ'),
+        // Top's local y runs along -world z, so -2T..-T is world z T..2T.
+        rectAt('skY', T, -2 * T, 2 * T, -T, '@builtin_plane_top'),
+        bar('exY', 'skY'),
+        // Right's local x runs along -world z, so -2T..-T is world z T..2T.
+        rectAt('skX', -2 * T, T, -T, 2 * T, '@builtin_plane_right'),
+        bar('exX', 'skX'),
+      ],
+    })
+    for (const id of ['exZ', 'exY', 'exX']) {
+      const res = h.res(result, id)
+      expect(res.status, id).toBe('ok')
+      expect(res.solver_warning, id).toBeUndefined()
+    }
+    const expected = 1e6 - 259259.2592592593
+    const volume = bodyVolume(h, result, 'exX', 'body_exCube')
+    expect(Math.abs(volume - expected) / expected).toBeLessThan(1e-3)
   }, 240_000)
 
   it('registers no top_face, so a later plane naming one is refused', () => {

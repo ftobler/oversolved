@@ -301,6 +301,13 @@ export function solveExtrude(
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.extrude as Dict) ?? {}
   const mergeTarget = (sub.merge_target as string) ?? null
+  // The termination decides whether `distance` means anything at all, so it is
+  // read before the distance default and its validation: a through_all cut is
+  // sized from the bodies and stores no distance.
+  const termination = (sub.termination as string) ?? 'blind'
+  if (termination !== 'blind' && termination !== 'up_to' && termination !== 'up_to_next' && termination !== 'through_all') {
+    throw new Error(`extrude: unknown termination ${JSON.stringify(termination)}`)
+  }
 
   const sketchRaw = sub.sketch
   const sketchRefs: string[] = Array.isArray(sketchRaw)
@@ -314,7 +321,20 @@ export function solveExtrude(
     (sub.distance as number | null | undefined) ?? (sub.depth as number | null | undefined) ?? 1.0,
   )
 
-  if (!Number.isFinite(distance) || distance === 0) throw new Error('extrude: distance must be non-zero')
+  // A through_all solve never reads the distance, so a stored one (an old
+  // document, a script that set it after the termination) is a soft failure:
+  // the feature still builds from the bodies, and the warning says the stored
+  // value is ignored. Blind and the two up-to stops still require it; the
+  // up-to fallback is the blind distance when the target does not resolve.
+  let distanceWarning: string | undefined
+  if (termination === 'through_all') {
+    const storedDistance = sub.distance ?? sub.depth
+    if (storedDistance !== undefined && storedDistance !== null) {
+      distanceWarning = 'extrude: through_all takes no distance; the stored value is ignored'
+    }
+  } else if (!Number.isFinite(distance) || distance === 0) {
+    throw new Error('extrude: distance must be non-zero')
+  }
   // Absent or 0 is the straight prism this feature has always built; only a
   // non-zero angle takes the draft path.
   const taper = Number(sub.taper ?? 0)
@@ -492,10 +512,6 @@ export function solveExtrude(
 
   // Up-to termination: resolve the target once, using a representative extrude
   // direction so a point target can take the extrude direction as its normal.
-  const termination = (sub.termination as string) ?? 'blind'
-  if (termination !== 'blind' && termination !== 'up_to' && termination !== 'up_to_next' && termination !== 'through_all') {
-    throw new Error(`extrude: unknown termination ${JSON.stringify(termination)}`)
-  }
   if (taperDeg !== 0 && (termination === 'up_to' || termination === 'up_to_next' || termination === 'through_all')) {
     throw new Error(
       `extrude: taper is not supported with termination ${termination}; use termination blind`,
@@ -926,6 +942,11 @@ export function solveExtrude(
 
   // The body operation may have written its own warning (a no-op cut/add).
   // Compose rather than assign so the up-to fallback is not lost.
+  if (distanceWarning !== undefined) {
+    result.solver_warning = result.solver_warning === undefined
+      ? distanceWarning
+      : `${distanceWarning}; ${result.solver_warning}`
+  }
   if (upToWarning !== undefined) {
     result.solver_warning = result.solver_warning === undefined
       ? upToWarning

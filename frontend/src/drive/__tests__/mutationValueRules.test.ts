@@ -367,17 +367,20 @@ describe('findings 3 and 4: setter values and REF fields', () => {
   // Null on a required field used to pass: the applier deleted the key and the
   // extrude quietly built 1 deep. Only optional fields take the clear.
   it('refuses null on a required field by name', () => {
-    const error = refusal({ type: 'set_extrude_field', featureId: 'ex1', field: 'distance', value: null })
-    expect(error.code).toBe('invalid-mutation')
-    expect(error.message).toContain('"distance" is required')
     expect(refusal({ type: 'set_fillet_field', featureId: 'f1', field: 'radius', value: null }).message)
       .toContain('"radius" is required')
+    expect(refusal({ type: 'set_revolve_field', featureId: 'rv1', field: 'angle', value: null }).message)
+      .toContain('"angle" is required')
   })
 
   it('still clears an optional or only conditionally required field with null', () => {
     expect(validateMutation({ type: 'set_extrude_field', featureId: 'ex1', field: 'up_to', value: null }))
       .toMatchObject({ ok: true })
     expect(validateMutation({ type: 'set_hole_field', featureId: 'h1', field: 'depth', value: null }))
+      .toMatchObject({ ok: true })
+    // An extrude distance is required only outside through_all, so it takes the
+    // clear like a blind hole's depth; the loader owns the blind requirement.
+    expect(validateMutation({ type: 'set_extrude_field', featureId: 'ex1', field: 'distance', value: null }))
       .toMatchObject({ ok: true })
   })
 })
@@ -1650,10 +1653,29 @@ describe('finding: add_extrude carries the up-to termination inline', () => {
 })
 
 describe('through_all is a cut termination at the drive boundary', () => {
-  it('accepts through_all with operation cut', () => {
+  it('accepts through_all with operation cut and no distance', () => {
     expect(validateMutation({
-      type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 1,
+      type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1',
       operation: 'cut', termination: 'through_all',
+    })).toMatchObject({ ok: true })
+  })
+
+  it('still requires a distance for every other termination', () => {
+    for (const raw of [
+      { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', operation: 'new' },
+      { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', operation: 'new', termination: 'blind' },
+      { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', operation: 'new', termination: 'up_to' },
+    ]) {
+      const error = refusal(raw)
+      expect(error.code).toBe('invalid-mutation')
+      expect(error.message).toContain('distance')
+      expect(error.message).toContain('through_all')
+    }
+  })
+
+  it('accepts a stored distance field on a through_all feature, for the kernel warning', () => {
+    expect(validateMutation({
+      type: 'set_extrude_field', featureId: 'ex1', field: 'distance', value: 0,
     })).toMatchObject({ ok: true })
   })
 

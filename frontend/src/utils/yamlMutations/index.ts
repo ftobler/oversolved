@@ -101,6 +101,7 @@ export {
   applySetVariableField,
   applyAddHelix,
   applySetHelixField,
+  DEFAULT_EXTRUDE_DISTANCE,
 } from './featureDefs'
 
 export {

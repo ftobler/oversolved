@@ -895,6 +895,13 @@ function checkExtrude(sub: DocRecord, field: string): void {
   else checkOptional(sub, 'taper', field, checkExpr)
   checkOptional(sub, 'direction', field, (v, f) => checkEnum(v, f, DIRECTIONS))
   checkOptional(sub, 'termination', field, (v, f) => checkEnum(v, f, ['blind', 'up_to', 'up_to_next', 'through_all']))
+  // A through_all cut is sized from the bodies, so no distance is required
+  // (and none is stored). Every other termination reads it, directly or as the
+  // up-to fallback; `depth` is the kernel's legacy alias for the same field.
+  const storedDistance = sub.distance ?? sub.depth
+  if (sub.termination !== 'through_all' && storedDistance === undefined) {
+    fail(`${field}.distance`, 'is required unless termination is through_all')
+  }
   checkOptional(sub, 'up_to', field, checkRef)
   checkOptional(sub, 'up_to_offset', field, checkExpr)
   checkOptional(sub, 'up_to_start', field, (v, f) => checkEnum(v, f, ['sketch', 'surface']))
