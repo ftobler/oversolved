@@ -52,6 +52,21 @@
 //!     `CIRCLE_TANGENT_EPS`) are guards on the shape of an expression (a
 //!     division, a segment test), absolute by construction.
 //!
+//! The kernel precision contract ([`OCC_CONFUSION`], [`OCC_ANGULAR`]) is the
+//! newest deliberately absolute rung, and the only one this crate does not own:
+//! the downstream B-rep kernel reads OCC's compiled-in pair, so the solver's
+//! output has to be precise enough that the kernel's own decisions come out
+//! right. The two numbers are OCC's, not ours to scale; the finish phase
+//! (`solve::finish_contract`) drives the solved rows to them after the verdict
+//! has already passed, because the verdict (`verdict_tol`) answers "is this
+//! sketch green" and the contract answers "will the kernel agree with what the
+//! solve calls straight, parallel and coincident". The positional target is a
+//! fraction (`CONTRACT_POSITIONAL_REL`) of OCC's confusion, which is the only
+//! way an absolute target can be honest about a value it does not own. A sketch
+//! that cannot reach the contract still builds: it is satisfied, and the solver
+//! reports the realised miss instead of failing, so the kernel half can widen
+//! its own call for exactly the reported amount.
+//!
 //! The area builder's sampled scan (`topology::curve_intersect`) is the one
 //! place where an absolute RESOLUTION is deliberate rather than derived:
 //! `SCAN_SAMPLES` samples the scanned curve's parameter domain, ~1/80 of its
@@ -107,6 +122,55 @@ pub const VERDICT_RESOLUTIONS: f64 = 1e8;
 /// blow-up) never reads as satisfied; the caller checks that.
 pub fn verdict_tol(scale: f64) -> f64 {
     VERDICT_RESOLUTIONS * resolution(scale)
+}
+
+// ─── The kernel precision contract ───
+
+/// OCC's `Precision::Confusion()`: the world width under which the kernel reads
+/// two points as one. Deliberately ABSOLUTE, and deliberately not ours to
+/// choose: it is compiled into opencascade.js@1.1.1 (OCCT 7.4.0p1), and every
+/// OCC call this app does not pass an explicit tolerance to reads it -- the
+/// profile's `MakeWire`, the BOP fuse, `ShapeUpgrade_UnifySameDomain`'s
+/// defaults. A relative width would disagree with those calls on every sketch
+/// but one size. Mirrored on the TS side as `OCC_CONFUSION`
+/// (`frontend/src/kernel/solverConstants.ts`); that test pins the pair equal.
+pub const OCC_CONFUSION: f64 = 1e-7;
+
+/// OCC's `Precision::Angular()`: the angle under which the kernel reads two
+/// directions as one, compiled into the same build as [`OCC_CONFUSION`]. The
+/// consumer is the face merge: two planar faces whose normals differ by more
+/// than this are not the same domain, so a "parallel" the solver left a
+/// nanoradian short reads as two faces with a visible seam. Mirrored on the TS
+/// side as `OCC_ANGULAR`.
+///
+/// Reachable on purpose: f64 resolves a line direction from endpoints at
+/// magnitude `m` to about `eps * m / len` (3e-16 rad for an 80 mm line at
+/// 100 mm), so the contract sits three orders above the representation floor
+/// across the modelled range, and a quadratically converging finish reaches it
+/// from 1e-9 in one or two steps.
+pub const OCC_ANGULAR: f64 = 1e-12;
+
+/// The positional share of [`OCC_CONFUSION`] the contract finish targets: two
+/// orders under the kernel's point identity, so a point the solver ties to
+/// another is the same point to every OCC call that reads the default
+/// confusion, with the headroom for the kernel's own arithmetic. Deliberately
+/// relative to OCC's number rather than a rung of our own: our target exists
+/// only to make the kernel's decision true, so it has to be a fraction of the
+/// width that decision reads.
+pub const CONTRACT_POSITIONAL_REL: f64 = 1e-2;
+
+/// The absolute row width the contract gives an angular row whose seed length
+/// is `seed_len`: `|row| <= OCC_ANGULAR * seed_len` makes `|sin(theta)| <=
+/// 1e-12`. `seed_len` is the row's own (`residuals::scale`: a line's length, a
+/// line pair's geometric mean, a curve pair's smaller radius), so the contract
+/// is one angular width at every sketch size.
+pub fn contract_angular(seed_len: f64) -> f64 {
+    OCC_ANGULAR * seed_len
+}
+
+/// The absolute row width the contract gives a positional row.
+pub fn contract_positional() -> f64 {
+    OCC_CONFUSION * CONTRACT_POSITIONAL_REL
 }
 
 /// How far a solved param may sit from its seed and still count as the seed
@@ -372,6 +436,30 @@ mod tests {
         assert!((seed_keep_tol(1e-6) - verdict_tol(5.0)).abs() <= f64::EPSILON * 2.0);
         assert!(seed_keep_tol(1e-6) > verdict_tol(1.0));
         assert!(seed_keep_tol(1e-6) < verdict_tol(100.0));
+    }
+
+    #[test]
+    fn the_kernel_contract_is_occs_pair_at_the_finish_target() {
+        // The two numbers are OCC's, not ours: the angular width is the one the
+        // face merge reads, and it is far tighter than the kernel's point
+        // identity. The positional target is a stated share of that identity,
+        // so both ends of the contract are derived from values the consumer
+        // owns. A change here is a kernel decision, not a solver tuning knob.
+        assert_eq!([OCC_CONFUSION, OCC_ANGULAR], [1e-7, 1e-12]);
+        assert_eq!(
+            OCC_CONFUSION * CONTRACT_POSITIONAL_REL,
+            contract_positional()
+        );
+        assert_eq!(contract_positional(), 1e-9);
+        // One angular width at every size: the row's own seed length is the only
+        // scale in `contract_angular`.
+        assert_eq!(contract_angular(80.0), 80.0 * OCC_ANGULAR);
+        assert!(contract_angular(160.0) > contract_angular(80.0));
+        // Reachable from f64: a line's direction read from endpoints at
+        // magnitude `m` resolves to about eps * m / len, which for an 80 mm line
+        // at 100 mm is ~3e-16 rad, three orders under the contract.
+        let floor = f64::EPSILON * 100.0 / 80.0;
+        assert!(OCC_ANGULAR > 100.0 * floor);
     }
 
     #[test]
