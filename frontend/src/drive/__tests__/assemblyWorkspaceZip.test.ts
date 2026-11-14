@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import type { AssemblyDoc, PartDoc } from '@/types/cad'
 import { buildAssemblyWorkspaceTree, buildAssemblyWorkspaceZip } from '../assemblyWorkspaceZip'
 import { readZipBag, importBag } from '@/workspace/import'
-import { readZipTree } from '@/workspace/zipCarrier'
+import { readZipFiles, readZipTree } from '@/workspace/zipCarrier'
 import { IdbWorkspaceStore } from '@/workspace/store'
 import { resetWorkspaceIdb } from '@/workspace/__tests__/idbHarness'
 
@@ -61,6 +61,18 @@ describe('assembly workspace zip', () => {
     expect(tree.manifest.references[pinId]).toEqual(['f1'])
   })
 
+  it('writes the manifest, the assembly and one document per bound part as zip entries', async () => {
+    const bytes = await buildAssemblyWorkspaceZip({ doc, parts: PARTS, files: FILES })
+    const paths = (await readZipFiles(bytes)).map(file => file.path).sort()
+    expect(paths).toEqual([
+      '.oversolved-manifest.yaml',
+      'documents/assembly.yaml',
+      'documents/pin.yaml',
+      'documents/plate.yaml',
+      'files/f1',
+    ])
+  })
+
   it('re-reads from zip bytes and imports into a workspace with no dangling doc_id', async () => {
     const bytes = await buildAssemblyWorkspaceZip({ doc, parts: PARTS, files: FILES })
     const reread = await readZipTree(bytes)
@@ -72,11 +84,14 @@ describe('assembly workspace zip', () => {
     expect(result.documents).toBe(3)
     expect(result.files).toBe(1)
 
-    // Every instance's doc_id must resolve to a live part entry after adoption.
-    const opened = await store.readEntry(result.workspace, 'plate')
-    expect(opened.kind).toBe('document')
-    expect(opened.docKind).toBe('part')
-    expect((await store.readEntry(result.workspace, 'pin')).kind).toBe('document')
+    // Every instance's doc_id must resolve to a live part entry after adoption,
+    // not merely the two this fixture happens to spell out.
+    for (const feature of doc.features ?? []) {
+      if (feature.kind !== 'part_instance') continue
+      const opened = await store.readEntry(result.workspace, feature.instance!.doc_id)
+      expect(opened.kind).toBe('document')
+      expect(opened.docKind).toBe('part')
+    }
     expect((await store.readEntry(result.workspace, 'f1')).kind).toBe('file')
 
     const assembly = await store.readEntry(result.workspace, Object.entries(reread.manifest.entries)

@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from 'vitest'
 import type { AssemblyDoc } from '@/types/cad'
-import { assemblyBareOutNote, assemblyPartDocIds } from '../assemblyOut'
+import { assemblyBareOutNote, assemblyOutPath, assemblyPartDocIds } from '../assemblyOut'
 
 const IDENTITY = {
   tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1,
@@ -23,6 +23,26 @@ function assembly(docIds: string[]): AssemblyDoc {
     })),
   }
 }
+
+describe('assemblyOutPath', () => {
+  it('defaults a path with no extension or a directory-style path to the zip', () => {
+    expect(assemblyOutPath('tmp/hand-off')).toBe('tmp/hand-off.zip')
+    expect(assemblyOutPath('tmp/hand-off/')).toBe('tmp/hand-off.zip')
+    // A dot earlier in the path is a directory name, not a file extension.
+    expect(assemblyOutPath('tmp/v1.2/hand-off')).toBe('tmp/v1.2/hand-off.zip')
+  })
+
+  it('keeps an explicit document or zip path as written', () => {
+    expect(assemblyOutPath('tmp/hand-off.json')).toBe('tmp/hand-off.json')
+    expect(assemblyOutPath('tmp/hand-off.yaml')).toBe('tmp/hand-off.yaml')
+    expect(assemblyOutPath('tmp/hand-off.zip')).toBe('tmp/hand-off.zip')
+  })
+
+  it('leaves an empty path to the resolver that names the rule', () => {
+    expect(assemblyOutPath('')).toBe('')
+    expect(assemblyOutPath('  ')).toBe('  ')
+  })
+})
 
 describe('assemblyPartDocIds', () => {
   it('reads every distinct part document the instances name', () => {

@@ -1575,11 +1575,14 @@ authors `flip: true` by hand is equally valid.
   part doc), places it, and reports per-body ids `<handle>/<bodyId>`, so
   `compare` works unchanged against a CadQuery assembly reference. `export`
   writes the placed compound as one STEP/STL; `body` is refused for an assembly.
-- `run` with `out` ending in `.zip` writes a workspace archive with the
+- `run` with `out` on an assembly defaults to the workspace zip: a path with no
+  extension (or ending in `/`, or in `.zip`) writes one archive with the
   assembly, every bound part and every `files` entry, ready to import in the
-  browser. A YAML/JSON `out` writes the assembly document alone; the reply's
-  `notes` names the part documents its `part_instance.doc_id` values cannot
-  resolve there, and says to use a `.zip` path for a self-contained hand-off.
+  browser, and the reply's `format` is `zip` with `bytes` set. An explicit
+  `.yaml` or `.json` path instead writes the assembly document alone; the
+  reply's `notes` names the part documents its `part_instance.doc_id` values
+  cannot resolve there, and says to use a `.zip` path for a self-contained
+  hand-off. A part document keeps YAML/JSON by extension and refuses `.zip`.
 - `select` stays part-only: it refuses an assembly handle and points at the
   part's docHash.
 - Non-goals: sub-assemblies, world-space or cross-instance selection, mate

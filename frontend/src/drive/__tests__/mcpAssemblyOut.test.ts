@@ -2,8 +2,9 @@
 //
 // The assembly `out` contract on the wire: a bare YAML/JSON path still writes
 // the assembly document but carries the note naming the part documents it
-// cannot resolve, while the zip path resolves every instance. A part document
-// keeps its own rule and its `.zip` refusal.
+// cannot resolve, the zip path resolves every instance, and an assembly path
+// with no extension defaults to that zip. A part document keeps its own rule
+// and its `.zip` refusal.
 
 import { describe, it, expect } from 'vitest'
 import { mkdirSync, readFileSync } from 'node:fs'
@@ -134,6 +135,50 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP assembly out (real OCC +
         arguments: { docHash: plateHash, steps: [], out: path.join(OUT_DIR, 'part.zip') },
       }))
       expect(String(refused.error)).toContain('a workspace zip needs an assembly document')
+    } finally {
+      await client.close()
+    }
+  }, 240_000)
+
+  it('defaults an assembly path with no extension to the workspace zip', async () => {
+    mkdirSync(OUT_DIR, { recursive: true })
+    const client = spawnMcp()
+    try {
+      await initialize(client)
+
+      const plate = toolPayload(await client.request('tools/call', { name: 'run', arguments: { steps: PLATE_STEPS } }))
+      const assembly = toolPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: {
+          kind: 'assembly',
+          parts: { plate: plate.docHash },
+          steps: [{ mutation: { type: 'add_part', handle: 'plate', part: 'plate', fixed: true } }],
+        },
+      }))
+      const assemblyHash = assembly.docHash as string
+
+      // No extension means the zip, and the reply names the path it wrote.
+      const defaultFile = path.join(OUT_DIR, 'default')
+      const defaulted = toolPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: { docHash: assemblyHash, steps: [], out: defaultFile },
+      }))
+      expect(defaulted).toMatchObject({ ok: true, file: `${defaultFile}.zip`, format: 'zip' })
+      expect(defaulted.bytes as number).toBeGreaterThan(0)
+      expect(defaulted.notes).toBeUndefined()
+      const paths = Object.values((await readZipTree(new Uint8Array(readFileSync(`${defaultFile}.zip`)))).manifest.entries)
+        .map(row => row.path)
+      expect(paths).toEqual(expect.arrayContaining([
+        'documents/assembly.yaml',
+        'documents/plate.yaml',
+      ]))
+
+      // A directory-style path takes the same default.
+      const dirStyle = toolPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: { docHash: assemblyHash, steps: [], out: path.join(OUT_DIR, 'dir') + '/' },
+      }))
+      expect(dirStyle).toMatchObject({ ok: true, file: path.join(OUT_DIR, 'dir.zip'), format: 'zip' })
     } finally {
       await client.close()
     }

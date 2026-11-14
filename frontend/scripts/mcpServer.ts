@@ -34,7 +34,7 @@ import { PART_DOC_SCHEMA_JSON } from '@/persistence/partDocSchema'
 import { ASSEMBLY_DOC_SCHEMA_JSON } from '@/persistence/assemblyDocSchema'
 import { createHeadlessAssembly, emptyDriveAssemblyDoc, type AssemblyScriptStep } from '@/drive/headlessAssembly'
 import { buildAssemblyWorkspaceZip } from '@/drive/assemblyWorkspaceZip'
-import { assemblyBareOutNote } from '@/drive/assemblyOut'
+import { assemblyBareOutNote, assemblyOutPath } from '@/drive/assemblyOut'
 import { docHashOf } from '@/drive/docHash'
 import type { ScriptStep, ScriptStepOutcome } from '@/drive/scriptRunner'
 import type { SelectResult } from '@/kernel/select'
@@ -220,16 +220,6 @@ const ops: McpCadOps = {
   },
 
   async run(req) {
-    // Resolve the write path before the script runs: an unsafe path must be
-    // refused without doing the work the caller expected to save.
-    let out: string | undefined
-    if (req.out !== undefined) {
-      try {
-        out = resolveProjectPath(req.out, 'doc')
-      } catch (e) {
-        return { ok: false, error: e instanceof Error ? e.message : String(e) }
-      }
-    }
     // A fresh document is the one case resolveDoc does not take: `run` may
     // start from nothing, and the kind chooses which seeded document.
     let resolved: ResolvedDoc
@@ -246,6 +236,18 @@ const ops: McpCadOps = {
       resolved = resolveDoc(req, documents)
     }
     if (!resolved.ok) return { ok: false, error: resolved.error }
+    // Resolve the write path before the script runs: an unsafe path must be
+    // refused without doing the work the caller expected to save. An assembly
+    // path with no extension means the workspace zip, and the rule reads the
+    // caller's spelling because resolution drops a directory's trailing slash.
+    let out: string | undefined
+    if (req.out !== undefined) {
+      try {
+        out = resolveProjectPath(resolved.kind === 'assembly' ? assemblyOutPath(req.out) : req.out, 'doc')
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : String(e) }
+      }
+    }
     const files = readProjectFiles(req.files)
 
     if (resolved.kind === 'part') {

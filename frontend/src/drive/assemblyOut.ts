@@ -1,8 +1,8 @@
 // The `out` contract for an assembly run. The workspace zip is the hand-off
 // format: it carries the assembly, every bound part and every referenced file,
 // so each part_instance.doc_id resolves after import. A bare YAML/JSON document
-// is still written (inspection, a replay that only wants the tree), and the
-// note says which part documents it leaves behind.
+// is still written (inspection, a script that deliberately saves the tree), and
+// the note says which part documents it leaves behind.
 
 import type { AssemblyDoc } from '@/types/cad'
 
@@ -17,11 +17,28 @@ export function assemblyPartDocIds(doc: AssemblyDoc): string[] {
   return [...ids]
 }
 
+const DIRECTORY_STYLE = /[\\/]$/
+const EXTENSION = /\.[^./\\]+$/
+
+/**
+ * The path an assembly `out` writes. The zip is the default, so a path with no
+ * extension, or one ending in a separator, gets `.zip`; an explicit extension
+ * (such as `.json`, `.yaml` or `.zip`) stays as written. The rule reads the
+ * caller's own spelling, because path resolution drops the trailing separator a
+ * directory-style path carries.
+ */
+export function assemblyOutPath(out: string): string {
+  // Leave an empty path to the resolver, whose error names the field rule.
+  if (out.trim() === '') return out
+  if (DIRECTORY_STYLE.test(out)) return `${out.replace(/[\\/]+$/, '')}.zip`
+  return EXTENSION.test(out) ? out : `${out}.zip`
+}
+
 /**
  * Why a bare assembly file is not a self-contained hand-off: every instance
  * names a part document the file does not carry, so its `part_instance.doc_id`
- * values cannot resolve on import. Null when there is nothing to warn about
- * (an assembly with no instances, or a part document).
+ * values cannot resolve on import. Null when there is nothing to warn about (an
+ * assembly with no instances).
  */
 export function assemblyBareOutNote(doc: AssemblyDoc): string | null {
   const ids = assemblyPartDocIds(doc)
