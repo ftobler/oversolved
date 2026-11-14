@@ -139,6 +139,8 @@ describe('booleanWithDiffMany runs one BRepCheck per adopted attempt', () => {
       },
       ShapeUpgrade_UnifySameDomain_2: function () {
         return {
+          SetLinearTolerance: () => {},
+          SetAngularTolerance: () => {},
           AllowInternalEdges: () => {},
           Build: () => {},
           Shape: () => {

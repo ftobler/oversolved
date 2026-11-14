@@ -24,7 +24,8 @@ import { volumeOf, volumeOfDefault } from './volume'
 import { foldCavitySolids } from './cavities'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 import { swallowUnlessTrap } from '../errors'
-import { OCC_CONFUSION } from '../solverConstants'
+import { OCC_ANGULAR, OCC_CONFUSION } from '../solverConstants'
+import { mergeTolerance, type KernelPrecision, type MergeTolerance } from '../precision'
 import { markFeatureProgress } from '../featureProgress'
 
 // Re-exported for the callers that read a body's volume.
@@ -456,17 +457,43 @@ export function splitWithHistory(
  * (mirrors `ocp_clean_with_history`). `unifyFaces` gates the face merge; pass
  * false to keep only the edge merge when the face merge is unsafe (imported STEP
  * geometry, see `booleanWithDiff`).
+ *
+ * The two tolerances are ALWAYS set, even when the caller passes none: the
+ * defaults are OCC's compiled-in pair, but reading that pair by name here is
+ * what keeps the kernel and the sketch solver on one contract. A caller that
+ * knows its geometry is only as precise as a solve reports passes the realised
+ * value (already clamped to the ceiling by `mergeTolerance`).
  */
 export function cleanWithHistory(
   oc: OccModule,
   scope: DisposeScope,
   shape: OccShape,
   unifyFaces = true,
+  tolerances: CleanTolerances = {},
 ): { shape: OccShape; history: OccHistory } {
   const up = scope.track(new oc.ShapeUpgrade_UnifySameDomain_2(shape, true, unifyFaces, unifyFaces))
+  up.SetLinearTolerance(tolerances.linearTol ?? OCC_CONFUSION)
+  up.SetAngularTolerance(tolerances.angularTol ?? OCC_ANGULAR)
   up.AllowInternalEdges(false)
   up.Build()
   return { shape: up.Shape(), history: scope.track(up.History_1()).get() }
+}
+
+/** The tolerances one clean reads. Absent values fall back to the contract. */
+export interface CleanTolerances {
+  linearTol?: number
+  angularTol?: number
+}
+
+/** One boolean pipeline's options, shared by the single-tool and multi-tool
+ *  forms. */
+export interface BooleanOptions {
+  // The face merge's gate (see `booleanWithDiffMany`).
+  unifyFaces?: boolean
+  // The inherited precision of the operands. The clean widens by it up to the
+  // merge ceiling; a body carries what its producing sketches reported
+  // (kernel/precision.ts). Absent reads as the contract.
+  precision?: KernelPrecision | null
 }
 
 /**
@@ -845,6 +872,7 @@ function composeBooleanAttempt(
   tools: readonly OccShape[],
   op: BooleanOp,
   unifyFaces: boolean,
+  tolerance: MergeTolerance,
 ): BooleanAttempt {
   const pre = rawBooleanWithDiff(oc, scope, target, tools, op)
   // The raw boolean is the longest kernel call of the pipeline; a heartbeat
@@ -853,7 +881,10 @@ function composeBooleanAttempt(
   markFeatureProgress()
   let rejected: OccShape | null = null
   try {
-    const r = cleanWithHistory(oc, scope, pre.shape, unifyFaces)
+    const r = cleanWithHistory(oc, scope, pre.shape, unifyFaces, {
+      linearTol: tolerance.linearTol,
+      angularTol: tolerance.angularTol,
+    })
     markFeatureProgress()
     const verdict = cleanShapeIsSound(oc, scope, pre.shape, r.shape)
     markFeatureProgress()
@@ -937,7 +968,7 @@ export function booleanWithDiff(
   target: OccShape,
   tool: OccShape,
   op: BooleanOp,
-  opts: { unifyFaces?: boolean } = {},
+  opts: BooleanOptions = {},
 ): { shape: OccShape; diff: BrepDiff; faceOrigin: FaceOrigin[] } {
   return booleanWithDiffMany(oc, scope, target, [tool], op, opts)
 }
@@ -953,7 +984,7 @@ export function booleanWithDiffMany(
   target: OccShape,
   tools: readonly OccShape[],
   op: BooleanOp,
-  opts: { unifyFaces?: boolean } = {},
+  opts: BooleanOptions = {},
 ): { shape: OccShape; diff: BrepDiff; faceOrigin: FaceOrigin[] } {
   // The face merge (UnifySameDomain's face fold) can spin forever, not throw, on
   // imported-STEP topology (the reproducer: extruding a holed face of an
@@ -962,7 +993,14 @@ export function booleanWithDiffMany(
   // decides by provenance and passes `unifyFaces: false` for imported targets;
   // the edge merge (always safe) still runs, at the cost of an extra seam face.
   const unifyFaces = opts.unifyFaces ?? true
-  const attempt = withFoldedCavities(oc, scope, composeBooleanAttempt(oc, scope, target, tools, op, unifyFaces))
+  // One tolerance for the whole pipeline. The caller passes what the operands'
+  // sketches reported; this clean widens by that much, never past the ceiling
+  // (kernel/precision.ts). The retry reads the same pair: it is the same
+  // geometry.
+  const tolerance = mergeTolerance(opts.precision)
+  const attempt = withFoldedCavities(
+    oc, scope, composeBooleanAttempt(oc, scope, target, tools, op, unifyFaces, tolerance),
+  )
   markFeatureProgress()
   // The adoption guard ran the analyzer on this exact handle, so the soundness
   // check must not run it a second time. A folded, rejected or raw-fallback
@@ -983,7 +1021,9 @@ export function booleanWithDiffMany(
   // cut path already runs through shapesIntersect (M18), and it is only paid
   // here, after a result already failed the check.
   for (const tool of tools) shapesIntersect(oc, target, tool)
-  const retry = withFoldedCavities(oc, scope, composeBooleanAttempt(oc, scope, target, tools, op, unifyFaces))
+  const retry = withFoldedCavities(
+    oc, scope, composeBooleanAttempt(oc, scope, target, tools, op, unifyFaces, tolerance),
+  )
   markFeatureProgress()
   const retryProblem = booleanResultProblem(
     oc, scope, target, tools, op, retry.shape, retry.validated === retry.shape,
