@@ -46,11 +46,15 @@ export function groupMembersFromSelection(
 ): GroupMembersResult {
   const picks = [...selection]
   const order: string[] = []
-  const wholeByEntity = new Map<string, string>()  // local entity id -> target
+  const wholeByEntity = new Map<string, string>()  // feature:entity -> target
   const pointKeys = new Set<string>()
   let sawProjected = false
   let sawOrigin = false
-  const isProjected = (entityId: string) => projectedIds.has(entityId)
+  // Entity ids are only unique inside their sketch, so the member key carries
+  // the feature too: a foreign entity with the same id is not the same member.
+  const memberKey = (feature: string, entityId: string) => `${feature}:${entityId}`
+  const isProjected = (feature: string, entityId: string) =>
+    feature === featureId && projectedIds.has(entityId)
   for (const pick of picks) {
     if (pick === '@builtin_origin') {
       sawOrigin = true
@@ -59,31 +63,35 @@ export function groupMembersFromSelection(
     if (pick.startsWith('dock:') || pick.startsWith('isect:')) continue
     const entity = parseEntityPick(pick)
     if (entity !== null) {
-      if (isProjected(entity.entityId)) {
+      if (isProjected(entity.featureId, entity.entityId)) {
         sawProjected = true
         continue
       }
-      if (!wholeByEntity.has(entity.entityId)) {
-        wholeByEntity.set(entity.entityId, pick)
+      const key = memberKey(entity.featureId, entity.entityId)
+      if (!wholeByEntity.has(key)) {
+        wholeByEntity.set(key, pick)
         order.push(pick)
       }
       continue
     }
     const vertex = parseVertexPick(pick)
     if (vertex === null) continue
-    if (isProjected(vertex.entityId)) {
+    if (isProjected(vertex.featureId, vertex.entityId)) {
       sawProjected = true
       continue
     }
+    const key = memberKey(vertex.featureId, vertex.entityId)
     // A marker on an entity that is already a member adds rows that duplicate
     // the entity's own: the pick is kept, the marker dropped.
-    if (wholeByEntity.has(vertex.entityId)) continue
-    const kind = entityKindMap[`entity:${featureId}:${vertex.entityId}`]
+    if (wholeByEntity.has(key)) continue
+    const kind = vertex.featureId === featureId
+      ? entityKindMap[`entity:${featureId}:${vertex.entityId}`]
+      : undefined
     if (kind === 'point') {
       // `vertex:<P>:xy` is the whole Point primitive, and `$P` is how a whole
       // member is stored. Two picks cannot both name it.
       const whole = `entity:${vertex.featureId}:${vertex.entityId}`
-      wholeByEntity.set(vertex.entityId, whole)
+      wholeByEntity.set(key, whole)
       order.push(whole)
       continue
     }
@@ -96,12 +104,15 @@ export function groupMembersFromSelection(
   // click order), so the covered-marker rule runs once the whole set is known.
   const targets = order.filter(pick => {
     const vertex = parseVertexPick(pick)
-    return vertex === null || !wholeByEntity.has(vertex.entityId)
+    return vertex === null
+      || !wholeByEntity.has(memberKey(vertex.featureId, vertex.entityId))
   })
   if (targets.length === 0) {
     if (sawProjected) return { reason: 'Group cannot hold projected geometry; select an authored entity or point.' }
     if (sawOrigin) return { reason: 'Group cannot hold the origin; select an authored entity or point.' }
-    return { reason: TOO_SMALL }
+    // Nothing the command can read (a constraint, a handle it materializes
+    // elsewhere, a B-rep pick): no group to author, and no refusal to show.
+    return { targets: [] }
   }
   if (targets.length === 1 && parseVertexPick(targets[0]) !== null) return { reason: TOO_SMALL }
   return { targets }

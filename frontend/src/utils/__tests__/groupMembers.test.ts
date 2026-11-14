@@ -105,6 +105,7 @@ describe('groupMembersFromSelection', () => {
     expect(read([
       'dock:constraint:1', 'isect:feature:1', 'constraint:S1:C2', 'entity:S1:L1',
     ])).toEqual({ targets: ['entity:S1:L1'] })
+    expect(read(['dock:constraint:1', 'constraint:S1:C2'])).toEqual({ targets: [] })
   })
 
   it('ignores a foreign whole-entity pick no more than it already did', () => {
@@ -112,6 +113,12 @@ describe('groupMembersFromSelection', () => {
     // pick so that refusal can say which sketch it belongs to.
     expect(read(['entity:Other:L9', 'entity:S1:L1'])).toEqual({
       targets: ['entity:Other:L9', 'entity:S1:L1'],
+    })
+  })
+
+  it('does not let a foreign entity with the same id cover a local marker', () => {
+    expect(read(['vertex:S1:L1:start', 'entity:Other:L1'])).toEqual({
+      targets: ['vertex:S1:L1:start', 'entity:Other:L1'],
     })
   })
 })
