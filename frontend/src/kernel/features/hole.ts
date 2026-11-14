@@ -1006,6 +1006,11 @@ export function solveHole(
       toolFaceNames: tool.faceNames,
       toolFaceAncestry: tool.faceAncestry,
       toolCapAncestry: tool.capAncestry,
+      // The cutter is this hole's own tool: its wall, floor and mouth belong to
+      // the hole. Without it a bore that opens into a face an earlier feature
+      // owns takes that face's owner on the breakout edge, because the tool
+      // face has no owner to be preferred over it.
+      toolCreatedBy: feature.id as string,
       toolUuidScope: null,
     })
     scope.release(cyl)
