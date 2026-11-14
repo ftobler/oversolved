@@ -61,6 +61,7 @@ export type AssemblyWireMutation =
   | { type: 'delete_part'; handle: string }
   | { type: 'set_part_position'; handle: string; position: Vec3Tuple }
   | { type: 'set_part_rotation'; handle: string; rotation: Vec3Tuple }
+  | { type: 'set_part_doc'; handle: string; part: string }
   | { type: 'set_part_fixed'; handle: string; fixed: boolean; bake?: boolean }
   | { type: 'set_part_visible'; handle: string; visible: boolean }
   | { type: 'set_builtin_visible'; id: string; visible: boolean }
@@ -117,6 +118,7 @@ export const ASSEMBLY_OPERATION_BY_MUTATION: Readonly<Record<Exclude<AssemblyWir
   delete_part: 'delete_part',
   set_part_position: 'set_part_position',
   set_part_rotation: 'set_part_rotation',
+  set_part_doc: 'set_part_doc',
   set_part_fixed: 'set_part_fixed_oneshot',
   set_part_visible: 'set_part_visible',
   set_builtin_visible: 'set_builtin_visible',
@@ -313,6 +315,19 @@ export const ASSEMBLY_MUTATION_CATALOG = {
     summary: 'Orient a part instance from an authored Euler triple.',
     fields: { handle: str(), rotation: vec3(ROTATION_NOTE) },
   },
+  set_part_doc: {
+    summary: 'Point a part instance at another part document (rebind a dangling reference).',
+    note: '`part` is a doc_id bound for this call. The instance keeps its handle, pose, fixed flag and '
+      + 'visibility; `doc_rev` resets because the old part\'s revision says nothing about the new one. '
+      + 'Mates that name the instance keep their ref rows unchanged, since the handle is unchanged: each '
+      + 'anchor is re-resolved against the new part, so a rebind to a part with the same geometry re-finds '
+      + 'the element (the stored anchor descriptor is the fallback) while a rebind to a different part '
+      + 'reports the mate stale rather than rewriting its refs.',
+    fields: {
+      handle: str('The instance to rebind.'),
+      part: str('The bound part doc_id the instance should point at.'),
+    },
+  },
   set_part_fixed: {
     summary: 'Fix or unfix a part instance (the structural one-shot toggle).',
     note: BAKE_NOTE,
@@ -397,6 +412,7 @@ export const ASSEMBLY_MUTATION_FAMILY: Record<AssemblyWireType, AssemblyMutation
   delete_part: 'parts',
   set_part_position: 'parts',
   set_part_rotation: 'parts',
+  set_part_doc: 'parts',
   set_part_fixed: 'parts',
   set_part_visible: 'parts',
   set_builtin_visible: 'parts',
@@ -883,6 +899,7 @@ function validateValues(
     case 'set_part_fixed':
     case 'set_part_position':
     case 'set_part_rotation':
+    case 'set_part_doc':
     case 'reorder_part': {
       const handle = raw.handle as string
       const problem = instanceProblem(doc, handle, 'handle')
@@ -893,6 +910,11 @@ function validateValues(
       }
       const operation = ASSEMBLY_OPERATION_BY_MUTATION[type]
       if (type === 'delete_part') return { ok: true, operation, input: handle }
+      if (type === 'set_part_doc') {
+        const partProblem = boundProblem(ctx, raw.part as string)
+        if (partProblem !== null) return fail('unknown-target', partProblem)
+        return { ok: true, operation, input: { handle, docId: raw.part as string } }
+      }
       if (type === 'set_part_visible') {
         return { ok: true, operation, input: { handle, visible: raw.visible as boolean } }
       }

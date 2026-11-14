@@ -199,6 +199,21 @@
   padding: 0 4px;  /* three boxes to a row: spend the width on digits */
 }
 
+/* The Part row is a single choice, so it keeps the wide label and hands the
+   rest of the row to the native select. */
+.instance-part-select {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The missing-part repair notice sits under its picker and reads as the
+   failure's explanation, not as another field label. */
+.instance-part-missing {
+  margin: 2px 0 4px;
+  color: #b00020;
+  font-size: 11px;
+}
+
 /* The 80px label column of the shared field grammar is more than the abbreviated
    captions need, and here every pixel of it comes out of the value boxes. */
 .instance-editor .feature-field-label {

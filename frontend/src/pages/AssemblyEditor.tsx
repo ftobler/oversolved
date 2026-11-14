@@ -36,7 +36,7 @@ import { AssemblyTree } from '@/components/layout/AssemblyTree'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { PanelsToggle } from '@/components/layout/PanelsToggle'
 import { MateEditor } from '@/components/layout/MateEditor'
-import { PartInstanceEditor } from '@/components/layout/PartInstanceEditor'
+import { PartInstanceEditor, type PartOption } from '@/components/layout/PartInstanceEditor'
 import AssemblyPartPicker from '@/components/dialogs/AssemblyPartPicker'
 import RenameDialog from '@/components/dialogs/RenameDialog'
 import RawDocumentDialog from '@/components/dialogs/RawDocumentDialog'
@@ -156,6 +156,10 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   // fetch is where the add_part guard's live-part set comes from, so the two can
   // never disagree about which parts this workspace holds.
   const [docNames, setDocNames] = useState<Record<string, string>>({})
+  // The instance editor's rebind choices: this workspace's parts, minus the
+  // assembly itself (pointing an instance at its own assembly is a cycle). Null
+  // until the list lands, so the editor can tell "no parts" from "not loaded".
+  const [partOptions, setPartOptions] = useState<PartOption[] | null>(null)
   // Null until the list lands: an empty set would be a real answer (no parts),
   // but an unloaded one must not refuse a pick the user just made.
   const knownPartIds = useRef<ReadonlySet<string> | null>(null)
@@ -171,17 +175,22 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
         if (cancelled) return
         const names: Record<string, string> = {}
         const parts = new Set<string>()
+        const options: PartOption[] = []
         for (const entry of list) {
           names[entry.id] = entry.name
           const interpreted = interpretEntry({ kind: entry.kind, name: entry.name, docKind: entry.docKind })
-          if (interpreted.ok && interpreted.docKind === 'part') parts.add(entry.id)
+          if (interpreted.ok && interpreted.docKind === 'part') {
+            parts.add(entry.id)
+            if (entry.id !== uuid) options.push({ id: entry.id, name: entry.name })
+          }
         }
         setDocNames(names)
+        setPartOptions(options)
         knownPartIds.current = parts
       })
       .catch(() => undefined)
     return () => { cancelled = true }
-  }, [session])
+  }, [session, uuid])
 
   // The hook's memo is what goes into the store, not a second extraction of the
   // same features. This is a de-duplication and nothing more: the memo is keyed
@@ -321,12 +330,15 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
       // I8: the outward link a part instance authors is refused at the mutation
       // unless the doc it names is a live part entry in this workspace.
       knownPartIds: knownPartIds.current ?? undefined,
+      // The rebind's cycle guard: an instance may not point at the assembly
+      // that carries it.
+      assemblyDocId: uuid,
       mutateSession: mutate,
       mutateOneShot,
       requestSolve,
       requestSolveOrDefer: () => useAssemblyStore.getState().requestSolveOrDefer(),
     })
-  }, [docRef, mutate, mutateOneShot, requestSolve])
+  }, [docRef, mutate, mutateOneShot, requestSolve, uuid])
 
   // Insert a mate with both references empty, open its editor and arm ref_a, so
   // the very next click in the viewport aims the first reference. The append
@@ -617,11 +629,14 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     <PartInstanceEditor
       instance={inst}
       pose={(poseBasis?.handle === inst.handle ? poseBasis.pose : undefined) ?? inst.transform}
+      partOptions={partOptions ?? undefined}
+      // An empty pick changes nothing: the picker's placeholder is not a value.
+      onSetPartDoc={docId => { if (docId) executeCommand('set_part_doc', { handle: inst.handle, docId }) }}
       onSetFixed={f => executeCommand('set_part_fixed', { handle: inst.handle, fixed: f })}
       onSetPosition={pos => executeCommand('set_part_position', { handle: inst.handle, pos })}
       onSetRotation={euler => executeCommand('set_part_rotation', { handle: inst.handle, euler })}
     />
-  ), [poseBasis])
+  ), [poseBasis, partOptions])
 
   const renderMateEditor = useCallback((mate: { id: string; mate: MateFeatureDef }) => (
     <MateEditor

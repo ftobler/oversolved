@@ -29,6 +29,7 @@ const ASSEMBLY_FIXED_COMMAND_NAMES = [
   'set_part_fixed_oneshot',
   'set_part_position',
   'set_part_rotation',
+  'set_part_doc',
   'delete_mate',
   'update_mate',
   'reorder_part',
@@ -62,6 +63,7 @@ export const ASSEMBLY_OPERATION_BY_COMMAND: Readonly<Record<string, AssemblyOper
   set_part_fixed_oneshot: 'set_part_fixed_oneshot',
   set_part_position: 'set_part_position',
   set_part_rotation: 'set_part_rotation',
+  set_part_doc: 'set_part_doc',
   update_mate: 'update_mate',
   reorder_part: 'reorder_part',
   reorder_mate: 'reorder_mate',
@@ -342,6 +344,15 @@ export const ASSEMBLY_COMMAND_SPECS: readonly AssemblyCommandSpec[] = [
     }),
     run: (ctx, params) => {
       ctx.runOperation('set_part_rotation', params)
+      return okResult()
+    },
+  }),
+  spec({
+    id: 'set_part_doc',
+    label: 'Set part document',
+    params: objectParams({ handle: Field.string(), docId: Field.string() }),
+    run: (ctx, params) => {
+      ctx.runOperation('set_part_doc', params)
       return okResult()
     },
   }),

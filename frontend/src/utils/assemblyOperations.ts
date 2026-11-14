@@ -24,6 +24,7 @@ import {
   removeMate,
   setBuiltinVisible,
   setInstanceFixedFromSolved,
+  setInstancePartDoc,
   setInstancePosition,
   setInstanceRotation,
   setInstanceVisible,
@@ -58,6 +59,7 @@ export interface AssemblyOperationInputs {
   set_part_fixed_oneshot: { handle: string; fixed: boolean }
   set_part_position: { handle: string; pos: { tx: number; ty: number; tz: number } }
   set_part_rotation: { handle: string; euler: EulerDeg }
+  set_part_doc: { handle: string; docId: string }
   add_mate: {
     kind: MateKind
     id: string
@@ -181,6 +183,13 @@ export const ASSEMBLY_OPERATIONS: {
     id: 'set_part_rotation', label: ASSEMBLY_UNDO_LABELS.setRotation, bake: true, undo: 'fold', solve: 'solve',
     apply: (doc, input) => setInstanceRotation(doc, input.handle, input.euler),
   },
+  set_part_doc: {
+    // A rebind changes the geometry behind the placement, so the bake keeps the
+    // pose on screen as the placement seed and the solve re-resolves every mate
+    // that names this instance. Structural like add/delete: its own step.
+    id: 'set_part_doc', label: ASSEMBLY_UNDO_LABELS.setPartDoc, bake: true, undo: 'one-shot', solve: 'solve',
+    apply: (doc, input) => setInstancePartDoc(doc, input.handle, input.docId),
+  },
   add_mate: {
     // An unreferenced mate has nothing to constrain: the editor opens and arms
     // a field, and the solve lands when that field closes.
@@ -249,13 +258,31 @@ export interface AssemblyOperationPlan {
 export function planAssemblyOperation<K extends AssemblyOperationId>(
   id: K,
   input: AssemblyOperationInputs[K],
-  ctx: { doc: AssemblyDoc | null; transforms: Record<string, Transform3D>; moved?: ReadonlySet<string>; knownPartIds?: ReadonlySet<string> },
+  ctx: {
+    doc: AssemblyDoc | null
+    transforms: Record<string, Transform3D>
+    moved?: ReadonlySet<string>
+    knownPartIds?: ReadonlySet<string>
+    assemblyDocId?: string
+  },
 ): AssemblyOperationPlan | null {
   if (!ctx.doc) return null
   const def = ASSEMBLY_OPERATIONS[id] as AssemblyOperationDef<AssemblyOperationInputs[K]>
   if (id === 'add_part' && ctx.knownPartIds) {
     const { docId } = input as AssemblyOperationInputs['add_part']
     if (!ctx.knownPartIds.has(docId)) {
+      throw new Error(`Part is not a live entry in this workspace: ${docId}`)
+    }
+  }
+  // A rebind authors the same outward link add_part does, plus the one link that
+  // would make the document point at itself. The self check comes first so the
+  // assembly id reports as a cycle rather than as an unknown part.
+  if (id === 'set_part_doc') {
+    const { docId } = input as AssemblyOperationInputs['set_part_doc']
+    if (ctx.assemblyDocId !== undefined && docId === ctx.assemblyDocId) {
+      throw new Error(`A part instance cannot point at the assembly it belongs to: ${docId}`)
+    }
+    if (ctx.knownPartIds && !ctx.knownPartIds.has(docId)) {
       throw new Error(`Part is not a live entry in this workspace: ${docId}`)
     }
   }
@@ -283,6 +310,10 @@ export interface AssemblyOperationContext {
   // I8's live-part set: the ids `add_part` is allowed to reference. Optional so
   // an unscoped caller (the store's delete path) needs no workspace.
   knownPartIds?: ReadonlySet<string>
+  /** The open assembly's own doc id, so a `set_part_doc` cannot point an
+   *  instance at the assembly that owns it. Absent in the headless session,
+   *  where the assembly has no workspace identity. */
+  assemblyDocId?: string
 }
 
 export interface AssemblyOperationHost extends AssemblyOperationContext {
@@ -306,7 +337,7 @@ export function runAssemblyOperation<K extends AssemblyOperationId>(
   input: AssemblyOperationInputs[K],
   host: AssemblyOperationHost,
 ): void {
-  const ctx = { transforms: host.transforms, knownPartIds: host.knownPartIds }
+  const ctx = { transforms: host.transforms, knownPartIds: host.knownPartIds, assemblyDocId: host.assemblyDocId }
   // host.doc is the caller's mirror and only decides whether this operation is
   // worth running. The apply is handed to the mutation funnel as a function of
   // the LIVE doc: two operations in one handler (a pattern, a ref pick after a

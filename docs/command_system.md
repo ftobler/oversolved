@@ -319,6 +319,7 @@ the three shared names). Regenerate with `npm run docs:commands`;
 | `reorder_mate` | Reorder mate | - | yes | assembly |
 | `reorder_part` | Reorder part | - | yes | assembly |
 | `set_builtin_visible` | Set builtin visibility | - | yes | assembly |
+| `set_part_doc` | Set part document | - | yes | assembly |
 | `set_part_fixed` | Fix part | - | yes | assembly |
 | `set_part_fixed_oneshot` | Fix part (one-shot) | - | yes | assembly |
 | `set_part_position` | Set part position | - | yes | assembly |

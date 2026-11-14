@@ -1,8 +1,8 @@
 // The assembly tree's solve-status marks: a failed part or mate reddens its own
 // row with the real cause, instead of the old hardcoded re-pick tooltip.
 
-import { describe, it, expect } from 'vitest'
-import { render } from '@testing-library/react'
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { AssemblyTree } from '@/components/layout/AssemblyTree'
 import type { PartInstance, MateFeature } from '@/types/cad'
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
@@ -27,7 +27,11 @@ function status(overrides: Partial<AssemblySolveStatus> = {}): AssemblySolveStat
   }
 }
 
-function renderTree(statusProp: AssemblySolveStatus, editing: { mate?: string; instance?: string } = {}) {
+function renderTree(
+  statusProp: AssemblySolveStatus,
+  editing: { mate?: string; instance?: string } = {},
+  onEditInstance: (handle: string) => void = noop,
+) {
   return render(
     <AssemblyTree
       instances={instances}
@@ -42,7 +46,7 @@ function renderTree(statusProp: AssemblySolveStatus, editing: { mate?: string; i
       onToggleVisible={noop}
       onToggleFixed={noop}
       onToggleBuiltinVisible={noop}
-      onEditInstance={noop}
+      onEditInstance={onEditInstance}
       onCommitInstance={noop}
       onCancelInstance={noop}
       renderInstanceEditor={() => null}
@@ -108,6 +112,23 @@ describe('AssemblyTree solve-status marks', () => {
     // The legacy `.stale .feature-name` rule reddens the name; the real-cause
     // class is not added on top.
     expect(nameByName(container, 'Fixed 1').className).not.toContain('feature-name-error')
+  })
+
+  it('offers the rebind repair on a failed row and no such action on a healthy one', () => {
+    const onEditInstance = vi.fn()
+    const failed = renderTree(
+      status({ parts: { hBad: { failed: true, error: 'part doc not found: hBad' } } }),
+      {},
+      onEditInstance,
+    )
+    fireEvent.click(rowByName(failed.container, 'doc-hBad').querySelector('[aria-label="Part options"]')!)
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Rebind part' }))
+    expect(onEditInstance).toHaveBeenCalledWith('hBad')
+    failed.unmount()
+
+    const healthy = renderTree(status(), {}, onEditInstance)
+    fireEvent.click(rowByName(healthy.container, 'doc-hGood').querySelector('[aria-label="Part options"]')!)
+    expect(screen.queryByRole('menuitem', { name: 'Rebind part' })).toBeNull()
   })
 
   it('names a failed referenced part rather than telling the user to re-pick', () => {

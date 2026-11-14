@@ -107,6 +107,72 @@ describe('PartInstanceEditor rotation', () => {
   })
 })
 
+describe('PartInstanceEditor part picker', () => {
+  // The repair for an instance whose doc_id resolves to nothing: the row is
+  // failed and the editor is the one place to point it at a live part. The
+  // picker is presentational; the commit callback carries the picked id out.
+  it('lists the workspace parts and calls back with the picked id', () => {
+    const onSetPartDoc = vi.fn()
+    render(
+      <PartInstanceEditor
+        instance={instance()}
+        partOptions={[{ id: 'doc-A', name: 'Bracket' }, { id: 'doc-B', name: 'Pin' }]}
+        onSetPartDoc={onSetPartDoc}
+        onSetFixed={vi.fn()}
+        onSetPosition={vi.fn()}
+        onSetRotation={vi.fn()}
+      />
+    )
+    const picker = screen.getByLabelText('Part document') as HTMLSelectElement
+    expect(picker.value).toBe('doc-A')
+    fireEvent.change(picker, { target: { value: 'doc-B' } })
+    expect(onSetPartDoc).toHaveBeenCalledWith('doc-B')
+  })
+
+  it('surfaces the picker when the doc_id names no live part', () => {
+    render(
+      <PartInstanceEditor
+        instance={instance({ doc_id: 'gone' })}
+        partOptions={[{ id: 'doc-A', name: 'Bracket' }]}
+        onSetPartDoc={vi.fn()}
+        onSetFixed={vi.fn()}
+        onSetPosition={vi.fn()}
+        onSetRotation={vi.fn()}
+      />
+    )
+    const picker = screen.getByLabelText('Part document') as HTMLSelectElement
+    // The dangling id stays visible (it is what the document carries) but is
+    // not selectable: only a live pick can be committed.
+    expect(picker.value).toBe('')
+    expect(screen.getByRole('status').textContent).toMatch(/missing/i)
+    expect(screen.getByRole('option', { name: /gone/ })).toBeTruthy()
+  })
+
+  it('stays quiet while the part list has not landed, and offers no picker without a callback', () => {
+    const { rerender } = render(
+      <PartInstanceEditor
+        instance={instance({ doc_id: 'gone' })}
+        onSetPartDoc={vi.fn()}
+        onSetFixed={vi.fn()}
+        onSetPosition={vi.fn()}
+        onSetRotation={vi.fn()}
+      />
+    )
+    expect(screen.getByLabelText('Part document')).toBeTruthy()
+    expect(screen.queryByRole('status')).toBeNull()
+
+    rerender(
+      <PartInstanceEditor
+        instance={instance()}
+        onSetFixed={vi.fn()}
+        onSetPosition={vi.fn()}
+        onSetRotation={vi.fn()}
+      />
+    )
+    expect(screen.queryByLabelText('Part document')).toBeNull()
+  })
+})
+
 describe('PartInstanceEditor pose basis', () => {
   // The viewport draws the solved pose while `instance.transform` is only the
   // placement seed. A position edit must carry the other two axes from the
