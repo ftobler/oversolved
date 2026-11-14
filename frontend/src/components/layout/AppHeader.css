@@ -21,6 +21,14 @@
   min-width: 200px;
 }
 
+/* The slot a page fills after the wordmark. The trail and the document name
+   bring a horizontal inset of their own; a page group such as the workspace
+   search brings none, so at the button gap it sat hard against the wordmark
+   and read as part of it. */
+.app-header .doc-controls {
+  margin-left: 12px;
+}
+
 .app-header-right {
   display: flex;
   align-items: center;
@@ -275,6 +283,12 @@ button.breadcrumb-name:disabled {
 
   .logo {
     display: none;
+  }
+
+  /* The wordmark is gone, so the page group follows the burger; the desktop
+     inset would leave a hole after it. */
+  .app-header .doc-controls {
+    margin-left: 0;
   }
 
   /* The editors' document group carries two more buttons than the other
