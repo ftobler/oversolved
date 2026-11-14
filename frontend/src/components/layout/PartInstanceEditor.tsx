@@ -177,7 +177,9 @@ export function PartInstanceEditor({
           </label>
           {partMissing && (
             <p className="instance-part-missing" role="status">
-              This part is missing. Pick a part to rebind the instance.
+              {listedParts.length === 0
+                ? 'This part is missing, and this workspace has no parts to rebind it to.'
+                : 'This part is missing. Pick a part to rebind the instance.'}
             </p>
           )}
         </>

@@ -261,8 +261,14 @@ describe('validateAssemblyMutation refusals', () => {
   it('states that a rebind leaves mate refs to the solver stale rules', () => {
     const note = ASSEMBLY_MUTATION_CATALOG.set_part_doc.note!
     expect(note).toContain('keep their ref rows unchanged')
-    expect(note).toContain('reports the mate stale')
-    expect(note).toContain('descriptor')
+    expect(note).toContain('anchorByGeomHash')
+    expect(note).toContain('anchor descriptor')
+    expect(note).toContain('the mate reports stale')
+    // The refusal asymmetry: the bound check is the validator's, the cycle
+    // check only exists where the assembly id is known.
+    expect(note).toContain('shape-only')
+    expect(note).toContain('`thrown`')
+    expect(note).toContain('self/cycle refusal lives only in the operation layer')
   })
 
   it('accepts a null parameter as the documented delete', () => {

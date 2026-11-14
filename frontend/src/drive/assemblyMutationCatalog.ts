@@ -319,10 +319,15 @@ export const ASSEMBLY_MUTATION_CATALOG = {
     summary: 'Point a part instance at another part document (rebind a dangling reference).',
     note: '`part` is a doc_id bound for this call. The instance keeps its handle, pose, fixed flag and '
       + 'visibility; `doc_rev` resets because the old part\'s revision says nothing about the new one. '
-      + 'Mates that name the instance keep their ref rows unchanged, since the handle is unchanged: each '
-      + 'anchor is re-resolved against the new part, so a rebind to a part with the same geometry re-finds '
-      + 'the element (the stored anchor descriptor is the fallback) while a rebind to a different part '
-      + 'reports the mate stale rather than rewriting its refs.',
+      + 'Mates that name the instance keep their ref rows unchanged, since the handle is unchanged. Each '
+      + 'anchor is re-resolved against the new part: the stored anchor id, then a deterministic-id re-key '
+      + '(anchorByGeomHash), then the stored anchor descriptor can re-find the element, so a part with the '
+      + 'same geometry keeps the mate. When the new part carries no matching element the mate reports stale '
+      + 'rather than having its refs rewritten. '
+      + 'Refusal asymmetry: this row checks `part` against the call\'s binding (`boundPartIds`); a shape-only '
+      + 'validation with no binding skips that check, and the operation\'s own throw then surfaces headless '
+      + 'as `thrown`. The self/cycle refusal lives only in the operation layer, because an assembly id can '
+      + 'never be a bound parts entry.',
     fields: {
       handle: str('The instance to rebind.'),
       part: str('The bound part doc_id the instance should point at.'),

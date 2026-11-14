@@ -203,7 +203,7 @@
    failure's explanation, not as another field label. */
 .instance-part-missing {
   margin: 2px 0 4px;
-  color: #b00020;
+  color: #f44336;
   font-size: 11px;
 }
 
