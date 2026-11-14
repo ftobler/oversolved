@@ -207,7 +207,7 @@ export function solveSplit(
       // output in each half, and two separate transfers would hand that face's
       // UUID to both. One call makes it a genuine split and names the children.
       const produced = transferFor(
-        oc, scope, names, compound,
+        oc, scope, featureId, names, compound,
         [...halfAbove.faceOrigin, ...halfBelow.faceOrigin],
         bases,
       )
@@ -228,7 +228,7 @@ export function solveSplit(
     return {
       body,
       shape: kept.shape,
-      names: transferFor(oc, scope, names, kept.shape, kept.faceOrigin, bases),
+      names: transferFor(oc, scope, featureId, names, kept.shape, kept.faceOrigin, bases),
       diff: kept.diff,
       preferred: null,
     }
@@ -263,10 +263,14 @@ function compoundOf(oc: OccModule, scope: DisposeScope, halves: HalfCut[]): OccS
 }
 
 /** Names for a cut's result: the target's faces carry verbatim, each box base
- *  becomes its side's cap. */
+ *  becomes its side's cap. The box is this split's own tool, so its cap face
+ *  and the edges between a cap and an older face belong to the split: without
+ *  the creator, a cap edge next to a face an earlier feature owns reads that
+ *  face's owner instead. */
 function transferFor(
   oc: OccModule,
   scope: DisposeScope,
+  featureId: string,
   names: ShapeNames,
   bodyShape: OccShape,
   faceOrigin: FaceOrigin[],
@@ -283,6 +287,7 @@ function transferFor(
     toolFaceNames,
     toolFaceAncestry: {},
     toolCapAncestry: {},
+    toolCreatedBy: featureId,
     // The box is this cut's own tool, never a kept body, so the cap UUIDs are
     // already unique to the split and carry verbatim.
     toolUuidScope: null,

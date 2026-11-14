@@ -385,6 +385,10 @@ function nameMovedFaces(
     toolFaceNames,
     toolFaceAncestry,
     toolCapAncestry: null,
+    // The moved cap and the extension faces are this move's own tool. Without
+    // the creator, an edge where an extension meets an older owned face takes
+    // that face's owner instead of the move that made the edge.
+    toolCreatedBy: featureId,
     toolUuidScope: null,
   })
 }

@@ -596,6 +596,11 @@ export function nameEdgeGroups(
     edgeAncestry[uuid] = ancestryOf(namedBy, edge)
     if (owners === undefined) return
     const candidates = namedBy.filter((fu) => owners.faceOwner[fu] !== undefined)
+    // `prefer` is every face this operation's tool made, so this search only
+    // falls through to `candidates[0]` for a pair of OLDER faces: an edge the
+    // operation re-derived between two target faces that became adjacent.
+    // Neither face made the edge, so the uuid order is a stable tie-break, not
+    // a statement about which feature the edge came from.
     const chosen = candidates.find((fu) => owners.prefer.has(fu)) ?? candidates[0]
     if (chosen !== undefined) edgeOwner[uuid] = owners.faceOwner[chosen]
   }
