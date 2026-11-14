@@ -199,13 +199,6 @@
   padding: 0 4px;  /* three boxes to a row: spend the width on digits */
 }
 
-/* The Part row is a single choice, so it keeps the wide label and hands the
-   rest of the row to the native select. */
-.instance-part-select {
-  flex: 1;
-  min-width: 0;
-}
-
 /* The missing-part repair notice sits under its picker and reads as the
    failure's explanation, not as another field label. */
 .instance-part-missing {

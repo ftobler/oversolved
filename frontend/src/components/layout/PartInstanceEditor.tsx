@@ -159,7 +159,7 @@ export function PartInstanceEditor({
             {/* A dangling id stays visible as the placeholder, but it is not a
                 value the user can re-commit: only a live pick writes. */}
             <select
-              className="instance-part-select"
+              className="feature-field-select"
               aria-label="Part document"
               value={partMissing ? '' : instance.doc_id}
               autoFocus={partMissing}
