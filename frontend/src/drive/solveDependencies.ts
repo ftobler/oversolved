@@ -79,10 +79,12 @@ export function usesSettledSketchGeometry(raw: unknown, doc?: PartDoc | null): b
     case 'delete':
       return deletesFitPoint(raw) || deletesFaceProjection(raw, doc)
     // A face projection's member ids come from the face's boundary in the last
-    // solved bodies, so the step must run against a settled document. An edge,
-    // vertex or sketch source takes its kind from the pick and needs no solve.
+    // solved bodies, and a `?` body source resolves only against that same
+    // settle; both run against a settled document. An `@sk/ent` or `$` source is
+    // a document question (the applier's classifier), so it needs no solve.
     case 'add_projected_entity':
-      return typeof raw.source === 'string' && isFaceProjectionSource(raw.source)
+      return typeof raw.source === 'string'
+        && (isFaceProjectionSource(raw.source) || raw.source.startsWith('?'))
     default:
       return carriesDockRef(raw)
   }

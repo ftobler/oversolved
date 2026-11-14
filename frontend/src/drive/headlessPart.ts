@@ -14,9 +14,13 @@
 import type { PartDoc, Mutation, SketchData, BodyResult, BuildResponse } from '@/types/cad'
 import {
   faceBoundaryFromBodies, freezeRowsForDelete, isFaceProjectionSource,
-  projectionNotFrozenMessage, projectionsFreezingNothing,
+  projectionDependentsReport, projectionNotFrozenMessage, projectionsFreezingNothing,
   type FaceBoundaryBodyLike, type ProjectionMemberEntity,
 } from '@/kernel/features/projectionMembers'
+import { repoFromSnapshot } from '@/kernel/builder'
+import type { BuildState } from '@/kernel/types3d'
+import type { PlaneFrame } from '@/kernel/features/projectionLowering'
+import { projectSourceQuery } from '@/kernel/features/sketch'
 import { createDocSession, type DocSession } from '@/session/DocSession'
 import type { SolveOptions, SolveSchedulerState } from '@/session/SolveScheduler'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
@@ -189,6 +193,63 @@ function isFaceProjectionStep(mutation: unknown): boolean {
     && isFaceProjectionSource(step.source)
 }
 
+/**
+ * The body-query projection check the drive injects: a `?...` source resolves
+ * only through the repository of the last settle, the same `projectSourceQuery`
+ * the solve lowering uses. A document-only source (a sketch ref, a `$` chain,
+ * the builtin origin) is judged by the applier's own classifier, so this
+ * answers ok and costs nothing.
+ *
+ * The repository is restored from the target sketch's checkpoint, which holds
+ * every upstream feature's registration exactly as the last solve left it. The
+ * drive flushes an owed solve before such a step, so the checkpoint exists; a
+ * refused answer means the source is gone from the current document.
+ */
+function bodyProjectionResolveCheck(
+  getResponse: () => Awaited<ReturnType<typeof solveLocally>>,
+): (source: string, featureId: string) => { ok: true } | { ok: false; reason: string } {
+  return (source, featureId) => {
+    if (!source.startsWith('?')) return { ok: true }
+    const state = getResponse()?._build_state as Readonly<BuildState> | undefined
+    if (state === undefined) {
+      return {
+        ok: false,
+        reason: `projection source ${source} did not resolve; the document has not been solved yet`,
+      }
+    }
+    const order = state.feature_order
+    const at = order.indexOf(featureId)
+    const candidates = at >= 0 ? order.slice(0, at + 1) : order
+    const checkpoint = [...candidates].reverse()
+      .map(id => state.checkpoints[id])
+      .find(held => held !== undefined)
+    if (checkpoint === undefined) {
+      return {
+        ok: false,
+        reason: `projection source ${source} did not resolve; no solved feature precedes '${featureId}'`,
+      }
+    }
+    const repo = repoFromSnapshot(checkpoint.repo_snapshot)
+    const plane = repo.elements.get('_pt_' + featureId) as PlaneFrame | undefined
+    if (plane === undefined) {
+      return {
+        ok: false,
+        reason: `projection source ${source} did not resolve; sketch '${featureId}' has no solved frame`,
+      }
+    }
+    let projected: ReturnType<typeof projectSourceQuery>
+    try {
+      projected = projectSourceQuery(source, plane, repo, false)
+    } catch {
+      return { ok: false, reason: `projection source ${source} did not resolve against the last solve` }
+    }
+    if (projected === null) {
+      return { ok: false, reason: `projection source ${source} did not resolve against the last solve` }
+    }
+    return { ok: true }
+  }
+}
+
 
 /** Fill a drive `delete` of a face projection with the member rows the last
  *  solve derived, the headless twin of the editor's freeze payload. Without it a
@@ -340,6 +401,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     projectionBoundary: faceBoundaryFromBodies(
       () => responseBox.current?.bodies as Record<string, FaceBoundaryBodyLike> | undefined,
     ),
+    projectionResolves: bodyProjectionResolveCheck(() => responseBox.current),
     ...(opts.journal && { journal: journalSink(opts.journal) }),
   })
 
@@ -426,9 +488,9 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
           // carried no bodies) solves once before its first selector step.
           let bodies = responseBox.current?.bodies as Record<string, BodyResult> | undefined
           // A face projection needs the last solve's body mesh to derive its
-          // member ids, exactly like a selector pick needs it to resolve. A
-          // delete of one needs the settled face too, so its freeze rows are
-          // the current members, not the previous solve's.
+          // member ids, and a body-query projection resolves only against that
+          // same solve. A delete of a face projection needs the settled face too,
+          // so its freeze rows are the current members, not the previous solve's.
           const needsBodies = usesSelectionAid(step.mutation) || isFaceProjectionStep(step.mutation)
           const needsSettled = usesSettledSketchGeometry(step.mutation, docBox.current)
           if (needsBodies || needsSettled) {
@@ -455,9 +517,29 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
           const importable = resolveDxfFile(validated.mutation, opts.files, docBox.current)
           if (!importable.ok) return { ok: false, code: importable.code, message: importable.message }
           const frozen = withProjectionFreeze(importable.mutation, docBox.current, responseBox.current?.result)
+          // The downstream-projection note reads the rows before the delete:
+          // afterwards the source is gone and the note has nothing to name.
+          const dependents = frozen.mutation.type === 'delete' && docBox.current !== null
+            ? projectionDependentsReport(docBox.current, frozen.mutation.targets)
+            : null
           const applied = session.execute(frozen.mutation)
-          const noted = frozen.frozenNothing !== undefined && applied.ok
-            ? { ...applied, note: projectionNotFrozenMessage(frozen.frozenNothing) }
+          const noteParts: string[] = []
+          const noteIds: string[] = []
+          if (frozen.frozenNothing !== undefined && applied.ok) {
+            noteParts.push(projectionNotFrozenMessage(frozen.frozenNothing))
+            for (const target of frozen.mutation.type === 'delete' ? frozen.mutation.targets : []) {
+              const [kind, featureId] = target.split(':')
+              if (kind === 'constraint' && featureId !== undefined && !noteIds.includes(featureId)) {
+                noteIds.push(featureId)
+              }
+            }
+          }
+          if (dependents !== null && applied.ok) {
+            noteParts.push(dependents.text)
+            for (const id of dependents.ids) if (!noteIds.includes(id)) noteIds.push(id)
+          }
+          const noted = noteParts.length > 0
+            ? { ...applied, note: noteParts.join(' '), noteIds }
             : applied
           // A refused filter is a no-op: the step says no-change instead of
           // reporting layer rows for an import that did not happen.

@@ -18,7 +18,7 @@
  * imported documents that still carry the raw sugar.
  */
 
-import type { Sketch, SketchFeature, Entity, Constraints } from '@/types/cad'
+import type { Sketch, SketchFeature, Entity, Constraints, PartDoc, PartFeature } from '@/types/cad'
 import { getEntityKind } from '@/types/cad'
 import type { Repository } from '../query'
 import { getPoint3d } from '../query'
@@ -45,7 +45,7 @@ import { isKernelTrap, swallowUnlessTrap } from '../errors'
 import { memoizedLoad } from '../occ/memoizedLoad'
 import { resolveDragMode, PROBE_STEP_REL, type CircleDragMode } from './circleDragMode'
 import { resolve3dGeometry, projectTo2d, projectCenter, type PlaneFrame } from './projectionLowering'
-import { reconcileFaceProjection, type ProjectionMemberEntity, type ProjectionMemberReport } from './projectionMembers'
+import { reconcileFaceProjection, classifyProjectionSource, type ProjectionMemberEntity, type ProjectionMemberReport } from './projectionMembers'
 import type { FaceBoundaryLookup } from './faceBoundary'
 import type { PlaneLike } from './shared/planes'
 import type { SolveBytes } from '@/wasm-kernel/codec'
@@ -96,6 +96,9 @@ export interface SketchResult {
    *  this solve. An unresolved projection with a cached position keeps it; one
    *  that never had a position is also left out of the geometry and the profile. */
   projection_errors?: string[]
+  /** The subset of `projection_errors` whose held entity has no position: the
+   *  rows the solve also leaves out of the geometry and the profile. */
+  projection_unpositioned?: string[]
   /** Face projections only: the per-constraint derived membership this solve.
    *  The ids and params are solve-time facts (no member is a document row); the
    *  write-back installs only the `members` map, and a freeze mutation copies
@@ -355,7 +358,7 @@ function isProjectionPosition(stored: unknown, kind: string, handles?: unknown):
  * Project one body/sketch source query; `declaredPoint` asks for the curve
  * centre when the source is curved (a projection declared `point`).
  */
-function projectSourceQuery(
+export function projectSourceQuery(
   source: string,
   plane: PlaneFrame,
   globalRepo: Repository,
@@ -407,6 +410,7 @@ function lowerProjectionConstraints(
   plane: ReturnType<typeof resolveSketchPlane>,
   globalRepo: Repository,
   faceBoundary?: FaceBoundaryLookup,
+  featuresById: Record<string, Dict> = {},
 ): {
   loweredFeature: Dict
   resolvedKinds: Record<string, string>
@@ -415,8 +419,12 @@ function lowerProjectionConstraints(
   projectionWarnings: string[]
   pinnedIds: string[]
   unpositionedIds: string[]
+  /** The projection constraints whose held entity never had a position: the
+   *  subset of `projectionErrors` that is also left out of the profile. */
+  projectionUnpositioned: string[]
 } {
   const entities = (feature.entities as Array<Dict>) ?? []
+  const featureId = (feature.id as string) ?? ''
   const constraints = [...((feature.constraints as Array<Dict>) ?? [])]
   // Legacy v5 (and raw) docs may still carry `source` on the entity instead of
   // a `projection` constraint. Fold those into projection constraints here so
@@ -438,6 +446,7 @@ function lowerProjectionConstraints(
   const projectionWarnings: string[] = []
   const pinnedIds: string[] = []
   const unpositionedIds: string[] = []
+  const projectionUnpositioned: string[] = []
   // Entities derived from a face boundary are passed to `partDocToSketches` as
   // solve facts (with the resolved kinds), never written into the feature or
   // its `initial`.
@@ -445,12 +454,25 @@ function lowerProjectionConstraints(
   if (projections.length === 0) {
     return {
       loweredFeature: feature, resolvedKinds, projectionMembers, projectionErrors, projectionWarnings,
-      pinnedIds, unpositionedIds,
+      pinnedIds, unpositionedIds, projectionUnpositioned,
     }
   }
 
   const initial: Record<string, number[]> = { ...((feature.initial as Record<string, number[]>) ?? {}) }
   const seenTargets = new Set<string>()
+  // Order-sensitive features for the source classifier: `featuresById` keeps the
+  // document order (the builder inserts by iterating the log), which is the only
+  // input the forward-reference rule needs. Built lazily because the clean solve
+  // never asks.
+  let sourceDoc: PartDoc | null = null
+  const documentForSources = (): PartDoc => {
+    sourceDoc ??= {
+      version: 1,
+      kind: 'part',
+      features: Object.entries(featuresById).map(([id, def]) => ({ ...(def as object), id }) as PartFeature),
+    }
+    return sourceDoc
+  }
   for (const pc of projections) {
     const cid = pc.id as string
     const targetRef = typeof pc.target === 'string' ? pc.target : ''
@@ -568,21 +590,27 @@ function lowerProjectionConstraints(
     pinnedIds.push(targetId)
     if (!resolved) {
       projectionErrors.push(cid)
+      // A sketch source carries its cause in the document, so name it instead of
+      // the generic did-not-resolve sentence. A body query keeps the two-state
+      // wording: whether the face still exists is only known to the solve, not
+      // to the document.
+      const sourceProblem = source.startsWith('?') || source === '@builtin_origin'
+        ? null
+        : classifyProjectionSource(documentForSources(), featureId, source, targetId)
+      const stateText = hadPosition
+        ? 'the entity keeps its last position'
+        : 'the entity has no position yet and is left out of the profile'
       // Named, not silent: the drive reply reads this as a warning row on the
       // sketch, so an unresolved projection cannot read as a clean build. The
       // sentence has to say which of the two states the entity is in, because
       // only one of them keeps its geometry.
-      if (hadPosition) {
-        projectionWarnings.push(
-          `projection ${cid} source ${source === '' ? '(none)' : source} did not resolve; `
-          + 'the entity keeps its last position',
-        )
-      } else {
-        projectionWarnings.push(
-          `projection ${cid} source ${source === '' ? '(none)' : source} did not resolve; `
-          + 'the entity has no position yet and is left out of the profile',
-        )
+      projectionWarnings.push(
+        `projection ${cid} source ${source === '' ? '(none)' : source} did not resolve; `
+        + `${sourceProblem === null ? stateText : sourceProblem.kind}`,
+      )
+      if (!hadPosition) {
         unpositionedIds.push(targetId)
+        projectionUnpositioned.push(cid)
       }
     }
   }
@@ -595,6 +623,7 @@ function lowerProjectionConstraints(
     projectionWarnings,
     pinnedIds,
     unpositionedIds,
+    projectionUnpositioned,
   }
 }
 
@@ -842,8 +871,8 @@ export function solveSketch(
     globalRepo,
     { sketchId: featureId, featuresById },
   )
-  const { loweredFeature, resolvedKinds, projectionMembers, projectionErrors, projectionWarnings, pinnedIds, unpositionedIds } =
-    lowerProjectionConstraints(feature, plane, globalRepo, faceBoundary)
+  const { loweredFeature, resolvedKinds, projectionMembers, projectionErrors, projectionWarnings, pinnedIds, unpositionedIds, projectionUnpositioned } =
+    lowerProjectionConstraints(feature, plane, globalRepo, faceBoundary, featuresById)
   // A projection that never had a position stays pinned in the solve but is kept
   // out of the solved geometry below, and therefore out of the profile topology:
   // baking its default all-zero params would make that degenerate curve both a
@@ -1028,6 +1057,7 @@ export function solveSketch(
     ...(Object.keys(resolvedKinds).length ? { resolved_kinds: resolvedKinds } : {}),
     ...(Object.keys(projectionMembers).length ? { projection_members: projectionMembers } : {}),
     ...(projectionErrors.length ? { projection_errors: projectionErrors } : {}),
+    ...(projectionUnpositioned.length ? { projection_unpositioned: projectionUnpositioned } : {}),
     ...(degenerateList.length ? { degenerate_entities: degenerateList } : {}),
     ...(droppedList.length ? { dropped_constraints: droppedList } : {}),
     solve_ms: 0,

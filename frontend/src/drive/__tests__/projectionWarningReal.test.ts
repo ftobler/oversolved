@@ -25,6 +25,19 @@ const doc: PartDoc = {
   ],
 }
 
+function heldSketch(source: string, initial: Record<string, number[]>, id = 'sk2'): Dict {
+  return {
+    id, kind: 'sketch', plane: '@builtin_plane_right',
+    entities: [{ id: 'held', kind: 'point' }],
+    initial,
+    constraints: [{ id: 'proj_held', kind: 'projection', target: '$held', source }],
+  }
+}
+
+function deadRepo(): Repository {
+  return { query: () => null, elements: new Map() } as unknown as Repository
+}
+
 describe('an unresolved projection reaches the drive as a feature warning', () => {
   beforeEach(() => {
     resetSketchSolver()
@@ -39,13 +52,51 @@ describe('an unresolved projection reaches the drive as a feature warning', () =
       initial: { held: [3, 4] },
       constraints: [{ id: 'proj_held', kind: 'projection', target: '$held', source: '@sk1/doesNotExist' }],
     }
-    const repo = { query: () => null, elements: new Map() } as unknown as Repository
-    const out = solveSketch(feature, repo, {} as Record<string, Body>)
+    const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
     // The reply's `features` list is the drive's own reading of the solve row.
     const outcomes = readSolveOutcomes({ sk2: out } as unknown as BuildResponse['result'])
     const problems = featureProblems(doc, outcomes)
     const row = problems.find(problem => problem.id === 'sk2')
     expect(row).toBeDefined()
     expect(row!.message).toContain('projection proj_held source @sk1/doesNotExist did not resolve')
+    // The structured split rides the same problem row: this one had a position.
+    expect(row!.projectionErrors).toEqual({ keeps_last_position: ['proj_held'], unpositioned: [] })
+  })
+
+  it('names a forward reference in a stored document', () => {
+    if (!solveBytes) return
+    const feature = heldSketch('@sk3/q3', { held: [3, 4] })
+    const featuresById: Record<string, Dict> = {
+      sk1: { id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front', entities: [], initial: {}, constraints: [] },
+      sk2: feature,
+      sk3: {
+        id: 'sk3', kind: 'sketch', plane: '@builtin_plane_top',
+        entities: [{ id: 'q3', kind: 'point' }], initial: { q3: [1, 1] }, constraints: [],
+      },
+    }
+    const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>, featuresById)
+    expect(out.solver_warning).toContain(
+      'projection proj_held source @sk3/q3 did not resolve; forward reference',
+    )
+    const forwardDoc: PartDoc = {
+      version: 1, kind: 'part',
+      features: [
+        featuresById.sk1 as never,
+        feature as never,
+        featuresById.sk3 as never,
+      ],
+    }
+    const outcomes = readSolveOutcomes({ sk2: out } as unknown as BuildResponse['result'])
+    const row = featureProblems(forwardDoc, outcomes).find(problem => problem.id === 'sk2')!
+    expect(row.projectionErrors).toEqual({ keeps_last_position: ['proj_held'], unpositioned: [] })
+  })
+
+  it('lists a never-positioned projection as unpositioned', () => {
+    if (!solveBytes) return
+    const feature = heldSketch('@sk9/nope', {})
+    const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
+    const outcomes = readSolveOutcomes({ sk2: out } as unknown as BuildResponse['result'])
+    const row = featureProblems(doc, outcomes).find(problem => problem.id === 'sk2')!
+    expect(row.projectionErrors).toEqual({ keeps_last_position: [], unpositioned: ['proj_held'] })
   })
 })

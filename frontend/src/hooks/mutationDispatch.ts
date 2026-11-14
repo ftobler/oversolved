@@ -109,6 +109,7 @@ import {
   applySetLengthUnit,
 } from '@/utils/yamlMutations'
 import { applyRemoveDanglingContent } from '@/utils/yamlMutations/solveResult'
+import { MutationRefusal } from '@/utils/yamlMutations/helpers'
 
 type MutationHandlers = {
   [K in Mutation['type']]: (
@@ -118,11 +119,21 @@ type MutationHandlers = {
   ) => Mutation | void
 }
 
+/** The settled-solve answer a host injects for a projection source that is not
+ *  a document row: a body edge/vertex/face query. The headless drive builds it
+ *  from the last solved repository; the UI's picks come from that same scene. */
+export type ProjectionResolveCheck = (
+  source: string,
+  featureId: string,
+) => { ok: true } | { ok: false; reason: string }
+
 /** What an applier may read besides the document: right now only a face's
  *  current boundary, which the session injects from the last solved bodies so a
- *  face projection's member ids can be derived at add time. */
+ *  face projection's member ids can be derived at add time, and the settled
+ *  source check that refuses a projection that would never resolve. */
 export interface MutationContext {
   projectionBoundary?: FaceBoundaryLookup
+  projectionResolves?: ProjectionResolveCheck
 }
 
 // A pick field that also accepts a selector aid. The headless drive resolves a
@@ -180,8 +191,11 @@ export const mutationHandlers: MutationHandlers = {
     applySetConstraintPos(next, m.featureId, m.constraintId, m.pos),
   set_constraint_sign: (next, m) =>
     applySetConstraintSign(next, m.featureId, m.constraintId, m.sign),
-  delete: (next, m) =>
-    applyDeleteElements(next, m.targets, m.materialize),
+  delete: (next, m) => {
+    // The downstream-projection note is computed by the host before the apply
+    // (the rows are gone afterwards); the applier's report is for direct tests.
+    applyDeleteElements(next, m.targets, m.materialize)
+  },
   add_entity: (next, m) =>
     applyAddEntity(next, m.featureId, m.kind, m.params, m.entityId, {
       tangents: m.tangents, tangentScale: m.tangentScale,
@@ -207,6 +221,14 @@ export const mutationHandlers: MutationHandlers = {
     // A face source has no single kind: it derives members instead. Every other
     // source still needs the pick-time kind (the drive fills it from a selector).
     if (m.kind === undefined && !isFaceProjectionSource(source)) throw new Error(UNRESOLVED_PROJECTION_KIND)
+    // A projection that has never resolved is a state the document must never
+    // be given: a body source resolves only against the settled solve, so the
+    // host answers before the applier stores the row. A source the document can
+    // already judge (a sketch ref, a $ chain) is refused inside the applier.
+    if (!isFaceProjectionSource(source) && ctx?.projectionResolves !== undefined) {
+      const resolved = ctx.projectionResolves(source, m.featureId)
+      if (!resolved.ok) throw new MutationRefusal(resolved.reason)
+    }
     const derived = applyAddProjectedEntity(next, m.featureId, m.kind ?? '', source, m.entityId, m.constraintId, {
       faceBoundary: ctx?.projectionBoundary,
       members: m.members,

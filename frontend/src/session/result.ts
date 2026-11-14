@@ -6,6 +6,7 @@
 export type SessionErrorCode =
   | 'no-document'
   | 'unknown-mutation'
+  | 'refused'
   | 'rollback-unsynced'
   | 'preview-already-open'
   | 'preview-over-session'

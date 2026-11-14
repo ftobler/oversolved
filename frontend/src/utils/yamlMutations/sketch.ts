@@ -4,7 +4,7 @@ import {
   warn, round, allFinite, findSketchFeature, parseTarget, uniqueConstraintId,
   resolveSketch, mintEntityId, CONSTRAINT_REF_FIELDS, refMatchesEntity,
   canonicalLineDistanceTargets, isPointLikeEntityKind,
-  pointDistanceZeroProblem,
+  pointDistanceZeroProblem, MutationRefusal,
 } from './helpers'
 import {
   ENTITY_SIZE_FLOOR, dimensionSizeProblem, entitySizeProblem,
@@ -23,6 +23,7 @@ import { hidePlanesIfFirstBoundSketch } from './featureAdmin'
 import { applyAddFitSpline, applyDeleteFitPoint, type FitSplineAddOptions } from './fitSpline'
 import {
   deriveMemberIds, faceProjectionConstraintId, isFaceProjectionSource, reconcileFaceProjection,
+  describeProjectionSourceProblem, projectionDependentsReport, type ProjectionDependentsReport,
 } from '@/kernel/features/projectionMembers'
 import type { FaceBoundaryLookup } from '@/kernel/features/faceBoundary'
 
@@ -623,7 +624,10 @@ export function applyDeleteElements(
   doc: PartDoc,
   targets: string[],
   materialize?: ReadonlyArray<{ id: string; kind: string; params: readonly number[] }>,
-): void {
+): ProjectionDependentsReport | null {
+  // Read before any row is removed: the downstream projections must keep their
+  // last position, and the caller reports that as a note beside the delete.
+  const dependents = projectionDependentsReport(doc, targets)
   const byFeature: Record<string, { entities: Set<string>; constraints: Set<string> }> = {}
   // A `fit<k>` target removes one point of a positional list, so each removal
   // renumbers the list under the remaining targets. Collect them per entity and
@@ -745,6 +749,7 @@ export function applyDeleteElements(
       feature.constraints = feature.constraints.filter(c => !consToDelete.has(c.id))
     }
   }
+  return dependents
 }
 
 export function applySetConstraintValue(
@@ -918,6 +923,15 @@ export function applyAddProjectedEntity(
   constraintId?: string,
   options: AddProjectionOptions = {},
 ): AddedFaceProjection | undefined {
+  // A sketch source names a document row the solve must later resolve. Refuse
+  // one that can never do so (self, missing sketch/entity, a later sketch, a $
+  // chain that closes on itself) before any container is materialized, so the
+  // refusal leaves the document byte-identical. A face source and a body query
+  // keep their own resolution paths below.
+  if (!isFaceProjectionSource(source)) {
+    const problem = describeProjectionSourceProblem(doc, featureId, source, entityId)
+    if (problem !== null) throw new MutationRefusal(problem)
+  }
   const feature = resolveSketch(doc, featureId, 'entities', 'constraints')
   if (!feature) return undefined
   // A face projects as one live constraint whose members are derived, not as one

@@ -1103,7 +1103,10 @@ export const MUTATION_CATALOG = {
       + 'out of the profile). A body circle, arc or ellipse edge, or another sketch\'s circle or arc, seen '
       + 'edge-on projects as a line (its silhouette extent); `kind: "point"` on such a curved source projects '
       + 'its centre in any orientation. A line perpendicular to the sketch plane projects as a point (its '
-      + 'midpoint). A FACE source is one live projection with no target: its boundary edges are derived as '
+      + 'midpoint). A `source` that can never resolve is refused with the cause (a sketch projecting its own '
+      + 'entity, an unknown sketch or entity, a forward reference to a later sketch, a `$` cycle, or a source '
+      + 'with no position); a body query resolves against the settled solve and is refused when nothing '
+      + 'matches. A FACE source is one live projection with no target: its boundary edges are derived as '
       + 'members on every solve, so a later fillet or cut adds or removes members without a new pick. A supplied '
       + '`kind` is ignored for a face source (the whole wire is derived). Seam edges are skipped. Members are not '
       + 'document rows; their ids live in the constraint\'s `members` map and a deleted member is recorded in '
@@ -1725,7 +1728,8 @@ export const MUTATION_CATALOG = {
     note: 'Give exactly one of `toIndex`, `before` or `after`. `before: <featureId>` lands the feature directly above ' +
       'that feature and `after` directly below it, with no rows to count; `toIndex` counts the seeded plane rows, so ' +
       'the first user feature usually sits at index 4. A sketch that names a plane defined after it is fixed with ' +
-      '`{featureId: <planeId>, before: <sketchId>}`.',
+      '`{featureId: <planeId>, before: <sketchId>}`. A move that would put a sketch before a sketch it projects from ' +
+      'is refused with the blocking pair (a sketch can only project earlier sketches); move the pair the other way.',
     fields: {
       featureId: str(),
       toIndex: optNum(),

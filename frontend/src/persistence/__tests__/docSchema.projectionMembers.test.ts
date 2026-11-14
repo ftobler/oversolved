@@ -113,4 +113,39 @@ describe('projection member validation', () => {
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error.field).toBe('features[0].constraints[0].members')
   })
+
+  it('still opens a stored document whose sketch projection can never resolve', () => {
+    // The loader stays tolerant: the applier refuses these at authoring time,
+    // but an older or hand-edited document must open, warn and remain repairable.
+    const stored = {
+      version: CURRENT_DOC_VERSION,
+      kind: 'part',
+      features: [
+        {
+          id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+          entities: [{ id: 'l1', kind: 'line' }], initial: { l1: [0, 0, 10, 0] },
+        },
+        {
+          id: 'sk2', kind: 'sketch', plane: '@builtin_plane_right',
+          entities: [{ id: 'h', kind: 'point' }], initial: { h: [1, 1] },
+          constraints: [
+            { id: 'p_self', kind: 'projection', target: '$h', source: '@sk2/l1' },
+            { id: 'p_missing_sketch', kind: 'projection', target: '$h', source: '@sk9/zz' },
+            { id: 'p_missing_entity', kind: 'projection', target: '$h', source: '@sk1/nope' },
+            { id: 'p_forward', kind: 'projection', target: '$h', source: '@sk3/q3' },
+            { id: 'p_cycle', kind: 'projection', target: '$h', source: '$h' },
+          ],
+        },
+        {
+          id: 'sk3', kind: 'sketch', plane: '@builtin_plane_top',
+          entities: [{ id: 'q3', kind: 'point' }], initial: { q3: [3, 3] },
+        },
+      ],
+    }
+    const result = loadPartDoc(stored)
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.migrations).toEqual([])
+    expect(result.doc.features).toHaveLength(3)
+  })
 })

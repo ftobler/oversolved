@@ -186,9 +186,18 @@ export async function runHeadless(opts: HeadlessRunOptions): Promise<HeadlessRun
   // this call to be inconsistent.
   const allFrames = part.featureFrames()
   const settleNote = part.settleNote()
+  // A step caveat joins the reply's own notes, so a caller reading the top-level
+  // list sees a delete that left dependent projections behind without scanning
+  // the steps. Steps without an id cannot be sorted into the feature order and
+  // stay on the step outcome.
+  const stepNotes = outcome.steps.flatMap((step): FeatureNote[] =>
+    step.note !== undefined && step.noteIds !== undefined && step.noteIds.length > 0
+      ? [{ ids: [...step.noteIds], text: step.note }]
+      : [])
   const notes = doc !== null && solved
     ? featureNotes(doc, part.solveOutcomes(), [
         ...(settleNote === null ? [] : [settleNote]),
+        ...stepNotes,
         ...(allFrames === null ? [] : frameConflicts(doc, allFrames)),
       ])
     : []

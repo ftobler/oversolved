@@ -215,6 +215,9 @@ export default function Part() {
   const workspaceId = params.workspaceId
   const navigate = useNavigate()
   const notify = useNotifySafe()
+  // A refused mutation is the user's next instruction, not a crash: the same
+  // toast the editor uses for a refused pick.
+  const notifyRefusal = useCallback((message: string) => notify(message, 'error'), [notify])
   const [mode, setMode] = useState<'sketch' | 'feature'>('sketch')
   // rollbackPosition is owned by the L2 editor-state store (single source of
   // truth). Read here for memos / props; mutate via its setters.
@@ -316,7 +319,14 @@ export default function Part() {
     commitEditSession,
     cancelEditSession,
     registerUndoTeardown,
-  } = usePartDoc(uuid, { onFirstSolve: handleFirstSolve, workspace: workspaceId, journal: driveJournal })
+  } = usePartDoc(uuid, {
+    onFirstSolve: handleFirstSolve,
+    workspace: workspaceId,
+    journal: driveJournal,
+    // A refused mutation (a projection source that cannot resolve, a reorder
+    // that would invert the order) is the user's next instruction, not a crash.
+    onRefusal: notifyRefusal,
+  })
 
   // The autosave shadow copy of this document's unsaved edits. It reads the
   // session directly (never React state), so the crash flush and the error

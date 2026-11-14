@@ -19,7 +19,7 @@
 
 import type { PartDoc } from '@/types/cad'
 import type { FeatureMeasure, FeatureMeasureBody } from '@/kernel/solveLocally'
-import { isBuiltOutcome, type FeatureOutcome } from '@/drive/featureOutcome'
+import { isBuiltOutcome, type FeatureOutcome, type ProjectionErrorReport } from '@/drive/featureOutcome'
 import { parseSketchTarget } from '@/drive/mutationValues'
 
 export interface FeatureDelta {
@@ -42,6 +42,9 @@ export interface FeatureDelta {
   // A sketch's remaining degrees of freedom, so an author sees the count shrink
   // as constraints land without a separate measure. Only a sketch result has it.
   dof?: number
+  // A sketch's unresolved projections, split into the rows that kept their last
+  // position and the rows that never had one.
+  projectionErrors?: ProjectionErrorReport
   // A body this feature changed and that body's own volume after it. The name
   // is the feature's own reported body when that one changed, otherwise the
   // one body whose measure moved; a rigid transform or mirror still names its
@@ -220,6 +223,7 @@ export function featureDeltaRows(
           ...(outcome.warning !== undefined && { warning: outcome.warning }),
           ...(outcome.direction !== undefined && { direction: outcome.direction }),
           ...(outcome.dof !== undefined && { dof: outcome.dof }),
+          ...(outcome.projectionErrors !== undefined && { projectionErrors: outcome.projectionErrors }),
           ...(solid ? bodyFields(kind, bodyId, measure.bodies, changed) : {}),
         })
       }

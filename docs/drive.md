@@ -142,9 +142,11 @@ A script is an array (or `{ steps: [...] }`) of steps:
   CLI both call `runScript`, so the semantics cannot drift.
 - A successful step can also carry `captured` (the orientation an assembly
   mate measured), `poseKept` (a fixed toggle's kept pose), `part` (the part an
-  `add_step_part` bound and instanced) and `note` (a caveat beside `ok`, such as
-  a face projection deleted without rows to freeze). The table entry above is
-  the full field list.
+  `add_step_part` bound and instanced), `note` (a caveat beside `ok`, such as
+  a face projection deleted without rows to freeze, or projections left at
+  their last position after a source delete) and `noteIds` (the features that
+  note is about, so the reply's top-level `notes` can sort it). The table entry
+  above is the full field list.
 
 ## Journal and repro replay
 
@@ -1183,6 +1185,19 @@ banner on stdout, so a client config must use the direct node invocation.
   you want a curve or its centre. Only a body
   element can be a selector source, because `select` walks bodies;
   `@builtin_origin` and `@<sketchId>/<entityId>` are plain strings.
+  A projection that could never resolve is refused at the step, with the cause
+  in the error text: a sketch projecting its own entity, an unknown sketch or
+  entity, a sketch later in the feature log (a forward reference; reorder or
+  project the other way), a `$` chain that closes on the target, or a source
+  entity that has no position yet. A body edge, vertex or face query resolves
+  against the settled solve, so a query whose body was deleted or whose
+  geometry changed is refused too; the step fails with `ok: false` and writes
+  nothing. A stored document that already holds such a row still opens: the
+  sketch solves as a warning row and its `features` and `featureDeltas` entries
+  carry `projectionErrors: { keeps_last_position, unpositioned }`, both lists of
+  projection constraint ids. Deleting a sketch entity that other projections
+  read leaves those rows at their last position and adds a `note` to the step
+  and to the reply's `notes` (a note never makes `ok` false).
 - A sketch on a face uses that face's frame: origin at the face centroid, and
   the in-plane axes from the face normal by `normalToFrame` (the same rule
   every body face is registered with). For the six world-axis normals:

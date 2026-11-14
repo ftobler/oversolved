@@ -9,6 +9,14 @@ import type { BuildResponse, PartDoc } from '@/types/cad'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { STATUS_NAME, Status } from '@/wasm-kernel/codec'
 
+/** One sketch's failing projections, split by whether the held entity still has
+ *  a position to show. Constraint ids: they name the row the author deletes to
+ *  free the geometry again. */
+export interface ProjectionErrorReport {
+  keeps_last_position: string[]
+  unpositioned: string[]
+}
+
 /** What the last solve said about one feature. */
 export interface FeatureOutcome {
   status: string
@@ -40,6 +48,10 @@ export interface FeatureOutcome {
   // this count in its warning; the delta row repeats it so an author sees the
   // number shrink as constraints land.
   dof?: number
+  // A sketch's unresolved projections, split into the rows that kept their last
+  // position and the rows that never had one. A soft error: the sketch keeps its
+  // status and dof, the row is a warning, and an export still tolerates it.
+  projectionErrors?: ProjectionErrorReport
 }
 
 /** A feature the solve did not finish cleanly, in feature log order. */
@@ -48,6 +60,9 @@ export interface FeatureProblem {
   kind: string
   status: string
   message: string
+  // A sketch's failing projections, when it has any: the rows that kept a last
+  // position and the rows that never had one.
+  projectionErrors?: ProjectionErrorReport
 }
 
 /**
@@ -136,6 +151,7 @@ export function readSolveOutcomes(
     const row = feature as {
       status?: unknown; exception?: unknown; solver_warning?: unknown; solver_note?: unknown
       resolved_warning?: unknown; direction?: unknown; body_id?: unknown; dof?: unknown
+      projection_errors?: unknown; projection_unpositioned?: unknown
     }
     if (typeof row.status !== 'string') continue
     const exception = typeof row.exception === 'string' && row.exception !== '' ? row.exception : undefined
@@ -149,6 +165,7 @@ export function readSolveOutcomes(
     const direction = row.direction === 'normal' || row.direction === 'reverse' ? row.direction : undefined
     const bodyId = typeof row.body_id === 'string' && row.body_id !== '' ? row.body_id : undefined
     const dof = typeof row.dof === 'number' && Number.isFinite(row.dof) ? row.dof : undefined
+    const projectionErrors = projectionErrorReport(row.projection_errors, row.projection_unpositioned)
     outcomes[id] = {
       status: row.status,
       ...(exception !== undefined && { exception }),
@@ -158,9 +175,29 @@ export function readSolveOutcomes(
       ...(direction !== undefined && { direction }),
       ...(bodyId !== undefined && { bodyId }),
       ...(dof !== undefined && { dof }),
+      ...(projectionErrors !== undefined && { projectionErrors }),
     }
   }
   return outcomes
+}
+
+function idList(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === 'string' && entry !== '')
+    : []
+}
+
+/** The solve's projection report, or undefined when the sketch had none. The
+ *  two lists are constraint ids: `unpositioned` is the subset with no geometry
+ *  to show. */
+function projectionErrorReport(errors: unknown, unpositioned: unknown): ProjectionErrorReport | undefined {
+  const failing = idList(errors)
+  if (failing.length === 0) return undefined
+  const empty = new Set(idList(unpositioned))
+  return {
+    keeps_last_position: failing.filter(id => !empty.has(id)),
+    unpositioned: failing.filter(id => empty.has(id)),
+  }
 }
 
 function defaultMessage(status: string): string {
@@ -213,6 +250,7 @@ export function featureProblems(
       kind,
       status: outcome.status,
       message: outcome.exception ?? outcome.warning ?? defaultMessage(outcome.status),
+      ...(outcome.projectionErrors !== undefined && { projectionErrors: outcome.projectionErrors }),
     })
   }
   return problems

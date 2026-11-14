@@ -40,7 +40,7 @@ describe('usesSettledSketchGeometry', () => {
     expect(usesSettledSketchGeometry({ type: 'delete', targets: ['entity:sk1:l1'] })).toBe(false)
   })
 
-  it('needs a flush for a face projection, which reads the last solved boundary', () => {
+  it('needs a flush for a face or body projection, which reads the last solve', () => {
     expect(usesSettledSketchGeometry({
       type: 'add_projected_entity', featureId: 'sk1',
       source: '?9;@u|e_abcd:flatface',
@@ -48,6 +48,13 @@ describe('usesSettledSketchGeometry', () => {
     expect(usesSettledSketchGeometry({
       type: 'add_projected_entity', featureId: 'sk1', kind: 'line',
       source: '?9;@u|e_abcd:straightedge',
+    })).toBe(true)
+    // A sketch ref and the builtin origin are document questions.
+    expect(usesSettledSketchGeometry({
+      type: 'add_projected_entity', featureId: 'sk1', kind: 'line', source: '@sk0/l1',
+    })).toBe(false)
+    expect(usesSettledSketchGeometry({
+      type: 'add_projected_entity', featureId: 'sk1', kind: 'point', source: '@builtin_origin',
     })).toBe(false)
   })
 

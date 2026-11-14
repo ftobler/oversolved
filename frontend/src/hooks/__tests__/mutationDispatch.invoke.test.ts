@@ -131,11 +131,11 @@ describe('mutationHandlers forward sketch mutations', () => {
   it('add_projected_entity appends an entity and a projection constraint', () => {
     const doc = sketchDoc()
     mutationHandlers.add_projected_entity(doc, {
-      type: 'add_projected_entity', featureId: 'S1', kind: 'line', source: '@ex1/edge/1',
+      type: 'add_projected_entity', featureId: 'S1', kind: 'point', source: '@builtin_origin',
     })
     const f = sketch1(doc)
     expect(f.entities!.some(e => e.id !== undefined)).toBe(true)
-    expect(f.constraints!.some(c => c.kind === 'projection' && c.source === '@ex1/edge/1')).toBe(true)
+    expect(f.constraints!.some(c => c.kind === 'projection' && c.source === '@builtin_origin')).toBe(true)
   })
 
   it('add_rect / add_center_rect / add_ngon add geometry', () => {

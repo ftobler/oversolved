@@ -1240,6 +1240,9 @@ export interface SketchData {
   // Projected entities the solve could not resolve. Kept in the solve result
   // (never written into the doc) so the cleanup command knows what to remove.
   projection_errors?: string[]
+  // The subset of `projection_errors` whose held entity never had a position:
+  // the rows the solve also leaves out of the geometry and the profile.
+  projection_unpositioned?: string[]
   // Face projections: the derived members this solve. Kept here so the editor
   // renders them and the delete command can freeze them into entity rows.
   projection_members?: Record<string, ProjectionMemberReportData>
