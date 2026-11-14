@@ -503,13 +503,19 @@ export function constraintTileLabel(
   renderKind: string,
   verdict: { superfluous?: boolean; culprit?: boolean } = {},
   count?: number,
+  pointCount = 0,
 ): string {
-  // A group is one tile over N members, and the count is the one thing the
-  // glyph cannot show. It is the same row the constraint list reads.
+  // A group is one tile over N entities and M points, and the counts are the
+  // one thing the glyph cannot show. They are the same rows the constraint list
+  // reads.
   const base = RENDER_KIND_TO_LABEL[renderKind] ?? 'Constraint'
-  const name = renderKind === 'symbol_group' && count !== undefined && count > 0
-    ? `${base} (${count} ${count === 1 ? 'entity' : 'entities'})`
-    : base
+  let name = base
+  if (renderKind === 'symbol_group') {
+    const parts: string[] = []
+    if (count !== undefined && count > 0) parts.push(`${count} ${count === 1 ? 'entity' : 'entities'}`)
+    if (pointCount > 0) parts.push(`${pointCount} ${pointCount === 1 ? 'point' : 'points'}`)
+    if (parts.length > 0) name = `${base} (${parts.join(', ')})`
+  }
   if (verdict.culprit) return `${name} (conflicting)`
   if (verdict.superfluous) return `${name} (redundant)`
   return name

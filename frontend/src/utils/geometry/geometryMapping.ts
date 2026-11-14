@@ -297,25 +297,31 @@ function computeConstraintRenderCore(
   }
   const kind = resolved.kind
 
-  // A group is one tile for the whole set, at the anchor's first point, and
-  // hovering it highlights every member. The anchor is the first member ref, the
-  // same one the solver measures the group's translation from.
+  // A group is one tile for the whole set, at the anchor point, and hovering it
+  // highlights every member: a whole member's entity, or the held point's
+  // marker for a point member. The anchor is the first member ref, the same one
+  // the solver measures the group's translation from.
   if (kind === 'group') {
     const rawRefs = Array.isArray(constraint.refs) ? constraint.refs : []
     const members: string[] = []
+    let anchor: ResolvedRef = null
     for (const raw of rawRefs) {
       const ref = typeof raw === 'string' ? normalize(raw) : raw as ResolvedRef
       const eid = ref?.entity
-      if (!eid || eid === ORIGIN_REF || members.includes(eid)) continue
-      members.push(eid)
+      if (!eid || eid === ORIGIN_REF) continue
+      const member = ref?.point ? `${eid}:${ref.point}` : eid
+      if (members.includes(member)) continue
+      members.push(member)
+      anchor ??= ref
     }
-    const anchorId = members[0]
+    const anchorId = anchor?.entity
     const anchorEntity = anchorId ? sketch[anchorId] : undefined
     if (!anchorId || !anchorEntity) return { kind: 'unknown' }
-    // geomPoint's whole-entity fallback is the start point, but the group's
-    // anchor is the entity's first point as the solver names it: a circle, arc
-    // or ellipse is anchored at its centre.
-    const key = groupAnchorPointKey(getEntityKind(anchorEntity))
+    // geomPoint's whole-entity fallback is the start point, but a whole-entity
+    // group anchor is the entity's first point as the solver names it: a
+    // circle, arc or ellipse is anchored at its centre. A point-member anchor
+    // names its own point.
+    const key = anchor?.point ?? groupAnchorPointKey(getEntityKind(anchorEntity))
     const at = geomPoint(sketch, { entity: anchorId, point: key })
     if (!at) return { kind: 'unknown' }
     return { kind: 'symbol_group', at, entity: anchorId, entities: members }

@@ -171,7 +171,11 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
           const atEntities = findEntitiesAtPoint(sketch, at)
           highlightIds = atEntities.length > 0 ? atEntities : [eid]
         }
-        const title = constraintTileLabel(r.kind, c, r.entities?.length)
+        const memberIds = r.entities ?? []
+        // A point member's highlight id is `entity:vertexKey`; the rest are
+        // whole entities. The title names both counts for a group.
+        const pointCount = memberIds.filter(id => id.includes(':')).length
+        const title = constraintTileLabel(r.kind, c, memberIds.length - pointCount, pointCount)
         atGroups.get(atKey)!.icons.push({ url, title, key: cid, highlightIds, superfluous: c.superfluous, culprit: c.culprit })
 
       } else {

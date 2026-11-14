@@ -356,6 +356,25 @@ describe('ConstraintTile group', () => {
     fireEvent.mouseEnter(container.querySelector('img')!.parentElement!)
     expect(useSketchEditorStore.getState().hoveredConstraintEntityIds).toEqual(new Set(['l1', 'l2']))
   })
+
+  it('names both counts and highlights a point member marker', () => {
+    const constraint: PartConstraint = { id: 'g1', kind: 'group', refs: ['$l1start', '$l2'] }
+    const constraints: Constraints = {
+      g1: { render: computeConstraintRender(constraint, twoLineSketch), residual: 0 } as Constraints[string],
+    }
+    const { container } = render(
+      <ConstraintOverlays
+        constraints={constraints}
+        sketch={twoLineSketch}
+        extent={10}
+        featureId="feat1"
+      />,
+    )
+    expect(container.querySelector('img')!.parentElement!.title).toBe('Group (1 entity, 1 point)')
+    fireEvent.mouseEnter(container.querySelector('img')!.parentElement!)
+    // The held endpoint is a vertex marker, not its whole line.
+    expect(useSketchEditorStore.getState().hoveredConstraintEntityIds).toEqual(new Set(['l1:start', 'l2']))
+  })
 })
 
 describe('ConstraintTile click selection and unmount cleanup', () => {
