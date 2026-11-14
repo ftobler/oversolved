@@ -106,29 +106,54 @@ impl Problem<'_> {
     /// param (and the anchor's other params) gets one. The rows are therefore
     /// `(member params) - 2` per group, with no redundancy: the null space is
     /// exactly the two translations.
+    ///
+    /// A member that names only one point holds that point alone, at its
+    /// reference plus `t`. The rows stay in the same "reference offset plus
+    /// transform" shape as the whole-entity rows below, so a later rotatable
+    /// group changes the transform in one place.
     pub(super) fn r_group(&self, c: &Constraint, x: &[f64], r: &mut Vec<f64>) {
         let (
-            Some(Ref::Entity { index: member, .. }),
+            Some(Ref::Entity {
+                index: member,
+                point: member_point,
+            }),
             Some(
                 anchor @ Ref::Entity {
                     index: anchor_index,
-                    ..
+                    point: anchor_point,
                 },
             ),
         ) = (c.ref_for(RefRole::Target), c.ref_for(RefRole::A))
         else {
             return;
         };
-        let Ref::Entity {
-            point: anchor_point,
-            ..
-        } = anchor
-        else {
+        let t = self.translation(x, anchor);
+        if member_point.is_present() {
+            let target = Ref::Entity {
+                index: member,
+                point: member_point,
+            };
+            // The anchor's own pair IS the translation, so it adds no row. Any
+            // other point on the anchor entity is a distinct held point.
+            if target == anchor {
+                return;
+            }
+            let now = self.point(x, target);
+            let held = self.point(&self.reference, target);
+            r.push(now[0] - held[0] - t[0]);
+            r.push(now[1] - held[1] - t[1]);
             return;
-        };
+        }
+        // A whole member of the anchor entity under a point anchor is the pair
+        // the host's dedup rule forbids (the anchor point already holds it), so
+        // it can only arrive from a hand-built wire: fail the test build rather
+        // than author a second, redundant hold.
+        debug_assert!(
+            member != anchor_index || anchor_is_first_pair(anchor_point),
+            "group names a whole entity and a point member of the same entity"
+        );
         let off = self.offset_of(member);
         let size = self.param_count_of(member);
-        let t = self.translation(x, anchor);
         let coords = group_coord_count(self.kind_of(member), size);
         let skip_anchor_pair =
             member == anchor_index && size >= 2 && anchor_is_first_pair(anchor_point);
