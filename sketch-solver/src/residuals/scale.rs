@@ -81,6 +81,13 @@ impl Problem<'_> {
         self.scale
     }
 
+    /// Floor of every seed length: a relative fraction of the sketch scale, so
+    /// a line drawn with zero length still gives its angular rows a usable
+    /// weight.
+    pub(super) fn min_len(&self) -> f64 {
+        MIN_LEN_REL * self.scale
+    }
+
     /// Seed length of a line, floored relative to the sketch scale.
     pub(super) fn line_len0(&self, index: u32) -> f64 {
         let ep = self.params(&self.x0, index);

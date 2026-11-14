@@ -93,25 +93,28 @@ export const CONSTRAINT_FLAG = {
   dropped: 1 << 1,
 } as const
 
-// Rev 7 of the wire layout. `SKG7` added the input's optional reference param
-// block (`paramsReference`): `fixed` and `group` hold it when present and
-// `params` otherwise, so a drag can seed from the previous frame while the
-// constraints still hold the last hard solve's shape. The output layout did not
-// change, but the magic pair moves together as the version handshake. Rev 6
-// (`SKG6`/`SKR6`) carried the dropped verdict bit: the layout was unchanged but
-// the meaning of `constraint_flags` grew, and an older solver would read a
-// dropped constraint as unflagged. `SKG5` added the header's storage quantum;
-// `SKR5` added the per-entity moved bitmask before the diagnostics. The entity
-// record itself is unchanged since `SKG4`, which made it variable-size
-// (`fit_spline` carries `2 N + 2 h` params), and rev 4's per-constraint
-// verdicts are otherwise unchanged too. The magic IS the version handshake: the
-// layout evolved before (has_sign flag + trailing sign f32) without moving
-// these, so a stale js/wasm pairing decoded shifted offsets instead of failing.
-// Bump BOTH sides (these two and sketch-solver/src/codec.rs) on any layout or
-// verdict-semantics change. Invalidating stale cached payloads is acceptable and
-// safe post-wave-1: bundle-cache reads degrade to cold rebuilds.
-const MAGIC_IN = 0x37474b53  // "SKG7", little-endian on the wire
-const MAGIC_OUT = 0x37524b53  // "SKR7"
+// Rev 8 of the wire layout. `SKR8` appends the contract's realised precision
+// to the output diagnostics (`angularMiss`, `linearMiss`, NaN for an
+// unsatisfied solve), so an older reader stops at `ms` and an older writer
+// leaves the two fields unread: the magic moves on both sides. Rev 7 (`SKG7`)
+// added the input's optional reference param block (`paramsReference`): `fixed`
+// and `group` hold it when present and `params` otherwise, so a drag can seed
+// from the previous frame while the constraints still hold the last hard
+// solve's shape. Rev 6 (`SKG6`/`SKR6`) carried the dropped verdict bit: the
+// layout was unchanged but the meaning of `constraint_flags` grew, and an older
+// solver would read a dropped constraint as unflagged. `SKG5` added the
+// header's storage quantum; `SKR5` added the per-entity moved bitmask before
+// the diagnostics. The entity record itself is unchanged since `SKG4`, which
+// made it variable-size (`fit_spline` carries `2 N + 2 h` params), and rev 4's
+// per-constraint verdicts are otherwise unchanged too. The magic IS the version
+// handshake: the layout evolved before (has_sign flag + trailing sign f32)
+// without moving these, so a stale js/wasm pairing decoded shifted offsets
+// instead of failing. Bump BOTH sides (these two and sketch-solver/src/codec.rs)
+// on any layout or verdict-semantics change. Invalidating stale cached payloads
+// is acceptable and safe post-wave-1: bundle-cache reads degrade to cold
+// rebuilds.
+const MAGIC_IN = 0x38474b53  // "SKG8", little-endian on the wire
+const MAGIC_OUT = 0x38524b53  // "SKR8"
 
 export interface FlatEntity {
   kind: number
@@ -173,7 +176,22 @@ export interface SolverOutput {
    *  set bit means the solve moved that entity by at least half the storage
    *  quantum. Empty on the drag fast path. */
   entityMoved: number[]
-  diagnostics: { residualNorm: number; rank: number; dof: number; iters: number; ms: number }
+  diagnostics: {
+    residualNorm: number
+    rank: number
+    dof: number
+    iters: number
+    ms: number
+    /** Realised angular precision of the shipped geometry, in radians: the
+     *  largest `|row| / seed_len` over the solver's angular rows. The contract
+     *  target is `OCC_ANGULAR`; a satisfied solve may report more, which is
+     *  what lets the kernel half widen its own merge. NaN on an unsatisfied
+     *  solve and on the drag fast path. */
+    angularMiss: number
+    /** Realised positional precision, in document length units: the largest
+     *  positional row. Target `OCC_CONFUSION * 1e-2`. NaN like `angularMiss`. */
+    linearMiss: number
+  }
 }
 
 const scratch = new DataView(new ArrayBuffer(8))
@@ -316,6 +334,8 @@ export function decodeOutput(buf: Uint8Array): SolverOutput {
   const dof = r.u32()
   const iters = r.u32()
   const ms = r.f64()
+  const angularMiss = r.f64()
+  const linearMiss = r.f64()
 
   return {
     paramsSolved,
@@ -324,6 +344,6 @@ export function decodeOutput(buf: Uint8Array): SolverOutput {
     constraintFlags,
     constraintMiss,
     entityMoved,
-    diagnostics: { residualNorm, rank, dof, iters, ms },
+    diagnostics: { residualNorm, rank, dof, iters, ms, angularMiss, linearMiss },
   }
 }

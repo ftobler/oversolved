@@ -1,0 +1,570 @@
+{
+  "features": [
+    {
+      "id": "Origin",
+      "kind": "origin"
+    },
+    {
+      "id": "Top",
+      "kind": "plane",
+      "visible": false
+    },
+    {
+      "id": "Front",
+      "kind": "plane",
+      "visible": false
+    },
+    {
+      "id": "Right",
+      "kind": "plane",
+      "visible": false
+    },
+    {
+      "id": "sk1",
+      "kind": "sketch",
+      "plane": "Front",
+      "entities": [
+        {
+          "id": "l1",
+          "kind": "line"
+        },
+        {
+          "id": "l2",
+          "kind": "line"
+        },
+        {
+          "id": "l3",
+          "kind": "line"
+        },
+        {
+          "id": "Et7Wbrgh9TE9LxIT",
+          "kind": "arc"
+        },
+        {
+          "id": "rP4K_FkzUC52qv-s",
+          "kind": "arc"
+        },
+        {
+          "id": "xip0IcE7j1E2fJ5D",
+          "kind": "line"
+        },
+        {
+          "id": "prOJVbPY_wjwYxD7",
+          "kind": "arc"
+        },
+        {
+          "id": "IXhI-hqJvVes4fn-",
+          "kind": "line"
+        },
+        {
+          "id": "ZtzFeDOiaqq6jeFQ",
+          "kind": "arc"
+        },
+        {
+          "id": "jLQrmnGRFeJdzI8t",
+          "kind": "line"
+        },
+        {
+          "id": "e1",
+          "kind": "line"
+        },
+        {
+          "id": "e2",
+          "kind": "line"
+        }
+      ],
+      "initial": {
+        "l1": [
+          0,
+          0,
+          80.381198,
+          0
+        ],
+        "l2": [
+          87.309401,
+          -4,
+          115.599564,
+          -53
+        ],
+        "l3": [
+          108.671361,
+          -65,
+          85,
+          -65
+        ],
+        "Et7Wbrgh9TE9LxIT": [
+          80.381198,
+          -8,
+          8,
+          30,
+          90
+        ],
+        "rP4K_FkzUC52qv-s": [
+          108.671361,
+          -57,
+          8,
+          270,
+          390
+        ],
+        "xip0IcE7j1E2fJ5D": [
+          0,
+          -4,
+          80.381198,
+          -4
+        ],
+        "prOJVbPY_wjwYxD7": [
+          80.381198,
+          -8,
+          4,
+          30,
+          90
+        ],
+        "IXhI-hqJvVes4fn-": [
+          83.845299,
+          -6,
+          112.135462,
+          -55
+        ],
+        "ZtzFeDOiaqq6jeFQ": [
+          108.671361,
+          -57,
+          4,
+          270,
+          390
+        ],
+        "jLQrmnGRFeJdzI8t": [
+          108.671361,
+          -61,
+          85,
+          -61
+        ],
+        "e1": [
+          0,
+          -4,
+          0,
+          0
+        ],
+        "e2": [
+          85,
+          -65,
+          85,
+          -61
+        ]
+      },
+      "constraints": [
+        {
+          "id": "c_coincident_nYBhOHZ-",
+          "kind": "coincident",
+          "a": "$l1end",
+          "b": "$Et7Wbrgh9TE9LxITend"
+        },
+        {
+          "id": "c_coincident_cKBCY6DE",
+          "kind": "coincident",
+          "a": "$Et7Wbrgh9TE9LxITstart",
+          "b": "$l2start"
+        },
+        {
+          "id": "c_tangent_CYlGiHHt",
+          "kind": "tangent",
+          "a": "$l1",
+          "b": "$Et7Wbrgh9TE9LxIT"
+        },
+        {
+          "id": "c_tangent__UvmyAQ9",
+          "kind": "tangent",
+          "a": "$Et7Wbrgh9TE9LxIT",
+          "b": "$l2"
+        },
+        {
+          "id": "c_coincident_tnMF9EoK",
+          "kind": "coincident",
+          "a": "$l2end",
+          "b": "$rP4K_FkzUC52qv-send"
+        },
+        {
+          "id": "c_coincident_5U6VtHSb",
+          "kind": "coincident",
+          "a": "$rP4K_FkzUC52qv-sstart",
+          "b": "$l3start"
+        },
+        {
+          "id": "c_tangent_znz7A8AA",
+          "kind": "tangent",
+          "a": "$l2",
+          "b": "$rP4K_FkzUC52qv-s"
+        },
+        {
+          "id": "c_tangent_83auwAg2",
+          "kind": "tangent",
+          "a": "$rP4K_FkzUC52qv-s",
+          "b": "$l3"
+        },
+        {
+          "id": "c_parallel_U2WyA29q",
+          "kind": "parallel",
+          "a": "$l1",
+          "b": "$xip0IcE7j1E2fJ5D"
+        },
+        {
+          "id": "c_concentric_WW54BzBL",
+          "kind": "concentric",
+          "a": "$Et7Wbrgh9TE9LxIT",
+          "b": "$prOJVbPY_wjwYxD7"
+        },
+        {
+          "id": "c_parallel_KmNuT0_F",
+          "kind": "parallel",
+          "a": "$l2",
+          "b": "$IXhI-hqJvVes4fn-"
+        },
+        {
+          "id": "c_concentric_JObkwDdb",
+          "kind": "concentric",
+          "a": "$rP4K_FkzUC52qv-s",
+          "b": "$ZtzFeDOiaqq6jeFQ"
+        },
+        {
+          "id": "c_parallel_wiVl3q_q",
+          "kind": "parallel",
+          "a": "$l3",
+          "b": "$jLQrmnGRFeJdzI8t"
+        },
+        {
+          "id": "c_tangent_klPO4L68",
+          "kind": "tangent",
+          "a": "$xip0IcE7j1E2fJ5D",
+          "b": "$prOJVbPY_wjwYxD7"
+        },
+        {
+          "id": "c_tangent_6r2ruyXv",
+          "kind": "tangent",
+          "a": "$prOJVbPY_wjwYxD7",
+          "b": "$IXhI-hqJvVes4fn-"
+        },
+        {
+          "id": "c_tangent_I9FzVxZe",
+          "kind": "tangent",
+          "a": "$IXhI-hqJvVes4fn-",
+          "b": "$ZtzFeDOiaqq6jeFQ"
+        },
+        {
+          "id": "c_tangent_Zm-56ONz",
+          "kind": "tangent",
+          "a": "$ZtzFeDOiaqq6jeFQ",
+          "b": "$jLQrmnGRFeJdzI8t"
+        }
+      ]
+    },
+    {
+      "id": "ex1",
+      "kind": "extrude",
+      "label": "Extrude",
+      "extrude": {
+        "sketch": [
+          "$sk1"
+        ],
+        "distance": 80,
+        "direction": "symmetric",
+        "operation": "new"
+      }
+    },
+    {
+      "id": "sk2",
+      "kind": "sketch",
+      "plane": "Top",
+      "entities": [
+        {
+          "id": "c1",
+          "kind": "line"
+        },
+        {
+          "id": "c2",
+          "kind": "line"
+        },
+        {
+          "id": "c3",
+          "kind": "line"
+        },
+        {
+          "id": "c4",
+          "kind": "line"
+        },
+        {
+          "id": "7EII76zjplJqVo0f",
+          "kind": "arc"
+        },
+        {
+          "id": "cRIVtU8Z25FHeIiM",
+          "kind": "arc"
+        }
+      ],
+      "initial": {
+        "c1": [
+          20,
+          -15,
+          43,
+          -15
+        ],
+        "c2": [
+          50,
+          -8,
+          50,
+          8
+        ],
+        "c3": [
+          43,
+          15,
+          20,
+          15
+        ],
+        "c4": [
+          20,
+          15,
+          20,
+          -15
+        ],
+        "7EII76zjplJqVo0f": [
+          43,
+          -8,
+          7,
+          270,
+          360
+        ],
+        "cRIVtU8Z25FHeIiM": [
+          43,
+          8,
+          7,
+          0,
+          90
+        ]
+      },
+      "constraints": [
+        {
+          "id": "c_coincident_nnUDb94z",
+          "kind": "coincident",
+          "a": "$c1end",
+          "b": "$7EII76zjplJqVo0fstart"
+        },
+        {
+          "id": "c_coincident_gz9oxlNW",
+          "kind": "coincident",
+          "a": "$7EII76zjplJqVo0fend",
+          "b": "$c2start"
+        },
+        {
+          "id": "c_tangent_sLY1oifO",
+          "kind": "tangent",
+          "a": "$c1",
+          "b": "$7EII76zjplJqVo0f"
+        },
+        {
+          "id": "c_tangent_bzljLW3f",
+          "kind": "tangent",
+          "a": "$7EII76zjplJqVo0f",
+          "b": "$c2"
+        },
+        {
+          "id": "c_coincident_Dy-mUC4W",
+          "kind": "coincident",
+          "a": "$c2end",
+          "b": "$cRIVtU8Z25FHeIiMstart"
+        },
+        {
+          "id": "c_coincident_Q0ibpTLR",
+          "kind": "coincident",
+          "a": "$cRIVtU8Z25FHeIiMend",
+          "b": "$c3start"
+        },
+        {
+          "id": "c_tangent_8r5ztR45",
+          "kind": "tangent",
+          "a": "$c2",
+          "b": "$cRIVtU8Z25FHeIiM"
+        },
+        {
+          "id": "c_tangent_v2bD6vDt",
+          "kind": "tangent",
+          "a": "$cRIVtU8Z25FHeIiM",
+          "b": "$c3"
+        }
+      ]
+    },
+    {
+      "id": "ex2",
+      "kind": "extrude",
+      "label": "Extrude",
+      "extrude": {
+        "sketch": [
+          "$sk2"
+        ],
+        "distance": 10,
+        "direction": "reverse",
+        "termination": "through_all",
+        "operation": "cut"
+      }
+    },
+    {
+      "id": "pl1",
+      "kind": "plane",
+      "definition": {
+        "mode": "offset",
+        "plane": "Right",
+        "offset": 16
+      },
+      "visible": false
+    },
+    {
+      "id": "sk3",
+      "kind": "sketch",
+      "plane": "@pl1",
+      "entities": [
+        {
+          "id": "tb",
+          "kind": "line"
+        },
+        {
+          "id": "tr",
+          "kind": "line"
+        },
+        {
+          "id": "tt",
+          "kind": "line"
+        },
+        {
+          "id": "tl",
+          "kind": "line"
+        },
+        {
+          "id": "YC32esvT4hBx_BCZ",
+          "kind": "arc"
+        },
+        {
+          "id": "pYcqDSkoWPkKCiOy",
+          "kind": "arc"
+        }
+      ],
+      "initial": {
+        "tb": [
+          -13,
+          -4,
+          13,
+          -4
+        ],
+        "tr": [
+          13,
+          -4,
+          13,
+          18
+        ],
+        "tt": [
+          8,
+          23,
+          -8,
+          23
+        ],
+        "tl": [
+          -13,
+          18,
+          -13,
+          -4
+        ],
+        "YC32esvT4hBx_BCZ": [
+          8,
+          18,
+          5,
+          0,
+          90
+        ],
+        "pYcqDSkoWPkKCiOy": [
+          -8,
+          18,
+          5,
+          90,
+          180
+        ]
+      },
+      "constraints": [
+        {
+          "id": "c_coincident_ZSMtkwtr",
+          "kind": "coincident",
+          "a": "$trend",
+          "b": "$YC32esvT4hBx_BCZstart"
+        },
+        {
+          "id": "c_coincident_U-hLeQUR",
+          "kind": "coincident",
+          "a": "$YC32esvT4hBx_BCZend",
+          "b": "$ttstart"
+        },
+        {
+          "id": "c_tangent_8_44LDja",
+          "kind": "tangent",
+          "a": "$tr",
+          "b": "$YC32esvT4hBx_BCZ"
+        },
+        {
+          "id": "c_tangent_gcVrSFdT",
+          "kind": "tangent",
+          "a": "$YC32esvT4hBx_BCZ",
+          "b": "$tt"
+        },
+        {
+          "id": "c_coincident_JouzonuP",
+          "kind": "coincident",
+          "a": "$ttend",
+          "b": "$pYcqDSkoWPkKCiOystart"
+        },
+        {
+          "id": "c_coincident_HhZ1J4aj",
+          "kind": "coincident",
+          "a": "$pYcqDSkoWPkKCiOyend",
+          "b": "$tlstart"
+        },
+        {
+          "id": "c_tangent_x-gb9Cmu",
+          "kind": "tangent",
+          "a": "$tt",
+          "b": "$pYcqDSkoWPkKCiOy"
+        },
+        {
+          "id": "c_tangent_5oOSc54Q",
+          "kind": "tangent",
+          "a": "$pYcqDSkoWPkKCiOy",
+          "b": "$tl"
+        }
+      ]
+    },
+    {
+      "id": "ex3",
+      "kind": "extrude",
+      "label": "Extrude2",
+      "extrude": {
+        "sketch": [
+          "$sk3"
+        ],
+        "distance": 4,
+        "direction": "normal",
+        "operation": "add"
+      }
+    },
+    {
+      "id": "mi1",
+      "kind": "mirror",
+      "label": "Mirror",
+      "mirror": {
+        "body": "body_ex1",
+        "plane": "Right",
+        "keep_original": true,
+        "merge": true
+      }
+    }
+  ],
+  "part_style": {
+    "body_ex1": {
+      "name": "part 1",
+      "color": "#6AB59B",
+      "created_by": "ex1"
+    }
+  }
+}

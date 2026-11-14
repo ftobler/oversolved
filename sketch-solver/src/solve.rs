@@ -6,6 +6,7 @@
 //! scalar TS" boundary).
 
 use crate::constraints::Ref;
+use crate::residuals::rows::RowClass;
 use crate::residuals::Problem;
 use crate::tolerance::{
     seed_keep_tol, verdict_tol, FREE_COMPONENT_TOL, RANK_TOL, REDUNDANT_ROW_REL,
@@ -15,7 +16,7 @@ use crate::{
 };
 use nalgebra::DMatrix;
 use solver_core::lm::{
-    solve_lm, solve_lm_sparse, solve_lm_sparse_anchored, solve_lm_sparse_proximal,
+    solve_lm, solve_lm_sparse, solve_lm_sparse_anchored, solve_lm_sparse_proximal, LmResult,
 };
 
 /// True when a solve's final residual reads as a satisfied system. The width
@@ -133,6 +134,12 @@ pub fn solve_sketch(input: &Input) -> Output {
                 dof: 0,
                 iters: clean.iters,
                 ms: 0.0,
+                // A drag frame carries no precision report: its seed is the
+                // previous frame and its verdict is a satisfiability check on
+                // the constraint rows, not a settled solve. NaN says so,
+                // rather than a 0 that would read as a perfect contract.
+                angular_miss: f64::NAN,
+                linear_miss: f64::NAN,
             },
         };
     }
@@ -140,7 +147,35 @@ pub fn solve_sketch(input: &Input) -> Output {
     // Cold solve: dense LM, full status/rank analysis.
     let f = |x: &[f64]| problem.residuals(x);
     let jac = |x: &[f64]| problem.jacobian(x, n);
-    let result = solve_lm(&x0, &f, &jac);
+    let mut result = solve_lm(&x0, &f, &jac);
+
+    // The contract finish runs only on a solve that already reads satisfied
+    // with a finite Jacobian: it is a precision tightening, never a rescue, so
+    // an unsatisfied sketch keeps exactly the least-squares answer it had (and
+    // reports NaN precision). It runs before `rebase_arc_branches`; the misses
+    // it reports are recomputed afterwards from the shipped params.
+    let mut finish = if satisfied(result.residual_norm, problem.scale()) && result.jacobian_finite {
+        let pre_finish = result.x.clone();
+        let mut finish = finish_contract(input, &problem, &mut result.x);
+        if finish.steps > 0 {
+            // The status pass reads the geometry we ship: rank, freedom and the
+            // per-constraint walk all take the finished Jacobian and residual.
+            result.jacobian = problem.jacobian(&result.x, n);
+            result.residual_norm = norm(&problem.residuals(&result.x));
+            result.jacobian_finite =
+                result.jacobian.iter().all(|v| v.is_finite()) && result.residual_norm.is_finite();
+            // The finish accepted steps on the contract rows, not on LM's own
+            // norm. A nonlinear row set can lower its worst scaled row while the
+            // stacked norm crosses the verdict width; a solve must never become
+            // unsatisfied because a precision pass ran.
+            if !keep_finished_else_restore(&problem, n, pre_finish, &mut result) {
+                finish = Finish::unsatisfied();
+            }
+        }
+        finish
+    } else {
+        Finish::unsatisfied()
+    };
 
     let jac = result.jacobian;
     // One SVD serves the rank and, unless skipped, the whole status pass. A
@@ -195,6 +230,17 @@ pub fn solve_sketch(input: &Input) -> Output {
         status
     } else {
         Status::Overconstrained
+    };
+
+    // The wire reports the SHIPPED geometry, measured after the arc rebase, so
+    // the number a caller recomputes from `params_solved` is exactly this one.
+    // An overconstrained solve (including one whose seed already held invalid
+    // geometry) has no precision to promise: NaN, never the finish's last
+    // reading.
+    finish = if finish.has_measured_miss() && status != Status::Overconstrained {
+        Finish::from_misses(finish.steps, problem.contract_misses(&params_solved))
+    } else {
+        Finish::unsatisfied()
     };
 
     // Per-constraint verdicts: a satisfied cold solve marks redundancy, an
@@ -255,11 +301,240 @@ pub fn solve_sketch(input: &Input) -> Output {
                 0
             },
             iters: result.iters,
-            // Wall-clock is measured by the JS host (it has performance.now());
-            // the crate has no portable clock on wasm32-unknown-unknown.
+            // Wall-clocks are measured by the JS host (it has
+            // performance.now()); the crate has no portable clock on
+            // wasm32-unknown-unknown.
             ms: 0.0,
+            // The realised precision of the shipped geometry, as reported by
+            // the contract finish (NaN when the solve never reached it).
+            angular_miss: finish.angular_miss,
+            linear_miss: finish.linear_miss,
         },
     }
+}
+
+/// Iteration budget of the contract finish.
+///
+/// The finish starts from a solve that already reads satisfied, which on a
+/// well-conditioned sketch leaves a row width or two to close; a Gauss-Newton
+/// step with a full-rank row set lands it in one. The cap only bounds a
+/// near-degenerate row set (a tangency pair whose curvature has collapsed),
+/// where the step stops shrinking and the stagnation test ends the loop first.
+const FINISH_STEPS: u32 = 8;
+
+/// Largest per-param finish step, as a share of the sketch scale. A step is a
+/// correction to rows the solve already reads satisfied, so a legitimate one is
+/// at most the verdict width (`1e-7 * scale`) and normally far smaller. A
+/// singular value just above `RANK_TOL` (1e-6) amplifies a row miss by ~1e6,
+/// which can turn a nanometre into a visible move along a nearly free
+/// direction: those steps are rejected, and the row stays honestly above the
+/// contract instead of the geometry being yanked. Ten times the verdict width
+/// leaves every real correction room.
+///
+/// The cap reads every param delta as a WORLD LENGTH, whatever the param means.
+/// An arc's endpoint angles and an ellipse's rotation are degrees, so the same
+/// numeric cap allows `pi/180` of the angular move a radian-valued one would:
+/// their effective angular allowance is 57.3x tighter. That is accepted rather
+/// than corrected by an angular variant, because a legitimate angle correction
+/// is tiny in radians: the angular rows are the contract's own
+/// (`1e-12 * seed_len`), so closing one from the verdict width needs ~1e-7 rad,
+/// i.e. ~1.7e-9 of a degree, orders under the tightened cap at any modelled
+/// scale. Only a large angle move is refused, and a large angle move is never a
+/// precision tightening.
+///
+/// The same cap refuses a correction whose singular value is under ~0.1: a row
+/// miss at the verdict width (`1e-7 * scale`) divided by it asks for more than
+/// `1e-6 * scale`. Both refusals cost precision, and the wire reports the loss
+/// honestly as the realised miss above the contract.
+const FINISH_STEP_REL: f64 = 1e-6;
+
+/// The contract finish's outcome: how many steps it took and the precision the
+/// shipped geometry realised. `angular_miss` is radians (the largest
+/// `|row| / seed_len` over angular rows); `linear_miss` is the largest
+/// positional row in document units. Both NaN when there is no measured miss
+/// for the shipped params: the solve never reached the finish, or its finished
+/// result was restored (it would have flipped the verdict).
+struct Finish {
+    steps: u32,
+    angular_miss: f64,
+    linear_miss: f64,
+}
+
+impl Finish {
+    fn unsatisfied() -> Finish {
+        Finish {
+            steps: 0,
+            angular_miss: f64::NAN,
+            linear_miss: f64::NAN,
+        }
+    }
+
+    /// True when the finish left a measured miss: a satisfied solve whose rows
+    /// it read (step count can be zero, the rows were already inside the
+    /// contract). Not "it ran": a result restored after the post-finish guard
+    /// has no measured miss for the params it ships, so it reports NaN.
+    fn has_measured_miss(&self) -> bool {
+        !(self.angular_miss.is_nan() && self.linear_miss.is_nan())
+    }
+
+    fn from_misses(steps: u32, (angular_miss, linear_miss): (f64, f64)) -> Finish {
+        Finish {
+            steps,
+            angular_miss,
+            linear_miss,
+        }
+    }
+
+    fn of(problem: &Problem, x: &[f64], steps: u32) -> Finish {
+        Finish::from_misses(steps, problem.contract_misses(x))
+    }
+}
+
+/// Drive the solved rows to the kernel precision contract with minimum-norm
+/// Gauss-Newton steps on the residual rows alone, no seed anchor.
+///
+/// The plain solve stops where LM's OWN stop tests say so: a relative step, a
+/// relative cost drop, or a small gradient. Those are verdict tests, sized from
+/// the solver's noise, not from the kernel's absolute widths, and a row can sit
+/// above `OCC_ANGULAR * seed_len` with the solve still reading satisfied (on a
+/// 0.01 mm eight-line chain the polish leaves a 2.66e-9 rad angular row, 2600x
+/// the contract). This phase applies the contract's own target to each row.
+///
+/// It runs with NO anchor. The anchor is what keeps a free direction near the
+/// seed, and dropping it outright is the trap the knowledge base records (a
+/// vertical line through a point slid to 3e4): LM with large residuals follows
+/// the free valley. A MINIMUM-NORM step is the safe form of the same removal:
+/// `dx = -J⁺r` has no component in the null space to first order, so
+/// directions the rows leave free stay where the anchored solve put them, while
+/// the constrained directions close. The free-direction pin is
+/// `finish_does_not_move_free_directions`.
+///
+/// A step is accepted only when it strictly lowers the largest scaled row miss,
+/// so the finish can never make a solve worse than it found it; a step that
+/// does not shrink it stops the loop (stagnation). The caller re-derives the
+/// status pass from the finished params.
+fn finish_contract(input: &Input, problem: &Problem, x: &mut [f64]) -> Finish {
+    let n = x.len();
+    let mut best = max_contract_miss(problem, x);
+    // An entity the seed already made invalid (a zero radius) must not veto
+    // every trial: the finish is not allowed to introduce a NEW invalid entity,
+    // but it can still tighten rows on valid geometry beside one.
+    let baseline_invalid = invalid_geometry(input, x);
+    let step_cap = FINISH_STEP_REL * problem.scale();
+    let mut steps = 0;
+    while steps < FINISH_STEPS && best > 1.0 {
+        let jac = problem.jacobian(x, n);
+        if !jac.iter().all(|v| v.is_finite()) {
+            break;
+        }
+        let Some(dx) = min_norm_step(&jac, &problem.residuals(x)) else {
+            break;
+        };
+        // Near-degenerate direction: a singular value just over `RANK_TOL`
+        // divides a tiny row by ~1e-6 and asks for a visible move along a nearly
+        // free direction. A correction this large is not a precision tightening.
+        if step_cap <= 0.0 || dx.iter().any(|d| d.abs() > step_cap) {
+            break;
+        }
+        let mut trial = x.to_vec();
+        for (t, d) in trial.iter_mut().zip(&dx) {
+            *t += d;
+        }
+        // A smaller row miss is not worth handing the caller a radius driven
+        // through zero: the step is accepted only if the trial introduces no
+        // invalid entity the pre-finish geometry did not already have.
+        let trial_invalid = invalid_geometry(input, &trial);
+        if trial.iter().any(|v| !v.is_finite())
+            || trial_invalid
+                .iter()
+                .any(|index| !baseline_invalid.contains(index))
+        {
+            break;
+        }
+        let trial_miss = max_contract_miss(problem, &trial);
+        // A step that does not strictly lower the worst row is stagnation: keep
+        // the best params and stop, so the finish never makes a solve worse.
+        if trial_miss >= best {
+            break;
+        }
+        x.copy_from_slice(&trial);
+        best = trial_miss;
+        steps += 1;
+    }
+    Finish::of(problem, x, steps)
+}
+
+/// The largest row miss as a multiple of its contract target: at or under 1
+/// every targeted row is inside the contract. `Parameter` rows have no target
+/// (a degree-valued shape scalar) and are skipped; an `Unclassified` row is a
+/// classification failure, so it reads as infinite and no step is accepted on
+/// it.
+fn max_contract_miss(problem: &Problem, x: &[f64]) -> f64 {
+    let mut worst = 0.0_f64;
+    for (residual, class) in problem.contract_rows(x) {
+        if class == RowClass::Unclassified {
+            return f64::INFINITY;
+        }
+        let target = class.target();
+        if target > 0.0 {
+            let ratio = residual.abs() / target;
+            if !ratio.is_finite() {
+                return f64::INFINITY;
+            }
+            worst = worst.max(ratio);
+        }
+    }
+    worst
+}
+
+/// The minimum-norm least-squares step `dx = -J⁺ r`, from the Jacobian's SVD.
+///
+/// Singular values at or under `RANK_TOL` are treated as zero: they are the
+/// directions the rows do not constrain (the same numerical-rank floor the
+/// status pass uses), and including them would turn round-off into a huge
+/// step along a free direction. `None` when the decomposition cannot be read.
+fn min_norm_step(jac: &DMatrix<f64>, residual: &[f64]) -> Option<Vec<f64>> {
+    let n = jac.ncols();
+    if n == 0 || jac.nrows() == 0 || residual.len() != jac.nrows() {
+        return None;
+    }
+    let r = nalgebra::DVector::from_column_slice(residual);
+    let svd = jac.clone().svd(true, true);
+    let (u, v_t) = (svd.u?, svd.v_t?);
+    let sv = &svd.singular_values;
+    let mut scaled = nalgebra::DVector::zeros(sv.len());
+    for (i, &s) in sv.iter().enumerate() {
+        if s > RANK_TOL {
+            scaled[i] = -u.column(i).dot(&r) / s;
+        }
+    }
+    let dx = v_t.transpose() * scaled;
+    if dx.len() != n || dx.iter().any(|v| !v.is_finite()) {
+        return None;
+    }
+    Some(dx.iter().copied().collect())
+}
+
+/// Keep the finished LM answer when it still reads as a satisfied, finite
+/// solve; otherwise restore the pre-finish params (and re-derive the Jacobian
+/// and norm from them) and return false. A precision pass must never turn a
+/// green solve red, and its caller reports NaN precision when it does not keep
+/// the result.
+fn keep_finished_else_restore(
+    problem: &Problem,
+    n: usize,
+    pre_finish: Vec<f64>,
+    result: &mut LmResult,
+) -> bool {
+    if result.jacobian_finite && satisfied(result.residual_norm, problem.scale()) {
+        return true;
+    }
+    result.x = pre_finish;
+    result.jacobian = problem.jacobian(&result.x, n);
+    result.residual_norm = norm(&problem.residuals(&result.x));
+    result.jacobian_finite =
+        result.jacobian.iter().all(|v| v.is_finite()) && result.residual_norm.is_finite();
+    false
 }
 
 /// Per-param drag regularization weights. Every
@@ -688,5 +963,8 @@ fn vertex_freedom(input: &Input, spectrum: &Spectrum) -> Vec<f64> {
     out
 }
 
+#[cfg(test)]
+#[path = "solve/precision.rs"]
+mod precision;
 #[cfg(test)]
 mod tests;

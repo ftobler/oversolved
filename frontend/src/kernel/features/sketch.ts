@@ -60,6 +60,17 @@ export interface SketchResult {
    *  row repeats this count, and the underconstrained warning states it; the
    *  tree and editor read the warning text. */
   dof?: number
+  /** Realised angular precision of the solved geometry, in radians, from the
+   *  solver's contract finish (the target is `OCC_ANGULAR`). NaN means no
+   *  measured miss for the shipped params: an unsatisfied solve, a drag frame,
+   *  or a green solve whose finish was restored because it would have flipped
+   *  the verdict. INFINITY is the solver's row-classification failure. The
+   *  kernel half reads this to widen its own angular calls by what the solve
+   *  actually reached. */
+  angular_miss?: number
+  /** Realised positional precision, in document length units (target
+   *  `OCC_CONFUSION * 1e-2`). NaN and INFINITY as `angular_miss`. */
+  linear_miss?: number
   geometry?: Record<string, number[]>
   features?: Record<string, { status: string }>
   /** Per-constraint solve facts, keyed by doc constraint id: the render block,
@@ -1004,6 +1015,8 @@ export function solveSketch(
   return {
     status,
     dof: out.diagnostics.dof,
+    angular_miss: out.diagnostics.angularMiss,
+    linear_miss: out.diagnostics.linearMiss,
     ...(warnings.length ? { solver_warning: warnings.join(' ') } : {}),
     geometry,
     entity_moved: entityMoved,

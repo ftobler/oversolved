@@ -45,6 +45,37 @@ pub struct LmResult {
     /// whose returned matrix is a placeholder.
     pub jacobian_finite: bool,
     pub iters: u32,
+    /// Why the last phase that ran stopped. A residual that lands short of a
+    /// caller's target reads the same whether the gradient test fired at a
+    /// true stationary point or a step/cost test fired on a phase that had
+    /// stopped making progress; the two call for different answers, so the
+    /// reason travels with the result instead of being inferred.
+    pub stop: LmStop,
+    /// Index of the phase `stop` describes: 0 is the anchored phase, 1 the
+    /// proximal polish. Both are 0 when the driver returned before iterating.
+    /// The dense driver runs both phases, so a normal solve reports 1.
+    pub stop_phase: u8,
+}
+
+/// The convergence test (or budget) that ended a phase of the dense driver.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LmStop {
+    /// The largest gradient component fell under `GTOL`.
+    Gradient,
+    /// An accepted step was under `XTOL * |x|`.
+    Step,
+    /// An accepted step's relative cost drop was under `FTOL`.
+    Cost,
+    /// No downhill step was found: a local minimum of the phase's cost.
+    NoDescent,
+    /// The phase's iteration budget ran out.
+    Budget,
+    /// The gradient went non-finite; the driver stopped rather than step on it.
+    GradientNonFinite,
+    /// No residual rows or no params: nothing to solve.
+    Degenerate,
+    /// A non-finite residual: the seed is returned untouched.
+    NonFinite,
 }
 
 /// Relative step for the central finite-difference Jacobian. `cbrt(eps)` is the
@@ -200,6 +231,8 @@ pub fn solve_lm_damped_retract(
             residual_norm: norm2(&r),
             jacobian_finite: true,
             iters: 0,
+            stop: LmStop::Degenerate,
+            stop_phase: 0,
         };
     }
 
@@ -215,6 +248,8 @@ pub fn solve_lm_damped_retract(
             residual_norm: norm2(&r),
             jacobian_finite: false,
             iters: 0,
+            stop: LmStop::NonFinite,
+            stop_phase: 0,
         };
     }
 
@@ -269,8 +304,12 @@ pub fn solve_lm_damped_retract(
 
     let mut iters = 0;
     let mut target = x0.to_vec();
+    // Why the phase that ends the solve stopped, and which phase that was.
+    let mut stop = LmStop::Budget;
+    let mut stop_phase = 0u8;
     for (phase, budget) in [MAX_ITERS, POLISH_ITERS].into_iter().enumerate() {
         let proximal = phase > 0;
+        stop_phase = phase as u8;
         if proximal {
             target.clone_from(&x);
         }
@@ -279,6 +318,7 @@ pub fn solve_lm_damped_retract(
         lambda = lambda.min(lambda0);
         let mut cost = 0.5 * r.iter().map(|&e| e * e).sum::<f64>() + anchor_cost(&x, &target);
         let mut phase_iters = 0;
+        let mut phase_stop: Option<LmStop> = None;
         while phase_iters < budget {
             phase_iters += 1;
             iters += 1;
@@ -291,15 +331,16 @@ pub fn solve_lm_damped_retract(
             // A non-finite gradient means the curvature/probe has gone bad; stop
             // here rather than let the comparison below step on NaN.
             if g.iter().any(|&v| !v.is_finite()) {
+                phase_stop = Some(LmStop::GradientNonFinite);
                 break;
             }
             if g.amax() < GTOL {
+                phase_stop = Some(LmStop::Gradient);
                 break;
             }
 
             // Try damped steps, increasing lambda until the step reduces cost.
             let mut accepted = false;
-            let mut converged = false;
             for _ in 0..MAX_RETRIES {
                 let mut a = jtj.clone();
                 for i in 0..n {
@@ -337,7 +378,11 @@ pub fn solve_lm_damped_retract(
 
                     // Convergence on tiny step or tiny relative cost reduction.
                     let xnorm = norm2(&x).max(1e-30);
-                    converged = dx < XTOL * xnorm || cost_drop < FTOL * cost.max(1e-30);
+                    if dx < XTOL * xnorm {
+                        phase_stop = Some(LmStop::Step);
+                    } else if cost_drop < FTOL * cost.max(1e-30) {
+                        phase_stop = Some(LmStop::Cost);
+                    }
                     // Re-read the cost at the retracted point rather than
                     // reusing `cost_new`: the fold zeroed whatever coordinates
                     // it folded, and the anchor priced those on the trial
@@ -358,10 +403,14 @@ pub fn solve_lm_damped_retract(
             }
 
             // No downhill step found means a local min of this phase's cost.
-            if converged || !accepted {
+            if phase_stop.is_some() || !accepted {
+                if phase_stop.is_none() {
+                    phase_stop = Some(LmStop::NoDescent);
+                }
                 break;
             }
         }
+        stop = phase_stop.unwrap_or(LmStop::Budget);
     }
 
     // The gate both SVD call sites read before decomposing: a non-finite
@@ -373,6 +422,8 @@ pub fn solve_lm_damped_retract(
         residual_norm: norm2(&r),
         jacobian_finite,
         iters,
+        stop,
+        stop_phase,
     }
 }
 
@@ -961,6 +1012,40 @@ mod tests {
         let jac = |_: &[f64]| vec![vec![(0, f64::INFINITY)]];
         let r = solve_lm_sparse(&[0.0], &f, &jac);
         assert!(!r.jacobian_finite);
+    }
+
+    #[test]
+    fn solve_lm_reports_the_test_that_stopped_each_phase() {
+        // A linear problem reaches the gradient test at the exact answer.
+        // Both phases run, so the reported phase is the polish.
+        let (x0, f, jac) = one_d();
+        let r = solve_lm(&x0, &f, &jac);
+        assert_eq!(r.stop_phase, 1);
+        assert_eq!(r.stop, LmStop::Gradient);
+        // A search that runs out of budget is the one reason the next phase
+        // starts, so a caller can tell "converged" from "gave up".
+        assert_ne!(r.stop, LmStop::Budget);
+        // Degenerate and malformed inputs return before iterating.
+        let empty = solve_lm(&[], &|_: &[f64]| vec![1.0], &|_: &[f64]| {
+            DMatrix::zeros(0, 0)
+        });
+        assert_eq!(empty.stop, LmStop::Degenerate);
+        let nan = solve_lm(&[1.0], &|_: &[f64]| vec![f64::NAN], &|_: &[f64]| {
+            DMatrix::from_row_slice(1, 1, &[1.0])
+        });
+        assert_eq!(nan.stop, LmStop::NonFinite);
+    }
+
+    #[test]
+    fn solve_lm_stops_the_anchored_phase_before_the_polish() {
+        // Both phases always run: the polish is the driver's second pass, not a
+        // budget fallback. Pinning it here keeps a future change from turning
+        // the anchored bias into the final answer.
+        let f = |x: &[f64]| vec![x[0] - 1.0, x[1] - 2.0, x[0] + x[1] - 3.0];
+        let jac = |_: &[f64]| DMatrix::from_row_slice(3, 2, &[1.0, 0.0, 0.0, 1.0, 1.0, 1.0]);
+        let r = solve_lm(&[0.0, 0.0], &f, &jac);
+        assert_eq!(r.stop_phase, 1, "the polish did not run: {:?}", r.stop);
+        assert_ne!(r.stop, LmStop::Budget);
     }
 
     #[test]

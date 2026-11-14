@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   GPROP_EPS,
+  OCC_ANGULAR,
   OCC_CONFUSION,
   TOL_LENGTH_SLACK,
   TOL_LOOP_CLOSURE,
@@ -25,6 +26,9 @@ import { DEFAULT_MEASURE_TOLERANCE } from '../occ/measureTolerance'
 // (vertex-merge order feeds the query strings). This guard parses the Rust
 // source directly so either side drifting fails here instead of in geometry.
 const RUST_TOPOLOGY_MOD = join(__dirname, '../../../../sketch-solver/src/topology/mod.rs')
+// The kernel precision contract's twins live in the tolerance ladder itself:
+// the solver's finish phase and this side must target the same OCC values.
+const RUST_TOLERANCE = join(__dirname, '../../../../sketch-solver/src/tolerance.rs')
 
 function rustTolerances(): Map<string, number> {
   const src = readFileSync(RUST_TOPOLOGY_MOD, 'utf8')
@@ -35,9 +39,19 @@ function rustTolerances(): Map<string, number> {
   return found
 }
 
+function rustConstants(path: string, pattern: RegExp): Map<string, number> {
+  const src = readFileSync(path, 'utf8')
+  const found = new Map<string, number>()
+  for (const [, name, value] of src.matchAll(pattern)) {
+    found.set(name, Number(value))
+  }
+  return found
+}
+
 describe('solverConstants', () => {
   const toleranceConstants = [
     GPROP_EPS,
+    OCC_ANGULAR,
     OCC_CONFUSION,
     TOL_LOOP_CLOSURE,
     TOL_NEAR_ZERO_AREA,
@@ -96,11 +110,41 @@ describe('solverConstants', () => {
   // round, every area the user can see would be one the kernel accepts; ordered
   // as they are, the band in between is a sketch that looks closed and is not.
   //
-  // Deliberately its own `it`: the mirror test above asserts an exact Rust
-  // count, and OCC_CONFUSION has no Rust twin.
+  // Deliberately its own `it`: the topology mirror test above asserts an exact
+  // Rust count, and these two are OCC's compiled-in values (their Rust twins
+  // live in the sketch solver's tolerance module, pinned separately below).
   it('the tolerance ladder holds: OCC confusion < loop closure <= topology merge', () => {
     expect(OCC_CONFUSION).toBeLessThan(TOL_LOOP_CLOSURE)
     expect(TOL_LOOP_CLOSURE).toBeLessThanOrEqual(TOL_TOPOLOGY_MERGE)
+  })
+
+  // The kernel precision contract, both halves: the solver's finish targets
+  // OCC's compiled-in pair, and this side must read the SAME values or the two
+  // disagree about what "parallel" means -- which is the bug this contract
+  // exists to close. Parsed from the Rust source (not a copied literal) so a
+  // one-sided edit fails here. `CONTRACT_POSITIONAL_REL` is pinned too, so the
+  // positional target is derived from the same number OCC reads.
+  it('the kernel precision contract equals its Rust twins', () => {
+    const rust = rustConstants(RUST_TOLERANCE, /pub const (OCC_[A-Z_]+|CONTRACT_POSITIONAL_REL): f64 = ([0-9.e+-]+);/g)
+    expect(rust.get('OCC_CONFUSION')).toBe(OCC_CONFUSION)
+    expect(rust.get('OCC_ANGULAR')).toBe(OCC_ANGULAR)
+    // The solver's positional target is two orders under the confusion width;
+    // this side reads the same share to know what the report means.
+    expect(rust.get('CONTRACT_POSITIONAL_REL')).toBe(1e-2)
+    expect(OCC_CONFUSION * 1e-2).toBe(1e-9)
+  })
+
+  // The rung order the contract depends on: the solver's angular target is
+  // tighter than the kernel-side surface-parallel rung, so a solve that meets
+  // its contract cannot be read as "different surfaces" by the axis check. The
+  // reverse would let a contract-passing solve still fail the kernel's own
+  // comparison.
+  it('OCC_ANGULAR sits under the surface-parallel rung and above f64 noise', () => {
+    expect(OCC_ANGULAR).toBeLessThan(TOL_SURFACE_PARALLEL)
+    expect(OCC_ANGULAR).toBeGreaterThan(0)
+    // 1000x above the direction a 100 mm line resolves in f64 (eps * 100 / 80).
+    const floor = Number.EPSILON * 100 / 80
+    expect(OCC_ANGULAR).toBeGreaterThan(100 * floor)
   })
 
   // Asserting `!rust.has('OCC_CONFUSION')` would test the regex, not the code:

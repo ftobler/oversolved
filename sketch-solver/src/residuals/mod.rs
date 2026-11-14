@@ -26,6 +26,7 @@ mod geom;
 mod jacobian;
 mod linear;
 mod misc;
+pub(crate) mod rows;
 mod scale;
 mod tangent;
 
