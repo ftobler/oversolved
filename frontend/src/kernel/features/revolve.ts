@@ -17,6 +17,7 @@ import { dot, sub as sub3 } from '@/utils/vec3'
 import { surfaceEntityIds } from './shared/bodyRef'
 import { openJointHint, profileAreaReport } from './shared/profileLoops'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
+import { maxPrecision, sketchPrecision, type KernelPrecision } from '../precision'
 import { revolveFace, revolveProfileWithLineage } from '../occ/prismLineage'
 import { carryFaceNames, emptyShapeNames, mergeShapeNames } from '../occ/bodyNames'
 import { deriveEdgeNames } from '../occ/constructionLineage'
@@ -244,6 +245,9 @@ export function solveRevolve(
   const cqFaces: OccShape[] = []
   let firstPt: PlaneLike | null = null
   let firstSketchId = ''
+  // The realised precision of every sketch whose profile this feature revolves
+  // from; the body carries the max (kernel/precision.ts).
+  let precision: KernelPrecision | null = null
   const profileErrors: string[] = []
   const profileQueries: string[] = []
   const unbuildableReasons: string[] = []
@@ -281,6 +285,7 @@ export function solveRevolve(
         )
       }
     }
+    precision = maxPrecision(precision, sketchPrecision(globalRepo, resolved.sketchId))
     const topo = (globalRepo.elements.get('_topo_' + resolved.sketchId) as Dict | undefined) ?? {}
     // Why an area in the REFERENCED set did not build; an unpicked area of the
     // same sketch is not part of this profile and is not reported.
@@ -382,9 +387,9 @@ export function solveRevolve(
       // Each half gets a distinct createdBy so their side faces carry different
       // UUIDs, avoiding collisions at the shared seam.
       const half = angle / 2.0
-      const pos = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, half, firstSketchId, featureId + '|sym|pos')
+      const pos = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, half, firstSketchId, featureId + '|sym|pos', precision)
       const posTracked = scope.track(pos.solid)
-      const neg = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, -half, firstSketchId, featureId + '|sym|neg')
+      const neg = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, -half, firstSketchId, featureId + '|sym|neg', precision)
       const negTracked = scope.track(neg.solid)
       // The fuse's face history carries each half's names onto the tool; the
       // edges are derived again on the fused tool.
@@ -399,7 +404,7 @@ export function solveRevolve(
       Object.assign(names.edgeAncestry, edges.edgeAncestry)
     } else {
       const eff = direction === 'reverse' ? -angle : angle
-      const lineage = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, eff, firstSketchId, featureId)
+      const lineage = revolveProfileWithLineage(oc, scope, allLoops, firstPt as PlaneLike, ao, ad, eff, firstSketchId, featureId, precision)
       toolShape = scope.track(lineage.solid)
       mergeShapeNames(names, lineage)
     }
@@ -433,6 +438,7 @@ export function solveRevolve(
     faceAncestry: names.faceAncestry,
     edgeAncestry: names.edgeAncestry,
     capAncestry: names.capAncestry,
+    precision,
   })
   Object.assign(result, opResult)
 

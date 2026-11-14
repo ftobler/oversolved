@@ -383,6 +383,14 @@ export interface OccBRepBuilder extends OccDisposable {
 /** ShapeUpgrade_UnifySameDomain: cadquery Shape.clean() with exposed history. */
 export interface OccUnify extends OccDisposable {
   AllowInternalEdges(allow: boolean): void
+  /** The two tolerances `IsSameDomain` reads before folding two faces: a plane
+   *  pair is the same domain when their directions are parallel within the
+   *  angular one and their planes are closer than the linear one. OCC's
+   *  compiled-in defaults are `Precision::Confusion()` / `Precision::Angular()`
+   *  (mirrored as OCC_CONFUSION / OCC_ANGULAR); the merge passes the solver's
+   *  reported precision instead, so the call is explicit. */
+  SetLinearTolerance(tolerance: number): void
+  SetAngularTolerance(tolerance: number): void
   Build(): void
   Shape(): OccShape
   History_1(): OccHistoryHandle

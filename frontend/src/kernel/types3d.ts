@@ -1,5 +1,6 @@
 
 import type { OccHandle } from './occ/handleTable'
+import type { KernelPrecision } from './precision'
 
 /** History from an OCC boolean operation, classifying output sub-shapes. */
 export interface BrepDiff {
@@ -104,6 +105,15 @@ export interface Body {
    * (features/boolean.ts arrayMemberIds).
    */
   split_from?: { feature: string; body: string }
+  /**
+   * The realised precision of the sketch solves this body was built from, the
+   * max over its producing sketches' reported misses, floored at the OCC
+   * contract (kernel/precision.ts). A boolean or mirror merge reads it so the
+   * kernel widens by what the solver measured, within the ceiling; it is not
+   * user intent, so it is derived state like `sketch_id`, written by the
+   * features that set or merge the body's geometry.
+   */
+  precision?: KernelPrecision
 }
 
 /** Cached state at a single feature boundary for partial rebuild. */

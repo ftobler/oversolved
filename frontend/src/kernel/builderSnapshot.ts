@@ -46,6 +46,9 @@ function _copyBody(body: Body, mapShape?: ShapeMapper): Body {
       ? { brep_new: { ...body.brep_new, shape } }
       : {}),
     ...(body.imported ? { imported: true } : {}),
+    // Derived from the producing solves, carried with the body so a checkpoint
+    // restore hands the next merge the same widening it had before.
+    ...(body.precision ? { precision: { ...body.precision } } : {}),
   }
 }
 

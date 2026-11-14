@@ -27,6 +27,7 @@ import { frameFromPlaneTransform, normalToFrame } from '../types3d'
 import { loopCentroid, radians, type LoopEdge } from '../profileLoops'
 import { BUILTIN_PLANES } from '../solverConstants'
 import { sketchToWorld2d, type PlaneLike } from './shared/planes'
+import { precisionKey, precisionOfSolve } from '../precision'
 import { stripRefSigil } from '@/utils/refSigil'
 
 type Dict = Record<string, unknown>
@@ -237,6 +238,14 @@ export function postRegister(
   if (pt) {
     globalRepo.register('_pt_' + featureId, frameFromPlaneTransform(pt))
   }
+  // What the solve actually reached, beside its topology: a downstream feature
+  // that merges this sketch's geometry into a body widens the kernel's face
+  // merge by this much (kernel/precision.ts). Re-registered on every solve, the
+  // same way `_topo_` is.
+  const precision = precisionOfSolve(featureResult, featureId)
+  if (precision !== null) {
+    globalRepo.register(precisionKey(featureId), precision)
+  }
   if (featureResult.topology !== undefined) {
     globalRepo.register('_topo_' + featureId, featureResult.topology)
     if (pt) {
@@ -280,6 +289,9 @@ export function clearFeatureGeometryRegistrations(globalRepo: Repository, featur
   for (const eid of eidsToRemove) globalRepo.deleteElement(eid)
   for (const key of keysToRemove) globalRepo.deleteAncestral(key)
   globalRepo.clearBySketchId(featureId)
+  // The solve precision is a direct element, like `_pt_`; a re-solve overwrites
+  // it, and clearing it here keeps a deleted sketch from leaving one behind.
+  globalRepo.deleteElement(precisionKey(featureId))
 }
 
 /**

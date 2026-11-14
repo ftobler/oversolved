@@ -62,6 +62,7 @@ import { sketchLoopsToFace, canonicalizeFaceCircles } from './prismProfile'
 import { draftPrismBuilder, type DraftPrismBuilder } from './draftPrism'
 import { entityForEdges, derivePrismEdgeNames } from './prismEdgeNaming'
 import { swallowUnlessTrap } from '../errors'
+import { mergeTolerance, type KernelPrecision, type MergeTolerance } from '../precision'
 
 // Kept as the public entry points for the profile -> face step and its
 // canonicalizing core, which the real-OCC gates import from here.
@@ -478,6 +479,7 @@ function tryCanonicalMergedProfile(
   plane: PlaneLike,
   directionVec: Vec3,
   distance: number,
+  tolerance: MergeTolerance,
 ): MergedProfileResult {
   try {
     const faces = groups.map(([outer, holes]) =>
@@ -519,7 +521,10 @@ function tryCanonicalMergedProfile(
     // multi-body output the caller splits apart; bailing here preserves it.
     if (countSolids(oc, scope, solid) !== 1) { scope.release(solid); return { kind: 'disjoint' } }
     try {
-      const cleaned = cleanWithHistory(oc, scope, solid).shape
+      const cleaned = cleanWithHistory(oc, scope, solid, true, {
+        linearTol: tolerance.linearTol,
+        angularTol: tolerance.angularTol,
+      }).shape
       scope.track(cleaned)
       scope.release(solid)  // the previous running solid is consumed by the clean
       solid = cleaned
@@ -652,12 +657,14 @@ function namedFuse(oc: OccModule, scope: DisposeScope) {
     },
     // `clean` folds coplanar caps and cocylindrical walls; a clean that rejects
     // the shape (a disjoint multi-solid compound, occasionally) keeps it raw.
-    finish(clean: boolean, emptyMessage: string): LineageResult {
+    finish(clean: boolean, emptyMessage: string, tolerance?: MergeTolerance): LineageResult {
       if (solid === null) throw new Error(emptyMessage)
       let out: OccShape = solid
       if (clean) {
         try {
-          const r = cleanWithHistory(oc, scope, out)
+          const r = cleanWithHistory(oc, scope, out, true, tolerance === undefined
+            ? {}
+            : { linearTol: tolerance.linearTol, angularTol: tolerance.angularTol })
           const cleaned = scope.track(r.shape)
           const passThrough = canonicalFaces(oc, scope, out).map((f) => ({ output: f, source: f, fromTool: false }))
           names.faceNames = carryFaceNames(
@@ -700,6 +707,7 @@ function perGroupPrismWithLineage(
   createdBy: string,
   sketchId: string,
   taperRad = 0,
+  tolerance?: MergeTolerance,
 ): LineageResult {
   const fuse = namedFuse(oc, scope)
   // A group that closes to a point has no top face; the feature registers none
@@ -744,7 +752,7 @@ function perGroupPrismWithLineage(
   // fallback path here) UnifySameDomain can occasionally reject the compound;
   // the un-merged raw solid is kept in that rare case rather than crash the
   // feature -- the caller side splits multi-solids.
-  return { ...fuse.finish(groups.length > 1, 'no loops to extrude'), apex }
+  return { ...fuse.finish(groups.length > 1, 'no loops to extrude', tolerance), apex }
 }
 
 /**
@@ -779,6 +787,7 @@ export function extrudeProfileWithLineage(
   sketchId = '',
   createdBy = '',
   taperDeg = 0,
+  precision?: KernelPrecision | null,
 ): LineageResult {
   // Classification reads the traced pieces (a tangent hole is recognised by the
   // arcs it shares with its neighbours), so fuse only after the groups exist.
@@ -788,6 +797,9 @@ export function extrudeProfileWithLineage(
   if (groups.length === 0) throw new Error('no loops to extrude')
   const tokenPrefix = sketchId ? `@${sketchId}/` : '@'
   const taperRad = (taperDeg * Math.PI) / 180
+  // A multi-group profile's own fuse-and-clean is still a merge of this
+  // sketch's geometry, so it reads the same reported precision.
+  const tolerance = mergeTolerance(precision)
 
   if (groups.length === 1) {
     const [outer, holes] = groups[0]
@@ -801,7 +813,7 @@ export function extrudeProfileWithLineage(
   // draft changes only the prism built from it, so the tapered path can use the
   // same merged face and then one draft prism rather than per-group frustums
   // (adjacent groups' inner walls lean apart and would not fuse).
-  const merged = tryCanonicalMergedProfile(oc, scope, groups, plane, directionVec, distance)
+  const merged = tryCanonicalMergedProfile(oc, scope, groups, plane, directionVec, distance, tolerance)
   if (merged.kind === 'merged') {
     const lineageLoops = groups.flatMap(([outer, holes]) => [outer, ...holes])
     return prismFaceWithLineage(
@@ -816,7 +828,7 @@ export function extrudeProfileWithLineage(
   }
 
   return perGroupPrismWithLineage(
-    oc, scope, groups, plane, directionVec, distance, tokenPrefix, createdBy, sketchId, taperRad,
+    oc, scope, groups, plane, directionVec, distance, tokenPrefix, createdBy, sketchId, taperRad, tolerance,
   )
 }
 
@@ -875,6 +887,7 @@ export function revolveProfileWithLineage(
   angleDeg: number,
   sketchId = '',
   createdBy = '',
+  precision?: KernelPrecision | null,
 ): LineageResult {
   const groups = classifyLoops(loops).map(
     ([outer, holes]): [LoopEdge[], LoopEdge[][]] => [fuseCollinearRuns(outer), holes.map(fuseCollinearRuns)],
@@ -920,7 +933,7 @@ export function revolveProfileWithLineage(
     scope.release(face)
     fuse.add(part, lineage)
   }
-  return fuse.finish(true, 'no loops to revolve')
+  return fuse.finish(true, 'no loops to revolve', mergeTolerance(precision))
 }
 
 // ─── sweep (the sweep leaf's brep producer) ───

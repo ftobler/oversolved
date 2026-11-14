@@ -38,6 +38,7 @@ import { absolute, emitWire, featureRefId } from '../query'
 import { bodySpanAlong, projectedRadius } from './shared/bodyExtent'
 import { sameEnum } from '../occ/enumValue'
 import { booleanWithDiff, volumeOf } from '../occ/booleans'
+import { precisionCeilingWarning } from '../precision'
 import { resplitBody } from './bodySplit'
 import { transferBooleanNames } from './booleanLineage'
 import { readBodyNames, type ShapeNames } from '../occ/bodyNames'
@@ -989,7 +990,9 @@ export function solveHole(
       continue
     }
     names ??= readBodyNames(oc, scope, currentShape, targetBody)
-    const res = booleanWithDiff(oc, scope, currentShape, cyl, 'cut', { unifyFaces: !targetBody.imported })
+    const res = booleanWithDiff(oc, scope, currentShape, cyl, 'cut', {
+      unifyFaces: !targetBody.imported, precision: targetBody.precision ?? null,
+    })
     // A drilled face keeps its own name, and the cutter's faces carry theirs from
     // the drill site onto the bore and floor they leave behind. The cutter is
     // dropped after the cut and reaches this one body, so nothing else holds its
@@ -1156,6 +1159,15 @@ export function solveHole(
     result.solver_warning =
       `hole: sites ${otherSideSites.join(', ')} have material on the other side; ` +
       `drilled ${side} at all sites (a through hole drills one side), ${fix}`
+  }
+  // A body whose sketch solve missed the merge ceiling by more than the ceiling
+  // keeps its near-coplanar faces separate whatever this cut does; say so once,
+  // beside the site warnings.
+  const ceiling = cutAny && targetBody.precision ? precisionCeilingWarning(targetBody.precision) : null
+  if (ceiling !== null) {
+    result.solver_warning = result.solver_warning === undefined
+      ? ceiling
+      : `${result.solver_warning}; ${ceiling}`
   }
   // A swallowed site is a warning with a remedy, never a miss: the hole's cut
   // is right, the author only placed one site too many. The note replaces the

@@ -28,6 +28,7 @@ import { buildCurveEdge } from '../occ/helixEdge'
 import { descriptorFromRepo } from './helix'
 import { stripRefSigil } from '@/utils/refSigil'
 import { TOL_LENGTH_SLACK, TOL_LOOP_CLOSURE } from '../solverConstants'
+import { maxPrecision, sketchPrecision, type KernelPrecision } from '../precision'
 
 type Dict = Record<string, unknown>
 
@@ -789,6 +790,9 @@ export function solveSweep(
   const sectionRefs: { sketchId: string; plane: PlaneLike; loops: Dict[][] }[] = []
   let firstPt: PlaneLike | null = null
   let firstSketchId = ''
+  // The realised precision of every profile sketch this sweep builds from; the
+  // body carries the max (kernel/precision.ts).
+  let precision: KernelPrecision | null = null
   const profileErrors: string[] = []
   const profileQueries: string[] = []
   // Referenced sketch areas and how many produced a loop (partial accounting).
@@ -840,6 +844,7 @@ export function solveSweep(
         )
       }
     }
+    precision = maxPrecision(precision, sketchPrecision(globalRepo, resolved.sketchId))
     const topo = (globalRepo.elements.get('_topo_' + resolved.sketchId) as Dict | undefined) ?? {}
     const report = profileAreaReport(
       resolved.profileSurfaces ?? [],
@@ -867,6 +872,7 @@ export function solveSweep(
       continue
     }
     const topo = (globalRepo.elements.get('_topo_' + sketchId) as Dict | undefined) ?? {}
+    precision = maxPrecision(precision, sketchPrecision(globalRepo, sketchId))
     const edges = ((topo.edges as Dict[]) ?? []).filter((e) => eids.has(e.entity_id as string))
     // An undivided curve (a lone circle, or the outer boundary of a ring) has no
     // split edges in `topo.edges`; its geometry lives in the surface boundary.
@@ -1077,6 +1083,7 @@ export function solveSweep(
     faceAncestry: lineage.faceAncestry,
     edgeAncestry: lineage.edgeAncestry,
     capAncestry: lineage.capAncestry,
+    precision,
   })
   Object.assign(result, opResult)
 

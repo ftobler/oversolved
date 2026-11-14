@@ -571,6 +571,8 @@ function solveFeaturePattern(
               faceOwner: inst.names.faceOwner,
               edgeOwner: inst.names.edgeOwner,
               opName: 'pattern',
+              // A pattern copy is the same geometry as its source body.
+              precision: target.precision ?? null,
             })
             copyApplied = true
             const ids = result.body_ids ?? (result.body_id ? [result.body_id] : [])
@@ -624,7 +626,7 @@ function solveFeaturePattern(
       batched = booleanWithDiffMany(
         oc, scope, targetShape, selected.map((copy) => copy.shape),
         operation === 'add' ? 'fuse' : 'cut',
-        { unifyFaces: !target.imported },
+        { unifyFaces: !target.imported, precision: target.precision ?? null },
       )
     } catch (e) {
       swallowUnlessTrap(e)
@@ -683,6 +685,7 @@ function solveFeaturePattern(
     }
     const bodyIds = resplitBody(
       oc, scope, table, bodyStore, target, newShape, featureId, names, preferredFirst,
+      target.precision ?? null,
     )
     target.modified_by.push(featureId)
     target.brep_diff = batched.diff
