@@ -72,8 +72,10 @@ export interface McpRunRequest extends McpDocArguments {
   // 'all' lists every resolved frame instead of the ones this call touched or
   // moved.
   frames?: 'all'
-  // Write the final document here (YAML or JSON by extension). Project paths
-  // only; the entry script resolves and enforces the directory rule.
+  // Write the final document here: a part path is YAML or JSON by extension, an
+  // assembly path is the workspace zip unless it names a document extension.
+  // Project paths only; the entry script resolves and enforces the directory
+  // rule.
   out?: string
   // Assembly replies only; undefined means the default (full).
   detail?: AssemblyDetail

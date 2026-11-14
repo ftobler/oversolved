@@ -34,7 +34,7 @@ import { PART_DOC_SCHEMA_JSON } from '@/persistence/partDocSchema'
 import { ASSEMBLY_DOC_SCHEMA_JSON } from '@/persistence/assemblyDocSchema'
 import { createHeadlessAssembly, emptyDriveAssemblyDoc, type AssemblyScriptStep } from '@/drive/headlessAssembly'
 import { buildAssemblyWorkspaceZip } from '@/drive/assemblyWorkspaceZip'
-import { assemblyBareOutNote, assemblyOutPath } from '@/drive/assemblyOut'
+import { assemblyBareOutNote, assemblyOutIsZip, assemblyOutPath } from '@/drive/assemblyOut'
 import { docHashOf } from '@/drive/docHash'
 import type { ScriptStep, ScriptStepOutcome } from '@/drive/scriptRunner'
 import type { SelectResult } from '@/kernel/select'
@@ -251,7 +251,7 @@ const ops: McpCadOps = {
     const files = readProjectFiles(req.files)
 
     if (resolved.kind === 'part') {
-      if (out !== undefined && out.endsWith('.zip')) {
+      if (out !== undefined && assemblyOutIsZip(out)) {
         return { ok: false, error: 'a workspace zip needs an assembly document; run the assembly instead' }
       }
       if (req.detail !== undefined) {
@@ -323,7 +323,7 @@ const ops: McpCadOps = {
     })
     if (out === undefined) return reply
     try {
-      if (out.endsWith('.zip')) {
+      if (assemblyOutIsZip(out)) {
         const bytes = await buildAssemblyWorkspaceZip({
           doc: result.doc,
           // The run may have imported a STEP, so the archive must carry the
