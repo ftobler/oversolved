@@ -1270,14 +1270,15 @@
   outline: 1px solid #1e3a4a;
 }
 
+/* No divider line: the block sits off the line above it by the same gap it
+   spaces its own field rows with. The margin carries all of that space; the
+   old `padding-top` only held the rows off the border. */
 .plane-editor {
   width: 100%;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-top: 3px;
-  padding-top: 5px;
-  border-top: 1px solid #553355;
+  margin-top: 6px;
 }
 
 .feature-field-row {
@@ -1367,6 +1368,11 @@
   font-size: 11px;
   padding: 0 4px;
   overflow-wrap: anywhere;
+  /* index.css centers text app-wide (`#root`), and a flex parent would shrink
+     the line to its content and center that; a refusal reads left-bound
+     whether it wraps or not. */
+  text-align: left;
+  align-self: stretch;
 }
 
 .status-message--error {
