@@ -29490,17 +29490,16 @@
         },
         {
           "id": "arr1",
-          "kind": "pattern",
-          "pattern": {
-            "count_x": 3,
-            "count_y": 2,
-            "direction_x_query": "@sk_dir/lx",
-            "direction_y_query": "@sk_dir/ly",
-            "include_source": true,
-            "mode": "rectangular",
+          "kind": "linear_pattern",
+          "linear_pattern": {
+            "count": 3,
+            "count_2": 2,
+            "direction_2_query": "@sk_dir/ly",
+            "direction_query": "@sk_dir/lx",
             "operation": "add",
-            "pitch_x": 5,
-            "pitch_y": 5,
+            "pitch": 5,
+            "pitch_2": 5,
+            "second_direction": true,
             "source_body": "@ex1",
             "subject": "body"
           }
@@ -88538,16 +88537,14 @@
         },
         {
           "id": "arr1",
-          "kind": "pattern",
-          "pattern": {
+          "kind": "circular_pattern",
+          "circular_pattern": {
             "axis": "@sk_axis/c1",
             "count": 3,
-            "include_source": true,
             "invert_axis": false,
             "operation": "add",
             "source_body": "@ex1",
-            "subject": "body",
-            "mode": "circular"
+            "subject": "body"
           }
         }
       ],

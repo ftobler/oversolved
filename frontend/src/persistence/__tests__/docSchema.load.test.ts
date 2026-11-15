@@ -20,7 +20,7 @@ import {
 import {
   ALL_HISTORICAL_ASSEMBLY_DOCS,
   ALL_HISTORICAL_PART_DOCS,
-  CURRENT_V8_PART,
+  CURRENT_V9_PART,
   LEGACY_V0_PART,
   LEGACY_V1_PART,
 } from '@/persistence/__fixtures__/historicalDocs'
@@ -122,7 +122,7 @@ describe('the version gate', () => {
   })
 
   it('the current-version fixture is stamped at CURRENT_DOC_VERSION', () => {
-    const result = loadPartDocText(CURRENT_V8_PART.text, { name: CURRENT_V8_PART.name })
+    const result = loadPartDocText(CURRENT_V9_PART.text, { name: CURRENT_V9_PART.name })
     expect(result.ok).toBe(true)
     if (!result.ok) return
     expect(docVersion(result.doc)).toBe(CURRENT_DOC_VERSION)
@@ -385,11 +385,11 @@ describe('hostile sizes are capped before the builder', () => {
     const result = loadPartDoc({
       version: 1,
       kind: 'part',
-      features: [{ id: 'a1', kind: 'pattern', pattern: { source_body: '@b1', count_x: 1e9 } }],
+      features: [{ id: 'a1', kind: 'pattern', pattern: { source_body: '@b1', mode: 'rectangular', count_x: 1e9 } }],
     }, { name: 'Hostile' })
     expect(result.ok).toBe(false)
     if (result.ok) return
-    expect(result.error.field).toBe('features[0].pattern.count_x')
+    expect(result.error.field).toBe('features[0].linear_pattern.count')
     expect(result.error.message).toContain(String(MAX_ARRAY_COUNT))
   })
 
@@ -397,17 +397,17 @@ describe('hostile sizes are capped before the builder', () => {
     const result = loadPartDoc({
       version: 1,
       kind: 'part',
-      features: [{ id: 'a1', kind: 'pattern', pattern: { count_x: '10 * 1e8' } }],
+      features: [{ id: 'a1', kind: 'pattern', pattern: { mode: 'rectangular', count_x: '10 * 1e8' } }],
     })
     expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.error.field).toBe('features[0].pattern.count_x')
+    if (!result.ok) expect(result.error.field).toBe('features[0].linear_pattern.count')
   })
 
   it('rejects a count pair whose product would hang the worker', () => {
     const result = loadPartDoc({
       version: 1,
       kind: 'part',
-      features: [{ id: 'a1', kind: 'pattern', pattern: { count_x: 900, count_y: 900 } }],
+      features: [{ id: 'a1', kind: 'pattern', pattern: { mode: 'rectangular', count_x: 900, count_y: 900 } }],
     })
     expect(result.ok).toBe(false)
     if (!result.ok) expect(result.error.message).toContain(String(MAX_ARRAY_CELLS))
@@ -457,7 +457,7 @@ describe('hostile sizes are capped before the builder', () => {
     const result = loadPartDoc({
       version: 1,
       kind: 'part',
-      features: [{ id: 'a1', kind: 'pattern', pattern: { source_body: '@b1', count_x: 10, count_y: 5 } }],
+      features: [{ id: 'a1', kind: 'pattern', pattern: { source_body: '@b1', mode: 'rectangular', count_x: 10, count_y: 5 } }],
     })
     expect(result.ok).toBe(true)
   })

@@ -1,10 +1,13 @@
-// The pattern editor schema: the source is chosen as one or more feature rows
-// from the document (not a viewport pick), the linear fields show the direction
-// and pitch, and the circular fields show the axis and step.
+// The two pattern editor schemas: the source is chosen as one or more feature
+// rows from the document (not a viewport pick), the linear rows show one
+// direction plus the second when it is on, and the circular rows show the axis
+// and the angle law.
 import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent, screen, act } from '@testing-library/react'
 import { FeatureEditor } from '@/components/editors/FeatureEditor'
-import { PATTERN_SCHEMA, EDITOR_SCHEMAS } from '@/components/editors/featureEditorSchemas'
+import {
+  CIRCULAR_PATTERN_SCHEMA, EDITOR_SCHEMAS, LINEAR_PATTERN_SCHEMA, PATTERN_SOURCE_FIELDS,
+} from '@/components/editors/featureEditorSchemas'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { PartFeature } from '@/types/cad'
 import type { NumberFieldDef, PickFieldDef, TextFieldDef } from '@/components/editors/widgets/fieldTypes'
@@ -16,46 +19,57 @@ const FEATURES: PartFeature[] = [
   { id: 'sk1', kind: 'sketch', label: 'Sketch 1', entities: [], initial: {} },
   // The editor rows from here on are at or after the edited pattern: neither is
   // a legal source, and the order rule must refuse them.
-  { id: 'pt1', kind: 'pattern', label: 'Pattern', pattern: {} },
+  { id: 'pt1', kind: 'linear_pattern', label: 'Pattern', linear_pattern: {} },
   { id: 'ex2', kind: 'extrude', label: 'Extrude 2', extrude: { sketch: [], distance: 1 } },
 ]
 
 function makeFeature(over: Record<string, unknown> = {}): PartFeature {
   return {
     id: 'pt1',
-    kind: 'pattern',
+    kind: 'linear_pattern',
     label: 'Pattern',
-    pattern: {
-      subject: 'feature', source_features: [], mode: 'linear', count: 2, pitch: 20, ...over,
+    linear_pattern: {
+      subject: 'feature', source_features: [], count: 2, pitch: 20, ...over,
     },
   } as unknown as PartFeature
 }
 
+function makeCircular(over: Record<string, unknown> = {}): PartFeature {
+  return {
+    id: 'pt1',
+    kind: 'circular_pattern',
+    label: 'Pattern',
+    circular_pattern: { subject: 'feature', source_features: [], count: 4, ...over },
+  } as unknown as PartFeature
+}
+
 function renderEditor(feature: PartFeature, onMutation = vi.fn()) {
-  render(<FeatureEditor feature={feature} onMutation={onMutation} features={FEATURES} schema={PATTERN_SCHEMA} />)
+  render(<FeatureEditor feature={feature} onMutation={onMutation} features={FEATURES} schema={LINEAR_PATTERN_SCHEMA} />)
   return onMutation
 }
 
 const field = (key: string) => {
-  const found = PATTERN_SCHEMA.fields.find((f) => f.key === key)
+  const found = LINEAR_PATTERN_SCHEMA.fields.find((f) => f.key === key)
   if (found === undefined) throw new Error(`no ${key} field`)
   return found
 }
 
-describe('PATTERN_SCHEMA', () => {
+describe('LINEAR_PATTERN_SCHEMA', () => {
   it('is registered with its sub-key, defaults and field order', () => {
-    expect(EDITOR_SCHEMAS.pattern).toBe(PATTERN_SCHEMA)
-    expect(PATTERN_SCHEMA.subKey).toBe('pattern')
-    expect(PATTERN_SCHEMA.defaults).toEqual({
-      subject: 'body', mode: 'linear', operation: 'add', count: 2, pitch: 20, source_features: [],
+    expect(EDITOR_SCHEMAS.linear_pattern).toBe(LINEAR_PATTERN_SCHEMA)
+    expect(LINEAR_PATTERN_SCHEMA.subKey).toBe('linear_pattern')
+    expect(LINEAR_PATTERN_SCHEMA.defaults).toEqual({
+      subject: 'body', operation: 'add', count: 2, pitch: 20, source_features: [],
     })
-    expect(PATTERN_SCHEMA.fields.map((f) => f.key)).toEqual([
+    expect(LINEAR_PATTERN_SCHEMA.fields.map((f) => f.key)).toEqual([
       'subject', 'source_body', 'source_features', 'target_body', 'operation',
-      'mode', 'count', 'centered', 'skip', 'direction_query', 'invert', 'pitch',
-      'direction_x_query', 'invert_x', 'count_x', 'centered_x', 'pitch_x',
-      'direction_y_query', 'invert_y', 'count_y', 'centered_y', 'pitch_y',
-      '_evenly_spaced', 'step_angle', 'axis', 'invert_axis',
+      'direction_query', 'invert', 'count', 'pitch', 'centered', 'second_direction',
+      'direction_2_query', 'invert_2', 'count_2', 'pitch_2', 'centered_2', 'skip',
     ])
+  })
+
+  it('shares the source rows with the circular schema', () => {
+    expect(CIRCULAR_PATTERN_SCHEMA.fields.slice(0, PATTERN_SOURCE_FIELDS.length)).toEqual(PATTERN_SOURCE_FIELDS)
   })
 
   it('is a multi pick chip, not a dropdown', () => {
@@ -70,12 +84,12 @@ describe('PATTERN_SCHEMA', () => {
   it('does not offer the retired include-source option', () => {
     renderEditor(makeFeature({ subject: 'body' }))
     expect(screen.queryByText('Include src')).toBeNull()
-    expect(PATTERN_SCHEMA.fields.some((f) => f.key === 'include_source')).toBe(false)
+    expect(LINEAR_PATTERN_SCHEMA.fields.some((f) => f.key === 'include_source')).toBe(false)
   })
 
   it('shows Skip Instances as the formatted list and the live instance total', () => {
     renderEditor(makeFeature({ count: 4, skip: [2] }))
-    const skip = PATTERN_SCHEMA.fields.find((f) => f.key === 'skip') as TextFieldDef
+    const skip = LINEAR_PATTERN_SCHEMA.fields.find((f) => f.key === 'skip') as TextFieldDef
     expect(skip.format!(undefined)).toBe('')
     expect(skip.format!([2, -1, [2, -3]])).toBe('-1, 2:-3, 2')
     const row = screen.getByText('Skip Instances').parentElement!
@@ -101,7 +115,7 @@ describe('PATTERN_SCHEMA', () => {
     fireEvent.change(input, { target: { value: '1, 3' } })
     fireEvent.blur(input)
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_pattern_field', featureId: 'pt1', field: 'skip', value: [1, 3],
+      type: 'set_linear_pattern_field', featureId: 'pt1', field: 'skip', value: [1, 3],
     })
   })
 
@@ -158,20 +172,25 @@ describe('PATTERN_SCHEMA', () => {
     expect(labels).toContain('Source Features')
   })
 
-  it('shows the linear fields in linear mode and the circular fields in circular mode', () => {
+  it('hides the second-direction rows until the checkbox is ticked', () => {
     renderEditor(makeFeature())
-    expect(screen.queryByText('Direction')).not.toBeNull()
-    expect(screen.queryByText('Pitch')).not.toBeNull()
-    expect(screen.queryByText('Axis')).toBeNull()
-    expect(screen.queryByText('Step angle')).toBeNull()
+    const labels = [...document.querySelectorAll('.feature-field-label')].map((n) => n.textContent)
+    expect(labels).toContain('Direction')
+    expect(labels).toContain('Pitch')
+    expect(labels).not.toContain('Direction 2')
+    expect(labels).not.toContain('Count 2')
+    expect(labels).not.toContain('Pitch 2')
+    expect(labels).not.toContain('Centered 2')
   })
 
-  it('shows the axis fields in circular mode and hides the linear pair', () => {
-    renderEditor(makeFeature({ mode: 'circular' }))
-    expect(screen.queryByText('Axis')).not.toBeNull()
-    expect(screen.queryByText('Invert axis')).not.toBeNull()
-    expect(screen.queryByText('Direction')).toBeNull()
-    expect(screen.queryByText('Pitch')).toBeNull()
+  it('shows the second-direction rows when the checkbox is ticked', () => {
+    renderEditor(makeFeature({ second_direction: true }))
+    const labels = [...document.querySelectorAll('.feature-field-label')].map((n) => n.textContent)
+    expect(labels).toContain('Direction 2')
+    expect(labels).toContain('Invert 2')
+    expect(labels).toContain('Count 2')
+    expect(labels).toContain('Pitch 2')
+    expect(labels).toContain('Centered 2')
   })
 
   it('judges the count as the loader does', () => {
@@ -184,5 +203,42 @@ describe('PATTERN_SCHEMA', () => {
   it('accepts count 1, the quiet no-op', () => {
     // The field has no min, so the pattern's own rule is what the widget sees.
     expect(validateNumberFieldValue(field('count') as NumberFieldDef, 1, {})).toBeNull()
+  })
+})
+
+describe('CIRCULAR_PATTERN_SCHEMA', () => {
+  it('is registered with its sub-key and defaults', () => {
+    expect(EDITOR_SCHEMAS.circular_pattern).toBe(CIRCULAR_PATTERN_SCHEMA)
+    expect(CIRCULAR_PATTERN_SCHEMA.subKey).toBe('circular_pattern')
+    expect(CIRCULAR_PATTERN_SCHEMA.defaults).toEqual({
+      subject: 'body', operation: 'add', count: 4, angle: 360, equal_spacing: true, source_features: [],
+    })
+  })
+
+  it('shows the axis, count and angle rows and none of the linear direction rows', () => {
+    render(<FeatureEditor feature={makeCircular()} onMutation={vi.fn()} features={FEATURES} schema={CIRCULAR_PATTERN_SCHEMA} />)
+    const labels = [...document.querySelectorAll('.feature-field-label')].map((n) => n.textContent)
+    expect(labels).toContain('Axis')
+    expect(labels).toContain('Invert axis')
+    expect(labels).toContain('Count')
+    expect(labels).toContain('Angle')
+    expect(labels).toContain('Equal spacing')
+    expect(labels).toContain('Centered')
+    expect(labels).toContain('Skip Instances')
+    expect(labels).not.toContain('Direction')
+    expect(labels).not.toContain('Pitch')
+    expect(labels).not.toContain('Second direction')
+  })
+
+  it('dispatches a circular setter mutation', () => {
+    const onMutation = vi.fn()
+    render(<FeatureEditor feature={makeCircular()} onMutation={onMutation} features={FEATURES} schema={CIRCULAR_PATTERN_SCHEMA} />)
+    const angle = screen.getByText('Angle').parentElement!.querySelector('input') as HTMLInputElement
+    fireEvent.focus(angle)
+    fireEvent.change(angle, { target: { value: '180' } })
+    fireEvent.blur(angle)
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'set_circular_pattern_field', featureId: 'pt1', field: 'angle', value: 180,
+    })
   })
 })

@@ -119,9 +119,9 @@
     },
     {
       "id": "hJObESEbHbHJlpZ85sqcIiMg",
-      "kind": "pattern",
+      "kind": "linear_pattern",
       "label": "pattern 2",
-      "pattern": {
+      "linear_pattern": {
         "count": 2,
         "direction": [
           1,
@@ -129,8 +129,6 @@
           0
         ],
         "direction_query": "@lWImF_YFjIL5NhMmBe0IZhXq/A6J60WY8dO4j8xOW",
-        "include_source": true,
-        "mode": "linear",
         "operation": "add",
         "pitch": 4,
         "source_body": "?15,19,1e,2a;@u|u_92927b2a3f38f3bd@e1tMr2u-m4rxTxhoZSw2z05E@body_e1tMr2u-m4rxTxhoZSw2z05E@lWImF_YFjIL5NhMmBe0IZhXq/pwfYD59xKWiSyQhm:cylinderface",
@@ -220,9 +218,9 @@
     },
     {
       "id": "duA-45um74zsKKrINmVjYt67",
-      "kind": "pattern",
+      "kind": "circular_pattern",
       "label": "pattern 2",
-      "pattern": {
+      "circular_pattern": {
         "axis": "@xUpvjfbko7XzZl7ZUWDJVlyo/V2gNAHm-TJ0VOTJ9",
         "axis_direction": [
           0,
@@ -235,11 +233,11 @@
           0
         ],
         "count": 4,
-        "include_source": true,
         "operation": "add",
         "source_body": "?15,19,1e,2a,7;@u|u_92927b2a3f38f3bd@e1tMr2u-m4rxTxhoZSw2z05E@body_e1tMr2u-m4rxTxhoZSw2z05E@lWImF_YFjIL5NhMmBe0IZhXq/pwfYD59xKWiSyQhm@cls_xn:cylinderface",
         "subject": "body",
-        "mode": "circular"
+        "angle": 360,
+        "equal_spacing": true
       }
     },
     {

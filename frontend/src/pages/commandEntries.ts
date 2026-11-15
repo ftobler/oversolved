@@ -619,7 +619,8 @@ const addShellSpec = addFeatureSpec('add_shell', 'Add shell', 'shell')
 const addMoveFaceSpec = addFeatureSpec('add_move_face', 'Add move face', 'move_face')
 const addDeleteFaceSpec = addFeatureSpec('add_delete_face', 'Add delete face', 'delete_face')
 const addSplitSpec = addFeatureSpec('add_split', 'Add split', 'split')
-const addPatternSpec = addFeatureSpec('add_pattern', 'Add pattern', 'pattern')
+const addLinearPatternSpec = addFeatureSpec('add_linear_pattern', 'Add linear pattern', 'linear_pattern')
+const addCircularPatternSpec = addFeatureSpec('add_circular_pattern', 'Add circular pattern', 'circular_pattern')
 
 /**
  * The sketch/part editor's full command table. Static data: every body reads
@@ -656,5 +657,6 @@ export const PART_COMMAND_SPECS: readonly ErasedCommandSpec<PartCommandContext>[
   addMoveFaceSpec,
   addDeleteFaceSpec,
   addSplitSpec,
-  addPatternSpec,
+  addLinearPatternSpec,
+  addCircularPatternSpec,
 ]

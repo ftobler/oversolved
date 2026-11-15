@@ -120,7 +120,7 @@ export default function SketchToolbar({ onResetViewport, onImportDxf, canImportD
 
       <ToolbarButton
         title={patternKey ? `Pattern entities along X (${patternKey})` : 'Pattern entities along X'}
-        icon={iconUrl('feature-pattern')}
+        icon={iconUrl('feature-linear-pattern')}
         disabled={patternDisabled}
         onClick={() => openPatternDialog((count, pitch) => { registry.execute('pattern_entities', { count, pitch }) })}
         handle="toolbar:pattern_entities"

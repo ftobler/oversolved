@@ -5,11 +5,11 @@ import { applyRenamePart, applySetPartColor, applySetPartTransparency, applySetP
 import { applyReorderPickField } from '@/utils/yamlMutations/featureAdmin'
 import { applyAddFillet, applyAddChamfer, applySetFilletField, applySetChamferField } from '@/utils/yamlMutations/featureDefs'
 import { applyAddBoolean, applySetBooleanField } from '@/utils/yamlMutations/featureDefs'
-import { applySetPatternField } from '@/utils/yamlMutations/featureDefs'
+import { applySetLinearPatternField } from '@/utils/yamlMutations/featureDefs'
 import { randomId, warn, setIdScope, setIdSource } from '@/utils/yamlMutations/helpers'
 import { featureAt } from '@/testing/featureAccess'
 
-const pattern0 = (doc: PartDoc) => featureAt(doc, 0, 'pattern').pattern
+const pattern0 = (doc: PartDoc) => featureAt(doc, 0, 'linear_pattern').linear_pattern
 const boolean0 = (doc: PartDoc) => featureAt(doc, 0, 'boolean').boolean
 const chamfer0 = (doc: PartDoc) => featureAt(doc, 0, 'chamfer').chamfer
 const constraints0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').constraints!
@@ -397,41 +397,41 @@ describe('applySetBooleanField keep_tools', () => {
   })
 })
 
-describe('applySetPatternField direction_query', () => {
+describe('applySetLinearPatternField direction_query', () => {
   it('sets direction_query on a linear pattern', () => {
-    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'pt1', kind: 'pattern', pattern: { subject: 'body', mode: 'linear', count: 2, pitch: 20, direction: [1, 0, 0], operation: 'add' } }] }
-    applySetPatternField(doc, 'pt1', 'direction_query', '@body_ex1/edge/0')
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'pt1', kind: 'linear_pattern', linear_pattern: { subject: 'body', count: 2, pitch: 20, direction: [1, 0, 0], operation: 'add' } }] }
+    applySetLinearPatternField(doc, 'pt1', 'direction_query', '@body_ex1/edge/0')
     expect(pattern0(doc).direction_query).toBe('@body_ex1/edge/0')
   })
 
-  it('no-ops for feature without pattern', () => {
+  it('no-ops for feature without a pattern sub-dict', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'ext1', kind: 'extrude', extrude: { sketch: ['s1'], distance: 10, direction: 'normal' } }] }
-    applySetPatternField(doc, 'ext1', 'direction_query', '@body_ex1/edge/0')
+    applySetLinearPatternField(doc, 'ext1', 'direction_query', '@body_ex1/edge/0')
     expect(extrude0(doc).distance).toBe(10)
   })
 })
 
-describe('applySetPatternField direction_y_query', () => {
-  it('sets direction_y_query on a rectangular pattern', () => {
-    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'pt1', kind: 'pattern', pattern: { subject: 'body', mode: 'rectangular', count_x: 2, pitch_x: 20, count_y: 2, pitch_y: 20, direction_x: [1, 0, 0], direction_y: [0, 1, 0], operation: 'add' } }] }
-    applySetPatternField(doc, 'pt1', 'direction_y_query', '@body_ex1/edge/1')
-    expect(pattern0(doc).direction_y_query).toBe('@body_ex1/edge/1')
+describe('applySetLinearPatternField direction_2_query', () => {
+  it('sets direction_2_query with the second direction on', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'pt1', kind: 'linear_pattern', linear_pattern: { subject: 'body', second_direction: true, count: 2, pitch: 20, count_2: 2, pitch_2: 20, direction: [1, 0, 0], direction_2: [0, 1, 0], operation: 'add' } }] }
+    applySetLinearPatternField(doc, 'pt1', 'direction_2_query', '@body_ex1/edge/1')
+    expect(pattern0(doc).direction_2_query).toBe('@body_ex1/edge/1')
   })
 })
 
-describe('applySetPatternField direction', () => {
+describe('applySetLinearPatternField direction', () => {
   it('sets direction on a linear pattern', () => {
-    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'pt1', kind: 'pattern', pattern: { subject: 'body', mode: 'linear', count: 2, pitch: 20, direction: [1, 0, 0], operation: 'add' } }] }
-    applySetPatternField(doc, 'pt1', 'direction', [0, 1, 0])
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'pt1', kind: 'linear_pattern', linear_pattern: { subject: 'body', count: 2, pitch: 20, direction: [1, 0, 0], operation: 'add' } }] }
+    applySetLinearPatternField(doc, 'pt1', 'direction', [0, 1, 0])
     expect(pattern0(doc).direction).toEqual([0, 1, 0])
   })
 })
 
-describe('applySetPatternField direction_y', () => {
-  it('sets direction_y on a rectangular pattern', () => {
-    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'pt1', kind: 'pattern', pattern: { subject: 'body', mode: 'rectangular', count_x: 2, pitch_x: 20, count_y: 2, pitch_y: 20, direction_x: [1, 0, 0], direction_y: [0, 1, 0], operation: 'add' } }] }
-    applySetPatternField(doc, 'pt1', 'direction_y', [1, 0, 0])
-    expect(pattern0(doc).direction_y).toEqual([1, 0, 0])
+describe('applySetLinearPatternField direction_2', () => {
+  it('sets direction_2 with the second direction on', () => {
+    const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'pt1', kind: 'linear_pattern', linear_pattern: { subject: 'body', second_direction: true, count: 2, pitch: 20, count_2: 2, pitch_2: 20, direction: [1, 0, 0], direction_2: [0, 1, 0], operation: 'add' } }] }
+    applySetLinearPatternField(doc, 'pt1', 'direction_2', [1, 0, 0])
+    expect(pattern0(doc).direction_2).toEqual([1, 0, 0])
   })
 })
 

@@ -72,9 +72,15 @@ export function migrateLegacyBodyPicks(doc: PartDoc): number {
 // Idempotent, mutate in place, returns the count of features rewritten.
 export function migratePatternSourceFeatures(doc: PartDoc): number {
   let rewritten = 0
-  for (const feature of doc.features ?? []) {
-    if (feature.kind !== 'pattern') continue
-    const sub = feature.pattern as { source_features?: unknown; source_feature?: unknown } | undefined
+  const features: unknown = doc.features
+  if (!Array.isArray(features)) return 0
+  for (const feature of features) {
+    if (typeof feature !== 'object' || feature === null) continue
+    // The retired kind is no longer in the union, but this step is exactly for
+    // documents that still carry it, so the row is read as a raw record.
+    const row = feature as Record<string, unknown>
+    if (row.kind !== 'pattern') continue
+    const sub = row.pattern as { source_features?: unknown; source_feature?: unknown } | undefined
     if (sub === null || typeof sub !== 'object' || Array.isArray(sub)) continue
     const list = sub.source_features
     if (Array.isArray(list)) {

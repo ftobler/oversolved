@@ -8,8 +8,8 @@ The rollback position is an index into that list, and an incremental rebuild
 reuses the unchanged prefix (`findFirstDirty`, `kernel/builder.ts`).
 
 The records are flat: no nesting, no control flow, no user functions. Repetition
-is the `pattern` feature kind, which repeats either a body or an earlier
-feature. Dependencies between features are
+is the `linear_pattern` and `circular_pattern` feature kinds, which repeat
+either a body or an earlier feature. Dependencies between features are
 references (query strings, see Query Syntax) plus the list order; numeric params
 may be expression strings evaluated against earlier `variable` features
 (`kernel/evalExpr.ts`). Some kinds are shorthand that is lowered before the
@@ -85,7 +85,7 @@ under the derived id `step_<file id>`.
 ## Document Structure
 
 ```yaml
-version: 8
+version: 9
 kind: part
 
 features:
@@ -541,8 +541,8 @@ the body untouched; the other groups still apply (status `partial`).
     clearance: 0.1               # subtract only; signed length in the document unit, grows (+) or shrinks (-) every tool on all sides
 ```
 
-A `tools` entry naming a body-subject `pattern` feature (`"@pt1"`)
-stands for that pattern's source body, every instance body, and every body an
+A `tools` entry naming a body-subject pattern feature (`"@pt1"`, either pattern
+kind) stands for that pattern's source body, every instance body, and every body an
 `operation: add` pattern split off as a disjoint copy, resolved at solve time,
 so a later count change is followed. The target is left out of the expansion. A
 list of body ids that names only some of one pattern's bodies solves with a
@@ -652,54 +652,66 @@ XYZ degrees (world X first, then world Y, then world Z), numbers only, pivoting
 about `rotation_axis_origin` or the world origin. It cannot be combined with
 `rotation_axis`, `rotation_angle` or `rotation_axis_direction`.
 
-### pattern
+### linear_pattern / circular_pattern
 
-One feature patterns either a whole body or one earlier feature's own
-operation. `subject` selects what repeats; `mode` selects the instance grid.
-The same kind, row and mutation cover all three modes, so a linear, rectangular
-or circular pattern is one authored feature.
+Two features pattern either a whole body or earlier features' own operation.
+`linear_pattern` repeats along one direction, or along two when the second
+direction is on (the old rectangular mode). `circular_pattern` repeats about an
+axis by an angle law. What is repeated is shared: `subject` selects it, and the
+source fields are the same on both kinds.
 
 #### Body subject
 
 ```yaml
 - id: pt1
-  kind: pattern
-  pattern:
+  kind: linear_pattern
+  linear_pattern:
     subject: body                # body (default) | feature
     source_body: "@extrude1"     # required
-    mode: linear                 # linear | rectangular | circular
     operation: add               # add | new
-    count: 3                     # linear/circular: total instances, source included (at least 2)
-    pitch: 20.0                  # linear: spacing along direction, document unit
-    direction: [1, 0, 0]         # linear: or direction_query, a straight edge or planar face
+    count: 3                     # total instances, source included, at least 1
+    pitch: 20.0                  # spacing along direction, document unit
+    direction: [1, 0, 0]         # or direction_query, a straight edge or planar face
     invert: false                # reverse the direction
+    centered: false              # also generate the reverse side
+    skip: [2]                    # leave instances out, a signed index or an i:j cell
 - id: pt2
-  kind: pattern
-  pattern:
+  kind: linear_pattern
+  linear_pattern:
     subject: body
     source_body: "@extrude1"
-    mode: rectangular            # two axes instead of the one-axis fields
     operation: add
-    count_x: 3
-    pitch_x: 20.0
-    direction_x: [1, 0, 0]       # or direction_x_query
-    invert_x: false
-    count_y: 2
-    pitch_y: 10.0
-    direction_y: [0, 1, 0]       # or direction_y_query
-    invert_y: false
+    second_direction: true       # the old rectangular grid
+    count: 3                     # direction 1 (column)
+    pitch: 20.0
+    direction: [1, 0, 0]         # or direction_query
+    invert: false
+    count_2: 2                   # direction 2 (row)
+    pitch_2: 10.0
+    direction_2: [0, 1, 0]       # or direction_2_query
+    invert_2: false
 - id: pt3
-  kind: pattern
-  pattern:
+  kind: circular_pattern
+  circular_pattern:
     subject: body
     source_body: "@extrude1"
-    mode: circular
     operation: add
     count: 4
-    step_angle: 90.0             # optional; defaults to 360 / count
+    angle: 360                   # degrees; 360 by default
+    equal_spacing: true          # angle is the full sweep; off, the neighbour increment
     axis: "@sk1/axisLine"        # query; or axis_origin + axis_direction
     invert_axis: false           # reverse the sweep sense
 ```
+
+The circular angle law: with `equal_spacing: true` (the default) `angle` is the
+sweep the instances spread over. A full turn gives step `360 / total`, where
+total is `count` or `2 * count - 1` centered, so no instance lands on the
+source. A smaller sweep puts the end instances ON the sweep ends: step is
+`angle / (count - 1)`, or `angle / (2 * (count - 1))` centered, so
+`+-(count-1)` sits at `+-angle/2`. With `equal_spacing: false` the angle is the
+increment between neighbours. An angle past a full turn with equal spacing, or
+an increment that lands two instances on one another, is refused; reverse the
+sense with `invert_axis` rather than a negative angle.
 
 A resolved `axis` overrides the stored pair; `axis_direction` alone rotates
 about the world origin and `axis_origin` alone uses +Z, the same rule as
@@ -711,14 +723,24 @@ intersect. Disjoint copies stay separate bodies, taking the source id plus
 `operation: new` to keep the source as instance 0 and give every copy its own
 body.
 
-A body pattern always counts the source, and there is no include-source option.
-A document written before that rule may still carry `pattern.include_source`:
-the loader accepts it and the kernel ignores it, so an old file opens with the
-source as instance 0 and `count: 3` making two copies. An old file whose pattern
-reads `count: 1`, or a 1x1 rectangular pair, also opens; the pattern is a red
-feature with the source-in-count refusal until its count is raised. The retired
-key is dropped the next time that pattern is edited; no document version
-migration rewrites it.
+Both kinds always count the source, and there is no include-source option: the
+source occupies instance 0, so `count: 3` makes two copies and `count: 2` makes
+one. `count: 1` keeps only the original and is a quiet no-op. `centered` also
+generates the reverse side, so a centered count n generates `2n - 1` instances;
+the second direction centers on its own `centered_2` flag. With
+`second_direction` the grid always leaves the seed cell to the source, so it
+makes `count * count_2 - 1` copies (or the centered equivalent); 1xN is a
+legitimate row, and 1x1 is the same quiet no-op as count 1. `skip` leaves
+instances out, as a signed 1D index or an `i:j` cell (column:row; a bare integer
+means `i:0`). A skipped entry the current count does not generate is a warning,
+not an error.
+
+A document written before the split still says `kind: pattern` and carries
+`mode`, `count_x`/`count_y`, `step_angle` and the old `_x`/`_y` names. The
+loader's version-9 `pattern-split` step rewrites it to the kind and names above,
+keeping the feature id (so every `@<id>` ref still resolves) and the copy
+order, and dropping the retired `include_source` flag. `add_pattern` remains one
+release as a drive-only alias that runs the same translation.
 
 #### Feature subject
 
@@ -730,14 +752,13 @@ names under the pattern feature.
 
 ```yaml
 - id: pt2
-  kind: pattern
-  pattern:
+  kind: linear_pattern
+  linear_pattern:
     subject: feature
     source_feature: "@ex1"       # required: an earlier extrude, revolve or sweep
-    mode: linear                 # linear | rectangular | circular
     count: 3                     # total instances, the source's own included
-    pitch: 20.0                  # linear: spacing along direction
-    direction: [1, 0, 0]         # linear: or direction_query
+    pitch: 20.0                  # spacing along direction
+    direction: [1, 0, 0]         # or direction_query
     invert: false
     target_body: "@body_ex1"     # optional: the body to apply to when the source touched several
 ```
@@ -747,22 +768,14 @@ names under the pattern feature.
 an `up_to` extrude is refused because its trim would travel with each rigid
 copy. The allowed source kinds are `extrude`, `revolve` and `sweep`; a hole
 pattern is the sketch's own multiple drill sites, and a fillet or shell has no
-standalone tool to repeat.
+standalone tool to repeat. `source_features` is the multi-source spelling and is
+what the editor writes.
 
-For either subject, `count` is the total instance count and always includes the
-source: the source occupies instance 0 (and, for a feature subject, its own
-application already happened), so `count: 3` makes two copies and `count: 2`
-makes one. The kernel refuses a count below 2 because the count includes the
-source; the loader still opens an old document with such a count so the pattern
-can be corrected.
-Rectangular mode always leaves the seed cell to the source, so it makes
-`count_x * count_y - 1` copies; 1xN is a legitimate row, while 1x1 is refused
-because it would make no copy. The body is the one the
-source feature created or modified; when it touched more than one (a cut with
-no merge target reaches every body), the solver refuses with the list and
-`target_body` picks one. A copy that cannot apply is named: some applied is a
-`partial` feature listing how many copies landed and which copy failed, none
-applied is an error.
+The body is the one the source feature created or modified; when it touched
+more than one (a cut with no merge target reaches every body), the solver
+refuses with the list and `target_body` picks one. A copy that cannot apply is
+named: some applied is a `partial` feature listing how many copies landed and
+which copy failed, none applied is an error.
 
 Copies apply through the same body operation the source used, one at a time. A
 cut copy that shares no volume with the body is a failure for that copy. An add

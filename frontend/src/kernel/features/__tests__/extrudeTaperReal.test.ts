@@ -509,8 +509,8 @@ describe.skipIf(!oc || !solveBytes)('extrude taper (real OCC + Rust solver)', ()
       rectSketch('sk2', '@plTop', -12, -2, -8, 2),
       extrude('exBoss', '@sk2', { distance: 5, taper: 10, operation: 'add' }),
       {
-        id: 'pt1', kind: 'pattern',
-        pattern: { subject: 'feature', source_feature: '@exBoss', mode: 'linear', count: 3, pitch: 10, direction: [1, 0, 0] },
+        id: 'pt1', kind: 'linear_pattern',
+        linear_pattern: { subject: 'feature', source_feature: '@exBoss', count: 3, pitch: 10, direction: [1, 0, 0] },
       },
     ]))
     expect(h.res(patterned, 'pt1').status).toBe('ok')

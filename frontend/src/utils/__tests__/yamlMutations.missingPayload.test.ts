@@ -12,7 +12,8 @@ import {
   applyAddBooleanTool,
   applyRemoveBooleanTool,
   applyReorderPickField,
-  applySetPatternField,
+  applySetLinearPatternField,
+  applySetCircularPatternField,
   applySetHoleField,
 } from '@/utils/yamlMutations'
 import { applySetHoleSketch } from '@/utils/yamlMutations/featureDefs'
@@ -39,9 +40,9 @@ describe('mutations tolerate a kind without its payload', () => {
     expectWarnNoThrow(() => applyRemoveBooleanTool(docWith(kindOnly('boolean')), 'x1', '@b1'))
   })
 
-  it('pattern field and mode setters warn', () => {
-    expectWarnNoThrow(() => applySetPatternField(docWith(kindOnly('pattern')), 'x1', 'count', 3))
-    expectWarnNoThrow(() => applySetPatternField(docWith(kindOnly('pattern')), 'x1', 'mode', 'rectangular'))
+  it('pattern field setters warn', () => {
+    expectWarnNoThrow(() => applySetLinearPatternField(docWith(kindOnly('linear_pattern')), 'x1', 'count', 3))
+    expectWarnNoThrow(() => applySetCircularPatternField(docWith(kindOnly('circular_pattern')), 'x1', 'angle', 180))
   })
 
   it('hole field and sketch setters warn', () => {

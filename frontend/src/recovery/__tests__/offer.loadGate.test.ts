@@ -44,7 +44,10 @@ describe('findRecoveryOffer load gate', () => {
 
   it('declines a record the loader refuses', async () => {
     const stored = stringifyYaml(makeDoc(makeSketch('sk1')))
-    await park({ features: [{ id: 'a1', kind: 'pattern', pattern: { count_x: 5000 } }] })
+    // A count of 0 is refused at the boundary by name; an unknown kind would
+    // load (the reader is deliberately forward-tolerant), so it is not a
+    // record this gate may decline.
+    await park({ features: [{ id: 'a1', kind: 'linear_pattern', linear_pattern: { count: 0 } }] })
     expect(await findRecoveryOffer('ws-1', 'doc-1', stored)).toBeNull()
   })
 })

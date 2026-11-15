@@ -20,7 +20,7 @@ import { booleanWithDiff, volumeOf } from '../../occ/booleans'
 import { makeBoxAt, makeCylinder } from '../../occ/primitives'
 import { Repository } from '../../query'
 import { bareBody } from '../shared/bodyResolution'
-import { solveArray, solveCircularArray } from './patternBodyTestAdapters'
+import { patternFeature, solveArray, solveCircularArray } from './patternBodyTestAdapters'
 import { solveBoolean } from '../boolean'
 import type { Body } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
@@ -82,16 +82,9 @@ const CA1 = {
 
 /** The feature definitions a build hands the leaf, keyed by id: a pattern ref
  *  only expands when its own definition is in this map. The legacy array /
- *  circular_array shape is folded into the unified body-subject definition. */
+ *  circular_array shape is folded into the current pattern kind. */
 function solvedArrays(...defs: [string, string, Record<string, unknown>][]): Record<string, Record<string, unknown>> {
-  return Object.fromEntries(defs.map(([id, kind, sub]) => [
-    id,
-    {
-      id,
-      kind: 'pattern',
-      pattern: { subject: 'body', mode: kind === 'circular_array' ? 'circular' : 'linear', ...sub },
-    },
-  ]))
+  return Object.fromEntries(defs.map(([id, kind, sub]) => [id, patternFeature(id, kind, sub)]))
 }
 
 /** The repro's six-spoke wheel, optionally with the rim step that modifies the

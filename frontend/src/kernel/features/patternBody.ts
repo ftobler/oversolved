@@ -1,8 +1,8 @@
 // The body subject of a pattern: copy a whole body through a list of instance
 // transforms and either fuse the copies into the source (operation "add") or
 // spawn one new body per copy (operation "new"). The feature subject lives in
-// pattern.ts; both share the transforms pattern.ts builds and the one feature
-// kind, so a document selects the subject instead of a separate array feature.
+// patternFeature.ts; both share the copies the pattern kind built and the one
+// shared dispatch in pattern.ts.
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'

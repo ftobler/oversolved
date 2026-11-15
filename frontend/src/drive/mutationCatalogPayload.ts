@@ -36,6 +36,8 @@ export interface CatalogMutationListing {
   type: Mutation['type']
   summary: string
   note?: string
+  // A retired row kept for one release; the listing says what replaced it.
+  deprecated?: string
   fields: Record<string, CatalogFieldListing>
 }
 
@@ -341,6 +343,7 @@ export function mutationCatalogPayload(): MutationCatalogPayload {
       type,
       summary: info.summary,
       ...(info.note !== undefined && { note: info.note }),
+      ...(info.deprecated !== undefined && { deprecated: info.deprecated }),
       fields,
     })
   }

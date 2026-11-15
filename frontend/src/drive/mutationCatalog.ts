@@ -60,6 +60,9 @@ export interface MutationInfo {
   // Row-level guidance the field notes cannot place, such as what a feature's
   // sketch ref must name.
   note?: string
+  // A retired row kept for one release. The listing says so, and the drive adds
+  // a step-level deprecation note when a caller uses it.
+  deprecated?: string
   // Internal plumbing an external script must not send.
   hidden?: true
 }
@@ -303,7 +306,8 @@ export const FIELD_SETTER_KIND = {
   set_shell_field: 'shell',
   set_move_face_field: 'move_face',
   set_boolean_field: 'boolean',
-  set_pattern_field: 'pattern',
+  set_linear_pattern_field: 'linear_pattern',
+  set_circular_pattern_field: 'circular_pattern',
   set_hole_field: 'hole',
   set_transform_field: 'transform',
   set_mirror_field: 'mirror',
@@ -488,40 +492,62 @@ const PLANE_MODE_NOTE =
   'has the exact conventions, and the reply `frames` map reports the frame each plane resolved (a run only ' +
   'for one it touched or moved; `frames: "all"` restores all).'
 
-// One operation, two subjects: a body pattern copies a whole body, a feature
-// pattern reapplies one earlier feature's own add or cut inside the body it
-// already shaped. The note states the subject fields, the total-count
-// convention and the three modes' axis fields, the things an author gets wrong
-// first.
-const PATTERN_NOTE =
+// What a pattern repeats is the same for both kinds: a body copied, or one or
+// more earlier features' own add or cut reapplied. The subject fields, the total
+// count convention and the skip list are stated once here, and each kind's row
+// appends only its instance grid.
+const PATTERN_SOURCE_NOTE =
   '`subject` selects what is repeated. `body` (the default) copies `source_body`; `operation: add` unions each ' +
   'copy into the source body when they intersect, while disjoint copies become separate bodies with `_1`, `_2`... ' +
   'siblings and `operation: new` mints one body per copy. `feature` reapplies one or more earlier extrudes, revolves ' +
   'or sweeps whose operation is add or cut, inside the body each source shaped. Name them as a list in ' +
   '`source_features`, e.g. ["@ex1", "@ex2"]; the legacy single `source_feature` is still accepted and means a ' +
-  'one-element list. Every source is repeated at each grid instance, in the order the sources sit in the feature log; ' +
+  'one-element list. Every source is repeated at each instance, in the order the sources sit in the feature log; ' +
   'the first source\'s first produced body is the instance-0 seed. `target_body` ' +
   'chooses the body when a source touched more than one; without it each source applies to the body it shaped, ' +
   'so sources that shaped different bodies keep their own. A source that no longer exists or now comes after ' +
   'the pattern is dropped with a named warning; a pattern with no sources left is refused. For either subject ' +
-  '`count` is the TOTAL instance count on one axis and always includes the source\'s own slot: 2 makes one copy, ' +
+  '`count` is the TOTAL instance count on direction 1 and always includes the source\'s own slot: 2 makes one copy, ' +
   'and count 1 keeps only the original (a quiet no-op). Count 0, a negative count and a non-integer are refused. ' +
   '`centered` also generates the reverse side, so index i translates by i * pitch (negative indices go the other ' +
-  'way) and a centered count n generates 2n - 1 instances; the rectangular grid centers each axis with ' +
-  '`centered_x` and `centered_y`. Rectangular mode counts its two axes in `count_x` and `count_y`, always leaves ' +
-  'the seed cell to the source, and 1x1 is the same quiet no-op as count 1. `skip` leaves instances out: instance 0 ' +
+  'way) and a centered count n generates 2n - 1 instances. `skip` leaves instances out: instance 0 ' +
   'is the original and cannot be skipped, a negative index is only generated with `centered`, a grid cell is ' +
   '`i:j` (column:row) and a bare integer means `i:0`. A skipped entry the current count does not generate is a ' +
-  'warning, not an error, so a list may be kept while the count changes. Linear mode reads `pitch` and ' +
-  '`direction` (or `direction_query`); rectangular mode reads `count_x`/`count_y`, `pitch_x`/`pitch_y` and one ' +
-  'direction pair per axis; circular mode reads `step_angle` (absent means 360/count, or 360/(2*count - 1) when ' +
-  'centered) and `axis` (or `axis_origin` + `axis_direction`). A copy that cannot apply is named: some applied and ' +
-  'some not is a partial result, and none applied is an error.'
+  'warning, not an error, so a list may be kept while the count changes.'
 
-const PATTERN_INLINE_NOTE =
-  'One call may carry the whole pattern: ' +
-  `${featureFieldNames('pattern').join(', ')} are accepted inline and store the same keys ` +
-  '`set_pattern_field` sets.'
+const LINEAR_PATTERN_NOTE =
+  PATTERN_SOURCE_NOTE + ' Direction 1 reads `pitch` and `direction` (or `direction_query`) and `invert` reverses it. ' +
+  '`second_direction: true` adds the grid the retired rectangular mode built: direction 2 reads `count_2`, ' +
+  '`pitch_2`, `direction_2` (or `direction_2_query`), `centered_2` and `invert_2`, direction 1 is the column, the ' +
+  'seed cell (0, 0) stays the source and 1 x 1 is the same quiet no-op as count 1. A copy that cannot apply is ' +
+  'named: some applied and some not is a partial result, and none applied is an error.'
+
+const CIRCULAR_PATTERN_NOTE =
+  PATTERN_SOURCE_NOTE + ' The axis is `axis` (or `axis_origin` + `axis_direction`) and `invert_axis` reverses the sweep. ' +
+  '`angle` is degrees, 360 by default. With `equal_spacing` (the default) it is the full sweep the instances spread ' +
+  'over: a full turn gives step 360 / total, where total is count or 2 * count - 1 centered, so none lands on the ' +
+  'source; a smaller sweep puts the end instances ON the sweep ends (step = angle / (count - 1), or ' +
+  'angle / (2 * (count - 1)) centered, so +-(count-1) sits at +-angle/2). With `equal_spacing: false` the angle is ' +
+  'the increment between neighbours. An angle past a full turn with equal spacing, a zero sweep, or an increment ' +
+  'that lands two instances on one another is refused as a coincidence; reverse the sense with `invert_axis` rather ' +
+  'than a negative angle. A copy that cannot apply is named: some applied and some not is a partial result, and ' +
+  'none applied is an error.'
+
+const LINEAR_PATTERN_INLINE_NOTE =
+  'One call may carry the whole linear pattern: ' +
+  `${featureFieldNames('linear_pattern').join(', ')} are accepted inline and store the same keys ` +
+  '`set_linear_pattern_field` sets.'
+
+const CIRCULAR_PATTERN_INLINE_NOTE =
+  'One call may carry the whole circular pattern: ' +
+  `${featureFieldNames('circular_pattern').join(', ')} are accepted inline and store the same keys ` +
+  '`set_circular_pattern_field` sets.'
+
+const PATTERN_ALIAS_NOTE =
+  'Deprecated one release. `add_pattern` is the retired single-kind row: the drive translates it through the same ' +
+  'split the loader applies to an old document, so nothing is lost and the feature id is kept, and it replies with a ' +
+  'deprecation note. Use `add_linear_pattern` or `add_circular_pattern` instead; the retired `mode`, `step_angle` ' +
+  'and `_x`/`_y` field names are only accepted here.'
 
 const MIRROR_INLINE_NOTE =
   'One call may carry the whole mirror: ' +
@@ -1572,9 +1598,9 @@ export const MUTATION_CATALOG = {
     summary: 'Remove a boolean tool body.',
     fields: { featureId: str(), tool: bodyQuery() },
   },
-  add_pattern: {
-    summary: 'Add a pattern of a body or one earlier feature, optionally with its count, spacing and axis.',
-    note: PATTERN_NOTE + ' ' + CIRCULAR_AXIS_NOTE + ' ' + PATTERN_INLINE_NOTE,
+  add_linear_pattern: {
+    summary: 'Add a linear pattern of a body or one earlier feature, optionally along a second direction.',
+    note: LINEAR_PATTERN_NOTE + ' ' + LINEAR_PATTERN_INLINE_NOTE,
     fields: {
       ...featureAddFields(),
       subject: optStr('body | feature; defaults to body.'),
@@ -1583,7 +1609,83 @@ export const MUTATION_CATALOG = {
       source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve or sweep with operation add or cut.'),
       source_feature: optStr('Feature subject: the legacy single-source form of source_features, e.g. @ex1. Still accepted; a list or the singular key, not both.'),
       target_body: optStr('Feature subject: applies every source to this body instead of the body each source shaped.'),
-      mode: optStr('linear | rectangular | circular; defaults to linear.'),
+      count: optScalar(),
+      centered: optBool('Also generate the reverse side, so count 2 is three instances.'),
+      skip: optAny(
+        'Instances to leave out: a list of signed integer indices, or "i:j" cells for the second direction ' +
+        '(column:row; a bare integer means i:0). The editor text form ("1, 2, 6, 7") is accepted too. ' +
+        'Instance 0 is the original and cannot be skipped; negatives need centered.',
+      ),
+      pitch: optScalar(),
+      direction: optPoint(),
+      direction_query: optStr('A straight edge or planar face; overrides direction.'),
+      invert: optBool(),
+      second_direction: optBool('Add the second direction: direction 1 is the column, direction 2 the row.'),
+      count_2: optScalar(),
+      centered_2: optBool(),
+      pitch_2: optScalar(),
+      direction_2: optPoint(),
+      direction_2_query: optStr(),
+      invert_2: optBool(),
+    },
+  },
+  set_linear_pattern_field: {
+    summary: 'Set one linear pattern field, e.g. count, pitch or second direction.',
+    note: LINEAR_PATTERN_NOTE,
+    fields: {
+      featureId: str(),
+      field: fieldOf('linear pattern', 'set_linear_pattern_field'),
+      value: setterValue('linear_pattern'),
+    },
+  },
+  add_circular_pattern: {
+    summary: 'Add a circular pattern of a body or one earlier feature, optionally with its angle.',
+    note: CIRCULAR_PATTERN_NOTE + ' ' + CIRCULAR_AXIS_NOTE + ' ' + CIRCULAR_PATTERN_INLINE_NOTE,
+    fields: {
+      ...featureAddFields(),
+      subject: optStr('body | feature; defaults to body.'),
+      source_body: optStr('Body subject: the body to copy, e.g. body_ex2.'),
+      operation: optStr('Body subject: add | new; defaults to add.'),
+      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve or sweep with operation add or cut.'),
+      source_feature: optStr('Feature subject: the legacy single-source form of source_features, e.g. @ex1. Still accepted; a list or the singular key, not both.'),
+      target_body: optStr('Feature subject: applies every source to this body instead of the body each source shaped.'),
+      count: optScalar(),
+      centered: optBool('Also generate the reverse side, so count 2 is three instances.'),
+      skip: optAny(
+        'Instances to leave out: a list of signed integer indices. The editor text form ("1, 2, 6, 7") is ' +
+        'accepted too. Instance 0 is the original and cannot be skipped; negatives need centered. ' +
+        'A circular pattern has no grid, so a "i:j" cell is refused.',
+      ),
+      angle: optScalar(),
+      equal_spacing: optBool('Defaults to true: angle is the full sweep. Off, it is the increment between neighbours.'),
+      axis: optStr('An edge, sketch entity or face ref; overrides the stored origin/direction pair.'),
+      axis_origin: optPoint(),
+      axis_direction: optPoint(),
+      invert_axis: optBool(),
+    },
+  },
+  set_circular_pattern_field: {
+    summary: 'Set one circular pattern field, e.g. count, angle or axis.',
+    note: CIRCULAR_PATTERN_NOTE,
+    fields: {
+      featureId: str(),
+      field: fieldOf('circular pattern', 'set_circular_pattern_field'),
+      value: setterValue('circular_pattern'),
+    },
+  },
+  add_pattern: {
+    summary: 'Add a pattern of a body or one earlier feature. Deprecated: use add_linear_pattern or add_circular_pattern.',
+    note: PATTERN_ALIAS_NOTE,
+    deprecated: PATTERN_ALIAS_NOTE,
+    fields: {
+      ...featureAddFields(),
+      subject: optStr('body | feature; defaults to body.'),
+      source_body: optStr('Body subject: the body to copy, e.g. body_ex2.'),
+      operation: optStr('Body subject: add | new; defaults to add.'),
+      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve or sweep with operation add or cut.'),
+      source_feature: optStr('Feature subject: the legacy single-source form of source_features, e.g. @ex1. Still accepted; a list or the singular key, not both.'),
+      target_body: optStr('Feature subject: applies every source to this body instead of the body each source shaped.'),
+      mode: optStr('linear | rectangular | circular; defaults to linear. Translated to second_direction or the circular kind.'),
       count: optScalar(),
       centered: optBool('Linear and circular: also generate the reverse side, so count 2 is three instances.'),
       centered_x: optBool('Rectangular: center the column axis.'),
@@ -1614,14 +1716,9 @@ export const MUTATION_CATALOG = {
       invert_axis: optBool(),
     },
   },
-  set_pattern_field: {
-    summary: 'Set one pattern field, e.g. count, pitch or axis.',
-    note: PATTERN_NOTE,
-    fields: { featureId: str(), field: fieldOf('pattern', 'set_pattern_field'), value: setterValue('pattern') },
-  },
   add_pattern_source: {
     summary: 'Add a source feature to a feature pattern (toggles an already-listed source out).',
-    note: PATTERN_NOTE,
+    note: PATTERN_SOURCE_NOTE,
     fields: { featureId: str(), sourceFeature: str('A feature ref, e.g. @ex1: an extrude, revolve or sweep with operation add or cut.') },
   },
   remove_pattern_source: {
@@ -1930,8 +2027,11 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   set_boolean_field: 'features',
   add_boolean_tool: 'picks',
   remove_boolean_tool: 'picks',
+  add_linear_pattern: 'features',
+  set_linear_pattern_field: 'features',
+  add_circular_pattern: 'features',
+  set_circular_pattern_field: 'features',
   add_pattern: 'features',
-  set_pattern_field: 'features',
   add_pattern_source: 'picks',
   remove_pattern_source: 'picks',
   add_delete_body: 'features',

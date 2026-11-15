@@ -1,7 +1,8 @@
-import type { PartDoc, PartFeature, NumberOrExpr, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, SplitFeatureDef, SplitKeep, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, ShellDirection, ShellJoin, MoveFaceFeatureDef, PatternFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
+import type { PartDoc, PartFeature, NumberOrExpr, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, SplitFeatureDef, SplitKeep, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, ShellDirection, ShellJoin, MoveFaceFeatureDef, LinearPatternDef, CircularPatternDef, LegacyPatternDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
 import { warn, findFeature, normalizeRefList, round } from './helpers'
 import { arrayCountProblem } from '@/persistence/docSchema'
 import { skipValue } from '@/utils/core/patternSkip'
+import { splitPatternDef } from '@/utils/core/patternSplit'
 
 /** Append a feature, lazily initializing the features array. */
 function pushFeature(doc: PartDoc, feature: PartFeature): void {
@@ -89,7 +90,7 @@ function _ensureBodies(sub: { bodies?: string[]; body?: string }): string[] {
 /** Materialize the multi-source list a pattern mutation indexes. A legacy row
  *  carries the singular `source_feature`; seed the list from it so a pick edit
  *  does not silently drop the source the pattern still solved with. */
-function _ensurePatternSources(sub: PatternFeatureDef): string[] {
+function _ensurePatternSources(sub: FieldBag): string[] {
   const current: unknown = sub.source_features
   if (Array.isArray(current)) {
     delete sub.source_feature
@@ -183,16 +184,30 @@ export function applySetBooleanField(doc: PartDoc, featureId: string, field: key
  *  document cannot be saved into a state that fails to reopen. A clear (null or
  *  empty) is not a count and passes to the setter. */
 function refusePatternCount(sub: object, field: string, value: unknown, fn: string): boolean {
-  if (field !== 'count' && field !== 'count_x' && field !== 'count_y') return false
+  if (field !== 'count' && field !== 'count_2') return false
   if (typeof value !== 'number' && typeof value !== 'string') return false
   const bag = sub as FieldBag
-  const siblingKey = field === 'count_x' ? 'count_y' : field === 'count_y' ? 'count_x' : null
-  const bagSibling = siblingKey === null ? null : bag[siblingKey]
+  const bagSibling = bag[field === 'count' ? 'count_2' : 'count']
   const sibling = typeof bagSibling === 'number' || typeof bagSibling === 'string' ? bagSibling : null
   const problem = arrayCountProblem(field, value, sibling)
-  if (problem === null) return false
-  warn(`${fn}: refusing ${field}: ${problem}`)
-  return true
+  if (problem !== null) {
+    warn(`${fn}: refusing ${field}: ${problem}`)
+    return true
+  }
+  // Raising either side of the pair can cross the cells cap, so the pair is
+  // judged whichever field the edit names.
+  if (bag.second_direction === true) {
+    const x = field === 'count' ? value : bag.count
+    const y = field === 'count_2' ? value : bag.count_2
+    const pair = typeof x === 'number' || typeof x === 'string'
+      ? arrayCountProblem('count_2', y as number | string, x)
+      : null
+    if (pair !== null) {
+      warn(`${fn}: refusing ${field}: ${pair}`)
+      return true
+    }
+  }
+  return false
 }
 
 /** Refuse a helix angle the loader would refuse. Its parametrisation degenerates
@@ -701,7 +716,7 @@ export function applyRemoveBooleanTool(doc: PartDoc, featureId: string, tool: st
   sub.tools = sub.tools.filter(t => t !== tool)
 }
 
-// ─── Pattern ───
+// ─── Patterns ───
 
 /** Judge a bulk add's inline counts on the AUTHORED value, before the merge
  *  rounds them: a float-noise 4.0000004 judged after the round reads as the
@@ -712,7 +727,7 @@ export function applyRemoveBooleanTool(doc: PartDoc, featureId: string, tool: st
  *  carry is judged too: the drive refuses an unknown field by name and the def
  *  type has no such key, so this is the backstop that keeps a replayed payload
  *  from landing a count no rule reads. */
-function inlineCountProblem(inline: object): { field: 'count' | 'count_x' | 'count_y'; reason: string } | null {
+function inlineCountProblem(inline: object): { field: 'count' | 'count_2'; reason: string } | null {
   const bag = inline as FieldBag
   // A string is an expression; arrayCountProblem evaluates what it can and
   // lets a variable that is still unknown pass to the solver, like the loader.
@@ -722,29 +737,69 @@ function inlineCountProblem(inline: object): { field: 'count' | 'count_x' | 'cou
     return typeof raw === 'string' ? raw : null
   }
   const countValue = count('count')
-  const countX = count('count_x')
-  const countY = count('count_y')
-  if (countX !== null) {
-    const reason = arrayCountProblem('count_x', countX, countY)
-    if (reason !== null) return { field: 'count_x', reason }
-  }
-  if (countY !== null) {
-    const reason = arrayCountProblem('count_y', countY, countX)
-    if (reason !== null) return { field: 'count_y', reason }
+  const count2 = count('count_2')
+  // A count_2 on a one-direction row is a hidden field the applier drops, so it
+  // is judged only when the second direction is actually on.
+  if (count2 !== null && (bag.second_direction === true)) {
+    const reason = arrayCountProblem('count_2', count2, countValue)
+    if (reason !== null) return { field: 'count_2', reason }
   }
   if (countValue !== null) {
-    const reason = arrayCountProblem('count', countValue)
+    const reason = arrayCountProblem('count', countValue, count2)
     if (reason !== null) return { field: 'count', reason }
   }
   return null
 }
 
-const PATTERN_FIELDS: readonly string[] = [
+/** The retired alias's inline counts: `count`, or the rectangular `count_x` /
+ *  `count_y` pair, each judged on the authored value like the old add did. */
+function legacyInlineCountProblem(inline: object): { field: 'count' | 'count_x' | 'count_y'; reason: string } | null {
+  const bag = inline as FieldBag
+  const count = (key: string): number | string | null => {
+    const raw = bag[key]
+    if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null
+    return typeof raw === 'string' ? raw : null
+  }
+  for (const field of ['count', 'count_x', 'count_y'] as const) {
+    const value = count(field)
+    if (value === null) continue
+    const reason = arrayCountProblem('count', value)
+    if (reason !== null) return { field, reason }
+  }
+  const x = count('count_x')
+  const y = count('count_y')
+  if (x !== null && y !== null) {
+    const reason = arrayCountProblem('count_2', y, x)
+    if (reason !== null) return { field: 'count_y', reason }
+  }
+  return null
+}
+
+/** The retired single-kind field list, still needed for the one-release
+ *  `add_pattern` alias so a replayed payload cannot land a key nothing reads. */
+const LEGACY_PATTERN_FIELDS: readonly string[] = [
   'subject', 'source_body', 'operation', 'source_features', 'source_feature', 'target_body',
   'mode', 'count', 'centered', 'skip', 'pitch', 'direction', 'direction_query', 'invert',
   'count_x', 'count_y', 'centered_x', 'centered_y', 'pitch_x', 'pitch_y',
   'direction_x', 'direction_x_query', 'invert_x', 'direction_y', 'direction_y_query', 'invert_y',
   'step_angle', 'axis', 'axis_origin', 'axis_direction', 'invert_axis',
+]
+
+const PATTERN_SOURCE_FIELDS: readonly string[] = [
+  'subject', 'source_body', 'operation', 'source_features', 'source_feature', 'target_body',
+]
+
+const LINEAR_PATTERN_FIELDS: readonly string[] = [
+  ...PATTERN_SOURCE_FIELDS,
+  'count', 'centered', 'skip', 'pitch', 'direction', 'direction_query', 'invert',
+  'second_direction', 'count_2', 'centered_2', 'pitch_2',
+  'direction_2', 'direction_2_query', 'invert_2',
+]
+
+const CIRCULAR_PATTERN_FIELDS: readonly string[] = [
+  ...PATTERN_SOURCE_FIELDS,
+  'count', 'centered', 'skip', 'angle', 'equal_spacing',
+  'axis', 'axis_origin', 'axis_direction', 'invert_axis',
 ]
 
 /** The stored skip list from either accepted spelling, or null when the value
@@ -757,61 +812,56 @@ function patternSkip(value: unknown): (number | [number, number])[] | null {
   ))
 }
 
-/** Seed the defaults a mode reads so switching to it never leaves the solver a
- *  required value it cannot find. Only an ABSENT value is seeded: an authored
- *  expression or a count the user already set is a real value, and count 1 is a
- *  legal quiet no-op now, not a value to raise. */
-function seedPatternMode(sub: PatternFeatureDef, cleared: ReadonlySet<string> = new Set()): void {
-  const seed = (key: 'count' | 'count_x' | 'count_y' | 'pitch' | 'pitch_x' | 'pitch_y', value: number): void => {
+/** A circular pattern has no grid, so a `i:j` cell names nothing there. */
+function circularSkip(value: unknown): number[] | null {
+  const parsed = patternSkip(value)
+  if (parsed === null || parsed.some((entry) => Array.isArray(entry))) return null
+  return parsed as number[]
+}
+
+/** The materialized source list a setter writes, from either accepted spelling
+ *  (a list, or the legacy one-element scalar). */
+function sourceList(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.filter((ref): ref is string => typeof ref === 'string')
+  return typeof raw === 'string' && raw !== '' ? [raw] : []
+}
+
+/** Seed the values a linear add reads so a bare add is already a solvable
+ *  feature. Only an ABSENT value is seeded: an authored expression or a count
+ *  the user already set is a real value, and count 1 is a legal quiet no-op now,
+ *  not a value to raise. */
+function seedLinearPattern(sub: FieldBag, cleared: ReadonlySet<string> = new Set()): void {
+  const seed = (key: string, value: number): void => {
     if (!cleared.has(key) && sub[key] === undefined) sub[key] = value
   }
-  const seedCount = (value: number): void => {
-    if (!cleared.has('count') && sub.count === undefined) sub.count = value
+  seed('count', 2)
+  seed('pitch', 20)
+  if (sub.second_direction === true) {
+    seed('count_2', 2)
+    seed('pitch_2', 20)
+    return
   }
-  if (sub.mode === 'rectangular') {
-    // The rectangular grid reads its own axes; the one-axis fields must not
-    // linger as values the solver would ignore. The one-axis Centered flag is
-    // invisible on the grid, so it goes too; the grid has its per-axis flags.
-    delete sub.pitch
-    delete sub.step_angle
-    delete sub.centered
-    seed('count_x', 2)
-    seed('pitch_x', 20)
-    seed('count_y', 2)
-    seed('pitch_y', 20)
-  } else {
-    // One-axis modes never read the second rectangular axis.
-    delete sub.count_y
-    delete sub.pitch_y
-    delete sub.centered_x
-    delete sub.centered_y
-    if (sub.mode === 'circular') {
-      delete sub.pitch
-      seedCount(4)
-    } else {
-      delete sub.step_angle
-      seedCount(2)
-      seed('pitch', 20)
-    }
+  // With the second direction off, the grid fields are values the solver never
+  // reads; the checkbox hides them, so they go rather than linger invisibly.
+  for (const key of ['count_2', 'centered_2', 'pitch_2', 'direction_2', 'direction_2_query', 'invert_2']) {
+    delete sub[key]
   }
 }
 
-export function applyAddPattern(
-  doc: PartDoc,
-  featureId: string,
-  label?: string,
-  inline: Partial<PatternFeatureDef> = {},
-): void {
-  const pattern: PatternFeatureDef = {
-    subject: 'body',
-    mode: 'linear',
-    operation: 'add',
-  }
-  // The add validates through the catalog, but a replayed journal payload can
-  // still carry a retired key. Only the fields the setter shares may land.
+/** Seed the values a circular add reads. The angle and equal spacing keep the
+ *  kernel's own defaults (a full, evenly spaced turn), so a bare add stores no
+ *  field whose absence already means the same thing. */
+function seedCircularPattern(sub: FieldBag, cleared: ReadonlySet<string> = new Set()): void {
+  if (!cleared.has('count') && sub.count === undefined) sub.count = 4
+}
+
+/** The legacy fields an `add_pattern` alias call may carry, with the usual clear
+ *  rule and the skip text parsed. Null means the payload was refused (a skip
+ *  list that is not a list of instance numbers). */
+function legacyPatternPayload(inline: object): FieldBag | null {
   const accepted = Object.fromEntries(
-    Object.entries(inline).filter(([field]) => PATTERN_FIELDS.includes(field)),
-  ) as Partial<PatternFeatureDef>
+    Object.entries(inline).filter(([field]) => LEGACY_PATTERN_FIELDS.includes(field)),
+  ) as FieldBag
   // The legacy single source lands in the multi-source list the kernel reads.
   // When both are sent the list wins, so an old alias cannot silently override
   // the authored set. A string list is the same legacy spelling a replay may
@@ -823,90 +873,236 @@ export function applyAddPattern(
     accepted.source_features = accepted.source_feature === '' ? [] : [accepted.source_feature]
   }
   delete accepted.source_feature
-  // Skip Instances may arrive as the editor text. A list that cannot be read is
-  // refused whole rather than dropped silently; an empty or null value is the
-  // author's clear, which mergeInlineFields deletes.
   if (accepted.skip !== undefined && accepted.skip !== null && (accepted.skip as unknown) !== '') {
     const skip = patternSkip(accepted.skip)
     if (skip === null) {
       warn('applyAddPattern: refusing skip: the list is not a set of whole instance numbers')
+      return null
+    }
+    accepted.skip = skip
+  }
+  return accepted
+}
+
+export function applyAddLinearPattern(
+  doc: PartDoc,
+  featureId: string,
+  label?: string,
+  inline: Partial<LinearPatternDef> = {},
+): void {
+  const pattern: FieldBag = { subject: 'body', operation: 'add' }
+  const accepted = Object.fromEntries(
+    Object.entries(inline).filter(([field]) => LINEAR_PATTERN_FIELDS.includes(field)),
+  ) as FieldBag
+  if (typeof accepted.source_features === 'string') {
+    accepted.source_features = accepted.source_features === '' ? [] : [accepted.source_features]
+  }
+  if (!Array.isArray(accepted.source_features) && typeof accepted.source_feature === 'string') {
+    accepted.source_features = accepted.source_feature === '' ? [] : [accepted.source_feature]
+  }
+  delete accepted.source_feature
+  if (accepted.skip !== undefined && accepted.skip !== null && (accepted.skip as unknown) !== '') {
+    const skip = patternSkip(accepted.skip)
+    if (skip === null) {
+      warn('applyAddLinearPattern: refusing skip: the list is not a set of whole instance numbers')
       return
     }
     accepted.skip = skip
   }
-  // The inline counts are judged before the merge rounds them.
   const problem = inlineCountProblem(accepted)
   if (problem !== null) {
-    warn(`applyAddPattern: refusing ${problem.field}: ${problem.reason}`)
+    warn(`applyAddLinearPattern: refusing ${problem.field}: ${problem.reason}`)
     return
   }
-  mergeInlineFields(pattern, accepted as Partial<PatternFeatureDef>)
+  mergeInlineFields(pattern, accepted as Partial<FieldBag>)
   // A feature subject inherits the source's own operation; keeping a body
   // operation on it would advertise a field the kernel ignores.
-  if (pattern.subject === 'feature') {
-    delete pattern.operation
-  } else if (pattern.operation === undefined) {
-    pattern.operation = 'add'
-  }
+  if (pattern.subject === 'feature') delete pattern.operation
+  else if (pattern.operation === undefined) pattern.operation = 'add'
   // An explicit empty value cleared the key on purpose; seeding it back would
-  // silently override the author's clear with the mode's default.
+  // silently override the author's clear with the default.
   const cleared = new Set(
     Object.entries(accepted)
       .filter(([, value]) => value === undefined || value === null || value === '')
       .map(([key]) => key),
   )
-  seedPatternMode(pattern, cleared)
-  pushFeature(doc, { id: featureId, kind: 'pattern', label: label ?? 'Pattern', pattern })
+  seedLinearPattern(pattern, cleared)
+  pushFeature(doc, {
+    id: featureId,
+    kind: 'linear_pattern',
+    label: label ?? 'Linear Pattern',
+    linear_pattern: pattern as LinearPatternDef,
+  })
 }
 
-export function applySetPatternField(
+export function applyAddCircularPattern(
   doc: PartDoc,
   featureId: string,
-  field: keyof PatternFeatureDef,
+  label?: string,
+  inline: Partial<CircularPatternDef> = {},
+): void {
+  const pattern: FieldBag = { subject: 'body', operation: 'add' }
+  const accepted = Object.fromEntries(
+    Object.entries(inline).filter(([field]) => CIRCULAR_PATTERN_FIELDS.includes(field)),
+  ) as FieldBag
+  if (typeof accepted.source_features === 'string') {
+    accepted.source_features = accepted.source_features === '' ? [] : [accepted.source_features]
+  }
+  if (!Array.isArray(accepted.source_features) && typeof accepted.source_feature === 'string') {
+    accepted.source_features = accepted.source_feature === '' ? [] : [accepted.source_feature]
+  }
+  delete accepted.source_feature
+  if (accepted.skip !== undefined && accepted.skip !== null && (accepted.skip as unknown) !== '') {
+    const skip = circularSkip(accepted.skip)
+    if (skip === null) {
+      warn('applyAddCircularPattern: refusing skip: a circular pattern skips whole instance numbers only')
+      return
+    }
+    accepted.skip = skip
+  }
+  const problem = inlineCountProblem(accepted)
+  if (problem !== null) {
+    warn(`applyAddCircularPattern: refusing ${problem.field}: ${problem.reason}`)
+    return
+  }
+  mergeInlineFields(pattern, accepted as Partial<FieldBag>)
+  if (pattern.subject === 'feature') delete pattern.operation
+  else if (pattern.operation === undefined) pattern.operation = 'add'
+  const cleared = new Set(
+    Object.entries(accepted)
+      .filter(([, value]) => value === undefined || value === null || value === '')
+      .map(([key]) => key),
+  )
+  seedCircularPattern(pattern, cleared)
+  pushFeature(doc, {
+    id: featureId,
+    kind: 'circular_pattern',
+    label: label ?? 'Circular Pattern',
+    circular_pattern: pattern as CircularPatternDef,
+  })
+}
+
+/** The one-release `add_pattern` alias: build the legacy payload the old add
+ *  built, then run it through the loader's own split, so the aliased document
+ *  is byte-for-byte the row a migrated file loads as. */
+export function applyAddPattern(
+  doc: PartDoc,
+  featureId: string,
+  label?: string,
+  inline: Partial<LegacyPatternDef> = {},
+): void {
+  const accepted = legacyPatternPayload(inline)
+  if (accepted === null) return
+  const problem = legacyInlineCountProblem(accepted)
+  if (problem !== null) {
+    warn(`applyAddPattern: refusing ${problem.field}: ${problem.reason}`)
+    return
+  }
+  const legacy: FieldBag = { subject: 'body', mode: 'linear', operation: 'add' }
+  // The setters' clear and finiteness rules apply here too: an empty value
+  // deletes the key, a non-finite number is dropped, a stored number is rounded.
+  mergeInlineFields(legacy, accepted as Partial<FieldBag>)
+  // The old add seeded the mode's required values; seed before the split so the
+  // alias cannot land a linear row with no pitch.
+  const cleared = new Set(
+    Object.entries(accepted)
+      .filter(([, value]) => value === undefined || value === null || value === '')
+      .map(([key]) => key),
+  )
+  if (legacy.mode === 'circular') {
+    if (!cleared.has('count') && legacy.count === undefined) legacy.count = 4
+  } else if (legacy.mode === 'rectangular') {
+    if (!cleared.has('count_x') && legacy.count_x === undefined) legacy.count_x = 2
+    if (!cleared.has('pitch_x') && legacy.pitch_x === undefined) legacy.pitch_x = 20
+    if (!cleared.has('count_y') && legacy.count_y === undefined) legacy.count_y = 2
+    if (!cleared.has('pitch_y') && legacy.pitch_y === undefined) legacy.pitch_y = 20
+  } else {
+    if (!cleared.has('count') && legacy.count === undefined) legacy.count = 2
+    if (!cleared.has('pitch') && legacy.pitch === undefined) legacy.pitch = 20
+  }
+  const { kind, def } = splitPatternDef(legacy)
+  if (def.subject === 'feature') delete (def as FieldBag).operation
+  else if (def.operation === undefined) def.operation = 'add'
+  if (kind === 'linear_pattern') {
+    pushFeature(doc, { id: featureId, kind, label: label ?? 'Pattern', linear_pattern: def as LinearPatternDef })
+  } else {
+    pushFeature(doc, { id: featureId, kind, label: label ?? 'Pattern', circular_pattern: def as CircularPatternDef })
+  }
+}
+
+export function applySetLinearPatternField(
+  doc: PartDoc,
+  featureId: string,
+  field: keyof LinearPatternDef,
   value: unknown,
 ): void {
   const feature = findFeature(doc, featureId)
-  const sub = feature?.kind === 'pattern' ? feature.pattern : undefined
+  const sub = feature?.kind === 'linear_pattern' ? (feature.linear_pattern as FieldBag) : undefined
   if (!sub) {
-    warn(`applySetPatternField: feature ${featureId} has no pattern`)
+    warn(`applySetLinearPatternField: feature ${featureId} has no linear_pattern`)
     return
   }
-  if (refusePatternCount(sub, field, value, 'applySetPatternField')) return
-  // The drive still accepts the old single-source name for compatibility; it
-  // means a one-element list. Writing the list always drops the legacy scalar,
-  // so a document does not keep both spellings.
+  if (refusePatternCount(sub, field, value, 'applySetLinearPatternField')) return
   const targetField = field === 'source_feature' ? 'source_features' : field
-  const sourceList = (raw: unknown): string[] => {
-    if (Array.isArray(raw)) return raw.filter((ref): ref is string => typeof ref === 'string')
-    return typeof raw === 'string' && raw !== '' ? [raw] : []
-  }
   const targetValue = targetField === 'source_features' ? sourceList(value) : value
-  // The Skip Instances field writes text; the document stores the list. A clear
-  // (null or the empty string) stays a clear for setSubFeatureField.
-  let skipValueToStore: unknown = targetValue
+  let toStore: unknown = targetValue
   if (targetField === 'skip' && value !== null && value !== undefined && value !== '') {
     const skip = patternSkip(value)
     if (skip === null) {
-      warn(`applySetPatternField: refusing skip ${JSON.stringify(value)}: the list is not a set of whole instance numbers`)
+      warn(`applySetLinearPatternField: refusing skip ${JSON.stringify(value)}: the list is not a set of whole instance numbers`)
       return
     }
-    skipValueToStore = skip
+    toStore = skip
   }
-  if (!setSubFeatureField(featureId, 'pattern', sub, targetField, skipValueToStore, 'applySetPatternField', PATTERN_FIELDS)) return
+  if (!setSubFeatureField(featureId, 'linear_pattern', sub, targetField, toStore, 'applySetLinearPatternField', LINEAR_PATTERN_FIELDS)) return
   delete sub.source_feature
-  // The retired flag is accepted on load for old documents but is not authored
-  // any more. Any edit lands the pattern on the current shape, so drop it here
-  // rather than carrying a key the kernel ignores.
-  delete (sub as { include_source?: boolean }).include_source
-  if (field === 'mode') seedPatternMode(sub)
+  delete sub.include_source
+  if (field === 'second_direction') seedLinearPattern(sub)
   if (field === 'subject' && value === 'feature') delete sub.operation
+}
+
+export function applySetCircularPatternField(
+  doc: PartDoc,
+  featureId: string,
+  field: keyof CircularPatternDef,
+  value: unknown,
+): void {
+  const feature = findFeature(doc, featureId)
+  const sub = feature?.kind === 'circular_pattern' ? (feature.circular_pattern as FieldBag) : undefined
+  if (!sub) {
+    warn(`applySetCircularPatternField: feature ${featureId} has no circular_pattern`)
+    return
+  }
+  if (refusePatternCount(sub, field, value, 'applySetCircularPatternField')) return
+  const targetField = field === 'source_feature' ? 'source_features' : field
+  const targetValue = targetField === 'source_features' ? sourceList(value) : value
+  let toStore: unknown = targetValue
+  if (targetField === 'skip' && value !== null && value !== undefined && value !== '') {
+    const skip = circularSkip(value)
+    if (skip === null) {
+      warn(`applySetCircularPatternField: refusing skip ${JSON.stringify(value)}: a circular pattern skips whole instance numbers only`)
+      return
+    }
+    toStore = skip
+  }
+  if (!setSubFeatureField(featureId, 'circular_pattern', sub, targetField, toStore, 'applySetCircularPatternField', CIRCULAR_PATTERN_FIELDS)) return
+  delete sub.source_feature
+  if (field === 'subject' && value === 'feature') delete sub.operation
+}
+
+/** The sub-definition of any pattern kind, so the source chip's mutations work
+ *  on both kinds without asking which one a row is. */
+function patternSubOf(feature: PartFeature | undefined): FieldBag | null {
+  const sub: unknown = feature?.kind === 'linear_pattern'
+    ? feature.linear_pattern
+    : feature?.kind === 'circular_pattern' ? feature.circular_pattern : undefined
+  return typeof sub === 'object' && sub !== null && !Array.isArray(sub) ? sub as FieldBag : null
 }
 
 /** Add a feature to a pattern's sources, toggling like every other multi pick:
  *  re-picking a source already in the list drops it again. */
 export function applyAddPatternSource(doc: PartDoc, featureId: string, sourceFeature: string): void {
-  const feature = findFeature(doc, featureId)
-  const sub = feature?.kind === 'pattern' ? feature.pattern : undefined
+  const sub = patternSubOf(findFeature(doc, featureId))
   if (!sub) {
     warn(`applyAddPatternSource: feature ${featureId} has no pattern`)
     return
@@ -918,8 +1114,7 @@ export function applyAddPatternSource(doc: PartDoc, featureId: string, sourceFea
 }
 
 export function applyRemovePatternSource(doc: PartDoc, featureId: string, index: number): void {
-  const feature = findFeature(doc, featureId)
-  const sub = feature?.kind === 'pattern' ? feature.pattern : undefined
+  const sub = patternSubOf(findFeature(doc, featureId))
   if (!sub) {
     warn(`applyRemovePatternSource: feature ${featureId} has no pattern`)
     return

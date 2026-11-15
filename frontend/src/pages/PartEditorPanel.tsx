@@ -16,7 +16,8 @@ import featureShellIcon from '@/assets/icons/feature-shell.svg'
 import featureMoveFaceIcon from '@/assets/icons/feature-move-face.svg'
 import featureDeleteFaceIcon from '@/assets/icons/feature-delete-face.svg'
 import featureBooleanIcon from '@/assets/icons/feature-boolean.svg'
-import featurePatternIcon from '@/assets/icons/feature-pattern.svg'
+import featureLinearPatternIcon from '@/assets/icons/feature-linear-pattern.svg'
+import featureCircularPatternIcon from '@/assets/icons/feature-circular-pattern.svg'
 import featureDeleteBodyIcon from '@/assets/icons/feature-delete-body.svg'
 import featureHoleIcon from '@/assets/icons/feature-hole.svg'
 import featureTransformIcon from '@/assets/icons/feature-transform.svg'
@@ -126,7 +127,8 @@ export default function PartEditorPanel({
               <button className="editor-btn" title="Add Transform" onClick={() => handleAddFeature('transform')}><img src={featureTransformIcon} alt="Add Transform" /></button>
               <button className="editor-btn" title="Add Mirror" onClick={() => handleAddFeature('mirror')}><img src={featureMirrorIcon} alt="Add Mirror" /></button>
               <button className="editor-btn" title="Add Split" onClick={() => handleAddFeature('split')}><img src={featureSplitIcon} alt="Add Split" /></button>
-              <button className="editor-btn" title="Add Pattern" onClick={() => handleAddFeature('pattern')}><img src={featurePatternIcon} alt="Add Pattern" /></button>
+              <button className="editor-btn" title="Add Linear Pattern" onClick={() => handleAddFeature('linear_pattern')}><img src={featureLinearPatternIcon} alt="Add Linear Pattern" /></button>
+              <button className="editor-btn" title="Add Circular Pattern" onClick={() => handleAddFeature('circular_pattern')}><img src={featureCircularPatternIcon} alt="Add Circular Pattern" /></button>
               <button className="editor-btn" title="Delete Body" onClick={() => handleAddFeature('delete_body')}><img src={featureDeleteBodyIcon} alt="Delete Body" /></button>
               <button className="editor-btn" title="Add Variable" onClick={() => handleAddFeature('variable')}><img src={featureVariableIcon} alt="Add Variable" /></button>
             </>

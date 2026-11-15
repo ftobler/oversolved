@@ -26,7 +26,8 @@ import { registerSplitBodies } from '@/kernel/features/bodySplit'
 import { solveBoolean } from '@/kernel/features/boolean'
 import { solveFillet, solveChamfer, resolveFilletEdges } from '@/kernel/features/filletChamfer'
 import { solveHole } from '@/kernel/features/hole'
-import { solvePattern } from '@/kernel/features/pattern'
+import { solveLinearPattern } from '@/kernel/features/linearPattern'
+import { solveCircularPattern } from '@/kernel/features/circularPattern'
 import { solveMirror } from '@/kernel/features/transformMirror'
 import { solveShell } from '@/kernel/features/shell'
 import { solveHelix } from '@/kernel/features/helix'
@@ -783,15 +784,15 @@ function applyStep(
   if (step.kind === 'linear-array') {
     const query = `@fuzz/axis/${step.id}`
     repo.registerQuery(query, () => ({ start: [0, 0, 0], end: axisVec(step.axis) }))
-    const result = solvePattern(oc, scope, table, {
+    const result = solveLinearPattern(oc, scope, table, {
       id: step.id,
-      pattern: {
-        subject: 'body', source_body: step.target, mode: 'linear', count: step.count, pitch: step.pitch,
+      linear_pattern: {
+        subject: 'body', source_body: step.target, count: step.count, pitch: step.pitch,
         operation: 'add', direction_query: query,
         ...(step.centered === true ? { centered: true } : {}),
         ...(step.skip !== undefined ? { skip: step.skip } : {}),
       },
-    }, repoForLeaves, bodyStore)
+    } as Dict, repoForLeaves, bodyStore)
     return { editedIds: result.body_ids }
   }
   if (step.kind === 'circular-array') {
@@ -800,13 +801,18 @@ function applyStep(
     const dir = axisVec(step.axis)
     const query = `@fuzz/axis/${step.id}`
     repo.registerQuery(query, () => ({ start: center, end: add(center, dir) }))
-    const result = solvePattern(oc, scope, table, {
+    // The old step_angle was a step, so a drawn one is the increment form; an
+    // absent one was the evenly spaced full turn. The draws and their chains are
+    // unchanged.
+    const stepped = step.stepDeg !== undefined && step.stepDeg !== null
+    const result = solveCircularPattern(oc, scope, table, {
       id: step.id,
-      pattern: {
-        subject: 'body', source_body: step.target, mode: 'circular', count: step.count, step_angle: step.stepDeg,
+      circular_pattern: {
+        subject: 'body', source_body: step.target, count: step.count,
+        ...(stepped ? { angle: step.stepDeg as number, equal_spacing: false } : {}),
         operation: 'add', axis: query,
       },
-    }, repoForLeaves, bodyStore)
+    } as Dict, repoForLeaves, bodyStore)
     return { editedIds: result.body_ids }
   }
   if (step.kind === 'shell') {

@@ -77,16 +77,16 @@ describe.skipIf(!ready)('add_pattern through the drive (real OCC + Rust solver)'
     const run = await runHeadless({
       doc: slottedPlate(),
       steps: [step({
-        type: 'add_pattern', featureId: 'pt1', label: 'Pattern', subject: 'feature',
-        source_feature: '@ex_slot', mode: 'linear', count: 4, pitch: 8, direction: [1, 0, 0],
+        type: 'add_linear_pattern', featureId: 'pt1', label: 'Pattern', subject: 'feature',
+        source_feature: '@ex_slot', count: 4, pitch: 8, direction: [1, 0, 0],
       })],
     })
     expect(run.ok).toBe(true)
     const feature = run.doc?.features?.find((entry) => entry.id === 'pt1')
     expect(feature).toMatchObject({
-      kind: 'pattern',
-      pattern: {
-        subject: 'feature', source_features: ['@ex_slot'], mode: 'linear', count: 4, pitch: 8, direction: [1, 0, 0],
+      kind: 'linear_pattern',
+      linear_pattern: {
+        subject: 'feature', source_features: ['@ex_slot'], count: 4, pitch: 8, direction: [1, 0, 0],
       },
     })
     // The reply's own feature list: the pattern reported clean, and it changed
@@ -120,16 +120,16 @@ describe.skipIf(!ready)('add_pattern through the drive (real OCC + Rust solver)'
     const run = await runHeadless({
       doc,
       steps: [step({
-        type: 'add_pattern', featureId: 'pt1', label: 'Pattern', subject: 'feature',
-        source_features: ['@ex_slot_a', '@ex_slot_b'], mode: 'linear', count: 2, pitch: 8,
+        type: 'add_linear_pattern', featureId: 'pt1', label: 'Pattern', subject: 'feature',
+        source_features: ['@ex_slot_a', '@ex_slot_b'], count: 2, pitch: 8,
         direction: [1, 0, 0],
       })],
     })
     expect(run.ok).toBe(true)
     const feature = run.doc?.features?.find((entry) => entry.id === 'pt1')
     expect(feature).toMatchObject({
-      kind: 'pattern',
-      pattern: { subject: 'feature', source_features: ['@ex_slot_a', '@ex_slot_b'] },
+      kind: 'linear_pattern',
+      linear_pattern: { subject: 'feature', source_features: ['@ex_slot_a', '@ex_slot_b'] },
     })
     expect(run.features.find((problem) => problem.id === 'pt1')).toBeUndefined()
 
@@ -149,8 +149,8 @@ describe.skipIf(!ready)('add_pattern through the drive (real OCC + Rust solver)'
     const run = async (doc: PartDoc) => runHeadless({
       doc,
       steps: [step({
-        type: 'add_pattern', featureId: 'pt1', label: 'Pattern', subject: 'feature',
-        source_feature: '@ex_slot', mode: 'linear', count: 4, pitch: 8, direction: [1, 0, 0],
+        type: 'add_linear_pattern', featureId: 'pt1', label: 'Pattern', subject: 'feature',
+        source_feature: '@ex_slot', count: 4, pitch: 8, direction: [1, 0, 0],
       })],
     })
     const through = await run(slottedPlate({ termination: 'through_all' }))
@@ -175,8 +175,8 @@ describe.skipIf(!ready)('add_pattern through the drive (real OCC + Rust solver)'
     const run = await runHeadless({
       doc: slottedPlate({ termination: 'through_all', direction: 'symmetric' }),
       steps: [step({
-        type: 'add_pattern', featureId: 'pt1', label: 'Pattern', subject: 'feature',
-        source_feature: '@ex_slot', mode: 'linear', count: 2, pitch: 8, direction: [1, 0, 0],
+        type: 'add_linear_pattern', featureId: 'pt1', label: 'Pattern', subject: 'feature',
+        source_feature: '@ex_slot', count: 2, pitch: 8, direction: [1, 0, 0],
       })],
     })
     expect(run.ok).toBe(true)
@@ -193,14 +193,14 @@ describe.skipIf(!ready)('add_pattern through the drive (real OCC + Rust solver)'
     const asText = await runHeadless({
       doc: slottedPlate(),
       steps: [step({
-        type: 'add_pattern', featureId: 'pt1', label: 'Pattern', subject: 'feature',
-        source_feature: '@ex_slot', mode: 'linear', count: 4, pitch: 8, direction: [1, 0, 0],
+        type: 'add_linear_pattern', featureId: 'pt1', label: 'Pattern', subject: 'feature',
+        source_feature: '@ex_slot', count: 4, pitch: 8, direction: [1, 0, 0],
         skip: '1, 3',
       })],
     })
     expect(asText.ok).toBe(true)
     const textFeature = asText.doc?.features?.find((entry) => entry.id === 'pt1')
-    expect(textFeature).toMatchObject({ pattern: { skip: [1, 3] } })
+    expect(textFeature).toMatchObject({ linear_pattern: { skip: [1, 3] } })
     const textMeasured = await measureHeadless(asText.doc!)
     expect(textMeasured?.ok).toBe(true)
     // 40 x 20 x 5 minus two 4 x 4 x 5 slots (instances 1 and 3 dropped).
@@ -209,14 +209,14 @@ describe.skipIf(!ready)('add_pattern through the drive (real OCC + Rust solver)'
     const asList = await runHeadless({
       doc: slottedPlate(),
       steps: [step({
-        type: 'add_pattern', featureId: 'pt1', label: 'Pattern', subject: 'feature',
-        source_feature: '@ex_slot', mode: 'linear', count: 3, pitch: 8, direction: [1, 0, 0],
+        type: 'add_linear_pattern', featureId: 'pt1', label: 'Pattern', subject: 'feature',
+        source_feature: '@ex_slot', count: 3, pitch: 8, direction: [1, 0, 0],
         skip: [2],
       })],
     })
     expect(asList.ok).toBe(true)
     const listFeature = asList.doc?.features?.find((entry) => entry.id === 'pt1')
-    expect(listFeature).toMatchObject({ pattern: { skip: [2] } })
+    expect(listFeature).toMatchObject({ linear_pattern: { skip: [2] } })
     const listMeasured = await measureHeadless(asList.doc!)
     expect(listMeasured?.ok).toBe(true)
     expect(listMeasured!.measures.volume).toBeCloseTo(4000 - 2 * 80, 4)
@@ -226,7 +226,7 @@ describe.skipIf(!ready)('add_pattern through the drive (real OCC + Rust solver)'
     const run = async (skip: string) => runHeadless({
       doc: slottedPlate(),
       steps: [step({
-        type: 'add_pattern', featureId: 'pt1', subject: 'feature', source_feature: '@ex_slot',
+        type: 'add_linear_pattern', featureId: 'pt1', subject: 'feature', source_feature: '@ex_slot',
         count: 3, pitch: 8, direction: [1, 0, 0], skip,
       })],
     })
@@ -245,7 +245,7 @@ describe.skipIf(!ready)('add_pattern through the drive (real OCC + Rust solver)'
     const run = await runHeadless({
       doc,
       steps: [step({
-        type: 'add_pattern', featureId: 'pt1', subject: 'feature', source_feature: '@ex_slot',
+        type: 'add_linear_pattern', featureId: 'pt1', subject: 'feature', source_feature: '@ex_slot',
         count: 4, pitch: 13, direction: [1, 0, 0],
       })],
     })
@@ -254,5 +254,24 @@ describe.skipIf(!ready)('add_pattern through the drive (real OCC + Rust solver)'
     expect(problem?.status).toBe('partial')
     expect(problem?.message).toContain('2/3 copies applied')
     expect(problem?.message).toContain('copy 3')
+  }, 240_000)
+
+  it('translates the deprecated add_pattern alias and says so in the reply', async () => {
+    const run = await runHeadless({
+      doc: slottedPlate(),
+      steps: [step({
+        type: 'add_pattern', featureId: 'pt1', label: 'Pattern', subject: 'feature',
+        source_feature: '@ex_slot', mode: 'linear', count: 4, pitch: 8, direction: [1, 0, 0],
+      })],
+    })
+    expect(run.ok).toBe(true)
+    expect(run.doc?.features?.find((entry) => entry.id === 'pt1')).toMatchObject({
+      kind: 'linear_pattern',
+      linear_pattern: { subject: 'feature', source_features: ['@ex_slot'], count: 4, pitch: 8, direction: [1, 0, 0] },
+    })
+    expect(run.outcome.steps[0].note ?? '').toContain('deprecated')
+    const measured = await measureHeadless(run.doc!)
+    expect(measured?.ok).toBe(true)
+    expect(measured!.measures.volume).toBeCloseTo(4000 - 320, 4)
   }, 240_000)
 })

@@ -12,7 +12,8 @@ const revolve = (doc: PartDoc) => featureById(doc, 'RV', 'revolve').revolve
 const fillet = (doc: PartDoc) => featureById(doc, 'FL', 'fillet').fillet
 const chamfer = (doc: PartDoc) => featureById(doc, 'CH', 'chamfer').chamfer
 const boolean = (doc: PartDoc) => featureById(doc, 'BL', 'boolean').boolean
-const pattern = (doc: PartDoc) => featureById(doc, 'PT', 'pattern').pattern
+const linearPattern = (doc: PartDoc) => featureById(doc, 'PT', 'linear_pattern').linear_pattern
+const circularPattern = (doc: PartDoc) => featureById(doc, 'CP', 'circular_pattern').circular_pattern
 const delBody = (doc: PartDoc) => featureById(doc, 'DB', 'delete_body').delete_body
 const transform = (doc: PartDoc) => featureById(doc, 'TR', 'transform').transform
 
@@ -286,11 +287,20 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
 
   it('pattern (linear + circular): add and set field', () => {
     const doc = sketchDoc()
-    mutationHandlers.add_pattern(doc, { type: 'add_pattern', featureId: 'PT' })
-    mutationHandlers.set_pattern_field(doc, { type: 'set_pattern_field', featureId: 'PT', field: 'count', value: 4 })
-    expect(pattern(doc)!.count).toBe(4)
-    mutationHandlers.set_pattern_field(doc, { type: 'set_pattern_field', featureId: 'PT', field: 'mode', value: 'circular' })
-    expect(pattern(doc)!.mode).toBe('circular')
+    mutationHandlers.add_linear_pattern(doc, { type: 'add_linear_pattern', featureId: 'PT' })
+    mutationHandlers.set_linear_pattern_field(doc, { type: 'set_linear_pattern_field', featureId: 'PT', field: 'count', value: 4 })
+    expect(linearPattern(doc)!.count).toBe(4)
+    mutationHandlers.set_linear_pattern_field(doc, { type: 'set_linear_pattern_field', featureId: 'PT', field: 'second_direction', value: true })
+    expect(linearPattern(doc)!.second_direction).toBe(true)
+
+    mutationHandlers.add_circular_pattern(doc, { type: 'add_circular_pattern', featureId: 'CP' })
+    mutationHandlers.set_circular_pattern_field(doc, { type: 'set_circular_pattern_field', featureId: 'CP', field: 'angle', value: 180 })
+    expect(circularPattern(doc)!.angle).toBe(180)
+
+    // The one-release alias still lands the new kind.
+    mutationHandlers.add_pattern(doc, { type: 'add_pattern', featureId: 'PA', mode: 'circular', count: 3 })
+    const aliased = doc.features!.find(f => f.id === 'PA')
+    expect(aliased?.kind === 'circular_pattern' ? aliased.circular_pattern.count : undefined).toBe(3)
   })
 
   it('hole / transform / mirror / variable / delete_body: add and set field', () => {

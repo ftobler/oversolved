@@ -65,10 +65,10 @@ describe.skipIf(!ready)('featureDeltas body selection (real OCC + Rust solver)',
     const arrayed = await runHeadless({
       doc: base.doc as PartDoc,
       steps: [m({
-        type: 'add_pattern', featureId: 'ar1', subject: 'body', source_body: 'body_ex2',
-        operation: 'add', mode: 'rectangular',
-        count_x: 2, count_y: 2, pitch_x: 40, pitch_y: 40,
-        direction_x: [1, 0, 0], direction_y: [0, 1, 0],
+        type: 'add_linear_pattern', featureId: 'ar1', subject: 'body', source_body: 'body_ex2',
+        operation: 'add', second_direction: true,
+        count: 2, count_2: 2, pitch: 40, pitch_2: 40,
+        direction: [1, 0, 0], direction_2: [0, 1, 0],
       })],
     })
     expect(nonSketchProblems(arrayed.features)).toEqual([])

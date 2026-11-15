@@ -106,24 +106,26 @@ export type BooleanFeatureDef = {
   clearance?: NumberOrExpr
 }
 
-// A pattern repeats either a whole body or one or more earlier solid-producing
-// features' own add/cut. The subject selects which, and the mode selects the
-// instance grid. A body pattern copies the source body with `operation` add or
-// new; a feature pattern reapplies each source feature's tool inside the body it
-// already shaped, inheriting that feature's own operation.
-//
-// `count` is the total instance count for linear and circular modes, the
-// source's own slot included. Count 1 keeps only the original and is a quiet
-// no-op; 2 makes one copy. `centered` also generates the reverse side (-1, -2,
-// ...), so a centered count n generates 2n - 1 instances. The rectangular mode
-// counts its two axes in `count_x` and `count_y`, always leaves the seed cell to
-// the source and centers each axis on its own flag; 1x1 is a no-op, not an
-// error. `skip` leaves instances out. A legacy document may still carry
-// `include_source`; the loader accepts it and the kernel ignores it, because the
-// source is always instance 0.
+// The feature kinds that repeat a subject. Later kinds (a curve pattern, an
+// instance pattern) join this list; every runtime check that used to spell the
+// retired `pattern` kind reads it, so adding a kind is one line rather than a
+// hunt through the kernel, the drive and the tree.
+export const PATTERN_KINDS = ['linear_pattern', 'circular_pattern'] as const
+export type PatternKind = (typeof PATTERN_KINDS)[number]
+
+export function isPatternKind(kind: string | undefined): kind is PatternKind {
+  return kind !== undefined && (PATTERN_KINDS as readonly string[]).includes(kind)
+}
+
+// Both pattern kinds repeat either a whole body or one or more earlier
+// solid-producing features' own add/cut. A body pattern copies the source body
+// with `operation` add or new; a feature pattern reapplies each source feature's
+// tool inside the body it already shaped, inheriting that feature's own
+// operation. The source fields are shared, so the source rows are one table in
+// the editor and the published schema.
 export type PatternSubject = 'body' | 'feature'
 
-export type PatternFeatureDef = {
+export type PatternSourceDef = {
   subject?: PatternSubject
   // Body subject.
   source_body?: string
@@ -137,22 +139,75 @@ export type PatternFeatureDef = {
   source_feature?: string
   // The body to apply to when the source features touched more than one.
   target_body?: string
-  // Instance grid.
-  mode?: 'linear' | 'rectangular' | 'circular'
+}
+
+// A linear pattern repeats along one direction, or along two when the second
+// direction is on. `count` is the total on direction 1, the source's own slot
+// included: 1 keeps only the original and is a quiet no-op, 2 makes one copy.
+// `centered` also generates the reverse side (-1, -2, ...), so a centered count
+// n generates 2n - 1 instances. With `second_direction` the grid is the same
+// row-major one the retired rectangular mode built: direction 1 is the column,
+// direction 2 the row, the seed cell (0, 0) is the source, and each axis centers
+// on its own flag. 1 x 1 is the same quiet no-op as count 1. `skip` leaves
+// instances out, as a signed 1D index or an `i:j` cell (a bare integer means
+// i:0). A legacy document may still carry `include_source`; the loader accepts
+// it and the kernel ignores it, because the source is always instance 0.
+export type LinearPatternDef = PatternSourceDef & {
   count?: NumberOrExpr
-  // Centered generates the reverse side: index i translates by i * pitch, so
-  // the negative indices sit behind the source.
   centered?: boolean
-  // A skipped instance is a signed 1D index, or a `[column, row]` cell for the
-  // rectangular grid. A bare integer means i:0. The parser and formatter live in
-  // utils/core/patternSkip.ts.
   skip?: (number | [number, number])[]
-  // Linear mode: spacing along `direction` in the document's unit.
+  // Direction 1: spacing along `direction` in the document's unit.
   pitch?: NumberOrExpr
   direction?: [number, number, number]
   direction_query?: string
   invert?: boolean
-  // Rectangular mode.
+  // Direction 2, the retired rectangular mode.
+  second_direction?: boolean
+  count_2?: NumberOrExpr
+  centered_2?: boolean
+  pitch_2?: NumberOrExpr
+  direction_2?: [number, number, number]
+  direction_2_query?: string
+  invert_2?: boolean
+}
+
+// A circular pattern repeats about an axis. `angle` is degrees, 360 by default,
+// and `equal_spacing` (true by default) selects what it means:
+// - equal spacing: the full sweep the instances spread over. A full turn gives
+//   step 360 / total, where total is count or 2*count - 1 centered, so no
+//   instance lands on the source. A smaller sweep puts the end instances ON the
+//   sweep ends: step = angle / (count - 1), or angle / (2 * (count - 1))
+//   centered so +-(count-1) sits at +-angle/2.
+// - not equal spacing: the increment between neighbours.
+// A negative angle is refused; reverse the sense with `invert_axis`. An angle
+// above a full turn with equal spacing, or a step that lands two instances on
+// one another, is the instance model's coincidence refusal. Count 1 makes no
+// copies whatever the angle.
+export type CircularPatternDef = PatternSourceDef & {
+  count?: NumberOrExpr
+  centered?: boolean
+  skip?: number[]
+  angle?: NumberOrExpr
+  equal_spacing?: boolean
+  axis?: string
+  axis_origin?: [number, number, number]
+  axis_direction?: [number, number, number]
+  invert_axis?: boolean
+}
+
+// The retired single `pattern` kind, kept only so the drive's one-release
+// `add_pattern` alias can name the payload it accepts and the loader migration
+// can name the row it rewrites (utils/core/patternSplit.ts). Nothing authors it:
+// the app writes `linear_pattern` or `circular_pattern`.
+export type LegacyPatternDef = PatternSourceDef & {
+  mode?: 'linear' | 'rectangular' | 'circular'
+  count?: NumberOrExpr
+  centered?: boolean
+  skip?: (number | [number, number])[]
+  pitch?: NumberOrExpr
+  direction?: [number, number, number]
+  direction_query?: string
+  invert?: boolean
   count_x?: NumberOrExpr
   count_y?: NumberOrExpr
   centered_x?: boolean
@@ -165,7 +220,6 @@ export type PatternFeatureDef = {
   direction_y?: [number, number, number]
   direction_y_query?: string
   invert_y?: boolean
-  // Circular mode: degrees between copies, absent means 360 / count.
   step_angle?: NumberOrExpr | null
   axis?: string
   axis_origin?: [number, number, number]
@@ -673,9 +727,14 @@ export type BooleanFeature = FeatureBase & {
   boolean: BooleanFeatureDef
 }
 
-export type PatternFeature = FeatureBase & {
-  kind: 'pattern'
-  pattern: PatternFeatureDef
+export type LinearPatternFeature = FeatureBase & {
+  kind: 'linear_pattern'
+  linear_pattern: LinearPatternDef
+}
+
+export type CircularPatternFeature = FeatureBase & {
+  kind: 'circular_pattern'
+  circular_pattern: CircularPatternDef
 }
 
 export type DeleteBodyFeature = FeatureBase & {
@@ -736,7 +795,8 @@ export type PartFeature =
   | MoveFaceFeature
   | DeleteFaceFeature
   | BooleanFeature
-  | PatternFeature
+  | LinearPatternFeature
+  | CircularPatternFeature
   | DeleteBodyFeature
   | HoleFeature
   | TransformFeature
@@ -1447,8 +1507,15 @@ export type Mutation =
   | { type: 'set_boolean_field'; featureId: string; field: keyof BooleanFeatureDef; value: unknown }
   | { type: 'add_boolean_tool'; featureId: string; tool: string }
   | { type: 'remove_boolean_tool'; featureId: string; tool: string }
-  | ({ type: 'add_pattern'; featureId: string; label?: string } & Partial<PatternFeatureDef> & FeatureInsertion)
-  | { type: 'set_pattern_field'; featureId: string; field: keyof PatternFeatureDef; value: unknown }
+  | ({ type: 'add_linear_pattern'; featureId: string; label?: string } & Partial<LinearPatternDef> & FeatureInsertion)
+  | { type: 'set_linear_pattern_field'; featureId: string; field: keyof LinearPatternDef; value: unknown }
+  | ({ type: 'add_circular_pattern'; featureId: string; label?: string } & Partial<CircularPatternDef> & FeatureInsertion)
+  | { type: 'set_circular_pattern_field'; featureId: string; field: keyof CircularPatternDef; value: unknown }
+  // One release only: the drive translates a legacy `add_pattern` payload
+  // through the loader's own split (utils/core/patternSplit.ts) and replies with
+  // a deprecation note. Nothing in the app emits it, and no catalog example
+  // offers it.
+  | ({ type: 'add_pattern'; featureId: string; label?: string } & Partial<LegacyPatternDef> & FeatureInsertion)
   | { type: 'add_pattern_source'; featureId: string; sourceFeature: string }
   | { type: 'remove_pattern_source'; featureId: string; index: number }
   | ({ type: 'add_delete_body'; featureId: string; bodies?: string[]; label?: string } & FeatureInsertion)

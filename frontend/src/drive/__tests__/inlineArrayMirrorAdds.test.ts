@@ -1,8 +1,8 @@
 // @vitest-environment node
 //
-// The pure half of the bulk `add_pattern` / `add_mirror` forms: the catalog
-// rows and the document shape one call produces. The practice round paid seven
-// calls for a one-line pattern (batch B F2). The built-document half is
+// The pure half of the bulk pattern / mirror add forms: the catalog rows and the
+// document shape one call produces. The practice round paid seven calls for a
+// one-line pattern (batch B F2). The built-document half is
 // inlineArrayMirrorAddsReal.test.ts.
 
 import { describe, it, expect } from 'vitest'
@@ -14,18 +14,24 @@ import { mutationHandlers } from '@/hooks/mutationDispatch'
 function emptyDoc(): PartDoc {
   return seedBuiltins({ version: 1, kind: 'part', features: [] } as PartDoc)
 }
-describe('add_pattern / add_mirror inline fields', () => {
-  it('publishes the inline fields and the one-call note', () => {
-    const pattern = mutationInfoOf('add_pattern')
+describe('the pattern / mirror inline fields', () => {
+  it('publishes the linear inline fields and the one-call note', () => {
+    const pattern = mutationInfoOf('add_linear_pattern')
     for (const field of [
       'subject', 'source_body', 'source_features', 'source_feature', 'operation', 'count', 'pitch',
-      'direction_query', 'invert', 'count_x', 'pitch_x', 'direction_x_query', 'invert_x',
-      'count_y', 'pitch_y', 'direction_y_query', 'invert_y', 'step_angle', 'axis',
+      'direction_query', 'invert', 'second_direction', 'count_2', 'pitch_2',
+      'direction_2_query', 'invert_2', 'skip',
     ]) {
       expect(pattern.fields[field], field).toBeDefined()
     }
-    expect(pattern.note).toContain('One call may carry the whole pattern')
-    expect(pattern.note).toContain('set_pattern_field')
+    expect(pattern.note).toContain('One call may carry the whole linear pattern')
+    expect(pattern.note).toContain('set_linear_pattern_field')
+
+    const circular = mutationInfoOf('add_circular_pattern')
+    for (const field of ['count', 'angle', 'equal_spacing', 'axis', 'axis_origin', 'axis_direction', 'skip']) {
+      expect(circular.fields[field], field).toBeDefined()
+    }
+    expect(circular.note).toContain('One call may carry the whole circular pattern')
 
     const mirror = mutationInfoOf('add_mirror')
     for (const field of ['body', 'plane', 'keep_original', 'merge']) {
@@ -35,32 +41,32 @@ describe('add_pattern / add_mirror inline fields', () => {
   })
 })
 describe('inline field application', () => {
-  it('keeps a rectangular count_y expression instead of seeding the default', () => {
+  it('keeps a second-direction count expression instead of seeding the default', () => {
     const doc = emptyDoc()
-    mutationHandlers.add_pattern(doc, {
-      type: 'add_pattern', featureId: 'ar1', mode: 'rectangular',
-      count_x: 2, pitch_x: 20, count_y: 'n', pitch_y: 'p',
+    mutationHandlers.add_linear_pattern(doc, {
+      type: 'add_linear_pattern', featureId: 'ar1', second_direction: true,
+      count: 2, pitch: 20, count_2: 'n', pitch_2: 'p',
     })
     const feature = doc.features?.find(entry => entry.id === 'ar1')
     expect(feature).toMatchObject({
-      kind: 'pattern',
-      pattern: { mode: 'rectangular', count_y: 'n', pitch_y: 'p' },
+      kind: 'linear_pattern',
+      linear_pattern: { second_direction: true, count_2: 'n', pitch_2: 'p' },
     })
   })
 
   it('clears a default on an explicit empty value, like the setter does', () => {
     const doc = emptyDoc()
-    mutationHandlers.add_pattern(doc, { type: 'add_pattern', featureId: 'ar1', count: '' })
+    mutationHandlers.add_linear_pattern(doc, { type: 'add_linear_pattern', featureId: 'ar1', count: '' })
     const feature = doc.features?.find(entry => entry.id === 'ar1')
-    expect(feature?.kind === 'pattern' ? feature.pattern.count : 'missing').toBeUndefined()
+    expect(feature?.kind === 'linear_pattern' ? feature.linear_pattern.count : 'missing').toBeUndefined()
   })
 
-  it('accepts a null step_angle and stores no key for it', () => {
-    const mutation = { type: 'add_pattern', featureId: 'ca1', mode: 'circular', step_angle: null }
+  it('stores no angle for a circular add that named none', () => {
+    const mutation = { type: 'add_circular_pattern', featureId: 'ca1' }
     expect(validateMutation(mutation).ok).toBe(true)
     const doc = emptyDoc()
-    mutationHandlers.add_pattern(doc, { ...mutation } as never)
+    mutationHandlers.add_circular_pattern(doc, { ...mutation } as never)
     const feature = doc.features?.find(entry => entry.id === 'ca1')
-    expect(feature?.kind === 'pattern' ? feature.pattern.step_angle : 'missing').toBeUndefined()
+    expect(feature?.kind === 'circular_pattern' ? feature.circular_pattern.angle : 'missing').toBeUndefined()
   })
 })

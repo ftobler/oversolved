@@ -73,8 +73,11 @@ import {
   applySetBooleanField,
   applyAddBooleanTool,
   applyRemoveBooleanTool,
+  applyAddLinearPattern,
+  applySetLinearPatternField,
+  applyAddCircularPattern,
+  applySetCircularPatternField,
   applyAddPattern,
-  applySetPatternField,
   applyAddPatternSource,
   applyRemovePatternSource,
   applyAddDeleteBody,
@@ -387,12 +390,25 @@ export const mutationHandlers: MutationHandlers = {
     applyAddBooleanTool(next, m.featureId, m.tool),
   remove_boolean_tool: (next, m) =>
     applyRemoveBooleanTool(next, m.featureId, m.tool),
+  add_linear_pattern: (next, m) => {
+    const { type: _type, featureId, label, insertAt: _insertAt, ...inline } = m
+    applyAddLinearPattern(next, featureId, label, inline)
+  },
+  set_linear_pattern_field: (next, m) =>
+    applySetLinearPatternField(next, m.featureId, m.field, m.value),
+  add_circular_pattern: (next, m) => {
+    const { type: _type, featureId, label, insertAt: _insertAt, ...inline } = m
+    applyAddCircularPattern(next, featureId, label, inline)
+  },
+  set_circular_pattern_field: (next, m) =>
+    applySetCircularPatternField(next, m.featureId, m.field, m.value),
+  // The retired alias, translated by the applier through the loader's own
+  // split. Nothing in the app emits it; the drive also translates it up front
+  // so the step reply can carry the deprecation note.
   add_pattern: (next, m) => {
     const { type: _type, featureId, label, insertAt: _insertAt, ...inline } = m
     applyAddPattern(next, featureId, label, inline)
   },
-  set_pattern_field: (next, m) =>
-    applySetPatternField(next, m.featureId, m.field, m.value),
   add_pattern_source: (next, m) =>
     applyAddPatternSource(next, m.featureId, m.sourceFeature),
   remove_pattern_source: (next, m) =>

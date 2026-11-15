@@ -357,7 +357,7 @@ describe('featureDeltaRows', () => {
       features: [
         { id: 'sk1', kind: 'sketch' },
         { id: 'ex2', kind: 'extrude' },
-        { id: 'ar1', kind: 'pattern' },
+        { id: 'ar1', kind: 'linear_pattern' },
       ],
     } as unknown as PartDoc
     const copies: Record<string, FeatureMeasureBody> = { body_ex2: body(60) }
@@ -401,7 +401,7 @@ describe('featureDeltaRows', () => {
     const doc = {
       version: 1,
       kind: 'part',
-      features: [{ id: 'ex2', kind: 'extrude' }, { id: 'ar1', kind: 'pattern' }],
+      features: [{ id: 'ex2', kind: 'extrude' }, { id: 'ar1', kind: 'linear_pattern' }],
     } as unknown as PartDoc
     const measures: FeatureMeasure[] = [
       { id: 'ex2', volume: 60, bbox: [0, 0, 0, 2, 3, 10], bodies: { body_ex2: body(60) } },
@@ -422,7 +422,7 @@ describe('featureDeltaRows', () => {
     const doc = {
       version: 1,
       kind: 'part',
-      features: [{ id: 'ex2', kind: 'extrude' }, { id: 'ar1', kind: 'pattern' }],
+      features: [{ id: 'ex2', kind: 'extrude' }, { id: 'ar1', kind: 'linear_pattern' }],
     } as unknown as PartDoc
     const measures: FeatureMeasure[] = [
       { id: 'ex2', volume: 60, bbox: [0, 0, 0, 2, 3, 10], bodies: { body_ex2: body(60) } },
@@ -642,7 +642,7 @@ describe('featureDeltaRows', () => {
     const doc = {
       version: 1,
       kind: 'part',
-      features: [{ id: 'ex2', kind: 'extrude' }, { id: 'ar1', kind: 'pattern' }],
+      features: [{ id: 'ex2', kind: 'extrude' }, { id: 'ar1', kind: 'linear_pattern' }],
     } as unknown as PartDoc
     const measures: FeatureMeasure[] = [
       { id: 'ex2', volume: 60, bbox: [0, 0, 0, 2, 3, 10], bodies: { body_ex2: body(60) } },

@@ -1,4 +1,5 @@
 import type { FeatureEditorSchema } from './FeatureEditor'
+import type { EditorFieldDef } from './widgets/fieldTypes'
 import {
   normalizeRefList,
   DEFAULT_EXTRUDE_DISTANCE,
@@ -457,35 +458,26 @@ export const SPLIT_SCHEMA: FeatureEditorSchema = {
   ],
 }
 
-// The other count of a rectangular array for the cells cap; a linear array has
-// one axis, so its hidden count_y never binds. A string is an expression the
-// shared rule evaluates when it can.
-function siblingCount(other: unknown, mode: unknown): number | string | null {
-  return mode === 'rectangular' && (typeof other === 'number' || typeof other === 'string')
-    ? other
-    : null
-}
-
 /** The live instance total under the Skip Instances field. It is computed from
  *  the same pure instance model the kernel uses, so the hint cannot drift from
  *  what the solve builds. */
-function patternInstanceHint(d: SchemaData): string | null {
+function patternInstanceHint(d: SchemaData, defaultCount: number): string | null {
+  const skip = patternSkipValue(d)
   const centered = d.centered === true
-  if ((d.mode ?? 'linear') === 'rectangular') {
-    const x = Number(d.count_x ?? 2)
-    const y = Number(d.count_y ?? 2)
+  if (d.second_direction === true) {
+    const x = Number(d.count ?? 2)
+    const y = Number(d.count_2 ?? 2)
     if (!Number.isInteger(x) || x < 1 || !Number.isInteger(y) || y < 1) return null
-    const centeredX = d.centered_x === true
-    const centeredY = d.centered_y === true
-    if (generatedCount(x, centeredX) * generatedCount(y, centeredY) > MAX_ARRAY_COUNT) return null
-    const generated = toInstances(rectangularIndices(x, y, centeredX, centeredY))
-    const skipped = generated.length - filterSkippedInstances(generated, patternSkipValue(d)).kept.length
+    const centeredY = d.centered_2 === true
+    if (generatedCount(x, centered) * generatedCount(y, centeredY) > MAX_ARRAY_COUNT) return null
+    const generated = toInstances(rectangularIndices(x, y, centered, centeredY))
+    const skipped = generated.length - filterSkippedInstances(generated, skip).kept.length
     return instanceSummary(generated, skipped)
   }
-  const count = Number(d.count ?? ((d.mode ?? 'linear') === 'circular' ? 4 : 2))
+  const count = Number(d.count ?? defaultCount)
   if (!Number.isInteger(count) || count < 1 || generatedCount(count, centered) > MAX_ARRAY_COUNT) return null
   const generated = toInstances(instanceIndices(count, centered))
-  const skipped = generated.length - filterSkippedInstances(generated, patternSkipValue(d)).kept.length
+  const skipped = generated.length - filterSkippedInstances(generated, skip).kept.length
   return instanceSummary(generated, skipped)
 }
 
@@ -518,118 +510,115 @@ function patternSourcePickRefusal(id: string, features?: readonly PartFeature[])
     : 'a pattern source is an extrude, revolve or sweep'
 }
 
-export const PATTERN_SCHEMA: FeatureEditorSchema = {
-  mutationPrefix: 'set_pattern',
-  subKey: 'pattern',
-  defaults: { subject: 'body', mode: 'linear', operation: 'add', count: 2, pitch: 20, source_features: [] },
-  // Show a legacy feature pattern with its inferred subject, so its rows and
-  // fields are the ones it actually solves with. The legacy single-source
-  // scalar is shown as the one-element list it means, without rewriting the
-  // document: the first chip edit writes `source_features`.
-  normalize: (raw) => {
-    const data: SchemaData = { ...raw, subject: patternSubject(raw) }
-    if (!Array.isArray(data.source_features)) {
-      const legacy = data.source_feature
-      data.source_features = typeof legacy === 'string' && legacy !== '' ? [legacy] : []
-    }
-    return data
-  },
+// Both pattern kinds repeat the same thing: one feature, two subjects, one
+// source list. The rows are one array so the two schemas cannot drift; each
+// kind appends only its own instance grid.
+export const PATTERN_SOURCE_FIELDS: EditorFieldDef[] = [
+  // A body pattern copies a whole body; a feature pattern reapplies earlier
+  // solid producers' own add or cut.
+  { type: 'select', key: 'subject', label: 'Subject', default: 'body',
+    options: [{ value: 'body', label: 'Body' }, { value: 'feature', label: 'Feature' }] },
+  { type: 'pick', key: 'source_body', label: 'Body', transform: resolveBodyPickRef,
+    showWhen: (d) => d.subject !== 'feature', emptyText: '(pick the body to copy)' },
+  // The sources are FEATURE rows, not viewport picks: the chip shows the picked
+  // extrude/revolve/sweep rows and the feature tree is the pick surface. Every
+  // source is reapplied at each grid instance, in the order the sources sit in
+  // the feature log; the earliest source's first produced body is the instance-0
+  // seed (the count includes it and the grid leaves it in place). The chip's own
+  // order is presentation only, because the kernel sorts by the log.
+  { type: 'pick', key: 'source_features', label: 'Source Features', multi: true,
+    addMutationType: 'add_pattern_source', addValueKey: 'sourceFeature',
+    removeMutationType: 'remove_pattern_source',
+    validatePick: patternSourcePickRefusal,
+    showWhen: (d) => d.subject === 'feature',
+    emptyText: '(pick one or more features; the earliest heads the seed)',
+    hint: 'Repeated in feature-log order; the earliest source heads the seed slot.' },
+  { type: 'pick', key: 'target_body', label: 'Target body', transform: resolveBodyPickRef,
+    showWhen: (d) => d.subject === 'feature', emptyText: '(the body the source shaped)' },
+  { type: 'select', key: 'operation', label: 'Operation', default: 'add',
+    showWhen: (d) => d.subject !== 'feature',
+    options: [{ value: 'add', label: 'Add' }, { value: 'new', label: 'New' }] },
+]
+
+/** Show a legacy feature pattern with its inferred subject and the singular
+ *  source as the one-element list it means, without rewriting the document. */
+function normalizePatternSource(raw: SchemaData): SchemaData {
+  const data: SchemaData = { ...raw, subject: patternSubject(raw) }
+  if (!Array.isArray(data.source_features)) {
+    const legacy = data.source_feature
+    data.source_features = typeof legacy === 'string' && legacy !== '' ? [legacy] : []
+  }
+  return data
+}
+
+const patternSkipField = (defaultCount: number): EditorFieldDef => ({
+  // The page-selector text: signed indices only, `i:j` for a grid cell.
+  type: 'text', key: 'skip', label: 'Skip Instances', default: '',
+  format: (v) => formatSkipList(Array.isArray(v) ? v as SkipEntry[] : []),
+  parse: (text) => { const parsed = parseSkipList(text); return parsed.ok ? parsed.skip : null },
+  parseReason: (text) => { const parsed = parseSkipList(text); return parsed.ok ? null : parsed.error },
+  hint: (d) => patternInstanceHint(d, defaultCount),
+})
+
+export const LINEAR_PATTERN_SCHEMA: FeatureEditorSchema = {
+  mutationPrefix: 'set_linear_pattern',
+  subKey: 'linear_pattern',
+  defaults: { subject: 'body', operation: 'add', count: 2, pitch: 20, source_features: [] },
+  normalize: normalizePatternSource,
   fields: [
-    // One feature, two subjects: a body pattern copies a whole body, a feature
-    // pattern reapplies earlier solid producers' own add or cut.
-    { type: 'select', key: 'subject', label: 'Subject', default: 'body',
-      options: [{ value: 'body', label: 'Body' }, { value: 'feature', label: 'Feature' }] },
-    { type: 'pick', key: 'source_body', label: 'Body', transform: resolveBodyPickRef,
-      showWhen: (d) => d.subject !== 'feature', emptyText: '(pick the body to copy)' },
-    // The sources are FEATURE rows, not viewport picks: the chip shows the picked
-    // extrude/revolve/sweep rows and the feature tree is the pick surface. Every
-    // source is reapplied at each grid instance, in the order the sources sit in
-    // the feature log; the earliest source's first produced body is the instance-0
-    // seed (the count includes it and the grid leaves it in place). The chip's own
-    // order is presentation only, because the kernel sorts by the log.
-    { type: 'pick', key: 'source_features', label: 'Source Features', multi: true,
-      addMutationType: 'add_pattern_source', addValueKey: 'sourceFeature',
-      removeMutationType: 'remove_pattern_source',
-      validatePick: patternSourcePickRefusal,
-      showWhen: (d) => d.subject === 'feature',
-      emptyText: '(pick one or more features; the earliest heads the seed)',
-      hint: 'Repeated in feature-log order; the earliest source heads the seed slot.' },
-    { type: 'pick', key: 'target_body', label: 'Target body', transform: resolveBodyPickRef,
-      showWhen: (d) => d.subject === 'feature', emptyText: '(the body the source shaped)' },
-    { type: 'select', key: 'operation', label: 'Operation', default: 'add',
-      showWhen: (d) => d.subject !== 'feature',
-      options: [{ value: 'add', label: 'Add' }, { value: 'new', label: 'New' }] },
-    { type: 'select', key: 'mode', label: 'Mode', default: 'linear',
-      options: [
-        { value: 'linear', label: 'Linear' },
-        { value: 'rectangular', label: 'Rectangular' },
-        { value: 'circular', label: 'Circular' },
-      ] },
-    // Count is the total on one axis and includes the source's own slot: 2
+    ...PATTERN_SOURCE_FIELDS,
+    { type: 'pick', key: 'direction_query', label: 'Direction', transform: resolveAxisQuery,
+      emptyText: '(pick edge or face, required)' },
+    { type: 'checkbox', key: 'invert', label: 'Invert', default: false },
+    // Count is the total on direction 1 and includes the source's own slot: 2
     // makes one copy. Count 1 keeps only the original and is a quiet no-op, so
     // the floor is 1. The schema leaves the floor to validateWith so the shared
     // rule's sentence is what the user sees.
     { type: 'number', key: 'count', label: 'Count', default: 2, parse: 'int',
-      max: MAX_ARRAY_COUNT, showWhen: (d) => d.mode !== 'rectangular',
-      validateWith: (v) => arrayCountProblem('count', v) },
+      max: MAX_ARRAY_COUNT, validateWith: (v) => arrayCountProblem('count', v) },
+    { type: 'number', key: 'pitch', label: 'Pitch', default: 20, validate: nonNegative, min: 0 },
     // Centered also generates the reverse side (-1, -2, ...), so count 2 is
     // three instances: the original plus one copy either side.
-    { type: 'checkbox', key: 'centered', label: 'Centered', default: false,
-      showWhen: (d) => d.mode !== 'rectangular' },
-    // The page-selector text: signed indices only, `i:j` for a grid cell.
-    { type: 'text', key: 'skip', label: 'Skip Instances', default: '',
-      format: (v) => formatSkipList(Array.isArray(v) ? v as SkipEntry[] : []),
-      parse: (text) => { const parsed = parseSkipList(text); return parsed.ok ? parsed.skip : null },
-      parseReason: (text) => { const parsed = parseSkipList(text); return parsed.ok ? null : parsed.error },
-      hint: patternInstanceHint },
-    { type: 'pick', key: 'direction_query', label: 'Direction', transform: resolveAxisQuery,
-      showWhen: (d) => d.mode === 'linear', emptyText: '(pick edge or face, required)' },
-    { type: 'checkbox', key: 'invert', label: 'Invert', default: false,
-      showWhen: (d) => d.mode === 'linear' },
-    { type: 'number', key: 'pitch', label: 'Pitch', default: 20, validate: nonNegative, min: 0,
-      showWhen: (d) => d.mode === 'linear' },
-    // Rectangular mode: one picked direction per axis. The seed cell (0,0) is
-    // the source slot and is never a copy; each axis centers on its own flag,
-    // and 1x1 is the same quiet no-op as a 1D count of 1.
-    { type: 'pick', key: 'direction_x_query', label: 'Direction X', transform: resolveAxisQuery,
-      showWhen: (d) => d.mode === 'rectangular', emptyText: '(pick edge or face, required)' },
-    { type: 'checkbox', key: 'invert_x', label: 'Invert X', default: false,
-      showWhen: (d) => d.mode === 'rectangular' },
-    { type: 'number', key: 'count_x', label: 'Count X', default: 2,
-      showWhen: (d) => d.mode === 'rectangular', parse: 'int', validate: positive, min: 1,
-      max: MAX_ARRAY_COUNT, validateWith: (v, d) => arrayCountProblem('count_x', v, siblingCount(d.count_y, d.mode)) },
-    { type: 'checkbox', key: 'centered_x', label: 'Centered X', default: false,
-      showWhen: (d) => d.mode === 'rectangular' },
-    { type: 'number', key: 'pitch_x', label: 'Pitch X', default: 20,
-      showWhen: (d) => d.mode === 'rectangular', validate: nonNegative, min: 0 },
-    { type: 'pick', key: 'direction_y_query', label: 'Direction Y', transform: resolveAxisQuery,
-      showWhen: (d) => d.mode === 'rectangular', emptyText: '(pick edge or face, required)' },
-    { type: 'checkbox', key: 'invert_y', label: 'Invert Y', default: false,
-      showWhen: (d) => d.mode === 'rectangular' },
-    { type: 'number', key: 'count_y', label: 'Count Y', default: 2,
-      showWhen: (d) => d.mode === 'rectangular', parse: 'int', validate: positive, min: 1,
-      max: MAX_ARRAY_COUNT, validateWith: (v, d) => arrayCountProblem('count_y', v, siblingCount(d.count_x, d.mode)) },
-    { type: 'checkbox', key: 'centered_y', label: 'Centered Y', default: false,
-      showWhen: (d) => d.mode === 'rectangular' },
-    { type: 'number', key: 'pitch_y', label: 'Pitch Y', default: 20,
-      showWhen: (d) => d.mode === 'rectangular', validate: nonNegative, min: 0 },
-    // Circular mode. An axis pick is required; `invert_axis` reverses the sweep.
-    // Turning Evenly spaced off seeds the same step the kernel would use, so a
-    // centered pattern spreads over its full 2 * count - 1 slots and does not
-    // immediately land one copy on another.
-    { type: 'checkbox', key: '_evenly_spaced', label: 'Evenly spaced', default: true,
-      showWhen: (d) => d.mode === 'circular',
-      isChecked: (d) => d.step_angle == null,
-      getMutation: (checked, d) => {
-        const count = d.count ?? 4
-        return { field: 'step_angle', value: checked ? null : 360 / (d.centered === true ? 2 * count - 1 : count) }
-      } },
-    { type: 'number', key: 'step_angle', label: 'Step angle',
-      showWhen: (d) => d.mode === 'circular' && d.step_angle != null },
+    { type: 'checkbox', key: 'centered', label: 'Centered', default: false },
+    // The retired rectangular mode: direction 2 is the row, direction 1 the
+    // column, and the seed cell (0, 0) stays the source.
+    { type: 'checkbox', key: 'second_direction', label: 'Second direction', default: false },
+    { type: 'pick', key: 'direction_2_query', label: 'Direction 2', transform: resolveAxisQuery,
+      showWhen: (d) => d.second_direction === true, emptyText: '(pick edge or face, required)' },
+    { type: 'checkbox', key: 'invert_2', label: 'Invert 2', default: false,
+      showWhen: (d) => d.second_direction === true },
+    { type: 'number', key: 'count_2', label: 'Count 2', default: 2,
+      showWhen: (d) => d.second_direction === true, parse: 'int', max: MAX_ARRAY_COUNT,
+      validateWith: (v, d) => arrayCountProblem('count_2', v, d.count) },
+    { type: 'number', key: 'pitch_2', label: 'Pitch 2', default: 20,
+      showWhen: (d) => d.second_direction === true, validate: nonNegative, min: 0 },
+    { type: 'checkbox', key: 'centered_2', label: 'Centered 2', default: false,
+      showWhen: (d) => d.second_direction === true },
+    patternSkipField(2),
+  ],
+}
+
+export const CIRCULAR_PATTERN_SCHEMA: FeatureEditorSchema = {
+  mutationPrefix: 'set_circular_pattern',
+  subKey: 'circular_pattern',
+  defaults: { subject: 'body', operation: 'add', count: 4, angle: 360, equal_spacing: true, source_features: [] },
+  normalize: normalizePatternSource,
+  fields: [
+    ...PATTERN_SOURCE_FIELDS,
+    // An axis pick is required; `invert_axis` reverses the sweep.
     { type: 'pick', key: 'axis', label: 'Axis', transform: resolveAxisQuery,
-      showWhen: (d) => d.mode === 'circular', emptyText: '(pick edge or face, required)' },
-    { type: 'checkbox', key: 'invert_axis', label: 'Invert axis', default: false,
-      showWhen: (d) => d.mode === 'circular' },
+      emptyText: '(pick edge or face, required)' },
+    { type: 'checkbox', key: 'invert_axis', label: 'Invert axis', default: false },
+    { type: 'number', key: 'count', label: 'Count', default: 4, parse: 'int',
+      max: MAX_ARRAY_COUNT, validateWith: (v) => arrayCountProblem('count', v) },
+    // Equal spacing (the default) reads the angle as the full sweep: a full turn
+    // spreads over 360 / total, a smaller sweep puts the ends ON the sweep ends.
+    // Off, the angle is the increment between neighbours.
+    { type: 'number', key: 'angle', label: 'Angle', default: 360, unit: 'deg',
+      validate: (v) => v > 0 ? null : 'must be a positive number of degrees; reverse the sense with Invert axis' },
+    { type: 'checkbox', key: 'equal_spacing', label: 'Equal spacing', default: true },
+    { type: 'checkbox', key: 'centered', label: 'Centered', default: false },
+    patternSkipField(4),
   ],
 }
 
@@ -743,7 +732,8 @@ export const EDITOR_SCHEMAS: Record<string, FeatureEditorSchema> = {
   transform: TRANSFORM_SCHEMA,
   mirror: MIRROR_SCHEMA,
   split: SPLIT_SCHEMA,
-  pattern: PATTERN_SCHEMA,
+  linear_pattern: LINEAR_PATTERN_SCHEMA,
+  circular_pattern: CIRCULAR_PATTERN_SCHEMA,
   delete_body: DELETE_BODY_SCHEMA,
   variable: VARIABLE_SCHEMA,
   helix: HELIX_SCHEMA,

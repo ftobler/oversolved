@@ -774,7 +774,13 @@ export default function Part() {
     if (!doc) return
     closeOpenEditorForAdd()
     const fid = randomId(18)
-    const label = `${kind} ${Object.keys(bodies).length + 1}`
+    // A snake_case kind reads poorly as a tree row; the two-word kinds get the
+    // label a user would type.
+    const rowLabel: Record<string, string> = {
+      linear_pattern: 'Linear Pattern',
+      circular_pattern: 'Circular Pattern',
+    }
+    const label = `${rowLabel[kind] ?? kind} ${Object.keys(bodies).length + 1}`
     const insertAt = newFeatureInsertIndex(features, editorState.getState().rollbackPosition)
     const store = editorState.getState()
     // Start the edit session against the PRE-add doc and let it suppress the

@@ -118,10 +118,9 @@ features:
       direction: normal
       operation: new
   - id: ca1
-    kind: pattern
-    pattern:
+    kind: circular_pattern
+    circular_pattern:
       subject: body
-      mode: circular
       source_body: "@body_ex2"
       operation: new
       count: 4
