@@ -16,10 +16,17 @@
   gap: 1rem;
 }
 
+/* Painted from the same token as the header wordmark, clipped to the glyphs.
+   The background shorthand resets background-clip, so the clip declarations
+   must follow it. */
 .splash-screen-title {
   margin: 0;
   font-size: 2rem;
   font-weight: 500;
+  background: var(--brand-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .splash-screen-status {
