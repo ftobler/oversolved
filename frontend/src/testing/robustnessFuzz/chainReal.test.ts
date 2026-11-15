@@ -123,6 +123,12 @@ const KNOWN_HANGS: readonly { seed: number; phase: ChainPhase; step: number; kin
 // only when a stale pick stopped the perturbed chain, so a geometry refusal
 // cannot masquerade as a naming failure (the shell's validity knife edge
 // follows the allocation layout; see backlog.md).
+// Then on 2026-11-15 the table dropped seed 976 step 4 and seed 1117 step 3:
+// both draw four copies at 120 deg, which the pattern instance model's
+// coincidence rule now refuses by name (the last copy lands on the seed), so
+// the chain stops at the array and never records the pinned edge pick. The
+// refusal is the intended answer and is unit-tested; 21 of the 1500 recipes
+// draw such an array, so those chains only lose their tail.
 // Two kinds share the pin: a re-mint (the reference goes dead under the +2.5 mm
 // growth) and an unreached pick (a stale pick at an earlier step stopped the
 // perturbed chain, so the reference cannot even be tested). The rate holds at
@@ -183,11 +189,9 @@ const KNOWN_STALE_PICKS: readonly PickPin[] = [
   { seed: 893, step: 3, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 893, step: 4, match: PICK_UNREACHED, note: 'unreached: a stale pick at an earlier step stopped the chain' },
   { seed: 951, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 976, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 1054, step: 3, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 1054, step: 4, match: PICK_UNREACHED, note: 'unreached: a stale pick at an earlier step stopped the chain' },
   { seed: 1065, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 1117, step: 3, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 1189, step: 1, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 1190, step: 2, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 1323, step: 2, match: PICK_REMINT_FACE, note: 'face re-mints under the +2.5 mm growth' },
