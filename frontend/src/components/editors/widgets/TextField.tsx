@@ -12,17 +12,23 @@ import { fieldRefusal } from '@/utils/core/statusMark'
  *  is a field refusal like a refused number: the reason shows while editing
  *  and the blur commits nothing. */
 export function TextFieldWidget({
-  field, value, fid, onMutation, mutationType,
+  field, value, data, fid, onMutation, mutationType,
 }: TextFieldWidgetProps) {
   const dv = field.default ?? ''
   // null = idle (mirror external value); string = actively editing.
   const [draft, setDraft] = useState<string | null>(null)
-  const raw = draft ?? value ?? dv
+  // A field whose stored value is not text (the pattern's skip list) formats it
+  // back to the spelling the author types, so the idle field never shows JSON.
+  const external = field.format !== undefined
+    ? field.format(value ?? field.default)
+    : typeof value === 'string' ? value : value === undefined ? dv : String(value)
+  const raw = draft ?? external
 
   const parsed = draft === null ? null : field.parse ? field.parse(draft) : draft
   const reason = draft === null ? null
-    : parsed == null ? 'cannot be read'
+    : parsed == null ? field.parseReason?.(draft) ?? 'cannot be read'
     : field.validate ? field.validate(parsed) : null
+  const hint = field.hint?.(data ?? {}) ?? null
 
   return (
     <div className="feature-field-row">
@@ -32,7 +38,7 @@ export function TextFieldWidget({
         className={`feature-field-input${reason !== null ? ' feature-field-input--error' : ''}`}
         value={raw}
         onClick={(e) => e.stopPropagation()}
-        onFocus={() => setDraft(value ?? dv)}
+        onFocus={() => setDraft(external)}
         onChange={(e) => setDraft(e.target.value)}
         onBlur={() => {
           if (draft !== null && parsed != null && reason === null) {
@@ -42,6 +48,7 @@ export function TextFieldWidget({
         }}
         onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
       />
+      {hint !== null && hint !== '' && <span className="feature-field-hint">{hint}</span>}
       <StatusMessage mark={fieldRefusal('Value', reason)} />
     </div>
   )

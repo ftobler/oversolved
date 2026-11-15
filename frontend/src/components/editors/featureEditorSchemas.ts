@@ -12,6 +12,15 @@ import { stripSelectionWrapper } from '@/utils/query/selectionId'
 import { positive, nonNegative, finite, between } from '@/utils/core/valueRules'
 import { arrayCountProblem, MAX_ARRAY_COUNT } from '@/persistence/docSchema'
 import { patternSubject } from '@/utils/core/patternSubject'
+import { formatSkipList, parseSkipList, type SkipEntry } from '@/utils/core/patternSkip'
+import {
+  filterSkippedInstances,
+  generatedCount,
+  instanceIndices,
+  instanceSummary,
+  rectangularIndices,
+  toInstances,
+} from '@/kernel/features/patternInstances'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- schema data is a heterogeneous bag of editor values
 type SchemaData = Record<string, any>
@@ -450,11 +459,41 @@ export const SPLIT_SCHEMA: FeatureEditorSchema = {
 
 // The other count of a rectangular array for the cells cap; a linear array has
 // one axis, so its hidden count_y never binds. A string is an expression the
-// shared rule evaluates when it can, so a literal 1x1 still refuses.
+// shared rule evaluates when it can.
 function siblingCount(other: unknown, mode: unknown): number | string | null {
   return mode === 'rectangular' && (typeof other === 'number' || typeof other === 'string')
     ? other
     : null
+}
+
+/** The live instance total under the Skip Instances field. It is computed from
+ *  the same pure instance model the kernel uses, so the hint cannot drift from
+ *  what the solve builds. */
+function patternInstanceHint(d: SchemaData): string | null {
+  const centered = d.centered === true
+  if ((d.mode ?? 'linear') === 'rectangular') {
+    const x = Number(d.count_x ?? 2)
+    const y = Number(d.count_y ?? 2)
+    if (!Number.isInteger(x) || x < 1 || !Number.isInteger(y) || y < 1) return null
+    const centeredX = d.centered_x === true
+    const centeredY = d.centered_y === true
+    if (generatedCount(x, centeredX) * generatedCount(y, centeredY) > MAX_ARRAY_COUNT) return null
+    const generated = toInstances(rectangularIndices(x, y, centeredX, centeredY))
+    const skipped = generated.length - filterSkippedInstances(generated, patternSkipValue(d)).kept.length
+    return instanceSummary(generated, skipped)
+  }
+  const count = Number(d.count ?? ((d.mode ?? 'linear') === 'circular' ? 4 : 2))
+  if (!Number.isInteger(count) || count < 1 || generatedCount(count, centered) > MAX_ARRAY_COUNT) return null
+  const generated = toInstances(instanceIndices(count, centered))
+  const skipped = generated.length - filterSkippedInstances(generated, patternSkipValue(d)).kept.length
+  return instanceSummary(generated, skipped)
+}
+
+/** The stored skip list, ignoring anything that is not one (a mid-typing
+ *  string is the field's own draft, not the document). */
+function patternSkipValue(d: SchemaData): SkipEntry[] {
+  const skip: unknown = d.skip
+  return Array.isArray(skip) ? skip as SkipEntry[] : []
 }
 
 /**
@@ -526,13 +565,23 @@ export const PATTERN_SCHEMA: FeatureEditorSchema = {
         { value: 'rectangular', label: 'Rectangular' },
         { value: 'circular', label: 'Circular' },
       ] },
-    // Count is the total on one axis and includes the source's own slot, so 2
-    // is the smallest value and makes one copy. The schema leaves the floor to
-    // validateWith so the source-in-count reason, not a bare numeric bound, is
-    // what the user sees.
+    // Count is the total on one axis and includes the source's own slot: 2
+    // makes one copy. Count 1 keeps only the original and is a quiet no-op, so
+    // the floor is 1. The schema leaves the floor to validateWith so the shared
+    // rule's sentence is what the user sees.
     { type: 'number', key: 'count', label: 'Count', default: 2, parse: 'int',
       max: MAX_ARRAY_COUNT, showWhen: (d) => d.mode !== 'rectangular',
       validateWith: (v) => arrayCountProblem('count', v) },
+    // Centered also generates the reverse side (-1, -2, ...), so count 2 is
+    // three instances: the original plus one copy either side.
+    { type: 'checkbox', key: 'centered', label: 'Centered', default: false,
+      showWhen: (d) => d.mode !== 'rectangular' },
+    // The page-selector text: signed indices only, `i:j` for a grid cell.
+    { type: 'text', key: 'skip', label: 'Skip Instances', default: '',
+      format: (v) => formatSkipList(Array.isArray(v) ? v as SkipEntry[] : []),
+      parse: (text) => { const parsed = parseSkipList(text); return parsed.ok ? parsed.skip : null },
+      parseReason: (text) => { const parsed = parseSkipList(text); return parsed.ok ? null : parsed.error },
+      hint: patternInstanceHint },
     { type: 'pick', key: 'direction_query', label: 'Direction', transform: resolveAxisQuery,
       showWhen: (d) => d.mode === 'linear', emptyText: '(pick edge or face, required)' },
     { type: 'checkbox', key: 'invert', label: 'Invert', default: false,
@@ -540,7 +589,8 @@ export const PATTERN_SCHEMA: FeatureEditorSchema = {
     { type: 'number', key: 'pitch', label: 'Pitch', default: 20, validate: nonNegative, min: 0,
       showWhen: (d) => d.mode === 'linear' },
     // Rectangular mode: one picked direction per axis. The seed cell (0,0) is
-    // the source slot and is never a copy, so the pair needs another cell.
+    // the source slot and is never a copy; each axis centers on its own flag,
+    // and 1x1 is the same quiet no-op as a 1D count of 1.
     { type: 'pick', key: 'direction_x_query', label: 'Direction X', transform: resolveAxisQuery,
       showWhen: (d) => d.mode === 'rectangular', emptyText: '(pick edge or face, required)' },
     { type: 'checkbox', key: 'invert_x', label: 'Invert X', default: false,
@@ -548,6 +598,8 @@ export const PATTERN_SCHEMA: FeatureEditorSchema = {
     { type: 'number', key: 'count_x', label: 'Count X', default: 2,
       showWhen: (d) => d.mode === 'rectangular', parse: 'int', validate: positive, min: 1,
       max: MAX_ARRAY_COUNT, validateWith: (v, d) => arrayCountProblem('count_x', v, siblingCount(d.count_y, d.mode)) },
+    { type: 'checkbox', key: 'centered_x', label: 'Centered X', default: false,
+      showWhen: (d) => d.mode === 'rectangular' },
     { type: 'number', key: 'pitch_x', label: 'Pitch X', default: 20,
       showWhen: (d) => d.mode === 'rectangular', validate: nonNegative, min: 0 },
     { type: 'pick', key: 'direction_y_query', label: 'Direction Y', transform: resolveAxisQuery,
@@ -557,13 +609,21 @@ export const PATTERN_SCHEMA: FeatureEditorSchema = {
     { type: 'number', key: 'count_y', label: 'Count Y', default: 2,
       showWhen: (d) => d.mode === 'rectangular', parse: 'int', validate: positive, min: 1,
       max: MAX_ARRAY_COUNT, validateWith: (v, d) => arrayCountProblem('count_y', v, siblingCount(d.count_x, d.mode)) },
+    { type: 'checkbox', key: 'centered_y', label: 'Centered Y', default: false,
+      showWhen: (d) => d.mode === 'rectangular' },
     { type: 'number', key: 'pitch_y', label: 'Pitch Y', default: 20,
       showWhen: (d) => d.mode === 'rectangular', validate: nonNegative, min: 0 },
     // Circular mode. An axis pick is required; `invert_axis` reverses the sweep.
+    // Turning Evenly spaced off seeds the same step the kernel would use, so a
+    // centered pattern spreads over its full 2 * count - 1 slots and does not
+    // immediately land one copy on another.
     { type: 'checkbox', key: '_evenly_spaced', label: 'Evenly spaced', default: true,
       showWhen: (d) => d.mode === 'circular',
       isChecked: (d) => d.step_angle == null,
-      getMutation: (checked, d) => ({ field: 'step_angle', value: checked ? null : (360 / (d.count ?? 4)) }) },
+      getMutation: (checked, d) => {
+        const count = d.count ?? 4
+        return { field: 'step_angle', value: checked ? null : 360 / (d.centered === true ? 2 * count - 1 : count) }
+      } },
     { type: 'number', key: 'step_angle', label: 'Step angle',
       showWhen: (d) => d.mode === 'circular' && d.step_angle != null },
     { type: 'pick', key: 'axis', label: 'Axis', transform: resolveAxisQuery,

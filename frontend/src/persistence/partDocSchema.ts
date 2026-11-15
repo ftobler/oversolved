@@ -33,6 +33,17 @@ const NUMBER_OR_EXPR: JsonSchema = {
   description: 'A number, or an expression string; an expression names a variable by the variable feature\'s `label`, not its id.',
 }
 const VEC3: JsonSchema = { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3 }
+// A Skip Instances entry: a signed 1D index, or a `[column, row]` grid cell. A
+// bare integer means `i:0`, so a list typed for a 1D pattern stays valid when
+// the second direction is turned on. The zero (the original) is refused by the
+// loader, not expressible in JSON Schema.
+const SKIP_ENTRY: JsonSchema = {
+  anyOf: [
+    { type: 'integer' },
+    { type: 'array', items: { type: 'integer' }, minItems: 2, maxItems: 2 },
+  ],
+}
+const SKIP_LIST: JsonSchema = { type: 'array', items: SKIP_ENTRY }
 
 const BASE_PROPERTIES: JsonSchema = {
   id: { type: 'string', minLength: 1 },
@@ -262,6 +273,14 @@ export const FEATURE_SCHEMA_BY_KIND = {
       // Instance grid.
       mode: { enum: ['linear', 'rectangular', 'circular'] },
       count: NUMBER_OR_EXPR,
+      // Centered generates the reverse side too: index i translates by i times
+      // the pitch, so count 2 centered is three instances. The rectangular grid
+      // centers each axis on its own flag.
+      centered: { type: 'boolean' },
+      centered_x: { type: 'boolean' },
+      centered_y: { type: 'boolean' },
+      // Instances to leave out, as signed indices or [column, row] cells.
+      skip: SKIP_LIST,
       pitch: NUMBER_OR_EXPR,
       direction: VEC3,
       direction_query: REF,

@@ -7,7 +7,7 @@ import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import { PATTERN_SCHEMA, EDITOR_SCHEMAS } from '@/components/editors/featureEditorSchemas'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { PartFeature } from '@/types/cad'
-import type { NumberFieldDef, PickFieldDef } from '@/components/editors/widgets/fieldTypes'
+import type { NumberFieldDef, PickFieldDef, TextFieldDef } from '@/components/editors/widgets/fieldTypes'
 import { validateNumberFieldValue } from '@/components/editors/widgets/numberFieldValidate'
 
 const FEATURES: PartFeature[] = [
@@ -51,9 +51,9 @@ describe('PATTERN_SCHEMA', () => {
     })
     expect(PATTERN_SCHEMA.fields.map((f) => f.key)).toEqual([
       'subject', 'source_body', 'source_features', 'target_body', 'operation',
-      'mode', 'count', 'direction_query', 'invert', 'pitch',
-      'direction_x_query', 'invert_x', 'count_x', 'pitch_x',
-      'direction_y_query', 'invert_y', 'count_y', 'pitch_y',
+      'mode', 'count', 'centered', 'skip', 'direction_query', 'invert', 'pitch',
+      'direction_x_query', 'invert_x', 'count_x', 'centered_x', 'pitch_x',
+      'direction_y_query', 'invert_y', 'count_y', 'centered_y', 'pitch_y',
       '_evenly_spaced', 'step_angle', 'axis', 'invert_axis',
     ])
   })
@@ -71,6 +71,38 @@ describe('PATTERN_SCHEMA', () => {
     renderEditor(makeFeature({ subject: 'body' }))
     expect(screen.queryByText('Include src')).toBeNull()
     expect(PATTERN_SCHEMA.fields.some((f) => f.key === 'include_source')).toBe(false)
+  })
+
+  it('shows Skip Instances as the formatted list and the live instance total', () => {
+    renderEditor(makeFeature({ count: 4, skip: [2] }))
+    const skip = PATTERN_SCHEMA.fields.find((f) => f.key === 'skip') as TextFieldDef
+    expect(skip.format!(undefined)).toBe('')
+    expect(skip.format!([2, -1, [2, -3]])).toBe('-1, 2:-3, 2')
+    const row = screen.getByText('Skip Instances').parentElement!
+    expect((row.querySelector('input') as HTMLInputElement).value).toBe('2')
+    // Four instances in all, two copies left after the skipped one.
+    expect(screen.getByText('4 instances, 2 new, 1 skipped')).not.toBeNull()
+  })
+
+  it('refuses skip text the parser cannot read and dispatches nothing', () => {
+    const onMutation = renderEditor(makeFeature({ count: 4 }))
+    const input = screen.getByText('Skip Instances').parentElement!.querySelector('input') as HTMLInputElement
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: '3-5' } })
+    expect(screen.getByText(/ranges are not supported/)).not.toBeNull()
+    fireEvent.blur(input)
+    expect(onMutation).not.toHaveBeenCalled()
+  })
+
+  it('dispatches the parsed skip list when the text is valid', () => {
+    const onMutation = renderEditor(makeFeature({ count: 4 }))
+    const input = screen.getByText('Skip Instances').parentElement!.querySelector('input') as HTMLInputElement
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: '1, 3' } })
+    fireEvent.blur(input)
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'set_pattern_field', featureId: 'pt1', field: 'skip', value: [1, 3],
+    })
   })
 
   it('refuses a source that is not an earlier extrude, revolve or sweep', () => {
@@ -144,15 +176,13 @@ describe('PATTERN_SCHEMA', () => {
 
   it('judges the count as the loader does', () => {
     const count = field('count') as NumberFieldDef
-    expect(count.validateWith!(0, {})).toContain('includes the source')
-    expect(count.validateWith!(1, {})).toContain('includes the source')
-    expect(count.validateWith!(2.5, {})).toContain('integer')
+    expect(count.validateWith!(0, {})).toContain('whole number of at least 1')
+    expect(count.validateWith!(2.5, {})).toContain('whole number')
     expect(count.validateWith!(2, {})).toBeNull()
   })
 
-  it('shows the source-in-count reason when count 1 is typed', () => {
-    // The field has no min, so the pattern's own rule is what the widget sees
-    // rather than a bare "must be at least 2".
-    expect(validateNumberFieldValue(field('count') as NumberFieldDef, 1, {})).toContain('includes the source')
+  it('accepts count 1, the quiet no-op', () => {
+    // The field has no min, so the pattern's own rule is what the widget sees.
+    expect(validateNumberFieldValue(field('count') as NumberFieldDef, 1, {})).toBeNull()
   })
 })

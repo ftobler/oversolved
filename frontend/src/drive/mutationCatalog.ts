@@ -98,6 +98,10 @@ const queryOrSelector = (note: string) =>
 // field), so it is nullable even though the applier owns the real type.
 const anyValue = (note?: string) =>
   ({ type: 'any', required: true, nullable: true, ...(note !== undefined && { note }) } as const)
+// An optional field whose wire value has more than one accepted shape (the
+// pattern's skip list is either the stored array or the editor text).
+const optAny = (note?: string) =>
+  ({ type: 'any', required: false, ...(note !== undefined && { note }) } as const)
 // A number-or-expression field a bulk add can carry in its own payload.
 const optScalar = (note?: string) =>
   ({ type: 'scalar', required: false, ...(note !== undefined && { note }) } as const)
@@ -500,15 +504,19 @@ const PATTERN_NOTE =
   'chooses the body when a source touched more than one; without it each source applies to the body it shaped, ' +
   'so sources that shaped different bodies keep their own. A source that no longer exists or now comes after ' +
   'the pattern is dropped with a named warning; a pattern with no sources left is refused. For either subject ' +
-  '`count` is the TOTAL instance ' +
-  'count on one axis and always includes the source\'s own slot: 2 makes one new copy, and count 0 or 1 is ' +
-  'refused because the count includes the source. Rectangular mode counts its two axes in `count_x` and ' +
-  '`count_y`, always leaves the seed cell to the source, and needs at least one other cell, so 1x1 is refused ' +
-  'while 1xN is a legitimate row. Linear mode reads `pitch` and ' +
+  '`count` is the TOTAL instance count on one axis and always includes the source\'s own slot: 2 makes one copy, ' +
+  'and count 1 keeps only the original (a quiet no-op). Count 0, a negative count and a non-integer are refused. ' +
+  '`centered` also generates the reverse side, so index i translates by i * pitch (negative indices go the other ' +
+  'way) and a centered count n generates 2n - 1 instances; the rectangular grid centers each axis with ' +
+  '`centered_x` and `centered_y`. Rectangular mode counts its two axes in `count_x` and `count_y`, always leaves ' +
+  'the seed cell to the source, and 1x1 is the same quiet no-op as count 1. `skip` leaves instances out: instance 0 ' +
+  'is the original and cannot be skipped, a negative index is only generated with `centered`, a grid cell is ' +
+  '`i:j` (column:row) and a bare integer means `i:0`. A skipped entry the current count does not generate is a ' +
+  'warning, not an error, so a list may be kept while the count changes. Linear mode reads `pitch` and ' +
   '`direction` (or `direction_query`); rectangular mode reads `count_x`/`count_y`, `pitch_x`/`pitch_y` and one ' +
-  'direction pair per axis; circular mode reads `step_angle` (absent means 360/count) and `axis` (or ' +
-  '`axis_origin` + `axis_direction`). A copy that cannot apply is named: some applied and some not is a partial ' +
-  'result, and none applied is an error.'
+  'direction pair per axis; circular mode reads `step_angle` (absent means 360/count, or 360/(2*count - 1) when ' +
+  'centered) and `axis` (or `axis_origin` + `axis_direction`). A copy that cannot apply is named: some applied and ' +
+  'some not is a partial result, and none applied is an error.'
 
 const PATTERN_INLINE_NOTE =
   'One call may carry the whole pattern: ' +
@@ -1577,6 +1585,14 @@ export const MUTATION_CATALOG = {
       target_body: optStr('Feature subject: applies every source to this body instead of the body each source shaped.'),
       mode: optStr('linear | rectangular | circular; defaults to linear.'),
       count: optScalar(),
+      centered: optBool('Linear and circular: also generate the reverse side, so count 2 is three instances.'),
+      centered_x: optBool('Rectangular: center the column axis.'),
+      centered_y: optBool('Rectangular: center the row axis.'),
+      skip: optAny(
+        'Instances to leave out: a list of signed integer indices, or "i:j" cells for the rectangular grid ' +
+        '(column:row; a bare integer means i:0). The editor text form ("1, 2, 6, 7") is accepted too. ' +
+        'Instance 0 is the original and cannot be skipped; negatives need centered.',
+      ),
       pitch: optScalar(),
       direction: optPoint(),
       direction_query: optStr('A straight edge or planar face; overrides direction.'),

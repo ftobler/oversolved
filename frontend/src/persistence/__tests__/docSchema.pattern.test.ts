@@ -78,14 +78,39 @@ describe('pattern document validation', () => {
     }
   })
 
-  it('accepts a legacy count 1 and a 1x1 grid, which the kernel refuses', () => {
-    // The loader keeps old documents open; the kernel names the source-in-count
-    // refusal when the pattern solves. See patternReal.test.ts for that half.
+  it('accepts count 1 and a 1x1 grid, the quiet no-ops', () => {
+    // Count 1 keeps only the original and 1x1 is one cell; the kernel builds
+    // both without a warning.
     const legacy = loadPartDoc(doc({ subject: 'body', source_body: '@b1', count: 1 }))
     expect(legacy.ok).toBe(true)
     const square = loadPartDoc(doc({ subject: 'body', mode: 'rectangular', count_x: 1, count_y: 1 }))
     expect(square.ok).toBe(true)
     expect(loadPartDoc(doc({ subject: 'body', mode: 'rectangular', count_x: 1, count_y: 2 })).ok).toBe(true)
+  })
+
+  it('accepts centered flags and a skip list of indices or cells', () => {
+    expect(loadPartDoc(doc({
+      subject: 'body', source_body: '@b1', count: 2, centered: true, skip: [1, -1],
+    })).ok).toBe(true)
+    expect(loadPartDoc(doc({
+      subject: 'body', mode: 'rectangular', count_x: 2, count_y: 2,
+      centered_x: true, skip: [[1, 0], [0, -1]],
+    })).ok).toBe(true)
+  })
+
+  it('refuses a skip entry naming the original or a non-integer', () => {
+    const zero = loadPartDoc(doc({ subject: 'body', source_body: '@b1', skip: [0] }))
+    expect(zero.ok).toBe(false)
+    if (!zero.ok) {
+      expect(zero.error.field).toBe('features[0].pattern.skip')
+      expect(zero.error.message).toContain('original')
+    }
+    const seedCell = loadPartDoc(doc({ subject: 'body', source_body: '@b1', skip: [[0, 0]] }))
+    expect(seedCell.ok).toBe(false)
+    if (!seedCell.ok) expect(seedCell.error.message).toContain('original')
+    const fractional = loadPartDoc(doc({ subject: 'body', source_body: '@b1', skip: [1.5] }))
+    expect(fractional.ok).toBe(false)
+    if (!fractional.ok) expect(fractional.error.field).toBe('features[0].pattern.skip')
   })
 
   it('accepts the retired include_source key on an old document', () => {

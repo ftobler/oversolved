@@ -108,6 +108,43 @@ describe('the geometry-fuzz recipe generator', () => {
     }
   })
 
+  it('the instance-model sweep leaves the default chain byte-identical', () => {
+    // The centered and skip fields come from a derived PRNG too, so they are a
+    // new seed family: every existing pinned seed draws the same chain.
+    for (let seed = 0; seed < 50; seed++) {
+      const plain = generateRecipe(seed)
+      const modeled = generateRecipe(seed, { patternInstanceModel: true })
+      expect(modeled.steps).toHaveLength(plain.steps.length)
+      modeled.steps.forEach((step, index) => {
+        if (step.kind !== 'linear-array') {
+          expect(step).toEqual(plain.steps[index])
+          return
+        }
+        const rest = { ...step } as Record<string, unknown>
+        delete rest.centered
+        delete rest.skip
+        expect(rest).toEqual(plain.steps[index])
+      })
+    }
+    let centered = 0
+    let skipped = 0
+    for (let seed = 0; seed < SEEDS; seed++) {
+      for (const step of generateRecipe(seed, { patternInstanceModel: true }).steps) {
+        if (step.kind !== 'linear-array') continue
+        if (step.centered === true) centered++
+        if (step.skip === undefined) continue
+        skipped++
+        // A skip names an instance the count generates, never the original.
+        for (const index of step.skip) {
+          expect(index).toBeGreaterThanOrEqual(1)
+          expect(index).toBeLessThanOrEqual(step.count - 1)
+        }
+      }
+    }
+    expect(centered).toBeGreaterThan(0)
+    expect(skipped).toBeGreaterThan(0)
+  })
+
   it('appends one split step with a drawn axis, fraction and keep side', () => {
     const keeps = new Set<string>()
     for (let seed = 0; seed < 50; seed++) {

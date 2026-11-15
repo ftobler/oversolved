@@ -5,9 +5,10 @@
 // kind, so a document selects the subject instead of a separate array feature.
 
 import type { DisposeScope } from '../occ/disposeScope'
-import type { OccModule, OccShape, OccSubShape, OccTrsf } from '../occ/occTypes'
+import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
+import type { PatternCopy } from './pattern'
 import { resolveBody, AmbiguousBodyRefError } from './shared/bodyResolution'
 import { booleanWithDiffMany } from '../occ/booleans'
 import { transformCopyWithMapping, rebuildNamesForTransformedCopy, readSourceFaceRows, type NameMaps } from '../occ/transformLineage'
@@ -61,7 +62,7 @@ export function applyBodyPattern(
   scope: DisposeScope,
   table: HandleTable,
   body: Body,
-  transforms: OccTrsf[],
+  copies: readonly PatternCopy[],
   operation: string,
   featureId: string,
   bodyStore: Record<string, Body>,
@@ -80,19 +81,19 @@ export function applyBodyPattern(
     const instances: { shape: OccShape; names: NameMaps }[] = []
     // With operation 'new' the SOURCE BODY is instance 0. Copying it produced a
     // second body coincident with the first -- two Parts rows for one visible
-    // solid. The transforms below are therefore numbered from 1, so instance
-    // UUIDs keep their meaning as the count changes.
+    // solid. Every copy therefore comes from the generated list, which never
+    // contains the source, and its own key keeps its UUIDs stable as the count
+    // or the skip list changes.
     // The source rows are identical for every instance, so they are read once
     // above the instance loop instead of re-explored and re-hashed per copy
     // (M37 Change 2a).
     const rows = readSourceFaceRows(oc, scope, sourceShape, sourceNames().faceNames, sourceNames().faceAncestry)
-    for (let i = 0; i < transforms.length; i++) {
-      const idx = i + 1
-      const { shape: instShape, builder } = transformCopyWithMapping(oc, scope, sourceShape, transforms[i])
+    for (const copy of copies) {
+      const { shape: instShape, builder } = transformCopyWithMapping(oc, scope, sourceShape, copy.trsf)
       const shape = scope.track(instShape)
       instances.push({
         shape,
-        names: rebuildNamesForTransformedCopy(oc, scope, shape, rows, featureId, idx, builder),
+        names: rebuildNamesForTransformedCopy(oc, scope, shape, rows, featureId, copy.key, builder),
       })
     }
     // One instance is normally one solid, so this normally mints exactly the
@@ -115,11 +116,10 @@ export function applyBodyPattern(
   // Same one-read-per-instance-loop hoist as the new branch: the source rows
   // are identical for every instance (M37 Change 2a).
   const rows = readSourceFaceRows(oc, scope, sourceShape, sourceNames().faceNames, sourceNames().faceAncestry)
-  const buildCopy = (i: number): { shape: OccShape; names: NameMaps } => {
-    const idx = i + 1
-    const { shape: instShape, builder } = transformCopyWithMapping(oc, scope, sourceShape, transforms[i])
+  const buildCopy = (copy: PatternCopy): { shape: OccShape; names: NameMaps } => {
+    const { shape: instShape, builder } = transformCopyWithMapping(oc, scope, sourceShape, copy.trsf)
     const shape = scope.track(instShape)
-    return { shape, names: rebuildNamesForTransformedCopy(oc, scope, shape, rows, featureId, idx, builder) }
+    return { shape, names: rebuildNamesForTransformedCopy(oc, scope, shape, rows, featureId, copy.key, builder) }
   }
 
   // The source instance keeps its original UUIDs; copied instances get
@@ -150,13 +150,13 @@ export function applyBodyPattern(
   // upstream resize (fuzz seed 235) and put UnifySameDomain on the
   // coincident-face spin (seed 535) as soon as the fuzz's three-copy arrays
   // switched to the batch.
-  const batchCopies = transforms.length >= INSTANCE_FUSE_CHUNK
-  for (let start = 0; start < transforms.length; start += INSTANCE_FUSE_CHUNK) {
-    const end = Math.min(start + INSTANCE_FUSE_CHUNK, transforms.length)
+  const batchCopies = copies.length >= INSTANCE_FUSE_CHUNK
+  for (let start = 0; start < copies.length; start += INSTANCE_FUSE_CHUNK) {
+    const end = Math.min(start + INSTANCE_FUSE_CHUNK, copies.length)
     // Covers building this chunk's copies; each fuse below marks again.
     markFeatureStart(featureId)
     const chunk: { shape: OccShape; names: NameMaps }[] = []
-    for (let i = start; i < end; i++) chunk.push(buildCopy(i))
+    for (let i = start; i < end; i++) chunk.push(buildCopy(copies[i]))
     const groups = batchCopies ? [chunk] : chunk.map((copy) => [copy])
     for (const [groupIndex, group] of groups.entries()) {
       markFeatureStart(featureId)

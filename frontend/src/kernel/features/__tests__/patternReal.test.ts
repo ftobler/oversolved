@@ -133,6 +133,9 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
   function liveFaceUuids(r: BuildResponse, bodyId: string): string[] {
     return (meshOf(r, bodyId).face_queries ?? []).map(uuidTokenOf).filter((u): u is string => u !== undefined)
   }
+  function bodyFaceUuids(r: BuildResponse, featureId: string, bodyId: string): string[] {
+    return (snapshot(r, featureId)[bodyId].face_uuids ?? []).filter((uuid): uuid is string => uuid !== null)
+  }
   function expectUniqueFaceUuids(r: BuildResponse, featureId: string): void {
     const seen = new Set<string>()
     for (const [id, body] of Object.entries(snapshot(r, featureId))) {
@@ -647,14 +650,40 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
     expect(volumeAt(r, 'pt1', 'body_ex_plate')).toBeCloseTo(4000 - 320, 6)
   })
 
-  it('refuses count 1 because the count includes the source', () => {
+  it('treats a feature count of 1 as a quiet no-op', () => {
+    const baseline = h.run(slottedPlate())
     const r = h.run(slottedPlate(pattern('pt1', 'ex_slot', linear({ count: 1 }))))
-    expect(String(h.res(r, 'pt1').exception)).toContain('count includes the source')
+    const res = h.res(r, 'pt1')
+    expect(res.status).toBe('ok')
+    expect(res.solver_warning).toBeUndefined()
+    // The source cut already ran; nothing else is applied.
+    expect(volumeAt(r, 'pt1', 'body_ex_plate')).toBeCloseTo(4000 - 80, 6)
+    expect(volumeAt(r, 'pt1', 'body_ex_plate')).toBeCloseTo(volumeAt(baseline, 'ex_slot', 'body_ex_plate'), 6)
+    expect(bodyFaceUuids(r, 'pt1', 'body_ex_plate')).toEqual(bodyFaceUuids(baseline, 'ex_slot', 'body_ex_plate'))
   })
 
-  it('opens a legacy count-1 document and lets the kernel refuse the pattern', () => {
-    // The loader keeps the old shape loadable; the feature goes red with the
-    // source-in-count reason instead of failing the whole file.
+  it('treats a body count of 1 as a quiet no-op', () => {
+    const spec = (patternFeature?: Dict): { features: Dict[] } => ({
+      features: [
+        rectSketch('sk_plate', 10, 10),
+        extrude('ex_plate', '$sk_plate', 5),
+        ...(patternFeature === undefined ? [] : [patternFeature]),
+      ],
+    })
+    const baseline = h.run(spec())
+    const r = h.run(spec({
+      id: 'pt1', kind: 'pattern',
+      pattern: { subject: 'body', source_body: '@body_ex_plate', mode: 'linear', count: 1, pitch: 20, direction: [1, 0, 0], operation: 'add' },
+    }))
+    const res = h.res(r, 'pt1')
+    expect(res.status).toBe('ok')
+    expect(res.solver_warning).toBeUndefined()
+    expect(res.body_ids).toEqual(['body_ex_plate'])
+    expect(volumeAt(r, 'pt1', 'body_ex_plate')).toBeCloseTo(500, 6)
+    expect(bodyFaceUuids(r, 'pt1', 'body_ex_plate')).toEqual(bodyFaceUuids(baseline, 'ex_plate', 'body_ex_plate'))
+  })
+
+  it('opens a count-1 document and builds it as a no-op', () => {
     const loaded = loadPartDoc({
       version: 1,
       kind: 'part',
@@ -673,7 +702,77 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
     expect(loaded.ok).toBe(true)
     if (!loaded.ok) return
     const r = h.run(loaded.doc as unknown as Record<string, unknown>)
-    expect(String(h.res(r, 'pt1').exception)).toContain('count includes the source')
+    expect(h.res(r, 'pt1').status).toBe('ok')
+    expect(Object.keys(snapshot(r, 'pt1'))).toHaveLength(1)
+  })
+
+  it('centers a linear pattern on the source, copies on both sides', () => {
+    // The source slot sits at x 6..10. Centered count 2 puts one copy at x -2..2
+    // and one at x 14..18. The left copy is half off the plate, so it removes
+    // 2 x 4 x 5 = 40; the right one removes its full 80.
+    const r = h.run(slottedPlate(pattern('pt1', 'ex_slot', linear({ count: 2, pitch: 8, centered: true }))))
+    const res = h.res(r, 'pt1')
+    expect(res.status).toBe('ok')
+    expect(res.body_ids).toEqual(['body_ex_plate'])
+    expect(volumeAt(r, 'pt1', 'body_ex_plate')).toBeCloseTo(4000 - 80 - 40 - 80, 6)
+  })
+
+  it('skips the named instance without renumbering the copies after it', () => {
+    const unskipped = h.run(slottedPlate(pattern('pt1', 'ex_slot', linear({ count: 4, pitch: 8 }))))
+    const skipped = h.run(slottedPlate(pattern('pt1', 'ex_slot', linear({ count: 4, pitch: 8, skip: [2] }))))
+    const res = h.res(skipped, 'pt1')
+    expect(res.status).toBe('ok')
+    expect(res.solver_warning).toBeUndefined()
+    // Four slots minus the middle one: x 6, 22 and 30.
+    expect(volumeAt(skipped, 'pt1', 'body_ex_plate')).toBeCloseTo(4000 - 3 * 80, 6)
+    // Every identity the skipped run still carries is the SAME identity it had
+    // in the unskipped run: dropping instance 2 did not renumber 3.
+    const before = new Set(liveFaceUuids(unskipped, 'body_ex_plate'))
+    const after = liveFaceUuids(skipped, 'body_ex_plate')
+    expect(new Set(after).size).toBe(after.length)
+    for (const uuid of after) expect(before.has(uuid), uuid).toBe(true)
+  })
+
+  it('centers a circular pattern, spreading the reverse side over the full turn', () => {
+    const spec = (patternFeature?: Dict): { features: Dict[] } => ({
+      features: [
+        rectSketch('sk_plate', 40, 40, -20, -20),
+        extrude('ex_plate', '$sk_plate', 5),
+        circleSketch('sk_hole', 12, 0, 3),
+        extrude('ex_hole', '$sk_hole', 10, 'cut'),
+        ...(patternFeature === undefined ? [] : [patternFeature]),
+      ],
+    })
+    // Absent step_angle with centered uses 360 / (2 * 3 - 1) = 72 degrees, so
+    // the four copies sit at 72, -72, 144 and -144 and none stacks.
+    const r = h.run(spec(pattern('pt1', 'ex_hole', {
+      mode: 'circular', count: 3, centered: true,
+      axis_origin: [0, 0, 0], axis_direction: [0, 0, 1],
+    })))
+    expect(h.res(r, 'pt1').status).toBe('ok')
+    // The source bore plus its four copies: five holes through the plate.
+    expect(volumeAt(r, 'pt1', 'body_ex_plate')).toBeCloseTo(8000 - 5 * Math.PI * 9 * 5, 5)
+    expect(faceCountAt(r, 'pt1', 'body_ex_plate')).toBe(6 + 5)
+    expectUniqueFaceUuids(r, 'pt1')
+  })
+
+  it('warns about a skip entry the current count does not generate', () => {
+    const r = h.run(slottedPlate(pattern('pt1', 'ex_slot', linear({ count: 3, pitch: 8, skip: [1, 9] }))))
+    const res = h.res(r, 'pt1')
+    expect(res.status).toBe('ok')
+    expect(String(res.solver_warning)).toContain('skip lists instance 9, which count 3 does not generate')
+    // Instance 1 is dropped; instances 2 and 3 still cut.
+    expect(volumeAt(r, 'pt1', 'body_ex_plate')).toBeCloseTo(4000 - 2 * 80, 6)
+  })
+
+  it('treats skipping every generated instance as the quiet no-op', () => {
+    const baseline = h.run(slottedPlate())
+    const r = h.run(slottedPlate(pattern('pt1', 'ex_slot', linear({ count: 3, skip: [1, 2] }))))
+    const res = h.res(r, 'pt1')
+    expect(res.status).toBe('ok')
+    expect(res.solver_warning).toBeUndefined()
+    expect(volumeAt(r, 'pt1', 'body_ex_plate')).toBeCloseTo(4000 - 80, 6)
+    expect(bodyFaceUuids(r, 'pt1', 'body_ex_plate')).toEqual(bodyFaceUuids(baseline, 'ex_slot', 'body_ex_plate'))
   })
 
   it('loads a legacy include_source: false body pattern and always counts the source', () => {

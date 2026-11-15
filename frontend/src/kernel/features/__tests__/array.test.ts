@@ -12,7 +12,7 @@ import type { Repository } from '../../query'
 import { Repository as RealRepository } from '../../query'
 import type { HandleTable } from '../../occ/handleTable'
 import type { Body } from '../../types3d'
-import { buildPatternTransforms, solvePattern } from '../pattern'
+import { buildPatternCopies, solvePattern } from '../pattern'
 import { bareBody } from '../shared/bodyResolution'
 
 type Dict = Record<string, unknown>
@@ -41,7 +41,7 @@ function buildArrayTransforms(
   repo: Repository,
   bodyStore: Record<string, Body> = {},
 ) {
-  return buildPatternTransforms(oc, scope, linearize(sub), repo, bodyStore)
+  return buildPatternCopies(oc, scope, linearize(sub), repo, bodyStore).copies.map((copy) => copy.trsf)
 }
 
 function buildCircularTransforms(
@@ -51,7 +51,7 @@ function buildCircularTransforms(
   repo: Repository,
   bodyStore: Record<string, Body> = {},
 ) {
-  return buildPatternTransforms(oc, scope, { ...sub, mode: 'circular' }, repo, bodyStore)
+  return buildPatternCopies(oc, scope, { ...sub, mode: 'circular' }, repo, bodyStore).copies.map((copy) => copy.trsf)
 }
 
 function solveArray(
@@ -254,21 +254,22 @@ describe('buildArrayTransforms (linear)', () => {
     expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 2, pitch_x: 5, direction_x_query: 'dangling' }, repo)).toThrow(/did not resolve/)
   })
 
-  it('refuses count 0 and 1 because the count includes the source', () => {
-    for (const count_x of [0, 1]) {
+  it('emits no copy for count 1, and refuses count 0 and negatives', () => {
+    expect(buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 1, pitch_x: 10, direction_x_query: 'qx' }, xyRepo)).toEqual([])
+    for (const count_x of [0, -1]) {
       expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x, pitch_x: 10, direction_x_query: 'qx' }, xyRepo))
-        .toThrow(/count includes the source/)
+        .toThrow(/whole number of at least 1/)
     }
   })
 
   it('throws when count_x is negative', () => {
     expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: -1, pitch_x: 10, direction_x_query: 'qx' }, xyRepo))
-      .toThrow(/count includes the source/)
+      .toThrow(/whole number of at least 1/)
   })
 
   it('throws instead of silently truncating when count_x is fractional', () => {
     expect(() => buildArrayTransforms(makeFake(), scope, { mode: 'linear', count_x: 2.7, pitch_x: 10, direction_x_query: 'qx' }, xyRepo))
-      .toThrow(/count includes the source/)
+      .toThrow(/whole number of at least 1/)
   })
 
   it('throws when pitch_x is not finite', () => {
@@ -330,13 +331,13 @@ describe('buildArrayTransforms (rectangular)', () => {
     expect(translations(t)).toEqual([[0, 20, 0]])
   })
 
-  it('refuses a 1x1 grid, which has no copy because the seed is the source', () => {
-    expect(() => buildArrayTransforms(
+  it('treats a 1x1 grid as the quiet no-op, since the seed is the source', () => {
+    expect(buildArrayTransforms(
       makeFake(),
       scope,
       { mode: 'rectangular', count_x: 1, count_y: 1, pitch_x: 10, pitch_y: 20, direction_x_query: 'qx', direction_y_query: 'qy' },
       xyRepo,
-    )).toThrow(/1x1/)
+    )).toEqual([])
   })
 
   it('emits count_x * count_y - 1 instances for a 3x2 grid', () => {
@@ -451,21 +452,27 @@ describe('buildCircularTransforms', () => {
     const t = buildCircularTransforms(makeFake(), scope, { count: 2, axis: 'az', invert_axis: true }, zRepo, {})
     expect(rotations(t)[0].direction).toEqual([0, 0, -1])
   })
-  it('refuses count 0 and 1 because the count includes the source', () => {
-    for (const count of [0, 1]) {
+  it('emits no copy for count 1, and refuses count 0 and negatives', () => {
+    expect(buildCircularTransforms(makeFake(), scope, { count: 1, axis: 'az' }, zRepo, {})).toEqual([])
+    for (const count of [0, -2]) {
       expect(() => buildCircularTransforms(makeFake(), scope, { count, axis: 'az' }, zRepo, {}))
-        .toThrow(/count includes the source/)
+        .toThrow(/whole number of at least 1/)
     }
   })
 
   it('throws when count is negative', () => {
     expect(() => buildCircularTransforms(makeFake(), scope, { count: -2, axis: 'az' }, zRepo, {}))
-      .toThrow(/count includes the source/)
+      .toThrow(/whole number of at least 1/)
   })
 
   it('throws instead of silently truncating when count is fractional', () => {
     expect(() => buildCircularTransforms(makeFake(), scope, { count: 2.7, axis: 'az' }, zRepo, {}))
-      .toThrow(/count includes the source/)
+      .toThrow(/whole number of at least 1/)
+  })
+
+  it('refuses an explicit step that lands a copy on the seed', () => {
+    expect(() => buildCircularTransforms(makeFake(), scope, { count: 5, step_angle: 90, axis: 'az' }, zRepo, {}))
+      .toThrow(/instance 4 lands on instance 0 \(step 90 deg\)/)
   })
 
   it('throws when step_angle is not finite', () => {
@@ -633,17 +640,20 @@ describe('array source body diagnosis', () => {
   })
 })
 
-// A count of 1 no longer reaches a boolean at all: the count includes the
-// source, so the one-axis minimum is 2 for every subject and operation.
-describe('array source-in-count refusal through the leaf', () => {
-  it.each(['add', 'new'])('refuses count_x=1 for operation %s', (operation) => {
+// A count of 1 no longer reaches a boolean at all: the source passes through
+// untouched, with no warning, for either operation.
+describe('count 1 through the leaf', () => {
+  it.each(['add', 'new'])('leaves the source untouched for operation %s', (operation) => {
     const body = { ...bareBody('body_ex1', 'ex1'), shape: 1 as never }
-    const table = { get: () => null } as unknown as HandleTable
-    expect(() => solveArray(
+    const table = { get: () => { throw new Error('count 1 must not touch a shape') } } as unknown as HandleTable
+    const result = solveArray(
       makeFake(), scope, table,
       { id: 'ar9', array: { source_body: 'body_ex1', mode: 'linear', count_x: 1, pitch_x: 10, direction_x_query: 'qx', operation } },
       xyRepo, { body_ex1: body },
-    )).toThrow(/count includes the source/)
+    ) as { status: string; body_ids: string[]; solver_warning?: string }
+    expect(result.status).toBe('ok')
+    expect(result.body_ids).toEqual(operation === 'new' ? [] : ['body_ex1'])
+    expect(result.solver_warning).toBeUndefined()
   })
 })
 

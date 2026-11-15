@@ -788,6 +788,8 @@ function applyStep(
       pattern: {
         subject: 'body', source_body: step.target, mode: 'linear', count: step.count, pitch: step.pitch,
         operation: 'add', direction_query: query,
+        ...(step.centered === true ? { centered: true } : {}),
+        ...(step.skip !== undefined ? { skip: step.skip } : {}),
       },
     }, repoForLeaves, bodyStore)
     return { editedIds: result.body_ids }

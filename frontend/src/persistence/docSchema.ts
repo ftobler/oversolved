@@ -23,6 +23,8 @@ import { normalizeMateLimitDeg } from '@/utils/mateKinds'
 import { isDocumentConstraintKind } from '@/wasm-kernel/partDocToSketches'
 import { deriveMemberIds, isFaceProjectionSource } from '@/kernel/features/projectionMembers'
 import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateLegacyBodyPicks, migratePatternSourceFeatures, canonicalizeFeatureParams, migrateProjectionConstraints, migrateLineDistanceOperandOrder } from '@/utils/yamlMigrations'
+import { MAX_ARRAY_COUNT, MAX_ARRAY_CELLS } from '@/utils/core/arrayLimits'
+import { skipProblem } from '@/utils/core/patternSkip'
 
 // The version the ladder migrates to. A document carrying `version` 8 or newer
 // skips every step; anything older (including an unstamped document, reads as 0)
@@ -41,7 +43,9 @@ export const CURRENT_DOC_VERSION = 8
 // Caps. Chosen far above what a real document holds while well below what would
 // hang a solve: an entity list of 10k is already far past a hand-authored
 // sketch, and an array feature producing 100k solids is past what the kernel
-// can build in any reasonable time.
+// can build in any reasonable time. The array caps live in utils/core so the
+// kernel's pure instance model shares them; they are re-exported here because
+// the loader and the editor have always read them from the document boundary.
 export const MAX_FEATURES = 10_000
 export const MAX_FEATURE_LIST = 10_000
 // A fit spline interpolates through the interior vertex keys plus the `start`
@@ -50,8 +54,7 @@ export const MAX_FIT_POINTS = MAX_FIT_POINT_KEY + 2
 // Two params per fit point plus the two end handles (four params): a
 // fit_spline's block is the largest kind.
 export const MAX_INITIAL_PARAMS = 2 * MAX_FIT_POINTS + 4
-export const MAX_ARRAY_COUNT = 1_000
-export const MAX_ARRAY_CELLS = 100_000
+export { MAX_ARRAY_COUNT, MAX_ARRAY_CELLS } from '@/utils/core/arrayLimits'
 export const MAX_EXPRESSION_LENGTH = 10_000
 
 /** A lost document: what was being loaded, where it went wrong, and the raw
@@ -529,13 +532,11 @@ function checkReferenceOperandList(value: unknown, field: string): void {
 }
 
 // A count that expands in the builder: an integer within the cap, or an
-// expression string. The loader accepts a positive count, including the
-// legacy count 1 an old document may carry; the kernel refuses a count below 2
-// with the source-in-count message, so the file still opens and the pattern
-// feature goes red with a named reason. An expression is evaluated here with
-// no variable context as a best-effort guard; a string whose value cannot be
-// known yet (it names a document variable) passes and is checked again when the
-// solver resolves it.
+// expression string. The loader accepts a positive count, including the legacy
+// count 1 an old document may carry; count 1 is legal now and keeps only the
+// original. An expression is evaluated here with no variable context as a
+// best-effort guard; a string whose value cannot be known yet (it names a
+// document variable) passes and is checked again when the solver resolves it.
 function checkCount(value: unknown, field: string): number | null {
   if (typeof value === 'number') {
     checkInteger(value, field, 1)
@@ -996,9 +997,12 @@ function arrayCellsProblem(x: number | null, y: number | null): string | null {
 /** The refusal the loader would give an array count, as a message or null. The
  *  editor, the setter mutations and the loader all decide through this, so a
  *  value one of them accepts never makes the document unloadable. `other` is the
- *  sibling count of a rectangular array, for the cells cap and the 1x1 rule. A
- *  string is an expression: a value that evaluates is judged, while one that
- *  names a variable still unknown passes here and is checked when it resolves. */
+ *  sibling count of a rectangular array, for the cells cap. A string is an
+ *  expression: a value that evaluates is judged, while one that names a variable
+ *  still unknown passes here and is checked when it resolves.
+ *
+ *  Count 1 is legal: it keeps only the original and is a quiet no-op, never a
+ *  warning. That is why there is no 1x1 rule any more either. */
 export function arrayCountProblem(
   field: 'count' | 'count_x' | 'count_y',
   value: number | string,
@@ -1009,20 +1013,15 @@ export function arrayCountProblem(
   const sibling = typeof other === 'string' ? evalExpr(other) : other ?? null
   const otherCount = typeof sibling === 'number' && Number.isFinite(sibling) ? sibling : null
   if (field === 'count') {
-    if (!Number.isInteger(resolved) || resolved < 2) {
-      return `must be an integer >= 2: the count includes the source, so 2 makes one new instance, got ${resolved}`
+    if (!Number.isInteger(resolved) || resolved < 1) {
+      return `must be a whole number of at least 1; 1 keeps only the original, got ${resolved}`
     }
     if (resolved > MAX_ARRAY_COUNT) return `must be at most ${MAX_ARRAY_COUNT}, got ${resolved}`
     return null
   }
   if (!Number.isInteger(resolved) || resolved < 1) return `must be an integer >= 1, got ${resolved}`
   if (resolved > MAX_ARRAY_COUNT) return `must be at most ${MAX_ARRAY_COUNT}, got ${resolved}`
-  const cells = arrayCellsProblem(resolved, otherCount)
-  if (cells !== null) return cells
-  if (resolved === 1 && otherCount === 1) {
-    return 'count_x * count_y is 1, but the counts include the source, so 1x1 makes no new instance'
-  }
-  return null
+  return arrayCellsProblem(resolved, otherCount)
 }
 
 function checkDeleteBody(sub: DocRecord, field: string): void {
@@ -1126,11 +1125,10 @@ function checkPattern(sub: DocRecord, field: string): void {
   // it, and the next pattern edit drops it.
   checkOptional(sub, 'include_source', field, checkBoolean)
   checkOptional(sub, 'mode', field, (v, f) => checkEnum(v, f, ['linear', 'rectangular', 'circular']))
-  // count is the total instance count for one axis. The loader accepts the
-  // legacy count 1 and a 1x1 rectangular pair; the kernel refuses a count below
-  // 2 (and 1x1) with the source-in-count message, so an old document opens with
-  // a red pattern rather than failing the whole load. The rectangular pair
-  // carries the same cells cap the old array had.
+  // count is the total instance count for one axis, the source included. Count
+  // 1 is legal: the original passes through untouched. The loader accepts the
+  // legacy count 1 and a 1x1 rectangular pair; both are quiet no-ops now, so no
+  // old document opens with a red pattern for a shape that is legal.
   if (sub.count !== undefined) checkCount(sub.count, `${field}.count`)
   checkCountPair(sub, field)
   for (const key of ['pitch', 'pitch_x', 'pitch_y', 'step_angle']) {
@@ -1142,9 +1140,24 @@ function checkPattern(sub: DocRecord, field: string): void {
   for (const key of ['direction_query', 'direction_x_query', 'direction_y_query', 'axis']) {
     checkOptional(sub, key, field, checkRef)
   }
-  for (const key of ['invert', 'invert_x', 'invert_y', 'invert_axis']) {
+  for (const key of ['invert', 'invert_x', 'invert_y', 'invert_axis', 'centered', 'centered_x', 'centered_y']) {
     checkOptional(sub, key, field, checkBoolean)
   }
+  checkSkip(sub, field)
+}
+
+/** Skip Instances is a list of signed 1D indices or `[column, row]` cells. A
+ *  zero is the original, which cannot be skipped; anything else the parser
+ *  could not have produced is refused here instead of reaching the kernel. */
+function checkSkip(sub: DocRecord, field: string): void {
+  const skip = sub.skip
+  if (skip === undefined) return
+  if (!Array.isArray(skip)) fail(`${field}.skip`, `must be a list of instance numbers, got ${kindOf(skip)}`)
+  if (skip.length > MAX_ARRAY_COUNT) {
+    fail(`${field}.skip`, `must hold at most ${MAX_ARRAY_COUNT} entries, got ${skip.length}`)
+  }
+  const problem = skipProblem(skip)
+  if (problem !== null) fail(`${field}.skip`, problem)
 }
 
 function checkVariable(sub: DocRecord, field: string): void {

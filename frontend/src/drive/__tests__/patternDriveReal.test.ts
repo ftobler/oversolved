@@ -189,6 +189,55 @@ describe.skipIf(!ready)('add_pattern through the drive (real OCC + Rust solver)'
     expect(measured!.measures.bodies).toBe(1)
   }, 240_000)
 
+  it('accepts Skip Instances as text and as a list', async () => {
+    const asText = await runHeadless({
+      doc: slottedPlate(),
+      steps: [step({
+        type: 'add_pattern', featureId: 'pt1', label: 'Pattern', subject: 'feature',
+        source_feature: '@ex_slot', mode: 'linear', count: 4, pitch: 8, direction: [1, 0, 0],
+        skip: '1, 3',
+      })],
+    })
+    expect(asText.ok).toBe(true)
+    const textFeature = asText.doc?.features?.find((entry) => entry.id === 'pt1')
+    expect(textFeature).toMatchObject({ pattern: { skip: [1, 3] } })
+    const textMeasured = await measureHeadless(asText.doc!)
+    expect(textMeasured?.ok).toBe(true)
+    // 40 x 20 x 5 minus two 4 x 4 x 5 slots (instances 1 and 3 dropped).
+    expect(textMeasured!.measures.volume).toBeCloseTo(4000 - 2 * 80, 4)
+
+    const asList = await runHeadless({
+      doc: slottedPlate(),
+      steps: [step({
+        type: 'add_pattern', featureId: 'pt1', label: 'Pattern', subject: 'feature',
+        source_feature: '@ex_slot', mode: 'linear', count: 3, pitch: 8, direction: [1, 0, 0],
+        skip: [2],
+      })],
+    })
+    expect(asList.ok).toBe(true)
+    const listFeature = asList.doc?.features?.find((entry) => entry.id === 'pt1')
+    expect(listFeature).toMatchObject({ pattern: { skip: [2] } })
+    const listMeasured = await measureHeadless(asList.doc!)
+    expect(listMeasured?.ok).toBe(true)
+    expect(listMeasured!.measures.volume).toBeCloseTo(4000 - 2 * 80, 4)
+  }, 240_000)
+
+  it('refuses skip text naming the original or a range', async () => {
+    const run = async (skip: string) => runHeadless({
+      doc: slottedPlate(),
+      steps: [step({
+        type: 'add_pattern', featureId: 'pt1', subject: 'feature', source_feature: '@ex_slot',
+        count: 3, pitch: 8, direction: [1, 0, 0], skip,
+      })],
+    })
+    const zero = await run('0')
+    expect(zero.ok).toBe(false)
+    expect(zero.outcome.steps[0].error?.message).toContain('instance 0 is the original and cannot be skipped')
+    const range = await run('3-5')
+    expect(range.ok).toBe(false)
+    expect(range.outcome.steps[0].error?.message).toContain('ranges are not supported')
+  }, 240_000)
+
   it('reports a copy that misses the plate in the feature list', async () => {
     const doc = slottedPlate()
     // Widen the source slot so the last copy at x=38 hangs off the plate.

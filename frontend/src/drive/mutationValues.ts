@@ -36,6 +36,7 @@ import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { lengthUnitOf } from '@/utils/lengthUnit'
 import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/persistence/partDocSchema'
 import { arrayCountProblem } from '@/persistence/docSchema'
+import { skipValue } from '@/utils/core/patternSkip'
 import { pickedSketchEntity } from '@/kernel/features/shared/bodyRef'
 import { circleDrillSiteReason } from '@/kernel/features/shared/drillSite'
 import { isFaceProjectionSource, isProjectionPosition } from '@/kernel/features/projectionMembers'
@@ -1505,14 +1506,17 @@ function addBoolean(raw: RawStep, ctx: ValueContext): ValueViolation | null {
 // The pattern and mirror adds carry the same fields their setters set, so each
 // present one is held to that field's schema definition, exactly like add_hole:
 // an unknown enum spelling or a bad vector is refused at the boundary instead
-// of stored and read back as a default.
+// of stored and read back as a default. `handled` names a field the caller judges
+// itself (the pattern's skip list takes text the JSON schema cannot describe).
 function inlineFeatureFieldsProblem(
   raw: RawStep,
   ctx: ValueContext,
   kind: FeatureKind,
   setter: Mutation['type'],
+  handled: readonly string[] = [],
 ): ValueViolation | null {
   for (const field of featureFieldNames(kind)) {
+    if (handled.includes(field)) continue
     const value = raw[field]
     // Null is the documented clear, and the applier writes no key for it on an
     // add (a circular array's step_angle is the field the union spells | null).
@@ -1529,16 +1533,23 @@ function addMirror(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   return inlineFeatureFieldsProblem(raw, ctx, 'mirror', 'set_mirror_field')
 }
 
-// The pattern count is the one number with a rule the JSON schema cannot
-// carry: it includes the source's own slot, so the one-axis count needs at
-// least 2 and a rectangular pair needs at least one non-seed cell. The same
-// rule lives in persistence/docSchema (loader), utils/yamlMutations (writers)
-// and the kernel, so a value one path accepts never fails another.
+// The pattern count is the one number with a rule the JSON schema cannot carry:
+// it includes the source's own slot. The same rule lives in persistence/docSchema
+// (loader), utils/yamlMutations (writers) and the kernel, so a value one path
+// accepts never fails another. Count 1 is legal there too (a quiet no-op).
 const PATTERN_COUNT_FIELDS = ['count', 'count_x', 'count_y'] as const
 type PatternCountField = (typeof PATTERN_COUNT_FIELDS)[number]
 
 function isPatternCountField(field: string): field is PatternCountField {
   return (PATTERN_COUNT_FIELDS as readonly string[]).includes(field)
+}
+
+/** Skip Instances accepts the stored list or the editor text. Either way the
+ *  parser's own sentence is the refusal, so the drive and the field agree on
+ *  what is wrong with `3-5` or `0`. */
+function patternSkipProblem(value: unknown, label: string): ValueViolation | null {
+  const parsed = skipValue(value)
+  return 'error' in parsed ? invalid(`${label} ${parsed.error}`) : null
 }
 
 function patternCountProblem(
@@ -1564,10 +1575,14 @@ function storedPatternDef(raw: RawStep, ctx: ValueContext): RawStep | null {
 }
 
 function addPattern(raw: RawStep, ctx: ValueContext): ValueViolation | null {
-  const generic = inlineFeatureFieldsProblem(raw, ctx, 'pattern', 'set_pattern_field')
+  const generic = inlineFeatureFieldsProblem(raw, ctx, 'pattern', 'set_pattern_field', ['skip'])
   if (generic !== null) return generic
-  // Judge each inline count against its sibling in the same payload, so 1x1 is
-  // refused before the applier would seed the missing axis.
+  if (raw.skip !== undefined && raw.skip !== null) {
+    const skipProblem = patternSkipProblem(raw.skip, `add_pattern field ${json('skip')}`)
+    if (skipProblem !== null) return skipProblem
+  }
+  // Judge each inline count against its sibling in the same payload, so the
+  // cells cap is refused before the applier would seed the missing axis.
   for (const field of PATTERN_COUNT_FIELDS) {
     if (raw[field] === undefined) continue
     const sibling = field === 'count_x' ? raw.count_y : field === 'count_y' ? raw.count_x : undefined
@@ -1578,11 +1593,16 @@ function addPattern(raw: RawStep, ctx: ValueContext): ValueViolation | null {
 }
 
 // A setter changes one count, so the other rectangular axis comes from the
-// stored pattern and the pair is judged as the document would land.
+// stored pattern and the pair is judged as the document would land. The skip
+// field takes text the schema cannot describe, so it is parsed here instead.
 function setPatternField(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const field = raw.field
+  if (field === 'skip') {
+    if (raw.value === null || raw.value === undefined) return null
+    return patternSkipProblem(raw.value, `set_pattern_field field ${json(field)}`)
+  }
   const generic = fieldValue(raw, ctx)
   if (generic !== null) return generic
-  const field = raw.field
   if (typeof field !== 'string' || !isPatternCountField(field)) return null
   const stored = storedPatternDef(raw, ctx)
   const siblingKey = field === 'count_x' ? 'count_y' : field === 'count_y' ? 'count_x' : null
