@@ -152,7 +152,8 @@ function analyticSolid(
     const pos = scope.track(sph.Position())
     const loc = scope.track(pos.Location())
     const centre = scope.track(new oc.gp_Pnt_3(loc.X(), loc.Y(), loc.Z()))
-    return scope.track(new oc.BRepPrimAPI_MakeSphere_5(centre, sph.Radius()).Shape())
+    const builder = scope.track(new oc.BRepPrimAPI_MakeSphere_5(centre, sph.Radius()))
+    return scope.track(builder.Shape())
   }
   const tor = scope.track(adaptor.Torus())
   const pos = scope.track(tor.Position())
@@ -164,7 +165,8 @@ function analyticSolid(
       scope.track(new oc.gp_Dir_5(dir.X(), dir.Y(), dir.Z())),
     ),
   )
-  return scope.track(new oc.BRepPrimAPI_MakeTorus_5(frame, tor.MajorRadius(), tor.MinorRadius()).Shape())
+  const builder = scope.track(new oc.BRepPrimAPI_MakeTorus_5(frame, tor.MajorRadius(), tor.MinorRadius()))
+  return scope.track(builder.Shape())
 }
 
 // ─── rung 2: the widened UV patch ───

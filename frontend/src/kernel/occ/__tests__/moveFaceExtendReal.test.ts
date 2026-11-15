@@ -135,13 +135,13 @@ describe.skipIf(!oc)('neighbour extension rungs (real OCC)', () => {
   // The rung-3/4 tests drive the native call once a pinned OCCT release binds
   // it. They are skipped, not deleted: the capability probe flips them on.
   it.skipIf(!rung3Bound(occ))('rung 3 extends a B-spline patch with GeomLib::ExtendSurfByLength', () => {
-    const rung3 = (occ as unknown as { GeomLib?: { ExtendSurfByLength?: unknown } }).GeomLib?.ExtendSurfByLength
-    expect(typeof rung3).toBe('function')
+    expect(typeof occ.GeomLib?.ExtendSurfByLength).toBe('function')
   })
 
   it.skipIf(!rung4Bound(occ))('rung 4 offsets the picked face through BRepOffset_MakeOffset', () => {
-    const rung4 = (occ as unknown as { BRepOffset_MakeOffset?: { SetOffsetOnFace?: unknown } }).BRepOffset_MakeOffset
-    expect(typeof rung4?.SetOffsetOnFace).toBe('function')
+    const maker = occ.BRepOffset_MakeOffset
+    expect(typeof maker).toBe('function')
+    expect(typeof maker?.prototype.SetOffsetOnFace).toBe('function')
   })
 })
 
