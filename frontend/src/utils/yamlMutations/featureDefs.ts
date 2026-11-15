@@ -1,6 +1,7 @@
 import type { PartDoc, PartFeature, NumberOrExpr, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, SplitFeatureDef, SplitKeep, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, ShellDirection, ShellJoin, MoveFaceFeatureDef, PatternFeatureDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
 import { warn, findFeature, normalizeRefList, round } from './helpers'
 import { arrayCountProblem } from '@/persistence/docSchema'
+import { skipValue } from '@/utils/core/patternSkip'
 
 /** Append a feature, lazily initializing the features array. */
 function pushFeature(doc: PartDoc, feature: PartFeature): void {
@@ -740,44 +741,50 @@ function inlineCountProblem(inline: object): { field: 'count' | 'count_x' | 'cou
 
 const PATTERN_FIELDS: readonly string[] = [
   'subject', 'source_body', 'operation', 'source_features', 'source_feature', 'target_body',
-  'mode', 'count', 'pitch', 'direction', 'direction_query', 'invert',
-  'count_x', 'count_y', 'pitch_x', 'pitch_y',
+  'mode', 'count', 'centered', 'skip', 'pitch', 'direction', 'direction_query', 'invert',
+  'count_x', 'count_y', 'centered_x', 'centered_y', 'pitch_x', 'pitch_y',
   'direction_x', 'direction_x_query', 'invert_x', 'direction_y', 'direction_y_query', 'invert_y',
   'step_angle', 'axis', 'axis_origin', 'axis_direction', 'invert_axis',
 ]
 
+/** The stored skip list from either accepted spelling, or null when the value
+ *  is not one. The drive parses text before it gets here; a replayed journal
+ *  payload may still carry the text the user typed. */
+function patternSkip(value: unknown): (number | [number, number])[] | null {
+  const parsed = skipValue(value)
+  return 'error' in parsed ? null : parsed.skip.map((entry) => (
+    typeof entry === 'number' ? entry : [entry[0], entry[1]]
+  ))
+}
+
 /** Seed the defaults a mode reads so switching to it never leaves the solver a
  *  required value it cannot find. Only an ABSENT value is seeded: an authored
- *  expression or a count the user already set is a real value. */
+ *  expression or a count the user already set is a real value, and count 1 is a
+ *  legal quiet no-op now, not a value to raise. */
 function seedPatternMode(sub: PatternFeatureDef, cleared: ReadonlySet<string> = new Set()): void {
   const seed = (key: 'count' | 'count_x' | 'count_y' | 'pitch' | 'pitch_x' | 'pitch_y', value: number): void => {
     if (!cleared.has(key) && sub[key] === undefined) sub[key] = value
   }
-  // A mode switch can expose a legacy count the destination mode reads but the
-  // old one ignored. Raise a numeric count below the source-in-count floor to
-  // the destination seed; a string expression is left to the solver, and a
-  // clear is the author's own choice.
   const seedCount = (value: number): void => {
-    if (cleared.has('count')) return
-    if (sub.count === undefined) sub.count = value
-    else if (typeof sub.count === 'number' && sub.count < 2) sub.count = value
+    if (!cleared.has('count') && sub.count === undefined) sub.count = value
   }
   if (sub.mode === 'rectangular') {
     // The rectangular grid reads its own axes; the one-axis fields must not
-    // linger as values the solver would ignore.
+    // linger as values the solver would ignore. The one-axis Centered flag is
+    // invisible on the grid, so it goes too; the grid has its per-axis flags.
     delete sub.pitch
     delete sub.step_angle
+    delete sub.centered
     seed('count_x', 2)
     seed('pitch_x', 20)
     seed('count_y', 2)
     seed('pitch_y', 20)
-    // A stale 1x1 pair would save a grid the kernel refuses; one axis raised to
-    // its seed leaves a legal 1xN row.
-    if (!cleared.has('count_y') && sub.count_x === 1 && sub.count_y === 1) sub.count_y = 2
   } else {
     // One-axis modes never read the second rectangular axis.
     delete sub.count_y
     delete sub.pitch_y
+    delete sub.centered_x
+    delete sub.centered_y
     if (sub.mode === 'circular') {
       delete sub.pitch
       seedCount(4)
@@ -816,6 +823,17 @@ export function applyAddPattern(
     accepted.source_features = accepted.source_feature === '' ? [] : [accepted.source_feature]
   }
   delete accepted.source_feature
+  // Skip Instances may arrive as the editor text. A list that cannot be read is
+  // refused whole rather than dropped silently; an empty or null value is the
+  // author's clear, which mergeInlineFields deletes.
+  if (accepted.skip !== undefined && accepted.skip !== null && (accepted.skip as unknown) !== '') {
+    const skip = patternSkip(accepted.skip)
+    if (skip === null) {
+      warn('applyAddPattern: refusing skip: the list is not a set of whole instance numbers')
+      return
+    }
+    accepted.skip = skip
+  }
   // The inline counts are judged before the merge rounds them.
   const problem = inlineCountProblem(accepted)
   if (problem !== null) {
@@ -863,7 +881,18 @@ export function applySetPatternField(
     return typeof raw === 'string' && raw !== '' ? [raw] : []
   }
   const targetValue = targetField === 'source_features' ? sourceList(value) : value
-  if (!setSubFeatureField(featureId, 'pattern', sub, targetField, targetValue, 'applySetPatternField', PATTERN_FIELDS)) return
+  // The Skip Instances field writes text; the document stores the list. A clear
+  // (null or the empty string) stays a clear for setSubFeatureField.
+  let skipValueToStore: unknown = targetValue
+  if (targetField === 'skip' && value !== null && value !== undefined && value !== '') {
+    const skip = patternSkip(value)
+    if (skip === null) {
+      warn(`applySetPatternField: refusing skip ${JSON.stringify(value)}: the list is not a set of whole instance numbers`)
+      return
+    }
+    skipValueToStore = skip
+  }
+  if (!setSubFeatureField(featureId, 'pattern', sub, targetField, skipValueToStore, 'applySetPatternField', PATTERN_FIELDS)) return
   delete sub.source_feature
   // The retired flag is accepted on load for old documents but is not authored
   // any more. Any edit lands the pattern on the current shape, so drop it here

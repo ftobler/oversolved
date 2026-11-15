@@ -34,8 +34,14 @@ describe('pattern count limits in the editor', () => {
     }
   })
 
+  it('accepts 1x1 and count 1, the quiet no-ops', () => {
+    expect(arrayCountProblem('count', 1)).toBeNull()
+    expect(arrayCountProblem('count_x', 1, 1)).toBeNull()
+    expect(arrayCountProblem('count', 0)).toContain('whole number of at least 1')
+  })
+
   it('sees an expression-string sibling when it evaluates to 1', () => {
     const data = { mode: 'rectangular', count_y: '1' }
-    expect(validateNumberFieldValue(field('count_x'), 1, data)).toContain('1x1')
+    expect(validateNumberFieldValue(field('count_x'), 1, data)).toBeNull()
   })
 })

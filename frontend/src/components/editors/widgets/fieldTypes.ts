@@ -83,10 +83,20 @@ export interface PickFieldDef extends BaseFieldDef {
 export interface TextFieldDef extends BaseFieldDef {
   type: 'text'
   default?: string
+  // Parses the typed text into the stored value; null means the text cannot be
+  // read. `parseReason` names why when the rule has its own sentence (the
+  // pattern's skip parser does); without it the widget shows "cannot be read".
   parse?: (value: string) => unknown
+  parseReason?: (value: string) => string | null
   // Same contract as the number and pick rules: null accepts, a string is
   // the refusal reason.
   validate?: (parsed: unknown) => string | null
+  // How a stored value that is not a string is shown while idle (the pattern's
+  // skip list is an array). Absent means the value is shown as text.
+  format?: (value: unknown) => string
+  // A one-line live explanation under the input, for a field whose meaning is
+  // computed from the rest of the form (the pattern's instance total).
+  hint?: (data: SchemaData) => string | null
 }
 
 export type EditorFieldDef =
@@ -126,7 +136,10 @@ export interface CheckboxFieldWidgetProps extends WidgetBaseProps {
 
 export interface TextFieldWidgetProps extends WidgetBaseProps {
   field: TextFieldDef
-  value: string | undefined
+  // The stored value, of whatever type the field parses: an array or a number
+  // is shown through `field.format`.
+  value: unknown
+  data?: SchemaData
   mutationType: string
 }
 

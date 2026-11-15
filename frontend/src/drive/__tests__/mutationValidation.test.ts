@@ -13,7 +13,7 @@ import { runHeadless } from '../headlessOps'
 // A value the named field's schema accepts, so the field-name test is not also
 // (accidentally) asserting that every field takes a number.
 function validValueFor(type: Mutation['type'], field: string): unknown {
-  // A pattern count includes the source, so 2 is the smallest valid value.
+  // A pattern count includes the source; 2 is a settled valid value.
   if (type === 'set_pattern_field' && (field === 'count' || field === 'count_x' || field === 'count_y')) return 2
   const schema = setterFieldSchema(type, field)
   if (schema === null) return 1

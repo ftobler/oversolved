@@ -53,27 +53,34 @@ describe('array / circular_array guard paths', () => {
     ).toThrow(/source body is required/)
   })
 
-  it('array: count 0 and 1 are refused because the count includes the source', () => {
+  it('array: count 0 is refused and count 1 is the quiet no-op', () => {
     const store = { body_s: { ...nullBody('body_s'), shape: 1 as never } }
-    for (const count_x of [0, 1]) {
-      expect(() =>
-        solveArray(oc, scope, table, {
-          id: 'a', array: { source_body: 'body_s', mode: 'linear', count_x },
-        }, repo, store),
-      ).toThrow(/count includes the source/)
-    }
+    expect(() =>
+      solveArray(oc, scope, table, {
+        id: 'a', array: { source_body: 'body_s', mode: 'linear', count_x: 0, direction: [1, 0, 0] },
+      }, repo, store),
+    ).toThrow(/whole number of at least 1/)
+    const result = solveArray(oc, scope, table, {
+      id: 'a', array: { source_body: 'body_s', mode: 'linear', count_x: 1, direction: [1, 0, 0] },
+    }, repo, store)
+    expect(result.status).toBe('ok')
+    expect(result.body_ids).toEqual(['body_s'])
   })
 
-  it('circular_array: count 0 and 1 are refused because the count includes the source', () => {
-    // count=0 would divide by zero in step_angle; 1 would copy nothing.
+  it('circular_array: count 0 is refused and count 1 is the quiet no-op', () => {
+    // count 0 has no generated list; count 1 keeps the original and copies
+    // nothing.
     const store = { body_s: { ...nullBody('body_s'), shape: 1 as never } }
-    for (const count of [0, 1]) {
-      expect(() =>
-        solveCircularArray(oc, scope, table, {
-          id: 'c', circular_array: { source_body: 'body_s', count },
-        }, repo, store),
-      ).toThrow(/count includes the source/)
-    }
+    expect(() =>
+      solveCircularArray(oc, scope, table, {
+        id: 'c', circular_array: { source_body: 'body_s', count: 0, axis_origin: [0, 0, 0], axis_direction: [0, 0, 1] },
+      }, repo, store),
+    ).toThrow(/whole number of at least 1/)
+    const result = solveCircularArray(oc, scope, table, {
+      id: 'c', circular_array: { source_body: 'body_s', count: 1, axis_origin: [0, 0, 0], axis_direction: [0, 0, 1] },
+    }, repo, store)
+    expect(result.status).toBe('ok')
+    expect(result.body_ids).toEqual(['body_s'])
   })
 
   it('circular_array: missing source body with available IDs in message', () => {

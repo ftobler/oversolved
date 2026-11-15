@@ -124,7 +124,8 @@ export function FeatureEditor({
             return <TextFieldWidget
               key={`${field.key}:${i}`}
               field={field as TextFieldDef}
-              value={data[field.key] as string | undefined}
+              value={data[field.key]}
+              data={data}
               fid={fid}
               onMutation={onMutation}
               mutationType={mutationType}

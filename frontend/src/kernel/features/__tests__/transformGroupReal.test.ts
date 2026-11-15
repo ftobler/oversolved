@@ -667,26 +667,35 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       }
     })
 
-    // ─── Linear count below the source-in-count minimum ───
+    // ─── Linear count 1 is the quiet no-op ───
 
-    it('linear count 0 and 1 are refused because the count includes the source', () => {
+    it('linear count 0 is refused and count 1 leaves the source untouched', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
         const repo = new Repository()
         repo.register('dir_x', { start: [0, 0, 0], end: [1, 0, 0] })
-        for (const count_x of [0, 1]) {
-          const bodyStore: Record<string, Body> = {
-            body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 5, 5, 5, 'body_s', 'ex_s'),
-          }
-          expect(() => solveArray(occ, scope, table, {
-            id: 'arr1',
-            array: {
-              source_body: 'body_s', mode: 'linear', count_x, pitch_x: 20,
-              direction_x_query: '@dir_x', operation: 'add',
-            },
-          }, repo, bodyStore)).toThrow(/count includes the source/)
+        const bodyStore: Record<string, Body> = {
+          body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 5, 5, 5, 'body_s', 'ex_s'),
         }
+        expect(() => solveArray(occ, scope, table, {
+          id: 'arr1',
+          array: {
+            source_body: 'body_s', mode: 'linear', count_x: 0, pitch_x: 20,
+            direction_x_query: '@dir_x', operation: 'add',
+          },
+        }, repo, bodyStore)).toThrow(/whole number of at least 1/)
+
+        const result = solveArray(occ, scope, table, {
+          id: 'arr2',
+          array: {
+            source_body: 'body_s', mode: 'linear', count_x: 1, pitch_x: 20,
+            direction_x_query: '@dir_x', operation: 'add',
+          },
+        }, repo, bodyStore)
+        expect(result.status).toBe('ok')
+        expect(result.body_ids).toEqual(['body_s'])
+        expect(result.solver_warning).toBeUndefined()
       } finally {
         scope.dispose()
       }

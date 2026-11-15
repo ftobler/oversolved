@@ -16,7 +16,7 @@
 // warning on the result; a pattern left with no source is refused by name.
 
 import type { DisposeScope } from '../occ/disposeScope'
-import type { OccModule, OccShape, OccTrsf } from '../occ/occTypes'
+import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import type { Repository } from '../query'
@@ -37,7 +37,7 @@ import { solveRevolve } from './revolve'
 import { solveSweep } from './sweep'
 import { extractErrorMessage, swallowUnlessTrap } from '../errors'
 import { stripRefSigil } from '@/utils/refSigil'
-import type { Dict } from './pattern'
+import type { Dict, PatternCopy } from './pattern'
 
 export interface PatternResult {
   [key: string]: unknown
@@ -453,7 +453,8 @@ export function solveFeaturePattern(
   bodyStore: Record<string, Body>,
   featuresById: Record<string, Dict>,
   solveContext: { variables: Record<string, number>; laterVariables: Record<string, number> },
-  transforms: OccTrsf[],
+  copies: readonly PatternCopy[],
+  warnings: readonly string[],
 ): PatternResult {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.pattern as Dict) ?? {}
@@ -467,7 +468,42 @@ export function solveFeaturePattern(
   if (sources.length === 0) {
     throw new Error(`pattern: no source features remain; ${dropped.join('; ') || 'nothing to pattern'}`)
   }
-  const notes: string[] = [...dropped]
+  const notes: string[] = [...dropped, ...warnings]
+  // Resolve the targets before any tool is built: with no copies to apply (count
+  // 1, or a skip list covering every instance) the source problems and the
+  // target still have to be named, but no tool needs building at all.
+  const explicitTargetRef = (sub.target_body as string) ?? ''
+  const plans: TargetPlan[] = []
+  if (explicitTargetRef) {
+    plans.push({ target: resolvePatternTarget(sources[0].id, explicitTargetRef, bodyStore), sources })
+  } else {
+    // Sources that shaped the same body share one plan, so their tools land
+    // in document order on that body. Sources that shaped different bodies
+    // each keep their own.
+    const byTarget = new Map<string, TargetPlan>()
+    for (const source of sources) {
+      const target = resolvePatternTarget(source.id, '', bodyStore)
+      const plan = byTarget.get(target.id)
+      if (plan === undefined) byTarget.set(target.id, { target, sources: [source] })
+      else plan.sources.push(source)
+    }
+    plans.push(...byTarget.values())
+  }
+  const operations = new Set(sources.map((source) => source.operation))
+  if (copies.length === 0) {
+    // The quiet no-op: the sources' own operations already ran at their solve,
+    // so the bodies stay exactly as they were. No warning unless a source was
+    // dropped or a skip entry is stale.
+    const ids = plans.map((plan) => plan.target.id).filter((id) => bodyStore[id] !== undefined)
+    const result: PatternResult = {
+      status: 'ok',
+      body_id: ids[0] ?? '',
+      body_ids: ids,
+      operation: operations.size === 1 ? [...operations][0] : 'mixed',
+    }
+    if (notes.length > 0) result.solver_warning = notes.join('; ')
+    return result
+  }
   const scratchBodies: Body[] = []
   const tools: SourceTool[] = []
   try {
@@ -519,43 +555,26 @@ export function solveFeaturePattern(
       }
     }
 
-    const explicitTargetRef = (sub.target_body as string) ?? ''
-    const plans: TargetPlan[] = []
-    if (explicitTargetRef) {
-      plans.push({ target: resolvePatternTarget(sources[0].id, explicitTargetRef, bodyStore), sources })
-    } else {
-      // Sources that shaped the same body share one plan, so their tools land
-      // in document order on that body. Sources that shaped different bodies
-      // each keep their own.
-      const byTarget = new Map<string, TargetPlan>()
-      for (const source of sources) {
-        const target = resolvePatternTarget(source.id, '', bodyStore)
-        const plan = byTarget.get(target.id)
-        if (plan === undefined) byTarget.set(target.id, { target, sources: [source] })
-        else plan.sources.push(source)
-      }
-      plans.push(...byTarget.values())
-    }
-
     const failures: string[] = []
     const resultIds = new Set<string>()
     let appliedCopies = 0
-    const totalCopies = transforms.length * sources.length
+    const totalCopies = copies.length * sources.length
     for (const plan of plans) {
       const planSources = new Set(plan.sources.map((source) => source.id))
       const planTools = tools.filter((tool) => planSources.has(tool.sourceId))
       const copiesBySource = new Map<string, CopyInstance[]>()
-      for (let copy = 1; copy <= transforms.length; copy++) {
+      for (const [index, copy] of copies.entries()) {
         for (const tool of planTools) {
           markFeatureStart(featureId)
-          const { shape: rawShape, builder } = transformCopyWithMapping(oc, scope, tool.shape, transforms[copy - 1])
+          const { shape: rawShape, builder } = transformCopyWithMapping(oc, scope, tool.shape, copy.trsf)
           const shape = scope.track(rawShape)
-          // The instance index is global across sources so a source's UUIDs do
-          // not move when a sibling source's target has to be repaired.
-          const instance = (copy - 1) * tools.length + tool.order
-          const names = rebuildNamesForTransformedCopy(oc, scope, shape, tool.rows, featureId, instance, builder)
+          // The copy's key keeps its UUIDs when an earlier instance is skipped
+          // or a centered run grows. Several sources share one copy key, so a
+          // source's tool takes its own slot in the path.
+          const nameKey = tools.length > 1 ? `${copy.key}|s${tool.order}` : copy.key
+          const names = rebuildNamesForTransformedCopy(oc, scope, shape, tool.rows, featureId, nameKey, builder)
           const list = copiesBySource.get(tool.sourceId)
-          const instanceCopy = { copy, sourceId: tool.sourceId, shape, names }
+          const instanceCopy = { copy: index + 1, sourceId: tool.sourceId, shape, names }
           if (list === undefined) copiesBySource.set(tool.sourceId, [instanceCopy])
           else list.push(instanceCopy)
         }
@@ -584,7 +603,6 @@ export function solveFeaturePattern(
       throw new Error(`pattern: no copy was applied; ${failures[0] ?? 'nothing to apply'}`)
     }
     const liveIds = [...resultIds].filter((id) => bodyStore[id] !== undefined)
-    const operations = new Set(sources.map((source) => source.operation))
     const result: PatternResult = {
       status: failures.length > 0 ? 'partial' : 'ok',
       body_id: liveIds[0] ?? plans[0]?.target.id ?? '',

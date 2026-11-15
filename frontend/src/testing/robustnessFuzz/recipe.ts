@@ -115,6 +115,12 @@ export interface RecipeLinearArray {
   count: number
   pitch: number
   axis: AxisName
+  // Absent in recipes pinned before the instance model: the default draw never
+  // draws them, and the derived sweep below only adds them when its option is
+  // on. A centered array also copies to the reverse side; skip names 1-based
+  // instance indices to leave out.
+  centered?: boolean
+  skip?: number[]
 }
 
 export interface RecipeCircularArray {
@@ -209,6 +215,11 @@ export interface RecipeOptions {
   // byte-identical and the pinned findings keep their seeds, the same rule the
   // ring start follows. Used by the dedicated split sweep.
   splitTail?: boolean
+  // Draw centered and skip for the linear arrays from a DERIVED PRNG too
+  // (`seed ^ PATTERN_SALT`). This is a new seed family: the default draw never
+  // reads those fields and the main stream is untouched, so every existing
+  // pinned seed draws the same chain.
+  patternInstanceModel?: boolean
 }
 
 // The number of leading display-sorted edges an edge pick is allowed to land
@@ -395,8 +406,35 @@ export function generateRecipe(seed: number, options: RecipeOptions = {}): Recip
     if (step === null) break
     steps.push(step)
   }
+  if (options.patternInstanceModel) applyPatternInstanceModel(steps, seed)
   if (options.splitTail) steps.push(drawSplitTail(seed))
   return { seed, steps }
+}
+
+/** The derived stream the instance-model sweep reads. */
+export const PATTERN_SALT = 0x3c9e5a17
+
+/**
+ * Turn a linear array into a centered and/or skipped one, drawn from a stream
+ * derived from the seed. The main stream is untouched, so the option never
+ * redraws an existing seed's chain: the same rule the ring start and the split
+ * tail follow. A skipped index is always one the count generates, and the skip
+ * list never covers every copy, so the step still builds geometry.
+ */
+function applyPatternInstanceModel(steps: RecipeStep[], seed: number): void {
+  const rnd = makePrng((seed ^ PATTERN_SALT) >>> 0)
+  for (const step of steps) {
+    if (step.kind !== 'linear-array') continue
+    const centered = rnd() < 0.5
+    step.centered = centered
+    const generated = centered ? 2 * (step.count - 1) : step.count - 1
+    if (rnd() < 0.35 && generated > 1) {
+      // Positive indices only: the same list is valid whether or not centered
+      // is on, and it never names the original.
+      const index = drawInt(rnd, 1, step.count - 1)
+      step.skip = [index]
+    }
+  }
 }
 
 /**

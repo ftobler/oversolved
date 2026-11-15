@@ -13,6 +13,7 @@ import {
   splitPlaneFacePath,
   importedFacePath,
   importedInstanceFacePath,
+  arrayInstancePath,
   mintFaceUuid,
   deriveEdgeUuid,
   deriveVertexUuid,
@@ -240,5 +241,21 @@ describe('orderSplitChildren', () => {
       { item: 'keep-side', key: [0] },
     ]
     expect(orderSplitChildren(children)).toEqual(['keep-side', 'tool-side'])
+  })
+})
+
+describe('array instance naming', () => {
+  it('keeps a non-negative 1D index byte-identical to the old position path', () => {
+    // The fixture is the exact string the position-based naming minted; a
+    // document authored before the instance model must keep every copy UUID.
+    expect(arrayInstancePath('u_parent', 'pt1', '3')).toBe('u_parent|array|pt1|3')
+    expect(arrayInstancePath('u_parent', 'pt1', 3)).toBe('u_parent|array|pt1|3')
+  })
+
+  it('gives a reverse-side instance and a grid cell their own paths', () => {
+    const seed = arrayInstancePath('u_parent', 'pt1', '1')
+    expect(arrayInstancePath('u_parent', 'pt1', '-1')).not.toBe(seed)
+    expect(arrayInstancePath('u_parent', 'pt1', '2:-1')).not.toBe(seed)
+    expect(arrayInstancePath('u_parent', 'pt1', '2:-1')).not.toBe(arrayInstancePath('u_parent', 'pt1', '1:2'))
   })
 })

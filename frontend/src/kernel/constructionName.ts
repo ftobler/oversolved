@@ -198,12 +198,14 @@ export function toolCopyFacePath(toolFaceUuid: string, scope: string): string {
 
 /**
  * An instance of a source face produced by an array/transform copy operation.
- * The source face's UUID is the parent; the copy feature id and instance index
+ * The source face's UUID is the parent; the copy feature id and instance key
  * make the construction path unique across identical transformed copies, so
- * edges on different array instances do not share a query.
+ * edges on different array instances do not share a query. The key is the
+ * instance's own name (`3`, `-1`, `2:-1`), never its position in the generated
+ * list: skipping the middle instance must not renumber the copies after it.
  */
-export function arrayInstancePath(parentUuid: string, featureId: string, index: number): string {
-  return `${parentUuid}|array|${featureId}|${index}`
+export function arrayInstancePath(parentUuid: string, featureId: string, key: string | number): string {
+  return `${parentUuid}|array|${featureId}|${key}`
 }
 
 // ─── minting ───

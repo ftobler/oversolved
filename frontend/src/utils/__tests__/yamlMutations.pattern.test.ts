@@ -52,12 +52,15 @@ describe('Pattern mutations', () => {
       expect(pattern0(doc)).not.toHaveProperty('include_source')
     })
 
-    it('refuses an inline count the loader would refuse', () => {
+    it('refuses an inline count the loader would refuse, and accepts 1', () => {
       const doc = makeDoc()
-      for (const count of [0, 1, 2.5, '1']) {
+      for (const count of [0, 2.5, '0']) {
         applyAddPattern(doc, 'pt1', undefined, { count })
         expect(doc.features).toHaveLength(0)
       }
+      applyAddPattern(doc, 'pt1', undefined, { count: 1 })
+      expect(doc.features).toHaveLength(1)
+      expect(pattern0(doc).count).toBe(1)
     })
   })
 
@@ -122,10 +125,13 @@ describe('Pattern mutations', () => {
       applyAddPattern(doc, 'pt1')
       applySetPatternField(doc, 'pt1', 'spacing' as never, 5)
       expect(pattern0(doc)).not.toHaveProperty('spacing')
-      for (const count of [1, '1']) {
+      for (const count of [0, 2.5]) {
         applySetPatternField(doc, 'pt1', 'count', count)
         expect(pattern0(doc).count).toBe(2)
       }
+      // Count 1 is legal: it keeps only the original.
+      applySetPatternField(doc, 'pt1', 'count', 1)
+      expect(pattern0(doc).count).toBe(1)
     })
 
     it('drops the retired include_source key on the next edit', () => {
@@ -138,10 +144,9 @@ describe('Pattern mutations', () => {
       expect(pattern0(doc).count).toBe(3)
     })
 
-    it('raises a legacy count below 2 when a mode switch lands on it', () => {
-      // A rectangular pattern could carry the ignored one-axis count 1 from an
-      // earlier linear edit; switching to linear must not save a count the
-      // loader refuses.
+    it('keeps an authored count 1 through a mode switch', () => {
+      // Count 1 is legal now: it keeps only the original, so a mode switch must
+      // not raise it to the destination's seed.
       const linearDoc: PartDoc = {
         features: [{
           id: 'pt1', kind: 'pattern',
@@ -149,7 +154,7 @@ describe('Pattern mutations', () => {
         } as unknown as PartFeature],
       }
       applySetPatternField(linearDoc, 'pt1', 'mode', 'linear')
-      expect(pattern0(linearDoc).count).toBe(2)
+      expect(pattern0(linearDoc).count).toBe(1)
       expect(loadPartDoc(linearDoc).ok).toBe(true)
 
       const circularDoc: PartDoc = {
@@ -159,11 +164,11 @@ describe('Pattern mutations', () => {
         } as unknown as PartFeature],
       }
       applySetPatternField(circularDoc, 'pt2', 'mode', 'circular')
-      expect(pattern0(circularDoc).count).toBe(4)
+      expect(pattern0(circularDoc).count).toBe(1)
       expect(loadPartDoc(circularDoc).ok).toBe(true)
     })
 
-    it('raises a stale 1x1 pair when a switch enters rectangular', () => {
+    it('keeps a 1x1 pair when a switch enters rectangular', () => {
       const doc: PartDoc = {
         features: [{
           id: 'pt1', kind: 'pattern',
@@ -172,8 +177,21 @@ describe('Pattern mutations', () => {
       }
       applySetPatternField(doc, 'pt1', 'mode', 'rectangular')
       expect(pattern0(doc).count_x).toBe(1)
-      expect(pattern0(doc).count_y).toBe(2)
+      expect(pattern0(doc).count_y).toBe(1)
       expect(loadPartDoc(doc).ok).toBe(true)
+    })
+
+    it('stores Skip Instances as a canonical list from either spelling', () => {
+      const doc = makeDoc()
+      applyAddPattern(doc, 'pt1', undefined, { mode: 'linear', count: 4 })
+      applySetPatternField(doc, 'pt1', 'skip', '2, 1, 2')
+      expect(pattern0(doc).skip).toEqual([1, 2])
+      applySetPatternField(doc, 'pt1', 'skip', [[2, -1], 1])
+      expect(pattern0(doc).skip).toEqual([1, [2, -1]])
+      applySetPatternField(doc, 'pt1', 'skip', '')
+      expect(pattern0(doc)).not.toHaveProperty('skip')
+      applySetPatternField(doc, 'pt1', 'skip', '0')
+      expect(pattern0(doc)).not.toHaveProperty('skip')
     })
 
     it('warns rather than throwing on a missing or wrong-kind feature', () => {

@@ -68,23 +68,46 @@ describe('pattern boundary refusals', () => {
     })).toContain('include_source')
   })
 
-  it('refuses a count below 2 because the count includes the source', () => {
-    for (const value of [0, 1, '1']) {
+  it('refuses count 0 and a non-integer count, but accepts count 1', () => {
+    for (const value of [0, 2.5]) {
       expect(refusal({ type: 'set_pattern_field', featureId: 'pt1', field: 'count', value }))
-        .toContain('includes the source')
+        .toContain('whole number of at least 1')
       expect(refusal({ type: 'add_pattern', featureId: 'pt1', count: value }))
-        .toContain('includes the source')
+        .toContain('whole number of at least 1')
+    }
+    for (const value of [1, '1']) {
+      const accepted = validateMutation(
+        { type: 'add_pattern', featureId: 'pt1', count: value },
+        { doc: emptyDriveDoc() },
+      )
+      expect(accepted.ok, String(value)).toBe(true)
     }
   })
 
-  it('refuses a 1x1 rectangular pair but accepts a 1x2 row', () => {
-    expect(refusal({ type: 'add_pattern', featureId: 'pt1', mode: 'rectangular', count_x: 1, count_y: 1 }))
-      .toContain('1x1')
+  it('accepts a 1x1 rectangular pair, the same quiet no-op as count 1', () => {
     const accepted = validateMutation(
-      { type: 'add_pattern', featureId: 'pt1', mode: 'rectangular', count_x: 1, count_y: 2 },
+      { type: 'add_pattern', featureId: 'pt1', mode: 'rectangular', count_x: 1, count_y: 1 },
       { doc: emptyDriveDoc() },
     )
     expect(accepted.ok).toBe(true)
+  })
+
+  it('accepts Skip Instances as text or as a list and refuses a zero or a range', () => {
+    for (const skip of ['1, 2, 6, 7', '2:-1', [1, 2, [3, -1]]]) {
+      const accepted = validateMutation(
+        { type: 'add_pattern', featureId: 'pt1', skip },
+        { doc: emptyDriveDoc() },
+      )
+      expect(accepted.ok, JSON.stringify(skip)).toBe(true)
+    }
+    expect(refusal({ type: 'add_pattern', featureId: 'pt1', skip: '0' }))
+      .toContain('instance 0 is the original')
+    expect(refusal({ type: 'add_pattern', featureId: 'pt1', skip: '3-5' }))
+      .toContain('ranges are not supported')
+    expect(refusal({ type: 'add_pattern', featureId: 'pt1', skip: [0] }))
+      .toContain('instance 0 is the original')
+    expect(refusal({ type: 'set_pattern_field', featureId: 'pt1', field: 'skip', value: '3-5' }))
+      .toContain('ranges are not supported')
   })
 })
 

@@ -113,11 +113,14 @@ export type BooleanFeatureDef = {
 // already shaped, inheriting that feature's own operation.
 //
 // `count` is the total instance count for linear and circular modes, the
-// source's own slot included, so it is at least 2. The rectangular mode counts
-// its two axes in `count_x` and `count_y`, leaves the seed cell to the source,
-// and needs at least one other cell (so 1x1 is invalid). A legacy document may
-// still carry `include_source`; the loader accepts it and the kernel ignores
-// it, because the source is always instance 0.
+// source's own slot included. Count 1 keeps only the original and is a quiet
+// no-op; 2 makes one copy. `centered` also generates the reverse side (-1, -2,
+// ...), so a centered count n generates 2n - 1 instances. The rectangular mode
+// counts its two axes in `count_x` and `count_y`, always leaves the seed cell to
+// the source and centers each axis on its own flag; 1x1 is a no-op, not an
+// error. `skip` leaves instances out. A legacy document may still carry
+// `include_source`; the loader accepts it and the kernel ignores it, because the
+// source is always instance 0.
 export type PatternSubject = 'body' | 'feature'
 
 export type PatternFeatureDef = {
@@ -137,6 +140,13 @@ export type PatternFeatureDef = {
   // Instance grid.
   mode?: 'linear' | 'rectangular' | 'circular'
   count?: NumberOrExpr
+  // Centered generates the reverse side: index i translates by i * pitch, so
+  // the negative indices sit behind the source.
+  centered?: boolean
+  // A skipped instance is a signed 1D index, or a `[column, row]` cell for the
+  // rectangular grid. A bare integer means i:0. The parser and formatter live in
+  // utils/core/patternSkip.ts.
+  skip?: (number | [number, number])[]
   // Linear mode: spacing along `direction` in the document's unit.
   pitch?: NumberOrExpr
   direction?: [number, number, number]
@@ -145,6 +155,8 @@ export type PatternFeatureDef = {
   // Rectangular mode.
   count_x?: NumberOrExpr
   count_y?: NumberOrExpr
+  centered_x?: boolean
+  centered_y?: boolean
   pitch_x?: NumberOrExpr
   pitch_y?: NumberOrExpr
   direction_x?: [number, number, number]

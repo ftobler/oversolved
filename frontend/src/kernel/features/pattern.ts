@@ -34,8 +34,29 @@ import { resolveDirectionQueryStrict, resolveAxisQueryStrict } from './shared/di
 import { makeTranslationTrsf, makeRotationTrsf } from '../occ/transforms'
 import { solveFeaturePattern, type PatternResult } from './patternFeature'
 import { patternSubject } from '@/utils/core/patternSubject'
+import { canonicalSkip, skipValue, type SkipEntry } from '@/utils/core/patternSkip'
+import {
+  circularCoincidentRefusal,
+  filterSkippedInstances,
+  generatedCount,
+  instanceIndices,
+  instanceTotalProblem,
+  patternCountProblem,
+  rectangularIndices,
+  staleSkipWarnings,
+  toInstances,
+  type PatternInstance,
+} from './patternInstances'
 
 export type Dict = Record<string, unknown>
+
+/** One copy to build: its naming key and the rigid transform that places it.
+ *  The key, not the array position, is what `arrayInstancePath` records, so a
+ *  skipped or reverse-side instance cannot renumber its siblings. */
+export interface PatternCopy {
+  key: string
+  trsf: OccTrsf
+}
 
 /**
  * Resolve a required linear direction, applying an invert toggle. An explicit
@@ -121,16 +142,34 @@ export function resolvePatternAxis(
 
 function countOf(sub: Dict, fallback: number): number {
   const count = Number(sub.count ?? fallback)
-  // Number.isInteger rejects NaN, Infinity and fractional values in one check,
-  // so a hand-edited 2.7 throws instead of silently truncating to 2. The count
-  // includes the source's own slot, so 1 has no copy and is refused too.
-  if (!Number.isInteger(count) || count < 2) {
-    throw new Error(
-      `pattern: count must be an integer >= 2 because the count includes the source ` +
-        `(2 makes one new instance), got ${sub.count}`,
-    )
-  }
+  const problem = patternCountProblem(count)
+  if (problem !== null) throw new Error(`pattern: ${problem}`)
   return count
+}
+
+/** The stored skip list, canonical. A text spelling is accepted here too: the
+ *  drive parses it before it stores, but a direct leaf caller may not. */
+function skipOf(sub: Dict): SkipEntry[] {
+  const raw = sub.skip
+  if (raw === undefined || raw === null) return []
+  const value = skipValue(raw)
+  if ('error' in value) throw new Error(`pattern: skip ${value.error}`)
+  return canonicalSkip(value.skip)
+}
+
+/** The generated instances after the skip list, plus the warning a stale skip
+ *  entry earns. The cap is checked on the generated total before skips, so a
+ *  centered count cannot slip past it by skipping half the copies. */
+function keptInstances(
+  generated: PatternInstance[],
+  sub: Dict,
+  total: number,
+  setting: string,
+): { kept: PatternInstance[]; warnings: string[] } {
+  const cap = instanceTotalProblem(total)
+  if (cap !== null) throw new Error(`pattern: ${cap}`)
+  const filtered = filterSkippedInstances(generated, skipOf(sub))
+  return { kept: filtered.kept, warnings: staleSkipWarnings(filtered.stale, setting) }
 }
 
 function positiveInteger(value: unknown, key: string, fallback: number): number {
@@ -148,22 +187,26 @@ function finite(value: unknown, key: string, fallback: number): number {
 }
 
 /**
- * One transform per copy. The subject's own slot is instance 0 and every mode
- * counts it: both subjects always include the source, so `count` is at least 2
- * and the builder emits `count - 1` transforms. Rectangular leaves the seed
- * cell to the source the same way.
+ * The copies one pattern generates, each with its naming key. The subject's own
+ * slot is instance 0 and every mode counts it, so the builder emits one copy per
+ * generated instance except the source. Count 1, and a skip list covering every
+ * generated instance, therefore return an empty copy list: the caller's quiet
+ * no-op.
  */
-export function buildPatternTransforms(
+export function buildPatternCopies(
   oc: OccModule,
   scope: DisposeScope,
   sub: Dict,
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
-): OccTrsf[] {
+): { copies: PatternCopy[]; warnings: string[] } {
   const mode = (sub.mode as string) ?? 'linear'
 
   if (mode === 'linear') {
     const count = countOf(sub, 2)
+    const centered = sub.centered === true
+    const generated = toInstances(instanceIndices(count, centered))
+    const { kept, warnings } = keptInstances(generated, sub, generatedCount(count, centered), `count ${count}`)
     const pitch = finite(sub.pitch, 'pitch', 20)
     const dir = resolvePatternDirection(
       (sub.direction_query as string) ?? '',
@@ -173,23 +216,24 @@ export function buildPatternTransforms(
       globalRepo,
       bodyStore,
     )
-    const copies = count - 1
-    const trsfs: OccTrsf[] = []
-    for (let i = 1; i <= copies; i++) {
-      trsfs.push(makeTranslationTrsf(oc, scope, dir[0] * pitch * i, dir[1] * pitch * i, dir[2] * pitch * i))
-    }
-    return trsfs
+    const copies = kept.map((instance) => {
+      const i = instance.index as number
+      return {
+        key: instance.key,
+        trsf: makeTranslationTrsf(oc, scope, dir[0] * pitch * i, dir[1] * pitch * i, dir[2] * pitch * i),
+      }
+    })
+    return { copies, warnings }
   }
 
   if (mode === 'rectangular') {
     const countX = positiveInteger(sub.count_x, 'count_x', 2)
     const countY = positiveInteger(sub.count_y, 'count_y', 2)
-    if (countX === 1 && countY === 1) {
-      throw new Error(
-        'pattern: count_x * count_y must be at least 2 because the counts include the source, ' +
-          'so 1x1 makes no new instance',
-      )
-    }
+    const centeredX = sub.centered_x === true
+    const centeredY = sub.centered_y === true
+    const total = generatedCount(countX, centeredX) * generatedCount(countY, centeredY)
+    const generated = toInstances(rectangularIndices(countX, countY, centeredX, centeredY))
+    const { kept, warnings } = keptInstances(generated, sub, total, `count_x ${countX} by count_y ${countY}`)
     const pitchX = finite(sub.pitch_x, 'pitch_x', 20)
     const pitchY = finite(sub.pitch_y, 'pitch_y', 20)
     const dirX = resolvePatternDirection(
@@ -200,33 +244,40 @@ export function buildPatternTransforms(
       (sub.direction_y_query as string) ?? '', sub.direction_y, (sub.invert_y as boolean) ?? false,
       'direction Y', globalRepo, bodyStore,
     )
-    const trsfs: OccTrsf[] = []
-    for (let j = 0; j < countY; j++) {
-      for (let i = 0; i < countX; i++) {
-        // The seed cell (0,0) is the source slot, never a copy. Linear and
-        // circular already exclude it.
-        if (i === 0 && j === 0) continue
-        trsfs.push(
-          makeTranslationTrsf(
-            oc,
-            scope,
-            dirX[0] * pitchX * i + dirY[0] * pitchY * j,
-            dirX[1] * pitchX * i + dirY[1] * pitchY * j,
-            dirX[2] * pitchX * i + dirY[2] * pitchY * j,
-          ),
-        )
+    const copies = kept.map((instance) => {
+      const [i, j] = instance.index as readonly [number, number]
+      // The seed cell (0,0) is the source slot, never a copy.
+      return {
+        key: instance.key,
+        trsf: makeTranslationTrsf(
+          oc,
+          scope,
+          dirX[0] * pitchX * i + dirY[0] * pitchY * j,
+          dirX[1] * pitchX * i + dirY[1] * pitchY * j,
+          dirX[2] * pitchX * i + dirY[2] * pitchY * j,
+        ),
       }
-    }
-    return trsfs
+    })
+    return { copies, warnings }
   }
 
   if (mode === 'circular') {
     const count = countOf(sub, 4)
+    const centered = sub.centered === true
+    const generated = toInstances(instanceIndices(count, centered))
+    const { kept, warnings } = keptInstances(generated, sub, generatedCount(count, centered), `count ${count}`)
     const stepRaw = sub.step_angle
-    const step = stepRaw === undefined || stepRaw === null ? 360.0 / count : Number(stepRaw)
+    // A centered pattern with no explicit step spreads its instances over the
+    // full turn: 2 * count - 1 slots, not count, so the reverse side does not
+    // land on the forward side.
+    const step = stepRaw === undefined || stepRaw === null
+      ? 360.0 / (centered ? generatedCount(count, true) : count)
+      : Number(stepRaw)
     if (!Number.isFinite(step)) {
       throw new Error(`pattern: step_angle must be a finite number, got ${sub.step_angle}`)
     }
+    const coincident = circularCoincidentRefusal(kept.map((instance) => instance.index), step)
+    if (coincident !== null) throw new Error(coincident)
     const [origin, resolvedDirection] = resolvePatternAxis(
       (sub.axis as string) ?? '',
       sub.axis_origin,
@@ -237,17 +288,24 @@ export function buildPatternTransforms(
     // Invert flips the axis direction, which reverses the sweep sense.
     const invert = (sub.invert_axis as boolean) ?? false
     const axisDirection = invert ? resolvedDirection.map((c) => (c === 0 ? 0 : -c)) : resolvedDirection
-    const trsfs: OccTrsf[] = []
-    // Source occupies the seed (0-degree) slot; sweep from step. With the
-    // default step (360/count) the last slot is count - 1 and the sweep never
-    // wraps, but an explicit step_angle can land a copy back on the seed.
-    for (let i = 1; i < count; i++) {
-      trsfs.push(makeRotationTrsf(oc, scope, origin, axisDirection, ((step * i) * Math.PI) / 180))
-    }
-    return trsfs
+    const copies = kept.map((instance) => {
+      const i = instance.index as number
+      return {
+        key: instance.key,
+        trsf: makeRotationTrsf(oc, scope, origin, axisDirection, ((step * i) * Math.PI) / 180),
+      }
+    })
+    return { copies, warnings }
   }
 
   throw new Error(`pattern: unknown mode '${mode}'`)
+}
+
+/** Merge the instance model's warnings into a leaf result. */
+function withWarnings<T extends { solver_warning?: string }>(result: T, warnings: readonly string[]): T {
+  if (warnings.length === 0) return result
+  const joined = [result.solver_warning, ...warnings].filter((part): part is string => !!part).join('; ')
+  return { ...result, solver_warning: joined }
 }
 
 /**
@@ -276,13 +334,28 @@ export function solvePattern(
   if (subject === 'body') {
     const body = resolvePatternSourceBody(sub, bodyStore)
     const operation = (sub.operation as string) ?? 'add'
-    const transforms = buildPatternTransforms(oc, scope, sub, globalRepo, bodyStore)
-    return applyBodyPattern(oc, scope, table, body, transforms, operation, featureId, bodyStore)
+    const built = buildPatternCopies(oc, scope, sub, globalRepo, bodyStore)
+    // Count 1, or a skip list covering every generated instance, leaves the
+    // source exactly as it was: ok, no warning, and `new` mints nothing.
+    if (built.copies.length === 0) {
+      const noop: BodyPatternResult = {
+        status: 'ok',
+        body_id: body.id,
+        body_ids: operation === 'new' ? [] : [body.id],
+        operation,
+      }
+      return withWarnings(noop, built.warnings)
+    }
+    const result = applyBodyPattern(oc, scope, table, body, built.copies, operation, featureId, bodyStore)
+    return withWarnings(result, built.warnings)
   }
 
   if (subject === 'feature') {
-    const transforms = buildPatternTransforms(oc, scope, sub, globalRepo, bodyStore)
-    return solveFeaturePattern(oc, scope, table, feature, globalRepo, bodyStore, featuresById, solveContext, transforms)
+    const built = buildPatternCopies(oc, scope, sub, globalRepo, bodyStore)
+    return solveFeaturePattern(
+      oc, scope, table, feature, globalRepo, bodyStore, featuresById, solveContext,
+      built.copies, built.warnings,
+    )
   }
 
   throw new Error(`pattern: unknown subject '${subject}'; choose body or feature`)

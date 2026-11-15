@@ -96,7 +96,7 @@ export function remapFaceNamesForInstance(
   instanceShape: OccShape,
   rows: SourceFaceRow[],
   featureId: string,
-  index: number,
+  index: string | number,
   builder: OccTransformBuilder,
 ): FaceNameMaps {
   const E = oc.TopAbs_ShapeEnum
@@ -247,7 +247,7 @@ export function rebuildNamesForTransformedCopy(
   instanceShape: OccShape,
   rows: SourceFaceRow[],
   featureId: string,
-  index: number,
+  index: string | number,
   builder: OccTransformBuilder,
 ): NameMaps {
   const face = remapFaceNamesForInstance(oc, scope, instanceShape, rows, featureId, index, builder)
