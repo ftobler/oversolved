@@ -1118,8 +1118,11 @@ banner on stdout, so a client config must use the direct node invocation.
   the second direction's `count_2`/`pitch_2`/`direction_2_query` family for
   linear, `angle`/`equal_spacing` and `axis`/`axis_origin`/`axis_direction` for
   circular, plus `centered`, `skip` and the invert flags), and `add_mirror`
-  takes `body`, `plane`, `keep_original` and `merge`, so one call replaces the
-  add plus one setter per field. `add_pattern` is the retired single-kind row,
+  takes `subject`, `body`, `source_features`, `target_body`, `plane`,
+  `keep_original` and `merge`, so one call replaces the add plus one setter per
+  field. `add_mirror_source` / `remove_mirror_source` are the feature mirror's
+  source chip pair; `keep_original` and `merge` belong to the body subject and
+  are refused on a feature mirror. `add_pattern` is the retired single-kind row,
   kept one release: the drive translates it through the loader's version-9 split
   and the reply carries a deprecation note.
 - `add_linear_pattern` with `subject: body` (the default) copies `source_body`

@@ -403,8 +403,26 @@ export const FEATURE_SCHEMA_BY_KIND = {
   }),
   mirror: feature('mirror', {
     key: 'mirror',
-    required: ['body', 'plane'],
-    properties: { body: REF, plane: REF, keep_original: { type: 'boolean' }, merge: { type: 'boolean' } },
+    required: ['plane'],
+    // The body subject needs a body; a feature subject names sources instead.
+    // Absence means body, so the old whole-body row keeps loading unchanged.
+    allOf: [
+      {
+        if: { properties: { subject: { const: 'feature' } }, required: ['subject'] },
+        else: { required: ['body'] },
+      },
+    ],
+    properties: {
+      // What is mirrored, and each subject's own picks. `operation` is the
+      // source's, so unlike a pattern the mirror carries none.
+      subject: { enum: ['body', 'feature'] },
+      body: REF,
+      source_features: REF_LIST,
+      target_body: REF,
+      plane: REF,
+      keep_original: { type: 'boolean' },
+      merge: { type: 'boolean' },
+    },
   }),
   split: feature('split', {
     key: 'split',

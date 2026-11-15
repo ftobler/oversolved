@@ -102,6 +102,8 @@ const ALL_MUTATION_TYPES = [
   'set_part_roughness',
   'set_part_transmission',
   'add_mirror',
+  'add_mirror_source',
+  'remove_mirror_source',
   'add_split',
   'set_split_field',
   'add_split_body',

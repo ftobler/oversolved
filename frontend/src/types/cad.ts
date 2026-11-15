@@ -370,8 +370,21 @@ export interface ThreadDisplayData {
 }
 
 export type MirrorFeatureDef = {
-  body: string
+  // What is mirrored. Absent means body, so a document authored before the
+  // feature subject existed keeps meaning the whole-body mirror it was.
+  subject?: 'body' | 'feature'
+  // Body subject: the whole body is reflected, merged or spawned.
+  body?: string
+  // Feature subject: earlier extrude/revolve/sweep rows whose own add or cut is
+  // reapplied mirrored inside the body each shaped. Feature-log order decides
+  // the union, never the chip order.
+  source_features?: string[]
+  // Feature subject: the body a source's mirrored copy lands in, when the
+  // source shaped more than one.
+  target_body?: string
   plane: string
+  // Body subject only: a feature mirror reapplies the source's own operation
+  // inside the same body, so the original always stays.
   keep_original?: boolean
   merge?: boolean
 }
@@ -1586,6 +1599,8 @@ export type Mutation =
   | { type: 'set_part_transmission'; bodyId: string; transmission: number }
   | ({ type: 'add_mirror'; featureId: string; label?: string } & Partial<MirrorFeatureDef> & FeatureInsertion)
   | { type: 'set_mirror_field'; featureId: string; field: keyof MirrorFeatureDef; value: unknown }
+  | { type: 'add_mirror_source'; featureId: string; sourceFeature: string }
+  | { type: 'remove_mirror_source'; featureId: string; index: number }
   | ({ type: 'add_split'; featureId: string; label?: string; bodies?: string[]; plane?: string; keep?: SplitKeep } & FeatureInsertion)
   | { type: 'set_split_field'; featureId: string; field: keyof SplitFeatureDef; value: unknown }
   | { type: 'add_split_body'; featureId: string; bodyQuery: string }

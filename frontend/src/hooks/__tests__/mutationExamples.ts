@@ -134,6 +134,11 @@ const mirrorDoc = (): PartDoc => makeDoc({
   mirror: { body: '', plane: '', keep_original: true, merge: true },
 })
 
+const featureMirrorDoc = (): PartDoc => makeDoc({
+  id: 'm1', kind: 'mirror', label: 'Mirror',
+  mirror: { subject: 'feature', source_features: ['@ex1'], plane: '@builtin_plane_top' },
+})
+
 const splitDoc = (): PartDoc => makeDoc({
   id: 'sp1', kind: 'split', label: 'Split',
   split: { bodies: ['@b1'], plane: '@builtin_plane_top', keep: 'above' },
@@ -584,6 +589,14 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
   set_mirror_field: {
     makeDoc: mirrorDoc,
     mutation: { type: 'set_mirror_field', featureId: 'm1', field: 'plane', value: '@top' },
+  },
+  add_mirror_source: {
+    makeDoc: featureMirrorDoc,
+    mutation: { type: 'add_mirror_source', featureId: 'm1', sourceFeature: '@ex2' },
+  },
+  remove_mirror_source: {
+    makeDoc: featureMirrorDoc,
+    mutation: { type: 'remove_mirror_source', featureId: 'm1', index: 0 },
   },
 
   // split

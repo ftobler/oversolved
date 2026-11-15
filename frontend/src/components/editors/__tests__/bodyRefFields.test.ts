@@ -26,7 +26,8 @@ function bodyFields(): { kind: string; key: string; transform?: (id: string) => 
 describe('body-naming pick fields', () => {
   it('covers every schema that has one', () => {
     // extrude, revolve, sweep (merge_target) + shell (source_body) + every
-    // pattern kind (source_body and the feature subject's target_body).
+    // pattern kind (source_body and the feature subject's target_body) + the
+    // mirror's feature subject (target_body).
     expect(bodyFields().map(f => `${f.kind}.${f.key}`).sort()).toEqual([
       'circular_pattern.source_body',
       'circular_pattern.target_body',
@@ -35,6 +36,7 @@ describe('body-naming pick fields', () => {
       'extrude.merge_target',
       'linear_pattern.source_body',
       'linear_pattern.target_body',
+      'mirror.target_body',
       'revolve.merge_target',
       'shell.source_body',
       'sweep.merge_target',

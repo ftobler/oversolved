@@ -1115,7 +1115,10 @@ function checkTransform(sub: DocRecord, field: string): void {
 }
 
 function checkMirror(sub: DocRecord, field: string): void {
+  checkOptional(sub, 'subject', field, (v, f) => checkEnum(v, f, ['body', 'feature']))
   checkOptional(sub, 'body', field, checkRef)
+  checkOptional(sub, 'source_features', field, checkRefList)
+  checkOptional(sub, 'target_body', field, checkRef)
   checkOptional(sub, 'plane', field, checkRef)
   checkOptional(sub, 'keep_original', field, checkBoolean)
   checkOptional(sub, 'merge', field, checkBoolean)

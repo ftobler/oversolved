@@ -832,11 +832,31 @@ part's material without renaming it.
 - id: mir1
   kind: mirror
   mirror:
-    body: "@body_ex1"
+    subject: body                   # body (default) | feature
+    body: "@body_ex1"               # body subject: required
     plane: "@builtin_plane_front"   # query; required
     keep_original: true             # false replaces the source in place
     merge: true                     # fuse mirror into source when keep_original
 ```
+
+A `subject: body` mirror reflects the whole body. A `subject: feature` mirror
+instead reapplies one or more earlier extrudes, revolves or sweeps, reflected
+across the plane, inside the body each source shaped:
+
+```yaml
+- id: mir2
+  kind: mirror
+  mirror:
+    subject: feature
+    source_features: ["@ex2"]       # extrude/revolve/sweep, operation add or cut
+    target_body: "@body_ex1"        # optional: the body a source shaped twice
+    plane: "@builtin_plane_front"
+```
+
+The source's own operation is reapplied in the same body, so `keep_original`
+and `merge` mean nothing there and are refused. The mirrored copy's face and
+edge UUIDs are keyed by this feature's id and the instance key `m`, so they are
+stable across a re-solve and never collide with a pattern copy's.
 
 ### split
 

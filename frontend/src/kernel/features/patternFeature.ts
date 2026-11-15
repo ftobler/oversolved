@@ -2,8 +2,9 @@
 // features' own add or cut inside the body each feature already shaped. This is
 // the half pattern.ts delegates to; the body subject lives in patternBody.ts and
 // both share the copies the pattern kind built. The sub-def arrives as a
-// parameter, so every pattern kind (and the mirror feature-subject plan) reuses
-// this leaf without teaching it a new sub-dict key.
+// parameter, so every pattern kind reuses this leaf without teaching it a new
+// sub-dict key, and the mirror's feature subject calls it with one reflect
+// transform (options.noun/opName say "mirror" in the messages).
 //
 // Each source's tool is obtained by re-solving the source with its operation
 // forced to `new` into a throwaway body store. Those scratch bodies are released
@@ -51,6 +52,19 @@ export interface PatternResult {
   exception?: string
 }
 
+/**
+ * How the caller names this copy run in its refusals. A pattern repeats copies,
+ * a mirror reflects one, so both read the same engine with their own word. The
+ * coincidence predicate is the mirror's alone: only the leaf knows which
+ * transform it built, and a copy that lands on its own source changes nothing
+ * (the boolean would otherwise report it as an ordinary miss).
+ */
+export interface FeatureCopiesOptions {
+  noun?: string
+  opName?: string
+  coincides?: (tool: OccShape, copy: OccShape) => boolean
+}
+
 /** The kinds whose leaf builds a tool and routes it through applyBodyOperation
  *  with add/cut/new, so `operation: new` hands the same tool back as a body. */
 const TOOL_LEAVES = {
@@ -63,6 +77,15 @@ type ToolKind = keyof typeof TOOL_LEAVES
 
 function isToolKind(kind: string): kind is ToolKind {
   return Object.hasOwn(TOOL_LEAVES, kind)
+}
+
+/** What a source has to be, in the caller's own words. The pattern's sentence
+ *  predates the shared engine and is pinned by its tests, so it stays literal;
+ *  a mirror reads the same rule with its own name. */
+function sourceKindSentence(noun: string): string {
+  return noun === 'pattern'
+    ? 'a feature pattern repeats an extrude, revolve or sweep'
+    : `a ${noun} source repeats an extrude, revolve or sweep`
 }
 
 /** The sources a feature pattern names, in the authored order. A row written
@@ -97,9 +120,10 @@ function resolveSources(
   featuresById: Record<string, Dict>,
   variables: Record<string, number>,
   laterVariables: Record<string, number>,
+  noun: string,
 ): { sources: ResolvedSource[]; dropped: string[] } {
   if (refs.length === 0) {
-    throw new Error('pattern: source_features is required; pick one or more features to repeat')
+    throw new Error(`${noun}: source_features is required; pick one or more features to repeat`)
   }
   const order = Object.keys(featuresById)
   const patternAt = order.indexOf(patternFeatureId)
@@ -112,43 +136,42 @@ function resolveSources(
     seen.add(sourceId)
     const source = featuresById[sourceId]
     if (source === undefined) {
-      dropped.push(`pattern: source feature '${sourceId}' does not exist; it was dropped`)
+      dropped.push(`${noun}: source feature '${sourceId}' does not exist; it was dropped`)
       continue
     }
     if (patternAt >= 0 && order.indexOf(sourceId) > patternAt) {
       dropped.push(
-        `pattern: the source feature '${sourceId}' comes after this pattern; it was dropped ` +
+        `${noun}: the source feature '${sourceId}' comes after this ${noun}; it was dropped ` +
           `(move it up with reorder_features {featureId: '${sourceId}', before: '${patternFeatureId}'})`,
       )
       continue
     }
     if (source.suppressed === true) {
-      throw new Error(`pattern: the source feature '${sourceId}' is suppressed; unsuppress it to pattern it`)
+      throw new Error(`${noun}: the source feature '${sourceId}' is suppressed; unsuppress it to ${noun} it`)
     }
     const kind = String(source.kind ?? '')
     if (!isToolKind(kind)) {
       throw new Error(
-        `pattern: '${sourceId}' is a ${kind || 'feature without a kind'}; ` +
-          'a feature pattern repeats an extrude, revolve or sweep',
+        `${noun}: '${sourceId}' is a ${kind || 'feature without a kind'}; ` + sourceKindSentence(noun),
       )
     }
     const resolved = resolveFeatureExpressions(source, variables, laterVariables)
     if ('exception' in resolved) {
-      throw new Error(`pattern: the source feature '${sourceId}' has an unresolved value: ${resolved.exception}`)
+      throw new Error(`${noun}: the source feature '${sourceId}' has an unresolved value: ${resolved.exception}`)
     }
     const feature = resolved.feature
     const sub = (feature[kind] as Dict | undefined) ?? {}
     const operation = (sub.operation as string) ?? 'add'
     if (operation !== 'add' && operation !== 'cut') {
       throw new Error(
-        `pattern: the source feature '${sourceId}' has operation '${operation}'; ` +
-          'pattern an add or a cut, not a feature that starts a new body',
+        `${noun}: the source feature '${sourceId}' has operation '${operation}'; ` +
+          'repeat an add or a cut, not a feature that starts a new body',
       )
     }
     if (kind === 'extrude' && ((sub.termination as string) === 'up_to' || (sub.termination as string) === 'up_to_next')) {
       throw new Error(
-        `pattern: the source feature '${sourceId}' terminates ${sub.termination}, so its tool is trimmed once and the trim ` +
-          'would travel with every copy; pattern a blind or through_all extrude instead',
+        `${noun}: the source feature '${sourceId}' terminates ${sub.termination}, so its tool is trimmed once and the trim ` +
+          'would travel with every copy; use a blind or through_all extrude instead',
       )
     }
     sources.push({ id: sourceId, kind, feature, operation })
@@ -163,7 +186,7 @@ function resolveSources(
  * one is the answer, none and several are refusals that name the fix rather than
  * picking a body by store order.
  */
-function resolvePatternTarget(sourceId: string, explicitRef: string, bodyStore: Record<string, Body>): Body {
+function resolvePatternTarget(sourceId: string, explicitRef: string, bodyStore: Record<string, Body>, noun: string): Body {
   if (explicitRef) {
     try {
       return resolveBody(explicitRef, bodyStore)
@@ -172,7 +195,7 @@ function resolvePatternTarget(sourceId: string, explicitRef: string, bodyStore: 
       // A ref naming several bodies is a different diagnosis from a missing
       // one, and its own message lists the ids to choose between.
       if (e instanceof AmbiguousBodyRefError) throw e
-      throw new Error(`pattern: target_body '${explicitRef}' does not name one body (${extractErrorMessage(e)})`)
+      throw new Error(`${noun}: target_body '${explicitRef}' does not name one body (${extractErrorMessage(e)})`)
     }
   }
   const candidates = Object.values(bodyStore).filter(
@@ -180,13 +203,13 @@ function resolvePatternTarget(sourceId: string, explicitRef: string, bodyStore: 
   )
   if (candidates.length === 0) {
     throw new Error(
-      `pattern: the source feature '${sourceId}' produced no body; ` +
-        'check that it solved and comes before this pattern',
+      `${noun}: the source feature '${sourceId}' produced no body; ` +
+        'check that it solved and comes before this feature',
     )
   }
   if (candidates.length > 1) {
     throw new Error(
-      `pattern: the source feature '${sourceId}' touched ${candidates.length} bodies ` +
+      `${noun}: the source feature '${sourceId}' touched ${candidates.length} bodies ` +
         `(${candidates.map((body) => body.id).join(', ')}); set target_body to one of them`,
     )
   }
@@ -262,6 +285,8 @@ function applyCopiesToTarget(
   operation: 'add' | 'cut',
   bodyStore: Record<string, Body>,
   sourceId: string,
+  noun: string,
+  opName: string,
 ): TargetCopyResult {
   const targetId = target.id
   const failures: string[] = []
@@ -326,8 +351,8 @@ function applyCopiesToTarget(
             edgeOwner: inst.names.edgeOwner,
             // The construction-name token, not the feature kind: keeping it is
             // what holds every feature-pattern copy's UUID now that the kind is
-            // `linear_pattern`/`circular_pattern`.
-            opName: 'pattern',
+            // `linear_pattern`/`circular_pattern`. Only diagnostics read it.
+            opName,
             // A pattern copy is the same geometry as its source body.
             precision: target.precision ?? null,
           })
@@ -338,7 +363,7 @@ function applyCopiesToTarget(
             // later copy has a body to land on.
             live.delete(targetId)
             consumed = true
-            notes.push(`pattern: ${copyLabel(copyNo)} removed all of body '${targetId}'; later copies were not applied`)
+            notes.push(`${noun}: ${copyLabel(copyNo)} removed all of body '${targetId}'; later copies were not applied`)
             break
           }
           for (const id of ids) live.add(id)
@@ -349,7 +374,9 @@ function applyCopiesToTarget(
           swallowUnlessTrap(e)
           // applyBodyOperation already prefixes its message with opName; the
           // copy prefix is the part the user needs, so drop the repeated name.
-          const reason = extractErrorMessage(e).replace(/^pattern: /, '')
+          const message = extractErrorMessage(e)
+          const prefix = `${opName}: `
+          const reason = message.startsWith(prefix) ? message.slice(prefix.length) : message
           failures.push(`${copyLabel(copyNo)}: ${reason}`)
         }
       }
@@ -432,7 +459,7 @@ function applyCopiesToTarget(
   // feature after the first source's apply, so do not grow the history twice.
   if (target.modified_by[target.modified_by.length - 1] !== featureId) target.modified_by.push(featureId)
   target.brep_diff = batched.diff
-  if (brepDiffIsEmpty(batched.diff)) notes.push('pattern: operation produced no geometry change')
+  if (brepDiffIsEmpty(batched.diff)) notes.push(`${noun}: operation produced no geometry change`)
 
   return { bodyIds, appliedCopies: groupByCopy(selected).size, failures, notes }
 }
@@ -443,11 +470,12 @@ interface TargetPlan {
 }
 
 /**
- * Solve a feature-subject pattern. Each source's operation is applied
- * `count - 1` more times, each with the source's tool rigidly transformed.
- * Copies that refuse are named: some applied and some not is a `partial`
- * result, none applied is an error, so a half-applied pattern never reads as
- * complete.
+ * Solve a feature-subject copy run: a pattern repeats an earlier feature's own
+ * add or cut at every instance, a mirror reflects it once. Each copy is the
+ * source's tool rigidly transformed. Copies that refuse are named: some applied
+ * and some not is a `partial` result, none applied is an error, so a half-applied
+ * pattern never reads as complete. A mirror's own transform can land a copy on
+ * its source; the leaf's coincidence predicate turns that into a quiet warning.
  */
 export function solveFeaturePattern(
   oc: OccModule,
@@ -462,17 +490,21 @@ export function solveFeaturePattern(
   copies: readonly PatternCopy[],
   warnings: readonly string[],
   extra: Dict = {},
+  options: FeatureCopiesOptions = {},
 ): PatternResult {
   const featureId = (feature.id as string) ?? ''
+  const noun = options.noun ?? 'pattern'
+  const opName = options.opName ?? 'pattern'
   const { sources, dropped } = resolveSources(
     featureId,
     sourceFeatureRefs(sub),
     featuresById,
     solveContext.variables,
     solveContext.laterVariables,
+    noun,
   )
   if (sources.length === 0) {
-    throw new Error(`pattern: no source features remain; ${dropped.join('; ') || 'nothing to pattern'}`)
+    throw new Error(`${noun}: no source features remain; ${dropped.join('; ') || 'nothing to repeat'}`)
   }
   const notes: string[] = [...dropped, ...warnings]
   // Resolve the targets before any tool is built: with no copies to apply (count
@@ -481,14 +513,14 @@ export function solveFeaturePattern(
   const explicitTargetRef = (sub.target_body as string) ?? ''
   const plans: TargetPlan[] = []
   if (explicitTargetRef) {
-    plans.push({ target: resolvePatternTarget(sources[0].id, explicitTargetRef, bodyStore), sources })
+    plans.push({ target: resolvePatternTarget(sources[0].id, explicitTargetRef, bodyStore, noun), sources })
   } else {
     // Sources that shaped the same body share one plan, so their tools land
     // in document order on that body. Sources that shaped different bodies
     // each keep their own.
     const byTarget = new Map<string, TargetPlan>()
     for (const source of sources) {
-      const target = resolvePatternTarget(source.id, '', bodyStore)
+      const target = resolvePatternTarget(source.id, '', bodyStore, noun)
       const plan = byTarget.get(target.id)
       if (plan === undefined) byTarget.set(target.id, { target, sources: [source] })
       else plan.sources.push(source)
@@ -538,14 +570,14 @@ export function solveFeaturePattern(
         : TOOL_LEAVES[source.kind](oc, scope, table, toolFeature, globalRepo, scratch)
       if (built.status !== 'ok') {
         throw new Error(
-          `pattern: the source feature '${source.id}' could not provide its tool: ` +
+          `${noun}: the source feature '${source.id}' could not provide its tool: ` +
             `${String(built.exception ?? built.status)}`,
         )
       }
       const sourceTools = Object.values(scratch)
       scratchBodies.push(...sourceTools)
       if (sourceTools.length === 0) {
-        throw new Error(`pattern: the source feature '${source.id}' produced no solid to repeat`)
+        throw new Error(`${noun}: the source feature '${source.id}' produced no solid to repeat`)
       }
       // Read once per tool, not per instance: the tool shape does not change
       // between copies.
@@ -564,6 +596,7 @@ export function solveFeaturePattern(
 
     const failures: string[] = []
     const resultIds = new Set<string>()
+    const coincident: string[] = []
     let appliedCopies = 0
     const totalCopies = copies.length * sources.length
     for (const plan of plans) {
@@ -575,6 +608,15 @@ export function solveFeaturePattern(
           markFeatureStart(featureId)
           const { shape: rawShape, builder } = transformCopyWithMapping(oc, scope, tool.shape, copy.trsf)
           const shape = scope.track(rawShape)
+          // A copy that lands on its own source changes nothing: the source's
+          // own operation already produced that geometry. A boolean would read
+          // it as an ordinary miss, so the leaf's predicate names it here.
+          if (options.coincides !== undefined && options.coincides(tool.shape, shape)) {
+            coincident.push(
+              `${noun}: the mirrored feature '${tool.sourceId}' coincides with the original; nothing changed`,
+            )
+            continue
+          }
           // The copy's key keeps its UUIDs when an earlier instance is skipped
           // or a centered run grows. Several sources share one copy key, so a
           // source's tool takes its own slot in the path.
@@ -590,14 +632,18 @@ export function solveFeaturePattern(
         const target = bodyStore[plan.target.id]
         if (target === undefined) {
           notes.push(
-            `pattern: body '${plan.target.id}' was removed by an earlier source; ` +
+            `${noun}: body '${plan.target.id}' was removed by an earlier source; ` +
               `'${source.id}' was not applied`,
           )
           break
         }
+        const sourceCopies = copiesBySource.get(source.id) ?? []
+        // Every copy of this source was a coincidence, so there is nothing to
+        // apply: the target already holds the geometry.
+        if (sourceCopies.length === 0) continue
         const result = applyCopiesToTarget(
-          oc, scope, table, featureId, target, copiesBySource.get(source.id) ?? [],
-          source.operation, bodyStore, sources.length > 1 ? source.id : '',
+          oc, scope, table, featureId, target, sourceCopies,
+          source.operation, bodyStore, sources.length > 1 ? source.id : '', noun, opName,
         )
         failures.push(...result.failures)
         notes.push(...result.notes)
@@ -607,7 +653,21 @@ export function solveFeaturePattern(
     }
 
     if (appliedCopies === 0) {
-      throw new Error(`pattern: no copy was applied; ${failures[0] ?? 'nothing to apply'}`)
+      if (coincident.length > 0 && failures.length === 0) {
+        // The mirror reflected the source onto itself: the feature is a quiet
+        // no-op, not an error, and the bodies stay exactly as they were.
+        const ids = plans.map((plan) => plan.target.id).filter((id) => bodyStore[id] !== undefined)
+        const noop: PatternResult = {
+          status: 'ok',
+          body_id: ids[0] ?? '',
+          body_ids: ids,
+          operation: operations.size === 1 ? [...operations][0] : 'mixed',
+        }
+        const allNotes = [...notes, ...coincident]
+        if (allNotes.length > 0) noop.solver_warning = allNotes.join('; ')
+        return noop
+      }
+      throw new Error(`${noun}: no copy was applied; ${failures[0] ?? 'nothing to apply'}`)
     }
     const liveIds = [...resultIds].filter((id) => bodyStore[id] !== undefined)
     const result: PatternResult = {
@@ -618,9 +678,10 @@ export function solveFeaturePattern(
       ...extra,
     }
     if (failures.length > 0) {
-      result.exception = `pattern: ${appliedCopies}/${totalCopies} copies applied; ${failures.join('; ')}`
+      result.exception = `${noun}: ${appliedCopies}/${totalCopies} copies applied; ${failures.join('; ')}`
     }
-    if (notes.length > 0) result.solver_warning = notes.join('; ')
+    const allNotes = [...notes, ...coincident]
+    if (allNotes.length > 0) result.solver_warning = allNotes.join('; ')
     return result
   } finally {
     // Every scratch body a forced `new` solve registered, including any made
