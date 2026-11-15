@@ -71,6 +71,7 @@ function outcomeFamily(e: unknown): string {
     const name = /cannot move a (\w+) face/.exec(message)?.[1] ?? '?'
     return `refused: cannot move a ${name} face`
   }
+  if (message.includes('reaches outside the picked face')) return 'refused: the extension did not bound the cell'
   return `refused: ${message}`
 }
 
@@ -152,10 +153,10 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('move face across freeform
           'convex', 'convex', 'convex', 'concave', 'concave', 'concave',
         ],
         outcome: [
-          '0.5:refused: neighbour BSplineSurface cannot be extended',
-          '-0.5:refused: neighbour BSplineSurface cannot be extended',
-          '1:refused: neighbour BSplineSurface cannot be extended',
-          '-1:refused: neighbour BSplineSurface cannot be extended',
+          '0.5:ok',
+          '-0.5:refused: the extension did not bound the cell',
+          '1:ok',
+          '-1:refused: the extension did not bound the cell',
         ],
       },
       {
@@ -176,10 +177,10 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('move face across freeform
         neighbours: ['Plane', 'BSplineSurface', 'BSplineSurface'],
         convexity: ['concave', 'convex', 'convex'],
         outcome: [
-          '0.5:refused: neighbour BSplineSurface cannot be extended',
-          '-0.5:refused: neighbour BSplineSurface cannot be extended',
-          '1:refused: neighbour BSplineSurface cannot be extended',
-          '-1:refused: neighbour BSplineSurface cannot be extended',
+          '0.5:ok',
+          '-0.5:ok',
+          '1:ok',
+          '-1:ok',
         ],
       },
       {

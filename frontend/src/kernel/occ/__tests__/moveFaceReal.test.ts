@@ -372,15 +372,16 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
     } finally { scope.dispose() }
   })
 
-  it('refuses an unsupported neighbour surface by name', () => {
+  it('extends a spline neighbour by the G1 strip (the shipped refusal is gone)', () => {
     const scope = new DisposeScope()
     try {
       const body = splineNeighbour(scope)
       const cap = pickByNormal(scope, body, [0, 0, 1])
-      let threw: unknown = null
-      try { moved(scope, body, cap, 2) } catch (e) { threw = e }
-      expect(threw).toBeInstanceOf(MoveFaceRefusal)
-      expect((threw as Error).message).toContain('cannot be extended')
+      // The D profile's area is 10; the prism is 5 deep (50), so the 2 mm cap
+      // move adds exactly 10 * 2. The strip lies on the same extrusion surface
+      // as the spline side face, so this case's first-order continuation is
+      // exact.
+      expectVolume(scope, moved(scope, body, cap, 2), 70)
     } finally { scope.dispose() }
   })
 

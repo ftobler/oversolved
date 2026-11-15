@@ -32,7 +32,8 @@ import { type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape } from './occTypes'
 import { canonicalFaces, canonicalEdges } from './bodyNames'
 import { SubShapeMap } from './subshapeIdentity'
-import { faceCentroid, bboxDiagonal, shapeBndBox } from './primitives'
+import { faceCentroid, faceArea, bboxDiagonal, shapeBndBox } from './primitives'
+import { volumeForMeasure } from './volume'
 import { noProgress } from './defaultArgs'
 import { booleanWithDiff, type FaceOrigin } from './booleans'
 import type { BrepDiff } from '../types3d'
@@ -41,7 +42,6 @@ import { TOL_MOVE_FACE_TANGENT, TOL_SURFACE_IDENTITY } from '../solverConstants'
 import type { Vec3 } from '@/utils/vec3'
 import {
   extendedNeighbourSolid,
-  faceSurfaceName,
   MoveFaceRefusal,
   movedSurface,
   pointInFace,
@@ -49,6 +49,8 @@ import {
   sameAnalyticSurface,
   type MovedSurface,
 } from './moveFaceSurfaces'
+import { extendNeighbour } from './moveFaceExtend'
+import { RUNG_1, rungCatalog } from './moveFaceRungs'
 
 export { MoveFaceRefusal } from './moveFaceSurfaces'
 
@@ -68,6 +70,12 @@ export interface MoveFaceCells {
   capFaces: OccShape[]
   // Cell lateral face -> the body face it extends (its naming source).
   extensionOf: SubShapeMap<OccShape>
+  // A neighbour needed a non-analytic extension: a sphere/torus full face with
+  // its solid, or the rung-2/rung-2b freeform patch or strip. The volume
+  // oracle only runs for these moves: the analytic kinds' volumes are pinned
+  // exactly, and a hole/boss loop can move volume the first-order oracle would
+  // misjudge.
+  usedFreeformExtension: boolean
 }
 
 // ─── small OCC readers ───
@@ -116,47 +124,27 @@ function isSeamOrDegenerate(oc: OccModule, face: OccShape, edge: OccShape): bool
 
 /**
  * A large bounded face on `face`'s underlying surface, spanning the slab. The
- * plane/cylinder v range is [-L, L]; the cone is clipped at its apex so the
- * second nappe never splits the slab.
+ * analytic kinds keep the shipped windows (plane/cylinder v in [-L, L], a cone
+ * clipped at its apex); a freeform kind gets rung 2's widened patch (see
+ * moveFaceExtend.ts), whose margin is `margin` (defaults to L for callers that
+ * only want a big tool). Throws MoveFaceRefusal naming every rung.
  */
 export function extendNeighbourFace(
   oc: OccModule,
   scope: DisposeScope,
   face: OccShape,
   L: number,
+  margin: number = L,
+  edge?: OccShape,
+  normal: Vec3 = [0, 0, 1],
+  d: number = 0,
 ): OccShape {
-  const kind = neighbourSurface(oc, scope, face)
-  if (kind === null) {
-    const name = faceSurfaceName(oc, scope, face)
-    throw new MoveFaceRefusal(`move_face: neighbour face of type ${name} cannot be extended`)
+  if (edge === undefined) {
+    // A caller that only wants a large tool gets rung 1, or rung 2's patch when
+    // it is valid; without the shared edge and the move there is no strip.
+    return extendNeighbour(oc, scope, face, null, normal, 0, L, margin).face
   }
-  const adaptor = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
-  // adaptor.Plane()/Cylinder()/Cone() each return a fresh by-value gp_* proxy
-  // owning WASM memory; scope owns them for the read (the faceLoops.computeFacePlane
-  // rule), and the face builder copies the surface it is handed.
-  if (kind === 'plane') {
-    const builder = scope.track(
-      new oc.BRepBuilderAPI_MakeFace_9(scope.track(adaptor.Plane()), -L, L, -L, L),
-    )
-    return scope.track(builder.Face())
-  }
-  if (kind === 'cylinder') {
-    const builder = scope.track(
-      new oc.BRepBuilderAPI_MakeFace_10(scope.track(adaptor.Cylinder()), 0, 2 * Math.PI, -L, L),
-    )
-    return scope.track(builder.Face())
-  }
-  const cone = scope.track(adaptor.Cone())
-  const semi = cone.SemiAngle()
-  const refR = cone.RefRadius()
-  // v runs along the slant; the apex is where the radius reaches zero.
-  const vApex = -refR / Math.sin(semi)
-  let lo = -L
-  let hi = L
-  if (semi < 0) hi = vApex
-  else lo = vApex
-  const coneFace = scope.track(new oc.BRepBuilderAPI_MakeFace_11(cone, 0, 2 * Math.PI, lo, hi))
-  return scope.track(coneFace.Face())
+  return extendNeighbour(oc, scope, face, edge, normal, d, L, margin).face
 }
 
 /**
@@ -360,6 +348,11 @@ export function moveFaceCells(
   d: number,
 ): MoveFaceCells {
   const surface = movedSurface(oc, scope, face, d)
+  // The rung-2b strip follows this normal. It is the picked face's outward
+  // normal at its anchor, exact for a plane; a curved picked face's strip is a
+  // first-order approximation at that one normal and the volume oracle only
+  // validates a planar picked face.
+  const moveNormal = surface.anchor().normal
 
   const bboxL = bboxDiagonal(oc, scope, body)
   const L = 4 * (bboxL + Math.abs(d))
@@ -367,18 +360,28 @@ export function moveFaceCells(
   const edgeKind = classifyFaceEdges(oc, scope, body)
   const edges = exploreEdges(oc, scope, face)
 
-  // Extended neighbour per edge; a tangent-bound face has no meaningful
-  // extension and is refused, an unsupported surface is refused by name. The
-  // face's own seam and point-like (degenerated) edges are skipped.
+  // Extended neighbour per edge; a tangent-bound face is refused (an extension
+  // of a surface tangent to S only crosses the slab on one side and produces a
+  // kink rather than a blend, so the whole rung ladder is named in the
+  // refusal). The face's own seam and point-like (degenerated) edges are
+  // skipped. A freeform patch is only widened past the face by the slab
+  // margin: short continuations are where polynomial extension stays faithful.
   const toolFaces: OccShape[] = []
+  // What actually goes to the splitter. A closed sphere/torus face cannot
+  // partition a slab, so its solid stands in; the mapping face above still
+  // names the cell's piece of that surface.
+  const splitTools: OccShape[] = []
   const toolNeighbour: OccShape[] = []
   const solidTools: (OccShape | null)[] = []
+  const margin = Math.max(3 * Math.abs(d), 1e-3)
+  let usedFreeformExtension = false
   // A full curved splitter FACE is a closed shell with no free boundary and
   // does not partition the slab, so a cell can span a sibling the user did not
   // pick. Keep the shipped face tools by default and offer a solid replacement
   // only for a neighbour cylinder that lies inside the picked surface's radius
   // (the bore that fails to cut); a solid on a same-radius or larger neighbour
-  // feeds UnifySameDomain an invalid weld.
+  // feeds UnifySameDomain an invalid weld. A closed sphere/torus neighbour
+  // always carries its own solid replacement for the same reason.
   const sourceRadius =
     surface.kind === 'cylinder'
       ? scope.track(scope.track(new oc.BRepAdaptor_Surface_2(face, true)).Cylinder()).Radius()
@@ -388,15 +391,20 @@ export function moveFaceCells(
     const kind = edgeKind(e)
     if (kind === 'tangent') {
       throw new MoveFaceRefusal(
-        'move_face: the picked face has a tangent neighbour (a fillet?); move it together or remove the fillet first',
+        `move_face: the picked face has a tangent neighbour (a fillet?); moving it alone leaves a tangent split. ` +
+        `Rungs: ${rungCatalog(oc)}. Move the tangent chain together or remove the fillet first`,
       )
     }
     const neighbour = neighbourAcross(oc, scope, body, face, e)
     if (neighbour === null) continue
-    toolFaces.push(extendNeighbourFace(oc, scope, neighbour, L))
+    const tool = extendNeighbour(oc, scope, neighbour, e, moveNormal, d, L, margin)
+    if (tool.rung !== RUNG_1 || tool.solid !== null) usedFreeformExtension = true
+    toolFaces.push(tool.face)
+    // A closed sphere/torus face is no splitter; its solid is the tool.
+    splitTools.push(tool.solid ?? tool.face)
     toolNeighbour.push(neighbour)
     let solid: OccShape | null = null
-    if (sourceRadius !== null) {
+    if (tool.solid === null && sourceRadius !== null) {
       const nad = scope.track(new oc.BRepAdaptor_Surface_2(neighbour, true))
       if (nad.GetType().value === oc.GeomAbs_SurfaceType.GeomAbs_Cylinder.value) {
         const radius = scope.track(nad.Cylinder()).Radius()
@@ -443,6 +451,26 @@ export function moveFaceCells(
         if (e instanceof MoveFaceRefusal) return { picked: [], refusal: e.message }
         throw e
       }
+      // A freeform extension can leave a cell merged with material the picked
+      // face does not cover (the ruled strip closes the slab on one side but
+      // the cell may wrap around its free end). Every on-source point of a cell
+      // claimed for a freeform move must therefore classify inside the picked
+      // region, the same all-points rule the curved kinds use; the shipped
+      // planar path keeps its wall-only guard so its pinned volumes do not move.
+      if (usedFreeformExtension) {
+        for (const sf of sourceFaces) {
+          for (const p of representativePoints(oc, scope, sf)) {
+            if (surface.inRegion(outerRegion, p)) continue
+            if (inner.some((loop) => surface.inRegion(loop.face, p))) continue
+            return {
+              picked: [],
+              refusal:
+                'move_face: a selected cell reaches outside the picked face; ' +
+                'the freeform extension did not bound the cell to the moved region',
+            }
+          }
+        }
+      }
       picked.push(cell)
     }
     if (picked.length === 0) {
@@ -451,7 +479,7 @@ export function moveFaceCells(
     return { picked, refusal: null }
   }
 
-  let result = trySplit(toolFaces)
+  let result = trySplit(splitTools)
   if (result.refusal !== null) {
     // Re-split with one or more neighbour tools replaced by a solid on the same
     // surface. A single failing tool must not drag every lateral face into the
@@ -463,7 +491,7 @@ export function moveFaceCells(
       .map((solid, index) => (solid === null ? -1 : index))
       .filter((index) => index >= 0)
     const retry = retryReplacementSplits(usable, (subset) => {
-      const tools = toolFaces.map((f, index) =>
+      const tools = splitTools.map((f, index) =>
         subset.includes(index) ? solidTools[index] ?? f : f,
       )
       return trySplit(tools)
@@ -489,7 +517,7 @@ export function moveFaceCells(
     }
   }
 
-  return { cells: picked, capFaces, extensionOf }
+  return { cells: picked, capFaces, extensionOf, usedFreeformExtension }
 }
 
 export interface ApplyMoveFaceResult {
@@ -551,6 +579,41 @@ export function combineMoveFaceCells(
 }
 
 /**
+ * The first-order volume oracle for a move that used a non-analytic neighbour
+ * extension. Moving a planar face by d sweeps its own region, so the body's
+ * volume changes by `area * d` to first order; the curvature/freeform
+ * neighbours only add an O(d^2) wedge at the boundary. A cell selection that
+ * missed or double-counted a sibling region breaks that estimate immediately,
+ * which is why a widened patch is not trusted without it.
+ *
+ * It runs only for the extension rungs (see `usedFreeformExtension`): the
+ * analytic kinds are pinned by exact volumes, and a hole/boss loop moving with
+ * the face changes volume in a way the first-order estimate does not model.
+ */
+function assertVolumeOracle(
+  oc: OccModule,
+  scope: DisposeScope,
+  face: OccShape,
+  d: number,
+  before: number,
+  after: number,
+): void {
+  const S = oc.GeomAbs_SurfaceType
+  const type = scope.track(new oc.BRepAdaptor_Surface_2(face, true)).GetType().value
+  if (type !== S.GeomAbs_Plane.value) return
+  const area = faceArea(oc, scope, face)
+  const want = area * d
+  const got = after - before
+  const slack = 0.05 * Math.abs(want)
+  if (Math.abs(got - want) > slack) {
+    throw new MoveFaceRefusal(
+      `move_face: the move changed the volume by ${got.toFixed(3)} mm3, not the first-order ` +
+      `${want.toFixed(3)} (area ${area.toFixed(3)} x d ${d}); refused rather than shipping a wrong solid`,
+    )
+  }
+}
+
+/**
  * Move `face` on `body` by signed `d`: select the cells, then fuse (d > 0) or
  * cut (d < 0) them through `booleanWithDiff` (history + clean + soundness). The
  * picked cells are gathered into one compound tool so the shared boolean path is
@@ -564,7 +627,11 @@ export function applyMoveFace(
   d: number,
 ): ApplyMoveFaceResult {
   const cells = moveFaceCells(oc, scope, body, face, d)
+  const before = cells.usedFreeformExtension ? volumeForMeasure(oc, scope, body) : 0
   const res = combineMoveFaceCells(oc, scope, body, [{ face, cells }], d)
+  if (cells.usedFreeformExtension) {
+    assertVolumeOracle(oc, scope, face, d, before, volumeForMeasure(oc, scope, res.shape))
+  }
   return { shape: res.shape, faceOrigin: res.faceOrigin, diff: res.diff, cells }
 }
 
