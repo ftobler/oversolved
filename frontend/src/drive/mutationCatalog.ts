@@ -687,8 +687,10 @@ const EXTRUDE_UP_TO_NOTE =
   'face\'s untrimmed surface extended over the tool and reports `up_to: the face did not cover the ' +
   'profile; trimmed at its extended surface` in `solver_note`. A face that still cannot cut the profile ' +
   'through is refused: `target face does not cover the profile (the extrude passes beside it)`. ' +
-  'A query target that does not resolve or matches several elements falls back to `distance` with a warning ' +
-  '(`used blind distance`); an up_to with no `up_to` target does so too, with `up_to has no target; used blind distance`. ' +
+  'A query target that does not resolve or matches several elements, or an up_to with no `up_to` target, ' +
+  'builds nothing and reports a warning (`up_to target \'<ref>\' did not resolve; nothing was built`, ' +
+  '`... matched several elements (...); nothing was built`, or `up_to has no target; nothing was built`): ' +
+  'the termination is the authored intent, so it never falls back to `distance`. ' +
   'A `@<bodyId>/face/<n>` ref that no longer names a face (the body is gone, the index is out of range, or the ' +
   'remap fails) fails the feature instead of falling back: that ref is a persisted pick. ' +
   '`direction: symmetric` is refused, and so is a taper. `up_to` is read only when `termination` is `up_to`; ' +

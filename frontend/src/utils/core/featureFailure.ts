@@ -62,9 +62,9 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== 
  * extrude/revolve/sweep profile fan-out) built a valid solid from the picks that
  * resolved -- downstream stays solvable, so it is a warning, not the hard-error
  * red of an `exception`. A `solver_warning` on an otherwise 'ok' result is the
- * same kind of warning: the kernel took a fallback (an up-to target that did
- * not resolve became a blind distance) or the operation changed nothing, and
- * that note is the only trace of it. A `solver_note` is deliberately not read:
+ * same kind of warning: the kernel could not honour the authored intent (an
+ * up_to with no usable stop built nothing) or the operation changed nothing,
+ * and that note is the only trace of it. A `solver_note` is deliberately not read:
  * it reports geometry the solve did build (a blend's tangent chain), so it is
  * informational and gets no mark.
  */

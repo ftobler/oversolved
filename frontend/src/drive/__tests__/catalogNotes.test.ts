@@ -78,7 +78,8 @@ describe('up-to termination on both extrude rows', () => {
       expect(note, type).toContain("viewport's `@<bodyId>/face/<n>` fallback")
       expect(note, type).toContain('fails the feature instead of falling back')
       expect(note, type).toContain('sketch point ref')
-      expect(note, type).toContain('used blind distance')
+      expect(note, type).toContain('nothing was built')
+      expect(note, type).not.toContain('used blind distance')
       expect(note, type).toContain('up_to has no target')
       expect(note, type).toContain('read only when')
     }

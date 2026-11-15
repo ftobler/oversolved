@@ -60,6 +60,42 @@ interface ExtrudeResult {
   body_ids?: string[]
 }
 
+/** Prepend a soft-failure sentence to the result's warning channel. The kernel
+ *  composes rather than overwrites, so a second cause is never lost. */
+function prependWarning(result: ExtrudeResult, warning: string | undefined): void {
+  if (warning === undefined) return
+  result.solver_warning = result.solver_warning === undefined
+    ? warning
+    : `${warning}; ${result.solver_warning}`
+}
+
+/** Write a partial-profile verdict on the result. Shared by the built path and
+ *  the no-geometry up_to return: an area the user drew stayed unbuilt either
+ *  way, so dropping the report would make the row read as clean. */
+function applyProfileProblems(
+  result: ExtrudeResult,
+  profileErrors: string[],
+  unbuildableReasons: string[],
+  areaBuilt: number,
+  areaTotal: number,
+): void {
+  if (profileErrors.length) {
+    result.status = 'partial'
+    result.exception = profileErrors.join('; ')
+  }
+  if (unbuildableReasons.length > 0) {
+    // Some referenced area did not build while the rest did. That is a partial
+    // profile, not an ok one: the tool is missing geometry the user drew and
+    // can see. Same convention as a partial fillet or a hole that missed some
+    // sites. Only reached with a non-empty profile.
+    result.status = 'partial'
+    const message =
+      `extrude: built ${areaBuilt} of ${areaTotal} profile areas; ` +
+      unbuildableReasons.join('; ')
+    result.exception = result.exception === undefined ? message : `${result.exception}; ${message}`
+  }
+}
+
 /**
  * Fuse a chain of prisms into one tool shape with `join`. Every consumed input
  * (the running result and each newly added prism) is tracked so a throw leaves
@@ -330,18 +366,25 @@ export function solveExtrude(
   // A through_all solve never reads the distance, so a stored one (an old
   // document, a script that set it after the termination) is a soft failure:
   // the feature still builds from the bodies, and the warning says the stored
-  // value is ignored. Blind reads it directly, and up_to falls back to it when
-  // its target does not resolve. up_to_next sizes itself at the first body it
-  // meets (UP_TO_REACH) and never reads the value, but the document format
+  // value is ignored. A blind extrude reads it directly. An up_to that cannot be
+  // honoured builds nothing and never reads it either (the early return below),
+  // so the non-zero rule is deferred past that decision instead of throwing over
+  // a value the solve would not use. up_to_next sizes itself at the first body
+  // it meets (UP_TO_REACH) and never reads the value, but the document format
   // still requires it outside through_all, so a zero is refused there.
   let distanceWarning: string | undefined
+  let distanceInvalid = false
   if (termination === 'through_all') {
     const storedDistance = sub.distance ?? sub.depth
     if (storedDistance !== undefined && storedDistance !== null) {
       distanceWarning = THROUGH_ALL_DISTANCE_WARNING
     }
   } else if (!Number.isFinite(distance) || distance === 0) {
-    throw new Error('extrude: distance must be non-zero')
+    // An up_to that cannot be honoured builds nothing and never reads the value,
+    // so only its rule is deferred past that decision; every other termination
+    // reads `distance` and keeps failing loudly here.
+    if (termination === 'up_to') distanceInvalid = true
+    else throw new Error('extrude: distance must be non-zero')
   }
   // Absent or 0 is the straight prism this feature has always built; only a
   // non-zero angle takes the draft path.
@@ -564,8 +607,9 @@ export function solveExtrude(
   let faceNormal0: Vec3 | null = null
   const profileNormal = (): Vec3 => (faceNormal0 ??= faceNormal(oc, scope, cqFaces[0]))
   let upToTarget: UpToTarget | null = null
-  // The up-to fallback note is held until after the body operation runs, so a
-  // body-op warning cannot overwrite it (applyBodyOperation assigns its own).
+  // A soft-failure sentence naming why the stop could not be honoured. The
+  // termination is the authored intent, so it is never replaced by another one:
+  // the solve returns before any tool is built and mints no body.
   let upToWarning: string | undefined
   // A solved curved target may have had to extend the face over the profile;
   // the note names that, and is written to solver_note on success.
@@ -579,22 +623,42 @@ export function solveExtrude(
     try {
       upToTarget = resolveUpToTarget(oc, scope, table, upToRef, probeDir, globalRepo, bodyStore)
     } catch (e) {
-      // Ambiguity degrades to blind distance with a warning naming it; every
-      // other error (a body/remap failure, a kernel failure) stays a loud
-      // feature failure exactly as before.
+      // An ambiguity is the same soft failure as an empty pick: nothing can be
+      // stopped at, so nothing is built. Every other error (a body/remap
+      // failure, a kernel failure) stays a loud feature failure exactly as
+      // before.
       if (!(e instanceof AmbiguousQueryError)) throw e
       upToWarning =
-        `extrude: up_to target '${upToRef}' matched several elements (${e instanceof Error ? e.message : String(e)}); used blind distance`
+        `extrude: up_to target '${upToRef}' matched several elements (${e instanceof Error ? e.message : String(e)}); ` +
+        'nothing was built'
     }
     if (upToTarget === null && upToWarning === undefined) {
-      upToWarning = `extrude: up_to target '${upToRef}' did not resolve; used blind distance`
+      upToWarning = `extrude: up_to target '${upToRef}' did not resolve; nothing was built`
     }
   } else if (termination === 'up_to') {
-    // The staged editor hides `distance` while termination is up_to, but a
-    // script may still publish the state before it picks a target. Silence
-    // here read as an up-to that ignored its distance; name the fallback.
-    upToWarning = 'extrude: up_to has no target; used blind distance'
+    // The staged editor hides `distance` while up_to has no pick, and a script
+    // may publish the state before it picks one. There is no stop to build to,
+    // so the feature soft fails and builds nothing rather than guessing a
+    // blind prism the author never asked for.
+    upToWarning = 'extrude: up_to has no target; nothing was built'
   }
+
+  // Every degraded up_to stops here, before a tool exists: status ok keeps the
+  // build and the export contract moving (the warning channel carries the soft
+  // failure), `body_ids` is explicitly empty so no consumer chases a body that
+  // was never minted, and `body_id` names the would-be target the way the
+  // no-change body operation does. Returning before the tool build also leaves
+  // no `@<id>/top_face`, side faces or distance handle registered, so a later
+  // feature naming them fails with its own unresolved-ref sentence instead of
+  // reading phantom geometry.
+  if (termination === 'up_to' && upToTarget === null) {
+    result.body_id = mergeTarget ?? Object.keys(bodyStore).sort()[0] ?? bodyId
+    result.body_ids = []
+    applyProfileProblems(result, profileErrors, unbuildableReasons, areaBuilt, areaTotal)
+    prependWarning(result, upToWarning)
+    return result
+  }
+  if (distanceInvalid) throw new Error('extrude: distance must be non-zero')
 
   // A through-all cut is sized from the bodies, not from the stored `distance`,
   // and measured from the profile plane. Normal and reverse stay one-sided and
@@ -951,17 +1015,8 @@ export function solveExtrude(
   }
 
   // The body operation may have written its own warning (a no-op cut/add).
-  // Compose rather than assign so the up-to fallback is not lost.
-  if (distanceWarning !== undefined) {
-    result.solver_warning = result.solver_warning === undefined
-      ? distanceWarning
-      : `${distanceWarning}; ${result.solver_warning}`
-  }
-  if (upToWarning !== undefined) {
-    result.solver_warning = result.solver_warning === undefined
-      ? upToWarning
-      : `${upToWarning}; ${result.solver_warning}`
-  }
+  // Compose rather than assign so a through_all distance note is not lost.
+  prependWarning(result, distanceWarning)
   if (upToNote !== undefined) result.solver_note = upToNote
 
   // An add with no explicit merge target fuses into the FIRST body it connects
@@ -990,22 +1045,7 @@ export function solveExtrude(
     }
   }
 
-  if (profileErrors.length) {
-    result.status = 'partial'
-    result.exception = profileErrors.join('; ')
-  }
-  if (unbuildableReasons.length > 0) {
-    // Some referenced area did not build while the rest did. That is a partial
-    // profile, not an ok one: the tool is missing geometry the user drew and
-    // can see. Same convention as a partial fillet or a hole that missed some
-    // sites. Only reached with a non-empty profile (the empty case returned
-    // above with the "no closed profile found" error).
-    result.status = 'partial'
-    const message =
-      `extrude: built ${areaBuilt} of ${areaTotal} profile areas; ` +
-      unbuildableReasons.join('; ')
-    result.exception = result.exception === undefined ? message : `${result.exception}; ${message}`
-  }
+  applyProfileProblems(result, profileErrors, unbuildableReasons, areaBuilt, areaTotal)
 
   return result
 }

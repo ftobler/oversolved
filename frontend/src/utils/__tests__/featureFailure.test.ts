@@ -167,10 +167,10 @@ describe('featureFailure', () => {
   })
 
   it('marks a good solve that carries a solver warning as a warning', () => {
-    // An up-to target that did not resolve fell back to a blind distance: the
-    // body is valid, but not what was asked for, and this note is its only trace.
-    expect(featureFailure('ex1', { ex1: { status: 'ok', body_id: 'body_ex1', solver_warning: 'used blind distance' } }, {}))
-      .toEqual({ failed: true, level: 'warning', message: 'used blind distance' })
+    // An up_to with no usable target built nothing: not what was asked for, and
+    // this note is its only trace.
+    expect(featureFailure('ex1', { ex1: { status: 'ok', body_id: 'body_ex1', solver_warning: 'up_to has no target; nothing was built' } }, {}))
+      .toEqual({ failed: true, level: 'warning', message: 'up_to has no target; nothing was built' })
   })
 
   it('marks a shell whose sharp corners were replaced by an arc join', () => {

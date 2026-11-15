@@ -89,7 +89,7 @@ function planarFaceCut(oc: OccModule, scope: DisposeScope, face: OccShape): CutP
  * persisted `@<body>/face/<n>` slash ref), and points/vertices (through
  * getPoint3d, so a body vertex's `origin` and a sketch point's lifted
  * `external_xy` both read). Returns null when the ref does not resolve (the
- * caller falls back to the blind distance). Rethrows AmbiguousQueryError so the
+ * caller soft fails and builds nothing). Rethrows AmbiguousQueryError so the
  * caller can report ambiguity distinctly from a dangling pick.
  */
 export function resolveUpToTarget(
@@ -108,9 +108,9 @@ export function resolveUpToTarget(
   } catch (e) {
     swallowUnlessTrap(e)
     if (e instanceof AmbiguousQueryError) throw e
-    // A dangling pick falls back to the blind distance, but ambiguity must not
-    // pose as "did not resolve": the resolver DID match elements, several of
-    // them. Rethrow so the caller can name the ambiguity in its warning.
+    // A dangling pick is a soft failure, but ambiguity must not pose as "did
+    // not resolve": the resolver DID match elements, several of them. Rethrow
+    // so the caller can name the ambiguity in its warning.
     entry = null
   }
   if (entry === null) {

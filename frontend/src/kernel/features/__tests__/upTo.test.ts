@@ -127,8 +127,8 @@ describe('resolveUpToPlane', () => {
   })
 
   it('returns null for a body-face ref whose body is missing or has no shape', () => {
-    // A dangling face pick falls back to the blind distance rather than
-    // crashing on the missing body's shape.
+    // A dangling face pick is an unresolved target (a soft failure for the
+    // caller), not a crash on the missing body's shape.
     const missing = repoReturning({ body_id: 'gone', face_index: 0 })
     expect(resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 1], missing, {})).toBeNull()
     const shapeLess = repoReturning({ body_id: 'b1', face_index: 0 })
@@ -137,7 +137,7 @@ describe('resolveUpToPlane', () => {
   })
 
   it('returns null for a payload that names no plane, face or point', () => {
-    // An unrecognised registry payload falls back to the blind distance.
+    // An unrecognised registry payload is an unresolved target for the caller.
     expect(resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 1], repoReturning({ type: 'weird' }), {})).toBeNull()
   })
 
@@ -165,7 +165,8 @@ describe('resolveUpToPlane', () => {
   it('throws for a curved body face through the planar-only resolver', () => {
     // A curved face is a resolved up_to target now, but resolveUpToPlane is the
     // planar-only spelling its v1 callers use. Reporting it as an unresolved
-    // pick would quietly extrude the blind distance, so the refusal is named.
+    // pick would hide the real cause behind a "did not resolve" sentence, so the
+    // refusal is named.
     const table = { get: () => ({}) } as unknown as HandleTable
     const bodyStore = { body_b: { shape: 7 } } as unknown as Record<string, Body>
     vi.mocked(extractOccFace).mockReturnValue({ fake: 'face' } as unknown as OccShape)

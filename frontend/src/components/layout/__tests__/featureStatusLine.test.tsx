@@ -75,10 +75,10 @@ describe('feature status line', () => {
     expectSameMark('error', 'sketch not found')
   })
 
-  it('a solver fallback on a good solve is a warning in both places', () => {
-    // Dropped before it reached the UI; now the one trace of the fallback.
-    renderEditing(EXTRUDE, { ex1: { status: 'ok', body_id: 'body_ex1', solver_warning: "up_to target '?x' did not resolve; used blind distance" } })
-    expectSameMark('warning', "up_to target '?x' did not resolve; used blind distance")
+  it('a solver soft failure on a good solve is a warning in both places', () => {
+    // Dropped before it reached the UI; now the one trace of the soft failure.
+    renderEditing(EXTRUDE, { ex1: { status: 'ok', body_id: 'body_ex1', solver_warning: "up_to target '?x' did not resolve; nothing was built" } })
+    expectSameMark('warning', "up_to target '?x' did not resolve; nothing was built")
   })
 
   it('the line is drawn for kinds without a schema editor too', () => {

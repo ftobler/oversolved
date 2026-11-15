@@ -75,21 +75,32 @@ describe('solveExtrude guard paths', () => {
     ).toThrow(/distance must be non-zero/)
   })
 
-  it('keeps the non-zero distance rule for up_to and up_to_next', () => {
-    // Only up_to falls back to the blind distance when its target does not
-    // resolve; up_to_next sizes itself from the first body it meets and never
-    // reads the field. The document format still requires a distance outside
+  it('keeps the non-zero distance rule for an up_to with a target and for up_to_next', () => {
+    // An up_to that cannot be honoured never reads the field: it soft fails and
+    // builds nothing, so the rule is checked once a stop exists. up_to_next
+    // sizes itself from the first body it meets and never reads the field
+    // either, but the document format still requires a distance outside
     // through_all, so a zero is refused for both.
+    vi.mocked(collectExtrudeLoops).mockReturnValue({
+      loops: [[{ entity_id: 'e1' }]], plane, sketchId: 'sk1', face: null,
+      profileSurfaces: [], builtSurfaces: [], loopDiags: [],
+    } as never)
     const repo = new Repository()
-    for (const termination of ['up_to', 'up_to_next']) {
-      expect(() =>
-        solveExtrude(
-          oc, scope, table,
-          { id: 'f1', extrude: { sketch: '$sk', distance: 0, termination } },
-          repo, {},
-        ),
-      ).toThrow(/distance must be non-zero/)
-    }
+    repo.register('q', { type: 'flatface', origin: [0, 0, 4], normal: [0, 0, 1] })
+    expect(() =>
+      solveExtrude(
+        oc, scope, table,
+        { id: 'f1', extrude: { sketch: '$sk', distance: 0, termination: 'up_to', up_to: '@q' } },
+        repo, {},
+      ),
+    ).toThrow(/distance must be non-zero/)
+    expect(() =>
+      solveExtrude(
+        oc, scope, table,
+        { id: 'f1', extrude: { sketch: '$sk', distance: 0, termination: 'up_to_next' } },
+        repo, {},
+      ),
+    ).toThrow(/distance must be non-zero/)
   })
 
   it('does not validate distance on a through_all solve', () => {
