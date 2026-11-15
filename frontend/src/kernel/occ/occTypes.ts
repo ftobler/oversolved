@@ -1288,6 +1288,26 @@ export interface OccModule extends OccBaseModule {
   IFSelect_ReturnStatus: {
     IFSelect_RetDone: OccEnumValue
   }
+
+  // ─── optional bindings (probed, never assumed) ───
+  // The pinned release does not bind either of these. Declaring them optional
+  // keeps move-face's capability probe a typed lookup (`typeof oc.GeomLib?.X`)
+  // instead of an erased double cast, and a release bump that binds one flips
+  // the rung on without a code change.
+  GeomLib?: OccOptionalNamespace
+  BRepOffset_MakeOffset?: new (...args: never[]) => OccFaceOffsetMaker
+}
+
+/** A namespace of optional OCCT functions: a pinned release may not bind it,
+ *  so every member is optional and a caller must probe with `typeof`. */
+export interface OccOptionalNamespace {
+  [member: string]: ((...args: never[]) => unknown) | undefined
+}
+
+/** BRepOffset_MakeOffset's per-face offset API (rung 4 of move-face). */
+export interface OccFaceOffsetMaker {
+  SetOffsetOnFace?: (...args: never[]) => void
+  MakeOffset?: (...args: never[]) => void
 }
 
 /** A face shape exposes its orientation (FORWARD/REVERSED) via Orientation_1. */

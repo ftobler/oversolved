@@ -24,25 +24,17 @@ export const RUNG_3 = 'rung 3 (GeomLib::ExtendSurfByLength)'
 export const RUNG_4 = 'rung 4 (OCCT per-face offset)'
 export const RUNG_T = 'rung T (tangent chain moved with the picked face)'
 
-interface GeomLibLike {
-  ExtendSurfByLength?: unknown
-}
-
-interface FaceOffsetLike {
-  SetOffsetOnFace?: unknown
-  MakeOffset?: unknown
-}
-
 /** Is GeomLib::ExtendSurfByLength bound in this OCCT build? */
 export function rung3Bound(oc: OccModule): boolean {
-  const lib = (oc as unknown as { GeomLib?: GeomLibLike }).GeomLib
-  return typeof lib?.ExtendSurfByLength === 'function'
+  return typeof oc.GeomLib?.ExtendSurfByLength === 'function'
 }
 
 /** Is BRepOffset_MakeOffset (the per-face offset route) bound? */
 export function rung4Bound(oc: OccModule): boolean {
-  const algo = (oc as unknown as { BRepOffset_MakeOffset?: FaceOffsetLike }).BRepOffset_MakeOffset
-  return typeof algo?.SetOffsetOnFace === 'function' && typeof algo?.MakeOffset === 'function'
+  const maker = oc.BRepOffset_MakeOffset
+  return typeof maker === 'function'
+    && typeof maker.prototype.SetOffsetOnFace === 'function'
+    && typeof maker.prototype.MakeOffset === 'function'
 }
 
 /** The reason a rung did not run, for a refusal's rung list. */
