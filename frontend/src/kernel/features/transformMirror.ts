@@ -15,12 +15,16 @@ import type { PlaneLike } from './shared/planes'
 import { resolvePlaneRef } from './shared/planes'
 import { resolveBody, resolveBodyRefList } from './shared/bodyResolution'
 import { makeMirrorTrsf, makeTranslationTrsf, makeRotationTrsf, makeScaleTrsf } from '../occ/transforms'
-import { booleanWithDiff } from '../occ/booleans'
+import { booleanWithDiff, booleanWithHistory } from '../occ/booleans'
+import { volumeOf } from '../occ/volume'
+import { shapeBndBox } from '../occ/primitives'
 import { transformCopyWithMapping, rekeyNamesForTransformedBody, rebuildNamesForTransformedCopy, readSourceFaceRows, type NameMaps } from '../occ/transformLineage'
 import { transferBooleanNames } from './booleanLineage'
 import { registerSplitBodies, resplitBody } from './bodySplit'
 import { readBodyNames } from '../occ/bodyNames'
 import { precisionCeilingWarning } from '../precision'
+import { solveFeaturePattern } from './patternFeature'
+import { mirrorSubject } from '@/utils/core/mirrorSubject'
 import { quatFromEulerXyz, quatToAxisAngle } from '@/utils/transform3d'
 
 type Dict = Record<string, unknown>
@@ -32,6 +36,7 @@ export interface TransformResult {
   operation: string
   body_ids?: string[]
   solver_warning?: string
+  exception?: string
 }
 
 /** Query-result -> [start, end] (mirrors `_get_edge_3d`). */
@@ -270,6 +275,31 @@ export function solveTransform(
   }
 }
 
+/**
+ * True when a reflection puts a tool exactly where it already was: the mirrored
+ * copy occupies the same solid as the source, so applying it changes nothing.
+ * A reflection is an isometry, so equal volume plus an equal bound is the cheap
+ * prefilter; the common volume settles partial overlaps the bounds cannot see.
+ * The cost is one Common per source on a feature mirror, never on a pattern.
+ */
+function reflectsOntoSelf(oc: OccModule, scope: DisposeScope, source: OccShape, reflected: OccShape): boolean {
+  const sourceVolume = volumeOf(oc, scope, source)
+  if (sourceVolume <= 0) return false
+  const reflectedVolume = volumeOf(oc, scope, reflected)
+  const tolerance = Math.max(1e-9, Math.abs(sourceVolume) * 1e-7)
+  if (Math.abs(sourceVolume - reflectedVolume) > tolerance) return false
+  const a = shapeBndBox(oc, scope, source)
+  const b = shapeBndBox(oc, scope, reflected)
+  const scale = Math.max(1, a.diagonal)
+  for (let axis = 0; axis < 3; axis++) {
+    if (Math.abs(a.min[axis] - b.min[axis]) > 1e-6 * scale) return false
+    if (Math.abs(a.max[axis] - b.max[axis]) > 1e-6 * scale) return false
+  }
+  const common = booleanWithHistory(oc, scope, source, reflected, 'common')
+  const shared = volumeOf(oc, scope, scope.track(common.shape))
+  return Math.abs(shared - sourceVolume) <= tolerance
+}
+
 /** Solve a mirror feature (mirrors `_solve_mirror`). */
 export function solveMirror(
   oc: OccModule,
@@ -278,10 +308,52 @@ export function solveMirror(
   feature: Dict,
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
+  featuresById: Record<string, Dict> = {},
+  solveContext: { variables: Record<string, number>; laterVariables: Record<string, number> } = {
+    variables: {}, laterVariables: {},
+  },
 ): TransformResult {
   const featureId = (feature.id as string) ?? ''
   // Params live in the kind sub-dict only; see solveTransform.
   const cfg = (feature.mirror as Dict) ?? {}
+  const subject = mirrorSubject(cfg)
+
+  // A feature mirror reapplies each source's own add or cut reflected about the
+  // plane. keep_original and merge describe a whole-body reflection, where the
+  // original can be dropped and the copy fused or spawned; a feature copy always
+  // stays inside the body the source shaped and never replaces the original, so
+  // the two flags have no meaning. Refuse them by name rather than ignore them.
+  if (subject === 'feature') {
+    for (const field of ['keep_original', 'merge'] as const) {
+      if (cfg[field] !== undefined) {
+        throw new Error(
+          `mirror: ${field} means nothing for a feature mirror; the source's own add or cut is ` +
+            'reapplied reflected inside the same body, so the original always stays',
+        )
+      }
+    }
+    const planeQuery = (cfg.plane as string) ?? ''
+    if (!planeQuery) throw new Error('mirror: plane is required')
+    const { origin, normal } = resolvePlaneRef(globalRepo, planeQuery, bodyStore, 'mirror')
+    const trsf = makeMirrorTrsf(oc, scope, origin, normal)
+    const result = solveFeaturePattern(
+      oc, scope, table, feature, cfg, globalRepo, bodyStore, featuresById, solveContext,
+      [{ key: 'm', trsf }], [],
+      {
+        noun: 'mirror',
+        opName: 'mirror',
+        coincides: (tool, copy) => reflectsOntoSelf(oc, scope, tool, copy),
+      },
+    )
+    return {
+      status: result.status,
+      body_id: result.body_id,
+      body_ids: result.body_ids,
+      operation: result.operation ?? 'cut',
+      ...(result.solver_warning !== undefined ? { solver_warning: result.solver_warning } : {}),
+      ...(result.exception !== undefined ? { exception: result.exception } : {}),
+    }
+  }
 
   const bodyQuery = (cfg.body as string) ?? ''
   const sourceBody = bodyQuery ? resolveBody(bodyQuery, bodyStore) : null

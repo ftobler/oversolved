@@ -101,6 +101,8 @@ import {
   applyReorderPickField,
   applyAddMirror,
   applySetMirrorField,
+  applyAddMirrorSource,
+  applyRemoveMirrorSource,
   applyAddSplit,
   applySetSplitField,
   applyAddSplitBody,
@@ -468,6 +470,12 @@ export const mutationHandlers: MutationHandlers = {
   },
   set_mirror_field: (next, m) =>
     applySetMirrorField(next, m.featureId, m.field, m.value),
+  // Its own toggle pair, not the pattern's: a mirror stores its sources under
+  // its own sub-dict, so reusing add_pattern_source would edit no mirror.
+  add_mirror_source: (next, m) =>
+    applyAddMirrorSource(next, m.featureId, m.sourceFeature),
+  remove_mirror_source: (next, m) =>
+    applyRemoveMirrorSource(next, m.featureId, m.index),
   add_split: (next, m) =>
     applyAddSplit(next, m.featureId, m.label, m.bodies, m.plane, m.keep),
   set_split_field: (next, m) =>

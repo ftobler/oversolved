@@ -411,12 +411,35 @@ export const TRANSFORM_SCHEMA: FeatureEditorSchema = {
 export const MIRROR_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_mirror',
   subKey: 'mirror',
-  defaults: { body: '', plane: '', keep_original: true, merge: true },
+  defaults: {
+    subject: 'body', body: '', source_features: [], plane: '', keep_original: true, merge: true,
+  },
   fields: [
-    { type: 'pick', key: 'body', label: 'Body' },
+    // The pattern's subject switch, read with absence meaning body (every
+    // document written before the feature subject existed is a body mirror).
+    { type: 'select', key: 'subject', label: 'Subject', default: 'body',
+      options: [{ value: 'body', label: 'Body' }, { value: 'feature', label: 'Feature' }] },
+    { type: 'pick', key: 'body', label: 'Body', showWhen: (d) => d.subject !== 'feature' },
+    // The mirrored features are FEATURE rows, not viewport picks; each source's
+    // own add or cut is reapplied reflected inside the body it shaped, in
+    // feature-log order. The chip's order is presentation only.
+    { type: 'pick', key: 'source_features', label: 'Source Features', multi: true,
+      addMutationType: 'add_mirror_source', addValueKey: 'sourceFeature',
+      removeMutationType: 'remove_mirror_source',
+      validatePick: toolSourcePickRefusal,
+      showWhen: (d) => d.subject === 'feature',
+      emptyText: '(pick one or more features to mirror)',
+      hint: 'Reflected in feature-log order; the source keeps its own copy.' },
+    { type: 'pick', key: 'target_body', label: 'Target body', transform: resolveBodyPickRef,
+      showWhen: (d) => d.subject === 'feature', emptyText: '(the body the source shaped)' },
     { type: 'pick', key: 'plane', label: 'Mirror Plane', transform: stripSelectionWrapper },
-    { type: 'checkbox', key: 'keep_original', label: 'Keep Original', default: true },
-    { type: 'checkbox', key: 'merge', label: 'Merge', default: true },
+    // The source's own operation is reapplied in the same body, so these two
+    // whole-body modes have no meaning on a feature mirror (the drive and the
+    // kernel refuse them by name). The editor hides them.
+    { type: 'checkbox', key: 'keep_original', label: 'Keep Original', default: true,
+      showWhen: (d) => d.subject !== 'feature' },
+    { type: 'checkbox', key: 'merge', label: 'Merge', default: true,
+      showWhen: (d) => d.subject !== 'feature' },
   ],
 }
 
@@ -489,14 +512,14 @@ function patternSkipValue(d: SchemaData): SkipEntry[] {
 }
 
 /**
- * The pattern source chip's own rule: a source is a whole feature row, not a
- * viewport pick. Only an earlier extrude, revolve or sweep produces a tool the
- * pattern can reapply (the order and self-reference rule is the pick hook's,
- * shared with every other feature-reference field).
+ * The pattern and mirror source chip's own rule: a source is a whole feature
+ * row, not a viewport pick. Only an earlier extrude, revolve or sweep produces a
+ * tool the repeat can reapply (the order and self-reference rule is the pick
+ * hook's, shared with every other feature-reference field).
  */
 const PATTERN_SOURCE_KINDS = ['extrude', 'revolve', 'sweep'] as const
 
-function patternSourcePickRefusal(id: string, features?: readonly PartFeature[]): string | null {
+function toolSourcePickRefusal(id: string, features?: readonly PartFeature[]): string | null {
   if (!id.startsWith('@') || id.includes('/')) {
     return 'pick a feature row (an extrude, revolve or sweep) in the Features list, not viewport geometry'
   }
@@ -507,7 +530,7 @@ function patternSourcePickRefusal(id: string, features?: readonly PartFeature[])
   }
   return (PATTERN_SOURCE_KINDS as readonly string[]).includes(feature.kind)
     ? null
-    : 'a pattern source is an extrude, revolve or sweep'
+    : 'a pattern or mirror source is an extrude, revolve or sweep'
 }
 
 // Both pattern kinds repeat the same thing: one feature, two subjects, one
@@ -529,7 +552,7 @@ export const PATTERN_SOURCE_FIELDS: EditorFieldDef[] = [
   { type: 'pick', key: 'source_features', label: 'Source Features', multi: true,
     addMutationType: 'add_pattern_source', addValueKey: 'sourceFeature',
     removeMutationType: 'remove_pattern_source',
-    validatePick: patternSourcePickRefusal,
+    validatePick: toolSourcePickRefusal,
     showWhen: (d) => d.subject === 'feature',
     emptyText: '(pick one or more features; the earliest heads the seed)',
     hint: 'Repeated in feature-log order; the earliest source heads the seed slot.' },

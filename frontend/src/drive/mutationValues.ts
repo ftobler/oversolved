@@ -45,6 +45,7 @@ import { isFaceProjectionSource, isProjectionPosition } from '@/kernel/features/
 import { projectionTargetRef } from '@/utils/yamlMutations/freezeProjection'
 import { SelectorError, validateSelector } from '@/kernel/select'
 import { declaredSelectorKind, selectorShapeHint } from '@/drive/selectionAids'
+import { mirrorSubject } from '@/utils/core/mirrorSubject'
 
 export type ValueViolationCode = 'invalid-mutation' | 'unknown-target'
 
@@ -1532,7 +1533,40 @@ function inlineFeatureFieldsProblem(
 }
 
 function addMirror(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  if (raw.subject === 'feature') {
+    for (const field of ['keep_original', 'merge']) {
+      if (raw[field] !== undefined && raw[field] !== null) {
+        return invalid(
+          `add_mirror field ${json(field)} means nothing on a feature mirror; the source's own add or cut is ` +
+            'reapplied mirrored inside the same body, so the original always stays',
+        )
+      }
+    }
+  }
   return inlineFeatureFieldsProblem(raw, ctx, 'mirror', 'set_mirror_field')
+}
+
+/** The subject of the mirror a setter names, read from the live document.
+ *  Absence of both the document and the field means body, the same rule the
+ *  kernel reads. */
+function storedMirrorSubject(raw: RawStep, ctx: ValueContext): 'body' | 'feature' {
+  if (ctx.doc === null) return 'body'
+  const feature = (ctx.doc.features ?? []).find(entry => entry.id === raw.featureId)
+  if (feature === undefined || feature.kind !== 'mirror') return 'body'
+  return mirrorSubject(feature.mirror)
+}
+
+/** The two whole-body flags a feature mirror refuses by name. Their value is
+ *  well-formed either way, so the schema check alone cannot catch them. */
+function setMirrorField(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const field = raw.field
+  if ((field === 'keep_original' || field === 'merge') && storedMirrorSubject(raw, ctx) === 'feature') {
+    return invalid(
+      `set_mirror_field field ${json(field)} means nothing on feature mirror ${json(raw.featureId)}; ` +
+        "a feature mirror reapplies the source's own add or cut, so the original always stays",
+    )
+  }
+  return fieldValue(raw, ctx)
 }
 
 // The pattern count is the one number with a rule the JSON schema cannot carry:
@@ -2410,7 +2444,9 @@ export const MUTATION_VALUE_RULES = {
   set_part_roughness: unitInterval('roughness'),
   set_part_transmission: unitInterval('transmission'),
   add_mirror: addMirror,
-  set_mirror_field: fieldValue,
+  set_mirror_field: setMirrorField,
+  add_mirror_source: queryField('sourceFeature'),
+  remove_mirror_source: indexField('index'),
   add_split: addSplit,
   set_split_field: setSplitField,
   add_split_body: queryField('bodyQuery'),

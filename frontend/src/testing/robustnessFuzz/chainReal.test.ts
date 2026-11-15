@@ -444,6 +444,38 @@ describe.skipIf(!occAvailable || !stripTypes)('the seeded geometry fuzz (real ke
   // reaches it; that is why the floor counts split steps that BUILT, not seeds.
   const SPLIT_SEEDS = envInt('ROBUSTNESS_FUZZ_SPLIT_SEEDS', 24)
 
+  // The feature-mirror tail is its own seed family too: the step is drawn from a
+  // derived PRNG (`seed ^ FEATURE_MIRROR_SALT`) and synthesises a cut source, so
+  // the default sweep and its pinned findings are untouched.
+  const FEATURE_MIRROR_SEEDS = envInt('ROBUSTNESS_FUZZ_FEATURE_MIRROR_SEEDS', 24)
+
+  it('replays the feature-mirror-tail range: no violation and no unexpected refusal', { timeout: Math.min(90 * 60_000, 120_000 + Math.ceil(FEATURE_MIRROR_SEEDS / WORKERS) * BUDGET_MS) }, async () => {
+    const problems: string[] = []
+    let mirrorBuilt = 0
+    const outcomes = await runSeedsBounded(FEATURE_MIRROR_SEEDS, WORKERS, (seed) =>
+      runChainWithTimeout(generateRecipe(seed, { featureMirrorTail: true }))
+        .catch((err: unknown) => {
+          throw new Error(`feature mirror seed ${seed}: the watchdog child failed: ${err instanceof Error ? err.message : String(err)}`)
+        }))
+    for (let seed = 0; seed < FEATURE_MIRROR_SEEDS; seed++) {
+      const guarded = outcomes[seed]
+      if (guarded.status === 'hang') {
+        const where = guarded.hang.step === null
+          ? 'before the first step'
+          : `at ${guarded.hang.phase} step ${guarded.hang.step} (${guarded.hang.kind})`
+        problems.push(`feature mirror seed ${seed}: HANG ${where}`)
+        continue
+      }
+      const { run } = guarded.replay
+      for (const v of run.violations) problems.push(`feature mirror seed ${seed}: step ${v.step}: ${v.message}`)
+      const last = run.reports.at(-1)
+      if (last?.kind === 'feature-mirror' && last.status === 'built') mirrorBuilt++
+    }
+    console.log(`[robustness-fuzz] feature-mirror sweep: ${FEATURE_MIRROR_SEEDS} seeds, ${mirrorBuilt} mirror steps built`)
+    expect(problems).toEqual([])
+    expect(mirrorBuilt).toBeGreaterThanOrEqual(Math.ceil(FEATURE_MIRROR_SEEDS / 3))
+  })
+
   it('replays the split-tail range: no violation and no unexpected refusal', { timeout: Math.min(90 * 60_000, 120_000 + Math.ceil(SPLIT_SEEDS / WORKERS) * BUDGET_MS) }, async () => {
     const problems: string[] = []
     let splitBuilt = 0

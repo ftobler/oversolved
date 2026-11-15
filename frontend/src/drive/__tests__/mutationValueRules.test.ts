@@ -211,6 +211,8 @@ describe('value rules cover the catalog', () => {
     ['set_part_transmission', { type: 'set_part_transmission', bodyId: 'b1', transmission: -0.5 }],
     ['add_mirror', { type: 'add_mirror', featureId: 'mi1', keep_original: 'yes' }],
     ['set_mirror_field', { type: 'set_mirror_field', featureId: 'mi1', field: 'merge', value: 'yes' }],
+    ['add_mirror_source', { type: 'add_mirror_source', featureId: 'mi1', sourceFeature: '' }],
+    ['remove_mirror_source', { type: 'remove_mirror_source', featureId: 'mi1', index: -1 }],
     ['set_variable_field', { type: 'set_variable_field', featureId: 'va1', field: 'value', value: 'three' }],
     ['add_helix', { type: 'add_helix', featureId: 'he1', reference: 'a helix with spaces' }],
     ['set_helix_field', { type: 'set_helix_field', featureId: 'he1', field: 'hand', value: 'up' }],

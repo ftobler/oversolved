@@ -549,8 +549,23 @@ const PATTERN_ALIAS_NOTE =
   'deprecation note. Use `add_linear_pattern` or `add_circular_pattern` instead; the retired `mode`, `step_angle` ' +
   'and `_x`/`_y` field names are only accepted here.'
 
+// What a mirror reflects is the same shape the pattern's subject has, minus the
+// instance grid: a whole body, or one or more earlier features' own add or cut
+// reapplied reflected. The body subject's own flags are stated here so both
+// rows that write them say what they mean.
+const MIRROR_NOTE =
+  '`subject` selects what is mirrored. `body` (the default, and the only subject an older document has) ' +
+  'reflects `body` whole across `plane`: `keep_original` keeps the source body and `merge` fuses the copy into it, ' +
+  'otherwise the copy is a new body. `feature` mirrors one or more earlier extrudes, revolves or sweeps whose ' +
+  'operation is add or cut, inside the body each source shaped: name them in `source_features`, e.g. ["@ex1", "@ex2"], ' +
+  'and `target_body` chooses the body when a source touched more than one. The mirrored copy reapplies the source\'s ' +
+  'own operation in the same body, so `keep_original` and `merge` mean nothing there and are refused. ' +
+  'A source that no longer exists or now comes after the mirror is dropped with a named warning; a mirror with no ' +
+  'sources left is refused. A source symmetric about the plane mirrors onto itself and the mirror is a warning, ' +
+  'not a failed solve.'
+
 const MIRROR_INLINE_NOTE =
-  'One call may carry the whole mirror: ' +
+  MIRROR_NOTE + ' One call may carry the whole mirror: ' +
   `${featureFieldNames('mirror').join(', ')} are accepted inline and store the same keys ` +
   '`set_mirror_field` sets.'
 
@@ -1809,19 +1824,38 @@ export const MUTATION_CATALOG = {
     fields: { bodyId: str(), transmission: num() },
   },
   add_mirror: {
-    summary: 'Add a mirror feature, optionally with its body, plane and merge flags.',
+    summary: 'Add a mirror feature, optionally with its subject, picks, plane and merge flags.',
     note: MIRROR_INLINE_NOTE,
     fields: {
       ...featureAddFields(),
-      body: optStr('The body to mirror, e.g. body_ex2.'),
+      subject: optStr('body | feature; absent means body.'),
+      body: optStr('The body to mirror, e.g. body_ex2 (body subject).'),
+      source_features: optArr(
+        'Feature refs to mirror (feature subject), e.g. ["@ex1", "@ex2"]: earlier extrudes, revolves or sweeps with ' +
+        'operation add or cut. Applied in feature-log order.',
+      ),
+      target_body: optStr('The body a mirrored feature copy lands in, when a source shaped more than one.'),
       plane: optStr('The mirror plane: @builtin_plane_*, a bare name, @<planeId>, or a face query.'),
-      keep_original: optBool(),
-      merge: optBool(),
+      keep_original: optBool('Body subject only; a feature mirror refuses it.'),
+      merge: optBool('Body subject only; a feature mirror refuses it.'),
     },
   },
   set_mirror_field: {
     summary: 'Set one mirror field.',
+    note: MIRROR_NOTE,
     fields: { featureId: str(), field: fieldOf('mirror', 'set_mirror_field'), value: setterValue('mirror') },
+  },
+  add_mirror_source: {
+    summary: 'Add a source feature to a feature-subject mirror (toggles an already-listed source out).',
+    note: MIRROR_NOTE,
+    fields: {
+      featureId: str(),
+      sourceFeature: str('A feature ref, e.g. @ex1: an extrude, revolve or sweep with operation add or cut.'),
+    },
+  },
+  remove_mirror_source: {
+    summary: 'Remove a mirror source by index.',
+    fields: { featureId: str(), index: num() },
   },
   add_split: {
     summary: 'Add a split feature, optionally with its bodies, plane and kept side.',
@@ -2051,6 +2085,8 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   set_part_transmission: 'part style',
   add_mirror: 'features',
   set_mirror_field: 'features',
+  add_mirror_source: 'picks',
+  remove_mirror_source: 'picks',
   add_split: 'features',
   set_split_field: 'features',
   add_split_body: 'picks',

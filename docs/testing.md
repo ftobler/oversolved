@@ -84,7 +84,7 @@ downgrades every case to a warning.
 
 `frontend/src/hooks/__tests__/fuzz.test.ts` (fake scheduler, harness
 `fuzzHarness.ts`, minimiser `fuzzMinimizer.ts`) and its real-kernel half
-`fuzzReal.test.ts` generate seeded sequences over the 114-type
+`fuzzReal.test.ts` generate seeded sequences over the 116-type
 mutation example registry plus random undo/redo, and drives them through a
 fresh `DocSession`. After every step it checks that the document is well formed
 and JSON-serializable, the session is idle, no solve crashed and history stays
@@ -113,7 +113,9 @@ the same minimiser (`fuzzMinimizer.ts`). `recipe.ts` draws a recipe per seed: a
 start body (box, rounded-arc extrusion or revolve) plus up to eight edits (fuse
 and cut of boxes, cylinders and spheres, fillet, chamfer, hole, linear and
 circular array, mirror), all on a 2.5 mm grid and anchored to the running
-body's bounding box, so flush faces and tangencies are drawn often. `chain.ts`
+body's bounding box, so flush faces and tangencies are drawn often. The split
+and feature-mirror tails are separate seed families appended from derived PRNGs
+so the default chains stay byte-identical. `chain.ts`
 replays a recipe through the leaf feature solvers and after every step asserts
 the feature contract: the step built or refused with a message (a throw is
 classified, never aborts the run), the handle table and disposal counters match

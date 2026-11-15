@@ -3,6 +3,7 @@ import { warn, findFeature, normalizeRefList, round } from './helpers'
 import { arrayCountProblem } from '@/persistence/docSchema'
 import { skipValue } from '@/utils/core/patternSkip'
 import { splitPatternDef } from '@/utils/core/patternSplit'
+import { mirrorSubject } from '@/utils/core/mirrorSubject'
 
 /** Append a feature, lazily initializing the features array. */
 function pushFeature(doc: PartDoc, feature: PartFeature): void {
@@ -1288,15 +1289,37 @@ export function applySetTransformField(
 
 // ─── Mirror ───
 
+/** The mirror's authored fields. `operation` is the source's, so a mirror has
+ *  none; the shared pattern source keys do not all apply. */
+const MIRROR_FIELDS: readonly string[] = [
+  'subject', 'body', 'source_features', 'target_body', 'plane', 'keep_original', 'merge',
+]
+
 export function applyAddMirror(
   doc: PartDoc,
   featureId: string,
   label?: string,
   inline: Partial<MirrorFeatureDef> = {},
 ): void {
-  const mirror: MirrorFeatureDef = { body: '', plane: '', keep_original: true, merge: true }
-  mergeInlineFields(mirror, inline)
-  pushFeature(doc, { id: featureId, kind: 'mirror', label: label ?? 'Mirror', mirror })
+  const accepted = Object.fromEntries(
+    Object.entries(inline).filter(([field]) => MIRROR_FIELDS.includes(field)),
+  ) as FieldBag
+  if (typeof accepted.source_features === 'string') {
+    accepted.source_features = accepted.source_features === '' ? [] : [accepted.source_features]
+  }
+  const featureMirror = mirrorSubject(accepted) === 'feature'
+  if (featureMirror) {
+    // The whole-body flags have no meaning here; a direct replay may still
+    // carry them, so they are dropped rather than stored for the kernel to
+    // refuse. A body pick is kept so switching back restores it.
+    delete accepted.keep_original
+    delete accepted.merge
+  }
+  const mirror: FieldBag = featureMirror
+    ? { subject: 'feature', plane: '' }
+    : { subject: 'body', body: '', plane: '', keep_original: true, merge: true }
+  mergeInlineFields(mirror, accepted)
+  pushFeature(doc, { id: featureId, kind: 'mirror', label: label ?? 'Mirror', mirror: mirror as MirrorFeatureDef })
 }
 
 export function applySetMirrorField(
@@ -1306,7 +1329,58 @@ export function applySetMirrorField(
   value: unknown,
 ): void {
   const feature = findFeature(doc, featureId)
-  setSubFeatureField(featureId, 'mirror', feature?.kind === 'mirror' ? feature.mirror : undefined, field, value, 'applySetMirrorField')
+  const sub = feature?.kind === 'mirror' ? (feature.mirror as FieldBag) : undefined
+  if (sub === undefined) {
+    warn(`applySetMirrorField: feature ${featureId} has no mirror`)
+    return
+  }
+  // A feature mirror reapplies the source's own add or cut inside the same
+  // body. The whole-body flags would be invisible in the editor and refused by
+  // the kernel, so they are refused here by name instead of stored.
+  if ((field === 'keep_original' || field === 'merge') && mirrorSubject(sub) === 'feature') {
+    warn(
+      `applySetMirrorField: refusing ${field} on feature mirror ${featureId}; ` +
+        "a feature mirror reapplies the source's own add or cut, so the original always stays",
+    )
+    return
+  }
+  const toStore = field === 'source_features' ? sourceList(value) : value
+  if (!setSubFeatureField(featureId, 'mirror', sub, field, toStore, 'applySetMirrorField', MIRROR_FIELDS)) return
+  // Switching the subject owns the fields that only one subject reads: the
+  // body flags go, the body pick stays (switching back restores it) and a
+  // legacy singular source folds into the list.
+  if (field === 'subject' && value === 'feature') {
+    delete sub.keep_original
+    delete sub.merge
+  }
+  if (field === 'source_features') delete sub.source_feature
+}
+
+/** Add a feature to a feature-subject mirror's sources, toggling like every
+ *  other multi pick: re-picking a source already in the list drops it again. */
+export function applyAddMirrorSource(doc: PartDoc, featureId: string, sourceFeature: string): void {
+  const feature = findFeature(doc, featureId)
+  const sub = feature?.kind === 'mirror' ? (feature.mirror as FieldBag) : undefined
+  if (sub === undefined) {
+    warn(`applyAddMirrorSource: feature ${featureId} has no mirror`)
+    return
+  }
+  const sources = _ensurePatternSources(sub)
+  const index = sources.indexOf(sourceFeature)
+  if (index >= 0) sources.splice(index, 1)
+  else sources.push(sourceFeature)
+}
+
+export function applyRemoveMirrorSource(doc: PartDoc, featureId: string, index: number): void {
+  const feature = findFeature(doc, featureId)
+  const sub = feature?.kind === 'mirror' ? (feature.mirror as FieldBag) : undefined
+  if (sub === undefined) {
+    warn(`applyRemoveMirrorSource: feature ${featureId} has no mirror`)
+    return
+  }
+  const sources = _ensurePatternSources(sub)
+  if (!removableIndex(sources, index)) return
+  sources.splice(index, 1)
 }
 
 // ─── Split ───

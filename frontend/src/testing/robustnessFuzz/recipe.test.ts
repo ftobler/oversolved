@@ -31,6 +31,7 @@ function referencedBodies(step: RecipeStep): string[] {
     case 'linear-array': return [step.target]
     case 'circular-array': return [step.target]
     case 'mirror': return [step.target]
+    case 'feature-mirror': return [step.target]
     case 'shell': return [step.target]
     case 'helix': return [step.target]
     case 'split': return [step.target]
@@ -75,6 +76,7 @@ describe('the geometry-fuzz recipe generator', () => {
       case 'linear-array': return [step.pitch]
       case 'circular-array': return [step.stepDeg]
       case 'mirror': return []
+      case 'feature-mirror': return [step.depth]
       case 'shell': return [step.thickness]
       case 'helix': return [step.pitch]
       case 'split': return []
@@ -91,6 +93,7 @@ describe('the geometry-fuzz recipe generator', () => {
       case 'linear-array': return [step.count]
       case 'circular-array': return [step.count]
       case 'mirror': return [step.face]
+      case 'feature-mirror': return [step.face]
       case 'shell': return [step.face]
       case 'helix': return [step.face, step.turns]
       case 'split': return [step.fraction * 10]
@@ -143,6 +146,23 @@ describe('the geometry-fuzz recipe generator', () => {
     }
     expect(centered).toBeGreaterThan(0)
     expect(skipped).toBeGreaterThan(0)
+  })
+
+  it('the feature-mirror sweep leaves the default chain byte-identical', () => {
+    // The feature mirror tail comes from a derived PRNG too, so every existing
+    // pinned seed draws the same chain.
+    for (let seed = 0; seed < 50; seed++) {
+      const plain = generateRecipe(seed)
+      const tailed = generateRecipe(seed, { featureMirrorTail: true })
+      expect(tailed.steps.slice(0, plain.steps.length)).toEqual(plain.steps)
+      expect(tailed.steps).toHaveLength(plain.steps.length + 1)
+      const last = tailed.steps.at(-1)!
+      expect(last.kind).toBe('feature-mirror')
+      if (last.kind !== 'feature-mirror') continue
+      expect(last.target).toBe(PRIMARY_BODY)
+      expect(['x', 'y', 'z']).toContain(last.plane)
+      expect(last.depth % FUZZ_GRID_MM).toBeCloseTo(0, 9)
+    }
   })
 
   it('appends one split step with a drawn axis, fraction and keep side', () => {

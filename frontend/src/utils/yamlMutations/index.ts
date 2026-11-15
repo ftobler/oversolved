@@ -96,6 +96,8 @@ export {
   applyRemoveTransformBody,
   applyAddMirror,
   applySetMirrorField,
+  applyAddMirrorSource,
+  applyRemoveMirrorSource,
   applyAddSplit,
   applySetSplitField,
   applyAddSplitBody,
