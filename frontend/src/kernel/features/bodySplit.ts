@@ -2,7 +2,10 @@
  * THE one place a shape becomes Body entries.
  *
  * The invariant (knowledgebase.agent.md, "Separated"): one `Body` in the body
- * store is exactly one OCC solid. Disjoint solids are separate parts, and the
+ * store is exactly one OCC solid, and that solid carries material. A
+ * zero-volume solid a boolean left BESIDE real material is kernel debris, not a
+ * part, so it is dropped here (`materialSolids`) rather than registered as a
+ * phantom part. Disjoint solids are separate parts, and the
  * geometry driver decides -- there is no intentional/accidental distinction.
  *
  * Before this module the rule was hand-copied into five feature leaves, each
@@ -30,7 +33,8 @@ import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import type { KernelPrecision } from '../precision'
-import { exploreSolids } from '../occ/booleans'
+import { exploreSolids, volumeOf } from '../occ/booleans'
+import { TOL_VOLUME_DEGENERATE } from '../solverConstants'
 import { solidCentroid } from '../occ/primitives'
 import { canonicalEdges, canonicalFaces, namesToArray, type UuidArray } from '../occ/bodyNames'
 import type { SubShapeMap } from '../occ/subshapeIdentity'
@@ -70,6 +74,51 @@ interface SiblingNames {
   face_cap_ancestry: Record<string, string[]>
   face_owner?: Record<string, string>
   edge_owner?: Record<string, string>
+}
+
+/**
+ * The solids of `shape` that carry material, in explorer order.
+ *
+ * A boolean over coincident faces can return a zero-volume solid beside the
+ * real result: a closed, BRepCheck-valid flat skin with no material in it.
+ * OCCT 8 does this for a corner cut whose tool face is exactly flush with a
+ * target wall (robustness-fuzz seed 990): the cut is a sound cut, and the skin
+ * is debris the kernel left in the compound. Registering it would put a phantom
+ * zero-volume part in the Parts list, so body creation drops it here, the one
+ * place a shape becomes bodies.
+ *
+ * The budget is the degenerate rung of the volume ladder (`solverConstants.ts`)
+ * read as a fraction of the shape's own material, so a genuine thin wall
+ * survives at any model scale and only a fragment a billionth of the body does
+ * not. A shape that reads no material at all is left alone: an open shell
+ * integrates to zero under `volumeOf`'s `OnlyClosed` read and is a supported
+ * body (L5, an imported surface body), not debris, so only a solid beside real
+ * material can be a fragment of it.
+ *
+ * A non-finite read is a kernel failure, not evidence of no material: it
+ * refuses the solve the way a NaN ordering key does, rather than silently
+ * dropping geometry.
+ */
+function materialSolids(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape[] {
+  const solids = exploreSolids(oc, scope, shape)
+  // A lone solid is the whole body: there is no sibling to be debris relative
+  // to, so the read is not paid on the common one-solid path.
+  if (solids.length < 2) return solids
+  const volumes = solids.map((solid) => {
+    const volume = Math.abs(volumeOf(oc, scope, solid))
+    if (!Number.isFinite(volume)) {
+      throw new Error(
+        'bodySplit: a solid volume read failed (non-finite); refusing to register a body it cannot weigh',
+      )
+    }
+    return volume
+  })
+  const total = volumes.reduce((sum, volume) => sum + volume, 0)
+  // Nothing weighs anything: an open-shell body (volume reads 0 because its
+  // shell is not closed) or a geometry-only import. That is not debris to drop.
+  if (total === 0) return solids
+  const budget = TOL_VOLUME_DEGENERATE * total
+  return solids.filter((_, i) => volumes[i] > budget)
 }
 
 /**
@@ -199,7 +248,7 @@ function orderedSolidsWithPreferred(
   parent: OccShape,
   preferred: OccShape | null,
 ): OccShape[] {
-  const solids = exploreSolids(oc, scope, parent)
+  const solids = materialSolids(oc, scope, parent)
   if (preferred === null || solids.length < 2) return orderSolids(oc, scope, parent, solids)
   const at = solids.findIndex((s) => (s as OccSubShape).IsSame(preferred as OccSubShape))
   if (at < 0) return orderSolids(oc, scope, parent, solids)
@@ -207,9 +256,10 @@ function orderedSolidsWithPreferred(
   return [kept, ...orderSolids(oc, scope, parent, solids)]
 }
 
-/** The solids `shape` decomposes into, in stable sibling order. Empty for a shell-only shape. */
+/** The solids `shape` decomposes into that carry material, in stable sibling order.
+ *  Empty only when the shape has no solid sub-shape at all. */
 export function splitSolids(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape[] {
-  return orderSolids(oc, scope, shape, exploreSolids(oc, scope, shape))
+  return orderSolids(oc, scope, shape, materialSolids(oc, scope, shape))
 }
 
 /**

@@ -18,7 +18,10 @@ vi.mock('../../occ/primitives', async (importOriginal) => {
 })
 vi.mock('../../occ/booleans', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../occ/booleans')>()
-  return { ...actual, exploreSolids: vi.fn() }
+  // `splitSolids` also drops material-free solids (materialSolids), so its
+  // volume read is stubbed beside the explorer walk: these cases are about the
+  // ORDER refusal, and the placeholder solids carry no geometry to weigh.
+  return { ...actual, exploreSolids: vi.fn(), volumeOf: vi.fn() }
 })
 vi.mock('../../occ/constructionLineage', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../occ/constructionLineage')>()
@@ -27,7 +30,7 @@ vi.mock('../../occ/constructionLineage', async (importOriginal) => {
 
 import { splitSolids } from '../bodySplit'
 import { solidCentroid } from '../../occ/primitives'
-import { exploreSolids } from '../../occ/booleans'
+import { exploreSolids, volumeOf } from '../../occ/booleans'
 import { shapeNormalFrame } from '../../occ/constructionLineage'
 import { DisposeScope } from '../../occ/disposeScope'
 import { SPLIT_EPS } from '../../constructionName'
@@ -38,6 +41,7 @@ describe('bodySplit: orderSolids refusal messages', () => {
   function stubSplit(centroids: Vec3[]): void {
     const items = centroids.map(() => ({}) as OccShape)
     vi.mocked(exploreSolids).mockReturnValue(items)
+    vi.mocked(volumeOf).mockReturnValue(1)
     vi.mocked(solidCentroid).mockImplementation((_oc, _scope, solid) => centroids[items.indexOf(solid)])
     vi.mocked(shapeNormalFrame).mockReturnValue({ centre: [0, 0, 0], span: 1 })
   }

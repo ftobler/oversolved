@@ -1,0 +1,75 @@
+{
+  "seed": 990,
+  "violations": [
+    "step 5: body body_seed has volume 0"
+  ],
+  "steps": [
+    {
+      "kind": "start",
+      "id": "seed",
+      "body": "body_seed",
+      "shape": "box",
+      "size": [
+        22.5,
+        35,
+        17.5
+      ],
+      "arcRadius": 0,
+      "angleDeg": 0
+    },
+    {
+      "kind": "fillet",
+      "id": "s1",
+      "target": "body_seed",
+      "edge": 8,
+      "radius": 5
+    },
+    {
+      "kind": "hole",
+      "id": "s2",
+      "target": "body_seed",
+      "face": 2,
+      "diameter": 7.5,
+      "depth": 5,
+      "depthMode": "blind",
+      "threadDepth": 10,
+      "thread": "M3x0.5"
+    },
+    {
+      "kind": "shell",
+      "id": "s3",
+      "target": "body_seed",
+      "face": 3,
+      "thickness": 2.5
+    },
+    {
+      "kind": "mirror",
+      "id": "s4",
+      "target": "body_seed",
+      "plane": "face",
+      "face": 2,
+      "keepOriginal": false,
+      "merge": true
+    },
+    {
+      "kind": "boolean",
+      "id": "s5",
+      "operation": "subtract",
+      "target": "body_seed",
+      "tool": "box",
+      "toolId": "tool_s5",
+      "toolBody": "body_tool_s5",
+      "size": [
+        10,
+        17.5,
+        12.5
+      ],
+      "anchor": "max",
+      "offset": [
+        0,
+        0,
+        0
+      ]
+    }
+  ]
+}
