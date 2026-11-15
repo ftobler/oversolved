@@ -1,8 +1,12 @@
 // Direction resolution and the 3D line/direction/axis query resolvers shared
-// by the array, revolve and sweep leaves. Pure, no OCC.
+// by the array, revolve and sweep leaves. The line/direction math is pure; an
+// axis carrier's SENSE (which way along its own axis a cylinder, cone or
+// circular edge points) needs the face, so that half lives in axisSense.ts and
+// is reached only from the strict direction resolver.
 
 import type { Repository } from '../../query'
 import { sketchToWorld2d, type PlaneLike } from './planes'
+import { resolveAxisCarrier, type AxisCarrierKind, type AxisSenseContext } from './axisSense'
 
 type Dict = Record<string, unknown>
 
@@ -210,14 +214,55 @@ export function resolveAxisQuery(
  * or does not resolve to a usable edge/face. Unlike `resolveDirectionQuery`
  * there is no silent world-axis fallback: the pattern leaf treats `null` as a
  * solve error so an unpicked direction never arrays along an arbitrary axis.
+ *
+ * An axis carrier (cylindrical face, conical face, circular edge, sketch
+ * circle) resolves to its own axis, then to the free-end sense when a context
+ * is supplied (axisSense.ts). Without a context the raw axis sense is used,
+ * which is what a pure caller can know.
  */
 export function resolveDirectionQueryStrict(
   query: string,
   globalRepo: Repository,
   bodyStore: Record<string, unknown> | null = null,
+  axisContext: AxisSenseContext | null = null,
 ): number[] | null {
+  if (!query) return null
+  const carrier = resolveAxisCarrierRef(query, globalRepo, bodyStore)
+  if (carrier !== null) {
+    if (axisContext === null || bodyStore === null) return carrier.axis
+    const sense = resolveAxisCarrier(
+      carrier.kind, query,
+      carrier.axis === null ? null : carrier.axis as [number, number, number],
+      axisContext, globalRepo, bodyStore,
+    )
+    return sense?.direction ?? carrier.axis
+  }
   const line = resolveQueryToLine(query, globalRepo, bodyStore)
   return line ? line.dir : null
+}
+
+/** The axis carrier a query names, with its raw axis when the payload carries
+ *  one. A cylindrical face carries `axis`; a conical face does not (only the
+ *  tessellated face datum has a surface frame), so its sense is read from OCC
+ *  when a context is supplied; a circular edge and a sketch circle come from
+ *  the circular reference. A straight edge, a sketch line or a planar face is
+ *  not an axis carrier. */
+export function resolveAxisCarrierRef(
+  query: string,
+  globalRepo: Repository,
+  bodyStore: Dict | null,
+): { kind: AxisCarrierKind; axis: number[] | null } | null {
+  if (!query) return null
+  const circ = resolveCircularReference(query, globalRepo, bodyStore)
+  if (circ !== null
+    && (circ.kind === 'cylinderface' || circ.kind === 'circular_edge' || circ.kind === 'sketch_circle')) {
+    return { kind: circ.kind, axis: circ.axis }
+  }
+  const data = globalRepo.query(query, null, bodyStore) as Dict | null
+  if (data?.type !== 'coneface') return null
+  const frame = data.surface_frame as { axis?: number[] } | undefined
+  const raw = Array.isArray(frame?.axis) ? normalize3(frame.axis as number[]) : null
+  return { kind: 'coneface', axis: raw }
 }
 
 /**

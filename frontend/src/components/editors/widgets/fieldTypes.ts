@@ -61,8 +61,10 @@ export interface PickFieldDef extends BaseFieldDef {
   // so a refusal cannot misstate what the field accepts. The feature list is
   // the document's own rows, for a rule that must look an entity's kind up (the
   // hole's sketch pick refusing a circle); a caller without it gets a rule that
-  // can only judge the id's shape.
-  validatePick?: (selectionId: string, features?: readonly PartFeature[]) => string | null
+  // can only judge the id's shape. The form's data is the third argument, for a
+  // rule that depends on another field (the linear pattern's pick accepting a
+  // face only where the mode reads a direction, not a length).
+  validatePick?: (selectionId: string, features?: readonly PartFeature[], data?: SchemaData) => string | null
   addMutationType?: string
   addValueKey?: string
   removeMutationType?: string
@@ -105,6 +107,16 @@ export type EditorFieldDef =
   | CheckboxFieldDef
   | PickFieldDef
   | TextFieldDef
+  | ReadonlyFieldDef
+
+/** A value the solve computed, shown but not edited (the linear pattern's
+ *  resolved spacing). `value` reads the feature's last solve result; null hides
+ *  the row, which is the state before the first solve. */
+export interface ReadonlyFieldDef extends BaseFieldDef {
+  type: 'readonly'
+  unit?: string
+  value: (solved: unknown) => string | null
+}
 
 // ─── shared prop fragments ───
 

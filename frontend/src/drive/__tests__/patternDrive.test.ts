@@ -131,6 +131,73 @@ describe('pattern boundary refusals', () => {
     expect(refusal({ type: 'set_circular_pattern_field', featureId: 'pt1', field: 'skip', value: '2:-1' }))
       .toContain('no grid cells')
   })
+
+  it('accepts the three direction modes and a vector with expression components', () => {
+    for (const mode of ['direction_distance', 'directive_length', 'manual']) {
+      const accepted = validateMutation(
+        { type: 'add_linear_pattern', featureId: 'pt1', direction_mode: mode, direction_2_mode: mode },
+        { doc: emptyDriveDoc() },
+      )
+      expect(accepted.ok, mode).toBe(true)
+    }
+    const vector = validateMutation(
+      {
+        type: 'add_linear_pattern', featureId: 'pt1', direction_mode: 'manual',
+        direction: ['w/2', 0, 5],
+      },
+      { doc: emptyDriveDoc() },
+    )
+    expect(vector.ok, JSON.stringify(!vector.ok ? vector.error : null)).toBe(true)
+    const unknown = refusal({ type: 'add_linear_pattern', featureId: 'pt1', direction_mode: 'sideways' })
+    expect(unknown).toContain('direction_distance')
+    expect(unknown).toContain('sideways')
+  })
+
+  it('refuses pitch in a mode that does not read it, by name', () => {
+    for (const mode of ['directive_length', 'manual']) {
+      expect(refusal({ type: 'add_linear_pattern', featureId: 'pt1', direction_mode: mode, pitch: 5 }))
+        .toContain(`pitch is not read in ${mode} mode`)
+      expect(refusal({ type: 'add_linear_pattern', featureId: 'pt1', direction_2_mode: mode, pitch_2: 5 }))
+        .toContain(`pitch_2 is not read in ${mode} mode`)
+    }
+    // A mode that does read it takes one, and a manual step needs no pitch.
+    expect(validateMutation(
+      { type: 'add_linear_pattern', featureId: 'pt1', direction_mode: 'direction_distance', pitch: 5 },
+      { doc: emptyDriveDoc() },
+    )).toMatchObject({ ok: true })
+    expect(validateMutation(
+      {
+        type: 'add_linear_pattern', featureId: 'pt1', second_direction: true,
+        direction_mode: 'direction_distance', direction_2_mode: 'direction_distance',
+        pitch: 5, pitch_2: 5,
+      },
+      { doc: emptyDriveDoc() },
+    )).toMatchObject({ ok: true })
+    expect(validateMutation(
+      { type: 'add_linear_pattern', featureId: 'pt1', direction_mode: 'manual', direction: [10, 0, 0] },
+      { doc: emptyDriveDoc() },
+    )).toMatchObject({ ok: true })
+  })
+
+  it('refuses a setter pitch against the MODE STORED on the document', () => {
+    const doc: PartDoc = emptyDriveDoc()
+    doc.features = [{
+      id: 'pt1', kind: 'linear_pattern',
+      linear_pattern: { subject: 'body', source_body: '@b1', direction_mode: 'manual', direction: [5, 0, 0] },
+    }]
+    const result = validateMutation(
+      { type: 'set_linear_pattern_field', featureId: 'pt1', field: 'pitch', value: 5 },
+      { doc },
+    )
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error.message).toContain('pitch is not read in manual mode')
+    // The same setter lands once the mode reads a pitch.
+    const ok = validateMutation(
+      { type: 'set_linear_pattern_field', featureId: 'pt1', field: 'direction_mode', value: 'direction_distance' },
+      { doc },
+    )
+    expect(ok).toMatchObject({ ok: true })
+  })
 })
 
 describe('one inline add lands the whole pattern', () => {
@@ -148,6 +215,18 @@ describe('one inline add lands the whole pattern', () => {
         subject: 'feature', source_features: ['@ex1', '@ex2'], count: 4, pitch: 8,
         direction: [1, 0, 0], invert: true, target_body: '@body_ex1',
       },
+    })
+  })
+
+  it('lands a manual direction mode and its step vector in one call', () => {
+    const doc: PartDoc = emptyDriveDoc()
+    mutationHandlers.add_linear_pattern(doc, {
+      type: 'add_linear_pattern', featureId: 'pt1', label: 'Pattern', subject: 'body',
+      source_body: '@b1', count: 2, direction_mode: 'manual', direction: [10, 0, 5],
+    })
+    const feature = doc.features?.find((entry) => entry.id === 'pt1')
+    expect(feature).toMatchObject({
+      linear_pattern: { direction_mode: 'manual', direction: [10, 0, 5] },
     })
   })
 

@@ -43,10 +43,20 @@ function makeCircular(over: Record<string, unknown> = {}): PartFeature {
   } as unknown as PartFeature
 }
 
-function renderEditor(feature: PartFeature, onMutation = vi.fn()) {
-  render(<FeatureEditor feature={feature} onMutation={onMutation} features={FEATURES} schema={LINEAR_PATTERN_SCHEMA} />)
+function renderEditor(feature: PartFeature, onMutation = vi.fn(), solved?: Record<string, unknown>) {
+  render(
+    <FeatureEditor
+      feature={feature}
+      onMutation={onMutation}
+      features={FEATURES}
+      schema={LINEAR_PATTERN_SCHEMA}
+      solved={solved}
+    />,
+  )
   return onMutation
 }
+
+const labelsNow = () => [...document.querySelectorAll('.feature-field-label')].map((n) => n.textContent)
 
 const field = (key: string) => {
   const found = LINEAR_PATTERN_SCHEMA.fields.find((f) => f.key === key)
@@ -63,8 +73,12 @@ describe('LINEAR_PATTERN_SCHEMA', () => {
     })
     expect(LINEAR_PATTERN_SCHEMA.fields.map((f) => f.key)).toEqual([
       'subject', 'source_body', 'source_features', 'target_body', 'operation',
-      'direction_query', 'invert', 'count', 'pitch', 'centered', 'second_direction',
-      'direction_2_query', 'invert_2', 'count_2', 'pitch_2', 'centered_2', 'skip',
+      'direction_mode', 'direction_query', 'invert', 'count', 'pitch',
+      'resolved_pitch', 'direction', 'direction', 'direction',
+      'centered', 'second_direction',
+      'direction_2_mode', 'direction_2_query', 'invert_2', 'count_2', 'pitch_2',
+      'resolved_pitch_2', 'direction_2', 'direction_2', 'direction_2',
+      'centered_2', 'skip',
     ])
   })
 
@@ -174,10 +188,11 @@ describe('LINEAR_PATTERN_SCHEMA', () => {
 
   it('hides the second-direction rows until the checkbox is ticked', () => {
     renderEditor(makeFeature())
-    const labels = [...document.querySelectorAll('.feature-field-label')].map((n) => n.textContent)
+    const labels = labelsNow()
     expect(labels).toContain('Direction')
     expect(labels).toContain('Pitch')
     expect(labels).not.toContain('Direction 2')
+    expect(labels).not.toContain('Direction 2 type')
     expect(labels).not.toContain('Count 2')
     expect(labels).not.toContain('Pitch 2')
     expect(labels).not.toContain('Centered 2')
@@ -185,12 +200,75 @@ describe('LINEAR_PATTERN_SCHEMA', () => {
 
   it('shows the second-direction rows when the checkbox is ticked', () => {
     renderEditor(makeFeature({ second_direction: true }))
-    const labels = [...document.querySelectorAll('.feature-field-label')].map((n) => n.textContent)
+    const labels = labelsNow()
+    expect(labels).toContain('Direction 2 type')
     expect(labels).toContain('Direction 2')
     expect(labels).toContain('Invert 2')
     expect(labels).toContain('Count 2')
     expect(labels).toContain('Pitch 2')
     expect(labels).toContain('Centered 2')
+  })
+
+  it('offers the three direction types and defaults to Direction + Distance', () => {
+    renderEditor(makeFeature())
+    const labels = labelsNow()
+    expect(labels).toContain('Direction type')
+    expect(labels).not.toContain('Spacing')
+    expect(labels).not.toContain('Step X')
+    const select = field('direction_mode')
+    expect(select.type).toBe('select')
+    expect(select.type === 'select' && select.options.map((o) => o.value))
+      .toEqual(['direction_distance', 'directive_length', 'manual'])
+    expect(select.type === 'select' && select.default).toBe('direction_distance')
+  })
+
+  it('replaces Pitch with the resolved Spacing row in directive-length mode', () => {
+    renderEditor(makeFeature({ direction_mode: 'directive_length' }), vi.fn(), { resolved_pitch: 15 })
+    const labels = labelsNow()
+    expect(labels).toContain('Spacing')
+    expect(labels).not.toContain('Pitch')
+    expect(screen.getByText('15', { exact: false })).not.toBeNull()
+  })
+
+  it('hides the Spacing row until a solve has reported one', () => {
+    renderEditor(makeFeature({ direction_mode: 'directive_length' }))
+    expect(labelsNow()).not.toContain('Spacing')
+  })
+
+  it('shows the manual step rows and writes the whole vector', () => {
+    const onMutation = renderEditor(makeFeature({ direction_mode: 'manual', direction: [2, 0, 5] }))
+    const labels = labelsNow()
+    expect(labels).toContain('Step X')
+    expect(labels).toContain('Step Y')
+    expect(labels).toContain('Step Z')
+    expect(labels).not.toContain('Direction')
+    expect(labels).not.toContain('Pitch')
+    const x = screen.getByText('Step X').parentElement!.querySelector('input') as HTMLInputElement
+    fireEvent.focus(x)
+    fireEvent.change(x, { target: { value: '10' } })
+    fireEvent.blur(x)
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'set_linear_pattern_field', featureId: 'pt1', field: 'direction', value: [10, 0, 5],
+    })
+  })
+
+  it('refuses a pick without a length only in directive-length mode', () => {
+    const pick = field('direction_query') as PickFieldDef
+    expect(pick.validatePick!('face:ex1:?4;@ex1:flatface', FEATURES, { direction_mode: 'directive_length' }))
+      .toContain('needs a pick with a length')
+    expect(pick.validatePick!('edge:ex1:?4;@ex1:edge', FEATURES, { direction_mode: 'directive_length' }))
+      .toContain('a circle has none')
+    expect(pick.validatePick!('edge:ex1:?4;@ex1:straightedge', FEATURES, { direction_mode: 'directive_length' }))
+      .toBeNull()
+    expect(pick.validatePick!('face:ex1:?4;@ex1:cylinderface', FEATURES, { direction_mode: 'directive_length' }))
+      .toBeNull()
+    // A sketch entity pick carries no type restriction: the kernel reads a
+    // line's length and refuses a circle itself.
+    expect(pick.validatePick!('entity:sk1:l1', FEATURES, { direction_mode: 'directive_length' }))
+      .toBeNull()
+    // The same face is a fine direction pick when the mode reads a direction.
+    expect(pick.validatePick!('face:ex1:?4;@ex1:flatface', FEATURES, { direction_mode: 'direction_distance' }))
+      .toBeNull()
   })
 
   it('judges the count as the loader does', () => {

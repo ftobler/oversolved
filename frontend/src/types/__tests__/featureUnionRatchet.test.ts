@@ -58,8 +58,11 @@ const RATCHETS: Ratchet[] = [
     // longer in the union) as a raw record in yamlMigrations' source-features
     // fold, and patternSplit keeps one `Dict` alias for the payload it rewrites;
     // the new-kind rows themselves narrow by `kind`.
+    // 365: the linear pattern's axis-sense resolver reads the face's repo
+    // payload (query result by name: type, axis, indices) through one alias,
+    // because a face query resolves to a different payload per surface kind.
     token: 'Record<string, unknown>',
-    baseline: 364,
+    baseline: 365,
   },
 ]
 

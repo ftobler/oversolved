@@ -212,6 +212,41 @@ describe('the split kinds boundary checks', () => {
     if (!direction.ok) expect(direction.error.field).toBe('features[0].linear_pattern.direction')
   })
 
+  it('accepts a direction vector whose components are expressions', () => {
+    // A manual step vector may hold `w/2`; each component is resolved by the
+    // expression pass, so the loader takes a number or an expression in each.
+    const result = loadPartDoc(doc('linear_pattern', {
+      subject: 'body', source_body: '@b1', direction_mode: 'manual', direction: ['w/2', 0, 5],
+    }))
+    expect(result.ok, JSON.stringify(!result.ok ? result.error : null)).toBe(true)
+    if (!result.ok) return
+    const feature = (result.doc.features as Record<string, unknown>[])[0]
+    expect(feature.linear_pattern).toEqual({
+      subject: 'body', source_body: '@b1', direction_mode: 'manual', direction: ['w/2', 0, 5],
+    })
+  })
+
+  it('leaves a document without a mode untouched: no default is written', () => {
+    const result = loadPartDoc(doc('linear_pattern', { subject: 'body', source_body: '@b1', count: 3, pitch: 5 }))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const feature = (result.doc.features as Record<string, unknown>[])[0]
+    // Byte-identical means exactly that: the absent key stays absent and the
+    // solver reads it as direction_distance.
+    expect(feature.linear_pattern).toEqual({ subject: 'body', source_body: '@b1', count: 3, pitch: 5 })
+  })
+
+  it('refuses an unknown direction mode by name', () => {
+    const result = loadPartDoc(doc('linear_pattern', {
+      subject: 'body', source_body: '@b1', direction_2_mode: 'sideways',
+    }))
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.error.field).toBe('features[0].linear_pattern.direction_2_mode')
+      expect(result.error.message).toContain('direction_distance')
+    }
+  })
+
   it('publishes the params under each kind key with a feature-ref pattern', () => {
     for (const kind of ['linear_pattern', 'circular_pattern'] as const) {
       const schema = FEATURE_SCHEMA_BY_KIND[kind]

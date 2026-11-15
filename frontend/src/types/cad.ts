@@ -141,6 +141,13 @@ export type PatternSourceDef = {
   target_body?: string
 }
 
+// How one linear direction gets its step. `direction_distance` is the original
+// and the default of a document written before the field existed, so an old doc
+// solves byte-identically; `directive_length` takes the pick's own length as the
+// spacing (a 15 mm edge puts neighbours 15 mm apart) and reads no pitch;
+// `manual` takes `direction` as the whole step vector, magnitude included.
+export type LinearDirectionMode = 'direction_distance' | 'directive_length' | 'manual'
+
 // A linear pattern repeats along one direction, or along two when the second
 // direction is on. `count` is the total on direction 1, the source's own slot
 // included: 1 keeps only the original and is a quiet no-op, 2 makes one copy.
@@ -152,21 +159,28 @@ export type PatternSourceDef = {
 // instances out, as a signed 1D index or an `i:j` cell (a bare integer means
 // i:0). A legacy document may still carry `include_source`; the loader accepts
 // it and the kernel ignores it, because the source is always instance 0.
+//
+// Each direction carries its own mode. Switching mode keeps every field in the
+// document, so a vector authored in `manual` survives a trip through
+// `directive_length`; the kernel reads only the active mode's fields, and the
+// drive refuses a field the mode does not read (pitch under `manual`).
 export type LinearPatternDef = PatternSourceDef & {
   count?: NumberOrExpr
   centered?: boolean
   skip?: (number | [number, number])[]
-  // Direction 1: spacing along `direction` in the document's unit.
+  // Direction 1: the spacing along `direction` in the document's unit.
+  direction_mode?: LinearDirectionMode
   pitch?: NumberOrExpr
-  direction?: [number, number, number]
+  direction?: [NumberOrExpr, NumberOrExpr, NumberOrExpr]
   direction_query?: string
   invert?: boolean
   // Direction 2, the retired rectangular mode.
   second_direction?: boolean
   count_2?: NumberOrExpr
   centered_2?: boolean
+  direction_2_mode?: LinearDirectionMode
   pitch_2?: NumberOrExpr
-  direction_2?: [number, number, number]
+  direction_2?: [NumberOrExpr, NumberOrExpr, NumberOrExpr]
   direction_2_query?: string
   invert_2?: boolean
 }

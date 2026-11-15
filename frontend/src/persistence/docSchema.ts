@@ -492,6 +492,15 @@ function checkVec3(value: unknown, field: string): void {
   eachEntry(list, field, checkFiniteNumber)
 }
 
+// A vector whose components may each be an expression: the linear pattern's
+// manual step vector, where `["w/2", 0, 5]` is a length the variable table
+// resolves. Every other VEC3 keeps the plain-number rule.
+function checkExprVec3(value: unknown, field: string): void {
+  const list = checkList(value, field, 3)
+  if (list.length !== 3) fail(field, `must have 3 components, got ${list.length}`)
+  eachEntry(list, field, checkExpr)
+}
+
 function checkRefList(value: unknown, field: string): void {
   const list = checkList(value, field, MAX_FEATURE_LIST)
   eachEntry(list, field, checkRef)
@@ -1136,6 +1145,8 @@ function checkPatternSource(sub: DocRecord, field: string): void {
   checkOptional(sub, 'operation', field, (v, f) => checkEnum(v, f, ['add', 'new']))
 }
 
+const LINEAR_DIRECTION_MODES_DOC = ['direction_distance', 'directive_length', 'manual'] as const
+
 function checkLinearPattern(sub: DocRecord, field: string): void {
   checkPatternSource(sub, field)
   // count is the total instance count on direction 1, the source included.
@@ -1147,11 +1158,18 @@ function checkLinearPattern(sub: DocRecord, field: string): void {
   for (const key of ['pitch', 'pitch_2']) {
     if (sub[key] !== undefined) checkExpr(sub[key], `${field}.${key}`)
   }
+  // The direction vector is a step in manual mode and a direction otherwise;
+  // each mode keeps the other's fields in the document, so both spellings are
+  // accepted here whatever the stored mode (the drive refuses a field the mode
+  // does not read).
   for (const key of ['direction', 'direction_2']) {
-    checkOptional(sub, key, field, checkVec3)
+    checkOptional(sub, key, field, checkExprVec3)
   }
   for (const key of ['direction_query', 'direction_2_query']) {
     checkOptional(sub, key, field, checkRef)
+  }
+  for (const key of ['direction_mode', 'direction_2_mode']) {
+    checkOptional(sub, key, field, (v, f) => checkEnum(v, f, LINEAR_DIRECTION_MODES_DOC))
   }
   for (const key of ['invert', 'invert_2', 'centered', 'centered_2', 'second_direction']) {
     checkOptional(sub, key, field, checkBoolean)

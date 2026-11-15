@@ -8,6 +8,7 @@ import type {
   CheckboxFieldDef,
   PickFieldDef,
   TextFieldDef,
+  ReadonlyFieldDef,
 } from './widgets/fieldTypes'
 import { NumberFieldWidget } from './widgets/NumberField'
 import { SelectFieldWidget } from './widgets/SelectField'
@@ -36,12 +37,15 @@ interface FeatureEditorProps {
   // The document's unit. A schema field marked `unit: 'mm'` is a length in that
   // unit, so its label follows the document without touching the authored value.
   lengthUnit?: LengthUnit
+  // The feature's last solve result, for a schema row that shows a solved value
+  // (the linear pattern's directive-length spacing) instead of an authored one.
+  solved?: unknown
 }
 
 // ─── main component ───
 
 export function FeatureEditor({
-  feature, onMutation, features, partLabels, schema, lengthUnit = 'mm',
+  feature, onMutation, features, partLabels, schema, lengthUnit = 'mm', solved,
 }: FeatureEditorProps) {
   const fid = feature.id
   const raw = (feature as unknown as SchemaData)[schema.subKey] ?? schema.defaults
@@ -130,6 +134,19 @@ export function FeatureEditor({
               onMutation={onMutation}
               mutationType={mutationType}
             />
+          case 'readonly': {
+            const rf = field as ReadonlyFieldDef
+            const shown = rf.value(solved)
+            if (shown === null) return null
+            return (
+              <div className="feature-field-row" key={`${field.key}:${i}`}>
+                <span className="feature-field-label">{rf.label}</span>
+                <span className="feature-field-value">
+                  {shown}{rf.unit === 'mm' ? ` ${LENGTH_UNIT_LABEL[lengthUnit]}` : ''}
+                </span>
+              </div>
+            )
+          }
           default:
             return null
         }
