@@ -8,8 +8,9 @@ The rollback position is an index into that list, and an incremental rebuild
 reuses the unchanged prefix (`findFirstDirty`, `kernel/builder.ts`).
 
 The records are flat: no nesting, no control flow, no user functions. Repetition
-is the `linear_pattern` and `circular_pattern` feature kinds, which repeat
-either a body or an earlier feature. Dependencies between features are
+is the pattern feature kinds (`linear_pattern`, `circular_pattern`,
+`curve_pattern`, `instance_pattern`), which repeat either a body or an earlier
+feature. Dependencies between features are
 references (query strings, see Query Syntax) plus the list order; numeric params
 may be expression strings evaluated against earlier `variable` features
 (`kernel/evalExpr.ts`). Some kinds are shorthand that is lowered before the
@@ -652,14 +653,15 @@ XYZ degrees (world X first, then world Y, then world Z), numbers only, pivoting
 about `rotation_axis_origin` or the world origin. It cannot be combined with
 `rotation_axis`, `rotation_angle` or `rotation_axis_direction`.
 
-### linear_pattern / circular_pattern / curve_pattern
+### linear_pattern / circular_pattern / curve_pattern / instance_pattern
 
-Three features pattern either a whole body or earlier features' own operation.
+Four features pattern either a whole body or earlier features' own operation.
 `linear_pattern` repeats along one direction, or along two when the second
 direction is on (the old rectangular mode). `circular_pattern` repeats about an
 axis by an angle law. `curve_pattern` walks a path and carries the subject along
-it. What is repeated is shared: `subject` selects it, and the source fields are
-the same on all three kinds.
+it. `instance_pattern` copies it onto a sketch's points or a picked target list.
+What is repeated is shared: `subject` selects it, and the source fields are the
+same on all four kinds.
 
 #### Body subject
 
@@ -825,6 +827,72 @@ sibling id. If some cut copies applied the feature reports `partial` with the
 applied count and the failing copies, and if none applied it is a feature
 error. The body keeps its id and its `created_by`, so the pattern changes the
 part's material without renaming it.
+
+#### Instance pattern
+
+```yaml
+- id: ip1
+  kind: instance_pattern
+  instance_pattern:
+    subject: body
+    source_body: "@body_ex1"
+    operation: add
+    sketch: "@sk_points"         # OR targets, never both
+    reference: "entity:sk_points:p1"  # optional: the point the copies are measured from
+    orientation: normal          # normal (default) | fixed
+    reverse_normal: false        # flip every target normal, not the source normal
+    skip: [2]                    # positional, 1..N in sketch entity or list order
+- id: ip2
+  kind: instance_pattern
+  instance_pattern:
+    subject: body
+    source_body: "@body_ex1"
+    targets:                     # any face, edge, vertex, sketch point or plane
+      - "?@ex1@u|...:flatface"
+      - "entity:sk_points:p2"
+```
+
+What is repeated is the shared pattern subject: a whole body (`operation: add`
+or `new`), or one or more earlier features' own add or cut. There is no count
+and no centered option: the target list is the instance list.
+
+`sketch` takes every non-construction POINT of that sketch, the same site rule a
+hole drills: construction points are skipped, line endpoints are not targets,
+and a projected point counts. `targets` is a list of picks instead. Every pick
+resolves to a point and a normal: a planar face uses its centroid and outward
+normal; a cylindrical or conical face the axis point at its free end and the
+axis pointing out of the material (a blind hole's mouth, a boss's top, a
+countersink's wide end; a through hole falls back to the surface's own axis
+sense); a circular body edge its centre and its planar neighbour's outward
+normal (else its curved neighbour's free-end sense); another curved face the
+surface point at its (u, v) centre and the outward normal there; a sketch entity
+its own point (line midpoint, circle/arc/ellipse centre, spline middle station)
+with the sketch plane normal; a datum plane its origin and normal. A body vertex
+or a straight body edge carries a point and NO normal: under `normal` it is
+moved only, quietly.
+
+Targets are numbered 1..N in sketch entity order or list order, so `skip: [2]`
+leaves the second target out. The construction naming key is NOT the position:
+it is the target's sketch entity id, or a short hash of the pick ref, so
+deleting an earlier point or pick never renames a later copy's faces. A target
+on the reference point is the source's own slot and makes no copy, quietly.
+
+`reference` is the point the copies are measured from; any pick the target table
+accepts. Absent, it is the source sketch's only non-construction point when the
+first source feature has one, else the seed's volume centroid (the source body,
+or the first source feature's own tool), so a cut feature is measured from the
+tool it adds.
+
+`orientation: normal` (the default) turns each copy so the source normal maps
+onto its target normal with the minimal rotation, then translates the reference
+onto the target. The source normal is the reference's own normal, else the first
+source's profile sketch normal, else the normal of the first target that carries
+one (so that copy is a pure translation and the rest turn relative to it). Equal
+normals give a pure translation, which keeps a flat sketch-points pattern
+identical in both modes; antiparallel normals turn 180 degrees about the source
+frame's x axis, so the choice is deterministic. `reverse_normal` flips every
+target normal before the rotation, not the source normal. `fixed` only
+translates and ignores every normal.
 
 ### mirror
 

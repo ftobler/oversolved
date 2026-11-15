@@ -340,6 +340,24 @@ export const FEATURE_SCHEMA_BY_KIND = {
       skip: SKIP_INDEX_LIST,
     },
   }),
+  instance_pattern: feature('instance_pattern', {
+    key: 'instance_pattern',
+    properties: {
+      ...PATTERN_SOURCE_FIELDS,
+      // Exactly one target form drives the list: the sketch's non-construction
+      // points (the same site rule a hole drills) or a picked list of any kind.
+      sketch: REF,
+      targets: REF_LIST,
+      // The point the copies are measured from; absent, the source sketch's
+      // only point or the seed's centroid.
+      reference: REF,
+      orientation: { enum: ['normal', 'fixed'] },
+      reverse_normal: { type: 'boolean' },
+      // Whole instance numbers: a point target list has no grid. Positional,
+      // 1..N in sketch entity order or list order.
+      skip: SKIP_INDEX_LIST,
+    },
+  }),
   delete_body: feature('delete_body', {
     key: 'delete_body',
     required: ['bodies'],

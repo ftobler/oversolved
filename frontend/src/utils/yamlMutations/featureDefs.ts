@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, NumberOrExpr, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, SplitFeatureDef, SplitKeep, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, ShellDirection, ShellJoin, MoveFaceFeatureDef, LinearPatternDef, CircularPatternDef, CurvePatternDef, LegacyPatternDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
+import type { PartDoc, PartFeature, NumberOrExpr, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, SplitFeatureDef, SplitKeep, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, ShellDirection, ShellJoin, MoveFaceFeatureDef, LinearPatternDef, CircularPatternDef, CurvePatternDef, InstancePatternDef, LegacyPatternDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
 import { warn, findFeature, normalizeRefList, round } from './helpers'
 import { arrayCountProblem } from '@/persistence/docSchema'
 import { skipValue } from '@/utils/core/patternSkip'
@@ -362,8 +362,8 @@ function removableIndex(arr: unknown[], index: number): boolean {
   return Number.isInteger(index) && index >= 0 && index < arr.length
 }
 
-type RefListKind = 'extrude' | 'revolve' | 'sweep' | 'curve_pattern'
-type RefListField = 'sketch' | 'path'
+type RefListKind = 'extrude' | 'revolve' | 'sweep' | 'curve_pattern' | 'instance_pattern'
+type RefListField = 'sketch' | 'path' | 'targets'
 
 function refListSub(doc: PartDoc, featureId: string, kind: RefListKind, fn: string): Partial<Record<RefListField, string | string[]>> | undefined {
   const feature = findFeature(doc, featureId)
@@ -373,6 +373,7 @@ function refListSub(doc: PartDoc, featureId: string, kind: RefListKind, fn: stri
       case 'revolve': return feature.revolve
       case 'sweep': return feature.sweep
       case 'curve_pattern': return feature.curve_pattern
+      case 'instance_pattern': return feature.instance_pattern
     }
   }
   warn(`${fn}: feature ${featureId} has no ${kind}`)
@@ -809,6 +810,11 @@ const CURVE_PATTERN_FIELDS: readonly string[] = [
   'count', 'skip', 'path', 'spacing', 'distance', 'reverse', 'orientation', 'normal_ref',
 ]
 
+const INSTANCE_PATTERN_FIELDS: readonly string[] = [
+  ...PATTERN_SOURCE_FIELDS,
+  'sketch', 'targets', 'reference', 'orientation', 'reverse_normal', 'skip',
+]
+
 /** The stored skip list from either accepted spelling, or null when the value
  *  is not one. The drive parses text before it gets here; a replayed journal
  *  payload may still carry the text the user typed. */
@@ -1064,6 +1070,85 @@ export function applySetCurvePatternField(doc: PartDoc, featureId: string, field
 
 export const applyAddCurvePatternPath = makeAddRefToggle('curve_pattern', 'path', 'applyAddCurvePatternPath')
 export const applyRemoveCurvePatternPath = makeRemoveRefAt('curve_pattern', 'path', 'applyRemoveCurvePatternPath')
+
+/** Both target forms at once is never a document the app writes; a replay
+ *  carrying it is refused rather than solved as one arbitrary form. */
+function instanceTargetFormProblem(sub: Record<string, unknown>): string | null {
+  const sketch = typeof sub.sketch === 'string' && sub.sketch !== ''
+  const targets = Array.isArray(sub.targets) && sub.targets.length > 0
+  return sketch && targets ? 'sketch and targets cannot both be set; keep one target form' : null
+}
+
+export function applyAddInstancePattern(
+  doc: PartDoc,
+  featureId: string,
+  label?: string,
+  inline: Partial<InstancePatternDef> = {},
+): void {
+  const pattern: FieldBag = { subject: 'body', operation: 'add' }
+  const accepted = Object.fromEntries(
+    Object.entries(inline).filter(([field]) => INSTANCE_PATTERN_FIELDS.includes(field)),
+  ) as FieldBag
+  if (typeof accepted.source_features === 'string') {
+    accepted.source_features = accepted.source_features === '' ? [] : [accepted.source_features]
+  }
+  if (!Array.isArray(accepted.source_features) && typeof accepted.source_feature === 'string') {
+    accepted.source_features = accepted.source_feature === '' ? [] : [accepted.source_feature]
+  }
+  delete accepted.source_feature
+  if (accepted.skip !== undefined && accepted.skip !== null && (accepted.skip as unknown) !== '') {
+    const skip = circularSkip(accepted.skip)
+    if (skip === null) {
+      warn('applyAddInstancePattern: refusing skip: an instance pattern skips whole instance numbers only')
+      return
+    }
+    accepted.skip = skip
+  }
+  mergeInlineFields(pattern, accepted as Partial<FieldBag>)
+  const form = instanceTargetFormProblem(pattern)
+  if (form !== null) {
+    warn(`applyAddInstancePattern: refusing ${form}`)
+    return
+  }
+  if (pattern.subject === 'feature') delete pattern.operation
+  else if (pattern.operation === undefined) pattern.operation = 'add'
+  pushFeature(doc, {
+    id: featureId,
+    kind: 'instance_pattern',
+    label: label ?? 'Instance Pattern',
+    instance_pattern: pattern as InstancePatternDef,
+  })
+}
+
+export function applySetInstancePatternField(
+  doc: PartDoc,
+  featureId: string,
+  field: keyof InstancePatternDef,
+  value: unknown,
+): void {
+  const feature = findFeature(doc, featureId)
+  const sub = feature?.kind === 'instance_pattern' ? feature.instance_pattern as FieldBag : undefined
+  if (sub === undefined) {
+    warn(`applySetInstancePatternField: feature ${featureId} has no instance_pattern`)
+    return
+  }
+  // Switching forms is two writes in the UI; a single write that would leave
+  // both set is refused rather than stored as a document the kernel refuses.
+  const next: FieldBag = { ...sub, [field]: value }
+  const form = instanceTargetFormProblem(next)
+  if (form !== null) {
+    warn(`applySetInstancePatternField: refusing ${form}`)
+    return
+  }
+  setSubFeatureField(featureId, 'instance_pattern', sub, field, value, 'applySetInstancePatternField', INSTANCE_PATTERN_FIELDS)
+}
+
+export const applyAddInstancePatternTarget = makeAddRefToggle(
+  'instance_pattern', 'targets', 'applyAddInstancePatternTarget',
+)
+export const applyRemoveInstancePatternTarget = makeRemoveRefAt(
+  'instance_pattern', 'targets', 'applyRemoveInstancePatternTarget',
+)
 
 /** The one-release `add_pattern` alias: build the legacy payload the old add
  *  built, then run it through the loader's own split, so the aliased document

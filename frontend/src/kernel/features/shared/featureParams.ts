@@ -33,6 +33,7 @@ export const FEATURE_DEF_SUBKEY = {
   linear_pattern: 'linear_pattern',
   circular_pattern: 'circular_pattern',
   curve_pattern: 'curve_pattern',
+  instance_pattern: 'instance_pattern',
   delete_body: 'delete_body',
   hole: 'hole',
   transform: 'transform',

@@ -81,6 +81,10 @@ import {
   applySetCurvePatternField,
   applyAddCurvePatternPath,
   applyRemoveCurvePatternPath,
+  applyAddInstancePattern,
+  applySetInstancePatternField,
+  applyAddInstancePatternTarget,
+  applyRemoveInstancePatternTarget,
   applyAddPattern,
   applyAddPatternSource,
   applyRemovePatternSource,
@@ -418,6 +422,16 @@ export const mutationHandlers: MutationHandlers = {
     applyAddCurvePatternPath(next, m.featureId, m.pathQuery),
   remove_curve_pattern_path: (next, m) =>
     applyRemoveCurvePatternPath(next, m.featureId, m.index),
+  add_instance_pattern: (next, m) => {
+    const { type: _type, featureId, label, insertAt: _insertAt, ...inline } = m
+    applyAddInstancePattern(next, featureId, label, inline)
+  },
+  set_instance_pattern_field: (next, m) =>
+    applySetInstancePatternField(next, m.featureId, m.field, m.value),
+  add_instance_pattern_target: (next, m) =>
+    applyAddInstancePatternTarget(next, m.featureId, m.targetQuery),
+  remove_instance_pattern_target: (next, m) =>
+    applyRemoveInstancePatternTarget(next, m.featureId, m.index),
   // The retired alias, translated by the applier through the loader's own
   // split. Nothing in the app emits it; the drive also translates it up front
   // so the step reply can carry the deprecation note.

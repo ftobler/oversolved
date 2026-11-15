@@ -31,6 +31,7 @@ function referencedBodies(step: RecipeStep): string[] {
     case 'linear-array': return [step.target]
     case 'circular-array': return [step.target]
     case 'curve-array': return [step.target]
+    case 'instance-array': return [step.target]
     case 'mirror': return [step.target]
     case 'feature-mirror': return [step.target]
     case 'shell': return [step.target]
@@ -77,6 +78,7 @@ describe('the geometry-fuzz recipe generator', () => {
       case 'linear-array': return [step.pitch]
       case 'circular-array': return [step.stepDeg]
       case 'curve-array': return [step.distance, step.length]
+      case 'instance-array': return step.points.flat()
       case 'mirror': return []
       case 'feature-mirror': return [step.depth]
       case 'shell': return [step.thickness]
@@ -95,6 +97,7 @@ describe('the geometry-fuzz recipe generator', () => {
       case 'linear-array': return [step.count]
       case 'circular-array': return [step.count]
       case 'curve-array': return [step.count]
+      case 'instance-array': return []
       case 'mirror': return [step.face]
       case 'feature-mirror': return [step.face]
       case 'shell': return [step.face]
@@ -149,6 +152,21 @@ describe('the geometry-fuzz recipe generator', () => {
     }
     expect(centered).toBeGreaterThan(0)
     expect(skipped).toBeGreaterThan(0)
+  })
+
+  it('appends one instance-array step from its own stream, leaving the chain identical', () => {
+    for (let seed = 0; seed < 50; seed++) {
+      const plain = generateRecipe(seed)
+      const tailed = generateRecipe(seed, { instancePatternTail: true })
+      expect(tailed.steps.slice(0, plain.steps.length)).toEqual(plain.steps)
+      expect(tailed.steps).toHaveLength(plain.steps.length + 1)
+      const last = tailed.steps.at(-1)!
+      expect(last.kind).toBe('instance-array')
+      if (last.kind !== 'instance-array') continue
+      expect(last.target).toBe(PRIMARY_BODY)
+      expect(last.points.length).toBeGreaterThanOrEqual(2)
+      expect(last.points.length).toBeLessThanOrEqual(4)
+    }
   })
 
   it('appends one curve-array step from its own stream, leaving the chain identical', () => {

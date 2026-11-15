@@ -31,6 +31,7 @@ import type {
   SketchFeature,
   LinearPatternFeature,
   CircularPatternFeature,
+  InstancePatternFeature,
   SplitFeature,
   SweepFeature,
   TransformFeature,
@@ -59,6 +60,7 @@ describe('the part feature union is closed', () => {
       | 'linear_pattern'
       | 'circular_pattern'
       | 'curve_pattern'
+      | 'instance_pattern'
       | 'delete_body'
       | 'hole'
       | 'transform'
@@ -86,6 +88,7 @@ describe('solver dispatch maps each kind to its variant', () => {
     expectTypeOf<FeatureParam<'boolean'>>().toEqualTypeOf<BooleanFeature>()
     expectTypeOf<FeatureParam<'linear_pattern'>>().toEqualTypeOf<LinearPatternFeature>()
     expectTypeOf<FeatureParam<'circular_pattern'>>().toEqualTypeOf<CircularPatternFeature>()
+    expectTypeOf<FeatureParam<'instance_pattern'>>().toEqualTypeOf<InstancePatternFeature>()
     expectTypeOf<FeatureParam<'delete_body'>>().toEqualTypeOf<DeleteBodyFeature>()
     expectTypeOf<FeatureParam<'hole'>>().toEqualTypeOf<HoleFeature>()
     expectTypeOf<FeatureParam<'transform'>>().toEqualTypeOf<TransformFeature>()

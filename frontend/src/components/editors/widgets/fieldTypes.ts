@@ -97,8 +97,15 @@ export interface TextFieldDef extends BaseFieldDef {
   // skip list is an array). Absent means the value is shown as text.
   format?: (value: unknown) => string
   // A one-line live explanation under the input, for a field whose meaning is
-  // computed from the rest of the form (the pattern's instance total).
-  hint?: (data: SchemaData) => string | null
+  // computed from the rest of the form (the pattern's instance total). The
+  // document's own feature rows come along for a hint that must name a sketch's
+  // points (the instance pattern's numbered target list).
+  hint?: (data: SchemaData, context: HintContext) => string | null
+}
+
+/** The document context a field hint may read beside the form's own values. */
+export interface HintContext {
+  features?: readonly import('@/types/cad').PartFeature[]
 }
 
 export type EditorFieldDef =
@@ -152,6 +159,7 @@ export interface TextFieldWidgetProps extends WidgetBaseProps {
   // is shown through `field.format`.
   value: unknown
   data?: SchemaData
+  features?: readonly import('@/types/cad').PartFeature[]
   mutationType: string
 }
 

@@ -309,6 +309,7 @@ export const FIELD_SETTER_KIND = {
   set_linear_pattern_field: 'linear_pattern',
   set_circular_pattern_field: 'circular_pattern',
   set_curve_pattern_field: 'curve_pattern',
+  set_instance_pattern_field: 'instance_pattern',
   set_hole_field: 'hole',
   set_transform_field: 'transform',
   set_mirror_field: 'mirror',
@@ -554,6 +555,49 @@ const CURVE_PATTERN_INLINE_NOTE =
   'One call may carry the whole curve pattern: ' +
   `${featureFieldNames('curve_pattern').join(', ')} are accepted inline and store the same keys ` +
   '`set_curve_pattern_field` sets.'
+
+const INSTANCE_PATTERN_INLINE_NOTE =
+  'One call may carry the whole instance pattern: ' +
+  `${featureFieldNames('instance_pattern').join(', ')} are accepted inline and store the same keys ` +
+  '`set_instance_pattern_field` sets.'
+
+// The target law an author cannot infer from the field list: what each target
+// form selects, the numbering (positional skip vs stable naming keys), the
+// reference fallback chain and what each orientation turns.
+const INSTANCE_PATTERN_NOTE =
+  '`subject` selects what is repeated: `body` (the default) copies `source_body`; `operation: add` unions ' +
+  'each copy into the source body when they intersect and disjoint copies become separate bodies, while ' +
+  '`operation: new` mints one body per copy. `feature` reapplies one or more earlier extrudes, revolves or ' +
+  'sweeps, named in `source_features` (the legacy single `source_feature` is still accepted), inside the ' +
+  'body each source shaped; `target_body` chooses the body when a source touched more than one. There is no ' +
+  'count and no centered option: the target list is the instance list. ' +
+  'The copies go onto TARGETS, and exactly one of two fields supplies them. ' +
+  '`sketch` names one sketch: every non-construction POINT of it is a target, the same site rule a hole ' +
+  'drills (construction points are skipped, line endpoints are not targets, projected points count). ' +
+  '`targets` is a list of picks instead: any face, edge, vertex, sketch point or plane. A face uses its ' +
+  'centroid (a cylindrical or conical face the axis point at its free end, with the axis pointing out of ' +
+  'the material, so a blind hole\'s mouth and a boss top are right), a circular body edge its centre with ' +
+  'the normal of its planar neighbour (else its curved neighbour\'s free-end sense), a sketch entity its ' +
+  'own point (line midpoint, circle/arc/ellipse centre, spline middle station) with the sketch plane normal, ' +
+  'and a body vertex or straight edge a point with NO normal. Both forms set at once is refused. Targets ' +
+  'are numbered 1..N in sketch entity order or list order, so `skip` addresses those numbers, but the ' +
+  'construction name key is the sketch entity id or a short hash of the pick, so deleting an earlier ' +
+  'target never renames a later copy\'s faces. `reference` is the point the copies are measured from: any ' +
+  'pick the target table accepts. Absent, it is the source sketch\'s only non-construction point when the ' +
+  'first source feature has one, else the seed\'s volume centroid (the source body, or the first source ' +
+  'feature\'s own tool). `orientation: "normal"` (the default) turns each copy so the source normal maps ' +
+  'onto its target normal, with the minimal rotation about `source_normal x target_normal`; a target ' +
+  'without a normal is moved only, and when nothing carries a normal every copy is a translation, the same ' +
+  'as `fixed`. `fixed` only translates. The source normal is the reference\'s own normal, else the first ' +
+  'source\'s profile sketch normal, else the normal of the first target that carries one (so that copy is ' +
+  'a pure translation and the rest turn relative to it). `reverse_normal` flips every target normal, not ' +
+  'the source normal. A target on the reference point is the source\'s own slot and makes no copy, with no ' +
+  'warning.'
+
+const INSTANCE_TARGET_NOTE =
+  'One target pick per call (`add_instance_pattern_target`). The pick may be a face, edge or vertex query ' +
+  'from `select`, a sketch entity (`entity:<sketchId>:<entityId>`), or a plane. A whole sketch pick is ' +
+  'refused: use the `sketch` field for that.'
 
 // The path law an author cannot infer from the field list: where the copies are
 // anchored, how the two spacing modes read, and what each orientation turns
@@ -1769,6 +1813,47 @@ export const MUTATION_CATALOG = {
     summary: 'Remove a curve pattern path by index.',
     fields: { featureId: str(), index: num() },
   },
+  add_instance_pattern: {
+    summary: 'Add an instance pattern: copy the source onto a sketch\'s points or onto a list of picks.',
+    note: INSTANCE_PATTERN_NOTE + ' ' + INSTANCE_PATTERN_INLINE_NOTE,
+    fields: {
+      ...featureAddFields(),
+      subject: optStr('body | feature; defaults to body.'),
+      source_body: optStr('Body subject: the body to copy, e.g. body_ex2.'),
+      operation: optStr('Body subject: add | new; defaults to add.'),
+      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve or sweep with operation add or cut.'),
+      source_feature: optStr('Feature subject: the legacy single-source form of source_features, e.g. @ex1. Still accepted; a list or the singular key, not both.'),
+      target_body: optStr('Feature subject: applies every source to this body instead of the body each source shaped.'),
+      sketch: optStr('Sketch form: every non-construction point of this sketch is a target, e.g. @sk1.'),
+      targets: optArr('Targets form: a list of picks, e.g. ["?@body_ex1@u|...:flatface", "entity:sk2:p1"].'),
+      reference: optStr('The point the copies are measured from: any pick the target table accepts. Absent, the source sketch\'s only point or the seed\'s centroid.'),
+      orientation: optStr('normal | fixed; defaults to normal (turn each copy onto its target\'s normal).'),
+      reverse_normal: optBool('Flip every target normal, not the source normal.'),
+      skip: optAny(
+        'Instances to leave out: a list of positive integer positions in the target list. The editor text ' +
+        'form ("1, 2, 6") is accepted too. Instance 0 is the original and cannot be skipped, and an ' +
+        'instance pattern has no grid, so an "i:j" cell is refused.',
+      ),
+    },
+  },
+  set_instance_pattern_field: {
+    summary: 'Set one instance pattern field, e.g. sketch, targets, reference or orientation.',
+    note: INSTANCE_PATTERN_NOTE,
+    fields: {
+      featureId: str(),
+      field: fieldOf('instance pattern', 'set_instance_pattern_field'),
+      value: setterValue('instance_pattern'),
+    },
+  },
+  add_instance_pattern_target: {
+    summary: 'Add a target pick to an instance pattern.',
+    note: INSTANCE_TARGET_NOTE,
+    fields: { featureId: str(), targetQuery: query('A target ref. ' + INSTANCE_TARGET_NOTE) },
+  },
+  remove_instance_pattern_target: {
+    summary: 'Remove an instance pattern target by index.',
+    fields: { featureId: str(), index: num() },
+  },
   add_pattern: {
     summary: 'Add a pattern of a body or one earlier feature. Deprecated: use add_linear_pattern or add_circular_pattern.',
     note: PATTERN_ALIAS_NOTE,
@@ -2150,6 +2235,10 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   set_curve_pattern_field: 'features',
   add_curve_pattern_path: 'picks',
   remove_curve_pattern_path: 'picks',
+  add_instance_pattern: 'features',
+  set_instance_pattern_field: 'features',
+  add_instance_pattern_target: 'picks',
+  remove_instance_pattern_target: 'picks',
   add_pattern: 'features',
   add_pattern_source: 'picks',
   remove_pattern_source: 'picks',

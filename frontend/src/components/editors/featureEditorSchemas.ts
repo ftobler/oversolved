@@ -1,5 +1,5 @@
 import type { FeatureEditorSchema } from './FeatureEditor'
-import type { EditorFieldDef, ReadonlyFieldDef, TextFieldDef } from './widgets/fieldTypes'
+import type { EditorFieldDef, HintContext, ReadonlyFieldDef, TextFieldDef } from './widgets/fieldTypes'
 import {
   normalizeRefList,
   DEFAULT_EXTRUDE_DISTANCE,
@@ -782,6 +782,100 @@ export const CURVE_PATTERN_SCHEMA: FeatureEditorSchema = {
   ],
 }
 
+/** The sketch form names the sketch itself, not one of its entities: the whole
+ *  sketch's non-construction points are the targets. */
+function instanceSketchPickRefusal(id: string, features?: readonly PartFeature[]): string | null {
+  if (id.startsWith('entity:') || id.startsWith('vertex:') || id.startsWith('?')) {
+    return 'pick the sketch itself, not one of its entities; the sketch form copies onto every point'
+  }
+  if (!id.startsWith('@') || id.includes('/')) return 'pick a sketch feature row'
+  if (features === undefined) return null
+  const feature = features.find((candidate) => candidate.id === id.slice(1))
+  return feature !== undefined && feature.kind === 'sketch' ? null : 'pick a sketch feature row'
+}
+
+/** A no-normal pick is a body vertex or a straight body edge. The pick's own
+ *  kind rides in the query's type restriction, so the hint can mark it before
+ *  the kernel resolves anything. */
+function noNormalPick(ref: string): boolean {
+  return /:vertex\b|:straightedge\b/.test(ref)
+}
+
+/** The numbered target list plus the source-normal rule this form will use. The
+ *  sketch form reads its points from the document's own sketch row; a bare add
+ *  has neither form configured yet and says so. */
+function instancePatternHint(d: SchemaData, context: HintContext): string | null {
+  const labels: string[] = []
+  let form = 'none'
+  if (typeof d.sketch === 'string' && d.sketch !== '') {
+    form = 'sketch'
+    const sketchId = d.sketch.replace(/^@/, '').split('/')[0]
+    const sketch = context.features?.find((candidate) => candidate.id === sketchId && candidate.kind === 'sketch')
+    if (sketch !== undefined && sketch.kind === 'sketch') {
+      for (const entity of sketch.entities ?? []) {
+        if (entity.kind === 'point' && entity.construction !== true) labels.push(entity.id)
+      }
+    }
+  } else if (Array.isArray(d.targets) && d.targets.length > 0) {
+    form = 'targets'
+    for (const ref of d.targets as string[]) {
+      labels.push(noNormalPick(ref) ? `${ref} (no normal, moved only)` : ref)
+    }
+  }
+  if (form === 'none') return 'pick a sketch or a target list; the source goes on every point or pick'
+  const shown = labels.slice(0, 12).map((label, i) => `${i + 1} = ${label}`)
+  const more = labels.length > shown.length ? `, ... ${labels.length - shown.length} more` : ''
+  const skipped = Array.isArray(d.skip) ? d.skip.length : 0
+  const total = labels.length
+  const parts = [`${shown.join(', ')}${more}`, `${total} target${total === 1 ? '' : 's'}`]
+  const fresh = Math.max(0, total - 1 - skipped)
+  parts.push(`${fresh} new`)
+  if (skipped > 0) parts.push(`${skipped} skipped`)
+  if (d.orientation === 'fixed') parts.push('copies are translated only')
+  else parts.push('each copy turns onto its target\'s normal')
+  const reference = typeof d.reference === 'string' && d.reference !== ''
+    ? 'the reference pick'
+    : form === 'sketch' ? 'the sketch plane' : 'the first target with a normal'
+  parts.push(`source normal: ${reference}`)
+  return parts.join('; ')
+}
+
+export const INSTANCE_PATTERN_SCHEMA: FeatureEditorSchema = {
+  mutationPrefix: 'set_instance_pattern',
+  subKey: 'instance_pattern',
+  defaults: { subject: 'body', operation: 'add', orientation: 'normal', targets: [], source_features: [] },
+  normalize: normalizePatternSource,
+  fields: [
+    ...PATTERN_SOURCE_FIELDS,
+    // One target form at a time. The select's mutation clears the other form,
+    // because a stored pair would be refused by the kernel.
+    { type: 'select', key: 'targets', label: 'Targets', default: 'sketch',
+      valueFrom: (d) => typeof d.sketch === 'string' && d.sketch !== ''
+        ? 'sketch'
+        : Array.isArray(d.targets) && d.targets.length > 0 ? 'picked' : 'sketch',
+      options: [{ value: 'sketch', label: 'Sketch points' }, { value: 'picked', label: 'Picked' }],
+      getMutation: (option) => option === 'sketch'
+        ? { field: 'targets', value: [] }
+        : { field: 'sketch', value: '' } },
+    { type: 'pick', key: 'sketch', label: 'Sketch', transform: stripSelectionWrapper,
+      validatePick: instanceSketchPickRefusal,
+      showWhen: (d) => !Array.isArray(d.targets) || d.targets.length === 0,
+      emptyText: '(pick a sketch; every non-construction point is a target)' },
+    { type: 'pick', key: 'targets', label: 'Targets', multi: true,
+      addMutationType: 'add_instance_pattern_target', addValueKey: 'targetQuery',
+      removeMutationType: 'remove_instance_pattern_target', transform: stripSelectionWrapper,
+      showWhen: (d) => !(typeof d.sketch === 'string' && d.sketch !== ''),
+      emptyText: '(pick any face, edge, vertex, sketch point or plane)' },
+    { type: 'pick', key: 'reference', label: 'Reference', transform: stripSelectionWrapper,
+      emptyText: '(automatic: sketch point or centroid)' },
+    { type: 'select', key: 'orientation', label: 'Orientation', default: 'normal',
+      options: [{ value: 'normal', label: 'Normal' }, { value: 'fixed', label: 'Fixed' }] },
+    { type: 'checkbox', key: 'reverse_normal', label: 'Reverse normal', default: false,
+      showWhen: (d) => d.orientation !== 'fixed' },
+    { ...patternSkipField(2), hint: instancePatternHint },
+  ],
+}
+
 export const DELETE_BODY_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_delete_body',
   subKey: 'delete_body',
@@ -895,6 +989,7 @@ export const EDITOR_SCHEMAS: Record<string, FeatureEditorSchema> = {
   linear_pattern: LINEAR_PATTERN_SCHEMA,
   circular_pattern: CIRCULAR_PATTERN_SCHEMA,
   curve_pattern: CURVE_PATTERN_SCHEMA,
+  instance_pattern: INSTANCE_PATTERN_SCHEMA,
   delete_body: DELETE_BODY_SCHEMA,
   variable: VARIABLE_SCHEMA,
   helix: HELIX_SCHEMA,

@@ -50,6 +50,7 @@ const GUARDED = [
   'set_linear_pattern_field',
   'set_circular_pattern_field',
   'set_curve_pattern_field',
+  'set_instance_pattern_field',
   'set_hole_field',
   'set_transform_field',
   'set_mirror_field',
@@ -78,12 +79,13 @@ const GUARDED = [
   'remove_split_body',
   'remove_pattern_source',
   'remove_curve_pattern_path',
+  'remove_instance_pattern_target',
   'remove_mirror_source',
 ]
 
 describe('mutationIdempotence classification', () => {
-  it('classifies exactly the 120 Mutation variants, no more and no fewer', () => {
-    expect(Object.keys(IDEMPOTENT_MUTATION)).toHaveLength(120)
+  it('classifies exactly the 124 Mutation variants, no more and no fewer', () => {
+    expect(Object.keys(IDEMPOTENT_MUTATION)).toHaveLength(124)
     // Sorting ignores key order, so regrouping the table stays free while adding
     // or dropping a name does not.
     expect([...Object.keys(IDEMPOTENT_MUTATION)].sort()).toEqual(Object.keys(mutationHandlers).sort())

@@ -497,6 +497,25 @@ def feature_curve_pattern(ctx):
             stroke(ctx, 1.5)
 
 
+@icon("frontend/src/assets/icons/feature-instance-pattern.svg")
+def feature_instance_pattern(ctx):
+    """A filled source block repeated onto sketch points: three dots and copies."""
+    size = 0.16
+    dots = [(0.24, 0.28), (0.76, 0.28), (0.5, 0.78)]
+    # The target points are rings: each copy lands inside one, and the ring
+    # stays visible around the block.
+    for x, y in dots:
+        ctx.arc(x, y, 0.13, 0, 2 * math.pi)
+        stroke(ctx, 1.2)
+    # The source sits on the first point; the other two carry outline copies.
+    for i, (x, y) in enumerate(dots):
+        ctx.rectangle(x - size / 2, y - size / 2, size, size)
+        if i == 0:
+            ctx.fill()
+        else:
+            stroke(ctx, 1.5)
+
+
 @icon("frontend/src/assets/icons/feature-linear-pattern.svg")
 def feature_linear_pattern(ctx):
     """A filled source block repeated to the right: one feature patterned in place."""

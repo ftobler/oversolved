@@ -40,6 +40,7 @@ import { solveRevolve } from './revolve'
 import { solveSweep } from './sweep'
 import { extractErrorMessage, swallowUnlessTrap } from '../errors'
 import { stripRefSigil } from '@/utils/refSigil'
+import { solidCentroid, type Vec3 } from '../occ/primitives'
 import type { Dict, PatternCopy } from './pattern'
 
 export interface PatternResult {
@@ -464,6 +465,114 @@ function applyCopiesToTarget(
   return { bodyIds, appliedCopies: groupByCopy(selected).size, failures, notes }
 }
 
+/**
+ * Build every source's own tool by re-solving it with its operation forced to
+ * `new` into a throwaway body store. The scratch bodies are pushed into the
+ * caller's list as they are registered, so a throw halfway through still
+ * releases what was built. Shared with the instance pattern's centroid
+ * fallback, which needs the first source's tool without repeating the solve.
+ */
+function buildSourceTools(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  sources: readonly ResolvedSource[],
+  globalRepo: Repository,
+  bodyStore: Record<string, Body>,
+  solveContext: { variables: Record<string, number>; laterVariables: Record<string, number> },
+  scratchBodies: Body[],
+  noun: string,
+): SourceTool[] {
+  const tools: SourceTool[] = []
+  let order = 0
+  for (const source of sources) {
+    const sourceSub = (source.feature[source.kind] as Dict) ?? {}
+    const scratch: Record<string, Body> = {}
+    // A through_all cut sizes its tool from the bodies its copies will cut,
+    // which is this solve's real store rather than the empty scratch one. The
+    // forced `new` is only how the tool is handed back, so the cut-only rule
+    // judges the source's own operation. Keep the source's merge_target so its
+    // own narrowing still applies; `new` ignores that key when it registers
+    // the tool.
+    const throughAllSource = source.kind === 'extrude' && (sourceSub.termination as string) === 'through_all'
+      ? { operation: source.operation, bodies: bodyStore }
+      : undefined
+    const toolSub: Dict = { ...sourceSub, operation: 'new' }
+    if (throughAllSource === undefined) delete toolSub.merge_target
+    const toolFeature: Dict = { ...source.feature, id: source.id, [source.kind]: toolSub }
+    const built = source.kind === 'extrude'
+      ? solveExtrude(
+          oc, scope, table, toolFeature, globalRepo, scratch, undefined,
+          throughAllSource === undefined ? undefined : { ...solveContext, throughAllSource },
+        )
+      : TOOL_LEAVES[source.kind](oc, scope, table, toolFeature, globalRepo, scratch)
+    if (built.status !== 'ok') {
+      throw new Error(
+        `${noun}: the source feature '${source.id}' could not provide its tool: ` +
+          `${String(built.exception ?? built.status)}`,
+      )
+    }
+    const sourceTools = Object.values(scratch)
+    scratchBodies.push(...sourceTools)
+    if (sourceTools.length === 0) {
+      throw new Error(`${noun}: the source feature '${source.id}' produced no solid to repeat`)
+    }
+    // Read once per tool, not per instance: the tool shape does not change
+    // between copies.
+    for (const body of sourceTools) {
+      const shape = table.get<OccShape>(body.shape!)
+      const names = readBodyNames(oc, scope, shape, body)
+      tools.push({
+        sourceId: source.id,
+        operation: source.operation,
+        shape,
+        rows: readSourceFaceRows(oc, scope, shape, names.faceNames, names.faceAncestry, names.capAncestry),
+        order: order++,
+      })
+    }
+  }
+  return tools
+}
+
+/**
+ * The volume centroid of the first source's own tool, or null when the source
+ * names no tool. The instance pattern's reference fallback reads it so its
+ * copies are measured from the geometry the source actually adds or cuts, not
+ * from the whole body that feature shaped.
+ */
+export function firstSourceToolCentroid(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  feature: Dict,
+  sub: Dict,
+  globalRepo: Repository,
+  bodyStore: Record<string, Body>,
+  featuresById: Record<string, Dict>,
+  solveContext: { variables: Record<string, number>; laterVariables: Record<string, number> },
+): Vec3 | null {
+  const featureId = (feature.id as string) ?? ''
+  const { sources } = resolveSources(
+    featureId,
+    sourceFeatureRefs(sub),
+    featuresById,
+    solveContext.variables,
+    solveContext.laterVariables,
+    'pattern',
+  )
+  if (sources.length === 0) return null
+  const scratchBodies: Body[] = []
+  try {
+    const tools = buildSourceTools(
+      oc, scope, table, [sources[0]], globalRepo, bodyStore, solveContext, scratchBodies, 'pattern',
+    )
+    if (tools.length === 0) return null
+    return solidCentroid(oc, scope, tools[0].shape)
+  } finally {
+    releaseScratch(table, scratchBodies)
+  }
+}
+
 interface TargetPlan {
   target: Body
   sources: ResolvedSource[]
@@ -544,55 +653,10 @@ export function solveFeaturePattern(
     return result
   }
   const scratchBodies: Body[] = []
-  const tools: SourceTool[] = []
   try {
-    let order = 0
-    for (const source of sources) {
-      const sourceSub = (source.feature[source.kind] as Dict) ?? {}
-      const scratch: Record<string, Body> = {}
-      // A through_all cut sizes its tool from the bodies its copies will cut,
-      // which is this solve's real store rather than the empty scratch one. The
-      // forced `new` is only how the tool is handed back, so the cut-only rule
-      // judges the source's own operation. Keep the source's merge_target so its
-      // own narrowing still applies; `new` ignores that key when it registers
-      // the tool.
-      const throughAllSource = source.kind === 'extrude' && (sourceSub.termination as string) === 'through_all'
-        ? { operation: source.operation, bodies: bodyStore }
-        : undefined
-      const toolSub: Dict = { ...sourceSub, operation: 'new' }
-      if (throughAllSource === undefined) delete toolSub.merge_target
-      const toolFeature: Dict = { ...source.feature, id: source.id, [source.kind]: toolSub }
-      const built = source.kind === 'extrude'
-        ? solveExtrude(
-            oc, scope, table, toolFeature, globalRepo, scratch, undefined,
-            throughAllSource === undefined ? undefined : { ...solveContext, throughAllSource },
-          )
-        : TOOL_LEAVES[source.kind](oc, scope, table, toolFeature, globalRepo, scratch)
-      if (built.status !== 'ok') {
-        throw new Error(
-          `${noun}: the source feature '${source.id}' could not provide its tool: ` +
-            `${String(built.exception ?? built.status)}`,
-        )
-      }
-      const sourceTools = Object.values(scratch)
-      scratchBodies.push(...sourceTools)
-      if (sourceTools.length === 0) {
-        throw new Error(`${noun}: the source feature '${source.id}' produced no solid to repeat`)
-      }
-      // Read once per tool, not per instance: the tool shape does not change
-      // between copies.
-      for (const body of sourceTools) {
-        const shape = table.get<OccShape>(body.shape!)
-        const names = readBodyNames(oc, scope, shape, body)
-        tools.push({
-          sourceId: source.id,
-          operation: source.operation,
-          shape,
-          rows: readSourceFaceRows(oc, scope, shape, names.faceNames, names.faceAncestry, names.capAncestry),
-          order: order++,
-        })
-      }
-    }
+    const tools = buildSourceTools(
+      oc, scope, table, sources, globalRepo, bodyStore, solveContext, scratchBodies, noun,
+    )
 
     const failures: string[] = []
     const resultIds = new Set<string>()

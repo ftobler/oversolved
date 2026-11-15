@@ -119,6 +119,20 @@ const curvePatternDoc = (): PartDoc => makeDoc({
   },
 })
 
+const instancePatternDoc = (): PartDoc => makeDoc({
+  id: 'ip1', kind: 'instance_pattern', label: 'Instance Pattern',
+  instance_pattern: {
+    subject: 'body', source_body: '@body_ex1', sketch: '@sk1', orientation: 'normal',
+  },
+})
+
+const instanceTargetsDoc = (): PartDoc => makeDoc({
+  id: 'ip1', kind: 'instance_pattern', label: 'Instance Pattern',
+  instance_pattern: {
+    subject: 'body', source_body: '@body_ex1', targets: ['?@ex1:flatface'], orientation: 'normal',
+  },
+})
+
 const holeDoc = (): PartDoc => makeDoc({
   id: 'h1', kind: 'hole', label: 'Hole',
   hole: { sketch: '', diameter: 10, depth_mode: 'blind', depth: 20, direction: 'normal' },
@@ -537,6 +551,22 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
   remove_curve_pattern_path: {
     makeDoc: curvePatternDoc,
     mutation: { type: 'remove_curve_pattern_path', featureId: 'cv1', index: 0 },
+  },
+  add_instance_pattern: {
+    makeDoc: emptyDoc,
+    mutation: { type: 'add_instance_pattern', featureId: 'ip1', label: 'Instance Pattern' },
+  },
+  set_instance_pattern_field: {
+    makeDoc: instancePatternDoc,
+    mutation: { type: 'set_instance_pattern_field', featureId: 'ip1', field: 'orientation', value: 'fixed' },
+  },
+  add_instance_pattern_target: {
+    makeDoc: instanceTargetsDoc,
+    mutation: { type: 'add_instance_pattern_target', featureId: 'ip1', targetQuery: '?@ex1:cylinderface' },
+  },
+  remove_instance_pattern_target: {
+    makeDoc: instanceTargetsDoc,
+    mutation: { type: 'remove_instance_pattern_target', featureId: 'ip1', index: 0 },
   },
   // The one-release alias: the example still runs, and its reply carries the
   // deprecation note.

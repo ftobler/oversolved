@@ -34,6 +34,8 @@ describe('body-naming pick fields', () => {
       'curve_pattern.source_body',
       'curve_pattern.target_body',
       'extrude.merge_target',
+      'instance_pattern.source_body',
+      'instance_pattern.target_body',
       'linear_pattern.source_body',
       'linear_pattern.target_body',
       'mirror.target_body',

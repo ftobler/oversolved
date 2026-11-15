@@ -61,8 +61,14 @@ const RATCHETS: Ratchet[] = [
     // 365: the linear pattern's axis-sense resolver reads the face's repo
     // payload (query result by name: type, axis, indices) through one alias,
     // because a face query resolves to a different payload per surface kind.
+    // 369: the instance pattern's three new kernel modules (pickTarget,
+    // sketchPointSites, instancePattern) each spell one `Dict` alias for the
+    // heterogeneous pick/sketch payload they read from the repository, and the
+    // shared drill-site wording names that same bag. The union rows themselves
+    // are narrowed by `kind`; these records are the repository boundary, the
+    // same allowance the other leaf leaves already spend.
     token: 'Record<string, unknown>',
-    baseline: 365,
+    baseline: 369,
   },
 ]
 

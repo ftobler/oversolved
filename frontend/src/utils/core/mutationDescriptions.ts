@@ -162,6 +162,14 @@ export function describeMutation(m: Mutation): string {
       return `add curve pattern path ${m.pathQuery}`
     case 'remove_curve_pattern_path':
       return `remove curve pattern path at index ${m.index}`
+    case 'add_instance_pattern':
+      return `add instance pattern ${m.label ?? m.featureId}`
+    case 'set_instance_pattern_field':
+      return `set instance pattern ${m.field} to ${m.value}`
+    case 'add_instance_pattern_target':
+      return `add instance pattern target ${m.targetQuery}`
+    case 'remove_instance_pattern_target':
+      return `remove instance pattern target at index ${m.index}`
     case 'add_pattern':
       return `add deprecated pattern ${m.label ?? m.featureId}`
     case 'add_pattern_source':
