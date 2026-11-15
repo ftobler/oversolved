@@ -16,7 +16,7 @@
 // it. Face and edge attribution is recorded against the construction UUID, so
 // it survives a later modifier the way the UUID does.
 //
-// Skips when opencascade.js or the Rust solver is absent.
+// Skips when the OCC build or the Rust solver is absent.
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { SharedHarness } from '../sharedHarness'

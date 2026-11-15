@@ -7,7 +7,7 @@
  * tracking it, so the caller decides its lifetime (typically `HandleTable.register`); the scope
  * still owns the builder that made it. This is the ownership pattern the handle table relies on.
  *
- * Overload suffixes and arities were verified against opencascade.js@1.1.1 (OCCT 7.4.0p1).
+ * Overload suffixes and arities are pinned in occTypes.ts against the OCCT 8 build.
  * Out-parameter APIs (BRepTools.UVBounds, BRepGProp_Face.Normal) do not
  * marshal in emscripten, so UV bounds come from BRepAdaptor_Surface's First/Last parameter
  * accessors and the normal from BRepLProp_SLProps, both direct-return.
@@ -32,6 +32,7 @@ import {
 import type { EdgeData } from '@/types/cad'
 import { swallowUnlessTrap } from '../errors'
 import { surfaceAreaOf, surfaceCentroidOf, volumeCentroidOf } from './volume'
+import { MESH_PURPOSE_NONE, noProgress } from './defaultArgs'
 
 // Re-exported so the topological-identity indexes keep their primitives.ts home
 // for every existing caller.
@@ -47,7 +48,7 @@ export type EdgeSortKey = (number | string)[]
 /** Axis-aligned box of given dimensions (BRepPrimAPI_MakeBox(dx, dy, dz)).
  * @returns untracked - caller owns. */
 export function makeBox(oc: OccModule, scope: DisposeScope, dx: number, dy: number, dz: number): OccShape {
-  const builder = scope.track(new oc.BRepPrimAPI_MakeBox_1(dx, dy, dz))
+  const builder = scope.track(new oc.BRepPrimAPI_MakeBox_2(dx, dy, dz))
   return builder.Shape()
 }
 
@@ -61,7 +62,7 @@ export function makeBoxAt(
   dz: number,
 ): OccShape {
   const pnt = scope.track(new oc.gp_Pnt_3(corner[0], corner[1], corner[2]))
-  const builder = scope.track(new oc.BRepPrimAPI_MakeBox_2(pnt, dx, dy, dz))
+  const builder = scope.track(new oc.BRepPrimAPI_MakeBox_3(pnt, dx, dy, dz))
   return builder.Shape()
 }
 
@@ -90,9 +91,9 @@ function cylinderBuilder(
   // gp_Ax2(location, mainDirection) -- the 2-arg form, matching
   // ocp_make_cylinder; the X reference direction is chosen by OCC.
   const ax2 = scope.track(
-    new oc.gp_Ax2_3(
+    new oc.gp_Ax2_4(
       scope.track(new oc.gp_Pnt_3(center[0], center[1], center[2])),
-      scope.track(new oc.gp_Dir_4(axis[0], axis[1], axis[2])),
+      scope.track(new oc.gp_Dir_5(axis[0], axis[1], axis[2])),
     ),
   )
   return scope.track(new oc.BRepPrimAPI_MakeCylinder_3(ax2, radius, height))
@@ -155,9 +156,9 @@ export function makeCone(
   height: number,
 ): OccShape {
   const ax2 = scope.track(
-    new oc.gp_Ax2_3(
+    new oc.gp_Ax2_4(
       scope.track(new oc.gp_Pnt_3(center[0], center[1], center[2])),
-      scope.track(new oc.gp_Dir_4(axis[0], axis[1], axis[2])),
+      scope.track(new oc.gp_Dir_5(axis[0], axis[1], axis[2])),
     ),
   )
   return scope.track(new oc.BRepPrimAPI_MakeCone_3(ax2, r1, r2, height)).Shape()
@@ -309,8 +310,8 @@ export function makeEllipseEdge(
   const ax2 = scope.track(
     new oc.gp_Ax2_2(
       scope.track(new oc.gp_Pnt_3(center[0], center[1], center[2])),
-      scope.track(new oc.gp_Dir_4(normal[0], normal[1], normal[2])),
-      scope.track(new oc.gp_Dir_4(majorAxis[0], majorAxis[1], majorAxis[2])),
+      scope.track(new oc.gp_Dir_5(normal[0], normal[1], normal[2])),
+      scope.track(new oc.gp_Dir_5(majorAxis[0], majorAxis[1], majorAxis[2])),
     ),
   )
   const elips = scope.track(new oc.gp_Elips_2(ax2, a, b))
@@ -342,8 +343,8 @@ function makeCirc(
   const ax2 = scope.track(
     new oc.gp_Ax2_2(
       scope.track(new oc.gp_Pnt_3(center[0], center[1], center[2])),
-      scope.track(new oc.gp_Dir_4(normal[0], normal[1], normal[2])),
-      scope.track(new oc.gp_Dir_4(xAxis[0], xAxis[1], xAxis[2])),
+      scope.track(new oc.gp_Dir_5(normal[0], normal[1], normal[2])),
+      scope.track(new oc.gp_Dir_5(xAxis[0], xAxis[1], xAxis[2])),
     ),
   )
   return scope.track(new oc.gp_Circ_2(ax2, radius))
@@ -368,7 +369,7 @@ function edgeCount(oc: OccModule, scope: DisposeScope, shape: OccShape): number 
  * once per owning edge, so the raw visit count is useless; the DEDUPED count is
  * the closure oracle: BRepBuilderAPI_MakeWire fuses coincident endpoints, so a
  * closed wire has exactly as many vertices as edges and an open one has one
- * more. Verified against opencascade.js@1.1.1: a full-circle wire reads 1/1, a
+ * more. Verified against the shipped build: a full-circle wire reads 1/1, a
  * closed square 4/4, a three-sided chain 4 vertices for 3 edges.
  */
 export function wireVertexCount(oc: OccModule, scope: DisposeScope, wire: OccShape): number {
@@ -520,9 +521,9 @@ function healWireFromEdges(oc: OccModule, scope: DisposeScope, edges: OccShape[]
     }
   }
   sfw.SetPrecision(WIRE_HEAL_TOL)
-  sfw.FixReorder_1()
+  sfw.FixReorder_1(false)
   sfw.FixConnected_1(WIRE_HEAL_TOL)
-  sfw.Perform()
+  sfw.Perform(noProgress(oc))
   return sfw.Wire()
 }
 
@@ -537,9 +538,9 @@ export function healWire(oc: OccModule, scope: DisposeScope, wire: OccShape): Oc
   const sfw = scope.track(new oc.ShapeFix_Wire_1())
   sfw.Load_1(wire)
   sfw.SetPrecision(WIRE_HEAL_TOL)
-  sfw.FixReorder_1()
+  sfw.FixReorder_1(false)
   sfw.FixConnected_1(WIRE_HEAL_TOL)
-  sfw.Perform()
+  sfw.Perform(noProgress(oc))
   return sfw.Wire()
 }
 
@@ -580,7 +581,7 @@ export function makeFaceFromWire(
   try {
     const fixer = scope.track(new oc.ShapeFix_Face_2(raw))
     fixer.FixOrientation_1()
-    fixer.Perform()
+    fixer.Perform(noProgress(oc))
     return fixer.Face()
   } finally {
     raw.delete()
@@ -657,7 +658,7 @@ export function tessellateFace(
 ): FaceTessellation {
   meshShape(oc, face, linearDeflection, angularDeflection)
   const loc = scope.track(new oc.TopLoc_Location_1())
-  const handle = scope.track(oc.BRep_Tool.Triangulation(face, loc))
+  const handle = scope.track(oc.BRep_Tool.Triangulation(face, loc, MESH_PURPOSE_NONE))
   if (handle.IsNull()) return { vertices: [], triangles: [] }
   const poly = handle.get()
   if (!poly) return { vertices: [], triangles: [] }
@@ -791,8 +792,8 @@ export interface ShapeBndBox {
 export function shapeBndBox(oc: OccModule, scope: DisposeScope, shape: OccShape): ShapeBndBox {
   const box = scope.track(new oc.Bnd_Box_1())
   oc.BRepBndLib.Add(shape, box, false)
-  const min: Vec3 = [box.GetXmin(), box.GetYmin(), box.GetZmin()]
-  const max: Vec3 = [box.GetXmax(), box.GetYmax(), box.GetZmax()]
+  const min: Vec3 = [box.GetXMin(), box.GetYMin(), box.GetZMin()]
+  const max: Vec3 = [box.GetXMax(), box.GetYMax(), box.GetZMax()]
   return {
     min,
     max,
@@ -1119,7 +1120,7 @@ function readMeshedEdgePolylines(
   for (; fexp.More() && pending > 0; fexp.Next()) {
     const face = scope.track(oc.TopoDS.Face_1(fexp.Current()))
     const loc = scope.track(new oc.TopLoc_Location_1())
-    const triHandle = scope.track(oc.BRep_Tool.Triangulation(face, loc))
+    const triHandle = scope.track(oc.BRep_Tool.Triangulation(face, loc, MESH_PURPOSE_NONE))
     if (triHandle.IsNull()) continue
     const tri = triHandle.get()
     if (!tri) continue

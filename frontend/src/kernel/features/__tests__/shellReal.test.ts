@@ -10,7 +10,7 @@
 // viewport mints), so the test does not depend on cross-build face enumeration
 // order beyond the body it builds itself.
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'
 import { DisposeScope } from '../../occ/disposeScope'
@@ -134,7 +134,7 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
       // Inward removes material inside the original skin, so the bbox holds.
       const box = scope.track(new occ.Bnd_Box_1())
       occ.BRepBndLib.Add(shape, box, false)
-      expect([box.GetXmin(), box.GetYmin(), box.GetZmin(), box.GetXmax(), box.GetYmax(), box.GetZmax()].map((n) => Math.round(n)))
+      expect([box.GetXMin(), box.GetYMin(), box.GetZMin(), box.GetXMax(), box.GetYMax(), box.GetZMax()].map((n) => Math.round(n) + 0))  // + 0 folds OCCT 8's -0 into 0 for toEqual
         .toEqual([0, 0, 0, 10, 10, 10])
     } finally {
       scope.dispose()
@@ -181,7 +181,7 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
       expect(canonicalFaces(occ, scope, shape)).toHaveLength(11)
       const box = scope.track(new occ.Bnd_Box_1())
       occ.BRepBndLib.Add(shape, box, false)
-      expect([box.GetXmin(), box.GetYmin(), box.GetZmin(), box.GetXmax(), box.GetYmax(), box.GetZmax()].map((n) => Math.round(n)))
+      expect([box.GetXMin(), box.GetYMin(), box.GetZMin(), box.GetXMax(), box.GetYMax(), box.GetZMax()].map((n) => Math.round(n) + 0))  // + 0 folds OCCT 8's -0 into 0 for toEqual
         .toEqual([-1, -1, -1, 11, 11, 10])
       // Outward names the same way as inward: the kept inner skin carries the
       // old UUIDs (minus the removed top) and every kept face mints its offset
@@ -216,7 +216,7 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
       expect(canonicalFaces(occ, scope, shape)).toHaveLength(11)
       const box = scope.track(new occ.Bnd_Box_1())
       occ.BRepBndLib.Add(shape, box, false)
-      expect([box.GetXmin(), box.GetYmin(), box.GetZmin(), box.GetXmax(), box.GetYmax(), box.GetZmax()].map((n) => Number(n.toFixed(3))))
+      expect([box.GetXMin(), box.GetYMin(), box.GetZMin(), box.GetXMax(), box.GetYMax(), box.GetZMax()].map((n) => Number(n.toFixed(3))))
         .toEqual([-0.05, -0.05, -0.05, 2.05, 2.05, 2])
     } finally {
       scope.dispose()

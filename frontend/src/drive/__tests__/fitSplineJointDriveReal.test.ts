@@ -6,25 +6,15 @@
 // spline leaving that circle. Before the terminal poles followed the merged
 // joints, makeWire dropped the spline and the extrude failed with "only 2 of 3
 // edges connected". Skips when OCC or the solver is absent.
-import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import { runHeadless, measureHeadless, emptyDriveDoc } from '../headlessOps'
 import type { ScriptStep } from '../scriptRunner'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import { nonSketchProblems } from './buildProblems'
-
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 
 const oc = occInstalled()
 const solveBytes = loadSolver()

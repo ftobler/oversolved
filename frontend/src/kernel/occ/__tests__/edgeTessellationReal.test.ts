@@ -14,7 +14,7 @@
 // the old fixed-count sampler. They also pin that line/circle edges keep their
 // analytic form (no new polyline payload).
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'
@@ -33,6 +33,7 @@ import type { EdgeData } from '@/types/cad'
 import type { Body } from '../../types3d'
 import type { OccHandle } from '../handleTable'
 import type { OccModule, OccShape, OccSubShape } from '../occTypes'
+import { MESH_PURPOSE_NONE } from '../defaultArgs'
 
 const oc = await loadOcc()
 
@@ -110,7 +111,7 @@ function meshedEdgePolygons(occ: OccModule, scope: DisposeScope, solid: OccShape
   for (; fexp.More(); fexp.Next()) {
     const face = scope.track(occ.TopoDS.Face_1(fexp.Current()))
     const loc = scope.track(new occ.TopLoc_Location_1())
-    const triHandle = scope.track(occ.BRep_Tool.Triangulation(face, loc))
+    const triHandle = scope.track(occ.BRep_Tool.Triangulation(face, loc, MESH_PURPOSE_NONE))
     if (triHandle.IsNull()) continue
     const tri = triHandle.get()
     if (!tri) continue

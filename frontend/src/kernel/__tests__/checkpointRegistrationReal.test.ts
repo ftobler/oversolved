@@ -141,16 +141,20 @@ describe.skipIf(!oc || !solveBytes)('checkpoint registration: metadata vs render
     expect(fp.render).toEqual(fp.meta)
   })
 
-  // A body of this corpus has a sliver face below the deflection that tessellates to
-  // no triangle. The render mesh keeps it as an empty slot, so every face index (and
-  // with it each query's `@body/faceN` tag, picks and eviction keys) still equals the
-  // metadata index; dropping it once shifted every later face by one.
-  it('a body with a zero-triangle face keeps render face indices equal to metadata', () => {
+  // A multi-face body whose faces include a sliver: the render mesh must keep
+  // every face slot the metadata numbering has, so each query's `@body/faceN`
+  // tag, pick and eviction key lands on the same face in both.
+  //
+  // This corpus's sliver used to tessellate to nothing and was the real-kernel
+  // proof of the empty-slot rule. OCCT 8 triangulates it (2 triangles, the
+  // corpus minimum), so no face here is empty any more; the empty-slot rule
+  // itself is pinned by `tessellation.test.ts` on `assembleMesh`, and this test
+  // keeps the index-alignment proof over the same body.
+  it('a body with a sliver face keeps render face indices equal to metadata', () => {
     const h = new Harness()
     const r = h.run(structuredClone(arrayCutCorpus) as unknown as Record<string, unknown>)
     const order = r._build_state.feature_order
     const bodies = r._build_state.checkpoints[order[order.length - 1]].body_store_snapshot
-    let emptyFaces = 0
     for (const body of Object.values(bodies)) {
       const metaOut = extractBrepMetadata(oc!, h.table, { [body.id]: body })[body.id]
       const renderOut = tessellateBodies(oc!, h.table, { [body.id]: body })[body.id]
@@ -160,12 +164,9 @@ describe.skipIf(!oc || !solveBytes)('checkpoint registration: metadata vs render
       }
       expect(render.face_queries, `${body.id} face queries`).toEqual(meta.face_queries)
       expect(render.face_uuids, `${body.id} face uuids`).toEqual(meta.face_uuids)
-      const owning = new Set(render.triangle_to_face)
-      emptyFaces += render.face_data.filter((_fd, i) => !owning.has(i)).length
       const fp = h.fingerprints(body)
       expect(fp.render, `${body.id} registration`).toEqual(fp.meta)
     }
-    expect(emptyFaces, 'the corpus still yields a face with no triangle').toBeGreaterThan(0)
   }, 120_000)
 
   it('an imported STEP body registers identically off metadata and off the render mesh', () => {

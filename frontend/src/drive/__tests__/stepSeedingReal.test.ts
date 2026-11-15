@@ -5,10 +5,9 @@
 // (one call, 3+3, 1x6) does not change what the steps mint, and the reply's
 // docHash chains the next call. The command-id half is stepSeeding.test.ts.
 
-import { createRequire } from 'node:module'
 import { beforeAll, describe, it, expect } from 'vitest'
 import { setOccLoader } from '@/kernel/solveLocally'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
@@ -20,14 +19,6 @@ import type { PartDoc } from '@/types/cad'
 import type { McpDocArguments } from '../mcpServer'
 import type { ScriptStep, ScriptStepOutcome } from '../scriptRunner'
 
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 function emptyDoc(): PartDoc {
   return { version: 1, kind: 'part', features: [] } as PartDoc
 }

@@ -7,9 +7,11 @@
 // threads the names through each move, resplits the body and attaches the
 // editing handle.
 //
-// Several faces are applied one after another in list order, each re-found on
-// the intermediate shape by its construction UUID (never by index). An earlier
-// move that consumes a later face reports that face as failed, not a guess.
+// Several faces are applied one after another in a canonical order (by the
+// pick's construction UUID, so the list order the user happened to click cannot
+// change the result), each re-found on the intermediate shape by its
+// construction UUID (never by index). An earlier move that consumes a later
+// face reports that face as failed, not a guess.
 // A group the intermediate shape refuses (a neighbour surface an earlier move
 // left unable to cross the next slab), or one with a pick whose UUID is not
 // live (a pre-split document), is applied with every slab selected on the
@@ -152,6 +154,20 @@ export function solveMoveFace(
       const uuid = queryFaceUuid(q)
       return uuid === null || !baseMap.has(uuid)
     })
+    // A move of several faces must be a function of the picked SET, not of the
+    // order the chips happen to be in. The sequential path below applies the
+    // picks one after another, so its result depends on which pick runs first;
+    // OCCT 8 tolerates some neighbouring pairs 7.4 refused, so list order and
+    // reverse order could take different paths (one sequential, one set) and
+    // disagree by 3.75 mm with a different face count (moveFaceRobustnessReal).
+    // Sorting the group by the pick's own construction UUID makes both orders
+    // run the same sequence; a refusal then falls back to the set path exactly
+    // as before. The pick's ORIGINAL index still keys its names, so the minted
+    // `set|N` paths stay the ones the document order (and the set path) mint.
+    const moveOrder = (q: string): string => queryFaceUuid(q) ?? q
+    const ordered = qlist
+      .map((q, pickIndex) => ({ q, pickIndex }))
+      .sort((a, b) => moveOrder(a.q).localeCompare(moveOrder(b.q)))
     let currentShape = oldShape
     let currentNames = baseNames
     let currentMap = baseMap
@@ -167,7 +183,7 @@ export function solveMoveFace(
     const groupRefusals: string[] = []
 
     if (!needsSet) {
-      for (const [pickIndex, q] of qlist.entries()) {
+      for (const { q, pickIndex } of ordered) {
         const uuid = queryFaceUuid(q)
         let face: OccShape | null = uuid !== null ? (currentMap.get(uuid) ?? null) : null
         // First pick (or one whose UUID the intermediate shape dropped): the
@@ -261,6 +277,14 @@ export function solveMoveFace(
           throw e
         }
       }
+      // A set that refuses every pick still has to report why: those refusals
+      // are the group's diagnosis, and dropping them would leave the leaf with
+      // a bare "nothing could be applied" (or, when another group committed,
+      // hide two selected picks entirely).
+      groupFailed.length = 0
+      groupRefusals.length = 0
+      groupFailed.push(...setFailed)
+      groupRefusals.push(...setRefusals)
       if (setPicks.length > 0) {
         const set = combineMoveFaceCells(oc, scope, oldShape, setPicks, distance)
         scope.track(set.shape)
@@ -279,10 +303,6 @@ export function solveMoveFace(
         body.brep_diff = set.diff
         body.modified_by.push(featureId)
         applied.push(...ids)
-        groupFailed.length = 0
-        groupRefusals.length = 0
-        groupFailed.push(...setFailed)
-        groupRefusals.push(...setRefusals)
         committed = true
       }
     }

@@ -9,7 +9,7 @@
 // let the hole's uuid replace the existing face's, so a stored pick on that face
 // broke, and which name won hung on OCC explorer order.
 //
-// Skips when opencascade.js or the Rust solver is absent.
+// Skips when the OCC build or the Rust solver is absent.
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { SharedHarness } from '../sharedHarness'
@@ -34,6 +34,7 @@ import {
 } from '../booleans'
 import type { BrepDiff } from '../../types3d'
 import type { OccHistory, OccModule, OccShape, OccSubShape } from '../occTypes'
+import { noProgress } from '../defaultArgs'
 import type { Vec3 } from '../primitives'
 
 const oc = await loadOcc()
@@ -412,7 +413,7 @@ describe.skipIf(!oc)('compose through clean matches the old IsSame filter (real 
       })
       expect(topEdge, 'a top edge to fillet').toBeDefined()
       mk.Add_2(2, topEdge as OccShape)
-      mk.Build()
+      mk.Build(noProgress(occ))
       const filleted = scope.track(mk.Shape())
       const bore = scope.track(makeCylinder(occ, scope, [5, 5, -1], [0, 0, 1], 2, 12))
       const { raw, history, cleaned } = rawAndClean(scope, filleted, [bore], 'cut')

@@ -9,7 +9,7 @@
 
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
-import { createRequire } from 'node:module'
+import { occInstalled } from '@/kernel/occ/loadOcc'
 import path from 'node:path'
 import { expect } from 'vitest'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
@@ -19,15 +19,6 @@ const execFileAsync = promisify(execFile)
 
 // The project-internal tmp at the worktree root; never the system /tmp.
 export const TMP_DIR = path.resolve(FRONTEND_DIR, '../tmp/drive-cli-smoke')
-
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 
 const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number)
 const stripTypes = nodeMajor > 22 || (nodeMajor === 22 && nodeMinor >= 6)

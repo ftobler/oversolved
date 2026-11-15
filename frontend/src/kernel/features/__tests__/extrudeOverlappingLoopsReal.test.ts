@@ -110,7 +110,7 @@ describe.skipIf(!oc || !solveBytes)('extrude with overlapping sketch loops (real
         // The exact AABB [minx, miny, minz, maxx, maxy, maxz]; the rim-crossing
         // case is pinned on its x extent, not only on volume.
         bbox: shapeBbox(oc!, scope, shape),
-        valid: scope.track(new oc!.BRepCheck_Analyzer(shape, true)).IsValid_2(),
+        valid: scope.track(new oc!.BRepCheck_Analyzer(shape, true, false, false)).IsValid_2(),
       }
     } finally {
       scope.dispose()

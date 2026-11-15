@@ -3,7 +3,7 @@
 // Real-OCC guard for the arbitrary area builder: a sliced ellipse (elliptical-arc
 // boundary edges) and a donut (outer + inner hole) extrude into correct solids.
 // Drives the full pipeline detectTopology -> profile loops -> trimmed-ellipse /
-// face-with-hole wire -> prism. Skips when opencascade.js is absent.
+// face-with-hole wire -> prism. Skips when the OCC build is absent.
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'

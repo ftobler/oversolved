@@ -8,7 +8,7 @@
 // asserts the result dict + the post-op body store (per body: volume,
 // created_by, modified_by) match Python.
 //
-// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot;
+// Skips when the OCC build is absent. The fixture is a frozen golden snapshot;
 // its generator (gen_transform_fixture.py) was deleted with the Python kernel in
 // phase 4d.
 //

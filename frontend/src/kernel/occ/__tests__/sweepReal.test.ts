@@ -11,7 +11,7 @@
 // ancestry maps. faceAncestry matches the golden face_lineage multiset; edgeAncestry
 // is a SUBSET (seam edges of curved lateral faces get no edge UUID).
 //
-// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot.
+// Skips when the OCC build is absent. The fixture is a frozen golden snapshot.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../loadOcc'

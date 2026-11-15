@@ -19,7 +19,7 @@
 // like every *Real suite; under CI the provisioning guard turns that skip into
 // a failure. Provision locally with `just install-occ` and `just wasm`.
 
-import { createRequire } from 'node:module'
+import { occInstalled } from '../loadOcc'
 import { describe, it, expect, afterAll } from 'vitest'
 import { unportedKinds } from '../../solverRegistry'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
@@ -38,18 +38,9 @@ import baseline from '@/wasm-kernel/regression-baseline.json'
 // ─── Provisioning ───
 
 // Every solve runs in the forked child of solveWithTimeout, which loads its own
-// OCC.js. Loading it here as well would only answer "is it installed" at the
-// cost of a second ~0.75 GB heap in this fork, which the memory-sized pool in
-// vitest.config.ts does not budget for. Resolving the package is enough.
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
-
+// OCC. Loading it here as well would only answer "is it installed" at the cost
+// of a second heap in this fork, which the memory-sized pool in
+// vitest.config.ts does not budget for. Checking the provisioned files is enough.
 const oc = occInstalled()
 const solveBytes = loadSolver()
 const topologyBytes = loadTopology()

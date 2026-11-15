@@ -1,7 +1,7 @@
 // @vitest-environment node
 //
 // Real-OCC verification of the make-a-body primitives + geometry readers.
-// Skips when opencascade.js is not installed (npm run occ:install). Builds box,
+// Skips when OCC is not installed (just install-occ). Builds box,
 // cylinder, and extruded-square solids, reads per-face centroid/normal/surface
 // type/area, and asserts the topology + the face-normal sign convention that
 // must match Python. Everything routes through the HandleTable; the body is
@@ -34,6 +34,7 @@ import {
 } from '../primitives'
 import { revolveFace } from '../prismLineage'
 import type { OccDisposable, OccModule, OccShape } from '../occTypes'
+import { MESH_PURPOSE_NONE } from '../defaultArgs'
 
 const oc = await loadOcc()
 
@@ -468,12 +469,11 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
     const scope = new DisposeScope()
     try {
       const center = scope.track(new occ.gp_Pnt_3(0, 0, 0))
-      const MakeSphere = (occ as unknown as {
-        BRepPrimAPI_MakeSphere_7: new (
-          p: typeof center, r: number, a1: number, a2: number,
-        ) => { Shape(): OccShape } & OccDisposable
-      }).BRepPrimAPI_MakeSphere_7
-      const sphere = scope.track(new MakeSphere(center, 5, 0, Math.PI)).Shape()
+      // A full sphere: its seam runs pole to pole, so both pole edges are
+      // degenerated. (This once asked for latitudes 0..pi, outside OCCT's
+      // -pi/2..pi/2; the 7.4 build had that check compiled out, OCCT 8 raises
+      // Standard_ConstructionError.)
+      const sphere = scope.track(new occ.BRepPrimAPI_MakeSphere_5(center, 5)).Shape()
       const edges = readSolidEdges(occ, scope, sphere)
       expect(edges.length).toBeGreaterThanOrEqual(1)
       const pts = readEdgeSamplePoints(occ, scope, sphere, 8)
@@ -555,8 +555,8 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
       const ax2 = scope.track(
         new occ.gp_Ax2_2(
           scope.track(new occ.gp_Pnt_3(0, 0, 0)),
-          scope.track(new occ.gp_Dir_4(0, 0, 1)),
-          scope.track(new occ.gp_Dir_4(1, 0, 0)),
+          scope.track(new occ.gp_Dir_5(0, 0, 1)),
+          scope.track(new occ.gp_Dir_5(1, 0, 0)),
         ),
       )
       const circ = scope.track(new occ.gp_Circ_2(ax2, 2))
@@ -583,7 +583,7 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
       const exp = scope.track(new occ.TopExp_Explorer_2(box, E.TopAbs_FACE, E.TopAbs_SHAPE))
       const face = scope.track(occ.TopoDS.Face_1(exp.Current()))
       const loc = scope.track(new occ.TopLoc_Location_1())
-      const handle = scope.track(occ.BRep_Tool.Triangulation(face, loc))  // meshed box face
+      const handle = scope.track(occ.BRep_Tool.Triangulation(face, loc, MESH_PURPOSE_NONE))  // meshed box face
       expect(handle.IsNull()).toBe(false)
       const a = handle.get()
       const b = handle.get()

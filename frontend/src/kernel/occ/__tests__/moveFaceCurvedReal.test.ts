@@ -5,9 +5,10 @@
 // or torus face moves as a uniform offset of its surface, the bounding faces
 // extend, the seam and degenerated edges are skipped and the face may vanish.
 // Every volume is an analytic formula; the planar regression lives in
-// moveFaceReal.test.ts. Skips when opencascade.js is absent.
+// moveFaceReal.test.ts. Skips when OCC is absent.
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'
+import { noProgress } from '../defaultArgs'
 import { DisposeScope } from '../disposeScope'
 import { volumeOf } from '../volume'
 import { canonicalFaces, canonicalEdges } from '../bodyNames'
@@ -62,9 +63,9 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
   // ─── fixture builders ───
 
   const ax2 = (scope: DisposeScope, origin: Vec3, dir: Vec3): OccShape =>
-    scope.track(new occ.gp_Ax2_3(
+    scope.track(new occ.gp_Ax2_4(
       scope.track(new occ.gp_Pnt_3(origin[0], origin[1], origin[2])),
-      scope.track(new occ.gp_Dir_4(dir[0], dir[1], dir[2])),
+      scope.track(new occ.gp_Dir_5(dir[0], dir[1], dir[2])),
     ))
 
   const ax2z = (scope: DisposeScope, x = 0, y = 0, z = 0): OccShape => ax2(scope, [x, y, z], [0, 0, 1])
@@ -94,7 +95,7 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
     tools.Append_1(b)
     algo.SetArguments(args)
     algo.SetTools(tools)
-    algo.Build()
+    algo.Build(noProgress(occ))
     return scope.track(algo.Shape())
   }
 
@@ -294,7 +295,7 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
         const loc = scope.track(circ.Location())
         if (Math.abs(loc.Z() - 10) < 1e-6) mk.Add_2(1, e as OccShape)
       }
-      mk.Build()
+      mk.Build(noProgress(occ))
       const body = scope.track(mk.Shape())
       const wall = pickKind(scope, body, cylKind)
       let threw: unknown = null
@@ -419,8 +420,8 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
     // is exact). Pinned so a change in the merge cannot pass silently.
     const scope = new DisposeScope()
     try {
-      const ax2 = (z: number): OccShape => scope.track(new occ.gp_Ax2_3(
-        scope.track(new occ.gp_Pnt_3(0, 0, z)), scope.track(new occ.gp_Dir_4(0, 0, 1)),
+      const ax2 = (z: number): OccShape => scope.track(new occ.gp_Ax2_4(
+        scope.track(new occ.gp_Pnt_3(0, 0, z)), scope.track(new occ.gp_Dir_5(0, 0, 1)),
       ))
       const cyl = (z: number, r: number, h: number): OccShape =>
         scope.track(new occ.BRepPrimAPI_MakeCylinder_3(ax2(z), r, h).Shape())

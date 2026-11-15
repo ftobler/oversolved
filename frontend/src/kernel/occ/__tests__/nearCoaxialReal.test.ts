@@ -4,7 +4,7 @@
 // with a helix axis when the two axes are one line (parallel and a document
 // grid step apart at most). That is the geometry whose face merge spins, so a
 // false positive only costs a seam and a false negative costs the whole solve;
-// both sides of the band are pinned here. Skips when opencascade.js is absent.
+// both sides of the band are pinned here. Skips when the OCC build is absent.
 
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'

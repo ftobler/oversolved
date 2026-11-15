@@ -11,7 +11,7 @@
 // cut reaches every body, so eating a split lump is the asked-for result and
 // went silent. It stays for the two cases where it is not (the cut's explicit
 // merge target vanished, or the part is now empty). Skips when
-// opencascade.js is absent.
+// the OCC build is absent.
 
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'

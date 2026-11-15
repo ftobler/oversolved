@@ -1,8 +1,8 @@
 // @vitest-environment node
 //
 // Phase-0 probe for the delete-face kernel path (occ/defeature.ts), kept as a
-// regression test. It pins the OCCT 7.4.0p1 (opencascade.js 1.1.1) behaviour the
-// adapter is built on:
+// regression test. It pins the behaviour the adapter is built on (probed on
+// 7.4.0p1, re-verified on the shipped 8.0.1):
 //
 //   - `SetShape` + `AddFaceToRemove` per face + `SetToFillHistory(true)` +
 //     `Build` removes the faces and extends the neighbours' surfaces to close
@@ -16,7 +16,7 @@
 //     hang for over a minute, so the neighbour type is refused BEFORE OCC runs.
 //   - No face is Generated: "no new geometry" holds by construction.
 //
-// Skips when opencascade.js is absent, like every *Real suite.
+// Skips when the OCC build is absent, like every *Real suite.
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'

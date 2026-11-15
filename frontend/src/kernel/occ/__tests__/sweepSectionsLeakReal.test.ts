@@ -8,7 +8,7 @@
 // The refusal is forced at the lineage pass, the trap the review named, while
 // the sweep itself is the real OCC one: two square sections on a line spine.
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 import { describe, it, expect, vi } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { CountingScope } from '../countingScope'

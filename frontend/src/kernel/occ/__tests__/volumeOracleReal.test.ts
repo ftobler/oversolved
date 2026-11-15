@@ -2,7 +2,7 @@
 //
 // The analytic-volume oracle: builds primitives and simple features on the real
 // kernel, measures them with volumeOf (BRepGProp), and compares against the
-// closed-form volumes derived below. Skips when opencascade.js is not
+// closed-form volumes derived below. Skips when the OCC build is not
 // installed, like every *Real suite.
 //
 // Every formula is re-derived here from the mathematics, with the derivation

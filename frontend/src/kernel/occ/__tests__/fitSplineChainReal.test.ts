@@ -2,7 +2,7 @@
 //
 // Real-OCC guard for the fit-spline chain edge: the Ex010 profile (three lines
 // plus one interpolating spline) extrudes to CadQuery's measured volume, and
-// the spline edge is one C2 B-spline, not a chord. Skips when opencascade.js is
+// the spline edge is one C2 B-spline, not a chord. Skips when the OCC build is
 // absent.
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'

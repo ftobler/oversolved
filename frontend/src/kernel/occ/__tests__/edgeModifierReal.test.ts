@@ -10,7 +10,7 @@
 // constructionNameBooleanReal.test.ts. What remains here is the geometric +
 // diff-classification parity, which is what the modifier still produces.
 //
-// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot.
+// Skips when the OCC build is absent. The fixture is a frozen golden snapshot.
 //
 // The new_edges/inherited_edges counts were corrected away from the original
 // Python snapshot (22/8 -> 8/22) when edgeModifier gained a geometry fallback

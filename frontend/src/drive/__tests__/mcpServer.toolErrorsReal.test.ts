@@ -8,20 +8,11 @@
 //
 // The real suite spawns the server: the body ids only exist after a solve.
 
-import { createRequire } from 'node:module'
+import { occInstalled } from '@/kernel/occ/loadOcc'
 import { describe, it, expect } from 'vitest'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { createMcpServer, type McpCadOps } from '../mcpServer'
 import { spawnMcp, errorPayload } from './mcpStdioClient'
-
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 
 const [nodeMajor, nodeMinor] = process.versions.node.split('.').map(Number)
 const stripTypes = nodeMajor > 22 || (nodeMajor === 22 && nodeMinor >= 6)

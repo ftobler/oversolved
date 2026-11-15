@@ -15,9 +15,10 @@
 // (empty ancestry, the same as a builder-reported cap), every rim edge gets a
 // unique construction UUID, and a rebuild mints the identical names.
 //
-// Skips when opencascade.js is absent.
+// Skips when OCC is absent.
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'
+import { noProgress } from '../defaultArgs'
 import { DisposeScope } from '../disposeScope'
 import { buildPrismLineageMap, sketchLoopsToFace, revolveFace } from '../prismLineage'
 import { makeLineEdge, makeArcEdge, makeWire, healWire } from '../primitives'
@@ -54,7 +55,7 @@ describe.skipIf(!oc)('prism caps with a builder that omits FirstShape/LastShape 
         const builder = scope.track(new occ.BRepOffsetAPI_MakePipeShell(spineWire))
         builder.SetTransitionMode(occ.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_RightCorner)
         builder.Add_1(outerWire, false, false)
-        builder.Build()
+        builder.Build(noProgress(occ))
         if (!builder.IsDone() || !builder.MakeSolid()) throw new Error('probe pipe shell failed')
         // The stub reports NO FirstShape/LastShape on purpose.
         const stub = {
@@ -154,7 +155,7 @@ describe.skipIf(!oc)('prism caps with a builder that omits FirstShape/LastShape 
       const builder = scope.track(new occ.BRepOffsetAPI_MakePipeShell(spineWire))
       builder.SetTransitionMode(occ.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_RightCorner)
       builder.Add_1(outerWire, false, false)
-      builder.Build()
+      builder.Build(noProgress(occ))
       if (!builder.IsDone() || !builder.MakeSolid()) throw new Error('probe pipe shell failed')
       const stub = {
         Shape: (): OccShape => builder.Shape(),

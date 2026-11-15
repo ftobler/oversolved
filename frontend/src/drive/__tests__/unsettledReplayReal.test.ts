@@ -13,10 +13,9 @@
 // session is idle before the replay session starts, and the two use different
 // doc ids so solveLocally's checkpoint cache switches documents.
 
-import { createRequire } from 'node:module'
 import { beforeAll, afterEach, describe, it, expect } from 'vitest'
 import { setOccLoader } from '@/kernel/solveLocally'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
@@ -27,15 +26,6 @@ import { docHashOf } from '../docHash'
 import { seededIdSource } from '../seededIds'
 import { setIdSource } from '@/utils/yamlMutations'
 import type { PartDoc, Mutation } from '@/types/cad'
-
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 
 const oc = occInstalled()
 const solveBytes = loadSolver()

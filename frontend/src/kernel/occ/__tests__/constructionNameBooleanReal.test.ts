@@ -6,7 +6,7 @@
 // Asserts that faces the op leaves untouched keep their exact minted UUID, and
 // that a fillet mints a role=fillet UUID slotted by the filleted edge's UUID.
 //
-// Skips when opencascade.js is absent, like the other real-OCC gates.
+// Skips when the OCC build is absent, like the other real-OCC gates.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../loadOcc'

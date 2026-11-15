@@ -13,6 +13,7 @@ import { drainList } from './disposeScope'
 import { unplacer, SubShapeIndexMap } from './primitives'
 import { SubShapeMap } from './subshapeIdentity'
 import type { ShapeNames } from './bodyNames'
+import { noProgress } from './defaultArgs'
 
 export interface FaceNameMaps {
   faceNames: SubShapeMap<string>
@@ -74,8 +75,8 @@ export function transformCopyWithMapping(
   shape: OccShape,
   trsf: OccTrsf,
 ): { shape: OccShape; builder: OccTransformBuilder } {
-  const builder = scope.track(new oc.BRepBuilderAPI_Transform_2(shape, trsf, true))
-  builder.Build()
+  const builder = scope.track(new oc.BRepBuilderAPI_Transform_2(shape, trsf, true, false))
+  builder.Build(noProgress(oc))
   if (!builder.IsDone()) throw new Error('transform builder did not complete')
   return { shape: builder.Shape(), builder }
 }

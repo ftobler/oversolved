@@ -5,7 +5,7 @@
 // encloses; `shapesTouch` (a boundary distance) sees a body it only shares a
 // face with, which the Common reads as no solid at all. This pins the split on
 // real OCC, beside `bodyOpsProbeFallback.test.ts`, which pins the Common's own
-// three failure outcomes. Skips when opencascade.js is absent.
+// three failure outcomes. Skips when the OCC build is absent.
 
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'

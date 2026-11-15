@@ -1,9 +1,9 @@
-// The OCCT version is stated in prose in several places, and before this test
-// it drifted: README said 7.4, the loaders said 7.5, while the installed
-// opencascade.js build (and its LGPL source mirror) is V7_4_0p1. The single
-// source of truth is frontend/occ.pin.json, which occ:install/occ:provision
-// verify against; this test fails when any statement disagrees with it or when
-// the install script pins a different package version.
+// The OCCT version is stated in prose in several places, and it once drifted:
+// README said 7.4, the loaders said 7.5, while the installed build was V7_4_0p1.
+// The single source of truth is frontend/occ.pin.json, which occ:install,
+// verify and provision check the download against; this test fails when any
+// statement disagrees with it, when the release tag names another version, or
+// when the source mirror offers the source of another build.
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -14,10 +14,10 @@ const FRONTEND = join(HERE, '..', '..', '..', '..')
 const ROOT = join(FRONTEND, '..')
 
 const pin = JSON.parse(readFileSync(join(FRONTEND, 'occ.pin.json'), 'utf8')) as {
-  package: string
-  version: string
-  registry: { tarball: string; integrity: string }
-  occt: { version: string; commit: string }
+  repo: string
+  tag: string
+  occt: { version: string; tag: string; commit: string }
+  build_commit: string
   artifacts: Record<string, string>
 }
 
@@ -32,21 +32,26 @@ const REQUIRED_STATEMENT = [
 const SCANNED = [
   ...REQUIRED_STATEMENT,
   'docs/setup.md',
+  'frontend/README.md',
   'frontend/src/kernel/occ/booleans.ts',
   'frontend/src/kernel/occ/occTypes.ts',
   'frontend/src/kernel/occ/primitives.ts',
+  'frontend/src/kernel/occ/offsetShape.ts',
   'frontend/src/kernel/errors.ts',
   'frontend/src/kernel/solverConstants.ts',
   'frontend/src/testing/robustnessFuzz/chainReal.test.ts',
   'frontend/scripts/fetchOccSource.mjs',
 ]
 
-// Two spellings appear in the tree: prose "OCCT 7.4.0p1" and the OCCT git tag
-// "V7_4_0p1" (in the mirror's tarball name). Both normalize to the same dot
-// form the pin records.
+// The spellings in the tree: prose "OCCT 8.0.1", the OCCT git tag "V8.0.1" (in
+// the mirror's tarball name), and the older underscore tags "V7_4_0p1". All
+// normalize to the dot form the pin records. Only a full major.minor.patch is a
+// claim about the build; "OCCT 7.6 retired BRepOffset_Type" or "OCCT 8 binds
+// no default arguments" is the history of an API, and is not scanned.
 const CLAIM_PATTERNS = [
-  /\bOCC(?:T)?\s+V?(\d[\d._]*p?\d*)/g,
-  /\bV(\d+_\d+_\d+p?\d*)\b/g,
+  /\bOCC(?:T)?\s+V?(\d+[._]\d+[._]\d+(?:p\d+)?)/g,
+  /\bV(\d+_\d+_\d+(?:p\d+)?)\b/g,
+  /\bV(\d+\.\d+\.\d+)\b/g,
 ]
 
 function claimsIn(text: string): string[] {
@@ -82,36 +87,30 @@ describe('OCCT version consistency', () => {
     }
   })
 
-  it('occ:install pins the package version recorded in the pin', () => {
+  it('occ:install downloads the pinned release and verifies it', () => {
     const pkg = JSON.parse(readFileSync(join(FRONTEND, 'package.json'), 'utf8')) as {
       scripts: Record<string, string>
     }
-    const install = pkg.scripts['occ:install']
-    expect(install, 'occ:install no longer pins an explicit version').toContain(
-      `${pin.package}@${pin.version}`,
-    )
-    expect(install, 'occ:install must verify the install against the pin').toContain(
-      'scripts/occProvision.mjs verify',
-    )
+    expect(pkg.scripts['occ:install']).toBe('node scripts/occProvision.mjs install')
+    expect(pkg.scripts['occ:provision']).toBe('node scripts/occProvision.mjs provision')
   })
 
-  it('the pin names a registry tarball with an integrity hash and per-file digests', () => {
-    expect(pin.registry.tarball).toBe(
-      `https://registry.npmjs.org/${pin.package}/-/${pin.package}-${pin.version}.tgz`,
-    )
-    expect(pin.registry.integrity).toMatch(/^sha512-[A-Za-z0-9+/]+={0,2}$/)
-    expect(Object.keys(pin.artifacts).sort()).toEqual([
-      'opencascade.wasm.js',
-      'opencascade.wasm.wasm',
-    ])
+  it('the pin names its release, the OCCT it built and a digest per file', () => {
+    expect(pin.repo).toMatch(/^[\w.-]+\/[\w.-]+$/)
+    expect(pin.tag).toBe(`occt-${pin.occt.version}-${/-(r\d+)$/.exec(pin.tag)?.[1]}`)
+    expect(pin.occt.tag).toBe(`V${pin.occt.version}`)
+    expect(pin.occt.commit).toMatch(/^[0-9a-f]{40}$/)
+    expect(pin.build_commit).toMatch(/^[0-9a-f]{40}$/)
+    expect(Object.keys(pin.artifacts)).toEqual(expect.arrayContaining(['occt.js', 'occt.wasm']))
     for (const digest of Object.values(pin.artifacts)) {
       expect(digest).toMatch(/^[0-9a-f]{64}$/)
     }
   })
 
-  it('the source mirror pins the same OCCT commit as the version pin', () => {
+  it('the source mirror offers the source of the pinned build', () => {
     const mirror = readFileSync(join(ROOT, 'frontend', 'scripts', 'fetchOccSource.mjs'), 'utf8')
     expect(mirror).toContain(pin.occt.commit)
-    expect(mirror).toContain(`V${pin.occt.version.replace(/\./g, '_')}`)
+    expect(mirror).toContain(`V${pin.occt.version}`)
+    expect(mirror).toContain(pin.build_commit)
   })
 })

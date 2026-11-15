@@ -104,7 +104,7 @@ describe('loadOccWorker', () => {
     unsubscribe()
 
     expect(wasm.compiles).toHaveLength(1)
-    expect(wasm.compiles[0].url).toBe('/base/opencascade.wasm.wasm')
+    expect(wasm.compiles[0].url).toBe('/base/occt.wasm')
     expect(seen[0]).toBe('downloading')
     expect(seen).toContain('compiling')
     expect(seen.at(-1)).toBe('ready')

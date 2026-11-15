@@ -5,7 +5,6 @@
 // Split from mutationCatalog.test.ts, which keeps the pure catalog checks and
 // runs on an unprovisioned checkout.
 
-import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import { MUTATION_EXAMPLES } from '../mutationExamples'
 import { runHeadless, measureHeadless, seedBuiltins, selectHeadless } from '../headlessOps'
@@ -13,20 +12,11 @@ import { runReply } from '../mcpDocRef'
 import { DocHandleStore } from '../docHandleStore'
 import { createDriveJournal } from '../journal'
 import type { ScriptStep } from '../scriptRunner'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
-
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 
 const oc = occInstalled()
 if (oc) {

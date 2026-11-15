@@ -5,7 +5,7 @@
 // stored the pair solved to "axis is required" (candleStand F3, sprocket F2).
 // The precedence matches transform: an `axis` pick wins over the pair.
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'

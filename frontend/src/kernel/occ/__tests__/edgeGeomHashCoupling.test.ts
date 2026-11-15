@@ -7,7 +7,7 @@
 // an ellipse arm on the edgeToGeom side only, which collapsed every elliptical
 // edge to the constant "ellipse|0|0|0" and made ancestry queries and selection
 // ids collide. These tests keep the two sides coupled. We drive the real
-// edgeToGeom with a minimal fake OCC adaptor (no opencascade.js needed): it
+// edgeToGeom with a minimal fake OCC adaptor (no OCC module needed): it
 // reports an ELLIPSE curve type and exposes a full ellipse accessor.
 import { describe, it, expect } from 'vitest'
 import { edgeToGeom } from '@/kernel/occ/primitives'

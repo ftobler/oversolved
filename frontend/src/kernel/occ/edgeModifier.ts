@@ -25,6 +25,7 @@ import {
   type NormalFrame,
 } from './constructionLineage'
 import { swallowUnlessTrap } from '../errors'
+import { noProgress } from './defaultArgs'
 
 type Lineage = Record<string, string[]>
 type Names = SubShapeMap<string>
@@ -457,7 +458,7 @@ export function edgeModifierDiff(
  *  not a vote of confidence, so it reads as invalid. */
 export function isValidShape(oc: OccModule, scope: DisposeScope, shape: OccShape): boolean {
   try {
-    const analyzer = new oc.BRepCheck_Analyzer(shape, true)
+    const analyzer = new oc.BRepCheck_Analyzer(shape, true, false, false)
     try {
       return analyzer.IsValid_2()
     } finally {
@@ -497,7 +498,7 @@ export function healShape(
   let fixer: OccShapeFixShape
   try {
     fixer = scope.track(new oc.ShapeFix_Shape_2(shape))
-    fixer.Perform(scope.track(new oc.Handle_Message_ProgressIndicator_1()))
+    fixer.Perform(noProgress(oc))
     healed = scope.track(fixer.Shape())
   } catch (e) {
     swallowUnlessTrap(e)
@@ -656,7 +657,7 @@ function applyEdgeModifier(
     }
     try {
       for (const e of list) spec.addEdge(fresh, e, { scope, faces: oldFaces })
-      fresh.Build()
+      fresh.Build(noProgress(oc))
       if (!fresh.IsDone()) return { ok: false, reason: 'build_not_done' }
       return { ok: true, maker: fresh, shape: scope.track(fresh.Shape()) }
     } catch (e) {
@@ -793,7 +794,7 @@ function applyEdgeModifier(
   let buildReason = 'build_not_done'
   let bisected = false
   try {
-    maker.Build()
+    maker.Build(noProgress(oc))
     if (maker.IsDone()) built = maker.Shape()
   } catch (e) {
     swallowUnlessTrap(e)

@@ -5,7 +5,7 @@
 // readShapeFaceMetadata must produce the same face identification (order,
 // classifiers, face_queries) as the render mesh, but WITHOUT triangulating.
 // These tests pin both halves: zero BRepMesh calls during metadata extraction,
-// and face_data/face_queries that match solidToMesh. Skips when opencascade.js
+// and face_data/face_queries that match solidToMesh. Skips when the OCC build
 // is absent (npm run occ:install).
 
 import { describe, it, expect, beforeAll } from 'vitest'

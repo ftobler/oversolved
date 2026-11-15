@@ -90,7 +90,7 @@ describe.skipIf(!oc)('canonicalizeCylinderFaces', () => {
       const after = faceTypes(oc!, scope, result.shape)
       expect(after.length).toBe(before.length)
       expect(after.every((t) => t === planeType || t === cylType)).toBe(true)
-      expect(scope.track(new oc!.BRepCheck_Analyzer(result.shape, true)).IsValid_2()).toBe(true)
+      expect(scope.track(new oc!.BRepCheck_Analyzer(result.shape, true, false, false)).IsValid_2()).toBe(true)
       expect(volumeOf(oc!, scope, result.shape)).toBeCloseTo(volume, 6)
 
       // The swap targets must reference sub-shapes of the RETURNED (healed)
@@ -144,7 +144,7 @@ describe.skipIf(!oc)('canonicalizeCylinderFaces', () => {
       const volume = volumeOf(oc!, scope, res.shape)
       const result = canonicalizeCylinderFaces(oc!, scope, res.shape)
       expect(volumeOf(oc!, scope, result.shape)).toBeCloseTo(volume, 6)
-      expect(scope.track(new oc!.BRepCheck_Analyzer(result.shape, true)).IsValid_2()).toBe(true)
+      expect(scope.track(new oc!.BRepCheck_Analyzer(result.shape, true, false, false)).IsValid_2()).toBe(true)
     } finally {
       scope.dispose()
     }

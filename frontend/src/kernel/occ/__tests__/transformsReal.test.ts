@@ -9,7 +9,7 @@
 // unchanged). The two probes below are the recorded answer. Test 2 is kept in
 // its own `it` after test 1 so a fault could not have masked the identity result.
 //
-// Skips when opencascade.js is not installed (npm run occ:install).
+// Skips when OCC is not installed (just install-occ).
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../loadOcc'
@@ -64,7 +64,7 @@ describe.skipIf(!oc)('identity transform sharing (real OCC, D1)', () => {
       // Oracle sanity: the SAME transform with copy=false must alias the source
       // (IsPartner true), proving the negative above is a real rebuild, not a
       // binding that returns fresh copies for every call.
-      const moved = scope.track(new occ.BRepBuilderAPI_Transform_2(A, identity, false)).Shape()
+      const moved = scope.track(new occ.BRepBuilderAPI_Transform_2(A, identity, false, false)).Shape()
       expect((moved as OccSubShape).IsPartner(A as OccSubShape)).toBe(true)
       table.release(hA)
       table.assertNoLeaks()

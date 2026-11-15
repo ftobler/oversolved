@@ -7,7 +7,7 @@
 // lives in kernel/__tests__/threadTable and the shading in
 // components/Geometry3D/__tests__/threadShading.
 //
-// Skips when opencascade.js is absent, like every *Real suite.
+// Skips when the OCC build is absent, like every *Real suite.
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'
 import { DisposeScope } from '../../occ/disposeScope'

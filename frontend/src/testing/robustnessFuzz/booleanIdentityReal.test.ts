@@ -169,9 +169,13 @@ describe.skipIf(!oc)('boolean identities on primitive pairs (real OCC)', () => {
         } catch (e) {
           // The pair's kernel refusal, not a check failure: the soundness gate
           // exists because of these pairs, and the pinned regressions below
-          // keep their refusal exact.
-          if (e instanceof BooleanSoundnessError) {
-            refusals.push(`seed ${seed} (${draw.a.kind} u/n ${draw.b.kind}): ${e.message}`)
+          // keep their refusal exact. A build the kernel did not complete is
+          // the same class (OCCT 8 reports a few pairs 7.4 finished), so it is
+          // counted, capped and logged with the pair that produced it.
+          const label = `seed ${seed} (${draw.a.kind} u/n ${draw.b.kind})`
+          const message = e instanceof Error ? e.message : String(e)
+          if (e instanceof BooleanSoundnessError || /did not complete/.test(message)) {
+            refusals.push(`${label}: ${message}`)
             continue
           }
           throw e

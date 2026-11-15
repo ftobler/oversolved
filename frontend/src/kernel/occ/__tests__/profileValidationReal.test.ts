@@ -2,8 +2,8 @@
 //
 // Real-OCC gates for the profile build: the refusals that used to be silent,
 // the dump that now rides on the throw, and the joint weld that builds a merged
-// arc loop into the wire the analyser described. Skips when opencascade.js is
-// not installed (npm run occ:install).
+// arc loop into the wire the analyser described. Skips when OCC is not
+// installed (just install-occ).
 //
 // A refusal must fail loudly: before these guards, a not-done face builder
 // handed back a NULL shape without throwing, and an open chain of edges passed
@@ -290,7 +290,7 @@ describe.skipIf(!oc)('profile validation (real OCC)', () => {
         message = e instanceof Error ? e.message : String(e)
       }
       if (face !== null) {
-        expect(scope.track(new occ.BRepCheck_Analyzer(face, true)).IsValid_2()).toBe(true)
+        expect(scope.track(new occ.BRepCheck_Analyzer(face, true, false, false)).IsValid_2()).toBe(true)
       } else {
         expect(message).toMatch(/gap|open|closureGap/)
       }
@@ -338,7 +338,7 @@ describe.skipIf(!oc)('profile validation (real OCC)', () => {
       b.end = [5, 0]
       const loop: LoopEdge[] = [a, b]
       const face = scope.track(sketchLoopsToFace(occ, scope, [loop], XY_PLANE))
-      expect(scope.track(new occ.BRepCheck_Analyzer(face, true)).IsValid_2()).toBe(true)
+      expect(scope.track(new occ.BRepCheck_Analyzer(face, true, false, false)).IsValid_2()).toBe(true)
     } finally {
       scope.dispose()
     }
@@ -380,7 +380,7 @@ describe.skipIf(!oc)('profile validation (real OCC)', () => {
       for (const g of gaps) expect(g).toBeLessThan(1e-12)
 
       const face = scope.track(sketchLoopsToFace(occ, scope, [loop], XY_PLANE))
-      expect(scope.track(new occ.BRepCheck_Analyzer(face, true)).IsValid_2()).toBe(true)
+      expect(scope.track(new occ.BRepCheck_Analyzer(face, true, false, false)).IsValid_2()).toBe(true)
       const solid = scope.track(makePrism(occ, scope, face, [0, 0, 1], 1))
       const expected = Math.abs(analyticLoopArea(loop))
       expect(volumeOf(occ, scope, solid)).toBeCloseTo(expected, 5)
@@ -419,7 +419,7 @@ describe.skipIf(!oc)('profile validation (real OCC)', () => {
       }
       const loop: LoopEdge[] = [a, b]
       const face = scope.track(sketchLoopsToFace(occ, scope, [loop], XY_PLANE))
-      expect(scope.track(new occ.BRepCheck_Analyzer(face, true)).IsValid_2()).toBe(true)
+      expect(scope.track(new occ.BRepCheck_Analyzer(face, true, false, false)).IsValid_2()).toBe(true)
     } finally {
       scope.dispose()
     }
@@ -442,7 +442,7 @@ describe.skipIf(!oc)('profile validation (real OCC)', () => {
         { kind: 'line', start: [-5, 0], end: [...joint] },
       ]
       const face = scope.track(sketchLoopsToFace(occ, scope, [loop], XY_PLANE))
-      expect(scope.track(new occ.BRepCheck_Analyzer(face, true)).IsValid_2()).toBe(true)
+      expect(scope.track(new occ.BRepCheck_Analyzer(face, true, false, false)).IsValid_2()).toBe(true)
     } finally {
       scope.dispose()
     }
@@ -513,7 +513,7 @@ describe.skipIf(!oc)('profile validation (real OCC)', () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
     try {
       const face = sketchLoopsToFace(occ, scope, [gappedSquare(5e-7)], XY_PLANE)
-      expect(scope.track(new occ.BRepCheck_Analyzer(face, true)).IsValid_2()).toBe(true)
+      expect(scope.track(new occ.BRepCheck_Analyzer(face, true, false, false)).IsValid_2()).toBe(true)
       expect(warn).not.toHaveBeenCalled()
     } finally {
       warn.mockRestore()
@@ -533,7 +533,7 @@ describe.skipIf(!oc)('profile validation (real OCC)', () => {
     const scope = new DisposeScope()
     try {
       const face = scope.track(sketchLoopsToFace(occ, scope, [loop], XY_PLANE))
-      expect(scope.track(new occ.BRepCheck_Analyzer(face, true)).IsValid_2()).toBe(true)
+      expect(scope.track(new occ.BRepCheck_Analyzer(face, true, false, false)).IsValid_2()).toBe(true)
     } finally {
       scope.dispose()
     }
@@ -548,7 +548,7 @@ describe.skipIf(!oc)('profile validation (real OCC)', () => {
     const scope = new DisposeScope()
     try {
       const face = scope.track(sketchLoopsToFace(occ, scope, [loop], XY_PLANE))
-      expect(scope.track(new occ.BRepCheck_Analyzer(face, true)).IsValid_2()).toBe(true)
+      expect(scope.track(new occ.BRepCheck_Analyzer(face, true, false, false)).IsValid_2()).toBe(true)
 
       // The edges the wire writer asked for realize every joint inside OCC's
       // confusion rung, not just inside the sketch's merge rung.
@@ -575,7 +575,7 @@ describe.skipIf(!oc)('profile validation (real OCC)', () => {
     const scope = new DisposeScope()
     try {
       const face = sketchLoopsToFace(occ, scope, [gappedSquare(0)], XY_PLANE)
-      expect(scope.track(new occ.BRepCheck_Analyzer(face, true)).IsValid_2()).toBe(true)
+      expect(scope.track(new occ.BRepCheck_Analyzer(face, true, false, false)).IsValid_2()).toBe(true)
     } finally {
       scope.dispose()
     }

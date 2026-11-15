@@ -13,6 +13,21 @@ import type { OccModule, OccShape, OccSubShape } from './occTypes'
 const SHAPE_HASH_UPPER = 2147483647  // 2^31 - 1
 
 /**
+ * The identity bucket of `shape`: its `HashCode`, or 0 when the shape has none.
+ *
+ * Synthetic shapes (unit-test mocks) carry no HashCode, and neither does a
+ * build without the binding: OCCT 7.8 removed `TopoDS_Shape::HashCode` for
+ * `std::hash<TopoDS_Shape>`, which the oversolved-occt build exposes under the
+ * old name only from its manual bindings. Without it every shape lands in one
+ * bucket and the IsSame confirm becomes a flat scan: still exact, but O(n^2)
+ * crossings, so a real build must bind it.
+ */
+function bucketOf(shape: OccSubShape): number {
+  const hashFn = (shape as unknown as { HashCode?: (n: number) => number }).HashCode
+  return typeof hashFn === 'function' ? hashFn.call(shape, SHAPE_HASH_UPPER) : 0
+}
+
+/**
  * O(n) topological-identity dedup for TopExp_Explorer output. A solid's explorer
  * yields each shared edge/vertex once per owning face, so a growing-array
  * `some(IsSame)` scan is O(n^2) in C++/JS boundary crossings (a 12k-edge STEP
@@ -23,18 +38,9 @@ const SHAPE_HASH_UPPER = 2147483647  // 2^31 - 1
  */
 export class SubShapeDedup {
   private readonly buckets = new Map<number, OccSubShape[]>()
-  // Synthetic shapes (unit-test mocks) may lack HashCode; fall back to a flat
-  // IsSame scan so the helper still dedups without a real OCC TShape.
-  private readonly flat: OccSubShape[] = []
   // Register a shape; returns true the first time this identity is seen.
   add(shape: OccSubShape): boolean {
-    const hashFn = (shape as unknown as { HashCode?: (n: number) => number }).HashCode
-    if (typeof hashFn !== 'function') {
-      if (this.flat.some((u) => u.IsSame(shape))) return false
-      this.flat.push(shape)
-      return true
-    }
-    const key = hashFn.call(shape, SHAPE_HASH_UPPER)
+    const key = bucketOf(shape)
     const bucket = this.buckets.get(key)
     if (bucket === undefined) {
       this.buckets.set(key, [shape])
@@ -49,9 +55,7 @@ export class SubShapeDedup {
   // shapes against it, where `add` would register the queries and reclassify
   // their second explorer occurrence (every shared new edge appears twice).
   has(shape: OccSubShape): boolean {
-    const hashFn = (shape as unknown as { HashCode?: (n: number) => number }).HashCode
-    if (typeof hashFn !== 'function') return this.flat.some((u) => u.IsSame(shape))
-    const bucket = this.buckets.get(hashFn.call(shape, SHAPE_HASH_UPPER))
+    const bucket = this.buckets.get(bucketOf(shape))
     return bucket !== undefined && bucket.some((u) => u.IsSame(shape))
   }
 }
@@ -67,7 +71,7 @@ export class SubShapeIndexMap {
   private readonly buckets = new Map<number, { shape: OccSubShape; index: number }[]>()
   // Record `shape -> index`; later duplicates of the same identity are kept but never win a lookup.
   set(shape: OccSubShape, index: number): void {
-    const key = shape.HashCode(SHAPE_HASH_UPPER)
+    const key = bucketOf(shape)
     const bucket = this.buckets.get(key)
     if (bucket === undefined) {
       this.buckets.set(key, [{ shape, index }])
@@ -78,7 +82,7 @@ export class SubShapeIndexMap {
   }
   // Index registered for this identity, or -1 if none.
   get(shape: OccSubShape): number {
-    const bucket = this.buckets.get(shape.HashCode(SHAPE_HASH_UPPER))
+    const bucket = this.buckets.get(bucketOf(shape))
     if (bucket === undefined) return -1
     const hit = bucket.find((b) => b.shape.IsSame(shape))
     return hit ? hit.index : -1
@@ -102,7 +106,7 @@ export class SubShapeMultiIndex<T> {
   // returns values in insertion order (Change 4b's `find(!fromTool) ?? matches[0]`
   // tie-break depends on it).
   add(shape: OccSubShape, value: T): void {
-    const key = shape.HashCode(SHAPE_HASH_UPPER)
+    const key = bucketOf(shape)
     const bucket = this.buckets.get(key)
     if (bucket === undefined) {
       this.buckets.set(key, [{ shape, values: [value] }])
@@ -117,7 +121,7 @@ export class SubShapeMultiIndex<T> {
   }
   // Every value registered for this identity, or [] when unknown.
   get(shape: OccSubShape): readonly T[] {
-    const bucket = this.buckets.get(shape.HashCode(SHAPE_HASH_UPPER))
+    const bucket = this.buckets.get(bucketOf(shape))
     if (bucket === undefined) return []
     const entry = bucket.find((b) => b.shape.IsSame(shape))
     return entry !== undefined ? entry.values : []
@@ -159,7 +163,7 @@ export class SubShapeMap<T> {
   }
 
   set(shape: OccSubShape, value: T): void {
-    const key = shape.HashCode(SHAPE_HASH_UPPER)
+    const key = bucketOf(shape)
     const bucket = this.buckets.get(key)
     if (bucket === undefined) {
       this.buckets.set(key, [{ shape, value }])
@@ -176,7 +180,7 @@ export class SubShapeMap<T> {
   }
 
   delete(shape: OccSubShape): boolean {
-    const key = shape.HashCode(SHAPE_HASH_UPPER)
+    const key = bucketOf(shape)
     const bucket = this.buckets.get(key)
     if (bucket === undefined) return false
     const at = bucket.findIndex((b) => b.shape.IsSame(shape))
@@ -198,7 +202,7 @@ export class SubShapeMap<T> {
   }
 
   private entry(shape: OccSubShape): { shape: OccSubShape; value: T } | undefined {
-    return this.buckets.get(shape.HashCode(SHAPE_HASH_UPPER))?.find((b) => b.shape.IsSame(shape))
+    return this.buckets.get(bucketOf(shape))?.find((b) => b.shape.IsSame(shape))
   }
 }
 
@@ -224,7 +228,8 @@ export function unplacer(oc: OccModule, scope: DisposeScope): {
   borrow: <T>(shape: OccShape, read: (bare: OccSubShape) => T) => T
 } {
   const identity = scope.track(new oc.TopLoc_Location_1())
-  const strip = (shape: OccShape): OccSubShape => (shape as OccSubShape).Located(identity) as OccSubShape
+  // false is OCCT's default: do not raise on a scaled location.
+  const strip = (shape: OccShape): OccSubShape => (shape as OccSubShape).Located(identity, false) as OccSubShape
   return {
     keep: (shape) => scope.track(strip(shape)),
     borrow: (shape, read) => {

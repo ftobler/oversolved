@@ -24,7 +24,12 @@ function packageJson() {
   return JSON.parse(readFileSync(path.join(frontendDir, 'package.json'), 'utf8'))
 }
 
-function occPin(): { version: string; artifacts: Record<string, string> } {
+function occPin(): {
+  tag: string
+  build_commit: string
+  occt: { version: string; commit: string }
+  artifacts: Record<string, string>
+} {
   return JSON.parse(readFileSync(path.join(frontendDir, 'occ.pin.json'), 'utf8'))
 }
 
@@ -85,16 +90,17 @@ describe('third-party notices', () => {
     expect(readNotices('opencascade', 'README.md')).toContain(notice)
   })
 
-  // A version bump in occ:install changes which OCCT binary is distributed, and
-  // therefore which corresponding source the notices must offer. The pin file
-  // is the single source of truth; occ:install only mirrors it.
-  it('document the OpenCascade version that occ:install actually pins', () => {
+  // A repin changes which OCCT binary is distributed, and therefore which
+  // corresponding source the notices must offer. The pin file is the single
+  // source of truth; occ:install downloads exactly what it names.
+  it('document the OpenCascade release that occ.pin.json pins', () => {
     const pin = occPin()
-    const install = packageJson().scripts['occ:install']
-    const pinned = /opencascade\.js@([\d.]+)/.exec(install)?.[1]
-    expect(pinned, 'occ:install no longer pins an explicit version').toBeTruthy()
-    expect(pinned, 'occ:install and occ.pin.json disagree').toBe(pin.version)
-    expect(readNotices('opencascade', 'README.md')).toContain(`opencascade.js@${pinned}`)
+    expect(packageJson().scripts['occ:install']).toContain('scripts/occProvision.mjs install')
+    const doc = readNotices('opencascade', 'README.md')
+    expect(doc, 'the release tag').toContain(pin.tag)
+    expect(doc, 'the OCCT version').toContain(`V${pin.occt.version}`)
+    expect(doc, 'the OCCT commit').toContain(pin.occt.commit)
+    expect(doc, 'the build commit').toContain(pin.build_commit)
   })
 
   // The pin decides which files provisioning verifies and deploys, so the

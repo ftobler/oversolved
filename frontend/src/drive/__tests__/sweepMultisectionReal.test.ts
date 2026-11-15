@@ -7,27 +7,17 @@
 //
 // Real kernel, gated like the other drive suites.
 
-import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import { runHeadless, emptyDriveDoc } from '../headlessOps'
 import { yieldToEventLoop } from '@/testing/yieldToEventLoop'
 import type { ScriptStep } from '../scriptRunner'
 import type { PartDoc } from '@/types/cad'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import { nonSketchProblems } from './buildProblems'
-
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 
 const oc = occInstalled()
 const solveBytes = loadSolver()
@@ -159,7 +149,7 @@ describe.skipIf(!ready)('sweep multisection (real OCC + Rust solver)', () => {
     // for a second full measurement pass over every checkpoint.
     const swept = run.featureDeltas?.find((row) => row.id === 'sw')
     expect(swept?.volume).toBeDefined()
-    // build123d asserts 94.7736; the shipped 7.4 measures 94.7809299.
+    // build123d asserts 94.7736; the shipped build measures 94.7809299.
     expect(Math.abs((swept?.volume ?? 0) - 94.7736)).toBeLessThan(0.05)
   }, 180_000)
 

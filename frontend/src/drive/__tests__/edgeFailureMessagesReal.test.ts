@@ -11,27 +11,17 @@
 // - Case_Seam_Lip F4: an inward shell as thick as the fillets collapses them.
 // Real kernel, gated like the drive suites.
 
-import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import { runHeadless, measureHeadless, selectHeadless, emptyDriveDoc } from '../headlessOps'
 import { nonSketchProblems } from './buildProblems'
 import type { ScriptStep } from '../scriptRunner'
 import type { Selector } from '@/kernel/select'
 import type { PartDoc } from '@/types/cad'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
-
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 
 const oc = occInstalled()
 const solveBytes = loadSolver()

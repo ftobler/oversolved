@@ -3,7 +3,7 @@
 // extending the neighbours' surfaces (OCCT `BRepAlgoAPI_Defeaturing`).
 //
 // Call shape and history are pinned by defeatureReal.test.ts against the real
-// OCCT 7.4.0p1 build:
+// OCC build:
 //   - `SetShape` + `AddFaceToRemove` per face + `SetToFillHistory(true)` +
 //     `Build` is the working call; every requested face reports `IsDeleted`,
 //     every neighbour reports one `Modified` image (or survives by IsSame), and
@@ -26,6 +26,7 @@
 
 import { drainList, type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccModifierHistory } from './occTypes'
+import { noProgress } from './defaultArgs'
 import {
   exploreEdges,
   exploreFaces,
@@ -252,7 +253,7 @@ export function applyDeleteFacesWithLineage(
       maker.SetShape(shape)
       for (const g of gs) for (const i of g) maker.AddFaceToRemove(faces[i])
       maker.SetToFillHistory(true)
-      maker.Build()
+      maker.Build(noProgress(oc))
       if (!maker.IsDone()) return null
       return { maker, built: scope.track(maker.Shape()) }
     } catch (e) {

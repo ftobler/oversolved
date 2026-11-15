@@ -15,7 +15,7 @@
 // a few shapes built to hit faces no producer names directly (blind hole floors,
 // pocket floors, fillet corner patches).
 //
-// Skips when opencascade.js or the Rust solver is absent.
+// Skips when the OCC build or the Rust solver is absent.
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { SharedHarness } from '../sharedHarness'
@@ -174,8 +174,9 @@ describe.skipIf(!oc || !solveBytes)('every primitive carries a resolving query (
     expect(expectFullCoverage(structuredClone(pickIdentityCorpus) as unknown as Spec, 'pickIdentity')).toBeGreaterThan(0)
   }, 120_000)
 
-  // One face of this body is a sliver that tessellates to no triangle, so it
-  // also guards that render face indices stay equal to the registered ones.
+  // The body's thin sliver face is the one whose split ordering keys near-tie
+  // (see the test below); on 7.4 it also tessellated to no triangle, which is
+  // no longer true on OCCT 8 (that slot rule is pinned by tessellation.test.ts).
   it('array cut corpus', () => {
     const spec = structuredClone(arrayCutCorpus) as unknown as Spec
     expect(expectFullCoverage(spec, 'arrayCut')).toBeGreaterThan(0)

@@ -65,11 +65,13 @@ const RULES: Rule[] = [
     token: 'network call',
     test: text => NETWORK_CALL.test(text),
     why: 'the app runs entirely in the browser tab: storage is IndexedDB, compute is WASM',
-    // The OCC.js loaders, which pull the WASM kernel's own JS shim out of
-    // /occ/ -- a static asset shipped inside the bundle, on the app's own
-    // origin, not a service. They fetch it rather than importing it because the
-    // artifact has to be rewritten into a blob URL before it will run. Nothing
-    // is listening at the other end of these; a plain file server answers them.
+    // The OCC loader (importOccModule, shared by the main-thread and Worker
+    // loaders) and the wasm compiler, which pull the kernel's own occt.js and
+    // occt.wasm out of /occ/ -- static assets shipped beside the bundle, on the
+    // app's own origin, not a service. The JS is fetched rather than imported
+    // so it can run off a blob URL (Vite will not transform a file under
+    // public/). Nothing is listening at the other end of these; a plain file
+    // server answers them.
     // The notices reader, which pulls the third-party license texts out of
     // /third_party/ -- static files copied into the bundle from public/, on the
     // app's own origin. They are read rather than imported so several hundred
@@ -77,8 +79,7 @@ const RULES: Rule[] = [
     // and so the rendered page and the deployed files cannot diverge. A plain
     // file server answers this one too.
     exempt: [
-      'kernel/occ/loadOccWeb.ts',
-      'kernel/occ/loadOccWorker.ts',
+      'kernel/occ/importOccModule.ts',
       'kernel/occ/wasmCompile.ts',
       'pages/hooks/useNotices.ts',
     ],

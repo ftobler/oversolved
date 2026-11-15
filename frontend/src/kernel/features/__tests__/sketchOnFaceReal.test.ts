@@ -4,7 +4,7 @@
 // resolution, centroid, normal, post-fuse face placement, boolean-cut partial rebuild,
 // multi-profile face resolution, and centroid-drift normal fallback.
 //
-// Skips when opencascade.js or the Rust sketch solver is absent.
+// Skips when the OCC build or the Rust sketch solver is absent.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'

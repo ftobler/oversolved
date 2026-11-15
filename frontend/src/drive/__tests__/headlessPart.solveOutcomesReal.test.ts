@@ -7,25 +7,15 @@
 // Gated like the other real suites: skips when OCC.js or the Rust node build is
 // absent.
 
-import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { createHeadlessPart } from '../headlessPart'
 import { HOLE_ON_LINE_SKETCH } from './featureFixtures'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
-
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 
 const oc = occInstalled()
 const solveBytes = loadSolver()

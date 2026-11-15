@@ -9,14 +9,13 @@
 // The real kernel is used here (the reply's feature delta and body summary are
 // what the practice run reads), so the file skips without OCC and the Rust WASM.
 
-import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { runHeadless, seedBuiltins } from '../headlessOps'
 import { MUTATION_EXAMPLES } from '../mutationExamples'
 import { runReply } from '../mcpDocRef'
 import { DocHandleStore } from '../docHandleStore'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
@@ -24,14 +23,6 @@ import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import type { ScriptStep } from '../scriptRunner'
 import type { FeatureDelta } from '../featureDeltas'
 
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 const oc = occInstalled()
 const solveBytes = loadSolver()
 if (oc && solveBytes) {

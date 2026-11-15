@@ -6,9 +6,10 @@
 // document) and asserted against analytic volumes through the shared measure
 // tolerance. A change to the construction that moves a volume fails here.
 //
-// Skips when opencascade.js is absent.
+// Skips when OCC is absent.
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'
+import { noProgress } from '../defaultArgs'
 import { DisposeScope } from '../disposeScope'
 import { volumeOf } from '../volume'
 import { canonicalFaces, canonicalEdges } from '../bodyNames'
@@ -41,9 +42,9 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
   // ─── fixture builders ───
 
   const ax2z = (scope: DisposeScope, x = 0, y = 0, z = 0): OccShape =>
-    scope.track(new occ.gp_Ax2_3(
+    scope.track(new occ.gp_Ax2_4(
       scope.track(new occ.gp_Pnt_3(x, y, z)),
-      scope.track(new occ.gp_Dir_4(0, 0, 1)),
+      scope.track(new occ.gp_Dir_5(0, 0, 1)),
     ))
 
   const cone = (scope: DisposeScope, r1: number, r2: number, h: number): OccShape =>
@@ -60,7 +61,7 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
     tools.Append_1(b)
     algo.SetArguments(args)
     algo.SetTools(tools)
-    algo.Build()
+    algo.Build(noProgress(occ))
     return scope.track(algo.Shape())
   }
 
@@ -74,7 +75,7 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
       const vs = vertexZ(scope, e as OccShape)
       if (vs.length === 2 && vs.every((z) => Math.abs(z - topZ) < 1e-6)) mk.Add_2(dist, e as OccShape)
     }
-    mk.Build()
+    mk.Build(noProgress(occ))
     return scope.track(mk.Shape())
   }
 
@@ -97,7 +98,7 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
       return vs.length === 2 && vs.every((z) => Math.abs(z - 10) < 1e-6)
     })
     mk.Add_2(2, top as OccShape)
-    mk.Build()
+    mk.Build(noProgress(occ))
     return scope.track(mk.Shape())
   }
 

@@ -3,7 +3,7 @@
  * sub-shape as inherited (target lineage survives) or new (introduced by the tool), so ancestry
  * registration tags new faces with the cutting feature rather than the body's creator.
  *
- * opencascade.js@1.1.1 quirks pinned here (probed against the real build): - history.Modified()
+ * Binding quirks pinned here (probed against the real build): - history.Modified()
  * returns a TopTools_ListOfShape with no iterator binding; drain via
  * Size()/First_1()/RemoveFirst() (the same sharp edge as the lineage drain). -
  * TopTools_IndexedDataMapOfShapeListOfShape / TopExp.MapShapesAndAncestors's map type are
@@ -27,6 +27,7 @@ import { swallowUnlessTrap } from '../errors'
 import { OCC_ANGULAR, OCC_CONFUSION } from '../solverConstants'
 import { mergeTolerance, type KernelPrecision, type MergeTolerance } from '../precision'
 import { markFeatureProgress } from '../featureProgress'
+import { noProgress } from './defaultArgs'
 
 // Re-exported for the callers that read a body's volume.
 export { volumeOf }
@@ -125,7 +126,7 @@ export function shapesIntersect(oc: OccModule, target: OccShape, tool: OccShape)
     algo.SetArguments(args)
     algo.SetTools(tools)
     algo.SetToFillHistory(false)
-    algo.Build()
+    algo.Build(noProgress(oc))
     // A failed build leaves no Common shape to read; not evidence of
     // disjointness, so report intersect and let the real cut decide.
     if (!algo.IsDone()) return true
@@ -175,14 +176,16 @@ export function shapesIntersect(oc: OccModule, target: OccShape, tool: OccShape)
 export function shapesTouch(oc: OccModule, target: OccShape, tool: OccShape): boolean {
   const s = new DisposeScope()
   try {
-    // The 4-arg ctor: the deflection is mandatory in this build (there is no
-    // 2-arg form), and MIN asks for the minimum distance rather than the
-    // farthest pair.
-    const probe = s.track(new oc.BRepExtrema_DistShapeShape_2(
+    // The deflection form: OCC_CONFUSION is the deflection this probe has
+    // always run with, MIN asks for the minimum distance rather than the
+    // farthest pair, and Grad and the null progress are OCCT's defaults.
+    const probe = s.track(new oc.BRepExtrema_DistShapeShape_3(
       target,
       tool,
       OCC_CONFUSION,
       oc.Extrema_ExtFlag.Extrema_ExtFlag_MIN,
+      oc.Extrema_ExtAlgo.Extrema_ExtAlgo_Grad,
+      noProgress(oc),
     ))
     if (!probe.IsDone()) return shapesIntersect(oc, target, tool)
     return probe.Value() <= OCC_CONFUSION
@@ -243,7 +246,7 @@ export function booleanWithHistoryMany(
   algo.SetArguments(args)
   algo.SetTools(tools)
   algo.SetToFillHistory(true)
-  algo.Build()
+  algo.Build(noProgress(oc))
   if (!algo.IsDone()) throw new Error(`boolean ${op} did not complete`)
 
   // Track the result until it is handed to the caller: on any throw during
@@ -421,7 +424,7 @@ export function splitWithHistory(
   splitter.SetArguments(args)
   splitter.SetTools(tools)
   splitter.SetToFillHistory(true)
-  splitter.Build()
+  splitter.Build(noProgress(oc))
   if (!splitter.IsDone()) throw new Error('split did not complete')
   const result = scope.track(splitter.Shape())
   if (!splitter.HasHistory()) {
@@ -682,7 +685,7 @@ function isClosedByVolume(volume: number): boolean {
 /** Whole-shape BRepCheck gate. Exported because offsetShape.ts validates its
  *  normalised offset solid with the same rule the boolean fallbacks use. */
 export function shapeIsValid(oc: OccModule, scope: DisposeScope, shape: OccShape): boolean {
-  return scope.track(new oc.BRepCheck_Analyzer(shape, true)).IsValid_2()
+  return scope.track(new oc.BRepCheck_Analyzer(shape, true, false, false)).IsValid_2()
 }
 
 /**
@@ -745,8 +748,9 @@ function cleanShapeIsSound(
 export class BooleanSoundnessError extends Error {}
 
 /**
- * The last line of defence against a corrupt boolean: OCCT 7.4.0p1 can report
- * IsDone with a shape that validates yet is geometrically impossible. The
+ * The last line of defence against a corrupt boolean: OCCT can report IsDone
+ * with a shape that validates yet is geometrically impossible (seen on the 7.4
+ * kernel; the guard stays for any kernel). The
  * robustness fuzz found two such families on exact surface tangencies. When a
  * cylinder's lateral surface touches a face plane exactly, the fuse comes back
  * as the target MINUS the tool (right magnitude, wrong sign: V=-768.25 where
@@ -1014,7 +1018,7 @@ export function booleanWithDiffMany(
   // composeBooleanAttempt returns may already be tracked, hence the check.
   if (!scope.isTracked(attempt.shape)) scope.track(attempt.shape)
   // The first boolean over a pair whose surfaces touch in an exact tangency can
-  // take an OCCT 7.4.0p1 branch that drops or inverts an operand. A bare Common
+  // take an OCCT branch (found on the 7.4 kernel) that drops or inverts an operand. A bare Common
   // over the same operands makes the kernel settle the shared geometry, and the
   // rerun of the pipeline then comes out sound (the identity fuzz pins the
   // sphere-touching-a-wall case this recovers). The probe is the same call the

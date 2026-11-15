@@ -3,7 +3,7 @@
 // The result shape is deliberately untracked until the caller adopts it after
 // the call returns, so a throw during classification used to strand the whole
 // boolean solid (with all its sub-shapes) on the WASM heap. Driven with a fake
-// OCC module whose history query throws; no opencascade.js needed.
+// OCC module whose history query throws; no OCC module needed.
 //
 // The second block pins the one-BRepCheck rule: the adoption guard validates
 // the cleaned shape, and the soundness check must not validate the same handle
@@ -59,6 +59,9 @@ function makeThrowingHistoryOcc(): { oc: OccModule; result: FakeShape } {
     },
     TopTools_ListOfShape_1: function () {
       return { Append_1: () => {}, delete: () => {} }
+    },
+    Message_ProgressRange_1: function () {
+      return { delete: () => {} }
     },
   } as unknown as OccModule
   return { oc, result }
@@ -158,6 +161,9 @@ describe('booleanWithDiffMany runs one BRepCheck per adopted attempt', () => {
       },
       TopExp_Explorer_2: function () {
         return { More: () => false, Next: () => {}, Current: () => undefined, delete: () => {} }
+      },
+      Message_ProgressRange_1: function () {
+        return { delete: () => {} }
       },
     } as unknown as OccModule
     return {

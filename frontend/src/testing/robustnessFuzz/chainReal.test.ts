@@ -85,31 +85,21 @@ const REPLAY_TIMEOUT_MS = 60_000
 const MINIMIZE_TIMEOUT_MS = 10_000
 
 // Known kernel hangs, pinned by seed. A seed here is reported as known; any
-// hang NOT on this list fails the sweep with the seed and hung step. All but
-// one are the same OCCT 7.4.0p1 hazard: ShapeUpgrade_UnifySameDomain spins
-// inside the fuse clean when the welded shapes have exactly coincident faces.
-// The browser worker survives a spin by killing the worker (solverClient's
-// watchdog); the fuzz child is its test-side equivalent. The shell and helix
-// generator steps (d03837d7, 7362336a) redrew 1003 of the 1500 recipes, so
-// the 2026-10-16 pins all went stale; the 2026-10-17 re-triage replayed each
-// new hang alone under a 300 s watchdog. Every fuse below still spun at 300 s
-// (mirror, circular-array and one plain union, seed 535; seed 762 joined once
-// every recipe ran on a fresh kernel). The 2026-10-31 re-triage ran the whole
-// 1500-seed range with the fired-pin ratchet: seeds 622 and 1215 no longer spin,
-// and seed 268's ~22 s MakeThickSolidByJoin shell (backlog.md) stays inside the
-// 60 s liveness window on this host. A timing-only tolerance cannot be a fired
-// pin, so those four entries are gone: a slower runner that kills seed 268 now
-// reports an unexpected hang and must re-triage it rather than pass silently.
-const KNOWN_HANGS: readonly { seed: number; phase: ChainPhase; step: number; kind: string }[] = [
-  { seed: 49, phase: 'base', step: 1, kind: 'mirror' },
-  { seed: 355, phase: 'base', step: 5, kind: 'circular-array' },
-  { seed: 378, phase: 'base', step: 3, kind: 'mirror' },
-  { seed: 535, phase: 'base', step: 3, kind: 'boolean' },
-  { seed: 639, phase: 'base', step: 2, kind: 'mirror' },
-  { seed: 762, phase: 'base', step: 2, kind: 'mirror' },
-  { seed: 1359, phase: 'base', step: 1, kind: 'mirror' },
-  { seed: 1469, phase: 'base', step: 2, kind: 'mirror' },
-]
+// hang NOT on this list fails the sweep with the seed and hung step. The entries
+// this table used to carry were all the same OCCT hazard (found on the 7.4
+// kernel): ShapeUpgrade_UnifySameDomain spins inside the fuse clean when the
+// welded shapes have exactly coincident faces. The browser worker survives a
+// spin by killing the worker (solverClient's watchdog); the fuzz child is its
+// test-side equivalent. The shell and helix generator steps (d03837d7, 7362336a)
+// redrew 1003 of the 1500 recipes, so the 2026-10-16 pins all went stale; the
+// 2026-10-17 re-triage replayed each new hang alone under a 300 s watchdog.
+// The 2026-10-31 re-triage ran the whole 1500-seed range with the fired-pin
+// ratchet. On the OCCT 8.0.1 kernel the last eight (mirror, circular-array and
+// one plain union, seed 535) no longer spin: the 2026-11-15 fuzz-geometry run
+// finished every one of them, so the table is empty. A hang at any of those
+// seeds now reports as an unexpected hang and must be re-triaged, not excused
+// by an old note.
+const KNOWN_HANGS: readonly { seed: number; phase: ChainPhase; step: number; kind: string }[] = []
 
 // Known red picks, pinned by seed and step, and by the kind of violation the
 // pin describes: the message must carry `match`, so a different failure at the
@@ -167,24 +157,35 @@ const KNOWN_STALE_PICKS: readonly PickPin[] = [
   },
   { seed: 227, step: 2, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 227, step: 3, match: PICK_UNREACHED, note: 'unreached: a stale pick at an earlier step stopped the chain' },
+  {
+    seed: 235,
+    step: 3,
+    match: PICK_REMINT_FACE,
+    note: 'OCCT 8: the +2.5 mm perturbed three-copy array cuts the picked bottom face into four sectors, so the parent UUID dies; 7.4 kept the face whole (the 2026-11-04 short-array fix). A face split has no child to hand the parent name to, see backlog',
+  },
+  { seed: 252, step: 3, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 263, step: 3, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 366, step: 4, match: PICK_REMINT_FACE, note: 'face re-mints under the +2.5 mm growth' },
+  { seed: 378, step: 4, match: PICK_REMINT_FACE, note: 'face re-mints under the +2.5 mm growth (the mirror step at 3 no longer hangs on OCCT 8)' },
   { seed: 388, step: 2, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 470, step: 3, match: PICK_REMINT_FACE, note: 'face re-mints under the +2.5 mm growth' },
   { seed: 529, step: 5, match: PICK_REMINT_FACE, note: 'face re-mints under the +2.5 mm growth' },
   { seed: 561, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 578, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 578, step: 5, match: PICK_UNREACHED, note: 'unreached: a stale pick at an earlier step stopped the chain' },
+  { seed: 639, step: 5, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth (the mirror step at 2 no longer hangs on OCCT 8)' },
   { seed: 682, step: 3, match: PICK_REMINT_FACE, note: 'face re-mints under the +2.5 mm growth' },
   { seed: 709, step: 1, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 709, step: 2, match: PICK_UNREACHED, note: 'unreached: a stale pick at an earlier step stopped the chain' },
   { seed: 710, step: 2, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 727, step: 3, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 753, step: 2, match: PICK_REMINT_FACE, note: 'face re-mints under the +2.5 mm growth' },
   { seed: 853, step: 1, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 893, step: 3, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 893, step: 4, match: PICK_UNREACHED, note: 'unreached: a stale pick at an earlier step stopped the chain' },
   { seed: 951, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 976, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1054, step: 3, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1054, step: 4, match: PICK_UNREACHED, note: 'unreached: a stale pick at an earlier step stopped the chain' },
   { seed: 1065, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 1117, step: 3, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 1189, step: 1, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
@@ -193,6 +194,7 @@ const KNOWN_STALE_PICKS: readonly PickPin[] = [
   { seed: 1350, step: 2, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 1375, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 1378, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
+  { seed: 1469, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth (the mirror step at 2 no longer hangs on OCCT 8)' },
   {
     seed: 1476,
     step: 3,
@@ -209,17 +211,24 @@ function findStalePin(seed: number, step: number, message: string): PickPin | nu
 
 // Pins in the swept range that did not fire. A pin that stops firing means the
 // finding it records moved or was fixed, and the table must be re-triaged
-// rather than left to excuse nothing.
-function unfiredPins(seeds: number, firedHangs: ReadonlySet<string>, firedPicks: ReadonlySet<string>): string[] {
+// rather than left to excuse nothing. The tables are parameters so the
+// meta-tests can drive them while a real one is legitimately empty.
+function unfiredPins(
+  seeds: number,
+  firedHangs: ReadonlySet<string>,
+  firedPicks: ReadonlySet<string>,
+  hangPins: readonly { seed: number; phase: ChainPhase; step: number; kind: string }[] = KNOWN_HANGS,
+  pickPins: readonly PickPin[] = KNOWN_STALE_PICKS,
+): string[] {
   const problems: string[] = []
-  for (const pin of KNOWN_HANGS) {
+  for (const pin of hangPins) {
     if (pin.seed >= seeds) continue
     const key = `${pin.seed}:${pin.phase}:${pin.step}`
     if (!firedHangs.has(key)) {
       problems.push(`KNOWN_HANGS pin seed ${pin.seed} ${pin.phase} step ${pin.step} (${pin.kind}) did not fire; re-triage the pin table`)
     }
   }
-  for (const pin of KNOWN_STALE_PICKS) {
+  for (const pin of pickPins) {
     if (pin.seed >= seeds) continue
     if (!firedPicks.has(`${pin.seed}:${pin.step}`)) {
       problems.push(`KNOWN_STALE_PICKS pin seed ${pin.seed} step ${pin.step} ("${pin.match}") did not fire; re-triage the pin table`)
@@ -396,17 +405,27 @@ describe.skipIf(!occAvailable || !stripTypes)('the seeded geometry fuzz (real ke
 
   // The 2026-11-04 fuzz failure: batching the fuzz's three-copy arrays moved a
   // source face's UUID under the +2.5 mm perturbed start, so seed 235's hole
-  // pick went red. Short arrays now stay on the one-at-a-time path
-  // (patternBody's chunk gate); this seed pins the green re-resolution without
-  // widening the bounded sweep.
-  it('keeps the perturbed picks of a short-array seed', { timeout: TIMEOUT_MS }, async () => {
+  // pick went red. Short arrays went back to the one-at-a-time path
+  // (patternBody's chunk gate) and the pick resolved again on 7.4.
+  //
+  // On OCCT 8 the same perturbed array cuts the picked bottom face into four
+  // sectors: the face no longer exists as one face, so the parent UUID dies and
+  // the pick is a known re-mint (KNOWN_STALE_PICKS). The base chain still builds
+  // and records the pick, the perturbed replay reports exactly that one and
+  // stops on it, and nothing is flagged as a violation. If a naming fix lets a
+  // split child inherit the parent's UUID, this flips to the green resolution
+  // below and the pin comes out with it.
+  it('pins the perturbed pick of a short-array seed whose face splits on OCCT 8', { timeout: TIMEOUT_MS }, async () => {
     const guarded = await runChainWithTimeout(generateRecipe(235))
     expect(guarded.status).toBe('done')
     if (guarded.status !== 'done') return
     expect(guarded.replay.run.violations).toEqual([])
-    expect(guarded.replay.stale).toEqual([])
-    expect(guarded.replay.run.completed).toBe(true)
     expect(guarded.replay.run.picks.some((pick) => pick.step === 3 && pick.kind === 'face')).toBe(true)
+    expect(guarded.replay.run.completed).toBe(true)
+    expect(guarded.replay.stale).toHaveLength(1)
+    expect(guarded.replay.stale[0].step).toBe(3)
+    expect(guarded.replay.stale[0].message).toContain('face query')
+    expect(guarded.replay.stale[0].message).toContain('no longer resolves')
   })
 
   // The default start draw is hole-free (box, arc-profile, revolve), so a
@@ -605,15 +624,17 @@ describe('the robustness fuzz pin tables', () => {
   })
 
   it('names a pin inside the swept range that did not fire', () => {
-    const pin = KNOWN_HANGS.reduce((lowest, h) => (h.seed < lowest.seed ? h : lowest))
+    // A synthetic hang, so the check stays exercised while the real table is
+    // legitimately empty (OCCT 8 no longer spins on those unifications).
+    const hang = { seed: 7, phase: 'base' as ChainPhase, step: 1, kind: 'mirror' }
     const fired = new Set<string>()
-    const problems = unfiredPins(pin.seed + 1, fired, fired)
+    const problems = unfiredPins(hang.seed + 1, fired, fired, [hang])
     expect(problems).toContain(
-      `KNOWN_HANGS pin seed ${pin.seed} ${pin.phase} step ${pin.step} (${pin.kind}) did not fire; re-triage the pin table`,
+      `KNOWN_HANGS pin seed ${hang.seed} ${hang.phase} step ${hang.step} (${hang.kind}) did not fire; re-triage the pin table`,
     )
     // The same table stays quiet outside the swept range.
-    expect(unfiredPins(pin.seed, fired, fired)).not.toContain(
-      `KNOWN_HANGS pin seed ${pin.seed} ${pin.phase} step ${pin.step} (${pin.kind}) did not fire; re-triage the pin table`,
+    expect(unfiredPins(hang.seed, fired, fired, [hang])).not.toContain(
+      `KNOWN_HANGS pin seed ${hang.seed} ${hang.phase} step ${hang.step} (${hang.kind}) did not fire; re-triage the pin table`,
     )
   })
 

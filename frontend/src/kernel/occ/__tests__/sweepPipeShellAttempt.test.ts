@@ -1,7 +1,7 @@
 // Unit coverage for attemptPipeShellSweep, the per-mode retry loop
 // sweepProfileWithLineage uses to build a pipe-shell solid. Pure loop logic
 // (no face/profile building), so it is driven with a minimal fake
-// oc.BRepOffsetAPI_MakePipeShell -- no opencascade.js needed.
+// oc.BRepOffsetAPI_MakePipeShell -- no OCC module needed.
 //
 // Regression this guards: lastError used to survive across loop iterations
 // unreset, so a mode that threw followed by a LATER mode that failed
@@ -21,9 +21,12 @@ type Outcome = 'throw' | 'silent-fail' | 'success'
 /** A fake BRepOffsetAPI_MakePipeShell builder whose Build()/IsDone()/MakeSolid()
  *  behavior is scripted per instance via `outcome`. `addLog`, when given,
  *  records every Add_1 profile so a caller can assert the call order. */
-function fakeBuilder(outcome: Outcome, addLog?: OccShape[]) {
+function fakeBuilder(outcome: Outcome, addLog?: OccShape[], modeLog?: boolean[]) {
   return {
     SetTransitionMode: (): void => {},
+    SetMode_1: (isFrenet: boolean): void => {
+      modeLog?.push(isFrenet)
+    },
     Add_1: (profile: OccShape): void => {
       addLog?.push(profile)
     },
@@ -40,13 +43,17 @@ function fakeBuilder(outcome: Outcome, addLog?: OccShape[]) {
 
 /** Fake oc module whose BRepOffsetAPI_MakePipeShell hands out builders from
  *  `outcomes`, in call order (one per mode attempted). */
-function fakeOcc(outcomes: Outcome[], addLog?: OccShape[]): OccModule {
+function fakeOcc(outcomes: Outcome[], addLog?: OccShape[], modeLog?: boolean[]): OccModule {
   let i = 0
   return {
     BRepOffsetAPI_MakePipeShell: function () {
-      const b = fakeBuilder(outcomes[i], addLog)
+      const b = fakeBuilder(outcomes[i], addLog, modeLog)
       i++
       return b
+    },
+    // Build takes the null progress range (defaultArgs.noProgress).
+    Message_ProgressRange_1: function () {
+      return { delete: (): void => {} }
     },
   } as unknown as OccModule
 }
@@ -95,7 +102,7 @@ describe('attemptPipeShellSweep', () => {
   it('reports the last exception when every mode throws', () => {
     const oc = fakeOcc(['throw', 'throw'])
     const scope = new DisposeScope()
-    const { result, lastError } = attemptPipeShellSweep(oc, scope, spineWire, [outerWire], [MODE_A, MODE_B])
+    const { result, lastError } = attemptPipeShellSweep(oc, scope, spineWire, [outerWire], [MODE_A, MODE_B], null, false)
     expect(result).toBeNull()
     expect(lastError).toBeInstanceOf(Error)
     expect((lastError as Error).message).toBe('boom from throw')
@@ -106,8 +113,41 @@ describe('attemptPipeShellSweep', () => {
     // A stale lastError from mode A must not survive to the final result.
     const oc = fakeOcc(['throw', 'silent-fail'])
     const scope = new DisposeScope()
-    const { result, lastError } = attemptPipeShellSweep(oc, scope, spineWire, [outerWire], [MODE_A, MODE_B])
+    const { result, lastError } = attemptPipeShellSweep(oc, scope, spineWire, [outerWire], [MODE_A, MODE_B], null, false)
     expect(result).toBeNull()
     expect(lastError).toBeNull()
+  })
+
+  it('retries every mode under the explicit Frenet law after the default law refuses', () => {
+    // OCCT 8's default (corrected Frenet) law refuses a B-spline spine; the
+    // explicit Frenet law builds it. Both modes are tried under the default
+    // first, then under Frenet, and the winning law is reported so hole loops
+    // can reuse it.
+    const modeLog: boolean[] = []
+    const oc = fakeOcc(['throw', 'throw', 'throw', 'success'], undefined, modeLog)
+    const scope = new DisposeScope()
+    const { result, lastError } = attemptPipeShellSweep(oc, scope, spineWire, [outerWire], [MODE_A, MODE_B])
+    expect(lastError).toBeNull()
+    expect(result).not.toBeNull()
+    expect(result?.frenet).toBe(true)
+    expect(modeLog).toEqual([true, true])
+  })
+
+  it('does not touch the trihedron law when the default law builds', () => {
+    const modeLog: boolean[] = []
+    const oc = fakeOcc(['success'], undefined, modeLog)
+    const scope = new DisposeScope()
+    const { result } = attemptPipeShellSweep(oc, scope, spineWire, [outerWire], [MODE_A])
+    expect(result?.frenet).toBe(false)
+    expect(modeLog).toEqual([])
+  })
+
+  it('pins the given trihedron law instead of trying the default first', () => {
+    const modeLog: boolean[] = []
+    const oc = fakeOcc(['success'], undefined, modeLog)
+    const scope = new DisposeScope()
+    const { result } = attemptPipeShellSweep(oc, scope, spineWire, [outerWire], [MODE_A], null, true)
+    expect(result?.frenet).toBe(true)
+    expect(modeLog).toEqual([true])
   })
 })

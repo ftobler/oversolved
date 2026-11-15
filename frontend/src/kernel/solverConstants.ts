@@ -29,7 +29,7 @@ export const JOINT_SNAP_TOL = 1e-3
 export const TOL_MOVE_FACE_TANGENT = 1e-3
 // OCC's Precision::Confusion(), the tolerance BRepBuilderAPI_MakeWire uses to
 // decide whether two edge endpoints are the same point. It is not ours to
-// choose: it is compiled into opencascade.js@1.1.1 (OCCT 7.4.0p1). Mirrored here so
+// choose: it is compiled into the OCCT build (frontend/occ.pin.json). Mirrored here so
 // the tolerance ladder the profile handoff depends on --
 // OCC_CONFUSION < TOL_LOOP_CLOSURE <= TOL_TOPOLOGY_MERGE -- is stated in one
 // place and testable (solverConstants.test.ts). Deliberately NOT a TOL_* name:
@@ -40,7 +40,7 @@ export const TOL_MOVE_FACE_TANGENT = 1e-3
 export const OCC_CONFUSION = 1e-7
 
 // OCC's Precision::Angular(), the width under which the kernel reads two
-// directions as one. Also compiled into opencascade.js@1.1.1 and not ours to
+// directions as one. Also compiled into the OCCT build and not ours to
 // choose: the face merge (ShapeUpgrade_UnifySameDomain and the BOP fuse) reads
 // it, so two planar faces whose normals differ by more than this stay separate
 // domains -- a visible seam -- however straight the sketch looked. The sketch

@@ -48,6 +48,7 @@ import {
   type Vec3,
 } from './primitives'
 import { booleanWithHistory, countSolids, shapeIsValid } from './booleans'
+import { noProgress } from './defaultArgs'
 import { shapeBbox } from './faceBounds'
 import { makeTranslationTrsf, transformCopy } from './transforms'
 
@@ -125,7 +126,7 @@ function offsetWireMakesFace(oc: OccModule, scope: DisposeScope, wire: OccShape)
     const builder = scope.track(new oc.BRepBuilderAPI_MakeFace_15(typed, true))
     if (!builder.IsDone()) return false
     const face = scope.track(builder.Face())
-    return scope.track(new oc.BRepCheck_Analyzer(face, true)).IsValid_2()
+    return scope.track(new oc.BRepCheck_Analyzer(face, true, false, false)).IsValid_2()
   } catch {
     return false
   }
@@ -242,7 +243,7 @@ function buildFrustum(
   const top = scope.track(oc.TopoDS.Wire_1(topWire))
   builder.AddWire(base)
   builder.AddWire(top)
-  builder.Build()
+  builder.Build(noProgress(oc))
   if (!builder.IsDone()) {
     throw new Error(
       'extrude: the draft prism did not build; the taper is too large or the profile is not planar',
@@ -273,7 +274,7 @@ function buildApexSection(
   const point = scope.track(new oc.gp_Pnt_3(apex[0], apex[1], apex[2]))
   const maker = scope.track(new oc.BRepBuilderAPI_MakeVertex(point))
   builder.AddVertex(scope.track(maker.Vertex()))
-  builder.Build()
+  builder.Build(noProgress(oc))
   if (!builder.IsDone()) {
     throw new Error(
       'extrude: the draft prism did not build; the taper is too large or the profile is not planar',

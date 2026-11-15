@@ -31,8 +31,8 @@ export function helixMaxSegment(turns: number): number {
  *  occ/primitives.ts producer; the caller tracks or releases it. */
 export function buildCurveEdge(oc: OccModule, scope: DisposeScope, desc: HelixDescriptor): OccShape {
   const pnt = scope.track(new oc.gp_Pnt_3(desc.origin[0], desc.origin[1], desc.origin[2]))
-  const normal = scope.track(new oc.gp_Dir_4(desc.axis[0], desc.axis[1], desc.axis[2]))
-  const xDir = scope.track(new oc.gp_Dir_4(desc.xAxis[0], desc.xAxis[1], desc.xAxis[2]))
+  const normal = scope.track(new oc.gp_Dir_5(desc.axis[0], desc.axis[1], desc.axis[2]))
+  const xDir = scope.track(new oc.gp_Dir_5(desc.xAxis[0], desc.xAxis[1], desc.xAxis[2]))
   const ax3 = scope.track(new oc.gp_Ax3_3(pnt, normal, xDir))
   // The raw surface and 2D line live on in the edge's pcurve, owned through
   // the Handles. Each is adopted the moment it exists, so a later throw frees
@@ -43,7 +43,7 @@ export function buildCurveEdge(oc: OccModule, scope: DisposeScope, desc: HelixDe
   const { u } = startUV(desc)
   const { du, dv } = uvDirection(desc)
   const p2d = scope.track(new oc.gp_Pnt2d_3(u, 0))
-  const d2d = scope.track(new oc.gp_Dir2d_4(du, dv))
+  const d2d = scope.track(new oc.gp_Dir2d_5(du, dv))
   const hCurve = scope.track(new oc.Handle_Geom2d_Curve_2(new oc.Geom2d_Line_3(p2d, d2d)))
 
   // Over the parameter range [0, len2d] the 2D line advances one turn of angle

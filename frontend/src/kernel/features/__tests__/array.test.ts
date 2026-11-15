@@ -3,7 +3,7 @@
 // needs live OCC and is exercised by transformGroupReal et al; here we drive
 // just the transform builders through a recording fake so the source-in-count
 // off-by-one, rectangular nesting, and 360/count step default are pinned down
-// without the gitignored 66 MB opencascade.js artifact.
+// without the gitignored 66 MB OCC build artifact.
 
 import { describe, it, expect } from 'vitest'
 import type { OccModule } from '../../occ/occTypes'
@@ -142,7 +142,7 @@ function makeFake(): OccModule {
     gp_Trsf_1: Trsf,
     gp_Vec_4: Vec,
     gp_Pnt_3: Pnt,
-    gp_Dir_4: Dir,
+    gp_Dir_5: Dir,
     gp_Ax1_2: Ax1,
   } as unknown as OccModule
 }

@@ -8,11 +8,10 @@
 //
 // Gated like the other real drive suites: skips when OCC.js or the Rust node
 // build is absent.
-import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { runHeadless, measureHeadless, emptyDriveDoc } from '../headlessOps'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
@@ -20,15 +19,6 @@ import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import { nonSketchProblems } from './buildProblems'
 import { featureById } from '@/testing/featureAccess'
 import type { ScriptStep } from '../scriptRunner'
-
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 
 const oc = occInstalled()
 const solveBytes = loadSolver()

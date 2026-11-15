@@ -32,6 +32,7 @@ import { solveShell } from '@/kernel/features/shell'
 import { solveHelix } from '@/kernel/features/helix'
 import { solveSplit } from '@/kernel/features/splitByPlane'
 import { extractOccErrorMessage } from '@/kernel/errors'
+import { noProgress } from '@/kernel/occ/defaultArgs'
 import { threadEntry } from '@/kernel/threadTable'
 import type { Repository } from '@/kernel/query'
 import type { Body } from '@/kernel/types3d'
@@ -305,7 +306,7 @@ function checkStore(oc: OccModule, scope: DisposeScope, table: HandleTable, body
     }
     const shape = table.get<OccShape>(body.shape)
     try {
-      const analyzer = scope.track(new oc.BRepCheck_Analyzer(shape, true))
+      const analyzer = scope.track(new oc.BRepCheck_Analyzer(shape, true, false, false))
       if (!analyzer.IsValid_2()) push(`body ${id} is not a valid solid (BRepCheck_Analyzer)`)
     } catch (e) {
       push(`BRepCheck_Analyzer threw for body ${id}: ${extractOccErrorMessage(oc, e)}`)
@@ -550,7 +551,7 @@ export function classifyUnionContact(oc: OccModule, scope: DisposeScope, target:
     algo.SetArguments(args)
     algo.SetTools(tools)
     algo.SetToFillHistory(false)
-    algo.Build()
+    algo.Build(noProgress(oc))
     if (!algo.IsDone()) return null
     return scope.track(algo.Shape())
   }

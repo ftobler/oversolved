@@ -1,7 +1,7 @@
 // A blend on a straight edge between two planes, measured and built as a prism.
 //
 // OCC's rolling-ball builder cannot consume a face it was not asked to blend:
-// ChFi3d has no switch for it in this pinned 7.4 build, so a fillet whose
+// ChFi3d has no switch for it, so a fillet whose
 // setback runs past a small end face refuses with a bare build_failed. Where
 // the picked edge is a straight line and both adjacent faces are planes, the
 // blend cross-section is constant along the edge, so it can be cut instead: the
@@ -312,7 +312,7 @@ function isConvexEdge(oc: OccModule, scope: DisposeScope, shape: OccShape, edge:
   const list = scope.track(analyse.Type(edge))
   if (list.Size() === 0) return false
   const first = scope.track(list.First_1())
-  return first.Type_2().value === oc.BRepOffset_Type.BRepOffset_Convex.value
+  return first.Type_2().value === oc.ChFiDS_TypeOfConcavity.ChFiDS_Convex.value
 }
 
 /** How far `face` reaches from `vertex` along each adjacent face's in-plane

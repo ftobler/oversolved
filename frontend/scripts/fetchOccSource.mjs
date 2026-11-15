@@ -9,8 +9,10 @@
 // archives from the deployed site itself, at the relative links in
 // public/third_party/opencascade/README.md, is.
 //
-// The corresponding source is BOTH archives. opencascade.js patches the OCCT
-// tree before compiling it, so the upstream revision alone does not build the
+// The corresponding source is BOTH archives: the OCCT release and the
+// oversolved-occt build at the commit that produced the binary. The build repo
+// generates the embind layer and holds the hand-written bindings and the
+// compile and link flags, so the upstream release alone does not build the
 // binary that ships.
 //
 // Every deploy runs this into dist/third_party/opencascade/source. It fails
@@ -30,24 +32,26 @@ import { fileURLToPath } from 'node:url'
 const scriptDir = path.dirname(fileURLToPath(import.meta.url))
 const repoDir = path.resolve(scriptDir, '..', '..')
 
-// Pinned to what occ:install installs and what occ:provision then deploys. A
-// bump in either has to be a bump here, or the offered source stops matching
-// the binary, which is the one way this file can be worse than useless.
-// The digests are checked, not just reported. A tag that upstream moved, or an
-// archive regenerated with different compression, would otherwise be mirrored
-// and offered as the corresponding source without anyone noticing it changed.
+// Pinned to the release frontend/occ.pin.json names (its `occt.commit` and
+// `build_commit`). A repin there has to be a bump here, or the offered source
+// stops matching the binary, which is the one way this file can be worse than
+// useless. The digests are checked, not just reported. A tag that upstream
+// moved, or an archive regenerated with different compression, would otherwise
+// be mirrored and offered as the corresponding source without anyone noticing
+// it changed. (They are of the .tar.gz as served; the pin's `occt.sha256` is of
+// the uncompressed tar, which is what the build repo verifies.)
 export const SOURCES = [
   {
-    name: 'occt-V7_4_0p1.tar.gz',
-    url: 'https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/V7_4_0p1.tar.gz',
-    what: 'Open CASCADE Technology V7_4_0p1, commit 33d9a6fa21ca4fa711da7066655aa2ba854545ee',
-    sha256: '85b66265cd861147fdc6e428b01a917a37fc3902d2d06d73c7298b1ac9a2cb0d',
+    name: 'occt-V8.0.1.tar.gz',
+    url: 'https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/V8.0.1.tar.gz',
+    what: 'Open CASCADE Technology V8.0.1, commit b8f597c677811d1f9f4d8a97f5ae2825c0353a42',
+    sha256: '6297cc55a1720523a437c54d07dc16b9da8c5f5ab5800da3c6ebded568d53c18',
   },
   {
-    name: 'opencascade.js-1.1.1-src.tar.gz',
-    url: 'https://github.com/donalffons/opencascade.js/archive/refs/tags/v1.1.1.tar.gz',
-    what: 'The opencascade.js 1.1.1 build, including the patches it applies to OCCT',
-    sha256: '7ce8617e77013c24ba4b32df7933094400a61fc96d143060634f1101f5ed6b93',
+    name: 'oversolved-occt-1f3b794-src.tar.gz',
+    url: 'https://github.com/ftobler/oversolved-occt/archive/1f3b7945504dbd4ca6baed97524f3fd7b3c22469.tar.gz',
+    what: 'The oversolved-occt build at 1f3b7945504dbd4ca6baed97524f3fd7b3c22469: binding generator, manual bindings, build flags',
+    sha256: '9c20fbce206f904b1601ab33ec8a96f6a0ef7fb6a2f18994a8b3e700a22e0294',
   },
 ]
 

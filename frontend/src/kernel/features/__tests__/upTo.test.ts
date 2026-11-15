@@ -3,7 +3,7 @@
 // table are unused here and passed as null. The body-face branch's OCC reads
 // (extractOccFace, faceSurfaceType, faceNormal, computeFacePlane) are stood in
 // so its planar success and curved outcomes are pinned without the
-// opencascade.js artifact; trimAtPlane's cap-face guard is driven through a fake
+// OCC build artifact; trimAtPlane's cap-face guard is driven through a fake
 // oc that reports a not-done builder.
 
 import { describe, it, expect, vi, afterEach } from 'vitest'
@@ -17,7 +17,7 @@ import type { HandleTable } from '../../occ/handleTable'
 
 // The body-face branch reads a real OCC face through these two functions; the
 // OCC-free harness stands them in so the success and non-planar outcomes are
-// pinned even when opencascade.js is absent (where upToReal.test.ts skips).
+// pinned even when the OCC build is absent (where upToReal.test.ts skips).
 vi.mock('../../occ/faceLoops', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../occ/faceLoops')>()
   return { ...actual, extractOccFace: vi.fn(), computeFacePlane: vi.fn() }

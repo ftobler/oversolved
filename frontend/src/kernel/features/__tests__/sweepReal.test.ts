@@ -370,7 +370,8 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
         sweepSpec('sw1', 'prof', 'pth'),
       ],
     })
-    expect(h.res(result, 'sw1').status).toBe('ok')
+    const swept = h.res(result, 'sw1')
+    expect(swept.status).toBe('ok')
     const mesh = h.body(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
     expect(mesh).toBeDefined()
     if (mesh) {

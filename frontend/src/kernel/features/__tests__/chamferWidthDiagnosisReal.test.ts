@@ -7,7 +7,7 @@
 // The leaf measures the adjacent face width across the picked edge and names it,
 // so a caller can tell "too large a distance" from "bad pick".
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'

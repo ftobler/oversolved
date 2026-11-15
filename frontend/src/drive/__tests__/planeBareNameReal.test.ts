@@ -6,26 +6,16 @@
 // through the headless drive, so the boundary and the plane leaf are pinned
 // together and a regression cannot hide behind either half.
 
-import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { runHeadless, seedBuiltins } from '../headlessOps'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import { nonSketchProblems } from './buildProblems'
 import type { ScriptStep } from '../scriptRunner'
-
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 
 const oc = occInstalled()
 const solveBytes = loadSolver()

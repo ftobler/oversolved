@@ -1,14 +1,17 @@
 // @vitest-environment jsdom
 //
-// loadOccWeb is the main-thread path to the opencascade.js artifact. It is
-// deliberately failure-tolerant: any loader failure resolves to null so the
-// kernel degrades to "local solver unavailable". The test-environment guard
-// short-circuits before the module sets its cache, so each case reloads the
-// module to start from a clean cache cell.
+// loadOccWeb is the main-thread path to the OCCT artifact. It is deliberately
+// failure-tolerant: any loader failure resolves to null so the kernel degrades
+// to "local solver unavailable". The test-environment guard short-circuits
+// before the module sets its cache, so each case reloads the module to start
+// from a clean cache cell.
 //
-// wasmCompile is mocked: the streaming/progress behaviour of compileOccWasm is
-// covered by wasmCompile.test.ts, and here the focus is the loader's wiring
-// (which URL is compiled, what the factory receives, how phases are reported).
+// The artifact is an ES module imported off a blob URL (importOccModule.ts);
+// jsdom has no object URLs, so createObjectURL is pointed at a data URL holding
+// the text the fetch stub returned. wasmCompile is mocked: the streaming and
+// progress behaviour of compileOccWasm is covered by wasmCompile.test.ts, and
+// here the focus is the loader's wiring (which URL is compiled, what the
+// factory receives, how phases are reported).
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 interface FakeWasmReport {
@@ -47,6 +50,26 @@ async function freshLoadOccWeb() {
   return { loadOccWeb: loader.loadOccWeb, progress }
 }
 
+// The factory records what it was handed on globalThis, since the module text
+// runs in its own scope.
+const FACTORY_JS =
+  'export default async (opts) => { globalThis.__occOpts = opts; return { occt: "ready" } };'
+
+function serve(js: string): ReturnType<typeof vi.fn> {
+  const fetchSpy = vi.fn(async () => ({ ok: true, text: async () => js }))
+  vi.stubGlobal('fetch', fetchSpy)
+  Object.assign(URL, {
+    createObjectURL: vi.fn(() => `data:text/javascript,${encodeURIComponent(js)}`),
+    revokeObjectURL: vi.fn(),
+  })
+  return fetchSpy
+}
+
+function factoryOpts(): { locateFile: (p: string) => string; instantiateWasm: unknown } {
+  return (globalThis as unknown as { __occOpts: { locateFile: (p: string) => string; instantiateWasm: unknown } })
+    .__occOpts
+}
+
 describe('loadOccWeb', () => {
   beforeEach(() => {
     vi.stubEnv('MODE', 'development')
@@ -54,13 +77,13 @@ describe('loadOccWeb', () => {
     wasm.compiles.length = 0
     wasm.onCompile = null
     wasm.fail = false
+    delete (globalThis as unknown as { __occOpts?: unknown }).__occOpts
   })
 
   afterEach(() => {
     vi.unstubAllEnvs()
     vi.unstubAllGlobals()
     vi.restoreAllMocks()
-    delete (window as unknown as { opencascade?: unknown }).opencascade
   })
 
   it('resolves null in the test environment without fetching', async () => {
@@ -79,7 +102,7 @@ describe('loadOccWeb', () => {
 
     const { loadOccWeb } = await freshLoadOccWeb()
     expect(await loadOccWeb('/occ/')).toBeNull()
-    expect(fetch).toHaveBeenCalledWith('/occ/opencascade.wasm.js')
+    expect(fetch).toHaveBeenCalledWith('/occ/occt.js')
     // Pinning the message (not just "error was called") keeps the !resp.ok
     // guard load-bearing: without it resp.text() would throw a TypeError and
     // the test would still see a logged error and a null result.
@@ -87,53 +110,45 @@ describe('loadOccWeb', () => {
   })
 
   it('retries after a failed load instead of pinning the null result', async () => {
-    const fetchSpy = vi.fn(async () => ({ ok: false, status: 404 }))
-    vi.stubGlobal('fetch', fetchSpy)
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: false, status: 404 })))
     vi.spyOn(console, 'error').mockImplementation(() => {})
 
     const { loadOccWeb } = await freshLoadOccWeb()
-    // First call fails (no window.opencascade, the fetch 404s) and resolves null.
     expect(await loadOccWeb('/occ/')).toBeNull()
-    expect(fetchSpy).toHaveBeenCalledTimes(1)
 
     // The null result must be evicted, so a later call retries from scratch
-    // rather than returning the cached null. Attach a factory and confirm the
-    // second call reaches it.
-    const factory = vi.fn(async () => ({ occt: 'ready' }))
-    ;(window as unknown as { opencascade?: unknown }).opencascade = factory
+    // rather than returning the cached null.
+    const fetchSpy = serve(FACTORY_JS)
     expect(await loadOccWeb('/occ/')).toEqual({ occt: 'ready' })
-    expect(factory).toHaveBeenCalledTimes(1)
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
   })
 
-  it('reuses a factory already attached to window and maps the wasm locateFile', async () => {
-    const factory = vi.fn(async (_opts: { locateFile: (p: string) => string }) => ({ occt: 'ready' }))
-    ;(window as unknown as { opencascade?: unknown }).opencascade = factory
+  it('resolves null when the module has no default factory', async () => {
+    serve('export const notTheFactory = 1;')
+
+    const { loadOccWeb, progress } = await freshLoadOccWeb()
+    expect(await loadOccWeb('/occ/')).toBeNull()
+    expect(progress.getOccLoadProgress().phase).toBe('failed')
+    expect(wasm.compiles).toHaveLength(0)
+  })
+
+  it('compiles the wasm under the base and hands the compiled module to the factory', async () => {
+    serve(FACTORY_JS)
 
     const { loadOccWeb } = await freshLoadOccWeb()
     expect(await loadOccWeb('/base/')).toEqual({ occt: 'ready' })
 
-    const { locateFile } = factory.mock.calls[0][0]
-    expect(locateFile('opencascade.wasm')).toBe('/base/opencascade.wasm.wasm')
-    expect(locateFile('worker.js')).toBe('worker.js')
-  })
-
-  it('compiles the wasm under the base and hands the compiled module to the factory', async () => {
-    const factory = vi.fn(async (_opts: unknown) => ({ occt: 'ready' }))
-    ;(window as unknown as { opencascade?: unknown }).opencascade = factory
-
-    const { loadOccWeb } = await freshLoadOccWeb()
-    await loadOccWeb('/base/')
-
     expect(wasm.compiles).toHaveLength(1)
-    expect(wasm.compiles[0].url).toBe('/base/opencascade.wasm.wasm')
+    expect(wasm.compiles[0].url).toBe('/base/occt.wasm')
     // The factory must not fetch the wasm itself: the compiled module travels
     // through the instantiateWasm hook (mocked to a sentinel here).
-    expect(factory.mock.calls[0][0]).toMatchObject({ instantiateWasm: 'instantiate-hook' })
+    expect(factoryOpts().instantiateWasm).toBe('instantiate-hook')
+    expect(factoryOpts().locateFile('occt.wasm')).toBe('/base/occt.wasm')
+    expect(factoryOpts().locateFile('worker.js')).toBe('worker.js')
   })
 
   it('reports the load through the progress phases', async () => {
-    const factory = vi.fn(async (_opts: unknown) => ({ occt: 'ready' }))
-    ;(window as unknown as { opencascade?: unknown }).opencascade = factory
+    serve(FACTORY_JS)
     wasm.onCompile = (report) => {
       report.download(4, 8)
       report.compiling()
@@ -153,118 +168,24 @@ describe('loadOccWeb', () => {
   })
 
   it('reports a failed compile and still resolves null', async () => {
-    const factory = vi.fn(async (_opts: unknown) => ({ occt: 'ready' }))
-    ;(window as unknown as { opencascade?: unknown }).opencascade = factory
+    serve(FACTORY_JS)
     wasm.fail = true
     vi.spyOn(console, 'error').mockImplementation(() => {})
 
     const { loadOccWeb, progress } = await freshLoadOccWeb()
     expect(await loadOccWeb('/base/')).toBeNull()
     expect(progress.getOccLoadProgress().phase).toBe('failed')
-    expect(factory).not.toHaveBeenCalled()
+    expect(factoryOpts()).toBeUndefined()
   })
 
   it('memoizes the load: later calls return the first promise', async () => {
-    const factory = vi.fn(async (_opts: { locateFile: (p: string) => string }) => ({ occt: 'ready' }))
-    ;(window as unknown as { opencascade?: unknown }).opencascade = factory
+    const fetchSpy = serve(FACTORY_JS)
 
     const { loadOccWeb } = await freshLoadOccWeb()
     const first = loadOccWeb('/base/')
     const second = loadOccWeb('/other-base/')
     expect(second).toBe(first)
     await first
-    expect(factory).toHaveBeenCalledTimes(1)
-  })
-
-  // The script-injection path. jsdom does not execute an injected blob script,
-  // so the load/error events are driven by a fake <script> whose appendChild
-  // fires them. URL.createObjectURL is absent in jsdom, hence the stub.
-  function stubScriptInjection(behavior: 'load' | 'error' | 'silent'): {
-    script: { onload?: () => void; onerror?: () => void; src: string }
-    createObjectURL: ReturnType<typeof vi.fn>
-    revokeObjectURL: ReturnType<typeof vi.fn>
-    blobText: () => string
-  } {
-    const script: { onload?: () => void; onerror?: () => void; src: string } = { src: '' }
-    const createObjectURL = vi.fn(() => 'blob:occ')
-    const revokeObjectURL = vi.fn()
-    vi.stubGlobal('URL', { createObjectURL, revokeObjectURL })
-    let captured = ''
-    const RealBlob = Blob
-    vi.stubGlobal('Blob', class extends RealBlob {
-      constructor(parts?: BlobPart[], options?: BlobPropertyBag) {
-        super(parts, options)
-        captured = (parts ?? []).map((p) => String(p)).join('')
-      }
-    })
-    vi.spyOn(document, 'createElement').mockReturnValue(script as unknown as HTMLElement)
-    vi.spyOn(document.head, 'appendChild').mockImplementation((node: Node) => {
-      if (behavior !== 'silent') {
-        queueMicrotask(() => {
-          if (behavior === 'error') script.onerror?.()
-          else script.onload?.()
-        })
-      }
-      return node
-    })
-    return { script, createObjectURL, revokeObjectURL, blobText: () => captured }
-  }
-
-  it('injects a classic script, strips the ES export, and calls the factory', async () => {
-    const factory = vi.fn(async (_opts: { locateFile: (p: string) => string }) => ({ occt: 'ready' }))
-    const source = 'var opencascade = function() {};\nexport default opencascade;\n'
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, text: async () => source })))
-    const { script, createObjectURL, revokeObjectURL, blobText } = stubScriptInjection('load')
-
-    const { loadOccWeb } = await freshLoadOccWeb()
-    const promise = loadOccWeb('/base/')
-    ;(window as unknown as { opencascade?: unknown }).opencascade = factory
-    // The injection runs a microtask before the load event; let both settle.
-    await new Promise((resolve) => setTimeout(resolve, 0))
-    expect(await promise).toEqual({ occt: 'ready' })
-
-    // The blob must not carry `export default`, a syntax error in a classic
-    // <script>, and its URL must be revoked once the script has loaded.
-    expect(blobText()).not.toContain('export default')
-    expect(script.src).toBe('blob:occ')
-    expect(createObjectURL).toHaveBeenCalledTimes(1)
-    expect(revokeObjectURL).toHaveBeenCalledWith('blob:occ')
-
-    const { locateFile } = factory.mock.calls[0][0]
-    expect(locateFile('opencascade.wasm')).toBe('/base/opencascade.wasm.wasm')
-    expect(locateFile('worker.js')).toBe('worker.js')
-  })
-
-  it('resolves null when the injected script fires onerror', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, text: async () => 'x' })))
-    stubScriptInjection('error')
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
-
-    const { loadOccWeb } = await freshLoadOccWeb()
-    expect(await loadOccWeb('/occ/')).toBeNull()
-    // The onerror handler logs dev-only with one arg; the outer catch logs the
-    // rejection, whose message is what must reach the caller as null.
-    const outer = error.mock.calls.find((c) => c[1] instanceof Error)
-    expect(String((outer?.[1] as Error).message)).toMatch(/failed to load/)
-  })
-
-  it('resolves null when the script loads but never defines window.opencascade', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, text: async () => 'x' })))
-    stubScriptInjection('load')
-
-    const { loadOccWeb } = await freshLoadOccWeb()
-    expect(await loadOccWeb('/occ/')).toBeNull()
-  })
-
-  it('resolves null when the injected script never loads', async () => {
-    vi.useFakeTimers()
-    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, text: async () => 'x' })))
-    stubScriptInjection('silent')
-    vi.spyOn(console, 'error').mockImplementation(() => {})
-
-    const { loadOccWeb } = await freshLoadOccWeb()
-    const promise = loadOccWeb('/occ/')
-    await vi.advanceTimersByTimeAsync(10_000)
-    expect(await promise).toBeNull()
+    expect(fetchSpy).toHaveBeenCalledTimes(1)
   })
 })

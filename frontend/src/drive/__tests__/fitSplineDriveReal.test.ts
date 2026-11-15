@@ -4,11 +4,10 @@
 // measures the analytic extrusion volume, selects the two B-spline edges, and its doc
 // reloads and re-runs to the same volume. The tangent case pins the authoring
 // sugar's handle conversion end to end. Skips when OCC or the solver is absent.
-import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import { runHeadless, measureHeadless, selectHeadless, emptyDriveDoc } from '../headlessOps'
 import type { ScriptStep } from '../scriptRunner'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
@@ -16,15 +15,6 @@ import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import { nonSketchProblems } from './buildProblems'
 import { loadPartDoc } from '@/persistence/docSchema'
 import type { PartDoc } from '@/types/cad'
-
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 
 const oc = occInstalled()
 const solveBytes = loadSolver()

@@ -4,7 +4,7 @@
 // a subtract grows (+) or shrinks (-) every tool by a 3D offset before the cut,
 // while union/intersect ignore it with a warning. Volumes are analytic.
 //
-// Skips when opencascade.js is absent, like the other real-OCC gates.
+// Skips when the OCC build is absent, like the other real-OCC gates.
 
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'

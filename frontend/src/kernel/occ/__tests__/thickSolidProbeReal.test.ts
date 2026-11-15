@@ -1,12 +1,12 @@
 // @vitest-environment node
 //
 // Phase-1 probe for the Shell kernel path, kept as a regression test. It pins
-// the OCCT 7.4.0p1 (opencascade.js 1.1.1) behaviour the thickSolid adapter is
-// built on, none of which is documented for this build:
+// the OCC behaviour the thickSolid adapter is built on, none of which is
+// documented for this build:
 //
-//   - `BRepOffsetAPI_MakeThickSolid.MakeThickSolidByJoin` is the 9-arg form
+//   - `BRepOffsetAPI_MakeThickSolid.MakeThickSolidByJoin` is the 10-arg form
 //     (shape, closingFaces, offset, tol, mode, intersection, selfInter, join,
-//     removeIntEdges); a shorter call throws a BindingError.
+//     removeIntEdges, progress); a shorter call throws a BindingError.
 //   - The sign: OCC offsets along the outward normal, so inward is `-t`.
 //   - History: a KEPT face `Generated()` exactly one face (its offset wall), a
 //     REMOVED (closing) face `Modified()` exactly one face (its rim), and the
@@ -16,9 +16,10 @@
 //     spec wants is `MakeOffsetShape` then a boolean cut (V=488, 12 faces), so
 //     the adapter must take that fallback and the probe freezes both numbers.
 //
-// Skips when opencascade.js is absent, like every *Real suite.
+// Skips when OCC is absent, like every *Real suite.
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'
+import { noProgress } from '../defaultArgs'
 import { DisposeScope } from '../disposeScope'
 import { makeBox, makeCylinder, makeCylinderWithFaces, faceCentroid } from '../primitives'
 import { volumeOf } from '../volume'
@@ -26,6 +27,7 @@ import { canonicalFaces, canonicalEdges, canonicalVertices } from '../bodyNames'
 import { booleanWithDiff } from '../booleans'
 import { applyFilletWithDiff } from '../edgeModifier'
 import { applyShellWithLineage } from '../thickSolid'
+import { shapeBbox } from '../faceBounds'
 import type { OccModule, OccShape, OccSubShape, OccEnumValue, OccThickSolidMaker } from '../occTypes'
 
 const oc = await loadOcc()
@@ -44,7 +46,7 @@ function topFace(module: OccModule, scope: DisposeScope, shape: OccShape): OccSh
 function bbox(module: OccModule, scope: DisposeScope, shape: OccShape): number[] {
   const box = scope.track(new module.Bnd_Box_1())
   module.BRepBndLib.Add(shape, box, false)
-  return [box.GetXmin(), box.GetYmin(), box.GetZmin(), box.GetXmax(), box.GetYmax(), box.GetZmax()]
+  return [box.GetXMin(), box.GetYMin(), box.GetZMin(), box.GetXMax(), box.GetYMax(), box.GetZMax()]
 }
 
 /** One raw thick-solid build; all inputs/scope-tracked proxies die with `scope`. */
@@ -56,14 +58,14 @@ function thickSolid(
   offset: number,
   join: OccEnumValue,
 ): { maker: OccThickSolidMaker; result: OccShape } {
-  const maker = scope.track(new module.BRepOffsetAPI_MakeThickSolid_1())
+  const maker = scope.track(new module.BRepOffsetAPI_MakeThickSolid())
   const list = scope.track(new module.TopTools_ListOfShape_1())
   for (const f of closing) list.Append_1(f)
   maker.MakeThickSolidByJoin(
     shape, list, offset, 1e-3,
-    module.BRepOffset_Mode.BRepOffset_Skin, false, false, join, false,
+    module.BRepOffset_Mode.BRepOffset_Skin, false, false, join, false, noProgress(module),
   )
-  maker.Build()
+  maker.Build(noProgress(module))
   return { maker, result: scope.track(maker.Shape()) }
 }
 
@@ -120,12 +122,13 @@ describe.skipIf(!oc)('thickSolid phase-1 probe (real OCC)', () => {
     const scope = new DisposeScope()
     try {
       const box = boxOf(module, scope, 10)
-      const off = scope.track(new module.BRepOffsetAPI_MakeOffsetShape_1())
+      const off = scope.track(new module.BRepOffsetAPI_MakeOffsetShape())
       off.PerformByJoin(
         box, -1, 1e-3,
         module.BRepOffset_Mode.BRepOffset_Skin, false, false, module.GeomAbs_JoinType.GeomAbs_Intersection, false,
+        noProgress(module),
       )
-      off.Build()
+      off.Build(noProgress(module))
       expect(off.IsDone()).toBe(true)
       const inner = scope.track(off.Shape())
       // The inner void's wall history: each box face Generated() exactly one
@@ -245,12 +248,13 @@ describe.skipIf(!oc)('thickSolid phase-1 probe (real OCC)', () => {
       const box = boxOf(module, scope, 2)
       const edges = canonicalEdges(module, scope, box) as OccShape[]
       const vertices = canonicalVertices(module, scope, box) as OccShape[]
-      const maker = scope.track(new module.BRepOffsetAPI_MakeOffsetShape_1())
+      const maker = scope.track(new module.BRepOffsetAPI_MakeOffsetShape())
       maker.PerformByJoin(
         box, 0.05, 1e-3,
         module.BRepOffset_Mode.BRepOffset_Skin, false, false, module.GeomAbs_JoinType.GeomAbs_Arc, false,
+        noProgress(module),
       )
-      maker.Build()
+      maker.Build(noProgress(module))
       expect(maker.IsDone()).toBe(true)
       const narrate = (src: OccShape): number =>
         drain(scope, maker.Generated(src)).flatMap((g) => canonicalFaces(module, scope, g)).length
@@ -299,6 +303,20 @@ describe.skipIf(!oc)('thickSolid phase-1 probe (real OCC)', () => {
     // The key_cap repro: a sharp-join thick solid refuses this shape, and so
     // does the plain offset, while the same shape offsets with arc joins. The
     // adapter must retry and hand back a real hollow, not an unchanged body.
+    //
+    // OCCT 8 changed how that refusal arrives and what the arc build produces:
+    //   - The sharp join now reports IsDone() and returns a copy of the input
+    //     (nine of ten faces IsSame, no face Generated onto an offset wall)
+    //     where 7.4 refused. The adapter rejects it on that evidence
+    //     (thickSolid.ts `generatedAnyOffsetWall`) and the arc join gets its turn.
+    //   - The arc build's raw shape is invalid and heals with its topology
+    //     intact, but keeps a ~0.79 vertex tolerance. The material and every
+    //     face's geometry are unchanged; only a tolerance-inclusive box
+    //     (`bbox`, via BRepBndLib.Add) reads 0.79 larger on each side, which is
+    //     why the extent checks below use the tight `shapeBbox` instead.
+    //   - The OUTWARD arc build splits the fillet band into 35 faces and carries
+    //     840.72 mm^3, against 7.4's 19 faces and 854.99. The tight box is the
+    //     same on both kernels; the material moved, the shape did not.
     const module = setup()
     const scope = new DisposeScope()
     try {
@@ -315,15 +333,18 @@ describe.skipIf(!oc)('thickSolid phase-1 probe (real OCC)', () => {
       const inwardShape = scope.track(inward.shape)
       expect(volumeOf(module, scope, inwardShape)).toBeCloseTo(847.6863897057074, 6)
       expect(canonicalFaces(module, scope, inwardShape)).toHaveLength(20)
-      // The outer top is still the opening's rim: the shell walls reach it.
-      expect(Math.round(bbox(module, scope, inwardShape)[5])).toBe(10)
+      // The outer top is still the opening's rim: the shell walls reach it. The
+      // tight box is the geometry; `bbox` (BRepBndLib.Add) is inflated by the
+      // healed build's vertex tolerance on OCCT 8, see the test header. `+ 0`
+      // folds OCCT 8's -0 into 0 for toEqual.
+      expect(shapeBbox(module, scope, inwardShape).map((n) => Math.round(n) + 0)).toEqual([0, 0, 0, 18, 18, 10])
 
       const outward = applyShellWithLineage(module, scope, filleted, [openTop], 0.75, 'outward', null)
       expect(outward.success).toBe(true)
       const outwardShape = scope.track(outward.shape)
-      expect(volumeOf(module, scope, outwardShape)).toBeCloseTo(854.9865869618458, 6)
-      expect(canonicalFaces(module, scope, outwardShape)).toHaveLength(19)
-      expect(bbox(module, scope, outwardShape).map((n) => Math.round(n))).toEqual([-1, -1, -1, 19, 19, 10])
+      expect(volumeOf(module, scope, outwardShape)).toBeCloseTo(840.7221023342368, 6)
+      expect(canonicalFaces(module, scope, outwardShape)).toHaveLength(35)
+      expect(shapeBbox(module, scope, outwardShape).map((n) => Math.round(n) + 0)).toEqual([-1, -1, -1, 19, 19, 10])
     } finally {
       scope.dispose()
     }

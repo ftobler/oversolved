@@ -12,7 +12,7 @@
 // naming and the brep production.
 
 import { drainList, type DisposeScope } from './disposeScope'
-import { extractErrorMessage } from '../errors'
+import { extractOccErrorMessage, releaseOccException } from '../errors'
 import type {
   OccModule,
   OccShape,
@@ -50,6 +50,7 @@ import {
 } from './constructionLineage'
 import { canonicalFaces, carryFaceNames, emptyShapeNames, type ShapeNames } from './bodyNames'
 import { SubShapeMap } from './subshapeIdentity'
+import { noProgress } from './defaultArgs'
 import {
   mintFaceUuid,
   sideFacePath,
@@ -838,7 +839,7 @@ function makeAxis(oc: OccModule, scope: DisposeScope, origin: Vec3, direction: V
   return scope.track(
     new oc.gp_Ax1_2(
       scope.track(new oc.gp_Pnt_3(origin[0], origin[1], origin[2])),
-      scope.track(new oc.gp_Dir_4(direction[0], direction[1], direction[2])),
+      scope.track(new oc.gp_Dir_5(direction[0], direction[1], direction[2])),
     ),
   ) as unknown as OccShape
 }
@@ -939,9 +940,14 @@ export function revolveProfileWithLineage(
 // ─── sweep (the sweep leaf's brep producer) ───
 
 /**
- * Try each transition mode's pipe shell in order and return the first one
- * that builds a solid cleanly. Pure loop, no face/profile dependency, so it
+ * Try each transition mode's pipe shell (under each trihedron law, see
+ * `trihedronLaws`) and return the first one that builds a solid cleanly. Pure
+ * loop, no face/profile dependency, so it
  * unit-tests with a stub `oc.BRepOffsetAPI_MakePipeShell` (no WASM needed).
+ *
+ * The order is law-major: every mode is tried under the default law before any
+ * mode is tried under the fallback, so a spine the default can build keeps the
+ * exact predecessor behaviour.
  *
  * `wires` is one wire for a single-profile sweep and one per section for a
  * multisection sweep; `Add_1` is called once per wire, in the given order, so
@@ -957,10 +963,10 @@ export function revolveProfileWithLineage(
  * strand it. The caller detaches it on ITS successful return, which is where
  * the untracked-shape contract every producer keeps begins.
  *
- * `mode` is the transition mode that built the solid. The sweep reuses it for
- * every hole loop: one spine plus one trihedron law is what keeps a hole wall
- * parallel to the outer one, and a hole that fell back to a different mode
- * would not be.
+ * `mode` and `frenet` are the transition mode and trihedron law that built the
+ * solid. The sweep reuses both for every hole loop: one spine plus one law is
+ * what keeps a hole wall parallel to the outer one, and a hole that fell back
+ * to a different pair would not be.
  */
 export function attemptPipeShellSweep(
   oc: OccModule,
@@ -972,34 +978,62 @@ export function attemptPipeShellSweep(
   // instead of the default CorrectedFrenet frame. A helix path uses the helix
   // axis so a radial profile keeps its relation to the axis (a thread).
   binormal: Vec3 | null = null,
+  // The trihedron law to pin for this call. Null tries the default first and
+  // falls back to Frenet (see `trihedronLaws`); true/false pins one, which is
+  // what a hole loop does after the outer build settled the law.
+  frenet: boolean | null = null,
 ): {
-  result: { solid: OccShape; pipeBuilder: OccPipeShellBuilder; mode: OccEnumValue } | null
+  result: { solid: OccShape; pipeBuilder: OccPipeShellBuilder; mode: OccEnumValue; frenet: boolean } | null
   lastError: unknown
 } {
   let lastError: unknown = null
-  for (const mode of modes) {
-    lastError = null
-    const builder = scope.track(new oc.BRepOffsetAPI_MakePipeShell(spineWire))
-    try {
-      builder.SetTransitionMode(mode)
-      if (binormal !== null) {
-        const dir = scope.track(new oc.gp_Dir_4(binormal[0], binormal[1], binormal[2]))
-        builder.SetMode_3(dir)
+  for (const law of trihedronLaws(frenet, binormal)) {
+    for (const mode of modes) {
+      // The law fallback makes a throw the EXPECTED outcome for the first pass
+      // on a B-spline spine, so the previous attempt's exception object is
+      // released here instead of waiting for the module to be discarded.
+      if (lastError !== null) releaseOccException(oc, lastError)
+      lastError = null
+      const builder = scope.track(new oc.BRepOffsetAPI_MakePipeShell(spineWire))
+      try {
+        builder.SetTransitionMode(mode)
+        if (binormal !== null) {
+          const dir = scope.track(new oc.gp_Dir_5(binormal[0], binormal[1], binormal[2]))
+          builder.SetMode_3(dir)
+        } else if (law) {
+          builder.SetMode_1(true)
+        }
+        for (const wire of wires) builder.Add_1(wire, false, false)
+        builder.Build(noProgress(oc))
+        if (builder.IsDone() && builder.MakeSolid()) {
+          // Track it at creation: the callers' plausibility gates and lineage
+          // pass can still throw, and this shape would be stranded there.
+          const solid = scope.track(builder.Shape())
+          return { result: { solid, pipeBuilder: builder, mode, frenet: law }, lastError: null }
+        }
+      } catch (e) {
+        swallowUnlessTrap(e)
+        lastError = e
       }
-      for (const wire of wires) builder.Add_1(wire, false, false)
-      builder.Build()
-      if (builder.IsDone() && builder.MakeSolid()) {
-        // Track it at creation: the callers' plausibility gates and lineage
-        // pass can still throw, and this shape would be stranded there.
-        const solid = scope.track(builder.Shape())
-        return { result: { solid, pipeBuilder: builder, mode }, lastError: null }
-      }
-    } catch (e) {
-      swallowUnlessTrap(e)
-      lastError = e
     }
   }
   return { result: null, lastError }
+}
+
+/**
+ * The trihedron laws to try, in order.
+ *
+ * OCCT 8's default (corrected Frenet) law refuses a B-spline spine outright:
+ * `MakePipeShell::Build` throws `StdFail_NotDone` on a cubic Bezier where 7.4
+ * built the tube. The explicit Frenet law builds the same sweep (the two agree
+ * on a planar spine, and a fit-spline path is planar in the sketch plane), so
+ * it is the last resort rather than the first choice: the default still owns
+ * every spine it can build, exactly as before the upgrade. A fixed binormal
+ * needs no fallback, and a pinned law is a caller's explicit choice.
+ */
+function trihedronLaws(frenet: boolean | null, binormal: Vec3 | null): boolean[] {
+  if (binormal !== null || frenet !== null) return [frenet ?? false]
+  return [false, true]
 }
 
 /**
@@ -1118,7 +1152,7 @@ export function sweepProfileWithLineage(
   ]
   const { result, lastError } = attemptPipeShellSweep(oc, scope, spineWire, [outerWire], modes, binormal)
   if (lastError !== null) {
-    const msg = extractErrorMessage(lastError)
+    const msg = extractOccErrorMessage(oc, lastError)
     throw new Error(`sweep: BRepOffsetAPI_MakePipeShell failed: ${msg}`)
   }
   if (result === null) throw new Error('sweep: could not build a solid from the swept shell')
@@ -1140,16 +1174,17 @@ export function sweepProfileWithLineage(
     return { solid: scope.detach(solid), ...lineage }
   }
 
-  // The outer shell succeeded with `mode`, so try that mode first on every hole
-  // loop: the same spine plus the same trihedron law is what keeps the inner
-  // wall parallel to the outer one, and only then may a hole fall back.
+  // The outer shell succeeded with `mode` and a trihedron law, so pin that law
+  // for every hole loop and try that mode first: the same spine plus the same
+  // law is what keeps the inner wall parallel to the outer one. Only the
+  // transition mode may fall back.
   const innerWireIds = (wire: OccShape): string[] =>
     wireEntityIds(oc, scope, wire, fusedLoops, plane)
   const holeModes = [mode, ...modes.filter((candidate) => candidate.value !== mode.value)]
   const holeSolids: OccShape[] = []
   const holeLineages: LineageMaps[] = []
   for (const holeWire of holeWires) {
-    const attempt = attemptPipeShellSweep(oc, scope, spineWire, [holeWire], holeModes, binormal)
+    const attempt = attemptPipeShellSweep(oc, scope, spineWire, [holeWire], holeModes, binormal, result.frenet)
     if (attempt.result === null) throw holeSweepFailure(innerWireIds(holeWire))
     const inner = attempt.result
     holeSolids.push(inner.solid)

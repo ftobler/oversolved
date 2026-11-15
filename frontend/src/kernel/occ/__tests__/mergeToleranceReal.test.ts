@@ -4,7 +4,7 @@
 // a named tolerance pair instead of whatever OCC happens to have compiled in,
 // and widens by what the sketch solver reported, up to a ceiling.
 //
-// Real-OCC tests (skipped without the optional opencascade.js install):
+// Real-OCC tests (skipped without the optional OCC build install):
 // - the two setters are called with the contract pair when nothing is inherited;
 // - two coplanar-ish boxes whose tops differ by 5e-11 rad stay two faces at the
 //   contract and merge into one at an inherited 1e-10;

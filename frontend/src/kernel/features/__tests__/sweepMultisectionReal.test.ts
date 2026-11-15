@@ -9,7 +9,7 @@
 // route (planes, sketches, the drive script) is covered by
 // drive/__tests__/sweepMultisectionReal.test.ts.
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'

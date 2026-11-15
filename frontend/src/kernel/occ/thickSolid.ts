@@ -2,10 +2,11 @@
 // calls to hollow a solid to a wall thickness with zero or more removed faces.
 //
 // Call shape and history are pinned by thickSolidProbeReal.test.ts against the
-// real OCCT 7.4.0p1 build:
+// real OCC build:
 //   - `BRepOffsetAPI_MakeThickSolid.MakeThickSolidByJoin(shape, closingFaces,
-//     offset, tol, mode, intersection, selfInter, join, removeIntEdges)` is the
-//     9-arg form; OCC offsets along the outward normal, so inward is `-t`.
+//     offset, tol, mode, intersection, selfInter, join, removeIntEdges,
+//     progress)` is the 10-arg form; OCC offsets along the outward normal, so
+//     inward is `-t`.
 //   - A KEPT face `Generated()` exactly one face (its offset wall) and survives
 //     itself by IsSame; a REMOVED (closing) face `Modified()` into one face (its
 //     rim). The naming roles follow from that.
@@ -42,6 +43,7 @@ import {
 } from './edgeModifier'
 import { nameNeighboursAndDeriveEdges, shapeNormalFrame, normalizedWorldKey, type NormalFrame } from './constructionLineage'
 import { swallowUnlessTrap } from '../errors'
+import { noProgress } from './defaultArgs'
 
 type Lineage = Record<string, string[]>
 
@@ -68,6 +70,45 @@ export interface ShellResult {
 
 function fail(shape: OccShape, reason: string): ShellResult {
   return { shape, success: false, reason, names: null, diff: emptyBrepDiff() }
+}
+
+/**
+ * Treats a maker that hands back its own input as a refusal: a shape that IsSame
+ * as the input has not been rebuilt, so it cannot be an offset result. This is a
+ * cheap guard, not the whole no-op check (see `generatedAnyOffsetWall`).
+ */
+function builtNothing(candidate: OccShape, input: OccShape): boolean {
+  return (candidate as OccSubShape).IsSame(input)
+}
+
+/**
+ * Whether a thick-solid build really offset anything. A real hollow narrates
+ * each kept face's offset wall through `Generated()`; OCCT 8's sharp join on a
+ * rim bounded by tangent fillets instead reports `IsDone()` and returns a copy
+ * of the input (nine of ten faces IsSame, no wall generated), where 7.4 refused.
+ * Accepting that would hand the un-hollowed body back as a successful shell.
+ *
+ * The faces are scanned until one narrates a wall, so a build where one face's
+ * wall is welded into a neighbour is not mistaken for a no-op; a genuine no-op
+ * walks every kept face and rejects. Returns null when every history call threw:
+ * that is not evidence of a no-op, so the build is left to the validity gate.
+ */
+function generatedAnyOffsetWall(scope: DisposeScope, maker: OccModifierHistory, keptFaces: OccShape[]): boolean | null {
+  let narrated = 0
+  for (const face of keptFaces) {
+    try {
+      const list = scope.track(maker.Generated(face))
+      const images = list.Size()
+      // Free the list now: a shelled body can keep dozens of them alive until
+      // the scope disposes, and the answer is one number per face.
+      scope.release(list)
+      if (images > 0) return true
+      narrated++
+    } catch (e) {
+      swallowUnlessTrap(e)
+    }
+  }
+  return narrated === 0 ? null : false
 }
 
 /** Every face of a shape the maker returned (a generated shape may be a wire or
@@ -246,18 +287,24 @@ function applySealedShell(
   for (const j of joins) {
     const isSharp = j === oc.GeomAbs_JoinType.GeomAbs_Intersection
     try {
-      const maker = scope.track(new oc.BRepOffsetAPI_MakeOffsetShape_1())
+      const maker = scope.track(new oc.BRepOffsetAPI_MakeOffsetShape())
       maker.PerformByJoin(
         shape, sign, 1e-3,
-        oc.BRepOffset_Mode.BRepOffset_Skin, false, false, j, false,
+        oc.BRepOffset_Mode.BRepOffset_Skin, false, false, j, false, noProgress(oc),
       )
-      maker.Build()
+      maker.Build(noProgress(oc))
       if (!maker.IsDone()) {
         lastReason = 'build_not_done'
         if (isSharp) sharpReason ??= lastReason
         continue
       }
       const candidate = scope.track(maker.Shape())
+      if (builtNothing(candidate, shape)) {
+        scope.release(candidate)
+        lastReason = 'build_not_done'
+        if (isSharp) sharpReason ??= lastReason
+        continue
+      }
       // Skin mode hands back a lone SHELL for non-primitive input; it is not a
       // boolean tool until it is wrapped, and the cut below is the whole point.
       // A raw offset can also be a compound the reader cannot classify (a
@@ -419,6 +466,12 @@ export function applyShellWithLineage(
   const sign = direction === 'inward' ? -thickness : thickness
   let maker: OccModifierHistory | null = null
   let built: OccShape | null = null
+  // The kept faces answer whether the build offset anything (see
+  // generatedAnyOffsetWall); the same set also excludes the openings from name
+  // inheritance below.
+  const closed = new SubShapeDedup()
+  for (const f of closingFaces) closed.add(f as OccSubShape)
+  const keptFaces = oldFaces.filter((f) => !closed.has(f as OccSubShape))
   // A build that reports IsDone() can still hand back an invalid solid: OCC
   // welds a filleted removed face into a non-manifold result instead of
   // refusing, and the validity knife-edge depends on the allocation layout, so
@@ -442,20 +495,29 @@ export function applyShellWithLineage(
   for (const j of joinList) {
     const isSharp = j === oc.GeomAbs_JoinType.GeomAbs_Intersection
     try {
-      const mk = scope.track(new oc.BRepOffsetAPI_MakeThickSolid_1())
+      const mk = scope.track(new oc.BRepOffsetAPI_MakeThickSolid())
       const list = scope.track(new oc.TopTools_ListOfShape_1())
       for (const f of closingFaces) list.Append_1(f)
       mk.MakeThickSolidByJoin(
         shape, list, sign, 1e-3,
-        oc.BRepOffset_Mode.BRepOffset_Skin, false, false, j, false,
+        oc.BRepOffset_Mode.BRepOffset_Skin, false, false, j, false, noProgress(oc),
       )
-      mk.Build()
+      mk.Build(noProgress(oc))
       if (!mk.IsDone()) {
         lastReason = 'build_not_done'
         if (isSharp) sharpReason ??= lastReason
         continue
       }
       const candidate = scope.track(mk.Shape())
+      const walls = generatedAnyOffsetWall(scope, mk, keptFaces)
+      if (builtNothing(candidate, shape) || walls === false) {
+        // Nothing was offset: the maker either handed back its input or kept
+        // every face and generated no wall. Either way there is no hollow.
+        scope.release(candidate)
+        lastReason = 'build_not_done'
+        if (isSharp) sharpReason ??= lastReason
+        continue
+      }
       if (isValidShape(oc, scope, candidate)) {
         built = candidate
         maker = mk
@@ -495,9 +557,6 @@ export function applyShellWithLineage(
     const faceNames: SubShapeMap<string> = new SubShapeMap()
     const faceAncestry: Lineage = {}
     const builtFace = builtFaceOf(newFaces)
-    const closed = new SubShapeDedup()
-    for (const f of closingFaces) closed.add(f as OccSubShape)
-    const keptFaces = oldFaces.filter((f) => !closed.has(f as OccSubShape))
 
     // Kept faces survive by IsSame: their history is empty, so they carry their
     // old UUID verbatim. The removed faces are excluded (their UUID dies with

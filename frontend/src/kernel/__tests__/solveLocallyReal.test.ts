@@ -5,7 +5,7 @@
 // directly with known OCC shapes, verifying output structure, face/edge/
 // vertex extraction, multiple-body handling, and error tolerance.
 //
-// Skips when opencascade.js is not installed.
+// Skips when the OCC build is not installed.
 
 import { describe, it, expect, beforeAll, vi } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
@@ -39,7 +39,7 @@ describe.skipIf(!oc)('extractBrepMetadata (real OCC)', () => {
   }
 
   function boxShape(scope: DisposeScope, table: HandleTable, w = 10, d = 10, h = 10, owner?: string): OccHandle {
-    const maker = scope.track(new occ.BRepPrimAPI_MakeBox_1(w, d, h))
+    const maker = scope.track(new occ.BRepPrimAPI_MakeBox_2(w, d, h))
     return table.register(maker.Shape(), owner)
   }
 

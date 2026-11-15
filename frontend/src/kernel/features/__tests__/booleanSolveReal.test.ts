@@ -7,7 +7,7 @@
 // result dict plus the post-op body store (per body: volume, created_by,
 // modified_by) match Python.
 //
-// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot;
+// Skips when the OCC build is absent. The fixture is a frozen golden snapshot;
 // its generator (gen_boolean_solve_fixture.py) was deleted with the Python
 // kernel in phase 4d.
 
@@ -22,6 +22,7 @@ import { Repository } from '../../query'
 import { solveBoolean } from '../boolean'
 import type { Body } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
+import { noProgress } from '../../occ/defaultArgs'
 import fixture from '../../occ/__fixtures__/booleanSolve.json'
 
 const oc = await loadOcc()
@@ -62,7 +63,7 @@ function bodyFromSpec(
 
 // The L5 fixture: a solid whose shell is open by a hairline. A box's top face
 // is lowered 0.001 so its edges no longer meet the side walls, then the six
-// faces are sewn into a shell and BRepBuilderAPI_MakeSolid is called on it --
+// faces are sewn into a shell and a TopoDS_Solid is filled from it --
 // the shape is still a TopoDS_Solid, but VolumeProperties with OnlyClosed=true
 // integrates it to ~0. double_with_hole.step was probed first and is properly
 // closed (its import reads a real volume), and a STEP round-trip of this shape
@@ -73,10 +74,10 @@ function makeOpenShellBox(occ: OccModule, scope: DisposeScope): OccShape {
     TopoDS_Shell: new () => { delete(): void }
     BRep_Builder: new () => {
       MakeShell(shell: unknown): void
+      MakeSolid(solid: unknown): void
       Add(shell: unknown, part: unknown): void
       delete(): void
     }
-    BRepBuilderAPI_MakeSolid_3: new (shell: unknown) => { Shape(): unknown; delete(): void }
   }
   const E = occ.TopAbs_ShapeEnum
   const base = makeBoxAt(occ, scope, [0, 0, 0], 10, 10, 10)
@@ -89,8 +90,12 @@ function makeOpenShellBox(occ: OccModule, scope: DisposeScope): OccShape {
   const top = scope.track(transformCopy(occ, scope, faces[5], makeTranslationTrsf(occ, scope, 0, 0, -0.001)))
   for (let i = 0; i < 5; i++) builder.Add(shell, faces[i])
   builder.Add(shell, top)
-  const maker = scope.track(new occAny.BRepBuilderAPI_MakeSolid_3(shell))
-  return maker.Shape() as OccShape
+  // The build exports no BRepBuilderAPI_MakeSolid, so the solid is filled
+  // directly; it is the same shell-and-solid pair that maker would produce.
+  const solid = scope.track(new occ.TopoDS_Solid())
+  builder.MakeSolid(solid)
+  builder.Add(solid, shell)
+  return solid
 }
 
 describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
@@ -293,7 +298,7 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
         algo.SetArguments(args)
         algo.SetTools(tools)
         algo.SetToFillHistory(false)
-        algo.Build()
+        algo.Build(noProgress(occ))
         const inter = scope.track(algo.Shape())
         expect(countSolids(occ, scope, inter)).toBeGreaterThan(0)
         expect(volumeOf(occ, scope, inter)).toBeLessThan(1e-10)

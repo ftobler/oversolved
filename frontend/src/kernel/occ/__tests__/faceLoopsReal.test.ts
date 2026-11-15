@@ -6,7 +6,7 @@
 // + plane of the same sorted face indices, and asserts parity (coords within
 // 1e-6; the box gives 4-line loops, the cylinder cap a full-circle arc loop).
 //
-// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot.
+// Skips when the OCC build is absent. The fixture is a frozen golden snapshot.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../loadOcc'

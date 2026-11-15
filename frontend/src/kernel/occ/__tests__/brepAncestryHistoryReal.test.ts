@@ -5,7 +5,7 @@
 // with the expected face count and edge/vertex queries that reflect the
 // combined geometry.
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../loadOcc'

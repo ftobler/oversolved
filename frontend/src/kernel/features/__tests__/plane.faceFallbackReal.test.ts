@@ -8,7 +8,7 @@
 // a box and asserts the solved plane matches that face's own live outward
 // normal and centroid (the H22 fix), not the raw surface frame.
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'

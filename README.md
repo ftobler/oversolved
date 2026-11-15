@@ -11,7 +11,10 @@ A build produces static files that any static host can serve.
 ## Stack
 
 - React + TypeScript frontend (`frontend/`), built with Vite
-- OpenCascade (OCCT 7.4.0p1 via opencascade.js 1.1.1) as the geometry kernel, WASM in a Web Worker
+- OpenCascade (OCCT 8.0.1, built to WASM by
+  [oversolved-occt](https://github.com/ftobler/oversolved-occt)) as the geometry
+  kernel, in a Web Worker. It uses WebAssembly exception handling, so the app
+  needs Chrome 95+, Firefox 100+ or Safari 15.2+
 - Rust solvers, WASM: `sketch-solver` (2D sketch constraints), `mate-solver`
   (assembly mates), on the shared `solver-core`
 - Python (`oversolved/`) for build-time icon generation only, never deployed
@@ -19,7 +22,7 @@ A build produces static files that any static host can serve.
 ## Quick start
 
 ```bash
-just install    # .venv, npm install, wasm-pack, solver wasm build, opencascade.js
+just install    # .venv, npm install, wasm-pack, solver wasm build, the OCCT release
 just dev        # Vite dev server: this is the whole running app
 just build      # static app into frontend/dist
 ```

@@ -118,9 +118,11 @@ jobs:
         run: python lint.py frontend/src frontend/scripts frontend/eslint.config.js frontend/resolve-alias.loader.mjs frontend/vite.config.ts frontend/vitest.config.ts
 
       # ~70 test files under src/kernel self-skip when their dependencies are
-      # absent: they gate on OCC.js being importable (describe.skipIf(!oc), or a
-      # local hasOcc helper) and most also need the Rust pkg-node builds. Without
-      # both, the whole B-rep layer silently passes as skipped. Install OCC.js
+      # absent: they gate on the provisioned OCC build (describe.skipIf(!oc), or
+      # an occInstalled() file check on public/occ) and most also need the Rust
+      # pkg-node builds. Without
+      # both, the whole B-rep layer silently passes as skipped. Install the OCC
+      # release
       # and build BOTH crates here so `vitest run` actually exercises them
       # (matches the local `just wasm` + `just frontend` flow): sketch-solver
       # backs the sketch/topology tests, mate-solver backs solveAssemblyReal.
@@ -148,18 +150,21 @@ jobs:
       # here where both toolchains are known to be present and a skip would be
       # a lie rather than a convenience.
       #
-      # Before occ:install on purpose: that is an `npm i --no-save` of a package
-      # deliberately outside the declared tree, and the npm half of this check
-      # reads the installed tree. Running first means the check can never be
-      # answering a question about a tree the app does not actually have.
+      # Before occ:install on purpose: that download lands in
+      # node_modules/.occt, outside the declared tree, and the npm half of this
+      # check reads the installed tree. Running first means the check can never
+      # be answering a question about a tree the app does not actually have.
       - name: Third-party notices are current
         run: npm run licenses:check
         working-directory: frontend
 
-      # OCC.js serves only the tests, so a light leg skips its download too.
-      - name: Install OCC.js (opt-in, not a package.json dep)
+      # OCC serves only the tests, so a light leg skips its download too. The
+      # headless kernel loads the provisioned copy in public/occ, hence both steps.
+      - name: Install OCC (the pinned oversolved-occt release, not a package.json dep)
         if: env.RUN_TESTS == 'true'
-        run: npm run occ:install
+        run: |
+          npm run occ:install
+          npm run occ:provision
         working-directory: frontend
 
       - name: npm test (vitest)
@@ -275,8 +280,10 @@ jobs:
           cd ../mate-solver && wasm-pack build --target nodejs --out-dir pkg-node --release
         working-directory: sketch-solver
 
-      - name: Install OCC.js (opt-in, not a package.json dep)
-        run: npm run occ:install
+      - name: Install OCC (the pinned oversolved-occt release, not a package.json dep)
+        run: |
+          npm run occ:install
+          npm run occ:provision
         working-directory: frontend
 
       - name: Install just

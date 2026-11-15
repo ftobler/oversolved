@@ -7,26 +7,16 @@
 // free), and a hand list that names only some of one pattern's bodies warns. The
 // pure catalog-row half is booleanArrayTools.test.ts.
 
-import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import { runHeadless, measureHeadless, emptyDriveDoc } from '../headlessOps'
 import type { ScriptStep } from '../scriptRunner'
 import type { PartDoc } from '@/types/cad'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import { nonSketchProblems } from './buildProblems'
-
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 
 const oc = occInstalled()
 const solveBytes = loadSolver()

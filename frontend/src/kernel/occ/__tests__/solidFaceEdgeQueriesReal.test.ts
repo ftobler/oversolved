@@ -3,7 +3,7 @@
 // Real-OCC guard for face silhouette projection (full-brep-projection): every
 // face of a box resolves to its 4 boundary edge queries, each of which is a
 // real edge query the body also exposes, and box topology holds (12 edges, each
-// shared by exactly 2 faces). Skips when opencascade.js is absent.
+// shared by exactly 2 faces). Skips when the OCC build is absent.
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'
