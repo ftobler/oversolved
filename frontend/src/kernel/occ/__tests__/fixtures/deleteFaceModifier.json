@@ -1,0 +1,346 @@
+{
+  "source": "bugreports/20261115_1255_Delete_Face_2.md",
+  "note": "The two delete_face features at the end of the report document, one per edge modifier.",
+  "picks": [
+    {
+      "query": "?15,19,1e,2a,2a,7;@u|u_e78f1d6070cae05c@BeXVLtIhoq94L87Qll4xewnr@body_ESrRWmJlIltOOJE-A1VbLhzR@wJAnaW44mjwmpKbxEbgfBAbU/DWYC5N0IgklCfWe-@wd005qvNchi2exUJhFUCZbGc/FAh8lL2A5RMQFG6Q@cls_yp:face",
+      "label": "chamfer face 1",
+      "feature": "GpyTc0jipDArcxEoOFcx_DBl"
+    },
+    {
+      "query": "?15,19,1e,2a,2a,7;@u|u_f0ab856d71db0f77@BeXVLtIhoq94L87Qll4xewnr@body_ESrRWmJlIltOOJE-A1VbLhzR@wJAnaW44mjwmpKbxEbgfBAbU/DWYC5N0IgklCfWe-@wd005qvNchi2exUJhFUCZbGc/FAh8lL2A5RMQFG6Q@cls_yp:face",
+      "label": "chamfer face 2",
+      "feature": "GpyTc0jipDArcxEoOFcx_DBl"
+    },
+    {
+      "query": "?15,19,1e,2a,2a,7;@u|u_4d974d665065433d@e1Hi6Ty5NHzMKPHP-_M4WQvS@body_ESrRWmJlIltOOJE-A1VbLhzR@wJAnaW44mjwmpKbxEbgfBAbU/DWYC5N0IgklCfWe-@wd005qvNchi2exUJhFUCZbGc/d2Fg-5yDX7vEXj0E@cls_yp:face",
+      "label": "fillet face 1",
+      "feature": "OtcaB1IDf8ybp7bHGwOri-JM"
+    },
+    {
+      "query": "?15,19,1e,2a,2a,7;@u|u_770396983550178a@e1Hi6Ty5NHzMKPHP-_M4WQvS@body_ESrRWmJlIltOOJE-A1VbLhzR@wJAnaW44mjwmpKbxEbgfBAbU/DWYC5N0IgklCfWe-@wd005qvNchi2exUJhFUCZbGc/d2Fg-5yDX7vEXj0E@cls_yp:face",
+      "label": "fillet face 2",
+      "feature": "OtcaB1IDf8ybp7bHGwOri-JM"
+    }
+  ],
+  "features": [
+    {
+      "id": "Origin",
+      "kind": "origin"
+    },
+    {
+      "id": "Top",
+      "kind": "plane",
+      "visible": false
+    },
+    {
+      "id": "Front",
+      "kind": "plane",
+      "visible": false
+    },
+    {
+      "id": "Right",
+      "kind": "plane",
+      "visible": false
+    },
+    {
+      "id": "wJAnaW44mjwmpKbxEbgfBAbU",
+      "kind": "sketch",
+      "label": "sketch 1",
+      "plane": "@builtin_plane_front",
+      "initial": {
+        "DWYC5N0IgklCfWe-": [
+          0,
+          0,
+          25
+        ],
+        "fy7VlV6vwr6_1QWn": [
+          -25,
+          0,
+          25,
+          0
+        ]
+      },
+      "entities": [
+        {
+          "id": "DWYC5N0IgklCfWe-",
+          "kind": "circle"
+        },
+        {
+          "id": "fy7VlV6vwr6_1QWn",
+          "kind": "line"
+        }
+      ],
+      "constraints": [
+        {
+          "id": "c_coincident_HzQQlOVk",
+          "kind": "coincident",
+          "a": "$DWYC5N0IgklCfWe-center",
+          "b": "@builtin_origin"
+        },
+        {
+          "id": "c_diameter_soBhaTBe",
+          "kind": "diameter",
+          "target": "$DWYC5N0IgklCfWe-",
+          "value": 50,
+          "pos": [
+            22.830845,
+            29.839196
+          ]
+        },
+        {
+          "id": "c_horizontal_H7l3uX19",
+          "kind": "horizontal",
+          "target": "$fy7VlV6vwr6_1QWn"
+        },
+        {
+          "id": "c_coincident_ASlI0RHv",
+          "kind": "coincident",
+          "a": "$fy7VlV6vwr6_1QWn",
+          "b": "$DWYC5N0IgklCfWe-center"
+        },
+        {
+          "id": "c_coincident_fiezBBFE",
+          "kind": "coincident",
+          "a": "$fy7VlV6vwr6_1QWnstart",
+          "b": "$DWYC5N0IgklCfWe-"
+        },
+        {
+          "id": "c_coincident_7n4kDSvU",
+          "kind": "coincident",
+          "a": "$fy7VlV6vwr6_1QWnend",
+          "b": "$DWYC5N0IgklCfWe-"
+        }
+      ]
+    },
+    {
+      "id": "ESrRWmJlIltOOJE-A1VbLhzR",
+      "kind": "revolve",
+      "label": "revolve 1",
+      "revolve": {
+        "sketch": [
+          "?2a,2a,9,19,1a;@wJAnaW44mjwmpKbxEbgfBAbU/DWYC5N0IgklCfWe-@wJAnaW44mjwmpKbxEbgfBAbU/fy7VlV6vwr6_1QWnsurface:0@wJAnaW44mjwmpKbxEbgfBAbU@cls_ld_fy7VlV6vwr6_1QWn_p:flatface"
+        ],
+        "angle": 360,
+        "axis": "@wJAnaW44mjwmpKbxEbgfBAbU/fy7VlV6vwr6_1QWn",
+        "operation": "new"
+      }
+    },
+    {
+      "id": "wd005qvNchi2exUJhFUCZbGc",
+      "kind": "sketch",
+      "label": "sketch 2",
+      "initial": {
+        "LhuPpWroe6Wa--1w": [
+          -10,
+          30,
+          10,
+          30
+        ],
+        "FAh8lL2A5RMQFG6Q": [
+          10,
+          30,
+          10,
+          10
+        ],
+        "38wRPNsxM2kxa6-z": [
+          10,
+          10,
+          -10,
+          10
+        ],
+        "d2Fg-5yDX7vEXj0E": [
+          -10,
+          10,
+          -10,
+          30
+        ],
+        "6uRsS-Hdh60wPBDO": [
+          0,
+          20
+        ]
+      },
+      "plane": "@builtin_plane_front",
+      "entities": [
+        {
+          "id": "LhuPpWroe6Wa--1w",
+          "kind": "line"
+        },
+        {
+          "id": "FAh8lL2A5RMQFG6Q",
+          "kind": "line"
+        },
+        {
+          "id": "38wRPNsxM2kxa6-z",
+          "kind": "line"
+        },
+        {
+          "id": "d2Fg-5yDX7vEXj0E",
+          "kind": "line"
+        },
+        {
+          "id": "6uRsS-Hdh60wPBDO",
+          "kind": "point"
+        }
+      ],
+      "constraints": [
+        {
+          "id": "c_coincident_wnVenzFb",
+          "kind": "coincident",
+          "a": "$LhuPpWroe6Wa--1wend",
+          "b": "$FAh8lL2A5RMQFG6Qstart"
+        },
+        {
+          "id": "c_coincident_zF_8FlIM",
+          "kind": "coincident",
+          "a": "$FAh8lL2A5RMQFG6Qend",
+          "b": "$38wRPNsxM2kxa6-zstart"
+        },
+        {
+          "id": "c_coincident_XKB5ITId",
+          "kind": "coincident",
+          "a": "$38wRPNsxM2kxa6-zend",
+          "b": "$d2Fg-5yDX7vEXj0Estart"
+        },
+        {
+          "id": "c_coincident_LBJurY2D",
+          "kind": "coincident",
+          "a": "$d2Fg-5yDX7vEXj0Eend",
+          "b": "$LhuPpWroe6Wa--1wstart"
+        },
+        {
+          "id": "c_equal_length__UMMlYk1",
+          "kind": "equal_length",
+          "a": "$LhuPpWroe6Wa--1w",
+          "b": "$38wRPNsxM2kxa6-z"
+        },
+        {
+          "id": "c_equal_length_OXluG4GT",
+          "kind": "equal_length",
+          "a": "$FAh8lL2A5RMQFG6Q",
+          "b": "$d2Fg-5yDX7vEXj0E"
+        },
+        {
+          "id": "c_horizontal_tmhk-E7T",
+          "kind": "horizontal",
+          "target": "$LhuPpWroe6Wa--1w"
+        },
+        {
+          "id": "c_vertical_gySlGHzl",
+          "kind": "vertical",
+          "target": "$FAh8lL2A5RMQFG6Q"
+        },
+        {
+          "id": "c_midpoint_-saQchpJ",
+          "kind": "midpoint",
+          "point_a": "$LhuPpWroe6Wa--1wstart",
+          "point_b": "$38wRPNsxM2kxa6-zstart",
+          "point": "$6uRsS-Hdh60wPBDOxy"
+        },
+        {
+          "id": "c_length_yp6HnlJQ",
+          "kind": "length",
+          "target": "$FAh8lL2A5RMQFG6Q",
+          "value": 20,
+          "pos": [
+            26.800771,
+            -1.456287
+          ]
+        },
+        {
+          "id": "c_length_jAGQllBS",
+          "kind": "length",
+          "target": "$LhuPpWroe6Wa--1w",
+          "value": 20,
+          "pos": [
+            -0.943054,
+            3.866031
+          ]
+        },
+        {
+          "id": "c_vertical_uOmQpIqi",
+          "kind": "vertical",
+          "a": "$6uRsS-Hdh60wPBDOxy",
+          "b": "@builtin_origin"
+        },
+        {
+          "id": "c_point_distance_Xdh6HYl1",
+          "kind": "point_distance",
+          "a": "$6uRsS-Hdh60wPBDOxy",
+          "b": "@builtin_origin",
+          "value": 20,
+          "pos": [
+            42.86993,
+            -2.919224
+          ]
+        }
+      ]
+    },
+    {
+      "id": "yvwbBkwvs8_z6Ens36yxDiO8",
+      "kind": "extrude",
+      "label": "extrude 2",
+      "extrude": {
+        "sketch": [
+          "?2a,2a,2a,2a,9,19;@wd005qvNchi2exUJhFUCZbGc/38wRPNsxM2kxa6-z@wd005qvNchi2exUJhFUCZbGc/FAh8lL2A5RMQFG6Q@wd005qvNchi2exUJhFUCZbGc/LhuPpWroe6Wa--1w@wd005qvNchi2exUJhFUCZbGc/d2Fg-5yDX7vEXj0Esurface:0@wd005qvNchi2exUJhFUCZbGc:flatface"
+        ],
+        "distance": 97.52,
+        "direction": "symmetric",
+        "operation": "cut"
+      }
+    },
+    {
+      "id": "e1Hi6Ty5NHzMKPHP-_M4WQvS",
+      "kind": "fillet",
+      "label": "fillet 2",
+      "fillet": {
+        "edges": [
+          "?15,19,1e,2a,2a,7;@u|e_abf884afd86b6aef@yvwbBkwvs8_z6Ens36yxDiO8@body_ESrRWmJlIltOOJE-A1VbLhzR@wJAnaW44mjwmpKbxEbgfBAbU/DWYC5N0IgklCfWe-@wd005qvNchi2exUJhFUCZbGc/d2Fg-5yDX7vEXj0E@cls_yn:edge"
+        ],
+        "radius": 3
+      }
+    },
+    {
+      "id": "BeXVLtIhoq94L87Qll4xewnr",
+      "kind": "chamfer",
+      "label": "chamfer 2",
+      "chamfer": {
+        "edges": [
+          "?15,19,1e,2a,2a,7;@u|e_29ca332f03bb4c0d@yvwbBkwvs8_z6Ens36yxDiO8@body_ESrRWmJlIltOOJE-A1VbLhzR@wJAnaW44mjwmpKbxEbgfBAbU/DWYC5N0IgklCfWe-@wd005qvNchi2exUJhFUCZbGc/FAh8lL2A5RMQFG6Q@cls_yn:edge"
+        ],
+        "distance": 3,
+        "kind": "distance",
+        "angle": 45
+      }
+    },
+    {
+      "id": "GpyTc0jipDArcxEoOFcx_DBl",
+      "kind": "delete_face",
+      "label": "delete_face 2",
+      "delete_face": {
+        "faces": [
+          "?15,19,1e,2a,2a,7;@u|u_e78f1d6070cae05c@BeXVLtIhoq94L87Qll4xewnr@body_ESrRWmJlIltOOJE-A1VbLhzR@wJAnaW44mjwmpKbxEbgfBAbU/DWYC5N0IgklCfWe-@wd005qvNchi2exUJhFUCZbGc/FAh8lL2A5RMQFG6Q@cls_yp:face",
+          "?15,19,1e,2a,2a,7;@u|u_f0ab856d71db0f77@BeXVLtIhoq94L87Qll4xewnr@body_ESrRWmJlIltOOJE-A1VbLhzR@wJAnaW44mjwmpKbxEbgfBAbU/DWYC5N0IgklCfWe-@wd005qvNchi2exUJhFUCZbGc/FAh8lL2A5RMQFG6Q@cls_yp:face"
+        ]
+      }
+    },
+    {
+      "id": "OtcaB1IDf8ybp7bHGwOri-JM",
+      "kind": "delete_face",
+      "label": "delete_face 2",
+      "delete_face": {
+        "faces": [
+          "?15,19,1e,2a,2a,7;@u|u_4d974d665065433d@e1Hi6Ty5NHzMKPHP-_M4WQvS@body_ESrRWmJlIltOOJE-A1VbLhzR@wJAnaW44mjwmpKbxEbgfBAbU/DWYC5N0IgklCfWe-@wd005qvNchi2exUJhFUCZbGc/d2Fg-5yDX7vEXj0E@cls_yp:face",
+          "?15,19,1e,2a,2a,7;@u|u_770396983550178a@e1Hi6Ty5NHzMKPHP-_M4WQvS@body_ESrRWmJlIltOOJE-A1VbLhzR@wJAnaW44mjwmpKbxEbgfBAbU/DWYC5N0IgklCfWe-@wd005qvNchi2exUJhFUCZbGc/d2Fg-5yDX7vEXj0E@cls_yp:face"
+        ]
+      }
+    }
+  ],
+  "part_style": {
+    "body_ESrRWmJlIltOOJE-A1VbLhzR": {
+      "name": "part 1",
+      "color": "#6AB59B",
+      "created_by": "ESrRWmJlIltOOJE-A1VbLhzR"
+    }
+  }
+}
