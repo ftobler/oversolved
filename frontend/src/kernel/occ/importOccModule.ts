@@ -10,6 +10,13 @@
  * and the blob keeps dev and production on the same path. The factory is the
  * module's `default`.
  *
+ * That blob URL is kept alive for the module's lifetime rather than revoked
+ * right after the import: the module can still resolve something against its
+ * own `import.meta.url` (and DevTools re-reads script sources for console stack
+ * frames), which a revoked URL answers with a 404. It is one ~110 KB blob per
+ * thread, imported once; [[releaseOccFactory]] ends it when a loader reset drops
+ * the module.
+ *
  * The wasm is compiled before the factory runs: [[compileOccWasm]] fetches it
  * with streaming compilation and reports progress through [[loadProgress]], and
  * the compiled module goes to the factory's `instantiateWasm` hook so the
@@ -36,19 +43,34 @@ export const OCC_WASM = 'occt.wasm'
 
 type OccFactory = (config: unknown) => Promise<OccModule>
 
+/** The blob URL the live `occt.js` module was imported from, if any. */
+let factoryBlobUrl: string | null = null
+
+/**
+ * Revoke the live `occt.js` blob URL. A loader reset is the end of the module's
+ * lifetime; the next import makes a fresh URL. Kept exported rather than
+ * revoked eagerly because the module may still resolve against its own URL
+ * while it is live (see the module header).
+ */
+export function releaseOccFactory(): void {
+  if (factoryBlobUrl) URL.revokeObjectURL(factoryBlobUrl)
+  factoryBlobUrl = null
+}
+
 /** Fetch `<base>occt.js` and return its default export, or null when it has none. */
 async function importFactory(base: string): Promise<OccFactory | null> {
   const scriptUrl = `${base}${OCC_JS}`
   const resp = await fetch(scriptUrl)
   if (!resp.ok) throw new Error(`HTTP ${resp.status} fetching ${scriptUrl}`)
   const text = await resp.text()
+  const previous = factoryBlobUrl
   const blobUrl = URL.createObjectURL(new Blob([text], { type: 'text/javascript' }))
-  try {
-    const mod = (await import(  /* @vite-ignore */ blobUrl)) as { default?: OccFactory }
-    return typeof mod.default === 'function' ? mod.default : null
-  } finally {
-    URL.revokeObjectURL(blobUrl)
-  }
+  factoryBlobUrl = blobUrl
+  const mod = (await import(  /* @vite-ignore */ blobUrl)) as { default?: OccFactory }
+  // The previous URL is released only now: a failed attempt leaves the old
+  // module live, so its URL must outlive the attempt.
+  if (previous) URL.revokeObjectURL(previous)
+  return typeof mod.default === 'function' ? mod.default : null
 }
 
 /**

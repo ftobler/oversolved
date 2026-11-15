@@ -12,7 +12,7 @@
 import type { OccModule } from './occTypes'
 import { isDevBuild } from '../isDevBuild'
 import { memoizedLoad } from './memoizedLoad'
-import { importOccModule } from './importOccModule'
+import { importOccModule, releaseOccFactory } from './importOccModule'
 
 // Under the deploy base, e.g. /oversolved/ on Pages. Plain Node (the
 // solve-timeout runner) has no import.meta.env, hence the optional chain.
@@ -48,4 +48,7 @@ export function loadOccWeb(base: string = DEFAULT_BASE): Promise<OccModule | nul
  *  an undefined heap and must never be handed out again. */
 export function resetOccWeb(): void {
   occWeb.reset()
+  // The module's lifetime ends here, so the blob URL it was imported from can
+  // go too; the next load imports a fresh one.
+  releaseOccFactory()
 }
