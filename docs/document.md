@@ -290,13 +290,15 @@ migration: deciding which extrusion was meant to start the part needs the
 document's intent, not a field value.
 
 `up_to` trims the extrude at the picked element instead of at `distance`. A
-query target that does not resolve, or meets several elements, falls back to the
-blind distance with a solver warning; an up_to with no `up_to` target does so
-too. A `@<bodyId>/face/<n>` ref that no longer names a face (the body is gone,
-the index is out of range, or the remap fails) fails the feature instead, since
-that spelling is a persisted pick rather than a query. A face target may be
-planar or curved: a curved face is split at the first crossing, so a tool that
-enters and leaves a cylinder stops at the near wall. The face must cover the
+query target that does not resolve or meets several elements, or an up_to with
+no `up_to` target, builds nothing: the termination is the authored intent, so
+the feature soft fails (a solver warning, the body untouched, no body minted)
+rather than substituting the blind distance. A `@<bodyId>/face/<n>` ref that no
+longer names a face (the body is gone, the index is out of range, or the remap
+fails) fails the feature instead, since that spelling is a persisted pick rather
+than a query. A face target may be planar or curved: a curved face is split at
+the first crossing, so a tool that enters and leaves a cylinder stops at the
+near wall. The face must cover the
 whole profile; a face smaller than the footprint, or shorter than the swept
 profile, first retries on its untrimmed surface extended over the tool (with
 `up_to: the face did not cover the profile; trimmed at its extended surface` in

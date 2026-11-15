@@ -14,6 +14,7 @@ import { solidToEdges } from '../../occ/tessellation'
 import { resolveProfileEdges, edgesToProfileFace } from '../edgeProfile'
 import { trimAtPlane, resolveUpToPlane } from '../upTo'
 import { solveExtrude } from '../extrude'
+import { extrudeTestHarness, extrudeSpec, rectSketchSk, solveBytes } from '../extrudeRealSupport'
 import { AmbiguousQueryError, initGlobalRepo, makeAncestryQuery } from '../../query'
 import type { Repository } from '../../query'
 import type { Body } from '../../types3d'
@@ -278,26 +279,59 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     }
   })
 
-  it('warns when termination is up_to but no target is set', () => {
-    // The staged editor hides distance while up_to has no pick. Falling back to
-    // the blind distance is correct, but it has to be named like every other
-    // fallback.
+  it('builds nothing when termination is up_to but no target is set', () => {
+    // The termination is the authored intent. With no pick there is no stop, so
+    // the solve must not quietly substitute the blind distance for it: that
+    // mints a body the user never asked for. A soft failure (ok + warning, the
+    // through-all contract) names the cause and leaves the bodies untouched.
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
       const bodyStore = makeBoxBody(scope, table)
       const loop = bottomLoop(table, bodyStore.body_b)
+      const repo = initGlobalRepo()
       const result = solveExtrude(
         occ, scope, table,
         { id: 'ex2', extrude: { sketch: loop, distance: 3, termination: 'up_to', operation: 'new' } },
-        repoReturning(null), bodyStore,
+        repo, bodyStore,
       )
       expect(result.status).toBe('ok')
-      expect(result.solver_warning).toContain('up_to has no target; used blind distance')
-      // A fallback stays a warning; only the tangent chain moved to solver_note.
+      expect(result.solver_warning).toBe('extrude: up_to has no target; nothing was built')
+      expect(result.solver_warning).not.toMatch(/blind/)
+      // A soft failure stays a warning; only the tangent chain moved to solver_note.
       expect(result.solver_note).toBeUndefined()
-      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_ex2.shape!))
-      expect(vol).toBeCloseTo(300, 2)
+      expect(result.body_ids).toEqual([])
+      expect(bodyStore.body_ex2).toBeUndefined()
+      // No handle survives to name phantom geometry a later feature could read.
+      expect(repo.elements.has('ex2/top_face')).toBe(false)
+      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))
+      expect(vol).toBeCloseTo(1000, 2)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('soft fails without a target even when distance is absent or zero', () => {
+    // up_to never reads `distance`, so the non-zero rule must not throw over a
+    // value the solve does not use. The document format may stop requiring one
+    // (feature/backlog.md), and a script can publish the state before the pick.
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const bodyStore = makeBoxBody(scope, table)
+      const loop = bottomLoop(table, bodyStore.body_b)
+      for (const distance of [undefined, 0]) {
+        const extrude: Record<string, unknown> = { sketch: loop, termination: 'up_to', operation: 'new' }
+        if (distance !== undefined) extrude.distance = distance
+        const result = solveExtrude(occ, scope, table, { id: 'ex2', extrude }, repoReturning(null), bodyStore)
+        expect(result.status, String(distance)).toBe('ok')
+        expect(result.solver_warning, String(distance)).toBe(
+          'extrude: up_to has no target; nothing was built',
+        )
+        expect(bodyStore.body_ex2).toBeUndefined()
+      }
+      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))
+      expect(vol).toBeCloseTo(1000, 2)
     } finally {
       scope.dispose()
     }
@@ -428,10 +462,9 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     }
   })
 
-  it('keeps the no-target warning alongside the join-touch warning', () => {
-    // A 2 x 2 x 2 tool fully inside the 10-box also touches the inner body it
-    // was taken from, so the add appends its own warning. The up_to fallback
-    // must survive the composition, not be replaced by it.
+  it('leaves every body untouched when an up_to add has no target', () => {
+    // An add with no stop must not grow material anywhere: the profile's own
+    // body and every other body pass through unchanged, and no body is minted.
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
@@ -451,8 +484,11 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
         repoReturning(null), bodyStore,
       )
       expect(result.status).toBe('ok')
-      expect(result.solver_warning).toContain('up_to has no target; used blind distance')
-      expect(result.solver_warning).toContain('also touches body_inner')
+      expect(result.solver_warning).toBe('extrude: up_to has no target; nothing was built')
+      expect(result.body_ids).toEqual([])
+      expect(Object.keys(bodyStore).sort()).toEqual(['body_b', 'body_inner'])
+      expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_inner.shape!))).toBeCloseTo(8, 2)
+      expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))).toBeCloseTo(1000, 2)
     } finally {
       scope.dispose()
     }
@@ -490,7 +526,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     }
   })
 
-  it('falls back to blind distance with a warning when up_to does not resolve', () => {
+  it('builds nothing when the up_to ref does not resolve', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
@@ -502,10 +538,37 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
         repoReturning(null), bodyStore,
       )
       expect(result.status).toBe('ok')
-      expect(result.solver_warning).toMatch(/did not resolve/)
-      expect(result.solver_warning).toContain('used blind distance')
-      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_ex2.shape!))
-      expect(vol).toBeCloseTo(300, 2)  // blind 100 * 3
+      expect(result.solver_warning).toBe(
+        "extrude: up_to target 'missing_q' did not resolve; nothing was built",
+      )
+      expect(result.solver_warning).not.toMatch(/blind/)
+      expect(result.body_ids).toEqual([])
+      expect(bodyStore.body_ex2).toBeUndefined()
+      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))
+      expect(vol).toBeCloseTo(1000, 2)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('removes no material when an up_to cut has no target', () => {
+    // The reported bug for cuts: the blind fallback cut into the body even
+    // though the user asked to stop at a pick they had not made yet.
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const bodyStore = makeBoxBody(scope, table)
+      const loop = bottomLoop(table, bodyStore.body_b)
+      const result = solveExtrude(
+        occ, scope, table,
+        { id: 'ex2', extrude: { sketch: loop, distance: 3, termination: 'up_to', operation: 'cut' } },
+        repoReturning(null), bodyStore,
+      )
+      expect(result.status).toBe('ok')
+      expect(result.solver_warning).toBe('extrude: up_to has no target; nothing was built')
+      expect(result.body_ids).toEqual([])
+      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))
+      expect(vol).toBeCloseTo(1000, 2)
     } finally {
       scope.dispose()
     }
@@ -532,10 +595,48 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
         ambiguousRepo, bodyStore,
       )
       expect(result.status).toBe('ok')
-      expect(result.solver_warning).toMatch(/matched several elements/)
+      expect(result.solver_warning).toBe(
+        "extrude: up_to target 'amb_q' matched several elements (query 'amb_q' matched 2 elements); nothing was built",
+      )
       expect(result.solver_warning).not.toMatch(/did not resolve/)
+      expect(result.body_ids).toEqual([])
+      expect(bodyStore.body_ex3).toBeUndefined()
+      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))
+      expect(vol).toBeCloseTo(1000, 2)
     } finally {
       scope.dispose()
     }
   })
+})
+
+// The no-geometry path through the whole build: a later feature naming a handle
+// this extrude never registered must fail with its own unresolved-ref sentence,
+// and the rest of the document still builds.
+describe.skipIf(!oc || !solveBytes)('extrude up_to without a target (real OCC + Rust solver)', () => {
+  const h = extrudeTestHarness()
+
+  it('registers no top_face, so a later sketch plane naming one is refused', () => {
+    const result = h.run({
+      features: [
+        rectSketchSk('sk1', 10, 10),
+        extrudeSpec('sk1', 'ex1', { distance: 10 }),
+        rectSketchSk('sk2', 4, 4, '@ex1/top_face'),
+        {
+          id: 'ex2', kind: 'extrude', label: 'Up to',
+          extrude: { sketch: '@sk2', distance: 4, termination: 'up_to', operation: 'add' },
+        },
+        { id: 'plBad', kind: 'plane', definition: { mode: 'offset', plane: '@ex2/top_face', offset: 1 } },
+      ],
+    })
+    const stopped = h.res(result, 'ex2')
+    expect(stopped.status).toBe('ok')
+    expect(String(stopped.solver_warning)).toBe('extrude: up_to has no target; nothing was built')
+    expect(stopped.body_ids).toEqual([])
+    // Downstream fails by name instead of reading a phantom plane, and the
+    // failure does not take the rest of the build down with it.
+    const plane = h.res(result, 'plBad')
+    expect(plane.status).toBe('exception')
+    expect(String(plane.exception)).toContain('@ex2/top_face')
+    expect(h.res(result, 'ex1').status).toBe('ok')
+  }, 240_000)
 })
