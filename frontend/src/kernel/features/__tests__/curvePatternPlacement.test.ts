@@ -147,16 +147,18 @@ describe('curve pattern orientation', () => {
     // The circle starts at (r, 0) walking counter-clockwise, so its tangent
     // there is +Y. The placement maps that tangent onto the station's tangent,
     // keeps the plane normal fixed, and carries the start point to the station.
+    // The station's own angle is the polyline's inscribed arc length, so the
+    // turn is a quarter turn to the sampling's precision, not bit-exactly.
     const t0: Vec3 = [0, 1, 0]
     for (const [i, placement] of result.placements.entries()) {
       const angle = (TAU * (i + 1)) / 4
       const q = [placement.transform.qx, placement.transform.qy, placement.transform.qz, placement.transform.qw] as [number, number, number, number]
       const turned = rotateVector(q, t0)
-      near(turned[0], -Math.sin(angle), 1e-9)
-      near(turned[1], Math.cos(angle), 1e-9)
+      near(turned[0], -Math.sin(angle), 1e-3)
+      near(turned[1], Math.cos(angle), 1e-3)
       near(turned[2], 0)
       const z = rotateVector(q, [0, 0, 1])
-      near(z[2], 1, 1e-9)
+      near(z[2], 1)
       // Q P0 + t is the station, and P0 is (r, 0, 0).
       const qp = rotateVector(q, [r, 0, 0])
       near(placement.transform.tx + qp[0], r * Math.cos(angle))

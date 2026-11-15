@@ -641,7 +641,7 @@ function curvePatternInstanceHint(d: SchemaData): string | null {
   if (d.spacing === 'distance') {
     const distance = Number(d.distance ?? 20)
     return Number.isFinite(distance)
-      ? `${summary}; ${distance} ${'mm'} apart along the path`
+      ? `${summary}; ${distance} apart along the path`
       : `${summary}; enter the distance between neighbours`
   }
   return `${summary}; equal spacing splits the path length`

@@ -106,8 +106,9 @@ function chordTangents(points: Vec3[], closed: boolean): Vec3[] {
       out.push(fl < 1e-12 ? [0, 0, 1] : [fallback![0] / fl, fallback![1] / fl, fallback![2] / fl])
       continue
     }
-    // An open end has only one chord; the two-chord formula is far better.
-    if (i === 0 || i === last) {
+    // An open end has only one chord; the two-chord formula is far better. A
+    // closed path already read across its seam, which is exact.
+    if (!closed && (i === 0 || i === last)) {
       const better = endTangent(points, i, i === 0)
       if (better !== null) {
         const bl = norm(better)

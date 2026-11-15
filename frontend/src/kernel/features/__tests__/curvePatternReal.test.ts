@@ -249,7 +249,7 @@ describe.skipIf(!oc || !solveBytes)('curve pattern through the real kernel', () 
   })
 
   it('reproduces a circular pattern when the path is a closed circle', () => {
-    const doc = (kind: 'circular_pattern' | 'curve_pattern'): Record<string, unknown> => ({
+    const doc = (kind: 'circular_pattern' | 'curve_pattern', pathRef = '@skC'): Record<string, unknown> => ({
       version: 9,
       kind: 'part',
       features: [
@@ -266,7 +266,7 @@ describe.skipIf(!oc || !solveBytes)('curve pattern through the real kernel', () 
             }
           : {
               id: 'pt1', kind, curve_pattern: {
-                subject: 'body', source_body: '@body_ex1', operation: 'new', count: 6, path: ['@skC'],
+                subject: 'body', source_body: '@body_ex1', operation: 'new', count: 6, path: [pathRef],
               },
             },
       ],
@@ -280,6 +280,13 @@ describe.skipIf(!oc || !solveBytes)('curve pattern through the real kernel', () 
     const curveBoxes = byX(boxes(curve, 'pt1'))
     const circularBoxes = byX(boxes(circular, 'pt1'))
     curveBoxes.forEach((box, i) => expectBox(box, circularBoxes[i]))
+
+    // The circle picked as one entity walks the same loop: a lone circle's
+    // geometry lives on the surface boundary, not in the split-edge list.
+    const picked = h.run(doc('curve_pattern', 'entity:skC:c'))
+    expect(h.res(picked, 'pt1').status).toBe('ok')
+    const pickedBoxes = byX(boxes(picked, 'pt1'))
+    pickedBoxes.forEach((box, i) => expectBox(box, circularBoxes[i]))
   })
 
   it('leaves a skipped instance out and keeps its siblings', () => {

@@ -111,7 +111,9 @@ export function buildCurvePatternCopies(
   if (pathRefs.length === 0) throw new Error('curve_pattern: requires a path reference')
 
   const spacing: CurveSpacing = sub.spacing === 'distance' ? 'distance' : 'equal'
-  const distance = patternNumber(sub, 'distance', 20)
+  // The distance is read in distance mode only, so a stale value outside it
+  // cannot fail a solve the mode never consults.
+  const distance = spacing === 'distance' ? patternNumber(sub, 'distance', 20) : 20
   const orientation: CurveOrientation = ORIENTATIONS.includes(sub.orientation as CurveOrientation)
     ? sub.orientation as CurveOrientation
     : 'tangent'

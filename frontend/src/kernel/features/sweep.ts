@@ -208,9 +208,11 @@ function pathRefWorldEdges(ref: string, globalRepo: Repository, options: PathPic
   const topo = (globalRepo.elements.get('_topo_' + sketchId) as Dict | undefined) ?? {}
   const rawEdges = (topo.edges as Dict[]) ?? []
   let selected = eid === null ? rawEdges : rawEdges.filter((e) => e.entity_id === eid)
-  // A whole-sketch pick of a lone closed curve has no split edges of its own.
-  if (selected.length === 0 && eid === null && options.closedCurve === true) {
-    selected = boundaryEdges(topo)
+  // A whole-sketch pick of a lone closed curve (or one of its curves) has no
+  // split edges of its own: the geometry lives on the surface boundary.
+  if (selected.length === 0 && options.closedCurve === true) {
+    const boundary = boundaryEdges(topo)
+    selected = eid === null ? boundary : boundary.filter((e) => (e.id ?? e.entity_id) === eid)
   }
 
   const worldEdges: Dict[] = []
