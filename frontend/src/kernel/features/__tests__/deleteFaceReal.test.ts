@@ -20,6 +20,7 @@ import { canonicalFaces } from '../../occ/bodyNames'
 import { makeBoxAt, makeCylinder } from '../../occ/primitives'
 import { booleanWithDiff } from '../../occ/booleans'
 import { stepShapeToBytes } from '../../occ/stepIo'
+import fixture from '../../occ/__tests__/fixtures/deleteFaceModifier.json'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
 
@@ -412,4 +413,44 @@ describe.skipIf(!oc || !solveBytes)('solveDeleteFace through the builder (real O
     const after = new Set((meshOf(h, r, bid).face_queries ?? []).map(uuidTokenOf))
     for (const u of boxUuids) expect(after.has(u)).toBe(true)
   })
+
+  // The 2026-11-15 report document: a sphere with a square slot, a fillet on one
+  // wall/sphere edge and a chamfer on the other, then one delete_face per
+  // modifier. Rung 1 (OCCT defeaturing) refuses both; rung 2 (the wedge) heals
+  // them, and the restored sharp edges regain the UUIDs the fillet and chamfer
+  // consumed (the `@u|e_...` tokens the document's own queries name).
+  const reportBody = 'body_ESrRWmJlIltOOJE-A1VbLhzR'
+  const reportChamfer = 'GpyTc0jipDArcxEoOFcx_DBl'
+  const reportFillet = 'OtcaB1IDf8ybp7bHGwOri-JM'
+
+  it('the report document\'s chamfer and fillet delete_face features both solve green', () => {
+    const r = h.run({
+      features: fixture.features as Dict[],
+      part_style: fixture.part_style,
+    })
+    expect(h.res(r, reportChamfer).status).toBe('ok')
+    expect(h.res(r, reportFillet).status).toBe('ok')
+    const edges = (h.body(r, reportBody).edge_queries as string[]) ?? []
+    // The pre-modifier edge UUIDs from the document's own fillet/chamfer
+    // queries: the healed sharp edges carry them again.
+    expect(edges.some((q) => q.includes('e_29ca332f03bb4c0d'))).toBe(true)
+    expect(edges.some((q) => q.includes('e_abf884afd86b6aef'))).toBe(true)
+    // No B-spline modifier band is left.
+    expect(meshOf(h, r, reportBody).face_data?.some((d) => d.surface_type === 'face')).toBe(false)
+  }, 300_000)
+
+  it('a refusal on a modifier face reports the rungs in the feature exception', () => {
+    const features = (fixture.features as Dict[]).filter(
+      (f) => f.id !== reportFillet && f.id !== reportChamfer,
+    )
+    const chamfer = (fixture.features as Dict[]).find((f) => f.id === reportChamfer)!
+    const picked = (chamfer.delete_face as { faces: string[] }).faces
+    // One half of the chamfer band only: the split end has no cap, so the wedge
+    // cannot close. The exception has to name every rung.
+    features.push({ ...chamfer, delete_face: { faces: [picked[0]] } })
+    const r = h.run({ features, part_style: fixture.part_style })
+    expect(h.res(r, reportChamfer).status).toBe('exception')
+    const message = String(h.res(r, reportChamfer).exception ?? '')
+    expect(message).toMatch(/rung 1 .*rung 1b .*rung 2 /s)
+  }, 300_000)
 })
