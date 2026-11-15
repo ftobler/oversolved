@@ -470,6 +470,33 @@ def context_camera(ctx):
     ctx.fill()
 
 
+@icon("frontend/src/assets/icons/feature-curve-pattern.svg")
+def feature_curve_pattern(ctx):
+    """Source blocks repeated along an S-curve path, the source filled."""
+    size = 0.18
+    # The path is the sweep's own grammar: a smooth curve with the copies on it.
+    pts = []
+    steps = 40
+    for k in range(steps + 1):
+        t = k / steps
+        x = 0.08 + 0.84 * t
+        y = 0.5 + 0.26 * math.sin(t * 2 * math.pi)
+        pts.append((x, y))
+    ctx.move_to(pts[0][0], pts[0][1])
+    for x, y in pts[1:]:
+        ctx.line_to(x, y)
+    stroke(ctx, 1.2)
+
+    # Four instances: the source at the start, then three copies along the curve.
+    for i, k in enumerate((0, 13, 26, 39)):
+        x, y = pts[k]
+        ctx.rectangle(x - size / 2, y - size / 2, size, size)
+        if i == 0:
+            ctx.fill()
+        else:
+            stroke(ctx, 1.5)
+
+
 @icon("frontend/src/assets/icons/feature-linear-pattern.svg")
 def feature_linear_pattern(ctx):
     """A filled source block repeated to the right: one feature patterned in place."""

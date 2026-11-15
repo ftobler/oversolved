@@ -32,6 +32,7 @@ import { solveMoveFace } from './features/moveFace'
 import { solveDeleteFace } from './features/deleteFace'
 import { solveLinearPattern } from './features/linearPattern'
 import { solveCircularPattern } from './features/circularPattern'
+import { solveCurvePattern } from './features/curvePattern'
 import { solveTransform, solveMirror } from './features/transformMirror'
 import { solveSplit } from './features/splitByPlane'
 import { solveDeleteBody } from './features/deleteBody'
@@ -111,6 +112,7 @@ const KIND_SOLVER: SolverTable = {
   delete_face: solveDeleteFace,
   linear_pattern: solveLinearPattern,
   circular_pattern: solveCircularPattern,
+  curve_pattern: solveCurvePattern,
   transform: solveTransform,
   mirror: solveMirror,
   split: solveSplit,

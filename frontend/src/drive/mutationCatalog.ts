@@ -308,6 +308,7 @@ export const FIELD_SETTER_KIND = {
   set_boolean_field: 'boolean',
   set_linear_pattern_field: 'linear_pattern',
   set_circular_pattern_field: 'circular_pattern',
+  set_curve_pattern_field: 'curve_pattern',
   set_hole_field: 'hole',
   set_transform_field: 'transform',
   set_mirror_field: 'mirror',
@@ -542,6 +543,35 @@ const CIRCULAR_PATTERN_INLINE_NOTE =
   'One call may carry the whole circular pattern: ' +
   `${featureFieldNames('circular_pattern').join(', ')} are accepted inline and store the same keys ` +
   '`set_circular_pattern_field` sets.'
+
+const CURVE_PATTERN_INLINE_NOTE =
+  'One call may carry the whole curve pattern: ' +
+  `${featureFieldNames('curve_pattern').join(', ')} are accepted inline and store the same keys ` +
+  '`set_curve_pattern_field` sets.'
+
+// The path law an author cannot infer from the field list: where the copies are
+// anchored, how the two spacing modes read, and what each orientation turns
+// about. The closed-path loop and the past-end drop are the two answers a
+// script author would otherwise have to guess.
+const CURVE_PATTERN_NOTE =
+  PATTERN_SOURCE_NOTE + ' The copies follow `path` (sweep\'s path grammar: one ordered chain of sketch ' +
+  'curves, or a bare `$<helixId>`, and a closed curve is a loop). Instance 0 is the source where it is; ' +
+  'instance i sits at an arc length measured from the path START (`reverse` walks it from the far end), and ' +
+  'the offset between the source and the path start is carried along, so the source does not have to touch ' +
+  'the path. `spacing: "equal"` (the default) splits the path length evenly: an open path puts the last ' +
+  'instance ON its end (step = length / (count - 1)), a closed path splits by count, so no instance lands ' +
+  'on the start twice. `spacing: "distance"` reads `distance` as the arc length between neighbours; an ' +
+  'instance that would run past an open path\'s end is dropped with one warning and the feature is partial, ' +
+  'while a closed path wraps and a wrap that lands on another instance is refused. `orientation` decides ' +
+  'how a copy turns: `tangent` (the default) follows a rotation-minimizing frame, so a path whose curvature ' +
+  'changes sign does not flip the copies; `normal_to` turns them only about `normal_ref` (a plane, planar ' +
+  'face or straight edge) and refuses a station where the path runs along that normal; `fixed` only ' +
+  'translates. There is NO `centered` field: a path has a start, not a middle. `distance` is read only when ' +
+  'spacing is distance and `normal_ref` only when the orientation is normal_to; both are refused elsewhere.'
+
+const CURVE_PATH_NOTE =
+  'The path a curve pattern follows. It is the same grammar a sweep takes, so one curve per call ' +
+  '(`add_curve_pattern_path`) and a helix id stands alone.'
 
 const PATTERN_ALIAS_NOTE =
   'Deprecated one release. `add_pattern` is the retired single-kind row: the drive translates it through the same ' +
@@ -1671,6 +1701,49 @@ export const MUTATION_CATALOG = {
       value: setterValue('circular_pattern'),
     },
   },
+  add_curve_pattern: {
+    summary: 'Add a curve pattern of a body or one earlier feature along a path.',
+    note: CURVE_PATTERN_NOTE + ' ' + CURVE_PATH_NOTE + ' ' + CURVE_PATTERN_INLINE_NOTE,
+    fields: {
+      ...featureAddFields(),
+      subject: optStr('body | feature; defaults to body.'),
+      source_body: optStr('Body subject: the body to copy, e.g. body_ex2.'),
+      operation: optStr('Body subject: add | new; defaults to add.'),
+      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve or sweep with operation add or cut.'),
+      source_feature: optStr('Feature subject: the legacy single-source form of source_features, e.g. @ex1. Still accepted; a list or the singular key, not both.'),
+      target_body: optStr('Feature subject: applies every source to this body instead of the body each source shaped.'),
+      pathQuery: pathQuery(),
+      count: optScalar(),
+      spacing: optStr('equal | distance; defaults to equal (the path length split over the count).'),
+      distance: optScalar('Distance mode only: the arc length between neighbours.'),
+      reverse: optBool('Walk the path from its far end.'),
+      orientation: optStr('tangent | normal_to | fixed; defaults to tangent.'),
+      normal_ref: optStr('Normal To only: a plane, planar face or straight edge to turn the copies about.'),
+      skip: optAny(
+        'Instances to leave out: a list of positive integer indices. The editor text form ("1, 2, 6") is ' +
+        'accepted too. Instance 0 is the original and cannot be skipped, and a curve pattern has no grid, ' +
+        'so an "i:j" cell is refused.',
+      ),
+    },
+  },
+  set_curve_pattern_field: {
+    summary: 'Set one curve pattern field, e.g. count, spacing, distance or orientation.',
+    note: CURVE_PATTERN_NOTE,
+    fields: {
+      featureId: str(),
+      field: fieldOf('curve pattern', 'set_curve_pattern_field'),
+      value: setterValue('curve_pattern'),
+    },
+  },
+  add_curve_pattern_path: {
+    summary: 'Add a path curve to a curve pattern.',
+    note: CURVE_PATH_NOTE,
+    fields: { featureId: str(), pathQuery: pathQuery() },
+  },
+  remove_curve_pattern_path: {
+    summary: 'Remove a curve pattern path by index.',
+    fields: { featureId: str(), index: num() },
+  },
   add_pattern: {
     summary: 'Add a pattern of a body or one earlier feature. Deprecated: use add_linear_pattern or add_circular_pattern.',
     note: PATTERN_ALIAS_NOTE,
@@ -2029,6 +2102,10 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   set_linear_pattern_field: 'features',
   add_circular_pattern: 'features',
   set_circular_pattern_field: 'features',
+  add_curve_pattern: 'features',
+  set_curve_pattern_field: 'features',
+  add_curve_pattern_path: 'picks',
+  remove_curve_pattern_path: 'picks',
   add_pattern: 'features',
   add_pattern_source: 'picks',
   remove_pattern_source: 'picks',

@@ -1177,6 +1177,22 @@ function checkCircularPattern(sub: DocRecord, field: string): void {
   checkSkip(sub, field, false)
 }
 
+// The path is optional on purpose: the app's bare add lands a half-configured
+// feature and the kernel refuses it by name, so requiring it here would refuse
+// the document the add itself writes.
+function checkCurvePattern(sub: DocRecord, field: string): void {
+  checkPatternSource(sub, field)
+  checkOptional(sub, 'path', field, checkRefOrRefList)
+  if (sub.count !== undefined) checkCount(sub.count, `${field}.count`)
+  checkOptional(sub, 'spacing', field, (v, f) => checkEnum(v, f, ['equal', 'distance']))
+  if (sub.distance !== undefined) checkExpr(sub.distance, `${field}.distance`)
+  for (const key of ['reverse']) checkOptional(sub, key, field, checkBoolean)
+  checkOptional(sub, 'orientation', field, (v, f) => checkEnum(v, f, ['tangent', 'normal_to', 'fixed']))
+  checkOptional(sub, 'normal_ref', field, checkRef)
+  // One dimension along the path: a grid cell addresses nothing here.
+  checkSkip(sub, field, false)
+}
+
 /** The second direction's cell cap, the same pair rule the rectangular array
  *  had. Only two literal counts can be judged here; an expression is checked
  *  after it resolves. */
@@ -1258,6 +1274,7 @@ const FEATURE_DEF_CHECKS = new Map<string, (sub: DocRecord, field: string) => vo
   ['boolean', checkBooleanDef],
   ['linear_pattern', checkLinearPattern],
   ['circular_pattern', checkCircularPattern],
+  ['curve_pattern', checkCurvePattern],
   ['delete_body', checkDeleteBody],
   ['hole', checkHole],
   ['transform', checkTransform],

@@ -1,5 +1,5 @@
 import type { FeatureEditorSchema } from './FeatureEditor'
-import type { EditorFieldDef } from './widgets/fieldTypes'
+import type { EditorFieldDef, TextFieldDef } from './widgets/fieldTypes'
 import {
   normalizeRefList,
   DEFAULT_EXTRUDE_DISTANCE,
@@ -551,7 +551,7 @@ function normalizePatternSource(raw: SchemaData): SchemaData {
   return data
 }
 
-const patternSkipField = (defaultCount: number): EditorFieldDef => ({
+const patternSkipField = (defaultCount: number): TextFieldDef => ({
   // The page-selector text: signed indices only, `i:j` for a grid cell.
   type: 'text', key: 'skip', label: 'Skip Instances', default: '',
   format: (v) => formatSkipList(Array.isArray(v) ? v as SkipEntry[] : []),
@@ -619,6 +619,70 @@ export const CIRCULAR_PATTERN_SCHEMA: FeatureEditorSchema = {
     { type: 'checkbox', key: 'equal_spacing', label: 'Equal spacing', default: true },
     { type: 'checkbox', key: 'centered', label: 'Centered', default: false },
     patternSkipField(4),
+  ],
+}
+
+/** A curve pattern names a plane, flat face or straight edge as the direction
+ *  its copies turn about. The kernel owns the exact resolution (a curved face
+ *  and a body are named there), so the chip only refuses what is certainly not
+ *  a direction. */
+const normalRefPickRefusal = (id: string): string | null => {
+  if (id.startsWith('?')) return null
+  if (id.startsWith('@')) return null
+  return 'pick a plane, a flat face or a straight edge'
+}
+
+/** The live instance total plus the spacing law this kind is using. The path's
+ *  own length is a solve-time fact the editor does not hold, so the hint states
+ *  which law applies rather than a spacing number it would have to invent. */
+function curvePatternInstanceHint(d: SchemaData): string | null {
+  const summary = patternInstanceHint(d, 3)
+  if (summary === null) return null
+  if (d.spacing === 'distance') {
+    const distance = Number(d.distance ?? 20)
+    return Number.isFinite(distance)
+      ? `${summary}; ${distance} ${'mm'} apart along the path`
+      : `${summary}; enter the distance between neighbours`
+  }
+  return `${summary}; equal spacing splits the path length`
+}
+
+export const CURVE_PATTERN_SCHEMA: FeatureEditorSchema = {
+  mutationPrefix: 'set_curve_pattern',
+  subKey: 'curve_pattern',
+  defaults: { subject: 'body', operation: 'add', count: 3, spacing: 'equal', orientation: 'tangent', path: [], source_features: [] },
+  normalize: (raw) => ({ ...normalizePatternSource(raw), path: normalizeRefList(raw.path) }),
+  fields: [
+    ...PATTERN_SOURCE_FIELDS,
+    // The path is the sweep's path grammar, picked one curve at a time.
+    { type: 'pick', key: 'path', label: 'Path', multi: true,
+      addMutationType: 'add_curve_pattern_path', addValueKey: 'pathQuery',
+      removeMutationType: 'remove_curve_pattern_path', transform: stripSelectionWrapper,
+      emptyText: '(pick a path curve, required)' },
+    { type: 'checkbox', key: 'reverse', label: 'Reverse', default: false },
+    { type: 'number', key: 'count', label: 'Count', default: 3, parse: 'int',
+      max: MAX_ARRAY_COUNT, validateWith: (v) => arrayCountProblem('count', v) },
+    // Equal spacing splits the path length: the last instance lands on an open
+    // path's end, while a closed path splits by the count. Distance is the arc
+    // length between neighbours instead.
+    { type: 'select', key: 'spacing', label: 'Spacing', default: 'equal',
+      options: [{ value: 'equal', label: 'Equal spacing' }, { value: 'distance', label: 'Distance' }] },
+    { type: 'number', key: 'distance', label: 'Distance', default: 20, unit: 'mm',
+      showWhen: (d) => d.spacing === 'distance', validate: positive, min: 0 },
+    // How a copy turns: with the path (a rotation-minimizing frame, so a path
+    // whose curvature changes sign does not flip the copies), only about a
+    // picked normal, or not at all.
+    { type: 'select', key: 'orientation', label: 'Orientation', default: 'tangent',
+      options: [
+        { value: 'tangent', label: 'Tangential to curve' },
+        { value: 'normal_to', label: 'Normal to' },
+        { value: 'fixed', label: 'Fixed' },
+      ] },
+    { type: 'pick', key: 'normal_ref', label: 'Normal to', transform: stripSelectionWrapper,
+      showWhen: (d) => d.orientation === 'normal_to', validatePick: normalRefPickRefusal,
+      emptyText: '(pick a plane, flat face or straight edge)' },
+    // No Centered row: a path has a start, not a middle.
+    { ...patternSkipField(3), hint: curvePatternInstanceHint },
   ],
 }
 
@@ -734,6 +798,7 @@ export const EDITOR_SCHEMAS: Record<string, FeatureEditorSchema> = {
   split: SPLIT_SCHEMA,
   linear_pattern: LINEAR_PATTERN_SCHEMA,
   circular_pattern: CIRCULAR_PATTERN_SCHEMA,
+  curve_pattern: CURVE_PATTERN_SCHEMA,
   delete_body: DELETE_BODY_SCHEMA,
   variable: VARIABLE_SCHEMA,
   helix: HELIX_SCHEMA,

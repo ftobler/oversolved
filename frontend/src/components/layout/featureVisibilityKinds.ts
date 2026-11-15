@@ -44,6 +44,7 @@ export const FEATURE_VISIBILITY_BY_KIND = {
   boolean: { toggle: true },
   linear_pattern: { toggle: true },
   circular_pattern: { toggle: true },
+  curve_pattern: { toggle: true },
   delete_body: { toggle: true },
   hole: { toggle: true },
   transform: { toggle: true },

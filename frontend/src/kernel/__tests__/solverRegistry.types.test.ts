@@ -58,6 +58,7 @@ describe('the part feature union is closed', () => {
       | 'boolean'
       | 'linear_pattern'
       | 'circular_pattern'
+      | 'curve_pattern'
       | 'delete_body'
       | 'hole'
       | 'transform'

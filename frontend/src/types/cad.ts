@@ -110,7 +110,7 @@ export type BooleanFeatureDef = {
 // instance pattern) join this list; every runtime check that used to spell the
 // retired `pattern` kind reads it, so adding a kind is one line rather than a
 // hunt through the kernel, the drive and the tree.
-export const PATTERN_KINDS = ['linear_pattern', 'circular_pattern'] as const
+export const PATTERN_KINDS = ['linear_pattern', 'circular_pattern', 'curve_pattern'] as const
 export type PatternKind = (typeof PATTERN_KINDS)[number]
 
 export function isPatternKind(kind: string | undefined): kind is PatternKind {
@@ -195,10 +195,35 @@ export type CircularPatternDef = PatternSourceDef & {
   invert_axis?: boolean
 }
 
+// A curve pattern repeats the subject along a path, sweep's path grammar: a
+// chain of sketch edges, or a bare helix. There is no centered option (a path
+// has a start, not a middle): how the copies are spaced comes from `spacing`.
+// - equal: the path length is split evenly over the instances. An open path puts
+//   the last instance on the path's end (step = length / (count - 1)); a closed
+//   path splits by count, so no instance lands on the start twice.
+// - distance: `distance` is the arc length between neighbours. An instance that
+//   would run past an open path's end is dropped with one warning and the
+//   feature is partial; a closed path wraps, and a wrap that lands on another
+//   instance is the instance model's coincidence refusal.
+// `reverse` walks the path from its far end. `orientation` decides how a copy
+// turns: `tangent` follows a rotation-minimizing frame (so an inflection does
+// not flip the copies), `normal_to` turns only about `normal_ref` (a plane,
+// planar face or straight edge), `fixed` does not turn at all.
+export type CurvePatternDef = PatternSourceDef & {
+  path?: string | string[]
+  count?: NumberOrExpr
+  spacing?: 'equal' | 'distance'
+  distance?: NumberOrExpr
+  reverse?: boolean
+  orientation?: 'tangent' | 'normal_to' | 'fixed'
+  normal_ref?: string
+  skip?: number[]
+}
+
 // The retired single `pattern` kind, kept only so the drive's one-release
 // `add_pattern` alias can name the payload it accepts and the loader migration
 // can name the row it rewrites (utils/core/patternSplit.ts). Nothing authors it:
-// the app writes `linear_pattern` or `circular_pattern`.
+// the app writes `linear_pattern`, `circular_pattern` or `curve_pattern`.
 export type LegacyPatternDef = PatternSourceDef & {
   mode?: 'linear' | 'rectangular' | 'circular'
   count?: NumberOrExpr
@@ -737,6 +762,11 @@ export type CircularPatternFeature = FeatureBase & {
   circular_pattern: CircularPatternDef
 }
 
+export type CurvePatternFeature = FeatureBase & {
+  kind: 'curve_pattern'
+  curve_pattern: CurvePatternDef
+}
+
 export type DeleteBodyFeature = FeatureBase & {
   kind: 'delete_body'
   delete_body: DeleteBodyFeatureDef
@@ -797,6 +827,7 @@ export type PartFeature =
   | BooleanFeature
   | LinearPatternFeature
   | CircularPatternFeature
+  | CurvePatternFeature
   | DeleteBodyFeature
   | HoleFeature
   | TransformFeature
@@ -1511,6 +1542,12 @@ export type Mutation =
   | { type: 'set_linear_pattern_field'; featureId: string; field: keyof LinearPatternDef; value: unknown }
   | ({ type: 'add_circular_pattern'; featureId: string; label?: string } & Partial<CircularPatternDef> & FeatureInsertion)
   | { type: 'set_circular_pattern_field'; featureId: string; field: keyof CircularPatternDef; value: unknown }
+  // The path rides in the add the way the sweep's does; the two chip mutations
+  // are the shared ref-list toggle, so a path is picked one curve at a time.
+  | ({ type: 'add_curve_pattern'; featureId: string; label?: string; pathQuery: string } & Omit<Partial<CurvePatternDef>, 'path'> & FeatureInsertion)
+  | { type: 'set_curve_pattern_field'; featureId: string; field: keyof CurvePatternDef; value: unknown }
+  | { type: 'add_curve_pattern_path'; featureId: string; pathQuery: string }
+  | { type: 'remove_curve_pattern_path'; featureId: string; index: number }
   // One release only: the drive translates a legacy `add_pattern` payload
   // through the loader's own split (utils/core/patternSplit.ts) and replies with
   // a deprecation note. Nothing in the app emits it, and no catalog example

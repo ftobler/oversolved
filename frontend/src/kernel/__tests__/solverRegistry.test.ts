@@ -16,14 +16,14 @@ import { Repository } from '../query'
 // ─── Ported-kind set completeness ───
 
 describe('PORTED_FEATURE_KINDS', () => {
-  it('contains all 20 ported feature kinds', () => {
+  it('contains all 21 ported feature kinds', () => {
     const expected = [
       'sketch',
       'plane',
       'extrude', 'revolve', 'sweep',
       'fillet', 'chamfer',
       'boolean', 'hole',
-      'linear_pattern', 'circular_pattern',
+      'linear_pattern', 'circular_pattern', 'curve_pattern',
       'transform', 'mirror', 'split',
       'delete_body', 'import_step',
       'variable',

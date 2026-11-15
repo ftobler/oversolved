@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, NumberOrExpr, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, SplitFeatureDef, SplitKeep, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, ShellDirection, ShellJoin, MoveFaceFeatureDef, LinearPatternDef, CircularPatternDef, LegacyPatternDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
+import type { PartDoc, PartFeature, NumberOrExpr, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, SplitFeatureDef, SplitKeep, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, ShellDirection, ShellJoin, MoveFaceFeatureDef, LinearPatternDef, CircularPatternDef, CurvePatternDef, LegacyPatternDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
 import { warn, findFeature, normalizeRefList, round } from './helpers'
 import { arrayCountProblem } from '@/persistence/docSchema'
 import { skipValue } from '@/utils/core/patternSkip'
@@ -361,7 +361,7 @@ function removableIndex(arr: unknown[], index: number): boolean {
   return Number.isInteger(index) && index >= 0 && index < arr.length
 }
 
-type RefListKind = 'extrude' | 'revolve' | 'sweep'
+type RefListKind = 'extrude' | 'revolve' | 'sweep' | 'curve_pattern'
 type RefListField = 'sketch' | 'path'
 
 function refListSub(doc: PartDoc, featureId: string, kind: RefListKind, fn: string): Partial<Record<RefListField, string | string[]>> | undefined {
@@ -371,6 +371,7 @@ function refListSub(doc: PartDoc, featureId: string, kind: RefListKind, fn: stri
       case 'extrude': return feature.extrude
       case 'revolve': return feature.revolve
       case 'sweep': return feature.sweep
+      case 'curve_pattern': return feature.curve_pattern
     }
   }
   warn(`${fn}: feature ${featureId} has no ${kind}`)
@@ -802,6 +803,11 @@ const CIRCULAR_PATTERN_FIELDS: readonly string[] = [
   'axis', 'axis_origin', 'axis_direction', 'invert_axis',
 ]
 
+const CURVE_PATTERN_FIELDS: readonly string[] = [
+  ...PATTERN_SOURCE_FIELDS,
+  'count', 'skip', 'path', 'spacing', 'distance', 'reverse', 'orientation', 'normal_ref',
+]
+
 /** The stored skip list from either accepted spelling, or null when the value
  *  is not one. The drive parses text before it gets here; a replayed journal
  *  payload may still carry the text the user typed. */
@@ -818,6 +824,10 @@ function circularSkip(value: unknown): number[] | null {
   if (parsed === null || parsed.some((entry) => Array.isArray(entry))) return null
   return parsed as number[]
 }
+
+/** Like the circular kind, a curve pattern has one dimension: a grid cell names
+ *  nothing along a path. */
+const curveSkip = circularSkip
 
 /** The materialized source list a setter writes, from either accepted spelling
  *  (a list, or the legacy one-element scalar). */
@@ -853,6 +863,15 @@ function seedLinearPattern(sub: FieldBag, cleared: ReadonlySet<string> = new Set
  *  field whose absence already means the same thing. */
 function seedCircularPattern(sub: FieldBag, cleared: ReadonlySet<string> = new Set()): void {
   if (!cleared.has('count') && sub.count === undefined) sub.count = 4
+}
+
+/** Seed the values a curve add reads. Equal spacing and the tangent orientation
+ *  keep the kernel's defaults, so only the count and (in distance mode) the
+ *  distance are stored; a distance the mode does not read would be a value the
+ *  solve ignores. */
+function seedCurvePattern(sub: FieldBag, cleared: ReadonlySet<string> = new Set()): void {
+  if (!cleared.has('count') && sub.count === undefined) sub.count = 3
+  if (sub.spacing === 'distance' && !cleared.has('distance') && sub.distance === undefined) sub.distance = 20
 }
 
 /** The legacy fields an `add_pattern` alias call may carry, with the usual clear
@@ -981,6 +1000,69 @@ export function applyAddCircularPattern(
     circular_pattern: pattern as CircularPatternDef,
   })
 }
+
+export function applyAddCurvePattern(
+  doc: PartDoc,
+  featureId: string,
+  label?: string,
+  pathQuery = '',
+  inline: Partial<CurvePatternDef> = {},
+): void {
+  const pattern: FieldBag = { subject: 'body', operation: 'add' }
+  const accepted = Object.fromEntries(
+    Object.entries(inline).filter(([field]) => CURVE_PATTERN_FIELDS.includes(field)),
+  ) as FieldBag
+  if (typeof accepted.source_features === 'string') {
+    accepted.source_features = accepted.source_features === '' ? [] : [accepted.source_features]
+  }
+  if (!Array.isArray(accepted.source_features) && typeof accepted.source_feature === 'string') {
+    accepted.source_features = accepted.source_feature === '' ? [] : [accepted.source_feature]
+  }
+  delete accepted.source_feature
+  if (accepted.skip !== undefined && accepted.skip !== null && (accepted.skip as unknown) !== '') {
+    const skip = curveSkip(accepted.skip)
+    if (skip === null) {
+      warn('applyAddCurvePattern: refusing skip: a curve pattern skips whole instance numbers only')
+      return
+    }
+    accepted.skip = skip
+  }
+  const problem = inlineCountProblem(accepted)
+  if (problem !== null) {
+    warn(`applyAddCurvePattern: refusing ${problem.field}: ${problem.reason}`)
+    return
+  }
+  mergeInlineFields(pattern, accepted as Partial<FieldBag>)
+  // The path rides in the add the way the sweep's does, and an authored `path`
+  // inline lands after it so a caller can send either spelling.
+  const path = pathQuery ? [pathQuery] : []
+  if (Array.isArray(pattern.path)) {
+    for (const ref of pattern.path) if (typeof ref === 'string' && ref !== '' && !path.includes(ref)) path.push(ref)
+  }
+  pattern.path = path
+  if (pattern.subject === 'feature') delete pattern.operation
+  else if (pattern.operation === undefined) pattern.operation = 'add'
+  const cleared = new Set(
+    Object.entries(accepted)
+      .filter(([, value]) => value === undefined || value === null || value === '')
+      .map(([key]) => key),
+  )
+  seedCurvePattern(pattern, cleared)
+  pushFeature(doc, {
+    id: featureId,
+    kind: 'curve_pattern',
+    label: label ?? 'Curve Pattern',
+    curve_pattern: pattern as CurvePatternDef,
+  })
+}
+
+export function applySetCurvePatternField(doc: PartDoc, featureId: string, field: keyof CurvePatternDef, value: unknown): void {
+  const feature = findFeature(doc, featureId)
+  setSubFeatureField(featureId, 'curve_pattern', feature?.kind === 'curve_pattern' ? feature.curve_pattern : undefined, field, value, 'applySetCurvePatternField')
+}
+
+export const applyAddCurvePatternPath = makeAddRefToggle('curve_pattern', 'path', 'applyAddCurvePatternPath')
+export const applyRemoveCurvePatternPath = makeRemoveRefAt('curve_pattern', 'path', 'applyRemoveCurvePatternPath')
 
 /** The one-release `add_pattern` alias: build the legacy payload the old add
  *  built, then run it through the loader's own split, so the aliased document

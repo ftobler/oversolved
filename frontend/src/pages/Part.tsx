@@ -779,6 +779,7 @@ export default function Part() {
     const rowLabel: Record<string, string> = {
       linear_pattern: 'Linear Pattern',
       circular_pattern: 'Circular Pattern',
+      curve_pattern: 'Curve Pattern',
     }
     const label = `${rowLabel[kind] ?? kind} ${Object.keys(bodies).length + 1}`
     const insertAt = newFeatureInsertIndex(features, editorState.getState().rollbackPosition)

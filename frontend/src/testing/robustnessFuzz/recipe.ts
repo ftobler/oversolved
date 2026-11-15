@@ -135,6 +135,19 @@ export interface RecipeCircularArray {
   axis: AxisName
 }
 
+export interface RecipeCurveArray {
+  kind: 'curve-array'
+  id: string
+  target: string
+  count: number
+  // The path is a straight line on the world XY plane from the origin along
+  // +X; its length and the spacing mode decide whether every instance fits.
+  length: number
+  spacing: 'equal' | 'distance'
+  distance: number
+  orientation: 'tangent' | 'fixed'
+}
+
 export interface RecipeMirror {
   kind: 'mirror'
   id: string
@@ -189,6 +202,7 @@ export type RecipeStep =
   | RecipeHole
   | RecipeLinearArray
   | RecipeCircularArray
+  | RecipeCurveArray
   | RecipeMirror
   | RecipeShell
   | RecipeHelix
@@ -220,6 +234,10 @@ export interface RecipeOptions {
   // reads those fields and the main stream is untouched, so every existing
   // pinned seed draws the same chain.
   patternInstanceModel?: boolean
+  // Append one curve-array step drawn from a DERIVED PRNG
+  // (`seed ^ CURVE_PATTERN_SALT`), the same rule: a new seed family that leaves
+  // every existing chain byte-identical.
+  curvePatternTail?: boolean
 }
 
 // The number of leading display-sorted edges an edge pick is allowed to land
@@ -408,7 +426,30 @@ export function generateRecipe(seed: number, options: RecipeOptions = {}): Recip
   }
   if (options.patternInstanceModel) applyPatternInstanceModel(steps, seed)
   if (options.splitTail) steps.push(drawSplitTail(seed))
+  if (options.curvePatternTail) steps.push(drawCurvePatternTail(seed))
   return { seed, steps }
+}
+
+/**
+ * The one curve-array step a `curvePatternTail` recipe appends, from its own
+ * derived stream: the path is a straight line on the world XY plane, and the
+ * draw keeps the length short enough that distance spacing sometimes runs past
+ * the path end, which is the partial-result path this kind owns.
+ */
+export const CURVE_PATTERN_SALT = 0x7ab31d05
+
+function drawCurvePatternTail(seed: number): RecipeCurveArray {
+  const rnd = makePrng((seed ^ CURVE_PATTERN_SALT) >>> 0)
+  return {
+    kind: 'curve-array',
+    id: 'curve_tail',
+    target: PRIMARY_BODY,
+    count: drawInt(rnd, 2, 4),
+    length: grid(drawInt(rnd, 4, 8)),
+    spacing: drawOf(rnd, ['equal', 'distance'] as const),
+    distance: grid(drawInt(rnd, 2, 4)),
+    orientation: drawOf(rnd, ['tangent', 'fixed'] as const),
+  }
 }
 
 /** The derived stream the instance-model sweep reads. */

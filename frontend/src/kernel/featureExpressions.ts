@@ -28,6 +28,7 @@ const EXPR_SUBKEY_BY_KIND: { [K in ExprFieldKind]: ExprSubKey<K> } = {
   hole: 'hole',
   linear_pattern: 'linear_pattern',
   circular_pattern: 'circular_pattern',
+  curve_pattern: 'curve_pattern',
   transform: 'transform',
   plane: 'definition',
   helix: 'helix',
