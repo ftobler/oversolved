@@ -84,7 +84,7 @@ export const EXPR_FIELDS_BY_KIND: { [K in ExprFieldKind]: readonly (keyof ExprPa
   shell: ['thickness'],
   move_face: ['distance'],
   hole: ['diameter', 'depth', 'cb_diameter', 'cb_depth', 'cs_angle', 'tip_angle', 'thread_depth'],
-  linear_pattern: ['count', 'pitch', 'count_2', 'pitch_2'],
+  linear_pattern: ['count', 'pitch', 'count_2', 'pitch_2', 'direction', 'direction_2'],
   circular_pattern: ['count', 'angle'],
   transform: ['rotation_angle', 'scale'],
   plane: ['offset', 'angle', 'rotation', 'rotation_angle'],
@@ -132,11 +132,13 @@ export function laterVariableRef(
 
 /** Evaluate the expression-capable fields of a feature's sub-dict in place.
  *  String values are replaced by their evaluated number; plain numbers are left
- *  untouched. On a failed evaluation the original string is kept and a
- *  `<key>_error` entry is written so the solver layer can mark the feature
- *  errored. A forward reference gets the actionable "defined after" sentence
- *  instead of the generic "Cannot evaluate", because `laterVariables` names
- *  those variables and their log indices.
+ *  untouched. A vector field (the manual pattern direction) is evaluated
+ *  component by component, so `["w/2", 0, 5]` becomes `[10, 0, 5]`. On a failed
+ *  evaluation the original string is kept and a `<key>_error` entry is written
+ *  so the solver layer can mark the feature errored. A forward reference gets
+ *  the actionable "defined after" sentence instead of the generic "Cannot
+ *  evaluate", because `laterVariables` names those variables and their log
+ *  indices.
  */
 export function evalFeatureParams(
   sub: Record<string, unknown>,
@@ -144,8 +146,28 @@ export function evalFeatureParams(
   context: Record<string, number> = {},
   laterVariables: Record<string, number> = {},
 ): void {
+  // A component's failure names its slot, so a vector with one bad expression
+  // says which one; the scalar sentence stays exactly as it was.
+  const componentFailure = (expr: string, slot: string): string => {
+    const later = laterVariableRef(expr, laterVariables)
+    return later === null
+      ? `${slot}: Cannot evaluate "${expr}"`
+      : `${slot}: variable '${later.name}' is defined after this feature (at index ${later.index}); `
+        + 'move it up with reorder_features'
+  }
   for (const key of exprFields) {
     const val = sub[key]
+    if (Array.isArray(val)) {
+      const out = val.map((component, index) => {
+        if (typeof component !== 'string') return component
+        const result = evalExpr(component, context)
+        if (!isNaN(result)) return result
+        sub[`${key}_error`] ??= componentFailure(component, `${key}[${index}]`)
+        return component
+      })
+      sub[key] = out
+      continue
+    }
     if (typeof val !== 'string') continue  // numbers (and absent) pass through
     const result = evalExpr(val, context)
     if (isNaN(result)) {

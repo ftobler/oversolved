@@ -791,9 +791,9 @@ const PATTERN_SOURCE_FIELDS: readonly string[] = [
 
 const LINEAR_PATTERN_FIELDS: readonly string[] = [
   ...PATTERN_SOURCE_FIELDS,
-  'count', 'centered', 'skip', 'pitch', 'direction', 'direction_query', 'invert',
+  'count', 'centered', 'skip', 'pitch', 'direction', 'direction_query', 'invert', 'direction_mode',
   'second_direction', 'count_2', 'centered_2', 'pitch_2',
-  'direction_2', 'direction_2_query', 'invert_2',
+  'direction_2', 'direction_2_query', 'invert_2', 'direction_2_mode',
 ]
 
 const CIRCULAR_PATTERN_FIELDS: readonly string[] = [

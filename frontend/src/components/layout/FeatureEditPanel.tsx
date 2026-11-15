@@ -9,8 +9,8 @@ import okIcon from '@/assets/icons/dialog-ok.svg'
 import cancelIcon from '@/assets/icons/dialog-cancel.svg'
 
 /**
- * The open feature editor as a floating card on the right side of the
- * viewport: the feature's icon and name over the OK / Cancel pair, then the
+ * The open feature editor as a floating card on the right side of the viewport:
+ * the feature's icon and name over the OK / Cancel pair, then the
  * same editor body the tree row used to carry inline. The row no longer grows
  * a whole form when a feature opens; it keeps its `editing` highlight and swaps
  * its edit button for its own OK / Cancel pair (FeatureItemActions.tsx), so an
@@ -38,6 +38,11 @@ export function FeatureEditPanel() {
     : features.find(f => f.id === editingFeatureId)
   if (!feature || !featureHasEditor(feature)) return null
 
+  // The feature's own last solve result, for a row that shows a solved value
+  // (the linear pattern's directive-length spacing). A feature that never
+  // solved has none, and the row stays hidden.
+  const solved = solveResults[feature.id]
+
   return (
     <div className="glass-panel feature-edit-panel">
       <div className="feature-edit-panel-header">
@@ -63,6 +68,7 @@ export function FeatureEditPanel() {
           features={features}
           partLabels={partLabels}
           status={featureFailure(feature.id, solveResults, bodies)}
+          solved={solved}
         />
       </div>
     </div>

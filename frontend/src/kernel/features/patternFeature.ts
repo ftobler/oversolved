@@ -461,6 +461,7 @@ export function solveFeaturePattern(
   solveContext: { variables: Record<string, number>; laterVariables: Record<string, number> },
   copies: readonly PatternCopy[],
   warnings: readonly string[],
+  extra: Dict = {},
 ): PatternResult {
   const featureId = (feature.id as string) ?? ''
   const { sources, dropped } = resolveSources(
@@ -505,6 +506,7 @@ export function solveFeaturePattern(
       body_id: ids[0] ?? '',
       body_ids: ids,
       operation: operations.size === 1 ? [...operations][0] : 'mixed',
+      ...extra,
     }
     if (notes.length > 0) result.solver_warning = notes.join('; ')
     return result
@@ -613,6 +615,7 @@ export function solveFeaturePattern(
       body_id: liveIds[0] ?? plans[0]?.target.id ?? '',
       body_ids: liveIds,
       operation: operations.size === 1 ? [...operations][0] : 'mixed',
+      ...extra,
     }
     if (failures.length > 0) {
       result.exception = `pattern: ${appliedCopies}/${totalCopies} copies applied; ${failures.join('; ')}`

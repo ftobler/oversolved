@@ -19,6 +19,8 @@ interface FeatureItemEditorsProps {
   partLabels: Record<string, string>
   // The feature's mark from the last solve, the same one its tree row shows.
   status?: StatusMark
+  // The feature's last solve result, for an editor row that shows a solved value.
+  solved?: unknown
 }
 
 // The row is its own component because useFileMeta is a hook: FeatureItemEditors
@@ -78,6 +80,7 @@ function editorFor({
   onMutation,
   features,
   partLabels,
+  solved,
 }: Omit<FeatureItemEditorsProps, 'status'>) {
   const kind = feature.kind
 
@@ -122,6 +125,7 @@ function editorFor({
       partLabels={partLabels}
       schema={schema}
       lengthUnit={lengthUnitOf(doc?.length_unit)}
+      solved={solved}
     />
   )
 }

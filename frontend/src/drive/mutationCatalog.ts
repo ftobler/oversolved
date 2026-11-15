@@ -517,6 +517,12 @@ const PATTERN_SOURCE_NOTE =
 
 const LINEAR_PATTERN_NOTE =
   PATTERN_SOURCE_NOTE + ' Direction 1 reads `pitch` and `direction` (or `direction_query`) and `invert` reverses it. ' +
+  'Each direction has a mode, `direction_mode` / `direction_2_mode`: `direction_distance` (the default: `pitch` is ' +
+  'the spacing along the pick or stored vector), `directive_length` (the pick\'s own length is the spacing, so a ' +
+  '15 mm edge puts neighbours 15 mm apart; the pick must be a straight edge, sketch line, cylinder or cone) or ' +
+  '`manual` (`direction` is the whole step vector, direction and spacing in one, so its magnitude is the spacing). ' +
+  'A mode reads only its own fields: `pitch` is refused by name in `directive_length` and `manual` mode, and a ' +
+  'stored vector with no pick still means `direction_distance`. ' +
   '`second_direction: true` adds the grid the retired rectangular mode built: direction 2 reads `count_2`, ' +
   '`pitch_2`, `direction_2` (or `direction_2_query`), `centered_2` and `invert_2`, direction 1 is the column, the ' +
   'seed cell (0, 0) stays the source and 1 x 1 is the same quiet no-op as count 1. A copy that cannot apply is ' +
@@ -1615,14 +1621,16 @@ export const MUTATION_CATALOG = {
         'Instance 0 is the original and cannot be skipped; negatives need centered.',
       ),
       pitch: optScalar(),
-      direction: optPoint(),
-      direction_query: optStr('A straight edge or planar face; overrides direction.'),
+      direction_mode: optStr('direction_distance | directive_length | manual; defaults to direction_distance, which reads pitch.'),
+      direction: optPoint('A 3-vector. In manual mode it is the whole step vector, and its components accept expressions.'),
+      direction_query: optStr('A straight edge, sketch line or face; overrides direction.'),
       invert: optBool(),
       second_direction: optBool('Add the second direction: direction 1 is the column, direction 2 the row.'),
       count_2: optScalar(),
       centered_2: optBool(),
       pitch_2: optScalar(),
-      direction_2: optPoint(),
+      direction_2_mode: optStr('Direction 2\'s mode, same values as direction_mode.'),
+      direction_2: optPoint('Direction 2\'s 3-vector; a manual step vector here too.'),
       direction_2_query: optStr(),
       invert_2: optBool(),
     },

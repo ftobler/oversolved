@@ -32,7 +32,8 @@
         "body_ids": [
           "body_s"
         ],
-        "operation": "add"
+        "operation": "add",
+        "resolved_pitch": 3.0
       },
       "store": {
         "body_s": {
@@ -77,7 +78,8 @@
           "body_arr2",
           "body_arr2_1"
         ],
-        "operation": "new"
+        "operation": "new",
+        "resolved_pitch": 10.0
       },
       "store": {
         "body_arr2": {

@@ -37,6 +37,7 @@ import { lengthUnitOf } from '@/utils/lengthUnit'
 import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/persistence/partDocSchema'
 import { arrayCountProblem } from '@/persistence/docSchema'
 import { skipValue } from '@/utils/core/patternSkip'
+import { linearDirectionModeOf, unreadDirectionFieldProblem } from '@/utils/core/linearPatternModes'
 import { evalExpr } from '@/kernel/evalExpr'
 import { MAX_ARRAY_CELLS } from '@/utils/core/arrayLimits'
 import { pickedSketchEntity } from '@/kernel/features/shared/bodyRef'
@@ -1584,12 +1585,29 @@ function circularSkipProblem(value: unknown, label: string): ValueViolation | nu
   return null
 }
 
+/** The pitch a direction mode does not read, refused by name: a mode hides its
+ *  own spacing field, so setting the other one would store a value the kernel
+ *  ignores and read as accepted. The table is per direction, so both pitch
+ *  spellings ask it about `pitch` and the sentence names the authored one. */
+function unreadPitchProblem(mode: unknown, field: 'pitch' | 'pitch_2', label: string): ValueViolation | null {
+  const resolved = linearDirectionModeOf(mode)
+  if (unreadDirectionFieldProblem(resolved, 'pitch') === null) return null
+  return invalid(`${label}: ${field} is not read in ${resolved} mode`)
+}
+
 function addLinearPattern(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const generic = inlineFeatureFieldsProblem(raw, ctx, 'linear_pattern', 'set_linear_pattern_field', ['skip'])
   if (generic !== null) return generic
   if (raw.skip !== undefined && raw.skip !== null) {
     const skipProblem = patternSkipProblem(raw.skip, `add_linear_pattern field ${json('skip')}`)
     if (skipProblem !== null) return skipProblem
+  }
+  for (const [modeKey, pitchKey] of [
+    ['direction_mode', 'pitch'], ['direction_2_mode', 'pitch_2'],
+  ] as const) {
+    if (raw[pitchKey] === undefined) continue
+    const problem = unreadPitchProblem(raw[modeKey], pitchKey, `add_linear_pattern field ${json(pitchKey)}`)
+    if (problem !== null) return problem
   }
   // Judge each inline count against its sibling in the same payload, so the
   // cells cap is refused before the applier would seed the missing axis.
@@ -1627,6 +1645,11 @@ function setLinearPatternField(raw: RawStep, ctx: ValueContext): ValueViolation 
   }
   const generic = fieldValue(raw, ctx)
   if (generic !== null) return generic
+  if (field === 'pitch' || field === 'pitch_2') {
+    const stored = storedPatternDef(raw, ctx, 'linear_pattern')
+    const modeKey = field === 'pitch' ? 'direction_mode' : 'direction_2_mode'
+    return unreadPitchProblem(stored?.[modeKey], field, `set_linear_pattern_field field ${json(field)}`)
+  }
   if (typeof field !== 'string' || (field !== 'count' && field !== 'count_2')) return null
   const stored = storedPatternDef(raw, ctx, 'linear_pattern')
   const siblingKey = field === 'count' ? 'count_2' : 'count'
