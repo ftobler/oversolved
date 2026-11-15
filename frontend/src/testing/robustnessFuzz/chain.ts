@@ -29,6 +29,7 @@ import { solveHole } from '@/kernel/features/hole'
 import { solveLinearPattern } from '@/kernel/features/linearPattern'
 import { solveCircularPattern } from '@/kernel/features/circularPattern'
 import { solveCurvePattern } from '@/kernel/features/curvePattern'
+import { solveInstancePattern } from '@/kernel/features/instancePattern'
 import { solveMirror } from '@/kernel/features/transformMirror'
 import { solveShell } from '@/kernel/features/shell'
 import { solveHelix } from '@/kernel/features/helix'
@@ -352,6 +353,7 @@ function checkMonotonic(step: RecipeStep, targetBefore: number | undefined, edit
     || step.kind === 'linear-array'
     || step.kind === 'circular-array'
     || step.kind === 'curve-array'
+    || step.kind === 'instance-array'
     || (step.kind === 'mirror' && step.keepOriginal && step.merge)
   // Shell is drawn inward only, so like a cut it never adds material.
   const cutLike = (step.kind === 'boolean' && step.operation === 'subtract') || step.kind === 'hole' || step.kind === 'shell'
@@ -835,6 +837,26 @@ function applyStep(
         ...(step.orientation === 'fixed' ? { orientation: 'fixed' } : {}),
       },
     } as Dict, repoForLeaves, bodyStore)
+    return { editedIds: result.body_ids }
+  }
+  if (step.kind === 'instance-array') {
+    // The target list is a sketch of points on the world XY plane, registered
+    // the way a solved sketch is: the plane frame plus the solved parameters.
+    // The body subject's centroid is the reference, so every copy is a
+    // translation (the same law the fixed orientation follows).
+    const sketchId = `sk_${step.id}`
+    repo.register('_pt_' + sketchId, PLANE_XY)
+    const entities = step.points.map((_, i) => ({ id: `p${i}`, kind: 'point' }))
+    const initial = Object.fromEntries(step.points.map(([x, y], i) => [`p${i}`, [x, y]]))
+    const result = solveInstancePattern(oc, scope, table, {
+      id: step.id,
+      instance_pattern: {
+        subject: 'body', source_body: step.target, operation: 'add',
+        sketch: '@' + sketchId, orientation: 'fixed',
+      },
+    } as Dict, repoForLeaves, bodyStore, {
+      [sketchId]: { id: sketchId, kind: 'sketch', entities, initial, constraints: [] },
+    })
     return { editedIds: result.body_ids }
   }
   if (step.kind === 'shell') {

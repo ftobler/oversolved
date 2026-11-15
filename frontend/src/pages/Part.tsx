@@ -780,6 +780,7 @@ export default function Part() {
       linear_pattern: 'Linear Pattern',
       circular_pattern: 'Circular Pattern',
       curve_pattern: 'Curve Pattern',
+      instance_pattern: 'Instance Pattern',
     }
     const label = `${rowLabel[kind] ?? kind} ${Object.keys(bodies).length + 1}`
     const insertAt = newFeatureInsertIndex(features, editorState.getState().rollbackPosition)

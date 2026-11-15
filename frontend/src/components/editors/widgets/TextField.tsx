@@ -12,7 +12,7 @@ import { fieldRefusal } from '@/utils/core/statusMark'
  *  is a field refusal like a refused number: the reason shows while editing
  *  and the blur commits nothing. */
 export function TextFieldWidget({
-  field, value, data, fid, onMutation, mutationType,
+  field, value, data, features, fid, onMutation, mutationType,
 }: TextFieldWidgetProps) {
   const dv = field.default ?? ''
   // null = idle (mirror external value); string = actively editing.
@@ -28,7 +28,7 @@ export function TextFieldWidget({
   const reason = draft === null ? null
     : parsed == null ? field.parseReason?.(draft) ?? 'cannot be read'
     : field.validate ? field.validate(parsed) : null
-  const hint = field.hint?.(data ?? {}) ?? null
+  const hint = field.hint?.(data ?? {}, { features }) ?? null
 
   return (
     <div className="feature-field-row">

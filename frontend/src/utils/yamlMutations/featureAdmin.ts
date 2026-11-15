@@ -311,8 +311,8 @@ export function applySetPlaneDefinitionField(
  *  sub-def (a raw record naming the kind without it) returns undefined so the
  *  reorder no-ops instead of throwing. */
 function normalizeStoredRefList(
-  sub: { sketch?: string | string[]; path?: string | string[] } | undefined,
-  field: 'sketch' | 'path',
+  sub: { sketch?: string | string[]; path?: string | string[]; targets?: string[] } | undefined,
+  field: 'sketch' | 'path' | 'targets',
 ): string[] | undefined {
   if (!sub) return undefined
   const current = sub[field]
@@ -370,14 +370,23 @@ export function applyReorderPickField(doc: PartDoc, featureId: string, field: st
         arr = normalizeStoredRefList(feature.curve_pattern, 'path')
       }
       break
+    case 'targets':
+      // A target list has no grid and no count: its order IS the numbering the
+      // skip list addresses, so reordering it is a meaningful edit.
+      if (feature.kind === 'instance_pattern') {
+        arr = normalizeStoredRefList(feature.instance_pattern, 'targets')
+      }
+      break
     case 'source_features':
       // The chip reorders the authored list. The kernel still unions the
       // sources in feature-log order, so this is a presentation edit; the
       // legacy scalar is normalized in place before the splice.
-      if (feature.kind === 'linear_pattern' || feature.kind === 'circular_pattern' || feature.kind === 'curve_pattern') {
+      if (feature.kind === 'linear_pattern' || feature.kind === 'circular_pattern'
+        || feature.kind === 'curve_pattern' || feature.kind === 'instance_pattern') {
         const sub: { source_features?: string[]; source_feature?: string } =
           feature.kind === 'linear_pattern' ? feature.linear_pattern
-            : feature.kind === 'circular_pattern' ? feature.circular_pattern : feature.curve_pattern
+            : feature.kind === 'circular_pattern' ? feature.circular_pattern
+              : feature.kind === 'curve_pattern' ? feature.curve_pattern : feature.instance_pattern
         if (!Array.isArray(sub.source_features)) {
           sub.source_features = typeof sub.source_feature === 'string' && sub.source_feature
             ? [sub.source_feature]

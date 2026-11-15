@@ -1576,18 +1576,31 @@ function storedPatternDef(raw: RawStep, ctx: ValueContext, kind: PatternKind): R
   if (feature.kind === 'curve_pattern' && kind === 'curve_pattern') {
     return isRecord(feature.curve_pattern) ? feature.curve_pattern : null
   }
+  if (feature.kind === 'instance_pattern' && kind === 'instance_pattern') {
+    return isRecord(feature.instance_pattern) ? feature.instance_pattern : null
+  }
   return null
 }
 
-/** A circular pattern has no grid, so a `i:j` cell addresses nothing and is
- *  refused rather than stored as a permanently stale entry. */
-function circularSkipProblem(value: unknown, label: string): ValueViolation | null {
+/** A one-dimensional pattern has no grid, so a `i:j` cell addresses nothing and
+ *  is refused rather than stored as a permanently stale entry. `feature` names
+ *  the kind in the sentence, since the circular, curve and instance patterns all
+ *  read this rule. */
+function wholeIndexSkipProblem(
+  value: unknown,
+  label: string,
+  feature = 'a circular pattern',
+): ValueViolation | null {
   const parsed = skipValue(value)
   if ('error' in parsed) return invalid(`${label} ${parsed.error}`)
   if (parsed.skip.some((entry) => Array.isArray(entry))) {
-    return invalid(`${label} must be whole instance numbers; a circular pattern has no grid cells`)
+    return invalid(`${label} must be whole instance numbers; ${feature} has no grid cells`)
   }
   return null
+}
+
+function circularSkipProblem(value: unknown, label: string): ValueViolation | null {
+  return wholeIndexSkipProblem(value, label)
 }
 
 function addLinearPattern(raw: RawStep, ctx: ValueContext): ValueViolation | null {
@@ -1710,6 +1723,77 @@ function setCurvePatternField(raw: RawStep, ctx: ValueContext): ValueViolation |
   if ((field === 'distance' || field === 'normal_ref') && raw.value !== null) {
     // The stored sibling says what the mode will be; a null clear is always legal.
     return curvePatternModeProblem(field, stored?.spacing, stored?.orientation, `set_curve_pattern_field field ${json(field)}`)
+  }
+  return null
+}
+
+/** Both target forms at once is a document the kernel refuses; the boundary
+ *  names the form to clear instead of storing a feature that can only fail. */
+function instanceTargetFormProblem(sub: Record<string, unknown>, label: string): ValueViolation | null {
+  const sketch = typeof sub.sketch === 'string' && sub.sketch !== ''
+  const targets = Array.isArray(sub.targets) && sub.targets.length > 0
+  return sketch && targets
+    ? invalid(`${label}: sketch and targets cannot both be set; keep one target form`)
+    : null
+}
+
+function instanceRefProblem(value: unknown, field: string): ValueViolation | null {
+  if (value === undefined || value === null || value === '') return null
+  const problem = pickQueryProblem(value, field)
+  return problem === null ? null : invalid(problem)
+}
+
+function instanceTargetsProblem(value: unknown): ValueViolation | null {
+  if (value === undefined || value === null) return null
+  const list = stringListProblem(value, 'targets')
+  if (list !== null) return invalid(list)
+  for (let i = 0; i < (value as string[]).length; i++) {
+    const problem = pickQueryProblem((value as string[])[i], `targets[${i}]`)
+    if (problem !== null) return invalid(problem)
+  }
+  return null
+}
+
+function addInstancePattern(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const generic = inlineFeatureFieldsProblem(raw, ctx, 'instance_pattern', 'set_instance_pattern_field', ['skip', 'targets'])
+  if (generic !== null) return generic
+  if (raw.skip !== undefined && raw.skip !== null) {
+    const skipProblem = wholeIndexSkipProblem(raw.skip, `add_instance_pattern field ${json('skip')}`, 'an instance pattern')
+    if (skipProblem !== null) return skipProblem
+  }
+  const ref = instanceRefProblem(raw.sketch, 'sketch')
+  if (ref !== null) return ref
+  const reference = instanceRefProblem(raw.reference, 'reference')
+  if (reference !== null) return reference
+  const targets = instanceTargetsProblem(raw.targets)
+  if (targets !== null) return targets
+  return instanceTargetFormProblem(raw, 'add_instance_pattern')
+}
+
+function setInstancePatternField(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const field = raw.field
+  if (field === 'skip') {
+    if (raw.value === null || raw.value === undefined) return null
+    return wholeIndexSkipProblem(raw.value, `set_instance_pattern_field field ${json(field)}`, 'an instance pattern')
+  }
+  const generic = fieldValue(raw, ctx)
+  if (generic !== null) return generic
+  if (typeof field !== 'string') return null
+  if (field === 'sketch' || field === 'reference') {
+    const ref = instanceRefProblem(raw.value, field)
+    if (ref !== null) return ref
+  }
+  if (field === 'targets') {
+    const targets = instanceTargetsProblem(raw.value)
+    if (targets !== null) return targets
+  }
+  if (field === 'sketch' || field === 'targets') {
+    // The stored sibling says what the document would land with.
+    const stored = storedPatternDef(raw, ctx, 'instance_pattern')
+    if (stored !== null) {
+      const next = { ...stored, [field]: raw.value }
+      return instanceTargetFormProblem(next, `set_instance_pattern_field field ${json(field)}`)
+    }
   }
   return null
 }
@@ -2463,6 +2547,10 @@ export const MUTATION_VALUE_RULES = {
   set_circular_pattern_field: setCircularPatternField,
   set_curve_pattern_field: setCurvePatternField,
   add_curve_pattern_path: profileRefField('pathQuery'),
+  add_instance_pattern: addInstancePattern,
+  set_instance_pattern_field: setInstancePatternField,
+  add_instance_pattern_target: queryField('targetQuery'),
+  remove_instance_pattern_target: indexField('index'),
   add_pattern_source: queryField('sourceFeature'),
   remove_pattern_source: indexField('index'),
   add_delete_body: addDeleteBody,

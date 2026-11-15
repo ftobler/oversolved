@@ -1190,7 +1190,25 @@ function checkCurvePattern(sub: DocRecord, field: string): void {
   checkOptional(sub, 'orientation', field, (v, f) => checkEnum(v, f, ['tangent', 'normal_to', 'fixed']))
   checkOptional(sub, 'normal_ref', field, checkRef)
   // One dimension along the path: a grid cell addresses nothing here.
-  checkSkip(sub, field, false)
+  checkSkip(sub, field, false, 'a curve pattern')
+}
+
+// Exactly one of `sketch` / `targets` drives the target list. A bare add lands
+// a half-configured feature and the kernel refuses it, so neither field is
+// required here; both set at once is never a document the app writes.
+function checkInstancePattern(sub: DocRecord, field: string): void {
+  checkPatternSource(sub, field)
+  checkOptional(sub, 'sketch', field, checkRef)
+  checkOptional(sub, 'targets', field, checkRefList)
+  checkOptional(sub, 'reference', field, checkRef)
+  checkOptional(sub, 'orientation', field, (v, f) => checkEnum(v, f, ['normal', 'fixed']))
+  checkOptional(sub, 'reverse_normal', field, checkBoolean)
+  checkSkip(sub, field, false, 'an instance pattern')
+  const sketch = typeof sub.sketch === 'string' && sub.sketch !== ''
+  const targets = Array.isArray(sub.targets) && sub.targets.length > 0
+  if (sketch && targets) {
+    fail(`${field}.targets`, 'sketch and targets cannot both be set; keep the sketch form or the picked list')
+  }
 }
 
 /** The second direction's cell cap, the same pair rule the rectangular array
@@ -1209,7 +1227,7 @@ function checkCountGridProblem(sub: DocRecord, field: string): void {
  *  could not have produced is refused here instead of reaching the kernel. A
  *  circular pattern has no grid, so a cell there names nothing and is refused
  *  rather than loaded as a permanently stale entry. */
-function checkSkip(sub: DocRecord, field: string, allowCells = true): void {
+function checkSkip(sub: DocRecord, field: string, allowCells = true, feature = 'a circular pattern'): void {
   const skip = sub.skip
   if (skip === undefined) return
   if (!Array.isArray(skip)) fail(`${field}.skip`, `must be a list of instance numbers, got ${kindOf(skip)}`)
@@ -1219,7 +1237,7 @@ function checkSkip(sub: DocRecord, field: string, allowCells = true): void {
   const problem = skipProblem(skip)
   if (problem !== null) fail(`${field}.skip`, problem)
   if (!allowCells && skip.some((entry) => Array.isArray(entry))) {
-    fail(`${field}.skip`, 'must be whole instance numbers; a circular pattern has no grid cells')
+    fail(`${field}.skip`, `must be whole instance numbers; ${feature} has no grid cells`)
   }
 }
 
@@ -1275,6 +1293,7 @@ const FEATURE_DEF_CHECKS = new Map<string, (sub: DocRecord, field: string) => vo
   ['linear_pattern', checkLinearPattern],
   ['circular_pattern', checkCircularPattern],
   ['curve_pattern', checkCurvePattern],
+  ['instance_pattern', checkInstancePattern],
   ['delete_body', checkDeleteBody],
   ['hole', checkHole],
   ['transform', checkTransform],

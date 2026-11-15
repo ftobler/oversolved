@@ -41,6 +41,13 @@ exports[`drive CLI (real OCC + Rust solver) > lists the command registry with it
     },
     {
       "enabled": true,
+      "id": "add_instance_pattern",
+      "label": "Add instance pattern",
+      "params": [],
+      "undoable": true,
+    },
+    {
+      "enabled": true,
       "id": "add_linear_pattern",
       "label": "Add linear pattern",
       "params": [],

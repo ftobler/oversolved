@@ -126,6 +126,7 @@ export function FeatureEditor({
               field={field as TextFieldDef}
               value={data[field.key]}
               data={data}
+              features={features}
               fid={fid}
               onMutation={onMutation}
               mutationType={mutationType}

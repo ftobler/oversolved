@@ -19,6 +19,7 @@ import featureBooleanIcon from '@/assets/icons/feature-boolean.svg'
 import featureLinearPatternIcon from '@/assets/icons/feature-linear-pattern.svg'
 import featureCircularPatternIcon from '@/assets/icons/feature-circular-pattern.svg'
 import featureCurvePatternIcon from '@/assets/icons/feature-curve-pattern.svg'
+import featureInstancePatternIcon from '@/assets/icons/feature-instance-pattern.svg'
 import featureDeleteBodyIcon from '@/assets/icons/feature-delete-body.svg'
 import featureHoleIcon from '@/assets/icons/feature-hole.svg'
 import featureTransformIcon from '@/assets/icons/feature-transform.svg'
@@ -131,6 +132,7 @@ export default function PartEditorPanel({
               <button className="editor-btn" title="Add Linear Pattern" onClick={() => handleAddFeature('linear_pattern')}><img src={featureLinearPatternIcon} alt="Add Linear Pattern" /></button>
               <button className="editor-btn" title="Add Circular Pattern" onClick={() => handleAddFeature('circular_pattern')}><img src={featureCircularPatternIcon} alt="Add Circular Pattern" /></button>
               <button className="editor-btn" title="Add Curve Pattern" onClick={() => handleAddFeature('curve_pattern', { pathQuery: '' })}><img src={featureCurvePatternIcon} alt="Add Curve Pattern" /></button>
+              <button className="editor-btn" title="Add Instance Pattern" onClick={() => handleAddFeature('instance_pattern')}><img src={featureInstancePatternIcon} alt="Add Instance Pattern" /></button>
               <button className="editor-btn" title="Delete Body" onClick={() => handleAddFeature('delete_body')}><img src={featureDeleteBodyIcon} alt="Delete Body" /></button>
               <button className="editor-btn" title="Add Variable" onClick={() => handleAddFeature('variable')}><img src={featureVariableIcon} alt="Add Variable" /></button>
             </>

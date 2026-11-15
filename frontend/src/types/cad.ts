@@ -110,7 +110,7 @@ export type BooleanFeatureDef = {
 // instance pattern) join this list; every runtime check that used to spell the
 // retired `pattern` kind reads it, so adding a kind is one line rather than a
 // hunt through the kernel, the drive and the tree.
-export const PATTERN_KINDS = ['linear_pattern', 'circular_pattern', 'curve_pattern'] as const
+export const PATTERN_KINDS = ['linear_pattern', 'circular_pattern', 'curve_pattern', 'instance_pattern'] as const
 export type PatternKind = (typeof PATTERN_KINDS)[number]
 
 export function isPatternKind(kind: string | undefined): kind is PatternKind {
@@ -217,6 +217,27 @@ export type CurvePatternDef = PatternSourceDef & {
   reverse?: boolean
   orientation?: 'tangent' | 'normal_to' | 'fixed'
   normal_ref?: string
+  skip?: number[]
+}
+
+// An instance pattern repeats the subject onto a sketch's points or onto a
+// picked list of any target. Exactly one of `sketch` / `targets` drives the
+// list: `sketch` takes every non-construction point of that sketch (the same
+// site rule a hole drills), while `targets` takes any face, edge, vertex,
+// sketch point or plane pick. Numbering is 1..N in sketch entity order or list
+// order, so `skip` is positional, but the naming key is the target's entity id
+// (sketch form) or a short pick hash (targets form), so deleting an earlier
+// target never renames a later copy. `reference` is the point the copies are
+// measured from; absent, it falls back to the source sketch's only point or the
+// seed's centroid. `orientation: normal` (the default) turns each copy onto its
+// target's normal; `fixed` only translates. `reverse_normal` flips every target
+// normal, not the source's.
+export type InstancePatternDef = PatternSourceDef & {
+  sketch?: string
+  targets?: string[]
+  reference?: string
+  orientation?: 'normal' | 'fixed'
+  reverse_normal?: boolean
   skip?: number[]
 }
 
@@ -767,6 +788,11 @@ export type CurvePatternFeature = FeatureBase & {
   curve_pattern: CurvePatternDef
 }
 
+export type InstancePatternFeature = FeatureBase & {
+  kind: 'instance_pattern'
+  instance_pattern: InstancePatternDef
+}
+
 export type DeleteBodyFeature = FeatureBase & {
   kind: 'delete_body'
   delete_body: DeleteBodyFeatureDef
@@ -828,6 +854,7 @@ export type PartFeature =
   | LinearPatternFeature
   | CircularPatternFeature
   | CurvePatternFeature
+  | InstancePatternFeature
   | DeleteBodyFeature
   | HoleFeature
   | TransformFeature
@@ -1548,6 +1575,12 @@ export type Mutation =
   | { type: 'set_curve_pattern_field'; featureId: string; field: keyof CurvePatternDef; value: unknown }
   | { type: 'add_curve_pattern_path'; featureId: string; pathQuery: string }
   | { type: 'remove_curve_pattern_path'; featureId: string; index: number }
+  // The instance pattern's targets ride in the add like the curve path does:
+  // one target per chip toggle. Its `sketch` / `targets` fields are inline.
+  | ({ type: 'add_instance_pattern'; featureId: string; label?: string } & Partial<InstancePatternDef> & FeatureInsertion)
+  | { type: 'set_instance_pattern_field'; featureId: string; field: keyof InstancePatternDef; value: unknown }
+  | { type: 'add_instance_pattern_target'; featureId: string; targetQuery: string }
+  | { type: 'remove_instance_pattern_target'; featureId: string; index: number }
   // One release only: the drive translates a legacy `add_pattern` payload
   // through the loader's own split (utils/core/patternSplit.ts) and replies with
   // a deprecation note. Nothing in the app emits it, and no catalog example

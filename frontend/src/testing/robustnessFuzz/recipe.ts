@@ -148,6 +148,15 @@ export interface RecipeCurveArray {
   orientation: 'tangent' | 'fixed'
 }
 
+export interface RecipeInstanceArray {
+  kind: 'instance-array'
+  id: string
+  target: string
+  // Target points on the world XY plane; the source's centroid is the
+  // reference, so each copy is translated by point - centroid.
+  points: [number, number][]
+}
+
 export interface RecipeMirror {
   kind: 'mirror'
   id: string
@@ -203,6 +212,7 @@ export type RecipeStep =
   | RecipeLinearArray
   | RecipeCircularArray
   | RecipeCurveArray
+  | RecipeInstanceArray
   | RecipeMirror
   | RecipeShell
   | RecipeHelix
@@ -234,6 +244,10 @@ export interface RecipeOptions {
   // reads those fields and the main stream is untouched, so every existing
   // pinned seed draws the same chain.
   patternInstanceModel?: boolean
+  // Append one instance-array step drawn from a DERIVED PRNG
+  // (`seed ^ INSTANCE_PATTERN_SALT`), the same rule: a new seed family that
+  // leaves every existing chain byte-identical.
+  instancePatternTail?: boolean
   // Append one curve-array step drawn from a DERIVED PRNG
   // (`seed ^ CURVE_PATTERN_SALT`), the same rule: a new seed family that leaves
   // every existing chain byte-identical.
@@ -427,6 +441,7 @@ export function generateRecipe(seed: number, options: RecipeOptions = {}): Recip
   if (options.patternInstanceModel) applyPatternInstanceModel(steps, seed)
   if (options.splitTail) steps.push(drawSplitTail(seed))
   if (options.curvePatternTail) steps.push(drawCurvePatternTail(seed))
+  if (options.instancePatternTail) steps.push(drawInstancePatternTail(seed))
   return { seed, steps }
 }
 
@@ -450,6 +465,24 @@ function drawCurvePatternTail(seed: number): RecipeCurveArray {
     distance: grid(drawInt(rnd, 2, 4)),
     orientation: drawOf(rnd, ['tangent', 'fixed'] as const),
   }
+}
+
+/** The derived stream the instance-pattern tail reads. */
+export const INSTANCE_PATTERN_SALT = 0x6b1f4c23
+
+/**
+ * The one instance-array step an `instancePatternTail` recipe appends. The
+ * targets are two to four grid points on the world XY plane; the body
+ * subject's centroid is the reference, so each copy is a pure translation.
+ */
+function drawInstancePatternTail(seed: number): RecipeInstanceArray {
+  const rnd = makePrng((seed ^ INSTANCE_PATTERN_SALT) >>> 0)
+  const count = drawInt(rnd, 2, 4)
+  const points: [number, number][] = []
+  for (let i = 0; i < count; i++) {
+    points.push([grid(drawInt(rnd, -4, 4)), grid(drawInt(rnd, -4, 4))])
+  }
+  return { kind: 'instance-array', id: 'instance_tail', target: PRIMARY_BODY, points }
 }
 
 /** The derived stream the instance-model sweep reads. */

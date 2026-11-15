@@ -234,6 +234,7 @@ describe('set_*_field field names', () => {
     set_linear_pattern_field: 'count',
     set_circular_pattern_field: 'angle',
     set_curve_pattern_field: 'spacing',
+    set_instance_pattern_field: 'orientation',
     set_hole_field: 'diameter',
     set_transform_field: 'rotation_axis',
     set_mirror_field: 'keep_original',

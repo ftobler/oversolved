@@ -58,8 +58,14 @@ const RATCHETS: Ratchet[] = [
     // longer in the union) as a raw record in yamlMigrations' source-features
     // fold, and patternSplit keeps one `Dict` alias for the payload it rewrites;
     // the new-kind rows themselves narrow by `kind`.
+    // 368: the instance pattern's three new kernel modules (pickTarget,
+    // sketchPointSites, instancePattern) each spell one `Dict` alias for the
+    // heterogeneous pick/sketch payload they read from the repository, and the
+    // shared drill-site wording names that same bag. The union rows themselves
+    // are narrowed by `kind`; these records are the repository boundary, the
+    // same allowance the other leaf leaves already spend.
     token: 'Record<string, unknown>',
-    baseline: 364,
+    baseline: 368,
   },
 ]
 

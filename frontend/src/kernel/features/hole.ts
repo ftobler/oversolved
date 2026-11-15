@@ -25,7 +25,8 @@ import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
 import { parseSketchEntityRef, sketchIdFromQuery, soleEntityInQuery } from './shared/bodyRef'
-import { circleDrillSiteReason, constructionOnlyPointsReason, noPointDrillSiteReason, type SketchCircleKind } from './shared/drillSite'
+import { HOLE_SITE_WORDING } from './shared/drillSite'
+import { pickedPointSite, sketchPointSites } from './shared/sketchPointSites'
 import { resolveBody } from './shared/bodyResolution'
 import { mergeBrepDiff } from './shared/brepDiff'
 import { stripRefSigil } from '@/utils/refSigil'
@@ -200,47 +201,24 @@ function drillSite(
  * entity and does drill.
  */
 
-/** What the sketch's circles offer when no point can be drilled. */
-function circleKindOf(entities: Dict[]): SketchCircleKind {
-  if (entities.some((e) => e.kind === 'circle' && e.construction !== true)) return 'real'
-  return entities.some((e) => e.kind === 'circle') ? 'construction' : 'none'
-}
-
+/** The hole's own prefix around the shared sketch-point site rule. The rule
+ *  and its sentences live in shared/sketchPointSites.ts, where the instance
+ *  pattern's sketch form reads the same one. */
 function drilledEntities(
   entities: Dict[],
   sketchId: string,
   entityId: string | null,
 ): Dict[] {
-  if (entityId === null) {
-    const candidates = entities.filter((e) => e.kind === 'point')
-    const sites = candidates.filter((e) => e.construction !== true)
-    if (sites.length === 0) {
-      const circle = circleKindOf(entities)
-      if (candidates.length > 0) {
-        throw new Error('hole: ' + constructionOnlyPointsReason(sketchId, circle))
-      }
-      throw new Error('hole: ' + noPointDrillSiteReason(sketchId, circle))
-    }
-    return sites
+  try {
+    return entityId === null
+      ? sketchPointSites(entities, sketchId, HOLE_SITE_WORDING)
+      : [pickedPointSite(entities, sketchId, entityId, HOLE_SITE_WORDING)]
+  } catch (e) {
+    // A kernel trap must escape unwrapped; only the site rule's own sentence
+    // takes the leaf name.
+    swallowUnlessTrap(e)
+    throw new Error('hole: ' + (e instanceof Error ? e.message : String(e)))
   }
-  const picked = entities.find((e) => e.id === entityId)
-  if (picked === undefined) throw new Error(`hole: sketch '${sketchId}' has no entity '${entityId}'`)
-  if (picked.kind === 'circle') {
-    throw new Error('hole: ' + circleDrillSiteReason(sketchId, entityId, picked.construction === true))
-  }
-  if (picked.kind === 'point') {
-    if (picked.construction === true) {
-      throw new Error(
-        `hole: '${entityId}' of sketch ${sketchId} is a construction point, which names no drill site; ` +
-        'construction geometry is reference only; toggle its construction off to drill it, or pick the sketch itself',
-      )
-    }
-    return [picked]
-  }
-  throw new Error(
-    `hole: '${entityId}' of sketch ${sketchId} is a ${picked.kind}, which names no drill site; ` +
-    'pick a sketch point, or the sketch itself',
-  )
 }
 
 /**
