@@ -234,6 +234,12 @@ const INTERFACE_CLASSES: Record<string, string[] | null> = {
   OccInterfaceModel: ['Interface_InterfaceModel'],
   OccStepWriter: ['STEPControl_Writer'],
   OccStlWriter: ['StlAPI_Writer'],
+  // Nothing of its own to probe in this release: GeomLib (a namespace, so not
+  // a constructor) and BRepOffset_MakeOffset are NOT bound in the pinned OCCT
+  // build. moveFaceRungs.ts probes both with `typeof`, and the rung 3/4 tests
+  // are it.skipIf(!bound); a release bump that binds them flips those tests on.
+  OccOptionalNamespace: null,
+  OccFaceOffsetMaker: null,
 }
 
 /**
