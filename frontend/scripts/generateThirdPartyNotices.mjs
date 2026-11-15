@@ -13,9 +13,9 @@
 // output, so a trace of them does ship, under the same MIT terms the file
 // already reproduces many times over. The published notices say so.
 //
-// OpenCascade is deliberately absent here: it is installed with `--no-save`
-// and is not reachable from package.json, so it is documented by hand in
-// public/third_party/opencascade/ instead.
+// OpenCascade is deliberately absent here: it is downloaded from its own
+// release (scripts/occProvision.mjs) and is not reachable from package.json, so
+// it is documented by hand in public/third_party/opencascade/ instead.
 //
 // Usage:
 //   node scripts/generateThirdPartyNotices.mjs            # write the bundle

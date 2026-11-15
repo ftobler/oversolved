@@ -5,7 +5,6 @@
 // measure reply carrying the same list. Real kernel, gated like the other
 // drive real suites.
 
-import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { runHeadless, measureHeadless, seedBuiltins } from '../headlessOps'
@@ -14,20 +13,11 @@ import { runReply } from '../mcpDocRef'
 import { MUTATION_EXAMPLES } from '../mutationExamples'
 import { HOLE_ALL_SITES_MISS, HOLE_ON_LINE_SKETCH } from './featureFixtures'
 import { nonSketchProblems } from './buildProblems'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
-
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 
 const oc = occInstalled()
 const solveBytes = loadSolver()

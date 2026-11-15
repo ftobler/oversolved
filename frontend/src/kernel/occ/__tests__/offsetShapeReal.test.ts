@@ -5,7 +5,7 @@
 // plan's analytic values, the shell-wrap for non-primitive input, and the
 // failure of a clearance the tool cannot take.
 //
-// Skips when opencascade.js is absent, like the other real-OCC gates.
+// Skips when the OCC build is absent, like the other real-OCC gates.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../loadOcc'

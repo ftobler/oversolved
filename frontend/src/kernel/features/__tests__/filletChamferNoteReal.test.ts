@@ -9,7 +9,7 @@
 //
 // Geometry: a 20 x 10 rounded rectangle (r2) extruded 5, whose top loop is four
 // lines and four corner arcs, all tangent. One top-line pick blends the loop.
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'

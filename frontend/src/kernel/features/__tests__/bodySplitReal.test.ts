@@ -9,7 +9,7 @@
 // features/bodySplit.ts; these tests drive the leaves directly against real OCC
 // and assert the body STORE, not just the ids a leaf happens to return.
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'
@@ -31,7 +31,7 @@ import type { Body } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
 
 // Nothing excludes a *Real suite from the default run, and a local checkout
-// need not have opencascade.js installed, so an unguarded non-null assertion
+// need not have the OCC build installed, so an unguarded non-null assertion
 // here turns every case into a null-deref. Assert non-null
 // for the helpers below and gate every describe on `hasOcc`, as the other
 // *Real suites do.

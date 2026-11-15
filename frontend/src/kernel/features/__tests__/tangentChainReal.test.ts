@@ -8,7 +8,7 @@
 // measured against TOL_MOVE_FACE_TANGENT in both directions, a stadium loop is
 // one chain, and picks that already cover it add nothing.
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'

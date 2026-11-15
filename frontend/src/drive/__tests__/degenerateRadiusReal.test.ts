@@ -7,7 +7,6 @@
 // answers it with an overconstrained verdict, the area builder finishes, and
 // `solve.lastError` stays null: no trap, no module reload.
 
-import { createRequire } from 'node:module'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import type { PartDoc, SketchFeature } from '@/types/cad'
 import { setSketchSolver, setSketchTopology, solveSketch } from '@/kernel/features/sketch'
@@ -15,20 +14,12 @@ import { initGlobalRepo } from '@/kernel/query'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { runHeadless } from '../headlessOps'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { setOccLoader } from '@/kernel/solveLocally'
 
 const solveBytes = loadSolver()
 const topologyBytes = loadTopology()
 
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 const oc = occInstalled()
 
 /** The re-created practice sketch: a 101 x 151 rounded rectangle (r9) whose

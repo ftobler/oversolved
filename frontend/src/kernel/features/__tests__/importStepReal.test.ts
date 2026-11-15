@@ -6,7 +6,7 @@
 // and scale 2, and asserts the result dict + imported body volume match Python.
 // Exercises the emscripten-FS STEP read path (write/export is deferred to phase 3).
 //
-// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot;
+// Skips when the OCC build is absent. The fixture is a frozen golden snapshot;
 // its generator (gen_importstep_fixture.py) was deleted with the Python kernel
 // in phase 4d.
 //
@@ -28,6 +28,7 @@ import { Repository } from '../../query'
 import { solveImportStep } from '../importStep'
 import type { Body } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
+import { noProgress } from '../../occ/defaultArgs'
 import fixture from '../../occ/__fixtures__/importStep.json'
 
 const oc = await loadOcc()
@@ -82,9 +83,9 @@ function twoPlacementStepB64(occ: OccModule): string {
   try {
     const part = makeBoxAt(occ, scope, [0, 0, 0], 10, 10, 10)
     const mover = scope.track(
-      new occ.BRepBuilderAPI_Transform_2(part, makeTranslationTrsf(occ, scope, 40, 0, 0), false),
+      new occ.BRepBuilderAPI_Transform_2(part, makeTranslationTrsf(occ, scope, 40, 0, 0), false, false),
     )
-    mover.Build()
+    mover.Build(noProgress(occ))
     const builder = scope.track(new occ.BRep_Builder())
     const compound = scope.track(new occ.TopoDS_Compound())
     builder.MakeCompound(compound)

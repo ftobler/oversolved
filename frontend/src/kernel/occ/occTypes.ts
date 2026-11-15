@@ -1,19 +1,25 @@
 /**
- * The opencascade.js (Donalffons fork, OCCT 7.4.0p1) embind surface the kernel
+ * The OCCT 8.0.1 embind surface (the ftobler/oversolved-occt build) the kernel
  * actually touches. Member names mirror the real module exactly, so the live
  * module satisfies this interface with a single structural cast.
  *
- * Overload suffixes (`_1`, `_2`, ...) and exact arities are not cosmetic: they
- * were pinned against the real 1.1.1 build. Examples that bit during porting:
- *   - `BRepPrimAPI_MakeBox_2` wants 4 args; the 3-arg box is `_1`.
- *   - `BRep_Tool.Triangulation` is 2 args in this build (no datatype arg).
+ * The build's generator keeps opencascade.js naming: several constructors
+ * become classes `C_1`, `C_2`, ...; an overloaded method `M` becomes `M_1`,
+ * `M_2`, ...; N is the position among the public declarations of that name in
+ * header order. A class with one public constructor binds it on the class
+ * itself. The suffixes and exact arities are not cosmetic, and embind binds no
+ * default arguments, so every defaulted parameter is passed:
+ *   - `BRepPrimAPI_MakeBox_2` is the 3-arg box; `_3` the (corner, dx, dy, dz) form.
+ *   - `BRep_Tool.Triangulation` takes the mesh purpose as a third argument.
+ *   - Every `Build`/`Perform` that OCCT declares with a defaulted
+ *     `Message_ProgressRange` takes one: pass `noProgress(oc)` (defaultArgs.ts).
  *   - There is no `TopTools_ListIteratorOfListOfShape`; drain a list with
  *     `Size()` + `First_1()` + `RemoveFirst()`.
  */
 
 export interface OccDisposable {
   delete(): void
-  // opencascade.js embind proxies expose this guard.
+  // embind proxies expose this guard.
   isDeleted?(): boolean
 }
 
@@ -115,7 +121,7 @@ export interface OccThruSectionsBuilder extends OccDisposable {
   CheckCompatibility(check: boolean): void
   AddWire(wire: OccShape): void
   AddVertex(vertex: OccShape): void
-  Build(): void
+  Build(progress: OccDisposable): void
   IsDone(): boolean
   Shape(): OccShape
   FirstShape(): OccShape
@@ -155,11 +161,14 @@ export interface OccPipeShellBuilder extends OccPrismBuilder {
   // SetMode overloads in this build (SpineSupport, gp_Ax2, gp_Dir, Frenet
   // boolean); the gp_Dir one is the binormal mode a constant-axis helix sweep
   // wants, pinning the profile's orientation to a fixed direction instead of
-  // the CorrectedFrenet frame. The overload suffix is pinned by
+  // the CorrectedFrenet frame. `SetMode_1` is the boolean Frenet law, the
+  // fallback a B-spline spine needs (OCCT 8 refuses it under the default
+  // corrected-Frenet law). The overload suffixes are pinned by
   // helixEdgeProbeReal.test.ts.
+  SetMode_1(isFrenet: boolean): void
   SetMode_3(dir: OccDisposable): void
   Add_1(profile: OccShape, withContact: boolean, withCorrection: boolean): void
-  Build(): void
+  Build(progress: OccDisposable): void
   IsDone(): boolean
   MakeSolid(): boolean
 }
@@ -190,18 +199,18 @@ export interface OccModifierHistory extends OccDisposable {
 export interface OccEdgeModifierMaker extends OccModifierHistory {
   Add_2(value: number, edge: OccShape): void
   AddDA(distance: number, angle: number, edge: OccShape, face: OccShape): void
-  Build(): void
+  Build(progress: OccDisposable): void
   IsDone(): boolean
   Shape(): OccShape
 }
 
 /**
  * BRepOffsetAPI_MakeThickSolid: hollow a solid to a wall thickness with zero or
- * more closing (removed) faces. `MakeThickSolidByJoin` is the OCCT 7.4.0p1 9-arg
- * form (shape, closingFaces, offset, tol, mode, intersection, selfInter, join,
- * removeIntEdges); embind binds every argument, so the shorter defaults of some
- * OCCT wrappers are not available here. History: a kept face `Generated()` its
- * offset wall, a removed face `Modified()` into its rim.
+ * more closing (removed) faces. `MakeThickSolidByJoin` is the 10-arg form
+ * (shape, closingFaces, offset, tol, mode, intersection, selfInter, join,
+ * removeIntEdges, progress); embind binds every argument, defaulted or not.
+ * History: a kept face `Generated()` its offset wall, a removed face
+ * `Modified()` into its rim.
  */
 export interface OccThickSolidMaker extends OccModifierHistory {
   MakeThickSolidByJoin(
@@ -214,8 +223,9 @@ export interface OccThickSolidMaker extends OccModifierHistory {
     selfInter: boolean,
     join: OccEnumValue,
     removeIntEdges: boolean,
+    progress: OccDisposable,
   ): void
-  Build(): void
+  Build(progress: OccDisposable): void
   IsDone(): boolean
   Shape(): OccShape
 }
@@ -223,12 +233,11 @@ export interface OccThickSolidMaker extends OccModifierHistory {
 /**
  * BRepOffsetAPI_MakeOffsetShape: the 3D offset/clearance maker and the shell
  * fallback (a BRepBuilderAPI_MakeShape subclass, so it shares the builder
- * history surface). `PerformByJoin` is the OCCT 7.4.0p1 8-arg form (shape, offset,
- * tol, mode, intersection, selfInter, join, thickening); there is no
- * `Message_ProgressRange` overload in this build. History is `Generated` (NOT
- * `Modified`): for every source face exactly one grown face comes back, which
- * `IsSame`s a face of the result. `Shape()` is untracked for our purposes (the
- * caller owns it/registers it).
+ * history surface). `PerformByJoin` is the 9-arg form (shape, offset, tol,
+ * mode, intersection, selfInter, join, removeIntEdges, progress). History is
+ * `Generated` (NOT `Modified`): for every source face exactly one grown face
+ * comes back, which `IsSame`s a face of the result. `Shape()` is untracked for
+ * our purposes (the caller owns it/registers it).
  */
 export interface OccOffsetShapeMaker extends OccModifierHistory {
   PerformByJoin(
@@ -240,8 +249,9 @@ export interface OccOffsetShapeMaker extends OccModifierHistory {
     selfInter: boolean,
     join: OccEnumValue,
     removeIntEdges: boolean,
+    progress: OccDisposable,
   ): void
-  Build(): void
+  Build(progress: OccDisposable): void
   IsDone(): boolean
   Shape(): OccShape
 }
@@ -252,20 +262,19 @@ export interface OccOffsetShapeMaker extends OccModifierHistory {
  * boolean-style history surface (IsDeleted / Modified / Generated, present only
  * after `SetToFillHistory(true)`) without the boolean argument/tool calls.
  *
- * Bound methods pinned against opencascade.js 1.1.1 (OCCT 7.4.0p1) by
- * defeatureReal.test.ts: `SetShape`, `AddFaceToRemove`, `AddFacesToRemove`,
- * `SetToFillHistory`, `Build`, `IsDone`, `Shape`, `IsDeleted`, `Modified`,
- * `Generated`. The BOPAlgo_Options side (`HasErrors` / warnings) is NOT bound,
- * so the "feature could not be removed" warning OCCT prints is invisible here;
- * `IsDeleted(face) == false` on a requested face is the only failure signal
- * (a silent no-op otherwise reads as a valid result).
+ * Bound methods pinned by defeatureReal.test.ts: `SetShape`, `AddFaceToRemove`,
+ * `AddFacesToRemove`, `SetToFillHistory`, `Build`, `IsDone`, `Shape`,
+ * `IsDeleted`, `Modified`, `Generated`. The BOPAlgo_Options side (`HasErrors` /
+ * warnings) is NOT bound, so the "feature could not be removed" warning OCCT
+ * prints is invisible here; `IsDeleted(face) == false` on a requested face is
+ * the only failure signal (a silent no-op otherwise reads as a valid result).
  */
 export interface OccDefeaturingMaker extends OccModifierHistory {
   SetShape(shape: OccShape): void
   AddFaceToRemove(face: OccShape): void
   AddFacesToRemove(faces: OccListOfShape): void
   SetToFillHistory(fill: boolean): void
-  Build(): void
+  Build(progress: OccDisposable): void
   IsDone(): boolean
   Shape(): OccShape
 }
@@ -298,7 +307,7 @@ export interface OccBooleanOp extends OccDisposable {
   SetArguments(args: OccListOfShape): void
   SetTools(tools: OccListOfShape): void
   SetToFillHistory(fill: boolean): void
-  Build(): void
+  Build(progress: OccDisposable): void
   IsDone(): boolean
   HasHistory(): boolean
   History(): OccHistoryHandle
@@ -312,7 +321,7 @@ export interface OccSplitter extends OccDisposable {
   SetArguments(args: OccListOfShape): void
   SetTools(tools: OccListOfShape): void
   SetToFillHistory(fill: boolean): void
-  Build(): void
+  Build(progress: OccDisposable): void
   IsDone(): boolean
   HasHistory(): boolean
   History(): OccHistoryHandle
@@ -322,7 +331,7 @@ export interface OccSplitter extends OccDisposable {
 /**
  * IntCurvesFace_ShapeIntersector: cast a line against a shape and read the
  * hits in order. `Perform_1` is the gp_Lin form (3 args: line, PInf, PSup);
- * the `_2` form takes a Handle_Adaptor3d_HCurve, which is how the build
+ * the `_2` form takes a Handle_Adaptor3d_Curve, which is how the build
  * names the two overloads. `WParameter(i)` is the signed parameter on the
  * line, i.e. the distance from its origin, and `Face(i)` the hit face.
  * There is no gp_Lin reader after the fact, so keep the line alive until the
@@ -337,7 +346,8 @@ export interface OccShapeIntersector extends OccDisposable {
   Face(index: number): OccShape
 }
 
-/** One BRepOffset_Interval: the edge-convexity the analyse classified. */
+/** One BRepOffset_Interval: the edge-convexity the analyse classified, a
+ *  `ChFiDS_TypeOfConcavity` (OCCT 7.6 retired `BRepOffset_Type`). */
 export interface OccOffsetInterval extends OccDisposable {
   Type_2(): OccEnumValue
 }
@@ -357,15 +367,16 @@ export interface OccOffsetAnalyse extends OccDisposable {
 }
 
 /** BRepClass_FaceClassifier: classify a point against a face (IN / ON / OUT).
- *  Constructed empty, then Perform_2 run per point. */
+ *  Constructed empty, then Perform_2 run per point. Both forms end in OCCT's
+ *  defaulted (useBndBox, gapCheckTol); pass the defaults from defaultArgs.ts. */
 export interface OccFaceClassifier extends OccDisposable {
   // The 3D form: the point is projected onto the face's surface first.
-  Perform_2(face: OccShape, pnt: OccPnt, tol: number): void
+  Perform_2(face: OccShape, pnt: OccPnt, tol: number, useBndBox: boolean, gapCheckTol: number): void
   // The 2D form: the point is already in the surface's parameter space, so it
   // classifies against the face's wires without the projection (which is
   // unreliable on a closed surface: a point below a cone's base circle
   // projects onto the other nappe). Move-face's curved kinds use this one.
-  Perform_1(face: OccShape, pnt2d: OccPnt2d, tol: number): void
+  Perform_1(face: OccShape, pnt2d: OccPnt2d, tol: number, useBndBox: boolean, gapCheckTol: number): void
   State(): OccEnumValue
 }
 
@@ -599,16 +610,17 @@ export interface OccVertexBuilder extends OccDisposable {
 
 export interface OccShapeFixFace extends OccDisposable {
   FixOrientation_1(): boolean
-  Perform(): void
+  Perform(progress: OccDisposable): void
   Face(): OccShape
 }
 
 export interface OccShapeFixWire extends OccDisposable {
   Load_1(wire: OccShape): void
   SetPrecision(precision: number): void
-  FixReorder_1(): boolean
+  // OCCT's default modeBoth is false.
+  FixReorder_1(modeBoth: boolean): boolean
   FixConnected_1(precision: number): boolean
-  Perform(): void
+  Perform(progress: OccDisposable): void
   Wire(): OccShape
 }
 
@@ -623,11 +635,15 @@ export interface OccSubShape extends OccDisposable {
   IsPartner(other: OccDisposable): boolean
   /** The same shape carried under `loc`. Passing an identity `TopLoc_Location`
    *  strips the placement, which is what makes `IsSame`/`HashCode` compare two
-   *  differently-placed instances of one TShape as equal. */
-  Located(loc: OccDisposable): OccShape
+   *  differently-placed instances of one TShape as equal. `raiseExc` is OCCT's
+   *  defaulted check for a scaled location; pass false, the default. */
+  Located(loc: OccDisposable, raiseExc: boolean): OccShape
   /** TShape-derived hash in [1, upperBound], orientation-independent (matches
-   *  `IsSame`). Bounded, so equal hashes still need an `IsSame` confirm. */
-  HashCode(upperBound: number): number
+   *  `IsSame`). Bounded, so equal hashes still need an `IsSame` confirm.
+   *  OCCT 7.8 replaced the member with `std::hash<TopoDS_Shape>`, so it exists
+   *  only where the build binds it by hand; subshapeIdentity.ts reads it
+   *  optionally. */
+  HashCode?(upperBound: number): number
 }
 
 /** gp_Ax1 read accessors (gp_Circle/gp_Ellipse .Axis()/.XAxis()). By-value
@@ -661,6 +677,16 @@ export interface OccCurveAdaptor extends OccDisposable {
   /** The B-spline this edge was built from (only when GetType is
    *  GeomAbs_BSplineCurve). */
   BSpline(): OccBSplineHandle
+}
+
+/** Bnd_Box: the per-corner reads of an axis-aligned box. */
+export interface OccBndBox extends OccDisposable {
+  GetXMin(): number
+  GetYMin(): number
+  GetZMin(): number
+  GetXMax(): number
+  GetYMax(): number
+  GetZMax(): number
 }
 
 /** Opaque embind enum value (e.g. `TopAbs_ShapeEnum.TopAbs_FACE`). */
@@ -705,8 +731,12 @@ export interface OccBaseModule {
   }
   TopLoc_Location_1: new () => OccDisposable
   BRep_Tool: {
-    Triangulation(face: OccShape, loc: OccDisposable): OccTriangulationHandleBasic
+    // purpose is a Poly_MeshPurpose bit set; 0 (Poly_MeshPurpose_NONE) is
+    // OCCT's default and returns the active triangulation.
+    Triangulation(face: OccShape, loc: OccDisposable, purpose: number): OccTriangulationHandleBasic
   }
+  // The null progress range defaulted arguments take (defaultArgs.ts).
+  Message_ProgressRange_1: new () => OccDisposable
 }
 
 export interface OccModule extends OccBaseModule {
@@ -714,7 +744,7 @@ export interface OccModule extends OccBaseModule {
   // plus VERTEX exploration, edge/vertex casts, and the curve adaptor.
   TopLoc_Location_1: new () => OccLocation
   BRep_Tool: {
-    Triangulation(face: OccShape, loc: OccLocation): OccTriangulationHandle
+    Triangulation(face: OccShape, loc: OccLocation, purpose: number): OccTriangulationHandle
     /** The edge's polygon on the face's triangulation, or a null handle when
      *  the face is unmeshed or has no polygon for this edge. Overload _1 is
      *  (E, Handle(Poly_Triangulation), TopLoc_Location&) in this build. */
@@ -762,12 +792,15 @@ export interface OccModule extends OccBaseModule {
   }
 
   // ─── shape construction ───
-  gp_Dir_4: new (x: number, y: number, z: number) => OccXYZ
+  // gp_Dir(x, y, z). OCCT 8 added the gp_Dir::D constructor (an enum nested in
+  // gp_Dir, so not bound), which still counts in the numbering: `_5`.
+  gp_Dir_5: new (x: number, y: number, z: number) => OccXYZ
   // gp_Lin(location, direction): the infinite line the shape intersector
   // casts. `_1` is the no-arg ctor; `_2` the gp_Ax1 form.
   gp_Lin_3: new (location: OccPnt, direction: OccXYZ) => OccDisposable
   IntCurvesFace_ShapeIntersector: new () => OccShapeIntersector
-  gp_Ax2_3: new (origin: OccPnt, normal: OccXYZ) => OccDisposable
+  // gp_Ax2(location, N): `_3` is the unbound gp_Dir::D form.
+  gp_Ax2_4: new (origin: OccPnt, normal: OccXYZ) => OccDisposable
   // gp_Ax2(location, N, Vx): the 3-arg form used to orient a circle.
   gp_Ax2_2: new (origin: OccPnt, normal: OccXYZ, xDir: OccXYZ) => OccDisposable
   gp_Circ_2: new (axis: OccDisposable, radius: number) => OccDisposable
@@ -811,9 +844,10 @@ export interface OccModule extends OccBaseModule {
   BRepBuilderAPI_MakeEdge_8: new (circle: OccDisposable) => OccEdgeBuilder
   BRepBuilderAPI_MakeEdge_24: new (curve: OccDisposable) => OccEdgeBuilder
   BRepBuilderAPI_MakeWire_1: new () => OccWireBuilder
-  BRepPrimAPI_MakeBox_1: new (dx: number, dy: number, dz: number) => OccPrismBuilder
+  // `_1` is the empty constructor OCCT 7.6 added.
+  BRepPrimAPI_MakeBox_2: new (dx: number, dy: number, dz: number) => OccPrismBuilder
   // BRepPrimAPI_MakeBox(corner, dx, dy, dz): an axis-aligned box at a corner.
-  BRepPrimAPI_MakeBox_2: new (corner: OccPnt, dx: number, dy: number, dz: number) => OccPrismBuilder
+  BRepPrimAPI_MakeBox_3: new (corner: OccPnt, dx: number, dy: number, dz: number) => OccPrismBuilder
   BRepPrimAPI_MakeCylinder_3: new (axis: OccDisposable, radius: number, height: number) => OccCylinderBuilder
   // BRepPrimAPI_MakeCone(ax2, r1, r2, height): a cone/frustum (r1 at the axis
   // origin, r2 at the far end; r2 = 0 makes a full cone).
@@ -838,9 +872,9 @@ export interface OccModule extends OccBaseModule {
     // The adaptive surface read: it refines until the relative error estimate
     // is at most Eps and returns that estimate. Probe-only: occ/volume.ts
     // reads SurfaceProperties_1, because this eps rule is the inaccurate one
-    // on a BSPLINE surface (gpropEpsReal pins 6.65% on the lateral face).
-    // OCCT 7.4.0p1's eps overloads are exactly these 4 parameters; the probe
-    // pins that arity.
+    // on a BSPLINE surface (gpropEpsReal pins the error on the lateral face).
+    // The eps overloads are exactly these 4 parameters; the probe pins that
+    // arity.
     SurfaceProperties_2(
       shape: OccShape,
       props: OccGProps,
@@ -856,8 +890,8 @@ export interface OccModule extends OccBaseModule {
       useTriangulation: boolean,
     ): void
     // The adaptive volume read, the same Eps form as SurfaceProperties_2.
-    // OCCT 7.4.0p1's eps overloads are exactly these 5 parameters; the probe
-    // pins that arity.
+    // The eps overloads are exactly these 5 parameters; the probe pins that
+    // arity.
     VolumeProperties_2(
       shape: OccShape,
       props: OccGProps,
@@ -868,8 +902,8 @@ export interface OccModule extends OccBaseModule {
     // The Gauss-Kronrod adaptive volume read. It carries the same relative
     // accuracy target as the eps overload but, unlike it, stays accurate on a
     // BSPLINE surface (the probe in gpropEpsReal pins both sides of that).
-    // OCCT 7.4.0p1's signature is (S, VProps, Eps, OnlyClosed, IsUseSpan,
-    // CGFlag, IFlag, SkipShared); opencascade.js marshals all eight.
+    // The signature is (S, VProps, Eps, OnlyClosed, IsUseSpan, CGFlag, IFlag,
+    // SkipShared); embind marshals all eight.
     VolumePropertiesGK_1(
       shape: OccShape,
       props: OccGProps,
@@ -908,17 +942,10 @@ export interface OccModule extends OccBaseModule {
 
   // ─── bounding box ───
   // The embind suffix is `_1` (the plain `Bnd_Box` name is bound without a
-  // constructor), and `Get` takes six out-params emscripten does not marshal,
-  // so the per-corner accessors are the working read. Verified against
-  // opencascade.js@1.1.1 (OCCT 7.4.0p1).
-  Bnd_Box_1: new () => OccDisposable & {
-    GetXmin(): number
-    GetYmin(): number
-    GetZmin(): number
-    GetXmax(): number
-    GetYmax(): number
-    GetZmax(): number
-  }
+  // constructor), and `Get_1` takes six out-params embind does not marshal,
+  // so the per-corner accessors are the working read (OCCT 8 spells them
+  // `GetXMin`, the older `GetXmin` is gone).
+  Bnd_Box_1: new () => OccBndBox
   BRepBndLib: {
     // Enlarges by each sub-shape's tolerance and boxes a B-spline's control
     // net. Tight enough for the oracle's analytic surfaces, not what an
@@ -944,19 +971,25 @@ export interface OccModule extends OccBaseModule {
   BRepAlgoAPI_Common_1: new () => OccBooleanOp
   TopTools_ListOfShape_1: new () => OccListOfShape
   // ─── boundary-distance probe (booleans.shapesTouch) ───
-  // BRepExtrema_DistShapeShape in this build binds three ctors: `_1` is the
-  // empty one (0 args), `_2` takes (shape1, shape2, deflection, flag), `_3`
-  // adds the algorithm (5 args). There is NO 2-arg form, so the deflection is
-  // not optional here; the suffix is pinned against opencascade.js 1.1.1 by
-  // bodyOpsTouchProbeReal.test.ts, which fails at solve time if it is wrong.
-  BRepExtrema_DistShapeShape_2: new (
+  // BRepExtrema_DistShapeShape binds three ctors: `_1` is the empty one, `_2`
+  // takes (shape1, shape2, flag, algo, progress), `_3` puts a deflection after
+  // the shapes. Every argument is passed (embind has no defaults); the suffix
+  // is pinned by bodyOpsTouchProbeReal.test.ts, which fails at solve time if it
+  // is wrong.
+  BRepExtrema_DistShapeShape_3: new (
     shape1: OccShape,
     shape2: OccShape,
     deflection: number,
     flag: OccEnumValue,
+    algo: OccEnumValue,
+    progress: OccDisposable,
   ) => OccExtrema
   Extrema_ExtFlag: {
     Extrema_ExtFlag_MIN: OccEnumValue
+  }
+  // Extrema_ExtAlgo_Grad is OCCT's default algorithm.
+  Extrema_ExtAlgo: {
+    Extrema_ExtAlgo_Grad: OccEnumValue
   }
   ShapeUpgrade_UnifySameDomain_2: new (
     shape: OccShape,
@@ -966,9 +999,10 @@ export interface OccModule extends OccBaseModule {
   ) => OccUnify
 
   // ─── 3D offset / clearance (offsetShape.ts) ───
-  // BRepOffsetAPI_MakeOffsetShape: the plain (suffix-free) maker is the one
-  // bound; PerformByJoin's offset-mode and join-type args come from the two enums.
-  BRepOffsetAPI_MakeOffsetShape_1: new () => OccOffsetShapeMaker
+  // BRepOffsetAPI_MakeOffsetShape: one public constructor, so it is bound on
+  // the class itself; PerformByJoin's offset-mode and join-type args come from
+  // the two enums.
+  BRepOffsetAPI_MakeOffsetShape: new () => OccOffsetShapeMaker
   BRepOffset_Mode: {
     BRepOffset_Skin: OccEnumValue
     BRepOffset_Pipe: OccEnumValue
@@ -1019,10 +1053,14 @@ export interface OccModule extends OccBaseModule {
   ) => OccFaceBuilder
   BRepTools_ReShape: new () => OccReShape
   ShapeFix_Shape_2: new (shape: OccShape) => OccShapeFixShape
-  // Null progress indicator (ShapeFix_Shape.Perform requires the argument).
-  Handle_Message_ProgressIndicator_1: new () => OccDisposable
-  // BRepCheck_Analyzer(shape, geomControls): plain (suffix-free) ctor in this build.
-  BRepCheck_Analyzer: new (shape: OccShape, geomControls: boolean) => OccShapeAnalyzer
+  // BRepCheck_Analyzer(shape, geomControls, isParallel, isExact): one public
+  // constructor, so suffix-free. OCCT's defaults are (true, false, false).
+  BRepCheck_Analyzer: new (
+    shape: OccShape,
+    geomControls: boolean,
+    isParallel: boolean,
+    isExact: boolean,
+  ) => OccShapeAnalyzer
 
   // ─── assembly export: gather disjoint bodies into one compound shape ───
   // STEP/STL export of a whole assembly writes a single TopoDS_Compound built
@@ -1067,7 +1105,8 @@ export interface OccModule extends OccBaseModule {
   Geom_CylindricalSurface_1: new (frame: OccDisposable, radius: number) => OccDisposable
   Geom2d_Line_3: new (pnt: OccDisposable, dir: OccDisposable) => OccDisposable
   gp_Pnt2d_3: new (x: number, y: number) => OccPnt2d
-  gp_Dir2d_4: new (x: number, y: number) => OccDisposable
+  // `_2` is the unbound gp_Dir2d::D form, as with gp_Dir.
+  gp_Dir2d_5: new (x: number, y: number) => OccDisposable
   Handle_Geom2d_Curve_2: new (curve: OccDisposable) => OccDisposable
   Handle_Geom_Surface_2: new (surface: OccDisposable) => OccDisposable
   BRepBuilderAPI_MakeEdge_31: new (
@@ -1107,11 +1146,11 @@ export interface OccModule extends OccBaseModule {
   }
 
   // ─── shell leaf ───
-  // BRepOffsetAPI_MakeThickSolid: the shell's open-face maker. The `_1` ctor is
-  // the default form the shipped build binds (verified against opencascade.js
-  // 1.1.1, OCCT 7.4.0p1). It shares BRepOffsetAPI_MakeOffsetShape (declared with
-  // the clearance block above) and the two join enums.
-  BRepOffsetAPI_MakeThickSolid_1: new () => OccThickSolidMaker
+  // BRepOffsetAPI_MakeThickSolid: the shell's open-face maker, one public
+  // constructor bound on the class itself. It shares
+  // BRepOffsetAPI_MakeOffsetShape (declared with the clearance block above) and
+  // the two join enums.
+  BRepOffsetAPI_MakeThickSolid: new () => OccThickSolidMaker
 
   // ─── move-face leaf ───
   // Split a slab by extended neighbour faces, then fuse/cut the cells under the
@@ -1119,14 +1158,15 @@ export interface OccModule extends OccBaseModule {
   BRepAlgoAPI_Splitter_1: new () => OccSplitter
   // BRepOffset_Analyse(shape, angleTol): edge convexity classification.
   BRepOffset_Analyse_2: new (shape: OccShape, angle: number) => OccOffsetAnalyse
-  BRepOffset_Type: {
-    BRepOffset_Convex: OccEnumValue
-    BRepOffset_Concave: OccEnumValue
-    BRepOffset_Tangent: OccEnumValue
-    BRepOffset_FreeBoundary: OccEnumValue
-    BRepOffset_Other: OccEnumValue
+  // What BRepOffset_Interval.Type_2() returns (BRepOffset_Type until OCCT 7.6).
+  ChFiDS_TypeOfConcavity: {
+    ChFiDS_Convex: OccEnumValue
+    ChFiDS_Concave: OccEnumValue
+    ChFiDS_Tangential: OccEnumValue
+    ChFiDS_FreeBound: OccEnumValue
+    ChFiDS_Other: OccEnumValue
   }
-  // BRepClass_FaceClassifier(): empty ctor + Perform_2(face, pnt, tol).
+  // BRepClass_FaceClassifier(): empty ctor + Perform_2(face, pnt, tol, ...).
   BRepClass_FaceClassifier_1: new () => OccFaceClassifier
   // BRepClass3d_SolidClassifier(solid, pnt, tol): classify a point against a
   // solid; the cavity fold uses it to find which solid encloses a void.
@@ -1188,8 +1228,14 @@ export interface OccModule extends OccBaseModule {
 
   // ─── transform / mirror / array group ───
   gp_Trsf_1: new () => OccTrsf
-  // BRepBuilderAPI_Transform(shape, trsf, copy): apply a gp_Trsf to a shape.
-  BRepBuilderAPI_Transform_2: new (shape: OccShape, trsf: OccTrsf, copy: boolean) => OccTransformBuilder
+  // BRepBuilderAPI_Transform(shape, trsf, copyGeom, copyMesh): apply a gp_Trsf
+  // to a shape. copyMesh is OCCT's defaulted false.
+  BRepBuilderAPI_Transform_2: new (
+    shape: OccShape,
+    trsf: OccTrsf,
+    copy: boolean,
+    copyMesh: boolean,
+  ) => OccTransformBuilder
   /** BRepBuilderAPI_Copy(shape, copyGeom, copyMesh): independent deep copy of a
    *  shape (the defensive copy used to isolate checkpoint snapshots). */
   BRepBuilderAPI_Copy_2: new (shape: OccShape, copyGeom: boolean, copyMesh: boolean) => OccCopyBuilder
@@ -1237,7 +1283,8 @@ export interface OccReShapeHandle extends OccDisposable {
   get(): OccReShape | null
 }
 
-/** ShapeFix_Shape: the general healer (here: project missing face pcurves). */
+/** ShapeFix_Shape: the general healer (here: project missing face pcurves).
+ *  `progress` is a Message_ProgressRange (a null indicator handle until OCCT 7.5). */
 export interface OccShapeFixShape extends OccDisposable {
   Perform(progress: OccDisposable): boolean
   Shape(): OccShape
@@ -1263,7 +1310,7 @@ export interface OccTrsf extends OccDisposable {
 }
 
 export interface OccTransformBuilder extends OccDisposable {
-  Build(): void
+  Build(progress: OccDisposable): void
   IsDone(): boolean
   Shape(): OccShape
   Modified(s: OccShape): OccListOfShape
@@ -1296,8 +1343,9 @@ export interface OccTransientHandle<T> extends OccDisposable {
 
 /** STEPControl_Reader: read a STEP file from the emscripten FS into a shape. */
 export interface OccStepReader extends OccDisposable {
-  ReadFile(path: string): OccEnumValue
-  TransferRoots(): number
+  // `_1` on STEPControl_Reader; `_2` takes DESTEP_Parameters.
+  ReadFile_1(path: string): OccEnumValue
+  TransferRoots(progress: OccDisposable): number
   OneShape(): OccShape
   // The work session, the way through to the transfer reader.
   WS(): OccTransientHandle<OccWorkSession>
@@ -1356,11 +1404,13 @@ export interface OccInterfaceModel {
 
 /** STEPControl_Writer: serialise a shape to a STEP file on the emscripten FS. */
 export interface OccStepWriter extends OccDisposable {
-  Transfer(shape: OccShape, mode: OccEnumValue, compound: boolean): OccEnumValue
+  // `_2` takes DESTEP_Parameters.
+  Transfer_1(shape: OccShape, mode: OccEnumValue, compound: boolean, progress: OccDisposable): OccEnumValue
   Write(path: string): OccEnumValue
 }
 
-/** StlAPI_Writer: serialise a shape to an STL file on the emscripten FS. */
+/** StlAPI_Writer: serialise a shape to an STL file on the emscripten FS. `_2`
+ *  writes to a stream, which has no JS form. */
 export interface OccStlWriter extends OccDisposable {
-  Write(shape: OccShape, path: string): boolean
+  Write_1(shape: OccShape, path: string, progress: OccDisposable): boolean
 }

@@ -2,9 +2,9 @@
 //
 // The adaptive BRepGProp reads. OCCT 7.4.0p1 declares a second overload of
 // VolumeProperties and SurfaceProperties that takes a relative accuracy and
-// returns the achieved error estimate. opencascade.js 1.1.1 exports them as
-// _2, but the binding strips the C++ parameter names; this file probes the
-// argument order before the shared read in occ/volume.ts relies on it.
+// returns the achieved error estimate. The shipped OCCT 8.0.1 build exports
+// them as _2, but the binding strips the C++ parameter names; this file probes
+// the argument order before the shared read in occ/volume.ts relies on it.
 //
 // Skips when OCC.js is absent, like the other *Real suites. The timing cases
 // run only with GPROP_EPS_TIMING=1 so the gate stays fast.

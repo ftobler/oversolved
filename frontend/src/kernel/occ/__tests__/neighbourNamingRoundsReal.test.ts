@@ -8,7 +8,7 @@
 //   2. a group of new faces whose base uuid some face already holds takes the next
 //      free multiplicities instead of laying a second claim on it.
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'

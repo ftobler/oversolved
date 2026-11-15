@@ -138,7 +138,7 @@ describe.skipIf(!oc || !solveBytes)('extrude taper (real OCC + Rust solver)', ()
         faces: canonicalFaces(oc!, scope, shape).length,
         edges: ((h.body(result, bodyId).edges as unknown[]) ?? []).length,
         bbox: shapeBbox(oc!, scope, shape),
-        valid: scope.track(new oc!.BRepCheck_Analyzer(shape, true)).IsValid_2(),
+        valid: scope.track(new oc!.BRepCheck_Analyzer(shape, true, false, false)).IsValid_2(),
         mesh: (h.body(result, bodyId).mesh as Dict) ?? {},
       }
     } finally {

@@ -3,7 +3,7 @@
 // Real-OCC check that the three presets order as intended on a curved part: a
 // cylinder's lateral surface is where angular deflection binds, so fine must
 // yield strictly more triangles than normal, and normal more than coarse.
-// Skips when opencascade.js is not installed (npm run occ:install).
+// Skips when the OCC build is not installed (npm run occ:install).
 //
 // The exact "normal equals the old export" pin lives in the pure
 // tessellationPresets test; there is no need to burn a real mesher on it here.

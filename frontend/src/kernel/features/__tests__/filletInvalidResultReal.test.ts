@@ -83,7 +83,7 @@ describe.skipIf(!oc || !solveBytes)('fillet invalid-result gate (real OCC + Rust
     const scope = new DisposeScope()
     try {
       const surviving = shapeAfter(h, r, 'hwxVBDxDF7b5EOWhqESDSQlu')
-      expect(scope.track(new oc!.BRepCheck_Analyzer(surviving, true)).IsValid_2()).toBe(true)
+      expect(scope.track(new oc!.BRepCheck_Analyzer(surviving, true, false, false)).IsValid_2()).toBe(true)
     } finally {
       scope.dispose()
     }
@@ -104,7 +104,7 @@ describe.skipIf(!oc || !solveBytes)('fillet invalid-result gate (real OCC + Rust
     const scope = new DisposeScope()
     try {
       const built = shapeAfter(h, r, BAD_FILLET)
-      expect(scope.track(new oc!.BRepCheck_Analyzer(built, true)).IsValid_2()).toBe(true)
+      expect(scope.track(new oc!.BRepCheck_Analyzer(built, true, false, false)).IsValid_2()).toBe(true)
     } finally {
       scope.dispose()
     }

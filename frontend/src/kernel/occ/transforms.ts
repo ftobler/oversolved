@@ -8,6 +8,7 @@ import type { OccModule, OccShape, OccTrsf } from './occTypes'
 import type { Vec3 } from './primitives'
 import type { Transform3D } from '../../types/cad'
 import { quatToAxisAngle } from '../../utils/transform3d'
+import { noProgress } from './defaultArgs'
 
 export function makeTranslationTrsf(oc: OccModule, scope: DisposeScope, dx: number, dy: number, dz: number): OccTrsf {
   const t = scope.track(new oc.gp_Trsf_1())
@@ -28,7 +29,7 @@ export function makeRotationTrsf(
   const ax = scope.track(
     new oc.gp_Ax1_2(
       scope.track(new oc.gp_Pnt_3(origin[0], origin[1], origin[2])),
-      scope.track(new oc.gp_Dir_4(direction[0], direction[1], direction[2])),
+      scope.track(new oc.gp_Dir_5(direction[0], direction[1], direction[2])),
     ),
   )
   const t = scope.track(new oc.gp_Trsf_1())
@@ -47,9 +48,9 @@ export function makeMirrorTrsf(oc: OccModule, scope: DisposeScope, origin: numbe
     throw new Error('mirror normal must be a non-zero vector')
   }
   const ax2 = scope.track(
-    new oc.gp_Ax2_3(
+    new oc.gp_Ax2_4(
       scope.track(new oc.gp_Pnt_3(origin[0], origin[1], origin[2])),
-      scope.track(new oc.gp_Dir_4(normal[0], normal[1], normal[2])),
+      scope.track(new oc.gp_Dir_5(normal[0], normal[1], normal[2])),
     ),
   )
   const t = scope.track(new oc.gp_Trsf_1())
@@ -59,8 +60,8 @@ export function makeMirrorTrsf(oc: OccModule, scope: DisposeScope, origin: numbe
 
 /** Apply a gp_Trsf to a shape (copy=true), returning the raw result shape (mirrors `transform_copy`). */
 export function transformCopy(oc: OccModule, scope: DisposeScope, shape: OccShape, trsf: OccTrsf): OccShape {
-  const builder = scope.track(new oc.BRepBuilderAPI_Transform_2(shape, trsf, true))
-  builder.Build()
+  const builder = scope.track(new oc.BRepBuilderAPI_Transform_2(shape, trsf, true, false))
+  builder.Build(noProgress(oc))
   if (!builder.IsDone()) throw new Error('transform builder did not complete')
   return builder.Shape()
 }

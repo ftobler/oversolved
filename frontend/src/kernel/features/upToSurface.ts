@@ -46,6 +46,7 @@ import { sameEnum } from '../occ/enumValue'
 import { OCC_CONFUSION, TOL_SURFACE_IDENTITY } from '../solverConstants'
 import { UP_TO_REACH } from './upTo'
 import { swallowUnlessTrap } from '../errors'
+import { noProgress } from '../occ/defaultArgs'
 
 const TWO_PI = 2 * Math.PI
 
@@ -99,7 +100,7 @@ export function orientToFace(
   const line = scope.track(
     new oc.gp_Lin_3(
       scope.track(new oc.gp_Pnt_3(profileOrigin[0], profileOrigin[1], profileOrigin[2])),
-      scope.track(new oc.gp_Dir_4(dir[0], dir[1], dir[2])),
+      scope.track(new oc.gp_Dir_5(dir[0], dir[1], dir[2])),
     ),
   )
   const intersector = scope.track(new oc.IntCurvesFace_ShapeIntersector())
@@ -177,7 +178,7 @@ export function offsetFace(
   if (!Number.isFinite(delta) || delta === 0) {
     throw new Error('extrude up_to: up_to_offset must be a non-zero finite distance')
   }
-  const op = scope.track(new oc.BRepOffsetAPI_MakeOffsetShape_1())
+  const op = scope.track(new oc.BRepOffsetAPI_MakeOffsetShape())
   op.PerformByJoin(
     face,
     delta,
@@ -187,6 +188,7 @@ export function offsetFace(
     false,
     oc.GeomAbs_JoinType.GeomAbs_Intersection,
     false,
+    noProgress(oc),
   )
   if (!op.IsDone()) {
     throw new Error('extrude up_to: could not offset the target face by the up_to_offset')

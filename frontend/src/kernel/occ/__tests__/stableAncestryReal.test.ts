@@ -5,7 +5,7 @@
 // are identical when the same shape is built twice, and that a fillet
 // operation introduces new UUIDs while inherited ones stay.
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../loadOcc'

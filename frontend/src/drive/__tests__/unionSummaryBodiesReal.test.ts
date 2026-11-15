@@ -4,27 +4,17 @@
 // each cut by a merge_target extrude in the same call (birdhouse F2: the reply
 // said `bodies: none` while measure found body_ex1). Real kernel.
 
-import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import { runHeadless, emptyDriveDoc, measureHeadless } from '../headlessOps'
 import { DocHandleStore } from '../docHandleStore'
 import { runReply } from '../mcpDocRef'
 import type { ScriptStep } from '../scriptRunner'
 import type { PartDoc } from '@/types/cad'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
-
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 
 const oc = occInstalled()
 const solveBytes = loadSolver()

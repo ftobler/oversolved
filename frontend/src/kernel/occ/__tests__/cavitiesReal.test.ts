@@ -5,7 +5,7 @@
 // seed 134): the enclosing solid plus the void as its own inside-out solid.
 // The fuse itself is pinned end to end by the seed-134 regression fixture.
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'

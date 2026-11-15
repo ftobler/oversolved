@@ -4,7 +4,7 @@
 // edges `readSolidEdges` exposes to a pick and `select`. The probe decides the
 // question: the Ex026 block (20 x 20 x 10, r2 on four vertical and four bottom
 // edges) has four three-fillet sphere corners, and each corner leaves one
-// degenerated edge that has no geometry to pick. Skips when opencascade.js is
+// degenerated edge that has no geometry to pick. Skips when the OCC build is
 // absent.
 
 import { describe, it, expect } from 'vitest'

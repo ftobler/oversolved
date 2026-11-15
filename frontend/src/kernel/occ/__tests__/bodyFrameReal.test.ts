@@ -6,7 +6,7 @@
 // the render mesh. These tests pin the mechanism: `bodyFrame` (vertices + edge
 // samples) reproduces the mesh AABB on a cylinder where a vertex-only box would
 // collapse, and faces + edges classify against that one shared frame. Skips when
-// opencascade.js is absent (npm run occ:install).
+// the OCC build is absent (npm run occ:install).
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../loadOcc'

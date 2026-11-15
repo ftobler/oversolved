@@ -2,7 +2,7 @@
 //
 // Real-OCC guard for the bezier + ellipse edge builders that let a sketch
 // profile carry spline / full-ellipse boundary edges (sketch area builder ->
-// extrude). Skips when opencascade.js is absent.
+// extrude). Skips when the OCC build is absent.
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'

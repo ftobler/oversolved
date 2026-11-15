@@ -11,7 +11,7 @@
 // runs without the Rust sketch solver; a harness-based version with real
 // sketches is left to the gate where that solver is built.
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'

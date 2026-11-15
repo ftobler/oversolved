@@ -5,7 +5,7 @@
 // centroid the kernel failed to read) and a genuine near-tie both fail the
 // solve, but with distinct messages: the first is a geometry failure with no
 // fix, the second is an ambiguous split the user can nudge. The stub exists
-// because opencascade.js throws while BUILDING a degenerate shape (a zero-size
+// because the OCC build throws while BUILDING a degenerate shape (a zero-size
 // box dies inside BRepPrimAPI_MakeBox), so a NaN centroid is not reachable
 // through real geometry.
 

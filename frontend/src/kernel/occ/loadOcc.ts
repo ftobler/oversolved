@@ -1,75 +1,53 @@
 /**
- * Load the real opencascade.js (Donalffons fork, OCCT 7.4.0p1) for headless
- * (Node/vitest) use, returning an [[OccModule]] or `null` when it is absent.
+ * Load the real OCCT 8.0.1 build (ftobler/oversolved-occt, pinned in
+ * frontend/occ.pin.json) for headless (Node/vitest) use, returning an
+ * [[OccModule]] or `null` when it is absent.
  *
- * opencascade.js is treated exactly like the wasm-pack solver build: a heavy,
- * gitignored, opt-in artifact, NOT a package.json dependency, so CI and a fresh
- * `just frontend` never pull its ~66 MB. Install it locally to run the gated
- * Real tests:
+ * The build is treated exactly like the wasm-pack solver build: a heavy,
+ * gitignored, opt-in artifact, NOT a package.json dependency, so a fresh
+ * checkout's `just frontend` never pulls its ~21 MB (CI's test job provisions it
+ * explicitly for the Real suites). Download, verify and provision it
+ * locally to run the gated Real tests:
  *
- *   cd frontend && npm run occ:install     # npm i --no-save + the occ.pin.json check
+ *   just install-occ     # occ:install (download + sha256 check) and occ:provision
  *
- * When it is not installed this resolves to `null` and the gated Real tests
- * skip, mirroring `loadSolver.ts`.
+ * Headless reads the provisioned copy in public/occ, the same verified bytes
+ * the browser fetches. When it is not there this resolves to `null` and the
+ * gated Real tests skip, mirroring `loadSolver.ts`.
  *
- * Loading quirks pinned against the real build:
- *   - The dist file (`opencascade.wasm.js`) mixes CommonJS `require()` with an
- *     ESM `export default`, so Node's ESM loader rejects it with
- *     ERR_AMBIGUOUS_MODULE_SYNTAX. We read it, rewrite the export to
- *     `module.exports`, and require it as CommonJS (there is no real top-level
- *     await, so CJS is safe).
- *   - Emscripten's node path otherwise `fetch()`es the .wasm by file path and
- *     fails to parse it as a URL; we pre-read the bytes and pass `wasmBinary`,
- *     which short-circuits both fetch and fs.
+ * `occt.js` is a real ES module (MODULARIZE + EXPORT_ES6, node among its
+ * environments), so it is imported as is. The wasm bytes are pre-read and
+ * passed as `wasmBinary`, which short-circuits the runtime's own file lookup.
  *
- * The browser/Worker build is a separate loader (the `--target web`-style
- * dynamic import); this Node loader is what the headless suites, the drive/MCP
- * kernel worker and the regen scripts use.
+ * The browser/Worker build is a separate loader; this Node loader is what the
+ * headless suites, the drive/MCP kernel worker and the regen scripts use.
  */
 
-import { createRequire } from 'node:module'
-import { readFileSync, writeFileSync, mkdtempSync, rmSync } from 'node:fs'
-import os from 'node:os'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import type { OccModule } from './occTypes'
 import { memoizedLoad } from './memoizedLoad'
 
-type OccFactory = (config: {
-  wasmBinary: Uint8Array
-  locateFile: (p: string) => string
-}) => Promise<OccModule>
+type OccFactory = (config: { wasmBinary: Uint8Array }) => Promise<OccModule>
+
+/** The provisioned OCCT build: frontend/public/occ. The one place headless
+ *  code and the gated Real tests name it. */
+export function occDistDir(): string {
+  return path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'public', 'occ')
+}
+
+/** The provisioned `occt.js`. */
+export function occDistPath(): string {
+  return path.join(occDistDir(), 'occt.js')
+}
 
 const occ = memoizedLoad(async (): Promise<OccModule | null> => {
   try {
-    const require = createRequire(import.meta.url)
-    const distPath = require.resolve('opencascade.js/dist/opencascade.wasm.js')
-    const wasmPath = distPath.replace(/\.js$/, '.wasm')
-    const src = readFileSync(distPath, 'utf8').replace(
-      /export default opencascade;\s*$/,
-      'module.exports = opencascade;',
-    )
-    // The rewritten copy is only needed for the require: once it returns the
-    // module lives in memory, so the directory goes at once. Left behind, one
-    // copy per load (every vitest worker, trap recovery and MCP process) filled
-    // a RAM-backed /tmp to 40 GB.
-    const dir = mkdtempSync(path.join(os.tmpdir(), 'occjs-'))
-    let factory: OccFactory
-    try {
-      const cjsPath = path.join(dir, 'opencascade.cjs')
-      writeFileSync(cjsPath, src)
-      factory = require(cjsPath) as OccFactory
-      // Each reload after resetOcc() has a fresh path, so the cache entry
-      // would only pin one more dead copy of the script per recovery.
-      delete require.cache[cjsPath]
-    } finally {
-      try {
-        rmSync(dir, { recursive: true, force: true })
-      } catch {
-        // A failed cleanup must not turn a loaded kernel into "OCC absent".
-      }
-    }
-    const wasmBinary = readFileSync(wasmPath)
-    return await factory({ wasmBinary, locateFile: (p) => p })
+    const jsPath = occDistPath()
+    const factory = (await import(  /* @vite-ignore */ pathToFileURL(jsPath).href) as { default: OccFactory }).default
+    const wasmBinary = readFileSync(path.join(occDistDir(), 'occt.wasm'))
+    return await factory({ wasmBinary })
   } catch {
     return null
   }
@@ -83,16 +61,11 @@ export function resetOcc(): void {
 }
 
 /**
- * Cheap "is OCC.js installed" probe: resolving the package only, no WASM
+ * Cheap "is OCC installed" probe: the provisioned files only, no WASM
  * instantiation. Suites whose kernel work runs in a forked child (which loads
  * its own kernel) gate on this instead of `loadOcc()` so the parent fork does
  * not hold a second ~0.5 GB heap the vitest memory model does not count.
  */
 export function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
+  return existsSync(occDistPath()) && existsSync(path.join(occDistDir(), 'occt.wasm'))
 }

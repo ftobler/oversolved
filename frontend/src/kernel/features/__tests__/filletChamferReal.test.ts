@@ -11,7 +11,7 @@
 // per-body edge index always emits, so the test does not depend on cross-build
 // edge enumeration order.
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'

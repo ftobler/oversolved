@@ -58,8 +58,8 @@ export async function describeRealFuzzShard(shard: number): Promise<void> {
   // 3 s on the fake side alone while reporting green. The recipe sets
   // FUZZ_REQUIRE_REAL so the long run refuses to count without the real kernel.
   describe.runIf(process.env.FUZZ_REQUIRE_REAL === '1')(`the fuzz real-kernel requirement (${label})`, () => {
-    it('has opencascade.js and the solver build loaded', () => {
-      expect(oc, 'opencascade.js missing: run `just install-occ`').not.toBeNull()
+    it('has the OCC build and the solver build loaded', () => {
+      expect(oc, 'the OCC build is missing: run `just install-occ`').not.toBeNull()
       expect(solveBytes, 'solver pkg-node missing: run `just wasm`').not.toBeNull()
     })
   })

@@ -4,7 +4,7 @@
 // construction UUIDs, exactly like the extrude/revolve profile paths. When the
 // upstream edit reorders faces and the stored index's face no longer carries a
 // resolvable UUID, the helix must refuse by name instead of reading the raw
-// index (which may hit a different cylinder). Skips when opencascade.js is
+// index (which may hit a different cylinder). Skips when the OCC build is
 // absent.
 
 import { describe, it, expect } from 'vitest'

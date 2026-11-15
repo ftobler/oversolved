@@ -6,7 +6,7 @@
 // pipeline, and asserts geometry parity (volume + face/edge/solid counts) plus
 // the BrepDiff classification (new/inherited partition + Python's exact counts).
 //
-// Skips (not fails) when opencascade.js is absent, like the other real-OCC
+// Skips (not fails) when the OCC build is absent, like the other real-OCC
 // tests. Install with: cd frontend && npm run occ:install.
 
 import { describe, it, expect, beforeAll } from 'vitest'

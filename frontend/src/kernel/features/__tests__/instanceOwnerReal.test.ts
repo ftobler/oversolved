@@ -7,7 +7,7 @@
 // called twice with the same feature id, and `transferBooleanNames` carrying a
 // target and a tool owner through one boolean.
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'

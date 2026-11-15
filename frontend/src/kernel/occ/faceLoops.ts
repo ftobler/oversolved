@@ -3,7 +3,7 @@
  * in the face's own plane parameter space, plus the plane frame -- the input the extrude /
  * revolve "from an existing planar face" path needs.
  *
- * opencascade.js@1.1.1 specifics (probed): the wire explorer is `BRepTools_WireExplorer_3(wire,
+ * Shipped-build specifics (probed): the wire explorer is `BRepTools_WireExplorer_3(wire,
  * face)` (the `_2` form takes only the wire); the face PCurve is `BRepAdaptor_Curve2d_2(edge,
  * face)`; `BRepTools.OuterWire` is the static (no `_s` suffix in this build). Faces are picked
  * from the same `_face_sort_key` order Python uses (flat-before-curved, then normal, then

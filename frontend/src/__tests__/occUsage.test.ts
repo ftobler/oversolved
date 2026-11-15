@@ -1,9 +1,9 @@
-// The generated input for a slim opencascade.js build: occ.used.json lists the
+// The generated input for the OCCT build: occ.used.json lists the
 // OCCT bindings the app touches, derived from occTypes.ts plus every `oc.` /
 // `occ.` access in src/. The list must not drift from the code: the check test
-// below fails when a new access is not in the file (the slim build would then
-// drop a binding the app calls), and the fixture cases drive both directions
-// plus the emscripten-runtime split without needing a real build.
+// below fails when a new access is not in the file (the build's classes.txt
+// would then miss a binding the app calls), and the fixture cases drive both
+// directions plus the emscripten-runtime split without needing a real build.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -130,12 +130,12 @@ describe('occUsage', () => {
 
   it('records emscripten members in the runtime list, not as bindings', () => {
     const { src, out } = makeFixture(join(workDir, 'runtime'), {
-      code: 'occ.FS.readFile("/a")\noc.HEAP32[x]\noc.UTF8ToString(0)\n',
+      code: 'occ.FS.readFile("/a")\noc.getExceptionMessage(e)\noc.decrementExceptionRefcount(e)\n',
     })
     expect(run(['generate', '--src', src, '--out', out]).status).toBe(0)
     const used = readUsed(out)
     expect(used.symbols).toEqual([])
-    expect(used.runtime).toEqual(['FS', 'HEAP32', 'UTF8ToString'])
+    expect(used.runtime).toEqual(['FS', 'decrementExceptionRefcount', 'getExceptionMessage'])
   })
 
   it('ignores lowercase properties and text in prose', () => {

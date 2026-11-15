@@ -43,8 +43,8 @@ dev:
 # Build the deployable app into frontend/dist. One build, one artifact: the app
 # is static files, so any file server can host it and there is nothing to
 # configure per deployment. Assumes public/occ + public/wasm are already
-# provisioned by `just install` (occ:provision needs the --no-save
-# opencascade.js dep, so it belongs to install, not to every build).
+# provisioned by `just install` (occ:provision needs the downloaded OCCT
+# release, so it belongs to install, not to every build).
 
 # Build the deployable static app into frontend/dist.
 [working-directory: "frontend"]
@@ -311,7 +311,7 @@ icons:
 # The solver build is not optional for the gates: without pkg-node every
 # real-kernel suite skips silently.
 
-# Install all dependencies (Python + frontend + wasm tools + solver build + opencascade.js).
+# Install all dependencies (Python + frontend + wasm tools + solver build + OCCT release).
 install:
     mkdir -p tmp
     # note cairo needs apt libcairo2-dev
@@ -339,7 +339,7 @@ install-wasm:
     mkdir -p tmp
     cargo install wasm-pack --version 0.15.0 --locked --root tmp/tools 2>&1 | tee tmp/cargo_install_wasm_pack.log
 
-# Install opencascade.js (--no-save) and provision it into public/occ.
+# Download, verify and provision the pinned OCCT release into public/occ.
 [working-directory: "frontend"]
 install-occ:
     mkdir -p ../tmp
@@ -355,7 +355,10 @@ install-occ:
 # once; a branch that changes Rust rebuilds its own copy with `just wasm`.
 # Cargo's target/ is not seeded, so each worktree compiles in isolation. A
 # re-run never replaces an output already present, link or copy, so it cannot
-# clobber a branch's own build.
+# clobber a branch's own build. The vendored OCC build is shared by link, which
+# is a convenience only while the branch keeps the same occ.pin.json: a branch
+# that repins must replace that link with a directory and run `just install-occ`
+# (provision refuses to write through a shared link that holds another build).
 
 # Create .worktrees/<topic> on feature/<topic> from dev, deps linked, WASM copied.
 worktree topic:

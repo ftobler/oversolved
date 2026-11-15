@@ -1,7 +1,8 @@
 // Discrete curvature for the Curvature row, computed on the tessellation itself.
 //
-// The kernel binding for `BRepLProp_SLProps` / `GeomLProp_SLProps` is not in the
-// pinned opencascade.js build, so this is the mesh fallback the plan allows. It
+// The kernel does bind `BRepLProp_SLProps`, but that reads at a surface point,
+// not at a render vertex, and the shading needs one value per vertex of the
+// triangle soup; this is the mesh fallback the plan allows. It
 // is a main-thread derivation, not solve wire: nothing here runs unless the row
 // is on, and a normal solve never carries curvature data.
 //

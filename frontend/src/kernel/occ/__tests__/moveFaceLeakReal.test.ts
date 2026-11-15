@@ -10,7 +10,7 @@
 // one. Real geometry on purpose: a box top (planar slab + planar neighbours)
 // and a cylinder top (planar slab + a cylindrical neighbour).
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'

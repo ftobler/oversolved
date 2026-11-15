@@ -40,6 +40,7 @@ import type {
 import { volumeOfDefault } from './volume'
 import { faceSurfaceFrame } from './primitives'
 import { swallowUnlessTrap } from '../errors'
+import { noProgress } from './defaultArgs'
 
 const FIT_SAMPLES = 7  // grid per direction -> 49 samples per face
 const FIT_TOL = 1e-6  // max radial deviation for "this face IS a cylinder"
@@ -338,8 +339,8 @@ export function canonicalizeCylinderFaces(
       const xd = add(mul(e1, Math.cos(seam)), mul(e2, Math.sin(seam)))
       const frame = scope.track(new oc.gp_Ax3_3(
         scope.track(new oc.gp_Pnt_3(g.c[0], g.c[1], g.c[2])),
-        scope.track(new oc.gp_Dir_4(g.d[0], g.d[1], g.d[2])),
-        scope.track(new oc.gp_Dir_4(xd[0], xd[1], xd[2])),
+        scope.track(new oc.gp_Dir_5(g.d[0], g.d[1], g.d[2])),
+        scope.track(new oc.gp_Dir_5(xd[0], xd[1], xd[2])),
       ))
       const cylinder = scope.track(new oc.gp_Cylinder_2(frame, g.r))
       for (const fit of cluster) {
@@ -374,7 +375,7 @@ export function canonicalizeCylinderFaces(
     //    projects them.
     const substituted = scope.track(reshape.Apply(shape, E.TopAbs_FACE))
     const fixer = scope.track(new oc.ShapeFix_Shape_2(substituted))
-    fixer.Perform(scope.track(new oc.Handle_Message_ProgressIndicator_1()))
+    fixer.Perform(noProgress(oc))
     // Track healed immediately: the guards below can throw (the analyzer
     // constructor, the volume reads), and a rejected or thrown guard must not
     // strand the multi-sub-shape result on the WASM heap. The success path
@@ -383,7 +384,7 @@ export function canonicalizeCylinderFaces(
 
     // 5. Guards: an orientation slip would corrupt the solid, so require both
     //    BRepCheck validity and an unchanged volume before adopting the result.
-    if (!scope.track(new oc.BRepCheck_Analyzer(healed, true)).IsValid_2()) return identity
+    if (!scope.track(new oc.BRepCheck_Analyzer(healed, true, false, false)).IsValid_2()) return identity
     // Same geometry before and after the heal: the default rule's correlated
     // read error cancels in the difference, and the adaptive rule's own
     // refinement must not flip a verdict (see volumeOfDefault).

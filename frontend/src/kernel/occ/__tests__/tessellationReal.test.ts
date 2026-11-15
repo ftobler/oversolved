@@ -3,7 +3,7 @@
 // Dual-run mesh parity: build the same solids the Python kernel built (box,
 // cylinder, extruded square; the frozen meshFixtures.json snapshot), tessellate
 // with the OCC.js port, and assert the meshes match within
-// tessellation tolerance. Skips when opencascade.js is absent (npm run occ:install).
+// tessellation tolerance. Skips when the OCC build is absent (npm run occ:install).
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../loadOcc'

@@ -11,7 +11,7 @@
 // imported STEP geometry does and native features do not. See
 // occ/booleans.ts `hasFreeformFace`.
 //
-// Skips when opencascade.js or the Rust solver is absent.
+// Skips when the OCC build or the Rust solver is absent.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { readFileSync } from 'node:fs'

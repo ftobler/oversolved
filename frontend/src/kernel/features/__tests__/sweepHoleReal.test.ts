@@ -10,7 +10,7 @@
 // OCC-only: the geometry is exactly what the sketch area builder publishes, so
 // the tests do not depend on the Rust solver.
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'

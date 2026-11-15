@@ -2,17 +2,18 @@
 //
 // Gated test: STEP export (shape -> bytes) via STEPControl_Writer,
 // round-tripped back through stepBytesToShape and verified by volume parity.
-// opencascade.js must run under node (its emscripten FS path for STEP differs
-// from the browser Worker's --target web FS).
+// The node environment is required: the module's emscripten MEMFS is what the
+// STEP reader and writer go through.
 //
-// Skips when opencascade.js is absent. Install:
-//   cd frontend && npm run occ:install
+// Skips when OCC is absent. Install:
+//   just install-occ
 
 import { describe, it, expect, beforeAll, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'
 import type { OccModule, OccShape } from '../occTypes'
+import { noProgress } from '../defaultArgs'
 import { makeBox, makeBoxAt, faceCentroid } from '../primitives'
 import { makeTranslationTrsf } from '../transforms'
 import { stepShapeToBytes, stepBytesToShape, stepBytesToShapeWithIdentity, shapeToStlBytes, type StepReadResult } from '../stepIo'
@@ -309,9 +310,9 @@ describe.skipIf(!oc)('stepBytesToShapeWithIdentity (real OCC)', () => {
       // which is what a repeated assembly instance is, and it survives the STEP
       // round trip as one.
       const mover = scope.track(
-        new occ.BRepBuilderAPI_Transform_2(part, makeTranslationTrsf(occ, scope, 40, 0, 0), false),
+        new occ.BRepBuilderAPI_Transform_2(part, makeTranslationTrsf(occ, scope, 40, 0, 0), false, false),
       )
-      mover.Build()
+      mover.Build(noProgress(occ))
       builder.Add(compound, part)
       builder.Add(compound, mover.Shape())
       const bytes = stepShapeToBytes(occ, scope, compound)

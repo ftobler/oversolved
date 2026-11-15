@@ -3,7 +3,7 @@
 // Real-OCC geometry for transform.rotation_euler. The branch suite stubs the
 // trsf constructors, so it can prove only the conflict refusal; here the composed
 // rotation is applied to a real box and its bounding box and volume are read
-// back. Skips when opencascade.js is absent, like the other real-kernel leaves.
+// back. Skips when the OCC build is absent, like the other real-kernel leaves.
 //
 // The convention is extrinsic XYZ: rotate about world X first, then world Y,
 // then world Z. The order test uses a box that is not symmetric under the two

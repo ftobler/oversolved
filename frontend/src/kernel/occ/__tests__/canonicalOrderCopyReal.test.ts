@@ -17,7 +17,7 @@
 // Each copy is also checked to share no TShape with its source, so the
 // comparison is between two real shapes and not one shape read twice.
 //
-// Skips when opencascade.js or the Rust solver is absent.
+// Skips when the OCC build or the Rust solver is absent.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../loadOcc'

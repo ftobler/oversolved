@@ -72,7 +72,7 @@ describe.skipIf(!oc)('operational catches rethrow traps (real OCC)', () => {
     try {
       const box = makeBox(oc!, scope, 10, 10, 10)
       const closing = canonicalFaces(oc!, scope, box)[0]
-      const trapOc = ocWithThrowingClass('BRepOffsetAPI_MakeThickSolid_1', HEAP_TRAP)
+      const trapOc = ocWithThrowingClass('BRepOffsetAPI_MakeThickSolid', HEAP_TRAP)
       expect(() => applyShellWithLineage(trapOc, scope, box, [closing], 1, 'inward'))
         .toThrow(WebAssembly.RuntimeError)
     } finally {
@@ -85,7 +85,7 @@ describe.skipIf(!oc)('operational catches rethrow traps (real OCC)', () => {
     try {
       const box = makeBox(oc!, scope, 10, 10, 10)
       const oldNames = { ...emptyShapeNames(), createdBy: 'ex1' }
-      const trapOc = ocWithThrowingClass('BRepOffsetAPI_MakeOffsetShape_1', HEAP_TRAP)
+      const trapOc = ocWithThrowingClass('BRepOffsetAPI_MakeOffsetShape', HEAP_TRAP)
       expect(() => applyShellWithLineage(trapOc, scope, box, [], 1, 'inward', oldNames))
         .toThrow(WebAssembly.RuntimeError)
     } finally {
@@ -152,7 +152,7 @@ describe.skipIf(!oc)('operational catches rethrow traps (real OCC)', () => {
       try {
         const box = makeBox(oc!, scope, 10, 10, 10)
         const closing = canonicalFaces(oc!, scope, box)[0]
-        const plainOc = ocWithThrowingClass('BRepOffsetAPI_MakeThickSolid_1', () => new Error('join failed'))
+        const plainOc = ocWithThrowingClass('BRepOffsetAPI_MakeThickSolid', () => new Error('join failed'))
         expect(applyShellWithLineage(plainOc, scope, box, [closing], 1, 'inward').success).toBe(false)
       } finally {
         scope.dispose()
@@ -164,7 +164,7 @@ describe.skipIf(!oc)('operational catches rethrow traps (real OCC)', () => {
       try {
         const box = makeBox(oc!, scope, 10, 10, 10)
         const oldNames = { ...emptyShapeNames(), createdBy: 'ex1' }
-        const plainOc = ocWithThrowingClass('BRepOffsetAPI_MakeOffsetShape_1', () => new Error('offset failed'))
+        const plainOc = ocWithThrowingClass('BRepOffsetAPI_MakeOffsetShape', () => new Error('offset failed'))
         expect(applyShellWithLineage(plainOc, scope, box, [], 1, 'inward', oldNames).success).toBe(false)
       } finally {
         scope.dispose()

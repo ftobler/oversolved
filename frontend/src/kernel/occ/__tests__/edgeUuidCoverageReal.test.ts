@@ -14,7 +14,7 @@
 //      box, boolean cut).
 // (2) is the guard that would have caught the original break at commit time.
 //
-// Skips when opencascade.js (or, for the build-level lock, the Rust solver) is
+// Skips when the OCC build (or, for the build-level lock, the Rust solver) is
 // absent, like the other real-OCC gates.
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../loadOcc'

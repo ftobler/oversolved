@@ -10,7 +10,7 @@
 // matched them and the boolean fused only the source spoke. Listing the ids by
 // hand worked, which is the tell.
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'

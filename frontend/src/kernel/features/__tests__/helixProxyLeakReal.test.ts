@@ -12,7 +12,7 @@
 // the solve scope is disposed, nothing the accessor chain produced may still be
 // alive.
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'
 import { DisposeScope } from '../../occ/disposeScope'

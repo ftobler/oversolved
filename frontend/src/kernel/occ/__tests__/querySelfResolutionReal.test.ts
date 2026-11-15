@@ -15,7 +15,7 @@
 //      through the ancestral net: it resolves to it, or is ambiguous among
 //      siblings that include it. A miss, or a different element, fails.
 //
-// Skips when opencascade.js or the Rust solver is absent.
+// Skips when the OCC build or the Rust solver is absent.
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { SharedHarness } from '../sharedHarness'

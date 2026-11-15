@@ -164,7 +164,7 @@ function openSquare(oc: OccModule, scope: DisposeScope, x: number): OccShape {
 // A cube small enough that its volume stays below measureBodies' weight floor.
 function tinyBox(oc: OccModule, scope: DisposeScope, corner: [number, number, number]): OccShape {
   const p = scope.track(new oc.gp_Pnt_3(corner[0], corner[1], corner[2]))
-  return scope.track(new oc.BRepPrimAPI_MakeBox_2(p, 5e-5, 5e-5, 5e-5).Shape())
+  return scope.track(new oc.BRepPrimAPI_MakeBox_3(p, 5e-5, 5e-5, 5e-5).Shape())
 }
 
 // Birdhouse F1: a hand-drawn triangle joined only by coordinate (no coincident
@@ -343,8 +343,8 @@ describe.skipIf(!oc || !solveBytes)('measureLocally (real OCC + Rust solver)', (
       const box = looseScope.track(new kernel.Bnd_Box_1())
       for (const shape of shapes) kernel.BRepBndLib.Add(shape, box, false)
       loose = [
-        box.GetXmin(), box.GetYmin(), box.GetZmin(),
-        box.GetXmax(), box.GetYmax(), box.GetZmax(),
+        box.GetXMin(), box.GetYMin(), box.GetZMin(),
+        box.GetXMax(), box.GetYMax(), box.GetZMax(),
       ]
     } finally {
       looseScope.dispose()
@@ -363,9 +363,11 @@ describe.skipIf(!oc || !solveBytes)('measureLocally (real OCC + Rust solver)', (
         expect(record.bbox![axis]).toBeCloseTo(tight[axis], 6)
       }
       // The control-net box is the one the corpus froze before the shared
-      // measure; pin it too so the gap is reproducible, not assumed.
+      // measure; pin it too so the gap is reproducible, not assumed. Re-pinned
+      // on OCCT 8: y moved by one part in 1e-6 (the sweep's B-spline poles land
+      // a rounding step apart); the tight box above did not move.
       expect(loose.map((value) => +value.toFixed(6))).toEqual(
-        [-16.896365, -15.363061, -0.5, 10.5, 15.363061, 12.5],
+        [-16.896365, -15.363062, -0.5, 10.5, 15.363062, 12.5],
       )
       // Add is not a slightly larger box here; it is a different box, which is
       // why an external tool's bbox cannot be compared against it.

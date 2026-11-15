@@ -6,7 +6,7 @@
 // and asserts the result dict + the full post-op body-store state (per body:
 // volume, created_by, modified_by, face/edge lineage) match Python.
 //
-// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot;
+// Skips when the OCC build is absent. The fixture is a frozen golden snapshot;
 // its generator (gen_bodyop_fixture.py) was deleted with the Python kernel in
 // phase 4d.
 

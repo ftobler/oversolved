@@ -10,7 +10,7 @@
 // report overlap, so the real cut runs and raises the real BooleanSoundnessError,
 // proving the translation names the clearance instead of the tangency nudge.
 //
-// Skips when opencascade.js is absent, like the other real-OCC gates.
+// Skips when the OCC build is absent, like the other real-OCC gates.
 
 import { describe, it, expect, beforeAll, vi } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'

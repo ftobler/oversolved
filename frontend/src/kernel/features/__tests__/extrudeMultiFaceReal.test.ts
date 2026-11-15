@@ -7,7 +7,7 @@
 // prepared box bodies, slash face refs) so the assertion is on the produced
 // volume, not on a mock call.
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'

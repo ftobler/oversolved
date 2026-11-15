@@ -6,27 +6,17 @@
 // on the drilled body. Every unit test of one link passed while the app showed
 // nothing, so this pins the whole chain on the user's repro part: a 40 x 40 x 25
 // plate, M6x1, 5 mm bore blind 20, tapped 15.
-import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import type { Mesh3D, PartDoc, SketchData } from '@/types/cad'
 import { runHeadless, seedBuiltins } from '@/drive/headlessOps'
 import { partSolvePayload } from '@/drive/solveWriteBack'
 import type { ScriptStep } from '@/drive/scriptRunner'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader, solveLocally } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import { buildThreadAttributes, collectThreadSites, tappedFaces } from '../threadShading'
-
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 
 const oc = occInstalled()
 const solveBytes = loadSolver()

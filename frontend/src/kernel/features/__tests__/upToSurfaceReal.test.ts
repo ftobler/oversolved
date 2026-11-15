@@ -45,6 +45,7 @@ import { UP_TO_REACH } from '../upTo'
 import type { Repository } from '../../query'
 import type { Body } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
+import { noProgress } from '../../occ/defaultArgs'
 
 const oc = await loadOcc()
 
@@ -815,7 +816,7 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
       loft.CheckCompatibility(false)
       loft.AddWire(wire0)
       loft.AddWire(wire1)
-      loft.Build()
+      loft.Build(noProgress(occ2))
       expect(loft.IsDone()).toBe(true)
       const wallFaces = sortedFacesOf(occ2, scope, loft.Shape())
       expect(wallFaces).toHaveLength(1)

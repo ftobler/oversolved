@@ -6,7 +6,7 @@
 // case, a through-all case, and a partial-skip case, and asserts the result dict
 // plus the drilled body volume match Python.
 //
-// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot;
+// Skips when the OCC build is absent. The fixture is a frozen golden snapshot;
 // its generator (gen_hole_fixture.py) was deleted with the Python kernel in
 // phase 4d.
 

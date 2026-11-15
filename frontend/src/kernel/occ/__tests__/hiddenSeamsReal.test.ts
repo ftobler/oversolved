@@ -6,7 +6,7 @@
 // them as sparse indices beside the ordinary arrays; the arrays themselves are
 // the pre-feature result, byte for byte.
 //
-// Skips when opencascade.js is absent. Install:
+// Skips when the OCC build is absent. Install:
 //   cd frontend && npm run occ:install
 
 import { describe, it, expect, beforeAll } from 'vitest'

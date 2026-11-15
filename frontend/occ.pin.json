@@ -1,17 +1,20 @@
 {
-  "_comment": "Single source of truth for the pinned OpenCascade artifact. occ:install and occ:provision verify against it (scripts/occProvision.mjs); the version-consistency test reads it. The registry integrity is the npm packument's dist.integrity for the exact version and is what npm itself checks at install; the sha256 digests pin the two files as installed, so provisioning refuses bytes that did not come from that tarball.",
-  "package": "opencascade.js",
-  "version": "1.1.1",
-  "registry": {
-    "tarball": "https://registry.npmjs.org/opencascade.js/-/opencascade.js-1.1.1.tgz",
-    "integrity": "sha512-lw6/vOl86+CkJ8d3V01mlbGAC0A49gc1HbwGcqGeKjk5SGRLiF15jyUuA8aYEvizcPNTu4Ta4A+Ut2DJgsa7AQ=="
-  },
+  "_comment": "Single source of truth for the pinned OpenCascade build, written by `node scripts/occProvision.mjs repin <tag>` from the release's own manifest.json. occ:install downloads the release files, verify and provision refuse any byte that does not hash to `artifacts`; the version-consistency test reads `occt`.",
+  "repo": "ftobler/oversolved-occt",
+  "tag": "occt-8.0.1-r2",
   "occt": {
-    "version": "7.4.0p1",
-    "commit": "33d9a6fa21ca4fa711da7066655aa2ba854545ee"
+    "version": "8.0.1",
+    "tag": "V8.0.1",
+    "commit": "b8f597c677811d1f9f4d8a97f5ae2825c0353a42",
+    "archive": "https://github.com/Open-Cascade-SAS/OCCT/archive/refs/tags/V8.0.1.tar.gz",
+    "sha256": "8598e012a058902a673b57f2ee8259d435d18c996b1728d8d9fb2a92712a662f"
   },
+  "emcc": "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 6.0.13 (e13ee988ce3d87a738dd8f3661d02223308c412a)",
+  "build_commit": "1f3b7945504dbd4ca6baed97524f3fd7b3c22469",
   "artifacts": {
-    "opencascade.wasm.js": "be54247b3805dfb18493ddc35b936521fe3bda8f95f462cf0a24604ba561168f",
-    "opencascade.wasm.wasm": "6cc2f3fa1611d32ad7563f7092aa1bf58741124302630cef7d21561ecd7b7284"
+    "LICENSE_LGPL_21.txt": "e237fa56668030e928551ddd60f05df5fe957f75eab874bbd017e085ed722e7c",
+    "OCCT_LGPL_EXCEPTION.txt": "04580a884ea6cea294402649ff7b5cbb167d47462d1340a4ed33e550db10a81b",
+    "occt.js": "940d360a4462d63a8288b72c3b4fa9b49b56feaa454ce5b904423f776e23d903",
+    "occt.wasm": "f49dde1ef8bda7e521439e0d20c9b0b51cd9005c076721b470ae25d1061a7577"
   }
 }

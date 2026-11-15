@@ -11,7 +11,7 @@
 //     rescale, and both go UNNAMED when a parametric edit pushes them into a
 //     near-tie -- never a silent swap.
 //
-// Skips when opencascade.js is absent, like the other real-OCC gates.
+// Skips when the OCC build is absent, like the other real-OCC gates.
 
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'

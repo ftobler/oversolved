@@ -1,20 +1,22 @@
 // @vitest-environment node
 //
-// Step 0 probe for sweep-multisection: does the SHIPPED OCCT 7.4 WASM build
-// build the build123d handle example through BRepOffsetAPI_MakePipeShell with
-// one Add_1 per section? The plan measured 7.9 in OCP; this file pins what 7.4
-// actually does, because every decision below (Generated() coverage, cap
-// shapes, the round transition, the 8/4 failure) depends on it.
+// Step 0 probe for sweep-multisection: does the SHIPPED OCC WASM build build
+// the build123d handle example through BRepOffsetAPI_MakePipeShell with one
+// Add_1 per section? The plan measured it in OCP (OCCT 7.9); this file pins
+// what the shipped build actually does, because every decision below
+// (Generated() coverage, cap shapes, the round transition, the 8/4 failure)
+// depends on it.
 //
 // Raw OCC on purpose: no solveSweep, no schema. The handle's spine is two cubic
 // Beziers and its sections are circles at both ends with rounded rectangles
 // between them. The expected volume is build123d's 94.7736; our two-edge spine
-// measured 94.7809 in 7.9.
+// measured 94.7809 in OCP.
 //
-// Skips when opencascade.js is absent.
+// Skips when OCC is absent.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../loadOcc'
+import { noProgress } from '../defaultArgs'
 import { DisposeScope, drainList } from '../disposeScope'
 import { volumeOf } from '../volume'
 import { sketchLoopsToFace } from '../prismProfile'
@@ -209,7 +211,7 @@ function pipeSweep(
       mode === 'round' ? tm.BRepBuilderAPI_RoundCorner : tm.BRepBuilderAPI_RightCorner,
     )
     for (const w of wires) builder.Add_1(w, false, false)
-    builder.Build()
+    builder.Build(noProgress(occ))
     const done = builder.IsDone() && builder.MakeSolid()
     return { done, solid: done ? scope.track(builder.Shape()) : null, builder, error: null }
   } catch (e) {
@@ -244,7 +246,7 @@ function generatedSizes(occ: OccModule, scope: DisposeScope, builder: OccPipeShe
   return sizes
 }
 
-describe.skipIf(!oc)('sweep multisection probe (real OCC 7.4)', () => {
+describe.skipIf(!oc)('sweep multisection probe (real OCC)', () => {
   let occ: OccModule
   beforeAll(() => {
     if (!oc) throw new Error('unreachable: skipIf guards this')
@@ -262,7 +264,7 @@ describe.skipIf(!oc)('sweep multisection probe (real OCC 7.4)', () => {
       const volume = volumeOf(occ, scope, solid)
       console.log('probe handle volume:', volume)
       // build123d's assert: 94.7736. The two-edge spine measured 94.7809 in 7.9
-      // and 94.7809299 in the shipped 7.4; the plan's band is 0.05.
+      // and 94.7809299 in the shipped build; the plan's band is 0.05.
       expect(Math.abs(volume - 94.7736)).toBeLessThan(0.05)
       expect(volume).toBeCloseTo(94.7809299, 3)
       // 22, the same count the shipped build and the handle regression pin: the
@@ -275,7 +277,7 @@ describe.skipIf(!oc)('sweep multisection probe (real OCC 7.4)', () => {
     }
   }, 60_000)
 
-  it('reports Generated() coverage for every section edge in 7.4', () => {
+  it('reports Generated() coverage for every section edge in the shipped build', () => {
     const scope = new DisposeScope()
     try {
       const spine = spineWire(occ, scope)
@@ -288,7 +290,7 @@ describe.skipIf(!oc)('sweep multisection probe (real OCC 7.4)', () => {
       // The circle sections collapse to one edge; the rectangles keep 8.
       expect(perSection[0]).toHaveLength(1)
       for (let i = 1; i < perSection.length - 1; i++) expect(perSection[i]).toHaveLength(8)
-      // The plan requires at least the FIRST section to answer in 7.4.
+      // The plan requires at least the FIRST section to answer.
       expect(perSection[0].some((n) => n > 0)).toBe(true)
       // And every section must answer: a section with a zero Generated size is
       // one whose walls no entity could name, which is the whole point of
@@ -324,7 +326,7 @@ describe.skipIf(!oc)('sweep multisection probe (real OCC 7.4)', () => {
   }, 60_000)
 
   it('fails the 8/4 alternation instead of crashing', () => {
-    // Measured in 7.4: OCC does NOT throw where 7.9 threw NCollection_DataMap::Find.
+    // Measured in the shipped build: OCC does NOT throw where 7.9 threw NCollection_DataMap::Find.
     // It builds a valid 28-face solid with volume 60.87, which no bound in the
     // plan catches. This is why the shipped feature refuses a mismatched
     // neighbouring edge count itself (both sections more than one edge) instead
@@ -351,7 +353,7 @@ describe.skipIf(!oc)('sweep multisection probe (real OCC 7.4)', () => {
         error,
         volume: solid ? volumeOf(occ, scope, solid) : null,
         faces: solid ? faceCount(occ, scope, solid) : null,
-        valid: solid ? scope.track(new occ.BRepCheck_Analyzer(solid, true)).IsValid_2() : null,
+        valid: solid ? scope.track(new occ.BRepCheck_Analyzer(solid, true, false, false)).IsValid_2() : null,
       }
       console.log('probe 8/4 alternation:', JSON.stringify(diag))
       expect(error).toBeNull()

@@ -9,7 +9,7 @@
 // the source at z=75). A later boolean on that id then silently hit a copy. The
 // fix passes the source solid through by topological identity, not geometry.
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'

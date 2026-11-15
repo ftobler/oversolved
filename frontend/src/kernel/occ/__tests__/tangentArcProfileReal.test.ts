@@ -9,7 +9,7 @@
 // (what rev 2 delivered) drops the area builder from one surface to zero; the
 // f64 wire leaves the solved joints below OCCT's confusion.
 //
-// Skips whenever the sketch solver, the topology builder or opencascade.js is
+// Skips whenever the sketch solver, the topology builder or the OCC build is
 // absent (fresh checkout without `just wasm` / `just install-occ`).
 
 import { describe, it, expect, beforeAll } from 'vitest'

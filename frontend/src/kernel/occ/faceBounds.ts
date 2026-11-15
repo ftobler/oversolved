@@ -22,8 +22,9 @@
  */
 
 import type { DisposeScope } from './disposeScope'
-import type { OccModule, OccShape } from './occTypes'
+import type { OccBndBox, OccModule, OccShape } from './occTypes'
 import type { Bbox6 } from './measure'
+import { MESH_PURPOSE_NONE } from './defaultArgs'
 
 type Axis = readonly [number, number]
 
@@ -48,19 +49,10 @@ function explore(oc: OccModule, scope: DisposeScope, shape: OccShape, kind: unkn
   return out
 }
 
-interface BoxReader {
-  GetXmin(): number
-  GetYmin(): number
-  GetZmin(): number
-  GetXmax(): number
-  GetYmax(): number
-  GetZmax(): number
-}
-
-function readBox(box: BoxReader): Bbox6 {
+function readBox(box: OccBndBox): Bbox6 {
   return [
-    box.GetXmin(), box.GetYmin(), box.GetZmin(),
-    box.GetXmax(), box.GetYmax(), box.GetZmax(),
+    box.GetXMin(), box.GetYMin(), box.GetZMin(),
+    box.GetXMax(), box.GetYMax(), box.GetZMax(),
   ]
 }
 
@@ -92,13 +84,13 @@ function boundaryBox(oc: OccModule, scope: DisposeScope, face: OccShape): Bbox6 
 /** Node bounds and longest triangle edge of a face's triangulation. */
 function meshEvidence(oc: OccModule, scope: DisposeScope, face: OccShape): MeshEvidence | null {
   const loc = scope.track(new oc.TopLoc_Location_1())
-  let handle = scope.track(oc.BRep_Tool.Triangulation(face, loc))
+  let handle = scope.track(oc.BRep_Tool.Triangulation(face, loc, MESH_PURPOSE_NONE))
   if (handle.IsNull()) {
     // Kept alive only for its side effect: the triangulation lives on the face.
     new oc.BRepMesh_IncrementalMesh_2(
       face, EVIDENCE_DEFLECTION, true, EVIDENCE_ANGULAR_DEFLECTION, false,
     ).delete()
-    handle = scope.track(oc.BRep_Tool.Triangulation(face, loc))
+    handle = scope.track(oc.BRep_Tool.Triangulation(face, loc, MESH_PURPOSE_NONE))
   }
   const poly = handle.IsNull() ? null : handle.get()
   if (!poly) return null

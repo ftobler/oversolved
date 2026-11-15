@@ -3,8 +3,10 @@
 // D3 soak: the trap only appeared after ~35 minutes of one process serving six
 // interleaved clients, each with its own docId, so the cross-solve cache was
 // reset on almost every call. This scales that pattern down: 500 solves
-// alternating six document ids, measuring the WASM heap and the live handle
-// count. Either one growing without bound is the leak the trap was built on.
+// alternating six document ids, measuring the process's live ArrayBuffer bytes
+// (the OCC heap included; see `heapBytes` for why it cannot be read from the
+// module) and the live handle count. Either one growing without bound is the
+// leak the trap was built on.
 //
 // The real kernel is required; this skips like the other gated Real suites.
 
@@ -14,7 +16,6 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { solveLocally, setSolveLocalsForTest, persistentTableForTest } from '../solveLocally'
 import { resetSketchSolver, setSketchSolver } from '../features/sketch'
 import { yieldToEventLoop } from '@/testing/yieldToEventLoop'
-import type { OccModule } from '../occ/occTypes'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -66,10 +67,19 @@ function soakyDocs(): Array<{ id: string; features: Array<Record<string, unknown
   })
 }
 
-/** The live module's linear-memory length in bytes. */
-function heapLength(module: OccModule): number {
-  const heap = (module as unknown as { HEAP8?: Uint8Array }).HEAP8
-  return heap?.length ?? 0
+/**
+ * The process's live ArrayBuffer bytes, which is what a growing wasm heap
+ * shows as.
+ *
+ * The module exports no heap view any more (OCCT 8's link keeps `FS`,
+ * `getExceptionMessage` and `decrementExceptionRefcount` and nothing else), so
+ * the read is process-wide: the OCC heap, the Rust solver's memory and any
+ * transient buffers all count. The soak compares the steady warm-up value with
+ * the peak over 500 solves, so the OCC heap growing without bound is still what
+ * moves the number; the 2x bound tolerates the other buffers.
+ */
+function heapBytes(): number {
+  return process.memoryUsage().arrayBuffers
 }
 
 describe.skipIf(!oc || !solveBytes)('solveLocally doc-switch soak (real OCC + Rust solver)', () => {
@@ -84,14 +94,14 @@ describe.skipIf(!oc || !solveBytes)('solveLocally doc-switch soak (real OCC + Ru
     resetSketchSolver()
   })
 
-  it('keeps the heap and the live handle count bounded across 500 alternating-doc solves', async () => {
+  it('keeps the process wasm buffers and the live handle count bounded across 500 alternating-doc solves', async () => {
     const docs = soakyDocs()
     let heapSteady = 0
     let liveSteady = 0
     for (let i = 0; i < WARMUP; i++) {
       const response = await solveLocally(docs[i % DOC_COUNT])
       expect(response).not.toBeNull()
-      heapSteady = heapLength(oc!)
+      heapSteady = heapBytes()
       liveSteady = persistentTableForTest()?.liveCount() ?? 0
     }
     expect(heapSteady).toBeGreaterThan(0)
@@ -105,7 +115,7 @@ describe.skipIf(!oc || !solveBytes)('solveLocally doc-switch soak (real OCC + Ru
       expect(response).not.toBeNull()
       const result = response!.result as Record<string, { status?: string }>
       expect(result[`ex${i % DOC_COUNT}`].status).toBe('ok')
-      maxHeap = Math.max(maxHeap, heapLength(oc!))
+      maxHeap = Math.max(maxHeap, heapBytes())
       maxLive = Math.max(maxLive, persistentTableForTest()?.liveCount() ?? 0)
     }
 

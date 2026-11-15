@@ -3,7 +3,7 @@
 // Real-OCC guard: a sketch profile whose boundary includes a spline or a full
 // ellipse extrudes into a valid solid (sketch area builder -> curved profile
 // wire -> prism). The boundary edges must be built as true curved OCC edges
-// (bezier / ellipse), not straight chords. Skips when opencascade.js is absent.
+// (bezier / ellipse), not straight chords. Skips when the OCC build is absent.
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'

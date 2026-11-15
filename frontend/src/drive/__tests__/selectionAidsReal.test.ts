@@ -9,7 +9,6 @@
 // first-step solve, and the refusals; the synthetic-input half is
 // selectionAids.test.ts.
 
-import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { runHeadless, measureHeadless, selectHeadless, seedBuiltins } from '../headlessOps'
@@ -19,21 +18,13 @@ import { createDriveJournal } from '../journal'
 import { replayJournal } from '../replay'
 import { docHashOf } from '../docHash'
 import { featureById } from '@/testing/featureAccess'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import type { ScriptStep } from '../scriptRunner'
 
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 const oc = occInstalled()
 const solveBytes = loadSolver()
 if (oc && solveBytes) {

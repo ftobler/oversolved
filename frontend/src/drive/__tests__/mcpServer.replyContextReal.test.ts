@@ -7,21 +7,12 @@
 // builder halves are pinned without a kernel in mcpServer.test.ts and
 // mcpDocRef.test.ts.
 
-import { createRequire } from 'node:module'
 import { mkdirSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
+import { occInstalled } from '@/kernel/occ/loadOcc'
 import { spawnMcp, toolPayload, TMP_DIR } from './mcpStdioClient'
-
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 
 const oc = occInstalled()
 const solveBytes = loadSolver()

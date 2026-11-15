@@ -4,7 +4,7 @@
 // of a STEP import gets a construction UUID derived from the file's own entity
 // id, and every edge follows from the face pairs.
 //
-// Skips when opencascade.js is absent. Install:
+// Skips when the OCC build is absent. Install:
 //   cd frontend && npm run occ:install
 
 import { describe, it, expect, beforeAll } from 'vitest'
@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs'
 import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'
 import type { OccModule, OccShape } from '../occTypes'
+import { noProgress } from '../defaultArgs'
 import { stepBytesToShapeWithIdentity, stepShapeToBytes } from '../stepIo'
 import { importedNameMaps } from '../importLineage'
 import { canonicalEdges, canonicalFaces, namesToArray } from '../bodyNames'
@@ -163,9 +164,9 @@ describe.skipIf(!oc)('importedNameMaps (real OCC)', () => {
     try {
       const part = makeBoxAt(occ, scope, [0, 0, 0], 10, 10, 10)
       const mover = scope.track(
-        new occ.BRepBuilderAPI_Transform_2(part, makeTranslationTrsf(occ, scope, 40, 0, 0), false),
+        new occ.BRepBuilderAPI_Transform_2(part, makeTranslationTrsf(occ, scope, 40, 0, 0), false, false),
       )
-      mover.Build()
+      mover.Build(noProgress(occ))
       const builder = scope.track(new occ.BRep_Builder())
       const compound = scope.track(new occ.TopoDS_Compound())
       builder.MakeCompound(compound)

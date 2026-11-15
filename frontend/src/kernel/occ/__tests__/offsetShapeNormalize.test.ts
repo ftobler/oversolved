@@ -22,7 +22,10 @@ function fakeShape(shapeType: OccEnumValue): OccShape {
 /** A fake oc whose offset op reports success and hands back `resultType`. */
 function fakeOcc(resultType: OccEnumValue): OccModule {
   return {
-    BRepOffsetAPI_MakeOffsetShape_1: function () {
+    Message_ProgressRange_1: function () {
+      return { delete: (): void => {} }
+    },
+    BRepOffsetAPI_MakeOffsetShape: function () {
       return {
         PerformByJoin: (): void => {},
         IsDone: (): boolean => true,

@@ -8,7 +8,7 @@
 // the same output must not re-claim the cancelled key.
 //
 // extractNames is driven with a fake OCC module and a maker double whose
-// Modified() returns the same face for every input, so no opencascade.js is
+// Modified() returns the same face for every input, so no OCC module is
 // needed.
 
 import { describe, it, expect } from 'vitest'
@@ -537,7 +537,7 @@ function makeEdgeOcc(opts: EdgeOccOptions = {}): { oc: OccModule; shape: OccShap
     ShapeFix_Shape_2: function () {
       return { Perform: (): void => {}, Shape: (): OccShape => opts.healed ?? built, delete: () => {} }
     },
-    Handle_Message_ProgressIndicator_1: function () {
+    Message_ProgressRange_1: function () {
       return { delete: () => {} }
     },
     GProp_GProps_1: function () {

@@ -140,7 +140,8 @@ pub fn verdict_tol(scale: f64) -> f64 {
 
 /// OCC's `Precision::Confusion()`: the world width under which the kernel reads
 /// two points as one. Deliberately ABSOLUTE, and deliberately not ours to
-/// choose: it is compiled into opencascade.js@1.1.1 (OCCT 7.4.0p1). The
+/// choose: it is compiled into the kernel (the shipped OCCT 8.0.1 build carries
+/// the same 1e-7 as the 7.4.0p1 build before it). The
 /// profile's `MakeWire` reads it as its default LINEAR tolerance (for endpoint
 /// identity), and every other call this app does not pass an explicit
 /// tolerance to reads it for point identity too, the BOP fuse and

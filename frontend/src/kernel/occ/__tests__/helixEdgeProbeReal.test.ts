@@ -8,7 +8,7 @@
 //   - which SetMode_* on BRepOffsetAPI_MakePipeShell takes a gp_Dir;
 //   - a cylinder surface's V range is its axial extent and which way its axis
 //     points for a primitive/extruded cylinder.
-// Skips when opencascade.js is absent.
+// Skips when OCC is absent.
 
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'
@@ -119,7 +119,7 @@ describe.skipIf(!oc)('helix edge probe (real OCC)', () => {
       const e = scope.track(makeLineEdge(oc!, scope, [0, 0, 0], [0, 0, 5]))
       const wire = scope.track(makeWire(oc!, scope, [e]))
       const builder = scope.track(new oc!.BRepOffsetAPI_MakePipeShell(wire))
-      const dir = scope.track(new oc!.gp_Dir_4(0, 0, 1))
+      const dir = scope.track(new oc!.gp_Dir_5(0, 0, 1))
       // The gp_Dir overload is _3 (OCCT declares SpineSupport, gp_Ax2, gp_Dir,
       // boolean). A wrong overload throws a binding error naming the arity.
       expect(() => builder.SetMode_3(dir)).not.toThrow()

@@ -11,7 +11,7 @@
 // `extractBrepMetadata`. The import therefore "succeeded" with zero bodies and
 // no error: a silently empty part.
 //
-// Always-on (no opencascade.js gate): `bodyFrame` only walks the explorer and
+// Always-on (no OCC build gate): `bodyFrame` only walks the explorer and
 // the curve adaptor, so a stub module drives it at a scale a real OCC build
 // could not reach in a unit test.
 

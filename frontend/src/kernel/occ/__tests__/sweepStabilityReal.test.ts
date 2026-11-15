@@ -12,7 +12,7 @@
 // equals the arc's own centroid: at distance R*sin(a)/a from the circle centre
 // along the span bisector (half-angle a).
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'

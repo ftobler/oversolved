@@ -7,7 +7,7 @@
 // reference recorded for faceLoops (the frozen faceLoops.json snapshot; its
 // generator gen_faceloops_fixture.py was removed in phase 4d).
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'

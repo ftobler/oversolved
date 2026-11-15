@@ -8,21 +8,12 @@
 import { describe, it, expect } from 'vitest'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
-import { createRequire } from 'node:module'
+import { occInstalled } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { readZipTree } from '@/workspace/zipCarrier'
 import { errorPayload, spawnMcp, TMP_DIR, toolPayload } from './mcpStdioClient'
 
 const OUT_DIR = path.join(TMP_DIR, 'assembly-mcp')
-
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 
 const oc = occInstalled()
 const solveBytes = loadSolver()

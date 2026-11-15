@@ -9,28 +9,18 @@
 // large. The 135 spelling (what the old document stored) must still mean theta.
 // Real OCC + Rust solver, gated like the other drive suites.
 
-import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import type { PartDoc, SketchFeature } from '@/types/cad'
 import { runHeadless, emptyDriveDoc, type HeadlessRunResult } from '../headlessOps'
 import type { ScriptStep } from '../scriptRunner'
 import type { Mutation } from '@/types/cad'
 import { featureById } from '@/testing/featureAccess'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import { nonSketchProblems } from './buildProblems'
-
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 
 const oc = occInstalled()
 const solveBytes = loadSolver()

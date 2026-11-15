@@ -8,7 +8,7 @@ project.
 ## Develop
 
 ```bash
-just install    # .venv, npm install, wasm-pack, opencascade.js
+just install    # .venv, npm install, wasm-pack, the OCCT release
 just dev        # Vite dev server on :5173, this is the whole app
 ```
 

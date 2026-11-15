@@ -1,7 +1,7 @@
 /**
  * RAII-style arena for short-lived OCC.js objects.
  *
- * OCC.js (opencascade.js) hands back embind proxies for every `TopoDS_Shape`,
+ * OCC.js hands back embind proxies for every `TopoDS_Shape`,
  * builder, explorer, point, vector, etc. Each owns C++ memory and must be
  * `.delete()`d or the WASM heap leaks. Most of these are transient: a builder
  * or explorer lives for the span of a single operation. A `DisposeScope`
@@ -20,7 +20,7 @@ import { isHeapCorruptionTrap } from '../errors'
 /** Anything OCC.js (or a test double) hands back that owns native memory. */
 export interface Disposable {
   delete(): void
-  // opencascade.js embind proxies expose this; test doubles may too.
+  // OCC.js embind proxies expose this; test doubles may too.
   isDeleted?(): boolean
 }
 

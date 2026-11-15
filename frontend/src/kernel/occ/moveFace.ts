@@ -1,8 +1,7 @@
 // Move-face, OCC only (no construction naming): move a B-rep face along its
 // outward normal by a signed distance, extending the faces that bound it.
 //
-// Construction (probed against opencascade.js 1.1.1p1, OCCT 7.4.0p1; every
-// volume pinned by occ/__tests__/moveFaceReal.test.ts and
+// Construction (every volume pinned by occ/__tests__/moveFaceReal.test.ts and
 // moveFaceCurvedReal.test.ts):
 //
 //   1. Slab: the region between the picked face's surface S and its target S_d,
@@ -33,7 +32,8 @@ import { type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape } from './occTypes'
 import { canonicalFaces, canonicalEdges } from './bodyNames'
 import { SubShapeMap } from './subshapeIdentity'
-import { faceCentroid, bboxDiagonal } from './primitives'
+import { faceCentroid, bboxDiagonal, shapeBndBox } from './primitives'
+import { noProgress } from './defaultArgs'
 import { booleanWithDiff, type FaceOrigin } from './booleans'
 import type { BrepDiff } from '../types3d'
 import type { EdgeKind } from '@/types/cad'
@@ -172,10 +172,10 @@ export function classifyFaceEdges(
 ): (edge: OccShape) => EdgeKind {
   const analyse = scope.track(new oc.BRepOffset_Analyse_2(body, TOL_MOVE_FACE_TANGENT))
   const names: Record<number, EdgeKind> = {
-    [oc.BRepOffset_Type.BRepOffset_Convex.value]: 'convex',
-    [oc.BRepOffset_Type.BRepOffset_Concave.value]: 'concave',
-    [oc.BRepOffset_Type.BRepOffset_Tangent.value]: 'tangent',
-    [oc.BRepOffset_Type.BRepOffset_Other.value]: 'other',
+    [oc.ChFiDS_TypeOfConcavity.ChFiDS_Convex.value]: 'convex',
+    [oc.ChFiDS_TypeOfConcavity.ChFiDS_Concave.value]: 'concave',
+    [oc.ChFiDS_TypeOfConcavity.ChFiDS_Tangential.value]: 'tangent',
+    [oc.ChFiDS_TypeOfConcavity.ChFiDS_Other.value]: 'other',
   }
   return (edge: OccShape): EdgeKind => {
     const list = scope.track(analyse.Type(edge))
@@ -240,7 +240,7 @@ function splitCells(
   for (const t of tools) toolList.Append_1(t)
   splitter.SetArguments(args)
   splitter.SetTools(toolList)
-  splitter.Build()
+  splitter.Build(noProgress(oc))
   if (!splitter.IsDone()) throw new MoveFaceRefusal('move_face: the split of the moved face did not complete')
   return exploreSolids(oc, scope, scope.track(splitter.Shape()))
 }
@@ -518,6 +518,14 @@ export interface ApplyMoveFaceSetResult {
  * union avoids the interference a sequential move creates at a shared
  * boundary, where an earlier move can leave a neighbour surface that no longer
  * crosses the next slab.
+ *
+ * The tool is ordered canonically (by each cell's lower bbox corner, then its
+ * upper one) before the
+ * compound is filled. OCCT 8's fuse is order-sensitive when the cells overlap
+ * each other: the same four-face set built in reverse came back with a
+ * different face count and a 3.75 mm wider body, where 7.4 did not. The set is
+ * unordered, so the tool must be too; the sort makes the result a function of
+ * the picks alone.
  */
 export function combineMoveFaceCells(
   oc: OccModule,
@@ -526,10 +534,18 @@ export function combineMoveFaceCells(
   steps: MoveFaceStep[],
   d: number,
 ): ApplyMoveFaceSetResult {
+  const cells = steps.flatMap((step) => step.cells.cells)
+  const keyed = cells.map((cell) => {
+    const box = shapeBndBox(oc, scope, cell)
+    return { cell, min: box.min, max: box.max }
+  })
+  keyed.sort((a, b) =>
+    a.min[0] - b.min[0] || a.min[1] - b.min[1] || a.min[2] - b.min[2]
+    || a.max[0] - b.max[0] || a.max[1] - b.max[1] || a.max[2] - b.max[2])
   const compound = scope.track(new oc.TopoDS_Compound())
   const builder = scope.track(new oc.BRep_Builder())
   builder.MakeCompound(compound)
-  for (const step of steps) for (const c of step.cells.cells) builder.Add(compound, c)
+  for (const { cell } of keyed) builder.Add(compound, cell)
   const res = booleanWithDiff(oc, scope, body, compound, d > 0 ? 'fuse' : 'cut')
   return { shape: res.shape, faceOrigin: res.faceOrigin, diff: res.diff }
 }

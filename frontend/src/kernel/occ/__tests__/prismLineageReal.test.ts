@@ -13,7 +13,7 @@
 // is a SUBSET (a cylinder seam edge, whose adjacent faces share one UUID, gets no
 // edge UUID, so its token is dropped).
 //
-// Skips when opencascade.js is absent. The fixture is a frozen golden snapshot.
+// Skips when OCC is absent. The fixture is a frozen golden snapshot.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../loadOcc'
@@ -24,6 +24,7 @@ import { makeArcEdge, makeLineEdge, makeWire, makeFaceFromWire, healWire, faceNo
 import type { PlaneLike } from '../../features/shared/planes'
 import type { LoopEdge } from '../../profileLoops'
 import type { OccModule, OccShape, OccListOfShape } from '../occTypes'
+import { noProgress } from '../defaultArgs'
 import fixture from '../__fixtures__/extrude.json'
 
 const oc = await loadOcc()
@@ -327,7 +328,7 @@ describe.skipIf(!oc)('sweptProfile lineage off a rebuilt wire (real OCC)', () =>
       const builder = scope.track(new occ.BRepOffsetAPI_MakePipeShell(spineWire))
       builder.SetTransitionMode(occ.BRepBuilderAPI_TransitionMode.BRepBuilderAPI_RightCorner)
       builder.Add_1(rebuiltWire, false, false)
-      builder.Build()
+      builder.Build(noProgress(occ))
       if (!builder.IsDone() || !builder.MakeSolid()) throw new Error('probe pipe shell failed')
       const stub = {
         Shape: (): OccShape => builder.Shape(),

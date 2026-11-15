@@ -14,11 +14,12 @@ import { SubShapeIndexMap, unplacer } from './primitives'
 import { SubShapeMap } from './subshapeIdentity'
 import { enumVal, sameEnum } from './enumValue'
 import { encodeBinaryStl } from '../stl'
+import { noProgress } from './defaultArgs'
 
-// A fixed short scratch path in the emscripten MEMFS. Two quirks of this OCC.js
-// build forced both choices: STEPControl_Reader fails (RetError) on a long
-// basename OR any path containing the substring "import", so the name is short
-// and neutral. The kernel is single-threaded and each call writes -> reads ->
+// A fixed short scratch path in the emscripten MEMFS. Two quirks of the 7.4
+// build forced both choices: STEPControl_Reader failed
+// (RetError) on a long basename OR any path containing the substring "import",
+// so the name is short and neutral. The kernel is single-threaded and each call writes -> reads ->
 // unlinks synchronously, so reusing one path across calls is safe.
 const SCRATCH_PATH = '/s.step'
 
@@ -89,13 +90,13 @@ function readStep(
   oc.FS.writeFile(path, bytes)
   try {
     const reader = scope.track(new oc.STEPControl_Reader_1())
-    const status = reader.ReadFile(path)
+    const status = reader.ReadFile_1(path)
     const statusVal = enumVal(status)
     const doneVal = enumVal(oc.IFSelect_ReturnStatus.IFSelect_RetDone)
     if (statusVal !== doneVal) {
       throw new Error(`import_step: STEP read failed (status ${statusVal})`)
     }
-    reader.TransferRoots()
+    reader.TransferRoots(noProgress(oc))
     const read = reader.OneShape()
     // The scaled copy is a NEW shape the transfer map knows nothing about, so
     // the builder has to stay in hand to carry identity across it.
@@ -127,9 +128,9 @@ function transformBuilder(
   scale: number,
 ): OccTransformBuilder {
   const builder = scope.track(
-    new oc.BRepBuilderAPI_Transform_2(shape, makeScaleTrsf(oc, scope, [0, 0, 0], scale), true),
+    new oc.BRepBuilderAPI_Transform_2(shape, makeScaleTrsf(oc, scope, [0, 0, 0], scale), true, false),
   )
-  builder.Build()
+  builder.Build(noProgress(oc))
   return builder
 }
 
@@ -330,7 +331,7 @@ export function stepShapeToBytes(
 ): Uint8Array {
   const path = SCRATCH_PATH
   const writer = scope.track(new oc.STEPControl_Writer_1())
-  const wStatus = writer.Transfer(shape, oc.STEPControl_StepModelType.STEPControl_AsIs, true)
+  const wStatus = writer.Transfer_1(shape, oc.STEPControl_StepModelType.STEPControl_AsIs, true, noProgress(oc))
   const doneVal = enumVal(oc.IFSelect_ReturnStatus.IFSelect_RetDone)
   if (enumVal(wStatus) !== doneVal) {
     throw new Error('STEP export: Transfer failed')
@@ -352,8 +353,9 @@ export function stepShapeToBytes(
 /**
  * Serialise a shape to binary STL bytes directly from its tessellation.
  *
- * This avoids StlAPI_Writer which does not integrate with the emscripten
- * MEMFS in this OCC.js build.
+ * This avoids StlAPI_Writer, which did not integrate with the emscripten MEMFS
+ * in the 7.4 build, and keeps the STL facets identical to the
+ * viewport mesh.
  */
 export function shapeToStlBytes(
   oc: OccModule,

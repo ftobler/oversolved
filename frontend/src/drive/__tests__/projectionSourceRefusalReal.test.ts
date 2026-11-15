@@ -6,25 +6,15 @@
 // settled solve, so a stale query or a deleted body fails the step instead of
 // storing a projection that would report the generic did-not-resolve warning
 // forever.
-import { createRequire } from 'node:module'
 import { describe, it, expect } from 'vitest'
 import type { PartDoc, SketchFeature } from '@/types/cad'
 import { runHeadless, selectHeadless, seedBuiltins } from '../headlessOps'
 import { MUTATION_EXAMPLES } from '../mutationExamples'
-import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
-
-function occInstalled(): boolean {
-  try {
-    createRequire(import.meta.url).resolve('opencascade.js/dist/opencascade.wasm.js')
-    return true
-  } catch {
-    return false
-  }
-}
 
 const oc = occInstalled()
 const solveBytes = loadSolver()

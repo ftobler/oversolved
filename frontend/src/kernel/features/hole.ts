@@ -46,6 +46,7 @@ import { DRILL_POINT_ANGLE } from '../threadTable'
 import type { ThreadDisplayData, ThreadSiteData } from '@/types/cad'
 import type { PlaneLike } from './shared/planes'
 import { swallowUnlessTrap } from '../errors'
+import { noProgress } from '../occ/defaultArgs'
 import { OCC_CONFUSION, TOL_LENGTH_SLACK, TOL_VOLUME_DEGENERATE } from '../solverConstants'
 
 type Dict = Record<string, unknown>
@@ -578,7 +579,7 @@ function intersects(oc: OccModule, shape: OccShape, tool: OccShape): boolean {
     algo.SetArguments(args)
     algo.SetTools(tools)
     algo.SetToFillHistory(false)
-    algo.Build()
+    algo.Build(noProgress(oc))
     if (!algo.IsDone()) return true
     const inter = algo.Shape()
     probe.track(inter)

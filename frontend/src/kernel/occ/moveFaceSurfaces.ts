@@ -44,6 +44,12 @@ import type {
 } from './occTypes'
 import { canonicalFaces } from './bodyNames'
 import { faceCentroid, faceNormal } from './primitives'
+import {
+  FACE_CLASSIFIER_GAP_CHECK_TOL,
+  FACE_CLASSIFIER_USE_BND_BOX,
+  MESH_PURPOSE_NONE,
+  noProgress,
+} from './defaultArgs'
 import { TOL_LENGTH_SLACK, TOL_SURFACE_IDENTITY, TOL_SURFACE_PARALLEL } from '../solverConstants'
 import { add, cross, dot, scale, sub, type Vec3 } from '@/utils/vec3'
 
@@ -114,8 +120,10 @@ const norm = (v: Vec3): number => Math.hypot(v[0], v[1], v[2])
 export function faceSurfaceName(oc: OccModule, scope: DisposeScope, face: OccShape): string {
   const t = scope.track(new oc.BRepAdaptor_Surface_2(face, true)).GetType().value
   const S = oc.GeomAbs_SurfaceType
-  for (const [name, v] of Object.entries(S) as [string, { value: number }][]) {
-    if (v.value === t) return name.replace(/^GeomAbs_/, '')
+  // Only the GeomAbs_* members are values: embind also hangs `values` (the
+  // value-by-number table) and `argCount` (undefined) off every enum.
+  for (const [name, v] of Object.entries(S) as [string, { value: number } | undefined][]) {
+    if (name.startsWith('GeomAbs_') && v?.value === t) return name.replace(/^GeomAbs_/, '')
   }
   return `type ${t}`
 }
@@ -137,9 +145,9 @@ function takeAxisDir(axis: OccAxisDir): Vec3 {
 function bboxCorners(oc: OccModule, scope: DisposeScope, shape: OccShape): Vec3[] {
   const box = scope.track(new oc.Bnd_Box_1())
   oc.BRepBndLib.Add(shape, box, false)
-  const x0 = box.GetXmin(); const x1 = box.GetXmax()
-  const y0 = box.GetYmin(); const y1 = box.GetYmax()
-  const z0 = box.GetZmin(); const z1 = box.GetZmax()
+  const x0 = box.GetXMin(); const x1 = box.GetXMax()
+  const y0 = box.GetYMin(); const y1 = box.GetYMax()
+  const z0 = box.GetZMin(); const z1 = box.GetZMax()
   const out: Vec3[] = []
   for (const x of [x0, x1]) for (const y of [y0, y1]) for (const z of [z0, z1]) out.push([x, y, z])
   return out
@@ -166,9 +174,9 @@ function axialRange(
 /** A gp_Ax2 at `origin` along `dir`, the frame the primitive builders take. */
 function baseFrame(oc: OccModule, scope: DisposeScope, origin: Vec3, dir: Vec3): OccDisposable {
   return scope.track(
-    new oc.gp_Ax2_3(
+    new oc.gp_Ax2_4(
       scope.track(new oc.gp_Pnt_3(origin[0], origin[1], origin[2])),
-      scope.track(new oc.gp_Dir_4(dir[0], dir[1], dir[2])),
+      scope.track(new oc.gp_Dir_5(dir[0], dir[1], dir[2])),
     ),
   )
 }
@@ -185,8 +193,8 @@ function surfaceFrame(
   return scope.track(
     new oc.gp_Ax2_2(
       scope.track(new oc.gp_Pnt_3(origin[0], origin[1], origin[2])),
-      scope.track(new oc.gp_Dir_4(dir[0], dir[1], dir[2])),
-      scope.track(new oc.gp_Dir_4(xDir[0], xDir[1], xDir[2])),
+      scope.track(new oc.gp_Dir_5(dir[0], dir[1], dir[2])),
+      scope.track(new oc.gp_Dir_5(xDir[0], xDir[1], xDir[2])),
     ),
   )
 }
@@ -199,7 +207,7 @@ function cutShapes(oc: OccModule, scope: DisposeScope, target: OccShape, tool: O
   tools.Append_1(tool)
   algo.SetArguments(args)
   algo.SetTools(tools)
-  algo.Build()
+  algo.Build(noProgress(oc))
   return scope.track(algo.Shape())
 }
 
@@ -213,7 +221,7 @@ export function representativePoints(
   const mesher = scope.track(new oc.BRepMesh_IncrementalMesh_2(face, MOVE_FACE_MESH_TOL, false, 0.3, false))
   void mesher
   const loc = scope.track(new oc.TopLoc_Location_1())
-  const handle = scope.track(oc.BRep_Tool.Triangulation(face, loc))
+  const handle = scope.track(oc.BRep_Tool.Triangulation(face, loc, MESH_PURPOSE_NONE))
   if (handle.IsNull()) return []
   const tri = handle.get()
   if (tri === null) return []
@@ -247,7 +255,7 @@ export function pointInFace(
 ): boolean {
   const pnt = scope.track(new oc.gp_Pnt_3(p[0], p[1], p[2]))
   const classifier = scope.track(new oc.BRepClass_FaceClassifier_1())
-  classifier.Perform_2(face, pnt, tol)
+  classifier.Perform_2(face, pnt, tol, FACE_CLASSIFIER_USE_BND_BOX, FACE_CLASSIFIER_GAP_CHECK_TOL)
   const state = classifier.State().value
   return state === oc.TopAbs_State.TopAbs_IN.value || state === oc.TopAbs_State.TopAbs_ON.value
 }
@@ -274,7 +282,7 @@ export function pointInFaceUv(
     for (const dv of vPeriodic ? [0, -twoPi, twoPi] : [0]) {
       const pnt = scope.track(new oc.gp_Pnt2d_3(uv[0] + du, uv[1] + dv))
       const classifier = scope.track(new oc.BRepClass_FaceClassifier_1())
-      classifier.Perform_1(face, pnt, tol)
+      classifier.Perform_1(face, pnt, tol, FACE_CLASSIFIER_USE_BND_BOX, FACE_CLASSIFIER_GAP_CHECK_TOL)
       const state = classifier.State().value
       if (state === oc.TopAbs_State.TopAbs_IN.value || state === oc.TopAbs_State.TopAbs_ON.value) {
         return true
@@ -437,7 +445,7 @@ function curvedFaceFromWire(
   try {
     const fixer = scope.track(new oc.ShapeFix_Face_2(raw))
     fixer.FixOrientation_1()
-    fixer.Perform()
+    fixer.Perform(noProgress(oc))
     return scope.track(fixer.Face())
   } finally {
     raw.delete()

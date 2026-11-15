@@ -7,8 +7,8 @@
  * floor and grows a through-cut tool axially, and it works on filleted, drafted
  * or imported tools a sketch offset cannot touch (decision 3, isotropic).
  *
- * opencascade.js 1.1.1 / OCCT 7.4.0p1 facts this module is built on (probed
- * against the shipped build, see the plan's table):
+ * OCC facts this module is built on (probed against the shipped build, first on
+ * the 7.4 kernel and re-probed on 8.0.1, held by offsetShapeReal.test.ts):
  *   - History is `Generated(face)`, NOT `Modified(face)`: every source face
  *     yields exactly one grown face, which `IsSame`s a face of the result. Sharp
  *     joins keep that mapping one to one, which is the naming contract.
@@ -28,6 +28,7 @@ import { drainList, type DisposeScope } from './disposeScope'
 import { shapeIsValid, volumeOf } from './booleans'
 import { SubShapeMap } from './subshapeIdentity'
 import { sameEnum } from './enumValue'
+import { noProgress } from './defaultArgs'
 import { TOL_SURFACE_IDENTITY, TOL_VOLUME_DEGENERATE } from '../solverConstants'
 import type { OccModule, OccOrientableShape, OccShape, OccShapeEnumValue, OccSubShape } from './occTypes'
 
@@ -99,7 +100,7 @@ export function offsetSolid(
     throw new OffsetError(`clearance must be a non-zero finite number, got ${d}`)
   }
 
-  const op = scope.track(new oc.BRepOffsetAPI_MakeOffsetShape_1())
+  const op = scope.track(new oc.BRepOffsetAPI_MakeOffsetShape())
   op.PerformByJoin(
     shape,
     d,
@@ -109,6 +110,7 @@ export function offsetSolid(
     false,
     oc.GeomAbs_JoinType.GeomAbs_Intersection,
     false,
+    noProgress(oc),
   )
   if (!op.IsDone()) throw new OffsetError('the offset operation did not complete')
   const raw = scope.track(op.Shape())

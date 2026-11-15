@@ -4,7 +4,7 @@
 // solver needed): build a real cylinder primitive, register its faces/edges in
 // a Repository as the builder would, and call solveHelix. A helix is a
 // reference curve: it registers plain data and never a body. Skips when
-// opencascade.js is absent.
+// the OCC build is absent.
 
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'

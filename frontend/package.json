@@ -25,7 +25,7 @@
     "licenses:generate:rust": "node scripts/generateRustNotices.mjs",
     "licenses:check": "node scripts/generateThirdPartyNotices.mjs --check && node scripts/generateRustNotices.mjs --check",
     "licenses:mirror": "node scripts/fetchOccSource.mjs",
-    "occ:install": "npm i --no-save opencascade.js@1.1.1 && node scripts/occProvision.mjs verify",
+    "occ:install": "node scripts/occProvision.mjs install",
     "occ:provision": "node scripts/occProvision.mjs provision",
     "occ:usage": "node scripts/occUsage.mjs",
     "occ:usage:check": "node scripts/occUsage.mjs --check",

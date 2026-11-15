@@ -13,7 +13,7 @@
 // named error instead.
 
 import type { DisposeScope } from './disposeScope'
-import { extractErrorMessage } from '../errors'
+import { extractOccErrorMessage } from '../errors'
 import type { OccModule, OccOrientableShape, OccShape } from './occTypes'
 import type { PlaneLike } from '../features/shared/planes'
 import type { LoopEdge } from '../profileLoops'
@@ -203,7 +203,7 @@ export function sweepSectionsWithLineage(
     oc, scope, spineWire, prepared.map((p) => p.wire), modes,
   )
   if (lastError !== null) {
-    const msg = extractErrorMessage(lastError)
+    const msg = extractOccErrorMessage(oc, lastError)
     throw new Error(`sweep: BRepOffsetAPI_MakePipeShell failed: ${msg}`)
   }
   if (result === null) throw new Error('sweep: could not build a solid from the swept shell')

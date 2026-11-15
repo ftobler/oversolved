@@ -1,5 +1,5 @@
 /**
- * Unwrap and compare opencascade.js embind enum values. The binding hands an
+ * Unwrap and compare embind enum values. Embind hands an
  * enum back as a raw number in some places and as a `{value}` box in others
  * (the same inconsistency ReadFile/Transfer in stepIo.ts work around), and
  * `TopAbs_ShapeEnum` members are typed opaquely. Both shapes unwrap to the

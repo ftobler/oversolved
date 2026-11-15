@@ -6,7 +6,7 @@
 // symbolic values `constructionName.ts` mints, are collision-free, and recompute
 // identically on an independent rebuild (the load-bearing determinism).
 //
-// Skips when opencascade.js is absent, like the other real-OCC gates.
+// Skips when the OCC build is absent, like the other real-OCC gates.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../loadOcc'

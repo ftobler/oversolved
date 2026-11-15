@@ -1068,7 +1068,7 @@ export function solveSweep(
   // A profile taller than the pitch (or wider than the radius) makes the shell
   // self-intersect; the named error is clearer than a bare invalid-solid
   // message and must never crash the worker.
-  if (helixPath && !scope.track(new oc.BRepCheck_Analyzer(swept, true)).IsValid_2()) {
+  if (helixPath && !scope.track(new oc.BRepCheck_Analyzer(swept, true, false, false)).IsValid_2()) {
     throw new Error('sweep: profile overlaps the next turn: pitch < profile height')
   }
 

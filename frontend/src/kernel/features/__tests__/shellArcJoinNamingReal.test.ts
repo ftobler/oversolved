@@ -14,7 +14,7 @@
 // check therefore stops at resolution, which is what the construction name
 // guarantees; a later fillet pick on a blend-derived edge has the same UUID.
 //
-// Skips when opencascade.js is absent.
+// Skips when the OCC build is absent.
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'
 import { DisposeScope } from '../../occ/disposeScope'
