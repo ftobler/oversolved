@@ -12,21 +12,19 @@
 // reaches the feature instead of being silently dropped.
 
 import type { DisposeScope } from '../../occ/disposeScope'
-import type { OccModule, OccShape, OccSubShape } from '../../occ/occTypes'
+import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { HandleTable } from '../../occ/handleTable'
 import type { Body } from '../../types3d'
 import type { Repository } from '../../query'
-import { canonicalFaces } from '../../occ/bodyNames'
-import { SubShapeMultiIndex } from '../../occ/subshapeIdentity'
-import { faceCentroid, faceNormal, type Vec3 } from '../../occ/primitives'
+import { exploreEdges } from '../../occ/edgeModifier'
+import { edgeToGeom, faceCentroid, faceNormal, faceSurfaceFrame, type Vec3 } from '../../occ/primitives'
 import { sha256Hex } from '../../sha256'
 import { resolveBarePlaneId } from '../../solverConstants'
 import { parseSketchEntityRef, sketchIdFromQuery, soleEntityInQuery } from './bodyRef'
 import { buildFaceIndex, resolveFacesByQuery, type FaceIndex } from './faceResolution'
-import { resolveFilletEdges } from '../filletChamfer'
 import { resolveSketchPlane } from '../postRegister'
 import { sketchToWorld2d, type PlaneLike } from './planes'
-import { circularEdgeSense, exploreEdges, faceFreeEnd, type AxisSenseContext } from './axisSense'
+import { resolveAxisCarrier, type AxisSenseContext } from './axisSense'
 
 type Dict = Record<string, unknown>
 
@@ -177,11 +175,61 @@ function faceTarget(
     return { key: shortRefKey(ref), label, point: faceCentroid(ctx.oc, ctx.scope, face), normal }
   }
   if (surfaceType === 'cylinderface' || surfaceType === 'coneface') {
-    const end = faceFreeEnd(sense, body, face)
-    if (end !== null) return { key: shortRefKey(ref), label, point: end.point, normal: end.normal }
+    // The direction is the shared free-end rule; the point is where that
+    // direction leaves the face (its axial end), which only the pattern needs.
+    const carrierKind = surfaceType === 'cylinderface' ? 'cylinderface' : 'coneface'
+    const rawAxis = unit(data.axis as number[] | undefined)
+    const senseResult = resolveAxisCarrier(
+      carrierKind, ref, rawAxis, sense, ctx.globalRepo, ctx.bodyStore,
+    )
+    const direction = senseResult?.direction ?? rawAxis
+    if (direction !== null) {
+      const point = faceEndPoint(ctx.oc, ctx.scope, face, direction)
+      if (point !== null) return { key: shortRefKey(ref), label, point, normal: direction }
+    }
   }
   const point = faceSurfaceCentrePoint(ctx.oc, ctx.scope, face) ?? faceCentroid(ctx.oc, ctx.scope, face)
   return { key: shortRefKey(ref), label, point, normal: faceNormal(ctx.oc, ctx.scope, face) }
+}
+
+/** The axial end a face's direction leaves from: the high end when the
+ *  direction runs with the surface axis, the low end otherwise. The free-end
+ *  rule itself lives in axisSense.ts; this only places its result on the face. */
+function faceEndPoint(
+  oc: OccModule,
+  scope: DisposeScope,
+  face: OccShape,
+  direction: Vec3,
+): Vec3 | null {
+  const frame = faceSurfaceFrame(oc, scope, face)
+  if (frame === null) return null
+  const axis = unit(frame.axis)
+  if (axis === null) return null
+  let low = Infinity
+  let high = -Infinity
+  for (const edge of exploreEdges(oc, scope, face)) {
+    let geom: ReturnType<typeof edgeToGeom>['ed']
+    try {
+      geom = edgeToGeom(oc, scope, edge).ed
+    } catch {
+      continue
+    }
+    const point = geom.kind === 'circle' || geom.kind === 'arc' || geom.kind === 'ellipse'
+      ? geom.center
+      : geom.kind === 'line'
+        ? [(geom.start[0] + geom.end[0]) / 2, (geom.start[1] + geom.end[1]) / 2, (geom.start[2] + geom.end[2]) / 2]
+        : null
+    if (point === null) continue
+    const t = (point[0] - frame.origin[0]) * axis[0]
+      + (point[1] - frame.origin[1]) * axis[1]
+      + (point[2] - frame.origin[2]) * axis[2]
+    low = Math.min(low, t)
+    high = Math.max(high, t)
+  }
+  if (!Number.isFinite(low) || !Number.isFinite(high)) return null
+  const withAxis = direction[0] * axis[0] + direction[1] * axis[1] + direction[2] * axis[2] >= 0
+  const t = withAxis ? high : low
+  return [frame.origin[0] + axis[0] * t, frame.origin[1] + axis[1] * t, frame.origin[2] + axis[2] * t]
 }
 
 function edgeTarget(ctx: PickTargetContext, ref: string, data: Dict, sense: AxisSenseContext): PickTarget | null {
@@ -198,18 +246,15 @@ function edgeTarget(ctx: PickTargetContext, ref: string, data: Dict, sense: Axis
     }
   }
   // A circular body edge: its centre is the point, its sense comes from the
-  // faces around it.
+  // faces around it through the shared free-end rule. A bare edge with no
+  // readable neighbour keeps the axis it resolved with.
   if (!data.center || !data.axis) return null
   const center = data.center as Vec3
   const axis = unit(data.axis as number[]) ?? [0, 0, 1]
-  const bodyId = typeof data.body_id === 'string' ? data.body_id : ''
-  const body = ctx.bodyStore[bodyId]
-  if (body === undefined || body.shape === null) {
-    return { key: shortRefKey(ref), label: 'edge', point: center, normal: axis }
-  }
-  const [edge] = resolveFilletEdges(ctx.oc, ctx.scope, ctx.table, body, [ref], ctx.bodyStore)
-  const normal = edge === undefined ? axis : circularEdgeSense(sense, body, edge, center, axis).normal
-  return { key: shortRefKey(ref), label: 'edge', point: center, normal }
+  const senseResult = resolveAxisCarrier(
+    'circular_edge', ref, axis, sense, ctx.globalRepo, ctx.bodyStore,
+  )
+  return { key: shortRefKey(ref), label: 'edge', point: center, normal: senseResult?.direction ?? axis }
 }
 
 function vertexTarget(ref: string, data: Dict): PickTarget | null {
@@ -218,37 +263,9 @@ function vertexTarget(ref: string, data: Dict): PickTarget | null {
   return { key: shortRefKey(ref), label: 'vertex', point: [origin[0], origin[1], origin[2]], normal: null }
 }
 
-/** The shared face list and free-end context for one resolution pass. */
+/** The OCC context the shared free-end rule needs for one resolution pass. */
 export function axisSenseContext(ctx: PickTargetContext): AxisSenseContext {
-  const cache = new Map<string, OccShape[]>()
-  const adjacency = new Map<string, SubShapeMultiIndex<OccShape>>()
-  const facesOf = (body: Body): OccShape[] => {
-    let faces = cache.get(body.id)
-    if (faces === undefined) {
-      faces = body.shape === null
-        ? []
-        : canonicalFaces(ctx.oc, ctx.scope, ctx.table.get<OccShape>(body.shape)) as OccShape[]
-      cache.set(body.id, faces)
-    }
-    return faces
-  }
-  return {
-    oc: ctx.oc,
-    scope: ctx.scope,
-    table: ctx.table,
-    facesOf,
-    neighboursOf: (body: Body, edge: OccShape): OccShape[] => {
-      let index = adjacency.get(body.id)
-      if (index === undefined) {
-        index = new SubShapeMultiIndex<OccShape>()
-        for (const face of facesOf(body)) {
-          for (const boundary of exploreEdges(ctx.oc, ctx.scope, face)) index.add(boundary as OccSubShape, face)
-        }
-        adjacency.set(body.id, index)
-      }
-      return [...index.get(edge as OccSubShape)]
-    },
-  }
+  return { oc: ctx.oc, scope: ctx.scope, table: ctx.table }
 }
 
 /**
