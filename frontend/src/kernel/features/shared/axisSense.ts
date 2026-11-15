@@ -1,215 +1,270 @@
-// The free-end rule for an axis carrier: a cylindrical or conical face, or a
-// circular body edge. An axis has two senses and a pick carries no position, so
-// the sense must come from the geometry alone and must be stable across
-// rebuilds.
+// The sense of an axis carrier: which way along its own axis a cylindrical face,
+// conical face or circular edge points. An axis has two senses and a pick carries
+// no position, so the leaf must derive the sense from the geometry alone.
 //
-// At each axial end of a cylindrical or conical face, look across its boundary
-// circle at the neighbouring face. The end is FREE when that neighbour's
-// outward normal has a positive component along the direction leaving the face
-// at that end. A blind hole's mouth is free and its floor is not; a boss's top
-// is free and its base is not; a countersink's wide end is free and the narrow
-// end where it meets the bore is not. Exactly one free end: the axis points out
-// of it. Two free ends (a through hole) or none: the surface's own OCC axis
-// sense, which is stable, and `reverse_normal`/`invert` is the user's fix.
+// The free-end rule, applied at each axial end of a cylindrical or conical face:
+// look across the boundary edge at the neighbour face; the end is FREE when the
+// neighbour's outward normal has a positive component along the direction that
+// leaves the face at that end (along the axis at the high end, against it at the
+// low end). A blind hole's mouth, a boss's top and a countersink's wide end are
+// free; a hole floor, a boss base and a countersink's narrow end are not. One
+// free end orients the axis out of it. Two free ends (a through hole) or none is
+// the surface's own OCC `gp_Ax1` sense, which is stable over rebuilds; `invert`
+// is the user's fix there.
 //
-// A circular body edge takes its normal from its planar neighbour when it has
-// one (the mouth circle borders the plate top), else from the free-end rule of
-// its cylindrical or conical neighbour.
+// A circular body edge takes its planar neighbour's outward normal, else its
+// cylindrical/conical neighbour's rule. A sketch circle or arc has no body
+// geometry to read and takes the sketch plane normal, which the direction
+// resolver already hands over.
+//
+// The face's axial extent is read here too: directive-length spacing is the
+// pick's own length, which for a face is how far it runs along its axis.
 
 import type { DisposeScope } from '../../occ/disposeScope'
-import type { OccModule, OccShape, OccSubShape } from '../../occ/occTypes'
 import type { HandleTable } from '../../occ/handleTable'
+import type { OccModule, OccShape, OccSubShape } from '../../occ/occTypes'
 import type { Body } from '../../types3d'
-import { edgeToGeom, faceNormal, faceSurfaceFrame, faceSurfaceType, type Vec3 } from '../../occ/primitives'
+import type { Repository } from '../../query'
+import { extractOccFace } from '../../occ/faceLoops'
+import { canonicalEdges } from '../../occ/bodyNames'
+import { exploreEdges, exploreFaces } from '../../occ/edgeModifier'
+import { SubShapeMultiIndex } from '../../occ/subshapeIdentity'
+import { faceNormal, faceSurfaceFrame, type Vec3 } from '../../occ/primitives'
 
-export interface AxisSense {
-  // A point on the axis at the chosen end.
-  point: Vec3
-  // The unit direction the axis points out of the material.
-  normal: Vec3
-}
+type Dict = Record<string, unknown>
 
+/** What resolving an axis carrier's sense needs from the OCC side. */
 export interface AxisSenseContext {
   oc: OccModule
   scope: DisposeScope
   table: HandleTable
-  // The body's faces in canonical order, cached by the caller: every target a
-  // pattern resolves walks the same body again.
-  facesOf: (body: Body) => OccShape[]
-  // The faces sharing one edge, built once per body. A pattern of many face
-  // targets would otherwise re-walk every face's edges per boundary edge.
-  neighboursOf?: (body: Body, edge: OccShape) => OccShape[]
 }
 
-function dot(a: Vec3, b: Vec3): number {
-  return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+/** The axis carriers a direction pick accepts. A sketch circle has no body
+ *  geometry; the resolver hands its sketch normal in as the raw axis. */
+export type AxisCarrierKind = 'cylinderface' | 'coneface' | 'circular_edge' | 'sketch_circle'
+
+export interface AxisCarrierResult {
+  // Unit direction along the carrier's axis, the free-end rule applied.
+  direction: Vec3
+  // How far the carrier runs along that axis, or null when it has no length
+  // (a circular edge, a sketch circle).
+  extent: number | null
 }
 
-function unit(v: readonly number[]): Vec3 | null {
+const dot = (a: Vec3, b: Vec3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+
+const unit = (v: Vec3): Vec3 | null => {
   const len = Math.hypot(v[0], v[1], v[2])
-  return len < 1e-12 ? null : [v[0] / len, v[1] / len, v[2] / len]
+  return len > 1e-12 ? [v[0] / len, v[1] / len, v[2] / len] : null
 }
 
-function along(origin: Vec3, axis: Vec3, t: number): Vec3 {
-  return [origin[0] + axis[0] * t, origin[1] + axis[1] * t, origin[2] + axis[2] * t]
+/** The payload a query resolved into, or null. */
+function payloadOf(query: string, globalRepo: Repository, bodyStore: Dict): Dict | null {
+  return globalRepo.query(query, null, bodyStore) as Dict | null
 }
 
-function same(a: OccShape, b: OccShape): boolean {
-  return (a as OccSubShape).IsSame(b as OccSubShape)
+/** The OCC shape of the body a payload names, or null when the store no longer
+ *  holds it. */
+function bodyShapeOf(data: Dict, bodyStore: Dict, ctx: AxisSenseContext): OccShape | null {
+  const bodyId = data.body_id as string | undefined
+  if (bodyId === undefined) return null
+  const body = bodyStore[bodyId] as Body | undefined
+  if (body === undefined || body.shape === null) return null
+  return ctx.table.get<OccShape>(body.shape)
 }
 
-export function exploreEdges(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape[] {
-  const E = oc.TopAbs_ShapeEnum
-  const out: OccShape[] = []
-  const exp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_EDGE, E.TopAbs_SHAPE))
-  for (; exp.More(); exp.Next()) out.push(scope.track(oc.TopoDS.Edge_1(exp.Current())))
-  return out
-}
-
-/** Every face of the body that shares `edge`, apart from `exclude`. */
-function neighbourFaces(
+function faceOfQuery(
+  query: string,
+  globalRepo: Repository,
+  bodyStore: Dict,
   ctx: AxisSenseContext,
-  body: Body,
-  edge: OccShape,
-  exclude: OccShape | null,
-): OccShape[] {
-  const cached = ctx.neighboursOf?.(body, edge) ?? null
-  if (cached !== null) {
-    return exclude === null ? cached : cached.filter((face) => !same(face, exclude))
-  }
-  const out: OccShape[] = []
-  for (const face of ctx.facesOf(body)) {
-    if (exclude !== null && same(face, exclude)) continue
-    if (exploreEdges(ctx.oc, ctx.scope, face).some((candidate) => same(candidate, edge))) out.push(face)
-  }
-  return out
-}
-
-/** Where one boundary edge sits along the axis, or null when its geometry
- *  cannot be read (a degenerate seam, which is not an end). */
-function axialPosition(oc: OccModule, scope: DisposeScope, edge: OccShape, origin: Vec3, axis: Vec3): number | null {
-  let geom: ReturnType<typeof edgeToGeom>['ed']
+): OccShape | null {
+  const data = payloadOf(query, globalRepo, bodyStore)
+  if (data === null) return null
+  const index = data.face_index as number | undefined
+  const shape = bodyShapeOf(data, bodyStore, ctx)
+  if (shape === null || index === undefined) return null
   try {
-    geom = edgeToGeom(oc, scope, edge).ed
+    return extractOccFace(ctx.oc, ctx.scope, shape, index)
   } catch {
     return null
   }
-  if (geom.kind === 'circle' || geom.kind === 'arc') {
-    return dot([geom.center[0] - origin[0], geom.center[1] - origin[1], geom.center[2] - origin[2]], axis)
+}
+
+function edgeOfQuery(
+  query: string,
+  globalRepo: Repository,
+  bodyStore: Dict,
+  ctx: AxisSenseContext,
+): OccShape | null {
+  const data = payloadOf(query, globalRepo, bodyStore)
+  if (data === null) return null
+  const index = data.edge_index as number | undefined
+  const shape = bodyShapeOf(data, bodyStore, ctx)
+  if (shape === null || index === undefined) return null
+  return canonicalEdges(ctx.oc, ctx.scope, shape)[index] ?? null
+}
+
+/** A point partway along an edge, used only to place the edge along the axis. */
+function edgeMidpoint(ctx: AxisSenseContext, edge: OccShape): Vec3 {
+  const adaptor = ctx.scope.track(new ctx.oc.BRepAdaptor_Curve_2(edge))
+  const mid = adaptor.Value((adaptor.FirstParameter() + adaptor.LastParameter()) / 2)
+  const point: Vec3 = [mid.X(), mid.Y(), mid.Z()]
+  mid.delete()
+  return point
+}
+
+interface AxialEnd {
+  edge: OccShape
+  t: number
+}
+
+/** The boundary edge at each axial end of a face. A full cylinder or cone also
+ *  meets its own seam edge, whose midpoint sits between the ends, so the
+ *  extremes of the projected boundary are the two ends. */
+function axialEnds(ctx: AxisSenseContext, face: OccShape, axis: Vec3, origin: Vec3): AxialEnd[] {
+  const ends: AxialEnd[] = []
+  for (const edge of exploreEdges(ctx.oc, ctx.scope, face)) {
+    const mid = edgeMidpoint(ctx, edge)
+    const t = (mid[0] - origin[0]) * axis[0] + (mid[1] - origin[1]) * axis[1] + (mid[2] - origin[2]) * axis[2]
+    ends.push({ edge, t })
   }
-  if (geom.kind === 'line') {
-    const midpoint: Vec3 = [
-      (geom.start[0] + geom.end[0]) / 2,
-      (geom.start[1] + geom.end[1]) / 2,
-      (geom.start[2] + geom.end[2]) / 2,
-    ]
-    return dot([midpoint[0] - origin[0], midpoint[1] - origin[1], midpoint[2] - origin[2]], axis)
+  if (ends.length === 0) return []
+  const low = ends.reduce((a, b) => (b.t < a.t ? b : a))
+  const high = ends.reduce((a, b) => (b.t > a.t ? b : a))
+  return low === high ? [low] : [low, high]
+}
+
+/** The faces a body meets an edge with, this face excluded. The kernel build
+ *  has no bound TopTools adjacency map, so the index is a face walk; one walk
+ *  serves both ends of one pick. */
+function neighbourIndex(ctx: AxisSenseContext, shape: OccShape): SubShapeMultiIndex<OccSubShape> {
+  const byEdge = new SubShapeMultiIndex<OccSubShape>()
+  for (const candidate of exploreFaces(ctx.oc, ctx.scope, shape)) {
+    for (const edge of exploreEdges(ctx.oc, ctx.scope, candidate)) byEdge.add(edge as OccSubShape, candidate as OccSubShape)
   }
-  if (geom.kind === 'ellipse') {
-    return dot([geom.center[0] - origin[0], geom.center[1] - origin[1], geom.center[2] - origin[2]], axis)
+  return byEdge
+}
+
+/** True when a neighbour's outward normal points away from the face at that
+ *  end, which is what makes the end free (a mouth, a boss top, a wide cone
+ *  end). The neighbour's normal is read at its own domain midpoint: a planar
+ *  neighbour's is constant, and a coaxial cone's axial component is too. */
+function endIsFree(ctx: AxisSenseContext, neighbours: readonly OccSubShape[], leaving: Vec3): boolean {
+  return neighbours.some((neighbour) => dot(faceNormal(ctx.oc, ctx.scope, neighbour), leaving) > 1e-6)
+}
+
+interface FaceAxis {
+  axis: Vec3
+  origin: Vec3
+}
+
+function faceAxis(ctx: AxisSenseContext, face: OccShape): FaceAxis | null {
+  const frame = faceSurfaceFrame(ctx.oc, ctx.scope, face)
+  if (frame === null) return null
+  const axis = unit(frame.axis)
+  return axis === null ? null : { axis, origin: frame.origin }
+}
+
+/** The face's span along its own axis: the V parameter for a cylinder, and the
+ *  same parameter times cos(semi-angle) for a cone (its V runs along the
+ *  generatrix, so the axial height is that projection). */
+function faceAxialExtent(ctx: AxisSenseContext, face: OccShape): number | null {
+  const { oc, scope } = ctx
+  const adaptor = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
+  const span = Math.abs(adaptor.LastVParameter() - adaptor.FirstVParameter())
+  const type = adaptor.GetType().value
+  if (type === oc.GeomAbs_SurfaceType.GeomAbs_Cylinder.value) return span
+  if (type === oc.GeomAbs_SurfaceType.GeomAbs_Cone.value) {
+    const cone = scope.track(adaptor.Cone())
+    return span * Math.abs(Math.cos(cone.SemiAngle()))
+  }
+  return null
+}
+
+/** Apply the free-end rule to one cylindrical or conical face. */
+function faceDirection(ctx: AxisSenseContext, face: OccShape, shape: OccShape): FaceAxis | null {
+  const frame = faceAxis(ctx, face)
+  if (frame === null) return null
+  const ends = axialEnds(ctx, face, frame.axis, frame.origin)
+  if (ends.length < 2) return frame
+  const byEdge = neighbourIndex(ctx, shape)
+  const free = ends.map((end) => {
+    const neighbours = byEdge.get(end.edge as OccSubShape).filter((n) => !n.IsSame(face))
+    // The direction that leaves the face at this end: away from the face's own
+    // interior, so against the axis at the low end.
+    const sign = end === ends[0] ? -1 : 1
+    const leaving: Vec3 = [frame.axis[0] * sign, frame.axis[1] * sign, frame.axis[2] * sign]
+    return endIsFree(ctx, neighbours, leaving)
+  })
+  if (free[0] === free[1]) return frame
+  const sign = free[1] ? 1 : -1
+  return { axis: [frame.axis[0] * sign, frame.axis[1] * sign, frame.axis[2] * sign], origin: frame.origin }
+}
+
+/** A circular body edge: its planar neighbour's outward normal when it has one,
+ *  else the cylindrical/conical neighbour's own rule. */
+function circularEdgeDirection(
+  ctx: AxisSenseContext,
+  edge: OccShape,
+  shape: OccShape,
+  rawAxis: Vec3,
+): Vec3 | null {
+  const neighbours = neighbourIndex(ctx, shape).get(edge as OccSubShape)
+  // A rim's planar neighbour is the end face the edge bounds, so its outward
+  // normal lies on the circle's axis. One that does not (a tangent face) says
+  // nothing about the sense and is skipped.
+  for (const neighbour of neighbours) {
+    if (faceSurfaceFrame(ctx.oc, ctx.scope, neighbour) !== null) continue
+    const normal = faceNormal(ctx.oc, ctx.scope, neighbour)
+    if (Math.abs(dot(normal, rawAxis)) < 1 - 1e-6) continue
+    return dot(normal, rawAxis) >= 0 ? rawAxis : [-rawAxis[0], -rawAxis[1], -rawAxis[2]]
+  }
+  for (const neighbour of neighbours) {
+    if (faceSurfaceFrame(ctx.oc, ctx.scope, neighbour) === null) continue
+    const direction = faceDirection(ctx, neighbour, shape)
+    if (direction !== null) return direction.axis
   }
   return null
 }
 
 /**
- * The free end of a cylindrical or conical face, or null for any other surface
- * (a plane's normal is already the answer, and a sphere or torus has no axial
- * end). Every end with a neighbouring face whose outward normal leaves the face
- * is free; one free end decides, two or none fall back to the surface's own OCC
- * axis sense.
+ * Resolve an axis carrier's direction and, for a face, its axial extent. Null
+ * when the carrier's geometry cannot be reached; the direction resolver then
+ * keeps the payload's raw axis, and a directive-length pick refuses by name
+ * because it has no extent to give.
  */
-export function faceFreeEnd(ctx: AxisSenseContext, body: Body, face: OccShape): AxisSense | null {
-  const kind = faceSurfaceType(ctx.oc, ctx.scope, face)
-  if (kind !== 'cylinderface' && kind !== 'coneface') return null
-  const frame = faceSurfaceFrame(ctx.oc, ctx.scope, face)
-  if (frame === null) return null
-  const axis = unit(frame.axis)
-  if (axis === null) return null
-  const origin: Vec3 = [frame.origin[0], frame.origin[1], frame.origin[2]]
-
-  // Each boundary edge belongs to one axial end. A seam edge's geometry does not
-  // read, and it is not an end, so it drops out here.
-  const ends: { axial: number; edges: OccShape[] }[] = []
-  for (const edge of exploreEdges(ctx.oc, ctx.scope, face)) {
-    const axial = axialPosition(ctx.oc, ctx.scope, edge, origin, axis)
-    if (axial === null) continue
-    const existing = ends.find((end) => Math.abs(end.axial - axial) < 1e-6)
-    if (existing === undefined) ends.push({ axial, edges: [edge] })
-    else existing.edges.push(edge)
-  }
-  if (ends.length === 0) return null
-  // Exactly two axial ends on a full cylinder or cone; a trimmed face may have
-  // several, and its outermost edges still name which way the axis points.
-  ends.sort((a, b) => a.axial - b.axial)
-  const low = ends[0]
-  const high = ends[ends.length - 1]
-
-  const isFree = (end: { axial: number; edges: OccShape[] }, leaving: Vec3): boolean => {
-    for (const edge of end.edges) {
-      for (const neighbour of neighbourFaces(ctx, body, edge, face)) {
-        try {
-          if (dot(faceNormal(ctx.oc, ctx.scope, neighbour), leaving) > 1e-9) return true
-        } catch {
-          // A neighbour whose normal is not defined gives no evidence; the other
-          // boundary edges still decide.
-        }
-      }
-    }
-    return false
-  }
-
-  const negated: Vec3 = [-axis[0], -axis[1], -axis[2]]
-  const lowFree = low !== high && isFree(low, negated)
-  const highFree = isFree(high, axis)
-  if (lowFree !== highFree) {
-    return lowFree
-      ? { point: along(origin, axis, low.axial), normal: negated }
-      : { point: along(origin, axis, high.axial), normal: axis }
-  }
-  // Two free ends or none: the surface's own axis sense. The point is the end
-  // that sense runs to, so a through hole and an internal bore stay stable.
-  return { point: along(origin, axis, high.axial), normal: axis }
-}
-
-/**
- * The sense of a circular body edge. A planar neighbour decides first (the
- * mouth circle borders the plate top, whose outward normal is the answer), else
- * the edge inherits its cylindrical or conical neighbour's free-end sense. A
- * bare edge with neither keeps the axis it was resolved with.
- */
-export function circularEdgeSense(
+export function resolveAxisCarrier(
+  kind: AxisCarrierKind,
+  query: string,
+  rawAxis: Vec3 | null,
   ctx: AxisSenseContext,
-  body: Body,
-  edge: OccShape,
-  center: Vec3,
-  axis: Vec3,
-): AxisSense {
-  const faces = neighbourFaces(ctx, body, edge, null)
-  // A rim can border two planes (a boss top cap and its side). The one whose
-  // normal runs along the edge axis is the cap the circle belongs to; a side
-  // face is perpendicular and is not the sense the copy wants.
-  const planar: Vec3[] = []
-  for (const face of faces) {
-    try {
-      if (faceSurfaceType(ctx.oc, ctx.scope, face) === 'flatface') {
-        planar.push(faceNormal(ctx.oc, ctx.scope, face))
-      }
-    } catch {
-      // Not a readable face; the curved neighbour below is the next evidence.
-    }
+  globalRepo: Repository,
+  bodyStore: Dict,
+): AxisCarrierResult | null {
+  if (kind === 'sketch_circle') {
+    const axis = rawAxis === null ? null : unit(rawAxis)
+    return axis === null ? null : { direction: axis, extent: null }
   }
-  const unitAxis = unit(axis)
-  const aligned = unitAxis === null
-    ? undefined
-    : planar.find((candidate) => Math.abs(dot(candidate, unitAxis)) > 0.99)
-  const chosen = aligned ?? planar[0]
-  if (chosen !== undefined) {
-    return { point: [center[0], center[1], center[2]], normal: chosen }
+  const data = payloadOf(query, globalRepo, bodyStore)
+  if (data === null) return null
+  const shape = bodyShapeOf(data, bodyStore, ctx)
+  if (shape === null) return null
+
+  if (kind === 'circular_edge') {
+    const axis = rawAxis === null ? null : unit(rawAxis)
+    const edge = edgeOfQuery(query, globalRepo, bodyStore, ctx)
+    if (axis === null || edge === null) return null
+    const direction = circularEdgeDirection(ctx, edge, shape, axis)
+    return direction === null ? null : { direction, extent: null }
   }
-  for (const face of faces) {
-    const sense = faceFreeEnd(ctx, body, face)
-    if (sense !== null) return { point: [center[0], center[1], center[2]], normal: sense.normal }
-  }
-  const fallback = unit(axis) ?? [0, 0, 1]
-  return { point: [center[0], center[1], center[2]], normal: fallback }
+
+  // A cylinder or cone: the face itself carries the axis (the payload's `axis`
+  // is cylinder-only), and the free-end rule reads the neighbour faces.
+  const face = faceOfQuery(query, globalRepo, bodyStore, ctx)
+  if (face === null) return null
+  const direction = faceDirection(ctx, face, shape)
+  if (direction === null) return null
+  return { direction: direction.axis, extent: faceAxialExtent(ctx, face) }
 }

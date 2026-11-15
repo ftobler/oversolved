@@ -291,13 +291,15 @@ migration: deciding which extrusion was meant to start the part needs the
 document's intent, not a field value.
 
 `up_to` trims the extrude at the picked element instead of at `distance`. A
-query target that does not resolve, or meets several elements, falls back to the
-blind distance with a solver warning; an up_to with no `up_to` target does so
-too. A `@<bodyId>/face/<n>` ref that no longer names a face (the body is gone,
-the index is out of range, or the remap fails) fails the feature instead, since
-that spelling is a persisted pick rather than a query. A face target may be
-planar or curved: a curved face is split at the first crossing, so a tool that
-enters and leaves a cylinder stops at the near wall. The face must cover the
+query target that does not resolve or meets several elements, or an up_to with
+no `up_to` target, builds nothing: the termination is the authored intent, so
+the feature soft fails (a solver warning, the body untouched, no body minted)
+rather than substituting the blind distance. A `@<bodyId>/face/<n>` ref that no
+longer names a face (the body is gone, the index is out of range, or the remap
+fails) fails the feature instead, since that spelling is a persisted pick rather
+than a query. A face target may be planar or curved: a curved face is split at
+the first crossing, so a tool that enters and leaves a cylinder stops at the
+near wall. The face must cover the
 whole profile; a face smaller than the footprint, or shorter than the swept
 profile, first retries on its untrimmed surface extended over the tool (with
 `up_to: the face did not cover the profile; trimmed at its extended surface` in
@@ -898,11 +900,31 @@ translates and ignores every normal.
 - id: mir1
   kind: mirror
   mirror:
-    body: "@body_ex1"
+    subject: body                   # body (default) | feature
+    body: "@body_ex1"               # body subject: required
     plane: "@builtin_plane_front"   # query; required
     keep_original: true             # false replaces the source in place
     merge: true                     # fuse mirror into source when keep_original
 ```
+
+A `subject: body` mirror reflects the whole body. A `subject: feature` mirror
+instead reapplies one or more earlier extrudes, revolves or sweeps, reflected
+across the plane, inside the body each source shaped:
+
+```yaml
+- id: mir2
+  kind: mirror
+  mirror:
+    subject: feature
+    source_features: ["@ex2"]       # extrude/revolve/sweep, operation add or cut
+    target_body: "@body_ex1"        # optional: the body a source shaped twice
+    plane: "@builtin_plane_front"
+```
+
+The source's own operation is reapplied in the same body, so `keep_original`
+and `merge` mean nothing there and are refused. The mirrored copy's face and
+edge UUIDs are keyed by this feature's id and the instance key `m`, so they are
+stable across a re-solve and never collide with a pattern copy's.
 
 ### split
 

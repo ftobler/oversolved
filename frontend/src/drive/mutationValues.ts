@@ -37,6 +37,7 @@ import { lengthUnitOf } from '@/utils/lengthUnit'
 import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/persistence/partDocSchema'
 import { arrayCountProblem } from '@/persistence/docSchema'
 import { skipValue } from '@/utils/core/patternSkip'
+import { linearDirectionModeOf, unreadDirectionFieldProblem } from '@/utils/core/linearPatternModes'
 import { evalExpr } from '@/kernel/evalExpr'
 import { MAX_ARRAY_CELLS } from '@/utils/core/arrayLimits'
 import { pickedSketchEntity } from '@/kernel/features/shared/bodyRef'
@@ -45,6 +46,7 @@ import { isFaceProjectionSource, isProjectionPosition } from '@/kernel/features/
 import { projectionTargetRef } from '@/utils/yamlMutations/freezeProjection'
 import { SelectorError, validateSelector } from '@/kernel/select'
 import { declaredSelectorKind, selectorShapeHint } from '@/drive/selectionAids'
+import { mirrorSubject } from '@/utils/core/mirrorSubject'
 
 export type ValueViolationCode = 'invalid-mutation' | 'unknown-target'
 
@@ -1532,7 +1534,40 @@ function inlineFeatureFieldsProblem(
 }
 
 function addMirror(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  if (raw.subject === 'feature') {
+    for (const field of ['keep_original', 'merge']) {
+      if (raw[field] !== undefined && raw[field] !== null) {
+        return invalid(
+          `add_mirror field ${json(field)} means nothing on a feature mirror; the source's own add or cut is ` +
+            'reapplied mirrored inside the same body, so the original always stays',
+        )
+      }
+    }
+  }
   return inlineFeatureFieldsProblem(raw, ctx, 'mirror', 'set_mirror_field')
+}
+
+/** The subject of the mirror a setter names, read from the live document.
+ *  Absence of both the document and the field means body, the same rule the
+ *  kernel reads. */
+function storedMirrorSubject(raw: RawStep, ctx: ValueContext): 'body' | 'feature' {
+  if (ctx.doc === null) return 'body'
+  const feature = (ctx.doc.features ?? []).find(entry => entry.id === raw.featureId)
+  if (feature === undefined || feature.kind !== 'mirror') return 'body'
+  return mirrorSubject(feature.mirror)
+}
+
+/** The two whole-body flags a feature mirror refuses by name. Their value is
+ *  well-formed either way, so the schema check alone cannot catch them. */
+function setMirrorField(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const field = raw.field
+  if ((field === 'keep_original' || field === 'merge') && storedMirrorSubject(raw, ctx) === 'feature') {
+    return invalid(
+      `set_mirror_field field ${json(field)} means nothing on feature mirror ${json(raw.featureId)}; ` +
+        "a feature mirror reapplies the source's own add or cut, so the original always stays",
+    )
+  }
+  return fieldValue(raw, ctx)
 }
 
 // The pattern count is the one number with a rule the JSON schema cannot carry:
@@ -1603,12 +1638,29 @@ function circularSkipProblem(value: unknown, label: string): ValueViolation | nu
   return wholeIndexSkipProblem(value, label)
 }
 
+/** The pitch a direction mode does not read, refused by name: a mode hides its
+ *  own spacing field, so setting the other one would store a value the kernel
+ *  ignores and read as accepted. The table is per direction, so both pitch
+ *  spellings ask it about `pitch` and the sentence names the authored one. */
+function unreadPitchProblem(mode: unknown, field: 'pitch' | 'pitch_2', label: string): ValueViolation | null {
+  const resolved = linearDirectionModeOf(mode)
+  if (unreadDirectionFieldProblem(resolved, 'pitch') === null) return null
+  return invalid(`${label}: ${field} is not read in ${resolved} mode`)
+}
+
 function addLinearPattern(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const generic = inlineFeatureFieldsProblem(raw, ctx, 'linear_pattern', 'set_linear_pattern_field', ['skip'])
   if (generic !== null) return generic
   if (raw.skip !== undefined && raw.skip !== null) {
     const skipProblem = patternSkipProblem(raw.skip, `add_linear_pattern field ${json('skip')}`)
     if (skipProblem !== null) return skipProblem
+  }
+  for (const [modeKey, pitchKey] of [
+    ['direction_mode', 'pitch'], ['direction_2_mode', 'pitch_2'],
+  ] as const) {
+    if (raw[pitchKey] === undefined) continue
+    const problem = unreadPitchProblem(raw[modeKey], pitchKey, `add_linear_pattern field ${json(pitchKey)}`)
+    if (problem !== null) return problem
   }
   // Judge each inline count against its sibling in the same payload, so the
   // cells cap is refused before the applier would seed the missing axis.
@@ -1646,6 +1698,11 @@ function setLinearPatternField(raw: RawStep, ctx: ValueContext): ValueViolation 
   }
   const generic = fieldValue(raw, ctx)
   if (generic !== null) return generic
+  if (field === 'pitch' || field === 'pitch_2') {
+    const stored = storedPatternDef(raw, ctx, 'linear_pattern')
+    const modeKey = field === 'pitch' ? 'direction_mode' : 'direction_2_mode'
+    return unreadPitchProblem(stored?.[modeKey], field, `set_linear_pattern_field field ${json(field)}`)
+  }
   if (typeof field !== 'string' || (field !== 'count' && field !== 'count_2')) return null
   const stored = storedPatternDef(raw, ctx, 'linear_pattern')
   const siblingKey = field === 'count' ? 'count_2' : 'count'
@@ -2569,7 +2626,9 @@ export const MUTATION_VALUE_RULES = {
   set_part_roughness: unitInterval('roughness'),
   set_part_transmission: unitInterval('transmission'),
   add_mirror: addMirror,
-  set_mirror_field: fieldValue,
+  set_mirror_field: setMirrorField,
+  add_mirror_source: queryField('sourceFeature'),
+  remove_mirror_source: indexField('index'),
   add_split: addSplit,
   set_split_field: setSplitField,
   add_split_body: queryField('bodyQuery'),

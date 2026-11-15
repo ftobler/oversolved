@@ -234,6 +234,9 @@ describe('array add fuse releases (H21)', () => {
         body_id: 'body_ex1',
         body_ids: [],
         operation: 'add',
+        // The leaf reports the spacing it used, even when the add consumed the
+        // body and left nothing.
+        resolved_pitch: 10,
         solver_warning: "pattern: the add removed all of body 'body_ex1'; the body was deleted",
       })
     } finally {

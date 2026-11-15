@@ -207,7 +207,7 @@ button.breadcrumb-name:disabled {
 .logo {
   font-size: 18px;
   font-weight: 700;
-  background: linear-gradient(90deg, #81c784, #f06292);
+  background: var(--brand-gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
@@ -223,7 +223,7 @@ button.breadcrumb-name:disabled {
 
 .logo:hover {
   opacity: 0.8;
-  background: linear-gradient(90deg, #c7c781, #dd62f0);
+  background: var(--brand-gradient-hover);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;

@@ -141,6 +141,13 @@ export type PatternSourceDef = {
   target_body?: string
 }
 
+// How one linear direction gets its step. `direction_distance` is the original
+// and the default of a document written before the field existed, so an old doc
+// solves byte-identically; `directive_length` takes the pick's own length as the
+// spacing (a 15 mm edge puts neighbours 15 mm apart) and reads no pitch;
+// `manual` takes `direction` as the whole step vector, magnitude included.
+export type LinearDirectionMode = 'direction_distance' | 'directive_length' | 'manual'
+
 // A linear pattern repeats along one direction, or along two when the second
 // direction is on. `count` is the total on direction 1, the source's own slot
 // included: 1 keeps only the original and is a quiet no-op, 2 makes one copy.
@@ -152,21 +159,28 @@ export type PatternSourceDef = {
 // instances out, as a signed 1D index or an `i:j` cell (a bare integer means
 // i:0). A legacy document may still carry `include_source`; the loader accepts
 // it and the kernel ignores it, because the source is always instance 0.
+//
+// Each direction carries its own mode. Switching mode keeps every field in the
+// document, so a vector authored in `manual` survives a trip through
+// `directive_length`; the kernel reads only the active mode's fields, and the
+// drive refuses a field the mode does not read (pitch under `manual`).
 export type LinearPatternDef = PatternSourceDef & {
   count?: NumberOrExpr
   centered?: boolean
   skip?: (number | [number, number])[]
-  // Direction 1: spacing along `direction` in the document's unit.
+  // Direction 1: the spacing along `direction` in the document's unit.
+  direction_mode?: LinearDirectionMode
   pitch?: NumberOrExpr
-  direction?: [number, number, number]
+  direction?: [NumberOrExpr, NumberOrExpr, NumberOrExpr]
   direction_query?: string
   invert?: boolean
   // Direction 2, the retired rectangular mode.
   second_direction?: boolean
   count_2?: NumberOrExpr
   centered_2?: boolean
+  direction_2_mode?: LinearDirectionMode
   pitch_2?: NumberOrExpr
-  direction_2?: [number, number, number]
+  direction_2?: [NumberOrExpr, NumberOrExpr, NumberOrExpr]
   direction_2_query?: string
   invert_2?: boolean
 }
@@ -377,8 +391,21 @@ export interface ThreadDisplayData {
 }
 
 export type MirrorFeatureDef = {
-  body: string
+  // What is mirrored. Absent means body, so a document authored before the
+  // feature subject existed keeps meaning the whole-body mirror it was.
+  subject?: 'body' | 'feature'
+  // Body subject: the whole body is reflected, merged or spawned.
+  body?: string
+  // Feature subject: earlier extrude/revolve/sweep rows whose own add or cut is
+  // reapplied mirrored inside the body each shaped. Feature-log order decides
+  // the union, never the chip order.
+  source_features?: string[]
+  // Feature subject: the body a source's mirrored copy lands in, when the
+  // source shaped more than one.
+  target_body?: string
   plane: string
+  // Body subject only: a feature mirror reapplies the source's own operation
+  // inside the same body, so the original always stays.
   keep_original?: boolean
   merge?: boolean
 }
@@ -1605,6 +1632,8 @@ export type Mutation =
   | { type: 'set_part_transmission'; bodyId: string; transmission: number }
   | ({ type: 'add_mirror'; featureId: string; label?: string } & Partial<MirrorFeatureDef> & FeatureInsertion)
   | { type: 'set_mirror_field'; featureId: string; field: keyof MirrorFeatureDef; value: unknown }
+  | { type: 'add_mirror_source'; featureId: string; sourceFeature: string }
+  | { type: 'remove_mirror_source'; featureId: string; index: number }
   | ({ type: 'add_split'; featureId: string; label?: string; bodies?: string[]; plane?: string; keep?: SplitKeep } & FeatureInsertion)
   | { type: 'set_split_field'; featureId: string; field: keyof SplitFeatureDef; value: unknown }
   | { type: 'add_split_body'; featureId: string; bodyQuery: string }

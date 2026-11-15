@@ -115,6 +115,7 @@ export const IDEMPOTENT_MUTATION = {
   remove_transform_body: true,
   remove_split_body: true,
   remove_pattern_source: true,
+  remove_mirror_source: true,
 
   // ─── Deliberately excluded ───
 
@@ -210,6 +211,7 @@ export const IDEMPOTENT_MUTATION = {
   add_transform_body: false,
   add_split_body: false,
   add_pattern_source: false,
+  add_mirror_source: false,
 
   // Whole-feature delete and the global plane toggles. These CAN leave the doc
   // byte-identical (a delete of an absent or builtin id, a toggle with no

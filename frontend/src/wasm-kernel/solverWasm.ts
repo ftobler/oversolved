@@ -22,14 +22,19 @@
 
 import type { SolveBytes, TopologyBytes } from './wasmTypes'
 
+/** wasm-bindgen's init signature since 0.2.93: one options object. The
+ *  positional wasm path is still accepted but logs the deprecation warning on
+ *  every package load, so this loader must use the object form. */
+type WasmInit = (input?: { module_or_path?: unknown }) => Promise<unknown>
+
 interface SketchModule {
-  default: (input?: unknown) => Promise<unknown>
+  default: WasmInit
   solve_sketch_bytes: SolveBytes
   detect_topology_bytes: TopologyBytes
 }
 
 interface MateModule {
-  default: (input?: unknown) => Promise<unknown>
+  default: WasmInit
   solve_mate_bytes: SolveBytes
   // The live-drag entry point beside the full solve. A build that predates it
   // returns undefined, which the loader surfaces as null and the worker falls
@@ -53,10 +58,10 @@ function loadPackage<M>(stem: string, base: string): Promise<M | null> {
   const pending = (async () => {
     try {
       const mod = (await import(  /* @vite-ignore */ `${base}${stem}.js`)) as M & {
-        default: (input?: unknown) => Promise<unknown>
+        default: WasmInit
       }
       // The web build needs its init() called once (fetches the .wasm).
-      await mod.default(`${base}${stem}_bg.wasm`)
+      await mod.default({ module_or_path: `${base}${stem}_bg.wasm` })
       return mod
     } catch (e) {
       // A failed load must not be memoized: a transient fetch or compile failure

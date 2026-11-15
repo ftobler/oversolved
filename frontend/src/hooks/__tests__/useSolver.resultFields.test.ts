@@ -105,14 +105,14 @@ describe('applySolveResult -- fields the feature tree reads', () => {
   })
 
   it('keeps the warnings a successful solve carries', async () => {
-    // `solver_warning` rides an 'ok' result (an up-to target that fell back to
-    // a blind distance, a boolean that changed nothing); it is the only trace
-    // of that fallback, so the feature status reads it.
+    // `solver_warning` rides an 'ok' result (an up-to with no usable target that
+    // built nothing, a boolean that changed nothing); it is the only trace of
+    // that soft failure, so the feature status reads it.
     const result = setupHook()
     await solveWith(result, {
-      ex1: { status: 'ok', body_id: 'body_ex1', solver_warning: 'used blind distance', mesh_warning: 'no shape' },
+      ex1: { status: 'ok', body_id: 'body_ex1', solver_warning: 'up_to has no target; nothing was built', mesh_warning: 'no shape' },
     })
-    expect(result.current.solveResults.ex1).toMatchObject({ solver_warning: 'used blind distance', mesh_warning: 'no shape' })
+    expect(result.current.solveResults.ex1).toMatchObject({ solver_warning: 'up_to has no target; nothing was built', mesh_warning: 'no shape' })
   })
 
   it('keeps an informational solver note, even though the tree does not mark it', async () => {

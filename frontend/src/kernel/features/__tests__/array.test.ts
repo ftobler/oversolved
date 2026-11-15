@@ -360,6 +360,25 @@ describe('buildLinearCopies (second direction)', () => {
     }, xyRepo, {}).copies
     expect(copies.map((copy) => copy.key)).toEqual(['1:0', '0:1'])
   })
+
+  it('lets each direction carry its own mode: a manual step column, a directive-length row', () => {
+    const t = buildLinear(makeFake(), scope, {
+      count: 2, count_2: 2, second_direction: true,
+      direction_mode: 'manual', direction: [10, 0, 5],
+      direction_2_mode: 'directive_length', direction_2_query: 'qy',
+    }, dirRepo({ qy: [0, 8, 0] }))
+    // The manual step is 10 in x and 5 in z; the row comes from the 8-long edge.
+    expect(translations(t)).toEqual([[10, 0, 5], [0, 8, 0], [10, 8, 5]])
+  })
+
+  it('reports the resolved spacing each direction used', () => {
+    const built = buildLinearCopies(makeFake(), scope, {
+      count: 2, count_2: 2, second_direction: true,
+      direction_mode: 'manual', direction: [3, 4, 0],
+      direction_2_mode: 'direction_distance', direction_2_query: 'qy', pitch_2: 7,
+    }, dirRepo({ qy: [0, 8, 0] }), {})
+    expect(built.extra).toEqual({ resolved_pitch: 5, resolved_pitch_2: 7 })
+  })
 })
 
 describe('buildCircularCopies', () => {

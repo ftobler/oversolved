@@ -24,6 +24,7 @@ import { extrudeProfileWithLineage, revolveProfileWithLineage, sketchLoopsToFace
 import { solidToEdges, readShapeFaceMetadata, bodyFrame } from '@/kernel/occ/tessellation'
 import { registerSplitBodies } from '@/kernel/features/bodySplit'
 import { solveBoolean } from '@/kernel/features/boolean'
+import { solveExtrude } from '@/kernel/features/extrude'
 import { solveFillet, solveChamfer, resolveFilletEdges } from '@/kernel/features/filletChamfer'
 import { solveHole } from '@/kernel/features/hole'
 import { solveLinearPattern } from '@/kernel/features/linearPattern'
@@ -357,6 +358,7 @@ function checkMonotonic(step: RecipeStep, targetBefore: number | undefined, edit
     || (step.kind === 'mirror' && step.keepOriginal && step.merge)
   // Shell is drawn inward only, so like a cut it never adds material.
   const cutLike = (step.kind === 'boolean' && step.operation === 'subtract') || step.kind === 'hole' || step.kind === 'shell'
+    || step.kind === 'feature-mirror'
   if (!joinLike && !cutLike) return
   if (targetBefore === undefined) {
     violations.push({ step: stepIndex, message: `the ${step.kind} step ran with no target volume to compare against` })
@@ -916,6 +918,60 @@ function applyStep(
       editedIds: result.body_ids,
       splitPlane: { axis: step.axis, offset, span: Math.max(1e-9, bbox.max[index] - bbox.min[index]) },
     }
+  }
+  if (step.kind === 'feature-mirror') {
+    // The source is a synthetic blind cut on a picked planar face, run for
+    // real so the mirror re-solves the same feature spec the document would
+    // hold. Its sketch lives only in the chain's repo, exactly like the split
+    // plane.
+    const body = requireBody(bodyStore, step.target)
+    const shape = table.get<OccShape>(body.shape as OccHandle)
+    const face = expected !== undefined && expected.kind === 'face'
+      ? resolveRecordedFace(oc, scope, shape, body, step.face, expected)
+      : pickFace(facesOf(oc, scope, shape, body), step.face)
+    if (face.query) picks.push({ step: stepIndex, kind: 'face', body: step.target, query: face.query, elementKind: face.surfaceType })
+    const xAxis = perpendicular(face.normal)
+    const yAxis = cross(face.normal, xAxis)
+    const sketchId = `sk_${step.id}`
+    repo.register('_pt_' + sketchId, { origin: face.centroid, x_axis: xAxis, y_axis: yAxis, normal: face.normal })
+    // A 1 mm square centred on the face centroid: inside any usable planar
+    // face, and asymmetric only about planes that happen to cross the centroid.
+    repo.register('_topo_' + sketchId, {
+      surfaces: [{ boundary: rectLoop(-0.5, 0.5, -0.5, 0.5) }],
+    })
+    const sourceId = `ex_${step.id}`
+    const sourceFeature: Dict = {
+      id: sourceId,
+      kind: 'extrude',
+      extrude: {
+        sketch: '@' + sketchId,
+        distance: step.depth,
+        // The picked face's normal points out of the body; drilling inward
+        // needs the reversed axis or the tool starts outside and removes nothing.
+        direction: 'reverse',
+        operation: 'cut',
+      },
+    }
+    const source = solveExtrude(oc, scope, table, sourceFeature, repoForLeaves, bodyStore)
+    if (source.status !== 'ok') {
+      throw new Error(`feature mirror source: ${String(source.exception ?? source.status)}`)
+    }
+    const bbox = shapeBndBox(oc, scope, table.get<OccShape>(requireBody(bodyStore, step.target).shape as OccHandle))
+    const axis = axisVec(step.plane)
+    const index = step.plane === 'x' ? 0 : step.plane === 'y' ? 1 : 2
+    const centre = (bbox.min[index] + bbox.max[index]) / 2
+    const planeQuery = `@fuzz/plane/${step.id}`
+    repo.registerQuery(planeQuery, () => ({ type: 'plane', origin: scale(axis, centre), normal: axis }))
+    const result = solveMirror(oc, scope, table, {
+      id: step.id,
+      mirror: {
+        subject: 'feature',
+        source_features: ['@' + sourceId],
+        target_body: step.target,
+        plane: planeQuery,
+      },
+    }, repoForLeaves, bodyStore, { [sourceId]: sourceFeature })
+    return { editedIds: result.body_ids }
   }
   // mirror
   const body = requireBody(bodyStore, step.target)

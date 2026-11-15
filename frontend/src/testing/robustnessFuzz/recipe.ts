@@ -169,6 +169,20 @@ export interface RecipeMirror {
   merge: boolean
 }
 
+export interface RecipeFeatureMirror {
+  kind: 'feature-mirror'
+  id: string
+  target: string
+  // The body bbox axis the mirror plane is normal to, at the body's own centre
+  // along it, so the reflected cut lands back inside the body.
+  plane: AxisName
+  // Index into the target's planar faces the synthetic cut source sits on.
+  face: number
+  // The cut's depth, grid-snapped. A blind cut from the face inward removes
+  // material whatever the body's thickness.
+  depth: number
+}
+
 export interface RecipeShell {
   kind: 'shell'
   id: string
@@ -214,6 +228,7 @@ export type RecipeStep =
   | RecipeCurveArray
   | RecipeInstanceArray
   | RecipeMirror
+  | RecipeFeatureMirror
   | RecipeShell
   | RecipeHelix
   | RecipeSplit
@@ -252,6 +267,10 @@ export interface RecipeOptions {
   // (`seed ^ CURVE_PATTERN_SALT`), the same rule: a new seed family that leaves
   // every existing chain byte-identical.
   curvePatternTail?: boolean
+  // Append one feature-subject mirror step from a DERIVED PRNG
+  // (`seed ^ FEATURE_MIRROR_SALT`). The step synthesises the cut source itself,
+  // so the main stream stays untouched and every existing seed keeps its chain.
+  featureMirrorTail?: boolean
 }
 
 // The number of leading display-sorted edges an edge pick is allowed to land
@@ -442,6 +461,7 @@ export function generateRecipe(seed: number, options: RecipeOptions = {}): Recip
   if (options.splitTail) steps.push(drawSplitTail(seed))
   if (options.curvePatternTail) steps.push(drawCurvePatternTail(seed))
   if (options.instancePatternTail) steps.push(drawInstancePatternTail(seed))
+  if (options.featureMirrorTail) steps.push(drawFeatureMirrorTail(seed))
   return { seed, steps }
 }
 
@@ -518,6 +538,26 @@ function applyPatternInstanceModel(steps: RecipeStep[], seed: number): void {
  * seed.
  */
 export const SPLIT_SALT = 0x5f3a71c9
+
+/**
+ * The one feature-subject mirror step a `featureMirrorTail` recipe appends. Its
+ * own stream is derived from the seed, so the main chain is untouched. The step
+ * is self-contained: it cuts a small slot with a synthetic extrude and then
+ * mirrors that feature, which is the path under test.
+ */
+export const FEATURE_MIRROR_SALT = 0x2c8d4b61
+
+function drawFeatureMirrorTail(seed: number): RecipeFeatureMirror {
+  const rnd = makePrng((seed ^ FEATURE_MIRROR_SALT) >>> 0)
+  return {
+    kind: 'feature-mirror',
+    id: 'feature_mirror_tail',
+    target: PRIMARY_BODY,
+    plane: drawOf(rnd, ['x', 'y', 'z'] as const),
+    face: drawInt(rnd, 0, 3),
+    depth: grid(drawInt(rnd, 2, 4)),
+  }
+}
 
 function drawSplitTail(seed: number): RecipeSplit {
   const rnd = makePrng((seed ^ SPLIT_SALT) >>> 0)

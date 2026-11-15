@@ -8,8 +8,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 
 const h = vi.hoisted(() => ({
-  sketchInit: vi.fn(async () => {}),
-  mateInit: vi.fn(async () => {}),
+  sketchInit: vi.fn(async (_input?: { module_or_path?: unknown }) => {}),
+  mateInit: vi.fn(async (_input?: { module_or_path?: unknown }) => {}),
   sketchSolve: () => 'sketch-solve',
   detectTopology: () => 'detect-topology',
   mateSolve: () => 'mate-solve',
@@ -59,8 +59,21 @@ describe('solverWasm loaders', () => {
     expect(await loadMateWasmLive('/wasm-live/')).toBe(h.mateSolveLive)
     // The package's init() must run once with its own wasm path, or the web
     // build never fetches its binary even though the exports resolve.
-    expect(h.sketchInit).toHaveBeenCalledWith('/wasm-live/sketch_solver_bg.wasm')
-    expect(h.mateInit).toHaveBeenCalledWith('/wasm-live/mate_solver_bg.wasm')
+    expect(h.sketchInit).toHaveBeenCalledWith({ module_or_path: '/wasm-live/sketch_solver_bg.wasm' })
+    expect(h.mateInit).toHaveBeenCalledWith({ module_or_path: '/wasm-live/mate_solver_bg.wasm' })
+  })
+
+  it('inits with one object argument, not the deprecated positional path', async () => {
+    await loadSolverWasm('/wasm-live/')
+    await loadMateWasm('/wasm-live/')
+    for (const init of [h.sketchInit, h.mateInit]) {
+      expect(init).toHaveBeenCalledTimes(1)
+      const args = init.mock.calls[0]
+      // wasm-bindgen 0.2.93+ warns on the positional path and asks for a single
+      // { module_or_path } object; a bare string here is the reverted form.
+      expect(args).toHaveLength(1)
+      expect(args[0]).toEqual({ module_or_path: expect.stringMatching(/_bg\.wasm$/) })
+    }
   })
 
   it('resolves the live entry point to null when the build predates it', async () => {

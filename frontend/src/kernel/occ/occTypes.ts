@@ -485,6 +485,15 @@ export interface OccSurfaceAdaptor extends OccDisposable {
   LastUParameter(): number
   FirstVParameter(): number
   LastVParameter(): number
+  // Periodicity/closure of the surface's parameter directions. A widened
+  // freeform patch must not wrap a periodic direction past its own period, and
+  // a closed (full) direction must not be widened past its poles/edges.
+  IsUPeriodic(): boolean
+  IsVPeriodic(): boolean
+  IsUClosed(): boolean
+  IsVClosed(): boolean
+  UPeriod(): number
+  VPeriod(): number
   // Only valid when GetType() is GeomAbs_Plane (used for face-profile planes).
   Plane(): OccPln
   // Point + first derivatives at (u, v); p/du/dv are caller-allocated out-params.
@@ -759,6 +768,11 @@ export interface OccModule extends OccBaseModule {
      *  face on both sides). The 2-arg overload, pinned by probe and used by
      *  move-face to skip a curved face's own seam. */
     IsClosed_2(edge: OccShape, face: OccShape): boolean
+    /** Surface(face): the face's own Geom_Surface as a smart-pointer handle,
+     *  the same object the face's geometry is stored on. Used by move-face to
+     *  build a widened patch on a freeform neighbour without rebuilding the
+     *  surface. The handle must be tracked/deleted like any other proxy. */
+    Surface_2(face: OccShape): OccDisposable
   }
   TopAbs_ShapeEnum: {
     TopAbs_FACE: OccShapeEnumValue
@@ -1201,6 +1215,21 @@ export interface OccModule extends OccBaseModule {
     vmin: number,
     vmax: number,
   ) => OccFaceBuilder
+  // BRepBuilderAPI_MakeFace(Handle(Geom_Surface), u0, u1, v0, v1, tol): the
+  // generic surface form, _14 by declaration order. It builds a face on the
+  // surface object it is handed, so a widened window is the same underlying
+  // geometry the neighbour's own face uses. Out-of-range parameters on a
+  // B-spline surface evaluate as OCCT's end-span polynomial extension (which
+  // this build's BRepCheck then rejects, so move-face's rung 2b takes over).
+  // Pinned by occ/__tests__/moveFaceExtendReal.test.ts.
+  BRepBuilderAPI_MakeFace_14: new (
+    surface: OccDisposable,
+    umin: number,
+    umax: number,
+    vmin: number,
+    vmax: number,
+    tol: number,
+  ) => OccFaceBuilder
   // BRepBuilderAPI_MakeFace(surface, wire, inside): a face on the analytic
   // surface bounded by a wire that lies on it, one overload per surface kind:
   // _17 cylinder (declared with canonicalSurfaces above, the same binding),
@@ -1259,6 +1288,26 @@ export interface OccModule extends OccBaseModule {
   IFSelect_ReturnStatus: {
     IFSelect_RetDone: OccEnumValue
   }
+
+  // ─── optional bindings (probed, never assumed) ───
+  // The pinned release does not bind either of these. Declaring them optional
+  // keeps move-face's capability probe a typed lookup (`typeof oc.GeomLib?.X`)
+  // instead of an erased double cast, and a release bump that binds one flips
+  // the rung on without a code change.
+  GeomLib?: OccOptionalNamespace
+  BRepOffset_MakeOffset?: new (...args: never[]) => OccFaceOffsetMaker
+}
+
+/** A namespace of optional OCCT functions: a pinned release may not bind it,
+ *  so every member is optional and a caller must probe with `typeof`. */
+export interface OccOptionalNamespace {
+  [member: string]: ((...args: never[]) => unknown) | undefined
+}
+
+/** BRepOffset_MakeOffset's per-face offset API (rung 4 of move-face). */
+export interface OccFaceOffsetMaker {
+  SetOffsetOnFace?: (...args: never[]) => void
+  MakeOffset?: (...args: never[]) => void
 }
 
 /** A face shape exposes its orientation (FORWARD/REVERSED) via Orientation_1. */

@@ -1,5 +1,5 @@
 import type { FeatureEditorSchema } from './FeatureEditor'
-import type { EditorFieldDef, HintContext, TextFieldDef } from './widgets/fieldTypes'
+import type { EditorFieldDef, HintContext, ReadonlyFieldDef, TextFieldDef } from './widgets/fieldTypes'
 import {
   normalizeRefList,
   DEFAULT_EXTRUDE_DISTANCE,
@@ -14,6 +14,8 @@ import { positive, nonNegative, finite, between } from '@/utils/core/valueRules'
 import { arrayCountProblem, MAX_ARRAY_COUNT } from '@/persistence/docSchema'
 import { patternSubject } from '@/utils/core/patternSubject'
 import { formatSkipList, parseSkipList, type SkipEntry } from '@/utils/core/patternSkip'
+import { LINEAR_DIRECTION_MODES, LINEAR_DIRECTION_MODE_LABELS } from '@/utils/core/linearPatternModes'
+import { solvedNumber } from '@/utils/core/solvedValue'
 import {
   filterSkippedInstances,
   generatedCount,
@@ -411,12 +413,35 @@ export const TRANSFORM_SCHEMA: FeatureEditorSchema = {
 export const MIRROR_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_mirror',
   subKey: 'mirror',
-  defaults: { body: '', plane: '', keep_original: true, merge: true },
+  defaults: {
+    subject: 'body', body: '', source_features: [], plane: '', keep_original: true, merge: true,
+  },
   fields: [
-    { type: 'pick', key: 'body', label: 'Body' },
+    // The pattern's subject switch, read with absence meaning body (every
+    // document written before the feature subject existed is a body mirror).
+    { type: 'select', key: 'subject', label: 'Subject', default: 'body',
+      options: [{ value: 'body', label: 'Body' }, { value: 'feature', label: 'Feature' }] },
+    { type: 'pick', key: 'body', label: 'Body', showWhen: (d) => d.subject !== 'feature' },
+    // The mirrored features are FEATURE rows, not viewport picks; each source's
+    // own add or cut is reapplied reflected inside the body it shaped, in
+    // feature-log order. The chip's order is presentation only.
+    { type: 'pick', key: 'source_features', label: 'Source Features', multi: true,
+      addMutationType: 'add_mirror_source', addValueKey: 'sourceFeature',
+      removeMutationType: 'remove_mirror_source',
+      validatePick: toolSourcePickRefusal,
+      showWhen: (d) => d.subject === 'feature',
+      emptyText: '(pick one or more features to mirror)',
+      hint: 'Reflected in feature-log order; the source keeps its own copy.' },
+    { type: 'pick', key: 'target_body', label: 'Target body', transform: resolveBodyPickRef,
+      showWhen: (d) => d.subject === 'feature', emptyText: '(the body the source shaped)' },
     { type: 'pick', key: 'plane', label: 'Mirror Plane', transform: stripSelectionWrapper },
-    { type: 'checkbox', key: 'keep_original', label: 'Keep Original', default: true },
-    { type: 'checkbox', key: 'merge', label: 'Merge', default: true },
+    // The source's own operation is reapplied in the same body, so these two
+    // whole-body modes have no meaning on a feature mirror (the drive and the
+    // kernel refuse them by name). The editor hides them.
+    { type: 'checkbox', key: 'keep_original', label: 'Keep Original', default: true,
+      showWhen: (d) => d.subject !== 'feature' },
+    { type: 'checkbox', key: 'merge', label: 'Merge', default: true,
+      showWhen: (d) => d.subject !== 'feature' },
   ],
 }
 
@@ -489,14 +514,14 @@ function patternSkipValue(d: SchemaData): SkipEntry[] {
 }
 
 /**
- * The pattern source chip's own rule: a source is a whole feature row, not a
- * viewport pick. Only an earlier extrude, revolve or sweep produces a tool the
- * pattern can reapply (the order and self-reference rule is the pick hook's,
- * shared with every other feature-reference field).
+ * The pattern and mirror source chip's own rule: a source is a whole feature
+ * row, not a viewport pick. Only an earlier extrude, revolve or sweep produces a
+ * tool the repeat can reapply (the order and self-reference rule is the pick
+ * hook's, shared with every other feature-reference field).
  */
 const PATTERN_SOURCE_KINDS = ['extrude', 'revolve', 'sweep'] as const
 
-function patternSourcePickRefusal(id: string, features?: readonly PartFeature[]): string | null {
+function toolSourcePickRefusal(id: string, features?: readonly PartFeature[]): string | null {
   if (!id.startsWith('@') || id.includes('/')) {
     return 'pick a feature row (an extrude, revolve or sweep) in the Features list, not viewport geometry'
   }
@@ -507,7 +532,7 @@ function patternSourcePickRefusal(id: string, features?: readonly PartFeature[])
   }
   return (PATTERN_SOURCE_KINDS as readonly string[]).includes(feature.kind)
     ? null
-    : 'a pattern source is an extrude, revolve or sweep'
+    : 'a pattern or mirror source is an extrude, revolve or sweep'
 }
 
 // Both pattern kinds repeat the same thing: one feature, two subjects, one
@@ -529,7 +554,7 @@ export const PATTERN_SOURCE_FIELDS: EditorFieldDef[] = [
   { type: 'pick', key: 'source_features', label: 'Source Features', multi: true,
     addMutationType: 'add_pattern_source', addValueKey: 'sourceFeature',
     removeMutationType: 'remove_pattern_source',
-    validatePick: patternSourcePickRefusal,
+    validatePick: toolSourcePickRefusal,
     showWhen: (d) => d.subject === 'feature',
     emptyText: '(pick one or more features; the earliest heads the seed)',
     hint: 'Repeated in feature-log order; the earliest source heads the seed slot.' },
@@ -560,6 +585,47 @@ const patternSkipField = (defaultCount: number): TextFieldDef => ({
   hint: (d) => patternInstanceHint(d, defaultCount),
 })
 
+/** A directive-length pick needs a length of its own. A body pick carries its
+ *  kind as the query's type restriction (`:straightedge`, `:cylinderface`, ...),
+ *  so a face without one, or a curved edge, is refused here with the reason; a
+ *  sketch entity pick carries no restriction and is left to the kernel, which
+ *  resolves the line's length and refuses a circle by name. */
+const LENGTH_PICK = /:(straightedge|cylinderface|coneface)$/
+
+export function directiveLengthPickProblem(selectionId: string): string | null {
+  const reason = 'directive length needs a pick with a length (a straight edge, cylinder or cone)'
+  if (LENGTH_PICK.test(selectionId)) return null
+  if (selectionId.startsWith('entity:')) return null
+  const kind = /:([a-z]+)$/.exec(selectionId)?.[1]
+  const noun = kind === 'flatface' ? 'a planar face'
+    : kind === 'edge' || kind === 'circle' || kind === 'arc' ? 'a circle'
+      : 'that pick'
+  return `${reason}; ${noun} has none`
+}
+
+const linearDirectionPick = (modeKey: string) =>
+  (selectionId: string, _features?: readonly PartFeature[], data?: SchemaData): string | null =>
+    data?.[modeKey] === 'directive_length' ? directiveLengthPickProblem(selectionId) : null
+
+/** The resolved spacing a directive-length direction produced, for its read-only
+ *  row; null until a solve has reported one. */
+const spacingRow = (label: string, key: string, resultKey: string): ReadonlyFieldDef => ({
+  type: 'readonly', key, label, unit: 'mm',
+  value: (solved) => {
+    const pitch = solvedNumber(solved, resultKey)
+    return pitch === null ? null : String(Math.round(pitch * 1e6) / 1e6)
+  },
+})
+
+const MANUAL_ROWS = (prefix: string, modeKey: string, field: string): EditorFieldDef[] => [
+  { type: 'number', key: field, label: `${prefix}X`, arrayField: field, arrayIndex: 0, default: 0,
+    showWhen: (d) => d[modeKey] === 'manual' },
+  { type: 'number', key: field, label: `${prefix}Y`, arrayField: field, arrayIndex: 1, default: 0,
+    showWhen: (d) => d[modeKey] === 'manual' },
+  { type: 'number', key: field, label: `${prefix}Z`, arrayField: field, arrayIndex: 2, default: 0,
+    showWhen: (d) => d[modeKey] === 'manual' },
+]
+
 export const LINEAR_PATTERN_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_linear_pattern',
   subKey: 'linear_pattern',
@@ -567,7 +633,14 @@ export const LINEAR_PATTERN_SCHEMA: FeatureEditorSchema = {
   normalize: normalizePatternSource,
   fields: [
     ...PATTERN_SOURCE_FIELDS,
+    // How this direction gets its step. The mode keeps the other modes' fields
+    // in the document, so switching back restores what was typed; only the
+    // active mode's rows show.
+    { type: 'select', key: 'direction_mode', label: 'Direction type', default: 'direction_distance',
+      options: LINEAR_DIRECTION_MODES.map((mode) => ({ value: mode, label: LINEAR_DIRECTION_MODE_LABELS[mode] })) },
     { type: 'pick', key: 'direction_query', label: 'Direction', transform: resolveAxisQuery,
+      showWhen: (d) => d.direction_mode !== 'manual',
+      validatePick: linearDirectionPick('direction_mode'),
       emptyText: '(pick edge or face, required)' },
     { type: 'checkbox', key: 'invert', label: 'Invert', default: false },
     // Count is the total on direction 1 and includes the source's own slot: 2
@@ -576,22 +649,45 @@ export const LINEAR_PATTERN_SCHEMA: FeatureEditorSchema = {
     // rule's sentence is what the user sees.
     { type: 'number', key: 'count', label: 'Count', default: 2, parse: 'int',
       max: MAX_ARRAY_COUNT, validateWith: (v) => arrayCountProblem('count', v) },
-    { type: 'number', key: 'pitch', label: 'Pitch', default: 20, validate: nonNegative, min: 0 },
+    // Direction + Distance reads a pitch; Directive length reads the pick's own
+    // length instead, shown from the last solve; Manual reads the vector below.
+    { type: 'number', key: 'pitch', label: 'Pitch', default: 20, validate: nonNegative, min: 0,
+      showWhen: (d) => d.direction_mode !== 'directive_length' && d.direction_mode !== 'manual' },
+    { ...spacingRow('Spacing', 'resolved_pitch', 'resolved_pitch'),
+      showWhen: (d) => d.direction_mode === 'directive_length' },
+    { type: 'number', key: 'direction', label: 'Step X', arrayField: 'direction', arrayIndex: 0, default: 0,
+      showWhen: (d) => d.direction_mode === 'manual' },
+    { type: 'number', key: 'direction', label: 'Step Y', arrayField: 'direction', arrayIndex: 1, default: 0,
+      showWhen: (d) => d.direction_mode === 'manual' },
+    { type: 'number', key: 'direction', label: 'Step Z', arrayField: 'direction', arrayIndex: 2, default: 0,
+      showWhen: (d) => d.direction_mode === 'manual' },
     // Centered also generates the reverse side (-1, -2, ...), so count 2 is
     // three instances: the original plus one copy either side.
     { type: 'checkbox', key: 'centered', label: 'Centered', default: false },
     // The retired rectangular mode: direction 2 is the row, direction 1 the
     // column, and the seed cell (0, 0) stays the source.
     { type: 'checkbox', key: 'second_direction', label: 'Second direction', default: false },
+    { type: 'select', key: 'direction_2_mode', label: 'Direction 2 type', default: 'direction_distance',
+      showWhen: (d) => d.second_direction === true,
+      options: LINEAR_DIRECTION_MODES.map((mode) => ({ value: mode, label: LINEAR_DIRECTION_MODE_LABELS[mode] })) },
     { type: 'pick', key: 'direction_2_query', label: 'Direction 2', transform: resolveAxisQuery,
-      showWhen: (d) => d.second_direction === true, emptyText: '(pick edge or face, required)' },
+      showWhen: (d) => d.second_direction === true && d.direction_2_mode !== 'manual',
+      validatePick: linearDirectionPick('direction_2_mode'),
+      emptyText: '(pick edge or face, required)' },
     { type: 'checkbox', key: 'invert_2', label: 'Invert 2', default: false,
       showWhen: (d) => d.second_direction === true },
     { type: 'number', key: 'count_2', label: 'Count 2', default: 2,
       showWhen: (d) => d.second_direction === true, parse: 'int', max: MAX_ARRAY_COUNT,
       validateWith: (v, d) => arrayCountProblem('count_2', v, d.count) },
     { type: 'number', key: 'pitch_2', label: 'Pitch 2', default: 20,
-      showWhen: (d) => d.second_direction === true, validate: nonNegative, min: 0 },
+      showWhen: (d) => d.second_direction === true
+        && d.direction_2_mode !== 'directive_length' && d.direction_2_mode !== 'manual',
+      validate: nonNegative, min: 0 },
+    { ...spacingRow('Spacing 2', 'resolved_pitch_2', 'resolved_pitch_2'),
+      showWhen: (d) => d.second_direction === true && d.direction_2_mode === 'directive_length' },
+    ...MANUAL_ROWS('Step 2 ', 'direction_2_mode', 'direction_2').map((f) => ({
+      ...f, showWhen: (d: SchemaData) => d.second_direction === true && d.direction_2_mode === 'manual',
+    })),
     { type: 'checkbox', key: 'centered_2', label: 'Centered 2', default: false,
       showWhen: (d) => d.second_direction === true },
     patternSkipField(2),

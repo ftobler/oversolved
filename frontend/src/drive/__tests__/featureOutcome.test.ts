@@ -137,11 +137,11 @@ describe('blocksExport', () => {
   })
 
   it('still blocks another extrude warning with the same status', () => {
-    // Only the through_all distance text is carved out: a warning that says a
-    // fallback was used is a different model and still blocks the export.
+    // Only the through_all distance text is carved out: a warning that says the
+    // up_to built nothing is a different model and still blocks the export.
     expect(blocksExport({
       id: 'ex1', kind: 'extrude', status: 'ok',
-      message: "extrude: up_to target '@pl1' did not resolve; used blind distance",
+      message: "extrude: up_to target '@pl1' did not resolve; nothing was built",
     })).toBe(true)
   })
 

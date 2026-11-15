@@ -197,9 +197,9 @@ describe.skipIf(!ready)('fillet/chamfer tangent-chain note (real OCC + Rust solv
     expect(row?.solver_warning).toBeUndefined()
   }, 120_000)
 
-  it('a real fallback warning still lists the feature and makes the export ok false', async () => {
-    // An up_to extrude with no target falls back to its blind distance. That is
-    // exactly the warning channel the note is kept apart from.
+  it('a real soft failure still lists the feature and makes the export ok false', async () => {
+    // An up_to extrude with no target builds nothing. That is exactly the
+    // warning channel the note is kept apart from.
     const result = await runHeadless({
       doc: emptyDriveDoc(),
       steps: [
@@ -211,7 +211,7 @@ describe.skipIf(!ready)('fillet/chamfer tangent-chain note (real OCC + Rust solv
     })
     const problem = result.features.find(feature => feature.id === 'ex2')
     expect(problem?.status).toBe('ok')
-    expect(problem?.message).toContain('up_to has no target; used blind distance')
+    expect(problem?.message).toContain('up_to has no target; nothing was built')
     expect(result.notes).toEqual([])
 
     const exported = await exportHeadless(result.doc as PartDoc, { format: 'step' })

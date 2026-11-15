@@ -59,9 +59,16 @@ export function PickFieldWidget({
 
   // The field's own pick rule rides into the hook, which owns both refusal
   // guards and the keep-the-field-open policy for them; this widget only
-  // dispatches the mutation for a pick that passed.
+  // dispatches the mutation for a pick that passed. The form's data rides along
+  // as the rule's third argument, for a rule that depends on another field.
+  const ownRule = field.validatePick
   const pickState = usePickField(fid, field.key, pickCallback, {
-    multi: isMulti, onUnpick: unpickCallback, features, validatePick: field.validatePick,
+    multi: isMulti,
+    onUnpick: unpickCallback,
+    features,
+    validatePick: ownRule === undefined
+      ? undefined
+      : (selectionId, featureRows) => ownRule(selectionId, featureRows, data),
   })
   const { toggle, activate } = pickState
 

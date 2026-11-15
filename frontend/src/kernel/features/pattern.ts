@@ -97,11 +97,25 @@ export function patternNumber(sub: Dict, key: string, fallback: number): number 
   return n
 }
 
-/** Merge the instance model's warnings into a leaf result. */
-function withWarnings<T extends { solver_warning?: string }>(result: T, warnings: readonly string[]): T {
-  if (warnings.length === 0) return result
+/** The copies a kind built, plus the computed values a result reports back to
+ *  the editor (the pattern's resolved spacing). */
+export interface PatternCopies {
+  copies: PatternCopy[]
+  warnings: string[]
+  extra?: Dict
+}
+
+/** Merge the instance model's warnings and the leaf's computed values into a
+ *  leaf result. */
+function withWarnings<T extends { solver_warning?: string }>(
+  result: T,
+  warnings: readonly string[],
+  extra?: Dict,
+): T {
+  const merged = extra === undefined ? result : { ...result, ...extra }
+  if (warnings.length === 0) return merged
   const joined = [result.solver_warning, ...warnings].filter((part): part is string => !!part).join('; ')
-  return { ...result, solver_warning: joined }
+  return { ...merged, solver_warning: joined }
 }
 
 /**
@@ -122,7 +136,7 @@ export function solvePatternInstances(
   // Lazy so the subject's own diagnosis (a missing source body, a source that
   // names several) still comes before any direction or axis is resolved, the
   // order the single-kind leaf used to have.
-  build: () => { copies: PatternCopy[]; warnings: string[] },
+  build: () => PatternCopies,
 ): PatternResult | BodyPatternResult {
   const featureId = (feature.id as string) ?? ''
   // A document authored before the subject field is read from the source it
@@ -143,17 +157,17 @@ export function solvePatternInstances(
         body_ids: operation === 'new' ? [] : [body.id],
         operation,
       }
-      return withWarnings(noop, built.warnings)
+      return withWarnings(noop, built.warnings, built.extra)
     }
     const result = applyBodyPattern(oc, scope, table, body, built.copies, operation, featureId, bodyStore)
-    return withWarnings(result, built.warnings)
+    return withWarnings(result, built.warnings, built.extra)
   }
 
   if (subject === 'feature') {
     const built = build()
     return solveFeaturePattern(
       oc, scope, table, feature, sub, globalRepo, bodyStore, featuresById, solveContext,
-      built.copies, built.warnings,
+      built.copies, built.warnings, built.extra,
     )
   }
 

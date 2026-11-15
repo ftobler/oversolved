@@ -148,7 +148,7 @@ describe('resolveTouchWarnings', () => {
 
   it('keeps an unrelated warning beside the resolved one', () => {
     const order = ['ex1', 'ex2', 'ex3', 'bo1']
-    const other = "extrude: up_to target '@builtin_plane_front' did not resolve; used blind distance"
+    const other = "extrude: up_to target '@builtin_plane_front' did not resolve; nothing was built"
     const baseRows = base()
     const checkpoints: Checkpoints = {
       ...baseRows,

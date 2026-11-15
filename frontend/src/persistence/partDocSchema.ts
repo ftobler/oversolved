@@ -33,6 +33,10 @@ const NUMBER_OR_EXPR: JsonSchema = {
   description: 'A number, or an expression string; an expression names a variable by the variable feature\'s `label`, not its id.',
 }
 const VEC3: JsonSchema = { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3 }
+// A vector whose components may each be an expression: the linear pattern's
+// direction, which is a step vector in manual mode and may hold `w/2`.
+const VEC3_EXPR: JsonSchema = { type: 'array', items: NUMBER_OR_EXPR, minItems: 3, maxItems: 3 }
+const LINEAR_DIRECTION_MODES: JsonSchema = { enum: ['direction_distance', 'directive_length', 'manual'] }
 // A Skip Instances entry: a signed 1D index, or a `[column, row]` grid cell. A
 // bare integer means `i:0`, so a list typed for a 1D pattern stays valid when
 // the second direction is turned on. The zero (the original) is refused by the
@@ -283,15 +287,18 @@ export const FEATURE_SCHEMA_BY_KIND = {
       // The instance grid: one direction, or two when `second_direction` is on.
       count: NUMBER_OR_EXPR,
       centered: { type: 'boolean' },
+      // How each direction gets its step; absent means direction_distance.
+      direction_mode: LINEAR_DIRECTION_MODES,
       pitch: NUMBER_OR_EXPR,
-      direction: VEC3,
+      direction: VEC3_EXPR,
       direction_query: REF,
       invert: { type: 'boolean' },
       second_direction: { type: 'boolean' },
       count_2: NUMBER_OR_EXPR,
       centered_2: { type: 'boolean' },
+      direction_2_mode: LINEAR_DIRECTION_MODES,
       pitch_2: NUMBER_OR_EXPR,
-      direction_2: VEC3,
+      direction_2: VEC3_EXPR,
       direction_2_query: REF,
       invert_2: { type: 'boolean' },
       // Instances to leave out, as signed indices or [column, row] cells.
@@ -414,8 +421,26 @@ export const FEATURE_SCHEMA_BY_KIND = {
   }),
   mirror: feature('mirror', {
     key: 'mirror',
-    required: ['body', 'plane'],
-    properties: { body: REF, plane: REF, keep_original: { type: 'boolean' }, merge: { type: 'boolean' } },
+    required: ['plane'],
+    // The body subject needs a body; a feature subject names sources instead.
+    // Absence means body, so the old whole-body row keeps loading unchanged.
+    allOf: [
+      {
+        if: { properties: { subject: { const: 'feature' } }, required: ['subject'] },
+        else: { required: ['body'] },
+      },
+    ],
+    properties: {
+      // What is mirrored, and each subject's own picks. `operation` is the
+      // source's, so unlike a pattern the mirror carries none.
+      subject: { enum: ['body', 'feature'] },
+      body: REF,
+      source_features: REF_LIST,
+      target_body: REF,
+      plane: REF,
+      keep_original: { type: 'boolean' },
+      merge: { type: 'boolean' },
+    },
   }),
   split: feature('split', {
     key: 'split',

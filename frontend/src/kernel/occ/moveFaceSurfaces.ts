@@ -52,6 +52,7 @@ import {
 } from './defaultArgs'
 import { TOL_LENGTH_SLACK, TOL_SURFACE_IDENTITY, TOL_SURFACE_PARALLEL } from '../solverConstants'
 import { add, cross, dot, scale, sub, type Vec3 } from '@/utils/vec3'
+import { rungCatalog } from './moveFaceRungs'
 
 /** A guard refusal. The message reaches the user through the feature failure
  *  path, so it names the geometry that blocked the move. */
@@ -993,6 +994,7 @@ export function movedSurface(
   if (t === S.GeomAbs_Sphere.value) return sphereSurface(oc, scope, face, d, adaptor)
   if (t === S.GeomAbs_Torus.value) return torusSurface(oc, scope, face, d, adaptor)
   throw new MoveFaceRefusal(
-    `move_face: cannot move a ${faceSurfaceName(oc, scope, face)} face; move face offsets plane, cylinder, cone, sphere and torus surfaces only`,
+    `move_face: cannot move a ${faceSurfaceName(oc, scope, face)} face; the freeform picked-face route is not in this build. ` +
+    `Rungs: ${rungCatalog(oc)}`,
   )
 }

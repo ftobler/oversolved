@@ -15,6 +15,13 @@
   --heading: 'Roboto', system-ui, sans-serif;
   --mono: 'Roboto Mono', ui-monospace, monospace;
 
+  /* The wordmark's colours. One definition so the header logo and the splash
+     title cannot drift apart; the hover pair is the pointer-only variant of
+     the same two stops. Both are painted by clipping the gradient to the text
+     (`background-clip: text`), which is why they must stay opaque colours. */
+  --brand-gradient: linear-gradient(90deg, #81c784, #f06292);
+  --brand-gradient-hover: linear-gradient(90deg, #c7c781, #dd62f0);
+
   font: 18px/145% var(--sans);
   color-scheme: light dark;
   color: var(--text);
