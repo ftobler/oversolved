@@ -1,7 +1,9 @@
 // The feature subject of a pattern: repeat one or more earlier solid-producing
 // features' own add or cut inside the body each feature already shaped. This is
 // the half pattern.ts delegates to; the body subject lives in patternBody.ts and
-// both share the transforms pattern.ts builds.
+// both share the copies the pattern kind built. The sub-def arrives as a
+// parameter, so every pattern kind (and the mirror feature-subject plan) reuses
+// this leaf without teaching it a new sub-dict key.
 //
 // Each source's tool is obtained by re-solving the source with its operation
 // forced to `new` into a throwaway body store. Those scratch bodies are released
@@ -322,6 +324,9 @@ function applyCopiesToTarget(
             capAncestry: inst.names.capAncestry,
             faceOwner: inst.names.faceOwner,
             edgeOwner: inst.names.edgeOwner,
+            // The construction-name token, not the feature kind: keeping it is
+            // what holds every feature-pattern copy's UUID now that the kind is
+            // `linear_pattern`/`circular_pattern`.
             opName: 'pattern',
             // A pattern copy is the same geometry as its source body.
             precision: target.precision ?? null,
@@ -449,6 +454,7 @@ export function solveFeaturePattern(
   scope: DisposeScope,
   table: HandleTable,
   feature: Dict,
+  sub: Dict,
   globalRepo: Repository,
   bodyStore: Record<string, Body>,
   featuresById: Record<string, Dict>,
@@ -457,7 +463,6 @@ export function solveFeaturePattern(
   warnings: readonly string[],
 ): PatternResult {
   const featureId = (feature.id as string) ?? ''
-  const sub = (feature.pattern as Dict) ?? {}
   const { sources, dropped } = resolveSources(
     featureId,
     sourceFeatureRefs(sub),

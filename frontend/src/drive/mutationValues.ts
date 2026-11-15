@@ -37,6 +37,8 @@ import { lengthUnitOf } from '@/utils/lengthUnit'
 import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/persistence/partDocSchema'
 import { arrayCountProblem } from '@/persistence/docSchema'
 import { skipValue } from '@/utils/core/patternSkip'
+import { evalExpr } from '@/kernel/evalExpr'
+import { MAX_ARRAY_CELLS } from '@/utils/core/arrayLimits'
 import { pickedSketchEntity } from '@/kernel/features/shared/bodyRef'
 import { circleDrillSiteReason } from '@/kernel/features/shared/drillSite'
 import { isFaceProjectionSource, isProjectionPosition } from '@/kernel/features/projectionMembers'
@@ -1537,12 +1539,7 @@ function addMirror(raw: RawStep, ctx: ValueContext): ValueViolation | null {
 // it includes the source's own slot. The same rule lives in persistence/docSchema
 // (loader), utils/yamlMutations (writers) and the kernel, so a value one path
 // accepts never fails another. Count 1 is legal there too (a quiet no-op).
-const PATTERN_COUNT_FIELDS = ['count', 'count_x', 'count_y'] as const
-type PatternCountField = (typeof PATTERN_COUNT_FIELDS)[number]
-
-function isPatternCountField(field: string): field is PatternCountField {
-  return (PATTERN_COUNT_FIELDS as readonly string[]).includes(field)
-}
+type PatternCountField = 'count' | 'count_2'
 
 /** Skip Instances accepts the stored list or the editor text. Either way the
  *  parser's own sentence is the refusal, so the drive and the field agree on
@@ -1565,50 +1562,158 @@ function patternCountProblem(
 }
 
 /** The pattern sub-definition a setter names, or null when the caller has no
- *  document (or the feature is not a pattern). */
-function storedPatternDef(raw: RawStep, ctx: ValueContext): RawStep | null {
+ *  document (or the feature is not that pattern kind). */
+function storedPatternDef(raw: RawStep, ctx: ValueContext, kind: 'linear_pattern' | 'circular_pattern'): RawStep | null {
   if (ctx.doc === null) return null
   const feature = (ctx.doc.features ?? []).find(entry => entry.id === raw.featureId)
-  if (feature === undefined || feature.kind !== 'pattern') return null
-  const sub: unknown = feature.pattern
+  if (feature === undefined) return null
+  const sub: unknown = feature.kind === 'linear_pattern' && kind === 'linear_pattern'
+    ? feature.linear_pattern
+    : feature.kind === 'circular_pattern' && kind === 'circular_pattern' ? feature.circular_pattern : undefined
   return isRecord(sub) ? sub : null
 }
 
-function addPattern(raw: RawStep, ctx: ValueContext): ValueViolation | null {
-  const generic = inlineFeatureFieldsProblem(raw, ctx, 'pattern', 'set_pattern_field', ['skip'])
+/** A circular pattern has no grid, so a `i:j` cell addresses nothing and is
+ *  refused rather than stored as a permanently stale entry. */
+function circularSkipProblem(value: unknown, label: string): ValueViolation | null {
+  const parsed = skipValue(value)
+  if ('error' in parsed) return invalid(`${label} ${parsed.error}`)
+  if (parsed.skip.some((entry) => Array.isArray(entry))) {
+    return invalid(`${label} must be whole instance numbers; a circular pattern has no grid cells`)
+  }
+  return null
+}
+
+function addLinearPattern(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const generic = inlineFeatureFieldsProblem(raw, ctx, 'linear_pattern', 'set_linear_pattern_field', ['skip'])
   if (generic !== null) return generic
   if (raw.skip !== undefined && raw.skip !== null) {
-    const skipProblem = patternSkipProblem(raw.skip, `add_pattern field ${json('skip')}`)
+    const skipProblem = patternSkipProblem(raw.skip, `add_linear_pattern field ${json('skip')}`)
     if (skipProblem !== null) return skipProblem
   }
   // Judge each inline count against its sibling in the same payload, so the
   // cells cap is refused before the applier would seed the missing axis.
-  for (const field of PATTERN_COUNT_FIELDS) {
+  for (const field of ['count', 'count_2'] as const) {
     if (raw[field] === undefined) continue
-    const sibling = field === 'count_x' ? raw.count_y : field === 'count_y' ? raw.count_x : undefined
-    const problem = patternCountProblem(field, raw[field], sibling, `add_pattern field ${json(field)}`)
+    const sibling = field === 'count' ? raw.count_2 : raw.count
+    const problem = patternCountProblem(field, raw[field], sibling, `add_linear_pattern field ${json(field)}`)
     if (problem !== null) return invalid(problem)
   }
   return null
 }
 
-// A setter changes one count, so the other rectangular axis comes from the
-// stored pattern and the pair is judged as the document would land. The skip
-// field takes text the schema cannot describe, so it is parsed here instead.
-function setPatternField(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+function addCircularPattern(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const generic = inlineFeatureFieldsProblem(raw, ctx, 'circular_pattern', 'set_circular_pattern_field', ['skip'])
+  if (generic !== null) return generic
+  if (raw.skip !== undefined && raw.skip !== null) {
+    const skipProblem = circularSkipProblem(raw.skip, `add_circular_pattern field ${json('skip')}`)
+    if (skipProblem !== null) return skipProblem
+  }
+  if (raw.count !== undefined) {
+    const problem = patternCountProblem('count', raw.count, null, `add_circular_pattern field ${json('count')}`)
+    if (problem !== null) return invalid(problem)
+  }
+  return null
+}
+
+// A setter changes one count, so the other axis count comes from the stored
+// pattern and the pair is judged as the document would land. The skip field
+// takes text the schema cannot describe, so it is parsed here instead.
+function setLinearPatternField(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const field = raw.field
   if (field === 'skip') {
     if (raw.value === null || raw.value === undefined) return null
-    return patternSkipProblem(raw.value, `set_pattern_field field ${json(field)}`)
+    return patternSkipProblem(raw.value, `set_linear_pattern_field field ${json(field)}`)
   }
   const generic = fieldValue(raw, ctx)
   if (generic !== null) return generic
-  if (typeof field !== 'string' || !isPatternCountField(field)) return null
-  const stored = storedPatternDef(raw, ctx)
-  const siblingKey = field === 'count_x' ? 'count_y' : field === 'count_y' ? 'count_x' : null
-  const sibling = siblingKey === null ? undefined : stored?.[siblingKey]
-  const problem = patternCountProblem(field, raw.value, sibling, `set_pattern_field field ${json(field)}`)
+  if (typeof field !== 'string' || (field !== 'count' && field !== 'count_2')) return null
+  const stored = storedPatternDef(raw, ctx, 'linear_pattern')
+  const siblingKey = field === 'count' ? 'count_2' : 'count'
+  const problem = patternCountProblem(field, raw.value, stored?.[siblingKey], `set_linear_pattern_field field ${json(field)}`)
   return problem === null ? null : invalid(problem)
+}
+
+function setCircularPatternField(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const field = raw.field
+  if (field === 'skip') {
+    if (raw.value === null || raw.value === undefined) return null
+    return circularSkipProblem(raw.value, `set_circular_pattern_field field ${json(field)}`)
+  }
+  const generic = fieldValue(raw, ctx)
+  if (generic !== null) return generic
+  if (typeof field !== 'string' || field !== 'count') return null
+  const problem = patternCountProblem('count', raw.value, null, `set_circular_pattern_field field ${json(field)}`)
+  return problem === null ? null : invalid(problem)
+}
+
+/** The retired alias keeps its old value rule for one release: the body is
+ *  translated through the loader's split, so an old caller keeps the verdict it
+ *  always got. */
+function addPattern(raw: RawStep): ValueViolation | null {
+  const generic = inlinePatternAliasFieldsProblem(raw)
+  if (generic !== null) return generic
+  if (raw.skip !== undefined && raw.skip !== null) {
+    const skipProblem = patternSkipProblem(raw.skip, `add_pattern field ${json('skip')}`)
+    if (skipProblem !== null) return skipProblem
+  }
+  for (const field of ['count', 'count_x', 'count_y'] as const) {
+    if (raw[field] === undefined) continue
+    const sibling = field === 'count_x' ? raw.count_y : field === 'count_y' ? raw.count_x : undefined
+    const problem = legacyPatternCountProblem(field, raw[field], sibling, `add_pattern field ${json(field)}`)
+    if (problem !== null) return invalid(problem)
+  }
+  return null
+}
+
+// The retired row's inline keys are the legacy spelling, which no kind schema
+// lists any more; each is held to the value rule it had.
+function inlinePatternAliasFieldsProblem(raw: RawStep): ValueViolation | null {
+  for (const field of LEGACY_PATTERN_ALIAS_FIELDS) {
+    const value = raw[field]
+    if (value === undefined || value === null) continue
+    if (field === 'mode' && value !== 'linear' && value !== 'rectangular' && value !== 'circular') {
+      return invalid(`add_pattern field "mode" must be one of "linear", "rectangular", "circular", got ${json(value)}`)
+    }
+    if (field === 'subject' && value !== 'body' && value !== 'feature') {
+      return invalid(`add_pattern field "subject" must be "body" or "feature", got ${json(value)}`)
+    }
+    if (field === 'operation' && value !== 'add' && value !== 'new') {
+      return invalid(`add_pattern field "operation" must be "add" or "new", got ${json(value)}`)
+    }
+    if (field === 'axis' || field === 'source_body' || field === 'target_body') {
+      const problem = pickQueryProblem(value, field)
+      if (problem !== null) return invalid(problem)
+    }
+  }
+  const sourceList = raw.source_features
+  if (sourceList === undefined) return null
+  const problem = stringListProblem(sourceList, 'source_features')
+  return problem === null ? null : invalid(problem)
+}
+
+const LEGACY_PATTERN_ALIAS_FIELDS = [
+  'mode', 'subject', 'operation', 'source_body', 'target_body', 'axis',
+] as const
+
+function legacyPatternCountProblem(
+  field: 'count' | 'count_x' | 'count_y',
+  value: unknown,
+  sibling: unknown,
+  label: string,
+): string | null {
+  if (typeof value !== 'number' && typeof value !== 'string') return null
+  const problem = arrayCountProblem('count', value)
+  if (problem !== null) return `${label} ${problem}`
+  if (field === 'count') return null
+  const resolved = typeof value === 'string' ? evalExpr(value) : value
+  const other = typeof sibling === 'string' ? evalExpr(sibling) : sibling
+  if (typeof resolved === 'number' && Number.isFinite(resolved)
+    && typeof other === 'number' && Number.isFinite(other)
+    && resolved * other > MAX_ARRAY_CELLS) {
+    return `${label} count_x x count_y is ${resolved * other}, the limit is ${MAX_ARRAY_CELLS}`
+  }
+  return null
 }
 
 function addRevolve(raw: RawStep, ctx: ValueContext): ValueViolation | null {
@@ -2283,7 +2388,10 @@ export const MUTATION_VALUE_RULES = {
   add_boolean_tool: queryField('tool'),
   remove_boolean_tool: queryField('tool'),
   add_pattern: addPattern,
-  set_pattern_field: setPatternField,
+  add_linear_pattern: addLinearPattern,
+  add_circular_pattern: addCircularPattern,
+  set_linear_pattern_field: setLinearPatternField,
+  set_circular_pattern_field: setCircularPatternField,
   add_pattern_source: queryField('sourceFeature'),
   remove_pattern_source: indexField('index'),
   add_delete_body: addDeleteBody,

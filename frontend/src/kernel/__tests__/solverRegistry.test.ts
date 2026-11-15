@@ -23,7 +23,7 @@ describe('PORTED_FEATURE_KINDS', () => {
       'extrude', 'revolve', 'sweep',
       'fillet', 'chamfer',
       'boolean', 'hole',
-      'pattern',
+      'linear_pattern', 'circular_pattern',
       'transform', 'mirror', 'split',
       'delete_body', 'import_step',
       'variable',
@@ -52,7 +52,7 @@ describe('isDocFullyPorted', () => {
     const features = [
       { id: 'ex1', kind: 'extrude' },
       { id: 'bo1', kind: 'boolean' },
-      { id: 'pt1', kind: 'pattern' },
+      { id: 'pt1', kind: 'linear_pattern' },
     ]
     expect(isDocFullyPorted(features)).toBe(true)
   })
@@ -92,7 +92,7 @@ describe('isDocFullyPorted', () => {
     const allPorted = [
       'sketch', 'plane',
       'extrude', 'revolve', 'sweep', 'fillet', 'chamfer',
-      'boolean', 'hole', 'pattern',
+      'boolean', 'hole', 'linear_pattern', 'circular_pattern',
       'transform', 'mirror', 'delete_body', 'import_step',
     ]
     const withOrigin = [

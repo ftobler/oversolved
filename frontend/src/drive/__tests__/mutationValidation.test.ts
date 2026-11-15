@@ -14,7 +14,7 @@ import { runHeadless } from '../headlessOps'
 // (accidentally) asserting that every field takes a number.
 function validValueFor(type: Mutation['type'], field: string): unknown {
   // A pattern count includes the source; 2 is a settled valid value.
-  if (type === 'set_pattern_field' && (field === 'count' || field === 'count_x' || field === 'count_y')) return 2
+  if ((type === 'set_linear_pattern_field' || type === 'set_circular_pattern_field') && (field === 'count' || field === 'count_2')) return 2
   const schema = setterFieldSchema(type, field)
   if (schema === null) return 1
   if (Array.isArray(schema.enum)) return (schema.enum as unknown[])[0]
@@ -151,7 +151,7 @@ describe('validateMutation', () => {
       type: 'set_hole_field', featureId: 'h1', field: 'thread', value: null,
     }, { allowInternal: true })).toMatchObject({ ok: true })
     expect(validateMutation({
-      type: 'set_pattern_field', featureId: 'ca1', field: 'step_angle', value: null,
+      type: 'set_circular_pattern_field', featureId: 'ca1', field: 'angle', value: null,
     }, { allowInternal: true })).toMatchObject({ ok: true })
   })
 
@@ -231,7 +231,8 @@ describe('set_*_field field names', () => {
     set_shell_field: 'thickness',
     set_move_face_field: 'faces',
     set_boolean_field: 'keep_tools',
-    set_pattern_field: 'count',
+    set_linear_pattern_field: 'count',
+    set_circular_pattern_field: 'angle',
     set_hole_field: 'diameter',
     set_transform_field: 'rotation_axis',
     set_mirror_field: 'keep_original',

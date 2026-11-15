@@ -470,8 +470,8 @@ def context_camera(ctx):
     ctx.fill()
 
 
-@icon("frontend/src/assets/icons/feature-pattern.svg")
-def feature_pattern(ctx):
+@icon("frontend/src/assets/icons/feature-linear-pattern.svg")
+def feature_linear_pattern(ctx):
     """A filled source block repeated to the right: one feature patterned in place."""
     size = 0.24
     gap = 0.1
@@ -490,3 +490,26 @@ def feature_pattern(ctx):
     ctx.line_to(left + 2 * (size + gap) + size - 0.06, 0.2)
     stroke(ctx, 1.2)
     _arrowhead(ctx, left + 2 * (size + gap) + size - 0.02, 0.2, 0, 0.1)
+
+
+@icon("frontend/src/assets/icons/feature-circular-pattern.svg")
+def feature_circular_pattern(ctx):
+    """A filled source block repeated along an arc, with the sweep direction."""
+    size = 0.2
+    cx, cy = 0.5, 0.72
+    radius = 0.4
+    # Three instances over a half turn: the source, then two copies.
+    for i, degrees in enumerate((180, 270, 360)):
+        angle = math.radians(degrees)
+        x0 = cx + radius * math.cos(angle) - size / 2
+        y0 = cy + radius * math.sin(angle) - size / 2
+        ctx.rectangle(x0, y0, size, size)
+        if i == 0:
+            ctx.fill()
+        else:
+            stroke(ctx, 1.5)
+
+    # The sweep arc, from the source round to the last copy.
+    ctx.arc(cx, cy, radius, math.pi, 2 * math.pi)
+    stroke(ctx, 1.2)
+    _arrowhead(ctx, cx + radius, cy, 90, 0.1)

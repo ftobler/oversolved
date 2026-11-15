@@ -146,10 +146,16 @@ export function describeMutation(m: Mutation): string {
       return `add boolean tool ${m.tool}`
     case 'remove_boolean_tool':
       return `remove boolean tool ${m.tool}`
+    case 'add_linear_pattern':
+      return `add linear pattern ${m.label ?? m.featureId}`
+    case 'set_linear_pattern_field':
+      return `set linear pattern ${m.field} to ${m.value}`
+    case 'add_circular_pattern':
+      return `add circular pattern ${m.label ?? m.featureId}`
+    case 'set_circular_pattern_field':
+      return `set circular pattern ${m.field} to ${m.value}`
     case 'add_pattern':
-      return `add pattern ${m.label ?? m.featureId}`
-    case 'set_pattern_field':
-      return `set pattern ${m.field} to ${m.value}`
+      return `add deprecated pattern ${m.label ?? m.featureId}`
     case 'add_pattern_source':
       return `add pattern source ${m.sourceFeature}`
     case 'remove_pattern_source':

@@ -28,7 +28,7 @@ if (oc && solveBytes) {
 const ready = oc && solveBytes
 
 const m = (mutation: Record<string, unknown>): ScriptStep => ({ mutation } as ScriptStep)
-const ca = (field: string, value: unknown) => m({ type: 'set_pattern_field', featureId: 'ca1', field, value })
+const ca = (field: string, value: unknown) => m({ type: 'set_circular_pattern_field', featureId: 'ca1', field, value })
 
 const PLATE = 100 * 100 * 10
 const SLOT = 6 * 6 * 10
@@ -43,7 +43,7 @@ function arraySteps(count: number): ScriptStep[] {
     m({ type: 'add_sketch', featureId: 'sk2', plane: '@builtin_plane_top' }),
     m({ type: 'add_rect', featureId: 'sk2', p0: [20, -3], p1: [26, 3] }),
     m({ type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk2', distance: 10, operation: 'new' }),
-    m({ type: 'add_pattern', featureId: 'ca1', subject: 'body', mode: 'circular' }),
+    m({ type: 'add_circular_pattern', featureId: 'ca1', subject: 'body' }),
     ca('source_body', 'body_ex2'),
     ca('operation', 'new'),
     ca('count', count),

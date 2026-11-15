@@ -26,7 +26,7 @@ export const NO_FALLBACK_BREP_KINDS = new Set([
   'move_face',
   'delete_face',
   'boolean', 'hole',
-  'pattern',
+  'linear_pattern', 'circular_pattern',
   'transform', 'mirror',
   'split',
   'delete_body', 'import_step',

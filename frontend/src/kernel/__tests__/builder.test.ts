@@ -257,7 +257,7 @@ describe('build with mock solvers', () => {
         return { status: 'ok' }
       },
     })
-    build({ features: [{ id: 'f1', kind: 'extrude' }, { id: 'f2', kind: 'pattern' }] }, {}, deps)
+    build({ features: [{ id: 'f1', kind: 'extrude' }, { id: 'f2', kind: 'linear_pattern' }] }, {}, deps)
     expect(resolvedDuringF2).not.toBeNull()
     expect((resolvedDuringF2 as Record<string, unknown>).start).toEqual([0, 0, 0])
     expect((resolvedDuringF2 as Record<string, unknown>).type).toBe('straightedge')

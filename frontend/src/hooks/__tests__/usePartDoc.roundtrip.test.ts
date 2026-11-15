@@ -121,8 +121,8 @@ const patternDoc = (): PartDoc => ({
   version: 1,
   kind: 'part',
   features: [{
-    id: 'pt1', kind: 'pattern', label: 'Pattern',
-    pattern: { subject: 'feature', source_features: ['@ex1'], mode: 'linear', count: 3, pitch: 20, direction: [1, 0, 0] },
+    id: 'pt1', kind: 'linear_pattern', label: 'Pattern',
+    linear_pattern: { subject: 'feature', source_features: ['@ex1'], count: 3, pitch: 20, direction: [1, 0, 0] },
   }],
 })
 
@@ -327,8 +327,8 @@ const ROUND_TRIPS: RoundTripCase[] = [
   { name: 'boolean remove_boolean_tool', makeDoc: booleanDoc, mutation: { type: 'remove_boolean_tool', featureId: 'b1', tool: '@t1' } as Mutation },
 
   // pattern
-  { name: 'pattern add_pattern', makeDoc: emptyDoc, mutation: { type: 'add_pattern', featureId: 'pt1', label: 'Pattern' } as Mutation },
-  { name: 'pattern set_pattern_field', makeDoc: patternDoc, mutation: { type: 'set_pattern_field', featureId: 'pt1', field: 'count', value: 5 } as Mutation },
+  { name: 'pattern add_linear_pattern', makeDoc: emptyDoc, mutation: { type: 'add_linear_pattern', featureId: 'pt1', label: 'Pattern' } as Mutation },
+  { name: 'pattern set_linear_pattern_field', makeDoc: patternDoc, mutation: { type: 'set_linear_pattern_field', featureId: 'pt1', field: 'count', value: 5 } as Mutation },
 
   // hole
   { name: 'hole add_hole', makeDoc: emptyDoc, mutation: { type: 'add_hole', featureId: 'h1', label: 'Hole' } as Mutation },

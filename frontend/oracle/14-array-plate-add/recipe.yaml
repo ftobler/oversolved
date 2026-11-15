@@ -119,11 +119,10 @@ features:
       target: "@body_ex1"
       direction: normal
   - id: ar1
-    kind: pattern
-    pattern:
+    kind: linear_pattern
+    linear_pattern:
       subject: body
       source_body: "@body_ex1"
-      mode: linear
       operation: add
       count: 3
       pitch: 30

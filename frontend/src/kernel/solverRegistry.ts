@@ -30,7 +30,8 @@ import { solveFillet, solveChamfer } from './features/filletChamfer'
 import { solveShell } from './features/shell'
 import { solveMoveFace } from './features/moveFace'
 import { solveDeleteFace } from './features/deleteFace'
-import { solvePattern } from './features/pattern'
+import { solveLinearPattern } from './features/linearPattern'
+import { solveCircularPattern } from './features/circularPattern'
 import { solveTransform, solveMirror } from './features/transformMirror'
 import { solveSplit } from './features/splitByPlane'
 import { solveDeleteBody } from './features/deleteBody'
@@ -108,7 +109,8 @@ const KIND_SOLVER: SolverTable = {
   shell: solveShell,
   move_face: solveMoveFace,
   delete_face: solveDeleteFace,
-  pattern: solvePattern,
+  linear_pattern: solveLinearPattern,
+  circular_pattern: solveCircularPattern,
   transform: solveTransform,
   mirror: solveMirror,
   split: solveSplit,

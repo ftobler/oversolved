@@ -1110,49 +1110,59 @@ banner on stdout, so a client config must use the direct node invocation.
   `delete_feature` removes only the named row, so a
   dependent stays in the log and reports its missing input; and a body-subject
   pattern's `operation: add` only fuses copies that touch, so disjoint copies
-  split into bodies named with `_1`, `_2`... suffixes. `add_pattern` and
-  `add_mirror` take their whole payload inline: `add_pattern` takes every
-  pattern field (`subject`, `source_body`, `source_features` (a list; the legacy
-  `source_feature` single id is still accepted), `mode`,
-  `operation`, the one-axis `count`/`pitch`/`direction`
-  family, the rectangular `count_x`/`count_y`/`pitch_x`/`pitch_y`/`direction_x_query`/`direction_y_query`
-  family, `step_angle`, `axis`/`axis_origin`/`axis_direction` and the invert
-  flags), and `add_mirror` takes `body`, `plane`, `keep_original` and `merge`,
-  so one call replaces the add plus one setter per field.
-- `add_pattern` with `subject: body` (the default) copies `source_body` through
-  a linear, rectangular or circular grid. `operation: add` unions each copy
-  into the source body when they touch; a copy that does not touch is a new
-  part, so a disjoint copy takes a `_1`, `_2`... sibling id. `operation: new`
-  keeps the source as instance 0 and mints one body per copy. Both subjects
-  count the source: `count` is the total on one axis, so 2 makes one copy and
-  count 0 or 1 is refused because the count includes the source. Rectangular
-  mode leaves the seed cell to the source, so 1xN is a legitimate row and 1x1
-  is refused.
-- `add_pattern` with `subject: feature` repeats one or more earlier FEATUREs'
-  own add or cut inside the body each feature already shaped, so a repeated slot
-  or boss needs no separate body and boolean. `source_features` names a list of
-  earlier `extrude`, `revolve` or `sweep` features whose operation is `add` or
-  `cut`, e.g. `["@ex1", "@ex2"]`; the legacy single `source_feature` is still
-  accepted and means a one-element list. Every source is repeated at every grid
-  instance in the order the sources sit in the feature log (not the list order),
-  and the first source's first produced body is the instance-0 seed. `count` is
-  the TOTAL instance count, including the sources' own application (count 2 adds
-  one copy and count 1 is refused). Linear mode reads `pitch` plus `direction` or
-  `direction_query`; rectangular mode reads the two `count_x`/`count_y` axes;
-  circular mode reads `step_angle` (absent means `360/count`) plus `axis` or
-  `axis_origin` + `axis_direction`. `target_body` names the body when a source
-  touched more than one and sends every source there; otherwise each source
-  applies to the body it shaped, so sources that shaped different bodies keep
-  their own. A source that no longer exists or now comes after the pattern is
-  dropped with a named warning on the feature; a pattern with no source left is
-  refused by name. A copy that cannot apply is named: some applied is a `partial`
-  feature listing how many copies landed and which copy failed, none applied is
-  an error. An add copy that does not touch the target becomes its own body; a
-  cut copy that misses is still named. A source with `operation: new` or an
-  `up_to` extrude is refused by name, because a new body is not "inside the
-  existing body" and an up_to trim would travel with every rigid copy. A
-  through_all cut is a legal source: its tool is measured from the body the
-  copies will cut, so every copy clears the same thickness.
+  split into bodies named with `_1`, `_2`... suffixes. `add_linear_pattern`,
+  `add_circular_pattern` and `add_mirror` take their whole payload inline:
+  the pattern adds take every field of their kind (`subject`, `source_body`,
+  `source_features` (a list; the legacy `source_feature` single id is still
+  accepted), `operation`, the direction-1 `count`/`pitch`/`direction` family,
+  the second direction's `count_2`/`pitch_2`/`direction_2_query` family for
+  linear, `angle`/`equal_spacing` and `axis`/`axis_origin`/`axis_direction` for
+  circular, plus `centered`, `skip` and the invert flags), and `add_mirror`
+  takes `body`, `plane`, `keep_original` and `merge`, so one call replaces the
+  add plus one setter per field. `add_pattern` is the retired single-kind row,
+  kept one release: the drive translates it through the loader's version-9 split
+  and the reply carries a deprecation note.
+- `add_linear_pattern` with `subject: body` (the default) copies `source_body`
+  along one direction, or along two when `second_direction: true` (the retired
+  rectangular mode: direction 1 is the column, direction 2 the row).
+  `operation: add` unions each copy into the source body when they touch; a copy
+  that does not touch is a new part, so a disjoint copy takes a `_1`, `_2`...
+  sibling id. `operation: new` keeps the source as instance 0 and mints one body
+  per copy. Both subjects count the source: `count` is the total on direction 1,
+  so 2 makes one copy and `count: 1` is a quiet no-op. `centered` also generates
+  the reverse side. With a second direction the seed cell is the source, so 1xN
+  is a legitimate row and 1x1 is the same quiet no-op as count 1.
+- `add_circular_pattern` copies `source_body` about `axis` (or `axis_origin` +
+  `axis_direction`) by `angle` degrees, 360 by default. `equal_spacing` (the
+  default) reads the angle as the full sweep: a full turn gives `360 / total`
+  (total is count, or `2 * count - 1` centered) so nothing lands on the source,
+  and a smaller sweep puts the end instances ON the sweep ends. With
+  `equal_spacing: false` the angle is the increment between neighbours. An angle
+  past a full turn with equal spacing, or an increment that lands a copy on
+  another, is refused; reverse the sense with `invert_axis`.
+- Both pattern kinds with `subject: feature` repeat one or more earlier
+  FEATUREs' own add or cut inside the body each feature already shaped, so a
+  repeated slot or boss needs no separate body and boolean. `source_features`
+  names a list of earlier `extrude`, `revolve` or `sweep` features whose
+  operation is `add` or `cut`, e.g. `["@ex1", "@ex2"]`; the legacy single
+  `source_feature` is still accepted and means a one-element list. Every source
+  is repeated at every instance in the order the sources sit in the feature log
+  (not the list order), and the first source's first produced body is the
+  instance-0 seed. `count` is the TOTAL instance count, including the sources'
+  own application (count 2 adds one copy and count 1 is a quiet no-op).
+  `target_body` names the body when a source touched more than one and sends
+  every source there; otherwise each source applies to the body it shaped, so
+  sources that shaped different bodies keep their own. A source that no longer
+  exists or now comes after the pattern is dropped with a named warning on the
+  feature; a pattern with no source left is refused by name. A copy that cannot
+  apply is named: some applied is a `partial` feature listing how many copies
+  landed and which copy failed, none applied is an error. An add copy that does
+  not touch the target becomes its own body; a cut copy that misses is still
+  named. A source with `operation: new` or an `up_to` extrude is refused by
+  name, because a new body is not "inside the existing body" and an up_to trim
+  would travel with every rigid copy. A through_all cut is a legal source: its
+  tool is measured from the body the copies will cut, so every copy clears the
+  same thickness.
 - A sketch is one profile, and a profile fills even/odd: a loop nested inside
   another is a hole (a disc plus a circle becomes a washer), while loops that
   CROSS each other are filled as their union. A circle meant as a hole that

@@ -19,6 +19,7 @@ import { selectByPredicate } from '../../select'
 import { solidToEdges } from '../../occ/tessellation'
 import type { BuildResponse } from '../../builder'
 import type { Body } from '../../types3d'
+import { splitPatternDef } from '@/utils/core/patternSplit'
 import type { BodyResult, EdgeData } from '@/types/cad'
 
 const oc = await loadOcc()
@@ -69,7 +70,8 @@ function extrude(id: string, sketch: string, distance: number, operation = 'new'
 }
 
 function pattern(id: string, fields: Dict): Dict {
-  return { id, kind: 'pattern', pattern: fields }
+  const { kind, def } = splitPatternDef(fields)
+  return { id, kind, [kind]: def }
 }
 
 function faceOwnerOf(query: string): string | null {

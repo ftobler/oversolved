@@ -33,6 +33,7 @@ import { transferBooleanNames } from './booleanLineage'
 import { readBodyNames } from '../occ/bodyNames'
 import { stripRefSigil } from '@/utils/refSigil'
 import { patternSubject } from '@/utils/core/patternSubject'
+import { isPatternKind } from '@/types/cad'
 import { nestedFeatureParams } from './shared/featureParams'
 import { swallowUnlessTrap } from '../errors'
 
@@ -90,10 +91,13 @@ function growTool(
 
 /** A body-subject pattern owns the bodies its copies minted. A feature-subject
  *  pattern reshapes one existing body, so a boolean ref to it is ordinary
- *  feature behavior, not a body-list expansion. */
+ *  feature behavior, not a body-list expansion. Every pattern kind is decided
+ *  through PATTERN_KINDS, so a later kind joins the expansion by joining the
+ *  list. */
 function isBodyPattern(def: Dict): boolean {
-  if (def.kind !== 'pattern') return false
-  const sub = (nestedFeatureParams(def).feature[def.kind as string] as Dict | undefined) ?? {}
+  const kind = def.kind
+  if (typeof kind !== 'string' || !isPatternKind(kind)) return false
+  const sub = (nestedFeatureParams(def).feature[kind] as Dict | undefined) ?? {}
   return patternSubject(sub) === 'body'
 }
 

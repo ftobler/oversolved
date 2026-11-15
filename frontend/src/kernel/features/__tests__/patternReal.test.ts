@@ -22,6 +22,7 @@ import { markFeatureProgress } from '../../featureProgress'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
 import type { Body } from '../../types3d'
+import { splitPatternDef } from '@/utils/core/patternSplit'
 
 // The mark is recorded, not redirected: the real functions still run, so the
 // builder's own bookkeeping is unchanged for every other case in this file.
@@ -91,7 +92,8 @@ function extrude(id: string, sketch: string, distance: number, operation = 'new'
 
 function pattern(id: string, sourceFeatures: string | string[], fields: Dict): Dict {
   const refs = ([] as string[]).concat(sourceFeatures).map((ref) => ref.startsWith('@') ? ref : `@${ref}`)
-  return { id, kind: 'pattern', pattern: { subject: 'feature', source_features: refs, ...fields } }
+  const { kind, def } = splitPatternDef({ subject: 'feature', source_features: refs, ...fields })
+  return { id, kind, [kind]: def }
 }
 
 function linear(fields: Dict): Dict {
@@ -209,8 +211,8 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
         rectSketch('sk_slot', 4, 4, 2, 2),
         extrude('ex_slot', '$sk_slot', 10, 'cut'),
         {
-          id: 'pt1', kind: 'pattern',
-          pattern: { source_feature: '@ex_slot', mode: 'linear', count: 4, pitch: 8, direction: [1, 0, 0] },
+          id: 'pt1', kind: 'linear_pattern',
+          linear_pattern: { source_feature: '@ex_slot', count: 4, pitch: 8, direction: [1, 0, 0] },
         },
       ],
     })
@@ -672,8 +674,8 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
     })
     const baseline = h.run(spec())
     const r = h.run(spec({
-      id: 'pt1', kind: 'pattern',
-      pattern: { subject: 'body', source_body: '@body_ex_plate', mode: 'linear', count: 1, pitch: 20, direction: [1, 0, 0], operation: 'add' },
+      id: 'pt1', kind: 'linear_pattern',
+      linear_pattern: { subject: 'body', source_body: '@body_ex_plate', count: 1, pitch: 20, direction: [1, 0, 0], operation: 'add' },
     }))
     const res = h.res(r, 'pt1')
     expect(res.status).toBe('ok')

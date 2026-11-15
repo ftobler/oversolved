@@ -5,6 +5,13 @@ exports[`drive CLI (real OCC + Rust solver) > lists the command registry with it
   "commands": [
     {
       "enabled": true,
+      "id": "add_circular_pattern",
+      "label": "Add circular pattern",
+      "params": [],
+      "undoable": true,
+    },
+    {
+      "enabled": true,
       "id": "add_delete_face",
       "label": "Add delete face",
       "params": [],
@@ -27,15 +34,15 @@ exports[`drive CLI (real OCC + Rust solver) > lists the command registry with it
     },
     {
       "enabled": true,
-      "id": "add_move_face",
-      "label": "Add move face",
+      "id": "add_linear_pattern",
+      "label": "Add linear pattern",
       "params": [],
       "undoable": true,
     },
     {
       "enabled": true,
-      "id": "add_pattern",
-      "label": "Add pattern",
+      "id": "add_move_face",
+      "label": "Add move face",
       "params": [],
       "undoable": true,
     },

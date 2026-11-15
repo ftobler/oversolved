@@ -86,11 +86,11 @@ describe('summarizeDoc', () => {
     const patterned = {
       version: 1,
       kind: 'part',
-      features: [{ id: 'ca1', kind: 'pattern', pattern: { subject: 'body', mode: 'circular' } }],
+      features: [{ id: 'ca1', kind: 'circular_pattern', circular_pattern: { subject: 'body' } }],
       part_style: { body_ca1: {} },
     } as unknown as PartDoc
     expect(summarizeDoc(patterned, ['body_ca1', 'body_ca1_1', 'body_ca1_2', 'body_ca1_3']))
-      .toBe('features: ca1 (pattern); bodies: body_ca1, body_ca1_1, body_ca1_2, body_ca1_3')
+      .toBe('features: ca1 (circular_pattern); bodies: body_ca1, body_ca1_1, body_ca1_2, body_ca1_3')
   })
 })
 

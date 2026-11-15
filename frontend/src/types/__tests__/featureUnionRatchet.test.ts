@@ -54,8 +54,12 @@ const RATCHETS: Ratchet[] = [
     // 362: the face-projection work needed no loose record -- `authoredHashOf`
     // narrows a sketch by `kind` and the headless freeze names the response's
     // own `BuildResponse['result']` type.
+    // 363: the version-9 pattern split reads a retired `pattern` row (a kind no
+    // longer in the union) as a raw record in yamlMigrations' source-features
+    // fold, and patternSplit keeps one `Dict` alias for the payload it rewrites;
+    // the new-kind rows themselves narrow by `kind`.
     token: 'Record<string, unknown>',
-    baseline: 362,
+    baseline: 364,
   },
 ]
 

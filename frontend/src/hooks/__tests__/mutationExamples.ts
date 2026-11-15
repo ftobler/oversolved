@@ -98,10 +98,17 @@ const booleanDoc = (): PartDoc => makeDoc({
 })
 
 const patternDoc = (): PartDoc => makeDoc({
-  id: 'pt1', kind: 'pattern', label: 'Pattern',
-  pattern: {
-    subject: 'feature', source_features: ['@ex1'], mode: 'linear',
+  id: 'pt1', kind: 'linear_pattern', label: 'Pattern',
+  linear_pattern: {
+    subject: 'feature', source_features: ['@ex1'],
     count: 3, pitch: 20, direction: [1, 0, 0],
+  },
+})
+
+const circularPatternDoc = (): PartDoc => makeDoc({
+  id: 'cp1', kind: 'circular_pattern', label: 'Circular Pattern',
+  circular_pattern: {
+    subject: 'feature', source_features: ['@ex1'], count: 4, axis: '@sk1/axisLine',
   },
 })
 
@@ -487,13 +494,27 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
   },
 
   // pattern
+  add_linear_pattern: {
+    makeDoc: emptyDoc,
+    mutation: { type: 'add_linear_pattern', featureId: 'pt1', label: 'Pattern' },
+  },
+  set_linear_pattern_field: {
+    makeDoc: patternDoc,
+    mutation: { type: 'set_linear_pattern_field', featureId: 'pt1', field: 'count', value: 5 },
+  },
+  add_circular_pattern: {
+    makeDoc: emptyDoc,
+    mutation: { type: 'add_circular_pattern', featureId: 'cp1', label: 'Circular Pattern' },
+  },
+  set_circular_pattern_field: {
+    makeDoc: circularPatternDoc,
+    mutation: { type: 'set_circular_pattern_field', featureId: 'cp1', field: 'angle', value: 180 },
+  },
+  // The one-release alias: the example still runs, and its reply carries the
+  // deprecation note.
   add_pattern: {
     makeDoc: emptyDoc,
     mutation: { type: 'add_pattern', featureId: 'pt1', label: 'Pattern' },
-  },
-  set_pattern_field: {
-    makeDoc: patternDoc,
-    mutation: { type: 'set_pattern_field', featureId: 'pt1', field: 'count', value: 5 },
   },
   add_pattern_source: {
     makeDoc: patternDoc,

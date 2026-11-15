@@ -29,6 +29,7 @@ import { emptyDriveDoc, exportHeadless, measureHeadless, runHeadless } from '@/d
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
 import type { Body } from '../../types3d'
+import { splitPatternDef } from '@/utils/core/patternSplit'
 import type { PartDoc } from '@/types/cad'
 import type { ScriptStep } from '@/drive/scriptRunner'
 
@@ -71,11 +72,13 @@ function extrude(id: string, sketch: string, distance: number, operation = 'new'
 }
 
 function featurePattern(id: string, source: string, fields: Dict): Dict {
-  return { id, kind: 'pattern', pattern: { subject: 'feature', source_feature: `@${source}`, ...fields } }
+  const { kind, def } = splitPatternDef({ subject: 'feature', source_feature: `@${source}`, ...fields })
+  return { id, kind, [kind]: def }
 }
 
 function bodyPattern(id: string, source: string, fields: Dict): Dict {
-  return { id, kind: 'pattern', pattern: { subject: 'body', source_body: source, ...fields } }
+  const { kind, def } = splitPatternDef({ subject: 'body', source_body: source, ...fields })
+  return { id, kind, [kind]: def }
 }
 
 const BAR_VOLUME = 100 * 10.875 * 5
@@ -305,7 +308,7 @@ describe.skipIf(!oc || !solveBytes)('many-instance pattern and array solve cost 
     await yieldToEventLoop()
     const m = (mutation: Record<string, unknown>): ScriptStep => ({ mutation } as ScriptStep)
     const setField = (field: string, value: unknown) =>
-      m({ type: 'set_pattern_field', featureId: 'pt1', field, value })
+      m({ type: 'set_linear_pattern_field', featureId: 'pt1', field, value })
     const built = await runHeadless({
       doc: emptyDriveDoc(),
       steps: [
@@ -317,7 +320,7 @@ describe.skipIf(!oc || !solveBytes)('many-instance pattern and array solve cost 
         m({ type: 'add_constraint', featureId: 'sk_slot', kind: 'point_distance_x', targets: ['vertex:sk_slot:b:start', '@builtin_origin'], value: 10, sign: -1 }),
         m({ type: 'add_constraint', featureId: 'sk_slot', kind: 'point_distance_y', targets: ['vertex:sk_slot:b:start', '@builtin_origin'], value: 2, sign: -1 }),
         m({ type: 'add_extrude', featureId: 'ex_slot', sketchQuery: '$sk_slot', distance: 5, operation: 'cut' }),
-        m({ type: 'add_pattern', featureId: 'pt1', subject: 'feature', mode: 'linear' }),
+        m({ type: 'add_linear_pattern', featureId: 'pt1', subject: 'feature' }),
         setField('source_feature', '@ex_slot'),
         setField('count', 39),
         setField('pitch', 25),

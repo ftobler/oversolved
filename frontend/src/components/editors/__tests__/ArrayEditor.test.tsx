@@ -8,30 +8,30 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, fireEvent, act, screen } from '@testing-library/react'
 import { FeatureEditor } from '@/components/editors/FeatureEditor'
-import { PATTERN_SCHEMA } from '@/components/editors/featureEditorSchemas'
+import { LINEAR_PATTERN_SCHEMA } from '@/components/editors/featureEditorSchemas'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { PartFeature } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
 
 const FEATURES: PartFeature[] = [
   { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
-  { id: 'pt1', kind: 'pattern', pattern: { subject: 'body' } },
+  { id: 'pt1', kind: 'linear_pattern', linear_pattern: { subject: 'body' } },
 ]
 
 function makeFeature(over: Record<string, unknown> = {}): PartFeature {
   return {
     id: 'pt1',
-    kind: 'pattern',
+    kind: 'linear_pattern',
     label: 'Pattern',
-    pattern: {
-      subject: 'body', mode: 'linear', count: 2, pitch: 20, direction: [1, 0, 0],
+    linear_pattern: {
+      subject: 'body', count: 2, pitch: 20, direction: [1, 0, 0],
       operation: 'add', source_body: '', ...over,
     },
   } as unknown as PartFeature
 }
 
 function renderEditor(feature: PartFeature, onMutation: () => void) {
-  render(<FeatureEditor feature={feature} onMutation={onMutation} features={FEATURES} schema={PATTERN_SCHEMA} />)
+  render(<FeatureEditor feature={feature} onMutation={onMutation} features={FEATURES} schema={LINEAR_PATTERN_SCHEMA} />)
 }
 
 /** All pick chips in schema field order. Linear mode: [0] Body, [1] Direction. */
@@ -76,7 +76,7 @@ describe('body pattern source body pick (via FeatureEditor)', () => {
     fireEvent.click(bodyChip())
     pick('body:body_ex1')
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_pattern_field', featureId: 'pt1', field: 'source_body', value: '@body_ex1',
+      type: 'set_linear_pattern_field', featureId: 'pt1', field: 'source_body', value: '@body_ex1',
     })
   })
 
@@ -86,7 +86,7 @@ describe('body pattern source body pick (via FeatureEditor)', () => {
     fireEvent.click(bodyChip())
     pick('face:ex1:?4;@ex1:face')
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_pattern_field', featureId: 'pt1', field: 'source_body', value: '?4;@ex1:face',
+      type: 'set_linear_pattern_field', featureId: 'pt1', field: 'source_body', value: '?4;@ex1:face',
     })
   })
 
@@ -103,7 +103,7 @@ describe('body pattern source body pick (via FeatureEditor)', () => {
     renderEditor(makeFeature({ source_body: '@body_ex1' }), onMutation)
     fireEvent.click(bodyChip().querySelector('.feature-pick-chip-item-remove')!)
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_pattern_field', featureId: 'pt1', field: 'source_body', value: '',
+      type: 'set_linear_pattern_field', featureId: 'pt1', field: 'source_body', value: '',
     })
   })
 })
@@ -138,7 +138,7 @@ describe('body pattern count fields honour parse: \'int\'', () => {
     renderEditor(makeFeature(), onMutation)
     typeAndBlur('Count', '4')
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_pattern_field', featureId: 'pt1', field: 'count', value: 4,
+      type: 'set_linear_pattern_field', featureId: 'pt1', field: 'count', value: 4,
     })
   })
 
@@ -147,7 +147,7 @@ describe('body pattern count fields honour parse: \'int\'', () => {
     renderEditor(makeFeature(), onMutation)
     typeAndBlur('Pitch', '12.5')
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_pattern_field', featureId: 'pt1', field: 'pitch', value: 12.5,
+      type: 'set_linear_pattern_field', featureId: 'pt1', field: 'pitch', value: 12.5,
     })
   })
 })
@@ -166,7 +166,7 @@ describe('body pattern direction pick (via FeatureEditor)', () => {
     fireEvent.click(dirChip())
     pick('edge:ex1:?4;@ex1:edge')
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_pattern_field', featureId: 'pt1', field: 'direction_query', value: '?4;@ex1:edge',
+      type: 'set_linear_pattern_field', featureId: 'pt1', field: 'direction_query', value: '?4;@ex1:edge',
     })
   })
 
@@ -177,33 +177,33 @@ describe('body pattern direction pick (via FeatureEditor)', () => {
     const invertRow = rows.find((r) => r.querySelector('.feature-field-label')?.textContent === 'Invert')!
     fireEvent.click(invertRow.querySelector('input[type="checkbox"]')!)
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_pattern_field', featureId: 'pt1', field: 'invert', value: true,
+      type: 'set_linear_pattern_field', featureId: 'pt1', field: 'invert', value: true,
     })
   })
 
-  it('hides the Invert Y toggle in linear mode', () => {
+  it('hides the Invert 2 toggle without a second direction', () => {
     renderEditor(makeFeature(), vi.fn())
     const labels = [...document.querySelectorAll('.feature-field-label')].map((n) => n.textContent)
     expect(labels).toContain('Invert')
-    expect(labels).not.toContain('Invert Y')
+    expect(labels).not.toContain('Invert 2')
   })
 
-  it('hides the Direction Y chip in linear mode', () => {
+  it('hides the Direction 2 chip without a second direction', () => {
     renderEditor(makeFeature(), vi.fn())
-    // Linear mode: only Body + Direction chips, no Direction Y.
+    // One direction: only Body + Direction chips.
     expect(chips().length).toBe(2)
   })
 
-  it('shows and picks a Direction Y chip in rectangular mode', () => {
+  it('shows and picks a Direction 2 chip with the second direction on', () => {
     const onMutation = vi.fn()
-    renderEditor(makeFeature({ mode: 'rectangular', count_y: 2, pitch_y: 20, direction_y: [0, 1, 0] }), onMutation)
-    // Field order: [0] Body, [1] Direction X, [2] Direction Y.
-    const dirY = chips()[2]
-    expect(dirY.querySelector('.feature-pick-chip-empty-text')?.textContent).toBe('(pick edge or face, required)')
-    fireEvent.click(dirY)
+    renderEditor(makeFeature({ second_direction: true, count_2: 2, pitch_2: 20 }), onMutation)
+    // Field order: [0] Body, [1] Direction, [2] Direction 2.
+    const dir2 = chips()[2]
+    expect(dir2.querySelector('.feature-pick-chip-empty-text')?.textContent).toBe('(pick edge or face, required)')
+    fireEvent.click(dir2)
     pick('edge:ex1:?7;@ex1:edge')
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_pattern_field', featureId: 'pt1', field: 'direction_y_query', value: '?7;@ex1:edge',
+      type: 'set_linear_pattern_field', featureId: 'pt1', field: 'direction_2_query', value: '?7;@ex1:edge',
     })
   })
 })

@@ -25,8 +25,9 @@ import { deriveMemberIds, isFaceProjectionSource } from '@/kernel/features/proje
 import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateLegacyBodyPicks, migratePatternSourceFeatures, canonicalizeFeatureParams, migrateProjectionConstraints, migrateLineDistanceOperandOrder } from '@/utils/yamlMigrations'
 import { MAX_ARRAY_COUNT, MAX_ARRAY_CELLS } from '@/utils/core/arrayLimits'
 import { skipProblem } from '@/utils/core/patternSkip'
+import { splitStoredPattern } from '@/utils/core/patternSplit'
 
-// The version the ladder migrates to. A document carrying `version` 8 or newer
+// The version the ladder migrates to. A document carrying `version` 9 or newer
 // skips every step; anything older (including an unstamped document, reads as 0)
 // runs the steps whose target version it is behind. The step at 3 canonicalizes
 // the two spellings the format used to tolerate (feature refs `$id` -> `@id`,
@@ -35,10 +36,12 @@ import { skipProblem } from '@/utils/core/patternSkip'
 // the step at 5 folds authored rotating joint limits into the solver's signed
 // (-180, 180] roll coordinate; the step at 7 puts a stored point-first
 // `line_distance` back in the line-first order the solver reads; the step at 8
-// folds a pattern's single legacy source into the multi-source list.
+// folds a pattern's single legacy source into the multi-source list; the step at
+// 9 splits the retired `pattern` kind into `linear_pattern` and
+// `circular_pattern`.
 // The historic heals target 2 deliberately: the version stamps predate them, so
 // a document stamped 1 can still carry the stale shapes they fix.
-export const CURRENT_DOC_VERSION = 8
+export const CURRENT_DOC_VERSION = 9
 
 // Caps. Chosen far above what a real document holds while well below what would
 // hang a solve: an entity list of 10k is already far past a hand-authored
@@ -116,6 +119,11 @@ interface MigrationStep {
 // document just reaches the validator untouched and is rejected there.
 const MIGRATION_STEPS: MigrationStep[] = [
   { id: 'pattern-source-features', to: 8, apply: stepPatternSourceFeatures },
+  // The split runs after the source-features fold: a document stamped 8 or
+  // older reaches this pass with its singular `source_feature` already folded
+  // into `source_features`, so the new-kind row inherits the current list
+  // spelling instead of the retired scalar.
+  { id: 'pattern-split', to: 9, apply: stepPatternSplit },
   { id: 'line-distance-operand-order', to: 7, apply: stepLineDistanceOperandOrder },
   { id: 'projection-constraint', to: 6, apply: stepProjectionConstraint },
   // The rotating-limit normalization. It is idempotent, so unlike the offset
@@ -190,6 +198,21 @@ function stepPluralBodyPicks(doc: DocRecord): number {
 function stepPatternSourceFeatures(doc: DocRecord): number {
   const part = migratablePartDoc(doc)
   return part ? migratePatternSourceFeatures(part) : 0
+}
+
+/** Split every retired `pattern` row into the linear or circular kind it means.
+ *  Idempotent by construction: the new kinds are not the retired one, so a
+ *  second pass rewrites nothing. The rule itself lives in
+ *  utils/core/patternSplit.ts, which the drive's `add_pattern` alias shares. */
+function stepPatternSplit(doc: DocRecord): number {
+  if (migratablePartDoc(doc) === null) return 0
+  const features = doc.features
+  if (!isRecordList(features, MAX_FEATURES)) return 0
+  let split = 0
+  for (const feature of features) {
+    if (splitStoredPattern(feature as DocRecord)) split++
+  }
+  return split
 }
 
 function stepLineDistanceOperandOrder(doc: DocRecord): number {
@@ -982,29 +1005,22 @@ function checkBooleanDef(sub: DocRecord, field: string): void {
   checkOptional(sub, 'clearance', field, checkExpr)
 }
 
-function checkCountPair(sub: DocRecord, field: string): void {
-  const x = sub.count_x === undefined ? null : checkCount(sub.count_x, `${field}.count_x`)
-  const y = sub.count_y === undefined ? null : checkCount(sub.count_y, `${field}.count_y`)
-  const cells = arrayCellsProblem(x, y)
-  if (cells !== null) fail(`${field}.count_x`, cells)
-}
-
 function arrayCellsProblem(x: number | null, y: number | null): string | null {
   if (x === null || y === null || x * y <= MAX_ARRAY_CELLS) return null
-  return `count_x x count_y is ${x * y}, the limit is ${MAX_ARRAY_CELLS}`
+  return `count x count_2 is ${x * y}, the limit is ${MAX_ARRAY_CELLS}`
 }
 
 /** The refusal the loader would give an array count, as a message or null. The
  *  editor, the setter mutations and the loader all decide through this, so a
  *  value one of them accepts never makes the document unloadable. `other` is the
- *  sibling count of a rectangular array, for the cells cap. A string is an
- *  expression: a value that evaluates is judged, while one that names a variable
- *  still unknown passes here and is checked when it resolves.
+ *  second direction's count, for the cells cap. A string is an expression: a
+ *  value that evaluates is judged, while one that names a variable still
+ *  unknown passes here and is checked when it resolves.
  *
  *  Count 1 is legal: it keeps only the original and is a quiet no-op, never a
  *  warning. That is why there is no 1x1 rule any more either. */
 export function arrayCountProblem(
-  field: 'count' | 'count_x' | 'count_y',
+  field: 'count' | 'count_2',
   value: number | string,
   other?: number | string | null,
 ): string | null {
@@ -1012,16 +1028,11 @@ export function arrayCountProblem(
   if (typeof resolved !== 'number' || !Number.isFinite(resolved)) return null
   const sibling = typeof other === 'string' ? evalExpr(other) : other ?? null
   const otherCount = typeof sibling === 'number' && Number.isFinite(sibling) ? sibling : null
-  if (field === 'count') {
-    if (!Number.isInteger(resolved) || resolved < 1) {
-      return `must be a whole number of at least 1; 1 keeps only the original, got ${resolved}`
-    }
-    if (resolved > MAX_ARRAY_COUNT) return `must be at most ${MAX_ARRAY_COUNT}, got ${resolved}`
-    return null
+  if (!Number.isInteger(resolved) || resolved < 1) {
+    return `must be a whole number of at least 1; 1 keeps only the original, got ${resolved}`
   }
-  if (!Number.isInteger(resolved) || resolved < 1) return `must be an integer >= 1, got ${resolved}`
   if (resolved > MAX_ARRAY_COUNT) return `must be at most ${MAX_ARRAY_COUNT}, got ${resolved}`
-  return arrayCellsProblem(resolved, otherCount)
+  return field === 'count_2' ? arrayCellsProblem(otherCount, resolved) : null
 }
 
 function checkDeleteBody(sub: DocRecord, field: string): void {
@@ -1109,7 +1120,10 @@ function checkSplit(sub: DocRecord, field: string): void {
   checkOptional(sub, 'keep', field, (v, f) => checkEnum(v, f, SPLIT_KEEP))
 }
 
-function checkPattern(sub: DocRecord, field: string): void {
+// The rows both pattern kinds share: what is repeated, and how a body subject
+// applies. The feature subject inherits the source's operation, so `operation`
+// is body-only in the editor but still tolerated here.
+function checkPatternSource(sub: DocRecord, field: string): void {
   checkOptional(sub, 'subject', field, (v, f) => checkEnum(v, f, ['body', 'feature']))
   checkOptional(sub, 'source_body', field, checkRef)
   // The current multi-source list, and the singular spelling a document written
@@ -1120,36 +1134,66 @@ function checkPattern(sub: DocRecord, field: string): void {
   checkOptional(sub, 'source_feature', field, checkRef)
   checkOptional(sub, 'target_body', field, checkRef)
   checkOptional(sub, 'operation', field, (v, f) => checkEnum(v, f, ['add', 'new']))
-  // Legacy only: the source is always instance 0 now, but a document written
-  // before that change still carries the flag and must load. The kernel ignores
-  // it, and the next pattern edit drops it.
-  checkOptional(sub, 'include_source', field, checkBoolean)
-  checkOptional(sub, 'mode', field, (v, f) => checkEnum(v, f, ['linear', 'rectangular', 'circular']))
-  // count is the total instance count for one axis, the source included. Count
-  // 1 is legal: the original passes through untouched. The loader accepts the
-  // legacy count 1 and a 1x1 rectangular pair; both are quiet no-ops now, so no
-  // old document opens with a red pattern for a shape that is legal.
+}
+
+function checkLinearPattern(sub: DocRecord, field: string): void {
+  checkPatternSource(sub, field)
+  // count is the total instance count on direction 1, the source included.
+  // Count 1 is legal: the original passes through untouched. The loader accepts
+  // the same quiet 1x1 the instance model treats as a no-op.
   if (sub.count !== undefined) checkCount(sub.count, `${field}.count`)
-  checkCountPair(sub, field)
-  for (const key of ['pitch', 'pitch_x', 'pitch_y', 'step_angle']) {
-    if (sub[key] !== undefined && sub[key] !== null) checkExpr(sub[key], `${field}.${key}`)
+  if (sub.count_2 !== undefined) checkCount(sub.count_2, `${field}.count_2`)
+  checkCountGridProblem(sub, field)
+  for (const key of ['pitch', 'pitch_2']) {
+    if (sub[key] !== undefined) checkExpr(sub[key], `${field}.${key}`)
   }
-  for (const key of ['direction', 'direction_x', 'direction_y', 'axis_origin', 'axis_direction']) {
+  for (const key of ['direction', 'direction_2']) {
     checkOptional(sub, key, field, checkVec3)
   }
-  for (const key of ['direction_query', 'direction_x_query', 'direction_y_query', 'axis']) {
+  for (const key of ['direction_query', 'direction_2_query']) {
     checkOptional(sub, key, field, checkRef)
   }
-  for (const key of ['invert', 'invert_x', 'invert_y', 'invert_axis', 'centered', 'centered_x', 'centered_y']) {
+  for (const key of ['invert', 'invert_2', 'centered', 'centered_2', 'second_direction']) {
     checkOptional(sub, key, field, checkBoolean)
   }
   checkSkip(sub, field)
 }
 
+function checkCircularPattern(sub: DocRecord, field: string): void {
+  checkPatternSource(sub, field)
+  if (sub.count !== undefined) checkCount(sub.count, `${field}.count`)
+  // The sweep is a magnitude in degrees; reversing it is `invert_axis`, so a
+  // negative angle is refused here instead of at solve time.
+  if (sub.angle !== undefined) {
+    checkExpr(sub.angle, `${field}.angle`)
+    if (typeof sub.angle === 'number' && sub.angle < 0) {
+      fail(`${field}.angle`, `must be a non-negative number of degrees, got ${sub.angle}`)
+    }
+  }
+  checkOptional(sub, 'equal_spacing', field, checkBoolean)
+  for (const key of ['centered', 'invert_axis']) checkOptional(sub, key, field, checkBoolean)
+  for (const key of ['axis_origin', 'axis_direction']) checkOptional(sub, key, field, checkVec3)
+  checkOptional(sub, 'axis', field, checkRef)
+  checkSkip(sub, field, false)
+}
+
+/** The second direction's cell cap, the same pair rule the rectangular array
+ *  had. Only two literal counts can be judged here; an expression is checked
+ *  after it resolves. */
+function checkCountGridProblem(sub: DocRecord, field: string): void {
+  if (sub.second_direction !== true) return
+  const x = typeof sub.count === 'number' ? sub.count : null
+  const y = typeof sub.count_2 === 'number' ? sub.count_2 : null
+  const problem = arrayCellsProblem(x, y)
+  if (problem !== null) fail(`${field}.count`, problem)
+}
+
 /** Skip Instances is a list of signed 1D indices or `[column, row]` cells. A
  *  zero is the original, which cannot be skipped; anything else the parser
- *  could not have produced is refused here instead of reaching the kernel. */
-function checkSkip(sub: DocRecord, field: string): void {
+ *  could not have produced is refused here instead of reaching the kernel. A
+ *  circular pattern has no grid, so a cell there names nothing and is refused
+ *  rather than loaded as a permanently stale entry. */
+function checkSkip(sub: DocRecord, field: string, allowCells = true): void {
   const skip = sub.skip
   if (skip === undefined) return
   if (!Array.isArray(skip)) fail(`${field}.skip`, `must be a list of instance numbers, got ${kindOf(skip)}`)
@@ -1158,6 +1202,9 @@ function checkSkip(sub: DocRecord, field: string): void {
   }
   const problem = skipProblem(skip)
   if (problem !== null) fail(`${field}.skip`, problem)
+  if (!allowCells && skip.some((entry) => Array.isArray(entry))) {
+    fail(`${field}.skip`, 'must be whole instance numbers; a circular pattern has no grid cells')
+  }
 }
 
 function checkVariable(sub: DocRecord, field: string): void {
@@ -1209,7 +1256,8 @@ const FEATURE_DEF_CHECKS = new Map<string, (sub: DocRecord, field: string) => vo
   ['move_face', checkMoveFace],
   ['delete_face', checkDeleteFace],
   ['boolean', checkBooleanDef],
-  ['pattern', checkPattern],
+  ['linear_pattern', checkLinearPattern],
+  ['circular_pattern', checkCircularPattern],
   ['delete_body', checkDeleteBody],
   ['hole', checkHole],
   ['transform', checkTransform],

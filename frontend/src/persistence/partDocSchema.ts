@@ -44,6 +44,28 @@ const SKIP_ENTRY: JsonSchema = {
   ],
 }
 const SKIP_LIST: JsonSchema = { type: 'array', items: SKIP_ENTRY }
+// A circular pattern has no grid, so its skip list is whole instance numbers
+// only; the loader refuses a cell there by name.
+const SKIP_INDEX_LIST: JsonSchema = { type: 'array', items: { type: 'integer' } }
+
+// The rows both pattern kinds share: what is repeated, and how a body subject
+// applies it. Exported so the editor's two schemas and the published document
+// schema read one list.
+export const PATTERN_SOURCE_FIELDS: JsonSchema = {
+  subject: { enum: ['body', 'feature'] },
+  // Body subject. The source is always instance 0; the retired
+  // `include_source` flag is deliberately absent, so the setters and the
+  // strict drive check refuse it while the tolerant loader still accepts an
+  // old document that carries it.
+  source_body: REF,
+  operation: { enum: ['add', 'new'] },
+  // Feature subject. `source_features` is the current form: every source is
+  // applied at each grid instance, in document order. The singular
+  // `source_feature` is the pre-2026-11 spelling the loader folds.
+  source_features: REF_LIST,
+  source_feature: REF,
+  target_body: REF,
+}
 
 const BASE_PROPERTIES: JsonSchema = {
   id: { type: 'string', minLength: 1 },
@@ -254,52 +276,43 @@ export const FEATURE_SCHEMA_BY_KIND = {
       keep_tools: { type: 'boolean' }, clearance: NUMBER_OR_EXPR,
     },
   }),
-  pattern: feature('pattern', {
-    key: 'pattern',
+  linear_pattern: feature('linear_pattern', {
+    key: 'linear_pattern',
     properties: {
-      subject: { enum: ['body', 'feature'] },
-      // Body subject. The source is always instance 0; the retired
-      // `include_source` flag is deliberately absent, so the setters and the
-      // strict drive check refuse it while the tolerant loader still accepts an
-      // old document that carries it.
-      source_body: REF,
-      operation: { enum: ['add', 'new'] },
-      // Feature subject. `source_features` is the current form: every source is
-      // applied at each grid instance, in document order. The singular
-      // `source_feature` is the pre-2026-11 spelling the loader folds.
-      source_features: REF_LIST,
-      source_feature: REF,
-      target_body: REF,
-      // Instance grid.
-      mode: { enum: ['linear', 'rectangular', 'circular'] },
+      ...PATTERN_SOURCE_FIELDS,
+      // The instance grid: one direction, or two when `second_direction` is on.
       count: NUMBER_OR_EXPR,
-      // Centered generates the reverse side too: index i translates by i times
-      // the pitch, so count 2 centered is three instances. The rectangular grid
-      // centers each axis on its own flag.
       centered: { type: 'boolean' },
-      centered_x: { type: 'boolean' },
-      centered_y: { type: 'boolean' },
-      // Instances to leave out, as signed indices or [column, row] cells.
-      skip: SKIP_LIST,
       pitch: NUMBER_OR_EXPR,
       direction: VEC3,
       direction_query: REF,
       invert: { type: 'boolean' },
-      count_x: NUMBER_OR_EXPR,
-      count_y: NUMBER_OR_EXPR,
-      pitch_x: NUMBER_OR_EXPR,
-      pitch_y: NUMBER_OR_EXPR,
-      direction_x: VEC3,
-      direction_x_query: REF,
-      invert_x: { type: 'boolean' },
-      direction_y: VEC3,
-      direction_y_query: REF,
-      invert_y: { type: 'boolean' },
-      step_angle: NUMBER_OR_EXPR,
+      second_direction: { type: 'boolean' },
+      count_2: NUMBER_OR_EXPR,
+      centered_2: { type: 'boolean' },
+      pitch_2: NUMBER_OR_EXPR,
+      direction_2: VEC3,
+      direction_2_query: REF,
+      invert_2: { type: 'boolean' },
+      // Instances to leave out, as signed indices or [column, row] cells.
+      skip: SKIP_LIST,
+    },
+  }),
+  circular_pattern: feature('circular_pattern', {
+    key: 'circular_pattern',
+    properties: {
+      ...PATTERN_SOURCE_FIELDS,
+      count: NUMBER_OR_EXPR,
+      centered: { type: 'boolean' },
+      // Degrees, 360 by default. With `equal_spacing` it is the sweep the
+      // instances spread over; without it, the increment between neighbours.
+      angle: NUMBER_OR_EXPR,
+      equal_spacing: { type: 'boolean' },
       axis: REF,
       axis_origin: VEC3,
       axis_direction: VEC3,
       invert_axis: { type: 'boolean' },
+      skip: SKIP_INDEX_LIST,
     },
   }),
   delete_body: feature('delete_body', {

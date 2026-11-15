@@ -38,6 +38,7 @@ import { partSolvePayload, applySolveToDoc } from '@/drive/solveWriteBack'
 import { journalSink, type CommandJournal } from '@/drive/journal'
 import { runScript, type ScriptRunOutcome, type ScriptStep, type ScriptStepOutcome } from '@/drive/scriptRunner'
 import { validateMutation } from '@/drive/mutationCatalog'
+import { patternAliasNote } from '@/drive/patternAlias'
 import { readSolveOutcomes, type FeatureNote, type FeatureOutcome } from '@/drive/featureOutcome'
 import { featureFrames, type FeatureFrameMap, type FeatureFrameOptions } from '@/drive/featureFrames'
 import { featureCurves, type FeatureCurveMap } from '@/drive/featureCurves'
@@ -574,6 +575,11 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
           }
           const noteParts: string[] = []
           const noteIds: string[] = []
+          const alias = patternAliasNote(mutation)
+          if (alias !== null && applied.ok && 'featureId' in mutation) {
+            noteParts.push(alias)
+            if (!noteIds.includes(mutation.featureId)) noteIds.push(mutation.featureId)
+          }
           if (projected.frozenNothing !== undefined && applied.ok) {
             noteParts.push(projectionNotFrozenMessage(projected.frozenNothing))
             for (const target of mutation.type === 'delete' ? mutation.targets : []) {

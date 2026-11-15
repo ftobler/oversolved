@@ -1,33 +1,33 @@
 /**
- * The circular mode's source body and axis are pickable. The solver honours
- * `pattern.source_body` and `pattern.axis`; the editor exposes chips for both so
- * a document with more than one body can be patterned on the intended body,
- * about the intended edge or face.
+ * The circular pattern's source body and axis are pickable. The solver honours
+ * `circular_pattern.source_body` and `circular_pattern.axis`; the editor exposes
+ * chips for both so a document with more than one body can be patterned on the
+ * intended body, about the intended edge or face.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, fireEvent, act } from '@testing-library/react'
 import { FeatureEditor } from '@/components/editors/FeatureEditor'
-import { PATTERN_SCHEMA } from '@/components/editors/featureEditorSchemas'
+import { CIRCULAR_PATTERN_SCHEMA } from '@/components/editors/featureEditorSchemas'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { PartFeature } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
 
 const FEATURES: PartFeature[] = [
   { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
-  { id: 'pt1', kind: 'pattern', pattern: { subject: 'body', mode: 'circular' } },
+  { id: 'pt1', kind: 'circular_pattern', circular_pattern: { subject: 'body' } },
 ]
 
 function makeFeature(source_body = ''): PartFeature {
   return {
     id: 'pt1',
-    kind: 'pattern',
+    kind: 'circular_pattern',
     label: 'Pattern',
-    pattern: { subject: 'body', mode: 'circular', source_body, count: 4, operation: 'add' },
+    circular_pattern: { subject: 'body', source_body, count: 4, operation: 'add' },
   } as unknown as PartFeature
 }
 
 function renderEditor(feature: PartFeature, onMutation: () => void) {
-  render(<FeatureEditor feature={feature} onMutation={onMutation} features={FEATURES} schema={PATTERN_SCHEMA} />)
+  render(<FeatureEditor feature={feature} onMutation={onMutation} features={FEATURES} schema={CIRCULAR_PATTERN_SCHEMA} />)
 }
 
 /** Pick chips in field order: [0] Body, [1] Axis. */
@@ -75,7 +75,7 @@ describe('circular pattern body pick (via FeatureEditor)', () => {
     fireEvent.click(bodyChip())
     pick('body:body_ex1')
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_pattern_field', featureId: 'pt1', field: 'source_body', value: '@body_ex1',
+      type: 'set_circular_pattern_field', featureId: 'pt1', field: 'source_body', value: '@body_ex1',
     })
   })
 
@@ -85,7 +85,7 @@ describe('circular pattern body pick (via FeatureEditor)', () => {
     fireEvent.click(bodyChip())
     pick('face:ex1:?4;@ex1:face')
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_pattern_field', featureId: 'pt1', field: 'source_body', value: '?4;@ex1:face',
+      type: 'set_circular_pattern_field', featureId: 'pt1', field: 'source_body', value: '?4;@ex1:face',
     })
   })
 
@@ -102,7 +102,7 @@ describe('circular pattern body pick (via FeatureEditor)', () => {
     renderEditor(makeFeature('@body_ex1'), onMutation)
     fireEvent.click(bodyChip().querySelector('.feature-pick-chip-item-remove')!)
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_pattern_field', featureId: 'pt1', field: 'source_body', value: '',
+      type: 'set_circular_pattern_field', featureId: 'pt1', field: 'source_body', value: '',
     })
   })
 })
@@ -121,7 +121,7 @@ describe('circular pattern axis pick (via FeatureEditor)', () => {
     fireEvent.click(axisChip())
     pick('edge:ex1:?4;@ex1:edge')
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_pattern_field', featureId: 'pt1', field: 'axis', value: '?4;@ex1:edge',
+      type: 'set_circular_pattern_field', featureId: 'pt1', field: 'axis', value: '?4;@ex1:edge',
     })
   })
 
@@ -132,7 +132,7 @@ describe('circular pattern axis pick (via FeatureEditor)', () => {
     const invertRow = rows.find((r) => r.querySelector('.feature-field-label')?.textContent === 'Invert axis')!
     fireEvent.click(invertRow.querySelector('input[type="checkbox"]')!)
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_pattern_field', featureId: 'pt1', field: 'invert_axis', value: true,
+      type: 'set_circular_pattern_field', featureId: 'pt1', field: 'invert_axis', value: true,
     })
   })
 })
