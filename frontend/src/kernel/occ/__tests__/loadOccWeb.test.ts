@@ -47,7 +47,7 @@ async function freshLoadOccWeb() {
     import('../loadOccWeb'),
   ])
   progress.resetOccLoadProgress()
-  return { loadOccWeb: loader.loadOccWeb, progress }
+  return { loadOccWeb: loader.loadOccWeb, resetOccWeb: loader.resetOccWeb, progress }
 }
 
 // The factory records what it was handed on globalThis, since the module text
@@ -187,5 +187,18 @@ describe('loadOccWeb', () => {
     expect(second).toBe(first)
     await first
     expect(fetchSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('releases the occt.js blob URL only when the loader is reset', async () => {
+    serve(FACTORY_JS)
+
+    const { loadOccWeb, resetOccWeb } = await freshLoadOccWeb()
+    expect(await loadOccWeb('/base/')).toEqual({ occt: 'ready' })
+    // Kept while the module is live: something can still ask the URL again
+    // after the import, and a revoked URL answers 404 (see importOccModule.ts).
+    expect(URL.revokeObjectURL).not.toHaveBeenCalled()
+
+    resetOccWeb()
+    expect(URL.revokeObjectURL).toHaveBeenCalledTimes(1)
   })
 })

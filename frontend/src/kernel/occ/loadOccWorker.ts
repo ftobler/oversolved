@@ -9,7 +9,7 @@
 
 import type { OccModule } from './occTypes'
 import { memoizedLoad } from './memoizedLoad'
-import { importOccModule } from './importOccModule'
+import { importOccModule, releaseOccFactory } from './importOccModule'
 
 // Under the deploy base, e.g. /oversolved/ on Pages. Plain Node (the
 // solve-timeout runner) has no import.meta.env, hence the optional chain.
@@ -32,4 +32,7 @@ export function loadOccWorker(base: string = DEFAULT_BASE): Promise<OccModule | 
 /** Drop the Worker-side module so a trap recovery loads a fresh instance. */
 export function resetOccWorker(): void {
   occWorker.reset()
+  // The module's lifetime ends here, so the blob URL it was imported from can
+  // go too; the next load imports a fresh one.
+  releaseOccFactory()
 }
