@@ -322,6 +322,24 @@ export const FEATURE_SCHEMA_BY_KIND = {
       skip: SKIP_INDEX_LIST,
     },
   }),
+  curve_pattern: feature('curve_pattern', {
+    key: 'curve_pattern',
+    properties: {
+      ...PATTERN_SOURCE_FIELDS,
+      // Sweep's path grammar: one ordered chain of sketch curves, or a bare
+      // helix id. A closed curve is a loop.
+      path: REF_OR_LIST,
+      count: NUMBER_OR_EXPR,
+      spacing: { enum: ['equal', 'distance'] },
+      distance: NUMBER_OR_EXPR,
+      reverse: { type: 'boolean' },
+      orientation: { enum: ['tangent', 'normal_to', 'fixed'] },
+      // Read in `normal_to` only: a plane, planar face or straight edge.
+      normal_ref: REF,
+      // No Centered field: a path has a start, not a middle.
+      skip: SKIP_INDEX_LIST,
+    },
+  }),
   delete_body: feature('delete_body', {
     key: 'delete_body',
     required: ['bodies'],

@@ -17,7 +17,7 @@
 // mutations the app itself produced, and refusing a historical value would make
 // an old journal unreplayable.
 
-import type { EntityKind, FeatureKind, FilletCorner, Mutation, PartDoc, Point, SketchPatternMode } from '@/types/cad'
+import type { EntityKind, FeatureKind, FilletCorner, Mutation, PartDoc, PatternKind, Point, SketchPatternMode } from '@/types/cad'
 import { ENTITY_BY_KIND } from '@/registry/entityRegistry'
 import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 import { BUILTIN_PLANES, resolveBarePlaneId } from '@/kernel/solverConstants'
@@ -1564,14 +1564,20 @@ function patternCountProblem(
 
 /** The pattern sub-definition a setter names, or null when the caller has no
  *  document (or the feature is not that pattern kind). */
-function storedPatternDef(raw: RawStep, ctx: ValueContext, kind: 'linear_pattern' | 'circular_pattern'): RawStep | null {
+function storedPatternDef(raw: RawStep, ctx: ValueContext, kind: PatternKind): RawStep | null {
   if (ctx.doc === null) return null
   const feature = (ctx.doc.features ?? []).find(entry => entry.id === raw.featureId)
   if (feature === undefined) return null
-  const sub: unknown = feature.kind === 'linear_pattern' && kind === 'linear_pattern'
-    ? feature.linear_pattern
-    : feature.kind === 'circular_pattern' && kind === 'circular_pattern' ? feature.circular_pattern : undefined
-  return isRecord(sub) ? sub : null
+  if (feature.kind === 'linear_pattern' && kind === 'linear_pattern') {
+    return isRecord(feature.linear_pattern) ? feature.linear_pattern : null
+  }
+  if (feature.kind === 'circular_pattern' && kind === 'circular_pattern') {
+    return isRecord(feature.circular_pattern) ? feature.circular_pattern : null
+  }
+  if (feature.kind === 'curve_pattern' && kind === 'curve_pattern') {
+    return isRecord(feature.curve_pattern) ? feature.curve_pattern : null
+  }
+  return null
 }
 
 /** A circular pattern has no grid, so a `i:j` cell addresses nothing and is
@@ -1668,6 +1674,67 @@ function setCircularPatternField(raw: RawStep, ctx: ValueContext): ValueViolatio
   if (typeof field !== 'string' || field !== 'count') return null
   const problem = patternCountProblem('count', raw.value, null, `set_circular_pattern_field field ${json(field)}`)
   return problem === null ? null : invalid(problem)
+}
+
+/**
+ * The two fields whose meaning depends on a sibling. `distance` is read only in
+ * distance mode and `normal_ref` only in normal_to, so a value set outside its
+ * mode would be stored and silently ignored; the boundary refuses it by naming
+ * the field that would make it live.
+ */
+function curvePatternModeProblem(
+  field: string,
+  spacing: unknown,
+  orientation: unknown,
+  label: string,
+): ValueViolation | null {
+  if (field === 'distance' && spacing !== 'distance') {
+    return invalid(`${label} is read only when spacing is "distance"; this pattern is spaced "${String(spacing ?? 'equal')}"`)
+  }
+  if (field === 'normal_ref' && orientation !== 'normal_to') {
+    return invalid(`${label} is read only when orientation is "normal_to"; this pattern is oriented "${String(orientation ?? 'tangent')}"`)
+  }
+  return null
+}
+
+function addCurvePattern(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const generic = inlineFeatureFieldsProblem(raw, ctx, 'curve_pattern', 'set_curve_pattern_field', ['skip'])
+  if (generic !== null) return generic
+  if (raw.skip !== undefined && raw.skip !== null) {
+    const skipProblem = circularSkipProblem(raw.skip, `add_curve_pattern field ${json('skip')}`)
+    if (skipProblem !== null) return skipProblem
+  }
+  if (raw.count !== undefined) {
+    const problem = patternCountProblem('count', raw.count, null, `add_curve_pattern field ${json('count')}`)
+    if (problem !== null) return invalid(problem)
+  }
+  for (const field of ['distance', 'normal_ref'] as const) {
+    if (raw[field] === undefined || raw[field] === null) continue
+    const mode = curvePatternModeProblem(field, raw.spacing, raw.orientation, `add_curve_pattern field ${json(field)}`)
+    if (mode !== null) return mode
+  }
+  return null
+}
+
+function setCurvePatternField(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const field = raw.field
+  if (field === 'skip') {
+    if (raw.value === null || raw.value === undefined) return null
+    return circularSkipProblem(raw.value, `set_curve_pattern_field field ${json(field)}`)
+  }
+  const generic = fieldValue(raw, ctx)
+  if (generic !== null) return generic
+  if (typeof field !== 'string') return null
+  const stored = storedPatternDef(raw, ctx, 'curve_pattern')
+  if (field === 'count') {
+    const problem = patternCountProblem('count', raw.value, null, `set_curve_pattern_field field ${json(field)}`)
+    return problem === null ? null : invalid(problem)
+  }
+  if ((field === 'distance' || field === 'normal_ref') && raw.value !== null) {
+    // The stored sibling says what the mode will be; a null clear is always legal.
+    return curvePatternModeProblem(field, stored?.spacing, stored?.orientation, `set_curve_pattern_field field ${json(field)}`)
+  }
+  return null
 }
 
 /** The retired alias keeps its old value rule for one release: the body is
@@ -2387,6 +2454,7 @@ export const MUTATION_VALUE_RULES = {
   remove_sweep_profile: indexField('index'),
   add_sweep_path: profileRefField('pathQuery'),
   remove_sweep_path: indexField('index'),
+  remove_curve_pattern_path: indexField('index'),
   add_import_step: addImportStep,
   add_chamfer: addChamfer,
   set_fillet_field: fieldValue,
@@ -2413,8 +2481,11 @@ export const MUTATION_VALUE_RULES = {
   add_pattern: addPattern,
   add_linear_pattern: addLinearPattern,
   add_circular_pattern: addCircularPattern,
+  add_curve_pattern: addCurvePattern,
   set_linear_pattern_field: setLinearPatternField,
   set_circular_pattern_field: setCircularPatternField,
+  set_curve_pattern_field: setCurvePatternField,
+  add_curve_pattern_path: profileRefField('pathQuery'),
   add_pattern_source: queryField('sourceFeature'),
   remove_pattern_source: indexField('index'),
   add_delete_body: addDeleteBody,

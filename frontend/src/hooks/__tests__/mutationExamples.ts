@@ -112,6 +112,13 @@ const circularPatternDoc = (): PartDoc => makeDoc({
   },
 })
 
+const curvePatternDoc = (): PartDoc => makeDoc({
+  id: 'cv1', kind: 'curve_pattern', label: 'Curve Pattern',
+  curve_pattern: {
+    subject: 'body', source_body: '@body_ex1', count: 3, path: ['@sk1'],
+  },
+})
+
 const holeDoc = (): PartDoc => makeDoc({
   id: 'h1', kind: 'hole', label: 'Hole',
   hole: { sketch: '', diameter: 10, depth_mode: 'blind', depth: 20, direction: 'normal' },
@@ -509,6 +516,22 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
   set_circular_pattern_field: {
     makeDoc: circularPatternDoc,
     mutation: { type: 'set_circular_pattern_field', featureId: 'cp1', field: 'angle', value: 180 },
+  },
+  add_curve_pattern: {
+    makeDoc: emptyDoc,
+    mutation: { type: 'add_curve_pattern', featureId: 'cv1', label: 'Curve Pattern', pathQuery: '@sk1' },
+  },
+  set_curve_pattern_field: {
+    makeDoc: curvePatternDoc,
+    mutation: { type: 'set_curve_pattern_field', featureId: 'cv1', field: 'spacing', value: 'distance' },
+  },
+  add_curve_pattern_path: {
+    makeDoc: curvePatternDoc,
+    mutation: { type: 'add_curve_pattern_path', featureId: 'cv1', pathQuery: '@sk2' },
+  },
+  remove_curve_pattern_path: {
+    makeDoc: curvePatternDoc,
+    mutation: { type: 'remove_curve_pattern_path', featureId: 'cv1', index: 0 },
   },
   // The one-release alias: the example still runs, and its reply carries the
   // deprecation note.

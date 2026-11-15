@@ -652,13 +652,14 @@ XYZ degrees (world X first, then world Y, then world Z), numbers only, pivoting
 about `rotation_axis_origin` or the world origin. It cannot be combined with
 `rotation_axis`, `rotation_angle` or `rotation_axis_direction`.
 
-### linear_pattern / circular_pattern
+### linear_pattern / circular_pattern / curve_pattern
 
-Two features pattern either a whole body or earlier features' own operation.
+Three features pattern either a whole body or earlier features' own operation.
 `linear_pattern` repeats along one direction, or along two when the second
 direction is on (the old rectangular mode). `circular_pattern` repeats about an
-axis by an angle law. What is repeated is shared: `subject` selects it, and the
-source fields are the same on both kinds.
+axis by an angle law. `curve_pattern` walks a path and carries the subject along
+it. What is repeated is shared: `subject` selects it, and the source fields are
+the same on all three kinds.
 
 #### Body subject
 
@@ -776,6 +777,45 @@ more than one (a cut with no merge target reaches every body), the solver
 refuses with the list and `target_body` picks one. A copy that cannot apply is
 named: some applied is a `partial` feature listing how many copies landed and
 which copy failed, none applied is an error.
+
+#### Curve pattern
+
+```yaml
+- id: cv1
+  kind: curve_pattern
+  curve_pattern:
+    subject: body
+    source_body: "@body_ex1"
+    operation: add
+    path: ["@sk_path"]            # sweep's path grammar; one ordered chain, or a bare helix id
+    count: 4                      # total instances, the source included
+    spacing: distance             # equal (default) | distance
+    distance: 12.5                # arc length between neighbours, distance mode only
+    reverse: false                # walk the path from its far end
+    orientation: tangent          # tangent (default) | normal_to | fixed
+    normal_ref: "@builtin_plane_top"  # normal_to only: a plane, planar face or straight edge
+    skip: [2]                     # whole instance numbers only; no grid, no centered
+```
+
+Instance 0 is the source where it is. Instance i sits at an arc length measured
+from the path START (or its far end with `reverse`), and the placement maps the
+frame at the start onto the frame at that station, so the offset between the
+source and the path start is carried along and the source need not touch the
+path. With `spacing: equal` the path length is split evenly: an open path puts
+the last instance on its end (step `length / (count - 1)`), while a closed path
+(a full circle) splits by count, so no instance lands on the start twice. With
+`spacing: distance` the `distance` is the arc length between neighbours; an
+instance that would run past an open path's end is dropped with one warning and
+the feature is `partial`, while a closed path wraps and a wrap that lands on
+another instance is refused as a coincidence. There is no `centered` option: a
+path has a start, not a middle.
+
+`orientation` decides how a copy turns. `tangent` follows the path with a
+rotation-minimizing frame, so a path whose curvature changes sign does not flip
+the copies the way a Frenet frame would; `normal_to` turns them only about
+`normal_ref`, and a station where the path runs along that normal is refused by
+name; `fixed` only translates. The feature result carries `path_length` and
+`resolved_spacing`, the two numbers the editor hint and a headless report read.
 
 Copies apply through the same body operation the source used, one at a time. A
 cut copy that shares no volume with the body is a failure for that copy. An add

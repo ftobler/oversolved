@@ -154,6 +154,14 @@ export function describeMutation(m: Mutation): string {
       return `add circular pattern ${m.label ?? m.featureId}`
     case 'set_circular_pattern_field':
       return `set circular pattern ${m.field} to ${m.value}`
+    case 'add_curve_pattern':
+      return `add curve pattern ${m.label ?? m.featureId}`
+    case 'set_curve_pattern_field':
+      return `set curve pattern ${m.field} to ${m.value}`
+    case 'add_curve_pattern_path':
+      return `add curve pattern path ${m.pathQuery}`
+    case 'remove_curve_pattern_path':
+      return `remove curve pattern path at index ${m.index}`
     case 'add_pattern':
       return `add deprecated pattern ${m.label ?? m.featureId}`
     case 'add_pattern_source':

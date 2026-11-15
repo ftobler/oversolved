@@ -366,15 +366,18 @@ export function applyReorderPickField(doc: PartDoc, featureId: string, field: st
       // be stored as a bare string, and the splice needs a live array.
       if (feature.kind === 'sweep') {
         arr = normalizeStoredRefList(feature.sweep, 'path')
+      } else if (feature.kind === 'curve_pattern') {
+        arr = normalizeStoredRefList(feature.curve_pattern, 'path')
       }
       break
     case 'source_features':
       // The chip reorders the authored list. The kernel still unions the
       // sources in feature-log order, so this is a presentation edit; the
       // legacy scalar is normalized in place before the splice.
-      if (feature.kind === 'linear_pattern' || feature.kind === 'circular_pattern') {
+      if (feature.kind === 'linear_pattern' || feature.kind === 'circular_pattern' || feature.kind === 'curve_pattern') {
         const sub: { source_features?: string[]; source_feature?: string } =
-          feature.kind === 'linear_pattern' ? feature.linear_pattern : feature.circular_pattern
+          feature.kind === 'linear_pattern' ? feature.linear_pattern
+            : feature.kind === 'circular_pattern' ? feature.circular_pattern : feature.curve_pattern
         if (!Array.isArray(sub.source_features)) {
           sub.source_features = typeof sub.source_feature === 'string' && sub.source_feature
             ? [sub.source_feature]

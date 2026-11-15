@@ -28,6 +28,7 @@ import { solveFillet, solveChamfer, resolveFilletEdges } from '@/kernel/features
 import { solveHole } from '@/kernel/features/hole'
 import { solveLinearPattern } from '@/kernel/features/linearPattern'
 import { solveCircularPattern } from '@/kernel/features/circularPattern'
+import { solveCurvePattern } from '@/kernel/features/curvePattern'
 import { solveMirror } from '@/kernel/features/transformMirror'
 import { solveShell } from '@/kernel/features/shell'
 import { solveHelix } from '@/kernel/features/helix'
@@ -350,6 +351,7 @@ function checkMonotonic(step: RecipeStep, targetBefore: number | undefined, edit
     (step.kind === 'boolean' && step.operation === 'union')
     || step.kind === 'linear-array'
     || step.kind === 'circular-array'
+    || step.kind === 'curve-array'
     || (step.kind === 'mirror' && step.keepOriginal && step.merge)
   // Shell is drawn inward only, so like a cut it never adds material.
   const cutLike = (step.kind === 'boolean' && step.operation === 'subtract') || step.kind === 'hole' || step.kind === 'shell'
@@ -811,6 +813,26 @@ function applyStep(
         subject: 'body', source_body: step.target, count: step.count,
         ...(stepped ? { angle: step.stepDeg as number, equal_spacing: false } : {}),
         operation: 'add', axis: query,
+      },
+    } as Dict, repoForLeaves, bodyStore)
+    return { editedIds: result.body_ids }
+  }
+  if (step.kind === 'curve-array') {
+    // The path is a straight line on the world XY plane, registered the way the
+    // builder registers a solved sketch: plane frame plus topo edges, in sketch
+    // 2D coordinates.
+    const pathSketch = `sk_${step.id}`
+    repo.register('_pt_' + pathSketch, PLANE_XY)
+    repo.register('_topo_' + pathSketch, {
+      edges: [{ entity_id: 'path', edge_index: 0, kind: 'line', start: [0, 0], end: [step.length, 0] }],
+    })
+    const result = solveCurvePattern(oc, scope, table, {
+      id: step.id,
+      curve_pattern: {
+        subject: 'body', source_body: step.target, operation: 'add', count: step.count,
+        path: ['@' + pathSketch],
+        ...(step.spacing === 'distance' ? { spacing: 'distance', distance: step.distance } : {}),
+        ...(step.orientation === 'fixed' ? { orientation: 'fixed' } : {}),
       },
     } as Dict, repoForLeaves, bodyStore)
     return { editedIds: result.body_ids }

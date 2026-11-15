@@ -29,6 +29,7 @@ const PROGRAMMATIC_ONLY = new Set([
   'add_split',  // toolbar-only (no keyboard shortcut)
   'add_linear_pattern',  // toolbar-only (no keyboard shortcut)
   'add_circular_pattern',  // toolbar-only (no keyboard shortcut)
+  'add_curve_pattern',  // toolbar-only (no keyboard shortcut)
   ...TOOLBAR_ONLY_CONSTRAINT_COMMANDS,
 ])
 

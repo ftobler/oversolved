@@ -30,6 +30,7 @@ function referencedBodies(step: RecipeStep): string[] {
     case 'hole': return [step.target]
     case 'linear-array': return [step.target]
     case 'circular-array': return [step.target]
+    case 'curve-array': return [step.target]
     case 'mirror': return [step.target]
     case 'shell': return [step.target]
     case 'helix': return [step.target]
@@ -74,6 +75,7 @@ describe('the geometry-fuzz recipe generator', () => {
       case 'hole': return [step.diameter, step.depth]
       case 'linear-array': return [step.pitch]
       case 'circular-array': return [step.stepDeg]
+      case 'curve-array': return [step.distance, step.length]
       case 'mirror': return []
       case 'shell': return [step.thickness]
       case 'helix': return [step.pitch]
@@ -90,6 +92,7 @@ describe('the geometry-fuzz recipe generator', () => {
       case 'hole': return [step.face]
       case 'linear-array': return [step.count]
       case 'circular-array': return [step.count]
+      case 'curve-array': return [step.count]
       case 'mirror': return [step.face]
       case 'shell': return [step.face]
       case 'helix': return [step.face, step.turns]
@@ -145,8 +148,30 @@ describe('the geometry-fuzz recipe generator', () => {
     expect(skipped).toBeGreaterThan(0)
   })
 
-  it('appends one split step with a drawn axis, fraction and keep side', () => {
-    const keeps = new Set<string>()
+  it('appends one curve-array step from its own stream, leaving the chain identical', () => {
+    const spacings = new Set<string>()
+    const orientations = new Set<string>()
+    for (let seed = 0; seed < 50; seed++) {
+      const plain = generateRecipe(seed)
+      const tailed = generateRecipe(seed, { curvePatternTail: true })
+      expect(tailed.steps.slice(0, plain.steps.length)).toEqual(plain.steps)
+      expect(tailed.steps).toHaveLength(plain.steps.length + 1)
+      const last = tailed.steps.at(-1)!
+      expect(last.kind).toBe('curve-array')
+      if (last.kind !== 'curve-array') continue
+      expect(last.target).toBe(PRIMARY_BODY)
+      expect(last.count).toBeGreaterThanOrEqual(2)
+      expect(last.count).toBeLessThanOrEqual(4)
+      spacings.add(last.spacing)
+      orientations.add(last.orientation)
+    }
+    // The two laws this step exists to cover: equal spacing and a distance that
+    // may run past the short path, and a copy that does or does not turn.
+    expect(spacings).toEqual(new Set(['equal', 'distance']))
+    expect(orientations.size).toBe(2)
+  })
+
+  it('appends one split step with a drawn axis, fraction and keep side', () => {    const keeps = new Set<string>()
     for (let seed = 0; seed < 50; seed++) {
       const last = generateRecipe(seed, { splitTail: true }).steps.at(-1)!
       expect(last.kind).toBe('split')

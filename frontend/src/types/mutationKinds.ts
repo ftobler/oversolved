@@ -19,6 +19,7 @@ export const CREATING_MUTATION_TYPES = new Set<Mutation['type']>([
   'add_shell',
   'add_move_face',
   'add_delete_face',
-  'add_pattern', 'add_linear_pattern', 'add_circular_pattern', 'add_delete_body', 'add_hole',
+  'add_pattern', 'add_linear_pattern', 'add_circular_pattern', 'add_curve_pattern',
+  'add_delete_body', 'add_hole',
   'add_transform', 'add_mirror', 'add_split', 'add_variable', 'add_helix',
 ])

@@ -6,6 +6,9 @@
 // elliptical arcs, splines) are built from their exact in-plane descriptors
 // (spineCurvedEdge and its arms), chain-forward, with the joints snapped so the
 // wire assembles regardless of solver-level endpoint precision.
+//
+// The sampler itself lives in shared/pathSampler.ts: the curve pattern walks the
+// same spine, so the adaptor construction is one function for both leaves.
 
 import type { DisposeScope } from '../occ/disposeScope'
 import { extractErrorMessage, swallowUnlessTrap } from '../errors'
@@ -22,6 +25,7 @@ import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { sweepProfileWithLineage, type LineageResult } from '../occ/prismLineage'
 import { sweepSectionsWithLineage, type SweepSection } from '../occ/sweepSections'
 import { orderSections, profilePlacement, describeProfileMiss, type ProfileMiss, type SectionInput, type SpineSampler, type Station } from './sweepStations'
+import { spineSampler } from './shared/pathSampler'
 import { classifyLoops } from '../profileLoops'
 import { makeLineEdge, makeArcEdge, makeEllipseEdge, makeBezierEdge, makeBSplineChainEdge, type Vec3 } from '../occ/primitives'
 import { buildCurveEdge } from '../occ/helixEdge'
@@ -154,29 +158,92 @@ function refToSketchAndEntity(ref: string, globalRepo: Repository): { sketchId: 
 }
 
 /**
+ * How a path pick reads a closed curve. The sweep refuses one (it pipes a
+ * profile around an open chain), the curve pattern walks it as a loop, so the
+ * tolerance is a caller's choice rather than two path resolvers.
+ */
+export interface PathPickOptions {
+  closedCurve?: boolean
+}
+
+/**
+ * The edges a whole-sketch pick contributes when the sketch has no split edges:
+ * a lone circle or ellipse owns its area, so its geometry lives on the surface
+ * boundary (`topo.surfaces[].boundary`) rather than in `topo.edges`. Only the
+ * closed-curve path reader asks for this; a sweep keeps its "path has no edges"
+ * refusal.
+ */
+function boundaryEdges(topo: Dict): Dict[] {
+  const out: Dict[] = []
+  const seen = new Set<string>()
+  for (const surface of (topo.surfaces as Dict[] | undefined) ?? []) {
+    const groups = [
+      (surface.boundary as Dict[] | undefined) ?? [],
+      ...((surface.holes as Dict[][] | undefined) ?? []),
+    ]
+    for (const e of groups.flat()) {
+      const key = JSON.stringify([
+        e.id ?? e.entity_id ?? '', e.start ?? null, e.end ?? null,
+        e.center ?? null, e.angle_start_deg ?? null, e.angle_end_deg ?? null,
+      ])
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(e)
+    }
+  }
+  return out
+}
+
+/**
  * Collect the world-space topo edges a single path ref contributes. An
  * `entity:`/`vertex:` ref selects only the edges of that one sketch entity
  * (edge-precise); any other ref selects every edge of the sketch. Edges carry
  * their world-space start/end (and center for arcs) so a path spanning sketches
  * on different planes orders correctly. Returns [worldEdges, sketchId].
  */
-function pathRefWorldEdges(ref: string, globalRepo: Repository): [Dict[], string] {
+function pathRefWorldEdges(ref: string, globalRepo: Repository, options: PathPickOptions): [Dict[], string] {
   const { sketchId, eid } = refToSketchAndEntity(ref, globalRepo)
   const plane = globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined
   if (plane === undefined) throw new Error(`sweep: path sketch not found: ${JSON.stringify(sketchId)}`)
   const topo = (globalRepo.elements.get('_topo_' + sketchId) as Dict | undefined) ?? {}
   const rawEdges = (topo.edges as Dict[]) ?? []
-  const selected = eid === null ? rawEdges : rawEdges.filter((e) => e.entity_id === eid)
+  let selected = eid === null ? rawEdges : rawEdges.filter((e) => e.entity_id === eid)
+  // A whole-sketch pick of a lone closed curve (or one of its curves) has no
+  // split edges of its own: the geometry lives on the surface boundary.
+  if (selected.length === 0 && options.closedCurve === true) {
+    const boundary = boundaryEdges(topo)
+    selected = eid === null ? boundary : boundary.filter((e) => (e.id ?? e.entity_id) === eid)
+  }
 
   const worldEdges: Dict[] = []
   for (const e of selected) {
-    // A closed curve is not a path segment: it has no start/end to chain from,
-    // and sketchToWorld2d(undefined) would throw a raw TypeError below.
     if (e.kind === 'ellipse') {
-      throw new Error(
-        `sweep: path entity '${e.entity_id as string}' is a closed ellipse; ` +
-        `a sweep path must be an open chain`,
-      )
+      // A full closed ellipse carries no start/end to chain from. A curve
+      // pattern walks it as the 360 degree ellipse-arc span its builder takes;
+      // a sweep path must be an open chain.
+      if (options.closedCurve !== true) {
+        throw new Error(
+          `sweep: path entity '${e.entity_id as string}' is a closed ellipse; ` +
+          `a sweep path must be an open chain`,
+        )
+      }
+      const theta = ((Number(e.theta ?? 0)) * Math.PI) / 180
+      const center2d = e.center as number[]
+      const seam: number[] = [center2d[0] + Number(e.a) * Math.cos(theta), center2d[1] + Number(e.a) * Math.sin(theta)]
+      worldEdges.push({
+        kind: 'ellipse_arc',
+        edge_index: e.edge_index,
+        start: sketchToWorld2d(seam, plane),
+        end: sketchToWorld2d(seam, plane),
+        _closed: true,
+        _plane: plane,
+        _ellipse: {
+          center: center2d,
+          a: Number(e.a), b: Number(e.b), theta: Number(e.theta ?? 0),
+          angle_start_deg: 0, angle_end_deg: 360, ccw: true,
+        },
+      })
+      continue
     }
     const we: Dict = {
       kind: e.kind,
@@ -233,22 +300,31 @@ function pathRefWorldEdges(ref: string, globalRepo: Repository): [Dict[], string
 export function orderedPathWorldEdges(
   pathRefs: string | string[],
   globalRepo: Repository,
+  options: PathPickOptions = {},
 ): [ChainEdge[], string] {
   const refs = Array.isArray(pathRefs) ? pathRefs : [pathRefs]
   const worldEdges: Dict[] = []
   const seen = new Set<string>()  // dedupe edges shared between refs (sketch + index)
   let firstSketchId = ''
   for (const ref of refs) {
-    const [edges, sketchId] = pathRefWorldEdges(ref, globalRepo)
+    const [edges, sketchId] = pathRefWorldEdges(ref, globalRepo, options)
     if (!firstSketchId) firstSketchId = sketchId
     for (const e of edges) {
-      const key = sketchId + ':' + String(e.edge_index)
+      // A split edge is named by its index; a surface-boundary edge (a lone
+      // closed curve) carries no index, so its own geometry is its identity.
+      const key = sketchId + ':' + (e.edge_index !== undefined
+        ? String(e.edge_index)
+        : JSON.stringify([e.kind, e.start ?? null, e.end ?? null, e.center ?? null, e.angle_start_deg ?? null, e.angle_end_deg ?? null]))
       if (seen.has(key)) continue
       seen.add(key)
       worldEdges.push(e)
     }
   }
   if (worldEdges.length === 0) throw new Error('sweep: path has no edges')
+  // One closed curve is already a whole loop: there is no open end to walk.
+  if (options.closedCurve === true && worldEdges.length > 1 && worldEdges.some((e) => e._closed === true)) {
+    throw new Error('curve_pattern: a closed curve must be the path on its own; pick either the closed curve or the chain, not both')
+  }
   return [orderEdgesIntoChain(worldEdges), firstSketchId]
 }
 
@@ -472,8 +548,21 @@ export function collectPathEdges(
   scope: DisposeScope,
   pathRefs: string | string[],
   globalRepo: Repository,
+  options: PathPickOptions = {},
 ): [OccShape[], string] {
-  const [ordered, firstSketchId] = orderedPathWorldEdges(pathRefs, globalRepo)
+  const [ordered, firstSketchId] = orderedPathWorldEdges(pathRefs, globalRepo, options)
+  // A closed curve is one edge with no joint to snap: it is the whole loop, and
+  // its own builder already places both ends on the same point.
+  if (ordered.length === 1 && ordered[0].edge._closed === true) {
+    const closed = spineCurvedEdge(oc, scope, ordered[0].edge, false)
+    if (closed !== null) return [[scope.track(closed)], firstSketchId]
+  }
+  return [spineEdgesFromChain(oc, scope, ordered), firstSketchId]
+}
+
+/** Build the chain's edges, snapping each joint to the curved edge that owns it
+ *  (see the doc above). Split out so the closed-curve arm skips it. */
+function spineEdgesFromChain(oc: OccModule, scope: DisposeScope, ordered: ChainEdge[]): OccShape[] {
   const n = ordered.length
 
   // Chain-forward intended endpoints (world topology coords) of each edge.
@@ -504,14 +593,13 @@ export function collectPathEdges(
   const endOf = (i: number): number[] =>
     curvedShape[i] ? cEnd[i] : i < n - 1 && curvedShape[i + 1] ? cStart[i + 1] : T[i]
 
-  const spineEdges: OccShape[] = ordered.map(({ edge: e }, i) => {
+  return ordered.map(({ edge: e }, i) => {
     if (curvedShape[i] !== null) return scope.track(curvedShape[i] as OccShape)
     if (e.kind !== 'line') {
       throw new Error(`sweep: path edge kind '${e.kind as string}' is not supported`)
     }
     return scope.track(makeLineEdge(oc, scope, startOf(i) as Vec3, endOf(i) as Vec3))
   })
-  return [spineEdges, firstSketchId]
 }
 
 /** The helix id a path ref names, when its bare id carries a `_curve_`
@@ -525,6 +613,61 @@ function helixPathRef(ref: string, globalRepo: Repository): string | null {
   const id = featureRefId(ref)
   if (id === null) return null
   return globalRepo.elements.get('_curve_' + id) !== undefined ? id : null
+}
+
+/** The helix ids a path pick names, deduped. A helix is real 3D geometry, so
+ *  it can only be the path on its own (see resolvePathSpine). */
+export function helixPathIds(pathRefs: readonly string[], globalRepo: Repository): string[] {
+  return [...new Set(pathRefs.map((r) => helixPathRef(r, globalRepo)).filter((x): x is string => x !== null))]
+}
+
+/** The spine a path pick resolves to, with the helix facts the sweep's own
+ *  guards read. A curve path takes the same resolution, so a thread can be
+ *  patterned along the helix it was swept on. */
+export interface SpinePath {
+  edges: OccShape[]
+  helix: boolean
+  // The helix axis direction, absent on a sketch path.
+  binormal: Vec3 | null
+  helixPitch: number | null
+  helixAxis: HelixAxis | null
+}
+
+export function resolvePathSpine(
+  oc: OccModule,
+  scope: DisposeScope,
+  pathRefs: string[],
+  globalRepo: Repository,
+  featureId = '',
+  featuresById: Record<string, Dict> = {},
+  options: PathPickOptions = {},
+): SpinePath {
+  const helixIds = helixPathIds(pathRefs, globalRepo)
+  if (helixIds.length > 0) {
+    if (pathRefs.length !== helixIds.length || helixIds.length > 1) {
+      throw new Error('sweep: a helix path must stand alone; mixing it with other path edges is not supported')
+    }
+    const desc = descriptorFromRepo(globalRepo, helixIds[0])
+    if (desc === null) throw new Error(`sweep: helix path '${helixIds[0]}' has no curve descriptor`)
+    return {
+      edges: [scope.track(buildCurveEdge(oc, scope, desc))],
+      helix: true,
+      binormal: desc.axis,
+      helixPitch: Math.abs(desc.pitch),
+      helixAxis: { origin: desc.origin, axis: desc.axis },
+    }
+  }
+  // A path sketch defined later in the document has a one-step fix; name it
+  // instead of the generic "not found".
+  const hint = pathReorderHint(pathRefs, globalRepo, featureId, featuresById)
+  if (hint !== null) throw new Error(hint)
+  return {
+    edges: collectPathEdges(oc, scope, pathRefs, globalRepo, options)[0],
+    helix: false,
+    binormal: null,
+    helixPitch: null,
+    helixAxis: null,
+  }
 }
 
 /** Sample a profile boundary edge into 2D plane points, enough to bracket its
@@ -591,23 +734,11 @@ function profileAxialSpan(loops: Dict[][], plane: PlaneLike, axis: Vec3): number
  * Sample the built spine for the station finder: one curve adaptor per spine
  * edge, parameterised over the edge's own range. The adaptors stay in `scope`
  * for the whole solve, so every section shares the same sampling.
+ *
+ * Re-exported so the sweep's own imports keep their shape; the sampler is
+ * shared/pathSampler.ts because the curve pattern samples the same spine.
  */
-function spineSampler(oc: OccModule, scope: DisposeScope, spineEdges: OccShape[]): SpineSampler {
-  const adaptors = spineEdges.map((edge) => {
-    const curve = scope.track(new oc.BRepAdaptor_Curve_2(edge))
-    return { curve, first: curve.FirstParameter(), last: curve.LastParameter() }
-  })
-  return {
-    edgeCount: adaptors.length,
-    sample(edgeIdx: number, t: number): Vec3 {
-      const { curve, first, last } = adaptors[edgeIdx]
-      const p = curve.Value(first + (last - first) * t)
-      const out: Vec3 = [p.X(), p.Y(), p.Z()]
-      p.delete()
-      return out
-    },
-  }
-}
+export { spineSampler } from './shared/pathSampler'
 
 /** The spine direction at a station, from two samples around its parameter.
  *  It only decides which way the section wire faces, so a fallback to the
@@ -984,32 +1115,17 @@ export function solveSweep(
 
   // A curve path (a helix) is built from its descriptor; a sketch path keeps
   // the existing topology route. In v1 a helix path stands alone.
-  const helixIds = [...new Set(pathRefs.map((r) => helixPathRef(r, globalRepo)).filter((x): x is string => x !== null))]
+  const helixIds = helixPathIds(pathRefs, globalRepo)
   if (multisection && helixIds.length > 0) {
     throw new Error('sweep: a multisection sweep cannot follow a helix path')
   }
-  let spineEdges: OccShape[]
-  let binormal: Vec3 | null = null
-  let helixPath = false
-  let helixPitch: number | null = null
+  const spine = resolvePathSpine(oc, scope, pathRefs, globalRepo, featureId, featuresById)
+  const spineEdges = spine.edges
+  const binormal = spine.binormal
+  const helixPath = spine.helix
+  const helixPitch = spine.helixPitch
   // A helix sweep's axis line, for the boolean clean's coaxial-wall guard.
-  let helixAxis: HelixAxis | null = null
-  if (helixIds.length > 0) {
-    if (pathRefs.length !== helixIds.length || helixIds.length > 1) {
-      throw new Error('sweep: a helix path must stand alone; mixing it with other path edges is not supported')
-    }
-    const desc = descriptorFromRepo(globalRepo, helixIds[0])
-    if (desc === null) throw new Error(`sweep: helix path '${helixIds[0]}' has no curve descriptor`)
-    spineEdges = [scope.track(buildCurveEdge(oc, scope, desc))]
-    binormal = desc.axis
-    helixPitch = Math.abs(desc.pitch)
-    helixPath = true
-    helixAxis = { origin: desc.origin, axis: desc.axis }
-  } else {
-    const hint = pathReorderHint(pathRefs, globalRepo, featureId, featuresById)
-    if (hint !== null) throw new Error(hint)
-    spineEdges = collectPathEdges(oc, scope, pathRefs, globalRepo)[0]
-  }
+  const helixAxis = spine.helixAxis
 
   // A profile whose axial span reaches the pitch overlaps its previous turn.
   // Refuse it before building; the self-intersecting shell OCC returns from

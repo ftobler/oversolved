@@ -12,6 +12,13 @@ exports[`drive CLI (real OCC + Rust solver) > lists the command registry with it
     },
     {
       "enabled": true,
+      "id": "add_curve_pattern",
+      "label": "Add curve pattern",
+      "params": [],
+      "undoable": true,
+    },
+    {
+      "enabled": true,
       "id": "add_delete_face",
       "label": "Add delete face",
       "params": [],

@@ -22,6 +22,7 @@ export const COMMAND_NAMES = [
   'add_split',
   'add_linear_pattern',
   'add_circular_pattern',
+  'add_curve_pattern',
   'apply_offset',
   'mirror_entities',
   'fillet_corners',

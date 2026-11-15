@@ -14,7 +14,7 @@
 import { create, all } from 'mathjs'
 import type { FunctionNode, MathNode, SymbolNode } from 'mathjs'
 import type {
-  BooleanFeatureDef, ChamferFeatureDef, CircularPatternDef,
+  BooleanFeatureDef, ChamferFeatureDef, CircularPatternDef, CurvePatternDef,
   ExtrudeFeatureDef, FilletFeatureDef, HelixFeatureDef, HoleFeatureDef,
   ImportStepFeature, LinearPatternDef, PlaneDef, RevolveFeatureDef, ShellFeatureDef,
   TransformFeatureDef, MoveFaceFeatureDef,
@@ -60,6 +60,7 @@ interface ExprPayloads {
   hole: HoleFeatureDef
   linear_pattern: LinearPatternDef
   circular_pattern: CircularPatternDef
+  curve_pattern: CurvePatternDef
   transform: TransformFeatureDef
   plane: PlaneDef
   helix: HelixFeatureDef
@@ -86,6 +87,7 @@ export const EXPR_FIELDS_BY_KIND: { [K in ExprFieldKind]: readonly (keyof ExprPa
   hole: ['diameter', 'depth', 'cb_diameter', 'cb_depth', 'cs_angle', 'tip_angle', 'thread_depth'],
   linear_pattern: ['count', 'pitch', 'count_2', 'pitch_2', 'direction', 'direction_2'],
   circular_pattern: ['count', 'angle'],
+  curve_pattern: ['count', 'distance'],
   transform: ['rotation_angle', 'scale'],
   plane: ['offset', 'angle', 'rotation', 'rotation_angle'],
   helix: ['radius', 'pitch', 'turns', 'height', 'helix_angle', 'offset', 'start_angle'],
