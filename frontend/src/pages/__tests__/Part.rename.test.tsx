@@ -77,7 +77,7 @@ describe('Part rename dialog', () => {
   function openRename() {
     renderPart()
     fireEvent.click(screen.getByTestId('context-btn-body-1'))
-    fireEvent.click(screen.getByTestId('menu-item-0'))
+    fireEvent.click(screen.getByTestId('menu-item-1'))
   }
 
   // The mocked context menu keeps its own 'Rename' item mounted, so the footer

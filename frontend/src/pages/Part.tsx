@@ -1514,6 +1514,7 @@ export default function Part() {
       partLabels,
       orderedBodyIds: Object.keys(bodies),
       builtInIds: BUILT_IN_IDS,
+      visibleBodies: effectiveVisibleBodies,
       hasDanglingContent,
       projectedTargetIds,
     }
@@ -1535,6 +1536,10 @@ export default function Part() {
       },
       onSetPartColorPopover: handleSetPartColorPopover,
       onExportBody: (bodyId, name) => exportImportRef.current?.openExport(bodyId, name),
+      onToggleBodyVisibility: (bodyId, visible) => {
+        handleMutation({ type: 'set_body_visibility', bodyId, visible })
+        setContextMenu(null)
+      },
       onNewSketchOnPlane: handleNewSketchOnPlane,
       onFreezeProjection: (mode, targets) => {
         // The command is selection-driven, so land the picked target first and
@@ -1550,7 +1555,7 @@ export default function Part() {
   }, [handleRebuild, handleRemoveDanglingContent, toggleVisibility, toggleSuppression, enterEditSketch, handleExitSketch, handleDeleteFeature,
     handleAlignCameraToSketchPlane, handleNormalToPlane, handleNewSketchOnPlane,
     features, visibleFeaturesWithEdit, activeSketchFeatureId, partLabels, hasDanglingContent, bodies,
-    viewportRef, handleSetPartColorPopover])
+    effectiveVisibleBodies, viewportRef, handleSetPartColorPopover, handleMutation])
 
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {

@@ -15,6 +15,7 @@ import featurePartIcon from '@/assets/icons/feature-part.svg'
 import contextEditIcon from '@/assets/icons/context-edit.svg'
 import contextDeleteIcon from '@/assets/icons/context-delete.svg'
 import contextDuplicateIcon from '@/assets/icons/context-duplicate.svg'
+import contextHideIcon from '@/assets/icons/context-hide.svg'
 import iconRenameIcon from '@/assets/icons/rename.svg'
 import okIcon from '@/assets/icons/dialog-ok.svg'
 import cancelIcon from '@/assets/icons/dialog-cancel.svg'
@@ -244,6 +245,7 @@ export function AssemblyTree({
                 : []),
               { label: 'Open in new tab', icon: featurePartIcon, onClick: () => onOpenPartNewTab(inst.handle) },
               { label: 'Duplicate', icon: contextDuplicateIcon, onClick: () => onDuplicateInstance(inst.handle) },
+              { label: visible ? 'Hide' : 'Show', icon: contextHideIcon, onClick: () => onToggleVisible(inst.handle, !visible) },
               {
                 label: inst.fixed ? 'Unfix' : 'Fix',
                 icon: constraintFixedIcon,

@@ -81,6 +81,8 @@ export interface BuildContextMenuInput {
   // entry so an unlabelled body still reads `part 1`.
   orderedBodyIds?: string[]
   builtInIds: Set<string>
+  // Body visibility as the list reads it: undefined means nothing is hidden.
+  visibleBodies: Set<string> | undefined
   // Whether the last solve flagged any dangling projections or superfluous
   // constraints; gates the cleanup item so an empty command is never offered.
   hasDanglingContent: boolean
@@ -106,6 +108,7 @@ export interface BuildContextMenuCallbacks {
   onToggleConstraintTiles: () => void
   onSetPartColorPopover: (opts: { bodyId: string; position: [number, number] } | null) => void
   onExportBody: (bodyId: string, name: string) => void
+  onToggleBodyVisibility: (bodyId: string, visible: boolean) => void
   onNewSketchOnPlane: (planeQuery: string) => void
   onFreezeProjection: (mode: FreezeProjectionMode, targets: readonly string[]) => void
   onShowContextMenu: (items: ContextMenuItem[], targetId?: string) => void
@@ -117,7 +120,7 @@ export interface BuildContextMenuOutput {
 
 // The viewport/feature menu is a fixed board: every command keeps its slot and
 // an unusable one is disabled rather than dropped, so the menu never shifts or
-// changes length under the pointer. A body keeps its own three-item menu.
+// changes length under the pointer. A body keeps its own four-item menu.
 export function buildContextMenu(
   input: BuildContextMenuInput,
   callbacks: BuildContextMenuCallbacks,
@@ -137,7 +140,7 @@ export function buildContextMenu(
   }
 }
 
-/** The body menu is its own three-item board, independent of the feature menu. */
+/** The body menu is its own four-item board, independent of the feature menu. */
 function buildBodyMenu(
   input: BuildContextMenuInput,
   callbacks: BuildContextMenuCallbacks,
@@ -146,8 +149,14 @@ function buildBodyMenu(
   const ordered = [...(input.orderedBodyIds ?? Object.keys(input.partLabels))]
   if (!ordered.includes(bodyId)) ordered.push(bodyId)
   const currentName = partDisplayName(bodyId, input.partLabels, ordered)
+  const visible = input.visibleBodies === undefined || input.visibleBodies.has(bodyId)
   return {
     items: [
+      {
+        label: visible ? 'Hide' : 'Show',
+        icon: contextHideIcon,
+        onClick: () => callbacks.onToggleBodyVisibility(bodyId, !visible),
+      },
       {
         label: 'Rename',
         icon: iconRenameIcon,
