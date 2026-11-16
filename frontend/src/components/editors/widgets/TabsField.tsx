@@ -3,11 +3,10 @@ import type { Mutation } from '@/types/cad'
 import type { SelectFieldWidgetProps } from './fieldTypes'
 
 export type TabsFieldProps = SelectFieldWidgetProps
-export type TabsFieldWidgetProps = SelectFieldWidgetProps
 
 export function TabsField({
   field, value, data, fid, onMutation, mutationType,
-}: TabsFieldWidgetProps) {
+}: TabsFieldProps) {
   const shown = field.valueFrom ? field.valueFrom(data) : (value ?? field.default ?? field.options[0].value)
   const options = field.options
   const [focusIndex, setFocusIndex] = useState(() => {
@@ -43,7 +42,6 @@ export function TabsField({
       role="tablist"
       aria-label={field.label}
       onClick={(e) => e.stopPropagation()}
-      onKeyDown={(e) => e.stopPropagation()}
     >
       {options.map((o, i) => {
         const active = o.value === shown
@@ -65,7 +63,6 @@ export function TabsField({
             }}
             onFocus={() => setFocusIndex(i)}
             onKeyDown={(e) => {
-              e.stopPropagation()
               let next = i
               if (e.key === 'ArrowRight' || e.key === 'ArrowDown') next = Math.min(options.length - 1, i + 1)
               else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') next = Math.max(0, i - 1)
@@ -73,6 +70,7 @@ export function TabsField({
               else if (e.key === 'End') next = options.length - 1
               else return
               e.preventDefault()
+              e.stopPropagation()
               move(next, i)
             }}
           >
@@ -84,9 +82,4 @@ export function TabsField({
   )
 }
 
-export function TabsFieldWidget(props: TabsFieldWidgetProps) {
-  return <TabsField {...props} />
-}
 
-// Compatibility aliases for tests/importers that use either name.
-export default TabsField

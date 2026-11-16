@@ -12,7 +12,7 @@ import type {
 } from './widgets/fieldTypes'
 import { NumberFieldWidget } from './widgets/NumberField'
 import { SelectFieldWidget } from './widgets/SelectField'
-import { TabsFieldWidget } from './widgets/TabsField'
+import { TabsField } from './widgets/TabsField'
 import { CheckboxFieldWidget } from './widgets/CheckboxField'
 import { PickFieldWidget } from './widgets/PickField'
 import { TextFieldWidget } from './widgets/TextField'
@@ -98,7 +98,7 @@ export function FeatureEditor({
           case 'select': {
             const sf = field as SelectFieldDef
             if (sf.presentation === 'tabs') {
-              return <TabsFieldWidget
+              return <TabsField
                 key={`${field.key}:${i}`}
                 field={sf}
                 value={data[field.key] as string | undefined}
