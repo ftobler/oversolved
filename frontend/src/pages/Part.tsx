@@ -33,7 +33,7 @@ import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSolverStore } from '@/stores/solverStore'
 import { useDevSettingsStore } from '@/stores/devSettingsStore'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
-import { confirmDiscardUnsavedChanges } from '@/stores/unsavedChangesStore'
+import { confirmDiscardUnsavedChanges, useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { errorMessage } from '@/utils/core/errorMessage'
 import '@/pages/Part.css'
 
@@ -54,6 +54,7 @@ import { installDriveSurface } from '@/drive/driveSurface'
 import { DRIVE_ENABLED } from '@/drive/gate'
 import { getCommandJournal, journalSink } from '@/drive/journal'
 import { attachAutosave, registerRecoveryEditor, useAutosaveStore } from '@/recovery/autosave'
+import { discardUnsavedEdits } from '@/recovery/discardUnsavedEdits'
 import { CommandRegistry } from '@/utils/core/commandSpec'
 import type { SessionJournalSink } from '@/session/DocSession'
 import MessageDialog from '@/components/dialogs/MessageDialog'
@@ -346,8 +347,12 @@ export default function Part() {
       getName: () => docNameLive.current,
     })
     registerRecoveryEditor(handle)
+    useUnsavedChangesStore.getState().setDiscardHandler(() =>
+      discardUnsavedEdits({ workspace: workspaceId ?? null, docId: uuid, autosave: handle }),
+    )
     return () => {
       registerRecoveryEditor(null)
+      useUnsavedChangesStore.getState().setDiscardHandler(null)
       handle.dispose()
     }
   }, [session, uuid, workspaceId])

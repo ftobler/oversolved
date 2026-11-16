@@ -55,12 +55,24 @@ export default function AppHeader({
   const dismissConfirm = useUnsavedChangesStore(s => s.dismissConfirm)
   const saveHandler = useUnsavedChangesStore(s => s.saveHandler)
   const [saving, setSaving] = useState(false)
+  const [discarding, setDiscarding] = useState(false)
 
-  const handleUnsavedConfirm = () => {
+  const handleUnsavedConfirm = async () => {
     const cb = useUnsavedChangesStore.getState().pendingCallback
-    if (!cb) return
-    cb()
-    dismissConfirm()
+    if (!cb || discarding) return
+    const handler = useUnsavedChangesStore.getState().discardHandler
+    setDiscarding(true)
+    try {
+      if (handler) await handler()
+      cb()
+      dismissConfirm()
+    } catch {
+      // The discard failed: leave the dialog open with the user's choice still
+      // available, the same as a failed Save & Exit. Proceeding would bring the
+      // discarded edits back on the next open.
+    } finally {
+      setDiscarding(false)
+    }
   }
 
   // Ctrl/Cmd+S and the dialog's "Save & Exit" run the editor's registered
@@ -99,7 +111,7 @@ export default function AppHeader({
   // the editor's own error banner says why it failed.
   const handleSaveAndExit = async () => {
     const cb = useUnsavedChangesStore.getState().pendingCallback
-    if (!cb || saving) return
+    if (!cb || saving || discarding) return
     const saved = await handleSaveWorkspace()
     if (!saved) return
     cb()
@@ -209,8 +221,8 @@ export default function AppHeader({
       variant="error"
       onClose={dismissConfirm}
       onConfirm={saveHandler ? handleSaveAndExit : handleUnsavedConfirm}
-      confirmLabel={saveHandler ? (saving ? 'Saving...' : 'Save & Exit') : 'Discard'}
-      extraAction={saveHandler ? { label: 'Discard', onClick: handleUnsavedConfirm, disabled: saving } : undefined}
+      confirmLabel={saveHandler ? (saving ? 'Saving...' : 'Save & Exit') : (discarding ? 'Discarding...' : 'Discard')}
+      extraAction={saveHandler ? { label: 'Discard', onClick: handleUnsavedConfirm, disabled: saving || discarding } : undefined}
       cancelLabel="Stay"
     />
 

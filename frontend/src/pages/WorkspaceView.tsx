@@ -20,7 +20,8 @@ import { EntryReferencedError, type EntryReferrer } from '@/workspace/errors'
 import { createWorkspaceSession } from '@/workspace/session'
 import { importPickedFile } from '@/workspace/importFile'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
-import { confirmDiscardUnsavedChanges } from '@/stores/unsavedChangesStore'
+import { confirmDiscardUnsavedChanges, useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { discardUnsavedEdits } from '@/recovery/discardUnsavedEdits'
 import { dirtyEntryIds, groupEntries } from '@/components/layout/workspaceTreeModel'
 import { useWhereUsed } from '@/components/layout/filesSeams'
 import { fileSizeOf, orphanFileIds, referrersOf } from '@/components/layout/filesModel'
@@ -55,6 +56,16 @@ export default function WorkspaceView() {
   const revision = useSyncExternalStore(subscribeWorkspaceStore, workspaceStoreRevision)
   const navigate = useNavigate()
   const store = getWorkspaceStore()
+
+  // Register the durable discard for this workspace view: no document is open
+  // here, so only the working copy is reset when it is ahead.
+  useEffect(() => {
+    if (!workspaceId) return
+    useUnsavedChangesStore.getState().setDiscardHandler(() =>
+      discardUnsavedEdits({ workspace: workspaceId, docId: null }),
+    )
+    return () => { useUnsavedChangesStore.getState().setDiscardHandler(null) }
+  }, [workspaceId])
 
   // `null` is "not loaded yet", which is NOT the same as "empty": starting at []
   // painted "This workspace is empty." over a nameless 0-byte card on every open,

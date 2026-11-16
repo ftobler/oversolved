@@ -13,8 +13,9 @@ import EditorErrorBoundary from '@/components/misc/EditorErrorBoundary'
 import AssemblyViewport, { type AssemblyViewportHandle } from '@/components/Viewport/AssemblyViewport'
 import ViewOptionsButton from '@/components/Viewport/ViewOptionsButton'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
+import { discardUnsavedEdits } from '@/recovery/discardUnsavedEdits'
 import { useOpenEntryInNewTab } from '@/hooks/useOpenEntryInNewTab'
-import { confirmDiscardUnsavedChanges } from '@/stores/unsavedChangesStore'
+import { confirmDiscardUnsavedChanges, useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useAssemblyCommands } from '@/pages/AssemblyKeyboardShortcuts'
 import { insertMateCommand, type AssemblyCommandContext } from '@/pages/assemblyCommandEntries'
 import { CommandRegistryProvider, useCommandRegistryWithContext } from '@/contexts/CommandRegistryContext'
@@ -311,6 +312,17 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   // Declared after handleSave so the header's "Save & Exit" gets the real
   // function rather than a temporal-dead-zone reference.
   useUnsavedChangesGuard(handleSave)
+
+  // Register the durable discard for this editor's document: assembly documents
+  // carry no recovery journal (docId null), so only the workspace working copy
+  // is reset, and only when it is ahead.
+  useEffect(() => {
+    if (!uuid) return
+    useUnsavedChangesStore.getState().setDiscardHandler(() =>
+      discardUnsavedEdits({ workspace: workspaceId ?? null, docId: null }),
+    )
+    return () => { useUnsavedChangesStore.getState().setDiscardHandler(null) }
+  }, [uuid, workspaceId])
 
   const handleClone = useCallback(async () => {
     if (!uuid) return

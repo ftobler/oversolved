@@ -42,6 +42,11 @@ interface UnsavedChangesState {
   // itself, and only when no edit landed while it was in flight; a caller that
   // cleared it on `true` would mark that edit saved.
   saveHandler: (() => boolean | Promise<boolean>) | null
+  // How to discard the open document's unsaved edits durably (clear the recovery
+  // journal and reset the workspace working copy) before navigating away. Null
+  // on pages that have nothing to discard. Awaits completion so a failed discard
+  // can hold the user in the dialog.
+  discardHandler: (() => Promise<void>) | null
   setDirty: (dirty: boolean) => void
   // A save landed: the fingerprint describes the bytes now on disk, so it is
   // always published, and the save count moves. The flag clears only for a
@@ -66,6 +71,7 @@ interface UnsavedChangesState {
   restoreDirtyAfterRewind: (pinned: PinnedDirty) => void
   setWorkspace: (workspace: string | null) => void
   setSaveHandler: (handler: (() => boolean | Promise<boolean>) | null) => void
+  setDiscardHandler: (handler: (() => Promise<void>) | null) => void
   requestConfirm: (onDiscard: () => void) => void
   dismissConfirm: () => void
   refreshWorkspaceDirty: () => Promise<void>
@@ -85,6 +91,7 @@ export const useUnsavedChangesStore = create<UnsavedChangesState>((set, get) => 
   workspace: null,
   pendingCallback: null,
   saveHandler: null,
+  discardHandler: null,
   setDirty: (dirty) => set({ dirty }),
   markSaved: (savedHash, clean = true) => set(prev => ({
     dirty: clean ? false : prev.dirty,
@@ -106,6 +113,7 @@ export const useUnsavedChangesStore = create<UnsavedChangesState>((set, get) => 
   // Stored behind an updater: zustand would otherwise call a bare function
   // argument as a state updater instead of storing it.
   setSaveHandler: (handler) => set({ saveHandler: handler }),
+  setDiscardHandler: (handler) => set({ discardHandler: handler }),
   requestConfirm: (onDiscard) => set({ pendingCallback: onDiscard }),
   dismissConfirm: () => set({ pendingCallback: null }),
   refreshWorkspaceDirty: async () => {
