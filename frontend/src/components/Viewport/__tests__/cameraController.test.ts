@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import * as THREE from 'three'
-import { snapToDirection, alignToFrame, alignToFace, fitToContent, shouldAutoFit } from '@/components/Viewport/cameraController'
+import { snapToDirection, alignToFrame, alignToFace, fitToContent, shouldAutoFit, nearestSquareRoll } from '@/components/Viewport/cameraController'
 import { TurntableControls } from '@/components/Viewport/turntable'
 import type { BodyResult } from '@/types/cad'
 
@@ -213,5 +213,69 @@ describe('shouldAutoFit', () => {
   // re-armed on every tick and reframed the camera mid-gesture.
   it('never fits while a part is being manipulated', () => {
     expect(shouldAutoFit(false, 2, true)).toBe(false)
+  })
+
+  it('nearestSquareRoll: looking down lands on the nearest cardinal mark', () => {
+    const dir = new THREE.Vector3(0, 1, 0)
+    const deg = (d: number) => (d * Math.PI) / 180
+    for (const [angleDeg, expectedAz] of [[37, 0], [50, Math.PI / 2], [190, Math.PI]] as [number, number][]) {
+      const a = deg(angleDeg)
+      const up = new THREE.Vector3(-Math.sin(a), 0, -Math.cos(a))
+      const pose = nearestSquareRoll(up, dir)
+      expect(pose.azimuth).toBeCloseTo(expectedAz, 9)
+      expect(pose.elevation).toBeCloseTo(Math.PI / 2, 9)
+      expect(pose.roll).toBeCloseTo(0, 9)
+    }
+  })
+
+  it('nearestSquareRoll: looking up uses the mirrored law', () => {
+    const dir = new THREE.Vector3(0, -1, 0)
+    const pose = nearestSquareRoll(new THREE.Vector3(0, 0, 1), dir)
+    expect(Math.hypot(pose.azimuth % (Math.PI / 2), 0)).toBeLessThan(1e-9)
+    // view direction equals the normal
+    expect(pose.elevation).toBeCloseTo(-Math.PI / 2, 9)
+  })
+
+  it('nearestSquareRoll: a side face snaps roll to the nearest quarter turn', () => {
+    const dir = new THREE.Vector3(0, 0, 1)
+    const mkUp = (roll: number) => new THREE.Vector3(-Math.sin(roll), Math.cos(roll), 0)
+    const pA = nearestSquareRoll(mkUp(0.349), dir)
+    expect(pA.roll).toBeCloseTo(0, 9)
+    const pB = nearestSquareRoll(mkUp(1.396), dir)
+    expect(pB.roll).toBeCloseTo(Math.PI / 2, 9)
+  })
+
+  it('nearestSquareRoll: an oblique face with roll 0 stays upright and keeps its direction', () => {
+    const dir = new THREE.Vector3(1, 1, 0).normalize()
+    const baseAz = Math.atan2(dir.x, dir.z)
+    const baseEl = Math.atan2(dir.y, Math.hypot(dir.x, dir.z))
+    const up = new THREE.Vector3(-Math.sin(baseAz) * Math.sin(baseEl), Math.cos(baseEl), -Math.cos(baseAz) * Math.sin(baseEl))
+    // that's orbitUp(baseAz, baseEl) already; roll 0 basis up = orbitUp
+    const pose = nearestSquareRoll(up, dir)
+    expect(pose.roll).toBeCloseTo(0, 9)
+    expect(pose.azimuth).toBeCloseTo(baseAz, 9)
+    expect(pose.elevation).toBeCloseTo(baseEl, 9)
+  })
+
+  it('nearestSquareRoll: old up along the new view direction takes k = 0', () => {
+    const dir = new THREE.Vector3(0, 1, 0)
+    const pose = nearestSquareRoll(new THREE.Vector3(0, 1, 0), dir)
+    expect(pose.azimuth).toBeCloseTo(0, 9)
+    expect(pose.elevation).toBeCloseTo(Math.PI / 2, 9)
+    expect(pose.roll).toBeCloseTo(0, 9)
+  })
+
+  it('nearestSquareRoll: the chosen pose view direction equals the face normal exactly', () => {
+    const dirs = [new THREE.Vector3(0, 1, 0), new THREE.Vector3(0, 0, 1), new THREE.Vector3(1, 1, 0).normalize(), new THREE.Vector3(1, 2, 3).normalize()]
+    for (const d of dirs) {
+      const pose = nearestSquareRoll(new THREE.Vector3(0, 1, 0), d)
+      // reconstruct direction from azimuth/elevation
+      const x = Math.cos(pose.elevation) * Math.sin(pose.azimuth)
+      const y = Math.sin(pose.elevation)
+      const z = Math.cos(pose.elevation) * Math.cos(pose.azimuth)
+      expect(x).toBeCloseTo(d.x, 9)
+      expect(y).toBeCloseTo(d.y, 9)
+      expect(z).toBeCloseTo(d.z, 9)
+    }
   })
 })
