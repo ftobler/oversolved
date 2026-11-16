@@ -1281,6 +1281,47 @@
   margin-top: 6px;
 }
 
+/* Mode switches rendered as a tab strip (Mirror/Pattern subject, Boolean
+   operation). Equal-width tabs spanning the editor, no label column. */
+.feature-field-tabs {
+  display: flex;
+  width: 100%;
+  gap: 2px;
+  box-sizing: border-box;
+}
+
+.feature-field-tab {
+  flex: 1 1 0;
+  min-width: 0;
+  font-size: 12px;
+  background: #1a0f1a;
+  border: 1px solid #3a2a3a;
+  border-radius: 3px;
+  color: #888;
+  padding: 4px 6px;
+  height: 24px;
+  line-height: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.feature-field-tab.active {
+  color: #fff;
+  background: #b83b88;
+  border-color: #b83b88;
+}
+
+.feature-field-tab:focus {
+  outline: none;
+  border-color: #b83b88;
+}
+
 .feature-field-row {
   display: flex;
   align-items: center;

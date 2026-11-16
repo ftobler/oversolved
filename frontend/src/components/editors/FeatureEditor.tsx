@@ -12,6 +12,7 @@ import type {
 } from './widgets/fieldTypes'
 import { NumberFieldWidget } from './widgets/NumberField'
 import { SelectFieldWidget } from './widgets/SelectField'
+import { TabsFieldWidget } from './widgets/TabsField'
 import { CheckboxFieldWidget } from './widgets/CheckboxField'
 import { PickFieldWidget } from './widgets/PickField'
 import { TextFieldWidget } from './widgets/TextField'
@@ -94,16 +95,29 @@ export function FeatureEditor({
               mutationType={mutationType}
             />
           }
-          case 'select':
+          case 'select': {
+            const sf = field as SelectFieldDef
+            if (sf.presentation === 'tabs') {
+              return <TabsFieldWidget
+                key={`${field.key}:${i}`}
+                field={sf}
+                value={data[field.key] as string | undefined}
+                data={data}
+                fid={fid}
+                onMutation={onMutation}
+                mutationType={mutationType}
+              />
+            }
             return <SelectFieldWidget
               key={`${field.key}:${i}`}
-              field={field as SelectFieldDef}
+              field={sf}
               value={data[field.key] as string | undefined}
               data={data}
               fid={fid}
               onMutation={onMutation}
               mutationType={mutationType}
             />
+          }
           case 'checkbox':
             return <CheckboxFieldWidget
               key={`${field.key}:${i}`}

@@ -35,6 +35,10 @@ export interface SelectFieldDef extends BaseFieldDef {
   type: 'select'
   default?: string
   options: { value: string; label: string }[]
+  // How the control is rendered: a dropdown by default, or a tab strip for a
+  // field whose choice decides what the feature does (Mirror/Pattern subject,
+  // Boolean operation). Data path is unchanged; only the widget differs.
+  presentation?: 'tabs'
   // The option the control shows, when it is not the stored value itself (a
   // field holding an object has no string to display). Falls back to the stored
   // value, then the default.

@@ -260,7 +260,7 @@ export const BOOLEAN_SCHEMA: FeatureEditorSchema = {
   subKey: 'boolean',
   defaults: { operation: 'union', target: '', tools: [] },
   fields: [
-    { type: 'select', key: 'operation', label: 'Operation', default: 'union',
+    { type: 'select', key: 'operation', label: 'Operation', default: 'union', presentation: 'tabs',
       options: [{ value: 'union', label: 'Union' }, { value: 'subtract', label: 'Subtract' }, { value: 'intersect', label: 'Intersect' }] },
     { type: 'pick', key: 'target', label: 'Target', emptyText: '(pick target)' },
     { type: 'pick', key: 'tools', label: 'Tools', multi: true,
@@ -419,7 +419,7 @@ export const MIRROR_SCHEMA: FeatureEditorSchema = {
   fields: [
     // The pattern's subject switch, read with absence meaning body (every
     // document written before the feature subject existed is a body mirror).
-    { type: 'select', key: 'subject', label: 'Subject', default: 'body',
+    { type: 'select', key: 'subject', label: 'Subject', default: 'body', presentation: 'tabs',
       options: [{ value: 'body', label: 'Body' }, { value: 'feature', label: 'Feature' }] },
     { type: 'pick', key: 'body', label: 'Body', showWhen: (d) => d.subject !== 'feature' },
     // The mirrored features are FEATURE rows, not viewport picks; each source's
@@ -541,7 +541,7 @@ function toolSourcePickRefusal(id: string, features?: readonly PartFeature[]): s
 export const PATTERN_SOURCE_FIELDS: EditorFieldDef[] = [
   // A body pattern copies a whole body; a feature pattern reapplies earlier
   // solid producers' own add or cut.
-  { type: 'select', key: 'subject', label: 'Subject', default: 'body',
+  { type: 'select', key: 'subject', label: 'Subject', default: 'body', presentation: 'tabs',
     options: [{ value: 'body', label: 'Body' }, { value: 'feature', label: 'Feature' }] },
   { type: 'pick', key: 'source_body', label: 'Body', transform: resolveBodyPickRef,
     showWhen: (d) => d.subject !== 'feature', emptyText: '(pick the body to copy)' },

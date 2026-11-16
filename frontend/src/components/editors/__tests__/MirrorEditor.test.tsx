@@ -55,7 +55,7 @@ describe('MIRROR_SCHEMA', () => {
   it('shows the whole-body rows on the body subject', () => {
     renderEditor(makeFeature())
     const shown = labels()
-    expect(shown).toEqual(expect.arrayContaining(['Subject', 'Body', 'Mirror Plane', 'Keep Original', 'Merge']))
+    expect(shown).toEqual(expect.arrayContaining(['Body', 'Mirror Plane', 'Keep Original', 'Merge']))
     expect(shown).not.toContain('Source Features')
     expect(shown).not.toContain('Target body')
   })
@@ -63,7 +63,7 @@ describe('MIRROR_SCHEMA', () => {
   it('shows the feature rows on the feature subject', () => {
     renderEditor(makeFeature({ subject: 'feature', source_features: [] }))
     const shown = labels()
-    expect(shown).toEqual(expect.arrayContaining(['Subject', 'Source Features', 'Target body', 'Mirror Plane']))
+    expect(shown).toEqual(expect.arrayContaining(['Source Features', 'Target body', 'Mirror Plane']))
     expect(shown).not.toContain('Body')
     expect(shown).not.toContain('Keep Original')
     expect(shown).not.toContain('Merge')
@@ -101,8 +101,7 @@ describe('MIRROR_SCHEMA', () => {
 
   it('writes the subject through the plain setter', () => {
     const onMutation = renderEditor(makeFeature())
-    const select = screen.getByText('Subject').parentElement!.querySelector('select') as HTMLSelectElement
-    fireEvent.change(select, { target: { value: 'feature' } })
+    fireEvent.click(screen.getByRole('tab', { name: 'Feature' }))
     expect(onMutation).toHaveBeenCalledWith({
       type: 'set_mirror_field', featureId: 'mi1', field: 'subject', value: 'feature',
     })
