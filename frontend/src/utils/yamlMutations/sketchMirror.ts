@@ -94,6 +94,26 @@ function rewriteRef(ref: string, plan: MirrorPlan): { ref: string; copy: boolean
   const wire = ref.startsWith('$') || ref.startsWith('@')
   if (ref.startsWith('@')) return null  // cross-feature (or builtin) operand: out of scope
   if (refMatchesEntity(wire ? ref : '$' + ref, plan.axisId)) return { ref, copy: false }  // an axis ref (bare or vertex-suffixed) addresses the axis, and the axis does not move
+  // A point entity (including a projected point) that sits on the axis line
+  // mirrors to itself: it is pinned to the axis at its foot, so a dimension
+  // that names it carries onto the copy with its sign flipped, like an axis
+  // ref. Only points are treated this way; a point off the axis is still an
+  // operand outside the mirror set and drops its constraint.
+  for (const [entityId, def] of plan.entityById) {
+    if (def.kind !== 'point') continue
+    if (!refMatchesEntity(wire ? ref : '$' + ref, entityId)) continue
+    const params = plan.initial[entityId]
+    if (params === undefined || params.length !== 2) continue
+    const [px, py] = params
+    if (!Number.isFinite(px) || !Number.isFinite(py)) continue
+    const ux = plan.axis.x2 - plan.axis.x1
+    const uy = plan.axis.y2 - plan.axis.y1
+    const len = Math.hypot(ux, uy)
+    if (len <= 1e-18) continue
+    const dist = Math.abs((px - plan.axis.x1) * uy - (py - plan.axis.y1) * ux) / len
+    const scale = Math.max(1, Math.abs(px), Math.abs(py), Math.abs(plan.axis.x1), Math.abs(plan.axis.y1))
+    if (dist <= 1e-4 * scale) return { ref, copy: false }
+  }
   const body = wire ? ref.slice(1) : ref
   const prefix = wire ? '$' : ''
   for (const [srcId, newId] of plan.idMap) {
