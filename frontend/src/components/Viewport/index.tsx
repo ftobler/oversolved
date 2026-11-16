@@ -7,7 +7,7 @@ import type { Feature, PartFeature, Sketch, BodyResult, PlaneTransform } from '@
 import Geometry3D from '@/components/Geometry3D'
 import { CubeGizmoCanvas } from '@/components/misc/CubeGizmo'
 import '@/components/Viewport/ViewportHud.css'
-import { type Hit, type Pv } from '@/components/misc/CubeGizmo.utils'
+import { type GizmoRequest, type Hit, type Pv } from '@/components/misc/CubeGizmo.utils'
 import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { useViewOptionsStore } from '@/stores/viewOptionsStore'
 import { useSectionStore } from '@/stores/sectionStore'
@@ -168,7 +168,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pvRef = useRef<Pv[]>([])
   const hoverRef = useRef<Hit | null>(null)
-  const snapRef = useRef<THREE.Vector3 | null>(null)
+  const snapRef = useRef<GizmoRequest | null>(null)
   const cameraRef = useRef<THREE.Camera | null>(null)
   const controlsRef = useRef<TurntableControls | null>(null)
   const glRef = useRef<THREE.WebGLRenderer | null>(null)

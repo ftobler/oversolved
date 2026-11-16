@@ -1,13 +1,36 @@
 import * as THREE from 'three'
 
+// The cube lives in the top GIZMO_SIZE square; the canvas runs a strip taller
+// so the roll arrows arcing under the cube have room. The cube's centre stays
+// the square's centre, which is what every hit-test coordinate is measured in.
 export const GIZMO_SIZE = 140
+export const GIZMO_ROLL_STRIP = 10
+export const GIZMO_HEIGHT = GIZMO_SIZE + GIZMO_ROLL_STRIP
+// The canvas also overhangs the cube square by this much left, right and
+// above, so the orbit triangles and roll arcs can sit clear of the cube's
+// widest silhouette. All gizmo geometry stays in cube-square coordinates; only
+// the canvas edges (draw translate, pointer offset) know about the overhang.
+export const GIZMO_PAD = 8
+export const GIZMO_CANVAS_WIDTH = GIZMO_SIZE + 2 * GIZMO_PAD
+export const GIZMO_CANVAS_HEIGHT = GIZMO_PAD + GIZMO_HEIGHT
+// How far the whole widget sits below its layout slot, into the readout
+// gap and floor under it: tuned by eye so the cube sits low in the corner.
+export const GIZMO_SINK = 10
 // Placement is the viewport HUD column's job (ViewportHud.css): the cube is the
 // top item of a bottom-right stack that the measurement readout sits under, so
 // the widget itself only declares its size and that it still takes clicks --
 // the column around it is click-through.
+//
+// The roll strip hangs below the layout box (negative bottom margin): the
+// column is bottom-anchored, so counting the strip in the layout would lift
+// the cube by its height. The overhang (GIZMO_PAD) is cancelled the same way
+// on the top and right. The stack still reserves only GIZMO_SIZE.
 export const GIZMO_STYLE: React.CSSProperties = {
-  width: GIZMO_SIZE,
-  height: GIZMO_SIZE,
+  width: GIZMO_CANVAS_WIDTH,
+  height: GIZMO_CANVAS_HEIGHT,
+  marginTop: -GIZMO_PAD,
+  marginRight: -GIZMO_PAD,
+  marginBottom: -(GIZMO_ROLL_STRIP + GIZMO_SINK),
   pointerEvents: 'auto',
   cursor: 'default',
 }
@@ -19,7 +42,17 @@ export const GIZMO_STYLE: React.CSSProperties = {
 // is deliberately looser than a strict nz < 0: it keeps the slightly-grazing
 // edge and corner polygons at the silhouette clickable, which is where a user
 // aims for an axis snap.
+//
+// Faces do not get that slack: a face tilted just past edge-on painted as a
+// sliver seen from behind, outside the front faces, while the front-facing
+// edge band in front of it took every click. A face is culled the moment it
+// turns away (nz <= 0); the silhouette outline now shows where the edge and
+// corner bands end, which is what the slack was there to make reachable.
 export const GIZMO_CULL_NZ = -0.1
+
+export function isCulled(poly: { type: 'face' | 'edge' | 'vertex'; nz: number }): boolean {
+  return poly.type === 'face' ? poly.nz <= 0 : poly.nz < GIZMO_CULL_NZ
+}
 
 // ─── Cube geometry ───
 
@@ -37,6 +70,15 @@ const CV = [
 const COLOR_FACE = 'rgba(255,255,255,0.15)'
 const COLOR_EDGE = 'rgba(255,255,255,0.15)'
 const COLOR_VERT = 'rgba(255,255,255,0.15)'
+const COLOR_HOVER = 'rgba(255,255,255,0.5)'
+// The face tint, so the outline reads as part of the cube, not as a frame.
+const COLOR_OUTLINE = COLOR_FACE
+
+function tracePath(ctx: CanvasRenderingContext2D, pts: readonly Pv[]): void {
+  ctx.beginPath()
+  pts.forEach((p, j) => j ? ctx.lineTo(p.sx, p.sy) : ctx.moveTo(p.sx, p.sy))
+  ctx.closePath()
+}
 
 const CUBE_FACES = [
   { verts: [4,5,6,7], label: 'Front',  normal: new THREE.Vector3( 0,  0,  1), fill: COLOR_FACE },
@@ -172,7 +214,28 @@ export function fitLabelFontSize(measuredWidth: number, usableWidth: number): nu
 // ─── Types ───
 
 export type Pv = { sx: number; sy: number; z: number }
-export type Hit = { type: 'vertex' | 'edge' | 'face'; index: number; snapDir: THREE.Vector3 }
+// A cube hit snaps the view to a direction; a roll hit turns it about the view
+// axis by `roll` radians (positive: the scene turns clockwise on screen); an
+// orbit hit swings the camera ORBIT_STEP toward the screen direction
+// (right, up).
+export type Hit =
+  | { type: 'vertex' | 'edge' | 'face'; index: number; snapDir: THREE.Vector3 }
+  | { type: 'roll'; index: number; roll: number }
+  | { type: 'orbit'; index: number; right: number; up: number }
+
+// What a gizmo click asks the render loop to do with the camera: a bare vector
+// is a cube snap direction, `{ roll }` a turn about the view axis, `{ orbit }`
+// a fixed step of the camera round its target.
+export type GizmoRequest =
+  | THREE.Vector3
+  | { roll: number }
+  | { orbit: { right: number; up: number; angle: number } }
+
+export function gizmoRequestFor(hit: Hit): GizmoRequest {
+  if (hit.type === 'roll') return { roll: hit.roll }
+  if (hit.type === 'orbit') return { orbit: { right: hit.right, up: hit.up, angle: ORBIT_STEP } }
+  return hit.snapDir
+}
 
 type GizmoPoly = {
   type: 'face' | 'edge' | 'vertex'
@@ -358,15 +421,186 @@ export function getPolys(q: THREE.Quaternion, W: number, H: number): GizmoPoly[]
   return SORTED_BUFFER.sort((a, b) => a.cz - b.cz)
 }
 
+// ─── Silhouette outline ───
+
+// The bevelled cube is convex, so its screen outline is the convex hull of
+// every projected polygon point, front or back. The drawn faces have gaps
+// between them (edges and corners only paint on hover), which leaves the
+// cube's real extent to guesswork; one continuous hull stroke shows where the
+// clickable edge and corner bands end. Monotone chain over reused buffers:
+// it runs every frame.
+const HULL_POINTS: Pv[] = POLY_BUFFER.flatMap(p => p.pts)
+const HULL_OUT: Pv[] = []
+
+function cross(o: Pv, a: Pv, b: Pv): number {
+  return (a.sx - o.sx) * (b.sy - o.sy) - (a.sy - o.sy) * (b.sx - o.sx)
+}
+
+/** Convex hull of the cube as last projected by getPolys, in screen space. */
+export function gizmoSilhouette(): Pv[] {
+  const pts = HULL_POINTS.sort((a, b) => a.sx - b.sx || a.sy - b.sy)
+  const out = HULL_OUT
+  out.length = 0
+  for (const p of pts) {
+    while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], p) <= 0) out.pop()
+    out.push(p)
+  }
+  const lowerLen = out.length + 1
+  for (let i = pts.length - 2; i >= 0; i--) {
+    const p = pts[i]
+    while (out.length >= lowerLen && cross(out[out.length - 2], out[out.length - 1], p) <= 0) out.pop()
+    out.push(p)
+  }
+  out.pop()  // the last point repeats the first
+  return out
+}
+
+// ─── Roll arrows ───
+
+// Two arcs under the cube, both starting at 6 o'clock: index 0 sweeps to
+// 4 o'clock (counter-clockwise on screen), index 1 to 8 o'clock (clockwise).
+// A click turns the view about its axis by one ROLL_STEP in the arrow's
+// sense, so the arrow shows which way the model will turn. Angles here are
+// clock angles: degrees from 12 o'clock, clockwise.
+export const ROLL_STEP = Math.PI / 12  // 15 degrees
+const ROLL_RADIUS = 76
+const ROLL_BAND_HALF = 3
+const ROLL_HEAD_HALF = 7
+const ROLL_HEAD_DEG = 13
+const ROLL_GAP_DEG = 12  // half the gap that keeps the two arrows apart at 6 o'clock
+const ROLL_SWEEP_DEG = 60
+// The pick zone is fatter than the drawing: a 6px band is a thin target.
+const ROLL_PICK_HALF = 9
+const ROLL_PICK_SLACK_DEG = 3
+
+type RollArrow = { index: number; roll: number; startDeg: number; endDeg: number; pts: Pv[] }
+
+// The arcs' centre sits a little above the cube's: concentric arcs hung too
+// low under the cube, and lifting them keeps the clock sense while still
+// clearing the cube's largest silhouette.
+const ROLL_LIFT = 6
+export const ROLL_CENTER = { x: GIZMO_SIZE / 2, y: GIZMO_SIZE / 2 - ROLL_LIFT }
+
+function clockPoint(deg: number, r: number): Pv {
+  const a = deg * Math.PI / 180
+  return { sx: ROLL_CENTER.x + r * Math.sin(a), sy: ROLL_CENTER.y - r * Math.cos(a), z: 0 }
+}
+
+function buildRollArrow(index: number, sense: -1 | 1): RollArrow {
+  const startDeg = 180 + sense * ROLL_GAP_DEG
+  const endDeg = 180 + sense * ROLL_SWEEP_DEG
+  const baseDeg = endDeg - sense * ROLL_HEAD_DEG
+  const steps = 8
+  const outer: Pv[] = []
+  const inner: Pv[] = []
+  for (let i = 0; i <= steps; i++) {
+    const d = startDeg + (baseDeg - startDeg) * i / steps
+    outer.push(clockPoint(d, ROLL_RADIUS + ROLL_BAND_HALF))
+    inner.push(clockPoint(d, ROLL_RADIUS - ROLL_BAND_HALF))
+  }
+  const pts = [
+    ...outer,
+    clockPoint(baseDeg, ROLL_RADIUS + ROLL_HEAD_HALF),
+    clockPoint(endDeg, ROLL_RADIUS),
+    clockPoint(baseDeg, ROLL_RADIUS - ROLL_HEAD_HALF),
+    ...inner.reverse(),
+  ]
+  return { index, roll: sense * ROLL_STEP, startDeg, endDeg, pts }
+}
+
+// Static: the arrows are screen furniture and do not turn with the camera.
+const ROLL_ARROWS: RollArrow[] = [buildRollArrow(0, -1), buildRollArrow(1, 1)]
+
+/** The two arrow outlines in canvas px, for drawing and tests. */
+export function rollArrowPolygons(): readonly Pv[][] {
+  return ROLL_ARROWS.map(a => a.pts)
+}
+
+function rollHit(mx: number, my: number): Hit | null {
+  const dx = mx - ROLL_CENTER.x
+  const dy = my - ROLL_CENTER.y
+  const r = Math.hypot(dx, dy)
+  if (Math.abs(r - ROLL_RADIUS) > ROLL_PICK_HALF) return null
+  const deg = (Math.atan2(dx, -dy) * 180 / Math.PI + 360) % 360
+  for (const a of ROLL_ARROWS) {
+    const lo = Math.min(a.startDeg, a.endDeg) - ROLL_PICK_SLACK_DEG
+    const hi = Math.max(a.startDeg, a.endDeg) + ROLL_PICK_SLACK_DEG
+    if (deg >= lo && deg <= hi) return { type: 'roll', index: a.index, roll: a.roll }
+  }
+  return null
+}
+
+// ─── Orbit triangles ───
+
+// Four equilateral triangles round the cube, pointing out at 12, 3, 6 and
+// 9 o'clock. A click swings the camera ORBIT_STEP toward the side it points
+// to: north moves it up over the model, east to the right. They are centred
+// on the cube, not on the roll arcs, so the south one sits in the arcs' gap.
+export const ORBIT_STEP = Math.PI / 12  // 15 degrees
+// The cube's widest silhouette reaches ~53px from its centre, so radius minus
+// pick radius must stay above that; the north tip must stay on the canvas.
+const ORBIT_RADIUS = 67  // centroid distance from the cube centre
+const ORBIT_SIDE = 14
+const ORBIT_PICK_RADIUS = 7
+
+type OrbitTriangle = { index: number; right: number; up: number; cx: number; cy: number; pts: Pv[] }
+
+function buildOrbitTriangle(index: number, right: number, up: number): OrbitTriangle {
+  // Screen direction of the tip; canvas y runs down.
+  const ux = right, uy = -up
+  const cx = GIZMO_SIZE / 2 + ux * ORBIT_RADIUS
+  const cy = GIZMO_SIZE / 2 + uy * ORBIT_RADIUS
+  const h = ORBIT_SIDE * Math.sqrt(3) / 2
+  const tip = { sx: cx + ux * h * 2 / 3, sy: cy + uy * h * 2 / 3, z: 0 }
+  const bx = cx - ux * h / 3, by = cy - uy * h / 3
+  const half = ORBIT_SIDE / 2
+  const pts = [
+    tip,
+    { sx: bx - uy * half, sy: by + ux * half, z: 0 },
+    { sx: bx + uy * half, sy: by - ux * half, z: 0 },
+  ]
+  return { index, right, up, cx, cy, pts }
+}
+
+const ORBIT_TRIANGLES: OrbitTriangle[] = [
+  buildOrbitTriangle(0, 0, 1),   // north
+  buildOrbitTriangle(1, 1, 0),   // east
+  buildOrbitTriangle(2, 0, -1),  // south
+  buildOrbitTriangle(3, -1, 0),  // west
+]
+
+/** The four triangles in canvas px (N, E, S, W), for drawing and tests. */
+export function orbitTrianglePolygons(): readonly Pv[][] {
+  return ORBIT_TRIANGLES.map(t => t.pts)
+}
+
+// A disc round the centroid: a 14px triangle is a small target, and the disc
+// is forgiving at its corners where pointInPoly would not be.
+function orbitHit(mx: number, my: number): Hit | null {
+  for (const t of ORBIT_TRIANGLES) {
+    if (Math.hypot(mx - t.cx, my - t.cy) <= ORBIT_PICK_RADIUS)
+      return { type: 'orbit', index: t.index, right: t.right, up: t.up }
+  }
+  return null
+}
+
 export function computeGizmoHit(mx: number, my: number, _pv: Pv[], camera: THREE.Camera): Hit | null {
   const W = GIZMO_SIZE, H = GIZMO_SIZE
   const q = _projQuat.copy(camera.quaternion).invert()
+
+  // The triangles and arrows sit outside the cube's largest silhouette, so
+  // none of them compete with the cube for a pixel; the triangles go first so
+  // the south one wins over the roll arcs' pick slack beside it.
+  const orbit = orbitHit(mx, my)
+  if (orbit) return orbit
+  const roll = rollHit(mx, my)
+  if (roll) return roll
 
   const polys = getPolys(q, W, H)
   // Check from front to back
   for (let i = polys.length - 1; i >= 0; i--) {
     const poly = polys[i]
-    if (poly.nz < GIZMO_CULL_NZ) continue  // Back-face cull, same rule as draw
+    if (isCulled(poly)) continue  // Back-face cull, same rule as draw
     if (pointInPoly(mx, my, poly.pts)) {
       return { type: poly.type, index: poly.index, snapDir: poly.snapDir }
     }
@@ -391,13 +625,14 @@ export function drawCubeGizmo(
   const ctx = canvas.getContext('2d')
   if (!ctx) return []
   const dpr = window.devicePixelRatio || 1
-  if (canvas.width !== GIZMO_SIZE * dpr) {
-    canvas.width = GIZMO_SIZE * dpr
-    canvas.height = GIZMO_SIZE * dpr
+  if (canvas.width !== GIZMO_CANVAS_WIDTH * dpr || canvas.height !== GIZMO_CANVAS_HEIGHT * dpr) {
+    canvas.width = GIZMO_CANVAS_WIDTH * dpr
+    canvas.height = GIZMO_CANVAS_HEIGHT * dpr
   }
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   ctx.save()
   ctx.scale(dpr, dpr)
+  ctx.translate(GIZMO_PAD, GIZMO_PAD)  // into cube-square coordinates
 
   const W = GIZMO_SIZE, H = GIZMO_SIZE
   const q = _projQuat.copy(camera.quaternion).invert()
@@ -405,7 +640,7 @@ export function drawCubeGizmo(
   const polys = getPolys(q, W, H)
 
   for (const poly of polys) {
-    if (poly.nz < GIZMO_CULL_NZ) continue  // Back-face cull, same rule as hit-test
+    if (isCulled(poly)) continue  // Back-face cull, same rule as hit-test
 
     const isHover = hover?.type === poly.type && hover.index === poly.index
 
@@ -460,6 +695,27 @@ export function drawCubeGizmo(
       ctx.fillText(poly.label, 0, 0)
       ctx.restore()
     }
+  }
+
+  // Stroked last so no face fill paints over it.
+  tracePath(ctx, gizmoSilhouette())
+  ctx.strokeStyle = COLOR_OUTLINE
+  ctx.lineWidth = 1
+  ctx.lineJoin = 'round'
+  ctx.stroke()
+
+  for (const arrow of ROLL_ARROWS) {
+    const isHover = hover?.type === 'roll' && hover.index === arrow.index
+    tracePath(ctx, arrow.pts)
+    ctx.fillStyle = isHover ? COLOR_HOVER : COLOR_FACE
+    ctx.fill()
+  }
+
+  for (const tri of ORBIT_TRIANGLES) {
+    const isHover = hover?.type === 'orbit' && hover.index === tri.index
+    tracePath(ctx, tri.pts)
+    ctx.fillStyle = isHover ? COLOR_HOVER : COLOR_FACE
+    ctx.fill()
   }
 
   ctx.restore()

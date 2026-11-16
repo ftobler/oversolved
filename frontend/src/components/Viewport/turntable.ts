@@ -257,17 +257,29 @@ export function rotateTrackball(
   dy: number,
   height: number,
 ): RolledPose {
-  const length = Math.hypot(dx, dy)
-  if (length === 0) return { azimuth: pose.azimuth, elevation: pose.elevation, roll: pose.roll }
   const h = height > 0 ? height : 1
-  const delta = (2 * Math.PI) / h
+  return turnTrackball(pose, dx, dy, (2 * Math.PI) / h * Math.hypot(dx, dy))
+}
+
+// The trackball turn itself: `angle` radians about the screen axis
+// perpendicular to the screen-space direction (dx, dy), in the drag's sense (a
+// drag right moves the camera left, a drag down moves it up). The cube's orbit
+// triangles call this with a fixed angle instead of a pixel distance.
+export function turnTrackball(
+  pose: RolledPose,
+  dx: number,
+  dy: number,
+  angle: number,
+): RolledPose {
+  const length = Math.hypot(dx, dy)
+  if (length === 0 || angle === 0) return { azimuth: pose.azimuth, elevation: pose.elevation, roll: pose.roll }
   rolledBasis(pose.azimuth, pose.elevation, pose.roll, STEP_RIGHT, STEP_UP)
   orbitDirection(pose.azimuth, pose.elevation, STEP_DIR)
   // One turn about the screen axis perpendicular to the drag, not a horizontal
   // then a vertical turn: those do not commute, so a straight drag and its
   // reverse would not retrace each other and a diagonal would turn too little.
   STEP_AXIS.copy(STEP_UP).multiplyScalar(-dx).addScaledVector(STEP_RIGHT, -dy).divideScalar(length)
-  STEP_Q.setFromAxisAngle(STEP_AXIS, delta * length)
+  STEP_Q.setFromAxisAngle(STEP_AXIS, angle)
   STEP_DIR.applyQuaternion(STEP_Q)
   STEP_RIGHT.applyQuaternion(STEP_Q)
   // Re-express the turned camera in (azimuth, elevation, roll). The direction
@@ -417,6 +429,32 @@ export class TurntableControls {
     this.azimuth = angles.azimuth
     this.elevation = angles.elevation
     this.roll = options.roll ?? 0
+    this.applyPose(true)
+  }
+
+  // Turn the view about its own direction (the cube's roll arrows). Positive
+  // swings screen right toward screen up, so the scene appears to turn
+  // clockwise. The direction, target and distance stay put; only the roll
+  // moves, wrapped to (-pi, pi] so repeated clicks never grow it unbounded.
+  rollBy(angle: number): void {
+    if (!Number.isFinite(angle) || angle === 0) return
+    let roll = this.roll + angle
+    roll = Math.atan2(Math.sin(roll), Math.cos(roll))
+    this.roll = roll
+    this.applyPose(true)
+  }
+
+  // Move the camera round the target by `angle` toward a screen direction
+  // (the cube's orbit triangles): (right, up) = (1, 0) swings it to the right,
+  // (0, 1) up over the model. A trackball step about the screen axes, so it
+  // reads the same at any pose and never meets a pole.
+  orbitStep(right: number, up: number, angle: number): void {
+    // turnTrackball takes a drag direction, which moves the camera the
+    // opposite way horizontally and the same way as screen-down vertically.
+    const next = turnTrackball(this, -right, up, angle)
+    this.azimuth = next.azimuth
+    this.elevation = next.elevation
+    this.roll = next.roll
     this.applyPose(true)
   }
 

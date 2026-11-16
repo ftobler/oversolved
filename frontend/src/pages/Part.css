@@ -4,9 +4,11 @@
   /* Edge distance of the floating part panels, and the space the right panel
      leaves free at the bottom for the HUD stack (view options button, cube
      gizmo, measurement readout). Clearance arithmetic: GIZMO_SIZE 140
-     (components/misc/CubeGizmo.utils.ts) + the 30px view options button
-     (ViewOptions.css) + the 16px readout floor and the two 4px stack gaps
-     (ViewportHud.css) + the 12px inset = 206; 228 leaves margin, so a gizmo
+     (components/misc/CubeGizmo.utils.ts; the roll arrow strip hangs below it
+     and takes no layout) + the 30px view options button (ViewOptions.css) +
+     the 16px readout floor and the two 4px stack gaps (ViewportHud.css) +
+     the 12px inset = 206; 228
+     leaves margin, so a gizmo
      resize can be checked against this one number. */
   --floating-inset: 12px;
   --hud-clearance: 228px;

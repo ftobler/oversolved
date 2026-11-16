@@ -86,6 +86,42 @@ export function snapToDirection(camera: THREE.Camera, controls: Controls, dir: T
   pointCamera(camera, controls, dir, camera.position.length(), new THREE.Vector3(), 0)
 }
 
+// Turn the view about the camera's own axis (the cube's roll arrows), keeping
+// where it looks from. Positive turns the scene clockwise on screen, the same
+// sense as TurntableControls.rollBy; the controller-less fallback is the
+// matching local Z turn, since the camera looks down its -Z.
+export function rollView(camera: THREE.Camera, controls: Controls, angle: number): void {
+  traceCamera('rollView', 'angle=', angle)
+  if (controls) {
+    controls.rollBy(angle)
+    return
+  }
+  camera.rotateZ(angle)
+  camera.up.set(0, 1, 0).applyQuaternion(camera.quaternion)
+  camera.updateMatrixWorld()
+}
+
+// Swing the camera round its target by `angle` toward a screen direction (the
+// cube's orbit triangles): (1, 0) moves it right, (0, 1) up over the model.
+// The controller-less fallback turns about the origin, the fallback target
+// pointCamera also assumes.
+export function orbitView(camera: THREE.Camera, controls: Controls, right: number, up: number, angle: number): void {
+  traceCamera('orbitView', 'right=', right, 'up=', up, 'angle=', angle)
+  if (controls) {
+    controls.orbitStep(right, up, angle)
+    return
+  }
+  const length = Math.hypot(right, up)
+  if (length === 0) return
+  // Camera-space axis that carries the view direction (+Z) toward (right, up).
+  const axis = new THREE.Vector3(-up / length, right / length, 0).applyQuaternion(camera.quaternion)
+  const turn = new THREE.Quaternion().setFromAxisAngle(axis, angle)
+  camera.position.applyQuaternion(turn)
+  camera.quaternion.premultiply(turn)
+  camera.up.set(0, 1, 0).applyQuaternion(camera.quaternion)
+  camera.updateMatrixWorld()
+}
+
 // The turntable azimuth whose straight-up (normalY > 0) or straight-down view
 // has screen up along `yAxis`. On a pole the orbit law gives up = (-sin a, 0,
 // -cos a) looking down and (sin a, 0, cos a) looking up, solved here for a.
