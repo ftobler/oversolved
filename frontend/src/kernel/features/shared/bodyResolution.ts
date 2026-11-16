@@ -92,7 +92,7 @@ const TOPO_FALLBACK_REF = /^@([^/]+)\/(?:face|edge|vertex)\/\d+$/
  * than throwing: the merge-target and delete-body errors read differently, and
  * delete-body still falls back to `resolveBody` for viewport-prefix forms.
  */
-export function resolveBodyIds(ref: string, bodyStore: Record<string, Body>): string[] {
+export function resolveBodyIds<T extends { created_by: string }>(ref: string, bodyStore: Record<string, T>): string[] {
   const key = stripRefSigil(ref, '@')
   // An exact body id names exactly that one sibling.
   if (key in bodyStore) return [key]

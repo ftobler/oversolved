@@ -1,5 +1,5 @@
 import type { BodyResult } from '@/types/cad'
-import { parseAncestry } from '@/kernel/queryWire'
+import { resolveBodyIds } from '@/kernel/features/shared/bodyResolution'
 
 // UI-side twin of the kernel's `resolveBodyIds` (kernel/features/shared/
 // bodyResolution.ts), operating on the plain `BodyResult` records the store
@@ -17,39 +17,12 @@ export function bodyIdsOfPick(
   query: string,
   bodies: Record<string, BodyResult> | null | undefined,
 ): string[] {
-  const store = bodies ?? {}
   if (!query) return []
-
-  const key = query.startsWith('@') ? query.slice(1) : query
-
-  // Exact body id: names exactly that one sibling.
-  if (key in store) return [key]
-
-  // Topo-fallback element ref (`@body_x/face/N`, edge/vertex too): the body
-  // the element sits on.
-  const topo = /^@([^/]+)\/(?:face|edge|vertex)\/\d+$/.exec(query)
-  if (topo) return bodyIdsOfPick(topo[1], store)
-
-  // `?` ancestry query: body-exact, the first `@body_*` ancestor is the owner.
-  if (query.startsWith('?')) {
-    try {
-      const [ids] = parseAncestry(query)
-      for (const aid of ids) {
-        if (aid.startsWith('@body_') && aid.slice(1) in store) return [aid.slice(1)]
-      }
-    } catch {
-      // unparseable query names nothing
-    }
-    return []
-  }
-
-  // Otherwise the ref names a FEATURE. The creator scan comes first: a body
-  // literally called `body_<feature>` would otherwise hide the siblings.
-  const byCreator = Object.keys(store).filter((bid) => store[bid].created_by === key)
-  if (byCreator.length > 0) return byCreator
-  const prefixed = 'body_' + key
-  if (prefixed in store) return [prefixed]
-  return []
+  // Shared with the kernel's `resolveBodyIds` (kernel/features/shared/
+  // bodyResolution.ts) so the chip's body resolution cannot drift from the
+  // solve's. The kernel resolver is pure store lookup with no OCC, so
+  // importing it here is safe.
+  return resolveBodyIds(query, (bodies ?? {}) as Record<string, { created_by: string }>)
 }
 
 export function bodyIdOfPick(
