@@ -82,6 +82,11 @@ export function parseSkipList(text: string): SkipParse | SkipParseError {
   return { ok: true, skip: canonicalSkip(entries) }
 }
 
+/** One-line grammar for the Skip Instances field, phrased in the parser's own
+ *  refusal vocabulary so the tooltip cannot drift from the messages. */
+export const SKIP_LIST_TITLE =
+  'integers such as 1, 2, -1, or column:row such as 2:-1; ranges are not supported'
+
 /**
  * The refusal one stored skip list earns, or null. The loader, the drive and
  * the kernel all decide through this, so a list one path accepts never fails

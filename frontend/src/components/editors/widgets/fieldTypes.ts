@@ -101,6 +101,12 @@ export interface TextFieldDef extends BaseFieldDef {
   // document's own feature rows come along for a hint that must name a sketch's
   // points (the instance pattern's numbered target list).
   hint?: (data: SchemaData, context: HintContext) => string | null
+  // Greyed-out example shown in the empty box, so a field that parses a small
+  // grammar does not read as dead before the user types.
+  placeholder?: string
+  // One-line grammar/help shown as the input's tooltip, built next to the
+  // parser so the wording cannot drift from the refusal messages.
+  title?: string
 }
 
 /** The document context a field hint may read beside the form's own values. */

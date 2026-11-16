@@ -31,23 +31,27 @@ export function TextFieldWidget({
   const hint = field.hint?.(data ?? {}, { features }) ?? null
 
   return (
-    <div className="feature-field-row">
-      <span className="feature-field-label">{field.label}</span>
-      <input
-        type="text"
-        className={`feature-field-input${reason !== null ? ' feature-field-input--error' : ''}`}
-        value={raw}
-        onClick={(e) => e.stopPropagation()}
-        onFocus={() => setDraft(external)}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={() => {
-          if (draft !== null && parsed != null && reason === null) {
-            onMutation({ type: mutationType, featureId: fid, field: field.key, value: parsed } as Mutation)
-          }
-          setDraft(null)  // back to idle: mirror the (possibly updated) external value
-        }}
-        onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
-      />
+    <div className="feature-field-row feature-field-row--stacked">
+      <div className="feature-field-row">
+        <span className="feature-field-label">{field.label}</span>
+        <input
+          type="text"
+          className={`feature-field-input${reason !== null ? ' feature-field-input--error' : ''}`}
+          value={raw}
+          placeholder={field.placeholder}
+          title={field.title}
+          onClick={(e) => e.stopPropagation()}
+          onFocus={() => setDraft(external)}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={() => {
+            if (draft !== null && parsed != null && reason === null) {
+              onMutation({ type: mutationType, featureId: fid, field: field.key, value: parsed } as Mutation)
+            }
+            setDraft(null)  // back to idle: mirror the (possibly updated) external value
+          }}
+          onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); e.stopPropagation() }}
+        />
+      </div>
       {hint !== null && hint !== '' && <span className="feature-field-hint">{hint}</span>}
       <StatusMessage mark={fieldRefusal('Value', reason)} />
     </div>

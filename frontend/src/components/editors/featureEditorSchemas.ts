@@ -13,7 +13,7 @@ import { stripSelectionWrapper } from '@/utils/query/selectionId'
 import { positive, nonNegative, finite, between } from '@/utils/core/valueRules'
 import { arrayCountProblem, MAX_ARRAY_COUNT } from '@/persistence/docSchema'
 import { patternSubject } from '@/utils/core/patternSubject'
-import { formatSkipList, parseSkipList, type SkipEntry } from '@/utils/core/patternSkip'
+import { formatSkipList, parseSkipList, SKIP_LIST_TITLE, type SkipEntry } from '@/utils/core/patternSkip'
 import { LINEAR_DIRECTION_MODES, LINEAR_DIRECTION_MODE_LABELS } from '@/utils/core/linearPatternModes'
 import { solvedNumber } from '@/utils/core/solvedValue'
 import {
@@ -579,6 +579,8 @@ function normalizePatternSource(raw: SchemaData): SchemaData {
 const patternSkipField = (defaultCount: number): TextFieldDef => ({
   // The page-selector text: signed indices only, `i:j` for a grid cell.
   type: 'text', key: 'skip', label: 'Skip Instances', default: '',
+  placeholder: 'e.g. 2, 5 or 1:0',
+  title: SKIP_LIST_TITLE,
   format: (v) => formatSkipList(Array.isArray(v) ? v as SkipEntry[] : []),
   parse: (text) => { const parsed = parseSkipList(text); return parsed.ok ? parsed.skip : null },
   parseReason: (text) => { const parsed = parseSkipList(text); return parsed.ok ? null : parsed.error },
