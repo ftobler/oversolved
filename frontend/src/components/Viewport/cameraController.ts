@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import type { BodyResult, PlaneTransform } from '@/types/cad'
 import { INITIAL_ZOOM } from './cameraConstants'
 import type { TurntableControls } from './turntable'
+import { anglesFromDirection, rolledBasis, orbitUp } from './turntable'
 
 // How much of the viewport the framed content fills: targetViewHeight =
 // contentHeight * FIT_MARGIN, so content occupies 1/FIT_MARGIN of the frustum.
@@ -93,6 +94,75 @@ export function poleAzimuthForUp(yAxis: [number, number, number], normalY: numbe
   return normalY >= 0 ? Math.atan2(-x, -z) : Math.atan2(x, z)
 }
 
+// Pure helper: pick the nearest 90-degree roll mark for a view direction. Given
+// the camera's screen up before the move and the target view direction (face or
+// plane normal, camera side), returns the turntable pose of the closest mark.
+// No camera or controls: only angles and a basis. The pole case (|d.y| = 1
+// within the turntable's pole test) snaps the azimuth to the nearest cardinal
+// mark with roll 0; the off-pole case keeps the turntable angles and snaps the
+// roll to the nearest quarter turn.
+export function nearestSquareRoll(
+  currentUp: THREE.Vector3 | readonly [number, number, number],
+  direction: THREE.Vector3 | readonly [number, number, number],
+): { azimuth: number; elevation: number; roll: number } {
+  const toVec = (v: THREE.Vector3 | readonly [number, number, number]): THREE.Vector3 =>
+    v instanceof THREE.Vector3 ? v.clone() : new THREE.Vector3(v[0], v[1], v[2])
+
+  const d = toVec(direction)
+  const length = d.length()
+  if (!(length > 0)) return { azimuth: 0, elevation: 0, roll: 0 }
+  d.divideScalar(length)
+
+  const upIn = toVec(currentUp)
+  const projected = upIn.clone().sub(d.clone().multiplyScalar(upIn.dot(d)))
+  // A degenerate projection (old up along the new view direction) takes k = 0.
+  if (projected.lengthSq() < 1e-24) {
+    const horizontal = Math.hypot(d.x, d.z)
+    if (horizontal < 1e-9) {
+      const elev = d.y >= 0 ? Math.PI / 2 : -Math.PI / 2
+      return { azimuth: 0, elevation: elev, roll: 0 }
+    }
+    const base = anglesFromDirection(d, 0)
+    return { azimuth: base.azimuth, elevation: base.elevation, roll: 0 }
+  }
+
+  const horizontal = Math.hypot(d.x, d.z)
+  const isPole = horizontal < 1e-9
+
+  if (isPole) {
+    const elev = d.y >= 0 ? Math.PI / 2 : -Math.PI / 2
+    let bestK = 0
+    let bestDot = -Infinity
+    for (let k = 0; k < 4; k++) {
+      const azimuth = (k * Math.PI) / 2
+      const candUp = orbitUp(azimuth, elev)
+      const dot = candUp.dot(projected)
+      if (dot > bestDot) {
+        bestDot = dot
+        bestK = k
+      }
+    }
+    return { azimuth: (bestK * Math.PI) / 2, elevation: elev, roll: 0 }
+  }
+
+  const base = anglesFromDirection(d, 0)
+
+  let bestK = 0
+  let bestDot = -Infinity
+  for (let k = 0; k < 4; k++) {
+    const roll = (k * Math.PI) / 2
+    const right = new THREE.Vector3()
+    const up = new THREE.Vector3()
+    rolledBasis(base.azimuth, base.elevation, roll, right, up)
+    const dot = up.dot(projected)
+    if (dot > bestDot) {
+      bestDot = dot
+      bestK = k
+    }
+  }
+  return { azimuth: base.azimuth, elevation: base.elevation, roll: (bestK * Math.PI) / 2 }
+}
+
 // Look straight at a sketch (or plane) frame from its normal side, centred on
 // its origin. The turntable never rolls, so a tilted frame keeps the level
 // horizon; only a frame facing straight up or down has a free roll, and there
@@ -121,17 +191,58 @@ export function alignToFace(
   if (norm === 0) { traceCamera('alignToFace', 'degenerate normal'); return }
   traceCamera('alignToFace', 'center=', faceCenter)
 
-  // Aligning to a horizontal face keeps the current azimuth, so looking at a
-  // top face does not spin the view around the vertical axis.
-  const poleAzimuth = controls?.azimuth ?? 0
-  pointCamera(
-    camera,
-    controls,
-    new THREE.Vector3(nx, ny, nz),
-    100,
-    new THREE.Vector3(...faceCenter),
-    poleAzimuth,
-  )
+  // The current screen up before the move: from the controls' rolled pose when
+  // available, else the camera's own up vector.
+  let currentUp: THREE.Vector3
+  if (controls) {
+    const right = new THREE.Vector3()
+    const up = new THREE.Vector3()
+    rolledBasis(controls.azimuth, controls.elevation, controls.roll, right, up)
+    currentUp = up
+  } else {
+    camera.updateMatrixWorld()
+    currentUp = camera.up.clone()
+  }
+
+  const direction = new THREE.Vector3(nx, ny, nz).divideScalar(norm)
+  const pose = nearestSquareRoll(currentUp, direction)
+
+  const isPole = Math.hypot(direction.x, direction.z) < 1e-9
+
+  // Rebuild the screen up of the chosen mark, for the no-controls fallback.
+  let chosenUp: THREE.Vector3
+  if (isPole) {
+    chosenUp = orbitUp(pose.azimuth, pose.elevation)
+  } else {
+    const right = new THREE.Vector3()
+    const up = new THREE.Vector3()
+    rolledBasis(pose.azimuth, pose.elevation, pose.roll, right, up)
+    chosenUp = up
+  }
+
+  if (controls) {
+    // The azimuth is no longer kept as is: the nearest 90-degree mark is, so a
+    // top or bottom face straightens instead of inheriting the last orbit's roll.
+    controls.setDirection(
+      new THREE.Vector3(nx, ny, nz),
+      {
+        distance: 100,
+        target: new THREE.Vector3(...faceCenter),
+        poleAzimuth: isPole ? pose.azimuth : undefined,
+        roll: pose.roll,
+      },
+    )
+  } else {
+    camera.up.copy(chosenUp)
+    pointCamera(
+      camera,
+      controls,
+      new THREE.Vector3(nx, ny, nz),
+      100,
+      new THREE.Vector3(...faceCenter),
+      isPole ? pose.azimuth : 0,
+    )
+  }
 }
 
 // Auto-fit is a document-load intent, not a running behaviour: it stays armed

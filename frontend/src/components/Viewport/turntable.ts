@@ -409,14 +409,14 @@ export class TurntableControls {
   // used only when the direction is exactly on the up axis.
   setDirection(
     direction: THREE.Vector3,
-    options: { poleAzimuth?: number; distance?: number; target?: THREE.Vector3 } = {},
+    options: { poleAzimuth?: number; distance?: number; target?: THREE.Vector3; roll?: number } = {},
   ): void {
     if (options.target) this.target.copy(options.target)
     if (typeof options.distance === 'number') this.distance = Math.max(options.distance, MIN_DISTANCE)
     const angles = anglesFromDirection(direction, options.poleAzimuth ?? this.azimuth)
     this.azimuth = angles.azimuth
     this.elevation = angles.elevation
-    this.roll = 0
+    this.roll = options.roll ?? 0
     this.applyPose(true)
   }
 

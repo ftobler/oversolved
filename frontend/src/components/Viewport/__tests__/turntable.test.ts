@@ -252,7 +252,7 @@ describe('camera alignment on the turntable state', () => {
 
     alignToFace(camera, controls, [0, 1, 0], [1, 2, 3])
 
-    expect(controls.azimuth).toBeCloseTo(1.1, 12)
+    expect(controls.azimuth).toBeCloseTo(Math.PI / 2, 12)
     expect(controls.elevation).toBeCloseTo(Math.PI / 2, 12)
     expect(controls.target.toArray()).toEqual([1, 2, 3])
     expect(camera.position.x).toBeCloseTo(1, 9)
@@ -756,5 +756,13 @@ describe('trackball orbit', () => {
     expect(other.roll).toBe(controls.roll)
     controls.setDirection(new THREE.Vector3(1, 0, 0))
     expect(controls.roll).toBe(0)
+  })
+
+  it('setDirection applies an optional roll and defaults to 0', () => {
+    const controls = makeControls()
+    controls.setDirection(new THREE.Vector3(1, 0, 0), { roll: Math.PI / 2 })
+    expect(controls.roll).toBeCloseTo(Math.PI / 2, 9)
+    controls.setDirection(new THREE.Vector3(0, 1, 0))
+    expect(controls.roll).toBeCloseTo(0, 9)
   })
 })
