@@ -3,8 +3,12 @@ import { render, fireEvent } from '@testing-library/react'
 import * as THREE from 'three'
 import { createRef } from 'react'
 import { CubeGizmoCanvas } from '@/components/misc/CubeGizmo'
-import { GIZMO_SIZE, ROLL_CENTER, ROLL_STEP } from '@/components/misc/CubeGizmo.utils'
+import { GIZMO_PAD, GIZMO_SIZE, ROLL_CENTER, ROLL_STEP } from '@/components/misc/CubeGizmo.utils'
 import type { GizmoRequest, Pv, Hit } from '@/components/misc/CubeGizmo.utils'
+
+// Pointer events are canvas px; the canvas overhangs the cube square by
+// GIZMO_PAD, so the cube centre sits that far in from the canvas corner.
+const CENTER_PX = GIZMO_SIZE / 2 + GIZMO_PAD
 
 // The gizmo overlay is a plain <canvas> with DOM handlers; it owns no R3F scene,
 // so it is unit testable in isolation (the "delete the Viewport, logic still
@@ -66,7 +70,7 @@ describe('CubeGizmo click writes the camera snap direction', () => {
   beforeEach(() => { m = mount() })
 
   it('a click on the cube centre writes the faced direction into snapRef', () => {
-    const C = GIZMO_SIZE / 2
+    const C = CENTER_PX
     fireEvent.click(m.canvas, { clientX: C, clientY: C })
     const dir = m.snapRef.current
     expect(dir).toBeInstanceOf(THREE.Vector3)
@@ -78,8 +82,8 @@ describe('CubeGizmo click writes the camera snap direction', () => {
   it('a click on the 8 o\'clock arrow asks for a clockwise 15 degree roll', () => {
     // 7 o'clock on the arrow radius: the middle of the clockwise arrow.
     fireEvent.click(m.canvas, {
-      clientX: ROLL_CENTER.x - 70 * Math.sin(Math.PI / 6),
-      clientY: ROLL_CENTER.y + 70 * Math.cos(Math.PI / 6),
+      clientX: GIZMO_PAD + ROLL_CENTER.x - 76 * Math.sin(Math.PI / 6),
+      clientY: GIZMO_PAD + ROLL_CENTER.y + 76 * Math.cos(Math.PI / 6),
     })
     expect(m.snapRef.current).toEqual({ roll: ROLL_STEP })
   })
@@ -91,7 +95,7 @@ describe('CubeGizmo click writes the camera snap direction', () => {
 
   it('a click with an empty pv buffer leaves snapRef untouched', () => {
     m.pvRef.current = []
-    const C = GIZMO_SIZE / 2
+    const C = CENTER_PX
     fireEvent.click(m.canvas, { clientX: C, clientY: C })
     expect(m.snapRef.current).toBeNull()
   })
@@ -115,7 +119,7 @@ describe('CubeGizmo owns its own gesture', () => {
   })
 
   it('a click on the gizmo does not propagate to an ancestor while still running its own handler', () => {
-    const C = GIZMO_SIZE / 2
+    const C = CENTER_PX
     fireEvent.click(m.canvas, { clientX: C, clientY: C })
     // Its own handler ran (snapRef set) yet the ancestor never saw the click.
     expect(m.snapRef.current).not.toBeNull()
@@ -128,7 +132,7 @@ describe('CubeGizmo hover cursor', () => {
   beforeEach(() => { m = mount() })
 
   it('mouse-move sets the pointer cursor on a hit and clears it on leave', () => {
-    const C = GIZMO_SIZE / 2
+    const C = CENTER_PX
     fireEvent.mouseMove(m.canvas, { clientX: C, clientY: C })
     expect(m.canvas.style.cursor).toBe('pointer')
     fireEvent.mouseLeave(m.canvas)
@@ -144,7 +148,7 @@ describe('CubeGizmo asks for its frame', () => {
   it('hover, leave and a snapping click each request a frame', () => {
     const onRequestRender = vi.fn()
     const m = mount(onRequestRender)
-    const C = GIZMO_SIZE / 2
+    const C = CENTER_PX
 
     fireEvent.mouseMove(m.canvas, { clientX: C, clientY: C })
     expect(onRequestRender).toHaveBeenCalledTimes(1)
@@ -159,7 +163,7 @@ describe('CubeGizmo asks for its frame', () => {
   it('a move that stays on the same face requests no second frame', () => {
     const onRequestRender = vi.fn()
     const m = mount(onRequestRender)
-    const C = GIZMO_SIZE / 2
+    const C = CENTER_PX
 
     fireEvent.mouseMove(m.canvas, { clientX: C, clientY: C })
     fireEvent.mouseMove(m.canvas, { clientX: C + 3, clientY: C + 3 })
@@ -172,7 +176,7 @@ describe('CubeGizmo asks for its frame', () => {
   it('a move off the cube requests the clear, but leaving an unhovered cube requests nothing', () => {
     const onRequestRender = vi.fn()
     const m = mount(onRequestRender)
-    const C = GIZMO_SIZE / 2
+    const C = CENTER_PX
 
     fireEvent.mouseMove(m.canvas, { clientX: C, clientY: C })
     fireEvent.mouseMove(m.canvas, { clientX: 3, clientY: 3 })
@@ -199,14 +203,14 @@ describe('CubeGizmo null guards', () => {
 
   it('a click with no camera leaves snapRef untouched', () => {
     m.cameraRef.current = null
-    const C = GIZMO_SIZE / 2
+    const C = CENTER_PX
     fireEvent.click(m.canvas, { clientX: C, clientY: C })
     expect(m.snapRef.current).toBeNull()
   })
 
   it('a mouse-move with no canvas leaves hoverRef null and the cursor default', () => {
     m.canvasRef.current = null
-    const C = GIZMO_SIZE / 2
+    const C = CENTER_PX
     fireEvent.mouseMove(m.canvas, { clientX: C, clientY: C })
     expect(m.hoverRef.current).toBeNull()
     expect(m.canvas.style.cursor).toBe('default')

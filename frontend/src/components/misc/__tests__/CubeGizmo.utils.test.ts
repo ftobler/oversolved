@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import * as THREE from 'three'
 import {
-  computeGizmoHit, drawCubeGizmo, GIZMO_SIZE, GIZMO_HEIGHT, GIZMO_CULL_NZ, getPolys,
+  computeGizmoHit, drawCubeGizmo, GIZMO_SIZE, GIZMO_HEIGHT, GIZMO_PAD, GIZMO_CULL_NZ, getPolys,
   gizmoLabelFont, fitLabelFontSize, ensureGizmoLabelFont,
   isGizmoLabelFontReady, resetGizmoLabelFontForTest,
   gizmoSilhouette, rollArrowPolygons, gizmoRequestFor, ROLL_CENTER, ROLL_STEP, type Hit, type Pv,
@@ -116,7 +116,7 @@ describe('drawCubeGizmo', () => {
     expect(verts[6].sx).toBeCloseTo(107.8)
     expect(verts[6].sy).toBeCloseTo(32.2)
     // It sized the backing store and stroked at least one path.
-    expect((canvas as unknown as { width: number }).width).toBe(GIZMO_SIZE)
+    expect((canvas as unknown as { width: number }).width).toBe(GIZMO_SIZE + 2 * GIZMO_PAD)
     expect(calls.some(c => c[0] === 'fill')).toBe(true)
     // Visible faces get their label rendered.
     expect(calls.some(c => c[0] === 'fillText' && c[1] === 'Front')).toBe(true)
@@ -233,8 +233,8 @@ const clockAt = (deg: number, r: number): [number, number] => {
 describe('roll arrows', () => {
   it('hits the 4 o\'clock arrow as a counter-clockwise turn and 8 o\'clock as clockwise', () => {
     const cam = cameraWith(new THREE.Quaternion())
-    const ccw = computeGizmoHit(...clockAt(150, 70), [], cam)
-    const cw = computeGizmoHit(...clockAt(210, 70), [], cam)
+    const ccw = computeGizmoHit(...clockAt(150, 76), [], cam)
+    const cw = computeGizmoHit(...clockAt(210, 76), [], cam)
     expect(ccw).toEqual({ type: 'roll', index: 0, roll: -ROLL_STEP })
     expect(cw).toEqual({ type: 'roll', index: 1, roll: ROLL_STEP })
     expect(ROLL_STEP).toBeCloseTo(Math.PI / 12)
@@ -242,17 +242,17 @@ describe('roll arrows', () => {
 
   it('does not reach past 4 or 8 o\'clock, or into the 6 o\'clock gap', () => {
     const cam = cameraWith(new THREE.Quaternion())
-    expect(computeGizmoHit(...clockAt(100, 70), [], cam)).toBeNull()
-    expect(computeGizmoHit(...clockAt(260, 70), [], cam)).toBeNull()
+    expect(computeGizmoHit(...clockAt(100, 76), [], cam)).toBeNull()
+    expect(computeGizmoHit(...clockAt(260, 76), [], cam)).toBeNull()
     // The gap itself belongs to the south orbit triangle.
-    expect(computeGizmoHit(...clockAt(180, 70), [], cam)?.type).toBe('orbit')
+    expect(computeGizmoHit(...clockAt(180, 72), [], cam)?.type).toBe('orbit')
   })
 
   it('fits the arrows inside the canvas and outside every cube silhouette', () => {
     for (const poly of rollArrowPolygons()) {
       for (const p of poly) {
-        expect(p.sx).toBeGreaterThanOrEqual(0)
-        expect(p.sx).toBeLessThanOrEqual(GIZMO_SIZE)
+        expect(p.sx).toBeGreaterThanOrEqual(-GIZMO_PAD)
+        expect(p.sx).toBeLessThanOrEqual(GIZMO_SIZE + GIZMO_PAD)
         expect(p.sy).toBeLessThanOrEqual(GIZMO_HEIGHT)
       }
     }
@@ -264,7 +264,7 @@ describe('roll arrows', () => {
       for (const poly of getPolys(q, GIZMO_SIZE, GIZMO_SIZE))
         for (const p of poly.pts) maxR = Math.max(maxR, Math.hypot(p.sx - ROLL_CENTER.x, p.sy - ROLL_CENTER.y))
     }
-    expect(maxR).toBeLessThan(70 - 9)
+    expect(maxR).toBeLessThan(76 - 9)
   })
 
   it('turns a roll hit into a roll request and a cube hit into its direction', () => {
@@ -296,7 +296,7 @@ describe('orbit triangles', () => {
   const cam = () => cameraWith(new THREE.Quaternion())
 
   it('maps N, E, S, W to a 15 degree camera step toward that side', () => {
-    const at = [[C, C - 61], [C + 61, C], [C, C + 61], [C - 61, C]] as const
+    const at = [[C, C - 67], [C + 67, C], [C, C + 67], [C - 67, C]] as const
     const dirs = at.map(([x, y]) => {
       const hit = computeGizmoHit(x, y, [], cam())
       if (hit?.type !== 'orbit') throw new Error(`expected an orbit hit, got ${JSON.stringify(hit)}`)
@@ -317,9 +317,9 @@ describe('orbit triangles', () => {
       const r = pts.map(p => Math.hypot(p.sx - C, p.sy - C))
       expect(r[0]).toBeGreaterThan(Math.max(r[1], r[2]))
       for (const p of pts) {
-        expect(p.sx).toBeGreaterThanOrEqual(0)
-        expect(p.sx).toBeLessThanOrEqual(GIZMO_SIZE)
-        expect(p.sy).toBeGreaterThanOrEqual(0)
+        expect(p.sx).toBeGreaterThanOrEqual(-GIZMO_PAD)
+        expect(p.sx).toBeLessThanOrEqual(GIZMO_SIZE + GIZMO_PAD)
+        expect(p.sy).toBeGreaterThanOrEqual(-GIZMO_PAD)
         expect(p.sy).toBeLessThanOrEqual(GIZMO_HEIGHT)
       }
     }
@@ -342,7 +342,7 @@ describe('orbit triangles', () => {
         for (const p of poly.pts) maxR = Math.max(maxR, Math.hypot(p.sx - C, p.sy - C))
     }
     // The pick disc's inner edge, with the cube centre as origin.
-    expect(maxR).toBeLessThan(61 - 7)
+    expect(maxR).toBeLessThan(67 - 7)
   })
 })
 
@@ -388,7 +388,7 @@ describe('gizmo silhouette', () => {
     const { canvas, calls } = makeRecordingCanvas()
     drawCubeGizmo(canvas, cameraWith(new THREE.Quaternion()), null)
     expect(calls.filter(c => c[0] === 'stroke')).toHaveLength(1)
-    expect((canvas as unknown as { height: number }).height).toBe(GIZMO_HEIGHT)
+    expect((canvas as unknown as { height: number }).height).toBe(GIZMO_PAD + GIZMO_HEIGHT)
   })
 })
 

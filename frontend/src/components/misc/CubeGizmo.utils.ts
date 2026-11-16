@@ -6,6 +6,13 @@ import * as THREE from 'three'
 export const GIZMO_SIZE = 140
 export const GIZMO_ROLL_STRIP = 10
 export const GIZMO_HEIGHT = GIZMO_SIZE + GIZMO_ROLL_STRIP
+// The canvas also overhangs the cube square by this much left, right and
+// above, so the orbit triangles and roll arcs can sit clear of the cube's
+// widest silhouette. All gizmo geometry stays in cube-square coordinates; only
+// the canvas edges (draw translate, pointer offset) know about the overhang.
+export const GIZMO_PAD = 8
+export const GIZMO_CANVAS_WIDTH = GIZMO_SIZE + 2 * GIZMO_PAD
+export const GIZMO_CANVAS_HEIGHT = GIZMO_PAD + GIZMO_HEIGHT
 // How far the whole widget sits below its layout slot, into the readout
 // gap and floor under it: tuned by eye so the cube sits low in the corner.
 export const GIZMO_SINK = 10
@@ -16,10 +23,13 @@ export const GIZMO_SINK = 10
 //
 // The roll strip hangs below the layout box (negative bottom margin): the
 // column is bottom-anchored, so counting the strip in the layout would lift
-// the cube by its height. The stack still reserves only GIZMO_SIZE.
+// the cube by its height. The overhang (GIZMO_PAD) is cancelled the same way
+// on the top and right. The stack still reserves only GIZMO_SIZE.
 export const GIZMO_STYLE: React.CSSProperties = {
-  width: GIZMO_SIZE,
-  height: GIZMO_HEIGHT,
+  width: GIZMO_CANVAS_WIDTH,
+  height: GIZMO_CANVAS_HEIGHT,
+  marginTop: -GIZMO_PAD,
+  marginRight: -GIZMO_PAD,
   marginBottom: -(GIZMO_ROLL_STRIP + GIZMO_SINK),
   pointerEvents: 'auto',
   cursor: 'default',
@@ -453,7 +463,7 @@ export function gizmoSilhouette(): Pv[] {
 // sense, so the arrow shows which way the model will turn. Angles here are
 // clock angles: degrees from 12 o'clock, clockwise.
 export const ROLL_STEP = Math.PI / 12  // 15 degrees
-const ROLL_RADIUS = 70
+const ROLL_RADIUS = 76
 const ROLL_BAND_HALF = 3
 const ROLL_HEAD_HALF = 7
 const ROLL_HEAD_DEG = 13
@@ -529,7 +539,7 @@ function rollHit(mx: number, my: number): Hit | null {
 export const ORBIT_STEP = Math.PI / 12  // 15 degrees
 // The cube's widest silhouette reaches ~53px from its centre, so radius minus
 // pick radius must stay above that; the north tip must stay on the canvas.
-const ORBIT_RADIUS = 61  // centroid distance from the cube centre
+const ORBIT_RADIUS = 67  // centroid distance from the cube centre
 const ORBIT_SIDE = 14
 const ORBIT_PICK_RADIUS = 7
 
@@ -615,13 +625,14 @@ export function drawCubeGizmo(
   const ctx = canvas.getContext('2d')
   if (!ctx) return []
   const dpr = window.devicePixelRatio || 1
-  if (canvas.width !== GIZMO_SIZE * dpr || canvas.height !== GIZMO_HEIGHT * dpr) {
-    canvas.width = GIZMO_SIZE * dpr
-    canvas.height = GIZMO_HEIGHT * dpr
+  if (canvas.width !== GIZMO_CANVAS_WIDTH * dpr || canvas.height !== GIZMO_CANVAS_HEIGHT * dpr) {
+    canvas.width = GIZMO_CANVAS_WIDTH * dpr
+    canvas.height = GIZMO_CANVAS_HEIGHT * dpr
   }
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   ctx.save()
   ctx.scale(dpr, dpr)
+  ctx.translate(GIZMO_PAD, GIZMO_PAD)  // into cube-square coordinates
 
   const W = GIZMO_SIZE, H = GIZMO_SIZE
   const q = _projQuat.copy(camera.quaternion).invert()
