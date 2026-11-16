@@ -32,7 +32,17 @@ export const GIZMO_STYLE: React.CSSProperties = {
 // is deliberately looser than a strict nz < 0: it keeps the slightly-grazing
 // edge and corner polygons at the silhouette clickable, which is where a user
 // aims for an axis snap.
+//
+// Faces do not get that slack: a face tilted just past edge-on painted as a
+// sliver seen from behind, outside the front faces, while the front-facing
+// edge band in front of it took every click. A face is culled the moment it
+// turns away (nz <= 0); the silhouette outline now shows where the edge and
+// corner bands end, which is what the slack was there to make reachable.
 export const GIZMO_CULL_NZ = -0.1
+
+export function isCulled(poly: { type: 'face' | 'edge' | 'vertex'; nz: number }): boolean {
+  return poly.type === 'face' ? poly.nz <= 0 : poly.nz < GIZMO_CULL_NZ
+}
 
 // ─── Cube geometry ───
 
@@ -580,7 +590,7 @@ export function computeGizmoHit(mx: number, my: number, _pv: Pv[], camera: THREE
   // Check from front to back
   for (let i = polys.length - 1; i >= 0; i--) {
     const poly = polys[i]
-    if (poly.nz < GIZMO_CULL_NZ) continue  // Back-face cull, same rule as draw
+    if (isCulled(poly)) continue  // Back-face cull, same rule as draw
     if (pointInPoly(mx, my, poly.pts)) {
       return { type: poly.type, index: poly.index, snapDir: poly.snapDir }
     }
@@ -619,7 +629,7 @@ export function drawCubeGizmo(
   const polys = getPolys(q, W, H)
 
   for (const poly of polys) {
-    if (poly.nz < GIZMO_CULL_NZ) continue  // Back-face cull, same rule as hit-test
+    if (isCulled(poly)) continue  // Back-face cull, same rule as hit-test
 
     const isHover = hover?.type === poly.type && hover.index === poly.index
 

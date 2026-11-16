@@ -6,7 +6,7 @@ import {
   gizmoLabelFont, fitLabelFontSize, ensureGizmoLabelFont,
   isGizmoLabelFontReady, resetGizmoLabelFontForTest,
   gizmoSilhouette, rollArrowPolygons, gizmoRequestFor, ROLL_CENTER, ROLL_STEP, type Hit, type Pv,
-  orbitTrianglePolygons, ORBIT_STEP,
+  orbitTrianglePolygons, ORBIT_STEP, isCulled,
 } from '@/components/misc/CubeGizmo.utils'
 
 // The navigation cube is pure geometry: project the 8 cube corners through the
@@ -161,7 +161,6 @@ describe('drawCubeGizmo', () => {
     const grazingCases: Array<[number, number, number, number, number]> = [
       // [eulerX, eulerY, eulerZ, pointerX, pointerY]
       [4.116454, 1.915205, 3.974011, 111, 45],  // edge 6 wins the pixel
-      [6.257305, 4.269182, 4.229359, 30, 75],  // face 4 wins the pixel
     ]
 
     const fillsFor = (camera: THREE.Camera, hover: Parameters<typeof drawCubeGizmo>[2]): string[] => {
@@ -192,6 +191,33 @@ describe('drawCubeGizmo', () => {
       // Consistency contract: whatever the hit-test can return must be drawn,
       // so the hover highlight it promises actually lights up.
       expect(fillsFor(cam, hit)).toContain('rgba(255,255,255,0.5)')
+    }
+  })
+})
+
+describe('back faces', () => {
+  // This pose used to paint face 4 (Top) as a sliver seen from behind, the
+  // pixel at (30, 75) on it: the face slack in the cull let it draw and win
+  // the hit-test although it faces away. A face is culled once nz <= 0.
+  const cam = cameraWith(new THREE.Quaternion().setFromEuler(new THREE.Euler(6.257305, 4.269182, 4.229359)))
+
+  it('never hits a face that turns away from the camera', () => {
+    const hit = computeGizmoHit(30, 75, [], cam)
+    if (hit && hit.type === 'face') {
+      const nz = hit.snapDir.clone().applyQuaternion(cam.quaternion.clone().invert()).z
+      expect(nz).toBeGreaterThan(0)
+    }
+  })
+
+  it('never draws a face that turns away, at any orientation', () => {
+    const q = new THREE.Quaternion()
+    for (let i = 0; i < 300; i++) {
+      q.setFromEuler(new THREE.Euler(i * 0.37, i * 0.91, i * 0.13)).invert()
+      for (const poly of getPolys(q, GIZMO_SIZE, GIZMO_SIZE)) {
+        if (poly.type === 'face' && poly.nz <= 0) expect(isCulled(poly)).toBe(true)
+        // Edges and corners keep the grazing slack.
+        if (poly.type !== 'face' && poly.nz < 0 && poly.nz >= GIZMO_CULL_NZ) expect(isCulled(poly)).toBe(false)
+      }
     }
   })
 })
