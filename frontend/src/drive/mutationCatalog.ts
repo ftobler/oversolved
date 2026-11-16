@@ -269,7 +269,8 @@ const VERTEX_REF_NOTE =
   + 'entity:<sketchId>:<entityId> / vertex:<sketchId>:<entityId>:<key>, where key is start/end on a line, '
   + 'center on a circle, start/end/center on an arc (start is the a0_deg end, end the a1_deg end), '
   + 'center/major1/major2/minor1/minor2 on an ellipse, start/c1/c2/end on a spline, '
-  + 'start/fit<k>/end/c1/c2 on a fit_spline, and xy on a point. Builtin refs such as @builtin_origin are also accepted.'
+  + 'start/fit<k>/end/c1/c2 on a fit_spline (interior keys are fit1..fitN, one-based; start and end are the endpoints), ' +
+  'and xy on a point. Builtin refs such as @builtin_origin are also accepted.'
 
 // The midpoint overload, spelled where a hand-written script reads it: the
 // applier classifies each target by what it names, so every spelling above is
@@ -701,8 +702,8 @@ const CREATED_IDS_REPLY_NOTE =
 const MIRROR_ENTITIES_NOTE =
   'Each source becomes a new authored entity (fresh ids, mirrored params, the construction flag carried); ' +
   'this is geometry, not a live mirror relation, and editing the source later does not move the copy. ' +
-  'Constraints carry when every operand is a source or the axis line (an entity pinned to the axis mirrors to ' +
-  'a copy pinned to the same axis): vertex refs remap by position, so a mirrored arc\'s `start` and `end` swap ' +
+  'Constraints carry when every operand is a source, the axis line, or a point (including a projected point) ' +
+  'sitting on the axis line (it mirrors to itself): vertex refs remap by position, so a mirrored arc\'s `start` and `end` swap ' +
   '(arcs keep their authored CCW sweep), values are unchanged, and sign-carrying dimensions ' +
   '(`point_distance_x`, `point_distance_y`, `line_distance`, `angle`) flip their side. `horizontal`/`vertical` ' +
   'survive only on a horizontal, vertical, or 45-deg axis (on a 45-deg axis they swap); any other operand ' +
@@ -1248,7 +1249,7 @@ export const MUTATION_CATALOG = {
   },
   add_entity_with_constraint: {
     summary: 'Add a sketch entity and pin one of its vertices to a snap target.',
-    note: '`vertexKey` names the new entity vertex the snap constraint attaches: start/end on a line, center on a circle, start/end/center on an arc (start is the a0_deg end), center/major1/major2/minor1/minor2 on an ellipse, start/c1/c2/end on a spline, xy on a point, start/fit<k>/end/c1/c2 on a fit_spline.',
+    note: '`vertexKey` names the new entity vertex the snap constraint attaches: start/end on a line, center on a circle, start/end/center on an arc (start is the a0_deg end), center/major1/major2/minor1/minor2 on an ellipse, start/c1/c2/end on a spline, xy on a point, start/fit<k>/end/c1/c2 on a fit_spline (interior keys fit1..fitN, one-based).',
     fields: {
       featureId: str(),
       kind: str('Entity kind: line, circle, arc, ellipse, spline, fit_spline or point. A fit_spline takes its flat fit points plus optional tangents/tangentScale.'),
@@ -2441,7 +2442,8 @@ export function validateMutation(raw: unknown, options: MutationValidationOption
       if (key === 'featureId') {
         const shape = TARGET_LIST_SHAPE[type as Mutation['type']]
         if (shape !== undefined) {
-          return fail('invalid-mutation', `${type} takes ${shape}`)
+          const unexpected = Object.keys(raw).filter(k => k !== 'type' && !Object.hasOwn(info.fields, k))
+          return fail('invalid-mutation', `${type} takes only targets; remove ${unexpected.join(', ')} (e.g. ${shape})`)
         }
       }
       return fail('invalid-mutation', `mutation type "${type}" has no field "${key}"${fieldHint(info.fields, key)}`)
