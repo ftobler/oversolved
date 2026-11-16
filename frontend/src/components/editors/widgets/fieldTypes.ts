@@ -60,6 +60,10 @@ export interface PickFieldDef extends BaseFieldDef {
   type: 'pick'
   multi?: boolean
   transform?: (selectionId: string) => string
+  // What a chip value names: `'body'` means the field names a whole body (a
+  // part), so the chip labels it through `bodyPickLabel` instead of treating
+  // the stored query as an element pick.
+  names?: 'body'
   // The field's own pick rule: null accepts the element; a string is the reason
   // to refuse it, and the text the user sees. The reason travels with the rule,
   // so a refusal cannot misstate what the field accepts. The feature list is
@@ -179,4 +183,5 @@ export interface PickFieldWidgetProps extends WidgetBaseProps {
   mutationPrefix: string
   features?: import('@/types/cad').PartFeature[]
   partLabels?: Record<string, string>
+  bodies?: Record<string, import('@/types/cad').BodyResult>
 }

@@ -6,7 +6,7 @@ import type { PickFieldWidgetProps } from './fieldTypes'
 import { StatusMessage } from '@/components/shared/StatusMessage'
 
 export function PickFieldWidget({
-  field, data, fid, onMutation, mutationPrefix, features, partLabels,
+  field, data, fid, onMutation, mutationPrefix, features, partLabels, bodies,
 }: PickFieldWidgetProps) {
   const isMulti = field.multi ?? false
   const rawValues: unknown = data[field.key]
@@ -79,6 +79,8 @@ export function PickFieldWidget({
   // geometry is the fix). Values added since the solve simply are not in either
   // set and stay neutral.
   const solveResult = usePartEditorStore(s => s.solveResults?.[fid])
+  const storeBodies = usePartEditorStore(s => s.bodies)
+  const effectiveBodies = bodies ?? storeBodies
   const solveSet = (key: string): ReadonlySet<string> | undefined => {
     if (typeof solveResult !== 'object' || solveResult === null) return undefined
     const raw = (solveResult as Record<string, unknown>)[key]
@@ -110,6 +112,8 @@ export function PickFieldWidget({
         emptyText={field.emptyText}
         features={features}
         partLabels={partLabels}
+        bodies={effectiveBodies}
+        labelKind={field.names === 'body' ? 'body' : undefined}
         unresolvedValues={unresolvedValues}
         failedValues={failedValues}
       />

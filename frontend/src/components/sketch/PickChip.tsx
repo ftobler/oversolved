@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import dragHandleIcon from '@/assets/icons/toolbar-menu.svg'
 import type { PartFeature } from '@/types/cad'
+import type { BodyResult } from '@/types/cad'
 import { queryLabel } from '@/utils/query/queryLabel'
+import { bodyPickLabel } from '@/utils/query/bodyPickLabel'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 export interface PickChipProps {
@@ -13,6 +15,10 @@ export interface PickChipProps {
   emptyText?: string
   features?: PartFeature[]
   partLabels?: Record<string, string>
+  bodies?: Record<string, BodyResult>
+  // When set, each value is labelled as a body (part) pick instead of an
+  // element pick. Passed by PickFieldWidget from the field's `names` flag.
+  labelKind?: 'body'
   // Values the last solve could not match to a current edge (kernel
   // `unresolved_edges`: a stale or deleted pick). Struck through so the user
   // re-picks them.
@@ -38,6 +44,8 @@ export function PickChip({
   emptyText,
   features,
   partLabels,
+  bodies,
+  labelKind,
   unresolvedValues,
   failedValues,
   inactiveValues,
@@ -58,9 +66,13 @@ export function PickChip({
   // Each label is a parse plus a linear feature scan; without this memo the
   // whole chip re-labelled on every keystroke elsewhere in the editor (g2-L4).
   const labels = useMemo(
-    () => (features ? valuesFromKey.map(v => queryLabel(v, features, partLabels)) : null),
+    () => (features
+      ? valuesFromKey.map(v => (labelKind === 'body'
+        ? bodyPickLabel(v, bodies, partLabels, features)
+        : queryLabel(v, features, partLabels)))
+      : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- valuesKey is the content identity of valuesFromKey
-    [valuesKey, features, partLabels],
+    [valuesKey, features, partLabels, bodies, labelKind],
   )
 
   // Two effects so a values-only change does not flicker through clear→re-add.

@@ -12,6 +12,7 @@ import { LENGTH_UNIT_NAME, lengthUnitOf } from '@/utils/lengthUnit'
 import { EmptyExportError, exportMime, exportPartBytes, partExportSpec, type PartExportOptions } from '@/utils/partExport'
 import { planExport, zipExportFiles, type ExportPart, type ExportScope } from '@/utils/exportSelection'
 import { isWholeBodySelectionId } from '@/utils/query/selectionId'
+import { partDisplayName } from '@/utils/core/partDisplayName'
 import { useEditorState } from '@/hooks/useEditorState'
 import { applySetLengthUnit } from '@/utils/yamlMutations'
 import type { LengthUnit, PartDoc } from '@/types/cad'
@@ -54,9 +55,9 @@ const PartExportImport = forwardRef<PartExportImportHandle, PartExportImportProp
         const name = defaultName ?? 'export'
         const bodies = usePartEditorStore.getState().bodies
         const labels = usePartEditorStore.getState().partLabels
-        const parts: ExportPart[] = Object.keys(bodies).map((id, index) => ({
+        const parts: ExportPart[] = Object.keys(bodies).map((id) => ({
           id,
-          name: labels[id]?.trim() || `part ${index + 1}`,
+          name: partDisplayName(id, labels, Object.keys(bodies)),
         }))
         // A body context-menu export can name a body the current solve has not
         // published yet. Keep it as the one available part rather than losing

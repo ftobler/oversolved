@@ -1507,6 +1507,7 @@ export default function Part() {
       activeSketchFeatureId: activeSketchFeatureId ?? undefined,
       showConstraintTiles: useSketchUiStore.getState().showConstraintTiles,
       partLabels,
+      orderedBodyIds: Object.keys(bodies),
       builtInIds: BUILT_IN_IDS,
       hasDanglingContent,
       projectedTargetIds,

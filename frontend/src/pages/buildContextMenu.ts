@@ -2,6 +2,7 @@ import type { PartFeature } from '@/types/cad'
 import type { ContextMenuItem } from '@/components/dialogs/RightClickMenu'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
 import { hasFeatureVisibilityToggle } from '@/components/layout/featureVisibilityKinds'
+import { partDisplayName } from '@/utils/core/partDisplayName'
 
 import contextRebuildIcon from '@/assets/icons/context-rebuild.svg'
 import contextHideIcon from '@/assets/icons/context-hide.svg'
@@ -75,6 +76,10 @@ export interface BuildContextMenuInput {
   activeSketchFeatureId: string | undefined
   showConstraintTiles: boolean
   partLabels: Record<string, string>
+  // Body ids in store order, for the `part N` fallback when a body has no
+  // stored label. Absent in unit tests; buildBodyMenu synthesises a single
+  // entry so an unlabelled body still reads `part 1`.
+  orderedBodyIds?: string[]
   builtInIds: Set<string>
   // Whether the last solve flagged any dangling projections or superfluous
   // constraints; gates the cleanup item so an empty command is never offered.
@@ -138,6 +143,9 @@ function buildBodyMenu(
   callbacks: BuildContextMenuCallbacks,
 ): BuildContextMenuOutput {
   const bodyId = input.targetId!.slice('body:'.length)
+  const ordered = [...(input.orderedBodyIds ?? Object.keys(input.partLabels))]
+  if (!ordered.includes(bodyId)) ordered.push(bodyId)
+  const currentName = partDisplayName(bodyId, input.partLabels, ordered)
   return {
     items: [
       {
@@ -146,7 +154,7 @@ function buildBodyMenu(
         onClick: () => callbacks.onRequestRename({
           kind: 'body',
           id: bodyId,
-          currentName: input.partLabels[bodyId] || bodyId,
+          currentName,
         }),
       },
       {
@@ -157,7 +165,7 @@ function buildBodyMenu(
       {
         label: 'Export',
         icon: featureExportIcon,
-        onClick: () => callbacks.onExportBody(bodyId, input.partLabels[bodyId] || bodyId),
+        onClick: () => callbacks.onExportBody(bodyId, currentName),
       },
     ],
   }

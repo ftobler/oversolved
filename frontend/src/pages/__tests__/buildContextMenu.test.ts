@@ -147,7 +147,7 @@ describe('buildContextMenu', () => {
     callbacks.onExportBody = (bodyId, name) => { seen.push([bodyId, name]) }
     const result = buildContextMenu(defaultInput({ targetId: 'body:b1' }), callbacks)
     findLabel(result.items, 'Export')!.onClick()
-    expect(seen).toEqual([['b1', 'b1']])
+    expect(seen).toEqual([['b1', 'part 1']])
   })
 
   it('offers Unsuppress for a suppressed feature and toggles it off', () => {
@@ -502,7 +502,7 @@ describe('buildContextMenu', () => {
     callbacks.onRequestRename = t => { seen.push(t) }
     const result = buildContextMenu(defaultInput({ targetId: 'body:b1' }), callbacks)
     findLabel(result.items, 'Rename')!.onClick()
-    expect(seen[0].currentName).toBe('b1')
+    expect(seen[0].currentName).toBe('part 1')
   })
 
   it('requests a feature rename carrying the current label', () => {

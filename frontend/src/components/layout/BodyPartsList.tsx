@@ -1,4 +1,5 @@
 import { usePartEditorStore } from '@/stores/partEditorStore'
+import { partDisplayName } from '@/utils/core/partDisplayName'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorCallbacks } from '@/contexts/PartEditorContext'
 import featurePartIcon from '@/assets/icons/feature-part.svg'
@@ -30,9 +31,9 @@ export function BodyPartsList() {
         {doc && Object.keys(bodies || {}).length === 0 ? (
           <li className="empty">No parts</li>
         ) : (
-          Object.entries(bodies || {}).map(([bodyId], index) => {
+          Object.entries(bodies || {}).map(([bodyId]) => {
             const isHidden = visibleBodies ? !visibleBodies.has(bodyId) : false
-            const partLabel = partLabels?.[bodyId] ?? `part ${index + 1}`
+            const partLabel = partDisplayName(bodyId, partLabels, Object.keys(bodies || {}))
             return (
               <li
                 key={bodyId}
