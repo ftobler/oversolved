@@ -1,5 +1,7 @@
 import * as THREE from 'three'
-import { GIZMO_STYLE, type Pv, type Hit, computeGizmoHit } from '@/components/misc/CubeGizmo.utils'
+import {
+  GIZMO_STYLE, type GizmoRequest, type Pv, type Hit, computeGizmoHit, gizmoRequestFor,
+} from '@/components/misc/CubeGizmo.utils'
 
 // ─── Canvas overlay component ───
 
@@ -7,7 +9,7 @@ interface CubeGizmoCanvasProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>
   pvRef: React.MutableRefObject<Pv[]>
   hoverRef: React.MutableRefObject<Hit | null>
-  snapRef: React.MutableRefObject<THREE.Vector3 | null>
+  snapRef: React.MutableRefObject<GizmoRequest | null>
   cameraRef: React.MutableRefObject<THREE.Camera | null>
   // The viewport draws on demand, and this HUD canvas is painted from the
   // render loop (SceneController's useFrame). Hover and snap both change what
@@ -55,7 +57,7 @@ export function CubeGizmoCanvas({ canvasRef, pvRef, hoverRef, snapRef, cameraRef
     if (!pos || !cameraRef.current || pvRef.current.length === 0) return
     const hit = computeGizmoHit(pos.x, pos.y, pvRef.current, cameraRef.current)
     if (hit) {
-      snapRef.current = hit.snapDir
+      snapRef.current = gizmoRequestFor(hit)
       onRequestRender?.()
     }
   }

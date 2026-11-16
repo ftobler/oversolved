@@ -18,7 +18,7 @@ import { Environment } from '@react-three/drei'
 import * as THREE from 'three'
 import { CubeGizmoCanvas } from '@/components/misc/CubeGizmo'
 import '@/components/Viewport/ViewportHud.css'
-import type { Hit, Pv } from '@/components/misc/CubeGizmo.utils'
+import type { GizmoRequest, Hit, Pv } from '@/components/misc/CubeGizmo.utils'
 import SceneController from '@/components/Viewport/SceneController'
 import { useSceneExposure } from '@/components/Viewport/SceneExposure'
 import EnvLight, { ENV_INTENSITY } from '@/components/Viewport/EnvLight'
@@ -173,7 +173,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   const pipelineRef = useRef<IdPipeline | null>(null)
   const pvRef = useRef<Pv[]>([])
   const hoverRef = useRef<Hit | null>(null)
-  const snapRef = useRef<THREE.Vector3 | null>(null)
+  const snapRef = useRef<GizmoRequest | null>(null)
   const cameraRef = useRef<THREE.Camera | null>(null)
   const controlsRef = useRef<TurntableControls | null>(null)
   const glRef = useRef<THREE.WebGLRenderer | null>(null)

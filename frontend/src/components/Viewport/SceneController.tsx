@@ -2,8 +2,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { drawCubeGizmo, type Pv, type Hit } from '@/components/misc/CubeGizmo.utils'
-import { snapToDirection } from '@/components/Viewport/cameraController'
+import { drawCubeGizmo, type GizmoRequest, type Pv, type Hit } from '@/components/misc/CubeGizmo.utils'
+import { orbitView, rollView, snapToDirection } from '@/components/Viewport/cameraController'
 import { deriveOrbitEnabled } from '@/components/Viewport/orbitEnabled'
 import { pickPivotPoint } from '@/components/Viewport/pivotPick'
 import { useViewOptionsStore } from '@/stores/viewOptionsStore'
@@ -35,7 +35,7 @@ interface SceneControllerProps {
   gizmoCanvasRef: React.RefObject<HTMLCanvasElement | null>
   pvRef: React.MutableRefObject<Pv[]>
   hoverRef: React.MutableRefObject<Hit | null>
-  snapRef: React.MutableRefObject<THREE.Vector3 | null>
+  snapRef: React.MutableRefObject<GizmoRequest | null>
   cameraRef: React.MutableRefObject<THREE.Camera | null>
   controlsRef: React.MutableRefObject<TurntableControls | null>
   /**
@@ -156,8 +156,11 @@ export default function SceneController({ gizmoCanvasRef, pvRef, hoverRef, snapR
   }, [orbitAllowed, showSeq])
 
   useFrame(() => {
-    if (snapRef.current) {
-      snapToDirection(camera, ctrlRef.current, snapRef.current)
+    const request = snapRef.current
+    if (request) {
+      if (request instanceof THREE.Vector3) snapToDirection(camera, ctrlRef.current, request)
+      else if ('roll' in request) rollView(camera, ctrlRef.current, request.roll)
+      else orbitView(camera, ctrlRef.current, request.orbit.right, request.orbit.up, request.orbit.angle)
       snapRef.current = null
     }
 

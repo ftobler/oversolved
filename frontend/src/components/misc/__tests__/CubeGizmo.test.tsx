@@ -3,8 +3,8 @@ import { render, fireEvent } from '@testing-library/react'
 import * as THREE from 'three'
 import { createRef } from 'react'
 import { CubeGizmoCanvas } from '@/components/misc/CubeGizmo'
-import { GIZMO_SIZE } from '@/components/misc/CubeGizmo.utils'
-import type { Pv, Hit } from '@/components/misc/CubeGizmo.utils'
+import { GIZMO_SIZE, ROLL_CENTER, ROLL_STEP } from '@/components/misc/CubeGizmo.utils'
+import type { GizmoRequest, Pv, Hit } from '@/components/misc/CubeGizmo.utils'
 
 // The gizmo overlay is a plain <canvas> with DOM handlers; it owns no R3F scene,
 // so it is unit testable in isolation (the "delete the Viewport, logic still
@@ -22,7 +22,7 @@ function mount(onRequestRender?: () => void) {
   const canvasRef = createRef<HTMLCanvasElement>()
   const pvRef = { current: [{ sx: 1, sy: 1, z: 0 }] as Pv[] }  // non-empty passes the guard
   const hoverRef = { current: null as Hit | null }
-  const snapRef = { current: null as THREE.Vector3 | null }
+  const snapRef = { current: null as GizmoRequest | null }
   const cameraRef = { current: identityCamera() as THREE.Camera | null }
 
   // A React ancestor stands in for the viewport pane, whose container-level
@@ -68,10 +68,20 @@ describe('CubeGizmo click writes the camera snap direction', () => {
   it('a click on the cube centre writes the faced direction into snapRef', () => {
     const C = GIZMO_SIZE / 2
     fireEvent.click(m.canvas, { clientX: C, clientY: C })
-    expect(m.snapRef.current).not.toBeNull()
-    expect(m.snapRef.current!.x).toBeCloseTo(0)
-    expect(m.snapRef.current!.y).toBeCloseTo(0)
-    expect(m.snapRef.current!.z).toBeCloseTo(1)
+    const dir = m.snapRef.current
+    expect(dir).toBeInstanceOf(THREE.Vector3)
+    expect((dir as THREE.Vector3).x).toBeCloseTo(0)
+    expect((dir as THREE.Vector3).y).toBeCloseTo(0)
+    expect((dir as THREE.Vector3).z).toBeCloseTo(1)
+  })
+
+  it('a click on the 8 o\'clock arrow asks for a clockwise 15 degree roll', () => {
+    // 7 o'clock on the arrow radius: the middle of the clockwise arrow.
+    fireEvent.click(m.canvas, {
+      clientX: ROLL_CENTER.x - 70 * Math.sin(Math.PI / 6),
+      clientY: ROLL_CENTER.y + 70 * Math.cos(Math.PI / 6),
+    })
+    expect(m.snapRef.current).toEqual({ roll: ROLL_STEP })
   })
 
   it('a click outside the cube leaves snapRef untouched', () => {
