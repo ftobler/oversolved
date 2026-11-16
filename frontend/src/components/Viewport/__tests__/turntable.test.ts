@@ -19,7 +19,7 @@ import {
   turnAbout,
 } from '@/components/Viewport/turntable'
 import { pickPivotPoint } from '@/components/Viewport/pivotPick'
-import { alignToFace, alignToFrame, snapToDirection } from '@/components/Viewport/cameraController'
+import { alignToFace, alignToFrame, orbitView, rollView, snapToDirection } from '@/components/Viewport/cameraController'
 
 // The pure half of the orbit law plus the controller against a real camera.
 // No R3F scene: the camera and a detached canvas are all these cases need.
@@ -756,5 +756,104 @@ describe('trackball orbit', () => {
     expect(other.roll).toBe(controls.roll)
     controls.setDirection(new THREE.Vector3(1, 0, 0))
     expect(controls.roll).toBe(0)
+  })
+})
+
+describe('view roll (cube roll arrows)', () => {
+  // Where a world point lands in camera space: x right, y up the screen.
+  const toCamera = (camera: THREE.Camera, p: THREE.Vector3) =>
+    p.clone().sub(camera.position).applyQuaternion(camera.quaternion.clone().invert())
+
+  it('turns the scene clockwise on screen for a positive roll, keeping the view direction', () => {
+    const camera = makeCamera()
+    const controls = makeControls(camera)
+    controls.setDirection(new THREE.Vector3(0, 0, 1), { distance: 100, target: new THREE.Vector3() })
+    const before = camera.position.clone()
+    const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion)
+
+    rollView(camera, controls, Math.PI / 4)
+
+    expect(camera.position.distanceTo(before)).toBeLessThan(1e-9)
+    const after = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion)
+    expect(after.angleTo(forward)).toBeLessThan(1e-9)
+    // A point right of centre swings down: right to down is clockwise.
+    const p = toCamera(camera, new THREE.Vector3(10, 0, 0))
+    expect(p.x).toBeCloseTo(10 * Math.SQRT1_2)
+    expect(p.y).toBeCloseTo(-10 * Math.SQRT1_2)
+    expect(controls.roll).toBeCloseTo(Math.PI / 4)
+  })
+
+  it('comes back level after eight steps and wraps instead of growing', () => {
+    const controls = makeControls()
+    for (let i = 0; i < 8; i++) controls.rollBy(Math.PI / 4)
+    expect(Math.abs(Math.sin(controls.roll))).toBeLessThan(1e-9)
+    expect(Math.abs(controls.roll)).toBeLessThanOrEqual(Math.PI + 1e-9)
+    controls.rollBy(-Math.PI / 4)
+    controls.rollBy(Math.PI / 4)
+    expect(Math.abs(Math.sin(controls.roll))).toBeLessThan(1e-9)
+  })
+
+  it('survives the snapshot a Suspense re-show carries', () => {
+    const controls = makeControls()
+    controls.rollBy(Math.PI / 4)
+    const fresh = makeControls()
+    restoreTurntablePose(fresh, snapshotTurntablePose(controls))
+    expect(fresh.roll).toBeCloseTo(Math.PI / 4)
+  })
+
+  it('rolls the same way without a controller', () => {
+    const camera = makeCamera()
+    camera.position.set(0, 0, 100)
+    camera.lookAt(0, 0, 0)
+    rollView(camera, null, Math.PI / 4)
+    const p = toCamera(camera, new THREE.Vector3(10, 0, 0))
+    expect(p.y).toBeCloseTo(-10 * Math.SQRT1_2)
+  })
+})
+
+describe('orbit step (cube orbit triangles)', () => {
+  const step = Math.PI / 12
+
+  it('moves the camera up over the model for north and right for east', () => {
+    for (const withControls of [true, false]) {
+      const camera = makeCamera()
+      camera.position.set(0, 0, 100)
+      camera.lookAt(0, 0, 0)
+      const controls = withControls ? makeControls(camera) : null
+      controls?.setDirection(new THREE.Vector3(0, 0, 1), { distance: 100, target: new THREE.Vector3() })
+
+      orbitView(camera, controls, 0, 1, step)
+      expect(camera.position.y).toBeCloseTo(100 * Math.sin(step))
+      expect(camera.position.x).toBeCloseTo(0)
+
+      orbitView(camera, controls, 0, -1, step)
+      orbitView(camera, controls, 1, 0, step)
+      expect(camera.position.x).toBeCloseTo(100 * Math.sin(step))
+      expect(camera.position.y).toBeCloseTo(0)
+      // Still looking at the target, at the same distance.
+      const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion)
+      expect(forward.dot(camera.position.clone().normalize())).toBeCloseTo(-1)
+      expect(camera.position.length()).toBeCloseTo(100)
+    }
+  })
+
+  it('follows the screen axes of a rolled view', () => {
+    const camera = makeCamera()
+    const controls = makeControls(camera)
+    controls.setDirection(new THREE.Vector3(0, 0, 1), { distance: 100, target: new THREE.Vector3() })
+    controls.rollBy(Math.PI / 2)
+    const screenUp = new THREE.Vector3(0, 1, 0).applyQuaternion(camera.quaternion)
+    controls.orbitStep(0, 1, step)
+    const moved = camera.position.clone().normalize()
+    expect(moved.dot(screenUp)).toBeCloseTo(Math.sin(step))
+  })
+
+  it('comes back round after 24 steps', () => {
+    const camera = makeCamera()
+    const controls = makeControls(camera)
+    controls.setDirection(new THREE.Vector3(1, 0.5, 1), { distance: 100, target: new THREE.Vector3() })
+    const start = camera.position.clone()
+    for (let i = 0; i < 24; i++) controls.orbitStep(0, 1, step)
+    expect(camera.position.distanceTo(start)).toBeLessThan(1e-6)
   })
 })
