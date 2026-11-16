@@ -19,6 +19,7 @@ import type { HandleTable } from '../occ/handleTable'
 import { resolveMergeTargets } from './shared/bodyResolution'
 import { brepDiffIsEmpty } from './shared/brepDiff'
 import { booleanWithDiff, countSolids, shapesIntersect, volumeOf } from '../occ/booleans'
+import { DEFAULT_MEASURE_TOLERANCE, valueWithinTolerance } from '../occ/measureTolerance'
 import { nearCoaxialCylinderWarning, shapeHasCoaxialCylinder } from '../occ/nearCoaxial'
 import type { HelixAxis } from './shared/helixPath'
 import { transferBooleanNames } from './booleanLineage'
@@ -106,6 +107,41 @@ function assertPositiveVolume(
 // Rounding on a sliver can make a near-zero volume read a hair negative; only a
 // sign that survives that noise is a reversed shell.
 const NEGATIVE_VOLUME_EPS = 1e-9
+
+/** Count the faces of a shape via a TopExp walk (every occurrence). */
+function countFaces(oc: OccModule, scope: DisposeScope, shape: OccShape): number {
+  const E = oc.TopAbs_ShapeEnum
+  const exp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
+  let n = 0
+  for (; exp.More(); exp.Next()) n++
+  return n
+}
+
+/** Count the edges of a shape via a TopExp walk (every occurrence). */
+function countEdges(oc: OccModule, scope: DisposeScope, shape: OccShape): number {
+  const E = oc.TopAbs_ShapeEnum
+  const exp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_EDGE, E.TopAbs_SHAPE))
+  let n = 0
+  for (; exp.More(); exp.Next()) n++
+  return n
+}
+
+/** True when two shapes agree on volume (within the measure tolerance) and on
+ *  face and edge counts. A flush add can split a face with zero volume change
+ *  and still counts as "changed" once the face count moves, so all three have
+ *  to agree before the operation is called a no-op. */
+function shapeUnchanged(
+  oc: OccModule,
+  scope: DisposeScope,
+  before: { volume: number; faces: number; edges: number },
+  afterShape: OccShape,
+): boolean {
+  const afterVolume = volumeOf(oc, scope, afterShape)
+  if (!valueWithinTolerance(afterVolume, before.volume, DEFAULT_MEASURE_TOLERANCE)) return false
+  if (countFaces(oc, scope, afterShape) !== before.faces) return false
+  if (countEdges(oc, scope, afterShape) !== before.edges) return false
+  return true
+}
 
 /**
  * The error an `add` that must extend existing material raises. The two texts
@@ -251,6 +287,10 @@ export function applyBodyOperation(
     let cutBodyId: string | null = null
     const cutBodyIds: string[] = []
     const consumedBodyIds: string[] = []
+    // Whether any target body actually changed shape (volume or topology). A
+    // cut that reached a body but removed nothing leaves this false, so the
+    // operation is reported as a no-op instead of a silent green.
+    let anyBodyChanged = false
     for (const bid of targetIds) {
       const existingBody = bodyStore[bid]
       if (existingBody.shape === null) continue
@@ -260,6 +300,17 @@ export function applyBodyOperation(
       // open-shelled imported body is not read as disjoint (L5). A failed probe
       // returns true, so nothing here can skip on a throw.
       if (!shapesIntersect(oc, oldShape, toolShape)) continue
+
+      // Snapshot the target before the boolean so a no-op cut (tool inside a
+      // void, or flush with the surface) can be detected on the result rather
+      // than by probing the tool.
+      const oldMetrics = oc === null
+        ? null
+        : {
+            volume: volumeOf(oc, scope, oldShape),
+            faces: countFaces(oc, scope, oldShape),
+            edges: countEdges(oc, scope, oldShape),
+          }
 
       // Widen the merge by what the solver reported for this body and this
       // tool, up to the ceiling; a clamped merge is named on the result.
@@ -285,8 +336,14 @@ export function applyBodyOperation(
         delete bodyStore[bid]
         cutAnything = true
         consumedBodyIds.push(bid)
+        anyBodyChanged = true
         continue
       }
+
+      const bodyChanged = oldMetrics === null
+        ? true
+        : !shapeUnchanged(oc, scope, oldMetrics, newShape)
+      if (bodyChanged) anyBodyChanged = true
 
       const targetNames = readBodyNames(oc, scope, oldShape, existingBody)
       const names = transferBooleanNames(oc, scope, {
@@ -350,6 +407,12 @@ export function applyBodyOperation(
     if (cutBody && brepDiffIsEmpty(cutBody.brep_diff)) {
       result.solver_warning = `${opName}: operation produced no geometry change`
     }
+    if (cutAnything && !anyBodyChanged && !String(result.solver_warning ?? '').includes('no geometry change')) {
+      const noChange = `${opName}: operation produced no geometry change`
+      result.solver_warning = result.solver_warning === undefined
+        ? noChange
+        : `${result.solver_warning}; ${noChange}`
+    }
     if (consumedBodyIds.length > 0 && cutConsumptionIsWorthReporting(mergeTarget, bodyStore)) {
       // The bodies are gone, so body_ids must not name them. This is the same
       // deletion event hole and array report, with the same wording.
@@ -381,6 +444,9 @@ export function applyBodyOperation(
   let fusedIds: string[] = []
   // Read on the fused shell, where the two faces the boolean kept still exist.
   let nearCoaxial: string | null = null
+  // Whether the fused body's shape actually changed (volume or topology). A
+  // contained add leaves it unchanged, so the operation is a no-op.
+  let fusedBodyChanged = false
   if (!needNewBody) {
     for (const bid of targetIds) {
       const existingBody = bodyStore[bid]
@@ -427,6 +493,18 @@ export function applyBodyOperation(
       }
       // Only a shape that will actually replace the body is worth warning
       // about; a disjoint default-add attempt is discarded above.
+      // Snapshot the target now (after the disjoint skip) so a skipped body
+      // does not pay for the face/edge walks.
+      const oldMetrics = oc === null
+        ? null
+        : {
+            volume: volumeOf(oc, scope, oldShape),
+            faces: countFaces(oc, scope, oldShape),
+            edges: countEdges(oc, scope, oldShape),
+          }
+      fusedBodyChanged = oldMetrics === null
+        ? true
+        : !shapeUnchanged(oc, scope, oldMetrics, newShape)
       nearCoaxial = nearCoaxialCylinderWarning(oc, scope, newShape)
       const targetNames = readBodyNames(oc, scope, oldShape, existingBody)
       const names = transferBooleanNames(oc, scope, {
@@ -468,7 +546,7 @@ export function applyBodyOperation(
     result.body_ids = fusedIds
     result.operation = 'add'
     const fusedBody = fusedBodyId !== null ? bodyStore[fusedBodyId] : undefined
-    if (fusedBody && brepDiffIsEmpty(fusedBody.brep_diff)) {
+    if (fusedBody && (!fusedBodyChanged || brepDiffIsEmpty(fusedBody.brep_diff))) {
       result.solver_warning = `${opName}: operation produced no geometry change`
     }
     if (nearCoaxial !== null) {

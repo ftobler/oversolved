@@ -848,7 +848,8 @@ const EXTRUDE_UP_TO_START_NOTE =
   'height. It needs a face target (`up_to` on a face, or `up_to_next`): a datum plane or point has no ' +
   'surface. It is refused with `direction: symmetric` and with a taper. The two useful pairings are ' +
   '`operation: add` with a positive offset (an emboss, raised) and `operation: cut` with a negative offset ' +
-  '(a deboss, sunk); the other pairings are legal and change nothing, with the usual no-change warning. ' +
+  '(a deboss, sunk); the other pairings are legal and change nothing, carrying the same no-change warning ' +
+  'as any add or cut that changes nothing. ' +
   'Recipes: emboss by h is a sketch on a plane in front of the curved surface, `add`, `termination: up_to` ' +
   'the face, `up_to_start: surface`, `up_to_offset: h`; deboss by h is the same with `cut` and a negative ' +
   'offset (minus h). Without `up_to_start: surface`, a sketch behind the surface (inside the body) with ' +
@@ -901,7 +902,8 @@ const EXTRUDE_ADD_NOTE =
   'An `add` extends an existing body: with no `merge_target` it fuses the first body its profile reaches, and ' +
   'a profile that reaches none fails the feature (`add does not merge with any existing body`). Start a new ' +
   'body with `operation: new`. An add that fuses one body and also reaches another reports the untouched ' +
-  'body in `solver_warning`.'
+  'body in `solver_warning`. An `add` or `cut` that changes nothing (tool wholly inside or outside the body) ' +
+  'reports `extrude: operation produced no geometry change` in `solver_warning`.'
 
 // The symmetric split is the one direction whose distance reads two ways
 // (sprocket, ppp0103 F2, ppp0105 F3).

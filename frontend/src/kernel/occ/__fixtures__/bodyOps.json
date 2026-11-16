@@ -288,7 +288,8 @@
       "body_ids": [
         "body_t"
       ],
-      "operation": "add"
+      "operation": "add",
+      "solver_warning": "extrude: operation produced no geometry change"
     },
     "store": {
       "body_t": {
