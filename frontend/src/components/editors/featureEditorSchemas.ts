@@ -579,7 +579,7 @@ function normalizePatternSource(raw: SchemaData): SchemaData {
 const patternSkipField = (defaultCount: number): TextFieldDef => ({
   // The page-selector text: signed indices only, `i:j` for a grid cell.
   type: 'text', key: 'skip', label: 'Skip Instances', default: '',
-  placeholder: 'e.g. 2, 5 or 1:0',
+  placeholder: 'e.g. 2, 5 or 2:-1',
   title: SKIP_LIST_TITLE,
   format: (v) => formatSkipList(Array.isArray(v) ? v as SkipEntry[] : []),
   parse: (text) => { const parsed = parseSkipList(text); return parsed.ok ? parsed.skip : null },

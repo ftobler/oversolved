@@ -27,7 +27,8 @@ describe('field layout invariant', () => {
       if (!/flex-basis:\s*100%/.test(body)) continue
       if (!selector.includes('.feature-field-row')) continue
 
-      const allowed = selector.includes('--stacked') || selector.includes(':has(')
+      const allowed =
+        selector.includes('--stacked') || selector.includes(':has(> .status-message)')
       expect(allowed, `disallowed flex-basis: 100% in ${selector}`).toBe(true)
     }
   })

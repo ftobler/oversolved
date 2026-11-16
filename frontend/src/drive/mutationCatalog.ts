@@ -902,8 +902,10 @@ const EXTRUDE_ADD_NOTE =
   'An `add` extends an existing body: with no `merge_target` it fuses the first body its profile reaches, and ' +
   'a profile that reaches none fails the feature (`add does not merge with any existing body`). Start a new ' +
   'body with `operation: new`. An add that fuses one body and also reaches another reports the untouched ' +
-  'body in `solver_warning`. An `add` or `cut` that changes nothing (tool wholly inside or outside the body) ' +
-  'reports `extrude: operation produced no geometry change` in `solver_warning`.'
+  'body in `solver_warning`. An `add` that changes nothing (tool wholly inside or outside the body), or a ' +
+  '`cut` that removes no material, ' +
+  'reports `extrude: operation produced no geometry change` in `solver_warning`. A wholly-outside cut instead ' +
+  'fails with `cut does not intersect`.'
 
 // The symmetric split is the one direction whose distance reads two ways
 // (sprocket, ppp0103 F2, ppp0105 F3).
