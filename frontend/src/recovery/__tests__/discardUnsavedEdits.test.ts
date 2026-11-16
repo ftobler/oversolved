@@ -25,16 +25,6 @@ function makeStoreDouble() {
   return { store, cleared }
 }
 
-function makeWorkspaceDouble(ahead: boolean) {
-  const discarded: string[] = []
-  const opened: string[] = []
-  const ws = {
-    open: vi.fn(async (workspace: string) => { opened.push(workspace); return { ahead } }),
-    discard: vi.fn(async (workspace: string) => { discarded.push(workspace) }),
-  }
-  return { ws, discarded, opened }
-}
-
 beforeEach(() => {
   useUnsavedChangesStore.getState().setDirty(true)
 })
@@ -47,23 +37,9 @@ afterEach(() => {
 describe('discardUnsavedEdits', () => {
   it('clears the journal row for a document editor', async () => {
     const { store, cleared } = makeStoreDouble()
-    const { ws } = makeWorkspaceDouble(false)
-    await discardUnsavedEdits({ workspace: 'ws-1', docId: 'doc-1', store, workspaceStore: ws })
+
+    await discardUnsavedEdits({ workspace: 'ws-1', docId: 'doc-1', store })
     expect(cleared).toEqual(['doc-1'])
-  })
-
-  it('resets the working copy when it is ahead', async () => {
-    const { store } = makeStoreDouble()
-    const { ws, discarded } = makeWorkspaceDouble(true)
-    await discardUnsavedEdits({ workspace: 'ws-1', docId: null, store, workspaceStore: ws })
-    expect(discarded).toEqual(['ws-1'])
-  })
-
-  it('leaves the working copy untouched when not ahead', async () => {
-    const { store } = makeStoreDouble()
-    const { ws, discarded } = makeWorkspaceDouble(false)
-    await discardUnsavedEdits({ workspace: 'ws-1', docId: null, store, workspaceStore: ws })
-    expect(discarded).toEqual([])
   })
 
   it('does not setDirty(false) on a rejected clear', async () => {
@@ -73,35 +49,24 @@ describe('discardUnsavedEdits', () => {
       write: vi.fn(),
       clear: vi.fn(async () => { throw new Error('boom') }),
     }
-    const { ws } = makeWorkspaceDouble(false)
-    await expect(discardUnsavedEdits({ workspace: 'ws-1', docId: 'doc-1', store, workspaceStore: ws })).rejects.toThrow('boom')
-    expect(useUnsavedChangesStore.getState().dirty).toBe(true)
-  })
 
-  it('does not setDirty(false) on a rejected discard', async () => {
-    useUnsavedChangesStore.getState().setDirty(true)
-    const { store } = makeStoreDouble()
-    const ws = {
-      open: vi.fn(async () => ({ ahead: true })),
-      discard: vi.fn(async () => { throw new Error('nope') }),
-    }
-    await expect(discardUnsavedEdits({ workspace: 'ws-1', docId: null, store, workspaceStore: ws })).rejects.toThrow('nope')
+    await expect(discardUnsavedEdits({ workspace: 'ws-1', docId: 'doc-1', store })).rejects.toThrow('boom')
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
   })
 
   it('sets dirty false on success', async () => {
     const { store } = makeStoreDouble()
-    const { ws } = makeWorkspaceDouble(false)
+
     useUnsavedChangesStore.getState().setDirty(true)
-    await discardUnsavedEdits({ workspace: 'ws-1', docId: 'doc-1', store, workspaceStore: ws })
+    await discardUnsavedEdits({ workspace: 'ws-1', docId: 'doc-1', store })
     expect(useUnsavedChangesStore.getState().dirty).toBe(false)
   })
 
   it('a second call is harmless', async () => {
     const { store } = makeStoreDouble()
-    const { ws } = makeWorkspaceDouble(false)
-    await discardUnsavedEdits({ workspace: 'ws-1', docId: 'doc-1', store, workspaceStore: ws })
-    await discardUnsavedEdits({ workspace: 'ws-1', docId: 'doc-1', store, workspaceStore: ws })
+
+    await discardUnsavedEdits({ workspace: 'ws-1', docId: 'doc-1', store })
+    await discardUnsavedEdits({ workspace: 'ws-1', docId: 'doc-1', store })
     expect(store.clear).toHaveBeenCalledTimes(2)
   })
 
@@ -133,8 +98,8 @@ describe('discardUnsavedEdits', () => {
     session.execute(addExtrude('ex1', 1))
     // advance partially
     await vi.advanceTimersByTimeAsync(100)
-    const { ws } = makeWorkspaceDouble(false)
-    await discardUnsavedEdits({ workspace: 'ws-1', docId: 'doc-1', autosave: handle, store, workspaceStore: ws })
+
+    await discardUnsavedEdits({ workspace: 'ws-1', docId: 'doc-1', autosave: handle, store })
     // advance past debounce
     await vi.advanceTimersByTimeAsync(RECOVERY_DEBOUNCE_MS + 100)
     // clear called at least once; write should not be called after clear count? 
