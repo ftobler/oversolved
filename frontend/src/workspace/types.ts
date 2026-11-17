@@ -55,6 +55,10 @@ export interface WorkspaceManifest {
   references: ReferenceEdges
   provenance: ProvenanceRecord[]
   trash: string[]  // entry ids, soft-deleted, serialized
+  // The user's choice of which document's preview stands for the workspace, an
+  // entry id. Workspace metadata like the name, not a document mutation; absent
+  // means the automatic resolution picks one.
+  cover?: string
 }
 
 // The aggregate view callers use. entryById composes it from the manifest row
