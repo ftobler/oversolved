@@ -114,7 +114,7 @@ export function faceWires(oc: OccModule, scope: DisposeScope, face: OccShape): {
  * clockwise, so a positive offset would move it into the material; reversing it
  * makes every section CCW and lets the outer and hole offsets use one sign rule.
  */
-export function reversedWire(oc: OccModule, scope: DisposeScope, wire: OccShape): OccShape {
+function reversedWire(oc: OccModule, scope: DisposeScope, wire: OccShape): OccShape {
   const reversed = scope.track((wire as ReversibleShape).Reversed())
   return scope.track(oc.TopoDS.Wire_1(reversed))
 }

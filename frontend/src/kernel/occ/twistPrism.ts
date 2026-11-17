@@ -28,7 +28,7 @@ import type {
   OccSubShape,
 } from './occTypes'
 import type { DraftPrismBuilder } from './draftPrism'
-import { draftPrismBuilder, faceWires, findCaps, generatedFaces, reversedWire, shapeProxy } from './draftPrism'
+import { draftPrismBuilder, faceWires, findCaps, generatedFaces, shapeProxy } from './draftPrism'
 import { makeCircleEdge, makeEllipseEdge, makeWire, SubShapeMultiIndex, type Vec3 } from './primitives'
 import { booleanWithHistory } from './booleans'
 import { noProgress } from './defaultArgs'
@@ -265,9 +265,10 @@ export function twistPrismBuilder(
   const { outer, holes } = faceWires(oc, scope, face)
   const twistDeg = (twistRad * 180) / Math.PI
   const sections = twistSectionCount(twistDeg)
-  // A hole wire comes off the face clockwise; reversing it makes every loft run
-  // the same way round and keeps the cut carrying the bore wall's lineage.
-  const plans = [outer, ...holes.map((hole) => reversedWire(oc, scope, hole))]
+  // Unlike the draft prism, holes are not reversed: a pure rotation has no
+  // offset whose sign the winding could flip, so every section keeps the
+  // orientation the face holds and the loft runs the same way on both.
+  const plans = [outer, ...holes]
   const lofts = plans.map((wire) =>
     loftSections(oc, scope, wire, axisOrigin, direction, distance, twistRad, sections),
   )
