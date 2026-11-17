@@ -16,7 +16,7 @@ import {
 } from '@/picking'
 import { runScript, type ScriptFailure, type ScriptRunOutcome, type ScriptStep } from './scriptRunner'
 import { validateMutation } from './mutationCatalog'
-import { patternAliasNote } from './patternAlias'
+import { instanceSketchAliasNote, patternAliasNote } from './patternAlias'
 import type { JournalEntry, ReproPayload } from './journal'
 
 // The registry failures plus the bridge's own guard for an executor that
@@ -286,7 +286,9 @@ export function createDriveSurface(deps: DriveSurfaceDeps): DriveSurface {
       // The adapter's null means there was no document to apply the step to:
       // a script run before the editor mounted must not report every step ok.
       if (!result) return { ok: false, code: 'no-document', message: 'no document is open to apply the step to' }
-      const alias = result.ok ? patternAliasNote(validated.mutation) : null
+      const alias = result.ok
+        ? patternAliasNote(validated.mutation) ?? instanceSketchAliasNote(validated.mutation)
+        : null
       const reply = result.ok && result.noOp !== true
         ? importLayerReply(validated.mutation, deps.doc?.() ?? null)
         : null

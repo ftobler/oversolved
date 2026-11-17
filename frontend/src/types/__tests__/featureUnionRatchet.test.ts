@@ -67,8 +67,11 @@ const RATCHETS: Ratchet[] = [
     // shared drill-site wording names that same bag. The union rows themselves
     // are narrowed by `kind`; these records are the repository boundary, the
     // same allowance the other leaf leaves already spend.
+    // 368: the instance pattern's one-target-list work removed the drive's
+    // two-form value rule, whose helper read the pair as a raw record. The
+    // boundary now checks the list's refs alone.
     token: 'Record<string, unknown>',
-    baseline: 369,
+    baseline: 368,
   },
 ]
 

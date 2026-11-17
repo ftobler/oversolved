@@ -326,11 +326,22 @@ const SETTER_TYPE_BY_KIND = Object.fromEntries(
   Object.entries(FIELD_SETTER_KIND).map(([type, kind]) => [kind, type as FieldSetterType]),
 ) as Record<FeatureKind, FieldSetterType>
 
+// One-release setter aliases: a field the applier still folds into its current
+// spelling but the schema no longer authors, so the catalog lists it beside the
+// kind's own fields and the boundary keeps accepting it. The instance pattern's
+// retired `sketch` is the only one.
+const SETTER_FIELD_ALIASES: Partial<Record<Mutation['type'], readonly string[]>> = {
+  set_instance_pattern_field: ['sketch'],
+}
+
 /** The field names a `set_<kind>_field` mutation may name, read from that
- *  kind's part-document schema sub-definition. Null for any other mutation. */
+ *  kind's part-document schema sub-definition plus the retired aliases it still
+ *  folds. Null for any other mutation. */
 export function setterFieldNames(type: Mutation['type']): readonly string[] | null {
   if (!Object.hasOwn(FIELD_SETTER_KIND, type)) return null
-  return featureFieldNames(FIELD_SETTER_KIND[type as FieldSetterType])
+  const names = featureFieldNames(FIELD_SETTER_KIND[type as FieldSetterType])
+  const aliases = SETTER_FIELD_ALIASES[type] ?? []
+  return aliases.length === 0 ? names : [...names, ...aliases]
 }
 
 /** The schema definition of one field a setter may name, so the value check
@@ -562,9 +573,9 @@ const INSTANCE_PATTERN_INLINE_NOTE =
   `${featureFieldNames('instance_pattern').join(', ')} are accepted inline and store the same keys ` +
   '`set_instance_pattern_field` sets.'
 
-// The target law an author cannot infer from the field list: what each target
-// form selects, the numbering (positional skip vs stable naming keys), the
-// reference fallback chain and what each orientation turns.
+// The target law an author cannot infer from the field list: how a sketch row
+// expands, what each pick selects, the numbering (positional skip vs stable
+// naming keys), the reference fallback chain and what each orientation turns.
 const INSTANCE_PATTERN_NOTE =
   '`subject` selects what is repeated: `body` (the default) copies the part in `source_body`; `operation: add` unions ' +
   'each copy into the source part when they intersect and disjoint copies become separate parts, while ' +
@@ -572,16 +583,22 @@ const INSTANCE_PATTERN_NOTE =
   'sweeps, named in `source_features` (the legacy single `source_feature` is still accepted), inside the ' +
   'part each source shaped; `target_body` chooses the part when a source touched more than one. There is no ' +
   'count and no centered option: the target list is the instance list. ' +
-  'The copies go onto TARGETS, and exactly one of two fields supplies them. ' +
-  '`sketch` names one sketch: every non-construction POINT of it is a target, the same site rule a hole ' +
-  'drills (construction points are skipped, line endpoints are not targets, projected points count). ' +
-  '`targets` is a list of picks instead: any face, edge, vertex, sketch point or plane. A face uses its ' +
+  'The copies go onto `targets`, ONE list of points: a sketch row expands to its points, and any other ' +
+  'ref is one pick. A ref that names a sketch feature row (`@sk1`) stands for that sketch\'s ' +
+  'non-construction POINTs, the same site rule a hole drills ' +
+  '(construction points are skipped, line endpoints are not targets, projected points count), and its ' +
+  'points carry the sketch plane normal. Every other ref is one pick: any face, edge, vertex, sketch point ' +
+  'or plane. A face uses its ' +
   'centroid (a cylindrical or conical face the axis point at its free end, with the axis pointing out of ' +
   'the material, so a blind hole\'s mouth and a boss top are right), a circular part edge its centre with ' +
   'the normal of its planar neighbour (else its curved neighbour\'s free-end sense), a sketch entity its ' +
   'own point (line midpoint, circle/arc/ellipse centre, spline middle station) with the sketch plane normal, ' +
-  'and a part vertex or straight edge a point with NO normal. Both forms set at once is refused. Targets ' +
-  'are numbered 1..N in sketch entity order or list order, so `skip` addresses those numbers, but the ' +
+  'and a part vertex or straight edge a point with NO normal. A sketch row and a pick mix freely. A point ' +
+  'reached twice is kept once with a warning naming the dropped row. ' +
+  '`sketch` is the retired spelling of a sketch row: an add carrying it, or a setter naming it, is ' +
+  'rewritten into the leading `targets` entry and the reply says so. Targets ' +
+  'are numbered 1..N in list order with each sketch expanded where it stands, so `skip` addresses those ' +
+  'numbers, but the ' +
   'construction name key is the sketch entity id or a short hash of the pick, so deleting an earlier ' +
   'target never renames a later copy\'s faces. `reference` is the point the copies are measured from: any ' +
   'pick the target table accepts. Absent, it is the source sketch\'s only non-construction point when the ' +
@@ -597,8 +614,8 @@ const INSTANCE_PATTERN_NOTE =
 
 const INSTANCE_TARGET_NOTE =
   'One target pick per call (`add_instance_pattern_target`). The pick may be a face, edge or vertex query ' +
-  'from `select`, a sketch entity (`entity:<sketchId>:<entityId>`), or a plane. A whole sketch pick is ' +
-  'refused: use the `sketch` field for that.'
+  'from `select`, a sketch entity (`entity:<sketchId>:<entityId>`), a plane, or a whole sketch row ' +
+  '(`@<sketchId>`), which stands for every non-construction point of that sketch.'
 
 // The path law an author cannot infer from the field list: where the copies are
 // anchored, how the two spacing modes read, and what each orientation turns
@@ -1827,7 +1844,7 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), index: num() },
   },
   add_instance_pattern: {
-    summary: 'Add an instance pattern: copy the source onto a sketch\'s points or onto a list of picks.',
+    summary: 'Add an instance pattern: copy the source onto a list of points.',
     note: INSTANCE_PATTERN_NOTE + ' ' + INSTANCE_PATTERN_INLINE_NOTE,
     fields: {
       ...featureAddFields(),
@@ -1837,8 +1854,8 @@ export const MUTATION_CATALOG = {
       source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve or sweep with operation add or cut.'),
       source_feature: optStr('Feature subject: the legacy single-source form of source_features, e.g. @ex1. Still accepted; a list or the singular key, not both.'),
       target_body: optStr('Feature subject: applies every source to this part (stored as `target_body`) instead of the part each source shaped.'),
-      sketch: optStr('Sketch form: every non-construction point of this sketch is a target, e.g. @sk1.'),
-      targets: optArr('Targets form: a list of picks, e.g. ["?@body_ex1@u|...:flatface", "entity:sk2:p1"].'),
+      sketch: optStr('Deprecated one release: the retired sketch-only form, e.g. @sk1. Rewritten into the leading `targets` entry; send `targets` instead.'),
+      targets: optArr('The points, e.g. ["@sk1", "?@body_ex1@u|...:flatface", "entity:sk2:p1"]. A sketch row stands for all its non-construction points.'),
       reference: optStr('The point the copies are measured from: any pick the target table accepts. Absent, the source sketch\'s only point or the seed\'s centroid.'),
       orientation: optStr('normal | fixed; defaults to normal (turn each copy onto its target\'s normal).'),
       reverse_normal: optBool('Flip every target normal, not the source normal.'),
@@ -1850,7 +1867,7 @@ export const MUTATION_CATALOG = {
     },
   },
   set_instance_pattern_field: {
-    summary: 'Set one instance pattern field, e.g. sketch, targets, reference or orientation.',
+    summary: 'Set one instance pattern field, e.g. targets, reference or orientation.',
     note: INSTANCE_PATTERN_NOTE,
     fields: {
       featureId: str(),
