@@ -302,7 +302,7 @@ export const BOOLEAN_SCHEMA: FeatureEditorSchema = {
     { type: 'number', key: 'clearance', label: 'Clearance', default: 0, quantity: 'length',
       showWhen: (d) => d.operation === 'subtract', validate: finite },
     // "Tools" does not exist in the union editor's one join list, so the label
-    // names what both operations actually keep: the other picked bodies.
+    // names what both operations actually keep: the other picked parts.
     { type: 'checkbox', key: 'keep_tools', label: 'Keep other parts', default: false },
   ],
 }

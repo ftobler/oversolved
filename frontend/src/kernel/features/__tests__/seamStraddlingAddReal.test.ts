@@ -12,7 +12,7 @@
 //
 // What was measured, and why the code does not heal it: fusing the tool split
 // at the seam plane does produce a body the later booleans accept, but it is
-// 68.24 mm3 short (2.2e-3 of the body, Gauss-Kronrod), and the order that keeps
+// 68.24 mm3 short (2.3e-3 of the body, Gauss-Kronrod), and the order that keeps
 // the exact material is the unusable body again. Re-adding the whole tool
 // restores the volume and restores the defect. No construction in this binding
 // is both exact and usable, so the boolean keeps the plain (exact) result and
