@@ -1,4 +1,4 @@
-import type { EntryMeta, ProvenanceRecord, ReferenceEdges, WorkspaceEntry } from './types'
+import type { EntryMeta, ReferenceEdges, WorkspaceEntry } from './types'
 import { IdbCarrier, readWorkspaceMeta, savedEntryRecords } from './idbCarrier'
 import { getWorkspaceStore, type WorkspaceStore } from './store'
 import { getFileRegistry } from '@/stores/fileRegistry'
@@ -17,13 +17,6 @@ export interface WorkspaceSession {
   savedRevs(): Promise<Map<string, number>>
   readEntry(entry: string): Promise<WorkspaceEntry>
   writeEntry(entry: WorkspaceEntry): Promise<void>
-  // The provenance record an entry was imported as. C6 stores rev, hash and
-  // origin entry id on it; this reads the stored record only and never resolves
-  // the origin (I2).
-  originOf(entry: string): Promise<ProvenanceRecord | undefined>
-  // Every provenance record the workspace holds, one meta read, for the origin
-  // meta the workspace view puts on its rows.
-  provenance(): Promise<ProvenanceRecord[]>
   resolveFile(fileId: string): Promise<Uint8Array | undefined>
   referencesOf(entry: string): Promise<string[]>
   // The whole edge map, so where-used inverts one read instead of one read per
@@ -49,14 +42,6 @@ export function createWorkspaceSession(
     },
     readEntry: entry => store.readEntry(workspace, entry),
     writeEntry: entry => store.writeEntry(workspace, entry),
-    originOf: async entry => {
-      const meta = await readWorkspaceMeta(workspace)
-      return meta?.provenance.find(record => record.entry === entry)
-    },
-    provenance: async () => {
-      const meta = await readWorkspaceMeta(workspace)
-      return (meta?.provenance ?? []).map(record => ({ ...record }))
-    },
     async resolveFile(fileId: string): Promise<Uint8Array | undefined> {
       let entry: WorkspaceEntry | undefined
       try {

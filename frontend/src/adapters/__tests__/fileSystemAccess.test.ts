@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import {
-  canPickDirectory, canPickWorkspaceZip, pickLibraryDirectory, pickWorkspaceZip, hasReadWritePermission,
+  canPickDirectory, canPickWorkspaceZip, pickLibraryDirectory, pickWorkspaceZip,
 } from '../fileSystemAccess'
 
 // jsdom is the Firefox/Safari shape by default: no pickers on window at all.
@@ -84,57 +84,3 @@ describe('workspace zip picking', () => {
   })
 })
 
-describe('hasReadWritePermission', () => {
-  it('accepts a handle whose grant is still in force without prompting', async () => {
-    const requestPermission = vi.fn()
-    const handle = { queryPermission: async () => 'granted' as PermissionState, requestPermission }
-    expect(await hasReadWritePermission(handle, { request: true })).toBe(true)
-    expect(requestPermission).not.toHaveBeenCalled()
-  })
-
-  // The boot-time probe runs outside a user gesture, where requestPermission
-  // throws. It must answer false and leave the asking to the next click.
-  it('does not prompt when asked not to', async () => {
-    const requestPermission = vi.fn(async () => 'granted' as PermissionState)
-    const handle = { queryPermission: async () => 'prompt' as PermissionState, requestPermission }
-    expect(await hasReadWritePermission(handle, { request: false })).toBe(false)
-    expect(requestPermission).not.toHaveBeenCalled()
-  })
-
-  it('prompts and reports the answer when asked to', async () => {
-    const handle = {
-      queryPermission: async () => 'prompt' as PermissionState,
-      requestPermission: async () => 'granted' as PermissionState,
-    }
-    expect(await hasReadWritePermission(handle, { request: true })).toBe(true)
-  })
-
-  it('reports a refused prompt as no permission', async () => {
-    const handle = {
-      queryPermission: async () => 'prompt' as PermissionState,
-      requestPermission: async () => 'denied' as PermissionState,
-    }
-    expect(await hasReadWritePermission(handle, { request: true })).toBe(false)
-  })
-
-  // A denied grant is final for this session; re-prompting would be a popup
-  // loop the user cannot escape.
-  it('never re-prompts a denied handle', async () => {
-    const requestPermission = vi.fn(async () => 'granted' as PermissionState)
-    const handle = { queryPermission: async () => 'denied' as PermissionState, requestPermission }
-    expect(await hasReadWritePermission(handle, { request: true })).toBe(false)
-    expect(requestPermission).not.toHaveBeenCalled()
-  })
-
-  // Handles from engines without the permission methods (OPFS, the spec
-  // baseline) are already writable; refusing them would lock the store out of
-  // a directory it can in fact write.
-  it('treats a handle with no permission API as permitted', async () => {
-    expect(await hasReadWritePermission({}, { request: true })).toBe(true)
-  })
-
-  it('reports a vanished directory as no permission', async () => {
-    const handle = { queryPermission: async () => { throw new Error('gone') } }
-    expect(await hasReadWritePermission(handle, { request: true })).toBe(false)
-  })
-})

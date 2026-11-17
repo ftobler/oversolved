@@ -25,35 +25,11 @@ export interface ManifestEntry {
 // From uuid to referenced uuids. Sorted and deduplicated at every write.
 export type ReferenceEdges = Record<string, string[]>
 
-// Keyed on the local entry id and the source entry id, never on a path (a
-// rename inside the source must not break the correlation). The origin entry id
-// is what lets two separate import runs meet on the same source entry.
-export interface ProvenanceRecord {
-  entry: string  // local entry the copy landed as
-  origin: string  // opaque origin locator, from the import gesture
-  // The source entry's id, the re-import lookup key. A record read from a
-  // pre-C6 manifest has none and is therefore not updatable.
-  originEntry?: string
-  // The import run that landed this copy, shared by every record of one
-  // importBag call. Two copies of one source meet on this, so an update maps
-  // the clicked copy's closure to its own locals and leaves the other alone.
-  originGroup?: string
-  // The source's display name (folder, archive or file). The locator is opaque
-  // and per-gesture so two same-named sources stay distinct; this is the part a
-  // user recognizes. Display only.
-  originName?: string
-  originWorkspace?: string  // source workspace id, when the bag carried one
-  rev?: number  // source rev, when the source tracks one
-  hash?: string  // source content hash at copy time, never the local copy's
-  copiedAt?: number  // epoch ms of the last copy or update, display only
-}
-
 export interface WorkspaceManifest {
   format: number  // FORMAT_VERSION, currently 1
   workspace: string  // workspace uuid, re-minted on adoption
   entries: Record<string, ManifestEntry>
   references: ReferenceEdges
-  provenance: ProvenanceRecord[]
   trash: string[]  // entry ids, soft-deleted, serialized
 }
 

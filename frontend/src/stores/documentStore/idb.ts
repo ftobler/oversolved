@@ -15,7 +15,7 @@
 // payload is disposable (A2 in the workspace-format plan).
 //
 // v4 adds the workspace stores. `workspace_meta` holds one row per workspace
-// (name, references, provenance, trash and the tombstones); `workspace_entries`
+// (name, references, trash and the tombstones); `workspace_entries`
 // is the working copy, one row per entry keyed (workspace, id); and
 // `workspace_saved` is the explicit-save checkpoint under the same key. The v1
 // `documents` store stays in place but is never read by the workspace seam, so

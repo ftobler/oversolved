@@ -22,7 +22,6 @@ export async function seedWorkspace(tree: WorkspaceTree): Promise<void> {
     createdAt: 0,
     updatedAt: 0,
     references: {},
-    provenance: [],
     trash: [],
   }, [])
 }

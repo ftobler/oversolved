@@ -79,7 +79,7 @@ describe('assembly workspace zip', () => {
     expect(Object.values(reread.manifest.entries).filter(row => row.kind === 'document')).toHaveLength(3)
 
     const store = new IdbWorkspaceStore()
-    const result = await importBag(await readZipBag(bytes, 'zip'), { origin: 'zip' }, store)
+    const result = await importBag(await readZipBag(bytes), {}, store)
     expect(result.mode).toBe('new')
     expect(result.documents).toBe(3)
     expect(result.files).toBe(1)

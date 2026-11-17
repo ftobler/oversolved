@@ -38,7 +38,6 @@ function cloneManifest(manifest: WorkspaceManifest): WorkspaceManifest {
     references: Object.fromEntries(
       Object.entries(manifest.references).map(([from, targets]) => [from, [...targets]]),
     ),
-    provenance: manifest.provenance.map(record => ({ ...record })),
     trash: [...manifest.trash],
   }
 }

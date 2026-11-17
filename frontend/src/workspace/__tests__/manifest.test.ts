@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { ManifestEntry, ProvenanceRecord, WorkspaceManifest } from '../types'
+import type { ManifestEntry, WorkspaceManifest } from '../types'
 import { assertManifest, buildManifestIndex, emptyManifest, parseManifest, serializeManifest } from '../manifest'
 import { MANIFEST_PATH } from '../paths'
 import { bytesOf, documentEntry, fileEntry, treeWith } from './fixtures'
@@ -15,7 +15,6 @@ describe('canonical manifest (I4)', () => {
       'workspace: ws-1\n' +
       'entries: {}\n' +
       'references: {}\n' +
-      'provenance: []\n' +
       'trash: []\n',
     )
   })
@@ -54,7 +53,6 @@ describe('canonical manifest (I4)', () => {
       '    name: B\n' +
       '    mime: application/step\n' +
       'references: {}\n' +
-      'provenance: []\n' +
       'trash: []\n'
     const parsed = parseManifest(text)
     expect(parsed.entries.b).toEqual({ path: 'files/B.step', kind: 'file', name: 'B', mime: 'application/step' })
@@ -80,7 +78,6 @@ describe('canonical manifest (I4)', () => {
   it('the canonical manifest output matches the golden fixture', () => {
     const tree = treeWith([documentEntry('aid', 'A'), fileEntry('bid', 'B.step', bytesOf([1]))])
     tree.manifest.references = { aid: ['bid'] }
-    tree.manifest.provenance = [{ entry: 'aid', origin: 'o', rev: 2, hash: 'h' }]
     tree.manifest.trash = ['bid']
 
     // Pinned because canonical output is only stable for a pinned compiler.
@@ -101,14 +98,28 @@ describe('canonical manifest (I4)', () => {
       'references:\n' +
       '  aid:\n' +
       '    - bid\n' +
-      'provenance:\n' +
-      '  - entry: aid\n' +
-      '    origin: o\n' +
-      '    rev: 2\n' +
-      '    hash: h\n' +
       'trash:\n' +
       '  - bid\n'
     expect(serializeManifest(tree.manifest)).toBe(golden)
+  })
+
+  // A manifest written while imports kept an origin link carries a provenance
+  // key. The loader drops it without validating it, and writing omits the key.
+  it('drops a legacy provenance key on read and never writes one', () => {
+    const text =
+      'format: 1\n' +
+      'workspace: ws-1\n' +
+      'entries: {}\n' +
+      'references: {}\n' +
+      'provenance:\n' +
+      '  - entry: a\n' +
+      '    origin: folder:cad\n' +
+      '    originEntry: a\n' +
+      'trash: []\n'
+    const parsed = parseManifest(text)
+
+    expect('provenance' in parsed).toBe(false)
+    expect(serializeManifest(parsed)).not.toContain('provenance')
   })
 
   it('serializeManifest is byte-stable across re-parse and repeated construction', () => {
@@ -128,7 +139,7 @@ describe('canonical manifest (I4)', () => {
     for (const rev of [1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
       const manifest: WorkspaceManifest = {
         ...emptyManifest('ws-1'),
-        provenance: [{ entry: 'a', origin: 'o', rev }],
+        entries: { a: { path: 'documents/A.yaml', kind: 'document', name: 'A', extra: rev } as unknown as ManifestEntry },
       }
       expect(() => serializeManifest(manifest)).toThrow()
     }
@@ -192,108 +203,6 @@ describe('canonical manifest (I4)', () => {
   })
 })
 
-// A canonical manifest has a stable provenance order, independent of import
-// order, because the records are sorted on a chain of tiebreaks that falls back
-// to empty for every optional field the record may lack. The sort is reached
-// through the public round trip since the comparator is module-private.
-function orderedProvenance(records: ProvenanceRecord[]): ProvenanceRecord[] {
-  return parseManifest(serializeManifest({ ...emptyManifest('ws-1'), provenance: records })).provenance
-}
-
-describe('provenance ordering (compareProvenance)', () => {
-  it('orders records by entry id before any tiebreak', () => {
-    const ordered = orderedProvenance([
-      { entry: 'b', origin: 'o' },
-      { entry: 'a', origin: 'o' },
-    ])
-
-    expect(ordered.map(record => record.entry)).toEqual(['a', 'b'])
-  })
-
-  it('breaks a shared entry id by originEntry, absent first', () => {
-    const ordered = orderedProvenance([
-      { entry: 'e', origin: 'o', originEntry: 'z' },
-      { entry: 'e', origin: 'o' },
-      { entry: 'e', origin: 'o', originEntry: 'm' },
-    ])
-
-    expect(ordered.map(record => record.originEntry)).toEqual([undefined, 'm', 'z'])
-  })
-
-  it('breaks a shared originEntry by originGroup, absent first', () => {
-    const ordered = orderedProvenance([
-      { entry: 'e', origin: 'o', originEntry: 'x', originGroup: 'z' },
-      { entry: 'e', origin: 'o', originEntry: 'x' },
-      { entry: 'e', origin: 'o', originEntry: 'x', originGroup: 'a' },
-    ])
-
-    expect(ordered.map(record => record.originGroup)).toEqual([undefined, 'a', 'z'])
-  })
-
-  it('breaks a shared group by the origin locator', () => {
-    const ordered = orderedProvenance([
-      { entry: 'e', origin: 'ob', originEntry: 'x', originGroup: 'g' },
-      { entry: 'e', origin: 'oa', originEntry: 'x', originGroup: 'g' },
-    ])
-
-    expect(ordered.map(record => record.origin)).toEqual(['oa', 'ob'])
-  })
-
-  it('breaks a shared origin by rev, absent first and numerically', () => {
-    const ordered = orderedProvenance([
-      { entry: 'e', origin: 'o', originEntry: 'x', originGroup: 'g', rev: 2 },
-      { entry: 'e', origin: 'o', originEntry: 'x', originGroup: 'g' },
-      { entry: 'e', origin: 'o', originEntry: 'x', originGroup: 'g', rev: 1 },
-    ])
-
-    expect(ordered.map(record => record.rev)).toEqual([undefined, 1, 2])
-  })
-
-  it('breaks a shared rev by hash, absent first', () => {
-    const ordered = orderedProvenance([
-      { entry: 'e', origin: 'o', originEntry: 'x', originGroup: 'g', hash: 'z' },
-      { entry: 'e', origin: 'o', originEntry: 'x', originGroup: 'g', hash: 'a' },
-      { entry: 'e', origin: 'o', originEntry: 'x', originGroup: 'g' },
-    ])
-
-    expect(ordered.map(record => record.hash)).toEqual([undefined, 'a', 'z'])
-  })
-
-  it('keeps identical records in insertion order (a zero comparison is stable)', () => {
-    const first: ProvenanceRecord = {
-      entry: 'e', origin: 'o', originEntry: 'x', originGroup: 'g', rev: 1, hash: 'h', copiedAt: 1,
-    }
-    const second: ProvenanceRecord = { ...first, copiedAt: 0 }
-
-    // copiedAt is not part of the ordering, so these compare equal and the sort
-    // must preserve the order they were given in.
-    expect(orderedProvenance([first, second]).map(record => record.copiedAt)).toEqual([1, 0])
-  })
-
-  it('emits every optional provenance field in fixed order and omits absent ones', () => {
-    const full: ProvenanceRecord = {
-      entry: 'e',
-      origin: 'o',
-      originEntry: 'x',
-      originGroup: 'g',
-      originName: 'N',
-      originWorkspace: 'W',
-      rev: 3,
-      hash: 'h',
-      copiedAt: 42,
-    }
-
-    const [kept] = orderedProvenance([full])
-    expect(Object.keys(kept)).toEqual([
-      'entry', 'origin', 'originEntry', 'originGroup', 'originName', 'originWorkspace', 'rev', 'hash', 'copiedAt',
-    ])
-    expect(kept).toEqual(full)
-
-    const [bare] = orderedProvenance([{ entry: 'e', origin: 'o' }])
-    expect(Object.keys(bare)).toEqual(['entry', 'origin'])
-  })
-})
-
 const docRow: ManifestEntry = { path: 'documents/A.yaml', kind: 'document', name: 'A', docKind: 'part' }
 const fileRow: ManifestEntry = { path: 'files/A.step', kind: 'file', name: 'A.step', mime: 'application/step', fileKind: 'step' }
 
@@ -330,17 +239,6 @@ const refusals: { name: string; manifest: WorkspaceManifest; message: RegExp }[]
   { name: 'a reference with an empty source id', manifest: manifestWith({ references: { '': ['b'] } }), message: /Reference source id must be non-empty/ },
   { name: 'reference targets that are not an array', manifest: manifestWith({ references: { a: 'b' } as unknown as WorkspaceManifest['references'] }), message: /References from a must be an array/ },
   { name: 'a non-string reference target', manifest: manifestWith({ references: { a: [1] } as unknown as WorkspaceManifest['references'] }), message: /Reference target from a must be a string/ },
-  { name: 'provenance that is not an array', manifest: manifestWith({ provenance: {} as unknown as WorkspaceManifest['provenance'] }), message: /Manifest provenance must be an array/ },
-  { name: 'a provenance record that is not an object', manifest: manifestWith({ provenance: [null as unknown as ProvenanceRecord] }), message: /Provenance record must be an object/ },
-  { name: 'a provenance record with no entry id', manifest: manifestWith({ provenance: [{ origin: 'o' } as ProvenanceRecord] }), message: /Provenance record has no entry id/ },
-  { name: 'a provenance record with a non-string origin', manifest: manifestWith({ provenance: [{ entry: 'e' } as ProvenanceRecord] }), message: /Provenance record origin must be a string/ },
-  { name: 'an empty originEntry', manifest: manifestWith({ provenance: [{ entry: 'e', origin: 'o', originEntry: '' }] }), message: /Provenance originEntry must be a non-empty string/ },
-  { name: 'an empty originGroup', manifest: manifestWith({ provenance: [{ entry: 'e', origin: 'o', originGroup: '' }] }), message: /Provenance originGroup must be a non-empty string/ },
-  { name: 'a non-string originName', manifest: manifestWith({ provenance: [{ entry: 'e', origin: 'o', originName: 5 } as unknown as ProvenanceRecord] }), message: /Provenance originName must be a string/ },
-  { name: 'a non-string originWorkspace', manifest: manifestWith({ provenance: [{ entry: 'e', origin: 'o', originWorkspace: 5 } as unknown as ProvenanceRecord] }), message: /Provenance originWorkspace must be a string/ },
-  { name: 'a non-integer rev', manifest: manifestWith({ provenance: [{ entry: 'e', origin: 'o', rev: 1.5 }] }), message: /Provenance rev must be an integer/ },
-  { name: 'a non-string hash', manifest: manifestWith({ provenance: [{ entry: 'e', origin: 'o', hash: 5 } as unknown as ProvenanceRecord] }), message: /Provenance hash must be a string/ },
-  { name: 'a non-integer copiedAt', manifest: manifestWith({ provenance: [{ entry: 'e', origin: 'o', copiedAt: 1.5 }] }), message: /Provenance copiedAt must be an integer/ },
   { name: 'trash that is not an array', manifest: manifestWith({ trash: {} as unknown as string[] }), message: /Manifest trash must be an array/ },
   { name: 'trash holding a non-string id', manifest: manifestWith({ trash: [1] as unknown as string[] }), message: /Manifest trash must hold entry ids/ },
   { name: 'a null carried outside a validated field', manifest: manifestWithEntry({ ...docRow, extra: null }), message: /manifest\.entries\.a\.extra contains a null or undefined value/ },
@@ -364,7 +262,7 @@ describe('parseManifest input refusals', () => {
     expect(() => parseManifest('42')).toThrow(/Manifest is not a mapping/)
   })
 
-  it('defaults a missing entries, references, provenance and trash to empty', () => {
+  it('defaults a missing entries, references and trash to empty', () => {
     expect(parseManifest('format: 1\nworkspace: ws-1\n')).toEqual(emptyManifest('ws-1'))
   })
 })

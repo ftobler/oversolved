@@ -174,7 +174,6 @@ export class IdbWorkspaceStore implements WorkspaceStore {
       createdAt: now,
       updatedAt: now,
       references: {},
-      provenance: [],
       trash: [],
     }
     const record: WorkspaceEntryRecord = {
@@ -265,9 +264,8 @@ export class IdbWorkspaceStore implements WorkspaceStore {
   }
 
   // A whole-workspace copy under a fresh id. Entry ids are re-minted and the
-  // internal reference edges, provenance and trash are remapped through the id
-  // map, so a duplicated assembly still resolves its parts. The remap pass is
-  // import.ts's, one implementation shared with C6's snapshot-inward copy.
+  // internal reference edges and trash are remapped through the id map, so a
+  // duplicated assembly still resolves its parts. The remap pass is import.ts's.
   async duplicate(workspace: string, name?: string): Promise<{ workspace: string }> {
     const meta = await this.requireMeta(workspace)
     const carrier = this.carrier(workspace)
@@ -277,7 +275,6 @@ export class IdbWorkspaceStore implements WorkspaceStore {
     const { tree: copy, idMap } = remapTree(tree, {
       workspace: nextWorkspace,
       mintIds: true,
-      origin: 'duplicate',
     })
     const now = Date.now()
     const records = treeRecords(nextWorkspace, copy, now)
@@ -287,7 +284,6 @@ export class IdbWorkspaceStore implements WorkspaceStore {
       createdAt: now,
       updatedAt: now,
       references: copy.manifest.references,
-      provenance: copy.manifest.provenance,
       trash: copy.manifest.trash,
     }
     await replaceWorkspaceRows(nextWorkspace, nextMeta, records)

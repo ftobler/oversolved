@@ -73,8 +73,8 @@ export class MemoryCarrier implements WorkspaceCarrier {
     assertTree(tree)
   }
 
-  // A fresh uuid and a content copy; reference edges and provenance are link
-  // semantics and stay with C2/C3.
+  // A fresh uuid and a content copy; reference edges are link semantics and
+  // stay with C2/C3.
   async clone(id: string, name?: string): Promise<string> {
     const tree = this.requireTree()
     const source = await this.read(id)

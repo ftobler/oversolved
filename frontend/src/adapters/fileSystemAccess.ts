@@ -74,38 +74,3 @@ export async function pickLibraryDirectory(): Promise<FileSystemDirectoryHandle 
     throw err
   }
 }
-
-// The re-permission handshake a handle needs after a reload. A handle survives
-// in IndexedDB across sessions, but the GRANT does not: the browser drops it
-// when the tab closes, so a restored handle answers 'prompt' until the user
-// re-confirms. `request` must be false outside a user gesture (a boot-time
-// probe) and true inside one (the click that reopens the library), because
-// requestPermission throws without a gesture.
-// Typed to the two methods it actually calls rather than to FileSystemHandle:
-// the permission surface is the Chromium-only part, and a caller holding a
-// handle from anywhere (a picker, a restored IndexedDB record) should not have
-// to satisfy the full platform interface to ask this question.
-export interface PermissionedHandle {
-  queryPermission?(descriptor?: { mode?: 'read' | 'readwrite' }): Promise<PermissionState>
-  requestPermission?(descriptor?: { mode?: 'read' | 'readwrite' }): Promise<PermissionState>
-}
-
-export async function hasReadWritePermission(
-  handle: PermissionedHandle,
-  { request }: { request: boolean },
-): Promise<boolean> {
-  const descriptor = { mode: 'readwrite' as const }
-  try {
-    const current = await handle.queryPermission?.(descriptor)
-    // An engine without queryPermission (OPFS-only handles, and the spec's own
-    // baseline) grants implicitly; treat undefined as already permitted rather
-    // than locking the store out of a directory it can in fact write.
-    if (current === undefined || current === 'granted') return true
-    if (!request || current === 'denied') return false
-    return (await handle.requestPermission?.(descriptor)) === 'granted'
-  } catch {
-    // A revoked or vanished directory throws here. Not having permission and
-    // failing to ask for it are the same answer to the caller.
-    return false
-  }
-}

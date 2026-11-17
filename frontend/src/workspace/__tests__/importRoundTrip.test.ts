@@ -29,7 +29,7 @@ describe('export/import round-trip keeps file bytes', () => {
   it('an archive re-imports with the file entry id, its bytes and the reference', async () => {
     const store = new IdbWorkspaceStore()
     const bytes = await buildZipBytes(source())
-    const result = await importBag(await readZipBag(bytes, 'ws'), { origin: 'ws' }, store)
+    const result = await importBag(await readZipBag(bytes), {}, store)
 
     const reopened = await store.readEntry(result.workspace, 'b')
     expect(reopened).toMatchObject({ kind: 'file', name: 'b.step', mime: 'application/step' })
@@ -50,7 +50,7 @@ describe('export/import round-trip keeps file bytes', () => {
     const dir = fakeDirectory('dest')
     dir.putText('Gearbox.yaml', 'kind: part\n')
     const before = dir.fileNames()
-    const result = await importBag(await readDirectoryBag(dir as unknown as FileSystemDirectoryHandle, 'ws'), { origin: 'ws' }, store)
+    const result = await importBag(await readDirectoryBag(dir as unknown as FileSystemDirectoryHandle), {}, store)
 
     await store.save(result.workspace, deserializeTree(await store.export(result.workspace)))
 
