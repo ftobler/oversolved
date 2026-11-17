@@ -240,8 +240,10 @@ describe.skipIf(!oc || !solveBytes)('a seam-straddling rib through the real kern
   })
 
   it('fuses a rib that straddles a straight cylinder seam, then another rib', () => {
-    // The straight-seam branch: a cylinder's seam is a line, so its split plane
-    // comes from the surface's own axis rather than from three edge samples.
+    // The straight-seam shape: its seam is a line, so a split plane has to come
+    // from the surface's own axis. This build's plain fuses keep that seam, so
+    // the recovery is not reached here; the case pins that a cylinder add keeps
+    // working through the seam scan (and through the recovery when it does fire).
     const r = h.run({
       version: 9, kind: 'part',
       features: [
