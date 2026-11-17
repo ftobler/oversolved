@@ -22,7 +22,7 @@ import type { Selector } from '@/kernel/select'
 import type { TranslationReference } from '@/translations/corpus'
 import type { ScriptStep } from '@/drive/scriptRunner'
 import { createDriveJournal } from '@/drive/journal'
-import { runHeadless, measureHeadless, compareHeadless, exportHeadless, selectHeadless, runAssemblyHeadless, measureAssemblyHeadless, compareAssemblyHeadless, exportAssemblyHeadless } from '@/drive/headlessOps'
+import { runHeadless, measureHeadless, measureBetweenHeadless, compareHeadless, exportHeadless, selectHeadless, runAssemblyHeadless, measureAssemblyHeadless, compareAssemblyHeadless, exportAssemblyHeadless } from '@/drive/headlessOps'
 import type { AssemblyScriptStep } from '@/drive/headlessAssembly'
 import type { KernelErrorShape, KernelFaultState, KernelHostMessage, KernelRequest } from '@/drive/kernelHost'
 
@@ -58,6 +58,10 @@ export interface KernelRunArgs extends DocArgs {
   frames?: 'all'
 }
 export type KernelMeasureArgs = DocArgs
+export interface KernelMeasureBetweenArgs extends DocArgs {
+  // One selection query for a single-pick readout, two for a pair.
+  between: string[]
+}
 export interface KernelCompareArgs extends DocArgs {
   reference: TranslationReference
 }
@@ -110,6 +114,10 @@ async function runOp(req: KernelRequest, port: KernelPort): Promise<unknown> {
     case 'measure': {
       const a = req.args as KernelMeasureArgs
       return measureHeadless(a.doc, { docId: a.docId, files: a.files })
+    }
+    case 'measureBetween': {
+      const a = req.args as KernelMeasureBetweenArgs
+      return measureBetweenHeadless(a.doc, a.between, { docId: a.docId, files: a.files })
     }
     case 'compare': {
       const a = req.args as KernelCompareArgs

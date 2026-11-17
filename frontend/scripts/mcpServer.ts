@@ -23,6 +23,7 @@ import { Worker } from 'node:worker_threads'
 import type { PartDoc } from '@/types/cad'
 import { createHeadlessPart } from '@/drive/headlessPart'
 import { emptyDriveDoc, type HeadlessMeasure, type HeadlessCompareResult, type HeadlessAssemblyMeasure, type HeadlessAssemblyCompare, type HeadlessAssemblyRunResult, type HeadlessExport, type HeadlessAssemblyExport } from '@/drive/headlessOps'
+import type { LocalPickMeasure } from '@/kernel/solveLocally'
 import { commandCatalog } from '@/drive/commandCatalog'
 import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
 import { ASSEMBLY_COMMAND_SPECS } from '@/pages/assemblyCommandEntries'
@@ -350,6 +351,42 @@ const ops: McpCadOps = {
     const resolved = resolveDoc(req, documents)
     if (!resolved.ok) return { ok: false, error: resolved.error }
     const files = readProjectFiles(req.files)
+    if (req.between !== undefined) {
+      if (resolved.kind !== 'part') {
+        return { ok: false, error: 'between applies to part documents only' }
+      }
+      if (req.detail !== undefined) {
+        return { ok: false, error: 'detail applies only to assembly documents' }
+      }
+      const answer = await (async (): Promise<KernelAnswer<LocalPickMeasure | null>> => {
+        try {
+          return await callKernel<LocalPickMeasure | null>('measureBetween', {
+            doc: resolved.doc,
+            docId: req.docId ?? 'mcp',
+            files,
+            between: req.between,
+          })
+        } catch (e) {
+          // A stall, a fault or a lost worker is the server's to report; a pick
+          // the document cannot resolve is the caller's, and reads as a failed
+          // tool call naming it.
+          if (isKernelCallFailure(e)) throw e
+          return { ok: false, error: e instanceof Error ? e.message : String(e) }
+        }
+      })()
+      if (!answer.ok) return answer
+      if (!answer.value) {
+        return { ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' }
+      }
+      // One row per call, in the document's own unit: the same numbers a
+      // viewport pick reads.
+      return {
+        ok: true,
+        docHash: resolved.docHash,
+        between: answer.value,
+        ...replyUnits(resolved.doc),
+      }
+    }
     if (resolved.kind === 'part') {
       if (req.detail !== undefined) {
         return { ok: false, error: 'detail applies only to assembly documents' }

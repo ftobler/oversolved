@@ -85,6 +85,9 @@ export interface McpMeasureRequest extends McpDocArguments {
   docId?: string
   detail?: AssemblyDetail
   files: McpFileRef[]
+  /** Answer one pick or pick pair instead of the whole document: one selection
+   *  query for a single-pick readout, two for a pair. */
+  between?: string[]
 }
 
 export interface McpExportRequest extends McpDocArguments {
@@ -518,6 +521,10 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + 'plus perBody: one entry per live part with its id, volume, area, centroid and bbox. '
       + 'An assembly measure under detail: "summary" or "changed" keeps the aggregate measures, the solve verdict and the mate and part '
       + 'problems, and omits perBody; it also returns no one-line summary. '
+      + 'Pass `between` to answer one pick or pick pair instead: one selection query for a single-pick readout (an edge length, a diameter), '
+      + 'two for a pair. The reply is then `between: { kind, value, points?, note? }` with the two witness points of a distance and the '
+      + 'reason a clearance reads 0 (`overlapping` or `touching`); a spline edge length and any pair involving a whole part or a freeform '
+      + 'face come from the kernel, every other cell from the analytic pair table. '
       + 'Also returns features, the same failed-or-warning feature list a run reply carries (an underconstrained '
       + 'sketch is a warning row and does not make ok false), frames, '
       + 'the resolved {origin, x_axis, y_axis, normal} of every sketch and add_plane feature, and curves, '
@@ -534,6 +541,14 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
         detail: DETAIL_SCHEMA,
         docId: { type: 'string' },
         files: FILE_LIST_SCHEMA,
+        between: {
+          type: 'array',
+          items: { type: 'string' },
+          minItems: 1,
+          maxItems: 2,
+          description: 'One selection query (the same ids `select` and the editor use) for a single-pick readout, '
+            + 'two for a pair: an ancestry query, `@<body>/<kind>/<index>` or a body id such as `@body_ex1`.',
+        },
       },
       additionalProperties: false,
     },
@@ -890,16 +905,34 @@ function parseRunArgs(raw: unknown): McpRunRequest {
 
 function parseMeasureArgs(raw: unknown): McpMeasureRequest {
   const record = asObject(raw ?? {}, 'arguments')
-  rejectUnknown(record, ['doc', 'docHash', 'parts', 'docId', 'files', 'detail'])
+  rejectUnknown(record, ['doc', 'docHash', 'parts', 'docId', 'files', 'detail', 'between'])
   const parts = readParts(record.parts)
   const detail = readDetail(record.detail)
+  const between = readBetween(record.between)
   return {
     ...readDocArguments(record, 'exactly-one'),
     ...(detail !== undefined && { detail }),
     ...(parts !== undefined && { parts }),
+    ...(between !== undefined && { between }),
     ...(optionalString(record.docId, 'docId') !== undefined && { docId: record.docId as string }),
     files: readFiles(record.files),
   }
+}
+
+/** The `between` argument: one or two selection queries. */
+function readBetween(raw: unknown): string[] | undefined {
+  if (raw === undefined) return undefined
+  if (!Array.isArray(raw)) throw new McpInvalidParams('field "between" must be an array of 1 or 2 selection queries')
+  if (raw.length < 1 || raw.length > 2) {
+    throw new McpInvalidParams('field "between" takes one query for a single pick or two for a pair')
+  }
+  const out = raw.map((entry, index) => {
+    if (typeof entry !== 'string' || entry === '') {
+      throw new McpInvalidParams(`field "between[${index}]" must be a non-empty selection query`)
+    }
+    return entry
+  })
+  return out
 }
 
 function parseCompareArgs(raw: unknown): McpCompareRequest {
