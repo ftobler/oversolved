@@ -31,7 +31,7 @@ import { linearHandle, offsetAlong } from './featureHandles'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { makeTranslationTrsf, transformCopy } from '../occ/transforms'
 import { extrudeProfileWithLineage } from '../occ/prismLineage'
-import { MAX_TWIST_DEG, sweepBuilderFor } from '../occ/twistPrism'
+import { MAX_TWIST_DEG, MAX_TWIST_SECTIONS, TWIST_STEP_DEG, sweepBuilderFor } from '../occ/twistPrism'
 import { isEdgeProfileRef, resolveEdgeProfileFace } from './edgeProfile'
 import { resolveUpToTarget, orientToTarget, trimAtPlane, UP_TO_REACH, type CutPlane, type UpToTarget } from './upTo'
 import {
@@ -399,7 +399,10 @@ export function solveExtrude(
   // bounded by the same cap the builder names.
   const twist = Number(sub.twist ?? 0)
   if (!Number.isFinite(twist) || Math.abs(twist) > MAX_TWIST_DEG) {
-    throw new Error(`extrude: twist must be a finite angle within +/-${MAX_TWIST_DEG} degrees`)
+    throw new Error(
+      `extrude: twist must be a finite angle within +/-${MAX_TWIST_DEG} degrees ` +
+        `(${MAX_TWIST_SECTIONS} loft sections of ${TWIST_STEP_DEG} degrees)`,
+    )
   }
   const twistDeg = twist
   const twistRad = (twist * Math.PI) / 180
