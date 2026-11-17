@@ -82,6 +82,10 @@ export function describeMutation(m: Mutation): string {
       return `add revolve ${m.label ?? m.featureId}`
     case 'set_revolve_field':
       return `set revolve ${m.field} to ${m.value}`
+    case 'add_wrap':
+      return `add wrap ${m.label ?? m.featureId}`
+    case 'set_wrap_field':
+      return `set wrap ${m.field} to ${m.value}`
     case 'add_revolve_profile':
       return `add revolve profile ${m.sketchQuery}`
     case 'remove_revolve_profile':

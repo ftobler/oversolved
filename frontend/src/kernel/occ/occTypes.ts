@@ -1252,6 +1252,23 @@ export interface OccModule extends OccBaseModule {
     minor: number,
   ) => OccPrismBuilder
 
+  // ─── wrap (wrapSolid.ts) ───
+  // The analytic primitives a wrap rebuilds its target in, in its own frame:
+  // gp_Cone(ax3, semiAngle, refRadius), gp_Sphere(ax3, R), gp_Torus(ax3, R, r).
+  // A natural-bounds face on each (MakeFace _4 cylinder, _5 cone, _6 sphere,
+  // _7 torus) is only the carrier of its Geom surface, read by Surface_2.
+  // MakeFace _21 is (Handle(Geom_Surface), wire, inside): the face a wrap
+  // bounds on that surface to project its Hermite edges' p-curves. All pinned
+  // by occ/__tests__/wrapSolidReal.test.ts.
+  gp_Cone_2: new (frame: OccDisposable, semiAngle: number, radius: number) => OccDisposable
+  gp_Sphere_2: new (frame: OccDisposable, radius: number) => OccDisposable
+  gp_Torus_2: new (frame: OccDisposable, major: number, minor: number) => OccDisposable
+  BRepBuilderAPI_MakeFace_4: new (cylinder: OccDisposable) => OccFaceBuilder
+  BRepBuilderAPI_MakeFace_5: new (cone: OccDisposable) => OccFaceBuilder
+  BRepBuilderAPI_MakeFace_6: new (sphere: OccDisposable) => OccFaceBuilder
+  BRepBuilderAPI_MakeFace_7: new (torus: OccDisposable) => OccFaceBuilder
+  BRepBuilderAPI_MakeFace_21: new (surface: OccDisposable, wire: OccShape, inside: boolean) => OccFaceBuilder
+
   // ─── delete-face leaf ───
   // BRepAlgoAPI_Defeaturing: remove picked faces, extend the neighbour surfaces
   // and re-intersect. The plain (suffix-free) ctor is what the shipped build

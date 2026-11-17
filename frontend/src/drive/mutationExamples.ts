@@ -195,6 +195,21 @@ const EMBOSS_ON_CYLINDER_STEPS: ScriptStep[] = [
   },
 ]
 
+// The same cylinder and footprint wrapped instead of embossed: the footprint is
+// bent onto the wall, so its 10 is the arc around and its 20 the height, and the
+// wall raised 0.5 is the exact annular sector 20 * (10 / 40) * (20.5^2 - 20^2).
+// Top contains the cylinder's Z axis, so the projected axis is the sketch's y
+// and the footprint centred on x = 0 lands on the wall facing +Y.
+const WRAP_ON_CYLINDER_STEPS: ScriptStep[] = [
+  ...EMBOSS_ON_CYLINDER_STEPS.slice(0, -1),
+  {
+    mutation: {
+      type: 'add_wrap', featureId: 'wr1', label: 'Wrap',
+      sketchQuery: '$sk2', target: '@body_ex1/face/2', height: 0.5, operation: 'add',
+    },
+  },
+]
+
 export const MUTATION_EXAMPLES: readonly MutationExample[] = [
   {
     name: 'box',
@@ -230,5 +245,10 @@ export const MUTATION_EXAMPLES: readonly MutationExample[] = [
     name: 'emboss-on-cylinder',
     summary: 'A 0.5 raised footprint on a 20 mm cylinder wall, up_to the curved face with up_to_start surface: 37800.157 mm3.',
     steps: EMBOSS_ON_CYLINDER_STEPS,
+  },
+  {
+    name: 'wrap-on-cylinder',
+    summary: 'The same footprint wrapped onto the 20 mm cylinder wall and raised 0.5: 37800.362 mm3, lengths kept on the wall.',
+    steps: WRAP_ON_CYLINDER_STEPS,
   },
 ]

@@ -38,6 +38,7 @@ import { resolveFeatureExpressions } from '../featureExpressions'
 import { solveExtrude } from './extrude'
 import { solveRevolve } from './revolve'
 import { solveSweep } from './sweep'
+import { solveWrap } from './wrap'
 import { extractErrorMessage, swallowUnlessTrap } from '../errors'
 import { stripRefSigil } from '@/utils/refSigil'
 import { solidCentroid, type Vec3 } from '../occ/primitives'
@@ -72,6 +73,7 @@ const TOOL_LEAVES = {
   extrude: solveExtrude,
   revolve: solveRevolve,
   sweep: solveSweep,
+  wrap: solveWrap,
 } as const
 
 type ToolKind = keyof typeof TOOL_LEAVES
@@ -85,8 +87,8 @@ function isToolKind(kind: string): kind is ToolKind {
  *  a mirror reads the same rule with its own name. */
 function sourceKindSentence(noun: string): string {
   return noun === 'pattern'
-    ? 'a feature pattern repeats an extrude, revolve or sweep'
-    : `a ${noun} source repeats an extrude, revolve or sweep`
+    ? 'a feature pattern repeats an extrude, revolve, sweep or wrap'
+    : `a ${noun} source repeats an extrude, revolve, sweep or wrap`
 }
 
 /** The sources a feature pattern names, in the authored order. A row written
@@ -505,7 +507,11 @@ function buildSourceTools(
           oc, scope, table, toolFeature, globalRepo, scratch, undefined,
           throughAllSource === undefined ? undefined : { ...solveContext, throughAllSource },
         )
-      : TOOL_LEAVES[source.kind](oc, scope, table, toolFeature, globalRepo, scratch)
+      : source.kind === 'wrap'
+        // The wrap's target face is on the real parts, not in the scratch
+        // store its tool is registered into.
+        ? solveWrap(oc, scope, table, toolFeature, globalRepo, scratch, undefined, { targetBodies: bodyStore })
+        : TOOL_LEAVES[source.kind](oc, scope, table, toolFeature, globalRepo, scratch)
     if (built.status !== 'ok') {
       throw new Error(
         `${noun}: the source feature '${source.id}' could not provide its tool: ` +

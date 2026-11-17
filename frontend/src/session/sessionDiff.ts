@@ -21,7 +21,7 @@ export const PREVIEW_SCOPE = new Set<Mutation['type']>([
 // (Viewport/index.tsx), a plane solves trivially, a variable carries no
 // geometry, so retaining their snapshots would only consume the stash cap.
 export const NO_FALLBACK_BREP_KINDS = new Set([
-  'extrude', 'revolve', 'sweep',
+  'extrude', 'revolve', 'sweep', 'wrap',
   'fillet', 'chamfer',
   'shell',
   'move_face',

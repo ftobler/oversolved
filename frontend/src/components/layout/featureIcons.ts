@@ -1,6 +1,7 @@
 import featureSketchIcon from '@/assets/icons/feature-sketch.svg'
 import featureExtrudeIcon from '@/assets/icons/feature-extrude.svg'
 import featureRevolveIcon from '@/assets/icons/feature-revolve.svg'
+import featureWrapIcon from '@/assets/icons/feature-wrap.svg'
 import featureSweepIcon from '@/assets/icons/feature-sweep.svg'
 import featureOriginIcon from '@/assets/icons/feature-origin.svg'
 import featurePlaneIcon from '@/assets/icons/feature-plane.svg'
@@ -31,6 +32,7 @@ export function getFeatureIcon(kind: string | undefined): string {
     case 'sketch':          return featureSketchIcon
     case 'extrude':         return featureExtrudeIcon
     case 'revolve':         return featureRevolveIcon
+    case 'wrap':            return featureWrapIcon
     case 'sweep':           return featureSweepIcon
     case 'origin':          return featureOriginIcon
     case 'fillet':          return featureFilletIcon

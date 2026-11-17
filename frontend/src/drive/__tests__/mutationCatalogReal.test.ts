@@ -84,6 +84,19 @@ describe.skipIf(!oc)('mutation catalog examples (real OCC + Rust solver)', () =>
     expect(measure!.measures.bodies).toBe(1)
   }, 120_000)
 
+  it('builds the wrap-on-cylinder example with the exact wrapped sector', async () => {
+    const example = MUTATION_EXAMPLES.find(entry => entry.name === 'wrap-on-cylinder')
+    expect(example).toBeDefined()
+    const result = await exampleRun(example!.steps)
+    expect(result.ok).toBe(true)
+    expect(result.features).toEqual([])
+    const measure = await measureHeadless(result.doc!)
+    expect(measure).not.toBeNull()
+    // pi * 20^2 * 30 + 20 * (10 / 40) * (20.5^2 - 20^2) = 37699.112 + 101.25.
+    expect(measure!.measures.volume).toBeCloseTo(Math.PI * 400 * 30 + 101.25, 3)
+    expect(measure!.measures.bodies).toBe(1)
+  }, 120_000)
+
   it('builds the tapered-block example fully constrained', async () => {
     const example = MUTATION_EXAMPLES.find(entry => entry.name === 'tapered-block')
     expect(example).toBeDefined()

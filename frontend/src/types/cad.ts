@@ -322,6 +322,18 @@ export type RevolveFeatureDef = {
   merge_target?: string
 }
 
+// A planar sketch footprint bent onto a cylinder, cone, sphere or torus face,
+// lengths kept at the reference parallel, and raised (add/new) or sunk (cut) by
+// `height` along the face normal. The datum is the target's own axis or
+// centre, so there is no origin or direction field (features/wrapMath.ts).
+export type WrapFeatureDef = {
+  sketch: string | string[]  // profile reference(s), one sketch plane
+  target?: string  // the face to wrap onto; required at solve time, absent soft fails
+  height: NumberOrExpr
+  operation?: 'add' | 'cut' | 'new'
+  merge_target?: string
+}
+
 export type SweepFeatureDef = {
   sketch: string | string[]  // profile reference(s)
   path: string | string[]  // spine reference(s): sketch edges that form the path
@@ -420,7 +432,7 @@ export type MirrorFeatureDef = {
   subject?: 'body' | 'feature'
   // Body subject: the whole body is reflected, merged or spawned.
   body?: string
-  // Feature subject: earlier extrude/revolve/sweep rows whose own add or cut is
+  // Feature subject: earlier extrude/revolve/sweep/wrap rows whose own add or cut is
   // reapplied mirrored inside the body each shaped. Feature-log order decides
   // the union, never the chip order.
   source_features?: string[]
@@ -794,6 +806,11 @@ export type SweepFeature = FeatureBase & {
   sweep: SweepFeatureDef
 }
 
+export type WrapFeature = FeatureBase & {
+  kind: 'wrap'
+  wrap: WrapFeatureDef
+}
+
 export type FilletFeature = FeatureBase & {
   kind: 'fillet'
   fillet: FilletFeatureDef
@@ -896,6 +913,7 @@ export type PartFeature =
   | ExtrudeFeature
   | RevolveFeature
   | SweepFeature
+  | WrapFeature
   | FilletFeature
   | ChamferFeature
   | ShellFeature
@@ -1588,6 +1606,8 @@ export type Mutation =
   | { type: 'remove_revolve_profile'; featureId: string; index: number }
   | ({ type: 'add_sweep'; featureId: string; label?: string; sketchQuery: string; pathQuery: string; transition?: SweepFeatureDef['transition']; multisection?: boolean; operation?: SweepFeatureDef['operation']; merge_target?: string } & FeatureInsertion)
   | { type: 'set_sweep_field'; featureId: string; field: keyof SweepFeatureDef; value: unknown }
+  | ({ type: 'add_wrap'; featureId: string; label?: string; sketchQuery: string; target?: string; height?: NumberOrExpr; operation?: WrapFeatureDef['operation']; merge_target?: string } & FeatureInsertion)
+  | { type: 'set_wrap_field'; featureId: string; field: keyof WrapFeatureDef; value: unknown }
   | { type: 'add_sweep_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_sweep_profile'; featureId: string; index: number }
   | { type: 'add_sweep_path'; featureId: string; pathQuery: string }

@@ -133,11 +133,11 @@ describe('LINEAR_PATTERN_SCHEMA', () => {
     })
   })
 
-  it('refuses a source that is not an earlier extrude, revolve or sweep', () => {
+  it('refuses a source that is not an earlier extrude, revolve, sweep or wrap', () => {
     const source = field('source_features') as PickFieldDef
     expect(source.validatePick!('@ex1', FEATURES)).toBeNull()
     expect(source.validatePick!('@rv1', FEATURES)).toBeNull()
-    expect(source.validatePick!('@sk1', FEATURES)).toContain('extrude, revolve or sweep')
+    expect(source.validatePick!('@sk1', FEATURES)).toContain('extrude, revolve, sweep or wrap')
     expect(source.validatePick!('@body_ex1', FEATURES)).toContain('feature row')
     expect(source.validatePick!('@ex1/face/0', FEATURES)).toContain('feature row')
   })

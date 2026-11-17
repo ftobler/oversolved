@@ -99,7 +99,7 @@ Snap rules for drag; measurement rules for on-canvas display.
 
 ### Command Tables (`commandEntries.ts`, `assemblyCommandEntries.ts`)
 
-`PART_COMMAND_SPECS` (the sketch/part editor, 60 specs) and
+`PART_COMMAND_SPECS` (the sketch/part editor, 61 specs) and
 `ASSEMBLY_COMMAND_SPECS` (the assembly editor, 29 specs) are the single source
 of truth for which commands each editor registers. Both are static data: every
 body reads its inputs from the `CommandContext` it is handed, so the table is
@@ -272,6 +272,7 @@ the three shared names). Regenerate with `npm run docs:commands`;
 | `add_shell` | Add shell | - | yes | sketch/part |
 | `add_split` | Add split | - | yes | sketch/part |
 | `add_transform` | Add transform | - | yes | sketch/part |
+| `add_wrap` | Add wrap | - | yes | sketch/part |
 | `apply_angle` | Apply Angle | - | yes | sketch/part |
 | `apply_coincident` | Apply Coincident | `c` | yes | sketch/part |
 | `apply_colinear` | Apply Colinear | - | yes | sketch/part |

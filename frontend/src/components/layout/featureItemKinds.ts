@@ -9,6 +9,7 @@ export const EDIT_LABELS: Record<string, string> = {
   plane: 'plane',
   extrude: 'extrude',
   revolve: 'revolve',
+  wrap: 'wrap',
   sweep: 'sweep',
   fillet: 'fillet',
   chamfer: 'chamfer',

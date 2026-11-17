@@ -16,7 +16,7 @@ import type { FunctionNode, MathNode, SymbolNode } from 'mathjs'
 import type {
   BooleanFeatureDef, ChamferFeatureDef, CircularPatternDef, CurvePatternDef,
   ExtrudeFeatureDef, FilletFeatureDef, HelixFeatureDef, HoleFeatureDef,
-  ImportStepFeature, LinearPatternDef, PlaneDef, RevolveFeatureDef, ShellFeatureDef,
+  ImportStepFeature, LinearPatternDef, PlaneDef, RevolveFeatureDef, ShellFeatureDef, WrapFeatureDef,
   TransformFeatureDef, MoveFaceFeatureDef,
 } from '@/types/cad'
 
@@ -53,6 +53,7 @@ export function evalExpr(expr: string, context: Record<string, number> = {}): nu
 interface ExprPayloads {
   extrude: ExtrudeFeatureDef
   revolve: RevolveFeatureDef
+  wrap: WrapFeatureDef
   fillet: FilletFeatureDef
   chamfer: ChamferFeatureDef
   shell: ShellFeatureDef
@@ -80,6 +81,7 @@ export type ExprFieldKind = keyof ExprPayloads
 export const EXPR_FIELDS_BY_KIND: { [K in ExprFieldKind]: readonly (keyof ExprPayloads[K] & string)[] } = {
   extrude: ['distance', 'taper', 'twist', 'up_to_offset'],
   revolve: ['angle'],
+  wrap: ['height'],
   fillet: ['radius'],
   chamfer: ['distance', 'angle'],
   shell: ['thickness'],

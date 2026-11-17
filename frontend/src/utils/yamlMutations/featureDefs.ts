@@ -1,4 +1,4 @@
-import type { PartDoc, PartFeature, NumberOrExpr, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, SplitFeatureDef, SplitKeep, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, ShellDirection, ShellJoin, MoveFaceFeatureDef, LinearPatternDef, CircularPatternDef, CurvePatternDef, InstancePatternDef, LegacyPatternDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
+import type { PartDoc, PartFeature, NumberOrExpr, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, SplitFeatureDef, SplitKeep, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, WrapFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, ShellDirection, ShellJoin, MoveFaceFeatureDef, LinearPatternDef, CircularPatternDef, CurvePatternDef, InstancePatternDef, LegacyPatternDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
 import { isPatternKind, patternSubOf } from '@/types/cad'
 import { warn, findFeature, normalizeRefList, round, MutationRefusal } from './helpers'
 import { arrayCountProblem } from '@/persistence/docSchema'
@@ -460,6 +460,38 @@ export function applyAddRevolve(
 
 export const applyAddRevolveProfile = makeAddRefToggle('revolve', 'sketch', 'applyAddRevolveProfile')
 export const applyRemoveRevolveProfile = makeRemoveRefAt('revolve', 'sketch', 'applyRemoveRevolveProfile')
+
+// ─── Wrap ───
+
+/** The height a wrap starts with when the add does not name one. */
+export const DEFAULT_WRAP_HEIGHT = 1
+
+/**
+ * Add a wrap. The target face rides along in the add so a script needs one
+ * call; absent, it stays absent and the solve reports the missing pick instead
+ * of guessing a surface.
+ */
+export function applyAddWrap(
+  doc: PartDoc,
+  featureId: string,
+  label: string | undefined,
+  sketchQuery: string,
+  inline: Partial<WrapFeatureDef> = {},
+): void {
+  const wrap: WrapFeatureDef = {
+    sketch: sketchQuery ? [sketchQuery] : [],
+    height: DEFAULT_WRAP_HEIGHT,
+  }
+  // Height, target, operation and merge_target follow the setter's clearing and
+  // rounding rules, as every other inline add.
+  mergeInlineFields(wrap, inline)
+  pushFeature(doc, { id: featureId, kind: 'wrap', label: label ?? 'Wrap', wrap })
+}
+
+export function applySetWrapField(doc: PartDoc, featureId: string, field: keyof WrapFeatureDef, value: unknown): void {
+  const feature = findFeature(doc, featureId)
+  setSubFeatureField(featureId, 'wrap', feature?.kind === 'wrap' ? feature.wrap : undefined, field, value, 'applySetWrapField')
+}
 
 // ─── Sweep ───
 

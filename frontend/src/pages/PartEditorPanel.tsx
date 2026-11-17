@@ -9,6 +9,7 @@ import { DEFAULT_EXTRUDE_DISTANCE } from '@/utils/yamlMutations'
 
 import featureExtrudeIcon from '@/assets/icons/feature-extrude.svg'
 import featureRevolveIcon from '@/assets/icons/feature-revolve.svg'
+import featureWrapIcon from '@/assets/icons/feature-wrap.svg'
 import featureSweepIcon from '@/assets/icons/feature-sweep.svg'
 import featureFilletIcon from '@/assets/icons/feature-fillet.svg'
 import featureChamferIcon from '@/assets/icons/feature-chamfer.svg'
@@ -118,6 +119,7 @@ export default function PartEditorPanel({
               <button className="editor-btn" title="Add Extrude (E)" onClick={() => handleAddFeature('extrude', { sketchQuery: '', distance: DEFAULT_EXTRUDE_DISTANCE })}><img src={featureExtrudeIcon} alt="Add Extrude" /></button>
               <button className="editor-btn" title="Add Revolve" onClick={() => handleAddFeature('revolve', { sketchQuery: '', angle: 360 })}><img src={featureRevolveIcon} alt="Add Revolve" /></button>
               <button className="editor-btn" title="Add Sweep" onClick={() => handleAddFeature('sweep', { sketchQuery: '', pathQuery: '' })}><img src={featureSweepIcon} alt="Add Sweep" /></button>
+              <button className="editor-btn" title="Add Wrap" onClick={() => handleAddFeature('wrap', { sketchQuery: '' })}><img src={featureWrapIcon} alt="Add Wrap" /></button>
               <button className="editor-btn" title="Add Helix" onClick={() => handleAddFeature('helix')}><img src={featureHelixIcon} alt="Add Helix" /></button>
               <button className="editor-btn" title="Add Fillet" onClick={() => handleAddFeature('fillet')}><img src={featureFilletIcon} alt="Add Fillet" /></button>
               <button className="editor-btn" title="Add Chamfer" onClick={() => handleAddFeature('chamfer')}><img src={featureChamferIcon} alt="Add Chamfer" /></button>

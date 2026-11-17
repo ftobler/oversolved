@@ -23,6 +23,7 @@ import type { FeatureKind, PartFeature } from '@/types/cad'
 import type { FeatureSolver } from './builder'
 import { solveExtrude } from './features/extrude'
 import { solveRevolve } from './features/revolve'
+import { solveWrap } from './features/wrap'
 import { solveSweep } from './features/sweep'
 import { solveHole } from './features/hole'
 import { solveBoolean } from './features/boolean'
@@ -104,6 +105,7 @@ const KIND_SOLVER: SolverTable = {
   extrude: solveExtrude,
   revolve: solveRevolve,
   sweep: solveSweep,
+  wrap: solveWrap,
   hole: solveHole,
   boolean: solveBoolean,
   fillet: solveFillet,

@@ -243,6 +243,16 @@ export const FEATURE_SCHEMA_BY_KIND = {
       operation: { enum: ['add', 'cut', 'new'] }, merge_target: REF,
     },
   }),
+  wrap: feature('wrap', {
+    key: 'wrap',
+    // The target may be absent while the editor waits for the pick; the solve
+    // then builds nothing and says so, like an up_to with no target.
+    required: ['sketch', 'height'],
+    properties: {
+      sketch: REF_OR_LIST, target: REF, height: NUMBER_OR_EXPR,
+      operation: { enum: ['add', 'cut', 'new'] }, merge_target: REF,
+    },
+  }),
   fillet: feature('fillet', {
     key: 'fillet',
     required: ['edges', 'radius'],

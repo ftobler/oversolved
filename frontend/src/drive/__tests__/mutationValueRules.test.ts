@@ -147,6 +147,9 @@ describe('value rules cover the catalog', () => {
     ['remove_revolve_profile', { type: 'remove_revolve_profile', featureId: 'rv1', index: -1 }],
     ['add_sweep', { type: 'add_sweep', featureId: 'sw1', sketchQuery: '$sk1', pathQuery: '' }],
     ['set_sweep_field', { type: 'set_sweep_field', featureId: 'sw1', field: 'operation', value: 'copy' }],
+    // A wrap height is a magnitude: a negative one is refused with the add/cut route.
+    ['add_wrap', { type: 'add_wrap', featureId: 'wr1', sketchQuery: '$sk1', height: -1 }],
+    ['set_wrap_field', { type: 'set_wrap_field', featureId: 'wr1', field: 'height', value: 0 }],
     ['add_sweep_profile', { type: 'add_sweep_profile', featureId: 'sw1', sketchQuery: '' }],
     ['remove_sweep_profile', { type: 'remove_sweep_profile', featureId: 'sw1', index: -1 }],
     ['add_sweep_path', { type: 'add_sweep_path', featureId: 'sw1', pathQuery: '' }],

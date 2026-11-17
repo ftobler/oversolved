@@ -21,6 +21,7 @@ type ExprSubKey<K extends ExprFieldKind> = '' | Extract<keyof FeatureOf<K>, stri
 const EXPR_SUBKEY_BY_KIND: { [K in ExprFieldKind]: ExprSubKey<K> } = {
   extrude: 'extrude',
   revolve: 'revolve',
+  wrap: 'wrap',
   fillet: 'fillet',
   chamfer: 'chamfer',
   shell: 'shell',

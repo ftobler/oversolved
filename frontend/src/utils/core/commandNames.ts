@@ -24,6 +24,7 @@ export const COMMAND_NAMES = [
   'add_circular_pattern',
   'add_curve_pattern',
   'add_instance_pattern',
+  'add_wrap',
   'apply_offset',
   'mirror_entities',
   'fillet_corners',

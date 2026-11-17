@@ -97,6 +97,7 @@
     "gp_Ax2",
     "gp_Ax3",
     "gp_Circ",
+    "gp_Cone",
     "gp_Cylinder",
     "gp_Dir",
     "gp_Dir2d",
@@ -104,6 +105,8 @@
     "gp_Lin",
     "gp_Pnt",
     "gp_Pnt2d",
+    "gp_Sphere",
+    "gp_Torus",
     "gp_Trsf",
     "gp_Vec"
   ],

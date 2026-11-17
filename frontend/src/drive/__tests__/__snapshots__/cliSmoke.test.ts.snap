@@ -83,6 +83,13 @@ exports[`drive CLI (real OCC + Rust solver) > lists the command registry with it
     },
     {
       "enabled": true,
+      "id": "add_wrap",
+      "label": "Add wrap",
+      "params": [],
+      "undoable": true,
+    },
+    {
+      "enabled": true,
       "id": "apply_angle",
       "label": "Apply Angle",
       "params": [],

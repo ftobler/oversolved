@@ -625,6 +625,7 @@ const addLinearPatternSpec = addFeatureSpec('add_linear_pattern', 'Add linear pa
 const addCircularPatternSpec = addFeatureSpec('add_circular_pattern', 'Add circular pattern', 'circular_pattern')
 const addCurvePatternSpec = addFeatureSpec('add_curve_pattern', 'Add curve pattern', 'curve_pattern')
 const addInstancePatternSpec = addFeatureSpec('add_instance_pattern', 'Add instance pattern', 'instance_pattern')
+const addWrapSpec = addFeatureSpec('add_wrap', 'Add wrap', 'wrap', { sketchQuery: '' })
 
 /**
  * The sketch/part editor's full command table. Static data: every body reads
@@ -665,4 +666,5 @@ export const PART_COMMAND_SPECS: readonly ErasedCommandSpec<PartCommandContext>[
   addCircularPatternSpec,
   addCurvePatternSpec,
   addInstancePatternSpec,
+  addWrapSpec,
 ]

@@ -43,6 +43,8 @@ import {
   applySetRevolveField,
   applyAddRevolveProfile,
   applyRemoveRevolveProfile,
+  applyAddWrap,
+  applySetWrapField,
   applyAddSweep,
   applySetSweepField,
   applyAddSweepProfile,
@@ -337,6 +339,12 @@ export const mutationHandlers: MutationHandlers = {
     applyAddRevolveProfile(next, m.featureId, m.sketchQuery),
   remove_revolve_profile: (next, m) =>
     applyRemoveRevolveProfile(next, m.featureId, m.index),
+  add_wrap: (next, m) => {
+    const { type: _type, featureId, label, insertAt: _insertAt, sketchQuery, ...inline } = m
+    applyAddWrap(next, featureId, label, sketchQuery, inline)
+  },
+  set_wrap_field: (next, m) =>
+    applySetWrapField(next, m.featureId, m.field, m.value),
   add_sweep: (next, m) => {
     const { type: _type, featureId, label, insertAt: _insertAt, sketchQuery, pathQuery, ...inline } = m
     applyAddSweep(next, featureId, label, sketchQuery, pathQuery, inline)

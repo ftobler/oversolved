@@ -302,6 +302,7 @@ export const FIELD_SETTER_KIND = {
   set_extrude_field: 'extrude',
   set_revolve_field: 'revolve',
   set_sweep_field: 'sweep',
+  set_wrap_field: 'wrap',
   set_fillet_field: 'fillet',
   set_chamfer_field: 'chamfer',
   set_shell_field: 'shell',
@@ -867,6 +868,27 @@ const EXTRUDE_THROUGH_ALL_NOTE =
   '`direction: normal` and `reverse` cut one side of the profile plane; `direction: symmetric` cuts ' +
   'through all material on BOTH sides of it. ' +
   'It needs a part to cut through, and `operation` must be `cut`; add, new and intersect are refused.'
+
+const WRAP_NOTE =
+  'Bends the profile onto `target`, a cylinder, cone, sphere or torus face (a planar target is refused: use an ' +
+  'extrude; a freeform face is refused), and raises it by `height` along the face normal (`operation` add or new) ' +
+  'or sinks it into the material (cut). There is no origin or direction field: the datum is the target\'s own axis ' +
+  '(cylinder, cone, torus) projected into the sketch plane, or a sphere\'s projected centre. Sketch coordinates ' +
+  'along the projected axis are meridian arc length from the footprint\'s bounding-box centre; coordinates across ' +
+  'it are arc length around the axis at that reference parallel (theta = d / r0), so a footprint centred on the ' +
+  'projected axis lands on the side facing the sketch (the far wall of a bore) and one drawn off it rotates around; ' +
+  'a torus faces on the near side of its ring unless its material normal points away there (a bore\'s entry ' +
+  'fillet, a groove inside a bore), then on the far side. A torus footprint must also stay under the tube\'s ' +
+  'circumference along it. ' +
+  'On a sphere the map is azimuthal equidistant about the projected centre, within a quarter great circle. Lengths ' +
+  'are exact at the reference parallel only: away from it a cone, sphere or torus stretches the way any unrolling ' +
+  'does, and the top face is wider than the base by the (r + height) / r flare. Straight lines build exactly on a ' +
+  'cylinder, cone or torus; curves (and everything on a sphere) are fitted within 1e-6 of the footprint size. ' +
+  'Refused by name: a sketch plane perpendicular to the axis, a footprint reaching 180 degrees around, one ' +
+  'running off the target face, and a height reaching through the axis. To keep the sketch fully constrained, ' +
+  'project a circular edge of the target with add_projected_entity kind `point` (it lands on the circle\'s centre, ' +
+  'which is on the axis) and dimension the footprint to it. An older reader refuses the kind by name. ' +
+  '`merge_target`: ' + MERGE_TARGET_NOTE
 
 const REVOLVE_INLINE_NOTE =
   'One call may carry the whole revolve: `direction` (normal | reverse | symmetric), `operation` ' +
@@ -1533,6 +1555,23 @@ export const MUTATION_CATALOG = {
     note: REVOLVE_AXIS_NOTE + ' `merge_target`: ' + MERGE_TARGET_NOTE,
     fields: { featureId: str(), field: fieldOf('revolve', 'set_revolve_field'), value: setterValue('revolve') },
   },
+  add_wrap: {
+    summary: 'Wrap a sketch footprint onto a cylinder, cone, sphere or torus face and add or cut it by a height.',
+    note: WRAP_NOTE,
+    fields: {
+      ...featureAddFields(),
+      sketchQuery: sketchQuery(),
+      target: optStr('The face to wrap onto: a face query from `select` or `@<partId>/face/<n>` (the key the document stores as wrap.target). Absent builds nothing and warns.'),
+      height: optScalar('Positive distance along the face normal; defaults to 1 (the key the document stores as wrap.height).'),
+      operation: optStr('add | cut | new; absent means add (the key the document stores as wrap.operation).'),
+      merge_target: optStr(MERGE_TARGET_NOTE),
+    },
+  },
+  set_wrap_field: {
+    summary: 'Set one wrap field (target, height, operation, merge_target).',
+    note: WRAP_NOTE,
+    fields: { featureId: str(), field: fieldOf('wrap', 'set_wrap_field'), value: setterValue('wrap') },
+  },
   add_revolve_profile: {
     summary: 'Add a profile sketch to a revolve.',
     fields: { featureId: str(), sketchQuery: sketchQuery() },
@@ -1714,7 +1753,7 @@ export const MUTATION_CATALOG = {
       subject: optStr('body | feature; defaults to body.'),
       source_body: optStr('Part subject: the part (stored as `source_body`) to copy, e.g. body_ex2.'),
       operation: optStr('Part subject: add | new; defaults to add.'),
-      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve or sweep with operation add or cut.'),
+      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve, sweep or wrap with operation add or cut.'),
       source_feature: optStr('Feature subject: the legacy single-source form of source_features, e.g. @ex1. Still accepted; a list or the singular key, not both.'),
       target_body: optStr('Feature subject: applies every source to this part (stored as `target_body`) instead of the part each source shaped.'),
       count: optScalar(),
@@ -1756,7 +1795,7 @@ export const MUTATION_CATALOG = {
       subject: optStr('body | feature; defaults to body.'),
       source_body: optStr('Part subject: the part (stored as `source_body`) to copy, e.g. body_ex2.'),
       operation: optStr('Part subject: add | new; defaults to add.'),
-      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve or sweep with operation add or cut.'),
+      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve, sweep or wrap with operation add or cut.'),
       source_feature: optStr('Feature subject: the legacy single-source form of source_features, e.g. @ex1. Still accepted; a list or the singular key, not both.'),
       target_body: optStr('Feature subject: applies every source to this part (stored as `target_body`) instead of the part each source shaped.'),
       count: optScalar(),
@@ -1791,7 +1830,7 @@ export const MUTATION_CATALOG = {
       subject: optStr('body | feature; defaults to body.'),
       source_body: optStr('Part subject: the part (stored as `source_body`) to copy, e.g. body_ex2.'),
       operation: optStr('Part subject: add | new; defaults to add.'),
-      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve or sweep with operation add or cut.'),
+      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve, sweep or wrap with operation add or cut.'),
       source_feature: optStr('Feature subject: the legacy single-source form of source_features, e.g. @ex1. Still accepted; a list or the singular key, not both.'),
       target_body: optStr('Feature subject: applies every source to this part (stored as `target_body`) instead of the part each source shaped.'),
       pathQuery: pathQuery(),
@@ -1834,7 +1873,7 @@ export const MUTATION_CATALOG = {
       subject: optStr('body | feature; defaults to body.'),
       source_body: optStr('Part subject: the part (stored as `source_body`) to copy, e.g. body_ex2.'),
       operation: optStr('Part subject: add | new; defaults to add.'),
-      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve or sweep with operation add or cut.'),
+      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve, sweep or wrap with operation add or cut.'),
       source_feature: optStr('Feature subject: the legacy single-source form of source_features, e.g. @ex1. Still accepted; a list or the singular key, not both.'),
       target_body: optStr('Feature subject: applies every source to this part (stored as `target_body`) instead of the part each source shaped.'),
       sketch: optStr('Sketch form: every non-construction point of this sketch is a target, e.g. @sk1.'),
@@ -1876,7 +1915,7 @@ export const MUTATION_CATALOG = {
       subject: optStr('body | feature; defaults to body.'),
       source_body: optStr('Part subject: the part (stored as `source_body`) to copy, e.g. body_ex2.'),
       operation: optStr('Part subject: add | new; defaults to add.'),
-      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve or sweep with operation add or cut.'),
+      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve, sweep or wrap with operation add or cut.'),
       source_feature: optStr('Feature subject: the legacy single-source form of source_features, e.g. @ex1. Still accepted; a list or the singular key, not both.'),
       target_body: optStr('Feature subject: applies every source to this part (stored as `target_body`) instead of the part each source shaped.'),
       mode: optStr('linear | rectangular | circular; defaults to linear. Translated to second_direction or the circular kind.'),
@@ -1913,7 +1952,7 @@ export const MUTATION_CATALOG = {
   add_pattern_source: {
     summary: 'Add a source feature to a feature pattern (toggles an already-listed source out).',
     note: PATTERN_SOURCE_NOTE,
-    fields: { featureId: str(), sourceFeature: str('A feature ref, e.g. @ex1: an extrude, revolve or sweep with operation add or cut.') },
+    fields: { featureId: str(), sourceFeature: str('A feature ref, e.g. @ex1: an extrude, revolve, sweep or wrap with operation add or cut.') },
   },
   remove_pattern_source: {
     summary: 'Remove a pattern source by index.',
@@ -2029,7 +2068,7 @@ export const MUTATION_CATALOG = {
     note: MIRROR_NOTE,
     fields: {
       featureId: str(),
-      sourceFeature: str('A feature ref, e.g. @ex1: an extrude, revolve or sweep with operation add or cut.'),
+      sourceFeature: str('A feature ref, e.g. @ex1: an extrude, revolve, sweep or wrap with operation add or cut.'),
     },
   },
   remove_mirror_source: {
@@ -2208,6 +2247,8 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   remove_extrude_profile: 'features',
   add_revolve: 'features',
   set_revolve_field: 'features',
+  add_wrap: 'features',
+  set_wrap_field: 'features',
   add_revolve_profile: 'features',
   remove_revolve_profile: 'features',
   add_sweep: 'features',

@@ -235,6 +235,7 @@ describe('set_*_field field names', () => {
     set_extrude_field: 'distance',
     set_revolve_field: 'angle',
     set_sweep_field: 'path',
+    set_wrap_field: 'height',
     set_fillet_field: 'radius',
     set_chamfer_field: 'kind',
     set_shell_field: 'thickness',

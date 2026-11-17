@@ -35,6 +35,7 @@ import type {
   SplitFeature,
   SweepFeature,
   TransformFeature,
+  WrapFeature,
   VariableFeature,
 } from '@/types/cad'
 import type { SolverTable } from '../solverRegistry'
@@ -51,6 +52,7 @@ describe('the part feature union is closed', () => {
       | 'extrude'
       | 'revolve'
       | 'sweep'
+      | 'wrap'
       | 'fillet'
       | 'chamfer'
       | 'shell'
@@ -80,6 +82,7 @@ describe('solver dispatch maps each kind to its variant', () => {
     expectTypeOf<FeatureParam<'extrude'>>().toEqualTypeOf<ExtrudeFeature>()
     expectTypeOf<FeatureParam<'revolve'>>().toEqualTypeOf<RevolveFeature>()
     expectTypeOf<FeatureParam<'sweep'>>().toEqualTypeOf<SweepFeature>()
+    expectTypeOf<FeatureParam<'wrap'>>().toEqualTypeOf<WrapFeature>()
     expectTypeOf<FeatureParam<'fillet'>>().toEqualTypeOf<FilletFeature>()
     expectTypeOf<FeatureParam<'chamfer'>>().toEqualTypeOf<ChamferFeature>()
     expectTypeOf<FeatureParam<'shell'>>().toEqualTypeOf<ShellFeature>()

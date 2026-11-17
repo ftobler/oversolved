@@ -46,6 +46,8 @@ const ALL_MUTATION_TYPES = [
   'remove_revolve_profile',
   'add_sweep',
   'set_sweep_field',
+  'add_wrap',
+  'set_wrap_field',
   'add_sweep_profile',
   'remove_sweep_profile',
   'add_sweep_path',

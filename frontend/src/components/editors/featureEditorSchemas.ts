@@ -3,6 +3,7 @@ import type { EditorFieldDef, HintContext, ReadonlyFieldDef, TextFieldDef } from
 import {
   normalizeRefList,
   DEFAULT_EXTRUDE_DISTANCE,
+  DEFAULT_WRAP_HEIGHT,
 } from '@/utils/yamlMutations'
 import { THREAD_TABLE, threadEntry, threadLabel, threadDesignations, DRILL_POINT_ANGLE } from '@/kernel/threadTable'
 import { pickedSketchEntity } from '@/kernel/features/shared/bodyRef'
@@ -241,6 +242,29 @@ export const SHELL_SCHEMA: FeatureEditorSchema = {
     { type: 'pick', key: 'source_body', label: 'Part',
       showWhen: (d) => (Array.isArray(d.faces) ? d.faces.length : 0) === 0,
       transform: resolveBodyPickRef, names: 'body', emptyText: '(pick part, required)' },
+  ],
+}
+
+// The height is a magnitude: add raises the footprint, cut sinks it.
+export const WRAP_SCHEMA: FeatureEditorSchema = {
+  mutationPrefix: 'set_wrap',
+  subKey: 'wrap',
+  defaults: { sketch: '', height: DEFAULT_WRAP_HEIGHT, operation: 'add' },
+  fields: [
+    { type: 'pick', key: 'sketch', label: 'Profile', transform: stripSelectionWrapper,
+      hint: 'Project a circular edge of the target as a point (its centre is on the axis) and dimension the footprint to it.' },
+    // Two picks and a number: the target's own axis is the datum, so there is
+    // nothing to place. The kernel refuses a planar or freeform face by name;
+    // the chip only insists on a named face.
+    { type: 'pick', key: 'target', label: 'Target face', validatePick: facePickRefusal, removeValue: undefined,
+      emptyText: '(pick cylinder, cone, sphere or torus face)',
+      hint: 'Wraps about the face\'s axis (a sphere: its centre); lengths hold at the footprint\'s centre.' },
+    { type: 'number', key: 'height', label: 'Height', default: DEFAULT_WRAP_HEIGHT, quantity: 'length', validate: positive },
+    { type: 'select', key: 'operation', label: 'Operation', default: 'add',
+      options: [{ value: 'add', label: 'Add' }, { value: 'cut', label: 'Cut' }, { value: 'new', label: 'New' }] },
+    { type: 'pick', key: 'merge_target', label: 'Merge Target',
+      showWhen: showMergeTarget, transform: resolveBodyPickRef, names: 'body', removeValue: undefined,
+      emptyText: '(all parts)' },
   ],
 }
 
@@ -550,24 +574,25 @@ function patternSkipValue(d: SchemaData): SkipEntry[] {
 
 /**
  * The pattern and mirror source chip's own rule: a source is a whole feature
- * row, not a viewport pick. Only an earlier extrude, revolve or sweep produces a
- * tool the repeat can reapply (the order and self-reference rule is the pick
- * hook's, shared with every other feature-reference field).
+ * row, not a viewport pick. Only an earlier extrude, revolve, sweep or wrap
+ * produces a tool the repeat can reapply (the order and self-reference rule is
+ * the pick hook's, shared with every other feature-reference field). The kernel's
+ * TOOL_LEAVES (kernel/features/patternFeature.ts) is the same list.
  */
-const PATTERN_SOURCE_KINDS = ['extrude', 'revolve', 'sweep'] as const
+const PATTERN_SOURCE_KINDS = ['extrude', 'revolve', 'sweep', 'wrap'] as const
 
 function toolSourcePickRefusal(id: string, features?: readonly PartFeature[]): string | null {
   if (!id.startsWith('@') || id.includes('/')) {
-    return 'pick a feature row (an extrude, revolve or sweep) in the Features list, not viewport geometry'
+    return 'pick a feature row (an extrude, revolve, sweep or wrap) in the Features list, not viewport geometry'
   }
   if (features === undefined) return null
   const feature = features.find((candidate) => candidate.id === id.slice(1))
   if (feature === undefined) {
-    return 'pick a feature row (an extrude, revolve or sweep) in the Features list'
+    return 'pick a feature row (an extrude, revolve, sweep or wrap) in the Features list'
   }
   return (PATTERN_SOURCE_KINDS as readonly string[]).includes(feature.kind)
     ? null
-    : 'a pattern or mirror source is an extrude, revolve or sweep'
+    : 'a pattern or mirror source is an extrude, revolve, sweep or wrap'
 }
 
 // Both pattern kinds repeat the same thing: one feature, two subjects, one
@@ -581,7 +606,7 @@ export const PATTERN_SOURCE_FIELDS: EditorFieldDef[] = [
   { type: 'pick', key: 'source_body', label: 'Part', transform: resolveBodyPickRef, names: 'body',
     showWhen: (d) => d.subject !== 'feature', emptyText: '(pick the part to copy)' },
   // The sources are FEATURE rows, not viewport picks: the chip shows the picked
-  // extrude/revolve/sweep rows and the feature tree is the pick surface. Every
+  // extrude/revolve/sweep/wrap rows and the feature tree is the pick surface. Every
   // source is reapplied at each grid instance, in the order the sources sit in
   // the feature log; the earliest source's first produced body is the instance-0
   // seed (the count includes it and the grid leaves it in place). The chip's own
@@ -1013,6 +1038,7 @@ export const EDITOR_SCHEMAS: Record<string, FeatureEditorSchema> = {
   extrude: EXTRUDE_SCHEMA,
   revolve: REVOLVE_SCHEMA,
   sweep: SWEEP_SCHEMA,
+  wrap: WRAP_SCHEMA,
   fillet: FILLET_SCHEMA,
   chamfer: CHAMFER_SCHEMA,
   shell: SHELL_SCHEMA,

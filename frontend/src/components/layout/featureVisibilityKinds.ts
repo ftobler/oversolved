@@ -36,6 +36,7 @@ export const FEATURE_VISIBILITY_BY_KIND = {
   extrude: { toggle: true },
   revolve: { toggle: true },
   sweep: { toggle: true },
+  wrap: { toggle: true },
   fillet: { toggle: true },
   chamfer: { toggle: true },
   shell: { toggle: true },

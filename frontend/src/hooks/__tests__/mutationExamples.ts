@@ -67,6 +67,11 @@ const revolveDoc = (): PartDoc => makeDoc({
   revolve: { sketch: ['@sk1'], angle: 360, axis: '@axis' },
 })
 
+const wrapDoc = (): PartDoc => makeDoc({
+  id: 'wr1', kind: 'wrap', label: 'Wrap',
+  wrap: { sketch: ['@sk1'], target: '@body_ex1/face/2', height: 1 },
+})
+
 const sweepDoc = (): PartDoc => makeDoc({
   id: 'sw1', kind: 'sweep', label: 'Sweep',
   sweep: { sketch: [], path: [] },
@@ -388,6 +393,16 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
   remove_revolve_profile: {
     makeDoc: revolveDoc,
     mutation: { type: 'remove_revolve_profile', featureId: 'rv1', index: 0 },
+  },
+
+  // wrap
+  add_wrap: {
+    makeDoc: emptyDoc,
+    mutation: { type: 'add_wrap', featureId: 'wr1', label: 'Wrap', sketchQuery: '@sk1', target: '@body_ex1/face/2', height: 0.5 },
+  },
+  set_wrap_field: {
+    makeDoc: wrapDoc,
+    mutation: { type: 'set_wrap_field', featureId: 'wr1', field: 'height', value: 2 },
   },
 
   // sweep

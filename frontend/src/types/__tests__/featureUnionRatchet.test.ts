@@ -67,8 +67,10 @@ const RATCHETS: Ratchet[] = [
     // shared drill-site wording names that same bag. The union rows themselves
     // are narrowed by `kind`; these records are the repository boundary, the
     // same allowance the other leaf leaves already spend.
+    // 370: the wrap leaf's one `Dict` alias for its sub-definition and the
+    // repository payloads it reads, as the revolve leaf it is modelled on.
     token: 'Record<string, unknown>',
-    baseline: 369,
+    baseline: 370,
   },
 ]
 

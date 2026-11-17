@@ -967,6 +967,14 @@ function checkSweep(sub: DocRecord, field: string): void {
   checkOptional(sub, 'merge_target', field, checkRef)
 }
 
+function checkWrap(sub: DocRecord, field: string): void {
+  checkOptional(sub, 'sketch', field, checkRefOrRefList)
+  checkOptional(sub, 'target', field, checkRef)
+  checkOptional(sub, 'height', field, checkPositiveExpr)
+  checkOptional(sub, 'operation', field, (v, f) => checkEnum(v, f, OPERATIONS))
+  checkOptional(sub, 'merge_target', field, checkRef)
+}
+
 function checkFillet(sub: DocRecord, field: string): void {
   checkOptional(sub, 'edges', field, checkRefList)
   checkOptional(sub, 'radius', field, checkExpr)
@@ -1309,6 +1317,7 @@ const FEATURE_DEF_CHECKS = new Map<string, (sub: DocRecord, field: string) => vo
   ['extrude', checkExtrude],
   ['revolve', checkRevolve],
   ['sweep', checkSweep],
+  ['wrap', checkWrap],
   ['fillet', checkFillet],
   ['chamfer', checkChamfer],
   ['shell', checkShell],

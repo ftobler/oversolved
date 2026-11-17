@@ -182,6 +182,34 @@ def toolbar_sweep(ctx):
     _arrowhead(ctx, 0.82, 0.70, -25, px(8))
 
 
+@icon("frontend/src/assets/icons/feature-wrap.svg")
+def toolbar_wrap(ctx):
+    # Wrap icon: a cylinder seen from the side with a label band bent onto it
+    x0, x1 = 0.25, 0.75
+    y0, y1 = 0.18, 0.82
+    # Cylinder silhouette: two sides, the top ellipse and the front bottom arc
+    ctx.move_to(x0, y0)
+    ctx.line_to(x0, y1)
+    ctx.move_to(x1, y0)
+    ctx.line_to(x1, y1)
+    stroke(ctx, 1.5)
+    for y, start, end in ((y0, 0, 2 * math.pi), (y1, 0, math.pi)):
+        ctx.save()
+        ctx.translate(0.5, y)
+        ctx.scale(0.25, 0.07)
+        ctx.arc(0, 0, 1, start, end)
+        ctx.restore()
+        stroke(ctx, 1.5)
+    # The band: two parallel arcs across the front, curved like the surface
+    for y in (0.42, 0.60):
+        ctx.save()
+        ctx.translate(0.5, y)
+        ctx.scale(0.25, 0.07)
+        ctx.arc(0, 0, 1, 0, math.pi)
+        ctx.restore()
+        stroke(ctx, 2.5)
+
+
 @icon("frontend/src/assets/icons/feature-sketch.svg", angle=120)
 def toolbar_sketch(ctx):
     _pencil(ctx)

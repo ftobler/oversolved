@@ -48,6 +48,8 @@ export {
   applyAddRevolveProfile,
   applyRemoveRevolveProfile,
   applySetRevolveField,
+  applyAddWrap,
+  applySetWrapField,
   applyAddSweep,
   applyAddSweepProfile,
   applyRemoveSweepProfile,
@@ -115,6 +117,7 @@ export {
   applyAddHelix,
   applySetHelixField,
   DEFAULT_EXTRUDE_DISTANCE,
+  DEFAULT_WRAP_HEIGHT,
 } from './featureDefs'
 
 export {

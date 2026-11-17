@@ -217,6 +217,12 @@ export interface RecipeSplit {
   keep: 'above' | 'below' | 'both'
 }
 
+// Deliberately not drawn: `wrap`. Its tool is a ruled loft between two analytic
+// surfaces the closed-form oracles in kernel/occ/__tests__/wrapSolidReal.test.ts
+// and kernel/features/__tests__/wrapReal.test.ts already pin per surface kind,
+// and the chain's start bodies rarely offer a curved face a footprint can stay
+// on, so a drawn step would mostly exercise its own refusals while redrawing
+// every pinned seed after it.
 export type RecipeStep =
   | RecipeStart
   | RecipeBoolean

@@ -14,7 +14,7 @@ export const CREATING_MUTATION_TYPES = new Set<Mutation['type']>([
   'add_rect', 'add_center_rect', 'add_ngon', 'add_three_point_arc', 'apply_offset',
   'mirror_entities', 'pattern_entities', 'fillet_corners',
   'add_sketch', 'add_plane', 'add_import_step',
-  'add_extrude', 'add_revolve', 'add_sweep',
+  'add_extrude', 'add_revolve', 'add_sweep', 'add_wrap',
   'add_fillet', 'add_chamfer', 'add_boolean',
   'add_shell',
   'add_move_face',

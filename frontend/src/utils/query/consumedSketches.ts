@@ -1,6 +1,6 @@
 // Which sketch-class features a feature has swallowed.
 //
-// A solid feature (extrude, revolve, sweep, hole) consumes the sketch it is
+// A solid feature (extrude, revolve, sweep, wrap, hole) consumes the sketch it is
 // built from: once the body exists, the profile wires floating inside it are
 // clutter, so a consumed sketch is not drawn. A helix picked as a sweep path is
 // reference geometry the same way, so it is consumed by the same rule. The
@@ -94,6 +94,9 @@ function collectConsumed(
       break
     case 'hole':
       queries = refList(feature.hole?.sketch)
+      break
+    case 'wrap':
+      queries = refList(feature.wrap?.sketch)
       break
   }
   for (const q of queries) {

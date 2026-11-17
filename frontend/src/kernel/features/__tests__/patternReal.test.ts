@@ -402,7 +402,7 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
         pattern('pt1', 'sk', linear({})),
       ],
     })
-    expect(String(h.res(notSolid, 'pt1').exception)).toContain('a feature pattern repeats an extrude, revolve or sweep')
+    expect(String(h.res(notSolid, 'pt1').exception)).toContain('a feature pattern repeats an extrude, revolve, sweep or wrap')
   })
 
   it('names the order fix when the source comes after the pattern', () => {

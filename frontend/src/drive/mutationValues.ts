@@ -1984,6 +1984,43 @@ function addSweep(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   return inlineFeatureFieldsProblem(raw, ctx, 'sweep', 'set_sweep_field')
 }
 
+// A wrap's target is a stored pick, not a default; it may be omitted (the solve
+// then soft fails by name), but a present one must be a usable ref. The height
+// is a positive magnitude: add/cut, not its sign, says which way it goes.
+function addWrap(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const problem = profileRefProblem(raw.sketchQuery, 'sketchQuery')
+  if (problem !== null) return invalid(problem)
+  if (raw.target !== undefined) {
+    if (typeof raw.target !== 'string' || raw.target.trim().length === 0) {
+      return invalid('target must be a non-empty face pick, a face query from `select` or `@<partId>/face/<n>`, got ' + json(raw.target))
+    }
+    const targetProblem = refValueProblem(raw.target, 'target')
+    if (targetProblem !== null) return invalid(targetProblem)
+  }
+  if (raw.height !== undefined) {
+    const heightProblem = wrapHeightProblem(raw.height, 'height')
+    if (heightProblem !== null) return invalid(heightProblem)
+  }
+  return inlineFeatureFieldsProblem(raw, ctx, 'wrap', 'set_wrap_field')
+}
+
+function wrapHeightProblem(value: unknown, label: string): string | null {
+  const problem = positiveScalarProblem(value, label)
+  return problem === null
+    ? null
+    : `${problem}; a wrap height is a positive magnitude, operation add raises it and cut sinks it`
+}
+
+function setWrapField(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const generic = fieldValue(raw, ctx)
+  if (generic !== null) return generic
+  if (raw.field === 'height') {
+    const problem = wrapHeightProblem(raw.value, 'set_wrap_field height')
+    return problem === null ? null : invalid(problem)
+  }
+  return null
+}
+
 function addTransform(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   return inlineFeatureFieldsProblem(raw, ctx, 'transform', 'set_transform_field')
 }
@@ -2630,6 +2667,8 @@ export const MUTATION_VALUE_RULES = {
   remove_extrude_profile: indexField('index'),
   add_revolve: addRevolve,
   set_revolve_field: setRevolveField,
+  add_wrap: addWrap,
+  set_wrap_field: setWrapField,
   add_revolve_profile: profileRefField('sketchQuery'),
   remove_revolve_profile: indexField('index'),
   add_sweep: addSweep,

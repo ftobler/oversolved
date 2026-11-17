@@ -26,6 +26,7 @@ export const FEATURE_DEF_SUBKEY = {
   extrude: 'extrude',
   revolve: 'revolve',
   sweep: 'sweep',
+  wrap: 'wrap',
   fillet: 'fillet',
   chamfer: 'chamfer',
   shell: 'shell',

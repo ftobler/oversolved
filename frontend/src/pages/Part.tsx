@@ -116,7 +116,7 @@ function nonBuiltInCountBefore(features: PartFeature[], index: number): number {
 // an add; only a part with none starts its first body with `new`. Read from the
 // document, not the last solve, so a pending or failed solve does not seed the
 // wrong operation.
-const BODY_PRODUCING_KINDS: ReadonlySet<string> = new Set(['extrude', 'revolve', 'sweep', 'import_step'])
+const BODY_PRODUCING_KINDS: ReadonlySet<string> = new Set(['extrude', 'revolve', 'sweep', 'wrap', 'import_step'])
 function hasBodyProducerBefore(features: PartFeature[], index: number): boolean {
   return features.slice(0, index).some(f => !f.suppressed && BODY_PRODUCING_KINDS.has(f.kind))
 }
@@ -170,6 +170,7 @@ const FIRST_PICK_FIELD: Record<string, { field: string; multi?: boolean }> = {
   extrude: { field: 'sketch', multi: true },
   revolve: { field: 'sketch', multi: true },
   sweep: { field: 'sketch', multi: true },
+  wrap: { field: 'sketch' },
   fillet: { field: 'edges', multi: true },
   chamfer: { field: 'edges', multi: true },
   shell: { field: 'faces', multi: true },

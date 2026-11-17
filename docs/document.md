@@ -408,6 +408,35 @@ Interior means one area's: a line drawn along the axis splits a closed curve int
 two areas that each touch it, so a full circle or ellipse plus its diameter line
 revolves into a sphere or spheroid.
 
+### wrap
+
+```yaml
+- id: wr1
+  kind: wrap
+  wrap:
+    sketch: "@sk1"              # the planar footprint
+    target: "?face-query"       # a cylinder, cone, sphere or torus face
+    height: 0.5                 # positive; add raises it, cut sinks it
+    operation: add              # new | add | cut
+    merge_target: "@body_ex1"   # optional
+```
+
+A wrap bends the footprint onto the target face and raises it along the face
+normal (`add`, `new`) or sinks it into the material (`cut`). There is no origin
+or direction field: the datum is the target's own axis (cylinder, cone, torus)
+projected into the sketch plane, or a sphere's projected centre. A sketch
+coordinate along the projected axis is meridian arc length from the footprint's
+bounding-box centre, and one across it is arc length around the axis at that
+reference parallel, so a footprint centred on the projected axis lands on the
+side facing the sketch (the far wall of a bore). A sphere maps by distance and
+direction from its projected centre (azimuthal equidistant), within a quarter
+great circle. Lengths are exact at the reference parallel only, and the top is
+wider than the base by the `(r + height) / r` flare. A planar or freeform target,
+a sketch plane perpendicular to the axis, a footprint reaching 180 degrees
+around or running off the face, and a height reaching through the axis are
+refused by name; an absent target builds nothing and warns. A reader older than
+the kind refuses it by name (no document version bump).
+
 ### sweep
 
 ```yaml
@@ -783,7 +812,7 @@ names under the pattern feature.
   kind: linear_pattern
   linear_pattern:
     subject: feature
-    source_feature: "@ex1"       # required: an earlier extrude, revolve or sweep
+    source_feature: "@ex1"       # required: an earlier extrude, revolve, sweep or wrap
     count: 3                     # total instances, the source's own included
     pitch: 20.0                  # spacing along direction
     direction: [1, 0, 0]         # or direction_query
@@ -794,7 +823,7 @@ names under the pattern feature.
 `source_feature` must name a feature earlier in the log whose operation is
 `add` or `cut`; a `new` source is refused (it does not add into the body), and
 an `up_to` extrude is refused because its trim would travel with each rigid
-copy. The allowed source kinds are `extrude`, `revolve` and `sweep`; a hole
+copy. The allowed source kinds are `extrude`, `revolve`, `sweep` and `wrap`; a hole
 pattern is the sketch's own multiple drill sites, and a fillet or shell has no
 standalone tool to repeat. `source_features` is the multi-source spelling and is
 what the editor writes.
@@ -933,7 +962,7 @@ translates and ignores every normal.
 ```
 
 A `subject: body` mirror reflects the whole body. A `subject: feature` mirror
-instead reapplies one or more earlier extrudes, revolves or sweeps, reflected
+instead reapplies one or more earlier extrudes, revolves, sweeps or wraps, reflected
 across the plane, inside the body each source shaped:
 
 ```yaml
@@ -941,7 +970,7 @@ across the plane, inside the body each source shaped:
   kind: mirror
   mirror:
     subject: feature
-    source_features: ["@ex2"]       # extrude/revolve/sweep, operation add or cut
+    source_features: ["@ex2"]       # extrude/revolve/sweep/wrap, operation add or cut
     target_body: "@body_ex1"        # optional: the body a source shaped twice
     plane: "@builtin_plane_front"
 ```
