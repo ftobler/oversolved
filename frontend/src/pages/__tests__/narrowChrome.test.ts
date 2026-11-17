@@ -29,6 +29,8 @@ const PHONE = '(max-width: 768px), (max-height: 480px)'
 const NARROW_WIDTH = '(max-width: 768px)'
 /** The tightest block: one column of tiles, wrapped entry rows. */
 const SMALL = '(max-width: 480px)'
+/** The entry row's own wrap block: five 40px actions no longer fit one line. */
+const ENTRY_WRAP = '(max-width: 560px)'
 /** The top level alone: a window above the breakpoint. */
 const TOP_LEVEL: readonly string[] = []
 /** A 375px-wide portrait phone: every narrow block applies. */
@@ -341,7 +343,7 @@ describe('phone-width chrome', () => {
   it('gives the workspace entry controls their own line on the smallest screens', () => {
     const css = 'pages/WorkspaceView.css'
     const row = chain('workspace-layout', 'workspace-entries', 'workspace-entry-list', 'workspace-entry-row')
-    expect(pinned(css, 'flex-wrap', row, PORTRAIT)).toBe('wrap')
+    expect(pinned(css, 'flex-wrap', row, [PHONE, NARROW_WIDTH, SMALL, ENTRY_WRAP])).toBe('wrap')
     expect(effective(css, 'flex-wrap', row, TOP_LEVEL)).toBeNull()
   })
 
