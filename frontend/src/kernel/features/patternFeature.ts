@@ -508,9 +508,12 @@ function buildSourceTools(
           throughAllSource === undefined ? undefined : { ...solveContext, throughAllSource },
         )
       : source.kind === 'wrap'
-        // The wrap's target face is on the real parts, not in the scratch
-        // store its tool is registered into.
-        ? solveWrap(oc, scope, table, toolFeature, globalRepo, scratch, undefined, { targetBodies: bodyStore })
+        // A wrap's operation also signs its height, so the forced `new` must not
+        // flip a cut's tool out of the material; its target comes from the record
+        // its own solve left (the real store only as a fallback).
+        ? solveWrap(oc, scope, table, toolFeature, globalRepo, scratch, undefined, {
+            ...solveContext, rebuild: { operation: source.operation, bodies: bodyStore },
+          })
         : TOOL_LEAVES[source.kind](oc, scope, table, toolFeature, globalRepo, scratch)
     if (built.status !== 'ok') {
       throw new Error(

@@ -399,11 +399,20 @@ export function geometricOffset(height: number, operation: string, concave: bool
  * height would reach through the axis, which no wrap can build.
  */
 export function refuseCollapsedOffset(surface: WrapSurface, map: WrapMap, offset: number, footprint: number[][]): void {
-  const fail = (): never => {
+  const fail = (what?: string): never => {
     throw new WrapRefusal(
       `wrap: a height of ${fmt(Math.abs(offset))} reaches through the target's ` +
-        `${surface.kind === 'sphere' ? 'centre' : surface.kind === 'torus' ? 'tube centre' : 'axis'}; use a smaller height`,
+        `${what ?? (surface.kind === 'sphere' ? 'centre' : surface.kind === 'torus' ? 'tube centre' : 'axis')}; use a smaller height`,
     )
+  }
+  // On a torus's inner half a GROWING tube moves toward the ring axis: the top
+  // point sits at R + (r + g) cos(phi), which passes the axis once r + g > R on
+  // a shaft groove cut deep or a bore-entry fillet raised high.
+  if (surface.kind === 'torus' && map.uv !== null) {
+    const tube = surface.minorRadius + offset
+    for (const p of footprint) {
+      if (surface.majorRadius + tube * Math.cos(map.uv(p)[1]) <= EPS) fail('ring axis')
+    }
   }
   if (offset >= 0) return
   if (surface.kind === 'cylinder' && surface.radius + offset <= EPS) fail()
