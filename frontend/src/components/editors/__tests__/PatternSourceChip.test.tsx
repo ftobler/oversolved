@@ -1,8 +1,9 @@
-// The Source Features chip behaves the same on all four pattern kinds: picking
-// an extrude row dispatches add_pattern_source and the chip shows it, and a
-// sketch row is refused with the source rule's own reason. The bug this pins
-// was the applier resolving only linear and circular, so the instance and curve
-// editors' Feature mode looked wired and did nothing.
+// The Source Features chip on all four pattern kinds: picking an extrude row
+// dispatches add_pattern_source and the chip shows it, and a sketch row is
+// refused with the source rule's own reason. Editor dispatch is kind-agnostic,
+// so these pass on the pre-fix tree; the applier regression is pinned in
+// utils/__tests__/patternSourceKinds.test.ts and the MCP reply in
+// drive/__tests__/patternSourceDrive.test.ts.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, fireEvent, act, screen, cleanup } from '@testing-library/react'
 import { FeatureEditor, type FeatureEditorSchema } from '@/components/editors/FeatureEditor'
@@ -19,8 +20,6 @@ const SCHEMAS: Record<PatternKind, FeatureEditorSchema> = {
   curve_pattern: CURVE_PATTERN_SCHEMA,
   instance_pattern: INSTANCE_PATTERN_SCHEMA,
 }
-
-const REFUSAL = 'a pattern or mirror source is an extrude, revolve or sweep'
 
 function makeFeature(kind: PatternKind, over: Record<string, unknown> = {}): PartFeature {
   return {
@@ -47,6 +46,19 @@ function sourceChip(): HTMLElement {
     .find(r => r.querySelector('.feature-field-label')?.textContent === 'Source Features')
   if (row === undefined) throw new Error('no Source Features row')
   return row.querySelector<HTMLElement>('.feature-pick-chip')!
+}
+
+/** The source rule's own reason for a sketch row, read off the configured pick
+ *  field: a wording change in featureEditorSchemas reaches this assertion
+ *  instead of a copied string drifting beside it. */
+function refusalFor(kind: PatternKind): string {
+  const field = PATTERN_SOURCE_FIELDS.find(f => f.key === 'source_features')
+  if (field?.type !== 'pick' || field.validatePick === undefined) {
+    throw new Error('the shared source row lost its pick rule')
+  }
+  const reason = field.validatePick('@sk1', featuresFor(kind))
+  if (reason === null) throw new Error('the source rule accepted a sketch row')
+  return reason
 }
 
 /** A tree row click lands in normalSelection; the armed field consumes it. */
@@ -120,6 +132,6 @@ describe.each(PATTERN_KINDS)('%s source chip', (kind) => {
     fireEvent.click(sourceChip())
     pick('@sk1')
     expect(onMutation).not.toHaveBeenCalled()
-    expect(screen.getByText(REFUSAL, { exact: false })).not.toBeNull()
+    expect(screen.getByText(refusalFor(kind), { exact: false })).not.toBeNull()
   })
 })

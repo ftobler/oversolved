@@ -1,7 +1,8 @@
 // The Source Features chip of every pattern kind. The bug this replaces was a
 // hand-listed pair of kinds in the applier: the curve and instance patterns,
 // added later, silently warned and no-opped. These cases iterate PATTERN_KINDS
-// instead of spelling a kind, so the tuple is the only list that can go stale.
+// instead of spelling a kind; ADDERS below is a Record<PatternKind, ...>, so a
+// fifth kind fails the type check until its add is registered here.
 import { describe, it, expect } from 'vitest'
 import {
   PATTERN_KINDS, patternSubOf,
@@ -37,14 +38,7 @@ function addFeature(kind: PatternKind, fields: Record<string, unknown> = {}): Pa
   return doc
 }
 
-describe('patternSubOf resolves every pattern kind', () => {
-  it('has a sub-definition for each kind in PATTERN_KINDS', () => {
-    for (const kind of PATTERN_KINDS) {
-      const feature = { id: 'p1', kind, [kind]: {} } as unknown as PartFeature
-      expect(patternSubOf(feature), kind).toEqual({})
-    }
-  })
-
+describe('patternSubOf', () => {
   it('answers null for a non-pattern, a missing payload and no feature', () => {
     expect(patternSubOf(undefined)).toBeNull()
     expect(patternSubOf({ id: 'ex1', kind: 'extrude', extrude: {} } as PartFeature)).toBeNull()

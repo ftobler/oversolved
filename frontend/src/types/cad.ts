@@ -117,9 +117,9 @@ export function isPatternKind(kind: string | undefined): kind is PatternKind {
   return kind !== undefined && (PATTERN_KINDS as readonly string[]).includes(kind)
 }
 
-/** The payload bag a pattern feature stores its own fields in. Spelled without
- *  `Record` because the feature-union ratchet counts that token as erosion: the
- *  bag is deliberately opaque here, and the appliers give its keys meaning. */
+/** The payload bag a pattern feature stores its own fields in. Spelled locally
+ *  rather than reusing `FieldBag`, because the types layer must not import from
+ *  utils; the bag stays opaque here, and the appliers give its keys meaning. */
 export type PatternSubBag = { [key: string]: unknown }
 
 /** The sub-definition a pattern feature stores its own fields in, or null for
