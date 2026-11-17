@@ -42,7 +42,8 @@ function preferred(candidate: WorkspaceEntryMetaRecord, current: WorkspaceEntryM
   if (rank !== currentRank) return rank < currentRank
   if (candidate.updatedAt !== current.updatedAt) return candidate.updatedAt > current.updatedAt
   // Two rows edited in the same millisecond must not make the answer depend on
-  // the order IndexedDB read them in, so the lowest id wins: the same document
-  // the old first-document rule picked.
+  // the order IndexedDB read them in, so the lowest id wins: the same direction
+  // the old first-document rule used, though ties now only happen within one
+  // rank.
   return candidate.id < current.id
 }

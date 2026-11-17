@@ -72,10 +72,11 @@ export default function EntryRow({
         </div>
         <div className="workspace-entry-meta">
           {meta.filter(Boolean).map(text => <span key={text}>{text}</span>)}
-          {/* Which document the title card comes from, said in words: the
-              automatic pick is not otherwise visible, and the pressed toggle
-              only exists on the row the user chose. */}
-          {isCover && <span className="workspace-entry-cover-marker">cover</span>}
+          {/* Which document the title card comes from, said in words. It sits
+              inside the open button, whose name is the entry's own, so it is
+              decorative here: the same state rides on the cover toggle's name
+              for assistive tech. */}
+          {isCover && <span className="workspace-entry-cover-marker" aria-hidden="true">cover</span>}
         </div>
         {usedBy && usedBy.length > 0 && (
           <div className="workspace-entry-usedby" title={`Used by ${usedBy.join(', ')}`}>
@@ -158,11 +159,13 @@ export default function EntryRow({
           </label>
         )}
         {/* The cover is a document's thumbnail standing for the whole workspace,
-            so a file row has no toggle: it has no preview to stand for. */}
+            so a file row has no toggle: it has no preview to stand for. The
+            resolved row says so in its name, because aria-pressed is about the
+            explicit choice and an automatic cover is not pressed. */}
         {entry.kind === 'document' && (
           <button
             className="btn btn-tile-action workspace-entry-cover"
-            aria-label={`Cover for ${entry.name}`}
+            aria-label={isCover ? `Cover for ${entry.name}, current cover` : `Cover for ${entry.name}`}
             title={coverExplicit ? 'Cover image, click for automatic' : 'Use as cover'}
             aria-pressed={coverExplicit}
             onClick={() => onSetCover(entry)}

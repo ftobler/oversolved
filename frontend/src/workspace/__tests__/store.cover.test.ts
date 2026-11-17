@@ -4,6 +4,7 @@ import { readWorkspaceMeta, replaceWorkspaceRows, type WorkspaceEntryRecord, typ
 import { deserializeTree } from '../serializer'
 import { buildZipBytes } from '../zipCarrier'
 import { importBag, readZipBag } from '../import'
+import { subscribeWorkspaceStore } from '../storeEvents'
 import { bytesOf, documentEntry, treeWith } from './fixtures'
 import { resetWorkspaceIdb } from './idbHarness'
 
@@ -91,6 +92,23 @@ describe('IdbWorkspaceStore cover entry', () => {
 
     await store.discard(workspace)
     expect((await summaryOf(store, workspace)).coverChoice).toBe(workspace)
+  })
+
+  // The view repaints from the store revision, so the write has to announce
+  // itself exactly once: without the bump the card keeps the old preview.
+  it('setCover notifies the store subscribers once per write', async () => {
+    const store = new IdbWorkspaceStore()
+    const { workspace } = await store.create('Cover', { docKind: 'part' })
+    let notifications = 0
+    const unsubscribe = subscribeWorkspaceStore(() => { notifications++ })
+    try {
+      await store.setCover(workspace, workspace)
+      expect(notifications).toBe(1)
+      await store.setCover(workspace, null)
+      expect(notifications).toBe(2)
+    } finally {
+      unsubscribe()
+    }
   })
 
   it('a trashed cover falls back and comes back when the entry is restored', async () => {

@@ -79,6 +79,8 @@ function renderView() {
 
 const rowOf = (name: string) => screen.getByText(name).closest('.workspace-entry-row') as HTMLElement
 const cardImage = () => document.querySelector<HTMLImageElement>('.workspace-identity-preview img')
+const coverToggle = (name: string) => screen.getByLabelText(`Cover for ${name}`)
+const currentCoverToggle = (name: string) => screen.getByLabelText(`Cover for ${name}, current cover`)
 
 // The store answers as it would after setCover wrote and bumped the revision.
 async function storeAnswers(next: WorkspaceSummary) {
@@ -106,8 +108,12 @@ describe('WorkspaceView cover entry', () => {
     expect(within(rowOf('Gearbox')).getByText('cover')).toBeTruthy()
     expect(within(rowOf('Bracket')).queryByText('cover')).toBeNull()
     expect(cardImage()?.src).toContain('QVVUTw==')
-    // The automatic row is not a pressed choice: nobody picked it.
-    expect(screen.getByLabelText('Cover for Gearbox')).toHaveAttribute('aria-pressed', 'false')
+    // The marker is decorative (it sits inside the open button), so the resolved
+    // state has to be in the toggle's name, and aria-pressed stays about the
+    // explicit choice: an automatic cover is not pressed.
+    expect(currentCoverToggle('Gearbox')).toHaveAttribute('aria-pressed', 'false')
+    expect(coverToggle('Bracket')).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.queryByLabelText('Cover for Gearbox')).toBeNull()
   })
 
   it('offers a cover toggle on document rows only, never on a file row', async () => {
@@ -115,8 +121,8 @@ describe('WorkspaceView cover entry', () => {
     renderView()
     await screen.findByText('Gearbox')
 
-    expect(screen.getByLabelText('Cover for Bracket')).toBeTruthy()
-    expect(screen.getByLabelText('Cover for Gearbox')).toBeTruthy()
+    expect(coverToggle('Bracket')).toBeTruthy()
+    expect(currentCoverToggle('Gearbox')).toBeTruthy()
     expect(rowOf('shaft.step').querySelector('.workspace-entry-cover')).toBeNull()
     expect(document.querySelectorAll('.workspace-entry-cover')).toHaveLength(2)
   })
@@ -128,21 +134,22 @@ describe('WorkspaceView cover entry', () => {
     renderView()
     await screen.findByText('Gearbox')
 
-    fireEvent.click(screen.getByLabelText('Cover for Bracket'))
+    fireEvent.click(coverToggle('Bracket'))
     await waitFor(() => expect(storeMock.setCover).toHaveBeenCalledWith('ws', 'p1'))
 
     await storeAnswers(summary({ coverEntry: 'p1', coverChoice: 'p1' }))
-    await waitFor(() => expect(screen.getByLabelText('Cover for Bracket')).toHaveAttribute('aria-pressed', 'true'))
+    await waitFor(() => expect(currentCoverToggle('Bracket')).toHaveAttribute('aria-pressed', 'true'))
     expect(within(rowOf('Bracket')).getByText('cover')).toBeTruthy()
     expect(within(rowOf('Gearbox')).queryByText('cover')).toBeNull()
     expect(cardImage()?.src).toContain('UEFSVA==')
 
     // The pressed toggle is the way back: pressing it clears the choice.
-    fireEvent.click(screen.getByLabelText('Cover for Bracket'))
+    fireEvent.click(currentCoverToggle('Bracket'))
     await waitFor(() => expect(storeMock.setCover).toHaveBeenLastCalledWith('ws', null))
 
     await storeAnswers(summary({ coverEntry: 'a1' }))
-    await waitFor(() => expect(screen.getByLabelText('Cover for Bracket')).toHaveAttribute('aria-pressed', 'false'))
+    await waitFor(() => expect(currentCoverToggle('Gearbox')).toHaveAttribute('aria-pressed', 'false'))
+    expect(coverToggle('Bracket')).toHaveAttribute('aria-pressed', 'false')
     expect(within(rowOf('Gearbox')).getByText('cover')).toBeTruthy()
     expect(cardImage()?.src).toContain('QVVUTw==')
   })
@@ -155,10 +162,10 @@ describe('WorkspaceView cover entry', () => {
     await screen.findByText('Gearbox')
 
     await storeAnswers(summary({ coverEntry: 'p1', coverChoice: 'p1' }))
-    await waitFor(() => expect(screen.getByLabelText('Cover for Bracket')).toHaveAttribute('aria-pressed', 'true'))
+    await waitFor(() => expect(currentCoverToggle('Bracket')).toHaveAttribute('aria-pressed', 'true'))
 
     await storeAnswers(summary({ coverEntry: 'a1' }))
-    await waitFor(() => expect(screen.getByLabelText('Cover for Bracket')).toHaveAttribute('aria-pressed', 'false'))
+    await waitFor(() => expect(currentCoverToggle('Gearbox')).toHaveAttribute('aria-pressed', 'false'))
     expect(within(rowOf('Gearbox')).getByText('cover')).toBeTruthy()
   })
 })
