@@ -334,6 +334,24 @@ describe.skipIf(!oc)('twist prism spike (real OCC)', () => {
     }
   })
 
+  it('two circular holes are both cut out of the twisting plate', () => {
+    const scope = new DisposeScope()
+    try {
+      const outer = squareWire(oc!, scope, 5)
+      const hole = (at: Vec3): OccShape => scope.track(makeWire(oc!, scope, [
+        scope.track(makeCircleEdge(oc!, scope, at, Z, [1, 0, 0], 1)),
+      ], { requireClosed: true }))
+      const face = scope.track(makeFaceFromWire(oc!, scope, outer, [hole([-2, 0, 0]), hole([2, 0, 0])]))
+      const bar = twistBar(oc!, scope, face, 10, 120)
+      expect(bar.valid).toBe(true)
+      expect(bar.solids).toBe(1)
+      expect(bar.laterals).toBe(6)
+      expectRelative(bar.volume, (100 - 2 * Math.PI) * 10, 1e-4)
+    } finally {
+      scope.dispose()
+    }
+  })
+
   it('the example020 lobed screw: 8 turns over 40, 288 sections, 12 walls', () => {
     const scope = new DisposeScope()
     try {
