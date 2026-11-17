@@ -75,6 +75,11 @@ export function bodyPrimitive(id: string, bodies: Record<string, BodyResult> | u
       case 'ellipse': {
         const axis = normalize(edge.axis)
         if (!axis) return null
+        // A full elliptical edge states its semi-axes; a partial one (a cylinder
+        // cut, say) is an arc of that ellipse and its length is the kernel's
+        // question, not a pair of parent-ellipse radii.
+        const fullTurn = Math.abs(edge.angle_end - edge.angle_start) >= TWO_PI - 1e-9
+        if (!fullTurn) return { type: 'opaque', what: 'partial ellipse edge', ref: id }
         return { type: 'ellipse', center: [...edge.center] as Vec3, axis, a: edge.a, b: edge.b }
       }
       case 'spline':

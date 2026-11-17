@@ -126,10 +126,18 @@ describe('bodyPrimitive: edges and vertices', () => {
     expect((arc as { extra: { value: number }[] }).extra[0].value).toBeCloseTo(90, 9)
   })
 
-  it('reads an ellipse edge as both semi-axes', () => {
+  it('reads a full ellipse edge as both semi-axes and marks a partial one for the kernel', () => {
     expect(measureOne(bodyPrimitive('@body_1/edge/3', bodies)!)).toMatchObject({
       kind: 'radius', value: 4, label: 'major radius',
     })
+    const partial = bodyOf({
+      edges: [
+        { kind: 'ellipse', center: [0, 0, 0], a: 4, b: 2, axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI },
+      ],
+      edge_queries: ['?partial'],
+    })
+    expect(bodyPrimitive('?partial', bodiesOf(partial))).toMatchObject({ type: 'opaque' })
+    expect(measureOne(bodyPrimitive('?partial', bodiesOf(partial))!)).toEqual({ kernel: 'length' })
   })
 
   it('marks a spline edge for the kernel', () => {
