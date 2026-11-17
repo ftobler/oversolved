@@ -633,8 +633,9 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   useEffect(() => {
     if (doc && selectedMateId && !selectedMate) {
       useAssemblyStore.getState().selectMate(null)
-      // editingMateId is left as-is: no row matches a vanished mate's id, so its
-      // editor is already gone. It is overwritten the next time one is edited.
+      // The edited subject is left alone: setSnapshot's `subject_removed`
+      // reduction closes the edit card when its mate no longer resolves. This
+      // effect only retires the selection that armed the pick.
     }
   }, [doc, selectedMateId, selectedMate])
 

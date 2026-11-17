@@ -7,10 +7,11 @@ import type { StatusMark } from '@/utils/core/statusMark'
  * build read alike. `role="status"` is announced without stealing focus from
  * the viewport the user keeps picking in.
  *
- * Clicks stop here: the line can sit inside a row whose onClick selects the
- * row, which would disarm a mate field or feed `@<feature>` to an armed pick.
- * Both editors' item lines live in their floating edit panel now, where the
- * stop is harmless and keeps one mark component for both. */
+ * Clicks stop here: the line renders beside editable controls (a field row, a
+ * pick chip, the bug report's selection row), and clicking the mark must not be
+ * read as clicking the control it sits under. The item line moved into the
+ * floating edit panel with the rest of the editor body; the field refusals still
+ * render under their control, so one component keeps the guard for both. */
 export function StatusMessage({ mark }: { mark: Pick<StatusMark, 'level' | 'message'> }) {
   if (mark.level === null) return null
   return (

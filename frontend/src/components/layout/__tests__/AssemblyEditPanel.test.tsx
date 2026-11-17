@@ -138,12 +138,15 @@ describe('AssemblyEditPanel', () => {
     expect(line.textContent).toBe('part doc not found: p1')
   })
 
-  it('heads a failed mate with its own status mark', () => {
+  it('heads a failed mate with its own status mark, above its fields', () => {
     const { container } = renderPanel({
       editing: { kind: 'mate', id: 'm1' },
       status: status({ mates: { m1: { stale: true, error: "unsupported mate kind 'worm_gear'" } } }),
     })
-    const line = container.querySelector('.status-message')!
+    const body = container.querySelector('.feature-edit-panel-body') as HTMLElement
+    const line = body.firstElementChild as HTMLElement
+    expect(line.className).toContain('status-message')
+    expect(line.className).toContain('status-message--error')
     expect(line.textContent).toBe("unsupported mate kind 'worm_gear'")
   })
 

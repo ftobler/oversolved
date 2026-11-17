@@ -1,7 +1,8 @@
-// The part-instance authoring body. Rendered inline inside the instance's tree
-// row, below the pink editing header the tree draws (accept/reject/delete), so
-// this component owns only the fields, mirroring the mate editor and the part
-// editor's feature editors.
+// The part-instance authoring body. Rendered in the assembly editor's right edit
+// card (AssemblyEditPanel), inside its `.feature-edit-panel-body`; the tree row
+// keeps the pink `.editing` highlight and its own OK/Cancel pair and grows no
+// form, so this component owns only the fields, mirroring the mate editor and
+// the part editor's feature editors.
 //
 // Presentational: the fixed flag, position and rotation edits leave through
 // callbacks, so the logic (assemblyMutations.ts) stays viewport-free and

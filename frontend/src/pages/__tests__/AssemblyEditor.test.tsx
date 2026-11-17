@@ -91,6 +91,7 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
 import { backendBundle } from '@/adapters/backend'
 import { MAX_STEP_IMPORT_BYTES } from '@/stores/documentStore/stepImport'
+import { findMate } from '@/utils/assemblyMutations'
 import { tick, renderEditor, installSessionFromList, insertPart, rowAction, cardAction } from './AssemblyEditor.harness'
 
 // A document a partial import leaves behind: the instance names a part the
@@ -544,13 +545,13 @@ describe('AssemblyEditor (Stage 6b)', () => {
   it('renders the navigator as a floating column inside the viewport stage', async () => {
     await renderLoaded()
     expect(document.querySelector('.doc-sidebar')).toBeNull()
-    const stage = document.querySelector('.viewport-stage')!
+    const stage = document.querySelector('.viewport-stage')
     expect(stage).not.toBeNull()
-    const left = stage.querySelector('.floating-left')!
+    const left = stage!.querySelector('.floating-left')
     expect(left).not.toBeNull()
-    expect(left.querySelector('.document-panel')).not.toBeNull()
-    expect(left.querySelector('.sidebar-top.glass-panel')).not.toBeNull()
-    expect(left.querySelector('.sidebar-bottom.glass-panel')).not.toBeNull()
+    expect(left!.querySelector('.document-panel')).not.toBeNull()
+    expect(left!.querySelector('.sidebar-top.glass-panel')).not.toBeNull()
+    expect(left!.querySelector('.sidebar-bottom.glass-panel')).not.toBeNull()
   })
 
   it('opens the right card on a row Edit and leaves the row without a form', async () => {
@@ -593,6 +594,43 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(document.querySelector('.feature-edit-panel')).toBeNull()
     expect(document.querySelector('.feature-item.editing')).toBeNull()
     expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(7)
+  })
+
+  // The mate row's own pair is the other end of its edit, exactly as the
+  // instance row's is: OK commits the coalesced session and closes the card.
+  it('commits a mate edit from the mate row OK', async () => {
+    await renderLoaded()
+    act(() => { executeCommand('insert_mate_fixed') })
+    await tick()
+    fireEvent.change(screen.getByLabelText('Offset X, millimetres'), { target: { value: '5' } })
+    await tick()
+    const id = useAssemblyStore.getState().mates[0].id
+    expect(findMate(useAssemblyStore.getState().doc!, id)!.offset).toEqual({ x: 5 })
+    expect(useAssemblyStore.getState().undoStack).toHaveLength(1)  // the Add mate step
+
+    fireEvent.click(rowAction('OK'))
+    await tick()
+    expect(document.querySelector('.feature-edit-panel')).toBeNull()
+    expect(document.querySelector('.feature-item.editing')).toBeNull()
+    expect(useAssemblyStore.getState().undoStack.map(e => e.label)).toEqual(['Add mate', 'Edit mate'])
+  })
+
+  it('cancels a mate edit from the mate row Cancel', async () => {
+    await renderLoaded()
+    act(() => { executeCommand('insert_mate_fixed') })
+    await tick()
+    fireEvent.change(screen.getByLabelText('Offset X, millimetres'), { target: { value: '5' } })
+    await tick()
+    const id = useAssemblyStore.getState().mates[0].id
+    expect(findMate(useAssemblyStore.getState().doc!, id)!.offset).toEqual({ x: 5 })
+
+    fireEvent.click(rowAction('Cancel'))
+    await tick()
+    await tick()  // let the revert's re-solve settle
+    expect(document.querySelector('.feature-edit-panel')).toBeNull()
+    expect(document.querySelector('.feature-item.editing')).toBeNull()
+    expect(findMate(useAssemblyStore.getState().doc!, id)!.offset).toBeUndefined()
+    expect(useAssemblyStore.getState().undoStack).toHaveLength(1)  // only Add mate
   })
 
   // One tagged subject means a mate insert replaces the instance editor rather

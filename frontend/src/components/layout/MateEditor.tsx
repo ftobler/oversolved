@@ -1,9 +1,10 @@
 // The mate authoring body (Stage 8). Two reference chips and the parameters the
-// mate's kind actually reads. Rendered inline inside the mate's tree row, below
-// the pink editing header the tree draws (kind label + accept/reject/delete), so
+// mate's kind actually reads. Rendered in the assembly editor's right edit card
+// (AssemblyEditPanel), inside its `.feature-edit-panel-body`; the tree row keeps
+// the pink `.editing` highlight and its own OK/Cancel pair and grows no form, so
 // this component owns only the fields, mirroring the part editor's feature
-// editors that expand inside the feature-item. Renaming is deliberately absent:
-// it lives in the row's tridot menu, where every other feature in the app renames.
+// editor bodies. Renaming is deliberately absent: it lives in the row's tridot
+// menu, where every other feature in the app renames.
 //
 // The chips are NOT the part editor's PickChip: that one consumes
 // sketchEditorStore's normalSelection, which the assembly scene never writes.
