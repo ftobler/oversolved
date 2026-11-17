@@ -929,6 +929,10 @@ function checkExtrude(sub: DocRecord, field: string): void {
   // loaded document reads exactly like one that never authored the key.
   if (sub.taper === '') delete sub.taper
   else checkOptional(sub, 'taper', field, checkExpr)
+  // The same clear applies to a twist: an empty angle is the straight prism,
+  // and the loaded document should carry no key rather than a zero.
+  if (sub.twist === '') delete sub.twist
+  else checkOptional(sub, 'twist', field, checkExpr)
   checkOptional(sub, 'direction', field, (v, f) => checkEnum(v, f, DIRECTIONS))
   checkOptional(sub, 'termination', field, (v, f) => checkEnum(v, f, ['blind', 'up_to', 'up_to_next', 'through_all']))
   // A through_all cut is sized from the bodies, so no distance is required

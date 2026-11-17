@@ -38,6 +38,7 @@ import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/per
 import { arrayCountProblem } from '@/persistence/docSchema'
 import { skipValue } from '@/utils/core/patternSkip'
 import { linearDirectionModeOf, unreadDirectionFieldProblem } from '@/utils/core/linearPatternModes'
+import { MAX_TWIST_DEG } from '@/kernel/occ/twistPrism'
 import { evalExpr } from '@/kernel/evalExpr'
 import { MAX_ARRAY_CELLS } from '@/utils/core/arrayLimits'
 import { pickedSketchEntity } from '@/kernel/features/shared/bodyRef'
@@ -1375,6 +1376,29 @@ function taperIsSet(value: unknown): boolean {
   return !(typeof value === 'number' && value === 0)
 }
 
+/** A twist is the total angle in degrees; only the numeric form's cap can be
+ *  judged here. An expression is evaluated at solve time, where the kernel
+ *  applies the same bound. The cap is the loft's section budget, not a full-turn
+ *  rule: a screw twists many turns. */
+function twistValueProblem(value: unknown, label: string): string | null {
+  if (value === undefined || value === null || value === '') return null
+  if (typeof value === 'string') return null
+  if (!isFiniteNumber(value)) {
+    return `${label} must be a finite number or a non-empty expression string, got ${json(value)}`
+  }
+  if (Math.abs(value) > MAX_TWIST_DEG) {
+    return `${label} must be within +/-${MAX_TWIST_DEG} degrees, got ${json(value)}`
+  }
+  return null
+}
+
+/** Whether a twist asks for a rotation; an expression is treated as set for the
+ *  same reason a taper's is. */
+function twistIsSet(value: unknown): boolean {
+  if (value === undefined || value === null || value === '') return false
+  return !(typeof value === 'number' && value === 0)
+}
+
 /** Why an up_to ref cannot be an emboss surface: a datum plane or a sketch
  *  point has no material side. A body face query is left to the kernel, which
  *  can see whether it resolved to a planar body face (allowed) or a datum
@@ -1437,6 +1461,25 @@ function addExtrude(raw: RawStep, ctx: ValueContext): ValueViolation | null {
     if (termination === 'up_to' || termination === 'up_to_next' || termination === 'through_all') {
       return invalid(
         `add_extrude field "taper": termination ${termination} is not supported with a taper; use termination blind`,
+      )
+    }
+  }
+  const twistProblemText = twistValueProblem(raw.twist, 'twist')
+  if (twistProblemText !== null) return invalid(twistProblemText)
+  if (twistIsSet(raw.twist)) {
+    if (taperIsSet(raw.taper)) {
+      return invalid('add_extrude fields "twist" and "taper": twist with taper is not supported')
+    }
+    const direction = (raw.direction as string | undefined) ?? 'normal'
+    if (direction === 'symmetric') {
+      return invalid(
+        'add_extrude field "twist": direction symmetric is not supported with a twist; use normal or reverse',
+      )
+    }
+    const termination = (raw.termination as string | undefined) ?? 'blind'
+    if (termination === 'up_to' || termination === 'up_to_next' || termination === 'through_all') {
+      return invalid(
+        `add_extrude field "twist": termination ${termination} is not supported with a twist; use termination blind`,
       )
     }
   }
@@ -2360,6 +2403,9 @@ function setExtrudeField(raw: RawStep, ctx: ValueContext): ValueViolation | null
     const problem = taperValueProblem(raw.value, 'set_extrude_field field "taper"')
     if (problem !== null) return invalid(problem)
     if (stored === null || !taperIsSet(raw.value)) return null
+    if (twistIsSet(stored.twist)) {
+      return invalid('set_extrude_field fields "taper" and "twist": taper with twist is not supported')
+    }
     const direction = (stored.direction as string | undefined) ?? 'normal'
     if (direction === 'symmetric') {
       return invalid(
@@ -2370,6 +2416,27 @@ function setExtrudeField(raw: RawStep, ctx: ValueContext): ValueViolation | null
     if (termination === 'up_to' || termination === 'up_to_next' || termination === 'through_all') {
       return invalid(
         `set_extrude_field field "taper": termination is ${termination}; taper needs termination blind`,
+      )
+    }
+    return null
+  }
+  if (field === 'twist') {
+    const problem = twistValueProblem(raw.value, 'set_extrude_field field "twist"')
+    if (problem !== null) return invalid(problem)
+    if (stored === null || !twistIsSet(raw.value)) return null
+    if (taperIsSet(stored.taper)) {
+      return invalid('set_extrude_field fields "twist" and "taper": twist with taper is not supported')
+    }
+    const direction = (stored.direction as string | undefined) ?? 'normal'
+    if (direction === 'symmetric') {
+      return invalid(
+        'set_extrude_field field "twist": direction is symmetric; twist needs direction normal or reverse',
+      )
+    }
+    const termination = (stored.termination as string | undefined) ?? 'blind'
+    if (termination === 'up_to' || termination === 'up_to_next' || termination === 'through_all') {
+      return invalid(
+        `set_extrude_field field "twist": termination is ${termination}; twist needs termination blind`,
       )
     }
     return null
@@ -2401,6 +2468,11 @@ function setExtrudeField(raw: RawStep, ctx: ValueContext): ValueViolation | null
         'set_extrude_field fields "up_to_start" and "taper": up_to_start surface cannot use a taper',
       )
     }
+    if (twistIsSet(stored.twist)) {
+      return invalid(
+        'set_extrude_field fields "up_to_start" and "twist": up_to_start surface cannot use a twist',
+      )
+    }
     const targetProblem = upToSurfaceTargetProblem(stored.up_to, ctx.doc)
     if (targetProblem !== null) {
       return invalid(`set_extrude_field fields "up_to_start" and "up_to": ${targetProblem}`)
@@ -2423,17 +2495,21 @@ function setExtrudeField(raw: RawStep, ctx: ValueContext): ValueViolation | null
       'set_extrude_field fields "direction" and "up_to_start": up_to_start surface cannot use direction symmetric',
     )
   }
-  if (stored === null || !taperIsSet(stored.taper)) return null
+  if (stored === null) return null
+  const taperSet = taperIsSet(stored.taper)
+  const twistSet = twistIsSet(stored.twist)
+  if (!taperSet && !twistSet) return null
+  const draft = twistSet ? 'twist' : 'taper'
   if (field === 'direction' && raw.value === 'symmetric') {
     return invalid(
-      'set_extrude_field field "direction": symmetric cannot be used while taper is set; ' +
-        'clear taper or use normal/reverse',
+      `set_extrude_field field "direction": symmetric cannot be used while ${draft} is set; ` +
+        `clear ${draft} or use normal/reverse`,
     )
   }
   if (field === 'termination' && (raw.value === 'up_to' || raw.value === 'up_to_next' || raw.value === 'through_all')) {
     return invalid(
-      `set_extrude_field field "termination": ${json(raw.value)} cannot be used while taper is set; ` +
-        'clear taper or use termination blind',
+      `set_extrude_field field "termination": ${json(raw.value)} cannot be used while ${draft} is set; ` +
+        `clear ${draft} or use termination blind`,
     )
   }
   return null

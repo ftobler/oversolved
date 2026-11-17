@@ -257,6 +257,7 @@ them itself.
     sketch: "@sk1"              # or list of refs
     distance: 10.0              # required unless termination is through_all, which stores none; the legacy `depth` spelling is an alias
     taper: 0                    # degrees, + narrows / - widens; absent or 0 is a straight prism
+    twist: 0                    # degrees of TOTAL rotation over distance; absent or 0 is a straight prism
     direction: normal           # normal | reverse | symmetric
     operation: new              # new | add | cut
     termination: blind          # blind | up_to | up_to_next | through_all
@@ -364,6 +365,30 @@ built. In the editor, switching `direction` to symmetric or `termination` away
 from blind clears an authored `taper` in the same edit, so the now-hidden field
 cannot strand the feature; a hand-authored document that keeps both is refused
 by the kernel.
+
+`twist` is the TOTAL rotation of the profile about the sweep axis in degrees,
+spread evenly over `distance` (not per length). It is a number or an expression
+string, like `distance` and `taper`. Positive turns right-handed about the
+direction of travel: the sketch plane's own +x axis turns toward its +y axis
+(and a point at +x on the profile moves toward +y). `direction: reverse` mirrors the geometry about the
+sketch plane and keeps the same handedness of the helix, so it is not the same
+as negating `twist`. OpenSCAD's `linear_extrude(twist=)` follows the left-hand
+rule, so a translated script uses `twist = -openscad_twist`.
+
+The axis is the line through the sketch plane's origin along the sweep
+direction. A sketch on a face has the face centroid as its origin, so a twist
+there turns about the face centroid; a directly picked face twists about its own
+centroid. Holes twist with the material, so a washer's bore follows the outer
+wall and the wall keeps its thickness.
+
+A twist needs `termination: blind` and `direction: normal` or `reverse`;
+symmetric, up_to, up_to_next and through_all are refused by name, and so is a
+twist together with a `taper` (`extrude: twist with taper is not supported`),
+because a scaled and twisted loft is not built. The angle is bounded at 7200
+degrees: the builder lofts one section per 10 degrees and refuses an angle that
+would need more than 720 sections, naming the cap. Absent or 0 is the straight
+prism. Switching `direction` to symmetric or `termination` away from blind
+clears an authored `twist` in the same edit, exactly as it clears a `taper`.
 
 ### revolve
 

@@ -61,6 +61,24 @@ const TAPERED_BLOCK_STEPS: ScriptStep[] = [
   },
 ]
 
+// A 10 x 10 profile twisted a quarter turn over its 40 mm height: rotation
+// preserves the section area, so the volume is still area * distance.
+const TWISTED_BAR_STEPS: ScriptStep[] = [
+  { mutation: { type: 'add_sketch', featureId: 'sk1', label: 'Rectangle', plane: '@builtin_plane_top' } },
+  {
+    mutation: {
+      type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 10],
+      p0Ref: '@builtin_origin', dimensions: true,
+    },
+  },
+  {
+    mutation: {
+      type: 'add_extrude', featureId: 'ex1', label: 'Extrude',
+      sketchQuery: '$sk1', distance: 40, twist: 90, operation: 'new',
+    },
+  },
+]
+
 // The projection path: the box's +Y face, one of its edges projected into the
 // sketch, and a rectangle whose corner is anchored to that projected vertex.
 // The sketch's numbers depend on the projection, not on the face centroid, so
@@ -192,6 +210,11 @@ export const MUTATION_EXAMPLES: readonly MutationExample[] = [
     name: 'tapered-block',
     summary: 'An 18 x 18 sketch on Top extruded 10 with taper 15: 2371.112 mm3.',
     steps: TAPERED_BLOCK_STEPS,
+  },
+  {
+    name: 'twisted-bar',
+    summary: 'A 10 x 10 sketch on Top extruded 40 with twist 90: 4000 mm3.',
+    steps: TWISTED_BAR_STEPS,
   },
   {
     name: 'projection',

@@ -95,6 +95,18 @@ describe.skipIf(!oc)('mutation catalog examples (real OCC + Rust solver)', () =>
     expect(measure!.measures.volume).toBeCloseTo(2371.112, 3)
   }, 120_000)
 
+  it('builds the twisted-bar example fully constrained', async () => {
+    const example = MUTATION_EXAMPLES.find(entry => entry.name === 'twisted-bar')
+    expect(example).toBeDefined()
+    const result = await exampleRun(example!.steps)
+    expect(result.ok).toBe(true)
+    expect(result.features).toEqual([])
+    const measure = await measureHeadless(result.doc!)
+    expect(measure).not.toBeNull()
+    // Rotation preserves the section area: 10 x 10 x 40.
+    expect(measure!.measures.volume).toBeCloseTo(4000, 3)
+  }, 120_000)
+
   it('keeps a fillet on the emboss edge across an up_to_offset edit', async () => {
     const example = MUTATION_EXAMPLES.find(entry => entry.name === 'emboss-on-cylinder')!
     const built = await exampleRun(example.steps)

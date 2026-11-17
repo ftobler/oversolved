@@ -2091,6 +2091,138 @@ describe('extrude taper refusals', () => {
   })
 })
 
+describe('extrude twist refusals', () => {
+  function extrudeDoc(extrude: Record<string, unknown>): PartDoc {
+    return seedBuiltins({
+      version: 1, kind: 'part',
+      features: [{
+        id: 'ex1', kind: 'extrude',
+        extrude: { sketch: '@sk1', distance: 10, ...extrude },
+      }],
+    })
+  }
+
+  it('refuses a twist beyond the section cap', () => {
+    for (const twist of [7201, -7201, 100000]) {
+      const error = refusal({ type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5, twist })
+      expect(error.message, String(twist)).toContain('+/-7200')
+    }
+    // The cap itself is allowed: 720 sections of 10 degrees.
+    expect(validateMutation(
+      { type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5, twist: 7200 },
+      { doc: sketchDoc() },
+    )).toMatchObject({ ok: true })
+  })
+
+  it('refuses a twist with direction symmetric on the add', () => {
+    const error = refusal({
+      type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5,
+      twist: 90, direction: 'symmetric',
+    })
+    expect(error.message).toContain('twist')
+    expect(error.message).toContain('direction symmetric')
+  })
+
+  it('refuses a twist with up_to, through_all or a taper on the add', () => {
+    for (const termination of ['up_to', 'through_all']) {
+      const error = refusal({
+        type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5,
+        twist: 90, termination,
+      })
+      expect(error.message, termination).toContain('twist')
+      expect(error.message, termination).toContain(termination)
+    }
+    const paired = refusal({
+      type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5,
+      twist: 90, taper: 10,
+    })
+    expect(paired.message).toContain('twist with taper is not supported')
+  })
+
+  it('refuses setting a twist on a symmetric, up_to or through_all extrude', () => {
+    const symmetric = refusal(
+      { type: 'set_extrude_field', featureId: 'ex1', field: 'twist', value: 90 },
+      extrudeDoc({ direction: 'symmetric' }),
+    )
+    expect(symmetric.message).toContain('direction is symmetric')
+    for (const termination of ['up_to', 'through_all']) {
+      const error = refusal(
+        { type: 'set_extrude_field', featureId: 'ex1', field: 'twist', value: 90 },
+        extrudeDoc({ termination }),
+      )
+      expect(error.message, termination).toContain(termination)
+      expect(error.message, termination).toContain('blind')
+    }
+  })
+
+  it('refuses the twist and taper pair in either setter', () => {
+    const twistOnTaper = refusal(
+      { type: 'set_extrude_field', featureId: 'ex1', field: 'twist', value: 90 },
+      extrudeDoc({ taper: 10 }),
+    )
+    expect(twistOnTaper.message).toContain('twist with taper is not supported')
+    const taperOnTwist = refusal(
+      { type: 'set_extrude_field', featureId: 'ex1', field: 'taper', value: 10 },
+      extrudeDoc({ twist: 90 }),
+    )
+    expect(taperOnTwist.message).toContain('taper with twist is not supported')
+  })
+
+  it('refuses switching direction or termination under an authored twist', () => {
+    const direction = refusal(
+      { type: 'set_extrude_field', featureId: 'ex1', field: 'direction', value: 'symmetric' },
+      extrudeDoc({ twist: 90 }),
+    )
+    expect(direction.message).toContain('symmetric')
+    expect(direction.message).toContain('twist')
+    for (const termination of ['up_to', 'through_all']) {
+      const error = refusal(
+        { type: 'set_extrude_field', featureId: 'ex1', field: 'termination', value: termination },
+        extrudeDoc({ twist: 90 }),
+      )
+      expect(error.message, termination).toContain('twist')
+      expect(error.message, termination).toContain(termination)
+    }
+  })
+
+  it('accepts a twist on a blind normal extrude, an expression, and clears it', () => {
+    expect(validateMutation(
+      { type: 'set_extrude_field', featureId: 'ex1', field: 'twist', value: 90 },
+      { doc: extrudeDoc({}) },
+    )).toMatchObject({ ok: true })
+    expect(validateMutation(
+      { type: 'set_extrude_field', featureId: 'ex1', field: 'twist', value: 'ang' },
+      { doc: extrudeDoc({}) },
+    )).toMatchObject({ ok: true })
+    expect(validateMutation(
+      { type: 'set_extrude_field', featureId: 'ex1', field: 'twist', value: null },
+      { doc: extrudeDoc({ twist: 90 }) },
+    )).toMatchObject({ ok: true })
+  })
+
+  it('round-trips the setter and the inline add through the drive', async () => {
+    const setter = await runHeadless({
+      doc: extrudeDoc({}),
+      steps: [{ mutation: { type: 'set_extrude_field', featureId: 'ex1', field: 'twist', value: 90 } }],
+    })
+    const edited = setter.doc?.features?.find(feature => feature.id === 'ex1')
+    if (edited?.kind !== 'extrude') throw new Error('the setter step stored no extrude')
+    expect(edited.extrude.twist).toBe(90)
+
+    const added = await runHeadless({
+      doc: emptyDriveDoc(),
+      steps: [{
+        mutation: {
+          type: 'add_extrude', featureId: 'ex2', sketchQuery: '$sk1', distance: 40, twist: 90,
+        },
+      }],
+    })
+    const inline = added.doc?.features?.find(feature => feature.id === 'ex2')
+    if (inline?.kind !== 'extrude') throw new Error('the add step stored no extrude')
+    expect(inline.extrude.twist).toBe(90)
+  })
+})
+
 describe('extrude up_to_next and the surface emboss', () => {
   function extrudeDoc(extrude: Record<string, unknown>): PartDoc {
     return seedBuiltins({

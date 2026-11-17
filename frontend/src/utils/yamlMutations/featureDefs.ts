@@ -133,13 +133,19 @@ export function applySetExtrudeField(doc: PartDoc, featureId: string, field: key
   const feature = findFeature(doc, featureId)
   const sub = feature?.kind === 'extrude' ? feature.extrude : undefined
   if (!setSubFeatureField(featureId, 'extrude', sub, field, value, 'applySetExtrudeField')) return
-  // The editor hides Taper once the termination is no longer blind or the
-  // direction is symmetric, so the same mutation must clear a taper that would
-  // otherwise be invisible and turn the feature red through the kernel's
+  // The editor hides Taper and Twist once the termination is no longer blind or
+  // the direction is symmetric, so the same mutation must clear an angle that
+  // would otherwise be invisible and turn the feature red through the kernel's
   // cross-field refusal.
   if (sub === undefined) return
-  if (field === 'direction' && value === 'symmetric') delete sub.taper
-  if (field === 'termination' && (value === 'up_to' || value === 'up_to_next' || value === 'through_all')) delete sub.taper
+  if (field === 'direction' && value === 'symmetric') {
+    delete sub.taper
+    delete sub.twist
+  }
+  if (field === 'termination' && (value === 'up_to' || value === 'up_to_next' || value === 'through_all')) {
+    delete sub.taper
+    delete sub.twist
+  }
   // The emboss toggle is hidden outside the two up-to modes, and the kernel
   // refuses a stored surface mode there; clear it with the termination so a
   // hidden field cannot strand the feature.
@@ -287,7 +293,7 @@ export function applyAddExtrude(
   label: string | undefined,
   sketchQuery: string,
   distance: number | undefined,
-  inline: Pick<ExtrudeFeatureDef, 'direction' | 'operation' | 'merge_target' | 'taper'> & {
+  inline: Pick<ExtrudeFeatureDef, 'direction' | 'operation' | 'merge_target' | 'taper' | 'twist'> & {
     // The setter's applier deletes the key on null or an empty string; the
     // inline add has no key yet, so the same inputs simply write no key.
     termination?: ExtrudeFeatureDef['termination'] | null | ''
@@ -326,6 +332,9 @@ export function applyAddExtrude(
   const taperRaw = inline.taper as NumberOrExpr | null | undefined
   const taper = taperRaw === null || taperRaw === '' ? undefined : taperRaw
   const storedTaper = typeof taper === 'number' ? round(taper) : taper
+  const twistRaw = inline.twist as NumberOrExpr | null | undefined
+  const twist = twistRaw === null || twistRaw === '' ? undefined : twistRaw
+  const storedTwist = typeof twist === 'number' ? round(twist) : twist
   const feature: PartFeature = {
     id: featureId,
     kind: 'extrude',
@@ -336,6 +345,7 @@ export function applyAddExtrude(
       direction: inline.direction ?? 'normal',
       // Absent keys stay absent, so a plain add writes the document it always did.
       ...(storedTaper !== undefined && { taper: storedTaper }),
+      ...(storedTwist !== undefined && { twist: storedTwist }),
       ...(termination !== undefined && { termination }),
       ...(upTo !== undefined && { up_to: upTo }),
       ...(storedUpToOffset !== undefined && { up_to_offset: storedUpToOffset }),

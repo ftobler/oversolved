@@ -38,9 +38,9 @@ export function registerTopFace(
   const origin = pt.origin
   const normal = pt.normal
   // A twist rotates the end frame about the normal by the total angle (right-
-  // handed about it, the same sense the sweep turns). The axes and the profile's
-  // in-plane coordinates both turn; the plane itself stays parallel at
-  // `distance`.
+  // handed about it, the same sense the sweep turns). The frame's axes turn and
+  // the profile's own coordinates stay, so the centroid lands where the rotated
+  // axes carry it; the plane itself stays parallel at `distance`.
   const angle = (twistDeg * Math.PI) / 180
   const cos = Math.cos(angle)
   const sin = Math.sin(angle)
@@ -52,10 +52,10 @@ export function registerTopFace(
     : pt.y_axis.map((y, i) => y * cos - pt.x_axis[i] * sin)
 
   const boundary = surfaces.length ? ((surfaces[0].boundary as Dict[]) ?? []) : []
-  const [loopU, loopV] = loopCentroid(boundary)
-  const [u, v] = twistDeg === 0
-    ? [loopU, loopV]
-    : [loopU * cos - loopV * sin, loopU * sin + loopV * cos]
+  // The profile's in-plane coordinates are unchanged in the end frame: the
+  // frame's own axes turned with the geometry, so `u, v` still name the same
+  // material point and the rotated axes carry it around the sketch origin.
+  const [u, v] = loopCentroid(boundary)
 
   const sketchCentroid = [
     origin[0] + u * xAxis[0] + v * yAxis[0],

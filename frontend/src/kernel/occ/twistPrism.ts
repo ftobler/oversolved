@@ -26,7 +26,6 @@ import type {
   OccPrismBuilder,
   OccShape,
   OccSubShape,
-  OccThruSectionsBuilder,
 } from './occTypes'
 import type { DraftPrismBuilder } from './draftPrism'
 import { draftPrismBuilder, faceWires, findCaps, generatedFaces, reversedWire, shapeProxy } from './draftPrism'
@@ -65,7 +64,7 @@ interface TwistSection {
  *  not change the point set. */
 interface ClosedConic {
   center: Vec3
-  /** The same conic with its centre moved, seam kept at the base conic's. */
+  // The same conic with its centre moved, seam kept at the base conic's.
   edgeAt(center: Vec3): OccShape
 }
 

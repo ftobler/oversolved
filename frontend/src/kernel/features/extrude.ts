@@ -731,10 +731,12 @@ export function solveExtrude(
     const seed = bodyFaceName(oc, scope, table, bodyStore, cqFaces[0])
     if (seed !== null) names.faceAncestry[seed.uuid] = seed.ancestry
     const prism = (face: OccShape, dir: Vec3, length: number, seeded: boolean): OccShape => {
-      // A picked face has no sketch plane, so it twists about its own centroid;
-      // the panel's note says so. The switch also owns the straight prism.
+      // A picked face has no sketch plane, so a twist turns about its own
+      // centroid; the panel's note says so. The read is skipped when there is
+      // no twist, which is every taper and straight call here.
+      const axisOrigin: Vec3 = twistRad === 0 ? [0, 0, 0] : faceCentroid(oc, scope, face)
       const builder = sweepBuilderFor(
-        oc, scope, face, faceCentroid(oc, scope, face), dir, length, taperRad, twistRad,
+        oc, scope, face, axisOrigin, dir, length, taperRad, twistRad,
       )
       const cap = seeded && seed !== null ? builder.FirstShape?.() : undefined
       if (cap !== undefined) names.faceNames.set(scope.track(cap) as OccSubShape, seed!.uuid)

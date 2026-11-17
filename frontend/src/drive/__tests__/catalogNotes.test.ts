@@ -153,6 +153,37 @@ describe('extrude taper notes', () => {
   })
 })
 
+describe('extrude twist notes', () => {
+  it('names the axis, the sign, the hole rule and the refusals on both extrude rows', () => {
+    for (const type of ['add_extrude', 'set_extrude_field'] as const) {
+      const note = mutationInfoOf(type).note!
+      expect(note, type).toContain('`twist`')
+      expect(note, type).toContain('TOTAL rotation')
+      expect(note, type).toContain('right-handed about the direction of travel')
+      expect(note, type).toContain('holes twist with the profile')
+      expect(note, type).toContain('refused together with a taper')
+      expect(note, type).toContain('bounded at 7200 degrees')
+    }
+  })
+
+  it('offers twist inline on add_extrude and carries it into the document', async () => {
+    const add = mutationInfoOf('add_extrude')
+    expect(add.fields.twist).toBeDefined()
+    expect(add.fields.twist.required).toBe(false)
+    expect(add.fields.twist.note).toContain('TOTAL rotation')
+    const result = await runHeadless({
+      doc: emptyDriveDoc(),
+      steps: [{
+        mutation: {
+          type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 40, twist: 90,
+        },
+      }],
+    })
+    const feature = result.doc!.features!.find(entry => entry.id === 'ex1')
+    expect(feature).toMatchObject({ kind: 'extrude', extrude: { twist: 90 } })
+  })
+})
+
 describe('through-all termination on both extrude rows', () => {
   it('names through_all, the absent distance and the merge_target narrowing', () => {
     for (const type of ['add_extrude', 'set_extrude_field'] as const) {

@@ -78,7 +78,7 @@ export type ExprFieldKind = keyof ExprPayloads
  *  being evaluated.
  */
 export const EXPR_FIELDS_BY_KIND: { [K in ExprFieldKind]: readonly (keyof ExprPayloads[K] & string)[] } = {
-  extrude: ['distance', 'taper', 'up_to_offset'],
+  extrude: ['distance', 'taper', 'twist', 'up_to_offset'],
   revolve: ['angle'],
   fillet: ['radius'],
   chamfer: ['distance', 'angle'],

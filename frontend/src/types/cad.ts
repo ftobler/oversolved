@@ -36,6 +36,12 @@ export type ExtrudeFeatureDef = {
   // widens it, and every lateral wall (holes included) drafts with it. Absent
   // or 0 is the straight prism.
   taper?: NumberOrExpr
+  // Degrees of rotation of the profile about the sweep axis, spread evenly over
+  // `distance` (the TOTAL angle, not per length). Positive turns right-handed
+  // about the direction of travel, so `reverse` mirrors the geometry and keeps
+  // the same handedness. Absent or 0 is the straight prism; refused with a taper
+  // and outside a blind one-sided sweep.
+  twist?: NumberOrExpr
   direction?: ExtrudeDirection
   // 'blind' (default) extrudes by `distance`; 'up_to' terminates at the element
   // referenced by `up_to` (a plane, point, or any face); 'up_to_next' stops at
@@ -1554,7 +1560,7 @@ export type Mutation =
   | { type: 'rename_feature'; featureId: string; label: string }
   | { type: 'toggle_sketch_plane_visibility' }
   | { type: 'toggle_plane_visibility' }
-  | ({ type: 'add_extrude'; featureId: string; label?: string; sketchQuery: string; distance?: number; taper?: NumberOrExpr; direction?: ExtrudeDirection; termination?: ExtrudeTermination | null; up_to?: string | null; up_to_offset?: NumberOrExpr | null; up_to_start?: ExtrudeFeatureDef['up_to_start'] | null; operation?: ExtrudeOperation; merge_target?: string } & FeatureInsertion)
+  | ({ type: 'add_extrude'; featureId: string; label?: string; sketchQuery: string; distance?: number; taper?: NumberOrExpr; twist?: NumberOrExpr; direction?: ExtrudeDirection; termination?: ExtrudeTermination | null; up_to?: string | null; up_to_offset?: NumberOrExpr | null; up_to_start?: ExtrudeFeatureDef['up_to_start'] | null; operation?: ExtrudeOperation; merge_target?: string } & FeatureInsertion)
   | { type: 'set_extrude_field'; featureId: string; field: keyof ExtrudeFeatureDef; value: unknown }
   | { type: 'add_extrude_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_extrude_profile'; featureId: string; index: number }
