@@ -1,7 +1,6 @@
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml'
 import type {
   ManifestEntry,
-  ProvenanceRecord,
   ReferenceEdges,
   WorkspaceManifest,
 } from './types'
@@ -14,7 +13,6 @@ export function emptyManifest(workspace: string): WorkspaceManifest {
     workspace,
     entries: {},
     references: {},
-    provenance: [],
     trash: [],
   }
 }
@@ -37,60 +35,22 @@ function canonicalEntry(entry: ManifestEntry): ManifestEntry {
   return out
 }
 
-function canonicalProvenanceRecord(record: ProvenanceRecord): ProvenanceRecord {
-  const out: ProvenanceRecord = { entry: record.entry, origin: record.origin }
-  if (record.originEntry !== undefined) out.originEntry = record.originEntry
-  if (record.originGroup !== undefined) out.originGroup = record.originGroup
-  if (record.originName !== undefined) out.originName = record.originName
-  if (record.originWorkspace !== undefined) out.originWorkspace = record.originWorkspace
-  if (record.rev !== undefined) out.rev = record.rev
-  if (record.hash !== undefined) out.hash = record.hash
-  if (record.copiedAt !== undefined) out.copiedAt = record.copiedAt
-  return out
-}
-
-function compareProvenance(a: ProvenanceRecord, b: ProvenanceRecord): number {
-  if (a.entry !== b.entry) return a.entry < b.entry ? -1 : 1
-  // The origin entry id is the tiebreak because it, not the local id, is what
-  // names the source; entry alone already orders the records in practice, so
-  // this only pins the order when two copies share a local id.
-  const ae = a.originEntry ?? ''
-  const be = b.originEntry ?? ''
-  if (ae !== be) return ae < be ? -1 : 1
-  // The group keeps two imports of one source in a stable order, so the
-  // canonical bytes do not depend on import order.
-  const ag = a.originGroup ?? ''
-  const bg = b.originGroup ?? ''
-  if (ag !== bg) return ag < bg ? -1 : 1
-  if (a.origin !== b.origin) return a.origin < b.origin ? -1 : 1
-  if (a.rev !== b.rev) {
-    if (a.rev === undefined) return -1
-    if (b.rev === undefined) return 1
-    return a.rev < b.rev ? -1 : 1
-  }
-  const ah = a.hash ?? ''
-  const bh = b.hash ?? ''
-  if (ah !== bh) return ah < bh ? -1 : 1
-  return 0
-}
-
-function canonicalProvenance(records: ProvenanceRecord[]): ProvenanceRecord[] {
-  return [...records].sort(compareProvenance).map(canonicalProvenanceRecord)
-}
-
 function canonicalStringList(values: string[]): string[] {
   return [...new Set(values)].sort()
 }
 
 function canonicalizeManifest(manifest: WorkspaceManifest): WorkspaceManifest {
-  return {
+  const out: WorkspaceManifest = {
     format: manifest.format,
     workspace: manifest.workspace,
     entries: buildManifestIndex(manifest.entries),
     references: canonicalizeReferences(manifest.references),
-    provenance: canonicalProvenance(manifest.provenance),
     trash: canonicalStringList(manifest.trash),
   }
+  // Present only when set, after trash: a manifest written before the cover
+  // existed serializes exactly the bytes it always did (D9).
+  if (manifest.cover !== undefined) out.cover = manifest.cover
+  return out
 }
 
 export function serializeManifest(manifest: WorkspaceManifest): string {
@@ -114,6 +74,10 @@ export function parseManifest(text: string): WorkspaceManifest {
   }
   const manifest = coerceManifest(raw)
   assertManifest(manifest)
+  // A choice naming an entry the archive does not carry is a stale reference,
+  // not a broken manifest: a hand-edited zip must still import, so the key is
+  // dropped and the workspace falls back to the automatic cover.
+  if (manifest.cover !== undefined && manifest.entries[manifest.cover] === undefined) delete manifest.cover
   return canonicalizeManifest(manifest)
 }
 
@@ -122,14 +86,19 @@ function coerceManifest(raw: unknown): WorkspaceManifest {
     throw new Error('Manifest is not a mapping')
   }
   const src = raw as Record<string, unknown>
-  return {
+  // A manifest written while imports kept an origin link carries a provenance
+  // key. It is dropped, not validated: the origin link is gone (2026-11-16) and
+  // an older library must still open.
+  const manifest: WorkspaceManifest = {
     format: src.format as number,
     workspace: src.workspace as string,
     entries: (src.entries === undefined ? {} : src.entries) as Record<string, ManifestEntry>,
     references: (src.references === undefined ? {} : src.references) as ReferenceEdges,
-    provenance: (src.provenance === undefined ? [] : src.provenance) as ProvenanceRecord[],
     trash: (src.trash === undefined ? [] : src.trash) as string[],
   }
+  // Left as written so assertManifest can refuse a non-string by name.
+  if (src.cover !== undefined) manifest.cover = src.cover as string
+  return manifest
 }
 
 export function assertManifest(manifest: WorkspaceManifest): void {
@@ -142,8 +111,8 @@ export function assertManifest(manifest: WorkspaceManifest): void {
   }
   assertEntryMap(manifest.entries)
   assertReferences(manifest.references)
-  assertProvenance(manifest.provenance)
   assertTrash(manifest.trash)
+  assertCover(manifest.cover)
   assertNoInvalidScalars(manifest, 'manifest')
 }
 
@@ -211,42 +180,18 @@ function assertReferences(references: ReferenceEdges): void {
   }
 }
 
-function assertProvenance(records: ProvenanceRecord[]): void {
-  if (!Array.isArray(records)) throw new Error('Manifest provenance must be an array')
-  for (const record of records) {
-    if (typeof record !== 'object' || record === null) throw new Error('Provenance record must be an object')
-    if (typeof record.entry !== 'string' || record.entry.length === 0) {
-      throw new Error('Provenance record has no entry id')
-    }
-    if (typeof record.origin !== 'string') throw new Error('Provenance record origin must be a string')
-    if (record.originEntry !== undefined && (typeof record.originEntry !== 'string' || record.originEntry.length === 0)) {
-      throw new Error('Provenance originEntry must be a non-empty string')
-    }
-    if (record.originGroup !== undefined && (typeof record.originGroup !== 'string' || record.originGroup.length === 0)) {
-      throw new Error('Provenance originGroup must be a non-empty string')
-    }
-    if (record.originName !== undefined && typeof record.originName !== 'string') {
-      throw new Error('Provenance originName must be a string')
-    }
-    if (record.originWorkspace !== undefined && typeof record.originWorkspace !== 'string') {
-      throw new Error('Provenance originWorkspace must be a string')
-    }
-    if (record.rev !== undefined && !Number.isInteger(record.rev)) {
-      throw new Error('Provenance rev must be an integer')
-    }
-    if (record.hash !== undefined && typeof record.hash !== 'string') {
-      throw new Error('Provenance hash must be a string')
-    }
-    if (record.copiedAt !== undefined && !Number.isInteger(record.copiedAt)) {
-      throw new Error('Provenance copiedAt must be an integer')
-    }
-  }
-}
-
 function assertTrash(trash: string[]): void {
   if (!Array.isArray(trash)) throw new Error('Manifest trash must be an array')
   for (const id of trash) {
     if (typeof id !== 'string') throw new Error('Manifest trash must hold entry ids')
+  }
+}
+
+// Whether the cover names a row is a parse-time question, not an invariant: a
+// stale id is dropped rather than refused. Its shape still has to be an id.
+function assertCover(cover: string | undefined): void {
+  if (cover !== undefined && (typeof cover !== 'string' || cover.length === 0)) {
+    throw new Error('Manifest cover must be a non-empty string')
   }
 }
 

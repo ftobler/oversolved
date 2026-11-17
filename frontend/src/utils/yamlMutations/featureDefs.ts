@@ -1138,12 +1138,21 @@ export function applySetCurvePatternField(doc: PartDoc, featureId: string, field
 export const applyAddCurvePatternPath = makeAddRefToggle('curve_pattern', 'path', 'applyAddCurvePatternPath')
 export const applyRemoveCurvePatternPath = makeRemoveRefAt('curve_pattern', 'path', 'applyRemoveCurvePatternPath')
 
-/** Both target forms at once is never a document the app writes; a replay
- *  carrying it is refused rather than solved as one arbitrary form. */
-function instanceTargetFormProblem(sub: Record<string, unknown>): string | null {
-  const sketch = typeof sub.sketch === 'string' && sub.sketch !== ''
-  const targets = Array.isArray(sub.targets) && sub.targets.length > 0
-  return sketch && targets ? 'sketch and targets cannot both be set; keep one target form' : null
+/** The stored target list with the retired `sketch` spelling folded in front:
+ *  one sketch ref is a target that expands to its points, so it heads the list
+ *  it belonged to. */
+function instanceTargets(sub: Record<string, unknown>, sketch: string): string[] {
+  const raw = sub.targets
+  const list = Array.isArray(raw) ? raw.filter((ref): ref is string => typeof ref === 'string') : []
+  if (sketch === '') return list
+  return [sketch, ...list.filter((ref) => ref !== sketch)]
+}
+
+/** Store the one target list, dropping the key when it is empty. */
+function writeInstanceTargets(sub: FieldBag, targets: string[]): void {
+  delete sub.sketch
+  if (targets.length > 0) sub.targets = targets
+  else delete sub.targets
 }
 
 export function applyAddInstancePattern(
@@ -1172,11 +1181,9 @@ export function applyAddInstancePattern(
     accepted.skip = skip
   }
   mergeInlineFields(pattern, accepted as Partial<FieldBag>)
-  const form = instanceTargetFormProblem(pattern)
-  if (form !== null) {
-    warn(`applyAddInstancePattern: refusing ${form}`)
-    return
-  }
+  // The retired `sketch` key is rewritten into the leading target; the kernel
+  // and the loader still accept it, so an add carrying it is not a refusal.
+  writeInstanceTargets(pattern, instanceTargets(pattern, typeof pattern.sketch === 'string' ? pattern.sketch : ''))
   if (pattern.subject === 'feature') delete pattern.operation
   else if (pattern.operation === undefined) pattern.operation = 'add'
   pushFeature(doc, {
@@ -1199,14 +1206,22 @@ export function applySetInstancePatternField(
     warn(`applySetInstancePatternField: feature ${featureId} has no instance_pattern`)
     return
   }
-  // Switching forms is two writes in the UI; a single write that would leave
-  // both set is refused rather than stored as a document the kernel refuses.
-  const next: FieldBag = { ...sub, [field]: value }
-  const form = instanceTargetFormProblem(next)
-  if (form !== null) {
-    warn(`applySetInstancePatternField: refusing ${form}`)
+  // The retired sketch field is a one-release alias for the leading target, so
+  // a replay of the old switch still lands the list it meant. It can add a
+  // sketch row (or reorder the stored one to the front); removing a row is the
+  // chip's own remove mutation. Every other write folds a lingering sketch key
+  // into the list, so the document never keeps the pair.
+  const storedSketch = typeof sub.sketch === 'string' ? sub.sketch : ''
+  if (field === 'sketch') {
+    const next = instanceTargets(sub, typeof value === 'string' ? value : '')
+    writeInstanceTargets(sub, next)
     return
   }
+  if (field === 'targets') {
+    writeInstanceTargets(sub, instanceTargets({ targets: value }, storedSketch))
+    return
+  }
+  writeInstanceTargets(sub, instanceTargets(sub, storedSketch))
   setSubFeatureField(featureId, 'instance_pattern', sub, field, value, 'applySetInstancePatternField', INSTANCE_PATTERN_FIELDS)
 }
 

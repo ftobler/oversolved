@@ -33,7 +33,7 @@ describe('adoption seeds previews from a legacy bundle sidecar', () => {
       'library/Bracket.png': PNG_BYTES,
     })
     const store = new IdbWorkspaceStore()
-    const result = await importBag(await readZipBag(bytes, 'legacy'), { origin: 'legacy' }, store)
+    const result = await importBag(await readZipBag(bytes), {}, store)
 
     const entries = await store.listEntries(result.workspace)
     // The tree holds the two documents and nothing else: the sidecars are still
@@ -55,7 +55,7 @@ describe('adoption seeds previews from a legacy bundle sidecar', () => {
       'library/Plain.yaml': 'kind: part\n',
     })
     const store = new IdbWorkspaceStore()
-    const result = await importBag(await readZipBag(bytes, 'legacy'), { origin: 'legacy' }, store)
+    const result = await importBag(await readZipBag(bytes), {}, store)
 
     const entries = await store.listEntries(result.workspace)
     const plain = entries.find(entry => entry.name === 'Plain')!
@@ -69,7 +69,7 @@ describe('adoption seeds previews from a legacy bundle sidecar', () => {
       'library/Box.yaml': 'kind: part\n',
       'library/Box.png': PNG_BYTES,
     })
-    const result = await importBag(await readZipBag(bytes, 'legacy'), { origin: 'legacy', into: workspace }, store)
+    const result = await importBag(await readZipBag(bytes), { into: workspace }, store)
     expect(result.mode).toBe('join')
 
     const entries = await store.listEntries(workspace)
@@ -83,7 +83,7 @@ describe('adoption seeds previews from a legacy bundle sidecar', () => {
     const oversized = new Uint8Array(MAX_PREVIEW_BYTES + 1)
     const bytes = await zipOf({ 'library/Box.yaml': 'kind: part\n', 'library/Box.png': oversized })
     const store = new IdbWorkspaceStore()
-    const result = await importBag(await readZipBag(bytes, 'legacy'), { origin: 'legacy' }, store)
+    const result = await importBag(await readZipBag(bytes), {}, store)
 
     const entries = await store.listEntries(result.workspace)
     const box = entries.find(entry => entry.name === 'Box')!
@@ -96,7 +96,7 @@ describe('adoption seeds previews from a legacy bundle sidecar', () => {
   it('a stray png with no sibling document stays a file entry and seeds nothing', async () => {
     const bytes = await zipOf({ 'library/logo.png': PNG_BYTES })
     const store = new IdbWorkspaceStore()
-    const result = await importBag(await readZipBag(bytes, 'zip'), { origin: 'zip' }, store)
+    const result = await importBag(await readZipBag(bytes), {}, store)
 
     const [entry] = await store.listEntries(result.workspace)
     expect(entry).toMatchObject({ kind: 'file', mime: 'image/png' })

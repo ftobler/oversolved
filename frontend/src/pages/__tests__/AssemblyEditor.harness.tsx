@@ -1,5 +1,5 @@
 import { expect, vi } from 'vitest'
-import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import AssemblyEditor from '@/pages/AssemblyEditor'
@@ -40,8 +40,6 @@ export function installSessionFromList(h: { list: HarnessListEntry[] }) {
       referencesOf: vi.fn(),
       referenceEdges: vi.fn(async () => ({})),
       savedRevs: async () => new Map(),
-      originOf: async () => undefined,
-      provenance: async () => [],
     },
   })
 }
@@ -60,4 +58,20 @@ export async function insertPart(name: string) {
   fireEvent.click(pickerItem(name)!)
   fireEvent.click(screen.getByRole('button', { name: 'Insert' }))
   await tick()
+}
+
+// An open assembly edit draws its OK/Cancel pair at both ends: the edited tree
+// row keeps the pair it always had, and the right card carries a second one. A
+// bare getByRole would now match two buttons, so a page test says which end it
+// means. Both ends call the same handlers; these helpers only pick the node.
+export function rowAction(name: 'OK' | 'Cancel'): HTMLElement {
+  const row = document.querySelector('.feature-item.editing')
+  if (!row) throw new Error('no edited tree row is open')
+  return within(row as HTMLElement).getByRole('button', { name })
+}
+
+export function cardAction(name: 'OK' | 'Cancel'): HTMLElement {
+  const card = document.querySelector('.feature-edit-panel')
+  if (!card) throw new Error('no assembly edit card is open')
+  return within(card as HTMLElement).getByRole('button', { name })
 }

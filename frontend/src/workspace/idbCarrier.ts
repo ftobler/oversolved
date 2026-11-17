@@ -1,8 +1,8 @@
 // The IndexedDB conformer of WorkspaceCarrier, and the app's working copy. One
 // instance is scoped to one workspace: the workspace row carries the structure
-// (references, provenance, trash), and the entry rows carry the payload. The
-// explicit-save checkpoint lives beside the working copy in workspace_saved, so
-// an edit can be one entry write while keep/discard compare revisions.
+// (references, trash), and the entry rows carry the payload. The explicit-save
+// checkpoint lives beside the working copy in workspace_saved, so an edit can be
+// one entry write while keep/discard compare revisions.
 //
 // Document text is loaded on open because the solve needs it warm (A5); file
 // bytes are not, and `read` materializes them on demand. An open tree therefore
@@ -14,7 +14,6 @@ import type {
   EntryKind,
   EntryMeta,
   ManifestEntry,
-  ProvenanceRecord,
   ReferenceEdges,
   WorkspaceEntry,
   WorkspaceManifest,
@@ -39,16 +38,19 @@ import { FORMAT_VERSION, pathFor } from './paths'
 import { canonicalizeReferences } from './refs'
 import { hashRecord } from './contentHash'
 
-// The workspace row. Structure edits (references, provenance, trash) land here,
-// not on the entry rows, which is what keeps a content edit to one record.
+// The workspace row. Structure edits (references, trash) land here, not on the
+// entry rows, which is what keeps a content edit to one record.
 export interface WorkspaceMetaRecord {
   workspace: string
   name: string
   createdAt: number
   updatedAt: number
   references: ReferenceEdges
-  provenance: ProvenanceRecord[]
   trash: string[]
+  // The user's explicit cover choice, an entry id. Absent means the automatic
+  // resolution picks the cover; the id is kept while its entry is only trashed,
+  // so restoring the entry restores the cover.
+  cover?: string
   trashedAt?: string  // library-level tombstone, ISO like documents use today
   savedAt?: number  // epoch ms of the last explicit save
   // The checkpoint's rev per entry, stamped by checkpoint(). The dirty dot needs
@@ -59,12 +61,11 @@ export interface WorkspaceMetaRecord {
   savedRevs?: Record<string, number>
   // The checkpoint's copy of the structure the entry rows do not carry. A
   // discard that reset only the rows would put the text of the last save back
-  // while leaving references, trash and provenance describing the edits it
-  // threw away, so checkpoint() snapshots them here. A row written before this
-  // snapshot existed carries none, and discard then leaves the structure alone.
+  // while leaving references and trash describing the edits it threw away, so
+  // checkpoint() snapshots them here. A row written before this snapshot existed
+  // carries none, and discard then leaves the structure alone.
   savedReferences?: ReferenceEdges
   savedTrash?: string[]
-  savedProvenance?: ProvenanceRecord[]
   // One-shot content migrations already applied to this workspace, by id. A
   // migration that has to read every payload cannot afford to re-decide that on
   // every open, so it marks itself here and a reopen costs this meta read.
@@ -141,8 +142,24 @@ function entryMetaOf(record: WorkspaceEntryRecord): WorkspaceEntryMetaRecord {
   return meta
 }
 
+// A row written while imports kept an origin link still carries provenance
+// records. Every write that spreads this row back out has to omit them: nothing
+// reads them any more (the origin link was retired 2026-11-16), and a legacy row
+// must keep opening. Stripping happens on read and again at each read-modify-
+// write, because idbUpdateFrom hands the raw stored row in rather than routing
+// it through readWorkspaceMeta.
+type LegacyProvenanceFields = { provenance?: unknown; savedProvenance?: unknown }
+
+function withoutLegacyProvenance(meta: WorkspaceMetaRecord): WorkspaceMetaRecord {
+  const legacy = meta as WorkspaceMetaRecord & LegacyProvenanceFields
+  delete legacy.provenance
+  delete legacy.savedProvenance
+  return meta
+}
+
 export async function readWorkspaceMeta(workspace: string): Promise<WorkspaceMetaRecord | undefined> {
-  return idbGetFrom<WorkspaceMetaRecord>(STORE_WORKSPACE_META, workspace)
+  const meta = await idbGetFrom<WorkspaceMetaRecord>(STORE_WORKSPACE_META, workspace)
+  return meta === undefined ? undefined : withoutLegacyProvenance(meta)
 }
 
 export async function listWorkspaceMetas(): Promise<WorkspaceMetaRecord[]> {
@@ -150,7 +167,7 @@ export async function listWorkspaceMetas(): Promise<WorkspaceMetaRecord[]> {
 }
 
 export async function writeWorkspaceMeta(meta: WorkspaceMetaRecord): Promise<void> {
-  await idbPutTo(STORE_WORKSPACE_META, meta)
+  await idbPutTo(STORE_WORKSPACE_META, withoutLegacyProvenance(meta))
 }
 
 export async function workspaceEntryRecords(workspace: string): Promise<WorkspaceEntryRecord[]> {
@@ -327,9 +344,9 @@ export class IdbCarrier implements WorkspaceCarrier {
       workspace: this.workspace,
       entries: {},
       references: canonicalizeReferences(meta.references),
-      provenance: meta.provenance.map(record => ({ ...record })),
       trash: [...meta.trash].sort(),
     }
+    if (meta.cover !== undefined) manifest.cover = meta.cover
     for (const row of metas) manifest.entries[row.id] = metaToManifestEntry(row)
     const contents = new Map<string, EntryContent>()
     const documents = await idbGetAllFromIndex<WorkspaceEntryRecord>(
@@ -376,9 +393,16 @@ export class IdbCarrier implements WorkspaceCarrier {
     const nextMeta: WorkspaceMetaRecord = {
       ...meta,
       references: canonicalizeReferences(tree.manifest.references),
-      provenance: tree.manifest.provenance.map(record => ({ ...record })),
       trash: [...tree.manifest.trash].sort(),
       updatedAt: now,
+    }
+    // The manifest is the whole structure, so it owns the cover too: a tree that
+    // carries no cover clears the stored choice, and a cover naming a row this
+    // tree does not hold is dropped rather than kept as a dangling id.
+    if (tree.manifest.cover !== undefined && tree.manifest.entries[tree.manifest.cover] !== undefined) {
+      nextMeta.cover = tree.manifest.cover
+    } else {
+      delete nextMeta.cover
     }
     await idbTransaction(
       [STORE_WORKSPACE_META, STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META],
@@ -461,15 +485,16 @@ export class IdbCarrier implements WorkspaceCarrier {
       this.workspace,
       (meta, stores) => {
         if (!meta) throw new Error(`Workspace not found: ${this.workspace}`)
-        if (meta.trash.includes(entry.id)) throw new Error(`Entry is trashed: ${entry.id}`)
+        const current = withoutLegacyProvenance(meta)
+        if (current.trash.includes(entry.id)) throw new Error(`Entry is trashed: ${entry.id}`)
         if (changed) {
           const record = entryToRecord(this.workspace, merged, previous.path, previous.rev + 1, Date.now())
           stores[STORE_WORKSPACE_ENTRIES].put(record)
           stores[STORE_WORKSPACE_ENTRY_META].put(entryMetaOf(record))
         }
         if (targets === null) return undefined
-        const references = reconciledReferences(meta.references, entry.id, targets)
-        return references === undefined ? undefined : { ...meta, references, updatedAt: Date.now() }
+        const references = reconciledReferences(current.references, entry.id, targets)
+        return references === undefined ? undefined : { ...current, references, updatedAt: Date.now() }
       },
     )
   }
@@ -497,10 +522,11 @@ export class IdbCarrier implements WorkspaceCarrier {
       this.workspace,
       (meta, stores) => {
         if (!meta) throw new Error(`Workspace not found: ${this.workspace}`)
+        const current = withoutLegacyProvenance(meta)
         stores[STORE_WORKSPACE_ENTRIES].put(record)
         stores[STORE_WORKSPACE_ENTRY_META].put(entryMetaOf(record))
-        const references = reconciledReferences(meta.references, entry.id, targets)
-        return references === undefined ? undefined : { ...meta, references, updatedAt: Date.now() }
+        const references = reconciledReferences(current.references, entry.id, targets)
+        return references === undefined ? undefined : { ...current, references, updatedAt: Date.now() }
       },
     )
   }
@@ -616,8 +642,8 @@ export class IdbCarrier implements WorkspaceCarrier {
     // The checkpoint adopts the whole working copy, so its rev map is exactly the
     // working revs. Stamping it here is what lets a later read answer the dirty
     // dot without touching the checkpoint payloads. The structure snapshots ride
-    // along so discard can put back the references, trash and provenance that
-    // belong to the adopted text.
+    // along so discard can put back the references and trash that belong to the
+    // adopted text.
     const nextMeta: WorkspaceMetaRecord = {
       ...meta,
       savedAt: Date.now(),
@@ -628,7 +654,6 @@ export class IdbCarrier implements WorkspaceCarrier {
       savedRevs: Object.fromEntries(working.map(record => [record.id, record.rev])),
       savedReferences: meta.references,
       savedTrash: [...meta.trash],
-      savedProvenance: meta.provenance.map(record => ({ ...record })),
     }
     await idbTransaction([STORE_WORKSPACE_SAVED, STORE_WORKSPACE_META], 'readwrite', stores => {
       for (const record of toPut) stores[STORE_WORKSPACE_SAVED].put(record)
@@ -652,7 +677,6 @@ export class IdbCarrier implements WorkspaceCarrier {
       ...meta,
       references: meta.savedReferences,
       trash: [...(meta.savedTrash ?? [])],
-      provenance: (meta.savedProvenance ?? []).map(record => ({ ...record })),
       updatedAt: Date.now(),
     }
     await idbTransaction(
@@ -689,7 +713,7 @@ export class IdbCarrier implements WorkspaceCarrier {
       this.workspace,
       meta => {
         if (!meta) throw new Error(`Workspace not found: ${this.workspace}`)
-        return edit(meta)
+        return edit(withoutLegacyProvenance(meta))
       },
     )
   }

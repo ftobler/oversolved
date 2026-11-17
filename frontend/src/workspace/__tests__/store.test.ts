@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { IdbWorkspaceStore } from '../store'
-import { IdbCarrier } from '../idbCarrier'
+import { IdbCarrier, readWorkspaceMeta } from '../idbCarrier'
 import { deserializeTree, serializeTree } from '../serializer'
 import { readZipBag, importBag } from '../import'
 import { buildZipBytes } from '../zipCarrier'
 import { addReference } from '../refs'
+import { STORE_WORKSPACE_META, idbPutTo } from '@/stores/documentStore/idb'
 import { getFileRegistry } from '@/stores/fileRegistry'
 import { bytesOf, documentEntry, fileEntry, treeWith } from './fixtures'
 import { resetWorkspaceIdb } from './idbHarness'
@@ -196,10 +197,10 @@ describe('IdbWorkspaceStore (degenerate workspace)', () => {
     expect(await new IdbCarrier(copy).referencesOf(copyDoc.id)).toEqual([copyFile.id])
   })
 
-  // duplicate's id remap has to carry provenance and trash through the same map
-  // as the entries and edges; a stale local id in either would describe an entry
-  // the copy does not hold.
-  it('duplicate remaps provenance and carries the trash through the id remap', async () => {
+  // duplicate's id remap has to carry the trash through the same map as the
+  // entries and edges; a stale local id would describe an entry the copy does
+  // not hold.
+  it('duplicate carries the trash through the id remap', async () => {
     const store = new IdbWorkspaceStore()
     const source = treeWith([
       documentEntry('a', 'A', { text: 'kind: part\n' }),
@@ -207,25 +208,36 @@ describe('IdbWorkspaceStore (degenerate workspace)', () => {
     ], 'source-ws')
     addReference(source, 'a', 'b')
     const { workspace } = await importBag(
-      await readZipBag(await buildZipBytes(source), 'ws'), { origin: 'ws' }, store,
+      await readZipBag(await buildZipBytes(source)), {}, store,
     )
 
     await store.removeEntry(workspace, 'a')
     const { workspace: copy } = await store.duplicate(workspace, 'Asm copy')
 
     const opened = await store.open(copy)
-    const copyEntryIds = new Set(Object.keys(opened.tree.manifest.entries))
-    expect(opened.tree.manifest.provenance).toHaveLength(2)
-    for (const record of opened.tree.manifest.provenance) {
-      expect(copyEntryIds.has(record.entry)).toBe(true)
-    }
-    expect(opened.tree.manifest.provenance.map(record => record.originEntry).sort()).toEqual(['a', 'b'])
-
     expect(opened.tree.manifest.trash).toHaveLength(1)
     const trashedId = opened.tree.manifest.trash[0]
     expect(await store.listEntries(copy)).not.toContainEqual(expect.objectContaining({ id: trashedId }))
     const all = await store.listEntries(copy, { includeTrashed: true })
     expect(all.find(entry => entry.id === trashedId)).toMatchObject({ name: 'A' })
+  })
+
+  // A workspace saved while imports recorded an origin still duplicates into a
+  // plain copy: the copy's meta row does not carry the provenance along.
+  it('duplicate of a workspace whose meta carries provenance yields a copy without it', async () => {
+    const store = new IdbWorkspaceStore()
+    const { workspace } = await store.create('Legacy', { docKind: 'part' })
+    const meta = (await readWorkspaceMeta(workspace))!
+    await idbPutTo(STORE_WORKSPACE_META, {
+      ...meta,
+      provenance: [{ entry: workspace, origin: 'folder:cad', originEntry: 'x' }],
+    })
+
+    const { workspace: copy } = await store.duplicate(workspace, 'Legacy copy')
+
+    const copied = (await readWorkspaceMeta(copy))!
+    expect('provenance' in copied).toBe(false)
+    expect('provenance' in (await store.open(copy)).tree.manifest).toBe(false)
   })
 
   it('export then re-import is byte-identical, including an adopted file', async () => {

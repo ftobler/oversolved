@@ -5,10 +5,7 @@ import { invertReferences } from './filesModel'
 
 // The where-used seam, kept out of its consumer so the component file only
 // exports a component (fast refresh) and the seam has one obvious home. C5
-// replaced the old per-entry scan with the manifest's one edge-map read. The
-// origin seam that used to live here was only reached by the origins panel; R5
-// put the update path back on an entry row, which reads the workspace view's
-// one provenance load rather than a seam of its own.
+// replaced the old per-entry scan with the manifest's one edge-map read.
 
 const EMPTY_INVERSE = new Map<string, string[]>()
 

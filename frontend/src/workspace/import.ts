@@ -2,7 +2,6 @@ import { parse as parseYaml } from 'yaml'
 import type {
   EntryContent,
   ManifestEntry,
-  ProvenanceRecord,
   ReferenceEdges,
   SerializedFile,
   WorkspaceEntry,
@@ -11,16 +10,14 @@ import type {
 } from './types'
 import { MANIFEST_PATH, RESERVED_PREFIX, TRASH_DIR } from './paths'
 import { emptyManifest, parseManifest, serializeManifest } from './manifest'
-import { addEntry, createTree, putEntry } from './tree'
+import { addEntry, createTree } from './tree'
 import { addReference, canonicalizeReferences } from './refs'
 import { deserializeTree } from './serializer'
-import { hashRecord } from './contentHash'
 import { readZipFiles } from './zipCarrier'
 import { buildStepContent } from '@/stores/documentStore/stepImport'
 import { randomId } from '@/utils/yamlMutations'
 import { randomUuid } from '@/utils/randomUuid'
 import { KNOWN_DOC_KINDS, inferDocKind, parseDocKind, type KnownDocKind } from './kinds'
-import { resolveOrigin, type OriginDescriptor, type OriginResolver } from './originResolver'
 import { getWorkspaceStore, type WorkspaceStore } from './store'
 import { bytesToBase64, writePreview } from '@/stores/previewStore/capture'
 
@@ -30,11 +27,9 @@ import { bytesToBase64, writePreview } from '@/stores/previewStore/capture'
 // a synthesized part, and a document the bag cannot resolve references for is
 // reported unattached rather than silently dangling.
 //
-// The bag is identity-free by design: the structured origin descriptor is
-// threaded through untouched and only stamped onto each imported entry's
-// provenance record. A bag's own `origin` string is the C3 shape and is ignored
-// by the classifier. `remapTree` is the one id re-mint pass, shared with
-// WorkspaceStore.duplicate and, later, with the C6 snapshot copy.
+// A bag is (path, bytes) and nothing else: an import is a plain copy, so the
+// source's identity never reaches the destination (2026-11-16). `remapTree` is
+// the one id re-mint pass, shared with WorkspaceStore.duplicate.
 
 export interface BagItem {
   path: string
@@ -43,7 +38,6 @@ export interface BagItem {
 
 export interface ImportBag {
   items: BagItem[]
-  origin: string
 }
 
 export interface ImportResult {
@@ -80,7 +74,6 @@ export interface ImportedTree {
 export interface RemapOptions {
   workspace: string
   mintIds: boolean
-  origin: string
   extraEdges?: ReferenceEdges
 }
 
@@ -91,25 +84,18 @@ export interface RemapResult {
 
 export interface ImportOptions {
   into?: string
-  // The C3 seam, now structured. A bare locator string is still accepted for
-  // the pre-C6 call shape and carries no same-session re-read.
-  origin: OriginDescriptor | string
+  // The new workspace's display name. Without it the name comes from the bag's
+  // first document.
   name?: string
-}
-
-function normalizeOrigin(origin: OriginDescriptor | string): OriginDescriptor {
-  return typeof origin === 'string' ? { locator: origin } : origin
 }
 
 // Walk a picked directory into a bag. Every file is read, bookkeeping included:
 // the classifier decides what is reserved, not the reader, so the count it
 // reports is the bag's, not a walk artifact.
-export async function readDirectoryBag(
-  dir: FileSystemDirectoryHandle, origin: string,
-): Promise<ImportBag> {
+export async function readDirectoryBag(dir: FileSystemDirectoryHandle): Promise<ImportBag> {
   const items: BagItem[] = []
   await walk(dir, '', items)
-  return { items, origin }
+  return { items }
 }
 
 async function walk(
@@ -142,11 +128,11 @@ export const MAX_BUNDLE_INPUT_BYTES = 100 * 1024 * 1024
 // manifest) or a legacy `.oversolved` bundle (it does not). This reader is
 // deliberately dumb: it hands every entry to the classifier, which owns the
 // reserved and preview-sidecar rules and their counts.
-export async function readZipBag(bytes: Uint8Array, origin: string): Promise<ImportBag> {
+export async function readZipBag(bytes: Uint8Array): Promise<ImportBag> {
   if (bytes.byteLength > MAX_BUNDLE_INPUT_BYTES) throw new Error('Archive is too large')
   const files = await readZipFiles(bytes)
   if (files.length > MAX_BUNDLE_ENTRIES) throw new Error('Archive contains too many files')
-  return { items: files.map(file => ({ path: file.path, bytes: toBytes(file.data) })), origin }
+  return { items: files.map(file => ({ path: file.path, bytes: toBytes(file.data) })) }
 }
 
 function toBytes(data: string | Uint8Array): Uint8Array {
@@ -178,10 +164,10 @@ function detectManifest(items: BagItem[]): DetectedManifest | null {
   return matches[0] ?? null
 }
 
-// The manifest minus the rows whose payload the bag does not carry. Trash ids,
-// provenance records and reference edges naming a dropped row go with it: a
-// pruned manifest that still pointed at one would describe an entry the tree
-// cannot hold, and the edge would outlive its target.
+// The manifest minus the rows whose payload the bag does not carry. Trash ids
+// and reference edges naming a dropped row go with it: a pruned manifest that
+// still pointed at one would describe an entry the tree cannot hold, and the
+// edge would outlive its target.
 function withoutEntries(
   manifest: WorkspaceManifest, present: Record<string, ManifestEntry>,
 ): WorkspaceManifest {
@@ -190,13 +176,17 @@ function withoutEntries(
     if (!(from in present)) continue
     references[from] = targets.filter(to => to in present)
   }
-  return {
+  const pruned: WorkspaceManifest = {
     ...manifest,
     entries: present,
     references: canonicalizeReferences(references),
-    provenance: manifest.provenance.filter(record => record.entry in present),
     trash: manifest.trash.filter(id => id in present),
   }
+  // The cover names a row like the trash does, so a pruned row takes it with it;
+  // the imported workspace falls back to the automatic choice instead of
+  // carrying a dangling id.
+  if (pruned.cover !== undefined && !(pruned.cover in present)) delete pruned.cover
+  return pruned
 }
 
 function relative(path: string, wrapper: string): string {
@@ -559,9 +549,9 @@ export function extractReferenceIds(text: string): string[] {
 
 // ─── the remap pass ───
 
-// Pure. Re-mint every entry id (when asked), then run references, provenance and
-// trash through the resulting map in one pass. `extraEdges` is merged before the
-// remap so a caller can author an edge whose endpoints are not yet in the tree.
+// Pure. Re-mint every entry id (when asked), then run references and trash
+// through the resulting map in one pass. `extraEdges` is merged before the remap
+// so a caller can author an edge whose endpoints are not yet in the tree.
 export function remapTree(tree: WorkspaceTree, opts: RemapOptions): RemapResult {
   const idMap = new Map<string, string>()
   for (const id of Object.keys(tree.manifest.entries)) {
@@ -592,10 +582,6 @@ export function remapTree(tree: WorkspaceTree, opts: RemapOptions): RemapResult 
     references[mappedFrom] = targets.map(to => idMap.get(to) ?? to)
   }
 
-  const provenance = tree.manifest.provenance
-    .filter(record => idMap.has(record.entry))
-    .map(record => ({ ...record, entry: idMap.get(record.entry)! }))
-
   const trash = tree.manifest.trash
     .map(id => idMap.get(id))
     .filter((id): id is string => id !== undefined)
@@ -605,9 +591,13 @@ export function remapTree(tree: WorkspaceTree, opts: RemapOptions): RemapResult 
     workspace: opts.workspace,
     entries,
     references: canonicalizeReferences(references),
-    provenance,
     trash,
   }
+  // The cover is a row reference like the trash, so it travels through the same
+  // map and is dropped when the row it named was not remapped. A join does not
+  // take it: mergeTrees leaves the destination's own choice standing.
+  const cover = tree.manifest.cover === undefined ? undefined : idMap.get(tree.manifest.cover)
+  if (cover !== undefined) manifest.cover = cover
   return { tree: { manifest, contents }, idMap }
 }
 
@@ -619,14 +609,13 @@ export function remapTree(tree: WorkspaceTree, opts: RemapOptions): RemapResult 
 // with the same identity).
 export async function importBag(
   bag: ImportBag,
-  opts: ImportOptions,
+  opts: ImportOptions = {},
   store: WorkspaceStore = getWorkspaceStore(),
 ): Promise<ImportResult> {
   const imported = readBagTree(bag)
-  const descriptor = normalizeOrigin(opts.origin)
   return opts.into !== undefined
-    ? joinWorkspace(opts.into, imported, descriptor, store)
-    : createWorkspace(imported, descriptor, opts, store)
+    ? joinWorkspace(opts.into, imported, store)
+    : createWorkspace(imported, opts, store)
 }
 
 function countEntries(tree: WorkspaceTree): { documents: number; files: number } {
@@ -658,15 +647,12 @@ function importResult(imported: ImportedTree, workspace: string, mode: 'new' | '
 async function joinWorkspace(
   workspace: string,
   imported: ImportedTree,
-  descriptor: OriginDescriptor,
   store: WorkspaceStore,
 ): Promise<ImportResult> {
   const remapped = remapTree(imported.tree, {
     workspace,
     mintIds: imported.manifestPresent,
-    origin: descriptor.locator,
   })
-  stampProvenance(remapped.tree, descriptor, imported, remapped.idMap)
   const destination = await store.open(workspace)
   mergeTrees(destination.tree, remapped.tree)
   await store.save(workspace, destination.tree)
@@ -678,7 +664,6 @@ async function joinWorkspace(
 // folder or archive it came out of is left exactly as it was found.
 async function createWorkspace(
   imported: ImportedTree,
-  descriptor: OriginDescriptor,
   opts: ImportOptions,
   store: WorkspaceStore,
 ): Promise<ImportResult> {
@@ -687,9 +672,7 @@ async function createWorkspace(
     const remapped = remapTree(imported.tree, {
       workspace,
       mintIds: false,
-      origin: descriptor.locator,
     })
-    stampProvenance(remapped.tree, descriptor, imported, remapped.idMap)
     await store.land(workspace, remapped.tree)
     await seedPreviews(workspace, imported, remapped.idMap)
     return importResult(imported, workspace, 'new')
@@ -724,47 +707,6 @@ function defaultWorkspaceName(tree: WorkspaceTree): string {
   return 'Imported'
 }
 
-// The id-mint seam. `idMap` already holds origin entry id -> local entry id
-// (identity when the bag landed new with a manifest, a fresh remap on a join),
-// so this records the mapping durably and keys it on the ORIGIN entry id. The
-// hash is the source content's, never the local copy's, so a local edit cannot
-// masquerade as an upstream move. Nested provenance the bag carried is remapped
-// by remapTree and then overwritten here: the source just copied from is the
-// direct upstream.
-function stampProvenance(
-  tree: WorkspaceTree,
-  descriptor: OriginDescriptor,
-  imported: ImportedTree,
-  idMap: Map<string, string>,
-): void {
-  const copiedAt = Date.now()
-  // Every record of one import shares a group, so a later update of one copy can
-  // tell it apart from another copy of the same source (A8).
-  const group = randomUuid()
-  // A manifest-present source names its own workspace; a manifest-less pile has
-  // only a per-read random id, so it carries none and cannot be group-matched.
-  const sourceWorkspace = imported.manifestPresent ? imported.tree.manifest.workspace : descriptor.workspace
-  const records: ProvenanceRecord[] = []
-  for (const [oldId, content] of imported.tree.contents) {
-    const localId = idMap.get(oldId)
-    if (localId === undefined) continue
-    const row = imported.tree.manifest.entries[oldId]
-    if (!row) continue
-    const record: ProvenanceRecord = {
-      entry: localId,
-      origin: descriptor.locator,
-      originEntry: oldId,
-      originGroup: group,
-      hash: hashRecord({ kind: row.kind, text: content.text, bytes: content.bytes }),
-      copiedAt,
-    }
-    if (descriptor.name !== undefined) record.originName = descriptor.name
-    if (sourceWorkspace !== undefined) record.originWorkspace = sourceWorkspace
-    records.push(record)
-  }
-  tree.manifest.provenance = records
-}
-
 function mergeTrees(destination: WorkspaceTree, source: WorkspaceTree): void {
   for (const [id, row] of Object.entries(source.manifest.entries)) destination.manifest.entries[id] = { ...row }
   for (const [id, content] of source.contents) destination.contents.set(id, content)
@@ -772,201 +714,5 @@ function mergeTrees(destination: WorkspaceTree, source: WorkspaceTree): void {
     const current = destination.manifest.references[from] ?? []
     destination.manifest.references[from] = [...new Set([...current, ...targets])].sort()
   }
-  destination.manifest.provenance.push(...source.manifest.provenance.map(record => ({ ...record })))
   destination.manifest.trash.push(...source.manifest.trash)
-}
-
-// ─── the update path ───
-
-export type OriginStatus = 'current' | 'changed' | 'unreachable' | 'not-updatable'
-
-export interface OriginState {
-  status: OriginStatus
-  // True when the local copy's payload hash no longer matches the source hash
-  // recorded at copy time. Computed from local data only, so the panel can show
-  // it before any check without reading the source.
-  editedLocally: boolean
-}
-
-export interface UpdateResult {
-  updated: number
-  added: number
-  unreachable: boolean
-  sourceMissing: boolean
-}
-
-// The status half of the origin read. `localHash` is the local entry's current
-// contentHash; it never causes a resolver read, it only feeds `editedLocally`.
-// The resolver read itself is the update gesture, the only caller of
-// resolveOrigin outside the import gesture (I2).
-export async function originState(
-  record: ProvenanceRecord,
-  localHash?: string,
-  resolver?: OriginResolver,
-): Promise<OriginState> {
-  const editedLocally = record.hash !== undefined && localHash !== undefined && localHash !== record.hash
-  // A record with no source entry id has nothing to correlate on: it is a
-  // pre-C6 copy whose source key was never written. Reporting it as not
-  // updatable keeps the panel from offering a pull that can only no-op. No
-  // resolver read is needed to say so; a manifest-less pile keeps a source id
-  // that never matches and surfaces as sourceMissing on the update itself.
-  if (record.originEntry === undefined) return { status: 'not-updatable', editedLocally }
-  const source = resolver ? await resolver.resolve(record.origin) : await resolveOrigin(record.origin)
-  if (!source) return { status: 'unreachable', editedLocally }
-  const originEntry = record.originEntry
-  const sourceRow = source.manifest.entries[originEntry]
-  const sourceContent = source.contents.get(originEntry)
-  // A missing source entry is a status, never a delete: the local copy stays
-  // (U4's guard owns deleting a referenced entry).
-  if (!sourceRow || !sourceContent) return { status: 'changed', editedLocally }
-  const hash = hashRecord({ kind: sourceRow.kind, text: sourceContent.text, bytes: sourceContent.bytes })
-  return { status: record.hash !== undefined && hash === record.hash ? 'current' : 'changed', editedLocally }
-}
-
-// The explicit pull. It re-runs C3's snapshot-inward copy over the transitive
-// closure of the clicked origin entry: every entry the source root reaches is
-// overwritten in place (or added on first sight), with its outgoing edges
-// translated through an origin-entry -> local-entry map that reuses existing
-// provenance where it can and mints only for entries never seen before. Local
-// edits to the copy are overwritten by design; entries outside the closure are
-// untouched; entries the source no longer references are left in place. Nothing
-// is written when the origin is unreachable, the source entry is gone, or the
-// closure is already byte-identical to the source.
-export async function updateFromOrigin(
-  workspace: string,
-  localRoot: string,
-  resolver?: OriginResolver,
-  store: WorkspaceStore = getWorkspaceStore(),
-): Promise<UpdateResult> {
-  // Read the record, resolve the (possibly slow) source, then open the tree the
-  // pull writes. Opening after the resolve means a local edit made while the
-  // source was being read lands in the tree the update runs on instead of being
-  // clobbered by the whole-snapshot save. The residual window is the open-to-
-  // save span below; it only overwrites the clicked copy's closure by design.
-  const probe = await store.open(workspace)
-  const record = probe.tree.manifest.provenance.find(candidate => candidate.entry === localRoot)
-  if (!record) return { updated: 0, added: 0, unreachable: false, sourceMissing: true }
-
-  const source = resolver ? await resolver.resolve(record.origin) : await resolveOrigin(record.origin)
-  if (!source) return { updated: 0, added: 0, unreachable: true, sourceMissing: false }
-
-  const originRoot = record.originEntry
-  const sourceRoot = originRoot !== undefined ? source.manifest.entries[originRoot] : undefined
-  // A missing source entry is a status, never a delete: the local copy stays
-  // (U4's guard owns deleting a referenced entry). A manifest-less source mints
-  // fresh ids on every read, so its recorded originEntry never matches here and
-  // it is treated as not updatable instead of silently duplicating.
-  if (!sourceRoot || !originRoot) return { updated: 0, added: 0, unreachable: false, sourceMissing: true }
-
-  const opened = await store.open(workspace)
-  const tree = opened.tree
-  const closure = transitiveClosure(source, originRoot)
-  // Scope the lookup to the clicked copy's import group. Two imports of one
-  // source each hold the same origin entry ids under different local ids; the
-  // group is what keeps the other copy's parts out of this map. A legacy record
-  // with no group matches only other ungrouped records, and gets a group of its
-  // own when this update restamps the closure (below).
-  const group = record.originGroup
-  const existing = new Map<string, string>()
-  for (const other of tree.manifest.provenance) {
-    if (other.origin !== record.origin || other.originEntry === undefined) continue
-    if (group !== undefined ? other.originGroup !== group : other.originGroup !== undefined) continue
-    if (!existing.has(other.originEntry)) existing.set(other.originEntry, other.entry)
-  }
-  const stampGroup = group ?? randomUuid()
-
-  const originToLocal = new Map<string, string>([[originRoot, localRoot]])
-  for (const originId of closure) {
-    if (originId === originRoot) continue
-    originToLocal.set(originId, existing.get(originId) ?? randomUuid())
-  }
-
-  // The local hashes answer "did the local copy drift" for files too, whose
-  // bytes the opened tree leaves lazy. `previous.hash` is the source hash at
-  // last copy, so equal hashes plus an equal local hash mean this entry needs no
-  // write at all; restamping copiedAt would churn the rows for nothing.
-  const localHashes = new Map((await store.listEntries(workspace)).map(meta => [meta.id, meta.contentHash]))
-  const copiedAt = Date.now()
-  const provenance = new Map(tree.manifest.provenance.map(entry => [entry.entry, entry]))
-  let updated = 0
-  let added = 0
-
-  for (const originId of closure) {
-    const sourceRow = source.manifest.entries[originId]
-    const sourceContent = source.contents.get(originId)
-    if (!sourceRow || !sourceContent) continue
-    const localId = originToLocal.get(originId)!
-    const existed = tree.manifest.entries[localId] !== undefined
-    const sourceHash = hashRecord({ kind: sourceRow.kind, text: sourceContent.text, bytes: sourceContent.bytes })
-    const targets = [...new Set((source.manifest.references[originId] ?? [])
-      .map(to => originToLocal.get(to))
-      .filter((to): to is string => to !== undefined))].sort()
-    const previous = provenance.get(localId)
-    const unchanged = existed
-      && previous?.hash === sourceHash
-      && localHashes.get(localId) === sourceHash
-      && sameTargets(tree.manifest.references[localId], targets)
-    if (unchanged) continue
-
-    const entry: WorkspaceEntry = { id: localId, kind: sourceRow.kind, name: sourceRow.name }
-    if (sourceRow.docKind !== undefined) entry.docKind = sourceRow.docKind
-    if (sourceRow.mime !== undefined) entry.mime = sourceRow.mime
-    if (sourceRow.fileKind !== undefined) entry.fileKind = sourceRow.fileKind
-    if (sourceContent.text !== undefined) entry.text = sourceContent.text
-    if (sourceContent.bytes !== undefined) entry.bytes = new Uint8Array(sourceContent.bytes)
-    // putEntry keeps an existing entry's path (path is display, I3) and derives
-    // a unique one for an entry pulled in anew.
-    putEntry(tree, entry)
-    if (existed) updated++
-    else added++
-
-    if (targets.length > 0) tree.manifest.references[localId] = targets
-    else delete tree.manifest.references[localId]
-
-    const next: ProvenanceRecord = {
-      entry: localId,
-      origin: record.origin,
-      originEntry: originId,
-      originGroup: stampGroup,
-      hash: sourceHash,
-      copiedAt,
-    }
-    if (record.originName !== undefined) next.originName = record.originName
-    if (source.manifest.workspace !== undefined) next.originWorkspace = source.manifest.workspace
-    provenance.set(localId, next)
-  }
-
-  // Nothing changed: leave the rows, the checkpoint and copiedAt untouched.
-  if (updated === 0 && added === 0) return { updated: 0, added: 0, unreachable: false, sourceMissing: false }
-
-  tree.manifest.provenance = [...provenance.values()]
-  await store.save(workspace, tree)
-  return { updated, added, unreachable: false, sourceMissing: false }
-}
-
-function sameTargets(current: string[] | undefined, next: string[]): boolean {
-  const list = current ?? []
-  if (list.length !== next.length) return false
-  for (let i = 0; i < list.length; i++) {
-    if (list[i] !== next[i]) return false
-  }
-  return true
-}
-
-// The transitive closure of one source entry over its reference edges, existing
-// entries only. This is A8's unit of copy: an imported assembly brings the parts
-// it references, and an update pulls the same set.
-function transitiveClosure(tree: WorkspaceTree, root: string): string[] {
-  const seen = new Set<string>()
-  const stack = [root]
-  while (stack.length > 0) {
-    const id = stack.pop()!
-    if (seen.has(id)) continue
-    if (tree.manifest.entries[id] === undefined) continue
-    seen.add(id)
-    for (const to of tree.manifest.references[id] ?? []) {
-      if (!seen.has(to)) stack.push(to)
-    }
-  }
-  return [...seen].sort()
 }

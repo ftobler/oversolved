@@ -1,5 +1,5 @@
 /**
- * Direct coverage of the idb.ts primitive seam: the keyed document/handle/file
+ * Direct coverage of the idb.ts primitive seam: the keyed document/file
  * round-trips, the store-scoped workspace helpers, and the read-modify-write
  * atomicity. The connection lifecycle and the v4 to v5 meta backfill live in
  * `idb.test.ts` one directory up; this file pins the request/transaction
@@ -11,7 +11,6 @@ import { IDBFactory } from 'fake-indexeddb'
 import {
   STORE_WORKSPACE_META, STORE_WORKSPACE_ENTRIES,
   idbGet, idbGetAll, idbPut, idbDelete,
-  idbGetHandle, idbPutHandle,
   idbGetFile, idbGetAllFiles, idbPutFile, idbDeleteFile, idbClearFiles,
   idbGetFrom, idbGetAllFrom, idbGetAllFromIndex, idbPutTo, idbDeleteFrom,
   idbReadModifyWrite, idbTransaction, resetDbConnection,
@@ -49,16 +48,6 @@ describe('document store round-trips', () => {
     expect(await idbGet('a')).toBeUndefined()
     expect(await idbGet<{ name: string }>('b')).toEqual({ uuid: 'b', name: 'B' })
     expect(await idbGetAll()).toHaveLength(1)
-  })
-})
-
-describe('handle registry (out-of-line keys)', () => {
-  it('idbPutHandle/idbGetHandle round-trip a value under a caller-chosen key', async () => {
-    const handle = { kind: 'directory', name: 'library' }
-    await idbPutHandle('lib', handle)
-
-    expect(await idbGetHandle<typeof handle>('lib')).toEqual(handle)
-    expect(await idbGetHandle('other')).toBeUndefined()
   })
 })
 

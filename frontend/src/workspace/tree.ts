@@ -29,7 +29,7 @@ export function cloneTree(tree: WorkspaceTree): WorkspaceTree {
 }
 
 function cloneManifest(manifest: WorkspaceManifest): WorkspaceManifest {
-  return {
+  const out: WorkspaceManifest = {
     format: manifest.format,
     workspace: manifest.workspace,
     entries: Object.fromEntries(
@@ -38,9 +38,10 @@ function cloneManifest(manifest: WorkspaceManifest): WorkspaceManifest {
     references: Object.fromEntries(
       Object.entries(manifest.references).map(([from, targets]) => [from, [...targets]]),
     ),
-    provenance: manifest.provenance.map(record => ({ ...record })),
     trash: [...manifest.trash],
   }
+  if (manifest.cover !== undefined) out.cover = manifest.cover
+  return out
 }
 
 // The aggregate for one entry: the manifest row plus its payload. Bytes are

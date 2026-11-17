@@ -1,8 +1,8 @@
 :root {
   --tiling-sine: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='15' height='9' viewBox='0 0 10 6'><path d='M-1 2 L0 3 Q2.5 0 5 3 T10 3 L11 4' stroke='gray' fill='transparent' stroke-width='1'/></svg>");
   --tiling-sine-fine: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='7.5' height='4.5' viewBox='0 0 10 6'><path d='M-1 2 L0 3 Q2.5 0 5 3 T10 3 L11 4' stroke='%23666' fill='transparent' stroke-width='0.5'/></svg>");
-  /* Edge distance of the floating part panels, and the space the right panel
-     leaves free at the bottom for the HUD stack (view options button, cube
+  /* Edge distance of the floating navigator panels, and the space the right
+     panel leaves free at the bottom for the HUD stack (view options button, cube
      gizmo, measurement readout). Clearance arithmetic: GIZMO_SIZE 140
      (components/misc/CubeGizmo.utils.ts; the roll arrow strip hangs below it
      and takes no layout) + the 30px view options button (ViewOptions.css) +
@@ -12,13 +12,13 @@
      resize can be checked against this one number. */
   --floating-inset: 12px;
   --hud-clearance: 228px;
-  /* The part editor's two left cards reserve their height up front instead of
-     hugging their content, so a short list keeps its card at its size and a
-     long one scrolls inside. Together they fill this share of the column; the
-     leftover splits around them, and that is what centers the pair on the
-     left side. The Features card takes the larger part of the share
-     (64/36, .document-panel below): the parts list holds few rows, the
-     features list is the one that scrolls. */
+  /* The two navigator cards (Features/Parts for the part editor, Parts/Mates for
+     the assembly) reserve their height up front instead of hugging their
+     content, so a short list keeps its card at its size and a long one scrolls
+     inside. Together they fill this share of the column; the leftover splits
+     around them, and that is what centers the pair on the left side. The top
+     card takes the larger part of the share (64/36, .document-panel below): it
+     is the list that scrolls in both editors. */
   --left-cards-height: 85%;
   /* A side panel list row is its content plus twice this block padding. Trimmed
      from 8px so a few more rows fit before a list scrolls; the features and
@@ -43,9 +43,9 @@
   overflow: hidden;
 }
 
-/* The viewport stage is the positioning context for the part editor's floating
-   overlays. It is always full width: the navigator no longer takes a column of
-   its own, so the canvas never resizes with it. */
+/* The viewport stage is the positioning context for both editors' floating
+   overlays. It is always full width: the navigator is an overlay, not a column
+   of its own, so the canvas never resizes with it. */
 .viewport-stage {
   position: relative;
   width: 100%;
@@ -101,13 +101,13 @@
   min-height: 0;
 }
 
-/* The two left cards, Features over Parts, share --left-cards-height of the
-   column between them (the gap comes out of that share, it is a flex gap
-   inside the panel): each reserves its height up front, so a short list
-   keeps its card at size and a long one scrolls internally. The Features
-   card takes the larger part, 64/36: it is the list that scrolls, while the
-   parts list is usually a handful of rows the user still needs reachable.
-   The panel itself carries that share and centers in the column (the
+/* The two left cards share --left-cards-height of the column between them (the
+   gap comes out of that share, it is a flex gap inside the panel): each
+   reserves its height up front, so a short list keeps its card at size and a
+   long one scrolls internally. The top card (the part editor's Features, or the
+   assembly's Parts) takes the larger part, 64/36: it is the list that scrolls,
+   while the bottom list is usually a handful of rows the user still needs
+   reachable. The panel itself carries that share and centers in the column (the
    .floating-left rule above). */
 .document-panel {
   flex: 0 1 var(--left-cards-height);
@@ -127,9 +127,10 @@
   min-height: 0;
 }
 
-/* The part cards float over a bright model, so their row states keep the
-   palette hues at alpha instead of the opaque column backgrounds the assembly
-   sidebar still uses. */
+/* The navigator cards float over a bright model, so their row states keep the
+   palette hues at alpha instead of opaque palette backgrounds. These are the
+   states both editors share; the assembly's remaining row tints are scoped to
+   its own cards in Assembly.css. */
 .document-panel .feature-item:hover,
 .document-panel .part-item:hover {
   background: var(--glass-hover-bg);
@@ -192,18 +193,6 @@
   background: var(--glass-field-bg);
 }
 
-/* The opaque navigator column. The part editor no longer uses it (its panels
-   float over the viewport, see `.floating-left` above); it stays for the
-   assembly tree until phase 2 moves that editor to the same panels. */
-.doc-sidebar {
-  width: 288px;
-  border-right: 1px solid #333;
-  background: #111;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
 .sidebar-top {
   display: flex;
   flex-direction: column;
@@ -215,18 +204,6 @@
   flex-direction: column;
   overflow: hidden;
   min-height: 60px;
-}
-
-.resize-handle {
-  height: 4px;
-  background: #333;
-  cursor: row-resize;
-  flex-shrink: 0;
-  transition: background 0.15s;
-}
-
-.resize-handle:hover {
-  background: #555;
 }
 
 .parts-list {
@@ -1092,22 +1069,11 @@
     position: relative;
   }
 
-  .doc-sidebar,
   .floating-left {
     display: none;
   }
 
-  /* The assembly's navigator opens as a strip across the top: a full-height
-     column would leave the model nothing. */
-  .doc-container.panels-open .doc-sidebar {
-    display: flex;
-    width: 100%;
-    max-height: 150px;
-    border-right: none;
-    border-bottom: 1px solid #333;
-  }
-
-  /* The part editor's navigator opens as a card column over the left edge,
+  /* Both editors' navigators open as a card column over the left edge,
      narrower than the desktop 280px but the same stack. */
   .doc-container.panels-open .floating-left {
     display: flex;

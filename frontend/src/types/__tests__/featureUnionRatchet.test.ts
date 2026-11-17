@@ -39,7 +39,12 @@ interface Ratchet {
 const RATCHETS: Ratchet[] = [
   {
     token: 'as unknown as',
-    baseline: 48,
+    // 45 after removing the measurement registry, whose three casts read a
+    // sketch entity through a loose record. The table-driven measurement core
+    // never erases a primitive.
+    // 44: the origin link removal deleted `workspace/originResolver.ts`, whose
+    // handle read was the last cast of this shape.
+    baseline: 44,
   },
   {
     // 362 after the mutation catalog's family filter stopped constraining a
@@ -67,10 +72,15 @@ const RATCHETS: Ratchet[] = [
     // shared drill-site wording names that same bag. The union rows themselves
     // are narrowed by `kind`; these records are the repository boundary, the
     // same allowance the other leaf leaves already spend.
-    // 370: the wrap leaf's one `Dict` alias for its sub-definition and the
+    // 367: two changes each dropped one record. The origin link removal took
+    // the provenance read in `workspace/originResolver.ts` (deleted); the
+    // instance pattern's one-target-list work removed the drive's two-form
+    // value rule, whose helper read the pair as a raw record, so the boundary
+    // now checks the list's refs alone.
+    // 368: the wrap leaf's one `Dict` alias for its sub-definition and the
     // repository payloads it reads, as the revolve leaf it is modelled on.
     token: 'Record<string, unknown>',
-    baseline: 370,
+    baseline: 368,
   },
 ]
 

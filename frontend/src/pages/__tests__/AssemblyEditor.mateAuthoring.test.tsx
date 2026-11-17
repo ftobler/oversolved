@@ -82,7 +82,7 @@ import { findMate } from '@/utils/assemblyMutations'
 import { MATE_KINDS } from '@/utils/mateKinds'
 import { insertMateCommand } from '@/pages/assemblyCommandEntries'
 import type { MateKind } from '@/types/cad'
-import { tick, renderEditor, installSessionFromList } from './AssemblyEditor.harness'
+import { tick, renderEditor, installSessionFromList, cardAction } from './AssemblyEditor.harness'
 
 // Stage 8: mate authoring. The picks are synthetic ID-buffer hits fed straight
 // to the store, because the viewport is mocked out here; the pointer surface
@@ -148,9 +148,9 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     expect(useAssemblyStore.getState().mates).toHaveLength(1)
     expect(mateDef().kind).toBe('spherical')
     expect(useAssemblyStore.getState().activeMateField).toEqual({ featureId: mateId(), field: 'ref_a' })
-    // The row shows the mate's default name; its inline editor shows two empty
-    // reference chips prompting a pick.
-    expect(screen.getByText('Spherical 1')).toBeTruthy()
+    // The row and the open edit card both name the mate: the card repeats the
+    // row's display name, as a feature editor does.
+    expect(screen.getAllByText('Spherical 1')).toHaveLength(2)
     expect(screen.getAllByText('Pick a reference')).toHaveLength(2)
   })
 
@@ -173,6 +173,9 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
 
   it('the armed chip shows the reference the document holds', async () => {
     await renderWithMate('fixed')
+    // The chip lives in the right edit card, and the viewport pick still lands
+    // on the field that card armed.
+    expect(document.querySelector('.feature-edit-panel')!.contains(document.querySelector('.mate-editor'))).toBe(true)
     pick(VERT_A)
     await tick()
     expect(screen.getByText('hA / a_v')).toBeTruthy()
@@ -192,7 +195,7 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     await tick()
     expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1)
 
-    fireEvent.click(screen.getByRole('button', { name: 'OK' }))
+    fireEvent.click(cardAction('OK'))
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2))
   })
 
@@ -323,7 +326,7 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
         },
       },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'OK' }))
+    fireEvent.click(cardAction('OK'))
     await waitFor(() => expect(useAssemblyStore.getState().solveStatus?.mates[id]?.stale).toBe(true))
 
     expect(document.querySelector('.mate-item.stale')).toBeTruthy()
@@ -346,7 +349,8 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     await tick()
 
     expect(mateDef().label).toBe('top clamp')
-    expect(screen.getByText('top clamp')).toBeTruthy()
+    // The row and the still-open card both show the new name.
+    expect(screen.getAllByText('top clamp')).toHaveLength(2)
   })
 
   it('the mate parameter panel no longer carries a Name field', async () => {
@@ -365,7 +369,7 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     await tick()
     expect(mateDef().offset).toEqual({ x: 5 })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(cardAction('Cancel'))
     await tick()
     await tick()  // let the revert's re-solve settle
     expect(useAssemblyStore.getState().subject).toBeNull()

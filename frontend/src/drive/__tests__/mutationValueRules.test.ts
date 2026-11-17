@@ -201,7 +201,7 @@ describe('value rules cover the catalog', () => {
     ['set_curve_pattern_field', { type: 'set_curve_pattern_field', featureId: 'cv1', field: 'spacing', value: 'pitch' }],
     ['add_curve_pattern_path', { type: 'add_curve_pattern_path', featureId: 'cv1', pathQuery: '' }],
     ['remove_curve_pattern_path', { type: 'remove_curve_pattern_path', featureId: 'cv1', index: -1 }],
-    ['add_instance_pattern', { type: 'add_instance_pattern', featureId: 'ip1', sketch: '@sk1', targets: ['?@ex1:flatface'] }],
+    ['add_instance_pattern', { type: 'add_instance_pattern', featureId: 'ip1', sketch: 5 }],
     ['set_instance_pattern_field', { type: 'set_instance_pattern_field', featureId: 'ip1', field: 'skip', value: [[1, 2]] }],
     ['add_instance_pattern_target', { type: 'add_instance_pattern_target', featureId: 'ip1', targetQuery: '' }],
     ['remove_instance_pattern_target', { type: 'remove_instance_pattern_target', featureId: 'ip1', index: -1 }],

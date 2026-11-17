@@ -585,19 +585,17 @@ export default function Part() {
     return !!feature && feature.kind !== 'sketch' && feature.kind !== 'plane'
   }, [features, editingFeatureId, pickStateReady])
 
+  // The measurement fallback sketch: during sketch edit it is the active solve.
+  // Outside edit the readout looks each entity up by the feature id its
+  // selection id names and reads that feature's solve result, so no flattened
+  // map is built here: seeded entity ids (`c1`, `r1`, ...) collide between
+  // sketches, and the flattened map let a pick measure another sketch's entity.
   const measurementSketch = useMemo(() => {
     if (activeSketchFeatureId && solveResults?.[activeSketchFeatureId]?.solved) {
       return solveResults[activeSketchFeatureId].solved
     }
-    const sketch: Sketch = {}
-    for (const feature of features) {
-      const solveResult = solveResults?.[feature.id]
-      if (solveResult && solveResult.solved) {
-        Object.assign(sketch, solveResult.solved)
-      }
-    }
-    return sketch
-  }, [activeSketchFeatureId, features, solveResults])
+    return {}
+  }, [activeSketchFeatureId, solveResults])
 
   const otherSketches = useMemo(() => {
     const result: Record<string, Sketch> = {}

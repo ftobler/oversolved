@@ -35,12 +35,10 @@ function renderTree(props: Partial<React.ComponentProps<typeof AssemblyTree>> = 
       onEditInstance={noop}
       onCommitInstance={noop}
       onCancelInstance={noop}
-      renderInstanceEditor={() => <input />}
       onCommitMate={noop}
       onCancelMate={noop}
       onDeleteMate={noop}
       onRequestRenameMate={noop}
-      renderMateEditor={() => null}
       {...props}
     />
   )
@@ -75,13 +73,13 @@ describe('AssemblyTree keyboard reachability', () => {
     expect(onSelectMate).toHaveBeenCalledWith('m1')
   })
 
-  // A key event that bubbles out of an inline editor control must not re-select
-  // the subject being edited: only the row itself answers Enter/Space.
+  // A key event that bubbles out of a row action must not re-select the subject
+  // the action belongs to: only the row itself answers Enter/Space.
   it('ignores a key event bubbling from a control inside the row', () => {
     const onSelectPart = vi.fn()
-    const { container } = renderTree({ onSelectPart, editingInstanceHandle: 'p1' })
-    const input = container.querySelector('input') as HTMLElement
-    fireEvent.keyDown(input, { key: 'Enter' })
+    const { container } = renderTree({ onSelectPart })
+    const options = container.querySelector('button[aria-label="Part options"]') as HTMLElement
+    fireEvent.keyDown(options, { key: 'Enter' })
     expect(onSelectPart).not.toHaveBeenCalled()
   })
 })

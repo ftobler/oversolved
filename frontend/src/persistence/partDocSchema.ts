@@ -354,9 +354,11 @@ export const FEATURE_SCHEMA_BY_KIND = {
     key: 'instance_pattern',
     properties: {
       ...PATTERN_SOURCE_FIELDS,
-      // Exactly one target form drives the list: the sketch's non-construction
-      // points (the same site rule a hole drills) or a picked list of any kind.
-      sketch: REF,
+      // One target list. A ref naming a sketch feature is a row that expands to
+      // that sketch's non-construction points (the same site rule a hole
+      // drills); every other ref is one pick. The retired `sketch` field is not
+      // authored any more: the loader folds it (docSchema's v10 step) and the
+      // applier still accepts it for one release as the leading row.
       targets: REF_LIST,
       // The point the copies are measured from; absent, the source sketch's
       // only point or the seed's centroid.

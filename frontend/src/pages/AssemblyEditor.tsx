@@ -34,8 +34,9 @@ import { stepImportLimitError } from '@/stores/documentStore/stepImport'
 import type { AssemblySubject } from '@/utils/assemblySelection'
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
-import { AssemblyTree } from '@/components/layout/AssemblyTree'
-import { Sidebar } from '@/components/layout/Sidebar'
+import { AssemblyDocumentPanel } from '@/components/layout/AssemblyDocumentPanel'
+import { AssemblyEditPanel } from '@/components/layout/AssemblyEditPanel'
+import { MATE_KIND_ICONS } from '@/components/layout/mateKindIcons'
 import { PanelsToggle } from '@/components/layout/PanelsToggle'
 import { MateEditor } from '@/components/layout/MateEditor'
 import { PartInstanceEditor, type PartOption } from '@/components/layout/PartInstanceEditor'
@@ -51,30 +52,8 @@ import AssemblyMeasurementDisplay from '@/components/layout/AssemblyMeasurementD
 import type { MateKind, MateFeatureDef, PartInstance, Transform3D } from '@/types/cad'
 import featurePartIcon from '@/assets/icons/feature-part.svg'
 import measurementIcon from '@/assets/icons/measurement.svg'
-import mateFixedIcon from '@/assets/icons/mate-fixed.svg'
-import mateSlidingIcon from '@/assets/icons/mate-sliding.svg'
-import mateRotatingIcon from '@/assets/icons/mate-rotating.svg'
-import mateSlidingRotatingIcon from '@/assets/icons/mate-sliding-rotating.svg'
-import mateSphericalIcon from '@/assets/icons/mate-spherical.svg'
-import mateParallelIcon from '@/assets/icons/mate-parallel.svg'
-import mateParallelPlaneDistanceIcon from '@/assets/icons/mate-parallel-plane-distance.svg'
-import mateTangentialIcon from '@/assets/icons/mate-tangential.svg'
-import mateCopyRotationIcon from '@/assets/icons/mate-copy-rotation.svg'
 import '@/pages/Part.css'
 import '@/pages/Assembly.css'
-
-// One toolbar button per mate kind, so the glyphs live next to the labels.
-const MATE_KIND_ICONS: Record<MateKind, string> = {
-  fixed: mateFixedIcon,
-  sliding: mateSlidingIcon,
-  rotating: mateRotatingIcon,
-  sliding_rotating: mateSlidingRotatingIcon,
-  spherical: mateSphericalIcon,
-  parallel: mateParallelIcon,
-  parallel_plane_distance: mateParallelPlaneDistanceIcon,
-  tangential: mateTangentialIcon,
-  copy_rotation: mateCopyRotationIcon,
-}
 
 // The empty view shared by every render before the workspace list lands.
 const NO_DOC_NAMES: Record<string, string> = {}
@@ -193,7 +172,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     setPartList({ names, options })
   }, [uuid])
 
-  // The list is a view, not the document: refresh it on mount, when the inline
+  // The list is a view, not the document: refresh it on mount, when the instance
   // editor opens, and after a STEP import, so a part added or deleted in
   // another tab is pickable (or gone) without reopening the assembly.
   const refreshPartList = useCallback((isCancelled: () => boolean = () => false) => {
@@ -471,10 +450,11 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     useAssemblyStore.getState().selectPart(handle)
   }, [])
 
-  // Instance edit: open the inline editor and attach the gizmo to the part being
-  // edited. Switching editors commits any open session so each edited subject's
-  // changes land in their own step. Cancel needs no snapshot of the instance:
-  // the hook pins the whole pre-session doc on the session's first edit.
+  // Instance edit: open the right edit card and attach the gizmo to the part
+  // being edited. Switching editors commits any open session so each edited
+  // subject's changes land in their own step. Cancel needs no snapshot of the
+  // instance: the hook pins the whole pre-session doc on the session's first
+  // edit.
   const handleEditInstance = useCallback((handle: string) => {
     closeOpenEditor()
     // The picker's source is a view of the workspace, not the document: refresh
@@ -522,10 +502,10 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     store.selectMate(featureId)
   }, [commitSession])
 
-  // The pencil opens the inline editor. Switching editors commits any open
-  // session so each mate's edits land in their own step; that commit is also
-  // what leaves this mate's own session unpinned, so its Cancel rewinds to the
-  // doc as it opens here.
+  // The pencil opens the mate's right edit card. Switching editors commits any
+  // open session so each mate's edits land in their own step; that commit is
+  // also what leaves this mate's own session unpinned, so its Cancel rewinds to
+  // the doc as it opens here.
   const handleEditMate = useCallback((featureId: string) => {
     closeOpenEditor()
     const store = useAssemblyStore.getState()
@@ -653,8 +633,9 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   useEffect(() => {
     if (doc && selectedMateId && !selectedMate) {
       useAssemblyStore.getState().selectMate(null)
-      // editingMateId is left as-is: no row matches a vanished mate's id, so its
-      // editor is already gone. It is overwritten the next time one is edited.
+      // The edited subject is left alone: setSnapshot's `subject_removed`
+      // reduction closes the edit card when its mate no longer resolves. This
+      // effect only retires the selection that armed the pick.
     }
   }, [doc, selectedMateId, selectedMate])
 
@@ -753,40 +734,6 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
         onExport={() => executeCommand('export_assembly')}
       />
       <div className={`doc-container${panelsOpen ? ' panels-open' : ''}`}>
-        <Sidebar
-          documentPanel={
-            <AssemblyTree
-              instances={instances}
-              builtins={builtins}
-              mates={mates}
-              status={solveStatus}
-              labelFor={labelFor}
-              subject={subject}
-              editingMateId={editingMateId}
-              editingInstanceHandle={editingInstanceHandle}
-              onSelectPart={handleSelect}
-              onReorderInstance={(movingHandle, beforeHandle) => executeCommand('reorder_part', { movingHandle, beforeHandle })}
-              onReorderMate={(movingId, beforeId) => executeCommand('reorder_mate', { movingId, beforeId })}
-              onOpenPartNewTab={handleOpenPartNewTab}
-              onDuplicateInstance={(handle) => executeCommand('duplicate_part', handle)}
-              onDeleteInstance={(handle) => executeCommand('delete_part', handle)}
-              onToggleVisible={(handle, visible) => executeCommand('set_part_visible', { handle, visible })}
-              onToggleFixed={(handle, fixed) => executeCommand('set_part_fixed_oneshot', { handle, fixed })}
-              onToggleBuiltinVisible={(id, visible) => executeCommand('set_builtin_visible', { id, visible })}
-              onEditInstance={handleEditInstance}
-              onCommitInstance={handleCommitInstance}
-              onCancelInstance={handleCancelInstance}
-              renderInstanceEditor={renderInstanceEditor}
-              onSelectMate={handleSelectMate}
-              onEditMate={handleEditMate}
-              onCommitMate={handleCommitMate}
-              onCancelMate={handleCancelMate}
-              onDeleteMate={(featureId) => executeCommand('delete_mate', featureId)}
-              onRequestRenameMate={(id, currentName) => setRenameMateTarget({ id, currentName })}
-              renderMateEditor={(m) => renderMateEditor(m)}
-            />
-          }
-        />
         <div className="doc-editor">
           <div className="editor-toolbar">
             <PanelsToggle open={panelsOpen} onToggle={() => setPanelsOpen(v => !v)} />
@@ -811,7 +758,22 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
               </button>
             ))}
           </div>
-          <div className="assembly-viewport-host">
+          {(verdict.failed || error) && (
+            <ErrorBanner
+              message={verdict.failed ? `Solver error: ${verdict.message}` : `Error: ${error}`}
+              onDismiss={() => {
+                // Retire only the verdict the banner reads; the per-mate and
+                // per-part row marks stay, exactly as the old solveError clear
+                // left mateResults in place.
+                const current = useAssemblyStore.getState().solveStatus
+                useAssemblyStore.setState({
+                  solveStatus: current ? { ...current, verdict: 'none', error: undefined } : null,
+                })
+                setError(null)
+              }}
+            />
+          )}
+          <div className="viewport-stage">
             <EditorErrorBoundary label="assembly viewport">
               <AssemblyViewport
                 ref={viewportRef}
@@ -825,23 +787,59 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
                 onCancelSolve slot, so the shared overlay renders the spinner and
                 cancel for a full (non-live) solve; it is opacity-0 when idle. */}
             <LoadingOverlay />
-            {(verdict.failed || error) && (
-              <ErrorBanner
-                message={verdict.failed ? `Solver error: ${verdict.message}` : `Error: ${error}`}
-                onDismiss={() => {
-                  // Retire only the verdict the banner reads; the per-mate and
-                  // per-part row marks stay, exactly as the old solveError clear
-                  // left mateResults in place.
-                  const current = useAssemblyStore.getState().solveStatus
-                  useAssemblyStore.setState({
-                    solveStatus: current ? { ...current, verdict: 'none', error: undefined } : null,
-                  })
-                  setError(null)
-                }}
-              />
-            )}
             {instances.length === 0 && mates.length === 0 && !error && (
               <p className="assembly-empty-hint">Empty assembly - insert parts to get started.</p>
+            )}
+            {/* Both overlay columns are positioning-only and click-through, so
+                the gaps between the cards still orbit and pick in the viewport;
+                each card opts back in (Glass.css `.glass-panel`). The left
+                column is the navigator, the right one the open editor. */}
+            <div className="floating-left">
+              <AssemblyDocumentPanel
+                instances={instances}
+                builtins={builtins}
+                mates={mates}
+                status={solveStatus}
+                labelFor={labelFor}
+                subject={subject}
+                editingMateId={editingMateId}
+                editingInstanceHandle={editingInstanceHandle}
+                onSelectPart={handleSelect}
+                onReorderInstance={(movingHandle, beforeHandle) => executeCommand('reorder_part', { movingHandle, beforeHandle })}
+                onReorderMate={(movingId, beforeId) => executeCommand('reorder_mate', { movingId, beforeId })}
+                onOpenPartNewTab={handleOpenPartNewTab}
+                onDuplicateInstance={(handle) => executeCommand('duplicate_part', handle)}
+                onDeleteInstance={(handle) => executeCommand('delete_part', handle)}
+                onToggleVisible={(handle, visible) => executeCommand('set_part_visible', { handle, visible })}
+                onToggleFixed={(handle, fixed) => executeCommand('set_part_fixed_oneshot', { handle, fixed })}
+                onToggleBuiltinVisible={(id, visible) => executeCommand('set_builtin_visible', { id, visible })}
+                onEditInstance={handleEditInstance}
+                onCommitInstance={handleCommitInstance}
+                onCancelInstance={handleCancelInstance}
+                onSelectMate={handleSelectMate}
+                onEditMate={handleEditMate}
+                onCommitMate={handleCommitMate}
+                onCancelMate={handleCancelMate}
+                onDeleteMate={(featureId) => executeCommand('delete_mate', featureId)}
+                onRequestRenameMate={(id, currentName) => setRenameMateTarget({ id, currentName })}
+              />
+            </div>
+            {editingSubject.kind !== 'none' && (
+              <div className="floating-right">
+                <AssemblyEditPanel
+                  editing={editingSubject}
+                  instances={instances}
+                  mates={mates}
+                  status={solveStatus}
+                  labelFor={labelFor}
+                  onCommitInstance={handleCommitInstance}
+                  onCancelInstance={handleCancelInstance}
+                  onCommitMate={handleCommitMate}
+                  onCancelMate={handleCancelMate}
+                  renderInstanceEditor={renderInstanceEditor}
+                  renderMateEditor={(mate) => renderMateEditor(mate)}
+                />
+              </div>
             )}
           </div>
         </div>

@@ -2,13 +2,7 @@ import DocTilePreview from '@/components/shared/DocTilePreview'
 import { formatRelativeDate } from '@/utils/core/relativeDate'
 import { formatBytes } from '@/utils/formatBytes'
 import { fileKindOf, fileSizeOf } from '@/components/layout/filesModel'
-import {
-  ORIGIN_STATUS_LABEL,
-  originLabel,
-  originUpdatePolicy,
-  type RowOriginStatus,
-} from '@/components/layout/originsModel'
-import type { EntryMeta, ProvenanceRecord } from '@/workspace/types'
+import type { EntryMeta } from '@/workspace/types'
 
 interface EntryRowProps {
   entry: EntryMeta
@@ -17,34 +11,30 @@ interface EntryRowProps {
   deleting: boolean
   duplicating: boolean
   replacing: boolean
-  updating: boolean
   exporting: boolean
   usedBy: string[] | undefined
-  // The stored provenance record, on the rows that have one. Its presence is
-  // what puts the origin meta and the pull control on a row: an entry made here
-  // has no source to name and nothing to pull from.
-  origin: ProvenanceRecord | undefined
-  status: RowOriginStatus
+  // This row's entry is the one whose preview stands for the workspace, and
+  // whether that is the user's explicit choice rather than the automatic pick.
+  isCover: boolean
+  coverExplicit: boolean
+  onSetCover: (entry: EntryMeta) => void
   onOpen: (entry: EntryMeta) => void
   onRename: (entry: EntryMeta) => void
   onDuplicate: (entry: EntryMeta) => void
   onExport: (entry: EntryMeta) => void
   onDelete: (entry: EntryMeta) => void
   onReplace: (entry: EntryMeta, chosen: File) => void
-  onUpdate: (entry: EntryMeta, origin: ProvenanceRecord) => void
 }
 
 // The library tile on its side. A document row is activatable (click, Enter,
 // Space); a file row is not -- it carries the same thumb slot and verbs but
 // there is no editor behind it.
 export default function EntryRow({
-  entry, workspace, dirty, deleting, duplicating, replacing, updating, exporting, usedBy, origin, status,
-  onOpen, onRename, onDuplicate, onExport, onDelete, onReplace, onUpdate,
+  entry, workspace, dirty, deleting, duplicating, replacing, exporting, usedBy,
+  isCover, coverExplicit, onSetCover,
+  onOpen, onRename, onDuplicate, onExport, onDelete, onReplace,
 }: EntryRowProps) {
   const openable = entry.kind === 'document'
-  const policy = origin
-    ? originUpdatePolicy(origin, entry, status)
-    : { canUpdate: false, title: '', edited: false }
   const meta = entry.kind === 'file'
     ? [fileKindOf(entry), formatBytes(fileSizeOf(entry))]
     : [entry.docKind ?? 'document', entry.updatedAt ? formatRelativeDate(new Date(entry.updatedAt).toISOString()) : '']
@@ -66,22 +56,15 @@ export default function EntryRow({
         </div>
         <div className="workspace-entry-meta">
           {meta.filter(Boolean).map(text => <span key={text}>{text}</span>)}
+          {/* Which document the title card comes from, said in words. It sits
+              inside the open button, whose name is the entry's own, so it is
+              decorative here: the same state rides on the cover toggle's name
+              for assistive tech. */}
+          {isCover && <span className="workspace-entry-cover-marker" aria-hidden="true">cover</span>}
         </div>
         {usedBy && usedBy.length > 0 && (
           <div className="workspace-entry-usedby" title={`Used by ${usedBy.join(', ')}`}>
             used by {usedBy.join(', ')}
-          </div>
-        )}
-        {origin && (
-          <div className="workspace-entry-origin">
-            <span className="workspace-entry-origin-name" title={originLabel(origin)}>
-              {originLabel(origin)}
-            </span>
-            <span className={`workspace-entry-origin-status status-${status}`}>
-              {ORIGIN_STATUS_LABEL[status]}
-            </span>
-            {origin.rev !== undefined && <span>rev {origin.rev}</span>}
-            {policy.edited && <span className="workspace-entry-origin-edited">edited locally</span>}
           </div>
         )}
       </div>
@@ -93,11 +76,10 @@ export default function EntryRow({
       {openable ? (
         // The label is the entry's name and nothing else. Without it the
         // button's accessible name is every scrap of text inside it, and the
-        // row has grown four of them: a screen reader announced "Bracket
-        // changed since last save part 2 days ago used by Gearbox cad not
-        // checked rev 3 edited locally" as the name of one button. The text
-        // itself stays where it is and stays readable; it just is not the name
-        // of the verb.
+        // row carries several: a screen reader announced "Bracket changed since
+        // last save part 2 days ago used by Gearbox" as the name of one button.
+        // The text itself stays where it is and stays readable; it just is not
+        // the name of the verb.
         <button type="button" className="workspace-entry-open" aria-label={entry.name} onClick={() => onOpen(entry)}>
           {face}
         </button>
@@ -105,17 +87,6 @@ export default function EntryRow({
         <div className="workspace-entry-open">{face}</div>
       )}
       <div className="workspace-entry-actions">
-        {origin && (
-          <button
-            className="btn btn-tile-action"
-            aria-label={`Update ${entry.name}`}
-            title={policy.title}
-            disabled={!policy.canUpdate || updating}
-            onClick={() => onUpdate(entry, origin)}
-          >
-            <span className="material-icons">{updating ? 'hourglass_empty' : 'sync'}</span>
-          </button>
-        )}
         {entry.kind === 'file' && (
           // A label around a visually-hidden input, not a hidden one: the panel
           // this replaces used `display: none`, which takes the input out of the
@@ -146,6 +117,21 @@ export default function EntryRow({
             />
             <span className="material-icons">{replacing ? 'hourglass_empty' : 'upload_file'}</span>
           </label>
+        )}
+        {/* The cover is a document's thumbnail standing for the whole workspace,
+            so a file row has no toggle: it has no preview to stand for. The
+            resolved row says so in its name, because aria-pressed is about the
+            explicit choice and an automatic cover is not pressed. */}
+        {entry.kind === 'document' && (
+          <button
+            className="btn btn-tile-action workspace-entry-cover"
+            aria-label={isCover ? `Cover for ${entry.name}, current cover` : `Cover for ${entry.name}`}
+            title={coverExplicit ? 'Cover image, click for automatic' : 'Use as cover'}
+            aria-pressed={coverExplicit}
+            onClick={() => onSetCover(entry)}
+          >
+            <span className="material-icons">image</span>
+          </button>
         )}
         <button
           className="btn btn-tile-action"

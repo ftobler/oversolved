@@ -230,6 +230,47 @@ exports[`golden documents load and migrate > loads current v9 part: stamped at t
 
 exports[`golden documents load and migrate > loads current v9 part: stamped at the ladder current version, nothing to migrate 2`] = `[]`;
 
+exports[`golden documents load and migrate > loads current v10 part: stamped at the ladder current version, nothing to migrate 1`] = `
+{
+  "features": [
+    {
+      "id": "Origin",
+      "kind": "origin",
+    },
+    {
+      "constraints": [
+        {
+          "a": "$line1",
+          "id": "c1",
+          "kind": "horizontal",
+        },
+      ],
+      "entities": [
+        {
+          "id": "line1",
+          "kind": "line",
+        },
+      ],
+      "id": "sk1",
+      "initial": {
+        "line1": [
+          0,
+          0,
+          20,
+          0,
+        ],
+      },
+      "kind": "sketch",
+      "plane": "@builtin_plane_front",
+    },
+  ],
+  "kind": "part",
+  "version": 10,
+}
+`;
+
+exports[`golden documents load and migrate > loads current v10 part: stamped at the ladder current version, nothing to migrate 2`] = `[]`;
+
 exports[`golden documents load and migrate > loads legacy part: pre-versioning heals: dead axis constraint, singular body picks, stale inline payload 1`] = `
 {
   "features": [
@@ -443,7 +484,7 @@ exports[`golden documents load and migrate > loads legacy v3 assembly offsets: f
     },
   ],
   "kind": "assembly",
-  "version": 9,
+  "version": 10,
 }
 `;
 

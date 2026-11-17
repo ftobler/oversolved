@@ -66,8 +66,6 @@ function installSession() {
     savedRevs: vi.fn(async () => new Map<string, number>(entries.map(e => [e.id, e.rev ?? 0]))),
     readEntry: vi.fn(async (id: string) => stored[id]),
     writeEntry: vi.fn(),
-    originOf: vi.fn(async () => undefined),
-    provenance: vi.fn(async () => []),
     resolveFile: vi.fn(async (id: string) => stored[id]?.bytes),
     referencesOf: vi.fn(async () => []),
     referenceEdges: vi.fn(async () => ({})),

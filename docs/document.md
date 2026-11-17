@@ -86,7 +86,7 @@ under the derived id `step_<file id>`.
 ## Document Structure
 
 ```yaml
-version: 9
+version: 10
 kind: part
 
 features:
@@ -95,7 +95,7 @@ features:
 ```
 
 Top-level fields: `version` (int, the migration-ladder stamp; the ladder target
-is `CURRENT_DOC_VERSION = 8` in `persistence/docSchema.ts`, and a missing or
+is `CURRENT_DOC_VERSION = 10` in `persistence/docSchema.ts`, and a missing or
 older stamp runs the steps that bring it up), `kind` (string, `"part"`),
 `rollback` (int, an index into `features`; absent means the end of the stack,
 and a rolled-back document reopens where the user left it), `length_unit`
@@ -713,7 +713,7 @@ Four features pattern either a whole body or earlier features' own operation.
 `linear_pattern` repeats along one direction, or along two when the second
 direction is on (the old rectangular mode). `circular_pattern` repeats about an
 axis by an angle law. `curve_pattern` walks a path and carries the subject along
-it. `instance_pattern` copies it onto a sketch's points or a picked target list.
+it. `instance_pattern` copies it onto a list of points.
 What is repeated is shared: `subject` selects it, and the source fields are the
 same on all four kinds.
 
@@ -891,11 +891,11 @@ part's material without renaming it.
     subject: body
     source_body: "@body_ex1"
     operation: add
-    sketch: "@sk_points"         # OR targets, never both
+    targets: ["@sk_points"]      # one list: a sketch row stands for all its points
     reference: "entity:sk_points:p1"  # optional: the point the copies are measured from
     orientation: normal          # normal (default) | fixed
     reverse_normal: false        # flip every target normal, not the source normal
-    skip: [2]                    # positional, 1..N in sketch entity or list order
+    skip: [2]                    # positional, 1..N in list order with each sketch expanded
 - id: ip2
   kind: instance_pattern
   instance_pattern:
@@ -910,11 +910,13 @@ What is repeated is the shared pattern subject: a whole body (`operation: add`
 or `new`), or one or more earlier features' own add or cut. There is no count
 and no centered option: the target list is the instance list.
 
-`sketch` takes every non-construction POINT of that sketch, the same site rule a
-hole drills: construction points are skipped, line endpoints are not targets,
-and a projected point counts. `targets` is a list of picks instead. Every pick
-resolves to a point and a normal: a planar face uses its centroid and outward
-normal; a cylindrical or conical face the axis point at its free end and the
+`targets` is ONE list of points. A ref naming a sketch feature row (`@sk1`)
+expands in place to every non-construction POINT of that sketch, the same site
+rule a hole drills: construction points are skipped, line endpoints are not
+targets, and a projected point counts; its points carry the sketch plane normal.
+Every other ref is one pick, and every pick resolves to a point and a normal: a
+planar face uses its centroid and outward normal; a cylindrical or conical face
+the axis point at its free end and the
 axis pointing out of the material (a blind hole's mouth, a boss's top, a
 countersink's wide end; a through hole falls back to the surface's own axis
 sense); a circular body edge its centre and its planar neighbour's outward
@@ -925,11 +927,14 @@ with the sketch plane normal; a datum plane its origin and normal. A body vertex
 or a straight body edge carries a point and NO normal: under `normal` it is
 moved only, quietly.
 
-Targets are numbered 1..N in sketch entity order or list order, so `skip: [2]`
-leaves the second target out. The construction naming key is NOT the position:
-it is the target's sketch entity id, or a short hash of the pick ref, so
-deleting an earlier point or pick never renames a later copy's faces. A target
-on the reference point is the source's own slot and makes no copy, quietly.
+Targets are numbered 1..N in list order with each sketch expanded where it
+stands, so `skip: [2]` leaves the second target out. A point reached twice (a
+sketch row plus one of its own point picks, or the same pick twice) is kept once
+with a warning naming the dropped row. The construction naming key is NOT the
+position: it is the target's sketch entity id, or a short hash of the pick ref,
+so deleting an earlier point or pick never renames a later copy's faces. A
+target on the reference point is the source's own slot and makes no copy,
+quietly.
 
 `reference` is the point the copies are measured from; any pick the target table
 accepts. Absent, it is the source sketch's only non-construction point when the

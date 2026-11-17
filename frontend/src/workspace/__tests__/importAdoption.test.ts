@@ -21,9 +21,8 @@ async function zipOf(files: Record<string, string | Uint8Array>): Promise<Uint8A
   return zip.generateAsync({ type: 'uint8array' })
 }
 
-function bag(path: string, bytes: Uint8Array | string, origin = 'test'): ImportBag {
+function bag(path: string, bytes: Uint8Array | string): ImportBag {
   return {
-    origin,
     items: [{ path, bytes: typeof bytes === 'string' ? new TextEncoder().encode(bytes) : bytes }],
   }
 }
@@ -50,14 +49,14 @@ describe('adoption: manifest absent', () => {
     const store = new IdbWorkspaceStore()
     vi.spyOn(store, 'land').mockRejectedValueOnce(new Error('quota exceeded'))
 
-    await expect(importBag(bag('Box.yaml', 'kind: part\n'), { origin: 'drop' }, store))
+    await expect(importBag(bag('Box.yaml', 'kind: part\n'), {}, store))
       .rejects.toThrow('quota exceeded')
     expect(await store.list()).toEqual([])
   })
 
   it('a bare .yaml adopts into a new workspace and its entry id survives reopen', async () => {
     const store = new IdbWorkspaceStore()
-    const result = await importBag(bag('Box.yaml', 'kind: part\n# body\n'), { origin: 'drop' }, store)
+    const result = await importBag(bag('Box.yaml', 'kind: part\n# body\n'), {}, store)
     expect(result.mode).toBe('new')
     expect(result.documents).toBe(1)
 
@@ -74,7 +73,7 @@ describe('adoption: manifest absent', () => {
       'u/photo.jpeg': new Uint8Array([0xff, 0xd8, 0xff]),
     })
     const store = new IdbWorkspaceStore()
-    const result = await importBag(await readZipBag(bytes, 'zip'), { origin: 'zip' }, store)
+    const result = await importBag(await readZipBag(bytes), {}, store)
 
     expect(result.documents).toBe(2)  // the source part and the synthesized part
     expect(result.files).toBe(2)  // the STEP bytes and the orphan jpeg
@@ -89,7 +88,7 @@ describe('adoption: manifest absent', () => {
   it('a loose STEP joining a live workspace keeps its part pointed at its file', async () => {
     const store = new IdbWorkspaceStore()
     const { workspace } = await store.create('Destination', { docKind: 'part' })
-    await importBag(bag('bracket.step', new Uint8Array([0x49, 0x53, 0x4f])), { origin: 'drop', into: workspace }, store)
+    await importBag(bag('bracket.step', new Uint8Array([0x49, 0x53, 0x4f])), { into: workspace }, store)
 
     const entries = await store.listEntries(workspace)
     const file = entries.find(entry => entry.name === 'bracket.step')!
@@ -102,7 +101,7 @@ describe('adoption: manifest absent', () => {
 
   it('an unrecognized kind adopts as a file under its mime, not a coerced part', async () => {
     const store = new IdbWorkspaceStore()
-    const result = await importBag(bag('widget.yaml', 'kind: gizmo\n'), { origin: 'drop' }, store)
+    const result = await importBag(bag('widget.yaml', 'kind: gizmo\n'), {}, store)
     const [entry] = await store.listEntries(result.workspace)
     expect(entry).toMatchObject({ kind: 'file', mime: 'application/yaml' })
     expect(entry.docKind).toBeUndefined()
@@ -110,7 +109,7 @@ describe('adoption: manifest absent', () => {
 
   it('a .yaml that does not parse adopts as a file under application/yaml', async () => {
     const store = new IdbWorkspaceStore()
-    const result = await importBag(bag('broken.yaml', ': : not a mapping\n'), { origin: 'drop' }, store)
+    const result = await importBag(bag('broken.yaml', ': : not a mapping\n'), {}, store)
     const [entry] = await store.listEntries(result.workspace)
     expect(entry).toMatchObject({ kind: 'file', mime: 'application/yaml' })
   })
@@ -122,7 +121,7 @@ describe('adoption: manifest absent', () => {
       'user/Box.png': new Uint8Array([0x89, 0x50, 0x4e, 0x47]),
     })
     const store = new IdbWorkspaceStore()
-    const result = await importBag(await readZipBag(bytes, 'legacy'), { origin: 'legacy' }, store)
+    const result = await importBag(await readZipBag(bytes), {}, store)
 
     expect(result.documents).toBe(2)
     // The preview sidecar is dropped and counted, never classified.
@@ -141,7 +140,7 @@ describe('adoption: manifest absent', () => {
       'u/diagram.yaml': 'kind: part\n',
       'u/diagram.png': new Uint8Array([1]),
     })
-    const withSidecar = readBagTree(await readZipBag(bytes, 'zip'))
+    const withSidecar = readBagTree(await readZipBag(bytes))
     expect(withSidecar.skippedReserved).toBe(1)
     expect(withSidecar.tree.manifest.entries && Object.values(withSidecar.tree.manifest.entries)
       .some(row => row.name === 'diagram.png')).toBe(false)
@@ -150,14 +149,13 @@ describe('adoption: manifest absent', () => {
   it('a stray png with no sibling document is kept as a file', async () => {
     const bytes = await zipOf({ 'u/logo.png': new Uint8Array([1, 2, 3]) })
     const store = new IdbWorkspaceStore()
-    const result = await importBag(await readZipBag(bytes, 'zip'), { origin: 'zip' }, store)
+    const result = await importBag(await readZipBag(bytes), {}, store)
     const [entry] = await store.listEntries(result.workspace)
     expect(entry).toMatchObject({ kind: 'file', mime: 'image/png' })
   })
 
   it('skips a reserved bookkeeping file and counts it, never adopting it as an entry', () => {
     const parsed = readBagTree({
-      origin: 'folder',
       items: [
         { path: '.oversolved-index.json', bytes: new TextEncoder().encode('{}') },
         { path: 'Box.yaml', bytes: new TextEncoder().encode('kind: part\n') },
@@ -187,9 +185,8 @@ describe('adoption: a picked directory', () => {
     await writable.write(new Uint8Array([1, 2, 3]))
     await writable.close()
 
-    const bag = await readDirectoryBag(root as unknown as FileSystemDirectoryHandle, 'folder')
+    const bag = await readDirectoryBag(root as unknown as FileSystemDirectoryHandle)
     expect(bag.items.map(item => item.path).sort()).toEqual(['Top.yaml', 'nested/inner.step'])
-    expect(bag.origin).toBe('folder')
   })
 })
 
@@ -208,7 +205,7 @@ describe('adoption: manifest present', () => {
   it('landing new keeps the archive entry ids and re-mints the workspace id', async () => {
     const bytes = await buildZipBytes(sourceTree())
     const store = new IdbWorkspaceStore()
-    const result = await importBag(await readZipBag(bytes, 'ws'), { origin: 'ws' }, store)
+    const result = await importBag(await readZipBag(bytes), {}, store)
 
     expect(result.workspace).not.toBe('source-ws')
     const ids = (await store.listEntries(result.workspace)).map(entry => entry.id).sort()
@@ -219,7 +216,7 @@ describe('adoption: manifest present', () => {
     const store = new IdbWorkspaceStore()
     const { workspace } = await store.create('Destination', { docKind: 'assembly' })
     const bytes = await buildZipBytes(sourceTree())
-    const result = await importBag(await readZipBag(bytes, 'ws'), { origin: 'ws', into: workspace }, store)
+    const result = await importBag(await readZipBag(bytes), { into: workspace }, store)
     expect(result.mode).toBe('join')
 
     const entries = await store.listEntries(workspace)
@@ -239,7 +236,7 @@ describe('adoption: manifest present', () => {
 
     const before = await store.listEntries(created.workspace)
     expect(before).toHaveLength(2)
-    await importBag(await readZipBag(bytes, 'ws'), { origin: 'ws', into: created.workspace }, store)
+    await importBag(await readZipBag(bytes), { into: created.workspace }, store)
     const after = await store.listEntries(created.workspace)
     expect(after).toHaveLength(4)
   })
@@ -247,7 +244,7 @@ describe('adoption: manifest present', () => {
   it('refuses a manifest that does not parse, by name', async () => {
     const bytes = await zipOf({ '.oversolved-manifest.yaml': ': : not yaml\n' })
     const store = new IdbWorkspaceStore()
-    await expect(importBag(await readZipBag(bytes, 'bad'), { origin: 'bad' }, store))
+    await expect(importBag(await readZipBag(bytes), {}, store))
       .rejects.toThrow(/Manifest/)
   })
 
@@ -258,7 +255,7 @@ describe('adoption: manifest present', () => {
     const bytes = await zipOf(files)
 
     const store = new IdbWorkspaceStore()
-    const result = await importBag(await readZipBag(bytes, 'ws'), { origin: 'ws' }, store)
+    const result = await importBag(await readZipBag(bytes), {}, store)
 
     expect(result.unknownFiles).toEqual(['files/extra.bin'])
     const entries = await store.listEntries(result.workspace)
@@ -275,7 +272,7 @@ describe('adoption: manifest present', () => {
     const bytes = await zipOf(files)
 
     const store = new IdbWorkspaceStore()
-    const result = await importBag(await readZipBag(bytes, 'ws'), { origin: 'ws' }, store)
+    const result = await importBag(await readZipBag(bytes), {}, store)
 
     expect(result.missingPayloads).toEqual(['files/b.step'])
     expect(result.documents).toBe(1)
@@ -287,7 +284,7 @@ describe('adoption: manifest present', () => {
     const files: Record<string, string | Uint8Array> = {}
     for (const file of serializeTree(sourceTree())) files[file.path] = file.data
     delete files['files/b.step']
-    const parsed = readBagTree(await readZipBag(await zipOf(files), 'ws'))
+    const parsed = readBagTree(await readZipBag(await zipOf(files)))
 
     expect(parsed.tree.manifest.entries.b).toBeUndefined()
     expect(parsed.tree.manifest.references.a ?? []).not.toContain('b')
@@ -296,7 +293,7 @@ describe('adoption: manifest present', () => {
   it('reports nothing missing when every named file is present', async () => {
     const files: Record<string, string | Uint8Array> = {}
     for (const file of serializeTree(sourceTree())) files[file.path] = file.data
-    const parsed = readBagTree(await readZipBag(await zipOf(files), 'ws'))
+    const parsed = readBagTree(await readZipBag(await zipOf(files)))
     expect(parsed.missingPayloads).toEqual([])
   })
 
@@ -307,7 +304,7 @@ describe('adoption: manifest present', () => {
     const files: Record<string, string | Uint8Array> = {}
     for (const file of serializeTree(sourceTree())) files[`ws/${file.path}`] = file.data
     const store = new IdbWorkspaceStore()
-    const result = await importBag(await readZipBag(await zipOf(files), 'ws'), { origin: 'ws' }, store)
+    const result = await importBag(await readZipBag(await zipOf(files)), {}, store)
 
     const entries = await store.listEntries(result.workspace)
     expect(entries.map(entry => entry.id).sort()).toEqual(['a', 'b'])
@@ -331,7 +328,7 @@ describe('adoption: manifest present', () => {
     delete files[trashedPath]
     files[`${TRASH_DIR}/${trashedPath}`] = payload
 
-    const parsed = readBagTree(await readZipBag(await zipOf(files), 'ws'))
+    const parsed = readBagTree(await readZipBag(await zipOf(files)))
 
     expect(parsed.tree.manifest.trash).toContain('t')
     expect(parsed.tree.contents.get('t')?.text).toBe('kind: part\n# trashed\n')
@@ -343,7 +340,7 @@ describe('adoption: manifest present', () => {
       'wrapped/.oversolved-manifest.yaml': 'format: 1\nworkspace: wrapped\n',
     })
     const store = new IdbWorkspaceStore()
-    await expect(importBag(await readZipBag(bytes, 'multi'), { origin: 'multi' }, store))
+    await expect(importBag(await readZipBag(bytes), {}, store))
       .rejects.toThrow(/2 manifests/)
   })
 
@@ -354,7 +351,7 @@ describe('adoption: manifest present', () => {
     const docPath = Object.values(tree.manifest.entries).find(row => row.kind === 'document')!.path
     files[docPath.replace(/\.[^./]*$/, '.png')] = new Uint8Array([0x89, 0x50])
 
-    const parsed = readBagTree(await readZipBag(await zipOf(files), 'ws'))
+    const parsed = readBagTree(await readZipBag(await zipOf(files)))
     expect(parsed.skippedReserved).toBe(1)
     expect(Object.values(parsed.tree.manifest.entries).some(row => row.name.endsWith('.png'))).toBe(false)
   })
@@ -362,7 +359,6 @@ describe('adoption: manifest present', () => {
   it('reports no references for a manifest-named document whose text does not parse', async () => {
     const parsed = readBagTree(await readZipBag(
       await buildZipBytes(treeWith([documentEntry('a', 'A', { text: ': : not a mapping\n' })], 'source-ws')),
-      'ws',
     ))
     expect(parsed.tree.manifest.entries.a).toBeDefined()
     expect(parsed.unattached).toEqual([])
@@ -392,7 +388,7 @@ describe('adoption: a kind-less document payload', () => {
 
   it('adopts an exported part yaml as a document, not a file', async () => {
     const store = new IdbWorkspaceStore()
-    const result = await importBag(bag('ring.yaml', EXPORTED_PART), { origin: 'drop' }, store)
+    const result = await importBag(bag('ring.yaml', EXPORTED_PART), {}, store)
 
     expect(result.documents).toBe(1)
     expect(result.files).toBe(0)
@@ -420,7 +416,6 @@ describe('adoption: a kind-less document payload', () => {
 
   it('pairs a png sidecar with the document it pictures', () => {
     const parsed = readBagTree({
-      origin: 'legacy',
       items: [
         { path: 'ring.yaml', bytes: new TextEncoder().encode(EXPORTED_PART) },
         { path: 'ring.png', bytes: new Uint8Array([1, 2, 3]) },

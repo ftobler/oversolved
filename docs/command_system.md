@@ -93,9 +93,11 @@ Not every interaction is a registered tool:
 - **Select** has no registered tool. Idle select is the dispatchSketchClick fallback (`state.toggleNormalSelection(id)` for the clicked entity/vertex) plus the DrawPlane backplane clear on empty-space clicks. The toolbar select button dispatches `set_tool_drag`, and `getEffectiveTool(null)` resolves to `'drag'`.
 - **Constraints** have no registered tools. Constraint apply is `apply_<kind>` -> `store.applyConstraint`, which owns the target validation.
 
-### Snap & Measurement Registries (`snapRegistry.ts`, `measurementRegistry.ts`)
+### Snap Registry and Measurement Core (`snapRegistry.ts`, `utils/measure/`)
 
-Snap rules for drag; measurement rules for on-canvas display.
+Snap rules for drag; the measurement core (`utils/measure/`) turns picks into
+world primitives and reads the pair table for the HUD. Its rules are pure, so
+they test without a viewport.
 
 ### Command Tables (`commandEntries.ts`, `assemblyCommandEntries.ts`)
 

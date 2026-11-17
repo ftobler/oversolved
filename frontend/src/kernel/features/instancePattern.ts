@@ -1,17 +1,18 @@
-// The instance pattern leaf: copy the source onto a sketch's points, or onto a
-// picked list of any target, under `normal` (the default) or `fixed`
-// orientation. The placement law is pure in instancePatternPlacement.ts; here
-// the sketch site rule, the picks, the reference point and the source normal
-// are resolved.
+// The instance pattern leaf: copy the source onto a list of points, under
+// `normal` (the default) or `fixed` orientation. The placement law is pure in
+// instancePatternPlacement.ts; here the sketch site rule, the picks, the
+// reference point and the source normal are resolved.
 //
-// Targets. The sketch form reads the same non-construction point rule the hole
-// drills (shared/sketchPointSites.ts), so construction points are skipped, line
-// endpoints are not targets and projected points count. The targets form takes
-// any pick the table in features/shared/pickTarget.ts accepts. Numbering is
-// 1..N in sketch entity order or list order, so `skip 2` is the second target;
-// the naming key is the target's entity id (sketch form) or a short hash of
-// the pick (targets form), so deleting an earlier point never renames a later
-// copy's faces.
+// Targets. One list. A ref that names a sketch feature expands in place to that
+// sketch's non-construction points, the same rule the hole drills
+// (shared/sketchPointSites.ts), so construction points are skipped, line
+// endpoints are not targets and projected points count. Every other ref is a
+// pick the table in features/shared/pickTarget.ts accepts. Numbering is 1..N in
+// list order with each sketch expanded where it stands, so `skip 2` is the
+// second target; the naming key is the target's entity id or a short hash of
+// the pick, so deleting an earlier point never renames a later copy's faces. A
+// point reached twice (a sketch row plus one of its own point picks, or the
+// same pick twice) is kept once with a warning naming the dropped row.
 //
 // Reference. A `reference` pick wins; else a feature subject whose first
 // source's profile sketch holds exactly one non-construction point uses that
@@ -141,31 +142,88 @@ interface ResolvedTargets {
   warnings: string[]
 }
 
-/** The sketch form's targets: one per non-construction point, keyed by entity. */
+/** A sketch row's targets: one per non-construction point, keyed by entity. */
 function sketchTargets(sketchId: string, sketch: Dict, globalRepo: Repository): ResolvedTargets {
   const points = sketchPoints(sketchId, sketch, globalRepo)
-  // An unsolved sketch has no plane to take a normal from; the caller refuses
-  // the empty list below before the normal is ever read.
+  // An unsolved sketch has no plane to take a normal from; the caller drops the
+  // empty list below before the normal is ever read.
   const raw = points.length === 0 ? [0, 0, 1] : points[0].plane.normal
   const len = Math.hypot(...raw)
   const normal = (len < 1e-12 ? [0, 0, 1] : raw.map((n) => n / len)) as Vec3
   return {
-    targets: points.map((p) => ({ key: p.entityId, label: p.entityId, point: p.point, normal })),
+    targets: points.map((p) => ({
+      key: p.entityId,
+      label: p.entityId,
+      point: p.point,
+      normal,
+      identity: `${sketchId}:${p.entityId}`,
+    })),
     warnings: [],
   }
 }
 
-/** The targets form: every pick the table accepts, in list order. A pick that
- *  resolves to nothing is dropped with a warning naming it. */
+/** The sketch feature a plain target ref names, or null for every other pick.
+ *  A sketch row is written bare or `@`-prefixed; a `/` makes it one of the
+ *  sketch's entities, which the pick table reads instead. */
+function sketchRow(ref: string, featuresById: Record<string, Dict>): { id: string; sketch: Dict } | null {
+  const id = ref.replace(/^@/, '')
+  if (id === '' || id.includes('/')) return null
+  const sketch = featuresById[id]
+  return sketch !== undefined && sketch.kind === 'sketch' ? { id, sketch } : null
+}
+
+function samePoint(a: Vec3, b: Vec3): boolean {
+  return Math.abs(a[0] - b[0]) <= 1e-9
+    && Math.abs(a[1] - b[1]) <= 1e-9
+    && Math.abs(a[2] - b[2]) <= 1e-9
+}
+
+/** Whether two targets reached the same place. A sketch entity's identity is
+ *  authoritative when both carry one (two sketches may share an entity id); a
+ *  body pick has no identity, so its position decides. */
+function sameTarget(a: PickTarget, b: PickTarget): boolean {
+  if (a.identity !== undefined && b.identity !== undefined) return a.identity === b.identity
+  return samePoint(a.point, b.point)
+}
+
+/** The target list: a sketch row expands to its points where it stands, every
+ *  other ref is one pick the table accepts, and a point reached twice is kept
+ *  once. Every dropped row earns a warning naming it. */
 function pickedTargets(refs: readonly string[], ctx: PickTargetContext): ResolvedTargets {
   const sense = axisSenseContext(ctx)
   const indexFor = faceIndexCache(ctx)
-  const targets: PickTarget[] = []
+  const candidates: { target: PickTarget; name: string }[] = []
   const warnings: string[] = []
   for (const ref of refs) {
+    const row = sketchRow(ref, ctx.featuresById)
+    if (row !== null) {
+      let expanded: PickTarget[] = []
+      try {
+        expanded = sketchTargets(row.id, row.sketch, ctx.globalRepo).targets
+      } catch {
+        // The shared site rule names the hole's remedy, which is not this
+        // leaf's: a sketch row with no point is one dropped target among many.
+      }
+      if (expanded.length === 0) {
+        warnings.push(`instance_pattern: target '${ref}' did not resolve to a point; it was dropped`)
+        continue
+      }
+      for (const target of expanded) {
+        candidates.push({ target, name: `entity:${row.id}:${target.key}` })
+      }
+      continue
+    }
     const target = resolvePickTarget(ctx, ref, sense, indexFor)
     if (target === null) {
       warnings.push(`instance_pattern: target '${ref}' did not resolve to a point; it was dropped`)
+      continue
+    }
+    candidates.push({ target, name: ref })
+  }
+  const targets: PickTarget[] = []
+  for (const { target, name } of candidates) {
+    if (targets.some((kept) => sameTarget(kept, target))) {
+      warnings.push(`instance_pattern: target '${name}' is the same point as an earlier target; it was dropped`)
       continue
     }
     targets.push(target)
@@ -284,44 +342,21 @@ export function buildInstancePatternCopies(
   featuresById: Record<string, Dict>,
   solveContext: { variables: Record<string, number>; laterVariables: Record<string, number> },
 ): InstancePatternOutcome {
-  const sketchRef = typeof sub.sketch === 'string' && sub.sketch !== '' ? sub.sketch : ''
   const refs = targetRefs(sub)
-  if (sketchRef !== '' && refs.length > 0) {
-    throw new Error('instance_pattern: set either sketch or targets, not both; keep one target form')
-  }
-  if (sketchRef === '' && refs.length === 0) {
-    throw new Error('instance_pattern: requires a sketch or a list of targets')
-  }
+  // The retired `sketch` key is the leading target for a document that slipped
+  // past the loader's fold; the kernel never refuses the pair.
+  const legacySketch = typeof sub.sketch === 'string' && sub.sketch !== '' ? sub.sketch : ''
+  if (legacySketch !== '') refs.unshift(legacySketch)
 
   const ctx: PickTargetContext = { oc, scope, table, globalRepo, bodyStore, featuresById }
   const subject = (sub.subject as string) ?? 'body'
   const source = subject === 'feature' ? firstSource(featureId, sub, featuresById) : null
 
-  let resolved: ResolvedTargets
-  let sketchPoint: SketchPoint | null = null
-  if (sketchRef !== '') {
-    const sketchId = stripSigil(sketchRef).split('/')[0]
-    const sketch = featuresById[sketchId]
-    if (sketch === undefined || sketch.kind !== 'sketch') {
-      throw new Error(`instance_pattern: sketch '${sketchRef}' does not resolve to a sketch`)
-    }
-    try {
-      resolved = sketchTargets(sketchId, sketch, globalRepo)
-    } catch (e) {
-      // The shared site rule's sentences are the hole's own; this leaf names
-      // itself in front, the way the hole leaf does.
-      throw new Error(`instance_pattern: ${e instanceof Error ? e.message : String(e)}`)
-    }
-    if (resolved.targets.length === 0) {
-      throw new Error(`instance_pattern: sketch '${sketchId}' has no non-construction point to copy onto`)
-    }
-  } else {
-    resolved = pickedTargets(refs, ctx)
-    if (resolved.targets.length === 0) {
-      throw new Error(`instance_pattern: no target resolved; ${resolved.warnings.join('; ') || 'the list is empty'}`)
-    }
+  const resolved = pickedTargets(refs, ctx)
+  if (resolved.targets.length === 0) {
+    throw new Error(`instance_pattern: no target resolved; ${resolved.warnings.join('; ') || 'the list is empty'}`)
   }
-  sketchPoint = singleProfilePoint(source, globalRepo, featuresById)
+  const sketchPoint: SketchPoint | null = singleProfilePoint(source, globalRepo, featuresById)
 
   const cap = instanceTotalProblem(resolved.targets.length)
   if (cap !== null) throw new Error(`instance_pattern: ${cap}`)

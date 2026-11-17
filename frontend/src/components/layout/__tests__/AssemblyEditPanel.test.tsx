@@ -1,0 +1,166 @@
+// The assembly editor's right card: the open instance or mate editor leaves the
+// tree row (which keeps only its highlight and its own OK/Cancel pair) and
+// renders here, mirroring the part editor's FeatureEditPanel. Presentational:
+// the subject, its doc data and both editor bodies arrive as props, so this
+// suite needs no viewport and no store.
+import { describe, it, expect, vi } from 'vitest'
+import { render, screen, fireEvent } from '@testing-library/react'
+import { AssemblyEditPanel, type AssemblyEditPanelProps } from '@/components/layout/AssemblyEditPanel'
+import { PartInstanceEditor } from '@/components/layout/PartInstanceEditor'
+import { MateEditor } from '@/components/layout/MateEditor'
+import type { MateFeature, PartInstance } from '@/types/cad'
+import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
+import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
+import featurePartIcon from '@/assets/icons/feature-part.svg'
+import mateRotatingIcon from '@/assets/icons/mate-rotating.svg'
+
+const instances: PartInstance[] = [
+  { handle: 'p1', doc_id: 'doc-p1', doc_rev: 1, transform: { ...IDENTITY_TRANSFORM }, visible: true },
+]
+const mates: MateFeature[] = [
+  { id: 'm1', mate: { kind: 'rotating', label: 'Hinge', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'b1' } } },
+  // A legacy mate that never had a label: the card falls back to its kind.
+  { id: 'm2', mate: { kind: 'fixed', ref_a: { part: '', anchor: '' }, ref_b: { part: '', anchor: '' } } },
+]
+
+function status(overrides: Partial<AssemblySolveStatus> = {}): AssemblySolveStatus {
+  return { verdict: 'none', residualNorm: 0, rank: 0, dof: 0, iters: 0, mates: {}, parts: {}, ...overrides }
+}
+
+function makeProps(overrides: Partial<AssemblyEditPanelProps> = {}): AssemblyEditPanelProps {
+  return {
+    editing: { kind: 'none' },
+    instances,
+    mates,
+    labelFor: handle => (handle === 'p1' ? 'Bracket' : undefined),
+    onCommitInstance: vi.fn(),
+    onCancelInstance: vi.fn(),
+    onCommitMate: vi.fn(),
+    onCancelMate: vi.fn(),
+    renderInstanceEditor: inst => (
+      <PartInstanceEditor
+        instance={inst}
+        onSetFixed={vi.fn()}
+        onSetPosition={vi.fn()}
+        onSetRotation={vi.fn()}
+      />
+    ),
+    renderMateEditor: mate => (
+      <MateEditor
+        featureId={mate.id}
+        mate={mate.mate}
+        activeField={null}
+        onArmField={vi.fn()}
+        onUpdate={vi.fn()}
+      />
+    ),
+    ...overrides,
+  }
+}
+
+function renderPanel(overrides: Partial<AssemblyEditPanelProps> = {}) {
+  const props = makeProps(overrides)
+  return { ...render(<AssemblyEditPanel {...props} />), props }
+}
+
+describe('AssemblyEditPanel', () => {
+  it('renders nothing while no subject is open', () => {
+    const { container } = renderPanel()
+    expect(container.querySelector('.feature-edit-panel')).toBeNull()
+    expect(screen.queryByTitle('OK')).toBeNull()
+  })
+
+  it('shows the open instance with its part icon, display name and fields', () => {
+    const { container } = renderPanel({ editing: { kind: 'instance', handle: 'p1' } })
+
+    expect(container.querySelector('.feature-edit-panel-title')!.textContent).toBe('Bracket')
+    expect(container.querySelector('.feature-edit-panel-header img')!.getAttribute('src')).toBe(featurePartIcon)
+    // The real instance editor, not a stub: its Fixed box and the position row.
+    expect(screen.getByLabelText('Fixed')).toBeInTheDocument()
+    expect(screen.getByLabelText('Position X, millimetres')).toBeInTheDocument()
+  })
+
+  it('falls back to the document id when the part has no display name', () => {
+    const { container } = renderPanel({
+      editing: { kind: 'instance', handle: 'p1' },
+      labelFor: undefined,
+    })
+    expect(container.querySelector('.feature-edit-panel-title')!.textContent).toBe('doc-p1')
+  })
+
+  it('wires OK and Cancel to the instance pair, and only to it', () => {
+    const { props } = renderPanel({ editing: { kind: 'instance', handle: 'p1' } })
+    fireEvent.click(screen.getByTitle('OK'))
+    expect(props.onCommitInstance).toHaveBeenCalledTimes(1)
+    expect(props.onCommitMate).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByTitle('Cancel'))
+    expect(props.onCancelInstance).toHaveBeenCalledTimes(1)
+    expect(props.onCancelMate).not.toHaveBeenCalled()
+  })
+
+  it('shows the open mate with its kind icon, label and the mate editor', () => {
+    const { container } = renderPanel({ editing: { kind: 'mate', id: 'm1' } })
+
+    expect(container.querySelector('.feature-edit-panel-title')!.textContent).toBe('Hinge')
+    expect(container.querySelector('.feature-edit-panel-header img')!.getAttribute('src')).toBe(mateRotatingIcon)
+    expect(screen.getAllByText('p1 / a1')).toHaveLength(1)
+    expect(container.querySelector('.mate-editor')).not.toBeNull()
+  })
+
+  it('names an unlabeled legacy mate by its kind', () => {
+    const { container } = renderPanel({ editing: { kind: 'mate', id: 'm2' } })
+    expect(container.querySelector('.feature-edit-panel-title')!.textContent).toBe('Fixed')
+    // Its two unpicked slots are the chips' own prompt, unchanged from the row.
+    expect(screen.getAllByText('Pick a reference')).toHaveLength(2)
+  })
+
+  it('wires OK and Cancel to the mate pair, and only to it', () => {
+    const { props } = renderPanel({ editing: { kind: 'mate', id: 'm1' } })
+    fireEvent.click(screen.getByTitle('OK'))
+    expect(props.onCommitMate).toHaveBeenCalledTimes(1)
+    expect(props.onCommitInstance).not.toHaveBeenCalled()
+
+    fireEvent.click(screen.getByTitle('Cancel'))
+    expect(props.onCancelMate).toHaveBeenCalledTimes(1)
+    expect(props.onCancelInstance).not.toHaveBeenCalled()
+  })
+
+  it('heads a failed part with its own status mark, above the fields', () => {
+    const { container } = renderPanel({
+      editing: { kind: 'instance', handle: 'p1' },
+      status: status({ parts: { p1: { failed: true, error: 'part doc not found: p1' } } }),
+    })
+    const body = container.querySelector('.feature-edit-panel-body') as HTMLElement
+    const line = body.firstElementChild as HTMLElement
+    expect(line.className).toContain('status-message')
+    expect(line.className).toContain('status-message--error')
+    expect(line.textContent).toBe('part doc not found: p1')
+  })
+
+  it('heads a failed mate with its own status mark, above its fields', () => {
+    const { container } = renderPanel({
+      editing: { kind: 'mate', id: 'm1' },
+      status: status({ mates: { m1: { stale: true, error: "unsupported mate kind 'worm_gear'" } } }),
+    })
+    const body = container.querySelector('.feature-edit-panel-body') as HTMLElement
+    const line = body.firstElementChild as HTMLElement
+    expect(line.className).toContain('status-message')
+    expect(line.className).toContain('status-message--error')
+    expect(line.textContent).toBe("unsupported mate kind 'worm_gear'")
+  })
+
+  it('draws no status line for a healthy subject', () => {
+    const { container } = renderPanel({ editing: { kind: 'mate', id: 'm2' } })
+    expect(container.querySelector('.status-message')).toBeNull()
+  })
+
+  it('renders nothing for a subject the document no longer holds', () => {
+    const goneInstance = renderPanel({ editing: { kind: 'instance', handle: 'gone' } })
+    expect(goneInstance.container.querySelector('.feature-edit-panel')).toBeNull()
+    goneInstance.unmount()
+
+    const goneMate = renderPanel({ editing: { kind: 'mate', id: 'gone' } })
+    expect(goneMate.container.querySelector('.feature-edit-panel')).toBeNull()
+  })
+})

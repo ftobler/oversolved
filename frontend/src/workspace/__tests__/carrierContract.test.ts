@@ -177,7 +177,6 @@ describe('IdbCarrier remove and restore precedence', () => {
       createdAt: 0,
       updatedAt: 0,
       references: {},
-      provenance: [],
       trash: [],
     }
     await replaceWorkspaceRows(workspace, meta, [record])

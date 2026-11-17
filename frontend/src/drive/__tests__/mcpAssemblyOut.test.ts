@@ -209,7 +209,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP assembly out (real OCC +
       // The written archive round-trips through the browser's own import path:
       // every part_instance.doc_id resolves to a live part entry.
       const store = new IdbWorkspaceStore()
-      const imported = await importBag(await readZipBag(bytes, 'zip'), { origin: 'zip' }, store)
+      const imported = await importBag(await readZipBag(bytes), {}, store)
       expect(imported.mode).toBe('new')
       expect(imported.documents).toBe(3)
       for (const docId of ['plate', 'pin']) {
