@@ -34,7 +34,7 @@ function rectSketch(id: string, plane: string, x0: number, y0: number, x1: numbe
   }
 }
 
-function extrude(id: string, sketch: string, opts: Dict = {}): Dict {
+function extrude(id: string, sketch: string | string[], opts: Dict = {}): Dict {
   return {
     id, kind: 'extrude',
     extrude: { sketch, distance: 10, direction: 'normal', operation: 'new', ...opts },
