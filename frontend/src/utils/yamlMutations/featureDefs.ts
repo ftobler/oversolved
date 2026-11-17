@@ -701,6 +701,22 @@ export function applyAddBooleanTool(doc: PartDoc, featureId: string, tool: strin
     warn(`applyAddBooleanTool: feature ${featureId} has no boolean`)
     return
   }
+  // The union editor shows one "Bodies to join" list, so its first pick is the
+  // base (target) and every later pick a tool. Subtract and intersect keep the
+  // explicit target field and their old tool-only rule.
+  const union = sub.operation === undefined || sub.operation === 'union'
+  if (union && sub.target === tool) {
+    // The join list shows the base as its first chip, so picking it again is the
+    // same toggle a listed tool gets: drop it and promote the next body.
+    sub.target = sub.tools[0] ?? ''
+    sub.tools = sub.tools.slice(1)
+    return
+  }
+  if (union && !sub.target) {
+    sub.target = tool
+    sub.tools = sub.tools.filter((listed) => listed !== tool)
+    return
+  }
   const idx = sub.tools.indexOf(tool)
   if (idx >= 0) {
     sub.tools.splice(idx, 1)
@@ -717,6 +733,13 @@ export function applyRemoveBooleanTool(doc: PartDoc, featureId: string, tool: st
     return
   }
   sub.tools = sub.tools.filter(t => t !== tool)
+  // Removing the union list's base promotes the next body, so the list keeps its
+  // order and the solve keeps a base. The base is not a tool anywhere else.
+  const union = sub.operation === undefined || sub.operation === 'union'
+  if (union && sub.target === tool) {
+    sub.target = sub.tools[0] ?? ''
+    sub.tools = sub.tools.slice(1)
+  }
 }
 
 // ─── Patterns ───

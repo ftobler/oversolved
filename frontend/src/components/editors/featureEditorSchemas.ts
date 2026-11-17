@@ -13,6 +13,7 @@ import { stripSelectionWrapper } from '@/utils/query/selectionId'
 import { positive, nonNegative, finite, between } from '@/utils/core/valueRules'
 import { arrayCountProblem, MAX_ARRAY_COUNT } from '@/persistence/docSchema'
 import { patternSubject } from '@/utils/core/patternSubject'
+import { booleanJoinList } from '@/utils/core/booleanJoin'
 import { formatSkipList, parseSkipList, SKIP_LIST_TITLE, type SkipEntry } from '@/utils/core/patternSkip'
 import { LINEAR_DIRECTION_MODES, LINEAR_DIRECTION_MODE_LABELS } from '@/utils/core/linearPatternModes'
 import { solvedNumber } from '@/utils/core/solvedValue'
@@ -255,6 +256,10 @@ export const MOVE_FACE_SCHEMA: FeatureEditorSchema = {
   ],
 }
 
+// A union is a set of bodies, so its editor shows one join list (base first)
+// rather than the target/tools split subtract and intersect keep.
+const showBooleanSplit = (d: SchemaData) => (d.operation ?? 'union') !== 'union'
+
 export const BOOLEAN_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_boolean',
   subKey: 'boolean',
@@ -262,10 +267,23 @@ export const BOOLEAN_SCHEMA: FeatureEditorSchema = {
   fields: [
     { type: 'select', key: 'operation', label: 'Operation', default: 'union', presentation: 'tabs',
       options: [{ value: 'union', label: 'Union' }, { value: 'subtract', label: 'Subtract' }, { value: 'intersect', label: 'Intersect' }] },
-    { type: 'pick', key: 'target', label: 'Target', names: 'body', emptyText: '(pick target)' },
+    { type: 'pick', key: 'target', label: 'Target', names: 'body', emptyText: '(pick target)',
+      showWhen: showBooleanSplit },
     { type: 'pick', key: 'tools', label: 'Tools', multi: true, names: 'body',
+      showWhen: showBooleanSplit,
       addMutationType: 'add_boolean_tool', addValueKey: 'tool',
       removeMutationType: 'remove_boolean_tool', removeKey: 'tool', removeValueIsIndex: false },
+    // The union's one list: the base first (the pick that keeps the body id and
+    // name), then every body joined into it. The applier writes the first
+    // pick to `target` and the rest to `tools`; removing the base promotes the
+    // next body, so the stored shape never needs a migration.
+    { type: 'pick', key: 'tools', label: 'Bodies to join', multi: true, names: 'body',
+      showWhen: (d) => !showBooleanSplit(d),
+      normalize: (_value, d) => booleanJoinList(d),
+      baseTag: 'base', reorder: false,
+      addMutationType: 'add_boolean_tool', addValueKey: 'tool',
+      removeMutationType: 'remove_boolean_tool', removeKey: 'tool', removeValueIsIndex: false,
+      emptyText: '(pick the bodies to join)' },
     { type: 'number', key: 'clearance', label: 'Clearance', default: 0, unit: 'mm',
       showWhen: (d) => d.operation === 'subtract', validate: finite },
     { type: 'checkbox', key: 'keep_tools', label: 'Keep tools', default: false },

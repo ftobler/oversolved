@@ -33,6 +33,9 @@ export interface PickChipProps {
   // Per-value hover text for consumers whose values need more than the shared
   // fault wording (the bug report says which bar position a pick came from).
   valueTitles?: Record<string, string>
+  // A word tagged onto the first chip only. The union's join list uses it for
+  // the base, the pick that keeps the body's id and name.
+  baseTag?: string
 }
 
 export function PickChip({
@@ -50,6 +53,7 @@ export function PickChip({
   failedValues,
   inactiveValues,
   valueTitles,
+  baseTag,
 }: PickChipProps) {
   const syncChipSelection = useSketchEditorStore(s => s.syncChipSelection)
   const clearChipSelection = useSketchEditorStore(s => s.clearChipSelection)
@@ -172,6 +176,9 @@ export function PickChip({
                 <span className="feature-pick-chip-item-drag" title="Drag to reorder">
                   <img src={dragHandleIcon} alt="" draggable={false} />
                 </span>
+              )}
+              {baseTag !== undefined && i === 0 && (
+                <span className="feature-pick-chip-item-tag" title="Keeps the body's id and name">{baseTag}</span>
               )}
               <span className="feature-pick-chip-item-text">{labels ? labels[i] : v}</span>
               <button
