@@ -102,6 +102,23 @@ function washerFace(occ: OccModule, scope: DisposeScope, half: number, holeRadiu
   return scope.track(makeFaceFromWire(occ, scope, outer, [hole]))
 }
 
+/** A square plate with a centred square hole. */
+function squareHoleFace(occ: OccModule, scope: DisposeScope, half: number, hole: number): OccShape {
+  const outer = squareWire(occ, scope, half)
+  const inner = squareWire(occ, scope, hole)
+  return scope.track(makeFaceFromWire(occ, scope, outer, [inner]))
+}
+
+/** A square plate with a circular hole off the sketch origin: its seam has to
+ *  keep the base circle's own direction or the loft twists itself apart. */
+function offsetHoleFace(occ: OccModule, scope: DisposeScope, half: number, at: Vec3, radius: number): OccShape {
+  const outer = squareWire(occ, scope, half)
+  const hole = scope.track(makeWire(occ, scope, [
+    scope.track(makeCircleEdge(occ, scope, at, Z, [1, 0, 0], radius)),
+  ], { requireClosed: true }))
+  return scope.track(makeFaceFromWire(occ, scope, outer, [hole]))
+}
+
 function circleFace(occ: OccModule, scope: DisposeScope, radius: number): OccShape {
   const wire = scope.track(makeWire(occ, scope, [
     scope.track(makeCircleEdge(occ, scope, [0, 0, 0], Z, [1, 0, 0], radius)),
@@ -283,6 +300,35 @@ describe.skipIf(!oc)('twist prism spike (real OCC)', () => {
       // Four outer walls and the bore's wall: the hole is carried.
       expect(bar.laterals).toBe(5)
       expectRelative(bar.volume, (100 - Math.PI * 4) * 10, 1e-4)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('a square hole is cut with the same reversal the taper uses', () => {
+    const scope = new DisposeScope()
+    try {
+      const face = squareHoleFace(oc!, scope, 5, 2)
+      const bar = twistBar(oc!, scope, face, 10, 120)
+      expect(bar.valid).toBe(true)
+      expect(bar.solids).toBe(1)
+      // Four outer walls and four hole walls.
+      expect(bar.laterals).toBe(8)
+      expectRelative(bar.volume, (100 - 16) * 10, 1e-4)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('an off-centre circular hole keeps the base circle seam and cuts cleanly', () => {
+    const scope = new DisposeScope()
+    try {
+      const face = offsetHoleFace(oc!, scope, 5, [2, 0, 0], 1)
+      const bar = twistBar(oc!, scope, face, 10, 120)
+      expect(bar.valid).toBe(true)
+      expect(bar.solids).toBe(1)
+      expect(bar.laterals).toBe(5)
+      expectRelative(bar.volume, (100 - Math.PI) * 10, 1e-4)
     } finally {
       scope.dispose()
     }
