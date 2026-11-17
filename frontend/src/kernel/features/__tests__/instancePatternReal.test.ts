@@ -14,6 +14,8 @@ import { SharedHarness } from '../../occ/sharedHarness'
 import { DisposeScope } from '../../occ/disposeScope'
 import { setSketchSolver, resetSketchSolver } from '../sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
+import { applyAddPatternSource } from '@/utils/yamlMutations'
+import type { PartDoc } from '@/types/cad'
 import { shapeBndBox } from '../../occ/primitives'
 import { volumeOf } from '../../occ/volume'
 import type { OccModule, OccShape } from '../../occ/occTypes'
@@ -290,6 +292,31 @@ describe.skipIf(!oc || !solveBytes)('instance pattern through the real kernel', 
     })
     expect(h.res(r, 'ip1').status).toBe('ok')
     expect(h.res(r, 'ip1').reference_rule).toBe('the source tool\'s centroid')
+    expect(volumeOfStore(r, 'ip1')).toBeCloseTo(80 * 40 * 5 - 2 * 4 * 4 * 5, 6)
+  })
+
+  it('reapplies a source named through the add-pattern-source mutation', () => {
+    // The Feature tab writes the source through the chip's mutation, not as
+    // inline YAML: the same two cuts as the case above prove the authored row
+    // reaches the kernel intact.
+    const doc = {
+      version: 9, kind: 'part',
+      features: [
+        rectSketch('skPlate', 80, 40),
+        extrude('ex1', 'skPlate', 5),
+        rectSketch('sk2', 4, 4, 30, 0),
+        { id: 'ex2', kind: 'extrude', extrude: { sketch: '@sk2', distance: 5, direction: 'normal', operation: 'cut', termination: 'through_all' } },
+        topPlane(2.5),
+        pointSketch('skPts', [[52, 2]], [], '@plTop'),
+        {
+          id: 'ip1', kind: 'instance_pattern',
+          instance_pattern: { subject: 'feature', sketch: '@skPts', orientation: 'fixed' },
+        },
+      ],
+    }
+    applyAddPatternSource(doc as unknown as PartDoc, 'ip1', '@ex2')
+    const r = h.run(doc)
+    expect(h.res(r, 'ip1').status).toBe('ok')
     expect(volumeOfStore(r, 'ip1')).toBeCloseTo(80 * 40 * 5 - 2 * 4 * 4 * 5, 6)
   })
 

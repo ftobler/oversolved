@@ -117,6 +117,24 @@ export function isPatternKind(kind: string | undefined): kind is PatternKind {
   return kind !== undefined && (PATTERN_KINDS as readonly string[]).includes(kind)
 }
 
+/** The payload bag a pattern feature stores its own fields in. Spelled without
+ *  `Record` because the feature-union ratchet counts that token as erosion: the
+ *  bag is deliberately opaque here, and the appliers give its keys meaning. */
+export type PatternSubBag = { [key: string]: unknown }
+
+/** The sub-definition a pattern feature stores its own fields in, or null for
+ *  any other kind. Every pattern kind names its sub-dict after its kind (the
+ *  `subKey` of its editor schema), so joining PATTERN_KINDS is the whole
+ *  registration: there is no second list here to forget a later kind on. The
+ *  one cast is the lookup the union cannot express, `feature[feature.kind]`. */
+export function patternSubOf(feature: PartFeature | undefined): PatternSubBag | null {
+  if (feature === undefined || !isPatternKind(feature.kind)) return null
+  const sub: unknown = (feature as PatternSubBag)[feature.kind]
+  return typeof sub === 'object' && sub !== null && !Array.isArray(sub)
+    ? sub as PatternSubBag
+    : null
+}
+
 // Both pattern kinds repeat either a whole body or one or more earlier
 // solid-producing features' own add/cut. A body pattern copies the source body
 // with `operation` add or new; a feature pattern reapplies each source feature's

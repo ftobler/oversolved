@@ -6,7 +6,7 @@
 import type { LengthUnit, PartDoc, PartFeature } from '@/types/cad'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { findFeature, warn, MutationRefusal } from './helpers'
-import { roundNumericFields, storedNumber, type FieldBag } from './featureDefs'
+import { ensurePatternSources, roundNumericFields, sourceListSubOf, storedNumber, type FieldBag } from './featureDefs'
 import { isValidVariableName } from '@/kernel/features/variable'
 import { allConsumedSketchIds } from '@/utils/query/consumedSketches'
 import { docVisibleFeatureIds, isPlaneVisibilityTarget } from '@/utils/featureVisibility'
@@ -377,25 +377,16 @@ export function applyReorderPickField(doc: PartDoc, featureId: string, field: st
         arr = normalizeStoredRefList(feature.instance_pattern, 'targets')
       }
       break
-    case 'source_features':
+    case 'source_features': {
       // The chip reorders the authored list. The kernel still unions the
       // sources in feature-log order, so this is a presentation edit; the
-      // legacy scalar is normalized in place before the splice.
-      if (feature.kind === 'linear_pattern' || feature.kind === 'circular_pattern'
-        || feature.kind === 'curve_pattern' || feature.kind === 'instance_pattern') {
-        const sub: { source_features?: string[]; source_feature?: string } =
-          feature.kind === 'linear_pattern' ? feature.linear_pattern
-            : feature.kind === 'circular_pattern' ? feature.circular_pattern
-              : feature.kind === 'curve_pattern' ? feature.curve_pattern : feature.instance_pattern
-        if (!Array.isArray(sub.source_features)) {
-          sub.source_features = typeof sub.source_feature === 'string' && sub.source_feature
-            ? [sub.source_feature]
-            : []
-          delete sub.source_feature
-        }
-        arr = sub.source_features
-      }
+      // legacy scalar is normalized in place before the splice. A pattern row
+      // names its sub-dict by its own kind, and a mirror has its own, so both
+      // source chips reach this case.
+      const sub = sourceListSubOf(feature)
+      if (sub !== null) arr = ensurePatternSources(sub)
       break
+    }
     default:
       return
   }

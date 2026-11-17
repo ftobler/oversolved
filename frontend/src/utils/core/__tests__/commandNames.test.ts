@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { COMMAND_NAMES } from '@/utils/core/commandNames'
+import { PATTERN_KINDS } from '@/types/cad'
 import {
   KEYMAP, SKETCH_KEYMAP, FEATURE_KEYMAP, ASSEMBLY_KEYMAP,
   CORE_KEYBINDINGS, ASSEMBLY_KEYBINDINGS,
@@ -67,5 +68,17 @@ describe('COMMAND_NAMES', () => {
     }
     const shared = [...partIds].filter(id => assemblyIds.has(id))
     expect(new Set(shared)).toEqual(new Set(['undo', 'redo', 'delete_selected']))
+  })
+
+  // Every pattern kind's add command is both named and registered: the four
+  // patterns arrive as separate rows, so a kind joining PATTERN_KINDS cannot
+  // ship with a name but no spec that adds it.
+  it('registers the add command of every pattern kind', () => {
+    const partIds = new Set<string>(PART_COMMAND_SPECS.map(s => s.id))
+    for (const kind of PATTERN_KINDS) {
+      const id = `add_${kind}`
+      expect(known.has(id), `"${id}" is not in COMMAND_NAMES`).toBe(true)
+      expect(partIds.has(id), `"${id}" has no spec in the part editor`).toBe(true)
+    }
   })
 })

@@ -1,5 +1,6 @@
 import type { PartDoc, PartFeature, NumberOrExpr, BooleanFeatureDef, TransformFeatureDef, MirrorFeatureDef, SplitFeatureDef, SplitKeep, ExtrudeFeatureDef, RevolveFeatureDef, SweepFeatureDef, FilletFeatureDef, ChamferFeatureDef, ShellFeatureDef, ShellDirection, ShellJoin, MoveFaceFeatureDef, LinearPatternDef, CircularPatternDef, CurvePatternDef, InstancePatternDef, LegacyPatternDef, HoleFeatureDef, VariableFeatureDef, HelixFeatureDef } from '@/types/cad'
-import { warn, findFeature, normalizeRefList, round } from './helpers'
+import { isPatternKind, patternSubOf } from '@/types/cad'
+import { warn, findFeature, normalizeRefList, round, MutationRefusal } from './helpers'
 import { arrayCountProblem } from '@/persistence/docSchema'
 import { skipValue } from '@/utils/core/patternSkip'
 import { splitPatternDef } from '@/utils/core/patternSplit'
@@ -90,8 +91,9 @@ function _ensureBodies(sub: { bodies?: string[]; body?: string }): string[] {
 
 /** Materialize the multi-source list a pattern mutation indexes. A legacy row
  *  carries the singular `source_feature`; seed the list from it so a pick edit
- *  does not silently drop the source the pattern still solved with. */
-function _ensurePatternSources(sub: FieldBag): string[] {
+ *  does not silently drop the source the pattern still solved with. Shared with
+ *  featureAdmin's chip reorder, which needs the same live list. */
+export function ensurePatternSources(sub: FieldBag): string[] {
   const current: unknown = sub.source_features
   if (Array.isArray(current)) {
     delete sub.source_feature
@@ -1258,36 +1260,34 @@ export function applySetCircularPatternField(
   if (field === 'subject' && value === 'feature') delete sub.operation
 }
 
-/** The sub-definition of any pattern kind, so the source chip's mutations work
- *  on both kinds without asking which one a row is. */
-function patternSubOf(feature: PartFeature | undefined): FieldBag | null {
-  const sub: unknown = feature?.kind === 'linear_pattern'
-    ? feature.linear_pattern
-    : feature?.kind === 'circular_pattern' ? feature.circular_pattern : undefined
-  return typeof sub === 'object' && sub !== null && !Array.isArray(sub) ? sub as FieldBag : null
+/** The sub-definition a source chip edits, or the refusal that tells the user
+ *  why the click cannot land. A chip on a row the document cannot resolve used
+ *  to warn and return, which reads as a dead control in the editor and as an ok
+ *  no-op in a drive reply; a named refusal is the project's answer to both. */
+function patternSourceSub(featureId: string, feature: PartFeature | undefined, fn: string): FieldBag {
+  const sub = patternSubOf(feature)
+  if (sub !== null) return sub
+  const what = feature === undefined
+    ? `no feature '${featureId}'`
+    : isPatternKind(feature.kind)
+      ? `feature '${featureId}' has no ${feature.kind} definition`
+      : `feature '${featureId}' is not a pattern (its kind is ${feature.kind})`
+  throw new MutationRefusal(`${fn}: ${what}, so there is no source list to edit`)
 }
 
 /** Add a feature to a pattern's sources, toggling like every other multi pick:
  *  re-picking a source already in the list drops it again. */
 export function applyAddPatternSource(doc: PartDoc, featureId: string, sourceFeature: string): void {
-  const sub = patternSubOf(findFeature(doc, featureId))
-  if (!sub) {
-    warn(`applyAddPatternSource: feature ${featureId} has no pattern`)
-    return
-  }
-  const sources = _ensurePatternSources(sub)
+  const sub = patternSourceSub(featureId, findFeature(doc, featureId), 'add_pattern_source')
+  const sources = ensurePatternSources(sub)
   const index = sources.indexOf(sourceFeature)
   if (index >= 0) sources.splice(index, 1)
   else sources.push(sourceFeature)
 }
 
 export function applyRemovePatternSource(doc: PartDoc, featureId: string, index: number): void {
-  const sub = patternSubOf(findFeature(doc, featureId))
-  if (!sub) {
-    warn(`applyRemovePatternSource: feature ${featureId} has no pattern`)
-    return
-  }
-  const sources = _ensurePatternSources(sub)
+  const sub = patternSourceSub(featureId, findFeature(doc, featureId), 'remove_pattern_source')
+  const sources = ensurePatternSources(sub)
   if (!removableIndex(sources, index)) return
   sources.splice(index, 1)
 }
@@ -1523,29 +1523,45 @@ export function applySetMirrorField(
   if (field === 'source_features') delete sub.source_feature
 }
 
+/** The mirror's own sub-definition, or null. Probed at runtime because a loaded
+ *  row can name the kind without carrying its payload. */
+function mirrorSubOf(feature: PartFeature | undefined): FieldBag | null {
+  if (feature?.kind !== 'mirror') return null
+  const sub: unknown = feature.mirror
+  return typeof sub === 'object' && sub !== null && !Array.isArray(sub) ? sub as FieldBag : null
+}
+
+/** The sub-definition that stores a `source_features` list: a pattern's own bag
+ *  or the mirror's. The two source chips are the only writers of that field, and
+ *  both reorder it through this one lookup. */
+export function sourceListSubOf(feature: PartFeature | undefined): FieldBag | null {
+  return patternSubOf(feature) ?? mirrorSubOf(feature)
+}
+
+/** The mirror's own sub-definition, or the refusal: a mirror chip names its row
+ *  exactly like a pattern chip, so the same dead-control rule applies. */
+function mirrorSubOrRefuse(featureId: string, feature: PartFeature | undefined, fn: string): FieldBag {
+  const sub = mirrorSubOf(feature)
+  if (sub !== null) return sub
+  const what = feature?.kind === 'mirror'
+    ? `feature '${featureId}' has no mirror definition`
+    : `feature '${featureId}' is not a feature mirror`
+  throw new MutationRefusal(`${fn}: ${what}, so there is no source list to edit`)
+}
+
 /** Add a feature to a feature-subject mirror's sources, toggling like every
  *  other multi pick: re-picking a source already in the list drops it again. */
 export function applyAddMirrorSource(doc: PartDoc, featureId: string, sourceFeature: string): void {
-  const feature = findFeature(doc, featureId)
-  const sub = feature?.kind === 'mirror' ? (feature.mirror as FieldBag) : undefined
-  if (sub === undefined) {
-    warn(`applyAddMirrorSource: feature ${featureId} has no mirror`)
-    return
-  }
-  const sources = _ensurePatternSources(sub)
+  const sub = mirrorSubOrRefuse(featureId, findFeature(doc, featureId), 'add_mirror_source')
+  const sources = ensurePatternSources(sub)
   const index = sources.indexOf(sourceFeature)
   if (index >= 0) sources.splice(index, 1)
   else sources.push(sourceFeature)
 }
 
 export function applyRemoveMirrorSource(doc: PartDoc, featureId: string, index: number): void {
-  const feature = findFeature(doc, featureId)
-  const sub = feature?.kind === 'mirror' ? (feature.mirror as FieldBag) : undefined
-  if (sub === undefined) {
-    warn(`applyRemoveMirrorSource: feature ${featureId} has no mirror`)
-    return
-  }
-  const sources = _ensurePatternSources(sub)
+  const sub = mirrorSubOrRefuse(featureId, findFeature(doc, featureId), 'remove_mirror_source')
+  const sources = ensurePatternSources(sub)
   if (!removableIndex(sources, index)) return
   sources.splice(index, 1)
 }
