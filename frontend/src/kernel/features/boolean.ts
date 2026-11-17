@@ -11,9 +11,10 @@
 // order.
 //
 // The split used to be limited to `subtract`, on the assumption that only a cut can
-// disconnect a body. It cannot: a union of two bodies that do not touch is a two-solid
-// compound, and an intersect can leave several lumps just as a cut can. Every operation now
-// goes through `resplitBody`.
+// disconnect a body. It cannot: an intersect can leave several lumps, and a union whose
+// tools meet the shape only at a point or an edge comes back as a multi-solid compound.
+// Every operation now goes through `resplitBody`. A union pick that does not touch the
+// base at all is skipped instead, so disjoint material never reaches the split.
 //
 // Construction names are folded through the tool loop the same way bodyOps' cut/add and the
 // array fuse do: each `booleanWithDiff` hands back a faceOrigin map, and `transferBooleanNames`
@@ -255,8 +256,9 @@ function orderSymmetricTools(
 ): { ordered: ToolEntry[]; disconnected: ToolEntry[] } {
   const storeIndex = new Map(Object.keys(bodyStore).map((id, i) => [id, i]))
   const storePosition = (body: Body): number => storeIndex.get(body.id) ?? Number.MAX_SAFE_INTEGER
-  const sorted = [...tools].sort((a, b) =>
-    storePosition(a.body) - storePosition(b.body) || (a.body.id < b.body.id ? -1 : a.body.id > b.body.id ? 1 : 0))
+  // The candidates are deduped by resolved body id above, and every one is a
+  // live store entry, so the positions are distinct and this is a total order.
+  const sorted = [...tools].sort((a, b) => storePosition(a.body) - storePosition(b.body))
   const connects = op === 'fuse' ? shapesTouch : shapesIntersect
   const frontier: OccShape[] = [baseShape]
   const accepted: ToolEntry[] = []

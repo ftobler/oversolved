@@ -76,7 +76,12 @@ function unionChain(base: string, tools: string[]): { volume: number; faces: num
 }
 
 describe.skipIf(!hasOcc)('boolean union: the tools are a set, not a list order', () => {
-  it('a chain picked [A, C, B] and [A, B, C] gives one body of equal volume and face count', () => {
+  it('a chain picked [A, C, B] and [A, B, C] gives the same one body', () => {
+    // A geometry-equality guard, not the ordering regression pin: a fuse is
+    // associative, so the old list-order fold joined this chain too. The
+    // ordering pin is the mock test in boolean.test.ts ("folds in connectivity
+    // order from the base, not in pick order"), which asserts the call sequence;
+    // the skip case below pins the semantic change.
     const tailFirst = unionChain('body_a', ['body_c', 'body_b'])
     const inOrder = unionChain('body_a', ['body_b', 'body_c'])
 

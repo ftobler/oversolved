@@ -538,14 +538,16 @@ type UnionContact = 'overlap' | 'face' | 'tangent' | 'disjoint' | 'unknown'
  * Classify a union tool's contact with the target before feeding it to the
  * fuse. OCC's fuse WELDS solids that touch in a zero-measure set (an edge, a
  * vertex, or a contact inside the intersection's tolerance band) and can hand
- * back a non-manifold, BRepCheck-invalid solid while the kernel reports ok:
- * the fuse path has no overlap probe by design (features/boolean.ts), and a
- * face-flush contact is valid. So: a positive-volume overlap and a face-flush
- * contact go to the real fuse; a contact that only appears once the tool is
- * dilated by a micron is 'tangent' and is skipped; a still-empty intersection
- * is a genuinely disjoint tool and fuses into a two-solid compound as usual. A
- * probe that cannot run is 'unknown': the fuse proceeds and surfaces its own
- * outcome rather than the harness hiding it.
+ * back a non-manifold, BRepCheck-invalid solid while the kernel reports ok: the
+ * leaf's connectivity walk only decides whether the pick joins the base
+ * (features/boolean.ts), not whether the weld is sound, and a face-flush
+ * contact is valid. So: a positive-volume overlap and a face-flush contact go
+ * to the real fuse; a contact that only appears once the tool is dilated by a
+ * micron is 'tangent' and is skipped; a genuinely disjoint pick is 'disjoint'
+ * and the leaf skips it with its own warning, leaving the tool body in the
+ * store (applyStep asserts that shape). A probe that cannot run is 'unknown':
+ * the fuse proceeds and surfaces its own outcome rather than the harness
+ * hiding it.
  */
 export function classifyUnionContact(oc: OccModule, scope: DisposeScope, target: OccShape, tool: OccShape): UnionContact {
   const E = oc.TopAbs_ShapeEnum
@@ -701,6 +703,9 @@ interface StepOutcome {
   // A split's plane and the target's span along its normal, so the side
   // invariant knows where the cut was and how much tolerance the bbox read has.
   splitPlane?: { axis: AxisName; offset: number; span: number }
+  // A shape the harness expected the step to take and the kernel did not. The
+  // runner turns it into a violation; applyStep has no report list of its own.
+  violation?: string
 }
 
 /** One step against the live store. Throws on any feature refusal. */
@@ -723,11 +728,12 @@ function applyStep(
   }
   if (step.kind === 'boolean') {
     const toolBody = applyTool(oc, scope, table, bodyStore, step)
+    let unionContact: UnionContact | null = null
     if (step.operation === 'union') {
       const target = requireBody(bodyStore, step.target)
       const tool = requireBody(bodyStore, toolBody)
-      const contact = classifyUnionContact(oc, scope, table.get<OccShape>(target.shape as OccHandle), table.get<OccShape>(tool.shape as OccHandle))
-      if (contact === 'tangent') {
+      unionContact = classifyUnionContact(oc, scope, table.get<OccShape>(target.shape as OccHandle), table.get<OccShape>(tool.shape as OccHandle))
+      if (unionContact === 'tangent') {
         // Drop the tool we just minted; the store is exactly as before.
         table.releaseFor(tool.shape as OccHandle, step.toolId)
         delete bodyStore[toolBody]
@@ -738,6 +744,23 @@ function applyStep(
       id: step.id,
       boolean: { operation: step.operation, target: step.target, tools: [toolBody] },
     }, repoForLeaves, bodyStore)
+    if (unionContact === 'disjoint') {
+      // The leaf treats a union pick that touches nothing as a miss: it warns,
+      // keeps the tool body and leaves the target alone. Assert that shape so a
+      // regression back to fusing disjoint material cannot pass as a quiet store
+      // change.
+      const skipped = result.solver_warning?.includes('does not intersect the target; skipped') ?? false
+      const toolKept = bodyStore[toolBody] !== undefined
+      const targetKept = result.body_ids.length === 1 && result.body_ids[0] === step.target
+      if (!skipped || !toolKept || !targetKept) {
+        return {
+          editedIds: result.body_ids,
+          violation: 'a disjoint union pick did not take the skip-and-warn shape ' +
+            `(warning: ${result.solver_warning ?? 'none'}, tool body kept: ${toolKept}, ` +
+            `result bodies: ${result.body_ids.join(',') || 'none'})`,
+        }
+      }
+    }
     return { editedIds: result.body_ids }
   }
   if (step.kind === 'fillet' || step.kind === 'chamfer') {
@@ -1010,6 +1033,9 @@ function executeChain(oc: OccModule, recipe: Recipe, options: ChainRunOptions): 
       let report: StepReport
       try {
         const outcome = applyStep(oc, scope, table, bodyStore, repo, step, i, run.picks, options.overridePicks)
+        if (outcome.violation !== undefined) {
+          run.violations.push({ step: i, message: outcome.violation })
+        }
         report = {
           step: i, kind: step.kind, status: 'built',
           trackCount: scope.trackCount, releaseCount: scope.releaseCount, peakLive: scope.peakLive,

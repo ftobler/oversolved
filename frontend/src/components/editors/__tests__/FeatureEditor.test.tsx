@@ -290,35 +290,43 @@ describe('FeatureEditor boolean union picker', () => {
   it('labels each joined body by its part name and follows a rename', () => {
     // The field is body-typed, so the chip names the resolved body (the Part
     // list's own name), not the face or feature query the click stored.
+    const bodiesBefore = usePartEditorStore.getState().bodies
     usePartEditorStore.setState({
       bodies: {
         body_a: { id: 'body_a', created_by: 'ex1', modified_by: [] },
         body_b: { id: 'body_b', created_by: 'ex2', modified_by: [] },
       },
     })
-    const { rerender } = render(
-      <FeatureEditor
-        feature={unionFeature('union')}
-        onMutation={vi.fn()}
-        schema={BOOLEAN_SCHEMA}
-        partLabels={{ body_a: 'Housing', body_b: 'Lid' }}
-        features={[]}
-      />,
-    )
-    expect(screen.getByText('Housing')).toBeInTheDocument()
-    expect(screen.getByText('Lid')).toBeInTheDocument()
+    try {
+      const { rerender } = render(
+        <FeatureEditor
+          feature={unionFeature('union')}
+          onMutation={vi.fn()}
+          schema={BOOLEAN_SCHEMA}
+          partLabels={{ body_a: 'Housing', body_b: 'Lid' }}
+          features={[]}
+        />,
+      )
+      expect(screen.getByText('Housing')).toBeInTheDocument()
+      expect(screen.getByText('Lid')).toBeInTheDocument()
 
-    rerender(
-      <FeatureEditor
-        feature={unionFeature('union')}
-        onMutation={vi.fn()}
-        schema={BOOLEAN_SCHEMA}
-        partLabels={{ body_a: 'Housing A', body_b: 'Lid' }}
-        features={[]}
-      />,
-    )
-    expect(screen.getByText('Housing A')).toBeInTheDocument()
-    expect(screen.queryByText('Housing')).toBeNull()
+      rerender(
+        <FeatureEditor
+          feature={unionFeature('union')}
+          onMutation={vi.fn()}
+          schema={BOOLEAN_SCHEMA}
+          partLabels={{ body_a: 'Housing A', body_b: 'Lid' }}
+          features={[]}
+        />,
+      )
+      expect(screen.getByText('Housing A')).toBeInTheDocument()
+      expect(screen.queryByText('Housing')).toBeNull()
+    } finally {
+      // The store is shared by the whole file; a later test must not inherit
+      // these fixture bodies. Wrapped in act because the rendered chip is still
+      // subscribed when the test body restores it.
+      act(() => { usePartEditorStore.setState({ bodies: bodiesBefore }) })
+    }
   })
 })
 

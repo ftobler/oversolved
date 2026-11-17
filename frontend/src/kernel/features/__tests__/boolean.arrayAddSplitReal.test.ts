@@ -17,7 +17,7 @@ import { loadOcc } from '../../occ/loadOcc'
 import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
 import { booleanWithDiff, volumeOf } from '../../occ/booleans'
-import { makeBoxAt, makeCylinder } from '../../occ/primitives'
+import { makeBoxAt, makeCylinder, solidCentroid } from '../../occ/primitives'
 import { Repository } from '../../query'
 import { bareBody } from '../shared/bodyResolution'
 import { patternFeature, solveArray, solveCircularArray } from './patternBodyTestAdapters'
@@ -224,7 +224,10 @@ describe.skipIf(!hasOcc)('boolean tools: @array includes the copies an add array
 
     // A bracket that does not touch the copy: the union skips it with the
     // disjoint-pick warning, so it is neither consumed nor split into a sibling
-    // OF the copy. It stays its own body, outside the array's material.
+    // OF the copy. It stays its own body, outside the array's material. The
+    // provenance rule this file gates (a later split's sibling must not be
+    // inherited by @<arrayId>) needs a sibling to exist, so it is pinned by the
+    // next case.
     seed(r, 'body_bracket', 'bracket', makeBoxAt(oc, r.scope, [200, -5, -5], 20, 10, 10))
     const union = solveBoolean(oc, r.scope, r.table, {
       id: 'bool2', boolean: { operation: 'union', target: '@body_spoke_1', tools: ['@body_bracket'] },
@@ -242,6 +245,60 @@ describe.skipIf(!hasOcc)('boolean tools: @array includes the copies an add array
     expect(Object.keys(r.store).sort()).toEqual(['body_bracket', 'body_plate'])
     expect(volume(r, 'body_plate')).toBeCloseTo(plateBefore - 2 * 40 * 8 * 8, 3)
     expect(volume(r, 'body_bracket')).toBeCloseTo(20 * 10 * 10, 3)
+    r.scope.dispose()
+  })
+
+  it('a later split\'s sibling is not inherited by the array ref, even with union material folded into it', () => {
+    const r = rig()
+    const plate = makeBoxAt(oc, r.scope, [-20, -10, -10], 340, 20, 20)
+    seed(r, 'body_plate', 'plate', plate)
+    seed(r, 'body_spoke', 'sp0', spokeShape(r))
+    const ar1 = {
+      source_body: '@body_spoke', mode: 'linear', operation: 'add',
+      count_x: 2, pitch_x: 100, direction_x: [1, 0, 0],
+    }
+    solveArray(oc, r.scope, r.table, { id: 'ar1', array: ar1 }, new Repository(), r.store)
+    expect(Object.keys(r.store)).toHaveLength(3)
+
+    // Sever the array's second spoke in two. The half that keeps the copy's id
+    // is still array material (split_from = ar1); the other half is a sibling
+    // of THIS cut (split_from = bool_cut), and that is the provenance the
+    // boolean `@<arrayId>` expansion must not inherit.
+    seed(r, 'body_sever', 'sever', makeBoxAt(oc, r.scope, [129, -5, -5], 2, 10, 10))
+    const cut = solveBoolean(oc, r.scope, r.table, {
+      id: 'bool_cut', boolean: { operation: 'subtract', target: '@body_spoke_1', tools: ['@body_sever'] },
+    }, new Repository(), r.store)
+    expect(cut.solver_warning).toBeUndefined()
+    expect(Object.keys(r.store)).toHaveLength(4)
+    const siblingId = Object.keys(r.store).find((id) => r.store[id].split_from?.feature === 'bool_cut')
+    expect(siblingId).toBeDefined()
+    if (siblingId === undefined) throw new Error('the sever cut minted no sibling')
+    expect(r.store[siblingId].split_from).toEqual({ feature: 'bool_cut', body: 'body_spoke_1' })
+
+    // Fold a bracket into the severed sibling: the material the old disjoint
+    // union used to mint its own sibling for. The bracket is centred on the
+    // sibling and swallows its 19 mm half, so the sibling ends up bracket-sized.
+    const siblingShape = r.table.get<OccShape>(r.store[siblingId].shape!)
+    const centre = solidCentroid(oc, r.scope, siblingShape)
+    seed(r, 'body_bracket', 'bracket', makeBoxAt(oc, r.scope, [centre[0] - 10, -4, -4], 20, 8, 8))
+    const union = solveBoolean(oc, r.scope, r.table, {
+      id: 'bool_union', boolean: { operation: 'union', target: `@${siblingId}`, tools: ['@body_bracket'] },
+    }, new Repository(), r.store)
+    expect(union.solver_warning).toBeUndefined()
+    expect(union.body_ids).toEqual([siblingId])
+    expect(r.store[siblingId].split_from).toEqual({ feature: 'bool_cut', body: 'body_spoke_1' })
+
+    const plateBefore = volume(r, 'body_plate')
+    solveBoolean(oc, r.scope, r.table, {
+      id: 'bool1', boolean: { operation: 'subtract', target: '@body_plate', tools: ['@ar1'] },
+    }, new Repository(), r.store, solvedArrays(['ar1', 'array', ar1]))
+
+    // @ar1 is the source spoke and the copy that still holds the array's id,
+    // not the sibling the sever cut made. An inherited split_from would hand
+    // the sibling (and the bracket material folded into it) to the array.
+    expect(Object.keys(r.store).sort()).toEqual(['body_plate', siblingId].sort())
+    expect(volume(r, 'body_plate')).toBeCloseTo(plateBefore - (40 + 19) * 8 * 8, 3)
+    expect(volume(r, siblingId)).toBeCloseTo(20 * 8 * 8, 3)
     r.scope.dispose()
   })
 

@@ -286,7 +286,9 @@ export const BOOLEAN_SCHEMA: FeatureEditorSchema = {
       emptyText: '(pick the bodies to join)' },
     { type: 'number', key: 'clearance', label: 'Clearance', default: 0, unit: 'mm',
       showWhen: (d) => d.operation === 'subtract', validate: finite },
-    { type: 'checkbox', key: 'keep_tools', label: 'Keep tools', default: false },
+    // "Tools" does not exist in the union editor's one join list, so the label
+    // names what both operations actually keep: the other picked bodies.
+    { type: 'checkbox', key: 'keep_tools', label: 'Keep other bodies', default: false },
   ],
 }
 
