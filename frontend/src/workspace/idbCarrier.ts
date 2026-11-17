@@ -139,19 +139,23 @@ function entryMetaOf(record: WorkspaceEntryRecord): WorkspaceEntryMetaRecord {
 }
 
 // A row written while imports kept an origin link still carries provenance
-// records. They are stripped on read so every write that spreads this row back
-// out omits them: nothing reads them any more (the origin link was retired
-// 2026-11-16), and a legacy row must keep opening.
+// records. Every write that spreads this row back out has to omit them: nothing
+// reads them any more (the origin link was retired 2026-11-16), and a legacy row
+// must keep opening. Stripping happens on read and again at each read-modify-
+// write, because idbUpdateFrom hands the raw stored row in rather than routing
+// it through readWorkspaceMeta.
 type LegacyProvenanceFields = { provenance?: unknown; savedProvenance?: unknown }
+
+function withoutLegacyProvenance(meta: WorkspaceMetaRecord): WorkspaceMetaRecord {
+  const legacy = meta as WorkspaceMetaRecord & LegacyProvenanceFields
+  delete legacy.provenance
+  delete legacy.savedProvenance
+  return meta
+}
 
 export async function readWorkspaceMeta(workspace: string): Promise<WorkspaceMetaRecord | undefined> {
   const meta = await idbGetFrom<WorkspaceMetaRecord>(STORE_WORKSPACE_META, workspace)
-  if (meta) {
-    const legacy = meta as WorkspaceMetaRecord & LegacyProvenanceFields
-    delete legacy.provenance
-    delete legacy.savedProvenance
-  }
-  return meta
+  return meta === undefined ? undefined : withoutLegacyProvenance(meta)
 }
 
 export async function listWorkspaceMetas(): Promise<WorkspaceMetaRecord[]> {
@@ -159,7 +163,7 @@ export async function listWorkspaceMetas(): Promise<WorkspaceMetaRecord[]> {
 }
 
 export async function writeWorkspaceMeta(meta: WorkspaceMetaRecord): Promise<void> {
-  await idbPutTo(STORE_WORKSPACE_META, meta)
+  await idbPutTo(STORE_WORKSPACE_META, withoutLegacyProvenance(meta))
 }
 
 export async function workspaceEntryRecords(workspace: string): Promise<WorkspaceEntryRecord[]> {
@@ -468,15 +472,16 @@ export class IdbCarrier implements WorkspaceCarrier {
       this.workspace,
       (meta, stores) => {
         if (!meta) throw new Error(`Workspace not found: ${this.workspace}`)
-        if (meta.trash.includes(entry.id)) throw new Error(`Entry is trashed: ${entry.id}`)
+        const current = withoutLegacyProvenance(meta)
+        if (current.trash.includes(entry.id)) throw new Error(`Entry is trashed: ${entry.id}`)
         if (changed) {
           const record = entryToRecord(this.workspace, merged, previous.path, previous.rev + 1, Date.now())
           stores[STORE_WORKSPACE_ENTRIES].put(record)
           stores[STORE_WORKSPACE_ENTRY_META].put(entryMetaOf(record))
         }
         if (targets === null) return undefined
-        const references = reconciledReferences(meta.references, entry.id, targets)
-        return references === undefined ? undefined : { ...meta, references, updatedAt: Date.now() }
+        const references = reconciledReferences(current.references, entry.id, targets)
+        return references === undefined ? undefined : { ...current, references, updatedAt: Date.now() }
       },
     )
   }
@@ -504,10 +509,11 @@ export class IdbCarrier implements WorkspaceCarrier {
       this.workspace,
       (meta, stores) => {
         if (!meta) throw new Error(`Workspace not found: ${this.workspace}`)
+        const current = withoutLegacyProvenance(meta)
         stores[STORE_WORKSPACE_ENTRIES].put(record)
         stores[STORE_WORKSPACE_ENTRY_META].put(entryMetaOf(record))
-        const references = reconciledReferences(meta.references, entry.id, targets)
-        return references === undefined ? undefined : { ...meta, references, updatedAt: Date.now() }
+        const references = reconciledReferences(current.references, entry.id, targets)
+        return references === undefined ? undefined : { ...current, references, updatedAt: Date.now() }
       },
     )
   }
@@ -694,7 +700,7 @@ export class IdbCarrier implements WorkspaceCarrier {
       this.workspace,
       meta => {
         if (!meta) throw new Error(`Workspace not found: ${this.workspace}`)
-        return edit(meta)
+        return edit(withoutLegacyProvenance(meta))
       },
     )
   }

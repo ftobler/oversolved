@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { IdbWorkspaceStore } from '../store'
-import { IdbCarrier, readWorkspaceMeta, writeWorkspaceMeta } from '../idbCarrier'
+import { IdbCarrier, readWorkspaceMeta } from '../idbCarrier'
 import { deserializeTree, serializeTree } from '../serializer'
 import { readZipBag, importBag } from '../import'
 import { buildZipBytes } from '../zipCarrier'
 import { addReference } from '../refs'
+import { STORE_WORKSPACE_META, idbPutTo } from '@/stores/documentStore/idb'
 import { getFileRegistry } from '@/stores/fileRegistry'
 import { bytesOf, documentEntry, fileEntry, treeWith } from './fixtures'
 import { resetWorkspaceIdb } from './idbHarness'
@@ -227,11 +228,10 @@ describe('IdbWorkspaceStore (degenerate workspace)', () => {
     const store = new IdbWorkspaceStore()
     const { workspace } = await store.create('Legacy', { docKind: 'part' })
     const meta = (await readWorkspaceMeta(workspace))!
-    const legacy = {
+    await idbPutTo(STORE_WORKSPACE_META, {
       ...meta,
       provenance: [{ entry: workspace, origin: 'folder:cad', originEntry: 'x' }],
-    }
-    await writeWorkspaceMeta(legacy as unknown as typeof meta)
+    })
 
     const { workspace: copy } = await store.duplicate(workspace, 'Legacy copy')
 
