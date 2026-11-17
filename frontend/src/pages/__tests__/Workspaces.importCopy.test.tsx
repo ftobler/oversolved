@@ -3,7 +3,11 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { BrowserRouter } from 'react-router-dom'
 import { fakeDirectory } from '@/stores/documentStore/__tests__/fakeFileSystemDirectory'
+import { STORE_HANDLES, idbGetAllFrom } from '@/stores/documentStore/idb'
 import { buildZipBytes } from '@/workspace/zipCarrier'
+import { MANIFEST_PATH } from '@/workspace/paths'
+import { getWorkspaceStore } from '@/workspace/store'
+import { readWorkspaceMeta } from '@/workspace/idbCarrier'
 import { bytesOf, documentEntry, fileEntry, treeWith } from '@/workspace/__tests__/fixtures'
 import { freshLocalDb } from './workspacesHarness'
 import Workspaces from '@/pages/Workspaces'
@@ -75,6 +79,19 @@ async function clickImportItem(label: string) {
   await userEvent.click(screen.getByText(label))
 }
 
+// An import is a plain copy: the landed workspace records no origin link, in
+// its meta row, its manifest or the IndexedDB handle store.
+async function expectPlainCopy(): Promise<void> {
+  const store = getWorkspaceStore()
+  const [summary] = await store.list()
+  const meta = (await readWorkspaceMeta(summary.workspace))!
+  expect('provenance' in meta).toBe(false)
+  expect(await idbGetAllFrom(STORE_HANDLES)).toEqual([])
+  const manifest = (await store.export(summary.workspace)).find(file => file.path === MANIFEST_PATH)!
+  const text = typeof manifest.data === 'string' ? manifest.data : new TextDecoder().decode(manifest.data)
+  expect(text).not.toContain('provenance')
+}
+
 describe('Workspaces import copy wording (U5)', () => {
   it('states the copy and the count for a folder import', async () => {
     const dir = fakeDirectory('cad')
@@ -87,7 +104,7 @@ describe('Workspaces import copy wording (U5)', () => {
 
     expect(await screen.findByText(/Copied 1 entries into this workspace/)).toBeInTheDocument()
     expect(screen.getByText(/Edits to the source will not propagate/)).toBeInTheDocument()
-    expect(screen.getByText(/Origins panel/)).toBeInTheDocument()
+    await expectPlainCopy()
   })
 
   it('states the copy and the count for a zip opened through the picker', async () => {
@@ -101,6 +118,7 @@ describe('Workspaces import copy wording (U5)', () => {
     await clickImportItem('Open archive')
 
     expect(await screen.findByText(/Copied 2 entries into this workspace/)).toBeInTheDocument()
+    await expectPlainCopy()
   })
 
   it('states the copy and the count for a bare file', async () => {
@@ -117,6 +135,7 @@ describe('Workspaces import copy wording (U5)', () => {
     fireEvent.change(input, { target: { files: [file] } })
 
     expect(await screen.findByText(/Copied 1 entries into this workspace/)).toBeInTheDocument()
+    await expectPlainCopy()
   })
 
   // The bare-file gesture is the one path that goes through the file picker, so

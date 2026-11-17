@@ -15,14 +15,7 @@ import { getWorkspaceStore, type WorkspaceSummary } from '@/workspace/store'
 import { subscribeWorkspaceStore } from '@/workspace/storeEvents'
 import { buildZipBytes } from '@/workspace/zipCarrier'
 import { deserializeTree } from '@/workspace/serializer'
-import { importBag, readDirectoryBag, readZipBag, type ImportBag } from '@/workspace/import'
-import {
-  getOriginResolver,
-  mintOriginLocator,
-  rememberOriginDirectory,
-  rememberOriginZip,
-  type OriginDescriptor,
-} from '@/workspace/originResolver'
+import { importBag, readDirectoryBag, readZipBag } from '@/workspace/import'
 import { canPickDirectory, canPickWorkspaceZip, pickLibraryDirectory, pickWorkspaceZip } from '@/adapters/fileSystemAccess'
 import '@/pages/Documents.css'
 
@@ -200,14 +193,10 @@ export default function Workspaces() {
     try {
       await withBusy('import', async () => {
         const bytes = new Uint8Array(await file.arrayBuffer())
-        const locator = mintOriginLocator('file')
-        const isArchive = /\.(zip|oversolved)$/i.test(file.name)
-        const read = async (): Promise<ImportBag> => isArchive
-          ? readZipBag(bytes, locator)
-          : { origin: locator, items: [{ path: file.name, bytes }] }
-        const descriptor: OriginDescriptor = { locator, name: file.name, read }
-        getOriginResolver().register(descriptor)
-        const result = await importBag(await read(), { origin: descriptor })
+        const bag = /\.(zip|oversolved)$/i.test(file.name)
+          ? await readZipBag(bytes)
+          : { items: [{ path: file.name, bytes }] }
+        const result = await importBag(bag)
         setImportedCount(result.documents + result.files)
         await refresh(false, debouncedSearch)
       })
@@ -221,22 +210,9 @@ export default function Workspaces() {
       await withBusy('import', async () => {
         const dir = await pickLibraryDirectory()
         if (!dir) return  // cancelled: a non-event
-        const locator = mintOriginLocator('folder')
-        const descriptor: OriginDescriptor = {
-          locator,
-          name: dir.name,
-          read: () => readDirectoryBag(dir, locator),
-        }
-        getOriginResolver().register(descriptor)
-        // Remember the handle so a later session's update can pull from this
-        // source again. The in-session read above still works if this is
-        // refused, and nothing is ever written back either way.
-        await rememberOriginDirectory(locator, dir)
         // One-shot: the folder's bytes are copied into the permanent store and
-        // the folder itself is left alone. The handle above is the origin's, for
-        // an explicit later pull, not a place this workspace saves back to.
-        const bag = await readDirectoryBag(dir, locator)
-        const result = await importBag(bag, { origin: descriptor })
+        // the folder itself is left alone.
+        const result = await importBag(await readDirectoryBag(dir))
         setImportedCount(result.documents + result.files)
         await refresh(false, debouncedSearch)
       })
@@ -245,27 +221,13 @@ export default function Workspaces() {
     }
   }
 
-  // A zip opened through the file picker carries a real handle, which is worth
-  // remembering as an origin the user can pull from again. The archive is still
-  // only read: the entries it holds are copied in and live in IndexedDB.
   const handleOpenZip = async () => {
     try {
       await withBusy('import', async () => {
         const handle = await pickWorkspaceZip()
         if (!handle) return  // cancelled: a non-event
         const bytes = new Uint8Array(await (await handle.getFile()).arrayBuffer())
-        const locator = mintOriginLocator('zip')
-        const descriptor: OriginDescriptor = {
-          locator,
-          name: handle.name,
-          // Re-read from the handle rather than the captured bytes, so an archive
-          // edited on disk is the one an update sees.
-          read: async () => readZipBag(new Uint8Array(await (await handle.getFile()).arrayBuffer()), locator),
-        }
-        getOriginResolver().register(descriptor)
-        await rememberOriginZip(locator, handle)
-        const bag = await readZipBag(bytes, locator)
-        const result = await importBag(bag, { origin: descriptor })
+        const result = await importBag(await readZipBag(bytes))
         setImportedCount(result.documents + result.files)
         await refresh(false, debouncedSearch)
       })
@@ -424,7 +386,7 @@ export default function Workspaces() {
           <MessageDialog
             isOpen={importedCount !== null}
             title="Copied into Workspace"
-            message={`Copied ${importedCount ?? 0} entries into this workspace. Edits to the source will not propagate. Use the Origins panel to check for and pull updates.`}
+            message={`Copied ${importedCount ?? 0} entries into this workspace. Edits to the source will not propagate.`}
             onClose={() => setImportedCount(null)}
           />
 

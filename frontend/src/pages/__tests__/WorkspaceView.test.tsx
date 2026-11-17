@@ -47,8 +47,6 @@ function installSession(all: EntryMeta[] = entries, edges: Record<string, string
     savedRevs: vi.fn(async () => new Map<string, number>(all.map(e => [e.id, e.rev ?? 0]))),
     readEntry: vi.fn(),
     writeEntry: vi.fn(),
-    originOf: vi.fn(async () => undefined),
-    provenance: vi.fn(async () => []),
     resolveFile: vi.fn(),
     referencesOf: vi.fn(async () => []),
     referenceEdges: vi.fn(async () => edges),
@@ -320,7 +318,6 @@ describe('WorkspaceView', () => {
       listEntries: vi.fn(async () => entries),
       savedRevs: vi.fn(async () => new Map<string, number>()),
       readEntry: vi.fn(), writeEntry: vi.fn(),
-      originOf: vi.fn(async () => undefined), provenance: vi.fn(async () => []),
       resolveFile: vi.fn(), referencesOf: vi.fn(async () => []),
       referenceEdges: vi.fn(async () => ({})),
     }

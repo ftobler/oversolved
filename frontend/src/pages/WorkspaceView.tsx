@@ -25,9 +25,8 @@ import { discardUnsavedEdits } from '@/recovery/discardUnsavedEdits'
 import { dirtyEntryIds, groupEntries } from '@/components/layout/workspaceTreeModel'
 import { useWhereUsed } from '@/components/layout/filesSeams'
 import { fileSizeOf, orphanFileIds, referrersOf } from '@/components/layout/filesModel'
-import { originState, updateFromOrigin, type OriginStatus } from '@/workspace/import'
 import { dropWorkerFileId } from '@/kernel/worker/workerFiles'
-import type { EntryMeta, ProvenanceRecord } from '@/workspace/types'
+import type { EntryMeta } from '@/workspace/types'
 import EntryRow from '@/pages/WorkspaceEntryRow'
 import { downloadDocumentEntry, downloadFileEntry, entryExportFormats } from '@/pages/workspaceEntryExport'
 import '@/pages/Documents.css'
@@ -46,8 +45,6 @@ import '@/pages/WorkspaceView.css'
 // replaces had nowhere to put one.
 const EMPTY_ENTRIES: EntryMeta[] = []
 const EMPTY_REVS = new Map<string, number>()
-const EMPTY_PROVENANCE: ProvenanceRecord[] = []
-const EMPTY_STATUSES = new Map<string, OriginStatus>()
 const EMPTY_KEYS: ReadonlySet<string> = new Set()
 
 export default function WorkspaceView() {
@@ -70,7 +67,7 @@ export default function WorkspaceView() {
   // `null` is "not loaded yet", which is NOT the same as "empty": starting at []
   // painted "This workspace is empty." over a nameless 0-byte card on every open,
   // until two IDB round-trips resolved.
-  const [loaded, setLoaded] = useState<{ workspace: string; entries: EntryMeta[]; savedRevs: Map<string, number>; summary: WorkspaceSummary | null; provenance: ProvenanceRecord[] } | null>(null)
+  const [loaded, setLoaded] = useState<{ workspace: string; entries: EntryMeta[]; savedRevs: Map<string, number>; summary: WorkspaceSummary | null } | null>(null)
   // Errors from a verb that owns a dialog belong inside that dialog: the banner
   // renders in the main column, which the open modal covers.
   //
@@ -108,27 +105,17 @@ export default function WorkspaceView() {
   // The prune guard's refusal: the store found a referrer the scan had not, so
   // the sweep stopped and names it rather than deleting the rest silently.
   const [pruneBlocked, setPruneBlocked] = useState<EntryReferrer[] | null>(null)
-  // What the explicit check answered, stamped with the workspace AND the store
-  // revision it answered for, because both can invalidate it. A status is a
-  // claim about how the local copy compares to its source, so any write to the
-  // workspace (this view's own pull included, which rewrites the whole closure
-  // and not just the clicked row) can make it false, and another workspace's
-  // rows were never in the answer at all. Stale either way, the row says "Not
-  // checked" rather than a comparison nobody made.
-  const [checked, setChecked] = useState<{ workspace: string | undefined; revision: number; statuses: Map<string, OriginStatus> }>(
-    { workspace: workspaceId, revision, statuses: EMPTY_STATUSES },
-  )
   // The row whose delete is in flight. The store round-trip can be slow enough
   // that a second click lands, and a double delete is not idempotent at this
   // layer, so the row's own button goes disabled until it settles. A Set rather
   // than one id, so a delete on one row cannot re-enable another's.
   const [deleting, setDeleting] = useState<ReadonlySet<string>>(new Set())
   // The verbs in flight, tagged with the workspace they were started on like
-  // the errors and the check statuses are. The per-entry keys carry a uuid and
-  // could never collide, but the workspace-wide ones (check, prune, rename,
-  // duplicate, export, trash, add) are bare: a duplicate navigates to the new
-  // workspace without unmounting this view, so an untagged set left the NEW
-  // workspace's controls disabled until the OLD workspace's verb settled.
+  // the errors are. The per-entry keys carry a uuid and could never collide,
+  // but the workspace-wide ones (prune, rename, duplicate, export, trash, add)
+  // are bare: a duplicate navigates to the new workspace without unmounting
+  // this view, so an untagged set left the NEW workspace's controls disabled
+  // until the OLD workspace's verb settled.
   const [inFlight, setInFlight] = useState<{ workspace: string | undefined; keys: ReadonlySet<string> }>(
     { workspace: workspaceId, keys: EMPTY_KEYS },
   )
@@ -151,16 +138,13 @@ export default function WorkspaceView() {
     const load = async () => {
       setLoadFailed(false)
       try {
-        const [entries, savedRevs, all, provenance] = await Promise.all([
+        const [entries, savedRevs, all] = await Promise.all([
           session.listEntries(),
           session.savedRevs(),
           store.list(),
-          // A stored read, not a resolver read: the row can name its source and
-          // say whether the local copy drifted without touching it (I2).
-          session.provenance(),
         ])
         if (cancelled) return
-        setLoaded({ workspace: workspaceId, entries, savedRevs, summary: all.find(row => row.workspace === workspaceId) ?? null, provenance })
+        setLoaded({ workspace: workspaceId, entries, savedRevs, summary: all.find(row => row.workspace === workspaceId) ?? null })
       } catch (e) {
         if (!cancelled) {
           setErrors({ workspace: workspaceId, banner: errorMessage(e, 'Failed to read this workspace'), dialog: null })
@@ -180,23 +164,9 @@ export default function WorkspaceView() {
   const savedRevs = ready ? loaded.savedRevs : EMPTY_REVS
   const summary = ready ? loaded.summary : null
 
-  const stored = ready ? loaded.provenance : EMPTY_PROVENANCE
-  const statuses = checked.workspace === workspaceId && checked.revision === revision
-    ? checked.statuses
-    : EMPTY_STATUSES
-
   const grouped = useMemo(() => groupEntries(entries), [entries])
   const dirty = useMemo(() => dirtyEntryIds(entries, savedRevs), [entries, savedRevs])
   const byId = useMemo(() => new Map(entries.map(entry => [entry.id, entry])), [entries])
-  // Only the records that still have an entry to sit on. A record outlives the
-  // copy it describes (deleting the local entry leaves it in the manifest), and
-  // one of those has no row, so checking it would resolve a source for
-  // something the user cannot see and would leave the card offering a check on
-  // a workspace that shows no origin at all.
-  const origins = useMemo(
-    () => new Map(stored.filter(record => byId.has(record.entry)).map(record => [record.entry, record])),
-    [stored, byId],
-  )
   const { inverse, ready: scanned } = useWhereUsed(session, entries)
   const referrerNames = useMemo(() => {
     const names = new Map<string, string[]>()
@@ -366,21 +336,6 @@ export default function WorkspaceView() {
       dropWorkerFileId(entry.id)
     })
 
-  // The explicit pull, the only resolver read a row ever makes besides the
-  // check. A pull that could not reach the source or find the recorded entry
-  // writes nothing, and says so rather than leaving the click unanswered.
-  const handleUpdate = (entry: EntryMeta, record: ProvenanceRecord) =>
-    runBusy(`update:${entry.id}`, `Failed to update ${entry.name}`, async () => {
-      if (!workspaceId) return
-      const result = await updateFromOrigin(workspaceId, record.entry)
-      if (result.unreachable) setError(`Origin unavailable; ${entry.name} was not updated.`)
-      else if (result.sourceMissing) setError(`The source entry is gone; ${entry.name} was not updated.`)
-      // A pull that wrote bumps the store revision, so the rows reload and every
-      // status falls back to "Not checked" on its own: the pull rewrites the
-      // whole closure, so the sibling rows' statuses are as stale as this one's.
-      // A pull that wrote nothing bumps nothing, and leaves them standing.
-    })
-
   // A long workspace-level verb keeps its own key busy, so the card's control
   // goes disabled and no second duplicate or export can start.
   const handleRenameWorkspace = () => runBusy('rename', 'Failed to rename the workspace', async () => {
@@ -400,23 +355,6 @@ export default function WorkspaceView() {
     const tree = deserializeTree(await store.export(workspaceId))
     const bytes = await buildZipBytes(tree)
     downloadBlob(new Blob([bytes as BlobPart], { type: 'application/zip' }), `${summary?.name ?? 'workspace'}.zip`)
-  })
-
-  // The one gesture that resolves origins (I2). Nothing here runs on a mount,
-  // a render or a solve: a status is only ever the answer to this click.
-  const handleCheck = () => runBusy('check', 'Failed to check the origins', async () => {
-    const next = new Map<string, OriginStatus>()
-    for (const record of origins.values()) {
-      try {
-        const state = await originState(record, byId.get(record.entry)?.contentHash)
-        next.set(record.entry, state.status)
-      } catch {
-        // One resolver that throws must not strand the rest of the rows: that
-        // row reads as unreachable and the remaining checks still run.
-        next.set(record.entry, 'unreachable')
-      }
-    }
-    setChecked({ workspace: workspaceId, revision, statuses: next })
   })
 
   const handlePrune = () => runBusy('prune', 'Failed to prune the orphans', async () => {
@@ -479,21 +417,9 @@ export default function WorkspaceView() {
               >
                 <span className="material-icons">edit</span>
               </button>
-              {/* Both maintenance verbs are workspace-wide, so they sit on the
-                  card rather than on any one row: a check resolves every
-                  recorded origin, a prune sweeps every unreferenced file. Each
-                  appears only when it has something to act on. */}
-              {origins.size > 0 && (
-                <button
-                  className="btn btn-tile-action"
-                  title="Check for updates"
-                  aria-label="Check for updates"
-                  disabled={busy.has('check')}
-                  onClick={() => { void handleCheck() }}
-                >
-                  <span className="material-icons">{busy.has('check') ? 'hourglass_empty' : 'refresh'}</span>
-                </button>
-              )}
+              {/* The prune verb is workspace-wide, so it sits on the card rather
+                  than on any one row, and appears only when it has something to
+                  sweep. */}
               {orphans.length > 0 && (
                 <button
                   className="btn btn-tile-action"
@@ -613,18 +539,14 @@ export default function WorkspaceView() {
                   deleting={deleting.has(entry.id)}
                   duplicating={busy.has(`duplicate:${entry.id}`)}
                   replacing={busy.has(`replace:${entry.id}`)}
-                  updating={busy.has(`update:${entry.id}`)}
                   exporting={busy.has(`export:${entry.id}`)}
                   usedBy={referrerNames.get(entry.id)}
-                  origin={origins.get(entry.id)}
-                  status={statuses.get(entry.id) ?? 'unknown'}
                   onOpen={openEntry}
                   onRename={target => { setRenameTarget(target); setRenameName(target.name) }}
                   onDuplicate={target => { void handleDuplicate(target) }}
                   onExport={handleExportEntry}
                   onDelete={target => { void handleDelete(target) }}
                   onReplace={(target, chosen) => { void handleReplace(target, chosen) }}
-                  onUpdate={(target, record) => { void handleUpdate(target, record) }}
                 />
               ))}
             </ul>

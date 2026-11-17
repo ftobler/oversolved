@@ -57,8 +57,6 @@ function installSession(all: EntryMeta[] = entries, edges: Record<string, string
       { id, kind: 'file', name: 'shaft.step', bytes: new Uint8Array([1]) }
     )),
     writeEntry: vi.fn(async (_entry: WorkspaceEntry) => {}),
-    originOf: vi.fn(async () => undefined),
-    provenance: vi.fn(async () => []),
     resolveFile: vi.fn(),
     referencesOf: vi.fn(async () => []),
     referenceEdges: vi.fn(async () => edges),

@@ -40,8 +40,6 @@ export function installSessionFromList(h: { list: HarnessListEntry[] }) {
       referencesOf: vi.fn(),
       referenceEdges: vi.fn(async () => ({})),
       savedRevs: async () => new Map(),
-      originOf: async () => undefined,
-      provenance: async () => [],
     },
   })
 }
