@@ -315,11 +315,14 @@ describe.skipIf(!oc || !solveBytes)('the instance pattern pick table', () => {
     }
   })
 
-  it('refuses a whole sketch in the targets list by name', () => {
+  it('refuses a whole sketch as one point pick, naming the sketch', () => {
+    // The pattern's target list expands a sketch row before the table sees it;
+    // the reference pick has no such expansion, so the table still says a whole
+    // sketch names no single point.
     const { body, repo } = buildPlate()
     const ctx = context(repo, body)
     try {
-      expect(() => resolvePickTarget(ctx, '@skT')).toThrow(/is a whole sketch.*use the Sketch target form/)
+      expect(() => resolvePickTarget(ctx, '@skT')).toThrow(/is a whole sketch.*pick one of its points/)
     } finally {
       ctx.scope.dispose()
     }

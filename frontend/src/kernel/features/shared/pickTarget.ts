@@ -8,8 +8,10 @@
 //
 // A pick that resolves to no target is returned as null and the caller drops it
 // with a warning naming the pick. A pick that names something the table refuses
-// (a whole sketch or a whole body in the targets list) throws, so the sentence
-// reaches the feature instead of being silently dropped.
+// (a whole body, or a whole sketch where one point is wanted) throws, so the
+// sentence reaches the feature instead of being silently dropped. The instance
+// pattern's target list expands a sketch row before the table sees it, so a
+// sketch is only refused there as a single-point pick (its `reference`).
 
 import type { DisposeScope } from '../../occ/disposeScope'
 import type { OccModule, OccShape } from '../../occ/occTypes'
@@ -36,6 +38,11 @@ export interface PickTarget {
   label: string
   point: Vec3
   normal: Vec3 | null
+  // What the pick names, when it names a sketch entity: `<sketchId>:<entityId>`.
+  // Two sketches may both hold an entity id `p1`, so the naming key alone cannot
+  // tell whether two picks reached the same point; the callers that dedupe read
+  // this first and fall back to the point's position.
+  identity?: string
 }
 
 export interface PickTargetContext {
@@ -131,6 +138,7 @@ function sketchTarget(ctx: PickTargetContext, ref: string): PickTarget | 'whole-
     label: named.entityId,
     point: sketchToWorld2d(xy, plane) as Vec3,
     normal: unit(plane.normal),
+    identity: `${named.sketchId}:${named.entityId}`,
   }
 }
 
@@ -283,8 +291,8 @@ export function resolvePickTarget(
   const sketch = sketchTarget(ctx, ref)
   if (sketch === 'whole-sketch') {
     throw new Error(
-      `instance_pattern: '${ref}' is a whole sketch, which names no single target; ` +
-      'use the Sketch target form, or pick one point of it',
+      `instance_pattern: '${ref}' is a whole sketch, which names no single point; ` +
+      'pick one of its points',
     )
   }
   if (sketch !== null) return sketch
@@ -294,8 +302,8 @@ export function resolvePickTarget(
     const type = String(data.type ?? '')
     if (type === 'sketch-feature') {
       throw new Error(
-        `instance_pattern: '${ref}' is a whole sketch, which names no single target; ` +
-        'use the Sketch target form, or pick one point of it',
+        `instance_pattern: '${ref}' is a whole sketch, which names no single point; ` +
+        'pick one of its points',
       )
     }
     if (type === 'vertex') return vertexTarget(ref, data)

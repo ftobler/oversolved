@@ -31,7 +31,7 @@ function migratedDef(pattern: unknown): { kind: string; def: Record<string, unkn
 
 describe('the version-9 pattern split', () => {
   it('is the ladder current version', () => {
-    expect(CURRENT_DOC_VERSION).toBe(9)
+    expect(CURRENT_DOC_VERSION).toBe(10)
   })
 
   it('migrates a linear pattern 1:1 and keeps the feature id', () => {

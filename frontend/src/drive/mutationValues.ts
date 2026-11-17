@@ -1817,16 +1817,6 @@ function setCurvePatternField(raw: RawStep, ctx: ValueContext): ValueViolation |
   return null
 }
 
-/** Both target forms at once is a document the kernel refuses; the boundary
- *  names the form to clear instead of storing a feature that can only fail. */
-function instanceTargetFormProblem(sub: Record<string, unknown>, label: string): ValueViolation | null {
-  const sketch = typeof sub.sketch === 'string' && sub.sketch !== ''
-  const targets = Array.isArray(sub.targets) && sub.targets.length > 0
-  return sketch && targets
-    ? invalid(`${label}: sketch and targets cannot both be set; keep one target form`)
-    : null
-}
-
 function instanceRefProblem(value: unknown, field: string): ValueViolation | null {
   if (value === undefined || value === null || value === '') return null
   const problem = pickQueryProblem(value, field)
@@ -1851,13 +1841,13 @@ function addInstancePattern(raw: RawStep, ctx: ValueContext): ValueViolation | n
     const skipProblem = wholeIndexSkipProblem(raw.skip, `add_instance_pattern field ${json('skip')}`, 'an instance pattern')
     if (skipProblem !== null) return skipProblem
   }
+  // The retired `sketch` key is still a ref for one release; the applier folds
+  // it into the leading target, so carrying both keys is no longer a refusal.
   const ref = instanceRefProblem(raw.sketch, 'sketch')
   if (ref !== null) return ref
   const reference = instanceRefProblem(raw.reference, 'reference')
   if (reference !== null) return reference
-  const targets = instanceTargetsProblem(raw.targets)
-  if (targets !== null) return targets
-  return instanceTargetFormProblem(raw, 'add_instance_pattern')
+  return instanceTargetsProblem(raw.targets)
 }
 
 function setInstancePatternField(raw: RawStep, ctx: ValueContext): ValueViolation | null {
@@ -1873,18 +1863,7 @@ function setInstancePatternField(raw: RawStep, ctx: ValueContext): ValueViolatio
     const ref = instanceRefProblem(raw.value, field)
     if (ref !== null) return ref
   }
-  if (field === 'targets') {
-    const targets = instanceTargetsProblem(raw.value)
-    if (targets !== null) return targets
-  }
-  if (field === 'sketch' || field === 'targets') {
-    // The stored sibling says what the document would land with.
-    const stored = storedPatternDef(raw, ctx, 'instance_pattern')
-    if (stored !== null) {
-      const next = { ...stored, [field]: raw.value }
-      return instanceTargetFormProblem(next, `set_instance_pattern_field field ${json(field)}`)
-    }
-  }
+  if (field === 'targets') return instanceTargetsProblem(raw.value)
   return null
 }
 

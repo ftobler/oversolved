@@ -101,6 +101,41 @@ describe.skipIf(!ready)('add_pattern through the drive (real OCC + Rust solver)'
     expect(measured!.measures.bodies).toBe(1)
   }, 240_000)
 
+  it('rewrites the retired instance pattern sketch key into its target list and says so', async () => {
+    const doc = seedBuiltins({
+      version: 1,
+      kind: 'part',
+      features: [
+        rectSketch('sk_src', 4, 4),
+        { id: 'ex_src', kind: 'extrude', extrude: { sketch: '@sk_src', distance: 5, direction: 'normal', operation: 'new' } },
+        {
+          id: 'sk_pts', kind: 'sketch', plane: '@builtin_plane_front',
+          entities: [{ id: 'p1', kind: 'point' }, { id: 'p2', kind: 'point' }],
+          initial: { p1: [20, 0], p2: [40, 0] },
+          constraints: [],
+        },
+      ],
+    } as unknown as PartDoc)
+    const run = await runHeadless({
+      doc,
+      steps: [step({
+        type: 'add_instance_pattern', featureId: 'ip1', label: 'Instance Pattern',
+        subject: 'body', source_body: '@body_ex_src', sketch: '@sk_pts',
+      })],
+    })
+    expect(run.ok).toBe(true)
+    const feature = run.doc?.features?.find((entry) => entry.id === 'ip1')
+    expect(feature?.kind).toBe('instance_pattern')
+    if (feature?.kind !== 'instance_pattern') throw new Error('unreachable: the add landed no instance pattern')
+    expect(feature.instance_pattern).toMatchObject({ targets: ['@sk_pts'] })
+    expect(feature.instance_pattern).not.toHaveProperty('sketch')
+    // The reply names the rewrite instead of leaving the caller to find it.
+    const note = run.outcome.steps[0].note ?? ''
+    expect(note).toContain('sketch')
+    expect(note).toContain('targets')
+    expect(run.features.find((problem) => problem.id === 'ip1')).toBeUndefined()
+  }, 240_000)
+
   it('patterns several sources through one inline source_features list', async () => {
     // Two slots on the plate, each its own cut source; one call names both and
     // repeats both at the same grid. The reply must land both source lists and

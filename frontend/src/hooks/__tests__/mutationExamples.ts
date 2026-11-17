@@ -122,7 +122,7 @@ const curvePatternDoc = (): PartDoc => makeDoc({
 const instancePatternDoc = (): PartDoc => makeDoc({
   id: 'ip1', kind: 'instance_pattern', label: 'Instance Pattern',
   instance_pattern: {
-    subject: 'body', source_body: '@body_ex1', sketch: '@sk1', orientation: 'normal',
+    subject: 'body', source_body: '@body_ex1', targets: ['@sk1'], orientation: 'normal',
   },
 })
 

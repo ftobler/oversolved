@@ -258,19 +258,23 @@ export type CurvePatternDef = PatternSourceDef & {
   skip?: number[]
 }
 
-// An instance pattern repeats the subject onto a sketch's points or onto a
-// picked list of any target. Exactly one of `sketch` / `targets` drives the
-// list: `sketch` takes every non-construction point of that sketch (the same
-// site rule a hole drills), while `targets` takes any face, edge, vertex,
-// sketch point or plane pick. Numbering is 1..N in sketch entity order or list
-// order, so `skip` is positional, but the naming key is the target's entity id
-// (sketch form) or a short pick hash (targets form), so deleting an earlier
-// target never renames a later copy. `reference` is the point the copies are
-// measured from; absent, it falls back to the source sketch's only point or the
-// seed's centroid. `orientation: normal` (the default) turns each copy onto its
+// An instance pattern repeats the subject onto a list of points. One
+// `targets` list holds every target: a ref naming a sketch feature (`@sk1`) is
+// a row that expands in place to that sketch's non-construction points (the
+// same site rule a hole drills), and every other ref is one pick (a face, edge,
+// vertex, sketch point or plane). Numbering is 1..N in list order with each
+// sketch expanded where it stands, so `skip` is positional, but the naming key
+// is the target's entity id or a short pick hash, so deleting an earlier target
+// never renames a later copy. `reference` is the point the copies are measured
+// from; absent, it falls back to the source sketch's only point or the seed's
+// centroid. `orientation: normal` (the default) turns each copy onto its
 // target's normal; `fixed` only translates. `reverse_normal` flips every target
 // normal, not the source's.
 export type InstancePatternDef = PatternSourceDef & {
+  // The retired sketch-only form a pre-2026-11 document may still store. The
+  // loader folds it into the leading `targets` entry, the applier rewrites it,
+  // and the kernel reads a lingering one as that same leading target. Never
+  // written by a new edit.
   sketch?: string
   targets?: string[]
   reference?: string
