@@ -38,12 +38,10 @@ function renderTree(props: Partial<React.ComponentProps<typeof AssemblyTree>> = 
       onEditInstance={noop}
       onCommitInstance={noop}
       onCancelInstance={noop}
-      renderInstanceEditor={() => null}
       onCommitMate={noop}
       onCancelMate={noop}
       onDeleteMate={noop}
       onRequestRenameMate={noop}
-      renderMateEditor={() => null}
       {...props}
     />
   )

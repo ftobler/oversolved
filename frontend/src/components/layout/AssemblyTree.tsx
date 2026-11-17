@@ -1,9 +1,8 @@
-import { useCallback, useMemo, useRef, useState, type ReactNode, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useCallback, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import type { PartInstance, MateFeature } from '@/types/cad'
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { mateFailure, partFailure, assemblyVerdict } from '@/utils/core/assemblyStatus'
 import { markNameClass } from '@/utils/core/statusMark'
-import { StatusMessage } from '@/components/shared/StatusMessage'
 import type { AssemblyBuiltinListItem } from '@/utils/assemblyRender'
 import { readSelection, type AssemblySubject } from '@/utils/assemblySelection'
 import { hintDrivers, relatedHints } from '@/picking/relationHint'
@@ -24,13 +23,12 @@ import iconEyeOffIcon from '@/assets/icons/icon-eye-off.svg'
 import iconDotsIcon from '@/assets/icons/dots.svg'
 import constraintFixedIcon from '@/assets/icons/constraint-fixed.svg'
 import mateIcon from '@/assets/icons/constraint-coincident.svg'
-import { useSplitDrag } from '@/hooks/useSplitDrag'
 
 // The tree has no entity selection of its own; the accessor still wants the
 // orthogonal set, and a shared empty instance keeps the read allocation-free.
 const EMPTY_ENTITIES: ReadonlySet<string> = new Set()
 
-interface AssemblyTreeProps {
+export interface AssemblyTreeProps {
   instances: PartInstance[]
   // The assembly's own origin and reference planes, hidden by default.
   builtins: AssemblyBuiltinListItem[]
@@ -43,10 +41,10 @@ interface AssemblyTreeProps {
   // a part and a mate selected" unrepresentable, so cross-highlight and the row
   // `.selected` read derive from one slot instead of two independent fields.
   subject?: AssemblySubject | null
-  // The mate whose inline editor is open. Opened from the row's edit action, not
-  // a plain click, so a click can select without diving into the parameter form.
+  // The mate whose editor is open. Opened from the row's edit action, not a
+  // plain click, so a click can select without diving into the parameter form.
   editingMateId?: string | null
-  // The instance whose inline editor is open.
+  // The instance whose editor is open.
   editingInstanceHandle?: string | null
   onSelectPart?: (handle: string) => void
   // Drag-reorder callbacks. `beforeHandle`/`beforeId` name the row the dragged
@@ -63,10 +61,8 @@ interface AssemblyTreeProps {
   onEditInstance: (handle: string) => void
   onCommitInstance: () => void
   onCancelInstance: () => void
-  // Rendered inside the instance's row while it is being edited.
-  renderInstanceEditor: (instance: PartInstance) => ReactNode
   onSelectMate?: (featureId: string) => void
-  // Open the mate's inline editor (the row's pencil action).
+  // Open the mate's editor (the row's pencil action).
   onEditMate?: (featureId: string) => void
   onCommitMate: () => void
   onCancelMate: () => void
@@ -76,17 +72,16 @@ interface AssemblyTreeProps {
   // name is what the row shows: the mate's stored label, or the bare kind label
   // for a legacy mate that never had one.
   onRequestRenameMate: (featureId: string, currentName: string) => void
-  // Rendered inside the mate's row while it is being edited.
-  renderMateEditor: (mate: MateFeature) => ReactNode
 }
 
-// The assembly's feature tree, styled to mirror the part editor: a top pane of
-// origin planes and part instances (the "Features" analog) and a bottom pane of
-// mates (the "Parts" analog). An edited instance or mate expands its row into
-// the same pink dialog the part editor draws, with accept/reject on top. Row
-// actions use the part editor's svg glyphs, and the tridot opens the same
-// RightClickMenu. Presentational only; all mutations flow back through the
-// callbacks so the logic stays viewport-free and testable.
+// The assembly's feature tree, styled to mirror the part editor: a Parts card
+// of origin planes and part instances (the "Features" analog) over a Mates card
+// (the "Parts" analog), both placed by AssemblyDocumentPanel as floating glass
+// cards. An edited row keeps the pink `.editing` highlight and its own
+// OK/Cancel pair, but grows no form: the editor body lives in the right card
+// (AssemblyEditPanel.tsx). Row actions use the part editor's svg glyphs, and the
+// tridot opens the same RightClickMenu. Presentational only; all mutations flow
+// back through the callbacks so the logic stays viewport-free and testable.
 export function AssemblyTree({
   instances,
   builtins,
@@ -108,17 +103,14 @@ export function AssemblyTree({
   onEditInstance,
   onCommitInstance,
   onCancelInstance,
-  renderInstanceEditor,
   onSelectMate,
   onEditMate,
   onCommitMate,
   onCancelMate,
   onDeleteMate,
   onRequestRenameMate,
-  renderMateEditor,
 }: AssemblyTreeProps) {
   const [menu, setMenu] = useState<{ position: [number, number]; items: ContextMenuItem[] } | null>(null)
-  const { splitPercent, containerRef, handleMouseDown, handleKeyDown, min, max } = useSplitDrag()
 
   // The row picked up by an HTML5 drag. Held in a ref, not state: it changes only
   // at drag start/end and the reorder reads it on drop, so it never needs to
@@ -136,8 +128,8 @@ export function AssemblyTree({
   }
 
   // Enter/Space on a focused row selects it, mirroring the row's click. Only the
-  // row itself reacts: a key event bubbling from a control inside the inline
-  // editor must not re-select the subject the editor is editing.
+  // row itself reacts: a key event bubbling from a row action must not re-select
+  // the subject the action belongs to.
   const rowKeyDown = (e: ReactKeyboardEvent<HTMLLIElement>, select: () => void) => {
     if (e.target !== e.currentTarget) return
     if (e.key !== 'Enter' && e.key !== ' ') return
@@ -176,8 +168,8 @@ export function AssemblyTree({
   const verdictMark = assemblyVerdict(status ?? null, id => mateNames.get(id))
 
   return (
-    <div className="assembly-tree" ref={containerRef}>
-      <div className="sidebar-top" style={{ height: `${splitPercent}%` }}>
+    <>
+      <div className="sidebar-top glass-panel assembly-panel">
         <div className="sidebar-header"><span>Parts</span></div>
         {verdictMark.level && (
           <div
@@ -263,8 +255,9 @@ export function AssemblyTree({
                 title={failMark.failed ? failMark.message : undefined}
                 onClick={() => onSelectPart?.(inst.handle)}
                 onKeyDown={(e) => rowKeyDown(e, () => onSelectPart?.(inst.handle))}
-                // Not draggable while its inline editor is open: a draggable
-                // ancestor blocks the editor's inputs from taking focus.
+                // Not draggable while its editor is open: a reorder mid-edit is
+                // not a requested gesture, and the edited row is the anchor the
+                // right card is describing.
                 draggable={!editing}
                 onDragStart={(e) => { dragItemRef.current = { kind: 'part', id: inst.handle }; e.dataTransfer.effectAllowed = 'move' }}
                 onDragEnd={endDrag}
@@ -353,8 +346,6 @@ export function AssemblyTree({
                     </button>
                   </div>
                 </div>
-                {/* The row's mark heads its open editor, as a feature's does. */}
-                {editing && <><StatusMessage mark={failMark} />{renderInstanceEditor(inst)}</>}
               </li>
             )
           })}
@@ -365,21 +356,7 @@ export function AssemblyTree({
         </ul>
       </div>
 
-      <div
-        className="resize-handle"
-        onMouseDown={handleMouseDown}
-        onKeyDown={handleKeyDown}
-        title="Drag to resize"
-        role="slider"
-        tabIndex={0}
-        aria-label="Resize assembly panes"
-        aria-orientation="vertical"
-        aria-valuenow={Math.round(splitPercent)}
-        aria-valuemin={min}
-        aria-valuemax={max}
-      />
-
-      <div className="sidebar-bottom" style={{ height: `${100 - splitPercent}%` }}>
+      <div className="sidebar-bottom glass-panel assembly-panel">
         <div className="sidebar-header"><span>Mates</span></div>
         <ul
           className="features-list"
@@ -488,7 +465,6 @@ export function AssemblyTree({
                     </button>
                   </div>
                 </div>
-                {editing && <><StatusMessage mark={mateMark} />{renderMateEditor({ id, mate })}</>}
               </li>
             )
           })}
@@ -505,6 +481,6 @@ export function AssemblyTree({
           onClose={() => setMenu(null)}
         />
       )}
-    </div>
+    </>
   )
 }

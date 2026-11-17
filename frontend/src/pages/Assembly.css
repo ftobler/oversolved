@@ -1,16 +1,13 @@
 /* Assembly editor tree + part picker. Shared layout classes
-   (.document-viewer, .doc-container, .doc-sidebar, .sidebar-top/-bottom,
-   .sidebar-header, .features-list, .feature-item and its buttons, .resize-handle)
-   come from Part.css: the assembly tree deliberately mirrors the part editor. */
+   (.document-viewer, .doc-container, .viewport-stage, .floating-left/-right,
+   .document-panel, .sidebar-top/-bottom, .sidebar-header, .features-list,
+   .feature-item and its buttons, .feature-edit-panel) come from Part.css: the
+   assembly editor deliberately mirrors the part editor, floating glass cards
+   included. Only what the assembly adds or must tint for the frost lives here. */
 
-/* The viewport fills the editor pane absolutely, so the host must be its
-   positioning context; the hint floats over the empty scene. */
-.assembly-viewport-host {
-  position: relative;
-  flex: 1;
-  overflow: hidden;
-}
-
+/* The empty-assembly hint floats over the scene near the top edge. On a phone
+   the left drawer covers that edge when it is open, so the hint steps aside
+   rather than reading through the card. */
 .assembly-empty-hint {
   position: absolute;
   top: 1rem;
@@ -20,6 +17,12 @@
   color: #9aa0a6;
   pointer-events: none;
   z-index: 1;
+}
+
+@media (max-width: 768px), (max-height: 480px) {
+  .doc-container.panels-open .assembly-empty-hint {
+    display: none;
+  }
 }
 
 /* A failed load is terminal: the error and a single way back, no editor behind
@@ -34,33 +37,44 @@
   color: #c8ccd0;
 }
 
-/* Fills the sidebar and hosts the top (Parts) / bottom (Mates) split, exactly as
-   the part editor's Sidebar hosts Features / Parts. */
-.assembly-tree {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  min-height: 0;
-}
-
-/* The inline editor wraps below the row title, like the part editor's feature
-   rows, so the pink dialog expands the item instead of overflowing it. */
-.assembly-tree .feature-item {
-  flex-wrap: wrap;
-}
+/* The two assembly cards share `.sidebar-top`/`.sidebar-bottom` with the part
+   editor and are placed by `.document-panel` (Part.css). This class exists only
+   as the assembly's own scope for the row rules below; the card layout itself
+   comes from the shared classes. */
 
 /* Drop indicator for a drag-reorder: a line above the row the dragged item would
    land in front of. box-shadow rather than border so the row does not shift. */
-.assembly-tree .feature-item.drag-over {
+.assembly-panel .feature-item.drag-over {
   box-shadow: inset 0 2px 0 0 #4a90d9;
+}
+
+/* The cards float over a bright model, so the assembly's related rows keep the
+   hint hue at alpha. The shared Part.css rules are opaque and stay untouched:
+   the part editor's own `.related` rows are outside this feature's scope. The
+   edited and selected states keep their own looks, as they do in the shared
+   rules. */
+.assembly-panel .feature-item.related:not(.selected):not(.editing) {
+  background: rgba(18, 32, 40, 0.55);
+}
+
+/* Parity with the shared hover rule: an unselected related row still lights up
+   under the pointer instead of holding the hint tint. */
+.assembly-panel .feature-item.related:not(.selected):not(.editing):hover {
+  background: var(--glass-hover-bg);
+}
+
+/* A selected related row keeps reading as selected: the shared
+   `.selected.related` rule is opaque and would mask the frost. */
+.assembly-panel .feature-item.selected.related {
+  background: var(--glass-selected-bg);
 }
 
 /* The fixed glyph after a part's name. The icon assets are black strokes on
    transparent, so every icon in this UI is lit by inverting it; grayscale and
    brightness leave black black, which is why this badge used to vanish into the
-   #111 sidebar. One step below .feature-icon's invert(0.8) keeps it reading as a
-   status mark rather than a button, without dropping it out of sight. */
+   old opaque sidebar. One step below .feature-icon's invert(0.8) keeps it
+   reading as a status mark rather than a button, without dropping it out of
+   sight. */
 .feature-fixed-badge {
     width: 22px;
     height: 22px;
@@ -75,22 +89,16 @@
   color: #ff6b6b;
 }
 
-/* ── Inline editors (mate + instance) ──
-   Rendered inside the pink .feature-item.editing row, below its title. Both
-   bodies are built from Part.css's field grammar (.feature-field-row,
-   .feature-field-label, .feature-field-input), so an assembly panel reads as the
-   same dialog as a part feature editor; only the pieces the part editor has no
-   equivalent for (reference chips, the +90 button, the axis triples) are
-   styled here, and those borrow its palette. */
+/* ─── Editor bodies (mate + instance) ─── */
+/* The instance and mate editor bodies now render in the right edit card, under
+   its header, which already draws the separating line. No row divider or row
+   margin here: the card body owns the spacing. */
 .mate-editor,
 .instance-editor {
   width: 100%;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-top: 3px;
-  padding-top: 5px;
-  border-top: 1px solid #553355;
 }
 
 /* The reference chip carries .feature-pick-chip, so the box, the hover, the
@@ -160,7 +168,7 @@
 }
 
 .mate-angle-buttons button {
-  background: #1a0f1a;
+  background: var(--glass-field-bg);
   border: 1px solid #3a2a3a;
   border-radius: 3px;
   color: #bbb;
@@ -268,11 +276,13 @@
 
 .assembly-verdict-error {
   border-color: #5a2a2a;
-  background: #2a1414;
+  /* The verdict sits on the frosted Parts card, so its tint stays at alpha:
+     the opaque palette colour would mask the blur behind it. */
+  background: rgba(42, 20, 20, 0.55);
 }
 
 .assembly-verdict-warning {
   border-color: #5a4a1a;
-  background: #2a2410;
+  background: rgba(42, 36, 16, 0.55);
 }
 

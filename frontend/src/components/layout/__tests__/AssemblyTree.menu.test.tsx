@@ -26,12 +26,10 @@ function renderTree(instances: PartInstance[], onToggleVisible = vi.fn()) {
       onEditInstance={noop}
       onCommitInstance={noop}
       onCancelInstance={noop}
-      renderInstanceEditor={() => null}
       onCommitMate={noop}
       onCancelMate={noop}
       onDeleteMate={noop}
       onRequestRenameMate={noop}
-      renderMateEditor={() => null}
     />
   )
 }

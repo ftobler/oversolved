@@ -1,20 +1,18 @@
-// The rollback bar and the assembly split are pointer-only today: a
-// keyboard-only user can neither set the rollback position nor resize the
-// assembly panes. They are exposed as sliders with arrow-key stepping so both
-// are reachable without a mouse, while the pointer paths stay unchanged. The
-// part editor's splitter went with the floating panels: its Features/Parts
-// cards size to content and do not split one column any more.
+// The rollback bar is pointer-only today: a keyboard-only user cannot set the
+// rollback position. It is exposed as a slider with arrow-key stepping so it is
+// reachable without a mouse, while the pointer path stays unchanged. The
+// assembly splitter this file once covered went with the floating panels: both
+// editors size their cards to the shared 64/36 panel split and no longer resize
+// one column.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { PartDocumentPanel } from '@/components/layout/PartDocumentPanel'
-import { AssemblyTree } from '@/components/layout/AssemblyTree'
-import type { PartFeature, PartInstance } from '@/types/cad'
+import type { PartFeature } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
 import type { PartEditorCallbacks } from '@/contexts/PartEditorContext'
-import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
 import { useEditorState } from '@/hooks/useEditorState'
 
 function makeCallbacks(overrides: Partial<PartEditorCallbacks> = {}): PartEditorCallbacks {
@@ -130,48 +128,5 @@ describe('rollback bar keyboard slider', () => {
 
     fireEvent.keyDown(bar, { key: 'ArrowUp' })
     expect(onSetRollbackPosition).not.toHaveBeenCalled()
-  })
-})
-
-const instances: PartInstance[] = [
-  { handle: 'p1', doc_id: 'doc-p1', doc_rev: 1, transform: { ...IDENTITY_TRANSFORM }, visible: true },
-]
-
-const noop = () => {}
-
-function renderAssemblyTree() {
-  return render(
-    <AssemblyTree
-      instances={instances}
-      builtins={[]}
-      mates={[]}
-      onOpenPartNewTab={noop}
-      onDuplicateInstance={noop}
-      onDeleteInstance={noop}
-      onToggleVisible={noop}
-      onToggleFixed={noop}
-      onToggleBuiltinVisible={noop}
-      onEditInstance={noop}
-      onCommitInstance={noop}
-      onCancelInstance={noop}
-      renderInstanceEditor={() => null}
-      onCommitMate={noop}
-      onCancelMate={noop}
-      onDeleteMate={noop}
-      onRequestRenameMate={noop}
-      renderMateEditor={() => null}
-    />
-  )
-}
-
-describe('assembly split handle keyboard slider', () => {
-  it('exposes the assembly splitter as a slider stepped by arrow keys', () => {
-    renderAssemblyTree()
-    const handle = screen.getByTitle('Drag to resize')
-    expect(handle.getAttribute('role')).toBe('slider')
-    const before = Number(handle.getAttribute('aria-valuenow'))
-
-    fireEvent.keyDown(handle, { key: 'ArrowUp' })
-    expect(Number(handle.getAttribute('aria-valuenow'))).toBeLessThan(before)
   })
 })

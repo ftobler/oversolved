@@ -91,7 +91,7 @@ import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
 import { backendBundle } from '@/adapters/backend'
 import { MAX_STEP_IMPORT_BYTES } from '@/stores/documentStore/stepImport'
-import { tick, renderEditor, installSessionFromList, insertPart } from './AssemblyEditor.harness'
+import { tick, renderEditor, installSessionFromList, insertPart, rowAction, cardAction } from './AssemblyEditor.harness'
 
 // A document a partial import leaves behind: the instance names a part the
 // workspace does not hold, which is the state the picker exists to repair.
@@ -261,7 +261,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
     // The pick folds into the open editor, so it owns no entry until OK.
     expect(useAssemblyStore.getState().undoStack).toHaveLength(0)
 
-    fireEvent.click(screen.getByTitle('OK'))
+    fireEvent.click(cardAction('OK'))
     await tick()
     expect(useAssemblyStore.getState().undoStack).toHaveLength(1)
     expect(useAssemblyStore.getState().undoStack[0].label).toBe('Set part document')
@@ -283,7 +283,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
     await tick()
     expect(useAssemblyStore.getState().instances[0].doc_id).toBe('part-2')
 
-    fireEvent.click(screen.getByTitle('Cancel'))
+    fireEvent.click(cardAction('Cancel'))
     await tick()
     expect(useAssemblyStore.getState().instances[0].doc_id).toBe('ghost')
     expect(useAssemblyStore.getState().undoStack).toHaveLength(0)
@@ -381,10 +381,15 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(useAssemblyStore.getState().instances).toHaveLength(0)
   })
 
-  it('editing an instance opens the pink inline editor and fixes via its checkbox', async () => {
+  it('opens the floating edit card for an edited instance and fixes via its checkbox', async () => {
     await renderLoaded()
     await insertPart('Bracket')
     fireEvent.click(screen.getByLabelText('Edit part instance'))
+    // The row carries no form any more: the card is the only place the fields
+    // render, and the row marks itself as the subject the card describes.
+    expect(document.querySelector('.feature-item.editing')).not.toBeNull()
+    expect(document.querySelector('.feature-item.editing input')).toBeNull()
+    expect(document.querySelector('.feature-edit-panel')).not.toBeNull()
     const fixed = screen.getByLabelText('Fixed') as HTMLInputElement
     expect(fixed.checked).toBe(false)
     fireEvent.click(fixed)
@@ -400,7 +405,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
     await tick()
     expect(useAssemblyStore.getState().instances[0].fixed).toBe(true)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(cardAction('Cancel'))
     await tick()
     await tick()  // let the revert's re-solve settle
     expect(useAssemblyStore.getState().instances[0].fixed).toBeFalsy()
@@ -422,7 +427,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
     await tick()
     expect(useUnsavedChangesStore.getState().dirty).toBe(true)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(cardAction('Cancel'))
     await tick()
     await tick()  // let the revert's re-solve settle
     expect(useAssemblyStore.getState().instances[0].fixed).toBeFalsy()
@@ -532,6 +537,81 @@ describe('AssemblyEditor (Stage 6b)', () => {
     await tick()
     expect(screen.queryAllByText('Pick a reference')).toHaveLength(0)
     expect(useAssemblyStore.getState().editingSubject.kind).toBe('instance')
+  })
+
+  // The assembly editor's navigator is the part editor's floating layout: one
+  // overlay column over the stage, no opaque sidebar beside it.
+  it('renders the navigator as a floating column inside the viewport stage', async () => {
+    await renderLoaded()
+    expect(document.querySelector('.doc-sidebar')).toBeNull()
+    const stage = document.querySelector('.viewport-stage')!
+    expect(stage).not.toBeNull()
+    const left = stage.querySelector('.floating-left')!
+    expect(left).not.toBeNull()
+    expect(left.querySelector('.document-panel')).not.toBeNull()
+    expect(left.querySelector('.sidebar-top.glass-panel')).not.toBeNull()
+    expect(left.querySelector('.sidebar-bottom.glass-panel')).not.toBeNull()
+  })
+
+  it('opens the right card on a row Edit and leaves the row without a form', async () => {
+    await renderLoaded()
+    await insertPart('Bracket')
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+
+    const card = document.querySelector('.feature-edit-panel') as HTMLElement
+    expect(card).not.toBeNull()
+    expect(document.querySelector('.floating-right')!.contains(card)).toBe(true)
+    expect(card.querySelector('.feature-edit-panel-title')!.textContent).toBe('Bracket')
+    // The form is in the card, never in the row it describes.
+    expect(card.querySelector('input')).not.toBeNull()
+    expect(document.querySelector('.feature-item.editing input')).toBeNull()
+  })
+
+  it('commits from the row OK and closes the card', async () => {
+    await renderLoaded()
+    await insertPart('Bracket')
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+    fireEvent.change(screen.getByLabelText('Position X, millimetres'), { target: { value: '7' } })
+    await tick()
+
+    fireEvent.click(rowAction('OK'))
+    await tick()
+    expect(document.querySelector('.feature-edit-panel')).toBeNull()
+    expect(document.querySelector('.feature-item.editing')).toBeNull()
+    expect(useAssemblyStore.getState().undoStack.map(e => e.label)).toContain('Set position')
+  })
+
+  it('commits from the card OK and clears the row editing state', async () => {
+    await renderLoaded()
+    await insertPart('Bracket')
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+    fireEvent.change(screen.getByLabelText('Position X, millimetres'), { target: { value: '7' } })
+    await tick()
+
+    fireEvent.click(cardAction('OK'))
+    await tick()
+    expect(document.querySelector('.feature-edit-panel')).toBeNull()
+    expect(document.querySelector('.feature-item.editing')).toBeNull()
+    expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(7)
+  })
+
+  // One tagged subject means a mate insert replaces the instance editor rather
+  // than stacking a second card.
+  it('switches the card to the mate when a mate opens over an instance edit', async () => {
+    await renderLoaded()
+    await insertPart('Bracket')
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+    expect(screen.getByLabelText('Position X, millimetres')).toBeTruthy()
+
+    act(() => { executeCommand('insert_mate_fixed') })
+    await tick()
+
+    const card = document.querySelector('.feature-edit-panel') as HTMLElement
+    expect(card.querySelector('.feature-edit-panel-title')!.textContent).toBe('Fixed 1')
+    expect(card.querySelector('.mate-editor')).not.toBeNull()
+    expect(screen.queryByLabelText('Position X, millimetres')).toBeNull()
+    expect(document.querySelectorAll('.feature-edit-panel')).toHaveLength(1)
+    expect(useAssemblyStore.getState().editingSubject.kind).toBe('mate')
   })
 
   // Export moved to the header's document group; the editor toolbar keeps only

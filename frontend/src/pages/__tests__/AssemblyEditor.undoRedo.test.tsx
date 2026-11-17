@@ -87,7 +87,7 @@ import { executeCommand } from '@/utils/core/commandRegistry'
 import { assemblyEntityKey } from '@/utils/anchorCandidates'
 import { findMate } from '@/utils/assemblyMutations'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
-import { tick, renderEditor, installSessionFromList, insertPart } from './AssemblyEditor.harness'
+import { tick, renderEditor, installSessionFromList, insertPart, rowAction, cardAction } from './AssemblyEditor.harness'
 
 // Stage 10: assembly undo/redo. Every mutation funnels through the page's
 // `mutate`, so these drive the real UI and assert the stack the store holds.
@@ -335,7 +335,7 @@ describe('AssemblyEditor undo/redo', () => {
     // The toggle pinned a coalescing session but pushed nothing on its own.
     expect(undoStack()).toHaveLength(1)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(cardAction('Cancel'))
     await tick()
     await tick()
     expect(useAssemblyStore.getState().instances[0].fixed).toBeFalsy()
@@ -400,7 +400,7 @@ describe('AssemblyEditor undo/redo', () => {
     expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(7)
     expect(seeds()[1]).not.toEqual(before[1])  // the bake landed on the other part too
 
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(cardAction('Cancel'))
     await tick()
     await tick()  // let the rewind's re-solve settle
 
@@ -425,7 +425,8 @@ describe('AssemblyEditor undo/redo', () => {
     const stackBefore = undoStack().length
 
     fireEvent.click(screen.getByLabelText('Edit part instance'))
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    // The row's own pair ends the edit too: the card is not the only way out.
+    fireEvent.click(rowAction('Cancel'))
     await tick()
     await tick()
 
@@ -458,7 +459,7 @@ describe('AssemblyEditor undo/redo', () => {
 
     fireEvent.change(screen.getByLabelText('Position X, millimetres'), { target: { value: '7' } })
     await tick()
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(cardAction('Cancel'))
     await tick()
     await tick()
 
@@ -619,7 +620,7 @@ describe('AssemblyEditor undo/redo', () => {
     expect(undoStack()).toHaveLength(1)
 
     // Closing the field (OK) commits exactly one coalesced step.
-    fireEvent.click(screen.getByRole('button', { name: 'OK' }))
+    fireEvent.click(cardAction('OK'))
     await tick()
     expect(undoStack()).toHaveLength(2)
 
@@ -746,11 +747,11 @@ describe('AssemblyEditor undo/redo', () => {
     await tick()
     act(() => { executeCommand('insert_mate_fixed') })
     await tick()
-    fireEvent.click(screen.getByRole('button', { name: 'OK' }))  // close mate 1's editor
+    fireEvent.click(cardAction('OK'))  // close mate 1's editor
     await tick()
     act(() => { executeCommand('insert_mate_fixed') })
     await tick()
-    fireEvent.click(screen.getByRole('button', { name: 'OK' }))  // close mate 2's editor
+    fireEvent.click(cardAction('OK'))  // close mate 2's editor
     await tick()
     expect(undoStack()).toHaveLength(2)
     const before = useAssemblyStore.getState().mates.map(m => m.id)
@@ -797,7 +798,7 @@ describe('AssemblyEditor undo/redo', () => {
     // Session B: keep typing, then accept.
     fireEvent.change(offset, { target: { value: '50' } })
     await tick()
-    fireEvent.click(screen.getByRole('button', { name: 'OK' }))
+    fireEvent.click(cardAction('OK'))
     await tick()
     expect(undoStack().map(e => e.label)).toEqual([
       'Add part', 'Add mate', 'Edit mate', 'Toggle visibility', 'Edit mate',
@@ -844,7 +845,7 @@ describe('AssemblyEditor undo/redo', () => {
     expect(undoStack()).toHaveLength(2)
 
     // Cancel the new mate's editor: the empty mate stays and keeps its step.
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(cardAction('Cancel'))
     await tick()
     await tick()
     expect(useAssemblyStore.getState().mates).toHaveLength(2)
@@ -864,7 +865,7 @@ describe('AssemblyEditor undo/redo', () => {
     await tick()
     act(() => { executeCommand('insert_mate_fixed') })
     await tick()
-    fireEvent.click(screen.getByRole('button', { name: 'OK' }))  // close mate 1
+    fireEvent.click(cardAction('OK'))  // close mate 1
     await tick()
     act(() => { executeCommand('insert_mate_fixed') })
     await tick()
@@ -916,7 +917,7 @@ describe('AssemblyEditor undo/redo', () => {
     expect(undoStack().map(e => e.label)).toEqual(['Add part', 'Set position', 'Add mate'])
 
     // Cancel the mate drops only its own session.
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(cardAction('Cancel'))
     await tick()
     await tick()
     expect(undoStack().map(e => e.label)).toEqual(['Add part', 'Set position', 'Add mate'])
@@ -934,7 +935,7 @@ describe('AssemblyEditor undo/redo', () => {
     await tick()
     fireEvent.click(screen.getByLabelText('Insert Fixed mate'))
     await tick()
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    fireEvent.click(cardAction('Cancel'))
     await tick()
     await tick()
     expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(7)
@@ -969,7 +970,7 @@ describe('AssemblyEditor undo/redo', () => {
     expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(7)
     expect(undoStack()).toHaveLength(1)
 
-    fireEvent.click(screen.getByRole('button', { name: 'OK' }))
+    fireEvent.click(cardAction('OK'))
     await tick()
     expect(undoStack().map(e => e.label)).toEqual(['Add part', 'Set position'])
 
@@ -1001,7 +1002,7 @@ describe('AssemblyEditor undo/redo', () => {
 
     fireEvent.change(screen.getByLabelText('Position X, millimetres'), { target: { value: '9' } })
     await tick()
-    fireEvent.click(screen.getByRole('button', { name: 'OK' }))
+    fireEvent.click(cardAction('OK'))
     await tick()
     expect(undoStack().map(e => e.label)).toEqual(['Add part', 'Add part', 'Set position', 'Set position'])
 

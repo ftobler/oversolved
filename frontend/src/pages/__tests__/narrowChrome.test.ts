@@ -211,23 +211,27 @@ function pinned(cssPath: string, prop: string, element: string[][], active: read
 const partCards = chain('doc-container', 'doc-editor', 'viewport-stage', 'floating-left')
 const partCardsOpen = chain('doc-container panels-open', 'doc-editor', 'viewport-stage', 'floating-left')
 const editCard = chain('doc-container', 'doc-editor', 'viewport-stage', 'floating-right')
-const assemblyTree = chain('doc-container', 'doc-sidebar')
-const assemblyTreeOpen = chain('doc-container panels-open', 'doc-sidebar')
+// The assembly editor mounts the same overlay stage and the same left card
+// column as the part editor, so these two chains are the same selectors: one
+// rule now covers both editors' navigators, and these names keep the pin's
+// meaning explicit for each caller.
+const assemblyCards = chain('doc-container', 'doc-editor', 'viewport-stage', 'floating-left')
+const assemblyCardsOpen = chain('doc-container panels-open', 'doc-editor', 'viewport-stage', 'floating-left')
 const toolbar = chain('doc-container', 'doc-editor', 'editor-toolbar')
 const toggle = chain('doc-container', 'doc-editor', 'editor-toolbar', 'editor-btn panels-toggle')
 
 describe('phone-width chrome', () => {
   it('hides each navigator on a phone and re-shows it only through the panels toggle', () => {
     expect(pinned('pages/Part.css', 'display', partCards, PORTRAIT)).toBe('none')
-    expect(pinned('pages/Part.css', 'display', assemblyTree, PORTRAIT)).toBe('none')
+    expect(pinned('pages/Part.css', 'display', assemblyCards, PORTRAIT)).toBe('none')
     expect(pinned('pages/Part.css', 'display', partCardsOpen, PORTRAIT)).toBe('flex')
-    expect(pinned('pages/Part.css', 'display', assemblyTreeOpen, PORTRAIT)).toBe('flex')
+    expect(pinned('pages/Part.css', 'display', assemblyCardsOpen, PORTRAIT)).toBe('flex')
   })
 
   it('leaves the navigators and the toolbar alone above the breakpoint', () => {
     const css = 'pages/Part.css'
     expect(pinned(css, 'display', partCards, TOP_LEVEL)).toBe('flex')
-    expect(pinned(css, 'display', assemblyTree, TOP_LEVEL)).toBe('flex')
+    expect(pinned(css, 'display', assemblyCards, TOP_LEVEL)).toBe('flex')
     // The toggle is a phone control; on the desktop it must not even render.
     expect(pinned(css, 'display', toggle, TOP_LEVEL)).toBe('none')
     expect(pinned(css, 'display', toggle, PORTRAIT)).toBe('flex')
@@ -236,6 +240,14 @@ describe('phone-width chrome', () => {
   it('narrows the edit card on a phone and keeps its desktop width', () => {
     expect(pinned('pages/Part.css', 'width', editCard, PORTRAIT)).toBe('240px')
     expect(pinned('pages/Part.css', 'width', editCard, TOP_LEVEL)).toBe('300px')
+  })
+
+  it('steps the empty-assembly hint aside when the phone drawer covers it', () => {
+    const hint = chain('doc-container panels-open', 'doc-editor', 'viewport-stage', 'assembly-empty-hint')
+    expect(pinned('pages/Assembly.css', 'display', hint, PORTRAIT)).toBe('none')
+    // Above the breakpoint there is no drawer to cover it.
+    const plain = chain('doc-container', 'doc-editor', 'viewport-stage', 'assembly-empty-hint')
+    expect(effective('pages/Assembly.css', 'display', plain, TOP_LEVEL)).toBeNull()
   })
 
   it('lets both right cards share the phone disclosure slot by scrolling the stack', () => {

@@ -192,18 +192,6 @@
   background: var(--glass-field-bg);
 }
 
-/* The opaque navigator column. The part editor no longer uses it (its panels
-   float over the viewport, see `.floating-left` above); it stays for the
-   assembly tree until phase 2 moves that editor to the same panels. */
-.doc-sidebar {
-  width: 288px;
-  border-right: 1px solid #333;
-  background: #111;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
 .sidebar-top {
   display: flex;
   flex-direction: column;
@@ -215,18 +203,6 @@
   flex-direction: column;
   overflow: hidden;
   min-height: 60px;
-}
-
-.resize-handle {
-  height: 4px;
-  background: #333;
-  cursor: row-resize;
-  flex-shrink: 0;
-  transition: background 0.15s;
-}
-
-.resize-handle:hover {
-  background: #555;
 }
 
 .parts-list {
@@ -1092,22 +1068,11 @@
     position: relative;
   }
 
-  .doc-sidebar,
   .floating-left {
     display: none;
   }
 
-  /* The assembly's navigator opens as a strip across the top: a full-height
-     column would leave the model nothing. */
-  .doc-container.panels-open .doc-sidebar {
-    display: flex;
-    width: 100%;
-    max-height: 150px;
-    border-right: none;
-    border-bottom: 1px solid #333;
-  }
-
-  /* The part editor's navigator opens as a card column over the left edge,
+  /* Both editors' navigators open as a card column over the left edge,
      narrower than the desktop 280px but the same stack. */
   .doc-container.panels-open .floating-left {
     display: flex;
