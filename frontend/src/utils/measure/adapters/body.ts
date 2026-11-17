@@ -7,11 +7,13 @@
 // a hole into a plane at a plausible-looking distance.
 import type { BodyResult } from '@/types/cad'
 import { parseTopoFallbackQuery } from '@/utils/query/selectionId'
+import type { MeasurePickRef } from '@/kernel/worker/solverProtocol'
 import { normalize, type Primitive, type Vec3 } from '../primitives'
 
 const TWO_PI = Math.PI * 2
 
 interface BodyElement {
+  bodyId: string
   body: BodyResult
   kind: 'edge' | 'face' | 'vertex'
   index: number
@@ -31,17 +33,32 @@ function findBodyElement(id: string, bodies: Record<string, BodyResult>): BodyEl
   // triangle index is not a B-rep element index.
   if (parsed && parsed.kind !== 'tri') {
     const body = bodies[parsed.bodyId]
-    if (body) return { body, kind: parsed.kind, index: parsed.idx }
+    if (body) return { bodyId: parsed.bodyId, body, kind: parsed.kind, index: parsed.idx }
   }
-  for (const body of Object.values(bodies)) {
+  for (const [bodyId, body] of Object.entries(bodies)) {
     const edge = body.edge_queries?.indexOf(id) ?? -1
-    if (edge >= 0) return { body, kind: 'edge', index: edge }
+    if (edge >= 0) return { bodyId, body, kind: 'edge', index: edge }
     const face = body.mesh?.face_queries?.indexOf(id) ?? -1
-    if (face >= 0) return { body, kind: 'face', index: face }
+    if (face >= 0) return { bodyId, body, kind: 'face', index: face }
     const vertex = body.vertex_queries?.indexOf(id) ?? -1
-    if (vertex >= 0) return { body, kind: 'vertex', index: vertex }
+    if (vertex >= 0) return { bodyId, body, kind: 'vertex', index: vertex }
   }
   return null
+}
+
+/**
+ * The kernel's name for a body-element pick: the body id plus the element's
+ * index in that body's render arrays. Null when the id names no body element,
+ * which is how a sketch or a datum pick stays out of a kernel request.
+ */
+export function bodyPickRef(
+  id: string,
+  bodies: Record<string, BodyResult> | undefined,
+): Extract<MeasurePickRef, { kind: 'face' | 'edge' | 'vertex' }> | null {
+  if (!bodies) return null
+  const found = findBodyElement(id, bodies)
+  if (!found) return null
+  return { bodyId: found.bodyId, kind: found.kind, index: found.index }
 }
 
 export function bodyPrimitive(id: string, bodies: Record<string, BodyResult> | undefined): Primitive | null {
@@ -110,7 +127,12 @@ export function bodyPrimitive(id: string, bodies: Record<string, BodyResult> | u
       const frame = face.surface_frame
       const axis = frame ? normalize(frame.axis) : null
       if (!frame || !axis) return opaqueFace('cone face without an analytic frame')
-      return { type: 'cone', axisPoint: [...frame.origin] as Vec3, axis }
+      return {
+        type: 'cone',
+        axisPoint: [...frame.origin] as Vec3,
+        axis,
+        semiAngle: frame.semi_angle,
+      }
     }
     case 'sphereface': {
       const frame = face.surface_frame
@@ -121,7 +143,13 @@ export function bodyPrimitive(id: string, bodies: Record<string, BodyResult> | u
       const frame = face.surface_frame
       const axis = frame ? normalize(frame.axis) : null
       if (!frame || !axis) return opaqueFace('torus face without an analytic frame')
-      return { type: 'torus', center: [...frame.origin] as Vec3, axis, majorRadius: frame.radius }
+      return {
+        type: 'torus',
+        center: [...frame.origin] as Vec3,
+        axis,
+        majorRadius: frame.radius,
+        minorRadius: frame.minor_radius,
+      }
     }
     default:
       return opaqueFace(`${face.surface_type ?? 'freeform'} face`)

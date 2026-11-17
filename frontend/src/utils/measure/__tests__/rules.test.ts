@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { measureOne, measurePair, isKernelAsk, type Readout } from '@/utils/measure/rules'
+import { measureOne, measurePair, isKernelAsk, KERNEL_PAIR_RULES, PAIR_RULES, type Readout } from '@/utils/measure/rules'
 import { normalize, type Primitive, type Vec3 } from '@/utils/measure/primitives'
 
 // Hand-built world primitives: the rules are pure, so every cell of the pair
@@ -364,8 +364,11 @@ describe('measurePair: kernel cells', () => {
     expect(measurePair(opaque(), line(v(0, 0, 0), v(1, 0, 0)))).toEqual({ kernel: 'distance' })
   })
 
-  it('two opaque picks ask the kernel for a clearance', () => {
-    expect(measurePair(opaque('spline'), opaque('freeform face'))).toEqual({ kernel: 'clearance' })
+  it('two opaque picks ask for the distance between their boundaries, not a clearance', () => {
+    // A clearance is two whole bodies: it runs the overlap probe and reads 0 for
+    // a containment. Two spline edges (or two freeform faces) are a boundary
+    // distance, so the overlap probe must not run on them.
+    expect(measurePair(opaque('spline'), opaque('freeform face'))).toEqual({ kernel: 'distance' })
   })
 
   it('two whole-body picks ask the kernel for a clearance', () => {
@@ -374,5 +377,38 @@ describe('measurePair: kernel cells', () => {
 
   it('a whole body against an edge asks the kernel for a distance', () => {
     expect(measurePair(solid(), line(v(0, 0, 0), v(1, 0, 0)))).toEqual({ kernel: 'distance' })
+  })
+})
+
+describe('the kernel table', () => {
+  // One representative per class the table dispatches on.
+  const reps: Record<string, Primitive> = {
+    point: point(v(0, 0, 0)),
+    line: line(v(0, 0, 0), v(1, 0, 0)),
+    circle: circle(v(0, 0, 0), v(0, 0, 1), 1),
+    plane: plane(v(0, 0, 0), v(0, 0, 1)),
+    cylinder: cylinder(v(0, 0, 0), v(0, 0, 1), 1),
+    opaque: opaque(),
+    body: solid(),
+  }
+  const key = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|${a}`)
+  const kernelCells = new Map(KERNEL_PAIR_RULES.map((row) => [key(row.a, row.b), row.op]))
+  const analyticCells = new Set(PAIR_RULES.map((row) => key(row.a, row.b)))
+
+  it('lists every cell the dispatch function sends to the kernel, and no cell twice', () => {
+    expect(kernelCells.size).toBe(KERNEL_PAIR_RULES.length)
+    for (const [a, pa] of Object.entries(reps)) {
+      for (const [b, pb] of Object.entries(reps)) {
+        const result = measurePair(pa, pb)
+        const op = kernelCells.get(key(a, b))
+        expect({ cell: key(a, b), kernel: isKernelAsk(result) }).toEqual({ cell: key(a, b), kernel: op !== undefined })
+        if (op !== undefined) expect(result).toEqual({ kernel: op })
+      }
+    }
+  })
+
+  it('never lists a cell as both analytic and kernel', () => {
+    const both = [...kernelCells.keys()].filter((cell) => analyticCells.has(cell))
+    expect(both).toEqual([])
   })
 })

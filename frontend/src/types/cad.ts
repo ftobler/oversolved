@@ -514,6 +514,12 @@ export interface FaceData {
     axis: [number, number, number]
     origin: [number, number, number]
     radius?: number
+    // Additive (measure-kernel-pairs): a cone's half angle from the axis, in
+    // radians, and a torus's minor radius; `radius` stays the cone's reference
+    // radius and the torus's major radius. Absent on a frame read before these
+    // fields existed, where the single-pick readout states nothing.
+    semi_angle?: number
+    minor_radius?: number
   }
 }
 
@@ -619,6 +625,9 @@ export interface BuildResponse {
   pick_bodies?: Record<string, BodyResult>
   _build_state?: unknown
   validation?: RebuildValidation
+  /** The solve generation the rendered bodies belong to (`<bootId>:<n>`); the
+   *  token a kernel measurement names. Absent on an in-process build. */
+  generation?: string
 }
 
 export interface BodyFeatureResult {

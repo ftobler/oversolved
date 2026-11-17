@@ -44,12 +44,13 @@ export interface Readout {
   extra?: Readout[]
 }
 
-/** A cell OCCT must answer. Nothing renders until measure-kernel-pairs ships
- *  the worker call; the marker exists so the cell is not silently re-derived
- *  from a wrong analytic approximation. */
+/** A cell OCCT must answer: a spline edge's length, the clearance between two
+ *  bodies, the minimum distance one freeform pick leaves an analytic one. */
 export interface KernelAsk {
-  kernel: 'length' | 'distance' | 'clearance'
+  kernel: KernelOp
 }
+
+export type KernelOp = 'length' | 'distance' | 'clearance'
 
 export type MeasureResult = Readout | KernelAsk | null
 
@@ -276,24 +277,33 @@ const PAIR_INDEX = new Map<string, PairCell>(
 
 /**
  * The one measurement two primitives yield, or null when the pair has none.
- * Opaque and whole-body picks are kernel cells: they read nothing until the
- * kernel follow-up answers them, rather than falling back to a guess built on
- * the wrong face data.
+ * Opaque and whole-body picks are kernel cells, mapped by `kernelOpFor` rather
+ * than falling back to a guess built on the wrong face data.
  */
 export function measurePair(a: Primitive, b: Primitive): MeasureResult {
   const classA = classOf(a)
   const classB = classOf(b)
-  if (classA === 'opaque' || classB === 'opaque' || classA === 'solid' || classB === 'solid') {
-    // A minimum distance between two classifiable-but-freeform shapes is the
-    // kernel's clearance question; a freeform edge alone is its length.
-    const both = (classA === 'opaque' || classA === 'solid') && (classB === 'opaque' || classB === 'solid')
-    return { kernel: both ? 'clearance' : 'distance' }
-  }
+  const kernel = kernelOpFor(classA, classB)
+  if (kernel !== null) return { kernel }
   const found = PAIR_INDEX.get(classA < classB ? `${classA}|${classB}` : `${classB}|${classA}`)
   if (!found) return null
   const first = found.a === classA ? a : b
   const second = found.a === classA ? b : a
   return found.measure(first, second)
+}
+
+/**
+ * The kernel op a pair of classes asks for, or null when the analytic table
+ * answers it. Only a CLASS-UNKNOWN pick (a whole body, a freeform face, a
+ * spline edge) reaches the kernel, and a clearance is only ever two whole
+ * bodies: it answers "how far apart are these two parts", which the overlap
+ * probe has to qualify first.
+ */
+function kernelOpFor(classA: MeasureClass, classB: MeasureClass): KernelOp | null {
+  const freeA = classA === 'opaque' || classA === 'solid'
+  const freeB = classB === 'opaque' || classB === 'solid'
+  if (!freeA && !freeB) return null
+  return classA === 'solid' && classB === 'solid' ? 'clearance' : 'distance'
 }
 
 /**
@@ -358,6 +368,12 @@ const CLASS_LABEL: Record<MeasureClass, string> = {
   solid: 'body',
 }
 
+// Every class, in table order. The kernel table is derived from this so it
+// cannot omit a cell the dispatch function answers.
+const CLASSES: readonly MeasureClass[] = [
+  'point', 'line', 'circle', 'plane', 'axis', 'opaque', 'solid',
+]
+
 export interface SingleRuleRow {
   pick: string
   readout: string
@@ -372,9 +388,9 @@ export const SINGLE_RULES: readonly SingleRuleRow[] = [
   { pick: 'cylinder face', readout: 'diameter' },
   { pick: 'sphere face', readout: 'diameter' },
   { pick: 'ellipse', readout: 'major and minor radius' },
-  { pick: 'cone face', readout: 'half angle, once surface_frame reports it' },
-  { pick: 'torus face', readout: 'major and minor radius, once surface_frame reports it' },
-  { pick: 'spline edge, partial ellipse edge', readout: 'kernel length (pending)' },
+  { pick: 'cone face', readout: 'half angle' },
+  { pick: 'torus face', readout: 'major and minor radius' },
+  { pick: 'spline edge, partial ellipse edge', readout: 'kernel length' },
   { pick: 'flat face, vertex, datum plane, whole body', readout: 'nothing' },
 ]
 
@@ -391,3 +407,23 @@ export const PAIR_RULES: readonly PairRuleRow[] = PAIR_TABLE.map((c) => ({
   b: CLASS_LABEL[c.b],
   readout: c.readout,
 }))
+
+export interface KernelPairRuleRow extends PairRuleRow {
+  op: KernelOp
+}
+
+/** The kernel half of the pair table, derived from the same dispatch function
+ *  `measurePair` uses: every class pair OCCT answers, once, in table order. */
+export const KERNEL_PAIR_RULES: readonly KernelPairRuleRow[] = CLASSES.flatMap((a, ai) =>
+  CLASSES.slice(ai).flatMap((b) => {
+    const op = kernelOpFor(a, b)
+    if (op === null) return []
+    return [{
+      a: CLASS_LABEL[a],
+      b: CLASS_LABEL[b],
+      op,
+      readout: op === 'clearance'
+        ? 'kernel clearance, 0 when they overlap or share a face'
+        : 'kernel minimum distance',
+    }]
+  }))

@@ -62,18 +62,29 @@ describe('bodyPrimitive: face classification', () => {
       mesh: {
         vertices: [], faces: [],
         face_data: [
-          { centroid: [0, 0, 0], normal: [1, 0, 0], surface_type: 'coneface', surface_frame: { axis: [0, 0, 1], origin: [0, 0, 0], radius: 2 } },
+          { centroid: [0, 0, 0], normal: [1, 0, 0], surface_type: 'coneface', surface_frame: { axis: [0, 0, 1], origin: [0, 0, 0], radius: 2, semi_angle: Math.PI / 6 } },
           { centroid: [0, 0, 0], normal: [0, 0, 1], surface_type: 'sphereface', surface_frame: { axis: [0, 0, 1], origin: [0, 0, 5], radius: 7 } },
-          { centroid: [0, 0, 0], normal: [1, 0, 0], surface_type: 'torusface', surface_frame: { axis: [0, 1, 0], origin: [0, 0, 0], radius: 10 } },
+          { centroid: [0, 0, 0], normal: [1, 0, 0], surface_type: 'torusface', surface_frame: { axis: [0, 1, 0], origin: [0, 0, 0], radius: 10, minor_radius: 3 } },
         ] as FaceData[],
         face_queries: ['?c', '?s', '?t'],
       },
     })
     const map = bodiesOf(faces)
-    expect(bodyPrimitive('?c', map)).toMatchObject({ type: 'cone', axis: [0, 0, 1] })
+    expect(bodyPrimitive('?c', map)).toMatchObject({ type: 'cone', axis: [0, 0, 1], semiAngle: Math.PI / 6 })
     expect(bodyPrimitive('?s', map)).toMatchObject({ type: 'sphere', center: [0, 0, 5], radius: 7 })
-    expect(bodyPrimitive('?t', map)).toMatchObject({ type: 'torus', axis: [0, 1, 0], majorRadius: 10 })
+    expect(bodyPrimitive('?t', map)).toMatchObject({ type: 'torus', axis: [0, 1, 0], majorRadius: 10, minorRadius: 3 })
     expect(measureOne(bodyPrimitive('?s', map)!)).toEqual({ kind: 'diameter', value: 14, label: 'diameter' })
+    // The two singles the new frame fields make readable.
+    const coneReadout = measureOne(bodyPrimitive('?c', map)!) as { kind: string; value: number; label: string }
+    expect(coneReadout.kind).toBe('angle')
+    expect(coneReadout.label).toBe('angle')
+    expect(coneReadout.value).toBeCloseTo(30, 9)
+    expect(measureOne(bodyPrimitive('?t', map)!)).toEqual({
+      kind: 'radius',
+      value: 10,
+      label: 'major radius',
+      extra: [{ kind: 'radius', value: 3, label: 'minor radius' }],
+    })
   })
 
   it('treats a curved face without an analytic frame as opaque, so it reads no wrong number', () => {

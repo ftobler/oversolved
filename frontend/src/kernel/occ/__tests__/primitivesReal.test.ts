@@ -23,6 +23,7 @@ import {
   faceSurfaceTypeAndNormal,
   makeBezierEdge,
   makeBox,
+  makeCone,
   makeFaceFromWire,
   makePrism,
   makeWire,
@@ -156,6 +157,51 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
       const centroid = faceCentroid(occ, scope, cap!)
       const dist = Math.hypot(centroid[0] - frame!.origin[0], centroid[1] - frame!.origin[1], centroid[2] - frame!.origin[2])
       expect(dist).toBeGreaterThan(2)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('faceSurfaceFrame reports a cone half angle and a torus minor radius', () => {
+    // The two analytic facts a single-pick readout needs and nothing else in the
+    // frame carries: a cone's half angle (its diameter is meaningless without
+    // it) and a torus's tube radius beside its major radius.
+    const scope = new DisposeScope()
+    try {
+      const cone = makeCone(occ, scope, [0, 0, 0], [0, 0, 1], 6, 2, 10)
+      const E = occ.TopAbs_ShapeEnum
+      const coneExp = scope.track(new occ.TopExp_Explorer_2(cone, E.TopAbs_FACE, E.TopAbs_SHAPE))
+      let coneFace: OccShape | null = null
+      for (; coneExp.More(); coneExp.Next()) {
+        const f = scope.track(occ.TopoDS.Face_1(coneExp.Current()))
+        if (faceSurfaceType(occ, scope, f) === 'coneface') coneFace = f
+      }
+      expect(coneFace).not.toBeNull()
+      const coneFrame = faceSurfaceFrame(occ, scope, coneFace!)
+      expect(coneFrame).not.toBeNull()
+      // r1 = 6 at the base and r2 = 2 ten tall: the half angle is atan((6-2)/10).
+      expect(coneFrame!.semi_angle).toBeCloseTo(Math.atan(4 / 10), 9)
+      expect(coneFrame!.radius).toBeCloseTo(6, 6)
+
+      const torus = scope.track(new occ.BRepPrimAPI_MakeTorus_5(
+        scope.track(new occ.gp_Ax2_4(
+          scope.track(new occ.gp_Pnt_3(0, 0, 0)),
+          scope.track(new occ.gp_Dir_5(0, 0, 1)),
+        )),
+        10,
+        3,
+      )).Shape()
+      const torusExp = scope.track(new occ.TopExp_Explorer_2(torus, E.TopAbs_FACE, E.TopAbs_SHAPE))
+      let torusFace: OccShape | null = null
+      for (; torusExp.More(); torusExp.Next()) {
+        const f = scope.track(occ.TopoDS.Face_1(torusExp.Current()))
+        if (faceSurfaceType(occ, scope, f) === 'torusface') torusFace = f
+      }
+      expect(torusFace).not.toBeNull()
+      const torusFrame = faceSurfaceFrame(occ, scope, torusFace!)
+      expect(torusFrame).not.toBeNull()
+      expect(torusFrame!.radius).toBeCloseTo(10, 6)
+      expect(torusFrame!.minor_radius).toBeCloseTo(3, 6)
     } finally {
       scope.dispose()
     }

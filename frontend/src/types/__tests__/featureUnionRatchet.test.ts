@@ -39,10 +39,12 @@ interface Ratchet {
 const RATCHETS: Ratchet[] = [
   {
     token: 'as unknown as',
-    // 45 after removing the measurement registry, whose three casts read a
-    // sketch entity through a loose record. The table-driven measurement core
-    // never erases a primitive.
-    baseline: 45,
+    // 44 at the measure-auto-readout merge (7ea55303): the same change removed
+    // the measurement registry's three casts, which took the tree one under the
+    // 45 the baseline recorded. measure-kernel-pairs adds no double cast (the
+    // measurement core narrows by primitive type), so the allowance drops to the
+    // tree it actually measured.
+    baseline: 44,
   },
   {
     // 362 after the mutation catalog's family filter stopped constraining a
@@ -71,7 +73,13 @@ const RATCHETS: Ratchet[] = [
     // are narrowed by `kind`; these records are the repository boundary, the
     // same allowance the other leaf leaves already spend.
     token: 'Record<string, unknown>',
-    baseline: 369,
+    // 368 at the measure-auto-readout merge (7ea55303), one under the 369 the
+    // baseline recorded: the measurement core reads materials through typed
+    // primitives, not loose records. measure-kernel-pairs keeps the count where
+    // it is: its one loose record is the named `PartSolveSpec` alias in
+    // kernel/solveLocally.ts, and the HUD's solve map is typed through
+    // `MeasureContext` instead of a second record.
+    baseline: 368,
   },
 ]
 

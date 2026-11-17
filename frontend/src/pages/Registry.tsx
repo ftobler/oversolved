@@ -1,5 +1,5 @@
 import { CONSTRAINTS, ENTITIES, DIMENSION_RULES, SNAP_KINDS } from '@/registry'
-import { PAIR_RULES, SINGLE_RULES } from '@/utils/measure/rules'
+import { KERNEL_PAIR_RULES, PAIR_RULES, SINGLE_RULES } from '@/utils/measure/rules'
 import { KEYMAP } from '@/utils/core/commandRegistry'
 import '@/pages/Registry.css'
 import { ConstraintsTable } from './registry/ConstraintsTable'
@@ -113,7 +113,7 @@ export default function Registry() {
           </section>
 
           <section id="measurements">
-            <h2>Measurements <span className="reg-count">({SINGLE_RULES.length + PAIR_RULES.length} rules)</span></h2>
+            <h2>Measurements <span className="reg-count">({SINGLE_RULES.length + PAIR_RULES.length + KERNEL_PAIR_RULES.length} rules)</span></h2>
             <p>
               The readout the HUD shows for a pick or pick pair. Picks resolve to a world primitive
               first (a body face/edge/vertex, a sketch entity/vertex, a datum plane or a whole body);

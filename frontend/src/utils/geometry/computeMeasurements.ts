@@ -2,10 +2,11 @@
 // live in utils/measure; this keeps the page-facing signature stable while the
 // work happens in the pure core.
 import type { Sketch, BodyResult, LengthUnit } from '@/types/cad'
-import { measureSelection } from '@/utils/measure/measureSelection'
+import { measureSelectionPicks, type MeasureContext, type SelectionMeasurement } from '@/utils/measure/measureSelection'
 
 /**
- * Compute the best measurement for a set of selected picks.
+ * Compute the best measurement for a set of selected picks, plus the kernel
+ * question when the pair table asks OCCT for the answer.
  *
  * Every pick is resolved to a world primitive first (a body edge/face/vertex, a
  * sketch entity/vertex, a datum plane or a whole body), then the selection size
@@ -19,14 +20,25 @@ import { measureSelection } from '@/utils/measure/measureSelection'
  * @param solveResults - the solve's result map, keyed by feature id
  * @param bodies - the solve's bodies, keyed by body id
  * @param unit - the document's length unit; the numbers are already in it
- * @returns the HUD lines, 0 to 3 (a pair can carry a second readout)
+ * @returns the sync HUD lines (0 to 3) and the kernel ask, if any
  */
-export function computeMeasurements(
-  selection: Set<string>,
+export function computeMeasurement(
+  selection: ReadonlySet<string>,
   sketch: Sketch,
-  solveResults?: Record<string, unknown>,
+  solveResults?: MeasureContext['solveResults'],
+  bodies?: Record<string, BodyResult>,
+  unit: LengthUnit = 'mm',
+): SelectionMeasurement {
+  return measureSelectionPicks(selection, { sketch, solveResults, bodies, unit })
+}
+
+/** The sync lines only, the shape the HUD used before the kernel cell existed. */
+export function computeMeasurements(
+  selection: ReadonlySet<string>,
+  sketch: Sketch,
+  solveResults?: MeasureContext['solveResults'],
   bodies?: Record<string, BodyResult>,
   unit: LengthUnit = 'mm',
 ): string[] {
-  return measureSelection(selection, { sketch, solveResults, bodies, unit })
+  return computeMeasurement(selection, sketch, solveResults, bodies, unit).lines
 }

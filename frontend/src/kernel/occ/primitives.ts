@@ -855,6 +855,10 @@ export interface SurfaceFrame {
   axis: Vec3
   origin: Vec3
   radius?: number
+  // A cone's half angle from its axis, in radians.
+  semi_angle?: number
+  // A torus's tube radius; `radius` is its major radius.
+  minor_radius?: number
 }
 
 /**
@@ -899,6 +903,9 @@ export function faceSurfaceFrame(oc: OccModule, scope: DisposeScope, face: OccSh
       axis: [dir.X(), dir.Y(), dir.Z()],
       origin: [loc.X(), loc.Y(), loc.Z()],
       radius: cone.RefRadius(),
+      // OCC signs the angle by which way the radius runs along the axis (a
+      // cone that narrows reads negative); the half angle is a magnitude.
+      semi_angle: Math.abs(cone.SemiAngle()),
     }
     loc.delete()
     pos.delete()
@@ -929,6 +936,7 @@ export function faceSurfaceFrame(oc: OccModule, scope: DisposeScope, face: OccSh
       axis: [dir.X(), dir.Y(), dir.Z()],
       origin: [loc.X(), loc.Y(), loc.Z()],
       radius: tor.MajorRadius(),
+      minor_radius: tor.MinorRadius(),
     }
     loc.delete()
     pos.delete()
