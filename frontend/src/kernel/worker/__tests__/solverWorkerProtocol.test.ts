@@ -70,7 +70,9 @@ describe('solver client <-> worker protocol', () => {
     worker.reply(res)
     const out = await pending
     // The worker's response is shaped so the client's extractor reads the
-    // payload and fills the main-thread _build_state placeholder.
+    // payload and fills the main-thread _build_state placeholder. `generation`
+    // rides through only when the engine stamped one: an in-process build has
+    // no generation, and a measurement cannot be asked against it.
     expect(out).toEqual({
       solve_ms: 5,
       result: { feat1: { status: 'solved' } },

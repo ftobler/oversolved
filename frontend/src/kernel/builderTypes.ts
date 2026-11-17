@@ -118,6 +118,11 @@ export interface BuildResponse {
   _build_state: Readonly<BuildState>
   pick_bodies?: Record<string, unknown>
   _validation?: RebuildValidation
+  /** The solve generation this response's body store belongs to
+   *  (`<bootId>:<n>`). Stamped by the live engine (kernel/solveLocally.ts) after
+   *  the build; `build()` itself knows no generations, so an in-process build
+   *  leaves it absent and a measurement cannot be asked against it. */
+  generation?: string
 }
 
 export interface RebuildValidation {

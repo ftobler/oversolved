@@ -315,6 +315,8 @@ export default function Part() {
     docName,
     bodies,
     pickStateReady,
+    measureGeneration,
+    measureSet,
     startPreviewMode,
     commitPreview,
     cancelPreview,
@@ -1639,7 +1641,7 @@ export default function Part() {
           viewportRef={viewportRef}
           handleRightClick={handleRightClick}
           viewportHud={
-            <MeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} solveResults={solveResults} bodies={bodies} lengthUnit={lengthUnitOf(doc?.length_unit)} />
+            <MeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} solveResults={solveResults} bodies={bodies} lengthUnit={lengthUnitOf(doc?.length_unit)} generation={measureGeneration} measureSet={measureSet} />
           }
           viewportViewOptions={
             <ViewOptionsButton

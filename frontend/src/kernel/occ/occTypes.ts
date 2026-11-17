@@ -299,10 +299,14 @@ export interface OccHistoryHandle extends OccDisposable {
 
 /** BRepExtrema_DistShapeShape: the minimum distance between two shapes'
  *  boundaries. `Value()` is that distance once `IsDone()`; a shared face reads
- *  0 while a Common over the same pair produces no solid at all. */
+ *  0 while a Common over the same pair produces no solid at all. The witness
+ *  points are 1-based like every OCCT array, and each returns a fresh gp_Pnt
+ *  the caller owns. */
 export interface OccExtrema extends OccDisposable {
   IsDone(): boolean
   Value(): number
+  PointOnShape1(N: number): OccPntValue
+  PointOnShape2(N: number): OccPntValue
 }
 
 /** BRepAlgoAPI_Cut/Fuse/Common: the history-aware boolean operation. */
@@ -931,6 +935,15 @@ export interface OccModule extends OccBaseModule {
       iFlag: boolean,
       skipShared: boolean,
     ): number
+    // The length of a curve (an edge or a wire): `Mass()` on the props is the
+    // answer. A spline edge has no closed form, which is why the readout asks
+    // for it.
+    LinearProperties(
+      shape: OccShape,
+      props: OccGProps,
+      skipShared: boolean,
+      useTriangulation: boolean,
+    ): void
   }
   BRepAdaptor_Surface_2: new (face: OccShape, restriction: boolean) => OccSurfaceAdaptor
   BRepLProp_SLProps_1: new (

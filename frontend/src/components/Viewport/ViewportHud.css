@@ -41,6 +41,12 @@
   white-space: nowrap;
 }
 
+/* A kernel readout is in flight: the row holds its height so the HUD does not
+   jump when the number lands, but it paints nothing until then (K2). */
+.measurement-pending {
+  visibility: hidden;
+}
+
 .measurement-icon {
   width: 12px;
   height: 12px;

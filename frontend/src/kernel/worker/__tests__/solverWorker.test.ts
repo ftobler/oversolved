@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { handleSolveRequest, handleExportRequest, handleExportAssemblyRequest, handleBundleRequest, collectTransferables, exportTransferables, bundleTransferables, handleWorkerMessage, WorkerActor, absorbFilesForTest, fileCacheForTest, clearFileCacheForTest, relayOccLoadProgress, relayFeatureProgress, preloadWorkerWasm } from '../solverWorker'
 import { markFeatureStart } from '../../featureProgress'
 import { reportOccCompiling, reportOccDownload, reportOccReady, resetOccLoadProgress } from '../../occ/loadProgress'
-import type { SolveRequest, ExportRequest, ExportAssemblyRequest, BundleRequest, SolveResponse, ExportResponse, BundleResponse, WorkerRequest } from '../solverProtocol'
+import type { SolveRequest, ExportRequest, ExportAssemblyRequest, BundleRequest, SolveResponse, ExportResponse, BundleResponse, MeasureResponse, WorkerRequest } from '../solverProtocol'
 import { SUPERSEDED_ERROR } from '../solverProtocol'
 import { solveLocally, exportLocally, exportAssemblyLocally } from '../../solveLocally'
 import type { BuildResponse } from '../../builder'
@@ -391,7 +391,7 @@ describe('dispatcher', () => {
   it('routes a solve message to a supersedable solve job', () => {
     const actor = new WorkerActor()
     const submitSpy = vi.spyOn(actor, 'submit')
-    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse; transfer: Transferable[] }> = []
+    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse | MeasureResponse; transfer: Transferable[] }> = []
     handleWorkerMessage(
       { id: 77, kind: 'solve', spec: { id: 'doc1' }, options: {} },
       (res, transfer) => { posted.push({ message: res, transfer }) },
@@ -399,10 +399,10 @@ describe('dispatcher', () => {
     )
 
     expect(submitSpy).toHaveBeenCalledTimes(1)
-    const job = submitSpy.mock.calls[0][0] as { supersedable: boolean; onSuperseded: () => void }
-    expect(job.supersedable).toBe(true)
+    const job = submitSpy.mock.calls[0][0]
+    expect(job.lane).toBe('solve')
     // A superseded solve still gets its reply, stamped with the request id.
-    job.onSuperseded()
+    job.onSuperseded?.()
     expect(posted).toEqual([{ message: { id: 77, ok: false, error: SUPERSEDED_ERROR }, transfer: [] }])
   })
 
@@ -411,7 +411,7 @@ describe('dispatcher', () => {
     try {
       const actor = new WorkerActor()
       const submitSpy = vi.spyOn(actor, 'submit')
-      const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse; transfer: Transferable[] }> = []
+      const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse | MeasureResponse; transfer: Transferable[] }> = []
       handleWorkerMessage(
         { id: 99, kind: 'futureKind', spec: {}, options: {} } as unknown as WorkerRequest,
         (res, transfer) => { posted.push({ message: res, transfer }) },
@@ -434,7 +434,7 @@ describe('dispatcher', () => {
   it('settles a kind-less solve-shaped message with an error instead of dropping it', () => {
     const actor = new WorkerActor()
     const submitSpy = vi.spyOn(actor, 'submit')
-    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse; transfer: Transferable[] }> = []
+    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse | MeasureResponse; transfer: Transferable[] }> = []
     handleWorkerMessage(
       { id: 55, spec: { id: 'doc1' }, options: {} } as WorkerRequest,
       (res, transfer) => { posted.push({ message: res, transfer }) },
@@ -452,7 +452,7 @@ describe('dispatcher', () => {
     vi.mocked(exportLocally).mockResolvedValue(bytes)
     const actor = new WorkerActor()
     const submitSpy = vi.spyOn(actor, 'submit').mockImplementation(() => {})
-    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse; transfer: Transferable[] }> = []
+    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse | MeasureResponse; transfer: Transferable[] }> = []
     handleWorkerMessage(
       { id: 21, kind: 'export', spec: { id: 'doc1' }, options: { format: 'step' } },
       (res, transfer) => { posted.push({ message: res, transfer }) },
@@ -460,9 +460,9 @@ describe('dispatcher', () => {
     )
 
     expect(submitSpy).toHaveBeenCalledTimes(1)
-    const job = submitSpy.mock.calls[0][0] as { supersedable: boolean; run: () => Promise<void> }
+    const job = submitSpy.mock.calls[0][0]
     // Exports are distinct one-shot actions, never superseded by a newer solve.
-    expect(job.supersedable).toBe(false)
+    expect(job.lane).toBeNull()
     await job.run()
     expect(vi.mocked(exportLocally)).toHaveBeenCalledWith(
       { id: 'doc1' }, { format: 'step' }, fileCacheForTest())
@@ -477,7 +477,7 @@ describe('dispatcher', () => {
     ]
     const actor = new WorkerActor()
     const submitSpy = vi.spyOn(actor, 'submit').mockImplementation(() => {})
-    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse; transfer: Transferable[] }> = []
+    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse | MeasureResponse; transfer: Transferable[] }> = []
     handleWorkerMessage(
       { id: 22, kind: 'exportAssembly', parts, options: { format: 'step' } },
       (res, transfer) => { posted.push({ message: res, transfer }) },
@@ -485,8 +485,8 @@ describe('dispatcher', () => {
     )
 
     expect(submitSpy).toHaveBeenCalledTimes(1)
-    const job = submitSpy.mock.calls[0][0] as { supersedable: boolean; run: () => Promise<void> }
-    expect(job.supersedable).toBe(false)
+    const job = submitSpy.mock.calls[0][0]
+    expect(job.lane).toBeNull()
     await job.run()
     expect(vi.mocked(exportAssemblyLocally)).toHaveBeenCalledWith(parts, { format: 'step' }, fileCacheForTest())
     expect(posted).toEqual([{ message: { id: 22, ok: true, bytes }, transfer: [bytes.buffer] }])
@@ -506,7 +506,7 @@ describe('dispatcher', () => {
     })
     const actor = new WorkerActor()
     const submitSpy = vi.spyOn(actor, 'submit').mockImplementation(() => {})
-    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse; transfer: Transferable[] }> = []
+    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse | MeasureResponse; transfer: Transferable[] }> = []
     handleWorkerMessage(
       { id: 23, kind: 'buildBundle', spec: { id: 'doc1' }, doc_id: 'd1', content_hash: 'h1' },
       (res, transfer) => { posted.push({ message: res, transfer }) },
@@ -514,8 +514,8 @@ describe('dispatcher', () => {
     )
 
     expect(submitSpy).toHaveBeenCalledTimes(1)
-    const job = submitSpy.mock.calls[0][0] as { supersedable: boolean; run: () => Promise<void> }
-    expect(job.supersedable).toBe(false)
+    const job = submitSpy.mock.calls[0][0]
+    expect(job.lane).toBeNull()
     await job.run()
     expect(vi.mocked(solveLocally)).toHaveBeenCalledWith({ id: 'doc1' }, { files: fileCacheForTest() })
     const bundle = posted[0].message as BundleResponse
