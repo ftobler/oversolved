@@ -434,8 +434,11 @@ great circle. Lengths are exact at the reference parallel only, and the top is
 wider than the base by the `(r + height) / r` flare. A planar or freeform target,
 a sketch plane perpendicular to the axis, a footprint reaching 180 degrees
 around or running off the face, and a height reaching through the axis are
-refused by name; an absent target builds nothing and warns. A reader older than
-the kind refuses it by name (no document version bump).
+refused by name; an absent target builds nothing and warns. Only the outline is
+tested against the face, so an add over an existing hole in the face seals it, as
+an extrude does. A pattern or mirror of a wrap reuses the surface the wrap was
+built on, not the face as later features left it. A reader older than the kind
+refuses it by name (no document version bump).
 
 ### sweep
 
