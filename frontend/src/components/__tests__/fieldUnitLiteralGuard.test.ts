@@ -12,7 +12,7 @@
 //   \`${value}°\` in the dimension components, `utils/angleDialGeometry.ts`,
 //   `labelFont.ts`'s font warm-up string), which never sit next to an input;
 // - the `--field-unit-slot` custom property (the slot width), not a class;
-// - prose outside components (measurement registry rows, comments).
+// - prose outside components (measurement table rows, comments).
 import { describe, it, expect } from 'vitest'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join, relative } from 'node:path'

@@ -1,7 +1,7 @@
 // One place that knows what a document's length unit means. Stored numbers are
 // numbers in the document's own unit; only the millimetre-based file formats
 // (STEP, STL, an imported STEP) need the factor. Pure, so the kernel, the
-// measurement registry and the export dialog all read the same table.
+// measurement core and the export dialog all read the same table.
 
 import type { LengthUnit } from '@/types/cad'
 

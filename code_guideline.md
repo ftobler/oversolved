@@ -435,5 +435,5 @@ as a fallback seam for tests only.
 | Add new feature kind | the compile-time tethers, in order: `PartFeature` (`types/cad.ts`) -> `FEATURE_SCHEMA_BY_KIND` (`persistence/partDocSchema.ts`) -> `FEATURE_DEF_SUBKEY` (`kernel/features/shared/featureParams.ts`) -> `KIND_SOLVER` (`kernel/solverRegistry.ts`); then the runtime tables: `FEATURE_DEF_CHECKS` (`persistence/docSchema.ts`), `IDEMPOTENT_MUTATION`, `FIELD_SETTER_KIND` and the `MUTATION_VALUE_RULES` row, `mutationExamples`, and the editor schema; then the ratchets: `npm run regen:action-matrix`, `featureUnionRatchet` counts and the solver-registry kind list | `frontend/src/` |
 | Add new tool | `frontend/src/registry/entityRegistry.ts` | `frontend/src/registry/` |
 | Add new constraint | `frontend/src/registry/constraintRegistry.ts` | `frontend/src/registry/` |
-| Add new measurement | `frontend/src/registry/measurementRegistry.ts` | `frontend/src/registry/` |
+| Add new measurement | `frontend/src/utils/measure/rules.ts` (pair table) | `frontend/src/utils/measure/` |
 | Add icon | `@icon()` decorator | `oversolved/icons/` (family module, e.g. `toolbar.py`; launcher is `icons.py`) |
