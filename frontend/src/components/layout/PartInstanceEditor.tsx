@@ -201,6 +201,7 @@ export function PartInstanceEditor({
               <WheelNumberInput
                 ariaLabel={`Position ${AXIS_LABELS[axis]}`}
                 value={text[axis]}
+                quantity="length"
                 onChange={raw => commitAxis(axis, raw)}
                 onStep={n => commitAxis(axis, String(n))}
               />
@@ -209,7 +210,7 @@ export function PartInstanceEditor({
         </div>
       </div>
       <div className="feature-field-row">
-        <span className="feature-field-label">Rot.&deg;</span>
+        <span className="feature-field-label">Rot.</span>
         <div className="instance-triple">
           {ROT_AXES.map(axis => (
             <label key={axis} className="instance-axis">
@@ -217,6 +218,7 @@ export function PartInstanceEditor({
               <WheelNumberInput
                 ariaLabel={`Rotation ${ROT_LABELS[axis]}`}
                 value={rotText[axis]}
+                quantity="angle"
                 onChange={raw => commitRot(axis, raw)}
                 onStep={n => commitRot(axis, String(n))}
               />

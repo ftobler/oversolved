@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useSketchEditorStore, useSketchUiStore, getSketchCallback } from '@/stores/sketchEditorStore'
 import { evalExpr } from '@/kernel/evalExpr'
+import type { Quantity } from '@/utils/fieldUnit'
 import { refusalText } from '@/utils/core/statusMark'
 import { expressionRefusal, positive } from '@/utils/core/valueRules'
 import { dimensionValueRule } from '@/utils/core/dimensionValueRules'
@@ -50,6 +51,9 @@ export function useDimInteraction(
   // a zero axis distance or radial gap is a real constraint, while a zero
   // euclidean point_distance is a coincident and is refused with that hint.
   constraintKind?: string,
+  // What the edited value measures, for the dialog's unit. A dimension is a
+  // length unless the caller says it is an angle.
+  quantity: Quantity = 'length',
 ) {
   const setHoveredConstraintEntities = useSketchEditorStore(s => s.setHoveredConstraintEntities)
   const drag = useSketchEditorStore(s => s.drag)
@@ -101,6 +105,7 @@ export function useDimInteraction(
       position: [ev.clientX, ev.clientY],
       label: interaction.promptLabel,
       defaultValue: String(value),
+      quantity,
       validate: (input) => refusalText('Value', expressionRefusal(input, rule)),
       onConfirm: (input) => {
         const edited = evalExpr(input)
@@ -108,7 +113,7 @@ export function useDimInteraction(
       },
       ...(onFlip && { extraAction: { label: 'Flip side', onClick: onFlip } }),
     })
-  }, [interaction, cid, value, validatePositive, constraintKind, consumeClick, onFlip])
+  }, [interaction, cid, value, validatePositive, constraintKind, quantity, consumeClick, onFlip])
   // Called at the start of each pointer-down so a fresh drag begins with the flag clear.
   const resetDragMoved = reset
 

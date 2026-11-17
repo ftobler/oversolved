@@ -5,7 +5,7 @@
  * intended body, about the intended edge or face.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, fireEvent, act } from '@testing-library/react'
+import { render, fireEvent, act, screen } from '@testing-library/react'
 import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import { CIRCULAR_PATTERN_SCHEMA } from '@/components/editors/featureEditorSchemas'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -104,6 +104,21 @@ describe('circular pattern body pick (via FeatureEditor)', () => {
     expect(onMutation).toHaveBeenCalledWith({
       type: 'set_circular_pattern_field', featureId: 'pt1', field: 'source_body', value: '',
     })
+  })
+})
+
+describe('circular pattern count and angle rows', () => {
+  it('states what each box measures, in one wrapper, so their widths cannot diverge', () => {
+    renderEditor(makeFeature(), vi.fn())
+    const count = screen.getByRole('textbox', { name: 'Count, pieces' })
+    const angle = screen.getByRole('textbox', { name: 'Angle, degrees' })
+    const countBox = count.closest('.field-unit-box')
+    const angleBox = angle.closest('.field-unit-box')
+    expect(countBox).not.toBeNull()
+    expect(angleBox).not.toBeNull()
+    expect(countBox!.className).toBe(angleBox!.className)
+    expect(countBox!.querySelector('.field-unit')?.textContent).toBe('pcs')
+    expect(angleBox!.querySelector('.field-unit')?.textContent).toBe('deg')
   })
 })
 

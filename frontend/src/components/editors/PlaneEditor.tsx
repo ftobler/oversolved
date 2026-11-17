@@ -1,4 +1,5 @@
-import type { PartFeature, PlaneFeature, PlaneDef, Mutation } from '@/types/cad'
+import type { LengthUnit, PartFeature, PlaneFeature, PlaneDef, Mutation } from '@/types/cad'
+import type { Quantity } from '@/utils/fieldUnit'
 import { PickChip } from '@/components/sketch/PickChip'
 import { usePickField } from '@/hooks/usePickField'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -12,10 +13,12 @@ interface PlaneEditorProps {
   onMutation: (m: Mutation) => void
   features: PartFeature[]
   partLabels: Record<string, string>
+  // The document's unit, for the offset row.
+  lengthUnit?: LengthUnit
 }
 
 export function PlaneEditor({
-  feature, featureDef, onMutation, features, partLabels,
+  feature, featureDef, onMutation, features, partLabels, lengthUnit = 'mm',
 }: PlaneEditorProps) {
   const def: PlaneDef = featureDef?.definition ?? { mode: 'offset' }
   const mode = def.mode ?? 'offset'
@@ -56,12 +59,14 @@ export function PlaneEditor({
       </>
     )
   }
-  const numField = (field: 'offset' | 'angle' | 'rotation' | 'rotation_angle', label: string, defaultVal: number) => (
+  const numField = (field: 'offset' | 'angle' | 'rotation' | 'rotation_angle', label: string, quantity: Quantity, defaultVal: number) => (
     <div className="feature-field-row">
       <span className="feature-field-label">{label}</span>
       <ExpressionInput
         value={def[field] ?? defaultVal}
         ariaLabel={label}
+        quantity={quantity}
+        lengthUnit={lengthUnit}
         onChange={(v) => onMutation({ type: 'set_plane_definition_field', featureId: fid, field, value: v })}
       />
     </div>
@@ -92,7 +97,7 @@ export function PlaneEditor({
             <span className="feature-field-label">Plane</span>
             {pickChip('plane', 'plane', def.plane)}
           </div>
-          {numField('offset', 'Offset', 0)}
+          {numField('offset', 'Offset', 'length', 0)}
         </>
       )}
       {mode === 'plane_point' && (
@@ -119,7 +124,7 @@ export function PlaneEditor({
             <span className="feature-field-label">Line</span>
             {pickChip('line', 'line', def.line)}
           </div>
-          {numField('angle', 'Angle', 0)}
+          {numField('angle', 'Angle', 'angle', 0)}
         </>
       )}
       {mode === 'edge_point' && (
@@ -166,10 +171,10 @@ export function PlaneEditor({
               <option value="z">Z</option>
             </select>
           </div>
-          {numField('rotation_angle', 'Angle', 0)}
+          {numField('rotation_angle', 'Angle', 'angle', 0)}
         </>
       )}
-      {numField('rotation', 'Rotation', 0)}
+      {numField('rotation', 'Rotation', 'angle', 0)}
     </div>
   )
 }

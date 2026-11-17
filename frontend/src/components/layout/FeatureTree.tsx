@@ -15,6 +15,7 @@ import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
 import { domHandleProps } from '@/picking'
 import { usePartRelationHints } from '@/hooks/useRelationHint'
+import { UnitText } from '@/components/editors/widgets/UnitLabel'
 
 // The features list is one of the part editor's floating cards now: it sizes to
 // its content under a max-height and scrolls internally, with the open feature's
@@ -257,7 +258,11 @@ export function FeatureTree() {
                       title={mark.message || undefined}
                     >
                       {feature.label || feature.id}
-                      {varValue !== undefined ? ` = ${varValue}${varUnit ? ` ${varUnit}` : ''}` : ''}
+                      {varValue !== undefined ? ` = ${varValue}` : ''}
+                      {/* The stored display hint, drawn as the same muted unit the
+                          editors use. It is a free-form document string, not a
+                          quantity: only a feature field knows what it measures. */}
+                      {varValue !== undefined && varUnit ? <>{' '}<UnitText label={varUnit} /></> : null}
                     </span>
                   )
                 })()}

@@ -93,6 +93,7 @@ function editorFor({
         onMutation={onMutation}
         features={features}
         partLabels={partLabels}
+        lengthUnit={lengthUnitOf(doc?.length_unit)}
       />
     )
   }

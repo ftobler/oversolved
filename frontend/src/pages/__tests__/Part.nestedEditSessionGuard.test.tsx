@@ -92,7 +92,7 @@ describe('nested edit session guard (direct FeatureTree Edit button)', () => {
     fireEvent.click(screen.getAllByTitle('Edit fillet')[0])
     await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('fil1'))
 
-    const radiusInput = screen.getByLabelText('Radius') as HTMLInputElement
+    const radiusInput = screen.getByLabelText('Radius, millimetres') as HTMLInputElement
     fireEvent.change(radiusInput, { target: { value: '5' } })
     fireEvent.blur(radiusInput)
     await waitFor(() => expect(radiusOf('fil1')).toBe(5))
@@ -135,7 +135,7 @@ describe('nested edit session guard (direct FeatureTree Edit button)', () => {
     fireEvent.click(screen.getByTitle('Edit fillet'))
     await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('fil1'))
 
-    const radiusInput = screen.getByLabelText('Radius') as HTMLInputElement
+    const radiusInput = screen.getByLabelText('Radius, millimetres') as HTMLInputElement
     fireEvent.change(radiusInput, { target: { value: '9' } })
     fireEvent.blur(radiusInput)
     await waitFor(() => expect(radiusOf('fil1')).toBe(9))
@@ -173,7 +173,7 @@ describe('nested edit session guard (direct FeatureTree Edit button)', () => {
     const sk1Item = screen.getByText('Sketch 1').closest('.feature-item') as HTMLElement
     expect(within(sk1Item).queryByTitle('OK')).toBeNull()
 
-    const radiusInput = screen.getByLabelText('Radius') as HTMLInputElement
+    const radiusInput = screen.getByLabelText('Radius, millimetres') as HTMLInputElement
     fireEvent.change(radiusInput, { target: { value: '7' } })
     fireEvent.blur(radiusInput)
     await waitFor(() => expect(radiusOf('fil1')).toBe(7))

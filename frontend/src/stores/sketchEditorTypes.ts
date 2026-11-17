@@ -2,6 +2,7 @@
 // module reads as behavior, and so the pure helper modules can depend on the
 // shape without reaching into the store's runtime.
 import type { ActiveTool, SelectionDomain } from '@/types/cad'
+import type { Quantity } from '@/utils/fieldUnit'
 import type { FreezeProjectionMode } from '@/utils/yamlMutations/freezeProjection'
 import type { SnapKind, DimensionPick } from '@/registry'
 import type { SnapTarget } from '@/utils/geometry/snapDetection'
@@ -21,6 +22,10 @@ export interface DialogState {
   position: [number, number]
   label: string
   defaultValue?: string
+  // What the value measures, so the unit sits in the box and the accessible
+  // name says it. Omitted for a compound entry (the pattern's "count pitch"),
+  // which measures two different things.
+  quantity?: Quantity
   onConfirm: (val: string) => void
   onCancel?: () => void
   // Return an error message to reject the input (dialog stays open and shows

@@ -243,6 +243,7 @@ export function MateEditor({
                         ariaLabel={`Offset ${axis.toUpperCase()}`}
                         value={offsetText[i]}
                         placeholder="0"
+                        quantity="length"
                         onChange={raw => commitOffsetAxis(i, raw)}
                         onStep={n => commitOffsetAxis(i, String(n))}
                       />
@@ -269,6 +270,7 @@ export function MateEditor({
                 ariaLabel={MATE_PARAM_LABELS.offset}
                 value={numericValue(mate.offset)}
                 placeholder="0"
+                quantity="length"
                 onChange={raw => {
                   if (raw === '') { onUpdate({ offset: undefined }); return }
                   const n = Number(raw)
@@ -297,6 +299,7 @@ export function MateEditor({
                 ariaLabel={MATE_PARAM_LABELS.angle}
                 value={angleText}
                 placeholder={mate.kind === 'rotating' ? 'free' : '0'}
+                quantity="angle"
                 onChange={raw => {
                   setAngleText(raw)
                   if (raw === '') { onUpdate({ angle: undefined }); return }
@@ -341,6 +344,7 @@ export function MateEditor({
               ariaLabel={label}
               value={limitText[index]}
               placeholder="open"
+              quantity={mateLimitIsAngle(mate.kind) ? 'angle' : 'length'}
               onChange={raw => commitLimit(index, raw)}
               onStep={n => stepLimit(index, n)}
               // Entry is finished: commit the canonical text even if the value
@@ -384,6 +388,8 @@ export function MateEditor({
         <WheelNumberInput
           value={numericValue(mate[param])}
           placeholder="0"
+          // Radius is a length; Ratio is a true ratio and shows no unit.
+          quantity={param === 'radius' ? 'length' : 'none'}
           onChange={raw => {
             // An emptied box means "unset", not zero: the solver defaults these
             // itself, and writing 0 would pin an offset the user did not ask for.

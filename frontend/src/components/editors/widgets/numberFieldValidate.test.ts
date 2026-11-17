@@ -4,7 +4,7 @@ import { positive, nonNegative, finite, between, expressionRefusal } from '@/uti
 import type { NumberFieldDef } from './fieldTypes'
 
 function field(over: Partial<NumberFieldDef> = {}): NumberFieldDef {
-  return { type: 'number', key: 'count', label: 'Count', ...over }
+  return { type: 'number', key: 'count', label: 'Count', quantity: 'count', ...over }
 }
 
 describe('validateNumberFieldValue', () => {

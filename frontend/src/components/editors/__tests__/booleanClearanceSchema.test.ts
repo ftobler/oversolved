@@ -9,18 +9,18 @@ type LooseField = {
   type: string
   label?: string
   default?: unknown
-  unit?: string
+  quantity?: string
   showWhen?: (data: Record<string, unknown>) => boolean
 }
 
 const field = BOOLEAN_SCHEMA.fields.find((f) => (f as LooseField).key === 'clearance') as LooseField | undefined
 
 describe('BOOLEAN_SCHEMA clearance field', () => {
-  it('is a number field labelled Clearance in mm, defaulting to 0', () => {
+  it('is a length number field labelled Clearance, defaulting to 0', () => {
     expect(field).toBeDefined()
     expect(field?.type).toBe('number')
     expect(field?.label).toBe('Clearance')
-    expect(field?.unit).toBe('mm')
+    expect(field?.quantity).toBe('length')
     expect(field?.default).toBe(0)
   })
 

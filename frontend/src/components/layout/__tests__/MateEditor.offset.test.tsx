@@ -37,8 +37,8 @@ function renderEditor(m: MateFeatureDef, onUpdate = vi.fn()) {
 }
 
 const box = (axis: 'X' | 'Y' | 'Z') =>
-  screen.getByLabelText(`Offset ${axis}`) as HTMLInputElement
-const scalarBox = () => screen.getByLabelText('Offset') as HTMLInputElement
+  screen.getByLabelText(`Offset ${axis}, millimetres`) as HTMLInputElement
+const scalarBox = () => screen.getByLabelText('Offset, millimetres') as HTMLInputElement
 
 describe('MateEditor offset vector', () => {
   it('shows a box per axis for a fixed mate', () => {

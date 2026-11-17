@@ -101,7 +101,7 @@ describe('ExtrudeEditor renders in Sidebar', () => {
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
     })
-    expect(screen.getByRole('textbox', { name: 'Distance' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Distance, millimetres' })).toBeInTheDocument()
     // Operation, Direction, Termination.
     expect(screen.getAllByRole('combobox')).toHaveLength(3)
   })
@@ -112,7 +112,7 @@ describe('ExtrudeEditor renders in Sidebar', () => {
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: null,
     })
-    expect(screen.queryByRole('textbox', { name: 'Distance' })).toBeNull()
+    expect(screen.queryByRole('textbox', { name: 'Distance, millimetres' })).toBeNull()
     expect(screen.queryByRole('combobox')).toBeNull()
   })
 })
@@ -126,7 +126,7 @@ describe('distance input', () => {
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
     }, { onMutation })
-    const input = screen.getByRole('textbox', { name: 'Distance' }) as HTMLInputElement
+    const input = screen.getByRole('textbox', { name: 'Distance, millimetres' }) as HTMLInputElement
     fireEvent.change(input, { target: { value: '25' } })
     fireEvent.blur(input)
     expect(onMutation).toHaveBeenCalledWith<[Mutation]>({
@@ -144,7 +144,7 @@ describe('distance input', () => {
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
     }, { onMutation })
-    const input = screen.getByRole('textbox', { name: 'Distance' }) as HTMLInputElement
+    const input = screen.getByRole('textbox', { name: 'Distance, millimetres' }) as HTMLInputElement
     fireEvent.change(input, { target: { value: '-5' } })
     fireEvent.blur(input)
     expect(onMutation).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'set_extrude_field' }))
@@ -157,7 +157,7 @@ describe('distance input', () => {
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
     }, { onMutation })
-    const input = screen.getByRole('textbox', { name: 'Distance' }) as HTMLInputElement
+    const input = screen.getByRole('textbox', { name: 'Distance, millimetres' }) as HTMLInputElement
     fireEvent.change(input, { target: { value: '30' } })
     // jsdom does not auto-fire blur when .blur() is called programmatically,
     // so fire keyDown then blur explicitly to simulate the handler's behaviour.
@@ -272,7 +272,7 @@ describe('termination select', () => {
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
     })
-    expect(screen.queryByRole('textbox', { name: 'Distance' })).toBeNull()
+    expect(screen.queryByRole('textbox', { name: 'Distance, millimetres' })).toBeNull()
     expect(screen.getByText('(pick plane, point, or face)')).toBeInTheDocument()
   })
 
@@ -286,7 +286,7 @@ describe('termination select', () => {
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
     })
-    expect(screen.queryByRole('textbox', { name: 'Distance' })).toBeNull()
+    expect(screen.queryByRole('textbox', { name: 'Distance, millimetres' })).toBeNull()
   })
 
   it('keeps the schema distance default for the blind switch back', () => {
@@ -325,9 +325,9 @@ describe('termination select', () => {
         visibleFeatures: new Set(['ex1']),
         editingFeatureId: 'ex1',
       })
-      expect(screen.getByRole('textbox', { name: 'Offset' })).toBeInTheDocument()
+      expect(screen.getByRole('textbox', { name: 'Offset, millimetres' })).toBeInTheDocument()
       expect(screen.getByRole('checkbox', { name: 'Emboss from surface' })).toBeInTheDocument()
-      expect(screen.queryByRole('textbox', { name: 'Distance' })).toBeNull()
+      expect(screen.queryByRole('textbox', { name: 'Distance, millimetres' })).toBeNull()
       unmount()
     }
   })

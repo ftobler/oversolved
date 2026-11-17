@@ -136,9 +136,10 @@ describe('TransformEditor (via FeatureEditor)', () => {
     }
   })
 
-  // Commit a value into the number field carrying the given label.
-  function editField(label: string, text: string) {
-    const input = screen.getByLabelText(label)
+  // Commit a value into the number field whose accessible name is `name`: the
+  // label plus the unit the box states.
+  function editField(name: string, text: string) {
+    const input = screen.getByLabelText(name)
     fireEvent.focus(input)
     fireEvent.change(input, { target: { value: text } })
     fireEvent.blur(input)
@@ -154,7 +155,7 @@ describe('TransformEditor (via FeatureEditor)', () => {
       transform: { bodies: [], operation: 'new', rotation_angle: 0, scale: 1 },
     } as unknown as PartFeature
     render(<FeatureEditor feature={bare} onMutation={onMutation} schema={TRANSFORM_SCHEMA} />)
-    editField('Z', '5')
+    editField('Z, millimetres', '5')
     expect(onMutation).toHaveBeenCalledWith({
       type: 'set_transform_field', featureId: 'tr1', field: 'translation', value: [0, 0, 5],
     })
@@ -169,7 +170,7 @@ describe('TransformEditor (via FeatureEditor)', () => {
       transform: { bodies: [], operation: 'new', translation: [7], rotation_angle: 0, scale: 1 },
     } as unknown as PartFeature
     render(<FeatureEditor feature={short} onMutation={onMutation} schema={TRANSFORM_SCHEMA} />)
-    editField('Z', '5')
+    editField('Z, millimetres', '5')
     expect(onMutation).toHaveBeenCalledWith({
       type: 'set_transform_field', featureId: 'tr1', field: 'translation', value: [7, 0, 5],
     })
@@ -178,7 +179,7 @@ describe('TransformEditor (via FeatureEditor)', () => {
   it('editing Euler Y writes a dense rotation_euler triple', () => {
     const onMutation = vi.fn()
     render(<FeatureEditor feature={makeFeature()} onMutation={onMutation} schema={TRANSFORM_SCHEMA} />)
-    editField('Euler Y (deg)', '20')
+    editField('Euler Y, degrees', '20')
     expect(onMutation).toHaveBeenCalledWith({
       type: 'set_transform_field', featureId: 'tr1', field: 'rotation_euler', value: [0, 20, 0],
     })
@@ -191,7 +192,7 @@ describe('TransformEditor (via FeatureEditor)', () => {
       transform: { bodies: [], operation: 'new', rotation_euler: [10, 20, 300], scale: 1 },
     } as unknown as PartFeature
     render(<FeatureEditor feature={withEuler} onMutation={onMutation} schema={TRANSFORM_SCHEMA} />)
-    editField('Euler Z (deg)', '45')
+    editField('Euler Z, degrees', '45')
     expect(onMutation).toHaveBeenCalledWith({
       type: 'set_transform_field', featureId: 'tr1', field: 'rotation_euler', value: [10, 20, 45],
     })

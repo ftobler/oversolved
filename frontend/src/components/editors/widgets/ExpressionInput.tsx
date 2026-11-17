@@ -1,10 +1,13 @@
 import { useState } from 'react'
+import type { LengthUnit } from '@/types/cad'
 import { evalExpr } from '@/kernel/evalExpr'
+import { fieldAccessibleName, type Quantity } from '@/utils/fieldUnit'
 import { PLAIN_NUMBER } from './wheelStep'
 import { useWheelStep } from './useWheelStep'
 import { StatusMessage } from '@/components/shared/StatusMessage'
 import { fieldRefusal } from '@/utils/core/statusMark'
 import { cannotEvaluate } from '@/utils/core/valueRules'
+import { UnitBox } from './UnitLabel'
 
 interface ExpressionInputProps {
   value: string | number  // raw stored value (number or expression string)
@@ -12,7 +15,10 @@ interface ExpressionInputProps {
   context?: Record<string, number>  // variable scope (named dimensions, params)
   // Rule on the evaluated result: null accepts, a string is the refusal reason.
   validate?: (v: number) => string | null
-  unit?: string
+  // What the value measures; the unit is drawn inside the box and said out
+  // loud in the accessible name. A ratio (`none`) shows neither.
+  quantity?: Quantity
+  lengthUnit?: LengthUnit
   disabled?: boolean
   ariaLabel?: string
 }
@@ -30,7 +36,7 @@ interface ExpressionInputProps {
  *  "must be greater than 0" are told apart instead of both reading as one red
  *  border. */
 export function ExpressionInput({
-  value, onChange, context = {}, validate, unit, disabled, ariaLabel,
+  value, onChange, context = {}, validate, quantity = 'none', lengthUnit = 'mm', disabled, ariaLabel,
 }: ExpressionInputProps) {
   // null = idle (mirror external value); string = actively editing.
   const [draft, setDraft] = useState<string | null>(null)
@@ -67,30 +73,33 @@ export function ExpressionInput({
 
   return (
     <>
-      <input
-        ref={wheelRef}
-        type="text"
-        aria-label={ariaLabel}
-        className={`feature-field-input${reason !== null ? ' feature-field-input--error' : ''}`}
-        value={raw}
-        disabled={disabled}
-        // A stored value that no longer passes (a deleted variable, an imported
-        // doc) was never refused by the user: border plus hover, no field line.
-        title={draft === null && reason !== null ? reason : undefined}
-        onClick={(e) => e.stopPropagation()}
-        onFocus={() => setDraft(String(value))}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter') e.currentTarget.blur()
-          else if (e.key === 'Escape') { setDraft(null); e.currentTarget.blur() }
-          e.stopPropagation()
-        }}
-      />
+      {/* The box carries the unit in its own padding, so the eval readout and a
+          refusal line still sit outside it. */}
+      <UnitBox quantity={quantity} lengthUnit={lengthUnit}>
+        <input
+          ref={wheelRef}
+          type="text"
+          aria-label={ariaLabel === undefined ? undefined : fieldAccessibleName(ariaLabel, quantity, lengthUnit)}
+          className={`feature-field-input${reason !== null ? ' feature-field-input--error' : ''}`}
+          value={raw}
+          disabled={disabled}
+          // A stored value that no longer passes (a deleted variable, an imported
+          // doc) was never refused by the user: border plus hover, no field line.
+          title={draft === null && reason !== null ? reason : undefined}
+          onClick={(e) => e.stopPropagation()}
+          onFocus={() => setDraft(String(value))}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') e.currentTarget.blur()
+            else if (e.key === 'Escape') { setDraft(null); e.currentTarget.blur() }
+            e.stopPropagation()
+          }}
+        />
+      </UnitBox>
       {isExpression && valid && (
         <span className="feature-field-eval">= {Number(result.toFixed(4))}</span>
       )}
-      {unit && <span className="feature-field-unit">{unit}</span>}
       <StatusMessage mark={fieldRefusal('Value', draft !== null ? reason : null)} />
     </>
   )

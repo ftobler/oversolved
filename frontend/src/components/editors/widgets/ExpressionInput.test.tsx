@@ -6,7 +6,7 @@ import { positive } from '@/utils/core/valueRules'
 import type { NumberFieldDef } from './fieldTypes'
 
 function nfField(over: Partial<NumberFieldDef> = {}): NumberFieldDef {
-  return { type: 'number', key: 'k', label: 'L', ...over }
+  return { type: 'number', key: 'k', label: 'L', quantity: 'none', ...over }
 }
 
 function renderInput(props: Partial<React.ComponentProps<typeof ExpressionInput>> = {}) {

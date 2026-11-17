@@ -478,6 +478,7 @@ export function openFilletDialog(onRadius: (radius: number) => void): void {
     position: [cx, cy],
     label: 'Fillet radius',
     defaultValue: '5',
+    quantity: 'length',
     validate: (input) => refusalText('Value', isNaN(parseFloat(input)) ? cannotEvaluate(input) : null),
     onConfirm: (input) => {
       onRadius(parseFloat(input))
@@ -591,6 +592,7 @@ export function openOffsetDialog(onDistance: (distance: number) => void): void {
     position: [cx, cy],
     label: 'Offset distance',
     defaultValue: '5',
+    quantity: 'length',
     validate: (input) => refusalText('Value', isNaN(parseFloat(input)) ? cannotEvaluate(input) : null),
     onConfirm: (input) => {
       onDistance(parseFloat(input))

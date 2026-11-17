@@ -35,7 +35,7 @@ function makeFeature(kind: string, subKey: string, data: SchemaData): PartFeatur
 describe('FeatureEditor number field', () => {
   const schema: FeatureEditorSchema = {
     mutationPrefix: 'set_test', subKey: 'test', defaults: { count: 5 },
-    fields: [{ type: 'number', key: 'count', label: 'Count', default: 5 }],
+    fields: [{ type: 'number', key: 'count', label: 'Count', default: 5, quantity: 'count' }],
   }
 
   it('renders number input with default value', () => {
@@ -60,7 +60,7 @@ describe('FeatureEditor number field', () => {
   it('does not dispatch for non-positive value when validate rejects', () => {
     const validatedSchema: FeatureEditorSchema = {
       ...schema,
-      fields: [{ type: 'number', key: 'count', label: 'Count', default: 5, validate: (v) => (v > 0 ? null : 'must be greater than 0') }],
+      fields: [{ type: 'number', key: 'count', label: 'Count', default: 5, quantity: 'count', validate: (v) => (v > 0 ? null : 'must be greater than 0') }],
     }
     const onMutation = vi.fn()
     render(<FeatureEditor feature={makeFeature('test', 'test', { count: 10 })} onMutation={onMutation} schema={validatedSchema} />)
@@ -70,10 +70,10 @@ describe('FeatureEditor number field', () => {
     expect(onMutation).not.toHaveBeenCalled()
   })
 
-  it('renders unit label when unit is set', () => {
+  it('renders the document unit on a length field', () => {
     const unitSchema: FeatureEditorSchema = {
       ...schema,
-      fields: [{ type: 'number', key: 'diam', label: 'Diameter', default: 10, unit: 'mm' }],
+      fields: [{ type: 'number', key: 'diam', label: 'Diameter', default: 10, quantity: 'length' }],
     }
     render(<FeatureEditor feature={makeFeature('test', 'test', { diam: 10 })} onMutation={vi.fn()} schema={unitSchema} />)
     expect(screen.getByText('mm')).toBeInTheDocument()
@@ -82,7 +82,7 @@ describe('FeatureEditor number field', () => {
   it('follows the document unit on a length field without touching the value', () => {
     const unitSchema: FeatureEditorSchema = {
       ...schema,
-      fields: [{ type: 'number', key: 'diam', label: 'Diameter', default: 10, unit: 'mm' }],
+      fields: [{ type: 'number', key: 'diam', label: 'Diameter', default: 10, quantity: 'length' }],
     }
     render(
       <FeatureEditor
@@ -100,7 +100,7 @@ describe('FeatureEditor number field', () => {
   it('keeps a degree label independent of the document length unit', () => {
     const angleSchema: FeatureEditorSchema = {
       ...schema,
-      fields: [{ type: 'number', key: 'angle', label: 'Angle', default: 45, unit: 'deg' }],
+      fields: [{ type: 'number', key: 'angle', label: 'Angle', default: 45, quantity: 'angle' }],
     }
     render(
       <FeatureEditor
@@ -249,7 +249,7 @@ describe('FeatureEditor showWhen', () => {
     mutationPrefix: 'set_test', subKey: 'test', defaults: { kind: 'a' },
     fields: [
       { type: 'select', key: 'kind', label: 'Kind', options: [{ value: 'a', label: 'A' }, { value: 'b', label: 'B' }] },
-      { type: 'number', key: 'extra', label: 'Extra', showWhen: (d) => d.kind === 'b' },
+      { type: 'number', key: 'extra', label: 'Extra', quantity: 'none', showWhen: (d) => d.kind === 'b' },
     ],
   }
 

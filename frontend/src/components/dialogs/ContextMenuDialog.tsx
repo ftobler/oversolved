@@ -1,6 +1,10 @@
 import { useRef, useEffect, useState } from 'react'
 import { useSketchUiStore } from '@/stores/sketchEditorStore'
+import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useWheelStep } from '@/components/editors/widgets/useWheelStep'
+import { UnitBox } from '@/components/editors/widgets/UnitLabel'
+import { fieldAccessibleName } from '@/utils/fieldUnit'
+import { lengthUnitOf } from '@/utils/lengthUnit'
 import { acquireModalEscape } from '@/utils/core/modalEscape'
 import okIcon from '@/assets/icons/dialog-ok.svg'
 import cancelIcon from '@/assets/icons/dialog-cancel.svg'
@@ -9,6 +13,9 @@ import '@/components/dialogs/ContextMenuDialog.css'
 export default function ContextMenuDialog() {
   const dialog = useSketchUiStore(s => s.pendingDialog)
   const closeDialog = useSketchUiStore(s => s.closeDialog)
+  // A sketch dimension and a feature handle are lengths in the part's own unit,
+  // so the box follows the document without the callers having to thread it.
+  const lengthUnit = lengthUnitOf(usePartEditorStore(s => s.doc)?.length_unit)
   const inputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [seenDialog, setSeenDialog] = useState(dialog)
@@ -101,15 +108,18 @@ export default function ContextMenuDialog() {
       onClick={e => e.stopPropagation()}
     >
       <span className="context-menu-label">{dialog.label}</span>
-      <input
-        key={dialog.defaultValue}
-        ref={wheelRef}
-        type="number"
-        defaultValue={dialog.defaultValue ?? ''}
-        onKeyDown={handleKeyDown}
-        onChange={() => { if (error) setError(null) }}
-        className={error ? 'context-menu-input invalid' : 'context-menu-input'}
-      />
+      <UnitBox quantity={dialog.quantity ?? 'none'} lengthUnit={lengthUnit} grow={false}>
+        <input
+          key={dialog.defaultValue}
+          ref={wheelRef}
+          type="number"
+          defaultValue={dialog.defaultValue ?? ''}
+          onKeyDown={handleKeyDown}
+          onChange={() => { if (error) setError(null) }}
+          className={error ? 'context-menu-input invalid' : 'context-menu-input'}
+          aria-label={fieldAccessibleName(dialog.label, dialog.quantity ?? 'none', lengthUnit)}
+        />
+      </UnitBox>
       <button className="context-menu-btn context-menu-btn-ok" onClick={handleConfirm}><img src={okIcon} alt="OK" /></button>
       <button className="context-menu-btn context-menu-btn-cancel" onClick={() => { dialog.onCancel?.(); closeDialog() }}><img src={cancelIcon} alt="Cancel" /></button>
       {dialog.extraAction && (

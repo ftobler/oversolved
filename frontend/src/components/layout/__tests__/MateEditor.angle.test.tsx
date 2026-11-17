@@ -32,7 +32,7 @@ function renderEditor(m: MateFeatureDef, onUpdate = vi.fn()) {
   return { onUpdate, ...utils }
 }
 
-const angleBox = () => screen.getByLabelText('Angle') as HTMLInputElement
+const angleBox = () => screen.getByLabelText('Angle, degrees') as HTMLInputElement
 const plus90 = () => screen.getByRole('button', { name: /\+90/ })
 
 describe('MateEditor angle buttons', () => {

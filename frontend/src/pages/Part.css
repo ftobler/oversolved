@@ -1402,12 +1402,47 @@
   text-overflow: ellipsis;
 }
 
-.feature-field-unit {
-  font-size: 12px;
+/* A number box carries its unit inside the input's own right padding, so a row
+   with a unit and a row without keep the same box width. The slot fits the
+   longest label ('pcs', 'deg', 'mm', 'in') at the unit's size; the input's text
+   stops at the padding edge, so a long value or a formula cannot run under it.
+   The unit is not a target: a click lands on the input behind it. */
+.field-unit-box {
+  --field-unit-slot: 26px;
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+}
+
+.field-unit-box--grow {
+  flex: 1;
+}
+
+.field-unit-box--with-unit > input {
+  padding-right: var(--field-unit-slot);
+}
+
+.field-unit {
+  font-size: 10px;
+  line-height: 1;
+  letter-spacing: 0.3px;
   color: #6a5a6a;
-  padding: 0 4px;
   white-space: nowrap;
-  flex-shrink: 0;
+  user-select: none;
+}
+
+.field-unit-box > .field-unit {
+  position: absolute;
+  right: 7px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+/* The read-only row's unit is its own sibling, not a box adornment, so it needs
+   the gap the box's right padding would have given it. */
+.feature-field-row > .field-unit {
+  margin-left: 4px;
 }
 
 .feature-field-row--stacked {

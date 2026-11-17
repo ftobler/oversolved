@@ -1,5 +1,4 @@
 import type { LengthUnit, PartFeature, Mutation } from '@/types/cad'
-import { LENGTH_UNIT_LABEL } from '@/utils/lengthUnit'
 import type {
   SchemaData,
   EditorFieldDef,
@@ -16,6 +15,7 @@ import { TabsField } from './widgets/TabsField'
 import { CheckboxFieldWidget } from './widgets/CheckboxField'
 import { PickFieldWidget } from './widgets/PickField'
 import { TextFieldWidget } from './widgets/TextField'
+import { UnitLabel } from './widgets/UnitLabel'
 
 // ─── types ───
 
@@ -35,8 +35,7 @@ interface FeatureEditorProps {
   features?: PartFeature[]
   partLabels?: Record<string, string>
   schema: FeatureEditorSchema
-  // The document's unit. A schema field marked `unit: 'mm'` is a length in that
-  // unit, so its label follows the document without touching the authored value.
+  // The document's unit, for a field whose quantity is `length`.
   lengthUnit?: LengthUnit
   // The feature's last solve result, for a schema row that shows a solved value
   // (the linear pattern's directive-length spacing) instead of an authored one.
@@ -79,20 +78,19 @@ export function FeatureEditor({
         switch (field.type) {
           case 'number': {
             const nf = field as NumberFieldDef
-            // `mm` in a schema marks a length; the label is the document's.
-            const labeled = nf.unit === 'mm' ? { ...nf, unit: LENGTH_UNIT_LABEL[lengthUnit] } : nf
             const rawVal = nf.arrayField != null && nf.arrayIndex != null
               ? data[nf.arrayField]?.[nf.arrayIndex]
               : data[field.key]
             return <NumberFieldWidget
               key={`${field.key}:${i}`}
-              field={labeled}
+              field={nf}
               value={rawVal as string | number | undefined}
               data={data}
               arrayData={nf.arrayField != null ? arrayFieldData[nf.arrayField] : undefined}
               fid={fid}
               onMutation={onMutation}
               mutationType={mutationType}
+              lengthUnit={lengthUnit}
             />
           }
           case 'select': {
@@ -156,9 +154,8 @@ export function FeatureEditor({
             return (
               <div className="feature-field-row" key={`${field.key}:${i}`}>
                 <span className="feature-field-label">{rf.label}</span>
-                <span className="feature-field-value">
-                  {shown}{rf.unit === 'mm' ? ` ${LENGTH_UNIT_LABEL[lengthUnit]}` : ''}
-                </span>
+                <span className="feature-field-value">{shown}</span>
+                <UnitLabel quantity={rf.quantity} lengthUnit={lengthUnit} />
               </div>
             )
           }

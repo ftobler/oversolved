@@ -5,7 +5,7 @@ import type { NumberFieldDef } from './fieldTypes'
 import { positive } from '@/utils/core/valueRules'
 
 const field: NumberFieldDef = {
-  type: 'number', key: 'count', label: 'Count', parse: 'int', validate: positive, min: 1,
+  type: 'number', key: 'count', label: 'Count', quantity: 'count', parse: 'int', validate: positive, min: 1,
 }
 
 const baseProps = {
@@ -19,7 +19,7 @@ describe('NumberFieldWidget wheel step', () => {
   it('steps a schema field down once, then holds at the boundary', () => {
     const onMutation = vi.fn()
     const { rerender } = render(<NumberFieldWidget {...baseProps} onMutation={onMutation} />)
-    const input = screen.getByRole('textbox', { name: 'Count' }) as HTMLInputElement
+    const input = screen.getByRole('textbox', { name: 'Count, pieces' }) as HTMLInputElement
     fireEvent.wheel(input, { deltaY: 100 })
     expect(onMutation).toHaveBeenCalledWith({ type: 'set_test_field', featureId: 'f1', field: 'count', value: 1 })
     // The host re-renders with the committed value (as the real editor does);
