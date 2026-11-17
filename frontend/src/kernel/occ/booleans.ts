@@ -774,23 +774,16 @@ export function booleanRefusalHint(coveredSeam: boolean): string {
   return coveredSeam ? BOOLEAN_SEAM_HINT : BOOLEAN_TANGENCY_HINT
 }
 
-/** A face's seam edge: the same face visits it twice (a cylinder, cone, sphere,
- *  torus or a revolved spline closes on itself there). */
-interface SeamEdge {
-  edge: OccSubShape
-  face: OccSubShape
-}
-
 /**
- * Every distinct seam edge of `shape`, with the face that owns it.
+ * Every distinct seam edge of `shape`.
  *
  * `BRep_Tool.IsClosed_2(edge, face)` is the same predicate move-face uses to
  * skip a curved face's own seam. A degenerated edge (a sphere pole, a cone
  * apex) is a point, not a boundary, so it is not a seam.
  */
-function seamEdgesOf(oc: OccModule, scope: DisposeScope, shape: OccShape): SeamEdge[] {
+function seamEdgesOf(oc: OccModule, scope: DisposeScope, shape: OccShape): OccSubShape[] {
   const E = oc.TopAbs_ShapeEnum
-  const out: SeamEdge[] = []
+  const out: OccSubShape[] = []
   const dedup = new SubShapeDedup()
   const faces = explore(oc, scope, shape, E.TopAbs_FACE)
   for (const rawFace of faces) {
@@ -799,7 +792,7 @@ function seamEdgesOf(oc: OccModule, scope: DisposeScope, shape: OccShape): SeamE
       const edge = scope.track(oc.TopoDS.Edge_1(rawEdge)) as OccSubShape
       if (oc.BRep_Tool.Degenerated?.(edge)) continue
       if (!oc.BRep_Tool.IsClosed_2(edge, face)) continue
-      if (dedup.add(edge)) out.push({ edge, face: face as OccSubShape })
+      if (dedup.add(edge)) out.push(edge)
     }
   }
   return out
@@ -858,13 +851,13 @@ function toolCoversSeam(
     const toolBox = shapeBndBox(oc, scope, tool)
     const slack = OCC_CONFUSION
     for (const seam of seams) {
-      const box = shapeBndBox(oc, scope, seam.edge)
+      const box = shapeBndBox(oc, scope, seam)
       const apart =
         box.min[0] > toolBox.max[0] + slack || box.max[0] < toolBox.min[0] - slack ||
         box.min[1] > toolBox.max[1] + slack || box.max[1] < toolBox.min[1] - slack ||
         box.min[2] > toolBox.max[2] + slack || box.max[2] < toolBox.min[2] - slack
       if (apart) continue
-      if (seamPartsInsideTool(oc, scope, seam.edge, tool).length > 0) return true
+      if (seamPartsInsideTool(oc, scope, seam, tool).length > 0) return true
     }
     return false
   } catch (e) {
