@@ -454,7 +454,7 @@ function applyEdgeFeature(
   // in: it is the createdBy tag for the generated blend-face UUIDs.
   const edges = (feature.edges as string[]) ?? []
   if (edges.length === 0) throw new Error(`${featureKind}: requires at least one edge`)
-  if (Object.keys(bodyStore).length === 0) throw new Error(`${featureKind}: no bodies in body_store`)
+  if (Object.keys(bodyStore).length === 0) throw new Error(`${featureKind}: no parts in body_store`)
 
   const sourceBody = (feature.source_body as string) ?? ''
   const indexFor = makeEdgeIndexCache(oc, scope, table)

@@ -4,10 +4,11 @@
 // built in JSX rather than a schema. The `body` ids and mutation types behind
 // the buttons stay as they are.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import { type ReactNode } from 'react'
 import Part from '@/pages/Part'
+import { usePartEditorStore } from '@/stores/partEditorStore'
 import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 
 vi.mock('../../components/Viewport', async () =>
@@ -22,6 +23,11 @@ vi.mock('../../components/dialogs/ExportDialog', () => ({ default: () => null })
 vi.mock('../../components/dialogs/LoadingOverlay', () => ({ default: () => null }))
 vi.mock('../../components/dialogs/RightClickMenu', async () =>
   (await import('@/__tests__/test-utils')).rightClickMenuMockModule())
+
+vi.mock('@/kernel/worker/solverClient', () => ({
+  solveViaWorker: vi.fn(async () => ({ result: {}, bodies: {}, _build_state: null })),
+  cancelSolver: vi.fn(),
+}))
 
 const BODY_WORD = /\bbod(?:y|ies)\b/i
 
@@ -50,5 +56,30 @@ describe('part editor toolbar wording', () => {
     const alts = [...document.querySelectorAll('.editor-toolbar [alt]')]
       .map(node => node.getAttribute('alt') ?? '')
     expect([...titles, ...alts].filter(text => BODY_WORD.test(text))).toEqual([])
+  })
+
+  it('names the row the toolbar adds Delete Part', async () => {
+    // The add path used to fall through to the generic `${kind} ${n}` row name,
+    // so the toolbar created a `delete_body N` row while the Delete key and the
+    // applier said Delete Part. One label now comes from the applier's default.
+    render(
+      <MemoryRouter initialEntries={['/documents/doc-1']}>
+        <Routes>
+          <Route path="/documents/:uuid" element={<Part />} />
+        </Routes>
+      </MemoryRouter>,
+      { wrapper: Wrapper },
+    )
+    fireEvent.click(screen.getByTitle('Feature mode'))
+    await waitFor(() => expect(usePartEditorStore.getState().doc).not.toBeNull())
+    fireEvent.click(screen.getByTitle('Delete Part'))
+
+    await waitFor(() => expect(usePartEditorStore.getState().doc?.features?.some(f => f.kind === 'delete_body')).toBe(true))
+    // The new row opens its editor, so the same name also appears in the panel;
+    // the tree row is the one this test is about.
+    await waitFor(() => {
+      expect(document.querySelector('.feature-item.editing .feature-name')?.textContent).toBe('Delete Part')
+    })
+    expect(screen.queryByText(/delete_body/)).toBeNull()
   })
 })

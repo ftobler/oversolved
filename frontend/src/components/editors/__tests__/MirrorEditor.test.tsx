@@ -1,6 +1,6 @@
-// The mirror editor schema: one subject switch, the whole-body rows with Body,
+// The mirror editor schema: one subject switch, the whole-part rows with Part,
 // Keep Original and Merge, and the feature rows with the source chip and Target
-// body. The source chip shares the pattern's refusal rule.
+// part. The source chip shares the pattern's refusal rule.
 import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent, screen, act } from '@testing-library/react'
 import { FeatureEditor } from '@/components/editors/FeatureEditor'
@@ -52,7 +52,7 @@ describe('MIRROR_SCHEMA', () => {
     ])
   })
 
-  it('shows the whole-body rows on the body subject', () => {
+  it('shows the whole-part rows on the body subject', () => {
     renderEditor(makeFeature())
     const shown = labels()
     expect(shown).toEqual(expect.arrayContaining(['Part', 'Mirror Plane', 'Keep Original', 'Merge']))
@@ -64,7 +64,7 @@ describe('MIRROR_SCHEMA', () => {
     renderEditor(makeFeature({ subject: 'feature', source_features: [] }))
     const shown = labels()
     expect(shown).toEqual(expect.arrayContaining(['Source Features', 'Target part', 'Mirror Plane']))
-    expect(shown).not.toContain('Body')
+    expect(shown).not.toContain('Part')
     expect(shown).not.toContain('Keep Original')
     expect(shown).not.toContain('Merge')
   })

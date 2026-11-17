@@ -970,20 +970,20 @@ banner on stdout, so a client config must use the direct node invocation.
   its required fields (`sketch`, `diameter`, `depth_mode`) and its optional ones
   (`depth`, `direction`, `target`, `thread`, `style`, `cb_diameter`, `cb_depth`,
   `cs_angle`, `tip`, `tip_angle`, `thread_depth`), with `depth` required only for a blind hole because a
-  `through_all` hole is sized by the target body and stores no depth; all are
+  `through_all` hole is sized by the target part and stores no depth; all are
   optional in an `add_hole` payload. The widened mouth is one field,
   `cb_diameter`, under both the `counterbore` and the `countersink` style, so
   `cs_angle` is the only `cs_` field and there is no `cs_diameter`. An empty
   value clears the `target` pick, on the inline add and on `set_hole_field`
-  alike (the hole then drills the body its drill sites sit on); every other
+  alike (the hole then drills the part its drill sites sit on); every other
   field refuses an empty value rather than silently reverting to its default,
   and `null` clears an optional field, while null on a required field is
   refused by name (deleting the key would let the loader quietly fall back to
   a default). With no `target`
-  the hole drills the body its drill sites sit on or in, so a face sketch
-  whose sites lie on or in the material picks that body even when it is not
-  the first; a site outside every body (a plane sketch in the air) falls back
-  to the first body and the miss
+  the hole drills the part its drill sites sit on or in, so a face sketch
+  whose sites lie on or in the material picks that part even when it is not
+  the first; a site outside every part (a plane sketch in the air) falls back
+  to the first part and the miss
   warning names it. `hole.direction` is `normal` (the sketch
   plane's normal, the default) or `reverse`; a face sketch's normal points out
   of its face, so a hole on a face usually wants `reverse`, and a blind hole
@@ -1128,9 +1128,9 @@ banner on stdout, so a client config must use the direct node invocation.
 - `add_linear_pattern` with `subject: body` (the default) copies `source_body`
   along one direction, or along two when `second_direction: true` (the retired
   rectangular mode: direction 1 is the column, direction 2 the row).
-  `operation: add` unions each copy into the source body when they touch; a copy
+  `operation: add` unions each copy into the source part when they touch; a copy
   that does not touch is a new part, so a disjoint copy takes a `_1`, `_2`...
-  sibling id. `operation: new` keeps the source as instance 0 and mints one body
+  sibling id. `operation: new` keeps the source as instance 0 and mints one part
   per copy. Both subjects count the source: `count` is the total on direction 1,
   so 2 makes one copy and `count: 1` is a quiet no-op. `centered` also generates
   the reverse side. With a second direction the seed cell is the source, so 1xN

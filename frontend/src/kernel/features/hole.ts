@@ -738,7 +738,7 @@ export function solveHole(
     targetBody = resolveBody(targetRef, bodyStore)
     if (targetBody.shape === null) throw new Error(`hole: target part '${targetBody.id}' has no shape`)
   } else if (Object.keys(bodyStore).length === 0) {
-    throw new Error('hole: no bodies in body_store and no target specified')
+    throw new Error('hole: no parts in body_store and no target specified')
   }
 
   const sketchFeature = featuresById[sketchId] ?? {}

@@ -61,7 +61,7 @@ describe('solveFillet guard paths', () => {
   it('requires bodies in the store', () => {
     expect(() =>
       solveFillet(oc, scope, table, { id: 'f', fillet: { edges: ['?b:edge:0'], radius: 2 } }, repo, {}),
-    ).toThrow(/no bodies in body_store/)
+    ).toThrow(/no parts in body_store/)
   })
 
   it('an unknown viewport-form source_body throws the named error, never a TypeError', () => {

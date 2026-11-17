@@ -376,7 +376,11 @@ function checkMonotonic(step: RecipeStep, targetBefore: number | undefined, edit
 
 // A split may legitimately refuse: the plane can miss the body or leave a side
 // empty once an earlier step moved the material. Any other message is a finding.
-const SPLIT_REFUSALS = /does not cross|nothing of body|unsound result/
+// The text is the one `features/splitByPlane.ts` throws, so a rewording there
+// must land here too.
+export function isExpectedSplitRefusal(message: string): boolean {
+  return /does not cross|nothing of part|unsound result/.test(message)
+}
 
 /**
  * The split's invariants. A one-sided split keeps strictly less material than
@@ -1046,7 +1050,7 @@ function executeChain(oc: OccModule, recipe: Recipe, options: ChainRunOptions): 
           if (!message) run.violations.push({ step: i, message: 'a refusal carried no message' })
           // A split may only refuse for an authoring reason or a soundness
           // refusal; anything else is a finding, never a quiet pass.
-          if (step.kind === 'split' && message && !SPLIT_REFUSALS.test(message)) {
+          if (step.kind === 'split' && message && !isExpectedSplitRefusal(message)) {
             run.violations.push({ step: i, message: `split refused with an unexpected message: ${message}` })
           }
           report = {

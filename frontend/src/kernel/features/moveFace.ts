@@ -107,7 +107,7 @@ export function solveMoveFace(
   if (!Number.isFinite(distance)) throw new Error('move_face: distance must be a finite number')
   const faces = (sub.faces as string[]) ?? []
   if (faces.length === 0) throw new Error('move_face: requires at least one face')
-  if (Object.keys(bodyStore).length === 0) throw new Error('move_face: no bodies in body_store')
+  if (Object.keys(bodyStore).length === 0) throw new Error('move_face: no parts in body_store')
 
   const indexFor = makeFaceIndexCache(oc, scope, table)
 

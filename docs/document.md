@@ -273,20 +273,20 @@ the rim of another loop therefore adds a bump where it crosses instead of cuttin
 a notch, and nothing warns about it; keep a cut loop inside its boundary, or cut
 with a separate sketch. The same rule reads a `revolve` or `sweep` profile.
 
-`operation: new` starts a body from the profile. `operation: add` extends an
-existing body: with no `merge_target` every body is a candidate and it fuses
-the first one the profile reaches, warning about any other body it also
-reaches. A profile that reaches no body at all fails the feature (`add does not
-merge with any existing body`), so the first extrusion of a part uses `new`.
-`cut` removes material from the body it reaches. With no `merge_target` it
-reaches every body, and one it consumes entirely is removed from the part. That
-deletion is silent when other bodies remain; the warning names the consumed
-body only when `merge_target` aimed at it, or when the cut leaves no body at
+`operation: new` starts a part from the profile. `operation: add` extends an
+existing part: with no `merge_target` every part is a candidate and it fuses
+the first one the profile reaches, warning about any other part it also
+reaches. A profile that reaches no part at all fails the feature (`add does not
+merge with any existing part`), so the first extrusion of a part uses `new`.
+`cut` removes material from the part it reaches. With no `merge_target` it
+reaches every part, and one it consumes entirely is removed from the part. That
+deletion is silent when other parts remain; the warning names the consumed
+part only when `merge_target` aimed at it, or when the cut leaves no part at
 all.
 
 A part saved before this rule whose first extrusion is `add` (or omits
 `operation`, which reads as `add`) rebuilds red until that feature is switched
-to `new` or its profile is moved onto an existing body. There is no automatic
+to `new` or its profile is moved onto an existing part. There is no automatic
 migration: deciding which extrusion was meant to start the part needs the
 document's intent, not a field value.
 

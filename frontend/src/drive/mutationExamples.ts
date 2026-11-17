@@ -200,7 +200,7 @@ export const MUTATION_EXAMPLES: readonly MutationExample[] = [
   },
   {
     name: 'projection-freeze',
-    summary: 'The same boss frozen to fixed geometry before its source body moves +20 in X: still 13000 mm3.',
+    summary: 'The same boss frozen to fixed geometry before its source part moves +20 in X: still 13000 mm3.',
     steps: PROJECTION_FREEZE_STEPS,
   },
   {

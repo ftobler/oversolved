@@ -64,7 +64,7 @@ export function solveDeleteFace(
   const sub = (feature.delete_face as Dict) ?? {}
   const faces = (sub.faces as string[]) ?? []
   if (faces.length === 0) throw new Error('delete_face: requires at least one face')
-  if (Object.keys(bodyStore).length === 0) throw new Error('delete_face: no bodies in body_store')
+  if (Object.keys(bodyStore).length === 0) throw new Error('delete_face: no parts in body_store')
 
   const indexFor = makeFaceIndexCache(oc, scope, table)
 

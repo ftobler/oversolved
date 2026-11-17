@@ -198,7 +198,7 @@ export function solveShell(
   const join: ShellJoin = sub.join === 'arc' ? 'arc' : 'sharp'
   const faces = (sub.faces as string[]) ?? []
   const sourceBody = (sub.source_body as string) ?? ''
-  if (Object.keys(bodyStore).length === 0) throw new Error('shell: no bodies in body_store')
+  if (Object.keys(bodyStore).length === 0) throw new Error('shell: no parts in body_store')
   if (faces.length === 0 && !sourceBody) throw new Error('shell: no faces and no source_body; a closed hollow needs a part')
 
   const indexFor = makeFaceIndexCache(oc, scope, table)
