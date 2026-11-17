@@ -279,7 +279,7 @@ describeReal('export honesty (real OCC + Rust solvers)', () => {
       id: 'ex2',
       kind: 'extrude',
       status: 'exception',
-      message: expect.stringContaining('add does not merge with any existing body'),
+      message: expect.stringContaining('add does not merge with any existing part'),
     }))
     expect(exported!.bytes!.byteLength).toBeGreaterThan(0)
   }, 180_000)
@@ -303,7 +303,7 @@ describeReal('export honesty (real OCC + Rust solvers)', () => {
     await expect(exportHeadless(emptyDriveDoc(), { format: 'step', bodyId: 'nope' }))
       .rejects.toMatchObject({
         name: 'ExportSelectionError',
-        message: expect.stringContaining("body 'nope' not found; live bodies: none"),
+        message: expect.stringContaining("part 'nope' not found; live parts: none"),
       })
   }, 180_000)
 

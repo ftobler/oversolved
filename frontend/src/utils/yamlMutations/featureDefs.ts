@@ -1303,7 +1303,7 @@ export function applyAddDeleteBody(
   pushFeature(doc, {
     id: featureId,
     kind: 'delete_body',
-    label: label ?? 'Delete Body',
+    label: label ?? 'Delete Part',
     delete_body: { bodies: [...bodies] },
   })
 }

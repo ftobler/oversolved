@@ -142,12 +142,12 @@ describe('resolveSelectionAids', () => {
     expect(resolved.message).toContain('body_gone')
   })
 
-  it('refuses a selector with no solved bodies, naming the alternative', () => {
+  it('refuses a selector with no solved parts, naming the alternative', () => {
     const resolved = resolveSelectionAids({ type: 'add_sketch', featureId: 'sk1', plane: planeSelector }, null)
     expect(resolved.ok).toBe(false)
     if (resolved.ok) return
     expect(resolved.code).toBe('unresolved-ref')
-    expect(resolved.message).toContain('no solved bodies')
+    expect(resolved.message).toContain('no solved parts')
     expect(resolved.message).toContain('query string')
   })
 
@@ -287,7 +287,7 @@ describe('resolveSelectionAids', () => {
     }
   })
 
-  it('refuses an edge selector with no solved bodies, naming the alternative', () => {
+  it('refuses an edge selector with no solved parts, naming the alternative', () => {
     const resolved = resolveSelectionAids(
       { type: 'add_fillet', featureId: 'fi1', edges: [zEdgeSelector], radius: 1 },
       null,
@@ -295,7 +295,7 @@ describe('resolveSelectionAids', () => {
     expect(resolved.ok).toBe(false)
     if (resolved.ok) return
     expect(resolved.code).toBe('unresolved-ref')
-    expect(resolved.message).toContain('no solved bodies')
+    expect(resolved.message).toContain('no solved parts')
     expect(resolved.message).toContain('query string')
   })
 

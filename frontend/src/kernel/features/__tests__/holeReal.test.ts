@@ -687,7 +687,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
 
         expect(result.status).toBe('ok')
         expect(result.hole_count).toBe(0)
-        expect(result.solver_warning).toMatch(/none of the 1 drill site\(s\) intersect body 'body_t'; nothing was removed/)
+        expect(result.solver_warning).toMatch(/none of the 1 drill site\(s\) intersect part 'body_t'; nothing was removed/)
         expect(result.body_ids).toEqual(['body_t'])
         expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeCloseTo(boxVol, 6)
       } finally {
@@ -715,7 +715,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         expect(result.status).toBe('ok')
         expect(result.body_ids).toEqual([])
         expect(result.body_id).toBe('body_t')  // still names the consumed body
-        expect(result.solver_warning).toMatch(/the cut removed all of body 'body_t'; the body was deleted/)
+        expect(result.solver_warning).toMatch(/the cut removed all of part 'body_t'; the part was deleted/)
         expect('body_t' in bodyStore).toBe(false)
       } finally {
         scope.dispose()
@@ -741,7 +741,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
 
         expect(result.status).toBe('partial')
         expect(result.hole_count).toBe(1)
-        expect(result.exception).toMatch(/1\/2 drill site\(s\) did not intersect body 'body_t': p2/)
+        expect(result.exception).toMatch(/1\/2 drill site\(s\) did not intersect part 'body_t': p2/)
         expect(result.solver_warning).toBeUndefined()
         expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeLessThan(20 * 20 * 10)
       } finally {

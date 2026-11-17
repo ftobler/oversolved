@@ -74,7 +74,7 @@ describe('delete_body ghost preview', () => {
       { wrapper: Wrapper }
     )
 
-    const editBtn = await screen.findByTitle('Edit delete body')
+    const editBtn = await screen.findByTitle('Edit delete part')
     fireEvent.click(editBtn)
 
     await waitFor(() => expect(useEditorState.getState().pickBoundary).not.toBeNull())

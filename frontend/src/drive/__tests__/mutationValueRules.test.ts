@@ -928,7 +928,7 @@ describe('finding: edge pick lists take inline selectors', () => {
     })
     expect(error.code).toBe('invalid-mutation')
     expect(error.message).toContain('edges[0]')
-    expect(error.message).toContain('solved bodies')
+    expect(error.message).toContain('solved parts')
     expect(error.message).not.toContain('list of reference strings')
   })
 
@@ -947,7 +947,7 @@ describe('finding: edge pick lists take inline selectors', () => {
       distance: 1,
     })
     expect(selector.message).toContain('edges[0]')
-    expect(selector.message).toContain('solved bodies')
+    expect(selector.message).toContain('solved parts')
     const malformed = refusal({
       type: 'add_chamfer', featureId: 'ch1', edges: [{ selector: 'nope' }], distance: 1,
     })
@@ -979,7 +979,7 @@ describe('finding: a projection source takes an inline selector', () => {
     })
     expect(error.code).toBe('invalid-mutation')
     expect(error.message).toContain('source')
-    expect(error.message).toContain('solved bodies')
+    expect(error.message).toContain('solved parts')
     expect(error.message).not.toContain('must be string')
   })
 

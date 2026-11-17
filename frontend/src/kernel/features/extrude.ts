@@ -164,7 +164,7 @@ function oppositeCutProbe(
         return null  // a failed probe only loses the hint; the plain miss error still fires
       }
     },
-    message: `cutting ${along} the plane normal leaves the body; \`direction: ${other}\` cuts into it`,
+    message: `cutting ${along} the plane normal leaves the part; \`direction: ${other}\` cuts into it`,
   }
 }
 
@@ -233,7 +233,7 @@ function nextCandidates(
     })
   }
   if (mergeTarget && out.length === 0) {
-    throw new Error(`extrude up_to_next: merge_target '${mergeTarget}' does not name a live body`)
+    throw new Error(`extrude up_to_next: merge_target '${mergeTarget}' does not name a live part`)
   }
   return out
 }
@@ -303,7 +303,7 @@ function throughAllSweepExtent(
   }
   if (measured === 0) {
     throw new Error(
-      'extrude: through_all needs a body to cut through; name merge_target or build the body first',
+      'extrude: through_all needs a part to cut through; name merge_target or build the part first',
     )
   }
   const span = max - min
@@ -528,7 +528,7 @@ export function solveExtrude(
     // names the joint and how wide it is.
     const why = unbuildableReasons.length ? ` (${unbuildableReasons.join('; ')})` : ''
     result.exception = `extrude: no closed profile found in the referenced sketch${why}; no part created`
-    result.mesh_warning = 'no closed profile found; body has no shape'
+    result.mesh_warning = 'no closed profile found; part has no shape'
     return result
   }
 
@@ -984,11 +984,13 @@ export function solveExtrude(
     // removes no material by construction; the same holds for the surface
     // mode's air-side pairing. Report the no-change warning rather than the
     // miss error a blind cut earns, because the stop is the authored geometry.
+    // The regex reads bodyOps' own miss text: that message is user-facing and
+    // may be reworded, so the two must change together.
     const missed =
       upToMode &&
       operation === 'cut' &&
       e instanceof Error &&
-      /cut does not intersect any target body/.test(e.message)
+      /cut does not intersect any target part/.test(e.message)
     if (!missed) throw e
     opResult = {
       status: 'ok',

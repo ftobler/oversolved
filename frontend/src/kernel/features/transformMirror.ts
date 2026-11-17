@@ -79,15 +79,15 @@ export function solveTransform(
   // that names nothing has to fail the feature outright rather than after half
   // the picks were already moved.
   const bodyQueries = (cfg.bodies as string[] | undefined) ?? []
-  if (bodyQueries.length === 0) throw new Error('transform: no bodies picked')
+  if (bodyQueries.length === 0) throw new Error('transform: no parts picked')
   const sources = resolveBodyRefList(bodyQueries, globalRepo, bodyStore, 'transform').map((key) => {
     const body = bodyStore[key]
     // A resolved key is not automatically a live store key: the `?` branch of
     // resolveBodyRefKeys reads the id off the REPO (`body_id` on a face record),
     // which can name a body a later feature has since deleted. Diagnose it here
     // rather than let `body.shape` throw a bare TypeError out of the solve.
-    if (body === undefined) throw new Error(`transform: body no longer exists: ${JSON.stringify(key)}`)
-    if (body.shape === null) throw new Error(`transform: body has no shape: ${JSON.stringify(key)}`)
+    if (body === undefined) throw new Error(`transform: part no longer exists: ${JSON.stringify(key)}`)
+    if (body.shape === null) throw new Error(`transform: part has no shape: ${JSON.stringify(key)}`)
     return { body, shape: body.shape }
   })
 
@@ -264,7 +264,7 @@ export function solveTransform(
       body_id: consumedReplace,
       body_ids: [],
       operation: 'replace',
-      solver_warning: `transform: the replace removed all of body '${consumedReplace}'; the body was deleted`,
+      solver_warning: `transform: the replace removed all of part '${consumedReplace}'; the part was deleted`,
     }
   }
   return {
@@ -328,7 +328,7 @@ export function solveMirror(
       if (cfg[field] !== undefined) {
         throw new Error(
           `mirror: ${field} means nothing for a feature mirror; the source's own add or cut is ` +
-            'reapplied reflected inside the same body, so the original always stays',
+            'reapplied reflected inside the same part, so the original always stays',
         )
       }
     }
@@ -359,7 +359,7 @@ export function solveMirror(
   const bodyQuery = (cfg.body as string) ?? ''
   const sourceBody = bodyQuery ? resolveBody(bodyQuery, bodyStore) : null
   if (sourceBody === null || sourceBody.shape === null) {
-    throw new Error(`mirror: body not found: ${JSON.stringify(bodyQuery)}`)
+    throw new Error(`mirror: part not found: ${JSON.stringify(bodyQuery)}`)
   }
 
   const planeQuery = (cfg.plane as string) ?? ''
@@ -393,7 +393,7 @@ export function solveMirror(
         body_id: sourceBody.id,
         body_ids: [],
         operation: 'replace',
-        solver_warning: `mirror: the replace removed all of body '${sourceBody.id}'; the body was deleted`,
+        solver_warning: `mirror: the replace removed all of part '${sourceBody.id}'; the part was deleted`,
       }
     }
     sourceBody.modified_by.push(featureId)
@@ -437,7 +437,7 @@ export function solveMirror(
         body_id: sourceBody.id,
         body_ids: [],
         operation: 'merge',
-        solver_warning: `mirror: the merge removed all of body '${sourceBody.id}'; the body was deleted`,
+        solver_warning: `mirror: the merge removed all of part '${sourceBody.id}'; the part was deleted`,
       }
     }
     sourceBody.modified_by.push(featureId)

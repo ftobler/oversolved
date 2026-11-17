@@ -155,7 +155,7 @@ describe.skipIf(!oc || !solveBytes)('volume budgets judge a part at any scale (r
       const r = h.run(blockSpec(k, 15, 'above'))
       const res = h.res(r, 'sp1')
       expect(res.status, `scale ${k}`).toBe('exception')
-      expect(String(res.exception), `scale ${k}`).toMatch(/nothing of body .* lies above the plane/)
+      expect(String(res.exception), `scale ${k}`).toMatch(/nothing of part .* lies above the plane/)
     }
   })
 

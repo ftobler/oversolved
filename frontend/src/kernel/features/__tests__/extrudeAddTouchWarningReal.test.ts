@@ -164,7 +164,7 @@ describe.skipIf(!oc || !solveBytes)('extrude add bridging two bodies (real OCC +
     expect(h.res(result, 'exA').solver_warning).toBeUndefined()
     const disjoint = h.res(result, 'exB')
     expect(disjoint.status).toBe('exception')
-    expect(String(disjoint.exception)).toContain('add does not merge with any existing body')
+    expect(String(disjoint.exception)).toContain('add does not merge with any existing part')
     expect(String(disjoint.exception)).toContain('move it onto the part')
     expect(Object.keys(result.bodies)).toEqual(['body_exA'])
   })
@@ -178,7 +178,7 @@ describe.skipIf(!oc || !solveBytes)('extrude add bridging two bodies (real OCC +
     })
     const first = h.res(result, 'exA')
     expect(first.status).toBe('exception')
-    expect(String(first.exception)).toContain('add has no existing body to extend')
+    expect(String(first.exception)).toContain('add has no existing part to extend')
     expect(String(first.exception)).toContain('use operation: new to create one')
     expect(result.bodies).toEqual({})
   })
@@ -220,7 +220,7 @@ describe.skipIf(!oc || !solveBytes)('extrude add bridging two bodies (real OCC +
     })
     // An empty merge target is "automatic", so it takes the same disjoint road
     // as an absent one.
-    expect(String(h.res(result, 'exB').exception)).toContain('add does not merge with any existing body')
+    expect(String(h.res(result, 'exB').exception)).toContain('add does not merge with any existing part')
   })
 
   it('does not warn when the additive extrude fuses into the existing body', () => {

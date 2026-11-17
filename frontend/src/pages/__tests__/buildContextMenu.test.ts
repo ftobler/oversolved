@@ -141,6 +141,16 @@ describe('buildContextMenu', () => {
     expect(result.items).toHaveLength(4)
   })
 
+  it('names no body in any menu label', () => {
+    const body = buildContextMenu(
+      defaultInput({ targetId: 'body:abc123', partLabels: { abc123: 'MyBody' } }),
+      defaultCallbacks(),
+    )
+    const feature = buildContextMenu(defaultInput(), defaultCallbacks())
+    const labels = [...body.items, ...feature.items].map(i => i.label)
+    expect(labels.filter(label => /\bbod(?:y|ies)\b/i.test(label))).toEqual([])
+  })
+
   it('shows Hide for a visible body and calls onToggleBodyVisibility(id, false)', () => {
     const seen: [string, boolean][] = []
     const callbacks = defaultCallbacks()

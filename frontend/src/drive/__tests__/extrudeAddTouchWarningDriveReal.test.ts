@@ -69,7 +69,7 @@ describe.skipIf(!ready)('extrude add touch warning in the run reply (real OCC + 
     })
     const problem = result.features.find(feature => feature.id === 'ex2')
     expect(problem).toMatchObject({ id: 'ex2', kind: 'extrude', status: 'exception' })
-    expect(problem!.message).toContain('add does not merge with any existing body')
+    expect(problem!.message).toContain('add does not merge with any existing part')
     expect(problem!.message).not.toContain('also touches')
     expect(result.bodies).toEqual(['body_ex1'])
   }, 120_000)

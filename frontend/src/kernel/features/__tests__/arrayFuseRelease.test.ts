@@ -237,7 +237,7 @@ describe('array add fuse releases (H21)', () => {
         // The leaf reports the spacing it used, even when the add consumed the
         // body and left nothing.
         resolved_pitch: 10,
-        solver_warning: "pattern: the add removed all of body 'body_ex1'; the body was deleted",
+        solver_warning: "pattern: the add removed all of part 'body_ex1'; the part was deleted",
       })
     } finally {
       scope.dispose()

@@ -310,7 +310,7 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
     })
     const res = h.res(r, 'pt1')
     expect(res.status).toBe('partial')
-    expect(String(res.solver_warning)).toContain("copy 1 removed all of body 'body_ex_plate'")
+    expect(String(res.solver_warning)).toContain("copy 1 removed all of part 'body_ex_plate'")
     expect(String(res.solver_warning)).toContain('later copies were not applied')
     expect(res.body_ids).toEqual([])
   })
@@ -353,7 +353,7 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
     // the old probe path raised when its hit set came out empty.
     expect(res.status).toBe('exception')
     expect(String(res.exception)).toContain('pattern: no copy was applied')
-    expect(String(res.exception)).toContain('copy 1: cut does not intersect any target body')
+    expect(String(res.exception)).toContain('copy 1: cut does not intersect any target part')
     // The touching tool is in the batch now, so pin that it did not split the
     // plate's right face on contact: 6 plate faces plus the 4 slot walls.
     expect(faceCountAt(r, 'pt1', 'body_ex_plate')).toBe(10)
@@ -479,7 +479,7 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
     ]
     const ambiguous = h.run({ features: features() })
     const message = String(h.res(ambiguous, 'pt1').exception)
-    expect(message).toContain('touched 2 bodies')
+    expect(message).toContain('touched 2 parts')
     expect(message).toContain('target_body')
     expect(message).toContain('body_ex_a')
     expect(message).toContain('body_ex_b')

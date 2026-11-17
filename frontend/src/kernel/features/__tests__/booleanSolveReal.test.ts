@@ -349,7 +349,7 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
         expect(result.status).toBe('ok')
         expect(result.body_ids).toEqual([])
         expect(result.body_id).toBe('body_t')  // still names the consumed body
-        expect(result.solver_warning).toMatch(/removed all of body 'body_t'; the body was deleted/)
+        expect(result.solver_warning).toMatch(/removed all of part 'body_t'; the part was deleted/)
         expect('body_t' in bodyStore).toBe(false)
         // The tool is consumed too (keep_tools false), leaving an empty store.
         expect('body_u0' in bodyStore).toBe(false)
@@ -363,7 +363,7 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
             new Repository(),
             bodyStore,
           ),
-        ).toThrow(/body not found for ref 'body_t'/)
+        ).toThrow(/part not found for ref 'body_t'/)
       } finally {
         scope.dispose()
       }

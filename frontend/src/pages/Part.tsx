@@ -693,7 +693,7 @@ export default function Part() {
         const creator = bodies[ref]?.created_by
         if (creator && deletingFeatures.has(creator)) continue
         bodyDeletes.push({
-          type: 'add_delete_body', featureId: randomId(18), bodies: [id], label: 'Delete Body',
+          type: 'add_delete_body', featureId: randomId(18), bodies: [id], label: 'Delete Part',
           ...insertion(bodyDeletes.length),
         })
         continue
@@ -1668,7 +1668,7 @@ export default function Part() {
       )}
       <RenameDialog
         isOpen={renameTarget !== null}
-        title={renameTarget?.kind === 'body' ? 'Rename Body' : 'Rename Feature'}
+        title={renameTarget?.kind === 'body' ? 'Rename Part' : 'Rename Feature'}
         currentName={renameTarget?.currentName ?? ''}
         onRename={handleRenameConfirm}
         onCancel={() => setRenameTarget(null)}

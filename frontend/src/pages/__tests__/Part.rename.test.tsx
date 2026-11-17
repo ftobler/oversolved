@@ -90,6 +90,8 @@ describe('Part rename dialog', () => {
   it('opens seeded with the body label instead of a window prompt', () => {
     const promptSpy = vi.spyOn(window, 'prompt')
     openRename()
+    const box = document.querySelector('.dialog-component') as HTMLElement
+    expect(within(box).getByText('Rename Part')).toBeInTheDocument()
     expect(screen.getByRole('textbox')).toHaveValue('Test Body')
     expect(promptSpy).not.toHaveBeenCalled()
   })

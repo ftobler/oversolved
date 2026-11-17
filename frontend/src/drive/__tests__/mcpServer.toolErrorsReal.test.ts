@@ -69,7 +69,7 @@ describe.skipIf(!ready)('MCP user errors (real OCC + Rust solver)', () => {
         arguments: { docHash, format: 'step', out: 'tmp/tool-errors/unknown.step', body: 'nope' },
       }))
       expect(unknownBody.ok).toBe(false)
-      expect(String(unknownBody.error)).toContain("body 'nope' not found")
+      expect(String(unknownBody.error)).toContain("part 'nope' not found")
       expect(String(unknownBody.error)).toContain('body_ex1')
 
       // A `files` path outside the read roots is refused by the project rule.

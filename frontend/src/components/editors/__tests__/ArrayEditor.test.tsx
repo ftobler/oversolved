@@ -58,11 +58,11 @@ beforeEach(() => {
 })
 
 describe('body pattern source body pick (via FeatureEditor)', () => {
-  it('renders an empty body chip asking for the body to copy', () => {
+  it('renders an empty part chip asking for the part to copy', () => {
     renderEditor(makeFeature(), vi.fn())
     const chip = bodyChip()
     expect(chip.classList.contains('empty')).toBe(true)
-    expect(chip.querySelector('.feature-pick-chip-empty-text')?.textContent).toBe('(pick the body to copy)')
+    expect(chip.querySelector('.feature-pick-chip-empty-text')?.textContent).toBe('(pick the part to copy)')
   })
 
   it('renders the source_body ref when set', () => {

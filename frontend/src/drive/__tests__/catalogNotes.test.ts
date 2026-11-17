@@ -86,8 +86,8 @@ describe('up-to termination on both extrude rows', () => {
   })
 
   it('keeps the add-time solve failure on the add row only', () => {
-    expect(mutationInfoOf('add_extrude').note).toContain('add does not merge with any existing body')
-    expect(mutationInfoOf('set_extrude_field').note).not.toContain('add does not merge with any existing body')
+    expect(mutationInfoOf('add_extrude').note).toContain('add does not merge with any existing part')
+    expect(mutationInfoOf('set_extrude_field').note).not.toContain('add does not merge with any existing part')
   })
 
   it('offers both fields inline on add_extrude', () => {
@@ -349,10 +349,11 @@ describe('Ex019: the hole note names the mouth field once', () => {
 })
 
 describe('F7: merge_target spelling', () => {
-  it('names the bare body id and the delta row field on every merge_target row', () => {
+  it('names the bare part id and the delta row field on every merge_target row', () => {
     for (const type of ['add_extrude', 'set_extrude_field', 'set_revolve_field'] as const) {
       const note = mutationInfoOf(type).note!
-      expect(note, type).toContain('bare body id')
+      expect(note, type).toContain('bare part id')
+      expect(note, type).toContain('`merge_target`')
       expect(note, type).toContain('`body`')
     }
   })

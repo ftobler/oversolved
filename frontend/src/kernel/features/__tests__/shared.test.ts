@@ -525,19 +525,19 @@ describe('resolveBody fallback resolution paths', () => {
     // `@sk1/left` is a sketch entity, not a body ref -- it must not be read as
     // "the body of sk1".
     const store = makeStore({ body_1: 'extrude1' })
-    expect(() => resolveBody('@extrude1/left', store)).toThrow(/body not found/)
+    expect(() => resolveBody('@extrude1/left', store)).toThrow(/part not found/)
   })
 
   it('throws when a malformed "?"-ancestry ref cannot be parsed', () => {
     const store = makeStore({ body_1: 'extrude1' })
     // parseAncestry throws on a bad header; the catch falls through to the error.
-    expect(() => resolveBody('?3;ab', store)).toThrow(/body not found/)
+    expect(() => resolveBody('?3;ab', store)).toThrow(/part not found/)
   })
 
   it('throws when a colon-prefixed ref matches no body at all', () => {
     const store = makeStore({ body_1: 'extrude1' })
     // The middle token matches no key, prefix, or created_by -> fall through.
-    expect(() => resolveBody('face:nomatch:x', store)).toThrow(/body not found/)
+    expect(() => resolveBody('face:nomatch:x', store)).toThrow(/part not found/)
   })
 })
 

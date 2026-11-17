@@ -199,7 +199,7 @@ export function solveShell(
   const faces = (sub.faces as string[]) ?? []
   const sourceBody = (sub.source_body as string) ?? ''
   if (Object.keys(bodyStore).length === 0) throw new Error('shell: no bodies in body_store')
-  if (faces.length === 0 && !sourceBody) throw new Error('shell: no faces and no source_body; a closed hollow needs a body')
+  if (faces.length === 0 && !sourceBody) throw new Error('shell: no faces and no source_body; a closed hollow needs a part')
 
   const indexFor = makeFaceIndexCache(oc, scope, table)
 
@@ -214,14 +214,14 @@ export function solveShell(
       if (bid !== null) ids.add(bid)
     }
     if (ids.size > 1) {
-      throw new Error(`shell: faces name ${ids.size} bodies (${[...ids].join(', ')}); pick faces on one body`)
+      throw new Error(`shell: faces name ${ids.size} parts (${[...ids].join(', ')}); pick faces on one part`)
     }
     targetId = ids.size === 1 ? [...ids][0] : null
   }
-  if (targetId === null) throw new Error('shell: no body resolved from the picked faces')
+  if (targetId === null) throw new Error('shell: no part resolved from the picked faces')
 
   const body = resolveBody(targetId, bodyStore)
-  if (body.shape === null) throw new Error(`shell: body '${targetId}' has no shape`)
+  if (body.shape === null) throw new Error(`shell: part '${targetId}' has no shape`)
   const oldShape = table.get<OccShape>(body.shape)
 
   // Resolve the picked faces against this one body; a query that matches nothing
@@ -266,7 +266,7 @@ export function solveShell(
   }
 
   const ids = resplitBody(oc, scope, table, bodyStore, body, scope.track(res.shape), featureId, res.names ?? {})
-  if (ids.length === 0) throw new Error('shell: the operation removed the whole body')
+  if (ids.length === 0) throw new Error('shell: the operation removed the whole part')
   body.brep_diff = res.diff
   body.modified_by.push(featureId)
 

@@ -389,13 +389,13 @@ describe('merge target PickChip', () => {
     expect(screen.queryByText('Merge Target')).toBeNull()
   })
 
-  it('shows (all bodies) when no merge_target is set', () => {
+  it('shows (all parts) when no merge_target is set', () => {
     renderSidebar({
       features: [extrudeFeature],
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
     })
-    expect(screen.getByText('(all bodies)')).toBeInTheDocument()
+    expect(screen.getByText('(all parts)')).toBeInTheDocument()
   })
 
   it('activates pick mode on chip click', () => {
@@ -404,7 +404,7 @@ describe('merge target PickChip', () => {
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
     })
-    const chip = screen.getByText('(all bodies)').closest('.feature-pick-chip')!
+    const chip = screen.getByText('(all parts)').closest('.feature-pick-chip')!
     fireEvent.click(chip)
     expect(chip.classList.contains('picking')).toBe(true)
   })
@@ -415,7 +415,7 @@ describe('merge target PickChip', () => {
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
     })
-    const chip = screen.getByText('(all bodies)').closest('.feature-pick-chip')!
+    const chip = screen.getByText('(all parts)').closest('.feature-pick-chip')!
     fireEvent.click(chip)
     expect(chip.classList.contains('picking')).toBe(true)
     fireEvent.click(chip)

@@ -103,7 +103,7 @@ describe.skipIf(!oc)('an outward blind hole warns with the fix (real OCC)', () =
     const { result, volume } = drill({ ...BLIND, direction: 'normal' }, [100, 100])
     expect(result.status).toBe('ok')
     expect(volume).toBeCloseTo(BOX, 6)
-    expect(String(result.solver_warning)).toMatch(/none of the 1 drill site\(s\) intersect body 'body_t'; nothing was removed/)
+    expect(String(result.solver_warning)).toMatch(/none of the 1 drill site\(s\) intersect part 'body_t'; nothing was removed/)
     expect(String(result.solver_warning)).not.toMatch(/direction: reverse/)
   })
 })

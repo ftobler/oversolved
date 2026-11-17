@@ -196,7 +196,7 @@ const FIT_SPLINE_TANGENT_SCALE_NOTE =
   '`scale=True`); false keeps each tangent\'s length as that end\'s magnitude.'
 const edgeQuery = () => query('An edge query as returned by `select`.')
 const faceQuery = () => query('A face query as returned by `select`.')
-const bodyQuery = () => query('A body id such as body_ex1, or a stored body query.')
+const bodyQuery = () => query('A part id such as body_ex1, or a stored part query; ids keep their stored `body` prefix.')
 
 // A sketch plane resolves through the query repository, so a face query from
 // `select` is accepted beside the plane feature ref and the bare name.
@@ -214,12 +214,12 @@ const PLANE_QUERY_NOTE =
 // resolves, like a sketch plane; the origin and another sketch's geometry stay
 // plain strings because `select` cannot name them.
 const PROJECTION_SOURCE_NOTE =
-  'A body edge, vertex or face query from `select` (the stored ?... string), `@builtin_origin`, or a whole '
+  'A part edge, vertex or face query from `select` (the stored ?... string), `@builtin_origin`, or a whole '
   + 'entity of another sketch (`@<sketchId>/<entityId>`; add `/start`, `/end`, `/center` or `/xy` for one '
-  + 'vertex). Instead of pasting a body query, `source` also takes the selector itself as '
+  + 'vertex). Instead of pasting a part query, `source` also takes the selector itself as '
   + '`{selector: <a select selector naming exactly one edge, vertex or face>}`; the headless drive resolves it '
   + 'against the settled solve and stores the query it matched, so the document never carries a selector. '
-  + 'Only body elements take a selector: `@builtin_origin` and `@<sketchId>/<entityId>` are named directly.'
+  + 'Only part elements take a selector: `@builtin_origin` and `@<sketchId>/<entityId>` are named directly.'
 
 // The params slot order per entity kind, generated from the entity registry so
 // a new kind or a moved slot cannot leave the catalog stale.
@@ -283,8 +283,8 @@ const MIDPOINT_TARGET_NOTE =
 // documents and headless authors keep working. The UI command path projects the
 // operand instead, which is what leaves something visible in the sketch.
 const CONSTRAINT_PROJECTION_NOTE =
-  ' To constrain against the part origin or a body vertex/edge, add_projected_entity it first '
-  + '(kind "point" for `@builtin_origin`, with the body query as the source) and name the projection as the target. '
+  ' To constrain against the part origin or a part vertex/edge, add_projected_entity it first '
+  + '(kind "point" for `@builtin_origin`, with the part query as the source) and name the projection as the target. '
   + 'A bare `@builtin_origin` still solves but creates no entity, so there is nothing to select or delete.'
   + ' A target in another sketch is refused: the solver reads sketch-local refs only, so project the foreign '
   + 'element into this sketch first (`add_projected_entity` with source `@<sketchId>/<entityId>` or '
@@ -364,13 +364,13 @@ export type { ValueRule, ValueViolation, ValueViolationCode } from '@/drive/muta
 const HOLE_FIELD_NOTE =
   `Canonical hole fields: ${featureFieldNames('hole').join(', ')}. ` +
   'The required fields are sketch, diameter, depth_mode; depth is required only for a blind hole. ' +
-  'A through_all hole sizes itself from the target body and stores no depth, so omit it. ' +
+  'A through_all hole sizes itself from the target part and stores no depth, so omit it. ' +
   'A blind add with no depth keeps the editor default of 20. ' +
   'The optional fields are direction, target, thread, style, cb_diameter, cb_depth, cs_angle, tip, tip_angle, thread_depth; ' +
   'they are all optional in an `add_hole` payload. ' +
-  'With no `target` the hole drills the body its drill sites sit on or in (a face sketch whose sites lie on or in ' +
-  'the material picks that body even when it is not the first); a site outside every body falls back to the ' +
-  'first body and the miss warning names it. ' +
+  'With no `target` the hole drills the part its drill sites sit on or in (a face sketch whose sites lie on or in ' +
+  'the material picks that part even when it is not the first); a site outside every part falls back to the ' +
+  'first part and the miss warning names it. ' +
   '`direction` is the sketch plane\'s normal (the default) or its reverse; a face sketch\'s normal ' +
   'points out of the face, so a hole on a face usually wants `reverse`, and a blind hole that misses ' +
   'every site says so when the reverse would cut. ' +
@@ -395,7 +395,7 @@ const HOLE_FIELD_NOTE =
   'under the bore; `depth` stays the full-diameter depth to the shoulder and the point reaches past it. A through_all hole ignores both. ' +
   '`thread_depth` is how deep a `thread` is tapped (drill 20, tap 15), from the origin `depth` is measured from (the entry face for a through hole); ' +
   'absent taps the whole bore below any widened mouth, a value past the bore is clamped with a warning, and a hole without `thread` ignores it. ' +
-  'An empty value clears the `target` pick (the key is deleted, and the hole then drills the body its drill sites sit on); ' +
+  'An empty value clears the `target` pick (the key is deleted, and the hole then drills the part its drill sites sit on); ' +
   'null clears an optional field the same way. `sketch` is stored verbatim, so send a sketch id rather than "". ' +
   'An enum or numeric field refuses an empty value instead of silently reverting to its default.'
 
@@ -413,7 +413,7 @@ const holeAddFields = () => {
     depth_mode: optStr('blind | through_all.'),
     depth: optScalar(),
     direction: optStr('normal | reverse.'),
-    target: optStr('The body to drill into; the body the drill sites sit on or in when absent. An empty string means absent.'),
+    target: optStr('The part (stored as `target`) to drill into; the part the drill sites sit on or in when absent. An empty string means absent.'),
     style: optStr('simple | counterbore | countersink (absent means simple).'),
     cb_diameter: optScalar(),
     cb_depth: optScalar(),
@@ -426,18 +426,18 @@ const holeAddFields = () => {
 }
 
 const SPLIT_NOTE =
-  '`above` is the side the plane normal points to, `below` is the other side, and `both` keeps each side as its own body. ' +
+  '`above` is the side the plane normal points to, `below` is the other side, and `both` keeps each side as its own part. ' +
   'A picked planar face\'s normal is its OUTWARD normal, so `above` of a face pick is the air side. ' +
   'Builtin normals: Front +Z, Top +Y, Right +X. ' +
-  '`bodies` is a list of body refs; a feature ref (@<featureId>) means every body that feature made. ' +
-  'With `both` the above half keeps the original body id and every further piece becomes its `_1`, `_2`, ... ' +
+  '`bodies` is a list of part refs (stored as `bodies`); a feature ref (@<featureId>) means every part that feature made. ' +
+  'With `both` the above half keeps the original part id and every further piece becomes its `_1`, `_2`, ... ' +
   'sibling in geometric order, so @<featureId> still names all of it.'
 
 // The transform has two rotation spellings, one world axis or an Euler triple;
 // the solver composes exactly one for the whole feature and refuses a mix,
 // because a document that says both cannot mean one placement.
 const TRANSFORM_NOTE =
-  'One transform applies scale first, then rotation, then translation, equally to every body in `bodies`. ' +
+  'One transform applies scale first, then rotation, then translation, equally to every part in `bodies`. ' +
   'For the rotation, name either `rotation_euler` (three numbers in degrees, extrinsic XYZ: rotate about world X first, ' +
   'then world Y, then world Z) or a single axis: `rotation_axis` (a feature-level ref such as @<sketchId>/<entityId>, ' +
   'or an edge query from `select`) or the stored pair `rotation_axis_origin` (VEC3 point) and `rotation_axis_direction` ' +
@@ -448,7 +448,7 @@ const TRANSFORM_NOTE =
   '`rotation_euler` cannot be combined with `rotation_axis`, `rotation_angle` or `rotation_axis_direction`; clear the ' +
   'other spelling with a null value (`set_transform_field` with `value: null`) before setting the Euler triple. ' +
   '`translation_from`/`translation_to` and `scale_center_from` are point refs. ' +
-  '`rotation_angle` is degrees; `operation: new` keeps the source and emits a new body, `replace` consumes it. ' +
+  '`rotation_angle` is degrees; `operation: new` keeps the source and emits a new part, `replace` consumes it. ' +
   'One call may carry the whole transform: `bodies` and every field `set_transform_field` sets are accepted inline.'
 
 // The revolve axis resolves through the feature-level query repository, not the
@@ -500,15 +500,15 @@ const PLANE_MODE_NOTE =
 // count convention and the skip list are stated once here, and each kind's row
 // appends only its instance grid.
 const PATTERN_SOURCE_NOTE =
-  '`subject` selects what is repeated. `body` (the default) copies `source_body`; `operation: add` unions each ' +
-  'copy into the source body when they intersect, while disjoint copies become separate bodies with `_1`, `_2`... ' +
-  'siblings and `operation: new` mints one body per copy. `feature` reapplies one or more earlier extrudes, revolves ' +
-  'or sweeps whose operation is add or cut, inside the body each source shaped. Name them as a list in ' +
+  '`subject` selects what is repeated. `body` (the default) copies the part in `source_body`; `operation: add` unions each ' +
+  'copy into the source part when they intersect, while disjoint copies become separate parts with `_1`, `_2`... ' +
+  'siblings and `operation: new` mints one part per copy. `feature` reapplies one or more earlier extrudes, revolves ' +
+  'or sweeps whose operation is add or cut, inside the part each source shaped. Name them as a list in ' +
   '`source_features`, e.g. ["@ex1", "@ex2"]; the legacy single `source_feature` is still accepted and means a ' +
   'one-element list. Every source is repeated at each instance, in the order the sources sit in the feature log; ' +
-  'the first source\'s first produced body is the instance-0 seed. `target_body` ' +
-  'chooses the body when a source touched more than one; without it each source applies to the body it shaped, ' +
-  'so sources that shaped different bodies keep their own. A source that no longer exists or now comes after ' +
+  'the first source\'s first produced part is the instance-0 seed. `target_body` ' +
+  'chooses the part when a source touched more than one; without it each source applies to the part it shaped, ' +
+  'so sources that shaped different parts keep their own. A source that no longer exists or now comes after ' +
   'the pattern is dropped with a named warning; a pattern with no sources left is refused. For either subject ' +
   '`count` is the TOTAL instance count on direction 1 and always includes the source\'s own slot: 2 makes one copy, ' +
   'and count 1 keeps only the original (a quiet no-op). Count 0, a negative count and a non-integer are refused. ' +
@@ -566,26 +566,26 @@ const INSTANCE_PATTERN_INLINE_NOTE =
 // form selects, the numbering (positional skip vs stable naming keys), the
 // reference fallback chain and what each orientation turns.
 const INSTANCE_PATTERN_NOTE =
-  '`subject` selects what is repeated: `body` (the default) copies `source_body`; `operation: add` unions ' +
-  'each copy into the source body when they intersect and disjoint copies become separate bodies, while ' +
-  '`operation: new` mints one body per copy. `feature` reapplies one or more earlier extrudes, revolves or ' +
+  '`subject` selects what is repeated: `body` (the default) copies the part in `source_body`; `operation: add` unions ' +
+  'each copy into the source part when they intersect and disjoint copies become separate parts, while ' +
+  '`operation: new` mints one part per copy. `feature` reapplies one or more earlier extrudes, revolves or ' +
   'sweeps, named in `source_features` (the legacy single `source_feature` is still accepted), inside the ' +
-  'body each source shaped; `target_body` chooses the body when a source touched more than one. There is no ' +
+  'part each source shaped; `target_body` chooses the part when a source touched more than one. There is no ' +
   'count and no centered option: the target list is the instance list. ' +
   'The copies go onto TARGETS, and exactly one of two fields supplies them. ' +
   '`sketch` names one sketch: every non-construction POINT of it is a target, the same site rule a hole ' +
   'drills (construction points are skipped, line endpoints are not targets, projected points count). ' +
   '`targets` is a list of picks instead: any face, edge, vertex, sketch point or plane. A face uses its ' +
   'centroid (a cylindrical or conical face the axis point at its free end, with the axis pointing out of ' +
-  'the material, so a blind hole\'s mouth and a boss top are right), a circular body edge its centre with ' +
+  'the material, so a blind hole\'s mouth and a boss top are right), a circular part edge its centre with ' +
   'the normal of its planar neighbour (else its curved neighbour\'s free-end sense), a sketch entity its ' +
   'own point (line midpoint, circle/arc/ellipse centre, spline middle station) with the sketch plane normal, ' +
-  'and a body vertex or straight edge a point with NO normal. Both forms set at once is refused. Targets ' +
+  'and a part vertex or straight edge a point with NO normal. Both forms set at once is refused. Targets ' +
   'are numbered 1..N in sketch entity order or list order, so `skip` addresses those numbers, but the ' +
   'construction name key is the sketch entity id or a short hash of the pick, so deleting an earlier ' +
   'target never renames a later copy\'s faces. `reference` is the point the copies are measured from: any ' +
   'pick the target table accepts. Absent, it is the source sketch\'s only non-construction point when the ' +
-  'first source feature has one, else the seed\'s volume centroid (the source body, or the first source ' +
+  'first source feature has one, else the seed\'s volume centroid (the source part, or the first source ' +
   'feature\'s own tool). `orientation: "normal"` (the default) turns each copy so the source normal maps ' +
   'onto its target normal, with the minimal rotation about `source_normal x target_normal`; a target ' +
   'without a normal is moved only, and when nothing carries a normal every copy is a translation, the same ' +
@@ -636,11 +636,11 @@ const PATTERN_ALIAS_NOTE =
 // rows that write them say what they mean.
 const MIRROR_NOTE =
   '`subject` selects what is mirrored. `body` (the default, and the only subject an older document has) ' +
-  'reflects `body` whole across `plane`: `keep_original` keeps the source body and `merge` fuses the copy into it, ' +
-  'otherwise the copy is a new body. `feature` mirrors one or more earlier extrudes, revolves or sweeps whose ' +
-  'operation is add or cut, inside the body each source shaped: name them in `source_features`, e.g. ["@ex1", "@ex2"], ' +
-  'and `target_body` chooses the body when a source touched more than one. The mirrored copy reapplies the source\'s ' +
-  'own operation in the same body, so `keep_original` and `merge` mean nothing there and are refused. ' +
+  'reflects the whole part in `body` across `plane`: `keep_original` keeps the source part and `merge` fuses the copy into it, ' +
+  'otherwise the copy is a new part. `feature` mirrors one or more earlier extrudes, revolves or sweeps whose ' +
+  'operation is add or cut, inside the part each source shaped: name them in `source_features`, e.g. ["@ex1", "@ex2"], ' +
+  'and `target_body` chooses the part when a source touched more than one. The mirrored copy reapplies the source\'s ' +
+  'own operation in the same part, so `keep_original` and `merge` mean nothing there and are refused. ' +
   'A source that no longer exists or now comes after the mirror is dropped with a named warning; a mirror with no ' +
   'sources left is refused. A source symmetric about the plane mirrors onto itself and the mirror is a warning, ' +
   'not a failed solve.'
@@ -794,14 +794,14 @@ const VARIABLE_NAME_NOTE =
 
 // merge_target is a body id, not a ref: the practice runs guessed `@body_ex5`.
 const MERGE_TARGET_NOTE =
-  'The bare body id the cut or add goes into, e.g. `body_ex5` (no @ sigil). Absent means automatic: a cut ' +
-  'reaches every body, and an add fuses the first body it reaches. A cut that consumes a whole body ' +
-  'deletes it; that is silent when the cut reached it automatically and other bodies remain, and ' +
-  'reported only when `merge_target` named that body or the part is left empty. On an extrude, a body the new solid only ' +
+  'The bare part id (stored as `merge_target`) the cut or add goes into, e.g. `body_ex5` (no @ sigil). Absent means automatic: a cut ' +
+  'reaches every part, and an add fuses the first part it reaches. A cut that consumes a whole part ' +
+  'deletes it; that is silent when the cut reached it automatically and other parts remain, and ' +
+  'reported only when `merge_target` named that part or the part is left empty. On an extrude, a part the new solid only ' +
   'shares a face with is reported by the touch warning, not fused, so an overlap is not required for the ' +
   'warning to name it. ' +
-  'The feature\'s featureDeltas row names a body the feature changed as `body`, with its own ' +
-  '`bodyVolume`: a merge_target cut\'s own receiving body when the cut changed it.'
+  'The feature\'s featureDeltas row names the part the feature changed as `body`, with its own ' +
+  '`bodyVolume`: a merge_target cut\'s own receiving part when the cut changed it.'
 
 // Up-to was documented in the document schema and the document guide but not in
 // the mutation catalog, so a client authored the key it had to infer (Ex100).
@@ -809,7 +809,7 @@ const MERGE_TARGET_NOTE =
 const EXTRUDE_UP_TO_NOTE =
   '`termination: up_to` ends the extrude at the element `up_to` names instead of at `distance`: ' +
   '`@builtin_plane_front`/`@<planeId>` for a plane (`@<planeId>` is the spelling `add_sketch.plane` takes); ' +
-  'any body face, planar or curved (a face query from `select`, or the viewport\'s ' +
+  'any part face, planar or curved (a face query from `select`, or the viewport\'s ' +
   '`@<bodyId>/face/<n>` fallback); a `select` vertex query, or a sketch point ref ' +
   '(`@<sketchId>/<entityId>/xy`). A curved face is trimmed by splitting the over-length tool at the face, ' +
   'so it stops at the first crossing (a tool that enters and leaves a cylinder stops at the near wall). ' +
@@ -821,21 +821,21 @@ const EXTRUDE_UP_TO_NOTE =
   'builds nothing and reports a warning (`up_to target \'<ref>\' did not resolve; nothing was built`, ' +
   '`... matched several elements (...); nothing was built`, or `up_to has no target; nothing was built`): ' +
   'the termination is the authored intent, so it never falls back to `distance`. ' +
-  'A `@<bodyId>/face/<n>` ref that no longer names a face (the body is gone, the index is out of range, or the ' +
+  'A `@<bodyId>/face/<n>` ref that no longer names a face (the part is gone, the index is out of range, or the ' +
   'remap fails) fails the feature instead of falling back: that ref is a persisted pick. ' +
   '`direction: symmetric` is refused, and so is a taper. `up_to` is read only when `termination` is `up_to`; ' +
   'otherwise it is ignored.'
 
 const EXTRUDE_UP_TO_NEXT_NOTE =
-  '`termination: up_to_next` stops each profile region at the first body it meets, so a footprint can span a ' +
+  '`termination: up_to_next` stops each profile region at the first part it meets, so a footprint can span a ' +
   'dished ceiling made of several faces with no face picking. `merge_target` narrows the candidates to one ' +
-  'body; with no target every body is a candidate. A profile that starts inside material, or a region that ' +
-  'meets no body, is refused by name instead of built to a 10 m reach. It uses the authored direction (no ' +
+  'part; with no target every part is a candidate. A profile that starts inside material, or a region that ' +
+  'meets no part, is refused by name instead of built to a 10 m reach. It uses the authored direction (no ' +
   'auto-flip) and does not read `up_to`; a given `up_to` is ignored.'
 
 const EXTRUDE_UP_TO_OFFSET_NOTE =
   '`up_to_offset` (number or expression, default 0) moves the stop surface of `up_to` or `up_to_next` by a ' +
-  'material-signed distance: positive is outward of the target body\'s material, negative is into it. ' +
+  'material-signed distance: positive is outward of the target part\'s material, negative is into it. ' +
   'It is a true surface offset along the target\'s normal, not a translation along the extrude, so an ' +
   'emboss raised 0.5 on a cylinder stays 0.5 thick everywhere. A target with no material (a datum plane or ' +
   'a sketch point) has no outward side: positive is past it along the extrude direction, negative short of ' +
@@ -853,7 +853,7 @@ const EXTRUDE_UP_TO_START_NOTE =
   'as any add or cut that changes nothing. ' +
   'Recipes: emboss by h is a sketch on a plane in front of the curved surface, `add`, `termination: up_to` ' +
   'the face, `up_to_start: surface`, `up_to_offset: h`; deboss by h is the same with `cut` and a negative ' +
-  'offset (minus h). Without `up_to_start: surface`, a sketch behind the surface (inside the body) with ' +
+  'offset (minus h). Without `up_to_start: surface`, a sketch behind the surface (inside the part) with ' +
   '`add`, `up_to` and a positive offset gives the same emboss, and a sketch in front with `cut` and a ' +
   'negative offset the same deboss.'
 
@@ -861,17 +861,17 @@ const EXTRUDE_UP_TO_START_NOTE =
 // the kcl 80-20 rail); a part that later grows past the guess silently stops
 // being cut. The termination sizes from the bodies instead.
 const EXTRUDE_THROUGH_ALL_NOTE =
-  '`termination: through_all` is a CUT that is sized from the bodies it can reach and stores no `distance` ' +
-  '(a stored one is ignored with a warning): `merge_target` narrows the reach and the cut to one body, and ' +
-  'with no target every body is a candidate, so a body farther along the same axis only makes the tool longer. ' +
+  '`termination: through_all` is a CUT that is sized from the parts it can reach and stores no `distance` ' +
+  '(a stored one is ignored with a warning): `merge_target` narrows the reach and the cut to one part, and ' +
+  'with no target every part is a candidate, so a part farther along the same axis only makes the tool longer. ' +
   '`direction: normal` and `reverse` cut one side of the profile plane; `direction: symmetric` cuts ' +
   'through all material on BOTH sides of it. ' +
-  'It needs a body to cut through, and `operation` must be `cut`; add, new and intersect are refused.'
+  'It needs a part to cut through, and `operation` must be `cut`; add, new and intersect are refused.'
 
 const REVOLVE_INLINE_NOTE =
   'One call may carry the whole revolve: `direction` (normal | reverse | symmetric), `operation` ' +
   '(add | cut | new) and `merge_target` set the same keys `set_revolve_field` does; with no `operation` ' +
-  'a revolve adds to the body it touches. `merge_target`: ' + MERGE_TARGET_NOTE
+  'a revolve adds to the part it touches. `merge_target`: ' + MERGE_TARGET_NOTE
 
 // The single-profile hole rule sits beside the multisection note because the
 // old text read as if the section refusal covered every sweep, which is how a
@@ -889,21 +889,21 @@ const SWEEP_MULTISECTION_NOTE =
   'same path. There is no loft feature. Each section is one outer loop. A section with a hole is refused; ' +
   'sweep the outer loops in an `add` sweep and the inner loops in a second `cut` sweep of the same path, ' +
   'using the one-loop `entity:<sketchId>:<entityId>` refs and naming the cut\'s `merge_target` so the cut ' +
-  'cannot reach an unrelated body.'
+  'cannot reach an unrelated part.'
 
 const SWEEP_INLINE_NOTE =
   'One call may carry the whole sweep: `transition` (mitre | round), `multisection`, `operation` ' +
   '(add | cut | new) and `merge_target` set the same keys `set_sweep_field` does; with no `operation` ' +
-  'a sweep adds to the body it touches. ' + SWEEP_HOLE_NOTE + ' ' +
+  'a sweep adds to the part it touches. ' + SWEEP_HOLE_NOTE + ' ' +
   'Sections on other planes are added with `add_sweep_profile`, ' +
   'then `multisection: true` in the same add call; each section must be pierced by the path. ' +
   SWEEP_MULTISECTION_NOTE + ' `merge_target`: ' + MERGE_TARGET_NOTE
 
 const EXTRUDE_ADD_NOTE =
-  'An `add` extends an existing body: with no `merge_target` it fuses the first body its profile reaches, and ' +
-  'a profile that reaches none fails the feature (`add does not merge with any existing body`). Start a new ' +
-  'body with `operation: new`. An add that fuses one body and also reaches another reports the untouched ' +
-  'body in `solver_warning`. An `add` that changes nothing (tool wholly inside or outside the body), or a ' +
+  'An `add` extends an existing part: with no `merge_target` it fuses the first part its profile reaches, and ' +
+  'a profile that reaches none fails the feature (`add does not merge with any existing part`). Start a new ' +
+  'part with `operation: new`. An add that fuses one part and also reaches another reports the untouched ' +
+  'part in `solver_warning`. An `add` that changes nothing (tool wholly inside or outside the part), or a ' +
   '`cut` that removes no material, ' +
   'reports `extrude: operation produced no geometry change` in `solver_warning`. A wholly-outside cut instead ' +
   'fails with `cut does not intersect`.'
@@ -938,18 +938,18 @@ const EXTRUDE_INLINE_NOTE =
 // The boolean refuses to solve without a target and a tool, so the catalog
 // names them up front (Case_Seam_Lip F5).
 const BOOLEAN_INLINE_NOTE =
-  'Solving needs `target` (one body id) and at least one entry in `tools`; `operation` defaults to union. ' +
+  'Solving needs `target` (one part id, stored as `target`) and at least one entry in `tools`; `operation` defaults to union. ' +
   'One call may carry the whole boolean: `operation`, `target`, `tools`, `keep_tools` and `clearance` set ' +
-  'the same keys `set_boolean_field` does. `keep_tools` keeps the tool bodies after a subtract; `clearance` ' +
+  'the same keys `set_boolean_field` does. `keep_tools` keeps the tool parts after a subtract; `clearance` ' +
   'offsets a subtract tool (positive grows it, negative shrinks it). ' +
   '`set_boolean_field` and `add_boolean_tool` remain for later edits.'
 
 const BOOLEAN_ARRAY_TOOL_NOTE =
   'A `tools` entry naming a body-subject pattern feature (`@<patternId>`) expands at solve time to that ' +
-  'pattern\'s source body and every instance body, including the `<source>_N` copies an `operation: add` pattern ' +
+  'pattern\'s source part and every instance part, including the `<source>_N` copies an `operation: add` pattern ' +
   'splits into, so it follows a later count change; the target is left out of ' +
   'the expansion; the pattern must come before the boolean in the log (a later one is refused as unresolved). A hand-typed list that names only some of ' +
-  'one pattern\'s bodies solves with a warning (also when the split is deliberate). A feature-subject pattern is not an array of bodies and is not expanded.'
+  'one pattern\'s parts solves with a warning (also when the split is deliberate). A feature-subject pattern is not an array of parts and is not expanded.'
 
 // Same precedence as transform's rotation axis, so one rule covers both.
 const CIRCULAR_AXIS_NOTE =
@@ -961,7 +961,7 @@ const CIRCULAR_AXIS_NOTE =
 // the tool schema's field notes, so a client that puts a predicate where the
 // selector belongs (a practice round did) needs the shape spelled out here.
 const SELECTOR_SHAPE_NOTE =
-  'A selector is `{from?, kind, where}`: `from` names a body (default: every body), `kind` is edge, face or ' +
+  'A selector is `{from?, kind, where}`: `from` names a part (default: every part), `kind` is edge, face or ' +
   'vertex, and `where` holds the predicates, e.g. `{type: "flatface"}` or `{parallel: [0, 0, 1]}`.'
 
 // The fillet and chamfer edge list is a pick list like a shell's faces, so each
@@ -1002,7 +1002,7 @@ const SHELL_SIGN_NOTE =
   '`kind="intersection"` to the default). ' +
   'The sharp build falls back to arc only when it genuinely refuses (a tangent contact between faces or a removed ' +
   'face bounded by fillets); the reply reports the substitution in `solver_warning`, because the corners are not ' +
-  'the authored ones even though the body built. With `join: "arc"` the arc build is used directly: a refused arc ' +
+  'the authored ones even though the part built. With `join: "arc"` the arc build is used directly: a refused arc ' +
   'is a feature error naming the cause and never a silent sharp fallback.'
 
 const SHELL_BULK_NOTE =
@@ -1264,17 +1264,17 @@ export const MUTATION_CATALOG = {
     },
   },
   add_projected_entity: {
-    summary: 'Project a body edge, face or another sketch\'s geometry into a sketch as a live projection constraint.',
-    note: 'The source is a body edge/vertex/face query, `@builtin_origin`, or a whole entity of another sketch '
+    summary: 'Project a part edge, face or another sketch\'s geometry into a sketch as a live projection constraint.',
+    note: 'The source is a part edge/vertex/face query, `@builtin_origin`, or a whole entity of another sketch '
       + '(`@<sketchId>/<entityId>`; add `/start`, `/end`, `/center` or `/xy` for one vertex). A sketch line, '
       + 'circle or arc projects as that curve; a foreign spline or ellipse is refused and reported in '
       + '`projection_errors` (a projection that already had a position keeps it; one that never had any is left '
-      + 'out of the profile). A body circle, arc or ellipse edge, or another sketch\'s circle or arc, seen '
+      + 'out of the profile). A part circle, arc or ellipse edge, or another sketch\'s circle or arc, seen '
       + 'edge-on projects as a line (its silhouette extent); `kind: "point"` on such a curved source projects '
       + 'its centre in any orientation. A line perpendicular to the sketch plane projects as a point (its '
       + 'midpoint). A `source` that can never resolve is refused with the cause (a sketch projecting its own '
       + 'entity, an unknown sketch or entity, a forward reference to a later sketch, a `$` cycle, or a source '
-      + 'with no position); a body query resolves against the settled solve and is refused when nothing '
+      + 'with no position); a part query resolves against the settled solve and is refused when nothing '
       + 'matches. A FACE source is one live projection with no target: its boundary edges are derived as '
       + 'members on every solve, so a later fillet or cut adds or removes members without a new pick. A supplied '
       + '`kind` is ignored for a face source (the whole wire is derived). Seam edges are skipped. Members are not '
@@ -1486,9 +1486,9 @@ export const MUTATION_CATALOG = {
       distance: optNum('Required unless `termination` is `through_all`, which stores no distance at all (the key the document stores as extrude.distance).'),
       taper: optScalar('Degrees of draft along the extrude direction: positive narrows the profile, negative widens it, and every lateral wall (holes included) drafts. Needs termination blind and direction normal or reverse; an angle that closes the profile exactly at `distance` builds to an apex (a pyramid, a cone), one that closes to a ridge is refused, and one that collapses the profile before `distance` is refused with the height it would collapse at (the key the document stores as extrude.taper).'),
       direction: optStr('normal | reverse | symmetric; defaults to normal (the key the document stores as extrude.direction).'),
-      termination: optNullableStr('blind | up_to | up_to_next | through_all; defaults to blind. `up_to` ends the extrude at the `up_to` element instead of at `distance`; `up_to_next` stops at the first body it meets; `through_all` is a cut sized from the bodies it can reach and stores no `distance` (omit it; a stored one is ignored with a warning), and `merge_target` narrows the reach, with `direction: symmetric` cutting both sides of the plane and normal/reverse cutting one (the key the document stores as extrude.termination). A null value clears it, so the add writes no key.'),
-      up_to: optNullableStr('The element an up_to extrude stops at: `@<planeId>`, `@builtin_plane_front`, any body face planar or curved (a face query from `select`, or the viewport\'s `@<bodyId>/face/<n>` fallback), a `select` vertex query, or a sketch point ref (`@<sketchId>/<entityId>/xy`) (the key the document stores as extrude.up_to). Read only when `termination` is `up_to`; otherwise it is ignored. A null or empty value clears it.'),
-      up_to_offset: optNullableScalar('Material-signed distance moved on the stop surface of `up_to` or `up_to_next`: positive outward of the target body\'s material, negative into it; a datum plane or point has no material side, so positive is past it along the extrude. It is a true surface offset along the target normal. Default 0. (the key the document stores as extrude.up_to_offset)'),
+      termination: optNullableStr('blind | up_to | up_to_next | through_all; defaults to blind. `up_to` ends the extrude at the `up_to` element instead of at `distance`; `up_to_next` stops at the first part it meets; `through_all` is a cut sized from the parts it can reach and stores no `distance` (omit it; a stored one is ignored with a warning), and `merge_target` narrows the reach, with `direction: symmetric` cutting both sides of the plane and normal/reverse cutting one (the key the document stores as extrude.termination). A null value clears it, so the add writes no key.'),
+      up_to: optNullableStr('The element an up_to extrude stops at: `@<planeId>`, `@builtin_plane_front`, any part face planar or curved (a face query from `select`, or the viewport\'s `@<bodyId>/face/<n>` fallback), a `select` vertex query, or a sketch point ref (`@<sketchId>/<entityId>/xy`) (the key the document stores as extrude.up_to). Read only when `termination` is `up_to`; otherwise it is ignored. A null or empty value clears it.'),
+      up_to_offset: optNullableScalar('Material-signed distance moved on the stop surface of `up_to` or `up_to_next`: positive outward of the target part\'s material, negative into it; a datum plane or point has no material side, so positive is past it along the extrude. It is a true surface offset along the target normal. Default 0. (the key the document stores as extrude.up_to_offset)'),
       up_to_start: optNullableStr('sketch | surface; absent is sketch. `surface` builds only the slab between the stop surface and its offset, clipped to the profile footprint: the emboss/deboss mode, needing a face target and a non-zero up_to_offset; refused with direction symmetric and a taper (the key the document stores as extrude.up_to_start).'),
       operation: optStr('add | cut | new; absent means add (the key the document stores as extrude.operation).'),
       merge_target: optStr(MERGE_TARGET_NOTE),
@@ -1624,7 +1624,7 @@ export const MUTATION_CATALOG = {
       faces: optArr(
         'Face queries from `select` to remove (the openings), or `{selector}` entries the drive resolves; ' +
         'the same array the document stores as shell.faces. ' + SELECTOR_SHAPE_NOTE + ' ' +
-        'May be empty when `source_body` names a body for a closed hollow.',
+        'May be empty when `source_body` names a part for a closed hollow.',
       ),
       thickness: optScalar('A positive number or an expression string; defaults to 1 when omitted.'),
       direction: optStr('inward or outward; defaults to inward (the same key the document stores as shell.direction).'),
@@ -1678,8 +1678,8 @@ export const MUTATION_CATALOG = {
     fields: {
       ...featureAddFields(),
       operation: optStr('union | subtract | intersect; defaults to union.'),
-      target: optStr('The body the tools fold into, e.g. body_ex1. Required to solve.'),
-      tools: optArr('Body ids, or an array feature ref (@<arrayId>) for every body of that array. At least one is required to solve.'),
+      target: optStr('The part (stored as `target`) the tools fold into, e.g. body_ex1. Required to solve.'),
+      tools: optArr('Part ids (stored as `tools`), or an array feature ref (@<arrayId>) for every part of that array. At least one is required to solve.'),
       keep_tools: optBool(),
       clearance: optScalar('Signed, subtract only: the tool grows (+) or shrinks (-) before the cut; absent means 0.'),
     },
@@ -1690,25 +1690,25 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), field: fieldOf('boolean', 'set_boolean_field'), value: setterValue('boolean') },
   },
   add_boolean_tool: {
-    summary: 'Add a tool body to a boolean.',
+    summary: 'Add a tool part to a boolean.',
     note: BOOLEAN_ARRAY_TOOL_NOTE,
     fields: { featureId: str(), tool: bodyQuery() },
   },
   remove_boolean_tool: {
-    summary: 'Remove a boolean tool body.',
+    summary: 'Remove a boolean tool part.',
     fields: { featureId: str(), tool: bodyQuery() },
   },
   add_linear_pattern: {
-    summary: 'Add a linear pattern of a body or one earlier feature, optionally along a second direction.',
+    summary: 'Add a linear pattern of a part or one earlier feature, optionally along a second direction.',
     note: LINEAR_PATTERN_NOTE + ' ' + LINEAR_PATTERN_INLINE_NOTE,
     fields: {
       ...featureAddFields(),
       subject: optStr('body | feature; defaults to body.'),
-      source_body: optStr('Body subject: the body to copy, e.g. body_ex2.'),
-      operation: optStr('Body subject: add | new; defaults to add.'),
+      source_body: optStr('Part subject: the part (stored as `source_body`) to copy, e.g. body_ex2.'),
+      operation: optStr('Part subject: add | new; defaults to add.'),
       source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve or sweep with operation add or cut.'),
       source_feature: optStr('Feature subject: the legacy single-source form of source_features, e.g. @ex1. Still accepted; a list or the singular key, not both.'),
-      target_body: optStr('Feature subject: applies every source to this body instead of the body each source shaped.'),
+      target_body: optStr('Feature subject: applies every source to this part (stored as `target_body`) instead of the part each source shaped.'),
       count: optScalar(),
       centered: optBool('Also generate the reverse side, so count 2 is three instances.'),
       skip: optAny(
@@ -1741,16 +1741,16 @@ export const MUTATION_CATALOG = {
     },
   },
   add_circular_pattern: {
-    summary: 'Add a circular pattern of a body or one earlier feature, optionally with its angle.',
+    summary: 'Add a circular pattern of a part or one earlier feature, optionally with its angle.',
     note: CIRCULAR_PATTERN_NOTE + ' ' + CIRCULAR_AXIS_NOTE + ' ' + CIRCULAR_PATTERN_INLINE_NOTE,
     fields: {
       ...featureAddFields(),
       subject: optStr('body | feature; defaults to body.'),
-      source_body: optStr('Body subject: the body to copy, e.g. body_ex2.'),
-      operation: optStr('Body subject: add | new; defaults to add.'),
+      source_body: optStr('Part subject: the part (stored as `source_body`) to copy, e.g. body_ex2.'),
+      operation: optStr('Part subject: add | new; defaults to add.'),
       source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve or sweep with operation add or cut.'),
       source_feature: optStr('Feature subject: the legacy single-source form of source_features, e.g. @ex1. Still accepted; a list or the singular key, not both.'),
-      target_body: optStr('Feature subject: applies every source to this body instead of the body each source shaped.'),
+      target_body: optStr('Feature subject: applies every source to this part (stored as `target_body`) instead of the part each source shaped.'),
       count: optScalar(),
       centered: optBool('Also generate the reverse side, so count 2 is three instances.'),
       skip: optAny(
@@ -1776,16 +1776,16 @@ export const MUTATION_CATALOG = {
     },
   },
   add_curve_pattern: {
-    summary: 'Add a curve pattern of a body or one earlier feature along a path.',
+    summary: 'Add a curve pattern of a part or one earlier feature along a path.',
     note: CURVE_PATTERN_NOTE + ' ' + CURVE_PATH_NOTE + ' ' + CURVE_PATTERN_INLINE_NOTE,
     fields: {
       ...featureAddFields(),
       subject: optStr('body | feature; defaults to body.'),
-      source_body: optStr('Body subject: the body to copy, e.g. body_ex2.'),
-      operation: optStr('Body subject: add | new; defaults to add.'),
+      source_body: optStr('Part subject: the part (stored as `source_body`) to copy, e.g. body_ex2.'),
+      operation: optStr('Part subject: add | new; defaults to add.'),
       source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve or sweep with operation add or cut.'),
       source_feature: optStr('Feature subject: the legacy single-source form of source_features, e.g. @ex1. Still accepted; a list or the singular key, not both.'),
-      target_body: optStr('Feature subject: applies every source to this body instead of the body each source shaped.'),
+      target_body: optStr('Feature subject: applies every source to this part (stored as `target_body`) instead of the part each source shaped.'),
       pathQuery: pathQuery(),
       count: optScalar(),
       spacing: optStr('equal | distance; defaults to equal (the path length split over the count).'),
@@ -1824,11 +1824,11 @@ export const MUTATION_CATALOG = {
     fields: {
       ...featureAddFields(),
       subject: optStr('body | feature; defaults to body.'),
-      source_body: optStr('Body subject: the body to copy, e.g. body_ex2.'),
-      operation: optStr('Body subject: add | new; defaults to add.'),
+      source_body: optStr('Part subject: the part (stored as `source_body`) to copy, e.g. body_ex2.'),
+      operation: optStr('Part subject: add | new; defaults to add.'),
       source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve or sweep with operation add or cut.'),
       source_feature: optStr('Feature subject: the legacy single-source form of source_features, e.g. @ex1. Still accepted; a list or the singular key, not both.'),
-      target_body: optStr('Feature subject: applies every source to this body instead of the body each source shaped.'),
+      target_body: optStr('Feature subject: applies every source to this part (stored as `target_body`) instead of the part each source shaped.'),
       sketch: optStr('Sketch form: every non-construction point of this sketch is a target, e.g. @sk1.'),
       targets: optArr('Targets form: a list of picks, e.g. ["?@body_ex1@u|...:flatface", "entity:sk2:p1"].'),
       reference: optStr('The point the copies are measured from: any pick the target table accepts. Absent, the source sketch\'s only point or the seed\'s centroid.'),
@@ -1860,17 +1860,17 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), index: num() },
   },
   add_pattern: {
-    summary: 'Add a pattern of a body or one earlier feature. Deprecated: use add_linear_pattern or add_circular_pattern.',
+    summary: 'Add a pattern of a part or one earlier feature. Deprecated: use add_linear_pattern or add_circular_pattern.',
     note: PATTERN_ALIAS_NOTE,
     deprecated: PATTERN_ALIAS_NOTE,
     fields: {
       ...featureAddFields(),
       subject: optStr('body | feature; defaults to body.'),
-      source_body: optStr('Body subject: the body to copy, e.g. body_ex2.'),
-      operation: optStr('Body subject: add | new; defaults to add.'),
+      source_body: optStr('Part subject: the part (stored as `source_body`) to copy, e.g. body_ex2.'),
+      operation: optStr('Part subject: add | new; defaults to add.'),
       source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve or sweep with operation add or cut.'),
       source_feature: optStr('Feature subject: the legacy single-source form of source_features, e.g. @ex1. Still accepted; a list or the singular key, not both.'),
-      target_body: optStr('Feature subject: applies every source to this body instead of the body each source shaped.'),
+      target_body: optStr('Feature subject: applies every source to this part (stored as `target_body`) instead of the part each source shaped.'),
       mode: optStr('linear | rectangular | circular; defaults to linear. Translated to second_direction or the circular kind.'),
       count: optScalar(),
       centered: optBool('Linear and circular: also generate the reverse side, so count 2 is three instances.'),
@@ -1912,15 +1912,15 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), index: num() },
   },
   add_delete_body: {
-    summary: 'Add a delete-body feature, optionally naming bodies.',
-    fields: { ...featureAddFields(), bodies: optArr() },
+    summary: 'Add a delete-part feature, optionally naming parts.',
+    fields: { ...featureAddFields(), bodies: optArr('Part refs to delete (stored as `bodies`); a feature ref means every part that feature made.') },
   },
   add_delete_body_ref: {
-    summary: 'Add a body to delete.',
+    summary: 'Add a part to delete.',
     fields: { featureId: str(), bodyQuery: bodyQuery() },
   },
   remove_delete_body_ref: {
-    summary: 'Remove a delete-body pick by index.',
+    summary: 'Remove a delete-part pick by index.',
     fields: { featureId: str(), index: num() },
   },
   add_hole: {
@@ -1934,11 +1934,11 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), field: fieldOf('hole', 'set_hole_field'), value: setterValue('hole') },
   },
   add_transform: {
-    summary: 'Add a transform feature, optionally with its bodies, operation, translation, rotation and scale in the same call.',
+    summary: 'Add a transform feature, optionally with its parts, operation, translation, rotation and scale in the same call.',
     note: TRANSFORM_NOTE,
     fields: {
       ...featureAddFields(),
-      bodies: optArr('Body refs to move; the same array the document stores as transform.bodies. May be empty and edited with add_transform_body later.'),
+      bodies: optArr('Part refs to move (stored as `bodies`, the same array the document stores as transform.bodies). May be empty and edited with add_transform_body later.'),
       operation: optStr('new | replace; absent means new.'),
       translation: optPoint(),
       translation_from: optStr('A point ref for the translation start.'),
@@ -1963,35 +1963,35 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), field: fieldOf('transform', 'set_transform_field'), value: setterValue('transform') },
   },
   add_transform_body: {
-    summary: 'Add a body to a transform.',
+    summary: 'Add a part to a transform.',
     fields: { featureId: str(), bodyQuery: bodyQuery() },
   },
   remove_transform_body: {
-    summary: 'Remove a transform body by index.',
+    summary: 'Remove a transform part by index.',
     fields: { featureId: str(), index: num() },
   },
   rename_part: {
-    summary: 'Rename a body.',
+    summary: 'Rename a part (the `bodyId` field names the stored part).',
     fields: { bodyId: str(), name: str() },
   },
   set_part_color: {
-    summary: 'Set a body colour.',
+    summary: 'Set a part colour.',
     fields: { bodyId: str(), color: str('A CSS colour string.') },
   },
   set_part_transparency: {
-    summary: 'Set a body transparency.',
+    summary: 'Set a part transparency.',
     fields: { bodyId: str(), transparency: num() },
   },
   set_part_metalness: {
-    summary: 'Set a body metalness.',
+    summary: 'Set a part metalness.',
     fields: { bodyId: str(), metalness: num() },
   },
   set_part_roughness: {
-    summary: 'Set a body roughness.',
+    summary: 'Set a part roughness.',
     fields: { bodyId: str(), roughness: num() },
   },
   set_part_transmission: {
-    summary: 'Set a body transmission.',
+    summary: 'Set a part transmission.',
     fields: { bodyId: str(), transmission: num() },
   },
   add_mirror: {
@@ -2000,15 +2000,15 @@ export const MUTATION_CATALOG = {
     fields: {
       ...featureAddFields(),
       subject: optStr('body | feature; absent means body.'),
-      body: optStr('The body to mirror, e.g. body_ex2 (body subject).'),
+      body: optStr('The part (stored as `body`) to mirror, e.g. body_ex2; used when `subject` is `body`.'),
       source_features: optArr(
         'Feature refs to mirror (feature subject), e.g. ["@ex1", "@ex2"]: earlier extrudes, revolves or sweeps with ' +
         'operation add or cut. Applied in feature-log order.',
       ),
-      target_body: optStr('The body a mirrored feature copy lands in, when a source shaped more than one.'),
+      target_body: optStr('The part a mirrored feature copy lands in (stored as `target_body`), when a source shaped more than one.'),
       plane: optStr('The mirror plane: @builtin_plane_*, a bare name, @<planeId>, or a face query.'),
-      keep_original: optBool('Body subject only; a feature mirror refuses it.'),
-      merge: optBool('Body subject only; a feature mirror refuses it.'),
+      keep_original: optBool('Part subject only; a feature mirror refuses it.'),
+      merge: optBool('Part subject only; a feature mirror refuses it.'),
     },
   },
   set_mirror_field: {
@@ -2029,11 +2029,11 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), index: num() },
   },
   add_split: {
-    summary: 'Add a split feature, optionally with its bodies, plane and kept side.',
+    summary: 'Add a split feature, optionally with its parts, plane and kept side.',
     note: SPLIT_NOTE,
     fields: {
       ...featureAddFields(),
-      bodies: optArr('Body refs to cut; a feature ref (@<featureId>) means every body that feature made.'),
+      bodies: optArr('Part refs to cut (stored as `bodies`); a feature ref (@<featureId>) means every part that feature made.'),
       plane: optStr('The cutting plane: @builtin_plane_*, Front/Top/Right, @<planeFeatureId>, or a ?...:flatface pick.'),
       keep: optStr('above | below | both; absent means above.'),
     },
@@ -2044,11 +2044,11 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), field: fieldOf('split', 'set_split_field'), value: setterValue('split') },
   },
   add_split_body: {
-    summary: 'Add a body to a split.',
+    summary: 'Add a part to a split.',
     fields: { featureId: str(), bodyQuery: bodyQuery() },
   },
   remove_split_body: {
-    summary: 'Remove a split body by index.',
+    summary: 'Remove a split part by index.',
     fields: { featureId: str(), index: num() },
   },
   add_variable: {
@@ -2070,7 +2070,7 @@ export const MUTATION_CATALOG = {
   },
   add_helix: {
     summary: 'Add a helix feature, optionally from a picked reference.',
-    note: 'A helix is a reference curve, not a body. The run or measure reply reports the resolved ' +
+    note: 'A helix is a reference curve, not a part. The run or measure reply reports the resolved ' +
       'placement under `curves.<id>` as {origin, axis, start, end, radius, pitch, turns, height, hand}, ' +
       'where `axis` is the climb direction (the reference axis, negated by `direction: reverse`). ' +
       '`@<id>/start` and `@<id>/end` stay valid point refs, e.g. the origin of a sweep profile plane. ' +
@@ -2102,7 +2102,7 @@ export const MUTATION_CATALOG = {
     },
   },
   set_body_visibility: {
-    summary: 'Show or hide a body.',
+    summary: 'Show or hide a part.',
     fields: { bodyId: str(), visible: bool() },
   },
   reorder_pick_field: {

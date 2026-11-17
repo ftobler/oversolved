@@ -289,7 +289,7 @@ export function classifyProjectionSource(
   if (sketchId === featureId) {
     return {
       kind: 'self reference',
-      message: `a sketch cannot project its own entity ('${source}'); draw it, or project the body edge it came from`,
+      message: `a sketch cannot project its own entity ('${source}'); draw it, or project the part edge it came from`,
     }
   }
   const sourceFeature = features.find(feature => feature.id === sketchId)

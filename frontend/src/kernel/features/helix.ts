@@ -63,12 +63,12 @@ function occFaceForRef(
     const bodyId = entry?.body_id as string | undefined
     const idx = entry?.face_index as number | undefined
     if (bodyId === undefined || idx === undefined) {
-      throw new Error(`helix: reference ${JSON.stringify(refStr)} is not a body face`)
+      throw new Error(`helix: reference ${JSON.stringify(refStr)} is not a part face`)
     }
     body = bodyStore[bodyId] ?? null
     faceIndex = idx
   }
-  if (body === null || body.shape === null) throw new Error(`helix: reference body not found for ${JSON.stringify(refStr)}`)
+  if (body === null || body.shape === null) throw new Error(`helix: reference part not found for ${JSON.stringify(refStr)}`)
   const shape = table.get<OccShape>(body.shape)
   const faces = sortedFacesOf(oc, scope, shape)
   // Same remap the profile paths use: a body carrying face identity refuses a

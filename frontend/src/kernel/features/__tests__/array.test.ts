@@ -591,7 +591,7 @@ describe('pattern source body diagnosis', () => {
   it('still reports a ref that matches nothing as missing', () => {
     const feature = { id: 'ar1', linear_pattern: { source_body: '@nope' } }
     expect(() => solveLinear(noOcc, scope, noTable, feature, noRepo, store()))
-      .toThrow(/source body '@nope' not found/)
+      .toThrow(/source part '@nope' not found/)
   })
 })
 

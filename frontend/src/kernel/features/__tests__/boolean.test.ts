@@ -116,7 +116,7 @@ describe('solveBoolean guard paths', () => {
       }, repo, {
         body_t: target,
       }),
-    ).toThrow(/body not found/)
+    ).toThrow(/part not found/)
   })
 
   it('throws when target body does not exist', () => {
@@ -127,7 +127,7 @@ describe('solveBoolean guard paths', () => {
       }, repo, {
         body_u0: body('body_u0'),
       }),
-    ).toThrow(/body not found/)
+    ).toThrow(/part not found/)
   })
 
   it('target listed in tools throws the named error before any boolean runs', () => {

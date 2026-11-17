@@ -299,7 +299,7 @@ export function solveMoveFace(
         }
         const names = nameMovedFaces(oc, scope, featureId, baseNames, set, setPicks, qlist.length)
         const ids = resplitBody(oc, scope, table, bodyStore, body, set.shape, featureId, names)
-        if (ids.length === 0) throw new Error('move_face: the move removes the whole body')
+        if (ids.length === 0) throw new Error('move_face: the move removes the whole part')
         body.brep_diff = set.diff
         body.modified_by.push(featureId)
         applied.push(...ids)
@@ -315,7 +315,7 @@ export function solveMoveFace(
       }
       if (distance !== 0) {
         const ids = resplitBody(oc, scope, table, bodyStore, body, currentShape, featureId, currentNames)
-        if (ids.length === 0) throw new Error('move_face: the move removes the whole body')
+        if (ids.length === 0) throw new Error('move_face: the move removes the whole part')
         body.brep_diff = diff
         body.modified_by.push(featureId)
         applied.push(...ids)

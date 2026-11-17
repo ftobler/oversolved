@@ -27,7 +27,7 @@ function singleBodyOf(ref: string, bodyStore: Record<string, Body>): Body | null
   if (ids.length === 0) return null
   if (ids.length > 1) {
     throw new AmbiguousBodyRefError(
-      `body ref '${ref}' is ambiguous: it names a feature owning ${ids.length} bodies ` +
+      `part ref '${ref}' is ambiguous: it names a feature owning ${ids.length} parts ` +
       `(${ids.join(', ')}); name one of them`,
     )
   }
@@ -56,7 +56,7 @@ export function resolveBody(ref: string, bodyStore: Record<string, Body>): Body 
       if (viewport !== null) return viewport
     }
   }
-  throw new Error(`body not found for ref '${ref}'`)
+  throw new Error(`part not found for ref '${ref}'`)
 }
 
 /**
@@ -186,7 +186,7 @@ export function resolveBodyRefKeys(
   // than failing the whole solve over an element nobody asked to keep.
   const ids = resolveBodyIds(bodyQuery, bodyStore)
   if (ids.length > 0) return ids
-  throw new Error(`${leaf}: query did not resolve to a body: ${JSON.stringify(bodyQuery)}`)
+  throw new Error(`${leaf}: query did not resolve to a part: ${JSON.stringify(bodyQuery)}`)
 }
 
 /**

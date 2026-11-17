@@ -79,7 +79,7 @@ describe.skipIf(!ready)('boolean tools naming a body pattern (real OCC + Rust so
     // Same features, the boolean inserted above the pattern.
     const built = await runHeadless({ doc: emptyDriveDoc(), steps: [...steps.slice(0, 6), boolean, ...steps.slice(6)] })
     const problem = built.features.find(feature => feature.id === 'bo1')
-    expect(problem?.message).toContain("body not found for ref '@ca1'")
+    expect(problem?.message).toContain("part not found for ref '@ca1'")
   }, 120_000)
 
   it('warns when a hand list names only some of one pattern\'s bodies', async () => {

@@ -42,7 +42,7 @@ export function resolvePatternSourceBody(
   bodyStore: Record<string, Body>,
 ): Body {
   const ref = (sub.source_body as string) ?? ''
-  if (!ref) throw new Error('pattern: source body is required; pick a body to pattern')
+  if (!ref) throw new Error('pattern: source part is required; pick a part to pattern')
   let body: Body
   try {
     body = resolveBody(ref, bodyStore)
@@ -50,9 +50,9 @@ export function resolvePatternSourceBody(
     // "Names several bodies" is not "does not exist": rewriting it would tell
     // the user the body is missing while listing the ids that matched it.
     if (e instanceof AmbiguousBodyRefError) throw e
-    throw new Error(`pattern: source body '${ref}' not found; available body IDs: ${JSON.stringify(Object.keys(bodyStore))}`)
+    throw new Error(`pattern: source part '${ref}' not found; available part IDs: ${JSON.stringify(Object.keys(bodyStore))}`)
   }
-  if (body.shape === null) throw new Error('pattern: source body has no shape')
+  if (body.shape === null) throw new Error('pattern: source part has no shape')
   return body
 }
 
@@ -67,7 +67,7 @@ export function applyBodyPattern(
   featureId: string,
   bodyStore: Record<string, Body>,
 ): BodyPatternResult {
-  if (body.shape === null) throw new Error('pattern: source body has no shape')
+  if (body.shape === null) throw new Error('pattern: source part has no shape')
   const sourceShape = table.get<OccShape>(body.shape)
   // Read once: every copy shares the source's names.
   let sourceNamesRead: NameMaps | null = null
@@ -233,7 +233,7 @@ export function applyBodyPattern(
       body_id: body.id,
       body_ids: [],
       operation: 'add',
-      solver_warning: `pattern: the add removed all of body '${body.id}'; the body was deleted`,
+      solver_warning: `pattern: the add removed all of part '${body.id}'; the part was deleted`,
     }
   }
   return { status: 'ok', body_id: bodyIds[0], body_ids: bodyIds, operation: 'add' }

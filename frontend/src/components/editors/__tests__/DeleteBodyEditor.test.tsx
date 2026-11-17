@@ -10,7 +10,7 @@ function makeFeature(bodies: string[] = []): PartFeature {
   return {
     id: 'db1',
     kind: 'delete_body',
-    label: 'Delete Body',
+    label: 'Delete Part',
     delete_body: { bodies },
   }
 }

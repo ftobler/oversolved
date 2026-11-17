@@ -230,7 +230,7 @@ export function planPatternEntities(doc: PartDoc, step: PatternEntitiesStep): Pa
     if (normalizedPlane(source.plane) !== normalizedPlane(other.plane)) {
       return {
         reason: `cannot map between different sketch planes (${JSON.stringify(source.plane ?? '')} and ${JSON.stringify(other.plane ?? '')}); `
-          + 'author the geometry in the target or use add_projected_entity for a body edge',
+          + 'author the geometry in the target or use add_projected_entity for a part edge',
         code: 'invalid',
       }
     }

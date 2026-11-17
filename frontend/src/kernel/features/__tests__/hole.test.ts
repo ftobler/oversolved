@@ -116,7 +116,7 @@ describe('solveHole guard paths', () => {
       solveHole(oc, scope, table, { id: 'h', hole: { sketch: '@sk', target: '@body_missing' } }, repo, {
         body_ex1: nullBody('body_ex1'),
       }, { sk: { entities: [{ id: 'p1', kind: 'point' }] } }),
-    ).toThrow(/body not found/)
+    ).toThrow(/part not found/)
   })
 })
 

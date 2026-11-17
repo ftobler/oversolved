@@ -204,7 +204,7 @@ describe('solveTransform operation selection', () => {
       body_id: 'body_a',
       body_ids: [],
       operation: 'replace',
-      solver_warning: expect.stringMatching(/the replace removed all of body 'body_a'/),
+      solver_warning: expect.stringMatching(/the replace removed all of part 'body_a'/),
     })
     expect(source.modified_by).toEqual([])
   })
@@ -307,7 +307,7 @@ describe('solveMirror plane payloads and operation selection', () => {
       solveMirror(oc, scope, table, {
         id: 'm1', mirror: { body: 'body_a', plane: '@plane_q' },
       }, repo, { body_a: body('body_a', null) }),
-    ).toThrow(/body not found for ref 'body_a'|mirror: body not found/)
+    ).toThrow(/part not found for ref 'body_a'|mirror: part not found/)
   })
 
   it('refuses a zero-length mirror normal', () => {
@@ -344,7 +344,7 @@ describe('solveMirror plane payloads and operation selection', () => {
       body_id: 'body_a',
       body_ids: [],
       operation: 'replace',
-      solver_warning: expect.stringMatching(/the replace removed all of body 'body_a'/),
+      solver_warning: expect.stringMatching(/the replace removed all of part 'body_a'/),
     })
   })
 
@@ -373,7 +373,7 @@ describe('solveMirror plane payloads and operation selection', () => {
       body_id: 'body_a',
       body_ids: [],
       operation: 'merge',
-      solver_warning: expect.stringMatching(/the merge removed all of body 'body_a'/),
+      solver_warning: expect.stringMatching(/the merge removed all of part 'body_a'/),
     })
   })
 })

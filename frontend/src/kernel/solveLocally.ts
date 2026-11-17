@@ -629,7 +629,7 @@ function resolveExportShape(
     // Name the live ids in the refusal: the caller picked the id, so the
     // answer has to be the set it can pick from.
     throw new ExportSelectionError(
-      `export: body '${id}' not found; live bodies: ${live.join(', ') || 'none'}`,
+      `export: part '${id}' not found; live parts: ${live.join(', ') || 'none'}`,
     )
   }
   if (!order.length) {

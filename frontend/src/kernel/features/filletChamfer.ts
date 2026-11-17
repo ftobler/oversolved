@@ -484,7 +484,7 @@ function applyEdgeFeature(
       const ids = resolveBodyIds(sourceBody, bodyStore)
       if (ids.length > 1) {
         throw new Error(
-          `${featureKind}: source body '${sourceBody}' names ${ids.length} bodies ` +
+          `${featureKind}: source part '${sourceBody}' names ${ids.length} parts ` +
           `(${ids.join(', ')}); pick one`,
         )
       }
@@ -497,7 +497,7 @@ function applyEdgeFeature(
           resolvedSrc = resolveBody(sourceBody, bodyStore).id
         } catch (e) {
           swallowUnlessTrap(e)
-          throw new Error(`${featureKind}: source body '${sourceBody}' not found`)
+          throw new Error(`${featureKind}: source part '${sourceBody}' not found`)
         }
       }
     }
@@ -674,7 +674,7 @@ function applyEdgeFeature(
       // the resplit deleted the body, and the applied count must not grow from
       // a body that no longer exists. The failure entry makes the throw below
       // say what happened instead of "no edges resolved".
-      modifierFailures.push(`${bid}: the modifier removed the whole body`)
+      modifierFailures.push(`${bid}: the modifier removed the whole part`)
       failed.push(...qlist.filter((q) => resolvedQueries.has(q)))
       continue
     }

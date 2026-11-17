@@ -151,7 +151,7 @@ export function solveDeleteFace(
       // Defeaturing cannot consume its whole body, so this is defensive: the
       // resplit deleted the body and the applied count must not grow from a body
       // that no longer exists.
-      modifierFailures.push(`${bid}: the operation removed the whole body`)
+      modifierFailures.push(`${bid}: the operation removed the whole part`)
       continue
     }
     applied.push(...ids)

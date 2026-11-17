@@ -36,12 +36,12 @@ describe('SPLIT_SCHEMA', () => {
     expect(validate!('?4;@ex1:flatface')).toBeNull()
   })
 
-  it('refuses an edge, a body, a curved face and a sketch entity, each with a reason', () => {
+  it('refuses an edge, a part, a curved face and a sketch entity, each with a reason', () => {
     const validate = pick('plane').validatePick!
     expect(validate('?4;@ex1:straightedge')).toBe('pick a plane or a flat face, not an edge, vertex or curved face')
     expect(validate('?4;@ex1:vertex')).toBe('pick a plane or a flat face, not an edge, vertex or curved face')
     expect(validate('?4;@ex1:cylinderface')).toBe('pick a plane or a flat face, not an edge, vertex or curved face')
-    expect(validate('@body_ex1')).toBe('pick a plane or a flat face, not a body')
+    expect(validate('@body_ex1')).toBe('pick a plane or a flat face, not a part')
     expect(validate('@sk1/l1')).toBe('pick a plane or a flat face, not a sketch entity')
   })
 

@@ -55,15 +55,15 @@ describe('MIRROR_SCHEMA', () => {
   it('shows the whole-body rows on the body subject', () => {
     renderEditor(makeFeature())
     const shown = labels()
-    expect(shown).toEqual(expect.arrayContaining(['Body', 'Mirror Plane', 'Keep Original', 'Merge']))
+    expect(shown).toEqual(expect.arrayContaining(['Part', 'Mirror Plane', 'Keep Original', 'Merge']))
     expect(shown).not.toContain('Source Features')
-    expect(shown).not.toContain('Target body')
+    expect(shown).not.toContain('Target part')
   })
 
   it('shows the feature rows on the feature subject', () => {
     renderEditor(makeFeature({ subject: 'feature', source_features: [] }))
     const shown = labels()
-    expect(shown).toEqual(expect.arrayContaining(['Source Features', 'Target body', 'Mirror Plane']))
+    expect(shown).toEqual(expect.arrayContaining(['Source Features', 'Target part', 'Mirror Plane']))
     expect(shown).not.toContain('Body')
     expect(shown).not.toContain('Keep Original')
     expect(shown).not.toContain('Merge')

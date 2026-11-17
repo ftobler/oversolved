@@ -1229,7 +1229,7 @@ function planeTargetProblem(value: string, ctx: ValueContext): string | null {
 // bridge). Refuse it by name instead of storing the object in the document. A
 // malformed grammar is corrected first, with the same shape hint the drive uses.
 const UNRESOLVED_SELECTOR =
-  'a {selector} pick needs the solved bodies; the headless drive resolves it before the step runs, '
+  'a {selector} pick needs the solved parts; the headless drive resolves it before the step runs, '
   + 'so pass the query string `select` returned instead'
 
 function selectorRefProblem(value: unknown, label: string): string | null {

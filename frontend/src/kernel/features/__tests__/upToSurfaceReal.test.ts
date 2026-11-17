@@ -737,7 +737,7 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
       const away = scope.track(topFace(occ2, scope, 20, -5, 5, -5, 5))
       const awayTool = scope.track(makePrism(occ2, scope, away, [0, 1, 0], UP_TO_REACH))
       expect(() => trimAtNext(occ2, scope, awayTool, candidates, [0, 1, 0], [0, 20, 0], 0))
-        .toThrow(/meets no body/)
+        .toThrow(/meets no part/)
     } finally {
       scope.dispose()
     }

@@ -301,7 +301,7 @@ export function resolvePickTarget(
     if (type === 'vertex') return vertexTarget(ref, data)
     if (type === 'solid') {
       throw new Error(
-        `instance_pattern: '${ref}' is a body, which names no single target; pick one of its faces, edges or vertices`,
+        `instance_pattern: '${ref}' is a part, which names no single target; pick one of its faces, edges or vertices`,
       )
     }
     if (data.kind === 'line' || (data.center && data.axis)) return edgeTarget(ctx, ref, data, sense)
