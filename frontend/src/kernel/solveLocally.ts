@@ -33,7 +33,7 @@ import { edgeLength, minDistance } from './occ/measureExtrema'
 import { resolveMeasurePick } from './measurePick'
 import { measureSelectionResolved } from '@/utils/measure/measureSelection'
 import { OCC_CONFUSION } from './solverConstants'
-import { MEASURE_STALE, MEASURE_UNRESOLVED, type MeasurePickRef } from './worker/solverProtocol'
+import { MEASURE_STALE, MEASURE_UNRESOLVED, type MeasureOp, type MeasurePickRef } from './worker/solverProtocol'
 import { MM_PER_LENGTH_UNIT, lengthUnitOf, partToAssemblyScale } from '@/utils/lengthUnit'
 import type { OccHandle } from './occ/handleTable'
 import type { OccModule, OccShape } from './occ/occTypes'
@@ -961,7 +961,7 @@ function measurePicksOnStore(
   oc: OccModule,
   table: HandleTable,
   store: Record<string, Body>,
-  op: 'length' | 'distance' | 'clearance',
+  op: MeasureOp,
   picks: readonly MeasurePickRef[],
 ): MeasureQueryResult {
   const scope = new DisposeScope()
