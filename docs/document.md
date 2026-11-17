@@ -885,9 +885,9 @@ and no centered option: the target list is the instance list.
 expands in place to every non-construction POINT of that sketch, the same site
 rule a hole drills: construction points are skipped, line endpoints are not
 targets, and a projected point counts; its points carry the sketch plane normal.
-Every other ref is one pick, and every pick
-resolves to a point and a normal: a planar face uses its centroid and outward
-normal; a cylindrical or conical face the axis point at its free end and the
+Every other ref is one pick, and every pick resolves to a point and a normal: a
+planar face uses its centroid and outward normal; a cylindrical or conical face
+the axis point at its free end and the
 axis pointing out of the material (a blind hole's mouth, a boss's top, a
 countersink's wide end; a through hole falls back to the surface's own axis
 sense); a circular body edge its centre and its planar neighbour's outward
@@ -902,10 +902,10 @@ Targets are numbered 1..N in list order with each sketch expanded where it
 stands, so `skip: [2]` leaves the second target out. A point reached twice (a
 sketch row plus one of its own point picks, or the same pick twice) is kept once
 with a warning naming the dropped row. The construction naming key is NOT the
-position:
-it is the target's sketch entity id, or a short hash of the pick ref, so
-deleting an earlier point or pick never renames a later copy's faces. A target
-on the reference point is the source's own slot and makes no copy, quietly.
+position: it is the target's sketch entity id, or a short hash of the pick ref,
+so deleting an earlier point or pick never renames a later copy's faces. A
+target on the reference point is the source's own slot and makes no copy,
+quietly.
 
 `reference` is the point the copies are measured from; any pick the target table
 accepts. Absent, it is the source sketch's only non-construction point when the

@@ -24,8 +24,7 @@ export function patternAliasNote(mutation: Mutation): string | null {
  *  field, or null for every other instance pattern write. */
 export function instanceSketchAliasNote(mutation: Mutation): string | null {
   if (mutation.type === 'add_instance_pattern') {
-    const sketch = (mutation as { sketch?: unknown }).sketch
-    return typeof sketch === 'string' && sketch !== '' ? INSTANCE_SKETCH_ALIAS_NOTE : null
+    return typeof mutation.sketch === 'string' && mutation.sketch !== '' ? INSTANCE_SKETCH_ALIAS_NOTE : null
   }
   if (mutation.type === 'set_instance_pattern_field' && mutation.field === 'sketch') {
     return INSTANCE_SKETCH_ALIAS_NOTE
