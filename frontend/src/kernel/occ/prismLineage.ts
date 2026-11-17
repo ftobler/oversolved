@@ -694,13 +694,10 @@ function perGroupPrismWithLineage(
   scope: DisposeScope,
   groups: [LoopEdge[], LoopEdge[][]][],
   plane: PlaneLike,
-  directionVec: Vec3,
-  distance: number,
+  makeBuilder: (face: OccShape) => OccPrismBuilder,
   tokenPrefix: string,
   createdBy: string,
   sketchId: string,
-  taperRad = 0,
-  twistRad = 0,
   tolerance?: MergeTolerance,
 ): LineageResult {
   const fuse = namedFuse(oc, scope)
@@ -711,9 +708,7 @@ function perGroupPrismWithLineage(
   for (let groupIdx = 0; groupIdx < groups.length; groupIdx++) {
     const [outer, holes] = groups[groupIdx]
     const face = scope.track(sketchLoopsToFace(oc, scope, [outer, ...holes], plane))
-    const builder = sweepBuilderFor(
-      oc, scope, face, plane.origin as Vec3, directionVec, distance, taperRad, twistRad,
-    )
+    const builder = makeBuilder(face)
     if (!builder.IsDone()) throw new Error('prism builder did not complete')
     apex ??= (builder as Partial<DraftPrismBuilder>).apex ?? null
     const part = builder.Shape()
@@ -815,8 +810,50 @@ export function extrudeProfileWithLineage(
   }
 
   return perGroupPrismWithLineage(
-    oc, scope, groups, plane, directionVec, distance, tokenPrefix, createdBy, sketchId,
-    taperRad, twistRad, tolerance,
+    oc, scope, groups, plane,
+    (f) => sweepBuilderFor(oc, scope, f, plane.origin as Vec3, directionVec, distance, taperRad, twistRad),
+    tokenPrefix, createdBy, sketchId, tolerance,
+  )
+}
+
+/**
+ * Sweep profile loops with a caller's builder and name the result exactly as an
+ * extrude names its prism: one side face per profile entity from the builder's
+ * `Generated(profileEdge)`, the two caps from `FirstShape`/`LastShape`, edges
+ * from their faces. The wrap's loft is the one caller; it needs no merged
+ * profile round trip, because a wrapped group can never be re-prismed.
+ * OWNERSHIP: as `extrudeProfileWithLineage`, the returned solid is UNTRACKED.
+ */
+export function sweepLoopsWithLineage(
+  oc: OccModule,
+  scope: DisposeScope,
+  loops: LoopEdge[][],
+  plane: PlaneLike,
+  makeBuilder: (face: OccShape) => OccPrismBuilder,
+  sketchId = '',
+  createdBy = '',
+  precision?: KernelPrecision | null,
+): LineageResult {
+  const groups = classifyLoops(loops).map(
+    ([outer, holes]): [LoopEdge[], LoopEdge[][]] => [fuseCollinearRuns(outer), holes.map(fuseCollinearRuns)],
+  )
+  if (groups.length === 0) throw new Error('no loops to sweep')
+  const tokenPrefix = sketchId ? `@${sketchId}/` : '@'
+  if (groups.length === 1) {
+    // One group names straight off its builder, as a one-group extrude does;
+    // the fuse path below would re-derive the edges with no creator.
+    const [outer, holes] = groups[0]
+    const face = scope.track(sketchLoopsToFace(oc, scope, [outer, ...holes], plane))
+    const builder = makeBuilder(face)
+    if (!builder.IsDone()) throw new Error('sweep builder did not complete')
+    const solid = builder.Shape()
+    const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane, createdBy, sketchId)
+    prefixLineageMaps(lineage, tokenPrefix)
+    scope.release(face)
+    return { solid, ...lineage }
+  }
+  return perGroupPrismWithLineage(
+    oc, scope, groups, plane, makeBuilder, tokenPrefix, createdBy, sketchId, mergeTolerance(precision),
   )
 }
 

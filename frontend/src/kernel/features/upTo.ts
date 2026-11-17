@@ -26,7 +26,9 @@ import { swallowUnlessTrap } from '../errors'
 
 type Dict = Record<string, unknown>
 
-const SLASH_FACE_REF = /^@[^/]+\/face\/\d+$/
+/** The persisted `@<body>/face/<n>` pick spelling, which the repo does not
+ *  resolve itself (see `resolveFaceSlashFace`). */
+export const SLASH_FACE_REF = /^@[^/]+\/face\/\d+$/
 
 export interface CutPlane {
   origin: Vec3

@@ -77,7 +77,7 @@ function countEdges(oc: OccModule, scope: DisposeScope, shape: OccShape): number
   return n
 }
 
-function isNullShape(shape: OccShape): boolean {
+export function isNullShape(shape: OccShape): boolean {
   return (shape as NullShape).IsNull?.() ?? false
 }
 
