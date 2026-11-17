@@ -1678,7 +1678,7 @@ export const MUTATION_CATALOG = {
     fields: {
       ...featureAddFields(),
       operation: optStr('union | subtract | intersect; defaults to union.'),
-      target: optStr('The body the tools fold into, e.g. body_ex1. Required to solve.'),
+      target: optStr('The base body, e.g. body_ex1: a union or intersect keeps its id and name, and a subtract cuts the tools out of it. Required to solve.'),
       tools: optArr('Body ids, or an array feature ref (@<arrayId>) for every body of that array. At least one is required to solve.'),
       keep_tools: optBool(),
       clearance: optScalar('Signed, subtract only: the tool grows (+) or shrinks (-) before the cut; absent means 0.'),
@@ -1690,12 +1690,12 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), field: fieldOf('boolean', 'set_boolean_field'), value: setterValue('boolean') },
   },
   add_boolean_tool: {
-    summary: 'Add a tool body to a boolean.',
+    summary: 'Add one body to a boolean: the first pick of an empty union becomes its base (target), later picks are tools.',
     note: BOOLEAN_ARRAY_TOOL_NOTE,
     fields: { featureId: str(), tool: bodyQuery() },
   },
   remove_boolean_tool: {
-    summary: 'Remove a boolean tool body.',
+    summary: 'Remove a body from a boolean; removing a union base promotes the next body in its list.',
     fields: { featureId: str(), tool: bodyQuery() },
   },
   add_linear_pattern: {

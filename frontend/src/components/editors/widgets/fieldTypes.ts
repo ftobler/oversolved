@@ -85,7 +85,16 @@ export interface PickFieldDef extends BaseFieldDef {
   // A one-line explanation under the chip for a field whose meaning is not
   // obvious from its label (the pattern's multi-source seed rule).
   hint?: string
-  normalize?: (value: unknown) => unknown
+  // The list a field shows when it is assembled from more than its own key
+  // (the union's join list is the target followed by the tools). The form's
+  // data comes along, because the parts live in sibling fields.
+  normalize?: (value: unknown, data: SchemaData) => unknown
+  // A word tagged onto the first chip, for a list whose first entry has a
+  // different meaning from the rest (the union's base keeps the body identity).
+  baseTag?: string
+  // Whether the chips can be dragged into a new order. A list whose order has
+  // no meaning (the union's join list) turns this off; absent means sortable.
+  reorder?: boolean
 }
 
 // A feature-to-feature reference chosen from the document's own rows is a plain

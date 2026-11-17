@@ -1566,6 +1566,19 @@
   padding-right: 2px;
 }
 
+/* The union join list's base chip: the one pick that keeps the body's id. */
+.feature-pick-chip-item-tag {
+  font-size: 9px;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 2px;
+  padding: 2px 3px;
+  flex-shrink: 0;
+}
+
 .feature-pick-chip-item.unresolved {
   background: #6d4f1a;
   outline: 1px solid #ecad2b;

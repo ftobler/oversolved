@@ -416,6 +416,35 @@ describe('PickChip', () => {
     })
   })
 
+  describe('base tag', () => {
+    it('tags only the first value of a join list', () => {
+      render(
+        <PickChip
+          values={['@body_a', '@body_b']}
+          isPicking={false}
+          onActivate={vi.fn()}
+          onRemove={vi.fn()}
+          baseTag="base"
+        />
+      )
+      const items = document.querySelectorAll('.feature-pick-chip-item')
+      expect(items[0].querySelector('.feature-pick-chip-item-tag')?.textContent).toBe('base')
+      expect(items[1].querySelector('.feature-pick-chip-item-tag')).toBeNull()
+    })
+
+    it('draws no tag when the field has no base', () => {
+      render(
+        <PickChip
+          values={['@body_a', '@body_b']}
+          isPicking={false}
+          onActivate={vi.fn()}
+          onRemove={vi.fn()}
+        />
+      )
+      expect(document.querySelector('.feature-pick-chip-item-tag')).toBeNull()
+    })
+  })
+
   describe('chipOwnedSelection sync', () => {
     it('merges values into normalSelection while picking', () => {
       render(

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent, act } from '@testing-library/react'
 import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import type { FeatureEditorSchema } from '@/components/editors/FeatureEditor'
-import { EXTRUDE_SCHEMA, FILLET_SCHEMA, VARIABLE_SCHEMA, EDITOR_SCHEMAS } from '@/components/editors/featureEditorSchemas'
+import { EXTRUDE_SCHEMA, FILLET_SCHEMA, VARIABLE_SCHEMA, BOOLEAN_SCHEMA, EDITOR_SCHEMAS } from '@/components/editors/featureEditorSchemas'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import type { ExtrudeFeature, PartFeature, Mutation } from '@/types/cad'
@@ -255,6 +255,94 @@ describe('FeatureEditor pick field', () => {
     expect(items[0].classList.contains('unresolved')).toBe(false)
     expect(items[1].classList.contains('unresolved')).toBe(true)
     expect(items[1].classList.contains('failed')).toBe(false)
+  })
+})
+
+// ─── boolean union join list ───
+
+describe('FeatureEditor boolean union picker', () => {
+  const unionFeature = (operation: string) => makeFeature('boolean', 'boolean', {
+    operation, target: '@body_a', tools: ['@body_b'],
+  })
+
+  it('shows one Bodies to join list, base first, instead of target plus tools', () => {
+    render(<FeatureEditor feature={unionFeature('union')} onMutation={vi.fn()} schema={BOOLEAN_SCHEMA} />)
+    expect(screen.getByText('Bodies to join')).toBeInTheDocument()
+    expect(screen.queryByText('Target')).toBeNull()
+    expect(screen.queryByText('Tools')).toBeNull()
+    const items = document.querySelectorAll('.feature-pick-chip-item')
+    expect(items.length).toBe(2)
+    expect(items[0].querySelector('.feature-pick-chip-item-tag')?.textContent).toBe('base')
+    expect(items[1].querySelector('.feature-pick-chip-item-tag')).toBeNull()
+    // No drag handles: the join list's order carries no meaning.
+    expect(document.querySelector('.feature-pick-chip-item-drag')).toBeNull()
+  })
+
+  it('keeps the labelled target and tools fields for subtract', () => {
+    render(<FeatureEditor feature={unionFeature('subtract')} onMutation={vi.fn()} schema={BOOLEAN_SCHEMA} />)
+    expect(screen.getByText('Target')).toBeInTheDocument()
+    expect(screen.getByText('Tools')).toBeInTheDocument()
+    expect(screen.queryByText('Bodies to join')).toBeNull()
+    expect(document.querySelector('.feature-pick-chip-item-tag')).toBeNull()
+  })
+
+  it('sends a viewport pick on the join list to the boolean tool mutation', () => {
+    const onMutation = vi.fn()
+    render(
+      <FeatureEditor
+        feature={makeFeature('boolean', 'boolean', { operation: 'union', target: '', tools: [] })}
+        onMutation={onMutation}
+        schema={BOOLEAN_SCHEMA}
+      />,
+    )
+    const chip = document.querySelector('.feature-pick-chip')!
+    fireEvent.click(chip)
+    expect(useSketchEditorStore.getState().activePickField).toEqual({ featureId: 'f1', field: 'tools', multi: true })
+    act(() => { useEditorState.setState({ normalSelection: new Set(['@body_a']) }) })
+    // One mutation per pick: the applier turns the first one into the base.
+    expect(onMutation).toHaveBeenCalledWith({ type: 'add_boolean_tool', featureId: 'f1', tool: '@body_a' })
+  })
+
+  it('labels each joined body by its part name and follows a rename', () => {
+    // The field is body-typed, so the chip names the resolved body (the Part
+    // list's own name), not the face or feature query the click stored.
+    const bodiesBefore = usePartEditorStore.getState().bodies
+    usePartEditorStore.setState({
+      bodies: {
+        body_a: { id: 'body_a', created_by: 'ex1', modified_by: [] },
+        body_b: { id: 'body_b', created_by: 'ex2', modified_by: [] },
+      },
+    })
+    try {
+      const { rerender } = render(
+        <FeatureEditor
+          feature={unionFeature('union')}
+          onMutation={vi.fn()}
+          schema={BOOLEAN_SCHEMA}
+          partLabels={{ body_a: 'Housing', body_b: 'Lid' }}
+          features={[]}
+        />,
+      )
+      expect(screen.getByText('Housing')).toBeInTheDocument()
+      expect(screen.getByText('Lid')).toBeInTheDocument()
+
+      rerender(
+        <FeatureEditor
+          feature={unionFeature('union')}
+          onMutation={vi.fn()}
+          schema={BOOLEAN_SCHEMA}
+          partLabels={{ body_a: 'Housing A', body_b: 'Lid' }}
+          features={[]}
+        />,
+      )
+      expect(screen.getByText('Housing A')).toBeInTheDocument()
+      expect(screen.queryByText('Housing')).toBeNull()
+    } finally {
+      // The store is shared by the whole file; a later test must not inherit
+      // these fixture bodies. Wrapped in act because the rendered chip is still
+      // subscribed when the test body restores it.
+      act(() => { usePartEditorStore.setState({ bodies: bodiesBefore }) })
+    }
   })
 })
 

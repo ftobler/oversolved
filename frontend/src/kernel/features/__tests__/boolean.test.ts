@@ -18,12 +18,19 @@ const mocks = vi.hoisted(() => ({
   booleanWithDiff: vi.fn(),
   volumeOf: vi.fn(),
   shapesIntersect: vi.fn(),
+  shapesTouch: vi.fn(),
 }))
 
 vi.mock('../../occ/booleans', () => ({
   booleanWithDiff: mocks.booleanWithDiff,
   volumeOf: mocks.volumeOf,
   shapesIntersect: mocks.shapesIntersect,
+  shapesTouch: mocks.shapesTouch,
+}))
+// The near-coaxial warning walks the fused shape; these bodies have none.
+vi.mock('../../occ/nearCoaxial', () => ({
+  nearCoaxialCylinderWarning: () => null,
+  shapeHasCoaxialCylinder: () => false,
 }))
 vi.mock('../booleanLineage', () => ({
   transferBooleanNames: () => ({
@@ -61,6 +68,7 @@ describe('solveBoolean guard paths', () => {
     mocks.booleanWithDiff.mockReset()
     mocks.volumeOf.mockReset()
     mocks.shapesIntersect.mockReset()
+    mocks.shapesTouch.mockReset()
   })
 
   it('requires a target', () => {
@@ -240,5 +248,101 @@ describe('solveBoolean guard paths', () => {
       repo, { body_t: target, body_u0: tool },
     )
     expect(result.solver_warning).not.toMatch(/empty result/)
+  })
+})
+
+describe('solveBoolean symmetric union/intersect (mock OCC)', () => {
+  beforeEach(() => {
+    mocks.booleanWithDiff.mockReset()
+    mocks.volumeOf.mockReset()
+    mocks.shapesIntersect.mockReset()
+    mocks.shapesTouch.mockReset()
+  })
+
+  function rig3(): { scope: DisposeScope; table: HandleTable; store: Record<string, Body>; shapes: Record<string, { delete: () => void; isDeleted: () => boolean }> } {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    const shapes: Record<string, { delete: () => void; isDeleted: () => boolean }> = {
+      a: { delete: () => {}, isDeleted: () => false },
+      b: { delete: () => {}, isDeleted: () => false },
+      c: { delete: () => {}, isDeleted: () => false },
+      far: { delete: () => {}, isDeleted: () => false },
+    }
+    const store: Record<string, Body> = {}
+    for (const [key, id] of [['a', 'body_a'], ['b', 'body_b'], ['c', 'body_c'], ['far', 'body_far']] as const) {
+      const b = body(id)
+      b.created_by = key
+      b.shape = table.register(shapes[key], id)
+      store[id] = b
+    }
+    mocks.booleanWithDiff.mockImplementation(() => ({
+      // A new face, so the empty-diff "no geometry change" warning stays out of
+      // these assertions.
+      shape: { delete: () => {}, isDeleted: () => false },
+      diff: { ...emptyBrepDiff(), new_faces: [{} as never] },
+      faceOrigin: [],
+    }))
+    return { scope, table, store, shapes }
+  }
+
+  it('folds in connectivity order from the base, not in pick order', () => {
+    const { scope, table, store, shapes } = rig3()
+    // A-B and B-C touch; A and C do not, so C can only arrive through B.
+    mocks.shapesTouch.mockImplementation((_oc, x, y) =>
+      (x === shapes.a && y === shapes.b) || (x === shapes.b && y === shapes.a)
+      || (x === shapes.b && y === shapes.c) || (x === shapes.c && y === shapes.b))
+
+    const result = solveBoolean(oc, scope, table, {
+      id: 'b', boolean: { operation: 'union', target: 'body_a', tools: ['body_c', 'body_b'] },
+    }, repo, store)
+
+    expect(result.status).toBe('ok')
+    expect(result.solver_warning).toBeUndefined()
+    const calls = mocks.booleanWithDiff.mock.calls
+    expect(calls).toHaveLength(2)
+    expect(calls[0][2]).toBe(shapes.a)
+    expect(calls[0][3]).toBe(shapes.b)
+    expect(calls[1][3]).toBe(shapes.c)
+    expect(Object.keys(store).sort()).toEqual(['body_a', 'body_far'])
+  })
+
+  it('skips a tool disconnected from the base and keeps its body', () => {
+    const { scope, table, store, shapes } = rig3()
+    mocks.shapesTouch.mockImplementation((_oc, x, y) =>
+      (x === shapes.a && y === shapes.b) || (x === shapes.b && y === shapes.a))
+
+    const result = solveBoolean(oc, scope, table, {
+      id: 'b', boolean: { operation: 'union', target: 'body_a', tools: ['body_far', 'body_b'] },
+    }, repo, store)
+
+    expect(result.solver_warning).toContain("union: tool 'body_far' does not intersect the target; skipped")
+    expect(mocks.booleanWithDiff).toHaveBeenCalledTimes(1)
+    expect(mocks.booleanWithDiff.mock.calls[0][3]).toBe(shapes.b)
+    expect(Object.keys(store).sort()).toEqual(['body_a', 'body_c', 'body_far'])
+  })
+
+  it('expands a named body pattern in tools to its members, not the target', () => {
+    const { scope, table, store, shapes } = rig3()
+    store.body_b.created_by = 'pat1'
+    store.body_c.created_by = 'pat1'
+    // Both members touch the base, so both join and the order they fold in is
+    // the store's own: B then C.
+    mocks.shapesTouch.mockImplementation((_oc, x, y) =>
+      (x === shapes.a && (y === shapes.b || y === shapes.c))
+      || ((x === shapes.b || x === shapes.c) && y === shapes.a))
+
+    const result = solveBoolean(oc, scope, table, {
+      id: 'b', boolean: { operation: 'union', target: 'body_a', tools: ['@pat1'] },
+    }, repo, store, {
+      pat1: {
+        id: 'pat1', kind: 'circular_pattern',
+        circular_pattern: { subject: 'body', source_body: '@body_b' },
+      },
+    })
+
+    expect(result.status).toBe('ok')
+    const folded = mocks.booleanWithDiff.mock.calls.map((c) => c[3])
+    expect(folded).toEqual([shapes.b, shapes.c])
+    expect(Object.keys(store).sort()).toEqual(['body_a', 'body_far'])
   })
 })

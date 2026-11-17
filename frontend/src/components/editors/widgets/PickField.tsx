@@ -28,7 +28,7 @@ export function PickFieldWidget({
     : `${mutationPrefix}_field`
 
   const normalizedValues: string[] = field.normalize
-    ? (field.normalize(rawValues) as string[])
+    ? (field.normalize(rawValues, data) as string[])
     : Array.isArray(rawValues) ? rawValues as string[] : (rawValues ? [rawValues as string] : [])
 
   const removeAt = (index: number) => {
@@ -105,7 +105,7 @@ export function PickFieldWidget({
         isPicking={pickState.isPicking}
         onActivate={toggle}
         onRemove={removeAndActivate}
-        onReorder={isMulti
+        onReorder={isMulti && (field.reorder ?? true)
           ? (from, to) => onMutation({ type: 'reorder_pick_field', featureId: fid, field: field.key, fromIndex: from, toIndex: to } as Mutation)
           : undefined
         }
@@ -114,6 +114,7 @@ export function PickFieldWidget({
         partLabels={partLabels}
         bodies={effectiveBodies}
         labelKind={field.names === 'body' ? 'body' : undefined}
+        baseTag={field.baseTag}
         unresolvedValues={unresolvedValues}
         failedValues={failedValues}
       />
