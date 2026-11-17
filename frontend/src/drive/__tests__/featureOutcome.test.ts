@@ -7,6 +7,7 @@
 
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
+import { BOOLEAN_SEAM_HINT } from '@/kernel/occ/booleans'
 import {
   blocksExport,
   featureNotes,
@@ -210,6 +211,21 @@ describe('featureProblems', () => {
       status: 'underconstrained',
       message: 'Underconstrained: 4 degrees of freedom. Free: l1, l2, l3, l4.',
     })
+  })
+
+  it('carries a boolean seam refusal through the problem list unchanged', () => {
+    // The kernel's seam case must reach the caller verbatim: the reported bug's
+    // text said "exact tangency" and sent the diagnosis at the radii, while the
+    // defect was the face rebuild across a revolve's seam.
+    const message =
+      'boolean fuse: the kernel returned an unsound result (the result is not a valid solid ' +
+      `(BRepCheck_Analyzer)). ${BOOLEAN_SEAM_HINT}`
+    expect(message).toContain('periodic seam')
+    expect(message).not.toContain('exact tangency')
+    expect(featureProblems(problemDoc(), {
+      ...outcomes,
+      ex1: { status: 'exception', exception: message },
+    })).toContainEqual({ id: 'ex1', kind: 'extrude', status: 'exception', message })
   })
 
   it('reports a feature the solve did not reach as a missing verdict', () => {

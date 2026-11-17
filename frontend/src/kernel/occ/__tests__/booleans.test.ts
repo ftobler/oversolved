@@ -12,7 +12,14 @@
 // direct mocks so the analyzer call count is the only thing under test.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { booleanWithDiffMany, booleanWithHistory, BooleanSoundnessError } from '../booleans'
+import {
+  BOOLEAN_SEAM_HINT,
+  BOOLEAN_TANGENCY_HINT,
+  booleanRefusalHint,
+  booleanWithDiffMany,
+  booleanWithHistory,
+  BooleanSoundnessError,
+} from '../booleans'
 import { DisposeScope } from '../disposeScope'
 import { volumeOf, volumeOfDefault } from '../volume'
 import { canonicalizeCylinderFaces } from '../canonicalSurfaces'
@@ -261,5 +268,22 @@ describe('booleanWithDiffMany runs one BRepCheck per adopted attempt', () => {
     } finally {
       scope.dispose()
     }
+  })
+
+  it('names the seam family instead of the tangency nudge when a seam is involved', () => {
+    // The reported bug's refusal said "exact tangency", which sent the
+    // diagnosis at the radii; the defect was the face rebuild across a seam.
+    expect(BOOLEAN_SEAM_HINT).toContain('periodic seam')
+    expect(BOOLEAN_SEAM_HINT).not.toContain('tangency')
+    expect(BOOLEAN_TANGENCY_HINT).toContain('exact tangency')
+    expect(BOOLEAN_TANGENCY_HINT).not.toContain('seam')
+  })
+
+  it('selects the advice from the measured coverage, not from a seam existing', () => {
+    // Every cylinder, cone, revolve and torus carries a seam, so "a seam
+    // exists" cannot decide the message: the selector reads the failed tool's
+    // measured coverage.
+    expect(booleanRefusalHint(true)).toBe(BOOLEAN_SEAM_HINT)
+    expect(booleanRefusalHint(false)).toBe(BOOLEAN_TANGENCY_HINT)
   })
 })

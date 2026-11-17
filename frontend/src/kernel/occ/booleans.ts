@@ -19,7 +19,7 @@
 import { drainList, DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccHistory } from './occTypes'
 import { canonicalizeCylinderFaces } from './canonicalSurfaces'
-import { SubShapeDedup, SubShapeIndexMap, SubShapeMultiIndex } from './primitives'
+import { SubShapeDedup, SubShapeIndexMap, SubShapeMultiIndex, shapeBndBox } from './primitives'
 import { volumeOf, volumeOfDefault } from './volume'
 import { foldCavitySolids } from './cavities'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
@@ -748,6 +748,125 @@ function cleanShapeIsSound(
 export class BooleanSoundnessError extends Error {}
 
 /**
+ * The refusal's advice when the failed tool's material covered part of a target
+ * seam: the kernel rebuilt a face across the seam and lost it, so later
+ * booleans over that body fail. Nudging radii or planes, the tangency advice,
+ * does not help this family.
+ */
+export const BOOLEAN_SEAM_HINT =
+  'The tool covers part of a periodic seam edge, and the kernel could not rebuild the face ' +
+  'across it. Move the seam off the tool (rotate the body about its own axis) or cut the tool ' +
+  'back from the seam, then rebuild.'
+
+/** The refusal's advice for the exact-tangency family (no covered seam). */
+export const BOOLEAN_TANGENCY_HINT =
+  'The two shapes probably touch in an exact tangency the kernel cannot resolve; ' +
+  'nudge one of them off the coincident radius or plane and rebuild.'
+
+/**
+ * Which advice a refusal carries. The seam hint is only right when the failed
+ * tool actually covered part of a seam, not merely because the shapes carry one:
+ * every cylinder, cone, revolve and torus has a seam, so "a seam exists" would
+ * make the tangency advice unreachable in the very family it was written for (a
+ * cylinder tangent to a face plane). `toolCoversSeam` is the measured answer.
+ */
+export function booleanRefusalHint(coveredSeam: boolean): string {
+  return coveredSeam ? BOOLEAN_SEAM_HINT : BOOLEAN_TANGENCY_HINT
+}
+
+/**
+ * Every distinct seam edge of `shape`.
+ *
+ * `BRep_Tool.IsClosed_2(edge, face)` is the same predicate move-face uses to
+ * skip a curved face's own seam. A degenerated edge (a sphere pole, a cone
+ * apex) is a point, not a boundary, so it is not a seam.
+ */
+function seamEdgesOf(oc: OccModule, scope: DisposeScope, shape: OccShape): OccSubShape[] {
+  const E = oc.TopAbs_ShapeEnum
+  const out: OccSubShape[] = []
+  const dedup = new SubShapeDedup()
+  const faces = explore(oc, scope, shape, E.TopAbs_FACE)
+  for (const rawFace of faces) {
+    const face = scope.track(oc.TopoDS.Face_1(rawFace))
+    for (const rawEdge of explore(oc, scope, face, E.TopAbs_EDGE)) {
+      const edge = scope.track(oc.TopoDS.Edge_1(rawEdge)) as OccSubShape
+      if (oc.BRep_Tool.Degenerated?.(edge)) continue
+      if (!oc.BRep_Tool.IsClosed_2(edge, face)) continue
+      if (dedup.add(edge)) out.push(edge)
+    }
+  }
+  return out
+}
+
+/** A bare Common, the probe shape: the pieces of the 1D seam `segment` that lie
+ *  inside `tool`'s material. Only pieces with length count; a seam the tool
+ *  merely grazes returns vertices. */
+function seamPartsInsideTool(
+  oc: OccModule,
+  scope: DisposeScope,
+  segment: OccShape,
+  tool: OccShape,
+): OccShape[] {
+  const algo = scope.track(new oc.BRepAlgoAPI_Common_1())
+  const args = scope.track(new oc.TopTools_ListOfShape_1())
+  args.Append_1(segment)
+  const tools = scope.track(new oc.TopTools_ListOfShape_1())
+  tools.Append_1(tool)
+  algo.SetArguments(args)
+  algo.SetTools(tools)
+  algo.SetToFillHistory(false)
+  algo.Build(noProgress(oc))
+  if (!algo.IsDone()) return []
+  const common = scope.track(algo.Shape())
+  return explore(oc, scope, common, oc.TopAbs_ShapeEnum.TopAbs_EDGE)
+    .map((edge) => scope.track(oc.TopoDS.Edge_1(edge)))
+}
+
+/**
+ * Whether a fuse tool's material covers part of a target seam edge.
+ *
+ * A tool that swallows part of a seam makes the boolean rebuild the whole
+ * periodic face. On this kernel (OCCT 8.0.1, `frontend/occ.pin.json`) that
+ * rebuild can drop the covered seam from the face's boundary; the result
+ * validates and its volume is exact, but every later boolean over that body
+ * returns a BRepCheck-invalid freeform face (reproducer: a funnel revolved from
+ * a fit spline with a rib centred on its seam; see
+ * `bugreports/20261115_2016_boolean_fail.md`). The probe names that family in a
+ * refusal and is read only after a boolean has already failed, so an ordinary
+ * fuse pays nothing for it.
+ *
+ * The bounding-box test in front of the Common keeps a body with many seams (a
+ * drilled plate carries one per hole) cheap: a seam whose box misses the tool
+ * cannot be covered.
+ */
+function toolCoversSeam(
+  oc: OccModule,
+  scope: DisposeScope,
+  target: OccShape,
+  tool: OccShape,
+): boolean {
+  try {
+    const seams = seamEdgesOf(oc, scope, target)
+    if (seams.length === 0) return false
+    const toolBox = shapeBndBox(oc, scope, tool)
+    const slack = OCC_CONFUSION
+    for (const seam of seams) {
+      const box = shapeBndBox(oc, scope, seam)
+      const apart =
+        box.min[0] > toolBox.max[0] + slack || box.max[0] < toolBox.min[0] - slack ||
+        box.min[1] > toolBox.max[1] + slack || box.max[1] < toolBox.min[1] - slack ||
+        box.min[2] > toolBox.max[2] + slack || box.max[2] < toolBox.min[2] - slack
+      if (apart) continue
+      if (seamPartsInsideTool(oc, scope, seam, tool).length > 0) return true
+    }
+    return false
+  } catch (e) {
+    swallowUnlessTrap(e)
+    return false
+  }
+}
+
+/**
  * The last line of defence against a corrupt boolean: OCCT can report IsDone
  * with a shape that validates yet is geometrically impossible (seen on the 7.4
  * kernel; the guard stays for any kernel). The
@@ -1035,9 +1154,12 @@ export function booleanWithDiffMany(
   markFeatureProgress()
   if (retryProblem === null) return { shape: retry.shape, diff: retry.diff, faceOrigin: retry.faceOrigin }
   if (!scope.isTracked(retry.shape)) scope.track(retry.shape)
+  // Name the family from the failed operands, not from "a seam exists": every
+  // cylinder, cone, revolve and torus carries one, so the seam advice would
+  // swallow the tangency advice it must stand beside. Only paid on a refusal.
+  const coveredSeam = tools.some((tool) => toolCoversSeam(oc, scope, target, tool))
   throw new BooleanSoundnessError(
     `boolean ${op}: the kernel returned an unsound result (${retryProblem}). ` +
-    'The two shapes probably touch in an exact tangency the kernel cannot resolve; ' +
-    'nudge one of them off the coincident radius or plane and rebuild.',
+    booleanRefusalHint(coveredSeam),
   )
 }
