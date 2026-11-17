@@ -198,6 +198,15 @@ describe.skipIf(!oc || !solveBytes)('a seam-straddling rib through the real kern
     }
   }
 
+  /** Every face of the body named, and no UUID minted twice: the seam recovery
+   *  composes its two fuses' origin tables back onto the caller's target and
+   *  tool faces, and a gap there leaves faces unnamed or a UUID claimed twice. */
+  function expectEveryFaceNamed(r: BuildResponse, featureId: string, bodyId: string): void {
+    const uuids = (bodyAt(r, featureId, bodyId)?.face_uuids ?? []).filter((u): u is string => u !== null)
+    expect(new Set(uuids).size).toBe(uuids.length)
+    expect(uuids.length).toBe(faceCountAt(r, featureId, bodyId))
+  }
+
   it('fuses every copy of a pattern whose source add straddles the seam', () => {
     const r = h.run(patternDoc(0, 6))
     const res = h.res(r, 'cp1')
@@ -207,6 +216,7 @@ describe.skipIf(!oc || !solveBytes)('a seam-straddling rib through the real kern
     // The source body plus five copies, all in the one body the add shaped.
     const faces = faceCountAt(r, 'cp1', 'body_rv1')
     expect(faces).toBeGreaterThan(16)
+    expectEveryFaceNamed(r, 'cp1', 'body_rv1')
     // Every copy adds the same material as the first.
     const v1 = volumeAt(h.run(patternDoc(0, 1)), 'cp1', 'body_rv1')
     const v2 = volumeAt(h.run(patternDoc(0, 2)), 'cp1', 'body_rv1')
@@ -236,6 +246,7 @@ describe.skipIf(!oc || !solveBytes)('a seam-straddling rib through the real kern
     // The ribs are consumed by the union; one body survives.
     expect(bodyAt(r, 'b1', 'body_rv1')).toBeDefined()
     expect(bodyAt(r, 'b1', 'body_ex1')).toBeUndefined()
+    expectEveryFaceNamed(r, 'b1', 'body_rv1')
     // The union result and the feature pattern's result are the same solid.
     const unionVolume = volumeAt(r, 'b1', 'body_rv1')
     const patternVolume = volumeAt(h.run(patternDoc(0, 6)), 'cp1', 'body_rv1')
