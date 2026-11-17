@@ -254,6 +254,21 @@ button.workspace-entry-open:focus-visible {
   color: #666;
 }
 
+/* The resolved cover row says so in words: the automatic pick has no pressed
+   toggle pointing at it, so colour alone would leave the user guessing. */
+.workspace-entry-cover-marker {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #a8a8b3;
+}
+
+/* The pressed cover toggle marks the explicit choice, not the resolved row. */
+.workspace-entry-actions .workspace-entry-cover[aria-pressed="true"] {
+  color: #4fc3f7;
+}
+
 .workspace-entry-usedby {
   margin-top: 3px;
   font-size: 11px;

@@ -381,6 +381,16 @@ export default function WorkspaceView() {
       // A pull that wrote nothing bumps nothing, and leaves them standing.
     })
 
+  // The cover is workspace metadata like the name, so it is written at once and
+  // the card repaints from the store revision: it never enters a document's
+  // undo history and never lights the dirty dot. The pressed toggle is the way
+  // back to automatic, so pressing the current choice clears it.
+  const handleSetCover = (entry: EntryMeta) =>
+    runBusy(`cover:${entry.id}`, `Failed to change the cover for ${summary?.name ?? 'this workspace'}`, async () => {
+      if (!workspaceId) return
+      await store.setCover(workspaceId, summary?.coverChoice === entry.id ? null : entry.id)
+    })
+
   // A long workspace-level verb keeps its own key busy, so the card's control
   // goes disabled and no second duplicate or export can start.
   const handleRenameWorkspace = () => runBusy('rename', 'Failed to rename the workspace', async () => {
@@ -618,6 +628,9 @@ export default function WorkspaceView() {
                   usedBy={referrerNames.get(entry.id)}
                   origin={origins.get(entry.id)}
                   status={statuses.get(entry.id) ?? 'unknown'}
+                  isCover={entry.id === summary?.coverEntry}
+                  coverExplicit={entry.id === summary?.coverChoice}
+                  onSetCover={target => { void handleSetCover(target) }}
                   onOpen={openEntry}
                   onRename={target => { setRenameTarget(target); setRenameName(target.name) }}
                   onDuplicate={target => { void handleDuplicate(target) }}
