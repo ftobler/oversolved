@@ -413,11 +413,10 @@ button.workspace-entry-open:focus-visible {
     display: none;
   }
 
-  /* A document row with a recorded origin carries six 40px controls (update,
-     cover, rename, duplicate, export, delete): 240px of actions. One line above
-     this width still leaves the name about 84px, so the controls take their own
-     line under the face instead; the face keeps the row height, which is what
-     keeps the thumb the tile's ratio. */
+  /* A document row carries five 40px controls (cover, rename, duplicate, export,
+     delete): 200px of actions. One line above this width still leaves the name
+     about 84px, so the controls take their own line under the face instead; the
+     face keeps the row height, which is what keeps the thumb the tile's ratio. */
   .workspace-entry-row {
     flex-wrap: wrap;
     height: auto;
