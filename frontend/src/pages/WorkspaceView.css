@@ -388,7 +388,7 @@ button.workspace-entry-open:focus-visible {
   }
 
   /* The name has the least room here and is the thing you read the row by. The
-     used-by line goes with it: an 84px row cannot hold four lines of text. */
+     used-by line goes with it: an 84px row cannot hold three lines of text. */
   .workspace-entry-usedby {
     display: none;
   }

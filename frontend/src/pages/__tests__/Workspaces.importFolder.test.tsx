@@ -97,6 +97,12 @@ describe('Workspaces folder import', () => {
     wrap()
     await clickImportItem('Import folder')
 
+    // Wait for the gesture's own surface to settle, then for the grid: the
+    // assertions below read the store rows the import wrote.
+    expect(await screen.findByText(/Copied 1 entries into this workspace/)).toBeInTheDocument()
+    await screen.findByText('Gearbox')
+    await waitFor(() => expect(screen.getByTitle('Import')).toBeEnabled())
+
     const store = getWorkspaceStore()
     await waitFor(async () => expect(await store.list()).toHaveLength(1))
     const [summary] = await store.list()

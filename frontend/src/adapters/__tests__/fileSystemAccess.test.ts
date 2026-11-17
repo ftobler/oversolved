@@ -83,4 +83,3 @@ describe('workspace zip picking', () => {
     await expect(pickWorkspaceZip()).rejects.toThrow('boom')
   })
 })
-

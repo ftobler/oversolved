@@ -25,10 +25,10 @@ export function canPickDirectory(): boolean {
   return typeof window !== 'undefined' && typeof window.showDirectoryPicker === 'function'
 }
 
-// A zip is only worth remembering as an origin when the browser can hand back a
-// file handle; an <input type=file> yields a File and nothing to remember, so
-// that import can never be pulled from again. The same Chromium gate as the
-// directory picker.
+// The "Open archive" gesture's gate. Chromium can hand back a file handle, so
+// the import menu offers the picker there; elsewhere an archive is still
+// importable through the plain file input. The same capability as the directory
+// picker.
 export function canPickWorkspaceZip(): boolean {
   return typeof window !== 'undefined' && typeof window.showOpenFilePicker === 'function'
 }
@@ -36,8 +36,8 @@ export function canPickWorkspaceZip(): boolean {
 const WORKSPACE_ZIP_PICKER_ID = 'oversolved-workspace-zip'
 
 // Returns null when the browser cannot pick or the user cancelled. Must be
-// called from a user gesture. The zip the handle names is an import source and
-// a later pull's origin; its bytes are read by the caller and never written.
+// called from a user gesture. The archive is an import source only: its bytes
+// are read by the caller and never written.
 export async function pickWorkspaceZip(): Promise<FileSystemFileHandle | null> {
   if (!canPickWorkspaceZip()) return null
   try {

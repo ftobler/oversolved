@@ -50,6 +50,10 @@ import { sha256Hex, sha256HexBytes } from '@/kernel/sha256'
 export const DB_NAME = 'oversolved'
 export const DB_VERSION = 8
 export const STORE_DOCUMENTS = 'documents'
+// The `handles` store is legacy only. An upgrade keeps it so a library carried
+// over from before the workspace store existed still has its rows, but nothing
+// reads or writes it: it may hold `origin:*` rows from the retired origin link
+// and older `workspace:<id>` rows, and both are inert.
 export const STORE_HANDLES = 'handles'
 export const STORE_FILES = 'files'
 export const STORE_WORKSPACE_META = 'workspace_meta'
@@ -238,22 +242,8 @@ export async function idbDelete(key: string): Promise<void> {
   await promisify(store.delete(key))
 }
 
-// The `handles` store, whose values carry no key of their own. Separate
-// entry points rather than an optional store argument on idbGet/idbPut, so a
-// keyed-by-uuid document call can never accidentally address it.
-export async function idbGetHandle<T>(key: string): Promise<T | undefined> {
-  const store = await tx('readonly', STORE_HANDLES)
-  return promisify(store.get(key) as IDBRequest<T | undefined>)
-}
-
-export async function idbPutHandle<T>(key: string, value: T): Promise<void> {
-  const store = await tx('readwrite', STORE_HANDLES)
-  await promisify(store.put(value as unknown as Record<string, unknown>, key))
-}
-
-// The `files` store, keyed by the record's own id. Separate entry points for
-// the same reason as the handle helpers: a keyed-by-uuid document call must
-// never be able to address the file registry by accident.
+// The `files` store, keyed by the record's own id. Separate entry points from
+// the keyed document calls so one can never address the other by accident.
 export async function idbGetFile<T>(key: string): Promise<T | undefined> {
   const store = await tx('readonly', STORE_FILES)
   return promisify(store.get(key) as IDBRequest<T | undefined>)

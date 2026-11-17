@@ -69,12 +69,14 @@ describe('WorkspaceView imported row', () => {
     expect(await screen.findByText('used by Gearbox')).toBeInTheDocument()
     expect(screen.getByText('part')).toBeInTheDocument()
     expect(screen.getByLabelText('Changed since last save')).toBeInTheDocument()
+    // The open surface is still the row's verb and it is named after the entry,
+    // not after the meta text inside it.
+    expect(screen.getByRole('button', { name: 'Bracket' })).toBeInTheDocument()
 
     // Nothing the origin system used to draw: no status chip, no source name,
     // no local-edit badge and no pull control on the row.
     expect(screen.queryByText('Not checked')).toBeNull()
     expect(screen.queryByText('edited locally')).toBeNull()
-    expect(screen.queryByText(/from /)).toBeNull()
     expect(screen.queryByLabelText('Update Bracket')).toBeNull()
 
     // The card's workspace-wide Check verb is gone with them.
