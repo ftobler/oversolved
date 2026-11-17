@@ -131,7 +131,7 @@ describe('MateEditor legacy scalar offset', () => {
   it('shows the authored number instead of a blank or zeroed triple', () => {
     renderEditor(mate({ offset: 12 }))
     expect(scalarBox().value).toBe('12')
-    expect(screen.queryByLabelText('Offset X')).toBeNull()
+    expect(screen.queryByLabelText('Offset X, millimetres')).toBeNull()
   })
 
   it('says what the scalar means and how to convert it', () => {
@@ -162,7 +162,7 @@ describe('MateEditor axial-only offset kinds', () => {
     it(`gives ${kind} a single box, not a triple`, () => {
       renderEditor(mate({ kind }))
       expect(scalarBox()).toBeTruthy()
-      expect(screen.queryByLabelText('Offset X')).toBeNull()
+      expect(screen.queryByLabelText('Offset X, millimetres')).toBeNull()
       expect(screen.getByText(/Signed distance along A's axis/)).toBeTruthy()
     })
 

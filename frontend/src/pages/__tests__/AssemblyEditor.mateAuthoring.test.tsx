@@ -227,7 +227,7 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
 
   it('offers only the parameters the mate kind reads', async () => {
     await renderWithMate('spherical')
-    expect(screen.queryByLabelText('Offset')).toBeNull()
+    expect(screen.queryByLabelText('Offset, millimetres')).toBeNull()
     expect(screen.queryByLabelText('Ratio')).toBeNull()
   })
 

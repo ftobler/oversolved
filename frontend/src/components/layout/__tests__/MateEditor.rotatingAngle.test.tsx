@@ -52,6 +52,6 @@ describe('MateEditor rotating angle', () => {
   it('offers one axial offset box, not an x/y/z triple', () => {
     renderEditor(mate())
     expect(screen.getByLabelText('Offset, millimetres')).toBeTruthy()
-    expect(screen.queryByLabelText('Offset X')).toBeNull()
+    expect(screen.queryByLabelText('Offset X, millimetres')).toBeNull()
   })
 })

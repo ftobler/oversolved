@@ -34,15 +34,17 @@ function stripComments(source: string): string {
     .replace(/^\s*\/\/.*$/gm, '')
 }
 
+/** Every match of a JSX-text pattern, with its 1-based line. The patterns run
+ *  over the whole source so a unit on its own line is caught too. */
 function offenders(pattern: RegExp): string[] {
   const found: string[] = []
   for (const path of componentSources()) {
     const name = relative(COMPONENTS, path).split(/[\\/]/).join('/')
     const source = stripComments(readFileSync(path, 'utf8'))
-    const lines = source.split('\n')
-    lines.forEach((line, index) => {
-      if (pattern.test(line)) found.push(`${name}:${index + 1}: ${line.trim()}`)
-    })
+    for (const match of source.matchAll(pattern)) {
+      const line = source.slice(0, match.index).split('\n').length
+      found.push(`${name}:${line}: ${match[0].replace(/\s+/g, ' ').trim()}`)
+    }
   }
   return found
 }
@@ -60,13 +62,13 @@ describe('units are one component, not hand-built spans', () => {
 
   it('writes no bare unit token as JSX text', () => {
     // `>deg<`, `>mm<`, `>&deg;<`: the hand-built adornment of the old bug.
-    expect(offenders(/>\s*(mm|deg|pcs|in|&deg;|°)\s*</)).toEqual([])
+    expect(offenders(/>\s*(mm|deg|pcs|in|&deg;|°)\s*</g)).toEqual([])
   })
 
   it('writes no unit suffix into a label', () => {
     // "Taper (deg)", "Rot.°": the label says what the value is, the box says
     // what it measures. A `+90°` button text does not start with a letter, so
     // it stays allowed.
-    expect(offenders(/>\s*[A-Za-z][^<>{}]*(\s\((deg|mm|in|pcs)\)|&deg;|°)\s*</)).toEqual([])
+    expect(offenders(/>\s*[A-Za-z][^\n<>{}]*(\s\((deg|mm|in|pcs)\)|&deg;|°)\s*</g)).toEqual([])
   })
 })
