@@ -81,7 +81,7 @@ export const EXTRUDE_SCHEMA: FeatureEditorSchema = {
       showWhen: (d) => (d.termination ?? 'blind') === 'blind' && d.direction !== 'symmetric' &&
         !angleIsSet(d.twist),
       validate: between(-90, 90) },
-    { type: 'number', key: 'twist', label: 'Twist (deg)', default: 0,
+    { type: 'number', key: 'twist', label: 'Twist', default: 0, quantity: 'angle',
       // The TOTAL rotation over the distance, right-handed about the travel
       // direction. Same envelope as a draft; the kernel bounds the angle at the
       // loft's section budget, which a finite check here does not restate.

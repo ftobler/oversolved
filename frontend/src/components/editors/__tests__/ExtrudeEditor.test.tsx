@@ -431,7 +431,7 @@ describe('twist field', () => {
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
     }, { onMutation })
-    const input = screen.getByRole('textbox', { name: 'Twist (deg)' }) as HTMLInputElement
+    const input = screen.getByRole('textbox', { name: 'Twist, degrees' }) as HTMLInputElement
     fireEvent.change(input, { target: { value: '90' } })
     fireEvent.blur(input)
     expect(onMutation).toHaveBeenCalledWith<[Mutation]>({
@@ -452,7 +452,7 @@ describe('twist field', () => {
         visibleFeatures: new Set(['ex1']),
         editingFeatureId: 'ex1',
       })
-      expect(screen.queryByRole('textbox', { name: 'Twist (deg)' }), JSON.stringify(feature)).toBeNull()
+      expect(screen.queryByRole('textbox', { name: 'Twist, degrees' }), JSON.stringify(feature)).toBeNull()
       unmount()
     }
   })
@@ -467,7 +467,7 @@ describe('twist field', () => {
       visibleFeatures: new Set(['ex1']),
       editingFeatureId: 'ex1',
     })
-    expect(screen.getByRole('textbox', { name: 'Twist (deg)' })).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Twist, degrees' })).toBeInTheDocument()
     expect(screen.queryByRole('textbox', { name: 'Taper (deg)' })).toBeNull()
   })
 })
