@@ -23,11 +23,11 @@ import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import { emptyBrepDiff, type Body } from '../types3d'
 import type { Repository } from '../query'
-import { resolveBody } from './shared/bodyResolution'
+import { resolvePart } from './shared/partResolution'
 import { resplitBody } from './bodySplit'
 import { readBodyNames, type ShapeNames } from '../occ/bodyNames'
 import { SubShapeMap } from '../occ/subshapeIdentity'
-import { bodyOfQuery, makeFaceIndexCache, queryFaceUuid, resolveFacesByQuery } from './shared/faceResolution'
+import { partOfQuery, makeFaceIndexCache, queryFaceUuid, resolveFacesByQuery } from './shared/faceResolution'
 import {
   applyMoveFace,
   combineMoveFaceCells,
@@ -115,7 +115,7 @@ export function solveMoveFace(
   const groups = new Map<string, string[]>()
   const unresolved: string[] = []
   for (const q of faces) {
-    const bid = bodyOfQuery(oc, scope, table, bodyStore, indexFor, q)
+    const bid = partOfQuery(oc, scope, table, bodyStore, indexFor, q)
     if (bid === null) {
       unresolved.push(q)
       continue
@@ -134,7 +134,7 @@ export function solveMoveFace(
   for (const [bid, qlist] of groups) {
     let body: Body
     try {
-      body = resolveBody(bid, bodyStore)
+      body = resolvePart(bid, bodyStore)
     } catch {
       unresolved.push(...qlist)
       continue

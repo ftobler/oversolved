@@ -13,7 +13,7 @@ import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
 import { makeBoxAt, solidCentroid } from '../../occ/primitives'
 import { Repository } from '../../query'
-import { bareBody } from '../shared/bodyResolution'
+import { barePart } from '../shared/partResolution'
 import { solveCircularArray } from './patternBodyTestAdapters'
 import type { Body } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
@@ -24,7 +24,7 @@ const oc = loadedOcc!
 function run(sub: Record<string, unknown>, repo = new Repository()) {
   const scope = new DisposeScope()
   const table = new HandleTable()
-  const body = bareBody('body_src', 'src')
+  const body = barePart('body_src', 'src')
   // A 10 mm cube centred at x=20, off the Y axis.
   body.shape = table.register(makeBoxAt(oc, scope, [15, -5, -5], 10, 10, 10), body.created_by)
   const store: Record<string, Body> = { body_src: body }

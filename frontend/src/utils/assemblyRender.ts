@@ -9,8 +9,8 @@
 // where the pointer put it without re-meshing anything.
 
 import type { AssemblyDoc, BodyResult, PartInstance, Transform3D } from '@/types/cad'
-import type { BodyRenderItem } from '@/utils/bodyRender'
-import { getBodiesToRender } from '@/utils/bodyRender'
+import type { PartRenderItem } from '@/utils/partRender'
+import { getPartsToRender } from '@/utils/partRender'
 import { poseOffsetFor, drawnPose, type ManipulationSession } from '@/utils/partManipulation'
 import {
   composeTransforms,
@@ -96,7 +96,7 @@ export interface AssemblyPartGroup {
   selected: boolean
   // True while this part is the one under the pointer.
   manipulating: boolean
-  items: BodyRenderItem[]
+  items: PartRenderItem[]
 }
 
 /**
@@ -115,14 +115,14 @@ export interface AssemblyPartGroup {
  * geometry cannot describe different layouts.
  */
 export function getAssemblyPartGroups(
-  bodies: Record<string, BodyResult> | undefined,
+  parts: Record<string, BodyResult> | undefined,
   instances: PartInstance[],
   manipulation: ManipulationSession | null,
   selectedParts: ReadonlySet<string>,
   settlingOffsets: Record<string, Transform3D> = {},
 ): AssemblyPartGroup[] {
-  const byHandle = new Map<string, BodyRenderItem[]>()
-  for (const item of getBodiesToRender(bodies, undefined, undefined, undefined)) {
+  const byHandle = new Map<string, PartRenderItem[]>()
+  for (const item of getPartsToRender(parts, undefined, undefined, undefined)) {
     const list = byHandle.get(item.featureId)
     if (list) list.push(item)
     else byHandle.set(item.featureId, [item])

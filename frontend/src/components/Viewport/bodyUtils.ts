@@ -1,14 +1,14 @@
 import type { Feature, SketchFeature, BodyResult, PartStyleEntry, Constraints, Sketch, SketchData } from '@/types/cad'
-import { getBodiesToRender, isBodyHiddenByFeature } from '@/utils/bodyRender'
-import type { BodyRenderItem } from '@/utils/bodyRender'
+import { getPartsToRender, isPartHiddenByFeature } from '@/utils/partRender'
+import type { PartRenderItem } from '@/utils/partRender'
 import { deriveConstraints, unflattenGeometry } from '@/utils/geometry/geometryMapping'
-import { bodySnapSketches, builtinPlaneTransform } from '@/utils/geometry/bodySnapProjection'
+import { partSnapSketches, builtinPlaneTransform } from '@/utils/geometry/partSnapProjection'
 
 // `BodyRenderItem` and `getBodiesToRender` live in the utils leaf so the
 // assembly render path can use them without importing the UI tree. They are
 // re-exported here so the viewport callers keep their existing import site.
-export { getBodiesToRender }
-export type { BodyRenderItem }
+export { getPartsToRender as getBodiesToRender }
+export type { PartRenderItem as BodyRenderItem }
 
 /**
  * Computes which bodies should be visible given explicit user overrides.
@@ -74,14 +74,14 @@ export function getGhostBodiesToRender(
   features: Feature[] | undefined,
   partStyle: Record<string, PartStyleEntry> | undefined,
   visibleFeatures?: ReadonlySet<string>,
-): BodyRenderItem[] {
+): PartRenderItem[] {
   // Feature visibility rides on the item already: a body a hidden feature made
   // stays out of the ghost layer too, so it cannot be picked through a row the
   // user has hidden.
-  const items = getBodiesToRender(pickBodies, features, undefined, undefined, visibleFeatures)
+  const items = getPartsToRender(pickBodies, features, undefined, undefined, visibleFeatures)
   return items.map(item => {
-    const visible = item.visible && partStyle?.[item.bodyId]?.visible !== false
-    if (previewBodies && !(item.bodyId in previewBodies)) {
+    const visible = item.visible && partStyle?.[item.partId]?.visible !== false
+    if (previewBodies && !(item.partId in previewBodies)) {
       return { ...item, visible, doomed: true }
     }
     return { ...item, visible }
@@ -128,7 +128,7 @@ export function snapSketchesFor(
   activeFeatureId: string | undefined,
   activeResult: SketchData | undefined,
   activeFeature: Feature | undefined,
-  bodyItems: ReadonlyArray<BodyRenderItem>,
+  bodyItems: ReadonlyArray<PartRenderItem>,
 ): Record<string, Sketch> {
   if (!activeFeatureId) return otherSketches
   // Kernel-provided when the sketch has solved, else derived from the builtin
@@ -139,7 +139,7 @@ export function snapSketchesFor(
       : null)
   if (!planeTransform || bodyItems.length === 0) return otherSketches
 
-  const bodySketchEntries = bodySnapSketches(bodyItems, planeTransform)
+  const bodySketchEntries = partSnapSketches(bodyItems, planeTransform)
   if (Object.keys(bodySketchEntries).length === 0) return otherSketches
   return { ...otherSketches, ...bodySketchEntries }
 }
@@ -151,8 +151,8 @@ export function getPreviewBodies(
   rollbackPosition: number | undefined,
   visibleBodies: Set<string> | undefined,
   visibleFeatures?: ReadonlySet<string>,
-): BodyRenderItem[] {
-  const items: BodyRenderItem[] = []
+): PartRenderItem[] {
+  const items: PartRenderItem[] = []
   if (!bodies || rollbackPosition === undefined) return items
 
   // enterEditFeature sets rollbackPosition = idx + 1, so bodies from idx
@@ -170,7 +170,7 @@ export function getPreviewBodies(
     items.push({
       key: bodyId,
       featureId,
-      bodyId,
+      partId: bodyId,
       mesh: body.mesh,
       edges: body.edges ?? [],
       edgeQueries: body.edge_queries,
@@ -183,7 +183,7 @@ export function getPreviewBodies(
       // (visibleFeatureIds), so its own preview body still shows even when the
       // user had hidden the feature before opening it.
       visible: (visibleBodies ? visibleBodies.has(bodyId) : true)
-        && !isBodyHiddenByFeature(createdBy, features, visibleFeatures),
+        && !isPartHiddenByFeature(createdBy, features, visibleFeatures),
 
     })
   }

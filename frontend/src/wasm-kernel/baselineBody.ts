@@ -7,7 +7,7 @@
 
 import { faceGeometryHash, edgeGeometryHash } from '../kernel/geomHash'
 
-export interface BaselineBody {
+export interface BaselinePart {
   id: string
   created_by: string
   modified_by: string[]
@@ -19,14 +19,14 @@ export interface BaselineBody {
 }
 
 /** Reduce a live TS body result to the golden baseline body shape. */
-export function buildBaselineBody(bid: string, body: Record<string, unknown>): BaselineBody {
-  const mesh = body.mesh as Record<string, unknown> | undefined
+export function buildBaselineBody(bid: string, part: Record<string, unknown>): BaselinePart {
+  const mesh = part.mesh as Record<string, unknown> | undefined
   const faceData = (mesh?.face_data ?? []) as Array<{ centroid: number[]; normal: number[] }>
-  const edges = (body.edges ?? []) as Record<string, unknown>[]
+  const edges = (part.edges ?? []) as Record<string, unknown>[]
   return {
     id: bid,
-    created_by: (body.created_by as string | undefined) ?? '',
-    modified_by: (body.modified_by as string[] | undefined) ?? [],
+    created_by: (part.created_by as string | undefined) ?? '',
+    modified_by: (part.modified_by as string[] | undefined) ?? [],
     mesh: {
       vertices: (mesh?.vertices as number[][]) ?? [],
       faces: (mesh?.faces as number[][]) ?? [],

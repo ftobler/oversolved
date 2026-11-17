@@ -12,17 +12,17 @@ import {
 } from '@/stores/assemblyStore'
 import { findInstance } from '@/utils/assemblyMutations'
 import { settledTransforms } from '@/utils/partManipulation'
-import { offsetPickBodies, type AssemblyPickBody } from '@/utils/assemblyPick'
+import { offsetPickParts, type AssemblyPickPart } from '@/utils/assemblyPick'
 import { composeTransforms, IDENTITY_TRANSFORM } from '@/utils/transform3d'
 
 function instance(handle: string, extra: Partial<PartInstance> = {}): PartInstance {
   return { handle, doc_id: `doc-${handle}`, doc_rev: 1, transform: { ...IDENTITY_TRANSFORM }, ...extra }
 }
 
-function pickBody(handle: string): AssemblyPickBody {
+function pickBody(handle: string): AssemblyPickPart {
   return {
     handle,
-    bodyKey: `${handle}:body_0`,
+    partKey: `${handle}:body_0`,
     faces: {
       positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
       triangleToFace: new Uint32Array([0]),
@@ -127,7 +127,7 @@ describe('assembly pose ownership', () => {
 
     const state = useAssemblyStore.getState()
     expect(state.manipulation).toBeNull()
-    const [movedP1, movedP2] = offsetPickBodies(
+    const [movedP1, movedP2] = offsetPickParts(
       state.pickGeometry, state.pickGeometryPose, state.settledPoses(),
     )
     expect(movedP1).toBe(p1)  // grabbed part back at its settled pose, no churn

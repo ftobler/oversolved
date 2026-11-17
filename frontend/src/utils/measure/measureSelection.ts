@@ -19,13 +19,13 @@
 // so it still reads nothing.
 import type { BodyResult, LengthUnit, Sketch } from '@/types/cad'
 import {
-  isWholeBodySelectionId,
+  isWholePartSelectionId,
   parseSelectionId,
   parseTopoFallbackQuery,
   stripSelectionWrapper,
 } from '@/utils/query/selectionId'
 import type { MeasureOp, MeasurePickRef } from '@/kernel/worker/solverProtocol'
-import { bodyPickRef, bodyPrimitive } from './adapters/body'
+import { partPickRef, partPrimitive } from './adapters/part'
 import { datumPrimitive } from './adapters/datum'
 import { sketchPrimitive } from './adapters/sketch'
 import { formatReadouts } from './format'
@@ -39,7 +39,7 @@ export interface MeasureContext {
   /** Solve results keyed by feature id: sketch `solved` + `plane`, and a datum
    *  plane's `plane`. */
   solveResults?: Record<string, unknown>
-  bodies?: Record<string, BodyResult>
+  parts?: Record<string, BodyResult>
   unit?: LengthUnit
 }
 
@@ -95,20 +95,20 @@ function resolvePick(id: string, ctx: MeasureContext): ResolvedPick | null {
 
     // A parts-list whole-body pick has no analytic rule; it is a kernel cell and
     // still a resolved pick, so it counts toward the selection size.
-    if (isWholeBodySelectionId(id)) {
-      const bodyId = id.slice(1)
-      return { primitive: { type: 'solid', bodyId }, ref: { bodyId, kind: 'body' } }
+    if (isWholePartSelectionId(id)) {
+      const partId = id.slice(1)
+      return { primitive: { type: 'solid', partId }, ref: { bodyId: partId, kind: 'body' } }
     }
 
     if (id.startsWith('face:') || id.startsWith('edge:')) {
       const query = stripSelectionWrapper(id)
-      const primitive = bodyPrimitive(query, ctx.bodies)
-      const ref = bodyPickRef(query, ctx.bodies)
+      const primitive = partPrimitive(query, ctx.parts)
+      const ref = partPickRef(query, ctx.parts)
       return primitive ? { primitive, ref } : null
     }
     if (id.startsWith('?') || parseTopoFallbackQuery(id) !== null) {
-      const primitive = bodyPrimitive(id, ctx.bodies)
-      const ref = bodyPickRef(id, ctx.bodies)
+      const primitive = partPrimitive(id, ctx.parts)
+      const ref = partPickRef(id, ctx.parts)
       return primitive ? { primitive, ref } : null
     }
     if (id.startsWith('@')) {

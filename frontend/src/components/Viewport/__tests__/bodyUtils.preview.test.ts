@@ -62,25 +62,25 @@ describe('getPreviewBodies', () => {
 
   it('includes bodies created at or after previewFrom (rollback - 1)', () => {
     // rollback 2 -> previewFrom 1; ex1 (idx 1) and ex2 (idx 2) both qualify.
-    const ids = getPreviewBodies(bodies, features, 2, undefined).map(b => b.bodyId).sort()
+    const ids = getPreviewBodies(bodies, features, 2, undefined).map(b => b.partId).sort()
     expect(ids).toEqual(['body_ex1', 'body_ex2'])
   })
 
   it('excludes bodies whose creator is before previewFrom', () => {
     // rollback 3 -> previewFrom 2; ex1 (idx 1 < 2) drops out, only ex2 remains.
-    const ids = getPreviewBodies(bodies, features, 3, undefined).map(b => b.bodyId)
+    const ids = getPreviewBodies(bodies, features, 3, undefined).map(b => b.partId)
     expect(ids).toEqual(['body_ex2'])
   })
 
   it('keeps bodies with an unknown creator (idx < 0) as non-preview', () => {
     const withGhost = { ...bodies, body_ghost: makeBody('not-a-feature') }
-    const ids = getPreviewBodies(withGhost, features, 3, undefined).map(b => b.bodyId)
+    const ids = getPreviewBodies(withGhost, features, 3, undefined).map(b => b.partId)
     expect(ids).toContain('body_ghost')
   })
 
   it('treats every body as non-preview when the feature list is undefined', () => {
     // features?.findIndex(...) ?? -1 -> -1, so nothing is filtered out.
-    const ids = getPreviewBodies(bodies, undefined, 3, undefined).map(b => b.bodyId).sort()
+    const ids = getPreviewBodies(bodies, undefined, 3, undefined).map(b => b.partId).sort()
     expect(ids).toEqual(['body_ex1', 'body_ex2'])
   })
 
@@ -96,8 +96,8 @@ describe('getPreviewBodies', () => {
 
   it('sets the visible flag from the visibleBodies set', () => {
     const visible = getPreviewBodies(bodies, features, 2, new Set(['body_ex1']))
-    const ex1 = visible.find(b => b.bodyId === 'body_ex1')!
-    const ex2 = visible.find(b => b.bodyId === 'body_ex2')!
+    const ex1 = visible.find(b => b.partId === 'body_ex1')!
+    const ex2 = visible.find(b => b.partId === 'body_ex2')!
     expect(ex1.visible).toBe(true)
     expect(ex2.visible).toBe(false)
   })

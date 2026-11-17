@@ -10,10 +10,10 @@
 // anchor-less entity must resolve to an empty candidate set (Stage 7's
 // contract), and it can only do that if the entity has a pick id at all.
 
-import { buildFaceBoundarySegments, lazyFaceTriangles, toNonIndexedPositions } from '@/utils/bodyGeometry'
+import { buildFaceBoundarySegments, lazyFaceTriangles, toNonIndexedPositions } from '@/utils/partGeometry'
 import type { MeshPayload } from '@/kernel/solveAssembly'
 import { assemblyEntityKey } from '@/utils/anchorCandidates'
-import { assemblyBodyId } from '@/utils/assemblyBodies'
+import { assemblyPartId } from '@/utils/assemblyBodies'
 import type { AnchorTable } from '@/utils/anchorGizmos'
 import type { Mesh3D, Transform3D } from '@/types/cad'
 import { buildIndexedCurveSegments } from '@/utils/edgeSampling'
@@ -24,11 +24,11 @@ import {
   type Vec3,
 } from '@/utils/transform3d'
 
-export interface AssemblyPickBody {
+export interface AssemblyPickPart {
   // The part instance this body belongs to; the offsetter keys its pose by it.
   handle: string
   // Registration key for all three layers; `assemblyBodyId` already scopes it by part.
-  bodyKey: string
+  partKey: string
   faces: { positions: Float32Array; triangleToFace: Uint32Array; faceQueries: string[] } | null
   edges: { segmentPositions: Float32Array; segmentToEdge: Uint32Array; edgeQueries: string[] } | null
   vertices: {
@@ -61,12 +61,12 @@ function faceCount(m: MeshPayload): number {
   return Math.max(maxId + 1, m.entityAnchors?.faces.length ?? 0)
 }
 
-function buildFaces(handle: string, bodyIndex: number, m: MeshPayload): AssemblyPickBody['faces'] {
+function buildFaces(handle: string, partIndex: number, m: MeshPayload): AssemblyPickPart['faces'] {
   if (m.indices.length === 0) return null
   const n = faceCount(m)
   if (n === 0) return null
   const faceQueries: string[] = []
-  for (let i = 0; i < n; i++) faceQueries.push(assemblyEntityKey(handle, bodyIndex, 'face', i))
+  for (let i = 0; i < n; i++) faceQueries.push(assemblyEntityKey(handle, partIndex, 'face', i))
   return {
     positions: toNonIndexedPositions(m.vertices, m.indices),
     triangleToFace: m.faceIdsPerTriangle,
@@ -82,7 +82,7 @@ function buildFaces(handle: string, bodyIndex: number, m: MeshPayload): Assembly
  * runs on the raw `MeshPayload`, ahead of that flattening, wrapped in a shim
  * matching the `Mesh3D` shape the shared algorithm expects.
  */
-function buildFaceBoundaries(m: MeshPayload): AssemblyPickBody['faceBoundaries'] {
+function buildFaceBoundaries(m: MeshPayload): AssemblyPickPart['faceBoundaries'] {
   if (m.indices.length === 0) return null
   const n = faceCount(m)
   if (n === 0) return null
@@ -103,7 +103,7 @@ function buildFaceBoundaries(m: MeshPayload): AssemblyPickBody['faceBoundaries']
   return boundaries.size > 0 ? boundaries : null
 }
 
-function buildEdges(handle: string, bodyIndex: number, m: MeshPayload): AssemblyPickBody['edges'] {
+function buildEdges(handle: string, partIndex: number, m: MeshPayload): AssemblyPickPart['edges'] {
   const curves = m.edges ?? []
   if (curves.length === 0) return null
   const { positions, segmentToCurve } = buildIndexedCurveSegments(curves)
@@ -111,7 +111,7 @@ function buildEdges(handle: string, bodyIndex: number, m: MeshPayload): Assembly
   return {
     segmentPositions: positions,
     segmentToEdge: segmentToCurve,
-    edgeQueries: curves.map((_, i) => assemblyEntityKey(handle, bodyIndex, 'edge', i)),
+    edgeQueries: curves.map((_, i) => assemblyEntityKey(handle, partIndex, 'edge', i)),
   }
 }
 
@@ -123,9 +123,9 @@ function buildEdges(handle: string, bodyIndex: number, m: MeshPayload): Assembly
  * still highlight.
  */
 export function pickEdgesForRegistration(
-  edges: AssemblyPickBody['edges'],
+  edges: AssemblyPickPart['edges'],
   hidden?: readonly number[],
-): AssemblyPickBody['edges'] {
+): AssemblyPickPart['edges'] {
   if (!edges || !hidden || hidden.length === 0) return edges
   const hiddenSet = new Set(hidden)
   const kept: number[] = []
@@ -147,9 +147,9 @@ export function pickEdgesForRegistration(
  *  surviving vertices keep their own queries, so a pick still names its slot.
  *  `hidden` is in bundle slot space, which only `slotIndices` can map back. */
 export function pickVerticesForRegistration(
-  vertices: AssemblyPickBody['vertices'],
+  vertices: AssemblyPickPart['vertices'],
   hidden?: readonly number[],
-): AssemblyPickBody['vertices'] {
+): AssemblyPickPart['vertices'] {
   if (!vertices || !hidden || hidden.length === 0) return vertices
   const hiddenSet = new Set(hidden)
   const keptVertices: Vec3[] = []
@@ -175,8 +175,8 @@ export function pickVerticesForRegistration(
  * been mated anyway.
  */
 function buildVertices(
-  handle: string, bodyIndex: number, m: MeshPayload, anchors: Readonly<AnchorTable>,
-): AssemblyPickBody['vertices'] {
+  handle: string, partIndex: number, m: MeshPayload, anchors: Readonly<AnchorTable>,
+): AssemblyPickPart['vertices'] {
   const slots = m.entityAnchors?.vertices
   if (!slots || slots.length === 0) return null
   const partAnchors = anchors[handle] ?? {}
@@ -187,7 +187,7 @@ function buildVertices(
     const anchor = anchorIds.length > 0 ? partAnchors[anchorIds[0]] : undefined
     if (!anchor) return
     vertices.push([...anchor.point] as Vec3)
-    vertexQueries.push(assemblyEntityKey(handle, bodyIndex, 'vertex', index))
+    vertexQueries.push(assemblyEntityKey(handle, partIndex, 'vertex', index))
     slotIndices.push(index)
   })
   if (vertices.length === 0) return null
@@ -195,19 +195,19 @@ function buildVertices(
 }
 
 /** One registration payload per body of every part instance, in handle order. */
-export function buildPickBodies(
-  bodies: Record<string, MeshPayload[]>,
+export function buildPickParts(
+  parts: Record<string, MeshPayload[]>,
   anchors: Readonly<AnchorTable>,
-): AssemblyPickBody[] {
-  const out: AssemblyPickBody[] = []
-  for (const [handle, meshes] of Object.entries(bodies)) {
-    meshes.forEach((m, bodyIndex) => {
+): AssemblyPickPart[] {
+  const out: AssemblyPickPart[] = []
+  for (const [handle, meshes] of Object.entries(parts)) {
+    meshes.forEach((m, partIndex) => {
       out.push({
         handle,
-        bodyKey: assemblyBodyId(handle, bodyIndex),
-        faces: buildFaces(handle, bodyIndex, m),
-        edges: buildEdges(handle, bodyIndex, m),
-        vertices: buildVertices(handle, bodyIndex, m, anchors),
+        partKey: assemblyPartId(handle, partIndex),
+        faces: buildFaces(handle, partIndex, m),
+        edges: buildEdges(handle, partIndex, m),
+        vertices: buildVertices(handle, partIndex, m, anchors),
         faceBoundaries: buildFaceBoundaries(m),
         hiddenEdges: m.hiddenEdges,
         hiddenVertices: m.hiddenVertices,
@@ -237,14 +237,14 @@ function offsetPoints(points: readonly Vec3[], t: Transform3D): Vec3[] {
   })
 }
 
-function offsetBody(body: AssemblyPickBody, t: Transform3D): AssemblyPickBody {
+function offsetPart(part: AssemblyPickPart, t: Transform3D): AssemblyPickPart {
   return {
-    ...body,
-    faces: body.faces ? { ...body.faces, positions: offsetPositions(body.faces.positions, t) } : null,
-    edges: body.edges ? { ...body.edges, segmentPositions: offsetPositions(body.edges.segmentPositions, t) } : null,
-    vertices: body.vertices ? { ...body.vertices, vertices: offsetPoints(body.vertices.vertices, t) } : null,
-    faceBoundaries: body.faceBoundaries
-      ? new Map([...body.faceBoundaries].map(([index, segs]) => [index, offsetPositions(segs, t)]))
+    ...part,
+    faces: part.faces ? { ...part.faces, positions: offsetPositions(part.faces.positions, t) } : null,
+    edges: part.edges ? { ...part.edges, segmentPositions: offsetPositions(part.edges.segmentPositions, t) } : null,
+    vertices: part.vertices ? { ...part.vertices, vertices: offsetPoints(part.vertices.vertices, t) } : null,
+    faceBoundaries: part.faceBoundaries
+      ? new Map([...part.faceBoundaries].map(([index, segs]) => [index, offsetPositions(segs, t)]))
       : null,
   }
 }
@@ -273,17 +273,17 @@ function isIdentityOffset(t: Transform3D): boolean {
  * snapshot was baked at. Bodies already at their drawn pose are returned by
  * reference, so a settle re-registers only the parts that actually moved.
  */
-export function offsetPickBodies(
-  pickBodies: readonly AssemblyPickBody[],
+export function offsetPickParts(
+  pickParts: readonly AssemblyPickPart[],
   bakedPose: Readonly<Record<string, Transform3D>>,
   drawnPoses: Readonly<Record<string, Transform3D>>,
-): AssemblyPickBody[] {
-  return pickBodies.map(body => {
-    const baked = bakedPose[body.handle]
-    const drawn = drawnPoses[body.handle]
-    if (!baked || !drawn) return body
+): AssemblyPickPart[] {
+  return pickParts.map(part => {
+    const baked = bakedPose[part.handle]
+    const drawn = drawnPoses[part.handle]
+    if (!baked || !drawn) return part
     const offset = relativeTransform(drawn, baked)
-    if (isIdentityOffset(offset)) return body
-    return offsetBody(body, offset)
+    if (isIdentityOffset(offset)) return part
+    return offsetPart(part, offset)
   })
 }

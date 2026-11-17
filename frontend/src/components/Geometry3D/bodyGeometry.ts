@@ -12,10 +12,10 @@ export {
   lazyFaceTriangles,
   buildFaceBoundarySegments,
   extractFaceGeometry,
-} from '@/utils/bodyGeometry'
-export type { FaceTriangleLookup } from '@/utils/bodyGeometry'
+} from '@/utils/partGeometry'
+export type { FaceTriangleLookup } from '@/utils/partGeometry'
 // Imported for local use by resolveFaceQueries and planarFaceFrame below.
-import { faceCount, extractFaceGeometry } from '@/utils/bodyGeometry'
+import { faceCount, extractFaceGeometry } from '@/utils/partGeometry'
 
 export function buildBodyGeometry(mesh: Mesh3D): {
   positions: Float32Array

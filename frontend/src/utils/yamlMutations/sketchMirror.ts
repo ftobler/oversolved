@@ -114,13 +114,13 @@ function rewriteRef(ref: string, plan: MirrorPlan): { ref: string; copy: boolean
     const scale = Math.max(1, Math.abs(px), Math.abs(py), Math.abs(plan.axis.x1), Math.abs(plan.axis.y1))
     if (dist <= 1e-4 * scale) return { ref, copy: false }
   }
-  const body = wire ? ref.slice(1) : ref
+  const part = wire ? ref.slice(1) : ref
   const prefix = wire ? '$' : ''
   for (const [srcId, newId] of plan.idMap) {
     const copy = !plan.selfIds.has(srcId)
-    if (body === srcId) return { ref: prefix + newId, copy }
+    if (part === srcId) return { ref: prefix + newId, copy }
     if (refMatchesEntity(wire ? ref : '$' + ref, srcId)) {
-      const key = body.slice(srcId.length)
+      const key = part.slice(srcId.length)
       const def = plan.entityById.get(srcId)
       if (def === undefined) return null
       const params = plan.initial[srcId] ?? []

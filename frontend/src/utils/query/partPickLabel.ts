@@ -1,22 +1,22 @@
 import type { PartFeature } from '@/types/cad'
 import type { BodyResult } from '@/types/cad'
 import { queryLabel } from './queryLabel'
-import { bodyIdsOfPick } from './bodyIdOfPick'
+import { partIdsOfPick } from './partIdOfPick'
 import { partDisplayName } from '@/utils/core/partDisplayName'
 
-export function bodyPickLabel(
+export function partPickLabel(
   query: string,
-  bodies: Record<string, BodyResult> | null | undefined,
+  parts: Record<string, BodyResult> | null | undefined,
   partLabels?: Record<string, string>,
   features: PartFeature[] = [],
 ): string {
-  const ids = bodyIdsOfPick(query, bodies ?? {})
+  const ids = partIdsOfPick(query, parts ?? {})
   if (ids.length === 1) {
-    const ordered = Object.keys(bodies ?? {})
+    const ordered = Object.keys(parts ?? {})
     return partDisplayName(ids[0], partLabels, ordered)
   }
   if (ids.length > 1) {
-    const featureId = (bodies ?? {})[ids[0]]?.created_by
+    const featureId = (parts ?? {})[ids[0]]?.created_by
     const feature = featureId ? features.find((f) => f.id === featureId) : undefined
     const owner = feature ? (feature.label || feature.id) : (featureId ?? query)
     return `${owner} (all parts)`

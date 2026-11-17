@@ -3,9 +3,9 @@ import {
   projectWorldToSketch,
   builtinPlaneTransform,
   planeTransformNormal,
-  buildBodySnapSketch,
-  BODY_SNAP_FEAT_PREFIX,
-} from '@/utils/geometry/bodySnapProjection'
+  buildPartSnapSketch,
+  PART_SNAP_FEAT_PREFIX,
+} from '@/utils/geometry/partSnapProjection'
 import type { PlaneTransform } from '@/types/cad'
 
 const FRONT_PT = builtinPlaneTransform('@builtin_plane_front')!
@@ -14,8 +14,8 @@ const RIGHT_PT = builtinPlaneTransform('@builtin_plane_right')!
 
 describe('BODY_SNAP_FEAT_PREFIX', () => {
   it('is a non-empty string sentinel', () => {
-    expect(typeof BODY_SNAP_FEAT_PREFIX).toBe('string')
-    expect(BODY_SNAP_FEAT_PREFIX.length).toBeGreaterThan(0)
+    expect(typeof PART_SNAP_FEAT_PREFIX).toBe('string')
+    expect(PART_SNAP_FEAT_PREFIX.length).toBeGreaterThan(0)
   })
 })
 
@@ -105,12 +105,12 @@ describe('projectWorldToSketch -- right plane', () => {
 
 describe('buildBodySnapSketch', () => {
   it('returns empty sketch when no vertices or edges', () => {
-    const s = buildBodySnapSketch(undefined, undefined, FRONT_PT)
+    const s = buildPartSnapSketch(undefined, undefined, FRONT_PT)
     expect(Object.keys(s)).toHaveLength(0)
   })
 
   it('creates PointEntity for each vertex', () => {
-    const s = buildBodySnapSketch([[1, 2, 0], [3, 4, 0]], undefined, FRONT_PT)
+    const s = buildPartSnapSketch([[1, 2, 0], [3, 4, 0]], undefined, FRONT_PT)
     const entries = Object.values(s)
     expect(entries).toHaveLength(2)
     expect(entries[0]).toMatchObject({ x: 1, y: 2 })
@@ -118,7 +118,7 @@ describe('buildBodySnapSketch', () => {
   })
 
   it('creates LineSegment for line edges', () => {
-    const s = buildBodySnapSketch(undefined, [
+    const s = buildPartSnapSketch(undefined, [
       { kind: 'line', start: [0, 0, 0], end: [10, 0, 0] },
     ], FRONT_PT)
     const entries = Object.values(s)
@@ -129,7 +129,7 @@ describe('buildBodySnapSketch', () => {
   })
 
   it('creates PointEntity for arc/circle center', () => {
-    const s = buildBodySnapSketch(undefined, [
+    const s = buildPartSnapSketch(undefined, [
       { kind: 'arc', center: [5, 3, 0], radius: 2, axis: [0, 0, 1], x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI },
     ], FRONT_PT)
     const entries = Object.values(s)
@@ -138,7 +138,7 @@ describe('buildBodySnapSketch', () => {
   })
 
   it('creates PointEntity for ellipse center', () => {
-    const s = buildBodySnapSketch(undefined, [
+    const s = buildPartSnapSketch(undefined, [
       {
         kind: 'ellipse', center: [4, 6, 0], a: 3, b: 2, axis: [0, 0, 1],
         x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI * 2,
@@ -150,7 +150,7 @@ describe('buildBodySnapSketch', () => {
   })
 
   it('creates PointEntity entries for spline endpoints', () => {
-    const s = buildBodySnapSketch(undefined, [
+    const s = buildPartSnapSketch(undefined, [
       { kind: 'spline', points: [[0, 0, 0], [5, 2, 0], [10, 0, 0]] },
     ], FRONT_PT)
     const entries = Object.values(s)
@@ -161,13 +161,13 @@ describe('buildBodySnapSketch', () => {
 
   it('projects vertices using top plane transform', () => {
     // On the top plane: world (1,0,-2) → sketch (1, 2)
-    const s = buildBodySnapSketch([[1, 0, -2]], undefined, TOP_PT)
+    const s = buildPartSnapSketch([[1, 0, -2]], undefined, TOP_PT)
     const entries = Object.values(s)
     expect(entries[0]).toMatchObject({ x: 1, y: 2 })
   })
 
   it('mixes vertices and edges with unique entity IDs', () => {
-    const s = buildBodySnapSketch(
+    const s = buildPartSnapSketch(
       [[0, 0, 0]],
       [{ kind: 'line', start: [1, 0, 0], end: [2, 0, 0] }],
       FRONT_PT,

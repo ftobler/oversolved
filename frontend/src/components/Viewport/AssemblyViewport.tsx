@@ -64,7 +64,7 @@ import type { PointerRef } from '@/utils/assemblyGesture'
 import { p2w } from '@/utils/geometry/sketchHelpers'
 import { GIZMO_PIXELS, parseGizmoHandleKey } from '@/utils/gizmoPickGeometry'
 import { isManipulable } from '@/utils/partManipulation'
-import { offsetPickBodies } from '@/utils/assemblyPick'
+import { offsetPickParts } from '@/utils/assemblyPick'
 import { readSelection } from '@/utils/assemblySelection'
 import { decideAssemblyHit } from '@/utils/assemblyHitDecision'
 import { HoverScheduler } from '@/picking/HoverScheduler'
@@ -194,7 +194,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
 
   const adapter = useMemo(() => createAssemblyPointerAdapter({
     beginPartManipulation: (h) => useAssemblyStore.getState().beginPartManipulation(h),
-    beginBodyDrag: (h, grab) => useAssemblyStore.getState().beginBodyDrag(h, grab),
+    beginPartDrag: (h, grab) => useAssemblyStore.getState().beginBodyDrag(h, grab),
     setDragTarget: (t) => useAssemblyStore.getState().setDragTarget(t),
     dragPartTranslate: (d) => useAssemblyStore.getState().dragPartTranslate(d),
     rotatePartGizmo: (a, angle, pivot) => useAssemblyStore.getState().rotatePartGizmo(a, angle, pivot),
@@ -275,7 +275,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   // The ID buffer follows the drawn pose, so a click in the settle window lands
   // on the entity the user sees rather than the one the old solve baked.
   const drawnPickGeometry = useMemo(
-    () => offsetPickBodies(pickGeometry, pickGeometryPose, drawnPoses),
+    () => offsetPickParts(pickGeometry, pickGeometryPose, drawnPoses),
     [pickGeometry, pickGeometryPose, drawnPoses],
   )
 
@@ -562,7 +562,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     // Free drag happens in the plane facing the camera through the grab point,
     // so the part follows the cursor exactly under any view direction.
     const forward = camera.getWorldDirection(new THREE.Vector3())
-    if (adapter.onBodyPointerDown(handle, point, [forward.x, forward.y, forward.z], pointer)) {
+    if (adapter.onPartPointerDown(handle, point, [forward.x, forward.y, forward.z], pointer)) {
       // The ID buffer keeps the solved pose while the drag offsets the drawn
       // part, so anchors held over from before the grab would trail behind it.
       clearHover()
@@ -783,7 +783,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
               <AssemblyBody
                 key={item.key}
                 item={item}
-                curves={edgeCurves[item.bodyId] ?? EMPTY_CURVES}
+                curves={edgeCurves[item.partId] ?? EMPTY_CURVES}
                 selected={g.selected}
                 aiming={aiming}
                 onGrab={(point, event) => handleGrabBody(g.handle, point, pointerOf(event))}

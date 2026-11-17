@@ -1,5 +1,5 @@
 import type { BodyResult } from '@/types/cad'
-import { resolveBodyIds } from '@/kernel/features/shared/bodyResolution'
+import { resolvePartIds } from '@/kernel/features/shared/partResolution'
 
 // UI-side twin of the kernel's `resolveBodyIds` (kernel/features/shared/
 // bodyResolution.ts), operating on the plain `BodyResult` records the store
@@ -13,22 +13,22 @@ import { resolveBodyIds } from '@/kernel/features/shared/bodyResolution'
 // part needs; a feature owning several bodies has no single part and the
 // chip falls back to the feature label plus its count.
 
-export function bodyIdsOfPick(
+export function partIdsOfPick(
   query: string,
-  bodies: Record<string, BodyResult> | null | undefined,
+  parts: Record<string, BodyResult> | null | undefined,
 ): string[] {
   if (!query) return []
   // Shared with the kernel's `resolveBodyIds` (kernel/features/shared/
   // bodyResolution.ts) so the chip's body resolution cannot drift from the
   // solve's. The kernel resolver is pure store lookup with no OCC, so
   // importing it here is safe.
-  return resolveBodyIds(query, (bodies ?? {}) as Record<string, { created_by: string }>)
+  return resolvePartIds(query, (parts ?? {}) as Record<string, { created_by: string }>)
 }
 
-export function bodyIdOfPick(
+export function partIdOfPick(
   query: string,
-  bodies: Record<string, BodyResult> | null | undefined,
+  parts: Record<string, BodyResult> | null | undefined,
 ): string | null {
-  const ids = bodyIdsOfPick(query, bodies)
+  const ids = partIdsOfPick(query, parts)
   return ids.length === 1 ? ids[0] : null
 }

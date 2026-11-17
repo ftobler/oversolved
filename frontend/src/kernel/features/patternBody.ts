@@ -9,7 +9,7 @@ import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { PatternCopy } from './pattern'
-import { resolveBody, AmbiguousBodyRefError } from './shared/bodyResolution'
+import { resolvePart, AmbiguousPartRefError } from './shared/partResolution'
 import { booleanWithDiffMany } from '../occ/booleans'
 import { transformCopyWithMapping, rebuildNamesForTransformedCopy, readSourceFaceRows, type NameMaps } from '../occ/transformLineage'
 import { transferBooleanNames } from './booleanLineage'
@@ -45,11 +45,11 @@ export function resolvePatternSourceBody(
   if (!ref) throw new Error('pattern: source part is required; pick a part to pattern')
   let body: Body
   try {
-    body = resolveBody(ref, bodyStore)
+    body = resolvePart(ref, bodyStore)
   } catch (e) {
     // "Names several bodies" is not "does not exist": rewriting it would tell
     // the user the body is missing while listing the ids that matched it.
-    if (e instanceof AmbiguousBodyRefError) throw e
+    if (e instanceof AmbiguousPartRefError) throw e
     throw new Error(`pattern: source part '${ref}' not found; available part IDs: ${JSON.stringify(Object.keys(bodyStore))}`)
   }
   if (body.shape === null) throw new Error('pattern: source part has no shape')

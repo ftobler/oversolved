@@ -30,7 +30,7 @@ vi.mock('@/utils/edgeSampling', () => ({
 
 function makeItem(): BodyRenderItem {
   return {
-    key: 'b1', featureId: 'F1', bodyId: 'b1',
+    key: 'b1', featureId: 'F1', partId: 'b1',
     mesh: {} as BodyRenderItem['mesh'],
     edges: [], visible: true,
   }

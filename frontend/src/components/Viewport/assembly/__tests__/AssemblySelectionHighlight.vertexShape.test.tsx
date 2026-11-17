@@ -8,12 +8,12 @@ import AssemblySelectionHighlight, {
   getVertexDotAlphaMap,
   resetVertexDotAlphaMapForTest,
 } from '@/components/Viewport/assembly/AssemblySelectionHighlight'
-import type { AssemblyPickBody } from '@/utils/assemblyPick'
+import type { AssemblyPickPart } from '@/utils/assemblyPick'
 
-function body(): AssemblyPickBody {
+function body(): AssemblyPickPart {
   return {
     handle: 'B',
-    bodyKey: 'B',
+    partKey: 'B',
     faces: {
       positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
       triangleToFace: new Uint32Array([0]),

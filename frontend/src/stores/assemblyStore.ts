@@ -13,7 +13,7 @@ import type { AssemblySubject } from '@/utils/assemblySelection'
 import { runAssemblyOperation } from '@/utils/assemblyOperations'
 import { ASSEMBLY_UNDO_LABELS, type AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
 import { captureMateOrientationPatch } from '@/utils/mateCapture'
-import type { AssemblyPickBody } from '@/utils/assemblyPick'
+import type { AssemblyPickPart } from '@/utils/assemblyPick'
 import type { GizmoAxisName } from '@/utils/gizmoPickGeometry'
 import { composeTransforms, IDENTITY_TRANSFORM, transformsEqual, type Vec3 } from '@/utils/transform3d'
 
@@ -58,7 +58,7 @@ function sameEntityHits(a: readonly EntityHit[], b: readonly EntityHit[]): boole
   return a.length === b.length && a.every((h, i) => h.entityKey === b[i].entityKey)
 }
 import {
-  beginBodyManipulation,
+  beginPartManipulation,
   beginManipulation,
   commitManipulation,
   dragTranslate,
@@ -100,7 +100,7 @@ export interface AssemblyEditorData {
   // whose id went stale can re-find its element by descriptor (lookupAnchor).
   anchorDescriptors?: Record<string, Record<string, MateAnchorDescriptor>>
   // ID-layer registration payloads for the solved scene.
-  pickGeometry: AssemblyPickBody[]
+  pickGeometry: AssemblyPickPart[]
   // The solved pose `pickGeometry` was baked at. The ID buffer offsets from this
   // onto the drawn pose, so a committed drag's pick geometry follows the parts.
   pickGeometryPose: Record<string, Transform3D>
@@ -642,7 +642,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     // to the doc seed before the first solve.
     const drawn = get().settledPose(handle) ?? findInstance(doc, handle)?.transform
     if (!drawn) return false
-    const session = beginBodyManipulation(doc, handle, worldGrab, drawn)
+    const session = beginPartManipulation(doc, handle, worldGrab, drawn)
     if (!session) return false
     set({ manipulation: session })
     return true

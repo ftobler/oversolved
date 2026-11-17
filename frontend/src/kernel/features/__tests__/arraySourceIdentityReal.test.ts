@@ -18,7 +18,7 @@ import { HandleTable } from '../../occ/handleTable'
 import { booleanWithDiff, volumeOf } from '../../occ/booleans'
 import { makeBoxAt, solidCentroid } from '../../occ/primitives'
 import { Repository } from '../../query'
-import { bareBody } from '../shared/bodyResolution'
+import { barePart } from '../shared/partResolution'
 import { solveArray } from './patternBodyTestAdapters'
 import { solveBoolean } from '../boolean'
 import type { Body } from '../../types3d'
@@ -49,7 +49,7 @@ function railShape(r: Rig): OccShape {
 }
 
 function seedRail(r: Rig): Body {
-  const body = bareBody('body_src', 'src')
+  const body = barePart('body_src', 'src')
   body.shape = r.table.register(r.scope.detach(railShape(r)), body.created_by)
   r.store.body_src = body
   return body
@@ -118,7 +118,7 @@ describe.skipIf(!hasOcc)('array add: the source keeps its id across a disjoint s
     )
 
     // A notch in one corner of the source's base flange only.
-    const tool = bareBody('body_tool', 'tool')
+    const tool = barePart('body_tool', 'tool')
     tool.shape = r.table.register(makeBoxAt(oc, r.scope, [-1, -1, 199], 10, 10, 7), 'tool')
     r.store.body_tool = tool
     const cut = solveBoolean(oc, r.scope, r.table, {

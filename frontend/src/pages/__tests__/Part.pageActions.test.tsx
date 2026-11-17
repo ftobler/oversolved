@@ -15,7 +15,7 @@ import { executeCommand } from '@/utils/core/commandRegistry'
 import { MAX_STEP_IMPORT_BYTES } from '@/stores/documentStore/stepImport'
 import { useEditorState } from '@/hooks/useEditorState'
 import type { PartDoc } from '@/types/cad'
-import { builtinPlaneTransform } from '@/utils/geometry/bodySnapProjection'
+import { builtinPlaneTransform } from '@/utils/geometry/partSnapProjection'
 
 const F = vi.hoisted(() => {
   const doc: PartDoc = {

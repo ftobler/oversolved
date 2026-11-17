@@ -6,7 +6,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { indexModifierDiffs, namedElementCreator } from '../modifierAttribution'
-import { bareBody } from '../../features/shared/bodyResolution'
+import { barePart } from '../../features/shared/partResolution'
 import type { OccHandle } from '../handleTable'
 import type { OccModule } from '../occTypes'
 import type { Body } from '../../types3d'
@@ -22,7 +22,7 @@ describe('modifier attribution owner fallback order', () => {
   it('does not overwrite an owner the name transfer already recorded', () => {
     const handle = 1 as OccHandle
     const body: Body = {
-      ...bareBody('body_ex1', 'ex1'),
+      ...barePart('body_ex1', 'ex1'),
       shape: handle,
       modified_by: ['m1', 'm2'],
       face_uuids: ['u1', 'u2', 'u3'],
@@ -46,7 +46,7 @@ describe('modifier attribution owner fallback order', () => {
   it('prunes owners whose UUID the current shape no longer carries', () => {
     const handle = 2 as OccHandle
     const body: Body = {
-      ...bareBody('body_ex2', 'ex1'),
+      ...barePart('body_ex2', 'ex1'),
       shape: handle,
       modified_by: ['m1'],
       face_uuids: ['u1'],

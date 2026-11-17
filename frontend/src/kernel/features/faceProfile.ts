@@ -15,7 +15,7 @@ import { Repository, parseAncestry, makeAncestryQuery, ref, constructionUuidToke
 import { canonicalFaces, canonicalIndex, assertAligned } from '../occ/bodyNames'
 import { extractOccFace, extractFaceLoops, sortedFacesOf, faceLoopsOfFace, computeFaceDatumFrame } from '../occ/faceLoops'
 import { extractProfileLoops, type ProfileLoopDiag } from './shared/profileLoops'
-import { parseSketchEntityRef, sketchIdFromQuery, surfaceEntityIds } from './shared/bodyRef'
+import { parseSketchEntityRef, sketchIdFromQuery, surfaceEntityIds } from './shared/partRef'
 import type { PlaneLike } from './shared/planes'
 import { stripRefSigil } from '@/utils/refSigil'
 import { swallowUnlessTrap } from '../errors'

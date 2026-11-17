@@ -16,10 +16,10 @@
 // (_apply_body_operation + _transfer_boolean_lineage + _resolve_face_profile)
 // lives in bodyOps.ts, booleanLineage.ts and faceProfile.ts.
 
-export * from './bodyRef'
+export * from './partRef'
 export * from './profileLoops'
 export * from './topFace'
 export * from './directionQuery'
-export * from './bodyResolution'
+export * from './partResolution'
 export * from './brepDiff'
 export * from './planes'

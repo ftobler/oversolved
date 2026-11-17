@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bodyIdOfPick } from '@/utils/query/bodyIdOfPick'
+import { partIdOfPick } from '@/utils/query/partIdOfPick'
 import { makeAncestryQuery } from '@/kernel/queryWire'
 
 const bodies = {
@@ -10,10 +10,10 @@ const bodies = {
 
 describe('bodyIdOfPick', () => {
   it('exact id', () => {
-    expect(bodyIdOfPick('body_ex2', bodies)).toBe('body_ex2')
+    expect(partIdOfPick('body_ex2', bodies)).toBe('body_ex2')
   })
   it('topo fallback', () => {
-    expect(bodyIdOfPick('@body_ex1_1/face/0', bodies)).toBe('body_ex1_1')
+    expect(partIdOfPick('@body_ex1_1/face/0', bodies)).toBe('body_ex1_1')
   })
   it('face ? ancestry made by sketch', () => {
     // need body ancestor
@@ -21,7 +21,7 @@ describe('bodyIdOfPick', () => {
     // construct a query with @body_ex1 ancestor
     const q2 = '?9;@body_ex1:face'
     // not exact parse? just ensure null-safe
-    expect(bodyIdOfPick(q2, b)).toBe('body_ex1')
+    expect(partIdOfPick(q2, b)).toBe('body_ex1')
   })
   it('boolean first @body ancestor wins', () => {
     const q = makeAncestryQuery(['@body_a', '@body_b'], 'face')
@@ -29,20 +29,20 @@ describe('bodyIdOfPick', () => {
       body_a: { id: 'body_a', created_by: 'a', modified_by: [] },
       body_b: { id: 'body_b', created_by: 'b', modified_by: [] },
     } as Record<string, { id: string; created_by: string; modified_by: string[] }>
-    expect(bodyIdOfPick(q, b)).toBe('body_a')
+    expect(partIdOfPick(q, b)).toBe('body_a')
   })
   it('split sibling', () => {
-    expect(bodyIdOfPick('body_ex1_1', bodies)).toBe('body_ex1_1')
+    expect(partIdOfPick('body_ex1_1', bodies)).toBe('body_ex1_1')
   })
   it('bare feature one body', () => {
     const b = { body_ex2: { id: 'body_ex2', created_by: 'ex2', modified_by: [] } } as Record<string, { id: string; created_by: string; modified_by: string[] }>
-    expect(bodyIdOfPick('@ex2', b)).toBe('body_ex2')
+    expect(partIdOfPick('@ex2', b)).toBe('body_ex2')
   })
   it('bare feature two bodies returns null', () => {
-    expect(bodyIdOfPick('@ex1', bodies)).toBeNull()
+    expect(partIdOfPick('@ex1', bodies)).toBeNull()
   })
   it('stale ref returns null', () => {
-    expect(bodyIdOfPick('@nope', bodies)).toBeNull()
-    expect(bodyIdOfPick('body_nope', bodies)).toBeNull()
+    expect(partIdOfPick('@nope', bodies)).toBeNull()
+    expect(partIdOfPick('body_nope', bodies)).toBeNull()
   })
 })

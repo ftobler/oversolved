@@ -11,7 +11,7 @@ import { swapExtension } from '@/utils/core/exportFileName'
 import { LENGTH_UNIT_NAME, lengthUnitOf } from '@/utils/lengthUnit'
 import { EmptyExportError, exportMime, exportPartBytes, partExportSpec, type PartExportOptions } from '@/utils/partExport'
 import { planExport, zipExportFiles, type ExportPart, type ExportScope } from '@/utils/exportSelection'
-import { isWholeBodySelectionId } from '@/utils/query/selectionId'
+import { isWholePartSelectionId } from '@/utils/query/selectionId'
 import { partDisplayName } from '@/utils/core/partDisplayName'
 import { useEditorState } from '@/hooks/useEditorState'
 import { applySetLengthUnit } from '@/utils/yamlMutations'
@@ -183,7 +183,7 @@ function selectedBodyIds(
 ): string[] {
   const selected = new Set<string>()
   for (const id of selection) {
-    if (isWholeBodySelectionId(id)) selected.add(id.slice(1))
+    if (isWholePartSelectionId(id)) selected.add(id.slice(1))
   }
   return parts.filter(part => selected.has(part.id)).map(part => part.id)
 }
@@ -194,9 +194,9 @@ function exportOptions(
   partIds: readonly string[],
   wholeDocument: boolean,
 ): PartExportOptions {
-  if (wholeDocument || partIds.length === 0) return { format, bodyId: null, tessellation }
-  if (partIds.length === 1) return { format, bodyId: partIds[0], tessellation }
-  return { format, bodyId: null, bodyIds: [...partIds], tessellation }
+  if (wholeDocument || partIds.length === 0) return { format, partId: null, tessellation }
+  if (partIds.length === 1) return { format, partId: partIds[0], tessellation }
+  return { format, partId: null, partIds: [...partIds], tessellation }
 }
 
 /** The export spec's unit, on a clone so the live document keeps meaning what

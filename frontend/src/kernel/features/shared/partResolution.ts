@@ -14,7 +14,7 @@ type Dict = Record<string, unknown>
  * one through rather than tell the user the body does not exist while listing
  * the very ids that matched.
  */
-export class AmbiguousBodyRefError extends Error {}
+export class AmbiguousPartRefError extends Error {}
 
 /**
  * The single body a ref names, or null when it names none. Throws when the ref
@@ -22,16 +22,16 @@ export class AmbiguousBodyRefError extends Error {}
  * caller's question, and answering it with "the first one" is what let a
  * boolean subtract one half of a split body and report success.
  */
-function singleBodyOf(ref: string, bodyStore: Record<string, Body>): Body | null {
-  const ids = resolveBodyIds(ref, bodyStore)
+function singlePartOf(ref: string, partStore: Record<string, Body>): Body | null {
+  const ids = resolvePartIds(ref, partStore)
   if (ids.length === 0) return null
   if (ids.length > 1) {
-    throw new AmbiguousBodyRefError(
+    throw new AmbiguousPartRefError(
       `part ref '${ref}' is ambiguous: it names a feature owning ${ids.length} parts ` +
       `(${ids.join(', ')}); name one of them`,
     )
   }
-  return bodyStore[ids[0]]
+  return partStore[ids[0]]
 }
 
 /**
@@ -46,13 +46,13 @@ function singleBodyOf(ref: string, bodyStore: Record<string, Body>): Body | null
  * feature owns one body, and fails loud otherwise (see `singleBodyOf`). Use
  * `resolveBodyIds` where every body of a feature is the right answer.
  */
-export function resolveBody(ref: string, bodyStore: Record<string, Body>): Body {
-  const direct = singleBodyOf(ref, bodyStore)
+export function resolvePart(ref: string, partStore: Record<string, Body>): Body {
+  const direct = singlePartOf(ref, partStore)
   if (direct !== null) return direct
   if (ref.includes(':')) {
     const parts = ref.split(':')
     if (parts.length >= 2) {
-      const viewport = singleBodyOf(parts[1], bodyStore)
+      const viewport = singlePartOf(parts[1], partStore)
       if (viewport !== null) return viewport
     }
   }
@@ -63,7 +63,7 @@ export function resolveBody(ref: string, bodyStore: Record<string, Body>): Body 
  * Build an empty Body shell with default fields (shape is assigned by the caller
  * after registration). Mirrors Python Body(id, created_by, shape, sketch_id).
  */
-export function bareBody(id: string, createdBy: string, sketchId = ''): Body {
+export function barePart(id: string, createdBy: string, sketchId = ''): Body {
   return {
     id,
     created_by: createdBy,
@@ -92,10 +92,10 @@ const TOPO_FALLBACK_REF = /^@([^/]+)\/(?:face|edge|vertex)\/\d+$/
  * than throwing: the merge-target and delete-body errors read differently, and
  * delete-body still falls back to `resolveBody` for viewport-prefix forms.
  */
-export function resolveBodyIds<T extends { created_by: string }>(ref: string, bodyStore: Record<string, T>): string[] {
+export function resolvePartIds<T extends { created_by: string }>(ref: string, partStore: Record<string, T>): string[] {
   const key = stripRefSigil(ref, '@')
   // An exact body id names exactly that one sibling.
-  if (key in bodyStore) return [key]
+  if (key in partStore) return [key]
   // A topo-fallback element ref names the body it sits on. The render layer
   // mints this form whenever the kernel produced no named query for a face,
   // edge or vertex (utils/query/selectionId.ts topoFallbackQuery), so a face
@@ -103,7 +103,7 @@ export function resolveBodyIds<T extends { created_by: string }>(ref: string, bo
   // the leading segment fell through to the feature scan, missed, and the pick
   // resolved to nothing. `?` is handled below and never has this shape.
   const topo = TOPO_FALLBACK_REF.exec(ref)
-  if (topo) return resolveBodyIds(topo[1], bodyStore)
+  if (topo) return resolvePartIds(topo[1], partStore)
   // A `?` ancestry query is body-exact: it resolves through one picked face or
   // edge, so the `@body_*` ancestor it carries IS the answer and no feature
   // scan applies. First match only, like `resolveBody` -- a query can name more
@@ -113,7 +113,7 @@ export function resolveBodyIds<T extends { created_by: string }>(ref: string, bo
     try {
       const [ids] = parseAncestry(ref)
       for (const aid of ids) {
-        if (aid.startsWith('@body_') && aid.slice(1) in bodyStore) return [aid.slice(1)]
+        if (aid.startsWith('@body_') && aid.slice(1) in partStore) return [aid.slice(1)]
       }
     } catch {
       // unparseable query: fall through, the ref names nothing
@@ -123,12 +123,12 @@ export function resolveBodyIds<T extends { created_by: string }>(ref: string, bo
   // Otherwise the ref names a FEATURE. The creator scan has to come before the
   // `body_<key>` lookup: the first sibling is literally called `body_<feature>`,
   // so that lookup would match it and hide the rest.
-  const byCreator = Object.entries(bodyStore)
+  const byCreator = Object.entries(partStore)
     .filter(([, body]) => body.created_by === key)
     .map(([bid]) => bid)
   if (byCreator.length > 0) return byCreator
   const prefixed = 'body_' + key
-  if (prefixed in bodyStore) return [prefixed]
+  if (prefixed in partStore) return [prefixed]
   return []
 }
 
@@ -148,22 +148,22 @@ export function resolveBodyIds<T extends { created_by: string }>(ref: string, bo
  * `leaf` only names the caller in the error message, so a failed pick reads as
  * the feature the user was editing.
  */
-export function resolveBodyRefKeys(
-  bodyQuery: string,
+export function resolvePartRefKeys(
+  partQuery: string,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, Body>,
   leaf: string,
 ): string[] {
-  if (!bodyQuery.startsWith('?')) {
-    const ids = resolveBodyIds(bodyQuery, bodyStore)
-    return ids.length > 0 ? ids : [resolveBody(bodyQuery, bodyStore).id]
+  if (!partQuery.startsWith('?')) {
+    const ids = resolvePartIds(partQuery, partStore)
+    return ids.length > 0 ? ids : [resolvePart(partQuery, partStore).id]
   }
   // The repo goes first because it is the precise answer: it resolves the picked
   // face itself and reads the body that owns it, which is what disambiguates a
   // boolean face descending from two inputs.
   let resolved: Dict | null = null
   try {
-    resolved = globalRepo.query(bodyQuery, null, bodyStore) as Dict | null
+    resolved = globalRepo.query(partQuery, null, partStore) as Dict | null
   } catch (e) {
     // An ambiguous query is not an error for THIS question. A face with no
     // construction UUID, no ancestor tokens and no classifier is named by its
@@ -184,9 +184,9 @@ export function resolveBodyRefKeys(
   // edit reshaped the body under it. The body still does, and it is the body
   // this feature names, so read the `@body_*` ancestor out of the query rather
   // than failing the whole solve over an element nobody asked to keep.
-  const ids = resolveBodyIds(bodyQuery, bodyStore)
+  const ids = resolvePartIds(partQuery, partStore)
   if (ids.length > 0) return ids
-  throw new Error(`${leaf}: query did not resolve to a part: ${JSON.stringify(bodyQuery)}`)
+  throw new Error(`${leaf}: query did not resolve to a part: ${JSON.stringify(partQuery)}`)
 }
 
 /**
@@ -197,15 +197,15 @@ export function resolveBodyRefKeys(
  * into one entry rather than letting the second ref fail against a slot the
  * first already consumed.
  */
-export function resolveBodyRefList(
-  bodyQueries: string[],
+export function resolvePartRefList(
+  partQueries: string[],
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, Body>,
   leaf: string,
 ): string[] {
   const keys: string[] = []
-  for (const bodyQuery of bodyQueries) {
-    for (const key of resolveBodyRefKeys(bodyQuery, globalRepo, bodyStore, leaf)) {
+  for (const partQuery of partQueries) {
+    for (const key of resolvePartRefKeys(partQuery, globalRepo, partStore, leaf)) {
       if (!keys.includes(key)) keys.push(key)
     }
   }
@@ -222,11 +222,11 @@ export function resolveBodyRefList(
  */
 export function resolveMergeTargets(
   mergeTarget: string | null | undefined,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, Body>,
   opName = '',
 ): string[] {
-  if (!mergeTarget) return Object.keys(bodyStore)
-  const ids = resolveBodyIds(mergeTarget, bodyStore)
+  if (!mergeTarget) return Object.keys(partStore)
+  const ids = resolvePartIds(mergeTarget, partStore)
   if (ids.length === 0) {
     const prefix = opName ? `${opName}: ` : ''
     throw new Error(`${prefix}merge target '${mergeTarget}' not found`)

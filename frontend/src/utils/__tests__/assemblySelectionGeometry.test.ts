@@ -1,14 +1,14 @@
 import { describe, it, expect } from 'vitest'
 import { AssemblySelectionIndex, buildAssemblySelectionGeometry } from '@/utils/assemblySelectionGeometry'
-import type { AssemblyPickBody } from '@/utils/assemblyPick'
+import type { AssemblyPickPart } from '@/utils/assemblyPick'
 
 // One body: two triangles (faces f0, f1), two edge segments (e0, e1), two
 // vertices (v0, v1). Positions are placeholders; only the routing by key is
 // under test.
-function body(): AssemblyPickBody {
+function body(): AssemblyPickPart {
   return {
     handle: 'B',
-    bodyKey: 'B',
+    partKey: 'B',
     faces: {
       positions: new Float32Array([
         0, 0, 0, 1, 0, 0, 0, 1, 0,  // triangle 0 -> face 0
@@ -156,7 +156,7 @@ describe('buildAssemblySelectionGeometry', () => {
  * at all?" can be asserted directly rather than timed. `triangles` sets how
  * heavy it is; the index must not care.
  */
-function countingBody(key: string, triangles: number): { pick: AssemblyPickBody; reads: () => number } {
+function countingBody(key: string, triangles: number): { pick: AssemblyPickPart; reads: () => number } {
   let reads = 0
   const positions = new Float32Array(triangles * 9)
   const triangleToFace = new Uint32Array(triangles)
@@ -165,14 +165,14 @@ function countingBody(key: string, triangles: number): { pick: AssemblyPickBody;
     triangleToFace[i] = i
     segmentToEdge[i] = i
   }
-  const faces = { faceQueries: Array.from({ length: triangles }, (_, i) => `${key}:face${i}`) } as NonNullable<AssemblyPickBody['faces']>
+  const faces = { faceQueries: Array.from({ length: triangles }, (_, i) => `${key}:face${i}`) } as NonNullable<AssemblyPickPart['faces']>
   Object.defineProperty(faces, 'positions', { get: () => { reads++; return positions } })
   Object.defineProperty(faces, 'triangleToFace', { get: () => { reads++; return triangleToFace } })
-  const edges = { edgeQueries: Array.from({ length: triangles }, (_, i) => `${key}:edge${i}`) } as NonNullable<AssemblyPickBody['edges']>
+  const edges = { edgeQueries: Array.from({ length: triangles }, (_, i) => `${key}:edge${i}`) } as NonNullable<AssemblyPickPart['edges']>
   Object.defineProperty(edges, 'segmentPositions', { get: () => { reads++; return new Float32Array(triangles * 6) } })
   Object.defineProperty(edges, 'segmentToEdge', { get: () => { reads++; return segmentToEdge } })
   return {
-    pick: { handle: key, bodyKey: key, faces, edges, vertices: null, faceBoundaries: null },
+    pick: { handle: key, partKey: key, faces, edges, vertices: null, faceBoundaries: null },
     reads: () => reads,
   }
 }

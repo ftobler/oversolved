@@ -19,7 +19,7 @@
 // Pure: no three.js, no store. Selection wins over hover for an entity that is
 // both, so a hovered-and-selected face draws once, in the selected colour.
 
-import type { AssemblyPickBody } from '@/utils/assemblyPick'
+import type { AssemblyPickPart } from '@/utils/assemblyPick'
 import type { Vec3 } from '@/utils/transform3d'
 
 export interface AssemblySelectionGeometry {
@@ -111,12 +111,12 @@ function groupByOwner(owner: Uint32Array, ownerCount: number): (Uint32Array | un
  * front would put the very O(scene) pass this index exists to remove back into
  * the solve-to-first-frame path instead of the hover path.
  */
-class BodyIndex {
+class PartIndex {
   private faceTriangles: (Uint32Array | undefined)[] | null = null
   private edgeSegments: (Uint32Array | undefined)[] | null = null
-  readonly pick: AssemblyPickBody
+  readonly pick: AssemblyPickPart
 
-  constructor(pick: AssemblyPickBody) { this.pick = pick }
+  constructor(pick: AssemblyPickPart) { this.pick = pick }
 
   trianglesOf(faceIndex: number): Uint32Array | undefined {
     const faces = this.pick.faces
@@ -138,7 +138,7 @@ class BodyIndex {
 }
 
 interface PrimitiveSlot {
-  body: BodyIndex
+  part: PartIndex
   // Face index or edge index within that body.
   index: number
 }
@@ -179,18 +179,18 @@ export class AssemblySelectionIndex {
   private hoverKey: { selection: ReadonlySet<string>; hovered: string | null; mate: ReadonlySet<string> | undefined } | null = null
   private hoveredParts: GatheredParts = NO_PARTS
 
-  constructor(pickBodies: readonly AssemblyPickBody[]) {
-    for (const pick of pickBodies) {
-      const body = new BodyIndex(pick)
+  constructor(pickParts: readonly AssemblyPickPart[]) {
+    for (const pick of pickParts) {
+      const part = new PartIndex(pick)
       const { faces, edges, vertices } = pick
       if (faces) {
         faces.faceQueries.forEach((q, index) => {
-          if (q !== undefined && !this.faceOwners.has(q)) this.faceOwners.set(q, { body, index })
+          if (q !== undefined && !this.faceOwners.has(q)) this.faceOwners.set(q, { part, index })
         })
       }
       if (edges) {
         edges.edgeQueries.forEach((q, index) => {
-          if (q !== undefined && !this.edgeOwners.has(q)) this.edgeOwners.set(q, { body, index })
+          if (q !== undefined && !this.edgeOwners.has(q)) this.edgeOwners.set(q, { part, index })
         })
       }
       if (vertices) {
@@ -265,16 +265,16 @@ export class AssemblySelectionIndex {
     for (const key of keys) {
       const face = this.faceOwners.get(key)
       if (face) {
-        const positions = face.body.pick.faces?.positions
-        const tris = face.body.trianglesOf(face.index)
+        const positions = face.part.pick.faces?.positions
+        const tris = face.part.trianglesOf(face.index)
         if (positions && tris) for (const tri of tris) pushTriangle(faceOut, positions, tri)
-        const boundary = face.body.pick.faceBoundaries?.get(face.index)
+        const boundary = face.part.pick.faceBoundaries?.get(face.index)
         if (boundary) pushBoundary(boundaryOut, boundary)
       }
       const edge = this.edgeOwners.get(key)
       if (edge) {
-        const positions = edge.body.pick.edges?.segmentPositions
-        const segments = edge.body.segmentsOf(edge.index)
+        const positions = edge.part.pick.edges?.segmentPositions
+        const segments = edge.part.segmentsOf(edge.index)
         if (positions && segments) for (const seg of segments) pushSegment(edgeOut, positions, seg)
       }
       const vertex = this.vertexOwners.get(key)
@@ -303,10 +303,10 @@ export class AssemblySelectionIndex {
  * once, in the selected colour.
  */
 export function buildAssemblySelectionGeometry(
-  pickBodies: readonly AssemblyPickBody[],
+  pickParts: readonly AssemblyPickPart[],
   selection: ReadonlySet<string>,
   hovered: string | null,
   mateHighlighted?: ReadonlySet<string>,
 ): AssemblySelectionGeometry {
-  return new AssemblySelectionIndex(pickBodies).build(selection, hovered, mateHighlighted)
+  return new AssemblySelectionIndex(pickParts).build(selection, hovered, mateHighlighted)
 }

@@ -13,7 +13,7 @@ import type { Body } from '../types3d'
 import { getPoint3d, type Repository } from '../query'
 import type { PlaneLike } from './shared/planes'
 import { resolvePlaneRef } from './shared/planes'
-import { resolveBody, resolveBodyRefList } from './shared/bodyResolution'
+import { resolvePart, resolvePartRefList } from './shared/partResolution'
 import { makeMirrorTrsf, makeTranslationTrsf, makeRotationTrsf, makeScaleTrsf } from '../occ/transforms'
 import { booleanWithDiff, booleanWithHistory } from '../occ/booleans'
 import { volumeOf } from '../occ/volume'
@@ -80,7 +80,7 @@ export function solveTransform(
   // the picks were already moved.
   const bodyQueries = (cfg.bodies as string[] | undefined) ?? []
   if (bodyQueries.length === 0) throw new Error('transform: no parts picked')
-  const sources = resolveBodyRefList(bodyQueries, globalRepo, bodyStore, 'transform').map((key) => {
+  const sources = resolvePartRefList(bodyQueries, globalRepo, bodyStore, 'transform').map((key) => {
     const body = bodyStore[key]
     // A resolved key is not automatically a live store key: the `?` branch of
     // resolveBodyRefKeys reads the id off the REPO (`body_id` on a face record),
@@ -357,7 +357,7 @@ export function solveMirror(
   }
 
   const bodyQuery = (cfg.body as string) ?? ''
-  const sourceBody = bodyQuery ? resolveBody(bodyQuery, bodyStore) : null
+  const sourceBody = bodyQuery ? resolvePart(bodyQuery, bodyStore) : null
   if (sourceBody === null || sourceBody.shape === null) {
     throw new Error(`mirror: part not found: ${JSON.stringify(bodyQuery)}`)
   }

@@ -16,12 +16,12 @@ import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import type { Repository } from '../query'
-import { resolveBody } from './shared/bodyResolution'
+import { resolvePart } from './shared/partResolution'
 import { resplitBody } from './bodySplit'
 import { readBodyNames, type UuidArray } from '../occ/bodyNames'
 import { SubShapeDedup } from '../occ/primitives'
 import { applyDeleteFacesWithLineage } from '../occ/defeature'
-import { bodyOfQuery, makeFaceIndexCache, resolveFacesByQuery } from './shared/faceResolution'
+import { partOfQuery, makeFaceIndexCache, resolveFacesByQuery } from './shared/faceResolution'
 
 type Dict = Record<string, unknown>
 
@@ -74,7 +74,7 @@ export function solveDeleteFace(
   const groups = new Map<string, string[]>()
   const unresolved: string[] = []
   for (const q of faces) {
-    const target = bodyOfQuery(oc, scope, table, bodyStore, indexFor, q)
+    const target = partOfQuery(oc, scope, table, bodyStore, indexFor, q)
     if (target === null) {
       unresolved.push(q)
       continue
@@ -88,7 +88,7 @@ export function solveDeleteFace(
   for (const [bid, qlist] of groups) {
     let body: Body
     try {
-      body = resolveBody(bid, bodyStore)
+      body = resolvePart(bid, bodyStore)
     } catch {
       unresolved.push(...qlist)
       continue

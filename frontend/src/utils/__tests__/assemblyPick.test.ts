@@ -7,7 +7,7 @@ import type { BodyResult, PartInstance, Transform3D } from '@/types/cad'
 import type { MeshPayload } from '@/kernel/solveAssembly'
 import { assemblyEntityKey } from '@/utils/anchorCandidates'
 import { buildAnchorTable, type AnchorTable } from '@/utils/anchorGizmos'
-import { buildPickBodies, offsetPickBodies, pickEdgesForRegistration, pickVerticesForRegistration } from '@/utils/assemblyPick'
+import { buildPickParts, offsetPickParts, pickEdgesForRegistration, pickVerticesForRegistration } from '@/utils/assemblyPick'
 import { getAssemblyPartGroups } from '@/utils/assemblyRender'
 import { IDENTITY_TRANSFORM, makeTransform, rotateVector } from '@/utils/transform3d'
 import type { EdgeCurve } from '@/kernel/partBundle'
@@ -51,13 +51,13 @@ const ANCHORS: AnchorTable = buildAnchorTable({
 })
 
 function build(mesh: MeshPayload, anchors: AnchorTable = ANCHORS) {
-  return buildPickBodies({ [PART]: [mesh] }, anchors)[0]
+  return buildPickParts({ [PART]: [mesh] }, anchors)[0]
 }
 
 describe('buildPickBodies', () => {
   it('names one body per mesh, keyed the way the render list keys it', () => {
-    const bodies = buildPickBodies({ [PART]: [makeMesh(), makeMesh()] }, ANCHORS)
-    expect(bodies.map(b => b.bodyKey)).toEqual([`${PART}:body_0`, `${PART}:body_1`])
+    const bodies = buildPickParts({ [PART]: [makeMesh(), makeMesh()] }, ANCHORS)
+    expect(bodies.map(b => b.partKey)).toEqual([`${PART}:body_0`, `${PART}:body_1`])
     // The offsetter keys each body's pose by its instance handle, not the bodyKey.
     expect(bodies.map(b => b.handle)).toEqual([PART, PART])
   })
@@ -236,7 +236,7 @@ describe('offsetPickBodies', () => {
   it('translates every layer of the pick body onto the drawn pose', () => {
     const pick = build(makeMesh())
     const drawn = { [PART]: { ...IDENTITY_TRANSFORM, tx: 3 } }
-    const [moved] = offsetPickBodies([pick], { [PART]: IDENTITY_TRANSFORM }, drawn)
+    const [moved] = offsetPickParts([pick], { [PART]: IDENTITY_TRANSFORM }, drawn)
 
     // Faces: the first triangle's first vertex sits at the part origin.
     expect([...moved.faces!.positions.slice(0, 3)]).toEqual([3, 0, 0])
@@ -251,7 +251,7 @@ describe('offsetPickBodies', () => {
   it('places a pick vertex at the same world point the render group draws', () => {
     const pick = build(makeMesh())
     const offset: Transform3D = { ...IDENTITY_TRANSFORM, tx: 3, ty: -2 }
-    const [moved] = offsetPickBodies([pick], { [PART]: IDENTITY_TRANSFORM }, { [PART]: offset })
+    const [moved] = offsetPickParts([pick], { [PART]: IDENTITY_TRANSFORM }, { [PART]: offset })
 
     const group = getAssemblyPartGroups(
       { [`${PART}:body_0`]: renderBody(PART) },
@@ -272,7 +272,7 @@ describe('offsetPickBodies', () => {
 
   it('returns an identity-offset body by reference (no churn)', () => {
     const pick = build(makeMesh())
-    const same = offsetPickBodies([pick], { [PART]: IDENTITY_TRANSFORM }, { [PART]: IDENTITY_TRANSFORM })
+    const same = offsetPickParts([pick], { [PART]: IDENTITY_TRANSFORM }, { [PART]: IDENTITY_TRANSFORM })
     expect(same[0]).toBe(pick)
   })
 
@@ -281,7 +281,7 @@ describe('offsetPickBodies', () => {
   // return the body by reference, not churn a fresh soup every settle tick.
   it('treats a negligible quaternion perturbation as at rest', () => {
     const pick = build(makeMesh())
-    const same = offsetPickBodies(
+    const same = offsetPickParts(
       [pick],
       { [PART]: IDENTITY_TRANSFORM },
       { [PART]: { ...IDENTITY_TRANSFORM, qx: 1e-7 } },
@@ -291,7 +291,7 @@ describe('offsetPickBodies', () => {
 
   it('still offsets a rotation above the tolerance', () => {
     const pick = build(makeMesh())
-    const moved = offsetPickBodies(
+    const moved = offsetPickParts(
       [pick],
       { [PART]: IDENTITY_TRANSFORM },
       { [PART]: { ...IDENTITY_TRANSFORM, qx: 1e-2 } },
@@ -301,7 +301,7 @@ describe('offsetPickBodies', () => {
 
   it('leaves a body with no baked pose alone', () => {
     const pick = build(makeMesh())
-    const same = offsetPickBodies([pick], {}, { [PART]: { ...IDENTITY_TRANSFORM, tx: 3 } })
+    const same = offsetPickParts([pick], {}, { [PART]: { ...IDENTITY_TRANSFORM, tx: 3 } })
     expect(same[0]).toBe(pick)
   })
 })

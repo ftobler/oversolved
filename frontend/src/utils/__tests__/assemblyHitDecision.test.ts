@@ -10,7 +10,7 @@ import {
 } from '@/picking'
 import { decideAssemblyHit, type AssemblyHit } from '@/utils/assemblyHitDecision'
 import { buildAssemblySelectionGeometry } from '@/utils/assemblySelectionGeometry'
-import type { AssemblyPickBody } from '@/utils/assemblyPick'
+import type { AssemblyPickPart } from '@/utils/assemblyPick'
 
 describe('decideAssemblyHit through the one layer set', () => {
   // The divergence the shared decision removes: hover and click used to resolve
@@ -54,10 +54,10 @@ describe('decideAssemblyHit through the one layer set', () => {
 })
 
 // One face with two triangles, the minimal pick body that lights a primitive.
-function body(): AssemblyPickBody {
+function body(): AssemblyPickPart {
   return {
     handle: 'B',
-    bodyKey: 'B',
+    partKey: 'B',
     faces: {
       positions: new Float32Array([
         0, 0, 0, 1, 0, 0, 0, 1, 0,

@@ -4,8 +4,8 @@ import {
   sketchForRender, snapSketchesFor,
 } from '@/components/Viewport/bodyUtils'
 import type { Feature, BodyResult, PartStyleEntry, Sketch, SketchFeature, SketchData, DimLinearRender } from '@/types/cad'
-import type { BodyRenderItem } from '@/utils/bodyRender'
-import { BODY_SNAP_FEAT_PREFIX } from '@/utils/geometry/bodySnapProjection'
+import type { PartRenderItem } from '@/utils/partRender'
+import { PART_SNAP_FEAT_PREFIX } from '@/utils/geometry/partSnapProjection'
 
 describe('sketchForRender', () => {
   const feature: SketchFeature = {
@@ -64,11 +64,11 @@ describe('snapSketchesFor', () => {
     S0: { lineA: { start: [0, 0], end: [1, 0] } as Sketch[string] },
   }
 
-  function item(over: Partial<BodyRenderItem> = {}): BodyRenderItem {
+  function item(over: Partial<PartRenderItem> = {}): PartRenderItem {
     return {
       key: 'body_e1',
       featureId: 'e1',
-      bodyId: 'body_e1',
+      partId: 'body_e1',
       mesh: { vertices: new Float32Array(), faces: new Uint32Array() },
       edges: [],
       vertices: [[1, 2, 3]],
@@ -85,12 +85,12 @@ describe('snapSketchesFor', () => {
     const result = snapSketchesFor(other, 'S1', { plane_transform: planeTransform } as SketchData, sketchFeature, [item()])
     expect(result.S0).toBe(other.S0)
     // Identity rotation, origin at 0: the body vertex lands where it is in 3D.
-    expect(result[`${BODY_SNAP_FEAT_PREFIX}body_e1`]).toMatchObject({ bv0: { x: 1, y: 2 } })
+    expect(result[`${PART_SNAP_FEAT_PREFIX}body_e1`]).toMatchObject({ bv0: { x: 1, y: 2 } })
   })
 
   it('falls back to the builtin plane the feature names', () => {
     const result = snapSketchesFor(other, 'S1', undefined, sketchFeature, [item()])
-    expect(Object.keys(result)).toContain(`${BODY_SNAP_FEAT_PREFIX}body_e1`)
+    expect(Object.keys(result)).toContain(`${PART_SNAP_FEAT_PREFIX}body_e1`)
   })
 
   it('does not project when the active feature names no plane', () => {
@@ -287,7 +287,7 @@ describe('getGhostBodiesToRender', () => {
     // add_delete_body_ref toggle could never be fired a second time.
     const preview = { body_ex1: pickBodies.body_ex1 }
     const items = getGhostBodiesToRender(pickBodies, preview, features, {})
-    expect(items.map(i => [i.bodyId, i.visible, !!i.doomed]))
+    expect(items.map(i => [i.partId, i.visible, !!i.doomed]))
       .toEqual([['body_ex1', true, false], ['body_ex2', true, true]])
   })
 
@@ -314,7 +314,7 @@ describe('getGhostBodiesToRender', () => {
     // does, the visibility says what the user asked for, and the user wins.
     const preview = { body_ex1: pickBodies.body_ex1 }
     const items = getGhostBodiesToRender(pickBodies, preview, features, hidden('body_ex1', 'body_ex2'))
-    expect(items.map(i => [i.bodyId, i.visible, !!i.doomed]))
+    expect(items.map(i => [i.partId, i.visible, !!i.doomed]))
       .toEqual([['body_ex1', false, false], ['body_ex2', false, true]])
   })
 
@@ -327,7 +327,7 @@ describe('getGhostBodiesToRender', () => {
     const derived = computeEffectiveVisibleBodies(preview, {})
     expect(derived?.has('body_ex2')).toBe(false)  // the trap
     const items = getGhostBodiesToRender(pickBodies, preview, features, {})
-    expect(items.find(i => i.bodyId === 'body_ex2')?.visible).toBe(true)
+    expect(items.find(i => i.partId === 'body_ex2')?.visible).toBe(true)
   })
 
   it('ignores rollbackPosition so every prior body stays pickable', () => {
@@ -339,7 +339,7 @@ describe('getGhostBodiesToRender', () => {
     // A body the user hid through its feature row must not come back as a pick
     // target just because an unrelated feature's editor is open.
     const items = getGhostBodiesToRender(pickBodies, pickBodies, features, {}, new Set(['ex2', 'db1']))
-    expect(items.map(i => [i.bodyId, i.visible]))
+    expect(items.map(i => [i.partId, i.visible]))
       .toEqual([['body_ex1', false], ['body_ex2', true]])
   })
 })

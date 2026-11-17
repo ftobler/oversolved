@@ -28,7 +28,7 @@ import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
-import { resolveBody } from './shared/bodyResolution'
+import { resolvePart } from './shared/partResolution'
 import { brepDiffIsEmpty } from './shared/brepDiff'
 import { booleanWithDiff, volumeOf, shapesIntersect, shapesTouch, BooleanSoundnessError } from '../occ/booleans'
 import { maxPrecision, precisionCeilingWarning, type KernelPrecision } from '../precision'
@@ -133,7 +133,7 @@ function patternMemberIds(patternId: string, def: Dict, bodyStore: Record<string
   const source = sub.source_body
   if (typeof source === 'string' && source !== '') {
     try {
-      ids.push(resolveBody(source, bodyStore).id)
+      ids.push(resolvePart(source, bodyStore).id)
     } catch (e) {
       swallowUnlessTrap(e)
       // A source that no longer resolves leaves only the minted copies.
@@ -324,7 +324,7 @@ export function solveBoolean(
   const op = OP_MAP[operation]
   if (op === undefined) throw new Error(`boolean: unknown operation '${operation}'`)
 
-  const targetBody = resolveBody(targetRef, bodyStore)
+  const targetBody = resolvePart(targetRef, bodyStore)
   if (targetBody.shape === null) throw new Error(`boolean: target '${targetRef}' has no shape`)
   const { refs: toolRefs, namedPatterns } = expandPatternTools(authoredTools, targetBody.id, featureId, featuresById, bodyStore)
   if (toolRefs.length === 0) {
@@ -351,7 +351,7 @@ export function solveBoolean(
   const explicitToolIds = new Set<string>()
   for (const ref of toolRefs) {
     try {
-      explicitToolIds.add(resolveBody(ref, bodyStore).id)
+      explicitToolIds.add(resolvePart(ref, bodyStore).id)
     } catch (e) {
       swallowUnlessTrap(e)
       // The tool loop below reports a bad ref by name.
@@ -365,7 +365,7 @@ export function solveBoolean(
   const symmetric = op === 'fuse' || op === 'common'
   const toolEntries: ToolEntry[] = []
   for (const toolRef of toolRefs) {
-    const toolBody = resolveBody(toolRef, bodyStore)
+    const toolBody = resolvePart(toolRef, bodyStore)
     if (toolBody.shape === null) throw new Error(`boolean: tool '${toolRef}' has no shape`)
     if (toolBody.id === targetBody.id) {
       // The target and the tool resolved to the same body. A union/common is a

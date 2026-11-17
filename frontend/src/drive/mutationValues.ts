@@ -42,7 +42,7 @@ import { linearDirectionModeOf, unreadDirectionFieldProblem } from '@/utils/core
 import { MAX_TWIST_DEG } from '@/utils/core/twistLimits'
 import { evalExpr } from '@/kernel/evalExpr'
 import { MAX_ARRAY_CELLS } from '@/utils/core/arrayLimits'
-import { pickedSketchEntity } from '@/kernel/features/shared/bodyRef'
+import { pickedSketchEntity } from '@/kernel/features/shared/partRef'
 import { circleDrillSiteReason } from '@/kernel/features/shared/drillSite'
 import { isFaceProjectionSource, isProjectionPosition } from '@/kernel/features/projectionMembers'
 import { projectionTargetRef } from '@/utils/yamlMutations/freezeProjection'

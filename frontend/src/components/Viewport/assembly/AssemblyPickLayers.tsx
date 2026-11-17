@@ -18,10 +18,10 @@ import { isDevBuild } from '@/kernel/isDevBuild'
 import {
   pickEdgesForRegistration,
   pickVerticesForRegistration,
-  type AssemblyPickBody,
+  type AssemblyPickPart,
 } from '@/utils/assemblyPick'
 
-function unregisterAll(pipeline: IdPipeline, registered: Map<string, AssemblyPickBody>): void {
+function unregisterAll(pipeline: IdPipeline, registered: Map<string, AssemblyPickPart>): void {
   for (const bodyKey of registered.keys()) {
     pipeline.faceLayer.unregisterBody(bodyKey)
     pipeline.edgeLayer.unregisterBody(bodyKey)
@@ -36,14 +36,14 @@ function layerKey(showFaces: boolean, showEdges: boolean): string {
 }
 
 export default function AssemblyPickLayers({ bodies, showFaces = true, showEdges = true }: {
-  bodies: AssemblyPickBody[]
+  bodies: AssemblyPickPart[]
   showFaces?: boolean
   showEdges?: boolean
 }) {
   const pipeline = useIdPipeline()
   // The body objects currently registered, keyed by bodyKey. A body whose
   // object identity is unchanged needs no re-registration.
-  const registeredRef = useRef<Map<string, AssemblyPickBody>>(new Map())
+  const registeredRef = useRef<Map<string, AssemblyPickPart>>(new Map())
   const layersRef = useRef(layerKey(showFaces, showEdges))
 
   // Unmount / pipeline swap frees every id this component registered. Kept
@@ -61,7 +61,7 @@ export default function AssemblyPickLayers({ bodies, showFaces = true, showEdges
   useEffect(() => {
     if (!pipeline) return
     const registered = registeredRef.current
-    const next = new Set(bodies.map(body => body.bodyKey))
+    const next = new Set(bodies.map(body => body.partKey))
     let changed = false
 
     // A viewer layer toggle changes which layers exist, not the bodies. The
@@ -90,8 +90,8 @@ export default function AssemblyPickLayers({ bodies, showFaces = true, showEdges
     // Each layer's registerBody pre-clears its own key, so a replaced body is
     // dropped before the new geometry lands.
     for (const body of bodies) {
-      if (registered.get(body.bodyKey) === body) continue
-      const { bodyKey } = body
+      if (registered.get(body.partKey) === body) continue
+      const { partKey: bodyKey } = body
       try {
         if (showFaces && body.faces) {
           pipeline.faceLayer.registerBody({ bodyKey, ...body.faces })

@@ -6,10 +6,10 @@
 // keeping its own copy.
 import type { Feature, BodyResult, EdgeData } from '@/types/cad'
 
-export interface BodyRenderItem {
+export interface PartRenderItem {
   key: string
   featureId: string
-  bodyId: string
+  partId: string
   mesh: NonNullable<BodyResult['mesh']>
   edges: EdgeData[]
   edgeQueries?: string[]
@@ -50,7 +50,7 @@ function isInActiveRange(id: string, features: Feature[] | undefined, rollbackPo
  * `isInActiveRange` uses. That keeps imported and legacy bodies visible; an
  * unresolved creator is not a user hide.
  */
-export function isBodyHiddenByFeature(
+export function isPartHiddenByFeature(
   createdBy: string | undefined,
   features: Feature[] | undefined,
   visibleFeatures: ReadonlySet<string> | undefined,
@@ -60,27 +60,27 @@ export function isBodyHiddenByFeature(
   return !visibleFeatures.has(createdBy)
 }
 
-export function getBodiesToRender(
-  bodies: Record<string, BodyResult> | undefined,
+export function getPartsToRender(
+  parts: Record<string, BodyResult> | undefined,
   features: Feature[] | undefined,
   rollbackPosition: number | undefined,
-  visibleBodies: Set<string> | undefined,
+  visibleParts: Set<string> | undefined,
   visibleFeatures?: ReadonlySet<string>,
-): BodyRenderItem[] {
-  const items: BodyRenderItem[] = []
-  if (!bodies) return items
+): PartRenderItem[] {
+  const items: PartRenderItem[] = []
+  if (!parts) return items
 
-  for (const [bodyId, body] of Object.entries(bodies)) {
+  for (const [bodyId, body] of Object.entries(parts)) {
     const createdBy = body.created_by
     if (!isInActiveRange(createdBy, features, rollbackPosition)) continue
     if (!body.mesh) continue
     const featureId = createdBy || bodyId
-    const bodyVisible = visibleBodies ? visibleBodies.has(bodyId) : true
+    const partVisible = visibleParts ? visibleParts.has(bodyId) : true
 
     items.push({
       key: bodyId,
       featureId,
-      bodyId,
+      partId: bodyId,
       mesh: body.mesh,
       edges: body.edges ?? [],
       edgeQueries: body.edge_queries,
@@ -89,7 +89,7 @@ export function getBodiesToRender(
       vertexQueries: body.vertex_queries,
       hiddenEdges: body.hidden_edges,
       hiddenVertices: body.hidden_vertices,
-      visible: bodyVisible && !isBodyHiddenByFeature(createdBy, features, visibleFeatures),
+      visible: partVisible && !isPartHiddenByFeature(createdBy, features, visibleFeatures),
     })
   }
   return items

@@ -269,13 +269,13 @@ function resolvedReference(
     }
   }
   if (subject === 'body') {
-    const body = resolvePatternSourceBody(sub, ctx.bodyStore)
+    const body = resolvePatternSourceBody(sub, ctx.partStore)
     const shape = ctx.table.get<OccShape>(body.shape!)
     return { point: solidCentroid(ctx.oc, ctx.scope, shape) as Vec3, normal: null, rule: 'the source part\'s centroid' }
   }
   const centroid = firstSourceToolCentroid(
     ctx.oc, ctx.scope, ctx.table,
-    { id: featureId }, sub, ctx.globalRepo, ctx.bodyStore, ctx.featuresById, solveContext,
+    { id: featureId }, sub, ctx.globalRepo, ctx.partStore, ctx.featuresById, solveContext,
   )
   if (centroid === null) {
     const first = targets[0]
@@ -348,7 +348,7 @@ export function buildInstancePatternCopies(
   const legacySketch = typeof sub.sketch === 'string' && sub.sketch !== '' ? sub.sketch : ''
   if (legacySketch !== '') refs.unshift(legacySketch)
 
-  const ctx: PickTargetContext = { oc, scope, table, globalRepo, bodyStore, featuresById }
+  const ctx: PickTargetContext = { oc, scope, table, globalRepo, partStore: bodyStore, featuresById }
   const subject = (sub.subject as string) ?? 'body'
   const source = subject === 'feature' ? firstSource(featureId, sub, featuresById) : null
 

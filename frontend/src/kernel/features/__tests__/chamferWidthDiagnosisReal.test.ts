@@ -18,7 +18,7 @@ import { makeBoxAt, edgeToGeom } from '../../occ/primitives'
 import { canonicalEdges } from '../../occ/bodyNames'
 import { bodyFrame, compareEdgeSortKeys } from '../../occ/tessellation'
 import { Repository } from '../../query'
-import { bareBody } from '../shared/bodyResolution'
+import { barePart } from '../shared/partResolution'
 import { solveChamfer } from '../filletChamfer'
 import type { Body } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
@@ -77,7 +77,7 @@ describe.skipIf(!hasOcc)('chamfer: a distance wider than the adjacent face names
 
   it('refuses 0.25 on a 0.2 wall and names the 0.2 width', () => {
     const r = rig()
-    const body = bareBody('body_b', 'b')
+    const body = barePart('body_b', 'b')
     body.shape = r.table.register(bracket(oc, r.scope), body.created_by)
     r.store.body_b = body
     const shape = r.table.get<OccShape>(body.shape!)
@@ -95,7 +95,7 @@ describe.skipIf(!hasOcc)('chamfer: a distance wider than the adjacent face names
 
   it('a distance that fits still builds and is not refused', () => {
     const r = rig()
-    const body = bareBody('body_b', 'b')
+    const body = barePart('body_b', 'b')
     body.shape = r.table.register(bracket(oc, r.scope), body.created_by)
     r.store.body_b = body
     const shape = r.table.get<OccShape>(body.shape!)

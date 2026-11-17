@@ -13,7 +13,7 @@ import type { HandleTable } from '../../occ/handleTable'
 import type { Body } from '../../types3d'
 import { buildLinearCopies, solveLinearPattern } from '../linearPattern'
 import { buildCircularCopies, solveCircularPattern } from '../circularPattern'
-import { bareBody } from '../shared/bodyResolution'
+import { barePart } from '../shared/partResolution'
 
 type Dict = Record<string, unknown>
 
@@ -571,8 +571,8 @@ describe('buildCircularCopies', () => {
 // diagnoses they can report are reachable with no kernel at all.
 describe('pattern source body diagnosis', () => {
   const store = (): Record<string, Body> => ({
-    body_ex1: bareBody('body_ex1', 'ex1'),
-    body_ex1_1: bareBody('body_ex1_1', 'ex1'),
+    body_ex1: barePart('body_ex1', 'ex1'),
+    body_ex1_1: barePart('body_ex1_1', 'ex1'),
   })
   const noOcc = null as unknown as OccModule
   const noRepo = null as unknown as Repository
@@ -599,7 +599,7 @@ describe('pattern source body diagnosis', () => {
 // untouched, with no warning, for either operation.
 describe('count 1 through the leaf', () => {
   it.each(['add', 'new'])('leaves the source untouched for operation %s', (operation) => {
-    const body = { ...bareBody('body_ex1', 'ex1'), shape: 1 as never }
+    const body = { ...barePart('body_ex1', 'ex1'), shape: 1 as never }
     const table = { get: () => { throw new Error('count 1 must not touch a shape') } } as unknown as HandleTable
     const result = solveLinear(
       makeFake(), scope, table,

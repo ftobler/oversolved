@@ -44,13 +44,13 @@ vi.mock('@/components/Viewport/assembly/TriadGizmo', () => ({ default: () => nul
 
 import AssemblyViewport from '../AssemblyViewport'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assemblyStore'
-import type { AssemblyPickBody } from '@/utils/assemblyPick'
+import type { AssemblyPickPart } from '@/utils/assemblyPick'
 import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
 
-function pickBody(): AssemblyPickBody {
+function pickBody(): AssemblyPickPart {
   return {
     handle: 'p1',
-    bodyKey: 'p1:body_0',
+    partKey: 'p1:body_0',
     faces: {
       positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
       triangleToFace: new Uint32Array([0]),
@@ -84,7 +84,7 @@ describe('AssemblyViewport drawn pick geometry', () => {
 
     render(<AssemblyViewport />)
 
-    const bodies = captured.pickBodies as AssemblyPickBody[]
+    const bodies = captured.pickBodies as AssemblyPickPart[]
     expect(bodies).toHaveLength(1)
     expect(bodies[0].faces!.positions[0]).toBeCloseTo(3, 9)
     expect(captured.highlightBodies).toBe(bodies)
@@ -100,7 +100,7 @@ describe('AssemblyViewport drawn pick geometry', () => {
 
     render(<AssemblyViewport />)
 
-    const bodies = captured.pickBodies as AssemblyPickBody[]
+    const bodies = captured.pickBodies as AssemblyPickPart[]
     expect(bodies[0]).toBe(body)
     expect(captured.highlightBodies).toBe(bodies)
   })

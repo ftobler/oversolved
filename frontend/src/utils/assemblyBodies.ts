@@ -19,15 +19,15 @@ import {
 
 // Body ids are scoped by part handle, so two instances of the same part never
 // collide in the flat dict.
-export function assemblyBodyId(handle: string, index: number): string {
+export function assemblyPartId(handle: string, index: number): string {
   return `${handle}:body_${index}`
 }
 
-export function toBodyResults(bodies: Record<string, MeshPayload[]>): Record<string, BodyResult> {
+export function toPartResults(parts: Record<string, MeshPayload[]>): Record<string, BodyResult> {
   const out: Record<string, BodyResult> = {}
-  for (const [handle, meshes] of Object.entries(bodies)) {
+  for (const [handle, meshes] of Object.entries(parts)) {
     meshes.forEach((m, i) => {
-      const id = assemblyBodyId(handle, i)
+      const id = assemblyPartId(handle, i)
       out[id] = {
         id,
         created_by: handle,
@@ -50,13 +50,13 @@ export function toBodyResults(bodies: Record<string, MeshPayload[]>): Record<str
  * seam can still draw its highlight, and its ID registration applies the same
  * skip separately.
  */
-export function toEdgeCurves(bodies: Record<string, MeshPayload[]>): Record<string, EdgeCurve[]> {
+export function toEdgeCurves(parts: Record<string, MeshPayload[]>): Record<string, EdgeCurve[]> {
   const out: Record<string, EdgeCurve[]> = {}
-  for (const [handle, meshes] of Object.entries(bodies)) {
+  for (const [handle, meshes] of Object.entries(parts)) {
     meshes.forEach((m, i) => {
       const edges = m.edges ?? []
       const hidden = m.hiddenEdges
-      out[assemblyBodyId(handle, i)] = hidden && hidden.length > 0
+      out[assemblyPartId(handle, i)] = hidden && hidden.length > 0
         ? edges.filter((_edge, index) => !hidden.includes(index))
         : edges
     })
@@ -87,20 +87,20 @@ const ENTITY_SLOTS: [AssemblyEntityKind, keyof EntityAnchorIndex][] = [
  * move; built-ins carry none (their ids are static).
  */
 export function buildEntityMateRefs(
-  bodies: Record<string, MeshPayload[]>,
+  parts: Record<string, MeshPayload[]>,
   anchorDescriptors?: Record<string, Record<string, MateAnchorDescriptor>>,
 ): EntityMateRefs {
   const out: EntityMateRefs = {}
   for (const id of ASSEMBLY_BUILTIN_IDS) {
     out[assemblyBuiltinEntityKey(id)] = [{ part: ASSEMBLY_HANDLE, anchor: id }]
   }
-  for (const [handle, meshes] of Object.entries(bodies)) {
-    meshes.forEach((m, bodyIndex) => {
+  for (const [handle, meshes] of Object.entries(parts)) {
+    meshes.forEach((m, partIndex) => {
       if (!m.entityAnchors) return
       for (const [kind, slot] of ENTITY_SLOTS) {
         m.entityAnchors[slot].forEach((anchorIds, index) => {
           if (anchorIds.length === 0) return  // not matable; no pick id at all
-          out[assemblyEntityKey(handle, bodyIndex, kind, index)] =
+          out[assemblyEntityKey(handle, partIndex, kind, index)] =
             anchorIds.map(anchor => {
               const descriptor = anchorDescriptors?.[handle]?.[anchor]
               return descriptor ? { part: handle, anchor, anchor_descriptor: descriptor } : { part: handle, anchor }

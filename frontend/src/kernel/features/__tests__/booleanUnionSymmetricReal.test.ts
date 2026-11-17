@@ -18,7 +18,7 @@ import { HandleTable } from '../../occ/handleTable'
 import { countSubShapes, volumeOf } from '../../occ/booleans'
 import { makeBoxAt } from '../../occ/primitives'
 import { Repository } from '../../query'
-import { bareBody } from '../shared/bodyResolution'
+import { barePart } from '../shared/partResolution'
 import { solveBoolean } from '../boolean'
 import type { Body } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
@@ -38,7 +38,7 @@ function rig(): Rig {
 }
 
 function seedBox(r: Rig, id: string, x: number): void {
-  const body = bareBody(id, id)
+  const body = barePart(id, id)
   body.shape = r.table.register(makeBoxAt(oc, r.scope, [x, 0, 0], 10, 10, 10), id)
   r.store[id] = body
 }

@@ -22,9 +22,9 @@ import { collectExtrudeLoops } from './faceProfile'
 import { resolveDirection } from './shared/directionQuery'
 import { registerTopFace } from './shared/topFace'
 import { samePlane, sketchToWorld2d, type PlaneLike } from './shared/planes'
-import { resolveBodyIds } from './shared/bodyResolution'
-import { bodyFrame, projectedRadius } from './shared/bodyExtent'
-import { surfaceEntityIds } from './shared/bodyRef'
+import { resolvePartIds } from './shared/partResolution'
+import { bodyFrame, projectedRadius } from './shared/partExtent'
+import { surfaceEntityIds } from './shared/partRef'
 import { openJointHint, profileAreaReport } from './shared/profileLoops'
 import { loopCentroid } from '../profileLoops'
 import { linearHandle, offsetAlong } from './featureHandles'
@@ -222,7 +222,7 @@ function nextCandidates(
   bodyStore: Record<string, Body>,
   mergeTarget: string | null,
 ): NextCandidate[] {
-  const ids = mergeTarget ? resolveBodyIds(mergeTarget, bodyStore) : Object.keys(bodyStore).sort()
+  const ids = mergeTarget ? resolvePartIds(mergeTarget, bodyStore) : Object.keys(bodyStore).sort()
   const out: NextCandidate[] = []
   for (const id of ids) {
     const body = bodyStore[id]
@@ -287,7 +287,7 @@ function throughAllSweepExtent(
   direction: Vec3,
   origin: Vec3,
 ): ThroughAllExtent {
-  const targeted = mergeTarget ? resolveBodyIds(mergeTarget, bodyStore) : []
+  const targeted = mergeTarget ? resolvePartIds(mergeTarget, bodyStore) : []
   const ids = targeted.length > 0 ? targeted : Object.keys(bodyStore)
   let min = Infinity
   let max = -Infinity

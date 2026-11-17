@@ -182,7 +182,7 @@ describe('no filter-by-kind for bodies', () => {
   it('getBodiesToRender iterates Object.entries(bodies), not features.filter(kind)', () => {
     const src = getBodiesToRender.toString()
     expect(src).toContain('Object.entries')
-    expect(src).toContain('bodies')
+    expect(src).toContain('parts')
     expect(/bodies.*filter.*kind/.test(src)).toBe(false)
   })
 })

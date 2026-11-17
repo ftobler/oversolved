@@ -1,9 +1,9 @@
 // 3D body colors
-export const COLOR_BODY_DEFAULT  = '#6ab59b'
+export const COLOR_PART_DEFAULT  = '#6ab59b'
 export const PART_COLOR_PALETTE = ['#6AB59B', '#A8D5FF', '#B8E8C8', '#FFD6A5', '#F7C6C7', '#D4C7FF', '#FEE6A8', '#CDE7F0', '#F6C7A8', '#FFE29B', '#000000', '#222222',  '#444444', '#666666', '#888888', '#AAAAAA', '#CCCCCC', '#EEEEEE', '#FFFFFF']  // extended palette with more grayscale options
-export const COLOR_BODY_EDGE     = '#eeeeee'
-export const COLOR_BODY_SELECTED = '#b5a16a'
-export const COLOR_BODY_EDGE_SEL = '#ffffff'
+export const COLOR_PART_EDGE     = '#eeeeee'
+export const COLOR_PART_SELECTED = '#b5a16a'
+export const COLOR_PART_EDGE_SEL = '#ffffff'
 export const DEFAULT_PART_ROUGHNESS = 0.7
 
 // The mark of a body the edit in the editor is about to consume (delete_body,
@@ -20,7 +20,7 @@ export const DEFAULT_PART_ROUGHNESS = 0.7
 // The doomed FACE is always fully transparent, so there is no transparency
 // band to floor or ceiling: the pink wireframe is the mark and stays visible
 // whatever the part was styled at, while the face never obscures what survives.
-export const COLOR_BODY_REMOVED = '#bb5be1'
+export const COLOR_PART_REMOVED = '#bb5be1'
 
 // Geometry color palette
 export const COLOR_SOLVED = '#0288d1'  // darker blue for underconstrained

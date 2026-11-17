@@ -10,7 +10,7 @@ import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import type { PartDoc, BodyResult } from '@/types/cad'
 import { docVisibleFeatureIds } from '@/utils/featureVisibility'
-import { getBodiesToRender } from '@/utils/bodyRender'
+import { getPartsToRender } from '@/utils/partRender'
 import { docRef, resetHarness } from './usePartDoc.undoHarness'
 
 vi.mock('@/hooks/useDocumentState', async () => {
@@ -45,7 +45,7 @@ const bodies: Record<string, BodyResult> = {
 // document rule names the visible features, the body renderer reads them.
 const drawnBodies = () => {
   const features = docRef.current.features ?? []
-  return getBodiesToRender(bodies, features, undefined, undefined, docVisibleFeatureIds(features))
+  return getPartsToRender(bodies, features, undefined, undefined, docVisibleFeatureIds(features))
 }
 
 describe('feature visibility of a sweep', () => {

@@ -45,28 +45,28 @@ export function buildFaceIndex(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-  body: Body,
+  part: Body,
 ): FaceIndex {
   const byUuid = new Map<string, OccShape>()
   const ancestryRepo = new Repository()
-  if (body.shape === null) return { byUuid, ancestryRepo }
-  const shape = table.get<OccShape>(body.shape)
+  if (part.shape === null) return { byUuid, ancestryRepo }
+  const shape = table.get<OccShape>(part.shape)
   const faces = canonicalFaces(oc, scope, shape) as OccShape[]
-  assertAligned(faces.length, body.face_uuids, `${body.id} face index`)
+  assertAligned(faces.length, part.face_uuids, `${part.id} face index`)
   const { center, half } = bodyFrame(oc, scope, shape)
 
   faces.forEach((face, idx) => {
-    const uuid = body.face_uuids?.[idx] ?? null
+    const uuid = part.face_uuids?.[idx] ?? null
     if (uuid) byUuid.set(uuid, face)
-    if (!body.created_by) return
+    if (!part.created_by) return
     const centroid = faceCentroid(oc, scope, face) as Vec3
     const classifiers = geometryClassifiers(centroid, center, half)
     const ids: string[] = []
     if (uuid) ids.push(constructionUuidToken(uuid))
-    ids.push(ref(body.created_by), ref(body.id))
-    const ancestryTokens = (uuid && body.face_ancestry) ? (body.face_ancestry[uuid] ?? null) : null
+    ids.push(ref(part.created_by), ref(part.id))
+    const ancestryTokens = (uuid && part.face_ancestry) ? (part.face_ancestry[uuid] ?? null) : null
     if (ancestryTokens && ancestryTokens.length) ids.push(...ancestryTokens)
-    else if (body.profile_queries.length > 0) ids.push(...body.profile_queries)
+    else if (part.profile_queries.length > 0) ids.push(...part.profile_queries)
     if (classifiers.length) ids.push(...classifiers.map(ref))
     const stableIds = ids.filter((t) => !isClassifierId(t))
     const payload: FaceAncestryPayload = { type: faceSurfaceType(oc, scope, face), classifiers, shape: face }
@@ -82,13 +82,13 @@ export function makeFaceIndexCache(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-): (body: Body) => FaceIndex {
+): (part: Body) => FaceIndex {
   const cache = new Map<string, FaceIndex>()
-  return (body: Body): FaceIndex => {
-    let idx = cache.get(body.id)
+  return (part: Body): FaceIndex => {
+    let idx = cache.get(part.id)
     if (idx === undefined) {
-      idx = buildFaceIndex(oc, scope, table, body)
-      cache.set(body.id, idx)
+      idx = buildFaceIndex(oc, scope, table, part)
+      cache.set(part.id, idx)
     }
     return idx
   }
@@ -124,40 +124,40 @@ export function queryFaceUuid(q: string): string | null {
  *  3. When nothing contains the face, the named body is kept so the pick is
  *     reported against the body it names rather than silently dropped.
  */
-export function bodyOfQuery(
+export function partOfQuery(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-  bodyStore: Record<string, Body>,
-  indexFor: (body: Body) => FaceIndex,
+  partStore: Record<string, Body>,
+  indexFor: (part: Body) => FaceIndex,
   q: string,
 ): string | null {
   const contains = (bid: string): boolean => {
-    const body = bodyStore[bid]
-    if (body === undefined || body.shape === null) return false
-    return resolveFacesByQuery(oc, scope, table, body, indexFor(body), [q], bodyStore).get(q) != null
+    const part = partStore[bid]
+    if (part === undefined || part.shape === null) return false
+    return resolveFacesByQuery(oc, scope, table, part, indexFor(part), [q], partStore).get(q) != null
   }
-  const bodies = Object.keys(bodyStore)
-  const named = bodyIdOf(q, bodyStore)
+  const parts = Object.keys(partStore)
+  const named = bodyIdOf(q, partStore)
   const uuid = queryFaceUuid(q)
   if (uuid !== null) {
     const carries = (bid: string): boolean => {
-      const body = bodyStore[bid]
-      return body !== undefined && body.shape !== null && (body.face_uuids ?? []).includes(uuid)
+      const part = partStore[bid]
+      return part !== undefined && part.shape !== null && (part.face_uuids ?? []).includes(uuid)
     }
-    if (named !== null && named in bodyStore && carries(named)) return named
-    for (const bid of bodies) {
+    if (named !== null && named in partStore && carries(named)) return named
+    for (const bid of parts) {
       if (bid !== named && carries(bid)) return bid
     }
   }
-  if (named !== null && named in bodyStore) {
+  if (named !== null && named in partStore) {
     if (contains(named)) return named
-    for (const bid of bodies) {
+    for (const bid of parts) {
       if (bid !== named && contains(bid)) return bid
     }
     return named
   }
-  for (const bid of bodies) {
+  for (const bid of parts) {
     if (contains(bid)) return bid
   }
   return null
@@ -222,7 +222,7 @@ function isPreSplitPrismSplitChildUuid(ids: string[], uuid: string): boolean {
 function resolveByStableAncestry(
   repo: Repository,
   q: string,
-  bodyStore: Record<string, unknown> | null,
+  partStore: Record<string, unknown> | null,
 ): OccShape | null {
   const [ids, typeRestriction, classifier] = parseAncestry(q)
   const wanted = ids.filter(isClassifierId).map((i) => i.slice(1))
@@ -234,7 +234,7 @@ function resolveByStableAncestry(
     return null
   }
   try {
-    const hit = accept(repo.query(q, null, bodyStore))
+    const hit = accept(repo.query(q, null, partStore))
     if (hit !== null) return hit
   } catch (e) {
     if (!(e instanceof AmbiguousQueryError)) throw e
@@ -255,7 +255,7 @@ function resolveByStableAncestry(
   if (live || !legacy) return null
   const withoutUuid = ids.filter((id) => !isConstructionUuidId(id))
   try {
-    return accept(repo.query(makeAncestryQuery(withoutUuid, typeRestriction, classifier), null, bodyStore))
+    return accept(repo.query(makeAncestryQuery(withoutUuid, typeRestriction, classifier), null, partStore))
   } catch (e) {
     if (!(e instanceof AmbiguousQueryError)) throw e
   }
@@ -274,10 +274,10 @@ export function resolveFacesByQuery(
   _oc: OccModule,
   _scope: DisposeScope,
   _table: HandleTable,
-  _body: Body,
+  _part: Body,
   index: FaceIndex,
   faceQueries: string[],
-  bodyStore: Record<string, unknown> | null = null,
+  partStore: Record<string, unknown> | null = null,
 ): Map<string, OccShape | null> {
   const out = new Map<string, OccShape | null>()
   const memo = new Map<string, OccShape | null>()
@@ -291,7 +291,7 @@ export function resolveFacesByQuery(
     const uuid = queryFaceUuid(q)
     if (uuid !== null) face = index.byUuid.get(uuid) ?? null
     if (face === null && q.startsWith('?')) {
-      face = resolveByStableAncestry(index.ancestryRepo, q, bodyStore)
+      face = resolveByStableAncestry(index.ancestryRepo, q, partStore)
     }
     memo.set(q, face)
     out.set(q, face)

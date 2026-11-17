@@ -19,7 +19,7 @@ import { canonicalFaces } from '../../occ/bodyNames'
 import { SubShapeMap } from '../../occ/subshapeIdentity'
 import { transferBooleanNames } from '../booleanLineage'
 import { applyBodyOperation } from '../bodyOps'
-import { bareBody } from '../shared/bodyResolution'
+import { barePart } from '../shared/partResolution'
 import type { Body } from '../../types3d'
 import type { OccShape, OccSubShape } from '../../occ/occTypes'
 
@@ -31,7 +31,7 @@ describe.skipIf(!loadedOcc)('per-UUID owner recording (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const body = bareBody('body_base', 'ex1')
+      const body = barePart('body_base', 'ex1')
       body.shape = table.register(makeBoxAt(oc, scope, [-5, -5, -5], 10, 10, 10), 'ex1')
       const store: Record<string, Body> = { body_base: body }
 

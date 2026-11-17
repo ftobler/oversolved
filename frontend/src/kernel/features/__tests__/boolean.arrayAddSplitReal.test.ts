@@ -19,7 +19,7 @@ import { HandleTable } from '../../occ/handleTable'
 import { booleanWithDiff, volumeOf } from '../../occ/booleans'
 import { makeBoxAt, makeCylinder, solidCentroid } from '../../occ/primitives'
 import { Repository } from '../../query'
-import { bareBody } from '../shared/bodyResolution'
+import { barePart } from '../shared/partResolution'
 import { patternFeature, solveArray, solveCircularArray } from './patternBodyTestAdapters'
 import { solveBoolean } from '../boolean'
 import type { Body } from '../../types3d'
@@ -40,7 +40,7 @@ function rig(): Rig {
 }
 
 function seed(r: Rig, id: string, createdBy: string, shape: OccShape): Body {
-  const body = bareBody(id, createdBy)
+  const body = barePart(id, createdBy)
   body.shape = r.table.register(r.scope.detach(r.scope.track(shape)), createdBy)
   r.store[id] = body
   return body

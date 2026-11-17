@@ -66,10 +66,10 @@ function isFrameRecord(record: PlaneRecord): boolean {
 export function resolvePlaneRecord(
   globalRepo: Repository,
   query: string,
-  bodyStore: Record<string, Body> | null,
+  partStore: Record<string, Body> | null,
   leaf: string,
 ): PlaneRecord {
-  const planeData = lookupPlaneRecord(globalRepo, query, bodyStore)
+  const planeData = lookupPlaneRecord(globalRepo, query, partStore)
   if (planeData === null) {
     throw new Error(
       `${leaf}: plane not found: ${JSON.stringify(query)}; use one of ${PLANE_REF_SPELLINGS}`,
@@ -84,13 +84,13 @@ export function resolvePlaneRecord(
 function lookupPlaneRecord(
   globalRepo: Repository,
   query: string,
-  bodyStore: Record<string, Body> | null,
+  partStore: Record<string, Body> | null,
 ): PlaneRecord | null {
   // A bare builtin name is a UI spelling, not a repo key: the repo holds
   // `builtin_plane_top`, so translate before asking it anything.
   const bareId = resolveBarePlaneId(query) ?? resolveBarePlaneId(query.replace(/^@/, ''))
-  if (bareId !== null) return globalRepo.query('@' + bareId, null, bodyStore) as PlaneRecord | null
-  const direct = globalRepo.query(query, null, bodyStore) as PlaneRecord | null
+  if (bareId !== null) return globalRepo.query('@' + bareId, null, partStore) as PlaneRecord | null
+  const direct = globalRepo.query(query, null, partStore) as PlaneRecord | null
   if (direct !== null) return direct
   // A bare document plane id is an element key, not a query. The sketch rows
   // read it this way (`resolveSketchPlane`), so a user plane whose id is a plain
@@ -114,10 +114,10 @@ function lookupPlaneRecord(
 export function resolvePlaneRef(
   globalRepo: Repository,
   query: string,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, Body>,
   leaf: string,
 ): ResolvedPlane {
-  const planeData = resolvePlaneRecord(globalRepo, query, bodyStore, leaf)
+  const planeData = resolvePlaneRecord(globalRepo, query, partStore, leaf)
 
   let origin: number[]
   let normal: number[]

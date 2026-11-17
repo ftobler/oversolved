@@ -20,7 +20,7 @@ import { makeBoxAt, readSolidVertices, solidCentroid } from '../../occ/primitive
 import { canonicalFaces } from '../../occ/bodyNames'
 import { SubShapeMap } from '../../occ/subshapeIdentity'
 import { Repository } from '../../query'
-import { bareBody, resolveBody } from '../shared/bodyResolution'
+import { barePart, resolvePart } from '../shared/partResolution'
 import { solveBoolean } from '../boolean'
 import { solveArray } from './patternBodyTestAdapters'
 import { solveMirror, solveTransform } from '../transformMirror'
@@ -51,7 +51,7 @@ function rig(): Rig {
 
 /** Seed a body holding one axis-aligned box. */
 function seedBox(r: Rig, id: string, corner: [number, number, number], dx: number, dy = dx, dz = dx): Body {
-  const b = bareBody(id, id.replace(/^body_/, ''))
+  const b = barePart(id, id.replace(/^body_/, ''))
   b.shape = r.table.register(makeBoxAt(oc, r.scope, corner, dx, dy, dz), b.created_by)
   r.store[id] = b
   return b
@@ -182,7 +182,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
     // seedBox always registers a shape, so the handle existed and the deletion
     // released it.
     expect(r.table.has(oldHandle!)).toBe(false)
-    expect(() => resolveBody('body_t', r.store)).toThrow(/not found/)
+    expect(() => resolvePart('body_t', r.store)).toThrow(/not found/)
     r.scope.dispose()
   })
 
@@ -347,7 +347,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
     const measured: { base: number; sib: number }[] = []
     for (const cutAt of [40, 60]) {
       const r = rig()
-      const bar = bareBody('body_bar', 'bar')
+      const bar = barePart('body_bar', 'bar')
       bar.shape = r.table.register(makeBoxAt(oc, r.scope, [0, 0, 0], 100, 5, 5), 'bar')
       r.store.body_bar = bar
       seedBox(r, 'body_tool', [cutAt, -1, -1], 10, 7, 7)
@@ -369,7 +369,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
 
   it('assertOneSolidPerBody catches a body that holds two solids', () => {
     const r = rig()
-    const b = bareBody('body_bad', 'bad')
+    const b = barePart('body_bad', 'bad')
     b.shape = r.table.register(compoundOf(r.scope, [
       makeBoxAt(oc, r.scope, [0, 0, 0], 3, 3, 3),
       makeBoxAt(oc, r.scope, [30, 0, 0], 3, 3, 3),
@@ -411,10 +411,10 @@ describe.skipIf(!hasOcc)('bodySplit: the leaves that used to leak', () => {
 
   it('boolean intersect leaving two lumps makes two parts', () => {
     const r = rig()
-    const bar = bareBody('body_bar', 'bar')
+    const bar = barePart('body_bar', 'bar')
     bar.shape = r.table.register(makeBoxAt(oc, r.scope, [0, 0, 0], 100, 5, 5), 'bar')
     r.store.body_bar = bar
-    const tool = bareBody('body_tool', 'tool')
+    const tool = barePart('body_tool', 'tool')
     tool.shape = r.table.register(compoundOf(r.scope, [
       makeBoxAt(oc, r.scope, [0, 0, 0], 10, 5, 5),
       makeBoxAt(oc, r.scope, [50, 0, 0], 10, 5, 5),
@@ -430,7 +430,7 @@ describe.skipIf(!hasOcc)('bodySplit: the leaves that used to leak', () => {
 
   it('boolean subtract that severs the target still makes two parts', () => {
     const r = rig()
-    const bar = bareBody('body_bar', 'bar')
+    const bar = barePart('body_bar', 'bar')
     bar.shape = r.table.register(makeBoxAt(oc, r.scope, [0, 0, 0], 100, 5, 5), 'bar')
     r.store.body_bar = bar
     seedBox(r, 'body_tool', [40, -1, -1], 10, 7, 7)
@@ -552,7 +552,7 @@ describe.skipIf(!hasOcc)('bodySplit: the leaves that used to leak', () => {
 
   it('bodyOps cut that severs a body makes two parts', () => {
     const r = rig()
-    const bar = bareBody('body_bar', 'bar')
+    const bar = barePart('body_bar', 'bar')
     bar.shape = r.table.register(makeBoxAt(oc, r.scope, [0, 0, 0], 100, 5, 5), 'bar')
     r.store.body_bar = bar
     const res = applyBodyOperation(oc, r.scope, r.table, {
@@ -613,7 +613,7 @@ describe.skipIf(!hasOcc)('bodySplit: a hole can sever a body too', () => {
     ]) {
       shape = r.scope.track(booleanWithDiff(oc, r.scope, shape, part, 'fuse').shape)
     }
-    const body = bareBody('body_bar', 'bar')
+    const body = barePart('body_bar', 'bar')
     body.shape = r.table.register(r.scope.detach(shape), 'bar')
     r.store.body_bar = body
     expect(countSolids(oc, r.scope, r.table.get<OccShape>(body.shape))).toBe(1)
@@ -643,7 +643,7 @@ describe.skipIf(!hasOcc)('bodySplit: a hole can sever a body too', () => {
 describe.skipIf(!hasOcc)('bodySplit: the invariant holds across successive splits', () => {
   it('cutting a body, then cutting its sibling, never collides on ids', () => {
     const r = rig()
-    const bar = bareBody('body_bar', 'bar')
+    const bar = barePart('body_bar', 'bar')
     bar.shape = r.table.register(makeBoxAt(oc, r.scope, [0, 0, 0], 100, 5, 5), 'bar')
     r.store.body_bar = bar
     seedBox(r, 'body_t1', [30, -1, -1], 5, 7, 7)

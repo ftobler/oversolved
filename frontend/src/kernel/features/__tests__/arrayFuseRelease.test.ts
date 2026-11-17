@@ -54,7 +54,7 @@ import { SubShapeMap } from '../../occ/subshapeIdentity'
 import { DisposeScope } from '../../occ/disposeScope'
 import { solveArray } from './patternBodyTestAdapters'
 import { INSTANCE_FUSE_CHUNK } from '../patternBody'
-import { bareBody } from '../shared/bodyResolution'
+import { barePart } from '../shared/partResolution'
 import { emptyBrepDiff } from '../../types3d'
 import type { OccModule } from '../../occ/occTypes'
 import type { Repository } from '../../query'
@@ -129,7 +129,7 @@ function run(countX: number): {
 
   const table = new HandleTable()
   const source = makeDouble('source')
-  const body: Body = { ...bareBody('body_ex1', 'ex1'), shape: table.register(source, 'ex1') }
+  const body: Body = { ...barePart('body_ex1', 'ex1'), shape: table.register(source, 'ex1') }
   const scope = new DisposeScope()
   const bodyStore: Record<string, Body> = { body_ex1: body }
   const repo = { query: () => ({ start: [0, 0, 0], end: [1, 0, 0] }), elements: new Map() } as unknown as Repository
@@ -206,7 +206,7 @@ describe('array add fuse releases (H21)', () => {
 
     const table = new HandleTable()
     const source = makeDouble('source')
-    const body: Body = { ...bareBody('body_ex1', 'ex1'), shape: table.register(source, 'ex1') }
+    const body: Body = { ...barePart('body_ex1', 'ex1'), shape: table.register(source, 'ex1') }
     const scope = new DisposeScope()
     const bodyStore: Record<string, Body> = { body_ex1: body }
     const repo = { query: () => ({ start: [0, 0, 0], end: [1, 0, 0] }), elements: new Map() } as unknown as Repository

@@ -8,7 +8,7 @@ import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import type { Repository } from '../query'
 import { clearConsumedBodyAncestry } from '../query'
-import { resolveBodyRefList } from './shared/bodyResolution'
+import { resolvePartRefList } from './shared/partResolution'
 
 type Dict = Record<string, unknown>
 
@@ -33,7 +33,7 @@ export function solveDeleteBody(
   // Resolves against the intact store before anything is removed, so two picks
   // landing on the same body (different faces) collapse into one deletion
   // instead of letting the second ref fail against an emptied slot.
-  const keys = resolveBodyRefList(bodyQueries, globalRepo, bodyStore, 'delete_body')
+  const keys = resolvePartRefList(bodyQueries, globalRepo, bodyStore, 'delete_body')
 
   for (const bodyKey of keys) {
     const body = bodyStore[bodyKey]

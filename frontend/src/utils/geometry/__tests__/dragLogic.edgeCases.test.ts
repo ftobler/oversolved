@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { computeDragMutation, collectCoincidentVertexIds } from '@/utils/geometry/dragLogic'
-import { BODY_SNAP_FEAT_PREFIX } from '@/utils/geometry/bodySnapProjection'
+import { PART_SNAP_FEAT_PREFIX } from '@/utils/geometry/partSnapProjection'
 
 // Branches the main dragLogic suite leaves uncovered: body-snap targets (which
 // are position-only, no constraint), and parseLocalVertexRef's reject paths
@@ -27,7 +27,7 @@ describe('computeDragMutation body-snap targets are position-only', () => {
       kind: 'vertex' as const,
       position: [5, 5] as [number, number],
       constraintKind: 'coincident',
-      vertexId: `vertex:${BODY_SNAP_FEAT_PREFIX}xyz:v0`,
+      vertexId: `vertex:${PART_SNAP_FEAT_PREFIX}xyz:v0`,
     }
     const result = computeDragMutation([200, 200], drag, snapTarget)
     expect(result?.type).toBe('move_vertex')
@@ -44,7 +44,7 @@ describe('computeDragMutation body-snap targets are position-only', () => {
       kind: 'entity' as const,
       position: [3, 0] as [number, number],
       constraintKind: 'coincident',
-      entityRef: `entity:${BODY_SNAP_FEAT_PREFIX}xyz:e1`,
+      entityRef: `entity:${PART_SNAP_FEAT_PREFIX}xyz:e1`,
     }
     const result = computeDragMutation([200, 200], drag, snapTarget)
     expect(result?.type).toBe('move_vertex')

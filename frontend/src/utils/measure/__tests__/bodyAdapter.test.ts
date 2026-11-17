@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { BodyResult, EdgeData, FaceData } from '@/types/cad'
-import { bodyPrimitive } from '@/utils/measure/adapters/body'
+import { partPrimitive } from '@/utils/measure/adapters/part'
 import { isKernelAsk, measureOne, measurePair, type MeasureResult } from '@/utils/measure/rules'
 import { formatReadouts } from '@/utils/measure/format'
 
@@ -43,13 +43,13 @@ describe('bodyPrimitive: face classification', () => {
   const bodies = bodiesOf(probe)
 
   it('classifies a curved face by surface_type and uses the frame axis, never the radial normal', () => {
-    const cylinder = bodyPrimitive('?f1:cylinderface', bodies)
+    const cylinder = partPrimitive('?f1:cylinderface', bodies)
     expect(cylinder).toMatchObject({ type: 'cylinder', axis: [0, 1, 0], radius: 4 })
   })
 
   it('reads the flat face + hole face pair as an axis distance, not a plane distance', () => {
-    const flat = bodyPrimitive('?f0:flatface', bodies)
-    const cylinder = bodyPrimitive('?f1:cylinderface', bodies)
+    const flat = partPrimitive('?f0:flatface', bodies)
+    const cylinder = partPrimitive('?f1:cylinderface', bodies)
     expect(flat).not.toBeNull()
     expect(cylinder).not.toBeNull()
     const result = measurePair(flat!, cylinder!)
@@ -70,16 +70,16 @@ describe('bodyPrimitive: face classification', () => {
       },
     })
     const map = bodiesOf(faces)
-    expect(bodyPrimitive('?c', map)).toMatchObject({ type: 'cone', axis: [0, 0, 1], semiAngle: Math.PI / 6 })
-    expect(bodyPrimitive('?s', map)).toMatchObject({ type: 'sphere', center: [0, 0, 5], radius: 7 })
-    expect(bodyPrimitive('?t', map)).toMatchObject({ type: 'torus', axis: [0, 1, 0], majorRadius: 10, minorRadius: 3 })
-    expect(measureOne(bodyPrimitive('?s', map)!)).toEqual({ kind: 'diameter', value: 14, label: 'diameter' })
+    expect(partPrimitive('?c', map)).toMatchObject({ type: 'cone', axis: [0, 0, 1], semiAngle: Math.PI / 6 })
+    expect(partPrimitive('?s', map)).toMatchObject({ type: 'sphere', center: [0, 0, 5], radius: 7 })
+    expect(partPrimitive('?t', map)).toMatchObject({ type: 'torus', axis: [0, 1, 0], majorRadius: 10, minorRadius: 3 })
+    expect(measureOne(partPrimitive('?s', map)!)).toEqual({ kind: 'diameter', value: 14, label: 'diameter' })
     // The two singles the new frame fields make readable.
-    const coneReadout = measureOne(bodyPrimitive('?c', map)!) as { kind: string; value: number; label: string }
+    const coneReadout = measureOne(partPrimitive('?c', map)!) as { kind: string; value: number; label: string }
     expect(coneReadout.kind).toBe('angle')
     expect(coneReadout.label).toBe('angle')
     expect(coneReadout.value).toBeCloseTo(30, 9)
-    expect(measureOne(bodyPrimitive('?t', map)!)).toEqual({
+    expect(measureOne(partPrimitive('?t', map)!)).toEqual({
       kind: 'radius',
       value: 10,
       label: 'major radius',
@@ -95,8 +95,8 @@ describe('bodyPrimitive: face classification', () => {
         face_queries: ['?old'],
       },
     })
-    expect(bodyPrimitive('?old', bodiesOf(old))).toMatchObject({ type: 'opaque' })
-    expect(measureOne(bodyPrimitive('?old', bodiesOf(old))!)).toEqual({ kernel: 'length' })
+    expect(partPrimitive('?old', bodiesOf(old))).toMatchObject({ type: 'opaque' })
+    expect(measureOne(partPrimitive('?old', bodiesOf(old))!)).toEqual({ kernel: 'length' })
   })
 
   it('keeps the flat-face reading for a body solved before surface_type existed', () => {
@@ -107,7 +107,7 @@ describe('bodyPrimitive: face classification', () => {
         face_queries: ['?old'],
       },
     })
-    expect(bodyPrimitive('?old', bodiesOf(old))).toMatchObject({
+    expect(partPrimitive('?old', bodiesOf(old))).toMatchObject({
       type: 'plane', point: [0, 0, 3], normal: [0, 0, 1],
     })
   })
@@ -125,20 +125,20 @@ describe('bodyPrimitive: edges and vertices', () => {
   const bodies = bodiesOf(body)
 
   it('reads a line edge length and a circle edge diameter', () => {
-    expect(measureOne(bodyPrimitive('@body_1/edge/0', bodies)!))
+    expect(measureOne(partPrimitive('@body_1/edge/0', bodies)!))
       .toEqual({ kind: 'length', value: 5, label: 'length' })
-    expect(measureOne(bodyPrimitive('@body_1/edge/1', bodies)!))
+    expect(measureOne(partPrimitive('@body_1/edge/1', bodies)!))
       .toEqual({ kind: 'diameter', value: 8, label: 'diameter' })
   })
 
   it('reads an arc edge radius and sweep in radians', () => {
-    const arc = measureOne(bodyPrimitive('@body_1/edge/2', bodies)!)
+    const arc = measureOne(partPrimitive('@body_1/edge/2', bodies)!)
     expect(arc).toMatchObject({ kind: 'radius', value: 2, label: 'radius' })
     expect((arc as { extra: { value: number }[] }).extra[0].value).toBeCloseTo(90, 9)
   })
 
   it('reads a full ellipse edge as both semi-axes and marks a partial one for the kernel', () => {
-    expect(measureOne(bodyPrimitive('@body_1/edge/3', bodies)!)).toMatchObject({
+    expect(measureOne(partPrimitive('@body_1/edge/3', bodies)!)).toMatchObject({
       kind: 'radius', value: 4, label: 'major radius',
     })
     const partial = bodyOf({
@@ -147,16 +147,16 @@ describe('bodyPrimitive: edges and vertices', () => {
       ],
       edge_queries: ['?partial'],
     })
-    expect(bodyPrimitive('?partial', bodiesOf(partial))).toMatchObject({ type: 'opaque' })
-    expect(measureOne(bodyPrimitive('?partial', bodiesOf(partial))!)).toEqual({ kernel: 'length' })
+    expect(partPrimitive('?partial', bodiesOf(partial))).toMatchObject({ type: 'opaque' })
+    expect(measureOne(partPrimitive('?partial', bodiesOf(partial))!)).toEqual({ kernel: 'length' })
   })
 
   it('marks a spline edge for the kernel', () => {
-    expect(measureOne(bodyPrimitive('@body_1/edge/4', bodies)!)).toEqual({ kernel: 'length' })
+    expect(measureOne(partPrimitive('@body_1/edge/4', bodies)!)).toEqual({ kernel: 'length' })
   })
 
   it('resolves a body vertex as a point, with no single-pick readout', () => {
-    const vertex = bodyPrimitive('?v0', bodies)
+    const vertex = partPrimitive('?v0', bodies)
     expect(vertex).toEqual({ type: 'point', p: [1, 2, 3] })
     expect(measureOne(vertex!)).toBeNull()
   })
@@ -167,8 +167,8 @@ describe('bodyPrimitive: edges and vertices', () => {
     // element.
     const padded = bodyOf({ edges: [line([0, 0, 0], [1, 0, 0])], edge_queries: ['', '?named'] })
     const map = bodiesOf(padded)
-    expect(bodyPrimitive('', map)).toBeNull()
-    expect(bodyPrimitive('@missing/edge/0', map)).toBeNull()
+    expect(partPrimitive('', map)).toBeNull()
+    expect(partPrimitive('@missing/edge/0', map)).toBeNull()
   })
 })
 
@@ -182,15 +182,15 @@ describe('bodyPrimitive: topo-fallback ids across split siblings', () => {
   })
 
   it('measures the sibling named by the query, not the first body of the feature', () => {
-    expect(measureOne(bodyPrimitive('@body_ex/edge/0', siblings())!))
+    expect(measureOne(partPrimitive('@body_ex/edge/0', siblings())!))
       .toEqual({ kind: 'length', value: 10, label: 'length' })
-    expect(measureOne(bodyPrimitive('@body_ex_1/edge/0', siblings())!))
+    expect(measureOne(partPrimitive('@body_ex_1/edge/0', siblings())!))
       .toEqual({ kind: 'length', value: 3, label: 'length' })
   })
 
   it('measures between the two siblings own edges', () => {
-    const a = bodyPrimitive('@body_ex/edge/0', siblings())!
-    const b = bodyPrimitive('@body_ex_1/edge/0', siblings())!
+    const a = partPrimitive('@body_ex/edge/0', siblings())!
+    const b = partPrimitive('@body_ex_1/edge/0', siblings())!
     expect(readoutLines(measurePair(a, b))).toEqual(['distance 5.000 mm'])
   })
 })

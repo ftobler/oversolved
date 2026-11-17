@@ -23,7 +23,7 @@ import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import type { Repository } from '../query'
-import { AmbiguousBodyRefError, resolveBody } from './shared/bodyResolution'
+import { AmbiguousPartRefError, resolvePart } from './shared/partResolution'
 import { applyBodyOperation } from './bodyOps'
 import {
   readSourceFaceRows, rebuildNamesForTransformedCopy, transformCopyWithMapping, type NameMaps,
@@ -192,12 +192,12 @@ function resolveSources(
 function resolvePatternTarget(sourceId: string, explicitRef: string, bodyStore: Record<string, Body>, noun: string): Body {
   if (explicitRef) {
     try {
-      return resolveBody(explicitRef, bodyStore)
+      return resolvePart(explicitRef, bodyStore)
     } catch (e) {
       swallowUnlessTrap(e)
       // A ref naming several bodies is a different diagnosis from a missing
       // one, and its own message lists the ids to choose between.
-      if (e instanceof AmbiguousBodyRefError) throw e
+      if (e instanceof AmbiguousPartRefError) throw e
       throw new Error(`${noun}: target_body '${explicitRef}' does not name one part (${extractErrorMessage(e)})`)
     }
   }

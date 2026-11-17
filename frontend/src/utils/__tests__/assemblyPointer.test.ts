@@ -54,7 +54,7 @@ function mountHost(initial: AssemblyDoc) {
   const swings: number[] = []
   const raw = createAssemblyPointerAdapter({
     beginPartManipulation: store.beginPartManipulation,
-    beginBodyDrag: store.beginBodyDrag,
+    beginPartDrag: store.beginBodyDrag,
     setDragTarget: store.setDragTarget,
     dragPartTranslate: store.dragPartTranslate,
     rotatePartGizmo: (axis, angle, pivot) => {
@@ -77,7 +77,7 @@ function mountHost(initial: AssemblyDoc) {
     pointerCancel: raw.pointerCancel,
     onBodyPointerDown: (handle: string, grab: Vec3, normal: Vec3, pointer: PointerRef = P) => {
       raw.pointerDown(pointer, 0, 0)
-      return raw.onBodyPointerDown(handle, grab, normal, pointer)
+      return raw.onPartPointerDown(handle, grab, normal, pointer)
     },
     onGizmoPointerDown: (
       handle: string, mode: GizmoMode, axisName: GizmoAxisName,

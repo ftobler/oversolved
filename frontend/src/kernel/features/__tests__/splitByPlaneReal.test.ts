@@ -21,7 +21,7 @@ import { canonicalFaces } from '../../occ/bodyNames'
 import { makeBoxAt, shapeBndBox } from '../../occ/primitives'
 import { stepShapeToBytes } from '../../occ/stepIo'
 import { mintFaceUuid, splitFacePath, splitPlaneFacePath } from '../../constructionName'
-import { resolveBodyIds } from '../shared/bodyResolution'
+import { resolvePartIds } from '../shared/partResolution'
 import { buildFaceIndex, resolveFacesByQuery } from '../shared/faceResolution'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
@@ -237,7 +237,7 @@ describe.skipIf(!oc || !solveBytes)('solveSplit through the builder (real OCC + 
     const total = volumeAt(r, 'sp1', 'body_ex1') + volumeAt(r, 'sp1', 'body_ex1_1')
     expect(total).toBeCloseTo(1000, 6)
     // A feature ref still names both halves.
-    expect(resolveBodyIds('@ex1', store).sort()).toEqual(['body_ex1', 'body_ex1_1'])
+    expect(resolvePartIds('@ex1', store).sort()).toEqual(['body_ex1', 'body_ex1_1'])
     expectUniqueFaceUuids(r, 'sp1')
   })
 

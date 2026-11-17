@@ -95,7 +95,7 @@ export function queryLabel(
     // split-sibling suffix included.
     const featureId = ownerOf(query)
     const feature = featureId ? features.find(f => f.id === featureId) : undefined
-    const owner = feature ? (feature.label || feature.id) : (featureId ?? topo.bodyId)
+    const owner = feature ? (feature.label || feature.id) : (featureId ?? topo.partId)
     return `${kind} of ${owner}`
   }
 

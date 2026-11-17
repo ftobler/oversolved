@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import type { ViewportHandle } from '@/components/Viewport'
 import type { PartDoc, PartFeature, Mutation, Sketch, LengthUnit } from '@/types/cad'
 import { randomId } from '@/utils/yamlMutations'
-import { isWholeBodySelectionId, parseTopoFallbackQuery, stripSelectionWrapper } from '@/utils/query/selectionId'
+import { isWholePartSelectionId, parseTopoFallbackQuery, stripSelectionWrapper } from '@/utils/query/selectionId'
 import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
 import { findEdgeKindForQuery } from '@/picking/bodyDispatchCallbacks'
@@ -76,7 +76,7 @@ import { getFileRegistry } from '@/stores/fileRegistry'
 
 import { normalizeHexColor } from '@/utils/core/partColors'
 import { computeEffectiveVisibleBodies } from '@/components/Viewport/bodyUtils'
-import { builtinPlaneTransform, planeTransformNormal, resolvePlaneTransform } from '@/utils/geometry/bodySnapProjection'
+import { builtinPlaneTransform, planeTransformNormal, resolvePlaneTransform } from '@/utils/geometry/partSnapProjection'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/hooks/usePartDoc'
 import { hasDanglingContentInDoc } from '@/utils/yamlMutations/solveResult'
@@ -687,7 +687,7 @@ export default function Part() {
       // feature through the same machinery the doomed-wireframe preview rides
       // on, instead of a `delete_feature` aimed at a body id that names no
       // feature. Face/edge/vertex picks are body primitives, not the body.
-      if (bodyIds.has(ref) || isWholeBodySelectionId(id)) {
+      if (bodyIds.has(ref) || isWholePartSelectionId(id)) {
         // The feature that GENERATES the body is deleted in the same selection:
         // the body vanishes with it, and a delete_body would then target a body
         // the final doc no longer contains, failing every later solve.

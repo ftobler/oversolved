@@ -12,9 +12,9 @@ import { normalize, type Primitive, type Vec3 } from '../primitives'
 
 const TWO_PI = Math.PI * 2
 
-interface BodyElement {
-  bodyId: string
-  body: BodyResult
+interface PartElement {
+  partId: string
+  part: BodyResult
   kind: 'edge' | 'face' | 'vertex'
   index: number
 }
@@ -24,7 +24,7 @@ interface BodyElement {
  * nothing: the query arrays are padded with '' for entities the kernel could
  * not name, so a plain `indexOf('')` would resolve the first unnamed element.
  */
-function findBodyElement(id: string, bodies: Record<string, BodyResult>): BodyElement | null {
+function findPartElement(id: string, parts: Record<string, BodyResult>): PartElement | null {
   if (!id) return null
   // Simple slash format names a BODY id, which is what `bodies` is keyed by, so
   // a split sibling's fallback query lands on the sibling the user picked.
@@ -32,16 +32,16 @@ function findBodyElement(id: string, bodies: Record<string, BodyResult>): BodyEl
   // `tri` is the legacy per-triangle highlight fallback: highlight-only, and a
   // triangle index is not a B-rep element index.
   if (parsed && parsed.kind !== 'tri') {
-    const body = bodies[parsed.bodyId]
-    if (body) return { bodyId: parsed.bodyId, body, kind: parsed.kind, index: parsed.idx }
+    const part = parts[parsed.partId]
+    if (part) return { partId: parsed.partId, part, kind: parsed.kind, index: parsed.idx }
   }
-  for (const [bodyId, body] of Object.entries(bodies)) {
+  for (const [bodyId, body] of Object.entries(parts)) {
     const edge = body.edge_queries?.indexOf(id) ?? -1
-    if (edge >= 0) return { bodyId, body, kind: 'edge', index: edge }
+    if (edge >= 0) return { partId: bodyId, part: body, kind: 'edge', index: edge }
     const face = body.mesh?.face_queries?.indexOf(id) ?? -1
-    if (face >= 0) return { bodyId, body, kind: 'face', index: face }
+    if (face >= 0) return { partId: bodyId, part: body, kind: 'face', index: face }
     const vertex = body.vertex_queries?.indexOf(id) ?? -1
-    if (vertex >= 0) return { bodyId, body, kind: 'vertex', index: vertex }
+    if (vertex >= 0) return { partId: bodyId, part: body, kind: 'vertex', index: vertex }
   }
   return null
 }
@@ -51,21 +51,21 @@ function findBodyElement(id: string, bodies: Record<string, BodyResult>): BodyEl
  * index in that body's render arrays. Null when the id names no body element,
  * which is how a sketch or a datum pick stays out of a kernel request.
  */
-export function bodyPickRef(
+export function partPickRef(
   id: string,
-  bodies: Record<string, BodyResult> | undefined,
+  parts: Record<string, BodyResult> | undefined,
 ): Extract<MeasurePickRef, { kind: 'face' | 'edge' | 'vertex' }> | null {
-  if (!bodies) return null
-  const found = findBodyElement(id, bodies)
+  if (!parts) return null
+  const found = findPartElement(id, parts)
   if (!found) return null
-  return { bodyId: found.bodyId, kind: found.kind, index: found.index }
+  return { bodyId: found.partId, kind: found.kind, index: found.index }
 }
 
-export function bodyPrimitive(id: string, bodies: Record<string, BodyResult> | undefined): Primitive | null {
-  if (!bodies) return null
-  const found = findBodyElement(id, bodies)
+export function partPrimitive(id: string, parts: Record<string, BodyResult> | undefined): Primitive | null {
+  if (!parts) return null
+  const found = findPartElement(id, parts)
   if (!found) return null
-  const { body, kind, index } = found
+  const { part: body, kind, index } = found
 
   if (kind === 'vertex') {
     const vertex = body.vertices?.[index]

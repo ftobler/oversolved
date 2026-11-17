@@ -44,7 +44,7 @@ export type { GestureOutcome, GestureSource, PointerRef } from '@/utils/assembly
 export interface AssemblyPointerStore {
   beginPartManipulation: (handle: string) => boolean
   // A body grab: begins a solver-driven session, capturing the grab point.
-  beginBodyDrag: (handle: string, worldGrab: Vec3) => boolean
+  beginPartDrag: (handle: string, worldGrab: Vec3) => boolean
   // Where the grab point is being pulled to, in world space.
   setDragTarget: (target: Vec3) => void
   dragPartTranslate: (delta: Vec3) => void
@@ -149,7 +149,7 @@ export interface AssemblyPointerAdapter {
   // secondary pointer going away cannot end the primary's drag.
   pointerCancel: (pointer: PointerRef) => void
   // Selects the part; opens a drag session unless it is fixed.
-  onBodyPointerDown: (handle: string, grab: Vec3, viewNormal: Vec3, pointer: PointerRef) => boolean
+  onPartPointerDown: (handle: string, grab: Vec3, viewNormal: Vec3, pointer: PointerRef) => boolean
   /**
    * `axis` is the world slide/swing axis, or for `plane` the plane's normal.
    * `axisName` names the same axis in part-local terms, for the drag state the
@@ -206,12 +206,12 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
     return true
   }
 
-  const onBodyPointerDown = (handle: string, grab: Vec3, viewNormal: Vec3, pointer: PointerRef): boolean => {
+  const onPartPointerDown = (handle: string, grab: Vec3, viewNormal: Vec3, pointer: PointerRef): boolean => {
     // Refuse a foreign pointer before any store write: otherwise a second touch
     // would overwrite the live session before the machine could reject it.
     if (!machine.canOpen(pointer)) return false
     store.selectPart(handle)
-    if (!store.beginBodyDrag(handle, grab)) return false
+    if (!store.beginPartDrag(handle, grab)) return false
     return openGesture({ kind: 'bodyDrag', grab, normal: viewNormal }, 'body', pointer)
   }
 
@@ -360,7 +360,7 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
     pointerDown: machine.pointerDown,
     pointerMove: machine.pointerMove,
     pointerCancel,
-    onBodyPointerDown,
+    onPartPointerDown,
     onGizmoPointerDown,
     onPointerMove,
     onPointerUp,

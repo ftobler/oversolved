@@ -7,7 +7,7 @@ import type { SnapTarget, SnapCandidate, EntityCandidate } from '@/utils/geometr
 import type { CircleDragMode } from '@/kernel/features/circleDragMode'
 import { findSnapTarget, collectVertexTargetsFlat, collectEntityCandidatesFlat } from '@/utils/geometry/snapDetection'
 import { isPureClick, CLICK_THRESHOLD_PX } from '@/utils/pointerAbstraction'
-import { BODY_SNAP_FEAT_PREFIX } from '@/utils/geometry/bodySnapProjection'
+import { PART_SNAP_FEAT_PREFIX } from '@/utils/geometry/partSnapProjection'
 import { VERTEX_POINT_KEY_SUFFIXES } from '@/types/vertexKeys'
 
 // Drag snap radii in screen pixels. The vertex pull zone is deliberately larger
@@ -235,8 +235,8 @@ export function computeDragMutation(
   if (snapTarget?.kind === 'vertex') {
     // Body snap targets encode the body featureId with BODY_SNAP_FEAT_PREFIX; no constraint is
     // created because the projected 3D position is a positional reference only.
-    const isBodySnap = snapTarget.vertexId?.startsWith(`vertex:${BODY_SNAP_FEAT_PREFIX}`)
-    if (isBodySnap) {
+    const isPartSnap = snapTarget.vertexId?.startsWith(`vertex:${PART_SNAP_FEAT_PREFIX}`)
+    if (isPartSnap) {
       return {
         type: 'move_vertex',
         featureId: drag.featureId,
@@ -260,8 +260,8 @@ export function computeDragMutation(
 
   if (snapTarget?.kind === 'entity') {
     // Body edge snap: position only, no constraint.
-    const isBodyEntitySnap = snapTarget.entityRef?.startsWith(`entity:${BODY_SNAP_FEAT_PREFIX}`)
-    if (isBodyEntitySnap) {
+    const isPartEntitySnap = snapTarget.entityRef?.startsWith(`entity:${PART_SNAP_FEAT_PREFIX}`)
+    if (isPartEntitySnap) {
       return {
         type: 'move_vertex',
         featureId: drag.featureId,

@@ -13,11 +13,11 @@ import { COLOR_SELECTED, COLOR_HOVER, RENDER_ORDER_HIGHLIGHT, EDGE_HIGHLIGHT_LIN
 import { AssemblySelectionIndex } from '@/utils/assemblySelectionGeometry'
 import { getSectionClipPlaneList } from '@/viewport/sectionClipping'
 import { useSectionActive } from '@/viewport/useSection'
-import type { AssemblyPickBody } from '@/utils/assemblyPick'
+import type { AssemblyPickPart } from '@/utils/assemblyPick'
 import type { Vec3 } from '@/utils/transform3d'
 
 interface Props {
-  pickBodies: readonly AssemblyPickBody[]
+  pickBodies: readonly AssemblyPickPart[]
   selection: ReadonlySet<string>
   hovered: string | null
   /** Entity keys to draw in the hover colour alongside `hovered`, e.g. a mate

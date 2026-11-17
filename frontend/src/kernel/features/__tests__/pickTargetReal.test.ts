@@ -176,7 +176,7 @@ describe.skipIf(!oc || !solveBytes)('the instance pattern pick table', () => {
       scope: new DisposeScope(),
       table: h.table,
       globalRepo: repo,
-      bodyStore: { body_exPlate: body },
+      partStore: { body_exPlate: body },
       featuresById: {
         skT: { id: 'skT', kind: 'sketch', plane: FRONT, entities: SKETCH_ENTITIES, initial: SKETCH_INITIAL, constraints: [] },
       },

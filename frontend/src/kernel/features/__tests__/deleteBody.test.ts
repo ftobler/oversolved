@@ -6,7 +6,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { Repository, makeAncestryQuery } from '../../query'
 import { HandleTable } from '../../occ/handleTable'
 import { solveDeleteBody } from '../deleteBody'
-import { resolveBodyIds } from '../shared/bodyResolution'
+import { resolvePartIds } from '../shared/partResolution'
 import type { OccModule } from '../../occ/occTypes'
 import type { Body } from '../../types3d'
 
@@ -219,7 +219,7 @@ describe('solveDeleteBody', () => {
     const bodyStore: Record<string, Body> = { body_a: body('body_a'), body_b: body('body_b') }
     const faceQuery = makeAncestryQuery(['@body_a', '@body_b'], 'face')
     // The fallback alone would answer with the other body, so this discriminates.
-    expect(resolveBodyIds(faceQuery, bodyStore)).toEqual(['body_a'])
+    expect(resolvePartIds(faceQuery, bodyStore)).toEqual(['body_a'])
 
     const result = solveDeleteBody(
       oc, scope, new HandleTable(),

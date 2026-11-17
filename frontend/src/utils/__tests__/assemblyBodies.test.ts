@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { EdgeCurve, EntityAnchorIndex } from '@/kernel/partBundle'
 import type { MateAnchorDescriptor } from '@/types/cad'
-import { toBodyResults, toEdgeCurves, assemblyBodyId, buildEntityMateRefs } from '@/utils/assemblyBodies'
+import { toPartResults, toEdgeCurves, assemblyPartId, buildEntityMateRefs } from '@/utils/assemblyBodies'
 import { assemblyBuiltinEntityKey, assemblyEntityKey } from '@/utils/anchorCandidates'
 import { ASSEMBLY_HANDLE, ASSEMBLY_ORIGIN_ID, ASSEMBLY_TOP_ID } from '@/utils/assemblyBuiltins'
 import { getBodiesToRender } from '@/components/Viewport/bodyUtils'
@@ -23,28 +23,28 @@ const mesh = (x: number) => ({
 
 describe('toBodyResults', () => {
   it('keys each part instance body by handle so two instances never collide', () => {
-    const out = toBodyResults({ h1: [mesh(0)], h2: [mesh(10)] })
-    expect(Object.keys(out).sort()).toEqual([assemblyBodyId('h1', 0), assemblyBodyId('h2', 0)].sort())
-    expect(out[assemblyBodyId('h1', 0)].created_by).toBe('h1')
+    const out = toPartResults({ h1: [mesh(0)], h2: [mesh(10)] })
+    expect(Object.keys(out).sort()).toEqual([assemblyPartId('h1', 0), assemblyPartId('h2', 0)].sort())
+    expect(out[assemblyPartId('h1', 0)].created_by).toBe('h1')
   })
 
   it('carries the solved vertices through untouched (transforms are baked worker-side)', () => {
-    const out = toBodyResults({ h1: [mesh(5)] })
-    const body = out[assemblyBodyId('h1', 0)]
+    const out = toPartResults({ h1: [mesh(5)] })
+    const body = out[assemblyPartId('h1', 0)]
     expect(body.mesh!.vertices).toEqual(mesh(5).vertices)
     expect(body.mesh!.faces).toEqual(mesh(5).indices)
   })
 
   it('numbers multiple bodies of one part instance distinctly', () => {
-    const out = toBodyResults({ h1: [mesh(0), mesh(3)] })
+    const out = toPartResults({ h1: [mesh(0), mesh(3)] })
     expect(Object.keys(out)).toHaveLength(2)
   })
 
   it('feeds the viewport body-render path unchanged', () => {
-    const bodies = toBodyResults({ h1: [mesh(0)], h2: [mesh(10)] })
+    const bodies = toPartResults({ h1: [mesh(0)], h2: [mesh(10)] })
     const items = getBodiesToRender(bodies, undefined, undefined, undefined)
     expect(items).toHaveLength(2)
-    expect(items.map(i => i.bodyId).sort()).toEqual(Object.keys(bodies).sort())
+    expect(items.map(i => i.partId).sort()).toEqual(Object.keys(bodies).sort())
   })
 })
 
@@ -52,33 +52,33 @@ describe('toEdgeCurves', () => {
   it('keys curves by the same body id toBodyResults mints, so the viewport can join them', () => {
     const payload = { h1: [mesh(0)], h2: [mesh(10)] }
     const curves = toEdgeCurves(payload)
-    const bodies = toBodyResults(payload)
+    const bodies = toPartResults(payload)
     expect(Object.keys(curves).sort()).toEqual(Object.keys(bodies).sort())
     for (const item of getBodiesToRender(bodies, undefined, undefined, undefined)) {
-      expect(curves[item.bodyId]).toBeDefined()
+      expect(curves[item.partId]).toBeDefined()
     }
   })
 
   it('carries the solved curves through untouched (transforms are baked worker-side)', () => {
     const curves = toEdgeCurves({ h1: [mesh(5)] })
-    expect(curves[assemblyBodyId('h1', 0)]).toEqual([edge(5)])
+    expect(curves[assemblyPartId('h1', 0)]).toEqual([edge(5)])
   })
 
   it('drops a hidden seam from the drawn curves only, keeping the pick payload whole', () => {
     const body = { ...mesh(0), edges: [edge(0), edge(1)], hiddenEdges: [0] }
-    const drawn = toEdgeCurves({ h1: [body] })[assemblyBodyId('h1', 0)]
+    const drawn = toEdgeCurves({ h1: [body] })[assemblyPartId('h1', 0)]
     expect(drawn).toEqual([edge(1)])
   })
 
   it('separates the curves of two bodies of one part instance', () => {
     const curves = toEdgeCurves({ h1: [mesh(0), mesh(3)] })
-    expect(curves[assemblyBodyId('h1', 0)]).toEqual([edge(0)])
-    expect(curves[assemblyBodyId('h1', 1)]).toEqual([edge(3)])
+    expect(curves[assemblyPartId('h1', 0)]).toEqual([edge(0)])
+    expect(curves[assemblyPartId('h1', 1)]).toEqual([edge(3)])
   })
 
   it('yields an empty list for a body the bundle gave no edges', () => {
     const curves = toEdgeCurves({ h1: [{ ...mesh(0), edges: [] }] })
-    expect(curves[assemblyBodyId('h1', 0)]).toEqual([])
+    expect(curves[assemblyPartId('h1', 0)]).toEqual([])
   })
 })
 

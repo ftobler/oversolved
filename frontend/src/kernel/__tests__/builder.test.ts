@@ -9,7 +9,7 @@ import type { Body } from '../types3d'
 import { makeDeps, makeTrackerDeps } from '../builderTestUtils'
 import { onFeatureStart } from '../featureProgress'
 import { snapshotBodies } from '../builderSnapshot'
-import { bareBody } from '../features/shared/bodyResolution'
+import { barePart } from '../features/shared/partResolution'
 
 describe('build with mock solvers', () => {
   it('returns a build_state with feature_order', () => {
@@ -534,7 +534,7 @@ describe('edge cases', () => {
 describe('body snapshot provenance', () => {
   it('carries split_from, so a restored body would keep its array membership', () => {
     const body: Body = {
-      ...bareBody('body_ex2_1', 'ex2'),
+      ...barePart('body_ex2_1', 'ex2'),
       split_from: { feature: 'ca1', body: 'body_ex2' },
     }
     const snap = snapshotBodies({ body_ex2_1: body })

@@ -4,7 +4,7 @@ import { stripSelectionWrapper } from './selectionId'
 // bare `@ref` into the canonical `@body_<...>` form. Inputs that match no
 // branch pass through. `@body_ex1_1/face/0` keeps its sibling suffix: the
 // segment before the first slash is the whole body id.
-function normalizeBodyRef(ref: string): string {
+function normalizePartRef(ref: string): string {
   if (ref.startsWith('body:')) {
     ref = '@' + ref.slice(5)
   } else if (ref.startsWith('@') && ref.includes('/')) {
@@ -43,11 +43,11 @@ function normalizeBodyRef(ref: string): string {
  * which was then PERSISTED as `merge_target` where it could only fail to
  * resolve. The two fields want the same thing; there is one function.
  */
-export function resolveBodyPickRef(id: string): string {
+export function resolvePartPickRef(id: string): string {
   if (id.startsWith('face:') || id.startsWith('edge:')) {
     return stripSelectionWrapper(id)
   }
-  return normalizeBodyRef(id)
+  return normalizePartRef(id)
 }
 
 /**

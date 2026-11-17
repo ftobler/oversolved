@@ -6,12 +6,12 @@ import { describe, it, expect, vi } from 'vitest'
 import { render } from '@testing-library/react'
 import { IdPipelineContext, type IdPipeline } from '@/picking'
 import AssemblyPickLayers from '@/components/Viewport/assembly/AssemblyPickLayers'
-import type { AssemblyPickBody } from '@/utils/assemblyPick'
+import type { AssemblyPickPart } from '@/utils/assemblyPick'
 
-function body(handle: string): AssemblyPickBody {
+function body(handle: string): AssemblyPickPart {
   return {
     handle,
-    bodyKey: `${handle}:body_0`,
+    partKey: `${handle}:body_0`,
     faces: {
       positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
       triangleToFace: new Uint32Array([0]),
@@ -23,7 +23,7 @@ function body(handle: string): AssemblyPickBody {
   }
 }
 
-function fullBody(handle: string): AssemblyPickBody {
+function fullBody(handle: string): AssemblyPickPart {
   return {
     ...body(handle),
     edges: {
@@ -69,7 +69,7 @@ function stubPipeline(throwOnEdgeFor?: string) {
   }
 }
 
-function tree(pipeline: IdPipeline, bodies: AssemblyPickBody[], layers: { showFaces?: boolean; showEdges?: boolean } = {}) {
+function tree(pipeline: IdPipeline, bodies: AssemblyPickPart[], layers: { showFaces?: boolean; showEdges?: boolean } = {}) {
   return (
     <IdPipelineContext.Provider value={pipeline}>
       <AssemblyPickLayers bodies={bodies} {...layers} />
@@ -78,7 +78,7 @@ function tree(pipeline: IdPipeline, bodies: AssemblyPickBody[], layers: { showFa
 }
 
 describe('AssemblyPickLayers hidden seams', () => {
-  function seamBody(handle: string): AssemblyPickBody {
+  function seamBody(handle: string): AssemblyPickPart {
     return {
       ...body(handle),
       edges: {

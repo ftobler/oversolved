@@ -13,7 +13,7 @@ import { renderHook, act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import type { AssemblyDoc, PartInstance } from '@/types/cad'
 import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
-import { assemblyBodyId } from '@/utils/assemblyBodies'
+import { assemblyPartId } from '@/utils/assemblyBodies'
 
 const h = vi.hoisted(() => ({
   solveAssemblyViaWorker: vi.fn(),
@@ -133,13 +133,13 @@ describe('useAssemblySolve staleness', () => {
     expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2)  // the queued B solve started
     const mid = useAssemblyStore.getState()
     expect(mid.transforms.p1).toBeUndefined()  // A's scene was never written
-    expect(mid.bodies[assemblyBodyId('p1', 0)]).toBeUndefined()
+    expect(mid.bodies[assemblyPartId('p1', 0)]).toBeUndefined()
 
     // The queued B solve lands and wins.
     await act(async () => { releaseB(); await gateB })
     const store = useAssemblyStore.getState()
     expect(store.transforms.p1.tx).toBe(0)
-    expect(store.bodies[assemblyBodyId('p1', 0)]).toBeDefined()
+    expect(store.bodies[assemblyPartId('p1', 0)]).toBeDefined()
   })
 
   it('discards a stale live-drag solve result', async () => {
@@ -182,14 +182,14 @@ describe('useAssemblySolve staleness', () => {
     expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2)  // the queued tick runs
     const mid = useAssemblyStore.getState()
     expect(mid.transforms.p2.tx).not.toBe(42)  // the stale tick's pose was never written
-    expect(mid.bodies[assemblyBodyId('p2', 0)]).toBeUndefined()
+    expect(mid.bodies[assemblyPartId('p2', 0)]).toBeUndefined()
 
     await act(async () => { releaseB(); await gateB })
     const store = useAssemblyStore.getState()
     // The stale tick's p2 pose was dropped; the queued tick's result wins.
     expect(store.transforms.p2.tx).toBe(5)
     expect(store.transforms.p2.tx).not.toBe(42)
-    expect(store.bodies[assemblyBodyId('p2', 0)]).toBeDefined()
+    expect(store.bodies[assemblyPartId('p2', 0)]).toBeDefined()
 
     useAssemblyStore.getState().cancelPartManipulation()
   })
@@ -243,7 +243,7 @@ describe('useAssemblySolve staleness', () => {
 
     const store = useAssemblyStore.getState()
     expect(store.transforms.p1.tx).toBe(7)
-    expect(store.bodies[assemblyBodyId('p1', 0)]).toBeDefined()
+    expect(store.bodies[assemblyPartId('p1', 0)]).toBeDefined()
     expect(useSolverStore.getState().isSolving).toBe(false)
   })
 
@@ -318,7 +318,7 @@ describe('useAssemblySolve staleness', () => {
     await act(async () => {})
     const after = useAssemblyStore.getState()
     expect(after.transforms.p1).toBeUndefined()
-    expect(after.bodies[assemblyBodyId('p1', 0)]).toBeUndefined()
+    expect(after.bodies[assemblyPartId('p1', 0)]).toBeUndefined()
 
     // A remount gets a fresh version and a clean queue: one request, one solve.
     const second = renderHook(() => useAssemblySolve('asm-1', docWith(instance('p1'))))

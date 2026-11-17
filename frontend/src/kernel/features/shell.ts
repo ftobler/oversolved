@@ -9,14 +9,14 @@ import type { OccModule, OccShape, OccSubShape, OccXYZ } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import type { Repository } from '../query'
-import { resolveBody } from './shared/bodyResolution'
+import { resolvePart } from './shared/partResolution'
 import { resplitBody } from './bodySplit'
 import { readBodyNames, canonicalEdges, type UuidArray } from '../occ/bodyNames'
 import { SubShapeDedup } from '../occ/primitives'
 import { applyShellWithLineage, type ShellDirection, type ShellJoin } from '../occ/thickSolid'
 import { exploreFaces } from '../occ/edgeModifier'
 import { classifyFaceEdges } from '../occ/moveFace'
-import { bodyOfQuery, makeFaceIndexCache, resolveFacesByQuery } from './shared/faceResolution'
+import { partOfQuery, makeFaceIndexCache, resolveFacesByQuery } from './shared/faceResolution'
 import { OCC_CONFUSION, TOL_LENGTH_SLACK } from '../solverConstants'
 import { swallowUnlessTrap } from '../errors'
 
@@ -206,11 +206,11 @@ export function solveShell(
   // The one body this feature acts on.
   let targetId: string | null = null
   if (sourceBody) {
-    targetId = resolveBody(sourceBody, bodyStore).id
+    targetId = resolvePart(sourceBody, bodyStore).id
   } else {
     const ids = new Set<string>()
     for (const q of faces) {
-      const bid = bodyOfQuery(oc, scope, table, bodyStore, indexFor, q)
+      const bid = partOfQuery(oc, scope, table, bodyStore, indexFor, q)
       if (bid !== null) ids.add(bid)
     }
     if (ids.size > 1) {
@@ -220,7 +220,7 @@ export function solveShell(
   }
   if (targetId === null) throw new Error('shell: no part resolved from the picked faces')
 
-  const body = resolveBody(targetId, bodyStore)
+  const body = resolvePart(targetId, bodyStore)
   if (body.shape === null) throw new Error(`shell: part '${targetId}' has no shape`)
   const oldShape = table.get<OccShape>(body.shape)
 

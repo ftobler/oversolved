@@ -4,13 +4,13 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { act, render } from '@testing-library/react'
 import AssemblySelectionHighlight from '@/components/Viewport/assembly/AssemblySelectionHighlight'
-import type { AssemblyPickBody } from '@/utils/assemblyPick'
+import type { AssemblyPickPart } from '@/utils/assemblyPick'
 import { DEFAULT_SECTION_STATE, useSectionStore } from '@/stores/sectionStore'
 
-function body(): AssemblyPickBody {
+function body(): AssemblyPickPart {
   return {
     handle: 'B',
-    bodyKey: 'B',
+    partKey: 'B',
     faces: {
       positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
       triangleToFace: new Uint32Array([0]),

@@ -39,7 +39,7 @@ const solveResults = {
   builtin_plane_top: { plane: FRONT },
 }
 
-const ctx = { solveResults, bodies: { body_1: body } }
+const ctx = { solveResults, parts: { body_1: body } }
 
 describe('measureSelection: mixed picks keep both sides (defect 1)', () => {
   it('measures a datum plane plus a cylinder face as an axis distance, not the diameter', () => {
@@ -129,7 +129,7 @@ describe('measureSelection: the kernel ask names the picks', () => {
     vertices: [],
     vertex_queries: [],
   }
-  const two = { ...ctx, bodies: { body_1: body, body_2: spline } }
+  const two = { ...ctx, parts: { body_1: body, body_2: spline } }
 
   it('asks for a spline edge length with the body and the render index', () => {
     expect(measureSelectionPicks(new Set(['?sp']), two)).toEqual({
@@ -186,7 +186,7 @@ describe('measureSelection: the document unit and its extras', () => {
       ],
       edge_queries: ['?a', '?b'],
     }
-    expect(measureSelection(new Set(['?a', '?b']), { bodies: { body_1: skew } }))
+    expect(measureSelection(new Set(['?a', '?b']), { parts: { body_1: skew } }))
       .toEqual(['angle 90.0°', 'distance 5.000 mm'])
   })
 })

@@ -28,7 +28,7 @@ export function projectedRadius(frame: { half: Vec3 }, axis: Vec3): number {
  *  oblique axis can cross a cube along its space diagonal, where the max-axis
  *  span underestimates the body by up to sqrt(3), leaving the far corner uncut
  *  while intersects() still reports a hit. */
-export function bodySpanAlong(oc: OccModule, scope: DisposeScope, shape: OccShape, axis: Vec3): {
+export function partSpanAlong(oc: OccModule, scope: DisposeScope, shape: OccShape, axis: Vec3): {
   span: number
   frame: { center: Vec3; half: Vec3 }
 } {

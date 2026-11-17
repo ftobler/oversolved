@@ -22,7 +22,7 @@ import { isLengthUnit } from '@/utils/lengthUnit'
 import { normalizeMateLimitDeg } from '@/utils/mateKinds'
 import { isDocumentConstraintKind } from '@/wasm-kernel/partDocToSketches'
 import { deriveMemberIds, isFaceProjectionSource } from '@/kernel/features/projectionMembers'
-import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateInstancePatternSketch, migrateLegacyBodyPicks, migratePatternSourceFeatures, canonicalizeFeatureParams, migrateProjectionConstraints, migrateLineDistanceOperandOrder } from '@/utils/yamlMigrations'
+import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateInstancePatternSketch, migrateLegacyPartPicks, migratePatternSourceFeatures, canonicalizeFeatureParams, migrateProjectionConstraints, migrateLineDistanceOperandOrder } from '@/utils/yamlMigrations'
 import { MAX_ARRAY_COUNT, MAX_ARRAY_CELLS } from '@/utils/core/arrayLimits'
 import { skipProblem } from '@/utils/core/patternSkip'
 import { splitStoredPattern } from '@/utils/core/patternSplit'
@@ -194,7 +194,7 @@ function stepDropDeadAxisConstraints(doc: DocRecord): number {
 
 function stepPluralBodyPicks(doc: DocRecord): number {
   const part = migratablePartDoc(doc)
-  return part ? migrateLegacyBodyPicks(part) : 0
+  return part ? migrateLegacyPartPicks(part) : 0
 }
 
 function stepPatternSourceFeatures(doc: DocRecord): number {

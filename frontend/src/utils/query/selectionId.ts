@@ -98,11 +98,11 @@ export function selectionToQuery(selection: SelectionId, hostFeatureId: string):
  * from `face` so a triangle index is never resolved as a B-rep face index.
  */
 export function topoFallbackQuery(
-  bodyId: string,
+  partId: string,
   kind: "edge" | "face" | "vertex" | "tri",
   idx: number,
 ): string {
-  return `@${bodyId}/${kind}/${idx}`
+  return `@${partId}/${kind}/${idx}`
 }
 
 function _splitEntity(s: string): EntitySelectionId {
@@ -183,7 +183,7 @@ export function emitAbsoluteSelectionQuery(selectionId: string): string {
  * whole body, and the Delete key routes a body pick to delete_body, so every
  * consumer shares this one classification.
  */
-export function isWholeBodySelectionId(id: string): boolean {
+export function isWholePartSelectionId(id: string): boolean {
   return id.startsWith('@body_') && !id.includes('/')
 }
 
@@ -192,14 +192,14 @@ export function isWholeBodySelectionId(id: string): boolean {
  * back into its components. The inverse of topoFallbackQuery().
  * Returns null if the string is not a valid topo-fallback query.
  */
-export function parseTopoFallbackQuery(query: string): { bodyId: string; kind: 'edge' | 'face' | 'vertex' | 'tri'; idx: number } | null {
+export function parseTopoFallbackQuery(query: string): { partId: string; kind: 'edge' | 'face' | 'vertex' | 'tri'; idx: number } | null {
   if (!query.startsWith('@')) return null
   const slash1 = query.indexOf('/', 1)
   const slash2 = query.indexOf('/', slash1 + 1)
   if (slash1 < 0 || slash2 < 0) return null
-  const bodyId = query.slice(1, slash1)
+  const partId = query.slice(1, slash1)
   const kind = query.slice(slash1 + 1, slash2)
   const idx = parseInt(query.slice(slash2 + 1), 10)
   if ((kind !== 'edge' && kind !== 'face' && kind !== 'vertex' && kind !== 'tri') || isNaN(idx)) return null
-  return { bodyId, kind: kind as 'edge' | 'face' | 'vertex' | 'tri', idx }
+  return { partId, kind: kind as 'edge' | 'face' | 'vertex' | 'tri', idx }
 }

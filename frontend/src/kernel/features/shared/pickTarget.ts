@@ -22,7 +22,7 @@ import { exploreEdges } from '../../occ/edgeModifier'
 import { edgeToGeom, faceCentroid, faceNormal, faceSurfaceFrame, type Vec3 } from '../../occ/primitives'
 import { sha256Hex } from '../../sha256'
 import { resolveBarePlaneId } from '../../solverConstants'
-import { parseSketchEntityRef, sketchIdFromQuery, soleEntityInQuery } from './bodyRef'
+import { parseSketchEntityRef, sketchIdFromQuery, soleEntityInQuery } from './partRef'
 import { buildFaceIndex, resolveFacesByQuery, type FaceIndex } from './faceResolution'
 import { resolveSketchPlane } from '../postRegister'
 import { sketchToWorld2d, type PlaneLike } from './planes'
@@ -50,7 +50,7 @@ export interface PickTargetContext {
   scope: DisposeScope
   table: HandleTable
   globalRepo: Repository
-  bodyStore: Record<string, Body>
+  partStore: Record<string, Body>
   featuresById: Record<string, Dict>
 }
 
@@ -160,12 +160,12 @@ function faceTarget(
   ref: string,
   data: Dict,
   sense: AxisSenseContext,
-  indexFor: (body: Body) => FaceIndex,
+  indexFor: (part: Body) => FaceIndex,
 ): PickTarget | null {
-  const bodyId = typeof data.body_id === 'string' ? data.body_id : ''
-  const body = ctx.bodyStore[bodyId]
-  if (body === undefined || body.shape === null) return null
-  const face = resolveFacesByQuery(ctx.oc, ctx.scope, ctx.table, body, indexFor(body), [ref]).get(ref) ?? null
+  const partId = typeof data.body_id === 'string' ? data.body_id : ''
+  const part = ctx.partStore[partId]
+  if (part === undefined || part.shape === null) return null
+  const face = resolveFacesByQuery(ctx.oc, ctx.scope, ctx.table, part, indexFor(part), [ref]).get(ref) ?? null
   const surfaceType = String(data.type ?? 'face')
   const label = `face ${String(data.face_index ?? '')}`.trim()
   if (face === null) {
@@ -188,7 +188,7 @@ function faceTarget(
     const carrierKind = surfaceType === 'cylinderface' ? 'cylinderface' : 'coneface'
     const rawAxis = unit(data.axis as number[] | undefined)
     const senseResult = resolveAxisCarrier(
-      carrierKind, ref, rawAxis, sense, ctx.globalRepo, ctx.bodyStore,
+      carrierKind, ref, rawAxis, sense, ctx.globalRepo, ctx.partStore,
     )
     const direction = senseResult?.direction ?? rawAxis
     if (direction !== null) {
@@ -260,7 +260,7 @@ function edgeTarget(ctx: PickTargetContext, ref: string, data: Dict, sense: Axis
   const center = data.center as Vec3
   const axis = unit(data.axis as number[]) ?? [0, 0, 1]
   const senseResult = resolveAxisCarrier(
-    'circular_edge', ref, axis, sense, ctx.globalRepo, ctx.bodyStore,
+    'circular_edge', ref, axis, sense, ctx.globalRepo, ctx.partStore,
   )
   return { key: shortRefKey(ref), label: 'edge', point: center, normal: senseResult?.direction ?? axis }
 }
@@ -285,7 +285,7 @@ export function resolvePickTarget(
   ctx: PickTargetContext,
   ref: string,
   sense: AxisSenseContext = axisSenseContext(ctx),
-  indexFor: (body: Body) => FaceIndex = faceIndexCache(ctx),
+  indexFor: (part: Body) => FaceIndex = faceIndexCache(ctx),
 ): PickTarget | null {
   if (!ref) return null
   const sketch = sketchTarget(ctx, ref)
@@ -297,7 +297,7 @@ export function resolvePickTarget(
   }
   if (sketch !== null) return sketch
 
-  const data = ctx.globalRepo.query(ref, null, ctx.bodyStore) as Dict | null
+  const data = ctx.globalRepo.query(ref, null, ctx.partStore) as Dict | null
   if (data !== null) {
     const type = String(data.type ?? '')
     if (type === 'sketch-feature') {
@@ -330,13 +330,13 @@ export function resolvePickTarget(
 
 /** One face index per body for the whole resolution pass. A pattern of many
  *  face picks walks each body's faces once, not once per pick. */
-export function faceIndexCache(ctx: PickTargetContext): (body: Body) => FaceIndex {
+export function faceIndexCache(ctx: PickTargetContext): (part: Body) => FaceIndex {
   const cache = new Map<string, FaceIndex>()
-  return (body: Body): FaceIndex => {
-    let index = cache.get(body.id)
+  return (part: Body): FaceIndex => {
+    let index = cache.get(part.id)
     if (index === undefined) {
-      index = buildFaceIndex(ctx.oc, ctx.scope, ctx.table, body)
-      cache.set(body.id, index)
+      index = buildFaceIndex(ctx.oc, ctx.scope, ctx.table, part)
+      cache.set(part.id, index)
     }
     return index
   }

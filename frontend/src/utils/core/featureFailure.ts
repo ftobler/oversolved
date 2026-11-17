@@ -71,16 +71,16 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== 
 export function featureFailure(
   featureId: string,
   solveResults: Record<string, unknown> | undefined | null,
-  bodies: Record<string, { mesh_error?: string }> | undefined | null,
+  parts: Record<string, { mesh_error?: string }> | undefined | null,
 ): StatusMark {
   const result = solveResults?.[featureId]
   if (typeof result !== 'object' || result === null) return NO_MARK
 
-  const bodyResult = isBodyFeatureResult(result) ? result : undefined
-  const bodyIds = bodyResult
-    ? (bodyResult.body_ids ?? (bodyResult.body_id ? [bodyResult.body_id] : []))
+  const partResult = isBodyFeatureResult(result) ? result : undefined
+  const partIds = partResult
+    ? (partResult.body_ids ?? (partResult.body_id ? [partResult.body_id] : []))
     : []
-  const meshError = bodyIds.map(bid => bodies?.[bid]?.mesh_error).find(m => !!m)
+  const meshError = partIds.map(bid => parts?.[bid]?.mesh_error).find(m => !!m)
 
   const status = (result as { status?: unknown }).status
   const statusFailed = typeof status === 'string'

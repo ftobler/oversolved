@@ -28,7 +28,7 @@ const torus = (center: Vec3, axis: Vec3, majorRadius?: number, minorRadius?: num
   type: 'torus', center, axis: normalize(axis)!, majorRadius, minorRadius,
 })
 const opaque = (what = 'spline'): Primitive => ({ type: 'opaque', what, ref: 'q' })
-const solid = (): Primitive => ({ type: 'solid', bodyId: 'body_1' })
+const solid = (): Primitive => ({ type: 'solid', partId: 'body_1' })
 
 function line(p0: Vec3, p1: Vec3, bounded = true): Primitive {
   return { type: 'line', p0, p1, dir: normalize([p1[0] - p0[0], p1[1] - p0[1], p1[2] - p0[2]])!, bounded }

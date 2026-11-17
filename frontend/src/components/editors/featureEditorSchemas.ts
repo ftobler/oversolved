@@ -6,10 +6,10 @@ import {
   DEFAULT_WRAP_HEIGHT,
 } from '@/utils/yamlMutations'
 import { THREAD_TABLE, threadEntry, threadLabel, threadDesignations, DRILL_POINT_ANGLE } from '@/kernel/threadTable'
-import { pickedSketchEntity } from '@/kernel/features/shared/bodyRef'
+import { pickedSketchEntity } from '@/kernel/features/shared/partRef'
 import { circleDrillSiteReason } from '@/kernel/features/shared/drillSite'
 import type { PartFeature, ThreadSpec } from '@/types/cad'
-import { resolveBodyPickRef, resolveAxisQuery } from '@/utils/query/resolveBodyPickRef'
+import { resolvePartPickRef, resolveAxisQuery } from '@/utils/query/resolvePartPickRef'
 import { stripSelectionWrapper } from '@/utils/query/selectionId'
 import { positive, nonNegative, finite, between } from '@/utils/core/valueRules'
 import { arrayCountProblem, MAX_ARRAY_COUNT } from '@/persistence/docSchema'
@@ -92,7 +92,7 @@ export const EXTRUDE_SCHEMA: FeatureEditorSchema = {
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',
       options: [{ value: 'add', label: 'Add' }, { value: 'cut', label: 'Cut' }, { value: 'new', label: 'New' }] },
     { type: 'pick', key: 'merge_target', label: 'Merge Target',
-      showWhen: showMergeTarget, transform: resolveBodyPickRef, names: 'body', removeValue: undefined,
+      showWhen: showMergeTarget, transform: resolvePartPickRef, names: 'body', removeValue: undefined,
       emptyText: '(all parts)' },
     { type: 'select', key: 'direction', label: 'Direction', default: 'normal',
       options: [{ value: 'normal', label: 'Normal' }, { value: 'reverse', label: 'Reverse' }, { value: 'symmetric', label: 'Symmetric' }] },
@@ -114,7 +114,7 @@ export const REVOLVE_SCHEMA: FeatureEditorSchema = {
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',
       options: [{ value: 'add', label: 'Add' }, { value: 'cut', label: 'Cut' }, { value: 'new', label: 'New' }] },
     { type: 'pick', key: 'merge_target', label: 'Merge Target',
-      showWhen: showMergeTarget, transform: resolveBodyPickRef, names: 'body', removeValue: undefined,
+      showWhen: showMergeTarget, transform: resolvePartPickRef, names: 'body', removeValue: undefined,
       emptyText: '(all parts)' },
     // An axis pick is required: a revolve has no default axis, so an unpicked
     // one is a solve error rather than a silent sweep about world Z.
@@ -144,7 +144,7 @@ export const SWEEP_SCHEMA: FeatureEditorSchema = {
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',
       options: [{ value: 'add', label: 'Add' }, { value: 'cut', label: 'Cut' }, { value: 'new', label: 'New' }] },
     { type: 'pick', key: 'merge_target', label: 'Merge Target',
-      showWhen: showMergeTarget, transform: resolveBodyPickRef, names: 'body', removeValue: undefined,
+      showWhen: showMergeTarget, transform: resolvePartPickRef, names: 'body', removeValue: undefined,
       emptyText: '(all parts)' },
   ],
 }
@@ -241,7 +241,7 @@ export const SHELL_SCHEMA: FeatureEditorSchema = {
     // way to choose it; it is shown only when the opening list is empty.
     { type: 'pick', key: 'source_body', label: 'Part',
       showWhen: (d) => (Array.isArray(d.faces) ? d.faces.length : 0) === 0,
-      transform: resolveBodyPickRef, names: 'body', emptyText: '(pick part, required)' },
+      transform: resolvePartPickRef, names: 'body', emptyText: '(pick part, required)' },
   ],
 }
 
@@ -263,7 +263,7 @@ export const WRAP_SCHEMA: FeatureEditorSchema = {
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',
       options: [{ value: 'add', label: 'Add' }, { value: 'cut', label: 'Cut' }, { value: 'new', label: 'New' }] },
     { type: 'pick', key: 'merge_target', label: 'Merge Target',
-      showWhen: showMergeTarget, transform: resolveBodyPickRef, names: 'body', removeValue: undefined,
+      showWhen: showMergeTarget, transform: resolvePartPickRef, names: 'body', removeValue: undefined,
       emptyText: '(all parts)' },
   ],
 }
@@ -491,7 +491,7 @@ export const MIRROR_SCHEMA: FeatureEditorSchema = {
       showWhen: (d) => d.subject === 'feature',
       emptyText: '(pick one or more features to mirror)',
       hint: 'Reflected in feature-log order; the source keeps its own copy.' },
-    { type: 'pick', key: 'target_body', label: 'Target part', transform: resolveBodyPickRef, names: 'body',
+    { type: 'pick', key: 'target_body', label: 'Target part', transform: resolvePartPickRef, names: 'body',
       showWhen: (d) => d.subject === 'feature', emptyText: '(the part the source shaped)' },
     { type: 'pick', key: 'plane', label: 'Mirror Plane', transform: stripSelectionWrapper },
     // The source's own operation is reapplied in the same body, so these two
@@ -603,7 +603,7 @@ export const PATTERN_SOURCE_FIELDS: EditorFieldDef[] = [
   // solid producers' own add or cut.
   { type: 'select', key: 'subject', label: 'Subject', default: 'body', presentation: 'tabs',
     options: [{ value: 'body', label: 'Part' }, { value: 'feature', label: 'Feature' }] },
-  { type: 'pick', key: 'source_body', label: 'Part', transform: resolveBodyPickRef, names: 'body',
+  { type: 'pick', key: 'source_body', label: 'Part', transform: resolvePartPickRef, names: 'body',
     showWhen: (d) => d.subject !== 'feature', emptyText: '(pick the part to copy)' },
   // The sources are FEATURE rows, not viewport picks: the chip shows the picked
   // extrude/revolve/sweep/wrap rows and the feature tree is the pick surface. Every
@@ -618,7 +618,7 @@ export const PATTERN_SOURCE_FIELDS: EditorFieldDef[] = [
     showWhen: (d) => d.subject === 'feature',
     emptyText: '(pick one or more features; the earliest heads the seed)',
     hint: 'Repeated in feature-log order; the earliest source heads the seed slot.' },
-  { type: 'pick', key: 'target_body', label: 'Target part', transform: resolveBodyPickRef, names: 'body',
+  { type: 'pick', key: 'target_body', label: 'Target part', transform: resolvePartPickRef, names: 'body',
     showWhen: (d) => d.subject === 'feature', emptyText: '(the part the source shaped)' },
   { type: 'select', key: 'operation', label: 'Operation', default: 'add',
     showWhen: (d) => d.subject !== 'feature',

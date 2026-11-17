@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { AssemblyDoc, PartInstance } from '@/types/cad'
 import {
-  beginBodyManipulation,
+  beginPartManipulation,
   beginManipulation,
   commitManipulation,
   dragTranslate,
@@ -269,7 +269,7 @@ describe('beginBodyManipulation', () => {
   it('returns a session with a dragObjective', () => {
     const doc = docWith(instance('p1'))
     const worldGrab: [number, number, number] = [1, 2, 3]
-    const session = beginBodyManipulation(doc, 'p1', worldGrab, IDENTITY_TRANSFORM)!
+    const session = beginPartManipulation(doc, 'p1', worldGrab, IDENTITY_TRANSFORM)!
     expect(session).not.toBeNull()
     expect(session.dragObjective).toBeDefined()
     expect(session.dragObjective!.handle).toBe('p1')
@@ -281,11 +281,11 @@ describe('beginBodyManipulation', () => {
 
   it('returns null for a fixed instance', () => {
     const doc = docWith(instance('p1', { fixed: true }))
-    expect(beginBodyManipulation(doc, 'p1', [0, 0, 0], IDENTITY_TRANSFORM)).toBeNull()
+    expect(beginPartManipulation(doc, 'p1', [0, 0, 0], IDENTITY_TRANSFORM)).toBeNull()
   })
 
   it('returns null for an unknown handle', () => {
     const doc = docWith(instance('p1'))
-    expect(beginBodyManipulation(doc, 'nope', [0, 0, 0], IDENTITY_TRANSFORM)).toBeNull()
+    expect(beginPartManipulation(doc, 'nope', [0, 0, 0], IDENTITY_TRANSFORM)).toBeNull()
   })
 })

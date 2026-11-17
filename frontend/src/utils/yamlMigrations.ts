@@ -42,7 +42,7 @@ function isPointOperand(ref: unknown, kindById: Map<string, string>): boolean {
 // mutate in place, return the count of features rewritten. Idempotent (a second
 // pass rewrites nothing). The mirror feature's own singular `body` is
 // intentional and untouched.
-export function migrateLegacyBodyPicks(doc: PartDoc): number {
+export function migrateLegacyPartPicks(doc: PartDoc): number {
   let rewritten = 0
   for (const feature of doc.features ?? []) {
     if (feature.kind !== 'transform' && feature.kind !== 'delete_body') continue

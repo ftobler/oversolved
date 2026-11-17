@@ -12,7 +12,7 @@ import {
   extractProfileLoops,
   registerTopFace,
   resolveDirection,
-  resolveBody,
+  resolvePart,
   resolveMergeTargets,
   brepDiffIsEmpty,
   resolveDirectionQuery,
@@ -481,9 +481,9 @@ describe('resolveBody parity', () => {
     it(c.name as string, () => {
       const store = makeStore(c.store as Record<string, string>)
       if (c.error) {
-        expect(() => resolveBody(c.ref as string, store)).toThrow()
+        expect(() => resolvePart(c.ref as string, store)).toThrow()
       } else {
-        expect(resolveBody(c.ref as string, store).id).toBe(c.expected_id)
+        expect(resolvePart(c.ref as string, store).id).toBe(c.expected_id)
       }
     })
   }
@@ -494,13 +494,13 @@ describe('resolveBody fallback resolution paths', () => {
     const store = makeStore({ body_1: 'extrude1' })
     // A viewport ancestry query carries the body as an "@body_<id>" ancestor.
     const ref = makeAncestryQuery(['@body_1', '@extrude1'], 'face')
-    expect(resolveBody(ref, store).id).toBe('body_1')
+    expect(resolvePart(ref, store).id).toBe('body_1')
   })
 
   it('resolves a colon-prefixed viewport ref via the created_by feature', () => {
     const store = makeStore({ body_1: 'extrude1' })
     // "face:<feat>:<query>" -> the middle token resolves through created_by.
-    expect(resolveBody('face:extrude1:whatever', store).id).toBe('body_1')
+    expect(resolvePart('face:extrude1:whatever', store).id).toBe('body_1')
   })
 
   it('resolves a topo-fallback element ref to the body it sits on', () => {
@@ -509,7 +509,7 @@ describe('resolveBody fallback resolution paths', () => {
     // topoFallbackQuery). As a BODY ref it means the body carrying that element.
     const store = makeStore({ body_1: 'extrude1' })
     for (const ref of ['@body_1/face/0', '@body_1/edge/12', '@body_1/vertex/3']) {
-      expect(resolveBody(ref, store).id).toBe('body_1')
+      expect(resolvePart(ref, store).id).toBe('body_1')
     }
   })
 
@@ -517,27 +517,27 @@ describe('resolveBody fallback resolution paths', () => {
     // `body_ex1` is the first sibling's own id, so the exact-id branch has to
     // win; reading it as a feature would make the ref ambiguous instead.
     const store = makeStore({ body_ex1: 'ex1', body_ex1_1: 'ex1' })
-    expect(resolveBody('@body_ex1_1/face/2', store).id).toBe('body_ex1_1')
-    expect(resolveBody('@body_ex1/face/2', store).id).toBe('body_ex1')
+    expect(resolvePart('@body_ex1_1/face/2', store).id).toBe('body_ex1_1')
+    expect(resolvePart('@body_ex1/face/2', store).id).toBe('body_ex1')
   })
 
   it('leaves a slash ref that is not an element index alone', () => {
     // `@sk1/left` is a sketch entity, not a body ref -- it must not be read as
     // "the body of sk1".
     const store = makeStore({ body_1: 'extrude1' })
-    expect(() => resolveBody('@extrude1/left', store)).toThrow(/part not found/)
+    expect(() => resolvePart('@extrude1/left', store)).toThrow(/part not found/)
   })
 
   it('throws when a malformed "?"-ancestry ref cannot be parsed', () => {
     const store = makeStore({ body_1: 'extrude1' })
     // parseAncestry throws on a bad header; the catch falls through to the error.
-    expect(() => resolveBody('?3;ab', store)).toThrow(/part not found/)
+    expect(() => resolvePart('?3;ab', store)).toThrow(/part not found/)
   })
 
   it('throws when a colon-prefixed ref matches no body at all', () => {
     const store = makeStore({ body_1: 'extrude1' })
     // The middle token matches no key, prefix, or created_by -> fall through.
-    expect(() => resolveBody('face:nomatch:x', store)).toThrow(/part not found/)
+    expect(() => resolvePart('face:nomatch:x', store)).toThrow(/part not found/)
   })
 })
 
@@ -550,30 +550,30 @@ describe('resolveBody ambiguity', () => {
 
   it('throws, naming the candidates, when a feature ref covers several bodies', () => {
     for (const ref of ['ex1', '@ex1']) {
-      expect(() => resolveBody(ref, split())).toThrow(/ambiguous/)
-      expect(() => resolveBody(ref, split())).toThrow(/body_ex1, body_ex1_1/)
+      expect(() => resolvePart(ref, split())).toThrow(/ambiguous/)
+      expect(() => resolvePart(ref, split())).toThrow(/body_ex1, body_ex1_1/)
     }
   })
 
   it('throws for a viewport-prefixed ref that names the same feature', () => {
-    expect(() => resolveBody('face:ex1:whatever', split())).toThrow(/ambiguous/)
+    expect(() => resolvePart('face:ex1:whatever', split())).toThrow(/ambiguous/)
   })
 
   it('resolves an exact body id to that sibling', () => {
     // `body_ex1` IS the first sibling's id, so the exact-id branch has to win
     // over the feature reading -- otherwise naming a sibling is impossible.
-    expect(resolveBody('body_ex1', split()).id).toBe('body_ex1')
-    expect(resolveBody('@body_ex1_1', split()).id).toBe('body_ex1_1')
-    expect(resolveBody('body:body_ex1_1:0', split()).id).toBe('body_ex1_1')
+    expect(resolvePart('body_ex1', split()).id).toBe('body_ex1')
+    expect(resolvePart('@body_ex1_1', split()).id).toBe('body_ex1_1')
+    expect(resolvePart('body:body_ex1_1:0', split()).id).toBe('body_ex1_1')
   })
 
   it('resolves a body-exact "?" query naming a sibling', () => {
     const ref = makeAncestryQuery(['@body_ex1_1', '@ex1'], 'face')
-    expect(resolveBody(ref, split()).id).toBe('body_ex1_1')
+    expect(resolvePart(ref, split()).id).toBe('body_ex1_1')
   })
 
   it('leaves a single-body feature ref alone', () => {
-    expect(resolveBody('ex2', split()).id).toBe('body_other')
+    expect(resolvePart('ex2', split()).id).toBe('body_other')
   })
 })
 

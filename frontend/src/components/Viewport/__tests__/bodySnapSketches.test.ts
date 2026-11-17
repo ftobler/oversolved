@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { bodySnapSketches, BODY_SNAP_FEAT_PREFIX } from '@/utils/geometry/bodySnapProjection'
-import { getBodiesToRender } from '@/utils/bodyRender'
+import { partSnapSketches, PART_SNAP_FEAT_PREFIX } from '@/utils/geometry/partSnapProjection'
+import { getPartsToRender } from '@/utils/partRender'
 import type { Feature, BodyResult } from '@/types/cad'
 
 /**
@@ -20,36 +20,36 @@ function item(overrides: Record<string, unknown> = {}) {
   return {
     key: 'b1',
     featureId: 'f1',
-    bodyId: 'b1',
+    partId: 'b1',
     mesh: {},
     edges: [],
     vertices: VERTICES,
     visible: true,
     ...overrides,
-  } as Parameters<typeof bodySnapSketches>[0][number]
+  } as Parameters<typeof partSnapSketches>[0][number]
 }
 
 describe('bodySnapSketches', () => {
   it('projects a drawn body under the sentinel feature id', () => {
-    const out = bodySnapSketches([item()], FRONT)
-    expect(Object.keys(out)).toEqual([`${BODY_SNAP_FEAT_PREFIX}b1`])
-    expect(out[`${BODY_SNAP_FEAT_PREFIX}b1`].bv0).toEqual({ x: 1, y: 2 })
+    const out = partSnapSketches([item()], FRONT)
+    expect(Object.keys(out)).toEqual([`${PART_SNAP_FEAT_PREFIX}b1`])
+    expect(out[`${PART_SNAP_FEAT_PREFIX}b1`].bv0).toEqual({ x: 1, y: 2 })
   })
 
   it('skips a hidden body entirely', () => {
-    expect(bodySnapSketches([item({ visible: false })], FRONT)).toEqual({})
+    expect(partSnapSketches([item({ visible: false })], FRONT)).toEqual({})
   })
 
   it('keeps the drawn body when a hidden one sits beside it', () => {
-    const out = bodySnapSketches([
-      item({ bodyId: 'hidden', visible: false }),
-      item({ bodyId: 'drawn' }),
+    const out = partSnapSketches([
+      item({ partId: 'hidden', visible: false }),
+      item({ partId: 'drawn' }),
     ], FRONT)
-    expect(Object.keys(out)).toEqual([`${BODY_SNAP_FEAT_PREFIX}drawn`])
+    expect(Object.keys(out)).toEqual([`${PART_SNAP_FEAT_PREFIX}drawn`])
   })
 
   it('skips a body with nothing to project', () => {
-    expect(bodySnapSketches([item({ vertices: undefined, edges: [] })], FRONT)).toEqual({})
+    expect(partSnapSketches([item({ vertices: undefined, edges: [] })], FRONT)).toEqual({})
   })
 
   it('a rolled-back body never reaches the helper through the render list', () => {
@@ -60,9 +60,9 @@ describe('bodySnapSketches', () => {
       early: { created_by: 'f1', mesh: {}, vertices: VERTICES } as unknown as BodyResult,
       late: { created_by: 'f2', mesh: {}, vertices: VERTICES } as unknown as BodyResult,
     }
-    const drawn = getBodiesToRender(bodies, features, 1, undefined)
-    expect(drawn.map(i => i.bodyId)).toEqual(['early'])
-    expect(Object.keys(bodySnapSketches(drawn, FRONT))).toEqual([`${BODY_SNAP_FEAT_PREFIX}early`])
+    const drawn = getPartsToRender(bodies, features, 1, undefined)
+    expect(drawn.map(i => i.partId)).toEqual(['early'])
+    expect(Object.keys(partSnapSketches(drawn, FRONT))).toEqual([`${PART_SNAP_FEAT_PREFIX}early`])
   })
 
   // The helper is only half the promise; the viewport has to hand it the drawn
@@ -76,6 +76,6 @@ describe('bodySnapSketches', () => {
     expect(viewport).not.toMatch(/bodySnapSketches\(\s*Object\.values\(/)
 
     const helper = readFileSync(join(__dirname, '..', 'bodyUtils.ts'), 'utf8')
-    expect(helper).toMatch(/bodySnapSketches\(bodyItems, planeTransform\)/)
+    expect(helper).toMatch(/partSnapSketches\(bodyItems, planeTransform\)/)
   })
 })

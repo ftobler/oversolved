@@ -28,7 +28,7 @@ import { volumeForMeasure } from '../occ/volume'
 import { SubShapeMap } from '../occ/subshapeIdentity'
 import { makeHalfSpaceBox } from '../occ/halfSpace'
 import { mintFaceUuid, splitPlaneFacePath, type SplitSide } from '../constructionName'
-import { resolveBodyRefList } from './shared/bodyResolution'
+import { resolvePartRefList } from './shared/partResolution'
 import { resolvePlaneRef } from './shared/planes'
 import { transferBooleanNames } from './booleanLineage'
 import { resplitBody, splitSolids } from './bodySplit'
@@ -127,7 +127,7 @@ export function solveSplit(
 
   // Resolve every target before touching a shape, so a bad ref fails the whole
   // feature instead of after some bodies were already split.
-  const targets = resolveBodyRefList(bodyQueries, globalRepo, bodyStore, 'split')
+  const targets = resolvePartRefList(bodyQueries, globalRepo, bodyStore, 'split')
 
   const plans: SplitPlan[] = targets.map((key) => {
     const body = bodyStore[key]

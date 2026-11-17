@@ -24,10 +24,10 @@ import type { OccModule, OccShape, OccSubShape, OccXYZ } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
-import { parseSketchEntityRef, sketchIdFromQuery, soleEntityInQuery } from './shared/bodyRef'
+import { parseSketchEntityRef, sketchIdFromQuery, soleEntityInQuery } from './shared/partRef'
 import { HOLE_SITE_WORDING } from './shared/drillSite'
 import { pickedPointSite, sketchPointSites } from './shared/sketchPointSites'
-import { resolveBody } from './shared/bodyResolution'
+import { resolvePart } from './shared/partResolution'
 import { mergeBrepDiff } from './shared/brepDiff'
 import { stripRefSigil } from '@/utils/refSigil'
 import {
@@ -36,7 +36,7 @@ import {
 import { SubShapeMap } from '../occ/subshapeIdentity'
 import { holeFacePath, mintFaceUuid, splitFacePath, type HoleFaceRole } from '../constructionName'
 import { absolute, emitWire, featureRefId } from '../query'
-import { bodySpanAlong, projectedRadius } from './shared/bodyExtent'
+import { partSpanAlong, projectedRadius } from './shared/partExtent'
 import { sameEnum } from '../occ/enumValue'
 import { booleanWithDiff, volumeOf } from '../occ/booleans'
 import { precisionCeilingWarning } from '../precision'
@@ -735,7 +735,7 @@ export function solveHole(
   // that path waits for them below.
   let targetBody: Body | null = null
   if (targetRef) {
-    targetBody = resolveBody(targetRef, bodyStore)
+    targetBody = resolvePart(targetRef, bodyStore)
     if (targetBody.shape === null) throw new Error(`hole: target part '${targetBody.id}' has no shape`)
   } else if (Object.keys(bodyStore).length === 0) {
     throw new Error('hole: no parts in body_store and no target specified')
@@ -828,7 +828,7 @@ export function solveHole(
   // The body's edge-sampled AABB, kept for a widened mouth's air-side reach.
   let throughFrame: { center: Vec3; half: Vec3 } | null = null
   if (depthMode === 'through_all') {
-    const { span, frame } = bodySpanAlong(oc, scope, currentShape, axis)
+    const { span, frame } = partSpanAlong(oc, scope, currentShape, axis)
     // A hair past the far face so the bore clears it rather than ending on it.
     throughMargin = span * 1e-3 + 1e-6
     throughSpan = span

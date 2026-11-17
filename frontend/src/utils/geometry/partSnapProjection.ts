@@ -1,12 +1,12 @@
 // PURE LOGIC -- no Three.js, no React refs, no R3F hooks.
 // This file must be importable in a plain vitest test without a DOM.
 import type { PlaneTransform, EdgeData, Sketch } from '@/types/cad'
-import type { BodyRenderItem } from '@/utils/bodyRender'
+import type { PartRenderItem } from '@/utils/partRender'
 import { stripRefSigil } from '@/utils/refSigil'
 
 /** Sentinel prefix for body-snap featureIds in synthetic otherSketches entries.
  *  computeDragMutation detects this to emit move_vertex (position only, no constraint). */
-export const BODY_SNAP_FEAT_PREFIX = '__body__'
+export const PART_SNAP_FEAT_PREFIX = '__body__'
 
 /** Project a 3D world point onto the sketch plane, returning 2D local coordinates.
  *  PlaneTransform.rotation stores axes as rows: [x0,x1,x2, y0,y1,y2, n0,n1,n2]. */
@@ -66,7 +66,7 @@ export function resolvePlaneTransform(
  *  Vertices become PointEntity entries. Line edges become LineSegment entries.
  *  Circle/arc/ellipse edges contribute only their center as a PointEntity.
  *  Splines contribute only their first and last point. */
-export function buildBodySnapSketch(
+export function buildPartSnapSketch(
   vertices: [number, number, number][] | undefined,
   edges: EdgeData[] | undefined,
   planeTransform: Pick<PlaneTransform, 'rotation' | 'origin'>,
@@ -106,7 +106,7 @@ export function buildBodySnapSketch(
 }
 
 /** The slice of a render item body snapping needs: only what is drawn. */
-export type SnapBodyItem = Pick<BodyRenderItem, 'bodyId' | 'vertices' | 'edges' | 'visible'>
+export type SnapPartItem = Pick<PartRenderItem, 'partId' | 'vertices' | 'edges' | 'visible'>
 
 /**
  * Synthetic snap sketches for every body the normal render list draws, keyed by
@@ -119,16 +119,16 @@ export type SnapBodyItem = Pick<BodyRenderItem, 'bodyId' | 'vertices' | 'edges' 
  * it must not offer a vertex or an edge to snap to. Hidden geometry that still
  * answers the cursor is the same bug as hidden geometry that still picks.
  */
-export function bodySnapSketches(
-  items: ReadonlyArray<SnapBodyItem>,
+export function partSnapSketches(
+  items: ReadonlyArray<SnapPartItem>,
   planeTransform: Pick<PlaneTransform, 'rotation' | 'origin'>,
 ): Record<string, Sketch> {
   const out: Record<string, Sketch> = {}
   for (const item of items) {
     if (!item.visible) continue
-    const snapSketch = buildBodySnapSketch(item.vertices, item.edges, planeTransform)
+    const snapSketch = buildPartSnapSketch(item.vertices, item.edges, planeTransform)
     if (Object.keys(snapSketch).length === 0) continue
-    out[`${BODY_SNAP_FEAT_PREFIX}${item.bodyId}`] = snapSketch
+    out[`${PART_SNAP_FEAT_PREFIX}${item.partId}`] = snapSketch
   }
   return out
 }

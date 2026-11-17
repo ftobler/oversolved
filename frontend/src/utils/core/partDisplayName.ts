@@ -7,12 +7,12 @@
 // in store order and skipping numbers already claimed by `partLabels`.
 
 export function partDisplayName(
-  bodyId: string,
+  partId: string,
   partLabels: Record<string, string> | null | undefined,
-  orderedBodyIds: readonly string[] = [],
+  orderedPartIds: readonly string[] = [],
 ): string {
   const labels = partLabels ?? {}
-  const trimmed = labels[bodyId]?.trim()
+  const trimmed = labels[partId]?.trim()
   if (trimmed) return trimmed
 
   const used = new Set<number>()
@@ -25,21 +25,21 @@ export function partDisplayName(
   // number partStyle.ts would give it at that position. Bodies not in the list
   // (a stale ref) get the next free number.
   let result: string | null = null
-  const seen = new Set(orderedBodyIds)
-  const order = seen.has(bodyId) ? [...orderedBodyIds] : [...orderedBodyIds, bodyId]
+  const seen = new Set(orderedPartIds)
+  const order = seen.has(partId) ? [...orderedPartIds] : [...orderedPartIds, partId]
   for (const id of order) {
     const existing = labels[id]?.trim()
     if (existing) {
       const m = /^part (\d+)$/i.exec(existing)
       if (m) used.add(Number(m[1]))
-      if (id === bodyId) { result = existing; break }
+      if (id === partId) { result = existing; break }
       continue
     }
     let n = 1
     while (used.has(n)) n++
     used.add(n)
     const name = `part ${n}`
-    if (id === bodyId) { result = name; break }
+    if (id === partId) { result = name; break }
   }
   if (result) return result
 

@@ -572,7 +572,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     <Body3D
       key={b.key}
       featureId={b.featureId}
-      bodyId={b.bodyId}
+      bodyId={b.partId}
       mesh={b.mesh}
       edges={b.edges}
       edgeQueries={b.edgeQueries}

@@ -109,7 +109,7 @@ describe.skipIf(!oc || !solveBytes)('measureSelection on the probe plate (real O
   })
 
   function measure(ids: string[]): string[] {
-    return measureSelection(new Set(ids), { bodies })
+    return measureSelection(new Set(ids), { parts: bodies })
   }
 
   function lineLength(edge: EdgeData): number {

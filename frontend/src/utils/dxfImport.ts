@@ -163,10 +163,10 @@ function sectionPairs(pairs: Pair[], name: string): Pair[] | null {
     if (pairs[i].code !== 0 || pairs[i].value.trim().toUpperCase() !== 'SECTION') continue
     const title = pairs[i + 1]
     if (title?.code !== 2 || title.value.trim().toUpperCase() !== name) continue
-    const body: Pair[] = []
+    const part: Pair[] = []
     for (let j = i + 2; j < pairs.length; j++) {
-      if (pairs[j].code === 0 && pairs[j].value.trim().toUpperCase() === 'ENDSEC') return body
-      body.push(pairs[j])
+      if (pairs[j].code === 0 && pairs[j].value.trim().toUpperCase() === 'ENDSEC') return part
+      part.push(pairs[j])
     }
     fail(`malformed DXF: ${name} section has no ENDSEC`)
   }

@@ -11,7 +11,7 @@ import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import { Repository, ref, makeAncestryQuery, parseAncestry, bodyIdOf, isClassifierId, constructionUuidToken } from '../query'
 import { geometryClassifiers } from '../geomHash'
-import { resolveBody, resolveBodyIds } from './shared/bodyResolution'
+import { resolvePart, resolvePartIds } from './shared/partResolution'
 import { buildFaceIndex, makeFaceIndexCache, resolveFacesByQuery, type FaceIndex } from './shared/faceResolution'
 import { resplitBody } from './bodySplit'
 import { canonicalEdges, assertAligned, readBodyNames } from '../occ/bodyNames'
@@ -481,7 +481,7 @@ function applyEdgeFeature(
     // group lookup below reports it as unresolved.
     let resolvedSrc = sourceBody
     if (!(sourceBody in bodyStore)) {
-      const ids = resolveBodyIds(sourceBody, bodyStore)
+      const ids = resolvePartIds(sourceBody, bodyStore)
       if (ids.length > 1) {
         throw new Error(
           `${featureKind}: source part '${sourceBody}' names ${ids.length} parts ` +
@@ -494,7 +494,7 @@ function applyEdgeFeature(
         // resolveBody but invisible to resolveBodyIds; ask the resolver itself so
         // the group key is always a real bodyStore id.
         try {
-          resolvedSrc = resolveBody(sourceBody, bodyStore).id
+          resolvedSrc = resolvePart(sourceBody, bodyStore).id
         } catch (e) {
           swallowUnlessTrap(e)
           throw new Error(`${featureKind}: source part '${sourceBody}' not found`)
@@ -544,7 +544,7 @@ function applyEdgeFeature(
   for (const [bid, qlist] of groups) {
     let body: Body
     try {
-      body = resolveBody(bid, bodyStore)
+      body = resolvePart(bid, bodyStore)
     } catch (e) {
       swallowUnlessTrap(e)
       unresolved.push(...qlist)

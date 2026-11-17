@@ -877,7 +877,7 @@ export async function measurePicksLocally(
   try {
     const response = build(spec, { prevState: null }, buildDeps(oc, scope, table, opts.files))
     const bodies = response.bodies as Record<string, BodyResult>
-    const { readout, ask } = measureSelectionResolved(new Set(picks), { bodies, unit: opts.unit })
+    const { readout, ask } = measureSelectionResolved(new Set(picks), { parts: bodies, unit: opts.unit })
     if (readout !== null) return { kind: readout.kind, value: readout.value }
     if (ask === null) throw new Error('measure: the pick or pick pair states no measurement')
     const store = finalBodyStoreOf(response._build_state) ?? {}

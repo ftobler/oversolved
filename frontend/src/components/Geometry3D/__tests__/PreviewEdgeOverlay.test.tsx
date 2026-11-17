@@ -40,7 +40,7 @@ function makeItem(key: string, edges: EdgeData[], edgeQueries?: string[]): BodyR
   return {
     key,
     featureId: 'feat1',
-    bodyId: key,
+    partId: key,
     mesh: {} as BodyRenderItem['mesh'],
     edges,
     edgeQueries,
