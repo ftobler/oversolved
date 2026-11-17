@@ -91,6 +91,38 @@ describe('ContextMenuDialog validation', () => {
     render(<ContextMenuDialog />)
     expect(screen.queryByText('Flip side')).not.toBeInTheDocument()
   })
+
+  it('shows the quantity unit inside the box and says it in the accessible name', () => {
+    // The freshly placed dimension's prompt carries a quantity, so it reads like
+    // the double-click editor: the unit sits in the box and the input's name
+    // spells it out.
+    useSketchUiStore.setState({
+    pendingDialog: {
+        position: [0, 0],
+        label: 'Dimension value',
+        defaultValue: '12.5',
+        quantity: 'length',
+        onConfirm: vi.fn(),
+      },
+  })
+    const { unmount } = render(<ContextMenuDialog />)
+    const lengthInput = screen.getByRole('spinbutton', { name: 'Dimension value, millimetres' })
+    expect(lengthInput.closest('.field-unit-box')?.querySelector('.field-unit')?.textContent).toBe('mm')
+    unmount()
+
+    useSketchUiStore.setState({
+    pendingDialog: {
+        position: [0, 0],
+        label: 'Dimension value',
+        defaultValue: '45',
+        quantity: 'angle',
+        onConfirm: vi.fn(),
+      },
+  })
+    render(<ContextMenuDialog />)
+    const angleInput = screen.getByRole('spinbutton', { name: 'Dimension value, degrees' })
+    expect(angleInput.closest('.field-unit-box')?.querySelector('.field-unit')?.textContent).toBe('deg')
+  })
 })
 
 // The value dialog is not built on the Dialog shell, so it used to be the one

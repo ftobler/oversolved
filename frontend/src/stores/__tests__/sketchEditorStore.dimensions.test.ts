@@ -424,6 +424,28 @@ describe('sketchEditorStore', () => {
       })
     })
 
+    it('finalizeDimensionPlacement: the fresh box states the unit it will author', () => {
+      // The placement prompt is the first editor a new dimension gets, so it must
+      // state mm/deg like the double-click editor does. A length is the default;
+      // the two-line angle is the only angular kind.
+      setSketchCallback('onMutation', vi.fn())
+      useEditorState.setState({
+    dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+  })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      expect(useSketchUiStore.getState().pendingDialog!.quantity).toBe('length')
+      useSketchUiStore.setState({ pendingDialog: null })
+
+      useEditorState.setState({
+    dimensionPicks: [
+          { isVertex: false, target: 'entity:S1:L1', entityKind: 'line' },
+          { isVertex: false, target: 'entity:S1:L2', entityKind: 'line' },
+        ],
+  })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([0, 0])
+      expect(useSketchUiStore.getState().pendingDialog!.quantity).toBe('angle')
+    })
+
     it('finalizeDimensionPlacement: a supplement-wedge label pre-fills and commits the displayed number', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)

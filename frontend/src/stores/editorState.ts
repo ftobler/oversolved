@@ -1214,6 +1214,10 @@ export const editorState = createStore<EditorState>((set, get) => ({
       position: clientPos,
       label: 'Dimension value',
       defaultValue,
+      // The freshly placed box states what it measures, the same unit the
+      // double-click editor shows. Angle is the only angular dimension kind;
+      // every other one (length, point distances, radius, diameter) is a length.
+      quantity: constraintKind === 'angle' ? 'angle' : 'length',
       // Cancelling the value dialog abandons the gesture: the projections it
       // materialised were scratch work and are removed with no undo entries.
       onCancel: () => get().cancelBrepProjectionGesture(),

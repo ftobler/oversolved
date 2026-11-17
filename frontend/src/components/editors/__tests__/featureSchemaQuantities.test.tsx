@@ -6,7 +6,7 @@ import { unitLabel, type Quantity } from '@/utils/fieldUnit'
 import type { PartFeature } from '@/types/cad'
 
 const QUANTITIES: readonly Quantity[] = ['length', 'angle', 'count', 'turns', 'none']
-const UNIT_SUFFIX = /\((deg|mm|in|pcs|°)\)\s*$/
+const UNIT_SUFFIX = /(\((deg|mm|in|pcs)\)|°)\s*$/
 
 function numericFields() {
   const rows: { kind: string; index: number; key: string; label: string; field: Record<string, unknown> }[] = []

@@ -52,7 +52,13 @@ export default function NgonTool() {
           onKeyDown={(e) => { if (e.key === 'Enter') commit(e.currentTarget.value) }}
           onPointerDown={(e) => e.stopPropagation()}
           className=""
-          style={{ width: 58, height: 24, marginLeft: 2, textAlign: 'center' }}
+          // Two digits plus the same unit slot the CSS uses for every number
+          // box, so a wider label (a future fifth kind) cannot clip the word.
+          // Border-box: `width` is the whole control, slot included. The
+          // fallback keeps the width sane if the stylesheet is not loaded.
+          style={{
+            width: 'calc(36px + var(--field-unit-slot, 26px))', height: 24, marginLeft: 2, textAlign: 'center', boxSizing: 'border-box',
+          }}
         />
       )}
     </>

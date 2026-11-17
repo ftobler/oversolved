@@ -1439,12 +1439,6 @@
   pointer-events: none;
 }
 
-/* The read-only row's unit is its own sibling, not a box adornment, so it needs
-   the gap the box's right padding would have given it. */
-.feature-field-row > .field-unit {
-  margin-left: 4px;
-}
-
 .feature-field-row--stacked {
   flex-direction: column;
   align-items: stretch;

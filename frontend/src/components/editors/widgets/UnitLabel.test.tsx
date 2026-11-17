@@ -24,6 +24,11 @@ describe('UnitLabel', () => {
     expect(container).toBeEmptyDOMElement()
   })
 
+  it('can stay visible for a read-only row, which has no input to say it', () => {
+    render(<UnitLabel quantity="length" hidden={false} />)
+    expect(screen.getByText('mm').getAttribute('aria-hidden')).toBeNull()
+  })
+
   it('renders a free-form hint through UnitText, unhidden', () => {
     render(<UnitText label="kN" />)
     expect(screen.getByText('kN').getAttribute('aria-hidden')).toBeNull()

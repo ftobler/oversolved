@@ -97,6 +97,22 @@ describe('FeatureEditor number field', () => {
     expect(screen.queryByText('mm')).not.toBeInTheDocument()
   })
 
+  it('keeps the unit of a read-only row in the text, since no input says it', () => {
+    // A number input's accessible name carries the unit, so its adornment is
+    // aria-hidden. The solved-value row has no input: hiding its unit would drop
+    // "mm" from the only place the reader hears it.
+    const readonlySchema: FeatureEditorSchema = {
+      mutationPrefix: 'set_test', subKey: 'test', defaults: {},
+      fields: [{ type: 'readonly', key: 'resolved', label: 'Spacing', quantity: 'length', value: () => '12.5' }],
+    }
+    render(<FeatureEditor feature={makeFeature('test', 'test', {})} onMutation={vi.fn()} schema={readonlySchema} />)
+    const unit = screen.getByText('mm')
+    expect(unit.getAttribute('aria-hidden')).toBeNull()
+    const row = unit.closest('.feature-field-row')!
+    expect(row.textContent).toContain('Spacing')
+    expect(row.textContent).toContain('12.5')
+  })
+
   it('keeps a degree label independent of the document length unit', () => {
     const angleSchema: FeatureEditorSchema = {
       ...schema,

@@ -155,7 +155,9 @@ export function FeatureEditor({
               <div className="feature-field-row" key={`${field.key}:${i}`}>
                 <span className="feature-field-label">{rf.label}</span>
                 <span className="feature-field-value">{shown}</span>
-                <UnitLabel quantity={rf.quantity} lengthUnit={lengthUnit} />
+                {/* No input carries the unit here, so the read-out itself must
+                    keep it for a screen reader: "Spacing 12.5 mm". */}
+                <UnitLabel quantity={rf.quantity} lengthUnit={lengthUnit} hidden={false} />
               </div>
             )
           }

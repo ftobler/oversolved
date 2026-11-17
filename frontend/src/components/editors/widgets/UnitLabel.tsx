@@ -15,10 +15,16 @@ export function UnitText({ label, hidden = false }: { label: string; hidden?: bo
 }
 
 /** The unit of a quantity, as the schema declares it. Null (a ratio) renders
- *  nothing, which is why the schema marks a ratio `none` rather than omitting. */
-export function UnitLabel({ quantity, lengthUnit = 'mm' }: { quantity: Quantity; lengthUnit?: LengthUnit }) {
+ *  nothing, which is why the schema marks a ratio `none` rather than omitting.
+ *  `hidden` defaults on because a number input's accessible name already says
+ *  the unit; a read-only row has no input to carry it, so it passes false. */
+export function UnitLabel({ quantity, lengthUnit = 'mm', hidden = true }: {
+  quantity: Quantity
+  lengthUnit?: LengthUnit
+  hidden?: boolean
+}) {
   const label = unitLabel(quantity, lengthUnit)
-  return label === null ? null : <UnitText label={label} hidden />
+  return label === null ? null : <UnitText label={label} hidden={hidden} />
 }
 
 /**
