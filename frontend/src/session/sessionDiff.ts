@@ -1,4 +1,5 @@
 import type { PartDoc, Mutation, PartFeature } from '@/types/cad'
+import { PATTERN_KINDS } from '@/types/cad'
 
 // The mutation types the color preview can produce. Suppression is scoped to
 // these: while a preview is open any OTHER mutation is an escape that
@@ -26,7 +27,7 @@ export const NO_FALLBACK_BREP_KINDS = new Set([
   'move_face',
   'delete_face',
   'boolean', 'hole',
-  'linear_pattern', 'circular_pattern', 'curve_pattern', 'instance_pattern',
+  ...PATTERN_KINDS,
   'transform', 'mirror',
   'split',
   'delete_body', 'import_step',

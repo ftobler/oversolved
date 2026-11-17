@@ -18,6 +18,7 @@
 // an old journal unreplayable.
 
 import type { EntityKind, FeatureKind, FilletCorner, Mutation, PartDoc, PatternKind, Point, SketchPatternMode } from '@/types/cad'
+import { patternSubOf } from '@/types/cad'
 import { ENTITY_BY_KIND } from '@/registry/entityRegistry'
 import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 import { BUILTIN_PLANES, resolveBarePlaneId } from '@/kernel/solverConstants'
@@ -1597,24 +1598,13 @@ function patternCountProblem(
 }
 
 /** The pattern sub-definition a setter names, or null when the caller has no
- *  document (or the feature is not that pattern kind). */
+ *  document (or the feature is not that pattern kind). The kind names its own
+ *  sub-dict, so all four patterns are read by one lookup. */
 function storedPatternDef(raw: RawStep, ctx: ValueContext, kind: PatternKind): RawStep | null {
   if (ctx.doc === null) return null
   const feature = (ctx.doc.features ?? []).find(entry => entry.id === raw.featureId)
-  if (feature === undefined) return null
-  if (feature.kind === 'linear_pattern' && kind === 'linear_pattern') {
-    return isRecord(feature.linear_pattern) ? feature.linear_pattern : null
-  }
-  if (feature.kind === 'circular_pattern' && kind === 'circular_pattern') {
-    return isRecord(feature.circular_pattern) ? feature.circular_pattern : null
-  }
-  if (feature.kind === 'curve_pattern' && kind === 'curve_pattern') {
-    return isRecord(feature.curve_pattern) ? feature.curve_pattern : null
-  }
-  if (feature.kind === 'instance_pattern' && kind === 'instance_pattern') {
-    return isRecord(feature.instance_pattern) ? feature.instance_pattern : null
-  }
-  return null
+  if (feature === undefined || feature.kind !== kind) return null
+  return patternSubOf(feature)
 }
 
 /** A one-dimensional pattern has no grid, so a `i:j` cell addresses nothing and

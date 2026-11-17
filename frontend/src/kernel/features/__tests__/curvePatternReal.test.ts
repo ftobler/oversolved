@@ -14,6 +14,8 @@ import { SharedHarness } from '../../occ/sharedHarness'
 import { DisposeScope } from '../../occ/disposeScope'
 import { setSketchSolver, resetSketchSolver } from '../sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
+import { applyAddPatternSource } from '@/utils/yamlMutations'
+import type { PartDoc } from '@/types/cad'
 import { shapeBndBox } from '../../occ/primitives'
 import { volumeOf } from '../../occ/volume'
 import type { OccModule, OccShape } from '../../occ/occTypes'
@@ -246,6 +248,28 @@ describe.skipIf(!oc || !solveBytes)('curve pattern through the real kernel', () 
     const store = snapshot(r, 'cu1')
     expect(Object.keys(store)).toEqual(['body_ex1'])
     expect(volumeOfStore(store)).toBeCloseTo(80 * 80 * 5 - 3 * 4 * 4 * 5, 6)
+  })
+
+  it('reapplies a source named through the add-pattern-source mutation', () => {
+    // The Feature tab writes the source through the chip's mutation, not as
+    // inline YAML. The same three cuts land as the case above, so the authored
+    // row reaches the kernel intact.
+    const doc = {
+      version: 9,
+      kind: 'part',
+      features: [
+        rectSketch('sk1', 80, 80),
+        extrude('ex1', 'sk1', 5),
+        rectSketch('sk2', 4, 4, 30, 0),
+        extrude('ex2', 'sk2', 5, 'cut', 'through_all'),
+        linePath('skL', 0, 0, 40, 0),
+        { id: 'cu1', kind: 'curve_pattern', curve_pattern: { subject: 'feature', count: 3, path: ['@skL'] } },
+      ],
+    }
+    applyAddPatternSource(doc as unknown as PartDoc, 'cu1', '@ex2')
+    const r = h.run(doc)
+    expect(h.res(r, 'cu1').status).toBe('ok')
+    expect(volumeOfStore(snapshot(r, 'cu1'))).toBeCloseTo(80 * 80 * 5 - 3 * 4 * 4 * 5, 6)
   })
 
   it('reproduces a circular pattern when the path is a closed circle', () => {

@@ -78,4 +78,27 @@ describe('usePartDoc reports an applier refusal', () => {
     expect(refusals).toEqual([expect.stringContaining('cannot move skA below skB')])
     expect(docRef.current.features!.map(feature => feature.id)).toEqual(before)
   })
+
+  it('reports a pattern source edit on a row that is not a pattern', () => {
+    // The chip's applier used to warn and return, which the editor cannot show:
+    // this pins the toast the click now reaches instead of a dead control.
+    const refusals: string[] = []
+    const { result } = renderHookStrict(() => usePartDoc('u', {
+      solveOnLoad: false,
+      onRefusal: message => refusals.push(message),
+    }))
+    docRef.current = {
+      version: 1,
+      kind: 'part',
+      features: [{ id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 5 } }],
+    }
+    const before = structuredClone(docRef.current)
+
+    const outcome = result.current.handleMutation({
+      type: 'add_pattern_source', featureId: 'ex1', sourceFeature: '@rv1',
+    })
+    expect(outcome).toMatchObject({ ok: false, code: 'refused' })
+    expect(refusals).toEqual([expect.stringContaining('not a pattern')])
+    expect(docRef.current).toEqual(before)
+  })
 })
