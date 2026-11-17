@@ -197,14 +197,19 @@ function pickedTargets(refs: readonly string[], ctx: PickTargetContext): Resolve
   for (const ref of refs) {
     const row = sketchRow(ref, ctx.featuresById)
     if (row !== null) {
+      let expanded: PickTarget[] = []
       try {
-        for (const target of sketchTargets(row.id, row.sketch, ctx.globalRepo).targets) {
-          candidates.push({ target, name: `entity:${row.id}:${target.key}` })
-        }
+        expanded = sketchTargets(row.id, row.sketch, ctx.globalRepo).targets
       } catch {
         // The shared site rule names the hole's remedy, which is not this
         // leaf's: a sketch row with no point is one dropped target among many.
+      }
+      if (expanded.length === 0) {
         warnings.push(`instance_pattern: target '${ref}' did not resolve to a point; it was dropped`)
+        continue
+      }
+      for (const target of expanded) {
+        candidates.push({ target, name: `entity:${row.id}:${target.key}` })
       }
       continue
     }

@@ -347,6 +347,27 @@ describe.skipIf(!oc || !solveBytes)('instance pattern through the real kernel', 
     expect(boxOf(r, 'ip1', 'body_ip1')).toEqual([18, -2, -2.5, 22, 2, 2.5])
   })
 
+  it('drops a sketch row whose points were never solved, and names it', () => {
+    const r = h.run({
+      version: 9, kind: 'part',
+      features: [
+        rectSketch('sk1', 4, 4),
+        extrude('ex1', 'sk1', 5),
+        // Point entities with no solved parameters name no site; the row is one
+        // dropped target, not a silent gap in the numbering.
+        { id: 'skU', kind: 'sketch', plane: FRONT, entities: [{ id: 'p0', kind: 'point' }], initial: {}, constraints: [] },
+        {
+          id: 'ip1', kind: 'instance_pattern',
+          instance_pattern: { subject: 'body', source_body: '@body_ex1', operation: 'new', targets: ['@skU'] },
+        },
+      ],
+    })
+    const result = h.res(r, 'ip1')
+    expect(result.status).toBe('exception')
+    expect(String(result.exception)).toContain('no target resolved')
+    expect(String(result.exception)).toContain("target '@skU' did not resolve to a point")
+  })
+
   it('fails on no target only when nothing is left', () => {
     const r = h.run({
       version: 9, kind: 'part',
