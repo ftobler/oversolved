@@ -722,6 +722,34 @@ describe('registerTopFace parity', () => {
     expectVec(top.centroid, [-5, 5, 10])
     expect(repo.elements.has('ex1/top_face/edge0')).toBe(false)
   })
+
+  it('turns the registered frame the way a reverse twist travels', () => {
+    // A reverse sweep travels along -normal, so the same authored +90 turns the
+    // other way about the registered normal. (The plane's position stays on the
+    // +normal side: the pre-existing reverse defect in feature/backlog.md.)
+    const plane: PlaneLike = {
+      origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1],
+    }
+    const surfaces = [{
+      boundary: [
+        { start: [0, 0], end: [10, 0] },
+        { start: [10, 0], end: [10, 10] },
+        { start: [10, 10], end: [0, 10] },
+        { start: [0, 10], end: [0, 0] },
+      ],
+    }]
+    const repo = new Repository()
+    registerTopFace(repo, 'ex1', plane, surfaces, 10, 0, false, 90, true)
+    const top = repo.elements.get('ex1/top_face') as Record<string, number[]>
+    const expectVec = (actual: number[], expected: number[]): void => {
+      actual.forEach((value, i) => expect(value, `${i}`).toBeCloseTo(expected[i], 12))
+    }
+    // -90 about +Z: the plane's +x turns to -y and +y to +x.
+    expectVec(top.x_axis, [0, -1, 0])
+    expectVec(top.y_axis, [1, 0, 0])
+    // The profile's in-plane centroid (5, 5) turns to (5, -5).
+    expectVec(top.centroid, [5, -5, 10])
+  })
 })
 
 function repoWith(

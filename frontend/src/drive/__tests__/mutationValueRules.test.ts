@@ -2123,8 +2123,8 @@ describe('extrude twist refusals', () => {
     expect(error.message).toContain('direction symmetric')
   })
 
-  it('refuses a twist with up_to, through_all or a taper on the add', () => {
-    for (const termination of ['up_to', 'through_all']) {
+  it('refuses a twist with up_to, up_to_next, through_all or a taper on the add', () => {
+    for (const termination of ['up_to', 'up_to_next', 'through_all']) {
       const error = refusal({
         type: 'add_extrude', featureId: 'ex1', sketchQuery: '$sk1', distance: 5,
         twist: 90, termination,
@@ -2139,13 +2139,13 @@ describe('extrude twist refusals', () => {
     expect(paired.message).toContain('twist with taper is not supported')
   })
 
-  it('refuses setting a twist on a symmetric, up_to or through_all extrude', () => {
+  it('refuses setting a twist on a symmetric, up_to, up_to_next or through_all extrude', () => {
     const symmetric = refusal(
       { type: 'set_extrude_field', featureId: 'ex1', field: 'twist', value: 90 },
       extrudeDoc({ direction: 'symmetric' }),
     )
     expect(symmetric.message).toContain('direction is symmetric')
-    for (const termination of ['up_to', 'through_all']) {
+    for (const termination of ['up_to', 'up_to_next', 'through_all']) {
       const error = refusal(
         { type: 'set_extrude_field', featureId: 'ex1', field: 'twist', value: 90 },
         extrudeDoc({ termination }),
@@ -2175,7 +2175,7 @@ describe('extrude twist refusals', () => {
     )
     expect(direction.message).toContain('symmetric')
     expect(direction.message).toContain('twist')
-    for (const termination of ['up_to', 'through_all']) {
+    for (const termination of ['up_to', 'up_to_next', 'through_all']) {
       const error = refusal(
         { type: 'set_extrude_field', featureId: 'ex1', field: 'termination', value: termination },
         extrudeDoc({ twist: 90 }),

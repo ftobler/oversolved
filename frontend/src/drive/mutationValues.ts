@@ -38,7 +38,7 @@ import { featureFieldNames, planeDefinitionSchema, type JsonSchema } from '@/per
 import { arrayCountProblem } from '@/persistence/docSchema'
 import { skipValue } from '@/utils/core/patternSkip'
 import { linearDirectionModeOf, unreadDirectionFieldProblem } from '@/utils/core/linearPatternModes'
-import { MAX_TWIST_DEG } from '@/kernel/occ/twistPrism'
+import { MAX_TWIST_DEG } from '@/utils/core/twistLimits'
 import { evalExpr } from '@/kernel/evalExpr'
 import { MAX_ARRAY_CELLS } from '@/utils/core/arrayLimits'
 import { pickedSketchEntity } from '@/kernel/features/shared/bodyRef'

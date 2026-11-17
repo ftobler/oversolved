@@ -31,7 +31,7 @@ import { linearHandle, offsetAlong } from './featureHandles'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { makeTranslationTrsf, transformCopy } from '../occ/transforms'
 import { extrudeProfileWithLineage } from '../occ/prismLineage'
-import { MAX_TWIST_DEG, MAX_TWIST_SECTIONS, TWIST_STEP_DEG, sweepBuilderFor } from '../occ/twistPrism'
+import { sweepBuilderFor } from '../occ/twistPrism'
 import { isEdgeProfileRef, resolveEdgeProfileFace } from './edgeProfile'
 import { resolveUpToTarget, orientToTarget, trimAtPlane, UP_TO_REACH, type CutPlane, type UpToTarget } from './upTo'
 import {
@@ -49,6 +49,7 @@ import {
 } from '../occ/bodyNames'
 import { swallowUnlessTrap } from '../errors'
 import { maxPrecision, sketchPrecision, type KernelPrecision } from '../precision'
+import { MAX_TWIST_DEG, MAX_TWIST_SECTIONS, TWIST_STEP_DEG } from '@/utils/core/twistLimits'
 
 type Dict = Record<string, unknown>
 
@@ -899,7 +900,10 @@ export function solveExtrude(
       (termination === 'blind' || (termination === 'up_to' && upToTarget?.kind === 'plane' && upToStart !== 'surface')) &&
       firstSurfaces !== undefined && firstPtData !== undefined
     ) {
-      registerTopFace(globalRepo, featureId, firstPtData, firstSurfaces, effectiveDistance, taperDeg, apexMode, twistDeg)
+      registerTopFace(
+        globalRepo, featureId, firstPtData, firstSurfaces, effectiveDistance,
+        taperDeg, apexMode, twistDeg, direction === 'reverse',
+      )
     }
     // The tool is scope-owned from here: applyBodyOperation detaches whatever
     // becomes a body, and the leftover (an add/cut tool, a compound wrapper)

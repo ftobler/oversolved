@@ -26,12 +26,13 @@
 
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'
-import { DisposeScope } from '../disposeScope'
+import { DisposeScope, drainList } from '../disposeScope'
 import {
   makeLineEdge,
   makeWire,
   makeFaceFromWire,
   makeCircleEdge,
+  makeEllipseEdge,
   faceArea,
   faceSurfaceType,
   type Vec3,
@@ -40,10 +41,11 @@ import { countSolids, shapeIsValid } from '../booleans'
 import { volumeForMeasure } from '../volume'
 import { shapeBbox } from '../faceBounds'
 import { extrudeProfileWithLineage } from '../prismLineage'
-import { twistPrismBuilder, twistSectionCount, MAX_TWIST_DEG } from '../twistPrism'
+import { twistPrismBuilder } from '../twistPrism'
+import { MAX_TWIST_DEG, twistSectionCount } from '@/utils/core/twistLimits'
 import type { PlaneLike } from '../../features/shared/planes'
 import type { LoopEdge } from '../../profileLoops'
-import type { OccModule, OccShape } from '../occTypes'
+import type { OccModule, OccShape, OccSubShape } from '../occTypes'
 
 const oc = await loadOcc()
 
@@ -124,6 +126,56 @@ function circleFace(occ: OccModule, scope: DisposeScope, radius: number): OccSha
     scope.track(makeCircleEdge(occ, scope, [0, 0, 0], Z, [1, 0, 0], radius)),
   ], { requireClosed: true }))
   return scope.track(makeFaceFromWire(occ, scope, wire))
+}
+
+/** A full elliptical profile: `a` along `major`, `b` across it, in the XY
+ *  plane. An ellipse is NOT rotationally symmetric, so a twisted one has to
+ *  turn its major axis with the section. */
+function ellipseFace(
+  occ: OccModule,
+  scope: DisposeScope,
+  at: Vec3,
+  a: number,
+  b: number,
+  major: Vec3,
+): OccShape {
+  const wire = scope.track(makeWire(occ, scope, [
+    scope.track(makeEllipseEdge(occ, scope, at, Z, major, a, b)),
+  ], { requireClosed: true }))
+  return scope.track(makeFaceFromWire(occ, scope, wire))
+}
+
+/** A square plate with one full elliptical hole. */
+function ellipseHoleFace(
+  occ: OccModule,
+  scope: DisposeScope,
+  half: number,
+  at: Vec3,
+  a: number,
+  b: number,
+  major: Vec3,
+): OccShape {
+  const outer = squareWire(occ, scope, half)
+  const hole = scope.track(makeWire(occ, scope, [
+    scope.track(makeEllipseEdge(occ, scope, at, Z, major, a, b)),
+  ], { requireClosed: true }))
+  return scope.track(makeFaceFromWire(occ, scope, outer, [hole]))
+}
+
+/** The edges of `face`'s hole wires (everything but the outer wire), as the
+ *  profile the twist builder was handed. */
+function holeEdges(occ: OccModule, scope: DisposeScope, face: OccShape): OccShape[] {
+  const E = occ.TopAbs_ShapeEnum
+  const outer = scope.track(occ.BRepTools.OuterWire(face))
+  const out: OccShape[] = []
+  const exp = scope.track(new occ.TopExp_Explorer_2(face, E.TopAbs_WIRE, E.TopAbs_SHAPE))
+  for (; exp.More(); exp.Next()) {
+    const wire = scope.track(occ.TopoDS.Wire_1(scope.track(exp.Current())))
+    if ((wire as OccSubShape).IsSame(outer as OccSubShape)) continue
+    const eexp = scope.track(new occ.TopExp_Explorer_2(wire, E.TopAbs_EDGE, E.TopAbs_SHAPE))
+    for (; eexp.More(); eexp.Next()) out.push(scope.track(occ.TopoDS.Edge_1(eexp.Current())))
+  }
+  return out
 }
 
 function lateralFaceCount(occ: OccModule, scope: DisposeScope, shape: OccShape): number {
@@ -305,7 +357,7 @@ describe.skipIf(!oc)('twist prism spike (real OCC)', () => {
     }
   })
 
-  it('a square hole is cut with the same reversal the taper uses', () => {
+  it('a square hole keeps the face winding through the loft', () => {
     const scope = new DisposeScope()
     try {
       const face = squareHoleFace(oc!, scope, 5, 2)
@@ -379,6 +431,56 @@ describe.skipIf(!oc)('twist prism spike (real OCC)', () => {
       // Rotationally symmetric, so the bbox stays a circle's +-5 at both ends.
       expect(bar.endBbox[0]).toBeCloseTo(-5, 5)
       expect(bar.endBbox[3]).toBeCloseTo(5, 5)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('a full ellipse turns its major axis with the section', () => {
+    const scope = new DisposeScope()
+    try {
+      const face = ellipseFace(oc!, scope, [0, 0, 0], 6, 3, [1, 0, 0])
+      const bar = twistBar(oc!, scope, face, 10, 90)
+      expect(bar.valid).toBe(true)
+      expect(bar.solids).toBe(1)
+      expect(bar.laterals).toBe(1)
+      expectRelative(bar.volume, Math.PI * 6 * 3 * 10, 1e-4)
+      // An ellipse is not rotationally symmetric: at 90 degrees its major axis
+      // is on y, so the end cap is +-3 in x and +-6 in y. Keeping the base axis
+      // (the pre-fix behaviour) would leave it +-6 in x and +-3 in y.
+      expect(bar.endBbox[0]).toBeCloseTo(-3, 3)
+      expect(bar.endBbox[3]).toBeCloseTo(3, 3)
+      expect(bar.endBbox[1]).toBeCloseTo(-6, 3)
+      expect(bar.endBbox[4]).toBeCloseTo(6, 3)
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('an elliptical hole turns with the plate, not against it', () => {
+    const scope = new DisposeScope()
+    try {
+      // The hole orbits from centre (2, 0) to (0, 2) while its major axis turns
+      // a quarter turn, so the swept bore reaches x = -1 and y = 4. A hole whose
+      // axis stayed on x (the pre-fix behaviour) would reach x = -2 instead.
+      const face = ellipseHoleFace(oc!, scope, 5, [2, 0, 0], 2, 1, [1, 0, 0])
+      const builder = twistPrismBuilder(oc!, scope, face, [0, 0, 0], Z, 10, Math.PI / 2)
+      const solid = builder.Shape()
+      scope.track(solid)
+      expect(shapeIsValid(oc!, scope, solid)).toBe(true)
+      expect(countSolids(oc!, scope, solid)).toBe(1)
+      // Four outer walls and the bore's wall.
+      expect(lateralFaceCount(oc!, scope, solid)).toBe(5)
+      expectRelative(volumeForMeasure(oc!, scope, solid), (100 - Math.PI * 2) * 10, 1e-4)
+      const holes = holeEdges(oc!, scope, face)
+      expect(holes).toHaveLength(1)
+      const bore = drainList(scope, builder.Generated(holes[0]))
+      expect(bore.length).toBeGreaterThan(0)
+      const box = shapeBbox(oc!, scope, bore[0])
+      expect(box[0]).toBeCloseTo(-1, 2)
+      expect(box[1]).toBeCloseTo(-1, 2)
+      expect(box[3]).toBeCloseTo(4, 2)
+      expect(box[4]).toBeCloseTo(4, 2)
     } finally {
       scope.dispose()
     }

@@ -20,6 +20,12 @@ type Dict = Record<string, unknown>
  * `edge0` is skipped for the same reason; the plane's axes and the centroid are
  * rotated to the end frame the body actually ends on.
  *
+ * `reverse` is the sweep's direction: a reverse extrude travels along
+ * `-normal`, so its twist turns the other way about the registered normal. (The
+ * registered plane's POSITION is still `origin + normal * distance` for both
+ * directions, which is the pre-existing reverse defect in `feature/backlog.md`,
+ * out of scope here.)
+ *
  * An apex end has no top face at all (the profile closed to a point), so `apex`
  * skips the face too: a registered plane at `distance` would be a phantom a
  * sketch could sit on.
@@ -33,15 +39,17 @@ export function registerTopFace(
   taperDeg = 0,
   apex = false,
   twistDeg = 0,
+  reverse = false,
 ): void {
   if (apex) return
   const origin = pt.origin
   const normal = pt.normal
-  // A twist rotates the end frame about the normal by the total angle (right-
-  // handed about it, the same sense the sweep turns). The frame's axes turn and
-  // the profile's own coordinates stay, so the centroid lands where the rotated
-  // axes carry it; the plane itself stays parallel at `distance`.
-  const angle = (twistDeg * Math.PI) / 180
+  // A twist rotates the end frame about the sweep's travel direction by the
+  // total angle. The frame's axes turn and the profile's own coordinates stay,
+  // so the centroid lands where the rotated axes carry it; the plane itself
+  // stays parallel at `distance`. A reverse sweep travels along `-normal`, so
+  // the same authored twist turns the opposite way about the registered normal.
+  const angle = ((reverse ? -twistDeg : twistDeg) * Math.PI) / 180
   const cos = Math.cos(angle)
   const sin = Math.sin(angle)
   const xAxis = twistDeg === 0

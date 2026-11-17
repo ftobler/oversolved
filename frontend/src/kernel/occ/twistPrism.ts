@@ -29,30 +29,11 @@ import type {
 } from './occTypes'
 import type { DraftPrismBuilder } from './draftPrism'
 import { draftPrismBuilder, faceWires, findCaps, generatedFaces, shapeProxy } from './draftPrism'
-import { makeCircleEdge, makeEllipseEdge, makeWire, SubShapeMultiIndex, type Vec3 } from './primitives'
+import { makeCircleEdge, makeWire, SubShapeMultiIndex, type Vec3 } from './primitives'
 import { booleanWithHistory } from './booleans'
 import { noProgress } from './defaultArgs'
 import { makeRotationTrsf, makeTranslationTrsf, transformCopy } from './transforms'
-
-/** Degrees of twist one loft section carries. The sections interpolate a
- *  rotation, so this bounds the piecewise-linearity of the seam path and the
- *  section count at once; the spike measured the volume error at 1e-9 relative
- *  for the profiles it pins at this step. */
-export const TWIST_STEP_DEG = 10
-
-/** The work bound on an authored angle. A twist is not itself limited to one
- *  turn (a screw twists many), but a hand-typed million degrees must not ask the
- *  loft for an unbounded number of sections. */
-export const MAX_TWIST_SECTIONS = 720
-
-/** The largest angle the builder accepts, in degrees. */
-export const MAX_TWIST_DEG = TWIST_STEP_DEG * MAX_TWIST_SECTIONS
-
-/** How many loft segments an authored twist takes. At least two: a single
- *  section has no rotation to interpolate and would be the straight prism. */
-export function twistSectionCount(twistDeg: number): number {
-  return Math.max(2, Math.ceil(Math.abs(twistDeg) / TWIST_STEP_DEG))
-}
+import { twistSectionCount } from '@/utils/core/twistLimits'
 
 interface TwistSection {
   solid: OccShape
@@ -60,38 +41,41 @@ interface TwistSection {
   generated: SubShapeMultiIndex<OccShape>
 }
 
-/** A wire that is one full closed conic. Its seam point is arbitrary: it does
+/** A wire that is one full closed circle. Its seam point is arbitrary: it does
  *  not change the point set. */
-interface ClosedConic {
+interface ClosedCircle {
   center: Vec3
-  // The same conic with its centre moved, seam kept at the base conic's.
+  // The same circle with its centre moved, seam kept at the base circle's.
   edgeAt(center: Vec3): OccShape
 }
 
 /**
- * The section's own conic, when the wire is one full closed circle or ellipse.
- * Rotating such a wire moves its seam with it, and `ThruSections` builds a
+ * The section's own circle, when the wire is one full closed circle. Rotating
+ * such a wire moves its seam with it, and `ThruSections` builds a
  * self-intersecting surface from sections whose closed seam wanders (spiked: a
  * washer's circular bore came back invalid and the cut read larger than the
- * plate). Keeping the base conic's own x direction and moving only its centre
+ * plate). Keeping the base circle's own x direction and moving only its centre
  * is the same point set and stays a clean tube.
+ *
+ * An ELLIPSE is deliberately NOT special-cased. Its orientation is part of its
+ * shape, so the major axis has to turn with the section; keeping the base axis
+ * would build the untwisted prism. The generic transform copy turns the whole
+ * ellipse (seam included), which is the correct point set, and the loft disables
+ * its compatibility pass for that wire because the pass fails an off-centre
+ * rotated ellipse. See the spike's ellipse cases.
  */
-function closedConicOf(
+function closedCircleOf(
   oc: OccModule,
   scope: DisposeScope,
   wire: OccShape,
-): ClosedConic | null {
+): ClosedCircle | null {
   const E = oc.TopAbs_ShapeEnum
   const edges: OccShape[] = []
   const exp = scope.track(new oc.TopExp_Explorer_2(wire, E.TopAbs_EDGE, E.TopAbs_SHAPE))
   for (; exp.More(); exp.Next()) edges.push(scope.track(oc.TopoDS.Edge_1(exp.Current())))
   if (edges.length !== 1) return null
   const adaptor = scope.track(new oc.BRepAdaptor_Curve_2(edges[0]))
-  const type = adaptor.GetType().value
-  const C = oc.GeomAbs_CurveType
-  const circle = type === C.GeomAbs_Circle.value
-  const ellipse = type === C.GeomAbs_Ellipse.value
-  if (!circle && !ellipse) return null
+  if (adaptor.GetType().value !== oc.GeomAbs_CurveType.GeomAbs_Circle.value) return null
   // A full curve closes on itself; an arc's seam is a real endpoint and rotates
   // with the section like every other edge.
   const span = adaptor.LastParameter() - adaptor.FirstParameter()
@@ -101,26 +85,14 @@ function closedConicOf(
     const d = scope.track(raw.Direction())
     return [d.X(), d.Y(), d.Z()]
   }
-  if (circle) {
-    const circ = scope.track(adaptor.Circle())
-    const loc = scope.track(circ.Location())
-    const normal = readDir(circ.Axis())
-    const xAxis = readDir(circ.XAxis())
-    const radius = circ.Radius()
-    return {
-      center: [loc.X(), loc.Y(), loc.Z()],
-      edgeAt: (center) => scope.track(makeCircleEdge(oc, scope, center, normal, xAxis, radius)),
-    }
-  }
-  const ell = scope.track(adaptor.Ellipse())
-  const loc = scope.track(ell.Location())
-  const normal = readDir(ell.Axis())
-  const xAxis = readDir(ell.XAxis())
-  const a = ell.MajorRadius()
-  const b = ell.MinorRadius()
+  const circ = scope.track(adaptor.Circle())
+  const loc = scope.track(circ.Location())
+  const normal = readDir(circ.Axis())
+  const xAxis = readDir(circ.XAxis())
+  const radius = circ.Radius()
   return {
     center: [loc.X(), loc.Y(), loc.Z()],
-    edgeAt: (center) => scope.track(makeEllipseEdge(oc, scope, center, normal, xAxis, a, b)),
+    edgeAt: (center) => scope.track(makeCircleEdge(oc, scope, center, normal, xAxis, radius)),
   }
 }
 
@@ -153,7 +125,7 @@ function placedSection(
   oc: OccModule,
   scope: DisposeScope,
   wire: OccShape,
-  conic: ClosedConic | null,
+  circle: ClosedCircle | null,
   axisOrigin: Vec3,
   direction: Vec3,
   distance: number,
@@ -161,14 +133,14 @@ function placedSection(
   t: number,
 ): OccShape {
   if (t === 0) return wire
-  if (conic !== null) {
-    const turned = rotateAbout(conic.center, axisOrigin, direction, angleRad * t)
+  if (circle !== null) {
+    const turned = rotateAbout(circle.center, axisOrigin, direction, angleRad * t)
     const center: Vec3 = [
       turned[0] + direction[0] * distance * t,
       turned[1] + direction[1] * distance * t,
       turned[2] + direction[2] * distance * t,
     ]
-    const edge = conic.edgeAt(center)
+    const edge = circle.edgeAt(center)
     return scope.track(makeWire(oc, scope, [edge], { requireClosed: true }))
   }
   const trsf = makeTranslationTrsf(
@@ -193,15 +165,21 @@ function loftSections(
   angleRad: number,
   sections: number,
 ): TwistSection {
-  const conic = closedConicOf(oc, scope, baseWire)
+  const circle = closedCircleOf(oc, scope, baseWire)
   const builder = scope.track(new oc.BRepOffsetAPI_ThruSections(true, false, 1e-6))
-  builder.CheckCompatibility(true)
+  // A rebuilt circular section always faces the same way, while the base wire of
+  // a hole comes off the face reversed, so the compatibility pass is what makes
+  // the closed hole tube agree (and it is harmless for an outer circle). Every
+  // other wire is a rigid copy whose seam may move with the section, which that
+  // pass refuses (spiked: an off-centre rotated ellipse fails to build with it
+  // on), and a rigid copy already matches edge for edge.
+  builder.CheckCompatibility(circle !== null)
   // The builder keeps a handle to every section; keep the proxies alive until
   // the scope drains. Section 0 is the base wire whose edges seed the lineage.
   builder.AddWire(scope.track(oc.TopoDS.Wire_1(baseWire)))
   for (let k = 1; k <= sections; k++) {
     const wire = placedSection(
-      oc, scope, baseWire, conic, axisOrigin, direction, distance, angleRad, k / sections,
+      oc, scope, baseWire, circle, axisOrigin, direction, distance, angleRad, k / sections,
     )
     builder.AddWire(scope.track(oc.TopoDS.Wire_1(wire)))
     scope.release(wire)
