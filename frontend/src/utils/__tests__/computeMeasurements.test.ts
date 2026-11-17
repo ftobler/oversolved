@@ -2,650 +2,163 @@ import { describe, it, expect } from 'vitest'
 import { computeMeasurements } from '@/utils/geometry/computeMeasurements'
 import type { Sketch, BodyResult } from '@/types/cad'
 
+// The page-facing caller. The rules and adapters have their own suites; this pin
+// the signature and the behaviour a sketch/part caller sees through it.
 const sketch: Sketch = {
   P1: { x: 0, y: 0 },
   P2: { x: 3, y: 4 },  // dist from P1 = 5
-  P3: { x: 6, y: 8 },  // dist from P1 = 10
+  P3: { x: 6, y: 8 },
   L1: { start: [0, 0], end: [3, 4] },  // length = 5
-  L2: { start: [1, 0], end: [4, 4] },  // parallel to L1 (same direction)
-  L3: { start: [0, 0], end: [4, 0] },  // horizontal, angle to L1 ≈ 53.1°
-  A1: { center: [0, 0], radius: 2, angle_start: 0, angle_end: Math.PI / 2, start: [2, 0], end: [0, 2] },
-  A2: { center: [5, 0], radius: 1, angle_start: 0, angle_end: Math.PI / 2, start: [6, 0], end: [5, 1] },
+  L2: { start: [1, 0], end: [4, 4] },  // parallel to L1
+  L3: { start: [0, 0], end: [4, 0] },  // horizontal, angle to L1 = 53.1 deg
+  A1: { center: [0, 0], radius: 2, angle_start: 0, angle_end: 90, start: [2, 0], end: [0, 2] },
   C1: { center: [0, 0], radius: 3 },
-  C2: { center: [4, 0], radius: 2 },
   SP1: { p1: [0, 0], p2: [1, 1], p3: [2, 1], p4: [3, 0] },
-  E1: { center: [0, 0], a: 4, b: 2, theta: 0 },  // major1=[4,0], minor1=[0,2]
+  E1: { center: [0, 0], a: 4, b: 2, theta: 0 },
+  V: { x: 10, y: 0 },  // beyond L1's far endpoint, for the infinite-line rule
 }
 
 const sel = (...ids: string[]) => new Set(ids)
 const entity = (id: string) => `entity:S1:${id}`
 const vertex = (id: string, ref: string) => `vertex:S1:${id}:${ref}`
 
-describe('Measurement Selection and Evaluation', () => {
-  describe('the document length unit', () => {
-    it('labels a sketch measurement in inches without converting the number', () => {
-      // The stored 5 is five document units; an inch document renders 5 in.
-      expect(computeMeasurements(sel(entity('L1')), sketch, undefined, undefined, 'inch'))
-        .toEqual(['[LINE] 5.000 in'])
-    })
-
-    it('forwards the unit to the 3D body measurements', () => {
-      const bodies: Record<string, BodyResult> = {
-        body_ex: {
-          id: 'body_ex',
-          created_by: 'ex',
-          modified_by: [],
-          edges: [{ kind: 'line', start: [0, 0, 0], end: [3, 4, 0] }],
-          edge_queries: ['?body_ex:edge:0'],
-        },
-      }
-      expect(computeMeasurements(sel('?body_ex:edge:0'), sketch, undefined, bodies, 'inch'))
-        .toEqual(['[EDGE] 5.000 in'])
-    })
+describe('computeMeasurements: the document length unit', () => {
+  it('labels a sketch measurement in inches without converting the number', () => {
+    expect(computeMeasurements(sel(entity('L1')), sketch, undefined, undefined, 'inch'))
+      .toEqual(['length 5.000 in'])
   })
 
-  describe('1. single vertex', () => {
-    it('selects no measurement', () => {
-      const result = computeMeasurements(sel(vertex('L1', 'start')), sketch)
-      expect(result).toEqual([])
-    })
+  it('forwards the unit to the 3D body measurements', () => {
+    const bodies: Record<string, BodyResult> = {
+      body_ex: {
+        id: 'body_ex',
+        created_by: 'ex',
+        modified_by: [],
+        edges: [{ kind: 'line', start: [0, 0, 0], end: [3, 4, 0] }],
+        edge_queries: ['?body_ex:edge:0'],
+      },
+    }
+    expect(computeMeasurements(sel('?body_ex:edge:0'), sketch, undefined, bodies, 'inch'))
+      .toEqual(['length 5.000 in'])
+  })
+})
+
+describe('computeMeasurements: singles', () => {
+  it('reads a line length, an arc radius and sweep, and a circle diameter', () => {
+    expect(computeMeasurements(sel(entity('L1')), sketch)).toEqual(['length 5.000 mm'])
+    expect(computeMeasurements(sel(entity('A1')), sketch)).toEqual(['radius 2.000 mm', 'angle 90.0°'])
+    expect(computeMeasurements(sel(entity('C1')), sketch)).toEqual(['diameter 6.000 mm'])
   })
 
-  describe('2. two vertices', () => {
-    it('selects distance measurement', () => {
-      const result = computeMeasurements(sel(vertex('L1', 'start'), vertex('L1', 'end')), sketch)
-      expect(result).toHaveLength(1)
-      expect(result[0]).toContain('dist')
-    })
-    it('evaluates distance correctly', () => {
-      const result = computeMeasurements(sel(vertex('L1', 'start'), vertex('L1', 'end')), sketch)
-      expect(result).toEqual(['dist: 5.000 mm'])
-    })
+  it('reads nothing for a lone point, vertex, or flat plane', () => {
+    expect(computeMeasurements(sel(entity('P1')), sketch)).toEqual([])
+    expect(computeMeasurements(sel(vertex('L1', 'start')), sketch)).toEqual([])
+  })
+})
+
+describe('computeMeasurements: sketch pairs', () => {
+  it('measures two vertices as their distance', () => {
+    expect(computeMeasurements(sel(vertex('L1', 'start'), vertex('L1', 'end')), sketch))
+      .toEqual(['distance 5.000 mm'])
   })
 
-  describe('3. three+ vertices only', () => {
-    it('selects no measurement', () => {
-      const result = computeMeasurements(
-        sel(vertex('L1', 'start'), vertex('L1', 'end'), vertex('L3', 'end')),
-        sketch
-      )
-      expect(result).toEqual([])
-    })
+  it('refuses three vertices', () => {
+    expect(computeMeasurements(sel(vertex('L1', 'start'), vertex('L1', 'end'), vertex('L3', 'end')), sketch))
+      .toEqual([])
   })
 
-  describe('4. single line segment', () => {
-    it('selects length measurement', () => {
-      const result = computeMeasurements(sel(entity('L1')), sketch)
-      expect(result).toHaveLength(1)
-      expect(result[0]).toContain('[LINE]')
-    })
-    it('evaluates length correctly', () => {
-      const result = computeMeasurements(sel(entity('L1')), sketch)
-      expect(result).toEqual(['[LINE] 5.000 mm'])
-    })
+  it('measures two whole point entities as their distance', () => {
+    expect(computeMeasurements(sel(entity('P1'), entity('P2')), sketch)).toEqual(['distance 5.000 mm'])
   })
 
-  describe('5. two parallel line segments', () => {
-    it('selects parallel distance measurement', () => {
-      const result = computeMeasurements(sel(entity('L1'), entity('L2')), sketch)
-      expect(result).toHaveLength(1)
-      expect(result[0]).toContain('parallel')
-    })
-    it('evaluates parallel distance correctly', () => {
-      const result = computeMeasurements(sel(entity('L1'), entity('L2')), sketch)
-      expect(result[0]).toMatch(/parallel lines, distance: \d+\.\d+ mm/)
-    })
+  it('reads two parallel lines as their distance and two oblique lines as an angle', () => {
+    expect(computeMeasurements(sel(entity('L1'), entity('L2')), sketch))
+      .toEqual(['distance 0.800 mm'])
+    expect(computeMeasurements(sel(entity('L1'), entity('L3')), sketch))
+      .toEqual(['angle 53.1°'])
   })
 
-  describe('6. two non-parallel line segments', () => {
-    it('selects angle measurement', () => {
-      const result = computeMeasurements(sel(entity('L1'), entity('L3')), sketch)
-      expect(result).toHaveLength(1)
-      expect(result[0]).toContain('angle')
-    })
-    it('evaluates angle correctly (acute)', () => {
-      const result = computeMeasurements(sel(entity('L1'), entity('L3')), sketch)
-      expect(result[0]).toMatch(/angle: \d+\.\d+°/)
-      const angleStr = result[0].match(/(\d+\.\d+)/)
-      if (angleStr) {
-        const angle = parseFloat(angleStr[1])
-        expect(angle).toBeLessThan(90)
-      }
-    })
+  it('reads a point against a line with the infinite line, not a clamped segment (D6)', () => {
+    // V (10, 0) is past L1's endpoint (3, 4): the clamped distance is 8.06, the
+    // infinite line is 8.
+    expect(computeMeasurements(sel(entity('V'), entity('L1')), sketch))
+      .toEqual(['distance 8.000 mm'])
   })
 
-  describe('7. single arc', () => {
-    it('selects arc measurement', () => {
-      const result = computeMeasurements(sel(entity('A1')), sketch)
-      expect(result).toHaveLength(1)
-      expect(result[0]).toContain('[ARC]')
-    })
-    it('evaluates arc correctly', () => {
-      const result = computeMeasurements(sel(entity('A1')), sketch)
-      expect(result[0]).toMatch(/\[ARC\] r=2\.000 mm, θ=90°/)
-    })
+  it('reads a vertex to a circle and two circles as center distances', () => {
+    expect(computeMeasurements(sel(vertex('L1', 'end'), entity('C1')), sketch))
+      .toEqual(['center distance 5.000 mm'])
+    expect(computeMeasurements(sel(entity('C1'), entity('A1')), sketch))
+      .toEqual(['center distance 0.000 mm'])
+  })
+})
+
+describe('computeMeasurements: datum planes', () => {
+  const solveResults = {
+    plane1: {
+      plane: {
+        origin: [0, 0, 0] as [number, number, number],
+        normal: [0, 0, 1] as [number, number, number],
+        x_axis: [1, 0, 0] as [number, number, number],
+        y_axis: [0, 1, 0] as [number, number, number],
+      },
+    },
+    plane2: {
+      plane: {
+        origin: [0, 0, 5] as [number, number, number],
+        normal: [0, 0, 1] as [number, number, number],
+        x_axis: [1, 0, 0] as [number, number, number],
+        y_axis: [0, 1, 0] as [number, number, number],
+      },
+    },
+  }
+
+  it('measures two parallel planes by their distance', () => {
+    expect(computeMeasurements(sel('@plane1', '@plane2'), sketch, solveResults))
+      .toEqual(['distance 5.000 mm'])
   })
 
-  describe('8. single circle', () => {
-    it('selects diameter measurement', () => {
-      const result = computeMeasurements(sel(entity('C1')), sketch)
-      expect(result).toHaveLength(1)
-      expect(result[0]).toContain('[CIRCLE]')
-    })
-    it('evaluates diameter correctly', () => {
-      const result = computeMeasurements(sel(entity('C1')), sketch)
-      expect(result).toEqual(['[CIRCLE] d=6.000 mm'])
-    })
+  it('measures two perpendicular planes by their angle', () => {
+    const perpendicular = {
+      ...solveResults,
+      plane2: { plane: { ...solveResults.plane2.plane, normal: [1, 0, 0] as [number, number, number] } },
+    }
+    expect(computeMeasurements(sel('@plane1', '@plane2'), sketch, perpendicular))
+      .toEqual(['angle 90.0°'])
   })
 
-  describe('9. two arcs', () => {
-    it('selects arc center distance measurement', () => {
-      const result = computeMeasurements(sel(entity('A1'), entity('A2')), sketch)
-      expect(result).toHaveLength(1)
-      expect(result[0]).toContain('arc-center')
-    })
-    it('evaluates arc center distance correctly', () => {
-      const result = computeMeasurements(sel(entity('A1'), entity('A2')), sketch)
-      expect(result).toEqual(['arc-center dist: 5.000 mm'])
-    })
+  it('reads a plane against a sketch point', () => {
+    expect(computeMeasurements(sel(vertex('L1', 'start'), '@plane2'), sketch, solveResults))
+      .toEqual(['distance 5.000 mm'])
+  })
+})
+
+describe('computeMeasurements: vertices resolve through geomPoint', () => {
+  it('resolves a spline control point and an ellipse axis handle', () => {
+    expect(computeMeasurements(sel(vertex('SP1', 'c1'), vertex('L1', 'start')), sketch))
+      .toEqual(['distance 1.414 mm'])
+    expect(computeMeasurements(sel(vertex('E1', 'major1'), vertex('L1', 'start')), sketch))
+      .toEqual(['distance 4.000 mm'])
+  })
+})
+
+describe('computeMeasurements: unmeasurable selections', () => {
+  it('reads nothing when a pick cannot be resolved', () => {
+    // A junk or stale id is not skipped into a smaller, more readable selection.
+    expect(computeMeasurements(sel('garbage', entity('L1')), sketch)).toEqual([])
+    expect(computeMeasurements(sel(entity('GHOST'), entity('L1')), sketch)).toEqual([])
+    expect(computeMeasurements(sel('entity:S1:', entity('L1')), sketch)).toEqual([])
   })
 
-  describe('10. arc + circle', () => {
-    it('selects center distance measurement', () => {
-      const result = computeMeasurements(sel(entity('A1'), entity('C2')), sketch)
-      expect(result).toHaveLength(1)
-      expect(result[0]).toContain('center dist')
-    })
-    it('evaluates center distance correctly', () => {
-      const result = computeMeasurements(sel(entity('A1'), entity('C2')), sketch)
-      expect(result).toEqual(['center dist: 4.000 mm'])
-    })
+  it('reads nothing for two picks plus a whole-body pick', () => {
+    expect(computeMeasurements(sel(entity('L1'), entity('L3'), '@body_ex1'), sketch)).toEqual([])
   })
 
-  describe('11. two circles', () => {
-    it('selects circle center distance measurement', () => {
-      const result = computeMeasurements(sel(entity('C1'), entity('C2')), sketch)
-      expect(result).toHaveLength(1)
-      expect(result[0]).toContain('center dist')
-    })
-    it('evaluates circle center distance correctly', () => {
-      const result = computeMeasurements(sel(entity('C1'), entity('C2')), sketch)
-      expect(result).toEqual(['center dist: 4.000 mm'])
-    })
-  })
-
-  describe('12. vertex + arc', () => {
-    it('selects center distance measurement', () => {
-      const result = computeMeasurements(sel(vertex('L1', 'end'), entity('A1')), sketch)
-      expect(result).toHaveLength(1)
-      expect(result[0]).toContain('center dist')
-    })
-    it('evaluates center distance correctly', () => {
-      const result = computeMeasurements(sel(vertex('L1', 'end'), entity('A1')), sketch)
-      const dist = Math.hypot(3 - 0, 4 - 0)  // L1.end (3,4) to A1 center (0,0)
-      expect(result).toEqual([`center dist: ${dist.toFixed(3)} mm`])
-    })
-  })
-
-  describe('13. vertex + circle', () => {
-    it('selects center distance measurement', () => {
-      const result = computeMeasurements(sel(vertex('L1', 'end'), entity('C1')), sketch)
-      expect(result).toHaveLength(1)
-      expect(result[0]).toContain('center dist')
-    })
-    it('evaluates center distance correctly', () => {
-      const result = computeMeasurements(sel(vertex('L1', 'end'), entity('C1')), sketch)
-      const dist = Math.hypot(3 - 0, 4 - 0)  // L1.end (3,4) to C1 center (0,0)
-      expect(result).toEqual([`center dist: ${dist.toFixed(3)} mm`])
-    })
-  })
-
-  describe('14. vertex + line segment', () => {
-    it('selects point-to-line distance measurement', () => {
-      const result = computeMeasurements(sel(vertex('L2', 'start'), entity('L1')), sketch)
-      expect(result).toHaveLength(1)
-      expect(result[0]).toContain('point-line')
-    })
-    it('evaluates point-to-line distance correctly', () => {
-      const result = computeMeasurements(sel(vertex('L2', 'start'), entity('L1')), sketch)
-      expect(result[0]).toMatch(/point-line distance: \d+\.\d+ mm/)
-    })
-  })
-
-  describe('15. vertex + plane distance', () => {
+  it('does not read a whole-body pick as a plane-id lookup', () => {
     const solveResults = {
-      builtin_plane_front: {
-        plane: {
-          origin: [0, 0, 5] as [number, number, number],
-          normal: [0, 0, 1] as [number, number, number],
-          x_axis: [1, 0, 0] as [number, number, number],
-          y_axis: [0, 1, 0] as [number, number, number],
-        },
-      },
+      body_ex1: { plane: { origin: [0, 0, 0], normal: [0, 0, 1], x_axis: [1, 0, 0], y_axis: [0, 1, 0] } },
+      body_ex2: { plane: { origin: [0, 0, 7], normal: [0, 0, 1], x_axis: [1, 0, 0], y_axis: [0, 1, 0] } },
     }
-    it('selects plane distance measurement', () => {
-      const result = computeMeasurements(
-        sel(vertex('L1', 'start'), '@builtin_plane_front'),
-        sketch,
-        solveResults
-      )
-      expect(result).toHaveLength(1)
-      expect(result[0]).toContain('plane distance')
-    })
-    it('evaluates plane distance correctly', () => {
-      const result = computeMeasurements(
-        sel(vertex('L1', 'start'), '@builtin_plane_front'),
-        sketch,
-        solveResults
-      )
-      expect(result[0]).toMatch(/plane distance: \d+\.\d+ mm/)
-      expect(result[0]).toEqual('plane distance: 5.000 mm')
-    })
-  })
-
-  describe('16. two parallel planes distance', () => {
-    const solveResults = {
-      plane1: {
-        plane: {
-          origin: [0, 0, 0] as [number, number, number],
-          normal: [0, 0, 1] as [number, number, number],
-          x_axis: [1, 0, 0] as [number, number, number],
-          y_axis: [0, 1, 0] as [number, number, number],
-        },
-      },
-      plane2: {
-        plane: {
-          origin: [0, 0, 5] as [number, number, number],
-          normal: [0, 0, 1] as [number, number, number],
-          x_axis: [1, 0, 0] as [number, number, number],
-          y_axis: [0, 1, 0] as [number, number, number],
-        },
-      },
-    }
-    it('selects plane distance measurement', () => {
-      const result = computeMeasurements(
-        sel('@plane1', '@plane2'),
-        sketch,
-        solveResults
-      )
-      expect(result).toHaveLength(1)
-      expect(result[0]).toContain('plane distance')
-    })
-    it('evaluates plane distance correctly', () => {
-      const result = computeMeasurements(
-        sel('@plane1', '@plane2'),
-        sketch,
-        solveResults
-      )
-      expect(result[0]).toEqual('plane distance: 5.000 mm')
-    })
-  })
-
-  describe('17. two non-parallel planes', () => {
-    const solveResults = {
-      plane1: {
-        plane: {
-          origin: [0, 0, 0] as [number, number, number],
-          normal: [0, 0, 1] as [number, number, number],
-          x_axis: [1, 0, 0] as [number, number, number],
-          y_axis: [0, 1, 0] as [number, number, number],
-        },
-      },
-      plane2: {
-        plane: {
-          origin: [0, 0, 0] as [number, number, number],
-          normal: [1, 0, 0] as [number, number, number],
-          x_axis: [0, 1, 0] as [number, number, number],
-          y_axis: [0, 0, 1] as [number, number, number],
-        },
-      },
-    }
-    it('returns empty - non-parallel planes have no standard measurement', () => {
-      const result = computeMeasurements(
-        sel('@plane1', '@plane2'),
-        sketch,
-        solveResults
-      )
-      expect(result).toEqual([])
-    })
-  })
-
-  describe('18. builtin plane pair (perpendicular)', () => {
-    const solveResults = {
-      builtin_plane_front: {
-        plane: {
-          origin: [0, 0, 0] as [number, number, number],
-          normal: [0, 0, 1] as [number, number, number],
-          x_axis: [1, 0, 0] as [number, number, number],
-          y_axis: [0, 1, 0] as [number, number, number],
-        },
-      },
-      builtin_plane_top: {
-        plane: {
-          origin: [0, 0, 0] as [number, number, number],
-          normal: [0, 1, 0] as [number, number, number],
-          x_axis: [1, 0, 0] as [number, number, number],
-          y_axis: [0, 0, 1] as [number, number, number],
-        },
-      },
-    }
-    it('returns empty - perpendicular planes have no measurement', () => {
-      const result = computeMeasurements(
-        sel('@builtin_plane_front', '@builtin_plane_top'),
-        sketch,
-        solveResults
-      )
-      expect(result).toEqual([])
-    })
-  })
-
-  describe('19. 3D body edge and face measurements', () => {
-    const bodyResult: BodyResult = {
-      id: 'body_ex1',
-      created_by: 'ex1',
-      modified_by: [],
-      edges: [
-        { kind: 'line', start: [0, 0, 0], end: [3, 4, 0] },
-        { kind: 'arc', center: [0, 0, 0], radius: 2, axis: [0, 0, 1],
-          x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI / 2 },
-      ],
-      mesh: {
-        vertices: [],
-        faces: [],
-        face_data: [
-          { centroid: [0, 0, 0], normal: [0, 0, 1], area: 12.5, surface_type: 'flatface' },
-          { centroid: [1, 1, 0], normal: [1, 0, 0], area: 0.0, surface_type: 'flatface' },
-          {
-            centroid: [0, 0, 5], normal: [1, 0, 0], area: 94.2, surface_type: 'cylinderface',
-            surface_frame: { axis: [0, 0, 1], origin: [0, 0, 0], radius: 3 },
-          },
-          // A cylinder from a bundle solved before `surface_frame` existed:
-          // there is no analytic radius to read, so there is no readout.
-          { centroid: [0, 0, 5], normal: [1, 0, 0], area: 94.2, surface_type: 'cylinderface' },
-        ],
-        face_queries: ['?9;@ex1face0:face', '?9;@ex1face1:face', '?9;@ex1face2:face', '?9;@ex1face3:face'],
-      },
-    }
-    const bodies = { ex1: bodyResult }
-
-    it('measures line edge length via simple format', () => {
-      const r = computeMeasurements(new Set(['@ex1/edge/0']), sketch, undefined, bodies)
-      expect(r).toEqual(['[EDGE] 5.000 mm'])
-    })
-
-    it('measures arc edge via simple format', () => {
-      const r = computeMeasurements(new Set(['@ex1/edge/1']), sketch, undefined, bodies)
-      expect(r[0]).toMatch(/\[EDGE\] r=2\.000 mm/)
-    })
-
-    it('measures a cylindrical face as its diameter via simple format', () => {
-      const r = computeMeasurements(new Set(['@ex1/face/2']), sketch, undefined, bodies)
-      expect(r).toEqual(['[FACE] d=6.000 mm'])
-    })
-
-    it('measures nothing for a planar face (area readout is gone)', () => {
-      const r = computeMeasurements(new Set(['@ex1/face/0']), sketch, undefined, bodies)
-      expect(r).toEqual([])
-    })
-
-    it('measures nothing for a cylinder with no analytic radius', () => {
-      const r = computeMeasurements(new Set(['@ex1/face/3']), sketch, undefined, bodies)
-      expect(r).toEqual([])
-    })
-
-    it('measures edge via ancestry query format', () => {
-      const edgeQueries = ['?9;@ex1edge0:edge', '?9;@ex1edge1:edge']
-      const bodyWithQueries: BodyResult = { ...bodyResult, edge_queries: edgeQueries }
-      const r = computeMeasurements(
-        new Set(['?9;@ex1edge0:edge']),
-        sketch,
-        undefined,
-        { ex1: bodyWithQueries }
-      )
-      expect(r).toEqual(['[EDGE] 5.000 mm'])
-    })
-
-    it('measures face via ancestry query format', () => {
-      const r = computeMeasurements(
-        new Set(['?9;@ex1face2:face']),
-        sketch,
-        undefined,
-        bodies
-      )
-      expect(r).toEqual(['[FACE] d=6.000 mm'])
-    })
-
-    it('returns empty for multi-3d selection', () => {
-      const r = computeMeasurements(
-        new Set(['@ex1/edge/0', '@ex1/edge/1']),
-        sketch,
-        undefined,
-        bodies
-      )
-      expect(r).toEqual([])
-    })
-
-    it('returns empty when bodies not passed', () => {
-      const r = computeMeasurements(new Set(['@ex1/edge/0']), sketch)
-      expect(r).toEqual([])
-    })
-
-    it('returns empty for face with no area data', () => {
-      const bodyNoArea: BodyResult = {
-        ...bodyResult,
-        mesh: { ...bodyResult.mesh!, face_data: [{ centroid: [0,0,0], normal: [0,0,1] }] },
-      }
-      const r = computeMeasurements(new Set(['@ex1/face/0']), sketch, undefined, { ex1: bodyNoArea })
-      expect(r).toEqual([])
-    })
-  })
-
-  describe('20. 3D body face+face parallel distance', () => {
-    const bodyResult: BodyResult = {
-      id: 'body_ex1', created_by: 'ex1', modified_by: [],
-      edges: [],
-      mesh: {
-        vertices: [], faces: [],
-        face_data: [
-          { centroid: [0, 0, 0], normal: [0, 0, 1], area: 10 },
-          { centroid: [0, 0, 5], normal: [0, 0, 1], area: 10 },
-        ],
-        face_queries: ['face0', 'face1'],
-      },
-    }
-    const bodies = { ex1: bodyResult }
-
-    it('measures distance between two parallel faces', () => {
-      const r = computeMeasurements(new Set(['@ex1/face/0', '@ex1/face/1']), sketch, undefined, bodies)
-      expect(r).toEqual(['plane distance: 5.000 mm'])
-    })
-
-    it('returns empty for non-parallel faces', () => {
-      const bodyNonParallel: BodyResult = {
-        ...bodyResult,
-        mesh: {
-          ...bodyResult.mesh!,
-          face_data: [
-            { centroid: [0, 0, 0], normal: [0, 0, 1], area: 10 },
-            { centroid: [0, 0, 0], normal: [1, 0, 0], area: 10 },
-          ],
-        },
-      }
-      const r = computeMeasurements(new Set(['@ex1/face/0', '@ex1/face/1']), sketch, undefined, { ex1: bodyNonParallel })
-      expect(r).toEqual([])
-    })
-  })
-
-  describe('21. 3D body face+vertex perpendicular distance', () => {
-    const bodyResult: BodyResult = {
-      id: 'body_ex1', created_by: 'ex1', modified_by: [],
-      edges: [],
-      vertices: [[0, 0, 10] as [number, number, number]],
-      vertex_queries: ['vert0'],
-      mesh: {
-        vertices: [], faces: [],
-        face_data: [
-          { centroid: [0, 0, 0], normal: [0, 0, 1], area: 10 },
-        ],
-        face_queries: ['face0'],
-      },
-    }
-    const bodies = { ex1: bodyResult }
-
-    it('measures perpendicular distance from vertex to face plane', () => {
-      const r = computeMeasurements(new Set(['@ex1/face/0', '@ex1/vertex/0']), sketch, undefined, bodies)
-      expect(r).toEqual(['plane distance: 10.000 mm'])
-    })
-  })
-
-  describe('22. 3D body face+edge perpendicular distance', () => {
-    const bodyResult: BodyResult = {
-      id: 'body_ex1', created_by: 'ex1', modified_by: [],
-      edges: [
-        { kind: 'line', start: [0, 0, 10], end: [4, 0, 10] },
-      ],
-      edge_queries: ['edge0'],
-      mesh: {
-        vertices: [], faces: [],
-        face_data: [
-          { centroid: [0, 0, 0], normal: [0, 0, 1], area: 10 },
-        ],
-        face_queries: ['face0'],
-      },
-    }
-    const bodies = { ex1: bodyResult }
-
-    it('measures perpendicular distance from edge midpoint to face plane', () => {
-      const r = computeMeasurements(new Set(['@ex1/face/0', '@ex1/edge/0']), sketch, undefined, bodies)
-      expect(r).toEqual(['plane distance: 10.000 mm'])
-    })
-  })
-
-  describe('23. selection-string parsing edge cases', () => {
-    it('ignores ids that are neither entity, vertex, plane, nor a 3D ref', () => {
-      // A junk id falls through the else-continue and only L1 is measured.
-      const result = computeMeasurements(sel('garbage', entity('L1')), sketch)
-      expect(result).toEqual(['[LINE] 5.000 mm'])
-    })
-
-    it('skips an entity selection with an empty entity id', () => {
-      const result = computeMeasurements(sel('entity:S1:', entity('L1')), sketch)
-      expect(result).toEqual(['[LINE] 5.000 mm'])
-    })
-
-    it('skips a selection that references a missing sketch entity', () => {
-      const result = computeMeasurements(sel(entity('GHOST'), entity('L1')), sketch)
-      expect(result).toEqual(['[LINE] 5.000 mm'])
-    })
-  })
-
-  describe('24. point entities selected as whole entities', () => {
-    it('classifies a whole-entity point as a point (lone point has no measurement)', () => {
-      const result = computeMeasurements(sel(entity('P1')), sketch)
-      expect(result).toEqual([])
-    })
-
-    it('measures the distance between two whole-entity points', () => {
-      // P1 (0,0) and P2 (3,4) selected as entities -> point-point distance.
-      const result = computeMeasurements(sel(entity('P1'), entity('P2')), sketch)
-      expect(result).toEqual(['dist: 5.000 mm'])
-    })
-  })
-
-  describe('25. no measurement match', () => {
-    it('reports a "No match" summary for an unmeasurable combination', () => {
-      // line + circle matches no single/pair/plane rule -> the count summary.
-      const result = computeMeasurements(sel(entity('L1'), entity('C1')), sketch)
-      expect(result).toEqual(['No match for 1x line, 1x circle'])
-    })
-  })
-
-  describe('26. whole-body selections are excluded', () => {
-    it('does not read a whole-body pick as a plane-id lookup', () => {
-      // A parts-list `@body_...` pick is not a measurement source: only body
-      // primitives (face/edge/vertex) feed the B-rep rules. Without the
-      // exclusion these ids fell into the plane-lookup branch, so two body ids
-      // that collided with solve-result keys read as a plane pair.
-      const solveResults = {
-        body_ex1: { plane: { origin: [0, 0, 0], normal: [0, 0, 1], x_axis: [1, 0, 0], y_axis: [0, 1, 0] } },
-        body_ex2: { plane: { origin: [0, 0, 7], normal: [0, 0, 1], x_axis: [1, 0, 0], y_axis: [0, 1, 0] } },
-      }
-      const result = computeMeasurements(sel('@body_ex1', '@body_ex2'), sketch, solveResults)
-      expect(result).toEqual([])
-    })
-
-    it('still measures a sketch entity in a mixed selection that holds a whole-body pick', () => {
-      const result = computeMeasurements(sel(entity('L1'), '@body_ex1'), sketch)
-      expect(result).toEqual(['[LINE] 5.000 mm'])
-    })
-  })
-
-  describe('27. spline control-point vertex', () => {
-    // A spline stores its points as p1-p4, not fields named start/c1/c2/end,
-    // so a vertex pick must route through geomPoint's kind-aware mapping
-    // rather than a raw same-named property read.
-    it('resolves the c1 control point (p2), not the whole-entity fallback', () => {
-      const result = computeMeasurements(sel(vertex('SP1', 'c1'), vertex('L1', 'start')), sketch)
-      expect(result).toEqual(['dist: 1.414 mm'])  // dist([1,1], [0,0])
-    })
-    it('resolves start (p1) and end (p4)', () => {
-      const result = computeMeasurements(sel(vertex('SP1', 'start'), vertex('SP1', 'end')), sketch)
-      expect(result).toEqual(['dist: 3.000 mm'])  // dist([0,0], [3,0])
-    })
-  })
-
-  describe('28. ellipse axis-handle vertex', () => {
-    // An ellipse's axis handles (major1/major2/minor1/minor2) are computed from
-    // center/a/b/theta, not stored as same-named fields, so the same
-    // raw-property-read bug drops them too.
-    it('resolves the major1 axis handle, not the whole-entity fallback', () => {
-      const result = computeMeasurements(sel(vertex('E1', 'major1'), vertex('L1', 'start')), sketch)
-      expect(result).toEqual(['dist: 4.000 mm'])  // dist([4,0], [0,0])
-    })
-    it('resolves minor1 and minor2 across the center', () => {
-      const result = computeMeasurements(sel(vertex('E1', 'minor1'), vertex('E1', 'minor2')), sketch)
-      expect(result).toEqual(['dist: 4.000 mm'])  // dist([0,2], [0,-2])
-    })
-  })
-
-  describe('29. ambiguous multi-entity selections refuse rather than guess', () => {
-    // Mirrors block "3. three+ vertices only": once a selection holds more
-    // measurable entities than any single rule can consume, there is no
-    // well-defined measurement, so the result is empty rather than an arbitrary
-    // first pair.
-    it('refuses three selected lines instead of measuring an arbitrary pair', () => {
-      const result = computeMeasurements(sel(entity('L1'), entity('L2'), entity('L3')), sketch)
-      expect(result).toEqual([])
-    })
-
-    it('refuses a mixed two-line-plus-arc selection', () => {
-      const result = computeMeasurements(sel(entity('L1'), entity('L3'), entity('A1')), sketch)
-      expect(result).toEqual([])
-    })
-
-    it('refuses two points plus a plane instead of measuring only the first point', () => {
-      const solveResults = {
-        builtin_plane_front: {
-          plane: {
-            origin: [0, 0, 5] as [number, number, number],
-            normal: [0, 0, 1] as [number, number, number],
-            x_axis: [1, 0, 0] as [number, number, number],
-            y_axis: [0, 1, 0] as [number, number, number],
-          },
-        },
-      }
-      const result = computeMeasurements(
-        sel(vertex('L1', 'start'), vertex('L1', 'end'), '@builtin_plane_front'),
-        sketch,
-        solveResults,
-      )
-      expect(result).toEqual([])
-    })
-
-    it('still measures a genuine two-line selection (guard is not over-broad)', () => {
-      const result = computeMeasurements(sel(entity('L1'), entity('L3')), sketch)
-      expect(result).toHaveLength(1)
-      expect(result[0]).toContain('angle')
-    })
+    expect(computeMeasurements(sel('@body_ex1', '@body_ex2'), sketch, solveResults)).toEqual([])
   })
 })
