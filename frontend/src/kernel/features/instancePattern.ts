@@ -213,7 +213,7 @@ function resolvedReference(
   if (subject === 'body') {
     const body = resolvePatternSourceBody(sub, ctx.bodyStore)
     const shape = ctx.table.get<OccShape>(body.shape!)
-    return { point: solidCentroid(ctx.oc, ctx.scope, shape) as Vec3, normal: null, rule: 'the source body\'s centroid' }
+    return { point: solidCentroid(ctx.oc, ctx.scope, shape) as Vec3, normal: null, rule: 'the source part\'s centroid' }
   }
   const centroid = firstSourceToolCentroid(
     ctx.oc, ctx.scope, ctx.table,

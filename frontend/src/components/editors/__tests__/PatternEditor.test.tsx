@@ -175,13 +175,13 @@ describe('LINEAR_PATTERN_SCHEMA', () => {
     expect(screen.getByText('Extrude 1')).not.toBeNull()
     const labels = [...document.querySelectorAll('.feature-field-label')].map((n) => n.textContent)
     expect(labels).toContain('Source Features')
-    expect(labels).not.toContain('Body')
+    expect(labels).not.toContain('Part')
   })
 
-  it('hides the body source when the subject is a feature', () => {
+  it('hides the part source when the subject is a feature', () => {
     renderEditor(makeFeature({ subject: 'feature' }))
     const labels = [...document.querySelectorAll('.feature-field-label')].map((n) => n.textContent)
-    expect(labels).not.toContain('Body')
+    expect(labels).not.toContain('Part')
     expect(labels).not.toContain('Operation')
     expect(labels).toContain('Source Features')
   })

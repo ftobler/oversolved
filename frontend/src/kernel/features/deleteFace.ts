@@ -64,7 +64,7 @@ export function solveDeleteFace(
   const sub = (feature.delete_face as Dict) ?? {}
   const faces = (sub.faces as string[]) ?? []
   if (faces.length === 0) throw new Error('delete_face: requires at least one face')
-  if (Object.keys(bodyStore).length === 0) throw new Error('delete_face: no bodies in body_store')
+  if (Object.keys(bodyStore).length === 0) throw new Error('delete_face: no parts in body_store')
 
   const indexFor = makeFaceIndexCache(oc, scope, table)
 
@@ -151,7 +151,7 @@ export function solveDeleteFace(
       // Defeaturing cannot consume its whole body, so this is defensive: the
       // resplit deleted the body and the applied count must not grow from a body
       // that no longer exists.
-      modifierFailures.push(`${bid}: the operation removed the whole body`)
+      modifierFailures.push(`${bid}: the operation removed the whole part`)
       continue
     }
     applied.push(...ids)

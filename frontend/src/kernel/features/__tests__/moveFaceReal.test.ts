@@ -314,7 +314,7 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     const top = faceQueryAt(base.bodies, 'cls_zp')
     const r = h.run({ features: [...boxSpec().features, { id: 'mf1', kind: 'move_face', move_face: { faces: [top], distance: -20 } }] })
     expect(h.res(r, 'mf1').status).toBe('exception')
-    expect(String(h.res(r, 'mf1').exception ?? '')).toContain('whole body')
+    expect(String(h.res(r, 'mf1').exception ?? '')).toContain('whole part')
   })
 
   it('full and incremental builds agree on the moved body face UUIDs', () => {

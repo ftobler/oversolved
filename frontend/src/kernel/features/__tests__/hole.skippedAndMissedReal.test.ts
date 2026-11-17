@@ -52,7 +52,7 @@ describe.skipIf(!oc)('hole skipped and missed sites (real OCC)', () => {
       expect(result.status).toBe('partial')
       expect(result.exception).toBe(
         'hole: 1/4 point(s) skipped, no XY data for: p4; ' +
-        "hole: 1/3 drill site(s) did not intersect body 'body_t': p3",
+        "hole: 1/3 drill site(s) did not intersect part 'body_t': p3",
       )
       expect(result.hole_count).toBe(2)
     } finally {

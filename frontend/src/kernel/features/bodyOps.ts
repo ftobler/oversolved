@@ -152,9 +152,9 @@ function shapeUnchanged(
  */
 function addWithNothingMessage(opName: string, hadBodies: boolean): string {
   return hadBodies
-    ? `${opName}: add does not merge with any existing body (the profile shares no volume with one); ` +
-        'move it onto the part, or use operation: new to create a body'
-    : `${opName}: add has no existing body to extend; use operation: new to create one`
+    ? `${opName}: add does not merge with any existing part (the profile shares no volume with one); ` +
+        'move it onto the part, or use operation: new to create a part'
+    : `${opName}: add has no existing part to extend; use operation: new to create one`
 }
 
 /**
@@ -391,7 +391,7 @@ export function applyBodyOperation(
         scope.release(flipped)
         if (reaches) throw new Error(`${opName}: ${oppositeProbe!.message}`)
       }
-      throw new Error(`${opName}: cut does not intersect any target body - nothing to remove`)
+      throw new Error(`${opName}: cut does not intersect any target part - nothing to remove`)
     }
     // A merge-target cut that consumes the target never mints `bodyId`, so
     // body_id keeps that would-be id; hole and array instead keep the consumed
@@ -417,7 +417,7 @@ export function applyBodyOperation(
       // The bodies are gone, so body_ids must not name them. This is the same
       // deletion event hole and array report, with the same wording.
       const deleted = consumedBodyIds
-        .map((id) => `${opName}: the cut removed all of body '${id}'; the body was deleted`)
+        .map((id) => `${opName}: the cut removed all of part '${id}'; the part was deleted`)
         .join('; ')
       result.solver_warning = result.solver_warning === undefined
         ? deleted
@@ -558,7 +558,7 @@ export function applyBodyOperation(
     return result
   }
   if (mergeTarget) {
-    throw new Error(`${opName}: add could not fuse with any target body`)
+    throw new Error(`${opName}: add could not fuse with any target part`)
   }
   if (addRequiresExisting) throw new Error(addWithNothingMessage(opName, true))
   // No target body: the tool becomes its own body (one per solid).

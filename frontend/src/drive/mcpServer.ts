@@ -185,7 +185,7 @@ const DETAIL_SCHEMA = {
   enum: [...ASSEMBLY_DETAILS],
   description: 'Assembly replies only (default full); `detail` is per tool, and select takes its own enum ("full" | "queries"). '
     + 'run, summary: ok, docHash, solve verdict/dof/iters, mate and part problems, summary. '
-    + 'measure, summary: the aggregate measures (bodies, volume, area, centroid, bbox and the topology counts), the solve verdict and the mate and part '
+    + 'measure, summary: the aggregate measures (bodies: the part count, volume, area, centroid, bbox and the topology counts), the solve verdict and the mate and part '
     + 'problems, with no perBody table and no one-line summary. changed: adds the poses that moved against the starting document\'s solve (run only), '
     + 'the mate frames of mates this call added, edited or that have a problem, solve.mates only for problem mates, and refused steps in full (accepted '
     + 'steps become stepsAccepted, except one carrying a captured report);a measure has no starting document, so it lists no poses. full: every instance, mate frame and step, plus perBody '
@@ -278,13 +278,13 @@ const TYPE_DESCRIPTION = `Edge kind (${typeVocabulary('edge').join(', ')}), face
 // sides, so there is no dihedral to measure), never `tangent`.
 const CONVEXITY_DESCRIPTION = 'Edge-only: the dihedral class BRepOffset_Analyse reports, one of "convex", "concave", '
   + '"tangent" or "other". The word is the analyser\'s: a slot wall\'s inside corner is concave and a mouth rim is '
-  + 'whatever the kernel classifies, so read geometry.convexity to learn a body. A seam has one face on both sides, so '
+  + 'whatever the kernel classifies, so read geometry.convexity to learn a part. A seam has one face on both sides, so '
   + 'the analyse reports it as "other", not "tangent"; {convexity:"tangent"} names real smooth joins only. An older '
   + 'solve with no class matches no value, never "other" by accident.'
 
 const SEAM_DESCRIPTION = 'Edge-only: true for a face seam, the edge a face meets itself along (a full cylinder, cone, '
   + 'sphere or torus closes on itself). A face or vertex has no seam flag and matches neither value. {not:{seam:true}} '
-  + 'is the filletable boundary of a revolved or shelled body.'
+  + 'is the filletable boundary of a revolved or shelled part.'
 
 // A `$ref` fragment resolves against the schema-document root, which for a tool
 // is the whole `inputSchema`. These definitions are therefore spread into that
@@ -377,7 +377,7 @@ const SELECTOR_DEFS: Record<string, unknown> = {
       type: 'object',
       required: ['kind'],
       properties: {
-        from: { type: 'string', description: 'Body id to restrict to; omit for every body.' },
+        from: { type: 'string', description: 'The part id (stored as `body`) to restrict to; omit for every part.' },
         kind: {
           enum: ['edge', 'face', 'vertex'],
           description: 'Topology to pick. A vertex is a corner point: only the position predicates name one '
@@ -451,12 +451,12 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + 'is visible without repeating the whole history; a partial or exception feature has no delta row, while a warned feature '
       + 'that built follows the same changed/touched rule and carries the warning text. A sketch or plane the steps touched is '
       + 'listed even when its checkpoint did not move, so a sketch\'s dof reads in the same call. '
-      + 'A row\'s volume is the total over every live body; body and bodyVolume name a body the feature '
-      + 'changed (its own reported body when that one changed, e.g. a merge_target cut\'s receiving body), and '
-      + 'bodyVolume is that body\'s own volume. changedBodyCount is set when more than one body changed, and then '
-      + 'body names the reported body only if it is one of them, so a disjoint array reports its count instead of '
+      + 'A row\'s volume is the total over every live part; body and bodyVolume name the part the feature '
+      + 'changed (its own reported part when that one changed, e.g. a merge_target cut\'s receiving part), and '
+      + 'bodyVolume is that part\'s own volume. changedBodyCount is set when more than one part changed, and then '
+      + 'body names the reported part only if it is one of them, so a disjoint array reports its count instead of '
       + 'naming its untouched source; body, bodyVolume and the count are absent when none changed, except that a '
-      + 'rigid transform or mirror still names its body. '
+      + 'rigid transform or mirror still names its part. '
       + 'Pass featureDeltas: "all" to inspect every built row instead. frames reports the resolved {origin, '
       + 'x_axis, y_axis, normal} of each sketch and add_plane feature this call touched or whose frame moved, so '
       + 'a face sketch\'s axes are read from the reply rather than guessed (a feature whose solve threw has no '
@@ -477,8 +477,8 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + '`features` instead of an empty list that reads as a clean build; `solved: false` means no solve was '
       + 'attempted at all. A step the applier refused reports ok false with code no-change, or invalid-mutation '
       + 'when a value rule names the reason; an empty createdIds list is never the only hint. '
-      + 'The summary lists every body the final solve holds live: '
-      + 'that is the checkpoint body store, so it includes a body whose tessellation failed (the solve response\'s mesh map is not the body store). '
+      + 'The summary lists every part the final solve holds live: '
+      + 'that is the checkpoint part store, so it includes a part whose tessellation failed (the solve response\'s mesh map is not the part store). '
       + 'A refused step names the live prefix and how far the script got, and a step that timed out is worded as a '
       + 'timeout, never refused. A call that stalls returns the state the accepted prefix holds: ok false, its '
       + 'docHash, its settled steps plus the step that timed out (error code solve-timeout), solved true, and the '
@@ -514,8 +514,8 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
   },
   {
     name: 'measure',
-    description: 'Measure a document: body count, volume, surface area, centroid, bounding box and B-rep counts, '
-      + 'plus perBody: one entry per live body with its id, volume, area, centroid and bbox. '
+    description: 'Measure a document: part count (the reply key is `bodies`), volume, surface area, centroid, bounding box and B-rep counts, '
+      + 'plus perBody: one entry per live part with its id, volume, area, centroid and bbox. '
       + 'An assembly measure under detail: "summary" or "changed" keeps the aggregate measures, the solve verdict and the mate and part '
       + 'problems, and omits perBody; it also returns no one-line summary. '
       + 'Also returns features, the same failed-or-warning feature list a run reply carries (an underconstrained '
@@ -587,7 +587,7 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + 'it stays in features (or in a bound part\'s features), but the file is sound, so it does not make ok false. '
       + 'A part export names length_unit (the document) and file_unit: "mm" (the bytes, since STEP and STL are '
       + 'written in millimetres). '
-      + 'An unknown body id is a tool error naming the live body ids.',
+      + 'An unknown part id is a tool error naming the live part ids.',
     inputSchema: {
       type: 'object',
       required: ['format', 'out'],
@@ -597,7 +597,7 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
         parts: PARTS_SCHEMA,
         format: { type: 'string', enum: ['step', 'stl'] },
         out: { type: 'string', description: 'The file to write; the path must resolve inside tmp/ or bugreports/ (relative paths resolve against the repo root). A missing parent directory is created.' },
-        body: { type: 'string', description: 'Export this single body id; parts only. An assembly export takes no body and refuses one.' },
+        body: { type: 'string', description: 'Export this single part id (stored as `body`); parts only. An assembly export takes no part and refuses one.' },
         detail: EXPORT_DETAIL_SCHEMA,
         docId: { type: 'string' },
         files: FILE_LIST_SCHEMA,
@@ -613,14 +613,14 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + '"queries" returns the usual ok and docHash with only count and the queries, so pass detail: "queries" for a large '
       + 'match rather than spend the client\'s token limit on geometry. Run it after `run`, then feed the queries to a feature '
       + '(fillet, chamfer, hole, ...). Omit `where` to take every candidate: {from:"body_ex1",kind:"edge"} is '
-      + 'all edges of that body. An edge direction test reads the edge\'s own tangent, so a fillet arc\'s underlying '
+      + 'all edges of that part. An edge direction test reads the edge\'s own tangent, so a fillet arc\'s underlying '
       + 'circle axis is not a direction; a full circle has no single tangent. A seam edge is the face meeting '
       + 'itself, not a boundary between two faces, so it has no direction to compare and matches neither parallel '
       + 'nor perpendicular; the other predicates still return it and a click can pick it. An edge also carries the '
       + 'analyser\'s dihedral class: geometry.convexity is "convex", "concave", "tangent" or "other", and '
       + 'geometry.seam says whether the edge is a seam. {convexity:"concave"} is a slot\'s inside corner group and '
       + '{convexity:"convex"} the outer ridges (the two radii on a rail slot profile); a seam has one face on both '
-      + 'sides and reads other, so {seam:false} (or {not:{seam:true}}) is the filletable boundary of a revolved body. '
+      + 'sides and reads other, so {seam:false} (or {not:{seam:true}}) is the filletable boundary of a revolved part. '
       + 'A vertex is a corner point, '
       + 'so name it with the position predicates: {kind:"vertex",where:{and:[{extreme:{axis:[0,0,1],side:"max"}},'
       + '{extreme:{axis:[1,0,0],side:"min"}},{extreme:{axis:[0,1,0],side:"min"}}]}} is the top x-min y-min corner, '
@@ -1057,7 +1057,7 @@ export function createMcpServer(ops: McpCadOps): McpServer {
               + ASSEMBLY_DOC_SCHEMA_URI + '. Plane names are case-sensitive: use '
               + '@builtin_plane_front, @builtin_plane_top, @builtin_plane_right, a bare seeded name (Front, Top, '
               + 'Right) or @<planeId>; an unmatched plane is an error naming the valid planes. '
-              + 'Sketches should be fully constrained: dimension against projected geometry (add_projected_entity; its source takes a body query or a {selector} naming one edge, vertex or face; a face source is one live projection whose members follow later edits, and deleting the constraint freezes the derived members) '
+              + 'Sketches should be fully constrained: dimension against projected geometry (add_projected_entity; its source takes a part query or a {selector} naming one edge, vertex or face; a face source is one live projection whose members follow later edits, and deleting the constraint freezes the derived members) '
               + 'or @builtin_origin, a projected point is a real point so it is a hole site itself, and read dof on the sketch\'s delta row while it warns. An underconstrained sketch is a yellow '
               + 'build warning in the tree and a features row here, but it never fails a run or an export. `fixed` '
               + 'is for deliberately frozen geometry only. A face sketch dimensioned to its projected edges is '

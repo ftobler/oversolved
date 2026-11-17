@@ -454,7 +454,7 @@ function applyEdgeFeature(
   // in: it is the createdBy tag for the generated blend-face UUIDs.
   const edges = (feature.edges as string[]) ?? []
   if (edges.length === 0) throw new Error(`${featureKind}: requires at least one edge`)
-  if (Object.keys(bodyStore).length === 0) throw new Error(`${featureKind}: no bodies in body_store`)
+  if (Object.keys(bodyStore).length === 0) throw new Error(`${featureKind}: no parts in body_store`)
 
   const sourceBody = (feature.source_body as string) ?? ''
   const indexFor = makeEdgeIndexCache(oc, scope, table)
@@ -484,7 +484,7 @@ function applyEdgeFeature(
       const ids = resolveBodyIds(sourceBody, bodyStore)
       if (ids.length > 1) {
         throw new Error(
-          `${featureKind}: source body '${sourceBody}' names ${ids.length} bodies ` +
+          `${featureKind}: source part '${sourceBody}' names ${ids.length} parts ` +
           `(${ids.join(', ')}); pick one`,
         )
       }
@@ -497,7 +497,7 @@ function applyEdgeFeature(
           resolvedSrc = resolveBody(sourceBody, bodyStore).id
         } catch (e) {
           swallowUnlessTrap(e)
-          throw new Error(`${featureKind}: source body '${sourceBody}' not found`)
+          throw new Error(`${featureKind}: source part '${sourceBody}' not found`)
         }
       }
     }
@@ -674,7 +674,7 @@ function applyEdgeFeature(
       // the resplit deleted the body, and the applied count must not grow from
       // a body that no longer exists. The failure entry makes the throw below
       // say what happened instead of "no edges resolved".
-      modifierFailures.push(`${bid}: the modifier removed the whole body`)
+      modifierFailures.push(`${bid}: the modifier removed the whole part`)
       failed.push(...qlist.filter((q) => resolvedQueries.has(q)))
       continue
     }

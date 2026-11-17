@@ -166,7 +166,7 @@ function resolvePick(
     return {
       ok: false,
       code: 'unresolved-ref',
-      message: `${label} names a selector, but the document has no solved bodies yet; `
+      message: `${label} names a selector, but the document has no solved parts yet; `
         + `run a step that builds geometry first, or ${SELECTOR_HINT}`,
     }
   }

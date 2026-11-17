@@ -49,7 +49,7 @@ describe.skipIf(!ready)('an additive extrude that reaches no body (real OCC + Ru
     expect(result.ok).toBe(true)
     const problem = result.features.find(feature => feature.id === 'ex2')
     expect(problem).toMatchObject({ id: 'ex2', kind: 'extrude', status: 'exception' })
-    expect(problem!.message).toContain('add does not merge with any existing body')
+    expect(problem!.message).toContain('add does not merge with any existing part')
     expect(problem!.message).toContain('use operation: new')
     expect(result.features.find(feature => feature.id === 'ex1')).toBeUndefined()
     expect(result.bodies).toEqual(['body_ex1'])

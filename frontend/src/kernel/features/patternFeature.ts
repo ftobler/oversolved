@@ -166,7 +166,7 @@ function resolveSources(
     if (operation !== 'add' && operation !== 'cut') {
       throw new Error(
         `${noun}: the source feature '${sourceId}' has operation '${operation}'; ` +
-          'repeat an add or a cut, not a feature that starts a new body',
+          'repeat an add or a cut, not a feature that starts a new part',
       )
     }
     if (kind === 'extrude' && ((sub.termination as string) === 'up_to' || (sub.termination as string) === 'up_to_next')) {
@@ -196,7 +196,7 @@ function resolvePatternTarget(sourceId: string, explicitRef: string, bodyStore: 
       // A ref naming several bodies is a different diagnosis from a missing
       // one, and its own message lists the ids to choose between.
       if (e instanceof AmbiguousBodyRefError) throw e
-      throw new Error(`${noun}: target_body '${explicitRef}' does not name one body (${extractErrorMessage(e)})`)
+      throw new Error(`${noun}: target_body '${explicitRef}' does not name one part (${extractErrorMessage(e)})`)
     }
   }
   const candidates = Object.values(bodyStore).filter(
@@ -204,13 +204,13 @@ function resolvePatternTarget(sourceId: string, explicitRef: string, bodyStore: 
   )
   if (candidates.length === 0) {
     throw new Error(
-      `${noun}: the source feature '${sourceId}' produced no body; ` +
+      `${noun}: the source feature '${sourceId}' produced no part; ` +
         'check that it solved and comes before this feature',
     )
   }
   if (candidates.length > 1) {
     throw new Error(
-      `${noun}: the source feature '${sourceId}' touched ${candidates.length} bodies ` +
+      `${noun}: the source feature '${sourceId}' touched ${candidates.length} parts ` +
         `(${candidates.map((body) => body.id).join(', ')}); set target_body to one of them`,
     )
   }
@@ -313,7 +313,7 @@ function applyCopiesToTarget(
       markFeatureProgress()
       const overlapping = group.filter((copy) => shapesIntersect(oc, targetShape, copy.shape))
       if (overlapping.length === 0) {
-        failures.push(`${copyLabel(copyNo)}: cut does not intersect any target body - nothing to remove`)
+        failures.push(`${copyLabel(copyNo)}: cut does not intersect any target part - nothing to remove`)
       } else {
         hits.push(...overlapping)
       }
@@ -364,7 +364,7 @@ function applyCopiesToTarget(
             // later copy has a body to land on.
             live.delete(targetId)
             consumed = true
-            notes.push(`${noun}: ${copyLabel(copyNo)} removed all of body '${targetId}'; later copies were not applied`)
+            notes.push(`${noun}: ${copyLabel(copyNo)} removed all of part '${targetId}'; later copies were not applied`)
             break
           }
           for (const id of ids) live.add(id)
@@ -421,7 +421,7 @@ function applyCopiesToTarget(
     const kept: CopyInstance[] = []
     selected.forEach((copy, index) => {
       if (shaped.has(index)) kept.push(copy)
-      else failures.push(`${copyLabel(copy.copy)}: cut does not intersect any target body - nothing to remove`)
+      else failures.push(`${copyLabel(copy.copy)}: cut does not intersect any target part - nothing to remove`)
     })
     if (kept.length === 0) return { bodyIds: [], appliedCopies: 0, failures, notes }
     selected = kept
@@ -696,7 +696,7 @@ export function solveFeaturePattern(
         const target = bodyStore[plan.target.id]
         if (target === undefined) {
           notes.push(
-            `${noun}: body '${plan.target.id}' was removed by an earlier source; ` +
+            `${noun}: part '${plan.target.id}' was removed by an earlier source; ` +
               `'${source.id}' was not applied`,
           )
           break

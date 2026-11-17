@@ -82,7 +82,7 @@ describe('applyBodyOperation OCC-free branches', () => {
         sketchId: 'skF',
         opName: 'extrude',
       }),
-    ).toThrow(/cut does not intersect any target body/)
+    ).toThrow(/cut does not intersect any target part/)
   })
 
   it('an add that must extend existing material refuses an empty store', () => {
@@ -100,7 +100,7 @@ describe('applyBodyOperation OCC-free branches', () => {
         opName: 'extrude',
         addRequiresExisting: true,
       }),
-    ).toThrow(/extrude: add has no existing body to extend; use operation: new to create one/)
+    ).toThrow(/extrude: add has no existing part to extend; use operation: new to create one/)
   })
 
   it('an add that must extend existing material refuses a store it reaches none of', () => {
@@ -130,7 +130,7 @@ describe('applyBodyOperation OCC-free branches', () => {
         opName: 'extrude',
         addRequiresExisting: true,
       }),
-    ).toThrow(/extrude: add does not merge with any existing body/)
+    ).toThrow(/extrude: add does not merge with any existing part/)
     expect(Object.keys(store)).toEqual(['body_t'])
   })
 
@@ -159,6 +159,6 @@ describe('applyBodyOperation OCC-free branches', () => {
         sketchId: 'skF',
         opName: 'extrude',
       }),
-    ).toThrow(/add could not fuse with any target body/)
+    ).toThrow(/add could not fuse with any target part/)
   })
 })

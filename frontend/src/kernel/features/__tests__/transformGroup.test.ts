@@ -30,13 +30,13 @@ describe('array / circular_array guard paths', () => {
   it('array: source body not found', () => {
     expect(() =>
       solveArray(oc, scope, table, { id: 'a', array: { source_body: 'nope' } }, repo, { body_s: nullBody('body_s') }),
-    ).toThrow(/source body 'nope' not found/)
+    ).toThrow(/source part 'nope' not found/)
   })
 
   it('array: source body has no shape', () => {
     expect(() =>
       solveArray(oc, scope, table, { id: 'a', array: { source_body: 'body_s' } }, repo, { body_s: nullBody('body_s') }),
-    ).toThrow(/source body has no shape/)
+    ).toThrow(/source part has no shape/)
   })
 
   it('circular_array: missing source body pick raises even when a body is available', () => {
@@ -44,13 +44,13 @@ describe('array / circular_array guard paths', () => {
      *  the first body in the store. */
     expect(() =>
       solveCircularArray(oc, scope, table, { id: 'c', circular_array: {} }, repo, { body_s: nullBody('body_s') }),
-    ).toThrow(/source body is required/)
+    ).toThrow(/source part is required/)
   })
 
   it('array: missing source body pick raises even when a body is available', () => {
     expect(() =>
       solveArray(oc, scope, table, { id: 'a', array: {} }, repo, { body_s: nullBody('body_s') }),
-    ).toThrow(/source body is required/)
+    ).toThrow(/source part is required/)
   })
 
   it('array: count 0 is refused and count 1 is the quiet no-op', () => {
@@ -89,13 +89,13 @@ describe('array / circular_array guard paths', () => {
       solveCircularArray(oc, scope, table, {
         id: 'c', circular_array: { source_body: 'nonexistent' },
       }, repo, { body_real: nullBody('body_real') }),
-    ).toThrow(/source body 'nonexistent' not found/)
+    ).toThrow(/source part 'nonexistent' not found/)
     try {
       solveCircularArray(oc, scope, table, {
         id: 'c', circular_array: { source_body: 'nonexistent' },
       }, repo, { body_real: nullBody('body_real') })
     } catch (e) {
-      expect((e as Error).message).toMatch(/available body IDs/)
+      expect((e as Error).message).toMatch(/available part IDs/)
     }
   })
 
@@ -105,13 +105,13 @@ describe('array / circular_array guard paths', () => {
       solveArray(oc, scope, table, {
         id: 'a', array: { source_body: 'nonexistent' },
       }, repo, { body_real: nullBody('body_real') }),
-    ).toThrow(/source body 'nonexistent' not found/)
+    ).toThrow(/source part 'nonexistent' not found/)
     try {
       solveArray(oc, scope, table, {
         id: 'a', array: { source_body: 'nonexistent' },
       }, repo, { body_real: nullBody('body_real') })
     } catch (e) {
-      expect((e as Error).message).toMatch(/available body IDs/)
+      expect((e as Error).message).toMatch(/available part IDs/)
     }
   })
 })
@@ -120,7 +120,7 @@ describe('transform / mirror guard paths', () => {
   it('transform: body not found', () => {
     expect(() =>
       solveTransform(oc, scope, table, { id: 't', transform: { bodies: ['nope'] } }, repo, { body_s: nullBody('body_s') }),
-    ).toThrow(/body not found/)
+    ).toThrow(/part not found/)
   })
 
   it('transform: a query resolving to a body the store no longer holds', () => {
@@ -133,7 +133,7 @@ describe('transform / mirror guard paths', () => {
       solveTransform(oc, scope, table, { id: 't', transform: { bodies: ['?1;@ex1:flatface'] } }, staleRepo, {
         body_s: nullBody('body_s'),
       }),
-    ).toThrow(/body no longer exists: "gone"/)
+    ).toThrow(/part no longer exists: "gone"/)
   })
 
   it('transform: rotation_angle without an axis', () => {
@@ -185,7 +185,7 @@ describe('transform / mirror guard paths', () => {
   it('mirror: body not found', () => {
     expect(() =>
       solveMirror(oc, scope, table, { id: 'm', mirror: { body: 'nope' } }, repo, { body_s: nullBody('body_s') }),
-    ).toThrow(/body not found/)
+    ).toThrow(/part not found/)
   })
 
   it('transform: a translation_from pick that resolves to nothing fails before the kernel', () => {

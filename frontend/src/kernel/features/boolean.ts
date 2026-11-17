@@ -328,7 +328,7 @@ export function solveBoolean(
   if (targetBody.shape === null) throw new Error(`boolean: target '${targetRef}' has no shape`)
   const { refs: toolRefs, namedPatterns } = expandPatternTools(authoredTools, targetBody.id, featureId, featuresById, bodyStore)
   if (toolRefs.length === 0) {
-    throw new Error(`boolean: the pattern tool(s) ${[...namedPatterns].join(', ')} have no body besides the target`)
+    throw new Error(`boolean: the pattern tool(s) ${[...namedPatterns].join(', ')} have no part besides the target`)
   }
 
   let resultShape: OccShape = table.get<OccShape>(targetBody.shape)
@@ -374,8 +374,8 @@ export function solveBoolean(
       // would release it again. Refuse before any OCC work, even with
       // keep_tools: target-as-tool is a spec error regardless.
       throw new Error(
-        `boolean: tool '${toolRef}' resolves to the target body '${targetBody.id}'; ` +
-        'a body cannot be its own tool',
+        `boolean: tool '${toolRef}' resolves to the target part '${targetBody.id}'; ` +
+        'a part cannot be its own tool',
       )
     }
     if (symmetric && toolEntries.some((entry) => entry.body.id === toolBody.id)) continue
@@ -556,7 +556,7 @@ export function solveBoolean(
     // resplitBody deleted the body from the store; report the deletion with
     // body_id still naming the consumed body and body_ids: [] for "nothing
     // survives" (the convention stated in resplitBody's docstring).
-    warn(`boolean: the ${operation} removed all of body '${targetBody.id}'; the body was deleted`)
+    warn(`boolean: the ${operation} removed all of part '${targetBody.id}'; the part was deleted`)
     result.body_ids = []
     return result
   }

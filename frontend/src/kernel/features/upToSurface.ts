@@ -484,13 +484,13 @@ function nearStop(
       )
     }
     throw new Error(
-      'extrude up_to_next: the profile meets no body; no region would stop before the reach limit',
+      'extrude up_to_next: the profile meets no part; no region would stop before the reach limit',
     )
   }
   if (keep.some((s) => reachesEnd(oc, scope, s, caps.end))) {
     scope.release(result)
     throw new Error(
-      'extrude up_to_next: a profile region meets no body; it would run past the reach limit',
+      'extrude up_to_next: a profile region meets no part; it would run past the reach limit',
     )
   }
   const pieces = keep.map((s) => scope.detach(s))
@@ -532,7 +532,7 @@ export function trimAtNext(
   offset: number,
 ): NextTrimResult {
   if (candidates.length === 0) {
-    throw new Error('extrude up_to_next: no bodies to stop at; build the target body first')
+    throw new Error('extrude up_to_next: no parts to stop at; build the target part first')
   }
   const caps = toolCaps(oc, scope, tool, dir)
   const stop = nearStop(oc, scope, tool, candidates, caps, profileOrigin, dir)
@@ -572,7 +572,7 @@ export function embossAtNext(
   offset: number,
 ): { shape: OccShape; faceOrigin: FaceOrigin[]; note?: string } {
   if (candidates.length === 0) {
-    throw new Error('extrude up_to_next: no bodies to stop at; build the target body first')
+    throw new Error('extrude up_to_next: no parts to stop at; build the target part first')
   }
   const caps = toolCaps(oc, scope, tool, dir)
   const stop = nearStop(oc, scope, tool, candidates, caps, profileOrigin, dir)

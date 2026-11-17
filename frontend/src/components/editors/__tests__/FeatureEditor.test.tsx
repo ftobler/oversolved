@@ -265,9 +265,9 @@ describe('FeatureEditor boolean union picker', () => {
     operation, target: '@body_a', tools: ['@body_b'],
   })
 
-  it('shows one Bodies to join list, base first, instead of target plus tools', () => {
+  it('shows one Parts to join list, base first, instead of target plus tools', () => {
     render(<FeatureEditor feature={unionFeature('union')} onMutation={vi.fn()} schema={BOOLEAN_SCHEMA} />)
-    expect(screen.getByText('Bodies to join')).toBeInTheDocument()
+    expect(screen.getByText('Parts to join')).toBeInTheDocument()
     expect(screen.queryByText('Target')).toBeNull()
     expect(screen.queryByText('Tools')).toBeNull()
     const items = document.querySelectorAll('.feature-pick-chip-item')
@@ -282,7 +282,7 @@ describe('FeatureEditor boolean union picker', () => {
     render(<FeatureEditor feature={unionFeature('subtract')} onMutation={vi.fn()} schema={BOOLEAN_SCHEMA} />)
     expect(screen.getByText('Target')).toBeInTheDocument()
     expect(screen.getByText('Tools')).toBeInTheDocument()
-    expect(screen.queryByText('Bodies to join')).toBeNull()
+    expect(screen.queryByText('Parts to join')).toBeNull()
     expect(document.querySelector('.feature-pick-chip-item-tag')).toBeNull()
   })
 

@@ -1,4 +1,4 @@
-// The union editor's one "Bodies to join" list writes the stored target + tools
+// The union editor's one "Parts to join" list writes the stored target + tools
 // pair: the first pick becomes the base (target), every later pick a tool.
 // Removing the base promotes the next body, so the list keeps its order and the
 // solve still has a base. Subtract and intersect keep their explicit target

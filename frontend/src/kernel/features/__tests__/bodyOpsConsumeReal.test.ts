@@ -82,7 +82,7 @@ describe.skipIf(!oc)('applyBodyOperation cut consumes a body (real OCC)', () => 
     // The same sentence hole and array emit for this event; only the operation
     // name differs, so a row reads identically whichever feature ate the body.
     expect(result.solver_warning).toBe(
-      "extrude: the cut removed all of body 'body_t'; the body was deleted",
+      "extrude: the cut removed all of part 'body_t'; the part was deleted",
     )
   })
 
@@ -92,7 +92,7 @@ describe.skipIf(!oc)('applyBodyOperation cut consumes a body (real OCC)', () => 
     expect(result.body_ids).toEqual([])
     expect(store).toEqual({})
     expect(result.solver_warning).toBe(
-      "extrude: the cut removed all of body 'body_a'; the body was deleted",
+      "extrude: the cut removed all of part 'body_a'; the part was deleted",
     )
   })
 
@@ -108,7 +108,7 @@ describe.skipIf(!oc)('applyBodyOperation cut consumes a body (real OCC)', () => 
     // The user aimed at body_a and it is gone: that is the surprise the
     // warning exists for, whatever else the cut did.
     expect(result.solver_warning).toBe(
-      "extrude: the cut removed all of body 'body_a'; the body was deleted",
+      "extrude: the cut removed all of part 'body_a'; the part was deleted",
     )
   })
 

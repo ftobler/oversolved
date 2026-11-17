@@ -159,7 +159,7 @@ describe('extrude feature name error state', () => {
   // kinds, so a kind outside it failed in complete silence: the geometry did
   // not change and nothing said why.
   it.each([
-    ['delete_body', { id: 'db1', kind: 'delete_body', delete_body: { bodies: ['@gone'] } }, 'body not found'],
+    ['delete_body', { id: 'db1', kind: 'delete_body', delete_body: { bodies: ['@gone'] } }, 'part not found'],
     ['import_step', { id: 'imp1', kind: 'import_step' }, 'STEP parse failed'],
     ['mirror', { id: 'mir1', kind: 'mirror' }, 'no mirror plane'],
     ['plane', { id: 'pl1', kind: 'plane' }, 'reference face gone'],

@@ -46,7 +46,7 @@ describe('solveHole guard paths', () => {
     repo.register('_pt_sk', PLANE)
     expect(() =>
       solveHole(oc, scope, table, { id: 'h', hole: { sketch: '@sk' } }, repo, {}, {}),
-    ).toThrow(/no bodies in body_store and no target specified/)
+    ).toThrow(/no parts in body_store and no target specified/)
   })
 
   it('throws when the target body has no shape', () => {
@@ -116,7 +116,7 @@ describe('solveHole guard paths', () => {
       solveHole(oc, scope, table, { id: 'h', hole: { sketch: '@sk', target: '@body_missing' } }, repo, {
         body_ex1: nullBody('body_ex1'),
       }, { sk: { entities: [{ id: 'p1', kind: 'point' }] } }),
-    ).toThrow(/body not found/)
+    ).toThrow(/part not found/)
   })
 })
 

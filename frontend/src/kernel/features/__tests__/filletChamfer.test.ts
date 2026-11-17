@@ -61,7 +61,7 @@ describe('solveFillet guard paths', () => {
   it('requires bodies in the store', () => {
     expect(() =>
       solveFillet(oc, scope, table, { id: 'f', fillet: { edges: ['?b:edge:0'], radius: 2 } }, repo, {}),
-    ).toThrow(/no bodies in body_store/)
+    ).toThrow(/no parts in body_store/)
   })
 
   it('an unknown viewport-form source_body throws the named error, never a TypeError', () => {
@@ -73,7 +73,7 @@ describe('solveFillet guard paths', () => {
       solveFillet(oc, scope, table, {
         id: 'f', fillet: { edges: ['?b:edge:0'], radius: 2, source_body: 'body:body_nope' },
       }, repo, oneBody()),
-    ).toThrow(/source body 'body:body_nope' not found/)
+    ).toThrow(/source part 'body:body_nope' not found/)
   })
 
   it('refuses a feature-form source_body that names more than one body', () => {
@@ -88,7 +88,7 @@ describe('solveFillet guard paths', () => {
       solveFillet(oc, scope, table, {
         id: 'f', fillet: { edges: ['?b:edge:0'], radius: 2, source_body: '@ex1' },
       }, repo, store),
-    ).toThrow(/names 2 bodies/)
+    ).toThrow(/names 2 parts/)
   })
 
   it('reports a source body that has no shape as no edges resolved', () => {

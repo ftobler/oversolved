@@ -108,21 +108,21 @@ describe('merge target PickChip in RevolveEditor', () => {
     expect(screen.queryByText('Merge Target')).toBeNull()
   })
 
-  it('shows (all bodies) when no merge_target set', () => {
+  it('shows (all parts) when no merge_target set', () => {
     renderSidebar([revolveFeature], 'rev1')
-    expect(screen.getByText('(all bodies)')).toBeInTheDocument()
+    expect(screen.getByText('(all parts)')).toBeInTheDocument()
   })
 
   it('activates pick mode on chip click', () => {
     renderSidebar([revolveFeature], 'rev1')
-    const chip = screen.getByText('(all bodies)').closest('.feature-pick-chip')!
+    const chip = screen.getByText('(all parts)').closest('.feature-pick-chip')!
     fireEvent.click(chip)
     expect(chip.classList.contains('picking')).toBe(true)
   })
 
   it('deactivates pick mode when chip clicked while already picking', () => {
     renderSidebar([revolveFeature], 'rev1')
-    const chip = screen.getByText('(all bodies)').closest('.feature-pick-chip')!
+    const chip = screen.getByText('(all parts)').closest('.feature-pick-chip')!
     fireEvent.click(chip)
     expect(chip.classList.contains('picking')).toBe(true)
     fireEvent.click(chip)

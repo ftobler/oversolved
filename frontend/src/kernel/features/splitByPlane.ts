@@ -120,7 +120,7 @@ export function solveSplit(
   const keep = keepOf(cfg)
 
   const bodyQueries = cfg.bodies ?? []
-  if (bodyQueries.length === 0) throw new Error('split: no bodies picked')
+  if (bodyQueries.length === 0) throw new Error('split: no parts picked')
   const planeQuery = cfg.plane ?? ''
   if (!planeQuery) throw new Error('split: plane is required')
   const { origin, normal } = resolvePlaneRef(globalRepo, planeQuery, bodyStore, 'split')
@@ -131,8 +131,8 @@ export function solveSplit(
 
   const plans: SplitPlan[] = targets.map((key) => {
     const body = bodyStore[key]
-    if (body === undefined) throw new Error(`split: body no longer exists: ${JSON.stringify(key)}`)
-    if (body.shape === null) throw new Error(`split: body has no shape: ${JSON.stringify(key)}`)
+    if (body === undefined) throw new Error(`split: part no longer exists: ${JSON.stringify(key)}`)
+    if (body.shape === null) throw new Error(`split: part has no shape: ${JSON.stringify(key)}`)
     const shape = table.get<OccShape>(body.shape)
     const names = readBodyNames(oc, scope, shape, body)
     // Additivity is judged once per split, not in the boolean hot path, so it
@@ -173,23 +173,23 @@ export function solveSplit(
 
     if (keep === 'both') {
       if (aboveVolume <= epsilon || belowVolume <= epsilon) {
-        throw new Error(`split: the plane does not cross body '${key}'`)
+        throw new Error(`split: the plane does not cross part '${key}'`)
       }
       const sum = aboveVolume + belowVolume
       if (Math.abs(sum - sourceVolume) > TOL_VOLUME_SUM * sourceVolume) {
         throw new Error(
-          `split: the halves of body '${key}' do not add up (${aboveVolume} + ${belowVolume} = ${sum}, ` +
-          `the body is ${sourceVolume})`,
+          `split: the halves of part '${key}' do not add up (${aboveVolume} + ${belowVolume} = ${sum}, ` +
+          `the part is ${sourceVolume})`,
         )
       }
     } else {
       const side: SplitSide = keep === 'below' ? 'below' : 'above'
       const kept = side === 'above' ? aboveVolume : belowVolume
       if (kept <= epsilon) {
-        throw new Error(`split: nothing of body '${key}' lies ${side} the plane`)
+        throw new Error(`split: nothing of part '${key}' lies ${side} the plane`)
       }
       if (Math.abs(kept - sourceVolume) <= epsilon) {
-        throw new Error(`split: the plane does not cross body '${key}'`)
+        throw new Error(`split: the plane does not cross part '${key}'`)
       }
     }
 

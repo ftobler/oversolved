@@ -703,7 +703,7 @@ export function applyAddBooleanTool(doc: PartDoc, featureId: string, tool: strin
     warn(`applyAddBooleanTool: feature ${featureId} has no boolean`)
     return
   }
-  // The union editor shows one "Bodies to join" list, so its first pick is the
+  // The union editor shows one "Parts to join" list, so its first pick is the
   // base (target) and every later pick a tool. Subtract and intersect keep the
   // explicit target field and their old tool-only rule.
   const union = sub.operation === undefined || sub.operation === 'union'
@@ -1326,7 +1326,7 @@ export function applyAddDeleteBody(
   pushFeature(doc, {
     id: featureId,
     kind: 'delete_body',
-    label: label ?? 'Delete Body',
+    label: label ?? 'Delete Part',
     delete_body: { bodies: [...bodies] },
   })
 }

@@ -1,4 +1,4 @@
-// The union editor's one list, "Bodies to join": the base is the first entry,
+// The union editor's one list, "Parts to join": the base is the first entry,
 // the rest are the tools the kernel folds into it. Storage keeps the target +
 // tools shape, so the list is assembled from both keys and no migration is
 // needed. These checks live outside the widget (the delete-the-Viewport rule):
@@ -48,7 +48,7 @@ describe('BOOLEAN_SCHEMA union picker', () => {
   it('offers one bodies-to-join list for union, with the base tagged', () => {
     expect(joinField).toBeDefined()
     expect(joinField?.type).toBe('pick')
-    expect(joinField?.label).toBe('Bodies to join')
+    expect(joinField?.label).toBe('Parts to join')
     expect(joinField?.multi).toBe(true)
     expect(joinField?.baseTag).toBe('base')
     expect(isShown(joinField, 'union')).toBe(true)

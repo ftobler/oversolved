@@ -133,7 +133,7 @@ export default function PartEditorPanel({
               <button className="editor-btn" title="Add Circular Pattern" onClick={() => handleAddFeature('circular_pattern')}><img src={featureCircularPatternIcon} alt="Add Circular Pattern" /></button>
               <button className="editor-btn" title="Add Curve Pattern" onClick={() => handleAddFeature('curve_pattern', { pathQuery: '' })}><img src={featureCurvePatternIcon} alt="Add Curve Pattern" /></button>
               <button className="editor-btn" title="Add Instance Pattern" onClick={() => handleAddFeature('instance_pattern')}><img src={featureInstancePatternIcon} alt="Add Instance Pattern" /></button>
-              <button className="editor-btn" title="Delete Body" onClick={() => handleAddFeature('delete_body')}><img src={featureDeleteBodyIcon} alt="Delete Body" /></button>
+              <button className="editor-btn" title="Delete Part" onClick={() => handleAddFeature('delete_body')}><img src={featureDeleteBodyIcon} alt="Delete Part" /></button>
               <button className="editor-btn" title="Add Variable" onClick={() => handleAddFeature('variable')}><img src={featureVariableIcon} alt="Add Variable" /></button>
             </>
           )}

@@ -104,7 +104,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): c
     const result = h.run(disjointTwoRectSpec('add'))
     const ex1 = h.res(result, 'ex1')
     expect(ex1.status).toBe('exception')
-    expect(String(ex1.exception)).toContain('add has no existing body to extend')
+    expect(String(ex1.exception)).toContain('add has no existing part to extend')
     expect(String(ex1.exception)).toContain('use operation: new to create one')
     expect(result.bodies).toEqual({})
   })

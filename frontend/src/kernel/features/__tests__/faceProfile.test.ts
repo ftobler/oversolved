@@ -98,7 +98,7 @@ describe('resolveFaceProfile repo face entry guards', () => {
     repo.register('faceRef', { body_id: 'missing_body', face_index: 0 })
     expect(() =>
       resolveFaceProfile(oc, null as never, table, '@faceRef', repo, {}),
-    ).toThrow(/Body 'missing_body' not found or has no shape/)
+    ).toThrow(/Part 'missing_body' not found or has no shape/)
   })
 
   it('refuses a slash face ref that names no body', () => {
@@ -108,7 +108,7 @@ describe('resolveFaceProfile repo face entry guards', () => {
     const repo = new Repository()
     expect(() =>
       resolveFaceProfile(oc, null as never, table, '@nobody/face/0', repo, {}),
-    ).toThrow(/No body found for 'nobody'/)
+    ).toThrow(/No part found for 'nobody'/)
   })
 })
 

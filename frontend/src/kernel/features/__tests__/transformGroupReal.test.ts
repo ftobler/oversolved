@@ -361,7 +361,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
         expect(() => solveTransform(occ, scope, table, {
           id: 'tr1',
           transform: { bodies: ['body_a', 'nope'], operation: 'replace', translation: [10, 0, 0] },
-        }, new Repository(), bodyStore)).toThrow(/body not found/)
+        }, new Repository(), bodyStore)).toThrow(/part not found/)
         expect(Object.keys(bodyStore)).toEqual(['body_a'])
         expectCentreClose(centreOf(scope, table, bodyStore.body_a), centreA)
         expect(bodyStore.body_a.modified_by).toEqual([])

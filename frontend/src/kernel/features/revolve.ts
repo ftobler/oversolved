@@ -328,7 +328,7 @@ export function solveRevolve(
     // sentence the user can act on.
     const why = unbuildableReasons.length ? ` (${unbuildableReasons.join('; ')})` : ''
     result.exception = `revolve: no closed profile found in the referenced sketch${why}; no part created`
-    result.mesh_warning = 'no closed profile found; body has no shape'
+    result.mesh_warning = 'no closed profile found; part has no shape'
     return result
   }
 

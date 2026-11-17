@@ -77,7 +77,7 @@ export const EXTRUDE_SCHEMA: FeatureEditorSchema = {
       options: [{ value: 'add', label: 'Add' }, { value: 'cut', label: 'Cut' }, { value: 'new', label: 'New' }] },
     { type: 'pick', key: 'merge_target', label: 'Merge Target',
       showWhen: showMergeTarget, transform: resolveBodyPickRef, names: 'body', removeValue: undefined,
-      emptyText: '(all bodies)' },
+      emptyText: '(all parts)' },
     { type: 'select', key: 'direction', label: 'Direction', default: 'normal',
       options: [{ value: 'normal', label: 'Normal' }, { value: 'reverse', label: 'Reverse' }, { value: 'symmetric', label: 'Symmetric' }] },
   ],
@@ -99,7 +99,7 @@ export const REVOLVE_SCHEMA: FeatureEditorSchema = {
       options: [{ value: 'add', label: 'Add' }, { value: 'cut', label: 'Cut' }, { value: 'new', label: 'New' }] },
     { type: 'pick', key: 'merge_target', label: 'Merge Target',
       showWhen: showMergeTarget, transform: resolveBodyPickRef, names: 'body', removeValue: undefined,
-      emptyText: '(all bodies)' },
+      emptyText: '(all parts)' },
     // An axis pick is required: a revolve has no default axis, so an unpicked
     // one is a solve error rather than a silent sweep about world Z.
     { type: 'pick', key: 'axis', label: 'Axis', transform: resolveAxisQuery,
@@ -129,7 +129,7 @@ export const SWEEP_SCHEMA: FeatureEditorSchema = {
       options: [{ value: 'add', label: 'Add' }, { value: 'cut', label: 'Cut' }, { value: 'new', label: 'New' }] },
     { type: 'pick', key: 'merge_target', label: 'Merge Target',
       showWhen: showMergeTarget, transform: resolveBodyPickRef, names: 'body', removeValue: undefined,
-      emptyText: '(all bodies)' },
+      emptyText: '(all parts)' },
   ],
 }
 
@@ -223,9 +223,9 @@ export const SHELL_SCHEMA: FeatureEditorSchema = {
       options: [{ value: 'sharp', label: 'Sharp' }, { value: 'arc', label: 'Round' }] },
     // No face names the body for a closed hollow, so the body pick is the only
     // way to choose it; it is shown only when the opening list is empty.
-    { type: 'pick', key: 'source_body', label: 'Body',
+    { type: 'pick', key: 'source_body', label: 'Part',
       showWhen: (d) => (Array.isArray(d.faces) ? d.faces.length : 0) === 0,
-      transform: resolveBodyPickRef, names: 'body', emptyText: '(pick body, required)' },
+      transform: resolveBodyPickRef, names: 'body', emptyText: '(pick part, required)' },
   ],
 }
 
@@ -277,18 +277,18 @@ export const BOOLEAN_SCHEMA: FeatureEditorSchema = {
     // name), then every body joined into it. The applier writes the first
     // pick to `target` and the rest to `tools`; removing the base promotes the
     // next body, so the stored shape never needs a migration.
-    { type: 'pick', key: 'tools', label: 'Bodies to join', multi: true, names: 'body',
+    { type: 'pick', key: 'tools', label: 'Parts to join', multi: true, names: 'body',
       showWhen: (d) => !showBooleanSplit(d),
       normalize: (_value, d) => booleanJoinList(d),
       baseTag: 'base', reorder: false,
       addMutationType: 'add_boolean_tool', addValueKey: 'tool',
       removeMutationType: 'remove_boolean_tool', removeKey: 'tool', removeValueIsIndex: false,
-      emptyText: '(pick the bodies to join)' },
+      emptyText: '(pick the parts to join)' },
     { type: 'number', key: 'clearance', label: 'Clearance', default: 0, quantity: 'length',
       showWhen: (d) => d.operation === 'subtract', validate: finite },
     // "Tools" does not exist in the union editor's one join list, so the label
     // names what both operations actually keep: the other picked bodies.
-    { type: 'checkbox', key: 'keep_tools', label: 'Keep other bodies', default: false },
+    { type: 'checkbox', key: 'keep_tools', label: 'Keep other parts', default: false },
   ],
 }
 
@@ -408,10 +408,10 @@ export const TRANSFORM_SCHEMA: FeatureEditorSchema = {
     // reason DELETE_BODY_SCHEMA's field has none: `@ex1` here means every body
     // that feature made, split siblings included, and `resolveBodyPickRef`
     // would narrow it to the first sibling.
-    { type: 'pick', key: 'bodies', label: 'Bodies', multi: true, names: 'body',
+    { type: 'pick', key: 'bodies', label: 'Parts', multi: true, names: 'body',
       addMutationType: 'add_transform_body', addValueKey: 'bodyQuery',
       removeMutationType: 'remove_transform_body',
-      emptyText: '(pick one or more bodies)' },
+      emptyText: '(pick one or more parts)' },
     { type: 'select', key: 'operation', label: 'Operation', default: 'new',
       options: [{ value: 'new', label: 'New' }, { value: 'replace', label: 'Replace' }] },
     { type: 'number', key: 'translation', label: 'X', arrayField: 'translation', arrayIndex: 0, default: 0, quantity: 'length' },
@@ -440,8 +440,8 @@ export const MIRROR_SCHEMA: FeatureEditorSchema = {
     // The pattern's subject switch, read with absence meaning body (every
     // document written before the feature subject existed is a body mirror).
     { type: 'select', key: 'subject', label: 'Subject', default: 'body', presentation: 'tabs',
-      options: [{ value: 'body', label: 'Body' }, { value: 'feature', label: 'Feature' }] },
-    { type: 'pick', key: 'body', label: 'Body', names: 'body', showWhen: (d) => d.subject !== 'feature' },
+      options: [{ value: 'body', label: 'Part' }, { value: 'feature', label: 'Feature' }] },
+    { type: 'pick', key: 'body', label: 'Part', names: 'body', showWhen: (d) => d.subject !== 'feature' },
     // The mirrored features are FEATURE rows, not viewport picks; each source's
     // own add or cut is reapplied reflected inside the body it shaped, in
     // feature-log order. The chip's order is presentation only.
@@ -452,8 +452,8 @@ export const MIRROR_SCHEMA: FeatureEditorSchema = {
       showWhen: (d) => d.subject === 'feature',
       emptyText: '(pick one or more features to mirror)',
       hint: 'Reflected in feature-log order; the source keeps its own copy.' },
-    { type: 'pick', key: 'target_body', label: 'Target body', transform: resolveBodyPickRef, names: 'body',
-      showWhen: (d) => d.subject === 'feature', emptyText: '(the body the source shaped)' },
+    { type: 'pick', key: 'target_body', label: 'Target part', transform: resolveBodyPickRef, names: 'body',
+      showWhen: (d) => d.subject === 'feature', emptyText: '(the part the source shaped)' },
     { type: 'pick', key: 'plane', label: 'Mirror Plane', transform: stripSelectionWrapper },
     // The source's own operation is reapplied in the same body, so these two
     // whole-body modes have no meaning on a feature mirror (the drive and the
@@ -472,7 +472,7 @@ const planePickRefusal = (id: string): string | null => {
   if (id.startsWith('?')) {
     return id.endsWith(':flatface') ? null : 'pick a plane or a flat face, not an edge, vertex or curved face'
   }
-  if (id.startsWith('@body_')) return 'pick a plane or a flat face, not a body'
+  if (id.startsWith('@body_')) return 'pick a plane or a flat face, not a part'
   // A bare @ id is a builtin plane, a datum plane or a feature ref; the kernel
   // names the ones that are not planes, so the chip lets them through.
   if (id.startsWith('@') && !id.includes('/')) return null
@@ -488,10 +488,10 @@ export const SPLIT_SCHEMA: FeatureEditorSchema = {
     // Plural, and without a `transform:` coercion for the same reason
     // TRANSFORM_SCHEMA's field has none: `@ex1` here means every body that
     // feature made, split siblings included.
-    { type: 'pick', key: 'bodies', label: 'Bodies', multi: true, names: 'body',
+    { type: 'pick', key: 'bodies', label: 'Parts', multi: true, names: 'body',
       addMutationType: 'add_split_body', addValueKey: 'bodyQuery',
       removeMutationType: 'remove_split_body',
-      emptyText: '(pick one or more bodies)' },
+      emptyText: '(pick one or more parts)' },
     { type: 'pick', key: 'plane', label: 'Split Plane', transform: stripSelectionWrapper,
       validatePick: planePickRefusal },
     { type: 'select', key: 'keep', label: 'Keep', default: 'above',
@@ -562,9 +562,9 @@ export const PATTERN_SOURCE_FIELDS: EditorFieldDef[] = [
   // A body pattern copies a whole body; a feature pattern reapplies earlier
   // solid producers' own add or cut.
   { type: 'select', key: 'subject', label: 'Subject', default: 'body', presentation: 'tabs',
-    options: [{ value: 'body', label: 'Body' }, { value: 'feature', label: 'Feature' }] },
-  { type: 'pick', key: 'source_body', label: 'Body', transform: resolveBodyPickRef, names: 'body',
-    showWhen: (d) => d.subject !== 'feature', emptyText: '(pick the body to copy)' },
+    options: [{ value: 'body', label: 'Part' }, { value: 'feature', label: 'Feature' }] },
+  { type: 'pick', key: 'source_body', label: 'Part', transform: resolveBodyPickRef, names: 'body',
+    showWhen: (d) => d.subject !== 'feature', emptyText: '(pick the part to copy)' },
   // The sources are FEATURE rows, not viewport picks: the chip shows the picked
   // extrude/revolve/sweep rows and the feature tree is the pick surface. Every
   // source is reapplied at each grid instance, in the order the sources sit in
@@ -578,8 +578,8 @@ export const PATTERN_SOURCE_FIELDS: EditorFieldDef[] = [
     showWhen: (d) => d.subject === 'feature',
     emptyText: '(pick one or more features; the earliest heads the seed)',
     hint: 'Repeated in feature-log order; the earliest source heads the seed slot.' },
-  { type: 'pick', key: 'target_body', label: 'Target body', transform: resolveBodyPickRef, names: 'body',
-    showWhen: (d) => d.subject === 'feature', emptyText: '(the body the source shaped)' },
+  { type: 'pick', key: 'target_body', label: 'Target part', transform: resolveBodyPickRef, names: 'body',
+    showWhen: (d) => d.subject === 'feature', emptyText: '(the part the source shaped)' },
   { type: 'select', key: 'operation', label: 'Operation', default: 'add',
     showWhen: (d) => d.subject !== 'feature',
     options: [{ value: 'add', label: 'Add' }, { value: 'new', label: 'New' }] },
@@ -910,10 +910,10 @@ export const DELETE_BODY_SCHEMA: FeatureEditorSchema = {
     // (kernel/features/deleteBody.ts), and that coercion would silently narrow it
     // to the first sibling -- deleting half a severed part and reporting success.
     // A face pick is body-exact already and resolves in the kernel.
-    { type: 'pick', key: 'bodies', label: 'Bodies', multi: true, names: 'body',
+    { type: 'pick', key: 'bodies', label: 'Parts', multi: true, names: 'body',
       addMutationType: 'add_delete_body_ref', addValueKey: 'bodyQuery',
       removeMutationType: 'remove_delete_body_ref',
-      emptyText: '(pick one or more bodies)' },
+      emptyText: '(pick one or more parts)' },
   ],
 }
 

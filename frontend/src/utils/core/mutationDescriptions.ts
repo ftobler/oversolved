@@ -177,11 +177,11 @@ export function describeMutation(m: Mutation): string {
     case 'remove_pattern_source':
       return `remove pattern source at index ${m.index}`
     case 'add_delete_body':
-      return `add delete body ${m.label ?? m.featureId}`
+      return `add delete part ${m.label ?? m.featureId}`
     case 'add_delete_body_ref':
-      return `add delete body ref ${m.bodyQuery}`
+      return `add delete part ref ${m.bodyQuery}`
     case 'remove_delete_body_ref':
-      return `remove delete body ref at index ${m.index}`
+      return `remove delete part ref at index ${m.index}`
     case 'add_hole':
       return `add hole ${m.label ?? m.featureId}`
     case 'set_hole_field':
@@ -191,9 +191,9 @@ export function describeMutation(m: Mutation): string {
     case 'set_transform_field':
       return `set transform ${m.field} to ${m.value}`
     case 'add_transform_body':
-      return `add transform body ${m.bodyQuery}`
+      return `add transform part ${m.bodyQuery}`
     case 'remove_transform_body':
-      return `remove transform body at index ${m.index}`
+      return `remove transform part at index ${m.index}`
     case 'rename_part':
       return `rename ${m.bodyId} to ${m.name}`
     case 'set_part_color':
@@ -219,9 +219,9 @@ export function describeMutation(m: Mutation): string {
     case 'set_split_field':
       return `set split ${m.field} to ${m.value}`
     case 'add_split_body':
-      return `add split body ${m.bodyQuery}`
+      return `add split part ${m.bodyQuery}`
     case 'remove_split_body':
-      return `remove split body at index ${m.index}`
+      return `remove split part at index ${m.index}`
     case 'add_variable':
       return `add variable ${m.label ?? m.featureId}`
     case 'set_variable_field':
@@ -235,7 +235,7 @@ export function describeMutation(m: Mutation): string {
       if (m.after !== undefined) return `reorder ${m.featureId} after ${m.after}`
       return `reorder ${m.featureId} to index ${m.toIndex}`
     case 'set_body_visibility':
-      return `${m.visible ? 'show' : 'hide'} body ${m.bodyId}`
+      return `${m.visible ? 'show' : 'hide'} part ${m.bodyId}`
     case 'reorder_pick_field':
       return `reorder pick field ${m.field} in ${m.featureId}`
     case 'set_feature_suppression':

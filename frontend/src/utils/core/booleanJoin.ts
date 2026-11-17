@@ -1,4 +1,4 @@
-// The union editor's one list, "Bodies to join". A union has no target/tools
+// The union editor's one list, "Parts to join". A union has no target/tools
 // split: the first pick is only the base that keeps the body's id and name, so
 // the editor shows the stored target (the base) followed by the tools. The
 // document keeps the target + tools shape, unchanged, and no migration runs.

@@ -242,7 +242,7 @@ describe.skipIf(!oc || !solveBytes)('the mirror feature subject through the buil
     ]
     const ambiguous = h.run({ features: features() })
     const message = String(h.res(ambiguous, 'mi1').exception)
-    expect(message).toContain('touched 2 bodies')
+    expect(message).toContain('touched 2 parts')
     expect(message).toContain('target_body')
     expect(message).toContain('body_ex_a')
     expect(message).toContain('body_ex_b')

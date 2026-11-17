@@ -20,7 +20,7 @@ export const EDIT_LABELS: Record<string, string> = {
   circular_pattern: 'circular pattern',
   curve_pattern: 'curve pattern',
   instance_pattern: 'instance pattern',
-  delete_body: 'delete body',
+  delete_body: 'delete part',
   hole: 'hole',
   transform: 'transform',
   mirror: 'mirror',

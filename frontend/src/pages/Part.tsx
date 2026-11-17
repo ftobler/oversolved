@@ -693,7 +693,7 @@ export default function Part() {
         const creator = bodies[ref]?.created_by
         if (creator && deletingFeatures.has(creator)) continue
         bodyDeletes.push({
-          type: 'add_delete_body', featureId: randomId(18), bodies: [id], label: 'Delete Body',
+          type: 'add_delete_body', featureId: randomId(18), bodies: [id], label: 'Delete Part',
           ...insertion(bodyDeletes.length),
         })
         continue
@@ -787,7 +787,12 @@ export default function Part() {
       curve_pattern: 'Curve Pattern',
       instance_pattern: 'Instance Pattern',
     }
-    const label = `${rowLabel[kind] ?? kind} ${Object.keys(bodies).length + 1}`
+    // A delete_body leans on applyAddDeleteBody's own `Delete Part` default
+    // rather than the generic kind-plus-number row name, so the toolbar's add
+    // and the Delete key label a new row the same way.
+    const label = kind === 'delete_body'
+      ? undefined
+      : `${rowLabel[kind] ?? kind} ${Object.keys(bodies).length + 1}`
     const insertAt = newFeatureInsertIndex(features, editorState.getState().rollbackPosition)
     const store = editorState.getState()
     // Start the edit session against the PRE-add doc and let it suppress the
@@ -820,7 +825,7 @@ export default function Part() {
       ? { ...extra, operation: 'new' }
       : extra
     const result = handleMutation({
-      type: `add_${kind}`, featureId: fid, label, ...addExtra,
+      type: `add_${kind}`, featureId: fid, ...(label === undefined ? {} : { label }), ...addExtra,
       ...(seedFaces.length > 0 ? { faces: seedFaces } : {}),
       insertAt,
     } as Mutation)
@@ -1668,7 +1673,7 @@ export default function Part() {
       )}
       <RenameDialog
         isOpen={renameTarget !== null}
-        title={renameTarget?.kind === 'body' ? 'Rename Body' : 'Rename Feature'}
+        title={renameTarget?.kind === 'body' ? 'Rename Part' : 'Rename Feature'}
         currentName={renameTarget?.currentName ?? ''}
         onRename={handleRenameConfirm}
         onCancel={() => setRenameTarget(null)}

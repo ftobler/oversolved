@@ -469,7 +469,7 @@ function profileRefProblem(value: unknown, field: string): string | null {
     const rest = value.slice(1)
     return rest.length > 0 && rest.split('/').every(part => part.length > 0)
       ? null
-      : refuse('is not a feature, entity or body-face ref')
+      : refuse('is not a feature, entity or part-face ref')
   }
   for (const [prefix, parts] of [['entity:', 3], ['vertex:', 4]] as const) {
     if (!value.startsWith(prefix)) continue
@@ -489,7 +489,7 @@ function profileRefField(field: string) {
 
 function pickQueryProblem(value: unknown, field: string): string | null {
   if (typeof value !== 'string' || value.trim().length === 0) {
-    return `field "${field}" must be a non-empty query such as an ancestry string or a body id, got ${json(value)}`
+    return `field "${field}" must be a non-empty query such as an ancestry string or a part id, got ${json(value)}`
   }
   if (/\s/.test(value)) {
     return `field "${field}" must be a query without spaces, got ${json(value)}`
@@ -1230,7 +1230,7 @@ function planeTargetProblem(value: string, ctx: ValueContext): string | null {
 // bridge). Refuse it by name instead of storing the object in the document. A
 // malformed grammar is corrected first, with the same shape hint the drive uses.
 const UNRESOLVED_SELECTOR =
-  'a {selector} pick needs the solved bodies; the headless drive resolves it before the step runs, '
+  'a {selector} pick needs the solved parts; the headless drive resolves it before the step runs, '
   + 'so pass the query string `select` returned instead'
 
 function selectorRefProblem(value: unknown, label: string): string | null {
@@ -1383,16 +1383,16 @@ function taperIsSet(value: unknown): boolean {
 function upToSurfaceTargetProblem(upTo: unknown, doc: unknown): string | null {
   if (typeof upTo !== 'string' || upTo === '') return null
   if (upTo.startsWith('@builtin_plane_')) {
-    return 'a datum plane has no surface to emboss on; pick a body face or use up_to_next'
+    return 'a datum plane has no surface to emboss on; pick a part face or use up_to_next'
   }
   if (/^@[^/]+\/[^/]+\/xy$/.test(upTo)) {
-    return 'a sketch point has no surface to emboss on; pick a body face or use up_to_next'
+    return 'a sketch point has no surface to emboss on; pick a part face or use up_to_next'
   }
   const id = upTo.startsWith('@') ? upTo.slice(1) : upTo
   const features = (doc as { features?: { id?: string; kind?: string }[] } | null)?.features
   const feature = features?.find(entry => entry.id === id)
   if (feature?.kind === 'plane') {
-    return 'a construction plane has no surface to emboss on; pick a body face or use up_to_next'
+    return 'a construction plane has no surface to emboss on; pick a part face or use up_to_next'
   }
   return null
 }
@@ -1540,7 +1540,7 @@ function addMirror(raw: RawStep, ctx: ValueContext): ValueViolation | null {
       if (raw[field] !== undefined && raw[field] !== null) {
         return invalid(
           `add_mirror field ${json(field)} means nothing on a feature mirror; the source's own add or cut is ` +
-            'reapplied mirrored inside the same body, so the original always stays',
+            'reapplied mirrored inside the same part, so the original always stays',
         )
       }
     }

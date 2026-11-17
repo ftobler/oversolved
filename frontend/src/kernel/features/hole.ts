@@ -736,9 +736,9 @@ export function solveHole(
   let targetBody: Body | null = null
   if (targetRef) {
     targetBody = resolveBody(targetRef, bodyStore)
-    if (targetBody.shape === null) throw new Error(`hole: target body '${targetBody.id}' has no shape`)
+    if (targetBody.shape === null) throw new Error(`hole: target part '${targetBody.id}' has no shape`)
   } else if (Object.keys(bodyStore).length === 0) {
-    throw new Error('hole: no bodies in body_store and no target specified')
+    throw new Error('hole: no parts in body_store and no target specified')
   }
 
   const sketchFeature = featuresById[sketchId] ?? {}
@@ -815,7 +815,7 @@ export function solveHole(
     const ids = Object.keys(bodyStore)
     targetBody = defaultTargetBody(oc, scope, table, bodyStore, sites) ?? bodyStore[ids[0]]
   }
-  if (targetBody.shape === null) throw new Error(`hole: target body '${targetBody.id}' has no shape`)
+  if (targetBody.shape === null) throw new Error(`hole: target part '${targetBody.id}' has no shape`)
 
   let currentShape = table.get<OccShape>(targetBody.shape)
   // The body's names, carried through every drill cut by its face history.
@@ -1086,7 +1086,7 @@ export function solveHole(
         // that missed or were swallowed and therefore removed nothing.
         hole_count: placed - missedSites.length - swallowedSites.length,
         direction: side,
-        solver_warning: `hole: the cut removed all of body '${targetBody.id}'; the body was deleted`,
+        solver_warning: `hole: the cut removed all of part '${targetBody.id}'; the part was deleted`,
       }
     }
     targetBody.brep_diff = accumulatedDiff
@@ -1122,7 +1122,7 @@ export function solveHole(
     // Some sites cut, some removed nothing: name the misses so the user knows
     // which picks to move.
     partialReasons.push(
-      `hole: ${missedSites.length}/${placed} drill site(s) did not intersect body '${targetBody.id}': ${missedSites.join(', ')}`,
+      `hole: ${missedSites.length}/${placed} drill site(s) did not intersect part '${targetBody.id}': ${missedSites.join(', ')}`,
     )
   }
   if (partialReasons.length > 0) result.exception = partialReasons.join('; ')
@@ -1132,8 +1132,8 @@ export function solveHole(
     const authored = direction === 'normal' ? 'normal' : 'reverse'
     const other = authored === 'normal' ? 'reverse' : 'normal'
     result.solver_warning = oppositeCuts
-      ? `hole: direction: ${authored} cuts nothing in body '${targetBody.id}' at every drill site; direction: ${other} drills into it`
-      : `hole: none of the ${placed} drill site(s) intersect body '${targetBody.id}'; nothing was removed`
+      ? `hole: direction: ${authored} cuts nothing in part '${targetBody.id}' at every drill site; direction: ${other} drills into it`
+      : `hole: none of the ${placed} drill site(s) intersect part '${targetBody.id}'; nothing was removed`
   } else if (otherSideSites.length > 0) {
     // The hole removed material, but these sites left material on the other
     // side of the plane. Naming them is the only cue, since the volume looks

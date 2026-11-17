@@ -368,7 +368,7 @@ export default function ViewOptionsButton({ show, onToggleShow, allowSectionPick
               <div className="view-options-legend" aria-label="Curvature legend">
                 <span className="view-options-legend-bar" />
                 <span className="view-options-legend-caption">
-                  {effectiveRange ? formatRange(effectiveRange) : 'no bodies'}
+                  {effectiveRange ? formatRange(effectiveRange) : 'no parts'}
                   {curvatureRange ? ' (manual)' : ' (auto)'}
                 </span>
               </div>
@@ -456,7 +456,7 @@ export default function ViewOptionsButton({ show, onToggleShow, allowSectionPick
           <CheckRow
             label="Orbit around cursor"
             checked={orbitAroundCursor}
-            title="Right-drag turns about the body point under the cursor"
+            title="Right-drag turns about the point on the part under the cursor"
             onToggle={() => setOrbitAroundCursor(!orbitAroundCursor)}
           />
 
@@ -465,7 +465,7 @@ export default function ViewOptionsButton({ show, onToggleShow, allowSectionPick
           <CheckRow
             label="Section"
             checked={sectionEnabled}
-            title="Cut the bodies with a plane"
+            title="Cut the parts with a plane"
             onToggle={() => setSectionEnabled(!sectionEnabled)}
           />
           {sectionReason && !sectionEnabled && (

@@ -185,7 +185,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
         expect(result.body_id).toBe('body_f')
         expect(result.body_ids).toEqual([])
         expect(result.solver_warning).toBe(
-          "extrude: the cut removed all of body 'body_t'; the body was deleted",
+          "extrude: the cut removed all of part 'body_t'; the part was deleted",
         )
         expect(bodyStore).toEqual({})
       } finally {
@@ -253,7 +253,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
             profileQueries: [],
             addRequiresExisting: true,
           }),
-        ).toThrow(/extrude: add does not merge with any existing body/)
+        ).toThrow(/extrude: add does not merge with any existing part/)
         expect(Object.keys(bodyStore)).toEqual(['body_t'])
       } finally {
         scope.dispose()

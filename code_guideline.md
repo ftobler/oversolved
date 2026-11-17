@@ -44,6 +44,20 @@ length = distance_between(A, B)
 - **Do not** use em-dashes or en-dashes
 - **Do not** use emojis in code and documentation
 
+### User-Facing Wording
+
+- **UI says part, storage and code say body.** Every string a human reads
+  (editor label, toolbar title, menu item, undo label, solver message, MCP
+  description) calls the item a part; stored keys, ids, mutation types and the
+  stored `'body'` enum value keep `body`, and a document's authored label is
+  user text that is never rewritten.
+- A user-facing message another module matches on is a contract: name both
+  sides in the change. `features/extrude.ts` turns the `bodyOps.ts` cut-miss
+  error into the no-change warning by regex on its text, and the robustness
+  fuzz's `isExpectedSplitRefusal` (`testing/robustnessFuzz/chain.ts`) classifies
+  a split refusal by the message `features/splitByPlane.ts` throws. Rewording
+  either message without its matcher turns an expected refusal into a finding.
+
 ## 3. Persistence
 
 The app is browser-only: there is no server and no database process. Every CAD

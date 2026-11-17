@@ -38,7 +38,7 @@ interface FaceProfile {
 }
 
 function bodyShape(table: HandleTable, body: Body): OccShape {
-  if (body.shape === null) throw new Error(`body ${body.id} has no shape`)
+  if (body.shape === null) throw new Error(`part ${body.id} has no shape`)
   return table.get<OccShape>(body.shape as OccHandle)
 }
 
@@ -163,7 +163,7 @@ export function remapFaceIndex(
   if (resolved !== null) return resolved
   if (body.face_uuids?.some((u) => u !== null)) {
     throw new Error(
-      `Cannot remap persisted face ref '${refStr}': body '${body.id}' carries face identity ` +
+      `Cannot remap persisted face ref '${refStr}': part '${body.id}' carries face identity ` +
         `but its face at index ${faceIndex} has no resolvable construction UUID`,
     )
   }
@@ -188,7 +188,7 @@ export function resolveFaceProfile(
     const refId = slash[1]
     let faceIndex = parseInt(slash[2], 10)
     const body = findBodyForRef(bodyStore, refId)
-    if (body === null) throw new Error(`No body found for '${refId}'`)
+    if (body === null) throw new Error(`No part found for '${refId}'`)
     const shape = bodyShape(table, body)
     // One sorted traversal serves both the index resolution and the loop
     // extraction. Both index the same shape with the same sort, so the two
@@ -208,7 +208,7 @@ export function resolveFaceProfile(
   if (bodyId !== undefined && faceIndex !== undefined) {
     const body = bodyStore[bodyId]
     if (body === undefined || body.shape === null) {
-      throw new Error(`Body '${bodyId}' not found or has no shape`)
+      throw new Error(`Part '${bodyId}' not found or has no shape`)
     }
     return extractLoopsFromOccFace(oc, scope, bodyShape(table, body), faceIndex)
   }
@@ -216,7 +216,7 @@ export function resolveFaceProfile(
   if (sketchRef.startsWith('@')) {
     const refId = sketchRef.slice(1).split('/')[0]
     const body = findBodyForRef(bodyStore, refId)
-    if (body === null) throw new Error(`No body found for '${refId}'`)
+    if (body === null) throw new Error(`No part found for '${refId}'`)
     const topo = (globalRepo.elements.get('_topo_' + body.sketch_id) as Dict | undefined) ?? {}
     const surfaces = (topo.surfaces as Dict[]) ?? []
     const effectivePlane: PlaneLike = {
@@ -288,7 +288,7 @@ export function resolveFaceSlashFace(
   const refId = slash[1]
   let faceIndex = parseInt(slash[2], 10)
   const body = findBodyForRef(bodyStore, refId)
-  if (body === null) throw new Error(`No body found for '${refId}'`)
+  if (body === null) throw new Error(`No part found for '${refId}'`)
   const shape = bodyShape(table, body)
   // Same one-traversal-per-pick deal as resolveFaceProfile's slash branch: the
   // remap and the final pick both index the same sorted list (M45).

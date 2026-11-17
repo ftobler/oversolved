@@ -41,7 +41,7 @@ describe('applyAddDeleteBody', () => {
   it('uses default label', () => {
     const doc = emptyDoc()
     applyAddDeleteBody(doc, 'db1')
-    expect(doc.features![0].label).toBe('Delete Body')
+    expect(doc.features![0].label).toBe('Delete Part')
   })
 })
 
