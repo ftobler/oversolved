@@ -914,8 +914,9 @@ banner on stdout, so a client config must use the direct node invocation.
   exactly at `distance` builds to an apex (a pyramid, a cone); one that closes
   to a ridge (a non-square rectangle) is refused by name. An extrude `twist` is
   the TOTAL rotation in degrees over `distance`, right-handed about the direction
-  of travel and about the line through the sketch origin (a picked face twists
-  about its centroid); holes twist with it, and a `taper` is refused alongside.
+  of travel and about the line through the sketch origin (a sketch on a face
+  turns about that face's centroid, a picked face about its own); holes twist
+  with it, and a `taper` is refused alongside.
   It needs `termination: blind` with `direction: normal` or `reverse`, and is
   bounded at 7200 degrees (720 loft sections of 10 degrees). `add_plane`'s `definition` carries the same shape the part-document
   schema serves (its `mode` enum includes `offset`, and the common offset plane is
