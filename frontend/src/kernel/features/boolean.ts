@@ -1,7 +1,14 @@
 // The explicit boolean leaf (union / subtract / intersect of whole bodies, vs the implicit
-// cut/add an extrude does). It resolves a target body and a list of tool bodies, folds each
-// tool into the target via booleanWithDiff, removes consumed tools, and splits any
+// cut/add an extrude does). It resolves a base body and a list of tool bodies, folds each
+// tool into the base via booleanWithDiff, removes consumed tools, and splits any
 // disconnected result solids into extra bodies.
+//
+// A union or an intersect has no target/tools split: the first pick is only the base that
+// keeps the body's id and name. Its tools are folded in connectivity order from the base
+// (fuse whatever touches the growing result, repeat), so the geometry does not depend on
+// the order the picks were listed in; a pick whose component never reaches the base is
+// skipped with the cut's own warning. A subtract keeps its target/tool roles and its list
+// order.
 //
 // The split used to be limited to `subtract`, on the assumption that only a cut can
 // disconnect a body. It cannot: a union of two bodies that do not touch is a two-solid
@@ -22,7 +29,7 @@ import type { Body, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
 import { resolveBody } from './shared/bodyResolution'
 import { brepDiffIsEmpty } from './shared/brepDiff'
-import { booleanWithDiff, volumeOf, shapesIntersect, BooleanSoundnessError } from '../occ/booleans'
+import { booleanWithDiff, volumeOf, shapesIntersect, shapesTouch, BooleanSoundnessError } from '../occ/booleans'
 import { maxPrecision, precisionCeilingWarning, type KernelPrecision } from '../precision'
 import { nearCoaxialCylinderWarning, shapeHasCoaxialCylinder } from '../occ/nearCoaxial'
 import { helixAxisOfSweepDef } from './shared/helixPath'
@@ -213,6 +220,74 @@ function partialPatternWarnings(
   return warnings
 }
 
+/** One resolved tool pick: the authored ref (for a warning) and the body it names. */
+interface ToolEntry {
+  ref: string
+  body: Body
+}
+
+/**
+ * The connectivity order a symmetric operation folds its tools in, and the ones
+ * that connect to nothing the base can reach.
+ *
+ * Union and intersect have no target/tools split, so the authored list order may
+ * not decide the geometry: a chain A-B-C picked as base A with tools [C, B] used
+ * to fold C first, find it apart from A, and (for a cut) skip it, while [B, C]
+ * joined all three. The connection graph is walked from the base instead, so the
+ * same set of picks folds the same way whichever order it was picked in.
+ *
+ * Candidates are visited in the body store's own order (not the authored order),
+ * which makes the fold, and with it the target-wins face naming, independent of
+ * the picks too. A union connects through touching faces (a shared face fuses
+ * material); an intersect only through shared material, the overlap its own
+ * skip probe reads.
+ *
+ * Every pair is probed at most once, so the cost is one connectivity probe per
+ * candidate pair per solve, never the boolean itself.
+ */
+function orderSymmetricTools(
+  oc: OccModule,
+  table: HandleTable,
+  op: 'fuse' | 'common',
+  baseShape: OccShape,
+  tools: ToolEntry[],
+  bodyStore: Record<string, Body>,
+): { ordered: ToolEntry[]; disconnected: ToolEntry[] } {
+  const storeIndex = new Map(Object.keys(bodyStore).map((id, i) => [id, i]))
+  const storePosition = (body: Body): number => storeIndex.get(body.id) ?? Number.MAX_SAFE_INTEGER
+  const sorted = [...tools].sort((a, b) =>
+    storePosition(a.body) - storePosition(b.body) || (a.body.id < b.body.id ? -1 : a.body.id > b.body.id ? 1 : 0))
+  const connects = op === 'fuse' ? shapesTouch : shapesIntersect
+  const frontier: OccShape[] = [baseShape]
+  const accepted: ToolEntry[] = []
+  const acceptedIds = new Set<string>()
+  // How much of the frontier a candidate has already been probed against, so a
+  // later pass only tests the shapes that joined since.
+  const probedTo = new Map<string, number>()
+  let grew = true
+  while (grew) {
+    grew = false
+    for (const tool of sorted) {
+      if (acceptedIds.has(tool.body.id)) continue
+      const shape = table.get<OccShape>(tool.body.shape!)
+      let at = probedTo.get(tool.body.id) ?? 0
+      let hit = false
+      for (; at < frontier.length; at++) {
+        if (connects(oc, frontier[at], shape)) { hit = true; break }
+      }
+      if (!hit) {
+        probedTo.set(tool.body.id, frontier.length)
+        continue
+      }
+      accepted.push(tool)
+      acceptedIds.add(tool.body.id)
+      frontier.push(shape)
+      grew = true
+    }
+  }
+  return { ordered: accepted, disconnected: sorted.filter((tool) => !acceptedIds.has(tool.body.id)) }
+}
+
 /** Solve a boolean feature into the body store (mirrors `_solve_boolean`). */
 export function solveBoolean(
   oc: OccModule,
@@ -282,6 +357,11 @@ export function solveBoolean(
   }
   for (const w of partialPatternWarnings(explicitToolIds, targetBody.id, featureId, namedPatterns, featuresById, bodyStore)) warn(w)
 
+  // Resolve every tool before any OCC work: a bad ref or a self-pick should
+  // fail by name without first folding half the list. A symmetric operation
+  // treats its picks as a set, so a body listed twice is one tool.
+  const symmetric = op === 'fuse' || op === 'common'
+  const toolEntries: ToolEntry[] = []
   for (const toolRef of toolRefs) {
     const toolBody = resolveBody(toolRef, bodyStore)
     if (toolBody.shape === null) throw new Error(`boolean: tool '${toolRef}' has no shape`)
@@ -296,7 +376,26 @@ export function solveBoolean(
         'a body cannot be its own tool',
       )
     }
-    const toolShape = table.get<OccShape>(toolBody.shape)
+    if (symmetric && toolEntries.some((entry) => entry.body.id === toolBody.id)) continue
+    toolEntries.push({ ref: toolRef, body: toolBody })
+  }
+
+  // The base anchors the fold. A union/intersect folds the base's connected
+  // component in store order and skips the picks that never reach it; a subtract
+  // keeps the authored tool order.
+  let foldEntries = toolEntries
+  if (symmetric) {
+    const { ordered, disconnected } = orderSymmetricTools(
+      oc, table, op, resultShape, toolEntries, bodyStore,
+    )
+    for (const tool of disconnected) {
+      warn(`${operation}: tool '${tool.ref}' does not intersect the target; skipped`)
+    }
+    foldEntries = ordered
+  }
+
+  for (const { ref: toolRef, body: toolBody } of foldEntries) {
+    const toolShape = table.get<OccShape>(toolBody.shape!)
     // A helical band meeting the wall of its coaxial cylinder makes the clean's
     // face merge (ShapeUpgrade_UnifySameDomain with unifyFaces) spin forever;
     // the edge merge is safe, so only the face merge is skipped for that
@@ -330,9 +429,13 @@ export function solveBoolean(
     // silent. A subtract of a non-overlapping tool would otherwise eat the body
     // with no visible effect; an intersect of disjoint bodies yields an empty
     // compound that must not be reported as 'ok'. The probe is a bare Common
-    // with history off (M18); the fuse path never probed and must not start. A
-    // grown tool is probed grown: a tool flush against the target intersects
-    // only once it has grown, which is the intended behaviour.
+    // with history off (M18). A union's membership was already settled by the
+    // connectivity walk (`orderSymmetricTools`) before the fold, so it is never
+    // probed a second time here. An intersect keeps this
+    // probe because an intermediate result can shrink away from a tool that
+    // overlapped the base. A grown tool is probed grown: a tool flush against
+    // the target intersects only once it has grown, which is the intended
+    // behaviour.
     if (op === 'cut' || op === 'common') {
       if (!shapesIntersect(oc, resultShape, cutTool)) {
         // A shrunk tool (clearance < 0) is a subset of the authored one: if it

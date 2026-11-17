@@ -381,15 +381,18 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
 })
 
 describe.skipIf(!hasOcc)('bodySplit: the leaves that used to leak', () => {
-  it('boolean union of two DISJOINT bodies makes two parts, not one', () => {
+  it('boolean union of two DISJOINT bodies skips the pick and keeps both parts', () => {
     const r = rig()
     seedBox(r, 'body_a', [0, 0, 0], 10)
     seedBox(r, 'body_b', [50, 0, 0], 10)
     const res = solveBoolean(oc, r.scope, r.table, {
       id: 'bool1', boolean: { operation: 'union', target: '@body_a', tools: ['@body_b'] },
     }, new Repository(), r.store)
-    // The tool body is consumed, then the union splits back into two parts.
-    expect(res.body_ids).toEqual(['body_a', 'body_a_1'])
+    // A union pick that connects to nothing is skipped, like a cut's: the body
+    // is not consumed and no second part is minted for it.
+    expect(res.body_ids).toEqual(['body_a'])
+    expect(res.solver_warning).toContain("union: tool '@body_b' does not intersect the target; skipped")
+    expect(Object.keys(r.store).sort()).toEqual(['body_a', 'body_b'])
     expectOnePartEach(r, 2)
     r.scope.dispose()
   })

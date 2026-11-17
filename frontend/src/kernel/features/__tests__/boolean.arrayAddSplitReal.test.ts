@@ -211,7 +211,7 @@ describe.skipIf(!hasOcc)('boolean tools: @array includes the copies an add array
     r.scope.dispose()
   })
 
-  it('a disjoint union folded into a copy does not join the array', () => {
+  it('a disjoint union pick is skipped and never joins the array', () => {
     const r = rig()
     const plate = makeBoxAt(oc, r.scope, [-20, -10, -10], 340, 20, 20)
     seed(r, 'body_plate', 'plate', plate)
@@ -222,24 +222,26 @@ describe.skipIf(!hasOcc)('boolean tools: @array includes the copies an add array
     }
     solveArray(oc, r.scope, r.table, { id: 'ar1', array: ar1 }, new Repository(), r.store)
 
-    // A bracket that does not touch the copy: the union is a two-solid compound,
-    // so the bracket becomes a sibling OF the copy without being array material.
+    // A bracket that does not touch the copy: the union skips it with the
+    // disjoint-pick warning, so it is neither consumed nor split into a sibling
+    // OF the copy. It stays its own body, outside the array's material.
     seed(r, 'body_bracket', 'bracket', makeBoxAt(oc, r.scope, [200, -5, -5], 20, 10, 10))
-    solveBoolean(oc, r.scope, r.table, {
+    const union = solveBoolean(oc, r.scope, r.table, {
       id: 'bool2', boolean: { operation: 'union', target: '@body_spoke_1', tools: ['@body_bracket'] },
     }, new Repository(), r.store)
-    expect(r.store.body_spoke_1_1?.split_from).toEqual({ feature: 'bool2', body: 'body_spoke_1' })
+    expect(union.solver_warning).toContain("union: tool '@body_bracket' does not intersect the target; skipped")
+    expect(r.store.body_bracket?.split_from).toBeUndefined()
 
     const plateBefore = volume(r, 'body_plate')
     solveBoolean(oc, r.scope, r.table, {
       id: 'bool1', boolean: { operation: 'subtract', target: '@body_plate', tools: ['@ar1'] },
     }, new Repository(), r.store, solvedArrays(['ar1', 'array', ar1]))
 
-    // Only the two spokes were cut. The bracket is its own body and stays whole;
-    // an inherited provenance would have handed it to the array.
-    expect(Object.keys(r.store).sort()).toEqual(['body_plate', 'body_spoke_1_1'])
+    // Only the two spokes were cut. The bracket stayed its own body; an
+    // inherited provenance would have handed it to the array.
+    expect(Object.keys(r.store).sort()).toEqual(['body_bracket', 'body_plate'])
     expect(volume(r, 'body_plate')).toBeCloseTo(plateBefore - 2 * 40 * 8 * 8, 3)
-    expect(volume(r, 'body_spoke_1_1')).toBeCloseTo(20 * 10 * 10, 3)
+    expect(volume(r, 'body_bracket')).toBeCloseTo(20 * 10 * 10, 3)
     r.scope.dispose()
   })
 
