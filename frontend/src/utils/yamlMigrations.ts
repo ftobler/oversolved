@@ -319,6 +319,32 @@ export function migrateProjectionConstraints(doc: PartDoc): number {
   return rewritten
 }
 
+// The instance pattern stores ONE target list in 2026-11: a ref that names a
+// sketch feature is a row that expands to the sketch's points. Documents
+// authored before that carry `sketch` beside (or instead of) `targets`; the
+// loader folds the sketch into the leading target, which is the order the old
+// sketch form solved. The kernel still reads a lingering key as that leading
+// target, so a current-stamped document needs no heal. Idempotent, mutate in
+// place, returns the count of features rewritten.
+export function migrateInstancePatternSketch(doc: PartDoc): number {
+  let rewritten = 0
+  for (const feature of doc.features ?? []) {
+    if (feature.kind !== 'instance_pattern') continue
+    const sub = feature.instance_pattern as { sketch?: unknown; targets?: unknown } | undefined
+    if (sub === null || typeof sub !== 'object' || Array.isArray(sub)) continue
+    const sketch = sub.sketch
+    if (typeof sketch !== 'string') continue
+    const list = Array.isArray(sub.targets)
+      ? sub.targets.filter((ref) => ref !== sketch)
+      : []
+    delete sub.sketch
+    if (sketch !== '') sub.targets = [sketch, ...list]
+    else if (Array.isArray(sub.targets)) sub.targets = list
+    rewritten += 1
+  }
+  return rewritten
+}
+
 // Aliases covering plausible import names for the same migration.
 export const migrateProjectionConstraint = migrateProjectionConstraints
 export const stepProjectionConstraint = migrateProjectionConstraints

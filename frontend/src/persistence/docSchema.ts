@@ -22,12 +22,12 @@ import { isLengthUnit } from '@/utils/lengthUnit'
 import { normalizeMateLimitDeg } from '@/utils/mateKinds'
 import { isDocumentConstraintKind } from '@/wasm-kernel/partDocToSketches'
 import { deriveMemberIds, isFaceProjectionSource } from '@/kernel/features/projectionMembers'
-import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateLegacyBodyPicks, migratePatternSourceFeatures, canonicalizeFeatureParams, migrateProjectionConstraints, migrateLineDistanceOperandOrder } from '@/utils/yamlMigrations'
+import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateInstancePatternSketch, migrateLegacyBodyPicks, migratePatternSourceFeatures, canonicalizeFeatureParams, migrateProjectionConstraints, migrateLineDistanceOperandOrder } from '@/utils/yamlMigrations'
 import { MAX_ARRAY_COUNT, MAX_ARRAY_CELLS } from '@/utils/core/arrayLimits'
 import { skipProblem } from '@/utils/core/patternSkip'
 import { splitStoredPattern } from '@/utils/core/patternSplit'
 
-// The version the ladder migrates to. A document carrying `version` 9 or newer
+// The version the ladder migrates to. A document carrying `version` 10 or newer
 // skips every step; anything older (including an unstamped document, reads as 0)
 // runs the steps whose target version it is behind. The step at 3 canonicalizes
 // the two spellings the format used to tolerate (feature refs `$id` -> `@id`,
@@ -38,10 +38,11 @@ import { splitStoredPattern } from '@/utils/core/patternSplit'
 // `line_distance` back in the line-first order the solver reads; the step at 8
 // folds a pattern's single legacy source into the multi-source list; the step at
 // 9 splits the retired `pattern` kind into `linear_pattern` and
-// `circular_pattern`.
+// `circular_pattern`; the step at 10 folds the instance pattern's retired
+// `sketch` field into its one `targets` list.
 // The historic heals target 2 deliberately: the version stamps predate them, so
 // a document stamped 1 can still carry the stale shapes they fix.
-export const CURRENT_DOC_VERSION = 9
+export const CURRENT_DOC_VERSION = 10
 
 // Caps. Chosen far above what a real document holds while well below what would
 // hang a solve: an entity list of 10k is already far past a hand-authored
@@ -124,6 +125,7 @@ const MIGRATION_STEPS: MigrationStep[] = [
   // into `source_features`, so the new-kind row inherits the current list
   // spelling instead of the retired scalar.
   { id: 'pattern-split', to: 9, apply: stepPatternSplit },
+  { id: 'instance-pattern-targets', to: 10, apply: stepInstancePatternTargets },
   { id: 'line-distance-operand-order', to: 7, apply: stepLineDistanceOperandOrder },
   { id: 'projection-constraint', to: 6, apply: stepProjectionConstraint },
   // The rotating-limit normalization. It is idempotent, so unlike the offset
@@ -213,6 +215,15 @@ function stepPatternSplit(doc: DocRecord): number {
     if (splitStoredPattern(feature as DocRecord)) split++
   }
   return split
+}
+
+/** Fold the instance pattern's retired `sketch` field into its target list. A
+ *  document holding both (which the kernel used to refuse) merges sketch first,
+ *  the order the old sketch form solved. The kernel still reads a lingering key,
+ *  so this only needs to run for a document behind the stamp. */
+function stepInstancePatternTargets(doc: DocRecord): number {
+  const part = migratablePartDoc(doc)
+  return part ? migrateInstancePatternSketch(part) : 0
 }
 
 function stepLineDistanceOperandOrder(doc: DocRecord): number {
@@ -1218,9 +1229,11 @@ function checkCurvePattern(sub: DocRecord, field: string): void {
   checkSkip(sub, field, false, 'a curve pattern')
 }
 
-// Exactly one of `sketch` / `targets` drives the target list. A bare add lands
-// a half-configured feature and the kernel refuses it, so neither field is
-// required here; both set at once is never a document the app writes.
+// One `targets` list drives the copies; a bare add lands a half-configured
+// feature and the kernel refuses it, so no field is required here. The retired
+// `sketch` field is still checked when present (the kernel reads it as the
+// leading target) and is no longer refused beside `targets`: the migration
+// merges the pair and the applier always writes the one list.
 function checkInstancePattern(sub: DocRecord, field: string): void {
   checkPatternSource(sub, field)
   checkOptional(sub, 'sketch', field, checkRef)
@@ -1229,11 +1242,6 @@ function checkInstancePattern(sub: DocRecord, field: string): void {
   checkOptional(sub, 'orientation', field, (v, f) => checkEnum(v, f, ['normal', 'fixed']))
   checkOptional(sub, 'reverse_normal', field, checkBoolean)
   checkSkip(sub, field, false, 'an instance pattern')
-  const sketch = typeof sub.sketch === 'string' && sub.sketch !== ''
-  const targets = Array.isArray(sub.targets) && sub.targets.length > 0
-  if (sketch && targets) {
-    fail(`${field}.targets`, 'sketch and targets cannot both be set; keep the sketch form or the picked list')
-  }
 }
 
 /** The second direction's cell cap, the same pair rule the rectangular array

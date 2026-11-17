@@ -163,6 +163,27 @@ describe.skipIf(!oc || !solveBytes)('instance pattern through the real kernel', 
           id: 'ip1', kind: 'instance_pattern',
           instance_pattern: {
             subject: 'body', source_body: '@body_ex1', operation: 'new',
+            targets: ['@skPts'], reference: 'entity:skPts:p0', ...extra,
+          },
+        },
+      ],
+    }
+  }
+
+  /** The same pattern authored the retired way: a `sketch` key instead of the
+   *  sketch's target row. The loader migrates it, but a hand-built doc can still
+   *  carry it, and the kernel reads it as the leading target. */
+  function legacySketchDoc(extra: Dict = {}): Record<string, unknown> {
+    return {
+      version: 9, kind: 'part',
+      features: [
+        rectSketch('sk1', 4, 4),
+        extrude('ex1', 'sk1', 5),
+        pointSketch('skPts', fourPoints),
+        {
+          id: 'ip1', kind: 'instance_pattern',
+          instance_pattern: {
+            subject: 'body', source_body: '@body_ex1', operation: 'new',
             sketch: '@skPts', reference: 'entity:skPts:p0', ...extra,
           },
         },
@@ -191,7 +212,7 @@ describe.skipIf(!oc || !solveBytes)('instance pattern through the real kernel', 
     expect(boxOf(r, 'ip1', 'body_ip1_1')).toEqual([0, 20, 0, 4, 24, 5])
   })
 
-  it('ignores construction points in the sketch form', () => {
+  it('ignores construction points in a sketch target row', () => {
     const r = h.run(pointPatternDoc({}, [[0, 0], [20, 0], [90, 90]], [2]))
     expect(h.res(r, 'ip1').status).toBe('ok')
     expect(Object.keys(store(r, 'ip1')).sort()).toEqual(['body_ex1', 'body_ip1'])
@@ -218,7 +239,7 @@ describe.skipIf(!oc || !solveBytes)('instance pattern through the real kernel', 
           id: 'ip1', kind: 'instance_pattern',
           instance_pattern: {
             subject: 'body', source_body: '@body_ex1', operation: 'new',
-            sketch: '@skPts', reference: 'entity:skPts:p1',
+            targets: ['@skPts'], reference: 'entity:skPts:p1',
           },
         },
       ],
@@ -230,14 +251,103 @@ describe.skipIf(!oc || !solveBytes)('instance pattern through the real kernel', 
     expect(faceUuids(after, 'ip1', 'body_ip1_1')).toEqual(beforeP3)
   })
 
-  it('refuses both target forms at once', () => {
-    const r = h.run(pointPatternDoc({ targets: ['entity:skPts:p1'] }))
-    const result = h.res(r, 'ip1')
-    expect(result.status).toBe('exception')
-    expect(String(result.exception)).toContain('set either sketch or targets, not both')
+  it('places a sketch target row exactly where the retired sketch form did', () => {
+    // The sketch ref is a target that expands to the sketch's points. The
+    // migration rewrites the old field into that row, so the two documents must
+    // build the same bodies under the same names.
+    const legacy = h.run(legacySketchDoc())
+    const targets = h.run(pointPatternDoc())
+    expect(h.res(legacy, 'ip1').status).toBe('ok')
+    expect(h.res(targets, 'ip1').status).toBe('ok')
+    expect(Object.keys(store(targets, 'ip1')).sort()).toEqual(Object.keys(store(legacy, 'ip1')).sort())
+    for (const bodyId of ['body_ip1', 'body_ip1_1', 'body_ip1_2']) {
+      expect(boxOf(targets, 'ip1', bodyId)).toEqual(boxOf(legacy, 'ip1', bodyId))
+      expect(faceUuids(targets, 'ip1', bodyId)).toEqual(faceUuids(legacy, 'ip1', bodyId))
+    }
+    expect(h.res(targets, 'ip1').target_count).toBe(4)
   })
 
-  it('refuses a sketch with no points, with the hole-style sentence', () => {
+  it('treats a lingering sketch key as the leading target, not a second form', () => {
+    // The kernel still reads the retired key so a hand-built document (the
+    // fuzz used to author one) cannot fail on it. It merges, sketch first.
+    const r = h.run(legacySketchDoc({ targets: ['entity:skPts:p1'] }))
+    const result = h.res(r, 'ip1')
+    expect(result.status).toBe('ok')
+    expect(result.target_count).toBe(4)
+    // p1 is reached twice; the copy list is the sketch's own, deduped.
+    expect(String(result.solver_warning)).toContain("target 'entity:skPts:p1' is the same point as an earlier target")
+  })
+
+  it('expands a sketch row in place, so a sketch plus a vertex numbers N+1', () => {
+    const pre = h.run({
+      version: 9, kind: 'part',
+      features: [...plate(), ...boss()],
+    })
+    const body = h.body(pre, 'body_exPlate') as { vertices?: number[][]; vertex_queries?: string[] }
+    const vertexIndex = (body.vertices ?? []).findIndex((v) => v[0] > 25 && v[1] > 25 && v[2] > 9)
+    expect(vertexIndex).toBeGreaterThanOrEqual(0)
+    const vertexQuery = (body.vertex_queries ?? [])[vertexIndex]!
+    const r = h.run({
+      version: 9, kind: 'part',
+      features: [
+        ...plate(),
+        ...boss(),
+        pointSketch('skPts', [[0, 0], [20, 0]]),
+        {
+          id: 'ip1', kind: 'instance_pattern',
+          instance_pattern: {
+            subject: 'body', source_body: '@body_exBoss', operation: 'new',
+            targets: ['@skPts', vertexQuery], reference: 'entity:skPts:p0',
+          },
+        },
+      ],
+    })
+    const result = h.res(r, 'ip1')
+    expect(result.status).toBe('ok')
+    expect(result.target_count).toBe(3)
+    expect(result.resolved_targets).toEqual(['1 = p0', '2 = p1', '3 = vertex'])
+    // The source slot is p0; p1 and the vertex each carry one copy.
+    const copies = Object.keys(store(r, 'ip1')).filter((id) => id.startsWith('body_ip1')).sort()
+    expect(copies).toEqual(['body_ip1', 'body_ip1_1'])
+    const p1Box = boxOf(r, 'ip1', 'body_ip1')
+    expect((p1Box[0] + p1Box[3]) / 2).toBeCloseTo(20, 6)
+  })
+
+  it('counts expanded points when numbering a skip', () => {
+    const r = h.run(pointPatternDoc({ skip: [3] }))
+    expect(h.res(r, 'ip1').status).toBe('ok')
+    expect(Object.keys(store(r, 'ip1')).sort()).toEqual(['body_ex1', 'body_ip1', 'body_ip1_1'])
+    expect(boxOf(r, 'ip1', 'body_ip1')).toEqual([20, 0, 0, 24, 4, 5])
+    expect(boxOf(r, 'ip1', 'body_ip1_1')).toEqual([0, 20, 0, 4, 24, 5])
+  })
+
+  it('drops a sketch with no point target and builds the rest', () => {
+    const r = h.run({
+      version: 9, kind: 'part',
+      features: [
+        rectSketch('sk1', 4, 4),
+        extrude('ex1', 'sk1', 5),
+        { id: 'skL', kind: 'sketch', plane: FRONT, entities: [{ id: 'l1', kind: 'line' }], initial: { l1: [0, 0, 10, 0] }, constraints: [] },
+        pointSketch('skPts', [[20, 0]]),
+        {
+          id: 'ip1', kind: 'instance_pattern',
+          instance_pattern: {
+            subject: 'body', source_body: '@body_ex1', operation: 'new',
+            targets: ['@skL', 'entity:skPts:p0'],
+          },
+        },
+      ],
+    })
+    const result = h.res(r, 'ip1')
+    expect(result.status).toBe('ok')
+    expect(result.target_count).toBe(1)
+    expect(String(result.solver_warning)).toContain("target '@skL' did not resolve to a point")
+    // No reference pick: the source body's centroid (2, 2, 2.5) lands on the one
+    // target at (20, 0, 0), so the copy is the 4 x 4 x 5 block centred there.
+    expect(boxOf(r, 'ip1', 'body_ip1')).toEqual([18, -2, -2.5, 22, 2, 2.5])
+  })
+
+  it('fails on no target only when nothing is left', () => {
     const r = h.run({
       version: 9, kind: 'part',
       features: [
@@ -246,14 +356,25 @@ describe.skipIf(!oc || !solveBytes)('instance pattern through the real kernel', 
         { id: 'skL', kind: 'sketch', plane: FRONT, entities: [{ id: 'l1', kind: 'line' }], initial: { l1: [0, 0, 10, 0] }, constraints: [] },
         {
           id: 'ip1', kind: 'instance_pattern',
-          instance_pattern: { subject: 'body', source_body: '@body_ex1', operation: 'new', sketch: '@skL' },
+          instance_pattern: { subject: 'body', source_body: '@body_ex1', operation: 'new', targets: ['@skL'] },
         },
       ],
     })
     const result = h.res(r, 'ip1')
     expect(result.status).toBe('exception')
-    expect(String(result.exception)).toContain("sketch 'skL' has no point entities")
-    expect(String(result.exception)).toContain('the instance pattern needs a point in its sketch to copy the source onto')
+    expect(String(result.exception)).toContain('no target resolved')
+    expect(String(result.exception)).toContain("target '@skL' did not resolve to a point")
+  })
+
+  it('keeps a point reached twice once, with one warning naming it', () => {
+    const r = h.run(pointPatternDoc({ targets: ['@skPts', 'entity:skPts:p1'] }))
+    const result = h.res(r, 'ip1')
+    expect(result.status).toBe('ok')
+    expect(result.target_count).toBe(4)
+    expect(Object.keys(store(r, 'ip1')).sort()).toEqual(['body_ex1', 'body_ip1', 'body_ip1_1', 'body_ip1_2'])
+    const warning = String(result.solver_warning)
+    expect(warning).toContain("target 'entity:skPts:p1' is the same point as an earlier target")
+    expect(warning.match(/same point as an earlier target/g)).toHaveLength(1)
   })
 
   it('makes a flat sketch-points pattern identical under normal and fixed', () => {
@@ -285,7 +406,7 @@ describe.skipIf(!oc || !solveBytes)('instance pattern through the real kernel', 
           id: 'ip1', kind: 'instance_pattern',
           instance_pattern: {
             subject: 'feature', source_features: ['@ex2'],
-            sketch: '@skPts', orientation: 'fixed',
+            targets: ['@skPts'], orientation: 'fixed',
           },
         },
       ],
@@ -310,7 +431,7 @@ describe.skipIf(!oc || !solveBytes)('instance pattern through the real kernel', 
         pointSketch('skPts', [[52, 2]], [], '@plTop'),
         {
           id: 'ip1', kind: 'instance_pattern',
-          instance_pattern: { subject: 'feature', sketch: '@skPts', orientation: 'fixed' },
+          instance_pattern: { subject: 'feature', targets: ['@skPts'], orientation: 'fixed' },
         },
       ],
     }

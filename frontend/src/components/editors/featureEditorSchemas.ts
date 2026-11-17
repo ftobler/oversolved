@@ -819,16 +819,12 @@ export const CURVE_PATTERN_SCHEMA: FeatureEditorSchema = {
   ],
 }
 
-/** The sketch form names the sketch itself, not one of its entities: the whole
- *  sketch's non-construction points are the targets. */
-function instanceSketchPickRefusal(id: string, features?: readonly PartFeature[]): string | null {
-  if (id.startsWith('entity:') || id.startsWith('vertex:') || id.startsWith('?')) {
-    return 'pick the sketch itself, not one of its entities; the sketch form copies onto every point'
-  }
-  if (!id.startsWith('@') || id.includes('/')) return 'pick a sketch feature row'
-  if (features === undefined) return null
-  const feature = features.find((candidate) => candidate.id === id.slice(1))
-  return feature !== undefined && feature.kind === 'sketch' ? null : 'pick a sketch feature row'
+/** A plain ref naming a sketch feature row, the one row the list expands. */
+function sketchFeatureRow(ref: string, features?: readonly PartFeature[]): PartFeature | null {
+  const id = ref.replace(/^@/, '')
+  if (id === '' || id.includes('/')) return null
+  const feature = features?.find((candidate) => candidate.id === id)
+  return feature !== undefined && feature.kind === 'sketch' ? feature : null
 }
 
 /** A no-normal pick is a body vertex or a straight body edge. The pick's own
@@ -838,28 +834,27 @@ function noNormalPick(ref: string): boolean {
   return /:vertex\b|:straightedge\b/.test(ref)
 }
 
-/** The numbered target list plus the source-normal rule this form will use. The
- *  sketch form reads its points from the document's own sketch row; a bare add
- *  has neither form configured yet and says so. */
+/** The numbered target list plus the source-normal rule this form will use. A
+ *  sketch row expands to its non-construction points, the same rule the kernel
+ *  applies, so the numbers match the Skip Instances field. A bare add has no
+ *  list yet and says so. */
 function instancePatternHint(d: SchemaData, context: HintContext): string | null {
   const labels: string[] = []
-  let form = 'none'
-  if (typeof d.sketch === 'string' && d.sketch !== '') {
-    form = 'sketch'
-    const sketchId = d.sketch.replace(/^@/, '').split('/')[0]
-    const sketch = context.features?.find((candidate) => candidate.id === sketchId && candidate.kind === 'sketch')
-    if (sketch !== undefined && sketch.kind === 'sketch') {
-      for (const entity of sketch.entities ?? []) {
-        if (entity.kind === 'point' && entity.construction !== true) labels.push(entity.id)
-      }
-    }
-  } else if (Array.isArray(d.targets) && d.targets.length > 0) {
-    form = 'targets'
+  if (Array.isArray(d.targets) && d.targets.length > 0) {
     for (const ref of d.targets as string[]) {
+      const sketch = sketchFeatureRow(ref, context.features)
+      if (sketch !== null && sketch.kind === 'sketch') {
+        for (const entity of sketch.entities ?? []) {
+          if (entity.kind === 'point' && entity.construction !== true) {
+            labels.push(`${entity.id} (${sketch.label ?? sketch.id})`)
+          }
+        }
+        continue
+      }
       labels.push(noNormalPick(ref) ? `${ref} (no normal, moved only)` : ref)
     }
   }
-  if (form === 'none') return 'pick a sketch or a target list; the source goes on every point or pick'
+  if (labels.length === 0) return 'pick points; the source goes on every one'
   const shown = labels.slice(0, 12).map((label, i) => `${i + 1} = ${label}`)
   const more = labels.length > shown.length ? `, ... ${labels.length - shown.length} more` : ''
   const skipped = Array.isArray(d.skip) ? d.skip.length : 0
@@ -872,7 +867,7 @@ function instancePatternHint(d: SchemaData, context: HintContext): string | null
   else parts.push('each copy turns onto its target\'s normal')
   const reference = typeof d.reference === 'string' && d.reference !== ''
     ? 'the reference pick'
-    : form === 'sketch' ? 'the sketch plane' : 'the first target with a normal'
+    : 'the first target with a normal'
   parts.push(`source normal: ${reference}`)
   return parts.join('; ')
 }
@@ -884,25 +879,13 @@ export const INSTANCE_PATTERN_SCHEMA: FeatureEditorSchema = {
   normalize: normalizePatternSource,
   fields: [
     ...PATTERN_SOURCE_FIELDS,
-    // One target form at a time. The select's mutation clears the other form,
-    // because a stored pair would be refused by the kernel.
-    { type: 'select', key: 'targets', label: 'Targets', default: 'sketch',
-      valueFrom: (d) => typeof d.sketch === 'string' && d.sketch !== ''
-        ? 'sketch'
-        : Array.isArray(d.targets) && d.targets.length > 0 ? 'picked' : 'sketch',
-      options: [{ value: 'sketch', label: 'Sketch points' }, { value: 'picked', label: 'Picked' }],
-      getMutation: (option) => option === 'sketch'
-        ? { field: 'targets', value: [] }
-        : { field: 'sketch', value: '' } },
-    { type: 'pick', key: 'sketch', label: 'Sketch', transform: stripSelectionWrapper,
-      validatePick: instanceSketchPickRefusal,
-      showWhen: (d) => !Array.isArray(d.targets) || d.targets.length === 0,
-      emptyText: '(pick a sketch; every non-construction point is a target)' },
-    { type: 'pick', key: 'targets', label: 'Targets', multi: true,
+    // Points, not a target form: what the user clicks is inferred. A sketch row
+    // stands for every non-construction point of it; any other pick is one
+    // point, and the two mix freely in this one list.
+    { type: 'pick', key: 'targets', label: 'Points', multi: true,
       addMutationType: 'add_instance_pattern_target', addValueKey: 'targetQuery',
       removeMutationType: 'remove_instance_pattern_target', transform: stripSelectionWrapper,
-      showWhen: (d) => !(typeof d.sketch === 'string' && d.sketch !== ''),
-      emptyText: '(pick any face, edge, vertex, sketch point or plane)' },
+      emptyText: '(pick a sketch, sketch points, vertices, faces, edges or planes)' },
     { type: 'pick', key: 'reference', label: 'Reference', transform: stripSelectionWrapper,
       emptyText: '(automatic: sketch point or centroid)' },
     { type: 'select', key: 'orientation', label: 'Orientation', default: 'normal',

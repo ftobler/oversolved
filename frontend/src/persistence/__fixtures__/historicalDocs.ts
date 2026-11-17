@@ -183,6 +183,29 @@ features:
 `,
 }
 
+export const CURRENT_V10_PART: HistoricalDocument = {
+  name: 'current v10 part',
+  note: 'stamped at the ladder current version, nothing to migrate',
+  text: `version: 10
+kind: part
+features:
+  - id: Origin
+    kind: origin
+  - id: sk1
+    kind: sketch
+    plane: "@builtin_plane_front"
+    initial:
+      line1: [0, 0, 20, 0]
+    entities:
+      - id: line1
+        kind: line
+    constraints:
+      - id: c1
+        kind: horizontal
+        a: "$line1"
+`,
+}
+
 export const CURRENT_ASSEMBLY: HistoricalDocument = {
   name: 'current assembly',
   note: 'current assembly shape',
@@ -270,6 +293,7 @@ export const ALL_HISTORICAL_PART_DOCS: HistoricalDocument[] = [
   CURRENT_V2_PART,
   CURRENT_V3_PART,
   CURRENT_V9_PART,
+  CURRENT_V10_PART,
 ]
 
 export const ALL_HISTORICAL_ASSEMBLY_DOCS: HistoricalDocument[] = [

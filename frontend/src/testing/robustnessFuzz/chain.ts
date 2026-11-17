@@ -881,7 +881,7 @@ function applyStep(
       id: step.id,
       instance_pattern: {
         subject: 'body', source_body: step.target, operation: 'add',
-        sketch: '@' + sketchId, orientation: 'fixed',
+        targets: ['@' + sketchId], orientation: 'fixed',
       },
     } as Dict, repoForLeaves, bodyStore, {
       [sketchId]: { id: sketchId, kind: 'sketch', entities, initial, constraints: [] },
