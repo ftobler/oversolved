@@ -11,7 +11,7 @@
 
 import type { DisposeScope } from '../occ/disposeScope'
 import { extractErrorMessage } from '../errors'
-import type { OccModule, OccPrismBuilder, OccShape, OccSubShape } from '../occ/occTypes'
+import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { Body } from '../types3d'
 import type { Repository } from '../query'
@@ -31,7 +31,7 @@ import { linearHandle, offsetAlong } from './featureHandles'
 import { applyBodyOperation, type BodyOperation } from './bodyOps'
 import { makeTranslationTrsf, transformCopy } from '../occ/transforms'
 import { extrudeProfileWithLineage } from '../occ/prismLineage'
-import { draftPrismBuilder } from '../occ/draftPrism'
+import { sweepBuilderFor } from '../occ/twistPrism'
 import { isEdgeProfileRef, resolveEdgeProfileFace } from './edgeProfile'
 import { resolveUpToTarget, orientToTarget, trimAtPlane, UP_TO_REACH, type CutPlane, type UpToTarget } from './upTo'
 import {
@@ -49,6 +49,7 @@ import {
 } from '../occ/bodyNames'
 import { swallowUnlessTrap } from '../errors'
 import { maxPrecision, sketchPrecision, type KernelPrecision } from '../precision'
+import { MAX_TWIST_DEG, MAX_TWIST_SECTIONS, TWIST_STEP_DEG } from '@/utils/core/twistLimits'
 
 type Dict = Record<string, unknown>
 
@@ -394,6 +395,23 @@ export function solveExtrude(
   }
   const taperDeg = taper
   const taperRad = (taper * Math.PI) / 180
+  // A twist is the total rotation over the distance, right-handed about the
+  // direction of travel. The loft needs one section per step, so an angle is
+  // bounded by the same cap the builder names.
+  const twist = Number(sub.twist ?? 0)
+  if (!Number.isFinite(twist) || Math.abs(twist) > MAX_TWIST_DEG) {
+    throw new Error(
+      `extrude: twist must be a finite angle within +/-${MAX_TWIST_DEG} degrees ` +
+        `(${MAX_TWIST_SECTIONS} loft sections of ${TWIST_STEP_DEG} degrees)`,
+    )
+  }
+  const twistDeg = twist
+  const twistRad = (twist * Math.PI) / 180
+  // The two drafts compose only through a scaled, twisted loft, which v1 does
+  // not build: refuse the pair by name instead of silently keeping one.
+  if (twistDeg !== 0 && taperDeg !== 0) {
+    throw new Error('extrude: twist with taper is not supported')
+  }
   if (sketchRefs.length === 0) {
     throw new Error('extrude: requires at least one profile reference')
   }
@@ -517,6 +535,11 @@ export function solveExtrude(
       'extrude: taper is not supported with direction symmetric; use normal or reverse',
     )
   }
+  if (twistDeg !== 0 && direction === 'symmetric') {
+    throw new Error(
+      'extrude: twist is not supported with direction symmetric; use normal or reverse',
+    )
+  }
 
   if (cqFaces.length === 0 && allLoops.length === 0) {
     // No profile geometry resolved -> no part. A part-less extrude is a failed
@@ -566,6 +589,11 @@ export function solveExtrude(
   if (taperDeg !== 0 && (termination === 'up_to' || termination === 'up_to_next' || termination === 'through_all')) {
     throw new Error(
       `extrude: taper is not supported with termination ${termination}; use termination blind`,
+    )
+  }
+  if (twistDeg !== 0 && (termination === 'up_to' || termination === 'up_to_next' || termination === 'through_all')) {
+    throw new Error(
+      `extrude: twist is not supported with termination ${termination}; use termination blind`,
     )
   }
   const upToOffsetRaw = sub.up_to_offset
@@ -707,12 +735,13 @@ export function solveExtrude(
     const seed = bodyFaceName(oc, scope, table, bodyStore, cqFaces[0])
     if (seed !== null) names.faceAncestry[seed.uuid] = seed.ancestry
     const prism = (face: OccShape, dir: Vec3, length: number, seeded: boolean): OccShape => {
-      const builder = taperRad === 0
-        ? (() => {
-            const vec = scope.track(new oc.gp_Vec_4(dir[0] * length, dir[1] * length, dir[2] * length))
-            return scope.track(new oc.BRepPrimAPI_MakePrism_1(face, vec, true, true)) as OccPrismBuilder
-          })()
-        : draftPrismBuilder(oc, scope, face, dir, length, taperRad)
+      // A picked face has no sketch plane, so a twist turns about its own
+      // centroid; the panel's note says so. The read is skipped when there is
+      // no twist, which is every taper and straight call here.
+      const axisOrigin: Vec3 = twistRad === 0 ? [0, 0, 0] : faceCentroid(oc, scope, face)
+      const builder = sweepBuilderFor(
+        oc, scope, face, axisOrigin, dir, length, taperRad, twistRad,
+      )
       const cap = seeded && seed !== null ? builder.FirstShape?.() : undefined
       if (cap !== undefined) names.faceNames.set(scope.track(cap) as OccSubShape, seed!.uuid)
       return builder.Shape()
@@ -859,6 +888,7 @@ export function solveExtrude(
       firstSketchId,
       featureId,
       taperDeg,
+      twistDeg,
       precision,
     )
     // A planar up_to keeps the old top-face registration at the blind distance;
@@ -870,7 +900,10 @@ export function solveExtrude(
       (termination === 'blind' || (termination === 'up_to' && upToTarget?.kind === 'plane' && upToStart !== 'surface')) &&
       firstSurfaces !== undefined && firstPtData !== undefined
     ) {
-      registerTopFace(globalRepo, featureId, firstPtData, firstSurfaces, effectiveDistance, taperDeg, apexMode)
+      registerTopFace(
+        globalRepo, featureId, firstPtData, firstSurfaces, effectiveDistance,
+        taperDeg, apexMode, twistDeg, direction === 'reverse',
+      )
     }
     // The tool is scope-owned from here: applyBodyOperation detaches whatever
     // becomes a body, and the leftover (an add/cut tool, a compound wrapper)

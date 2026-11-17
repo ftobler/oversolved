@@ -93,8 +93,10 @@ interface TypedShape extends OccDisposable {
   ShapeType(): { value: number }
 }
 
-/** The outer wire of `face` and its hole wires, as the face itself holds them. */
-function faceWires(oc: OccModule, scope: DisposeScope, face: OccShape): { outer: OccShape; holes: OccShape[] } {
+/** The outer wire of `face` and its hole wires, as the face itself holds them.
+ *  Shared with the twist builder (`occ/twistPrism.ts`), which splits the same
+ *  wires into one loft each. */
+export function faceWires(oc: OccModule, scope: DisposeScope, face: OccShape): { outer: OccShape; holes: OccShape[] } {
   const E = oc.TopAbs_ShapeEnum
   const outer = scope.track(oc.BRepTools.OuterWire(face))
   const holes: OccShape[] = []
@@ -203,7 +205,7 @@ interface SectionBuild {
 }
 
 /** Base-wire edge -> the lateral face the loft generated for it. */
-function generatedFaces(
+export function generatedFaces(
   oc: OccModule,
   scope: DisposeScope,
   builder: OccThruSectionsBuilder,
@@ -289,7 +291,7 @@ function buildApexSection(
  *  boolean-trimmed washer cap is an annulus, so the pair is found by plane, not
  *  by a congruent wire. Each role is independent: an apex loft has a start cap
  *  and no end cap, and the caller exposes only the ones found. */
-function findCaps(
+export function findCaps(
   oc: OccModule,
   scope: DisposeScope,
   solid: OccShape,
@@ -551,7 +553,7 @@ function collapseApex(
  * boolean result can be a compound, so the cast follows ShapeType rather than
  * assuming a solid.
  */
-function shapeProxy(oc: OccModule, shape: OccShape): OccShape {
+export function shapeProxy(oc: OccModule, shape: OccShape): OccShape {
   const E = oc.TopAbs_ShapeEnum
   const value = (v: object): number => (v as { value: number }).value
   const type = (shape as TypedShape).ShapeType().value

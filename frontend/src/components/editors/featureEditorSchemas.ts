@@ -31,6 +31,11 @@ type SchemaData = Record<string, any>
 
 const showMergeTarget = (d: SchemaData) => d.operation !== 'new'
 
+/** Whether a stored angle asks for a draft. An expression counts as set, the
+ *  same rule the drive boundary applies: the editor cannot evaluate it here. */
+const angleIsSet = (value: unknown): boolean =>
+  value !== undefined && value !== null && value !== '' && !(typeof value === 'number' && value === 0)
+
 export const EXTRUDE_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_extrude',
   subKey: 'extrude',
@@ -70,9 +75,19 @@ export const EXTRUDE_SCHEMA: FeatureEditorSchema = {
       showWhen: (d) => (d.termination ?? 'blind') === 'blind', validate: positive },
     { type: 'number', key: 'taper', label: 'Taper', default: 0, quantity: 'angle',
       // A draft is only defined for a one-sided blind sweep: symmetric splits
-      // the distance and the other terminations size their own tool.
-      showWhen: (d) => (d.termination ?? 'blind') === 'blind' && d.direction !== 'symmetric',
+      // the distance and the other terminations size their own tool. A twist
+      // and a taper are refused together, so the field the feature does not use
+      // is hidden rather than offered as a losing edit.
+      showWhen: (d) => (d.termination ?? 'blind') === 'blind' && d.direction !== 'symmetric' &&
+        !angleIsSet(d.twist),
       validate: between(-90, 90) },
+    { type: 'number', key: 'twist', label: 'Twist (deg)', default: 0,
+      // The TOTAL rotation over the distance, right-handed about the travel
+      // direction. Same envelope as a draft; the kernel bounds the angle at the
+      // loft's section budget, which a finite check here does not restate.
+      showWhen: (d) => (d.termination ?? 'blind') === 'blind' && d.direction !== 'symmetric' &&
+        !angleIsSet(d.taper),
+      validate: finite },
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',
       options: [{ value: 'add', label: 'Add' }, { value: 'cut', label: 'Cut' }, { value: 'new', label: 'New' }] },
     { type: 'pick', key: 'merge_target', label: 'Merge Target',

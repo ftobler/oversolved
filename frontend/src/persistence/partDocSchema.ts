@@ -221,7 +221,7 @@ export const FEATURE_SCHEMA_BY_KIND = {
       // the same field on a pre-rename document. Deprecated so the catalog does
       // not offer it to a new authored document.
       depth: { ...NUMBER_OR_EXPR, deprecated: true },
-      taper: NUMBER_OR_EXPR, direction: { enum: ['normal', 'reverse', 'symmetric'] },
+      taper: NUMBER_OR_EXPR, twist: NUMBER_OR_EXPR, direction: { enum: ['normal', 'reverse', 'symmetric'] },
       termination: { enum: ['blind', 'up_to', 'up_to_next', 'through_all'] }, up_to: REF,
       up_to_offset: NUMBER_OR_EXPR, up_to_start: { enum: ['sketch', 'surface'] }, operation: { enum: ['add', 'cut', 'new'] }, merge_target: REF,
     },

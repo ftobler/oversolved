@@ -128,6 +128,18 @@ taper whose angle closes the profile exactly at the distance builds to an apex
 (a pyramid, a cone) rather than being refused; one that closes to a ridge (a
 non-square rectangle) is refused by name.
 
+CadQuery's `Workplane.twistExtrude(distance, angleDegrees)` and
+`Solid.extrudeLinearWithRotation` map one-to-one to `extrude.twist`: the number
+is the TOTAL rotation in degrees over the distance, and the rotation is about
+the workplane origin, which is what Oversolved uses too (`twist_center` does not
+exist). OpenSCAD's `linear_extrude(twist=)` turns the other way (left-handed
+about the direction of travel), so a translated script uses
+`twist = -openscad_twist`. A whole-turn multiple has the same volume and end cap
+either way, but a chiral profile built with the wrong sign is its mirror image,
+so a screw's lobed bore still lands on the wrong side; keep the sign. CadQuery's
+twist has no scale-plus-twist in one call, and neither does this `twist`: a
+`taper` is refused alongside it. The angle is bounded at 7200 degrees.
+
 CadQuery `Workplane.until` / build123d `Until.NEXT` maps to
 `termination: up_to_next`; `until=` a face maps to `termination: up_to` with
 that face as `up_to` (a curved face is accepted). A build123d extrude with

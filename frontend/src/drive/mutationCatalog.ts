@@ -920,6 +920,13 @@ const EXTRUDE_FIELDS_NOTE =
   'that closes the profile exactly at `distance` builds to an apex (a pyramid, a cone); one that closes ' +
   'to a ridge (a non-square rectangle) is refused, as is one that collapses the profile before `distance`, ' +
   'which names the height it would collapse at. ' +
+  '`twist` is the TOTAL rotation of the profile about the sweep axis in degrees, spread evenly over ' +
+  '`distance`: positive turns right-handed about the direction of travel (so `reverse` mirrors the ' +
+  'geometry and keeps the same handedness), holes twist with the profile, and the axis is the line ' +
+  'through the sketch origin along the sweep (a sketch on a face turns about that face\'s centroid, a ' +
+  'picked face about its own). A twist needs ' +
+  '`termination: blind` and `direction: normal` or `reverse`, is refused together with a taper, and is ' +
+  'bounded at 7200 degrees (720 loft sections of 10 degrees). ' +
   '`merge_target`: ' + MERGE_TARGET_NOTE +
   ' ' + EXTRUDE_UP_TO_NOTE + ' ' + EXTRUDE_UP_TO_NEXT_NOTE + ' ' + EXTRUDE_UP_TO_OFFSET_NOTE +
   ' ' + EXTRUDE_UP_TO_START_NOTE + ' ' + EXTRUDE_THROUGH_ALL_NOTE
@@ -1485,6 +1492,7 @@ export const MUTATION_CATALOG = {
       sketchQuery: sketchQuery(),
       distance: optNum('Required unless `termination` is `through_all`, which stores no distance at all (the key the document stores as extrude.distance).'),
       taper: optScalar('Degrees of draft along the extrude direction: positive narrows the profile, negative widens it, and every lateral wall (holes included) drafts. Needs termination blind and direction normal or reverse; an angle that closes the profile exactly at `distance` builds to an apex (a pyramid, a cone), one that closes to a ridge is refused, and one that collapses the profile before `distance` is refused with the height it would collapse at (the key the document stores as extrude.taper).'),
+      twist: optScalar('Degrees of TOTAL rotation of the profile about the sweep axis, spread evenly over distance: positive turns right-handed about the direction of travel, so reverse mirrors the geometry and keeps the same handedness; holes twist with the profile. The axis runs through the sketch origin (a sketch on a face turns about that face\'s centroid, a picked face about its own). Needs termination blind and direction normal or reverse, is refused with a taper, and is bounded at 7200 degrees (the key the document stores as extrude.twist).'),
       direction: optStr('normal | reverse | symmetric; defaults to normal (the key the document stores as extrude.direction).'),
       termination: optNullableStr('blind | up_to | up_to_next | through_all; defaults to blind. `up_to` ends the extrude at the `up_to` element instead of at `distance`; `up_to_next` stops at the first part it meets; `through_all` is a cut sized from the parts it can reach and stores no `distance` (omit it; a stored one is ignored with a warning), and `merge_target` narrows the reach, with `direction: symmetric` cutting both sides of the plane and normal/reverse cutting one (the key the document stores as extrude.termination). A null value clears it, so the add writes no key.'),
       up_to: optNullableStr('The element an up_to extrude stops at: `@<planeId>`, `@builtin_plane_front`, any part face planar or curved (a face query from `select`, or the viewport\'s `@<bodyId>/face/<n>` fallback), a `select` vertex query, or a sketch point ref (`@<sketchId>/<entityId>/xy`) (the key the document stores as extrude.up_to). Read only when `termination` is `up_to`; otherwise it is ignored. A null or empty value clears it.'),

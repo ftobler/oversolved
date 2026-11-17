@@ -849,9 +849,9 @@ banner on stdout, so a client config must use the direct node invocation.
 - `mutations` is the discovery path for the script vocabulary: `commands` act
   on the current selection, while mutation steps author geometry with explicit
   feature and entity ids. Each visible entry carries its fields and a summary,
-  and the examples are six scripts (`box`, `filleted-box`, `tapered-block`,
-  `projection`, `projection-freeze`, `emboss-on-cylinder`); the catalog tests
-  build all six through the real kernel. The catalog is generated where it can
+  and the examples are seven scripts (`box`, `filleted-box`, `tapered-block`,
+  `twisted-bar`, `projection`, `projection-freeze`, `emboss-on-cylinder`); the
+  catalog tests build all seven through the real kernel. The catalog is generated where it can
   be: `add_entity`
   lists the params slot order of every entity kind from the entity registry
   (`line [x1, y1, x2, y2]`, `circle [cx, cy, r]`,
@@ -912,7 +912,13 @@ banner on stdout, so a client config must use the direct node invocation.
   symmetric, up_to, up_to_next and through_all are refused, as is a taper that
   collapses the profile before `distance`. A taper that closes the profile
   exactly at `distance` builds to an apex (a pyramid, a cone); one that closes
-  to a ridge (a non-square rectangle) is refused by name. `add_plane`'s `definition` carries the same shape the part-document
+  to a ridge (a non-square rectangle) is refused by name. An extrude `twist` is
+  the TOTAL rotation in degrees over `distance`, right-handed about the direction
+  of travel and about the line through the sketch origin (a sketch on a face
+  turns about that face's centroid, a picked face about its own); holes twist
+  with it, and a `taper` is refused alongside.
+  It needs `termination: blind` with `direction: normal` or `reverse`, and is
+  bounded at 7200 degrees (720 loft sections of 10 degrees). `add_plane`'s `definition` carries the same shape the part-document
   schema serves (its `mode` enum includes `offset`, and the common offset plane is
   `{mode:"offset", plane:"@builtin_plane_top", offset:43}`). A multisection
   sweep is one `add_sweep_profile` per section and `multisection: true` in the

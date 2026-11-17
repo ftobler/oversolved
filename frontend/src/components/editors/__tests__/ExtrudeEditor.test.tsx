@@ -422,3 +422,52 @@ describe('merge target PickChip', () => {
     expect(chip.classList.contains('picking')).toBe(false)
   })
 })
+
+describe('twist field', () => {
+  it('shows Twist for a blind one-sided extrude and dispatches the setter', () => {
+    const onMutation = vi.fn()
+    renderSidebar({
+      features: [extrudeFeature],
+      visibleFeatures: new Set(['ex1']),
+      editingFeatureId: 'ex1',
+    }, { onMutation })
+    const input = screen.getByRole('textbox', { name: 'Twist (deg)' }) as HTMLInputElement
+    fireEvent.change(input, { target: { value: '90' } })
+    fireEvent.blur(input)
+    expect(onMutation).toHaveBeenCalledWith<[Mutation]>({
+      type: 'set_extrude_field', featureId: 'ex1', field: 'twist', value: 90,
+    })
+  })
+
+  it('hides Twist outside a blind one-sided sweep', () => {
+    const hidden: PartFeature[] = [
+      { id: 'ex1', kind: 'extrude', extrude: { sketch: '$sk1', distance: 10, direction: 'symmetric' } },
+      { id: 'ex1', kind: 'extrude', extrude: { sketch: '$sk1', distance: 10, termination: 'up_to' } },
+      { id: 'ex1', kind: 'extrude', extrude: { sketch: '$sk1', distance: 10, termination: 'through_all' } },
+      { id: 'ex1', kind: 'extrude', extrude: { sketch: '$sk1', distance: 10, taper: 15 } },
+    ]
+    for (const feature of hidden) {
+      const { unmount } = renderSidebar({
+        features: [feature],
+        visibleFeatures: new Set(['ex1']),
+        editingFeatureId: 'ex1',
+      })
+      expect(screen.queryByRole('textbox', { name: 'Twist (deg)' }), JSON.stringify(feature)).toBeNull()
+      unmount()
+    }
+  })
+
+  it('hides Taper when a twist is set', () => {
+    const feature: PartFeature = {
+      id: 'ex1', kind: 'extrude',
+      extrude: { sketch: '$sk1', distance: 40, twist: 90 },
+    }
+    renderSidebar({
+      features: [feature],
+      visibleFeatures: new Set(['ex1']),
+      editingFeatureId: 'ex1',
+    })
+    expect(screen.getByRole('textbox', { name: 'Twist (deg)' })).toBeInTheDocument()
+    expect(screen.queryByRole('textbox', { name: 'Taper (deg)' })).toBeNull()
+  })
+})

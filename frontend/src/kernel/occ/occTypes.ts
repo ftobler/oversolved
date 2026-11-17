@@ -157,14 +157,17 @@ export interface OccDPrismBuilder extends OccDisposable {
  */
 export interface OccPipeShellBuilder extends OccPrismBuilder {
   SetTransitionMode(mode: OccEnumValue): void
-  // The pipe-shell trihedron modes. BRepOffsetAPI_MakePipeShell declares four
-  // SetMode overloads in this build (SpineSupport, gp_Ax2, gp_Dir, Frenet
-  // boolean); the gp_Dir one is the binormal mode a constant-axis helix sweep
-  // wants, pinning the profile's orientation to a fixed direction instead of
-  // the CorrectedFrenet frame. `SetMode_1` is the boolean Frenet law, the
-  // fallback a B-spline spine needs (OCCT 8 refuses it under the default
-  // corrected-Frenet law). The overload suffixes are pinned by
-  // helixEdgeProbeReal.test.ts.
+  // The pipe-shell trihedron modes. This build binds exactly four `SetMode`
+  // overloads, each one argument: `_1` the boolean Frenet law, `_2` gp_Ax2,
+  // `_3` the gp_Dir binormal a constant-axis helix sweep wants, and `_4` the
+  // TopoDS_Shape SpineSupport. The auxiliary-spine overload
+  // `SetMode(TopoDS_Wire, bool, BRepFill_TypeOfContact)` -- what CadQuery's
+  // twisted extrude uses -- is NOT among them, and neither is the
+  // `BRepFill_TypeOfContact` enum, which is why `extrude.twist` lofts sections
+  // (`occ/twistPrism.ts`) instead. `_1` is the fallback a B-spline spine needs
+  // (OCCT 8 refuses it under the default corrected-Frenet law). The suffixes and
+  // the missing overload are pinned by helixEdgeProbeReal.test.ts and
+  // twistPrismReal.test.ts.
   SetMode_1(isFrenet: boolean): void
   SetMode_3(dir: OccDisposable): void
   Add_1(profile: OccShape, withContact: boolean, withCorrection: boolean): void

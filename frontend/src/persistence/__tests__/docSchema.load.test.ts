@@ -567,6 +567,76 @@ describe('hostile sizes are capped before the builder', () => {
     expect('taper' in serialised.features[1].extrude).toBe(false)
   })
 
+  it('loads an extrude twist and keeps it on the re-serialised document', () => {
+    const result = loadPartDoc({
+      version: CURRENT_DOC_VERSION,
+      kind: 'part',
+      features: [
+        { id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front', entities: [], constraints: [] },
+        { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 40, twist: 90 } },
+      ],
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const extrude = (result.doc.features![1] as { extrude: { twist?: number } }).extrude
+    expect(extrude.twist).toBe(90)
+    const serialised = JSON.parse(JSON.stringify(result.doc)) as {
+      features: Array<{ extrude: { twist?: number } }>
+    }
+    expect(serialised.features[1].extrude.twist).toBe(90)
+  })
+
+  it('leaves an unauthored twist absent', () => {
+    const result = loadPartDoc({
+      version: CURRENT_DOC_VERSION,
+      kind: 'part',
+      features: [
+        { id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front', entities: [], constraints: [] },
+        { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 10 } },
+      ],
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const extrude = (result.doc.features![1] as { extrude: Record<string, unknown> }).extrude
+    expect('twist' in extrude).toBe(false)
+  })
+
+  it('rejects a twist that is not a number or an expression string', () => {
+    for (const twist of [{}, [1], true]) {
+      const result = loadPartDoc({
+        version: CURRENT_DOC_VERSION,
+        kind: 'part',
+        features: [
+          { id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front', entities: [], constraints: [] },
+          { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 10, twist } },
+        ],
+      })
+      expect(result.ok, JSON.stringify(twist)).toBe(false)
+      if (result.ok) continue
+      expect(result.error.field).toBe('features[1].extrude.twist')
+      expect(result.error.message).toContain('number or an expression string')
+    }
+  })
+
+  it('treats an empty twist as absent, not zero', () => {
+    const result = loadPartDoc({
+      version: CURRENT_DOC_VERSION,
+      kind: 'part',
+      features: [
+        { id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front', entities: [], constraints: [] },
+        { id: 'ex1', kind: 'extrude', extrude: { sketch: '@sk1', distance: 10, twist: '' } },
+      ],
+    })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const extrude = (result.doc.features![1] as { extrude: Record<string, unknown> }).extrude
+    expect('twist' in extrude).toBe(false)
+    const serialised = JSON.parse(JSON.stringify(result.doc)) as {
+      features: Array<{ extrude: Record<string, unknown> }>
+    }
+    expect('twist' in serialised.features[1].extrude).toBe(false)
+  })
+
   it('refuses a constraint kind no lowering or wire code names', () => {
     // lowerSketch fails loud on a kind it cannot encode, and nothing lowers
     // `perpendicular`, so a hand-edited kind must be refused here by field

@@ -16,7 +16,15 @@ type Dict = Record<string, unknown>
  * A tapered end's rim is the offset boundary, not the authored one, so there is
  * no un-offset `edge0` to register there: the face/plane is still the honest
  * top, but the synthetic edge is skipped rather than naming an edge that does
- * not exist on the body.
+ * not exist on the body. A twisted end's rim is the rotated boundary, so its
+ * `edge0` is skipped for the same reason; the plane's axes and the centroid are
+ * rotated to the end frame the body actually ends on.
+ *
+ * `reverse` is the sweep's direction: a reverse extrude travels along
+ * `-normal`, so its twist turns the other way about the registered normal. (The
+ * registered plane's POSITION is still `origin + normal * distance` for both
+ * directions, which is the pre-existing reverse defect in `feature/backlog.md`,
+ * out of scope here.)
  *
  * An apex end has no top face at all (the profile closed to a point), so `apex`
  * skips the face too: a registered plane at `distance` would be a phantom a
@@ -30,14 +38,31 @@ export function registerTopFace(
   distance: number,
   taperDeg = 0,
   apex = false,
+  twistDeg = 0,
+  reverse = false,
 ): void {
   if (apex) return
   const origin = pt.origin
-  const xAxis = pt.x_axis
-  const yAxis = pt.y_axis
   const normal = pt.normal
+  // A twist rotates the end frame about the sweep's travel direction by the
+  // total angle. The frame's axes turn and the profile's own coordinates stay,
+  // so the centroid lands where the rotated axes carry it; the plane itself
+  // stays parallel at `distance`. A reverse sweep travels along `-normal`, so
+  // the same authored twist turns the opposite way about the registered normal.
+  const angle = ((reverse ? -twistDeg : twistDeg) * Math.PI) / 180
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  const xAxis = twistDeg === 0
+    ? pt.x_axis
+    : pt.x_axis.map((x, i) => x * cos + pt.y_axis[i] * sin)
+  const yAxis = twistDeg === 0
+    ? pt.y_axis
+    : pt.y_axis.map((y, i) => y * cos - pt.x_axis[i] * sin)
 
   const boundary = surfaces.length ? ((surfaces[0].boundary as Dict[]) ?? []) : []
+  // The profile's in-plane coordinates are unchanged in the end frame: the
+  // frame's own axes turned with the geometry, so `u, v` still name the same
+  // material point and the rotated axes carry it around the sketch origin.
   const [u, v] = loopCentroid(boundary)
 
   const sketchCentroid = [
@@ -65,7 +90,7 @@ export function registerTopFace(
     y_axis: [...yAxis],
   })
 
-  if (taperDeg === 0 && surfaces.length && (surfaces[0].boundary as Dict[])?.length) {
+  if (taperDeg === 0 && twistDeg === 0 && surfaces.length && (surfaces[0].boundary as Dict[])?.length) {
     const edge = (surfaces[0].boundary as Dict[])[0]
     if ('start' in edge && 'end' in edge) {
       const s2d = edge.start as number[]
