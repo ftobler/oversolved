@@ -39,7 +39,10 @@ interface Ratchet {
 const RATCHETS: Ratchet[] = [
   {
     token: 'as unknown as',
-    baseline: 48,
+    // 45 after removing the measurement registry, whose three casts read a
+    // sketch entity through a loose record. The table-driven measurement core
+    // never erases a primitive.
+    baseline: 45,
   },
   {
     // 362 after the mutation catalog's family filter stopped constraining a

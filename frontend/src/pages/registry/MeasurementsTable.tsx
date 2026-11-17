@@ -1,35 +1,38 @@
-import { SINGLE_ENTITY_RULES, MULTI_ENTITY_RULES } from '@/registry/measurementRegistry'
+import { PAIR_RULES, SINGLE_RULES } from '@/utils/measure/rules'
 import { Badge } from './shared'
 
+// The Registry page's view of the measurement table. Pair rows come from the
+// dispatch table itself, so the page cannot describe a cell the rules do not
+// implement; the single rows sit next to `measureOne` in the same module.
 export function MeasurementsTable() {
   return (
     <table className="reg-table">
       <thead>
         <tr>
-          <th>Type</th>
-          <th>Label</th>
-          <th>Description</th>
+          <th>A</th>
+          <th>B</th>
+          <th>Readout</th>
         </tr>
       </thead>
       <tbody>
         <tr>
-          <td colSpan={3} className="reg-cell-section">Single Entity Rules</td>
+          <td colSpan={3} className="reg-cell-section">Single pick</td>
         </tr>
-        {SINGLE_ENTITY_RULES.map((r, i) => (
+        {SINGLE_RULES.map((r, i) => (
           <tr key={`single-${i}`}>
             <td><Badge text="single" variant="neutral" /></td>
-            <td>{r.label}</td>
-            <td className="reg-cell-desc">Measures individual entities</td>
+            <td>{r.pick}</td>
+            <td className="reg-cell-desc">{r.readout}</td>
           </tr>
         ))}
         <tr>
-          <td colSpan={3} className="reg-cell-section">Multi-Entity Rules</td>
+          <td colSpan={3} className="reg-cell-section">Pick pairs</td>
         </tr>
-        {MULTI_ENTITY_RULES.map((r, i) => (
-          <tr key={`multi-${i}`}>
-            <td><Badge text="multi" variant="neutral" /></td>
-            <td>{r.label}</td>
-            <td className="reg-cell-desc">Measures entity pairs</td>
+        {PAIR_RULES.map((r, i) => (
+          <tr key={`pair-${i}`}>
+            <td>{r.a}</td>
+            <td>{r.b}</td>
+            <td className="reg-cell-desc">{r.readout}</td>
           </tr>
         ))}
       </tbody>
