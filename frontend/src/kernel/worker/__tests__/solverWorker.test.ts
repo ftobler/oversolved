@@ -388,7 +388,7 @@ describe('handleBundleRequest', () => {
 })
 
 describe('dispatcher', () => {
-  it('routes a solve message to a supersedable solve job', () => {
+  it('routes a solve message to the solve lane', () => {
     const actor = new WorkerActor()
     const submitSpy = vi.spyOn(actor, 'submit')
     const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse | MeasureResponse; transfer: Transferable[] }> = []

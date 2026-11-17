@@ -15,7 +15,7 @@ import { loadOcc } from '../occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { resetSketchSolver, setSketchSolver, setSketchTopology } from '../features/sketch'
-import { currentGeneration, measureGeneration, setSolveLocalsForTest, solveLocally } from '../solveLocally'
+import { currentGeneration, measureGeneration, measurePicksLocally, setSolveLocalsForTest, solveLocally } from '../solveLocally'
 import { MEASURE_STALE, MEASURE_UNRESOLVED, type MeasurePickRef } from '../worker/solverProtocol'
 import type { BodyResult, EdgeData, FaceData } from '@/types/cad'
 
@@ -302,5 +302,48 @@ describe.skipIf(!oc || !solveBytes)('measureGeneration (real OCC)', () => {
     }
     expect(read.value).toBeGreaterThan(sampled * 0.99)
     expect(read.value).toBeLessThan(sampled * 1.01)
+  }, 300_000)
+
+  it('answers the same pick headlessly, the MCP path', async () => {
+    // `measure between` builds its own document and answers through the same
+    // core and the store-level reader, so the two paths must agree on the kind
+    // as well as the number.
+    const fit = [3, 1, 2.75, 1.5, 2.5, 1.75, 2, 1.5, 1.5, 1, 1, 1.25, 0.5, 1, 0, 1]
+    const doc = {
+      id: 'measure-gen-headless',
+      features: [
+        {
+          id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+          entities: [
+            { id: 'bottom', kind: 'line' }, { id: 'right', kind: 'line' },
+            { id: 'sp', kind: 'fit_spline' }, { id: 'left', kind: 'line' },
+          ],
+          initial: { bottom: [0, 0, 3, 0], right: [3, 0, 3, 1], sp: fit, left: [0, 1, 0, 0] },
+          constraints: ['bottom', 'right', 'sp', 'left'].map((id) => ({ id: `f${id}`, kind: 'fixed', target: { entity: id } })),
+        },
+        extrude('sk1', 'ex1', 1),
+      ],
+    }
+    const solved = await solve(doc)
+    const id = Object.keys(solved.bodies)[0]
+    const index = edgeIndex(solved.bodies[id], (edge) => edge.kind === 'spline')
+
+    const read = await measurePicksLocally(doc, [`@${id}/edge/${index}`])
+    expect(read).not.toBeNull()
+    expect(read!.kind).toBe('length')
+    expect(read!.value).toBeGreaterThan(1)
+
+    // A pair of whole bodies is a clearance through the same entry.
+    const pair = {
+      id: 'measure-gen-headless-pair',
+      features: [
+        rectSketch('skA', 0, 0, 10, 10), extrude('skA', 'exA', 10),
+        rectSketch('skB', 30, 0, 10, 10), extrude('skB', 'exB', 10),
+      ],
+    }
+    const gap = await measurePicksLocally(pair, ['@body_exA', '@body_exB'])
+    expect(gap).not.toBeNull()
+    expect(gap!.kind).toBe('clearance')
+    expect(gap!.value).toBeCloseTo(20, 6)
   }, 300_000)
 })

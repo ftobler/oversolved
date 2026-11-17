@@ -884,7 +884,7 @@ export async function measurePicksLocally(
     const answered = measurePicksOnStore(oc, table, store, ask.op, ask.picks)
     if (!answered.ok) throw new Error(`measure: ${answered.error}`)
     return {
-      kind: 'clearance' === ask.op ? 'clearance' : 'distance',
+      kind: ask.op,
       value: answered.value,
       ...(answered.points !== undefined && { points: answered.points }),
       ...(answered.note !== undefined && { note: answered.note }),
