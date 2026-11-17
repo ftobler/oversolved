@@ -47,6 +47,10 @@ export interface WorkspaceMetaRecord {
   updatedAt: number
   references: ReferenceEdges
   trash: string[]
+  // The user's explicit cover choice, an entry id. Absent means the automatic
+  // resolution picks the cover; the id is kept while its entry is only trashed,
+  // so restoring the entry restores the cover.
+  cover?: string
   trashedAt?: string  // library-level tombstone, ISO like documents use today
   savedAt?: number  // epoch ms of the last explicit save
   // The checkpoint's rev per entry, stamped by checkpoint(). The dirty dot needs
@@ -342,6 +346,7 @@ export class IdbCarrier implements WorkspaceCarrier {
       references: canonicalizeReferences(meta.references),
       trash: [...meta.trash].sort(),
     }
+    if (meta.cover !== undefined) manifest.cover = meta.cover
     for (const row of metas) manifest.entries[row.id] = metaToManifestEntry(row)
     const contents = new Map<string, EntryContent>()
     const documents = await idbGetAllFromIndex<WorkspaceEntryRecord>(
@@ -390,6 +395,14 @@ export class IdbCarrier implements WorkspaceCarrier {
       references: canonicalizeReferences(tree.manifest.references),
       trash: [...tree.manifest.trash].sort(),
       updatedAt: now,
+    }
+    // The manifest is the whole structure, so it owns the cover too: a tree that
+    // carries no cover clears the stored choice, and a cover naming a row this
+    // tree does not hold is dropped rather than kept as a dangling id.
+    if (tree.manifest.cover !== undefined && tree.manifest.entries[tree.manifest.cover] !== undefined) {
+      nextMeta.cover = tree.manifest.cover
+    } else {
+      delete nextMeta.cover
     }
     await idbTransaction(
       [STORE_WORKSPACE_META, STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META],

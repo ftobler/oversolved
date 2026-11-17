@@ -28,6 +28,7 @@ import {
   type WorkspaceMetaRecord,
 } from './idbCarrier'
 import { pathFor } from './paths'
+import { resolveCoverEntry } from './cover'
 import { serializeTree } from './serializer'
 import { remapTree } from './import'
 import { EntryReferencedError, type EntryReferrer } from './errors'
@@ -49,10 +50,15 @@ export interface WorkspaceSummary {
   // the payload-free mirror, so the tile never opens a workspace to report it.
   size: number
   rev?: number  // the working copy's max revision, the tile's change ordinal
-  // The entry whose preview stands for the workspace on the U1 tile. First live
-  // document, or undefined for an all-file workspace; A9 means the tile shows a
-  // placeholder until a save has written a preview for it.
+  // The entry whose preview stands for the workspace on the U1 tile: the user's
+  // stored choice while it is live, otherwise the automatic pick (the newest
+  // assembly, then the newest part, then the newest other document). Undefined
+  // for an all-file workspace; A9 means the tile shows a placeholder until a save
+  // has written a preview for it.
   coverEntry?: string
+  // The stored choice, when it is the entry `coverEntry` resolved to. Present
+  // only then, so a pressed toggle always names the row on screen.
+  coverChoice?: string
   createdAt: number
   updatedAt: number
   trashedAt?: string
@@ -92,6 +98,10 @@ export interface WorkspaceStore {
   checkpoint(workspace: string): Promise<void>
   discard(workspace: string): Promise<void>
   rename(workspace: string, name: string): Promise<void>
+  // Which entry's preview stands for the workspace. `null` returns to the
+  // automatic pick. Workspace metadata, written at once and outside the
+  // checkpoint, so it never lights the dirty dot and Discard does not revert it.
+  setCover(workspace: string, entry: string | null): Promise<void>
   duplicate(workspace: string, name?: string): Promise<{ workspace: string }>
   trash(workspace: string): Promise<void>
   recover(workspace: string): Promise<void>
@@ -144,7 +154,9 @@ export class IdbWorkspaceStore implements WorkspaceStore {
         updatedAt: meta.updatedAt,
       }
       if (document?.docKind !== undefined) summary.docKind = document.docKind
-      if (document) summary.coverEntry = document.id
+      const cover = resolveCoverEntry(meta, live)
+      if (cover !== undefined) summary.coverEntry = cover
+      if (cover !== undefined && cover === meta.cover) summary.coverChoice = cover
       if (meta.trashedAt !== undefined) summary.trashedAt = meta.trashedAt
       summaries.push(summary)
     }
@@ -263,6 +275,24 @@ export class IdbWorkspaceStore implements WorkspaceStore {
     bumpWorkspaceStoreRevision()
   }
 
+  // The cover is chosen from the rows a document already has a thumbnail for, so
+  // a file (or a trashed row) is refused by name rather than stored as a choice
+  // that could only ever fall back.
+  async setCover(workspace: string, entry: string | null): Promise<void> {
+    const meta = await this.requireMeta(workspace)
+    if (entry !== null) {
+      const target = (await workspaceEntryMetas(workspace)).find(record => record.id === entry)
+      if (target?.kind !== 'document' || meta.trash.includes(entry)) {
+        throw new Error(`Entry has no cover preview: ${entry}`)
+      }
+    }
+    const next = { ...meta, updatedAt: Date.now() }
+    if (entry === null) delete next.cover
+    else next.cover = entry
+    await writeWorkspaceMeta(next)
+    bumpWorkspaceStoreRevision()
+  }
+
   // A whole-workspace copy under a fresh id. Entry ids are re-minted and the
   // internal reference edges and trash are remapped through the id map, so a
   // duplicated assembly still resolves its parts. The remap pass is import.ts's.
@@ -286,6 +316,9 @@ export class IdbWorkspaceStore implements WorkspaceStore {
       references: copy.manifest.references,
       trash: copy.manifest.trash,
     }
+    // The copy is the same documents under fresh ids, so its cover is whichever
+    // row the remapped choice named.
+    if (copy.manifest.cover !== undefined) nextMeta.cover = copy.manifest.cover
     await replaceWorkspaceRows(nextWorkspace, nextMeta, records)
     await this.carrier(nextWorkspace).checkpoint()
     // The copy is the same documents under fresh ids, so it looks like the

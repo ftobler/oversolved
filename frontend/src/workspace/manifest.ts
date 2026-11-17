@@ -40,13 +40,17 @@ function canonicalStringList(values: string[]): string[] {
 }
 
 function canonicalizeManifest(manifest: WorkspaceManifest): WorkspaceManifest {
-  return {
+  const out: WorkspaceManifest = {
     format: manifest.format,
     workspace: manifest.workspace,
     entries: buildManifestIndex(manifest.entries),
     references: canonicalizeReferences(manifest.references),
     trash: canonicalStringList(manifest.trash),
   }
+  // Present only when set, after trash: a manifest written before the cover
+  // existed serializes exactly the bytes it always did (D9).
+  if (manifest.cover !== undefined) out.cover = manifest.cover
+  return out
 }
 
 export function serializeManifest(manifest: WorkspaceManifest): string {
@@ -70,6 +74,10 @@ export function parseManifest(text: string): WorkspaceManifest {
   }
   const manifest = coerceManifest(raw)
   assertManifest(manifest)
+  // A choice naming an entry the archive does not carry is a stale reference,
+  // not a broken manifest: a hand-edited zip must still import, so the key is
+  // dropped and the workspace falls back to the automatic cover.
+  if (manifest.cover !== undefined && manifest.entries[manifest.cover] === undefined) delete manifest.cover
   return canonicalizeManifest(manifest)
 }
 
@@ -81,13 +89,16 @@ function coerceManifest(raw: unknown): WorkspaceManifest {
   // A manifest written while imports kept an origin link carries a provenance
   // key. It is dropped, not validated: the origin link is gone (2026-11-16) and
   // an older library must still open.
-  return {
+  const manifest: WorkspaceManifest = {
     format: src.format as number,
     workspace: src.workspace as string,
     entries: (src.entries === undefined ? {} : src.entries) as Record<string, ManifestEntry>,
     references: (src.references === undefined ? {} : src.references) as ReferenceEdges,
     trash: (src.trash === undefined ? [] : src.trash) as string[],
   }
+  // Left as written so assertManifest can refuse a non-string by name.
+  if (src.cover !== undefined) manifest.cover = src.cover as string
+  return manifest
 }
 
 export function assertManifest(manifest: WorkspaceManifest): void {
@@ -101,6 +112,7 @@ export function assertManifest(manifest: WorkspaceManifest): void {
   assertEntryMap(manifest.entries)
   assertReferences(manifest.references)
   assertTrash(manifest.trash)
+  assertCover(manifest.cover)
   assertNoInvalidScalars(manifest, 'manifest')
 }
 
@@ -172,6 +184,14 @@ function assertTrash(trash: string[]): void {
   if (!Array.isArray(trash)) throw new Error('Manifest trash must be an array')
   for (const id of trash) {
     if (typeof id !== 'string') throw new Error('Manifest trash must hold entry ids')
+  }
+}
+
+// Whether the cover names a row is a parse-time question, not an invariant: a
+// stale id is dropped rather than refused. Its shape still has to be an id.
+function assertCover(cover: string | undefined): void {
+  if (cover !== undefined && (typeof cover !== 'string' || cover.length === 0)) {
+    throw new Error('Manifest cover must be a non-empty string')
   }
 }
 

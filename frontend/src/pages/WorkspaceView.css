@@ -254,6 +254,26 @@ button.workspace-entry-open:focus-visible {
   color: #666;
 }
 
+/* The resolved cover row says so in words: the automatic pick has no pressed
+   toggle pointing at it, so colour alone would leave the user guessing. */
+.workspace-entry-cover-marker {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #a8a8b3;
+}
+
+/* The pressed cover toggle marks the explicit choice, not the resolved row. A
+   filled background and an inset ring carry the state too, so the accent colour
+   is not the only signal: the fill and the ring read even when the hue does
+   not. */
+.workspace-entry-actions .workspace-entry-cover[aria-pressed="true"] {
+  color: #4fc3f7;
+  background: rgba(79, 195, 247, 0.18);
+  box-shadow: inset 0 0 0 1px #4fc3f7;
+}
+
 .workspace-entry-usedby {
   margin-top: 3px;
   font-size: 11px;
@@ -382,7 +402,7 @@ button.workspace-entry-open:focus-visible {
   }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 560px) {
   :root {
     --ws-row-height: 84px;
   }
@@ -393,10 +413,11 @@ button.workspace-entry-open:focus-visible {
     display: none;
   }
 
-  /* A row can carry five 40px controls. Beside an 84px-tall thumb (134px wide)
-     they leave the name nothing, so they take their own line under the face
-     instead; the face keeps the row height, which is what keeps the thumb the
-     tile's ratio. */
+  /* A document row with a recorded origin carries six 40px controls (update,
+     cover, rename, duplicate, export, delete): 240px of actions. One line above
+     this width still leaves the name about 84px, so the controls take their own
+     line under the face instead; the face keeps the row height, which is what
+     keeps the thumb the tile's ratio. */
   .workspace-entry-row {
     flex-wrap: wrap;
     height: auto;

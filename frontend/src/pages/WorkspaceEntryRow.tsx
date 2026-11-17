@@ -13,6 +13,11 @@ interface EntryRowProps {
   replacing: boolean
   exporting: boolean
   usedBy: string[] | undefined
+  // This row's entry is the one whose preview stands for the workspace, and
+  // whether that is the user's explicit choice rather than the automatic pick.
+  isCover: boolean
+  coverExplicit: boolean
+  onSetCover: (entry: EntryMeta) => void
   onOpen: (entry: EntryMeta) => void
   onRename: (entry: EntryMeta) => void
   onDuplicate: (entry: EntryMeta) => void
@@ -26,6 +31,7 @@ interface EntryRowProps {
 // there is no editor behind it.
 export default function EntryRow({
   entry, workspace, dirty, deleting, duplicating, replacing, exporting, usedBy,
+  isCover, coverExplicit, onSetCover,
   onOpen, onRename, onDuplicate, onExport, onDelete, onReplace,
 }: EntryRowProps) {
   const openable = entry.kind === 'document'
@@ -50,6 +56,11 @@ export default function EntryRow({
         </div>
         <div className="workspace-entry-meta">
           {meta.filter(Boolean).map(text => <span key={text}>{text}</span>)}
+          {/* Which document the title card comes from, said in words. It sits
+              inside the open button, whose name is the entry's own, so it is
+              decorative here: the same state rides on the cover toggle's name
+              for assistive tech. */}
+          {isCover && <span className="workspace-entry-cover-marker" aria-hidden="true">cover</span>}
         </div>
         {usedBy && usedBy.length > 0 && (
           <div className="workspace-entry-usedby" title={`Used by ${usedBy.join(', ')}`}>
@@ -106,6 +117,21 @@ export default function EntryRow({
             />
             <span className="material-icons">{replacing ? 'hourglass_empty' : 'upload_file'}</span>
           </label>
+        )}
+        {/* The cover is a document's thumbnail standing for the whole workspace,
+            so a file row has no toggle: it has no preview to stand for. The
+            resolved row says so in its name, because aria-pressed is about the
+            explicit choice and an automatic cover is not pressed. */}
+        {entry.kind === 'document' && (
+          <button
+            className="btn btn-tile-action workspace-entry-cover"
+            aria-label={isCover ? `Cover for ${entry.name}, current cover` : `Cover for ${entry.name}`}
+            title={coverExplicit ? 'Cover image, click for automatic' : 'Use as cover'}
+            aria-pressed={coverExplicit}
+            onClick={() => onSetCover(entry)}
+          >
+            <span className="material-icons">image</span>
+          </button>
         )}
         <button
           className="btn btn-tile-action"

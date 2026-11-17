@@ -176,12 +176,17 @@ function withoutEntries(
     if (!(from in present)) continue
     references[from] = targets.filter(to => to in present)
   }
-  return {
+  const pruned: WorkspaceManifest = {
     ...manifest,
     entries: present,
     references: canonicalizeReferences(references),
     trash: manifest.trash.filter(id => id in present),
   }
+  // The cover names a row like the trash does, so a pruned row takes it with it;
+  // the imported workspace falls back to the automatic choice instead of
+  // carrying a dangling id.
+  if (pruned.cover !== undefined && !(pruned.cover in present)) delete pruned.cover
+  return pruned
 }
 
 function relative(path: string, wrapper: string): string {
@@ -588,6 +593,11 @@ export function remapTree(tree: WorkspaceTree, opts: RemapOptions): RemapResult 
     references: canonicalizeReferences(references),
     trash,
   }
+  // The cover is a row reference like the trash, so it travels through the same
+  // map and is dropped when the row it named was not remapped. A join does not
+  // take it: mergeTrees leaves the destination's own choice standing.
+  const cover = tree.manifest.cover === undefined ? undefined : idMap.get(tree.manifest.cover)
+  if (cover !== undefined) manifest.cover = cover
   return { tree: { manifest, contents }, idMap }
 }
 
