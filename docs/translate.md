@@ -135,8 +135,8 @@ the workplane origin, which is what Oversolved uses too (`twist_center` does not
 exist). OpenSCAD's `linear_extrude(twist=)` turns the other way (left-handed
 about the direction of travel), so a translated script uses
 `twist = -openscad_twist`; a 360-multiple is the same shape either way, but a
-screw's thread lands on the wrong side if the sign is dropped. CadQuery 2.5 has
-no scale-plus-twist in one call, and neither does this `twist`: a `taper` is
+screw's thread lands on the wrong side if the sign is dropped. CadQuery's twist
+has no scale-plus-twist in one call, and neither does this `twist`: a `taper` is
 refused alongside it. The angle is bounded at 7200 degrees.
 
 CadQuery `Workplane.until` / build123d `Until.NEXT` maps to
