@@ -18,7 +18,7 @@ import { SharedHarness } from '../../occ/sharedHarness'
 import { DisposeScope } from '../../occ/disposeScope'
 import { setSketchSolver, resetSketchSolver } from '../sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
-import { canonicalFaces } from '../../occ/bodyNames'
+import { canonicalFaces } from '../../occ/partNames'
 import { faceCentroid } from '../../occ/primitives'
 import { mintFaceUuid, sideFacePath } from '../../constructionName'
 import { parseAncestry, makeAncestryQuery, constructionUuidToken } from '../../query'
@@ -28,7 +28,7 @@ import {
   queryFaceUuid,
 } from '../shared/faceResolution'
 import type { OccModule, OccShape } from '../../occ/occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { BuildResponse } from '../../builder'
 
 const oc = await loadOcc()
@@ -131,7 +131,7 @@ describe.skipIf(!oc || !solveBytes)('shell sibling opening pick (real OCC + Rust
     setSketchSolver(solveBytes)
   })
 
-  function bodyOf(r: BuildResponse, featureId: string): Body {
+  function bodyOf(r: BuildResponse, featureId: string): PartSolid {
     return r._build_state!.checkpoints[featureId].body_store_snapshot[BODY_ID]
   }
 

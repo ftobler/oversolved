@@ -21,8 +21,8 @@ import { makeBoxAt, makeCylinder, edgeToGeom, shapeBndBox, readSolidVertices, ty
 import { volumeOf, countSolids, countSubShapes, exploreSolids } from '@/kernel/occ/booleans'
 import { transformCopy, makeTranslationTrsf, makeScaleTrsf } from '@/kernel/occ/transforms'
 import { extrudeProfileWithLineage, revolveProfileWithLineage, sketchLoopsToFace, revolveFace } from '@/kernel/occ/prismLineage'
-import { solidToEdges, readShapeFaceMetadata, bodyFrame } from '@/kernel/occ/tessellation'
-import { registerSplitBodies } from '@/kernel/features/bodySplit'
+import { solidToEdges, readShapeFaceMetadata, partFrame } from '@/kernel/occ/tessellation'
+import { registerSplitParts } from '@/kernel/features/partSplit'
 import { solveBoolean } from '@/kernel/features/boolean'
 import { solveExtrude } from '@/kernel/features/extrude'
 import { solveFillet, solveChamfer, resolveFilletEdges } from '@/kernel/features/filletChamfer'
@@ -39,7 +39,7 @@ import { extractOccErrorMessage } from '@/kernel/errors'
 import { noProgress } from '@/kernel/occ/defaultArgs'
 import { threadEntry } from '@/kernel/threadTable'
 import type { Repository } from '@/kernel/query'
-import type { Body } from '@/kernel/types3d'
+import type { PartSolid } from '@/kernel/types3d'
 import type { LoopEdge } from '@/kernel/profileLoops'
 import type { PlaneLike } from '@/kernel/features/shared/planes'
 import { FUZZ_GRID_MM, PRIMARY_BODY, EDGE_PICK_WINDOW, perturbStart, type Recipe, type RecipeStep, type AxisName } from './recipe'
@@ -264,17 +264,17 @@ class SkipStepError extends Error {}
 
 interface LiveChain {
   table: HandleTable
-  bodyStore: Record<string, Body>
+  bodyStore: Record<string, PartSolid>
   run: ChainRun
 }
 
 // ─── the runner ───
 
-function shapedBodyCount(bodyStore: Record<string, Body>): number {
+function shapedBodyCount(bodyStore: Record<string, PartSolid>): number {
   return Object.values(bodyStore).filter((body) => body.shape !== null).length
 }
 
-function readVolumes(oc: OccModule, scope: DisposeScope, table: HandleTable, bodyStore: Record<string, Body>): Map<string, number> {
+function readVolumes(oc: OccModule, scope: DisposeScope, table: HandleTable, bodyStore: Record<string, PartSolid>): Map<string, number> {
   const out = new Map<string, number>()
   for (const [id, body] of Object.entries(bodyStore)) {
     if (body.shape === null) continue
@@ -283,10 +283,10 @@ function readVolumes(oc: OccModule, scope: DisposeScope, table: HandleTable, bod
   return out
 }
 
-function bodyMetaOpts(body: Body): Dict {
+function bodyMetaOpts(body: PartSolid): Dict {
   return {
     createdBy: body.created_by,
-    bodyId: body.id,
+    partId: body.id,
     faceAncestry: body.face_ancestry ?? null,
     faceUuids: body.face_uuids ?? null,
     edgeAncestry: body.edge_ancestry ?? null,
@@ -301,7 +301,7 @@ function bodyMetaOpts(body: Body): Dict {
 }
 
 /** The store's invariant sweep after one built step, as the plan's checks. */
-function checkStore(oc: OccModule, scope: DisposeScope, table: HandleTable, bodyStore: Record<string, Body>, step: number, violations: ChainViolation[]): void {
+function checkStore(oc: OccModule, scope: DisposeScope, table: HandleTable, bodyStore: Record<string, PartSolid>, step: number, violations: ChainViolation[]): void {
   const push = (message: string): void => { violations.push({ step, message }) }
   for (const [id, body] of Object.entries(bodyStore)) {
     if (body.shape === null) {
@@ -397,7 +397,7 @@ function checkSplit(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-  bodyStore: Record<string, Body>,
+  bodyStore: Record<string, PartSolid>,
   targetBefore: number | undefined,
   outcome: StepOutcome,
   step: Extract<RecipeStep, { kind: 'split' }>,
@@ -470,25 +470,25 @@ function checkSplit(
   }
 }
 
-function requireBody(bodyStore: Record<string, Body>, id: string): Body {
+function requireBody(bodyStore: Record<string, PartSolid>, id: string): PartSolid {
   const body = bodyStore[id]
   if (body === undefined || body.shape === null) throw new Error(`body '${id}' is not in the store`)
   return body
 }
 
 /** Register the recipe's start body, with the construction names its producer minted. */
-function applyStart(oc: OccModule, scope: DisposeScope, table: HandleTable, bodyStore: Record<string, Body>, step: Extract<RecipeStep, { kind: 'start' }>): void {
+function applyStart(oc: OccModule, scope: DisposeScope, table: HandleTable, bodyStore: Record<string, PartSolid>, step: Extract<RecipeStep, { kind: 'start' }>): void {
   const template = { id: PRIMARY_BODY, createdBy: step.id, sketchId: 'sk_seed', profileQueries: [] as string[] }
   if (step.shape === 'box') {
     const solid = scope.track(makeBoxAt(oc, scope, [0, 0, 0], step.size[0], step.size[1], step.size[2]))
-    registerSplitBodies(oc, scope, table, bodyStore, solid, template)
+    registerSplitParts(oc, scope, table, bodyStore, solid, template)
     return
   }
   if (step.shape === 'arc-profile') {
     const loops = [roundedRectLoop(step.size[0], step.size[1], step.arcRadius)]
     const lineage = extrudeProfileWithLineage(oc, scope, loops, PLANE_XY, [0, 0, 1], step.size[2], 'sk_seed', step.id)
     scope.track(lineage.solid)
-    registerSplitBodies(oc, scope, table, bodyStore, lineage.solid, { ...template, ...lineage })
+    registerSplitParts(oc, scope, table, bodyStore, lineage.solid, { ...template, ...lineage })
     return
   }
   if (step.shape === 'ring') {
@@ -499,13 +499,13 @@ function applyStart(oc: OccModule, scope: DisposeScope, table: HandleTable, body
     const loops = [circleLoop(0, 0, outerD / 2, 'o1'), circleLoop(0, 0, innerD / 2, 'i1')]
     const lineage = extrudeProfileWithLineage(oc, scope, loops, PLANE_XY, [0, 0, 1], height, 'sk_seed', step.id)
     scope.track(lineage.solid)
-    registerSplitBodies(oc, scope, table, bodyStore, lineage.solid, { ...template, ...lineage })
+    registerSplitParts(oc, scope, table, bodyStore, lineage.solid, { ...template, ...lineage })
     return
   }
   const loops = [rectLoop(step.size[0], step.size[0] + step.size[1], 0, step.size[2])]
   const lineage = revolveProfileWithLineage(oc, scope, loops, PLANE_XZ, [0, 0, 0], [0, 0, 1], step.angleDeg, 'sk_seed', step.id)
   scope.track(lineage.solid)
-  registerSplitBodies(oc, scope, table, bodyStore, lineage.solid, { ...template, ...lineage })
+  registerSplitParts(oc, scope, table, bodyStore, lineage.solid, { ...template, ...lineage })
 }
 
 function toolBboxSize(step: Extract<RecipeStep, { kind: 'boolean' }>): Vec3 {
@@ -575,7 +575,7 @@ export function classifyUnionContact(oc: OccModule, scope: DisposeScope, target:
     if (countSubShapes(oc, scope, overlap, E.TopAbs_FACE) > 0) return 'face'
     // No overlap, no shared face: check whether the tool is within the epsilon
     // band of the target by probing a micron-dilated copy.
-    const { center, half } = bodyFrame(oc, scope, tool)
+    const { center, half } = partFrame(oc, scope, tool)
     const minHalf = Math.min(...half.filter((h) => h > 1e-9))
     if (!Number.isFinite(minHalf) || minHalf <= 0) return 'unknown'
     const enlarged = scope.track(transformCopy(oc, scope, tool, makeScaleTrsf(oc, scope, center, 1 + CONTACT_EPS_MM / minHalf)))
@@ -588,10 +588,10 @@ export function classifyUnionContact(oc: OccModule, scope: DisposeScope, target:
 }
 
 /** Build and register one boolean tool body from the recipe's placement. */
-function applyTool(oc: OccModule, scope: DisposeScope, table: HandleTable, bodyStore: Record<string, Body>, step: Extract<RecipeStep, { kind: 'boolean' }>): string {
+function applyTool(oc: OccModule, scope: DisposeScope, table: HandleTable, bodyStore: Record<string, PartSolid>, step: Extract<RecipeStep, { kind: 'boolean' }>): string {
   const target = requireBody(bodyStore, step.target)
   const targetShape = table.get<OccShape>(target.shape as OccHandle)
-  const { center, half } = bodyFrame(oc, scope, targetShape)
+  const { center, half } = partFrame(oc, scope, targetShape)
   const corner = toolCorner(step, center, half)
   const size = toolBboxSize(step)
   let solid: OccShape
@@ -605,7 +605,7 @@ function applyTool(oc: OccModule, scope: DisposeScope, table: HandleTable, bodyS
     solid = makeSphereAt(oc, scope, [corner[0] + r, corner[1] + r, corner[2] + r], r)
   }
   scope.track(solid)
-  registerSplitBodies(oc, scope, table, bodyStore, solid, { id: step.toolBody, createdBy: step.toolId, profileQueries: [] })
+  registerSplitParts(oc, scope, table, bodyStore, solid, { id: step.toolBody, createdBy: step.toolId, profileQueries: [] })
   return step.toolBody
 }
 
@@ -619,7 +619,7 @@ function applyTool(oc: OccModule, scope: DisposeScope, table: HandleTable, bodyS
  * visible without failing on it. Production's own unnamed bodies (imports)
  * meet the same seam through the pick repository, not this runner.
  */
-function pickEdge(oc: OccModule, table: HandleTable, body: Body, edgeIndex: number): { query: string; kind: string } {
+function pickEdge(oc: OccModule, table: HandleTable, body: PartSolid, edgeIndex: number): { query: string; kind: string } {
   const result = solidToEdges(oc, table, body.shape as OccHandle, bodyMetaOpts(body))
   if (result.edges.length === 0) throw new Error(`body '${body.id}' has no edges to pick`)
   const window = Math.min(result.edges.length, EDGE_PICK_WINDOW)
@@ -634,7 +634,7 @@ function pickEdge(oc: OccModule, table: HandleTable, body: Body, edgeIndex: numb
  * resolveFilletEdges path the fillet leaf uses. Throws StalePickError when the
  * query matches nothing or now names another curve class.
  */
-function resolveRecordedEdge(oc: OccModule, scope: DisposeScope, table: HandleTable, body: Body, pick: PickRecord): { query: string; kind: string } {
+function resolveRecordedEdge(oc: OccModule, scope: DisposeScope, table: HandleTable, body: PartSolid, pick: PickRecord): { query: string; kind: string } {
   const edges = resolveFilletEdges(oc, scope, table, body, [pick.query], null)
   if (edges.length === 0) throw new StalePickError(`edge query ${pick.query} no longer resolves`)
   for (const edge of edges) {
@@ -658,7 +658,7 @@ function resolveRecordedEdge(oc: OccModule, scope: DisposeScope, table: HandleTa
  * a red pick. Unnamed faces carry no UUID and have no persistent reference, so
  * the drawn pick stands in.
  */
-function resolveRecordedFace(oc: OccModule, scope: DisposeScope, shape: OccShape, body: Body, faceIndex: number, pick: PickRecord): AnyFace {
+function resolveRecordedFace(oc: OccModule, scope: DisposeScope, shape: OccShape, body: PartSolid, faceIndex: number, pick: PickRecord): AnyFace {
   const token = /@u\|([^@&|:]+)/.exec(pick.query)
   const faces = facesOf(oc, scope, shape, body)
   if (token === null) return pickFace(faces, faceIndex)
@@ -684,7 +684,7 @@ interface AnyFace {
 }
 
 /** The body's faces in display order, the pool face picks are drawn from and resolved against. */
-function facesOf(oc: OccModule, scope: DisposeScope, shape: OccShape, body: Body): AnyFace[] {
+function facesOf(oc: OccModule, scope: DisposeScope, shape: OccShape, body: PartSolid): AnyFace[] {
   const meta = readShapeFaceMetadata(oc, scope, shape, bodyMetaOpts(body))
   return meta.face_data.map((datum, index) => ({
     centroid: datum.centroid as Vec3,
@@ -717,7 +717,7 @@ function applyStep(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-  bodyStore: Record<string, Body>,
+  bodyStore: Record<string, PartSolid>,
   repo: ChainRepo,
   step: RecipeStep,
   stepIndex: number,
@@ -830,7 +830,7 @@ function applyStep(
   }
   if (step.kind === 'circular-array') {
     const body = requireBody(bodyStore, step.target)
-    const { center } = bodyFrame(oc, scope, table.get<OccShape>(body.shape as OccHandle))
+    const { center } = partFrame(oc, scope, table.get<OccShape>(body.shape as OccHandle))
     const dir = axisVec(step.axis)
     const query = `@fuzz/axis/${step.id}`
     repo.registerQuery(query, () => ({ start: center, end: add(center, dir) }))
@@ -1024,7 +1024,7 @@ function applyStep(
 /** Execute a recipe, holding all live resources; the caller disposes `table`. */
 function executeChain(oc: OccModule, recipe: Recipe, options: ChainRunOptions): LiveChain {
   const table = new HandleTable()
-  const bodyStore: Record<string, Body> = {}
+  const bodyStore: Record<string, PartSolid> = {}
   const repo = new ChainRepo()
   const run: ChainRun = { violations: [], reports: [], refusals: [], picks: [], stalePicks: [], completed: true }
 

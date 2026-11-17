@@ -9,12 +9,12 @@ vi.mock('@/kernel/worker/solverClient', () => ({
 
 import MeasurementDisplay from '@/components/layout/MeasurementDisplay'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import type { BodyResult } from '@/types/cad'
+import type { PartResult } from '@/types/cad'
 
 // One jsdom smoke test for the HUD wiring: the component reads the store's
 // selection, calls the pure core and renders the lines. Everything below it is
 // pure and tested without a DOM.
-const body: BodyResult = {
+const body: PartResult = {
   id: 'body_1',
   created_by: 'ex',
   modified_by: [],

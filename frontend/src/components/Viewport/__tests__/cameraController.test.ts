@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import * as THREE from 'three'
 import { snapToDirection, alignToFrame, alignToFace, fitToContent, shouldAutoFit, nearestSquareRoll } from '@/components/Viewport/cameraController'
 import { TurntableControls } from '@/components/Viewport/turntable'
-import type { BodyResult } from '@/types/cad'
+import type { PartResult } from '@/types/cad'
 
 function makeOrtho() {
   const cam = new THREE.OrthographicCamera(-400, 400, 300, -300, -1000, 1000)
@@ -68,8 +68,8 @@ describe('cameraController', () => {
     const cam = makeOrtho()
     expect(fitToContent(cam, makeControls(cam), {}, null)).toBe(false)
 
-    const bodies: Record<string, BodyResult> = {
-      a: { mesh: { vertices: new Float32Array([-10, -10, -10, 10, 10, 10]) } } as unknown as BodyResult,
+    const bodies: Record<string, PartResult> = {
+      a: { mesh: { vertices: new Float32Array([-10, -10, -10, 10, 10, 10]) } } as unknown as PartResult,
     }
     const fit = fitToContent(cam, makeControls(cam), bodies, null)
     expect(fit).toBe(true)
@@ -79,8 +79,8 @@ describe('cameraController', () => {
 
   it('fits tuple (array) vertex data, not only Float32Array', () => {
     const cam = makeOrtho()
-    const bodies: Record<string, BodyResult> = {
-      a: { mesh: { vertices: [[-10, -10, -10], [10, 10, 10]] } } as unknown as BodyResult,
+    const bodies: Record<string, PartResult> = {
+      a: { mesh: { vertices: [[-10, -10, -10], [10, 10, 10]] } } as unknown as PartResult,
     }
     expect(fitToContent(cam, makeControls(cam), bodies, null)).toBe(true)
     expect(Number.isFinite(cam.zoom)).toBe(true)
@@ -94,8 +94,8 @@ describe('cameraController', () => {
     controls.elevation = 0.31
     controls.update()
     const directionBefore = cam.position.clone().sub(controls.target).normalize()
-    const bodies: Record<string, BodyResult> = {
-      a: { mesh: { vertices: new Float32Array([90, 90, 90, 110, 110, 110]) } } as unknown as BodyResult,
+    const bodies: Record<string, PartResult> = {
+      a: { mesh: { vertices: new Float32Array([90, 90, 90, 110, 110, 110]) } } as unknown as PartResult,
     }
     expect(fitToContent(cam, controls, bodies, null)).toBe(true)
     expect(controls.target.toArray()).toEqual([100, 100, 100])
@@ -141,13 +141,13 @@ describe('cameraController', () => {
 // separation grows into a visible penetration depth that makes small parts
 // transparent. Sized to the content, neither end has to lose.
 describe('fitToContent clip planes', () => {
-  function boxBody(cx: number, cy: number, cz: number, half: number): Record<string, BodyResult> {
+  function boxBody(cx: number, cy: number, cz: number, half: number): Record<string, PartResult> {
     return {
       a: {
         mesh: {
           vertices: new Float32Array([cx - half, cy - half, cz - half, cx + half, cy + half, cz + half]),
         },
-      } as unknown as BodyResult,
+      } as unknown as PartResult,
     }
   }
 

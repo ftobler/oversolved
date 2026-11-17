@@ -15,12 +15,12 @@ import type { OccModule, OccShape } from '../occTypes'
 import { noProgress } from '../defaultArgs'
 import { stepBytesToShapeWithIdentity, stepShapeToBytes } from '../stepIo'
 import { importedNameMaps } from '../importLineage'
-import { canonicalEdges, canonicalFaces, namesToArray } from '../bodyNames'
+import { canonicalEdges, canonicalFaces, namesToArray } from '../partNames'
 import { SubShapeMap } from '../subshapeIdentity'
 import { FACE_UUID_PREFIX, EDGE_UUID_PREFIX } from '../../constructionName'
 import { makeBoxAt } from '../primitives'
 import { makeTranslationTrsf } from '../transforms'
-import { splitSolids } from '../../features/bodySplit'
+import { splitSolids } from '../../features/partSplit'
 
 const oc = await loadOcc()
 

@@ -20,7 +20,7 @@ import { shapeBndBox } from '../../occ/primitives'
 import { volumeOf } from '../../occ/volume'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -95,13 +95,13 @@ describe.skipIf(!oc || !solveBytes)('curve pattern through the real kernel', () 
     setSketchSolver(solveBytes)
   })
 
-  function snapshot(r: BuildResponse, featureId: string): Record<string, Body> {
-    return r._build_state!.checkpoints[featureId].body_store_snapshot as Record<string, Body>
+  function snapshot(r: BuildResponse, featureId: string): Record<string, PartSolid> {
+    return r._build_state!.checkpoints[featureId].body_store_snapshot as Record<string, PartSolid>
   }
 
   /** The store's bodies' bounding boxes, sorted by body id so a reader can
    *  predict which copy is which. */
-  function boxesOf(store: Record<string, Body>): number[][] {
+  function boxesOf(store: Record<string, PartSolid>): number[][] {
     const scope = new DisposeScope()
     try {
       return Object.keys(store).sort().map((id) => {
@@ -116,7 +116,7 @@ describe.skipIf(!oc || !solveBytes)('curve pattern through the real kernel', () 
     }
   }
 
-  function volumeOfStore(store: Record<string, Body>): number {
+  function volumeOfStore(store: Record<string, PartSolid>): number {
     const scope = new DisposeScope()
     try {
       return Object.values(store)

@@ -17,7 +17,7 @@ import { mintFaceUuid, toolCopyFacePath } from '../../constructionName'
 import { offsetSolid } from '../../occ/offsetShape'
 import { Repository } from '../../query'
 import { solveBoolean } from '../boolean'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { Vec3 } from '../../occ/primitives'
 
@@ -41,7 +41,7 @@ function boxBody(
   dy: number,
   dz: number,
   faceUuids?: string[],
-): Body {
+): PartSolid {
   const box = makeBoxAt(occ, scope, corner, dx, dy, dz)
   return {
     id, created_by: `ex_${id}`, modified_by: [],
@@ -58,7 +58,7 @@ function cylinderBody(
   center: Vec3,
   radius: number,
   height: number,
-): Body {
+): PartSolid {
   const cyl = makeCylinder(occ, scope, center, [0, 0, 1] as Vec3, radius, height)
   return {
     id, created_by: `ex_${id}`, modified_by: [],
@@ -77,7 +77,7 @@ function filletedBody(
   dy: number,
   dz: number,
   radius: number,
-): Body {
+): PartSolid {
   const box = makeBoxAt(occ, scope, corner, dx, dy, dz)
   const exp = scope.track(new occ.TopExp_Explorer_2(box, occ.TopAbs_ShapeEnum.TopAbs_EDGE, occ.TopAbs_ShapeEnum.TopAbs_SHAPE))
   const edges: OccShape[] = []
@@ -91,7 +91,7 @@ function filletedBody(
   }
 }
 
-function targetBody(occ: OccModule, scope: DisposeScope, table: HandleTable, faceUuids?: string[]): Body {
+function targetBody(occ: OccModule, scope: DisposeScope, table: HandleTable, faceUuids?: string[]): PartSolid {
   return boxBody(occ, scope, table, 'body_t', [0, 0, 0] as Vec3, 10, 10, 8, faceUuids)
 }
 
@@ -99,9 +99,9 @@ function solve(
   occ: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-  store: Record<string, Body>,
+  store: Record<string, PartSolid>,
   sub: Record<string, unknown>,
-): { result: ReturnType<typeof solveBoolean>; store: Record<string, Body> } {
+): { result: ReturnType<typeof solveBoolean>; store: Record<string, PartSolid> } {
   const result = solveBoolean(
     occ, scope, table,
     { id: 'bool1', boolean: sub },
@@ -111,7 +111,7 @@ function solve(
   return { result, store }
 }
 
-function volumeOfBody(occ: OccModule, scope: DisposeScope, table: HandleTable, body: Body): number {
+function volumeOfBody(occ: OccModule, scope: DisposeScope, table: HandleTable, body: PartSolid): number {
   return volumeOf(occ, scope, table.get<OccShape>(body.shape!))
 }
 
@@ -129,7 +129,7 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {
+      const store: Record<string, PartSolid> = {
         body_t: targetBody(occ, scope, table),
         body_u: boxBody(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12),
       }
@@ -148,7 +148,7 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {
+      const store: Record<string, PartSolid> = {
         body_t: targetBody(occ, scope, table),
         body_u: boxBody(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12),
       }
@@ -167,7 +167,7 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {
+      const store: Record<string, PartSolid> = {
         body_t: targetBody(occ, scope, table),
         body_u: boxBody(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12),
       }
@@ -186,7 +186,7 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {
+      const store: Record<string, PartSolid> = {
         body_t: targetBody(occ, scope, table),
         body_u: boxBody(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12),
       }
@@ -204,7 +204,7 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {
+      const store: Record<string, PartSolid> = {
         body_t: targetBody(occ, scope, table),
         body_u: cylinderBody(occ, scope, table, 'body_u', [5, 5, -2] as Vec3, 2, 12),
       }
@@ -224,7 +224,7 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
     try {
       // Tool occupies z 4..10, poking out the top of the z 0..8 target: the
       // overlap is z 4..8 and +0.1 grows the pocket to depth 4.1 (floor moves).
-      const store: Record<string, Body> = {
+      const store: Record<string, PartSolid> = {
         body_t: targetBody(occ, scope, table),
         body_u: boxBody(occ, scope, table, 'body_u', [3, 3, 4] as Vec3, 4, 4, 6),
       }
@@ -242,7 +242,7 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {
+      const store: Record<string, PartSolid> = {
         body_t: targetBody(occ, scope, table),
         body_u: filletedBody(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12, 0.5),
       }
@@ -264,7 +264,7 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
     try {
       // A 1x1x1 tool cannot shrink by 0.6 on every side (its walls would cross);
       // offsetSolid refuses, and the feature must say so rather than cut ungrown.
-      const store: Record<string, Body> = {
+      const store: Record<string, PartSolid> = {
         body_t: targetBody(occ, scope, table),
         body_u: boxBody(occ, scope, table, 'body_u', [4, 4, 3] as Vec3, 1, 1, 1),
       }
@@ -290,7 +290,7 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
       // The r0.5 fillet cannot take -0.6: the grown (shrunk) tool no longer
       // reaches the target and the kernel cuts nothing. That must be a
       // clearance error, never a status: ok with the hole missing (decision 6).
-      const store: Record<string, Body> = {
+      const store: Record<string, PartSolid> = {
         body_t: targetBody(occ, scope, table),
         body_u: filletedBody(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12, 0.5),
       }
@@ -311,7 +311,7 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
   })
 
   it('only lets a flush tool bite once it has grown', () => {
-    const flushTool = (occ: OccModule, scope: DisposeScope, table: HandleTable): Body =>
+    const flushTool = (occ: OccModule, scope: DisposeScope, table: HandleTable): PartSolid =>
       boxBody(occ, scope, table, 'body_u', [10, 3, 0] as Vec3, 4, 4, 8)
     // clearance 0: the authored tool touches the x=10 face but shares no
     // material, so the cut is skipped and the target keeps its volume.
@@ -319,7 +319,7 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const store: Record<string, Body> = { body_t: targetBody(occ, scope, table), body_u: flushTool(occ, scope, table) }
+        const store: Record<string, PartSolid> = { body_t: targetBody(occ, scope, table), body_u: flushTool(occ, scope, table) }
         const { result, store: after } = solve(occ, scope, table, store, {
           operation: 'subtract', target: 'body_t', tools: ['body_u'],
         })
@@ -335,7 +335,7 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const store: Record<string, Body> = { body_t: targetBody(occ, scope, table), body_u: flushTool(occ, scope, table) }
+        const store: Record<string, PartSolid> = { body_t: targetBody(occ, scope, table), body_u: flushTool(occ, scope, table) }
         const { result, store: after } = solve(occ, scope, table, store, {
           operation: 'subtract', target: 'body_t', tools: ['body_u'], clearance: 0.1,
         })
@@ -352,7 +352,7 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
     const table = new HandleTable()
     try {
       const toolFaces = ['u0', 'u1', 'u2', 'u3', 'u4', 'u5']
-      const store: Record<string, Body> = {
+      const store: Record<string, PartSolid> = {
         body_t: targetBody(occ, scope, table, ['t0', 't1', 't2', 't3', 't4', 't5']),
         body_u: boxBody(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12, toolFaces),
       }
@@ -380,7 +380,7 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {
+      const store: Record<string, PartSolid> = {
         body_t: targetBody(occ, scope, table),
         body_u: boxBody(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12),
       }
@@ -401,7 +401,7 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {
+      const store: Record<string, PartSolid> = {
         body_t: targetBody(occ, scope, table),
         body_u0: boxBody(occ, scope, table, 'body_u0', [1, 1, -2] as Vec3, 4, 4, 12),
         body_u1: boxBody(occ, scope, table, 'body_u1', [5, 5, -2] as Vec3, 4, 4, 12),

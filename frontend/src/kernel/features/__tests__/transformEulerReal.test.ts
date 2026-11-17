@@ -18,17 +18,17 @@ import { volumeOf } from '../../occ/booleans'
 import { Repository } from '../../query'
 import { solveTransform } from '../transformMirror'
 import type { OccModule, OccShape } from '../../occ/occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = await loadOcc()
 
 type Bbox6 = [number, number, number, number, number, number]
-type Store = Record<string, Body>
+type Store = Record<string, PartSolid>
 
 function makeBoxBody(
   occ: OccModule, scope: DisposeScope, table: HandleTable,
   origin: Vec3, size: Vec3, id = 'body_s',
-): Body {
+): PartSolid {
   const box = makeBoxAt(occ, scope, origin, size[0], size[1], size[2])
   return {
     id,
@@ -41,7 +41,7 @@ function makeBoxBody(
   }
 }
 
-function bbox6(occ: OccModule, scope: DisposeScope, table: HandleTable, body: Body): Bbox6 {
+function bbox6(occ: OccModule, scope: DisposeScope, table: HandleTable, body: PartSolid): Bbox6 {
   const verts = readSolidVertices(occ, scope, table.get<OccShape>(body.shape!))
   const lo = [Infinity, Infinity, Infinity]
   const hi = [-Infinity, -Infinity, -Infinity]
@@ -54,7 +54,7 @@ function bbox6(occ: OccModule, scope: DisposeScope, table: HandleTable, body: Bo
   return [lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]]
 }
 
-function bodyVolume(occ: OccModule, scope: DisposeScope, table: HandleTable, body: Body): number {
+function bodyVolume(occ: OccModule, scope: DisposeScope, table: HandleTable, body: PartSolid): number {
   return volumeOf(occ, scope, table.get<OccShape>(body.shape!))
 }
 

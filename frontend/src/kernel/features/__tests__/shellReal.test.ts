@@ -18,7 +18,7 @@ import { HandleTable } from '../../occ/handleTable'
 import { makeBox, makeBoxAt, makeCylinder, makeCylinderWithFaces, faceCentroid } from '../../occ/primitives'
 import { volumeOf, surfaceAreaOf } from '../../occ/volume'
 import { booleanWithDiff } from '../../occ/booleans'
-import { canonicalEdges, canonicalFaces, namesFromArray, namesToArray } from '../../occ/bodyNames'
+import { canonicalEdges, canonicalFaces, namesFromArray, namesToArray } from '../../occ/partNames'
 import { deriveEdgeNames } from '../../occ/constructionLineage'
 import { ref, Repository, makeAncestryQuery, constructionUuidToken } from '../../query'
 import { solveShell } from '../shell'
@@ -26,7 +26,7 @@ import { solveFillet } from '../filletChamfer'
 import { exploreEdges, exploreFaces } from '../../occ/edgeModifier'
 import { buildFaceIndex } from '../shared/faceResolution'
 import { mintFaceUuid, shellFacePath } from '../../constructionName'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape, OccSubShape } from '../../occ/occTypes'
 
 const oc = await loadOcc()
@@ -41,7 +41,7 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
   if (oc) occ = oc
 
   // A named body: faces `f0..fN` in canonical order, edges derived from them.
-  function namedBody(scope: DisposeScope, table: HandleTable, shape: OccShape, id = 'body_b'): Record<string, Body> {
+  function namedBody(scope: DisposeScope, table: HandleTable, shape: OccShape, id = 'body_b'): Record<string, PartSolid> {
     const faces = canonicalFaces(occ, scope, shape)
     const face_uuids = faces.map((_, i) => `f${i}`)
     const faceAncestry = Object.fromEntries(face_uuids.map((u) => [u, [ref('ex1'), ref(id)]]))
@@ -57,13 +57,13 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
   }
 
   // A named 10-millimetre box body: faces `f0..f5` in canonical order.
-  function boxBody(scope: DisposeScope, table: HandleTable, size = 10): Record<string, Body> {
+  function boxBody(scope: DisposeScope, table: HandleTable, size = 10): Record<string, PartSolid> {
     return namedBody(scope, table, makeBox(occ, scope, size, size, size))
   }
 
   // An L-section prism: a 10 x 10 x 10 box with a 6 x 6 notch removed from one
   // top quadrant, so the inner vertical corner at (4, 4) is CONCAVE.
-  function lBody(scope: DisposeScope, table: HandleTable): Record<string, Body> {
+  function lBody(scope: DisposeScope, table: HandleTable): Record<string, PartSolid> {
     const outer = makeBox(occ, scope, 10, 10, 10)
     const notch = makeBoxAt(occ, scope, [4, 4, 0], 6, 6, 10)
     const { shape } = booleanWithDiff(occ, scope, outer, notch, 'cut')
@@ -73,7 +73,7 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
   // The report body (2026-11-12): a 10 x 10 x 2 plate with a D10 boss 1 high on
   // its top face. The boss is inscribed, so its wall touches each plate side in
   // a tangent contact and the plate top is pinched into four corner pieces.
-  function reportBody(scope: DisposeScope, table: HandleTable, diameter = 10): Record<string, Body> {
+  function reportBody(scope: DisposeScope, table: HandleTable, diameter = 10): Record<string, PartSolid> {
     const plate = makeBox(occ, scope, 10, 10, 2)
     const boss = makeCylinder(occ, scope, [5, 5, 2], [0, 0, 1], diameter / 2, 1)
     const { shape } = booleanWithDiff(occ, scope, plate, boss, 'fuse')
@@ -92,7 +92,7 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
   }
 
   // The canonical index of the body shape top face (max centroid Z).
-  function topFaceIndex(scope: DisposeScope, table: HandleTable, body: Body): number {
+  function topFaceIndex(scope: DisposeScope, table: HandleTable, body: PartSolid): number {
     const faces = canonicalFaces(occ, scope, table.get<OccShape>(body.shape!))
     let best = 0
     faces.forEach((f, i) => {
@@ -102,7 +102,7 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
   }
 
   // The canonical index of the body shape bottom face (min centroid Z).
-  function bottomFaceIndex(scope: DisposeScope, table: HandleTable, body: Body): number {
+  function bottomFaceIndex(scope: DisposeScope, table: HandleTable, body: PartSolid): number {
     const faces = canonicalFaces(occ, scope, table.get<OccShape>(body.shape!))
     let best = 0
     faces.forEach((f, i) => {
@@ -111,7 +111,7 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
     return best
   }
 
-  function shelledShape(_scope: DisposeScope, table: HandleTable, body: Body): OccShape {
+  function shelledShape(_scope: DisposeScope, table: HandleTable, body: PartSolid): OccShape {
     return table.get<OccShape>(body.shape!)
   }
 
@@ -321,7 +321,7 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
     try {
       // The key_cap repro: an 18 x 18 x 10 box with its top edges filleted,
       // then the flat top opened at 0.75 inward.
-      const build = (): Record<string, Body> => {
+      const build = (): Record<string, PartSolid> => {
         const bodyStore = namedBody(scope, table, makeBox(occ, scope, 18, 18, 10))
         const body = bodyStore.body_b
         const topIdx = topFaceIndex(scope, table, body)
@@ -434,7 +434,7 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const lBlock = (): Record<string, Body> => {
+      const lBlock = (): Record<string, PartSolid> => {
         const outer = makeBox(occ, scope, 20, 20, 12)
         const notch = makeBoxAt(occ, scope, [18, 18, 0], 2, 2, 12)
         const { shape } = booleanWithDiff(occ, scope, outer, notch, 'cut')
@@ -494,7 +494,7 @@ describe.skipIf(!oc)('solveShell leaf (real OCC)', () => {
       const canon = canonicalFaces(occ, scope, shape)
       const face_uuids = canon.map((_, i) => `c${i}`)
       const topIdx = canon.findIndex((f) => (f as unknown as { IsSame(o: unknown): boolean }).IsSame(faces.top))
-      const body: Body = {
+      const body: PartSolid = {
         id: 'body_c', created_by: 'cy', modified_by: [], shape: table.register(shape, 'cy'),
         sketch_id: 'sk', brep_diff: null, profile_queries: [], face_uuids,
       }

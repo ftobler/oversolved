@@ -6,7 +6,7 @@
 // registry test, and (if it shows in the viewport) read the new target kind in
 // the one viewport consumer that owns it. Nothing else changes.
 
-import type { BodyResult, MateFeature, PartFeature } from '@/types/cad'
+import type { PartResult, MateFeature, PartFeature } from '@/types/cad'
 import { consumedSketchIds } from '@/utils/query/consumedSketches'
 import { featureRefId } from '@/utils/query'
 import {
@@ -74,7 +74,7 @@ function pickedPrimitiveQueries(feature: PartFeature): readonly string[] {
 /** Every query a shown body publishes for its own primitives. A pick that is
  *  not here names geometry that no longer exists (consumed by this feature or
  *  gone in a later one), so there is nothing to paint. */
-function publishedQueries(bodies: Readonly<Record<string, BodyResult>>): ReadonlySet<string> {
+function publishedQueries(bodies: Readonly<Record<string, PartResult>>): ReadonlySet<string> {
   const out = new Set<string>()
   for (const body of Object.values(bodies)) {
     for (const q of body.edge_queries ?? []) if (q) out.add(q)
@@ -85,7 +85,7 @@ function publishedQueries(bodies: Readonly<Record<string, BodyResult>>): Readonl
 
 export function buildPartRelationCtx(
   features: readonly PartFeature[],
-  bodies: Readonly<Record<string, BodyResult>>,
+  bodies: Readonly<Record<string, PartResult>>,
   activeFeatureIds?: ReadonlySet<string>,
   failedPicks: ReadonlySet<string> = EMPTY_RELATION_SET,
 ): PartRelationCtx {

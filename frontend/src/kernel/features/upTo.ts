@@ -13,7 +13,7 @@
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable, OccHandle } from '../occ/handleTable'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 import type { Repository } from '../query'
 import { AmbiguousQueryError, getPoint3d } from '../query'
 import type { Vec3 } from '../occ/primitives'
@@ -51,7 +51,7 @@ export interface CutPlane {
  */
 export type UpToTarget =
   | { kind: 'plane'; cut: CutPlane }
-  | { kind: 'face'; face: OccShape; bodyId: string | null }
+  | { kind: 'face'; face: OccShape; partId: string | null }
 
 /** Reach used for the over-length prism and the trimming half-space (model units). */
 export const UP_TO_REACH = 1e4
@@ -101,12 +101,12 @@ export function resolveUpToTarget(
   upToRef: string,
   directionVec: Vec3,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): UpToTarget | null {
   if (!upToRef) return null
   let entry: Dict | null
   try {
-    entry = globalRepo.query(upToRef, null, bodyStore) as Dict | null
+    entry = globalRepo.query(upToRef, null, partStore) as Dict | null
   } catch (e) {
     swallowUnlessTrap(e)
     if (e instanceof AmbiguousQueryError) throw e
@@ -121,9 +121,9 @@ export function resolveUpToTarget(
     // owns that remap for every other face consumer, so reuse it here instead of
     // keeping a second reading that drifts.
     if (!SLASH_FACE_REF.test(upToRef)) return null
-    let resolved: { face: OccShape; bodyId: string }
+    let resolved: { face: OccShape; partId: string }
     try {
-      resolved = resolveFaceSlashFace(oc, scope, table, upToRef, globalRepo, bodyStore)
+      resolved = resolveFaceSlashFace(oc, scope, table, upToRef, globalRepo, partStore)
     } catch (e) {
       swallowUnlessTrap(e)
       // The slash ref names a face explicitly, so a body/remap failure stays
@@ -131,7 +131,7 @@ export function resolveUpToTarget(
       throw e
     }
     const cut = planarFaceCut(oc, scope, resolved.face)
-    return cut !== null ? { kind: 'plane', cut } : { kind: 'face', face: resolved.face, bodyId: resolved.bodyId }
+    return cut !== null ? { kind: 'plane', cut } : { kind: 'face', face: resolved.face, partId: resolved.partId }
   }
 
   // Registered plane / flatface (datum plane, an extrude top_face, ...).
@@ -148,14 +148,14 @@ export function resolveUpToTarget(
 
   // Body face: planar goes through the same half-space every planar target
   // already used, curved keeps the face for the split trim.
-  const bodyId = entry.body_id as string | undefined
+  const partId = entry.body_id as string | undefined
   const faceIndex = entry.face_index as number | undefined
-  if (bodyId !== undefined && faceIndex !== undefined) {
-    const body = bodyStore[bodyId]
-    if (body === undefined || body.shape === null) return null
-    const face = extractOccFace(oc, scope, table.get<OccShape>(body.shape as OccHandle), faceIndex)
+  if (partId !== undefined && faceIndex !== undefined) {
+    const part = partStore[partId]
+    if (part === undefined || part.shape === null) return null
+    const face = extractOccFace(oc, scope, table.get<OccShape>(part.shape as OccHandle), faceIndex)
     const cut = planarFaceCut(oc, scope, face)
-    return cut !== null ? { kind: 'plane', cut } : { kind: 'face', face, bodyId }
+    return cut !== null ? { kind: 'plane', cut } : { kind: 'face', face, partId }
   }
 
   // Point / vertex: the plane through the point, perpendicular to the extrude.
@@ -187,9 +187,9 @@ export function resolveUpToPlane(
   upToRef: string,
   directionVec: Vec3,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): CutPlane | null {
-  const target = resolveUpToTarget(oc, scope, table, upToRef, directionVec, globalRepo, bodyStore)
+  const target = resolveUpToTarget(oc, scope, table, upToRef, directionVec, globalRepo, partStore)
   if (target === null) return null
   if (target.kind === 'face') {
     throw new Error('extrude up_to: target face is not planar (v1 supports planar targets only)')

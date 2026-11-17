@@ -25,7 +25,7 @@ vi.mock('../../occ/constructionLineage', async (importOriginal) => {
   return { ...actual, shapeNormalFrame: vi.fn() }
 })
 
-import { splitSolids } from '../bodySplit'
+import { splitSolids } from '../partSplit'
 import { exploreSolids, volumeOf } from '../../occ/booleans'
 import { solidCentroid } from '../../occ/primitives'
 import { shapeNormalFrame } from '../../occ/constructionLineage'

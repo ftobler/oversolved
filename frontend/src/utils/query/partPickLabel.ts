@@ -1,12 +1,12 @@
 import type { PartFeature } from '@/types/cad'
-import type { BodyResult } from '@/types/cad'
+import type { PartResult } from '@/types/cad'
 import { queryLabel } from './queryLabel'
 import { partIdsOfPick } from './partIdOfPick'
 import { partDisplayName } from '@/utils/core/partDisplayName'
 
 export function partPickLabel(
   query: string,
-  parts: Record<string, BodyResult> | null | undefined,
+  parts: Record<string, PartResult> | null | undefined,
   partLabels?: Record<string, string>,
   features: PartFeature[] = [],
 ): string {

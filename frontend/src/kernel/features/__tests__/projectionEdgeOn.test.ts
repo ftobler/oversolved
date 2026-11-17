@@ -14,7 +14,7 @@ import { applyGeometryToFeature } from '@/utils/yamlMutations/solveResult'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import type { PartDoc } from '@/types/cad'
 import type { Repository } from '../../query'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 type Dict = Record<string, unknown>
 
@@ -69,7 +69,7 @@ describe('solveSketch re-resolves a projected kind seen edge-on or end-on', () =
         constraints: [{ id: 'proj_held', kind: 'projection', target: '$held', source: '@sk1/c0' }],
       }),
       repoOf(SKETCH_ENTRIES),
-      {} as Record<string, Body>,
+      {} as Record<string, PartSolid>,
     )
     expect(out.projection_errors).toBeUndefined()
     const g = out.geometry?.held
@@ -97,7 +97,7 @@ describe('solveSketch re-resolves a projected kind seen edge-on or end-on', () =
         constraints: [{ id: 'proj_held', kind: 'projection', target: '$held', source: '?edge;circle' }],
       }),
       stubRepo(edgeOnCircle),
-      {} as Record<string, Body>,
+      {} as Record<string, PartSolid>,
     )
     expect(out.projection_errors).toBeUndefined()
     expect(out.geometry?.held).toHaveLength(4)
@@ -131,7 +131,7 @@ describe('solveSketch re-resolves a projected kind seen edge-on or end-on', () =
     // resolved point, so the kind-change rule drops it by name and leaves the
     // free point where it was; the row stays in the document.
     const feature = startRowFeature()
-    const out = solveSketch(feature, stubRepo(endOnLine), {} as Record<string, Body>)
+    const out = solveSketch(feature, stubRepo(endOnLine), {} as Record<string, PartSolid>)
     expect(out.projection_errors).toBeUndefined()
     expect(out.resolved_kinds).toEqual({ l0: 'point' })
     expect(out.geometry?.l0).toEqual([2, 3])
@@ -150,7 +150,7 @@ describe('solveSketch re-resolves a projected kind seen edge-on or end-on', () =
     // longer edits the input), so the second solve reports the flip back and the
     // retained row is valid again.
     const feature = startRowFeature()
-    const endOn = solveSketch(feature, stubRepo(endOnLine), {} as Record<string, Body>)
+    const endOn = solveSketch(feature, stubRepo(endOnLine), {} as Record<string, PartSolid>)
     expect(endOn.resolved_kinds).toEqual({ l0: 'point' })
     expect(endOn.dropped_constraints).toHaveLength(1)
     // The document row only changes through the write-back, not during solving.
@@ -161,7 +161,7 @@ describe('solveSketch re-resolves a projected kind seen edge-on or end-on', () =
     })
     expect((feature.entities as Array<{ id: string; kind: string }>)[0].kind).toBe('point')
 
-    const back = solveSketch(feature, stubRepo(slantLine), {} as Record<string, Body>)
+    const back = solveSketch(feature, stubRepo(slantLine), {} as Record<string, PartSolid>)
     expect(back.projection_errors).toBeUndefined()
     // Point -> line is a real kind change: the entity row says `point` after the
     // write-back, so the second resolve is reported and the row binds the
@@ -200,7 +200,7 @@ describe('solveSketch projects a declared point on a curved source as its centre
 
   it('11a. a declared point on a body circle edge stays a point at its centre', () => {
     if (!solveBytes) return
-    const out = solveSketch(projected('point', '?edge;circle'), stubRepo(parallelCircle), {} as Record<string, Body>)
+    const out = solveSketch(projected('point', '?edge;circle'), stubRepo(parallelCircle), {} as Record<string, PartSolid>)
     expect(out.projection_errors).toBeUndefined()
     expect(out.geometry?.e0).toEqual([3, 4])
     expect(out.resolved_kinds).toBeUndefined()
@@ -211,7 +211,7 @@ describe('solveSketch projects a declared point on a curved source as its centre
     // Existing documents adopted `circle` when the centre rule did not exist,
     // so their declared kind is the curve and the declared point rule cannot
     // reach them.
-    const out = solveSketch(projected('circle', '?edge;circle'), stubRepo(parallelCircle), {} as Record<string, Body>)
+    const out = solveSketch(projected('circle', '?edge;circle'), stubRepo(parallelCircle), {} as Record<string, PartSolid>)
     expect(out.geometry?.e0).toEqual([3, 4, 5])
     expect(out.resolved_kinds).toBeUndefined()
   })
@@ -219,7 +219,7 @@ describe('solveSketch projects a declared point on a curved source as its centre
   it('11c. a declared point on a line source still takes the resolved line', () => {
     if (!solveBytes) return
     const line: Dict = { type: 'edge', kind: 'line', start: [0, 0, 0], end: [4, 2, 0] }
-    const out = solveSketch(projected('point', '?edge;line'), stubRepo(line), {} as Record<string, Body>)
+    const out = solveSketch(projected('point', '?edge;line'), stubRepo(line), {} as Record<string, PartSolid>)
     expect(out.geometry?.e0).toEqual([0, 0, 4, 2])
     expect(out.resolved_kinds).toEqual({ e0: 'line' })
   })
@@ -235,7 +235,7 @@ describe('solveSketch projects a declared point on a curved source as its centre
         'sk1/c0': { external_params: [0, 5, 3], kind: 'circle', sketch_id: 'sk1' },
         _pt_sk1: right,
       }),
-      {} as Record<string, Body>,
+      {} as Record<string, PartSolid>,
     )
     expect(out.projection_errors).toBeUndefined()
     // Front-plane local axes are world x/y; the source centre is world (0,5,0).
@@ -254,7 +254,7 @@ describe('solveSketch projects a declared point on a curved source as its centre
         'sk1/c0/center': { external_xy: [0, 5], sketch_id: 'sk1' },
         _pt_sk1: right,
       }),
-      {} as Record<string, Body>,
+      {} as Record<string, PartSolid>,
     )
     expect(out.projection_errors).toBeUndefined()
     expect(out.geometry?.e0).toEqual([0, 5])
@@ -277,7 +277,7 @@ describe('solveSketch projects a declared point on a curved source as its centre
     const edgeOnCircle: Dict = {
       type: 'edge', kind: 'circle', center: [0, 0, 0], radius: 5, axis: [1, 0, 0], x_axis: [0, 1, 0],
     }
-    const out = solveSketch(feature, stubRepo(edgeOnCircle), {} as Record<string, Body>)
+    const out = solveSketch(feature, stubRepo(edgeOnCircle), {} as Record<string, PartSolid>)
     expect(out.resolved_kinds).toEqual({ c0: 'line' })
     expect(out.dropped_constraints).toEqual([
       {
@@ -309,7 +309,7 @@ describe('solveSketch projects a declared point on a curved source as its centre
     const edgeOnCircle: Dict = {
       type: 'edge', kind: 'circle', center: [0, 0, 0], radius: 5, axis: [1, 0, 0], x_axis: [0, 1, 0],
     }
-    const out = solveSketch(feature, stubRepo(edgeOnCircle), {} as Record<string, Body>)
+    const out = solveSketch(feature, stubRepo(edgeOnCircle), {} as Record<string, PartSolid>)
     expect(out.resolved_kinds).toEqual({ c0: 'line' })
     expect(out.dropped_constraints).toEqual([
       {

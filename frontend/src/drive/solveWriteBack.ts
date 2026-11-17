@@ -10,7 +10,7 @@
 // reconciles additively. The difference and its user-side cost are recorded on
 // the backlog's `part_style` decision.
 
-import type { PartDoc, BodyResult } from '@/types/cad'
+import type { PartDoc, PartResult } from '@/types/cad'
 import { applyGeometryToFeature, shouldBakeSketchGeometry } from '@/utils/yamlMutations/solveResult'
 import { reconcilePartStyle } from '@/utils/core/partStyle'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
@@ -85,7 +85,7 @@ export function applySolveToDoc(doc: PartDoc, response: SolveResponseLike): Solv
     for (const bodyId of Object.keys(cloned.part_style ?? {})) {
       if (!live.has(bodyId)) delete cloned.part_style![bodyId]
     }
-    reconcilePartStyle(cloned, response.bodies as Record<string, BodyResult>)
+    reconcilePartStyle(cloned, response.bodies as Record<string, PartResult>)
   }
   return {
     doc: cloned,

@@ -20,7 +20,7 @@ import { loadOcc } from '../../occ/loadOcc'
 import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
 import { makeBox, faceCentroid } from '../../occ/primitives'
-import { canonicalEdges, canonicalFaces, canonicalVertices, namesFromArray, namesToArray } from '../../occ/bodyNames'
+import { canonicalEdges, canonicalFaces, canonicalVertices, namesFromArray, namesToArray } from '../../occ/partNames'
 import { deriveEdgeNames } from '../../occ/constructionLineage'
 import { exploreEdges } from '../../occ/edgeModifier'
 import { buildFaceIndex } from '../shared/faceResolution'
@@ -28,7 +28,7 @@ import { makeEdgeIndexCache, resolveEdgesByQuery } from '../filletChamfer'
 import { makeAncestryQuery, constructionUuidToken, ref, Repository } from '../../query'
 import { mintFaceUuid, shellFacePath } from '../../constructionName'
 import { solveShell } from '../shell'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape, OccSubShape } from '../../occ/occTypes'
 
 const oc = await loadOcc()
@@ -40,7 +40,7 @@ describe.skipIf(!oc)('arc join naming (real OCC)', () => {
   let occ: OccModule
   if (oc) occ = oc
 
-  function namedBody(scope: DisposeScope, table: HandleTable): Body {
+  function namedBody(scope: DisposeScope, table: HandleTable): PartSolid {
     const box = makeBox(occ, scope, 2, 2, 2)
     const faces = canonicalFaces(occ, scope, box)
     const face_uuids = faces.map((_, i) => `f${i}`)
@@ -54,7 +54,7 @@ describe.skipIf(!oc)('arc join naming (real OCC)', () => {
     }
   }
 
-  function topFaceIndex(scope: DisposeScope, table: HandleTable, body: Body): number {
+  function topFaceIndex(scope: DisposeScope, table: HandleTable, body: PartSolid): number {
     const faces = canonicalFaces(occ, scope, table.get<OccShape>(body.shape!))
     let best = 0
     faces.forEach((f, i) => {
@@ -63,7 +63,7 @@ describe.skipIf(!oc)('arc join naming (real OCC)', () => {
     return best
   }
 
-  function arcShell(scope: DisposeScope, table: HandleTable, thickness: number): Body {
+  function arcShell(scope: DisposeScope, table: HandleTable, thickness: number): PartSolid {
     const body = namedBody(scope, table)
     const q = faceQuery(body.face_uuids![topFaceIndex(scope, table, body)]!)
     const res = solveShell(occ, scope, table, {

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { Repository } from '../../query'
 import { solvePlane } from '../plane'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 // Covers the degenerate / sketch-lifted branches of the pure plane solver that
 // the happy-path suite (plane.test.ts) does not reach: getEdge3d's
@@ -11,7 +11,7 @@ import type { Body } from '../../types3d'
 
 type Dict = Record<string, unknown>
 
-function run(repo: Repository, feature: Dict, bodyStore: Record<string, Body> = {}) {
+function run(repo: Repository, feature: Dict, bodyStore: Record<string, PartSolid> = {}) {
   return solvePlane(null, null, null, feature, repo, bodyStore)
 }
 

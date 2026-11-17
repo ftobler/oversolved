@@ -4,14 +4,14 @@
 // dict carries EVERY feature row, as the builder hands it over.
 
 import { describe, it, expect } from 'vitest'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 import { resolveTouchWarnings } from '../resolveTouchWarnings'
 
 type Row = Record<string, unknown>
-type Checkpoints = Record<string, { result: Row; body_store_snapshot: Record<string, Body> }>
+type Checkpoints = Record<string, { result: Row; body_store_snapshot: Record<string, PartSolid> }>
 
-function store(...ids: string[]): Record<string, Body> {
-  return Object.fromEntries(ids.map((id) => [id, { id } as Body]))
+function store(...ids: string[]): Record<string, PartSolid> {
+  return Object.fromEntries(ids.map((id) => [id, { id } as PartSolid]))
 }
 
 /** Every checkpoint's result row, cloned, as the builder's top-level result. */

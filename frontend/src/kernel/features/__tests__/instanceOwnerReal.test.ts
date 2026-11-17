@@ -15,12 +15,12 @@ import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
 import { makeBoxAt, makeCylinderWithFaces } from '../../occ/primitives'
 import { booleanWithDiff } from '../../occ/booleans'
-import { canonicalFaces } from '../../occ/bodyNames'
+import { canonicalFaces } from '../../occ/partNames'
 import { SubShapeMap } from '../../occ/subshapeIdentity'
 import { transferBooleanNames } from '../booleanLineage'
-import { applyBodyOperation } from '../bodyOps'
+import { applyPartOperation } from '../partOps'
 import { barePart } from '../shared/partResolution'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccShape, OccSubShape } from '../../occ/occTypes'
 
 const loadedOcc = await loadOcc()
@@ -33,7 +33,7 @@ describe.skipIf(!loadedOcc)('per-UUID owner recording (real OCC)', () => {
     try {
       const body = barePart('body_base', 'ex1')
       body.shape = table.register(makeBoxAt(oc, scope, [-5, -5, -5], 10, 10, 10), 'ex1')
-      const store: Record<string, Body> = { body_base: body }
+      const store: Record<string, PartSolid> = { body_base: body }
 
       const firstOwners = new Set<string>()
       for (let copy = 0; copy < 2; copy++) {
@@ -46,12 +46,12 @@ describe.skipIf(!loadedOcc)('per-UUID owner recording (real OCC)', () => {
           faceNames.set(face as unknown as OccSubShape, uuid)
           faceOwner[uuid] = 'pt1'
         })
-        applyBodyOperation(oc, scope, table, {
+        applyPartOperation(oc, scope, table, {
           toolShape: tool.shape,
-          bodyStore: store,
+          partStore: store,
           operation: 'cut',
           mergeTarget: 'body_base',
-          bodyId: 'body_pt1',
+          partId: 'body_pt1',
           featureId: 'pt1',
           sketchId: '',
           faceNames,
@@ -99,7 +99,7 @@ describe.skipIf(!loadedOcc)('per-UUID owner recording (real OCC)', () => {
       canonicalFaces(oc, scope, tool).forEach((face, i) => toolFaceNames.set(face, `tool-${i}`))
       const { shape, faceOrigin } = booleanWithDiff(oc, scope, target, tool, 'cut')
       const names = transferBooleanNames(oc, scope, {
-        bodyShape: shape,
+        partShape: shape,
         faceOrigin,
         targetFaceNames,
         targetFaceAncestry: {},

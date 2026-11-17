@@ -20,7 +20,7 @@ import { shapeBndBox } from '../../occ/primitives'
 import { volumeOf } from '../../occ/volume'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -103,8 +103,8 @@ describe.skipIf(!oc || !solveBytes)('instance pattern through the real kernel', 
     setSketchSolver(solveBytes)
   })
 
-  function store(r: BuildResponse, featureId: string): Record<string, Body> {
-    return r._build_state!.checkpoints[featureId].body_store_snapshot as Record<string, Body>
+  function store(r: BuildResponse, featureId: string): Record<string, PartSolid> {
+    return r._build_state!.checkpoints[featureId].body_store_snapshot as Record<string, PartSolid>
   }
 
   function boxOf(r: BuildResponse, featureId: string, bodyId: string): number[] {
@@ -142,7 +142,7 @@ describe.skipIf(!oc || !solveBytes)('instance pattern through the real kernel', 
 
   // A face of the running body's render payload, by predicate over its data.
   function faceQuery(r: BuildResponse, bodyId: string, predicate: (data: Dict) => boolean): string {
-    const body = h.body(r, bodyId) as { mesh?: { face_data?: Dict[]; face_queries?: string[] } }
+    const body = h.part(r, bodyId) as { mesh?: { face_data?: Dict[]; face_queries?: string[] } }
     const data = body.mesh?.face_data ?? []
     const queries = body.mesh?.face_queries ?? []
     const index = data.findIndex(predicate)
@@ -283,7 +283,7 @@ describe.skipIf(!oc || !solveBytes)('instance pattern through the real kernel', 
       version: 9, kind: 'part',
       features: [...plate(), ...boss()],
     })
-    const body = h.body(pre, 'body_exPlate') as { vertices?: number[][]; vertex_queries?: string[] }
+    const body = h.part(pre, 'body_exPlate') as { vertices?: number[][]; vertex_queries?: string[] }
     const vertexIndex = (body.vertices ?? []).findIndex((v) => v[0] > 25 && v[1] > 25 && v[2] > 9)
     expect(vertexIndex).toBeGreaterThanOrEqual(0)
     const vertexQuery = (body.vertex_queries ?? [])[vertexIndex]!
@@ -545,7 +545,7 @@ describe.skipIf(!oc || !solveBytes)('instance pattern through the real kernel', 
       data.surface_type === 'flatface' && (data.normal as number[])[2] > 0.99 && (data.centroid as number[])[2] > 9)
     const capQuery = faceQuery(pre, 'body_exBoss', (data) =>
       data.surface_type === 'flatface' && (data.normal as number[])[2] > 0.99)
-    const body = h.body(pre, 'body_exPlate') as { vertices?: number[][]; vertex_queries?: string[] }
+    const body = h.part(pre, 'body_exPlate') as { vertices?: number[][]; vertex_queries?: string[] }
     const vertexIndex = (body.vertices ?? []).findIndex((v) => v[0] > 25 && v[1] > 25 && v[2] > 9)
     expect(vertexIndex).toBeGreaterThanOrEqual(0)
     const vertexQuery = (body.vertex_queries ?? [])[vertexIndex]
@@ -589,7 +589,7 @@ describe.skipIf(!oc || !solveBytes)('instance pattern through the real kernel', 
     ]
     const pre = h.run({ version: 9, kind: 'part', features: [...plate(), topPlane(10), ...holes(), ...screw()] })
     expect(h.res(pre, 'exHead').status).toBe('ok')
-    const bores = (h.body(pre, 'body_exPlate') as { mesh?: { face_data?: Dict[]; face_queries?: string[] } })
+    const bores = (h.part(pre, 'body_exPlate') as { mesh?: { face_data?: Dict[]; face_queries?: string[] } })
     const boreQueries = (bores.mesh?.face_data ?? [])
       .map((data, index) => ({ data, query: bores.mesh?.face_queries?.[index] ?? '' }))
       .filter((row) => row.data.surface_type === 'cylinderface')
@@ -616,7 +616,7 @@ describe.skipIf(!oc || !solveBytes)('instance pattern through the real kernel', 
     expect(boxOf(r, 'ip1', 'body_ip1')).toEqual([15, 15, 0, 25, 25, 13])
     expect(boxOf(r, 'ip1', 'body_ip1_1')).toEqual([35, 15, 0, 45, 25, 13])
     // The shank's own cylinder axis is on the bore axis.
-    const copied = h.body(r, 'body_ip1') as { mesh?: { face_data?: Dict[] } }
+    const copied = h.part(r, 'body_ip1') as { mesh?: { face_data?: Dict[] } }
     const shank = (copied.mesh?.face_data ?? []).find((data) =>
       data.surface_type === 'cylinderface'
       && Math.abs(((data.surface_frame as Dict).radius as number) - 3) < 1e-6)!

@@ -19,7 +19,7 @@ vi.mock('@/kernel/solveLocally', async importOriginal => {
   }
 })
 
-import { finalLiveBodyIds } from '@/kernel/solveLocally'
+import { finalLivePartIds } from '@/kernel/solveLocally'
 import { runHeadless } from '../headlessOps'
 import { DocHandleStore } from '../docHandleStore'
 import { runReply, summarizeDoc } from '../mcpDocRef'
@@ -86,14 +86,14 @@ describe('finalLiveBodyIds', () => {
         },
       },
     } as unknown as BuildResponse
-    expect(finalLiveBodyIds(response)).toEqual(['body_a', 'body_b'])
+    expect(finalLivePartIds(response)).toEqual(['body_a', 'body_b'])
   })
 
   it('returns an empty list for a solved document with no features and null without build state', () => {
-    expect(finalLiveBodyIds({
+    expect(finalLivePartIds({
       _build_state: { feature_order: [], checkpoints: {} },
     } as unknown as BuildResponse)).toEqual([])
-    expect(finalLiveBodyIds({} as BuildResponse)).toBeNull()
+    expect(finalLivePartIds({} as BuildResponse)).toBeNull()
   })
 })
 
@@ -103,10 +103,10 @@ describe('the run summary body source', () => {
     vi.mocked(kernel.solveLocally).mockResolvedValue(RESPONSE as never)
     vi.mocked(kernel.measureSolveFeatures).mockReset()
     vi.mocked(kernel.measureSolveFeatures).mockResolvedValue([
-      { id: 'sk1', volume: 0, bbox: null, bodies: {} },
+      { id: 'sk1', volume: 0, bbox: null, parts: {} },
       {
         id: 'ex1', volume: 50, bbox: [0, 0, 0, 1, 1, 1],
-        bodies: {
+        parts: {
           body_rvA: { volume: 5, faces: 6, edges: 12 },
           body_rvB: { volume: 5, faces: 6, edges: 12 },
           body_rvC: { volume: 5, faces: 6, edges: 12 },

@@ -8,7 +8,7 @@
 // (selectionAidsReal.test.ts).
 
 import { describe, it, expect } from 'vitest'
-import type { BodyResult, FaceData, EdgeData, PartDoc } from '@/types/cad'
+import type { PartResult, FaceData, EdgeData, PartDoc } from '@/types/cad'
 import { makeAncestryQuery } from '@/kernel/query'
 import { resolveSelectionAids, usesSelectionAid } from '../selectionAids'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
@@ -26,7 +26,7 @@ function lineEdge(start: V3, end: V3): EdgeData {
 }
 // Two Z-parallel edges and one X-parallel edge on body_a, so an edge selector
 // can expand to several picks and a string entry can sit beside it.
-function bodiesWithEdges(): Record<string, BodyResult> {
+function bodiesWithEdges(): Record<string, PartResult> {
   const bodies = twoBodies()
   bodies.body_a.edges = [
     lineEdge([0, 0, 0], [0, 0, 10]),
@@ -48,7 +48,7 @@ const oneEdgeSelector = {
 }
 // One circle edge and one corner vertex on body_a, for the projection source:
 // an edge selector's own kind picks the curve kind, a vertex's the point kind.
-function bodiesWithSourceShapes(): Record<string, BodyResult> {
+function bodiesWithSourceShapes(): Record<string, PartResult> {
   const bodies = twoBodies()
   bodies.body_a.edges = [{
     kind: 'circle', center: [5, 5, 0], radius: 4, axis: [0, 0, 1],
@@ -61,8 +61,8 @@ function bodiesWithSourceShapes(): Record<string, BodyResult> {
 }
 const circleEdgeSelector = { selector: { kind: 'edge', where: { type: 'circle' } } }
 const cornerVertexSelector = { selector: { kind: 'vertex' } }
-function twoBodies(): Record<string, BodyResult> {
-  const body = (id: string, faces: FaceData[]): BodyResult => ({
+function twoBodies(): Record<string, PartResult> {
+  const body = (id: string, faces: FaceData[]): PartResult => ({
     id,
     created_by: 'ex1',
     modified_by: [],
@@ -405,7 +405,7 @@ describe('resolveSelectionAids', () => {
   it('infers the projection entity kind from the element the selector matched', () => {
     // The same mapping the UI's projection path uses: an edge keeps its curve
     // kind, a vertex or face projects as its own point.
-    const cases: Array<[Record<string, BodyResult>, Record<string, unknown>, string, string]> = [
+    const cases: Array<[Record<string, PartResult>, Record<string, unknown>, string, string]> = [
       [bodiesWithEdges(), oneEdgeSelector, 'line', q('body_a', ['@u|e_1'], 'straightedge')],
       [bodiesWithSourceShapes(), circleEdgeSelector, 'circle', q('body_a', ['@u|e_c'], 'circleedge')],
       [bodiesWithSourceShapes(), cornerVertexSelector, 'point', q('body_a', ['@u|v_0'], 'vertex')],

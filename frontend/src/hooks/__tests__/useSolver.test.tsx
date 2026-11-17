@@ -18,7 +18,7 @@ import { PART_COLOR_PALETTE } from '@/utils/core/partColors'
 import { useSolverStore } from '@/stores/solverStore'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import type { WorkspaceSession } from '@/workspace/session'
-import type { PartDoc, BodyResult } from '@/types/cad'
+import type { PartDoc, PartResult } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
 import { editorState } from '@/stores/editorState'
 import type { PartFeature } from '@/types/cad'
@@ -33,7 +33,7 @@ function solvableDoc(overrides?: Partial<PartDoc>): PartDoc {
   return makeDoc({ features: [{ id: 'feat1', kind: 'sketch', entities: [] }], ...overrides })
 }
 
-function makeBody(id: string, overrides?: Partial<BodyResult>): BodyResult {
+function makeBody(id: string, overrides?: Partial<PartResult>): PartResult {
   return { id, created_by: `feature_${id}`, modified_by: [], ...overrides }
 }
 
@@ -157,7 +157,7 @@ describe('useSolver', () => {
     mockSolveLocally.mockResolvedValue({
       solve_ms: 0,
       result: {},
-      bodies: {} as Record<string, BodyResult>,
+      bodies: {} as Record<string, PartResult>,
       _build_state: null,
     })
     mockUnflattenGeometry.mockReturnValue({})
@@ -184,7 +184,7 @@ describe('useSolver', () => {
       mockSolveLocally.mockResolvedValue({
         solve_ms: 0,
         result: {},
-        bodies: { a: makeBody('a') } as Record<string, BodyResult>,
+        bodies: { a: makeBody('a') } as Record<string, PartResult>,
         _build_state: null,
       })
       await act(async () => { await result.current.reSolve(solvableDoc()) })
@@ -196,7 +196,7 @@ describe('useSolver', () => {
       mockSolveLocally.mockResolvedValue({
         solve_ms: 0,
         result: {},
-        bodies: { a: makeBody('a') } as Record<string, BodyResult>,
+        bodies: { a: makeBody('a') } as Record<string, PartResult>,
         _build_state: null,
       })
       await act(async () => { await result.current.reSolve(solvableDoc()) })
@@ -539,7 +539,7 @@ describe('useSolver', () => {
             solve_ms: 123,
           },
         },
-        bodies: {} as Record<string, BodyResult>,
+        bodies: {} as Record<string, PartResult>,
         _build_state: null,
       })
       const doc = makeDoc({

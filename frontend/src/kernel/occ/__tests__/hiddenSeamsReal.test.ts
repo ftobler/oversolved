@@ -25,16 +25,16 @@ import {
   solidToMesh,
   solidToVertices,
 } from '../tessellation'
-import { tessellateBodies } from '../../solveLocally'
+import { tessellateParts } from '../../solveLocally'
 import { toPartBundle } from '../../partBundle'
 import type { OccModule } from '../occTypes'
 import type { OccHandle } from '../handleTable'
-import type { Body } from '../../types3d'
-import type { BodyResult } from '../../../types/cad'
+import type { PartSolid } from '../../types3d'
+import type { PartResult } from '../../../types/cad'
 
 const oc = await loadOcc()
 
-function makeBody(id: string, createdBy: string, shapeHandle: OccHandle | null): Body {
+function makeBody(id: string, createdBy: string, shapeHandle: OccHandle | null): PartSolid {
   return {
     id,
     created_by: createdBy,
@@ -122,7 +122,7 @@ describe.skipIf(!oc)('hidden seam indices (real OCC)', () => {
       // hides them there too. `tessellateBodies` types its payload as a loose
       // record; the shape it assembles is a BodyResult.
       const body = makeBody('body_cyl', 'cyl1', handle)
-      const payload = tessellateBodies(occ, table, { body_cyl: body }) as unknown as Record<string, BodyResult>
+      const payload = tessellateParts(occ, table, { body_cyl: body }) as unknown as Record<string, PartResult>
       const bundle = toPartBundle('doc', 'hash', payload)
       expect(bundle.bodies[0].hiddenEdges).toEqual(hidden.hidden_edges)
       expect(bundle.bodies[0].hiddenVertices).toEqual(hidden.hidden_vertices)
@@ -230,7 +230,7 @@ describe.skipIf(!oc)('hidden seam indices (real OCC)', () => {
       const handle = make(table)
       try {
         const body = makeBody(`body_${label}`, 'f1', handle)
-        const result = tessellateBodies(occ, table, { [body.id]: body })[body.id] as {
+        const result = tessellateParts(occ, table, { [body.id]: body })[body.id] as {
           edges?: unknown
           edge_queries?: unknown
           vertices?: unknown
@@ -243,7 +243,7 @@ describe.skipIf(!oc)('hidden seam indices (real OCC)', () => {
         // pre-feature result exactly.
         const base = {
           createdBy: 'f1',
-          bodyId: body.id,
+          partId: body.id,
           profileQueries: [] as string[],
           newElements: null,
           modifiedBy: body.modified_by,

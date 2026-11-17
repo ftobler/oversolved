@@ -13,7 +13,7 @@ import { createDriveJournal, type CommandJournal } from '../journal'
 import { replayJournal } from '../replay'
 import { docHashOf } from '../docHash'
 import type { ScriptStep } from '../scriptRunner'
-import { deriveMemberIds, faceBoundaryFromBodies, faceProjectionConstraintId } from '@/kernel/features/projectionMembers'
+import { deriveMemberIds, faceBoundaryFromParts, faceProjectionConstraintId } from '@/kernel/features/projectionMembers'
 import { loadOcc } from '@/kernel/occ/loadOcc'
 import { setOccLoader } from '@/kernel/solveLocally'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
@@ -44,8 +44,8 @@ interface FaceFixture {
  *  from the one base build by geometry. */
 function faceFixture(): FaceFixture {
   const { result, geometry } = base()
-  const body = h.body(result, BOX_BODY_ID)
-  const boundary = faceBoundaryFromBodies(() => ({ [BOX_BODY_ID]: body }))(geometry.frontFace)
+  const body = h.part(result, BOX_BODY_ID)
+  const boundary = faceBoundaryFromParts(() => ({ [BOX_BODY_ID]: body }))(geometry.frontFace)
   if (!boundary) throw new Error('base body: front face has no boundary')
   const cid = faceProjectionConstraintId(geometry.frontFace)
   if (cid === null) throw new Error('front face query carries no construction UUID')

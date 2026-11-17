@@ -32,7 +32,7 @@
 
 import type { DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSurfaceAdaptor } from './occTypes'
-import { canonicalEdges } from './bodyNames'
+import { canonicalEdges } from './partNames'
 import { faceSurfaceName, MoveFaceRefusal, pointInFace } from './moveFaceSurfaces'
 import { unboundRungReason, RUNG_1, RUNG_2, RUNG_2_STRIP, RUNG_3, RUNG_4, rungCatalog } from './moveFaceRungs'
 import { TOL_SURFACE_IDENTITY } from '../solverConstants'

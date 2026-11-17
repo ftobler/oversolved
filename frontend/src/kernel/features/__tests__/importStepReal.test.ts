@@ -26,7 +26,7 @@ import { repoFromSnapshot } from '../../builder'
 import { readFileSync } from 'node:fs'
 import { Repository } from '../../query'
 import { solveImportStep } from '../importStep'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import { noProgress } from '../../occ/defaultArgs'
 import fixture from '../../occ/__fixtures__/importStep.json'
@@ -109,7 +109,7 @@ describe.skipIf(!oc)('solveImportStep (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, Body> = {}
+        const bodyStore: Record<string, PartSolid> = {}
         const result = solveImportStep(
           occ,
           scope,
@@ -145,7 +145,7 @@ describe.skipIf(!oc)('solveImportStep (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore: Record<string, Body> = {}
+      const bodyStore: Record<string, PartSolid> = {}
       const base = fx.cases.find((c) => c.scale === 1) ?? fx.cases[0]
       const result = solveImportStep(
         occ,
@@ -170,7 +170,7 @@ describe.skipIf(!oc)('solveImportStep (real OCC)', () => {
     const table = new HandleTable()
     try {
       const fileData = twoBoxStepB64(occ)
-      const bodyStore: Record<string, Body> = {}
+      const bodyStore: Record<string, PartSolid> = {}
       const result = solveImportStep(
         occ,
         scope,
@@ -203,7 +203,7 @@ describe.skipIf(!oc)('solveImportStep (real OCC)', () => {
     const table = new HandleTable()
     try {
       const fileData = twoBoxStepB64(occ)
-      const bodyStore: Record<string, Body> = {}
+      const bodyStore: Record<string, PartSolid> = {}
       const result = solveImportStep(
         occ,
         scope,
@@ -285,10 +285,10 @@ describe.skipIf(!oc)('multi-part STEP through a full build', () => {
     const bodyIds = Object.keys(r.bodies as Record<string, unknown>)
     expect(bodyIds).toEqual([`body_${IMP}`, `body_${IMP}_1`])
     for (const bid of bodyIds) {
-      const mesh = h.body(r, bid).mesh as { vertices?: unknown[]; faces?: unknown[] } | undefined
+      const mesh = h.part(r, bid).mesh as { vertices?: unknown[]; faces?: unknown[] } | undefined
       expect(mesh?.faces?.length).toBeGreaterThan(0)
       // Each part must own its faces, or picking one would select the other.
-      expect((h.body(r, bid).mesh as { face_queries?: string[] }).face_queries?.length).toBe(6)
+      expect((h.part(r, bid).mesh as { face_queries?: string[] }).face_queries?.length).toBe(6)
     }
   }, 60000)
 })
@@ -322,7 +322,7 @@ describe.skipIf(!oc)('imported face queries are individually selectable', () => 
     const r = h.run({ features: [{ id: IMP, kind: 'import_step', file_id: IMP }] }, { files: filesFor(IMP, base64ToBytes(holeStepB64())) })
 
     expect(h.res(r, IMP).status).toBe('ok')
-    const queries = (h.body(r, `body_${IMP}`).mesh as { face_queries?: string[] }).face_queries ?? []
+    const queries = (h.part(r, `body_${IMP}`).mesh as { face_queries?: string[] }).face_queries ?? []
     expect(queries.length).toBeGreaterThan(1)
     // Pre-change every entry here was the same string, and none was empty --
     // which is exactly why the failure was invisible until a pick was resolved.
@@ -336,7 +336,7 @@ describe.skipIf(!oc)('imported face queries are individually selectable', () => 
     const IMP = 'stepimp3'
     const r = h.run({ features: [{ id: IMP, kind: 'import_step', file_id: IMP }] }, { files: filesFor(IMP, base64ToBytes(holeStepB64())) })
     const bid = `body_${IMP}`
-    const mesh = h.body(r, bid).mesh as { face_queries: string[]; face_data: { classifiers?: string[] }[] }
+    const mesh = h.part(r, bid).mesh as { face_queries: string[]; face_data: { classifiers?: string[] }[] }
 
     const repo = repoFromSnapshot(
       (r._build_state.checkpoints[IMP] as unknown as { repo_snapshot: Record<string, unknown> }).repo_snapshot,
@@ -360,7 +360,7 @@ describe.skipIf(!oc)('imported face queries are individually selectable', () => 
     const file = holeStepB64()
     const tokensFor = (id: string, scale?: number): string[] => {
       const r = h.run({ features: [{ id, kind: 'import_step', file_id: id, ...(scale ? { scale } : {}) }] }, { files: filesFor(id, base64ToBytes(file)) })
-      const q = (h.body(r, `body_${id}`).mesh as { face_queries: string[] }).face_queries
+      const q = (h.part(r, `body_${id}`).mesh as { face_queries: string[] }).face_queries
       const tokens = q.map(uuidToken)
       // Without this the whole test passes vacuously on all-null token lists.
       expect(tokens.length).toBeGreaterThan(1)
@@ -390,7 +390,7 @@ describe.skipIf(!oc)('imported face queries are individually selectable', () => 
     const bodyIds = Object.keys(r.bodies as Record<string, unknown>)
     expect(bodyIds.length).toBe(2)
 
-    const perBody = bodyIds.map((bid) => (h.body(r, bid).mesh as { face_queries: string[] }).face_queries)
+    const perBody = bodyIds.map((bid) => (h.part(r, bid).mesh as { face_queries: string[] }).face_queries)
     for (const queries of perBody) {
       expect(queries.length).toBe(6)
       for (const q of queries) expect(uuidToken(q)).not.toBeNull()
@@ -407,7 +407,7 @@ describe.skipIf(!oc)('imported face queries are individually selectable', () => 
       (r._build_state.checkpoints[IMP] as unknown as { repo_snapshot: Record<string, unknown> }).repo_snapshot,
     )
     for (const bid of bodyIds) {
-      const mesh = h.body(r, bid).mesh as { face_queries: string[] }
+      const mesh = h.part(r, bid).mesh as { face_queries: string[] }
       for (let i = 0; i < mesh.face_queries.length; i++) {
         const hit = repo.query(mesh.face_queries[i], null, null, null) as
           { face_index?: number; body_id?: string } | null
@@ -434,7 +434,7 @@ describe.skipIf(!oc)('imported face queries are individually selectable', () => 
       const out: Record<string, string[]> = {}
       for (const bid of bodyIds) {
         const tokens: string[] = []
-        const queries = (h.body(r, bid).mesh as { face_queries: string[] }).face_queries
+        const queries = (h.part(r, bid).mesh as { face_queries: string[] }).face_queries
         for (const q of queries) {
           const t = uuidToken(q)
           expect(t, `no @u| token in ${q}`).not.toBeNull()
@@ -456,7 +456,7 @@ describe.skipIf(!oc)('imported face queries are individually selectable', () => 
 
     const seen = new Set<string>()
     for (const bid of bodyIds) {
-      const queries = (h.body(r, bid).mesh as { face_queries: string[] }).face_queries
+      const queries = (h.part(r, bid).mesh as { face_queries: string[] }).face_queries
       expect(queries.length).toBe(6)
       for (const q of queries) {
         expect(uuidToken(q)).not.toBeNull()

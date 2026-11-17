@@ -17,7 +17,7 @@ import { makeBoxAt } from '../../occ/primitives'
 import { volumeOf } from '../../occ/booleans'
 import { Repository } from '../../query'
 import { solveHole } from '../hole'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
 
 const oc = await loadOcc()
@@ -41,7 +41,7 @@ function drill(
     repo.register('_pt_sk', plane)
     repo.register('sk/p1/xy', { external_xy: xy })
     const box = makeBoxAt(oc!, scope, [0, 0, 0], 40, 40, 13)
-    const bodyStore: Record<string, Body> = {
+    const bodyStore: Record<string, PartSolid> = {
       body_t: {
         id: 'body_t', created_by: 'ex', modified_by: [],
         shape: table.register(box, 'ex'), sketch_id: 'sk',

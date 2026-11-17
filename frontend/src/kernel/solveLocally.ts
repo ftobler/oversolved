@@ -24,10 +24,10 @@ import { indexModifierDiffs, newIndexSets } from './occ/modifierAttribution'
 import { copyShape, makeScaleTrsf, makeRigidTrsf, transformCopy } from './occ/transforms'
 import { stepShapeToBytes, shapeToStlBytes } from './occ/stepIo'
 import { resolveTessellation, type TessellationPreset } from './tessellationPresets'
-import { measureBodies, type Bbox6, type MeasureRecord } from './occ/measure'
+import { measureParts, type Bbox6, type MeasureRecord } from './occ/measure'
 import { volumeForMeasure } from './occ/volume'
 import { shapeBbox } from './occ/faceBounds'
-import { canonicalFaces, pickableEdgeCount } from './occ/bodyNames'
+import { canonicalFaces, pickableEdgeCount } from './occ/partNames'
 import { shapesIntersect } from './occ/booleans'
 import { edgeLength, minDistance } from './occ/measureExtrema'
 import { resolveMeasurePick } from './measurePick'
@@ -37,8 +37,8 @@ import { MEASURE_STALE, MEASURE_UNRESOLVED, type MeasureOp, type MeasurePickRef 
 import { MM_PER_LENGTH_UNIT, lengthUnitOf, partToAssemblyScale } from '@/utils/lengthUnit'
 import type { OccHandle } from './occ/handleTable'
 import type { OccModule, OccShape } from './occ/occTypes'
-import type { Body, BuildState } from './types3d'
-import type { BodyResult, LengthUnit, Transform3D } from '../types/cad'
+import type { PartSolid, BuildState } from './types3d'
+import type { PartResult, LengthUnit, Transform3D } from '../types/cad'
 import type { Vec3 } from '@/utils/vec3'
 
 // ─── cross-solve checkpoint cache ───
@@ -75,7 +75,7 @@ export function currentGeneration(): string {
 // The body store a pick made during an open feature edit was made against: the
 // pick-boundary checkpoint's snapshot, resolved here at solve time because this
 // module is the one place that knows both the boundary and the build state.
-let lastPickBodyStore: Record<string, Body> | null = null
+let lastPickPartStore: Record<string, PartSolid> | null = null
 
 // Reentrancy guard for the shared state above. `persistentTable`,
 // `lastBuildState` and `lastDocId` are single-writer: a second solve entering
@@ -97,7 +97,7 @@ function resetLocalSolveCache(): void {
   persistentTable = null
   lastBuildState = null
   lastDocId = null
-  lastPickBodyStore = null
+  lastPickPartStore = null
   // Whatever a measurement was asked against is gone with the cache.
   bumpGeneration()
   if (!table) return
@@ -166,7 +166,7 @@ function recoverLocalKernel(): boolean {
   persistentTable = null
   lastBuildState = null
   lastDocId = null
-  lastPickBodyStore = null
+  lastPickPartStore = null
   // The trapped heap is gone, so nothing a measurement named survives.
   bumpGeneration()
   if (occLoaderReset) occLoaderReset()
@@ -249,18 +249,18 @@ export function preloadOcc(): Promise<OccModule | null> {
  * Tessellate every body in the store and return per-body mesh/edge/vertex
  * data. Used as ``BuildDeps.tessellateBodies``.
  */
-export function tessellateBodies(
+export function tessellateParts(
   oc: OccModule,
   table: HandleTable,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): Record<string, Record<string, unknown>> {
   const out: Record<string, Record<string, unknown>> = {}
-  for (const [bodyId, body] of Object.entries(bodyStore)) {
+  for (const [bodyId, body] of Object.entries(partStore)) {
     if (body.shape == null) continue
     try {
       const mesh = solidToMesh(oc, table, body.shape, {
         createdBy: body.created_by || '',
-        bodyId: body.id,
+        partId: body.id,
         faceAncestry: body.face_ancestry ?? null,
         faceCapAncestry: body.face_cap_ancestry ?? null,
         faceUuids: body.face_uuids ?? null,
@@ -271,7 +271,7 @@ export function tessellateBodies(
       })
       const edgeResult = solidToEdges(oc, table, body.shape, {
         createdBy: body.created_by || '',
-        bodyId: body.id,
+        partId: body.id,
         profileQueries: body.profile_queries ?? [],
         edgeAncestry: body.edge_ancestry ?? null,
         edgeUuids: body.edge_uuids ?? null,
@@ -284,7 +284,7 @@ export function tessellateBodies(
       })
       const vertexResult = solidToVertices(oc, table, body.shape, {
         createdBy: body.created_by || '',
-        bodyId: body.id,
+        partId: body.id,
         profileQueries: body.profile_queries ?? [],
         faceUuids: body.face_uuids ?? null,
         edgeUuids: body.edge_uuids ?? null,
@@ -345,17 +345,17 @@ export function tessellateBodies(
 export function extractBrepMetadata(
   oc: OccModule,
   table: HandleTable,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): Record<string, Record<string, unknown>> {
   const out: Record<string, Record<string, unknown>> = {}
-  for (const [bodyId, body] of Object.entries(bodyStore)) {
+  for (const [bodyId, body] of Object.entries(partStore)) {
     if (body.shape == null) continue
     const scope = new DisposeScope()
     try {
       const solid = table.get<OccShape>(body.shape)
       const { face_data, face_queries, face_uuids, face_created_by } = readShapeFaceMetadata(oc, scope, solid, {
         createdBy: body.created_by || '',
-        bodyId: body.id,
+        partId: body.id,
         faceAncestry: body.face_ancestry ?? null,
         faceCapAncestry: body.face_cap_ancestry ?? null,
         faceUuids: body.face_uuids ?? null,
@@ -376,7 +376,7 @@ export function extractBrepMetadata(
       }
       const edgeResult = solidToEdges(oc, table, body.shape, {
         createdBy: body.created_by || '',
-        bodyId: body.id,
+        partId: body.id,
         profileQueries: body.profile_queries ?? [],
         edgeAncestry: body.edge_ancestry ?? null,
         edgeUuids: body.edge_uuids ?? null,
@@ -386,7 +386,7 @@ export function extractBrepMetadata(
       })
       const vertexResult = solidToVertices(oc, table, body.shape, {
         createdBy: body.created_by || '',
-        bodyId: body.id,
+        partId: body.id,
         profileQueries: body.profile_queries ?? [],
         faceUuids: body.face_uuids ?? null,
         edgeUuids: body.edge_uuids ?? null,
@@ -433,9 +433,9 @@ function buildDeps(oc: OccModule, scope: DisposeScope, table: HandleTable, files
     // Seed builtin planes/origin so queries like `@builtin_plane_right`
     // (mirror plane resolution) resolve as repo elements.
     initGlobalRepo,
-    tessellateBodies: (bodyStore, _repo) => tessellateBodies(oc, table, bodyStore),
-    extractBrepMetadata: (bodyStore, _repo) => extractBrepMetadata(oc, table, bodyStore),
-    indexModifierDiffs: (bodyStore) => indexModifierDiffs(oc, table, bodyStore),
+    tessellateParts: (partStore, _repo) => tessellateParts(oc, table, partStore),
+    extractBrepMetadata: (partStore, _repo) => extractBrepMetadata(oc, table, partStore),
+    indexModifierDiffs: (partStore) => indexModifierDiffs(oc, table, partStore),
     // Cross-solve checkpoint cache: retain each checkpoint's shape so it
     // survives a downstream consume/free and into the next build; copy it on
     // restore so the rebuilt tail consumes an independent shape (registered
@@ -448,7 +448,7 @@ function buildDeps(oc: OccModule, scope: DisposeScope, table: HandleTable, files
     // shape strands forever: the retain alone leaves rc>=1, and for a modifier
     // edit the leftover ref sits under a still-clean creator.
     retainCheckpointShape: (h, owner) => table.retain(h, owner),
-    copyBodyShape: (h, owner) => table.register(copyShape(oc, scope, table.get<OccShape>(h)), owner),
+    copyPartShape: (h, owner) => table.register(copyShape(oc, scope, table.get<OccShape>(h)), owner),
     releaseCheckpoint: (fid) => {
       table.releaseOwner('cp:' + fid)
       table.releaseOwner(fid)
@@ -612,7 +612,7 @@ async function solveLocallyGuarded(
     // a clean prefix of this build's, and only this state's snapshots are live.
     bumpGeneration()
     response.generation = generation
-    lastPickBodyStore = pickBodyStoreOf(spec, response._build_state, options)
+    lastPickPartStore = pickPartStoreOf(spec, response._build_state, options)
     return response
   } catch (e) {
     if (isKernelTrap(e)) {
@@ -639,7 +639,8 @@ async function solveLocallyGuarded(
 export interface LocalExportOptions {
   // Output format.
   format: 'step' | 'stl'
-  // Export this single body; omitted/null exports the whole assembly.
+  // Export this single body; omitted/null exports the whole assembly. The drive
+  // CLI and the worker share this spelling, so it stays the wire one.
   bodyId?: string | null
   // Export a chosen subset of bodies. A non-empty list takes precedence over
   // `bodyId`; the bodies are compounded so one file can hold all of them.
@@ -660,13 +661,13 @@ function resolveExportShape(
   scope: DisposeScope,
   table: HandleTable,
   state: BuildState,
-  bodyId: string | null,
-  bodyIds: readonly string[] | null,
+  partId: string | null,
+  partIds: readonly string[] | null,
 ): OccShape | null {
   const order = state.feature_order
-  const chosen = bodyIds && bodyIds.length > 0
-    ? [...new Set(bodyIds)]
-    : bodyId ? [bodyId] : null
+  const chosen = partIds && partIds.length > 0
+    ? [...new Set(partIds)]
+    : partId ? [partId] : null
   const refuseMissing = (id: string, live: readonly string[]): never => {
     // Name the live ids in the refusal: the caller picked the id, so the
     // answer has to be the set it can pick from.
@@ -686,17 +687,17 @@ function resolveExportShape(
     if (chosen) refuseMissing(chosen[0], [])
     return null
   }
-  const bodies = lastCp.body_store_snapshot
+  const parts = lastCp.body_store_snapshot
   if (chosen) {
-    const live = Object.keys(bodies).filter(id => bodies[id].shape != null)
+    const live = Object.keys(parts).filter(id => parts[id].shape != null)
     const solids = chosen.map((id) => {
-      const body = bodies[id]
-      if (!body || body.shape == null) return refuseMissing(id, live)
-      return table.get<OccShape>(body.shape)
+      const part = parts[id]
+      if (!part || part.shape == null) return refuseMissing(id, live)
+      return table.get<OccShape>(part.shape)
     })
     return compoundOf(oc, scope, solids)
   }
-  const solids = Object.values(bodies).filter((b) => b.shape != null)
+  const solids = Object.values(parts).filter((b) => b.shape != null)
   if (solids.length === 0) return null
   return compoundOf(oc, scope, solids.map((b) => table.get<OccShape>(b.shape!)))
 }
@@ -797,10 +798,10 @@ export interface LocalBuildAndMeasure {
  * build state at all (no solve ran); an empty list is a solved document with no
  * bodies.
  */
-export function finalLiveBodyIds(response: { _build_state?: unknown }): string[] | null {
+export function finalLivePartIds(response: { _build_state?: unknown }): string[] | null {
   const state = response._build_state as BuildState | undefined
   if (state === undefined || state === null) return null
-  const store = finalBodyStoreOf(state) ?? {}
+  const store = finalPartStoreOf(state) ?? {}
   return Object.entries(store)
     .filter(([, body]) => body.shape != null)
     .map(([id]) => id)
@@ -808,7 +809,7 @@ export function finalLiveBodyIds(response: { _build_state?: unknown }): string[]
 
 /** The final body set of a build: the last feature checkpoint's snapshot, the
  *  same one an export writes and a measure reports. */
-function finalBodyStoreOf(state: BuildState): Record<string, Body> | null {
+function finalPartStoreOf(state: BuildState): Record<string, PartSolid> | null {
   const last = state.feature_order[state.feature_order.length - 1]
   if (last === undefined) return {}
   return state.checkpoints[last]?.body_store_snapshot ?? {}
@@ -826,11 +827,11 @@ type PartSolveSpec = Record<string, unknown>
  * (no edit was open), which the measure reports as unresolved rather than
  * quietly measuring the final bodies.
  */
-function pickBodyStoreOf(
+function pickPartStoreOf(
   spec: PartSolveSpec,
   state: BuildState,
   options: SolveLocalOptions,
-): Record<string, Body> | null {
+): Record<string, PartSolid> | null {
   const boundary = options.pickBoundary
   if (boundary == null || boundary < 0) return null
   if (boundary === 0) return {}
@@ -876,11 +877,11 @@ export async function measurePicksLocally(
   let faulted = false
   try {
     const response = build(spec, { prevState: null }, buildDeps(oc, scope, table, opts.files))
-    const bodies = response.bodies as Record<string, BodyResult>
-    const { readout, ask } = measureSelectionResolved(new Set(picks), { parts: bodies, unit: opts.unit })
+    const parts = response.bodies as Record<string, PartResult>
+    const { readout, ask } = measureSelectionResolved(new Set(picks), { parts: parts, unit: opts.unit })
     if (readout !== null) return { kind: readout.kind, value: readout.value }
     if (ask === null) throw new Error('measure: the pick or pick pair states no measurement')
-    const store = finalBodyStoreOf(response._build_state) ?? {}
+    const store = finalPartStoreOf(response._build_state) ?? {}
     const answered = measurePicksOnStore(oc, table, store, ask.op, ask.picks)
     if (!answered.ok) throw new Error(`measure: ${answered.error}`)
     return {
@@ -945,7 +946,7 @@ export async function measureGeneration(query: MeasureQuery): Promise<MeasureQue
   // The await yields, so the generation is re-read rather than assumed: it is
   // the token that makes a reply trustworthy, not a lock.
   if (query.generation !== generation) return { ok: false, error: MEASURE_STALE }
-  const store = query.set === 'pick' ? lastPickBodyStore : (lastBuildState === null ? null : finalBodyStoreOf(lastBuildState))
+  const store = query.set === 'pick' ? lastPickPartStore : (lastBuildState === null ? null : finalPartStoreOf(lastBuildState))
   if (store === null) return { ok: false, error: MEASURE_UNRESOLVED }
   const table = persistentTable
   if (!table || !oc) return { ok: false, error: MEASURE_UNRESOLVED }
@@ -960,7 +961,7 @@ export async function measureGeneration(query: MeasureQuery): Promise<MeasureQue
 function measurePicksOnStore(
   oc: OccModule,
   table: HandleTable,
-  store: Record<string, Body>,
+  store: Record<string, PartSolid>,
   op: MeasureOp,
   picks: readonly MeasurePickRef[],
 ): MeasureQueryResult {
@@ -1030,17 +1031,17 @@ export async function buildAndMeasureLocally(
     const response = build(spec, { prevState: null }, buildDeps(oc, scope, table, files))
     const order = response._build_state.feature_order
     const lastCp = order.length > 0 ? response._build_state.checkpoints[order[order.length - 1]] : undefined
-    const bodies = lastCp?.body_store_snapshot ?? {}
+    const parts = lastCp?.body_store_snapshot ?? {}
     // Keep ids parallel to shapes so the record can carry one entry per body;
     // the map iteration order is the body set's own order.
     const shapes: OccShape[] = []
-    const bodyIds: string[] = []
-    for (const [id, body] of Object.entries(bodies)) {
+    const partIds: string[] = []
+    for (const [id, body] of Object.entries(parts)) {
       if (body.shape == null) continue
-      bodyIds.push(id)
+      partIds.push(id)
       shapes.push(table.get<OccShape>(body.shape))
     }
-    return { response, measures: measureBodies(oc, scope, shapes, bodyIds) }
+    return { response, measures: measureParts(oc, scope, shapes, partIds) }
   } catch (e) {
     if (isKernelTrap(e)) {
       faulted = true
@@ -1058,7 +1059,7 @@ export async function buildAndMeasureLocally(
 }
 
 /** One live body's own measure at a feature checkpoint. */
-export interface FeatureMeasureBody {
+export interface FeatureMeasurePart {
   volume: number
   // The canonical face count and the pickable edge count `measure` reports.
   // A fillet that adds and removes the same volume still moves these, so the
@@ -1074,7 +1075,7 @@ export interface FeatureMeasure {
   bbox: Bbox6 | null
   // Each live body's own measure at this checkpoint, so a delta row can name
   // the body a feature changed beside the all-bodies total.
-  bodies?: Record<string, FeatureMeasureBody>
+  parts?: Record<string, FeatureMeasurePart>
 }
 
 function unionBbox(a: Bbox6 | null, b: Bbox6): Bbox6 {
@@ -1096,7 +1097,7 @@ function measureFeatureCheckpoints(
   table: HandleTable,
 ): FeatureMeasure[] {
   const scope = new DisposeScope()
-  const cache = new Map<OccHandle, FeatureMeasureBody & { bbox: Bbox6 }>()
+  const cache = new Map<OccHandle, FeatureMeasurePart & { bbox: Bbox6 }>()
   let faulted = false
   try {
     const out: FeatureMeasure[] = []
@@ -1105,7 +1106,7 @@ function measureFeatureCheckpoints(
       if (!checkpoint) continue
       let volume = 0
       let bbox: Bbox6 | null = null
-      const bodies: Record<string, FeatureMeasureBody> = {}
+      const parts: Record<string, FeatureMeasurePart> = {}
       for (const [bodyId, body] of Object.entries(checkpoint.body_store_snapshot)) {
         if (body.shape == null) continue
         let measured = cache.get(body.shape)
@@ -1121,9 +1122,9 @@ function measureFeatureCheckpoints(
         }
         volume += measured.volume
         bbox = unionBbox(bbox, measured.bbox)
-        bodies[bodyId] = { volume: measured.volume, faces: measured.faces, edges: measured.edges }
+        parts[bodyId] = { volume: measured.volume, faces: measured.faces, edges: measured.edges }
       }
-      out.push({ id, volume, bbox, bodies })
+      out.push({ id, volume, bbox, parts })
     }
     return out
   } catch (e) {
@@ -1183,9 +1184,9 @@ export interface AssemblyExportPart {
 }
 
 /** One placed body: the instance handle it belongs to and its world shape. */
-export interface AssemblyPlacedBody {
+export interface AssemblyPlacedPart {
   handle: string
-  bodyId: string
+  partId: string
   shape: OccShape
 }
 
@@ -1219,23 +1220,23 @@ function placeAssemblyParts(
   table: HandleTable,
   instances: readonly { handle: string; spec: Record<string, unknown>; transform: Transform3D }[],
   files?: ReadonlyMap<string, Uint8Array>,
-): AssemblyPlacedBody[] {
-  const built = new Map<string, { bodyId: string; shape: OccShape }[]>()
-  const placed: AssemblyPlacedBody[] = []
+): AssemblyPlacedPart[] {
+  const built = new Map<string, { partId: string; shape: OccShape }[]>()
+  const placed: AssemblyPlacedPart[] = []
   for (const instance of instances) {
     const key = typeof instance.spec.id === 'string' ? instance.spec.id : null
-    let bodies = key === null ? undefined : built.get(key)
-    if (!bodies) {
+    let parts = key === null ? undefined : built.get(key)
+    if (!parts) {
       assemblyBuildCount++
       const response = build(instance.spec, { prevState: null }, buildDeps(oc, scope, table, files))
       const order = response._build_state.feature_order
       const lastCp = order.length > 0 ? response._build_state.checkpoints[order[order.length - 1]] : undefined
-      bodies = []
+      parts = []
       for (const [bodyId, body] of Object.entries(lastCp?.body_store_snapshot ?? {})) {
         if (body.shape == null) continue
-        bodies.push({ bodyId, shape: table.get<OccShape>(body.shape) })
+        parts.push({ partId: bodyId, shape: table.get<OccShape>(body.shape) })
       }
-      if (key !== null) built.set(key, bodies)
+      if (key !== null) built.set(key, parts)
     }
     // The assembly frame is millimetres, so an inch part's B-rep is scaled to
     // millimetres before the rigid placement. The scale is the right factor,
@@ -1243,11 +1244,11 @@ function placeAssemblyParts(
     const placement = makeRigidTrsf(oc, scope, instance.transform)
     const unitScale = partToAssemblyScale(instance.spec)
     if (unitScale !== 1) placement.Multiply(makeScaleTrsf(oc, scope, [0, 0, 0], unitScale))
-    for (const body of bodies) {
+    for (const part of parts) {
       placed.push({
         handle: instance.handle,
-        bodyId: body.bodyId,
-        shape: scope.track(transformCopy(oc, scope, body.shape, placement)),
+        partId: part.partId,
+        shape: scope.track(transformCopy(oc, scope, part.shape, placement)),
       })
     }
   }
@@ -1278,11 +1279,11 @@ export async function measureAssemblyLocally(
   try {
     const placed = placeAssemblyParts(oc, scope, table, parts, files)
     if (placed.length === 0) return null
-    return measureBodies(
+    return measureParts(
       oc,
       scope,
-      placed.map(body => body.shape),
-      placed.map(body => `${body.handle}/${body.bodyId}`),
+      placed.map(part => part.shape),
+      placed.map(part => `${part.handle}/${part.partId}`),
     )
   } catch (e) {
     if (isKernelTrap(e)) {
@@ -1353,7 +1354,7 @@ export async function exportAssemblyLocally(
       parts.map((part, index) => ({ handle: String(index), spec: part.spec, transform: part.transform })),
       files,
     )
-    const compound = compoundOf(oc, scope, placed.map(body => body.shape))
+    const compound = compoundOf(oc, scope, placed.map(part => part.shape))
     if (!compound) return null
     return serialiseShape(oc, scope, compound, opts)
   } catch (e) {

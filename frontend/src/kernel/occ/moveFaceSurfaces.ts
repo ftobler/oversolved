@@ -42,7 +42,7 @@ import type {
   OccShape,
   OccSurfaceAdaptor,
 } from './occTypes'
-import { canonicalFaces } from './bodyNames'
+import { canonicalFaces } from './partNames'
 import { faceCentroid, faceNormal } from './primitives'
 import {
   FACE_CLASSIFIER_GAP_CHECK_TOL,

@@ -2,7 +2,7 @@
 // viewport only ever feeds it pointer deltas.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import type { AssemblyDoc, BodyResult, PartInstance, Transform3D } from '@/types/cad'
+import type { AssemblyDoc, PartResult, PartInstance, Transform3D } from '@/types/cad'
 import {
   useAssemblyStore,
   setAssemblyCallbacks,
@@ -19,7 +19,7 @@ function instance(handle: string, extra: Partial<PartInstance> = {}): PartInstan
 }
 
 /** A one-triangle body, enough for the render path to emit a group for `handle`. */
-function solvedBody(handle: string): BodyResult {
+function solvedBody(handle: string): PartResult {
   return {
     id: `${handle}:body_0`,
     created_by: handle,

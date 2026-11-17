@@ -4,7 +4,7 @@
 
 import { stableJson } from './builderHash'
 import { Repository } from './query'
-import type { Body } from './types3d'
+import type { PartSolid } from './types3d'
 
 // ─── Shape / body snapshot helpers ───
 
@@ -21,34 +21,34 @@ export const RESTORE_OWNER = 'restore'
 // ``mapShape``, when provided, transforms the body's shape handle for the
 // snapshot: retain-in-place at checkpoint time, defensive-copy at restore time.
 // Without it the handle is aliased (non-OCC tests).
-export type ShapeMapper = (shape: NonNullable<Body['shape']>) => NonNullable<Body['shape']>
+export type ShapeMapper = (shape: NonNullable<PartSolid['shape']>) => NonNullable<PartSolid['shape']>
 
-function _copyBody(body: Body, mapShape?: ShapeMapper): Body {
-  const shape = (body.shape != null && mapShape) ? mapShape(body.shape) : body.shape
+function _copyPart(part: PartSolid, mapShape?: ShapeMapper): PartSolid {
+  const shape = (part.shape != null && mapShape) ? mapShape(part.shape) : part.shape
   return {
-    id: body.id,
-    created_by: body.created_by,
-    modified_by: [...body.modified_by],
+    id: part.id,
+    created_by: part.created_by,
+    modified_by: [...part.modified_by],
     shape,
-    sketch_id: body.sketch_id,
-    brep_diff: body.brep_diff,
-    profile_queries: [...body.profile_queries],
-    ...(body.split_from ? { split_from: { ...body.split_from } } : {}),
-    ...(body.face_uuids ? { face_uuids: [...body.face_uuids] } : {}),
-    ...(body.edge_uuids ? { edge_uuids: [...body.edge_uuids] } : {}),
-    ...(body.face_ancestry ? { face_ancestry: { ...body.face_ancestry } } : {}),
-    ...(body.edge_ancestry ? { edge_ancestry: { ...body.edge_ancestry } } : {}),
-    ...(body.face_cap_ancestry ? { face_cap_ancestry: { ...body.face_cap_ancestry } } : {}),
-    ...(body.face_owner ? { face_owner: { ...body.face_owner } } : {}),
-    ...(body.edge_owner ? { edge_owner: { ...body.edge_owner } } : {}),
+    sketch_id: part.sketch_id,
+    brep_diff: part.brep_diff,
+    profile_queries: [...part.profile_queries],
+    ...(part.split_from ? { split_from: { ...part.split_from } } : {}),
+    ...(part.face_uuids ? { face_uuids: [...part.face_uuids] } : {}),
+    ...(part.edge_uuids ? { edge_uuids: [...part.edge_uuids] } : {}),
+    ...(part.face_ancestry ? { face_ancestry: { ...part.face_ancestry } } : {}),
+    ...(part.edge_ancestry ? { edge_ancestry: { ...part.edge_ancestry } } : {}),
+    ...(part.face_cap_ancestry ? { face_cap_ancestry: { ...part.face_cap_ancestry } } : {}),
+    ...(part.face_owner ? { face_owner: { ...part.face_owner } } : {}),
+    ...(part.edge_owner ? { edge_owner: { ...part.edge_owner } } : {}),
     // A copied shape keeps the canonical order, so the indices move with it.
-    ...(body.brep_new && body.brep_new.shape === body.shape && shape != null
-      ? { brep_new: { ...body.brep_new, shape } }
+    ...(part.brep_new && part.brep_new.shape === part.shape && shape != null
+      ? { brep_new: { ...part.brep_new, shape } }
       : {}),
-    ...(body.imported ? { imported: true } : {}),
+    ...(part.imported ? { imported: true } : {}),
     // Derived from the producing solves, carried with the body so a checkpoint
     // restore hands the next merge the same widening it had before.
-    ...(body.precision ? { precision: { ...body.precision } } : {}),
+    ...(part.precision ? { precision: { ...part.precision } } : {}),
   }
 }
 
@@ -68,16 +68,16 @@ export function snapshotRepo(repo: Repository): Record<string, unknown> {
   }
 }
 
-export function pickBodiesById(bodyStore: Record<string, Body>, ids: ReadonlySet<string>): Record<string, Body> {
-  return Object.fromEntries(Object.entries(bodyStore).filter(([bid]) => ids.has(bid)))
+export function pickPartsById(partStore: Record<string, PartSolid>, ids: ReadonlySet<string>): Record<string, PartSolid> {
+  return Object.fromEntries(Object.entries(partStore).filter(([bid]) => ids.has(bid)))
 }
 
-export function snapshotBodies(
-  bodyStore: Record<string, Body>,
+export function snapshotParts(
+  partStore: Record<string, PartSolid>,
   mapShape?: ShapeMapper,
-): Record<string, Body> {
+): Record<string, PartSolid> {
   return Object.fromEntries(
-    Object.entries(bodyStore).map(([k, v]) => [k, _copyBody(v, mapShape)]),
+    Object.entries(partStore).map(([k, v]) => [k, _copyPart(v, mapShape)]),
   )
 }
 

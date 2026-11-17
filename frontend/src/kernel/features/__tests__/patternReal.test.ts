@@ -16,12 +16,12 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadPartDoc } from '@/persistence/docSchema'
 import { parseAncestry } from '../../query'
 import { volumeOf } from '../../occ/volume'
-import { canonicalFaces } from '../../occ/bodyNames'
+import { canonicalFaces } from '../../occ/partNames'
 import { shapeBndBox } from '../../occ/primitives'
 import { markFeatureProgress } from '../../featureProgress'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import { splitPatternDef } from '@/utils/core/patternSplit'
 
 // The mark is recorded, not redirected: the real functions still run, so the
@@ -110,12 +110,12 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
     setSketchSolver(solveBytes)
   })
 
-  const meshOf = (r: BuildResponse, bodyId: string): FaceMesh => (h.body(r, bodyId).mesh ?? {}) as FaceMesh
-  const viewOf = (r: BuildResponse, bodyId: string): BodyView => h.body(r, bodyId) as BodyView
+  const meshOf = (r: BuildResponse, bodyId: string): FaceMesh => (h.part(r, bodyId).mesh ?? {}) as FaceMesh
+  const viewOf = (r: BuildResponse, bodyId: string): BodyView => h.part(r, bodyId) as BodyView
 
-  function snapshot(r: BuildResponse, featureId: string): Record<string, Body> {
+  function snapshot(r: BuildResponse, featureId: string): Record<string, PartSolid> {
     const ckp = r._build_state!.checkpoints[featureId]
-    return ckp.body_store_snapshot as Record<string, Body>
+    return ckp.body_store_snapshot as Record<string, PartSolid>
   }
   function shapeAt(r: BuildResponse, featureId: string, bodyId: string): OccShape {
     return h.table.get<OccShape>(snapshot(r, featureId)[bodyId].shape!)

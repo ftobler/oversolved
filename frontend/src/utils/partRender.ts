@@ -4,13 +4,13 @@
 // tree, so the assembly render path can use it without importing
 // `components/Viewport/bodyUtils`; that module re-exports these instead of
 // keeping its own copy.
-import type { Feature, BodyResult, EdgeData } from '@/types/cad'
+import type { Feature, PartResult, EdgeData } from '@/types/cad'
 
 export interface PartRenderItem {
   key: string
   featureId: string
   partId: string
-  mesh: NonNullable<BodyResult['mesh']>
+  mesh: NonNullable<PartResult['mesh']>
   edges: EdgeData[]
   edgeQueries?: string[]
   // Per-edge creating feature, for the viewport's relation hint (Body3D reads
@@ -61,7 +61,7 @@ export function isPartHiddenByFeature(
 }
 
 export function getPartsToRender(
-  parts: Record<string, BodyResult> | undefined,
+  parts: Record<string, PartResult> | undefined,
   features: Feature[] | undefined,
   rollbackPosition: number | undefined,
   visibleParts: Set<string> | undefined,

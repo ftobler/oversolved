@@ -8,7 +8,7 @@ import { solveSweep, orderEdgesIntoChain, pathRefToSketchId, orderedPathWorldEdg
 import { collectExtrudeLoops } from '../faceProfile'
 import type { HandleTable } from '../../occ/handleTable'
 import type { OccModule, OccShape } from '../../occ/occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 // The mixed-profile refusal needs a profile that resolves to a body face, which
 // the OCC-free harness cannot produce (a face only ever comes out of an OCC face
@@ -297,7 +297,7 @@ describe('solveSweep guard paths', () => {
   })
 
   it('surfaces an unresolved profile ref as the collected error', () => {
-    const bodyStore: Record<string, Body> = {}
+    const bodyStore: Record<string, PartSolid> = {}
     expect(() =>
       solveSweep(
         oc,

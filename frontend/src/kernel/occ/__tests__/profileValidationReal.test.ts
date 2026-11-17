@@ -163,7 +163,7 @@ describe.skipIf(!oc)('profile validation (real OCC)', () => {
     occ = oc
   })
 
-  it('counts a closed wire as edges == distinct vertices and an open one as one more', () => {
+  it('counts a closed wire as edges == distinct vertices and an open one more', () => {
     const scope = new DisposeScope()
     try {
       const p: Vec3[] = [[0, 0, 0], [10, 0, 0], [10, 10, 0], [0, 10, 0]]

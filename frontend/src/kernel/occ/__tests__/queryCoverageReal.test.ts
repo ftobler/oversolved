@@ -221,14 +221,14 @@ describe.skipIf(!oc || !solveBytes)('every primitive carries a resolving query (
   // Filleting every edge of a box grows a corner patch at each vertex, generated
   // from the vertex rather than from any filleted edge.
   it('fillet corner patches', () => {
-    const edges = queriesOf(h.body(h.run({ features: box() }), 'body_ex1'), 'edge')
+    const edges = queriesOf(h.part(h.run({ features: box() }), 'body_ex1'), 'edge')
     expect(edges).toHaveLength(12)
     const spec = { features: [...box(), { id: 'fillet1', kind: 'fillet', edges, radius: 1 }] }
     expect(expectFullCoverage(spec, 'fillet corners')).toBeGreaterThan(0)
   })
 
   it('blind hole in a filleted box', () => {
-    const edges = queriesOf(h.body(h.run({ features: box() }), 'body_ex1'), 'edge')
+    const edges = queriesOf(h.part(h.run({ features: box() }), 'body_ex1'), 'edge')
     const spec = { features: [
       ...box(),
       { id: 'fillet1', kind: 'fillet', edges: [edges[0]], radius: 1 },

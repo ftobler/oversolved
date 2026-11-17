@@ -8,15 +8,15 @@ import type { EdgeData } from '@/types/cad'
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
-import type { Body } from '../types3d'
-import { Repository, ref, makeAncestryQuery, parseAncestry, bodyIdOf, isClassifierId, constructionUuidToken } from '../query'
+import type { PartSolid } from '../types3d'
+import { Repository, ref, makeAncestryQuery, parseAncestry, partIdOf, isClassifierId, constructionUuidToken } from '../query'
 import { geometryClassifiers } from '../geomHash'
 import { resolvePart, resolvePartIds } from './shared/partResolution'
 import { buildFaceIndex, makeFaceIndexCache, resolveFacesByQuery, type FaceIndex } from './shared/faceResolution'
-import { resplitBody } from './bodySplit'
-import { canonicalEdges, assertAligned, readBodyNames } from '../occ/bodyNames'
+import { resplitPart } from './partSplit'
+import { canonicalEdges, assertAligned, readPartNames } from '../occ/partNames'
 import { namedElementCreator, newIndexSets } from '../occ/modifierAttribution'
-import { bodyFrame, compareEdgeSortKeys, edgeRepresentativePoint } from '../occ/tessellation'
+import { partFrame, compareEdgeSortKeys, edgeRepresentativePoint } from '../occ/tessellation'
 import {
   faceNormal,
   edgeToGeom,
@@ -130,21 +130,21 @@ export function registerExactEdge(
 }
 
 /** Build the per-body edge index for fillet/chamfer edge resolution. */
-function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, body: Body): EdgeIndex {
+function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, part: PartSolid): EdgeIndex {
   const queryToEdge = new Map<string, OccShape>()
   const ambiguousQueries = new Set<string>()
   const ancestryRepo = new Repository()
-  if (body.shape === null) return { queryToEdge, ambiguousQueries, ancestryRepo }
-  const shape = table.get<OccShape>(body.shape)
+  if (part.shape === null) return { queryToEdge, ambiguousQueries, ancestryRepo }
+  const shape = table.get<OccShape>(part.shape)
 
   // The unique edges in explorer order ARE the canonical order, so an edge's
   // position here indexes `body.edge_uuids`.
   const uniq = canonicalEdges(oc, scope, shape)
-  assertAligned(uniq.length, body.edge_uuids, `${body.id} edge index`)
+  assertAligned(uniq.length, part.edge_uuids, `${part.id} edge index`)
 
   // The same attribution solidToEdges mints into the edge queries.
-  const created = newIndexSets(body.brep_new, body.shape)
-  const { center, half } = bodyFrame(oc, scope, shape)
+  const created = newIndexSets(part.brep_new, part.shape)
+  const { center, half } = partFrame(oc, scope, shape)
 
   // Number the `?body:edge:N` alias by the DISPLAYED geometric sort order
   // (solidToEdges sorts readSolidEdges by compareEdgeSortKeys), not by TopExp
@@ -171,36 +171,36 @@ function buildEdgeIndex(oc: OccModule, scope: DisposeScope, table: HandleTable, 
   sorted.forEach(({ te, canon, geom }, idx) => {
     if (geom === null) {
       // On failure, skip geometry processing but still register the body:edge:N alias
-      queryToEdge.set(`?${body.id}:edge:${idx}`, te)
+      queryToEdge.set(`?${part.id}:edge:${idx}`, te)
       return
     }
     const ed = geom.ed
     const edgeType = ed.kind === 'line' ? 'straightedge' : 'edge'
-    if (body.created_by) {
-      const uuid = body.edge_uuids?.[canon] ?? null
+    if (part.created_by) {
+      const uuid = part.edge_uuids?.[canon] ?? null
       const edgeCreatedBy = namedElementCreator(
-        uuid, body.edge_owner, created?.edges.has(canon) ?? false, body.created_by, body.modified_by,
+        uuid, part.edge_owner, created?.edges.has(canon) ?? false, part.created_by, part.modified_by,
       )
       const pt = edgeRepresentativePoint(ed)
       const classifiers = pt ? geometryClassifiers(pt, center, half) : []
       const ids: string[] = []
       if (uuid) ids.push(constructionUuidToken(uuid))
-      ids.push(ref(edgeCreatedBy), ref(body.id))
-      const ancestryTokens = (uuid && body.edge_ancestry) ? (body.edge_ancestry[uuid] ?? null) : null
+      ids.push(ref(edgeCreatedBy), ref(part.id))
+      const ancestryTokens = (uuid && part.edge_ancestry) ? (part.edge_ancestry[uuid] ?? null) : null
       if (ancestryTokens && ancestryTokens.length) ids.push(...ancestryTokens)
-      else if (body.profile_queries.length > 0) ids.push(...body.profile_queries)
+      else if (part.profile_queries.length > 0) ids.push(...part.profile_queries)
       if (classifiers.length) ids.push(...classifiers.map(ref))
       registerExactEdge(queryToEdge, ambiguousQueries, makeAncestryQuery(ids, edgeType), te)
 
       const stableIds = ids.filter((t) => !isClassifierId(t))
-      if (edgeCreatedBy !== body.created_by) stableIds.push(ref(body.created_by))
+      if (edgeCreatedBy !== part.created_by) stableIds.push(ref(part.created_by))
       // Projection-facing payloads are built by `edgeAncestryPayload`
       // (builderAncestry.ts). This one is not: `ancestryRepo` is private to this
       // feature solve and carries the OCC handle the blend needs, never geometry.
       const payload: AncestryEdgePayload = { type: edgeType, classifiers, shape: te }
       ancestryRepo.registerAncestor(stableIds, payload, uuid)
     }
-    queryToEdge.set(`?${body.id}:edge:${idx}`, te)
+    queryToEdge.set(`?${part.id}:edge:${idx}`, te)
   })
 
   return { queryToEdge, ambiguousQueries, ancestryRepo }
@@ -216,13 +216,13 @@ export function makeEdgeIndexCache(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-): (body: Body) => EdgeIndex {
+): (part: PartSolid) => EdgeIndex {
   const indexCache = new Map<string, EdgeIndex>()
-  return (body: Body): EdgeIndex => {
-    let idx = indexCache.get(body.id)
+  return (part: PartSolid): EdgeIndex => {
+    let idx = indexCache.get(part.id)
     if (idx === undefined) {
-      idx = buildEdgeIndex(oc, scope, table, body)
-      indexCache.set(body.id, idx)
+      idx = buildEdgeIndex(oc, scope, table, part)
+      indexCache.set(part.id, idx)
     }
     return idx
   }
@@ -236,11 +236,11 @@ function resolveFaceToEdges(
   scope: DisposeScope,
   table: HandleTable,
   q: string,
-  body: Body,
+  part: PartSolid,
   faceIndex: FaceIndex,
 ): OccShape[] {
-  if (body.shape === null) return []
-  const face = resolveFacesByQuery(oc, scope, table, body, faceIndex, [q]).get(q) ?? null
+  if (part.shape === null) return []
+  const face = resolveFacesByQuery(oc, scope, table, part, faceIndex, [q]).get(q) ?? null
   return face === null ? [] : exploreEdges(oc, scope, face)
 }
 
@@ -254,11 +254,11 @@ export function resolveEdgesByQuery(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-  body: Body,
+  part: PartSolid,
   index: EdgeIndex,
   edgeQueries: string[],
-  bodyStore: Record<string, unknown> | null = null,
-  faceIndexFor?: (body: Body) => FaceIndex,
+  partStore: Record<string, unknown> | null = null,
+  faceIndexFor?: (part: PartSolid) => FaceIndex,
 ): Map<string, OccShape[]> {
   const isFaceQuery = (q: string): boolean => {
     try {
@@ -285,14 +285,14 @@ export function resolveEdgesByQuery(
     }
     let edge = index.ambiguousQueries.has(q) ? undefined : index.queryToEdge.get(q)
     if (edge === undefined && q.startsWith('?') && !isFaceQuery(q)) {
-      edge = resolveByStableAncestry(index.ancestryRepo, q, bodyStore)
+      edge = resolveByStableAncestry(index.ancestryRepo, q, partStore)
     }
     if (edge === undefined && isFaceQuery(q)) {
       // A face query resolves every edge of the face: build the per-body face
       // index once per solve (the caller passes a shared cache), never once per
       // query.
-      const faceIndex = faceIndexFor ? faceIndexFor(body) : buildFaceIndex(oc, scope, table, body)
-      for (const fe of resolveFaceToEdges(oc, scope, table, q, body, faceIndex)) addUnique(fe)
+      const faceIndex = faceIndexFor ? faceIndexFor(part) : buildFaceIndex(oc, scope, table, part)
+      for (const fe of resolveFaceToEdges(oc, scope, table, q, part, faceIndex)) addUnique(fe)
     }
     if (edge !== undefined) addUnique(edge)
     out.set(q, edges)
@@ -305,17 +305,17 @@ export function resolveEdgesWithIndex(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-  body: Body,
+  part: PartSolid,
   index: EdgeIndex,
   edgeQueries: string[],
-  bodyStore: Record<string, unknown> | null = null,
-  faceIndexFor?: (body: Body) => FaceIndex,
+  partStore: Record<string, unknown> | null = null,
+  faceIndexFor?: (part: PartSolid) => FaceIndex,
 ): OccShape[] {
   const result: OccShape[] = []
   // The per-query lists are deduped internally; a query that names an edge an
   // earlier query already claimed must not duplicate it in the flat result.
   const dedup = new SubShapeDedup()
-  for (const es of resolveEdgesByQuery(oc, scope, table, body, index, edgeQueries, bodyStore, faceIndexFor).values()) {
+  for (const es of resolveEdgesByQuery(oc, scope, table, part, index, edgeQueries, partStore, faceIndexFor).values()) {
     for (const e of es) if (dedup.add(e as OccSubShape)) result.push(e)
   }
   return result
@@ -332,10 +332,10 @@ export function resolveEdgesWithIndex(
 function resolveByStableAncestry(
   repo: Repository,
   q: string,
-  bodyStore: Record<string, unknown> | null = null,
+  partStore: Record<string, unknown> | null = null,
 ): OccShape | undefined {
   try {
-    const resolved = repo.query(q, null, bodyStore)
+    const resolved = repo.query(q, null, partStore)
     if (resolved !== null && typeof resolved === 'object' && 'shape' in resolved) {
       const payload = resolved as AncestryEdgePayload
       // The repo's classifier tier only runs on 2+ candidates, so a lone
@@ -362,12 +362,12 @@ export function resolveFilletEdges(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-  body: Body,
+  part: PartSolid,
   edgeQueries: string[],
-  bodyStore: Record<string, unknown> | null = null,
+  partStore: Record<string, unknown> | null = null,
 ): OccShape[] {
-  if (body.shape === null || edgeQueries.length === 0) return []
-  return resolveEdgesWithIndex(oc, scope, table, body, buildEdgeIndex(oc, scope, table, body), edgeQueries, bodyStore)
+  if (part.shape === null || edgeQueries.length === 0) return []
+  return resolveEdgesWithIndex(oc, scope, table, part, buildEdgeIndex(oc, scope, table, part), edgeQueries, partStore)
 }
 
 type ApplyFn = (
@@ -443,7 +443,7 @@ function applyEdgeFeature(
   table: HandleTable,
   feature: Dict,
   featureId: string,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   featureKind: string,
   applyFn: ApplyFn,
   makeHandle?: (anchor: Vec3, direction: Vec3) => FeatureHandle | null,
@@ -454,17 +454,17 @@ function applyEdgeFeature(
   // in: it is the createdBy tag for the generated blend-face UUIDs.
   const edges = (feature.edges as string[]) ?? []
   if (edges.length === 0) throw new Error(`${featureKind}: requires at least one edge`)
-  if (Object.keys(bodyStore).length === 0) throw new Error(`${featureKind}: no parts in body_store`)
+  if (Object.keys(partStore).length === 0) throw new Error(`${featureKind}: no parts in body_store`)
 
-  const sourceBody = (feature.source_body as string) ?? ''
+  const sourcePart = (feature.source_body as string) ?? ''
   const indexFor = makeEdgeIndexCache(oc, scope, table)
   // A face query resolves to every edge of the face, which walks the body's
   // faces; one shared cache keeps that walk to once per body per solve.
   const faceIndexFor = makeFaceIndexCache(oc, scope, table)
   const contains = (bid: string, q: string): boolean => {
-    const body = bodyStore[bid]
-    if (body === undefined || body.shape === null) return false
-    return resolveEdgesWithIndex(oc, scope, table, body, indexFor(body), [q], bodyStore, faceIndexFor).length > 0
+    const part = partStore[bid]
+    if (part === undefined || part.shape === null) return false
+    return resolveEdgesWithIndex(oc, scope, table, part, indexFor(part), [q], partStore, faceIndexFor).length > 0
   }
 
   const groups = new Map<string, string[]>()
@@ -474,17 +474,17 @@ function applyEdgeFeature(
   // A pick whose edge resolved but the modifier refused or skipped it. The chip
   // marks these red; the parameter or geometry is the fix, not the pick.
   const failed: string[] = []
-  if (sourceBody) {
+  if (sourcePart) {
     // `resolveBodyIds` rather than a local created_by scan: a feature ref can
     // name several bodies, and every edge would otherwise be grouped onto
     // whichever sibling came first. A ref matching nothing stays as-is, so the
     // group lookup below reports it as unresolved.
-    let resolvedSrc = sourceBody
-    if (!(sourceBody in bodyStore)) {
-      const ids = resolvePartIds(sourceBody, bodyStore)
+    let resolvedSrc = sourcePart
+    if (!(sourcePart in partStore)) {
+      const ids = resolvePartIds(sourcePart, partStore)
       if (ids.length > 1) {
         throw new Error(
-          `${featureKind}: source part '${sourceBody}' names ${ids.length} parts ` +
+          `${featureKind}: source part '${sourcePart}' names ${ids.length} parts ` +
           `(${ids.join(', ')}); pick one`,
         )
       }
@@ -494,31 +494,31 @@ function applyEdgeFeature(
         // resolveBody but invisible to resolveBodyIds; ask the resolver itself so
         // the group key is always a real bodyStore id.
         try {
-          resolvedSrc = resolvePart(sourceBody, bodyStore).id
+          resolvedSrc = resolvePart(sourcePart, partStore).id
         } catch (e) {
           swallowUnlessTrap(e)
-          throw new Error(`${featureKind}: source part '${sourceBody}' not found`)
+          throw new Error(`${featureKind}: source part '${sourcePart}' not found`)
         }
       }
     }
     groups.set(resolvedSrc, [...edges])
   } else {
     for (const q of edges) {
-      let named = bodyIdOf(q, bodyStore)
-      const isDefault = named === null && Object.keys(bodyStore).length === 1
-      if (isDefault) named = Object.keys(bodyStore)[0]
+      let named = partIdOf(q, partStore)
+      const isDefault = named === null && Object.keys(partStore).length === 1
+      if (isDefault) named = Object.keys(partStore)[0]
       let target: string | null = null
-      if (named && named in bodyStore && contains(named, q)) {
+      if (named && named in partStore && contains(named, q)) {
         target = named
       } else {
-        for (const bid of Object.keys(bodyStore)) {
+        for (const bid of Object.keys(partStore)) {
           if (bid !== named && contains(bid, q)) {
             target = bid
             break
           }
         }
       }
-      if (target === null && named !== null && named in bodyStore && !isDefault) target = named
+      if (target === null && named !== null && named in partStore && !isDefault) target = named
       if (target === null) {
         unresolved.push(q)
         continue
@@ -542,19 +542,19 @@ function applyEdgeFeature(
   const prismEdges: number[] = []
   let handle: FeatureHandle | null = null
   for (const [bid, qlist] of groups) {
-    let body: Body
+    let part: PartSolid
     try {
-      body = resolvePart(bid, bodyStore)
+      part = resolvePart(bid, partStore)
     } catch (e) {
       swallowUnlessTrap(e)
       unresolved.push(...qlist)
       continue
     }
-    if (body.shape === null) {
+    if (part.shape === null) {
       unresolved.push(...qlist)
       continue
     }
-    const oldShape = table.get<OccShape>(body.shape)
+    const oldShape = table.get<OccShape>(part.shape)
     try {
       if ((oldShape as unknown as { IsNull(): boolean }).IsNull()) {
         unresolved.push(...qlist)
@@ -566,7 +566,7 @@ function applyEdgeFeature(
       continue
     }
 
-    const byQuery = resolveEdgesByQuery(oc, scope, table, body, indexFor(body), qlist, bodyStore, faceIndexFor)
+    const byQuery = resolveEdgesByQuery(oc, scope, table, part, indexFor(part), qlist, partStore, faceIndexFor)
     const topoEdges: OccShape[] = []
     const dedup = new SubShapeDedup()
     const queryOf = new Map<OccShape, string>()  // edge -> the query that named it
@@ -599,8 +599,8 @@ function applyEdgeFeature(
     }
 
     const named = (uuids: (string | null)[] | undefined): boolean => uuids?.some((u) => u !== null) ?? false
-    const oldNames: OldNames | null = named(body.face_uuids) || named(body.edge_uuids)
-      ? { createdBy: featureId, ...readBodyNames(oc, scope, oldShape, body) }
+    const oldNames: OldNames | null = named(part.face_uuids) || named(part.edge_uuids)
+      ? { createdBy: featureId, ...readPartNames(oc, scope, oldShape, part) }
       : null
     const res = applyFn(oc, scope, oldShape, topoEdges, oldNames)
     if (!res.success) {
@@ -668,7 +668,7 @@ function applyEdgeFeature(
     // A chamfer removes material and can sever a thin web, so even this leaf
     // can turn one body into two.
     // A body that carried no names gets none: the modifier only transfers names it was given.
-    const ids = resplitBody(oc, scope, table, bodyStore, body, scope.track(res.shape), featureId, res.names ?? {})
+    const ids = resplitPart(oc, scope, table, partStore, part, scope.track(res.shape), featureId, res.names ?? {})
     if (ids.length === 0) {
       // A fillet/chamfer cannot consume its whole body, so this is defensive:
       // the resplit deleted the body, and the applied count must not grow from
@@ -688,8 +688,8 @@ function applyEdgeFeature(
       if (authored >= 0) prismEdges.push(authored)
     }
     applied.push(...ids)
-    body.brep_diff = res.diff
-    body.modified_by.push(featureId)
+    part.brep_diff = res.diff
+    part.modified_by.push(featureId)
   }
 
   if (applied.length === 0 && modifierFailures.length > 0) {
@@ -756,13 +756,13 @@ export function solveFillet(
   table: HandleTable,
   feature: Dict,
   _globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): EdgeFeatureResult {
   const sub = (feature.fillet as Dict) ?? {}
   const radius = Number(sub.radius ?? 1.0)
   if (!Number.isFinite(radius) || radius <= 0) throw new Error('fillet: radius must be positive')
   const prism = endFacePrismEnabled() ? makeFilletPrismFallback(radius, (feature.id as string) ?? '') : undefined
-  return applyEdgeFeature(oc, scope, table, sub, (feature.id as string) ?? '', bodyStore, 'fillet', (o, s, shape, edges, nm) =>
+  return applyEdgeFeature(oc, scope, table, sub, (feature.id as string) ?? '', partStore, 'fillet', (o, s, shape, edges, nm) =>
     applyFilletWithLineage(o, s, shape, radius, edges, nm, prism),
   // unit_scale=1 here is a 1:1 UX approximation: dragging along the
   // face-bisector normal is not the exact radius/bisector-travel relation
@@ -781,7 +781,7 @@ export function solveChamfer(
   table: HandleTable,
   feature: Dict,
   _globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): EdgeFeatureResult {
   const sub = (feature.chamfer as Dict) ?? {}
   const chamferMode = (sub.kind as string) ?? 'distance'
@@ -800,7 +800,7 @@ export function solveChamfer(
   const endFaceSpec: CornerBlendSpec = chamferMode === 'angle_distance'
     ? { kind: 'chamfer', distance, angleRad }
     : { kind: 'chamfer', distance }
-  return applyEdgeFeature(oc, scope, table, sub, (feature.id as string) ?? '', bodyStore, 'chamfer', (o, s, shape, edges, nm) =>
+  return applyEdgeFeature(oc, scope, table, sub, (feature.id as string) ?? '', partStore, 'chamfer', (o, s, shape, edges, nm) =>
     applyChamferWithLineage(o, s, shape, distance, edges, chamferMode, angle, nm, fallback),
   // See fillet above: unit_scale=1 is a 1:1 UX approximation along the
   // face-bisector normal, not the exact chamfer geometry relation.

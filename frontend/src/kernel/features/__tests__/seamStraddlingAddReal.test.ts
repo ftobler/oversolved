@@ -32,7 +32,7 @@ import { volumeForMeasure } from '../../occ/volume'
 import { splitPatternDef } from '@/utils/core/patternSplit'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -192,8 +192,8 @@ describe.skipIf(!oc || !solveBytes)('a seam-straddling add (accepted limitation)
     setSketchSolver(solveBytes)
   })
 
-  function bodyAt(r: BuildResponse, featureId: string, bodyId: string): Body | undefined {
-    const store = r._build_state!.checkpoints[featureId].body_store_snapshot as Record<string, Body>
+  function bodyAt(r: BuildResponse, featureId: string, bodyId: string): PartSolid | undefined {
+    const store = r._build_state!.checkpoints[featureId].body_store_snapshot as Record<string, PartSolid>
     return store[bodyId]
   }
 

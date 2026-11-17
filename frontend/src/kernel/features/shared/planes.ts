@@ -3,7 +3,7 @@
 // compute identical geometry. In TS both satisfy [[PlaneLike]], so the branch
 // collapses to one path.
 
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { Repository } from '../../query'
 import { resolveBarePlaneId } from '../../solverConstants'
 import { dot, sub, type Vec3 } from '@/utils/vec3'
@@ -66,7 +66,7 @@ function isFrameRecord(record: PlaneRecord): boolean {
 export function resolvePlaneRecord(
   globalRepo: Repository,
   query: string,
-  partStore: Record<string, Body> | null,
+  partStore: Record<string, PartSolid> | null,
   leaf: string,
 ): PlaneRecord {
   const planeData = lookupPlaneRecord(globalRepo, query, partStore)
@@ -84,7 +84,7 @@ export function resolvePlaneRecord(
 function lookupPlaneRecord(
   globalRepo: Repository,
   query: string,
-  partStore: Record<string, Body> | null,
+  partStore: Record<string, PartSolid> | null,
 ): PlaneRecord | null {
   // A bare builtin name is a UI spelling, not a repo key: the repo holds
   // `builtin_plane_top`, so translate before asking it anything.
@@ -114,7 +114,7 @@ function lookupPlaneRecord(
 export function resolvePlaneRef(
   globalRepo: Repository,
   query: string,
-  partStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   leaf: string,
 ): ResolvedPlane {
   const planeData = resolvePlaneRecord(globalRepo, query, partStore, leaf)

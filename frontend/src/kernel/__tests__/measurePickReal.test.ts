@@ -17,12 +17,12 @@ import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { resetSketchSolver, setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import { persistentTableForTest, setSolveLocalsForTest, solveLocally } from '@/kernel/solveLocally'
 import { DisposeScope } from '@/kernel/occ/disposeScope'
-import { canonicalEdges } from '@/kernel/occ/bodyNames'
+import { canonicalEdges } from '@/kernel/occ/partNames'
 import { renderEdgeRows } from '@/kernel/occ/tessellation'
 import { makeCone } from '@/kernel/occ/primitives'
 import { resolveMeasurePick } from '@/kernel/measurePick'
-import type { Body, BuildState } from '@/kernel/types3d'
-import type { BodyResult, EdgeData, FaceData } from '@/types/cad'
+import type { PartSolid, BuildState } from '@/kernel/types3d'
+import type { PartResult, EdgeData, FaceData } from '@/types/cad'
 import type { OccCurveAdaptor, OccModule, OccShape } from '@/kernel/occ/occTypes'
 import type { Vec3 } from '@/utils/measure/primitives'
 
@@ -83,8 +83,8 @@ function plateDoc(docId: string): Record<string, unknown> {
 }
 
 async function solvedBodies(doc: Record<string, unknown>): Promise<{
-  result: Record<string, BodyResult>
-  store: Record<string, Body>
+  result: Record<string, PartResult>
+  store: Record<string, PartSolid>
   table: NonNullable<ReturnType<typeof persistentTableForTest>>
 }> {
   const response = await solveLocally(doc)
@@ -94,13 +94,13 @@ async function solvedBodies(doc: Record<string, unknown>): Promise<{
   if (failed.length) throw new Error(`feature exception: ${JSON.stringify(failed)}`)
   const state = response._build_state as BuildState
   const store = state.checkpoints[state.feature_order[state.feature_order.length - 1]]
-    .body_store_snapshot as Record<string, Body>
+    .body_store_snapshot as Record<string, PartSolid>
   const table = persistentTableForTest()
   if (!table) throw new Error('no handle table')
-  return { result: response.bodies as Record<string, BodyResult>, store, table }
+  return { result: response.bodies as Record<string, PartResult>, store, table }
 }
 
-const bodyIdOf = (result: Record<string, BodyResult>): string => {
+const bodyIdOf = (result: Record<string, PartResult>): string => {
   const id = Object.keys(result).find((key) => key.startsWith('body_ex'))
   if (!id) throw new Error(`no extruded body in ${JSON.stringify(Object.keys(result))}`)
   return id

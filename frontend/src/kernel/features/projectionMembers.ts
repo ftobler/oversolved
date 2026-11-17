@@ -440,10 +440,10 @@ export function faceProjectionConstraintId(source: string): string | null {
 /** The hex (or, for a token with no hex characters, the alphanumeric) body of a
  *  construction token, used only to spell an id. */
 function tokenHex(token: string): string {
-  const body = token.startsWith('u|') ? token.slice(2) : token.replace(/^@u\|/, '')
-  const hex = body.toLowerCase().replace(/[^0-9a-f]/g, '')
+  const part = token.startsWith('u|') ? token.slice(2) : token.replace(/^@u\|/, '')
+  const hex = part.toLowerCase().replace(/[^0-9a-f]/g, '')
   if (hex.length > 0) return hex
-  return body.toLowerCase().replace(/[^0-9a-z]/g, '')
+  return part.toLowerCase().replace(/[^0-9a-z]/g, '')
 }
 
 function sortedUnique(tokens: Iterable<string>): string[] {
@@ -680,7 +680,7 @@ export function boundaryFromFaceEdges(
 /** The body-result fields a headless boundary lookup reads. Structural, so the
  *  drive can pass its last solved bodies without the kernel importing the
  *  document types. */
-export interface FaceBoundaryBodyLike {
+export interface FaceBoundaryPartLike {
   mesh?: {
     face_queries?: string[]
     // The canonical face UUIDs; the solve-time lookup falls back to these when
@@ -699,12 +699,12 @@ export interface FaceBoundaryBodyLike {
  * twice, exactly what the UI registry reads; the edge kinds come from the
  * parallel edge arrays.
  */
-export function faceBoundaryFromBodies(
-  getBodies: () => Record<string, FaceBoundaryBodyLike> | null | undefined,
+export function faceBoundaryFromParts(
+  getParts: () => Record<string, FaceBoundaryPartLike> | null | undefined,
 ): (source: string) => FaceBoundary | null {
   return (source) => {
-    for (const body of Object.values(getBodies() ?? {})) {
-      const mesh = body.mesh
+    for (const part of Object.values(getParts() ?? {})) {
+      const mesh = part.mesh
       let faceIndex = mesh?.face_queries?.indexOf(source) ?? -1
       if (faceIndex < 0) {
         // A stored query can drift while the face's construction UUID still
@@ -719,8 +719,8 @@ export function faceBoundaryFromBodies(
       if (queries === undefined || queries.length === 0) return null
       const seams = mesh?.face_seam_queries?.[faceIndex] ?? []
       const kindByQuery = new Map<string, string>()
-      ;(body.edge_queries ?? []).forEach((query, index) => {
-        const kind = body.edges?.[index]?.kind
+      ;(part.edge_queries ?? []).forEach((query, index) => {
+        const kind = part.edges?.[index]?.kind
         if (query !== '' && kind !== undefined) kindByQuery.set(query, kind)
       })
       return {

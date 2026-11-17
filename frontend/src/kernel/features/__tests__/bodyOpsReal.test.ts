@@ -16,10 +16,10 @@ import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
 import { makeBox, makeBoxAt } from '../../occ/primitives'
 import { volumeOf } from '../../occ/booleans'
-import { canonicalFaces } from '../../occ/bodyNames'
+import { canonicalFaces } from '../../occ/partNames'
 import { SubShapeMap } from '../../occ/subshapeIdentity'
-import { applyBodyOperation, type BodyOperation } from '../bodyOps'
-import type { Body } from '../../types3d'
+import { applyPartOperation, type PartOperation } from '../partOps'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccOrientableShape, OccShape } from '../../occ/occTypes'
 import fixture from '../../occ/__fixtures__/bodyOps.json'
 
@@ -52,14 +52,14 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
 
   function run(
     scenario: Scenario,
-    operation: BodyOperation,
+    operation: PartOperation,
     opts: { withTarget: boolean; mergeTarget: string | null },
   ): void {
     const [tx, ty, tz] = fx.target
     const [ux, uy, uz] = fx.tool
     const scope = new DisposeScope()
     const table = new HandleTable()
-    const bodyStore: Record<string, Body> = {}
+    const bodyStore: Record<string, PartSolid> = {}
     try {
       if (opts.withTarget) {
         const target = makeBox(occ, scope, tx, ty, tz)
@@ -75,12 +75,12 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
       }
       const tool = scope.track(makeBox(occ, scope, ux, uy, uz))
 
-      const result = applyBodyOperation(occ, scope, table, {
+      const result = applyPartOperation(occ, scope, table, {
         toolShape: tool,
-        bodyStore,
+        partStore: bodyStore,
         operation,
         mergeTarget: opts.mergeTarget,
-        bodyId: 'body_f',
+        partId: 'body_f',
         featureId: 'featF',
         sketchId: 'skF',
         opName: 'extrude',
@@ -128,7 +128,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
        */
       const scope = new DisposeScope()
       const table = new HandleTable()
-      const bodyStore: Record<string, Body> = {}
+      const bodyStore: Record<string, PartSolid> = {}
       try {
         const target = makeBox(occ, scope, 10, 10, 10)
         bodyStore.body_t = {
@@ -138,12 +138,12 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
         // Tool box is far away (no intersection with target at origin).
         const tool = makeBoxAt(occ, scope, [20, 20, 20], 5, 5, 5)
         expect(() =>
-          applyBodyOperation(occ, scope, table, {
+          applyPartOperation(occ, scope, table, {
             toolShape: scope.track(tool),
-            bodyStore,
+            partStore: bodyStore,
             operation: 'cut',
             mergeTarget: 'body_t',
-            bodyId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'extrude',
+            partId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'extrude',
             profileQueries: [],
           }),
         ).toThrow(/does not intersect/)
@@ -163,7 +163,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
        */
       const scope = new DisposeScope()
       const table = new HandleTable()
-      const bodyStore: Record<string, Body> = {}
+      const bodyStore: Record<string, PartSolid> = {}
       try {
         const target = makeBox(occ, scope, 10, 10, 10)
         bodyStore.body_t = {
@@ -172,12 +172,12 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
         }
         // Tool encloses the target entirely.
         const tool = makeBoxAt(occ, scope, [-1, -1, -1], 12, 12, 12)
-        const result = applyBodyOperation(occ, scope, table, {
+        const result = applyPartOperation(occ, scope, table, {
           toolShape: scope.track(tool),
-          bodyStore,
+          partStore: bodyStore,
           operation: 'cut',
           mergeTarget: 'body_t',
-          bodyId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'extrude',
+          partId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'extrude',
           profileQueries: [],
         })
         expect(result.status).toBe('ok')
@@ -201,7 +201,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
        */
       const scope = new DisposeScope()
       const table = new HandleTable()
-      const bodyStore: Record<string, Body> = {}
+      const bodyStore: Record<string, PartSolid> = {}
       try {
         const target = makeBox(occ, scope, 10, 10, 10)
         bodyStore.body_t = {
@@ -210,12 +210,12 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
         }
         // Tool box is far away (no overlap with target).
         const tool = makeBoxAt(occ, scope, [20, 20, 20], 5, 5, 5)
-        const result = applyBodyOperation(occ, scope, table, {
+        const result = applyPartOperation(occ, scope, table, {
           toolShape: scope.track(tool),
-          bodyStore,
+          partStore: bodyStore,
           operation: 'add',
           mergeTarget: null,
-          bodyId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'revolve',
+          partId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'revolve',
           profileQueries: [],
         })
         // Both bodies should exist independently.
@@ -235,7 +235,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
       // error, so the tool must not become a body of its own.
       const scope = new DisposeScope()
       const table = new HandleTable()
-      const bodyStore: Record<string, Body> = {}
+      const bodyStore: Record<string, PartSolid> = {}
       try {
         const target = makeBox(occ, scope, 10, 10, 10)
         bodyStore.body_t = {
@@ -244,12 +244,12 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
         }
         const tool = makeBoxAt(occ, scope, [20, 20, 20], 5, 5, 5)
         expect(() =>
-          applyBodyOperation(occ, scope, table, {
+          applyPartOperation(occ, scope, table, {
             toolShape: scope.track(tool),
-            bodyStore,
+            partStore: bodyStore,
             operation: 'add',
             mergeTarget: null,
-            bodyId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'extrude',
+            partId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'extrude',
             profileQueries: [],
             addRequiresExisting: true,
           }),
@@ -267,7 +267,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
        */
       const scope = new DisposeScope()
       const table = new HandleTable()
-      const bodyStore: Record<string, Body> = {}
+      const bodyStore: Record<string, PartSolid> = {}
       try {
         // Target: a 10x10x10 box at origin. Tool: a tall thin box that cuts
         // through the middle, splitting the target into two halves.
@@ -278,12 +278,12 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
         }
         // Tool cuts through the center: spans from y=4 to y=6, x from -1 to 11, z from 0 to 10.
         const tool = makeBoxAt(occ, scope, [-1, 4, 0], 12, 2, 10)
-        const result = applyBodyOperation(occ, scope, table, {
+        const result = applyPartOperation(occ, scope, table, {
           toolShape: scope.track(tool),
-          bodyStore,
+          partStore: bodyStore,
           operation: 'cut',
           mergeTarget: 'body_t',
-          bodyId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'extrude',
+          partId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'extrude',
           profileQueries: [],
         })
         expect(result.status).toBe('ok')
@@ -310,7 +310,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
        */
       const scope = new DisposeScope()
       const table = new HandleTable()
-      const bodyStore: Record<string, Body> = {}
+      const bodyStore: Record<string, PartSolid> = {}
       try {
         // Two disjoint boxes, x 0-10 and x 20-30, both crossed by one slab.
         for (const [bid, x] of [['body_a', 0], ['body_b', 20]] as [string, number][]) {
@@ -330,19 +330,19 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
           faceAncestry[`u_tool_${i}`] = [`@skT/side${i}`]
         })
 
-        const result = applyBodyOperation(occ, scope, table, {
+        const result = applyPartOperation(occ, scope, table, {
           toolShape: tool,
-          bodyStore,
+          partStore: bodyStore,
           operation: 'cut',
           mergeTarget: null,
-          bodyId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'extrude',
+          partId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'extrude',
           profileQueries: [],
           faceNames, faceAncestry,
         })
         expect(result.status).toBe('ok')
 
         // Every live face uuid in the store is claimed by exactly one face.
-        const named = (body: Body): string[] => (body.face_uuids ?? []).filter((u): u is string => u !== null)
+        const named = (body: PartSolid): string[] => (body.face_uuids ?? []).filter((u): u is string => u !== null)
         const seen = new Map<string, string>()
         const dupes: string[] = []
         for (const body of Object.values(bodyStore)) {
@@ -390,16 +390,16 @@ describe.skipIf(!oc)('applyBodyOperation refuses an inside-out tool (real OCC)',
   it('a negative-volume tool is a feature error, and no body is minted', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
-    const bodyStore: Record<string, Body> = {}
+    const bodyStore: Record<string, PartSolid> = {}
     try {
       const tool = reversedBox(scope, 10)
       expect(volumeOf(occ, scope, tool)).toBeCloseTo(-1000, 6)
-      expect(() => applyBodyOperation(occ, scope, table, {
+      expect(() => applyPartOperation(occ, scope, table, {
         toolShape: tool,
-        bodyStore,
+        partStore: bodyStore,
         operation: 'new',
         mergeTarget: null,
-        bodyId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'extrude',
+        partId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'extrude',
         profileQueries: [],
       })).toThrow(/extrude: the tool solid has a negative volume/)
       expect(Object.keys(bodyStore)).toEqual([])
@@ -413,15 +413,15 @@ describe.skipIf(!oc)('applyBodyOperation refuses an inside-out tool (real OCC)',
     // round becomes a body with its own volume.
     const scope = new DisposeScope()
     const table = new HandleTable()
-    const bodyStore: Record<string, Body> = {}
+    const bodyStore: Record<string, PartSolid> = {}
     try {
       const tool = scope.track(makeBox(occ, scope, 10, 10, 10))
-      const result = applyBodyOperation(occ, scope, table, {
+      const result = applyPartOperation(occ, scope, table, {
         toolShape: tool,
-        bodyStore,
+        partStore: bodyStore,
         operation: 'new',
         mergeTarget: null,
-        bodyId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'extrude',
+        partId: 'body_f', featureId: 'featF', sketchId: 'skF', opName: 'extrude',
         profileQueries: [],
       })
       expect(result.status).toBe('ok')

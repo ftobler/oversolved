@@ -2,14 +2,14 @@
 // test can run it without React. useSolver re-exports both functions; the hook
 // itself only calls reconcilePartStyle from its applied-solve path.
 
-import type { PartDoc, BodyResult, PartStyleEntry } from '@/types/cad'
+import type { PartDoc, PartResult, PartStyleEntry } from '@/types/cad'
 import { PART_COLOR_PALETTE } from '@/utils/core/partColors'
 
 export function pickPartColor(partNumber: number): string {
   return PART_COLOR_PALETTE[(partNumber - 1) % PART_COLOR_PALETTE.length]
 }
 
-export function reconcilePartStyle(doc: PartDoc, parts: Record<string, BodyResult> | undefined): void {
+export function reconcilePartStyle(doc: PartDoc, parts: Record<string, PartResult> | undefined): void {
   const partIds = Object.keys(parts ?? {})
   if (partIds.length === 0) return
 

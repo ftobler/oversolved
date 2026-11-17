@@ -34,14 +34,14 @@ import { setSketchSolver, setSketchTopology, resetSketchSolver } from '../../fea
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { DisposeScope, withTransientScope } from '../disposeScope'
-import { readBodyNames } from '../bodyNames'
+import { readPartNames } from '../partNames'
 import { applyMoveFace, MoveFaceRefusal } from '../moveFace'
 import { faceArea } from '../primitives'
 import { volumeForMeasure } from '../volume'
 import { rungCatalog } from '../moveFaceRungs'
 import { makeFaceIndexCache, resolveFacesByQuery } from '../../features/shared/faceResolution'
 import type { OccModule, OccShape, OccSubShape } from '../occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -94,7 +94,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('move face across freeform
   if (!oc || !solveBytes || !topologyBytes) return
   const occ = oc
   const h = new SharedHarness(occ)
-  let body: Body
+  let body: PartSolid
   let live: DisposeScope
   let shape: OccShape
   let faces: OccShape[]
@@ -136,7 +136,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('move face across freeform
         try {
           result = withTransientScope((scope) => {
             const res = applyMoveFace(occ, scope, shape, faces[pick - 1], d)
-            const names = readBodyNames(occ, scope, shape, body)
+            const names = readPartNames(occ, scope, shape, body)
             let extensions = 0
             for (const [, neighbour] of res.cells.extensionOf.entries()) {
               expect(names.faceNames.get(neighbour as OccSubShape)).toBeTruthy()

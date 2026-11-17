@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import fixture from '../../occ/__fixtures__/featuresShared.json'
 import { Repository, makeAncestryQuery } from '../../query'
-import type { Body, BrepDiff } from '../../types3d'
+import type { PartSolid, BrepDiff } from '../../types3d'
 import {
   extractProfileLoops,
   registerTopFace,
@@ -54,7 +54,7 @@ function expectClose(actual: unknown, expected: unknown, path = ''): void {
   expect(actual, path).toEqual(expected)
 }
 
-function makeBody(id: string, createdBy: string): Body {
+function makeBody(id: string, createdBy: string): PartSolid {
   return {
     id,
     created_by: createdBy,
@@ -66,8 +66,8 @@ function makeBody(id: string, createdBy: string): Body {
   }
 }
 
-function makeStore(spec: Record<string, string>): Record<string, Body> {
-  const store: Record<string, Body> = {}
+function makeStore(spec: Record<string, string>): Record<string, PartSolid> {
+  const store: Record<string, PartSolid> = {}
   for (const [bid, cb] of Object.entries(spec)) store[bid] = makeBody(bid, cb)
   return store
 }

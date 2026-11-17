@@ -13,7 +13,7 @@ import { Repository } from '../../query'
 import { solidToEdges } from '../../occ/tessellation'
 import { solveExtrude } from '../extrude'
 import { resolveProfileEdges, edgesToProfileFace, resolveEdgeProfileFace } from '../edgeProfile'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 
 const oc = await loadOcc()
@@ -25,7 +25,7 @@ describe.skipIf(!oc)('extrude profile from B-rep edges (real OCC)', () => {
     occ = oc
   })
 
-  function makeBoxBody(scope: DisposeScope, table: HandleTable): Record<string, Body> {
+  function makeBoxBody(scope: DisposeScope, table: HandleTable): Record<string, PartSolid> {
     const box = makeBox(occ, scope, 10, 10, 10)
     return {
       body_b: {
@@ -43,12 +43,12 @@ describe.skipIf(!oc)('extrude profile from B-rep edges (real OCC)', () => {
   // Ancestry queries for the four edges whose endpoints both lie at z == zPlane.
   function edgeLoopAtZ(
     table: HandleTable,
-    body: Body,
+    body: PartSolid,
     zPlane: number,
   ): string[] {
     const { edges, edge_queries } = solidToEdges(occ, table, body.shape!, {
       createdBy: body.created_by,
-      bodyId: body.id,
+      partId: body.id,
       profileQueries: body.profile_queries,
       edgeAncestry: body.edge_ancestry ?? null,
       edgeUuids: body.edge_uuids ?? null,

@@ -17,30 +17,30 @@
 import { describe, it, expect } from 'vitest'
 import { build, type BuildDeps, type FeatureResult } from '../builder'
 import { Repository } from '../query'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 
 function makeDeps(overrides?: Partial<BuildDeps>): BuildDeps {
   return {
     trySolveFeature: (_feature, _repo, _bodyStore, _featuresById): FeatureResult => ({ status: 'ok' }),
     postRegister: () => {},
     initGlobalRepo: () => new Repository(),
-    tessellateBodies: () => ({}),
+    tessellateParts: () => ({}),
     ...overrides,
   }
 }
-function makeBody(id: string, createdBy: string): Body {
+function makeBody(id: string, createdBy: string): PartSolid {
   return {
     id,
     created_by: createdBy,
     modified_by: [],
-    shape: 1 as unknown as Body['shape'],  // non-null to trigger B-rep registration
+    shape: 1 as unknown as PartSolid['shape'],  // non-null to trigger B-rep registration
     sketch_id: '',
     brep_diff: null,
     profile_queries: [],
   }
 }
 describe('lazy checkpoint meshing contract', () => {
-  const trySolveFeature = (feature: Record<string, unknown>, _repo: Repository, bodyStore: Record<string, Body>): FeatureResult => {
+  const trySolveFeature = (feature: Record<string, unknown>, _repo: Repository, bodyStore: Record<string, PartSolid>): FeatureResult => {
     if (String(feature.kind) === 'extrude') {
       const bid = 'body_' + String(feature.id)
       bodyStore[bid] = makeBody(bid, String(feature.id))

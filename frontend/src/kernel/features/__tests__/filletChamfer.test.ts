@@ -18,14 +18,14 @@ import type { DisposeScope } from '../../occ/disposeScope'
 import type { HandleTable } from '../../occ/handleTable'
 import type { OccHandle } from '../../occ/handleTable'
 import type { OccModule, OccShape, OccSubShape } from '../../occ/occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = null as unknown as OccModule
 const scope = null as never
 const table = null as unknown as HandleTable
 const repo = new Repository()
 
-function oneBody(): Record<string, Body> {
+function oneBody(): Record<string, PartSolid> {
   return {
     body_b: {
       id: 'body_b',
@@ -80,7 +80,7 @@ describe('solveFillet guard paths', () => {
     // '@ex1' resolves to both siblings of a split feature. Grouping every edge
     // onto one of them silently would fillet the wrong body; the pick must name
     // exactly one.
-    const store: Record<string, Body> = {
+    const store: Record<string, PartSolid> = {
       body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [], shape: null, sketch_id: 'sk', brep_diff: null, profile_queries: [] },
       body_ex1_1: { id: 'body_ex1_1', created_by: 'ex1', modified_by: [], shape: null, sketch_id: 'sk', brep_diff: null, profile_queries: [] },
     }
@@ -103,7 +103,7 @@ describe('solveFillet guard paths', () => {
 
   it('treats a null OCC shape as no edges resolved', () => {
     const nullShape = { get: () => ({ IsNull: () => true }) } as unknown as HandleTable
-    const store: Record<string, Body> = { body_b: { ...oneBody().body_b, shape: 1 as never } }
+    const store: Record<string, PartSolid> = { body_b: { ...oneBody().body_b, shape: 1 as never } }
     expect(() =>
       solveFillet(oc, scope, nullShape, {
         id: 'f', fillet: { edges: ['?b:edge:0'], radius: 2, source_body: 'body_b' },
@@ -119,7 +119,7 @@ describe('solveFillet guard paths', () => {
         },
       }),
     } as unknown as HandleTable
-    const store: Record<string, Body> = { body_b: { ...oneBody().body_b, shape: 1 as never } }
+    const store: Record<string, PartSolid> = { body_b: { ...oneBody().body_b, shape: 1 as never } }
     expect(() =>
       solveChamfer(oc, scope, throwing, {
         id: 'c', chamfer: { edges: ['?b:edge:0'], distance: 2, source_body: 'body_b' },
@@ -153,7 +153,7 @@ describe('resolveFilletEdges guard', () => {
   const scopeNull = null as unknown as DisposeScope
 
   it('returns empty array when edgeQueries is empty (body with valid shape)', () => {
-    const body: Body = {
+    const body: PartSolid = {
       id: 'b1',
       created_by: 'f1',
       modified_by: [],

@@ -112,8 +112,8 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('project asymmetric box ed
     const ex1 = { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: D, direction: 'normal', operation: 'new' }
     r1 = h.run({ features: [rectSketch(), ex1] })
     expect(h.res(r1, 'ex1').status).toBe('ok')
-    edgeQueries = (h.body(r1, 'body_ex1').edge_queries as string[]) ?? []
-    edges = (h.body(r1, 'body_ex1').edges as EdgeData[]) ?? []
+    edgeQueries = (h.part(r1, 'body_ex1').edge_queries as string[]) ?? []
+    edges = (h.part(r1, 'body_ex1').edges as EdgeData[]) ?? []
     expect(edgeQueries.length).toBeGreaterThan(0)
     expect(edges.length).toBe(edgeQueries.length)
   })
@@ -161,7 +161,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('project asymmetric box ed
   // sketch coordinates MUST agree with the plane_transform the renderer uses to
   // place the sketch in 3D -- otherwise the drawn entity lands away from the edge.
   it('an edge projects consistently with the on-face sketch plane it is drawn on', () => {
-    const mesh = (h.body(r1, 'body_ex1').mesh as { face_queries?: string[]; face_data?: { normal: number[]; centroid: number[] }[] }) ?? {}
+    const mesh = (h.part(r1, 'body_ex1').mesh as { face_queries?: string[]; face_data?: { normal: number[]; centroid: number[] }[] }) ?? {}
     const faceQueries = mesh.face_queries ?? []
     const faceData = mesh.face_data ?? []
     // Pick a side face whose plane is offset from the world origin (e.g. +X face

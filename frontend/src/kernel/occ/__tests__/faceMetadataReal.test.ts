@@ -222,7 +222,7 @@ describe.skipIf(!oc)('readShapeFaceMetadata: mesh-free face identification', () 
       const sideUuid = named.face_uuids![sideIdx]!
       const opts = {
         createdBy: 'ex1',
-        bodyId: 'body_ex1',
+        partId: 'body_ex1',
         profileQueries: ['@sk1/bottom', '@sk1/top'],
         faceUuids,
         faceAncestry: {

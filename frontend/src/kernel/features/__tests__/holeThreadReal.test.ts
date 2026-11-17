@@ -15,10 +15,10 @@ import { HandleTable } from '../../occ/handleTable'
 import { makeBox, makeBoxAt, faceCentroid, faceSurfaceType } from '../../occ/primitives'
 import { booleanWithDiff } from '../../occ/booleans'
 import { volumeOf } from '../../occ/volume'
-import { canonicalFaces } from '../../occ/bodyNames'
+import { canonicalFaces } from '../../occ/partNames'
 import { Repository } from '../../query'
 import { solveHole } from '../hole'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { PlaneLike } from '../shared/planes'
 import type { ThreadDisplayData } from '@/types/cad'
@@ -28,7 +28,7 @@ const oc = await loadOcc()
 const PLANE: PlaneLike = { origin: [0, 0, 10], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
 
 interface HoleCase {
-  bodies: Record<string, Body>
+  bodies: Record<string, PartSolid>
   result: Record<string, unknown>
 }
 
@@ -40,12 +40,12 @@ describe.skipIf(!oc)('the cosmetic thread on a hole (real OCC)', () => {
    *  from the top face downward through the plate. */
   function drill(scope: DisposeScope, table: HandleTable, hole: Record<string, unknown>): HoleCase {
     const box = makeBox(occ, scope, 10, 10, 10)
-    const body: Body = {
+    const body: PartSolid = {
       id: 'body_b', created_by: 'ex1', modified_by: [], shape: table.register(box, 'ex1'),
       sketch_id: 'sk', brep_diff: null, profile_queries: [],
       face_uuids: (canonicalFaces(occ, scope, box) as OccShape[]).map((_, i) => `f${i}`),
     }
-    const bodies: Record<string, Body> = { body_b: body }
+    const bodies: Record<string, PartSolid> = { body_b: body }
     const repo = new Repository()
     repo.register('_pt_sk_h', PLANE)
     // A site at the plate's middle, so a blind bore sits wholly inside it.
@@ -178,12 +178,12 @@ describe.skipIf(!oc)('the cosmetic thread on a hole (real OCC)', () => {
         const box = makeBox(occ, scope, 10, 10, 10)
         const slot = makeBoxAt(occ, scope, [2, -1, 4], 6, 12, 2)
         const slotted = scope.track(booleanWithDiff(occ, scope, box, slot, 'cut').shape)
-        const body: Body = {
+        const body: PartSolid = {
           id: 'body_b', created_by: 'ex1', modified_by: [], shape: table.register(slotted, 'ex1'),
           sketch_id: 'sk', brep_diff: null, profile_queries: [],
           face_uuids: (canonicalFaces(occ, scope, slotted) as OccShape[]).map((_, i) => `f${i}`),
         }
-        const bodies: Record<string, Body> = { body_b: body }
+        const bodies: Record<string, PartSolid> = { body_b: body }
         const repo = new Repository()
         repo.register('_pt_sk_h', PLANE)
         repo.register('sk_h/p1/xy', { external_xy: [5, 5] })
@@ -349,12 +349,12 @@ describe.skipIf(!oc)('the cosmetic thread on a hole (real OCC)', () => {
     const table = new HandleTable()
     try {
       const box = makeBox(occ, scope, 10, 10, 10)
-      const body: Body = {
+      const body: PartSolid = {
         id: 'body_b', created_by: 'ex1', modified_by: [], shape: table.register(box, 'ex1'),
         sketch_id: 'sk', brep_diff: null, profile_queries: [],
         face_uuids: (canonicalFaces(occ, scope, box) as OccShape[]).map((_, i) => `f${i}`),
       }
-      const bodies: Record<string, Body> = { body_b: body }
+      const bodies: Record<string, PartSolid> = { body_b: body }
       const repo = new Repository()
       // A drill site 50 mm off the body: the cutter removes nothing, so the
       // thread must not show there.

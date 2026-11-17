@@ -15,7 +15,7 @@ import type { DisposeScope } from './disposeScope'
 import type { OccModule, OccShape } from './occTypes'
 import { mintFaceUuid, importedInstanceFacePath } from '../constructionName'
 import { nameNeighboursAndDeriveEdges } from './constructionLineage'
-import { canonicalFaces, type ShapeNames } from './bodyNames'
+import { canonicalFaces, type ShapeNames } from './partNames'
 import { SubShapeMap } from './subshapeIdentity'
 
 export type ImportedNameMaps = ShapeNames

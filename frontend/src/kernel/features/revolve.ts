@@ -8,7 +8,7 @@ import type { DisposeScope } from '../occ/disposeScope'
 import { extractErrorMessage, swallowUnlessTrap } from '../errors'
 import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 import type { Repository } from '../query'
 import { booleanWithHistory } from '../occ/booleans'
 import { collectExtrudeLoops } from './faceProfile'
@@ -16,10 +16,10 @@ import { samePlane, sketchToWorld2d, worldToSketch2d, type PlaneLike } from './s
 import { dot, sub as sub3 } from '@/utils/vec3'
 import { surfaceEntityIds } from './shared/partRef'
 import { openJointHint, profileAreaReport } from './shared/profileLoops'
-import { applyBodyOperation, type BodyOperation } from './bodyOps'
+import { applyPartOperation, type PartOperation } from './partOps'
 import { maxPrecision, sketchPrecision, type KernelPrecision } from '../precision'
 import { revolveFace, revolveProfileWithLineage } from '../occ/prismLineage'
-import { carryFaceNames, emptyShapeNames, mergeShapeNames } from '../occ/bodyNames'
+import { carryFaceNames, emptyShapeNames, mergeShapeNames } from '../occ/partNames'
 import { deriveEdgeNames } from '../occ/constructionLineage'
 import { faceCentroid, type Vec3 } from '../occ/primitives'
 import { loopCentroid, loopPts, pointInLoop } from '../profileLoops'
@@ -90,14 +90,14 @@ function fuseConsuming(
 export function resolveRevolveAxis(
   feature: Dict,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): [number[], number[]] {
   const axisQuery = (feature.axis as string | undefined) || undefined
   if (!axisQuery) {
     throw new Error('revolve: axis is required; pick an edge, sketch line, or circular edge')
   }
 
-  const axisData = globalRepo.query(axisQuery, null, bodyStore) as Dict | null
+  const axisData = globalRepo.query(axisQuery, null, partStore) as Dict | null
   if (axisData === null) {
     throw new Error(`revolve: axis query did not resolve: ${JSON.stringify(axisQuery)}`)
   }
@@ -221,7 +221,7 @@ export function solveRevolve(
   table: HandleTable,
   feature: Dict,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): RevolveResult {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.revolve as Dict) ?? {}
@@ -260,7 +260,7 @@ export function solveRevolve(
   for (const sketchRef of sketchRefs) {
     let resolved
     try {
-      resolved = collectExtrudeLoops(oc, scope, table, sketchRef, globalRepo, bodyStore)
+      resolved = collectExtrudeLoops(oc, scope, table, sketchRef, globalRepo, partStore)
     } catch (exc) {
       swallowUnlessTrap(exc)
       profileErrors.push(extractErrorMessage(exc))
@@ -315,8 +315,8 @@ export function solveRevolve(
     throw new Error(profileErrors.join('; '))
   }
 
-  const bodyId = 'body_' + featureId
-  const result: RevolveResult = { status: 'ok', body_id: bodyId }
+  const partId = 'body_' + featureId
+  const result: RevolveResult = { status: 'ok', body_id: partId }
 
   if (cqFaces.length === 0 && allLoops.length === 0) {
     // No profile geometry resolved -> no part. A part-less revolve is a failed
@@ -343,7 +343,7 @@ export function solveRevolve(
   }
 
   // Throws when no axis was picked -- never a sweep about a default axis.
-  const [axisOrigin, axisDirection] = resolveRevolveAxis(sub, globalRepo, bodyStore)
+  const [axisOrigin, axisDirection] = resolveRevolveAxis(sub, globalRepo, partStore)
   const ao = axisOrigin as Vec3
   const ad = axisDirection as Vec3
 
@@ -353,7 +353,7 @@ export function solveRevolve(
     refuseAxisThroughProfile(allLoops, firstPt, axisOrigin, axisDirection, firstSketchId || 'unknown')
   }
 
-  const operation = ((sub.operation as string) ?? 'add') as BodyOperation
+  const operation = ((sub.operation as string) ?? 'add') as PartOperation
   const direction = (sub.direction as string) ?? 'normal'
 
   let toolShape: OccShape
@@ -423,12 +423,12 @@ export function solveRevolve(
     if (handle !== null) result.handle = handle
   }
 
-  const opResult = applyBodyOperation(oc, scope, table, {
+  const opResult = applyPartOperation(oc, scope, table, {
     toolShape,
-    bodyStore,
+    partStore,
     operation,
     mergeTarget,
-    bodyId,
+    partId,
     featureId,
     sketchId: firstSketchId,
     opName: 'revolve',

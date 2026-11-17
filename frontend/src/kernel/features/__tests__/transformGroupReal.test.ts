@@ -35,14 +35,14 @@ import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
 import { makeBoxAt, readSolidVertices, edgeToGeom, type Vec3 } from '../../occ/primitives'
 import { volumeOf } from '../../occ/booleans'
-import { canonicalFaces } from '../../occ/bodyNames'
-import { bodyFrame, edgeRepresentativePoint, solidToEdges } from '../../occ/tessellation'
+import { canonicalFaces } from '../../occ/partNames'
+import { partFrame, edgeRepresentativePoint, solidToEdges } from '../../occ/tessellation'
 import { geometryClassifiers } from '../../geomHash'
 import { Repository, ref, makeAncestryQuery } from '../../query'
 import { solveArray, solveCircularArray } from './patternBodyTestAdapters'
 import { solveTransform, solveMirror } from '../transformMirror'
 import { resolveFilletEdges } from '../filletChamfer'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { HandleTable as HT } from '../../occ/handleTable'
 import type { DisposeScope as DS } from '../../occ/disposeScope'
@@ -65,7 +65,7 @@ type Case = {
 const fx = fixture as unknown as { cases: Case[] }
 
 type Solver = (
-  oc: OccModule, scope: DS, table: HT, feature: Record<string, unknown>, repo: Repository, store: Record<string, Body>,
+  oc: OccModule, scope: DS, table: HT, feature: Record<string, unknown>, repo: Repository, store: Record<string, PartSolid>,
 ) => Record<string, unknown>
 
 const SOLVERS = {
@@ -98,7 +98,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
         repo.register('dir_y', { start: [0, 0, 0], end: [0, 1, 0] })
         repo.register('axis_z', { start: [0, 0, 0], end: [0, 0, 1] })
         const box = makeBoxAt(occ, scope, c.source_spec[0] as Vec3, c.source_spec[1][0], c.source_spec[1][1], c.source_spec[1][2])
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_s: {
             id: 'body_s',
             created_by: 'ex_s',
@@ -137,7 +137,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
     const table = new HandleTable()
     try {
       const repo = new Repository()
-      const bodyStore: Record<string, Body> = {
+      const bodyStore: Record<string, PartSolid> = {
         body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 1, 2, 3, 'body_s', 'ex_s'),
       }
       const result = solveTransform(occ, scope, table, {
@@ -166,7 +166,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
     oc: OccModule, scope: DisposeScope, table: HandleTable,
     origin: Vec3, w: number, h: number, d: number,
     id: string, createdBy: string,
-  ): Body {
+  ): PartSolid {
     const box = makeBoxAt(oc, scope, origin, w, h, d)
     return {
       id,
@@ -180,7 +180,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
   }
 
   // Axis-aligned bounding-box centre of a body's shape, for "did it move, and how far".
-  function centreOf(scope: DisposeScope, table: HandleTable, body: Body): Vec3 {
+  function centreOf(scope: DisposeScope, table: HandleTable, body: PartSolid): Vec3 {
     const verts = readSolidVertices(occ, scope, table.get<OccShape>(body.shape!))
     const lo = [Infinity, Infinity, Infinity]
     const hi = [-Infinity, -Infinity, -Infinity]
@@ -202,13 +202,13 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
    * congruent bodies named this way get the SAME UUID strings, which is what
    * makes instance disambiguation testable.
    */
-  function nameFacesInOrder(scope: DisposeScope, table: HandleTable, body: Body) {
+  function nameFacesInOrder(scope: DisposeScope, table: HandleTable, body: PartSolid) {
     const faces = canonicalFaces(occ, scope, table.get<OccShape>(body.shape!))
     body.face_uuids = faces.map((_, i) => `u_face${i}`)
     body.face_ancestry = Object.fromEntries(body.face_uuids.map((u) => [u, ['@anc']]))
   }
 
-  const namedUuids = (body: Body): string[] => (body.face_uuids ?? []).filter((u): u is string => u !== null)
+  const namedUuids = (body: PartSolid): string[] => (body.face_uuids ?? []).filter((u): u is string => u !== null)
 
   describe('transform over a list of picks', () => {
     // The pick is a LIST and the one composed Trsf is applied to every entry
@@ -221,7 +221,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
           body_b: makeBoxBody(occ, scope, table, [20, 0, 0], 6, 6, 6, 'body_b', 'ex_b'),
         }
@@ -258,7 +258,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
           body_b: makeBoxBody(occ, scope, table, [20, 0, 0], 4, 4, 4, 'body_b', 'ex_b'),
         }
@@ -284,7 +284,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
           body_b: makeBoxBody(occ, scope, table, [20, 0, 0], 4, 4, 4, 'body_b', 'ex_b'),
         }
@@ -313,7 +313,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_ex1: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_ex1', 'ex1'),
           body_ex1_1: makeBoxBody(occ, scope, table, [20, 0, 0], 4, 4, 4, 'body_ex1_1', 'ex1'),
         }
@@ -334,7 +334,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
         }
         const centreA = centreOf(scope, table, bodyStore.body_a)
@@ -354,7 +354,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
         }
         const centreA = centreOf(scope, table, bodyStore.body_a)
@@ -387,7 +387,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
         const repo = new Repository()
         repo.register('dir_x', { start: [0, 0, 0], end: [1, 0, 0] })
         repo.register('dir_y', { start: [0, 0, 0], end: [0, 1, 0] })
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 5, 5, 5, 'body_s', 'ex_s'),
         }
         const srcVol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_s.shape!))
@@ -423,7 +423,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       try {
         const repo = new Repository()
         repo.register('dir_x', { start: [0, 0, 0], end: [1, 0, 0] })
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 5, 5, 5, 'body_s', 'ex_s'),
         }
         const result = solveArray(occ, scope, table, {
@@ -457,7 +457,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
         const repo = new Repository()
         repo.register('dir_x', { start: [0, 0, 0], end: [1, 0, 0] })
         repo.register('dir_y', { start: [0, 0, 0], end: [0, 1, 0] })
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 5, 5, 5, 'body_s', 'ex_s'),
         }
         const shapeClass = (
@@ -512,7 +512,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       try {
         const repo = new Repository()
         repo.register('axis_z', { start: [0, 0, 0], end: [0, 0, 1] })
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 2, 2, 2, 'body_s', 'ex_s'),
         }
         const result = solveTransform(occ, scope, table, {
@@ -545,7 +545,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
         const repo = new Repository()
         repo.register('axis_z', { start: [0, 0, 0], end: [0, 0, 1] })
         // Box offset from origin so copies don't overlap
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_s: makeBoxBody(occ, scope, table, [5, -2, -2], 4, 4, 4, 'body_s', 'ex_s'),
         }
         const result = solveCircularArray(occ, scope, table, {
@@ -581,7 +581,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       try {
         const repo = new Repository()
         repo.register('axis_z', { start: [0, 0, 0], end: [0, 0, 1] })
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_s: makeBoxBody(occ, scope, table, [5, -2, -2], 4, 4, 4, 'body_s', 'ex_s'),
         }
         const result = solveCircularArray(occ, scope, table, {
@@ -618,7 +618,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       try {
         const repo = new Repository()
         repo.register('axis_z', { start: [0, 0, 0], end: [0, 0, 1] })
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_s: makeBoxBody(occ, scope, table, [5, -2, -2], 4, 4, 4, 'body_s', 'ex_s'),
         }
         const result = solveCircularArray(occ, scope, table, {
@@ -649,7 +649,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       try {
         const repo = new Repository()
         repo.register('axis_z', { start: [0, 0, 0], end: [0, 0, 1] })
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_s: makeBoxBody(occ, scope, table, [5, -2, -2], 4, 4, 4, 'body_s', 'ex_s'),
         }
         const result = solveCircularArray(occ, scope, table, {
@@ -675,7 +675,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       try {
         const repo = new Repository()
         repo.register('dir_x', { start: [0, 0, 0], end: [1, 0, 0] })
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 5, 5, 5, 'body_s', 'ex_s'),
         }
         expect(() => solveArray(occ, scope, table, {
@@ -707,9 +707,9 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
     // (the fallback ancestry of an edge with no construction UUID). The mirror
     // "new" template omitted them, so registerSplitBodies defaulted the copy to
     // [] and the same pick resolved differently on the copy than on the source.
-    const exactQueryFor = (scope: DisposeScope, table: HandleTable, body: Body, target: Vec3): string => {
+    const exactQueryFor = (scope: DisposeScope, table: HandleTable, body: PartSolid, target: Vec3): string => {
       const shape = table.get<OccShape>(body.shape!)
-      const { center, half } = bodyFrame(occ, scope, shape)
+      const { center, half } = partFrame(occ, scope, shape)
       const { edges } = solidToEdges(occ, table, body.shape!, {})
       const ed = edges.find((e) => {
         const pt = edgeRepresentativePoint(e)
@@ -725,7 +725,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
         }
         bodyStore.body_a.profile_queries = ['@sk_a']
@@ -772,7 +772,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
         }
         nameFacesInOrder(scope, table, bodyStore.body_a)

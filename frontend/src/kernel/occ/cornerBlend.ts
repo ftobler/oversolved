@@ -15,7 +15,7 @@
 
 import type { DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape } from './occTypes'
-import { canonicalEdges, canonicalFaces, canonicalVertices } from './bodyNames'
+import { canonicalEdges, canonicalFaces, canonicalVertices } from './partNames'
 import {
   faceNormal,
   makeArcEdge,

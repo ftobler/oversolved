@@ -3,7 +3,7 @@ import {
   getBodiesToRender, getGhostBodiesToRender, getPreviewBodies, computeEffectiveVisibleBodies,
   sketchForRender, snapSketchesFor,
 } from '@/components/Viewport/bodyUtils'
-import type { Feature, BodyResult, PartStyleEntry, Sketch, SketchFeature, SketchData, DimLinearRender } from '@/types/cad'
+import type { Feature, PartResult, PartStyleEntry, Sketch, SketchFeature, SketchData, DimLinearRender } from '@/types/cad'
 import type { PartRenderItem } from '@/utils/partRender'
 import { PART_SNAP_FEAT_PREFIX } from '@/utils/geometry/partSnapProjection'
 
@@ -114,7 +114,7 @@ describe('getBodiesToRender', () => {
     { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
   ]
 
-  const bodies: Record<string, BodyResult> = {
+  const bodies: Record<string, PartResult> = {
     body_ex1: {
       id: 'body_ex1',
       created_by: 'ex1',
@@ -125,7 +125,7 @@ describe('getBodiesToRender', () => {
         face_data: [],
         face_queries: [],
       },
-    } as unknown as BodyResult,
+    } as unknown as PartResult,
   }
 
   it('renders all bodies when visibleBodies is undefined', () => {
@@ -160,13 +160,13 @@ describe('getBodiesToRender', () => {
   it('keeps a body visible when its creator is not in the feature log', () => {
     // An unresolved creator is not a user hide: imported and legacy bodies
     // must not blank because their creator id is missing.
-    const orphan: Record<string, BodyResult> = {
+    const orphan: Record<string, PartResult> = {
       body_orphan: {
         id: 'body_orphan',
         created_by: 'missing_feature',
         modified_by: [],
         mesh: { vertices: [], faces: [], face_data: [], face_queries: [] },
-      } as unknown as BodyResult,
+      } as unknown as PartResult,
     }
     const items = getBodiesToRender(orphan, features, undefined, undefined, new Set(['sk1']))
     expect(items[0].visible).toBe(true)
@@ -183,8 +183,8 @@ describe('getBodiesToRender', () => {
   })
 
   it('skips a body that carries no mesh', () => {
-    const noMesh: Record<string, BodyResult> = {
-      body_empty: { id: 'body_empty', created_by: 'ex1', modified_by: [] } as unknown as BodyResult,
+    const noMesh: Record<string, PartResult> = {
+      body_empty: { id: 'body_empty', created_by: 'ex1', modified_by: [] } as unknown as PartResult,
     }
     expect(getBodiesToRender(noMesh, features, undefined, undefined)).toEqual([])
   })
@@ -194,13 +194,13 @@ describe('getBodiesToRender', () => {
   })
 
   it('keeps rendering when created_by does not match any feature', () => {
-    const orphanBodies: Record<string, BodyResult> = {
+    const orphanBodies: Record<string, PartResult> = {
       body_orphan: {
         id: 'body_orphan',
         created_by: 'missing_feature',
         modified_by: [],
         mesh: { vertices: [], faces: [], face_data: [], face_queries: [] },
-      } as unknown as BodyResult,
+      } as unknown as PartResult,
     }
     const items = getBodiesToRender(orphanBodies, features, undefined, undefined)
     expect(items).toHaveLength(1)
@@ -208,12 +208,12 @@ describe('getBodiesToRender', () => {
   })
 
   it('falls back featureId to bodyId when created_by is missing', () => {
-    const noCreatorBodies: Record<string, BodyResult> = {
+    const noCreatorBodies: Record<string, PartResult> = {
       body_no_creator: {
         id: 'body_no_creator',
         modified_by: [],
         mesh: { vertices: [], faces: [], face_data: [], face_queries: [] },
-      } as unknown as BodyResult,
+      } as unknown as PartResult,
     }
     const items = getBodiesToRender(noCreatorBodies, features, undefined, undefined)
     expect(items).toHaveLength(1)
@@ -221,19 +221,19 @@ describe('getBodiesToRender', () => {
   })
 
   it('handles assembly bodies with mesh data (no edges/vertices)', () => {
-    const assemblyBodies: Record<string, BodyResult> = {
+    const assemblyBodies: Record<string, PartResult> = {
       'body_handle1_0': {
         id: 'body_handle1_0',
         created_by: 'handle1',
         modified_by: [],
         mesh: { vertices: new Float32Array(9), indices: new Uint32Array(3), triangle_to_face: new Uint32Array(1) },
-      } as unknown as BodyResult,
+      } as unknown as PartResult,
       'body_handle2_0': {
         id: 'body_handle2_0',
         created_by: 'handle2',
         modified_by: [],
         mesh: { vertices: new Float32Array(9), indices: new Uint32Array(3), triangle_to_face: new Uint32Array(1) },
-      } as unknown as BodyResult,
+      } as unknown as PartResult,
     }
     const items = getBodiesToRender(assemblyBodies, undefined, undefined, undefined)
     expect(items).toHaveLength(2)
@@ -244,19 +244,19 @@ describe('getBodiesToRender', () => {
   })
 
   it('handles assembly bodies with visibleBodies filter', () => {
-    const assemblyBodies: Record<string, BodyResult> = {
+    const assemblyBodies: Record<string, PartResult> = {
       'body_a_0': {
         id: 'body_a_0',
         created_by: 'a',
         modified_by: [],
         mesh: { vertices: new Float32Array(9), indices: new Uint32Array(3) },
-      } as unknown as BodyResult,
+      } as unknown as PartResult,
       'body_b_0': {
         id: 'body_b_0',
         created_by: 'b',
         modified_by: [],
         mesh: { vertices: new Float32Array(9), indices: new Uint32Array(3) },
-      } as unknown as BodyResult,
+      } as unknown as PartResult,
     }
     const visible = new Set(['body_a_0'])
     const items = getBodiesToRender(assemblyBodies, undefined, undefined, visible)
@@ -272,10 +272,10 @@ describe('getGhostBodiesToRender', () => {
     { id: 'ex2', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
     { id: 'db1', kind: 'delete_body', delete_body: { bodies: [] } },
   ]
-  const ghostBody = (id: string, createdBy: string): BodyResult =>
-    ({ id, created_by: createdBy, modified_by: [], mesh: { vertices: [], faces: [], face_data: [], face_queries: [] } } as unknown as BodyResult)
+  const ghostBody = (id: string, createdBy: string): PartResult =>
+    ({ id, created_by: createdBy, modified_by: [], mesh: { vertices: [], faces: [], face_data: [], face_queries: [] } } as unknown as PartResult)
 
-  const pickBodies: Record<string, BodyResult> = {
+  const pickBodies: Record<string, PartResult> = {
     body_ex1: ghostBody('body_ex1', 'ex1'),
     body_ex2: ghostBody('body_ex2', 'ex2'),
   }
@@ -349,13 +349,13 @@ describe('getPreviewBodies', () => {
     { id: 'sk1', kind: 'sketch' },
     { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
   ]
-  const previewBodies: Record<string, BodyResult> = {
+  const previewBodies: Record<string, PartResult> = {
     body_ex1: {
       id: 'body_ex1',
       created_by: 'ex1',
       modified_by: [],
       mesh: { vertices: [], faces: [], face_data: [], face_queries: [] },
-    } as unknown as BodyResult,
+    } as unknown as PartResult,
   }
 
   it('hides the preview body of a hidden creating feature', () => {
@@ -372,10 +372,10 @@ describe('getPreviewBodies', () => {
 })
 
 describe('computeEffectiveVisibleBodies', () => {
-  const twoBodyResult = (id: string, createdBy: string): BodyResult =>
-    ({ id, created_by: createdBy, modified_by: [], mesh: { vertices: [], faces: [] } } as unknown as BodyResult)
+  const twoBodyResult = (id: string, createdBy: string): PartResult =>
+    ({ id, created_by: createdBy, modified_by: [], mesh: { vertices: [], faces: [] } } as unknown as PartResult)
 
-  const bodies: Record<string, BodyResult> = {
+  const bodies: Record<string, PartResult> = {
     body_a: twoBodyResult('body_a', 'feat_a'),
     body_b: twoBodyResult('body_b', 'feat_b'),
   }
@@ -417,7 +417,7 @@ describe('computeEffectiveVisibleBodies', () => {
   })
 
   it('hides only one body when multiple bodies share one creator feature', () => {
-    const arrayBodies: Record<string, BodyResult> = {
+    const arrayBodies: Record<string, PartResult> = {
       body_UAM7nPd8Trb1gGJ7Wefu6uUc: twoBodyResult('body_UAM7nPd8Trb1gGJ7Wefu6uUc', 'UAM7nPd8Trb1gGJ7Wefu6uUc'),
       body_UAM7nPd8Trb1gGJ7Wefu6uUc_1: twoBodyResult('body_UAM7nPd8Trb1gGJ7Wefu6uUc_1', 'UAM7nPd8Trb1gGJ7Wefu6uUc'),
       body_UAM7nPd8Trb1gGJ7Wefu6uUc_2: twoBodyResult('body_UAM7nPd8Trb1gGJ7Wefu6uUc_2', 'UAM7nPd8Trb1gGJ7Wefu6uUc'),
@@ -435,7 +435,7 @@ describe('computeEffectiveVisibleBodies', () => {
     expect(result?.has('body_UAM7nPd8Trb1gGJ7Wefu6uUc_3')).toBe(true)
   })
 
-  it('treats missing visible as visible', () => {
+  it('treats missing visible', () => {
     const result = computeEffectiveVisibleBodies(bodies, partStyle({ body_a: { name: 'test' } }))
     expect(result?.has('body_a')).toBe(true)
   })

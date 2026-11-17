@@ -7,14 +7,14 @@ import { solveArray, solveCircularArray } from './patternBodyTestAdapters'
 import { solveTransform, solveMirror } from '../transformMirror'
 import type { HandleTable } from '../../occ/handleTable'
 import type { OccModule } from '../../occ/occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = null as unknown as OccModule
 const scope = null as never
 const table = null as unknown as HandleTable
 const repo = new Repository()
 
-function nullBody(id: string): Body {
+function nullBody(id: string): PartSolid {
   return {
     id,
     created_by: 'ex',

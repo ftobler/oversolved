@@ -3,7 +3,7 @@
 // only its four built-ins (D4). Queries are compared, never parsed.
 
 import { describe, it, expect } from 'vitest'
-import type { AssemblyDoc, BodyResult, EdgeData, FaceData } from '@/types/cad'
+import type { AssemblyDoc, PartResult, EdgeData, FaceData } from '@/types/cad'
 import type { Anchor, PartBundle } from '@/kernel/partBundle'
 import { PART_FRAME_ANCHORS, partFrameAnchorId } from '@/kernel/partBundle'
 import { ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
@@ -28,7 +28,7 @@ function face(centroid: [number, number, number], normal: [number, number, numbe
 
 const EDGE: EdgeData = { kind: 'line', start: [0, 0, 0], end: [0, 0, 10] }
 
-const BODY: BodyResult = {
+const BODY: PartResult = {
   id: 'body_ex1',
   created_by: 'ex1',
   modified_by: [],

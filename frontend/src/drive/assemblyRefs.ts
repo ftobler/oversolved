@@ -9,8 +9,8 @@
 // same grammar the part-side `select` tool uses, then compared; it is an
 // authoring aid and is never stored.
 
-import type { AssemblyDoc, BodyResult, MateAnchorDescriptor, MateRef } from '@/types/cad'
-import type { Anchor, BodyMesh, PartBundle } from '@/kernel/partBundle'
+import type { AssemblyDoc, PartResult, MateAnchorDescriptor, MateRef } from '@/types/cad'
+import type { Anchor, PartMesh, PartBundle } from '@/kernel/partBundle'
 import { PART_FRAME_ANCHORS, partFrameAnchorId } from '@/kernel/partBundle'
 import { selectByPredicate, SelectorError, validateSelector, type Selector } from '@/kernel/select'
 import { ASSEMBLY_BUILTIN_ANCHORS, ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
@@ -32,7 +32,7 @@ export type DriveMateRef =
 export interface PartAnchorIndex {
   anchors: Record<string, Anchor>
   byQuery: Map<string, string[]>
-  bodies: Record<string, BodyResult>
+  bodies: Record<string, PartResult>
 }
 
 export type ResolvedDriveRef =
@@ -61,8 +61,8 @@ function anchorDescriptor(anchor: Anchor): MateAnchorDescriptor {
 // cannot drop the tail entities out of the index. An entity with no anchor keeps
 // its empty list, which is the "no matable anchor" answer, not a missing query.
 function indexBody(
-  mesh: BodyMesh,
-  result: BodyResult | undefined,
+  mesh: PartMesh,
+  result: PartResult | undefined,
   byQuery: Map<string, string[]>,
 ): void {
   const join = (
@@ -88,7 +88,7 @@ function indexBody(
  */
 export function buildPartAnchorIndex(
   bundle: PartBundle,
-  bodies: Record<string, BodyResult>,
+  bodies: Record<string, PartResult>,
 ): PartAnchorIndex {
   const byQuery = new Map<string, string[]>()
   const bodyResults = Object.values(bodies)

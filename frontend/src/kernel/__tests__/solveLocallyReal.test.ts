@@ -11,11 +11,11 @@ import { describe, it, expect, beforeAll, vi } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
 import { HandleTable } from '../occ/handleTable'
 import { DisposeScope } from '../occ/disposeScope'
-import { extractBrepMetadata, tessellateBodies } from '../solveLocally'
+import { extractBrepMetadata, tessellateParts } from '../solveLocally'
 import { creatorOfQuery } from '@/picking/relationHint'
 import type { OccModule } from '../occ/occTypes'
 import type { OccHandle } from '../occ/handleTable'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 
 const oc = await loadOcc()
 
@@ -26,7 +26,7 @@ describe.skipIf(!oc)('extractBrepMetadata (real OCC)', () => {
     occ = oc
   })
 
-  function makeBody(id: string, createdBy: string, shapeHandle: OccHandle | null): Body {
+  function makeBody(id: string, createdBy: string, shapeHandle: OccHandle | null): PartSolid {
     return {
       id,
       created_by: createdBy,
@@ -52,7 +52,7 @@ describe.skipIf(!oc)('extractBrepMetadata (real OCC)', () => {
 
   it('skips bodies with null shape', () => {
     const table = new HandleTable()
-    const bodyStore: Record<string, Body> = {
+    const bodyStore: Record<string, PartSolid> = {
       body_null: makeBody('body_null', 'f1', null),
     }
     const result = extractBrepMetadata(occ, table, bodyStore)
@@ -70,7 +70,7 @@ describe.skipIf(!oc)('extractBrepMetadata (real OCC)', () => {
 
     const validHandle = boxShape(scope, table, 10, 10, 10, 'f2')
 
-    const bodyStore: Record<string, Body> = {
+    const bodyStore: Record<string, PartSolid> = {
       body_stale: makeBody('body_stale', 'f1', staleHandle),
       body_valid: makeBody('body_valid', 'f2', validHandle),
     }
@@ -99,7 +99,7 @@ describe.skipIf(!oc)('extractBrepMetadata (real OCC)', () => {
 
     const validHandle = boxShape(scope, table, 10, 10, 10, 'f2')
 
-    const bodyStore: Record<string, Body> = {
+    const bodyStore: Record<string, PartSolid> = {
       body_stale: makeBody('body_stale', 'f1', staleHandle),
       body_valid: makeBody('body_valid', 'f2', validHandle),
     }
@@ -108,7 +108,7 @@ describe.skipIf(!oc)('extractBrepMetadata (real OCC)', () => {
     let errorCount = 0
     let errorMessage = ''
     try {
-      result = tessellateBodies(occ, table, bodyStore)
+      result = tessellateParts(occ, table, bodyStore)
       // mockRestore clears the recorded calls, so read them before restoring.
       errorCount = error.mock.calls.length
       errorMessage = String(error.mock.calls[0]?.[0])
@@ -134,7 +134,7 @@ describe.skipIf(!oc)('extractBrepMetadata (real OCC)', () => {
     const scope = new DisposeScope()
     const handle = boxShape(scope, table, 10, 10, 10, 'f1')
 
-    const bodyStore: Record<string, Body> = {
+    const bodyStore: Record<string, PartSolid> = {
       body_box: makeBody('body_box', 'f1', handle),
     }
     const result = extractBrepMetadata(occ, table, bodyStore)
@@ -176,7 +176,7 @@ describe.skipIf(!oc)('extractBrepMetadata (real OCC)', () => {
     const table = new HandleTable()
     const scope = new DisposeScope()
     const handle = boxShape(scope, table, 10, 10, 10, 'f1')
-    const result = tessellateBodies(occ, table, { body_box: makeBody('body_box', 'f1', handle) })
+    const result = tessellateParts(occ, table, { body_box: makeBody('body_box', 'f1', handle) })
     const entry = result.body_box as {
       mesh: { face_queries?: string[]; face_created_by?: string[] }
       edge_queries?: string[]
@@ -204,7 +204,7 @@ describe.skipIf(!oc)('extractBrepMetadata (real OCC)', () => {
     const scope = new DisposeScope()
     const handle = boxShape(scope, table, 10, 10, 10, 'f1')
 
-    const bodyStore: Record<string, Body> = {
+    const bodyStore: Record<string, PartSolid> = {
       body_box: makeBody('body_box', 'f1', handle),
     }
     const result = extractBrepMetadata(occ, table, bodyStore)
@@ -235,7 +235,7 @@ describe.skipIf(!oc)('extractBrepMetadata (real OCC)', () => {
     const h1 = boxShape(scope, table, 10, 10, 10, 'f1')
     const h2 = boxShape(scope, table, 5, 5, 5, 'f2')
 
-    const bodyStore: Record<string, Body> = {
+    const bodyStore: Record<string, PartSolid> = {
       body_a: makeBody('body_a', 'f1', h1),
       body_b: makeBody('body_b', 'f2', h2),
     }

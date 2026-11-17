@@ -48,7 +48,7 @@ import {
   nameFacesFromNeighbours,
   faceSplitKey,
 } from './constructionLineage'
-import { canonicalFaces, carryFaceNames, emptyShapeNames, type ShapeNames } from './bodyNames'
+import { canonicalFaces, carryFaceNames, emptyShapeNames, type ShapeNames } from './partNames'
 import { SubShapeMap } from './subshapeIdentity'
 import { noProgress } from './defaultArgs'
 import {

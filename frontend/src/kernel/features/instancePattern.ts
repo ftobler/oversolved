@@ -24,7 +24,7 @@
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 import type { Repository } from '../query'
 import { solidCentroid } from '../occ/primitives'
 import { makeRigidTrsf } from '../occ/transforms'
@@ -36,13 +36,13 @@ import {
   axisSenseContext, faceIndexCache, resolvePickTarget, type PickTarget, type PickTargetContext,
 } from './shared/pickTarget'
 import { firstSourceToolCentroid } from './patternFeature'
-import { resolvePatternSourceBody } from './patternBody'
+import { resolvePatternSourcePart } from './patternPart'
 import { instanceTotalProblem, toInstances } from './patternInstances'
 import {
   keptInstances, solvePatternInstances, type Dict, type PatternCopy,
 } from './pattern'
 import type { PatternResult } from './patternFeature'
-import type { BodyPatternResult } from './patternBody'
+import type { PartPatternResult } from './patternPart'
 import {
   perpendicularTo, placeOnTargets, type InstanceOrientation, type Vec3,
 } from './instancePatternPlacement'
@@ -269,8 +269,8 @@ function resolvedReference(
     }
   }
   if (subject === 'body') {
-    const body = resolvePatternSourceBody(sub, ctx.partStore)
-    const shape = ctx.table.get<OccShape>(body.shape!)
+    const part = resolvePatternSourcePart(sub, ctx.partStore)
+    const shape = ctx.table.get<OccShape>(part.shape!)
     return { point: solidCentroid(ctx.oc, ctx.scope, shape) as Vec3, normal: null, rule: 'the source part\'s centroid' }
   }
   const centroid = firstSourceToolCentroid(
@@ -338,7 +338,7 @@ export function buildInstancePatternCopies(
   featureId: string,
   sub: Dict,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   featuresById: Record<string, Dict>,
   solveContext: { variables: Record<string, number>; laterVariables: Record<string, number> },
 ): InstancePatternOutcome {
@@ -348,7 +348,7 @@ export function buildInstancePatternCopies(
   const legacySketch = typeof sub.sketch === 'string' && sub.sketch !== '' ? sub.sketch : ''
   if (legacySketch !== '') refs.unshift(legacySketch)
 
-  const ctx: PickTargetContext = { oc, scope, table, globalRepo, partStore: bodyStore, featuresById }
+  const ctx: PickTargetContext = { oc, scope, table, globalRepo, partStore: partStore, featuresById }
   const subject = (sub.subject as string) ?? 'body'
   const source = subject === 'feature' ? firstSource(featureId, sub, featuresById) : null
 
@@ -398,20 +398,20 @@ export function solveInstancePattern(
   table: HandleTable,
   feature: Dict,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   featuresById: Record<string, Dict> = {},
   solveContext: { variables: Record<string, number>; laterVariables: Record<string, number> } = {
     variables: {}, laterVariables: {},
   },
-): PatternResult | BodyPatternResult {
+): PatternResult | PartPatternResult {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.instance_pattern as Dict) ?? {}
   const built: { value: InstancePatternOutcome | null } = { value: null }
   const result = solvePatternInstances(
-    oc, scope, table, feature, sub, globalRepo, bodyStore, featuresById, solveContext,
+    oc, scope, table, feature, sub, globalRepo, partStore, featuresById, solveContext,
     () => {
       const outcome = buildInstancePatternCopies(
-        oc, scope, table, featureId, sub, globalRepo, bodyStore, featuresById, solveContext,
+        oc, scope, table, featureId, sub, globalRepo, partStore, featuresById, solveContext,
       )
       built.value = outcome
       return { copies: outcome.copies, warnings: outcome.warnings }

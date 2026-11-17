@@ -18,8 +18,8 @@ import { loadOcc } from '../../occ/loadOcc'
 import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
 import { makeBoxAt } from '../../occ/primitives'
-import { applyBodyOperation } from '../bodyOps'
-import type { Body } from '../../types3d'
+import { applyPartOperation } from '../partOps'
+import type { PartSolid } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
 
 const oc = await loadOcc()
@@ -40,10 +40,10 @@ describe.skipIf(!oc)('applyBodyOperation cut consumes a body (real OCC)', () => 
     bodies: BodySpec[],
     toolAt: [number, number, number],
     mergeTarget: string | null,
-  ): { result: ReturnType<typeof applyBodyOperation>; store: Record<string, Body> } {
+  ): { result: ReturnType<typeof applyPartOperation>; store: Record<string, PartSolid> } {
     const scope = new DisposeScope()
     const table = new HandleTable()
-    const bodyStore: Record<string, Body> = {}
+    const bodyStore: Record<string, PartSolid> = {}
     try {
       for (const spec of bodies) {
         const box = makeBoxAt(oc!, scope, spec.at, CUBE, CUBE, CUBE)
@@ -53,12 +53,12 @@ describe.skipIf(!oc)('applyBodyOperation cut consumes a body (real OCC)', () => 
         }
       }
       const tool = scope.track(makeBoxAt(oc!, scope, toolAt, ENCLOSING, ENCLOSING, ENCLOSING))
-      const result = applyBodyOperation(oc!, scope, table, {
+      const result = applyPartOperation(oc!, scope, table, {
         toolShape: tool as OccShape,
-        bodyStore,
+        partStore: bodyStore,
         operation: 'cut',
         mergeTarget,
-        bodyId: 'body_f',
+        partId: 'body_f',
         featureId: 'featF',
         sketchId: 'skF',
         opName: 'extrude',

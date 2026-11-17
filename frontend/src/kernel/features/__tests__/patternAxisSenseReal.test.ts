@@ -21,7 +21,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { shapeBndBox } from '../../occ/primitives'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -109,7 +109,7 @@ describe.skipIf(!oc || !solveBytes)('axis carrier directions through the real ke
     setSketchSolver(solveBytes)
   })
 
-  const viewOf = (r: BuildResponse, bodyId = 'body_ex1'): BodyView => h.body(r, bodyId) as BodyView
+  const viewOf = (r: BuildResponse, bodyId = 'body_ex1'): BodyView => h.part(r, bodyId) as BodyView
 
   function faceQuery(r: BuildResponse, type: string): string {
     const mesh = viewOf(r).mesh
@@ -126,7 +126,7 @@ describe.skipIf(!oc || !solveBytes)('axis carrier directions through the real ke
   }
 
   function boxes(r: BuildResponse): number[][] {
-    const store = r._build_state!.checkpoints.lp1.body_store_snapshot as Record<string, Body>
+    const store = r._build_state!.checkpoints.lp1.body_store_snapshot as Record<string, PartSolid>
     const scope = new DisposeScope()
     try {
       return Object.values(store).map((body) => {

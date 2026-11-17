@@ -47,14 +47,14 @@ export function isDict(obj: unknown): obj is Record<string, unknown> {
 }
 
 /** The body's `modified_by` feature chain from the store, or null when absent. */
-function bodyModifiersOf(
-  bodyStore: Record<string, unknown> | null,
-  bodyId: unknown,
+function partModifiersOf(
+  partStore: Record<string, unknown> | null,
+  partId: unknown,
 ): string[] | null {
-  if (bodyStore === null) return null
-  const body = bodyStore[bodyId as string]
-  if (!isDict(body)) return null
-  const mods = body["modified_by"]
+  if (partStore === null) return null
+  const part = partStore[partId as string]
+  if (!isDict(part)) return null
+  const mods = part["modified_by"]
   return Array.isArray(mods) ? (mods as string[]) : null
 }
 
@@ -70,7 +70,7 @@ function bodyModifiersOf(
 export function coerceType(
   element: unknown,
   targetType: string,
-  bodyStore: Record<string, unknown> | null,
+  partStore: Record<string, unknown> | null,
   repo: Repository,
   queryIds: ReadonlySet<string>,
   orderFilter: (eids: string[]) => string[],
@@ -80,22 +80,22 @@ export function coerceType(
   if (ot === null) return null
   if (ot === targetType || isSubtype(ot, targetType)) return element
   if (!isDict(element)) return null
-  const bodyId = element["body_id"]
-  if (bodyId === null || bodyId === undefined) return null
+  const partId = element["body_id"]
+  if (partId === null || partId === undefined) return null
   const createdBy = element["created_by"]
   if (createdBy === null || createdBy === undefined) return null
   // Upward: child -> solid. The store is the only source of the solid; every
   // solve-time call site threads it, so a null/empty store is a wiring bug and
   // fails loud in dev/test instead of silently returning null.
   if (targetType === "solid") {
-    if (bodyStore === null || Object.keys(bodyStore).length === 0) {
+    if (partStore === null || Object.keys(partStore).length === 0) {
       failLoud(
         `coerceType: upward :solid coercion requested with no body store ` +
-          `(body ${JSON.stringify(bodyId)})`,
+          `(body ${JSON.stringify(partId)})`,
       )
       return null
     }
-    return bodyStore[bodyId as string] ?? null
+    return partStore[partId as string] ?? null
   }
   // Downward / sibling: scope to the query's ancestry so a coerced sibling is
   // provably in the query's lineage. Only entries sharing a nonHash query token
@@ -105,7 +105,7 @@ export function coerceType(
   // original feature made).
   const matches: unknown[] = []
   const seen = new Set<unknown>()
-  const bodyMods = bodyModifiersOf(bodyStore, bodyId)
+  const partMods = partModifiersOf(partStore, partId)
   const keys = new Set<string>()
   for (const qid of queryIds) {
     const tagged = repo.byAncestorId.get(qid)
@@ -118,12 +118,12 @@ export function coerceType(
       const el = repo.elements.get(eid)
       if (el === undefined || el === element) continue
       if (!isDict(el)) continue
-      if (el["body_id"] !== bodyId) continue
+      if (el["body_id"] !== partId) continue
       const elType = objType(el)
       if (!(elType === targetType || isSubtype(elType, targetType))) continue
       const elCreatedBy = el["created_by"]
       if (typeof elCreatedBy !== "string") continue
-      if (elCreatedBy !== createdBy && !(bodyMods !== null && bodyMods.includes(elCreatedBy))) {
+      if (elCreatedBy !== createdBy && !(partMods !== null && partMods.includes(elCreatedBy))) {
         continue
       }
       if (orderFilter([eid]).length === 0) continue  // ordering guard: the sibling is not visible from here yet
@@ -137,7 +137,7 @@ export function coerceType(
   if (matches.length > 1) {
     throw new AmbiguousQueryError(
       `Query coerced to ${matches.length} distinct '${targetType}' elements ` +
-        `in body ${JSON.stringify(bodyId)}`,
+        `in body ${JSON.stringify(partId)}`,
     )
   }
   return null

@@ -12,7 +12,7 @@
 // per-body creator index the face/edge hints read. A new relation is one table
 // row there, not a new code path here.
 
-import type { BodyResult, Mesh3D, PartFeature } from '@/types/cad'
+import type { PartResult, Mesh3D, PartFeature } from '@/types/cad'
 import { featureRefId, parseQuery } from '@/utils/query'
 import { isSubtype } from '@/kernel/queryCoerce'
 
@@ -253,7 +253,7 @@ export function faceCreatorsOf(
 }
 
 /** The same recovery for a body's edges, aligned with `edge_queries`. */
-export function edgeCreatorsOf(body: BodyResult): readonly string[] {
+export function edgeCreatorsOf(body: PartResult): readonly string[] {
   const count = Math.max(body.edge_queries?.length ?? 0, body.edges?.length ?? 0)
   if (count === 0) return []
   const supplied = body.edge_created_by
@@ -272,7 +272,7 @@ export function edgeCreatorsOf(body: BodyResult): readonly string[] {
  * answers all of them, never an arbitrary one.
  */
 export function buildCreatorIndex(
-  bodies: Readonly<Record<string, BodyResult>>,
+  bodies: Readonly<Record<string, PartResult>>,
 ): (query: string) => readonly string[] {
   const index = new Map<string, Set<string>>()
   const add = (query: string | undefined, creator: string): void => {

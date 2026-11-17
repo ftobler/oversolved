@@ -1,4 +1,4 @@
-import type { BodyResult } from '@/types/cad'
+import type { PartResult } from '@/types/cad'
 import { resolvePartIds } from '@/kernel/features/shared/partResolution'
 
 // UI-side twin of the kernel's `resolveBodyIds` (kernel/features/shared/
@@ -15,7 +15,7 @@ import { resolvePartIds } from '@/kernel/features/shared/partResolution'
 
 export function partIdsOfPick(
   query: string,
-  parts: Record<string, BodyResult> | null | undefined,
+  parts: Record<string, PartResult> | null | undefined,
 ): string[] {
   if (!query) return []
   // Shared with the kernel's `resolveBodyIds` (kernel/features/shared/
@@ -27,7 +27,7 @@ export function partIdsOfPick(
 
 export function partIdOfPick(
   query: string,
-  parts: Record<string, BodyResult> | null | undefined,
+  parts: Record<string, PartResult> | null | undefined,
 ): string | null {
   const ids = partIdsOfPick(query, parts)
   return ids.length === 1 ? ids[0] : null

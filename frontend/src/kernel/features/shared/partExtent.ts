@@ -11,10 +11,10 @@
 import type { DisposeScope } from '../../occ/disposeScope'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { Vec3 } from '../../occ/primitives'
-import { bodyFrame } from '../../occ/tessellation'
+import { partFrame } from '../../occ/tessellation'
 
 // Re-exported so both cutters take the whole AABB vocabulary from one module.
-export { bodyFrame }
+export { partFrame }
 
 /** The AABB's half-extent projected onto `axis`: how far the body reaches
  *  either side of its centre along that direction. */
@@ -32,6 +32,6 @@ export function partSpanAlong(oc: OccModule, scope: DisposeScope, shape: OccShap
   span: number
   frame: { center: Vec3; half: Vec3 }
 } {
-  const frame = bodyFrame(oc, scope, shape)
+  const frame = partFrame(oc, scope, shape)
   return { span: projectedRadius(frame, axis) * 2.0, frame }
 }

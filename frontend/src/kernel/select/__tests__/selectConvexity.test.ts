@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest'
 import { selectByPredicate, validateSelector, SelectorError } from '@/kernel/select'
 import type { Selector } from '@/kernel/select'
 import { edgeCandidates, faceCandidates, geometryOf, vertexCandidates } from '../geometry'
-import type { BodyResult, EdgeData, EdgeKind, FaceData } from '@/types/cad'
+import type { PartResult, EdgeData, EdgeKind, FaceData } from '@/types/cad'
 
 type V3 = [number, number, number]
 
@@ -36,7 +36,7 @@ const QUERIES = ['q_convex', 'q_concave', 'q_tangent', 'q_other', 'q_seam', 'q_m
 
 const FACE: FaceData = { centroid: [0, 0, 0], normal: [0, 0, 1], surface_type: 'flatface' }
 
-function body(): Record<string, BodyResult> {
+function body(): Record<string, PartResult> {
   return {
     body_ex1: {
       id: 'body_ex1',

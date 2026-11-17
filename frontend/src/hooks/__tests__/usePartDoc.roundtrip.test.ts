@@ -13,7 +13,7 @@ import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
 
-import { migrateLegacyBodyPicks } from '@/utils/yamlMutations'
+import { migrateLegacyPartPicks } from '@/utils/yamlMutations'
 import type { PartDoc, Mutation, SketchData } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
 
@@ -216,7 +216,7 @@ const legacyTransformDoc = (): PartDoc => ({
 
 const migratedLegacyTransformDoc = (): PartDoc => {
   const doc = legacyTransformDoc()
-  migrateLegacyBodyPicks(doc)
+  migrateLegacyPartPicks(doc)
   return doc
 }
 

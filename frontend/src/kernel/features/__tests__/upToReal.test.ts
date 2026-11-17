@@ -17,7 +17,7 @@ import { solveExtrude } from '../extrude'
 import { extrudeTestHarness, extrudeSpec, rectSketchSk, solveBytes } from '../extrudeRealSupport'
 import { AmbiguousQueryError, initGlobalRepo, makeAncestryQuery } from '../../query'
 import type { Repository } from '../../query'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 
 const oc = await loadOcc()
@@ -33,7 +33,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     occ = oc
   })
 
-  function makeBoxBody(scope: DisposeScope, table: HandleTable): Record<string, Body> {
+  function makeBoxBody(scope: DisposeScope, table: HandleTable): Record<string, PartSolid> {
     const box = makeBox(occ, scope, 10, 10, 10)
     return {
       body_b: {
@@ -44,9 +44,9 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     }
   }
 
-  function bottomLoop(table: HandleTable, body: Body): string[] {
+  function bottomLoop(table: HandleTable, body: PartSolid): string[] {
     const { edges, edge_queries } = solidToEdges(occ, table, body.shape!, {
-      createdBy: body.created_by, bodyId: body.id,
+      createdBy: body.created_by, partId: body.id,
       profileQueries: body.profile_queries,
       edgeAncestry: body.edge_ancestry ?? null, edgeUuids: body.edge_uuids ?? null,
     })
@@ -470,7 +470,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     try {
       const bodyStore = makeBoxBody(scope, table)
       const inner = makeBox(occ, scope, 2, 2, 2)
-      const innerBody: Body = {
+      const innerBody: PartSolid = {
         id: 'body_inner', created_by: 'in1', modified_by: [],
         shape: table.register(inner, 'in1'), sketch_id: 'ski',
         brep_diff: null, profile_queries: [],

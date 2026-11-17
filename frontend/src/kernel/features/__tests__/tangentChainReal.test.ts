@@ -22,7 +22,7 @@ import {
   makePrism,
   edgeToGeom,
 } from '../../occ/primitives'
-import { canonicalEdges } from '../../occ/bodyNames'
+import { canonicalEdges } from '../../occ/partNames'
 import { tangentChain } from '../tangentChain'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 

@@ -12,7 +12,7 @@
 // remain the warning moves to `resolved_warning` (runtime only, never a problem);
 // otherwise the text is rewritten to name only the bodies still apart.
 
-import type { Body } from './types3d'
+import type { PartSolid } from './types3d'
 
 type ResultRow = {
   [key: string]: unknown
@@ -36,11 +36,11 @@ const GONE = '\u0000gone'
 
 interface CheckpointView {
   result: ResultRow
-  body_store_snapshot: Record<string, Body>
+  body_store_snapshot: Record<string, PartSolid>
 }
 
 /** The body a feature row says it built or changed, when it says so. */
-function receivingBodyId(row: ResultRow | undefined): string | null {
+function receivingPartId(row: ResultRow | undefined): string | null {
   if (row === undefined) return null
   if (typeof row.body_id === 'string' && row.body_id !== '') return row.body_id
   const ids = row.body_ids
@@ -97,7 +97,7 @@ function mergeLineage(
     if (checkpoint === undefined) continue
     const next = new Set(Object.keys(checkpoint.body_store_snapshot ?? {}))
     const row = asRow(result[fid])
-    const survivor = receivingBodyId(row)
+    const survivor = receivingPartId(row)
     const operation = typeof row?.operation === 'string' ? row.operation : ''
     const fusion = operation === 'union' || operation === 'add'
     // A union that left a multi-solid compound splits into siblings instead of
@@ -147,7 +147,7 @@ export function resolveTouchWarnings(
     const row = asRow(result[fid])
     const warning = row?.solver_warning
     if (row === undefined || typeof warning !== 'string' || warning === '') continue
-    const receiving = receivingBodyId(row)
+    const receiving = receivingPartId(row)
     if (receiving === null) continue
     const segment = findTouch(warning)
     if (segment === null) continue

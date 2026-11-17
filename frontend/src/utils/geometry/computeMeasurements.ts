@@ -1,7 +1,7 @@
 // The part editor's measurement entry point. The rules, adapters and formatter
 // live in utils/measure; this keeps the page-facing signature stable while the
 // work happens in the pure core.
-import type { Sketch, BodyResult, LengthUnit } from '@/types/cad'
+import type { Sketch, PartResult, LengthUnit } from '@/types/cad'
 import { measureSelectionPicks, type MeasureContext, type SelectionMeasurement } from '@/utils/measure/measureSelection'
 
 /**
@@ -26,7 +26,7 @@ export function computeMeasurement(
   selection: ReadonlySet<string>,
   sketch: Sketch,
   solveResults?: MeasureContext['solveResults'],
-  parts?: Record<string, BodyResult>,
+  parts?: Record<string, PartResult>,
   unit: LengthUnit = 'mm',
 ): SelectionMeasurement {
   return measureSelectionPicks(selection, { sketch, solveResults, parts, unit })
@@ -37,7 +37,7 @@ export function computeMeasurements(
   selection: ReadonlySet<string>,
   sketch: Sketch,
   solveResults?: MeasureContext['solveResults'],
-  parts?: Record<string, BodyResult>,
+  parts?: Record<string, PartResult>,
   unit: LengthUnit = 'mm',
 ): string[] {
   return computeMeasurement(selection, sketch, solveResults, parts, unit).lines

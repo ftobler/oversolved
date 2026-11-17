@@ -47,6 +47,6 @@ export async function downloadDocumentEntry(
     return
   }
   const spec = partExportSpec(partSpecFromText(text), entry.id)
-  const bytes = await exportPartBytes(spec, { format, partId: null, tessellation }, resolver)
+  const bytes = await exportPartBytes(spec, { format, bodyId: null, tessellation }, resolver)
   downloadBlob(new Blob([bytes as BlobPart], { type: exportMime(format) }), fileName)
 }

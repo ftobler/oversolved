@@ -20,7 +20,7 @@ import { usePartDoc } from '@/hooks/usePartDoc'
 import { IDEMPOTENT_MUTATION } from '@/hooks/mutationIdempotence'
 
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
-import { migrateLegacyBodyPicks } from '@/utils/yamlMutations'
+import { migrateLegacyPartPicks } from '@/utils/yamlMutations'
 import type { PartDoc, Mutation } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
 
@@ -284,7 +284,7 @@ describe('idempotent no-op guard', () => {
       version: 1, kind: 'part',
       features: [{ id: 't1', kind: 'transform', transform: { body: '@b1', operation: 'new', translation: [0, 0, 0], rotation_angle: 0, scale: 1 } }],
     } as unknown as PartDoc
-    migrateLegacyBodyPicks(doc)
+    migrateLegacyPartPicks(doc)
     setDoc(doc)
     const { result } = renderPartDoc()
 
@@ -302,7 +302,7 @@ describe('idempotent no-op guard', () => {
       version: 1, kind: 'part',
       features: [{ id: 't1', kind: 'transform', transform: { body: '@b1', operation: 'new', translation: [0, 0, 0], rotation_angle: 0, scale: 1 } }],
     } as unknown as PartDoc
-    migrateLegacyBodyPicks(doc)
+    migrateLegacyPartPicks(doc)
     setDoc(doc)
     const { result } = renderPartDoc()
     const before = JSON.stringify(docRef.current)

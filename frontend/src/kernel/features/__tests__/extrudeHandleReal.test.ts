@@ -71,7 +71,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): e
     // pick fell through to blind distance with a "did not resolve" warning, and
     // this test only checked the absent handle, so it passed on the bug.
     expect(h.res(result, 'ex1').solver_warning).toBeUndefined()
-    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.part(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshBbox(mesh, [0, 10], [0, 10], [0, 7])
   })

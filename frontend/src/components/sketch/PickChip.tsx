@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import dragHandleIcon from '@/assets/icons/toolbar-menu.svg'
 import type { PartFeature } from '@/types/cad'
-import type { BodyResult } from '@/types/cad'
+import type { PartResult } from '@/types/cad'
 import { queryLabel } from '@/utils/query/queryLabel'
 import { partPickLabel } from '@/utils/query/partPickLabel'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -15,7 +15,7 @@ export interface PickChipProps {
   emptyText?: string
   features?: PartFeature[]
   partLabels?: Record<string, string>
-  bodies?: Record<string, BodyResult>
+  bodies?: Record<string, PartResult>
   // When set, each value is labelled as a body (part) pick instead of an
   // element pick. Passed by PickFieldWidget from the field's `names` flag.
   labelKind?: 'body'

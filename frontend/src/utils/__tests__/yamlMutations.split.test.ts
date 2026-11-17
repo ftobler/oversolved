@@ -3,8 +3,8 @@ import type { PartDoc } from '@/types/cad'
 import {
   applyAddSplit,
   applySetSplitField,
-  applyAddSplitBody,
-  applyRemoveSplitBody,
+  applyAddSplitPart,
+  applyRemoveSplitPart,
 } from '@/utils/yamlMutations'
 import { applyReorderPickField } from '@/utils/yamlMutations/featureAdmin'
 import { createDocSession } from '@/session/DocSession'
@@ -111,24 +111,24 @@ describe('add_split_body / remove_split_body', () => {
 
   it('appends a body and toggles a duplicate back out', () => {
     const doc = withSplit()
-    applyAddSplitBody(doc, 'sp1', '@ex2')
+    applyAddSplitPart(doc, 'sp1', '@ex2')
     expect(split0(doc).bodies).toEqual(['@ex1', '@ex2'])
-    applyAddSplitBody(doc, 'sp1', '@ex2')
+    applyAddSplitPart(doc, 'sp1', '@ex2')
     expect(split0(doc).bodies).toEqual(['@ex1'])
   })
 
   it('removes by index and refuses an out-of-range index', () => {
     const doc = withSplit()
-    applyAddSplitBody(doc, 'sp1', '@ex2')
-    applyRemoveSplitBody(doc, 'sp1', 0)
+    applyAddSplitPart(doc, 'sp1', '@ex2')
+    applyRemoveSplitPart(doc, 'sp1', 0)
     expect(split0(doc).bodies).toEqual(['@ex2'])
-    applyRemoveSplitBody(doc, 'sp1', 5)
+    applyRemoveSplitPart(doc, 'sp1', 5)
     expect(split0(doc).bodies).toEqual(['@ex2'])
   })
 
   it('reorders the bodies pick list', () => {
     const doc = withSplit()
-    applyAddSplitBody(doc, 'sp1', '@ex2')
+    applyAddSplitPart(doc, 'sp1', '@ex2')
     applyReorderPickField(doc, 'sp1', 'bodies', 0, 1)
     expect(split0(doc).bodies).toEqual(['@ex2', '@ex1'])
   })

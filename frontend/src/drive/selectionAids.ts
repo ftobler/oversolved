@@ -10,7 +10,7 @@
 // validated by the kernel grammar, compared against the solve output, and the
 // answer is the query `select` would have returned.
 
-import type { BodyResult } from '@/types/cad'
+import type { PartResult } from '@/types/cad'
 import {
   PREDICATE_KEYS, selectByPredicate, SelectorError, validateSelector, type SelectItem, type SelectKind, type Selector,
 } from '@/kernel/select'
@@ -135,7 +135,7 @@ const PROJECTION_SOURCE_PICK: PickRule = {
 /** Resolve one `{selector}` pick to the queries it matches. */
 function resolvePick(
   value: unknown,
-  bodies: Record<string, BodyResult> | null,
+  bodies: Record<string, PartResult> | null,
   label: string,
   rule: PickRule,
 ): PickQueries | PickRefusal {
@@ -203,7 +203,7 @@ function resolvePick(
   return { ok: true, queries: items.map(item => item.query), items }
 }
 
-function planeStep(raw: RawStep, bodies: Record<string, BodyResult> | null): SelectionAidResolution {
+function planeStep(raw: RawStep, bodies: Record<string, PartResult> | null): SelectionAidResolution {
   if (!pickOf(raw.plane)) return { ok: true, mutation: raw }
   const pick = resolvePick(raw.plane, bodies, `${raw.type as string} plane`, PLANE_PICK)
   if (!pick.ok) return pick
@@ -221,7 +221,7 @@ function projectedKindOf(item: SelectItem): string {
   return item.kind === 'edge' ? projectedKindForEdge(item.geometry.kind) : 'point'
 }
 
-function sourceStep(raw: RawStep, bodies: Record<string, BodyResult> | null): SelectionAidResolution {
+function sourceStep(raw: RawStep, bodies: Record<string, PartResult> | null): SelectionAidResolution {
   if (!pickOf(raw.source)) return { ok: true, mutation: raw }
   const pick = resolvePick(raw.source, bodies, `${raw.type as string} source`, PROJECTION_SOURCE_PICK)
   if (!pick.ok) return pick
@@ -238,7 +238,7 @@ function sourceStep(raw: RawStep, bodies: Record<string, BodyResult> | null): Se
 function pickListStep(
   raw: RawStep,
   field: string,
-  bodies: Record<string, BodyResult> | null,
+  bodies: Record<string, PartResult> | null,
   kind: SelectKind,
 ): SelectionAidResolution {
   const entries = raw[field]
@@ -261,11 +261,11 @@ function pickListStep(
   return { ok: true, mutation: { ...raw, [field]: queries } }
 }
 
-function shellStep(raw: RawStep, bodies: Record<string, BodyResult> | null): SelectionAidResolution {
+function shellStep(raw: RawStep, bodies: Record<string, PartResult> | null): SelectionAidResolution {
   return pickListStep(raw, 'faces', bodies, 'face')
 }
 
-function edgeStep(raw: RawStep, bodies: Record<string, BodyResult> | null): SelectionAidResolution {
+function edgeStep(raw: RawStep, bodies: Record<string, PartResult> | null): SelectionAidResolution {
   return pickListStep(raw, 'edges', bodies, 'edge')
 }
 
@@ -274,7 +274,7 @@ function edgeStep(raw: RawStep, bodies: Record<string, BodyResult> | null): Sele
  *  can run this on every step. */
 export function resolveSelectionAids(
   raw: unknown,
-  bodies: Record<string, BodyResult> | null,
+  bodies: Record<string, PartResult> | null,
 ): SelectionAidResolution {
   if (!isRecord(raw)) return { ok: true, mutation: raw }
   switch (raw.type) {

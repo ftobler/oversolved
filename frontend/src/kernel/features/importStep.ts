@@ -5,11 +5,11 @@
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 import type { Repository } from '../query'
 import { stepBytesToShapeWithIdentity } from '../occ/stepIo'
 import { importedNameMaps } from '../occ/importLineage'
-import { registerSplitBodies, splitSolids } from './bodySplit'
+import { registerSplitParts, splitSolids } from './partSplit'
 
 type Dict = Record<string, unknown>
 
@@ -28,7 +28,7 @@ export function solveImportStep(
   table: HandleTable,
   feature: Dict,
   _globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   files?: ReadonlyMap<string, Uint8Array>,
 ): ImportStepResult {
   const featureId = (feature.id as string) ?? ''
@@ -55,7 +55,7 @@ export function solveImportStep(
   const bytes = files?.get(fileId)
   if (!bytes) throw new Error(`import_step: file '${fileId}' is not present in the solve file set`)
 
-  const bodyId = 'body_' + featureId
+  const partId = 'body_' + featureId
   const { shape: read, faceStepIds } = stepBytesToShapeWithIdentity(oc, scope, bytes, scale)
   const shape = scope.track(read)
 
@@ -72,8 +72,8 @@ export function solveImportStep(
   // exactly the "a shape becomes bodies" case bodySplit owns: one body per
   // solid, or one body carrying the whole shape when the file has no solid at
   // all (surfaces/shells only).
-  const bodyIds = registerSplitBodies(oc, scope, table, bodyStore, shape, {
-    id: bodyId,
+  const partIds = registerSplitParts(oc, scope, table, partStore, shape, {
+    id: partId,
     createdBy: featureId,
     imported: true,
     faceNames: names.faceNames,
@@ -81,5 +81,5 @@ export function solveImportStep(
     faceAncestry: names.faceAncestry,
     edgeAncestry: names.edgeAncestry,
   })
-  return { status: 'ok', body_id: bodyIds[0], body_ids: bodyIds }
+  return { status: 'ok', body_id: partIds[0], body_ids: partIds }
 }

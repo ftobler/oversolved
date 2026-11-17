@@ -25,7 +25,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): d
     ;(spec.features[1] as Record<string, unknown>).distance = '20/4'
     const result = h.run(spec)
     expect(h.res(result, 'ex1').status).toBe('ok')
-    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.part(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshBbox(mesh, [0, 10], [0, 8], [0, 5])
   })
@@ -38,7 +38,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): d
     expect(result.bodies).toHaveProperty('body_ex1')
     expect(result.bodies).not.toHaveProperty('body_ex1_1')
     expect(Object.keys(result.bodies)).toHaveLength(1)
-    const mesh = h.body(result, 'body_ex1').mesh as {
+    const mesh = h.part(result, 'body_ex1').mesh as {
       face_data?: Array<{ centroid: number[]; surface_type?: string }>
     } | undefined
     const fd = mesh?.face_data ?? []
@@ -65,7 +65,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): d
     expect(result.bodies).not.toHaveProperty('body_ex1_1')
     expect(Object.keys(result.bodies)).toHaveLength(1)
     // The swept top must be ONE planar face, not segmented per source region.
-    const mesh = h.body(result, 'body_ex1').mesh as {
+    const mesh = h.part(result, 'body_ex1').mesh as {
       face_data?: Array<{ centroid: number[]; surface_type?: string }>
     } | undefined
     const fd = mesh?.face_data ?? []

@@ -120,7 +120,7 @@ describe.skipIf(!oc || !solveBytes)('move-face multi-face robustness (real OCC +
   })
 
   function bodyOf(r: ReturnType<typeof h.run>): BodyView {
-    return h.body(r, bodyId) as BodyView
+    return h.part(r, bodyId) as BodyView
   }
 
   // The cylinder radius of the one live face carrying `uuid`.

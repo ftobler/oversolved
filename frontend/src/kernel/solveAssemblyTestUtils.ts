@@ -133,9 +133,9 @@ export function makeEchoSolver(): (input: Uint8Array) => Uint8Array {
     // The input header is: magic(4) + n_bodies(4) + n_params(4) + n_mates(4) + n_fixed(4)
     // Then n_bodies * 4 bytes of body indices, then paramsInitial (f64 each).
     const view = new DataView(input.buffer, input.byteOffset, input.byteLength)
-    const nBodies = view.getUint32(4, true)
-    const nParams = nBodies * 7
-    const paramsOffset = 20 + nBodies * 4
+    const nParts = view.getUint32(4, true)
+    const nParams = nParts * 7
+    const paramsOffset = 20 + nParts * 4
     const params: number[] = []
     for (let i = 0; i < nParams; i++) {
       params.push(view.getFloat64(paramsOffset + i * 8, true))
@@ -143,7 +143,7 @@ export function makeEchoSolver(): (input: Uint8Array) => Uint8Array {
 
     // Build output: magic(4) + n_params(4) + status(1) + params(nParams*8)
     // + n_mates(4) + moved(nBodies) + diagnostics(28)
-    const outSize = 4 + 4 + 1 + nParams * 8 + 4 + nBodies + 28
+    const outSize = 4 + 4 + 1 + nParams * 8 + 4 + nParts + 28
     const outBuf = new ArrayBuffer(outSize)
     const out = new DataView(outBuf)
     let pos = 0
@@ -155,8 +155,8 @@ export function makeEchoSolver(): (input: Uint8Array) => Uint8Array {
     }
     out.setUint32(pos, 0, true); pos += 4  // n_mates
     // The echo solver moved nothing: every body's moved byte is 0.
-    for (let i = 0; i < nBodies; i++) out.setUint8(pos + i, 0)
-    pos += nBodies
+    for (let i = 0; i < nParts; i++) out.setUint8(pos + i, 0)
+    pos += nParts
     out.setFloat64(pos, 0.0, true); pos += 8  // residual_norm
     out.setUint32(pos, 13, true); pos += 4  // rank
     out.setUint32(pos, 1, true); pos += 4  // dof
@@ -184,19 +184,19 @@ export function makeWireStatusSolver(status: number): (input: Uint8Array) => Uin
 export function makeTranslateSolver(dx: number): (input: Uint8Array) => Uint8Array {
   return (input: Uint8Array): Uint8Array => {
     const view = new DataView(input.buffer, input.byteOffset, input.byteLength)
-    const nBodies = view.getUint32(4, true)
-    const nParams = nBodies * 7
-    const paramsOffset = 20 + nBodies * 4
+    const nParts = view.getUint32(4, true)
+    const nParams = nParts * 7
+    const paramsOffset = 20 + nParts * 4
     const params: number[] = []
     for (let i = 0; i < nParams; i++) {
       params.push(view.getFloat64(paramsOffset + i * 8, true))
     }
     // Translate the second body (indices 7-13)
-    if (nBodies >= 2) {
+    if (nParts >= 2) {
       params[7] += dx
     }
 
-    const outSize = 4 + 4 + 1 + nParams * 8 + 4 + nBodies + 28
+    const outSize = 4 + 4 + 1 + nParams * 8 + 4 + nParts + 28
     const outBuf = new ArrayBuffer(outSize)
     const out = new DataView(outBuf)
     let pos = 0
@@ -208,8 +208,8 @@ export function makeTranslateSolver(dx: number): (input: Uint8Array) => Uint8Arr
     }
     out.setUint32(pos, 0, true); pos += 4  // n_mates
     // Body 1 is the one this stand-in moved.
-    for (let i = 0; i < nBodies; i++) out.setUint8(pos + i, i === 1 && dx !== 0 ? 1 : 0)
-    pos += nBodies
+    for (let i = 0; i < nParts; i++) out.setUint8(pos + i, i === 1 && dx !== 0 ? 1 : 0)
+    pos += nParts
     out.setFloat64(pos, 0.0, true); pos += 8
     out.setUint32(pos, 13, true); pos += 4
     out.setUint32(pos, 1, true); pos += 4
@@ -226,19 +226,19 @@ export function makeTranslateSolver(dx: number): (input: Uint8Array) => Uint8Arr
  * worker, a cached build or a hand-rolled solver can still hand one over, and
  * the decode boundary must not care).
  */
-export function makeScaledQwSolver(bodyIndex: number, scale: number): (input: Uint8Array) => Uint8Array {
+export function makeScaledQwSolver(partIndex: number, scale: number): (input: Uint8Array) => Uint8Array {
   return (input: Uint8Array): Uint8Array => {
     const view = new DataView(input.buffer, input.byteOffset, input.byteLength)
-    const nBodies = view.getUint32(4, true)
-    const nParams = nBodies * 7
-    const paramsOffset = 20 + nBodies * 4
+    const nParts = view.getUint32(4, true)
+    const nParams = nParts * 7
+    const paramsOffset = 20 + nParts * 4
     const params: number[] = []
     for (let i = 0; i < nParams; i++) {
       params.push(view.getFloat64(paramsOffset + i * 8, true))
     }
-    for (let c = 3; c < 7; c++) params[bodyIndex * 7 + c] *= scale
+    for (let c = 3; c < 7; c++) params[partIndex * 7 + c] *= scale
 
-    const outSize = 4 + 4 + 1 + nParams * 8 + 4 + nBodies + 28
+    const outSize = 4 + 4 + 1 + nParams * 8 + 4 + nParts + 28
     const outBuf = new ArrayBuffer(outSize)
     const out = new DataView(outBuf)
     let pos = 0
@@ -250,8 +250,8 @@ export function makeScaledQwSolver(bodyIndex: number, scale: number): (input: Ui
     }
     out.setUint32(pos, 0, true); pos += 4  // n_mates
     // Only the scaled body's pose is meant to have changed.
-    for (let i = 0; i < nBodies; i++) out.setUint8(pos + i, i === bodyIndex && scale !== 1 ? 1 : 0)
-    pos += nBodies
+    for (let i = 0; i < nParts; i++) out.setUint8(pos + i, i === partIndex && scale !== 1 ? 1 : 0)
+    pos += nParts
     out.setFloat64(pos, 0.0, true); pos += 8
     out.setUint32(pos, 13, true); pos += 4
     out.setUint32(pos, 1, true); pos += 4
@@ -263,8 +263,8 @@ export function makeScaledQwSolver(bodyIndex: number, scale: number): (input: Ui
 
 export interface DecodedMateRecord {
   kindCode: number
-  bodyA: number
-  bodyB: number
+  partA: number
+  partB: number
   anchorKindA: number
   anchorKindB: number
   pointA: [number, number, number]
@@ -279,7 +279,7 @@ export interface DecodedMateRecord {
 }
 
 export interface DecodedInput {
-  nBodies: number
+  nParts: number
   fixedMask: number[]
   mates: DecodedMateRecord[]
 }
@@ -287,11 +287,11 @@ export interface DecodedInput {
 /** Decode a mate-solver input buffer far enough to inspect bodies + mate records. */
 export function decodeInput(input: Uint8Array): DecodedInput {
   const v = new DataView(input.buffer, input.byteOffset, input.byteLength)
-  const nBodies = v.getUint32(4, true)
+  const nParts = v.getUint32(4, true)
   const nParams = v.getUint32(8, true)
   const nMates = v.getUint32(12, true)
-  let pos = 20 + nBodies * 4 + nParams * 8
-  const maskLen = Math.ceil(nBodies / 8)
+  let pos = 20 + nParts * 4 + nParams * 8
+  const maskLen = Math.ceil(nParts / 8)
   const fixedMask: number[] = []
   for (let i = 0; i < maskLen; i++) fixedMask.push(v.getUint8(pos + i))
   pos += maskLen
@@ -305,8 +305,8 @@ export function decodeInput(input: Uint8Array): DecodedInput {
   const mates: DecodedMateRecord[] = []
   for (let i = 0; i < nMates; i++) {
     const kindCode = v.getUint8(pos); pos += 1
-    const bodyA = v.getUint32(pos, true); pos += 4
-    const bodyB = v.getUint32(pos, true); pos += 4
+    const partA = v.getUint32(pos, true); pos += 4
+    const partB = v.getUint32(pos, true); pos += 4
     const anchorKindA = v.getUint8(pos); pos += 1
     const anchorKindB = v.getUint8(pos); pos += 1
     const pointA = readVec()
@@ -321,9 +321,9 @@ export function decodeInput(input: Uint8Array): DecodedInput {
     const limitMax = v.getFloat64(pos, true); pos += 8
     pos += 48  // perp_a (3 f64) + perp_b (3 f64)
     const weight = v.getFloat64(pos, true); pos += 8
-    mates.push({ kindCode, bodyA, bodyB, anchorKindA, anchorKindB, pointA, axisA, pointB, axisB, offset, angle, limitMin, limitMax, weight })
+    mates.push({ kindCode, partA, partB, anchorKindA, anchorKindB, pointA, axisA, pointB, axisB, offset, angle, limitMin, limitMax, weight })
   }
-  return { nBodies, fixedMask, mates }
+  return { nParts, fixedMask, mates }
 }
 
 /** An echo solver that also captures the decoded input for inspection. */

@@ -75,7 +75,7 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
     expect(r1.bodies).toHaveProperty('body_ex1')
 
     // Add a second sketch on the first body's face, triggers partial rebuild.
-    const faceQueries = (h.body(r1, 'body_ex1').mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
+    const faceQueries = (h.part(r1, 'body_ex1').mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
     expect(faceQueries.length).toBeGreaterThan(0)
 
     const sk2 = { ...rectSketch('sk2', 4, 4, { plane: faceQueries[0] }), constraints: [] }
@@ -118,7 +118,7 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
     const r1 = h.run({ features: [sk1, ex1] })
     expect(h.res(r1, 'ex1').status).toBe('ok')
 
-    const faceQueries = (h.body(r1, 'body_ex1').mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
+    const faceQueries = (h.part(r1, 'body_ex1').mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
     expect(faceQueries.length).toBeGreaterThan(0)
 
     const sk2 = {
@@ -153,8 +153,8 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
     const rBase = h.run({ features: [sk1, ex1] })
     expect(h.res(rBase, 'ex1').status).toBe('ok')
 
-    const faceData = (h.body(rBase, 'body_ex1').mesh as { face_data?: Array<{ centroid: number[]; normal: number[] }> } | undefined)?.face_data ?? []
-    const faceQueries = (h.body(rBase, 'body_ex1').mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
+    const faceData = (h.part(rBase, 'body_ex1').mesh as { face_data?: Array<{ centroid: number[]; normal: number[] }> } | undefined)?.face_data ?? []
+    const faceQueries = (h.part(rBase, 'body_ex1').mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
     let topQuery: string | undefined
     for (let i = 0; i < faceData.length; i++) {
       if (faceData[i].normal[2] > 0.9) { topQuery = faceQueries[i]; break }
@@ -217,7 +217,7 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
     const ex1 = extrudeSpec('sk1', 'ex1', { distance: 5 })
     const r1 = h.run({ features: [sk1, ex1] })
 
-    const faceQueries = (h.body(r1, 'body_ex1').mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
+    const faceQueries = (h.part(r1, 'body_ex1').mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
     expect(faceQueries.length).toBeGreaterThan(0)
 
     const planeQuery = faceQueries.find((q) => q.includes('@u|')) ?? faceQueries[0]
@@ -244,7 +244,7 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
     const sk1 = rectSketch('sk1', 10, 10)
     const ex1 = extrudeSpec('sk1', 'ex1', { distance: 5 })
     const r0 = h.run({ features: [sk1, ex1] })
-    const faceQueries = (h.body(r0, 'body_ex1').mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
+    const faceQueries = (h.part(r0, 'body_ex1').mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
     const planeQuery = faceQueries.find((q) => q.includes('@u|'))
     expect(planeQuery).toBeDefined()
 
@@ -346,7 +346,7 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
     // A fillet placed before its body's extrude must hard-fail.
     const sk = rectSketch('skB', 10, 10, { plane: '@builtin_plane_top' })
     const r0 = h.run({ features: [sk, extrudeSpec('skB', 'exB', { distance: 5, operation: 'new' })] })
-    const q = (h.body(r0, 'body_exB').edge_queries as string[])[0]
+    const q = (h.part(r0, 'body_exB').edge_queries as string[])[0]
     const r = h.run({ features: [sk, { id: 'filB', kind: 'fillet', edges: [q], radius: 1 }, extrudeSpec('skB', 'exB', { distance: 5, operation: 'new' })] })
     expect(h.res(r, 'filB').status).toBe('exception')
   })
@@ -362,8 +362,8 @@ describe.skipIf(!oc || !solveBytes)('builder partial rebuild (real OCC + Rust so
       constraints: rectSketch('skB', 10, 10, { plane: '@builtin_plane_top' }).constraints }
 
     const r0 = h.run({ features: [skA, skB, extrudeSpec('skA', 'exA', { distance: 5, operation: 'new' }), extrudeSpec('skB', 'exB', { distance: 5, operation: 'new' })] })
-    const qA = (h.body(r0, 'body_exA').edge_queries as string[])[0]
-    const qB = (h.body(r0, 'body_exB').edge_queries as string[])[0]
+    const qA = (h.part(r0, 'body_exA').edge_queries as string[])[0]
+    const qB = (h.part(r0, 'body_exB').edge_queries as string[])[0]
 
     // Delete skB: exB can't resolve $skB -> exception, filB can't resolve
     const rDelB = h.run({ features: [skA, extrudeSpec('skA', 'exA', { distance: 5, operation: 'new' }), extrudeSpec('skB', 'exB', { distance: 5, operation: 'new' }), { id: 'filA', kind: 'fillet', edges: [qA], radius: 1 }, { id: 'filB', kind: 'fillet', edges: [qB], radius: 1 }] })

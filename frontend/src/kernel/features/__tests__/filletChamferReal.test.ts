@@ -20,11 +20,11 @@ import { HandleTable } from '../../occ/handleTable'
 import { makeBox, makeCylinder, edgeToGeom } from '../../occ/primitives'
 import { volumeOf } from '../../occ/booleans'
 import { deriveEdgeNames } from '../../occ/constructionLineage'
-import { canonicalEdges, canonicalFaces, namesFromArray, namesToArray } from '../../occ/bodyNames'
+import { canonicalEdges, canonicalFaces, namesFromArray, namesToArray } from '../../occ/partNames'
 import { ref, Repository } from '../../query'
 import { solveFillet, solveChamfer, resolveFilletEdges } from '../filletChamfer'
 import { solidToEdges } from '../../occ/tessellation'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 
 const oc = await loadOcc()
@@ -37,7 +37,7 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
     occ = oc
   })
 
-  function makeBody(scope: DisposeScope, table: HandleTable): Record<string, Body> {
+  function makeBody(scope: DisposeScope, table: HandleTable): Record<string, PartSolid> {
     const box = makeBox(occ, scope, 10, 10, 10)
 
     // Name the faces and derive the edges so that solidToEdges and
@@ -227,7 +227,7 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
       const body = bodyStore.body_b
       const { edges, edge_queries } = solidToEdges(occ, table, body.shape!, {
         createdBy: body.created_by,
-        bodyId: body.id,
+        partId: body.id,
         profileQueries: body.profile_queries,
         edgeAncestry: body.edge_ancestry,
         edgeUuids: body.edge_uuids,
@@ -274,7 +274,7 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
     const table = new HandleTable()
     try {
       const cyl = makeCylinder(occ, scope, [0, 0, 0], [0, 0, 1], 3, 10)
-      const bodyStore: Record<string, Body> = {
+      const bodyStore: Record<string, PartSolid> = {
         body_c: {
           id: 'body_c',
           created_by: 'ex_c',
@@ -309,7 +309,7 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
     const table = new HandleTable()
     try {
       const box = makeBox(occ, scope, 10, 10, 10)
-      const bodyStore: Record<string, Body> = {
+      const bodyStore: Record<string, PartSolid> = {
         body_b: {
           id: 'body_b', created_by: 'ex1', modified_by: [],
           shape: table.register(box, 'ex1'), sketch_id: 'sk',

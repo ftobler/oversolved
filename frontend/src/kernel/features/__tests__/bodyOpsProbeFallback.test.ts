@@ -24,26 +24,26 @@ vi.mock('../booleanLineage', () => ({
   }),
 }))
 // Reading a body's names walks its OCC shape; these bodies have none.
-vi.mock('../../occ/bodyNames', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../occ/bodyNames')>()
-  return { ...actual, readBodyNames: () => actual.emptyShapeNames() }
+vi.mock('../../occ/partNames', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../occ/partNames')>()
+  return { ...actual, readPartNames: () => actual.emptyShapeNames() }
 })
-vi.mock('../bodySplit', () => ({
-  registerSplitBodies: () => ['body_t'],
-  resplitBody: () => ['body_t'],
+vi.mock('../partSplit', () => ({
+  registerSplitParts: () => ['body_t'],
+  resplitPart: () => ['body_t'],
   solidHoldingFaces: () => null,
 }))
 
 import { HandleTable } from '../../occ/handleTable'
 import { DisposeScope } from '../../occ/disposeScope'
-import { applyBodyOperation } from '../bodyOps'
+import { applyPartOperation } from '../partOps'
 import { emptyBrepDiff } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = null as unknown as OccModule
 
-function store(table: HandleTable): Record<string, Body> {
+function store(table: HandleTable): Record<string, PartSolid> {
   const scope = new DisposeScope()
   return {
     body_t: {
@@ -58,13 +58,13 @@ function store(table: HandleTable): Record<string, Body> {
   }
 }
 
-function cut(table: HandleTable, storeOverride: Record<string, Body>) {
-  return applyBodyOperation(oc, new DisposeScope(), table, {
+function cut(table: HandleTable, storeOverride: Record<string, PartSolid>) {
+  return applyPartOperation(oc, new DisposeScope(), table, {
     toolShape: { delete: () => {} } as unknown as OccShape,
-    bodyStore: storeOverride,
+    partStore: storeOverride,
     operation: 'cut',
     mergeTarget: 'body_t',
-    bodyId: 'body_f',
+    partId: 'body_f',
     featureId: 'featF',
     sketchId: 'skF',
     opName: 'extrude',
@@ -143,12 +143,12 @@ describe('cut intersection probe failures', () => {
     )
     const table = new HandleTable()
     expect(() =>
-      applyBodyOperation(oc, new DisposeScope(), table, {
+      applyPartOperation(oc, new DisposeScope(), table, {
         toolShape: { delete: () => {} } as unknown as OccShape,
-        bodyStore: store(table),
+        partStore: store(table),
         operation: 'add',
         mergeTarget: 'body_t',
-        bodyId: 'body_f',
+        partId: 'body_f',
         featureId: 'featF',
         sketchId: 'skF',
         opName: 'extrude',
@@ -167,12 +167,12 @@ describe('cut intersection probe failures', () => {
     })
     const table = new HandleTable()
     const bodies = store(table)
-    const result = applyBodyOperation(oc, new DisposeScope(), table, {
+    const result = applyPartOperation(oc, new DisposeScope(), table, {
       toolShape: { delete: () => {} } as unknown as OccShape,
-      bodyStore: bodies,
+      partStore: bodies,
       operation: 'add',
       mergeTarget: 'body_t',
-      bodyId: 'body_f',
+      partId: 'body_f',
       featureId: 'featF',
       sketchId: 'skF',
       opName: 'extrude',

@@ -118,7 +118,7 @@ describe.skipIf(!oc || !solveBytes)('fillet end-face refusal naming (real OCC + 
     const scope = new DisposeScope()
     const shape = h.table.get<OccShape>(body.shape!)
     const indexFor = makeEdgeIndexCache(oc!, scope, h.table)
-    const plateQueries = ((h.body(result, 'body_ex1').edge_queries as string[]) ?? []).filter((q) => q.includes('@ex1@'))
+    const plateQueries = ((h.part(result, 'body_ex1').edge_queries as string[]) ?? []).filter((q) => q.includes('@ex1@'))
     const picked = resolveEdgesWithIndex(oc!, scope, h.table, body, indexFor(body), plateQueries)
     const fallback = makeFilletPrismFallback(2, 'fi2')
     let chained = 0

@@ -8,7 +8,7 @@
 // carries the pointer's offset from the seed pose, which lands the part exactly
 // where the pointer put it without re-meshing anything.
 
-import type { AssemblyDoc, BodyResult, PartInstance, Transform3D } from '@/types/cad'
+import type { AssemblyDoc, PartResult, PartInstance, Transform3D } from '@/types/cad'
 import type { PartRenderItem } from '@/utils/partRender'
 import { getPartsToRender } from '@/utils/partRender'
 import { poseOffsetFor, drawnPose, type ManipulationSession } from '@/utils/partManipulation'
@@ -115,7 +115,7 @@ export interface AssemblyPartGroup {
  * geometry cannot describe different layouts.
  */
 export function getAssemblyPartGroups(
-  parts: Record<string, BodyResult> | undefined,
+  parts: Record<string, PartResult> | undefined,
   instances: PartInstance[],
   manipulation: ManipulationSession | null,
   selectedParts: ReadonlySet<string>,

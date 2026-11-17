@@ -19,7 +19,7 @@ import {
 } from '@/utils/yamlMutations/sketch'
 import { applySolveToDoc } from '@/drive/solveWriteBack'
 import { docHashOf } from '@/drive/docHash'
-import { faceProjectionConstraintId, faceBoundaryFromBodies, edgeUuidToken } from '../projectionMembers'
+import { faceProjectionConstraintId, faceBoundaryFromParts, edgeUuidToken } from '../projectionMembers'
 import type { PartDoc, PartFeature, SketchFeature } from '@/types/cad'
 import {
   BOX_BODY_ID, BOX_EXTRUDE_ID, BOX_SKETCH_ID,
@@ -72,9 +72,9 @@ function addFaceProjection(
   faceQuery: string,
 ): string {
   applyAddSketch(doc, sketchId, 'Projection', '@builtin_plane_front')
-  const body = h.body(baseResult, BOX_BODY_ID)
+  const body = h.part(baseResult, BOX_BODY_ID)
   applyAddProjectedEntity(doc, sketchId, '', faceQuery, undefined, undefined, {
-    faceBoundary: faceBoundaryFromBodies(() => ({ [BOX_BODY_ID]: body })),
+    faceBoundary: faceBoundaryFromParts(() => ({ [BOX_BODY_ID]: body })),
   })
   const cid = faceProjectionConstraintId(faceQuery)
   if (cid === null) throw new Error('face query carries no construction UUID')
@@ -99,7 +99,7 @@ function profileExtent(sketch: SketchOut): number {
  *  replaces it with an arc ON THE FRONT FACE, which is what makes the live-add
  *  case observable. */
 function frontLeftEdge(baseResult: BuildResponse): string {
-  const body = h.body(baseResult, BOX_BODY_ID) as {
+  const body = h.part(baseResult, BOX_BODY_ID) as {
     edges?: Array<{ kind: string; start: number[]; end: number[] }>
     edge_queries?: string[]
   }

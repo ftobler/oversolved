@@ -5,14 +5,14 @@
 // (`edges`, `face_data`) and reads the parallel query array defensively; a
 // missing or empty query means the element is unnamed and cannot be selected.
 
-import type { BodyResult, EdgeData, EdgeKind } from '@/types/cad'
+import type { PartResult, EdgeData, EdgeKind } from '@/types/cad'
 import type { SurfaceType } from '@/kernel/occ/primitives'
 import type { EdgeGeometry, FaceGeometry, SelectKind, Vec3, VertexGeometry } from './types'
 
 /** One selectable element, resolved to its owning body and index. */
 export interface Candidate {
-  body: BodyResult
-  bodyId: string
+  part: PartResult
+  partId: string
   kind: SelectKind
   index: number
   query: string
@@ -43,32 +43,32 @@ export function cross(a: readonly number[], b: readonly number[]): Vec3 {
 }
 
 /** Every named edge of the bodies, in body-then-index order. */
-export function edgeCandidates(bodies: Record<string, BodyResult>, from?: string): Candidate[] {
+export function edgeCandidates(parts: Record<string, PartResult>, from?: string): Candidate[] {
   const out: Candidate[] = []
-  for (const bodyId of sortedBodyIds(bodies)) {
-    if (from !== undefined && bodyId !== from) continue
-    const body = bodies[bodyId]
-    const edges = body.edges ?? []
+  for (const partId of sortedPartIds(parts)) {
+    if (from !== undefined && partId !== from) continue
+    const part = parts[partId]
+    const edges = part.edges ?? []
     for (let index = 0; index < edges.length; index++) {
-      const query = body.edge_queries?.[index] ?? ''
+      const query = part.edge_queries?.[index] ?? ''
       if (!query) continue
-      out.push({ body, bodyId, kind: 'edge', index, query })
+      out.push({ part, partId, kind: 'edge', index, query })
     }
   }
   return out
 }
 
 /** Every named face of the bodies, in body-then-index order. */
-export function faceCandidates(bodies: Record<string, BodyResult>, from?: string): Candidate[] {
+export function faceCandidates(parts: Record<string, PartResult>, from?: string): Candidate[] {
   const out: Candidate[] = []
-  for (const bodyId of sortedBodyIds(bodies)) {
-    if (from !== undefined && bodyId !== from) continue
-    const body = bodies[bodyId]
-    const faceData = body.mesh?.face_data ?? []
+  for (const partId of sortedPartIds(parts)) {
+    if (from !== undefined && partId !== from) continue
+    const part = parts[partId]
+    const faceData = part.mesh?.face_data ?? []
     for (let index = 0; index < faceData.length; index++) {
-      const query = body.mesh?.face_queries?.[index] ?? ''
+      const query = part.mesh?.face_queries?.[index] ?? ''
       if (!query) continue
-      out.push({ body, bodyId, kind: 'face', index, query })
+      out.push({ part, partId, kind: 'face', index, query })
     }
   }
   return out
@@ -78,16 +78,16 @@ export function faceCandidates(bodies: Record<string, BodyResult>, from?: string
  *  emits a tessellation's corner vertices with a `@<bodyId>/vertexN` ancestry
  *  query each (`builderAncestry.ts`), and those queries are what a click on a
  *  corner stores, so a vertex selector is the authored path to the same string. */
-export function vertexCandidates(bodies: Record<string, BodyResult>, from?: string): Candidate[] {
+export function vertexCandidates(parts: Record<string, PartResult>, from?: string): Candidate[] {
   const out: Candidate[] = []
-  for (const bodyId of sortedBodyIds(bodies)) {
-    if (from !== undefined && bodyId !== from) continue
-    const body = bodies[bodyId]
-    const vertices = body.vertices ?? []
+  for (const partId of sortedPartIds(parts)) {
+    if (from !== undefined && partId !== from) continue
+    const part = parts[partId]
+    const vertices = part.vertices ?? []
     for (let index = 0; index < vertices.length; index++) {
-      const query = body.vertex_queries?.[index] ?? ''
+      const query = part.vertex_queries?.[index] ?? ''
       if (!query) continue
-      out.push({ body, bodyId, kind: 'vertex', index, query })
+      out.push({ part, partId, kind: 'vertex', index, query })
     }
   }
   return out
@@ -95,17 +95,17 @@ export function vertexCandidates(bodies: Record<string, BodyResult>, from?: stri
 
 /** Body ids sorted, so the output order does not depend on object key
  *  insertion: the same document and solve must yield the same list. */
-export function sortedBodyIds(bodies: Record<string, BodyResult>): string[] {
-  return Object.keys(bodies).sort()
+export function sortedPartIds(parts: Record<string, PartResult>): string[] {
+  return Object.keys(parts).sort()
 }
 
 function edgeData(c: Candidate): EdgeData | undefined {
-  return c.body.edges?.[c.index]
+  return c.part.edges?.[c.index]
 }
 
 function vertexData(c: Candidate): Vec3 | undefined {
   if (c.kind !== 'vertex') return undefined
-  return c.body.vertices?.[c.index]
+  return c.part.vertices?.[c.index]
 }
 
 // A curved analytic face carries a radial `normal` and its real axis in
@@ -147,7 +147,7 @@ function conicTangent(
  *  (a missing or unnamed neighbour would otherwise look like a seam). */
 export function isSeamEdge(c: Candidate): boolean {
   if (c.kind !== 'edge' || !c.query) return false
-  const mesh = c.body.mesh
+  const mesh = c.part.mesh
   const seamLists = mesh?.face_seam_queries
   const faceEdges = mesh?.face_edge_queries
   if (seamLists !== undefined) {
@@ -186,7 +186,7 @@ export function directionOf(c: Candidate): Vec3 | null {
   // direction test can never name one.
   if (c.kind === 'vertex') return null
   if (c.kind === 'face') {
-    const fd = c.body.mesh?.face_data?.[c.index]
+    const fd = c.part.mesh?.face_data?.[c.index]
     if (!fd) return null
     const frame = fd.surface_frame
     if (frame !== undefined && ANALYTIC_AXIS_SURFACES.has(fd.surface_type ?? '')) return normalize(frame.axis)
@@ -227,7 +227,7 @@ export function directionOf(c: Candidate): Vec3 | null {
  *  a curved edge's centre, or a vertex standing right there. */
 export function pointOf(c: Candidate): Vec3 | null {
   if (c.kind === 'vertex') return vertexData(c) ?? null
-  if (c.kind === 'face') return c.body.mesh?.face_data?.[c.index]?.centroid ?? null
+  if (c.kind === 'face') return c.part.mesh?.face_data?.[c.index]?.centroid ?? null
   const ed = edgeData(c)
   if (!ed) return null
   switch (ed.kind) {
@@ -250,7 +250,7 @@ export function pointOf(c: Candidate): Vec3 | null {
 export function radiusOf(c: Candidate): number | null {
   if (c.kind === 'vertex') return null
   if (c.kind === 'face') {
-    const fd = c.body.mesh?.face_data?.[c.index]
+    const fd = c.part.mesh?.face_data?.[c.index]
     if (fd?.surface_type !== 'cylinderface') return null
     return fd.surface_frame?.radius ?? null
   }
@@ -262,7 +262,7 @@ export function radiusOf(c: Candidate): number | null {
 
 export function typeOf(c: Candidate): string | null {
   if (c.kind === 'vertex') return 'vertex'
-  if (c.kind === 'face') return c.body.mesh?.face_data?.[c.index]?.surface_type ?? null
+  if (c.kind === 'face') return c.part.mesh?.face_data?.[c.index]?.surface_type ?? null
   return edgeData(c)?.kind ?? null
 }
 
@@ -307,7 +307,7 @@ function conicHalfExtents(axis: Vec3, xAxis: Vec3, a: number, b: number): Vec3 {
 }
 
 function faceBounds(c: Candidate): Bounds3 | null {
-  const mesh = c.body.mesh
+  const mesh = c.part.mesh
   const triangles = mesh?.triangle_to_face
   if (!mesh || !triangles) return null
   const verts = mesh.vertices
@@ -476,7 +476,7 @@ export function geometryOf(c: Candidate): EdgeGeometry | FaceGeometry | VertexGe
     return { kind: 'vertex', point: vertexData(c)! }
   }
   if (c.kind === 'face') {
-    const fd = c.body.mesh!.face_data![c.index]
+    const fd = c.part.mesh!.face_data![c.index]
     return {
       kind: 'face',
       surface_type: fd.surface_type ?? 'face',

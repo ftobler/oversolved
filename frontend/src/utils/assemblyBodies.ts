@@ -3,7 +3,7 @@
 // viewport-free: the transforms are already baked into the vertices worker-side,
 // so this is a relabelling, not geometry work.
 
-import type { BodyResult, MateAnchorDescriptor } from '@/types/cad'
+import type { PartResult, MateAnchorDescriptor } from '@/types/cad'
 import type { EdgeCurve, EntityAnchorIndex } from '@/kernel/partBundle'
 import type { MeshPayload } from '@/kernel/solveAssembly'
 import {
@@ -23,8 +23,8 @@ export function assemblyPartId(handle: string, index: number): string {
   return `${handle}:body_${index}`
 }
 
-export function toPartResults(parts: Record<string, MeshPayload[]>): Record<string, BodyResult> {
-  const out: Record<string, BodyResult> = {}
+export function toPartResults(parts: Record<string, MeshPayload[]>): Record<string, PartResult> {
+  const out: Record<string, PartResult> = {}
   for (const [handle, meshes] of Object.entries(parts)) {
     meshes.forEach((m, i) => {
       const id = assemblyPartId(handle, i)

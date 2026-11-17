@@ -8,7 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
 import { renderHookStrict } from '@/utils/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
-import type { PartDoc, BodyResult } from '@/types/cad'
+import type { PartDoc, PartResult } from '@/types/cad'
 import { docVisibleFeatureIds } from '@/utils/featureVisibility'
 import { getPartsToRender } from '@/utils/partRender'
 import { docRef, resetHarness } from './usePartDoc.undoHarness'
@@ -32,13 +32,13 @@ const sweptDoc = (): PartDoc => ({
   ],
 } as unknown as PartDoc)
 
-const bodies: Record<string, BodyResult> = {
+const bodies: Record<string, PartResult> = {
   body_sw1: {
     id: 'body_sw1',
     created_by: 'sw1',
     modified_by: [],
     mesh: { vertices: [], faces: [], face_data: [], face_queries: [] },
-  } as unknown as BodyResult,
+  } as unknown as PartResult,
 }
 
 // What the viewport would draw, derived the same way the page derives it: the

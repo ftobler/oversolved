@@ -6,7 +6,7 @@
 // refusals.
 
 import { describe, it, expect, afterEach } from 'vitest'
-import type { BodyResult, FaceData, PartDoc } from '@/types/cad'
+import type { PartResult, FaceData, PartDoc } from '@/types/cad'
 import type { Anchor, PartBundle } from '@/kernel/partBundle'
 import { BUNDLE_SCHEMA } from '@/kernel/partBundle'
 import { makeEchoSolver } from '@/kernel/solveAssemblyTestUtils'
@@ -34,7 +34,7 @@ function bundleOf(docId: string, points: Array<[number, number, number]>): Injec
   points.forEach((point, i) => {
     anchors[`a${i}`] = { kind: 'plane', point, axis: [0, 1, 0], geom_hash: `@u|${docId}${i}`, created_by: 'ex1' }
   })
-  const body: BodyResult = {
+  const body: PartResult = {
     id: 'body_ex1',
     created_by: 'ex1',
     modified_by: [],

@@ -9,7 +9,7 @@ import { solveSketch, setSketchSolver, resetSketchSolver } from '@/kernel/featur
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { featureProblems, readSolveOutcomes } from '@/drive/featureOutcome'
 import type { Repository } from '@/kernel/query'
-import type { Body } from '@/kernel/types3d'
+import type { PartSolid } from '@/kernel/types3d'
 import type { BuildResponse, PartDoc } from '@/types/cad'
 
 const solveBytes = loadSolver()
@@ -52,7 +52,7 @@ describe('an unresolved projection reaches the drive as a feature warning', () =
       initial: { held: [3, 4] },
       constraints: [{ id: 'proj_held', kind: 'projection', target: '$held', source: '@sk1/doesNotExist' }],
     }
-    const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
+    const out = solveSketch(feature, deadRepo(), {} as Record<string, PartSolid>)
     // The reply's `features` list is the drive's own reading of the solve row.
     const outcomes = readSolveOutcomes({ sk2: out } as unknown as BuildResponse['result'])
     const problems = featureProblems(doc, outcomes)
@@ -74,7 +74,7 @@ describe('an unresolved projection reaches the drive as a feature warning', () =
         entities: [{ id: 'q3', kind: 'point' }], initial: { q3: [1, 1] }, constraints: [],
       },
     }
-    const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>, featuresById)
+    const out = solveSketch(feature, deadRepo(), {} as Record<string, PartSolid>, featuresById)
     expect(out.solver_warning).toContain(
       'projection proj_held source @sk3/q3 did not resolve; forward reference',
     )
@@ -94,7 +94,7 @@ describe('an unresolved projection reaches the drive as a feature warning', () =
   it('lists a never-positioned projection as unpositioned', () => {
     if (!solveBytes) return
     const feature = heldSketch('@sk9/nope', {})
-    const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
+    const out = solveSketch(feature, deadRepo(), {} as Record<string, PartSolid>)
     const outcomes = readSolveOutcomes({ sk2: out } as unknown as BuildResponse['result'])
     const row = featureProblems(doc, outcomes).find(problem => problem.id === 'sk2')!
     expect(row.projectionErrors).toEqual({ keeps_last_position: [], unpositioned: ['proj_held'] })

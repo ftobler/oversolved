@@ -17,7 +17,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { DisposeScope } from '../disposeScope'
-import { bodyFrame } from '../tessellation'
+import { partFrame } from '../tessellation'
 import type { OccModule, OccShape } from '../occTypes'
 
 // One stub sub-shape per topological entity. `HashCode`/`IsSame` are what
@@ -96,7 +96,7 @@ describe('bodyFrame on an assembly-sized body', () => {
     const { oc, solid } = stubOcc(2000, 20000)
     const scope = new DisposeScope()
     try {
-      const frame = bodyFrame(oc, scope, solid)
+      const frame = partFrame(oc, scope, solid)
       // Vertices span x in [0, 1999] and y in [-1999, 0]; edges span z in
       // [0, 20000] (base 19999 plus the sample that runs one unit past it).
       expect(frame.half[0]).toBeCloseTo(1999 / 2, 6)
@@ -112,7 +112,7 @@ describe('bodyFrame on an assembly-sized body', () => {
     const { oc, solid } = stubOcc(0, 0)
     const scope = new DisposeScope()
     try {
-      expect(bodyFrame(oc, scope, solid)).toEqual({ center: [0, 0, 0], half: [0, 0, 0] })
+      expect(partFrame(oc, scope, solid)).toEqual({ center: [0, 0, 0], half: [0, 0, 0] })
     } finally {
       scope.dispose()
     }

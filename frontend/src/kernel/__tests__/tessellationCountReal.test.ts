@@ -87,7 +87,7 @@ class CountingHarness {
       const deps: BuildDeps = {
         trySolveFeature: createFeatureSolver(oc!, scope, this.table, importFiles),
         postRegister, initGlobalRepo,
-        tessellateBodies: (bodyStore) => {
+        tessellateParts: (bodyStore) => {
           const out: Record<string, Record<string, unknown>> = {}
           for (const body of Object.values(bodyStore)) {
             if (!body.shape) continue
@@ -95,17 +95,17 @@ class CountingHarness {
               this.renderCount += 1  // one render triangulation for this body
               this.rendered.push(body.id)
               const mesh = solidToMesh(oc!, this.table, body.shape, {
-                createdBy: body.created_by || '', bodyId: body.id,
+                createdBy: body.created_by || '', partId: body.id,
                 faceAncestry: body.face_ancestry ?? null, faceUuids: body.face_uuids ?? null,
                 profileQueries: body.profile_queries ?? [],
               })
               const edgeResult = solidToEdges(oc!, this.table, body.shape, {
-                createdBy: body.created_by || '', bodyId: body.id,
+                createdBy: body.created_by || '', partId: body.id,
                 profileQueries: body.profile_queries ?? [],
                 edgeAncestry: body.edge_ancestry ?? null, edgeUuids: body.edge_uuids ?? null,
               })
               const vertexResult = solidToVertices(oc!, this.table, body.shape, {
-                createdBy: body.created_by || '', bodyId: body.id, profileQueries: body.profile_queries ?? [],
+                createdBy: body.created_by || '', partId: body.id, profileQueries: body.profile_queries ?? [],
               })
               out[body.id] = {
                 mesh, edges: edgeResult.edges, edge_queries: edgeResult.edge_queries, edge_uuids: edgeResult.edge_uuids,
@@ -120,7 +120,7 @@ class CountingHarness {
           return extractBrepMetadata(oc!, this.table, bodyStore)
         },
         retainCheckpointShape: (h, owner) => this.table.retain(h, owner),
-        copyBodyShape: (h, owner) =>
+        copyPartShape: (h, owner) =>
           this.table.register(copyShape(oc!, scope, this.table.get<OccShape>(h)), owner),
         releaseCheckpoint: (fid) => {
           this.table.releaseOwner('cp:' + fid)

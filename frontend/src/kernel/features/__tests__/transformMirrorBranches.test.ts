@@ -8,13 +8,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   transformCopyWithMapping: vi.fn(),
-  rekeyNamesForTransformedBody: vi.fn(),
+  rekeyNamesForTransformedPart: vi.fn(),
   rebuildNamesForTransformedCopy: vi.fn(),
   readSourceFaceRows: vi.fn(),
   booleanWithDiff: vi.fn(),
   transferBooleanNames: vi.fn(),
-  registerSplitBodies: vi.fn(),
-  resplitBody: vi.fn(),
+  registerSplitParts: vi.fn(),
+  resplitPart: vi.fn(),
   makeMirrorTrsf: vi.fn(),
   makeTranslationTrsf: vi.fn(),
   makeRotationTrsf: vi.fn(),
@@ -23,7 +23,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('../../occ/transformLineage', () => ({
   transformCopyWithMapping: mocks.transformCopyWithMapping,
-  rekeyNamesForTransformedBody: mocks.rekeyNamesForTransformedBody,
+  rekeyNamesForTransformedPart: mocks.rekeyNamesForTransformedPart,
   rebuildNamesForTransformedCopy: mocks.rebuildNamesForTransformedCopy,
   readSourceFaceRows: mocks.readSourceFaceRows,
 }))
@@ -33,14 +33,14 @@ vi.mock('../../occ/booleans', () => ({
 vi.mock('../booleanLineage', () => ({
   transferBooleanNames: mocks.transferBooleanNames,
 }))
-vi.mock('../bodySplit', () => ({
-  registerSplitBodies: mocks.registerSplitBodies,
-  resplitBody: mocks.resplitBody,
+vi.mock('../partSplit', () => ({
+  registerSplitParts: mocks.registerSplitParts,
+  resplitPart: mocks.resplitPart,
 }))
 // Reading a body's names walks its OCC shape; these bodies have none.
-vi.mock('../../occ/bodyNames', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../occ/bodyNames')>()
-  return { ...actual, readBodyNames: () => actual.emptyShapeNames() }
+vi.mock('../../occ/partNames', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../occ/partNames')>()
+  return { ...actual, readPartNames: () => actual.emptyShapeNames() }
 })
 vi.mock('../../occ/transforms', () => ({
   makeMirrorTrsf: mocks.makeMirrorTrsf,
@@ -54,7 +54,7 @@ import { solveTransform, solveMirror } from '../transformMirror'
 import type { DisposeScope } from '../../occ/disposeScope'
 import type { HandleTable } from '../../occ/handleTable'
 import type { OccModule } from '../../occ/occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 // The composed gp_Trsf: one instance per solve, recording what Multiply got so
 // the query-driven translation/rotation/scale can be read back.
@@ -76,7 +76,7 @@ const table = { get: (h: unknown): unknown => h } as unknown as HandleTable
 
 const NAMES = { faceNames: {}, faceAncestry: {}, edgeNames: {}, edgeAncestry: {} }
 
-function body(id = 'body_a', shape: number | null = 1): Body {
+function body(id = 'body_a', shape: number | null = 1): PartSolid {
   return {
     id,
     created_by: 'ex',
@@ -92,13 +92,13 @@ beforeEach(() => {
   trsfOps.length = 0
   for (const m of Object.values(mocks)) m.mockReset()
   mocks.transformCopyWithMapping.mockReturnValue({ shape: {}, builder: {} })
-  mocks.rekeyNamesForTransformedBody.mockReturnValue(NAMES)
+  mocks.rekeyNamesForTransformedPart.mockReturnValue(NAMES)
   mocks.rebuildNamesForTransformedCopy.mockReturnValue(NAMES)
   mocks.readSourceFaceRows.mockReturnValue([])
   mocks.booleanWithDiff.mockReturnValue({ shape: {}, faceOrigin: [], diff: {} })
   mocks.transferBooleanNames.mockReturnValue({ faceNames: {}, faceAncestry: {}, edgeNames: {}, edgeAncestry: {} })
-  mocks.resplitBody.mockReturnValue(['body_a'])
-  mocks.registerSplitBodies.mockReturnValue(['body_t1'])
+  mocks.resplitPart.mockReturnValue(['body_a'])
+  mocks.registerSplitParts.mockReturnValue(['body_t1'])
   mocks.makeTranslationTrsf.mockImplementation((_oc: unknown, _sc: unknown, dx: number, dy: number, dz: number) => ({ tag: 'translate', dx, dy, dz }))
   mocks.makeRotationTrsf.mockImplementation((_oc: unknown, _sc: unknown, origin: number[], dir: number[], angle: number) => ({ tag: 'rotate', origin, dir, angle }))
   mocks.makeScaleTrsf.mockImplementation((_oc: unknown, _sc: unknown, center: number[], factor: number) => ({ tag: 'scale', center, factor }))
@@ -168,7 +168,7 @@ describe('solveTransform composed trsf', () => {
 
 describe('solveTransform operation selection', () => {
   it('replace resplits in place and records the feature on the source', () => {
-    mocks.resplitBody.mockReturnValue(['body_a'])
+    mocks.resplitPart.mockReturnValue(['body_a'])
     const source = body('body_a')
     const result = solveTransform(oc, scope, table, {
       id: 't1',
@@ -179,7 +179,7 @@ describe('solveTransform operation selection', () => {
   })
 
   it('new registers a fresh body off the feature id', () => {
-    mocks.registerSplitBodies.mockReturnValue(['body_t1'])
+    mocks.registerSplitParts.mockReturnValue(['body_t1'])
     const source = body('body_a')
     const result = solveTransform(oc, scope, table, {
       id: 't1',
@@ -193,7 +193,7 @@ describe('solveTransform operation selection', () => {
     // Defensive: a transform copy cannot consume its source, but the contract
     // when the resplit ever deletes it is that nothing survives and body_id
     // names the body the feature row points at.
-    mocks.resplitBody.mockReturnValue([])
+    mocks.resplitPart.mockReturnValue([])
     const source = body('body_a')
     const result = solveTransform(oc, scope, table, {
       id: 't1',
@@ -277,7 +277,7 @@ describe('solveTransform rotation_euler conflict', () => {
 })
 
 describe('solveMirror plane payloads and operation selection', () => {
-  function bodyStore(): Record<string, Body> {
+  function bodyStore(): Record<string, PartSolid> {
     return { body_a: body('body_a') }
   }
 
@@ -321,7 +321,7 @@ describe('solveMirror plane payloads and operation selection', () => {
   })
 
   it('replace rekeys the source in place and records the feature', () => {
-    mocks.resplitBody.mockReturnValue(['body_a'])
+    mocks.resplitPart.mockReturnValue(['body_a'])
     const repo = new Repository()
     repo.register('plane_q', { type: 'plane', origin: [0, 0, 0], normal: [0, 0, 1] })
     const store = bodyStore()
@@ -333,7 +333,7 @@ describe('solveMirror plane payloads and operation selection', () => {
   })
 
   it('replace reports body_ids:[] when the resplit consumes the source', () => {
-    mocks.resplitBody.mockReturnValue([])
+    mocks.resplitPart.mockReturnValue([])
     const repo = new Repository()
     repo.register('plane_q', { type: 'plane', origin: [0, 0, 0], normal: [0, 0, 1] })
     const result = solveMirror(oc, scope, table, {
@@ -349,7 +349,7 @@ describe('solveMirror plane payloads and operation selection', () => {
   })
 
   it('merge fuses the source and its mirror, then resplits', () => {
-    mocks.resplitBody.mockReturnValue(['body_a'])
+    mocks.resplitPart.mockReturnValue(['body_a'])
     const repo = new Repository()
     repo.register('plane_q', { type: 'plane', origin: [0, 0, 0], normal: [0, 0, 1] })
     const store = bodyStore()
@@ -362,7 +362,7 @@ describe('solveMirror plane payloads and operation selection', () => {
   })
 
   it('merge reports body_ids:[] when the resplit consumes the source', () => {
-    mocks.resplitBody.mockReturnValue([])
+    mocks.resplitPart.mockReturnValue([])
     const repo = new Repository()
     repo.register('plane_q', { type: 'plane', origin: [0, 0, 0], normal: [0, 0, 1] })
     const result = solveMirror(oc, scope, table, {

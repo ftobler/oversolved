@@ -21,7 +21,7 @@ import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'
 import { makeBox, makeCylinder } from '../primitives'
 import { deriveEdgeNames, nameFacesFromNeighbours } from '../constructionLineage'
-import { canonicalEdges, canonicalFaces } from '../bodyNames'
+import { canonicalEdges, canonicalFaces } from '../partNames'
 import { SubShapeMap } from '../subshapeIdentity'
 import type { OccShape } from '../occTypes'
 import { SharedHarness } from '../sharedHarness'
@@ -208,16 +208,16 @@ function duplicates(queries: string[]): string[] {
 }
 
 function faceQueriesOf(h: SharedHarness, r: BuildResponse, bodyId: string): string[] {
-  const mesh = h.body(r, bodyId).mesh as { face_queries?: string[] } | undefined
+  const mesh = h.part(r, bodyId).mesh as { face_queries?: string[] } | undefined
   return mesh?.face_queries ?? []
 }
 
 function edgeQueriesOf(h: SharedHarness, r: BuildResponse, bodyId: string): string[] {
-  return (h.body(r, bodyId).edge_queries as string[]) ?? []
+  return (h.part(r, bodyId).edge_queries as string[]) ?? []
 }
 
 function vertexQueriesOf(h: SharedHarness, r: BuildResponse, bodyId: string): string[] {
-  return (h.body(r, bodyId).vertex_queries as string[]) ?? []
+  return (h.part(r, bodyId).vertex_queries as string[]) ?? []
 }
 
 /**

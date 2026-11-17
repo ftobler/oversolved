@@ -26,7 +26,7 @@ import { extractProfileLoops } from '../shared/profileLoops'
 import { volumeOf, surfaceAreaOf } from '../../occ/volume'
 import { countSolids } from '../../occ/booleans'
 import type { OccShape } from '../../occ/occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { PlaneLike } from '../shared/planes'
 
 const oc = await loadOcc()
@@ -119,7 +119,7 @@ type ThreadBuild = { status?: string; error?: string; volume?: number; area?: nu
 function buildThread(zOffset: number): ThreadBuild {
   const scope = new DisposeScope()
   const table = new HandleTable()
-  const bodyStore: Record<string, Body> = {}
+  const bodyStore: Record<string, PartSolid> = {}
   try {
     try {
       const result = solveSweep(oc!, scope, table, {
@@ -182,7 +182,7 @@ describe.skipIf(!oc)('sweep along a helix (real OCC)', () => {
   it('refuses a mixed helix + sketch path by name through solveSweep', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
-    const bodyStore: Record<string, Body> = {}
+    const bodyStore: Record<string, PartSolid> = {}
     try {
       const repo = seedRepo()
       expect(() => solveSweep(oc!, scope, table, {
@@ -198,7 +198,7 @@ describe.skipIf(!oc)('sweep along a helix (real OCC)', () => {
   it('solveSweep builds a valid body of the Pappus volume along a helix path', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
-    const bodyStore: Record<string, Body> = {}
+    const bodyStore: Record<string, PartSolid> = {}
     try {
       const repo = seedRepo()
       const result = solveSweep(oc!, scope, table, {
@@ -241,7 +241,7 @@ describe.skipIf(!oc)('sweep along a helix (real OCC)', () => {
     const build = (cx: number): { status?: string; error?: string } => {
       const scope = new DisposeScope()
       const table = new HandleTable()
-      const bodyStore: Record<string, Body> = {}
+      const bodyStore: Record<string, PartSolid> = {}
       try {
         try {
           const result = solveSweep(oc!, scope, table, {
@@ -325,7 +325,7 @@ describe.skipIf(!oc)('sweep along a helix (real OCC)', () => {
     // and must not have minted a body.
     const scope = new DisposeScope()
     const table = new HandleTable()
-    const bodyStore: Record<string, Body> = {}
+    const bodyStore: Record<string, PartSolid> = {}
     try {
       const repo = new Repository()
       repo.register('_pt_skP', PROFILE_PLANE)

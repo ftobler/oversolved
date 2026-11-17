@@ -22,7 +22,7 @@
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 import type { Repository } from '../query'
 import { makeTranslationTrsf } from '../occ/transforms'
 import {
@@ -39,7 +39,7 @@ import {
   type Dict, type PatternCopy,
 } from './pattern'
 import type { PatternResult } from './patternFeature'
-import type { BodyPatternResult } from './patternBody'
+import type { PartPatternResult } from './patternPart'
 
 /** What resolving a direction's pick needs from the OCC side, beyond the repo.
  *  Optional so a pure caller of the copy builders keeps working: without it an
@@ -108,12 +108,12 @@ export function resolvePatternDirection(
   invert: boolean,
   field: string,
   globalRepo: Repository,
-  bodyStore: Record<string, unknown> | null,
+  partStore: Record<string, unknown> | null,
   occ: LinearOccContext | null = null,
 ): number[] {
   let dir: number[]
   if (query) {
-    const resolved = resolveDirectionQueryStrict(query, globalRepo, bodyStore, occ)
+    const resolved = resolveDirectionQueryStrict(query, globalRepo, partStore, occ)
     if (!resolved) {
       throw new Error(
         `pattern: ${field} query '${query}' did not resolve to an edge, sketch line, or face`,
@@ -135,8 +135,8 @@ export function resolvePatternDirection(
 }
 
 /** Why a directive-length pick cannot give a length, or null when it can. */
-function lengthPickRefusal(query: string, globalRepo: Repository, bodyStore: Dict | null): string | null {
-  const data = globalRepo.query(query, null, bodyStore) as Dict | null
+function lengthPickRefusal(query: string, globalRepo: Repository, partStore: Dict | null): string | null {
+  const data = globalRepo.query(query, null, partStore) as Dict | null
   const start = data?.start as number[] | undefined
   const end = data?.end as number[] | undefined
   if (Array.isArray(start) && Array.isArray(end)) {
@@ -154,7 +154,7 @@ export function resolveLinearStep(
   sub: Dict,
   side: 1 | 2,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   occ: LinearOccContext | null = null,
 ): number[] {
   const keys = SIDES[side]
@@ -164,7 +164,7 @@ export function resolveLinearStep(
 
   if (mode === 'direction_distance') {
     const pitch = patternNumber(sub, keys.pitch, 20)
-    const dir = resolvePatternDirection(query, sub[keys.stored], invert, keys.label, globalRepo, bodyStore, occ)
+    const dir = resolvePatternDirection(query, sub[keys.stored], invert, keys.label, globalRepo, partStore, occ)
     return dir.map((c) => c * pitch)
   }
 
@@ -191,11 +191,11 @@ export function resolveLinearStep(
       `pattern: ${keys.label} needs a pick with a length in directive_length mode; a stored vector has none`,
     )
   }
-  const carrier = resolveAxisCarrierRef(query, globalRepo, bodyStore)
+  const carrier = resolveAxisCarrierRef(query, globalRepo, partStore)
   if (carrier !== null) {
     if (carrier.kind === 'circular_edge' || carrier.kind === 'sketch_circle') {
       throw new Error(
-        `pattern: directive length needs a pick with a length (a straight edge, cylinder or cone); ${lengthPickRefusal(query, globalRepo, bodyStore)}`,
+        `pattern: directive length needs a pick with a length (a straight edge, cylinder or cone); ${lengthPickRefusal(query, globalRepo, partStore)}`,
       )
     }
     const resolved = occ === null
@@ -203,7 +203,7 @@ export function resolveLinearStep(
       : resolveAxisCarrier(
         carrier.kind, query,
         carrier.axis === null ? null : carrier.axis as [number, number, number],
-        occ, globalRepo, bodyStore,
+        occ, globalRepo, partStore,
       )
     const extent = resolved?.extent ?? null
     if (resolved === null || extent === null) {
@@ -214,22 +214,22 @@ export function resolveLinearStep(
     return flipped(resolved.direction, invert).map((c) => c * extent)
   }
 
-  const line = resolveCircularReference(query, globalRepo, bodyStore)
+  const line = resolveCircularReference(query, globalRepo, partStore)
   const extent = line?.extent
   if (line !== null && (line.kind === 'straight_edge' || line.kind === 'sketch_line') && extent !== undefined) {
     return flipped(line.axis, invert).map((c) => c * extent)
   }
   if (line !== null) {
     throw new Error(
-      `pattern: directive length needs a pick with a length (a straight edge, cylinder or cone); ${lengthPickRefusal(query, globalRepo, bodyStore)}`,
+      `pattern: directive length needs a pick with a length (a straight edge, cylinder or cone); ${lengthPickRefusal(query, globalRepo, partStore)}`,
     )
   }
   // A pick the circular reference skipped may still be a face or an edge too
   // short to carry a direction: say which, instead of "did not resolve".
-  const data = globalRepo.query(query, null, bodyStore) as Dict | null
+  const data = globalRepo.query(query, null, partStore) as Dict | null
   if (data !== null && ('normal' in data || Array.isArray(data.start))) {
     throw new Error(
-      `pattern: directive length needs a pick with a length (a straight edge, cylinder or cone); ${lengthPickRefusal(query, globalRepo, bodyStore)}`,
+      `pattern: directive length needs a pick with a length (a straight edge, cylinder or cone); ${lengthPickRefusal(query, globalRepo, partStore)}`,
     )
   }
   throw new Error(
@@ -245,13 +245,13 @@ export function buildLinearCopies(
   scope: DisposeScope,
   sub: Dict,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   table: HandleTable | null = null,
 ): { copies: PatternCopy[]; warnings: string[]; extra?: Dict } {
   const count = patternCountOf(sub, 'count', 2)
   const centered = sub.centered === true
   const occ: LinearOccContext | null = table === null ? null : { oc, scope, table }
-  const step = resolveLinearStep(sub, 1, globalRepo, bodyStore, occ)
+  const step = resolveLinearStep(sub, 1, globalRepo, partStore, occ)
   const extra: Dict = { resolved_pitch: Math.hypot(step[0], step[1], step[2]) }
 
   if (sub.second_direction === true) {
@@ -260,7 +260,7 @@ export function buildLinearCopies(
     const total = generatedCount(count, centered) * generatedCount(count2, centered2)
     const generated = toInstances(rectangularIndices(count, count2, centered, centered2))
     const { kept, warnings } = keptInstances(generated, sub, total, `count ${count} by count_2 ${count2}`)
-    const step2 = resolveLinearStep(sub, 2, globalRepo, bodyStore, occ)
+    const step2 = resolveLinearStep(sub, 2, globalRepo, partStore, occ)
     extra.resolved_pitch_2 = Math.hypot(step2[0], step2[1], step2[2])
     const copies = kept.map((instance) => {
       const [i, j] = instance.index as readonly [number, number]
@@ -298,15 +298,15 @@ export function solveLinearPattern(
   table: HandleTable,
   feature: Dict,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   featuresById: Record<string, Dict> = {},
   solveContext: { variables: Record<string, number>; laterVariables: Record<string, number> } = {
     variables: {}, laterVariables: {},
   },
-): PatternResult | BodyPatternResult {
+): PatternResult | PartPatternResult {
   const sub = (feature.linear_pattern as Dict) ?? {}
   return solvePatternInstances(
-    oc, scope, table, feature, sub, globalRepo, bodyStore, featuresById, solveContext,
-    () => buildLinearCopies(oc, scope, sub, globalRepo, bodyStore, table),
+    oc, scope, table, feature, sub, globalRepo, partStore, featuresById, solveContext,
+    () => buildLinearCopies(oc, scope, sub, globalRepo, partStore, table),
   )
 }

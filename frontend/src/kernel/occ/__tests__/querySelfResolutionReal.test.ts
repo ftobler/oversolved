@@ -83,7 +83,7 @@ const box = (): Spec => ({ features: [
 
 /** The emitted queries of one kind for a body, index-aligned with its primitives. */
 function queriesOf(h: SharedHarness, r: BuildResponse, bodyId: string, kind: Kind): string[] {
-  const b = h.body(r, bodyId)
+  const b = h.part(r, bodyId)
   if (kind === 'face') return ((b.mesh as { face_queries?: string[] } | undefined)?.face_queries) ?? []
   return (b[`${kind}_queries`] as string[] | undefined) ?? []
 }
@@ -333,7 +333,7 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
   /** Each hole face's uuid, keyed by where the face is (test-side only: it pairs
    *  the same face across two documents, it identifies nothing in the kernel). */
   function holeFaceUuidsByPlace(spec: Spec): Map<string, string> {
-    const mesh = h.body(h.run(spec), 'body_ex1').mesh as {
+    const mesh = h.part(h.run(spec), 'body_ex1').mesh as {
       face_data: Array<{ centroid: number[]; normal: number[] }>
       face_uuids: (string | null)[]
       face_queries: string[]
@@ -428,7 +428,7 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
     ] }
     expectSelfResolution(spec, 'body_ex1')
 
-    const mesh = h.body(h.run(spec), 'body_ex1').mesh as {
+    const mesh = h.part(h.run(spec), 'body_ex1').mesh as {
       face_data: Array<{ centroid: number[]; normal: number[] }>
       face_uuids: (string | null)[]
     }

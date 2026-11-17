@@ -68,7 +68,7 @@ describe.skipIf(!oc || !solveBytes)('revolve axis from query (real OCC + Rust so
       { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 5, direction: 'normal', operation: 'new' },
     ]}
     const r0 = h.run(spec)
-    const b = h.body(r0, 'body_ex1')
+    const b = h.part(r0, 'body_ex1')
     const edges = (b.edges as Array<{ kind?: string; start?: number[]; end?: number[] }>) ?? []
     const eq = (b.edge_queries as string[]) ?? []
     // Find the bottom-front edge: along X (dir [+-1,0,0]) at y~0, z~0.
@@ -120,8 +120,8 @@ describe.skipIf(!oc || !solveBytes)('revolve axis from query (real OCC + Rust so
     })
     const r5 = h.run(boxSpec(5))
     const r8 = h.run(boxSpec(8))
-    const eq5 = (h.body(r5, 'body_ex1').edge_queries as string[]) ?? []
-    const eq8 = (h.body(r8, 'body_ex1').edge_queries as string[]) ?? []
+    const eq5 = (h.part(r5, 'body_ex1').edge_queries as string[]) ?? []
+    const eq8 = (h.part(r8, 'body_ex1').edge_queries as string[]) ?? []
 
     const uuidRe = /@u\|(e_[0-9a-f]{16})/
     const uuidMap5 = new Map<string, string>()

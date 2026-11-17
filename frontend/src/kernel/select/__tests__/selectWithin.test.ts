@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import { selectByPredicate, validateSelector, SelectorError } from '@/kernel/select'
 import type { Selector } from '@/kernel/select'
-import type { BodyResult, EdgeData, FaceData } from '@/types/cad'
+import type { PartResult, EdgeData, FaceData } from '@/types/cad'
 
 type V3 = [number, number, number]
 
@@ -21,8 +21,8 @@ function bodyResult(
   edgeQueries: string[],
   faces: FaceData[] = [],
   faceQueries: string[] = [],
-  mesh?: Pick<NonNullable<BodyResult['mesh']>, 'vertices' | 'faces' | 'triangle_to_face'>,
-): BodyResult {
+  mesh?: Pick<NonNullable<PartResult['mesh']>, 'vertices' | 'faces' | 'triangle_to_face'>,
+): PartResult {
   return {
     id,
     created_by: 'ex1',
@@ -35,7 +35,7 @@ function bodyResult(
 
 // A stepped block: a 10 x 10 base ring at z=0, a 6 x 6 step ring at z=10 and a
 // 2 x 2 top ring at z=20, plus one vertical edge through all three levels.
-function steppedBlock(): Record<string, BodyResult> {
+function steppedBlock(): Record<string, PartResult> {
   const edges: EdgeData[] = [
     // bottom ring
     line([0, 0, 0], [10, 0, 0]), line([10, 0, 0], [10, 10, 0]),
@@ -55,7 +55,7 @@ function steppedBlock(): Record<string, BodyResult> {
 
 const ALL_EDGE_QUERIES = Array.from({ length: 13 }, (_, i) => `q_e${i}`)
 
-function queriesOf(selector: Selector, bodies: Record<string, BodyResult>): string[] {
+function queriesOf(selector: Selector, bodies: Record<string, PartResult>): string[] {
   return selectByPredicate(selector, bodies).queries
 }
 

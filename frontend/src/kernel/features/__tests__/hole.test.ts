@@ -6,7 +6,7 @@ import { Repository, makeAncestryQuery } from '../../query'
 import { solveHole } from '../hole'
 import type { HandleTable } from '../../occ/handleTable'
 import type { OccModule } from '../../occ/occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = null as unknown as OccModule
 const scope = null as never
@@ -14,7 +14,7 @@ const table = null as unknown as HandleTable
 
 const PLANE = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
 
-function nullBody(id: string): Body {
+function nullBody(id: string): PartSolid {
   return {
     id,
     created_by: 'ex',

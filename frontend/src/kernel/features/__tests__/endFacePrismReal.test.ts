@@ -23,8 +23,8 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { DisposeScope } from '../../occ/disposeScope'
 import { volumeOf } from '../../occ/volume'
 import { exploreFaces, applyFilletWithLineage, type NewNames, type OldNames } from '../../occ/edgeModifier'
-import { readBodyNames } from '../../occ/bodyNames'
-import { canonicalFaces } from '../../occ/bodyNames'
+import { readPartNames } from '../../occ/partNames'
+import { canonicalFaces } from '../../occ/partNames'
 import { faceArea, faceSurfaceType } from '../../occ/primitives'
 import { countSolids } from '../../occ/booleans'
 import { isValidShape } from '../../occ/edgeModifier'
@@ -46,7 +46,7 @@ function baseOf(h: Harness, result: ReturnType<Harness['run']>, scope: DisposeSc
   const shape = h.table.get<OccShape>(body.shape!)
   const indexFor = makeEdgeIndexCache(oc!, scope, h.table)
   const edges = resolveEdgesWithIndex(oc!, scope, h.table, body, indexFor(body), queries)
-  const oldNames: OldNames = { createdBy: 'fi2', ...readBodyNames(oc!, scope, shape, body) }
+  const oldNames: OldNames = { createdBy: 'fi2', ...readPartNames(oc!, scope, shape, body) }
   return { shape, edges, oldNames }
 }
 
@@ -171,7 +171,7 @@ describe.skipIf(!oc || !solveBytes)('end-face prism fallback (real OCC + Rust so
     const scope = new DisposeScope()
     const shape = h.table.get<OccShape>(body.shape!)
     const indexFor = makeEdgeIndexCache(oc!, scope, h.table)
-    const plateQueries = ((h.body(result, 'body_ex1').edge_queries as string[]) ?? []).filter((q) => q.includes('@ex1@'))
+    const plateQueries = ((h.part(result, 'body_ex1').edge_queries as string[]) ?? []).filter((q) => q.includes('@ex1@'))
     const plateEdges = resolveEdgesWithIndex(oc!, scope, h.table, body, indexFor(body), plateQueries)
     const fallback = makeFilletPrismFallback(2, 'fi2')
     // An edge the maker will take at r2 and the fallback will not touch.
@@ -235,7 +235,7 @@ describe.skipIf(!oc || !solveBytes)('end-face prism fallback (real OCC + Rust so
     const baseShape = h.table.get<OccShape>(base.shape!)
     const indexFor = makeEdgeIndexCache(oc!, scope, h.table)
     const picked = resolveEdgesWithIndex(oc!, scope, h.table, base, indexFor(base), lipEdges)
-    const baseNames = readBodyNames(oc!, scope, baseShape, base)
+    const baseNames = readPartNames(oc!, scope, baseShape, base)
 
     spec.features.push({ id: 'fi2', kind: 'fillet', fillet: { edges: lipEdges, radius: LIP_RADIUS } })
     const built = h.run(spec)

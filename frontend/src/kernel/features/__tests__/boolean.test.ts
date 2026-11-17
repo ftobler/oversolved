@@ -12,7 +12,7 @@ import { Repository } from '../../query'
 import { solveBoolean } from '../boolean'
 import { HandleTable } from '../../occ/handleTable'
 import type { OccModule } from '../../occ/occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const mocks = vi.hoisted(() => ({
   booleanWithDiff: vi.fn(),
@@ -38,12 +38,12 @@ vi.mock('../booleanLineage', () => ({
   }),
 }))
 // Reading a body's names walks its OCC shape; these bodies have none.
-vi.mock('../../occ/bodyNames', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../occ/bodyNames')>()
-  return { ...actual, readBodyNames: () => actual.emptyShapeNames() }
+vi.mock('../../occ/partNames', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../occ/partNames')>()
+  return { ...actual, readPartNames: () => actual.emptyShapeNames() }
 })
-vi.mock('../bodySplit', () => ({
-  resplitBody: () => ['body_t'],
+vi.mock('../partSplit', () => ({
+  resplitPart: () => ['body_t'],
 }))
 
 const oc = null as unknown as OccModule
@@ -51,7 +51,7 @@ const scope = null as never
 const table = null as unknown as HandleTable
 const repo = new Repository()
 
-function body(id: string): Body {
+function body(id: string): PartSolid {
   return {
     id,
     created_by: 'ex',
@@ -259,7 +259,7 @@ describe('solveBoolean symmetric union/intersect (mock OCC)', () => {
     mocks.shapesTouch.mockReset()
   })
 
-  function rig3(): { scope: DisposeScope; table: HandleTable; store: Record<string, Body>; shapes: Record<string, { delete: () => void; isDeleted: () => boolean }> } {
+  function rig3(): { scope: DisposeScope; table: HandleTable; store: Record<string, PartSolid>; shapes: Record<string, { delete: () => void; isDeleted: () => boolean }> } {
     const scope = new DisposeScope()
     const table = new HandleTable()
     const shapes: Record<string, { delete: () => void; isDeleted: () => boolean }> = {
@@ -268,7 +268,7 @@ describe('solveBoolean symmetric union/intersect (mock OCC)', () => {
       c: { delete: () => {}, isDeleted: () => false },
       far: { delete: () => {}, isDeleted: () => false },
     }
-    const store: Record<string, Body> = {}
+    const store: Record<string, PartSolid> = {}
     for (const [key, id] of [['a', 'body_a'], ['b', 'body_b'], ['c', 'body_c'], ['far', 'body_far']] as const) {
       const b = body(id)
       b.created_by = key

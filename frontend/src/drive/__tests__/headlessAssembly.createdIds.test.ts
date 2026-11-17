@@ -7,7 +7,7 @@
 // reply still collapses accepted steps instead of carrying the ids.
 
 import { describe, it, expect, afterEach } from 'vitest'
-import type { AssemblyDoc, BodyResult, PartDoc } from '@/types/cad'
+import type { AssemblyDoc, PartResult, PartDoc } from '@/types/cad'
 import type { PartBundle } from '@/kernel/partBundle'
 import { BUNDLE_SCHEMA } from '@/kernel/partBundle'
 import { makeEchoSolver } from '@/kernel/solveAssemblyTestUtils'
@@ -20,7 +20,7 @@ function partDoc(id: string): PartDoc {
   return { version: 1, kind: 'part', features: [{ id, kind: 'sketch' }] } as PartDoc
 }
 
-const BODY: BodyResult = {
+const BODY: PartResult = {
   id: 'body_ex1',
   created_by: 'ex1',
   modified_by: [],

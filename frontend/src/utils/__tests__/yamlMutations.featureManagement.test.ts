@@ -5,7 +5,7 @@ import {
   applyReorderFeatures,
 } from '@/utils/yamlMutations'
 import {
-  applyRemoveExtrudeProfile, applyRemoveFilletEdge, applyRemoveDeleteBodyRef, applyRemoveTransformBody,
+  applyRemoveExtrudeProfile, applyRemoveFilletEdge, applyRemoveDeletePartRef, applyRemoveTransformPart,
 } from '@/utils/yamlMutations'
 import { featureAt } from '@/testing/featureAccess'
 
@@ -289,7 +289,7 @@ describe('remove-by-index mutators refuse out-of-range indices', () => {
         kind: 'part',
         features: [{ id: 'db1', kind: 'delete_body', delete_body: { bodies: ['a', 'b'] } }],
       }),
-      remove: (doc, index) => applyRemoveDeleteBodyRef(doc, 'db1', index),
+      remove: (doc, index) => applyRemoveDeletePartRef(doc, 'db1', index),
       list: (doc) => delete_body0(doc).bodies,
     },
     {
@@ -303,7 +303,7 @@ describe('remove-by-index mutators refuse out-of-range indices', () => {
           transform: { bodies: ['a', 'b'], operation: 'new', translation: [0, 0, 0], rotation_angle: 0, scale: 1 },
         }],
       }),
-      remove: (doc, index) => applyRemoveTransformBody(doc, 'xf1', index),
+      remove: (doc, index) => applyRemoveTransformPart(doc, 'xf1', index),
       list: (doc) => transform0(doc).bodies,
     },
   ]

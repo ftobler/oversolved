@@ -9,7 +9,7 @@
 // live there too. The old useSyncPartEditorStore mirror that copied React state
 // through setSnapshot is gone; nothing here merges snapshots.
 import { create } from 'zustand'
-import type { BodyResult, PartFeature, PartDoc, Sketch, Mutation, RebuildValidation } from '@/types/cad'
+import type { PartResult, PartFeature, PartDoc, Sketch, Mutation, RebuildValidation } from '@/types/cad'
 
 type UndoEntry = { doc: unknown; mutation: Mutation }
 
@@ -20,8 +20,8 @@ export interface PartEditorData {
   visibleBodies: Set<string> | undefined
   partLabels: Record<string, string>
   solveResults: Record<string, unknown>
-  bodies: Record<string, BodyResult>
-  pickBodies: Record<string, BodyResult>
+  bodies: Record<string, PartResult>
+  pickBodies: Record<string, PartResult>
   isRebuilding: boolean
   featureTimings: Record<string, number>
   validation: RebuildValidation | null

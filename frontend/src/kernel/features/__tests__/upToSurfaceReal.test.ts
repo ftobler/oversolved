@@ -43,7 +43,7 @@ import {
 } from '../upToSurface'
 import { UP_TO_REACH } from '../upTo'
 import type { Repository } from '../../query'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import { noProgress } from '../../occ/defaultArgs'
 
@@ -97,11 +97,11 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
   function putBody(
     scope: DisposeScope,
     table: HandleTable,
-    store: Record<string, Body>,
+    store: Record<string, PartSolid>,
     id: string,
     shape: OccShape,
-  ): Body {
-    const body: Body = {
+  ): PartSolid {
+    const body: PartSolid = {
       id,
       created_by: id.replace(/^body_/, ''),
       modified_by: [],
@@ -116,9 +116,9 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
 
   /** The straight edges of `body` lying wholly in the plane y = planeY, as the
    *  queries resolveProfileEdges takes. They bound one face of a box plinth. */
-  function profileEdges(table: HandleTable, body: Body, planeY: number): string[] {
+  function profileEdges(table: HandleTable, body: PartSolid, planeY: number): string[] {
     const { edges, edge_queries } = solidToEdges(occ2, table, body.shape!, {
-      createdBy: body.created_by, bodyId: body.id,
+      createdBy: body.created_by, partId: body.id,
       profileQueries: body.profile_queries,
       edgeAncestry: body.edge_ancestry ?? null, edgeUuids: body.edge_uuids ?? null,
     })
@@ -139,7 +139,7 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
   function plinthLoop(
     scope: DisposeScope,
     table: HandleTable,
-    store: Record<string, Body>,
+    store: Record<string, PartSolid>,
     planeY: number,
     x0: number,
     x1: number,
@@ -152,7 +152,7 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
     return profileEdges(table, body, planeY)
   }
 
-  function cylinderBody(scope: DisposeScope, table: HandleTable, store: Record<string, Body>): number {
+  function cylinderBody(scope: DisposeScope, table: HandleTable, store: Record<string, PartSolid>): number {
     const cyl = makeCylinder(occ2, scope, [0, 0, 0], [0, 0, 1], 20, 30)
     putBody(scope, table, store, 'body_cyl', cyl)
     const idx = sortedFacesOf(occ2, scope, table.get<OccShape>(store.body_cyl.shape!))
@@ -161,11 +161,11 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
     return idx
   }
 
-  function volumeOfBody(scope: DisposeScope, table: HandleTable, store: Record<string, Body>, id: string): number {
+  function volumeOfBody(scope: DisposeScope, table: HandleTable, store: Record<string, PartSolid>, id: string): number {
     return volumeOf(occ2, scope, table.get<OccShape>(store[id].shape!))
   }
 
-  function endCylinderFaces(scope: DisposeScope, table: HandleTable, store: Record<string, Body>, id: string): OccShape[] {
+  function endCylinderFaces(scope: DisposeScope, table: HandleTable, store: Record<string, PartSolid>, id: string): OccShape[] {
     return sortedFacesOf(occ2, scope, table.get<OccShape>(store[id].shape!))
       .filter((f) => faceSurfaceType(occ2, scope, f) === 'cylinderface')
   }
@@ -174,7 +174,7 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {}
+      const store: Record<string, PartSolid> = {}
       const sideIndex = cylinderBody(scope, table, store)
       const loop = plinthLoop(scope, table, store, 0, -5, 5, 5, 25)
       expect(loop).toHaveLength(4)
@@ -198,7 +198,7 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {}
+      const store: Record<string, PartSolid> = {}
       const sideIndex = cylinderBody(scope, table, store)
       const loop = plinthLoop(scope, table, store, 0, -5, 5, 5, 25)
       const target = { type: 'face', body_id: 'body_cyl', face_index: sideIndex }
@@ -235,7 +235,7 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {}
+      const store: Record<string, PartSolid> = {}
       const sideIndex = cylinderBody(scope, table, store)
       const before = volumeOfBody(scope, table, store, 'body_cyl')
       const loop = plinthLoop(scope, table, store, 0, -5, 5, 5, 25)
@@ -264,7 +264,7 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {}
+      const store: Record<string, PartSolid> = {}
       const sideIndex = cylinderBody(scope, table, store)
       const before = volumeOfBody(scope, table, store, 'body_cyl')
       const loop = plinthLoop(scope, table, store, 30, -5, 5, 5, 25, false)
@@ -298,7 +298,7 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {}
+      const store: Record<string, PartSolid> = {}
       const sideIndex = cylinderBody(scope, table, store)
       const loop = plinthLoop(scope, table, store, 0, -5, 5, 5, 35)
       const result = solveExtrude(
@@ -318,7 +318,7 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {}
+      const store: Record<string, PartSolid> = {}
       const sideIndex = cylinderBody(scope, table, store)
       const loop = plinthLoop(scope, table, store, 0, -25, 25, 5, 25)
       expect(() => solveExtrude(
@@ -335,7 +335,7 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {}
+      const store: Record<string, PartSolid> = {}
       const loop = plinthLoop(scope, table, store, 0, -5, 5, 5, 25)
       const result = solveExtrude(
         occ2, scope, table,
@@ -356,7 +356,7 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {}
+      const store: Record<string, PartSolid> = {}
       const sideIndex = cylinderBody(scope, table, store)
       const cylFace = sortedFacesOf(occ2, scope, table.get<OccShape>(store.body_cyl.shape!))[sideIndex]
       const face = scope.track(topFace(occ2, scope, 30, -5, 5, -25, -5))
@@ -374,7 +374,7 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {}
+      const store: Record<string, PartSolid> = {}
       const sideIndex = cylinderBody(scope, table, store)
       const cylFace = sortedFacesOf(occ2, scope, table.get<OccShape>(store.body_cyl.shape!))[sideIndex]
       const face = scope.track(topFace(occ2, scope, -10, -5, 5, -25, -5))
@@ -395,7 +395,7 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {}
+      const store: Record<string, PartSolid> = {}
       const sideIndex = cylinderBody(scope, table, store)
       const before = volumeOfBody(scope, table, store, 'body_cyl')
       const loop = plinthLoop(scope, table, store, 30, -5, 5, 5, 25, false)
@@ -440,7 +440,7 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {}
+      const store: Record<string, PartSolid> = {}
       const sideIndex = cylinderBody(scope, table, store)
       const before = volumeOfBody(scope, table, store, 'body_cyl')
       const loop = plinthLoop(scope, table, store, 30, -5, 5, 5, 25, false)
@@ -467,7 +467,7 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const store: Record<string, Body> = {}
+        const store: Record<string, PartSolid> = {}
         const sideIndex = cylinderBody(scope, table, store)
         const before = volumeOfBody(scope, table, store, 'body_cyl')
         const loop = plinthLoop(scope, table, store, planeY, -5, 5, 5, 25, below)
@@ -496,7 +496,7 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {}
+      const store: Record<string, PartSolid> = {}
       const sideIndex = cylinderBody(scope, table, store)
       const loop = plinthLoop(scope, table, store, 30, -5, 5, 5, 25, false)
       const result = solveExtrude(
@@ -525,7 +525,7 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {}
+      const store: Record<string, PartSolid> = {}
       const sideIndex = cylinderBody(scope, table, store)
       const loop = plinthLoop(scope, table, store, 0, -5, 5, 5, 25)
       const target = { type: 'face', body_id: 'body_cyl', face_index: sideIndex }
@@ -575,7 +575,7 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {}
+      const store: Record<string, PartSolid> = {}
       const sideIndex = cylinderBody(scope, table, store)
       const before = volumeOfBody(scope, table, store, 'body_cyl')
       const loop = plinthLoop(scope, table, store, 0, -5, 5, 5, 25)
@@ -603,7 +603,7 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const store: Record<string, Body> = {}
+        const store: Record<string, PartSolid> = {}
         const box = makeBoxAt(occ2, scope, [-20, 0, -20], 40, 10, 40)
         putBody(scope, table, store, 'body_box', box)
         const before = volumeOfBody(scope, table, store, 'body_box')
@@ -633,7 +633,7 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {}
+      const store: Record<string, PartSolid> = {}
       const sideIndex = cylinderBody(scope, table, store)
       const loop = plinthLoop(scope, table, store, 0, -5, 5, 5, 25)
       for (const termination of ['up_to', 'up_to_next']) {
@@ -702,7 +702,7 @@ describe.skipIf(!oc)('extrude up_to on curved faces (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {}
+      const store: Record<string, PartSolid> = {}
       putBody(scope, table, store, 'body_box', makeBoxAt(occ2, scope, [-20, 0, -20], 40, 10, 40))
       const before = volumeOfBody(scope, table, store, 'body_box')
       const loop = plinthLoop(scope, table, store, 20, -5, 5, -5, 5, false)

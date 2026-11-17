@@ -22,7 +22,7 @@ import { Repository } from '../../query'
 import { barePart } from '../shared/partResolution'
 import { patternFeature, solveArray, solveCircularArray } from './patternBodyTestAdapters'
 import { solveBoolean } from '../boolean'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
 
 const loadedOcc = await loadOcc()
@@ -32,14 +32,14 @@ const oc = loadedOcc!
 interface Rig {
   scope: DisposeScope
   table: HandleTable
-  store: Record<string, Body>
+  store: Record<string, PartSolid>
 }
 
 function rig(): Rig {
   return { scope: new DisposeScope(), table: new HandleTable(), store: {} }
 }
 
-function seed(r: Rig, id: string, createdBy: string, shape: OccShape): Body {
+function seed(r: Rig, id: string, createdBy: string, shape: OccShape): PartSolid {
   const body = barePart(id, createdBy)
   body.shape = r.table.register(r.scope.detach(r.scope.track(shape)), createdBy)
   r.store[id] = body

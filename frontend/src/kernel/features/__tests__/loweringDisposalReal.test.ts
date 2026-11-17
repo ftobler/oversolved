@@ -25,7 +25,7 @@ import { solveExtrude } from '../extrude'
 import { solveRevolve } from '../revolve'
 import { solveArray } from './patternBodyTestAdapters'
 import type { Repository } from '../../query'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { LoopEdge } from '../../profileLoops'
 
@@ -113,19 +113,19 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
   function leafFixture(): {
     table: HandleTable
     loop: string[]
-    bodyStore: Record<string, Body>
+    bodyStore: Record<string, PartSolid>
   } {
     const table = new HandleTable()
     const scope = new DisposeScope()
     try {
       const box = makeBox(occ, scope, 10, 10, 10)
-      const bodyB: Body = {
+      const bodyB: PartSolid = {
         id: 'body_b', created_by: 'seed', modified_by: [],
         shape: table.register(box, 'seed'), sketch_id: 'sk',
         brep_diff: null, profile_queries: [],
       }
       const { edges, edge_queries } = solidToEdges(occ, table, bodyB.shape!, {
-        createdBy: bodyB.created_by, bodyId: bodyB.id,
+        createdBy: bodyB.created_by, partId: bodyB.id,
         profileQueries: [],
         edgeAncestry: null, edgeUuids: null,
       })
@@ -147,7 +147,7 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
     runs: number,
     solve: (
       scope: CountingScope,
-      fx: { table: HandleTable; loop: string[]; bodyStore: Record<string, Body> },
+      fx: { table: HandleTable; loop: string[]; bodyStore: Record<string, PartSolid> },
     ) => number,
   ): { released: number[]; volumes: number[] } {
     const fx = leafFixture()
@@ -237,12 +237,12 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
     const scope = new CountingScope()
     try {
       const box = makeBox(occ, scope, 10, 10, 10)
-      const bodyB: Body = {
+      const bodyB: PartSolid = {
         id: 'body_b', created_by: 'seed', modified_by: [],
         shape: table.register(box, 'seed'), sketch_id: 'sk',
         brep_diff: null, profile_queries: [],
       }
-      const bodyStore: Record<string, Body> = { body_b: bodyB }
+      const bodyStore: Record<string, PartSolid> = { body_b: bodyB }
       // The direction query resolves to a straight edge along +X so the leaf
       // does not refuse the array.
       const repo = { query: () => ({ start: [0, 0, 0], end: [1, 0, 0] }), elements: new Map() } as unknown as Repository

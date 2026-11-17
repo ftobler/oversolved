@@ -11,11 +11,11 @@
 // command step, the end) instead of after every step. The browser adapter keeps
 // its immediate scheduler; only this drive surface wraps one.
 
-import type { PartDoc, Mutation, SketchData, BodyResult, BuildResponse } from '@/types/cad'
+import type { PartDoc, Mutation, SketchData, PartResult, BuildResponse } from '@/types/cad'
 import {
-  faceBoundaryFromBodies, freezeRowsForDelete, isFaceProjectionSource,
+  faceBoundaryFromParts, freezeRowsForDelete, isFaceProjectionSource,
   projectionDependentsReport, projectionNotFrozenMessage, projectionsFreezingNothing,
-  type FaceBoundaryBodyLike, type ProjectionMemberEntity,
+  type FaceBoundaryPartLike, type ProjectionMemberEntity,
 } from '@/kernel/features/projectionMembers'
 import { repoFromSnapshot } from '@/kernel/builder'
 import type { BuildState } from '@/kernel/types3d'
@@ -29,7 +29,7 @@ import { projectionTargetRef } from '@/utils/yamlMutations/freezeProjection'
 import { errorResult } from '@/session/result'
 import { createWorkerSolveScheduler, type ReSolveFn } from '@/hooks/workerSolveScheduler'
 import { createDeferredSolveScheduler, type DeferredSolveScheduler } from '@/drive/deferredSolveScheduler'
-import { finalLiveBodyIds, measureSolveFeatures, solveLocally, type FeatureMeasure } from '@/kernel/solveLocally'
+import { finalLivePartIds, measureSolveFeatures, solveLocally, type FeatureMeasure } from '@/kernel/solveLocally'
 import { CommandRegistry } from '@/utils/core/commandSpec'
 import type { CommandName } from '@/utils/core/commandNames'
 import { PART_COMMAND_SPECS, getSketchState, type PartCommandContext } from '@/pages/commandEntries'
@@ -400,7 +400,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     // write-back: this is what the reply summary reports, not the accumulated
     // part_style keys and not the render map (which drops a body whose
     // tessellation failed while the solve still holds it).
-    bodiesBox.current = finalLiveBodyIds(response)
+    bodiesBox.current = finalLivePartIds(response)
     if (stillMoving.length > 0) {
       // The cap was hit with the write-back still installing geometry. Report
       // the sketches in feature order; the note alone acknowledges the gap.
@@ -434,8 +434,8 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     docId,
     // A face projection is added with the members the last solve derived from
     // the solved bodies; the headless host answers from its own response box.
-    projectionBoundary: faceBoundaryFromBodies(
-      () => responseBox.current?.bodies as Record<string, FaceBoundaryBodyLike> | undefined,
+    projectionBoundary: faceBoundaryFromParts(
+      () => responseBox.current?.bodies as Record<string, FaceBoundaryPartLike> | undefined,
     ),
     projectionResolves: bodyProjectionResolveCheck(() => responseBox.current),
     ...(opts.journal && { journal: journalSink(opts.journal) }),
@@ -522,7 +522,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
           // a solve still owed is spent first, and a run that starts from an
           // unsolved document (a fresh doc, or a chained docHash whose reply
           // carried no bodies) solves once before its first selector step.
-          let bodies = responseBox.current?.bodies as Record<string, BodyResult> | undefined
+          let bodies = responseBox.current?.bodies as Record<string, PartResult> | undefined
           // A face projection needs the last solve's body mesh to derive its
           // member ids, and a body-query projection resolves only against that
           // same solve. A delete of a face projection needs the settled face too,
@@ -536,7 +536,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
               session.refreshSolve()
               await solve.flush()
             }
-            bodies = responseBox.current?.bodies as Record<string, BodyResult> | undefined
+            bodies = responseBox.current?.bodies as Record<string, PartResult> | undefined
           }
           const resolved = resolveSelectionAids(step.mutation, bodies ?? null)
           if (!resolved.ok) return { ok: false, code: resolved.code, message: resolved.message }

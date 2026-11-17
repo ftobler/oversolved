@@ -8,7 +8,7 @@
 import type { DisposeScope } from '../../occ/disposeScope'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { HandleTable } from '../../occ/handleTable'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import {
   Repository,
   AmbiguousQueryError,
@@ -19,13 +19,13 @@ import {
   isConstructionUuidId,
   parseConstructionUuidId,
   makeAncestryQuery,
-  bodyIdOf,
+  partIdOf,
 } from '../../query'
-import { canonicalFaces, assertAligned } from '../../occ/bodyNames'
+import { canonicalFaces, assertAligned } from '../../occ/partNames'
 import { faceCentroid, faceSurfaceType, type Vec3 } from '../../occ/primitives'
 import { geometryClassifiers } from '../../geomHash'
 import { mintFaceUuid, sideFacePath, splitFacePath } from '../../constructionName'
-import { bodyFrame } from '../../occ/tessellation'
+import { partFrame } from '../../occ/tessellation'
 
 /** Payload registered per face in the ancestry repo; carries the OCC shape out. */
 interface FaceAncestryPayload {
@@ -45,7 +45,7 @@ export function buildFaceIndex(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-  part: Body,
+  part: PartSolid,
 ): FaceIndex {
   const byUuid = new Map<string, OccShape>()
   const ancestryRepo = new Repository()
@@ -53,7 +53,7 @@ export function buildFaceIndex(
   const shape = table.get<OccShape>(part.shape)
   const faces = canonicalFaces(oc, scope, shape) as OccShape[]
   assertAligned(faces.length, part.face_uuids, `${part.id} face index`)
-  const { center, half } = bodyFrame(oc, scope, shape)
+  const { center, half } = partFrame(oc, scope, shape)
 
   faces.forEach((face, idx) => {
     const uuid = part.face_uuids?.[idx] ?? null
@@ -82,9 +82,9 @@ export function makeFaceIndexCache(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-): (part: Body) => FaceIndex {
+): (part: PartSolid) => FaceIndex {
   const cache = new Map<string, FaceIndex>()
-  return (part: Body): FaceIndex => {
+  return (part: PartSolid): FaceIndex => {
     let idx = cache.get(part.id)
     if (idx === undefined) {
       idx = buildFaceIndex(oc, scope, table, part)
@@ -128,8 +128,8 @@ export function partOfQuery(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-  partStore: Record<string, Body>,
-  indexFor: (part: Body) => FaceIndex,
+  partStore: Record<string, PartSolid>,
+  indexFor: (part: PartSolid) => FaceIndex,
   q: string,
 ): string | null {
   const contains = (bid: string): boolean => {
@@ -138,7 +138,7 @@ export function partOfQuery(
     return resolveFacesByQuery(oc, scope, table, part, indexFor(part), [q], partStore).get(q) != null
   }
   const parts = Object.keys(partStore)
-  const named = bodyIdOf(q, partStore)
+  const named = partIdOf(q, partStore)
   const uuid = queryFaceUuid(q)
   if (uuid !== null) {
     const carries = (bid: string): boolean => {
@@ -274,7 +274,7 @@ export function resolveFacesByQuery(
   _oc: OccModule,
   _scope: DisposeScope,
   _table: HandleTable,
-  _part: Body,
+  _part: PartSolid,
   index: FaceIndex,
   faceQueries: string[],
   partStore: Record<string, unknown> | null = null,

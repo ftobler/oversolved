@@ -4,7 +4,7 @@
 // It reads the solve's body meshes, not the viewport's hover registry. The
 // registry only holds bodies that are drawn and interactive, so a hidden body
 // used to take its face frame with it even though the solve still had it.
-import type { BodyResult } from '@/types/cad'
+import type { PartResult } from '@/types/cad'
 import { planarFaceFrame } from '@/components/Geometry3D/bodyGeometry'
 import { FACE_LAYER_NAME } from '@/picking/layerNames'
 import { bodyKeyFor, parsePickKeyIndex } from '@/picking/pickKey'
@@ -14,7 +14,7 @@ export interface SolveFaceFrame {
   center: [number, number, number]
 }
 
-function featureIdFor(bodyId: string, body: BodyResult): string {
+function featureIdFor(bodyId: string, body: PartResult): string {
   return body.created_by || bodyId
 }
 
@@ -28,7 +28,7 @@ function featureIdFor(bodyId: string, body: BodyResult): string {
  * a body the current solve no longer has.
  */
 export function faceFrameFromSolve(
-  bodies: Record<string, BodyResult> | undefined,
+  bodies: Record<string, PartResult> | undefined,
   query: string,
   pickKey?: string,
 ): SolveFaceFrame | null {

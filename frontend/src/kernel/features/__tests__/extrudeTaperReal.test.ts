@@ -10,7 +10,7 @@
 import { describe, it, expect } from 'vitest'
 import type { BuildResponse } from '../../builder'
 import { DisposeScope } from '../../occ/disposeScope'
-import { canonicalFaces } from '../../occ/bodyNames'
+import { canonicalFaces } from '../../occ/partNames'
 import { volumeOf } from '../../occ/booleans'
 import { shapeBbox } from '../../occ/faceBounds'
 import { faceArea, faceNormal } from '../../occ/primitives'
@@ -136,10 +136,10 @@ describe.skipIf(!oc || !solveBytes)('extrude taper (real OCC + Rust solver)', ()
       return {
         volume: volumeOf(oc!, scope, shape),
         faces: canonicalFaces(oc!, scope, shape).length,
-        edges: ((h.body(result, bodyId).edges as unknown[]) ?? []).length,
+        edges: ((h.part(result, bodyId).edges as unknown[]) ?? []).length,
         bbox: shapeBbox(oc!, scope, shape),
         valid: scope.track(new oc!.BRepCheck_Analyzer(shape, true, false, false)).IsValid_2(),
-        mesh: (h.body(result, bodyId).mesh as Dict) ?? {},
+        mesh: (h.part(result, bodyId).mesh as Dict) ?? {},
       }
     } finally {
       scope.dispose()
@@ -206,7 +206,7 @@ describe.skipIf(!oc || !solveBytes)('extrude taper (real OCC + Rust solver)', ()
     const expected = (8 / 6) * (200 + 4 * midArea + topArea)
     expect(g.volume).toBeCloseTo(expected, 3)
     expect(g.faces).toBe(6)
-    expect(((h.body(result, 'body_ex1').vertices as unknown[]) ?? []).length).toBe(8)
+    expect(((h.part(result, 'body_ex1').vertices as unknown[]) ?? []).length).toBe(8)
     const top = topVertices(g, 8)
     expect(Math.max(...top.map((v) => v[0])) - Math.min(...top.map((v) => v[0]))).toBeCloseTo(topX, 4)
     expect(Math.max(...top.map((v) => v[2])) - Math.min(...top.map((v) => v[2]))).toBeCloseTo(topZ, 4)
@@ -310,7 +310,7 @@ describe.skipIf(!oc || !solveBytes)('extrude taper (real OCC + Rust solver)', ()
       ],
     })
     expect(h.res(first, 'ex1').status).toBe('ok')
-    const mesh = h.body(first, 'body_ex1').mesh as {
+    const mesh = h.part(first, 'body_ex1').mesh as {
       face_data: { normal: number[]; surface_type?: string }[]
       face_queries: string[]
     }
@@ -460,7 +460,7 @@ describe.skipIf(!oc || !solveBytes)('extrude taper (real OCC + Rust solver)', ()
   it('a sloped lateral face query survives a taper edit', () => {
     const first = h.run(squareTaperSpec(15))
     expect(h.res(first, 'ex1').status).toBe('ok')
-    const mesh = h.body(first, 'body_ex1').mesh as {
+    const mesh = h.part(first, 'body_ex1').mesh as {
       face_data: { normal: number[]; surface_type?: string }[]
       face_queries: string[]
     }
@@ -486,7 +486,7 @@ describe.skipIf(!oc || !solveBytes)('extrude taper (real OCC + Rust solver)', ()
     const twelve = h.run(withFillet(12))
     expect(h.res(twelve, 'fi1').status).toBe('ok')
     expect(h.res(twelve, 'fi1').unresolved_edges ?? []).toEqual([])
-    const faceQueries = (h.body(twelve, 'body_ex1').mesh as { face_queries?: string[] }).face_queries ?? []
+    const faceQueries = (h.part(twelve, 'body_ex1').mesh as { face_queries?: string[] }).face_queries ?? []
     expect(faceQueries.some((q) => q.includes('@sk1/'))).toBe(true)
   }, 30_000)
 
@@ -537,7 +537,7 @@ describe.skipIf(!oc || !solveBytes)('extrude taper (real OCC + Rust solver)', ()
     expect(g.faces).toBe(5)
     const types = (g.mesh.face_data as { surface_type?: string }[]).map((f) => f.surface_type)
     expect(types).toEqual(['flatface', 'flatface', 'flatface', 'flatface', 'flatface'])
-    const verts = (h.body(result, 'body_ex1').vertices as number[][]) ?? []
+    const verts = (h.part(result, 'body_ex1').vertices as number[][]) ?? []
     expect(verts.length).toBe(5)
     expect(g.bbox[2]).toBeCloseTo(0, 9)
     expect(g.bbox[5]).toBeCloseTo(10, 9)
@@ -623,7 +623,7 @@ describe.skipIf(!oc || !solveBytes)('extrude taper (real OCC + Rust solver)', ()
     expect(h.res(result, 'ex1').status).toBe('ok')
     const g = gauges(result, 'ex1', 'body_ex1')
     expectRelative(g.volume, 2, 1e-9)
-    const verts = (h.body(result, 'body_ex1').vertices as number[][]) ?? []
+    const verts = (h.part(result, 'body_ex1').vertices as number[][]) ?? []
     const apex = verts.filter((v) => Math.abs(v[2] - 1) < 1e-9)
     expect(apex.length).toBe(1)
     expect(apex[0][0]).toBeCloseTo(1, 9)
@@ -672,7 +672,7 @@ describe.skipIf(!oc || !solveBytes)('extrude taper (real OCC + Rust solver)', ()
       ],
     })
     expect(h.res(result, 'ex1').status).toBe('ok')
-    const mesh = h.body(result, 'body_ex1').mesh as {
+    const mesh = h.part(result, 'body_ex1').mesh as {
       face_data: { normal: number[]; surface_type?: string }[]
       face_queries: string[]
     }

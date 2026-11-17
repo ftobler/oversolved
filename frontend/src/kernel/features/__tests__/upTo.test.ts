@@ -10,7 +10,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { resolveUpToPlane, upToDistance, orientToTarget, trimAtPlane, type CutPlane } from '../upTo'
 import { AmbiguousQueryError } from '../../query'
 import type { Repository } from '../../query'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { DisposeScope } from '../../occ/disposeScope'
 import type { HandleTable } from '../../occ/handleTable'
@@ -146,7 +146,7 @@ describe('resolveUpToPlane', () => {
     // the body shape and reads its surface plane. A non-unit surface normal must
     // come back normalized, not as raw OCC units.
     const table = { get: () => ({}) } as unknown as HandleTable
-    const bodyStore = { body_b: { shape: 7 } } as unknown as Record<string, Body>
+    const bodyStore = { body_b: { shape: 7 } } as unknown as Record<string, PartSolid>
     const face = { fake: 'face' } as unknown as OccShape
     vi.mocked(extractOccFace).mockReturnValue(face)
     vi.mocked(faceSurfaceType).mockReturnValue('flatface')
@@ -168,7 +168,7 @@ describe('resolveUpToPlane', () => {
     // pick would hide the real cause behind a "did not resolve" sentence, so the
     // refusal is named.
     const table = { get: () => ({}) } as unknown as HandleTable
-    const bodyStore = { body_b: { shape: 7 } } as unknown as Record<string, Body>
+    const bodyStore = { body_b: { shape: 7 } } as unknown as Record<string, PartSolid>
     vi.mocked(extractOccFace).mockReturnValue({ fake: 'face' } as unknown as OccShape)
     vi.mocked(faceSurfaceType).mockReturnValue('cylinderface')
     expect(() =>

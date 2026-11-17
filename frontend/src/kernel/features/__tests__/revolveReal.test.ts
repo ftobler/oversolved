@@ -15,7 +15,7 @@ import { makeAncestryQuery } from '../../query'
 import { setSketchSolver, resetSketchSolver } from '../../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import type { BuildResponse } from '../../builder'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -80,12 +80,12 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
     run: (spec: { features: unknown[] } & Record<string, unknown>) =>
       harness.run({ ...spec, features: [axisSketch(), ...spec.features] }),
     res: harness.res.bind(harness),
-    body: harness.body.bind(harness),
+    body: harness.part.bind(harness),
   }
 
   function volumeAt(r: BuildResponse, featureId: string, bodyId: string): number {
     const checkpoint = r._build_state!.checkpoints[featureId]
-    const body = (checkpoint.body_store_snapshot as Record<string, Body>)[bodyId]
+    const body = (checkpoint.body_store_snapshot as Record<string, PartSolid>)[bodyId]
     const scope = new DisposeScope()
     try {
       return volumeOf(oc!, scope, harness.table.get<OccShape>(body.shape!))

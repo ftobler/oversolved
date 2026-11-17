@@ -8,7 +8,7 @@
 // predicate and, for a `type` clause, the values present and the full valid
 // vocabulary, so an authoring agent can see which clause killed the match.
 
-import type { BodyResult } from '@/types/cad'
+import type { PartResult } from '@/types/cad'
 import { parseAncestry } from '@/kernel/query'
 import { DEFAULT_MEASURE_TOLERANCE, valueWithinTolerance } from '@/kernel/occ/measureTolerance'
 import { TOL_SELECT_DIRECTION } from '@/kernel/solverConstants'
@@ -41,7 +41,7 @@ import type { CenterTest, Predicate, RadiusTest, SelectKind, SelectResult, Selec
 // admits sines to ~1.4e-3, ~1400x looser than the perpendicular clause.
 
 export interface EvalContext {
-  bodies: Record<string, BodyResult>
+  parts: Record<string, PartResult>
   from?: string
 }
 
@@ -173,10 +173,10 @@ function onFace(inner: Selector, pool: Candidate[], ctx: EvalContext): Candidate
     ...(from !== undefined && { from }),
     ...(inner.where !== undefined && { where: inner.where }),
   }
-  const faces = runSelector(faceSelector, ctx.bodies)
+  const faces = runSelector(faceSelector, ctx.parts)
   const boundary = new Set<string>()
   for (const face of faces) {
-    const faceEdges = ctx.bodies[face.bodyId]?.mesh?.face_edge_queries?.[face.index]
+    const faceEdges = ctx.parts[face.partId]?.mesh?.face_edge_queries?.[face.index]
     if (faceEdges) for (const q of faceEdges) boundary.add(q)
   }
   return pool.filter(c => c.kind === 'edge' && boundary.has(c.query))
@@ -291,18 +291,18 @@ function emptyError(selector: Selector, pool: Candidate[], ctx: EvalContext): Se
   return new SelectorError(`selector matched no ${what} (${count}: ${details.join(', ')})`)
 }
 
-function candidatesFor(selector: Selector, bodies: Record<string, BodyResult>): Candidate[] {
-  if (selector.from !== undefined && !(selector.from in bodies)) {
+function candidatesFor(selector: Selector, parts: Record<string, PartResult>): Candidate[] {
+  if (selector.from !== undefined && !(selector.from in parts)) {
     throw new SelectorError(`no body named "${selector.from}"`)
   }
-  if (selector.kind === 'edge') return edgeCandidates(bodies, selector.from)
-  return selector.kind === 'face' ? faceCandidates(bodies, selector.from) : vertexCandidates(bodies, selector.from)
+  if (selector.kind === 'edge') return edgeCandidates(parts, selector.from)
+  return selector.kind === 'face' ? faceCandidates(parts, selector.from) : vertexCandidates(parts, selector.from)
 }
 
 /** Run a selector, throwing SelectorError with diagnostics on an empty match. */
-function runSelector(selector: Selector, bodies: Record<string, BodyResult>): Candidate[] {
-  const ctx: EvalContext = { bodies, ...(selector.from !== undefined && { from: selector.from }) }
-  const pool = candidatesFor(selector, bodies)
+function runSelector(selector: Selector, parts: Record<string, PartResult>): Candidate[] {
+  const ctx: EvalContext = { parts, ...(selector.from !== undefined && { from: selector.from }) }
+  const pool = candidatesFor(selector, parts)
   const out = selector.where ? evaluate(selector.where, pool, ctx) : pool
   if (out.length === 0) throw emptyError(selector, pool, ctx)
   return out
@@ -314,12 +314,12 @@ function runSelector(selector: Selector, bodies: Record<string, BodyResult>): Ca
  * (body id sorted, then face/edge/vertex index). Throws SelectorError on an
  * invalid expression or an empty match.
  */
-export function selectByPredicate(selector: Selector, bodies: Record<string, BodyResult>): SelectResult {
-  const candidates = runSelector(selector, bodies)
+export function selectByPredicate(selector: Selector, parts: Record<string, PartResult>): SelectResult {
+  const candidates = runSelector(selector, parts)
   const items = candidates.map(c => ({
     query: c.query,
     kind: c.kind,
-    body: c.bodyId,
+    part: c.partId,
     index: c.index,
     geometry: geometryOf(c),
   }))

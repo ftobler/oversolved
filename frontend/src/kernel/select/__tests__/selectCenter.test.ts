@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest'
 import { selectByPredicate, validateSelector, SelectorError } from '@/kernel/select'
 import type { Selector } from '@/kernel/select'
-import type { BodyResult, EdgeData, FaceData } from '@/types/cad'
+import type { PartResult, EdgeData, FaceData } from '@/types/cad'
 
 type V3 = [number, number, number]
 
@@ -23,7 +23,7 @@ function bodyResult(
   edgeQueries: string[],
   faces: FaceData[] = [],
   faceQueries: string[] = [],
-): BodyResult {
+): PartResult {
   return {
     id,
     created_by: 'ex1',
@@ -36,7 +36,7 @@ function bodyResult(
 
 // Two parallel lines: one centred at (5,0,0), one at (5,0,5). A circle adds a
 // curve whose centre point is its circle centre, far from both.
-function edges(): Record<string, BodyResult> {
+function edges(): Record<string, PartResult> {
   return {
     body_ex1: bodyResult(
       'body_ex1',
@@ -50,7 +50,7 @@ function edges(): Record<string, BodyResult> {
   }
 }
 
-function queriesOf(selector: Selector, bodies: Record<string, BodyResult>): string[] {
+function queriesOf(selector: Selector, bodies: Record<string, PartResult>): string[] {
   return selectByPredicate(selector, bodies).queries
 }
 

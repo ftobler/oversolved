@@ -15,7 +15,7 @@
 // A hidden part is absent from both. The export mirrors the scene the user is
 // looking at, which is the only reading of "hide" that does not surprise.
 
-import type { AssemblyDoc, BodyResult, PartInstance, Transform3D } from '@/types/cad'
+import type { AssemblyDoc, PartResult, PartInstance, Transform3D } from '@/types/cad'
 import type { AssemblyExportPartSpec } from '@/kernel/worker/solverProtocol'
 import type { StlMesh } from '@/kernel/stl'
 import { encodeBinaryStl } from '@/kernel/stl'
@@ -96,7 +96,7 @@ export function collectExportFileIds(parts: AssemblyExportPartSpec[]): string[] 
  * `[x,y,z][]` as a flat buffer would write garbage triangles.
  */
 export function assemblyStlMeshes(
-  parts: Record<string, BodyResult>,
+  parts: Record<string, PartResult>,
   instances: PartInstance[],
 ): StlMesh[] {
   const handles = new Set(instances.map(i => i.handle))
@@ -120,7 +120,7 @@ export function assemblyStlMeshes(
 
 /** The mesh fast path: solved bodies straight to binary STL, no OCC, no worker. */
 export function assemblyStlBytes(
-  parts: Record<string, BodyResult>,
+  parts: Record<string, PartResult>,
   instances: PartInstance[],
 ): Uint8Array | null {
   const meshes = assemblyStlMeshes(parts, instances)

@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { mergeSnapshot, pickOwnedFields } from '@/stores/storeSnapshot'
 import { assemblyHistory, setAssemblyHistoryMirror } from '@/stores/assemblyHistory'
 import type { HistoryEntry } from '@/session/History'
-import type { AssemblyDoc, PartInstance, MateFeature, MateRef, MateRefField, MateAnchorDescriptor, Transform3D, BodyResult } from '@/types/cad'
+import type { AssemblyDoc, PartInstance, MateFeature, MateRef, MateRefField, MateAnchorDescriptor, Transform3D, PartResult } from '@/types/cad'
 import type { EdgeCurve } from '@/kernel/partBundle'
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { cycleIndex, resolveCandidates, sameCandidateSet, type EntityMateRefs } from '@/utils/anchorCandidates'
@@ -88,7 +88,7 @@ export interface AssemblyEditorData {
    *  leaves it out. A fixed part is never here. Undefined means no report
    *  reached the store (a legacy payload), so the bake writes every pose. */
   movedParts?: ReadonlySet<string>
-  bodies: Record<string, BodyResult>
+  bodies: Record<string, PartResult>
   // Analytic edges of the solved bodies, keyed by the same body id.
   edgeCurves: Record<string, EdgeCurve[]>
   // Entity pick id -> the mate refs it offers. The Stage 7 pick lookup.

@@ -22,7 +22,7 @@ export {
   parseQuery,
   emitWire,
   ref,
-  bodyIdOf,
+  partIdOf,
   featureRefId,
   parseAncestry,
   makeAncestryQuery,
@@ -47,8 +47,8 @@ export { AmbiguousQueryError, subtypesOf } from './queryCoerce'
 export {
   initGlobalRepo,
   evictAncestryAndRegister,
-  clearBodyAncestry,
-  clearConsumedBodyAncestry,
+  clearPartAncestry,
+  clearConsumedPartAncestry,
 } from './queryAncestryOps'
 
 // ─── Plane/point helpers ───

@@ -3,7 +3,7 @@
 // per-body memo dependencies stay stable.
 
 import { describe, it, expect } from 'vitest'
-import type { BodyResult, PartFeature } from '@/types/cad'
+import type { PartResult, PartFeature } from '@/types/cad'
 import { makeAncestryQuery } from '@/kernel/query'
 import { partRelationHintsFor } from '@/hooks/useRelationHint'
 
@@ -46,7 +46,7 @@ const pickOne = makeAncestryQuery(['@u|one', '@fi1', '@body_ex1'], 'straightedge
 const pickTwo = makeAncestryQuery(['@u|two', '@fi1', '@body_ex1'], 'straightedge')
 const fi1: PartFeature = { id: 'fi1', kind: 'fillet', fillet: { edges: [pickOne, pickTwo], radius: 20 } }
 const filletFeatures = [ex1, fi1]
-const filletBodies: Record<string, BodyResult> = {
+const filletBodies: Record<string, PartResult> = {
   body_ex1: {
     id: 'body_ex1', created_by: 'ex1', modified_by: [],
     edges: [], edge_queries: [pickOne, pickTwo],

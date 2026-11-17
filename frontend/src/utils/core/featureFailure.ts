@@ -26,7 +26,7 @@
  * later shows up rather than disappearing -- `'error'` (extrude/revolve "no
  * closed profile") is already such a word.
  */
-import { isBodyFeatureResult } from '@/types/cad'
+import { isFeaturePartsResult } from '@/types/cad'
 import { STATUS_NAME, Status } from '@/wasm-kernel/codec'
 import { degenerateEntityWarning, type DegenerateEntity } from '@/utils/entitySizeProblems'
 import { NO_MARK, type StatusMark } from './statusMark'
@@ -76,7 +76,7 @@ export function featureFailure(
   const result = solveResults?.[featureId]
   if (typeof result !== 'object' || result === null) return NO_MARK
 
-  const partResult = isBodyFeatureResult(result) ? result : undefined
+  const partResult = isFeaturePartsResult(result) ? result : undefined
   const partIds = partResult
     ? (partResult.body_ids ?? (partResult.body_id ? [partResult.body_id] : []))
     : []

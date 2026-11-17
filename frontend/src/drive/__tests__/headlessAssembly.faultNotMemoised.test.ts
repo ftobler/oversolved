@@ -6,7 +6,7 @@
 // deterministic build error is the part's own answer and is reused.
 
 import { describe, it, expect, afterEach } from 'vitest'
-import type { AssemblyDoc, BodyResult, PartDoc, Transform3D } from '@/types/cad'
+import type { AssemblyDoc, PartResult, PartDoc, Transform3D } from '@/types/cad'
 import { BUNDLE_SCHEMA, type PartBundle } from '@/kernel/partBundle'
 import { KernelFault } from '@/kernel/errors'
 import {
@@ -18,7 +18,7 @@ import {
 
 const IDENTITY: Transform3D = { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }
 
-const BODY: BodyResult = {
+const BODY: PartResult = {
   id: 'body_ex1',
   created_by: 'ex1',
   modified_by: [],

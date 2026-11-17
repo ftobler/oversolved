@@ -14,8 +14,8 @@ import { HandleTable } from '../handleTable'
 import { makeBox, makeCone } from '../primitives'
 import { edgeToGeom, readSolidEdges } from '../primitives'
 import { applyFilletWithLineage } from '../edgeModifier'
-import { canonicalEdges, canonicalVertices } from '../bodyNames'
-import { measureBodies, measureShape } from '../measure'
+import { canonicalEdges, canonicalVertices } from '../partNames'
+import { measureParts, measureShape } from '../measure'
 import { compareMeasures, type MeasureRow } from '../measureTolerance'
 import { solidToEdges } from '../tessellation'
 import type { OccModule, OccShape } from '../occTypes'
@@ -105,7 +105,7 @@ describe.skipIf(!oc)('measure edge population (real OCC)', () => {
       const shape = filletedBlock(oc!, scope)
       const handle = table.register(shape, 'fillet1')
       const { edges, edge_queries } = solidToEdges(oc!, table, handle, {
-        createdBy: 'fillet1', bodyId: '@body_1',
+        createdBy: 'fillet1', partId: '@body_1',
       })
       const measure = measureShape(oc!, scope, shape)
       expect(edges).toHaveLength(36)
@@ -165,7 +165,7 @@ describe.skipIf(!oc)('measure edge population (real OCC)', () => {
     const scope = new DisposeScope()
     try {
       const shape = filletedBlock(oc!, scope)
-      const measure = measureBodies(oc!, scope, [shape])
+      const measure = measureParts(oc!, scope, [shape])
       const reference = { bodies: 1, faces: 18, edges: 36 }
       expect(compareMeasures(measure, reference, { topology: 'strict' }).pass).toBe(true)
 

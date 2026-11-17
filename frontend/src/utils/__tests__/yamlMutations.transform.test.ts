@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import {
   applyAddTransform,
-  applyAddTransformBody,
-  applyRemoveTransformBody,
+  applyAddTransformPart,
+  applyRemoveTransformPart,
   applySetTransformField,
-  migrateLegacyBodyPicks,
+  migrateLegacyPartPicks,
 } from '@/utils/yamlMutations'
 import { featureAt } from '@/testing/featureAccess'
 
@@ -67,40 +67,40 @@ describe('Transform mutations', () => {
     it('appends picks in order', () => {
       const doc = makeDoc()
       applyAddTransform(doc, 'xf1')
-      applyAddTransformBody(doc, 'xf1', '@body_ex1')
-      applyAddTransformBody(doc, 'xf1', '@body_ex2')
+      applyAddTransformPart(doc, 'xf1', '@body_ex1')
+      applyAddTransformPart(doc, 'xf1', '@body_ex2')
       expect(transform0(doc).bodies).toEqual(['@body_ex1', '@body_ex2'])
     })
 
     it('re-picking the same body removes it', () => {
       const doc = makeDoc()
       applyAddTransform(doc, 'xf1')
-      applyAddTransformBody(doc, 'xf1', '@body_ex1')
-      applyAddTransformBody(doc, 'xf1', '@body_ex2')
-      applyAddTransformBody(doc, 'xf1', '@body_ex1')
+      applyAddTransformPart(doc, 'xf1', '@body_ex1')
+      applyAddTransformPart(doc, 'xf1', '@body_ex2')
+      applyAddTransformPart(doc, 'xf1', '@body_ex1')
       expect(transform0(doc).bodies).toEqual(['@body_ex2'])
     })
 
     it('removes by index', () => {
       const doc = makeDoc()
       applyAddTransform(doc, 'xf1')
-      applyAddTransformBody(doc, 'xf1', '@body_ex1')
-      applyAddTransformBody(doc, 'xf1', '@body_ex2')
-      applyRemoveTransformBody(doc, 'xf1', 0)
+      applyAddTransformPart(doc, 'xf1', '@body_ex1')
+      applyAddTransformPart(doc, 'xf1', '@body_ex2')
+      applyRemoveTransformPart(doc, 'xf1', 0)
       expect(transform0(doc).bodies).toEqual(['@body_ex2'])
     })
 
     it('does nothing when the feature is missing', () => {
       const doc = makeDoc()
-      applyAddTransformBody(doc, 'missing', '@body_ex1')
-      applyRemoveTransformBody(doc, 'missing', 0)
+      applyAddTransformPart(doc, 'missing', '@body_ex1')
+      applyRemoveTransformPart(doc, 'missing', 0)
       expect(doc.features).toHaveLength(0)
     })
 
     describe('legacy singular-body docs', () => {
       it('migration heals the singular ref before the mutators see it', () => {
         const doc = legacyDoc()
-        expect(migrateLegacyBodyPicks(doc)).toBe(1)
+        expect(migrateLegacyPartPicks(doc)).toBe(1)
         const sub = transform0(doc)
         expect(sub.bodies).toEqual(['@b1'])
         expect('body' in sub).toBe(false)
@@ -108,7 +108,7 @@ describe('Transform mutations', () => {
 
       it('applyAddTransformBody seeds the list from the legacy pick instead of dropping it', () => {
         const doc = legacyDoc()
-        expect(() => applyAddTransformBody(doc, 'xf1', '@b2')).not.toThrow()
+        expect(() => applyAddTransformPart(doc, 'xf1', '@b2')).not.toThrow()
         const sub = transform0(doc)
         expect(sub.bodies).toEqual(['@b1', '@b2'])
         expect('body' in sub).toBe(false)
@@ -116,8 +116,8 @@ describe('Transform mutations', () => {
 
       it('after migration, adding @b2 lands next to the healed @b1', () => {
         const doc = legacyDoc()
-        migrateLegacyBodyPicks(doc)
-        applyAddTransformBody(doc, 'xf1', '@b2')
+        migrateLegacyPartPicks(doc)
+        applyAddTransformPart(doc, 'xf1', '@b2')
         const sub = transform0(doc)
         expect(sub.bodies).toEqual(['@b1', '@b2'])
         expect('body' in sub).toBe(false)
@@ -125,14 +125,14 @@ describe('Transform mutations', () => {
 
       it('re-picking the healed ref toggles it back off', () => {
         const doc = legacyDoc()
-        migrateLegacyBodyPicks(doc)
-        applyAddTransformBody(doc, 'xf1', '@b1')
+        migrateLegacyPartPicks(doc)
+        applyAddTransformPart(doc, 'xf1', '@b1')
         expect(transform0(doc).bodies).toEqual([])
       })
 
       it('applyRemoveTransformBody does not throw on an unmigrated legacy doc', () => {
         const doc = legacyDoc()
-        expect(() => applyRemoveTransformBody(doc, 'xf1', 0)).not.toThrow()
+        expect(() => applyRemoveTransformPart(doc, 'xf1', 0)).not.toThrow()
         expect(transform0(doc).bodies).toEqual([])
       })
     })

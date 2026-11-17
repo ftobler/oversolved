@@ -144,7 +144,7 @@ export function bodyVolume(h: SharedHarness, result: BuildResponse, extrudeId: s
 }
 
 function readBaseGeometry(h: SharedHarness, result: BuildResponse): BaseGeometry {
-  const body = h.body(result, BOX_BODY_ID)
+  const body = h.part(result, BOX_BODY_ID)
   const edges = (body.edges as EdgeData[]) ?? []
   const edgeQueries = (body.edge_queries as string[]) ?? []
   const mesh = (body.mesh ?? {}) as { face_queries?: string[]; face_data?: FaceDatumLike[] }

@@ -18,7 +18,7 @@ import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA } from '@/stores/partEdito
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useEditorState } from '@/hooks/useEditorState'
 import { ToastProvider } from '@/contexts/ToastContext'
-import type { BodyResult, LengthUnit, PartDoc } from '@/types/cad'
+import type { PartResult, LengthUnit, PartDoc } from '@/types/cad'
 
 const DOC: PartDoc = {
   features: [
@@ -27,7 +27,7 @@ const DOC: PartDoc = {
   ],
 }
 
-const TWO_BODIES: Record<string, BodyResult> = {
+const TWO_BODIES: Record<string, PartResult> = {
   body_a: { id: 'body_a', created_by: 'extrude1', modified_by: [] },
   body_b: { id: 'body_b', created_by: 'extrude2', modified_by: [] },
 }
@@ -132,7 +132,7 @@ describe('PartExportImport worker export', () => {
 
     await clickDownload()
 
-    expect(exportViaWorker.mock.calls[0][1]).toMatchObject({ partId: 'body-1' })
+    expect(exportViaWorker.mock.calls[0][1]).toMatchObject({ bodyId: 'body-1' })
   })
 
   it('exports All Parts through the whole-document path, not the displayed solve ids', async () => {
@@ -148,8 +148,8 @@ describe('PartExportImport worker export', () => {
 
     await clickDownload()
 
-    expect(exportViaWorker.mock.calls[0][1]).toMatchObject({ partId: null })
-    expect(exportViaWorker.mock.calls[0][1]).not.toHaveProperty('partIds')
+    expect(exportViaWorker.mock.calls[0][1]).toMatchObject({ bodyId: null })
+    expect(exportViaWorker.mock.calls[0][1]).not.toHaveProperty('bodyIds')
   })
 
   it('exports All Parts through the whole-document path even when one body is known', async () => {
@@ -165,8 +165,8 @@ describe('PartExportImport worker export', () => {
 
     await clickDownload()
 
-    expect(exportViaWorker.mock.calls[0][1]).toMatchObject({ partId: null })
-    expect(exportViaWorker.mock.calls[0][1]).not.toHaveProperty('partIds')
+    expect(exportViaWorker.mock.calls[0][1]).toMatchObject({ bodyId: null })
+    expect(exportViaWorker.mock.calls[0][1]).not.toHaveProperty('bodyIds')
   })
 
   it('exports the bodies selected in the document as one compound file', async () => {
@@ -186,7 +186,7 @@ describe('PartExportImport worker export', () => {
 
     expect(exportViaWorker).toHaveBeenCalledTimes(1)
     expect(exportViaWorker.mock.calls[0][1]).toMatchObject({
-      format: 'step', partId: null, partIds: ['body_a', 'body_b'],
+      format: 'step', bodyId: null, bodyIds: ['body_a', 'body_b'],
     })
     await waitFor(() => expect(downloadBlob).toHaveBeenCalledTimes(1))
     expect((downloadBlob.mock.calls[0][1] as string).endsWith('.step')).toBe(true)

@@ -13,10 +13,10 @@ import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
 import { Repository } from '../../query'
 import { sortedFacesOf } from '../../occ/faceLoops'
-import { canonicalFaces, canonicalIndex } from '../../occ/bodyNames'
+import { canonicalFaces, canonicalIndex } from '../../occ/partNames'
 import { makeCylinderWithFaces } from '../../occ/primitives'
 import { solveHelix } from '../helix'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccShape, OccSubShape } from '../../occ/occTypes'
 
 const oc = await loadOcc()
@@ -36,11 +36,11 @@ describe.skipIf(!oc)('helix face remap (real OCC)', () => {
     const repo = new Repository()
     try {
       const { shape, faces } = makeCylinderWithFaces(oc!, scope, [0, 0, 0], [0, 0, 1], 5, 10)
-      const body: Body = {
+      const body: PartSolid = {
         id: 'body_ex1', created_by: 'ex1', modified_by: [], shape: table.register(shape, 'ex1'),
         sketch_id: 'sk1', brep_diff: null, profile_queries: [],
       }
-      const bodyStore: Record<string, Body> = { body_ex1: body }
+      const bodyStore: Record<string, PartSolid> = { body_ex1: body }
       const lateral = indexOfFace(oc!, scope, shape, faces.lateral)
 
       // The repo entry a slash pick resolves through, as the builder registers a
@@ -83,7 +83,7 @@ describe.skipIf(!oc)('helix face remap (real OCC)', () => {
     const repo = new Repository()
     try {
       const { shape, faces } = makeCylinderWithFaces(oc!, scope, [0, 0, 0], [0, 0, 1], 5, 10)
-      const body: Body = {
+      const body: PartSolid = {
         id: 'body_ex1', created_by: 'ex1', modified_by: [], shape: table.register(shape, 'ex1'),
         sketch_id: 'sk1', brep_diff: null, profile_queries: [],
       }
@@ -120,7 +120,7 @@ describe.skipIf(!oc)('helix face remap (real OCC)', () => {
     const repo = new Repository()
     try {
       const { shape, faces } = makeCylinderWithFaces(oc!, scope, [0, 0, 0], [0, 0, 1], 5, 10)
-      const body: Body = {
+      const body: PartSolid = {
         id: 'body_ex1', created_by: 'ex1', modified_by: [], shape: table.register(shape, 'ex1'),
         sketch_id: 'sk1', brep_diff: null, profile_queries: [],
       }

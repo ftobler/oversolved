@@ -15,7 +15,7 @@ import { makeBoxAt, solidCentroid } from '../../occ/primitives'
 import { Repository } from '../../query'
 import { barePart } from '../shared/partResolution'
 import { solveCircularArray } from './patternBodyTestAdapters'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
 
 const loadedOcc = await loadOcc()
@@ -27,7 +27,7 @@ function run(sub: Record<string, unknown>, repo = new Repository()) {
   const body = barePart('body_src', 'src')
   // A 10 mm cube centred at x=20, off the Y axis.
   body.shape = table.register(makeBoxAt(oc, scope, [15, -5, -5], 10, 10, 10), body.created_by)
-  const store: Record<string, Body> = { body_src: body }
+  const store: Record<string, PartSolid> = { body_src: body }
   const res = solveCircularArray(oc, scope, table, {
     id: 'ca1',
     circular_array: { source_body: '@body_src', count: 4, step_angle: 90, operation: 'new', ...sub },

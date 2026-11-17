@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { BodyResult, Sketch } from '@/types/cad'
+import type { PartResult, Sketch } from '@/types/cad'
 import { measureSelection, measureSelectionPicks } from '@/utils/measure/measureSelection'
 import type { SketchFrame } from '@/utils/measure/adapters/sketch'
 
@@ -14,7 +14,7 @@ const flat: Sketch = {
   L1: { start: [0, 0], end: [10, 0] },
 }
 
-const body: BodyResult = {
+const body: PartResult = {
   id: 'body_1',
   created_by: 'ex',
   modified_by: [],
@@ -121,7 +121,7 @@ describe('measureSelection: kernel cells read nothing until the follow-up', () =
 })
 
 describe('measureSelection: the kernel ask names the picks', () => {
-  const spline: BodyResult = {
+  const spline: PartResult = {
     ...body,
     id: 'body_2',
     edges: [{ kind: 'spline', points: [[0, 0, 0], [1, 1, 0], [2, 0, 0]] }],
@@ -178,7 +178,7 @@ describe('measureSelection: the document unit and its extras', () => {
   })
 
   it('returns the second readout of a pair on its own HUD line', () => {
-    const skew: BodyResult = {
+    const skew: PartResult = {
       ...body,
       edges: [
         { kind: 'line', start: [0, 0, 0], end: [10, 0, 0] },

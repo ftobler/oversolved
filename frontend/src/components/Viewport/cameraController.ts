@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import type { BodyResult, PlaneTransform } from '@/types/cad'
+import type { PartResult, PlaneTransform } from '@/types/cad'
 import { INITIAL_ZOOM } from './cameraConstants'
 import type { TurntableControls } from './turntable'
 import { anglesFromDirection, rolledBasis, orbitUp } from './turntable'
@@ -335,7 +335,7 @@ export function computeVertexBounds(
 export function fitToContent(
   camera: THREE.OrthographicCamera,
   controls: Controls,
-  bodies: Record<string, BodyResult> | null | undefined,
+  bodies: Record<string, PartResult> | null | undefined,
   scene: THREE.Scene | null | undefined,
 ): boolean {
   let minX = Infinity, maxX = -Infinity

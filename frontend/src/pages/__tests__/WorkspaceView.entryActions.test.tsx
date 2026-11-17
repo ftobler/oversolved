@@ -218,7 +218,7 @@ describe('WorkspaceView entry export', () => {
     const [spec, options, files] = exportViaWorker.mock.calls[0] as [Record<string, unknown>, unknown, Record<string, Uint8Array>]
     expect(spec).toMatchObject({ id: 'p1', kind: 'part' })
     expect((spec.features as { id: string }[]).map(f => f.id)).toEqual(['imp1'])  // builtins stripped
-    expect(options).toMatchObject({ format: 'step', partId: null })
+    expect(options).toMatchObject({ format: 'step', bodyId: null })
     expect(Array.from(files.f1)).toEqual([1, 2, 3])
     expect(downloads.calls[0].filename).toBe('Bracket.step')
     expect(downloads.calls[0].blob.type).toBe('application/step')

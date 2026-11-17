@@ -19,7 +19,7 @@ import {
   makeWire,
 } from '../primitives'
 import { applyFilletWithLineage } from '../edgeModifier'
-import { canonicalEdges } from '../bodyNames'
+import { canonicalEdges } from '../partNames'
 import { solidToEdges, solidToFaceEdgeQueries, sortedUniqueEdges } from '../tessellation'
 import type { OccShape } from '../occTypes'
 
@@ -68,7 +68,7 @@ describe.skipIf(!oc)('solidToFaceEdgeQueries (real OCC)', () => {
   it('reports a cylinder lateral seam from the second visit inside its face', () => {
     const table = new HandleTable()
     const handle = buildCylinder(oc!, table, { center: [0, 0, 0], axis: [0, 0, 1], radius: 5, height: 10 })
-    const { edge_queries } = solidToEdges(oc!, table, handle, { createdBy: 'cyl1', bodyId: '@body_cyl' })
+    const { edge_queries } = solidToEdges(oc!, table, handle, { createdBy: 'cyl1', partId: '@body_cyl' })
     const { face_edge_queries, face_seam_queries } = solidToFaceEdgeQueries(oc!, table, handle, edge_queries)
 
     expect(face_seam_queries).toHaveLength(face_edge_queries.length)
@@ -99,7 +99,7 @@ describe.skipIf(!oc)('solidToFaceEdgeQueries (real OCC)', () => {
       expect(res.success).toBe(true)
 
       const handle = table.register(res.shape)
-      const { edge_queries } = solidToEdges(oc!, table, handle, { createdBy: 'fillet1', bodyId: '@body_1' })
+      const { edge_queries } = solidToEdges(oc!, table, handle, { createdBy: 'fillet1', partId: '@body_1' })
       const { face_edge_queries: faceEdgeQueries } = solidToFaceEdgeQueries(oc!, table, handle, edge_queries)
 
       // A fillet turns one of the box's 6 faces into a rounded transition, so
@@ -142,7 +142,7 @@ describe.skipIf(!oc)('solidToFaceEdgeQueries (real OCC)', () => {
       // The fixture must really contain one, or this test proves nothing.
       expect(degenerated.length).toBeGreaterThan(0)
 
-      const { edges, edge_queries } = solidToEdges(oc!, table, handle, { createdBy: 'cone1', bodyId: '@body_cone' })
+      const { edges, edge_queries } = solidToEdges(oc!, table, handle, { createdBy: 'cone1', partId: '@body_cone' })
       const sorted = sortedUniqueEdges(oc!, scope, table.get<OccShape>(handle))
       expect(sorted).toHaveLength(edge_queries.length)
       expect(canonical.length).toBe(sorted.length + degenerated.length)
@@ -176,7 +176,7 @@ describe.skipIf(!oc)('solidToFaceEdgeQueries (real OCC)', () => {
       const solid = scope.track(makePrism(oc!, scope, face, [0, 0, 1], 4))
       const handle = table.register(solid, 'spline1')
 
-      const { edges, edge_queries } = solidToEdges(oc!, table, handle, { createdBy: 'spline1', bodyId: '@body_spline' })
+      const { edges, edge_queries } = solidToEdges(oc!, table, handle, { createdBy: 'spline1', partId: '@body_spline' })
       expect(edges.some(edge => edge.kind === 'spline')).toBe(true)
       expect(sortedUniqueEdges(oc!, scope, table.get<OccShape>(handle))).toHaveLength(edge_queries.length)
     } finally {

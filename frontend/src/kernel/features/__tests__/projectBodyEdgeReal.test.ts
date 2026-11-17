@@ -60,7 +60,7 @@ describe.skipIf(!oc || !solveBytes)('project a body edge into a sketch (real OCC
 
     // The exact edge_queries the picker registers in the edge ID layer and hands
     // to the project tool as hoveredSelectionId.
-    const edgeQueries = (h.body(r1, 'body_ex1').edge_queries as string[]) ?? []
+    const edgeQueries = (h.part(r1, 'body_ex1').edge_queries as string[]) ?? []
     expect(edgeQueries.length).toBeGreaterThan(0)
     const edgeSource = edgeQueries[0]
     // straightedge -> drawLogic lowers it to a 'line' projected entity. The

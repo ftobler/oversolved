@@ -11,7 +11,7 @@ import { loadOcc } from '../loadOcc'
 import { noProgress } from '../defaultArgs'
 import { DisposeScope } from '../disposeScope'
 import { volumeOf } from '../volume'
-import { canonicalFaces, canonicalEdges } from '../bodyNames'
+import { canonicalFaces, canonicalEdges } from '../partNames'
 import {
   makeBox,
   makeBoxAt,

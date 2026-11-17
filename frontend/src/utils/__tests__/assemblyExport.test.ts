@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import type { AssemblyDoc, BodyResult, PartInstance, Transform3D } from '@/types/cad'
+import type { AssemblyDoc, PartResult, PartInstance, Transform3D } from '@/types/cad'
 import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
 import {
   assemblyStlBytes,
@@ -21,7 +21,7 @@ function doc(instances: PartInstance[]): AssemblyDoc {
   }
 }
 
-function body(id: string, createdBy: string, mesh?: BodyResult['mesh']): BodyResult {
+function body(id: string, createdBy: string, mesh?: PartResult['mesh']): PartResult {
   return { id, created_by: createdBy, modified_by: [], mesh }
 }
 

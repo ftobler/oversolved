@@ -194,9 +194,9 @@ function exportOptions(
   partIds: readonly string[],
   wholeDocument: boolean,
 ): PartExportOptions {
-  if (wholeDocument || partIds.length === 0) return { format, partId: null, tessellation }
-  if (partIds.length === 1) return { format, partId: partIds[0], tessellation }
-  return { format, partId: null, partIds: [...partIds], tessellation }
+  if (wholeDocument || partIds.length === 0) return { format, bodyId: null, tessellation }
+  if (partIds.length === 1) return { format, bodyId: partIds[0], tessellation }
+  return { format, bodyId: null, bodyIds: [...partIds], tessellation }
 }
 
 /** The export spec's unit, on a clone so the live document keeps meaning what

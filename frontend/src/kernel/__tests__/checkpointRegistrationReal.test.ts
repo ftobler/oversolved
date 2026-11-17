@@ -20,17 +20,17 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
 import { DisposeScope } from '../occ/disposeScope'
 import { HandleTable } from '../occ/handleTable'
-import { build, registerBodyBrepFromMeta, snapshotRepo, RESTORE_OWNER, type BuildDeps, type BuildResponse } from '../builder'
+import { build, registerPartBrepFromMeta, snapshotRepo, RESTORE_OWNER, type BuildDeps, type BuildResponse } from '../builder'
 import { Repository, initGlobalRepo } from '../query'
 import { createFeatureSolver } from '../solverRegistry'
 import { postRegister } from '../features/postRegister'
-import { extractBrepMetadata, tessellateBodies } from '../solveLocally'
+import { extractBrepMetadata, tessellateParts } from '../solveLocally'
 import { copyShape } from '../occ/transforms'
 import type { OccShape } from '../occ/occTypes'
 import { setSketchSolver, resetSketchSolver } from '../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { repoSemanticFingerprint } from '../repoFingerprintTestUtil'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 import { indexModifierDiffs } from '../occ/modifierAttribution'
 import importFixture from '../occ/__fixtures__/importStep.json'
 import arrayCutCorpus from '../features/__fixtures__/faceExtrudeAfterArrayCut.json'
@@ -78,11 +78,11 @@ class Harness {
       const deps: BuildDeps = {
         trySolveFeature: createFeatureSolver(oc!, scope, this.table, files),
         postRegister, initGlobalRepo,
-        tessellateBodies: (bodyStore) => tessellateBodies(oc!, this.table, bodyStore),
+        tessellateParts: (bodyStore) => tessellateParts(oc!, this.table, bodyStore),
         extractBrepMetadata: (bodyStore) => extractBrepMetadata(oc!, this.table, bodyStore),
         indexModifierDiffs: (bodyStore) => indexModifierDiffs(oc!, this.table, bodyStore),
         retainCheckpointShape: (h, owner) => this.table.retain(h, owner),
-        copyBodyShape: (h, owner) =>
+        copyPartShape: (h, owner) =>
           this.table.register(copyShape(oc!, scope, this.table.get<OccShape>(h)), owner),
         releaseCheckpoint: (fid) => {
           this.table.releaseOwner('cp:' + fid)
@@ -97,20 +97,20 @@ class Harness {
   }
 
   // The body as the final checkpoint holds it (retained shape, live handle).
-  finalBody(r: BuildResponse, bodyId: string): Body {
+  finalBody(r: BuildResponse, bodyId: string): PartSolid {
     const order = r._build_state.feature_order
     const cp = r._build_state.checkpoints[order[order.length - 1]]
     return cp.body_store_snapshot[bodyId]
   }
 
   // Fingerprint of a repo holding only this body's B-rep ancestry, per producer.
-  fingerprints(body: Body): { meta: string; render: string; faceCounts: [number, number] } {
+  fingerprints(body: PartSolid): { meta: string; render: string; faceCounts: [number, number] } {
     const metaOut = extractBrepMetadata(oc!, this.table, { [body.id]: body })[body.id]
-    const renderOut = tessellateBodies(oc!, this.table, { [body.id]: body })[body.id]
+    const renderOut = tessellateParts(oc!, this.table, { [body.id]: body })[body.id]
     const repoMeta = new Repository()
-    registerBodyBrepFromMeta(repoMeta, body, metaOut)
+    registerPartBrepFromMeta(repoMeta, body, metaOut)
     const repoRender = new Repository()
-    registerBodyBrepFromMeta(repoRender, body, renderOut)
+    registerPartBrepFromMeta(repoRender, body, renderOut)
     const faces = (out: Record<string, unknown>): number =>
       ((out.mesh as { face_data: unknown[] }).face_data ?? []).length
     return {
@@ -157,7 +157,7 @@ describe.skipIf(!oc || !solveBytes)('checkpoint registration: metadata vs render
     const bodies = r._build_state.checkpoints[order[order.length - 1]].body_store_snapshot
     for (const body of Object.values(bodies)) {
       const metaOut = extractBrepMetadata(oc!, h.table, { [body.id]: body })[body.id]
-      const renderOut = tessellateBodies(oc!, h.table, { [body.id]: body })[body.id]
+      const renderOut = tessellateParts(oc!, h.table, { [body.id]: body })[body.id]
       const meta = metaOut.mesh as { face_queries: string[]; face_uuids: (string | null)[] }
       const render = renderOut.mesh as {
         face_data: unknown[]; triangle_to_face: number[]; face_queries: string[]; face_uuids: (string | null)[]

@@ -18,7 +18,7 @@ import { setSketchSolver, resetSketchSolver } from '../sketch'
 import { parseAncestry } from '../../query'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import type { BuildResponse } from '../../builder'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -89,7 +89,7 @@ function splitBoth(spec: { features: Dict[] }): { features: Dict[] } {
 }
 
 function meshOf(h: SharedHarness, r: BuildResponse, bodyId: string): FaceMesh {
-  return ((h.body(r, bodyId).mesh ?? {}) as FaceMesh)
+  return ((h.part(r, bodyId).mesh ?? {}) as FaceMesh)
 }
 
 /** The flat face whose centroid y is nearest `y`. */
@@ -116,7 +116,7 @@ describe.skipIf(!oc || !solveBytes)('a face pick on a split sibling resolves (re
   function expectOnSibling(r: BuildResponse, pick: string): void {
     const uuid = uuidOf(pick)
     expect(uuid).toBeDefined()
-    const snapshot = r._build_state!.checkpoints['sp1'].body_store_snapshot as Record<string, Body>
+    const snapshot = r._build_state!.checkpoints['sp1'].body_store_snapshot as Record<string, PartSolid>
     const raw = uuid?.slice('@u|'.length)
     expect(snapshot.body_ex1_1.face_uuids ?? []).toContain(raw)
   }

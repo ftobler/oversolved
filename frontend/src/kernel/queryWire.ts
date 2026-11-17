@@ -56,7 +56,7 @@ function isPlausibleEntityId(s: string): boolean {
 }
 
 export function localFromString(s: string): LocalQuery {
-  const body = s.slice(1)
+  const part = s.slice(1)
   // Canonical local-parse rule (wire-format-hardening): a suffix word splits
   // only when the split is unambiguous. A suffix is split when it is a pure
   // English word (start/end/center/xy), OR it is digit-bearing and the residual
@@ -69,13 +69,13 @@ export function localFromString(s: string): LocalQuery {
   // strings by full entity-id membership. emitWire warns in dev/test when its
   // output re-parses differently rather than throwing.
   for (const pt of VERTEX_POINT_KEY_SUFFIXES) {
-    if (body.length > pt.length && body.endsWith(pt)) {
-      const residual = body.slice(0, -pt.length)
+    if (part.length > pt.length && part.endsWith(pt)) {
+      const residual = part.slice(0, -pt.length)
       if (ALPHA_SUFFIXES.has(pt) || isPlausibleEntityId(residual))
         return { kind: "local", eid: residual, sub: pt }
     }
   }
-  return { kind: "local", eid: body, sub: "" }
+  return { kind: "local", eid: part, sub: "" }
 }
 
 /** Slash key for a `$` local: `context + eid` for a bare local, `context +
@@ -148,8 +148,8 @@ export function emitWire(q: QueryType): string {
 }
 
 export function parseAbsolute(s: string): AbsoluteQuery {
-  const body = s.slice(1)
-  const parts = body.split("/")
+  const part = s.slice(1)
+  const parts = part.split("/")
   // Strict: emitWire can only produce 1-3 non-empty slash parts (the legacy
   // concatenated `@feat+eid` reads back as the single-part featureId = whole
   // tail). An empty part or a 4+ part key is a shape the typed path cannot
@@ -192,28 +192,28 @@ export function featureRefId(ref: unknown): string | null {
   if (typeof ref !== "string") return null
   const sigil = ref[0]
   if (sigil !== "@" && sigil !== "$") return null
-  const body = ref.slice(1)
-  if (body === "" || body.includes("/")) return null
+  const part = ref.slice(1)
+  if (part === "" || part.includes("/")) return null
   // `$sketch.entity` (the legacy sweep-path form) names an entity, not a feature.
-  if (sigil === "$" && body.includes(".")) return null
-  return body
+  if (sigil === "$" && part.includes(".")) return null
+  return part
 }
 
-const BODY_AT_RE = /@(body_[^@:;,/]+)/g
+const PART_AT_RE = /@(body_[^@:;,/]+)/g
 
 /** Return the body id ("body_...") a query refers to, or null. */
-export function bodyIdOf(queryStr: string, bodyStore?: Record<string, unknown> | null): string | null {
+export function partIdOf(queryStr: string, partStore?: Record<string, unknown> | null): string | null {
   const candidates: string[] = []
   let m: RegExpExecArray | null
-  BODY_AT_RE.lastIndex = 0
-  while ((m = BODY_AT_RE.exec(queryStr)) !== null) candidates.push(m[1])
+  PART_AT_RE.lastIndex = 0
+  while ((m = PART_AT_RE.exec(queryStr)) !== null) candidates.push(m[1])
   // Only a store-verified body id is authoritative: BODY_AT_RE's greedy capture
   // can frame a fabricated id out of concatenated ancestor tokens (e.g.
   // "@body_abc" + "x1" frames "@body_abcx1"), so an absent store or one holding
   // no candidate must return null, never the unverified first capture. Call
   // sites treat the result as a hint with a full-store fallback.
-  if (bodyStore == null) return null
-  for (const c of candidates) if (c in bodyStore) return c
+  if (partStore == null) return null
+  for (const c of candidates) if (c in partStore) return c
   return null
 }
 

@@ -19,7 +19,7 @@ import { volumeOf } from '../../occ/volume'
 import { readSolidVertices } from '../../occ/primitives'
 import { Repository } from '../../query'
 import { solveSweep } from '../sweep'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 
 const oc = await loadOcc()
@@ -143,7 +143,7 @@ const HANDLE_SECTIONS = ['@c0', '@s1', '@s2', '@s3', '@s4', '@s5', '@c6']
 
 type Solved = {
   volume: number
-  body: Body
+  body: PartSolid
   bbox: { min: number[]; max: number[] }
   status: string
   exception?: string
@@ -168,7 +168,7 @@ function solve(
 ): { solved: Solved | null; error: string | null } {
   const scope = new DisposeScope()
   const table = new HandleTable()
-  const bodyStore: Record<string, Body> = {}
+  const bodyStore: Record<string, PartSolid> = {}
   try {
     try {
       const result = solveSweep(
@@ -488,7 +488,7 @@ describe.skipIf(!oc)('sweep multisection (real OCC)', () => {
   it('keeps one body for the handle', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
-    const bodyStore: Record<string, Body> = {}
+    const bodyStore: Record<string, PartSolid> = {}
     try {
       const result = solveSweep(oc!, scope, table, {
         id: 'sw1', kind: 'sweep',

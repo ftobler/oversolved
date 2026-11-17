@@ -13,7 +13,7 @@
 
 import { withTransientScope, type DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
-import { canonicalEdges, canonicalVertices } from '../occ/bodyNames'
+import { canonicalEdges, canonicalVertices } from '../occ/partNames'
 import { SubShapeDedup, SubShapeMap, SubShapeMultiIndex } from '../occ/subshapeIdentity'
 import { swallowUnlessTrap } from '../errors'
 import { TOL_MOVE_FACE_TANGENT } from '../solverConstants'

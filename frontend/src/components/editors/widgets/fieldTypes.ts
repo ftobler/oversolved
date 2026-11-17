@@ -196,5 +196,5 @@ export interface PickFieldWidgetProps extends WidgetBaseProps {
   mutationPrefix: string
   features?: import('@/types/cad').PartFeature[]
   partLabels?: Record<string, string>
-  bodies?: Record<string, import('@/types/cad').BodyResult>
+  bodies?: Record<string, import('@/types/cad').PartResult>
 }

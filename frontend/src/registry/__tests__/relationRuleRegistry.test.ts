@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { BodyResult, MateFeature, PartFeature } from '@/types/cad'
+import type { PartResult, MateFeature, PartFeature } from '@/types/cad'
 import { makeAncestryQuery } from '@/kernel/query'
 import {
   ALL_RELATION_RULES,
@@ -47,14 +47,14 @@ const shell = (id: string, faces: string[]): PartFeature => ({
   shell: { faces, thickness: 1 },
 })
 
-function body(id: string, createdBy: string, overrides: Partial<BodyResult> = {}): BodyResult {
+function body(id: string, createdBy: string, overrides: Partial<PartResult> = {}): PartResult {
   return { id, created_by: createdBy, modified_by: [], ...overrides }
 }
 
 function partHints(
   selection: string[],
   features: PartFeature[],
-  bodies: Record<string, BodyResult> = {},
+  bodies: Record<string, PartResult> = {},
   activeFeatureIds?: ReadonlySet<string>,
   failedPicks: ReadonlySet<string> = new Set(),
 ) {

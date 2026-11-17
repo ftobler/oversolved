@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { BodyResult, Mesh3D } from '@/types/cad'
+import type { PartResult, Mesh3D } from '@/types/cad'
 import { makeAncestryQuery } from '@/kernel/query'
 import {
   EMPTY_RELATION_SET,
@@ -226,7 +226,7 @@ describe('faceCreatorsOf', () => {
 })
 
 describe('edgeCreatorsOf', () => {
-  function body(overrides: Partial<BodyResult> = {}): BodyResult {
+  function body(overrides: Partial<PartResult> = {}): PartResult {
     return { id: 'b1', created_by: 'bodyCreator', modified_by: [], ...overrides }
   }
 

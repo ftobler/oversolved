@@ -20,7 +20,7 @@ import { selectByPredicate, SelectorError } from '@/kernel/select'
 import type { Selector, VertexGeometry } from '@/kernel/select'
 import { resolveEdgeQueries } from '@/components/Geometry3D/bodyGeometry'
 import { topoFallbackQuery } from '@/utils/query/selectionId'
-import type { BodyResult } from '@/types/cad'
+import type { PartResult } from '@/types/cad'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -59,31 +59,31 @@ function extrude(id: string, distance: number, extra: Record<string, unknown> = 
 
 const PARALLEL_Z: Selector = { kind: 'edge', where: { parallel: [0, 0, 1] } }
 
-async function bodiesOf(spec: Record<string, unknown>): Promise<Record<string, BodyResult>> {
+async function bodiesOf(spec: Record<string, unknown>): Promise<Record<string, PartResult>> {
   const response = await solveLocally(spec)
   if (!response) throw new Error('unreachable: skipIf guards the kernel')
-  return response.bodies as Record<string, BodyResult>
+  return response.bodies as Record<string, PartResult>
 }
 
-function firstBody(bodies: Record<string, BodyResult>): BodyResult {
+function firstBody(bodies: Record<string, PartResult>): PartResult {
   const ids = Object.keys(bodies).sort()
   const body = bodies[ids[0]]
   if (!body) throw new Error('solve produced no body')
   return body
 }
 
-function faceCount(body: BodyResult): number {
+function faceCount(body: PartResult): number {
   return body.mesh?.face_data?.length ?? 0
 }
 
 /** The producer's own seam list for a body, not the selector's check, so the
  *  expectation stays independent of the code it judges. */
-function seamQueries(body: BodyResult): Set<string> {
+function seamQueries(body: PartResult): Set<string> {
   return new Set((body.mesh?.face_seam_queries ?? []).flat())
 }
 
 /** The queries of the edges that run along Z, the plate extrusion direction. */
-function zLineQueries(body: BodyResult): string[] {
+function zLineQueries(body: PartResult): string[] {
   return (body.edges ?? []).flatMap((edge, index) => {
     if (edge.kind !== 'line') return []
     const length = Math.hypot(edge.end[0] - edge.start[0], edge.end[1] - edge.start[1], edge.end[2] - edge.start[2])
@@ -234,12 +234,12 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
     const base = [rectSketch('sk1', 20, 10), extrude('ex1', 6)]
     const r1 = await solveLocally({ id: 'sel-edit', features: base })
     expect(r1).not.toBeNull()
-    const queries = selectByPredicate(PARALLEL_Z, r1!.bodies as Record<string, BodyResult>).queries
+    const queries = selectByPredicate(PARALLEL_Z, r1!.bodies as Record<string, PartResult>).queries
 
     const filletFeature = { id: 'fi1', kind: 'fillet', fillet: { edges: queries, radius: 2 } }
     const r2 = await solveLocally({ id: 'sel-edit', features: [...base, filletFeature] })
     expect(r2).not.toBeNull()
-    expect(faceCount(firstBody(r2!.bodies as Record<string, BodyResult>))).toBe(10)
+    expect(faceCount(firstBody(r2!.bodies as Record<string, PartResult>))).toBe(10)
 
     // Edit the extrude distance 6 -> 10 against the previous build; the stored
     // fillet queries must still resolve to the same edges.
@@ -247,7 +247,7 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
     const r3 = await solveLocally({ id: 'sel-edit', features: taller }, { prevState: r2!._build_state })
     expect(r3).not.toBeNull()
     expect((r3!.result.fi1 as { status: string }).status).toBe('ok')
-    expect(faceCount(firstBody(r3!.bodies as Record<string, BodyResult>))).toBe(10)
+    expect(faceCount(firstBody(r3!.bodies as Record<string, PartResult>))).toBe(10)
 
     const measure = await measureLocally({ id: 'sel-edit-measure', features: taller })
     expect(measure!.faces).toBe(10)
@@ -397,7 +397,7 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
     try {
       const table = new HandleTable()
       const handle = table.register(openBentSheet(oc!, scope), 'bend1')
-      const edges = solidToEdges(oc!, table, handle, { createdBy: 'bend1', bodyId: 'body_bend' })
+      const edges = solidToEdges(oc!, table, handle, { createdBy: 'bend1', partId: 'body_bend' })
       const faceData = solidToFaceEdgeQueries(oc!, table, handle, edges.edge_queries)
       // An open shell has no seam: every face meets each of its edges once.
       expect(faceData.face_seam_queries.flat()).toEqual([])
@@ -412,7 +412,7 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
       for (const query of incidences) counts.set(query, (counts.get(query) ?? 0) + 1)
       expect(counts.size).toBe(edges.edge_queries.length)
       expect([...counts.values()].sort()).toEqual([1, 1, 1, 1, 1, 1, 2])
-      const body: BodyResult = {
+      const body: PartResult = {
         id: 'body_bend',
         created_by: 'bend1',
         modified_by: [],

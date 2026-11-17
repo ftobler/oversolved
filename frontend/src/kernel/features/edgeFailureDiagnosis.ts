@@ -8,7 +8,7 @@
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccOrientedShape, OccShape, OccSubShape } from '../occ/occTypes'
-import { canonicalEdges, canonicalVertices } from '../occ/bodyNames'
+import { canonicalEdges, canonicalVertices } from '../occ/partNames'
 import { exploreEdges, exploreFaces } from '../occ/edgeModifier'
 import { consumedEndFace, type CornerBlendSpec } from '../occ/cornerBlend'
 import { endTangents } from './tangentChain'

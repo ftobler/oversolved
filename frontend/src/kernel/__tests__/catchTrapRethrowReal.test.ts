@@ -19,7 +19,7 @@ import * as ts from 'typescript'
 import { loadOcc } from '../occ/loadOcc'
 import { DisposeScope } from '../occ/disposeScope'
 import { HandleTable } from '../occ/handleTable'
-import { canonicalFaces, emptyShapeNames } from '../occ/bodyNames'
+import { canonicalFaces, emptyShapeNames } from '../occ/partNames'
 import { makeBox } from '../occ/primitives'
 import { Repository } from '../query'
 import { applyShellWithLineage } from '../occ/thickSolid'
@@ -27,7 +27,7 @@ import { applyDeleteFacesWithLineage } from '../occ/defeature'
 import { shapesIntersect } from '../occ/booleans'
 import { solveHole } from '../features/hole'
 import { isKernelTrap, swallowUnlessTrap } from '../errors'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 import type { OccModule, OccShape } from '../occ/occTypes'
 
 const oc = await loadOcc()
@@ -125,7 +125,7 @@ describe.skipIf(!oc)('operational catches rethrow traps (real OCC)', () => {
     const repo = new Repository()
     try {
       const box = makeBox(oc!, scope, 20, 20, 20)
-      const body: Body = {
+      const body: PartSolid = {
         id: 'body_t', created_by: 'ex', modified_by: [], shape: table.register(box, 'ex'),
         sketch_id: 'sk', brep_diff: null, profile_queries: [],
       }
@@ -203,7 +203,7 @@ describe.skipIf(!oc)('operational catches rethrow traps (real OCC)', () => {
       const repo = new Repository()
       try {
         const box = makeBox(oc!, scope, 20, 20, 20)
-        const body: Body = {
+        const body: PartSolid = {
           id: 'body_t', created_by: 'ex', modified_by: [], shape: table.register(box, 'ex'),
           sketch_id: 'sk', brep_diff: null, profile_queries: [],
         }
@@ -243,7 +243,7 @@ describe('converted catch audit', () => {
     'occ/primitives.ts',
     'occ/faceLoops.ts',
     'occ/sharedHarness.ts',
-    'features/bodyOps.ts',
+    'features/partOps.ts',
     'features/extrude.ts',
     'features/revolve.ts',
     'features/sweep.ts',

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { renderHook, act, cleanup } from '@testing-library/react'
-import type { BodyResult, FaceData, Mesh3D } from '@/types/cad'
+import type { PartResult, FaceData, Mesh3D } from '@/types/cad'
 import { DEFAULT_PART_EDITOR_DATA, usePartEditorStore } from '@/stores/partEditorStore'
 import { DEFAULT_SECTION_STATE, useSectionStore } from '@/stores/sectionStore'
 import { useSectionClip, useSectionFrame } from '@/viewport/useSection'
@@ -21,7 +21,7 @@ function quadMeshAt(z: number): Mesh3D {
   }
 }
 
-function bodyAt(z: number): BodyResult {
+function bodyAt(z: number): PartResult {
   return { id: 'body_ex1', created_by: 'ex1', modified_by: [], mesh: quadMeshAt(z) }
 }
 

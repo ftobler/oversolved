@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import type { BodyResult, FaceData, Mesh3D } from '@/types/cad'
+import type { PartResult, FaceData, Mesh3D } from '@/types/cad'
 import { faceFrameFromSolve } from '@/viewport/faceFrameFromSolve'
 import { findBodyForFaceQuery, resetBodyCallbacksForTest } from '@/picking/bodyDispatchCallbacks'
 
@@ -19,7 +19,7 @@ function quadMeshAt(z: number, surface = 'flatface'): Mesh3D {
   }
 }
 
-function body(createdBy: string | undefined, mesh: Mesh3D): BodyResult {
+function body(createdBy: string | undefined, mesh: Mesh3D): PartResult {
   return { id: createdBy ?? 'body_x', created_by: createdBy ?? '', modified_by: [], mesh }
 }
 

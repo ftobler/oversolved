@@ -100,11 +100,11 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
   it('fillet single edge via build pipeline', () => {
     // A single edge fillet on an extruded box produces a valid mesh.
     const spec = fullRectExtrudeSpec(10, 10, 5)
-    const eq = (h.body(h.run(spec), 'body_ex1').edge_queries as string[]) ?? []
+    const eq = (h.part(h.run(spec), 'body_ex1').edge_queries as string[]) ?? []
     spec.features.push({ id: 'fillet1', kind: 'fillet', edges: [eq[0]], radius: 1 })
     const r = h.run(spec)
     expect(h.res(r, 'fillet1').status).toBe('ok')
-    const mesh = h.body(r, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.part(r, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshValid(mesh)
   })
@@ -112,11 +112,11 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
   it('fillet multiple edges via build pipeline', () => {
     // Two edge fillet works.
     const spec = fullRectExtrudeSpec(10, 10, 5)
-    const eq = (h.body(h.run(spec), 'body_ex1').edge_queries as string[]) ?? []
+    const eq = (h.part(h.run(spec), 'body_ex1').edge_queries as string[]) ?? []
     spec.features.push({ id: 'fillet1', kind: 'fillet', edges: [eq[0], eq[1]], radius: 1 })
     const r = h.run(spec)
     expect(h.res(r, 'fillet1').status).toBe('ok')
-    const mesh = h.body(r, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.part(r, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshValid(mesh)
   })
@@ -125,12 +125,12 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     // Fillet adds tessellation detail.
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const rBefore = h.run(spec)
-    const vertsBefore = (h.body(rBefore, 'body_ex1').mesh as { vertices?: number[][] } | undefined)?.vertices?.length ?? 0
+    const vertsBefore = (h.part(rBefore, 'body_ex1').mesh as { vertices?: number[][] } | undefined)?.vertices?.length ?? 0
 
-    const eq = (h.body(rBefore, 'body_ex1').edge_queries as string[]) ?? []
+    const eq = (h.part(rBefore, 'body_ex1').edge_queries as string[]) ?? []
     spec.features.push({ id: 'fillet1', kind: 'fillet', edges: [eq[0]], radius: 2 })
     const rAfter = h.run(spec)
-    const vertsAfter = (h.body(rAfter, 'body_ex1').mesh as { vertices?: number[][] } | undefined)?.vertices?.length ?? 0
+    const vertsAfter = (h.part(rAfter, 'body_ex1').mesh as { vertices?: number[][] } | undefined)?.vertices?.length ?? 0
 
     expect(vertsAfter).toBeGreaterThan(vertsBefore)
   })
@@ -139,7 +139,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     // Edge queries emitted by the build are consumed back as fillet input.
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const r0 = h.run(spec)
-    const eq = (h.body(r0, 'body_ex1').edge_queries as string[]) ?? []
+    const eq = (h.part(r0, 'body_ex1').edge_queries as string[]) ?? []
     expect(eq.length).toBeGreaterThan(0)
     spec.features.push({ id: 'fillet1', kind: 'fillet', edges: [eq[0]], radius: 1 })
     const r = h.run(spec)
@@ -149,23 +149,23 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
   it('chamfer single edge via build pipeline', () => {
     // Chamfer on an extruded box.
     const spec = fullRectExtrudeSpec(10, 10, 5)
-    const eq = (h.body(h.run(spec), 'body_ex1').edge_queries as string[]) ?? []
+    const eq = (h.part(h.run(spec), 'body_ex1').edge_queries as string[]) ?? []
     spec.features.push({ id: 'chamfer1', kind: 'chamfer', edges: [eq[0]], distance: 1 })
     const r = h.run(spec)
     expect(h.res(r, 'chamfer1').status).toBe('ok')
-    expect(h.body(r, 'body_ex1').mesh).toBeDefined()
+    expect(h.part(r, 'body_ex1').mesh).toBeDefined()
   })
 
   it('chamfer updates body mesh vertex count', () => {
     // Chamfer adds tessellation detail.
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const rBefore = h.run(spec)
-    const vertsBefore = (h.body(rBefore, 'body_ex1').mesh as { vertices?: number[][] } | undefined)?.vertices?.length ?? 0
+    const vertsBefore = (h.part(rBefore, 'body_ex1').mesh as { vertices?: number[][] } | undefined)?.vertices?.length ?? 0
 
-    const eq = (h.body(rBefore, 'body_ex1').edge_queries as string[]) ?? []
+    const eq = (h.part(rBefore, 'body_ex1').edge_queries as string[]) ?? []
     spec.features.push({ id: 'chamfer1', kind: 'chamfer', edges: [eq[0]], distance: 2 })
     const rAfter = h.run(spec)
-    const vertsAfter = (h.body(rAfter, 'body_ex1').mesh as { vertices?: number[][] } | undefined)?.vertices?.length ?? 0
+    const vertsAfter = (h.part(rAfter, 'body_ex1').mesh as { vertices?: number[][] } | undefined)?.vertices?.length ?? 0
 
     expect(vertsAfter).toBeGreaterThan(vertsBefore)
   })
@@ -173,11 +173,11 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
   it('chamfer chain after extrude', () => {
     // Extrude then chamfer.
     const spec = fullRectExtrudeSpec(10, 10, 5)
-    const eq = (h.body(h.run(spec), 'body_ex1').edge_queries as string[]) ?? []
+    const eq = (h.part(h.run(spec), 'body_ex1').edge_queries as string[]) ?? []
     spec.features.push({ id: 'chamfer1', kind: 'chamfer', edges: [eq[0]], distance: 1 })
     const r = h.run(spec)
     expect(h.res(r, 'chamfer1').status).toBe('ok')
-    const mesh = h.body(r, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.part(r, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshValid(mesh)
   })
@@ -195,8 +195,8 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     }
     const exB = { id: 'exB', kind: 'extrude', sketch: '$skB', distance: 0.5, direction: 'normal', operation: 'new' }
     const r0 = h.run({ features: [skA, exA as Record<string, unknown>, skB as Record<string, unknown>, exB as Record<string, unknown>] })
-    const qA = (h.body(r0, 'body_exA').edge_queries as string[])[0]
-    const qB = (h.body(r0, 'body_exB').edge_queries as string[])[0]
+    const qA = (h.part(r0, 'body_exA').edge_queries as string[])[0]
+    const qB = (h.part(r0, 'body_exB').edge_queries as string[])[0]
     const spec = {
       features: [skA, exA as Record<string, unknown>, skB as Record<string, unknown>, exB as Record<string, unknown>,
         { id: 'fil', kind: 'fillet', edges: [qA, qB], radius: 1 }],
@@ -218,8 +218,8 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     const skB = rectSketch('skB', 0.5, 0.5)
     const exB = { id: 'exB', kind: 'extrude', sketch: '$skB', distance: 0.5, direction: 'normal', operation: 'new' }
     const r0 = h.run({ features: [skA, exA as Record<string, unknown>, skB, exB as Record<string, unknown>] })
-    const qA = (h.body(r0, 'body_exA').edge_queries as string[])[0]
-    const qB = (h.body(r0, 'body_exB').edge_queries as string[])[0]
+    const qA = (h.part(r0, 'body_exA').edge_queries as string[])[0]
+    const qB = (h.part(r0, 'body_exB').edge_queries as string[])[0]
     const spec = {
       features: [skA, exA as Record<string, unknown>, skB, exB as Record<string, unknown>,
         { id: 'fil', kind: 'fillet', edges: [qA, '?body_exB:edge:99', qB], radius: 1 }],
@@ -234,7 +234,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     // One resolvable + one missing edge → partial status, body still filleted.
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const r0 = h.run(spec)
-    const validQ = (h.body(r0, 'body_ex1').edge_queries as string[])[0]
+    const validQ = (h.part(r0, 'body_ex1').edge_queries as string[])[0]
     spec.features.push({ id: 'fil', kind: 'fillet', edges: [validQ, '?body_nonexistent:edge:0'], radius: 1 })
     const r = h.run(spec)
     expect(h.res(r, 'fil').status).toBe('partial')
@@ -253,7 +253,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     // a body left at its pre-fillet state.
     const allFeatures = castBearingFilletDoc.features as Array<Record<string, unknown>>
     const before = h.run({ features: allFeatures.filter((f) => f.id !== 'fi1') })
-    const edgesBefore = (h.body(before, 'body_ex_web').edge_queries as string[]).length
+    const edgesBefore = (h.part(before, 'body_ex_web').edge_queries as string[]).length
 
     const r = h.run({ features: allFeatures })
     const res = h.res(r, 'fi1')
@@ -262,7 +262,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     expect(res.failed_edges as string[]).toEqual([fillet.edges[2], fillet.edges[3]])
     expect(res.unresolved_edges as string[] | undefined).toEqual([])
     expect((res.body_ids as string[]) ?? []).toEqual(['body_ex_web'])
-    const edgesAfter = (h.body(r, 'body_ex_web').edge_queries as string[]).length
+    const edgesAfter = (h.part(r, 'body_ex_web').edge_queries as string[]).length
     expect(edgesAfter).toBeGreaterThan(edgesBefore)
   })
 
@@ -280,24 +280,24 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     const r = h.run(spec)
     expect(h.res(r, 'fillet1').status).toBe('ok')
     expect(h.res(r, 'chamfer1').status).toBe('ok')
-    expect(h.body(r, 'body_ex1').mesh).toBeDefined()
+    expect(h.part(r, 'body_ex1').mesh).toBeDefined()
   })
 
   it('fillet respects edge list, single edge < all edges vertex count', () => {
     // Single-edge fillet produces fewer vertices than an all-12-edge fillet.
     const r1 = h.run(fullRectExtrudeSpec(10, 10, 5))
-    const eq = (h.body(r1, 'body_ex1').edge_queries as string[]) ?? []
+    const eq = (h.part(r1, 'body_ex1').edge_queries as string[]) ?? []
     const spec1 = fullRectExtrudeSpec(10, 10, 5)
     spec1.features.push({ id: 'fillet1', kind: 'fillet', edges: [eq[0]], radius: 1 })
     const vr1 = h.run(spec1)
-    const verts1 = ((h.body(vr1, 'body_ex1').mesh as { vertices?: unknown[][] })?.vertices?.length) ?? 0
+    const verts1 = ((h.part(vr1, 'body_ex1').mesh as { vertices?: unknown[][] })?.vertices?.length) ?? 0
 
     const specAll = fullRectExtrudeSpec(10, 10, 5)
     const rAll = h.run(specAll)
-    const eqAll = (h.body(rAll, 'body_ex1').edge_queries as string[]) ?? []
+    const eqAll = (h.part(rAll, 'body_ex1').edge_queries as string[]) ?? []
     specAll.features.push({ id: 'fillet1', kind: 'fillet', edges: eqAll.slice(0, 12), radius: 1 })
     const vrAll = h.run(specAll)
-    const vertsAll = ((h.body(vrAll, 'body_ex1').mesh as { vertices?: unknown[][] })?.vertices?.length) ?? 0
+    const vertsAll = ((h.part(vrAll, 'body_ex1').mesh as { vertices?: unknown[][] })?.vertices?.length) ?? 0
 
     expect(verts1).toBeLessThan(vertsAll)
   })
@@ -306,7 +306,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     // Two fillet features in sequence on the same body.
     const spec = fullRectExtrudeSpec(10, 10, 5)
     const r0 = h.run(spec)
-    const eq = (h.body(r0, 'body_ex1').edge_queries as string[]) ?? []
+    const eq = (h.part(r0, 'body_ex1').edge_queries as string[]) ?? []
     spec.features.push({ id: 'fillet1', kind: 'fillet', edges: [eq[0]], radius: 1 })
     const r1 = h.run(spec)
     expect(h.res(r1, 'fillet1').status).toBe('ok')
@@ -316,7 +316,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     // first blend's corner: OCC refuses to blend an edge that shares that
     // corner (build_failed), and that refusal now surfaces as a feature
     // exception instead of being swallowed into a green ok.
-    const eqAfter = (h.body(r1, 'body_ex1').edge_queries as string[]) ?? []
+    const eqAfter = (h.part(r1, 'body_ex1').edge_queries as string[]) ?? []
     const resolvableEdge = eqAfter.find((q) => q.includes('@u|') && q.includes('right@cls_xp'))
     expect(resolvableEdge).toBeDefined()
     spec.features.push({ id: 'fillet2', kind: 'fillet', edges: [resolvableEdge], radius: 0.5 })
@@ -334,7 +334,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
       { id: 'exB', kind: 'extrude', sketch: '$skB', distance: 5, direction: 'normal', operation: 'new' },
     ]}
     const r0 = h.run(spec)
-    const qB = (h.body(r0, 'body_exB').edge_queries as string[])[0]
+    const qB = (h.part(r0, 'body_exB').edge_queries as string[])[0]
     expect(qB).toContain('@body_exB')
 
     const staleQ = qB.replace('@body_exB', '@body_exA');
@@ -387,7 +387,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
      * loud, never land on an edge recovered by lineage + classifiers alone.
      */
     const r0 = h.run(fullRectExtrudeSpec(10, 10, 5))
-    const q = (h.body(r0, 'body_ex1').edge_queries as string[])[0]
+    const q = (h.part(r0, 'body_ex1').edge_queries as string[])[0]
     expect(q.startsWith('?')).toBe(true)
     expect(geomTokenOf(q)).toBeDefined()
 
@@ -420,8 +420,8 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
      * at d=5 resolves identically when the body is rebuilt at d=8 through the
      * UUID tier. A dead UUID goes red rather than recovering by lineage.
      */
-    const eq5 = (h.body(h.run(fullRectExtrudeSpec(10, 10, 5)), 'body_ex1').edge_queries as string[]) ?? []
-    const eq8 = (h.body(h.run(fullRectExtrudeSpec(10, 10, 8)), 'body_ex1').edge_queries as string[]) ?? []
+    const eq5 = (h.part(h.run(fullRectExtrudeSpec(10, 10, 5)), 'body_ex1').edge_queries as string[]) ?? []
+    const eq8 = (h.part(h.run(fullRectExtrudeSpec(10, 10, 8)), 'body_ex1').edge_queries as string[]) ?? []
     // All @u| construction UUIDs are stable across distance changes.
     const uuids5 = new Set(eq5.map(geomTokenOf).filter(Boolean))
     const uuids8 = new Set(eq8.map(geomTokenOf).filter(Boolean))
@@ -458,7 +458,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     expect(h.res(r0, 'fillet1').status).toBe('ok')
     // Use an edge from the filleted body that carries a @u| token
     // (surviving edges that kept their construction UUID).
-    const eqFilleted = (h.body(r0, 'body_ex1').edge_queries as string[]) ?? []
+    const eqFilleted = (h.part(r0, 'body_ex1').edge_queries as string[]) ?? []
     const edgeQ = eqFilleted.find((q) => geomTokenOf(q) !== undefined)
     expect(edgeQ).toBeDefined()
 
@@ -491,7 +491,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
      * narrowing among UUID-less siblings is unit-tested in queryClassifier.
      */
     const r0 = h.run(fullRectExtrudeSpec(10, 10, 5))
-    const eq = (h.body(r0, 'body_ex1').edge_queries as string[]) ?? []
+    const eq = (h.part(r0, 'body_ex1').edge_queries as string[]) ?? []
     const sigNoCls = (q: string): string => {
       const [ids, tr] = parseAncestry(q)
       return makeAncestryQuery(
@@ -516,7 +516,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
   it('fillet populates brepDiff on the modified body', () => {
     // After fillet, the body checkpoint must carry a non-null brep_diff.
     const spec = fullRectExtrudeSpec(10, 10, 5)
-    const eq = (h.body(h.run(spec), 'body_ex1').edge_queries as string[]) ?? []
+    const eq = (h.part(h.run(spec), 'body_ex1').edge_queries as string[]) ?? []
     spec.features.push({ id: 'fillet1', kind: 'fillet', edges: [eq[0]], radius: 1 })
     const r = h.run(spec)
     expect(h.res(r, 'fillet1').status).toBe('ok')
@@ -530,7 +530,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
   it('chamfer populates brepDiff on the modified body', () => {
     // After chamfer, the body checkpoint must carry a non-null brep_diff.
     const spec = fullRectExtrudeSpec(10, 10, 5)
-    const eq = (h.body(h.run(spec), 'body_ex1').edge_queries as string[]) ?? []
+    const eq = (h.part(h.run(spec), 'body_ex1').edge_queries as string[]) ?? []
     spec.features.push({ id: 'chamfer1', kind: 'chamfer', edges: [eq[0]], distance: 1 })
     const r = h.run(spec)
     expect(h.res(r, 'chamfer1').status).toBe('ok')
@@ -548,10 +548,10 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     // nothing to round.
     const spec = countersinkSpec()
     const base = h.run(spec)
-    const faces = ((h.body(base, 'body_ex1').mesh as { face_queries?: string[] }).face_queries) ?? []
+    const faces = ((h.part(base, 'body_ex1').mesh as { face_queries?: string[] }).face_queries) ?? []
     const cones = faces.filter((q) => q.includes(':coneface'))
     expect(cones).toHaveLength(1)
-    const edgesBefore = ((h.body(base, 'body_ex1').edge_queries as string[]) ?? []).length
+    const edgesBefore = ((h.part(base, 'body_ex1').edge_queries as string[]) ?? []).length
 
     spec.features.push({ id: 'fi1', kind: 'fillet', fillet: { edges: cones, radius: 0.5 } })
     const r = h.run(spec)
@@ -560,7 +560,7 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     expect(res.failed_edges as string[] | undefined).toBeUndefined()
     expect(res.status).toBe('ok')
     // Both rims of the cone got a blend: two new circular edges.
-    const edgesAfter = ((h.body(r, 'body_ex1').edge_queries as string[]) ?? []).length
+    const edgesAfter = ((h.part(r, 'body_ex1').edge_queries as string[]) ?? []).length
     expect(edgesAfter).toBeGreaterThan(edgesBefore)
   })
 })

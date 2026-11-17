@@ -41,13 +41,13 @@ describe('solveAssembly', () => {
     expect(result.transforms).not.toHaveProperty(ASSEMBLY_HANDLE)
 
     // The solver saw the part body (0) + a pinned assembly frame body (1).
-    expect(captured.input!.nBodies).toBe(2)
+    expect(captured.input!.nParts).toBe(2)
     expect(captured.input!.fixedMask[0] & 0b10).toBe(0b10)  // body 1 pinned
 
     // ref_b carried the Top-plane anchor geometry from assemblyAnchors.
     const rec = captured.input!.mates[0]
-    expect(rec.bodyA).toBe(0)
-    expect(rec.bodyB).toBe(1)
+    expect(rec.partA).toBe(0)
+    expect(rec.partB).toBe(1)
     const top = assemblyAnchors[ASSEMBLY_TOP_ID]
     expect(rec.pointB).toEqual(top.point)
     expect(rec.axisB).toEqual(top.axis)
@@ -503,7 +503,7 @@ describe('solveAssembly', () => {
     const { solver, captured } = makeCaptureSolver()
     await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, solver)
 
-    expect(captured.input!.nBodies).toBe(2)
+    expect(captured.input!.nParts).toBe(2)
     expect(captured.input!.fixedMask[0] & 0b01).toBe(0b01)  // body 0 pinned
     expect(captured.input!.fixedMask[0] & 0b10).toBe(0)     // body 1 free
   })
@@ -527,7 +527,7 @@ describe('solveAssembly', () => {
     const { solver, captured } = makeCaptureSolver()
     await solveAssembly(parts, { 'doc-a': '1' }, mates, relay, solver)
 
-    expect(captured.input!.nBodies).toBe(2)
+    expect(captured.input!.nParts).toBe(2)
     expect(captured.input!.fixedMask[0] & 0b11).toBe(0b11)  // part + frame both pinned
   })
 
@@ -549,7 +549,7 @@ describe('solveAssembly', () => {
     await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, solver)
 
     // Only the two part bodies; nothing pinned.
-    expect(captured.input!.nBodies).toBe(2)
+    expect(captured.input!.nParts).toBe(2)
     expect(captured.input!.fixedMask[0]).toBe(0)
   })
 })

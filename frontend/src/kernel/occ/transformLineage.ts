@@ -12,7 +12,7 @@ import { mintFaceUuid, arrayInstancePath } from '../constructionName'
 import { drainList } from './disposeScope'
 import { unplacer, SubShapeIndexMap } from './primitives'
 import { SubShapeMap } from './subshapeIdentity'
-import type { ShapeNames } from './bodyNames'
+import type { ShapeNames } from './partNames'
 import { noProgress } from './defaultArgs'
 
 export interface FaceNameMaps {
@@ -206,7 +206,7 @@ export function rekeyFaceNamesForTransform(
  * Re-key a body's full construction-name maps after an in-place transform.
  * Face UUIDs are preserved; edges are re-derived from the new face adjacency.
  */
-export function rekeyNamesForTransformedBody(
+export function rekeyNamesForTransformedPart(
   oc: OccModule,
   scope: DisposeScope,
   transformedShape: OccShape,

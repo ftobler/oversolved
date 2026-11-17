@@ -17,7 +17,7 @@
 // ask is only made when every pick is a body element or a whole body; a sketch
 // entity or a datum plane against a freeform pick has no OCC shape to measure,
 // so it still reads nothing.
-import type { BodyResult, LengthUnit, Sketch } from '@/types/cad'
+import type { PartResult, LengthUnit, Sketch } from '@/types/cad'
 import {
   isWholePartSelectionId,
   parseSelectionId,
@@ -39,7 +39,7 @@ export interface MeasureContext {
   /** Solve results keyed by feature id: sketch `solved` + `plane`, and a datum
    *  plane's `plane`. */
   solveResults?: Record<string, unknown>
-  parts?: Record<string, BodyResult>
+  parts?: Record<string, PartResult>
   unit?: LengthUnit
 }
 

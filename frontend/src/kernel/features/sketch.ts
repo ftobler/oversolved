@@ -22,7 +22,7 @@ import type { Sketch, SketchFeature, Entity, Constraints, PartDoc, PartFeature }
 import { getEntityKind } from '@/types/cad'
 import type { Repository } from '../query'
 import { getPoint3d } from '../query'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 import { partDocToSketches, type DroppedConstraint } from '@/wasm-kernel/partDocToSketches'
 import { lowerSketch, ORIGIN_ID, type EntityLayout } from '@/wasm-kernel/lowerSketch'
 import {
@@ -794,7 +794,7 @@ function degenerateSolvedEntities(
 export function solveSketch(
   feature: Dict,
   globalRepo: Repository,
-  _bodyStore: Record<string, Body>,
+  _partStore: Record<string, PartSolid>,
   featuresById: Record<string, Dict> = {},
   faceBoundary?: FaceBoundaryLookup,
 ): SketchResult {

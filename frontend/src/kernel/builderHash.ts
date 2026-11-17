@@ -114,21 +114,21 @@ export function diffRepoSnapshot(
       arr.push(fid)
       continue
     }
-    const aBodies = Object.fromEntries(
+    const aParts = Object.fromEntries(
       Object.entries(cpA.body_store_snapshot).map(([bid, body]) => [
         bid,
         { created_by: body.created_by, modified_by: [...body.modified_by] },
       ])
     )
-    const bBodies = Object.fromEntries(
+    const bParts = Object.fromEntries(
       Object.entries(cpB.body_store_snapshot).map(([bid, body]) => [
         bid,
         { created_by: body.created_by, modified_by: [...body.modified_by] },
       ])
     )
-    if (JSON.stringify(aBodies) !== JSON.stringify(bBodies)) {
+    if (JSON.stringify(aParts) !== JSON.stringify(bParts)) {
       const store = (diff['body_store'] ??= {}) as Record<string, unknown>
-      store[fid] = { a: aBodies, b: bBodies }
+      store[fid] = { a: aParts, b: bParts }
     }
     const aRepo = cpA.repo_snapshot as Record<string, unknown>
     const bRepo = cpB.repo_snapshot as Record<string, unknown>

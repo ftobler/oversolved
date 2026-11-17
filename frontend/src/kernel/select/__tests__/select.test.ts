@@ -6,7 +6,7 @@ import { describe, it, expect } from 'vitest'
 import { selectByPredicate, validateSelector, SelectorError } from '@/kernel/select'
 import type { Predicate, Selector } from '@/kernel/select'
 import { makeAncestryQuery } from '@/kernel/query'
-import type { BodyResult, EdgeData, FaceData } from '@/types/cad'
+import type { PartResult, EdgeData, FaceData } from '@/types/cad'
 
 type V3 = [number, number, number]
 
@@ -51,7 +51,7 @@ function bodyResult(
   faces: FaceData[],
   faceQueries: string[],
   faceEdgeQueries: string[][],
-): BodyResult {
+): PartResult {
   return {
     id,
     created_by: 'ex1',
@@ -78,7 +78,7 @@ function edgeQueriesFor(bodyId: string, count: number): string[] {
   return Array.from({ length: count }, (_, i) => q(bodyId, [`@u|e_${i}`], 'straightedge'))
 }
 
-function box(): Record<string, BodyResult> {
+function box(): Record<string, PartResult> {
   const eq = edgeQueriesFor('body_ex1', 12)
   const topBoundary = eq.slice(4, 8)
   const bottomBoundary = eq.slice(8, 12)
@@ -95,7 +95,7 @@ function box(): Record<string, BodyResult> {
   return { body_ex1: bodyResult('body_ex1', BOX_EDGES, eq, faces, faceQueries, faceEdgeQueries) }
 }
 
-function withCircle(): Record<string, BodyResult> {
+function withCircle(): Record<string, PartResult> {
   const bodies = box()
   const b = bodies.body_ex1
   b.edges!.push(circle([5, 5, 5], 2, [0, 0, 1]))
@@ -103,7 +103,7 @@ function withCircle(): Record<string, BodyResult> {
   return bodies
 }
 
-function queriesOf(selector: Selector, bodies: Record<string, BodyResult>): string[] {
+function queriesOf(selector: Selector, bodies: Record<string, PartResult>): string[] {
   return selectByPredicate(selector, bodies).queries
 }
 
@@ -175,7 +175,7 @@ describe('selectByPredicate: direction predicates', () => {
 describe('selectByPredicate: edge tangent semantics', () => {
   // One line along each axis, so a direction test can only return the one whose
   // own direction it names.
-  function lines(): Record<string, BodyResult> {
+  function lines(): Record<string, PartResult> {
     return {
       body_ex1: bodyResult(
         'body_ex1',
@@ -514,7 +514,7 @@ describe('selectByPredicate: alignment and diagnostics', () => {
   it('returns the geometry summary the agent reads back', () => {
     const items = selectByPredicate({ kind: 'edge', where: { parallel: [0, 0, 1] } }, box()).items
     expect(items[0].geometry).toMatchObject({ kind: 'line', length: 10 })
-    expect(items[0].body).toBe('body_ex1')
+    expect(items[0].part).toBe('body_ex1')
     expect(items[0].index).toBe(0)
   })
 })
@@ -577,7 +577,7 @@ describe('validateSelector', () => {
 // so the same part answered differently depending on where it sat.
 describe('selectByPredicate: the direction rung and the extreme floor', () => {
   // One line edge tipped from +Z by `sine`, 10 mm long.
-  function tipped(sine: number): Record<string, BodyResult> {
+  function tipped(sine: number): Record<string, PartResult> {
     const run = 10 * Math.sqrt(1 - sine * sine)
     return {
       body_ex1: bodyResult('body_ex1', [line([0, 0, 0], [10 * sine, 0, run])], [q('body_ex1', ['@u|e_tip'], 'straightedge')], [], [], []),
@@ -586,7 +586,7 @@ describe('selectByPredicate: the direction rung and the extreme floor', () => {
 
   // The same edge seen from the right angle: tipped from the XY plane by
   // `cosine`, so its dot against +Z is that cosine.
-  function tippedFlat(cosine: number): Record<string, BodyResult> {
+  function tippedFlat(cosine: number): Record<string, PartResult> {
     return {
       body_ex1: bodyResult('body_ex1', [line([0, 0, 0], [10 * Math.sqrt(1 - cosine * cosine), 0, 10 * cosine])],
         [q('body_ex1', ['@u|e_tip'], 'straightedge')], [], [], []),
@@ -633,7 +633,7 @@ describe('selectByPredicate: the direction rung and the extreme floor', () => {
   })
 
   // Three horizontal edges whose midpoints sit at z0, z0 + gap and z0 - 1.
-  function stepped(z0: number): Record<string, BodyResult> {
+  function stepped(z0: number): Record<string, PartResult> {
     const gap = 5e-4  // half a micron: a machined step, far above f64 noise
     const edges: EdgeData[] = [
       line([0, 0, z0], [10, 0, z0]),
@@ -657,7 +657,7 @@ describe('selectByPredicate: the direction rung and the extreme floor', () => {
     // Two edges whose projections differ by a chosen gap. Under the floor (5e-7
     // against the 1e-6 measure floor) they group, over it (5e-4) they do not,
     // and the verdict may not depend on where the pair sits on the axis.
-    const pair = (z0: number, gap: number): Record<string, BodyResult> => ({
+    const pair = (z0: number, gap: number): Record<string, PartResult> => ({
       body_ex1: bodyResult('body_ex1', [
         line([0, 0, z0], [10, 0, z0]),
         line([0, 1, z0 + gap], [10, 1, z0 + gap]),

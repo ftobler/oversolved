@@ -13,7 +13,7 @@ import type { DisposeScope } from '../occ/disposeScope'
 import { extractErrorMessage } from '../errors'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 import type { Repository } from '../query'
 import { AmbiguousQueryError } from '../query'
 import { faceNormal, faceCentroid, type Vec3 } from '../occ/primitives'
@@ -23,12 +23,12 @@ import { resolveDirection } from './shared/directionQuery'
 import { registerTopFace } from './shared/topFace'
 import { samePlane, sketchToWorld2d, type PlaneLike } from './shared/planes'
 import { resolvePartIds } from './shared/partResolution'
-import { bodyFrame, projectedRadius } from './shared/partExtent'
+import { partFrame, projectedRadius } from './shared/partExtent'
 import { surfaceEntityIds } from './shared/partRef'
 import { openJointHint, profileAreaReport } from './shared/profileLoops'
 import { loopCentroid } from '../profileLoops'
 import { linearHandle, offsetAlong } from './featureHandles'
-import { applyBodyOperation, type BodyOperation } from './bodyOps'
+import { applyPartOperation, type PartOperation } from './partOps'
 import { makeTranslationTrsf, transformCopy } from '../occ/transforms'
 import { extrudeProfileWithLineage } from '../occ/prismLineage'
 import { sweepBuilderFor } from '../occ/twistPrism'
@@ -46,7 +46,7 @@ import {
 import { deriveEdgeNames, nameNeighboursAndDeriveEdges } from '../occ/constructionLineage'
 import {
   canonicalFaces, canonicalIndex, carryFaceNames, emptyShapeNames, mergeShapeNames,
-} from '../occ/bodyNames'
+} from '../occ/partNames'
 import { swallowUnlessTrap } from '../errors'
 import { maxPrecision, sketchPrecision, type KernelPrecision } from '../precision'
 import { MAX_TWIST_DEG, MAX_TWIST_SECTIONS, TWIST_STEP_DEG } from '@/utils/core/twistLimits'
@@ -124,19 +124,19 @@ function fuseChain(
  * The construction name a body gives `face` (one of its own faces, as a face
  * profile pick resolves it), with its ancestry; null when no body names it.
  */
-function bodyFaceName(
+function partFaceName(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   face: OccShape,
 ): { uuid: string; ancestry: string[] } | null {
-  for (const body of Object.values(bodyStore)) {
-    if (body.shape === null || body.face_uuids === undefined) continue
-    const at = canonicalIndex(canonicalFaces(oc, scope, table.get<OccShape>(body.shape))).get(face as OccSubShape)
+  for (const part of Object.values(partStore)) {
+    if (part.shape === null || part.face_uuids === undefined) continue
+    const at = canonicalIndex(canonicalFaces(oc, scope, table.get<OccShape>(part.shape))).get(face as OccSubShape)
     if (at < 0) continue
-    const uuid = body.face_uuids[at]
-    return uuid ? { uuid, ancestry: [...(body.face_ancestry?.[uuid] ?? [])] } : null
+    const uuid = part.face_uuids[at]
+    return uuid ? { uuid, ancestry: [...(part.face_ancestry?.[uuid] ?? [])] } : null
   }
   return null
 }
@@ -178,7 +178,7 @@ function oppositeCutProbe(
  */
 export interface ThroughAllSource {
   operation: 'add' | 'cut'
-  bodies: Record<string, Body>
+  parts: Record<string, PartSolid>
 }
 
 /** The solve-context slot the pattern leaf's internal through_all tool build
@@ -219,18 +219,18 @@ function shiftCut(cut: CutPlane, dir: Vec3, offset: number): CutPlane {
 /** The bodies an up_to_next tool may stop at: merge_target when set, else all. */
 function nextCandidates(
   table: HandleTable,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   mergeTarget: string | null,
 ): NextCandidate[] {
-  const ids = mergeTarget ? resolvePartIds(mergeTarget, bodyStore) : Object.keys(bodyStore).sort()
+  const ids = mergeTarget ? resolvePartIds(mergeTarget, partStore) : Object.keys(partStore).sort()
   const out: NextCandidate[] = []
   for (const id of ids) {
-    const body = bodyStore[id]
-    if (body === undefined || body.shape === null) continue
+    const part = partStore[id]
+    if (part === undefined || part.shape === null) continue
     out.push({
       id,
-      shape: table.get<OccShape>(body.shape),
-      imported: body.imported === true,
+      shape: table.get<OccShape>(part.shape),
+      imported: part.imported === true,
     })
   }
   if (mergeTarget && out.length === 0) {
@@ -282,20 +282,20 @@ function throughAllSweepExtent(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   mergeTarget: string | null,
   direction: Vec3,
   origin: Vec3,
 ): ThroughAllExtent {
-  const targeted = mergeTarget ? resolvePartIds(mergeTarget, bodyStore) : []
-  const ids = targeted.length > 0 ? targeted : Object.keys(bodyStore)
+  const targeted = mergeTarget ? resolvePartIds(mergeTarget, partStore) : []
+  const ids = targeted.length > 0 ? targeted : Object.keys(partStore)
   let min = Infinity
   let max = -Infinity
   let measured = 0
   for (const id of ids) {
-    const body = bodyStore[id]
-    if (body === undefined || body.shape === null) continue
-    const frame = bodyFrame(oc, scope, table.get<OccShape>(body.shape))
+    const part = partStore[id]
+    if (part === undefined || part.shape === null) continue
+    const frame = partFrame(oc, scope, table.get<OccShape>(part.shape))
     const centre = frame.center[0] * direction[0] + frame.center[1] * direction[1] + frame.center[2] * direction[2]
     const radius = projectedRadius(frame, direction)
     min = Math.min(min, centre - radius)
@@ -330,7 +330,7 @@ export function solveExtrude(
   table: HandleTable,
   feature: Dict,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   // The dispatch contract's two trailing slots: `featuresById` for the leaves
   // that resolve other features, and the variable context for the ones that
   // re-solve them. extrude reads neither (the slot is typed `unknown` so the
@@ -454,7 +454,7 @@ export function solveExtrude(
         table,
         sketchRef,
         globalRepo,
-        bodyStore,
+        partStore,
       )
     } catch (exc) {
       swallowUnlessTrap(exc)
@@ -515,7 +515,7 @@ export function solveExtrude(
   // All picked edges together bound one coplanar profile loop -> one face.
   if (edgeRefs.length > 0) {
     try {
-      cqFaces.push(scope.track(resolveEdgeProfileFace(oc, scope, table, edgeRefs, bodyStore)))
+      cqFaces.push(scope.track(resolveEdgeProfileFace(oc, scope, table, edgeRefs, partStore)))
     } catch (exc) {
       swallowUnlessTrap(exc)
       profileErrors.push(extractErrorMessage(exc))
@@ -526,9 +526,9 @@ export function solveExtrude(
     throw new Error(profileErrors.join('; '))
   }
 
-  const bodyId = 'body_' + featureId
-  const result: ExtrudeResult = { status: 'ok', body_id: bodyId }
-  const operation = ((sub.operation as string) ?? 'add') as BodyOperation
+  const partId = 'body_' + featureId
+  const result: ExtrudeResult = { status: 'ok', body_id: partId }
+  const operation = ((sub.operation as string) ?? 'add') as PartOperation
   const direction = (sub.direction as string) ?? 'normal'
   if (taperDeg !== 0 && direction === 'symmetric') {
     throw new Error(
@@ -649,7 +649,7 @@ export function solveExtrude(
           : (profileNormal() as Vec3))
       : (resolveDirection((firstPt?.normal as number[]) ?? [0, 0, 1], firstPt as PlaneLike, direction, distance)[0] as Vec3)
     try {
-      upToTarget = resolveUpToTarget(oc, scope, table, upToRef, probeDir, globalRepo, bodyStore)
+      upToTarget = resolveUpToTarget(oc, scope, table, upToRef, probeDir, globalRepo, partStore)
     } catch (e) {
       // An ambiguity is the same soft failure as an empty pick: nothing can be
       // stopped at, so nothing is built. Every other error (a body/remap
@@ -680,7 +680,7 @@ export function solveExtrude(
   // feature naming them fails with its own unresolved-ref sentence instead of
   // reading phantom geometry.
   if (termination === 'up_to' && upToTarget === null) {
-    result.body_id = mergeTarget ?? Object.keys(bodyStore).sort()[0] ?? bodyId
+    result.body_id = mergeTarget ?? Object.keys(partStore).sort()[0] ?? partId
     result.body_ids = []
     applyProfileProblems(result, profileErrors, unbuildableReasons, areaBuilt, areaTotal)
     prependWarning(result, upToWarning)
@@ -708,7 +708,7 @@ export function solveExtrude(
       oc,
       scope,
       table,
-      throughAllSource?.bodies ?? bodyStore,
+      throughAllSource?.parts ?? partStore,
       mergeTarget,
       unitDirection(sweepDir),
       planeOrigin,
@@ -732,7 +732,7 @@ export function solveExtrude(
     // on the prism cap copied from that face, rides every fuse and the up-to
     // trim by their face history, and the neighbour pass below names the rest
     // of the tool from it.
-    const seed = bodyFaceName(oc, scope, table, bodyStore, cqFaces[0])
+    const seed = partFaceName(oc, scope, table, partStore, cqFaces[0])
     if (seed !== null) names.faceAncestry[seed.uuid] = seed.ancestry
     const prism = (face: OccShape, dir: Vec3, length: number, seeded: boolean): OccShape => {
       // A picked face has no sketch plane, so a twist turns about its own
@@ -777,7 +777,7 @@ export function solveExtrude(
         fuse,
       )
       if (termination === 'up_to_next') {
-        const candidates = nextCandidates(table, bodyStore, mergeTarget)
+        const candidates = nextCandidates(table, partStore, mergeTarget)
         if (upToStart === 'surface') {
           const slab = embossAtNext(oc, scope, tool, candidates, dirVec, profileOrigin, upToOffset)
           toolShape = scope.track(slab.shape)
@@ -912,7 +912,7 @@ export function solveExtrude(
     mergeShapeNames(names, lineage)
     if (upToTarget !== null || termination === 'up_to_next') {
       if (termination === 'up_to_next') {
-        const candidates = nextCandidates(table, bodyStore, mergeTarget)
+        const candidates = nextCandidates(table, partStore, mergeTarget)
         if (upToStart === 'surface') {
           const slab = embossAtNext(oc, scope, swept, candidates, sweepDir, profileOrigin as Vec3, upToOffset)
           toolShape = scope.track(slab.shape)
@@ -990,12 +990,12 @@ export function solveExtrude(
   // kernel failure still throws.
   let opResult
   try {
-    opResult = applyBodyOperation(oc, scope, table, {
+    opResult = applyPartOperation(oc, scope, table, {
       toolShape,
-      bodyStore,
+      partStore,
       operation,
       mergeTarget,
-      bodyId,
+      partId,
       featureId,
       sketchId: firstSketchId,
       opName: 'extrude',
@@ -1027,7 +1027,7 @@ export function solveExtrude(
     if (!missed) throw e
     opResult = {
       status: 'ok',
-      body_id: mergeTarget ?? Object.keys(bodyStore).sort()[0] ?? bodyId,
+      body_id: mergeTarget ?? Object.keys(partStore).sort()[0] ?? partId,
       body_ids: [],
       solver_warning: 'extrude: operation produced no geometry change',
     }
@@ -1061,11 +1061,11 @@ export function solveExtrude(
   // than widening the operation here (user decision: warn now, fuse-all later).
   // "Reaches" needs both probes: the Common sees an overlap or a fully enclosed
   // body, the distance probe sees a body only a shared face connects.
-  if (operation === 'add' && !mergeTarget && opResult.body_id !== bodyId) {
+  if (operation === 'add' && !mergeTarget && opResult.body_id !== partId) {
     const touched: string[] = []
-    for (const otherId of Object.keys(bodyStore).sort()) {
+    for (const otherId of Object.keys(partStore).sort()) {
       if (otherId === opResult.body_id || (opResult.body_ids ?? []).includes(otherId)) continue
-      const other = bodyStore[otherId]
+      const other = partStore[otherId]
       if (other.shape === null) continue
       const otherShape = table.get<OccShape>(other.shape)
       if (shapesIntersect(oc, otherShape, toolShape) || shapesTouch(oc, otherShape, toolShape)) {

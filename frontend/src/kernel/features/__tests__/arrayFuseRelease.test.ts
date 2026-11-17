@@ -9,7 +9,7 @@
 // Mocks stand in for OCC so every double records delete(): `../occ/booleans`
 // provides booleanWithDiffMany, `./booleanLineage` transferBooleanNames,
 // `../occ/transformLineage` the per-instance copy + name remap, and
-// `./bodySplit` resplitBody. Drive solveArray (the exported entry; applyArray
+// `./bodySplit` resplitPart. Drive solveArray (the exported entry; applyArray
 // is module-private) with operation 'add'.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -20,7 +20,7 @@ const mocks = vi.hoisted(() => ({
   transformCopyWithMapping: vi.fn(),
   rebuildNamesForTransformedCopy: vi.fn(),
   readSourceFaceRows: vi.fn(),
-  resplitBody: vi.fn(),
+  resplitPart: vi.fn(),
 }))
 
 vi.mock('../../occ/booleans', () => ({
@@ -38,27 +38,27 @@ vi.mock('../../occ/transforms', () => ({
   makeTranslationTrsf: () => ({ translation: [1, 0, 0] }),
   makeRotationTrsf: () => ({ rotation: {} }),
 }))
-vi.mock('../bodySplit', () => ({
-  registerSplitBodies: () => ['body_ex1'],
-  resplitBody: mocks.resplitBody,
+vi.mock('../partSplit', () => ({
+  registerSplitParts: () => ['body_ex1'],
+  resplitPart: mocks.resplitPart,
   solidHoldingFaces: () => null,
 }))
 // Reading a body's names walks its OCC shape; these bodies have none.
-vi.mock('../../occ/bodyNames', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../occ/bodyNames')>()
-  return { ...actual, readBodyNames: () => actual.emptyShapeNames() }
+vi.mock('../../occ/partNames', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../occ/partNames')>()
+  return { ...actual, readPartNames: () => actual.emptyShapeNames() }
 })
 
 import { HandleTable } from '../../occ/handleTable'
 import { SubShapeMap } from '../../occ/subshapeIdentity'
 import { DisposeScope } from '../../occ/disposeScope'
 import { solveArray } from './patternBodyTestAdapters'
-import { INSTANCE_FUSE_CHUNK } from '../patternBody'
+import { INSTANCE_FUSE_CHUNK } from '../patternPart'
 import { barePart } from '../shared/partResolution'
 import { emptyBrepDiff } from '../../types3d'
 import type { OccModule } from '../../occ/occTypes'
 import type { Repository } from '../../query'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 interface ShapeDouble {
   tag: string
@@ -125,13 +125,13 @@ function run(countX: number): {
     order.push(`transfer:${transferCount}`)
     return { faceNames: new SubShapeMap(), edgeNames: new SubShapeMap(), faceAncestry: {}, edgeAncestry: {} }
   })
-  mocks.resplitBody.mockImplementation(() => ['body_ex1'])
+  mocks.resplitPart.mockImplementation(() => ['body_ex1'])
 
   const table = new HandleTable()
   const source = makeDouble('source')
-  const body: Body = { ...barePart('body_ex1', 'ex1'), shape: table.register(source, 'ex1') }
+  const body: PartSolid = { ...barePart('body_ex1', 'ex1'), shape: table.register(source, 'ex1') }
   const scope = new DisposeScope()
-  const bodyStore: Record<string, Body> = { body_ex1: body }
+  const bodyStore: Record<string, PartSolid> = { body_ex1: body }
   const repo = { query: () => ({ start: [0, 0, 0], end: [1, 0, 0] }), elements: new Map() } as unknown as Repository
 
   solveArray(
@@ -161,7 +161,7 @@ beforeEach(() => {
   mocks.transferBooleanNames.mockReset()
   mocks.transformCopyWithMapping.mockReset()
   mocks.rebuildNamesForTransformedCopy.mockReset()
-  mocks.resplitBody.mockReset()
+  mocks.resplitPart.mockReset()
 })
 
 describe('array add fuse releases (H21)', () => {
@@ -191,7 +191,7 @@ describe('array add fuse releases (H21)', () => {
   })
 
   it('reports the deleted body and an empty body_ids when the add leaves no solid', () => {
-    // resplitBody returns [] only when the fused shape holds no solid at all (a
+    // resplitPart returns [] only when the fused shape holds no solid at all (a
     // failed boolean), at which point it has already deleted the body. The
     // fallback must not hand back the live source id for a body that is gone:
     // body_ids is explicitly empty and the warning names the deletion.
@@ -202,13 +202,13 @@ describe('array add fuse releases (H21)', () => {
     mocks.rebuildNamesForTransformedCopy.mockReturnValue({ faceNames: new SubShapeMap(), faceAncestry: {}, edgeNames: new SubShapeMap(), edgeAncestry: {} })
     mocks.readSourceFaceRows.mockReturnValue([])
     mocks.transferBooleanNames.mockReturnValue({ faceNames: {}, edgeNames: {}, faceAncestry: {}, edgeAncestry: {} })
-    mocks.resplitBody.mockReturnValue([])
+    mocks.resplitPart.mockReturnValue([])
 
     const table = new HandleTable()
     const source = makeDouble('source')
-    const body: Body = { ...barePart('body_ex1', 'ex1'), shape: table.register(source, 'ex1') }
+    const body: PartSolid = { ...barePart('body_ex1', 'ex1'), shape: table.register(source, 'ex1') }
     const scope = new DisposeScope()
-    const bodyStore: Record<string, Body> = { body_ex1: body }
+    const bodyStore: Record<string, PartSolid> = { body_ex1: body }
     const repo = { query: () => ({ start: [0, 0, 0], end: [1, 0, 0] }), elements: new Map() } as unknown as Repository
     try {
       const result = solveArray(

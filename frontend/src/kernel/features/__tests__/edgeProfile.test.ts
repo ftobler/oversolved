@@ -7,7 +7,7 @@ import { makeEdgeIndexCache, resolveEdgesWithIndex, type EdgeIndex } from '../fi
 import { Repository, makeAncestryQuery, ref } from '../../query'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { HandleTable } from '../../occ/handleTable'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 // The L11 cache sharing is what this file pins: resolveProfileEdges must build
 // one edge index per body for the whole ref set, not one per ref. Wrapping the
@@ -55,8 +55,8 @@ describe('makeEdgeIndexCache', () => {
     // buildEdgeIndex returns early on a null shape before touching oc, so the
     // cache can be probed without OCC.
     const indexFor = makeEdgeIndexCache(oc, scope, table)
-    const bodyA = { id: 'body_a', shape: null } as unknown as Body
-    const bodyB = { id: 'body_b', shape: null } as unknown as Body
+    const bodyA = { id: 'body_a', shape: null } as unknown as PartSolid
+    const bodyB = { id: 'body_b', shape: null } as unknown as PartSolid
     expect(indexFor(bodyA)).toBe(indexFor(bodyA))
     expect(indexFor(bodyA)).not.toBe(indexFor(bodyB))
   })
@@ -66,7 +66,7 @@ describe('resolveProfileEdges', () => {
   it('builds one edge index per body, not one per ref', () => {
     const dummyEdge = {} as unknown as OccShape
     vi.mocked(resolveEdgesWithIndex).mockReturnValue([dummyEdge])
-    const makeBody = (id: string): Body =>
+    const makeBody = (id: string): PartSolid =>
       ({
         id,
         created_by: 'ex1',
@@ -75,8 +75,8 @@ describe('resolveProfileEdges', () => {
         sketch_id: 'sk',
         brep_diff: null,
         profile_queries: [],
-      }) as unknown as Body
-    const bodyStore: Record<string, Body> = {
+      }) as unknown as PartSolid
+    const bodyStore: Record<string, PartSolid> = {
       body_a: makeBody('body_a'),
       body_b: makeBody('body_b'),
       body_c: makeBody('body_c'),
@@ -95,7 +95,7 @@ describe('resolveProfileEdges', () => {
       // cache whatever the test order; `built` only records cache misses.
       const seen = new Set<string>()
       const dummy = new Map<string, EdgeIndex>()
-      return (body: Body): EdgeIndex => {
+      return (body: PartSolid): EdgeIndex => {
         if (!seen.has(body.id)) {
           seen.add(body.id)
           built.push(body.id)

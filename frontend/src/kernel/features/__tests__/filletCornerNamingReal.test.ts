@@ -90,7 +90,7 @@ const array = {
 
 function edgeQueriesOf(h: SharedHarness, spec: Record<string, unknown>): string[] {
   const result = h.run(spec)
-  const body = h.body(result, BODY)
+  const body = h.part(result, BODY)
   return (body.edge_queries as string[]) ?? []
 }
 
@@ -122,7 +122,7 @@ describe.skipIf(!oc || !solveBytes)('fillet corner-patch naming (real OCC + Rust
     const result = h.run(spec)
     expect((h.res(result, FIL) as { status: string }).status).toBe('ok')
 
-    const queries = (h.body(result, BODY).edge_queries as string[]) ?? []
+    const queries = (h.part(result, BODY).edge_queries as string[]) ?? []
     expect(queries.length).toBeGreaterThan(rims.length)
 
     // No edge may fall back to the body-wide `profile_queries` ancestry: that

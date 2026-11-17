@@ -15,7 +15,7 @@
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'
-import { canonicalFaces, canonicalEdges } from '../bodyNames'
+import { canonicalFaces, canonicalEdges } from '../partNames'
 import { faceArea, faceCentroid, makeBezierEdge, makeLineEdge, makeWire, makeFaceFromWire, makePrism } from '../primitives'
 import { volumeOf } from '../volume'
 import { MoveFaceRefusal } from '../moveFaceSurfaces'

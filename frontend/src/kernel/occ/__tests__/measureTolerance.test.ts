@@ -10,7 +10,7 @@ import {
   vectorWithinTolerance,
   type MeasureRow,
 } from '../measureTolerance'
-import type { BodyMeasure, MeasureRecord } from '../measure'
+import type { PartMeasure, MeasureRecord } from '../measure'
 import type { OracleMeasures } from '@/oracle/corpus'
 
 function record(overrides: Partial<MeasureRecord> = {}): MeasureRecord {
@@ -69,7 +69,7 @@ describe('valueWithinTolerance', () => {
 })
 
 describe('scaledMeasures', () => {
-  const body: BodyMeasure = {
+  const body: PartMeasure = {
     id: 'body_ex1',
     volume: 100,
     area: 60,

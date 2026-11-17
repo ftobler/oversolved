@@ -5,7 +5,7 @@
 // `surface_frame`, never from `face_data.normal`: that normal is the radial
 // direction at the face centroid, not the axis, and reading it as a plane turns
 // a hole into a plane at a plausible-looking distance.
-import type { BodyResult } from '@/types/cad'
+import type { PartResult } from '@/types/cad'
 import { parseTopoFallbackQuery } from '@/utils/query/selectionId'
 import type { MeasurePickRef } from '@/kernel/worker/solverProtocol'
 import { normalize, type Primitive, type Vec3 } from '../primitives'
@@ -14,7 +14,7 @@ const TWO_PI = Math.PI * 2
 
 interface PartElement {
   partId: string
-  part: BodyResult
+  part: PartResult
   kind: 'edge' | 'face' | 'vertex'
   index: number
 }
@@ -24,7 +24,7 @@ interface PartElement {
  * nothing: the query arrays are padded with '' for entities the kernel could
  * not name, so a plain `indexOf('')` would resolve the first unnamed element.
  */
-function findPartElement(id: string, parts: Record<string, BodyResult>): PartElement | null {
+function findPartElement(id: string, parts: Record<string, PartResult>): PartElement | null {
   if (!id) return null
   // Simple slash format names a BODY id, which is what `bodies` is keyed by, so
   // a split sibling's fallback query lands on the sibling the user picked.
@@ -53,7 +53,7 @@ function findPartElement(id: string, parts: Record<string, BodyResult>): PartEle
  */
 export function partPickRef(
   id: string,
-  parts: Record<string, BodyResult> | undefined,
+  parts: Record<string, PartResult> | undefined,
 ): Extract<MeasurePickRef, { kind: 'face' | 'edge' | 'vertex' }> | null {
   if (!parts) return null
   const found = findPartElement(id, parts)
@@ -61,7 +61,7 @@ export function partPickRef(
   return { bodyId: found.partId, kind: found.kind, index: found.index }
 }
 
-export function partPrimitive(id: string, parts: Record<string, BodyResult> | undefined): Primitive | null {
+export function partPrimitive(id: string, parts: Record<string, PartResult> | undefined): Primitive | null {
   if (!parts) return null
   const found = findPartElement(id, parts)
   if (!found) return null

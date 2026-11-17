@@ -19,7 +19,7 @@ import { parseAncestry } from '../../query'
 import { DisposeScope, drainList } from '../disposeScope'
 import { HandleTable } from '../handleTable'
 import { buildExtrudedProfile } from '../shapes'
-import { canonicalEdges } from '../bodyNames'
+import { canonicalEdges } from '../partNames'
 import {
   makeBox, makeBoxAt, makeCylinder, makeCylinderWithFaces,
 } from '../primitives'
@@ -107,7 +107,7 @@ describe.skipIf(!oc || !solveBytes)('a clean-merged face keeps the target name (
     setSketchSolver(solveBytes)
   })
 
-  const mesh = (spec: Spec) => h.body(h.run(spec), 'body_ex1').mesh as {
+  const mesh = (spec: Spec) => h.part(h.run(spec), 'body_ex1').mesh as {
     face_data: Array<{ centroid: number[]; normal: number[]; area: number }>
     face_uuids: (string | null)[]
     face_queries: string[]

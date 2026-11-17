@@ -70,7 +70,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): b
     // Both `normal[2] > 0.9` AND `surface_type === 'flatface'` -- a fillet's
     // arc face can have a near-vertical normal at parts of its swept arc,
     // which would otherwise grab a fillet face instead of the flat cap.
-    const mesh = h.body(result, bodyId).mesh as { face_data?: Array<{ normal: number[]; surface_type?: string }>; face_queries?: string[] } | undefined
+    const mesh = h.part(result, bodyId).mesh as { face_data?: Array<{ normal: number[]; surface_type?: string }>; face_queries?: string[] } | undefined
     let q = ''
     mesh?.face_data?.forEach((fd, i) => { if (fd.normal[2] > 0.9 && fd.surface_type === 'flatface') q = mesh.face_queries?.[i] ?? '' })
     return q
@@ -99,7 +99,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): b
       ],
     })
     expect(h.res(result, 'ex2').status).toBe('ok')
-    const mesh = h.body(result, 'body_ex1').mesh as { vertices: number[][]; face_data?: unknown[] } | undefined
+    const mesh = h.part(result, 'body_ex1').mesh as { vertices: number[][]; face_data?: unknown[] } | undefined
     expect(mesh).toBeDefined()
     if (mesh) {
       const zs = mesh.vertices.map((v) => v[2])
@@ -139,7 +139,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): b
     })
     expect(h.res(result, 'ex2').status).toBe('ok')
 
-    const mesh = h.body(result, 'body_ex1').mesh as {
+    const mesh = h.part(result, 'body_ex1').mesh as {
       face_data?: Array<{ centroid: number[]; normal: number[]; surface_type?: string }>
     } | undefined
     const fd = mesh?.face_data ?? []
@@ -187,8 +187,8 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): b
       ],
     })
     expect(h.res(r1, 'ex1').status).toBe('ok')
-    const edgeQueries = (h.body(r1, 'body_ex1').edge_queries as string[]) ?? []
-    const edges = (h.body(r1, 'body_ex1').edges as Array<{ kind?: string; start?: number[]; end?: number[]; center?: number[]; radius?: number }>) ?? []
+    const edgeQueries = (h.part(r1, 'body_ex1').edge_queries as string[]) ?? []
+    const edges = (h.part(r1, 'body_ex1').edges as Array<{ kind?: string; start?: number[]; end?: number[]; center?: number[]; radius?: number }>) ?? []
     // The two vertical edges at the intersections of cL and cR (the lobe seam).
     // Their endpoints sit on x=0 (the vertical line `ln`) and span z=0..10,
     // additionally distinguishing the two edges by their y-intersection-point
@@ -239,7 +239,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): b
     }
     const result = h.run(spec2)
     expect(h.res(result, 'ex2').status).toBe('ok')
-    const m2 = h.body(result, 'body_ex1').mesh as {
+    const m2 = h.part(result, 'body_ex1').mesh as {
       face_data?: Array<{ centroid: number[]; normal: number[]; surface_type?: string }>
     } | undefined
     const fd = m2?.face_data ?? []

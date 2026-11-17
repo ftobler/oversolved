@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { partSnapSketches, PART_SNAP_FEAT_PREFIX } from '@/utils/geometry/partSnapProjection'
 import { getPartsToRender } from '@/utils/partRender'
-import type { Feature, BodyResult } from '@/types/cad'
+import type { Feature, PartResult } from '@/types/cad'
 
 /**
  * Body snapping is a viewport promise: the cursor can land on what is drawn.
@@ -57,8 +57,8 @@ describe('bodySnapSketches', () => {
     // the viewport uses, so a body past the bar contributes no snap targets.
     const features = [{ id: 'f1', kind: 'extrude' }, { id: 'f2', kind: 'extrude' }] as unknown as Feature[]
     const bodies = {
-      early: { created_by: 'f1', mesh: {}, vertices: VERTICES } as unknown as BodyResult,
-      late: { created_by: 'f2', mesh: {}, vertices: VERTICES } as unknown as BodyResult,
+      early: { created_by: 'f1', mesh: {}, vertices: VERTICES } as unknown as PartResult,
+      late: { created_by: 'f2', mesh: {}, vertices: VERTICES } as unknown as PartResult,
     }
     const drawn = getPartsToRender(bodies, features, 1, undefined)
     expect(drawn.map(i => i.partId)).toEqual(['early'])

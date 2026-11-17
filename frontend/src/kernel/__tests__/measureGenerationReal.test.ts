@@ -17,7 +17,7 @@ import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { resetSketchSolver, setSketchSolver, setSketchTopology } from '../features/sketch'
 import { currentGeneration, measureGeneration, measurePicksLocally, setSolveLocalsForTest, solveLocally } from '../solveLocally'
 import { MEASURE_STALE, MEASURE_UNRESOLVED, type MeasurePickRef } from '../worker/solverProtocol'
-import type { BodyResult, EdgeData, FaceData } from '@/types/cad'
+import type { PartResult, EdgeData, FaceData } from '@/types/cad'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -63,29 +63,29 @@ const BODY = (id: string): MeasurePickRef => ({ bodyId: id, kind: 'body' })
 async function solve(
   doc: Record<string, unknown>,
   options: { pickBoundary?: number; rollbackPosition?: number } = {},
-): Promise<{ bodies: Record<string, BodyResult>; generation: string }> {
+): Promise<{ bodies: Record<string, PartResult>; generation: string }> {
   const response = await solveLocally(doc, options)
   if (!response) throw new Error('no build response')
   const failed = Object.entries(response.result)
     .filter(([, r]) => (r as { status?: string }).status === 'exception')
   if (failed.length) throw new Error(`feature exception: ${JSON.stringify(failed)}`)
-  return { bodies: response.bodies as Record<string, BodyResult>, generation: response.generation ?? '' }
+  return { bodies: response.bodies as Record<string, PartResult>, generation: response.generation ?? '' }
 }
 
-const faceIndex = (body: BodyResult, match: (face: FaceData) => boolean): number => {
+const faceIndex = (body: PartResult, match: (face: FaceData) => boolean): number => {
   const index = (body.mesh?.face_data ?? []).findIndex(match)
   if (index < 0) throw new Error(`no matching face: ${JSON.stringify(body.mesh?.face_data)}`)
   return index
 }
 
-const edgeIndex = (body: BodyResult, match: (edge: EdgeData) => boolean): number => {
+const edgeIndex = (body: PartResult, match: (edge: EdgeData) => boolean): number => {
   const index = (body.edges ?? []).findIndex(match)
   if (index < 0) throw new Error(`no matching edge: ${JSON.stringify(body.edges)}`)
   return index
 }
 
 /** The flat face on the given world x, read off the render array. */
-const faceAtX = (body: BodyResult, x: number): number =>
+const faceAtX = (body: PartResult, x: number): number =>
   faceIndex(body, (face) => face.surface_type === 'flatface' &&
     Math.abs(face.normal[0]) > 0.99 && Math.abs(face.centroid[0] - x) < 1e-6)
 

@@ -16,7 +16,7 @@
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 import type { Repository } from '../query'
 import { makeRotationTrsf } from '../occ/transforms'
 import { resolveAxisQueryStrict } from './shared/directionQuery'
@@ -28,7 +28,7 @@ import {
   type Dict, type PatternCopy,
 } from './pattern'
 import type { PatternResult } from './patternFeature'
-import type { BodyPatternResult } from './patternBody'
+import type { PartPatternResult } from './patternPart'
 
 /** A stored VEC3 field, or null when absent; a malformed value is a solve error. */
 function storedVec3(value: unknown, key: string): number[] | null {
@@ -51,12 +51,12 @@ export function resolvePatternAxis(
   originValue: unknown,
   directionValue: unknown,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): [number[], number[]] {
   // The pick can be a straight edge, circular edge, sketch line, sketch
   // circle, cylindrical face, or planar face.
   if (axisQuery) {
-    const axis = resolveAxisQueryStrict(axisQuery, globalRepo, bodyStore)
+    const axis = resolveAxisQueryStrict(axisQuery, globalRepo, partStore)
     if (!axis) throw new Error(`pattern: axis query '${axisQuery}' did not resolve to a usable axis`)
     return axis
   }
@@ -105,7 +105,7 @@ export function buildCircularCopies(
   scope: DisposeScope,
   sub: Dict,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): { copies: PatternCopy[]; warnings: string[] } {
   const count = patternCountOf(sub, 'count', 4)
   const centered = sub.centered === true
@@ -124,7 +124,7 @@ export function buildCircularCopies(
     sub.axis_origin,
     sub.axis_direction,
     globalRepo,
-    bodyStore,
+    partStore,
   )
   // Invert flips the axis direction, which reverses the sweep sense.
   const invert = (sub.invert_axis as boolean) ?? false
@@ -146,15 +146,15 @@ export function solveCircularPattern(
   table: HandleTable,
   feature: Dict,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   featuresById: Record<string, Dict> = {},
   solveContext: { variables: Record<string, number>; laterVariables: Record<string, number> } = {
     variables: {}, laterVariables: {},
   },
-): PatternResult | BodyPatternResult {
+): PatternResult | PartPatternResult {
   const sub = (feature.circular_pattern as Dict) ?? {}
   return solvePatternInstances(
-    oc, scope, table, feature, sub, globalRepo, bodyStore, featuresById, solveContext,
-    () => buildCircularCopies(oc, scope, sub, globalRepo, bodyStore),
+    oc, scope, table, feature, sub, globalRepo, partStore, featuresById, solveContext,
+    () => buildCircularCopies(oc, scope, sub, globalRepo, partStore),
   )
 }

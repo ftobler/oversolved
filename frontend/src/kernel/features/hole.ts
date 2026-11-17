@@ -22,7 +22,7 @@
 import { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccXYZ } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
-import type { Body, BrepDiff } from '../types3d'
+import type { PartSolid, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
 import { parseSketchEntityRef, sketchIdFromQuery, soleEntityInQuery } from './shared/partRef'
 import { HOLE_SITE_WORDING } from './shared/drillSite'
@@ -40,9 +40,9 @@ import { partSpanAlong, projectedRadius } from './shared/partExtent'
 import { sameEnum } from '../occ/enumValue'
 import { booleanWithDiff, volumeOf } from '../occ/booleans'
 import { precisionCeilingWarning } from '../precision'
-import { resplitBody } from './bodySplit'
+import { resplitPart } from './partSplit'
 import { transferBooleanNames } from './booleanLineage'
-import { readBodyNames, type ShapeNames } from '../occ/bodyNames'
+import { readPartNames, type ShapeNames } from '../occ/partNames'
 import { DRILL_POINT_ANGLE } from '../threadTable'
 import type { ThreadDisplayData, ThreadSiteData } from '@/types/cad'
 import type { PlaneLike } from './shared/planes'
@@ -589,23 +589,23 @@ function intersects(oc: OccModule, shape: OccShape, tool: OccShape): boolean {
  * The best score wins, first body on a tie, so the choice follows the geometry
  * rather than the store order.
  */
-function defaultTargetBody(
+function defaultTargetPart(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   sites: ReadonlyArray<{ center3d: Vec3 }>,
-): Body | null {
+): PartSolid | null {
   if (sites.length === 0) return null
-  const shaped = Object.values(bodyStore).filter(body => body.shape !== null)
+  const shaped = Object.values(partStore).filter(part => part.shape !== null)
   // One candidate needs no classification, which is also the common case.
   if (shaped.length === 1) return shaped[0]
   const state = oc.TopAbs_State
-  let best: Body | null = null
+  let best: PartSolid | null = null
   let bestScore = 0
-  for (const body of shaped) {
-    if (body.shape === null) continue
-    const shape = table.get<OccShape>(body.shape)
+  for (const part of shaped) {
+    if (part.shape === null) continue
+    const shape = table.get<OccShape>(part.shape)
     let score = 0
     for (const site of sites) {
       const [x, y, z] = site.center3d
@@ -623,7 +623,7 @@ function defaultTargetBody(
       }
     }
     if (score > bestScore) {
-      best = body
+      best = part
       bestScore = score
     }
   }
@@ -653,7 +653,7 @@ export function solveHole(
   table: HandleTable,
   feature: Dict,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   featuresById: Record<string, Dict>,
 ): HoleResult {
   const sub = (feature.hole as Dict) ?? {}
@@ -733,11 +733,11 @@ export function solveHole(
   // is reported as such even when the sketch is also unusable (the guard order
   // the editor and the scripts rely on). A default target needs the sites, so
   // that path waits for them below.
-  let targetBody: Body | null = null
+  let targetPart: PartSolid | null = null
   if (targetRef) {
-    targetBody = resolvePart(targetRef, bodyStore)
-    if (targetBody.shape === null) throw new Error(`hole: target part '${targetBody.id}' has no shape`)
-  } else if (Object.keys(bodyStore).length === 0) {
+    targetPart = resolvePart(targetRef, partStore)
+    if (targetPart.shape === null) throw new Error(`hole: target part '${targetPart.id}' has no shape`)
+  } else if (Object.keys(partStore).length === 0) {
     throw new Error('hole: no parts in body_store and no target specified')
   }
 
@@ -811,13 +811,13 @@ export function solveHole(
 
   // The body the sites drill: the authored target settled above, or the body
   // they sit on.
-  if (targetBody === null) {
-    const ids = Object.keys(bodyStore)
-    targetBody = defaultTargetBody(oc, scope, table, bodyStore, sites) ?? bodyStore[ids[0]]
+  if (targetPart === null) {
+    const ids = Object.keys(partStore)
+    targetPart = defaultTargetPart(oc, scope, table, partStore, sites) ?? partStore[ids[0]]
   }
-  if (targetBody.shape === null) throw new Error(`hole: target part '${targetBody.id}' has no shape`)
+  if (targetPart.shape === null) throw new Error(`hole: target part '${targetPart.id}' has no shape`)
 
-  let currentShape = table.get<OccShape>(targetBody.shape)
+  let currentShape = table.get<OccShape>(targetPart.shape)
   // The body's names, carried through every drill cut by its face history.
   // Read at the first cut: a hole that places nothing never touches the shape.
   let names: ShapeNames | null = null
@@ -968,9 +968,9 @@ export function solveHole(
       missedSites.push(eid)
       continue
     }
-    names ??= readBodyNames(oc, scope, currentShape, targetBody)
+    names ??= readPartNames(oc, scope, currentShape, targetPart)
     const res = booleanWithDiff(oc, scope, currentShape, cyl, 'cut', {
-      unifyFaces: !targetBody.imported, precision: targetBody.precision ?? null,
+      unifyFaces: !targetPart.imported, precision: targetPart.precision ?? null,
     })
     // A drilled face keeps its own name, and the cutter's faces carry theirs from
     // the drill site onto the bore and floor they leave behind. The cutter is
@@ -978,7 +978,7 @@ export function solveHole(
     // uuids and they carry verbatim (no toolUuidScope).
     const tool = cutterNames(feature.id as string, sketchId, eid, cutter.roles)
     names = transferBooleanNames(oc, scope, {
-      bodyShape: res.shape,
+      partShape: res.shape,
       faceOrigin: res.faceOrigin,
       targetFaceNames: names.faceNames,
       targetFaceAncestry: names.faceAncestry,
@@ -1068,35 +1068,35 @@ export function solveHole(
     for (const site of threadSites) site.bore_uuids = boreFamily(site.bore_uuids[0], present)
   }
 
-  let bodyIds = [targetBody.id]
+  let partIds = [targetPart.id]
   if (cutAny) {
     // A hole is a cut, so it can sever the body: a through-hole wider than the
     // web between two features leaves two disconnected solids.
-    bodyIds = resplitBody(oc, scope, table, bodyStore, targetBody, currentShape, feature.id as string, names ?? {})
-    if (bodyIds.length === 0) {
+    partIds = resplitPart(oc, scope, table, partStore, targetPart, currentShape, feature.id as string, names ?? {})
+    if (partIds.length === 0) {
       // The cut ate the whole body: resplitBody deleted it from the store.
       // Report the deletion with body_id still naming the consumed body (that
       // is what the feature row points at) and body_ids: [] for "nothing
       // survives".
       return {
         status: 'ok',
-        body_id: targetBody.id,
+        body_id: targetPart.id,
         body_ids: [],
         // "removed material" matches the docstring: sites that cut minus those
         // that missed or were swallowed and therefore removed nothing.
         hole_count: placed - missedSites.length - swallowedSites.length,
         direction: side,
-        solver_warning: `hole: the cut removed all of part '${targetBody.id}'; the part was deleted`,
+        solver_warning: `hole: the cut removed all of part '${targetPart.id}'; the part was deleted`,
       }
     }
-    targetBody.brep_diff = accumulatedDiff
-    targetBody.modified_by.push(feature.id as string)
+    targetPart.brep_diff = accumulatedDiff
+    targetPart.modified_by.push(feature.id as string)
   }
 
   const result: HoleResult = {
     status: skippedCount > 0 || (missedSites.length > 0 && missedSites.length < placed) ? 'partial' : 'ok',
-    body_id: bodyIds[0],
-    body_ids: bodyIds,
+    body_id: partIds[0],
+    body_ids: partIds,
     hole_count: placed - missedSites.length - swallowedSites.length,
     direction: side,
   }
@@ -1122,7 +1122,7 @@ export function solveHole(
     // Some sites cut, some removed nothing: name the misses so the user knows
     // which picks to move.
     partialReasons.push(
-      `hole: ${missedSites.length}/${placed} drill site(s) did not intersect part '${targetBody.id}': ${missedSites.join(', ')}`,
+      `hole: ${missedSites.length}/${placed} drill site(s) did not intersect part '${targetPart.id}': ${missedSites.join(', ')}`,
     )
   }
   if (partialReasons.length > 0) result.exception = partialReasons.join('; ')
@@ -1132,8 +1132,8 @@ export function solveHole(
     const authored = direction === 'normal' ? 'normal' : 'reverse'
     const other = authored === 'normal' ? 'reverse' : 'normal'
     result.solver_warning = oppositeCuts
-      ? `hole: direction: ${authored} cuts nothing in part '${targetBody.id}' at every drill site; direction: ${other} drills into it`
-      : `hole: none of the ${placed} drill site(s) intersect part '${targetBody.id}'; nothing was removed`
+      ? `hole: direction: ${authored} cuts nothing in part '${targetPart.id}' at every drill site; direction: ${other} drills into it`
+      : `hole: none of the ${placed} drill site(s) intersect part '${targetPart.id}'; nothing was removed`
   } else if (otherSideSites.length > 0) {
     // The hole removed material, but these sites left material on the other
     // side of the plane. Naming them is the only cue, since the volume looks
@@ -1147,7 +1147,7 @@ export function solveHole(
   // A body whose sketch solve missed the merge ceiling by more than the ceiling
   // keeps its near-coplanar faces separate whatever this cut does; say so once,
   // beside the site warnings.
-  const ceiling = cutAny && targetBody.precision ? precisionCeilingWarning(targetBody.precision) : null
+  const ceiling = cutAny && targetPart.precision ? precisionCeilingWarning(targetPart.precision) : null
   if (ceiling !== null) {
     result.solver_warning = result.solver_warning === undefined
       ? ceiling

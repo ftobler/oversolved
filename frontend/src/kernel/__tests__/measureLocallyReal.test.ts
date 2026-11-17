@@ -13,7 +13,7 @@ import { measureLocally, persistentTableForTest, setSolveLocalsForTest, solveLoc
 import { setSketchSolver, resetSketchSolver } from '../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { DisposeScope } from '../occ/disposeScope'
-import { measureBodies, type Bbox6 } from '../occ/measure'
+import { measureParts, type Bbox6 } from '../occ/measure'
 import { compareMeasures } from '../occ/measureTolerance'
 import { readOracleCase } from '@/oracle/corpus'
 import { partSpecFromText } from '@/utils/partExport'
@@ -352,7 +352,7 @@ describe.skipIf(!oc || !solveBytes)('measureLocally (real OCC + Rust solver)', (
 
     const measureScope = new DisposeScope()
     try {
-      const record = measureBodies(kernel, measureScope, shapes)
+      const record = measureParts(kernel, measureScope, shapes)
       // Frozen from the real kernel: the tight box the swept surface occupies.
       const tight: Bbox6 = [
         -10.499988797020961, -10.499999483832946, -0.5000000999999998,
@@ -383,7 +383,7 @@ describe.skipIf(!oc || !solveBytes)('measureLocally (real OCC + Rust solver)', (
     const build = new DisposeScope()
     const measureScope = new DisposeScope()
     try {
-      const record = measureBodies(kernel, measureScope, [openSquare(kernel, build, 20)])
+      const record = measureParts(kernel, measureScope, [openSquare(kernel, build, 20)])
 
       expect(record.bodies).toBe(1)
       expect(record.volume).toBeCloseTo(0)
@@ -407,7 +407,7 @@ describe.skipIf(!oc || !solveBytes)('measureLocally (real OCC + Rust solver)', (
       // Two 5e-5 cubes: 1.25e-13 each, so the summed volume is below the
       // 1e-12 weight floor and the plain body average is the fallback.
       const shapes = [tinyBox(kernel, build, [0, 0, 0]), tinyBox(kernel, build, [20, 0, 0])]
-      const record = measureBodies(kernel, measureScope, shapes)
+      const record = measureParts(kernel, measureScope, shapes)
 
       expect(record.volume).toBeGreaterThan(0)
       expect(record.volume).toBeLessThan(1e-12)

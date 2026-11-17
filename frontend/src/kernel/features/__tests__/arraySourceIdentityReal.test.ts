@@ -21,7 +21,7 @@ import { Repository } from '../../query'
 import { barePart } from '../shared/partResolution'
 import { solveArray } from './patternBodyTestAdapters'
 import { solveBoolean } from '../boolean'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
 
 const loadedOcc = await loadOcc()
@@ -31,7 +31,7 @@ const oc = loadedOcc!
 interface Rig {
   scope: DisposeScope
   table: HandleTable
-  store: Record<string, Body>
+  store: Record<string, PartSolid>
 }
 
 function rig(): Rig {
@@ -48,7 +48,7 @@ function railShape(r: Rig): OccShape {
   return r.scope.track(booleanWithDiff(oc, r.scope, first, wallB, 'fuse').shape)
 }
 
-function seedRail(r: Rig): Body {
+function seedRail(r: Rig): PartSolid {
   const body = barePart('body_src', 'src')
   body.shape = r.table.register(r.scope.detach(railShape(r)), body.created_by)
   r.store.body_src = body

@@ -207,7 +207,7 @@ describe.skipIf(!oc || !solveBytes)('sketch precision contract (real OCC)', () =
     ]
     const result = h.run({ features })
     expect(h.res(result, 'ex1').status).toBe('ok')
-    const mesh = h.body(result, 'body_ex1').mesh as { vertices: number[][] } | undefined
+    const mesh = h.part(result, 'body_ex1').mesh as { vertices: number[][] } | undefined
     expect(mesh).toBeDefined()
     const xs = (mesh?.vertices ?? []).map((v) => v[0])
     const ys = (mesh?.vertices ?? []).map((v) => v[1])

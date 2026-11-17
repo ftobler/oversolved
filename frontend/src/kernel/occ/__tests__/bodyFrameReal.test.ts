@@ -13,7 +13,7 @@ import { loadOcc } from '../loadOcc'
 import { HandleTable, type OccHandle } from '../handleTable'
 import { DisposeScope } from '../disposeScope'
 import { buildBox, buildCylinder } from '../shapes'
-import { solidToMesh, solidToEdges, bodyFrame } from '../tessellation'
+import { solidToMesh, solidToEdges, partFrame } from '../tessellation'
 import { applyTransformShape } from '../transforms'
 import { readSolidVertices, type Vec3 } from '../primitives'
 import type { OccModule } from '../occTypes'
@@ -59,7 +59,7 @@ describe.skipIf(!oc)('bodyFrame: mesh-free classifier AABB', () => {
       const mesh = solidToMesh(occ, table, h)
       const meshHalf = aabbHalf(mesh.vertices)
       const vertexHalf = aabbHalf(readSolidVertices(occ, scope, solid))
-      const frame = bodyFrame(occ, scope, solid)
+      const frame = partFrame(occ, scope, solid)
 
       // Edge-sampled box recovers the radius (exact, vs the slightly-under mesh
       // chord) and the full height.
@@ -86,8 +86,8 @@ describe.skipIf(!oc)('bodyFrame: mesh-free classifier AABB', () => {
     const table = new HandleTable()
     const h = buildCylinder(occ, table, { center: [0, 0, 0], axis: [0, 0, 1], radius: 3, height: 10 })
     try {
-      const mesh = solidToMesh(occ, table, h, { createdBy: 'ex1', bodyId: 'body_ex1' })
-      const edgeResult = solidToEdges(occ, table, h, { createdBy: 'ex1', bodyId: 'body_ex1' })
+      const mesh = solidToMesh(occ, table, h, { createdBy: 'ex1', partId: 'body_ex1' })
+      const edgeResult = solidToEdges(occ, table, h, { createdBy: 'ex1', partId: 'body_ex1' })
 
       const faceCls = new Set(mesh.face_data.flatMap((fd) => fd.classifiers ?? []))
       const edgeCls = clsTokens(edgeResult.edge_queries)
@@ -124,7 +124,7 @@ describe.skipIf(!oc)('bodyFrame: mesh-free classifier AABB', () => {
         rotationAngleDeg: 45,
       })
       rotatedHandle = table.register(rotated)
-      const mesh = solidToMesh(occ, table, rotatedHandle, { createdBy: 'ex1', bodyId: 'body_ex1' })
+      const mesh = solidToMesh(occ, table, rotatedHandle, { createdBy: 'ex1', partId: 'body_ex1' })
 
       // The rotation about z keeps every side-face centroid at mid-height
       // (z=1); the caps sit at z=0/z=2. Filter to the four side faces.

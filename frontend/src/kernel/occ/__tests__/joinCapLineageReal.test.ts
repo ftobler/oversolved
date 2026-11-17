@@ -129,7 +129,7 @@ describe.skipIf(!oc || !solveBytes)('a joined extrude cap keeps its profile line
   })
 
   function meshOf(result: BuildResponse, bodyId: string): Mesh {
-    const mesh = h.body(result, bodyId).mesh as Mesh | undefined
+    const mesh = h.part(result, bodyId).mesh as Mesh | undefined
     if (!mesh) throw new Error(`body ${bodyId} has no mesh`)
     return mesh
   }
@@ -257,8 +257,8 @@ describe.skipIf(!oc || !solveBytes)('a joined extrude cap keeps its profile line
 
     // The junction is the circle where the boss wall meets the plate's top face,
     // picked by geometry test-side only (the kernel names it, not the test).
-    const edges = h.body(base, 'body_ex1').edges as Array<{ kind: string; center?: number[] }>
-    const junction = (h.body(base, 'body_ex1').edge_queries as string[]).find((_q, i) =>
+    const edges = h.part(base, 'body_ex1').edges as Array<{ kind: string; center?: number[] }>
+    const junction = (h.part(base, 'body_ex1').edge_queries as string[]).find((_q, i) =>
       edges[i]?.kind === 'circle' && Math.abs((edges[i].center?.[1] ?? -1) - PLATE_TOP) < 1e-6)
     expect(junction, 'the boss/plate junction edge').toBeTruthy()
 

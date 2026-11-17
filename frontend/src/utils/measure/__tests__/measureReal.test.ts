@@ -18,7 +18,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setSolveLocalsForTest, solveLocally } from '@/kernel/solveLocally'
 import { measureSelection } from '@/utils/measure/measureSelection'
-import type { BodyResult, EdgeData, FaceData } from '@/types/cad'
+import type { PartResult, EdgeData, FaceData } from '@/types/cad'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -82,8 +82,8 @@ function close(value: number, expected: number): boolean {
 }
 
 describe.skipIf(!oc || !solveBytes)('measureSelection on the probe plate (real OCC + Rust solver)', () => {
-  let bodies: Record<string, BodyResult>
-  let body: BodyResult
+  let bodies: Record<string, PartResult>
+  let body: PartResult
 
   beforeAll(async () => {
     resetSketchSolver()
@@ -97,7 +97,7 @@ describe.skipIf(!oc || !solveBytes)('measureSelection on the probe plate (real O
     const failed = Object.entries(response.result)
       .filter(([, result]) => (result as { status?: string }).status === 'exception')
     if (failed.length) throw new Error(`feature exception: ${JSON.stringify(failed)}`)
-    bodies = response.bodies as Record<string, BodyResult>
+    bodies = response.bodies as Record<string, PartResult>
     const id = Object.keys(bodies).find((key) => key.startsWith('body_ex'))
     if (!id) throw new Error(`no extruded body in ${JSON.stringify(Object.keys(bodies))} result=${JSON.stringify(response.result)}`)
     body = bodies[id]

@@ -37,7 +37,7 @@ export interface NewElements {
 }
 
 /** A 3D solid body tracked through the feature stack. */
-export interface Body {
+export interface PartSolid {
   id: string
   created_by: string
   modified_by: string[]
@@ -121,7 +121,7 @@ export interface FeatureCheckpoint {
   spec: Record<string, unknown>
   result: Record<string, unknown>
   repo_snapshot: Record<string, unknown>
-  body_store_snapshot: Record<string, Body>
+  body_store_snapshot: Record<string, PartSolid>
   bodies_snapshot: Record<string, unknown>
 }
 

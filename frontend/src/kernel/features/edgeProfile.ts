@@ -15,8 +15,8 @@
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
-import type { Body } from '../types3d'
-import { bodyIdOf, parseAncestry } from '../query'
+import type { PartSolid } from '../types3d'
+import { partIdOf, parseAncestry } from '../query'
 import { makeWire } from '../occ/primitives'
 import { makeEdgeIndexCache, resolveEdgesWithIndex } from './filletChamfer'
 
@@ -74,7 +74,7 @@ export function resolveProfileEdges(
   scope: DisposeScope,
   table: HandleTable,
   edgeRefs: string[],
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): OccShape[] {
   // One edge index per body for the whole ref set: a fresh index build explores
   // every edge and computes geometry, a hash, classifiers and a bodyFrame, and
@@ -82,16 +82,16 @@ export function resolveProfileEdges(
   const indexFor = makeEdgeIndexCache(oc, scope, table)
   const edges: OccShape[] = []
   for (const refStr of edgeRefs) {
-    const named = bodyIdOf(refStr, bodyStore)
+    const named = partIdOf(refStr, partStore)
     const order =
-      named && named in bodyStore
-        ? [named, ...Object.keys(bodyStore).filter((b) => b !== named)]
-        : Object.keys(bodyStore)
+      named && named in partStore
+        ? [named, ...Object.keys(partStore).filter((b) => b !== named)]
+        : Object.keys(partStore)
     let resolved: OccShape[] = []
     for (const bid of order) {
-      const body = bodyStore[bid]
-      if (body === undefined || body.shape === null) continue
-      resolved = resolveEdgesWithIndex(oc, scope, table, body, indexFor(body), [refStr], bodyStore)
+      const part = partStore[bid]
+      if (part === undefined || part.shape === null) continue
+      resolved = resolveEdgesWithIndex(oc, scope, table, part, indexFor(part), [refStr], partStore)
       if (resolved.length > 0) break
     }
     if (resolved.length === 0) {
@@ -111,7 +111,7 @@ export function resolveEdgeProfileFace(
   scope: DisposeScope,
   table: HandleTable,
   edgeRefs: string[],
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): OccShape {
-  return edgesToProfileFace(oc, scope, resolveProfileEdges(oc, scope, table, edgeRefs, bodyStore))
+  return edgesToProfileFace(oc, scope, resolveProfileEdges(oc, scope, table, edgeRefs, partStore))
 }

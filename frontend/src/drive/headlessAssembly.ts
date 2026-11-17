@@ -12,7 +12,7 @@
 // operation still bakes the LAST solve's transforms, exactly as the editor
 // does, because that is the operation's contract.
 
-import type { AssemblyDoc, BodyResult, PartDoc, Transform3D } from '@/types/cad'
+import type { AssemblyDoc, PartResult, PartDoc, Transform3D } from '@/types/cad'
 import { History } from '@/session/History'
 import { okResult } from '@/session/result'
 import { CommandRegistry } from '@/utils/core/commandSpec'
@@ -92,7 +92,7 @@ export interface HeadlessAssemblyOptions {
 
 export interface InjectedBundle {
   bundle: PartBundle
-  bodies: Record<string, BodyResult>
+  bodies: Record<string, PartResult>
   features?: FeatureProblem[]
 }
 
@@ -275,12 +275,12 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
       })
       if (!response) throw new Error('local solver unavailable (OCC.js is not provisioned)')
       const bundle = scaleBundleToMillimetres(
-        toPartBundle(docId, docHashOf(partDoc), response.bodies as Record<string, BodyResult>),
+        toPartBundle(docId, docHashOf(partDoc), response.bodies as Record<string, PartResult>),
         partToAssemblyScale(partDoc),
       )
       const entry = remember(key, {
         bundle,
-        index: buildPartAnchorIndex(bundle, response.bodies as Record<string, BodyResult>),
+        index: buildPartAnchorIndex(bundle, response.bodies as Record<string, PartResult>),
         outcome: { features: featureProblems(partDoc, readSolveOutcomes(response.result)) },
       })
       partOutcomes[docId] = entry.outcome

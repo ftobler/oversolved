@@ -102,10 +102,10 @@ describe.skipIf(!oc || !solveBytes)('brep ancestry build-level (real OCC + Rust 
   it('cut body mesh has face_data reflecting new faces', () => {
     // After a cut, the mesh face_data has more entries than the base extrude.
     const rBase = h.run({ features: [rectSketch('sk1', 10, 10), extrudeSpec('sk1', 'ex1', { distance: 10 })] })
-    const faceCountBase = (h.body(rBase, 'body_ex1').mesh as { face_data?: unknown[] } | undefined)?.face_data?.length ?? 0
+    const faceCountBase = (h.part(rBase, 'body_ex1').mesh as { face_data?: unknown[] } | undefined)?.face_data?.length ?? 0
 
     const rCut = h.run(cutFixture())
-    const faceCountCut = (h.body(rCut, 'body_ex1').mesh as { face_data?: unknown[] } | undefined)?.face_data?.length ?? 0
+    const faceCountCut = (h.part(rCut, 'body_ex1').mesh as { face_data?: unknown[] } | undefined)?.face_data?.length ?? 0
 
     expect(faceCountCut).toBeGreaterThan(faceCountBase)
   })

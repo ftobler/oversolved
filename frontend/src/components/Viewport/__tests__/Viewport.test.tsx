@@ -3,7 +3,7 @@ import { render } from '@testing-library/react'
 import { useSketchUiStore } from '@/stores/sketchEditorStore'
 import { useViewOptionsStore } from '@/stores/viewOptionsStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import type { Feature, BodyResult } from '@/types/cad'
+import type { Feature, PartResult } from '@/types/cad'
 import Viewport from '@/components/Viewport'
 import { useEditorState } from '@/hooks/useEditorState'
 
@@ -115,23 +115,23 @@ function makeFeature(id: string, kind: string, overrides?: Partial<Feature>): Fe
   return { id, kind, ...overrides } as Feature
 }
 
-function makeNamedBody(id: string, createdBy: string): BodyResult {
+function makeNamedBody(id: string, createdBy: string): PartResult {
   return {
     id,
     created_by: createdBy,
     modified_by: [],
     mesh: { vertices: [], faces: [], face_data: [], face_queries: [] },
-  } as unknown as BodyResult
+  } as unknown as PartResult
 }
 
-function makeBody(): Record<string, BodyResult> {
+function makeBody(): Record<string, PartResult> {
   return {
     body_ex1: {
       id: 'body_ex1',
       created_by: 'ex1',
       modified_by: [],
       mesh: { vertices: [], faces: [], face_data: [], face_queries: [] },
-    } as unknown as BodyResult,
+    } as unknown as PartResult,
   }
 }
 
@@ -208,7 +208,7 @@ describe('Viewport body interactivity', () => {
           created_by: 'ex1',
           modified_by: [],
           mesh,
-        } as unknown as BodyResult,
+        } as unknown as PartResult,
       },
       visibleBodies: undefined,
     })
@@ -276,7 +276,7 @@ describe('Viewport delete_body ghost preview', () => {
     body_ex1: makeNamedBody('body_ex1', 'ex1'),
     body_ex2: makeNamedBody('body_ex2', 'ex2'),
   })
-  const visibleOf = (bodies: Record<string, BodyResult>) => new Set(Object.keys(bodies))
+  const visibleOf = (bodies: Record<string, PartResult>) => new Set(Object.keys(bodies))
 
   const ghostAttr = (container: HTMLElement, attr: string) =>
     Object.fromEntries(

@@ -14,7 +14,7 @@
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 import type { HandleTable } from '../occ/handleTable'
 import { resolveMergeTargets } from './shared/partResolution'
 import { brepDiffIsEmpty } from './shared/brepDiff'
@@ -23,20 +23,20 @@ import { DEFAULT_MEASURE_TOLERANCE, valueWithinTolerance } from '../occ/measureT
 import { nearCoaxialCylinderWarning, shapeHasCoaxialCylinder } from '../occ/nearCoaxial'
 import type { HelixAxis } from './shared/helixPath'
 import { transferBooleanNames } from './booleanLineage'
-import { registerSplitBodies, resplitBody, solidHoldingFaces } from './bodySplit'
-import { readBodyNames } from '../occ/bodyNames'
+import { registerSplitParts, resplitPart, solidHoldingFaces } from './partSplit'
+import { readPartNames } from '../occ/partNames'
 import type { SubShapeMap } from '../occ/subshapeIdentity'
 import { maxPrecision, precisionCeilingWarning, type KernelPrecision } from '../precision'
 import { swallowUnlessTrap } from '../errors'
 
-export type BodyOperation = 'add' | 'cut' | 'new'
+export type PartOperation = 'add' | 'cut' | 'new'
 
-export interface ApplyBodyOperationInput {
+export interface ApplyPartOperationInput {
   toolShape: OccShape
-  bodyStore: Record<string, Body>
-  operation: BodyOperation
+  partStore: Record<string, PartSolid>
+  operation: PartOperation
   mergeTarget: string | null
-  bodyId: string
+  partId: string
   featureId: string
   sketchId: string
   opName?: string
@@ -73,7 +73,7 @@ export interface ApplyBodyOperationInput {
   helixAxis?: HelixAxis | null
 }
 
-export interface ApplyBodyOperationResult {
+export interface ApplyPartOperationResult {
   status: string
   body_id: string
   operation?: string
@@ -150,8 +150,8 @@ function shapeUnchanged(
  * geometry the caller would otherwise get -- a new body nobody asked for -- is
  * exactly what the warning used to paper over.
  */
-function addWithNothingMessage(opName: string, hadBodies: boolean): string {
-  return hadBodies
+function addWithNothingMessage(opName: string, hadParts: boolean): string {
+  return hadParts
     ? `${opName}: add does not merge with any existing part (the profile shares no volume with one); ` +
         'move it onto the part, or use operation: new to create a part'
     : `${opName}: add has no existing part to extend; use operation: new to create one`
@@ -177,13 +177,13 @@ function addWithNothingMessage(opName: string, hadBodies: boolean): string {
  */
 function cutConsumptionIsWorthReporting(
   mergeTarget: string | null,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): boolean {
   if (mergeTarget) return true
   // A body with no shape is a placeholder, not material: it cannot be what a
   // user or a later feature builds on, so only a shaped survivor counts as
   // "the part is not empty".
-  return !Object.values(bodyStore).some((body) => body.shape !== null)
+  return !Object.values(partStore).some((part) => part.shape !== null)
 }
 
 /**
@@ -192,18 +192,18 @@ function cutConsumptionIsWorthReporting(
  * the caller catches and records as status. Guaranteed result keys: status,
  * body_id, operation.
  */
-export function applyBodyOperation(
+export function applyPartOperation(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-  input: ApplyBodyOperationInput,
-): ApplyBodyOperationResult {
+  input: ApplyPartOperationInput,
+): ApplyPartOperationResult {
   const {
     toolShape,
-    bodyStore,
+    partStore: bodyStore,
     operation,
     mergeTarget,
-    bodyId,
+    partId: bodyId,
     featureId,
     sketchId,
     opName = '',
@@ -226,7 +226,7 @@ export function applyBodyOperation(
   // paths (add/cut) rebuild them in Stage 2.
   const toolNames = { faceNames, edgeNames, faceAncestry, edgeAncestry, capAncestry, faceOwner, edgeOwner }
 
-  const result: ApplyBodyOperationResult = { status: 'ok', body_id: bodyId }
+  const result: ApplyPartOperationResult = { status: 'ok', body_id: bodyId }
   // One message per missing sketch precision, however many targets a cut
   // reaches: the same body record usually drives them all.
   const ceilingWarnings = new Set<string>()
@@ -261,13 +261,13 @@ export function applyBodyOperation(
   const skipFaceMerge = (target: OccShape): boolean =>
     helixAxis !== null && shapeHasCoaxialCylinder(oc, scope, target, helixAxis)
 
-  let needNewBody = false
+  let needNewPart = false
   let targetIds: string[] = []
   if (operation === 'add' || operation === 'cut') {
     targetIds = resolveMergeTargets(mergeTarget, bodyStore, opName)
     if (!targetIds.length && !mergeTarget && operation === 'add') {
       if (addRequiresExisting) throw new Error(addWithNothingMessage(opName, false))
-      needNewBody = true
+      needNewPart = true
     } else {
       if (!targetIds.length && !mergeTarget && operation === 'cut') {
         // No bodies exist and no target specified: silently succeed. `body_id`
@@ -284,17 +284,17 @@ export function applyBodyOperation(
 
   if (operation === 'cut') {
     let cutAnything = false
-    let cutBodyId: string | null = null
-    const cutBodyIds: string[] = []
-    const consumedBodyIds: string[] = []
+    let cutPartId: string | null = null
+    const cutPartIds: string[] = []
+    const consumedPartIds: string[] = []
     // Whether any target body actually changed shape (volume or topology). A
     // cut that reached a body but removed nothing leaves this false, so the
     // operation is reported as a no-op instead of a silent green.
-    let anyBodyChanged = false
+    let anyPartChanged = false
     for (const bid of targetIds) {
-      const existingBody = bodyStore[bid]
-      if (existingBody.shape === null) continue
-      const oldShape = table.get<OccShape>(existingBody.shape)
+      const existingPart = bodyStore[bid]
+      if (existingPart.shape === null) continue
+      const oldShape = table.get<OccShape>(existingPart.shape)
       // Skip targets the tool does not actually intersect. A bare Common probe
       // with history off; the verdict is a solid count, not a volume, so an
       // open-shelled imported body is not read as disjoint (L5). A failed probe
@@ -314,9 +314,9 @@ export function applyBodyOperation(
 
       // Widen the merge by what the solver reported for this body and this
       // tool, up to the ceiling; a clamped merge is named on the result.
-      const mergePrecision = maxPrecision(existingBody.precision, toolPrecision)
+      const mergePrecision = maxPrecision(existingPart.precision, toolPrecision)
       const unifyOpts = {
-        unifyFaces: !existingBody.imported && !skipFaceMerge(oldShape),
+        unifyFaces: !existingPart.imported && !skipFaceMerge(oldShape),
         precision: mergePrecision,
       }
       requireToolVolume()
@@ -330,28 +330,28 @@ export function applyBodyOperation(
       if (countSolids(oc, scope, newShape) === 0) {
         // The owner tag is settled with the body, so a later `releaseOwner`
         // cannot over-decrement (see releaseFor).
-        if (existingBody.shape !== null) {
-          table.releaseFor(existingBody.shape, existingBody.modified_by.at(-1) ?? existingBody.created_by)
+        if (existingPart.shape !== null) {
+          table.releaseFor(existingPart.shape, existingPart.modified_by.at(-1) ?? existingPart.created_by)
         }
         delete bodyStore[bid]
         cutAnything = true
-        consumedBodyIds.push(bid)
-        anyBodyChanged = true
+        consumedPartIds.push(bid)
+        anyPartChanged = true
         continue
       }
 
-      const bodyChanged = oldMetrics === null
+      const partChanged = oldMetrics === null
         ? true
         : !shapeUnchanged(oc, scope, oldMetrics, newShape)
-      if (bodyChanged) anyBodyChanged = true
+      if (partChanged) anyPartChanged = true
 
-      const targetNames = readBodyNames(oc, scope, oldShape, existingBody)
+      const targetNames = readPartNames(oc, scope, oldShape, existingPart)
       const names = transferBooleanNames(oc, scope, {
-        bodyShape: newShape,
+        partShape: newShape,
         faceOrigin,
         targetFaceNames: targetNames.faceNames,
-        targetFaceAncestry: existingBody.face_ancestry ?? {},
-        targetCapAncestry: existingBody.face_cap_ancestry ?? {},
+        targetFaceAncestry: existingPart.face_ancestry ?? {},
+        targetCapAncestry: existingPart.face_cap_ancestry ?? {},
         targetFaceOwner: targetNames.faceOwner,
         targetEdgeOwner: targetNames.edgeOwner,
         toolFaceNames: faceNames,
@@ -367,17 +367,17 @@ export function applyBodyOperation(
         // and every further body scopes its copy to itself.
         toolUuidScope: cutAnything ? bid : null,
       })
-      existingBody.modified_by.push(featureId)
-      existingBody.brep_diff = diff
+      existingPart.modified_by.push(featureId)
+      existingPart.brep_diff = diff
 
       cutAnything = true
-      if (cutBodyId === null) cutBodyId = bid
+      if (cutPartId === null) cutPartId = bid
 
       // A cut is the classic disconnector, and the sibling bodies inherit the
       // names just transferred onto `newShape`, narrowed to the faces each one
       // actually owns.
-      cutBodyIds.push(...resplitBody(
-        oc, scope, table, bodyStore, existingBody, newShape, featureId, names, null, mergePrecision,
+      cutPartIds.push(...resplitPart(
+        oc, scope, table, bodyStore, existingPart, newShape, featureId, names, null, mergePrecision,
       ))
       noteCeiling(mergePrecision)
     }
@@ -396,27 +396,27 @@ export function applyBodyOperation(
     // A merge-target cut that consumes the target never mints `bodyId`, so
     // body_id keeps that would-be id; hole and array instead keep the consumed
     // body's real id. body_ids is empty either way.
-    result.body_id = cutBodyId ?? bodyId
-    result.body_ids = cutBodyIds
+    result.body_id = cutPartId ?? bodyId
+    result.body_ids = cutPartIds
     result.operation = 'cut'
     // `cutBodyId` is only ever set for a body that still holds a solid (the
     // consumed branch continues before it), so this reads the body the feature
     // actually changed and never a deleted one. A cut whose only effect was a
     // consumption therefore leaves this undefined and the check silent.
-    const cutBody = cutBodyId !== null ? bodyStore[cutBodyId] : undefined
-    if (cutBody && brepDiffIsEmpty(cutBody.brep_diff)) {
+    const cutPart = cutPartId !== null ? bodyStore[cutPartId] : undefined
+    if (cutPart && brepDiffIsEmpty(cutPart.brep_diff)) {
       result.solver_warning = `${opName}: operation produced no geometry change`
     }
-    if (cutAnything && !anyBodyChanged && !String(result.solver_warning ?? '').includes('no geometry change')) {
+    if (cutAnything && !anyPartChanged && !String(result.solver_warning ?? '').includes('no geometry change')) {
       const noChange = `${opName}: operation produced no geometry change`
       result.solver_warning = result.solver_warning === undefined
         ? noChange
         : `${result.solver_warning}; ${noChange}`
     }
-    if (consumedBodyIds.length > 0 && cutConsumptionIsWorthReporting(mergeTarget, bodyStore)) {
+    if (consumedPartIds.length > 0 && cutConsumptionIsWorthReporting(mergeTarget, bodyStore)) {
       // The bodies are gone, so body_ids must not name them. This is the same
       // deletion event hole and array report, with the same wording.
-      const deleted = consumedBodyIds
+      const deleted = consumedPartIds
         .map((id) => `${opName}: the cut removed all of part '${id}'; the part was deleted`)
         .join('; ')
       result.solver_warning = result.solver_warning === undefined
@@ -429,40 +429,40 @@ export function applyBodyOperation(
 
   if (operation === 'new') {
     requireToolVolume()
-    const bodyIds = registerSplitBodies(oc, scope, table, bodyStore, toolShape, {
+    const partIds = registerSplitParts(oc, scope, table, bodyStore, toolShape, {
       id: bodyId, createdBy: featureId, sketchId, profileQueries, precision: toolPrecision, ...toolNames,
     })
-    result.body_id = bodyIds[0]
-    result.body_ids = bodyIds
+    result.body_id = partIds[0]
+    result.body_ids = partIds
     result.operation = 'new'
     return result
   }
 
   // operation === 'add'
   let fused = false
-  let fusedBodyId: string | null = null
+  let fusedPartId: string | null = null
   let fusedIds: string[] = []
   // Read on the fused shell, where the two faces the boolean kept still exist.
   let nearCoaxial: string | null = null
   // Whether the fused body's shape actually changed (volume or topology). A
   // contained add leaves it unchanged, so the operation is a no-op.
-  let fusedBodyChanged = false
-  if (!needNewBody) {
+  let fusedPartChanged = false
+  if (!needNewPart) {
     for (const bid of targetIds) {
-      const existingBody = bodyStore[bid]
-      if (existingBody.shape === null) continue
-      const oldShape = table.get<OccShape>(existingBody.shape)
+      const existingPart = bodyStore[bid]
+      if (existingPart.shape === null) continue
+      const oldShape = table.get<OccShape>(existingPart.shape)
       let newShape: OccShape
       let diff
       let faceOrigin
       // The merge widens by what the solver reported for this body and this
       // tool, up to the ceiling; a clamped merge is named on the result.
-      const mergePrecision = maxPrecision(existingBody.precision, toolPrecision)
+      const mergePrecision = maxPrecision(existingPart.precision, toolPrecision)
       try {
         requireToolVolume()
         // Imported bodies skip the face merge (hang guard); see booleanWithDiff.
         const res = booleanWithDiff(oc, scope, oldShape, toolShape, 'fuse', {
-          unifyFaces: !existingBody.imported && !skipFaceMerge(oldShape), precision: mergePrecision,
+          unifyFaces: !existingPart.imported && !skipFaceMerge(oldShape), precision: mergePrecision,
         })
         newShape = res.shape
         diff = res.diff
@@ -502,17 +502,17 @@ export function applyBodyOperation(
             faces: countFaces(oc, scope, oldShape),
             edges: countEdges(oc, scope, oldShape),
           }
-      fusedBodyChanged = oldMetrics === null
+      fusedPartChanged = oldMetrics === null
         ? true
         : !shapeUnchanged(oc, scope, oldMetrics, newShape)
       nearCoaxial = nearCoaxialCylinderWarning(oc, scope, newShape)
-      const targetNames = readBodyNames(oc, scope, oldShape, existingBody)
+      const targetNames = readPartNames(oc, scope, oldShape, existingPart)
       const names = transferBooleanNames(oc, scope, {
-        bodyShape: newShape,
+        partShape: newShape,
         faceOrigin,
         targetFaceNames: targetNames.faceNames,
-        targetFaceAncestry: existingBody.face_ancestry ?? {},
-        targetCapAncestry: existingBody.face_cap_ancestry ?? {},
+        targetFaceAncestry: existingPart.face_ancestry ?? {},
+        targetCapAncestry: existingPart.face_cap_ancestry ?? {},
         targetFaceOwner: targetNames.faceOwner,
         targetEdgeOwner: targetNames.edgeOwner,
         toolFaceNames: faceNames,
@@ -529,24 +529,24 @@ export function applyBodyOperation(
       // explicit merge target may leave an island. resplitBody hands the target
       // material the existing id through preferredFirst and mints the island as
       // a sibling.
-      fusedIds = resplitBody(
-        oc, scope, table, bodyStore, existingBody, newShape, featureId, names, preferredFirst, mergePrecision,
+      fusedIds = resplitPart(
+        oc, scope, table, bodyStore, existingPart, newShape, featureId, names, preferredFirst, mergePrecision,
       )
-      existingBody.modified_by.push(featureId)
-      existingBody.brep_diff = diff
+      existingPart.modified_by.push(featureId)
+      existingPart.brep_diff = diff
       fused = true
-      fusedBodyId = bid
+      fusedPartId = bid
       noteCeiling(mergePrecision)
       break
     }
   }
 
   if (fused) {
-    result.body_id = fusedBodyId as string
+    result.body_id = fusedPartId as string
     result.body_ids = fusedIds
     result.operation = 'add'
-    const fusedBody = fusedBodyId !== null ? bodyStore[fusedBodyId] : undefined
-    if (fusedBody && (!fusedBodyChanged || brepDiffIsEmpty(fusedBody.brep_diff))) {
+    const fusedPart = fusedPartId !== null ? bodyStore[fusedPartId] : undefined
+    if (fusedPart && (!fusedPartChanged || brepDiffIsEmpty(fusedPart.brep_diff))) {
       result.solver_warning = `${opName}: operation produced no geometry change`
     }
     if (nearCoaxial !== null) {
@@ -563,11 +563,11 @@ export function applyBodyOperation(
   if (addRequiresExisting) throw new Error(addWithNothingMessage(opName, true))
   // No target body: the tool becomes its own body (one per solid).
   requireToolVolume()
-  const bodyIds = registerSplitBodies(oc, scope, table, bodyStore, toolShape, {
+  const partIds = registerSplitParts(oc, scope, table, bodyStore, toolShape, {
     id: bodyId, createdBy: featureId, sketchId, profileQueries, precision: toolPrecision, ...toolNames,
   })
-  result.body_id = bodyIds[0]
-  result.body_ids = bodyIds
+  result.body_id = partIds[0]
+  result.body_ids = partIds
   result.operation = 'add'
   return result
 }

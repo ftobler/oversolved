@@ -24,7 +24,7 @@ import { countSolids, countSubShapes, shapeIsValid } from '../../occ/booleans'
 import { faceSurfaceType, type SurfaceType } from '../../occ/primitives'
 import { solidToEdges } from '../../occ/tessellation'
 import { deriveEdgeUuid } from '../../constructionName'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
 import type { PlaneLike } from '../shared/planes'
 import type { LoopEdge } from '../../profileLoops'
@@ -35,8 +35,8 @@ type Dict = Record<string, unknown>
 type Resources = { scope: DisposeScope; table: HandleTable }
 type Build = {
   status?: string
-  store: Record<string, Body>
-  body?: Body
+  store: Record<string, PartSolid>
+  body?: PartSolid
   shape?: OccShape
   volume?: number
   faces?: number
@@ -102,7 +102,7 @@ function sweepProfile(
   const scope = resources?.scope ?? new DisposeScope()
   const table = resources?.table ?? new HandleTable()
   const own = resources === undefined
-  const store: Record<string, Body> = {}
+  const store: Record<string, PartSolid> = {}
   try {
     try {
       const result = solveSweep(oc!, scope, table, {
@@ -253,7 +253,7 @@ describe.skipIf(!oc)('sweep of a profile with holes (real OCC)', () => {
       const rimUuids = caps.map((cap) => deriveEdgeUuid(bore[0], cap))
       const edges = solidToEdges(oc!, resources.table, body.shape!, {
         createdBy: body.created_by,
-        bodyId: body.id,
+        partId: body.id,
         edgeAncestry: body.edge_ancestry,
         edgeUuids: body.edge_uuids,
       })
@@ -271,7 +271,7 @@ describe.skipIf(!oc)('sweep of a profile with holes (real OCC)', () => {
       expect(second.error).toBeUndefined()
       expect(uuidsWithToken(second.body!.face_ancestry, '@prof/inner')).toEqual(bore)
 
-      const store2: Record<string, Body> = { body_sw1: second.body! }
+      const store2: Record<string, PartSolid> = { body_sw1: second.body! }
       const scope2 = new DisposeScope()
       try {
         const fillet = solveFillet(oc!, scope2, resources.table, {

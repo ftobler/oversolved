@@ -21,12 +21,12 @@ import { setSketchSolver, setSketchTopology, resetSketchSolver } from '../../fea
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { DisposeScope, withTransientScope } from '../disposeScope'
-import { canonicalFaces, canonicalEdges } from '../bodyNames'
+import { canonicalFaces, canonicalEdges } from '../partNames'
 import { faceSurfaceName, MoveFaceRefusal } from '../moveFaceSurfaces'
 import { applyMoveFace, classifyFaceEdges } from '../moveFace'
 import { makeFaceIndexCache, resolveFacesByQuery } from '../../features/shared/faceResolution'
 import type { OccModule, OccShape, OccSubShape } from '../occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -79,7 +79,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('move face across freeform
   if (!oc || !solveBytes || !topologyBytes) return
   const occ = oc
   const h = new SharedHarness(occ)
-  let body: Body
+  let body: PartSolid
   let live: DisposeScope
   let shape: OccShape
   let faces: OccShape[]

@@ -269,7 +269,7 @@ describe('selectReply', () => {
     const items = Array.from({ length: count }, (_, index) => ({
       query: `?edge_${index}`,
       kind: 'edge' as const,
-      body: 'body_ex1',
+      part: 'body_ex1',
       index,
       geometry: { kind: 'line', length: 10 },
     }))

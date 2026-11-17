@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest'
 import { selectByPredicate, validateSelector, SelectorError } from '@/kernel/select'
 import type { Selector } from '@/kernel/select'
 import { makeAncestryQuery } from '@/kernel/query'
-import type { BodyResult } from '@/types/cad'
+import type { PartResult } from '@/types/cad'
 
 type V3 = [number, number, number]
 
@@ -17,7 +17,7 @@ const CORNERS: V3[] = [
   [0, 0, 4], [10, 0, 4], [10, 6, 4], [0, 6, 4],
 ]
 
-function vertexBody(id: string, points: V3[], queries: string[]): BodyResult {
+function vertexBody(id: string, points: V3[], queries: string[]): PartResult {
   return {
     id,
     created_by: 'ex1',
@@ -30,11 +30,11 @@ function vertexBody(id: string, points: V3[], queries: string[]): BodyResult {
   }
 }
 
-function box(): Record<string, BodyResult> {
+function box(): Record<string, PartResult> {
   return { body_p: vertexBody('body_p', CORNERS, CORNERS.map((_, i) => `vq${i}`)) }
 }
 
-function queriesOf(selector: Selector, bodies: Record<string, BodyResult>): string[] {
+function queriesOf(selector: Selector, bodies: Record<string, PartResult>): string[] {
   return selectByPredicate(selector, bodies).queries
 }
 
@@ -51,7 +51,7 @@ describe('selectByPredicate: vertex kind', () => {
   it('reports the vertex position as the geometry summary', () => {
     const items = selectByPredicate({ kind: 'vertex' }, box()).items
     expect(items.map(item => item.geometry)).toEqual(CORNERS.map(point => ({ kind: 'vertex', point })))
-    expect(items[5].body).toBe('body_p')
+    expect(items[5].part).toBe('body_p')
     expect(items[5].index).toBe(5)
   })
 

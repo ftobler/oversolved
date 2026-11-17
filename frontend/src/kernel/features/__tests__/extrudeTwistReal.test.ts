@@ -11,7 +11,7 @@
 import { describe, it, expect } from 'vitest'
 import type { BuildResponse } from '../../builder'
 import { DisposeScope } from '../../occ/disposeScope'
-import { canonicalFaces } from '../../occ/bodyNames'
+import { canonicalFaces } from '../../occ/partNames'
 import { shapeBbox } from '../../occ/faceBounds'
 import { volumeForMeasure } from '../../occ/volume'
 import type { OccShape } from '../../occ/occTypes'
@@ -62,10 +62,10 @@ describe.skipIf(!oc || !solveBytes)('extrude twist (real OCC + Rust solver)', ()
       return {
         volume: volumeForMeasure(oc!, scope, shape),
         faces: canonicalFaces(oc!, scope, shape).length,
-        edges: ((h.body(result, bodyId).edges as unknown[]) ?? []).length,
+        edges: ((h.part(result, bodyId).edges as unknown[]) ?? []).length,
         bbox: shapeBbox(oc!, scope, shape),
         valid: scope.track(new oc!.BRepCheck_Analyzer(shape, true, false, false)).IsValid_2(),
-        mesh: (h.body(result, bodyId).mesh as Dict) ?? {},
+        mesh: (h.part(result, bodyId).mesh as Dict) ?? {},
       }
     } finally {
       scope.dispose()
@@ -176,7 +176,7 @@ describe.skipIf(!oc || !solveBytes)('extrude twist (real OCC + Rust solver)', ()
     })
     expect(h.res(result, 'ex1').status).toBe('ok')
     expect(h.res(result, 'ex2').status).toBe('ok')
-    const mesh = h.body(result, 'body_ex2').mesh as { vertices: number[][] }
+    const mesh = h.part(result, 'body_ex2').mesh as { vertices: number[][] }
     const xs = mesh.vertices.map((v) => v[0])
     const zs = mesh.vertices.map((v) => v[2])
     // A boss at the unrotated frame would sit at x in [0,2]; the twist puts it
@@ -197,11 +197,11 @@ describe.skipIf(!oc || !solveBytes)('extrude twist (real OCC + Rust solver)', ()
     })
     const quarter = h.run(spec('90'))
     expect(h.res(quarter, 'ex1').status).toBe('ok')
-    const quarterMesh = h.body(quarter, 'body_ex1').mesh as { vertices: number[][] }
+    const quarterMesh = h.part(quarter, 'body_ex1').mesh as { vertices: number[][] }
     expect(Math.min(...quarterMesh.vertices.map((v) => v[0]))).toBeCloseTo(-10, 3)
     const straight = h.run(spec('0'))
     expect(h.res(straight, 'ex1').status).toBe('ok')
-    const straightMesh = h.body(straight, 'body_ex1').mesh as { vertices: number[][] }
+    const straightMesh = h.part(straight, 'body_ex1').mesh as { vertices: number[][] }
     expect(Math.min(...straightMesh.vertices.map((v) => v[0]))).toBeCloseTo(0, 3)
   })
 

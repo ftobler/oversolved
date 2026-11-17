@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, act } from '@testing-library/react'
 import { useSketchUiStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import type { Feature, BodyResult } from '@/types/cad'
+import type { Feature, PartResult } from '@/types/cad'
 import Viewport, { type ViewportHandle } from '@/components/Viewport'
 import * as THREE from 'three'
 import { useEditorState } from '@/hooks/useEditorState'
@@ -53,7 +53,7 @@ vi.mock('../idDispatch/useIdBufferPointerDispatch', async (importOriginal) => {
 vi.mock('../../../picking/IdPickingDriver', () => ({ default: () => null, __esModule: true }))
 vi.mock('../IdDebugOverlay', () => ({ default: () => null, __esModule: true }))
 
-function makeBodyWithVertices(): Record<string, BodyResult> {
+function makeBodyWithVertices(): Record<string, PartResult> {
   // Provide non-degenerate Float32Array vertices so autoZoomToFitNow can compute a bounding box.
   return {
     body1: {
@@ -66,7 +66,7 @@ function makeBodyWithVertices(): Record<string, BodyResult> {
         face_data: [],
         face_queries: [],
       },
-    } as unknown as BodyResult,
+    } as unknown as PartResult,
   }
 }
 

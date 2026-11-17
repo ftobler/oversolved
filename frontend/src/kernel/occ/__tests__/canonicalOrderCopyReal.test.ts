@@ -31,7 +31,7 @@ import { base64ToBytes } from '../stepIo'
 import { setSketchSolver, resetSketchSolver } from '../../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import type { BuildResponse } from '../../builder'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccOrientedShape, OccShape, OccSubShape } from '../occTypes'
 import corpus from '../__fixtures__/pickIdentityCorpus.json'
 import importFixture from '../__fixtures__/importStep.json'
@@ -175,7 +175,7 @@ const CASES: Array<{ name: string; body: string; spec: (h: SharedHarness) => Spe
       rectSketch('sk1', 10, 10),
       { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 5, direction: 'normal', operation: 'new' },
     ] }
-    const edges = h.body(h.run(base), 'body_ex1').edge_queries as string[]
+    const edges = h.part(h.run(base), 'body_ex1').edge_queries as string[]
     return { features: [...base.features, { id: 'fillet1', kind: 'fillet', edges: [edges[0], edges[3]], radius: 1 }] }
   } },
   { name: 'boolean cut (through pocket)', body: 'body_ex1', spec: () => ({ features: [
@@ -191,7 +191,7 @@ const CASES: Array<{ name: string; body: string; spec: (h: SharedHarness) => Spe
   ] }) },
 ]
 
-function finalBody(r: BuildResponse, bodyId: string): Body {
+function finalBody(r: BuildResponse, bodyId: string): PartSolid {
   const state = r._build_state!
   const body = state.checkpoints[state.feature_order[state.feature_order.length - 1]].body_store_snapshot[bodyId]
   expect(body?.shape, `${bodyId} has a shape`).not.toBeNull()

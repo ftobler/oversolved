@@ -21,11 +21,11 @@
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
-import { emptyBrepDiff, type Body } from '../types3d'
+import { emptyBrepDiff, type PartSolid } from '../types3d'
 import type { Repository } from '../query'
 import { resolvePart } from './shared/partResolution'
-import { resplitBody } from './bodySplit'
-import { readBodyNames, type ShapeNames } from '../occ/bodyNames'
+import { resplitPart } from './partSplit'
+import { readPartNames, type ShapeNames } from '../occ/partNames'
 import { SubShapeMap } from '../occ/subshapeIdentity'
 import { partOfQuery, makeFaceIndexCache, queryFaceUuid, resolveFacesByQuery } from './shared/faceResolution'
 import {
@@ -98,7 +98,7 @@ export function solveMoveFace(
   table: HandleTable,
   feature: Dict,
   _globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): MoveFaceResult {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.move_face as Dict) ?? {}
@@ -107,7 +107,7 @@ export function solveMoveFace(
   if (!Number.isFinite(distance)) throw new Error('move_face: distance must be a finite number')
   const faces = (sub.faces as string[]) ?? []
   if (faces.length === 0) throw new Error('move_face: requires at least one face')
-  if (Object.keys(bodyStore).length === 0) throw new Error('move_face: no parts in body_store')
+  if (Object.keys(partStore).length === 0) throw new Error('move_face: no parts in body_store')
 
   const indexFor = makeFaceIndexCache(oc, scope, table)
 
@@ -115,7 +115,7 @@ export function solveMoveFace(
   const groups = new Map<string, string[]>()
   const unresolved: string[] = []
   for (const q of faces) {
-    const bid = partOfQuery(oc, scope, table, bodyStore, indexFor, q)
+    const bid = partOfQuery(oc, scope, table, partStore, indexFor, q)
     if (bid === null) {
       unresolved.push(q)
       continue
@@ -132,19 +132,19 @@ export function solveMoveFace(
   let handle: FeatureHandle | null = null
 
   for (const [bid, qlist] of groups) {
-    let body: Body
+    let part: PartSolid
     try {
-      body = resolvePart(bid, bodyStore)
+      part = resolvePart(bid, partStore)
     } catch {
       unresolved.push(...qlist)
       continue
     }
-    if (body.shape === null) {
+    if (part.shape === null) {
       unresolved.push(...qlist)
       continue
     }
-    const oldShape = table.get<OccShape>(body.shape)
-    const baseNames: ShapeNames = readBodyNames(oc, scope, oldShape, body)
+    const oldShape = table.get<OccShape>(part.shape)
+    const baseNames: ShapeNames = readPartNames(oc, scope, oldShape, part)
     const baseMap = uuidMap(baseNames.faceNames)
     // A pick that names no live UUID (a document stored before split prism side
     // faces got their own UUIDs) cannot be re-found on the intermediate shape.
@@ -172,7 +172,7 @@ export function solveMoveFace(
     let currentNames = baseNames
     let currentMap = baseMap
     let diff = emptyBrepDiff()
-    let bodyApplied = 0
+    let partApplied = 0
     // A refusal on the intermediate shape is retried once with every pick
     // selected against the original body and applied in one boolean. Sequential
     // moves can leave a neighbour surface that no longer crosses the next slab
@@ -190,22 +190,22 @@ export function solveMoveFace(
         // full resolver on the ORIGINAL body can recover a face whose UUID
         // died. Later picks must be found on the CURRENT shape, never a stale
         // original one.
-        if (face === null && bodyApplied === 0) {
-          face = resolveFacesByQuery(oc, scope, table, body, indexFor(body), [q], bodyStore).get(q) ?? null
+        if (face === null && partApplied === 0) {
+          face = resolveFacesByQuery(oc, scope, table, part, indexFor(part), [q], partStore).get(q) ?? null
         }
         if (face === null) {
           // A later pick the intermediate shape no longer carries: when it
           // still resolves on the ORIGINAL body, an earlier move consumed it
           // (the geometry is the fix, not the pick); otherwise it is stale.
-          const existedBefore = bodyApplied > 0 &&
-            (resolveFacesByQuery(oc, scope, table, body, indexFor(body), [q], bodyStore).get(q) ?? null) !== null
+          const existedBefore = partApplied > 0 &&
+            (resolveFacesByQuery(oc, scope, table, part, indexFor(part), [q], partStore).get(q) ?? null) !== null
           if (existedBefore) groupFailed.push(q)
           else unresolved.push(q)
           continue
         }
         if (distance === 0) {
           // The identity: report the pick as satisfied, change nothing.
-          bodyApplied++
+          partApplied++
           continue
         }
         try {
@@ -228,7 +228,7 @@ export function solveMoveFace(
           currentShape = res.shape
           currentMap = uuidMap(currentNames.faceNames)
           diff = res.diff
-          bodyApplied++
+          partApplied++
         } catch (e) {
           // An unsound boolean on the intermediate shape is the same signal as
           // a refusal: the sequential order cannot be trusted, so retry the
@@ -248,9 +248,9 @@ export function solveMoveFace(
       // The identity still reports stale picks, but the dead UUID is only
       // resolved (never applied), so the ancestry migration runs here.
       for (const q of qlist) {
-        const face = resolveFacesByQuery(oc, scope, table, body, indexFor(body), [q], bodyStore).get(q) ?? null
+        const face = resolveFacesByQuery(oc, scope, table, part, indexFor(part), [q], partStore).get(q) ?? null
         if (face === null) unresolved.push(q)
-        else bodyApplied++
+        else partApplied++
       }
     }
 
@@ -260,7 +260,7 @@ export function solveMoveFace(
       const setFailed: string[] = []
       const setRefusals: string[] = []
       for (const [pickIndex, q] of qlist.entries()) {
-        const face = resolveFacesByQuery(oc, scope, table, body, indexFor(body), [q], bodyStore).get(q) ?? null
+        const face = resolveFacesByQuery(oc, scope, table, part, indexFor(part), [q], partStore).get(q) ?? null
         if (face === null) {
           unresolved.push(q)
           continue
@@ -298,29 +298,29 @@ export function solveMoveFace(
           handle = linearHandle('distance', anchor, normal, distance, 1, MOVE_FACE_HANDLE_MIN)
         }
         const names = nameMovedFaces(oc, scope, featureId, baseNames, set, setPicks, qlist.length)
-        const ids = resplitBody(oc, scope, table, bodyStore, body, set.shape, featureId, names)
+        const ids = resplitPart(oc, scope, table, partStore, part, set.shape, featureId, names)
         if (ids.length === 0) throw new Error('move_face: the move removes the whole part')
-        body.brep_diff = set.diff
-        body.modified_by.push(featureId)
+        part.brep_diff = set.diff
+        part.modified_by.push(featureId)
         applied.push(...ids)
         committed = true
       }
     }
 
     if (!committed) {
-      if (bodyApplied === 0) {
+      if (partApplied === 0) {
         failed.push(...groupFailed)
         refusals.push(...groupRefusals)
         continue
       }
       if (distance !== 0) {
-        const ids = resplitBody(oc, scope, table, bodyStore, body, currentShape, featureId, currentNames)
+        const ids = resplitPart(oc, scope, table, partStore, part, currentShape, featureId, currentNames)
         if (ids.length === 0) throw new Error('move_face: the move removes the whole part')
-        body.brep_diff = diff
-        body.modified_by.push(featureId)
+        part.brep_diff = diff
+        part.modified_by.push(featureId)
         applied.push(...ids)
       } else {
-        applied.push(body.id)
+        applied.push(part.id)
       }
     }
     failed.push(...groupFailed)
@@ -395,7 +395,7 @@ function nameMovedFaces(
     }
   }
   return transferBooleanNames(oc, scope, {
-    bodyShape: res.shape,
+    partShape: res.shape,
     faceOrigin: res.faceOrigin,
     targetFaceNames: old.faceNames,
     targetFaceAncestry: old.faceAncestry,

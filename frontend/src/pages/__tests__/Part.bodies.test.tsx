@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { PartDocumentPanel } from '@/components/layout/PartDocumentPanel'
 import { getBodiesToRender } from '@/components/Viewport/bodyUtils'
-import type { PartFeature, BodyResult, Mesh3D } from '@/types/cad'
+import type { PartFeature, PartResult, Mesh3D } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
@@ -14,7 +14,7 @@ const TEST_CUBE_MESH: Mesh3D = {
   faces: [[0,1,2],[0,2,3],[4,5,6],[4,6,7],[0,4,5],[0,5,1],[1,5,6],[1,6,2],[2,6,7],[2,7,3],[3,7,4],[3,4,0]],
 }
 
-const TEST_BODIES: Record<string, BodyResult> = {
+const TEST_BODIES: Record<string, PartResult> = {
   body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [], mesh: TEST_CUBE_MESH },
 }
 
@@ -40,7 +40,7 @@ function makeCallbacks(): PartEditorCallbacks {
   }
 }
 
-function renderSidebar(features: PartFeature[], solveResults?: Record<string, unknown>, bodies?: Record<string, BodyResult | undefined>) {
+function renderSidebar(features: PartFeature[], solveResults?: Record<string, unknown>, bodies?: Record<string, PartResult | undefined>) {
   usePartEditorStore.setState({
     features,
     visibleFeatures: new Set(features.map(f => f.id)),
@@ -49,7 +49,7 @@ function renderSidebar(features: PartFeature[], solveResults?: Record<string, un
     partLabels: {},
     solveResults: solveResults ?? {},
     bodies: (bodies ?? {}) as Record<string,
-    BodyResult>,
+    PartResult>,
     isRebuilding: false,
     featureTimings: {},
   })
@@ -104,7 +104,7 @@ describe('extrude feature name error state', () => {
   })
 
   it('shows error name when status ok but no mesh (mesh_error)', () => {
-    const bodiesWithError: Record<string, BodyResult> = {
+    const bodiesWithError: Record<string, PartResult> = {
       body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [], mesh_error: 'no shape' },
     }
     renderSidebar(

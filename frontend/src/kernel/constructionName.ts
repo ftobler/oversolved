@@ -136,8 +136,8 @@ export type SplitSide = 'above' | 'below'
  * slot every body's cap on the same side would claim one UUID, which the
  * resolver refuses as a collision by construction.
  */
-export function splitPlaneFacePath(createdBy: string, bodySlot: string, side: SplitSide): string {
-  return `${createdBy}|splitcap|${bodySlot}|${side}`
+export function splitPlaneFacePath(createdBy: string, partSlot: string, side: SplitSide): string {
+  return `${createdBy}|splitcap|${partSlot}|${side}`
 }
 
 /**

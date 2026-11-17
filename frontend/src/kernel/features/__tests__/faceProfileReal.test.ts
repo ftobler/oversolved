@@ -15,10 +15,10 @@ import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
 import { makeBox, makeBoxAt } from '../../occ/primitives'
 import { sortedFacesOf } from '../../occ/faceLoops'
-import { canonicalFaces, canonicalIndex } from '../../occ/bodyNames'
+import { canonicalFaces, canonicalIndex } from '../../occ/partNames'
 import { Repository } from '../../query'
 import { resolveFaceProfile, resolveFaceIndexViaUuid } from '../faceProfile'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape, OccSubShape } from '../../occ/occTypes'
 import faceLoopsFixture from '../../occ/__fixtures__/faceLoops.json'
 
@@ -79,7 +79,7 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
     const table = new HandleTable()
     try {
       const box = makeBox(occ, scope, flx.box[0], flx.box[1], flx.box[2])
-      const bodyStore: Record<string, Body> = {
+      const bodyStore: Record<string, PartSolid> = {
         body_feat: {
           id: 'body_feat',
           created_by: 'feat',
@@ -123,7 +123,7 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
       const SEP = 100
       const first = makeBox(occ, scope, 10, 10, 10)
       const second = makeBoxAt(occ, scope, [SEP, 0, 0], 10, 10, 10)
-      const body = (id: string, shape: ReturnType<typeof makeBox>): Body => ({
+      const body = (id: string, shape: ReturnType<typeof makeBox>): PartSolid => ({
         id,
         created_by: 'feat',
         modified_by: [],
@@ -132,7 +132,7 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
         brep_diff: null,
         profile_queries: [],
       })
-      const bodyStore: Record<string, Body> = {
+      const bodyStore: Record<string, PartSolid> = {
         body_feat: body('body_feat', first),
         body_feat_1: body('body_feat_1', second),
       }
@@ -181,7 +181,7 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
         )
       })
 
-      const bodyStore: Record<string, Body> = {
+      const bodyStore: Record<string, PartSolid> = {
         body_feat: {
           id: 'body_feat',
           created_by: 'feat',
@@ -212,7 +212,7 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
       const faces = sortedFacesOf(occ, scope, box)
       // A uuid with no registered element, on sorted face 1.
       const faceUuids = faceUuidsFor(scope, box, faces, (i) => (i === 1 ? 'u_ghost' : null))
-      const bodyStore: Record<string, Body> = {
+      const bodyStore: Record<string, PartSolid> = {
         body_feat: {
           id: 'body_feat',
           created_by: 'feat',
@@ -252,7 +252,7 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
           uuids[i],
         )
       })
-      const bodyStore: Record<string, Body> = {
+      const bodyStore: Record<string, PartSolid> = {
         body_feat: {
           id: 'body_feat',
           created_by: 'feat',
@@ -299,7 +299,7 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
     try {
       const SEP = 100
       const box = makeBoxAt(occ, scope, [SEP, 0, 0], flx.box[0], flx.box[1], flx.box[2])
-      const bodyStore: Record<string, Body> = {
+      const bodyStore: Record<string, PartSolid> = {
         body_other: {
           id: 'body_other',
           created_by: 'feat',
@@ -328,7 +328,7 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
     try {
       const box = makeBox(occ, scope, flx.box[0], flx.box[1], flx.box[2])
       const faces = sortedFacesOf(occ, scope, box)
-      const bodyStore: Record<string, Body> = {
+      const bodyStore: Record<string, PartSolid> = {
         body_feat: {
           id: 'body_feat',
           created_by: 'feat',

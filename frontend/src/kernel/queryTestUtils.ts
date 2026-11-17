@@ -3,10 +3,10 @@
 
 export type Payload = Record<string, unknown>
 
-export function makeFacePayload(bodyId: string, createdBy: string, idx: number): Payload {
+export function makeFacePayload(partId: string, createdBy: string, idx: number): Payload {
   return {
     type: "flatface",
-    body_id: bodyId,
+    body_id: partId,
     created_by: createdBy,
     face_index: idx,
     centroid: [idx, 0.0, 0.0],

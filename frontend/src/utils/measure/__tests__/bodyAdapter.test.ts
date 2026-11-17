@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { BodyResult, EdgeData, FaceData } from '@/types/cad'
+import type { PartResult, EdgeData, FaceData } from '@/types/cad'
 import { partPrimitive } from '@/utils/measure/adapters/part'
 import { isKernelAsk, measureOne, measurePair, type MeasureResult } from '@/utils/measure/rules'
 import { formatReadouts } from '@/utils/measure/format'
@@ -12,12 +12,12 @@ function readoutLines(result: MeasureResult): string[] {
   return formatReadouts(result)
 }
 
-const bodiesOf = (body: BodyResult): Record<string, BodyResult> => ({ [body.id]: body })
+const bodiesOf = (body: PartResult): Record<string, PartResult> => ({ [body.id]: body })
 
 const line = (start: [number, number, number], end: [number, number, number]): EdgeData =>
   ({ kind: 'line', start, end })
 
-function bodyOf(fields: Partial<BodyResult>): BodyResult {
+function bodyOf(fields: Partial<PartResult>): PartResult {
   return { id: 'body_1', created_by: 'ex', modified_by: [], ...fields }
 }
 
@@ -176,7 +176,7 @@ describe('bodyPrimitive: edges and vertices', () => {
 // owns N bodies after a split, and the index is per body, so the token must name
 // the sibling the user picked.
 describe('bodyPrimitive: topo-fallback ids across split siblings', () => {
-  const siblings = (): Record<string, BodyResult> => ({
+  const siblings = (): Record<string, PartResult> => ({
     body_ex: bodyOf({ id: 'body_ex', edges: [line([0, 0, 0], [10, 0, 0])] }),
     body_ex_1: bodyOf({ id: 'body_ex_1', edges: [line([0, 5, 0], [3, 5, 0])] }),
   })

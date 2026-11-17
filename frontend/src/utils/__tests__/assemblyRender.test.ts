@@ -1,7 +1,7 @@
 // Stage 6f: what the assembly viewport draws, asserted without a viewport.
 
 import { describe, it, expect } from 'vitest'
-import type { AssemblyDoc, BodyResult, PartInstance, Transform3D } from '@/types/cad'
+import type { AssemblyDoc, PartResult, PartInstance, Transform3D } from '@/types/cad'
 import { ASSEMBLY_BUILTIN_DEFAULTS } from '@/utils/assemblyBuiltins'
 import {
   capBandsFor,
@@ -20,7 +20,7 @@ function instance(handle: string, extra: Partial<PartInstance> = {}): PartInstan
   return { handle, doc_id: `doc-${handle}`, doc_rev: 1, transform: { ...IDENTITY_TRANSFORM }, ...extra }
 }
 
-function body(handle: string, index: number): BodyResult {
+function body(handle: string, index: number): PartResult {
   return {
     id: `${handle}:body_${index}`,
     created_by: handle,
@@ -29,8 +29,8 @@ function body(handle: string, index: number): BodyResult {
   }
 }
 
-function bodyDict(...handles: string[]): Record<string, BodyResult> {
-  const out: Record<string, BodyResult> = {}
+function bodyDict(...handles: string[]): Record<string, PartResult> {
+  const out: Record<string, PartResult> = {}
   for (const h of handles) out[`${h}:body_0`] = body(h, 0)
   return out
 }

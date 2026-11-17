@@ -14,11 +14,11 @@
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 import type { Repository } from '../query'
 import { resolvePart } from './shared/partResolution'
-import { resplitBody } from './bodySplit'
-import { readBodyNames, type UuidArray } from '../occ/bodyNames'
+import { resplitPart } from './partSplit'
+import { readPartNames, type UuidArray } from '../occ/partNames'
 import { SubShapeDedup } from '../occ/primitives'
 import { applyDeleteFacesWithLineage } from '../occ/defeature'
 import { partOfQuery, makeFaceIndexCache, resolveFacesByQuery } from './shared/faceResolution'
@@ -58,13 +58,13 @@ export function solveDeleteFace(
   table: HandleTable,
   feature: Dict,
   _globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): DeleteFaceResult {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.delete_face as Dict) ?? {}
   const faces = (sub.faces as string[]) ?? []
   if (faces.length === 0) throw new Error('delete_face: requires at least one face')
-  if (Object.keys(bodyStore).length === 0) throw new Error('delete_face: no parts in body_store')
+  if (Object.keys(partStore).length === 0) throw new Error('delete_face: no parts in body_store')
 
   const indexFor = makeFaceIndexCache(oc, scope, table)
 
@@ -74,7 +74,7 @@ export function solveDeleteFace(
   const groups = new Map<string, string[]>()
   const unresolved: string[] = []
   for (const q of faces) {
-    const target = partOfQuery(oc, scope, table, bodyStore, indexFor, q)
+    const target = partOfQuery(oc, scope, table, partStore, indexFor, q)
     if (target === null) {
       unresolved.push(q)
       continue
@@ -86,20 +86,20 @@ export function solveDeleteFace(
   const failed: string[] = []
   const modifierFailures: string[] = []
   for (const [bid, qlist] of groups) {
-    let body: Body
+    let part: PartSolid
     try {
-      body = resolvePart(bid, bodyStore)
+      part = resolvePart(bid, partStore)
     } catch {
       unresolved.push(...qlist)
       continue
     }
-    if (body.shape === null) {
+    if (part.shape === null) {
       unresolved.push(...qlist)
       continue
     }
-    const oldShape = table.get<OccShape>(body.shape)
+    const oldShape = table.get<OccShape>(part.shape)
 
-    const byQuery = resolveFacesByQuery(oc, scope, table, body, indexFor(body), qlist, bodyStore)
+    const byQuery = resolveFacesByQuery(oc, scope, table, part, indexFor(part), qlist, partStore)
     const topoFaces: OccShape[] = []
     const dedup = new SubShapeDedup()
     // face -> EVERY query that named it, so a face named twice (a duplicate pick
@@ -119,8 +119,8 @@ export function solveDeleteFace(
     }
     if (topoFaces.length === 0) continue
 
-    const oldNames = named(body.face_uuids) || named(body.edge_uuids)
-      ? { createdBy: featureId, ...readBodyNames(oc, scope, oldShape, body) }
+    const oldNames = named(part.face_uuids) || named(part.edge_uuids)
+      ? { createdBy: featureId, ...readPartNames(oc, scope, oldShape, part) }
       : null
 
     const res = applyDeleteFacesWithLineage(oc, scope, oldShape, topoFaces, oldNames)
@@ -146,7 +146,7 @@ export function solveDeleteFace(
     }
 
     markFailed()
-    const ids = resplitBody(oc, scope, table, bodyStore, body, scope.track(res.shape), featureId, res.names ?? {})
+    const ids = resplitPart(oc, scope, table, partStore, part, scope.track(res.shape), featureId, res.names ?? {})
     if (ids.length === 0) {
       // Defeaturing cannot consume its whole body, so this is defensive: the
       // resplit deleted the body and the applied count must not grow from a body
@@ -155,8 +155,8 @@ export function solveDeleteFace(
       continue
     }
     applied.push(...ids)
-    body.brep_diff = res.diff
-    body.modified_by.push(featureId)
+    part.brep_diff = res.diff
+    part.modified_by.push(featureId)
   }
 
   if (applied.length === 0 && modifierFailures.length > 0) {

@@ -41,13 +41,13 @@ const SATISFIED_TOL = 1e-6
 
 interface Pose { t: Vec3; q: Quat }
 
-function readPose(p: Float64Array, body: number): Pose {
-  const o = body * BPB
+function readPose(p: Float64Array, part: number): Pose {
+  const o = part * BPB
   return { t: [p[o], p[o + 1], p[o + 2]], q: [p[o + 3], p[o + 4], p[o + 5], p[o + 6]] }
 }
 
-function writePose(p: Float64Array, body: number, pose: Pose): void {
-  const o = body * BPB
+function writePose(p: Float64Array, part: number, pose: Pose): void {
+  const o = part * BPB
   p[o] = pose.t[0]; p[o + 1] = pose.t[1]; p[o + 2] = pose.t[2]
   p[o + 3] = pose.q[0]; p[o + 4] = pose.q[1]; p[o + 5] = pose.q[2]; p[o + 6] = pose.q[3]
 }
@@ -218,10 +218,10 @@ export function seedAssembly(
   mates: readonly MateWireRecord[],
 ): Float64Array {
   const out = Float64Array.from(params)
-  const bodyCount = out.length / BPB
-  const placed = new Array<boolean>(bodyCount).fill(false)
+  const partCount = out.length / BPB
+  const placed = new Array<boolean>(partCount).fill(false)
   const grounded = (i: number) => ((fixedMask[Math.floor(i / 8)] ?? 0) >> (i % 8) & 1) === 1
-  for (let i = 0; i < bodyCount; i++) placed[i] = grounded(i)
+  for (let i = 0; i < partCount; i++) placed[i] = grounded(i)
 
   // Each round places the one unplaced body reachable through the most
   // constraining placing mate (fixed before rotating before spherical), ties by
@@ -233,7 +233,7 @@ export function seedAssembly(
       if (m.weight !== 1 || m.bodyA === m.bodyB || !PLACING_KINDS.has(m.kindCode)) continue
       // A negative index is the wire's dropped-body sentinel (an inline anchor on
       // a handle that names no loaded part); the solver drops that mate too.
-      if (m.bodyA < 0 || m.bodyB < 0 || m.bodyA >= bodyCount || m.bodyB >= bodyCount) continue
+      if (m.bodyA < 0 || m.bodyB < 0 || m.bodyA >= partCount || m.bodyB >= partCount) continue
       if (placed[m.bodyA] === placed[m.bodyB]) continue
       if (best === null || PLACE_RANK[m.kindCode] < PLACE_RANK[best.kindCode]) best = m
     }

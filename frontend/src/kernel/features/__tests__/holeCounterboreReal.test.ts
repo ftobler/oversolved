@@ -23,7 +23,7 @@ import { setSketchSolver, resetSketchSolver } from '../sketch'
 import { SharedHarness } from '../../occ/sharedHarness'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { holeFacePath, mintFaceUuid } from '../../constructionName'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 
 const oc = await loadOcc()
@@ -33,7 +33,7 @@ const PLANE = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal:
 const BOX = 20 * 20 * 10
 
 /** A 20 x 20 x 10 box with its top face on the Front plane (z = 0). */
-function boxTarget(occ: OccModule, scope: DisposeScope, table: HandleTable): Record<string, Body> {
+function boxTarget(occ: OccModule, scope: DisposeScope, table: HandleTable): Record<string, PartSolid> {
   const box = makeBox(occ, scope, 20, 20, 10)
   return {
     body_t: {
@@ -61,7 +61,7 @@ function runHole(
   hole: Record<string, unknown>,
   repoSetup: (repo: Repository) => void,
   entities: Array<{ id: string; kind: string }>,
-): { volume: number; result: Record<string, unknown>; body: Body } {
+): { volume: number; result: Record<string, unknown>; body: PartSolid } {
   const scope = new DisposeScope()
   const table = new HandleTable()
   try {
@@ -352,7 +352,7 @@ describe.skipIf(!oc || !solveBytes)('hole widened-mouth naming survives an upstr
 
   // The query of the face whose construction uuid is the hole role's.
   function faceQueryForRole(r: ReturnType<SharedHarness['run']>, bodyId: string, role: string): string {
-    const mesh = h.body(r, bodyId).mesh as { face_queries?: string[]; face_uuids?: (string | null)[] } | undefined
+    const mesh = h.part(r, bodyId).mesh as { face_queries?: string[]; face_uuids?: (string | null)[] } | undefined
     const wanted = mintFaceUuid(holeFacePath('h1', 'skh/p1', role as never))
     const at = (mesh?.face_uuids ?? []).indexOf(wanted)
     if (at < 0) throw new Error(`no face named ${role}`)

@@ -6,7 +6,7 @@
 import type { DisposeScope } from '../../occ/disposeScope'
 import type { OccModule } from '../../occ/occTypes'
 import type { HandleTable } from '../../occ/handleTable'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { Repository } from '../../query'
 import { solveLinearPattern } from '../linearPattern'
 import { solveCircularPattern } from '../circularPattern'
@@ -35,7 +35,7 @@ export function solveArray(
   table: HandleTable,
   feature: Dict,
   repo: Repository,
-  store: Record<string, Body>,
+  store: Record<string, PartSolid>,
 ) {
   const { def } = splitPatternDef({ subject: 'body', mode: 'linear', ...linearize((feature.array as Dict) ?? {}) })
   return solveLinearPattern(oc, scope, table, { ...feature, linear_pattern: def }, repo, store)
@@ -47,7 +47,7 @@ export function solveCircularArray(
   table: HandleTable,
   feature: Dict,
   repo: Repository,
-  store: Record<string, Body>,
+  store: Record<string, PartSolid>,
 ) {
   const { def } = splitPatternDef({ subject: 'body', mode: 'circular', ...(feature.circular_array as Dict) })
   return solveCircularPattern(oc, scope, table, { ...feature, circular_pattern: def }, repo, store)

@@ -7,10 +7,10 @@
 // cue to solve the written document again.
 
 import { describe, it, expect } from 'vitest'
-import type { BodyResult, PartDoc } from '@/types/cad'
+import type { PartResult, PartDoc } from '@/types/cad'
 import { applySolveToDoc } from '../solveWriteBack'
 
-function body(id: string): BodyResult {
+function body(id: string): PartResult {
   return { id, created_by: `feature_${id}`, modified_by: [] }
 }
 

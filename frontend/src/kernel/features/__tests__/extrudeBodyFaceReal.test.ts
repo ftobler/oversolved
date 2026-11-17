@@ -33,7 +33,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): b
     // A blind face-profile extrude anchors its distance handle on the swept face
     // (usingFaces handle path), not only the sketch-loop path.
     expect(h.res(result, 'ex2').handle).toBeDefined()
-    const mesh2 = h.body(result, 'body_ex2').mesh as { vertices: number[][] } | undefined
+    const mesh2 = h.part(result, 'body_ex2').mesh as { vertices: number[][] } | undefined
     expect(mesh2).toBeDefined()
     if (mesh2) {
       const xs = mesh2.vertices.map((v) => v[0])
@@ -52,7 +52,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): b
     const first = h.run(fullRectExtrudeSpec(10, 10, 5))
     expect(h.res(first, 'ex1').status).toBe('ok')
     const faceQ = (q: string) => makeAncestryQuery([q, '@ex1', '@body_ex1'], 'flatface')
-    const mesh = h.body(first, 'body_ex1').mesh as
+    const mesh = h.part(first, 'body_ex1').mesh as
       | { face_data?: Array<{ normal: number[]; surface_type?: string }> }
       | undefined
     const fd = mesh?.face_data ?? []
@@ -96,7 +96,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): b
     expect(h.res(r1, 'ex1').status).toBe('ok')
 
     // Find a flat side face (centroid z ~ d/2) and build a 3-tag query.
-    const mesh1 = h.body(r1, 'body_ex1').mesh as {
+    const mesh1 = h.part(r1, 'body_ex1').mesh as {
       face_data?: Array<{ centroid: number[]; surface_type?: string }>
     } | undefined
     let bestQ: string | undefined
@@ -112,7 +112,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): b
     expect(bestQ).toBeDefined()
 
     // Step 2: full build with extrude + fillet + extrude from face.
-    const eq = (h.body(r1, 'body_ex1').edge_queries as string[]) ?? []
+    const eq = (h.part(r1, 'body_ex1').edge_queries as string[]) ?? []
     const spec2 = {
       features: [
         rectSketchSk('sk1', 10, 10, '@builtin_plane_front'),
@@ -124,7 +124,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): b
     const r2 = h.run(spec2)
     expect(h.res(r2, 'ex2').status).toBe('ok')
     expect(r2.bodies).toHaveProperty('body_ex2')
-    const m2 = h.body(r2, 'body_ex2').mesh as Record<string, unknown> | undefined
+    const m2 = h.part(r2, 'body_ex2').mesh as Record<string, unknown> | undefined
     expect(m2).toBeDefined()
     if (m2) assertMeshValid(m2)
   })

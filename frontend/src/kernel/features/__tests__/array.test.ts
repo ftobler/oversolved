@@ -10,7 +10,7 @@ import type { DisposeScope } from '../../occ/disposeScope'
 import type { Repository } from '../../query'
 import { Repository as RealRepository } from '../../query'
 import type { HandleTable } from '../../occ/handleTable'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import { buildLinearCopies, solveLinearPattern } from '../linearPattern'
 import { buildCircularCopies, solveCircularPattern } from '../circularPattern'
 import { barePart } from '../shared/partResolution'
@@ -22,7 +22,7 @@ function buildLinear(
   scope: DisposeScope,
   sub: Dict,
   repo: Repository,
-  bodyStore: Record<string, Body> = {},
+  bodyStore: Record<string, PartSolid> = {},
 ) {
   return buildLinearCopies(oc, scope, sub, repo, bodyStore).copies.map((copy) => copy.trsf)
 }
@@ -32,7 +32,7 @@ function buildCircular(
   scope: DisposeScope,
   sub: Dict,
   repo: Repository,
-  bodyStore: Record<string, Body> = {},
+  bodyStore: Record<string, PartSolid> = {},
 ) {
   return buildCircularCopies(oc, scope, sub, repo, bodyStore).copies.map((copy) => copy.trsf)
 }
@@ -43,7 +43,7 @@ function solveLinear(
   table: HandleTable,
   feature: Dict,
   repo: Repository,
-  store: Record<string, Body>,
+  store: Record<string, PartSolid>,
 ) {
   return solveLinearPattern(oc, scope, table, {
     ...feature,
@@ -57,7 +57,7 @@ function solveCircular(
   table: HandleTable,
   feature: Dict,
   repo: Repository,
-  store: Record<string, Body>,
+  store: Record<string, PartSolid>,
 ) {
   return solveCircularPattern(oc, scope, table, {
     ...feature,
@@ -253,7 +253,7 @@ describe('buildLinearCopies (one direction)', () => {
       ['@ex1'],
       { type: 'flatface', body_id: 'body_ex1', face_index: 0, created_by: 'ex1' },
     )
-    const bodyStore = { body_ex1: { id: 'body_ex1', normal: [0, 0, 2] } } as unknown as Record<string, Body>
+    const bodyStore = { body_ex1: { id: 'body_ex1', normal: [0, 0, 2] } } as unknown as Record<string, PartSolid>
     const feature = { count: 2, pitch: 5, direction_query: '?4;@ex1:solid' }
     expect(() => buildLinear(makeFake(), scope, feature, realRepo)).toThrow()
     const t = buildLinear(makeFake(), scope, feature, realRepo, bodyStore)
@@ -570,7 +570,7 @@ describe('buildCircularCopies', () => {
 // Both leaves resolve their source body before touching OCC, so the two
 // diagnoses they can report are reachable with no kernel at all.
 describe('pattern source body diagnosis', () => {
-  const store = (): Record<string, Body> => ({
+  const store = (): Record<string, PartSolid> => ({
     body_ex1: barePart('body_ex1', 'ex1'),
     body_ex1_1: barePart('body_ex1_1', 'ex1'),
   })

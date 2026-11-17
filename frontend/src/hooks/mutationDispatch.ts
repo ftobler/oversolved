@@ -90,15 +90,15 @@ import {
   applyAddPattern,
   applyAddPatternSource,
   applyRemovePatternSource,
-  applyAddDeleteBody,
-  applyAddDeleteBodyRef,
-  applyRemoveDeleteBodyRef,
+  applyAddDeletePart,
+  applyAddDeletePartRef,
+  applyRemoveDeletePartRef,
   applyAddHole,
   applySetHoleField,
   applyAddTransform,
   applySetTransformField,
-  applyAddTransformBody,
-  applyRemoveTransformBody,
+  applyAddTransformPart,
+  applyRemoveTransformPart,
   applyRenamePart,
   applySetPartColor,
   applySetPartTransparency,
@@ -115,13 +115,13 @@ import {
   applyRemoveMirrorSource,
   applyAddSplit,
   applySetSplitField,
-  applyAddSplitBody,
-  applyRemoveSplitBody,
+  applyAddSplitPart,
+  applyRemoveSplitPart,
   applyAddVariable,
   applySetVariableField,
   applyAddHelix,
   applySetHelixField,
-  applySetBodyVisibility,
+  applySetPartVisibility,
   applySetFeatureSuppression,
   applySetLengthUnit,
 } from '@/utils/yamlMutations'
@@ -453,13 +453,13 @@ export const mutationHandlers: MutationHandlers = {
   remove_pattern_source: (next, m) =>
     applyRemovePatternSource(next, m.featureId, m.index),
   set_body_visibility: (next, m) =>
-    applySetBodyVisibility(next, m.bodyId, m.visible),
+    applySetPartVisibility(next, m.bodyId, m.visible),
   add_delete_body: (next, m) =>
-    applyAddDeleteBody(next, m.featureId, m.bodies, m.label),
+    applyAddDeletePart(next, m.featureId, m.bodies, m.label),
   add_delete_body_ref: (next, m) =>
-    applyAddDeleteBodyRef(next, m.featureId, m.bodyQuery),
+    applyAddDeletePartRef(next, m.featureId, m.bodyQuery),
   remove_delete_body_ref: (next, m) =>
-    applyRemoveDeleteBodyRef(next, m.featureId, m.index),
+    applyRemoveDeletePartRef(next, m.featureId, m.index),
   add_hole: (next, m) =>
     applyAddHole(next, m.featureId, m.label, {
       sketch: m.sketch,
@@ -486,9 +486,9 @@ export const mutationHandlers: MutationHandlers = {
   set_transform_field: (next, m) =>
     applySetTransformField(next, m.featureId, m.field, m.value),
   add_transform_body: (next, m) =>
-    applyAddTransformBody(next, m.featureId, m.bodyQuery),
+    applyAddTransformPart(next, m.featureId, m.bodyQuery),
   remove_transform_body: (next, m) =>
-    applyRemoveTransformBody(next, m.featureId, m.index),
+    applyRemoveTransformPart(next, m.featureId, m.index),
   rename_part: (next, m) =>
     applyRenamePart(next, m.bodyId, m.name),
   set_part_color: (next, m) =>
@@ -518,9 +518,9 @@ export const mutationHandlers: MutationHandlers = {
   set_split_field: (next, m) =>
     applySetSplitField(next, m.featureId, m.field, m.value),
   add_split_body: (next, m) =>
-    applyAddSplitBody(next, m.featureId, m.bodyQuery),
+    applyAddSplitPart(next, m.featureId, m.bodyQuery),
   remove_split_body: (next, m) =>
-    applyRemoveSplitBody(next, m.featureId, m.index),
+    applyRemoveSplitPart(next, m.featureId, m.index),
   add_variable: (next, m) =>
     applyAddVariable(next, m.featureId, m.label),
   set_variable_field: (next, m) =>

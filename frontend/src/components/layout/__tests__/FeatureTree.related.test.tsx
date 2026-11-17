@@ -3,7 +3,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
-import type { BodyResult, PartFeature } from '@/types/cad'
+import type { PartResult, PartFeature } from '@/types/cad'
 import { makeAncestryQuery } from '@/kernel/query'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useEditorState } from '@/hooks/useEditorState'
@@ -17,7 +17,7 @@ const sketch = (id: string): PartFeature => ({ id, kind: 'sketch' })
 const extrude = (id: string, profiles: string[]): PartFeature =>
   ({ id, kind: 'extrude', extrude: { sketch: profiles, distance: 10 } })
 
-function body(id: string, createdBy: string, faceQueries: string[] = []): BodyResult {
+function body(id: string, createdBy: string, faceQueries: string[] = []): PartResult {
   return {
     id,
     created_by: createdBy,
@@ -34,7 +34,7 @@ function body(id: string, createdBy: string, faceQueries: string[] = []): BodyRe
   }
 }
 
-function seed(features: PartFeature[], bodies: Record<string, BodyResult> = {}) {
+function seed(features: PartFeature[], bodies: Record<string, PartResult> = {}) {
   usePartEditorStore.setState({
     features,
     bodies,

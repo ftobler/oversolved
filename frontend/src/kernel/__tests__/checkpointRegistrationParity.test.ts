@@ -9,10 +9,10 @@
 // byte-identical geometry and any fingerprint drift is the builder's doing.
 
 import { describe, it, expect } from 'vitest'
-import { build, bodiesNeedingCheckpointRegistration, bodyVersion, type BuildDeps, type FeatureResult } from '../builder'
+import { build, partsNeedingCheckpointRegistration, partVersion, type BuildDeps, type FeatureResult } from '../builder'
 import { Repository } from '../query'
 import { repoSemanticFingerprint, checkpointFingerprints } from '../repoFingerprintTestUtil'
-import type { Body, BuildState } from '../types3d'
+import type { PartSolid, BuildState } from '../types3d'
 
 // ─── fake geometry ───
 
@@ -38,7 +38,7 @@ function verticesOf(shape: number): number[][] {
 
 // The fake geometry's canonical order is its display order, so the body's
 // arrays pass straight through, the way the real tessellator emits them.
-function fakeMeta(body: Body, isFallback = false): Record<string, unknown> {
+function fakeMeta(body: PartSolid, isFallback = false): Record<string, unknown> {
   const shape = Number(body.shape)
   return {
     mesh: {
@@ -58,7 +58,7 @@ function fakeMeta(body: Body, isFallback = false): Record<string, unknown> {
 }
 
 // Construction UUIDs index the body's shape, so they are rewritten with it.
-function refreshNames(body: Body): void {
+function refreshNames(body: PartSolid): void {
   const shape = Number(body.shape)
   body.face_uuids = faceData(shape).map((_, i) => `u_${body.id}_f${i}`)
   body.edge_uuids = edgesOf(shape).map((_, i) => `u_${body.id}_e${i}`)
@@ -72,12 +72,12 @@ function refreshNames(body: Body): void {
 // not about `bodyVersion`, which is never compared across builds.)
 const SHAPE_SEED: Record<string, number> = { f1: 100, f2: 200, f6: 600, heavy: 900 }
 
-function shapeOf(n: number): Body['shape'] {
-  return n as unknown as Body['shape']
+function shapeOf(n: number): PartSolid['shape'] {
+  return n as unknown as PartSolid['shape']
 }
 
-function makeBody(fid: string, seed: number): Body {
-  const body: Body = {
+function makeBody(fid: string, seed: number): PartSolid {
+  const body: PartSolid = {
     id: 'body_' + fid,
     created_by: fid,
     modified_by: [],
@@ -93,7 +93,7 @@ function makeBody(fid: string, seed: number): Body {
 const solve = (
   feature: Record<string, unknown>,
   _repo: Repository,
-  bodyStore: Record<string, Body>,
+  bodyStore: Record<string, PartSolid>,
 ): FeatureResult => {
   const fid = String(feature.id ?? '')
   if (feature.kind === 'make') {
@@ -137,7 +137,7 @@ class Harness {
   }
 
   private meta = (
-    bodyStore: Record<string, Body>,
+    bodyStore: Record<string, PartSolid>,
     isMetadataPath: boolean,
   ): Record<string, Record<string, unknown>> =>
     Object.fromEntries(
@@ -158,7 +158,7 @@ class Harness {
    *  registrar for a body named in `registrarThrows`. The builder caches one blob per
    *  body version, so the count must be per registrar call, never per blob: a once-per-
    *  blob latch would hide an untouched body re-registered from its cached blob. */
-  private probe(body: Body, blob: Record<string, unknown>): Record<string, unknown> {
+  private probe(body: PartSolid, blob: Record<string, unknown>): Record<string, unknown> {
     const mesh = blob.mesh as Record<string, unknown>
     Object.defineProperty(blob, 'mesh', {
       enumerable: true,
@@ -184,7 +184,7 @@ class Harness {
       trySolveFeature: solve,
       postRegister: () => {},
       initGlobalRepo: () => new Repository(),
-      tessellateBodies: (store) => this.meta(store, false),
+      tessellateParts: (store) => this.meta(store, false),
       extractBrepMetadata: (store) => {
         for (const bid of Object.keys(store)) {
           if (this.options.metaThrows?.includes(bid)) throw new Error('synthetic metadata throw')
@@ -327,37 +327,37 @@ describe('checkpoint registration parity', () => {
 })
 
 describe('bodiesNeedingCheckpointRegistration', () => {
-  const body = (id: string, shape: number, modifiedBy: string[] = []): Body => ({
+  const body = (id: string, shape: number, modifiedBy: string[] = []): PartSolid => ({
     id, created_by: 'f1', modified_by: modifiedBy, shape: shapeOf(shape),
     sketch_id: '', brep_diff: null, profile_queries: [],
   })
 
   it('skips a body whose registered version still matches', () => {
     const b = body('body_a', 1)
-    const registered = new Map([['body_a', bodyVersion(b)]])
-    expect(bodiesNeedingCheckpointRegistration({ body_a: b }, registered)).toEqual(new Set())
+    const registered = new Map([['body_a', partVersion(b)]])
+    expect(partsNeedingCheckpointRegistration({ body_a: b }, registered)).toEqual(new Set())
   })
 
   it('registers a body whose shape handle moved', () => {
-    const registered = new Map([['body_a', bodyVersion(body('body_a', 1))]])
-    expect(bodiesNeedingCheckpointRegistration({ body_a: body('body_a', 2) }, registered))
+    const registered = new Map([['body_a', partVersion(body('body_a', 1))]])
+    expect(partsNeedingCheckpointRegistration({ body_a: body('body_a', 2) }, registered))
       .toEqual(new Set(['body_a']))
   })
 
   it('registers a body whose modified_by grew', () => {
-    const registered = new Map([['body_a', bodyVersion(body('body_a', 1))]])
-    expect(bodiesNeedingCheckpointRegistration({ body_a: body('body_a', 1, ['f2']) }, registered))
+    const registered = new Map([['body_a', partVersion(body('body_a', 1))]])
+    expect(partsNeedingCheckpointRegistration({ body_a: body('body_a', 1, ['f2']) }, registered))
       .toEqual(new Set(['body_a']))
   })
 
   it('registers a body absent from the map', () => {
-    expect(bodiesNeedingCheckpointRegistration({ body_a: body('body_a', 1) }, new Map()))
+    expect(partsNeedingCheckpointRegistration({ body_a: body('body_a', 1) }, new Map()))
       .toEqual(new Set(['body_a']))
   })
 
   it('ignores a registered body that is absent from the checkpoint', () => {
     const registered = new Map([['body_gone', 'body_gone|f1|1|0']])
-    expect(bodiesNeedingCheckpointRegistration({}, registered)).toEqual(new Set())
+    expect(partsNeedingCheckpointRegistration({}, registered)).toEqual(new Set())
   })
 })
 

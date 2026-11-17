@@ -16,7 +16,7 @@
 import type { DisposeScope } from '../../occ/disposeScope'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { HandleTable } from '../../occ/handleTable'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { Repository } from '../../query'
 import { exploreEdges } from '../../occ/edgeModifier'
 import { edgeToGeom, faceCentroid, faceNormal, faceSurfaceFrame, type Vec3 } from '../../occ/primitives'
@@ -50,7 +50,7 @@ export interface PickTargetContext {
   scope: DisposeScope
   table: HandleTable
   globalRepo: Repository
-  partStore: Record<string, Body>
+  partStore: Record<string, PartSolid>
   featuresById: Record<string, Dict>
 }
 
@@ -160,7 +160,7 @@ function faceTarget(
   ref: string,
   data: Dict,
   sense: AxisSenseContext,
-  indexFor: (part: Body) => FaceIndex,
+  indexFor: (part: PartSolid) => FaceIndex,
 ): PickTarget | null {
   const partId = typeof data.body_id === 'string' ? data.body_id : ''
   const part = ctx.partStore[partId]
@@ -285,7 +285,7 @@ export function resolvePickTarget(
   ctx: PickTargetContext,
   ref: string,
   sense: AxisSenseContext = axisSenseContext(ctx),
-  indexFor: (part: Body) => FaceIndex = faceIndexCache(ctx),
+  indexFor: (part: PartSolid) => FaceIndex = faceIndexCache(ctx),
 ): PickTarget | null {
   if (!ref) return null
   const sketch = sketchTarget(ctx, ref)
@@ -330,9 +330,9 @@ export function resolvePickTarget(
 
 /** One face index per body for the whole resolution pass. A pattern of many
  *  face picks walks each body's faces once, not once per pick. */
-export function faceIndexCache(ctx: PickTargetContext): (part: Body) => FaceIndex {
+export function faceIndexCache(ctx: PickTargetContext): (part: PartSolid) => FaceIndex {
   const cache = new Map<string, FaceIndex>()
-  return (part: Body): FaceIndex => {
+  return (part: PartSolid): FaceIndex => {
     let index = cache.get(part.id)
     if (index === undefined) {
       index = buildFaceIndex(ctx.oc, ctx.scope, ctx.table, part)

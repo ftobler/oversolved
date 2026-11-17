@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import { selectByPredicate, validateSelector, SelectorError } from '@/kernel/select'
 import type { Selector } from '@/kernel/select'
-import type { BodyResult, EdgeData, FaceData } from '@/types/cad'
+import type { PartResult, EdgeData, FaceData } from '@/types/cad'
 
 type V3 = [number, number, number]
 
@@ -27,7 +27,7 @@ function bodyResult(
   faceQueries: string[],
   faceEdgeQueries: string[][],
   faceSeamQueries?: string[][],
-): BodyResult {
+): PartResult {
   return {
     id,
     created_by: 'ex1',
@@ -55,7 +55,7 @@ const WALL_B = { centroid: [-34 / 3, 0, 5], normal: [0, 1, 0], surface_type: 'fl
 // One cylinder plus one ordinary straight edge shared by two flat walls. The
 // cylinder's seam and the ordinary wall line both run parallel to Z, so the
 // direction test alone would return both; the seam list tells them apart.
-function cylinder({ seamFlag = true }: { seamFlag?: boolean } = {}): Record<string, BodyResult> {
+function cylinder({ seamFlag = true }: { seamFlag?: boolean } = {}): Record<string, PartResult> {
   return {
     body_ex1: bodyResult(
       'body_ex1',
@@ -85,7 +85,7 @@ function cylinder({ seamFlag = true }: { seamFlag?: boolean } = {}): Record<stri
 }
 
 // A cylinder with no ordinary line: the seam is the only Z-parallel edge.
-function bareCylinder(): Record<string, BodyResult> {
+function bareCylinder(): Record<string, PartResult> {
   const bodies = cylinder()
   const body = bodies.body_ex1
   body.edges!.splice(3)
@@ -99,7 +99,7 @@ function bareCylinder(): Record<string, BodyResult> {
 
 // Two rectangular faces that meet at the shared Z line, with their own free
 // boundary edges. A free edge is listed by one face only, exactly like a seam.
-function openShell(): Record<string, BodyResult> {
+function openShell(): Record<string, PartResult> {
   return {
     body_bend: bodyResult(
       'body_bend',
@@ -124,7 +124,7 @@ function openShell(): Record<string, BodyResult> {
   }
 }
 
-function queriesOf(selector: Selector, bodies: Record<string, BodyResult>): string[] {
+function queriesOf(selector: Selector, bodies: Record<string, PartResult>): string[] {
   return selectByPredicate(selector, bodies).queries
 }
 

@@ -12,9 +12,9 @@ import {
   getActiveSketchPlane,
 } from '@/components/Viewport/viewportPlaneSizing'
 import { isActive } from '@/components/Viewport'
-import type { BodyResult, Feature, PlaneDef } from '@/types/cad'
+import type { PartResult, Feature, PlaneDef } from '@/types/cad'
 
-function body(id: string, vertices: Float32Array | [number, number, number][] | undefined): BodyResult {
+function body(id: string, vertices: Float32Array | [number, number, number][] | undefined): PartResult {
   return {
     id,
     created_by: 'test',

@@ -306,7 +306,7 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
     ]
     const base = h.run({ features: bossFeatures })
     expect(h.res(base, 'exBoss').status).toBe('ok')
-    const mesh = h.body(base, 'body_ex1').mesh as
+    const mesh = h.part(base, 'body_ex1').mesh as
       | { face_data?: Array<{ centroid: number[]; normal: number[]; surface_type?: string }> }
       | undefined
     const bottomIdx = mesh?.face_data?.findIndex(

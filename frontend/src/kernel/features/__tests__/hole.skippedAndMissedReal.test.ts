@@ -13,7 +13,7 @@ import { HandleTable } from '../../occ/handleTable'
 import { Repository } from '../../query'
 import { makeBox } from '../../occ/primitives'
 import { solveHole } from '../hole'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = await loadOcc()
 
@@ -26,7 +26,7 @@ describe.skipIf(!oc)('hole skipped and missed sites (real OCC)', () => {
     const repo = new Repository()
     try {
       const shape = makeBox(oc!, scope, 20, 20, 20)
-      const body: Body = {
+      const body: PartSolid = {
         id: 'body_t', created_by: 'ex', modified_by: [], shape: table.register(shape, 'ex'),
         sketch_id: 'sk', brep_diff: null, profile_queries: [],
       }

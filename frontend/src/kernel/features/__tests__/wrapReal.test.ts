@@ -77,7 +77,7 @@ describe.skipIf(!oc || !solveBytes)('wrap (real OCC + Rust solver)', { timeout: 
   /** The face queries of one surface kind on a body, nearest-radius first when
    *  several (a tube's bore and skin). */
   function faceQueries(result: BuildResponse, bodyId: string, kind: string): string[] {
-    const mesh = h.body(result, bodyId).mesh as { face_data: { surface_type?: string; centroid: number[] }[]; face_queries: string[] }
+    const mesh = h.part(result, bodyId).mesh as { face_data: { surface_type?: string; centroid: number[] }[]; face_queries: string[] }
     return mesh.face_data
       .map((f, i) => ({ f, q: mesh.face_queries[i] }))
       .filter(({ f }) => f.surface_type === kind)
@@ -125,7 +125,7 @@ describe.skipIf(!oc || !solveBytes)('wrap (real OCC + Rust solver)', { timeout: 
     expect(g.valid).toBe(true)
     expect(Math.abs(g.volume - (cylVolume() + sector(8, 12, R, 1))) / sector(8, 12, R, 1)).toBeLessThan(1e-6)
     // Each footprint edge keeps its own name on its wall.
-    const mesh = h.body(result, 'body_ex1').mesh as { face_queries: string[] }
+    const mesh = h.part(result, 'body_ex1').mesh as { face_queries: string[] }
     for (const side of ['b', 'r', 't', 'l']) {
       expect(mesh.face_queries.some((q) => q.includes(`@skw/skw${side}`)), side).toBe(true)
     }
@@ -138,7 +138,7 @@ describe.skipIf(!oc || !solveBytes)('wrap (real OCC + Rust solver)', { timeout: 
     const result = h.run({
       features: [...cylinder(), rectSketch('skw', '@builtin_plane_front', -4, 9, 4, 21), wrap('wr1', '@skw', target, { operation: 'new' })],
     })
-    const mesh = h.body(result, 'body_wr1').mesh as { face_data: { centroid: number[] }[]; face_queries: string[] }
+    const mesh = h.part(result, 'body_wr1').mesh as { face_data: { centroid: number[] }[]; face_queries: string[] }
     // A cap's query names every entity of the loop; a wall names its own only.
     const sides = ['b', 'r', 't', 'l']
     const centroidOf = (side: string): number[] => {

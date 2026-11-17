@@ -7,10 +7,10 @@
 // stays the orchestrator and re-exports the public surface those modules used to expose.
 
 import { extractErrorMessage, isKernelTrap } from './errors'
-import { clearConsumedBodyAncestry, setCurrentFeatureId } from './query'
+import { clearConsumedPartAncestry, setCurrentFeatureId } from './query'
 import { BUILTIN_PLANE_RESULTS } from './solverConstants'
 import { markFeatureStart, clearFeatureProgress } from './featureProgress'
-import type { Body, FeatureCheckpoint, BuildState } from './types3d'
+import type { PartSolid, FeatureCheckpoint, BuildState } from './types3d'
 import {
   type BuildDeps,
   type BuildOptions,
@@ -23,18 +23,18 @@ import {
   RESTORE_OWNER,
   snapshotRepo,
   repoFromSnapshot,
-  snapshotBodies,
-  pickBodiesById,
+  snapshotParts,
+  pickPartsById,
   type ShapeMapper,
 } from './builderSnapshot'
 import {
-  registerBodyFaces,
+  registerPartFaces,
   registerSolidAncestry,
   registerExtrusionFeature,
   reconcileFeatureSolids,
   snapshotWithBrepGeometry,
-  bodyVersion,
-  bodiesNeedingCheckpointRegistration,
+  partVersion,
+  partsNeedingCheckpointRegistration,
   type MetaExtractor,
 } from './builderAncestry'
 
@@ -181,7 +181,7 @@ function reuseFinalMeshOnCleanRebuild(
   prevState: BuildState | null | undefined,
   features: Array<Record<string, unknown>>,
   firstDirty: number,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   lastFid: string | null,
 ): Record<string, Record<string, unknown>> | null {
   if (!prevState || lastFid == null) return null
@@ -191,7 +191,7 @@ function reuseFinalMeshOnCleanRebuild(
   const snap = prevCp.bodies_snapshot as Record<string, Record<string, unknown>>
   if (!snap || !Object.keys(snap).length) return null
   const out: Record<string, Record<string, unknown>> = {}
-  for (const [bid, body] of Object.entries(bodyStore)) {
+  for (const [bid, body] of Object.entries(partStore)) {
     if (body.shape == null) continue
     const mesh = snap[bid]
     if (!mesh || !Object.keys(mesh).length) return null  // incomplete snapshot; re-tessellate
@@ -214,10 +214,10 @@ function reuseFinalMeshOnCleanRebuild(
 // rebuild (handled by reuseFinalMeshOnCleanRebuild) or a full rebuild (nothing
 // clean). The source is the previous solve's final checkpoint snapshot, the only
 // place a full render mesh is stored.
-function reuseCleanImportedBodyMeshes(
+function reuseCleanImportedPartMeshes(
   prevState: BuildState | null | undefined,
   firstDirty: number,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): Record<string, Record<string, unknown>> {
   const out: Record<string, Record<string, unknown>> = {}
   if (!prevState || firstDirty <= 0) return out
@@ -228,7 +228,7 @@ function reuseCleanImportedBodyMeshes(
     | Record<string, Record<string, unknown>>
     | undefined
   if (!prevSnap) return out
-  for (const [bid, body] of Object.entries(bodyStore)) {
+  for (const [bid, body] of Object.entries(partStore)) {
     if (body.shape == null || !body.imported) continue
     // Wholly produced within the clean prefix => geometry unchanged this solve.
     if (!cleanFids.has(body.created_by)) continue
@@ -255,16 +255,16 @@ function reuseCleanImportedBodyMeshes(
 // lengths is an exact "same shape in both worlds" test. A body the edited
 // feature deletes is absent from the live store and falls through to a real
 // tessellation -- correct, and it is one body rather than all of them.
-function reusePickBodyMeshes(
+function reusePickPartMeshes(
   prevState: BuildState | null | undefined,
   firstDirty: number,
-  pickBodies: Record<string, Body>,
-  finalBodies: Record<string, Body>,
+  pickParts: Record<string, PartSolid>,
+  finalParts: Record<string, PartSolid>,
 ): Record<string, Record<string, unknown>> {
   const out: Record<string, Record<string, unknown>> = {}
-  for (const [bid, mesh] of Object.entries(reuseCleanImportedBodyMeshes(prevState, firstDirty, pickBodies))) {
-    const live = finalBodies[bid]
-    if (!live || live.modified_by.length !== pickBodies[bid].modified_by.length) continue
+  for (const [bid, mesh] of Object.entries(reuseCleanImportedPartMeshes(prevState, firstDirty, pickParts))) {
+    const live = finalParts[bid]
+    if (!live || live.modified_by.length !== pickParts[bid].modified_by.length) continue
     out[bid] = mesh
   }
   return out
@@ -303,7 +303,7 @@ export function build(
   }
 
   const globalRepo = deps.initGlobalRepo()
-  const bodyStore: Record<string, Body> = {}
+  const partStore: Record<string, PartSolid> = {}
   const result: Record<string, unknown> = {}
   const newCheckpoints: Record<string, FeatureCheckpoint> = {}
 
@@ -326,13 +326,13 @@ export function build(
   // Both real extractors ignore the `repo` argument (identification reads the
   // B-rep, not the repo), so a hit is valid regardless of which call site filled
   // it; a miss still forwards the caller's repo through.
-  const extractMeta = deps.extractBrepMetadata ?? deps.tessellateBodies
+  const extractMeta = deps.extractBrepMetadata ?? deps.tessellateParts
   const metaCache = new Map<string, Record<string, unknown>>()
   const extractMetaCached: MetaExtractor = (snapshot, repo) => {
     const out: Record<string, Record<string, unknown>> = {}
-    const missing: Record<string, Body> = {}
+    const missing: Record<string, PartSolid> = {}
     for (const [bid, body] of Object.entries(snapshot)) {
-      const hit = body.shape != null ? metaCache.get(bodyVersion(body)) : undefined
+      const hit = body.shape != null ? metaCache.get(partVersion(body)) : undefined
       if (hit) out[bid] = hit
       else missing[bid] = body
     }
@@ -340,8 +340,8 @@ export function build(
       const fresh = extractMeta(missing, repo)
       for (const [bid, meta] of Object.entries(fresh)) {
         out[bid] = meta
-        const body = missing[bid]
-        if (body?.shape != null) metaCache.set(bodyVersion(body), meta)
+        const part = missing[bid]
+        if (part?.shape != null) metaCache.set(partVersion(part), meta)
       }
     }
     return out
@@ -372,10 +372,10 @@ export function build(
       // checkpoint shapes that future rebuilds restore from again. Each copy is
       // registered under RESTORE_OWNER so the next build's eviction frees it.
       Object.assign(
-        bodyStore,
-        snapshotBodies(
+        partStore,
+        snapshotParts(
           checkpoint.body_store_snapshot,
-          deps.copyBodyShape ? (shape) => deps.copyBodyShape!(shape, RESTORE_OWNER) : undefined,
+          deps.copyPartShape ? (shape) => deps.copyPartShape!(shape, RESTORE_OWNER) : undefined,
         ),
       )
       // Null out brep_diff on restored bodies: the diff's sub-shape handles
@@ -383,8 +383,8 @@ export function build(
       // callers (ancestry registration) fall back to body.created_by when
       // brep_diff is null, and the pick-side guard in buildEdgeIndex already
       // handles the null case.
-      for (const body of Object.values(bodyStore)) {
-        body.brep_diff = null
+      for (const part of Object.values(partStore)) {
+        part.brep_diff = null
       }
       for (const fid of options.prevState.feature_order.slice(0, firstDirty)) {
         result[fid] = options.prevState.checkpoints[fid].result
@@ -393,7 +393,7 @@ export function build(
     }
   }
 
-  const registeredBodyIds = new Set(Object.keys(bodyStore))
+  const registeredPartIds = new Set(Object.keys(partStore))
 
   // Fids that own at least one shaped body, so `reconcileFeatureSolids` can exit in
   // O(1) for the many features that own none. The body pass below refreshes it from
@@ -401,8 +401,8 @@ export function build(
   // only ever grows, which over-approximates (an owning feature whose body died still
   // reconciles, a harmless scan) but never under-approximates a current owner.
   const shapeOwningFids = new Set<string>()
-  for (const body of Object.values(bodyStore)) {
-    if (body.shape != null && body.created_by) shapeOwningFids.add(body.created_by)
+  for (const part of Object.values(partStore)) {
+    if (part.shape != null && part.created_by) shapeOwningFids.add(part.created_by)
   }
 
   // Body version -> "its B-rep ancestry is in `globalRepo` right now", so the post-loop
@@ -414,7 +414,7 @@ export function build(
   // Identical to `body.id` for every body the kernel builds, but keying two sides of a
   // lookup differently is the kind of thing that survives until it does not.
   const registeredVersions = new Map<string, string>()
-  for (const [bodyId, body] of Object.entries(bodyStore)) registeredVersions.set(bodyId, bodyVersion(body))
+  for (const [bodyId, body] of Object.entries(partStore)) registeredVersions.set(bodyId, partVersion(body))
   // Per checkpoint, the map as it stood when that checkpoint was snapshotted. O(bodies)
   // per checkpoint, and build-local scaffolding only -- never part of the persisted
   // `FeatureCheckpoint`.
@@ -448,7 +448,7 @@ export function build(
     const fid = String(feature.id ?? '')
 
     if (feature.suppressed) {
-      const cpSnapshot = snapshotBodies(bodyStore, retainForCheckpoint(fid))
+      const cpSnapshot = snapshotParts(partStore, retainForCheckpoint(fid))
       newCheckpoints[fid] = {
         spec: cloneSpec(feature),
         result: { status: 'suppressed' },
@@ -468,7 +468,7 @@ export function build(
     // inside one feature is invisible here; no solver does that today, a
     // boolean's tools must pre-exist.
     const before: Record<string, { modifiedByLen: number; createdBy: string }> = {}
-    for (const [bid, b] of Object.entries(bodyStore)) {
+    for (const [bid, b] of Object.entries(partStore)) {
       before[bid] = { modifiedByLen: b.modified_by.length, createdBy: b.created_by || '' }
     }
 
@@ -477,7 +477,7 @@ export function build(
     try {
       const t0 = performance.now()
       const featureResult = deps.trySolveFeature(
-        feature, globalRepo, bodyStore, featuresById, variableContext,
+        feature, globalRepo, partStore, featuresById, variableContext,
         laterVariablesFor(features, featureIndex, variableContext),
       )
       featureResult.solve_ms = performance.now() - t0
@@ -497,7 +497,7 @@ export function build(
     }
     // Before the snapshot and the registration below read the bodies, and
     // even after a failed solve: a solver can modify a body and then throw.
-    deps.indexModifierDiffs?.(bodyStore)
+    deps.indexModifierDiffs?.(partStore)
 
     // A body the feature consumed (a boolean tool, a fused array source) is out of
     // the store but still fully registered: its faces stay live carrying the very
@@ -506,30 +506,30 @@ export function build(
     // pick of such a face. Evict it here, where the disappearance is observable,
     // rather than in each consuming solver.
     for (const [bodyId, was] of Object.entries(before)) {
-      if (bodyId in bodyStore) continue
-      clearConsumedBodyAncestry(globalRepo, bodyId, was.createdBy)
-      registeredBodyIds.delete(bodyId)
+      if (bodyId in partStore) continue
+      clearConsumedPartAncestry(globalRepo, bodyId, was.createdBy)
+      registeredPartIds.delete(bodyId)
       registeredVersions.delete(bodyId)
     }
 
-    for (const [bodyId, body] of Object.entries(bodyStore)) {
+    for (const [bodyId, body] of Object.entries(partStore)) {
       if (body.shape != null && body.created_by) shapeOwningFids.add(body.created_by)
-      if (!registeredBodyIds.has(bodyId) && body.shape != null) {
+      if (!registeredPartIds.has(bodyId) && body.shape != null) {
         // Only a registration that LANDED may be recorded: an identification failure is
         // silent and per body, and the checkpoint pass reads a different producer, so
         // recording a failure here would skip the one pass that could still recover it.
         // Solid/extrusion ancestry is unconditional, so it survives either way.
-        const landed = registerBodyFaces(globalRepo, body, deps, extractMetaCached)
+        const landed = registerPartFaces(globalRepo, body, deps, extractMetaCached)
         registerSolidAncestry(globalRepo, body)
         registerExtrusionFeature(globalRepo, body.created_by || '', body.sketch_id)
-        registeredBodyIds.add(bodyId)
-        if (landed) registeredVersions.set(bodyId, bodyVersion(body))
+        registeredPartIds.add(bodyId)
+        if (landed) registeredVersions.set(bodyId, partVersion(body))
       } else if (body.shape != null && body.modified_by.length > (before[bodyId]?.modifiedByLen ?? 0)) {
         // Body was modified; re-register faces so downstream features see updates. A
         // failed re-registration must also drop the stale entry: the snapshot now holds
         // the PREVIOUS version's ancestry, which is not what this checkpoint carries.
-        if (registerBodyFaces(globalRepo, body, deps, extractMetaCached)) {
-          registeredVersions.set(bodyId, bodyVersion(body))
+        if (registerPartFaces(globalRepo, body, deps, extractMetaCached)) {
+          registeredVersions.set(bodyId, partVersion(body))
         } else {
           registeredVersions.delete(bodyId)
         }
@@ -540,9 +540,9 @@ export function build(
     // only re-registered solids for bodies it just created. Reconcile so the entry
     // matches the body store for every body the feature owns, or a cosmetic re-solve
     // leaves `?@fid:solid` unresolvable into every later checkpoint.
-    reconcileFeatureSolids(globalRepo, fid, bodyStore, shapeOwningFids)
+    reconcileFeatureSolids(globalRepo, fid, partStore, shapeOwningFids)
 
-    const cpSnapshot = snapshotBodies(bodyStore, retainForCheckpoint(fid))
+    const cpSnapshot = snapshotParts(partStore, retainForCheckpoint(fid))
     newCheckpoints[fid] = {
       spec: cloneSpec(feature),
       result: JSON.parse(JSON.stringify(result[fid])),
@@ -575,14 +575,14 @@ export function build(
   // build's final render mesh instead of re-tessellating the whole document.
   // Otherwise, still reuse the render mesh of any clean-prefix imported body
   // (unchanged heavy STEP geometry) and tessellate only the remaining bodies.
-  const bodiesOut =
-    reuseFinalMeshOnCleanRebuild(options.prevState, features, firstDirty, bodyStore, lastFid)
+  const partsOut =
+    reuseFinalMeshOnCleanRebuild(options.prevState, features, firstDirty, partStore, lastFid)
     ?? (() => {
-      const reused = reuseCleanImportedBodyMeshes(options.prevState, firstDirty, bodyStore)
+      const reused = reuseCleanImportedPartMeshes(options.prevState, firstDirty, partStore)
       const toTessellate = Object.fromEntries(
-        Object.entries(bodyStore).filter(([bid]) => !(bid in reused)),
+        Object.entries(partStore).filter(([bid]) => !(bid in reused)),
       )
-      return { ...reused, ...deps.tessellateBodies(toTessellate, globalRepo) }
+      return { ...reused, ...deps.tessellateParts(toTessellate, globalRepo) }
     })()
 
   // Rebuild checkpoints for dirty features: attach the render mesh to the final one, and
@@ -600,7 +600,7 @@ export function build(
     if (cleanPrefixFids.has(fid)) continue
     const checkpoint = newCheckpoints[fid]
     const isLast = fid === lastFid
-    const needing = bodiesNeedingCheckpointRegistration(
+    const needing = partsNeedingCheckpointRegistration(
       checkpoint.body_store_snapshot,
       registeredAtCheckpoint.get(fid) ?? new Map(),
     )
@@ -620,15 +620,15 @@ export function build(
     let cpMeta: Record<string, Record<string, unknown>>
     try {
       cpMeta = isLast
-        ? bodiesOut
-        : extractMetaCached(pickBodiesById(checkpoint.body_store_snapshot, needing), null)
+        ? partsOut
+        : extractMetaCached(pickPartsById(checkpoint.body_store_snapshot, needing), null)
     } catch (e) {
       if (isKernelTrap(e)) throw e
       cpMeta = {}
     }
-    const bodiesSnapshot = isLast
+    const partsSnapshot = isLast
       ? Object.fromEntries(
-          Object.keys(checkpoint.body_store_snapshot).map((bid) => [bid, bodiesOut[bid] ?? {}]),
+          Object.keys(checkpoint.body_store_snapshot).map((bid) => [bid, partsOut[bid] ?? {}]),
         )
       : {}
     newCheckpoints[fid] = {
@@ -636,7 +636,7 @@ export function build(
       result: checkpoint.result,
       repo_snapshot: snapshotWithBrepGeometry(checkpoint, cpMeta, needing),
       body_store_snapshot: checkpoint.body_store_snapshot,
-      bodies_snapshot: bodiesSnapshot,
+      bodies_snapshot: partsSnapshot,
     }
   }
 
@@ -647,7 +647,7 @@ export function build(
     checkpoints: newCheckpoints,
   }
 
-  let pickBodiesOut: Record<string, unknown> | undefined
+  let pickPartsOut: Record<string, unknown> | undefined
   const pickBoundary = options.pickBoundary
   if (pickBoundary != null && pickBoundary >= 0 && pickBoundary <= features.length) {
     if (pickBoundary === 0) {
@@ -655,27 +655,27 @@ export function build(
       // doc, there is nothing to pick against. Carry {} so the main thread
       // still enters the 'editing' world (empty pick bodies) like any other
       // boundary, matching the unavailable-checkpoint contract below.
-      pickBodiesOut = {}
+      pickPartsOut = {}
     } else {
       const targetFid = String(features[pickBoundary - 1].id ?? '')
       const pickCheckpoint = newCheckpoints[targetFid] ?? options.prevState?.checkpoints[targetFid]
       if (pickCheckpoint) {
         const snap = pickCheckpoint.bodies_snapshot
         if (Object.keys(snap).length) {
-          pickBodiesOut = snap
+          pickPartsOut = snap
         } else {
           const pickStore = pickCheckpoint.body_store_snapshot
-          const reused = reusePickBodyMeshes(options.prevState, firstDirty, pickStore, bodyStore)
+          const reused = reusePickPartMeshes(options.prevState, firstDirty, pickStore, partStore)
           const toTessellate = Object.fromEntries(
             Object.entries(pickStore).filter(([bid]) => !(bid in reused)),
           )
-          pickBodiesOut = { ...reused, ...deps.tessellateBodies(toTessellate, null) }
+          pickPartsOut = { ...reused, ...deps.tessellateParts(toTessellate, null) }
         }
       } else {
         // Checkpoint not found (e.g. prevState was null on first solve, or the
         // checkpoint was evicted between solves). Return empty so the caller
         // clears stale pick_bodies state instead of silently keeping it.
-        pickBodiesOut = {}
+        pickPartsOut = {}
       }
     }
   }
@@ -691,9 +691,9 @@ export function build(
   const response: BuildResponse = {
     solve_ms: buildMs,
     result,
-    bodies: bodiesOut,
+    bodies: partsOut,
     _build_state: newState,
-    ...(pickBodiesOut ? { pick_bodies: pickBodiesOut } : {}),
+    ...(pickPartsOut ? { pick_bodies: pickPartsOut } : {}),
   }
 
   if (spec._validate) {
@@ -731,9 +731,9 @@ export { stableJson, hashCheckpointSpec, hashResultDict } from './builderHash'
 export { RESTORE_OWNER, snapshotRepo, repoFromSnapshot } from './builderSnapshot'
 export {
   edgeAncestryPayload,
-  registerBodyBrepFromMeta,
-  bodyVersion,
-  bodiesNeedingCheckpointRegistration,
+  registerPartBrepFromMeta,
+  partVersion,
+  partsNeedingCheckpointRegistration,
 } from './builderAncestry'
 
 // ─── TS kernel router ───

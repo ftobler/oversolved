@@ -17,7 +17,7 @@ import { loadOcc } from '../../occ/loadOcc'
 import { SharedHarness } from '../../occ/sharedHarness'
 import { DisposeScope } from '../../occ/disposeScope'
 import { volumeOf } from '../../occ/volume'
-import { canonicalEdges } from '../../occ/bodyNames'
+import { canonicalEdges } from '../../occ/partNames'
 import { setSketchSolver, setSketchTopology, resetSketchSolver } from '../sketch'
 import { setOccLoader } from '../../solveLocally'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
@@ -28,7 +28,7 @@ import { yieldToEventLoop } from '@/testing/yieldToEventLoop'
 import { emptyDriveDoc, exportHeadless, measureHeadless, runHeadless } from '@/drive/headlessOps'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import { splitPatternDef } from '@/utils/core/patternSplit'
 import type { PartDoc } from '@/types/cad'
 import type { ScriptStep } from '@/drive/scriptRunner'
@@ -94,8 +94,8 @@ describe.skipIf(!oc || !solveBytes)('many-instance pattern and array solve cost 
     setSketchSolver(solveBytes)
   })
 
-  function snapshot(r: BuildResponse, featureId: string): Record<string, Body> {
-    return r._build_state!.checkpoints[featureId].body_store_snapshot as Record<string, Body>
+  function snapshot(r: BuildResponse, featureId: string): Record<string, PartSolid> {
+    return r._build_state!.checkpoints[featureId].body_store_snapshot as Record<string, PartSolid>
   }
   function volumeAt(r: BuildResponse, featureId: string, bodyId: string): number {
     const scope = new DisposeScope()

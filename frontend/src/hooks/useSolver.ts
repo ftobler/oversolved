@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import type { PartDoc, SketchData, EntityStatus, BuildResponse, BodyResult, RebuildValidation, FeatureHandleData } from '@/types/cad'
+import type { PartDoc, SketchData, EntityStatus, BuildResponse, PartResult, RebuildValidation, FeatureHandleData } from '@/types/cad'
 import { useSolverStore } from '@/stores/solverStore'
 import { editorState, clampRollback } from '@/stores/editorState'
 import { usePartEditorStore } from '@/stores/partEditorStore'
@@ -34,7 +34,7 @@ const BENIGN_SOLVE_FAILURES = new Set([
 // Frozen so the one shared instance is structurally immutable: WorldState hands
 // it out verbatim in the 'full' world, so an accidental write would otherwise
 // poison every world state of every hook instance.
-const EMPTY_PICK_BODIES: Readonly<Record<string, BodyResult>> = Object.freeze({})
+const EMPTY_PICK_BODIES: Readonly<Record<string, PartResult>> = Object.freeze({})
 
 /**
  * Discriminated union over the dual-world invariant:
@@ -50,11 +50,11 @@ const EMPTY_PICK_BODIES: Readonly<Record<string, BodyResult>> = Object.freeze({}
  * made on. Null when the solve carried none (an old or OCC-less reply).
  */
 type WorldState =
-  | { status: 'full'; bodies: Record<string, BodyResult>; generation: string | null }
+  | { status: 'full'; bodies: Record<string, PartResult>; generation: string | null }
   | {
     status: 'editing'
-    bodies: Record<string, BodyResult>
-    pickBodies: Readonly<Record<string, BodyResult>>
+    bodies: Record<string, PartResult>
+    pickBodies: Readonly<Record<string, PartResult>>
     generation: string | null
   }
 
@@ -75,8 +75,8 @@ export function useSolver(
   // The WorldState union enforces at compile time that pickBodies only exists
   // inside the 'editing' variant, accessing it on 'full' is a type error.
   const [world, setWorld] = useState<WorldState>({ status: 'full', bodies: {}, generation: null })
-  const bodies: Record<string, BodyResult> = world.bodies
-  const pickBodies: Readonly<Record<string, BodyResult>> = world.status === 'editing' ? world.pickBodies : EMPTY_PICK_BODIES
+  const bodies: Record<string, PartResult> = world.bodies
+  const pickBodies: Readonly<Record<string, PartResult>> = world.status === 'editing' ? world.pickBodies : EMPTY_PICK_BODIES
   // True once a solve carrying pick bodies has landed. Entering an edit flips
   // the store's editing flags immediately, but the two worlds only exist after
   // that solve returns -- a ghost preview drawn before it has no "before" state

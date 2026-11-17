@@ -16,7 +16,7 @@ import { setSketchSolver, resetSketchSolver } from '../sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { parseAncestry, makeAncestryQuery, ref, constructionUuidToken } from '../../query'
 import { volumeOf } from '../../occ/volume'
-import { canonicalFaces } from '../../occ/bodyNames'
+import { canonicalFaces } from '../../occ/partNames'
 import { makeBoxAt, makeCylinder } from '../../occ/primitives'
 import { booleanWithDiff } from '../../occ/booleans'
 import { stepShapeToBytes } from '../../occ/stepIo'
@@ -97,7 +97,7 @@ function holedStepBytes(occ: OccModule): Uint8Array {
 }
 
 function meshOf(h: SharedHarness, r: BuildResponse, bodyId: string): FaceMesh {
-  return (h.body(r, bodyId).mesh ?? {}) as FaceMesh
+  return (h.part(r, bodyId).mesh ?? {}) as FaceMesh
 }
 function queryByType(mesh: FaceMesh, type: string): string[] {
   const out: string[] = []
@@ -300,7 +300,7 @@ describe.skipIf(!oc || !solveBytes)('solveDeleteFace through the builder (real O
     // healed edge's attribution is the extrude, never the delete_face.
     const base = boxSpec()
     const r0 = h.run(base)
-    const edges0 = (h.body(r0, 'body_ex1').edge_queries as string[]) ?? []
+    const edges0 = (h.part(r0, 'body_ex1').edge_queries as string[]) ?? []
     expect(edges0.length).toBeGreaterThan(0)
     const E = edges0[0]
     const Euuid = uuidTokenOf(E)
@@ -320,7 +320,7 @@ describe.skipIf(!oc || !solveBytes)('solveDeleteFace through the builder (real O
     const r = h.run(spec)
     expect(h.res(r, 'df1').status).toBe('ok')
     // The healed edge carries the pre-fillet UUID and is attributed to ex1.
-    const edgesAfter = (h.body(r, 'body_ex1').edge_queries as string[]) ?? []
+    const edgesAfter = (h.part(r, 'body_ex1').edge_queries as string[]) ?? []
     const healed = edgesAfter.find((q) => uuidTokenOf(q) === Euuid)
     expect(healed, `no healed edge; queries: ${edgesAfter.join(' | ')}`).toBeDefined()
     expect(healed).toContain('@ex1')
@@ -430,7 +430,7 @@ describe.skipIf(!oc || !solveBytes)('solveDeleteFace through the builder (real O
     })
     expect(h.res(r, reportChamfer).status).toBe('ok')
     expect(h.res(r, reportFillet).status).toBe('ok')
-    const edges = (h.body(r, reportBody).edge_queries as string[]) ?? []
+    const edges = (h.part(r, reportBody).edge_queries as string[]) ?? []
     // The pre-modifier edge UUIDs from the document's own fillet/chamfer
     // queries: the healed sharp edges carry them again.
     expect(edges.some((q) => q.includes('e_29ca332f03bb4c0d'))).toBe(true)

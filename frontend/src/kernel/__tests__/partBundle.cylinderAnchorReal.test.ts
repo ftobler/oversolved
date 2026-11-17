@@ -13,7 +13,7 @@ import { SharedHarness } from '../occ/sharedHarness'
 import { setSketchSolver, resetSketchSolver } from '../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { toPartBundle, type Anchor, type PartBundle } from '../partBundle'
-import type { BodyResult, FaceData } from '../../types/cad'
+import type { PartResult, FaceData } from '../../types/cad'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -76,7 +76,7 @@ describe.skipIf(!oc || !solveBytes)('axial midpoint anchors (real OCC + Rust sol
 
   function build(features: unknown[]): { bundle: PartBundle; fds: FaceData[] } {
     const result = harness.run({ version: 1, kind: 'part', features })
-    const bodies = result.bodies as Record<string, BodyResult>
+    const bodies = result.bodies as Record<string, PartResult>
     const fds = Object.values(bodies).flatMap((b) => b.mesh?.face_data ?? [])
     return { bundle: toPartBundle('doc-anchor', 'hash-anchor', bodies), fds }
   }

@@ -7,7 +7,7 @@ import {
   boundaryFromFaceEdges,
   deriveMemberIds,
   edgeUuidToken,
-  faceBoundaryFromBodies,
+  faceBoundaryFromParts,
   faceProjectionConstraintId,
   freezeRowsForDelete,
   isFaceProjectionSource,
@@ -192,7 +192,7 @@ describe('boundary adapters', () => {
 
   it('finds a face by UUID when the stored query drifted', () => {
     const edgeQueryText = edgeQuery(TOKENS[0])
-    const lookup = faceBoundaryFromBodies(() => ({
+    const lookup = faceBoundaryFromParts(() => ({
       b1: {
         mesh: {
           face_queries: ['?stale;drifted:flatface'],

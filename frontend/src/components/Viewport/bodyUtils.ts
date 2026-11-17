@@ -1,4 +1,4 @@
-import type { Feature, SketchFeature, BodyResult, PartStyleEntry, Constraints, Sketch, SketchData } from '@/types/cad'
+import type { Feature, SketchFeature, PartResult, PartStyleEntry, Constraints, Sketch, SketchData } from '@/types/cad'
 import { getPartsToRender, isPartHiddenByFeature } from '@/utils/partRender'
 import type { PartRenderItem } from '@/utils/partRender'
 import { deriveConstraints, unflattenGeometry } from '@/utils/geometry/geometryMapping'
@@ -18,7 +18,7 @@ export type { PartRenderItem as BodyRenderItem }
  * hidden, so that hidden bodies stay hidden instead of snapping back.
  */
 export function computeEffectiveVisibleBodies(
-  bodies: Record<string, BodyResult> | undefined,
+  bodies: Record<string, PartResult> | undefined,
   partStyle: Record<string, PartStyleEntry>,
 ): Set<string> | undefined {
   const visible = new Set<string>()
@@ -69,8 +69,8 @@ export function getSketchesToRender(
  * alone, which is the only one `visible` may express.
  */
 export function getGhostBodiesToRender(
-  pickBodies: Record<string, BodyResult> | undefined,
-  previewBodies: Record<string, BodyResult> | undefined,
+  pickBodies: Record<string, PartResult> | undefined,
+  previewBodies: Record<string, PartResult> | undefined,
   features: Feature[] | undefined,
   partStyle: Record<string, PartStyleEntry> | undefined,
   visibleFeatures?: ReadonlySet<string>,
@@ -146,7 +146,7 @@ export function snapSketchesFor(
 
 /** Returns bodies created by features at or after rollbackPosition (the "preview" bodies excluded by getBodiesToRender). */
 export function getPreviewBodies(
-  bodies: Record<string, BodyResult> | undefined,
+  bodies: Record<string, PartResult> | undefined,
   features: Feature[] | undefined,
   rollbackPosition: number | undefined,
   visibleBodies: Set<string> | undefined,

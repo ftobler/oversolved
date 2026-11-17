@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest"
 import { emitWithTiesTagged, type QueryParts } from "../tiedQuery"
 import { makeAncestryQuery, Repository } from "../query"
-import { registerBodyBrepFromMeta } from "../builder"
-import type { Body } from "../types3d"
+import { registerPartBrepFromMeta } from "../builder"
+import type { PartSolid } from "../types3d"
 
 // Two unnamed edges with the same ancestral net and classifiers: the genuine tie
 // no symbolic tiebreak separated. Without the tag both emit one query string,
@@ -37,12 +37,12 @@ describe("emitWithTiesTagged", () => {
     const body = {
       id: "body_0", created_by: "f1", modified_by: [], shape: null, sketch_id: "sk1",
       brep_diff: null, profile_queries: [],
-    } as unknown as Body
+    } as unknown as PartSolid
     const edgeQueries = emitWithTiesTagged([tied(), tied()], "body_0", "edge")
     const vertexParts = (): QueryParts => ({ ids: ["@f1", "@body_0"], type: "vertex", named: false })
     const vertexQueries = emitWithTiesTagged([vertexParts(), vertexParts()], "body_0", "vertex")
     const line = (y: number) => ({ kind: "line", start: [0, y, 0], end: [1, y, 0] })
-    registerBodyBrepFromMeta(repo, body, {
+    registerPartBrepFromMeta(repo, body, {
       mesh: { vertices: [], faces: [], triangle_to_face: [], face_queries: [], face_data: [], is_fallback: false },
       edges: [line(0), line(1)],
       edge_queries: edgeQueries,

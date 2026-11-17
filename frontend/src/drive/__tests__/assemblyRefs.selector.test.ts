@@ -4,7 +4,7 @@
 // as a misleading empty match.
 
 import { describe, it, expect } from 'vitest'
-import type { AssemblyDoc, BodyResult, FaceData } from '@/types/cad'
+import type { AssemblyDoc, PartResult, FaceData } from '@/types/cad'
 import type { Anchor } from '@/kernel/partBundle'
 import { appendPartInstance } from '@/utils/assemblyMutations'
 import { resolveDriveRef, type PartAnchorIndex } from '../assemblyRefs'
@@ -29,7 +29,7 @@ const FACES: FaceData[] = [
 ]
 const QUERIES = ['q_neg_x', 'q_pos_x', 'q_neg_y', 'q_pos_y', 'q_neg_z', 'q_pos_z']
 
-const BODY: BodyResult = {
+const BODY: PartResult = {
   id: 'body_ex1',
   created_by: 'ex1',
   modified_by: [],

@@ -7,14 +7,14 @@
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
-import type { Body, BrepDiff } from '../types3d'
+import type { PartSolid, BrepDiff } from '../types3d'
 import type { PatternCopy } from './pattern'
 import { resolvePart, AmbiguousPartRefError } from './shared/partResolution'
 import { booleanWithDiffMany } from '../occ/booleans'
 import { transformCopyWithMapping, rebuildNamesForTransformedCopy, readSourceFaceRows, type NameMaps } from '../occ/transformLineage'
 import { transferBooleanNames } from './booleanLineage'
-import { registerSplitBodies, resplitBody, solidHoldingFaces } from './bodySplit'
-import { emptyShapeNames, mergeShapeNames, readBodyNames } from '../occ/bodyNames'
+import { registerSplitParts, resplitPart, solidHoldingFaces } from './partSplit'
+import { emptyShapeNames, mergeShapeNames, readPartNames } from '../occ/partNames'
 import { markFeatureStart } from '../featureProgress'
 import { SubShapeDedup } from '../occ/primitives'
 
@@ -25,7 +25,7 @@ type Dict = Record<string, unknown>
  *  and the release contract (arrayFuseRelease.test.ts) pins this peak. */
 export const INSTANCE_FUSE_CHUNK = 16
 
-export interface BodyPatternResult {
+export interface PartPatternResult {
   [key: string]: unknown
   status: string
   // The first body; `body_ids` carries the rest when instances or splits add more.
@@ -37,43 +37,43 @@ export interface BodyPatternResult {
 
 /** The body a body-subject pattern copies. An explicit pick is required: a
  *  default would silently pattern an arbitrary body in the store. */
-export function resolvePatternSourceBody(
+export function resolvePatternSourcePart(
   sub: Dict,
-  bodyStore: Record<string, Body>,
-): Body {
+  partStore: Record<string, PartSolid>,
+): PartSolid {
   const ref = (sub.source_body as string) ?? ''
   if (!ref) throw new Error('pattern: source part is required; pick a part to pattern')
-  let body: Body
+  let part: PartSolid
   try {
-    body = resolvePart(ref, bodyStore)
+    part = resolvePart(ref, partStore)
   } catch (e) {
     // "Names several bodies" is not "does not exist": rewriting it would tell
     // the user the body is missing while listing the ids that matched it.
     if (e instanceof AmbiguousPartRefError) throw e
-    throw new Error(`pattern: source part '${ref}' not found; available part IDs: ${JSON.stringify(Object.keys(bodyStore))}`)
+    throw new Error(`pattern: source part '${ref}' not found; available part IDs: ${JSON.stringify(Object.keys(partStore))}`)
   }
-  if (body.shape === null) throw new Error('pattern: source part has no shape')
-  return body
+  if (part.shape === null) throw new Error('pattern: source part has no shape')
+  return part
 }
 
 /** Shared instance build + fuse/new dispatch for a body pattern. */
-export function applyBodyPattern(
+export function applyPartPattern(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-  body: Body,
+  part: PartSolid,
   copies: readonly PatternCopy[],
   operation: string,
   featureId: string,
-  bodyStore: Record<string, Body>,
-): BodyPatternResult {
-  if (body.shape === null) throw new Error('pattern: source part has no shape')
-  const sourceShape = table.get<OccShape>(body.shape)
+  partStore: Record<string, PartSolid>,
+): PartPatternResult {
+  if (part.shape === null) throw new Error('pattern: source part has no shape')
+  const sourceShape = table.get<OccShape>(part.shape)
   // Read once: every copy shares the source's names.
   let sourceNamesRead: NameMaps | null = null
-  const sourceNames = (): NameMaps => (sourceNamesRead ??= readBodyNames(oc, scope, sourceShape, body))
+  const sourceNames = (): NameMaps => (sourceNamesRead ??= readPartNames(oc, scope, sourceShape, part))
 
-  const resultBodyId = 'body_' + featureId
+  const resultPartId = 'body_' + featureId
 
   if (operation === 'new') {
     // Every spawned body is an independent copy; remap construction UUIDs so
@@ -100,14 +100,14 @@ export function applyBodyPattern(
     // old `body_<feat>`, `body_<feat>_1`, ... run. Going through bodySplit is
     // what keeps that true when the source body is itself multi-solid: the
     // instances would otherwise each copy the violation verbatim.
-    const bodyIds: string[] = []
+    const partIds: string[] = []
     for (const inst of instances) {
-      bodyIds.push(...registerSplitBodies(oc, scope, table, bodyStore, inst.shape, {
-        id: resultBodyId, createdBy: featureId, profileQueries: body.profile_queries,
-        precision: body.precision, ...inst.names,
+      partIds.push(...registerSplitParts(oc, scope, table, partStore, inst.shape, {
+        id: resultPartId, createdBy: featureId, profileQueries: part.profile_queries,
+        precision: part.precision, ...inst.names,
       }))
     }
-    return { status: 'ok', body_id: bodyIds[0], body_ids: bodyIds, operation: 'new' }
+    return { status: 'ok', body_id: partIds[0], body_ids: partIds, operation: 'new' }
   }
 
   // operation === "add": fuse incrementally and rebuild construction names
@@ -164,7 +164,7 @@ export function applyBodyPattern(
       for (const copy of group) mergeShapeNames(toolNames, copy.names)
       const r = booleanWithDiffMany(
         oc, scope, fused, group.map((copy) => copy.shape), 'fuse',
-        { unifyFaces: !body.imported, precision: body.precision ?? null },
+        { unifyFaces: !part.imported, precision: part.precision ?? null },
       )
       const nextFused = scope.track(r.shape)
       const next: OccShape[] = []
@@ -180,7 +180,7 @@ export function applyBodyPattern(
       // the last usable set rather than turning a naming fallback into a throw.
       if (next.length > 0) sourceFaces = next
       const names = transferBooleanNames(oc, scope, {
-        bodyShape: nextFused,
+        partShape: nextFused,
         faceOrigin: r.faceOrigin,
         targetFaceNames: fusedNames.faceNames,
         targetFaceAncestry: fusedNames.faceAncestry,
@@ -213,28 +213,28 @@ export function applyBodyPattern(
       fused = nextFused
     }
   }
-  body.modified_by.push(featureId)
-  body.brep_diff = lastDiff
+  part.modified_by.push(featureId)
+  part.brep_diff = lastDiff
   // "add" fuses the instances into the source body, but a pitch wider than the
   // part leaves that fuse disjoint: the union of N non-touching copies is an
   // N-solid compound, which is N parts, not one. The source's own solid is
   // identified by construction through the tracked face lineage, so the split
   // keeps body.id on that material instead of re-ranking siblings by centroid.
-  const bodyIds = resplitBody(
-    oc, scope, table, bodyStore, body, fused, featureId, fusedNames,
-    solidHoldingFaces(oc, scope, fused, sourceFaces), body.precision ?? null,
+  const partIds = resplitPart(
+    oc, scope, table, partStore, part, fused, featureId, fusedNames,
+    solidHoldingFaces(oc, scope, fused, sourceFaces), part.precision ?? null,
   )
-  if (bodyIds.length === 0) {
+  if (partIds.length === 0) {
     // A union can only be empty through a failed boolean, so this is defensive:
     // resplitBody deleted the body, and body_ids must not hand back a live id
     // for a body that is gone.
     return {
       status: 'ok',
-      body_id: body.id,
+      body_id: part.id,
       body_ids: [],
       operation: 'add',
-      solver_warning: `pattern: the add removed all of part '${body.id}'; the part was deleted`,
+      solver_warning: `pattern: the add removed all of part '${part.id}'; the part was deleted`,
     }
   }
-  return { status: 'ok', body_id: bodyIds[0], body_ids: bodyIds, operation: 'add' }
+  return { status: 'ok', body_id: partIds[0], body_ids: partIds, operation: 'add' }
 }

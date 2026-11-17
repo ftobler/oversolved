@@ -20,7 +20,7 @@ import { volumeOf, countSolids } from '../../occ/booleans'
 import { makeTranslationTrsf, transformCopy } from '../../occ/transforms'
 import { Repository } from '../../query'
 import { solveBoolean } from '../boolean'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import { noProgress } from '../../occ/defaultArgs'
 import fixture from '../../occ/__fixtures__/booleanSolve.json'
@@ -48,7 +48,7 @@ function bodyFromSpec(
   id: string,
   createdBy: string,
   spec: BoxSpec,
-): Body {
+): PartSolid {
   const box = makeBoxAt(occ, scope, spec[0] as Vec3, spec[1][0], spec[1][1], spec[1][2])
   return {
     id,
@@ -110,7 +110,7 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_t: bodyFromSpec(occ, scope, table, 'body_t', 'ex_t', c.target_spec),
         }
         c.tool_specs.forEach((spec, i) => {
@@ -155,7 +155,7 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_t: bodyFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
           body_u0: bodyFromSpec(occ, scope, table, 'body_u0', 'ex_u0', [[0, 0, 0], [2, 2, 2]]),
           body_u1: bodyFromSpec(occ, scope, table, 'body_u1', 'ex_u1', [[3, 0, 0], [2, 2, 2]]),
@@ -186,7 +186,7 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_t: bodyFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
           body_u0: bodyFromSpec(occ, scope, table, 'body_u0', 'ex_u0', [[100, 0, 0], [2, 2, 2]]),
         }
@@ -215,7 +215,7 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_t: bodyFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
           body_u0: bodyFromSpec(occ, scope, table, 'body_u0', 'ex_u0', [[100, 0, 0], [2, 2, 2]]),
         }
@@ -248,7 +248,7 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_t: bodyFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
           body_u0: bodyFromSpec(occ, scope, table, 'body_u0', 'ex_u0', [[0, 0, 0], [2, 2, 2]]),
         }
@@ -303,7 +303,7 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
         expect(countSolids(occ, scope, inter)).toBeGreaterThan(0)
         expect(volumeOf(occ, scope, inter)).toBeLessThan(1e-10)
 
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_t: {
             id: 'body_t', created_by: 'ex_t', modified_by: [], sketch_id: '',
             shape: table.register(targetShape, 'ex_t'), brep_diff: null, profile_queries: [], imported: true,
@@ -335,7 +335,7 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_t: bodyFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
           body_u0: bodyFromSpec(occ, scope, table, 'body_u0', 'ex_u0', [[-5, -5, -5], [20, 20, 20]]),
         }

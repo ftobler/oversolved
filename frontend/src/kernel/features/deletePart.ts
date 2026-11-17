@@ -5,45 +5,45 @@
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 import type { Repository } from '../query'
-import { clearConsumedBodyAncestry } from '../query'
+import { clearConsumedPartAncestry } from '../query'
 import { resolvePartRefList } from './shared/partResolution'
 
 type Dict = Record<string, unknown>
 
-interface DeleteBodyResult {
+interface DeletePartResult {
   [key: string]: unknown
   status: string
   deleted_body_ids: string[]
 }
 
 /** Solve a delete_body feature (mirrors `_solve_delete_body`). */
-export function solveDeleteBody(
+export function solveDeletePart(
   _oc: OccModule,
   _scope: DisposeScope,
   table: HandleTable,
   feature: Dict,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
-): DeleteBodyResult {
+  partStore: Record<string, PartSolid>,
+): DeletePartResult {
   const sub = (feature.delete_body as Dict) ?? {}
-  const bodyQueries = (sub.bodies as string[]) ?? []
+  const partQueries = (sub.bodies as string[]) ?? []
 
   // Resolves against the intact store before anything is removed, so two picks
   // landing on the same body (different faces) collapse into one deletion
   // instead of letting the second ref fail against an emptied slot.
-  const keys = resolvePartRefList(bodyQueries, globalRepo, bodyStore, 'delete_body')
+  const keys = resolvePartRefList(partQueries, globalRepo, partStore, 'delete_body')
 
-  for (const bodyKey of keys) {
-    const body = bodyStore[bodyKey]
-    if (body !== undefined && body.shape !== null) {
+  for (const partKey of keys) {
+    const part = partStore[partKey]
+    if (part !== undefined && part.shape !== null) {
       // The owner tag is settled with the body, so a later `releaseOwner`
       // cannot over-decrement (see releaseFor).
-      table.releaseFor(body.shape, body.modified_by.at(-1) ?? body.created_by)
+      table.releaseFor(part.shape, part.modified_by.at(-1) ?? part.created_by)
     }
-    if (body !== undefined) clearConsumedBodyAncestry(globalRepo, body.id, body.created_by || '')
-    delete bodyStore[bodyKey]
+    if (part !== undefined) clearConsumedPartAncestry(globalRepo, part.id, part.created_by || '')
+    delete partStore[partKey]
   }
   return { status: 'ok', deleted_body_ids: keys }
 }

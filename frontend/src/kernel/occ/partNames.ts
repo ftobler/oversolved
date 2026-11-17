@@ -15,7 +15,7 @@
 import type { DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape } from './occTypes'
 import { SubShapeDedup, SubShapeIndexMap, SubShapeMap } from './subshapeIdentity'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 
 /** One uuid (or null for an unnamed sub-shape) per canonical sub-shape. */
 export type UuidArray = (string | null)[]
@@ -87,24 +87,24 @@ export function carryFaceNames(
 }
 
 /** A body's stored names keyed by the sub-shapes of `shape`, the body's own shape. */
-export function readBodyNames(
+export function readPartNames(
   oc: OccModule,
   scope: DisposeScope,
   shape: OccShape,
-  body: Pick<
-    Body,
+  part: Pick<
+    PartSolid,
     'face_uuids' | 'edge_uuids' | 'face_ancestry' | 'edge_ancestry' | 'face_cap_ancestry' |
     'face_owner' | 'edge_owner'
   >,
 ): ShapeNames {
   return {
-    faceNames: namesFromArray(canonicalFaces(oc, scope, shape), body.face_uuids),
-    edgeNames: namesFromArray(canonicalEdges(oc, scope, shape), body.edge_uuids),
-    faceAncestry: { ...(body.face_ancestry ?? {}) },
-    edgeAncestry: { ...(body.edge_ancestry ?? {}) },
-    capAncestry: { ...(body.face_cap_ancestry ?? {}) },
-    faceOwner: { ...(body.face_owner ?? {}) },
-    edgeOwner: { ...(body.edge_owner ?? {}) },
+    faceNames: namesFromArray(canonicalFaces(oc, scope, shape), part.face_uuids),
+    edgeNames: namesFromArray(canonicalEdges(oc, scope, shape), part.edge_uuids),
+    faceAncestry: { ...(part.face_ancestry ?? {}) },
+    edgeAncestry: { ...(part.edge_ancestry ?? {}) },
+    capAncestry: { ...(part.face_cap_ancestry ?? {}) },
+    faceOwner: { ...(part.face_owner ?? {}) },
+    edgeOwner: { ...(part.edge_owner ?? {}) },
   }
 }
 

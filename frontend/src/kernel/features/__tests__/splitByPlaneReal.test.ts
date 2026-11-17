@@ -17,7 +17,7 @@ import { setSketchSolver, resetSketchSolver } from '../sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { parseAncestry } from '../../query'
 import { volumeOf } from '../../occ/volume'
-import { canonicalFaces } from '../../occ/bodyNames'
+import { canonicalFaces } from '../../occ/partNames'
 import { makeBoxAt, shapeBndBox } from '../../occ/primitives'
 import { stepShapeToBytes } from '../../occ/stepIo'
 import { mintFaceUuid, splitFacePath, splitPlaneFacePath } from '../../constructionName'
@@ -25,7 +25,7 @@ import { resolvePartIds } from '../shared/partResolution'
 import { buildFaceIndex, resolveFacesByQuery } from '../shared/faceResolution'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -111,12 +111,12 @@ describe.skipIf(!oc || !solveBytes)('solveSplit through the builder (real OCC + 
     setSketchSolver(solveBytes)
   })
 
-  const meshOf = (r: BuildResponse, bodyId: string): FaceMesh => (h.body(r, bodyId).mesh ?? {}) as FaceMesh
-  const viewOf = (r: BuildResponse, bodyId: string): BodyView => h.body(r, bodyId) as BodyView
+  const meshOf = (r: BuildResponse, bodyId: string): FaceMesh => (h.part(r, bodyId).mesh ?? {}) as FaceMesh
+  const viewOf = (r: BuildResponse, bodyId: string): BodyView => h.part(r, bodyId) as BodyView
 
-  function snapshot(r: BuildResponse, featureId: string): Record<string, Body> {
+  function snapshot(r: BuildResponse, featureId: string): Record<string, PartSolid> {
     const ckp = r._build_state!.checkpoints[featureId]
-    return ckp.body_store_snapshot as Record<string, Body>
+    return ckp.body_store_snapshot as Record<string, PartSolid>
   }
   function shapeOf(r: BuildResponse, featureId: string, bodyId: string): OccShape {
     return h.table.get<OccShape>(snapshot(r, featureId)[bodyId].shape!)

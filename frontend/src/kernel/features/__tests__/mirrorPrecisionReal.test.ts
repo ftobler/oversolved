@@ -17,7 +17,7 @@
 
 import { describe, it, expect } from 'vitest'
 import type { BuildResponse } from '../../builder'
-import type { Body, BuildState } from '../../types3d'
+import type { PartSolid, BuildState } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import { SharedHarness } from '../../occ/sharedHarness'
 import { exploreFaces } from '../../occ/edgeModifier'
@@ -94,7 +94,7 @@ function halfCubeDoc(sketch: Record<string, unknown>, mirror = true) {
 /** How many planar faces point up (+Y): the top face, split at the mirror plane
  *  until the merge folds the halves. The half-cube's sketch is on Front, so its
  *  "up" is world +Y. */
-function upFaces(ocModule: OccModule, h: SharedHarness, snapshot: Record<string, Body>, bodyId: string): number {
+function upFaces(ocModule: OccModule, h: SharedHarness, snapshot: Record<string, PartSolid>, bodyId: string): number {
   const body = snapshot[bodyId]
   if (!body || body.shape === null) return -1
   const scope = new DisposeScope()
@@ -114,13 +114,13 @@ function upFaces(ocModule: OccModule, h: SharedHarness, snapshot: Record<string,
   }
 }
 
-function lastSnapshot(result: BuildResponse): Record<string, Body> {
+function lastSnapshot(result: BuildResponse): Record<string, PartSolid> {
   const state = result._build_state as BuildState
   const last = state.feature_order[state.feature_order.length - 1]
   return state.checkpoints[last].body_store_snapshot
 }
 
-function faceCount(ocModule: OccModule, h: SharedHarness, snapshot: Record<string, Body>, bodyId: string): number {
+function faceCount(ocModule: OccModule, h: SharedHarness, snapshot: Record<string, PartSolid>, bodyId: string): number {
   const body = snapshot[bodyId]
   if (!body || body.shape === null) return -1
   const scope = new DisposeScope()
@@ -133,8 +133,8 @@ function faceCount(ocModule: OccModule, h: SharedHarness, snapshot: Record<strin
 
 /** A shallow store copy safe to hand to a solver: live B-rep handles are
  *  numbers, but `brep_diff`'s sub-shape proxies are not ours to copy. */
-function cloneStore(snapshot: Record<string, Body>): Record<string, Body> {
-  const out: Record<string, Body> = {}
+function cloneStore(snapshot: Record<string, PartSolid>): Record<string, PartSolid> {
+  const out: Record<string, PartSolid> = {}
   for (const [id, body] of Object.entries(snapshot)) {
     out[id] = {
       ...body,
@@ -240,7 +240,7 @@ describe.skipIf(!oc)('mirror precision (real OCC)', () => {
     expect(build.res(result, 'ex1').status).toBe('ok')
     const snapshot = lastSnapshot(result)
 
-    const mirror = (precision: Body['precision']): { faces: number; up: number; warning?: string } => {
+    const mirror = (precision: PartSolid['precision']): { faces: number; up: number; warning?: string } => {
       const store = cloneStore(snapshot)
       if (precision !== undefined) store.body_ex1.precision = precision
       else delete store.body_ex1.precision

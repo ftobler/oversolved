@@ -13,7 +13,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { worldToSketch2d } from '../shared/planes'
 import { unflattenGeometry } from '@/utils/geometry/geometryMapping'
 import type { Repository } from '../../query'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { PartEntityDef, SketchFeature } from '@/types/cad'
 
 type Dict = Record<string, unknown>
@@ -59,7 +59,7 @@ describe('solveSketch projection lowering', () => {
         { id: 'proj_c0', kind: 'projection', target: '$c0', source: '?edge;circle' },
       ],
     }
-    const out = solveSketch(feature, stubRepo(onParallelCircle), {} as Record<string, Body>)
+    const out = solveSketch(feature, stubRepo(onParallelCircle), {} as Record<string, PartSolid>)
     expect(out.status).not.toBe('error')
     const g = out.geometry?.c0
     expect(g).toBeDefined()
@@ -83,7 +83,7 @@ describe('solveSketch projection lowering', () => {
         { id: 'proj_e0', kind: 'projection', target: '$e0', source: '?edge;circle' },
       ],
     }
-    const out = solveSketch(feature, stubRepo(tilted), {} as Record<string, Body>)
+    const out = solveSketch(feature, stubRepo(tilted), {} as Record<string, PartSolid>)
     expect(out.status).not.toBe('error')
     const g = out.geometry?.e0
     expect(g).toBeDefined()
@@ -110,7 +110,7 @@ describe('solveSketch projection lowering', () => {
         { id: 'proj_ell0', kind: 'projection', target: '$ell0', source: '?edge;ellipse' },
       ],
     }
-    const out = solveSketch(feature, stubRepo(partialEllipse), {} as Record<string, Body>)
+    const out = solveSketch(feature, stubRepo(partialEllipse), {} as Record<string, PartSolid>)
     expect(out.status).not.toBe('error')
     // A quarter of this eccentric ellipse misses one cubic by 2.9e-3 of its
     // size, so it lowers to a fit spline: a 2N-point block the doc entity must
@@ -146,7 +146,7 @@ describe('solveSketch projection lowering', () => {
         { id: 'proj_ell0', kind: 'projection', target: '$ell0', source: '?edge;ellipse' },
       ],
     }
-    const out = solveSketch(feature, stubRepo(partialEllipse), {} as Record<string, Body>)
+    const out = solveSketch(feature, stubRepo(partialEllipse), {} as Record<string, PartSolid>)
     expect(out.status).not.toBe('error')
     expect(out.geometry?.ell0!.length).toBeGreaterThan(8)
     expect(out.resolved_kinds).toBeUndefined()  // already fit_spline -> no further change
@@ -169,7 +169,7 @@ describe('solveSketch projection lowering', () => {
       ],
     }
     const out = solveSketch(
-      feature, stubRepo({ type: 'edge', kind: 'spline', points }), {} as Record<string, Body>,
+      feature, stubRepo({ type: 'edge', kind: 'spline', points }), {} as Record<string, PartSolid>,
     )
     expect(out.status).not.toBe('error')
     expect(out.geometry?.sp0.length).toBeGreaterThan(8)
@@ -210,7 +210,7 @@ describe('solveSketch projection lowering', () => {
         },
       ],
     }
-    const out = solveSketch(feature, stubRepo(partialEllipse), {} as Record<string, Body>)
+    const out = solveSketch(feature, stubRepo(partialEllipse), {} as Record<string, PartSolid>)
     expect(out.status).not.toBe('error')
     expect(out.resolved_kinds?.sp0).toBe('fit_spline')
     expect(out.dropped_constraints).toContainEqual({
@@ -245,7 +245,7 @@ describe('solveSketch projection lowering', () => {
         { id: 'proj_stale', kind: 'projection', target: '$stale', source: '?edge;gone' },
       ],
     }
-    const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
+    const out = solveSketch(feature, deadRepo(), {} as Record<string, PartSolid>)
     expect(out.status).not.toBe('exception')
     expect(out.status).not.toBe('error')
     // The drawn circle solved and renders.
@@ -284,7 +284,7 @@ describe('solveSketch projection lowering', () => {
         { id: 'proj_stale', kind: 'projection', target: '$stale', source: '?edge;gone' },
       ],
     }
-    const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
+    const out = solveSketch(feature, deadRepo(), {} as Record<string, PartSolid>)
     expect(out.geometry?.stale).toBeUndefined()
     expect(profileEntityIds(out)).not.toContain('stale')
     expect(out.solver_warning).toContain(
@@ -312,7 +312,7 @@ describe('solveSketch projection lowering', () => {
       ],
     }
     const before = structuredClone(feature)
-    const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
+    const out = solveSketch(feature, deadRepo(), {} as Record<string, PartSolid>)
     // The lowering is solve-local: the document row keeps its block and kind.
     expect(feature).toEqual(before)
     expect(out.status).not.toBe('exception')
@@ -343,7 +343,7 @@ describe('solveSketch projection lowering', () => {
       ],
     }
     const before = structuredClone(feature)
-    const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
+    const out = solveSketch(feature, deadRepo(), {} as Record<string, PartSolid>)
     expect(feature).toEqual(before)
     expect(out.status).not.toBe('exception')
     expect(out.geometry?.held).toBeUndefined()
@@ -377,12 +377,12 @@ describe('solveSketch projection lowering', () => {
     })
     const stale = build('spline')
     const before = structuredClone(stale)
-    const staleOut = solveSketch(stale, deadRepo(), {} as Record<string, Body>)
+    const staleOut = solveSketch(stale, deadRepo(), {} as Record<string, PartSolid>)
     expect(stale).toEqual(before)
     expect(staleOut.geometry?.held).toEqual(fitBlock)
     expect(staleOut.solver_warning).toContain('the entity keeps its last position')
 
-    const adoptedOut = solveSketch(build('fit_spline'), deadRepo(), {} as Record<string, Body>)
+    const adoptedOut = solveSketch(build('fit_spline'), deadRepo(), {} as Record<string, PartSolid>)
     expect(adoptedOut.geometry?.held).toEqual(fitBlock)
     expect(adoptedOut.solver_warning).toContain('the entity keeps its last position')
   })
@@ -405,7 +405,7 @@ describe('solveSketch projection lowering', () => {
       ],
     }
     const before = structuredClone(feature)
-    const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
+    const out = solveSketch(feature, deadRepo(), {} as Record<string, PartSolid>)
     expect(feature).toEqual(before)
     expect(out.status).not.toBe('exception')
     expect(out.geometry?.held).toBeUndefined()
@@ -431,7 +431,7 @@ describe('solveSketch projection lowering', () => {
         { id: 'proj_held', kind: 'projection', target: '$held', source: '?edge;gone' },
       ],
     }
-    const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
+    const out = solveSketch(feature, deadRepo(), {} as Record<string, PartSolid>)
     expect(out.geometry?.held).toEqual([0, 2, 4, 2])
     expect(out.solver_warning).toContain(
       'projection proj_held source ?edge;gone did not resolve; the entity keeps its last position',
@@ -464,7 +464,7 @@ describe('solveSketch projection lowering', () => {
         { id: 'c_co', kind: 'coincident', a: '$ln', b: '@builtin_origin' },
       ],
     }
-    const out = solveSketch(feature, stubRepo(offsetPlane), {} as Record<string, Body>)
+    const out = solveSketch(feature, stubRepo(offsetPlane), {} as Record<string, PartSolid>)
     expect(out.status).not.toBe('error')
     const g = out.geometry?.ln
     expect(g).toBeDefined()
@@ -489,7 +489,7 @@ describe('solveSketch projection lowering', () => {
         { id: 'proj_c0', kind: 'projection', target: '$c0', source: '?edge;circle' },
       ],
     }
-    const out = solveSketch(feature, stubRepo(onParallelCircle), {} as Record<string, Body>)
+    const out = solveSketch(feature, stubRepo(onParallelCircle), {} as Record<string, PartSolid>)
     // Parallel circle stays a circle -> no kind change -> no resolved_kinds.
     expect(out.resolved_kinds).toBeUndefined()
   })
@@ -512,7 +512,7 @@ describe('solveSketch projection lowering', () => {
         { id: 'proj_a0', kind: 'projection', target: '$a0', source: '?edge;arc' },
       ],
     }
-    const out = solveSketch(feature, stubRepo(projArc), {} as Record<string, Body>)
+    const out = solveSketch(feature, stubRepo(projArc), {} as Record<string, PartSolid>)
     expect(out.status).not.toBe('error')
     const g = out.geometry?.a0
     expect(g).toBeDefined()
@@ -545,8 +545,8 @@ describe('solveSketch projection lowering', () => {
         { id: 'proj_c0', kind: 'projection', target: '$c0', source: '?edge;circle' },
       ],
     }
-    const folded = solveSketch(legacy, stubRepo(onParallelCircle), {} as Record<string, Body>)
-    const explicit = solveSketch(constraintForm, stubRepo(onParallelCircle), {} as Record<string, Body>)
+    const folded = solveSketch(legacy, stubRepo(onParallelCircle), {} as Record<string, PartSolid>)
+    const explicit = solveSketch(constraintForm, stubRepo(onParallelCircle), {} as Record<string, PartSolid>)
     expect(folded.geometry?.c0).toEqual(explicit.geometry?.c0)
     expect(folded.projection_errors).toBeUndefined()
   })
@@ -593,7 +593,7 @@ describe('solveSketch projects the document origin as a point', () => {
       { plane: '?face', model: facePlane, entries: { builtin_origin: originPoint, '?face': facePlane } },
     ]
     for (const c of cases) {
-      const out = solveSketch(originFeature(c.plane), repoOf(c.entries), {} as Record<string, Body>)
+      const out = solveSketch(originFeature(c.plane), repoOf(c.entries), {} as Record<string, PartSolid>)
       const expected = worldToSketch2d([0, 0, 0], c.model)
       expect(out.projection_errors ?? []).toEqual([])
       expect(out.geometry?.p0?.[0]).toBeCloseTo(expected[0])
@@ -614,7 +614,7 @@ describe('solveSketch projects the document origin as a point', () => {
         { id: 'c_dia', kind: 'diameter', target: '$c0', value: 6 },
       ],
     }
-    const out = solveSketch(feature, repoOf({ builtin_origin: originPoint, '?face': facePlane }), {} as Record<string, Body>)
+    const out = solveSketch(feature, repoOf({ builtin_origin: originPoint, '?face': facePlane }), {} as Record<string, PartSolid>)
     expect(out.status).toBe('fully_constrained')
     expect(out.geometry?.c0?.[0]).toBeCloseTo(0)
     expect(out.geometry?.c0?.[1]).toBeCloseTo(0)
@@ -661,7 +661,7 @@ describe('solveSketch projects another sketch\'s whole entity', () => {
 
   it('lifts a foreign line through its owning sketch frame and projects it', () => {
     if (!solveBytes) return
-    const out = solveSketch(sketchWithProjection('@sk1/L1', 'line'), repoOf(), {} as Record<string, Body>)
+    const out = solveSketch(sketchWithProjection('@sk1/L1', 'line'), repoOf(), {} as Record<string, PartSolid>)
     expect(out.status).not.toBe('error')
     expect(out.projection_errors).toBeUndefined()
     const g = out.geometry?.held
@@ -690,7 +690,7 @@ describe('solveSketch projects another sketch\'s whole entity', () => {
       constraints: [{ id: 'proj_held', kind: 'projection', target: '$held', source: '@sk1/A1' }],
     })
     for (const plane of ['@builtin_plane_front', '?offsetFace']) {
-      const out = solveSketch(arcSketch(plane), repoOf(entries), {} as Record<string, Body>)
+      const out = solveSketch(arcSketch(plane), repoOf(entries), {} as Record<string, PartSolid>)
       expect(out.projection_errors, plane).toBeUndefined()
       const g = out.geometry?.held
       expect(g, plane).toBeDefined()
@@ -704,7 +704,7 @@ describe('solveSketch projects another sketch\'s whole entity', () => {
 
   it('keeps a foreign vertex projection working (the point path)', () => {
     if (!solveBytes) return
-    const out = solveSketch(sketchWithProjection('@sk1/L1/end', 'point'), repoOf(), {} as Record<string, Body>)
+    const out = solveSketch(sketchWithProjection('@sk1/L1/end', 'point'), repoOf(), {} as Record<string, PartSolid>)
     expect(out.projection_errors).toBeUndefined()
     expect(out.geometry?.held?.[0]).toBeCloseTo(0)
     expect(out.geometry?.held?.[1]).toBeCloseTo(5)
@@ -712,7 +712,7 @@ describe('solveSketch projects another sketch\'s whole entity', () => {
 
   it('reports an unknown source as a projection error and a named warning', () => {
     if (!solveBytes) return
-    const out = solveSketch(sketchWithProjection('@sk1/nope', 'point'), repoOf(), {} as Record<string, Body>)
+    const out = solveSketch(sketchWithProjection('@sk1/nope', 'point'), repoOf(), {} as Record<string, PartSolid>)
     expect(out.projection_errors).toEqual(['proj_held'])
     expect(out.solver_warning).toContain(
       'projection proj_held source @sk1/nope did not resolve; the entity keeps its last position',
@@ -727,7 +727,7 @@ describe('solveSketch projects another sketch\'s whole entity', () => {
       ...ENTRIES,
       'sk1/S1': { external_params: [0, 0, 1, 1, 2, 2, 3, 3], kind: 'spline', sketch_id: 'sk1' },
     }
-    const out = solveSketch(sketchWithProjection('@sk1/S1', 'spline'), repoOf(entries), {} as Record<string, Body>)
+    const out = solveSketch(sketchWithProjection('@sk1/S1', 'spline'), repoOf(entries), {} as Record<string, PartSolid>)
     expect(out.projection_errors).toEqual(['proj_held'])
   })
 })
@@ -753,7 +753,7 @@ describe('solveSketch names the cause of an unresolvable sketch source', () => {
   })
 
   const solve = (feature: Dict, featuresById: Record<string, Dict>): Dict =>
-    solveSketch(feature, deadRepo(), {} as Record<string, Body>, featuresById)
+    solveSketch(feature, deadRepo(), {} as Record<string, PartSolid>, featuresById)
 
   it('names a self reference', () => {
     if (!solveBytes) return
@@ -836,7 +836,7 @@ describe('solveSketch reports the constraints it could not use', () => {
         },
       ],
     }
-    const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
+    const out = solveSketch(feature, deadRepo(), {} as Record<string, PartSolid>)
     expect(out.status).toBe('fully_constrained')
     expect(out.dropped_constraints).toEqual([
       { id: 'c_coincident_oT6KcUj9', kind: 'coincident', reason: 'stale reference' },
@@ -871,7 +871,7 @@ describe('solveSketch pins projected entities (fix-projected-entities-pinned)', 
         { id: 'proj_c0', kind: 'projection', target: '$c0', source: '?edge;circle' },
       ],
     }
-    const out = solveSketch(feature, stubRepo(projCircle), {} as Record<string, Body>)
+    const out = solveSketch(feature, stubRepo(projCircle), {} as Record<string, PartSolid>)
     expect(out.status).not.toBe('error')
     const g = out.geometry?.c0
     expect(g![0]).toBeCloseTo(3)
@@ -896,7 +896,7 @@ describe('solveSketch pins projected entities (fix-projected-entities-pinned)', 
         { id: 'cc', kind: 'coincident', a: '$p0', b: '$c0center' },
       ],
     }
-    const out = solveSketch(feature, stubRepo(projCircle), {} as Record<string, Body>)
+    const out = solveSketch(feature, stubRepo(projCircle), {} as Record<string, PartSolid>)
     expect(out.status).not.toBe('error')
     // Projected circle did not move off (3,4) despite the coincident.
     expect(out.geometry?.c0?.[0]).toBeCloseTo(3)
@@ -920,8 +920,8 @@ describe('solveSketch pins projected entities (fix-projected-entities-pinned)', 
         { id: 'cc', kind: 'coincident', a: '$p0', b: '$c0center' },
       ],
     }
-    const a = solveSketch(feature, stubRepo(projCircle), {} as Record<string, Body>)
-    const b = solveSketch(feature, stubRepo(projCircle), {} as Record<string, Body>)
+    const a = solveSketch(feature, stubRepo(projCircle), {} as Record<string, PartSolid>)
+    const b = solveSketch(feature, stubRepo(projCircle), {} as Record<string, PartSolid>)
     expect(a.geometry?.c0).toEqual(b.geometry?.c0)
   })
 

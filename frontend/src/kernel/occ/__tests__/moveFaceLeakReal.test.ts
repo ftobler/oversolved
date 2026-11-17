@@ -14,7 +14,7 @@
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'
-import { canonicalFaces } from '../bodyNames'
+import { canonicalFaces } from '../partNames'
 import { makeBox, makeCylinder, faceNormal, type Vec3 } from '../primitives'
 import { applyMoveFace, neighbourSurface } from '../moveFace'
 import type { Disposable } from '../disposeScope'

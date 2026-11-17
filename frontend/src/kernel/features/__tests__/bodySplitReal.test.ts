@@ -17,7 +17,7 @@ import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
 import { countSolids, volumeOf, booleanWithDiff } from '../../occ/booleans'
 import { makeBoxAt, readSolidVertices, solidCentroid } from '../../occ/primitives'
-import { canonicalFaces } from '../../occ/bodyNames'
+import { canonicalFaces } from '../../occ/partNames'
 import { SubShapeMap } from '../../occ/subshapeIdentity'
 import { Repository } from '../../query'
 import { barePart, resolvePart } from '../shared/partResolution'
@@ -25,9 +25,9 @@ import { solveBoolean } from '../boolean'
 import { solveArray } from './patternBodyTestAdapters'
 import { solveMirror, solveTransform } from '../transformMirror'
 import { solveHole } from '../hole'
-import { applyBodyOperation } from '../bodyOps'
-import { registerSplitBodies, resplitBody, assertOneSolidPerBody, splitSolids } from '../bodySplit'
-import type { Body } from '../../types3d'
+import { applyPartOperation } from '../partOps'
+import { registerSplitParts, resplitPart, assertOneSolidPerPart, splitSolids } from '../partSplit'
+import type { PartSolid } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
 
 // Nothing excludes a *Real suite from the default run, and a local checkout
@@ -42,7 +42,7 @@ const oc = loadedOcc!
 interface Rig {
   scope: DisposeScope
   table: HandleTable
-  store: Record<string, Body>
+  store: Record<string, PartSolid>
 }
 
 function rig(): Rig {
@@ -50,7 +50,7 @@ function rig(): Rig {
 }
 
 /** Seed a body holding one axis-aligned box. */
-function seedBox(r: Rig, id: string, corner: [number, number, number], dx: number, dy = dx, dz = dx): Body {
+function seedBox(r: Rig, id: string, corner: [number, number, number], dx: number, dy = dx, dz = dx): PartSolid {
   const b = barePart(id, id.replace(/^body_/, ''))
   b.shape = r.table.register(makeBoxAt(oc, r.scope, corner, dx, dy, dz), b.created_by)
   r.store[id] = b
@@ -85,7 +85,7 @@ function expectOnePartEach(r: Rig, expected: number): void {
     ]),
   )
   expect(counts).toEqual(Object.fromEntries(Object.keys(r.store).map((id) => [id, 1])))
-  expect(() => assertOneSolidPerBody(oc, r.scope, r.table, r.store)).not.toThrow()
+  expect(() => assertOneSolidPerPart(oc, r.scope, r.table, r.store)).not.toThrow()
 }
 
 describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
@@ -95,7 +95,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
       makeBoxAt(oc, r.scope, [0, 0, 0], 10, 10, 10),
       makeBoxAt(oc, r.scope, [50, 0, 0], 2, 2, 2),
     ])
-    expect(registerSplitBodies(oc, r.scope, r.table, r.store, shape, { id: 'body_x', createdBy: 'x' }))
+    expect(registerSplitParts(oc, r.scope, r.table, r.store, shape, { id: 'body_x', createdBy: 'x' }))
       .toEqual(['body_x', 'body_x_1'])
     expectOnePartEach(r, 2)
     r.scope.dispose()
@@ -103,7 +103,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
 
   it('registerSplitBodies keeps a lone solid as one body under the base id', () => {
     const r = rig()
-    expect(registerSplitBodies(
+    expect(registerSplitParts(
       oc, r.scope, r.table, r.store, makeBoxAt(oc, r.scope, [0, 0, 0], 3, 3, 3), { id: 'body_x', createdBy: 'x' }))
       .toEqual(['body_x'])
     expectOnePartEach(r, 1)
@@ -118,7 +118,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
     const E = oc.TopAbs_ShapeEnum
     const exp = r.scope.track(new oc.TopExp_Explorer_2(box, E.TopAbs_FACE, E.TopAbs_SHAPE))
     const face = r.scope.track(oc.TopoDS.Face_1(exp.Current()))
-    expect(registerSplitBodies(oc, r.scope, r.table, r.store, face, { id: 'body_s', createdBy: 's' }))
+    expect(registerSplitParts(oc, r.scope, r.table, r.store, face, { id: 'body_s', createdBy: 's' }))
       .toEqual(['body_s'])
     expect(Object.keys(r.store)).toEqual(['body_s'])
     expect(countSolids(oc, r.scope, r.table.get<OccShape>(r.store.body_s.shape!))).toBe(0)
@@ -132,7 +132,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
       makeBoxAt(oc, r.scope, [0, 0, 0], 10, 10, 10),
       makeBoxAt(oc, r.scope, [50, 0, 0], 2, 2, 2),
     ])
-    expect(registerSplitBodies(oc, r.scope, r.table, r.store, shape, { id: 'body_x', createdBy: 'x' }))
+    expect(registerSplitParts(oc, r.scope, r.table, r.store, shape, { id: 'body_x', createdBy: 'x' }))
       .toEqual(['body_x', 'body_x_2'])
     expectOnePartEach(r, 3)
     r.scope.dispose()
@@ -146,9 +146,9 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
       makeBoxAt(oc, r.scope, [0, 0, 0], 5, 5, 5),
       makeBoxAt(oc, r.scope, [30, 0, 0], 5, 5, 5),
     ])
-    expect(registerSplitBodies(oc, r.scope, r.table, r.store, first, { id: 'body_a', createdBy: 'a' }))
+    expect(registerSplitParts(oc, r.scope, r.table, r.store, first, { id: 'body_a', createdBy: 'a' }))
       .toEqual(['body_a', 'body_a_1'])
-    expect(registerSplitBodies(
+    expect(registerSplitParts(
       oc, r.scope, r.table, r.store, makeBoxAt(oc, r.scope, [60, 0, 0], 5, 5, 5), { id: 'body_a', createdBy: 'a' }))
       .toEqual(['body_a_2'])
     expectOnePartEach(r, 3)
@@ -162,7 +162,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
       makeBoxAt(oc, r.scope, [0, 0, 0], 10, 10, 10),
       makeBoxAt(oc, r.scope, [50, 0, 0], 2, 2, 2),
     ])
-    expect(resplitBody(oc, r.scope, r.table, r.store, body, newShape, 'f1', {})).toEqual(['body_t', 'body_t_1'])
+    expect(resplitPart(oc, r.scope, r.table, r.store, body, newShape, 'f1', {})).toEqual(['body_t', 'body_t_1'])
     expect(r.store.body_t).toBe(body)  // identity preserved, not replaced
     expectOnePartEach(r, 2)
     r.scope.dispose()
@@ -177,7 +177,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
     const body = seedBox(r, 'body_t', [0, 0, 0], 10)
     const oldHandle = body.shape
     const emptyShape = compoundOf(r.scope, [])
-    expect(resplitBody(oc, r.scope, r.table, r.store, body, emptyShape, 'f1', {})).toEqual([])
+    expect(resplitPart(oc, r.scope, r.table, r.store, body, emptyShape, 'f1', {})).toEqual([])
     expect('body_t' in r.store).toBe(false)
     // seedBox always registers a shape, so the handle existed and the deletion
     // released it.
@@ -196,7 +196,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
       makeBoxAt(oc, r.scope, [0, 0, 0], 10, 10, 10),
       makeBoxAt(oc, r.scope, [50, 0, 0], 2, 2, 2),
     ])
-    resplitBody(oc, r.scope, r.table, r.store, body, newShape, 'f1', {})
+    resplitPart(oc, r.scope, r.table, r.store, body, newShape, 'f1', {})
     const sib = r.store.body_t_1
     expect(sib.created_by).toBe(body.created_by)
     expect(sib.sketch_id).toBe('sk9')
@@ -217,7 +217,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
       makeBoxAt(oc, r.scope, [0, 0, 0], 10, 10, 10),
       makeBoxAt(oc, r.scope, [50, 0, 0], 2, 2, 2),
     ])
-    resplitBody(oc, r.scope, r.table, r.store, body, newShape, 'cut1', {})
+    resplitPart(oc, r.scope, r.table, r.store, body, newShape, 'cut1', {})
     expect(r.store.body_t_1.modified_by).toEqual(['fillet1', 'cut1'])
     expect(r.store.body_t_1.brep_diff).toBeNull()  // the diff describes the whole pre-split shape
     r.scope.dispose()
@@ -234,7 +234,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
       makeBoxAt(oc, r.scope, [0, 0, 0], 10, 10, 10),
       makeBoxAt(oc, r.scope, [50, 0, 0], 2, 2, 2),
     ])
-    resplitBody(oc, r.scope, r.table, r.store, body, newShape, 'cut1', {})
+    resplitPart(oc, r.scope, r.table, r.store, body, newShape, 'cut1', {})
     expect(r.store.body_t_1.modified_by).toEqual(['cut1'])
     r.scope.dispose()
   })
@@ -260,7 +260,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
     })
     expect(faces).toHaveLength(12)  // two boxes, six faces each
 
-    resplitBody(oc, r.scope, r.table, r.store, body, newShape, 'f1', { faceNames, faceAncestry })
+    resplitPart(oc, r.scope, r.table, r.store, body, newShape, 'f1', { faceNames, faceAncestry })
     const named = (uuids: (string | null)[] | undefined): string[] => (uuids ?? []).filter((u): u is string => u !== null)
     const a = named(r.store.body_t.face_uuids)
     const b = named(r.store.body_t_1.face_uuids)
@@ -284,7 +284,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
       makeBoxAt(oc, r.scope, [0, 0, 0], 10, 10, 10),
     ])
     expect(() =>
-      registerSplitBodies(oc, r.scope, r.table, r.store, shape, { id: 'body_x', createdBy: 'x' }),
+      registerSplitParts(oc, r.scope, r.table, r.store, shape, { id: 'body_x', createdBy: 'x' }),
     ).toThrow(/near-tie/)
     expect(Object.keys(r.store)).toEqual([])
     r.scope.dispose()
@@ -314,7 +314,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
       makeBoxAt(oc, r.scope, [0, 0, 0], 10, 10, 10),
       makeBoxAt(oc, r.scope, [0, 0, 0], 10, 10, 10),
     ])
-    expect(() => resplitBody(oc, r.scope, r.table, r.store, body, newShape, 'cut1', {
+    expect(() => resplitPart(oc, r.scope, r.table, r.store, body, newShape, 'cut1', {
       faceNames: new SubShapeMap<string>(), faceAncestry: { '@u|f9': ['@body_t'] },
     })).toThrow(/near-tie/)
     expect(Object.keys(r.store)).toEqual(['body_t'])  // no sibling landed
@@ -322,7 +322,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
     expect(r.store.body_t.face_uuids).toEqual(['@u|f0', null, null, null, null, null])  // resplit overwrote nothing
     expect(r.store.body_t.face_ancestry).toEqual({ '@u|f0': ['@body_t'] })
     expect(body.shape).toBe(oldHandle)  // identity preserved; resplit released/replaced nothing
-    expect(() => assertOneSolidPerBody(oc, r.scope, r.table, r.store)).not.toThrow()
+    expect(() => assertOneSolidPerPart(oc, r.scope, r.table, r.store)).not.toThrow()
     r.scope.dispose()
   })
 
@@ -375,7 +375,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
       makeBoxAt(oc, r.scope, [30, 0, 0], 3, 3, 3),
     ]), 'bad')
     r.store.body_bad = b
-    expect(() => assertOneSolidPerBody(oc, r.scope, r.table, r.store)).toThrow(/body_bad \(2 solids\)/)
+    expect(() => assertOneSolidPerPart(oc, r.scope, r.table, r.store)).toThrow(/body_bad \(2 solids\)/)
     r.scope.dispose()
   })
 })
@@ -555,10 +555,10 @@ describe.skipIf(!hasOcc)('bodySplit: the leaves that used to leak', () => {
     const bar = barePart('body_bar', 'bar')
     bar.shape = r.table.register(makeBoxAt(oc, r.scope, [0, 0, 0], 100, 5, 5), 'bar')
     r.store.body_bar = bar
-    const res = applyBodyOperation(oc, r.scope, r.table, {
+    const res = applyPartOperation(oc, r.scope, r.table, {
       toolShape: makeBoxAt(oc, r.scope, [40, -1, -1], 10, 7, 7),
-      bodyStore: r.store, operation: 'cut', mergeTarget: null,
-      bodyId: 'body_c1', featureId: 'c1', sketchId: '', opName: 'cut',
+      partStore: r.store, operation: 'cut', mergeTarget: null,
+      partId: 'body_c1', featureId: 'c1', sketchId: '', opName: 'cut',
     })
     expect(res.body_ids).toEqual(['body_bar', 'body_bar_1'])
     expectOnePartEach(r, 2)
@@ -571,9 +571,9 @@ describe.skipIf(!hasOcc)('bodySplit: the leaves that used to leak', () => {
       makeBoxAt(oc, r.scope, [0, 0, 0], 5, 5, 5),
       makeBoxAt(oc, r.scope, [40, 0, 0], 5, 5, 5),
     ])
-    const res = applyBodyOperation(oc, r.scope, r.table, {
-      toolShape: tool, bodyStore: r.store, operation: 'new', mergeTarget: null,
-      bodyId: 'body_n1', featureId: 'n1', sketchId: 'sk1', opName: 'extrude',
+    const res = applyPartOperation(oc, r.scope, r.table, {
+      toolShape: tool, partStore: r.store, operation: 'new', mergeTarget: null,
+      partId: 'body_n1', featureId: 'n1', sketchId: 'sk1', opName: 'extrude',
     })
     expect(res.body_ids).toEqual(['body_n1', 'body_n1_1'])
     expectOnePartEach(r, 2)

@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Environment } from '@react-three/drei'
 import * as THREE from 'three'
-import type { Feature, PartFeature, Sketch, BodyResult, PlaneTransform } from '@/types/cad'
+import type { Feature, PartFeature, Sketch, PartResult, PlaneTransform } from '@/types/cad'
 import Geometry3D from '@/components/Geometry3D'
 import { CubeGizmoCanvas } from '@/components/misc/CubeGizmo'
 import '@/components/Viewport/ViewportHud.css'
@@ -177,7 +177,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // draws on demand, so the camera paths below (fit, plane/face alignment) have
   // to ask for their frame themselves.
   const invalidateRef = useRef<(() => void) | null>(null)
-  const bodiesRef = useRef<Record<string, BodyResult> | undefined>(undefined)
+  const bodiesRef = useRef<Record<string, PartResult> | undefined>(undefined)
   // eslint-disable-next-line react-hooks/refs -- mirror latest bodies into a ref for use inside stable callbacks
   bodiesRef.current = bodies
   const idPipelineRef = useRef<IdPipeline | null>(null)

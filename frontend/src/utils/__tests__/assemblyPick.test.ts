@@ -3,7 +3,7 @@
 // it names must be the entity `entityAnchors` indexed anchors under.
 
 import { describe, it, expect } from 'vitest'
-import type { BodyResult, PartInstance, Transform3D } from '@/types/cad'
+import type { PartResult, PartInstance, Transform3D } from '@/types/cad'
 import type { MeshPayload } from '@/kernel/solveAssembly'
 import { assemblyEntityKey } from '@/utils/anchorCandidates'
 import { buildAnchorTable, type AnchorTable } from '@/utils/anchorGizmos'
@@ -217,7 +217,7 @@ describe('picking payloads with hidden seams', () => {
 })
 
 describe('offsetPickBodies', () => {
-  function renderBody(handle: string): BodyResult {
+  function renderBody(handle: string): PartResult {
     return {
       id: `${handle}:body_0`,
       created_by: handle,

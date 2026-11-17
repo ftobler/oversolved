@@ -36,7 +36,7 @@ import {
 } from '../primitives'
 import { volumeOf } from '../volume'
 import { booleanWithDiff, exploreSolids } from '../booleans'
-import { canonicalFaces, canonicalEdges } from '../bodyNames'
+import { canonicalFaces, canonicalEdges } from '../partNames'
 import { applyFilletWithDiff, applyChamferWithDiff, isValidShape } from '../edgeModifier'
 import { applyDeleteFacesWithLineage } from '../defeature'
 import type { OccDisposable, OccModule, OccShape } from '../occTypes'

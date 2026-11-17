@@ -4,13 +4,13 @@ import { computeMeasurement } from '@/utils/geometry/computeMeasurements'
 import { useKernelMeasure } from '@/hooks/useKernelMeasure'
 import MeasurementList from '@/components/layout/MeasurementList'
 import type { MeasureSet } from '@/kernel/worker/solverProtocol'
-import type { Sketch, BodyResult, LengthUnit } from '@/types/cad'
+import type { Sketch, PartResult, LengthUnit } from '@/types/cad'
 
 interface MeasurementDisplayProps {
   sketch: Sketch
   measurementIcon?: string
   solveResults?: Record<string, unknown>
-  bodies?: Record<string, BodyResult>
+  bodies?: Record<string, PartResult>
   // The part document's unit; the numbers are in it already, only the suffix
   // follows.
   lengthUnit?: LengthUnit

@@ -28,7 +28,7 @@ import { parseAncestry } from '../../query'
 import { selectByPredicate } from '../../select'
 import { mintFaceUuid, splitPlaneFacePath, moveFaceExtendPath } from '../../constructionName'
 import type { BuildResponse } from '../../builder'
-import type { BodyResult } from '@/types/cad'
+import type { PartResult } from '@/types/cad'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -239,12 +239,12 @@ describe.skipIf(!oc || !solveBytes)('hole and self-tool edge credit (real OCC + 
     // owner does not claim it.
     const selected = selectByPredicate(
       { from: 'body_ex1', kind: 'edge', where: { created_by: 'ho1' } },
-      r.bodies as unknown as Record<string, BodyResult>,
+      r.bodies as unknown as Record<string, PartResult>,
     )
     expect(selected.queries).toContain(breakout[0])
     const pocketEdges = selectByPredicate(
       { from: 'body_ex1', kind: 'edge', where: { created_by: 'ex2' } },
-      r.bodies as unknown as Record<string, BodyResult>,
+      r.bodies as unknown as Record<string, PartResult>,
     )
     expect(pocketEdges.queries).not.toContain(breakout[0])
 

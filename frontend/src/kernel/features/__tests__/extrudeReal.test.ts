@@ -15,7 +15,7 @@ import { describe, it, expect } from 'vitest'
 import { makeAncestryQuery } from '../../query'
 import type { BuildResponse } from '../../builder'
 import { DisposeScope } from '../../occ/disposeScope'
-import { canonicalFaces } from '../../occ/bodyNames'
+import { canonicalFaces } from '../../occ/partNames'
 import { volumeOf } from '../../occ/booleans'
 import type { OccShape } from '../../occ/occTypes'
 import {
@@ -31,7 +31,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
   it('basic rect extrude produces a valid mesh', () => {
     const result = h.run(fullRectExtrudeSpec(10, 10, 5))
     expect(h.res(result, 'ex1').status).toBe('ok')
-    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.part(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshValid(mesh)
   })
@@ -39,7 +39,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
   it('rect extrude bbox normal direction', () => {
     const result = h.run(fullRectExtrudeSpec(10, 8, 5, 'normal'))
     expect(h.res(result, 'ex1').status).toBe('ok')
-    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.part(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshBbox(mesh, [0, 10], [0, 8], [0, 5])
   })
@@ -47,7 +47,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
   it('rect extrude bbox reverse direction', () => {
     const result = h.run(fullRectExtrudeSpec(6, 6, 4, 'reverse'))
     expect(h.res(result, 'ex1').status).toBe('ok')
-    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.part(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshBbox(mesh, [0, 6], [0, 6], [-4, 0])
   })
@@ -55,7 +55,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
   it('rect extrude bbox symmetric direction', () => {
     const result = h.run(fullRectExtrudeSpec(4, 4, 6, 'symmetric'))
     expect(h.res(result, 'ex1').status).toBe('ok')
-    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.part(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshBbox(mesh, [0, 4], [0, 4], [-3, 3])
   })
@@ -63,7 +63,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
   it('all face indices are valid', () => {
     const result = h.run(fullRectExtrudeSpec())
     expect(h.res(result, 'ex1').status).toBe('ok')
-    const mesh = h.body(result, 'body_ex1').mesh as { vertices: number[][]; faces: number[][] } | undefined
+    const mesh = h.part(result, 'body_ex1').mesh as { vertices: number[][]; faces: number[][] } | undefined
     expect(mesh).toBeDefined()
     if (mesh) {
       const n = mesh.vertices.length
@@ -78,7 +78,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
   it('no degenerate faces', () => {
     const result = h.run(fullRectExtrudeSpec())
     expect(h.res(result, 'ex1').status).toBe('ok')
-    const mesh = h.body(result, 'body_ex1').mesh as { vertices: number[][]; faces: number[][] } | undefined
+    const mesh = h.part(result, 'body_ex1').mesh as { vertices: number[][]; faces: number[][] } | undefined
     expect(mesh).toBeDefined()
     if (mesh) {
       for (const [a, b, c] of mesh.faces) {
@@ -111,7 +111,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
     expect(h.res(result, 'sk1').status).not.toBe('exception')
     expect(h.res(result, 'ex1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_ex1')
-    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.part(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshBbox(mesh, [-0.5, 0.5], [0, 2], [-0.5, 0.5])
   })
@@ -135,7 +135,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
     expect(h.res(result, 'sk1').status).not.toBe('exception')
     expect(h.res(result, 'ex1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_ex1')
-    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.part(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshBbox(mesh, [-0.5, 0.5], [0, 2], [-0.5, 0.5])
   })
@@ -163,7 +163,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
     expect(h.res(result, 'sk1').status).not.toBe('exception')
     expect(h.res(result, 'ex1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_ex1')
-    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.part(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshValid(mesh)
   })
@@ -183,7 +183,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
       ],
     })
     expect(h.res(result, 'ex1').status).toBe('ok')
-    const mesh = h.body(result, 'body_ex1').mesh as { face_data?: Array<{ centroid: number[]; normal: number[] }> } | undefined
+    const mesh = h.part(result, 'body_ex1').mesh as { face_data?: Array<{ centroid: number[]; normal: number[] }> } | undefined
     expect(mesh).toBeDefined()
     const topFace = mesh?.face_data?.find((fd) => fd.normal[2] > 0.9)
     expect(topFace).toBeDefined()
@@ -224,7 +224,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
     })
     expect(h.res(result, 'ex1').status).toBe('ok')
     expect(h.res(result, 'ex2').status).toBe('ok')
-    const mesh2 = h.body(result, 'body_ex2').mesh as { vertices: number[][] } | undefined
+    const mesh2 = h.part(result, 'body_ex2').mesh as { vertices: number[][] } | undefined
     expect(mesh2).toBeDefined()
     if (mesh2) {
       const zs = mesh2.vertices.map((v) => v[2])
@@ -255,7 +255,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
     expect(h.res(result, 'sk1').status).not.toBe('exception')
     expect(h.res(result, 'ex1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_ex1')
-    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.part(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshValid(mesh)
   })
@@ -280,7 +280,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
       ],
     })
     expect(h.res(result, 'ex1').status).toBe('ok')
-    const mesh = h.body(result, 'body_ex1').mesh as { vertices: number[][] } | undefined
+    const mesh = h.part(result, 'body_ex1').mesh as { vertices: number[][] } | undefined
     expect(mesh).toBeDefined()
     if (mesh) {
       const xs = mesh.vertices.map((v) => v[0])
@@ -315,7 +315,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
     const result = h.run(rectWithCircleSpec('entity:sk1:ci'))
     expect(h.res(result, 'sk1').status).not.toBe('exception')
     expect(h.res(result, 'ex1').status).toBe('ok')
-    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.part(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) {
       assertMeshValid(mesh)
@@ -347,7 +347,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
     })
     expect(h.res(result, 'ex2').status).toBe('ok')
     expect(result.bodies).not.toHaveProperty('body_ex2')
-    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.part(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) {
       assertMeshValid(mesh)
@@ -376,7 +376,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
     expect(h.res(result, 'ex1').status).toBe('ok')
     expect(h.res(result, 'ex2').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_ex2')
-    const mesh2 = h.body(result, 'body_ex2').mesh as { vertices: number[][] } | undefined
+    const mesh2 = h.part(result, 'body_ex2').mesh as { vertices: number[][] } | undefined
     expect(mesh2).toBeDefined()
     if (mesh2) {
       const zs = mesh2.vertices.map((v) => v[2])
@@ -398,7 +398,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
     })
     expect(h.res(result, 'ex1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_ex1')
-    const mesh = h.body(result, 'body_ex1').mesh as { vertices: number[][]; faces: number[][] } | undefined
+    const mesh = h.part(result, 'body_ex1').mesh as { vertices: number[][]; faces: number[][] } | undefined
     expect(mesh).toBeDefined()
     if (mesh) {
       expect(mesh.vertices.length).toBeGreaterThan(0)
@@ -415,7 +415,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): m
       ],
     })
     expect(h.res(result, 'ex1').status).toBe('ok')
-    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.part(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshBbox(mesh, [0, 4], [0, 4], [0, 2])
   })

@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest'
 import { selectByPredicate, validateSelector, SelectorError } from '@/kernel/select'
 import type { Selector } from '@/kernel/select'
-import type { BodyResult, EdgeData, FaceData } from '@/types/cad'
+import type { PartResult, EdgeData, FaceData } from '@/types/cad'
 
 type V3 = [number, number, number]
 
@@ -19,7 +19,7 @@ function bodyResult(
   edgeQueries: string[],
   faces: FaceData[] = [],
   faceQueries: string[] = [],
-): BodyResult {
+): PartResult {
   return {
     id,
     created_by: 'ex1',
@@ -31,7 +31,7 @@ function bodyResult(
 }
 
 // Three lines whose midpoints sit at z = -40, 0, 40.
-function plate(): Record<string, BodyResult> {
+function plate(): Record<string, PartResult> {
   const edges: EdgeData[] = [
     line([0, 0, -40], [10, 0, -40]),
     line([0, 0, 0], [10, 0, 0]),
@@ -41,7 +41,7 @@ function plate(): Record<string, BodyResult> {
   return { body_p: bodyResult('body_p', edges, queries) }
 }
 
-function queriesOf(selector: Selector, bodies: Record<string, BodyResult>): string[] {
+function queriesOf(selector: Selector, bodies: Record<string, PartResult>): string[] {
   return selectByPredicate(selector, bodies).queries
 }
 

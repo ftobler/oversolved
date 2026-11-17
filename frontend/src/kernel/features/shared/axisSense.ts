@@ -23,10 +23,10 @@
 import type { DisposeScope } from '../../occ/disposeScope'
 import type { HandleTable } from '../../occ/handleTable'
 import type { OccModule, OccShape, OccSubShape } from '../../occ/occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { Repository } from '../../query'
 import { extractOccFace } from '../../occ/faceLoops'
-import { canonicalEdges } from '../../occ/bodyNames'
+import { canonicalEdges } from '../../occ/partNames'
 import { exploreEdges, exploreFaces } from '../../occ/edgeModifier'
 import { SubShapeMultiIndex } from '../../occ/subshapeIdentity'
 import { faceNormal, faceSurfaceFrame, type Vec3 } from '../../occ/primitives'
@@ -69,7 +69,7 @@ function payloadOf(query: string, globalRepo: Repository, partStore: Dict): Dict
 function partShapeOf(data: Dict, partStore: Dict, ctx: AxisSenseContext): OccShape | null {
   const partId = data.body_id as string | undefined
   if (partId === undefined) return null
-  const part = partStore[partId] as Body | undefined
+  const part = partStore[partId] as PartSolid | undefined
   if (part === undefined || part.shape === null) return null
   return ctx.table.get<OccShape>(part.shape)
 }

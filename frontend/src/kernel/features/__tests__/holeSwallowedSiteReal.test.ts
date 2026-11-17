@@ -21,7 +21,7 @@ import { makeBox } from '../../occ/primitives'
 import { volumeOf } from '../../occ/booleans'
 import { Repository } from '../../query'
 import { solveHole } from '../hole'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 
 const oc = await loadOcc()
@@ -41,7 +41,7 @@ const COUNTERBORED = Math.PI * CB_R * CB_R * CB_DEPTH + Math.PI * BORE_R * BORE_
 const FACE_PLANE = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
 const CENTRE: [number, number] = [30, 40]
 
-function plateTarget(occ: OccModule, scope: DisposeScope, table: HandleTable): Record<string, Body> {
+function plateTarget(occ: OccModule, scope: DisposeScope, table: HandleTable): Record<string, PartSolid> {
   const box = makeBox(occ, scope, 60, 80, 10)
   return {
     body_t: {

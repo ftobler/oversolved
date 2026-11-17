@@ -1,17 +1,17 @@
 import { describe, it, expect } from 'vitest'
 import { getSketchesToRender, getPreviewBodies } from '@/components/Viewport/bodyUtils'
-import type { Feature, BodyResult } from '@/types/cad'
+import type { Feature, PartResult } from '@/types/cad'
 
 // bodyUtils is pure render-list selection (no R3F). bodyUtils.test.ts covers
 // getBodiesToRender + computeEffectiveVisibleBodies; this pins the two
 // previously-uncovered selectors: getSketchesToRender and getPreviewBodies.
 
-const makeBody = (createdBy: string | undefined, withMesh = true): BodyResult => ({
+const makeBody = (createdBy: string | undefined, withMesh = true): PartResult => ({
   id: 'b',
   created_by: createdBy,
   modified_by: [],
   mesh: withMesh ? { vertices: [], faces: [], face_data: [], face_queries: [] } : undefined,
-} as unknown as BodyResult)
+} as unknown as PartResult)
 
 describe('getSketchesToRender', () => {
   const features: Feature[] = [
@@ -50,7 +50,7 @@ describe('getPreviewBodies', () => {
     { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
     { id: 'ex2', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
   ]
-  const bodies: Record<string, BodyResult> = {
+  const bodies: Record<string, PartResult> = {
     body_ex1: makeBody('ex1'),
     body_ex2: makeBody('ex2'),
   }

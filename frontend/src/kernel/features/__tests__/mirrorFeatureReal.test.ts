@@ -16,11 +16,11 @@ import { DisposeScope } from '../../occ/disposeScope'
 import { setSketchSolver, resetSketchSolver } from '../sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { volumeOf } from '../../occ/volume'
-import { canonicalFaces } from '../../occ/bodyNames'
+import { canonicalFaces } from '../../occ/partNames'
 import { parseAncestry } from '../../query'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -112,8 +112,8 @@ describe.skipIf(!oc || !solveBytes)('the mirror feature subject through the buil
     setSketchSolver(solveBytes)
   })
 
-  function snapshot(r: BuildResponse, featureId: string): Record<string, Body> {
-    return r._build_state!.checkpoints[featureId].body_store_snapshot as Record<string, Body>
+  function snapshot(r: BuildResponse, featureId: string): Record<string, PartSolid> {
+    return r._build_state!.checkpoints[featureId].body_store_snapshot as Record<string, PartSolid>
   }
   function shapeAt(r: BuildResponse, featureId: string, bodyId: string): OccShape {
     return h.table.get<OccShape>(snapshot(r, featureId)[bodyId].shape!)
@@ -127,11 +127,11 @@ describe.skipIf(!oc || !solveBytes)('the mirror feature subject through the buil
     try { return canonicalFaces(occ, scope, shapeAt(r, featureId, bodyId)).length } finally { scope.dispose() }
   }
   function faceData(r: BuildResponse, bodyId: string): FaceDatum[] {
-    const mesh = (h.body(r, bodyId).mesh ?? {}) as { face_data?: FaceDatum[] }
+    const mesh = (h.part(r, bodyId).mesh ?? {}) as { face_data?: FaceDatum[] }
     return mesh.face_data ?? []
   }
   function liveFaceUuids(r: BuildResponse, bodyId: string): string[] {
-    const mesh = (h.body(r, bodyId).mesh ?? {}) as { face_queries?: string[] }
+    const mesh = (h.part(r, bodyId).mesh ?? {}) as { face_queries?: string[] }
     return (mesh.face_queries ?? []).map(uuidTokenOf).filter((u): u is string => u !== undefined)
   }
 

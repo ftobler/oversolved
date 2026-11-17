@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest'
 import { HandleTable } from '../../occ/handleTable'
 import { DisposeScope } from '../../occ/disposeScope'
-import { applyBodyOperation } from '../bodyOps'
+import { applyPartOperation } from '../partOps'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 
 // applyBodyOperation never touches `oc` or `toolShape` on these branches.
@@ -14,12 +14,12 @@ const toolShape = null as unknown as OccShape
 
 describe('applyBodyOperation OCC-free branches', () => {
   it('cut against an empty store with no target succeeds as a no-op', () => {
-    const result = applyBodyOperation(oc, new DisposeScope(), new HandleTable(), {
+    const result = applyPartOperation(oc, new DisposeScope(), new HandleTable(), {
       toolShape,
-      bodyStore: {},
+      partStore: {},
       operation: 'cut',
       mergeTarget: null,
-      bodyId: 'body_f',
+      partId: 'body_f',
       featureId: 'featF',
       sketchId: 'skF',
       opName: 'extrude',
@@ -43,12 +43,12 @@ describe('applyBodyOperation OCC-free branches', () => {
       },
     }
     expect(() =>
-      applyBodyOperation(oc, new DisposeScope(), new HandleTable(), {
+      applyPartOperation(oc, new DisposeScope(), new HandleTable(), {
         toolShape,
-        bodyStore: store,
+        partStore: store,
         operation: 'cut',
         mergeTarget: 'nope',
-        bodyId: 'body_f',
+        partId: 'body_f',
         featureId: 'featF',
         sketchId: 'skF',
         opName: 'extrude',
@@ -72,12 +72,12 @@ describe('applyBodyOperation OCC-free branches', () => {
       },
     }
     expect(() =>
-      applyBodyOperation(oc, new DisposeScope(), new HandleTable(), {
+      applyPartOperation(oc, new DisposeScope(), new HandleTable(), {
         toolShape,
-        bodyStore: store,
+        partStore: store,
         operation: 'cut',
         mergeTarget: 'body_t',
-        bodyId: 'body_f',
+        partId: 'body_f',
         featureId: 'featF',
         sketchId: 'skF',
         opName: 'extrude',
@@ -89,12 +89,12 @@ describe('applyBodyOperation OCC-free branches', () => {
     // Extrude's flag: there is no body to add to, so the feature is a named
     // rebuild error rather than a silent first body. Neither handle is touched.
     expect(() =>
-      applyBodyOperation(oc, new DisposeScope(), new HandleTable(), {
+      applyPartOperation(oc, new DisposeScope(), new HandleTable(), {
         toolShape,
-        bodyStore: {},
+        partStore: {},
         operation: 'add',
         mergeTarget: null,
-        bodyId: 'body_f',
+        partId: 'body_f',
         featureId: 'featF',
         sketchId: 'skF',
         opName: 'extrude',
@@ -119,12 +119,12 @@ describe('applyBodyOperation OCC-free branches', () => {
       },
     }
     expect(() =>
-      applyBodyOperation(oc, new DisposeScope(), new HandleTable(), {
+      applyPartOperation(oc, new DisposeScope(), new HandleTable(), {
         toolShape,
-        bodyStore: store,
+        partStore: store,
         operation: 'add',
         mergeTarget: null,
-        bodyId: 'body_f',
+        partId: 'body_f',
         featureId: 'featF',
         sketchId: 'skF',
         opName: 'extrude',
@@ -149,12 +149,12 @@ describe('applyBodyOperation OCC-free branches', () => {
       },
     }
     expect(() =>
-      applyBodyOperation(oc, new DisposeScope(), new HandleTable(), {
+      applyPartOperation(oc, new DisposeScope(), new HandleTable(), {
         toolShape,
-        bodyStore: store,
+        partStore: store,
         operation: 'add',
         mergeTarget: 'body_t',
-        bodyId: 'body_f',
+        partId: 'body_f',
         featureId: 'featF',
         sketchId: 'skF',
         opName: 'extrude',

@@ -37,7 +37,7 @@ import { onFeatureStart } from '../featureProgress'
 import { MEASURE_SUPERSEDED, SUPERSEDED_ERROR } from './solverProtocol'
 import { scaleBundleToMillimetres, toPartBundle } from '../partBundle'
 import { partToAssemblyScale } from '@/utils/lengthUnit'
-import type { BodyResult } from '../../types/cad'
+import type { PartResult } from '../../types/cad'
 
 // The worker's per-generation import byte cache. The client sends each id's
 // bytes once (fileDelta in solverClient); every request this generation then
@@ -92,8 +92,8 @@ export async function handleSolveRequest(
       ...rest,
       // `generation` rides through from the engine, which stamps it after the
       // build: everything a measurement may later name is scoped to it.
-      bodies: packBodies(rest.bodies),
-      ...(rest.pick_bodies ? { pick_bodies: packBodies(rest.pick_bodies) } : {}),
+      bodies: packParts(rest.bodies),
+      ...(rest.pick_bodies ? { pick_bodies: packParts(rest.pick_bodies) } : {}),
     }
     return { id: req.id, ok: true, payload }
   } catch (e) {
@@ -196,7 +196,7 @@ export async function handleBundleRequest(
       toPartBundle(
         req.doc_id,
         req.content_hash,
-        response.bodies as Record<string, BodyResult>,
+        response.bodies as Record<string, PartResult>,
       ),
       partToAssemblyScale(req.spec),
     )
@@ -210,8 +210,8 @@ export async function handleBundleRequest(
 export function bundleTransferables(res: BundleResponse): Transferable[] {
   if (!res.ok) return []
   const out: Transferable[] = []
-  for (const body of res.payload.bodies) {
-    const m = body.mesh
+  for (const part of res.payload.bodies) {
+    const m = part.mesh
     if (m.vertices instanceof Float32Array) out.push(m.vertices.buffer)
     if (m.indices instanceof Uint32Array) out.push(m.indices.buffer)
     if (m.faceIdsPerTriangle instanceof Uint32Array) out.push(m.faceIdsPerTriangle.buffer)
@@ -268,10 +268,10 @@ function flattenFaces(faces: MeshFaces): Uint32Array {
   return out
 }
 
-function packBody(raw: unknown): unknown {
+function packPart(raw: unknown): unknown {
   if (!raw || typeof raw !== 'object') return raw
-  const body = raw as Record<string, unknown>
-  const mesh = body.mesh as Record<string, unknown> | undefined
+  const part = raw as Record<string, unknown>
+  const mesh = part.mesh as Record<string, unknown> | undefined
   if (!mesh) return raw
   const { vertices, faces } = mesh
   // A mesh with no geometry arrays (the empty-mesh case) passes through
@@ -287,21 +287,21 @@ function packBody(raw: unknown): unknown {
     faces: flattenFaces(faces as MeshFaces),
   }
   Object.defineProperty(packedMesh, PACKED_FRESH, { value: true })
-  return { ...body, mesh: packedMesh }
+  return { ...part, mesh: packedMesh }
 }
 
-function packBodies(bodies: Record<string, unknown>): Record<string, unknown> {
+function packParts(parts: Record<string, unknown>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
-  for (const [bid, body] of Object.entries(bodies)) out[bid] = packBody(body)
+  for (const [bid, body] of Object.entries(parts)) out[bid] = packPart(body)
   return out
 }
 
 /** The transferable ArrayBuffers from a single body-dict (for postMessage's transfer arg). */
-function collectBodyBuffers(bodies: Record<string, unknown> | undefined): Transferable[] {
-  if (!bodies) return []
+function collectPartBuffers(parts: Record<string, unknown> | undefined): Transferable[] {
+  if (!parts) return []
   const out: Transferable[] = []
-  for (const body of Object.values(bodies)) {
-    const mesh = (body as { mesh?: Record<PropertyKey, unknown> })?.mesh
+  for (const part of Object.values(parts)) {
+    const mesh = (part as { mesh?: Record<PropertyKey, unknown> })?.mesh
     if (!mesh) continue
     const fresh = mesh[PACKED_FRESH] === true
     if (!fresh && (mesh.vertices instanceof Float32Array || mesh.faces instanceof Uint32Array)) {
@@ -322,8 +322,8 @@ function collectBodyBuffers(bodies: Record<string, unknown> | undefined): Transf
 export function collectTransferables(res: SolveResponse): Transferable[] {
   if (!res.ok || !res.payload) return []
   return [
-    ...collectBodyBuffers(res.payload.bodies),
-    ...collectBodyBuffers(res.payload.pick_bodies),
+    ...collectPartBuffers(res.payload.bodies),
+    ...collectPartBuffers(res.payload.pick_bodies),
   ]
 }
 

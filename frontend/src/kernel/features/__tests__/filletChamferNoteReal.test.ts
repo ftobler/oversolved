@@ -17,10 +17,10 @@ import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
 import { extrudeProfileWithLineage } from '../../occ/prismLineage'
 import { solidToEdges } from '../../occ/tessellation'
-import { canonicalEdges, canonicalFaces, namesToArray } from '../../occ/bodyNames'
+import { canonicalEdges, canonicalFaces, namesToArray } from '../../occ/partNames'
 import { ref, Repository } from '../../query'
 import { solveFillet, solveChamfer } from '../filletChamfer'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { PlaneLike } from '../shared/planes'
 import type { LoopEdge } from '../../profileLoops'
 import type { OccModule, OccShape } from '../../occ/occTypes'
@@ -43,11 +43,11 @@ function roundedRect(): LoopEdge[] {
 }
 
 /** The extruded plate plus the body metadata the fillet leaf reads. */
-function plate(occ: OccModule, scope: DisposeScope, table: HandleTable): Record<string, Body> {
+function plate(occ: OccModule, scope: DisposeScope, table: HandleTable): Record<string, PartSolid> {
   const res = extrudeProfileWithLineage(occ, scope, [roundedRect()], XY, [0, 0, 1], 5, 'sk1', 'ex1')
   const shape = scope.track(res.solid as OccShape)
   const handle = table.register(shape, 'ex1')
-  const body: Body = {
+  const body: PartSolid = {
     id: 'body_ex1',
     created_by: 'ex1',
     modified_by: [],
@@ -67,12 +67,12 @@ function plate(occ: OccModule, scope: DisposeScope, table: HandleTable): Record<
 function topEdgeQuery(
   occ: OccModule,
   table: HandleTable,
-  bodyStore: Record<string, Body>,
+  bodyStore: Record<string, PartSolid>,
 ): string {
   const body = bodyStore.body_ex1
   const edges = solidToEdges(occ, table, body.shape!, {
     createdBy: 'ex1',
-    bodyId: 'body_ex1',
+    partId: 'body_ex1',
     edgeUuids: body.edge_uuids,
     edgeAncestry: body.edge_ancestry,
     profileQueries: body.profile_queries,

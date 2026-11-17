@@ -27,14 +27,14 @@ import { DisposeScope } from '../disposeScope'
 import { neighbourRing, faceGroups } from '../defeature'
 import { faceSurfaceName } from '../moveFaceSurfaces'
 import { noProgress } from '../defaultArgs'
-import { canonicalEdges } from '../bodyNames'
+import { canonicalEdges } from '../partNames'
 import { classifyFaceEdges } from '../moveFace'
 import { exploreSolids } from '../booleans'
 import { isValidShape } from '../edgeModifier'
 import { volumeOf } from '../volume'
 import { makeFaceIndexCache, resolveFacesByQuery } from '../../features/shared/faceResolution'
 import type { OccModule, OccShape, OccSubShape, OccDefeaturingMaker } from '../occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -111,7 +111,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('delete face on edge-modif
     const firstDelete = features.findIndex((f) => f.id === CHAMFER_DELETE)
     expect(firstDelete).toBeGreaterThan(0)
     const result = h.run({ features: features.slice(0, firstDelete), part_style: fixture.part_style })
-    const body: Body | undefined = result._build_state.checkpoints[CHAMFER_ID]?.body_store_snapshot?.[BODY]
+    const body: PartSolid | undefined = result._build_state.checkpoints[CHAMFER_ID]?.body_store_snapshot?.[BODY]
     if (!body) throw new Error('the probe document has no body after the chamfer')
     live = new DisposeScope()
     const index = makeFaceIndexCache(occ, live, h.table)(body)

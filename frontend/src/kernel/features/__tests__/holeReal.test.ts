@@ -18,7 +18,7 @@ import { makeBox, makeBoxAt, makeCylinder, type Vec3 } from '../../occ/primitive
 import { volumeOf, booleanWithDiff } from '../../occ/booleans'
 import { Repository } from '../../query'
 import { solveHole } from '../hole'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import fixture from '../../occ/__fixtures__/hole.json'
 
@@ -57,7 +57,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
           repo.register(`sk/${eid}/xy`, { external_xy: xy })
         }
         const box = makeBox(occ, scope, c.box[0], c.box[1], c.box[2])
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_t: {
             id: 'body_t',
             created_by: 'ex_t',
@@ -116,7 +116,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
         repo.register('sk/p1/xy', { external_xy: [10, 10] })
         const box = makeBoxAt(occ, scope, [0, 0, -10], 20, 20, 10)
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_t: {
             id: 'body_t', created_by: 'ex_t', modified_by: [],
             shape: table.register(box, 'ex_t'),
@@ -148,7 +148,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
         repo.register('sk/p1/xy', { external_xy: [5, 5] })
         const box = makeBox(occ, scope, 10, 10, 10)
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_first: {
             id: 'body_first', created_by: 'ex_first', modified_by: [],
             shape: table.register(box, 'ex_first'),
@@ -181,7 +181,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('sk/p1/xy', { external_xy: [0, 0] })
         const first = makeBoxAt(occ, scope, [0, 0, 0], 20, 20, 10)
         const second = makeBoxAt(occ, scope, [40, 0, 0], 20, 20, 10)
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_first: {
             id: 'body_first', created_by: 'ex_first', modified_by: [],
             shape: table.register(first, 'ex_first'),
@@ -221,7 +221,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('sk/p1/xy', { external_xy: [0, 0] })
         const first = makeBoxAt(occ, scope, [0, 0, 0], 20, 20, 10)
         const second = makeBoxAt(occ, scope, [40, 0, 0], 20, 20, 10)
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_first: {
             id: 'body_first', created_by: 'ex_first', modified_by: [],
             shape: table.register(first, 'ex_first'),
@@ -261,7 +261,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('sk/p1/xy', { external_xy: [0, 0] })
         const first = makeBox(occ, scope, 10, 10, 10)
         const second = makeBoxAt(occ, scope, [100, 0, 0], 10, 10, 10)
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_first: {
             id: 'body_first', created_by: 'ex_first', modified_by: [],
             shape: table.register(first, 'ex_first'),
@@ -291,7 +291,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
     // ─── Viewport picks in the sketch field ───
 
     // A 20x20x10 box to drill, registered as `body_t`.
-    function boxTarget(occ: OccModule, scope: DisposeScope, table: HandleTable): Record<string, Body> {
+    function boxTarget(occ: OccModule, scope: DisposeScope, table: HandleTable): Record<string, PartSolid> {
       const box = makeBox(occ, scope, 20, 20, 10)
       return {
         body_t: {
@@ -496,7 +496,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('_pt_sk', { origin: [-15, 0, 10], x_axis: [0, 1, 0], y_axis: [0, 0, 1], normal: [-1, 0, 0] })
         repo.register('sk/p1/xy', { external_xy: [0, 0] })
         const cyl = makeCylinder(occ, scope, [0, 0, 0], [0, 0, 1], 15, 20)
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_t: {
             id: 'body_t', created_by: 'ex_t', modified_by: [],
             shape: table.register(cyl, 'ex_t'),
@@ -535,7 +535,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('_pt_sk', { origin: [0, 43, 0], x_axis: [1, 0, 0], y_axis: [0, 0, 1], normal: [0, 1, 0] })
         repo.register('sk/p1/xy', { external_xy: [0, 0] })
         const cup = makeCylinder(occ, scope, [0, 43, 0], [0, 1, 0], 4, 7)
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_cup: {
             id: 'body_cup', created_by: 'exCup', modified_by: [],
             shape: table.register(cup, 'exCup'),
@@ -580,7 +580,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: xAxis, y_axis: yAxis, normal })
         repo.register('sk/p1/xy', { external_xy: [0, 0] })
         const box = makeBox(occ, scope, 10, 10, 10)
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_t: {
             id: 'body_t', created_by: 'ex_t', modified_by: [],
             shape: table.register(box, 'ex_t'),
@@ -622,7 +622,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
         repo.register('sk/p1/xy', { external_xy: [5, 5] })
         const box = makeBox(occ, scope, 10, 10, 10)
-        const bodyStore: Record<string, Body> = {
+        const bodyStore: Record<string, PartSolid> = {
           body_t: {
             id: 'body_t', created_by: 'ex_t', modified_by: [],
             shape: table.register(box, 'ex_t'),
@@ -654,7 +654,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
   })
 
   describe('hole: a drill that removes nothing, or everything, says so', () => {
-    function boxTarget(occ: OccModule, scope: DisposeScope, table: HandleTable): Record<string, Body> {
+    function boxTarget(occ: OccModule, scope: DisposeScope, table: HandleTable): Record<string, PartSolid> {
       const box = makeBox(occ, scope, 20, 20, 10)
       return {
         body_t: {

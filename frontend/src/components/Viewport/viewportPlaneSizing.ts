@@ -1,4 +1,4 @@
-import type { BodyResult, Feature, PlaneDef } from '@/types/cad'
+import type { PartResult, Feature, PlaneDef } from '@/types/cad'
 import { computeVertexBounds } from '@/components/Viewport/cameraController'
 import { DEFAULT_PLANE_SIZE } from '@/components/Viewport/planeConstants'
 
@@ -27,7 +27,7 @@ export function calculateMeshExtent(vertices: Float32Array | [number, number, nu
   )
 }
 
-export function getModelBoundingBoxExtent(bodies: Record<string, BodyResult> | undefined): number {
+export function getModelBoundingBoxExtent(bodies: Record<string, PartResult> | undefined): number {
   if (!bodies) return 0
 
   let maxExtent = 0
@@ -41,7 +41,7 @@ export function getModelBoundingBoxExtent(bodies: Record<string, BodyResult> | u
   return maxExtent
 }
 
-export function getFaceExtent(faceQuery: string, bodies: Record<string, BodyResult>): number {
+export function getFaceExtent(faceQuery: string, bodies: Record<string, PartResult>): number {
   const match = faceQuery.match(/@([^/]+)/)
   if (!match) return 0
 
@@ -54,7 +54,7 @@ export function getFaceExtent(faceQuery: string, bodies: Record<string, BodyResu
 
 export function calculatePlaneSize(
   planeDefinition: PlaneDef | undefined,
-  bodies: Record<string, BodyResult> | undefined,
+  bodies: Record<string, PartResult> | undefined,
 ): number {
   const EXPANSION_FACTOR = 1.1
 

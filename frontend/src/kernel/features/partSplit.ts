@@ -31,12 +31,12 @@
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 import type { KernelPrecision } from '../precision'
 import { exploreSolids, volumeOf } from '../occ/booleans'
 import { TOL_VOLUME_DEGENERATE } from '../solverConstants'
 import { solidCentroid } from '../occ/primitives'
-import { canonicalEdges, canonicalFaces, namesToArray, type UuidArray } from '../occ/bodyNames'
+import { canonicalEdges, canonicalFaces, namesToArray, type UuidArray } from '../occ/partNames'
 import type { SubShapeMap } from '../occ/subshapeIdentity'
 import { orderSplitChildren, type SplitChild } from '../constructionName'
 import { shapeNormalFrame } from '../occ/constructionLineage'
@@ -53,7 +53,7 @@ export interface ProducedNames {
 }
 
 /** The per-body identity fields a split has to hand down to every sibling. */
-export interface BodyTemplate extends ProducedNames {
+export interface PartTemplate extends ProducedNames {
   // Base id: the first sibling takes it verbatim, the rest get `_1`, `_2`, ...
   id: string
   createdBy: string
@@ -222,10 +222,10 @@ function namesForSolid(
  * instance's id. Split ids derived from an existing body id (a cut re-splitting
  * `body_x_1`) can collide for the same reason.
  */
-function mintSiblingId(base: string, index: number, bodyStore: Record<string, Body>): string {
-  if (index === 0 && !(base in bodyStore)) return base
+function mintSiblingId(base: string, index: number, partStore: Record<string, PartSolid>): string {
+  if (index === 0 && !(base in partStore)) return base
   let suffix = Math.max(index, 1)
-  while (`${base}_${suffix}` in bodyStore) suffix++
+  while (`${base}_${suffix}` in partStore) suffix++
   return `${base}_${suffix}`
 }
 
@@ -303,22 +303,22 @@ export function solidHoldingFaces(
  * there is nothing to split, and dropping it would leave the feature with no
  * body id at all.
  */
-export function registerSplitBodies(
+export function registerSplitParts(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   shape: OccShape,
-  template: BodyTemplate,
+  template: PartTemplate,
 ): string[] {
   const solids = splitSolids(oc, scope, shape)
   const parts = solids.length > 0 ? solids : [shape]
   const ids: string[] = []
   parts.forEach((part, i) => {
-    const id = mintSiblingId(template.id, i, bodyStore)
+    const id = mintSiblingId(template.id, i, partStore)
     // Read before `detach`: the arrays index the part's own sub-shapes.
     const names = namesForSolid(oc, scope, part, template, parts.length > 1)
-    bodyStore[id] = {
+    partStore[id] = {
       id,
       created_by: template.createdBy,
       modified_by: [],
@@ -382,12 +382,12 @@ export function registerSplitBodies(
  * gone, handle released); the build loop's eviction pass (builder.ts) clears
  * the body's repo registrations, the same path a consumed boolean tool takes.
  */
-export function resplitBody(
+export function resplitPart(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-  bodyStore: Record<string, Body>,
-  body: Body,
+  partStore: Record<string, PartSolid>,
+  part: PartSolid,
   newShape: OccShape,
   featureId: string,
   produced: ProducedNames,
@@ -395,11 +395,11 @@ export function resplitBody(
   precision?: KernelPrecision | null,
 ): string[] {
   const solids = orderedSolidsWithPreferred(oc, scope, newShape, preferredFirst)
-  const oldHandle = body.shape
-  const ids = [body.id]
+  const oldHandle = part.shape
+  const ids = [part.id]
   // A merge passes the max of its operands; a modifier passes nothing and the
   // body keeps the precision of the sketches that made its geometry.
-  const carriedPrecision = precision ?? body.precision
+  const carriedPrecision = precision ?? part.precision
 
   // The superseded handle's owner tag is the feature that minted the shape
   // being replaced, never `featureId` (a modifier re-seating another feature's
@@ -409,12 +409,12 @@ export function resplitBody(
   // up with the same history the parent has. Pass the producer to `releaseFor`
   // so the settled claim's tag is cleared and eviction-time `releaseOwner`
   // cannot over-decrement (see releaseFor's docstring).
-  const last = body.modified_by[body.modified_by.length - 1]
-  const history = last === featureId ? [...body.modified_by] : [...body.modified_by, featureId]
+  const last = part.modified_by[part.modified_by.length - 1]
+  const history = last === featureId ? [...part.modified_by] : [...part.modified_by, featureId]
   const oldProducer =
     last === featureId
-      ? (body.modified_by[body.modified_by.length - 2] ?? body.created_by)
-      : (last ?? body.created_by)
+      ? (part.modified_by[part.modified_by.length - 2] ?? part.created_by)
+      : (last ?? part.created_by)
 
   if (solids.length <= 1) {
     // Nothing disconnected: register the solid itself when there is one, so a
@@ -425,21 +425,21 @@ export function resplitBody(
       // body: leaving it behind with shape:null keeps it resolvable as a later
       // feature's target and puts a shapeless row in the parts list.
       if (oldHandle !== null) table.releaseFor(oldHandle, oldProducer)
-      delete bodyStore[body.id]
+      delete partStore[part.id]
       return []
     }
-    Object.assign(body, namesForSolid(oc, scope, solids[0], produced, false))
-    body.shape = table.register(scope.detach(solids[0]), featureId)
-    if (precision) body.precision = { ...precision }
+    Object.assign(part, namesForSolid(oc, scope, solids[0], produced, false))
+    part.shape = table.register(scope.detach(solids[0]), featureId)
+    if (precision) part.precision = { ...precision }
     if (oldHandle !== null) table.releaseFor(oldHandle, oldProducer)
     return ids
   }
 
   // The caller may push `featureId` onto the parent before OR after this call;
   // either way every sibling ends up with the same history the parent has.
-  Object.assign(body, namesForSolid(oc, scope, solids[0], produced, true))
-  body.shape = table.register(scope.detach(solids[0]), featureId)
-  if (precision) body.precision = { ...precision }
+  Object.assign(part, namesForSolid(oc, scope, solids[0], produced, true))
+  part.shape = table.register(scope.detach(solids[0]), featureId)
+  if (precision) part.precision = { ...precision }
   if (oldHandle !== null) table.releaseFor(oldHandle, oldProducer)
 
   // The split this sibling line began in. Deliberately NOT inherited by a
@@ -447,20 +447,20 @@ export function resplitBody(
   // split", so a nested pattern's copies belong to the inner pattern, and a
   // disjoint union folded into a copy does not hand the merged material to the
   // outer pattern (features/boolean.ts patternMemberIds).
-  const splitFrom = { feature: featureId, body: body.id }
+  const splitFrom = { feature: featureId, body: part.id }
   for (let i = 1; i < solids.length; i++) {
-    const id = mintSiblingId(body.id, i, bodyStore)
-    bodyStore[id] = {
+    const id = mintSiblingId(part.id, i, partStore)
+    partStore[id] = {
       id,
-      created_by: body.created_by,
+      created_by: part.created_by,
       modified_by: [...history],
       shape: table.register(scope.detach(solids[i]), featureId),
-      sketch_id: body.sketch_id,
+      sketch_id: part.sketch_id,
       brep_diff: null,
-      profile_queries: [...body.profile_queries],
+      profile_queries: [...part.profile_queries],
       split_from: { ...splitFrom },
       ...namesForSolid(oc, scope, solids[i], produced, true),
-      ...(body.imported ? { imported: true } : {}),
+      ...(part.imported ? { imported: true } : {}),
       ...(carriedPrecision ? { precision: { ...carriedPrecision } } : {}),
     }
     ids.push(id)
@@ -473,14 +473,14 @@ export function resplitBody(
  * gate for the invariant: a leaf that forgets to route through this module
  * fails here instead of silently shipping one Parts row that is really N parts.
  */
-export function assertOneSolidPerBody(
+export function assertOneSolidPerPart(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): void {
   const bad: string[] = []
-  for (const [id, body] of Object.entries(bodyStore)) {
+  for (const [id, body] of Object.entries(partStore)) {
     if (body.shape === null) continue
     const n = exploreSolids(oc, scope, table.get<OccShape>(body.shape)).length
     if (n > 1) bad.push(`${id} (${n} solids)`)

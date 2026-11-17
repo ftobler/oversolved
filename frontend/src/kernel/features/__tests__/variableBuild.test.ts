@@ -24,7 +24,7 @@ function deps(): BuildDeps {
     },
     postRegister: () => {},
     initGlobalRepo: () => new Repository(),
-    tessellateBodies: () => ({}),
+    tessellateParts: () => ({}),
   }
 }
 

@@ -23,14 +23,14 @@ import {
 } from '../builder'
 import { Repository, makeAncestryQuery, AmbiguousQueryError, canonical } from '../query'
 import { repoSemanticFingerprint } from '../repoFingerprintTestUtil'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 
-function makeBody(fid: string, id: string): Body {
+function makeBody(fid: string, id: string): PartSolid {
   return {
     id,
     created_by: fid,
     modified_by: [],
-    shape: 100 as unknown as Body['shape'],
+    shape: 100 as unknown as PartSolid['shape'],
     sketch_id: 'sk_' + fid,
     brep_diff: null,
     profile_queries: ['@profile_' + fid],
@@ -42,7 +42,7 @@ function makeBody(fid: string, id: string): Body {
 function solveTwoBodies(
   feature: Record<string, unknown>,
   _repo: Repository,
-  bodyStore: Record<string, Body>,
+  bodyStore: Record<string, PartSolid>,
 ): FeatureResult {
   const fid = String(feature.id ?? '')
   bodyStore['body_' + fid] = makeBody(fid, 'body_' + fid)
@@ -55,7 +55,7 @@ function twoBodyDeps(liveRepo: Repository): BuildDeps {
     trySolveFeature: solveTwoBodies,
     postRegister: () => {},
     initGlobalRepo: () => liveRepo,
-    tessellateBodies: () => ({}),
+    tessellateParts: () => ({}),
     extractBrepMetadata: () => ({}),
   }
 }

@@ -7,7 +7,7 @@
 // every consumer, which keeps per-body memo dependencies stable.
 
 import { useMemo } from 'react'
-import type { BodyResult, PartFeature } from '@/types/cad'
+import type { PartResult, PartFeature } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useEditorState } from '@/hooks/useEditorState'
@@ -29,7 +29,7 @@ interface PartHintMemo {
 
 interface PartCtxMemo {
   features: readonly PartFeature[]
-  bodies: Readonly<Record<string, BodyResult>>
+  bodies: Readonly<Record<string, PartResult>>
   rollbackPosition: number | null
   failedPicks: ReadonlySet<string>
   ctx: ReturnType<typeof buildPartRelationCtx>
@@ -46,7 +46,7 @@ let ctxMemo: PartCtxMemo | null = null
  */
 function partCtxFor(
   features: readonly PartFeature[],
-  bodies: Readonly<Record<string, BodyResult>>,
+  bodies: Readonly<Record<string, PartResult>>,
   rollbackPosition: number | null,
   failedPicks: ReadonlySet<string>,
 ) {
@@ -80,7 +80,7 @@ function partCtxFor(
 export function partRelationHintsFor(
   selection: ReadonlySet<string>,
   features: readonly PartFeature[],
-  bodies: Readonly<Record<string, BodyResult>>,
+  bodies: Readonly<Record<string, PartResult>>,
   rollbackPosition: number | null,
   editingFeatureId: string | null = null,
   failedPicks: ReadonlySet<string> = EMPTY_RELATION_SET,

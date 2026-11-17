@@ -59,7 +59,7 @@ describe.skipIf(!oc || !solveBytes)('edit exit rebuild (real OCC + Rust solver)'
       rectSketch('sk1', 10, 10),
       { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 5, direction: 'normal', operation: 'new' },
     ]})
-    const edges = (h.body(probe, 'body_ex1').edge_queries as string[]) ?? []
+    const edges = (h.part(probe, 'body_ex1').edge_queries as string[]) ?? []
     const filletEdge = edges.find((q) => q.includes('@u|')) ?? edges[0]
     expect(filletEdge).toBeTruthy()
 

@@ -25,7 +25,7 @@ import { volumeOf } from '../../occ/booleans'
 import { Repository } from '../../query'
 import { solveHole } from '../hole'
 import { holeFacePath, mintFaceUuid, type HoleFaceRole } from '../../constructionName'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
 
 const oc = await loadOcc()
@@ -62,7 +62,7 @@ function drill(planeZ: number, boxStartZ: number, hole: Record<string, unknown>)
     repo.register('_pt_sk', FRAME_AT(planeZ))
     repo.register('sk/p1/xy', { external_xy: [20, 20] })
     const box = makeBoxAt(oc!, scope, [0, 0, boxStartZ], PLATE_X, PLATE_Y, PLATE_Z)
-    const bodyStore: Record<string, Body> = {
+    const bodyStore: Record<string, PartSolid> = {
       body_t: {
         id: 'body_t', created_by: 'ex', modified_by: [],
         shape: table.register(box, 'ex'), sketch_id: 'sk',

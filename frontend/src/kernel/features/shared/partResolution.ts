@@ -1,7 +1,7 @@
 // Body and merge-target resolution shared by the boolean, transform, delete
 // and pattern leaves. Pure store lookups, no OCC.
 
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import { AmbiguousQueryError, parseAncestry, type Repository } from '../../query'
 import { stripRefSigil } from '@/utils/refSigil'
 
@@ -22,7 +22,7 @@ export class AmbiguousPartRefError extends Error {}
  * caller's question, and answering it with "the first one" is what let a
  * boolean subtract one half of a split body and report success.
  */
-function singlePartOf(ref: string, partStore: Record<string, Body>): Body | null {
+function singlePartOf(ref: string, partStore: Record<string, PartSolid>): PartSolid | null {
   const ids = resolvePartIds(ref, partStore)
   if (ids.length === 0) return null
   if (ids.length > 1) {
@@ -46,7 +46,7 @@ function singlePartOf(ref: string, partStore: Record<string, Body>): Body | null
  * feature owns one body, and fails loud otherwise (see `singleBodyOf`). Use
  * `resolveBodyIds` where every body of a feature is the right answer.
  */
-export function resolvePart(ref: string, partStore: Record<string, Body>): Body {
+export function resolvePart(ref: string, partStore: Record<string, PartSolid>): PartSolid {
   const direct = singlePartOf(ref, partStore)
   if (direct !== null) return direct
   if (ref.includes(':')) {
@@ -63,7 +63,7 @@ export function resolvePart(ref: string, partStore: Record<string, Body>): Body 
  * Build an empty Body shell with default fields (shape is assigned by the caller
  * after registration). Mirrors Python Body(id, created_by, shape, sketch_id).
  */
-export function barePart(id: string, createdBy: string, sketchId = ''): Body {
+export function barePart(id: string, createdBy: string, sketchId = ''): PartSolid {
   return {
     id,
     created_by: createdBy,
@@ -151,7 +151,7 @@ export function resolvePartIds<T extends { created_by: string }>(ref: string, pa
 export function resolvePartRefKeys(
   partQuery: string,
   globalRepo: Repository,
-  partStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   leaf: string,
 ): string[] {
   if (!partQuery.startsWith('?')) {
@@ -200,7 +200,7 @@ export function resolvePartRefKeys(
 export function resolvePartRefList(
   partQueries: string[],
   globalRepo: Repository,
-  partStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   leaf: string,
 ): string[] {
   const keys: string[] = []
@@ -222,7 +222,7 @@ export function resolvePartRefList(
  */
 export function resolveMergeTargets(
   mergeTarget: string | null | undefined,
-  partStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   opName = '',
 ): string[] {
   if (!mergeTarget) return Object.keys(partStore)

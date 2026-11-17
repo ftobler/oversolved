@@ -7,10 +7,10 @@ import type { FeatureCheckpoint } from './types3d'
 
 export function makeDeps(overrides?: Partial<BuildDeps>): BuildDeps {
   return {
-    trySolveFeature: (_feature, _repo, _bodyStore, _featuresById): FeatureResult => ({ status: 'ok' }),
+    trySolveFeature: (_feature, _repo, _partStore, _featuresById): FeatureResult => ({ status: 'ok' }),
     postRegister: () => {},
     initGlobalRepo: () => new Repository(),
-    tessellateBodies: () => ({}),
+    tessellateParts: () => ({}),
     ...overrides,
   }
 }
