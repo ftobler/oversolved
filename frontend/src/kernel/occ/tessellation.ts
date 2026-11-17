@@ -419,53 +419,81 @@ export function readShapeFaceMetadata(
   solid: OccShape,
   opts: SolidMeshOptions = {},
 ): { face_data: FaceDatum[]; face_queries: string[]; face_uuids: (string | null)[]; face_created_by: string[] } {
-  const E = oc.TopAbs_ShapeEnum
-  const exp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
-  const faces: (FaceSortItem & { surfaceFrame: SurfaceFrame | null; canon: number })[] = []
-  const canonOf = canonicalCounter()
-  for (; exp.More(); exp.Next()) {
-    const face = scope.track(oc.TopoDS.Face_1(exp.Current()))
-    const canon = canonOf(face as OccSubShape)
-    const surfaceType = faceSurfaceType(oc, scope, face)
-    const axis = (surfaceType === 'cylinderface' ? faceCylinderAxis(oc, scope, face) : undefined) ?? undefined
-    faces.push({
-      centroid: faceCentroid(oc, scope, face),
-      normal: faceNormal(oc, scope, face),
-      surfaceType,
-      surfaceFrame: faceSurfaceFrame(oc, scope, face),
-      axis,
-      canon,
-    })
-  }
-  assertAligned(canonicalCount(faces), opts.faceUuids, `${opts.bodyId ?? 'solid'} faces`)
-  faces.sort((a, b) => compareFaceSortKeys(faceSortKey(a), faceSortKey(b)))
+  const rows = sortedFaceRows(oc, scope, solid)
+  assertAligned(rows.length, opts.faceUuids, `${opts.bodyId ?? 'solid'} faces`)
   const { center, half } = bodyFrame(oc, scope, solid)
   const face_data: FaceDatum[] = []
   const face_queries: string[] = []
   const face_uuids: (string | null)[] = []
   const creators = faceCreators(oc, scope, solid, opts)
   const face_created_by: string[] = []
-  faces.forEach((face, faceIdx) => {
-    const uuid = faceUuidAt(opts, face.canon)
+  rows.forEach((row, faceIdx) => {
+    const uuid = faceUuidAt(opts, row.canon)
     face_uuids.push(uuid)
-    face_created_by.push(creators[face.canon])
+    face_created_by.push(creators[row.canon])
     const { classifiers, query } = classifyFace(
-      faceIdx, face.centroid, face.surfaceType, center, half, opts, uuid, creators[face.canon],
+      faceIdx, row.centroid, row.surfaceType, center, half, opts, uuid, creators[row.canon],
     )
     face_data.push({
-      centroid: face.centroid,
-      normal: face.normal,
+      centroid: row.centroid,
+      normal: row.normal,
       area: 0,
-      surface_type: face.surfaceType,
+      surface_type: row.surfaceType,
       classifiers,
-      surface_frame: face.surfaceFrame ?? undefined,
-      axis: face.axis,
+      surface_frame: faceSurfaceFrame(oc, scope, row.shape) ?? undefined,
+      axis: (row.surfaceType === 'cylinderface' ? faceCylinderAxis(oc, scope, row.shape) : null) ?? undefined,
     })
     // Placeholder on a null query, same reasoning as solidToMesh above: keeps
     // face_queries[i] aligned with face_data[i] for extractBodyAnchors's zip.
     face_queries.push(query ?? '')
   })
   return { face_data, face_queries, face_uuids, face_created_by }
+}
+
+/** One face of a solid with the sort facts the render order is derived from,
+ *  and its canonical index (occ/bodyNames.ts). */
+interface FaceRow extends FaceSortItem {
+  shape: OccSubShape
+  canon: number
+}
+
+/**
+ * Every face of a solid in the order `solidToMesh` and `readShapeFaceMetadata`
+ * place it in the render arrays, with the canonical index behind each row. The
+ * sort key is centroid + normal + surface type, all read straight off the face,
+ * so this needs no triangulation: the one thing a caller that asks "which face
+ * does render index i name" needs, at the cost of a few analytic reads.
+ *
+ * A measurement pick names a face by that render index, so this is the walk
+ * that maps it back; it shares `faceSortKey`/`compareFaceSortKeys` with the
+ * mesh pass rather than restating the order.
+ */
+export function renderFaceRows(
+  oc: OccModule,
+  scope: DisposeScope,
+  solid: OccShape,
+): { shape: OccSubShape; canon: number }[] {
+  return sortedFaceRows(oc, scope, solid).map((row) => ({ shape: row.shape, canon: row.canon }))
+}
+
+function sortedFaceRows(oc: OccModule, scope: DisposeScope, solid: OccShape): FaceRow[] {
+  const E = oc.TopAbs_ShapeEnum
+  const exp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
+  const rows: FaceRow[] = []
+  const canonOf = canonicalCounter()
+  for (; exp.More(); exp.Next()) {
+    const face = scope.track(oc.TopoDS.Face_1(exp.Current())) as OccSubShape
+    const canon = canonOf(face)
+    rows.push({
+      shape: face,
+      centroid: faceCentroid(oc, scope, face),
+      normal: faceNormal(oc, scope, face),
+      surfaceType: faceSurfaceType(oc, scope, face),
+      canon,
+    })
+  }
+  rows.sort((a, b) => compareFaceSortKeys(faceSortKey(a), faceSortKey(b)))
+  return rows
 }
 
 /** Lexicographic comparator over heterogeneous edge sort keys (number|string). */
@@ -724,6 +752,23 @@ export function edgeRepresentativePoint(ed: EdgeData): Vec3 | null {
 }
 
 /**
+ * The edges of a solid in the order `solidToEdges` publishes them, with the
+ * canonical index behind each row (occ/bodyNames.ts). A measurement pick names
+ * an edge by that render index, so this is the walk that maps it back. Shares
+ * `readSolidEdges` and `compareEdgeSortKeys` with the render pass: the order is
+ * the same code, not a copy of it, including the dropped degenerated edges.
+ */
+export function renderEdgeRows(
+  oc: OccModule,
+  scope: DisposeScope,
+  solid: OccShape,
+): ReturnType<typeof readSolidEdges> {
+  const rows = readSolidEdges(oc, scope, solid)
+  rows.sort((a, b) => compareEdgeSortKeys(a.sortKey, b.sortKey))
+  return rows
+}
+
+/**
  * Unique edge geometry of a solid, sorted into deterministic indices, plus the
  * per-edge ancestry `edge_queries`, ALWAYS one per edge. A real query is built
  * only when `createdBy` is set; the rest are '' placeholders that keep the
@@ -739,10 +784,9 @@ export function solidToEdges(
   const solid = table.get(handle)
   const scope = new DisposeScope()
   try {
-    const raw = readSolidEdges(oc, scope, solid)
+    const raw = renderEdgeRows(oc, scope, solid)
     const canon = canonicalEdges(oc, scope, solid)
     assertAligned(canon.length, opts.edgeUuids, `${opts.bodyId ?? 'solid'} edges`)
-    raw.sort((a, b) => compareEdgeSortKeys(a.sortKey, b.sortKey))
     const edges = raw.map((r) => r.ed)
     const edge_uuids = raw.map((r) => opts.edgeUuids?.[r.canon] ?? null)
     const edge_queries: string[] = []

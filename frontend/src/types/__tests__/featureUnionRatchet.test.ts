@@ -43,7 +43,8 @@ const RATCHETS: Ratchet[] = [
     // sketch entity through a loose record. The table-driven measurement core
     // never erases a primitive.
     // 44: the origin link removal deleted `workspace/originResolver.ts`, whose
-    // handle read was the last cast of this shape.
+    // handle read was the last cast of this shape. measure-kernel-pairs adds no
+    // double cast (the measurement core narrows by primitive type).
     baseline: 44,
   },
   {
@@ -77,8 +78,13 @@ const RATCHETS: Ratchet[] = [
     // instance pattern's one-target-list work removed the drive's two-form
     // value rule, whose helper read the pair as a raw record, so the boundary
     // now checks the list's refs alone.
-    // 368: the wrap leaf's one `Dict` alias for its sub-definition and the
-    // repository payloads it reads, as the revolve leaf it is modelled on.
+    // 368: the measurement registry, the origin link and the instance pattern's
+    // two-form value rule each took one away (367); the wrap leaf's one `Dict`
+    // alias for its sub-definition and the repository payloads it reads, as the
+    // revolve leaf it is modelled on, brings it back to 368. Kernel-pairs keeps
+    // the count where it is: its one loose record is the named `PartSolveSpec`
+    // alias in kernel/solveLocally.ts, and the HUD's solve map is typed through
+    // `MeasureContext` instead of a second record.
     token: 'Record<string, unknown>',
     baseline: 368,
   },

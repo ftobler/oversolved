@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { BodyResult, Sketch } from '@/types/cad'
-import { measureSelection } from '@/utils/measure/measureSelection'
+import { measureSelection, measureSelectionPicks } from '@/utils/measure/measureSelection'
 import type { SketchFrame } from '@/utils/measure/adapters/sketch'
 
 const FRONT: SketchFrame = {
@@ -117,6 +117,57 @@ describe('measureSelection: kernel cells read nothing until the follow-up', () =
 
   it('reads nothing for a pair that needs the kernel', () => {
     expect(measureSelection(new Set(['@body_1', '?e1']), ctx)).toEqual([])
+  })
+})
+
+describe('measureSelection: the kernel ask names the picks', () => {
+  const spline: BodyResult = {
+    ...body,
+    id: 'body_2',
+    edges: [{ kind: 'spline', points: [[0, 0, 0], [1, 1, 0], [2, 0, 0]] }],
+    edge_queries: ['?sp'],
+    vertices: [],
+    vertex_queries: [],
+  }
+  const two = { ...ctx, bodies: { body_1: body, body_2: spline } }
+
+  it('asks for a spline edge length with the body and the render index', () => {
+    expect(measureSelectionPicks(new Set(['?sp']), two)).toEqual({
+      lines: [],
+      ask: { op: 'length', picks: [{ bodyId: 'body_2', kind: 'edge', index: 0 }] },
+    })
+  })
+
+  it('asks for a clearance between two whole bodies', () => {
+    expect(measureSelectionPicks(new Set(['@body_1', '@body_2']), two)).toEqual({
+      lines: [],
+      ask: {
+        op: 'clearance',
+        picks: [{ bodyId: 'body_1', kind: 'body' }, { bodyId: 'body_2', kind: 'body' }],
+      },
+    })
+  })
+
+  it('asks for the distance between a body element and a freeform edge', () => {
+    expect(measureSelectionPicks(new Set(['?e1', '?sp']), two)).toEqual({
+      lines: [],
+      ask: {
+        op: 'distance',
+        picks: [
+          { bodyId: 'body_1', kind: 'edge', index: 0 },
+          { bodyId: 'body_2', kind: 'edge', index: 0 },
+        ],
+      },
+    })
+  })
+
+  it('asks nothing when one side has no OCC shape (K3: a datum or a sketch entity)', () => {
+    // A datum plane against a freeform edge, and a sketch entity against the
+    // same: nothing to measure, so no request rather than a made-up face.
+    expect(measureSelectionPicks(new Set(['@builtin_plane_top', '?sp']), two))
+      .toEqual({ lines: [], ask: null })
+    expect(measureSelectionPicks(new Set(['entity:skTop:L1', '?sp']), two))
+      .toEqual({ lines: [], ask: null })
   })
 })
 

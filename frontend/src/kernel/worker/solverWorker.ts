@@ -15,7 +15,7 @@
  * here persists state the host cannot rebuild from it.
  */
 
-import { solveLocally, exportLocally, exportAssemblyLocally, setOccLoader, preloadOcc } from '../solveLocally'
+import { solveLocally, exportLocally, exportAssemblyLocally, setOccLoader, preloadOcc, measureGeneration } from '../solveLocally'
 import { loadSolverWasm } from '../../wasm-kernel/solverWasm'
 import { isDevBuild } from '../isDevBuild'
 import { extractErrorMessage } from '../errors'
@@ -28,12 +28,13 @@ import type {
   BundleRequest, BundleResponse,
   ExportAssemblyRequest,
   FileBytes,
+  MeasureRequest, MeasureResponse,
   OccProgressMessage,
   FeatureProgressMessage,
   SolverWorkerMessage,
 } from './solverProtocol'
 import { onFeatureStart } from '../featureProgress'
-import { SUPERSEDED_ERROR } from './solverProtocol'
+import { MEASURE_SUPERSEDED, SUPERSEDED_ERROR } from './solverProtocol'
 import { scaleBundleToMillimetres, toPartBundle } from '../partBundle'
 import { partToAssemblyScale } from '@/utils/lengthUnit'
 import type { BodyResult } from '../../types/cad'
@@ -89,6 +90,8 @@ export async function handleSolveRequest(
     void _build_state
     const payload: SolvePayload = {
       ...rest,
+      // `generation` rides through from the engine, which stamps it after the
+      // build: everything a measurement may later name is scoped to it.
       bodies: packBodies(rest.bodies),
       ...(rest.pick_bodies ? { pick_bodies: packBodies(rest.pick_bodies) } : {}),
     }
@@ -111,6 +114,39 @@ export async function handleExportRequest(
   try {
     const bytes = await exportFn(req.spec, req.options, files)
     return { id: req.id, ok: true, bytes }
+  } catch (e) {
+    return { id: req.id, ok: false, error: extractErrorMessage(e) }
+  }
+}
+
+/** The engine signature [[handleMeasureRequest]] depends on (production:
+ *  solveLocally.measureGeneration). */
+type MeasureEngine = typeof measureGeneration
+
+/**
+ * Answer one measurement from the solve the engine still holds. A refusal names
+ * why (`measure stale`, `measure unresolved`) and reads nothing on the main
+ * thread; it is not a document failure.
+ */
+export async function handleMeasureRequest(
+  req: MeasureRequest,
+  measure: MeasureEngine,
+): Promise<MeasureResponse> {
+  try {
+    const result = await measure({
+      generation: req.generation,
+      set: req.set,
+      op: req.op,
+      picks: req.picks,
+    })
+    if (!result.ok) return { id: req.id, ok: false, error: result.error }
+    return {
+      id: req.id,
+      ok: true,
+      value: result.value,
+      ...(result.points !== undefined && { points: result.points }),
+      ...(result.note !== undefined && { note: result.note }),
+    }
   } catch (e) {
     return { id: req.id, ok: false, error: extractErrorMessage(e) }
   }
@@ -291,18 +327,23 @@ export function collectTransferables(res: SolveResponse): Transferable[] {
   ]
 }
 
-// ─── Actor pattern: serializes solve + export requests ───
+// ─── Actor pattern: serializes solve + measure + export requests ───
 // The engine (solveLocally) owns mutable cross-solve state (HandleTable +
 // last BuildState), and both solve and export touch the single-threaded OCC
 // module. Concurrent requests would race on these shared resources. The Actor
 // guarantees sequential access by running one job at a time.
 //
-// Queue policy: only the newest solve is ever wanted. A burst of solves (a
-// sketch drag fires one per pointer move) would otherwise each be built in
-// full, and the main thread throws all but the last away on arrival -- so a
-// new solve drops the solves still waiting, and the user waits for one build
-// instead of ten. Exports and bundle builds are distinct one-shot actions and
-// are never dropped.
+// Queue policy is per LANE. Only the newest solve is ever wanted: a burst of
+// solves (a sketch drag fires one per pointer move) would otherwise each be
+// built in full, and the main thread throws all but the last away on arrival.
+// A readout is the same: the user sweeps the cursor over faces and only the
+// selection they stop on is worth answering. So a submit drops the jobs still
+// waiting in ITS OWN lane, and a solve also drops the queued measures, because
+// the solve generation those requests name is about to die.
+//
+// A measure NEVER drops a solve: the measurement is view state and the solve is
+// the document. Exports are distinct one-shot actions and are never dropped by
+// anything, and they never drop anything either.
 //
 // The job already running is not interruptible: an OCC build is a single
 // synchronous WASM call, and the only way out of it is terminating the whole
@@ -310,12 +351,19 @@ export function collectTransferables(res: SolveResponse): Transferable[] {
 // feature 0. That trade only pays when the user explicitly asks for it, which
 // is what the cancel button (`cancelSolver`) does.
 
+/** The lanes a queued job can wait in, or null for a one-shot job. */
+export type ActorLane = 'solve' | 'measure'
+
 /** One unit of Worker work: queued, then run to completion in isolation. */
-export type ActorJob =
-  | { supersedable: false; run: () => Promise<void> }
-  /** A solve: a newer solve arriving while this one still waits replaces it,
-   *  and `onSuperseded` sends the reply it will now never produce itself. */
-  | { supersedable: true; run: () => Promise<void>; onSuperseded: () => void }
+export interface ActorJob {
+  // The queue lane. A submit drops the queued jobs of its own lane; a solve
+  // also drops the queued measures. Null is a one-shot job (an export, a
+  // bundle build): never dropped, and it drops nothing.
+  lane: ActorLane | null
+  run: () => Promise<void>
+  // Sends the reply a dropped job will now never produce itself.
+  onSuperseded?: () => void
+}
 
 /**
  * A macrotask yield. Requests that arrived while the previous job held the
@@ -344,16 +392,21 @@ export class WorkerActor {
   private draining = false
 
   submit(job: ActorJob): void {
-    if (job.supersedable) {
+    if (job.lane !== null) {
       const kept: ActorJob[] = []
       for (const queued of this.queue) {
-        if (queued.supersedable) {
-          // The reply must not be able to lose the new job or leave the
-          // superseded one queued to run after its superseded reply was sent.
-          try { queued.onSuperseded() } catch (e) {
-            if (isDevBuild()) console.warn('superseded solve reply failed to post', e)
-          }
-        } else kept.push(queued)
+        // A solve kills both lanes waiting behind it: the measure requests were
+        // asked against the generation this solve is about to replace.
+        const droppable = queued.lane === job.lane || (job.lane === 'solve' && queued.lane === 'measure')
+        if (!droppable) {
+          kept.push(queued)
+          continue
+        }
+        // The reply must not be able to lose the new job or leave the dropped
+        // one queued to run after its superseded reply was sent.
+        try { queued.onSuperseded?.() } catch (e) {
+          if (isDevBuild()) console.warn('superseded reply failed to post', e)
+        }
       }
       this.queue = kept
     }
@@ -386,7 +439,7 @@ export class WorkerActor {
 
 /** An un-droppable job (export, bundle build): run it, then post its reply. */
 function oneShot<T>(job: () => Promise<T>, respond: (res: T) => void): ActorJob {
-  return { supersedable: false, run: async () => { respond(await job()) } }
+  return { lane: null, run: async () => { respond(await job()) } }
 }
 
 // ─── Worker bootstrap (skipped on the main thread / in tests) ───
@@ -406,12 +459,13 @@ interface WorkerCtx {
  */
 export function handleWorkerMessage(
   msg: WorkerRequest,
-  post: (message: SolveResponse | ExportResponse | BundleResponse, transfer: Transferable[]) => void,
+  post: (message: SolveResponse | ExportResponse | BundleResponse | MeasureResponse, transfer: Transferable[]) => void,
   actor: WorkerActor,
 ): void {
-  // Every request shape may carry file bytes; absorb them first so all four
-  // handlers below see the union of every file this generation has seen.
-  absorbFiles(msg.files)
+  // Most request shapes may carry file bytes; absorb them first so every
+  // handler below sees the union of every file this generation has seen. A
+  // measure names geometry the Worker already holds, so it carries none.
+  if ('files' in msg) absorbFiles(msg.files)
   if (msg.kind === 'export') {
     actor.submit(oneShot(
       () => handleExportRequest(msg, exportLocally, fileCache),
@@ -429,13 +483,23 @@ export function handleWorkerMessage(
     ))
   } else if (msg.kind === 'solve') {
     actor.submit({
-      supersedable: true,
+      lane: 'solve',
       run: async () => {
         const res = await handleSolveRequest(msg, solveLocally, fileCache)
         post(res, collectTransferables(res))
       },
       onSuperseded: () => {
         post({ id: msg.id, ok: false, error: SUPERSEDED_ERROR }, [])
+      },
+    })
+  } else if (msg.kind === 'measure') {
+    actor.submit({
+      lane: 'measure',
+      run: async () => {
+        post(await handleMeasureRequest(msg, measureGeneration), [])
+      },
+      onSuperseded: () => {
+        post({ id: msg.id, ok: false, error: MEASURE_SUPERSEDED }, [])
       },
     })
   } else {

@@ -1,12 +1,14 @@
 /**
- * The Worker queue policy: a new solve request flushes the solves still
- * waiting, so a burst (a sketch drag fires one solve per pointer move) costs
- * one build instead of N. The job already running is never dropped -- an OCC
- * build is one synchronous WASM call and cannot be interrupted from the
- * outside; only the cancel button's Worker terminate can end it early.
+ * The Worker queue policy, by lane: a new solve or measure flushes the jobs still
+ * waiting in its own lane, so a burst (a sketch drag fires one solve per pointer
+ * move, a cursor sweep one measure per face) costs one run instead of N. A solve
+ * additionally drops the queued measures, whose generation it is about to
+ * replace; a measure never drops a solve. The job already running is never
+ * dropped -- an OCC build is one synchronous WASM call and cannot be interrupted
+ * from the outside; only the cancel button's Worker terminate can end it early.
  */
 import { describe, it, expect, vi } from 'vitest'
-import { WorkerActor, type ActorJob } from '../solverWorker'
+import { WorkerActor, type ActorJob, type ActorLane } from '../solverWorker'
 
 /** A promise the test resolves by hand, to hold a job open. */
 function gate(): { promise: Promise<void>; open: () => void } {
@@ -20,9 +22,9 @@ async function settle(): Promise<void> {
   for (let i = 0; i < 10; i++) await new Promise(resolve => { setTimeout(resolve, 0) })
 }
 
-function solveJob(name: string, log: string[], hold?: Promise<void>): ActorJob {
+function laneJob(lane: ActorLane, name: string, log: string[], hold?: Promise<void>): ActorJob {
   return {
-    supersedable: true,
+    lane,
     run: async () => {
       log.push(`run:${name}`)
       await hold
@@ -32,9 +34,14 @@ function solveJob(name: string, log: string[], hold?: Promise<void>): ActorJob {
   }
 }
 
+const solveJob = (name: string, log: string[], hold?: Promise<void>): ActorJob =>
+  laneJob('solve', name, log, hold)
+const measureJob = (name: string, log: string[], hold?: Promise<void>): ActorJob =>
+  laneJob('measure', name, log, hold)
+
 function exportJob(name: string, log: string[], hold?: Promise<void>): ActorJob {
   return {
-    supersedable: false,
+    lane: null,
     run: async () => {
       log.push(`run:${name}`)
       await hold
@@ -105,6 +112,77 @@ describe('WorkerActor', () => {
     ])
   })
 
+  it('drops a queued measure when a newer measure arrives', async () => {
+    const log: string[] = []
+    const held = gate()
+    const actor = new WorkerActor()
+    actor.submit(solveJob('solve', log, held.promise))
+    await settle()
+    actor.submit(measureJob('m1', log))
+    actor.submit(measureJob('m2', log))
+    // The cursor moved on: only the newest readout is worth answering.
+    expect(log).toEqual(['run:solve', 'superseded:m1'])
+
+    held.open()
+    await settle()
+    expect(log).toEqual(['run:solve', 'superseded:m1', 'done:solve', 'run:m2', 'done:m2'])
+  })
+
+  it('drops the queued measures when a solve arrives, without dropping the solve', async () => {
+    const log: string[] = []
+    const held = gate()
+    const actor = new WorkerActor()
+    actor.submit(solveJob('running', log, held.promise))
+    await settle()
+    actor.submit(measureJob('m1', log))
+    actor.submit(measureJob('m2', log))
+    actor.submit(solveJob('next', log))
+    // Both measures named the generation this solve replaces; the solve and the
+    // measure that was already running are untouched.
+    expect(log).toEqual(['run:running', 'superseded:m1', 'superseded:m2'])
+
+    held.open()
+    await settle()
+    expect(log).toEqual([
+      'run:running', 'superseded:m1', 'superseded:m2', 'done:running',
+      'run:next', 'done:next',
+    ])
+  })
+
+  it('never drops a queued solve when a measure arrives', async () => {
+    const log: string[] = []
+    const held = gate()
+    const actor = new WorkerActor()
+    actor.submit(exportJob('export', log, held.promise))
+    await settle()
+    actor.submit(solveJob('solve', log))
+    actor.submit(measureJob('measure', log))
+    // The solve is the document; a readout must never displace it.
+    expect(log).toEqual(['run:export'])
+
+    held.open()
+    await settle()
+    expect(log).toEqual(['run:export', 'done:export', 'run:solve', 'done:solve', 'run:measure', 'done:measure'])
+  })
+
+  it('keeps an export running with both lanes busy', async () => {
+    const log: string[] = []
+    const held = gate()
+    const actor = new WorkerActor()
+    actor.submit(solveJob('solve', log, held.promise))
+    await settle()
+    actor.submit(measureJob('measure', log))
+    actor.submit(exportJob('export', log))
+    // The export waits its turn and neither lane drops it.
+    expect(log).toEqual(['run:solve'])
+
+    held.open()
+    await settle()
+    expect(log).toEqual([
+      'run:solve', 'done:solve', 'run:measure', 'done:measure', 'run:export', 'done:export',
+    ])
+  })
+
   it('flushes a whole burst down to the last solve', async () => {
     const log: string[] = []
     const held = gate()
@@ -121,7 +199,7 @@ describe('WorkerActor', () => {
     const log: string[] = []
     const actor = new WorkerActor()
     actor.submit({
-      supersedable: false,
+      lane: null,
       run: async () => { throw new Error('reply failed to clone') },
     })
     actor.submit(exportJob('after', log))
@@ -136,10 +214,10 @@ describe('WorkerActor', () => {
     actor.submit(solveJob('running', log, held.promise))
     await settle()
 
-    // A supersedable job whose onSuperseded throws (a hostile callback, or a
-    // reply that will not clone). The sweep must still drop it and keep going.
+    // A droppable job whose onSuperseded throws (a hostile callback, or a reply
+    // that will not clone). The sweep must still drop it and keep going.
     const poison: ActorJob = {
-      supersedable: true,
+      lane: 'solve',
       run: async () => { log.push('run:poison') },
       onSuperseded: () => {
         log.push('superseded:poison')

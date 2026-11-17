@@ -8,19 +8,21 @@ const engines = vi.hoisted(() => ({
   solveLocally: vi.fn(),
   exportLocally: vi.fn(),
   exportAssemblyLocally: vi.fn(),
+  measureGeneration: vi.fn(),
 }))
 
 vi.mock('../../solveLocally', () => ({
   solveLocally: (...args: unknown[]) => engines.solveLocally(...args),
   exportLocally: (...args: unknown[]) => engines.exportLocally(...args),
   exportAssemblyLocally: (...args: unknown[]) => engines.exportAssemblyLocally(...args),
+  measureGeneration: (...args: unknown[]) => engines.measureGeneration(...args),
   setOccLoader: vi.fn(),
 }))
 
 import { handleWorkerMessage, WorkerActor } from '../solverWorker'
-import type { BundleResponse, ExportResponse, SolveResponse } from '../solverProtocol'
+import type { BundleResponse, ExportResponse, MeasureResponse, SolveResponse } from '../solverProtocol'
 
-type Posted = { res: SolveResponse | ExportResponse | BundleResponse; transfer: Transferable[] }
+type Posted = { res: SolveResponse | ExportResponse | BundleResponse | MeasureResponse; transfer: Transferable[] }
 
 function postInto(): { posted: Posted[]; post: (res: Posted['res'], transfer: Transferable[]) => void } {
   const posted: Posted[] = []
@@ -107,5 +109,85 @@ describe('handleWorkerMessage dispatch', () => {
     expect(posted).toHaveLength(1)
     expect(posted[0].res).toMatchObject({ id: 8, ok: true })
     expect(posted[0].transfer).toHaveLength(2)
+  })
+
+  it('carries the engine-stamped solve generation through to the payload', async () => {
+    engines.solveLocally.mockResolvedValueOnce({
+      solve_ms: 1,
+      result: {},
+      bodies: {},
+      _build_state: { feature_order: [], checkpoints: {} },
+      generation: 'boot:9',
+    })
+    const actor = new WorkerActor()
+    const { posted, post } = postInto()
+
+    handleWorkerMessage({ id: 11, kind: 'solve', spec: {}, options: {} }, post, actor)
+    await flush()
+
+    expect(posted[0].res).toMatchObject({ id: 11, ok: true, payload: { generation: 'boot:9' } })
+  })
+
+  it('routes a measure message to the engine and posts the value', async () => {
+    engines.measureGeneration.mockResolvedValueOnce({
+      ok: true,
+      value: 12.5,
+      points: [[0, 0, 0], [1, 1, 1]],
+      note: 'touching',
+    })
+    const actor = new WorkerActor()
+    const { posted, post } = postInto()
+
+    handleWorkerMessage(
+      {
+        id: 12,
+        kind: 'measure',
+        generation: 'boot:9',
+        set: 'final',
+        op: 'clearance',
+        picks: [{ bodyId: 'b1', kind: 'body' }, { bodyId: 'b2', kind: 'body' }],
+      },
+      post,
+      actor,
+    )
+    await flush()
+
+    expect(engines.measureGeneration).toHaveBeenCalledWith({
+      generation: 'boot:9',
+      set: 'final',
+      op: 'clearance',
+      picks: [{ bodyId: 'b1', kind: 'body' }, { bodyId: 'b2', kind: 'body' }],
+    })
+    expect(posted).toHaveLength(1)
+    expect(posted[0].res).toMatchObject({
+      id: 12, ok: true, value: 12.5, note: 'touching',
+    })
+    expect(posted[0].transfer).toEqual([])
+  })
+
+  it('posts a refusal as an error response, not a crash', async () => {
+    engines.measureGeneration.mockResolvedValueOnce({ ok: false, error: 'measure stale' })
+    const actor = new WorkerActor()
+    const { posted, post } = postInto()
+
+    handleWorkerMessage(
+      { id: 13, kind: 'measure', generation: 'old:1', set: 'pick', op: 'length', picks: [] },
+      post,
+      actor,
+    )
+    await flush()
+
+    expect(posted[0].res).toEqual({ id: 13, ok: false, error: 'measure stale' })
+  })
+
+  it('still errors on an unknown message kind', async () => {
+    const actor = new WorkerActor()
+    const { posted, post } = postInto()
+
+    handleWorkerMessage({ id: 14, kind: 'nonsense' } as never, post, actor)
+    await flush()
+
+    expect(posted[0].res).toMatchObject({ id: 14, ok: false })
+    expect((posted[0].res as { error?: string }).error).toContain('unknown message kind')
   })
 })

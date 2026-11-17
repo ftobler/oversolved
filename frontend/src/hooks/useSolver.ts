@@ -44,10 +44,19 @@ const EMPTY_PICK_BODIES: Readonly<Record<string, BodyResult>> = Object.freeze({}
  * The union guarantees that pickBodies can never be set or read outside the
  * `'editing'` variant. Any code that accesses `world.pickBodies` without first
  * narrowing `world.status === 'editing'` is a type error.
+ *
+ * `generation` is the solve the bodies belong to: the token a kernel
+ * measurement names, so a readout can never describe geometry the pick was not
+ * made on. Null when the solve carried none (an old or OCC-less reply).
  */
 type WorldState =
-  | { status: 'full'; bodies: Record<string, BodyResult> }
-  | { status: 'editing'; bodies: Record<string, BodyResult>; pickBodies: Readonly<Record<string, BodyResult>> }
+  | { status: 'full'; bodies: Record<string, BodyResult>; generation: string | null }
+  | {
+    status: 'editing'
+    bodies: Record<string, BodyResult>
+    pickBodies: Readonly<Record<string, BodyResult>>
+    generation: string | null
+  }
 
 // The pure reconcile lives in utils/core/partStyle so the node CLI can apply the
 // same write-back without importing this hook module; re-exported here to keep
@@ -65,7 +74,7 @@ export function useSolver(
   // normal mode vs. the pair (bodies + pickBodies) during feature editing.
   // The WorldState union enforces at compile time that pickBodies only exists
   // inside the 'editing' variant, accessing it on 'full' is a type error.
-  const [world, setWorld] = useState<WorldState>({ status: 'full', bodies: {} })
+  const [world, setWorld] = useState<WorldState>({ status: 'full', bodies: {}, generation: null })
   const bodies: Record<string, BodyResult> = world.bodies
   const pickBodies: Readonly<Record<string, BodyResult>> = world.status === 'editing' ? world.pickBodies : EMPTY_PICK_BODIES
   // True once a solve carrying pick bodies has landed. Entering an edit flips
@@ -322,10 +331,11 @@ export function useSolver(
     // Otherwise it goes to 'full' and pickBodies is structurally absent from
     // the type.
     const wasEditing = editorState.getState().pickBoundary !== null
+    const generation = data.generation ?? null
     if (wasEditing && data.pick_bodies !== undefined) {
-      setWorld({ status: 'editing', bodies: data.bodies ?? {}, pickBodies: data.pick_bodies })
+      setWorld({ status: 'editing', bodies: data.bodies ?? {}, pickBodies: data.pick_bodies, generation })
     } else {
-      setWorld({ status: 'full', bodies: data.bodies ?? {} })
+      setWorld({ status: 'full', bodies: data.bodies ?? {}, generation })
     }
     return cloned
   }, [applySolveResult])
@@ -420,7 +430,7 @@ export function useSolver(
       if (solveFeatures.length === 0) {
         if (isStale()) return
         setSolveResults({})
-        setWorld({ status: 'full', bodies: {} })
+        setWorld({ status: 'full', bodies: {}, generation: null })
         setSolveError(null)
         markFirstSolve(opts)
         if (!cancelledRef.current) setSolving(false)
@@ -529,7 +539,7 @@ export function useSolver(
   useEffect(() => {
     return editorState.subscribe((state, prev) => {
       if (prev.pickBoundary !== null && state.pickBoundary === null) {
-        setWorld({ status: 'full', bodies: worldRef.current.bodies })
+        setWorld({ status: 'full', bodies: worldRef.current.bodies, generation: worldRef.current.generation })
       }
     })
   }, [])
@@ -554,6 +564,11 @@ export function useSolver(
     bodies,
     pickBodies,
     pickStateReady,
+    // The solve the rendered bodies belong to, and which set a pick is in: the
+    // request a kernel measurement names. A pick made while a feature edit is
+    // open is into the pick-boundary bodies, not the final ones.
+    generation: world.generation,
+    measureSet: world.status === 'editing' ? 'pick' as const : 'final' as const,
     solving,
     solveTime,
     solveError,

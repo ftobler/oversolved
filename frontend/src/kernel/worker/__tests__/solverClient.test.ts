@@ -27,7 +27,9 @@ class FakeWorker implements SolverWorkerLike {
 
   postMessage(msg: WorkerRequest): void {
     if (this.failOnPost) throw new Error('DataCloneError: the object could not be cloned')
-    for (const bytes of Object.values(msg.files ?? {})) this.byteCrossings += bytes.byteLength
+    if ('files' in msg) {
+      for (const bytes of Object.values(msg.files ?? {})) this.byteCrossings += bytes.byteLength
+    }
     this.posted.push(msg)
   }
   terminate(): void {
@@ -39,6 +41,11 @@ class FakeWorker implements SolverWorkerLike {
   crash(): void {
     this.onerror?.(new Error('boom'))
   }
+}
+
+/** The file bytes a request carried, for the request shapes that carry any. */
+function filesOf(msg: WorkerRequest): Record<string, Uint8Array> | undefined {
+  return 'files' in msg ? msg.files : undefined
 }
 
 let fake: FakeWorker
@@ -552,10 +559,10 @@ describe('solveViaWorker', () => {
       exportAssemblyViaWorker([{ spec: { id: 'a' }, transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 } }], { format: 'step' }, { f3: F1 })
       buildBundleViaWorker({ id: 'b' }, 'doc', '1', { f4: F1 })
       const [solve, exp, asm, bundle] = fake.posted
-      expect(solve.files).toEqual({ f1: F1 })
-      expect(exp.files).toEqual({ f2: F1 })
-      expect(asm.files).toEqual({ f3: F1 })
-      expect(bundle.files).toEqual({ f4: F1 })
+      expect(filesOf(solve)).toEqual({ f1: F1 })
+      expect(filesOf(exp)).toEqual({ f2: F1 })
+      expect(filesOf(asm)).toEqual({ f3: F1 })
+      expect(filesOf(bundle)).toEqual({ f4: F1 })
       for (const req of fake.posted) fake.reply({ id: req.id, ok: true, bytes: null, payload: null } as unknown as AnyResponse)
     })
 
@@ -563,8 +570,8 @@ describe('solveViaWorker', () => {
       for (let i = 0; i < 5; i++) solveViaWorker({ id: 'd' }, {}, { f1: F1 })
       expect(fake.byteCrossings).toBe(F1.byteLength)
       // Only the first request carried the map; the rest sent files: undefined.
-      expect(fake.posted[0].files).toEqual({ f1: F1 })
-      for (const req of fake.posted.slice(1)) expect(req.files).toBeUndefined()
+      expect(filesOf(fake.posted[0])).toEqual({ f1: F1 })
+      for (const req of fake.posted.slice(1)) expect(filesOf(req)).toBeUndefined()
       for (const req of fake.posted) {
         fake.reply({ id: req.id, ok: true, payload: { solve_ms: 1, result: {}, bodies: {} } })
       }
@@ -574,8 +581,8 @@ describe('solveViaWorker', () => {
     it('does not resend an id an export already carried on the same generation', async () => {
       exportViaWorker({ id: 'e' }, { format: 'step' }, { f1: F1 })
       solveViaWorker({ id: 's' }, {}, { f1: F1 })
-      expect(fake.posted[0].files).toEqual({ f1: F1 })
-      expect(fake.posted[1].files).toBeUndefined()
+      expect(filesOf(fake.posted[0])).toEqual({ f1: F1 })
+      expect(filesOf(fake.posted[1])).toBeUndefined()
       for (const req of fake.posted) fake.reply({ id: req.id, ok: true, bytes: null, payload: null } as unknown as AnyResponse)
       await Promise.resolve()
     })
@@ -583,12 +590,12 @@ describe('solveViaWorker', () => {
     it('resends every id after a worker respawn', async () => {
       setSolverCrashBackoffForTest(0)
       const p = solveViaWorker({ id: 'd' }, {}, { f1: F1 })
-      expect(fake.posted[0].files).toEqual({ f1: F1 })
+      expect(filesOf(fake.posted[0])).toEqual({ f1: F1 })
       fake.crash()
       await expect(p).rejects.toThrow('solver worker crashed')
       solveViaWorker({ id: 'e' }, {}, { f1: F1 })
       const resent = fake.posted[fake.posted.length - 1]
-      expect(resent.files).toEqual({ f1: F1 })
+      expect(filesOf(resent)).toEqual({ f1: F1 })
       fake.reply({ id: resent.id, ok: true, payload: { solve_ms: 1, result: {}, bodies: {} } })
       await Promise.resolve()
     })
@@ -596,7 +603,7 @@ describe('solveViaWorker', () => {
     it('does not mark ids sent when postMessage throws, so a retry still carries them', async () => {
       // Warm the worker connection and mark the first request's bytes as sent.
       const p1 = exportViaWorker({ id: 'e' }, { format: 'step' }, { f1: F1 })
-      expect(fake.posted[0].files).toEqual({ f1: F1 })
+      expect(filesOf(fake.posted[0])).toEqual({ f1: F1 })
       fake.reply({ id: fake.posted[0].id, ok: true, bytes: null })
       await p1
       expect(fileIdsMissingFromWorker(['f1'])).toEqual([])
@@ -617,7 +624,7 @@ describe('solveViaWorker', () => {
       fake.failOnPost = false
       const p4 = exportViaWorker({ id: 'e' }, { format: 'step' }, { f2: F1 })
       const retry = fake.posted[fake.posted.length - 1]
-      expect(retry.files).toEqual({ f2: F1 })
+      expect(filesOf(retry)).toEqual({ f2: F1 })
       expect(fileIdsMissingFromWorker(['f2'])).toEqual([])
       fake.reply({ id: retry.id, ok: true, bytes: null })
       await p4

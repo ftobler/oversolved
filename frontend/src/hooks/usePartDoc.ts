@@ -111,6 +111,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
 
   const {
     solveResults, setSolveResults, bodies, pickBodies, pickStateReady,
+    generation, measureSet,
     solving, solveError, setSolveError,
     featureTimings, reSolve,
     validation,
@@ -327,6 +328,10 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     bodies,
     pickBodies,
     pickStateReady,
+    // The solve generation a kernel measurement names, and which body set a
+    // pick was made in (the pick boundary while a feature edit is open).
+    measureGeneration: generation,
+    measureSet,
     solving,
     solveError,
     setSolveError,

@@ -49,6 +49,7 @@ import type {
   SolveRequestOptions, SolveOkResponse,
   ExportRequestOptions, ExportOkResponse, WorkerRequest,
   BundleOkResponse,
+  MeasureOkResponse, MeasureOp, MeasurePickRef, MeasureSet,
   SolverWorkerMessage,
   OccProgressMessage,
   FeatureProgressMessage,
@@ -56,6 +57,7 @@ import type {
   FileBytes,
 } from './solverProtocol'
 import type { PartBundle } from '../partBundle'
+import type { Vec3 } from '@/utils/vec3'
 import { solveTimeoutMessage } from '../featureProgress'
 import { applyOccLoadProgress, resetOccLoadProgress } from '../occ/loadProgress'
 import { markSolverStarted, markSolverReady } from './kernelReady'
@@ -79,7 +81,7 @@ export const EMPTY_BUILD_STATE: Readonly<BuildState> = Object.freeze({
 }) as Readonly<BuildState>
 
 /** Successful response carrying the value to extract for an in-flight request. */
-type OkResponse = SolveOkResponse | ExportOkResponse | BundleOkResponse
+type OkResponse = SolveOkResponse | ExportOkResponse | BundleOkResponse | MeasureOkResponse
 
 // One in-flight request. `resolve` already closes over the per-request extractor
 // (solve fills `_build_state`, export pulls bytes), so the shared dispatcher in
@@ -283,12 +285,19 @@ export function warmSolverWorker(): void {
  * unavailable"). `bypassCrashBackoff` skips the cooldown gate: deliberate single
  * clicks (export, assembly export) must respawn at once; solve and bundle
  * builds are burst-driven and ride the drag-burst cooldown.
+ * `spawnIfMissing` false is the measurement's rule: a readout is never worth a
+ * Worker respawn, so a dropped Worker answers null and the next solve starts
+ * one when it needs to.
  */
 function sendRequest<T>(
   buildMsg: (id: number) => WorkerRequest,
   extract: (res: OkResponse) => T,
   bypassCrashBackoff = false,
+  spawnIfMissing = true,
 ): Promise<T | null> {
+  if (!spawnIfMissing && (worker === null || (workerCrashAt !== 0 && Date.now() - workerCrashAt < crashCooldownMs))) {
+    return Promise.resolve(null)
+  }
   if (!bypassCrashBackoff && workerCrashAt !== 0 && Date.now() - workerCrashAt < crashCooldownMs) {
     // The last Worker trap is still inside the cooldown: spawning a fresh one
     // now just rebuilds from feature 0 and traps again. Reject instead so a
@@ -314,7 +323,7 @@ function sendRequest<T>(
     // The bytes are only now known to be with the worker: commit the ids so the
     // next request in this generation may omit them. A throw above leaves them
     // unmarked, so a retry still carries them.
-    markFilesSent(msg.files)
+    if ('files' in msg) markFilesSent(msg.files)
     const timer = isFinite(solveTimeoutMs) ? setTimeout(onTimeout, solveTimeoutMs) : null
     pending.set(id, {
       resolve: (res) => {
@@ -400,6 +409,48 @@ export function buildBundleViaWorker(
   return sendRequest(
     (id) => ({ id, kind: 'buildBundle', spec, doc_id, content_hash, files: fileDelta(files) }),
     (res) => (res as BundleOkResponse).payload,
+  )
+}
+
+/** One answer to a kernel measurement: document units, plus the witness points
+ *  a later dimension line draws between. */
+export interface MeasureReply {
+  value: number
+  points?: [Vec3, Vec3]
+  note?: 'overlapping' | 'touching'
+}
+
+/**
+ * Ask the Worker for a measurement cell the pair table marked `kernel` (a spline
+ * edge's length, a clearance, a freeform distance). The query names the solve
+ * generation it was asked against, so the Worker either answers from that
+ * generation's geometry or refuses by name.
+ *
+ * Resolves `null` when there is no live Worker: a readout never respawns one.
+ * A refusal rejects, which the caller renders as no readout.
+ */
+export function measureViaWorker(query: {
+  generation: string
+  set: MeasureSet
+  op: MeasureOp
+  picks: MeasurePickRef[]
+}): Promise<MeasureReply | null> {
+  return sendRequest(
+    (id) => ({ id, kind: 'measure', ...query }),
+    (res) => {
+      // The reply kind is fixed by the request; the union it arrives in is the
+      // one this client shares with solve, export and bundle.
+      if (!('value' in res)) throw new Error('measure reply without a value')
+      return {
+        value: res.value,
+        ...(res.points !== undefined && { points: res.points }),
+        ...(res.note !== undefined && { note: res.note }),
+      }
+    },
+    false,
+    // No spawn: a readout is not worth a Worker respawn; the next solve starts
+    // one, and until then a measure reads nothing.
+    false,
   )
 }
 

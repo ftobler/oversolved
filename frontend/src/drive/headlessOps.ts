@@ -12,7 +12,7 @@
 
 import type { PartDoc, BodyResult, AssemblyDoc, Transform3D } from '@/types/cad'
 import type { SolveSchedulerState } from '@/session/SolveScheduler'
-import { exportLocallyInspect, solveLocally, buildAndMeasureLocally, measureSolveFeatures, measureAssemblyLocally, exportAssemblyLocally, type FeatureMeasure, type LocalExportOptions } from '@/kernel/solveLocally'
+import { exportLocallyInspect, solveLocally, buildAndMeasureLocally, measurePicksLocally, measureSolveFeatures, measureAssemblyLocally, exportAssemblyLocally, type FeatureMeasure, type LocalExportOptions, type LocalPickMeasure } from '@/kernel/solveLocally'
 import { MM_PER_LENGTH_UNIT, lengthUnitOf } from '@/utils/lengthUnit'
 import { KernelFault } from '@/kernel/errors'
 import { compareMeasures, scaledMeasures, type MeasureRow } from '@/kernel/occ/measureTolerance'
@@ -335,6 +335,24 @@ export async function measureHeadless(doc: PartDoc, opts: HeadlessMeasureOptions
     frames,
     curves: featureCurves(doc, built.response.result),
   }
+}
+
+/**
+ * Answer one pick or pick pair against a fresh build of the document: the MCP
+ * `measure between` call. The core resolves the picks to world primitives, the
+ * pair table answers an analytic cell with no OCC read, and a `kernel` cell is
+ * answered from the same build. Null when the local kernel is unavailable; a
+ * pick that does not resolve throws (the caller asked for one measurement).
+ */
+export async function measureBetweenHeadless(
+  doc: PartDoc,
+  between: readonly string[],
+  opts: HeadlessMeasureOptions = {},
+): Promise<LocalPickMeasure | null> {
+  return measurePicksLocally(partSolvePayload(doc, opts.docId ?? 'headless'), between, {
+    unit: lengthUnitOf(doc.length_unit),
+    ...(opts.files !== undefined && { files: opts.files }),
+  })
 }
 
 export interface HeadlessCompareResult {

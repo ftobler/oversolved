@@ -376,6 +376,17 @@ npm run drive -- replay repro.json
   a measure reply is in the document's `length_unit` (absent means millimetres),
   the same number the document stores; the reply names it as `length_unit`, and
   only the export scales it into millimetres.
+- `measure` also takes `between`, the MCP-only one-pick or pair query: one
+  selection query (the ids `select` takes) for a single-pick readout, two for a
+  pair. The reply is `between: { kind, value, points?, note? }`: `value` in the
+  document's `length_unit`, `points` the two witness points of a distance or a
+  clearance, and `note` `overlapping` or `touching` when a clearance reads 0. A
+  pair of whole bodies is a clearance, which runs the overlap probe before the
+  distance so a body inside another reads 0 rather than a positive boundary
+  gap; a spline edge's length and any pair involving a whole body or a freeform
+  face is answered by OCCT, every other cell by the analytic pair table with no
+  OCC read. The picks resolve through the same core the viewport HUD uses
+  (`utils/measure`), so the two surfaces cannot disagree.
 - `compare` measures the document and compares it against a `reference.json`
   (the translation format: `source`, a required `tolerance`, an optional
   `topology` mode and the measure fields) with `compareMeasures`. It prints
@@ -464,7 +475,7 @@ banner on stdout, so a client config must use the direct node invocation.
 | `commands` | optional `kind` (`part` default, or `assembly`) | the command catalog for that editor |
 | `mutations` | optional `kind`, optional `family` (`sketch`, `features`, `picks`, `part style`, `document`, `parts`, `mates`), optional `type` (one name or array), optional `detail` (`full` or `index`) | the mutation vocabularies grouped by family plus ready-to-run example scripts; no argument returns both whole (about 90 kB); `type` fetches one row, `detail: "index"` lists `{type, summary}` only, a filter returns only that slice; an unknown family is refused with the valid list and an unknown type with a did-you-mean when a close name exists |
 | `run` | `steps`, optional `doc` or `docHash`, `kind` (fresh only), `parts`, `returnDoc`, `featureDeltas: "all"`, `frames: "all"`, `out`, `detail` (assembly), `docId`, `files` | part: `{ ok, solved, steps, docHash, solve, features, notes, featureDeltas, frames, curves, length_unit, summary, doc?, file?, format? }`; assembly: `{ ok, kind: "assembly", steps, docHash, solve, mates, parts, instances, mateFrames, summary, notes, doc?, file?, format?, bytes? }`; on an assembly `bytes` is set only when `format` is `zip` |
-| `measure` | `doc` or `docHash`, optional `parts`, `detail` (assembly), `docId`, `files` | part: the `MeasureRecord` plus `features`/`notes`/`frames`/`curves`/`length_unit`; assembly: `{ ok, kind, docHash, ...MeasureRecord, instances, solve, mates, parts }`; under `detail: "summary"` or `"changed"` the aggregate measures, the solve verdict, and the mates and parts problem rows survive, and `perBody` and `instances` are dropped |
+| `measure` | `doc` or `docHash`, optional `parts`, `detail` (assembly), `between` (1 or 2 pick queries), `docId`, `files` | part: the `MeasureRecord` plus `features`/`notes`/`frames`/`curves`/`length_unit`; with `between`: `{ ok, docHash, between: { kind, value, points?, note? }, length_unit }`; assembly: `{ ok, kind, docHash, ...MeasureRecord, instances, solve, mates, parts }`; under `detail: "summary"` or `"changed"` the aggregate measures, the solve verdict, and the mates and parts problem rows survive, and `perBody` and `instances` are dropped |
 | `compare` | `doc` or `docHash`, optional `parts`, `reference` (inline) or `referencePath`, optional `docId`, `files` | `{ ok, docHash, pass, rows, measures, length_unit, compared_in }`; a failing row is data, not an MCP error |
 | `export` | `doc` or `docHash`, optional `parts`, `format` (step/stl), `out`, optional `body`, `detail` (assembly), `docId`, `files` | writes the file, returns `{ ok, docHash, features, notes, length_unit, file_unit, file, format, bytes }` for a part or `{ ok, kind: "assembly", docHash, solve, mates, parts, instances, summary, file, format, bytes }`; an assembly `detail: "summary"` (or `"changed"`) keeps the file fields, solve, problem rows and summary and drops `instances` |
 | `select` | `doc` or `docHash`, `selector`, optional `detail` (`full` default, or `queries`), `docId`, `files` | `{ ok, docHash, count, queries, items? }`: the query strings a click would store, plus `count` and, in `full` detail, a geometry summary per item (`queries` omits `items`); part documents only |

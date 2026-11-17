@@ -14,6 +14,7 @@ import type { RebuildValidation } from '../builder'
 import type { PartBundle } from '../partBundle'
 import type { TessellationPreset } from '../tessellationPresets'
 import type { Transform3D, MateAnchorDescriptor } from '../../types/cad'
+import type { Vec3 } from '../../utils/vec3'
 import type { MateSpec, AssemblySolveStatus, MeshPayload, AnchorPose } from '../solveAssembly'
 import type { OccLoadProgress } from '../occ/loadProgress'
 
@@ -104,7 +105,56 @@ export interface ExportAssemblyRequest {
 }
 
 /** Either request the Worker can receive; discriminated by `kind`. */
-export type WorkerRequest = SolveRequest | ExportRequest | BundleRequest | ExportAssemblyRequest
+export type WorkerRequest = SolveRequest | ExportRequest | BundleRequest | ExportAssemblyRequest | MeasureRequest
+
+// ─── measurement (measure-auto-readout's kernel cells) ───
+// A readout is view state, not a document write: the request names the solve
+// generation it was asked against, so a reply can never describe geometry the
+// pick was not made on.
+
+/** One pick a measure request names: a body element by its render index, or a
+ *  whole body. The id keys the body store of the set the request names. */
+export type MeasurePickRef =
+  | { bodyId: string; kind: 'face' | 'edge' | 'vertex'; index: number }
+  | { bodyId: string; kind: 'body' }
+
+export type MeasureOp = 'length' | 'distance' | 'clearance'
+
+/** Which body set of the solve a pick was made against: the final bodies, or
+ *  the pick-boundary checkpoint an open feature edit renders. */
+export type MeasureSet = 'final' | 'pick'
+
+export interface MeasureRequest {
+  id: number
+  kind: 'measure'
+  // The solve that produced the picks (`<bootId>:<n>`), refused when it is not
+  // the generation the Worker still holds.
+  generation: string
+  set: MeasureSet
+  op: MeasureOp
+  // One pick for `length`, two otherwise.
+  picks: MeasurePickRef[]
+}
+
+export interface MeasureOkResponse {
+  id: number
+  ok: true
+  // Document units, the same units the shapes are in.
+  value: number
+  // The witness points for a distance or a clearance, in world coordinates.
+  points?: [Vec3, Vec3]
+  // Why a clearance reads 0: the bodies overlap, or they share a face.
+  note?: 'overlapping' | 'touching'
+}
+
+export type MeasureResponse = MeasureOkResponse | WorkerErrResponse
+
+/** A measure a newer measure or a new solve flushed out of the queue. */
+export const MEASURE_SUPERSEDED = 'measure superseded'
+/** The named generation is not the one the Worker holds any more. */
+export const MEASURE_STALE = 'measure stale'
+/** The body or the element index does not resolve in the named set. */
+export const MEASURE_UNRESOLVED = 'measure unresolved'
 
 /** Shared error arm for every Worker response (solve and export alike). */
 export interface WorkerErrResponse {
@@ -140,6 +190,10 @@ export interface SolvePayload {
   bodies: Record<string, unknown>
   pick_bodies?: Record<string, unknown>
   _validation?: RebuildValidation
+  /** The Worker's solve generation (`<bootId>:<n>`): the token a measure
+   *  request names. Optional only so a payload from before the field existed
+   *  still types; the Worker always stamps it. */
+  generation?: string
 }
 
 export interface SolveOkResponse {
@@ -182,7 +236,8 @@ export interface KernelReadyMessage {
 
 /** Every message the solver Worker sends to the main thread. */
 export type SolverWorkerMessage =
-  | SolveResponse | ExportResponse | BundleResponse | OccProgressMessage | FeatureProgressMessage | KernelReadyMessage
+  | SolveResponse | ExportResponse | BundleResponse | MeasureResponse
+  | OccProgressMessage | FeatureProgressMessage | KernelReadyMessage
 
 // ─── assembly protocol ───
 // Messages between the main thread and the Rust-only anchor solver worker.

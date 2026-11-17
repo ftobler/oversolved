@@ -28,11 +28,18 @@ import { measureBodies, type Bbox6, type MeasureRecord } from './occ/measure'
 import { volumeForMeasure } from './occ/volume'
 import { shapeBbox } from './occ/faceBounds'
 import { canonicalFaces, pickableEdgeCount } from './occ/bodyNames'
+import { shapesIntersect } from './occ/booleans'
+import { edgeLength, minDistance } from './occ/measureExtrema'
+import { resolveMeasurePick } from './measurePick'
+import { measureSelectionResolved } from '@/utils/measure/measureSelection'
+import { OCC_CONFUSION } from './solverConstants'
+import { MEASURE_STALE, MEASURE_UNRESOLVED, type MeasureOp, type MeasurePickRef } from './worker/solverProtocol'
 import { MM_PER_LENGTH_UNIT, lengthUnitOf, partToAssemblyScale } from '@/utils/lengthUnit'
 import type { OccHandle } from './occ/handleTable'
 import type { OccModule, OccShape } from './occ/occTypes'
 import type { Body, BuildState } from './types3d'
-import type { Transform3D } from '../types/cad'
+import type { BodyResult, LengthUnit, Transform3D } from '../types/cad'
+import type { Vec3 } from '@/utils/vec3'
 
 // ─── cross-solve checkpoint cache ───
 // The checkpoint cache is not a side table: it IS the OCC handles in this
@@ -45,6 +52,30 @@ import type { Transform3D } from '../types/cad'
 let persistentTable: HandleTable | null = null
 let lastBuildState: BuildState | null = null
 let lastDocId: string | null = null
+
+// ─── solve generation ───
+// The token a measurement request names, so the worker can refuse a request
+// asked against geometry it no longer holds. A per-boot id because the whole
+// cache dies with the Worker (a bare counter would repeat after a respawn),
+// plus a counter that moves whenever `lastBuildState` is replaced or cleared.
+const bootId = Math.floor(Math.random() * 0x7fffffff).toString(36)
+let generationCount = 0
+let generation = `${bootId}:0`
+
+function bumpGeneration(): void {
+  generationCount += 1
+  generation = `${bootId}:${generationCount}`
+}
+
+/** The generation of the geometry the cache currently holds. */
+export function currentGeneration(): string {
+  return generation
+}
+
+// The body store a pick made during an open feature edit was made against: the
+// pick-boundary checkpoint's snapshot, resolved here at solve time because this
+// module is the one place that knows both the boundary and the build state.
+let lastPickBodyStore: Record<string, Body> | null = null
 
 // Reentrancy guard for the shared state above. `persistentTable`,
 // `lastBuildState` and `lastDocId` are single-writer: a second solve entering
@@ -66,6 +97,9 @@ function resetLocalSolveCache(): void {
   persistentTable = null
   lastBuildState = null
   lastDocId = null
+  lastPickBodyStore = null
+  // Whatever a measurement was asked against is gone with the cache.
+  bumpGeneration()
   if (!table) return
   try {
     table.disposeAll()
@@ -132,6 +166,9 @@ function recoverLocalKernel(): boolean {
   persistentTable = null
   lastBuildState = null
   lastDocId = null
+  lastPickBodyStore = null
+  // The trapped heap is gone, so nothing a measurement named survives.
+  bumpGeneration()
   if (occLoaderReset) occLoaderReset()
   // The default main-thread loader memoizes its own module; an injected test
   // loader owns whatever cache it has, so only the default path is reset here.
@@ -571,6 +608,11 @@ async function solveLocallyGuarded(
     }, deps)
     // Remember the state (and the live handles it points at) for the next solve.
     lastBuildState = response._build_state
+    // The token moves with the state: the previous generation's geometry is now
+    // a clean prefix of this build's, and only this state's snapshots are live.
+    bumpGeneration()
+    response.generation = generation
+    lastPickBodyStore = pickBodyStoreOf(spec, response._build_state, options)
     return response
   } catch (e) {
     if (isKernelTrap(e)) {
@@ -758,11 +800,208 @@ export interface LocalBuildAndMeasure {
 export function finalLiveBodyIds(response: { _build_state?: unknown }): string[] | null {
   const state = response._build_state as BuildState | undefined
   if (state === undefined || state === null) return null
-  const last = state.feature_order[state.feature_order.length - 1]
-  const store = (last === undefined ? undefined : state.checkpoints[last])?.body_store_snapshot ?? {}
+  const store = finalBodyStoreOf(state) ?? {}
   return Object.entries(store)
     .filter(([, body]) => body.shape != null)
     .map(([id]) => id)
+}
+
+/** The final body set of a build: the last feature checkpoint's snapshot, the
+ *  same one an export writes and a measure reports. */
+function finalBodyStoreOf(state: BuildState): Record<string, Body> | null {
+  const last = state.feature_order[state.feature_order.length - 1]
+  if (last === undefined) return {}
+  return state.checkpoints[last]?.body_store_snapshot ?? {}
+}
+
+/** The authored solve spec: the PartDoc plus the rollback fields, as
+ *  `solveLocally` takes it. Named so the measurement entries below do not each
+ *  spell a loose record (the feature-union ratchet counts those). */
+type PartSolveSpec = Record<string, unknown>
+
+/**
+ * The body store a pick made during an open feature edit was made against: the
+ * checkpoint of the feature before the edited one, exactly the one `build()`
+ * tessellated for `pick_bodies`. Null when the solve carried no pick boundary
+ * (no edit was open), which the measure reports as unresolved rather than
+ * quietly measuring the final bodies.
+ */
+function pickBodyStoreOf(
+  spec: PartSolveSpec,
+  state: BuildState,
+  options: SolveLocalOptions,
+): Record<string, Body> | null {
+  const boundary = options.pickBoundary
+  if (boundary == null || boundary < 0) return null
+  if (boundary === 0) return {}
+  const features = spec.features
+  const all: readonly { id?: unknown }[] = Array.isArray(features) ? features : []
+  const rolled = options.rollbackPosition != null ? all.slice(0, options.rollbackPosition) : all
+  const fid = String(rolled[boundary - 1]?.id ?? '')
+  if (fid === '') return null
+  return state.checkpoints[fid]?.body_store_snapshot ?? null
+}
+
+/** One answered measurement row for the headless MCP `measure between` call. */
+export interface LocalPickMeasure {
+  /** The readout kind the core named (`length`, `distance`, `angle`, ...) or
+   *  the kernel op that answered it (`clearance`). */
+  kind: string
+  value: number
+  points?: [Vec3, Vec3]
+  note?: 'overlapping' | 'touching'
+}
+
+/**
+ * Build a document once and answer a pick or a pick pair against the build,
+ * through the same pure core the viewport uses. The analytic cells are answered
+ * by the pair table with no OCC read at all; a cell the table marks `kernel` is
+ * answered from the same build's bodies, exactly as the Worker answers a
+ * viewport pick.
+ *
+ * The build is ephemeral (its own handle table), so nothing here disturbs the
+ * live cross-solve cache. `null` when OCC is unavailable; a pick that does not
+ * resolve throws, because an MCP caller asked for one specific measurement.
+ */
+export async function measurePicksLocally(
+  spec: PartSolveSpec,
+  picks: readonly string[],
+  opts: { unit?: LengthUnit; files?: ReadonlyMap<string, Uint8Array> } = {},
+): Promise<LocalPickMeasure | null> {
+  const oc = await loadKernelForBuild()
+  if (!oc) return null
+
+  const scope = new DisposeScope()
+  const table = new HandleTable()
+  let faulted = false
+  try {
+    const response = build(spec, { prevState: null }, buildDeps(oc, scope, table, opts.files))
+    const bodies = response.bodies as Record<string, BodyResult>
+    const { readout, ask } = measureSelectionResolved(new Set(picks), { bodies, unit: opts.unit })
+    if (readout !== null) return { kind: readout.kind, value: readout.value }
+    if (ask === null) throw new Error('measure: the pick or pick pair states no measurement')
+    const store = finalBodyStoreOf(response._build_state) ?? {}
+    const answered = measurePicksOnStore(oc, table, store, ask.op, ask.picks)
+    if (!answered.ok) throw new Error(`measure: ${answered.error}`)
+    return {
+      kind: ask.op,
+      value: answered.value,
+      ...(answered.points !== undefined && { points: answered.points }),
+      ...(answered.note !== undefined && { note: answered.note }),
+    }
+  } catch (e) {
+    if (isKernelTrap(e)) {
+      faulted = true
+      recoverTrap(e)
+    }
+    throw e
+  } finally {
+    if (!faulted) {
+      cleanupKernel(() => {
+        scope.dispose()
+        table.disposeAll()
+      })
+    }
+  }
+}
+
+// ─── kernel measurement against the live cache ───
+
+/** A measurement the Worker answers from the solve it still holds: never a
+ *  build, never a document write. */
+export interface MeasureQuery {
+  // The solve generation the picks were made on. A mismatch is refused.
+  generation: string
+  // The final bodies, or the pick-boundary checkpoint an edit renders.
+  set: 'final' | 'pick'
+  op: 'length' | 'distance' | 'clearance'
+  picks: MeasurePickRef[]
+}
+
+export type MeasureQueryResult =
+  | {
+    ok: true
+    value: number
+    points?: [Vec3, Vec3]
+    // A clearance reads 0 for these; a plain distance states neither.
+    note?: 'overlapping' | 'touching'
+  }
+  | { ok: false; error: string }
+
+/**
+ * Answer a measurement from the geometry the cross-solve cache holds, or refuse
+ * by name. The request names its generation, so a reply can never describe
+ * geometry the pick was not made against; a body or an element index that does
+ * not resolve in the named set is refused rather than measured off a neighbour.
+ *
+ * Read-only: the proxies live in a local DisposeScope, and no handle the build
+ * owns is touched. A trap recovers the module the same way the solve path does.
+ */
+export async function measureGeneration(query: MeasureQuery): Promise<MeasureQueryResult> {
+  // Checked before the cache: a stale request must not read a live handle that
+  // belongs to a newer generation.
+  if (query.generation !== generation) return { ok: false, error: MEASURE_STALE }
+  const oc = await ensureOcc()
+  // The await yields, so the generation is re-read rather than assumed: it is
+  // the token that makes a reply trustworthy, not a lock.
+  if (query.generation !== generation) return { ok: false, error: MEASURE_STALE }
+  const store = query.set === 'pick' ? lastPickBodyStore : (lastBuildState === null ? null : finalBodyStoreOf(lastBuildState))
+  if (store === null) return { ok: false, error: MEASURE_UNRESOLVED }
+  const table = persistentTable
+  if (!table || !oc) return { ok: false, error: MEASURE_UNRESOLVED }
+  return measurePicksOnStore(oc, table, store, query.op, query.picks)
+}
+
+/**
+ * Run one measurement op over picks named in a body store. The caller owns the
+ * table and the store: the live path hands over the cross-solve cache, and the
+ * headless MCP path hands over the build it just made.
+ */
+function measurePicksOnStore(
+  oc: OccModule,
+  table: HandleTable,
+  store: Record<string, Body>,
+  op: MeasureOp,
+  picks: readonly MeasurePickRef[],
+): MeasureQueryResult {
+  const scope = new DisposeScope()
+  let faulted = false
+  try {
+    const shapes: OccShape[] = []
+    for (const pick of picks) {
+      const shape = resolveMeasurePick(oc, scope, table, store, pick)
+      if (!shape) return { ok: false, error: MEASURE_UNRESOLVED }
+      shapes.push(shape)
+    }
+    if (op === 'length') {
+      if (shapes.length !== 1) return { ok: false, error: MEASURE_UNRESOLVED }
+      return { ok: true, value: edgeLength(oc, shapes[0]) }
+    }
+    if (shapes.length !== 2) return { ok: false, error: MEASURE_UNRESOLVED }
+    const read = minDistance(oc, shapes[0], shapes[1])
+    if (read === null) return { ok: false, error: MEASURE_UNRESOLVED }
+    if (op === 'clearance') {
+      // DistShapeShape measures boundaries, and a body wholly inside another
+      // reads a positive gap. The overlap probe is what makes a clearance 0
+      // mean "they meet" rather than "their boundaries nearly miss".
+      if (shapesIntersect(oc, shapes[0], shapes[1])) {
+        return { ok: true, value: 0, points: [read.p1, read.p2], note: 'overlapping' }
+      }
+      if (read.value <= OCC_CONFUSION) {
+        return { ok: true, value: 0, points: [read.p1, read.p2], note: 'touching' }
+      }
+    }
+    return { ok: true, value: read.value, points: [read.p1, read.p2] }
+  } catch (e) {
+    if (isKernelTrap(e)) {
+      faulted = true
+      recoverTrap(e)
+    }
+    // A read that cannot run is not a measurement: state nothing.
+    return { ok: false, error: MEASURE_UNRESOLVED }
+  } finally {
+    if (!faulted) cleanupKernel(() => { scope.dispose() })
+  }
 }
 
 /**
