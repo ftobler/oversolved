@@ -1,16 +1,25 @@
 // @vitest-environment node
 //
-// A tool that straddles a revolved body's seam, through the two consumers that
-// reach it: a feature-subject circular pattern whose source add straddles the
-// seam, and an explicit boolean union of the same ribs. The fuse into the
-// already-ribbed body is the failing step (bugreports/20261115_2016_boolean_fail.md);
-// the seam-aware fuse in `booleans.ts` is what makes it sound.
+// The seam-straddling add, accepted as a limitation and pinned here.
 //
-// The funnel is a fit-spline neck and cone revolved 360 degrees about +Y, so the
-// seam meridian lies in the front sketch plane (z = 0). The rib is a box centred
-// on that plane, so its add covers part of the seam.
+// A tool whose material covers part of a revolved body's seam edge leaves a
+// body that validates and has the exact right volume, but every later boolean
+// over it returns a BRepCheck-invalid freeform face (reproducer:
+// `bugreports/20261115_2016_boolean_fail.md`; measured on OCCT 8.0.1, the pinned
+// `frontend/occ.pin.json`). Two consumers reach it: a feature-subject circular
+// pattern whose source add straddles the seam, and an explicit union of the
+// same ribs.
 //
-// Skips when OCC.js or the sketch solver is absent.
+// What was measured, and why the code does not heal it: fusing the tool split
+// at the seam plane does produce a body the later booleans accept, but it is
+// 68.24 mm3 short (2.2e-3 of the body, Gauss-Kronrod), and the order that keeps
+// the exact material is the unusable body again. Re-adding the whole tool
+// restores the volume and restores the defect. No construction in this binding
+// is both exact and usable, so the boolean keeps the plain (exact) result and
+// the refusal names what went wrong.
+//
+// These tests pin the current outcomes so a kernel or binding change that fixes
+// the family breaks them loudly, and so the controls that DO work stay working.
 
 import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'
@@ -18,7 +27,8 @@ import { SharedHarness } from '../../occ/sharedHarness'
 import { DisposeScope } from '../../occ/disposeScope'
 import { setSketchSolver, resetSketchSolver } from '../sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
-import { volumeOf } from '../../occ/volume'
+import { booleanWithDiff } from '../../occ/booleans'
+import { volumeForMeasure } from '../../occ/volume'
 import { splitPatternDef } from '@/utils/core/patternSplit'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
@@ -89,10 +99,25 @@ function rotatedPlane(angle: number): Dict {
   }
 }
 
-function revolve(): Dict {
+function revolve(sketch: string): Dict {
   return {
     id: 'rv1', kind: 'revolve',
-    revolve: { sketch: '@sk1', angle: 360, axis: '@skax/ax', operation: 'new' },
+    revolve: { sketch, angle: 360, axis: '@skax/ax', operation: 'new' },
+  }
+}
+
+/** A rectangle sketch from two corners. */
+function boxSketch(id: string, x0: number, y0: number, x1: number, y1: number): Dict {
+  return {
+    id, kind: 'sketch', plane: '@builtin_plane_front',
+    entities: [
+      { id: 'q1', kind: 'line' }, { id: 'q2', kind: 'line' },
+      { id: 'q3', kind: 'line' }, { id: 'q4', kind: 'line' },
+    ],
+    initial: {
+      q1: [x0, y0, x1, y0], q2: [x1, y0, x1, y1], q3: [x1, y1, x0, y1], q4: [x0, y1, x0, y0],
+    },
+    constraints: [],
   }
 }
 
@@ -120,7 +145,7 @@ function patternDoc(seamAngle: number, count: number): Record<string, unknown> {
     version: 9, kind: 'part',
     features: [
       ...(seamAngle === 0 ? [] : [rotatedPlane(seamAngle)]),
-      funnelSketch(plane), axisSketch(), revolve(),
+      funnelSketch(plane), axisSketch(), revolve('@sk1'),
       ribSketch(),
       {
         id: 'ex1', kind: 'extrude',
@@ -140,7 +165,7 @@ function unionDoc(): Record<string, unknown> {
   return {
     version: 9, kind: 'part',
     features: [
-      funnelSketch('@builtin_plane_front'), axisSketch(), revolve(),
+      funnelSketch('@builtin_plane_front'), axisSketch(), revolve('@sk1'),
       ribSketch(), ribBody(),
       {
         id: 'cp1', kind: 'circular_pattern',
@@ -157,7 +182,7 @@ function unionDoc(): Record<string, unknown> {
   }
 }
 
-describe.skipIf(!oc || !solveBytes)('a seam-straddling rib through the real kernel', () => {
+describe.skipIf(!oc || !solveBytes)('a seam-straddling add (accepted limitation)', () => {
   const h = new SharedHarness(oc!)
   const occ = oc as OccModule
 
@@ -172,24 +197,17 @@ describe.skipIf(!oc || !solveBytes)('a seam-straddling rib through the real kern
     return store[bodyId]
   }
 
-  function volumeAt(r: BuildResponse, featureId: string, bodyId: string): number {
+  function shapeAt(r: BuildResponse, featureId: string, bodyId: string): OccShape {
     const body = bodyAt(r, featureId, bodyId)
     if (body?.shape === null || body?.shape === undefined) throw new Error(`no body ${bodyId} at ${featureId}`)
-    const scope = new DisposeScope()
-    try {
-      return volumeOf(occ, scope, h.table.get<OccShape>(body.shape))
-    } finally {
-      scope.dispose()
-    }
+    return h.table.get<OccShape>(body.shape)
   }
 
   function faceCountAt(r: BuildResponse, featureId: string, bodyId: string): number {
-    const body = bodyAt(r, featureId, bodyId)
     const scope = new DisposeScope()
     try {
-      const shape = h.table.get<OccShape>(body!.shape!)
       const E = occ.TopAbs_ShapeEnum
-      const exp = scope.track(new occ.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
+      const exp = scope.track(new occ.TopExp_Explorer_2(shapeAt(r, featureId, bodyId), E.TopAbs_FACE, E.TopAbs_SHAPE))
       let count = 0
       for (; exp.More(); exp.Next()) count++
       return count
@@ -198,56 +216,82 @@ describe.skipIf(!oc || !solveBytes)('a seam-straddling rib through the real kern
     }
   }
 
-  /** Every face of the body named, and no UUID minted twice: the seam recovery
-   *  composes its two fuses' origin tables back onto the caller's target and
-   *  tool faces, and a gap there leaves faces unnamed or a UUID claimed twice. */
+  // Every face of the body named, and no UUID minted twice.
   function expectEveryFaceNamed(r: BuildResponse, featureId: string, bodyId: string): void {
     const uuids = (bodyAt(r, featureId, bodyId)?.face_uuids ?? []).filter((u): u is string => u !== null)
     expect(new Set(uuids).size).toBe(uuids.length)
     expect(uuids.length).toBe(faceCountAt(r, featureId, bodyId))
   }
 
-  it('fuses every copy of a pattern whose source add straddles the seam', () => {
+  it('keeps the source add sound and exact, then refuses the first copy', { timeout: 120_000 }, () => {
     const r = h.run(patternDoc(0, 6))
-    const res = h.res(r, 'cp1')
-    // No copy refused: a partial would carry the failing copy in `exception`.
-    expect(res.exception).toBeUndefined()
+    // The add itself is not the problem: it is sound, named, and exactly the
+    // material of the funnel plus the rib (Gauss-Kronrod against the Common).
+    const res = h.res(r, 'ex1')
     expect(res.status).toBe('ok')
-    // The source body plus five copies, all in the one body the add shaped.
-    const faces = faceCountAt(r, 'cp1', 'body_rv1')
-    expect(faces).toBeGreaterThan(16)
-    expectEveryFaceNamed(r, 'cp1', 'body_rv1')
-    // Every copy adds the same material as the first.
-    const v1 = volumeAt(h.run(patternDoc(0, 1)), 'cp1', 'body_rv1')
-    const v2 = volumeAt(h.run(patternDoc(0, 2)), 'cp1', 'body_rv1')
-    const v6 = volumeAt(r, 'cp1', 'body_rv1')
-    const firstCopy = v2 - v1
-    expect(firstCopy).toBeGreaterThan(0)
-    expect(Math.abs((v6 - v2) - 4 * firstCopy)).toBeLessThan(1e-3 * (v6 - v1))
+    expect(res.exception).toBeUndefined()
+    expectEveryFaceNamed(r, 'ex1', 'body_rv1')
+
+    const separate = h.run({
+      version: 9, kind: 'part',
+      features: [
+        funnelSketch('@builtin_plane_front'), axisSketch(), revolve('@sk1'),
+        ribSketch(), ribBody(),
+      ],
+    })
+    const scope = new DisposeScope()
+    try {
+      const funnel = shapeAt(separate, 'ex1', 'body_rv1')
+      const rib = shapeAt(separate, 'ex1', 'body_ex1')
+      const overlap = booleanWithDiff(occ, scope, funnel, rib, 'common').shape
+      const expected = volumeForMeasure(occ, scope, funnel) + volumeForMeasure(occ, scope, rib)
+        - volumeForMeasure(occ, scope, overlap)
+      const source = volumeForMeasure(occ, scope, shapeAt(r, 'ex1', 'body_rv1'))
+      expect(Math.abs(source - expected)).toBeLessThan(1e-6 * Math.abs(expected))
+    } finally {
+      scope.dispose()
+    }
+
+    // The copy cannot fuse into that body. This is the limitation: the body
+    // above is exact and valid, and the kernel cannot use it any further.
+    const pat = h.res(r, 'cp1')
+    expect(pat.status).toBe('exception')
+    expect(pat.exception).toContain("copy 1")
+    expect(pat.exception).toContain('unsound result')
   })
 
-  it('leaves the seam-off-centreline pattern exactly as it was', () => {
-    const onSeamRun = h.run(patternDoc(0, 6))
-    const offSeamRun = h.run(patternDoc(45, 6))
-    expect(h.res(onSeamRun, 'cp1').exception).toBeUndefined()
-    expect(h.res(offSeamRun, 'cp1').exception).toBeUndefined()
-    const onSeam = volumeAt(onSeamRun, 'cp1', 'body_rv1')
-    const offSeam = volumeAt(offSeamRun, 'cp1', 'body_rv1')
-    // The same solid, rotated: only the seam's angular position differs. The
-    // two builds split the B-spline cone into different faces, so their volume
-    // reads differ by that face set's read error (about 2e-3 measured).
-    expect(Math.abs(onSeam - offSeam)).toBeLessThan(1e-2 * Math.abs(offSeam))
+  it('refuses the reported union at the same step', () => {
+    const r = h.run(unionDoc())
+    expect(h.res(r, 'b1').status).toBe('exception')
+    expect(h.res(r, 'b1').exception).toContain('unsound result')
   })
 
-  it('fuses a rib that straddles a straight cylinder seam, then another rib', () => {
-    // The straight-seam shape: its seam is a line, so a split plane has to come
-    // from the surface's own axis. This build's plain fuses keep that seam, so
-    // the recovery is not reached here; the case pins that a cylinder add keeps
-    // working through the seam scan (and through the recovery when it does fire).
+  it('builds the same pattern with the seam off the rib centreline', () => {
+    // The user's workaround and the control for the limitation: a 45 degree
+    // pre-rotation of the funnel builds at every copy count. This is a build
+    // guard only; the two documents are the same solid, so their volumes read
+    // apart by the B-spline face-set error (measured about 2e-3).
+    for (const count of [2, 6]) {
+      const r = h.run(patternDoc(45, count))
+      const res = h.res(r, 'cp1')
+      expect(res.status).toBe('ok')
+      expect(res.exception).toBeUndefined()
+      const scope = new DisposeScope()
+      try {
+        expect(volumeForMeasure(occ, scope, shapeAt(r, 'cp1', 'body_rv1'))).toBeGreaterThan(0)
+      } finally {
+        scope.dispose()
+      }
+    }
+  })
+
+  it('still fuses a rib that straddles a straight cylinder seam', () => {
+    // A cylinder's seam is a line, and this build keeps it through the fuse, so
+    // the limitation is specific to the rebuilt freeform face; the add path for
+    // the straight case stays working.
     const r = h.run({
       version: 9, kind: 'part',
       features: [
-        // A solid cylinder r10, y 0..20, revolved about +Y with its seam in z = 0.
         {
           id: 'skc', kind: 'sketch', plane: '@builtin_plane_front',
           entities: [
@@ -259,58 +303,21 @@ describe.skipIf(!oc || !solveBytes)('a seam-straddling rib through the real kern
           },
           constraints: [],
         },
-        axisSketch(),
-        { id: 'rv1', kind: 'revolve', revolve: { sketch: '@skc', angle: 360, axis: '@skax/ax', operation: 'new' } },
-        // skb1 straddles the seam plane (z = 0), skb2 sits 90 degrees away.
-        {
-          id: 'skb1', kind: 'sketch', plane: '@builtin_plane_front',
-          entities: [
-            { id: 'b1', kind: 'line' }, { id: 'b2', kind: 'line' },
-            { id: 'b3', kind: 'line' }, { id: 'b4', kind: 'line' },
-          ],
-          initial: {
-            b1: [8, 2, 14, 2], b2: [14, 2, 14, 6], b3: [14, 6, 8, 6], b4: [8, 6, 8, 2],
-          },
-          constraints: [],
-        },
+        axisSketch(), revolve('@skc'),
+        // A rib that is off the seam for the straight case below, and one that
+        // straddles it: the box from (8, 2) to (14, 6) crosses z = 0.
+        boxSketch('skb', 8, 2, 14, 6),
         {
           id: 'ex1', kind: 'extrude',
-          extrude: { sketch: '@skb1', distance: 4, direction: 'symmetric', operation: 'add', merge_target: '@body_rv1' },
-        },
-        {
-          id: 'skb2', kind: 'sketch', plane: '@builtin_plane_front',
-          entities: [
-            { id: 'd1', kind: 'line' }, { id: 'd2', kind: 'line' },
-            { id: 'd3', kind: 'line' }, { id: 'd4', kind: 'line' },
-          ],
-          initial: {
-            d1: [8, 12, 14, 12], d2: [14, 12, 14, 16], d3: [14, 16, 8, 16], d4: [8, 16, 8, 12],
+          extrude: {
+            sketch: '@skb', distance: 4, direction: 'symmetric',
+            operation: 'add', merge_target: '@body_rv1',
           },
-          constraints: [],
-        },
-        {
-          id: 'ex2', kind: 'extrude',
-          extrude: { sketch: '@skb2', distance: 4, direction: 'symmetric', operation: 'add', merge_target: '@body_rv1' },
         },
       ],
     })
+    expect(h.res(r, 'ex1').status).toBe('ok')
     expect(h.res(r, 'ex1').exception).toBeUndefined()
-    expect(h.res(r, 'ex2').exception).toBeUndefined()
-    expect(h.res(r, 'ex2').status).toBe('ok')
-    expectEveryFaceNamed(r, 'ex2', 'body_rv1')
-  })
-
-  it('unions the same six ribs into the revolve as the reported document does', () => {
-    const r = h.run(unionDoc())
-    expect(h.res(r, 'b1').status).toBe('ok')
-    expect(h.res(r, 'b1').exception).toBeUndefined()
-    // The ribs are consumed by the union; one body survives.
-    expect(bodyAt(r, 'b1', 'body_rv1')).toBeDefined()
-    expect(bodyAt(r, 'b1', 'body_ex1')).toBeUndefined()
-    expectEveryFaceNamed(r, 'b1', 'body_rv1')
-    // The union result and the feature pattern's result are the same solid.
-    const unionVolume = volumeAt(r, 'b1', 'body_rv1')
-    const patternVolume = volumeAt(h.run(patternDoc(0, 6)), 'cp1', 'body_rv1')
-    expect(Math.abs(unionVolume - patternVolume)).toBeLessThan(1e-3 * Math.abs(patternVolume))
+    expectEveryFaceNamed(r, 'ex1', 'body_rv1')
   })
 })

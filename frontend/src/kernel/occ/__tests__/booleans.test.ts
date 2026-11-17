@@ -15,6 +15,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import {
   BOOLEAN_SEAM_HINT,
   BOOLEAN_TANGENCY_HINT,
+  booleanRefusalHint,
   booleanWithDiffMany,
   booleanWithHistory,
   BooleanSoundnessError,
@@ -276,5 +277,13 @@ describe('booleanWithDiffMany runs one BRepCheck per adopted attempt', () => {
     expect(BOOLEAN_SEAM_HINT).not.toContain('tangency')
     expect(BOOLEAN_TANGENCY_HINT).toContain('exact tangency')
     expect(BOOLEAN_TANGENCY_HINT).not.toContain('seam')
+  })
+
+  it('selects the advice from the measured coverage, not from a seam existing', () => {
+    // Every cylinder, cone, revolve and torus carries a seam, so "a seam
+    // exists" cannot decide the message: the selector reads the failed tool's
+    // measured coverage.
+    expect(booleanRefusalHint(true)).toBe(BOOLEAN_SEAM_HINT)
+    expect(booleanRefusalHint(false)).toBe(BOOLEAN_TANGENCY_HINT)
   })
 })

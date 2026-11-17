@@ -267,6 +267,9 @@ describe.skipIf(!oc)('the boolean soundness gate on exact tangencies (real OCC)'
         }
         expect(refusal).toBeInstanceOf(BooleanSoundnessError)
         expect((refusal as Error).message).toMatch(/unsound result/)
+        // A lateral line contact covers no seam of the operands, so the refusal
+        // must keep the tangency advice rather than the seam one.
+        expect((refusal as Error).message).toContain('exact tangency')
         // The intersection of a zero-measure contact is an empty but sound
         // result, and passes the gate.
         const common = booleanWithDiff(oc, scope, shapeA, shapeB, 'common')

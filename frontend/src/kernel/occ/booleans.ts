@@ -19,13 +19,12 @@
 import { drainList, DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccHistory } from './occTypes'
 import { canonicalizeCylinderFaces } from './canonicalSurfaces'
-import { SubShapeDedup, SubShapeIndexMap, SubShapeMultiIndex, shapeBndBox, type Vec3 } from './primitives'
-import { makeHalfSpaceBox } from './halfSpace'
+import { SubShapeDedup, SubShapeIndexMap, SubShapeMultiIndex, shapeBndBox } from './primitives'
 import { volumeOf, volumeOfDefault } from './volume'
 import { foldCavitySolids } from './cavities'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 import { swallowUnlessTrap } from '../errors'
-import { OCC_ANGULAR, OCC_CONFUSION, TOL_SURFACE_IDENTITY } from '../solverConstants'
+import { OCC_ANGULAR, OCC_CONFUSION } from '../solverConstants'
 import { mergeTolerance, type KernelPrecision, type MergeTolerance } from '../precision'
 import { markFeatureProgress } from '../featureProgress'
 import { noProgress } from './defaultArgs'
@@ -749,19 +748,130 @@ function cleanShapeIsSound(
 export class BooleanSoundnessError extends Error {}
 
 /**
- * The refusal's advice when a periodic seam is involved: the kernel rebuilt a
- * face across the seam and lost it, so the next boolean over that body fails.
- * Nudging radii or planes, the tangency advice, does not help this family.
+ * The refusal's advice when the failed tool's material covered part of a target
+ * seam: the kernel rebuilt a face across the seam and lost it, so later
+ * booleans over that body fail. Nudging radii or planes, the tangency advice,
+ * does not help this family.
  */
 export const BOOLEAN_SEAM_HINT =
-  'A periodic seam edge is involved: the kernel could not rebuild the face across it. ' +
-  'Move the seam off the tool (rotate the body about its axis) or cut the tool back from ' +
-  'the seam, then rebuild.'
+  'The tool covers part of a periodic seam edge, and the kernel could not rebuild the face ' +
+  'across it. Move the seam off the tool (rotate the body about its own axis) or cut the tool ' +
+  'back from the seam, then rebuild.'
 
-/** The refusal's advice for the exact-tangency family (no seam involved). */
+/** The refusal's advice for the exact-tangency family (no covered seam). */
 export const BOOLEAN_TANGENCY_HINT =
   'The two shapes probably touch in an exact tangency the kernel cannot resolve; ' +
   'nudge one of them off the coincident radius or plane and rebuild.'
+
+/**
+ * Which advice a refusal carries. The seam hint is only right when the failed
+ * tool actually covered part of a seam, not merely because the shapes carry one:
+ * every cylinder, cone, revolve and torus has a seam, so "a seam exists" would
+ * make the tangency advice unreachable in the very family it was written for (a
+ * cylinder tangent to a face plane). `toolCoversSeam` is the measured answer.
+ */
+export function booleanRefusalHint(coveredSeam: boolean): string {
+  return coveredSeam ? BOOLEAN_SEAM_HINT : BOOLEAN_TANGENCY_HINT
+}
+
+/** A face's seam edge: the same face visits it twice (a cylinder, cone, sphere,
+ *  torus or a revolved spline closes on itself there). */
+interface SeamEdge {
+  edge: OccSubShape
+  face: OccSubShape
+}
+
+/**
+ * Every distinct seam edge of `shape`, with the face that owns it.
+ *
+ * `BRep_Tool.IsClosed_2(edge, face)` is the same predicate move-face uses to
+ * skip a curved face's own seam. A degenerated edge (a sphere pole, a cone
+ * apex) is a point, not a boundary, so it is not a seam.
+ */
+function seamEdgesOf(oc: OccModule, scope: DisposeScope, shape: OccShape): SeamEdge[] {
+  const E = oc.TopAbs_ShapeEnum
+  const out: SeamEdge[] = []
+  const dedup = new SubShapeDedup()
+  const faces = explore(oc, scope, shape, E.TopAbs_FACE)
+  for (const rawFace of faces) {
+    const face = scope.track(oc.TopoDS.Face_1(rawFace))
+    for (const rawEdge of explore(oc, scope, face, E.TopAbs_EDGE)) {
+      const edge = scope.track(oc.TopoDS.Edge_1(rawEdge)) as OccSubShape
+      if (oc.BRep_Tool.Degenerated?.(edge)) continue
+      if (!oc.BRep_Tool.IsClosed_2(edge, face)) continue
+      if (dedup.add(edge)) out.push({ edge, face: face as OccSubShape })
+    }
+  }
+  return out
+}
+
+/** A bare Common, the probe shape: the pieces of the 1D seam `segment` that lie
+ *  inside `tool`'s material. Only pieces with length count; a seam the tool
+ *  merely grazes returns vertices. */
+function seamPartsInsideTool(
+  oc: OccModule,
+  scope: DisposeScope,
+  segment: OccShape,
+  tool: OccShape,
+): OccShape[] {
+  const algo = scope.track(new oc.BRepAlgoAPI_Common_1())
+  const args = scope.track(new oc.TopTools_ListOfShape_1())
+  args.Append_1(segment)
+  const tools = scope.track(new oc.TopTools_ListOfShape_1())
+  tools.Append_1(tool)
+  algo.SetArguments(args)
+  algo.SetTools(tools)
+  algo.SetToFillHistory(false)
+  algo.Build(noProgress(oc))
+  if (!algo.IsDone()) return []
+  const common = scope.track(algo.Shape())
+  return explore(oc, scope, common, oc.TopAbs_ShapeEnum.TopAbs_EDGE)
+    .map((edge) => scope.track(oc.TopoDS.Edge_1(edge)))
+}
+
+/**
+ * Whether a fuse tool's material covers part of a target seam edge.
+ *
+ * A tool that swallows part of a seam makes the boolean rebuild the whole
+ * periodic face. On this kernel (OCCT 8.0.1, `frontend/occ.pin.json`) that
+ * rebuild can drop the covered seam from the face's boundary; the result
+ * validates and its volume is exact, but every later boolean over that body
+ * returns a BRepCheck-invalid freeform face (reproducer: a funnel revolved from
+ * a fit spline with a rib centred on its seam; see
+ * `bugreports/20261115_2016_boolean_fail.md`). The probe names that family in a
+ * refusal and is read only after a boolean has already failed, so an ordinary
+ * fuse pays nothing for it.
+ *
+ * The bounding-box test in front of the Common keeps a body with many seams (a
+ * drilled plate carries one per hole) cheap: a seam whose box misses the tool
+ * cannot be covered.
+ */
+function toolCoversSeam(
+  oc: OccModule,
+  scope: DisposeScope,
+  target: OccShape,
+  tool: OccShape,
+): boolean {
+  try {
+    const seams = seamEdgesOf(oc, scope, target)
+    if (seams.length === 0) return false
+    const toolBox = shapeBndBox(oc, scope, tool)
+    const slack = OCC_CONFUSION
+    for (const seam of seams) {
+      const box = shapeBndBox(oc, scope, seam.edge)
+      const apart =
+        box.min[0] > toolBox.max[0] + slack || box.max[0] < toolBox.min[0] - slack ||
+        box.min[1] > toolBox.max[1] + slack || box.max[1] < toolBox.min[1] - slack ||
+        box.min[2] > toolBox.max[2] + slack || box.max[2] < toolBox.min[2] - slack
+      if (apart) continue
+      if (seamPartsInsideTool(oc, scope, seam.edge, tool).length > 0) return true
+    }
+    return false
+  } catch (e) {
+    swallowUnlessTrap(e)
+    return false
+  }
+}
 
 /**
  * The last line of defence against a corrupt boolean: OCCT can report IsDone
@@ -993,433 +1103,10 @@ export function booleanWithDiff(
   return booleanWithDiffMany(oc, scope, target, [tool], op, opts)
 }
 
-/** A face's seam edge: the same face visits it twice (a cylinder, cone, sphere,
- *  torus or a revolved spline closes on itself there). The pair is kept because
- *  the plane through a straight seam needs the face's own axis. */
-interface SeamEdge {
-  edge: OccSubShape
-  face: OccSubShape
-}
-
-/** A piece of a seam edge that a tool's material covers, with the seam it came
- *  from (the plane fallback below needs that face's axis). */
-interface CoveredSeam {
-  segment: OccShape
-  seam: SeamEdge
-}
-
-/**
- * Every distinct seam edge of `shape`, with the face that owns it.
- *
- * `BRep_Tool.IsClosed_2(edge, face)` is the same predicate move-face uses to
- * skip a curved face's own seam. A degenerated edge (a sphere pole, a cone
- * apex) is a point, not a boundary, so it is not a seam.
- */
-function seamEdgesOf(oc: OccModule, scope: DisposeScope, shape: OccShape): SeamEdge[] {
-  const E = oc.TopAbs_ShapeEnum
-  const out: SeamEdge[] = []
-  const dedup = new SubShapeDedup()
-  const faces = explore(oc, scope, shape, E.TopAbs_FACE)
-  for (const rawFace of faces) {
-    const face = scope.track(oc.TopoDS.Face_1(rawFace))
-    for (const rawEdge of explore(oc, scope, face, E.TopAbs_EDGE)) {
-      const edge = scope.track(oc.TopoDS.Edge_1(rawEdge)) as OccSubShape
-      if (oc.BRep_Tool.Degenerated?.(edge)) continue
-      if (!oc.BRep_Tool.IsClosed_2(edge, face)) continue
-      if (dedup.add(edge)) out.push({ edge, face: face as OccSubShape })
-    }
-  }
-  return out
-}
-
-function sub3(a: Vec3, b: Vec3): Vec3 {
-  return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
-}
-
-function cross3(a: Vec3, b: Vec3): Vec3 {
-  return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]]
-}
-
-function unit3(v: Vec3): Vec3 | null {
-  const length = Math.hypot(v[0], v[1], v[2])
-  if (!(length > 1e-12)) return null
-  return [v[0] / length, v[1] / length, v[2] / length]
-}
-
-/** The curve parameter at a fraction of an edge's range, as a world point. */
-function edgePointAt(oc: OccModule, scope: DisposeScope, edge: OccShape, fraction: number): Vec3 {
-  const ad = scope.track(new oc.BRepAdaptor_Curve_2(edge))
-  const u = ad.FirstParameter() + (ad.LastParameter() - ad.FirstParameter()) * fraction
-  const p = ad.Value(u)
-  try {
-    return [p.X(), p.Y(), p.Z()]
-  } finally {
-    p.delete()
-  }
-}
-
-/** A point on a curved edge as close to the middle of its length as the curve's
- *  own parameterisation allows; enough to answer "is this seam still there". */
-function edgeMidpoint(oc: OccModule, scope: DisposeScope, edge: OccShape): Vec3 {
-  return edgePointAt(oc, scope, edge, 0.5)
-}
-
-function seamAxisDirection(oc: OccModule, scope: DisposeScope, face: OccSubShape): Vec3 | null {
-  try {
-    const adaptor = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
-    const t = adaptor.GetType().value
-    const isCylinder = t === oc.GeomAbs_SurfaceType.GeomAbs_Cylinder.value
-    const isCone = t === oc.GeomAbs_SurfaceType.GeomAbs_Cone.value
-    if (!isCylinder && !isCone) return null
-    const surface = scope.track(isCylinder ? adaptor.Cylinder() : adaptor.Cone())
-    const axis = scope.track(surface.Axis())
-    const direction = axis.Direction()
-    try {
-      return [direction.X(), direction.Y(), direction.Z()]
-    } finally {
-      direction.delete()
-    }
-  } catch (e) {
-    swallowUnlessTrap(e)
-    return null
-  }
-}
-
-/**
- * A plane that contains a seam segment, for splitting a tool that straddles it.
- * The plane through three samples works for a curved seam (a revolved spline),
- * and for a straight one (a cylinder's or cone's meridian) the surface's own
- * axis supplies the direction the seam curve alone cannot: the plane must hold
- * both the seam line and the axis, or the split does not separate the two sides
- * of the surface. Null when neither can be built.
- */
-function seamPlane(
-  oc: OccModule,
-  scope: DisposeScope,
-  segment: OccShape,
-  seam: SeamEdge,
-): { origin: Vec3; normal: Vec3 } | null {
-  try {
-    const a = edgePointAt(oc, scope, segment, 0.1)
-    const b = edgePointAt(oc, scope, segment, 0.5)
-    const c = edgePointAt(oc, scope, segment, 0.9)
-    const ab = sub3(b, a)
-    const ac = sub3(c, a)
-    const span = Math.hypot(ab[0], ab[1], ab[2]) * Math.hypot(ac[0], ac[1], ac[2])
-    const cross = cross3(ab, ac)
-    const normal = unit3(cross)
-    // Three nearly collinear samples define no stable plane (and a straight seam
-    // gives exactly none), so the axis path below takes over.
-    if (normal !== null && Math.hypot(cross[0], cross[1], cross[2]) > 1e-6 * span) {
-      return { origin: b, normal }
-    }
-    // A straight seam: the meridian plane holds the seam line and the axis.
-    const seamDir = unit3(sub3(c, a))
-    const axisDir = seamAxisDirection(oc, scope, seam.face)
-    if (seamDir !== null && axisDir !== null) {
-      const planeNormal = unit3(cross3(axisDir, seamDir))
-      if (planeNormal !== null) return { origin: b, normal: planeNormal }
-    }
-    return null
-  } catch (e) {
-    swallowUnlessTrap(e)
-    return null
-  }
-}
-
-/** A bare Common, the probe shape: the piece of the 1D seam `segment` that lies
- *  inside `tool`'s material. Only pieces with length count; a seam the tool
- *  merely grazes returns vertices. */
-function seamPartsInsideTool(
-  oc: OccModule,
-  scope: DisposeScope,
-  segment: OccShape,
-  tool: OccShape,
-): OccShape[] {
-  const algo = scope.track(new oc.BRepAlgoAPI_Common_1())
-  const args = scope.track(new oc.TopTools_ListOfShape_1())
-  args.Append_1(segment)
-  const tools = scope.track(new oc.TopTools_ListOfShape_1())
-  tools.Append_1(tool)
-  algo.SetArguments(args)
-  algo.SetTools(tools)
-  algo.SetToFillHistory(false)
-  algo.Build(noProgress(oc))
-  if (!algo.IsDone()) return []
-  const common = scope.track(algo.Shape())
-  return explore(oc, scope, common, oc.TopAbs_ShapeEnum.TopAbs_EDGE)
-    .map((edge) => scope.track(oc.TopoDS.Edge_1(edge)))
-}
-
-/**
- * The parts of the target's seam edges that a fuse tool's material covers.
- *
- * A tool that swallows part of a seam makes the boolean rebuild the whole
- * periodic face. On this kernel (OCCT 8.0.1, `frontend/occ.pin.json`) that
- * rebuild can drop the covered seam from the face's boundary; the result
- * validates, but the next boolean over that face returns a BRepCheck-invalid
- * face (the reproducer is a funnel revolved from a fit spline with a rib
- * centred on its seam: the rib's own add is sound, every later fuse into that
- * body is not). The seam segments are read here so the recovery below can
- * split the tool at the seam instead, which is the construction this kernel
- * does rebuild soundly.
- *
- * The bounding-box test in front of the Common is what keeps a body with many
- * seams (a drilled plate carries one per hole) cheap: a seam whose box misses
- * the tool cannot be covered.
- */
-function coveredSeamSegments(
-  oc: OccModule,
-  scope: DisposeScope,
-  target: OccShape,
-  tool: OccShape,
-): CoveredSeam[] {
-  try {
-    const seams = seamEdgesOf(oc, scope, target)
-    if (seams.length === 0) return []
-    const toolBox = shapeBndBox(oc, scope, tool)
-    const slack = OCC_CONFUSION
-    const out: CoveredSeam[] = []
-    for (const seam of seams) {
-      const box = shapeBndBox(oc, scope, seam.edge)
-      const apart =
-        box.min[0] > toolBox.max[0] + slack || box.max[0] < toolBox.min[0] - slack ||
-        box.min[1] > toolBox.max[1] + slack || box.max[1] < toolBox.min[1] - slack ||
-        box.min[2] > toolBox.max[2] + slack || box.max[2] < toolBox.min[2] - slack
-      if (apart) continue
-      for (const segment of seamPartsInsideTool(oc, scope, seam.edge, tool)) {
-        out.push({ segment, seam })
-      }
-    }
-    return out
-  } catch (e) {
-    swallowUnlessTrap(e)
-    return []
-  }
-}
-
-/** Distance from a point to an edge, or null when the probe cannot run. */
-function pointEdgeDistance(
-  oc: OccModule,
-  scope: DisposeScope,
-  point: Vec3,
-  edge: OccShape,
-): number | null {
-  try {
-    const pnt = scope.track(new oc.gp_Pnt_3(point[0], point[1], point[2]))
-    const vertex = scope.track(scope.track(new oc.BRepBuilderAPI_MakeVertex(pnt)).Vertex())
-    const probe = scope.track(new oc.BRepExtrema_DistShapeShape_3(
-      vertex,
-      edge,
-      OCC_CONFUSION,
-      oc.Extrema_ExtFlag.Extrema_ExtFlag_MIN,
-      oc.Extrema_ExtAlgo.Extrema_ExtAlgo_Grad,
-      noProgress(oc),
-    ))
-    if (!probe.IsDone()) return null
-    return probe.Value()
-  } catch (e) {
-    swallowUnlessTrap(e)
-    return null
-  }
-}
-
-/**
- * Whether a seam this fuse covered is still a seam edge of the result.
- *
- * This is the measured invariant of the good construction: the covered piece of
- * the seam stays on the rebuilt face's boundary (as an edge the face visits
- * twice). When it does not, the face was rebuilt across a seam that no longer
- * appears in its boundary, and the next boolean over that face is the one that
- * fails. Only ONE covered segment has to survive: a body can carry a second
- * seam whose covered part the same fuse legitimately removes, and that body is
- * still usable (measured on the funnel repro, where the cone seam survives and
- * the skirt seam does not).
- */
-function coveredSeamSurvives(
-  oc: OccModule,
-  scope: DisposeScope,
-  shape: OccShape,
-  covered: readonly CoveredSeam[],
-): boolean {
-  if (covered.length === 0) return true
-  try {
-    const seams = seamEdgesOf(oc, scope, shape)
-    if (seams.length === 0) return false
-    for (const { segment } of covered) {
-      const mid = edgeMidpoint(oc, scope, segment)
-      for (const seam of seams) {
-        const distance = pointEdgeDistance(oc, scope, mid, seam.edge)
-        if (distance !== null && distance <= TOL_SURFACE_IDENTITY) return true
-      }
-    }
-    return false
-  } catch (e) {
-    swallowUnlessTrap(e)
-    // A check that cannot run has not proved the seam survived.
-    return false
-  }
-}
-
-/** One boolean step of the seam-split recovery, guarded like the main pipeline. */
-function seamFuseStep(
-  oc: OccModule,
-  scope: DisposeScope,
-  target: OccShape,
-  tool: OccShape,
-  unifyFaces: boolean,
-  tolerance: MergeTolerance,
-): { shape: OccShape; diff: BrepDiff; faceOrigin: FaceOrigin[] } {
-  const attempt = withFoldedCavities(
-    oc, scope, composeBooleanAttempt(oc, scope, target, [tool], 'fuse', unifyFaces, tolerance),
-  )
-  const problem = booleanResultProblem(
-    oc, scope, target, [tool], 'fuse', attempt.shape, attempt.validated === attempt.shape,
-  )
-  if (problem !== null) {
-    if (!scope.isTracked(attempt.shape)) scope.track(attempt.shape)
-    throw new BooleanSoundnessError(`boolean fuse: the kernel returned an unsound result (${problem})`)
-  }
-  return attempt
-}
-
-/** Map every face of `origin`'s outputs to the index of its entry. */
-function originIndex(origin: readonly FaceOrigin[]): SubShapeIndexMap {
-  const index = new SubShapeIndexMap()
-  origin.forEach((entry, i) => index.set(entry.output, i))
-  return index
-}
-
-/**
- * Compose the seam-split recovery's two fuses back into one origin table whose
- * sources are the CALLER's target and tool faces, which is what the name
- * transfer reads. `first` is the first fuse's table, `second` the second's; the
- * two cut tables translate a tool piece's faces back to the caller's tool.
- */
-function composeSeamOrigin(
-  second: readonly FaceOrigin[],
-  first: readonly FaceOrigin[],
-  pieceA: readonly FaceOrigin[],
-  pieceB: readonly FaceOrigin[],
-): FaceOrigin[] {
-  const firstIdx = originIndex(first)
-  const pieceAIdx = originIndex(pieceA)
-  const pieceBIdx = originIndex(pieceB)
-  const toolFaceOf = (origin: readonly FaceOrigin[], index: SubShapeIndexMap, face: OccSubShape): OccSubShape | null => {
-    const at = index.get(face)
-    if (at < 0) return null
-    return origin[at].source
-  }
-  const out: FaceOrigin[] = []
-  for (const entry of second) {
-    if (entry.fromTool) {
-      // The second piece: translate to the caller's tool face.
-      const toolFace = toolFaceOf(pieceB, pieceBIdx, entry.source)
-      if (toolFace !== null) out.push({ output: entry.output, source: toolFace, fromTool: true })
-      continue
-    }
-    // The intermediate body: its entry says whether the face came from the
-    // caller's target or from the first piece.
-    const at = firstIdx.get(entry.source)
-    if (at < 0) continue
-    const base = first[at]
-    if (!base.fromTool) {
-      out.push({ output: entry.output, source: base.source, fromTool: false })
-      continue
-    }
-    const toolFace = toolFaceOf(pieceA, pieceAIdx, base.source)
-    if (toolFace !== null) out.push({ output: entry.output, source: toolFace, fromTool: true })
-  }
-  return out
-}
-
-/**
- * The seam-aware fuse recovery: split a tool that covers part of the target's
- * seam at the seam's own plane, fuse the pieces in separate booleans, and keep
- * the order whose result still carries the seam.
- *
- * Why two booleans and not two tools in one call: a one-call batch over a seam
- * the tool straddles produces the same rebuilt face the plain fuse does. Only
- * the two-call construction leaves the covered seam on the face's boundary, and
- * only one of the two orders leaves it there (the other loses it and is the
- * body whose later booleans fail), so the order is decided by the seam check
- * rather than by a guessed convention.
- *
- * Returns null when no split plane can be built, a piece is empty, or neither
- * order produces a sound result that keeps the seam; the caller then keeps what
- * it already had, so an unproven recovery never replaces a working result.
- */
-function trySeamSplitFuse(
-  oc: OccModule,
-  scope: DisposeScope,
-  target: OccShape,
-  tool: OccShape,
-  covered: readonly CoveredSeam[],
-  unifyFaces: boolean,
-  tolerance: MergeTolerance,
-): { shape: OccShape; diff: BrepDiff; faceOrigin: FaceOrigin[] } | null {
-  const seed = covered[0]
-  const plane = seamPlane(oc, scope, seed.segment, seed.seam)
-  if (plane === null) return null
-  const negative = [-plane.normal[0], -plane.normal[1], -plane.normal[2]] as Vec3
-  try {
-    const plusBox = makeHalfSpaceBox(oc, scope, plane.origin, plane.normal, tool).shape
-    const minusBox = makeHalfSpaceBox(oc, scope, plane.origin, negative, tool).shape
-    // The pieces and their first-cut origin tables: a piece's face maps back to
-    // the caller's tool face through the cut that made it. Both pieces join the
-    // scope; they are transients of this recovery.
-    const minusCut = booleanWithDiff(oc, scope, tool, plusBox, 'cut')
-    const plusCut = booleanWithDiff(oc, scope, tool, minusBox, 'cut')
-    scope.track(minusCut.shape)
-    scope.track(plusCut.shape)
-    const solids = oc.TopAbs_ShapeEnum.TopAbs_SOLID
-    const pieceCount = (shape: OccShape): number => countSubShapes(oc, scope, shape, solids)
-    if (pieceCount(minusCut.shape) === 0 || pieceCount(plusCut.shape) === 0) return null
-    const orders = [
-      { pieces: [plusCut, minusCut] },
-      { pieces: [minusCut, plusCut] },
-    ]
-    for (const order of orders) {
-      try {
-        const first = seamFuseStep(oc, scope, target, order.pieces[0].shape, unifyFaces, tolerance)
-        const firstTracked = scope.isTracked(first.shape) ? first.shape : scope.track(first.shape)
-        const second = seamFuseStep(oc, scope, firstTracked, order.pieces[1].shape, unifyFaces, tolerance)
-        if (!coveredSeamSurvives(oc, scope, second.shape, covered)) {
-          if (!scope.isTracked(second.shape)) scope.track(second.shape)
-          continue
-        }
-        return {
-          shape: second.shape,
-          // The second fuse's diff: its new/inherited output faces are the
-          // result's own (what `brep_new` marking reads). Its input lists name
-          // the intermediate body and the second piece rather than the caller's
-          // operands, which only costs modifier attribution on this recovery.
-          diff: second.diff,
-          faceOrigin: composeSeamOrigin(
-            second.faceOrigin, first.faceOrigin,
-            order.pieces[0].faceOrigin, order.pieces[1].faceOrigin,
-          ),
-        }
-      } catch (e) {
-        swallowUnlessTrap(e)
-        // This order did not survive; the next one gets its own chance.
-      }
-    }
-    return null
-  } catch (e) {
-    swallowUnlessTrap(e)
-    return null
-  }
-}
-
 /**
  * The multi-tool form of `booleanWithDiff`: one boolean, one clean, one history
  * over the whole tool set. A pattern or array passes every copy here so the
  * target is not regrown and re-named once per copy.
- *
- * A single-tool fuse whose tool covers part of a target seam is recovered
- * through the seam split when the plain result loses that seam (see
- * `trySeamSplitFuse`); every other case runs exactly the pipeline below.
  */
 export function booleanWithDiffMany(
   oc: OccModule,
@@ -1441,14 +1128,6 @@ export function booleanWithDiffMany(
   // (kernel/precision.ts). The retry reads the same pair: it is the same
   // geometry.
   const tolerance = mergeTolerance(opts.precision)
-  // A fuse whose tool covers part of the target's periodic seam rebuilds the
-  // whole face; on this kernel that rebuild can drop the seam from the face's
-  // boundary and leave a body whose next boolean fails (see
-  // `coveredSeamSegments`). Read the covered pieces once, and recover only when
-  // the plain pipeline loses them: an ordinary fuse never pays the rebuild.
-  const covered = op === 'fuse' && tools.length === 1
-    ? coveredSeamSegments(oc, scope, target, tools[0])
-    : []
   const attempt = withFoldedCavities(
     oc, scope, composeBooleanAttempt(oc, scope, target, tools, op, unifyFaces, tolerance),
   )
@@ -1460,17 +1139,7 @@ export function booleanWithDiffMany(
     oc, scope, target, tools, op, attempt.shape, attempt.validated === attempt.shape,
   )
   markFeatureProgress()
-  if (problem === null) {
-    if (coveredSeamSurvives(oc, scope, attempt.shape, covered)) {
-      return { shape: attempt.shape, diff: attempt.diff, faceOrigin: attempt.faceOrigin }
-    }
-    const recovered = trySeamSplitFuse(oc, scope, target, tools[0], covered, unifyFaces, tolerance)
-    // An unproven recovery must not replace a sound result: keep the plain one
-    // and let whatever later boolean over it fail with the seam named.
-    if (recovered === null) return { shape: attempt.shape, diff: attempt.diff, faceOrigin: attempt.faceOrigin }
-    if (!scope.isTracked(attempt.shape)) scope.track(attempt.shape)
-    return recovered
-  }
+  if (problem === null) return { shape: attempt.shape, diff: attempt.diff, faceOrigin: attempt.faceOrigin }
   // A replaced attempt has no owner, so it joins the scope: the fallback result
   // composeBooleanAttempt returns may already be tracked, hence the check.
   if (!scope.isTracked(attempt.shape)) scope.track(attempt.shape)
@@ -1490,27 +1159,14 @@ export function booleanWithDiffMany(
     oc, scope, target, tools, op, retry.shape, retry.validated === retry.shape,
   )
   markFeatureProgress()
-  if (retryProblem === null) {
-    if (coveredSeamSurvives(oc, scope, retry.shape, covered)) {
-      return { shape: retry.shape, diff: retry.diff, faceOrigin: retry.faceOrigin }
-    }
-    const recovered = trySeamSplitFuse(oc, scope, target, tools[0], covered, unifyFaces, tolerance)
-    if (recovered === null) return { shape: retry.shape, diff: retry.diff, faceOrigin: retry.faceOrigin }
-    if (!scope.isTracked(retry.shape)) scope.track(retry.shape)
-    return recovered
-  }
+  if (retryProblem === null) return { shape: retry.shape, diff: retry.diff, faceOrigin: retry.faceOrigin }
   if (!scope.isTracked(retry.shape)) scope.track(retry.shape)
-  // Either retry was unsound. The seam-split construction is the one this
-  // kernel rebuilds soundly when the tool straddles a target seam, so try it
-  // before refusing.
-  if (covered.length > 0) {
-    const recovered = trySeamSplitFuse(oc, scope, target, tools[0], covered, unifyFaces, tolerance)
-    if (recovered !== null) return recovered
-  }
-  const hasSeam = seamEdgesOf(oc, scope, target).length > 0
-    || tools.some((tool) => seamEdgesOf(oc, scope, tool).length > 0)
+  // Name the family from the failed operands, not from "a seam exists": every
+  // cylinder, cone, revolve and torus carries one, so the seam advice would
+  // swallow the tangency advice it must stand beside. Only paid on a refusal.
+  const coveredSeam = tools.some((tool) => toolCoversSeam(oc, scope, target, tool))
   throw new BooleanSoundnessError(
     `boolean ${op}: the kernel returned an unsound result (${retryProblem}). ` +
-    (hasSeam ? BOOLEAN_SEAM_HINT : BOOLEAN_TANGENCY_HINT),
+    booleanRefusalHint(coveredSeam),
   )
 }
