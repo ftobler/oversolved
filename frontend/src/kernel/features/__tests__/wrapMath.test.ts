@@ -259,6 +259,16 @@ describe('wrapMath: height', () => {
     expect(geometricOffset(2, 'cut', true)).toBe(2)
   })
 
+  it('refuses a torus height whose inner half reaches the ring axis', () => {
+    // A shaft groove: the tube's inner half, concave, R 7 and r 2 (a shaft of
+    // radius 5). A cut grows the tube, and 2 + 6 = 8 > 7 passes the axis.
+    const groove: WrapSurface = { kind: 'torus', origin: [0, 0, 0], axis: [0, 1, 0], majorRadius: 7, minorRadius: 2 }
+    const fp = square(0, 0, 0.5)
+    const map = wrapMap(input(groove, fp, { concave: true, tubeSide: 'inner' }))
+    expect(() => refuseCollapsedOffset(groove, map, geometricOffset(6, 'cut', true), fp)).toThrow(/reaches through the target's ring axis/)
+    expect(() => refuseCollapsedOffset(groove, map, geometricOffset(3, 'cut', true), fp)).not.toThrow()
+  })
+
   it('refuses a height that reaches the axis', () => {
     const fp = square(0, 0, 1)
     const map = wrapMap(input(CYL, fp))

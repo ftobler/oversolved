@@ -363,6 +363,83 @@ describe.skipIf(!oc || !solveBytes)('wrap (real OCC + Rust solver)', { timeout: 
     expect(all.bbox[0]).toBeCloseTo(-122, 4)
   })
 
+  // A pattern or mirror rebuilds its source's tool as `new`. On a wrap the
+  // operation also signs the height, and the target face the rebuild would read
+  // already holds the wrap, so these pin both: the cut copies go into the
+  // material, and a curved footprint is not refused as running off its own hole.
+  describe('patterns and mirrors of a wrap', () => {
+    const quarterTurns = (source: string): Dict => {
+      const { kind, def } = splitPatternDef({
+        subject: 'feature', source_features: [source], mode: 'circular',
+        count: 4, step_angle: 90, axis_origin: [0, 0, 0], axis_direction: [0, 1, 0],
+      })
+      return { id: 'cp1', kind, [kind]: def }
+    }
+
+    it('a pattern of a cut wrap sinks every copy into the skin', () => {
+      const target = skin()
+      const result = h.run({
+        features: [
+          ...cylinder(), rectSketch('skw', '@builtin_plane_front', -2, 9, 2, 21),
+          wrap('wr1', '@skw', target, { operation: 'cut', height: 2 }), quarterTurns('@wr1'),
+        ],
+      })
+      expect(h.res(result, 'cp1').status).toBe('ok')
+      const g = gauges(result, 'cp1', 'body_ex1')
+      expect(g.valid).toBe(true)
+      const pocket = sector(4, 12, R, 2, -1)
+      expect(Math.abs(g.volume - (cylVolume() - 4 * pocket)) / pocket).toBeLessThan(1e-5)
+    })
+
+    it('a pattern of a cut wrap in a bore sinks every copy outward into the wall', () => {
+      const inner = 6
+      const base = h.run({ features: cylinder(inner) })
+      const bore = faceQueries(base, 'body_ex1', 'cylinderface')[0]
+      const result = h.run({
+        features: [
+          ...cylinder(inner), rectSketch('skw', '@builtin_plane_front', -1.5, 9, 1.5, 21),
+          wrap('wr1', '@skw', bore, { operation: 'cut', height: 1 }), quarterTurns('@wr1'),
+        ],
+      })
+      expect(h.res(result, 'cp1').status).toBe('ok')
+      const g = gauges(result, 'cp1', 'body_ex1')
+      expect(g.valid).toBe(true)
+      const pocket = sector(3, 12, inner, 1)
+      expect(Math.abs(g.volume - (cylVolume(inner) - 4 * pocket)) / pocket).toBeLessThan(1e-5)
+    })
+
+    it('a pattern of a circle wrap rebuilds on the surface the wrap was built on', () => {
+      const target = skin()
+      const result = h.run({
+        features: [
+          ...cylinder(), circleSketch('skw', '@builtin_plane_front', 0, 15, 3),
+          wrap('wr1', '@skw', target), quarterTurns('@wr1'),
+        ],
+      })
+      expect(h.res(result, 'cp1').status).toBe('ok')
+      const one = gauges(result, 'wr1', 'body_ex1').volume - cylVolume()
+      const all = gauges(result, 'cp1', 'body_ex1').volume - cylVolume()
+      expect(Math.abs(all - 4 * one) / one).toBeLessThan(1e-5)
+    })
+
+    it('a feature mirror of a wrap reflects it onto the other side', () => {
+      const target = skin()
+      const result = h.run({
+        features: [
+          ...cylinder(), rectSketch('skw', '@builtin_plane_front', 2, 9, 6, 21),
+          wrap('wr1', '@skw', target),
+          { id: 'mi1', kind: 'mirror', mirror: { subject: 'feature', source_features: ['@wr1'], plane: '@builtin_plane_right' } },
+        ],
+      })
+      expect(h.res(result, 'mi1').status).toBe('ok')
+      const g = gauges(result, 'mi1', 'body_ex1')
+      expect(g.valid).toBe(true)
+      expect(Math.abs(g.volume - (cylVolume() + 2 * sector(4, 12, R, 1))) / sector(4, 12, R, 1)).toBeLessThan(1e-5)
+      // The reflected pad stands on the -X side, as the source does on +X.
+      expect(g.bbox[0]).toBeLessThan(-2)
+    })
+  })
+
   describe('refusals', () => {
     it('no target builds nothing and says so', () => {
       const result = h.run({ features: [...cylinder(), rectSketch('skw', '@builtin_plane_front', -4, 9, 4, 21), wrap('wr1', '@skw', undefined)] })

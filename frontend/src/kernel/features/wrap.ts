@@ -235,16 +235,40 @@ function mapOnFace(
   return angleInRange(inner.tubeAngle ?? 0, tubeRange) ? inner : outer
 }
 
-/** What a caller other than the feature log hands a wrap. A pattern builds its
- *  source's tool into an empty scratch store, but the target face lives on the
- *  real parts, so the target is resolved against `targetBodies`. The registry's
+/** A pattern or mirror rebuilding an earlier wrap's tool. The tool is
+ *  registered as `new` into a scratch store, but on a wrap the operation also
+ *  signs the height (a cut goes into the material), so the source's own
+ *  operation rides along. `bodies` is the real part store, read only when the
+ *  wrap left no record of its target (see `WrapTargetRecord`). */
+export interface WrapRebuild {
+  operation: BodyOperation
+  bodies: Record<string, Body>
+}
+
+/** What a caller other than the feature log hands a wrap. The registry's
  *  variable context rides the same slot, so its two keys are named here to keep
  *  the shared context type assignable (extrude's context does the same). */
 export interface WrapSolveContext {
   variables?: Record<string, number>
   laterVariables?: Record<string, number>
-  targetBodies?: Record<string, Body>
+  rebuild?: WrapRebuild
 }
+
+/**
+ * The target surface a wrap resolved, recorded in the repository under
+ * `wrapTargetKey(featureId)` when the wrap itself solves. A rebuild reads this
+ * instead of the target face: by then the wrap has fused into or cut that face
+ * (the footprint is a hole in it), and any later feature may have moved or split
+ * it, so a re-read sees a different face from the one the wrap was built on.
+ * Plain data, so it rides the repository snapshot through every checkpoint.
+ */
+export interface WrapTargetRecord {
+  surface: WrapSurface
+  concave: boolean
+  tubeRange?: [number, number]
+}
+
+export const wrapTargetKey = (featureId: string): string => '_wrap_target_' + featureId
 
 /** Solve a wrap feature into the body store. */
 export function solveWrap(
@@ -258,7 +282,8 @@ export function solveWrap(
   _featuresById?: unknown,
   solveContext?: WrapSolveContext,
 ): WrapResult {
-  const targetBodies = solveContext?.targetBodies ?? bodyStore
+  const rebuild = solveContext?.rebuild
+  const targetBodies = rebuild?.bodies ?? bodyStore
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.wrap as Dict) ?? {}
   const mergeTarget = (sub.merge_target as string) ?? null
@@ -335,9 +360,14 @@ export function solveWrap(
   // No target, or one that names nothing: build nothing and say why. body_ids
   // is explicitly empty so no consumer chases a body that was never minted.
   const targetRef = (sub.target as string | undefined) ?? ''
+  const recorded = rebuild !== undefined
+    ? (globalRepo.elements.get(wrapTargetKey(featureId)) as WrapTargetRecord | undefined)
+    : undefined
   let targetFace: OccShape | null = null
   let warning: string | undefined
-  if (!targetRef) {
+  if (recorded !== undefined) {
+    // The wrap's own solve already resolved and checked this target.
+  } else if (!targetRef) {
     warning = 'wrap: has no target face; nothing was built'
   } else {
     try {
@@ -350,26 +380,34 @@ export function solveWrap(
       warning = `wrap: target '${targetRef}' did not resolve; nothing was built`
     }
   }
-  if (targetFace === null) {
+  if (recorded === undefined && targetFace === null) {
     result.body_id = mergeTarget ?? Object.keys(bodyStore).sort()[0] ?? bodyId
     result.body_ids = []
     result.solver_warning = warning
     return result
   }
 
-  const { surface, concave, tubeRange } = readWrapTarget(oc, scope, targetFace)
+  const target: WrapTargetRecord = recorded ?? readWrapTarget(oc, scope, targetFace as OccShape)
+  const { surface, concave, tubeRange } = target
   const footprint = allLoops.flatMap((loop) => densified(loopPts(loop, FOOTPRINT_ARC_SAMPLES)))
   const size = bboxSize(footprint)
   const tol = wrapFitTolerance(size)
   const map = mapOnFace(surface, concave, plane, footprint, tubeRange)
-  const offset = geometricOffset(height, operation, concave)
+  // A rebuild registers its tool as `new`, but the height still goes the way
+  // the source's own operation sends it.
+  const offset = geometricOffset(height, rebuild?.operation ?? operation, concave)
   refuseCollapsedOffset(surface, map, offset, footprint)
-  // Every boundary sample has to land on the target face: a footprint running
-  // off the face would build a wrap floating past the part's edge.
-  const faceTol = Math.max(1e-6, size * 1e-6)
-  if (!footprint.every((p) => onFace(oc, scope, targetFace as OccShape, map, p, faceTol))) {
-    throw new Error('wrap: the footprint runs off the target face; move it onto the face or make it smaller')
+  if (targetFace !== null) {
+    // Every boundary sample has to land on the target face: a footprint running
+    // off the face would build a wrap floating past the part's edge. Only the
+    // face the wrap is built on can say so; a recorded target was checked when
+    // it was recorded.
+    const faceTol = Math.max(1e-6, size * 1e-6)
+    if (!footprint.every((p) => onFace(oc, scope, targetFace as OccShape, map, p, faceTol))) {
+      throw new Error('wrap: the footprint runs off the target face; move it onto the face or make it smaller')
+    }
   }
+  if (rebuild === undefined) globalRepo.register(wrapTargetKey(featureId), target)
 
   const lineage = sweepLoopsWithLineage(
     oc, scope, allLoops, plane,
