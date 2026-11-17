@@ -239,6 +239,65 @@ describe.skipIf(!oc || !solveBytes)('a seam-straddling rib through the real kern
     expect(Math.abs(onSeam - offSeam)).toBeLessThan(1e-2 * Math.abs(offSeam))
   })
 
+  it('fuses a rib that straddles a straight cylinder seam, then another rib', () => {
+    // The straight-seam branch: a cylinder's seam is a line, so its split plane
+    // comes from the surface's own axis rather than from three edge samples.
+    const r = h.run({
+      version: 9, kind: 'part',
+      features: [
+        // A solid cylinder r10, y 0..20, revolved about +Y with its seam in z = 0.
+        {
+          id: 'skc', kind: 'sketch', plane: '@builtin_plane_front',
+          entities: [
+            { id: 'c1', kind: 'line' }, { id: 'c2', kind: 'line' },
+            { id: 'c3', kind: 'line' }, { id: 'c4', kind: 'line' },
+          ],
+          initial: {
+            c1: [0, 0, 10, 0], c2: [10, 0, 10, 20], c3: [10, 20, 0, 20], c4: [0, 20, 0, 0],
+          },
+          constraints: [],
+        },
+        axisSketch(),
+        { id: 'rv1', kind: 'revolve', revolve: { sketch: '@skc', angle: 360, axis: '@skax/ax', operation: 'new' } },
+        // skb1 straddles the seam plane (z = 0), skb2 sits 90 degrees away.
+        {
+          id: 'skb1', kind: 'sketch', plane: '@builtin_plane_front',
+          entities: [
+            { id: 'b1', kind: 'line' }, { id: 'b2', kind: 'line' },
+            { id: 'b3', kind: 'line' }, { id: 'b4', kind: 'line' },
+          ],
+          initial: {
+            b1: [8, 2, 14, 2], b2: [14, 2, 14, 6], b3: [14, 6, 8, 6], b4: [8, 6, 8, 2],
+          },
+          constraints: [],
+        },
+        {
+          id: 'ex1', kind: 'extrude',
+          extrude: { sketch: '@skb1', distance: 4, direction: 'symmetric', operation: 'add', merge_target: '@body_rv1' },
+        },
+        {
+          id: 'skb2', kind: 'sketch', plane: '@builtin_plane_front',
+          entities: [
+            { id: 'd1', kind: 'line' }, { id: 'd2', kind: 'line' },
+            { id: 'd3', kind: 'line' }, { id: 'd4', kind: 'line' },
+          ],
+          initial: {
+            d1: [8, 12, 14, 12], d2: [14, 12, 14, 16], d3: [14, 16, 8, 16], d4: [8, 16, 8, 12],
+          },
+          constraints: [],
+        },
+        {
+          id: 'ex2', kind: 'extrude',
+          extrude: { sketch: '@skb2', distance: 4, direction: 'symmetric', operation: 'add', merge_target: '@body_rv1' },
+        },
+      ],
+    })
+    expect(h.res(r, 'ex1').exception).toBeUndefined()
+    expect(h.res(r, 'ex2').exception).toBeUndefined()
+    expect(h.res(r, 'ex2').status).toBe('ok')
+    expectEveryFaceNamed(r, 'ex2', 'body_rv1')
+  })
+
   it('unions the same six ribs into the revolve as the reported document does', () => {
     const r = h.run(unionDoc())
     expect(h.res(r, 'b1').status).toBe('ok')

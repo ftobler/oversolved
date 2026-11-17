@@ -1071,7 +1071,8 @@ function seamAxisDirection(oc: OccModule, scope: DisposeScope, face: OccSubShape
     const isCylinder = t === oc.GeomAbs_SurfaceType.GeomAbs_Cylinder.value
     const isCone = t === oc.GeomAbs_SurfaceType.GeomAbs_Cone.value
     if (!isCylinder && !isCone) return null
-    const axis = isCylinder ? adaptor.Cylinder().Axis() : adaptor.Cone().Axis()
+    const surface = scope.track(isCylinder ? adaptor.Cylinder() : adaptor.Cone())
+    const axis = scope.track(surface.Axis())
     const direction = axis.Direction()
     try {
       return [direction.X(), direction.Y(), direction.Z()]
