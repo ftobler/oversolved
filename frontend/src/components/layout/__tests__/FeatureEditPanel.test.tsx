@@ -95,7 +95,7 @@ describe('FeatureEditPanel', () => {
 
     expect(screen.getByText('Extrude 1')).toBeInTheDocument()
     // The schema editor, not a stub: the extrude's Distance field renders.
-    expect(screen.getByLabelText('Distance')).toBeInTheDocument()
+    expect(screen.getByLabelText('Distance, millimetres')).toBeInTheDocument()
     expect(screen.getByTitle('OK')).toBeInTheDocument()
     expect(screen.getByTitle('Cancel')).toBeInTheDocument()
   })

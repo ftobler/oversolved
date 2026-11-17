@@ -209,13 +209,13 @@ describe('HoleEditor (via FeatureEditor)', () => {
     it('shows nothing about the tapped depth without a thread', () => {
       render(<FeatureEditor feature={makeFeature()} onMutation={vi.fn()} schema={HOLE_SCHEMA} />)
       expect(tapFull()).toBeNull()
-      expect(screen.queryByLabelText('Thread depth')).toBeNull()
+      expect(screen.queryByLabelText('Thread depth, millimetres')).toBeNull()
     })
 
     it('taps the full bore by default and hides the number', () => {
       render(<FeatureEditor feature={makeFeature({ thread: M6 })} onMutation={vi.fn()} schema={HOLE_SCHEMA} />)
       expect(tapFull()?.checked).toBe(true)
-      expect(screen.queryByLabelText('Thread depth')).toBeNull()
+      expect(screen.queryByLabelText('Thread depth, millimetres')).toBeNull()
     })
 
     it('unchecking seeds the blind depth, so the shading does not move yet', () => {

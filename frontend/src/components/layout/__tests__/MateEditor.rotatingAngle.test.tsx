@@ -24,7 +24,7 @@ function renderEditor(m: MateFeatureDef) {
   return onUpdate
 }
 
-const angleBox = () => screen.getByLabelText('Angle') as HTMLInputElement
+const angleBox = () => screen.getByLabelText('Angle, degrees') as HTMLInputElement
 
 describe('MateEditor rotating angle', () => {
   it('shows the angle box empty for a free hinge', () => {
@@ -51,7 +51,7 @@ describe('MateEditor rotating angle', () => {
 
   it('offers one axial offset box, not an x/y/z triple', () => {
     renderEditor(mate())
-    expect(screen.getByLabelText('Offset')).toBeTruthy()
-    expect(screen.queryByLabelText('Offset X')).toBeNull()
+    expect(screen.getByLabelText('Offset, millimetres')).toBeTruthy()
+    expect(screen.queryByLabelText('Offset X, millimetres')).toBeNull()
   })
 })

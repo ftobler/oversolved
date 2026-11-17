@@ -26,25 +26,25 @@ function renderEditor(m: MateFeatureDef) {
 describe('MateEditor joint limits', () => {
   it('labels a hinge bound in degrees and a slide bound in distance', () => {
     renderEditor(mate('rotating'))
-    expect((screen.getByLabelText('Min angle') as HTMLInputElement).value).toBe('')
-    expect((screen.getByLabelText('Max angle') as HTMLInputElement).value).toBe('')
+    expect((screen.getByLabelText('Min angle, degrees') as HTMLInputElement).value).toBe('')
+    expect((screen.getByLabelText('Max angle, degrees') as HTMLInputElement).value).toBe('')
   })
 
   it('offers distance bounds on a sliding mate', () => {
     renderEditor(mate('sliding'))
-    expect(screen.getByLabelText('Min distance')).toBeTruthy()
-    expect(screen.getByLabelText('Max distance')).toBeTruthy()
+    expect(screen.getByLabelText('Min distance, millimetres')).toBeTruthy()
+    expect(screen.getByLabelText('Max distance, millimetres')).toBeTruthy()
   })
 
   it('does not offer a bound on a kind with no single free coordinate', () => {
     renderEditor(mate('fixed'))
-    expect(screen.queryByLabelText('Min angle')).toBeNull()
-    expect(screen.queryByLabelText('Max distance')).toBeNull()
+    expect(screen.queryByLabelText('Min angle, degrees')).toBeNull()
+    expect(screen.queryByLabelText('Max distance, millimetres')).toBeNull()
   })
 
   it('writes an authored bound and clears it back to open', () => {
     const onUpdate = renderEditor(mate('sliding', { limit_min: 5 }))
-    const box = screen.getByLabelText('Min distance') as HTMLInputElement
+    const box = screen.getByLabelText('Min distance, millimetres') as HTMLInputElement
     expect(box.value).toBe('5')
     fireEvent.change(box, { target: { value: '12' } })
     expect(onUpdate).toHaveBeenCalledWith({ limit_min: 12 })
@@ -56,7 +56,7 @@ describe('MateEditor joint limits', () => {
     // The dirty-text state exists so the leading '-' is not reverted by the
     // controlled value before the digits arrive.
     const onUpdate = renderEditor(mate('rotating'))
-    fireEvent.change(screen.getByLabelText('Min angle'), { target: { value: '-45' } })
+    fireEvent.change(screen.getByLabelText('Min angle, degrees'), { target: { value: '-45' } })
     expect(onUpdate).toHaveBeenCalledWith({ limit_min: -45 })
   })
 
@@ -65,7 +65,7 @@ describe('MateEditor joint limits', () => {
     // invent a one-degree stop. The refused entry is not written, and the blur
     // shows the value the document really holds rather than the rejected text.
     const onUpdate = renderEditor(mate('rotating', { limit_min: 27 }))
-    const box = screen.getByLabelText('Min angle') as HTMLInputElement
+    const box = screen.getByLabelText('Min angle, degrees') as HTMLInputElement
     fireEvent.change(box, { target: { value: '270' } })
     expect(onUpdate).not.toHaveBeenCalled()
     expect(screen.getByText(/A rotating bound must be inside \(-180, 180\]/)).toBeTruthy()
@@ -76,13 +76,13 @@ describe('MateEditor joint limits', () => {
 
   it('commits a signed rotating bound as it is typed', () => {
     const onUpdate = renderEditor(mate('rotating'))
-    fireEvent.change(screen.getByLabelText('Min angle'), { target: { value: '-90' } })
+    fireEvent.change(screen.getByLabelText('Min angle, degrees'), { target: { value: '-90' } })
     expect(onUpdate).toHaveBeenCalledWith({ limit_min: -90 })
   })
 
   it('leaves a sliding bound unsigned on blur', () => {
     const onUpdate = renderEditor(mate('sliding', { limit_max: 270 }))
-    fireEvent.blur(screen.getByLabelText('Max distance'))
+    fireEvent.blur(screen.getByLabelText('Max distance, millimetres'))
     expect(onUpdate).not.toHaveBeenCalled()
   })
 
@@ -91,7 +91,7 @@ describe('MateEditor joint limits', () => {
     // stays on screen with the reason, and the document keeps its last valid
     // pair.
     const onUpdate = renderEditor(mate('sliding', { limit_min: 10 }))
-    fireEvent.change(screen.getByLabelText('Max distance'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Max distance, millimetres'), { target: { value: '5' } })
     expect(onUpdate).not.toHaveBeenCalled()
     expect(screen.getByText('Min must not exceed max.')).toBeTruthy()
   })
@@ -100,7 +100,7 @@ describe('MateEditor joint limits', () => {
     // 170..190 is 20 degrees wide, but folding the endpoints gives 170..-170:
     // the inverted pair the loader calls unrepresentable.
     const onUpdate = renderEditor(mate('rotating', { limit_min: 170 }))
-    fireEvent.change(screen.getByLabelText('Max angle'), { target: { value: '190' } })
+    fireEvent.change(screen.getByLabelText('Max angle, degrees'), { target: { value: '190' } })
     expect(onUpdate).not.toHaveBeenCalled()
     expect(screen.getByText(/A rotating bound must be inside \(-180, 180\]/)).toBeTruthy()
   })

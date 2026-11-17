@@ -205,7 +205,7 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     await renderWithMate('fixed')
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1))
     disarm()
-    fireEvent.change(screen.getByLabelText('Offset X'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Offset X, millimetres'), { target: { value: '5' } })
     await tick()
     expect(mateDef().offset).toEqual({ x: 5 })
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2))
@@ -216,7 +216,7 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
   it('a parameter edit while a chip is armed defers its solve to the disarm', async () => {
     await renderWithMate('fixed')
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1))
-    fireEvent.change(screen.getByLabelText('Offset X'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Offset X, millimetres'), { target: { value: '5' } })
     await tick()
     expect(mateDef().offset).toEqual({ x: 5 })
     expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1)
@@ -227,7 +227,7 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
 
   it('offers only the parameters the mate kind reads', async () => {
     await renderWithMate('spherical')
-    expect(screen.queryByLabelText('Offset')).toBeNull()
+    expect(screen.queryByLabelText('Offset, millimetres')).toBeNull()
     expect(screen.queryByLabelText('Ratio')).toBeNull()
   })
 
@@ -259,7 +259,7 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     it('normalises a typed out-of-range angle instead of refusing it', async () => {
       await renderWithMate('fixed')
       disarm()
-      const input = screen.getByLabelText('Angle')
+      const input = screen.getByLabelText('Angle, degrees')
       fireEvent.change(input, { target: { value: '400' } })
       await tick()
       fireEvent.blur(input)
@@ -271,7 +271,7 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
       await renderWithMate('fixed')
       await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1))
       disarm()
-      fireEvent.change(screen.getByLabelText('Angle'), { target: { value: '45' } })
+      fireEvent.change(screen.getByLabelText('Angle, degrees'), { target: { value: '45' } })
       await tick()
       expect(mateDef().angle).toBe(45)
       await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2))
@@ -280,7 +280,7 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     it('keeps every digit the user typed visible while the number grows', async () => {
       await renderWithMate('fixed')
       disarm()
-      const input = screen.getByLabelText('Angle') as HTMLInputElement
+      const input = screen.getByLabelText('Angle, degrees') as HTMLInputElement
       // Typed digit by digit: each keystroke commits, and the box must show
       // what was typed rather than snapping back. A controlled input bound
       // straight to the last-committed value would erase the keystroke in
@@ -296,7 +296,7 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     it('an angle edit while a chip is armed defers its solve to the disarm', async () => {
       await renderWithMate('fixed')
       await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1))
-      fireEvent.change(screen.getByLabelText('Angle'), { target: { value: '45' } })
+      fireEvent.change(screen.getByLabelText('Angle, degrees'), { target: { value: '45' } })
       await tick()
       expect(mateDef().angle).toBe(45)
       expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1)
@@ -361,7 +361,7 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
   it('cancelling a mate edit reverts its parameters and closes the editor', async () => {
     await renderWithMate('fixed')
     disarm()
-    fireEvent.change(screen.getByLabelText('Offset X'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Offset X, millimetres'), { target: { value: '5' } })
     await tick()
     expect(mateDef().offset).toEqual({ x: 5 })
 

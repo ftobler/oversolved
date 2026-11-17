@@ -109,9 +109,10 @@ describe('body pattern source body pick (via FeatureEditor)', () => {
 })
 
 describe('body pattern count fields honour parse: \'int\'', () => {
-  // Type `text` into the labelled field and blur, which is the commit path.
-  function typeAndBlur(label: string, text: string) {
-    const input = screen.getByRole('textbox', { name: label }) as HTMLInputElement
+  // Type `text` into the field with this accessible name (label plus unit) and
+  // blur, which is the commit path.
+  function typeAndBlur(name: string, text: string) {
+    const input = screen.getByRole('textbox', { name }) as HTMLInputElement
     fireEvent.focus(input)
     fireEvent.change(input, { target: { value: text } })
     fireEvent.blur(input)
@@ -121,7 +122,7 @@ describe('body pattern count fields honour parse: \'int\'', () => {
   it('rejects a fractional Count and reverts to the stored value', () => {
     const onMutation = vi.fn()
     renderEditor(makeFeature(), onMutation)
-    const input = typeAndBlur('Count', '2.5')
+    const input = typeAndBlur('Count, pieces', '2.5')
     expect(onMutation).not.toHaveBeenCalled()
     expect(input.value).toBe('2')
   })
@@ -129,14 +130,14 @@ describe('body pattern count fields honour parse: \'int\'', () => {
   it('rejects an expression evaluating to a fraction', () => {
     const onMutation = vi.fn()
     renderEditor(makeFeature(), onMutation)
-    typeAndBlur('Count', '5/2')
+    typeAndBlur('Count, pieces', '5/2')
     expect(onMutation).not.toHaveBeenCalled()
   })
 
   it('still commits a whole Count', () => {
     const onMutation = vi.fn()
     renderEditor(makeFeature(), onMutation)
-    typeAndBlur('Count', '4')
+    typeAndBlur('Count, pieces', '4')
     expect(onMutation).toHaveBeenCalledWith({
       type: 'set_linear_pattern_field', featureId: 'pt1', field: 'count', value: 4,
     })
@@ -145,7 +146,7 @@ describe('body pattern count fields honour parse: \'int\'', () => {
   it('leaves the float Pitch field accepting fractions', () => {
     const onMutation = vi.fn()
     renderEditor(makeFeature(), onMutation)
-    typeAndBlur('Pitch', '12.5')
+    typeAndBlur('Pitch, millimetres', '12.5')
     expect(onMutation).toHaveBeenCalledWith({
       type: 'set_linear_pattern_field', featureId: 'pt1', field: 'pitch', value: 12.5,
     })

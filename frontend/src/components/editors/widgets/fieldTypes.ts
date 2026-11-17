@@ -1,4 +1,5 @@
-import type { Mutation, PartFeature } from '@/types/cad'
+import type { LengthUnit, Mutation, PartFeature } from '@/types/cad'
+import type { Quantity } from '@/utils/fieldUnit'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- editor schema values are a heterogeneous bag and are intentionally untyped
 export type SchemaData = Record<string, any>
@@ -22,9 +23,10 @@ export interface NumberFieldDef extends BaseFieldDef {
   // The same contract for a rule that reads the sibling fields (an array's
   // cells cap needs the other count); runs after `validate`.
   validateWith?: (v: number, data: SchemaData) => string | null
-  // `'mm'` marks a LENGTH field: the editor renders it with the document's
-  // length unit (`in` for an inch document), never as a fixed millimetre label.
-  unit?: string
+  // What the number measures. Required, so a new field cannot omit the choice:
+  // the compiler is the guard. `length` follows the document's unit; the other
+  // kinds are fixed words (utils/fieldUnit.ts). `none` is a true ratio.
+  quantity: Quantity
   arrayField?: string
   arrayIndex?: number
   min?: number
@@ -135,7 +137,7 @@ export type EditorFieldDef =
  *  the row, which is the state before the first solve. */
 export interface ReadonlyFieldDef extends BaseFieldDef {
   type: 'readonly'
-  unit?: string
+  quantity: Quantity
   value: (solved: unknown) => string | null
 }
 
@@ -152,6 +154,8 @@ export interface NumberFieldWidgetProps extends WidgetBaseProps {
   data?: SchemaData
   arrayData?: (string | number)[]
   mutationType: string
+  // The document's unit, for a length field's label.
+  lengthUnit?: LengthUnit
 }
 
 export interface SelectFieldWidgetProps extends WidgetBaseProps {

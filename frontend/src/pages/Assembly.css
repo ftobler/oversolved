@@ -196,7 +196,20 @@
 
 .instance-axis input {
   min-width: 0;
-  padding: 0 4px;  /* three boxes to a row: spend the width on digits */
+  /* Three boxes to a row: spend the width on digits. The right padding is the
+     unit slot (Part.css), which these boxes keep. */
+  padding-left: 4px;
+}
+
+/* The tighter unit slot the instance and mate triples get: three boxes on one
+   row cannot each afford a dialog field's slot. */
+.instance-axis .field-unit-box {
+  --field-unit-slot: 22px;
+}
+
+.instance-axis .field-unit-box > .field-unit {
+  right: 4px;
+  font-size: 9px;
 }
 
 /* The missing-part repair notice sits under its picker and reads as the

@@ -15,6 +15,8 @@ import { expressionRefusal, positive } from '@/utils/core/valueRules'
 import type { FeatureHandleData, Mutation, PartFeature, SketchData } from '@/types/cad'
 import ScreenArrow, { SHAFT_RADIUS, SHAFT_START, TIP } from '@/components/Viewport/ScreenArrow'
 import { useAxisDrag } from '@/components/Viewport/useAxisDrag'
+import { unitLabel } from '@/utils/fieldUnit'
+import { lengthUnitOf } from '@/utils/lengthUnit'
 
 // The tail behind the grab point is world-sized (it spans the whole feature,
 // extrude origin to end face); only its radius is pixels. The screen-sized head
@@ -104,6 +106,10 @@ function HandleArrow({ featureId, feature, handle }: {
 }) {
   const { camera, size } = useThree()
   const selectionKey = featureHandleKey(featureId, handle.field)
+  // The handle's own kind is the quantity: a sweep is a length in the
+  // document's unit, a revolve is degrees.
+  const quantity = handle.kind === 'angular' ? 'angle' : 'length'
+  const lengthUnit = lengthUnitOf(usePartEditorStore(s => s.doc)?.length_unit)
 
   const hovered = useSketchEditorStore(s => s.hoveredSelectionId === selectionKey)
   const drag = useSketchEditorStore(s => s.drag)
@@ -173,6 +179,7 @@ function HandleArrow({ featureId, feature, handle }: {
           position: [clientX, clientY],
           label: `${feature.label || feature.kind} ${handle.field}`,
           defaultValue: String(rawStored ?? handle.value),
+          quantity,
           validate: (input) => refusalText('Value', expressionRefusal(input, positive)),
           onConfirm: (input) => {
             // Same convention as ExpressionInput: plain numbers store as
@@ -187,7 +194,7 @@ function HandleArrow({ featureId, feature, handle }: {
         })
       },
     })
-  }, [selectionKey, featureId, feature.label, feature.kind, handle, draggable, rawStored])
+  }, [selectionKey, featureId, feature.label, feature.kind, handle, quantity, draggable, rawStored])
 
   // ─── gesture: window-level move/up (mirrors DragPlane's handler-ref pattern) ───
   const dragPending = useSketchEditorStore(s => s.dragPending)
@@ -287,7 +294,8 @@ function HandleArrow({ featureId, feature, handle }: {
   const opacity = draggable ? 1 : 0.45
   const displayValue = roundHandleValue(activeDrag ? activeDrag.currentValue : handle.value)
   const showLabel = !!activeDrag || hovered
-  const labelText = `${handle.field} ${displayValue.toFixed(2)}`
+  const unit = unitLabel(quantity, lengthUnit)
+  const labelText = `${handle.field} ${displayValue.toFixed(2)}${unit === null ? '' : ` ${unit}`}`
 
   // Label placement: offset from the cone tip in SCREEN space, along the
   // arrow's projected direction. An offset along the 3D axis foreshortens to

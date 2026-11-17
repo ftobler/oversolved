@@ -43,13 +43,22 @@ export default function NgonTool() {
           value={String(draft ?? ngonSides)}
           ariaLabel="Number of sides"
           title="Number of sides"
+          quantity="count"
+          // Sized by its own box, not the toolbar's spare width.
+          grow={false}
           onChange={(raw) => setDraft(raw)}
           onStep={(n) => commit(String(n))}
           onBlur={(e) => commit((e.target as HTMLInputElement).value)}
           onKeyDown={(e) => { if (e.key === 'Enter') commit(e.currentTarget.value) }}
           onPointerDown={(e) => e.stopPropagation()}
           className=""
-          style={{ width: 40, height: 24, marginLeft: 2, textAlign: 'center' }}
+          // Two digits plus the same unit slot the CSS uses for every number
+          // box, so a wider label (a future fifth kind) cannot clip the word.
+          // Border-box: `width` is the whole control, slot included. The
+          // fallback keeps the width sane if the stylesheet is not loaded.
+          style={{
+            width: 'calc(36px + var(--field-unit-slot, 26px))', height: 24, marginLeft: 2, textAlign: 'center', boxSizing: 'border-box',
+          }}
         />
       )}
     </>

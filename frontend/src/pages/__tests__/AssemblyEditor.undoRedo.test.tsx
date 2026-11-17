@@ -395,7 +395,7 @@ describe('AssemblyEditor undo/redo', () => {
     // Edit the FIRST instance; the second is the innocent bystander whose seed
     // the bake rewrites.
     fireEvent.click(screen.getAllByLabelText('Edit part instance')[0])
-    fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '7' } })
+    fireEvent.change(screen.getByLabelText('Position X, millimetres'), { target: { value: '7' } })
     await tick()
     expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(7)
     expect(seeds()[1]).not.toEqual(before[1])  // the bake landed on the other part too
@@ -456,7 +456,7 @@ describe('AssemblyEditor undo/redo', () => {
     const afterToggle = seeds()
     const stackAfterToggle = undoStack().length
 
-    fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '7' } })
+    fireEvent.change(screen.getByLabelText('Position X, millimetres'), { target: { value: '7' } })
     await tick()
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
     await tick()
@@ -607,7 +607,7 @@ describe('AssemblyEditor undo/redo', () => {
     expect(undoStack()).toHaveLength(1)
 
     // Each keystroke fires a mutate; all must fold into the open session.
-    const offset = screen.getByLabelText('Offset X')
+    const offset = screen.getByLabelText('Offset X, millimetres')
     fireEvent.change(offset, { target: { value: '5' } })
     await tick()
     fireEvent.change(offset, { target: { value: '50' } })
@@ -689,7 +689,7 @@ describe('AssemblyEditor undo/redo', () => {
     expect(undoStack()).toHaveLength(1)  // the Add mate step
 
     // A mate offset edit pins a coalescing session on its keystroke.
-    fireEvent.change(screen.getByLabelText('Offset X'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Offset X, millimetres'), { target: { value: '5' } })
     await tick()
     const id = useAssemblyStore.getState().mates[0].id
     expect(findMate(useAssemblyStore.getState().doc!, id)!.offset).toEqual({ x: 5 })
@@ -784,7 +784,7 @@ describe('AssemblyEditor undo/redo', () => {
     expect(undoStack().map(e => e.label)).toEqual(['Add part', 'Add mate'])
 
     // Session A: type an offset (coalesced).
-    const offset = screen.getByLabelText('Offset X')
+    const offset = screen.getByLabelText('Offset X, millimetres')
     fireEvent.change(offset, { target: { value: '5' } })
     await tick()
 
@@ -871,7 +871,7 @@ describe('AssemblyEditor undo/redo', () => {
     const second = useAssemblyStore.getState().mates[1].id
 
     // Type an offset into mate 2's editor, then pencil-edit mate 1.
-    fireEvent.change(screen.getByLabelText('Offset X'), { target: { value: '7' } })
+    fireEvent.change(screen.getByLabelText('Offset X, millimetres'), { target: { value: '7' } })
     await tick()
     expect(undoStack()).toHaveLength(2)  // the keystrokes stay coalesced
 
@@ -901,7 +901,7 @@ describe('AssemblyEditor undo/redo', () => {
 
     // Instance editor open; type a position so a coalesced session pins.
     fireEvent.click(screen.getByLabelText('Edit part instance'))
-    fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '7' } })
+    fireEvent.change(screen.getByLabelText('Position X, millimetres'), { target: { value: '7' } })
     await tick()
     expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(7)
     expect(undoStack()).toHaveLength(1)  // the Add part step; the position edit stays coalesced
@@ -909,8 +909,8 @@ describe('AssemblyEditor undo/redo', () => {
     fireEvent.click(screen.getByLabelText('Insert Fixed mate'))
     await tick()
     // The instance editor is closed, the mate editor took its place.
-    expect(screen.queryByLabelText('Position X')).toBeNull()
-    expect(screen.getByLabelText('Offset X')).toBeTruthy()
+    expect(screen.queryByLabelText('Position X, millimetres')).toBeNull()
+    expect(screen.getByLabelText('Offset X, millimetres')).toBeTruthy()
     // The switch committed the instance session as its own step, and the insert
     // pushed its own: three distinct pre-docs, nothing shared.
     expect(undoStack().map(e => e.label)).toEqual(['Add part', 'Set position', 'Add mate'])
@@ -930,7 +930,7 @@ describe('AssemblyEditor undo/redo', () => {
     await insertPart('Bracket')
 
     fireEvent.click(screen.getByLabelText('Edit part instance'))
-    fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '7' } })
+    fireEvent.change(screen.getByLabelText('Position X, millimetres'), { target: { value: '7' } })
     await tick()
     fireEvent.click(screen.getByLabelText('Insert Fixed mate'))
     await tick()
@@ -963,7 +963,7 @@ describe('AssemblyEditor undo/redo', () => {
     expect(undoStack()).toHaveLength(1)  // Add part
 
     fireEvent.click(screen.getByLabelText('Edit part instance'))
-    fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '7' } })
+    fireEvent.change(screen.getByLabelText('Position X, millimetres'), { target: { value: '7' } })
     await tick()
     // The keystroke is already in the doc but coalesced behind the open editor.
     expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(7)
@@ -990,7 +990,7 @@ describe('AssemblyEditor undo/redo', () => {
     // Editor A: edit instance 0; its own Edit button is replaced by OK/Cancel,
     // so the one Edit button left is instance 1's.
     fireEvent.click(screen.getAllByLabelText('Edit part instance')[0])
-    fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '7' } })
+    fireEvent.change(screen.getByLabelText('Position X, millimetres'), { target: { value: '7' } })
     await tick()
     expect(undoStack()).toHaveLength(2)  // still coalesced
 
@@ -999,7 +999,7 @@ describe('AssemblyEditor undo/redo', () => {
     await tick()
     expect(undoStack().map(e => e.label)).toEqual(['Add part', 'Add part', 'Set position'])
 
-    fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '9' } })
+    fireEvent.change(screen.getByLabelText('Position X, millimetres'), { target: { value: '9' } })
     await tick()
     fireEvent.click(screen.getByRole('button', { name: 'OK' }))
     await tick()

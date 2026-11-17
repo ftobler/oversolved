@@ -433,7 +433,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
     await renderLoaded()
     await insertPart('Bracket')
     fireEvent.click(screen.getByLabelText('Edit part instance'))
-    fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '7' } })
+    fireEvent.change(screen.getByLabelText('Position X, millimetres'), { target: { value: '7' } })
     await tick()
     expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(7)
   })
@@ -453,7 +453,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
 
     fireEvent.click(screen.getByLabelText('Edit part instance'))
     await tick()
-    fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '5' } })
+    fireEvent.change(screen.getByLabelText('Position X, millimetres'), { target: { value: '5' } })
     await tick()
     expect(useAssemblyStore.getState().instances[0].transform).toMatchObject({ tx: 5, ty: 20, tz: 30 })
   })
@@ -478,7 +478,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
     })
     await tick()
     // The fields keep the frozen basis (the seed), not the solved pose.
-    expect((screen.getByLabelText('Position Y') as HTMLInputElement).value).toBe('0')
+    expect((screen.getByLabelText('Position Y, millimetres') as HTMLInputElement).value).toBe('0')
 
     // Switching to B recaptures its drawn pose and resyncs the fields. While A
     // is editing its row shows OK/Cancel, so B's is the only pencil left.
@@ -492,7 +492,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
     })
     fireEvent.click(screen.getAllByLabelText('Edit part instance')[0])
     await tick()
-    expect((screen.getByLabelText('Position Y') as HTMLInputElement).value).toBe('6')
+    expect((screen.getByLabelText('Position Y, millimetres') as HTMLInputElement).value).toBe('6')
   })
 
   // A failed load has no document. The editor previously rendered its toolbar,
@@ -640,7 +640,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
     await renderLoaded()
     await insertPart('Bracket')
     fireEvent.click(screen.getByLabelText('Edit part instance'))
-    fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '7' } })
+    fireEvent.change(screen.getByLabelText('Position X, millimetres'), { target: { value: '7' } })
     await tick()
     expect(useAssemblyStore.getState().instances[0].transform.tx).toBe(7)
 

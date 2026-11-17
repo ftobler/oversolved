@@ -53,7 +53,7 @@ export const EXTRUDE_SCHEMA: FeatureEditorSchema = {
     // The offset is the stop surface's own offset: positive past the target's
     // material, negative into it. Shown for both up-to modes; a plain blind
     // extrude reads none.
-    { type: 'number', key: 'up_to_offset', label: 'Offset', default: 0, unit: 'mm',
+    { type: 'number', key: 'up_to_offset', label: 'Offset', default: 0, quantity: 'length',
       showWhen: (d) => d.termination === 'up_to' || d.termination === 'up_to_next',
       validate: finite },
     // The user's emboss flow: sketch in front of the surface, up to it, tick
@@ -63,11 +63,11 @@ export const EXTRUDE_SCHEMA: FeatureEditorSchema = {
       showWhen: (d) => d.termination === 'up_to' || d.termination === 'up_to_next',
       isChecked: (d) => d.up_to_start === 'surface',
       getMutation: (checked) => ({ field: 'up_to_start', value: checked ? 'surface' : null }) },
-    { type: 'number', key: 'distance', label: 'Distance', default: DEFAULT_EXTRUDE_DISTANCE,
+    { type: 'number', key: 'distance', label: 'Distance', default: DEFAULT_EXTRUDE_DISTANCE, quantity: 'length',
       // An absent termination is the blind default, so the distance stays for
       // a document that never wrote the key. A through_all cut stores none.
       showWhen: (d) => (d.termination ?? 'blind') === 'blind', validate: positive },
-    { type: 'number', key: 'taper', label: 'Taper (deg)', default: 0,
+    { type: 'number', key: 'taper', label: 'Taper', default: 0, quantity: 'angle',
       // A draft is only defined for a one-sided blind sweep: symmetric splits
       // the distance and the other terminations size their own tool.
       showWhen: (d) => (d.termination ?? 'blind') === 'blind' && d.direction !== 'symmetric',
@@ -91,7 +91,7 @@ export const REVOLVE_SCHEMA: FeatureEditorSchema = {
     { type: 'pick', key: 'sketch', label: 'Profile', multi: true,
       addMutationType: 'add_revolve_profile', addValueKey: 'sketchQuery',
       removeMutationType: 'remove_revolve_profile' },
-    { type: 'number', key: 'angle', label: 'Angle', default: 360, validate: positive },
+    { type: 'number', key: 'angle', label: 'Angle', default: 360, quantity: 'angle', validate: positive },
     { type: 'select', key: 'direction', label: 'Direction', default: 'normal',
       options: [{ value: 'normal', label: 'Normal' }, { value: 'reverse', label: 'Reverse' }, { value: 'symmetric', label: 'Symmetric' }] },
     { type: 'select', key: 'operation', label: 'Operation', default: 'add',
@@ -151,7 +151,7 @@ export const FILLET_SCHEMA: FeatureEditorSchema = {
       addMutationType: 'add_fillet_edge', addValueKey: 'edgeQuery',
       removeMutationType: 'remove_fillet_edge',
       validatePick: namedEdgePickRefusal },
-    { type: 'number', key: 'radius', label: 'Radius', default: 1, validate: positive },
+    { type: 'number', key: 'radius', label: 'Radius', default: 1, quantity: 'length', validate: positive },
   ],
 }
 
@@ -166,8 +166,8 @@ export const CHAMFER_SCHEMA: FeatureEditorSchema = {
       validatePick: namedEdgePickRefusal },
     { type: 'select', key: 'kind', label: 'Kind', default: 'distance',
       options: [{ value: 'distance', label: 'Distance' }, { value: 'angle_distance', label: 'Angle + Distance' }] },
-    { type: 'number', key: 'distance', label: 'Distance', default: 1, validate: positive },
-    { type: 'number', key: 'angle', label: 'Angle', default: 45,
+    { type: 'number', key: 'distance', label: 'Distance', default: 1, quantity: 'length', validate: positive },
+    { type: 'number', key: 'angle', label: 'Angle', default: 45, quantity: 'angle',
       showWhen: (d) => d.kind === 'angle_distance', validate: positive },
   ],
 }
@@ -215,7 +215,7 @@ export const SHELL_SCHEMA: FeatureEditorSchema = {
       addMutationType: 'add_shell_face', addValueKey: 'faceQuery',
       removeMutationType: 'remove_shell_face',
       validatePick: facePickRefusal },
-    { type: 'number', key: 'thickness', label: 'Thickness', default: 1, validate: positive, unit: 'mm' },
+    { type: 'number', key: 'thickness', label: 'Thickness', default: 1, validate: positive, quantity: 'length' },
     { type: 'select', key: 'direction', label: 'Direction', default: 'inward',
       options: [{ value: 'inward', label: 'Inward' }, { value: 'outward', label: 'Outward' }] },
     { type: 'select', key: 'join', label: 'Corners', default: 'sharp',
@@ -251,7 +251,7 @@ export const MOVE_FACE_SCHEMA: FeatureEditorSchema = {
       } },
     // Signed: positive adds material, negative removes, 0 is the identity, so
     // there is no `> 0` validator (the kernel refuses a non-finite value).
-    { type: 'number', key: 'distance', label: 'Distance', default: 5, unit: 'mm' },
+    { type: 'number', key: 'distance', label: 'Distance', default: 5, quantity: 'length' },
   ],
 }
 
@@ -266,7 +266,7 @@ export const BOOLEAN_SCHEMA: FeatureEditorSchema = {
     { type: 'pick', key: 'tools', label: 'Tools', multi: true, names: 'body',
       addMutationType: 'add_boolean_tool', addValueKey: 'tool',
       removeMutationType: 'remove_boolean_tool', removeKey: 'tool', removeValueIsIndex: false },
-    { type: 'number', key: 'clearance', label: 'Clearance', default: 0, unit: 'mm',
+    { type: 'number', key: 'clearance', label: 'Clearance', default: 0, quantity: 'length',
       showWhen: (d) => d.operation === 'subtract', validate: finite },
     { type: 'checkbox', key: 'keep_tools', label: 'Keep tools', default: false },
   ],
@@ -304,11 +304,11 @@ export const HOLE_SCHEMA: FeatureEditorSchema = {
   defaults: { sketch: '', diameter: 10, depth_mode: 'blind', depth: 20, direction: 'normal', style: 'simple' },
   fields: [
     { type: 'pick', key: 'sketch', label: 'Sketch', transform: stripSelectionWrapper, validatePick: holeSketchPickRefusal },
-    { type: 'number', key: 'diameter', label: 'Diameter', default: 10, validate: positive, unit: 'mm' },
+    { type: 'number', key: 'diameter', label: 'Diameter', default: 10, validate: positive, quantity: 'length' },
     { type: 'select', key: 'depth_mode', label: 'Depth mode', default: 'blind',
       options: [{ value: 'blind', label: 'Blind' }, { value: 'through_all', label: 'Through All' }] },
     { type: 'number', key: 'depth', label: 'Depth', default: 20,
-      showWhen: (d) => d.depth_mode === 'blind', validate: positive, unit: 'mm' },
+      showWhen: (d) => d.depth_mode === 'blind', validate: positive, quantity: 'length' },
     { type: 'select', key: 'direction', label: 'Direction', default: 'normal',
       options: [{ value: 'normal', label: 'Normal' }, { value: 'reverse', label: 'Reverse' }] },
     // A widened mouth: the counterbore is a flat-bottomed step, the countersink
@@ -317,18 +317,18 @@ export const HOLE_SCHEMA: FeatureEditorSchema = {
     { type: 'select', key: 'style', label: 'Style', default: 'simple',
       options: [{ value: 'simple', label: 'Simple' }, { value: 'counterbore', label: 'Counterbore' }, { value: 'countersink', label: 'Countersink' }] },
     { type: 'number', key: 'cb_diameter', label: 'Mouth diameter', default: 16,
-      showWhen: (d) => d.style != null && d.style !== 'simple', validate: positive, unit: 'mm' },
+      showWhen: (d) => d.style != null && d.style !== 'simple', validate: positive, quantity: 'length' },
     { type: 'number', key: 'cb_depth', label: 'Step depth', default: 3,
-      showWhen: (d) => d.style === 'counterbore', validate: positive, unit: 'mm' },
+      showWhen: (d) => d.style === 'counterbore', validate: positive, quantity: 'length' },
     { type: 'number', key: 'cs_angle', label: 'Included angle', default: 90,
-      showWhen: (d) => d.style === 'countersink', validate: between(0, 180), unit: 'deg' },
+      showWhen: (d) => d.style === 'countersink', validate: between(0, 180), quantity: 'angle' },
     // A blind hole's bottom: flat, or the cone a twist drill leaves. A through
     // hole has no bottom, so both fields hide there.
     { type: 'select', key: 'tip', label: 'Bottom', default: 'flat',
       showWhen: (d) => d.depth_mode === 'blind',
       options: [{ value: 'flat', label: 'Flat' }, { value: 'drill_point', label: 'Drill point' }] },
     { type: 'number', key: 'tip_angle', label: 'Point angle', default: DRILL_POINT_ANGLE,
-      showWhen: (d) => d.depth_mode === 'blind' && d.tip === 'drill_point', validate: between(0, 180), unit: 'deg' },
+      showWhen: (d) => d.depth_mode === 'blind' && d.tip === 'drill_point', validate: between(0, 180), quantity: 'angle' },
     // The cosmetic thread: metadata plus a display helix on the bore, no
     // geometry change. The checkbox writes (or clears) the whole spec and the
     // select looks the designation up in the table, so neither writes a field
@@ -358,7 +358,7 @@ export const HOLE_SCHEMA: FeatureEditorSchema = {
         value: checked ? null : threadDepthSeed(d),
       }) },
     { type: 'number', key: 'thread_depth', label: 'Thread depth', default: THREAD_DEPTH_FALLBACK,
-      showWhen: (d) => d.thread != null && d.thread_depth != null, validate: positive, unit: 'mm' },
+      showWhen: (d) => d.thread != null && d.thread_depth != null, validate: positive, quantity: 'length' },
   ],
 }
 
@@ -394,18 +394,18 @@ export const TRANSFORM_SCHEMA: FeatureEditorSchema = {
       emptyText: '(pick one or more bodies)' },
     { type: 'select', key: 'operation', label: 'Operation', default: 'new',
       options: [{ value: 'new', label: 'New' }, { value: 'replace', label: 'Replace' }] },
-    { type: 'number', key: 'translation', label: 'X', arrayField: 'translation', arrayIndex: 0, default: 0 },
-    { type: 'number', key: 'translation', label: 'Y', arrayField: 'translation', arrayIndex: 1, default: 0 },
-    { type: 'number', key: 'translation', label: 'Z', arrayField: 'translation', arrayIndex: 2, default: 0 },
-    { type: 'number', key: 'rotation_angle', label: 'Angle (deg)', default: 0 },
+    { type: 'number', key: 'translation', label: 'X', arrayField: 'translation', arrayIndex: 0, default: 0, quantity: 'length' },
+    { type: 'number', key: 'translation', label: 'Y', arrayField: 'translation', arrayIndex: 1, default: 0, quantity: 'length' },
+    { type: 'number', key: 'translation', label: 'Z', arrayField: 'translation', arrayIndex: 2, default: 0, quantity: 'length' },
+    { type: 'number', key: 'rotation_angle', label: 'Angle', default: 0, quantity: 'angle' },
     { type: 'pick', key: 'rotation_axis', label: 'Axis', transform: stripSelectionWrapper },
     // The Euler triple is a second rotation spelling, shown beside the axis
     // fields: the kernel refuses the pair, and the editor has no control that
     // writes the null clear a mode toggle would need.
-    { type: 'number', key: 'rotation_euler', label: 'Euler X (deg)', arrayField: 'rotation_euler', arrayIndex: 0, default: 0 },
-    { type: 'number', key: 'rotation_euler', label: 'Euler Y (deg)', arrayField: 'rotation_euler', arrayIndex: 1, default: 0 },
-    { type: 'number', key: 'rotation_euler', label: 'Euler Z (deg)', arrayField: 'rotation_euler', arrayIndex: 2, default: 0 },
-    { type: 'number', key: 'scale', label: 'Factor', default: 1 },
+    { type: 'number', key: 'rotation_euler', label: 'Euler X', arrayField: 'rotation_euler', arrayIndex: 0, default: 0, quantity: 'angle' },
+    { type: 'number', key: 'rotation_euler', label: 'Euler Y', arrayField: 'rotation_euler', arrayIndex: 1, default: 0, quantity: 'angle' },
+    { type: 'number', key: 'rotation_euler', label: 'Euler Z', arrayField: 'rotation_euler', arrayIndex: 2, default: 0, quantity: 'angle' },
+    { type: 'number', key: 'scale', label: 'Factor', default: 1, quantity: 'none' },
     { type: 'pick', key: 'scale_center_from', label: 'Origin', transform: stripSelectionWrapper },
   ],
 }
@@ -612,7 +612,7 @@ const linearDirectionPick = (modeKey: string) =>
 /** The resolved spacing a directive-length direction produced, for its read-only
  *  row; null until a solve has reported one. */
 const spacingRow = (label: string, key: string, resultKey: string): ReadonlyFieldDef => ({
-  type: 'readonly', key, label, unit: 'mm',
+  type: 'readonly', key, label, quantity: 'length',
   value: (solved) => {
     const pitch = solvedNumber(solved, resultKey)
     return pitch === null ? null : String(Math.round(pitch * 1e6) / 1e6)
@@ -620,11 +620,11 @@ const spacingRow = (label: string, key: string, resultKey: string): ReadonlyFiel
 })
 
 const MANUAL_ROWS = (prefix: string, modeKey: string, field: string): EditorFieldDef[] => [
-  { type: 'number', key: field, label: `${prefix}X`, arrayField: field, arrayIndex: 0, default: 0,
+  { type: 'number', key: field, label: `${prefix}X`, arrayField: field, arrayIndex: 0, default: 0, quantity: 'length',
     showWhen: (d) => d[modeKey] === 'manual' },
-  { type: 'number', key: field, label: `${prefix}Y`, arrayField: field, arrayIndex: 1, default: 0,
+  { type: 'number', key: field, label: `${prefix}Y`, arrayField: field, arrayIndex: 1, default: 0, quantity: 'length',
     showWhen: (d) => d[modeKey] === 'manual' },
-  { type: 'number', key: field, label: `${prefix}Z`, arrayField: field, arrayIndex: 2, default: 0,
+  { type: 'number', key: field, label: `${prefix}Z`, arrayField: field, arrayIndex: 2, default: 0, quantity: 'length',
     showWhen: (d) => d[modeKey] === 'manual' },
 ]
 
@@ -650,18 +650,18 @@ export const LINEAR_PATTERN_SCHEMA: FeatureEditorSchema = {
     // the floor is 1. The schema leaves the floor to validateWith so the shared
     // rule's sentence is what the user sees.
     { type: 'number', key: 'count', label: 'Count', default: 2, parse: 'int',
-      max: MAX_ARRAY_COUNT, validateWith: (v) => arrayCountProblem('count', v) },
+      max: MAX_ARRAY_COUNT, validateWith: (v) => arrayCountProblem('count', v), quantity: 'count' },
     // Direction + Distance reads a pitch; Directive length reads the pick's own
     // length instead, shown from the last solve; Manual reads the vector below.
-    { type: 'number', key: 'pitch', label: 'Pitch', default: 20, validate: nonNegative, min: 0,
+    { type: 'number', key: 'pitch', label: 'Pitch', default: 20, validate: nonNegative, min: 0, quantity: 'length',
       showWhen: (d) => d.direction_mode !== 'directive_length' && d.direction_mode !== 'manual' },
     { ...spacingRow('Spacing', 'resolved_pitch', 'resolved_pitch'),
       showWhen: (d) => d.direction_mode === 'directive_length' },
-    { type: 'number', key: 'direction', label: 'Step X', arrayField: 'direction', arrayIndex: 0, default: 0,
+    { type: 'number', key: 'direction', label: 'Step X', arrayField: 'direction', arrayIndex: 0, default: 0, quantity: 'length',
       showWhen: (d) => d.direction_mode === 'manual' },
-    { type: 'number', key: 'direction', label: 'Step Y', arrayField: 'direction', arrayIndex: 1, default: 0,
+    { type: 'number', key: 'direction', label: 'Step Y', arrayField: 'direction', arrayIndex: 1, default: 0, quantity: 'length',
       showWhen: (d) => d.direction_mode === 'manual' },
-    { type: 'number', key: 'direction', label: 'Step Z', arrayField: 'direction', arrayIndex: 2, default: 0,
+    { type: 'number', key: 'direction', label: 'Step Z', arrayField: 'direction', arrayIndex: 2, default: 0, quantity: 'length',
       showWhen: (d) => d.direction_mode === 'manual' },
     // Centered also generates the reverse side (-1, -2, ...), so count 2 is
     // three instances: the original plus one copy either side.
@@ -678,10 +678,10 @@ export const LINEAR_PATTERN_SCHEMA: FeatureEditorSchema = {
       emptyText: '(pick edge or face, required)' },
     { type: 'checkbox', key: 'invert_2', label: 'Invert 2', default: false,
       showWhen: (d) => d.second_direction === true },
-    { type: 'number', key: 'count_2', label: 'Count 2', default: 2,
+    { type: 'number', key: 'count_2', label: 'Count 2', default: 2, quantity: 'count',
       showWhen: (d) => d.second_direction === true, parse: 'int', max: MAX_ARRAY_COUNT,
       validateWith: (v, d) => arrayCountProblem('count_2', v, d.count) },
-    { type: 'number', key: 'pitch_2', label: 'Pitch 2', default: 20,
+    { type: 'number', key: 'pitch_2', label: 'Pitch 2', default: 20, quantity: 'length',
       showWhen: (d) => d.second_direction === true
         && d.direction_2_mode !== 'directive_length' && d.direction_2_mode !== 'manual',
       validate: nonNegative, min: 0 },
@@ -708,11 +708,11 @@ export const CIRCULAR_PATTERN_SCHEMA: FeatureEditorSchema = {
       emptyText: '(pick edge or face, required)' },
     { type: 'checkbox', key: 'invert_axis', label: 'Invert axis', default: false },
     { type: 'number', key: 'count', label: 'Count', default: 4, parse: 'int',
-      max: MAX_ARRAY_COUNT, validateWith: (v) => arrayCountProblem('count', v) },
+      max: MAX_ARRAY_COUNT, validateWith: (v) => arrayCountProblem('count', v), quantity: 'count' },
     // Equal spacing (the default) reads the angle as the full sweep: a full turn
     // spreads over 360 / total, a smaller sweep puts the ends ON the sweep ends.
     // Off, the angle is the increment between neighbours.
-    { type: 'number', key: 'angle', label: 'Angle', default: 360, unit: 'deg',
+    { type: 'number', key: 'angle', label: 'Angle', default: 360, quantity: 'angle',
       validate: (v) => v > 0 ? null : 'must be a positive number of degrees; reverse the sense with Invert axis' },
     { type: 'checkbox', key: 'equal_spacing', label: 'Equal spacing', default: true },
     { type: 'checkbox', key: 'centered', label: 'Centered', default: false },
@@ -759,13 +759,13 @@ export const CURVE_PATTERN_SCHEMA: FeatureEditorSchema = {
       emptyText: '(pick a path curve, required)' },
     { type: 'checkbox', key: 'reverse', label: 'Reverse', default: false },
     { type: 'number', key: 'count', label: 'Count', default: 3, parse: 'int',
-      max: MAX_ARRAY_COUNT, validateWith: (v) => arrayCountProblem('count', v) },
+      max: MAX_ARRAY_COUNT, validateWith: (v) => arrayCountProblem('count', v), quantity: 'count' },
     // Equal spacing splits the path length: the last instance lands on an open
     // path's end, while a closed path splits by the count. Distance is the arc
     // length between neighbours instead.
     { type: 'select', key: 'spacing', label: 'Spacing', default: 'equal',
       options: [{ value: 'equal', label: 'Equal spacing' }, { value: 'distance', label: 'Distance' }] },
-    { type: 'number', key: 'distance', label: 'Distance', default: 20, unit: 'mm',
+    { type: 'number', key: 'distance', label: 'Distance', default: 20, quantity: 'length',
       showWhen: (d) => d.spacing === 'distance', validate: positive, min: 0 },
     // How a copy turns: with the path (a rotation-minimizing frame, so a path
     // whose curvature changes sign does not flip the copies), only about a
@@ -949,7 +949,7 @@ export const HELIX_SCHEMA: FeatureEditorSchema = {
     { type: 'select', key: 'radius_mode', label: 'Radius', default: 'derived',
       options: [{ value: 'derived', label: 'From reference' }, { value: 'entered', label: 'Enter' }] },
     { type: 'number', key: 'radius', label: 'Radius', default: 5,
-      showWhen: (d) => d.radius_mode === 'entered', validate: positive, unit: 'mm' },
+      showWhen: (d) => d.radius_mode === 'entered', validate: positive, quantity: 'length' },
     { type: 'select', key: 'mode', label: 'Define by', default: 'pitch_turns',
       options: [
         { value: 'pitch_turns', label: 'Pitch + Turns' },
@@ -958,15 +958,15 @@ export const HELIX_SCHEMA: FeatureEditorSchema = {
         { value: 'angle_turns', label: 'Angle + Turns' },
         { value: 'angle_height', label: 'Angle + Height' },
       ] },
-    { type: 'number', key: 'pitch', label: 'Pitch', default: 1, showWhen: HELIX_USES_PITCH, validate: positive, unit: 'mm' },
-    { type: 'number', key: 'turns', label: 'Turns', default: 5, showWhen: HELIX_USES_TURNS, validate: positive },
-    { type: 'number', key: 'height', label: 'Height', default: 5, showWhen: HELIX_USES_HEIGHT, validate: positive, unit: 'mm' },
+    { type: 'number', key: 'pitch', label: 'Pitch', default: 1, showWhen: HELIX_USES_PITCH, validate: positive, quantity: 'length' },
+    { type: 'number', key: 'turns', label: 'Turns', default: 5, showWhen: HELIX_USES_TURNS, validate: positive, quantity: 'turns' },
+    { type: 'number', key: 'height', label: 'Height', default: 5, showWhen: HELIX_USES_HEIGHT, validate: positive, quantity: 'length' },
     { type: 'number', key: 'helix_angle', label: 'Helix angle', default: 5,
-      showWhen: HELIX_USES_ANGLE, validate: between(0, 90), unit: 'deg' },
+      showWhen: HELIX_USES_ANGLE, validate: between(0, 90), quantity: 'angle' },
     { type: 'checkbox', key: 'height_from_reference', label: 'Height from reference', default: false,
       showWhen: (d) => HELIX_USES_HEIGHT(d) && HELIX_FACE_REF(d) },
-    { type: 'number', key: 'start_angle', label: 'Start angle', default: 0, unit: 'deg' },
-    { type: 'number', key: 'offset', label: 'Offset', default: 0, unit: 'mm' },
+    { type: 'number', key: 'start_angle', label: 'Start angle', default: 0, quantity: 'angle' },
+    { type: 'number', key: 'offset', label: 'Offset', default: 0, quantity: 'length' },
     { type: 'select', key: 'hand', label: 'Hand', default: 'right',
       options: [{ value: 'right', label: 'Right' }, { value: 'left', label: 'Left' }] },
     { type: 'select', key: 'direction', label: 'Direction', default: 'normal',

@@ -21,9 +21,14 @@ describe('variable rows in the feature tree', () => {
       solveResults: { v1: { value: 20 }, v2: { value: 3 } },
     })
     renderSidebar(makeCallbacks())
-    expect(screen.getByText('width = 20 mm')).toBeInTheDocument()
+    const widthRow = screen.getByText('width = 20').closest('.feature-name')
+    expect(widthRow).not.toBeNull()
+    // The hint is the shared unit element, not text glued into the name: the
+    // row says its value and the unit beside it.
+    expect(widthRow!.querySelector('.field-unit')?.textContent).toBe('mm')
     // No unit hint: the value alone, exactly as before.
     expect(screen.getByText('count = 3')).toBeInTheDocument()
+    expect(screen.getByText('count = 3').closest('.feature-name')!.querySelector('.field-unit')).toBeNull()
   })
 
   it('shows no value before the solve lands', () => {

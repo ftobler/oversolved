@@ -32,13 +32,13 @@ function renderEditor(inst: PartInstance, onSetRotation = vi.fn()) {
 }
 
 const rotBox = (axis: 'X' | 'Y' | 'Z') =>
-  screen.getByLabelText(`Rotation ${axis}`) as HTMLInputElement
+  screen.getByLabelText(`Rotation ${axis}, degrees`) as HTMLInputElement
 
 describe('PartInstanceEditor rotation', () => {
   it('renders a rotation box per axis, alongside the position boxes', () => {
     renderEditor(instance())
     for (const axis of ['X', 'Y', 'Z'] as const) expect(rotBox(axis)).toBeTruthy()
-    expect(screen.getByLabelText('Position X')).toBeTruthy()
+    expect(screen.getByLabelText('Position X, millimetres')).toBeTruthy()
   })
 
   it('offers the rotation boxes for a FIXED instance (the gizmo will not)', () => {
@@ -189,8 +189,8 @@ describe('PartInstanceEditor pose basis', () => {
         onSetRotation={vi.fn()}
       />
     )
-    expect((screen.getByLabelText('Position Y') as HTMLInputElement).value).toBe('20')
-    fireEvent.change(screen.getByLabelText('Position X'), { target: { value: '5' } })
+    expect((screen.getByLabelText('Position Y, millimetres') as HTMLInputElement).value).toBe('20')
+    fireEvent.change(screen.getByLabelText('Position X, millimetres'), { target: { value: '5' } })
     expect(onSetPosition).toHaveBeenCalledWith({ tx: 5, ty: 20, tz: 30 })
   })
 
