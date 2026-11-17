@@ -16,7 +16,9 @@ type Dict = Record<string, unknown>
  * A tapered end's rim is the offset boundary, not the authored one, so there is
  * no un-offset `edge0` to register there: the face/plane is still the honest
  * top, but the synthetic edge is skipped rather than naming an edge that does
- * not exist on the body.
+ * not exist on the body. A twisted end's rim is the rotated boundary, so its
+ * `edge0` is skipped for the same reason; the plane's axes and the centroid are
+ * rotated to the end frame the body actually ends on.
  *
  * An apex end has no top face at all (the profile closed to a point), so `apex`
  * skips the face too: a registered plane at `distance` would be a phantom a
@@ -30,15 +32,30 @@ export function registerTopFace(
   distance: number,
   taperDeg = 0,
   apex = false,
+  twistDeg = 0,
 ): void {
   if (apex) return
   const origin = pt.origin
-  const xAxis = pt.x_axis
-  const yAxis = pt.y_axis
   const normal = pt.normal
+  // A twist rotates the end frame about the normal by the total angle (right-
+  // handed about it, the same sense the sweep turns). The axes and the profile's
+  // in-plane coordinates both turn; the plane itself stays parallel at
+  // `distance`.
+  const angle = (twistDeg * Math.PI) / 180
+  const cos = Math.cos(angle)
+  const sin = Math.sin(angle)
+  const xAxis = twistDeg === 0
+    ? pt.x_axis
+    : pt.x_axis.map((x, i) => x * cos + pt.y_axis[i] * sin)
+  const yAxis = twistDeg === 0
+    ? pt.y_axis
+    : pt.y_axis.map((y, i) => y * cos - pt.x_axis[i] * sin)
 
   const boundary = surfaces.length ? ((surfaces[0].boundary as Dict[]) ?? []) : []
-  const [u, v] = loopCentroid(boundary)
+  const [loopU, loopV] = loopCentroid(boundary)
+  const [u, v] = twistDeg === 0
+    ? [loopU, loopV]
+    : [loopU * cos - loopV * sin, loopU * sin + loopV * cos]
 
   const sketchCentroid = [
     origin[0] + u * xAxis[0] + v * yAxis[0],
@@ -65,7 +82,7 @@ export function registerTopFace(
     y_axis: [...yAxis],
   })
 
-  if (taperDeg === 0 && surfaces.length && (surfaces[0].boundary as Dict[])?.length) {
+  if (taperDeg === 0 && twistDeg === 0 && surfaces.length && (surfaces[0].boundary as Dict[])?.length) {
     const edge = (surfaces[0].boundary as Dict[])[0]
     if ('start' in edge && 'end' in edge) {
       const s2d = edge.start as number[]

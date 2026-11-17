@@ -60,7 +60,8 @@ import {
   type SplitChild,
 } from '../constructionName'
 import { sketchLoopsToFace, canonicalizeFaceCircles } from './prismProfile'
-import { draftPrismBuilder, type DraftPrismBuilder } from './draftPrism'
+import type { DraftPrismBuilder } from './draftPrism'
+import { sweepBuilderFor } from './twistPrism'
 import { entityForEdges, derivePrismEdgeNames } from './prismEdgeNaming'
 import { swallowUnlessTrap } from '../errors'
 import { mergeTolerance, type KernelPrecision, type MergeTolerance } from '../precision'
@@ -601,23 +602,14 @@ function prismFaceWithLineage(
   createdBy: string,
   sketchId: string,
   taperRad = 0,
+  twistRad = 0,
 ): LineageResult {
-  const builder = taperRad === 0
-    ? scope.track(
-        new oc.BRepPrimAPI_MakePrism_1(
-          profileFace,
-          scope.track(
-            new oc.gp_Vec_4(
-              directionVec[0] * distance,
-              directionVec[1] * distance,
-              directionVec[2] * distance,
-            ),
-          ),
-          true,
-          true,
-        ),
-      ) as OccPrismBuilder
-    : draftPrismBuilder(oc, scope, profileFace, directionVec, distance, taperRad)
+  // The twist rotates about the sketch plane's origin, the same axis an
+  // authored sketch turns about; a face pick arrives through the same path with
+  // the plane its caller derived.
+  const builder = sweepBuilderFor(
+    oc, scope, profileFace, plane.origin as Vec3, directionVec, distance, taperRad, twistRad,
+  )
   if (!builder.IsDone()) throw new Error('prism builder did not complete')
   const apex = (builder as Partial<DraftPrismBuilder>).apex ?? null
   const solid = builder.Shape()
@@ -708,6 +700,7 @@ function perGroupPrismWithLineage(
   createdBy: string,
   sketchId: string,
   taperRad = 0,
+  twistRad = 0,
   tolerance?: MergeTolerance,
 ): LineageResult {
   const fuse = namedFuse(oc, scope)
@@ -718,22 +711,9 @@ function perGroupPrismWithLineage(
   for (let groupIdx = 0; groupIdx < groups.length; groupIdx++) {
     const [outer, holes] = groups[groupIdx]
     const face = scope.track(sketchLoopsToFace(oc, scope, [outer, ...holes], plane))
-    const builder = taperRad === 0
-      ? scope.track(
-          new oc.BRepPrimAPI_MakePrism_1(
-            face,
-            scope.track(
-              new oc.gp_Vec_4(
-                directionVec[0] * distance,
-                directionVec[1] * distance,
-                directionVec[2] * distance,
-              ),
-            ),
-            true,
-            true,
-          ),
-        ) as OccPrismBuilder
-      : draftPrismBuilder(oc, scope, face, directionVec, distance, taperRad)
+    const builder = sweepBuilderFor(
+      oc, scope, face, plane.origin as Vec3, directionVec, distance, taperRad, twistRad,
+    )
     if (!builder.IsDone()) throw new Error('prism builder did not complete')
     apex ??= (builder as Partial<DraftPrismBuilder>).apex ?? null
     const part = builder.Shape()
@@ -788,6 +768,7 @@ export function extrudeProfileWithLineage(
   sketchId = '',
   createdBy = '',
   taperDeg = 0,
+  twistDeg = 0,
   precision?: KernelPrecision | null,
 ): LineageResult {
   // Classification reads the traced pieces (a tangent hole is recognised by the
@@ -798,6 +779,7 @@ export function extrudeProfileWithLineage(
   if (groups.length === 0) throw new Error('no loops to extrude')
   const tokenPrefix = sketchId ? `@${sketchId}/` : '@'
   const taperRad = (taperDeg * Math.PI) / 180
+  const twistRad = (twistDeg * Math.PI) / 180
   // A multi-group profile's own fuse-and-clean is still a merge of this
   // sketch's geometry, so it reads the same reported precision.
   const tolerance = mergeTolerance(precision)
@@ -806,30 +788,35 @@ export function extrudeProfileWithLineage(
     const [outer, holes] = groups[0]
     const face = sketchLoopsToFace(oc, scope, [outer, ...holes], plane)
     return prismFaceWithLineage(
-      oc, scope, face, [outer, ...holes], plane, directionVec, distance, tokenPrefix, createdBy, sketchId, taperRad,
+      oc, scope, face, [outer, ...holes], plane, directionVec, distance, tokenPrefix, createdBy, sketchId,
+      taperRad, twistRad,
     )
   }
 
   // The canonical merged-profile round trip returns the union face itself; a
-  // draft changes only the prism built from it, so the tapered path can use the
-  // same merged face and then one draft prism rather than per-group frustums
-  // (adjacent groups' inner walls lean apart and would not fuse).
+  // draft or a twist changes only the prism built from it, so either can use the
+  // same merged face and then one draft prism or one twist loft rather than
+  // per-group sweeps (adjacent groups' inner walls lean or turn apart from their
+  // neighbours and would not fuse).
   const merged = tryCanonicalMergedProfile(oc, scope, groups, plane, directionVec, distance, tolerance)
   if (merged.kind === 'merged') {
     const lineageLoops = groups.flatMap(([outer, holes]) => [outer, ...holes])
     return prismFaceWithLineage(
-      oc, scope, merged.face, lineageLoops, plane, directionVec, distance, tokenPrefix, createdBy, sketchId, taperRad,
+      oc, scope, merged.face, lineageLoops, plane, directionVec, distance, tokenPrefix, createdBy, sketchId,
+      taperRad, twistRad,
     )
   }
-  if (taperRad !== 0 && merged.kind !== 'disjoint') {
+  if ((taperRad !== 0 || twistRad !== 0) && merged.kind !== 'disjoint') {
+    const field = twistRad !== 0 ? 'twist' : 'taper'
     throw new Error(
-      'extrude: a taper on a multi-group profile needs one connected region; ' +
-        'join the groups into one profile or remove the taper',
+      `extrude: a ${field} on a multi-group profile needs one connected region; ` +
+        `join the groups into one profile or remove the ${field}`,
     )
   }
 
   return perGroupPrismWithLineage(
-    oc, scope, groups, plane, directionVec, distance, tokenPrefix, createdBy, sketchId, taperRad, tolerance,
+    oc, scope, groups, plane, directionVec, distance, tokenPrefix, createdBy, sketchId,
+    taperRad, twistRad, tolerance,
   )
 }
 
