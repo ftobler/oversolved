@@ -4,13 +4,23 @@
  * - toggle activates/deactivates the field (mutual exclusion)
  * - new non-chip-owned item in normalSelection triggers onPick then clears
  * - multi fields stay open after one pick; single fields auto-close
+ * - one arriving batch is planned against the field's held identities: a click
+ *   on a held identity removes it, a lasso only adds, each identity once
+ * - a refusal keeps the chip-owned highlight mirror (backlog regression)
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act, render, fireEvent } from '@testing-library/react'
 import { usePickField } from '@/hooks/usePickField'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useEditorState } from '@/hooks/useEditorState'
-import type { PartFeature } from '@/types/cad'
+import { bodyWantKey, type WantKeyOf } from '@/utils/query/pickIntake'
+import type { PartFeature, PartResult } from '@/types/cad'
+
+const part = (id: string, createdBy: string): PartResult => ({ id, created_by: createdBy, modified_by: [] })
+const PARTS: Record<string, PartResult> = {
+  body_ex1: part('body_ex1', 'ex1'),
+  body_ex2: part('body_ex2', 'ex2'),
+}
 
 beforeEach(() => {
   useEditorState.setState({
@@ -32,6 +42,10 @@ function mountPickField(
     onUnpick?: (id: string) => void
     features?: readonly PartFeature[]
     validatePick?: (id: string) => string | null
+    held?: readonly string[]
+    wantKeyOf?: WantKeyOf
+    labelOf?: (heldValue: string) => string
+    onPickBatch?: (intake: { add: string[]; remove: number[] }) => void
   },
 ) {
   function Spy() {
@@ -408,6 +422,128 @@ describe('usePickField  -  refusal reason', () => {
     expect(useSketchEditorStore.getState().activePickField).toBeNull()
   })
 })
+
+describe('usePickField  -  want-keyed intake', () => {
+  it('a click naming a held part through another face removes the held value', () => {
+    // The user's rule: a second edge of an already-picked part is the removal
+    // pick for the part, not another edge chip.
+    const onPick = vi.fn()
+    const onPickBatch = vi.fn()
+    act(() => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'db1', field: 'bodies', multi: true })
+      useSketchEditorStore.getState().syncChipSelection(['@body_ex1/face/0'])
+    })
+    mountPickField('db1', 'bodies', onPick, {
+      multi: true,
+      held: ['@body_ex1/face/0'],
+      wantKeyOf: bodyWantKey(PARTS),
+      onPickBatch,
+    })
+
+    act(() => {
+      useSketchEditorStore.getState().toggleNormalSelection('@body_ex1/face/1')
+    })
+
+    expect(onPickBatch).toHaveBeenCalledWith({ add: [], remove: [0] })
+    expect(onPick).not.toHaveBeenCalled()
+    // The single field stays armed: a click in a multi field consumes only its
+    // own batch.
+    expect(useSketchEditorStore.getState().activePickField).not.toBeNull()
+  })
+
+  it('a lasso is one batch call and lands a part once', () => {
+    const onPick = vi.fn()
+    const onPickBatch = vi.fn()
+    act(() => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'db1', field: 'bodies', multi: true })
+    })
+    mountPickField('db1', 'bodies', onPick, {
+      multi: true,
+      held: [],
+      wantKeyOf: bodyWantKey(PARTS),
+      onPickBatch,
+    })
+
+    act(() => {
+      useSketchEditorStore.getState().setNormalSelection(new Set([
+        '@body_ex1/face/0', '@body_ex1/face/1', '@body_ex2/edge/0',
+      ]))
+    })
+
+    expect(onPickBatch).toHaveBeenCalledTimes(1)
+    expect(onPickBatch).toHaveBeenCalledWith({
+      add: ['@body_ex1/face/0', '@body_ex2/edge/0'], remove: [],
+    })
+    expect(onPick).not.toHaveBeenCalled()
+  })
+
+  it('a lasso only adds: a held part is skipped, never removed', () => {
+    const onPickBatch = vi.fn()
+    act(() => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'db1', field: 'bodies', multi: true })
+    })
+    mountPickField('db1', 'bodies', vi.fn(), {
+      multi: true,
+      held: ['@body_ex1/face/0'],
+      wantKeyOf: bodyWantKey(PARTS),
+      onPickBatch,
+    })
+
+    act(() => {
+      useSketchEditorStore.getState().setNormalSelection(new Set([
+        '@body_ex1/face/1', '@body_ex2/edge/0',
+      ]))
+    })
+
+    expect(onPickBatch).toHaveBeenCalledWith({ add: ['@body_ex2/edge/0'], remove: [] })
+  })
+
+  it('a chip-owned drop removes the value by its index through the batch', () => {
+    const onPickBatch = vi.fn()
+    act(() => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'db1', field: 'bodies', multi: true })
+      useSketchEditorStore.getState().syncChipSelection(['@body_ex1/face/0', '@body_ex2/face/0'])
+    })
+    mountPickField('db1', 'bodies', vi.fn(), {
+      multi: true,
+      held: ['@body_ex1/face/0', '@body_ex2/face/0'],
+      wantKeyOf: bodyWantKey(PARTS),
+      onPickBatch,
+    })
+
+    act(() => {
+      useSketchEditorStore.getState().toggleNormalSelection('@body_ex2/face/0')
+    })
+
+    expect(onPickBatch).toHaveBeenCalledWith({ add: [], remove: [1] })
+  })
+})
+
+describe('usePickField  -  a refusal keeps the chip mirror', () => {
+  it('drops only the refused pick, leaving the chip-owned entries selected', () => {
+    // Backlog regression: a refusal used to clearNormalSelection, which also
+    // emptied chipOwnedSelection and left the chip unlit.
+    const onPick = vi.fn()
+    const validatePick = (id: string) => (id.endsWith(':flatface') ? null : 'pick a face')
+    act(() => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'mf1', field: 'faces', multi: true })
+      useSketchEditorStore.getState().syncChipSelection(['?9;@body_ex1:flatface'])
+    })
+    const spy = mountPickField('mf1', 'faces', onPick, { multi: true, validatePick })
+
+    act(() => {
+      useSketchEditorStore.getState().toggleNormalSelection('?9;@body_ex1:cylinderface')
+    })
+
+    expect(onPick).not.toHaveBeenCalled()
+    expect(spy.refusal).toBe('Pick refused: pick a face')
+    const state = useSketchEditorStore.getState()
+    expect([...state.normalSelection]).toEqual(['?9;@body_ex1:flatface'])
+    expect([...state.chipOwnedSelection]).toEqual(['?9;@body_ex1:flatface'])
+    expect(state.activePickField).not.toBeNull()
+  })
+})
+
 
 describe('usePickField  -  toggle', () => {
   it('toggle activates the field when it is not active', () => {
