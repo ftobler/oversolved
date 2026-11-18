@@ -28,7 +28,7 @@ import type { MeasureOp, MeasurePickRef } from '@/kernel/worker/solverProtocol'
 import { partPickRef, partPrimitive } from './adapters/part'
 import { datumPrimitive } from './adapters/datum'
 import { sketchPrimitive } from './adapters/sketch'
-import { formatReadouts } from './format'
+import { formatReadoutHud } from './format'
 import { isKernelAsk, measureOne, measurePair, type MeasureResult, type Readout } from './rules'
 import type { Primitive } from './primitives'
 
@@ -50,8 +50,11 @@ export interface KernelMeasureAsk {
 }
 
 export interface SelectionMeasurement {
-  // The lines the sync readout renders: empty for a kernel cell.
+  // The lines the sync readout renders inline: the primary and at most two
+  // extras. Empty for a kernel cell.
   lines: string[]
+  // The extras the HUD folds behind its disclosure, in cell emission order.
+  more: string[]
   // The kernel question, or null when the sync readout answered (or nothing
   // could be asked safely).
   ask: KernelMeasureAsk | null
@@ -151,9 +154,10 @@ export function measureSelectionResolved(
 
   const refs = picks.map((pick) => pick.ref)
   if (refs.some((ref) => ref === null)) return NOTHING
-  // One pick for a length, two for a distance or a clearance: the same count
-  // the sync readout counted.
-  if (result.kernel === 'length' ? picks.length !== 1 : picks.length !== 2) {
+  // One pick for a single-pick measure (a length, an area, a volume), two for
+  // a distance or a clearance: the same count the sync readout counted.
+  const oneSided = result.kernel === 'length' || result.kernel === 'area' || result.kernel === 'volume'
+  if (oneSided ? picks.length !== 1 : picks.length !== 2) {
     return { readout: null, ask: null }
   }
   return { readout: null, ask: { op: result.kernel, picks: refs as MeasurePickRef[] } }
@@ -166,10 +170,14 @@ export function measureSelectionPicks(
   ctx: MeasureContext = {},
 ): SelectionMeasurement {
   const { readout, ask } = measureSelectionResolved(selection, ctx)
-  return { lines: readout === null ? [] : formatReadouts(readout, ctx.unit), ask }
+  if (readout === null) return { lines: [], more: [], ask }
+  const hud = formatReadoutHud(readout, ctx.unit)
+  return { ...hud, ask }
 }
 
-/** The HUD lines for a selection: zero, one or two readable measurements. */
+/** The HUD lines for a selection: the primary and its inline extras, then the
+ *  folded ones, so a caller that renders one list still sees every readout. */
 export function measureSelection(selection: ReadonlySet<string>, ctx: MeasureContext = {}): string[] {
-  return measureSelectionPicks(selection, ctx).lines
+  const { lines, more } = measureSelectionPicks(selection, ctx)
+  return [...lines, ...more]
 }

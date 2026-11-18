@@ -118,7 +118,16 @@ export type MeasurePickRef =
   | { bodyId: string; kind: 'face' | 'edge' | 'vertex'; index: number }
   | { bodyId: string; kind: 'body' }
 
-export type MeasureOp = 'length' | 'distance' | 'clearance'
+export type MeasureOp = 'length' | 'distance' | 'clearance' | 'area' | 'volume'
+
+/** One secondary readout a kernel reply carries beside its primary value: a
+ *  body volume's surface area. Same shape the analytic extras use, so the HUD
+ *  formats both through one function. */
+export interface MeasureExtra {
+  kind: 'length' | 'distance' | 'angle' | 'diameter' | 'radius' | 'area' | 'volume'
+  value: number
+  label: string
+}
 
 /** Which body set of the solve a pick was made against: the final bodies, or
  *  the pick-boundary checkpoint an open feature edit renders. */
@@ -141,6 +150,8 @@ export interface MeasureOkResponse {
   ok: true
   // Document units, the same units the shapes are in.
   value: number
+  // Secondary readouts, in the order the caller should render them.
+  extra?: MeasureExtra[]
   // The witness points for a distance or a clearance, in world coordinates.
   points?: [Vec3, Vec3]
   // Why a clearance reads 0: the bodies overlap, or they share a face.

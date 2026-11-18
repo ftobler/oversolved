@@ -25,7 +25,7 @@ import { copyShape, makeScaleTrsf, makeRigidTrsf, transformCopy } from './occ/tr
 import { stepShapeToBytes, shapeToStlBytes } from './occ/stepIo'
 import { resolveTessellation, type TessellationPreset } from './tessellationPresets'
 import { measureParts, type Bbox6, type MeasureRecord } from './occ/measure'
-import { volumeForMeasure } from './occ/volume'
+import { surfaceAreaOf, volumeForMeasure } from './occ/volume'
 import { shapeBbox } from './occ/faceBounds'
 import { canonicalFaces, pickableEdgeCount } from './occ/partNames'
 import { shapesIntersect } from './occ/booleans'
@@ -845,10 +845,16 @@ function pickPartStoreOf(
 
 /** One answered measurement row for the headless MCP `measure between` call. */
 export interface LocalPickMeasure {
-  /** The readout kind the core named (`length`, `distance`, `angle`, ...) or
-   *  the kernel op that answered it (`clearance`). */
+  /** The readout kind the core named (`length`, `distance`, `angle`, `area`,
+   *  `volume`) or the kernel op that answered it (`clearance`). */
   kind: string
+  /** The label the HUD would print: `pitch`, `axial distance`, `center
+   *  distance` and the rest of the one vocabulary; a kernel op states its own
+   *  name. */
+  label?: string
   value: number
+  // Every secondary readout the row carries, mirroring the HUD's lines.
+  extra?: { kind: string; value: number; label: string }[]
   points?: [Vec3, Vec3]
   note?: 'overlapping' | 'touching'
 }
@@ -879,14 +885,24 @@ export async function measurePicksLocally(
     const response = build(spec, { prevState: null }, buildDeps(oc, scope, table, opts.files))
     const parts = response.bodies as Record<string, PartResult>
     const { readout, ask } = measureSelectionResolved(new Set(picks), { parts: parts, unit: opts.unit })
-    if (readout !== null) return { kind: readout.kind, value: readout.value }
+    if (readout !== null) {
+      const extra = (readout.extra ?? []).map((row) => ({ kind: row.kind, value: row.value, label: row.label }))
+      return {
+        kind: readout.kind,
+        label: readout.label,
+        value: readout.value,
+        ...(extra.length > 0 && { extra }),
+      }
+    }
     if (ask === null) throw new Error('measure: the pick or pick pair states no measurement')
     const store = finalPartStoreOf(response._build_state) ?? {}
     const answered = measurePicksOnStore(oc, table, store, ask.op, ask.picks)
     if (!answered.ok) throw new Error(`measure: ${answered.error}`)
     return {
       kind: ask.op,
+      label: ask.op,
       value: answered.value,
+      ...(answered.extra !== undefined && { extra: answered.extra }),
       ...(answered.points !== undefined && { points: answered.points }),
       ...(answered.note !== undefined && { note: answered.note }),
     }
@@ -915,7 +931,7 @@ export interface MeasureQuery {
   generation: string
   // The final bodies, or the pick-boundary checkpoint an edit renders.
   set: 'final' | 'pick'
-  op: 'length' | 'distance' | 'clearance'
+  op: MeasureOp
   picks: MeasurePickRef[]
 }
 
@@ -923,6 +939,8 @@ export type MeasureQueryResult =
   | {
     ok: true
     value: number
+    // A body volume's surface area, the one secondary a kernel cell states.
+    extra?: { kind: 'area'; value: number; label: string }[]
     points?: [Vec3, Vec3]
     // A clearance reads 0 for these; a plain distance states neither.
     note?: 'overlapping' | 'touching'
@@ -977,6 +995,21 @@ function measurePicksOnStore(
     if (op === 'length') {
       if (shapes.length !== 1) return { ok: false, error: MEASURE_UNRESOLVED }
       return { ok: true, value: edgeLength(oc, shapes[0]) }
+    }
+    if (op === 'area') {
+      if (shapes.length !== 1) return { ok: false, error: MEASURE_UNRESOLVED }
+      return { ok: true, value: surfaceAreaOf(oc, scope, shapes[0]) }
+    }
+    if (op === 'volume') {
+      if (shapes.length !== 1) return { ok: false, error: MEASURE_UNRESOLVED }
+      return {
+        ok: true,
+        value: volumeForMeasure(oc, scope, shapes[0]),
+        // The body's own surface area is the one extra Möbius shows for a whole
+        // part beside its volume, and it costs one more GProp pass on a shape
+        // the caller already asked about.
+        extra: [{ kind: 'area', value: surfaceAreaOf(oc, scope, shapes[0]), label: 'area' }],
+      }
     }
     if (shapes.length !== 2) return { ok: false, error: MEASURE_UNRESOLVED }
     const read = minDistance(oc, shapes[0], shapes[1])

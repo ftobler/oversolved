@@ -50,16 +50,16 @@ describe('computeMeasurements: singles', () => {
     expect(computeMeasurements(sel(entity('C1')), sketch)).toEqual(['diameter 6.000 mm'])
   })
 
-  it('reads nothing for a lone point, vertex, or flat plane', () => {
+  it('reads nothing for a lone point or vertex', () => {
     expect(computeMeasurements(sel(entity('P1')), sketch)).toEqual([])
     expect(computeMeasurements(sel(vertex('L1', 'start')), sketch)).toEqual([])
   })
 })
 
 describe('computeMeasurements: sketch pairs', () => {
-  it('measures two vertices as their distance', () => {
+  it('measures two vertices as their distance plus the delta legs', () => {
     expect(computeMeasurements(sel(vertex('L1', 'start'), vertex('L1', 'end')), sketch))
-      .toEqual(['distance 5.000 mm'])
+      .toEqual(['distance 5.000 mm', 'dx 3.000 mm', 'dy 4.000 mm', 'dz 0.000 mm'])
   })
 
   it('refuses three vertices', () => {
@@ -67,29 +67,30 @@ describe('computeMeasurements: sketch pairs', () => {
       .toEqual([])
   })
 
-  it('measures two whole point entities as their distance', () => {
-    expect(computeMeasurements(sel(entity('P1'), entity('P2')), sketch)).toEqual(['distance 5.000 mm'])
+  it('measures two whole point entities as their distance plus the delta legs', () => {
+    expect(computeMeasurements(sel(entity('P1'), entity('P2')), sketch))
+      .toEqual(['distance 5.000 mm', 'dx 3.000 mm', 'dy 4.000 mm', 'dz 0.000 mm'])
   })
 
-  it('reads two parallel lines as their distance and two oblique lines as an angle', () => {
+  it('reads two parallel lines as their distance and offset, two oblique lines as an angle and supplement', () => {
     expect(computeMeasurements(sel(entity('L1'), entity('L2')), sketch))
-      .toEqual(['distance 0.800 mm'])
+      .toEqual(['distance 0.800 mm', 'alignment offset 0.600 mm'])
     expect(computeMeasurements(sel(entity('L1'), entity('L3')), sketch))
-      .toEqual(['angle 53.1°'])
+      .toEqual(['angle 53.1°', 'supplement 126.9°'])
   })
 
   it('reads a point against a line with the infinite line, not a clamped segment (D6)', () => {
     // V (10, 0) is past L1's endpoint (3, 4): the clamped distance is 8.06, the
-    // infinite line is 8.
+    // infinite line is 8, with the foot on the edge's extension.
     expect(computeMeasurements(sel(entity('V'), entity('L1')), sketch))
-      .toEqual(['distance 8.000 mm'])
+      .toEqual(['distance 8.000 mm (on extension)'])
   })
 
-  it('reads a vertex to a circle and two circles as center distances', () => {
+  it('reads a vertex to a circle and two concentric circles as centre-based readouts', () => {
     expect(computeMeasurements(sel(vertex('L1', 'end'), entity('C1')), sketch))
-      .toEqual(['center distance 5.000 mm'])
+      .toEqual(['center distance 5.000 mm', 'dx 3.000 mm', 'dy 4.000 mm', 'dz 0.000 mm'])
     expect(computeMeasurements(sel(entity('C1'), entity('A1')), sketch))
-      .toEqual(['center distance 0.000 mm'])
+      .toEqual(['axial distance 0.000 mm', 'radial gap 1.000 mm'])
   })
 })
 
@@ -124,7 +125,7 @@ describe('computeMeasurements: datum planes', () => {
       plane2: { plane: { ...solveResults.plane2.plane, normal: [1, 0, 0] as [number, number, number] } },
     }
     expect(computeMeasurements(sel('@plane1', '@plane2'), sketch, perpendicular))
-      .toEqual(['angle 90.0°'])
+      .toEqual(['angle 90.0°', 'supplement 90.0°'])
   })
 
   it('reads a plane against a sketch point', () => {
@@ -136,9 +137,9 @@ describe('computeMeasurements: datum planes', () => {
 describe('computeMeasurements: vertices resolve through geomPoint', () => {
   it('resolves a spline control point and an ellipse axis handle', () => {
     expect(computeMeasurements(sel(vertex('SP1', 'c1'), vertex('L1', 'start')), sketch))
-      .toEqual(['distance 1.414 mm'])
+      .toEqual(['distance 1.414 mm', 'dx 1.000 mm', 'dy 1.000 mm', 'dz 0.000 mm'])
     expect(computeMeasurements(sel(vertex('E1', 'major1'), vertex('L1', 'start')), sketch))
-      .toEqual(['distance 4.000 mm'])
+      .toEqual(['distance 4.000 mm', 'dx 4.000 mm', 'dy 0.000 mm', 'dz 0.000 mm'])
   })
 })
 

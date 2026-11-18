@@ -20,7 +20,8 @@ import { measureSelectionPicks, type MeasureContext, type SelectionMeasurement }
  * @param solveResults - the solve's result map, keyed by feature id
  * @param parts - the solve's bodies, keyed by body id
  * @param unit - the document's length unit; the numbers are already in it
- * @returns the sync HUD lines (0 to 3) and the kernel ask, if any
+ * @returns the inline HUD lines (the primary plus at most two extras), the
+ *   folded extras, and the kernel ask, if any
  */
 export function computeMeasurement(
   selection: ReadonlySet<string>,
@@ -32,7 +33,8 @@ export function computeMeasurement(
   return measureSelectionPicks(selection, { sketch, solveResults, parts, unit })
 }
 
-/** The sync lines only, the shape the HUD used before the kernel cell existed. */
+/** The sync lines only, all of them: the shape the HUD used before the kernel
+ *  cell existed, kept for callers that render one flat list. */
 export function computeMeasurements(
   selection: ReadonlySet<string>,
   sketch: Sketch,
@@ -40,5 +42,6 @@ export function computeMeasurements(
   parts?: Record<string, PartResult>,
   unit: LengthUnit = 'mm',
 ): string[] {
-  return computeMeasurement(selection, sketch, solveResults, parts, unit).lines
+  const measurement = computeMeasurement(selection, sketch, solveResults, parts, unit)
+  return [...measurement.lines, ...measurement.more]
 }

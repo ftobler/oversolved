@@ -49,7 +49,7 @@ import type {
   SolveRequestOptions, SolveOkResponse,
   ExportRequestOptions, ExportOkResponse, WorkerRequest,
   BundleOkResponse,
-  MeasureOkResponse, MeasureOp, MeasurePickRef, MeasureSet,
+  MeasureOkResponse, MeasureOp, MeasurePickRef, MeasureSet, MeasureExtra,
   SolverWorkerMessage,
   OccProgressMessage,
   FeatureProgressMessage,
@@ -416,6 +416,7 @@ export function buildBundleViaWorker(
  *  a later dimension line draws between. */
 export interface MeasureReply {
   value: number
+  extra?: MeasureExtra[]
   points?: [Vec3, Vec3]
   note?: 'overlapping' | 'touching'
 }
@@ -443,6 +444,7 @@ export function measureViaWorker(query: {
       if (!('value' in res)) throw new Error('measure reply without a value')
       return {
         value: res.value,
+        ...(res.extra !== undefined && { extra: res.extra }),
         ...(res.points !== undefined && { points: res.points }),
         ...(res.note !== undefined && { note: res.note }),
       }

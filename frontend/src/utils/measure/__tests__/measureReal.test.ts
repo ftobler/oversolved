@@ -175,14 +175,16 @@ describe.skipIf(!oc || !solveBytes)('measureSelection on the probe plate (real O
     expect(measure([topEdge('z', 30)])).toEqual(['length 30.000 mm'])
     expect(measure([topEdge('y', 10)])).toEqual(['length 10.000 mm'])
     expect(measure([holeEdge()])).toEqual(['diameter 8.000 mm'])
-    expect(measure([holeFace()])).toEqual(['diameter 8.000 mm'])
+    // The cylinder face states its own axial extent: the hole is 10 deep.
+    expect(measure([holeFace()])).toEqual(['diameter 8.000 mm', 'length 10.000 mm'])
   })
 
   it('reads the plate thickness and the angle between two side faces', () => {
     // Top and bottom are the flat faces whose normals run along the extrude
     // axis; the side faces at x=0 and z=0 are perpendicular.
     expect(measure([flatFace(0, 1, 0), flatFace(0, -1, 0)])).toEqual(['distance 10.000 mm'])
-    expect(measure([flatFace(-1, 0, 0), flatFace(0, 0, 1)])).toEqual(['angle 90.0°'])
+    expect(measure([flatFace(-1, 0, 0), flatFace(0, 0, 1)]))
+      .toEqual(['angle 90.0°', 'supplement 90.0°'])
   })
 
   it('reads the bore axis against a side face as an axis distance, not a plane distance', () => {
@@ -195,7 +197,8 @@ describe.skipIf(!oc || !solveBytes)('measureSelection on the probe plate (real O
 
   it('reads a hole face against a line edge as an angle, not a plane distance', () => {
     // The bore axis is world y; the plate's long edge runs along x.
-    expect(measure([holeFace(), topEdge('x', 40)])).toEqual(['angle 90.0°'])
+    expect(measure([holeFace(), topEdge('x', 40)]))
+      .toEqual(['angle 90.0°', 'supplement 90.0°'])
   })
 
   it('reads the bore axis against a corner vertex', () => {
@@ -205,11 +208,12 @@ describe.skipIf(!oc || !solveBytes)('measureSelection on the probe plate (real O
 
   it('reads vertex, line and circle pairs from the solve queries', () => {
     expect(measure([vertexQuery([0, 0, 0]), vertexQuery([40, 0, -30])]))
-      .toEqual(['distance 50.000 mm'])
+      .toEqual(['distance 50.000 mm', 'dx 40.000 mm', 'dy 0.000 mm', 'dz 30.000 mm'])
     expect(measure([topEdge('x', 40), vertexQuery([0, 10, 0])]))
       .toEqual(['distance 10.000 mm'])
+    // The bore centre is (20, 0, -15): 25 from the corner, with its legs.
     expect(measure([holeEdge(), vertexQuery([0, 0, 0])]))
-      .toEqual(['center distance 25.000 mm'])
+      .toEqual(['center distance 25.000 mm', 'dx 20.000 mm', 'dy 0.000 mm', 'dz 15.000 mm'])
     expect(measure([topEdge('x', 40), holeEdge()]))
       .toEqual(['center distance 15.000 mm'])
   })

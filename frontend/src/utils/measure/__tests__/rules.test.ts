@@ -12,14 +12,17 @@ const sphere = (center: Vec3, radius: number): Primitive => ({ type: 'sphere', c
 const plane = (p: Vec3, normal: Vec3): Primitive => ({
   type: 'plane', point: p, normal: normalize(normal)!, bounded: true,
 })
+const datumPlane = (p: Vec3, normal: Vec3): Primitive => ({
+  type: 'plane', point: p, normal: normalize(normal)!, bounded: false,
+})
 const circle = (center: Vec3, axis: Vec3, radius: number, sweep = Math.PI * 2): Primitive => ({
   type: 'circle', center, axis: normalize(axis)!, radius, sweep,
 })
 const ellipse = (center: Vec3, axis: Vec3, a: number, b: number): Primitive => ({
   type: 'ellipse', center, axis: normalize(axis)!, a, b,
 })
-const cylinder = (axisPoint: Vec3, axis: Vec3, radius: number): Primitive => ({
-  type: 'cylinder', axisPoint, axis: normalize(axis)!, radius,
+const cylinder = (axisPoint: Vec3, axis: Vec3, radius?: number, length?: number): Primitive => ({
+  type: 'cylinder', axisPoint, axis: normalize(axis)!, ...(radius !== undefined && { radius }), ...(length !== undefined && { length }),
 })
 const cone = (axisPoint: Vec3, axis: Vec3, semiAngle?: number): Primitive => ({
   type: 'cone', axisPoint, axis: normalize(axis)!, semiAngle,
@@ -35,7 +38,17 @@ function line(p0: Vec3, p1: Vec3, bounded = true): Primitive {
 }
 
 const distanceReadout = (value: number, label = 'distance'): Readout => ({ kind: 'distance', value, label })
-const angleReadout = (value: number): Readout => ({ kind: 'angle', value, label: 'angle' })
+const angleReadout = (value: number): Readout => ({
+  kind: 'angle',
+  value,
+  label: 'angle',
+  extra: [{ kind: 'angle', value: 180 - value, label: 'supplement' }],
+})
+const deltas = (dx: number, dy: number, dz: number): Readout[] => [
+  distanceReadout(dx, 'dx'),
+  distanceReadout(dy, 'dy'),
+  distanceReadout(dz, 'dz'),
+]
 
 // Angle values are acos results, so two spellings of the same 45 degrees can
 // differ in the last bit; compare the value with a tolerance and the rest
@@ -46,6 +59,7 @@ function expectReadout(result: unknown, expected: Readout): void {
   expect(readout.kind).toBe(expected.kind)
   expect(readout.label).toBe(expected.label)
   expect(readout.value).toBeCloseTo(expected.value, 9)
+  expect(readout.note).toBe(expected.note)
   expect(readout.extra?.length ?? 0).toBe(expected.extra?.length ?? 0)
   expected.extra?.forEach((extra, i) => expectReadout(readout.extra![i], extra))
 }
@@ -64,7 +78,7 @@ describe('measurePair: the pair table, both pick orders', () => {
     {
       name: 'point + point',
       a: point(v(0, 0, 0)), b: point(v(3, 4, 0)),
-      expected: distanceReadout(5),
+      expected: { ...distanceReadout(5), extra: deltas(3, 4, 0) },
     },
     {
       name: 'point + line',
@@ -74,7 +88,7 @@ describe('measurePair: the pair table, both pick orders', () => {
     {
       name: 'point + circle centre',
       a: point(v(0, 0, 0)), b: circle(v(3, 4, 0), v(0, 0, 1), 1),
-      expected: distanceReadout(5, 'center distance'),
+      expected: { ...distanceReadout(5, 'center distance'), extra: deltas(3, 4, 0) },
     },
     {
       name: 'point + plane',
@@ -89,7 +103,10 @@ describe('measurePair: the pair table, both pick orders', () => {
     {
       name: 'parallel line + line',
       a: line(v(0, 0, 0), v(5, 0, 0)), b: line(v(0, 3, 0), v(5, 3, 0)),
-      expected: distanceReadout(3),
+      expected: {
+        ...distanceReadout(3),
+        extra: [distanceReadout(0, 'alignment offset')],
+      },
     },
     {
       name: 'perpendicular line + line',
@@ -124,7 +141,15 @@ describe('measurePair: the pair table, both pick orders', () => {
     {
       name: 'circle + circle',
       a: circle(v(0, 0, 0), v(0, 0, 1), 1), b: circle(v(3, 4, 0), v(0, 0, 1), 2),
-      expected: distanceReadout(5, 'center distance'),
+      expected: {
+        ...distanceReadout(5, 'pitch'),
+        extra: [
+          distanceReadout(5, 'center distance'),
+          distanceReadout(2, 'min gap'),
+          distanceReadout(8, 'max span'),
+          ...deltas(3, 4, 0),
+        ],
+      },
     },
     {
       name: 'circle parallel to plane',
@@ -134,7 +159,7 @@ describe('measurePair: the pair table, both pick orders', () => {
     {
       name: 'circle perpendicular to plane',
       a: circle(v(0, 0, 0), v(1, 0, 0), 1), b: plane(v(0, 0, 0), v(0, 0, 1)),
-      expected: angleReadout(90),
+      expected: distanceReadout(0),
     },
     {
       name: 'circle parallel to cylinder axis',
@@ -169,7 +194,10 @@ describe('measurePair: the pair table, both pick orders', () => {
     {
       name: 'parallel cylinder + cylinder axes',
       a: cylinder(v(0, 0, 0), v(0, 0, 1), 2), b: cylinder(v(3, 0, 0), v(0, 0, 1), 2),
-      expected: distanceReadout(3, 'axis distance'),
+      expected: {
+        ...distanceReadout(3, 'axis distance'),
+        extra: [distanceReadout(-1, 'overlap'), distanceReadout(7, 'max span')],
+      },
     },
     {
       name: 'perpendicular cylinder + cylinder axes',
@@ -179,7 +207,7 @@ describe('measurePair: the pair table, both pick orders', () => {
     {
       name: 'ellipse pairs through its centre like a circle',
       a: ellipse(v(0, 0, 0), v(0, 0, 1), 4, 2), b: point(v(3, 4, 0)),
-      expected: distanceReadout(5, 'center distance'),
+      expected: { ...distanceReadout(5, 'center distance'), extra: deltas(3, 4, 0) },
     },
     {
       name: 'sphere pairs as its centre',
@@ -204,53 +232,166 @@ describe('measurePair: the pair table, both pick orders', () => {
   })
 })
 
+describe('measurePair: circle pairs read the layout, not the slant', () => {
+  it('two hole rims at different depths read the pitch, their centre distance and the axial offset', () => {
+    // Centres 30 apart in plan and 5 deep of one another: the 3D centre
+    // distance (sqrt(925)) is the slant, the pitch is what a bolt pattern cares
+    // about.
+    const readout = measurePair(
+      circle(v(0, 0, 0), v(0, 0, 1), 5),
+      circle(v(30, 0, 5), v(0, 0, 1), 5),
+    ) as Readout
+    expect(readout.label).toBe('pitch')
+    expect(readout.value).toBeCloseTo(30, 9)
+    const labels = (readout.extra ?? []).map((extra) => extra.label)
+    expect(labels).toEqual(['center distance', 'axial offset', 'min gap', 'max span', 'dx', 'dy', 'dz'])
+    expect(readout.extra![0].value).toBeCloseTo(Math.sqrt(925), 9)
+    expect(readout.extra![1].value).toBeCloseTo(5, 9)
+    expect(readout.extra![2].value).toBeCloseTo(20, 9)
+    expect(readout.extra![3].value).toBeCloseTo(40, 9)
+    expect(readout.extra!.slice(4).map((extra) => extra.value)).toEqual([30, 0, 5])
+  })
+
+  it('coaxial rims read the axial distance and the radial gap between the circles', () => {
+    expectReadout(
+      measurePair(circle(v(0, 0, 0), v(0, 0, 1), 5), circle(v(0, 0, 4), v(0, 0, 1), 10)),
+      {
+        ...distanceReadout(4, 'axial distance'),
+        extra: [distanceReadout(5, 'radial gap')],
+      },
+    )
+  })
+
+  it('two rims 30 apart read min gap 20 and max span 40, while crossing rims read an overlap', () => {
+    const apart = measurePair(circle(v(0, 0, 0), v(0, 0, 1), 5), circle(v(30, 0, 0), v(0, 0, 1), 5)) as Readout
+    expect(apart.extra!.find((extra) => extra.label === 'min gap')!.value).toBeCloseTo(20, 9)
+    expect(apart.extra!.find((extra) => extra.label === 'max span')!.value).toBeCloseTo(40, 9)
+
+    const crossing = measurePair(
+      circle(v(0, 0, 0), v(0, 0, 1), 20),
+      circle(v(30, 0, 0), v(0, 0, 1), 20),
+    ) as Readout
+    const overlap = crossing.extra!.find((extra) => extra.label === 'overlap')!
+    expect(overlap.kind).toBe('distance')
+    expect(overlap.value).toBeCloseTo(-10, 9)
+    expect(crossing.extra!.find((extra) => extra.label === 'max span')!.value).toBeCloseTo(70, 9)
+  })
+
+  it('a side hole rim against the wall it faces reads centre to face, not a 90 degree angle', () => {
+    // The rim's axis lies along the wall (perpendicular to the wall normal), so
+    // the useful number is the centre's distance to the face, which is the
+    // depth of the hole's mouth from that wall.
+    expectReadout(
+      measurePair(circle(v(0, 7, 0), v(1, 0, 0), 2), plane(v(0, 0, 0), v(0, 1, 0))),
+      distanceReadout(7),
+    )
+  })
+})
+
 describe('measurePair: versions of a branching cell', () => {
   it('two parallel lines report their perpendicular distance, not an angle', () => {
     expectReadout(measurePair(line(v(0, 0, 0), v(5, 0, 0)), line(v(0, 3, 0), v(5, 3, 0))),
-      { kind: 'distance', value: 3, label: 'distance' })
+      {
+        kind: 'distance',
+        value: 3,
+        label: 'distance',
+        extra: [{ kind: 'distance', value: 0, label: 'alignment offset' }],
+      })
+  })
+
+  it('parallel edges slid along each other report the alignment offset', () => {
+    expectReadout(measurePair(line(v(0, 0, 0), v(5, 0, 0)), line(v(12, 3, 0), v(17, 3, 0))),
+      {
+        kind: 'distance',
+        value: 3,
+        label: 'distance',
+        extra: [{ kind: 'distance', value: 12, label: 'alignment offset' }],
+      })
   })
 
   it('two perpendicular lines report 90 degrees', () => {
     expectReadout(measurePair(line(v(0, 0, 0), v(5, 0, 0)), line(v(0, 0, 0), v(0, 5, 0))),
-      { kind: 'angle', value: 90, label: 'angle' })
+      angleReadout(90))
   })
 
   it('two oblique lines report the acute angle', () => {
     expectReadout(measurePair(line(v(0, 0, 0), v(5, 0, 0)), line(v(0, 0, 0), v(5, 5, 0))),
-      { kind: 'angle', value: 45, label: 'angle' })
+      angleReadout(45))
+  })
+
+  it('an angle carries its supplement', () => {
+    const theta = 30 * (Math.PI / 180)
+    expectReadout(measurePair(
+      line(v(0, 0, 0), v(5, 0, 0)),
+      line(v(0, 0, 0), v(Math.cos(theta) * 5, Math.sin(theta) * 5, 0)),
+    ), {
+      kind: 'angle',
+      value: 30,
+      label: 'angle',
+      extra: [{ kind: 'angle', value: 150, label: 'supplement' }],
+    })
   })
 
   it('pins the parallel threshold: 1e-5 rad off still reads parallel', () => {
     const theta = 1e-5  // < PARALLEL_ANGLE_EPS_RAD (1e-4)
     const tilted = line(v(0, 3, 0), v(Math.cos(theta), 3 + Math.sin(theta), 0))
-    expectReadout(measurePair(line(v(0, 0, 0), v(1, 0, 0)), tilted), distanceReadout(3))
+    expectReadout(measurePair(line(v(0, 0, 0), v(1, 0, 0)), tilted), {
+      kind: 'distance',
+      value: 3,
+      label: 'distance',
+      extra: [{ kind: 'distance', value: 0, label: 'alignment offset' }],
+    })
   })
 
   it('pins the parallel threshold: 1e-3 rad off reads as an angle', () => {
     const theta = 1e-3  // > PARALLEL_ANGLE_EPS_RAD (1e-4)
     const tilted = line(v(0, 3, 0), v(Math.cos(theta), 3 + Math.sin(theta), 0))
     expectReadout(measurePair(line(v(0, 0, 0), v(1, 0, 0)), tilted),
-      { kind: 'angle', value: (theta * 180) / Math.PI, label: 'angle' })
+      angleReadout((theta * 180) / Math.PI))
   })
 
   it('a line along the plane normal makes a 90 degree angle with the plane', () => {
     expectReadout(measurePair(line(v(0, 0, 0), v(0, 0, 5)), plane(v(0, 0, 0), v(0, 0, 1))),
-      { kind: 'angle', value: 90, label: 'angle' })
+      angleReadout(90))
   })
 
   it('an oblique line makes 45 degrees with the plane', () => {
     expectReadout(measurePair(line(v(0, 0, 0), v(1, 0, 1)), plane(v(0, 0, 0), v(0, 0, 1))),
-      { kind: 'angle', value: 45, label: 'angle' })
+      angleReadout(45))
   })
 
   it('a circle oblique to a plane reads the angle between the planes', () => {
     expectReadout(measurePair(circle(v(0, 0, 0), v(1, 0, 1), 1), plane(v(0, 0, 0), v(0, 0, 1))),
-      { kind: 'angle', value: 45, label: 'angle' })
+      angleReadout(45))
   })
 
   it('two oblique planes read the acute dihedral angle', () => {
     expectReadout(measurePair(plane(v(0, 0, 0), v(0, 0, 1)), plane(v(0, 0, 0), v(1, 0, 1))),
-      { kind: 'angle', value: 45, label: 'angle' })
+      angleReadout(45))
+  })
+})
+
+describe('measurePair: pairs the kernel must finish', () => {
+  it('two collinear bounded edges ask for the edge gap instead of reading 0', () => {
+    // The infinite lines coincide, so the analytic answer is 0 whether the
+    // edges touch or sit a hole's width apart; OCCT states the gap.
+    expect(measurePair(line(v(0, 0, 0), v(5, 0, 0)), line(v(20, 0, 0), v(30, 0, 0))))
+      .toEqual({ kernel: 'distance' })
+  })
+
+  it('two coplanar bounded faces ask for the face gap instead of reading 0', () => {
+    expect(measurePair(plane(v(0, 0, 0), v(0, 0, 1)), plane(v(5, 0, 0), v(0, 0, 1))))
+      .toEqual({ kernel: 'distance' })
+  })
+
+  it('a datum plane against a coplanar face reads 0, since a datum has no shape to measure', () => {
+    expectReadout(measurePair(datumPlane(v(0, 0, 0), v(0, 0, 1)), plane(v(5, 0, 0), v(0, 0, 1))),
+      distanceReadout(0))
+  })
+
+  it('unbounded lines (an assembly anchor) keep the analytic 0 rather than asking a kernel they have no shape for', () => {
+    expectReadout(measurePair(line(v(0, 0, 0), v(1, 0, 0), false), line(v(20, 0, 0), v(21, 0, 0), false)),
+      distanceReadout(0))
   })
 })
 
@@ -261,12 +402,15 @@ describe('measurePair: skew line pairs (D4)', () => {
   const a = line(v(0, 0, 0), v(10, 0, 0))
   const b = line(v(5, 3, 4), v(5, 7, 4))
 
-  it('reports the angle plus the segment-to-segment minimum distance', () => {
+  it('reports the angle, its supplement and the segment-to-segment minimum distance', () => {
     expectReadout(measurePair(a, b), {
       kind: 'angle',
       value: 90,
       label: 'angle',
-      extra: [{ kind: 'distance', value: 5, label: 'distance' }],
+      extra: [
+        { kind: 'angle', value: 90, label: 'supplement' },
+        { kind: 'distance', value: 5, label: 'distance' },
+      ],
     })
   })
 
@@ -274,14 +418,14 @@ describe('measurePair: skew line pairs (D4)', () => {
     // Same directions, but B lies in the z=0 plane through A: their minimum is
     // the crossing point (0), which is not a useful second readout.
     const crossing = line(v(5, -5, 0), v(5, 5, 0))
-    expectReadout(measurePair(a, crossing), { kind: 'angle', value: 90, label: 'angle' })
+    expectReadout(measurePair(a, crossing), angleReadout(90))
   })
 
   it('adds no distance when a line has no known extent', () => {
     // An assembly anchor carries a direction and one point, not endpoints, so a
     // made-up segment would invent a gap.
     const unbounded = line(v(5, 3, 4), v(5, 7, 4), false)
-    expectReadout(measurePair(a, unbounded), { kind: 'angle', value: 90, label: 'angle' })
+    expectReadout(measurePair(a, unbounded), angleReadout(90))
   })
 })
 
@@ -305,9 +449,15 @@ describe('measureOne: the singles table', () => {
     })
   })
 
-  it('a cylinder reads its diameter', () => {
+  it('a cylinder reads its diameter and, when the face states one, its axial length', () => {
     expectReadout(measureOne(cylinder(v(0, 0, 0), v(0, 0, 1), 4)), {
       kind: 'diameter', value: 8, label: 'diameter',
+    })
+    expectReadout(measureOne(cylinder(v(0, 0, 0), v(0, 0, 1), 4, 12)), {
+      kind: 'diameter',
+      value: 8,
+      label: 'diameter',
+      extra: [{ kind: 'length', value: 12, label: 'length' }],
     })
   })
 
@@ -352,10 +502,63 @@ describe('measureOne: the singles table', () => {
     expect(result).toEqual({ kernel: 'length' })
   })
 
-  it('a flat face, a vertex, a datum plane and a whole body read nothing', () => {
-    expect(measureOne(plane(v(0, 0, 0), v(0, 0, 1)))).toBeNull()
+  it('a bounded flat face asks the kernel for its area and a body for its volume', () => {
+    expect(measureOne(plane(v(0, 0, 0), v(0, 0, 1)))).toEqual({ kernel: 'area' })
+    expect(measureOne(solid())).toEqual({ kernel: 'volume' })
+  })
+
+  it('a vertex and a datum plane still read nothing', () => {
     expect(measureOne(point(v(1, 2, 3)))).toBeNull()
-    expect(measureOne(solid())).toBeNull()
+    expect(measureOne(datumPlane(v(0, 0, 0), v(0, 0, 1)))).toBeNull()
+  })
+})
+
+describe('measurePair: point pairs state their delta legs', () => {
+  it('the three legs square back to the distance', () => {
+    const readout = measurePair(point(v(0, 0, 0)), point(v(3, 4, 12))) as Readout
+    const legs = readout.extra!.map((extra) => extra.value)
+    expect(Math.hypot(legs[0], legs[1], legs[2])).toBeCloseTo(readout.value, 9)
+    expect(legs).toEqual([3, 4, 12])
+  })
+
+  it('the legs are order independent', () => {
+    expectReadout(measurePair(point(v(3, 4, 0)), point(v(0, 0, 0))), {
+      ...distanceReadout(5),
+      extra: deltas(3, 4, 0),
+    })
+  })
+})
+
+describe('measurePair: the foot of a point-line distance', () => {
+  it('marks a foot beyond the edge as on its extension', () => {
+    // The point is past the edge's far endpoint but its perpendicular foot on
+    // the infinite line is not on the segment.
+    expectReadout(measurePair(point(v(10, 2, 0)), line(v(0, 0, 0), v(5, 0, 0))), {
+      kind: 'distance',
+      value: 2,
+      label: 'distance',
+      note: 'on extension',
+    })
+  })
+
+  it('states no qualifier when the foot lies on the edge', () => {
+    expectReadout(measurePair(point(v(3, 2, 0)), line(v(0, 0, 0), v(5, 0, 0))), distanceReadout(2))
+  })
+
+  it('states no qualifier for an unbounded line, which has no extension', () => {
+    expectReadout(measurePair(point(v(10, 2, 0)), line(v(0, 0, 0), v(1, 0, 0), false)), distanceReadout(2))
+  })
+})
+
+describe('measurePair: cursor independence', () => {
+  // The measurement core takes no pick point: it must state the element's own
+  // geometry whatever the cursor did. The guard pins that a stray pick field on
+  // a primitive changes nothing, so a future cursor rule cannot slip in here.
+  it('ignores a cursor or pick point carried on a primitive', () => {
+    const base = circle(v(0, 0, 0), v(0, 0, 1), 5)
+    const picked = { ...base, cursor: v(99, 99, 99), pickPoint: v(1, 1, 1) } as unknown as Primitive
+    const other = circle(v(30, 0, 5), v(0, 0, 1), 5)
+    expect(measurePair(picked, other)).toEqual(measurePair(base, other))
   })
 })
 
@@ -395,13 +598,18 @@ describe('the kernel table', () => {
   const kernelCells = new Map(KERNEL_PAIR_RULES.map((row) => [key(row.a, row.b), row.op]))
   const analyticCells = new Set(PAIR_RULES.map((row) => key(row.a, row.b)))
 
+  // A plane or a line paired with ITSELF is the coplanar/collinear case, which
+  // the analytic cell hands to the kernel by condition rather than by class.
+  const conditional = (a: string, b: string): boolean => a === b && (a === 'plane' || a === 'line')
+
   it('lists every cell the dispatch function sends to the kernel, and no cell twice', () => {
     expect(kernelCells.size).toBe(KERNEL_PAIR_RULES.length)
     for (const [a, pa] of Object.entries(reps)) {
       for (const [b, pb] of Object.entries(reps)) {
         const result = measurePair(pa, pb)
         const op = kernelCells.get(key(a, b))
-        expect({ cell: key(a, b), kernel: isKernelAsk(result) }).toEqual({ cell: key(a, b), kernel: op !== undefined })
+        const expectsKernel = op !== undefined || conditional(a, b)
+        expect({ cell: key(a, b), kernel: isKernelAsk(result) }).toEqual({ cell: key(a, b), kernel: expectsKernel })
         if (op !== undefined) expect(result).toEqual({ kernel: op })
       }
     }
