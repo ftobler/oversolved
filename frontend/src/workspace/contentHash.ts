@@ -27,3 +27,12 @@ export function hashRecord(entry: HashableEntry): string {
 export function partBundleKey(docHash: string, fileHashes: string[]): string {
   return sha256Hex([docHash, ...[...fileHashes].sort()].join('|'))
 }
+
+// The key one rigid sub-assembly composite caches under: the assembly document's
+// own content hash plus every child's bundle key, sorted so instance order does
+// not re-key it. It is recursive by construction: a child that is itself an
+// assembly contributes its own composite key, so editing a deep part invalidates
+// every ancestor by pull, never push.
+export function assemblyBundleKey(assemblyHash: string, childKeys: string[]): string {
+  return sha256Hex([assemblyHash, ...[...childKeys].sort()].join('|'))
+}
