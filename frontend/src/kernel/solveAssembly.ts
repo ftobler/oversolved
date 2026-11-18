@@ -164,6 +164,9 @@ export interface MeshPayload {
   // curve and anchor-slot arrays, not positions.
   hiddenEdges?: number[]
   hiddenVertices?: number[]
+  // The child handle path inside a rigid sub-assembly, carried through so the
+  // tree's view filter and leaf highlight can address one leaf of a composite.
+  leafPath?: string
   // Anchor ids per picked entity. Ids, not geometry, so the solved
   // transform leaves them untouched: the same entity names the same anchor at
   // every pose. Absent for a bundle cached before entityAnchors existed.
@@ -1037,6 +1040,7 @@ export async function solveAssembly(
       edges: (m.edges ?? []).map(e => transformEdgeCurve(e, t)),
       hiddenEdges: m.hiddenEdges,
       hiddenVertices: m.hiddenVertices,
+      leafPath: m.leafPath,
       entityAnchors: m.entityAnchors,
     }))
     transformedParts[part.handle] = transformed

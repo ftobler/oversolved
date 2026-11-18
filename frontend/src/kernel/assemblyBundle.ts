@@ -27,6 +27,9 @@ export interface AssemblyLeaf {
   doc_id: string
   transform: Transform3D
   visible: boolean
+  // The child handle path relative to the top-level instance. Absent for a
+  // direct part. The tree's view eye and export both key on it.
+  path?: string
 }
 
 /**
@@ -118,6 +121,9 @@ export function buildAssemblyBundle(
           edges: mesh.edges ?? [],
           hiddenEdges: mesh.hiddenEdges,
           hiddenVertices: mesh.hiddenVertices,
+          // A nested composite already carries its own inner path; prefix it
+          // with this handle so the tree key is the full path from the parent.
+          leafPath: mesh.leafPath === undefined ? handle : `${handle}/${mesh.leafPath}`,
           entityAnchors: prefixEntityAnchors(handle, mesh.entityAnchors),
         })
       }
@@ -138,13 +144,20 @@ export function buildAssemblyBundle(
     const childLeaves = child.leaves?.[handle]
     if (childLeaves) {
       for (const leaf of childLeaves) {
-        leaves.push({ ...leaf, visible: leaf.visible && inst.visible !== false })
+        leaves.push({
+          ...leaf,
+          // A nested composite's leaf already carries its inner path; prefix it
+          // with this handle so the path stays relative to the parent's top.
+          path: leaf.path === undefined ? handle : `${handle}/${leaf.path}`,
+          visible: leaf.visible && inst.visible !== false,
+        })
       }
     } else {
       leaves.push({
         doc_id: inst.doc_id,
         transform: child.transforms[handle] ?? inst.transform,
         visible: inst.visible !== false,
+        path: handle,
       })
     }
   }

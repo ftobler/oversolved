@@ -22,6 +22,8 @@ export interface PartRenderItem {
   // hidden_vertices): the viewport neither draws nor picks them.
   hiddenEdges?: number[]
   hiddenVertices?: number[]
+  // Assembly only: the child handle path of a rigid sub-assembly leaf.
+  leafPath?: string
   visible: boolean
   // Ghost layer only: the edit being previewed consumes this body. Orthogonal to
   // `visible`, which is the user's own show/hide -- a doomed body the user hid
@@ -89,6 +91,7 @@ export function getPartsToRender(
       vertexQueries: body.vertex_queries,
       hiddenEdges: body.hidden_edges,
       hiddenVertices: body.hidden_vertices,
+      leafPath: body.leaf_path,
       visible: partVisible && !isPartHiddenByFeature(createdBy, features, visibleFeatures),
     })
   }

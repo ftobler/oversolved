@@ -202,4 +202,15 @@ describe('partFailure', () => {
     const status = stub({ parts: { hBad: { failed: true } } })
     expect(partFailure('hBad', status).message).toBe('The part failed to load.')
   })
+
+  it('marks a sub-assembly child verdict as a warning, not a failure', () => {
+    const status = stub({
+      parts: { sub: { failed: false, warning: 'child assembly overconstrained: residual above tolerance' } },
+    })
+    expect(partFailure('sub', status)).toMatchObject({
+      failed: false,
+      level: 'warning',
+      message: 'child assembly overconstrained: residual above tolerance',
+    })
+  })
 })

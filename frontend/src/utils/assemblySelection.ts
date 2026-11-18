@@ -11,7 +11,10 @@
 
 /** The tree subject. At most one is set; the union is the invariant. */
 export type AssemblySubject =
-  | { kind: 'part'; handle: string }
+  // `leafPath` is the child handle path inside a rigid sub-assembly, relative to
+  // the top-level instance. The subject is always the top handle (that is what
+  // moves); the path only narrows the highlight to the child leaf.
+  | { kind: 'part'; handle: string; leafPath?: string }
   | { kind: 'mate'; id: string }
 
 export interface AssemblySelectionView {
@@ -19,6 +22,9 @@ export interface AssemblySelectionView {
   // is local to the accessor.
   parts: ReadonlySet<string>
   mate: string | null
+  // The selected child leaf inside the subject handle, or null for the whole
+  // instance.
+  leafPath: string | null
   // B-rep entities selected for measurement; orthogonal to the subject.
   entities: ReadonlySet<string>
 }
@@ -34,9 +40,14 @@ export function readSelection(
 ): AssemblySelectionView {
   const parts = new Set<string>()
   let mate: string | null = null
+  let leafPath: string | null = null
   if (subject !== null) {
-    if (subject.kind === 'part') parts.add(subject.handle)
-    else mate = subject.id
+    if (subject.kind === 'part') {
+      parts.add(subject.handle)
+      leafPath = subject.leafPath ?? null
+    } else {
+      mate = subject.id
+    }
   }
-  return { parts, mate, entities }
+  return { parts, mate, leafPath, entities }
 }

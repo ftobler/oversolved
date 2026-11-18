@@ -94,9 +94,18 @@ export interface AssemblyPartGroup {
   position: Vec3
   quaternion: Quat
   selected: boolean
+  // The selected child leaf inside a rigid sub-assembly, when the subject names
+  // one. Absent means the whole instance is highlighted.
+  selectedLeaf?: string
   // True while this part is the one under the pointer.
   manipulating: boolean
   items: PartRenderItem[]
+}
+
+/** The tree's view-only child state: hidden leaf keys and the selected one. */
+export interface AssemblyGroupView {
+  hiddenLeafPaths?: ReadonlySet<string>
+  selectedLeafPath?: string | null
 }
 
 /**
@@ -120,6 +129,7 @@ export function getAssemblyPartGroups(
   manipulation: ManipulationSession | null,
   selectedParts: ReadonlySet<string>,
   settlingOffsets: Record<string, Transform3D> = {},
+  view: AssemblyGroupView = {},
 ): AssemblyPartGroup[] {
   const byHandle = new Map<string, PartRenderItem[]>()
   for (const item of getPartsToRender(parts, undefined, undefined, undefined)) {
@@ -129,9 +139,15 @@ export function getAssemblyPartGroups(
   }
 
   const groups: AssemblyPartGroup[] = []
+  const hiddenLeaves = view.hiddenLeafPaths
   for (const inst of instances) {
     if (inst.visible === false) continue
-    const items = byHandle.get(inst.handle)
+    const all = byHandle.get(inst.handle)
+    // A child eye is a view filter over the composite's leaves, keyed by the
+    // full handle path the tree shows. A direct part has no leaf path.
+    const items = hiddenLeaves === undefined
+      ? all
+      : all?.filter(item => item.leafPath === undefined || !hiddenLeaves.has(`${inst.handle}/${item.leafPath}`))
     if (!items || items.length === 0) continue
 
     const manipulating = manipulation?.handle === inst.handle
@@ -145,6 +161,7 @@ export function getAssemblyPartGroups(
       position: transformTranslation(offset),
       quaternion: transformQuat(offset),
       selected: selectedParts.has(inst.handle),
+      ...(view.selectedLeafPath != null && { selectedLeaf: view.selectedLeafPath }),
       manipulating,
       items,
     })

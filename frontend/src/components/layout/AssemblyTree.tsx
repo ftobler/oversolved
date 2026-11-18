@@ -1,10 +1,23 @@
-import { useCallback, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import type { PartInstance, MateFeature, PartFeature } from '@/types/cad'
+import {
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
+  type ReactNode,
+} from 'react'
+import type { AssemblyDoc, PartInstance, MateFeature, PartFeature } from '@/types/cad'
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { mateFailure, partFailure, assemblyVerdict } from '@/utils/core/assemblyStatus'
 import { markNameClass } from '@/utils/core/statusMark'
 import type { AssemblyBuiltinListItem } from '@/utils/assemblyRender'
 import { readSelection, type AssemblySubject } from '@/utils/assemblySelection'
+import {
+  buildAssemblyTree,
+  leafPathOf,
+  type AssemblyTreeNode,
+} from '@/utils/assemblyTreeModel'
 import { hintDrivers, relatedHints } from '@/picking/relationHint'
 import { ASSEMBLY_RULES, buildAssemblyRelationCtx } from '@/registry/relationRuleRegistry'
 import { MATE_KIND_LABELS } from '@/utils/mateKinds'
@@ -51,6 +64,18 @@ export interface AssemblyTreeProps {
   isRebuilding?: boolean
   // Map from a part handle to a display label (the part document's name).
   labelFor?: (handle: string) => string | undefined
+  // The workspace's assembly documents by doc id, loaded for the tree's child
+  // rows. `null` is a document that could not be read (a failed row);
+  // `undefined` is still loading.
+  subassemblies?: Record<string, AssemblyDoc | null>
+  // Whether a doc id names a part or an assembly. Absent means every instance is
+  // a part, which keeps the pre-tree callers working.
+  docKindOf?: (docId: string) => 'part' | 'assembly' | undefined
+  // Doc id -> display name, for child rows whose handle is not a top-level one.
+  docNames?: Record<string, string>
+  // The child leaves hidden for viewing, keyed by the full handle path.
+  hiddenLeafPaths?: ReadonlySet<string>
+  onSetLeafVisible?: (key: string, visible: boolean) => void
   // The tree subject: at most one part handle or mate id. The union makes "both
   // a part and a mate selected" unrepresentable, so cross-highlight and the row
   // `.selected` read derive from one slot instead of two independent fields.
@@ -60,13 +85,16 @@ export interface AssemblyTreeProps {
   editingMateId?: string | null
   // The instance whose editor is open.
   editingInstanceHandle?: string | null
-  onSelectPart?: (handle: string) => void
+  // A child row selects the top-level instance (what moves) plus its leaf path.
+  onSelectPart?: (handle: string, leafPath?: string) => void
   // Drag-reorder callbacks. `beforeHandle`/`beforeId` name the row the dragged
   // item is dropped in front of, or null when dropped past the last row of its
   // list. The owner persists the new order in the document's feature array.
   onReorderInstance?: (movingHandle: string, beforeHandle: string | null) => void
   onReorderMate?: (movingId: string, beforeId: string | null) => void
-  onOpenPartNewTab: (handle: string) => void
+  // `docId` is the child document for a sub-assembly row; absent means the
+  // top-level instance's own doc_id, which the owner resolves from the handle.
+  onOpenPartNewTab: (handle: string, docId?: string) => void
   onDuplicateInstance: (handle: string) => void
   onDeleteInstance: (handle: string) => void
   onToggleVisible: (handle: string, visible: boolean) => void
@@ -104,6 +132,11 @@ export function AssemblyTree({
   onRebuild,
   isRebuilding,
   labelFor,
+  subassemblies,
+  docKindOf,
+  docNames,
+  hiddenLeafPaths,
+  onSetLeafVisible,
   subject,
   editingMateId,
   editingInstanceHandle,
@@ -127,6 +160,24 @@ export function AssemblyTree({
   onRequestRenameMate,
 }: AssemblyTreeProps) {
   const [menu, setMenu] = useState<{ position: [number, number]; items: ContextMenuItem[] } | null>(null)
+
+  // Expanded sub-assembly rows are a view state keyed by the handle path, not a
+  // document write and not an undo step. A new document starts folded.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set())
+  const toggleExpanded = useCallback((key: string) => {
+    setExpanded(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }, [])
+
+  const tree = useMemo(() => buildAssemblyTree(instances, {
+    docFor: docId => (subassemblies !== undefined && docId in subassemblies ? subassemblies[docId] : undefined),
+    kindOf: docId => docKindOf?.(docId),
+    nameOf: (handle, docId) => labelFor?.(handle) ?? docNames?.[docId] ?? docId,
+  }), [instances, subassemblies, docKindOf, labelFor, docNames])
 
   // The row picked up by an HTML5 drag. Held in a ref, not state: it changes only
   // at drag start/end and the reorder reads it on drop, so it never needs to
@@ -182,6 +233,90 @@ export function AssemblyTree({
   // error, underconstrained a warning that the assembly is valid but still has
   // freedom. Fully constrained and trivial solves carry no mark.
   const verdictMark = assemblyVerdict(status ?? null, id => mateNames.get(id))
+
+  // One sub-assembly's children, folded behind its chevron. A child is owned by
+  // the child document: it can be selected, its view eye toggled and it can be
+  // opened in a new tab, but it cannot be edited, deleted, reordered or
+  // re-fixed here. Selecting it selects the top-level instance that moves.
+  const renderDescendants = (node: AssemblyTreeNode, topHandle: string): ReactNode => {
+    if (node.children.length === 0 || !expanded.has(node.key)) return null
+    return (
+      <ul className="features-list assembly-subtree" role="group" aria-label={`${node.label} contents`}>
+        {node.children.map(child => {
+          const hidden = hiddenLeafPaths?.has(child.key) ?? false
+          const selected = view.parts.has(topHandle) && view.leafPath === leafPathOf(child)
+          const expandable = child.children.length > 0
+          const childMenu: ContextMenuItem[] = [
+            {
+              label: 'Open in new tab',
+              icon: featurePartIcon,
+              onClick: () => onOpenPartNewTab(topHandle, child.docId),
+            },
+          ]
+          return (
+            <li
+              key={child.key}
+              className={`feature-item subassembly-row${selected ? ' selected' : ''}${hidden ? ' invisible' : ''}${child.failed ? ' failed' : ''}`}
+              role="option"
+              tabIndex={0}
+              aria-selected={selected}
+              title={child.failed ? `${child.label} could not be read` : undefined}
+              onClick={(e) => {
+                e.stopPropagation()
+                onSelectPart?.(topHandle, leafPathOf(child))
+              }}
+              onKeyDown={(e) => {
+                e.stopPropagation()
+                rowKeyDown(e, () => onSelectPart?.(topHandle, leafPathOf(child)))
+              }}
+            >
+              <div className="feature-item-title" style={{ paddingLeft: `${8 + Math.max(0, child.depth - 1) * 14}px` }}>
+                {expandable ? (
+                  <button
+                    type="button"
+                    className="assembly-tree-chevron"
+                    onClick={(e) => { e.stopPropagation(); toggleExpanded(child.key) }}
+                    aria-label={`${expanded.has(child.key) ? 'Collapse' : 'Expand'} ${child.label}`}
+                    aria-expanded={expanded.has(child.key)}
+                    title={expanded.has(child.key) ? 'Collapse' : 'Expand'}
+                  >
+                    <span className="material-icons">{expanded.has(child.key) ? 'expand_more' : 'chevron_right'}</span>
+                  </button>
+                ) : (
+                  <span className="assembly-tree-chevron-spacer" aria-hidden="true" />
+                )}
+                {child.kind === 'assembly'
+                  ? <span className="material-icons feature-icon assembly-node-icon" aria-hidden="true">account_tree</span>
+                  : <img className="feature-icon" src={featurePartIcon} alt="" />}
+                <span className={`feature-name${child.failed ? ' failed' : ''}`}>{child.label}</span>
+                <div className="feature-item-actions">
+                  <button
+                    type="button"
+                    className="feature-visibility-btn"
+                    onClick={(e) => { e.stopPropagation(); onSetLeafVisible?.(child.key, hidden) }}
+                    title={hidden ? 'Show' : 'Hide'}
+                    aria-label={hidden ? `Show ${child.label}` : `Hide ${child.label}`}
+                  >
+                    <img src={hidden ? iconEyeOffIcon : iconEyeIcon} alt={hidden ? 'Hidden' : 'Visible'} />
+                  </button>
+                  <button
+                    type="button"
+                    className="feature-context-btn"
+                    onClick={(e) => openMenu(e, childMenu)}
+                    title="More options"
+                    aria-label={`${child.label} options`}
+                  >
+                    <img src={iconDotsIcon} alt="Options" />
+                  </button>
+                </div>
+              </div>
+              {renderDescendants(child, topHandle)}
+            </li>
+          )
+        })}
+      </ul>
+    )
+  }
 
   return (
     <>
@@ -248,7 +383,9 @@ export function AssemblyTree({
             </li>
           ))}
 
-          {instances.map(inst => {
+          {instances.map((inst, index) => {
+            const node = tree[index]
+            const isAssembly = node?.kind === 'assembly'
             const visible = inst.visible !== false
             const label = labelFor?.(inst.handle) || inst.doc_id
             const selected = view.parts.has(inst.handle)
@@ -262,7 +399,7 @@ export function AssemblyTree({
               ...(failMark.failed
                 ? [{ label: 'Rebind part', icon: featurePartIcon, onClick: () => onEditInstance(inst.handle) }]
                 : []),
-              { label: 'Open in new tab', icon: featurePartIcon, onClick: () => onOpenPartNewTab(inst.handle) },
+              { label: 'Open in new tab', icon: featurePartIcon, onClick: () => onOpenPartNewTab(inst.handle, inst.doc_id) },
               { label: 'Duplicate', icon: contextDuplicateIcon, onClick: () => onDuplicateInstance(inst.handle) },
               { label: visible ? 'Hide' : 'Show', icon: contextHideIcon, onClick: () => onToggleVisible(inst.handle, !visible) },
               {
@@ -279,7 +416,7 @@ export function AssemblyTree({
                 role="option"
                 tabIndex={0}
                 aria-selected={selected}
-                title={failMark.failed ? failMark.message : undefined}
+                title={failMark.level ? failMark.message : undefined}
                 onClick={() => onSelectPart?.(inst.handle)}
                 onKeyDown={(e) => rowKeyDown(e, () => onSelectPart?.(inst.handle))}
                 // Not draggable while its editor is open: a reorder mid-edit is
@@ -292,7 +429,9 @@ export function AssemblyTree({
                   if (dragItemRef.current?.kind !== 'part') return
                   e.preventDefault()
                   e.stopPropagation()  // a row target beats the list's append target
-                  setDragOverKey(`part:${inst.handle}`)
+                  // Moving a part into a child document is out of scope: a
+                  // sub-assembly row is not a drop target and paints no marker.
+                  if (!isAssembly) setDragOverKey(`part:${inst.handle}`)
                 }}
                 onDrop={(e) => {
                   if (dragItemRef.current?.kind !== 'part') return
@@ -300,11 +439,27 @@ export function AssemblyTree({
                   e.stopPropagation()
                   const moving = dragItemRef.current.id
                   endDrag()
-                  if (moving !== inst.handle) onReorderInstance?.(moving, inst.handle)
+                  if (!isAssembly && moving !== inst.handle) onReorderInstance?.(moving, inst.handle)
                 }}
               >
                 <div className="feature-item-title">
-                  <img className="feature-icon" src={featurePartIcon} alt="" />
+                  {node?.children.length ? (
+                    <button
+                      type="button"
+                      className="assembly-tree-chevron"
+                      onClick={(e) => { e.stopPropagation(); toggleExpanded(node.key) }}
+                      aria-label={`${expanded.has(node.key) ? 'Collapse' : 'Expand'} ${label}`}
+                      aria-expanded={expanded.has(node.key)}
+                      title={expanded.has(node.key) ? 'Collapse' : 'Expand'}
+                    >
+                      <span className="material-icons">{expanded.has(node.key) ? 'expand_more' : 'chevron_right'}</span>
+                    </button>
+                  ) : (
+                    <span className="assembly-tree-chevron-spacer" aria-hidden="true" />
+                  )}
+                  {isAssembly
+                    ? <span className="material-icons feature-icon assembly-node-icon" aria-hidden="true">account_tree</span>
+                    : <img className="feature-icon" src={featurePartIcon} alt="" />}
                   <span className={`feature-name${markNameClass(failMark)}`}>{label}</span>
                   {/* A fixed part carries the fixed-mate glyph, greyed, after its
                       name -- the mark of the static frame without stealing a row
@@ -373,6 +528,7 @@ export function AssemblyTree({
                     </button>
                   </div>
                 </div>
+                {node && renderDescendants(node, inst.handle)}
               </li>
             )
           })}

@@ -286,3 +286,53 @@
   background: rgba(42, 36, 16, 0.55);
 }
 
+/* A sub-assembly is a directory row: one disclosure chevron, the assembly
+   glyph, and children indented under the parent's list. */
+.assembly-tree-chevron,
+.assembly-tree-chevron-spacer {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.assembly-tree-chevron {
+  padding: 0;
+  border: none;
+  background: none;
+  color: #aaa;
+  cursor: pointer;
+}
+
+.assembly-tree-chevron .material-icons {
+  font-size: 18px;
+}
+
+.assembly-tree-chevron:hover {
+  color: #fff;
+}
+
+.assembly-node-icon {
+  font-size: 20px;
+  line-height: 20px;
+  color: #9fc7ea;
+}
+
+.assembly-subtree {
+  flex: none;
+  overflow: visible;
+  padding-left: 14px;
+  margin-left: 6px;
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.subassembly-row.failed .feature-name {
+  color: #e07070;
+}
+
+.subassembly-row.selected {
+  background: rgba(106, 176, 255, 0.16);
+}
+

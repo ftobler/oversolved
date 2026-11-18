@@ -140,6 +140,12 @@ export interface AssemblyEditorData {
    */
   hoverHits: EntityHit[]
   /**
+   * Child leaf rows hidden for viewing, keyed by the full tree handle path
+   * (`<top>/<child>`). View state only: a child's own `visible` belongs to the
+   * child document, and this eye must never write there. Not an undo step.
+   */
+  hiddenLeafPaths: Set<string>
+  /**
    * B-rep entities selected for measurement, keyed by `assemblyEntityKey`. Named
    * `entitySelection` so "which selection" has one answer: this is the entity
    * set, orthogonal to the tree `subject`. It is live only when no mate field is
@@ -204,6 +210,7 @@ export function createDefaultAssemblyEditorData(): AssemblyEditorData {
     pickIndex: -1,
     pickScopeEntity: null,
     hoverHits: [],
+    hiddenLeafPaths: new Set(),
     entitySelection: new Set(),
     hoveredEntity: null,
     manipulation: null,
@@ -281,6 +288,7 @@ const STORE_OWNED_FIELDS = [
   'activeMateField', 'mateFieldDirty',
   'editingSubject',
   'pickCandidates', 'pickIndex', 'pickScopeEntity', 'hoverHits',
+  'hiddenLeafPaths',
   'entitySelection', 'hoveredEntity',
   'solveStatus', 'movedParts',
   'undoStack', 'redoStack',
@@ -339,8 +347,11 @@ interface AssemblyEditorState extends AssemblyEditorData {
   // try to commit into the new doc.
   resetTransientAssemblyState: () => void
   // Set the tree subject to one part handle, or clear it. By construction a pick
-  // drops any mate subject, so the two can never both be set.
-  selectPart: (handle: string | null) => void
+  // drops any mate subject, so the two can never both be set. `leafPath` narrows
+  // the subject to one child leaf of a rigid sub-assembly.
+  selectPart: (handle: string | null, leafPath?: string) => void
+  // Toggle one child leaf row's view-only eye; the key is the full handle path.
+  setLeafVisible: (key: string, visible: boolean) => void
   // Set the tree subject to one mate id, or clear it. Closing or deleting a mate
   // still disarms the armed field via the setActiveMateField side effect.
   selectMate: (id: string | null) => void
@@ -444,7 +455,18 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
   // A part pick replaces the subject wholesale, which is what drops any
   // previously selected mate: there is one slot, so exclusion is structural
   // rather than a pair of clears that can disagree.
-  selectPart: (handle) => set({ subject: handle === null ? null : { kind: 'part', handle } }),
+  selectPart: (handle, leafPath) => set({
+    subject: handle === null
+      ? null
+      : { kind: 'part', handle, ...(leafPath !== undefined && leafPath !== '' && { leafPath }) },
+  }),
+
+  setLeafVisible: (key, visible) => set(prev => {
+    const next = new Set(prev.hiddenLeafPaths)
+    if (visible) next.delete(key)
+    else next.add(key)
+    return { hiddenLeafPaths: next }
+  }),
 
   openInstanceEditor: (handle) => set(prev => ({
     editingSubject: reduceEditingSubject(prev.editingSubject, { type: 'open_instance', handle }),

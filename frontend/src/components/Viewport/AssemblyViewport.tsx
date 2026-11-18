@@ -259,13 +259,16 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   // future multi-part subject widens in the one accessor rather than here. It
   // reads only `subject`, so a measurement click in the viewport (which churns
   // `entitySelection`) does not rebuild every part group.
-  const selectedParts = useMemo(
-    () => readSelection(subject, EMPTY_ENTITIES).parts,
-    [subject],
-  )
+  const selection = useMemo(() => readSelection(subject, EMPTY_ENTITIES), [subject])
+  const selectedParts = selection.parts
+  // The tree's view-only eye over child leaves of a rigid sub-assembly.
+  const hiddenLeafPaths = useAssemblyStore(s => s.hiddenLeafPaths)
   const groups = useMemo(
-    () => getAssemblyPartGroups(parts, instances, manipulation, selectedParts, settlingOffsets),
-    [parts, instances, manipulation, selectedParts, settlingOffsets],
+    () => getAssemblyPartGroups(parts, instances, manipulation, selectedParts, settlingOffsets, {
+      hiddenLeafPaths,
+      selectedLeafPath: selection.leafPath,
+    }),
+    [parts, instances, manipulation, selectedParts, settlingOffsets, hiddenLeafPaths, selection.leafPath],
   )
   // The drawn pose of every handle, the same offset the render groups carry.
   const drawnPoses = useMemo(
@@ -784,7 +787,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
                 key={item.key}
                 item={item}
                 curves={edgeCurves[item.partId] ?? EMPTY_CURVES}
-                selected={g.selected}
+                selected={g.selected && (g.selectedLeaf === undefined || item.leafPath === g.selectedLeaf)}
                 aiming={aiming}
                 onGrab={(point, event) => handleGrabPart(g.handle, point, pointerOf(event))}
                 showFaces={shading}

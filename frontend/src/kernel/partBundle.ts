@@ -92,6 +92,9 @@ export interface PartMesh {
   // Optional so a bundle cached before entityAnchors existed still solves; it
   // just offers no mate picks until its part is rebuilt at a new rev.
   entityAnchors?: EntityAnchorIndex
+  // A rigid sub-assembly's leaf path inside the composite (`child` or
+  // `child/grandchild`). Absent for an ordinary part bundle.
+  leafPath?: string
 }
 
 export interface PartBundle {

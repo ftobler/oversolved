@@ -25,7 +25,9 @@ import {
   findInstance,
   findMate,
   mintFeatureId,
+  partInstances,
 } from '@/utils/assemblyMutations'
+import { loadAssemblyDocText } from '@/persistence/docSchema'
 import { runAssemblyOperation, type AssemblyOperationId, type AssemblyOperationInputs } from '@/utils/assemblyOperations'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { interpretEntry } from '@/workspace/kinds'
@@ -54,7 +56,7 @@ import { assemblyVerdict } from '@/utils/core/assemblyStatus'
 import { MATE_KINDS, MATE_KIND_LABELS } from '@/utils/mateKinds'
 import AssemblyToolbar from '@/pages/AssemblyToolbar'
 import AssemblyMeasurementDisplay from '@/components/layout/AssemblyMeasurementDisplay'
-import type { MateKind, MateFeatureDef, PartInstance, Transform3D } from '@/types/cad'
+import type { AssemblyDoc, MateKind, MateFeatureDef, PartInstance, Transform3D } from '@/types/cad'
 import featurePartIcon from '@/assets/icons/feature-part.svg'
 import measurementIcon from '@/assets/icons/measurement.svg'
 import '@/pages/Part.css'
@@ -125,6 +127,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   const selectedMateId = subject?.kind === 'mate' ? subject.id : null
   const activeMateField = useAssemblyStore(s => s.activeMateField)
   const solveStatus = useAssemblyStore(s => s.solveStatus)
+  const hiddenLeafPaths = useAssemblyStore(s => s.hiddenLeafPaths)
   // The assembly solve mirrors its running flag into the solver store for the
   // shared LoadingOverlay; the Parts header's rebuild button reads the same flag,
   // so a running solve spins it and refuses a second request.
@@ -259,6 +262,52 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     () => (partList === null ? undefined : [...listOptions.parts, ...listOptions.assemblies]),
     [partList, listOptions],
   )
+
+  const assemblyIdSet = useMemo(
+    () => new Set(listOptions.assemblies.map(option => option.id)),
+    [listOptions],
+  )
+  const knownKind = useCallback((docId: string): 'part' | 'assembly' | undefined => {
+    if (knownAssemblyIds.current?.has(docId)) return 'assembly'
+    if (knownPartIds.current?.has(docId)) return 'part'
+    return undefined
+  }, [])
+
+  // The tree needs each referenced sub-assembly's own instance list, at any
+  // depth, to draw its child rows. A failed read lands as `null`, which the
+  // model renders as a failed row rather than hiding the placement.
+  const [subassemblyDocs, setSubassemblyDocs] = useState<Record<string, AssemblyDoc | null>>({})
+  useEffect(() => {
+    if (!session) {
+      setSubassemblyDocs({})
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      const docs: Record<string, AssemblyDoc | null> = {}
+      const seen = new Set<string>()
+      const visit = async (list: readonly PartInstance[]) => {
+        for (const inst of list) {
+          if (seen.has(inst.doc_id) || !assemblyIdSet.has(inst.doc_id)) continue
+          seen.add(inst.doc_id)
+          try {
+            const entry = await session.readEntry(inst.doc_id)
+            const loaded = entry.kind === 'document'
+              ? loadAssemblyDocText(entry.text ?? '', { name: entry.name })
+              : null
+            const doc = loaded?.ok ? loaded.doc : null
+            docs[inst.doc_id] = doc
+            if (doc) await visit(partInstances(doc))
+          } catch {
+            docs[inst.doc_id] = null
+          }
+        }
+      }
+      await visit(instances)
+      if (!cancelled) setSubassemblyDocs(docs)
+    })()
+    return () => { cancelled = true }
+  }, [session, instances, assemblyIdSet])
 
   // The hook's memo is what goes into the store, not a second extraction of the
   // same features. This is a de-duplication and nothing more: the memo is keyed
@@ -577,13 +626,16 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   }, [uuid, workspaceId, session, stepImport, setError, registerImportedParts, runOperation])
 
   const openEntryInNewTab = useOpenEntryInNewTab(workspaceId ?? uuid)
-  const handleOpenPartNewTab = useCallback((handle: string) => {
+  const handleOpenPartNewTab = useCallback((handle: string, docId?: string) => {
     const inst = instances.find(i => i.handle === handle)
-    if (inst) openEntryInNewTab(inst.doc_id)
+    const target = docId ?? inst?.doc_id
+    if (target) openEntryInNewTab(target)
   }, [instances, openEntryInNewTab])
 
-  const handleSelect = useCallback((handle: string) => {
-    useAssemblyStore.getState().selectPart(handle)
+  const handleSelect = useCallback((handle: string, leafPath?: string) => {
+    // A child row selects the top-level instance that moves, plus the leaf the
+    // viewport highlights. The store's union keeps it one subject.
+    useAssemblyStore.getState().selectPart(handle, leafPath)
   }, [])
 
   // Instance edit: open the right edit card and attach the gizmo to the part
@@ -937,6 +989,11 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
                 mates={mates}
                 status={solveStatus}
                 labelFor={labelFor}
+                subassemblies={subassemblyDocs}
+                docKindOf={knownKind}
+                docNames={docNames}
+                hiddenLeafPaths={hiddenLeafPaths}
+                onSetLeafVisible={(key, visible) => useAssemblyStore.getState().setLeafVisible(key, visible)}
                 onRebuild={rebuild}
                 isRebuilding={isSolving}
                 subject={subject}

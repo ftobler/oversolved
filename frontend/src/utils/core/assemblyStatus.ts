@@ -115,7 +115,13 @@ export function mateFailure(
  */
 export function partFailure(handle: string, status: AssemblySolveStatus | null): AssemblyMark {
   const result = status?.parts[handle]
-  if (!result?.failed) return OK
+  if (!result?.failed) {
+    // A rigid sub-assembly whose own solve did not converge still entered at
+    // its solved poses; the row warns with the child's verdict instead of
+    // reddening the parent's placement.
+    if (result?.warning) return { failed: false, level: 'warning', message: result.warning, cause: 'part' }
+    return OK
+  }
   return { failed: true, level: 'error', message: result.error || 'The part failed to load.', cause: 'part' }
 }
 
