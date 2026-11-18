@@ -4,6 +4,7 @@ import { assemblyHistory, setAssemblyHistoryMirror } from '@/stores/assemblyHist
 import type { HistoryEntry } from '@/session/History'
 import type { AssemblyDoc, PartInstance, MateFeature, MateRef, MateRefField, MateAnchorDescriptor, Transform3D, PartResult } from '@/types/cad'
 import type { EdgeCurve } from '@/kernel/partBundle'
+import type { AssemblyEntityFacts } from '@/utils/assemblyBodies'
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { cycleIndex, resolveCandidates, sameCandidateSet, type EntityMateRefs } from '@/utils/anchorCandidates'
 import { hoverScopeEntity, type AnchorTable } from '@/utils/anchorGizmos'
@@ -91,6 +92,10 @@ export interface AssemblyEditorData {
   parts: Record<string, PartResult>
   // Analytic edges of the solved bodies, keyed by the same body id.
   edgeCurves: Record<string, EdgeCurve[]>
+  // The measurement facts (raw edges + face facts) of the solved bodies, keyed
+  // by the same body id. Optional only so older test payloads and a legacy
+  // solve reply still type; the current solve always sets it.
+  shapeFacts?: Record<string, AssemblyEntityFacts>
   // Entity pick id -> the mate refs it offers. The Stage 7 pick lookup.
   entityMateRefs: EntityMateRefs
   // Solved-pose anchor geometry, by part handle plus the assembly's own frame.
@@ -185,6 +190,7 @@ export function createDefaultAssemblyEditorData(): AssemblyEditorData {
     movedParts: undefined,
     parts: {},
     edgeCurves: {},
+    shapeFacts: {},
     entityMateRefs: {},
     anchors: {},
     anchorDescriptors: {},
@@ -219,7 +225,7 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData =
  *  pick geometry) cannot be added to the solve and forgotten at the store. */
 export type AssemblySolveResult = Pick<
   AssemblyEditorData,
-  'transforms' | 'movedParts' | 'parts' | 'edgeCurves' | 'entityMateRefs' | 'anchors' | 'anchorDescriptors' | 'pickGeometry' | 'solveStatus'
+  'transforms' | 'movedParts' | 'parts' | 'edgeCurves' | 'shapeFacts' | 'entityMateRefs' | 'anchors' | 'anchorDescriptors' | 'pickGeometry' | 'solveStatus'
 >
 
 /**
@@ -356,7 +362,7 @@ interface AssemblyEditorState extends AssemblyEditorData {
    * drag has none) and does not clear the grabbed part's own entries, which the
    * caller drops so it keeps rendering from its drag offset.
    */
-  setDragSolveResult: (result: Pick<AssemblyEditorData, 'transforms' | 'movedParts' | 'parts' | 'edgeCurves' | 'solveStatus'>) => void
+  setDragSolveResult: (result: Pick<AssemblyEditorData, 'transforms' | 'movedParts' | 'parts' | 'edgeCurves' | 'shapeFacts' | 'solveStatus'>) => void
   // Resolve an ordered hit list into the candidate set, aiming its first entry.
   setPickFromHits: (hits: readonly EntityHit[]) => void
   // A Ctrl+click: re-aim, or advance the cycle when it lands on the same set.
@@ -529,6 +535,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     }),
     parts: { ...prev.parts, ...result.parts },
     edgeCurves: { ...prev.edgeCurves, ...result.edgeCurves },
+    shapeFacts: { ...prev.shapeFacts, ...result.shapeFacts },
     solveStatus: result.solveStatus,
     // The parts this tick re-posed are re-baked with it; only a part it left
     // alone (the grabbed one) still owes its offset.

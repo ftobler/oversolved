@@ -17,7 +17,7 @@ import type { MateRef } from '@/types/cad'
 export type AssemblyEntityKind = 'face' | 'edge' | 'vertex'
 
 /**
- * Entity pick id for one B-rep entity of one part instance. `bodyIndex` and
+ * Entity pick id for one B-rep entity of one part instance. `partIndex` and
  * `index` are positions in the bundle's arrays, which is what the ID layers
  * register and what `EntityAnchorIndex` is keyed by. The part handle leads so
  * two instances of the same part never share a pick id.

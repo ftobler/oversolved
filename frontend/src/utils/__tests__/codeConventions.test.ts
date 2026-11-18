@@ -164,6 +164,11 @@ describe('assembly pose reads are confined to the pose plumbing', () => {
     'hooks/useAssemblySolve.ts',
     'utils/assemblyRender.ts',
     'components/Viewport/AssemblyViewport.tsx',
+    // The measurement readout resolves the same drawn-vs-baked pose the ID
+    // snapshot is offset by, so its numbers describe the geometry on screen.
+    // It needs both halves; a wrong composition here would read where the part
+    // used to be, so it is held to the same rule the viewport is.
+    'components/layout/AssemblyMeasurementDisplay.tsx',
   ])
 
   const FORBIDDEN = [

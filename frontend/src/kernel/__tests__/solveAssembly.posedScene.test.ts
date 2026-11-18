@@ -152,6 +152,54 @@ describe('solveAssembly', () => {
     expect(result.bodies['p2'][0].edges[0].endpoints[0][0]).toBeCloseTo(-100)
   })
 
+  it('carries the bundle face facts into the solved pose, points moved and directions only rotated', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+
+    await bundleCachePut(makeBundle('doc-a', '1', {
+      bodies: [{
+        mesh: {
+          vertices: new Float32Array([0, 0, 0]),
+          indices: new Uint32Array([]),
+          faceIdsPerTriangle: new Uint32Array([]),
+        },
+        edges: [],
+        faces: [{
+          surface_type: 'cylinderface',
+          centroid: [2, 0, 0],
+          normal: [1, 0, 0],
+          frame: { origin: [1, 0, 0], axis: [1, 0, 0], radius: 4 },
+          axial_length: 10,
+          area: 80,
+          face_edges: [0],
+        }],
+        entityAnchors: { faces: [], edges: [], vertices: [] },
+      }],
+    }))
+
+    const s = Math.SQRT1_2  // 90° about +Z, lifted 3 in z
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', transform: { tx: 0, ty: 0, tz: 3, qx: 0, qy: 0, qz: s, qw: s } },
+    ]
+    const result = await solveAssembly(parts, { 'doc-a': '1' }, [], relay, makeEchoSolver())
+
+    const fact = result.bodies['p1'][0].faces![0]
+    expect(fact.centroid[0]).toBeCloseTo(0)
+    expect(fact.centroid[1]).toBeCloseTo(2)
+    expect(fact.centroid[2]).toBeCloseTo(3)
+    expect(fact.normal![0]).toBeCloseTo(0)
+    expect(fact.normal![1]).toBeCloseTo(1)
+    expect(fact.normal![2]).toBeCloseTo(0)
+    expect(fact.frame!.origin[1]).toBeCloseTo(1)
+    expect(fact.frame!.origin[2]).toBeCloseTo(3)
+    expect(fact.frame!.axis[1]).toBeCloseTo(1)
+    // Rigid invariants travel untouched.
+    expect(fact.frame!.radius).toBe(4)
+    expect(fact.axial_length).toBe(10)
+    expect(fact.area).toBe(80)
+    expect(fact.face_edges).toEqual([0])
+  })
+
   // ─── posed anchors (Stage 7.5) ───
 
   it('carries the anchors into the solved pose, points moved and axes only rotated', async () => {
