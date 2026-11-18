@@ -50,7 +50,7 @@ const files = (process.env.STEP_BENCH_FILES?.split(',') ?? DEFAULT_FILES)
 const PHASES = [
   'step.read', 'step.transfer', 'step.identity', 'import.names', 'import.split',
   'meta.faces', 'meta.edges', 'meta.vertices',
-  'render.mesh', 'mesh.triangulate', 'mesh.mesher', 'mesh.faceFacts',
+  'render.faceFacts', 'render.mesh', 'mesh.triangulate', 'mesh.mesher', 'mesh.faceFacts',
   // render.faceEdges covers the seam lists too since they share one walk.
   'render.edges', 'render.vertices', 'render.faceEdges',
 ]

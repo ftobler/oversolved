@@ -21,6 +21,7 @@ import { HandleTable } from './occ/handleTable'
 import { solidToMesh, solidToEdges, solidToVertices, solidFaceEdgeData, readShapeFaceMetadata } from './occ/tessellation'
 import type { TessMesh } from './occ/tessellation'
 import { timePhase } from './occ/phaseTimer'
+import { readFaceFacts } from './occ/faceFacts'
 import { indexModifierDiffs, newIndexSets } from './occ/modifierAttribution'
 import { copyShape, makeScaleTrsf, makeRigidTrsf, transformCopy } from './occ/transforms'
 import { stepShapeToBytes, shapeToStlBytes } from './occ/stepIo'
@@ -261,7 +262,10 @@ export function tessellateParts(
     if (body.shape == null) continue
     try {
       const shape = body.shape
+      // Read once for the two passes below that both sort the faces by them.
+      const faceFacts = timePhase('render.faceFacts', () => readFaceFacts(oc, table.get(shape)))
       const mesh = timePhase('render.mesh', () => solidToMesh(oc, table, shape, {
+        faceFacts,
         createdBy: body.created_by || '',
         partId: body.id,
         faceAncestry: body.face_ancestry ?? null,
@@ -296,7 +300,7 @@ export function tessellateParts(
       }))
       // One face-edge walk feeds both lists below (solidFaceEdgeData).
       const faceEdgeData = timePhase('render.faceEdges', () =>
-        solidFaceEdgeData(oc, table, shape, edgeResult.edge_queries))
+        solidFaceEdgeData(oc, table, shape, edgeResult.edge_queries, faceFacts))
       // Per-face boundary edge queries: a face pick projects as a closed wire.
       mesh.face_edge_queries = faceEdgeData.face_edge_queries
       // The edges each face meets twice, so the selector can tell a seam from

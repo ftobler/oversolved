@@ -19,6 +19,7 @@ import {
 } from '../primitives'
 import { readFaceFacts, factNormal } from '../faceFacts'
 import { stepBytesToShape } from '../stepIo'
+import { readShapeFaces } from '../tessellation'
 import { noProgress } from '../defaultArgs'
 import type { OccModule, OccShape } from '../occTypes'
 
@@ -122,6 +123,20 @@ describe.skipIf(!oc)('readFaceFacts parity with the per-face readers (real OCC)'
       }
     }, 600_000)
   }
+
+  it('refuses facts read off a different solid instead of pairing them', () => {
+    const scope = new DisposeScope()
+    try {
+      const box = makeBox(oc!, scope, 3, 4, 5)  // 6 faces
+      const cyl = makeCylinder(oc!, scope, [0, 0, 0], [0, 0, 1], 2, 3)  // 3 faces
+      expect(() => readShapeFaces(oc!, scope, cyl, 0.1, 0.1, readFaceFacts(oc!, box)))
+        .toThrow('face facts: 6 read for 3 faces')
+      expect(() => readShapeFaces(oc!, scope, box, 0.1, 0.1, readFaceFacts(oc!, cyl)))
+        .toThrow('face facts: no fact for face 3 (3 read)')
+    } finally {
+      scope.dispose()
+    }
+  })
 
   it('refuses an undefined normal with the per-face reader\'s message', () => {
     const fact = { surfaceType: 'face', centroid: [0, 0, 0], normal: null, surfaceFrame: null, cylinderAxis: null, geomType: 6 } as const

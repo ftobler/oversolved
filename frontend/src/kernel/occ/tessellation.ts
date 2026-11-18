@@ -34,7 +34,7 @@ import { emitWithTiesTagged, type QueryParts } from '../tiedQuery'
 import { ref, makeAncestryQuery, constructionUuidToken } from '../query'
 import type { EdgeData } from '@/types/cad'
 import { timePhase } from './phaseTimer'
-import { readFaceFacts, factNormal, type FaceFact } from './faceFacts'
+import { readFaceFacts, assertFactCount, factAt, factNormal, type FaceFact } from './faceFacts'
 
 export interface FaceDatum {
   centroid: Vec3
@@ -126,11 +126,12 @@ export function readShapeFaces(
   solid: OccShape,
   deflection: number,
   angularDeflection: number,
+  known?: readonly FaceFact[],
 ): RawFaceGeom[] {
   const E = oc.TopAbs_ShapeEnum
   // One bulk read for every face's facts, in the explorer order the loop
-  // below walks (faceFacts.ts).
-  const facts = timePhase('mesh.faceFacts', () => readFaceFacts(oc, solid))
+  // below walks (faceFacts.ts), unless the caller already holds it.
+  const facts = known ?? timePhase('mesh.faceFacts', () => readFaceFacts(oc, solid))
   const exp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
   const raw: RawFaceGeom[] = []
   const canonOf = canonicalCounter()
@@ -139,7 +140,7 @@ export function readShapeFaces(
     const canon = canonOf(face as OccSubShape)
     const { vertices, triangles } = timePhase('mesh.triangulate', () =>
       tessellateFace(oc, scope, face, deflection, angularDeflection))
-    const fact = facts[i]
+    const fact = factAt(facts, i)
     raw.push({
       vertices,
       triangles,
@@ -155,6 +156,7 @@ export function readShapeFaces(
       canon,
     })
   }
+  assertFactCount(facts, raw.length)
   return raw
 }
 
@@ -287,6 +289,9 @@ interface SolidMeshOptions extends TessellateOptions {
   // history, for the per-face creator.
   newElements?: NewIndexSets | null
   modifiedBy?: string[]
+  // This solid's face facts (readFaceFacts), when the caller already read them
+  // for another pass over the same solid; read here otherwise.
+  faceFacts?: readonly FaceFact[]
 }
 
 /** Per canonical face, the feature it is attributed to (modifierAttribution.ts). */
@@ -321,7 +326,7 @@ export function solidToMesh(
   const solid = table.get(handle)
   const scope = new DisposeScope()
   try {
-    const raw = readShapeFaces(oc, scope, solid, deflection, angularDeflection)
+    const raw = readShapeFaces(oc, scope, solid, deflection, angularDeflection, opts.faceFacts)
     assertAligned(canonicalCount(raw), opts.faceUuids, `${opts.partId ?? 'solid'} faces`)
     const { mesh, sorted } = assembleMeshKeeping(raw)
     const { center, half } = partFrame(oc, scope, solid)
@@ -921,15 +926,16 @@ function faceEdgeWalks(
   scope: DisposeScope,
   solid: OccShape,
   edgeIndex: SubShapeIndexMap,
+  known?: readonly FaceFact[],
 ): FaceEdgeWalk[] {
   // Faces in the same sorted order solidToMesh/readShapeFaceMetadata use.
   const E = oc.TopAbs_ShapeEnum
-  const facts = readFaceFacts(oc, solid)
+  const facts = known ?? readFaceFacts(oc, solid)
   const fexp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
   const faces: { shape: OccShape; sortKey: number[] }[] = []
   for (let i = 0; fexp.More(); fexp.Next(), i++) {
     const face = scope.track(oc.TopoDS.Face_1(fexp.Current()))
-    const fact = facts[i]
+    const fact = factAt(facts, i)
     const item: FaceSortItem = {
       centroid: fact.centroid,
       normal: factNormal(fact),
@@ -937,6 +943,7 @@ function faceEdgeWalks(
     }
     faces.push({ shape: face, sortKey: faceSortKey(item) })
   }
+  assertFactCount(facts, faces.length)
   faces.sort((a, b) => compareFaceSortKeys(a.sortKey, b.sortKey))
 
   return faces.map(({ shape }) => {
@@ -1034,12 +1041,13 @@ export function solidFaceEdgeData(
   table: HandleTable,
   handle: OccHandle,
   edgeQueries: string[],
+  faceFacts?: readonly FaceFact[],
 ): FaceEdgeQueryData & HiddenSubShapeIndices {
   const solid = table.get(handle)
   const scope = new DisposeScope()
   try {
     const sortedEdges = sortedUniqueEdges(oc, scope, solid)
-    const walks = faceEdgeWalks(oc, scope, solid, indexOfEdges(sortedEdges))
+    const walks = faceEdgeWalks(oc, scope, solid, indexOfEdges(sortedEdges), faceFacts)
     const hiddenEdges = seamsFromWalks(walks)
     return {
       ...queriesFromWalks(walks, edgeQueries),

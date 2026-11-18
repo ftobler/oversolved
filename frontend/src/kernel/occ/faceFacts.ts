@@ -99,6 +99,22 @@ export function readFaceFacts(oc: OccModule, shape: OccShape): FaceFact[] {
   return out
 }
 
+/**
+ * The fact for the i-th explored face. A list read off another solid, or a
+ * stale one, runs out or overruns here instead of silently pairing faces with
+ * the wrong facts.
+ */
+export function factAt(facts: readonly FaceFact[], i: number): FaceFact {
+  const fact = facts[i]
+  if (fact === undefined) throw new Error(`face facts: no fact for face ${i} (${facts.length} read)`)
+  return fact
+}
+
+/** After a walk over `count` faces: a longer list was read off another solid. */
+export function assertFactCount(facts: readonly FaceFact[], count: number): void {
+  if (facts.length !== count) throw new Error(`face facts: ${facts.length} read for ${count} faces`)
+}
+
 /** The face's normal, refused exactly as primitives.ts `faceNormal` refuses. */
 export function factNormal(fact: FaceFact): Vec3 {
   if (fact.normal === null) {
