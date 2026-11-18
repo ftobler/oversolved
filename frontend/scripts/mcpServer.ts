@@ -352,11 +352,35 @@ const ops: McpCadOps = {
     if (!resolved.ok) return { ok: false, error: resolved.error }
     const files = readProjectFiles(req.files)
     if (req.between !== undefined) {
-      if (resolved.kind !== 'part') {
-        return { ok: false, error: 'between applies to part documents only' }
-      }
       if (req.detail !== undefined) {
-        return { ok: false, error: 'detail applies only to assembly documents' }
+        return { ok: false, error: 'detail applies only to an assembly measure without between' }
+      }
+      if (resolved.kind === 'assembly') {
+        const answer = await (async (): Promise<KernelAnswer<LocalPickMeasure | null>> => {
+          try {
+            return await callKernel<LocalPickMeasure | null>('assemblyMeasureBetween', {
+              doc: resolved.doc,
+              parts: resolved.parts,
+              files,
+              between: req.between,
+            })
+          } catch (e) {
+            if (isKernelCallFailure(e)) throw e
+            return { ok: false, error: e instanceof Error ? e.message : String(e) }
+          }
+        })()
+        if (!answer.ok) return answer
+        if (!answer.value) {
+          return { ok: false, error: 'local solver unavailable (OCC.js or the Rust solver is not provisioned)' }
+        }
+        // The assembly frame is millimetres; the one-row reply mirrors a part's.
+        return {
+          ok: true,
+          kind: 'assembly',
+          docHash: resolved.docHash,
+          between: answer.value,
+          length_unit: 'mm',
+        }
       }
       const answer = await (async (): Promise<KernelAnswer<LocalPickMeasure | null>> => {
         try {

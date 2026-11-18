@@ -29,7 +29,7 @@ import { SOLVE_STALL_BUDGET_MS } from '@/kernel/solverConstants'
 import type { HeadlessCheckpoint } from '@/drive/headlessPart'
 
 /** The kernel operations a worker serves (kernelWorker.ts). */
-export type KernelOp = 'run' | 'measure' | 'measureBetween' | 'compare' | 'export' | 'select' | 'assemblyRun' | 'assemblyMeasure' | 'assemblyCompare' | 'assemblyExport'
+export type KernelOp = 'run' | 'measure' | 'measureBetween' | 'compare' | 'export' | 'select' | 'assemblyRun' | 'assemblyMeasure' | 'assemblyMeasureBetween' | 'assemblyCompare' | 'assemblyExport'
 
 export interface KernelRequest {
   id: number
