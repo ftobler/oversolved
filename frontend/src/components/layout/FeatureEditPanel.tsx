@@ -28,7 +28,7 @@ export function FeatureEditPanel() {
   const partLabels = usePartEditorStore(s => s.partLabels)
   const solveResults = usePartEditorStore(s => s.solveResults)
   const parts = usePartEditorStore(s => s.parts)
-  const { onEditCommit, onEditCancel, onMutation } = usePartEditorCallbacks()
+  const { onEditCommit, onEditCancel, onMutation, onMutationBatch } = usePartEditorCallbacks()
 
   // Nothing open, or the open id names a feature with no editor body (a
   // built-in plane, say): the panel has nothing to draw and an empty frame
@@ -65,6 +65,7 @@ export function FeatureEditPanel() {
           editingFeatureId={feature.id}
           doc={doc}
           onMutation={onMutation}
+          onMutationBatch={onMutationBatch}
           features={features}
           partLabels={partLabels}
           status={featureFailure(feature.id, solveResults, parts)}

@@ -192,6 +192,11 @@ export interface SketchEditorState {
   // claims and chip-owned entries the old selection held must not survive.
   // selectionDomain is re-derived from the new set.
   setNormalSelection: (ids: ReadonlySet<string>) => void
+  // Drop exactly the given ids, leaving every other entry standing (the chip's
+  // own highlight mirror included). A refused pick consumes only what it
+  // refused; clearNormalSelection would also take the mirror and leave the chip
+  // unlit until its values change again.
+  dropFromNormalSelection: (ids: Iterable<string>) => void
 
   // HOVER STATE
   // Vertex-specific hover data (for snap / visual highlight).

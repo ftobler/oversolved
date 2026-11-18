@@ -10,6 +10,7 @@ import { render, fireEvent, act, screen } from '@testing-library/react'
 import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import { LINEAR_PATTERN_SCHEMA } from '@/components/editors/featureEditorSchemas'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { usePartEditorStore } from '@/stores/partEditorStore'
 import type { PartFeature } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
 
@@ -55,6 +56,11 @@ beforeEach(() => {
     activePickField: null,
     modeStack: [],
   })
+  // A body pick resolves against the pick layer, which is where a part field
+  // learns which body the picked face belongs to.
+  usePartEditorStore.setState({
+    pickParts: { body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [] } },
+  })
 })
 
 describe('body pattern source body pick (via FeatureEditor)', () => {
@@ -67,7 +73,8 @@ describe('body pattern source body pick (via FeatureEditor)', () => {
 
   it('renders the source_body ref when set', () => {
     renderEditor(makeFeature({ source_body: '@body_ex1' }), vi.fn())
-    expect(partChip().querySelector('.feature-pick-chip-item-text')?.textContent).toBe('body_ex1')
+    // The part field names the resolved body through the pick layer's part list.
+    expect(partChip().querySelector('.feature-pick-chip-item-text')?.textContent).toBe('part 1')
   })
 
   it('picking a body normalizes to an @body_ ref', () => {
@@ -84,9 +91,9 @@ describe('body pattern source body pick (via FeatureEditor)', () => {
     const onMutation = vi.fn()
     renderEditor(makeFeature(), onMutation)
     fireEvent.click(partChip())
-    pick('face:ex1:?4;@ex1:face')
+    pick('face:ex1:?9;@body_ex1:face')
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'set_linear_pattern_field', featureId: 'pt1', field: 'source_body', value: '?4;@ex1:face',
+      type: 'set_linear_pattern_field', featureId: 'pt1', field: 'source_body', value: '?9;@body_ex1:face',
     })
   })
 

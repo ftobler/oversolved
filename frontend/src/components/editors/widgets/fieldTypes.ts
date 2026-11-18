@@ -197,4 +197,8 @@ export interface PickFieldWidgetProps extends WidgetBaseProps {
   features?: import('@/types/cad').PartFeature[]
   partLabels?: Record<string, string>
   parts?: Record<string, import('@/types/cad').PartResult>
+  // The editor's one-undo-step seam: a lasso's removes and adds land as a single
+  // mutation group. Absent in a bare editor render, where the widget applies
+  // them one by one.
+  onMutationBatch?: (mutations: import('@/types/cad').Mutation[]) => void
 }

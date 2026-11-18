@@ -15,6 +15,8 @@ interface FeatureItemEditorsProps {
   editingFeatureId: string | null
   doc: { features?: PartFeature[]; length_unit?: LengthUnit } | null
   onMutation: (m: Mutation) => void
+  // The group seam for a pick field's whole arriving batch (one undo step).
+  onMutationBatch?: (mutations: Mutation[]) => void
   features: PartFeature[]
   partLabels: Record<string, string>
   // The feature's mark from the last solve, the same one its tree row shows.
@@ -78,6 +80,7 @@ function editorFor({
   feature,
   doc,
   onMutation,
+  onMutationBatch,
   features,
   partLabels,
   solved,
@@ -122,6 +125,7 @@ function editorFor({
     <FeatureEditor
       feature={feature}
       onMutation={onMutation}
+      onMutationBatch={onMutationBatch}
       features={features}
       partLabels={partLabels}
       schema={schema}

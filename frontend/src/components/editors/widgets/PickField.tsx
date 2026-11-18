@@ -1,76 +1,66 @@
+import { useMemo } from 'react'
 import type { Mutation } from '@/types/cad'
 import { PickChip } from '@/components/sketch/PickChip'
 import { usePickField } from '@/hooks/usePickField'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import type { PickFieldWidgetProps } from './fieldTypes'
 import { StatusMessage } from '@/components/shared/StatusMessage'
+import { bodyWantKey, identityWantKey, type PickBatch } from '@/utils/query/pickIntake'
+import { partPickLabel } from '@/utils/query/partPickLabel'
 
 export function PickFieldWidget({
-  field, data, fid, onMutation, mutationPrefix, features, partLabels, parts: bodies,
+  field, data, fid, onMutation, onMutationBatch, mutationPrefix, features, partLabels, parts: bodies,
 }: PickFieldWidgetProps) {
   const isMulti = field.multi ?? false
   const rawValues: unknown = data[field.key]
-
-  const pickCallback = (selectionId: string) => {
-    const transformed = field.transform ? field.transform(selectionId) : selectionId
-
-    if (isMulti) {
-      const addType = field.addMutationType ?? `add_${mutationPrefix}_${field.key}`
-      const valueKey = field.addValueKey ?? field.key
-      onMutation({ type: addType, featureId: fid, [valueKey]: transformed } as Mutation)
-    } else {
-      onMutation({ type: `${mutationPrefix}_field`, featureId: fid, field: field.key, value: transformed } as Mutation)
-    }
-  }
-
-  const removeMutationType = isMulti
-    ? (field.removeMutationType ?? `remove_${mutationPrefix}_${field.key}`)
-    : `${mutationPrefix}_field`
 
   const normalizedValues: string[] = field.normalize
     ? (field.normalize(rawValues, data) as string[])
     : Array.isArray(rawValues) ? rawValues as string[] : (rawValues ? [rawValues as string] : [])
 
-  const removeAt = (index: number) => {
+  const addMutationFor = (selectionId: string): Mutation => {
+    const transformed = field.transform ? field.transform(selectionId) : selectionId
     if (isMulti) {
-      const key = field.removeKey ?? 'index'
-      const val = field.removeValueIsIndex === false ? normalizedValues[index] : index
-      onMutation({ type: removeMutationType, featureId: fid, [key]: val } as Mutation)
-    } else {
-      onMutation({ type: removeMutationType, featureId: fid, field: field.key, value: (field.removeValue ?? '') } as Mutation)
+      const addType = field.addMutationType ?? `add_${mutationPrefix}_${field.key}`
+      const valueKey = field.addValueKey ?? field.key
+      return { type: addType, featureId: fid, [valueKey]: transformed } as Mutation
     }
+    return {
+      type: `${mutationPrefix}_field`, featureId: fid, field: field.key, value: transformed,
+    } as Mutation
   }
 
-  // Removing a chip arms the field so the user can immediately re-pick the
-  // value they just took out (a stale chamfer edge, say) instead of having to
-  // click the chip again. The unpick (viewport re-click) path keeps plain
-  // removeAt: there the user is already in picking mode.
-  const removeAndActivate = (index: number) => {
-    removeAt(index)
-    activate()
+  const removeMutationAt = (index: number): Mutation => {
+    if (isMulti) {
+      const type = field.removeMutationType ?? `remove_${mutationPrefix}_${field.key}`
+      const key = field.removeKey ?? 'index'
+      const value = field.removeValueIsIndex === false ? normalizedValues[index] : index
+      return { type, featureId: fid, [key]: value } as Mutation
+    }
+    return {
+      type: `${mutationPrefix}_field`, featureId: fid, field: field.key, value: (field.removeValue ?? ''),
+    } as Mutation
   }
 
-  // Re-clicking an already-picked element should remove it. The chip stores the
-  // transformed value, so map the toggled-off selectionId back to its index.
-  const unpickCallback = (selectionId: string) => {
-    const index = normalizedValues.indexOf(selectionId)
-    if (index >= 0) removeAt(index)
+  // One arriving batch is one dispatch: the removes and adds of a lasso land as
+  // a single mutation group, so the whole box is one undo step. A host without
+  // the group seam (a bare editor render) still applies every mutation.
+  const dispatch = (mutations: Mutation[]) => {
+    if (mutations.length === 0) return
+    if (onMutationBatch) {
+      onMutationBatch(mutations)
+      return
+    }
+    for (const mutation of mutations) onMutation(mutation)
   }
 
-  // The field's own pick rule rides into the hook, which owns both refusal
-  // guards and the keep-the-field-open policy for them; this widget only
-  // dispatches the mutation for a pick that passed. The form's data rides along
-  // as the rule's third argument, for a rule that depends on another field.
-  const ownRule = field.validatePick
-  const pickState = usePickField(fid, field.key, pickCallback, {
-    multi: isMulti,
-    onUnpick: unpickCallback,
-    features,
-    validatePick: ownRule === undefined
-      ? undefined
-      : (selectionId, featureRows) => ownRule(selectionId, featureRows, data),
-  })
-  const { toggle, activate } = pickState
+  // The hook still documents a single-pick shape for consumers with no identity
+  // model; the batch callback below is what an editor field actually uses.
+  const pickOne = (selectionId: string) => dispatch([addMutationFor(selectionId)])
+  const pickBatch = (intake: PickBatch) => dispatch([
+    ...intake.remove.map(removeMutationAt),
+    ...intake.add.map(addMutationFor),
+  ])
 
   // The feature's last solve splits the picks that did not apply into two kinds
   // (kernel partial result): `unresolved_edges` matched no current edge (stale,
@@ -80,7 +70,52 @@ export function PickFieldWidget({
   // set and stay neutral.
   const solveResult = usePartEditorStore(s => s.solveResults?.[fid])
   const storeParts = usePartEditorStore(s => s.parts)
-  const effectiveParts = bodies ?? storeParts
+  const pickParts = usePartEditorStore(s => s.pickParts)
+  // Body resolution reads the PRE-feature pick layer: in a Delete Part edit the
+  // preview has already lost the very part being compared, so the preview's
+  // bodies would refuse the pick that removes it. An editor opened with no
+  // pick-layer solve (or a host that passes its own bodies) falls back.
+  const effectiveParts = bodies ?? (Object.keys(pickParts).length > 0 ? pickParts : storeParts)
+
+  // What the field holds for an arriving pick. A part field wants the body the
+  // pick lands on; every other field keeps the stored form of the id, so a
+  // transformed field's re-click is compared after the same rewrite its stored
+  // value went through.
+  const wantKeyOf = useMemo(
+    () => (field.names === 'body' ? bodyWantKey(effectiveParts) : identityWantKey(field.transform)),
+    [field.names, field.transform, effectiveParts],
+  )
+  const partLabel = (value: string) => partPickLabel(value, effectiveParts, partLabels, features)
+
+  // The field's own pick rule rides into the hook, which owns both refusal
+  // guards and the keep-the-field-open policy for them; this widget only
+  // dispatches the mutation for the picks that passed. The form's data rides
+  // along as the rule's third argument, for a rule that depends on another
+  // field.
+  const ownRule = field.validatePick
+  const pickState = usePickField(fid, field.key, pickOne, {
+    multi: isMulti,
+    features,
+    held: normalizedValues,
+    wantKeyOf,
+    labelOf: field.names === 'body' ? partLabel : undefined,
+    onPickBatch: pickBatch,
+    validatePick: ownRule === undefined
+      ? undefined
+      : (selectionId, featureRows) => ownRule(selectionId, featureRows, data),
+  })
+  const { toggle, activate } = pickState
+
+  // Removing a chip arms the field so the user can immediately re-pick the
+  // value they just took out (a stale chamfer edge, say) instead of having to
+  // click the chip again. The unpick (viewport re-click) path keeps plain
+  // removeAt: there the user is already in picking mode.
+  const removeAt = (index: number) => onMutation(removeMutationAt(index))
+  const removeAndActivate = (index: number) => {
+    removeAt(index)
+    activate()
+  }
+
   const solveSet = (key: string): ReadonlySet<string> | undefined => {
     if (typeof solveResult !== 'object' || solveResult === null) return undefined
     const raw = (solveResult as Record<string, unknown>)[key]

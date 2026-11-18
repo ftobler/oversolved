@@ -520,6 +520,21 @@ export const editorState = createStore<EditorState>((set, get) => ({
       }
     }),
 
+  dropFromNormalSelection: (ids) =>
+    set(s => {
+      const next = new Set(s.normalSelection)
+      let changed = false
+      for (const id of ids) {
+        if (next.delete(id)) changed = true
+      }
+      if (!changed) return s
+      return {
+        normalSelection: next,
+        selectedPicks: prunePickClaims(s.selectedPicks, next),
+        selectionDomain: deriveSelectionDomain(next),
+      }
+    }),
+
   setAlignmentSnap: (point, kind) => set({ alignmentSnapPoint: point, alignmentSnapKind: kind }),
 
   setDrag: (drag) => set({ drag }),

@@ -3,9 +3,24 @@ import { render, fireEvent, act } from '@testing-library/react'
 import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import { DELETE_PART_SCHEMA } from '@/components/editors/featureEditorSchemas'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import type { PartFeature } from '@/types/cad'
+import { usePartEditorStore } from '@/stores/partEditorStore'
+import type { PartFeature, PartResult } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
 import { bodyMarkSelected } from '@/components/Geometry3D/constants'
+
+const part = (id: string, createdBy: string): PartResult => ({ id, created_by: createdBy, modified_by: [] })
+
+// The pick layer a Delete Part edit is made in: both parts still exist there,
+// even though the feature's own preview has already removed the one it targets.
+const PICK_PARTS: Record<string, PartResult> = {
+  body_ex1: part('body_ex1', 'ex1'),
+  body_ex2: part('body_ex2', 'ex2'),
+}
+
+const FACE_EX1 = 'face:ex1:?9;@body_ex1:face'
+const OTHER_FACE_EX1 = '@body_ex1/edge/3'
+const FACE_EX2 = 'face:ex2:?9;@body_ex2:face'
+const OTHER_FACE_EX2 = '@body_ex2/edge/3'
 
 function makeFeature(parts: string[] = []): PartFeature {
   return {
@@ -21,6 +36,15 @@ function pick(selectionId: string) {
   act(() => { useSketchEditorStore.getState().toggleNormalSelection(selectionId) })
 }
 
+/** Simulate the rubber-band box: one replace-all set of every boxed id. */
+function lasso(selectionIds: string[]) {
+  act(() => { useSketchEditorStore.getState().setNormalSelection(new Set(selectionIds)) })
+}
+
+function armChip() {
+  fireEvent.click(document.querySelector('.feature-pick-chip')!)
+}
+
 beforeEach(() => {
   useEditorState.setState({
     normalSelection: new Set(),
@@ -28,6 +52,7 @@ beforeEach(() => {
     activePickField: null,
     modeStack: [],
   })
+  usePartEditorStore.setState({ pickParts: PICK_PARTS, parts: PICK_PARTS })
 })
 
 describe('DeleteBodyEditor (via FeatureEditor)', () => {
@@ -67,10 +92,10 @@ describe('DeleteBodyEditor (via FeatureEditor)', () => {
   it('picking a body emits add_delete_body_ref and keeps the field open', () => {
     const onMutation = vi.fn()
     render(<FeatureEditor feature={makeFeature()} onMutation={onMutation} schema={DELETE_PART_SCHEMA} />)
-    fireEvent.click(document.querySelector('.feature-pick-chip')!)
-    pick('face:ex1:?4;@ex1:face')
+    armChip()
+    pick(FACE_EX1)
     expect(onMutation).toHaveBeenCalledWith({
-      type: 'add_delete_body_ref', featureId: 'db1', bodyQuery: 'face:ex1:?4;@ex1:face',
+      type: 'add_delete_body_ref', featureId: 'db1', bodyQuery: FACE_EX1,
     })
     // multi: the chip stays armed so the next body can be picked without re-arming.
     expect(useSketchEditorStore.getState().activePickField).toEqual({ featureId: 'db1', field: 'bodies', multi: true })
@@ -81,7 +106,7 @@ describe('DeleteBodyEditor (via FeatureEditor)', () => {
     // which resolves through the face to the one body that owns it.
     const onMutation = vi.fn()
     render(<FeatureEditor feature={makeFeature()} onMutation={onMutation} schema={DELETE_PART_SCHEMA} />)
-    fireEvent.click(document.querySelector('.feature-pick-chip')!)
+    armChip()
     const faceQuery = '?15,4,9,7;@u|u_f38db052aaf9026c@ex1@body_ex1@cls_zn:flatface'
     pick(faceQuery)
     expect(onMutation).toHaveBeenCalledWith({
@@ -89,23 +114,90 @@ describe('DeleteBodyEditor (via FeatureEditor)', () => {
     })
   })
 
-  it('collects a second pick instead of replacing the first', () => {
+  it('collects a second pick of another part instead of replacing the first', () => {
     const onMutation = vi.fn()
     // The doc mutation is external to the editor, so re-render with the value the
     // first pick would have written and confirm the second pick still appends.
     const { rerender } = render(
       <FeatureEditor feature={makeFeature()} onMutation={onMutation} schema={DELETE_PART_SCHEMA} />,
     )
-    fireEvent.click(document.querySelector('.feature-pick-chip')!)
-    pick('face:ex1:?4;@ex1:face')
+    armChip()
+    pick(FACE_EX1)
     rerender(
-      <FeatureEditor feature={makeFeature(['face:ex1:?4;@ex1:face'])} onMutation={onMutation} schema={DELETE_PART_SCHEMA} />,
+      <FeatureEditor feature={makeFeature([FACE_EX1])} onMutation={onMutation} schema={DELETE_PART_SCHEMA} />,
     )
-    pick('face:ex2:?4;@ex2:face')
+    pick(FACE_EX2)
     expect(onMutation).toHaveBeenLastCalledWith({
-      type: 'add_delete_body_ref', featureId: 'db1', bodyQuery: 'face:ex2:?4;@ex2:face',
+      type: 'add_delete_body_ref', featureId: 'db1', bodyQuery: FACE_EX2,
     })
     expect(onMutation).toHaveBeenCalledTimes(2)
+  })
+
+  it('a second pick of the same part removes the part', () => {
+    // The user's scenario: picking one edge then another edge of part 1 is a
+    // pick and its removal pick, not two chips for the same part.
+    const onMutation = vi.fn()
+    render(
+      <FeatureEditor feature={makeFeature([FACE_EX1])} onMutation={onMutation} schema={DELETE_PART_SCHEMA} />,
+    )
+    armChip()
+    pick(OTHER_FACE_EX1)
+    expect(onMutation).toHaveBeenCalledWith({ type: 'remove_delete_body_ref', featureId: 'db1', index: 0 })
+    expect(onMutation).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'add_delete_body_ref' }))
+  })
+
+  it('a lasso over two parts adds each part once as one batch', () => {
+    const onMutation = vi.fn()
+    const onMutationBatch = vi.fn()
+    render(
+      <FeatureEditor
+        feature={makeFeature()}
+        onMutation={onMutation}
+        onMutationBatch={onMutationBatch}
+        schema={DELETE_PART_SCHEMA}
+      />,
+    )
+    armChip()
+    // The box clips two faces of each part: four ids, two parts.
+    lasso([FACE_EX1, OTHER_FACE_EX1, FACE_EX2, OTHER_FACE_EX2])
+
+    expect(onMutationBatch).toHaveBeenCalledTimes(1)
+    expect(onMutationBatch).toHaveBeenCalledWith([
+      { type: 'add_delete_body_ref', featureId: 'db1', bodyQuery: FACE_EX1 },
+      { type: 'add_delete_body_ref', featureId: 'db1', bodyQuery: FACE_EX2 },
+    ])
+    expect(onMutation).not.toHaveBeenCalled()
+  })
+
+  it('a lasso over a held part leaves it in place and adds the other', () => {
+    const onMutationBatch = vi.fn()
+    render(
+      <FeatureEditor
+        feature={makeFeature([FACE_EX1])}
+        onMutation={vi.fn()}
+        onMutationBatch={onMutationBatch}
+        schema={DELETE_PART_SCHEMA}
+      />,
+    )
+    armChip()
+    lasso([OTHER_FACE_EX1, FACE_EX2])
+
+    expect(onMutationBatch).toHaveBeenCalledWith([
+      { type: 'add_delete_body_ref', featureId: 'db1', bodyQuery: FACE_EX2 },
+    ])
+  })
+
+  it('refuses a plane pick with the field message and adds nothing', () => {
+    const onMutation = vi.fn()
+    render(<FeatureEditor feature={makeFeature()} onMutation={onMutation} schema={DELETE_PART_SCHEMA} />)
+    armChip()
+    pick('@builtin_plane_top')
+
+    expect(onMutation).not.toHaveBeenCalled()
+    expect(document.querySelector('.status-message')?.textContent ?? document.body.textContent)
+      .toContain('Pick refused: pick a face, edge or part')
+    // The field stays armed for valid geometry.
+    expect(useSketchEditorStore.getState().activePickField).not.toBeNull()
   })
 
   it('stores a picked ref verbatim, never narrowed to one body', () => {
@@ -121,7 +213,7 @@ describe('DeleteBodyEditor (via FeatureEditor)', () => {
       const { unmount } = render(
         <FeatureEditor feature={makeFeature()} onMutation={onMutation} schema={DELETE_PART_SCHEMA} />,
       )
-      fireEvent.click(document.querySelector('.feature-pick-chip')!)
+      armChip()
       pick(picked)
       expect(onMutation, picked).toHaveBeenCalledWith({
         type: 'add_delete_body_ref', featureId: 'db1', bodyQuery: picked,
@@ -141,7 +233,7 @@ describe('DeleteBodyEditor (via FeatureEditor)', () => {
     render(
       <FeatureEditor feature={makeFeature(['@body_ex1'])} onMutation={onMutation} schema={DELETE_PART_SCHEMA} />,
     )
-    fireEvent.click(document.querySelector('.feature-pick-chip')!)
+    armChip()
     // Arming syncs the chip's values into the selection; toggling one back off is
     // the viewport re-click.
     pick('@body_ex1')
