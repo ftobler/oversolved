@@ -619,7 +619,7 @@ export default function Part() {
   useEffect(() => {
     usePartEditorStore.getState().publishDerived({
       visibleFeatures: visibleFeaturesWithEdit,
-      visibleBodies: effectiveVisibleBodies,
+      visibleParts: effectiveVisibleBodies,
       partLabels,
       otherSketches,
       isRebuilding,

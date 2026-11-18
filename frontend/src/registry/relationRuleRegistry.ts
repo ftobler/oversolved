@@ -74,18 +74,18 @@ function pickedPrimitiveQueries(feature: PartFeature): readonly string[] {
 /** Every query a shown body publishes for its own primitives. A pick that is
  *  not here names geometry that no longer exists (consumed by this feature or
  *  gone in a later one), so there is nothing to paint. */
-function publishedQueries(bodies: Readonly<Record<string, PartResult>>): ReadonlySet<string> {
+function publishedQueries(parts: Readonly<Record<string, PartResult>>): ReadonlySet<string> {
   const out = new Set<string>()
-  for (const body of Object.values(bodies)) {
-    for (const q of body.edge_queries ?? []) if (q) out.add(q)
-    for (const q of body.mesh?.face_queries ?? []) if (q) out.add(q)
+  for (const part of Object.values(parts)) {
+    for (const q of part.edge_queries ?? []) if (q) out.add(q)
+    for (const q of part.mesh?.face_queries ?? []) if (q) out.add(q)
   }
   return out
 }
 
 export function buildPartRelationCtx(
   features: readonly PartFeature[],
-  bodies: Readonly<Record<string, PartResult>>,
+  parts: Readonly<Record<string, PartResult>>,
   activeFeatureIds?: ReadonlySet<string>,
   failedPicks: ReadonlySet<string> = EMPTY_RELATION_SET,
 ): PartRelationCtx {
@@ -112,12 +112,12 @@ export function buildPartRelationCtx(
     const picks = pickedPrimitiveQueries(feature)
     if (picks.length > 0) pickedByFeature.set(feature.id, picks)
   }
-  const published = publishedQueries(bodies)
+  const published = publishedQueries(parts)
   return {
     featureById,
     featureKinds,
     featureIdOf: (selectionId) => featureRefId(selectionId) ?? selectionId,
-    creators: buildCreatorIndex(bodies),
+    creators: buildCreatorIndex(parts),
     consumedByFeature,
     consumersBySketch: new Map([...consumersBySketch].map(([id, set]) => [id, [...set]] as const)),
     activeFeatureIds: activeFeatureIds ?? new Set(features.map(f => f.id)),

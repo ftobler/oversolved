@@ -41,10 +41,10 @@ function seedStores(features: PartFeature[], doc: unknown = null) {
     features,
     visibleFeatures: new Set(features.map(f => f.id)),
     doc: doc as never,
-    visibleBodies: new Set(),
+    visibleParts: new Set(),
     partLabels: {},
     solveResults: {},
-    bodies: {},
+    parts: {},
     isRebuilding: false,
     featureTimings: {},
   })

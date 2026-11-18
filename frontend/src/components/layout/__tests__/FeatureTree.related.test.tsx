@@ -37,15 +37,15 @@ function body(id: string, createdBy: string, faceQueries: string[] = []): PartRe
 function seed(features: PartFeature[], bodies: Record<string, PartResult> = {}) {
   usePartEditorStore.setState({
     features,
-    bodies,
+    parts: bodies,
     visibleFeatures: new Set(features.map(f => f.id)),
     doc: null,
-    visibleBodies: new Set(),
+    visibleParts: new Set(),
     partLabels: {},
     solveResults: {},
     isRebuilding: false,
     featureTimings: {},
-    pickBodies: {},
+    pickParts: {},
   })
   useEditorState.setState({
     rollbackPosition: null,

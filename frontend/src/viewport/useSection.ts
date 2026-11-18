@@ -30,7 +30,7 @@ export function useSectionFrame(): SectionFrame | null {
   const solveResults = usePartEditorStore(s => s.solveResults) as
     | Record<string, { plane_transform?: { rotation: number[]; origin: number[] } }>
     | undefined
-  const bodies = usePartEditorStore(s => s.bodies)
+  const bodies = usePartEditorStore(s => s.parts)
   return useMemo(() => resolveSectionFrame(source, {
     planeTransform: query => solveResults?.[query]?.plane_transform ?? null,
     faceFrame: (query, pickKey) => {

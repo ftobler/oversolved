@@ -139,7 +139,7 @@ vi.mock('@/components/layout/PartDocumentPanel', async () => {
   return {
     PartDocumentPanel: () => {
       const features = useStore(s => s.features)
-      const bodies = useStore(s => s.bodies)
+      const bodies = useStore(s => s.parts)
       const { onRightClick, onRebuild, onSetRollbackPosition, onRename } = usePartEditorCallbacks()
       return (
         <div data-testid="sidebar">
@@ -199,7 +199,7 @@ describe('Part page actions', () => {
     ...DEFAULT_PART_EDITOR_DATA,
     features: F.doc.features,
     doc: F.doc,
-    bodies: F.bodies,
+    parts: F.bodies,
     solveResults: F.solve,
   })
   useEditorState.setState({

@@ -21,7 +21,7 @@ const ENTITY_MATE_REFS: EntityMateRefs = {
 }
 
 const SOLVE_RESULT: AssemblySolveResult = {
-  transforms: {}, bodies: {}, edgeCurves: {}, entityMateRefs: ENTITY_MATE_REFS, anchors: {},
+  transforms: {}, parts: {}, edgeCurves: {}, entityMateRefs: ENTITY_MATE_REFS, anchors: {},
   pickGeometry: [], solveStatus: null,
 }
 

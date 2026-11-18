@@ -12,7 +12,7 @@ import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { isDimensionKind } from '@/registry/constraintRegistry'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import { History, type HistoryEntry } from '@/session/History'
-import { BODY_STYLE_MUTATION_TYPES, GUARD_BYPASS, noOpSliceFor } from '@/session/noOpGuard'
+import { PART_STYLE_MUTATION_TYPES, GUARD_BYPASS, noOpSliceFor } from '@/session/noOpGuard'
 import { CREATING_MUTATION_TYPES } from '@/types/mutationKinds'
 import { reconcileDirty, type DirtyFacts, type DirtyPin } from '@/session/dirty'
 import {
@@ -108,7 +108,7 @@ export interface DocSessionDeps {
   // Supplied by the adapter until editor-state-one-owner owns them; absent
   // means the inspection simply omits the field.
   getValidation?: () => unknown
-  getBodies?: () => unknown
+  getParts?: () => unknown
   // A face projection's member ids are derived at add time from the face's
   // current boundary. The host injects the lookup (UI: the body registry;
   // headless: the last solved bodies), keeping the session free of geometry.
@@ -163,7 +163,7 @@ export interface SessionInspection {
   transactions: TransactionSummary[]
   solve: SolveSchedulerState
   validation?: unknown
-  bodies?: unknown
+  parts?: unknown
 }
 
 // The events L1 emits. `historyRestored` is an undo/redo move and carries the
@@ -595,7 +595,7 @@ export class DocSession {
     const doc = this.deps.doc.get()
     const facts = this.deps.editorFacts()
     const validation = this.deps.getValidation?.()
-    const bodies = this.deps.getBodies?.()
+    const parts = this.deps.getParts?.()
     return {
       docId: this.deps.docId ?? null,
       dirty: this.isDirty(),
@@ -606,7 +606,7 @@ export class DocSession {
       transactions: this.transactions(),
       solve: this.deps.solve.state(),
       ...(validation !== undefined && { validation }),
-      ...(bodies !== undefined && { bodies }),
+      ...(parts !== undefined && { parts }),
     }
   }
 
@@ -708,7 +708,7 @@ export class DocSession {
       // commit or cancel, and its aggregate entry reverts the work wholesale.
       // A swallowed part_style mutation is a real user change the session diff
       // cannot see (it strips part_style), so remember it.
-      if (mutations.some(m => BODY_STYLE_MUTATION_TYPES.has(m.type))) {
+      if (mutations.some(m => PART_STYLE_MUTATION_TYPES.has(m.type))) {
         edit.styleTouched = true
       }
       // A swallow still fulfils the withhold's "next mutation" contract.

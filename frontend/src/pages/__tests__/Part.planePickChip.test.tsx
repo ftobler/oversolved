@@ -42,10 +42,10 @@ beforeEach(() => {
     features: [],
     visibleFeatures: new Set(),
     doc: null,
-    visibleBodies: new Set(),
+    visibleParts: new Set(),
     partLabels: {},
     solveResults: {},
-    bodies: {},
+    parts: {},
     isRebuilding: false,
     featureTimings: {},
   })

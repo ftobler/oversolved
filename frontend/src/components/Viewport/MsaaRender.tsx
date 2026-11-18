@@ -52,7 +52,7 @@ export function MsaaRender() {
   const zebra = useViewOptionsStore(s => s.zebra)
   const curvature = useViewOptionsStore(s => s.curvature)
   const shading = useViewOptionsStore(s => s.shading)
-  const bodies = usePartEditorStore(s => s.bodies)
+  const bodies = usePartEditorStore(s => s.parts)
   const capturing = useSectionStore(s => s.capturing)
   useEffect(() => {
     presenter.current?.setStencil(sectionEnabled)

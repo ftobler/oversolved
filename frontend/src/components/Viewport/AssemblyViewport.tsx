@@ -140,7 +140,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   const subject = useAssemblyStore(s => s.subject)
   const selectedPartHandle = subject?.kind === 'part' ? subject.handle : null
   const selectedMateId = subject?.kind === 'mate' ? subject.id : null
-  const bodies = useAssemblyStore(s => s.bodies)
+  const bodies = useAssemblyStore(s => s.parts)
   const edgeCurves = useAssemblyStore(s => s.edgeCurves)
   const instances = useAssemblyStore(s => s.instances)
   const transforms = useAssemblyStore(s => s.transforms)
@@ -194,7 +194,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
 
   const adapter = useMemo(() => createAssemblyPointerAdapter({
     beginPartManipulation: (h) => useAssemblyStore.getState().beginPartManipulation(h),
-    beginPartDrag: (h, grab) => useAssemblyStore.getState().beginBodyDrag(h, grab),
+    beginPartDrag: (h, grab) => useAssemblyStore.getState().beginPartDrag(h, grab),
     setDragTarget: (t) => useAssemblyStore.getState().setDragTarget(t),
     dragPartTranslate: (d) => useAssemblyStore.getState().dragPartTranslate(d),
     rotatePartGizmo: (a, angle, pivot) => useAssemblyStore.getState().rotatePartGizmo(a, angle, pivot),

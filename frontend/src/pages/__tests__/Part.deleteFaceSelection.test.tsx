@@ -86,7 +86,7 @@ async function mountPart(content = DOC) {
     </MemoryRouter>,
     { wrapper: Wrapper },
   )
-  await waitFor(() => expect(usePartEditorStore.getState().bodies?.body_ex1).toBeTruthy())
+  await waitFor(() => expect(usePartEditorStore.getState().parts?.body_ex1).toBeTruthy())
   fireEvent.click(screen.getByTitle('Feature mode'))
 }
 

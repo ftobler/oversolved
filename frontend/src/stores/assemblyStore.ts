@@ -88,7 +88,7 @@ export interface AssemblyEditorData {
    *  leaves it out. A fixed part is never here. Undefined means no report
    *  reached the store (a legacy payload), so the bake writes every pose. */
   movedParts?: ReadonlySet<string>
-  bodies: Record<string, PartResult>
+  parts: Record<string, PartResult>
   // Analytic edges of the solved bodies, keyed by the same body id.
   edgeCurves: Record<string, EdgeCurve[]>
   // Entity pick id -> the mate refs it offers. The Stage 7 pick lookup.
@@ -183,7 +183,7 @@ export function createDefaultAssemblyEditorData(): AssemblyEditorData {
     solveStatus: null,
     transforms: {},
     movedParts: undefined,
-    bodies: {},
+    parts: {},
     edgeCurves: {},
     entityMateRefs: {},
     anchors: {},
@@ -219,7 +219,7 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData =
  *  pick geometry) cannot be added to the solve and forgotten at the store. */
 export type AssemblySolveResult = Pick<
   AssemblyEditorData,
-  'transforms' | 'movedParts' | 'bodies' | 'edgeCurves' | 'entityMateRefs' | 'anchors' | 'anchorDescriptors' | 'pickGeometry' | 'solveStatus'
+  'transforms' | 'movedParts' | 'parts' | 'edgeCurves' | 'entityMateRefs' | 'anchors' | 'anchorDescriptors' | 'pickGeometry' | 'solveStatus'
 >
 
 /**
@@ -335,7 +335,7 @@ interface AssemblyEditorState extends AssemblyEditorData {
    * drag has none) and does not clear the grabbed part's own entries, which the
    * caller drops so it keeps rendering from its drag offset.
    */
-  setDragSolveResult: (result: Pick<AssemblyEditorData, 'transforms' | 'movedParts' | 'bodies' | 'edgeCurves' | 'solveStatus'>) => void
+  setDragSolveResult: (result: Pick<AssemblyEditorData, 'transforms' | 'movedParts' | 'parts' | 'edgeCurves' | 'solveStatus'>) => void
   // Resolve an ordered hit list into the candidate set, aiming its first entry.
   setPickFromHits: (hits: readonly EntityHit[]) => void
   // A Ctrl+click: re-aim, or advance the cycle when it lands on the same set.
@@ -372,7 +372,7 @@ interface AssemblyEditorState extends AssemblyEditorData {
    * point under the cursor. `worldGrab` is that point in world space. No-op for a
    * `fixed` instance.
    */
-  beginBodyDrag: (handle: string, worldGrab: Vec3) => boolean
+  beginPartDrag: (handle: string, worldGrab: Vec3) => boolean
   // Move where the grabbed point is pulled to; re-solves so the part tracks it.
   setDragTarget: (target: Vec3) => void
   /** Fold the drag solve's grabbed-part pose into the session (what it draws and
@@ -498,7 +498,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     ...(result.movedParts !== undefined && {
       movedParts: new Set([...(prev.movedParts ?? []), ...result.movedParts]),
     }),
-    bodies: { ...prev.bodies, ...result.bodies },
+    parts: { ...prev.parts, ...result.parts },
     edgeCurves: { ...prev.edgeCurves, ...result.edgeCurves },
     solveStatus: result.solveStatus,
     // The parts this tick re-posed are re-baked with it; only a part it left
@@ -635,7 +635,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     return true
   },
 
-  beginBodyDrag: (handle, worldGrab) => {
+  beginPartDrag: (handle, worldGrab) => {
     const { doc } = get()
     if (!doc) return false
     // The grab landed on where the part is DRAWN: its settled pose, falling back

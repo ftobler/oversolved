@@ -914,14 +914,14 @@ describe('inspect', () => {
     const { session } = makeSession(baseDoc(), {
       docId: 'doc-1',
       getValidation: () => ({ status: 'ok' }),
-      getBodies: () => ({ b1: { visible: true } }),
+      getParts: () => ({ b1: { visible: true } }),
     })
 
     const inspection = session.inspect()
 
     expect(inspection.docId).toBe('doc-1')
     expect(inspection.validation).toEqual({ status: 'ok' })
-    expect(inspection.bodies).toEqual({ b1: { visible: true } })
+    expect(inspection.parts).toEqual({ b1: { visible: true } })
     expect(JSON.parse(JSON.stringify(inspection))).toEqual(inspection)
   })
 

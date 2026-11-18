@@ -53,7 +53,7 @@ const PartExportImport = forwardRef<PartExportImportHandle, PartExportImportProp
           return
         }
         const name = defaultName ?? 'export'
-        const bodies = usePartEditorStore.getState().bodies
+        const bodies = usePartEditorStore.getState().parts
         const labels = usePartEditorStore.getState().partLabels
         const parts: ExportPart[] = Object.keys(bodies).map((id) => ({
           id,

@@ -29,7 +29,7 @@ interface PartHintMemo {
 
 interface PartCtxMemo {
   features: readonly PartFeature[]
-  bodies: Readonly<Record<string, PartResult>>
+  parts: Readonly<Record<string, PartResult>>
   rollbackPosition: number | null
   failedPicks: ReadonlySet<string>
   ctx: ReturnType<typeof buildPartRelationCtx>
@@ -46,22 +46,22 @@ let ctxMemo: PartCtxMemo | null = null
  */
 function partCtxFor(
   features: readonly PartFeature[],
-  bodies: Readonly<Record<string, PartResult>>,
+  parts: Readonly<Record<string, PartResult>>,
   rollbackPosition: number | null,
   failedPicks: ReadonlySet<string>,
 ) {
   if (
     ctxMemo !== null &&
     ctxMemo.features === features &&
-    ctxMemo.bodies === bodies &&
+    ctxMemo.parts === parts &&
     ctxMemo.rollbackPosition === rollbackPosition &&
     ctxMemo.failedPicks === failedPicks
   ) return ctxMemo.ctx
 
   const activeCount = rollbackPosition ?? features.length
   const activeFeatureIds = new Set(features.slice(0, activeCount).map(f => f.id))
-  const ctx = buildPartRelationCtx(features, bodies, activeFeatureIds, failedPicks)
-  ctxMemo = { features, bodies, rollbackPosition, failedPicks, ctx }
+  const ctx = buildPartRelationCtx(features, parts, activeFeatureIds, failedPicks)
+  ctxMemo = { features, parts, rollbackPosition, failedPicks, ctx }
   return ctx
 }
 
@@ -80,12 +80,12 @@ function partCtxFor(
 export function partRelationHintsFor(
   selection: ReadonlySet<string>,
   features: readonly PartFeature[],
-  bodies: Readonly<Record<string, PartResult>>,
+  parts: Readonly<Record<string, PartResult>>,
   rollbackPosition: number | null,
   editingFeatureId: string | null = null,
   failedPicks: ReadonlySet<string> = EMPTY_RELATION_SET,
 ): RelationHints {
-  const ctx = partCtxFor(features, bodies, rollbackPosition, failedPicks)
+  const ctx = partCtxFor(features, parts, rollbackPosition, failedPicks)
   if (
     hintsMemo !== null &&
     hintsMemo.selection === selection &&
@@ -106,14 +106,14 @@ export function partRelationHintsFor(
 export function usePartRelationHints(): RelationHints {
   const selection = useSketchEditorStore(s => s.normalSelection)
   const features = usePartEditorStore(s => s.features)
-  const bodies = usePartEditorStore(s => s.bodies)
+  const parts = usePartEditorStore(s => s.parts)
   const solveResults = usePartEditorStore(s => s.solveResults)
   const rollbackPosition = useEditorState(s => s.rollbackPosition)
   const editingFeatureId = useEditorState(s => s.editingFeatureId)
   const failedPicks = useMemo(() => failedPickQueries(solveResults), [solveResults])
   return useMemo(
-    () => partRelationHintsFor(selection, features, bodies, rollbackPosition, editingFeatureId, failedPicks),
-    [selection, features, bodies, rollbackPosition, editingFeatureId, failedPicks],
+    () => partRelationHintsFor(selection, features, parts, rollbackPosition, editingFeatureId, failedPicks),
+    [selection, features, parts, rollbackPosition, editingFeatureId, failedPicks],
   )
 }
 

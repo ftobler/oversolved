@@ -54,10 +54,10 @@ function setupStore(features: PartFeature[]) {
     features,
     visibleFeatures: new Set(features.map(f => f.id)),
     doc: null,
-    visibleBodies: new Set(),
+    visibleParts: new Set(),
     partLabels: {},
     solveResults: {},
-    bodies: {},
+    parts: {},
     isRebuilding: false,
     featureTimings: {},
   })

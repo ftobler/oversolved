@@ -32,7 +32,7 @@ function callbacks(): PartEditorCallbacks {
 function renderEditing(feature: PartFeature, solveResults: Record<string, unknown>, bodies: Record<string, PartResult> = {}) {
   usePartEditorStore.setState({
     features: [feature], visibleFeatures: new Set([feature.id]), doc: { version: 1, kind: 'part', features: [feature] } as never,
-    visibleBodies: new Set(), partLabels: {}, solveResults, bodies, isRebuilding: false, featureTimings: {},
+    visibleParts: new Set(), partLabels: {}, solveResults, parts: bodies, isRebuilding: false, featureTimings: {},
   })
   useEditorState.setState({
     editingFeatureId: feature.id, rollbackPosition: null,
@@ -121,8 +121,8 @@ describe('feature status line', () => {
     const rowClick = vi.fn()
     const cb = callbacks()
     usePartEditorStore.setState({
-      features: [EXTRUDE], visibleFeatures: new Set(['ex1']), doc: null, visibleBodies: new Set(), partLabels: {},
-      solveResults: { ex1: { status: 'exception', exception: 'sketch not found' } }, bodies: {}, isRebuilding: false, featureTimings: {},
+      features: [EXTRUDE], visibleFeatures: new Set(['ex1']), doc: null, visibleParts: new Set(), partLabels: {},
+      solveResults: { ex1: { status: 'exception', exception: 'sketch not found' } }, parts: {}, isRebuilding: false, featureTimings: {},
     })
     useEditorState.setState({ editingFeatureId: 'ex1', normalSelection: new Set(), activePickField: null, modeStack: [] })
     render(

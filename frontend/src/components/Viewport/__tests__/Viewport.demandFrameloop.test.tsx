@@ -110,10 +110,10 @@ beforeEach(() => {
   h.gizmoProps = null
   usePartEditorStore.setState({
     features: [],
-    bodies: {},
-    pickBodies: {},
+    parts: {},
+    pickParts: {},
     visibleFeatures: new Set(),
-    visibleBodies: new Set(),
+    visibleParts: new Set(),
     solveResults: {},
     otherSketches: {},
     doc: null,

@@ -70,7 +70,7 @@ describe('Delete on a body plus its generator feature', () => {
       { wrapper: Wrapper }
     )
 
-    await waitFor(() => expect(usePartEditorStore.getState().bodies?.body_ex1).toBeTruthy())
+    await waitFor(() => expect(usePartEditorStore.getState().parts?.body_ex1).toBeTruthy())
     fireEvent.click(screen.getByTitle('Feature mode'))
 
     act(() => { useSketchEditorStore.getState().addToNormalSelection('@ex1') })
@@ -102,7 +102,7 @@ describe('Delete on a body plus its generator feature', () => {
       { wrapper: Wrapper }
     )
 
-    await waitFor(() => expect(usePartEditorStore.getState().bodies?.body_ex1).toBeTruthy())
+    await waitFor(() => expect(usePartEditorStore.getState().parts?.body_ex1).toBeTruthy())
     fireEvent.click(screen.getByTitle('Feature mode'))
 
     act(() => {
@@ -144,7 +144,7 @@ describe('Delete on a body plus its generator feature', () => {
       { wrapper: Wrapper }
     )
 
-    await waitFor(() => expect(usePartEditorStore.getState().bodies?.body_ex1).toBeTruthy())
+    await waitFor(() => expect(usePartEditorStore.getState().parts?.body_ex1).toBeTruthy())
     fireEvent.click(screen.getByTitle('Feature mode'))
 
     // Mixed: a sketch entity plus a 3D feature target, with tile hover set.

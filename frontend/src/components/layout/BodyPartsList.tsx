@@ -9,8 +9,8 @@ import iconDotsIcon from '@/assets/icons/dots.svg'
 
 export function BodyPartsList() {
   const doc = usePartEditorStore(s => s.doc)
-  const bodies = usePartEditorStore(s => s.bodies)
-  const visibleBodies = usePartEditorStore(s => s.visibleBodies)
+  const bodies = usePartEditorStore(s => s.parts)
+  const visibleBodies = usePartEditorStore(s => s.visibleParts)
   const partLabels = usePartEditorStore(s => s.partLabels)
   const selection = useSketchEditorStore(s => s.normalSelection)
 

@@ -42,7 +42,7 @@ const cut1: PartFeature = { id: 'cut1', kind: 'extrude', extrude: { sketch: '@sk
 
 beforeEach(() => {
   calls.length = 0
-  usePartEditorStore.setState({ features: [ex1, cut1], bodies: {} })
+  usePartEditorStore.setState({ features: [ex1, cut1], parts: {} })
   useEditorState.setState({
     normalSelection: new Set(),
     selectedPicks: new Map(),

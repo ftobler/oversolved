@@ -82,10 +82,10 @@ describe('part editor empty-space click clears the selection', () => {
     clearSketchCallbacks()
     usePartEditorStore.setState({
     features: [],
-    bodies: {},
-    pickBodies: {},
+    parts: {},
+    pickParts: {},
     visibleFeatures: new Set(),
-    visibleBodies: new Set(),
+    visibleParts: new Set(),
     solveResults: {},
     otherSketches: {},
     doc: null,

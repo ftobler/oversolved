@@ -144,10 +144,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const features = usePartEditorStore(s => s.features) as Feature[]
   const doc = usePartEditorStore(s => s.doc)
   const visibleFeatures = usePartEditorStore(s => s.visibleFeatures)
-  const visibleBodies = usePartEditorStore(s => s.visibleBodies)
+  const visibleBodies = usePartEditorStore(s => s.visibleParts)
   const solveResults = usePartEditorStore(s => s.solveResults) as Record<string, SketchData> | undefined
-  const bodies = usePartEditorStore(s => s.bodies)
-  const pickBodies = usePartEditorStore(s => s.pickBodies)
+  const bodies = usePartEditorStore(s => s.parts)
+  const pickBodies = usePartEditorStore(s => s.pickParts)
   const otherSketches = usePartEditorStore(s => s.otherSketches) as Record<string, Sketch>
   const rollbackPosition = useEditorState(s => s.rollbackPosition) ?? undefined
   const ghostMode = useEditorState(s => s.ghostMode)

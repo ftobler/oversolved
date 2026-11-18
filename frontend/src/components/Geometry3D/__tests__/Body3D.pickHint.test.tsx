@@ -56,7 +56,7 @@ const fi1: PartFeature = { id: 'fi1', kind: 'fillet', fillet: { edges: [pickOne,
 function setSolve(failedEdges: string[] = []) {
   usePartEditorStore.setState({
     features: [ex1, fi1],
-    bodies: {
+    parts: {
       body_ex1: {
         id: 'body_ex1', created_by: 'ex1', modified_by: [],
         edges, edge_queries: [pickOne, pickTwo],
@@ -117,7 +117,7 @@ describe('Body3D picked-primitive hint', () => {
   it('a built fillet draws no pick and still tints the faces it created', async () => {
     // The blend consumed both picked edges: they are no longer on the body, and
     // the two blend faces now name the fillet as their creator.
-    usePartEditorStore.setState({ features: [ex1, fi1], bodies: {} })
+    usePartEditorStore.setState({ features: [ex1, fi1], parts: {} })
     useEditorState.setState({ normalSelection: new Set(['@fi1']) })
     const built: Mesh3D = { ...mesh, face_created_by: ['fi1'] }
     await renderBody({ mesh: built, edgeQueries: [] })
@@ -132,7 +132,7 @@ describe('Body3D picked-primitive hint', () => {
     const shellFeature: PartFeature = { id: 'sh1', kind: 'shell', shell: { faces: [pickedFace], thickness: 1 } }
     usePartEditorStore.setState({
       features: [ex1, shellFeature],
-      bodies: {
+      parts: {
         body_ex1: {
           id: 'body_ex1', created_by: 'ex1', modified_by: [],
           mesh: { vertices: [], faces: [], face_queries: [pickedFace] },

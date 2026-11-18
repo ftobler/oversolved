@@ -983,7 +983,7 @@ describe('useAssemblyUndoRedo', () => {
     useAssemblyStore.getState().setSnapshot({ ...DEFAULT_ASSEMBLY_EDITOR_DATA, doc: initial })
     act(() => {
       useAssemblyStore.getState().setSolveResult({
-        transforms: {}, bodies: {}, edgeCurves: {}, anchors: {}, pickGeometry: [],
+        transforms: {}, parts: {}, edgeCurves: {}, anchors: {}, pickGeometry: [],
         entityMateRefs: {
           [VERT_A]: [{ part: 'p1', anchor: 'a_v' }],
           [VERT_B]: [{ part: 'p2', anchor: 'b_v' }],

@@ -116,7 +116,7 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
   function publishPickLookup() {
     act(() => {
       useAssemblyStore.getState().setSolveResult({
-        transforms: {}, bodies: {}, edgeCurves: {}, anchors: {}, pickGeometry: [],
+        transforms: {}, parts: {}, edgeCurves: {}, anchors: {}, pickGeometry: [],
         entityMateRefs: ENTITY_MATE_REFS, solveStatus: null,
       })
     })

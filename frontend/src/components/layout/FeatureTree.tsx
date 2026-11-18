@@ -29,7 +29,7 @@ export function FeatureTree() {
   const editingFeatureId = useEditorState(s => s.editingFeatureId)
   const visibleFeatures = usePartEditorStore(s => s.visibleFeatures)
   const solveResults = usePartEditorStore(s => s.solveResults)
-  const bodies = usePartEditorStore(s => s.bodies)
+  const bodies = usePartEditorStore(s => s.parts)
   const isRebuilding = usePartEditorStore(s => s.isRebuilding)
   const featureTimings = usePartEditorStore(s => s.featureTimings)
   const validation = usePartEditorStore(s => s.validation)

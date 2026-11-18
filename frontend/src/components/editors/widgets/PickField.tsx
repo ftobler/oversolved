@@ -79,7 +79,7 @@ export function PickFieldWidget({
   // geometry is the fix). Values added since the solve simply are not in either
   // set and stay neutral.
   const solveResult = usePartEditorStore(s => s.solveResults?.[fid])
-  const storeBodies = usePartEditorStore(s => s.bodies)
+  const storeBodies = usePartEditorStore(s => s.parts)
   const effectiveBodies = bodies ?? storeBodies
   const solveSet = (key: string): ReadonlySet<string> | undefined => {
     if (typeof solveResult !== 'object' || solveResult === null) return undefined

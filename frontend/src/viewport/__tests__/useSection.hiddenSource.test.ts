@@ -26,7 +26,7 @@ function bodyAt(z: number): PartResult {
 }
 
 function setBodies(z: number): void {
-  usePartEditorStore.setState({ bodies: { body_ex1: bodyAt(z) } })
+  usePartEditorStore.setState({ parts: { body_ex1: bodyAt(z) } })
 }
 
 describe('section on a solve-derived face source', () => {

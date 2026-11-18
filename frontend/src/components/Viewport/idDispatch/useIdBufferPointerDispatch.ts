@@ -496,7 +496,7 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         // why, instead of storing a source that would auto-disable later.
         if (
           hit!.layer === FACE_LAYER_NAME
-          && !faceFrameFromSolve(usePartEditorStore.getState().bodies, hit!.entityKey, hit!.pickKey)
+          && !faceFrameFromSolve(usePartEditorStore.getState().parts, hit!.entityKey, hit!.pickKey)
         ) {
           useSectionStore.getState().setPickError(SECTION_FACE_NOT_FLAT_REASON)
           setLastClickIdHit(true)

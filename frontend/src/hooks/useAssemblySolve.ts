@@ -318,14 +318,14 @@ export function useAssemblySolve(
           useAssemblyStore.getState().setDragSolvedPose(transforms[grab])
         }
         delete transforms[grab]
-        const payloadBodies = { ...res.payload.bodies }
-        delete payloadBodies[grab]
-        const bodies = toPartResults(payloadBodies)
-        const edgeCurves = toEdgeCurves(payloadBodies)
+        const payloadParts = { ...res.payload.bodies }
+        delete payloadParts[grab]
+        const parts = toPartResults(payloadParts)
+        const edgeCurves = toEdgeCurves(payloadParts)
         useAssemblyStore.getState().setDragSolveResult({
           transforms,
           movedParts: res.payload.movedParts ? new Set(res.payload.movedParts) : undefined,
-          bodies,
+          parts,
           edgeCurves,
           solveStatus: liveStatus(res.payload.status),
         })
@@ -336,7 +336,7 @@ export function useAssemblySolve(
       useAssemblyStore.getState().setSolveResult({
         transforms: res.payload.transforms,
         movedParts: res.payload.movedParts ? new Set(res.payload.movedParts) : undefined,
-        bodies: toPartResults(res.payload.bodies),
+        parts: toPartResults(res.payload.bodies),
         edgeCurves: toEdgeCurves(res.payload.bodies),
         entityMateRefs: buildEntityMateRefs(res.payload.bodies, res.payload.anchorDescriptors),
         anchors,

@@ -33,8 +33,8 @@ describe('partEditorStore publication contract', () => {
   it('publishSolve writes the solve facts and defaults clear them', () => {
     usePartEditorStore.getState().publishSolve({
       solveResults: { sk1: { solved: {} } },
-      bodies: {},
-      pickBodies: {},
+      parts: {},
+      pickParts: {},
       featureTimings: { sk1: 4 },
       validation: null,
     })
@@ -48,7 +48,7 @@ describe('partEditorStore publication contract', () => {
   it('publishDerived writes the doc-derived view data', () => {
     usePartEditorStore.getState().publishDerived({
       visibleFeatures: new Set(['sk1']),
-      visibleBodies: new Set(['b1']),
+      visibleParts: new Set(['b1']),
       partLabels: { b1: 'part 1' },
       otherSketches: {},
       isRebuilding: true,
@@ -56,7 +56,7 @@ describe('partEditorStore publication contract', () => {
 
     const store = usePartEditorStore.getState()
     expect(store.visibleFeatures.has('sk1')).toBe(true)
-    expect(store.visibleBodies?.has('b1')).toBe(true)
+    expect(store.visibleParts?.has('b1')).toBe(true)
     expect(store.partLabels.b1).toBe('part 1')
     expect(store.isRebuilding).toBe(true)
   })

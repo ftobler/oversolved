@@ -54,7 +54,7 @@ function mountHost(initial: AssemblyDoc) {
   const swings: number[] = []
   const raw = createAssemblyPointerAdapter({
     beginPartManipulation: store.beginPartManipulation,
-    beginPartDrag: store.beginBodyDrag,
+    beginPartDrag: store.beginPartDrag,
     setDragTarget: store.setDragTarget,
     dragPartTranslate: store.dragPartTranslate,
     rotatePartGizmo: (axis, angle, pivot) => {

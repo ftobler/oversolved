@@ -106,7 +106,7 @@ function seedAssembly() {
     doc,
     instances: [{ handle: 'p1', doc_id: 'doc-p1', doc_rev: 1, transform: { ...IDENTITY_TRANSFORM } }],
     transforms: { p1: { ...IDENTITY_TRANSFORM } },
-    bodies: { 'p1:body_0': { id: 'p1:body_0', created_by: 'p1', modified_by: [], mesh: {} } } as never,
+    parts: { 'p1:body_0': { id: 'p1:body_0', created_by: 'p1', modified_by: [], mesh: {} } } as never,
   })
   useAssemblyStore.getState().selectPart('p1')
 }

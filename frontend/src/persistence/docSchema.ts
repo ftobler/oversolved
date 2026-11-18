@@ -142,7 +142,7 @@ const MIGRATION_STEPS: MigrationStep[] = [
   { id: 'canonical-feature-params', to: 3, apply: stepCanonicalFeatureParams },
   { id: 'feature-refs-absolute', to: 3, apply: stepFeatureRefsAbsolute },
   { id: 'drop-dead-axis-constraints', to: 2, apply: stepDropDeadAxisConstraints },
-  { id: 'plural-body-picks', to: 2, apply: stepPluralBodyPicks },
+  { id: 'plural-body-picks', to: 2, apply: stepPluralPartPicks },
   { id: 'drop-redundant-inline-step-payload', to: 2, apply: stepDropRedundantInlineStepPayload },
 ]
 
@@ -192,7 +192,7 @@ function stepDropDeadAxisConstraints(doc: DocRecord): number {
   return part ? dropDeadAxisConstraints(part) : 0
 }
 
-function stepPluralBodyPicks(doc: DocRecord): number {
+function stepPluralPartPicks(doc: DocRecord): number {
   const part = migratablePartDoc(doc)
   return part ? migrateLegacyPartPicks(part) : 0
 }
@@ -1067,7 +1067,7 @@ export function arrayCountProblem(
   return field === 'count_2' ? arrayCellsProblem(otherCount, resolved) : null
 }
 
-function checkDeleteBody(sub: DocRecord, field: string): void {
+function checkDeletePart(sub: DocRecord, field: string): void {
   checkOptional(sub, 'bodies', field, checkRefList)
 }
 
@@ -1336,7 +1336,7 @@ const FEATURE_DEF_CHECKS = new Map<string, (sub: DocRecord, field: string) => vo
   ['circular_pattern', checkCircularPattern],
   ['curve_pattern', checkCurvePattern],
   ['instance_pattern', checkInstancePattern],
-  ['delete_body', checkDeleteBody],
+  ['delete_body', checkDeletePart],
   ['hole', checkHole],
   ['transform', checkTransform],
   ['mirror', checkMirror],

@@ -121,7 +121,7 @@ describe('assembly pose ownership', () => {
     // A live drag tick re-poses the follower p2; the pick snapshot stays baked.
     useAssemblyStore.getState().setDragSolveResult({
       transforms: { p2: { ...IDENTITY_TRANSFORM, tx: 7 } },
-      bodies: {}, edgeCurves: {}, solveStatus: null,
+      parts: {}, edgeCurves: {}, solveStatus: null,
     })
     useAssemblyStore.getState().cancelPartManipulation()
 

@@ -145,10 +145,10 @@ beforeEach(() => {
   })
   usePartEditorStore.setState({
     features: [],
-    bodies: {},
-    pickBodies: {},
+    parts: {},
+    pickParts: {},
     visibleFeatures: new Set(),
-    visibleBodies: new Set(),
+    visibleParts: new Set(),
     solveResults: {},
     otherSketches: {},
     doc: null,
@@ -167,7 +167,7 @@ const extrude: Feature = makeFeature('ex1', 'extrude')
 
 describe('Viewport body interactivity', () => {
   it('does not force bodies inert when no feature is active', () => {
-    usePartEditorStore.setState({ features: [sketch, extrude], bodies: makeBody() })
+    usePartEditorStore.setState({ features: [sketch, extrude], parts: makeBody() })
     const { container } = render(<Viewport />)
     container.querySelectorAll('[data-testid="body-3d"]').forEach(el => {
       // Viewport leaves Body3D's `interactive` default (true) in place.
@@ -182,7 +182,7 @@ describe('Viewport body interactivity', () => {
     // by making bodies inert -- so Body3D must NOT be forced interactive=false.
     usePartEditorStore.setState({
     features: [sketch, extrude],
-    bodies: makeBody(),
+    parts: makeBody(),
   })
   useEditorState.setState({
     activeSketchFeatureId: 'sk1',
@@ -202,7 +202,7 @@ describe('Viewport body interactivity', () => {
     usePartEditorStore.setState({
       features: [sketch, extrude],
       visibleFeatures: new Set(['sk1', 'ex1']),
-      bodies: {
+      parts: {
         body_ex1: {
           id: 'body_ex1',
           created_by: 'ex1',
@@ -210,7 +210,7 @@ describe('Viewport body interactivity', () => {
           mesh,
         } as unknown as PartResult,
       },
-      visibleBodies: undefined,
+      visibleParts: undefined,
     })
     useViewOptionsStore.setState({ curvature: true, curvature_kind: 'mean', curvatureAutoRange: null })
 
@@ -227,8 +227,8 @@ describe('Viewport body interactivity', () => {
   it('ghostMode renders pickBodies and shows a preview edge overlay', () => {
     usePartEditorStore.setState({
     features: [sketch, extrude],
-    bodies: makeBody(),
-    pickBodies: makeBody(),
+    parts: makeBody(),
+    pickParts: makeBody(),
   })
   useEditorState.setState({
     ghostMode: true,
@@ -252,8 +252,8 @@ describe('Viewport body interactivity', () => {
     previewEdgeOverlayProps.mockClear()
     usePartEditorStore.setState({
     features: [sketch, extrude],
-    bodies: makeBody(),
-    pickBodies: makeBody(),
+    parts: makeBody(),
+    pickParts: makeBody(),
   })
   useEditorState.setState({
     ghostMode: true,
@@ -289,9 +289,9 @@ describe('Viewport delete_body ghost preview', () => {
     usePartEditorStore.setState({
     features: [sketch, extrude, ex2, del],
     visibleFeatures: new Set(['sk1', 'ex1', 'ex2', 'db1']),
-    bodies: preview,
-    pickBodies: twoBodies(),
-    visibleBodies: visibleOf(preview),
+    parts: preview,
+    pickParts: twoBodies(),
+    visibleParts: visibleOf(preview),
   })
   useEditorState.setState({
     ghostMode: true,
@@ -312,9 +312,9 @@ describe('Viewport delete_body ghost preview', () => {
     usePartEditorStore.setState({
     features: [sketch, extrude, ex2, del],
     visibleFeatures: new Set(['sk1', 'ex1', 'ex2', 'db1']),
-    bodies: preview,
-    pickBodies: twoBodies(),
-    visibleBodies: visibleOf(preview),
+    parts: preview,
+    pickParts: twoBodies(),
+    visibleParts: visibleOf(preview),
   })
   useEditorState.setState({
     ghostMode: true,
@@ -334,9 +334,9 @@ describe('Viewport delete_body ghost preview', () => {
     usePartEditorStore.setState({
     features: [sketch, extrude, ex2, del],
     visibleFeatures: new Set(['sk1', 'ex1', 'ex2', 'db1']),
-    bodies: preview,
-    pickBodies: twoBodies(),
-    visibleBodies: visibleOf(preview),
+    parts: preview,
+    pickParts: twoBodies(),
+    visibleParts: visibleOf(preview),
   })
   useEditorState.setState({
     ghostMode: true,
@@ -354,9 +354,9 @@ describe('Viewport delete_body ghost preview', () => {
     // and the mark has to carry it.
     usePartEditorStore.setState({
     features: [sketch, extrude, ex2, del],
-    bodies: {},
-    pickBodies: twoBodies(),
-    visibleBodies: undefined,
+    parts: {},
+    pickParts: twoBodies(),
+    visibleParts: undefined,
   })
   useEditorState.setState({
     ghostMode: true,
@@ -382,7 +382,7 @@ describe('Viewport overlay stacking pen', () => {
 
 describe('Viewport collision debug gate', () => {
   it('mounts IdDebugOverlay only while the collision debug option is on', () => {
-    usePartEditorStore.setState({ features: [sketch], bodies: makeBody() })
+    usePartEditorStore.setState({ features: [sketch], parts: makeBody() })
 
     useViewOptionsStore.setState({ collisionDebug: false })
     const off = render(<Viewport />)

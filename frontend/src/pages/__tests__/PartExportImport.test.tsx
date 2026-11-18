@@ -139,7 +139,7 @@ describe('PartExportImport worker export', () => {
     usePartEditorStore.setState({
       ...DEFAULT_PART_EDITOR_DATA,
       doc: DOC,
-      bodies: TWO_BODIES,
+      parts: TWO_BODIES,
       partLabels: { body_a: 'Bracket', body_b: 'Plate' },
     })
     exportViaWorker.mockResolvedValue(new Uint8Array([1]))
@@ -156,7 +156,7 @@ describe('PartExportImport worker export', () => {
     usePartEditorStore.setState({
       ...DEFAULT_PART_EDITOR_DATA,
       doc: DOC,
-      bodies: { body_a: TWO_BODIES.body_a },
+      parts: { body_a: TWO_BODIES.body_a },
       partLabels: { body_a: 'Bracket' },
     })
     exportViaWorker.mockResolvedValue(new Uint8Array([1]))
@@ -173,7 +173,7 @@ describe('PartExportImport worker export', () => {
     usePartEditorStore.setState({
       ...DEFAULT_PART_EDITOR_DATA,
       doc: DOC,
-      bodies: TWO_BODIES,
+      parts: TWO_BODIES,
       partLabels: { body_a: 'Bracket', body_b: 'Plate' },
     })
     useSketchEditorStore.getState().setNormalSelection(new Set(['@body_a', '@body_b']))
@@ -196,7 +196,7 @@ describe('PartExportImport worker export', () => {
     usePartEditorStore.setState({
       ...DEFAULT_PART_EDITOR_DATA,
       doc: DOC,
-      bodies: TWO_BODIES,
+      parts: TWO_BODIES,
       partLabels: { body_a: 'Bracket', body_b: 'Plate' },
     })
     useSketchEditorStore.getState().setNormalSelection(new Set(['@body_a', '@body_b']))
@@ -221,7 +221,7 @@ describe('PartExportImport worker export', () => {
     usePartEditorStore.setState({
       ...DEFAULT_PART_EDITOR_DATA,
       doc: DOC,
-      bodies: TWO_BODIES,
+      parts: TWO_BODIES,
       partLabels: { body_a: 'Bracket', body_b: 'Plate' },
     })
     useSketchEditorStore.getState().setNormalSelection(new Set(['@body_a']))
@@ -359,7 +359,7 @@ describe('PartExportImport length unit', () => {
     usePartEditorStore.setState({
       ...DEFAULT_PART_EDITOR_DATA,
       doc: DOC,
-      bodies: TWO_BODIES,
+      parts: TWO_BODIES,
       partLabels: { body_a: 'Bracket', body_b: 'Plate' },
     })
     useSketchEditorStore.getState().setNormalSelection(new Set(['@body_a', '@body_b']))

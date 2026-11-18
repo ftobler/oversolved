@@ -82,8 +82,8 @@ describe('delete_body ghost preview', () => {
 
     releaseEditSolve({ result: {}, bodies: {}, pick_bodies: BODIES, _build_state: null })
     await waitFor(() => expect(useEditorState.getState().ghostMode).toBe(true))
-    expect(usePartEditorStore.getState().pickBodies).toEqual(BODIES)
+    expect(usePartEditorStore.getState().pickParts).toEqual(BODIES)
     // The delete emptied the body store, so the ghosts are all that is left.
-    expect(usePartEditorStore.getState().bodies).toEqual({})
+    expect(usePartEditorStore.getState().parts).toEqual({})
   })
 })
