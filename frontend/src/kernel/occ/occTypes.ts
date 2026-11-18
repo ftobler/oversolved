@@ -705,6 +705,13 @@ export interface OccBndBox extends OccDisposable {
   GetZMax(): number
 }
 
+/** `OversolvedMesh.FaceTriangulation`'s result: x, y, z per node and three
+ *  node indices per triangle, flat. */
+export interface OccFaceTriangulation {
+  nodes: Float64Array
+  triangles: Int32Array
+}
+
 /** Opaque embind enum value (e.g. `TopAbs_ShapeEnum.TopAbs_FACE`). */
 export type OccShapeEnumValue = object
 
@@ -880,6 +887,16 @@ export interface OccModule extends OccBaseModule {
   ) => OccPrismBuilder
   ShapeFix_Face_2: new (face: OccShape) => OccShapeFixFace
   ShapeFix_Wire_1: new () => OccShapeFixWire
+
+  // ─── bulk readers ───
+  // Hand-written helpers of the oversolved-occt build (r3 on), not OCCT API:
+  // one call returns what the per-node / per-triangle embind reads assemble.
+  OversolvedMesh: {
+    /** An already meshed face's triangulation as JS-owned copies, or null when
+     *  the face has none. Nodes are world-space (the face location applied),
+     *  triangles 0-based with the REVERSED winding flip done. */
+    FaceTriangulation(face: OccShape): OccFaceTriangulation | null
+  }
 
   // ─── geometry readers ───
   GProp_GProps_1: new () => OccGProps

@@ -649,51 +649,30 @@ interface FaceTessellation {
  * emit triangles with REVERSED-orientation winding flipped -- node-for-node, so
  * the assembled mesh matches Python's. Returns empty when the face has no
  * triangulation.
+ *
+ * The read is one `OversolvedMesh.FaceTriangulation` call (r3 build helper)
+ * that does the location transform and the winding flip in C++ and hands back
+ * JS-owned typed-array copies, so no per-node or per-triangle proxy is made and
+ * nothing is left on the WASM heap. It used to be six embind crossings per node
+ * and five per triangle, each allocating a proxy that had to be deleted
+ * eagerly; faceTriangulationReal.test.ts keeps that reader as the reference and
+ * pins the two equal bit for bit.
  */
 export function tessellateFace(
   oc: OccModule,
-  scope: DisposeScope,
+  _scope: DisposeScope,
   face: OccShape,
   linearDeflection: number,
   angularDeflection: number,
 ): FaceTessellation {
   timePhase('mesh.mesher', () => meshShape(oc, face, linearDeflection, angularDeflection))
-  const loc = scope.track(new oc.TopLoc_Location_1())
-  const handle = scope.track(oc.BRep_Tool.Triangulation(face, loc, MESH_PURPOSE_NONE))
-  if (handle.IsNull()) return { vertices: [], triangles: [] }
-  const poly = handle.get()
-  if (!poly) return { vertices: [], triangles: [] }
-
-  const trsf = scope.track(loc.Transformation())
-  const reverse = isReversed(oc, face)
-
-  // `Node`/`Triangle` hand back embind proxies over freshly allocated COPIES
-  // (verified: mutating the proxy does not write back into the triangulation),
-  // so each one owns WASM memory and must be deleted here. Tracking them in the
-  // scope instead would hold one live object per mesh node until the whole shape
-  // finished -- linear in triangulation size, which is what ran the heap out on
-  // a large STEP import. Deleting eagerly keeps the live set O(1) per face.
-  // The node is transformed IN PLACE (`Transform`, not `Transformed`) so the
-  // loop allocates one object per node rather than two.
-  const vertices: Vec3[] = []
-  const nbNodes = poly.NbNodes()
-  for (let i = 1; i <= nbNodes; i++) {
-    const n = poly.Node(i)
-    n.Transform(trsf)
-    vertices.push([n.X(), n.Y(), n.Z()])
-    n.delete()
-  }
-
-  const triangles: [number, number, number][] = []
-  const nbTri = poly.NbTriangles()
-  for (let i = 1; i <= nbTri; i++) {
-    const t = poly.Triangle(i)
-    const a = t.Value(1) - 1
-    const b = t.Value(2) - 1
-    const c = t.Value(3) - 1
-    t.delete()
-    triangles.push(reverse ? [a, c, b] : [a, b, c])
-  }
+  const read = oc.OversolvedMesh.FaceTriangulation(face)
+  if (read === null) return { vertices: [], triangles: [] }
+  const { nodes, triangles: corners } = read
+  const vertices: Vec3[] = new Array(nodes.length / 3)
+  for (let i = 0, j = 0; j < nodes.length; i++, j += 3) vertices[i] = [nodes[j], nodes[j + 1], nodes[j + 2]]
+  const triangles: [number, number, number][] = new Array(corners.length / 3)
+  for (let i = 0, j = 0; j < corners.length; i++, j += 3) triangles[i] = [corners[j], corners[j + 1], corners[j + 2]]
   return { vertices, triangles }
 }
 

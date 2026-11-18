@@ -143,6 +143,8 @@ function parseModule(block: Block | undefined, src: string, name: string): Modul
  */
 const INTERFACE_CLASSES: Record<string, string[] | null> = {
   OccDisposable: null,
+  // A plain JS object of typed arrays the OversolvedMesh helper returns.
+  OccFaceTriangulation: null,
   OccPntArray: ['TColgp_Array1OfPnt'],
   OccRealArray: ['TColStd_Array1OfReal'],
   OccIntArray: ['TColStd_Array1OfInteger'],
