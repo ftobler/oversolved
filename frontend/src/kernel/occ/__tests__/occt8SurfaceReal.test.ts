@@ -11,8 +11,9 @@
 // enough for that), so a new declaration is probed without touching this file.
 // Each interface names the OCCT class(es) that implement it in INTERFACE_CLASSES;
 // an interface missing from that table fails too, so the table cannot fall
-// behind. Embind reports a bound function's arity as its `length`, and a
-// constructor's in the error it throws on a wrong argument count.
+// behind. Embind stamps a bound method's or static's arity on it as `argCount`
+// (`boundArity`; `length` reads 0 since the build's lazy invokers), and reports
+// a constructor's in the error it throws on a wrong argument count.
 //
 // Skips when OCC is absent, like every *Real suite.
 
@@ -21,6 +22,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { loadOcc } from '../loadOcc'
 import { extractOccErrorMessage, isKernelTrap, isWasmException } from '../../errors'
+import { boundArity } from './boundArity'
 
 const oc = await loadOcc()
 const OCC_TYPES = readFileSync(fileURLToPath(new URL('../occTypes.ts', import.meta.url)), 'utf8')
@@ -331,8 +333,9 @@ describe.skipIf(!oc)('occTypes.ts against the live OCCT build', () => {
             if (!m.optional || required.has(m.name)) problems.push(`${iface}: ${cls}.${m.name} is not bound`)
             continue
           }
-          if (fn.length !== m.arity) {
-            problems.push(`${iface}: ${cls}.${m.name} takes ${fn.length} arguments, occTypes declares ${m.arity}`)
+          const arity = boundArity(fn)
+          if (arity !== m.arity) {
+            problems.push(`${iface}: ${cls}.${m.name} takes ${arity} arguments, occTypes declares ${m.arity}`)
           }
         }
         for (const name of required) {
@@ -377,11 +380,9 @@ describe.skipIf(!oc)('occTypes.ts against the live OCCT build', () => {
           if (!m.optional) problems.push(`${entry.name}.${m.name} is not bound`)
           continue
         }
-        if (m.arity >= 0 && (member as (...a: unknown[]) => unknown).length !== m.arity) {
-          problems.push(
-            `${entry.name}.${m.name} takes ${(member as (...a: unknown[]) => unknown).length} arguments, ` +
-            `occTypes declares ${m.arity}`,
-          )
+        const arity = m.arity >= 0 ? boundArity(member) : m.arity
+        if (arity !== m.arity) {
+          problems.push(`${entry.name}.${m.name} takes ${arity} arguments, occTypes declares ${m.arity}`)
         }
       }
     }

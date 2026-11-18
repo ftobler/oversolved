@@ -1,7 +1,7 @@
 {
   "_comment": "Single source of truth for the pinned OpenCascade build, written by `node scripts/occProvision.mjs repin <tag>` from the release's own manifest.json. occ:install downloads the release files, verify and provision refuse any byte that does not hash to `artifacts`; the version-consistency test reads `occt`.",
   "repo": "ftobler/oversolved-occt",
-  "tag": "occt-8.0.1-r2",
+  "tag": "occt-8.0.1-r3",
   "occt": {
     "version": "8.0.1",
     "tag": "V8.0.1",
@@ -10,11 +10,11 @@
     "sha256": "8598e012a058902a673b57f2ee8259d435d18c996b1728d8d9fb2a92712a662f"
   },
   "emcc": "emcc (Emscripten gcc/clang-like replacement + linker emulating GNU ld) 6.0.13 (e13ee988ce3d87a738dd8f3661d02223308c412a)",
-  "build_commit": "1f3b7945504dbd4ca6baed97524f3fd7b3c22469",
+  "build_commit": "2d888f36721be579263a7e6b8854e7738cf1d575",
   "artifacts": {
     "LICENSE_LGPL_21.txt": "e237fa56668030e928551ddd60f05df5fe957f75eab874bbd017e085ed722e7c",
     "OCCT_LGPL_EXCEPTION.txt": "04580a884ea6cea294402649ff7b5cbb167d47462d1340a4ed33e550db10a81b",
-    "occt.js": "940d360a4462d63a8288b72c3b4fa9b49b56feaa454ce5b904423f776e23d903",
-    "occt.wasm": "f49dde1ef8bda7e521439e0d20c9b0b51cd9005c076721b470ae25d1061a7577"
+    "occt.js": "94df2f6a9d0f0ae0dcb95a6f761eb2f4282fa6c5894c05fc8ebedda58b89025c",
+    "occt.wasm": "ff66799b0c423153c48cf171afa1d03731abbe3768c10d9d1cebec6197a739f6"
   }
 }
