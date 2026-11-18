@@ -91,9 +91,10 @@ describe('useAssemblySolve rebuild', () => {
     // The empty map is the wire's cold signal: solveAssembly skips the bundle
     // cache lookup per part and cannot key a cache write either.
     expect(h.solveAssemblyViaWorker.mock.calls[0][2]).toEqual({})
-    // Bypassing the cache needs no content hashes at all, so a rebuild never
-    // pays for listing the workspace entries.
-    expect(h.listEntries).not.toHaveBeenCalled()
+    // A rebuild with no prior solve still lists once: the entry list is what
+    // tells a sub-assembly from a part, and the hashes it computes are then
+    // dropped for the cold wire. With a prior solve the cached list is reused.
+    expect(h.listEntries).toHaveBeenCalledTimes(1)
   })
 
   it('is one-shot: the next plain solve sends the real hash map again', async () => {

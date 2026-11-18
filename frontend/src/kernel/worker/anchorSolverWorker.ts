@@ -211,6 +211,7 @@ export async function handleSolveAssembly(
         movedParts: result.movedParts,
         bodies: result.bodies,
         anchors: result.anchors,
+        leaves: result.leaves,
         anchorDescriptors: result.anchorDescriptors,
         status: result.status,
       },

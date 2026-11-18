@@ -99,7 +99,7 @@ import { useEditorModeStore } from '@/stores/editorModeStore'
 import { backendBundle } from '@/adapters/backend'
 import { MAX_STEP_IMPORT_BYTES } from '@/stores/documentStore/stepImport'
 import { findMate } from '@/utils/assemblyMutations'
-import { tick, renderEditor, installSessionFromList, insertPart, rowAction, cardAction } from './AssemblyEditor.harness'
+import { tick, renderEditor, installSessionFromList, insertPart, pickerItem, rowAction, cardAction } from './AssemblyEditor.harness'
 
 // A document a partial import leaves behind: the instance names a part the
 // workspace does not hold, which is the state the picker exists to repair.
@@ -214,6 +214,39 @@ describe('AssemblyEditor (Stage 6b)', () => {
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1))
     await insertPart('Bracket')
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2))
+  })
+
+  // A sub-assembly is a directory row, so the picker grows an Assemblies group.
+  // An assembly that already contains this one can never be placed inside it:
+  // it stays listed so the user can read the cycle path, but it cannot be
+  // selected or inserted.
+  it('lists assemblies in their own group and disables a cycle with its path', async () => {
+    h.list = [
+      { uuid: 'part-1', name: 'Bracket', kind: 'part', meta: { rev: 5 } },
+      { uuid: 'sub', name: 'Gripper', kind: 'assembly', meta: { rev: 1 } },
+      { uuid: 'free', name: 'Stand', kind: 'assembly', meta: { rev: 1 } },
+    ]
+    // Gripper already contains this assembly, so the reverse placement cycles.
+    installSessionFromList(h, { sub: ['asm-1'] })
+    await renderLoaded()
+
+    act(() => { executeCommand('insert_part_instance') })
+    await waitFor(() => expect(pickerItem('Gripper')).toBeTruthy())
+
+    expect(screen.getByLabelText('Assemblies')).toBeTruthy()
+    const gripper = pickerItem('Gripper')!.closest('button')!
+    expect(gripper).toBeDisabled()
+    expect(gripper.getAttribute('title')).toBe(
+      'Adding Gripper would make a circular assembly: Gripper > this assembly',
+    )
+
+    // A legal assembly is still pickable and lands as an ordinary instance.
+    const stand = pickerItem('Stand')!.closest('button')!
+    expect(stand).not.toBeDisabled()
+    fireEvent.click(stand)
+    fireEvent.click(screen.getByRole('button', { name: 'Insert' }))
+    await tick()
+    expect(useAssemblyStore.getState().instances.map(inst => inst.doc_id)).toEqual(['free'])
   })
 
   it('deleting the selected instance clears the selection', async () => {

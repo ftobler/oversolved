@@ -87,6 +87,12 @@ export const PART_NAMING_KEEP: readonly PartNamingKeep[] = [
   {
     name: 'bodies',
     kinds: ['property'],
+    files: ['kernel/assemblyBundle.ts', 'kernel/assemblyComposite.ts'],
+    reason: 'the composite reads the solve reply\'s own bodies field; its payload types mirror that wire shape rather than naming the parts again',
+  },
+  {
+    name: 'bodies',
+    kinds: ['property'],
     files: ['kernel/occ/measure.ts', 'kernel/occ/measureTolerance.ts'],
     reason: 'measure result and expectation field: the oracle, drive and regression manifest count bodies under this key (frontend/scripts/regressions.ts reads it)',
   },

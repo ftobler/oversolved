@@ -33,6 +33,7 @@ export function toPartResults(parts: Record<string, MeshPayload[]>): Record<stri
         created_by: handle,
         modified_by: [],
         mesh: { vertices: m.vertices, faces: m.indices },
+        ...(m.leafPath !== undefined && { leaf_path: m.leafPath }),
       }
     })
   }

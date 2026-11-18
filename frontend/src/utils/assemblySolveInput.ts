@@ -15,6 +15,7 @@ export function partSpecs(doc: AssemblyDoc): PartInputSpec[] {
       doc_id: f.instance!.doc_id,
       transform: f.instance!.transform,
       fixed: f.instance!.fixed,
+      visible: f.instance!.visible,
     }))
 }
 

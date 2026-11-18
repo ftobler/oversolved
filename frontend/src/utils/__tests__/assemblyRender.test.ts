@@ -134,6 +134,26 @@ describe('getAssemblyPartGroups', () => {
     expect(groups.map(g => g.selected)).toEqual([false, true])
   })
 
+  it('filters one child leaf by the view-only eye and highlights the selected one', () => {
+    const leaf = (index: number, leafPath: string): PartResult => ({
+      ...part('sub', index),
+      leaf_path: leafPath,
+    })
+    const parts: Record<string, PartResult> = {
+      'sub:body_0': leaf(0, 'left'),
+      'sub:body_1': leaf(1, 'right'),
+    }
+    const all = getAssemblyPartGroups(parts, [instance('sub')], null, new Set())
+    expect(all[0].items.map(item => item.leafPath)).toEqual(['left', 'right'])
+
+    const filtered = getAssemblyPartGroups(parts, [instance('sub')], null, new Set(), {}, {
+      hiddenLeafPaths: new Set(['sub/left']),
+      selectedLeafPath: 'right',
+    })
+    expect(filtered[0].items.map(item => item.leafPath)).toEqual(['right'])
+    expect(filtered[0].selectedLeaf).toBe('right')
+  })
+
   it('offsets only the dragged part, by the drag delta', () => {
     const drag = session('p2', IDENTITY_TRANSFORM, { ...IDENTITY_TRANSFORM, tx: 3, ty: 4 })
     const groups = getAssemblyPartGroups(partDict('p1', 'p2'), [instance('p1'), instance('p2')], drag, new Set())

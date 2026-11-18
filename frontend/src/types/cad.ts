@@ -625,6 +625,10 @@ export interface PartResult {
   // Indices into `vertices` likewise: a vertex that ends no visible open edge
   // (the one vertex of a full circle, the ends of a seam, a sphere pole).
   hidden_vertices?: number[]
+  // Assembly only: the child handle path inside a rigid sub-assembly whose
+  // solved body this is (`child` or `child/grandchild`). Absent for a direct
+  // part instance. The tree's view-only eye and leaf highlight key on it.
+  leaf_path?: string
 }
 
 export interface RebuildValidation {

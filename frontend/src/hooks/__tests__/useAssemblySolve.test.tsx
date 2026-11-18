@@ -24,7 +24,7 @@ vi.mock('@/kernel/worker/anchorSolverClient', () => ({
 vi.mock('@/kernel/worker/solverClient', () => ({ buildBundleViaWorker: h.buildBundleViaWorker }))
 
 import { useAssemblySolve, partSpecs, mateSpecs, currentHashes } from '@/hooks/useAssemblySolve'
-import { partBundleKey } from '@/workspace/contentHash'
+import { assemblyBundleKey, partBundleKey } from '@/workspace/contentHash'
 import { IdbWorkspaceStore } from '@/workspace/store'
 import { createWorkspaceSession } from '@/workspace/session'
 import { resetWorkspaceIdb } from '@/workspace/__tests__/idbHarness'
@@ -272,6 +272,201 @@ describe('currentHashes', () => {
 
     expect(after[workspace]).toBeDefined()
     expect(after[workspace]).not.toBe(before[workspace])
+  })
+})
+
+function childAssemblyText(): string {
+  return [
+    'kind: assembly',
+    'features:',
+    '  - id: f1',
+    '    kind: part_instance',
+    '    instance:',
+    '      handle: p1',
+    '      doc_id: doc-p1',
+    '      doc_rev: 0',
+    '      transform: { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }',
+    '',
+  ].join('\n')
+}
+
+function childSolvePayload(): import('@/kernel/worker/solverProtocol').AssemblySolveOkResponse {
+  return {
+    id: 1, kind: 'solveAssembly' as const, ok: true as const,
+    payload: {
+      transforms: { p1: { ...IDENTITY_TRANSFORM, tx: 3 } },
+      bodies: { p1: [meshPayload()] },
+      anchors: { p1: { a1: { kind: 'plane' as const, point: [3, 0, 0] as [number, number, number], axis: [0, 0, 1] as [number, number, number] } } },
+      anchorDescriptors: { p1: { a1: { geom_hash: '@u|p1', kind: 'plane' as const, created_by: 'box', point: [0, 0, 0] as [number, number, number] } } },
+      leaves: { p1: [{ doc_id: 'doc-p1', transform: { ...IDENTITY_TRANSFORM, tx: 3 }, visible: true }] },
+      status: {
+        verdict: 'fully_constrained' as const, residualNorm: 0, rank: 0, dof: 0, iters: 1,
+        mates: {}, parts: {},
+      },
+    },
+  }
+}
+
+describe('sub-assembly keys', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    installSession()
+  })
+
+  it('keys a sub-assembly recursively on its children', async () => {
+    h.listEntries.mockResolvedValue([
+      { id: 'doc-sub', kind: 'document', name: 'Sub', docKind: 'assembly', contentHash: 'sub-h' },
+      { id: 'doc-p1', kind: 'document', name: 'P1', contentHash: 'p1-h' },
+    ])
+    h.referenceEdges.mockResolvedValue({})
+    h.readEntry.mockResolvedValue({ kind: 'document', name: 'Sub', text: childAssemblyText() })
+
+    const hashes = await currentHashes(docWith(instance('sub', { doc_id: 'doc-sub' })))
+    const childKey = partBundleKey('p1-h', [])
+    expect(hashes['doc-p1']).toBe(childKey)
+    expect(hashes['doc-sub']).toBe(assemblyBundleKey('sub-h', [childKey]))
+  })
+
+  it('drops the assembly key when a child key is unknown, so the composite cannot cache-hit', async () => {
+    h.listEntries.mockResolvedValue([
+      { id: 'doc-sub', kind: 'document', name: 'Sub', docKind: 'assembly', contentHash: 'sub-h' },
+      { id: 'doc-p1', kind: 'document', name: 'P1' },
+    ])
+    h.referenceEdges.mockResolvedValue({})
+    h.readEntry.mockResolvedValue({ kind: 'document', name: 'Sub', text: childAssemblyText() })
+
+    const hashes = await currentHashes(docWith(instance('sub', { doc_id: 'doc-sub' })))
+    expect(hashes['doc-sub']).toBeUndefined()
+  })
+})
+
+describe('useAssemblySolve sub-assemblies', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    installSession()
+    h.listEntries.mockResolvedValue([
+      { id: 'doc-sub', kind: 'document', name: 'Sub', docKind: 'assembly', contentHash: 'sub-h' },
+      { id: 'doc-p1', kind: 'document', name: 'P1', contentHash: 'p1-h' },
+    ])
+    h.referenceEdges.mockResolvedValue({})
+    h.readEntry.mockResolvedValue({ kind: 'document', name: 'Sub', text: childAssemblyText() })
+    h.solveAssemblyViaWorker.mockResolvedValue(okResponse)
+  })
+
+  it('solves the child first and hands the parent one rigid bundle', async () => {
+    h.solveAssemblyViaWorker
+      .mockResolvedValueOnce(childSolvePayload())
+      .mockResolvedValueOnce(okResponse)
+
+    const { result } = renderHook(() => useAssemblySolve(
+      'asm-1',
+      docWith(instance('sub', { doc_id: 'doc-sub' })),
+    ))
+    await act(async () => { result.current.requestSolve() })
+
+    expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2)
+    // Child first: its own document, its own part.
+    expect(h.solveAssemblyViaWorker.mock.calls[0][0]).toBe('doc-sub')
+    expect(h.solveAssemblyViaWorker.mock.calls[0][1][0].doc_id).toBe('doc-p1')
+    // Parent second: the instance carries a prebuilt rigid bundle.
+    const parentPart = h.solveAssemblyViaWorker.mock.calls[1][1][0]
+    expect(parentPart.doc_id).toBe('doc-sub')
+    expect(parentPart.bundle).toBeDefined()
+    expect(Object.keys(parentPart.bundle.anchors)).toContain('p1/a1')
+    expect(parentPart.bundle.leaves[0].doc_id).toBe('doc-p1')
+  })
+
+  it('reuses the memo across a burst instead of re-solving the child', async () => {
+    h.solveAssemblyViaWorker
+      .mockResolvedValueOnce(childSolvePayload())
+      .mockResolvedValue(okResponse)
+
+    const { result } = renderHook(() => useAssemblySolve(
+      'asm-1',
+      docWith(instance('sub', { doc_id: 'doc-sub' })),
+    ))
+    await act(async () => { result.current.requestSolve() })
+    await act(async () => { result.current.requestSolve() })
+
+    // One child solve, then one parent solve per request.
+    expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(3)
+    expect(h.solveAssemblyViaWorker.mock.calls[1][0]).toBe('asm-1')
+    expect(h.solveAssemblyViaWorker.mock.calls[2][0]).toBe('asm-1')
+  })
+
+  it('carries a non-converged child verdict as a warning on the rigid instance', async () => {
+    const child = childSolvePayload()
+    const status = child.payload.status!
+    child.payload.status = {
+      ...status,
+      verdict: 'overconstrained',
+      error: 'residual above tolerance',
+    }
+    h.solveAssemblyViaWorker
+      .mockResolvedValueOnce(child)
+      .mockResolvedValueOnce(okResponse)
+
+    const { result } = renderHook(() => useAssemblySolve(
+      'asm-1',
+      docWith(instance('sub', { doc_id: 'doc-sub' })),
+    ))
+    await act(async () => { result.current.requestSolve() })
+
+    const bundle = h.solveAssemblyViaWorker.mock.calls[1][1][0].bundle
+    expect(bundle.warning).toContain('overconstrained')
+  })
+
+  it('fails the instance by name when the child document cannot be read', async () => {
+    h.readEntry.mockRejectedValue(new Error('Entry not found: doc-sub'))
+    h.solveAssemblyViaWorker.mockResolvedValueOnce({
+      ...okResponse,
+      payload: {
+        ...okResponse.payload,
+        status: {
+          verdict: 'none', residualNorm: 0, rank: 0, dof: 0, iters: 0, mates: {}, parts: {},
+        },
+      },
+    })
+
+    const { result } = renderHook(() => useAssemblySolve(
+      'asm-1',
+      docWith(instance('sub', { doc_id: 'doc-sub' })),
+    ))
+    await act(async () => { result.current.requestSolve() })
+
+    // Only the parent solve ran; the child never reached the worker.
+    expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1)
+    const status = useAssemblyStore.getState().solveStatus
+    expect(status?.parts.sub).toMatchObject({ failed: true })
+    expect(status?.parts.sub.error).toContain('cannot read assembly document')
+  })
+
+  it('refuses a cycle found at solve time instead of recursing forever', async () => {
+    // A hand-edited document places itself; the resolver's stack knows it is
+    // already the document being solved and refuses before reading it again.
+    h.listEntries.mockResolvedValue([
+      { id: 'asm-1', kind: 'document', name: 'Parent', docKind: 'assembly', contentHash: 'asm-h' },
+    ])
+    h.readEntry.mockResolvedValue({ kind: 'document', name: 'Parent', text: childAssemblyText() })
+    h.solveAssemblyViaWorker.mockResolvedValueOnce({
+      ...okResponse,
+      payload: {
+        ...okResponse.payload,
+        status: {
+          verdict: 'none', residualNorm: 0, rank: 0, dof: 0, iters: 0, mates: {}, parts: {},
+        },
+      },
+    })
+
+    const { result } = renderHook(() => useAssemblySolve(
+      'asm-1',
+      docWith(instance('sub', { doc_id: 'asm-1' })),
+    ))
+    await act(async () => { result.current.requestSolve() })
+
+    expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1)
+    const status = useAssemblyStore.getState().solveStatus
+    expect(status?.parts.sub.error).toContain('circular assembly reference')
   })
 })
 

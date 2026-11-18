@@ -154,6 +154,18 @@ describe('buildEntityMateRefs', () => {
     expect(refs[assemblyEntityKey('h1', 1, 'face', 0)]).toEqual([{ part: 'h1', anchor: 'f9' }])
   })
 
+  it('a composite leaf offers its path-prefixed anchor under the top handle', () => {
+    // The worker returns one handle per top-level instance; a sub-assembly's
+    // bodies carry the child path in their ids. A pick must name the top handle
+    // (what moves) and the path-prefixed anchor (what was picked).
+    const refs = buildEntityMateRefs({
+      sub: [withAnchors(0, { faces: [['child/a0']], edges: [], vertices: [] })],
+    })
+    expect(refs[assemblyEntityKey('sub', 0, 'face', 0)]).toEqual([
+      { part: 'sub', anchor: 'child/a0' },
+    ])
+  })
+
   it('stamps the authoring descriptor table onto each part ref, and none on a built-in', () => {
     const descriptor: MateAnchorDescriptor = {
       geom_hash: '@gdf|0,0,0', kind: 'plane', created_by: 'feat1', point: [0, 0, 0],

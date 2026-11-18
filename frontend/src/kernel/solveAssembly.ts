@@ -14,7 +14,8 @@ import type { RelayService } from './worker/solverProtocol'
 import { ASSEMBLY_BUILTIN_ANCHORS, ASSEMBLY_HANDLE } from '../utils/assemblyBuiltins'
 import { canonicalPerp } from '../utils/mateOrientation'
 import { mateKindCode, mateOffsetVector, mateParams, mateReadsAxis, unresolvedMateParams } from '../utils/mateKinds'
-import { makeTransform, rotateVector, type Vec3 } from '../utils/transform3d'
+import { composeTransforms, IDENTITY_TRANSFORM, makeTransform, rotateVector, type Vec3 } from '../utils/transform3d'
+import type { AssemblyBundle, AssemblyLeaf } from './assemblyBundle'
 import { isDevOrTestBuild } from './isDevBuild'
 import { STATUS_NAME } from '@/wasm-kernel/codec'
 import { seedAssembly } from './assemblySeed'
@@ -100,6 +101,9 @@ const MATE_STATUS_NAME = [...STATUS_NAME, 'not_converged'] as const
 export interface PartSolveResult {
   failed: boolean
   error?: string
+  /** A sub-assembly whose own solve did not fully converge. Its leaves still
+   *  enter at their last solved poses; the row shows the child's verdict. */
+  warning?: string
 }
 
 /**
@@ -142,6 +146,11 @@ export interface AssemblyBuildResponse {
    *  this one carries them so the main thread can stamp a durable descriptor on
    *  a picked MateRef without touching the render path. */
   anchorDescriptors: Record<string, Record<string, MateAnchorDescriptor>>
+  // Part handle -> flat leaf list at world poses. A plain part has one leaf; a
+  // sub-assembly has every underlying part, so export and headless replies can
+  // name the real documents behind one rigid instance. Optional so test doubles
+  // and older reply shapes still type; `solveAssembly` always sets it.
+  leaves?: Record<string, AssemblyLeaf[]>
   // The solve verdict plus its per-mate and per-part marks.
   status: AssemblySolveStatus
 }
@@ -161,6 +170,9 @@ export interface MeshPayload {
   // curve and anchor-slot arrays, not positions.
   hiddenEdges?: number[]
   hiddenVertices?: number[]
+  // The child handle path inside a rigid sub-assembly, carried through so the
+  // tree's view filter and leaf highlight can address one leaf of a composite.
+  leafPath?: string
   // Anchor ids per picked entity. Ids, not geometry, so the solved
   // transform leaves them untouched: the same entity names the same anchor at
   // every pose. Absent for a bundle cached before entityAnchors existed.
@@ -530,7 +542,14 @@ async function putBundleBestEffort(bundle: PartBundle): Promise<void> {
 }
 
 export async function solveAssembly(
-  parts: { handle: string; doc_id: string; transform: Transform3D; fixed?: boolean }[],
+  parts: {
+    handle: string
+    doc_id: string
+    transform: Transform3D
+    fixed?: boolean
+    visible?: boolean
+    bundle?: PartBundle
+  }[],
   hashes: Record<string, string>,
   mates: MateSpec[],
   relay: RelayService,
@@ -538,6 +557,10 @@ export async function solveAssembly(
 ): Promise<AssemblyBuildResponse> {
   const partBundles = new Map<string, { bundle: PartBundle; anchors: Record<string, Anchor> }>()
   const partMeshes = new Map<string, PartMesh[]>()  // keyed by part handle
+  // The leaf part each top-level handle stands for, in the sub-assembly's local
+  // frame. A plain part is one leaf at identity; a composite arrives with its
+  // own list. The solve composes the instance transform onto these at the end.
+  const partLeaves = new Map<string, AssemblyLeaf[]>()
   const partResults: Record<string, PartSolveResult> = {}
   let handleIndex = 0
   const handleToIndex = new Map<string, number>()
@@ -548,36 +571,46 @@ export async function solveAssembly(
     // part keeps its seed placement and only its row reddens.
     try {
       const currentHash = hashes[part.doc_id]
+      let bundle: PartBundle | undefined = part.bundle
 
-      // Path 1: cache hit. A missing hash (a store read failure) bypasses the
-      // cache entirely rather than falling back to anything: the cold rebuild
-      // below is the only safe path when the content identity is unknown, and
-      // the build is left uncached (a missing hash cannot key a put).
-      let bundle = currentHash
-        ? await cachedOrUndefined('get', () => bundleCacheGet(part.doc_id, currentHash))
-        : undefined
-      // A bundle cached before entityAnchors was introduced carries
-      // no per-body entity anchor index; its vertices, edges and face mate refs
-      // are all invisible to the assembly pick pass. Treat it as a miss so the
-      // rebuild populates entityAnchors. A bundle is a derivable artifact, so
-      // a cold rebuild costs one OCC evaluation per stale part.
-      const hasEntityAnchors = bundle ? bundle.bodies.every(b => b.entityAnchors) : false
-      if (!(bundle && hasEntityAnchors)) {
-        // Path 2: cache miss, request part doc, build bundle, cache. Anchor ids
-        // are deterministic from the element's geom_hash, so a rebuild mints the
-        // same ids a persisted mate ref already names; no remap seed is needed.
-        const partDoc = await relay.requestPartDoc(part.doc_id)
-        const buildResult = await relay.requestBuildBundle(part.doc_id, currentHash ?? '', partDoc)
-        bundle = buildResult as PartBundle
-        if (!bundle || !bundle.anchors) {
-          throw new Error(`bundle build failed for ${part.doc_id} hash ${currentHash ?? '(none)'}`)
+      if (!bundle) {
+        // Path 1: cache hit. A missing hash (a store read failure) bypasses the
+        // cache entirely rather than falling back to anything: the cold rebuild
+        // below is the only safe path when the content identity is unknown, and
+        // the build is left uncached (a missing hash cannot key a put).
+        bundle = currentHash
+          ? await cachedOrUndefined('get', () => bundleCacheGet(part.doc_id, currentHash))
+          : undefined
+        // A bundle cached before entityAnchors was introduced carries
+        // no per-body entity anchor index; its vertices, edges and face mate refs
+        // are all invisible to the assembly pick pass. Treat it as a miss so the
+        // rebuild populates entityAnchors. A bundle is a derivable artifact, so
+        // a cold rebuild costs one OCC evaluation per stale part.
+        const hasEntityAnchors = bundle ? bundle.bodies.every(b => b.entityAnchors) : false
+        if (!(bundle && hasEntityAnchors)) {
+          // Path 2: cache miss, request part doc, build bundle, cache. Anchor ids
+          // are deterministic from the element's geom_hash, so a rebuild mints the
+          // same ids a persisted mate ref already names; no remap seed is needed.
+          const partDoc = await relay.requestPartDoc(part.doc_id)
+          const buildResult = await relay.requestBuildBundle(part.doc_id, currentHash ?? '', partDoc)
+          bundle = buildResult as PartBundle
+          if (!bundle || !bundle.anchors) {
+            throw new Error(`bundle build failed for ${part.doc_id} hash ${currentHash ?? '(none)'}`)
+          }
+
+          if (currentHash) await putBundleBestEffort(bundle)
         }
-
-        if (currentHash) await putBundleBestEffort(bundle)
       }
 
       partBundles.set(part.handle, { bundle, anchors: bundle.anchors })
       partMeshes.set(part.handle, bundle.bodies)
+      partLeaves.set(
+        part.handle,
+        (bundle as AssemblyBundle).leaves
+          ?? [{ doc_id: part.doc_id, transform: IDENTITY_TRANSFORM, visible: true }],
+      )
+      const warning = (bundle as AssemblyBundle).warning
+      if (warning !== undefined) partResults[part.handle] = { failed: false, warning }
       // Only a loaded part takes a solver body index: a failed part occupies
       // none, so handleToIndex stays the single handle-to-body mapping every
       // later pass reads.
@@ -1039,10 +1072,25 @@ export async function solveAssembly(
       faces: (m.faces ?? []).map(f => transformFaceFact(f, t)),
       hiddenEdges: m.hiddenEdges,
       hiddenVertices: m.hiddenVertices,
+      leafPath: m.leafPath,
       entityAnchors: m.entityAnchors,
     }))
     transformedParts[part.handle] = transformed
   }
 
-  return { transforms, movedParts, bodies: transformedParts, anchors: posedAnchors, anchorDescriptors, status }
+  // The flat leaves behind each top-level handle, at the same world pose the
+  // meshes were just baked at. Export and the headless reply name the real part
+  // documents here instead of guessing what a rigid composite contains.
+  const leaves: Record<string, AssemblyLeaf[]> = {}
+  for (const part of parts) {
+    const t = transforms[part.handle] ?? part.transform
+    const hidden = part.visible === false
+    leaves[part.handle] = (partLeaves.get(part.handle) ?? []).map(leaf => ({
+      ...leaf,
+      transform: composeTransforms(t, leaf.transform),
+      visible: leaf.visible && !hidden,
+    }))
+  }
+
+  return { transforms, movedParts, bodies: transformedParts, anchors: posedAnchors, anchorDescriptors, leaves, status }
 }

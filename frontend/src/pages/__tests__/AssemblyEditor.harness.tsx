@@ -22,7 +22,10 @@ export function renderEditor() {
 // The editor reads its part names and the picker's source from the open
 // workspace session. These suites shape `h.list`; the session reads it live, so
 // a per-test reassignment is reflected without changing the harness.
-export function installSessionFromList(h: { list: HarnessListEntry[] }) {
+export function installSessionFromList(
+  h: { list: HarnessListEntry[] },
+  edges: Record<string, string[]> = {},
+) {
   useWorkspaceSessionStore.setState({
     session: {
       workspace: 'asm-1',
@@ -38,7 +41,7 @@ export function installSessionFromList(h: { list: HarnessListEntry[] }) {
       writeEntry: vi.fn(),
       resolveFile: vi.fn(),
       referencesOf: vi.fn(),
-      referenceEdges: vi.fn(async () => ({})),
+      referenceEdges: vi.fn(async () => edges),
       savedRevs: async () => new Map(),
     },
   })

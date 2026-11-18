@@ -4,6 +4,7 @@ import { assemblyHistory, setAssemblyHistoryMirror } from '@/stores/assemblyHist
 import type { HistoryEntry } from '@/session/History'
 import type { AssemblyDoc, PartInstance, MateFeature, MateRef, MateRefField, MateAnchorDescriptor, Transform3D, PartResult } from '@/types/cad'
 import type { EdgeCurve } from '@/kernel/partBundle'
+import type { AssemblyLeaf } from '@/kernel/assemblyBundle'
 import type { AssemblyEntityFacts } from '@/utils/assemblyBodies'
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { cycleIndex, resolveCandidates, sameCandidateSet, type EntityMateRefs } from '@/utils/anchorCandidates'
@@ -92,6 +93,10 @@ export interface AssemblyEditorData {
   parts: Record<string, PartResult>
   // Analytic edges of the solved bodies, keyed by the same body id.
   edgeCurves: Record<string, EdgeCurve[]>
+  // The flat leaves behind each top-level handle, at solved world poses. A
+  // sub-assembly contributes every underlying part, which is what export names
+  // instead of the assembly document.
+  leaves?: Record<string, AssemblyLeaf[]>
   // The measurement facts (raw edges + face facts) of the solved bodies, keyed
   // by the same body id. Optional only so older test payloads and a legacy
   // solve reply still type; the current solve always sets it.
@@ -139,6 +144,12 @@ export interface AssemblyEditorData {
    * exist only for what these hits resolve to.
    */
   hoverHits: EntityHit[]
+  /**
+   * Child leaf rows hidden for viewing, keyed by the full tree handle path
+   * (`<top>/<child>`). View state only: a child's own `visible` belongs to the
+   * child document, and this eye must never write there. Not an undo step.
+   */
+  hiddenLeafPaths: Set<string>
   /**
    * B-rep entities selected for measurement, keyed by `assemblyEntityKey`. Named
    * `entitySelection` so "which selection" has one answer: this is the entity
@@ -190,6 +201,7 @@ export function createDefaultAssemblyEditorData(): AssemblyEditorData {
     movedParts: undefined,
     parts: {},
     edgeCurves: {},
+    leaves: {},
     shapeFacts: {},
     entityMateRefs: {},
     anchors: {},
@@ -204,6 +216,7 @@ export function createDefaultAssemblyEditorData(): AssemblyEditorData {
     pickIndex: -1,
     pickScopeEntity: null,
     hoverHits: [],
+    hiddenLeafPaths: new Set(),
     entitySelection: new Set(),
     hoveredEntity: null,
     manipulation: null,
@@ -225,7 +238,7 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData =
  *  pick geometry) cannot be added to the solve and forgotten at the store. */
 export type AssemblySolveResult = Pick<
   AssemblyEditorData,
-  'transforms' | 'movedParts' | 'parts' | 'edgeCurves' | 'shapeFacts' | 'entityMateRefs' | 'anchors' | 'anchorDescriptors' | 'pickGeometry' | 'solveStatus'
+  'transforms' | 'movedParts' | 'parts' | 'edgeCurves' | 'leaves' | 'shapeFacts' | 'entityMateRefs' | 'anchors' | 'anchorDescriptors' | 'pickGeometry' | 'solveStatus'
 >
 
 /**
@@ -281,6 +294,7 @@ const STORE_OWNED_FIELDS = [
   'activeMateField', 'mateFieldDirty',
   'editingSubject',
   'pickCandidates', 'pickIndex', 'pickScopeEntity', 'hoverHits',
+  'hiddenLeafPaths',
   'entitySelection', 'hoveredEntity',
   'solveStatus', 'movedParts',
   'undoStack', 'redoStack',
@@ -339,8 +353,11 @@ interface AssemblyEditorState extends AssemblyEditorData {
   // try to commit into the new doc.
   resetTransientAssemblyState: () => void
   // Set the tree subject to one part handle, or clear it. By construction a pick
-  // drops any mate subject, so the two can never both be set.
-  selectPart: (handle: string | null) => void
+  // drops any mate subject, so the two can never both be set. `leafPath` narrows
+  // the subject to one child leaf of a rigid sub-assembly.
+  selectPart: (handle: string | null, leafPath?: string) => void
+  // Toggle one child leaf row's view-only eye; the key is the full handle path.
+  setLeafVisible: (key: string, visible: boolean) => void
   // Set the tree subject to one mate id, or clear it. Closing or deleting a mate
   // still disarms the armed field via the setActiveMateField side effect.
   selectMate: (id: string | null) => void
@@ -444,7 +461,18 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
   // A part pick replaces the subject wholesale, which is what drops any
   // previously selected mate: there is one slot, so exclusion is structural
   // rather than a pair of clears that can disagree.
-  selectPart: (handle) => set({ subject: handle === null ? null : { kind: 'part', handle } }),
+  selectPart: (handle, leafPath) => set({
+    subject: handle === null
+      ? null
+      : { kind: 'part', handle, ...(leafPath !== undefined && leafPath !== '' && { leafPath }) },
+  }),
+
+  setLeafVisible: (key, visible) => set(prev => {
+    const next = new Set(prev.hiddenLeafPaths)
+    if (visible) next.delete(key)
+    else next.add(key)
+    return { hiddenLeafPaths: next }
+  }),
 
   openInstanceEditor: (handle) => set(prev => ({
     editingSubject: reduceEditingSubject(prev.editingSubject, { type: 'open_instance', handle }),

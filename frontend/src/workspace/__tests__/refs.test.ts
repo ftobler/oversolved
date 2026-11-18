@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { addReference, referencesOf, referentsOf, removeReference, resolveReferences } from '../refs'
+import { addReference, cyclePath, referencesOf, referentsOf, removeReference, resolveReferences, wouldCreateCycle } from '../refs'
 import { deserializeTree, serializeTree } from '../serializer'
 import { documentEntry, treeWith } from './fixtures'
 
@@ -73,5 +73,49 @@ describe('uuid to uuid references (A7, C5 preview)', () => {
     addReference(tree, 'a', 'z')
     referencesOf(tree, 'a').push('mutated')
     expect(tree.manifest.references.a).toEqual(['z'])
+  })
+})
+
+describe('the assembly cycle rule', () => {
+  it('refuses an assembly inside itself', () => {
+    expect(wouldCreateCycle({}, 'A', 'A')).toBe(true)
+    expect(cyclePath({}, 'A', 'A')).toEqual(['A'])
+  })
+
+  it('refuses a direct cycle: B already contains A, so A cannot contain B', () => {
+    const edges = { B: ['A'] }
+    expect(wouldCreateCycle(edges, 'A', 'B')).toBe(true)
+    expect(cyclePath(edges, 'A', 'B')).toEqual(['B', 'A'])
+    // The other direction is the ordinary placement, not a cycle.
+    expect(wouldCreateCycle(edges, 'B', 'A')).toBe(false)
+  })
+
+  it('refuses an indirect three-deep cycle and names the path', () => {
+    const edges = { C: ['B'], B: ['A'] }
+    expect(cyclePath(edges, 'A', 'C')).toEqual(['C', 'B', 'A'])
+  })
+
+  it('allows a diamond: two containers of one assembly are not a cycle', () => {
+    // left and right both contain leaf; neither reaches the other, so placing
+    // one inside the other is a legal nested placement, not a cycle.
+    const edges = { left: ['leaf'], right: ['leaf'] }
+    expect(wouldCreateCycle(edges, 'right', 'left')).toBe(false)
+    expect(wouldCreateCycle(edges, 'left', 'right')).toBe(false)
+    // But the shared child cannot become a container of either parent.
+    expect(wouldCreateCycle(edges, 'leaf', 'left')).toBe(true)
+  })
+
+  it('terminates on a pre-existing cycle in a hand-edited graph', () => {
+    const edges = { A: ['B'], B: ['C'], C: ['A'] }
+    expect(wouldCreateCycle(edges, 'X', 'A')).toBe(false)
+    expect(wouldCreateCycle(edges, 'A', 'X')).toBe(false)
+    expect(wouldCreateCycle(edges, 'C', 'A')).toBe(true)
+  })
+
+  it('parts and files never count: only an assembly edge is a container', () => {
+    // A part references a file, and a file's bytes name an assembly id in some
+    // text; neither is a container edge in the manifest.
+    const edges = { part1: ['file1'] }
+    expect(wouldCreateCycle(edges, 'part1', 'file1')).toBe(false)
   })
 })

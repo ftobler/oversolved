@@ -46,6 +46,12 @@ interface PartInstanceEditorProps {
 export interface PartOption {
   id: string
   name: string
+  // A sub-assembly is a legal rebind target but reads differently in the list.
+  kind?: 'part' | 'assembly'
+  // A cycle the rebind would close. The option stays listed, disabled, with the
+  // reason in its text so the native select (which cannot tooltip an option)
+  // still says why.
+  disabledReason?: string
 }
 
 type Axis = 'tx' | 'ty' | 'tz'
@@ -172,7 +178,10 @@ export function PartInstanceEditor({
               {partMissing && <option value="">{instance.doc_id} (missing)</option>}
               {!partKnown && !partMissing && <option value={instance.doc_id}>{instance.doc_id}</option>}
               {listedParts.map(option => (
-                <option key={option.id} value={option.id}>{option.name}</option>
+                <option key={option.id} value={option.id} disabled={option.disabledReason !== undefined}>
+                  {option.name}{option.kind === 'assembly' ? ' (assembly)' : ''}
+                  {option.disabledReason !== undefined ? ' - circular' : ''}
+                </option>
               ))}
             </select>
           </label>

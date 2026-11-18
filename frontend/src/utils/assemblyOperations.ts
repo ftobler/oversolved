@@ -12,6 +12,8 @@
 
 import type { AssemblyDoc, MateKind, MateRef, MateRefField, Transform3D } from '@/types/cad'
 import { ASSEMBLY_UNDO_LABELS, type AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
+import { cyclePath } from '@/workspace/refs'
+import type { ReferenceEdges } from '@/workspace/types'
 import {
   appendMate,
   appendPartInstance,
@@ -266,6 +268,36 @@ export interface AssemblyOperationPlan {
   solve: AssemblySolvePolicy
 }
 
+/**
+ * The cycle a placement would close, by display names, or null when the target
+ * is safe. Runs against the workspace reference graph, so it covers any depth;
+ * parts and files never matter because only an assembly authors an assembly
+ * edge. `references` is the merged map the caller holds (the stored graph plus
+ * the open document's own live instance list, which is not saved yet).
+ */
+function cycleError(
+  ctx: {
+    references?: ReferenceEdges
+    assemblyDocId?: string
+    nameOf?: (docId: string) => string | undefined
+  },
+  docId: string,
+  rebind: boolean,
+): Error | null {
+  const host = ctx.assemblyDocId
+  if (host === undefined) return null
+  const path = cyclePath(ctx.references ?? {}, host, docId)
+  if (path === null) return null
+  if (path.length === 1 && rebind) {
+    // The long-standing rebind wording: pointing an instance at its own assembly
+    // is the zero-length case of the same rule.
+    return new Error(`A part instance cannot point at the assembly it belongs to: ${docId}`)
+  }
+  const names = path.map(id => (id === host ? 'this assembly' : (ctx.nameOf?.(id) ?? id)))
+  const candidate = ctx.nameOf?.(docId) ?? (docId === host ? 'this assembly' : docId)
+  return new Error(`Adding ${candidate} would make a circular assembly: ${names.join(' > ')}`)
+}
+
 // Build the next doc for an operation, or null when there is no doc to act on.
 // The no-op guard mirrors the old mutate funnel: a structural compare catches
 // the value no-ops a reference fast path misses.
@@ -284,33 +316,43 @@ export function planAssemblyOperation<K extends AssemblyOperationId>(
     transforms: Record<string, Transform3D>
     moved?: ReadonlySet<string>
     knownPartIds?: ReadonlySet<string>
+    // The live assembly entries, so an assembly is an insertable target exactly
+    // when the reference graph allows it. Absent means no assembly may be added.
+    knownAssemblyIds?: ReadonlySet<string>
+    // The workspace reference graph plus the open document's own live instance
+    // list, which the stored graph cannot show before the document is saved.
+    references?: ReferenceEdges
+    // Display names for the cycle message's path.
+    nameOf?: (docId: string) => string | undefined
     assemblyDocId?: string
   },
 ): AssemblyOperationPlan | null {
   if (!ctx.doc) return null
   const def = ASSEMBLY_OPERATIONS[id] as AssemblyOperationDef<AssemblyOperationInputs[K]>
-  if ((id === 'add_part' || id === 'add_parts') && ctx.knownPartIds) {
+  if (id === 'add_part' || id === 'add_parts') {
     const requested = id === 'add_part'
       ? [(input as AssemblyOperationInputs['add_part']).docId]
       : (input as AssemblyOperationInputs['add_parts']).map(part => part.docId)
     for (const docId of requested) {
-      if (!ctx.knownPartIds.has(docId)) {
+      // The cycle refusal comes first so a circular assembly reports why rather
+      // than as an unknown id (the two answers can both be true).
+      const cycle = cycleError(ctx, docId, false)
+      if (cycle) throw cycle
+      if (ctx.knownPartIds && !ctx.knownPartIds.has(docId) && !ctx.knownAssemblyIds?.has(docId)) {
         throw new Error(`Part is not a live entry in this workspace: ${docId}`)
       }
     }
   }
   // A rebind authors the same outward link add_part does, plus the one link that
-  // would make the document point at itself. The self check comes first so the
-  // assembly id reports as a cycle rather than as an unknown part.
+  // would make the document point at itself. The cycle rule covers both.
   if (id === 'set_part_doc') {
     const { docId } = input as AssemblyOperationInputs['set_part_doc']
     if (docId === '') {
       throw new Error('A part instance needs a non-empty part doc_id')
     }
-    if (ctx.assemblyDocId !== undefined && docId === ctx.assemblyDocId) {
-      throw new Error(`A part instance cannot point at the assembly it belongs to: ${docId}`)
-    }
-    if (ctx.knownPartIds && !ctx.knownPartIds.has(docId)) {
+    const cycle = cycleError(ctx, docId, true)
+    if (cycle) throw cycle
+    if (ctx.knownPartIds && !ctx.knownPartIds.has(docId) && !ctx.knownAssemblyIds?.has(docId)) {
       throw new Error(`Part is not a live entry in this workspace: ${docId}`)
     }
   }
@@ -338,6 +380,11 @@ export interface AssemblyOperationContext {
   // I8's live-part set: the ids `add_part` is allowed to reference. Optional so
   // an unscoped caller (the store's delete path) needs no workspace.
   knownPartIds?: ReadonlySet<string>
+  // The live assembly entries a sub-assembly can name.
+  knownAssemblyIds?: ReadonlySet<string>
+  // The reference graph the cycle rule walks.
+  references?: ReferenceEdges
+  nameOf?: (docId: string) => string | undefined
   /** The open assembly's own doc id, so a `set_part_doc` cannot point an
    *  instance at the assembly that owns it. Absent in the headless session,
    *  where the assembly has no workspace identity. */
@@ -365,7 +412,14 @@ export function runAssemblyOperation<K extends AssemblyOperationId>(
   input: AssemblyOperationInputs[K],
   host: AssemblyOperationHost,
 ): void {
-  const ctx = { transforms: host.transforms, knownPartIds: host.knownPartIds, assemblyDocId: host.assemblyDocId }
+  const ctx = {
+    transforms: host.transforms,
+    knownPartIds: host.knownPartIds,
+    knownAssemblyIds: host.knownAssemblyIds,
+    references: host.references,
+    nameOf: host.nameOf,
+    assemblyDocId: host.assemblyDocId,
+  }
   // host.doc is the caller's mirror and only decides whether this operation is
   // worth running. The apply is handed to the mutation funnel as a function of
   // the LIVE doc: two operations in one handler (a pattern, a ref pick after a

@@ -5,7 +5,9 @@ import {
   assemblyStlBytes,
   assemblyStlMeshes,
   buildExportParts,
+  buildExportPartsFromLeaves,
   exportableInstances,
+  flattenExportLeaves,
 } from '@/utils/assemblyExport'
 
 const MOVED: Transform3D = { tx: 10, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }
@@ -97,6 +99,51 @@ describe('buildExportParts', () => {
   it('treats a feature-less part document as having no features', () => {
     const parts = buildExportParts([instance('h1', 'doc_c')], {}, { doc_c: {} })
     expect(parts[0].spec.features).toEqual([])
+  })
+})
+
+describe('flattenExportLeaves', () => {
+  const childLeaves = (handle: string) => ({
+    [handle]: [
+      { doc_id: 'part_left', transform: { ...IDENTITY_TRANSFORM, tx: 100 }, visible: true, path: 'left' },
+      { doc_id: 'part_right', transform: { ...IDENTITY_TRANSFORM, tx: 110 }, visible: true, path: 'right' },
+    ],
+  })
+
+  it('replaces a sub-assembly instance with its leaves at composed world poses', () => {
+    const leaves = flattenExportLeaves([instance('sub', 'asm-child')], childLeaves('sub'))
+    expect(leaves).toEqual([
+      { doc_id: 'part_left', transform: { ...IDENTITY_TRANSFORM, tx: 100 } },
+      { doc_id: 'part_right', transform: { ...IDENTITY_TRANSFORM, tx: 110 } },
+    ])
+  })
+
+  it('drops a hidden leaf and a view-hidden child row', () => {
+    const hidden = flattenExportLeaves([instance('sub', 'asm-child')], childLeaves('sub'), new Set(['sub/right']))
+    expect(hidden.map(leaf => leaf.doc_id)).toEqual(['part_left'])
+
+    const docHidden = childLeaves('sub')
+    docHidden.sub[1] = { ...docHidden.sub[1], visible: false }
+    expect(flattenExportLeaves([instance('sub', 'asm-child')], docHidden).map(l => l.doc_id))
+      .toEqual(['part_left'])
+  })
+
+  it('falls back to the instance seed when no solve produced leaves', () => {
+    const leaves = flattenExportLeaves([instance('h1', 'doc_a', { transform: MOVED })], {})
+    expect(leaves).toEqual([{ doc_id: 'doc_a', transform: MOVED }])
+  })
+
+  it('emits one export spec per leaf, even for two leaves of the same document', () => {
+    const contents = { part_left: { features: [{ id: 'Origin' }, { id: 'ex1' }] } }
+    const parts = buildExportPartsFromLeaves(
+      [
+        { doc_id: 'part_left', transform: { ...IDENTITY_TRANSFORM, tx: 1 } },
+        { doc_id: 'part_left', transform: { ...IDENTITY_TRANSFORM, tx: 2 } },
+      ],
+      contents,
+    )
+    expect(parts.map(part => part.transform.tx)).toEqual([1, 2])
+    expect(parts[0].spec.features).toEqual([{ id: 'ex1' }])
   })
 })
 
