@@ -8,6 +8,7 @@ import {
   COLOR_PART_DEFAULT,
   COLOR_PART_EDGE, COLOR_PART_EDGE_SEL, COLOR_PART_REMOVED,
   partSurfaceLook,
+  bodyMarkSelected,
   COLOR_SELECTED, COLOR_HOVER, COLOR_HINT, COLOR_HINT_FAILED,
   blendWhite, blendToward, HINT_BLEND,
   POINT_VIS_PIXELS,
@@ -139,6 +140,10 @@ export default function Part3D({ featureId, partId, mesh, edges = NO_EDGES, edge
   const hoveredSelectionId = useSketchEditorStore(s => s.hoveredSelectionId)
   const hoveredPickKey = useSketchEditorStore(s => s.hoveredPickKey)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
+  // The ids a pick chip mirrors into the selection. Only the doomed mark reads
+  // it: a chip's own value is not the user pointing at the body, so it must not
+  // outrank the removal mark (bodyMarkSelected).
+  const chipOwnedSelection = useSketchEditorStore(s => s.chipOwnedSelection)
   const selectedPicks = useSketchEditorStore(s => s.selectedPicks)
   const setHoveredFaceGeometry = useSketchEditorStore(s => s.setHoveredFaceGeometry)
   // The feature/sketch ids a selected tree row relates to, and the primitive
@@ -202,7 +207,11 @@ export default function Part3D({ featureId, partId, mesh, edges = NO_EDGES, edge
     })
   }, [interactive, visible, featureId, partId, mesh, edges, edgeQueries, vertexQueries, updateFaceGeometryForIndex, clearFaceGeometry])
 
-  const isPartSelected = normalSelection.has('@' + partId)
+  // Selection, as the user means it: a doomed body's chip mirror does not
+  // count, so the surface and the wireframe answer from one decision.
+  const isPartSelected = bodyMarkSelected({
+    bodyId: partId, normalSelection, chipOwnedSelection, doomed,
+  })
 
   const partKey = useMemo(() => partKeyFor(featureId, partId), [featureId, partId])
 
@@ -530,9 +539,9 @@ export default function Part3D({ featureId, partId, mesh, edges = NO_EDGES, edge
 
   // The wireframe is where the removal mark lives now the doomed face is
   // see-through: a consumed body's edges turn pink so the mark shows WHICH
-  // body is leaving. Selection still outranks removal, mirroring the face
-  // precedence in bodySurfaceLook -- the re-click affordance needs the change
-  // to be visible while the user points at it.
+  // body is leaving. A selection the USER made still outranks removal,
+  // mirroring the face precedence in bodySurfaceLook, and a chip's mirror of
+  // its own value deliberately does not (bodyMarkSelected).
   const edgeColor = isPartSelected
     ? COLOR_PART_EDGE_SEL
     : doomed ? COLOR_PART_REMOVED : COLOR_PART_EDGE

@@ -5,6 +5,7 @@ import { DELETE_PART_SCHEMA } from '@/components/editors/featureEditorSchemas'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { PartFeature } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
+import { bodyMarkSelected } from '@/components/Geometry3D/constants'
 
 function makeFeature(parts: string[] = []): PartFeature {
   return {
@@ -145,5 +146,25 @@ describe('DeleteBodyEditor (via FeatureEditor)', () => {
     // the viewport re-click.
     pick('@body_ex1')
     expect(onMutation).toHaveBeenCalledWith({ type: 'remove_delete_body_ref', featureId: 'db1', index: 0 })
+  })
+
+  it('tracks its own mirrored value as chip-owned, so the doomed body keeps its mark', () => {
+    // The create path arms this chip right after add_delete_body, and the mirror
+    // it writes to normalSelection is what turned the doomed preview white. This
+    // pins the discriminator the fix keys on: the editor's own value arrives as
+    // chip-owned, so the body mark does not read it as a user selection.
+    render(
+      <FeatureEditor feature={makeFeature(['@body_ex1'])} onMutation={vi.fn()} schema={DELETE_PART_SCHEMA} />,
+    )
+    fireEvent.click(document.querySelector('.feature-pick-chip')!)
+    const state = useSketchEditorStore.getState()
+    expect(state.normalSelection.has('@body_ex1')).toBe(true)
+    expect(state.chipOwnedSelection.has('@body_ex1')).toBe(true)
+    expect(bodyMarkSelected({
+      bodyId: 'body_ex1',
+      normalSelection: state.normalSelection,
+      chipOwnedSelection: state.chipOwnedSelection,
+      doomed: true,
+    })).toBe(false)
   })
 })

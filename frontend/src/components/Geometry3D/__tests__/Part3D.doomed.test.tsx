@@ -72,6 +72,7 @@ beforeEach(() => {
   registrations.length = 0
   useEditorState.setState({
     normalSelection: new Set(),
+    chipOwnedSelection: new Set(),
     selectedPicks: new Map(),
     hoveredSelectionId: null,
     hoveredPickKey: null,
@@ -119,6 +120,23 @@ describe('Part3D draws a doomed body marked', () => {
     const { container } = await renderPart({ doomed: true })
     expect(edgeBase()).toEqual(paletteRGB(COLOR_PART_EDGE_SEL))
     expect(Number(material(container)?.getAttribute('opacity'))).toBe(0)
+  })
+
+  it('keeps the pink wireframe when a pick chip mirrors the doomed body', async () => {
+    // Creating a Delete Part arms its Parts chip, and the chip copies the values
+    // it holds into the normal selection. That mirror is bookkeeping, not the
+    // user pointing at the body, so it must not claim the selected edge colour:
+    // doing so erased the removal mark exactly while the user was choosing what
+    // the edit takes (the reported "white instead of magenta" preview).
+    useEditorState.setState({
+      normalSelection: new Set(['@body_ex1']),
+      chipOwnedSelection: new Set(['@body_ex1']),
+    })
+    await renderPart({ doomed: true })
+    expect(edgeBase()).toEqual(paletteRGB(COLOR_PART_REMOVED))
+    // The surface and the wireframe read one decision, so the (invisible) face
+    // colour agrees with the visible mark.
+    expect(faceBase()).toEqual(paletteRGB(COLOR_PART_REMOVED))
   })
 
   it('draws the doomed face fully transparent, not pink-tinted', async () => {
