@@ -712,6 +712,12 @@ export interface OccFaceTriangulation {
   triangles: Int32Array
 }
 
+/** `OversolvedFaceFacts.Read`'s result: `faceCount` rows of `Stride()` values. */
+export interface OccFaceFactTable {
+  faceCount: number
+  facts: Float64Array
+}
+
 /** Opaque embind enum value (e.g. `TopAbs_ShapeEnum.TopAbs_FACE`). */
 export type OccShapeEnumValue = object
 
@@ -896,6 +902,14 @@ export interface OccModule extends OccBaseModule {
      *  the face has none. Nodes are world-space (the face location applied),
      *  triangles 0-based with the REVERSED winding flip done. */
     FaceTriangulation(face: OccShape): OccFaceTriangulation | null
+  }
+  OversolvedFaceFacts: {
+    /** Values per face row in `Read`'s table. */
+    Stride(): number
+    /** Every face of the shape in explorer order: type, centroid, area,
+     *  normal, frame and cylinder dv, NaN where a slot does not apply
+     *  (occ/faceFacts.ts reads it). */
+    Read(shape: OccShape): OccFaceFactTable
   }
 
   // ─── geometry readers ───

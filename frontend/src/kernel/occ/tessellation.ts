@@ -10,11 +10,6 @@ import { HandleTable, type OccHandle } from './handleTable'
 import type { OccModule, OccShape, OccSubShape } from './occTypes'
 import {
   edgeToGeom,
-  faceCentroid,
-  faceCylinderAxis,
-  faceNormal,
-  faceSurfaceFrame,
-  faceSurfaceType,
   readEdgeSamplePoints,
   readSolidEdges,
   readSolidVertices,
@@ -39,6 +34,7 @@ import { emitWithTiesTagged, type QueryParts } from '../tiedQuery'
 import { ref, makeAncestryQuery, constructionUuidToken } from '../query'
 import type { EdgeData } from '@/types/cad'
 import { timePhase } from './phaseTimer'
+import { readFaceFacts, factNormal, type FaceFact } from './faceFacts'
 
 export interface FaceDatum {
   centroid: Vec3
@@ -132,30 +128,32 @@ export function readShapeFaces(
   angularDeflection: number,
 ): RawFaceGeom[] {
   const E = oc.TopAbs_ShapeEnum
+  // One bulk read for every face's facts, in the explorer order the loop
+  // below walks (faceFacts.ts).
+  const facts = timePhase('mesh.faceFacts', () => readFaceFacts(oc, solid))
   const exp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
   const raw: RawFaceGeom[] = []
   const canonOf = canonicalCounter()
-  for (; exp.More(); exp.Next()) {
+  for (let i = 0; exp.More(); exp.Next(), i++) {
     const face = scope.track(oc.TopoDS.Face_1(exp.Current()))
     const canon = canonOf(face as OccSubShape)
     const { vertices, triangles } = timePhase('mesh.triangulate', () =>
       tessellateFace(oc, scope, face, deflection, angularDeflection))
-    raw.push(timePhase('mesh.faceFacts', () => {
-      const surfaceType = faceSurfaceType(oc, scope, face)
-      // faceCylinderAxis returns null on a degenerate surface; fold to undefined
-      // so the optional field stays absent instead of carrying a null.
-      const axis = (surfaceType === 'cylinderface' ? faceCylinderAxis(oc, scope, face) : undefined) ?? undefined
-      return {
-        vertices,
-        triangles,
-        centroid: faceCentroid(oc, scope, face),
-        normal: faceNormal(oc, scope, face),
-        surfaceType,
-        surfaceFrame: faceSurfaceFrame(oc, scope, face),
-        axis,
-        canon,
-      }
-    }))
+    const fact = facts[i]
+    raw.push({
+      vertices,
+      triangles,
+      centroid: fact.centroid,
+      // Refused at this face, as the per-face reader did, so the faces before
+      // it are meshed exactly as they were.
+      normal: factNormal(fact),
+      surfaceType: fact.surfaceType,
+      surfaceFrame: fact.surfaceFrame,
+      // A degenerate cylinder axis is null; fold to undefined so the optional
+      // field stays absent instead of carrying a null.
+      axis: fact.cylinderAxis ?? undefined,
+      canon,
+    })
   }
   return raw
 }
@@ -444,8 +442,8 @@ export function readShapeFaceMetadata(
       area: 0,
       surface_type: row.surfaceType,
       classifiers,
-      surface_frame: faceSurfaceFrame(oc, scope, row.shape) ?? undefined,
-      axis: (row.surfaceType === 'cylinderface' ? faceCylinderAxis(oc, scope, row.shape) : null) ?? undefined,
+      surface_frame: row.fact.surfaceFrame ?? undefined,
+      axis: row.fact.cylinderAxis ?? undefined,
     })
     // Placeholder on a null query, same reasoning as solidToMesh above: keeps
     // face_queries[i] aligned with face_data[i] for extractBodyAnchors's zip.
@@ -459,6 +457,8 @@ export function readShapeFaceMetadata(
 interface FaceRow extends FaceSortItem {
   shape: OccSubShape
   canon: number
+  // The bulk-read facts the sort key came from, kept for the frame and axis.
+  fact: FaceFact
 }
 
 /**
@@ -482,18 +482,21 @@ export function renderFaceRows(
 
 function sortedFaceRows(oc: OccModule, scope: DisposeScope, solid: OccShape): FaceRow[] {
   const E = oc.TopAbs_ShapeEnum
+  const facts = readFaceFacts(oc, solid)
   const exp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
   const rows: FaceRow[] = []
   const canonOf = canonicalCounter()
-  for (; exp.More(); exp.Next()) {
+  for (let i = 0; exp.More(); exp.Next(), i++) {
     const face = scope.track(oc.TopoDS.Face_1(exp.Current())) as OccSubShape
     const canon = canonOf(face)
+    const fact = facts[i]
     rows.push({
       shape: face,
-      centroid: faceCentroid(oc, scope, face),
-      normal: faceNormal(oc, scope, face),
-      surfaceType: faceSurfaceType(oc, scope, face),
+      centroid: fact.centroid,
+      normal: factNormal(fact),
+      surfaceType: fact.surfaceType,
       canon,
+      fact,
     })
   }
   rows.sort((a, b) => compareFaceSortKeys(faceSortKey(a), faceSortKey(b)))
@@ -921,14 +924,16 @@ function faceEdgeWalks(
 ): FaceEdgeWalk[] {
   // Faces in the same sorted order solidToMesh/readShapeFaceMetadata use.
   const E = oc.TopAbs_ShapeEnum
+  const facts = readFaceFacts(oc, solid)
   const fexp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_FACE, E.TopAbs_SHAPE))
   const faces: { shape: OccShape; sortKey: number[] }[] = []
-  for (; fexp.More(); fexp.Next()) {
+  for (let i = 0; fexp.More(); fexp.Next(), i++) {
     const face = scope.track(oc.TopoDS.Face_1(fexp.Current()))
+    const fact = facts[i]
     const item: FaceSortItem = {
-      centroid: faceCentroid(oc, scope, face),
-      normal: faceNormal(oc, scope, face),
-      surfaceType: faceSurfaceType(oc, scope, face),
+      centroid: fact.centroid,
+      normal: factNormal(fact),
+      surfaceType: fact.surfaceType,
     }
     faces.push({ shape: face, sortKey: faceSortKey(item) })
   }
