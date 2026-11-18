@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import type { PartInstance, MateFeature } from '@/types/cad'
+import type { PartInstance, MateFeature, PartFeature } from '@/types/cad'
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { mateFailure, partFailure, assemblyVerdict } from '@/utils/core/assemblyStatus'
 import { markNameClass } from '@/utils/core/statusMark'
@@ -10,6 +10,7 @@ import { ASSEMBLY_RULES, buildAssemblyRelationCtx } from '@/registry/relationRul
 import { MATE_KIND_LABELS } from '@/utils/mateKinds'
 import { getFeatureIcon } from '@/components/layout/featureIcons'
 import RightClickMenu, { type ContextMenuItem } from '@/components/dialogs/RightClickMenu'
+import { RebuildButton } from '@/components/rebuild/RebuildButton'
 import featurePartIcon from '@/assets/icons/feature-part.svg'
 import contextEditIcon from '@/assets/icons/context-edit.svg'
 import contextDeleteIcon from '@/assets/icons/context-delete.svg'
@@ -28,6 +29,12 @@ import mateIcon from '@/assets/icons/constraint-coincident.svg'
 // orthogonal set, and a shared empty instance keeps the read allocation-free.
 const EMPTY_ENTITIES: ReadonlySet<string> = new Set()
 
+// The assembly rebuild has no per-feature timing table yet: the button shares the
+// part editor's popover, which hides itself when it has nothing to show. Shared
+// empties keep the hover machinery from seeing a new value every render.
+const EMPTY_TIMINGS: Record<string, number> = {}
+const EMPTY_FEATURES: PartFeature[] = []
+
 export interface AssemblyTreeProps {
   instances: PartInstance[]
   // The assembly's own origin and reference planes, hidden by default.
@@ -35,6 +42,13 @@ export interface AssemblyTreeProps {
   mates: MateFeature[]
   // The whole solve verdict. A failed part or mate renders red on its row.
   status?: AssemblySolveStatus | null
+  // Rebuild every part bundle from its current document and re-solve: the part
+  // editor's Rebuild action in assembly terms. Absent when no solve hook is
+  // wired, which is why the header renders no button then.
+  onRebuild?: () => void
+  // A full (non-live) assembly solve is running. The page mirrors the solver
+  // store's flag, so the button spins and cannot start a second rebuild.
+  isRebuilding?: boolean
   // Map from a part handle to a display label (the part document's name).
   labelFor?: (handle: string) => string | undefined
   // The tree subject: at most one part handle or mate id. The union makes "both
@@ -87,6 +101,8 @@ export function AssemblyTree({
   builtins,
   mates,
   status,
+  onRebuild,
+  isRebuilding,
   labelFor,
   subject,
   editingMateId,
@@ -170,7 +186,18 @@ export function AssemblyTree({
   return (
     <>
       <div className="sidebar-top glass-panel assembly-panel">
-        <div className="sidebar-header"><span>Parts</span></div>
+        <div className="sidebar-header">
+          <span>Parts</span>
+          {onRebuild && (
+            <RebuildButton
+              featureTimings={EMPTY_TIMINGS}
+              features={EMPTY_FEATURES}
+              onClick={onRebuild}
+              isLoading={isRebuilding}
+              title="Rebuild assembly (rebuilds every part, clears cache)"
+            />
+          )}
+        </div>
         {verdictMark.level && (
           <div
             className={`assembly-verdict assembly-verdict-${verdictMark.level}`}
