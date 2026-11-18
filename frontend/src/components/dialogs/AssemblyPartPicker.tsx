@@ -145,6 +145,10 @@ export default function AssemblyPartPicker({
 
   const parts = docs.filter(entry => insertableKind(entry) === 'part')
   const assemblies = docs.filter(entry => insertableKind(entry) === 'assembly')
+  // A selection made before the graph changed can become refused; the Insert
+  // button must follow the same reason the tile does.
+  const selectedEntry = docs.find(entry => entry.id === selected)
+  const selectedRefused = selectedEntry !== undefined && cycleReason(selectedEntry) !== undefined
 
   const tile = (entry: EntryMeta) => {
     const reason = cycleReason(entry)
@@ -182,7 +186,7 @@ export default function AssemblyPartPicker({
       onClose={onClose}
       onConfirm={confirm}
       confirmLabel="Insert"
-      confirmDisabled={!selected}
+      confirmDisabled={!selected || selectedRefused}
       className="doc-browser-dialog"
     >
       <div className="doc-browser">
