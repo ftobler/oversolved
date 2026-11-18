@@ -64,7 +64,7 @@ function partRefOfPick(selectionId: string): string {
  * The caller must pass the PRE-feature bodies (the pick layer): in a Delete Part
  * edit the preview has already lost the part being compared.
  */
-export function bodyWantKey(parts: Record<string, PartResult> | null | undefined): WantKeyOf {
+export function partsWantKey(parts: Record<string, PartResult> | null | undefined): WantKeyOf {
   return (selectionId) => {
     const ids = partIdsOfPick(partRefOfPick(selectionId), parts)
     if (ids.length === 0) return { refused: NO_PART_REASON }

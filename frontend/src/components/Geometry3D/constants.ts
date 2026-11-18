@@ -165,18 +165,18 @@ export function dimensionRenderLayer(): { depthTest: false; renderOrder: number 
 // A click the user made is never chip-owned, so a genuinely selected doomed
 // body still brightens. That keeps the "click again to un-pick" affordance the
 // precedence was written for.
-export function bodyMarkSelected({
-  bodyId,
+export function partMarkSelected({
+  partId,
   normalSelection,
   chipOwnedSelection,
   doomed = false,
 }: {
-  bodyId: string
+  partId: string
   normalSelection: ReadonlySet<string>
   chipOwnedSelection: ReadonlySet<string>
   doomed?: boolean
 }): boolean {
-  const id = '@' + bodyId
+  const id = '@' + partId
   if (!normalSelection.has(id)) return false
   return !(doomed && chipOwnedSelection.has(id))
 }
@@ -190,7 +190,7 @@ export function bodyMarkSelected({
 //
 // Selection wins because it answers "what am I acting on", which is what the
 // user asked for most recently. A chip's mirror of its own value is not that
-// selection (see bodyMarkSelected). The removal mark answers "what is this
+// selection (see partMarkSelected). The removal mark answers "what is this
 // edit about to take away" and outranks the part colour, which only carries
 // identity.
 //

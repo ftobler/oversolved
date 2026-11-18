@@ -24,13 +24,13 @@ const OTHER_EX1 = '@body_ex1/edge/3'
 const FACE_EX2 = 'face:ex2:?9;@body_ex2:face'
 const OTHER_EX2 = '@body_ex2/edge/3'
 
-function transformFeature(bodies: string[] = []): PartFeature {
+function transformFeature(parts: string[] = []): PartFeature {
   return {
     id: 'tr1',
     kind: 'transform',
     label: 'Transform',
     transform: {
-      bodies, operation: 'new', translation: [0, 0, 0], rotation_angle: 0, scale: 1,
+      bodies: parts, operation: 'new', translation: [0, 0, 0], rotation_angle: 0, scale: 1,
     },
   } as unknown as PartFeature
 }

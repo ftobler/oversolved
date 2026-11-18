@@ -6,7 +6,7 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import type { PartFeature, PartResult } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
-import { bodyMarkSelected } from '@/components/Geometry3D/constants'
+import { partMarkSelected } from '@/components/Geometry3D/constants'
 
 const part = (id: string, createdBy: string): PartResult => ({ id, created_by: createdBy, modified_by: [] })
 
@@ -252,8 +252,8 @@ describe('DeleteBodyEditor (via FeatureEditor)', () => {
     const state = useSketchEditorStore.getState()
     expect(state.normalSelection.has('@body_ex1')).toBe(true)
     expect(state.chipOwnedSelection.has('@body_ex1')).toBe(true)
-    expect(bodyMarkSelected({
-      bodyId: 'body_ex1',
+    expect(partMarkSelected({
+      partId: 'body_ex1',
       normalSelection: state.normalSelection,
       chipOwnedSelection: state.chipOwnedSelection,
       doomed: true,

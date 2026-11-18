@@ -13,7 +13,7 @@ import { act, render, fireEvent } from '@testing-library/react'
 import { usePickField } from '@/hooks/usePickField'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useEditorState } from '@/hooks/useEditorState'
-import { bodyWantKey, type WantKeyOf } from '@/utils/query/pickIntake'
+import { partsWantKey, type WantKeyOf } from '@/utils/query/pickIntake'
 import type { PartFeature, PartResult } from '@/types/cad'
 
 const part = (id: string, createdBy: string): PartResult => ({ id, created_by: createdBy, modified_by: [] })
@@ -436,7 +436,7 @@ describe('usePickField  -  want-keyed intake', () => {
     mountPickField('db1', 'bodies', onPick, {
       multi: true,
       held: ['@body_ex1/face/0'],
-      wantKeyOf: bodyWantKey(PARTS),
+      wantKeyOf: partsWantKey(PARTS),
       onPickBatch,
     })
 
@@ -460,7 +460,7 @@ describe('usePickField  -  want-keyed intake', () => {
     mountPickField('db1', 'bodies', onPick, {
       multi: true,
       held: [],
-      wantKeyOf: bodyWantKey(PARTS),
+      wantKeyOf: partsWantKey(PARTS),
       onPickBatch,
     })
 
@@ -485,7 +485,7 @@ describe('usePickField  -  want-keyed intake', () => {
     mountPickField('db1', 'bodies', vi.fn(), {
       multi: true,
       held: ['@body_ex1/face/0'],
-      wantKeyOf: bodyWantKey(PARTS),
+      wantKeyOf: partsWantKey(PARTS),
       onPickBatch,
     })
 
@@ -507,7 +507,7 @@ describe('usePickField  -  want-keyed intake', () => {
     mountPickField('db1', 'bodies', vi.fn(), {
       multi: true,
       held: ['@body_ex1/face/0', '@body_ex2/face/0'],
-      wantKeyOf: bodyWantKey(PARTS),
+      wantKeyOf: partsWantKey(PARTS),
       onPickBatch,
     })
 
