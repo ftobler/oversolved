@@ -49,6 +49,7 @@ export default function MeasurementDisplay({
   return (
     <MeasurementList
       measurements={[...measurement.lines, ...kernel.lines]}
+      more={measurement.more}
       pending={kernel.pending}
       measurementIcon={measurementIcon}
     />

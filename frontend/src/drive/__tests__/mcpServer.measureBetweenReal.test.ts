@@ -32,6 +32,18 @@ function twoBoxes(gap: number): unknown[] {
 
 const BETWEEN = ['@body_exA', '@body_exB']
 
+/** Two r=5 cylinders 30 apart in x, each extruded 10 along the Front normal. */
+function twoCylinders(): unknown[] {
+  return [
+    { mutation: { type: 'add_sketch', featureId: 'skA', label: 'Circle', plane: '@builtin_plane_front' } },
+    { mutation: { type: 'add_entity', featureId: 'skA', kind: 'circle', params: [0, 0, 5], entityId: 'cA' } },
+    { mutation: { type: 'add_extrude', featureId: 'exA', label: 'Extrude', sketchQuery: '$skA', distance: 10, operation: 'new' } },
+    { mutation: { type: 'add_sketch', featureId: 'skB', label: 'Circle', plane: '@builtin_plane_front' } },
+    { mutation: { type: 'add_entity', featureId: 'skB', kind: 'circle', params: [30, 0, 5], entityId: 'cB' } },
+    { mutation: { type: 'add_extrude', featureId: 'exB', label: 'Extrude', sketchQuery: '$skB', distance: 10, operation: 'new' } },
+  ]
+}
+
 describe.skipIf(!oc || !solveBytes || !stripTypes)('measure between over MCP (real OCC + Rust solver)', () => {
   it('answers a clearance pair in the document unit, for mm and inch docs', async () => {
     const client = spawnMcp()
@@ -105,6 +117,59 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('measure between over MCP (re
       }))
       expect(refused.ok).toBe(false)
       expect(String(refused.error)).toContain('measure')
+    } finally {
+      await client.close()
+    }
+  }, 240_000)
+
+  it('returns the smart relation extras for two parallel rims', async () => {
+    const client = spawnMcp()
+    try {
+      await client.request('initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'measureBetween', version: '0' } })
+      const run = toolPayload(await client.request('tools/call', {
+        name: 'run',
+        arguments: { steps: twoCylinders() },
+      }))
+      expect(run.ok).toBe(true)
+
+      // One circular rim per body, named by the same query a viewport pick uses.
+      const selected = toolPayload(await client.request('tools/call', {
+        name: 'select',
+        arguments: {
+          docHash: run.docHash,
+          selector: { kind: 'edge', where: { type: 'circle' } },
+        },
+      }))
+      const items = selected.items as { query: string; part: string }[]
+      const byPart = new Map<string, string>()
+      for (const item of items) {
+        if (!byPart.has(item.part)) byPart.set(item.part, item.query)
+      }
+      expect(byPart.size).toBe(2)
+
+      const read = toolPayload(await client.request('tools/call', {
+        name: 'measure',
+        arguments: { docHash: run.docHash, between: [...byPart.values()] },
+      }))
+      expect(read.ok).toBe(true)
+      const row = read.between as {
+        kind: string
+        label?: string
+        value: number
+        extra?: { kind: string; label: string; value: number }[]
+      }
+      // The pitch is the primary, labelled as such, with the layout relations
+      // beside it: no second call for the gap or the span.
+      expect(row.kind).toBe('distance')
+      expect(row.label).toBe('pitch')
+      expect(row.value).toBeCloseTo(30, 6)
+      const labels = (row.extra ?? []).map((extra) => extra.label)
+      expect(labels).toContain('center distance')
+      expect(labels).toContain('min gap')
+      expect(labels).toContain('max span')
+      expect(labels).toContain('dx')
+      const minGap = row.extra!.find((extra) => extra.label === 'min gap')!
+      expect(minGap.value).toBeCloseTo(20, 6)
     } finally {
       await client.close()
     }

@@ -47,6 +47,17 @@
   visibility: hidden;
 }
 
+/* The folded extras sit behind a disclosure. The HUD column is click-through,
+   so the disclosure opts back in, the same way the orientation cube does. */
+.measurement-more {
+  pointer-events: auto;
+  text-align: right;
+}
+
+.measurement-more summary {
+  cursor: pointer;
+}
+
 .measurement-icon {
   width: 12px;
   height: 12px;

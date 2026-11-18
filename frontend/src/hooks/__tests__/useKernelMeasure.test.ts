@@ -89,6 +89,23 @@ describe('useKernelMeasure', () => {
     expect(result.current.lines).toEqual(['length 2.000 in'])
   })
 
+  it('reads a flat face area and a body volume with their kernel extras', async () => {
+    const face: KernelMeasureAsk = { op: 'area', picks: [{ bodyId: 'b1', kind: 'face', index: 0 }] }
+    const volumeAsk: KernelMeasureAsk = { op: 'volume', picks: [{ bodyId: 'b1', kind: 'body' }] }
+    mockMeasure.mockResolvedValue({ value: 50 })
+    const area = renderHook(() => useKernelMeasure(face, 'boot:1', 'final'))
+    await afterDebounce()
+    expect(area.result.current.lines).toEqual(['area 50.000 mm²'])
+
+    mockMeasure.mockResolvedValue({
+      value: 1000,
+      extra: [{ kind: 'area', value: 600, label: 'area' }],
+    })
+    const volume = renderHook(() => useKernelMeasure(volumeAsk, 'boot:1', 'final'))
+    await afterDebounce()
+    expect(volume.result.current.lines).toEqual(['volume 1000.000 mm³', 'area 600.000 mm²'])
+  })
+
   it('sends one request for a selection that changes rapidly inside the debounce', async () => {
     mockMeasure.mockResolvedValue({ value: 1 })
     const { rerender } = renderHook(

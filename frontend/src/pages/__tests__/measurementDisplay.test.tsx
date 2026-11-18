@@ -44,10 +44,26 @@ describe('MeasurementDisplay', () => {
     expect(screen.getByText('distance 5.000 mm')).toBeTruthy()
   })
 
-  it('renders nothing for a single face', () => {
+  it('reads nothing for a single face', () => {
     useSketchEditorStore.setState({ normalSelection: new Set(['?f0:flatface']) })
     render(<MeasurementDisplay sketch={{}} parts={{ body_1: part }} />)
     expect(screen.queryByText(/distance/)).toBeNull()
+  })
+
+  it('shows the primary and two extras inline, the rest behind a disclosure', () => {
+    const points: PartResult = {
+      ...part,
+      vertices: [[0, 0, 0], [3, 4, 0]],
+      vertex_queries: ['?v0', '?v1'],
+    }
+    useSketchEditorStore.setState({ normalSelection: new Set(['?v0', '?v1']) })
+    const { container } = render(<MeasurementDisplay sketch={{}} parts={{ body_1: points }} />)
+    expect(screen.getByText('distance 5.000 mm')).toBeTruthy()
+    expect(screen.getByText('dx 3.000 mm')).toBeTruthy()
+    expect(screen.getByText('dy 4.000 mm')).toBeTruthy()
+    const more = container.querySelector('.measurement-more')
+    expect(more?.querySelector('summary')?.textContent).toBe('more')
+    expect(more?.textContent).toContain('dz 0.000 mm')
   })
 
   it('reserves a HUD row for a kernel cell, then renders the clearance', async () => {

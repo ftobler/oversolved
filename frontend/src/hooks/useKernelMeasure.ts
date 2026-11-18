@@ -38,15 +38,19 @@ function picksKey(picks: readonly MeasurePickRef[]): string {
 
 /** The readout a kernel reply states, in the one formatter the HUD uses. */
 export function formatKernelReadout(op: MeasureOp, reply: MeasureReply, unit: LengthUnit): string[] {
+  const extras = (reply.extra ?? []).map((extra) => formatReadout(extra, unit))
   if (op === 'length') {
-    return [formatReadout({ kind: 'length', value: reply.value, label: 'length' }, unit)]
+    return [formatReadout({ kind: 'length', value: reply.value, label: 'length' }, unit), ...extras]
+  }
+  if (op === 'area' || op === 'volume') {
+    return [formatReadout({ kind: op, value: reply.value, label: op }, unit), ...extras]
   }
   const line = formatReadout(
     { kind: 'distance', value: reply.value, label: op === 'clearance' ? 'clearance' : 'distance' },
     unit,
   )
   // A clearance of 0 says WHY it is 0; a plain distance has no note.
-  return [reply.note === undefined ? line : `${line} (${reply.note})`]
+  return [reply.note === undefined ? line : `${line} (${reply.note})`, ...extras]
 }
 
 /**
