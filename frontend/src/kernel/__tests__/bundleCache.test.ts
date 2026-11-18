@@ -208,6 +208,15 @@ describe('bundleCache', () => {
     expect(await bundleCacheHas('docA', 'h1')).toBe(false)
   })
 
+  it('the previous schema 5 reads back as a miss, so cached bundles rebuild with their face facts', async () => {
+    // Schema 6 added the per-face facts the assembly measurement classifies
+    // from. A schema-5 record would keep blanking every face pick's readout.
+    expect(BUNDLE_SCHEMA).toBeGreaterThan(5)
+    await bundleCachePut({ ...fixtureBundle('docA', 'h1'), schema: 5 })
+    expect(await bundleCacheGet('docA', 'h1')).toBeUndefined()
+    expect(await bundleCacheHas('docA', 'h1')).toBe(false)
+  })
+
   it('a record built by different code reads back as a miss; a matching fingerprint is a hit', async () => {
     await bundleCachePut(fixtureBundle('docA', 'h1'))
     expect(await bundleCacheGet('docA', 'h1')).toBeDefined()

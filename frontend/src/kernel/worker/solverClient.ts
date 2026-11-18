@@ -50,6 +50,7 @@ import type {
   ExportRequestOptions, ExportOkResponse, WorkerRequest,
   BundleOkResponse,
   MeasureOkResponse, MeasureOp, MeasurePickRef, MeasureSet, MeasureExtra,
+  MeasureAssemblyPick, MeasureAssemblyPart,
   SplitStepOkResponse,
   SolverWorkerMessage,
   OccProgressMessage,
@@ -476,6 +477,35 @@ export function measureViaWorker(query: {
     false,
     // No spawn: a readout is not worth a Worker respawn; the next solve starts
     // one, and until then a measure reads nothing.
+    false,
+  )
+}
+
+/**
+ * Ask the OCC worker for an assembly kernel cell (a spline length, a freeform
+ * area, an instance clearance). Unlike `measureViaWorker`, the request names
+ * the parts and poses it needs, so the worker builds and places them; there is
+ * no held assembly generation to go stale against.
+ */
+export function measureAssemblyViaWorker(
+  parts: MeasureAssemblyPart[],
+  op: MeasureOp,
+  picks: MeasureAssemblyPick[],
+  files?: FileBytes,
+): Promise<MeasureReply | null> {
+  return sendRequest(
+    (id) => ({ id, kind: 'measureAssembly', parts, op, picks, files: fileDelta(files) }),
+    (res) => {
+      if (!('value' in res)) throw new Error('measure reply without a value')
+      return {
+        value: res.value,
+        ...(res.extra !== undefined && { extra: res.extra }),
+        ...(res.points !== undefined && { points: res.points }),
+        ...(res.note !== undefined && { note: res.note }),
+      }
+    },
+    false,
+    // A readout is not worth a Worker respawn; the next solve starts one.
     false,
   )
 }

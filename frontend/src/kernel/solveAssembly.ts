@@ -8,7 +8,7 @@
 
 import { bundleCacheGet, bundleCachePut } from './bundleCache'
 import { anchorByDescriptor, anchorIdFor, anchorKindHasAxis } from './partBundle'
-import type { PartBundle, PartMesh, Anchor, AnchorPose, EdgeCurve, EntityAnchorIndex } from './partBundle'
+import type { PartBundle, PartMesh, Anchor, AnchorPose, EdgeCurve, EntityAnchorIndex, BundleFaceFact } from './partBundle'
 import type { Transform3D, MateKind, MateOffset, NumberOrExpr, MateAnchorDescriptor } from '../types/cad'
 import type { RelayService } from './worker/solverProtocol'
 import { ASSEMBLY_BUILTIN_ANCHORS, ASSEMBLY_HANDLE } from '../utils/assemblyBuiltins'
@@ -151,6 +151,11 @@ export interface MeshPayload {
   indices: Uint32Array
   faceIdsPerTriangle: Uint32Array
   edges: EdgeCurve[]  // solved-pose analytic curves; the viewport renders them crisp
+  // The body's face facts, in the same solved pose as the vertices and edges:
+  // the assembly measurement classifies a face pick from these exactly as the
+  // part editor classifies `face_data`. Optional for a bundle cached before
+  // BUNDLE_SCHEMA 6 (its faces simply read no analytic number).
+  faces?: BundleFaceFact[]
   // The body's sparse display-only seam indices (BodyMesh.hiddenEdges /
   // hiddenVertices), carried through the solve untransformed: they index the
   // curve and anchor-slot arrays, not positions.
@@ -263,6 +268,24 @@ function transformEdgeCurve(e: EdgeCurve, t: Transform3D): EdgeCurve {
     x_axis: e.x_axis ? rotateVec(e.x_axis, t) : undefined,
     endpoints: [transformPoint(e.endpoints[0], t), transformPoint(e.endpoints[1], t)],
     points: e.points?.map(p => transformPoint(p, t)),
+  }
+}
+
+/**
+ * A face fact carried into the solved pose. The centroids and the frame origin
+ * are positions; the frame axis and the normal are directions and only rotate.
+ * Area, radii and the axial length are rigid invariants and travel untouched,
+ * because the pose is a rotation plus a translation (any unit scale was applied
+ * to the bundle before the solve).
+ */
+function transformFaceFact(f: BundleFaceFact, t: Transform3D): BundleFaceFact {
+  return {
+    ...f,
+    centroid: transformPoint(f.centroid, t),
+    normal: f.normal ? rotateVec(f.normal, t) : undefined,
+    frame: f.frame
+      ? { ...f.frame, origin: transformPoint(f.frame.origin, t), axis: rotateVec(f.frame.axis, t) }
+      : undefined,
   }
 }
 
@@ -1013,6 +1036,7 @@ export async function solveAssembly(
       // `?? []`: a bundle cached before edges existed still solves, it just
       // renders without them. Same fail-safe posture as the sampler's chord.
       edges: (m.edges ?? []).map(e => transformEdgeCurve(e, t)),
+      faces: (m.faces ?? []).map(f => transformFaceFact(f, t)),
       hiddenEdges: m.hiddenEdges,
       hiddenVertices: m.hiddenVertices,
       entityAnchors: m.entityAnchors,

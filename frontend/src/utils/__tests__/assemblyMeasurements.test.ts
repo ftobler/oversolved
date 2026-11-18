@@ -1,278 +1,387 @@
 import { describe, it, expect } from 'vitest'
-import { computeAssemblyMeasurements } from '@/utils/assemblyMeasurements'
-import type { AnchorTable } from '@/utils/anchorGizmos'
-import type { EntityMateRefs } from '@/utils/anchorCandidates'
+import type { EdgeCurve, BundleFaceFact } from '@/kernel/partBundle'
+import type { FaceData, PartResult } from '@/types/cad'
 import type { AnchorPose } from '@/kernel/partBundle'
+import { assemblyBuiltinEntityKey, assemblyEntityKey } from '@/utils/anchorCandidates'
+import { partPrimitive } from '@/utils/measure/adapters/part'
+import { isKernelAsk, measureOne, measurePair } from '@/utils/measure/rules'
+import { formatReadouts } from '@/utils/measure/format'
+import {
+  computeAssemblyHud,
+  computeAssemblyMeasurements,
+  parseAssemblyEntityKey,
+  type AssemblyMeasureContext,
+} from '@/utils/assemblyMeasurements'
+import type { AssemblyEntityFacts } from '@/utils/assemblyBodies'
 
-// A tiny fixture: two parts, each entity key maps to one anchor id, and the
-// anchor table gives that id a pose. The keys are opaque here; only the join
-// through entityMateRefs -> anchors matters.
-function fixture(anchorsByKey: Record<string, AnchorPose>): {
-  entityMateRefs: EntityMateRefs
-  anchors: AnchorTable
-} {
-  const entityMateRefs: EntityMateRefs = {}
-  const partAnchors: Record<string, AnchorPose> = {}
-  for (const [key, pose] of Object.entries(anchorsByKey)) {
-    const anchorId = `a_${key}`
-    entityMateRefs[key] = [{ part: 'P', anchor: anchorId }]
-    partAnchors[anchorId] = pose
-  }
-  return { entityMateRefs, anchors: { P: partAnchors } }
+const TWO_PI = Math.PI * 2
+
+function shapeKey(handle: string, partIndex = 0): string {
+  return `${handle}:body_${partIndex}`
 }
 
-describe('computeAssemblyMeasurements', () => {
-  it('returns nothing for a single entity', () => {
-    const { entityMateRefs, anchors } = fixture({
-      f0: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1] },
+function factsOf(edges: EdgeCurve[], faces?: BundleFaceFact[]): AssemblyEntityFacts {
+  return { edges, ...(faces && { faces }) }
+}
+
+function lineEdge(a: [number, number, number], b: [number, number, number]): EdgeCurve {
+  return {
+    id: 'e', kind: 'line',
+    point: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2],
+    endpoints: [a, b],
+  }
+}
+
+function circleEdge(
+  center: [number, number, number],
+  radius: number,
+  angleStart = 0,
+  angleEnd = TWO_PI,
+): EdgeCurve {
+  const at = (angle: number): [number, number, number] => [
+    center[0] + radius * Math.cos(angle),
+    center[1] + radius * Math.sin(angle),
+    center[2],
+  ]
+  return {
+    id: 'e', kind: 'circle', point: center, axis: [0, 0, 1], radius,
+    endpoints: [at(angleStart), at(angleEnd)], x_axis: [1, 0, 0],
+    angle_start: angleStart, angle_end: angleEnd,
+  }
+}
+
+function planeFace(point: [number, number, number], normal: [number, number, number]): BundleFaceFact {
+  return { surface_type: 'flatface', centroid: point, normal }
+}
+
+function cylinderFace(
+  origin: [number, number, number],
+  axis: [number, number, number],
+  radius: number,
+  length = 10,
+): BundleFaceFact {
+  return {
+    surface_type: 'cylinderface',
+    centroid: origin,
+    normal: [1, 0, 0],
+    frame: { origin, axis, radius },
+    axial_length: length,
+  }
+}
+
+/** The context for solved shapes only; a test that adds anchors builds them itself. */
+function ctxOf(
+  facts: Record<string, AssemblyEntityFacts>,
+  extra: Partial<AssemblyMeasureContext> = {},
+): AssemblyMeasureContext {
+  return { entityMateRefs: {}, anchors: {}, shapeFacts: facts, ...extra }
+}
+
+/** One instance's single shape at index 0. */
+function ctxForShape(handle: string, facts: AssemblyEntityFacts): AssemblyMeasureContext {
+  return ctxOf({ [shapeKey(handle)]: facts })
+}
+
+function key(handle: string, kind: 'face' | 'edge' | 'vertex', index: number, partIndex = 0): string {
+  return assemblyEntityKey(handle, partIndex, kind, index)
+}
+
+describe('parseAssemblyEntityKey', () => {
+  it('reads the handle, part index, kind and element index', () => {
+    expect(parseAssemblyEntityKey('asm-1|0|face|3')).toEqual({
+      handle: 'asm-1', partIndex: 0, kind: 'face', index: 3,
     })
-    expect(computeAssemblyMeasurements(new Set(['f0']), entityMateRefs, anchors)).toEqual([])
   })
 
-  it('measures the distance between two parallel planes', () => {
-    const { entityMateRefs, anchors } = fixture({
-      f0: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1] },
-      f1: { kind: 'plane', point: [0, 0, 5], axis: [0, 0, 1] },
+  it('keeps a pipe inside the handle out of the positional fields', () => {
+    expect(parseAssemblyEntityKey('a|b|2|edge|7')).toEqual({
+      handle: 'a|b', partIndex: 2, kind: 'edge', index: 7,
     })
-    expect(computeAssemblyMeasurements(new Set(['f0', 'f1']), entityMateRefs, anchors))
+  })
+
+  it('refuses a built-in key and a malformed one', () => {
+    expect(parseAssemblyEntityKey(assemblyBuiltinEntityKey('Origin'))).toBeNull()
+    expect(parseAssemblyEntityKey('p1|0|face')).toBeNull()
+    expect(parseAssemblyEntityKey('p1|0|blob|1')).toBeNull()
+  })
+})
+
+describe('computeAssemblyMeasurements: singles', () => {
+  it('reads a circle edge pick as its diameter (was nothing off an anchor)', () => {
+    const ctx = ctxForShape('p1', factsOf([circleEdge([0, 0, 0], 4)]))
+    expect(computeAssemblyMeasurements(new Set([key('p1', 'edge', 0)]), ctx))
+      .toEqual(['diameter 8.000 mm'])
+  })
+
+  it('reads a straight edge as its length', () => {
+    const ctx = ctxForShape('p1', factsOf([lineEdge([0, 0, 0], [3, 4, 0])]))
+    expect(computeAssemblyMeasurements(new Set([key('p1', 'edge', 0)]), ctx))
+      .toEqual(['length 5.000 mm'])
+  })
+
+  it('reads a cylinder face as its diameter and axial length', () => {
+    const ctx = ctxForShape('p1', factsOf([], [cylinderFace([0, 0, 0], [0, 0, 1], 4, 10)]))
+    expect(computeAssemblyMeasurements(new Set([key('p1', 'face', 0)]), ctx))
+      .toEqual(['diameter 8.000 mm', 'length 10.000 mm'])
+  })
+
+  it('asks the kernel for a flat face area and a spline length', () => {
+    const flat = ctxForShape('p1', factsOf([], [planeFace([0, 0, 0], [0, 0, 1])]))
+    expect(computeAssemblyHud(new Set([key('p1', 'face', 0)]), flat).ask).toEqual({
+      op: 'area',
+      picks: [{ handle: 'p1', partIndex: 0, kind: 'face', index: 0 }],
+    })
+    const spline = ctxForShape('p1', factsOf([{
+      id: 'e', kind: 'b-spline', point: [1, 1, 0],
+      endpoints: [[0, 0, 0], [2, 0, 0]],
+      points: [[0, 0, 0], [1, 1, 0], [2, 0, 0]],
+    }]))
+    expect(computeAssemblyHud(new Set([key('p1', 'edge', 0)]), spline).ask).toEqual({
+      op: 'length',
+      picks: [{ handle: 'p1', partIndex: 0, kind: 'edge', index: 0 }],
+    })
+  })
+
+  it('reads a lone vertex nothing, as the part editor does', () => {
+    const handle = 'p1'
+    const anchorId = 'a_v0'
+    const ctx: AssemblyMeasureContext = {
+      entityMateRefs: { [key(handle, 'vertex', 0)]: [{ part: handle, anchor: anchorId }] },
+      anchors: { [handle]: { [anchorId]: { kind: 'point', point: [1, 2, 3], axis: [0, 0, 1] } } },
+      shapeFacts: {},
+    }
+    expect(computeAssemblyMeasurements(new Set([key(handle, 'vertex', 0)]), ctx)).toEqual([])
+  })
+})
+
+describe('computeAssemblyMeasurements: pairs', () => {
+  it('measures the distance between two parallel faces', () => {
+    const ctx = ctxForShape('p1', factsOf([], [
+      planeFace([0, 0, 0], [0, 0, 1]),
+      planeFace([0, 0, 5], [0, 0, 1]),
+    ]))
+    expect(computeAssemblyMeasurements(new Set([key('p1', 'face', 0), key('p1', 'face', 1)]), ctx))
       .toEqual(['distance 5.000 mm'])
   })
 
-  it('measures the angle between two non-parallel planes', () => {
-    const { entityMateRefs, anchors } = fixture({
-      f0: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1] },
-      f1: { kind: 'plane', point: [0, 0, 0], axis: [1, 0, 0] },
-    })
-    expect(computeAssemblyMeasurements(new Set(['f0', 'f1']), entityMateRefs, anchors))
+  it('measures the angle between two non-parallel faces', () => {
+    const ctx = ctxForShape('p1', factsOf([], [
+      planeFace([0, 0, 0], [0, 0, 1]),
+      planeFace([0, 0, 0], [1, 0, 0]),
+    ]))
+    expect(computeAssemblyMeasurements(new Set([key('p1', 'face', 0), key('p1', 'face', 1)]), ctx))
       .toEqual(['angle 90.0°', 'supplement 90.0°'])
   })
 
-  it('measures a vertex to plane perpendicular distance', () => {
-    const { entityMateRefs, anchors } = fixture({
-      p0: { kind: 'point', point: [1, 2, 7], axis: [0, 0, 0] },
-      f0: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1] },
-    })
-    expect(computeAssemblyMeasurements(new Set(['p0', 'f0']), entityMateRefs, anchors))
-      .toEqual(['distance 7.000 mm'])
+  it('measures two parallel bounded edges by their offset', () => {
+    const ctx = ctxForShape('p1', factsOf([
+      lineEdge([0, 0, 0], [10, 0, 0]),
+      lineEdge([0, 4, 0], [10, 4, 0]),
+    ]))
+    expect(computeAssemblyMeasurements(new Set([key('p1', 'edge', 0), key('p1', 'edge', 1)]), ctx))
+      .toEqual(['distance 4.000 mm', 'alignment offset 0.000 mm'])
   })
 
-  it('measures the distance between two vertices and its delta legs', () => {
-    const { entityMateRefs, anchors } = fixture({
-      p0: { kind: 'point', point: [0, 0, 0], axis: [0, 0, 0] },
-      p1: { kind: 'point', point: [3, 4, 0], axis: [0, 0, 0] },
-    })
-    expect(computeAssemblyMeasurements(new Set(['p0', 'p1']), entityMateRefs, anchors))
-      .toEqual(['distance 5.000 mm', 'dx 3.000 mm', 'dy 4.000 mm', 'dz 0.000 mm'])
-  })
-
-  it('reads two coincident vertices as a zero distance with zero legs', () => {
-    // The old assembly rule suppressed anything at or below 0.01; a zero is a
-    // real answer to "how far apart are these" and the shared core states it.
-    const { entityMateRefs, anchors } = fixture({
-      p0: { kind: 'point', point: [1, 2, 3], axis: [0, 0, 0] },
-      p1: { kind: 'point', point: [1, 2, 3], axis: [0, 0, 0] },
-    })
-    expect(computeAssemblyMeasurements(new Set(['p0', 'p1']), entityMateRefs, anchors))
-      .toEqual(['distance 0.000 mm', 'dx 0.000 mm', 'dy 0.000 mm', 'dz 0.000 mm'])
-  })
-
-  it('measures the angle between two edges and its supplement', () => {
-    const { entityMateRefs, anchors } = fixture({
-      e0: { kind: 'line', point: [0, 0, 0], axis: [1, 0, 0] },
-      e1: { kind: 'line', point: [0, 0, 0], axis: [0, 1, 0] },
-    })
-    expect(computeAssemblyMeasurements(new Set(['e0', 'e1']), entityMateRefs, anchors))
-      .toEqual(['angle 90.0°', 'supplement 90.0°'])
-  })
-
-  it('measures the perpendicular distance between parallel edges', () => {
-    const { entityMateRefs, anchors } = fixture({
-      e0: { kind: 'line', point: [0, 0, 0], axis: [1, 0, 0] },
-      e1: { kind: 'line', point: [0, 4, 0], axis: [1, 0, 0] },
-    })
-    expect(computeAssemblyMeasurements(new Set(['e0', 'e1']), entityMateRefs, anchors))
-      .toEqual(['distance 4.000 mm'])
-  })
-
-  it('measures coaxial circular edges as an axial distance', () => {
-    const { entityMateRefs, anchors } = fixture({
-      c0: { kind: 'circle', point: [0, 0, 0], axis: [0, 0, 1] },
-      c1: { kind: 'circle', point: [0, 0, 10], axis: [0, 0, 1] },
-    })
-    // Two coaxial rims with no stated radii: the step along the axis is the
-    // number, not the slanted centre distance.
-    expect(computeAssemblyMeasurements(new Set(['c0', 'c1']), entityMateRefs, anchors))
-      .toEqual(['axial distance 10.000 mm'])
+  it('measures coaxial rims by their axial distance and radial gap', () => {
+    const ctx = ctxForShape('p1', factsOf([
+      circleEdge([0, 0, 0], 4),
+      circleEdge([0, 0, 10], 4),
+    ]))
+    expect(computeAssemblyMeasurements(new Set([key('p1', 'edge', 0), key('p1', 'edge', 1)]), ctx))
+      .toEqual(['axial distance 10.000 mm', 'radial gap 0.000 mm'])
   })
 
   it('measures a cylinder axis against a plane', () => {
-    const { entityMateRefs, anchors } = fixture({
-      cy0: { kind: 'cylinder', point: [0, 0, 3], axis: [1, 0, 0] },
-      f0: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1] },
-    })
-    // The axis lies in the plane's direction (perpendicular to its normal), so
-    // the pair reads the axis-to-plane distance.
-    expect(computeAssemblyMeasurements(new Set(['cy0', 'f0']), entityMateRefs, anchors))
+    const ctx = ctxForShape('p1', factsOf([], [
+      cylinderFace([0, 0, 3], [1, 0, 0], 4),
+      planeFace([0, 0, 0], [0, 0, 1]),
+    ]))
+    expect(computeAssemblyMeasurements(new Set([key('p1', 'face', 0), key('p1', 'face', 1)]), ctx))
       .toEqual(['axis distance 3.000 mm'])
   })
 
-  it('measures a torus axis against a cylinder axis', () => {
-    const { entityMateRefs, anchors } = fixture({
-      t0: { kind: 'torus', point: [0, 7, 0], axis: [0, 0, 1] },
-      cy0: { kind: 'cylinder', point: [0, 0, 0], axis: [0, 0, 1] },
-    })
-    expect(computeAssemblyMeasurements(new Set(['t0', 'cy0']), entityMateRefs, anchors))
-      .toEqual(['axis distance 7.000 mm'])
+  it('reads the same lines whichever order the two picks arrive in', () => {
+    const ctx = ctxForShape('p1', factsOf([
+      lineEdge([0, 0, 3], [10, 0, 3]),
+      lineEdge([0, 0, 0], [0, 0, 10]),
+    ]))
+    const a = computeAssemblyMeasurements(new Set([key('p1', 'edge', 0), key('p1', 'edge', 1)]), ctx)
+    const b = computeAssemblyMeasurements(new Set([key('p1', 'edge', 1), key('p1', 'edge', 0)]), ctx)
+    expect(b).toEqual(a)
   })
 
-  it('ignores an entity with no matable anchor', () => {
-    const { entityMateRefs, anchors } = fixture({
-      f0: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1] },
-    })
-    // 'ghost' has no entry in entityMateRefs, so it resolves to nothing.
-    expect(computeAssemblyMeasurements(new Set(['f0', 'ghost']), entityMateRefs, anchors)).toEqual([])
-  })
-
-  it('ignores an entity whose anchor reference is no longer in the table', () => {
-    const { entityMateRefs, anchors } = fixture({
-      f0: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1] },
-    })
-    // A stale ref names an anchor id the solved table no longer carries.
-    entityMateRefs.ghost = [{ part: 'P', anchor: 'a_ghost' }]
-    expect(computeAssemblyMeasurements(new Set(['ghost', 'f0']), entityMateRefs, anchors)).toEqual([])
-  })
-
-  it('measures the perpendicular distance from a point to an edge', () => {
-    const { entityMateRefs, anchors } = fixture({
-      p0: { kind: 'point', point: [0, 0, 5], axis: [0, 0, 0] },
-      e0: { kind: 'line', point: [0, 0, 0], axis: [1, 0, 0] },
-    })
-    expect(computeAssemblyMeasurements(new Set(['p0', 'e0']), entityMateRefs, anchors))
-      .toEqual(['distance 5.000 mm'])
-  })
-
-  it('measures an edge parallel to a plane by its perpendicular distance', () => {
-    const { entityMateRefs, anchors } = fixture({
-      e0: { kind: 'line', point: [0, 0, 3], axis: [1, 0, 0] },
-      f0: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1] },
-    })
-    // Direction perpendicular to the normal means the edge never pierces the plane.
-    expect(computeAssemblyMeasurements(new Set(['e0', 'f0']), entityMateRefs, anchors))
-      .toEqual(['distance 3.000 mm'])
-  })
-
-  it('measures the angle between an edge and a plane it meets', () => {
-    const { entityMateRefs, anchors } = fixture({
-      e0: { kind: 'line', point: [0, 0, 0], axis: [1, 0, 1] },
-      f0: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1] },
-    })
-    // 45 deg between the unit direction and the normal reports the 45 deg it
-    // makes with the plane, not the 45 deg against the normal.
-    expect(computeAssemblyMeasurements(new Set(['e0', 'f0']), entityMateRefs, anchors))
-      .toEqual(['angle 45.0°', 'supplement 135.0°'])
-  })
-
-  it('measures a sphere anchor as its centre point', () => {
-    const { entityMateRefs, anchors } = fixture({
-      s0: { kind: 'sphere', point: [2, 0, 0], axis: [0, 0, 0] },
-      f0: { kind: 'plane', point: [0, 0, 0], axis: [1, 0, 0] },
-    })
-    expect(computeAssemblyMeasurements(new Set(['s0', 'f0']), entityMateRefs, anchors))
-      .toEqual(['distance 2.000 mm'])
-  })
-
-  it('reads nothing when more than two entities are selected', () => {
-    const { entityMateRefs, anchors } = fixture({
-      f0: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1] },
-      f1: { kind: 'plane', point: [0, 0, 5], axis: [0, 0, 1] },
-      p0: { kind: 'point', point: [100, 0, 0], axis: [0, 0, 0] },
-    })
-    expect(computeAssemblyMeasurements(new Set(['f0', 'f1', 'p0']), entityMateRefs, anchors))
-      .toEqual([])
-  })
-
-  it('measures a plane to a point regardless of selection order', () => {
-    const { entityMateRefs, anchors } = fixture({
-      f0: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1] },
-      p0: { kind: 'point', point: [1, 2, 7], axis: [0, 0, 0] },
-    })
-    expect(computeAssemblyMeasurements(new Set(['f0', 'p0']), entityMateRefs, anchors))
-      .toEqual(['distance 7.000 mm'])
-    expect(computeAssemblyMeasurements(new Set(['p0', 'f0']), entityMateRefs, anchors))
+  it('reads a vertex against a face through the anchor path', () => {
+    const handle = 'p1'
+    const ctx: AssemblyMeasureContext = {
+      entityMateRefs: { [key(handle, 'vertex', 0)]: [{ part: handle, anchor: 'a_v' }] },
+      anchors: { [handle]: { a_v: { kind: 'point', point: [1, 2, 7], axis: [0, 0, 1] } } },
+      shapeFacts: { [shapeKey(handle)]: factsOf([], [planeFace([0, 0, 0], [0, 0, 1])]) },
+    }
+    expect(computeAssemblyMeasurements(new Set([key(handle, 'vertex', 0), key(handle, 'face', 0)]), ctx))
       .toEqual(['distance 7.000 mm'])
   })
 
-  it('measures a plane to an edge regardless of selection order', () => {
-    const { entityMateRefs, anchors } = fixture({
-      f0: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1] },
-      e0: { kind: 'line', point: [0, 0, 3], axis: [1, 0, 0] },
-    })
-    expect(computeAssemblyMeasurements(new Set(['f0', 'e0']), entityMateRefs, anchors))
-      .toEqual(['distance 3.000 mm'])
-    expect(computeAssemblyMeasurements(new Set(['e0', 'f0']), entityMateRefs, anchors))
-      .toEqual(['distance 3.000 mm'])
-  })
-
-  it('measures a point to an edge regardless of selection order', () => {
-    const { entityMateRefs, anchors } = fixture({
-      p0: { kind: 'point', point: [0, 0, 5], axis: [0, 0, 0] },
-      e0: { kind: 'line', point: [0, 0, 0], axis: [1, 0, 0] },
-    })
-    expect(computeAssemblyMeasurements(new Set(['e0', 'p0']), entityMateRefs, anchors))
+  it('reads a built-in plane against a face as the anchor path always has', () => {
+    const builtin = assemblyBuiltinEntityKey('Top')
+    const handle = 'p1'
+    const anchor: AnchorPose = { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1] }
+    const ctx: AssemblyMeasureContext = {
+      entityMateRefs: { [builtin]: [{ part: '__assembly', anchor: 'Top' }] },
+      anchors: { __assembly: { Top: anchor } },
+      shapeFacts: { [shapeKey(handle)]: factsOf([], [planeFace([0, 0, 5], [0, 0, 1])]) },
+    }
+    expect(computeAssemblyMeasurements(new Set([builtin, key(handle, 'face', 0)]), ctx))
       .toEqual(['distance 5.000 mm'])
   })
+})
 
-  it('measures a circle to a point by center distance and its delta legs, either way round', () => {
-    const { entityMateRefs, anchors } = fixture({
-      c0: { kind: 'circle', point: [0, 0, 0], axis: [0, 0, 1] },
-      p0: { kind: 'point', point: [3, 4, 0], axis: [0, 0, 0] },
-    })
-    expect(computeAssemblyMeasurements(new Set(['c0', 'p0']), entityMateRefs, anchors))
-      .toEqual(['center distance 5.000 mm', 'dx 3.000 mm', 'dy 4.000 mm', 'dz 0.000 mm'])
-    expect(computeAssemblyMeasurements(new Set(['p0', 'c0']), entityMateRefs, anchors))
-      .toEqual(['center distance 5.000 mm', 'dx 3.000 mm', 'dy 4.000 mm', 'dz 0.000 mm'])
+describe('computeAssemblyMeasurements: resolution rules', () => {
+  it('blanks a selection that holds an entity the bundle does not resolve', () => {
+    const ctx = ctxForShape('p1', factsOf([lineEdge([0, 0, 0], [1, 0, 0])]))
+    expect(computeAssemblyMeasurements(new Set([key('p1', 'edge', 0), 'ghost']), ctx)).toEqual([])
+    expect(computeAssemblyMeasurements(new Set(['ghost']), ctx)).toEqual([])
   })
 
-  it('measures a circle to a line by the centre-to-line distance', () => {
-    const { entityMateRefs, anchors } = fixture({
-      c0: { kind: 'circle', point: [0, 3, 0], axis: [0, 0, 1] },
-      e0: { kind: 'line', point: [0, 0, 0], axis: [1, 0, 0] },
-    })
-    // The pair table reads a line against a circle by its centre, the same as
-    // the part editor does; only a cylinder axis gets the axis-pair rules.
-    expect(computeAssemblyMeasurements(new Set(['c0', 'e0']), entityMateRefs, anchors))
-      .toEqual(['center distance 3.000 mm'])
+  it('blanks a face pick when the bundle carries no face facts', () => {
+    // A schema-5 bundle (or one from before the facts existed) cannot classify a
+    // face; the selection reads nothing rather than an invented number.
+    const ctx = ctxForShape('p1', factsOf([]))
+    expect(computeAssemblyMeasurements(new Set([key('p1', 'face', 0)]), ctx)).toEqual([])
   })
 
-  it('measures a circle standing perpendicular to a plane by centre-to-face distance', () => {
-    const { entityMateRefs, anchors } = fixture({
-      c0: { kind: 'circle', point: [3, 0, 0], axis: [0, 0, 1] },
-      f0: { kind: 'plane', point: [0, 0, 0], axis: [1, 0, 0] },
-    })
-    // The circle's axis lies along the plane, so the useful number is how far
-    // its centre sits from the face, not the 90 degree angle between them.
-    expect(computeAssemblyMeasurements(new Set(['c0', 'f0']), entityMateRefs, anchors))
-      .toEqual(['distance 3.000 mm'])
+  it('reads nothing for three or more picks', () => {
+    const ctx = ctxForShape('p1', factsOf([
+      lineEdge([0, 0, 0], [1, 0, 0]),
+      lineEdge([0, 1, 0], [1, 1, 0]),
+      lineEdge([0, 2, 0], [1, 2, 0]),
+    ]))
+    expect(computeAssemblyMeasurements(
+      new Set([key('p1', 'edge', 0), key('p1', 'edge', 1), key('p1', 'edge', 2)]),
+      ctx,
+    )).toEqual([])
   })
 
   it('treats an anchor whose direction cannot be normalized as unmeasurable', () => {
-    // A zero-length axis is not a plane normal, edge direction or circle axis,
-    // so the primitive drops out instead of producing a NaN measurement.
-    const { entityMateRefs, anchors } = fixture({
-      f0: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 0] },
-      e0: { kind: 'line', point: [0, 0, 0], axis: [0, 0, 0] },
-      c0: { kind: 'circle', point: [0, 0, 0], axis: [0, 0, 0] },
-      p0: { kind: 'point', point: [1, 0, 0], axis: [0, 0, 0] },
-    })
-    expect(computeAssemblyMeasurements(new Set(['f0', 'e0']), entityMateRefs, anchors)).toEqual([])
-    expect(computeAssemblyMeasurements(new Set(['c0', 'p0']), entityMateRefs, anchors)).toEqual([])
+    const builtin = assemblyBuiltinEntityKey('Top')
+    const ctx: AssemblyMeasureContext = {
+      entityMateRefs: { [builtin]: [{ part: '__assembly', anchor: 'Top' }] },
+      anchors: { __assembly: { Top: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 0] } } },
+      shapeFacts: {},
+    }
+    expect(computeAssemblyMeasurements(new Set([builtin]), ctx)).toEqual([])
   })
 
-  it('treats an unrecognized anchor kind as unmeasurable', () => {
-    const { entityMateRefs, anchors } = fixture({
-      x0: { kind: 'blob' as unknown as AnchorPose['kind'], point: [0, 0, 0], axis: [0, 0, 1] },
-      p0: { kind: 'point', point: [0, 0, 0], axis: [0, 0, 0] },
+  it('asks the kernel for a freeform face, and states no analytic number', () => {
+    const ctx = ctxForShape('p1', factsOf([], [{ surface_type: 'bsplineface', centroid: [0, 0, 0], normal: [0, 0, 1] }]))
+    expect(computeAssemblyHud(new Set([key('p1', 'face', 0)]), ctx).ask).toEqual({
+      op: 'length',
+      picks: [{ handle: 'p1', partIndex: 0, kind: 'face', index: 0 }],
     })
-    expect(computeAssemblyMeasurements(new Set(['x0', 'p0']), entityMateRefs, anchors)).toEqual([])
+  })
+
+  it('reads a whole instance from the tree subject as a kernel volume', () => {
+    const ctx = ctxOf({}, { subjectHandle: 'p1' })
+    expect(computeAssemblyHud(new Set(), ctx).ask).toEqual({
+      op: 'volume',
+      picks: [{ handle: 'p1', kind: 'body' }],
+    })
+    // An entity selection wins over the tree subject; the two are never mixed.
+    expect(computeAssemblyHud(new Set(), { ...ctx, subjectHandle: null }).ask).toBeNull()
+  })
+
+  it('reads a body entity key as a whole-instance kernel pick', () => {
+    // The drive names a whole instance with the same key grammar; it is how an
+    // agent asks for an instance clearance.
+    const ctx = ctxOf({})
+    expect(computeAssemblyHud(new Set(['a|0|body|0', 'b|0|body|0']), ctx).ask).toEqual({
+      op: 'clearance',
+      picks: [{ handle: 'a', kind: 'body' }, { handle: 'b', kind: 'body' }],
+    })
+  })
+})
+
+// ─── Parity with the part editor ───
+
+function partOf(fields: Partial<PartResult>): PartResult {
+  return { id: 'body_1', created_by: 'ex', modified_by: [], ...fields }
+}
+
+function holeFaceData(origin: [number, number, number]): FaceData {
+  return {
+    centroid: origin, normal: [1, 0, 0], surface_type: 'cylinderface',
+    surface_frame: { axis: [0, 0, 1], origin, radius: 4 },
+  }
+}
+
+function partReadout(part: PartResult, a: string, b?: string): string[] {
+  const parts = { body_1: part }
+  const result = b === undefined
+    ? null
+    : measurePair(partPrimitive(a, parts)!, partPrimitive(b, parts)!)
+  if (result === null || isKernelAsk(result)) throw new Error('expected a readout')
+  return formatReadouts(result)
+}
+
+describe('computeAssemblyMeasurements: parity with the part adapter', () => {
+  // Two coaxial hole faces in one part versus the same two faces in two
+  // instances, the second translated 40 along the shared axis. The readout must
+  // be identical, because it is the same measurement.
+  const part = partOf({
+    mesh: {
+      vertices: [], faces: [],
+      face_data: [holeFaceData([0, 0, 0]), holeFaceData([0, 0, 40])],
+      face_queries: ['?holeA', '?holeB'],
+    },
+  })
+  const ctx = ctxOf({
+    [shapeKey('p1')]: factsOf([], [cylinderFace([0, 0, 0], [0, 0, 1], 4)]),
+    [shapeKey('p2')]: factsOf([], [cylinderFace([0, 0, 40], [0, 0, 1], 4)]),
+  }, {})
+
+  it('reads two coaxial faces in two instances like the two in one part', () => {
+    const instance = computeAssemblyMeasurements(
+      new Set([key('p1', 'face', 0), key('p2', 'face', 0)]),
+      ctx,
+    )
+    expect(instance).toEqual(partReadout(part, '?holeA', '?holeB'))
+  })
+
+  it('reads the pair the same when the second instance axis is rotated 90 degrees', () => {
+    const rotated = ctxOf({
+      [shapeKey('p1')]: factsOf([], [cylinderFace([0, 0, 0], [0, 0, 1], 4)]),
+      [shapeKey('p2')]: factsOf([], [cylinderFace([0, 40, 0], [0, 1, 0], 4)]),
+    })
+    const rotatedPart = partOf({
+      mesh: {
+        vertices: [], faces: [],
+        face_data: [
+          holeFaceData([0, 0, 0]),
+          {
+            centroid: [0, 40, 0], normal: [1, 0, 0], surface_type: 'cylinderface',
+            surface_frame: { axis: [0, 1, 0], origin: [0, 40, 0], radius: 4 },
+          },
+        ],
+        face_queries: ['?holeA', '?holeB'],
+      },
+    })
+    expect(computeAssemblyMeasurements(
+      new Set([key('p1', 'face', 0), key('p2', 'face', 0)]),
+      rotated,
+    )).toEqual(partReadout(rotatedPart, '?holeA', '?holeB'))
+  })
+
+  it('reads a circle edge single like the part editor', () => {
+    const assembly = ctxForShape('p1', factsOf([circleEdge([3, 4, 0], 4)]))
+    const partEdge = partOf({
+      edges: [{
+        kind: 'circle', center: [3, 4, 0], radius: 4, axis: [0, 0, 1],
+        x_axis: [1, 0, 0], angle_start: 0, angle_end: TWO_PI,
+      }],
+      edge_queries: ['?rim'],
+    })
+    const partResult = measureOne(partPrimitive('?rim', { body_1: partEdge })!)
+    if (partResult === null || isKernelAsk(partResult)) throw new Error('expected a readout')
+    expect(computeAssemblyMeasurements(new Set([key('p1', 'edge', 0)]), assembly))
+      .toEqual(formatReadouts(partResult))
   })
 })

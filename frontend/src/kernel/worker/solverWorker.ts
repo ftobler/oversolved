@@ -15,7 +15,7 @@
  * here persists state the host cannot rebuild from it.
  */
 
-import { solveLocally, exportLocally, exportAssemblyLocally, setOccLoader, preloadOcc, measureGeneration, splitStepLocally } from '../solveLocally'
+import { solveLocally, exportLocally, exportAssemblyLocally, setOccLoader, preloadOcc, measureGeneration, measureAssemblyPicksLocally, splitStepLocally } from '../solveLocally'
 import { loadSolverWasm } from '../../wasm-kernel/solverWasm'
 import { isDevBuild } from '../isDevBuild'
 import { extractErrorMessage } from '../errors'
@@ -29,6 +29,7 @@ import type {
   ExportAssemblyRequest,
   FileBytes,
   MeasureRequest, MeasureResponse,
+  MeasureAssemblyRequest,
   SplitStepRequest, SplitStepResponse,
   OccProgressMessage,
   FeatureProgressMessage,
@@ -140,6 +141,37 @@ export async function handleMeasureRequest(
       op: req.op,
       picks: req.picks,
     })
+    if (!result.ok) return { id: req.id, ok: false, error: result.error }
+    return {
+      id: req.id,
+      ok: true,
+      value: result.value,
+      ...(result.extra !== undefined && { extra: result.extra }),
+      ...(result.points !== undefined && { points: result.points }),
+      ...(result.note !== undefined && { note: result.note }),
+    }
+  } catch (e) {
+    return { id: req.id, ok: false, error: extractErrorMessage(e) }
+  }
+}
+
+/** The engine signature [[handleMeasureAssemblyRequest]] depends on. */
+type MeasureAssemblyEngine = typeof measureAssemblyPicksLocally
+
+/**
+ * Answer one assembly kernel cell: the parts are rebuilt and placed per request,
+ * because the anchor solver that holds the assembly's meshes has no OCC. The
+ * request names its own geometry, so there is no cross-request generation to go
+ * stale; the client's selection key drops a reply the user has moved past, and
+ * the measure lane drops a queued request a newer one supersedes.
+ */
+export async function handleMeasureAssemblyRequest(
+  req: MeasureAssemblyRequest,
+  measure: MeasureAssemblyEngine,
+  files?: ReadonlyMap<string, Uint8Array>,
+): Promise<MeasureResponse> {
+  try {
+    const result = await measure(req.parts, req.op, req.picks, files)
     if (!result.ok) return { id: req.id, ok: false, error: result.error }
     return {
       id: req.id,
@@ -495,8 +527,9 @@ export function handleWorkerMessage(
   actor: WorkerActor,
 ): void {
   // Most request shapes may carry file bytes; absorb them first so every
-  // handler below sees the union of every file this generation has seen. A
-  // measure names geometry the Worker already holds, so it carries none.
+  // handler below sees the union of every file this generation has seen. A part
+  // measure names geometry the Worker already holds, so it carries none; an
+  // assembly measure carries the files its part specs reference.
   if ('files' in msg) absorbFiles(msg.files)
   if (msg.kind === 'export') {
     actor.submit(oneShot(
@@ -536,6 +569,16 @@ export function handleWorkerMessage(
       lane: 'measure',
       run: async () => {
         post(await handleMeasureRequest(msg, measureGeneration), [])
+      },
+      onSuperseded: () => {
+        post({ id: msg.id, ok: false, error: MEASURE_SUPERSEDED }, [])
+      },
+    })
+  } else if (msg.kind === 'measureAssembly') {
+    actor.submit({
+      lane: 'measure',
+      run: async () => {
+        post(await handleMeasureAssemblyRequest(msg, measureAssemblyPicksLocally, fileCache), [])
       },
       onSuperseded: () => {
         post({ id: msg.id, ok: false, error: MEASURE_SUPERSEDED }, [])

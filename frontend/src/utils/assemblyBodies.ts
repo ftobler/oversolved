@@ -4,7 +4,7 @@
 // so this is a relabelling, not geometry work.
 
 import type { PartResult, MateAnchorDescriptor } from '@/types/cad'
-import type { EdgeCurve, EntityAnchorIndex } from '@/kernel/partBundle'
+import type { BundleFaceFact, EdgeCurve, EntityAnchorIndex } from '@/kernel/partBundle'
 import type { MeshPayload } from '@/kernel/solveAssembly'
 import {
   assemblyBuiltinEntityKey,
@@ -59,6 +59,32 @@ export function toEdgeCurves(parts: Record<string, MeshPayload[]>): Record<strin
       out[assemblyPartId(handle, i)] = hidden && hidden.length > 0
         ? edges.filter((_edge, index) => !hidden.includes(index))
         : edges
+    })
+  }
+  return out
+}
+
+/** The analytic bundle facts one solved body offers a measurement. */
+export interface AssemblyEntityFacts {
+  // The UNFILTERED edge list: `adapters/bundle` addresses an edge by its bundle
+  // index, and the beauty-pass `edgeCurves` above has the hidden seams dropped.
+  edges: EdgeCurve[]
+  faces?: BundleFaceFact[]
+}
+
+/**
+ * The measurement facts of every solved body, under the same body ids
+ * `toPartResults` mints. The mesh payload already carries them in the solved
+ * pose, so this is a relabelling beside `toEdgeCurves`, not geometry work.
+ */
+export function toEntityFacts(parts: Record<string, MeshPayload[]>): Record<string, AssemblyEntityFacts> {
+  const out: Record<string, AssemblyEntityFacts> = {}
+  for (const [handle, meshes] of Object.entries(parts)) {
+    meshes.forEach((m, i) => {
+      out[assemblyPartId(handle, i)] = {
+        edges: m.edges ?? [],
+        ...(m.faces && { faces: m.faces }),
+      }
     })
   }
   return out

@@ -48,9 +48,14 @@ export async function loadPartContents(instances: PartInstance[]): Promise<Recor
   return out
 }
 
+/** One loaded part document's JSON, before a build adapter narrows it. */
+type PartContent = Record<string, unknown>
+
 /**
  * Worker payload for the analytic path: one entry per instance whose PartDoc
- * content we could load, carrying the solved placement.
+ * content we could load, carrying the solved placement. `handle` is kept on the
+ * internal shape so the measurement path can address each instance's picks; the
+ * export wire drops it.
  *
  * Falls back to the instance's own seed transform when the solve produced none
  * for that handle (a never-solved assembly, a handle added since the last
@@ -60,12 +65,12 @@ export async function loadPartContents(instances: PartInstance[]): Promise<Recor
  * (`useSolver`, `PartExportImport`): the origin and the three datum planes are
  * seeded by `initGlobalRepo`, not solved as features.
  */
-export function buildExportParts(
+export function buildPlacedPartSpecs(
   instances: PartInstance[],
   transforms: Record<string, Transform3D>,
-  contents: Record<string, Record<string, unknown>>,
-): AssemblyExportPartSpec[] {
-  const out: AssemblyExportPartSpec[] = []
+  contents: Record<string, PartContent>,
+): { handle: string; spec: PartContent; transform: Transform3D }[] {
+  const out: { handle: string; spec: PartContent; transform: Transform3D }[] = []
   for (const inst of instances) {
     const content = contents[inst.doc_id]
     if (!content) continue
@@ -73,11 +78,21 @@ export function buildExportParts(
       ? (content.features as { id: string }[]).filter(f => !BUILTIN_FEATURE_IDS.has(f.id))
       : []
     out.push({
+      handle: inst.handle,
       spec: { ...content, id: inst.doc_id, features },
       transform: transforms[inst.handle] ?? inst.transform,
     })
   }
   return out
+}
+
+export function buildExportParts(
+  instances: PartInstance[],
+  transforms: Record<string, Transform3D>,
+  contents: Record<string, PartContent>,
+): AssemblyExportPartSpec[] {
+  return buildPlacedPartSpecs(instances, transforms, contents)
+    .map(({ spec, transform }) => ({ spec, transform }))
 }
 
 // Every import file the export parts reference, deduped. One shared map means a

@@ -522,7 +522,9 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
       + 'An assembly measure under detail: "summary" or "changed" keeps the aggregate measures, the solve verdict and the mate and part '
       + 'problems, and omits perBody; it also returns no one-line summary. '
       + 'Pass `between` to answer one pick or pick pair instead: one selection query for a single-pick readout (an edge length, a diameter, '
-      + 'a flat face area, a body volume), two for a pair. The reply is then `between: { kind, label, value, extra?, points?, note? }`: '
+      + 'a flat face area, a body volume), two for a pair. On an assembly the queries are its entity keys '
+      + '(`<handle>|<partIndex>|<kind>|<index>`; `kind` is face, edge, vertex or body for the whole instance) or a `__builtin|<id>` frame key. '
+      + 'The reply is then `between: { kind, label, value, extra?, points?, note? }`: '
       + '`label` is the one readout vocabulary (`pitch`, `axial distance`, `center distance`, ...) and `extra` '
       + 'is every secondary readout in the order the HUD shows them (a pitch pair\'s center distance, axial offset, min gap and max span, '
       + 'a circle pair\'s dx/dy/dz, an angle\'s supplement, a body volume\'s surface area), and `points` holds the two witness points of a '
@@ -550,7 +552,9 @@ export const MCP_TOOLS: readonly McpToolDefinition[] = [
           minItems: 1,
           maxItems: 2,
           description: 'One selection query (the same ids `select` and the editor use) for a single-pick readout, '
-            + 'two for a pair: an ancestry query, `@<body>/<kind>/<index>` or a body id such as `@body_ex1`.',
+            + 'two for a pair: an ancestry query, `@<body>/<kind>/<index>` or a body id such as `@body_ex1`. '
+            + 'On an assembly, an entity key `handle|partIndex|kind|index` (kind face, edge, vertex or body) '
+            + 'or a `__builtin|<id>` frame key.',
         },
       },
       additionalProperties: false,

@@ -34,10 +34,10 @@ import { edgeLength, minDistance } from './occ/measureExtrema'
 import { resolveMeasurePick } from './measurePick'
 import { measureSelectionResolved } from '@/utils/measure/measureSelection'
 import { OCC_CONFUSION } from './solverConstants'
-import { MEASURE_STALE, MEASURE_UNRESOLVED, type MeasureOp, type MeasurePickRef } from './worker/solverProtocol'
+import { MEASURE_STALE, MEASURE_UNRESOLVED, type MeasureOp, type MeasurePickRef, type MeasureAssemblyPick, type MeasureAssemblyPart } from './worker/solverProtocol'
 import { MM_PER_LENGTH_UNIT, lengthUnitOf, partToAssemblyScale } from '@/utils/lengthUnit'
 import type { OccHandle } from './occ/handleTable'
-import type { OccModule, OccShape } from './occ/occTypes'
+import type { OccModule, OccShape, OccTrsf } from './occ/occTypes'
 import type { PartSolid, BuildState } from './types3d'
 import type { PartResult, LengthUnit, Transform3D } from '../types/cad'
 import type { Vec3 } from '@/utils/vec3'
@@ -1027,40 +1027,7 @@ function measurePicksOnStore(
       if (!shape) return { ok: false, error: MEASURE_UNRESOLVED }
       shapes.push(shape)
     }
-    if (op === 'length') {
-      if (shapes.length !== 1) return { ok: false, error: MEASURE_UNRESOLVED }
-      return { ok: true, value: edgeLength(oc, shapes[0]) }
-    }
-    if (op === 'area') {
-      if (shapes.length !== 1) return { ok: false, error: MEASURE_UNRESOLVED }
-      return { ok: true, value: surfaceAreaOf(oc, scope, shapes[0]) }
-    }
-    if (op === 'volume') {
-      if (shapes.length !== 1) return { ok: false, error: MEASURE_UNRESOLVED }
-      return {
-        ok: true,
-        value: volumeForMeasure(oc, scope, shapes[0]),
-        // The body's own surface area is the one extra Möbius shows for a whole
-        // part beside its volume, and it costs one more GProp pass on a shape
-        // the caller already asked about.
-        extra: [{ kind: 'area', value: surfaceAreaOf(oc, scope, shapes[0]), label: 'area' }],
-      }
-    }
-    if (shapes.length !== 2) return { ok: false, error: MEASURE_UNRESOLVED }
-    const read = minDistance(oc, shapes[0], shapes[1])
-    if (read === null) return { ok: false, error: MEASURE_UNRESOLVED }
-    if (op === 'clearance') {
-      // DistShapeShape measures boundaries, and a body wholly inside another
-      // reads a positive gap. The overlap probe is what makes a clearance 0
-      // mean "they meet" rather than "their boundaries nearly miss".
-      if (shapesIntersect(oc, shapes[0], shapes[1])) {
-        return { ok: true, value: 0, points: [read.p1, read.p2], note: 'overlapping' }
-      }
-      if (read.value <= OCC_CONFUSION) {
-        return { ok: true, value: 0, points: [read.p1, read.p2], note: 'touching' }
-      }
-    }
-    return { ok: true, value: read.value, points: [read.p1, read.p2] }
+    return answerMeasureShapes(oc, scope, shapes, op)
   } catch (e) {
     if (isKernelTrap(e)) {
       faulted = true
@@ -1071,6 +1038,55 @@ function measurePicksOnStore(
   } finally {
     if (!faulted) cleanupKernel(() => { scope.dispose() })
   }
+}
+
+/**
+ * Answer one measurement from shapes the caller has already resolved and
+ * placed. Shared by the part path (a body store the solve holds) and the
+ * assembly path (a part rebuilt and placed per request), so an op means the same
+ * thing in both editors. Throws on a kernel trap; the caller owns the scope and
+ * the recovery.
+ */
+function answerMeasureShapes(
+  oc: OccModule,
+  scope: DisposeScope,
+  shapes: OccShape[],
+  op: MeasureOp,
+): MeasureQueryResult {
+  if (op === 'length') {
+    if (shapes.length !== 1) return { ok: false, error: MEASURE_UNRESOLVED }
+    return { ok: true, value: edgeLength(oc, shapes[0]) }
+  }
+  if (op === 'area') {
+    if (shapes.length !== 1) return { ok: false, error: MEASURE_UNRESOLVED }
+    return { ok: true, value: surfaceAreaOf(oc, scope, shapes[0]) }
+  }
+  if (op === 'volume') {
+    if (shapes.length !== 1) return { ok: false, error: MEASURE_UNRESOLVED }
+    return {
+      ok: true,
+      value: volumeForMeasure(oc, scope, shapes[0]),
+      // The body's own surface area is the one extra Möbius shows for a whole
+      // part beside its volume, and it costs one more GProp pass on a shape
+      // the caller already asked about.
+      extra: [{ kind: 'area', value: surfaceAreaOf(oc, scope, shapes[0]), label: 'area' }],
+    }
+  }
+  if (shapes.length !== 2) return { ok: false, error: MEASURE_UNRESOLVED }
+  const read = minDistance(oc, shapes[0], shapes[1])
+  if (read === null) return { ok: false, error: MEASURE_UNRESOLVED }
+  if (op === 'clearance') {
+    // DistShapeShape measures boundaries, and a body wholly inside another
+    // reads a positive gap. The overlap probe is what makes a clearance 0
+    // mean "they meet" rather than "their boundaries nearly miss".
+    if (shapesIntersect(oc, shapes[0], shapes[1])) {
+      return { ok: true, value: 0, points: [read.p1, read.p2], note: 'overlapping' }
+    }
+    if (read.value <= OCC_CONFUSION) {
+      return { ok: true, value: 0, points: [read.p1, read.p2], note: 'touching' }
+    }
+  }
+  return { ok: true, value: read.value, points: [read.p1, read.p2] }
 }
 
 /**
@@ -1367,6 +1383,143 @@ export async function measureAssemblyLocally(
       })
     }
   }
+}
+
+/**
+ * Answer one assembly measurement by rebuilding each named part and placing it
+ * at its solved pose. The anchor solver holds meshes only, so a kernel cell
+ * (a spline length, a freeform area, an instance clearance) has no B-rep to
+ * measure there; this is the same rebuild the assembly export pays, narrowed to
+ * one readout.
+ *
+ * A pick names an element by the index in the SOLVE's render arrays, exactly as
+ * a part pick does, so the resolver is the shared `resolveMeasurePick`. The
+ * bundle and this build come from the same deterministic spec, which is what
+ * makes the index mean the same body and element in both.
+ */
+export async function measureAssemblyPicksLocally(
+  parts: readonly MeasureAssemblyPart[],
+  op: MeasureOp,
+  picks: readonly MeasureAssemblyPick[],
+  files?: ReadonlyMap<string, Uint8Array>,
+): Promise<MeasureQueryResult> {
+  const oc = await loadKernelForBuild()
+  if (!oc) return { ok: false, error: MEASURE_UNRESOLVED }
+
+  const scope = new DisposeScope()
+  const table = new HandleTable()
+  let faulted = false
+  try {
+    const instances = buildPlacedAssemblyParts(oc, scope, table, parts, files)
+    const shapes: OccShape[] = []
+    for (const pick of picks) {
+      const instance = instances.get(pick.handle)
+      if (!instance) return { ok: false, error: MEASURE_UNRESOLVED }
+      const picked = instancePickShapes(oc, scope, table, instance, pick)
+      if (picked === null || picked.length === 0) return { ok: false, error: MEASURE_UNRESOLVED }
+      // A whole instance with several bodies is one compound, so a volume or a
+      // clearance answers for the instance, not for whichever body came first.
+      const shape = picked.length === 1 ? picked[0] : compoundOf(oc, scope, picked)
+      if (!shape) return { ok: false, error: MEASURE_UNRESOLVED }
+      shapes.push(shape)
+    }
+    return answerMeasureShapes(oc, scope, shapes, op)
+  } catch (e) {
+    if (isKernelTrap(e)) {
+      faulted = true
+      recoverTrap(e)
+    }
+    return { ok: false, error: MEASURE_UNRESOLVED }
+  } finally {
+    if (!faulted) cleanupKernel(() => {
+      scope.dispose()
+      table.disposeAll()
+    })
+  }
+}
+
+/** One built shape of an instance: its id and the local solid the pick resolves in. */
+interface PlacedSolid {
+  bodyId: string
+  solid: PartSolid
+}
+
+/** One instance's solids in solve order, plus the placement that puts them in assembly space. */
+interface PlacedInstance {
+  solids: PlacedSolid[]
+  placement: OccTrsf
+}
+
+/**
+ * Build every distinct part doc once (deduped on `spec.id`, the same key the
+ * export path uses) and give every instance its own placement transform. The
+ * list keeps the build's own order, including an entry with no shape, because
+ * `partIndex` in an assembly entity key is a position in that order.
+ */
+function buildPlacedAssemblyParts(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  parts: readonly MeasureAssemblyPart[],
+  files?: ReadonlyMap<string, Uint8Array>,
+): Map<string, PlacedInstance> {
+  const built = new Map<string, PlacedSolid[]>()
+  const instances = new Map<string, PlacedInstance>()
+  for (const part of parts) {
+    const key = typeof part.spec.id === 'string' ? part.spec.id : null
+    let solids = key === null ? undefined : built.get(key)
+    if (!solids) {
+      const response = build(part.spec, { prevState: null }, buildDeps(oc, scope, table, files))
+      const store = finalPartStoreOf(response._build_state) ?? {}
+      solids = Object.entries(store).map(([bodyId, solid]) => ({ bodyId, solid }))
+      if (key !== null) built.set(key, solids)
+    }
+    // The assembly frame is millimetres: an inch part is scaled before the rigid
+    // placement, the same order `placeAssemblyParts` uses.
+    const placement = makeRigidTrsf(oc, scope, part.transform)
+    const unitScale = partToAssemblyScale(part.spec)
+    if (unitScale !== 1) placement.Multiply(makeScaleTrsf(oc, scope, [0, 0, 0], unitScale))
+    instances.set(part.handle, { solids, placement })
+  }
+  return instances
+}
+
+/**
+ * The world shapes one assembly pick names, or null when it does not resolve.
+ * An element resolves in its solid's LOCAL frame and is placed afterwards; a
+ * `body` pick returns every solid of the instance.
+ */
+function instancePickShapes(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  instance: PlacedInstance,
+  pick: MeasureAssemblyPick,
+): OccShape[] | null {
+  const placed = (shape: OccShape): OccShape =>
+    scope.track(transformCopy(oc, scope, shape, instance.placement))
+
+  if (pick.kind === 'body') {
+    const shapes: OccShape[] = []
+    for (const entry of instance.solids) {
+      if (entry.solid.shape == null) continue
+      const shape = resolveMeasurePick(oc, scope, table, { [entry.bodyId]: entry.solid }, {
+        bodyId: entry.bodyId,
+        kind: 'body',
+      })
+      if (shape) shapes.push(placed(shape))
+    }
+    return shapes
+  }
+
+  const entry = pick.partIndex === undefined ? undefined : instance.solids[pick.partIndex]
+  if (!entry || entry.solid.shape == null || pick.index === undefined) return null
+  const shape = resolveMeasurePick(oc, scope, table, { [entry.bodyId]: entry.solid }, {
+    bodyId: entry.bodyId,
+    kind: pick.kind,
+    index: pick.index,
+  })
+  return shape ? [placed(shape)] : null
 }
 
 function serialiseShape(

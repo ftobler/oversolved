@@ -12,7 +12,7 @@
 
 import type { PartDoc, PartResult, AssemblyDoc, Transform3D } from '@/types/cad'
 import type { SolveSchedulerState } from '@/session/SolveScheduler'
-import { exportLocallyInspect, solveLocally, buildAndMeasureLocally, measurePicksLocally, measureSolveFeatures, measureAssemblyLocally, exportAssemblyLocally, type FeatureMeasure, type LocalExportOptions, type LocalPickMeasure } from '@/kernel/solveLocally'
+import { exportLocallyInspect, solveLocally, buildAndMeasureLocally, measurePicksLocally, measureSolveFeatures, measureAssemblyLocally, measureAssemblyPicksLocally, exportAssemblyLocally, type FeatureMeasure, type LocalExportOptions, type LocalPickMeasure } from '@/kernel/solveLocally'
 import { MM_PER_LENGTH_UNIT, lengthUnitOf } from '@/utils/lengthUnit'
 import { KernelFault } from '@/kernel/errors'
 import { compareMeasures, scaledMeasures, type MeasureRow } from '@/kernel/occ/measureTolerance'
@@ -31,6 +31,9 @@ import { docHashOf } from '@/drive/docHash'
 import type { CommandJournal } from '@/drive/journal'
 import type { ScriptRunOutcome, ScriptStep } from '@/drive/scriptRunner'
 import { createHeadlessAssembly, type AssemblyScriptStep, type InjectedBundle } from '@/drive/headlessAssembly'
+import { assemblySelectionResolved } from '@/utils/assemblyMeasurements'
+import { buildEntityMateRefs, toEntityFacts } from '@/utils/assemblyBodies'
+import { buildAnchorTable } from '@/utils/anchorGizmos'
 import type { AssemblyBuildResponse, AssemblySolveStatus } from '@/kernel/solveAssembly'
 import {
   instancePoses,
@@ -655,6 +658,54 @@ export async function measureAssemblyHeadless(
     ok: !solveFailed(response.status),
     measures,
     state: assemblyState(doc, response, session.partOutcomes(), docHashesOf(parts)),
+  }
+}
+
+/**
+ * Answer one assembly pick or pick pair, the headless twin of the viewport HUD.
+ *
+ * The picks are the editor's entity keys (`handle|partIndex|kind|index`, or a
+ * `__builtin|<id>` frame key), resolved against the solved bundles through the
+ * same pure core the HUD uses. An analytic cell answers with no OCC read; a
+ * kernel cell rebuilds and places only the instances it names.
+ */
+export async function measureAssemblyBetweenHeadless(
+  doc: AssemblyDoc,
+  parts: ReadonlyMap<string, PartDoc>,
+  between: readonly string[],
+  opts: { files?: ReadonlyMap<string, Uint8Array> } = {},
+): Promise<LocalPickMeasure | null> {
+  const session = createHeadlessAssembly({ doc, parts, ...(opts.files && { files: opts.files }) })
+  const response = await session.solve()
+  const { readout, ask } = assemblySelectionResolved(new Set(between), {
+    shapeFacts: toEntityFacts(response.bodies),
+    anchors: buildAnchorTable(response.anchors),
+    entityMateRefs: buildEntityMateRefs(response.bodies, response.anchorDescriptors),
+  })
+  if (readout !== null) {
+    const extra = (readout.extra ?? []).map((row) => ({ kind: row.kind, value: row.value, label: row.label }))
+    return {
+      kind: readout.kind,
+      label: readout.label,
+      value: readout.value,
+      ...(extra.length > 0 && { extra }),
+    }
+  }
+  if (ask === null) throw new Error('measure: the pick or pick pair states no measurement')
+  const measured = await measureAssemblyPicksLocally(
+    assemblySpecs(doc, parts, response.transforms),
+    ask.op,
+    ask.picks,
+    opts.files,
+  )
+  if (!measured.ok) throw new Error(`measure: ${measured.error}`)
+  return {
+    kind: ask.op,
+    label: ask.op,
+    value: measured.value,
+    ...(measured.extra !== undefined && { extra: measured.extra }),
+    ...(measured.points !== undefined && { points: measured.points }),
+    ...(measured.note !== undefined && { note: measured.note }),
   }
 }
 
