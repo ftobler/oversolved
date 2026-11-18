@@ -143,6 +143,9 @@ function parseModule(block: Block | undefined, src: string, name: string): Modul
  */
 const INTERFACE_CLASSES: Record<string, string[] | null> = {
   OccDisposable: null,
+  // Plain JS objects of typed arrays the r3 helpers return.
+  OccFaceTriangulation: null,
+  OccFaceFactTable: null,
   OccPntArray: ['TColgp_Array1OfPnt'],
   OccRealArray: ['TColStd_Array1OfReal'],
   OccIntArray: ['TColStd_Array1OfInteger'],

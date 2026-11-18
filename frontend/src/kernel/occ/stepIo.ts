@@ -15,6 +15,7 @@ import { SubShapeMap } from './subshapeIdentity'
 import { enumVal, sameEnum } from './enumValue'
 import { encodeBinaryStl } from '../stl'
 import { noProgress } from './defaultArgs'
+import { timePhase } from './phaseTimer'
 
 // A fixed short scratch path in the emscripten MEMFS. Two quirks of the 7.4
 // build forced both choices: STEPControl_Reader failed
@@ -90,13 +91,13 @@ function readStep(
   oc.FS.writeFile(path, bytes)
   try {
     const reader = scope.track(new oc.STEPControl_Reader_1())
-    const status = reader.ReadFile_1(path)
+    const status = timePhase('step.read', () => reader.ReadFile_1(path))
     const statusVal = enumVal(status)
     const doneVal = enumVal(oc.IFSelect_ReturnStatus.IFSelect_RetDone)
     if (statusVal !== doneVal) {
       throw new Error(`import_step: STEP read failed (status ${statusVal})`)
     }
-    reader.TransferRoots(noProgress(oc))
+    timePhase('step.transfer', () => reader.TransferRoots(noProgress(oc)))
     const read = reader.OneShape()
     // The scaled copy is a NEW shape the transfer map knows nothing about, so
     // the builder has to stay in hand to carry identity across it.
@@ -110,7 +111,9 @@ function readStep(
     const shape = builder ? builder.Shape() : read
     // The reader (and with it the transfer map) is tracked in `scope`, but the
     // caller's scope may outlive this call by a lot -- read the map now.
-    const faceStepIds = withIdentity ? faceEntityIds(oc, scope, reader, read, shape, builder) : new SubShapeMap<number>()
+    const faceStepIds = withIdentity
+      ? timePhase('step.identity', () => faceEntityIds(oc, scope, reader, read, shape, builder))
+      : new SubShapeMap<number>()
     return { shape, faceStepIds }
   } finally {
     try {

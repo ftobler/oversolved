@@ -20,6 +20,7 @@ import { booleanWithDiff } from '../booleans'
 import { stepBytesToShapeWithIdentity } from '../stepIo'
 import {
   hiddenSubShapeIndices,
+  solidFaceEdgeData,
   solidToEdges,
   solidToFaceEdgeQueries,
   solidToMesh,
@@ -284,6 +285,32 @@ describe.skipIf(!oc)('hidden seam indices (real OCC)', () => {
       expect(hiddenQueries).toEqual(seamQueries)
       for (const i of hidden.hidden_edges) expect(edges[i].kind).toBe('line')
       table.release(handle)
+    } finally {
+      scope.dispose()
+      table.assertNoLeaks()
+    }
+  })
+
+  it('solidFaceEdgeData is the two separate passes, field for field', () => {
+    // The render pass reads both lists from one shared walk; the separate
+    // functions stay for their other callers and must agree with it.
+    const bytes = new Uint8Array(readFileSync(new URL('../__fixtures__/double_with_hole.step', import.meta.url)))
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    try {
+      const handles = [
+        cylinder(table),
+        table.register(stepBytesToShapeWithIdentity(occ, scope, bytes).shape),
+        table.register(makeBox(occ, scope, 3, 4, 5)),
+      ]
+      for (const handle of handles) {
+        const { edge_queries } = solidToEdges(occ, table, handle, { createdBy: 'f1' })
+        expect(solidFaceEdgeData(occ, table, handle, edge_queries)).toEqual({
+          ...solidToFaceEdgeQueries(occ, table, handle, edge_queries),
+          ...hiddenSubShapeIndices(occ, table, handle),
+        })
+        table.release(handle)
+      }
     } finally {
       scope.dispose()
       table.assertNoLeaks()

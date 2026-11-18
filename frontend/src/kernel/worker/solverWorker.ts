@@ -15,7 +15,8 @@
  * here persists state the host cannot rebuild from it.
  */
 
-import { solveLocally, exportLocally, exportAssemblyLocally, setOccLoader, preloadOcc, measureGeneration, measureAssemblyPicksLocally, splitStepLocally } from '../solveLocally'
+import { solveLocally, exportLocally, exportAssemblyLocally, setOccLoader, preloadOcc, measureGeneration, measureAssemblyPicksLocally, splitStepLocally, warmUpLocally } from '../solveLocally'
+import type { WarmUpState } from '../occ/warmUp'
 import { loadSolverWasm } from '../../wasm-kernel/solverWasm'
 import { isDevBuild } from '../isDevBuild'
 import { extractErrorMessage } from '../errors'
@@ -415,8 +416,9 @@ export function collectTransferables(res: SolveResponse): Transferable[] {
 // feature 0. That trade only pays when the user explicitly asks for it, which
 // is what the cancel button (`cancelSolver`) does.
 
-/** The lanes a queued job can wait in, or null for a one-shot job. */
-export type ActorLane = 'solve' | 'measure'
+/** The lanes a queued job can wait in, or null for a one-shot job. `warmup`
+ *  only fills idle time: every other submit drops it, and it drops nothing. */
+export type ActorLane = 'solve' | 'measure' | 'warmup'
 
 /** One unit of Worker work: queued, then run to completion in isolation. */
 export interface ActorJob {
@@ -454,9 +456,21 @@ function nextMacrotask(): Promise<void> {
 export class WorkerActor {
   private queue: ActorJob[] = []
   private draining = false
+  // Real (non-warm-up) jobs submitted so far: the warm-up stops for good once
+  // this moves, since the first real request has already paid the cold path.
+  private realSubmits = 0
+
+  // How many real jobs have been submitted; see `scheduleWarmUp`.
+  get realJobCount(): number {
+    return this.realSubmits
+  }
 
   submit(job: ActorJob): void {
-    if (job.lane !== null) {
+    if (job.lane !== 'warmup') {
+      this.realSubmits++
+      this.queue = this.queue.filter((queued) => queued.lane !== 'warmup')
+    }
+    if (job.lane !== null && job.lane !== 'warmup') {
       const kept: ActorJob[] = []
       for (const queued of this.queue) {
         // A solve kills both lanes waiting behind it: the measure requests were
@@ -500,6 +514,38 @@ export class WorkerActor {
     }
   }
 }
+
+/**
+ * Queue the kernel warm-up (occ/warmUp.ts) one step at a time on an idle actor.
+ * Nothing is warmed once any real request has been submitted, ever: that request
+ * already paid (or is paying) the cold path. Each step queues the next only when
+ * it ran clean and still no real request came; a real request also drops a step
+ * still queued. So a request waits behind at most the one step already running.
+ * Exported with an injectable runner so tests can drive it without OCC.
+ */
+export function scheduleWarmUp(
+  actor: WorkerActor,
+  run: (index: number, state: WarmUpState) => Promise<boolean> = warmUpLocally,
+): void {
+  if (actor.realJobCount > 0) return
+  const state: WarmUpState = {}
+  const step = (index: number): ActorJob => ({
+    lane: 'warmup',
+    run: async () => {
+      if (actor.realJobCount > 0) return
+      if (await run(index, state) && actor.realJobCount === 0) actor.submit(step(index + 1))
+    },
+  })
+  actor.submit(step(0))
+}
+
+/**
+ * How long the Worker stays idle after OCC is up before it warms. The app
+ * mounts on `kernelReady` and may open the last document at once; a solve that
+ * lands in this window means the warm-up never starts, instead of that first
+ * solve queuing behind a running step.
+ */
+export const WARM_UP_IDLE_MS = 1500
 
 /** An un-droppable job (export, bundle build): run it, then post its reply. */
 function oneShot<T>(job: () => Promise<T>, respond: (res: T) => void): ActorJob {
@@ -639,14 +685,18 @@ export function relayFeatureProgress(
  */
 export function preloadWorkerWasm(
   loaders: { occ: () => Promise<unknown>; sketch: () => Promise<unknown> } = { occ: preloadOcc, sketch: loadSolverWasm },
-): Promise<void> {
+): Promise<{ occReady: boolean }> {
   // The catch guards an unexpected rejection only; the loaders resolve null on
   // failure. Without it a throw would surface as an unhandled rejection. We
   // settle only after both loaders have settled (success or failure) so the
-  // caller can post the kernelReady broadcast at the right moment.
-  const occP = loaders.occ().catch((e: unknown) => { console.error('[solverWorker] OCC preload failed:', e) })
+  // caller can post the kernelReady broadcast at the right moment. `occReady`
+  // says whether OCC came up, which is what the warm-up needs to know.
+  const occP = loaders.occ().then(
+    (module) => module != null,
+    (e: unknown) => { console.error('[solverWorker] OCC preload failed:', e); return false },
+  )
   const sketchP = loaders.sketch().catch((e: unknown) => { console.error('[solverWorker] sketch wasm preload failed:', e) })
-  return Promise.all([occP, sketchP]).then(() => undefined)
+  return Promise.all([occP, sketchP]).then(([occReady]) => ({ occReady }))
 }
 
 export function bootstrapSolverWorker(ctx: WorkerCtx): void {
@@ -660,8 +710,12 @@ export function bootstrapSolverWorker(ctx: WorkerCtx): void {
   relayFeatureProgress((message, transfer) => { ctx.postMessage(message, transfer) })
   // Post the kernelReady broadcast only once both wasm loaders have settled,
   // so a failure still counts as "finished" and the splash can resolve.
-  preloadWorkerWasm().then(() => {
+  preloadWorkerWasm().then(({ occReady }) => {
     ctx.postMessage({ kind: 'kernelReady' }, [])
+    // Warm only a kernel that came up; a failed load is retried by the next
+    // real request, not by idle warm-up. Wait out the app's first request
+    // (WARM_UP_IDLE_MS); scheduleWarmUp does nothing if one came.
+    if (occReady) setTimeout(() => { scheduleWarmUp(actor) }, WARM_UP_IDLE_MS)
   })
   ctx.onmessage = (e) => {
     handleWorkerMessage(e.data, (res, transfer) => { ctx.postMessage(res, transfer) }, actor)

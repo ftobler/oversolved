@@ -73,6 +73,8 @@
     "IntCurvesFace_ShapeIntersector",
     "LocOpe_DPrism",
     "Message_ProgressRange",
+    "OversolvedFaceFacts",
+    "OversolvedMesh",
     "STEPControl_Reader",
     "STEPControl_StepModelType",
     "STEPControl_Writer",

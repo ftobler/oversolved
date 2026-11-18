@@ -18,8 +18,11 @@ import { loadOccWeb, resetOccWeb } from './occ/loadOccWeb'
 import { memoizedLoad } from './occ/memoizedLoad'
 import { DisposeScope } from './occ/disposeScope'
 import { HandleTable } from './occ/handleTable'
-import { solidToMesh, solidToEdges, solidToVertices, solidToFaceEdgeQueries, hiddenSubShapeIndices, readShapeFaceMetadata } from './occ/tessellation'
+import { solidToMesh, solidToEdges, solidToVertices, solidFaceEdgeData, readShapeFaceMetadata } from './occ/tessellation'
 import type { TessMesh } from './occ/tessellation'
+import { timePhase } from './occ/phaseTimer'
+import { readFaceFacts } from './occ/faceFacts'
+import { WARM_UP_STEPS, type WarmUpState } from './occ/warmUp'
 import { indexModifierDiffs, newIndexSets } from './occ/modifierAttribution'
 import { copyShape, makeScaleTrsf, makeRigidTrsf, transformCopy } from './occ/transforms'
 import { stepShapeToBytes, shapeToStlBytes } from './occ/stepIo'
@@ -259,7 +262,11 @@ export function tessellateParts(
   for (const [bodyId, body] of Object.entries(partStore)) {
     if (body.shape == null) continue
     try {
-      const mesh = solidToMesh(oc, table, body.shape, {
+      const shape = body.shape
+      // Read once for the two passes below that both sort the faces by them.
+      const faceFacts = timePhase('render.faceFacts', () => readFaceFacts(oc, table.get(shape)))
+      const mesh = timePhase('render.mesh', () => solidToMesh(oc, table, shape, {
+        faceFacts,
         createdBy: body.created_by || '',
         partId: body.id,
         faceAncestry: body.face_ancestry ?? null,
@@ -267,41 +274,39 @@ export function tessellateParts(
         faceUuids: body.face_uuids ?? null,
         faceOwner: body.face_owner ?? null,
         profileQueries: body.profile_queries ?? [],
-        newElements: newIndexSets(body.brep_new, body.shape),
+        newElements: newIndexSets(body.brep_new, shape),
         modifiedBy: body.modified_by,
-      })
-      const edgeResult = solidToEdges(oc, table, body.shape, {
+      }))
+      const edgeResult = timePhase('render.edges', () => solidToEdges(oc, table, shape, {
         createdBy: body.created_by || '',
         partId: body.id,
         profileQueries: body.profile_queries ?? [],
         edgeAncestry: body.edge_ancestry ?? null,
         edgeUuids: body.edge_uuids ?? null,
         edgeOwner: body.edge_owner ?? null,
-        newElements: newIndexSets(body.brep_new, body.shape),
+        newElements: newIndexSets(body.brep_new, shape),
         modifiedBy: body.modified_by,
         // The final render pass owns the class; the mesh-free metadata pass
         // below deliberately leaves it out.
         computeConvexity: true,
-      })
-      const vertexResult = solidToVertices(oc, table, body.shape, {
+      }))
+      const vertexResult = timePhase('render.vertices', () => solidToVertices(oc, table, shape, {
         createdBy: body.created_by || '',
         partId: body.id,
         profileQueries: body.profile_queries ?? [],
         faceUuids: body.face_uuids ?? null,
         edgeUuids: body.edge_uuids ?? null,
-        newElements: newIndexSets(body.brep_new, body.shape),
+        newElements: newIndexSets(body.brep_new, shape),
         modifiedBy: body.modified_by,
-      })
+      }))
+      // One face-edge walk feeds both lists below (solidFaceEdgeData).
+      const faceEdgeData = timePhase('render.faceEdges', () =>
+        solidFaceEdgeData(oc, table, shape, edgeResult.edge_queries, faceFacts))
       // Per-face boundary edge queries: a face pick projects as a closed wire.
-      const faceEdgeData = solidToFaceEdgeQueries(oc, table, body.shape, edgeResult.edge_queries)
       mesh.face_edge_queries = faceEdgeData.face_edge_queries
       // The edges each face meets twice, so the selector can tell a seam from
       // an open shell's free edge (both are listed by one face only).
       mesh.face_seam_queries = faceEdgeData.face_seam_queries
-      // The same walk again, kept as sparse display indices: the viewport skips
-      // these seams and the vertices that end no visible open edge. The arrays
-      // above are untouched, so every name and query stays byte-identical.
-      const hidden = hiddenSubShapeIndices(oc, table, body.shape)
       out[bodyId] = {
         mesh,
         edges: edgeResult.edges,
@@ -312,8 +317,11 @@ export function tessellateParts(
         vertex_queries: vertexResult.vertex_queries,
         vertex_uuids: vertexResult.vertex_uuids,
         vertex_created_by: vertexResult.vertex_created_by,
-        hidden_edges: hidden.hidden_edges,
-        hidden_vertices: hidden.hidden_vertices,
+        // The same walk, kept as sparse display indices: the viewport skips
+        // these seams and the vertices that end no visible open edge. The arrays
+        // above are untouched, so every name and query stays byte-identical.
+        hidden_edges: faceEdgeData.hidden_edges,
+        hidden_vertices: faceEdgeData.hidden_vertices,
         created_by: body.created_by ?? '',
         modified_by: body.modified_by ?? [],
       }
@@ -354,17 +362,19 @@ export function extractBrepMetadata(
     const scope = new DisposeScope()
     try {
       const solid = table.get<OccShape>(body.shape)
-      const { face_data, face_queries, face_uuids, face_created_by } = readShapeFaceMetadata(oc, scope, solid, {
-        createdBy: body.created_by || '',
-        partId: body.id,
-        faceAncestry: body.face_ancestry ?? null,
-        faceCapAncestry: body.face_cap_ancestry ?? null,
-        faceUuids: body.face_uuids ?? null,
-        faceOwner: body.face_owner ?? null,
-        profileQueries: body.profile_queries ?? [],
-        newElements: newIndexSets(body.brep_new, body.shape),
-        modifiedBy: body.modified_by,
-      })
+      const shape = body.shape
+      const { face_data, face_queries, face_uuids, face_created_by } = timePhase('meta.faces', () =>
+        readShapeFaceMetadata(oc, scope, solid, {
+          createdBy: body.created_by || '',
+          partId: body.id,
+          faceAncestry: body.face_ancestry ?? null,
+          faceCapAncestry: body.face_cap_ancestry ?? null,
+          faceUuids: body.face_uuids ?? null,
+          faceOwner: body.face_owner ?? null,
+          profileQueries: body.profile_queries ?? [],
+          newElements: newIndexSets(body.brep_new, shape),
+          modifiedBy: body.modified_by,
+        }))
       const mesh: TessMesh = {
         vertices: [],
         faces: [],
@@ -375,25 +385,25 @@ export function extractBrepMetadata(
         face_created_by,
         is_fallback: false,
       }
-      const edgeResult = solidToEdges(oc, table, body.shape, {
+      const edgeResult = timePhase('meta.edges', () => solidToEdges(oc, table, shape, {
         createdBy: body.created_by || '',
         partId: body.id,
         profileQueries: body.profile_queries ?? [],
         edgeAncestry: body.edge_ancestry ?? null,
         edgeUuids: body.edge_uuids ?? null,
         edgeOwner: body.edge_owner ?? null,
-        newElements: newIndexSets(body.brep_new, body.shape),
+        newElements: newIndexSets(body.brep_new, shape),
         modifiedBy: body.modified_by,
-      })
-      const vertexResult = solidToVertices(oc, table, body.shape, {
+      }))
+      const vertexResult = timePhase('meta.vertices', () => solidToVertices(oc, table, shape, {
         createdBy: body.created_by || '',
         partId: body.id,
         profileQueries: body.profile_queries ?? [],
         faceUuids: body.face_uuids ?? null,
         edgeUuids: body.edge_uuids ?? null,
-        newElements: newIndexSets(body.brep_new, body.shape),
+        newElements: newIndexSets(body.brep_new, shape),
         modifiedBy: body.modified_by,
-      })
+      }))
       out[bodyId] = {
         mesh,
         edges: edgeResult.edges,
@@ -814,6 +824,33 @@ export async function splitStepLocally(bytes: Uint8Array, scale = 1.0): Promise<
     throw e
   } finally {
     if (!faulted) cleanupKernel(() => { scope.dispose() })
+  }
+}
+
+/**
+ * Run warm-up step `index` (occ/warmUp.ts) on the kernel. Never touches the
+ * cross-solve cache or the persistent handle table. The Worker schedules it only
+ * after the OCC preload produced a module, so this reads the memoized one rather
+ * than starting a load. A trap discards the module the way a split import's does
+ * (`recoverLocalKernel`), so the next real solve meets a fresh one, but it is not
+ * thrown: nothing waits on the warm-up, and the actor would swallow the fault
+ * unlogged. Every failure is logged here and ends the warm-up (returns false);
+ * true means the step ran clean.
+ */
+export async function warmUpLocally(index: number, state: WarmUpState): Promise<boolean> {
+  const step = WARM_UP_STEPS[index]
+  if (!step) return false
+  const oc = await ensureOcc()
+  if (!oc) return false
+  try {
+    step(oc, state)
+    return true
+  } catch (e) {
+    const trapped = isKernelTrap(e)
+    console.warn(`[kernel] warm-up step ${index} ${trapped ? 'trapped; the kernel reloads' : 'failed'}; `
+      + 'the first import runs cold', e)
+    if (trapped) recoverLocalKernel()
+    return false
   }
 }
 
