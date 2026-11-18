@@ -904,7 +904,7 @@ export interface OccModule extends OccBaseModule {
     FaceTriangulation(face: OccShape): OccFaceTriangulation | null
   }
   OversolvedFaceFacts: {
-    /** Values per face row in `Read`'s table. */
+    // Values per face row in `Read`'s table.
     Stride(): number
     /** Every face of the shape in explorer order: type, centroid, area,
      *  normal, frame and cylinder dv, NaN where a slot does not apply
