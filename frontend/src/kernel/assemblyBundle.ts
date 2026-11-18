@@ -104,7 +104,7 @@ export function buildAssemblyBundle(
   instances: readonly PartInstance[],
   child: SubassemblySolvePayload,
 ): AssemblyBundle {
-  const bodies: PartMesh[] = []
+  const meshes: PartMesh[] = []
   const anchors: Record<string, Anchor> = {}
   const leaves: AssemblyLeaf[] = []
 
@@ -112,7 +112,7 @@ export function buildAssemblyBundle(
     const handle = inst.handle
     if (inst.visible !== false) {
       for (const mesh of child.bodies[handle] ?? []) {
-        bodies.push({
+        meshes.push({
           mesh: {
             vertices: mesh.vertices,
             indices: mesh.indices,
@@ -180,7 +180,7 @@ export function buildAssemblyBundle(
     doc_id: '',
     content_hash: contentHash,
     schema: BUNDLE_SCHEMA,
-    bodies,
+    bodies: meshes,
     anchors,
     leaves,
     warning: subassemblyWarning(child.status),

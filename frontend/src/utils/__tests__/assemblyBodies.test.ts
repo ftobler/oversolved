@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { EdgeCurve, EntityAnchorIndex } from '@/kernel/partBundle'
 import type { MateAnchorDescriptor } from '@/types/cad'
-import { toPartResults, toEdgeCurves, assemblyPartId, buildEntityMateRefs } from '@/utils/assemblyBodies'
+import { toPartResults, toEdgeCurves, toEntityFacts, assemblyPartId, buildEntityMateRefs } from '@/utils/assemblyBodies'
 import { assemblyBuiltinEntityKey, assemblyEntityKey } from '@/utils/anchorCandidates'
 import { ASSEMBLY_HANDLE, ASSEMBLY_ORIGIN_ID, ASSEMBLY_TOP_ID } from '@/utils/assemblyBuiltins'
 import { getPartsToRender } from '@/components/Viewport/partUtils'
@@ -79,6 +79,24 @@ describe('toEdgeCurves', () => {
   it('yields an empty list for a body the bundle gave no edges', () => {
     const curves = toEdgeCurves({ h1: [{ ...mesh(0), edges: [] }] })
     expect(curves[assemblyPartId('h1', 0)]).toEqual([])
+  })
+})
+
+describe('toEntityFacts', () => {
+  it('keys the measurement facts by the same body id and keeps the raw edge list', () => {
+    const part = { ...mesh(0), edges: [edge(0), edge(1)], hiddenEdges: [0] }
+    const facts = toEntityFacts({ h1: [part], h2: [mesh(10)] })
+    expect(Object.keys(facts).sort()).toEqual([assemblyPartId('h1', 0), assemblyPartId('h2', 0)].sort())
+    // The beauty-pass list drops the hidden seam; the measurement list must not,
+    // or every edge index after it would name its neighbour.
+    expect(facts[assemblyPartId('h1', 0)].edges).toEqual([edge(0), edge(1)])
+  })
+
+  it('carries the face facts through under the same body key', () => {
+    const faces = [{ surface_type: 'flatface', centroid: [0, 0, 0] as [number, number, number], normal: [0, 0, 1] as [number, number, number] }]
+    const facts = toEntityFacts({ h1: [{ ...mesh(0), faces }] })
+    expect(facts[assemblyPartId('h1', 0)].faces).toEqual(faces)
+    expect(toEntityFacts({ h1: [mesh(0)] })[assemblyPartId('h1', 0)].faces).toBeUndefined()
   })
 })
 

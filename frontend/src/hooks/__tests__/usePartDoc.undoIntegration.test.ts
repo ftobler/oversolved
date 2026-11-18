@@ -1014,7 +1014,7 @@ describe('usePartDoc undo/redo integration', () => {
       features: [{ id: 'db1', kind: 'delete_body', delete_body: { bodies: [] } }],
     } as unknown as PartDoc
     const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
-    const bodiesOf = () =>
+    const partsOf = () =>
       (docRef.current.features?.[0] as unknown as { delete_body: { bodies: string[] } }).delete_body.bodies
 
     act(() => {
@@ -1024,12 +1024,12 @@ describe('usePartDoc undo/redo integration', () => {
       ] as Mutation[])
     })
 
-    expect(bodiesOf()).toEqual(['@body_1', '@body_2'])
+    expect(partsOf()).toEqual(['@body_1', '@body_2'])
     expect(result.current.undoStack).toHaveLength(1)
 
     act(() => { result.current.handleUndo() })
 
-    expect(bodiesOf()).toEqual([])
+    expect(partsOf()).toEqual([])
     expect(result.current.undoStack).toHaveLength(0)
   })
 

@@ -8,7 +8,7 @@ import {
   COLOR_PART_DEFAULT,
   COLOR_PART_EDGE, COLOR_PART_EDGE_SEL, COLOR_PART_REMOVED,
   partSurfaceLook,
-  bodyMarkSelected,
+  partMarkSelected,
   COLOR_SELECTED, COLOR_HOVER, COLOR_HINT, COLOR_HINT_FAILED,
   blendWhite, blendToward, HINT_BLEND,
   POINT_VIS_PIXELS,
@@ -142,7 +142,7 @@ export default function Part3D({ featureId, partId, mesh, edges = NO_EDGES, edge
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   // The ids a pick chip mirrors into the selection. Only the doomed mark reads
   // it: a chip's own value is not the user pointing at the body, so it must not
-  // outrank the removal mark (bodyMarkSelected).
+  // outrank the removal mark (partMarkSelected).
   const chipOwnedSelection = useSketchEditorStore(s => s.chipOwnedSelection)
   const selectedPicks = useSketchEditorStore(s => s.selectedPicks)
   const setHoveredFaceGeometry = useSketchEditorStore(s => s.setHoveredFaceGeometry)
@@ -209,8 +209,8 @@ export default function Part3D({ featureId, partId, mesh, edges = NO_EDGES, edge
 
   // Selection, as the user means it: a doomed body's chip mirror does not
   // count, so the surface and the wireframe answer from one decision.
-  const isPartSelected = bodyMarkSelected({
-    bodyId: partId, normalSelection, chipOwnedSelection, doomed,
+  const isPartSelected = partMarkSelected({
+    partId, normalSelection, chipOwnedSelection, doomed,
   })
 
   const partKey = useMemo(() => partKeyFor(featureId, partId), [featureId, partId])
@@ -541,7 +541,7 @@ export default function Part3D({ featureId, partId, mesh, edges = NO_EDGES, edge
   // see-through: a consumed body's edges turn pink so the mark shows WHICH
   // body is leaving. A selection the USER made still outranks removal,
   // mirroring the face precedence in bodySurfaceLook, and a chip's mirror of
-  // its own value deliberately does not (bodyMarkSelected).
+  // its own value deliberately does not (partMarkSelected).
   const edgeColor = isPartSelected
     ? COLOR_PART_EDGE_SEL
     : doomed ? COLOR_PART_REMOVED : COLOR_PART_EDGE

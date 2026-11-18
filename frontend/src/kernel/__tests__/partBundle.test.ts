@@ -984,3 +984,78 @@ describe('anchorByDescriptor', () => {
     expect(anchorByDescriptor(anchors, descriptor({ geom_hash: '@gdf|tie' }))).toBe(anchors.mine)
   })
 })
+
+describe('bundle face facts (BUNDLE_SCHEMA 6)', () => {
+  // A flat top face and a cylindrical wall, with one line and one circle edge
+  // forming their boundary walk. The mesh vertices put the cylinder's extent
+  // along Z at 0..10, which is the axial length its single readout states.
+  function platePart(): PartResult {
+    return {
+      id: 'body_1',
+      created_by: 'ex1',
+      modified_by: [],
+      mesh: {
+        vertices: [
+          [0, 0, 0], [10, 0, 0], [0, 10, 0],
+          [4, 0, 0], [4, 0, 10], [4, 10, 5],
+        ],
+        faces: [[0, 1, 2], [3, 4, 5]],
+        triangle_to_face: [0, 1],
+        face_data: [
+          { centroid: [0, 0, 0], normal: [0, 0, 1], surface_type: 'flatface', area: 100 },
+          {
+            centroid: [4, 0, 5], normal: [1, 0, 0], surface_type: 'cylinderface',
+            surface_frame: { origin: [0, 0, 0], axis: [0, 0, 1], radius: 4 },
+          },
+        ] as FaceData[],
+        face_queries: ['?f0', '?f1'],
+        face_edge_queries: [['?e0'], ['?e1']],
+      },
+      edges: [
+        { kind: 'line', start: [0, 0, 0], end: [10, 0, 0] },
+        {
+          kind: 'circle', center: [0, 0, 0], radius: 4, axis: [0, 0, 1],
+          x_axis: [1, 0, 0], angle_start: 0, angle_end: Math.PI * 2,
+        },
+      ],
+      edge_queries: ['?e0', '?e1'],
+    }
+  }
+
+  it('copies the surface facts in face order and maps each boundary walk to edge indices', () => {
+    const mesh = toPartMesh(platePart())
+    expect(mesh.faces).toHaveLength(2)
+    expect(mesh.faces![0]).toMatchObject({
+      surface_type: 'flatface', centroid: [0, 0, 0], normal: [0, 0, 1], area: 100, face_edges: [0],
+    })
+    expect(mesh.faces![1]).toMatchObject({
+      surface_type: 'cylinderface',
+      frame: { origin: [0, 0, 0], axis: [0, 0, 1], radius: 4 },
+      face_edges: [1],
+      axial_length: 10,
+    })
+  })
+
+  it('rides on the bundle the anchor worker caches', () => {
+    const bundle = toPartBundle('doc', 'hash', { body_1: platePart() })
+    expect(bundle.bodies[0].faces).toHaveLength(2)
+  })
+
+  it('scales positions and lengths by the unit factor and areas by its square', () => {
+    const bundle = toPartBundle('doc', 'hash', { body_1: platePart() })
+    const scaled = scaleBundleToMillimetres(bundle, 25.4)
+    const wall = scaled.bodies[0].faces![1]
+    expect(wall.centroid[0]).toBeCloseTo(4 * 25.4, 9)
+    expect(wall.frame!.origin).toEqual([0, 0, 0])
+    expect(wall.frame!.radius).toBeCloseTo(4 * 25.4, 9)
+    expect(wall.axial_length).toBeCloseTo(10 * 25.4, 9)
+    expect(scaled.bodies[0].faces![0].area).toBeCloseTo(100 * 25.4 * 25.4, 6)
+    // The walk is indices, not geometry: scaling must leave it alone.
+    expect(wall.face_edges).toEqual([1])
+  })
+
+  it('omits the faces list for a body that carries no face_data', () => {
+    const partMesh = toPartMesh({ id: 'b', created_by: 'x', modified_by: [], mesh: { vertices: [], faces: [] } })
+    expect(partMesh.faces).toBeUndefined()
+  })
+})

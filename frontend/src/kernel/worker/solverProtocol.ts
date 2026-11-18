@@ -105,8 +105,27 @@ export interface ExportAssemblyRequest {
   files?: FileBytes
 }
 
+export interface MeasureAssemblyPart {
+  handle: string
+  // The same untyped PartDoc JSON the solve and bundle requests carry.
+  spec: SolveRequest['spec']
+  transform: Transform3D
+}
+
+export interface MeasureAssemblyRequest {
+  id: number
+  kind: 'measureAssembly'
+  // The instances the picks name. Only the ones a pick references need to be
+  // here, but sending every instance lets the worker answer a whole-instance
+  // clearance from one request.
+  parts: MeasureAssemblyPart[]
+  op: MeasureOp
+  picks: MeasureAssemblyPick[]
+  files?: FileBytes
+}
+
 /** Either request the Worker can receive; discriminated by `kind`. */
-export type WorkerRequest = SolveRequest | ExportRequest | BundleRequest | ExportAssemblyRequest | MeasureRequest | SplitStepRequest
+export type WorkerRequest = SolveRequest | ExportRequest | BundleRequest | ExportAssemblyRequest | MeasureRequest | MeasureAssemblyRequest | SplitStepRequest
 
 // ─── STEP split (the B2 import's kernel half) ───
 // One STEP file in, one STEP file per solid out. The import asks before it
@@ -153,6 +172,19 @@ export type MeasurePickRef =
   | { bodyId: string; kind: 'body' }
 
 export type MeasureOp = 'length' | 'distance' | 'clearance' | 'area' | 'volume'
+
+/**
+ * One assembly measurement pick. A body element is named by its instance
+ * handle and its body's position in the solved payload; a whole-instance pick
+ * (the tree's part subject) names just the handle and `kind: 'body'`, which the
+ * worker reads as every body of that instance.
+ */
+export interface MeasureAssemblyPick {
+  handle: string
+  partIndex?: number
+  kind: 'face' | 'edge' | 'vertex' | 'body'
+  index?: number
+}
 
 /** One secondary readout a kernel reply carries beside its primary value: a
  *  body volume's surface area. Same shape the analytic extras use, so the HUD

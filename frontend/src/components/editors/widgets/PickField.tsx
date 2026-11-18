@@ -5,7 +5,7 @@ import { usePickField } from '@/hooks/usePickField'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import type { PickFieldWidgetProps } from './fieldTypes'
 import { StatusMessage } from '@/components/shared/StatusMessage'
-import { bodyWantKey, identityWantKey, type PickBatch } from '@/utils/query/pickIntake'
+import { partsWantKey, identityWantKey, type PickBatch } from '@/utils/query/pickIntake'
 import { partPickLabel } from '@/utils/query/partPickLabel'
 
 export function PickFieldWidget({
@@ -82,7 +82,7 @@ export function PickFieldWidget({
   // transformed field's re-click is compared after the same rewrite its stored
   // value went through.
   const wantKeyOf = useMemo(
-    () => (field.names === 'body' ? bodyWantKey(effectiveParts) : identityWantKey(field.transform)),
+    () => (field.names === 'body' ? partsWantKey(effectiveParts) : identityWantKey(field.transform)),
     [field.names, field.transform, effectiveParts],
   )
   const partLabel = (value: string) => partPickLabel(value, effectiveParts, partLabels, features)

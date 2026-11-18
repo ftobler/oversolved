@@ -22,7 +22,7 @@ import type { Selector } from '@/kernel/select'
 import type { TranslationReference } from '@/translations/corpus'
 import type { ScriptStep } from '@/drive/scriptRunner'
 import { createDriveJournal } from '@/drive/journal'
-import { runHeadless, measureHeadless, measureBetweenHeadless, compareHeadless, exportHeadless, selectHeadless, runAssemblyHeadless, measureAssemblyHeadless, compareAssemblyHeadless, exportAssemblyHeadless } from '@/drive/headlessOps'
+import { runHeadless, measureHeadless, measureBetweenHeadless, compareHeadless, exportHeadless, selectHeadless, runAssemblyHeadless, measureAssemblyHeadless, measureAssemblyBetweenHeadless, compareAssemblyHeadless, exportAssemblyHeadless } from '@/drive/headlessOps'
 import type { AssemblyScriptStep } from '@/drive/headlessAssembly'
 import type { KernelErrorShape, KernelFaultState, KernelHostMessage, KernelRequest } from '@/drive/kernelHost'
 
@@ -147,6 +147,15 @@ async function runOp(req: KernelRequest, port: KernelPort): Promise<unknown> {
     case 'assemblyMeasure': {
       const a = req.args as AssemblyDocArgs
       return measureAssemblyHeadless(a.doc, new Map(Object.entries(a.parts)), a.files ? { files: a.files } : {})
+    }
+    case 'assemblyMeasureBetween': {
+      const a = req.args as AssemblyDocArgs & { between: string[] }
+      return measureAssemblyBetweenHeadless(
+        a.doc,
+        new Map(Object.entries(a.parts)),
+        a.between,
+        a.files ? { files: a.files } : {},
+      )
     }
     case 'assemblyCompare': {
       const a = req.args as AssemblyDocArgs & { reference: TranslationReference }

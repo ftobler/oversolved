@@ -73,6 +73,34 @@ export interface EntityAnchorIndex {
   vertices: string[][]
 }
 
+/**
+ * One face's analytic facts, carried in the part frame the rest of the bundle
+ * uses (millimetres). The assembly pick adapter classifies a face from
+ * `surface_type` and `frame` exactly as the part adapter classifies `FaceData`;
+ * `normal` is the centroid's radial direction on a curved face, kept only for
+ * the flat-face fallback and never read as a hole's axis.
+ *
+ * `face_edges` is the boundary walk as indices into the body's `edges`, so a
+ * split circle can be merged and a disc or ring recognised on the bundle side
+ * as well. `axial_length` is a cylinder face's own extent along its frame axis,
+ * measured at build time because the adapter no longer carries the mesh.
+ */
+export interface BundleFaceFact {
+  surface_type?: string
+  frame?: {
+    origin: [number, number, number]
+    axis: [number, number, number]
+    radius?: number
+    semi_angle?: number
+    minor_radius?: number
+  }
+  area?: number
+  centroid: [number, number, number]
+  normal?: [number, number, number]
+  face_edges?: number[]
+  axial_length?: number
+}
+
 export interface PartMesh {
   mesh: {
     vertices: Float32Array
@@ -80,6 +108,11 @@ export interface PartMesh {
     faceIdsPerTriangle: Uint32Array
   }
   edges: EdgeCurve[]
+  // The analytic facts of each face, aligned with the face indices
+  // `faceIdsPerTriangle` names. Optional so a schema-5 bundle still renders and
+  // mates (it just cannot measure a face analytically); the schema bump makes
+  // the cache rebuild one.
+  faces?: BundleFaceFact[]
   // The body's sparse display-only indices (BodyResult.hidden_edges /
   // hidden_vertices): a periodic face's own seam and the vertices that end no
   // visible open edge. `edges` and the anchor slots stay unfiltered, so the
@@ -120,9 +153,12 @@ export interface PartBundle {
  * unit, and an inch part is scaled at build, so a cached schema-3 inch bundle
  * carries geometry 25.4 times too small. Schema 5 adds the sparse
  * `hiddenEdges`/`hiddenVertices` display lists, so a cached schema-4 bundle
- * would keep drawing and picking every seam. See `bundleCache.bundleCacheGet`.
+ * would keep drawing and picking every seam. Schema 6 adds the per-face
+ * `faces` facts (surface class, frame, area, boundary edges, axial length) the
+ * assembly measurement classifies from, so a cached schema-5 bundle would keep
+ * blanking every face pick's readout. See `bundleCache.bundleCacheGet`.
  */
-export const BUNDLE_SCHEMA = 5
+export const BUNDLE_SCHEMA = 6
 
 // Bumped whenever geometry-producing code changes at an unchanged BUNDLE_SCHEMA
 // (a tessellation tweak, a boolean-op fix, a builder behavior change). The
@@ -358,6 +394,107 @@ function toUint32(arr: number[]): Uint32Array {
   return out
 }
 
+/**
+ * Each face's axial extent along its own analytic axis, for the cylinder faces
+ * a single-pick readout states a length for. One pass over the body's triangles
+ * serves every face, the same shape `faceAxialMidpoints` uses for the anchors;
+ * a face with no frame or no triangle is simply absent, which reads as "no
+ * length stated" rather than a made-up zero.
+ */
+function faceAxialLengths(partResult: PartResult, fds: FaceData[]): Map<number, number> {
+  const out = new Map<number, number>()
+  const wanted = new Set<number>()
+  const origins: Vec3[] = []
+  const axes: Vec3[] = []
+  for (let i = 0; i < fds.length; i++) {
+    if (fds[i].surface_type !== 'cylinderface') continue
+    const frame = fds[i].surface_frame
+    if (!frame) continue
+    const axis = normalize(frame.axis)
+    if (axis[0] === 0 && axis[1] === 0 && axis[2] === 0) continue
+    wanted.add(i)
+    origins[i] = frame.origin
+    axes[i] = axis
+  }
+  if (wanted.size === 0) return out
+
+  const mesh = partResult.mesh
+  const triangles = mesh?.faces
+  const triangleToFace = mesh?.triangle_to_face
+  const vertices = mesh?.vertices
+  if (!triangles || !triangleToFace || !vertices) return out
+  const isFlat = triangles instanceof Uint32Array
+  const cornerIndex = (tri: number, k: number): number =>
+    isFlat ? (triangles as Uint32Array)[tri * 3 + k] : (triangles as [number, number, number][])[tri][k]
+  const triCount = isFlat ? (triangles as Uint32Array).length / 3 : triangles.length
+
+  const spans = new Map<number, { lo: number; hi: number }>()
+  for (let tri = 0; tri < triCount; tri++) {
+    const face = triangleToFace[tri]
+    if (!wanted.has(face)) continue
+    const origin = origins[face]
+    const axis = axes[face]
+    for (let k = 0; k < 3; k++) {
+      const v = vertexAt(vertices, cornerIndex(tri, k))
+      const t = (v[0] - origin[0]) * axis[0] + (v[1] - origin[1]) * axis[1] + (v[2] - origin[2]) * axis[2]
+      const span = spans.get(face)
+      if (!span) spans.set(face, { lo: t, hi: t })
+      else {
+        if (t < span.lo) span.lo = t
+        if (t > span.hi) span.hi = t
+      }
+    }
+  }
+  for (const [face, span] of spans) {
+    const length = span.hi - span.lo
+    if (Number.isFinite(length) && length > 0) out.set(face, length)
+  }
+  return out
+}
+
+/**
+ * The face facts the assembly measurement reads, aligned with `face_data` so a
+ * render face index names its own fact. The boundary walks are translated from
+ * ancestry queries to edge indices here, where both query arrays are still in
+ * hand; a face whose walk names an edge the bundle does not carry keeps no
+ * walk, so it cannot be mistaken for a disc.
+ */
+function toFaceFacts(partResult: PartResult, fds: FaceData[]): BundleFaceFact[] {
+  const edgeIndex = new Map<string, number>()
+  partResult.edge_queries?.forEach((query, index) => {
+    if (query) edgeIndex.set(query, index)
+  })
+  const walks = partResult.mesh?.face_edge_queries
+  const lengths = faceAxialLengths(partResult, fds)
+  return fds.map((fd, index) => {
+    const fact: BundleFaceFact = {
+      centroid: [...fd.centroid] as Vec3,
+      normal: [...fd.normal] as Vec3,
+    }
+    if (fd.surface_type !== undefined) fact.surface_type = fd.surface_type
+    if (fd.area !== undefined) fact.area = fd.area
+    if (fd.surface_frame) {
+      fact.frame = {
+        origin: [...fd.surface_frame.origin] as Vec3,
+        axis: [...fd.surface_frame.axis] as Vec3,
+        ...(fd.surface_frame.radius !== undefined && { radius: fd.surface_frame.radius }),
+        ...(fd.surface_frame.semi_angle !== undefined && { semi_angle: fd.surface_frame.semi_angle }),
+        ...(fd.surface_frame.minor_radius !== undefined && { minor_radius: fd.surface_frame.minor_radius }),
+      }
+    }
+    const walk = walks?.[index]
+    if (walk) {
+      const mapped = walk.map(query => edgeIndex.get(query))
+      // An incomplete walk cannot be classified: dropping the unknown entry
+      // would let a face whose boundary the bundle cannot fully name look round.
+      if (mapped.every((edge): edge is number => edge !== undefined)) fact.face_edges = mapped
+    }
+    const length = lengths.get(index)
+    if (length !== undefined) fact.axial_length = length
+    return fact
+  })
+}
+
 /** Convert a single BodyResult (raw from tessellation) to a BodyMesh for the bundle. */
 export function toPartMesh(partResult: PartResult): PartMesh {
   const mesh = partResult.mesh
@@ -392,6 +529,7 @@ export function toPartMesh(partResult: PartResult): PartMesh {
   return {
     mesh: { vertices, indices, faceIdsPerTriangle },
     edges,
+    ...(mesh.face_data ? { faces: toFaceFacts(partResult, mesh.face_data) } : {}),
     // Copied, so the bundle owns them: it is transferred to the anchor worker
     // and an engine-owned array would detach the producer's result.
     hiddenEdges: partResult.hidden_edges ? [...partResult.hidden_edges] : undefined,
@@ -465,6 +603,18 @@ export function scaleBundleToMillimetres(bundle: PartBundle, factor: number): Pa
       if (edge.radius !== undefined) edge.radius *= factor
       if (edge.minor_radius !== undefined) edge.minor_radius *= factor
       if (edge.points !== undefined) edge.points = edge.points.map(p => scaleVec(p, factor))
+    }
+    for (const face of part.faces ?? []) {
+      face.centroid = scaleVec(face.centroid, factor)
+      if (face.frame) {
+        face.frame.origin = scaleVec(face.frame.origin, factor)
+        if (face.frame.radius !== undefined) face.frame.radius *= factor
+        if (face.frame.minor_radius !== undefined) face.frame.minor_radius *= factor
+      }
+      // An area is the only quantity that is not linear: a face 25.4 times
+      // larger is 25.4 squared times the area.
+      if (face.area !== undefined) face.area *= factor * factor
+      if (face.axial_length !== undefined) face.axial_length *= factor
     }
   }
   for (const anchor of Object.values(bundle.anchors)) {

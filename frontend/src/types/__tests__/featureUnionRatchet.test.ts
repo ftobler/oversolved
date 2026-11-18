@@ -85,8 +85,11 @@ const RATCHETS: Ratchet[] = [
     // the count where it is: its one loose record is the named `PartSolveSpec`
     // alias in kernel/solveLocally.ts, and the HUD's solve map is typed through
     // `MeasureContext` instead of a second record.
+    // 366: the placed-part export payloads name their one loose record through
+    // the `PartContent`/`PartContents` aliases, so the sub-assembly flatten's
+    // two call sites no longer spell it out.
     token: 'Record<string, unknown>',
-    baseline: 368,
+    baseline: 366,
   },
 ]
 

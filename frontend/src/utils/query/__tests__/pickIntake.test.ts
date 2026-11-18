@@ -7,7 +7,7 @@
  */
 import { describe, it, expect } from 'vitest'
 import type { PartResult } from '@/types/cad'
-import { bodyWantKey, identityWantKey, planPickIntake } from '../pickIntake'
+import { partsWantKey, identityWantKey, planPickIntake } from '../pickIntake'
 import { stripSelectionWrapper } from '../selectionId'
 
 const part = (id: string, createdBy: string): PartResult => ({ id, created_by: createdBy, modified_by: [] })
@@ -18,21 +18,21 @@ const PARTS: Record<string, PartResult> = {
   body_ex1_1: part('body_ex1_1', 'ex1'),
 }
 
-const bodies = bodyWantKey(PARTS)
+const want = partsWantKey(PARTS)
 
-describe('bodyWantKey', () => {
+describe('partsWantKey', () => {
   it('maps a face or edge pick to the body that owns it', () => {
-    expect(bodies('@body_ex1/edge/0')).toEqual({ keys: ['body_ex1'] })
-    expect(bodies('face:ex1:?9;@body_ex1:face')).toEqual({ keys: ['body_ex1'] })
+    expect(want('@body_ex1/edge/0')).toEqual({ keys: ['body_ex1'] })
+    expect(want('face:ex1:?9;@body_ex1:face')).toEqual({ keys: ['body_ex1'] })
   })
 
   it('maps a feature ref to every body the feature made, sorted', () => {
-    expect(bodies('@ex1')).toEqual({ keys: ['body_ex1', 'body_ex1_1'] })
+    expect(want('@ex1')).toEqual({ keys: ['body_ex1', 'body_ex1_1'] })
   })
 
   it('refuses a pick that names no body', () => {
-    expect(bodies('@builtin_plane_top')).toEqual({ refused: 'pick a face, edge or part' })
-    expect(bodies('entity:sk1:l1')).toEqual({ refused: 'pick a face, edge or part' })
+    expect(want('@builtin_plane_top')).toEqual({ refused: 'pick a face, edge or part' })
+    expect(want('entity:sk1:l1')).toEqual({ refused: 'pick a face, edge or part' })
   })
 })
 
@@ -41,7 +41,7 @@ describe('planPickIntake', () => {
     const intake = planPickIntake(
       ['@body_ex1/edge/0', '@body_ex1/edge/1'],
       [],
-      bodies,
+      want,
     )
     expect(intake).toEqual({ add: ['@body_ex1/edge/0'], remove: [], refused: [] })
   })
@@ -52,7 +52,7 @@ describe('planPickIntake', () => {
     const intake = planPickIntake(
       ['@body_ex1/edge/1'],
       ['@body_ex1/edge/0'],
-      bodies,
+      want,
     )
     expect(intake).toEqual({ add: [], remove: [0], refused: [] })
   })
@@ -61,13 +61,13 @@ describe('planPickIntake', () => {
     const intake = planPickIntake(
       ['@body_ex1/edge/1', '@body_ex2/face/0'],
       ['@body_ex1/edge/0'],
-      bodies,
+      want,
     )
     expect(intake).toEqual({ add: ['@body_ex2/face/0'], remove: [], refused: [] })
   })
 
   it('refuses a pick that names no body and keeps the reason', () => {
-    const intake = planPickIntake(['@builtin_plane_top'], [], bodies)
+    const intake = planPickIntake(['@builtin_plane_top'], [], want)
     expect(intake).toEqual({ add: [], remove: [], refused: ['pick a face, edge or part'] })
   })
 
@@ -77,14 +77,14 @@ describe('planPickIntake', () => {
     const intake = planPickIntake(
       ['@body_ex1_1/face/0'],
       ['@ex1'],
-      bodies,
+      want,
       { labelOf: () => 'Extrude 1 (all parts)' },
     )
     expect(intake).toEqual({ add: [], remove: [], refused: ['already in Extrude 1 (all parts)'] })
   })
 
   it('falls back to the held value when the field has no label', () => {
-    const intake = planPickIntake(['@body_ex1_1/face/0'], ['@ex1'], bodies)
+    const intake = planPickIntake(['@body_ex1_1/face/0'], ['@ex1'], want)
     expect(intake.refused).toEqual(['already in @ex1'])
   })
 
@@ -108,7 +108,7 @@ describe('planPickIntake', () => {
     const intake = planPickIntake(
       ['face:ex1:?9;@body_ex1:face', 'face:ex1:?10;@body_ex1:face', '@body_ex1/edge/3'],
       [],
-      bodies,
+      want,
     )
     expect(intake.add).toEqual(['face:ex1:?9;@body_ex1:face'])
   })

@@ -13,7 +13,7 @@ import type { AssemblyDoc } from '@/types/cad'
 import { docLoadErrorMessage, loadAssemblyDocText, loadPartDocText } from '@/persistence/docSchema'
 import { useAssemblyStore } from '@/stores/assemblyStore'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
-import { buildEntityMateRefs, toPartResults, toEdgeCurves } from '@/utils/assemblyBodies'
+import { buildEntityMateRefs, toPartResults, toEdgeCurves, toEntityFacts } from '@/utils/assemblyBodies'
 import { buildAnchorTable } from '@/utils/anchorGizmos'
 import { buildPickParts } from '@/utils/assemblyPick'
 import { setRelayHandlers, clearRelayHandlers, solveAssemblyViaWorker, cancelAssemblySolver } from '@/kernel/worker/anchorSolverClient'
@@ -448,6 +448,7 @@ export function useAssemblySolve(
           movedParts: res.payload.movedParts ? new Set(res.payload.movedParts) : undefined,
           parts,
           edgeCurves,
+          shapeFacts: toEntityFacts(payloadParts),
           solveStatus: liveStatus(res.payload.status),
         })
         return
@@ -460,6 +461,7 @@ export function useAssemblySolve(
         parts: toPartResults(res.payload.bodies),
         edgeCurves: toEdgeCurves(res.payload.bodies),
         leaves: res.payload.leaves ?? {},
+        shapeFacts: toEntityFacts(res.payload.bodies),
         entityMateRefs: buildEntityMateRefs(res.payload.bodies, res.payload.anchorDescriptors),
         anchors,
         anchorDescriptors: res.payload.anchorDescriptors ?? {},

@@ -68,8 +68,9 @@ export interface AssemblyExportLeaf {
  * worker returned. Hidden child leaves (the child document's own `visible`) and
  * rows the tree's view-only eye hides are omitted, matching the drawn scene.
  *
- * Falls back to the instance's seed when the last solve left no leaves (a
- * never-solved assembly): exporting at the seed beats refusing.
+ * Falls back to the instance's seed (or its last solved pose) when the last
+ * solve left no leaves (a never-solved assembly): exporting at the seed beats
+ * refusing.
  */
 export function flattenExportLeaves(
   instances: readonly PartInstance[],
@@ -121,6 +122,31 @@ export function buildExportPartsFromLeaves(
   return out
 }
 
+/**
+ * One placed spec per instance, with the instance handle kept so the
+ * measurement path can address each instance's picks; the export wire drops it.
+ */
+export function buildPlacedPartSpecs(
+  instances: PartInstance[],
+  transforms: Record<string, Transform3D>,
+  contents: PartContents,
+): { handle: string; spec: PartContent; transform: Transform3D }[] {
+  const out: { handle: string; spec: PartContent; transform: Transform3D }[] = []
+  for (const inst of instances) {
+    const content = contents[inst.doc_id]
+    if (!content) continue
+    const features = Array.isArray(content.features)
+      ? (content.features as { id: string }[]).filter(f => !BUILTIN_FEATURE_IDS.has(f.id))
+      : []
+    out.push({
+      handle: inst.handle,
+      spec: { ...content, id: inst.doc_id, features },
+      transform: transforms[inst.handle] ?? inst.transform,
+    })
+  }
+  return out
+}
+
 /** The direct-instance form, kept for callers that have not solved (tests, a
  *  non-editor export path). It is `flattenExportLeaves` with no leaves. */
 export function buildExportParts(
@@ -128,10 +154,8 @@ export function buildExportParts(
   transforms: Record<string, Transform3D>,
   contents: PartContents,
 ): AssemblyExportPartSpec[] {
-  return buildExportPartsFromLeaves(
-    instances.map(inst => ({ doc_id: inst.doc_id, transform: transforms[inst.handle] ?? inst.transform })),
-    contents,
-  )
+  return buildPlacedPartSpecs(instances, transforms, contents)
+    .map(({ spec, transform }) => ({ spec, transform }))
 }
 
 // Every import file the export parts reference, deduped. One shared map means a
