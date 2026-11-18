@@ -51,7 +51,8 @@ const PHASES = [
   'step.read', 'step.transfer', 'step.identity', 'import.names', 'import.split',
   'meta.faces', 'meta.edges', 'meta.vertices',
   'render.mesh', 'mesh.triangulate', 'mesh.mesher', 'mesh.faceFacts',
-  'render.edges', 'render.vertices', 'render.faceEdges', 'render.hidden',
+  // render.faceEdges covers the seam lists too since they share one walk.
+  'render.edges', 'render.vertices', 'render.faceEdges',
 ]
 
 interface Run {

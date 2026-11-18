@@ -18,7 +18,7 @@ import { loadOccWeb, resetOccWeb } from './occ/loadOccWeb'
 import { memoizedLoad } from './occ/memoizedLoad'
 import { DisposeScope } from './occ/disposeScope'
 import { HandleTable } from './occ/handleTable'
-import { solidToMesh, solidToEdges, solidToVertices, solidToFaceEdgeQueries, hiddenSubShapeIndices, readShapeFaceMetadata } from './occ/tessellation'
+import { solidToMesh, solidToEdges, solidToVertices, solidFaceEdgeData, readShapeFaceMetadata } from './occ/tessellation'
 import type { TessMesh } from './occ/tessellation'
 import { timePhase } from './occ/phaseTimer'
 import { indexModifierDiffs, newIndexSets } from './occ/modifierAttribution'
@@ -294,17 +294,18 @@ export function tessellateParts(
         newElements: newIndexSets(body.brep_new, shape),
         modifiedBy: body.modified_by,
       }))
-      // Per-face boundary edge queries: a face pick projects as a closed wire.
+      // One face-edge walk feeds both lists below (solidFaceEdgeData).
       const faceEdgeData = timePhase('render.faceEdges', () =>
-        solidToFaceEdgeQueries(oc, table, shape, edgeResult.edge_queries))
+        solidFaceEdgeData(oc, table, shape, edgeResult.edge_queries))
+      // Per-face boundary edge queries: a face pick projects as a closed wire.
       mesh.face_edge_queries = faceEdgeData.face_edge_queries
       // The edges each face meets twice, so the selector can tell a seam from
       // an open shell's free edge (both are listed by one face only).
       mesh.face_seam_queries = faceEdgeData.face_seam_queries
-      // The same walk again, kept as sparse display indices: the viewport skips
-      // these seams and the vertices that end no visible open edge. The arrays
-      // above are untouched, so every name and query stays byte-identical.
-      const hidden = timePhase('render.hidden', () => hiddenSubShapeIndices(oc, table, shape))
+      // The same walk, kept as sparse display indices: the viewport skips these
+      // seams and the vertices that end no visible open edge. The arrays above
+      // are untouched, so every name and query stays byte-identical.
+      const hidden = faceEdgeData
       out[bodyId] = {
         mesh,
         edges: edgeResult.edges,

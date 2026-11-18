@@ -985,28 +985,67 @@ export function solidToFaceEdgeQueries(
   const scope = new DisposeScope()
   try {
     const sortedEdges = sortedUniqueEdges(oc, scope, solid)
-    // O(1) identity->position lookup, built once. Replaces a per-edge
-    // per-face findIndex(IsSame) scan (O(F x E x E)).
-    const edgeIndex = new SubShapeIndexMap()
-    sortedEdges.forEach((e, i) => edgeIndex.set(e, i))
+    return queriesFromWalks(faceEdgeWalks(oc, scope, solid, indexOfEdges(sortedEdges)), edgeQueries)
+  } finally {
+    scope.dispose()
+  }
+}
 
-    const faceEdgeQueries: string[][] = []
-    const faceSeamQueries: string[][] = []
-    for (const { first, second } of faceEdgeWalks(oc, scope, solid, edgeIndex)) {
-      const queries: string[] = []
-      const seams: string[] = []
-      for (const idx of first) {
-        const query = edgeQueries[idx]
-        if (query) queries.push(query)
-      }
-      for (const idx of second) {
-        const query = edgeQueries[idx]
-        if (query && !seams.includes(query)) seams.push(query)
-      }
-      faceEdgeQueries.push(queries)
-      faceSeamQueries.push(seams)
+/**
+ * O(1) identity->position lookup over the sorted edges, built once. Replaces a
+ * per-edge per-face findIndex(IsSame) scan (O(F x E x E)).
+ */
+function indexOfEdges(sortedEdges: readonly OccSubShape[]): SubShapeIndexMap {
+  const edgeIndex = new SubShapeIndexMap()
+  sortedEdges.forEach((e, i) => edgeIndex.set(e, i))
+  return edgeIndex
+}
+
+/** The walks' edge positions mapped to the edges' queries, per face. */
+function queriesFromWalks(walks: readonly FaceEdgeWalk[], edgeQueries: string[]): FaceEdgeQueryData {
+  const faceEdgeQueries: string[][] = []
+  const faceSeamQueries: string[][] = []
+  for (const { first, second } of walks) {
+    const queries: string[] = []
+    const seams: string[] = []
+    for (const idx of first) {
+      const query = edgeQueries[idx]
+      if (query) queries.push(query)
     }
-    return { face_edge_queries: faceEdgeQueries, face_seam_queries: faceSeamQueries }
+    for (const idx of second) {
+      const query = edgeQueries[idx]
+      if (query && !seams.includes(query)) seams.push(query)
+    }
+    faceEdgeQueries.push(queries)
+    faceSeamQueries.push(seams)
+  }
+  return { face_edge_queries: faceEdgeQueries, face_seam_queries: faceSeamQueries }
+}
+
+/**
+ * `solidToFaceEdgeQueries` and `hiddenSubShapeIndices` in one pass, for the
+ * render pass that wants both: they share the sorted edge list (a geometry
+ * read per edge) and the per-face boundary walk (the face facts plus an edge
+ * explorer per face), which run once here instead of once each. Results are
+ * the two functions' own, field for field.
+ */
+export function solidFaceEdgeData(
+  oc: OccModule,
+  table: HandleTable,
+  handle: OccHandle,
+  edgeQueries: string[],
+): FaceEdgeQueryData & HiddenSubShapeIndices {
+  const solid = table.get(handle)
+  const scope = new DisposeScope()
+  try {
+    const sortedEdges = sortedUniqueEdges(oc, scope, solid)
+    const walks = faceEdgeWalks(oc, scope, solid, indexOfEdges(sortedEdges))
+    const hiddenEdges = seamsFromWalks(walks)
+    return {
+      ...queriesFromWalks(walks, edgeQueries),
+      hidden_edges: hiddenEdges,
+      hidden_vertices: seamVertexIndices(oc, scope, solid, sortedEdges, hiddenEdges),
+    }
   } finally {
     scope.dispose()
   }
@@ -1034,10 +1073,13 @@ export function seamEdgeIndices(
   solid: OccShape,
   sortedEdges: readonly OccSubShape[],
 ): number[] {
-  const edgeIndex = new SubShapeIndexMap()
-  sortedEdges.forEach((e, i) => edgeIndex.set(e, i))
+  return seamsFromWalks(faceEdgeWalks(oc, scope, solid, indexOfEdges(sortedEdges)))
+}
+
+/** Every edge position some walk met twice, ascending. */
+function seamsFromWalks(walks: readonly FaceEdgeWalk[]): number[] {
   const hidden = new Set<number>()
-  for (const walk of faceEdgeWalks(oc, scope, solid, edgeIndex)) {
+  for (const walk of walks) {
     for (const idx of walk.second) hidden.add(idx)
   }
   return [...hidden].sort((a, b) => a - b)
