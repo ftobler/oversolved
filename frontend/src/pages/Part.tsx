@@ -1588,12 +1588,13 @@ export default function Part() {
     onRightClick: handleRightClick,
     onRename: handleFeatureRename,
     onMutation: handleMutation,
+    onMutationBatch: commitMutationGroup,
     onSetRollbackPosition: handleUserRollbackChange,
     onRebuild: handleClearCacheAndRebuild,
   }), [toggleNormalSelection, enterEditSketch, exitEditSketch, handleAlignCameraToSketchPlane,
     enterEditFeature, exitEditFeature, commitEditFeature, cancelEditFeature,
     toggleVisibility, handleRightClick, handleFeatureRename,
-    handleMutation, handleUserRollbackChange,
+    handleMutation, commitMutationGroup, handleUserRollbackChange,
     handleClearCacheAndRebuild])
 
   return (

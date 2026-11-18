@@ -32,6 +32,9 @@ export interface FeatureEditorSchema {
 interface FeatureEditorProps {
   feature: PartFeature
   onMutation: (m: Mutation) => void
+  // The page's group seam, so a pick field's whole arriving lasso is one undo
+  // step instead of one entry per picked part.
+  onMutationBatch?: (mutations: Mutation[]) => void
   features?: PartFeature[]
   partLabels?: Record<string, string>
   schema: FeatureEditorSchema
@@ -45,7 +48,7 @@ interface FeatureEditorProps {
 // ─── main component ───
 
 export function FeatureEditor({
-  feature, onMutation, features, partLabels, schema, lengthUnit = 'mm', solved,
+  feature, onMutation, onMutationBatch, features, partLabels, schema, lengthUnit = 'mm', solved,
 }: FeatureEditorProps) {
   const fid = feature.id
   const raw = (feature as unknown as SchemaData)[schema.subKey] ?? schema.defaults
@@ -132,6 +135,7 @@ export function FeatureEditor({
               data={data}
               fid={fid}
               onMutation={onMutation}
+              onMutationBatch={onMutationBatch}
               mutationPrefix={schema.mutationPrefix}
               features={features}
               partLabels={partLabels}

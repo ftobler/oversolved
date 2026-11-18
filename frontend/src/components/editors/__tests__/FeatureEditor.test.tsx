@@ -288,6 +288,11 @@ describe('FeatureEditor boolean union picker', () => {
 
   it('sends a viewport pick on the join list to the boolean tool mutation', () => {
     const onMutation = vi.fn()
+    // A body pick resolves against the pick layer, which is where the field
+    // learns which body the picked ref names.
+    usePartEditorStore.setState({
+      pickParts: { body_a: { id: 'body_a', created_by: 'ex1', modified_by: [] } },
+    })
     render(
       <FeatureEditor
         feature={makeFeature('boolean', 'boolean', { operation: 'union', target: '', tools: [] })}

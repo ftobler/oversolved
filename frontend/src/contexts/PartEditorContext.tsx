@@ -14,6 +14,9 @@ export interface PartEditorCallbacks {
   onRightClick: (pos: [number, number], targetId?: string) => void
   onRename?: (featureId: string, label: string) => void
   onMutation: (mutation: Mutation) => void
+  // The editor's group seam: mutations that belong to one user gesture land as
+  // one undo step (a pick field's whole arriving lasso).
+  onMutationBatch?: (mutations: Mutation[]) => void
   onSetRollbackPosition: (pos: number | null) => void
   onRebuild?: () => void
 }

@@ -1005,6 +1005,34 @@ describe('usePartDoc undo/redo integration', () => {
     expect((docRef.current.features ?? []).map((f: { id: string }) => f.id)).toEqual(['f1', 'f2', 'f3', 'f4'])
   })
 
+  it('a pick field lasso is one undo step for every part it added', () => {
+    // The pick widget commits a whole arriving lasso as one group, so a box
+    // over two parts is two chips and one undo entry, not one entry per part.
+    docRef.current = {
+      version: 1,
+      kind: 'part',
+      features: [{ id: 'db1', kind: 'delete_body', delete_body: { bodies: [] } }],
+    } as unknown as PartDoc
+    const { result } = renderHookStrict(() => usePartDoc('u', { solveOnLoad: false }))
+    const bodiesOf = () =>
+      (docRef.current.features?.[0] as unknown as { delete_body: { bodies: string[] } }).delete_body.bodies
+
+    act(() => {
+      result.current.commitMutationGroup([
+        { type: 'add_delete_body_ref', featureId: 'db1', bodyQuery: '@body_1' },
+        { type: 'add_delete_body_ref', featureId: 'db1', bodyQuery: '@body_2' },
+      ] as Mutation[])
+    })
+
+    expect(bodiesOf()).toEqual(['@body_1', '@body_2'])
+    expect(result.current.undoStack).toHaveLength(1)
+
+    act(() => { result.current.handleUndo() })
+
+    expect(bodiesOf()).toEqual([])
+    expect(result.current.undoStack).toHaveLength(0)
+  })
+
   it('no-op visibility and suppression toggles push nothing and neither dirty nor re-solve', () => {
     docRef.current = {
       version: 1,

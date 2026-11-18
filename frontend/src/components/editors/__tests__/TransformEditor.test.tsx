@@ -7,8 +7,14 @@ import { render, fireEvent, act, screen } from '@testing-library/react'
 import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import { TRANSFORM_SCHEMA } from '@/components/editors/featureEditorSchemas'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { usePartEditorStore } from '@/stores/partEditorStore'
 import type { PartFeature } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
+
+const PICK_PARTS = {
+  body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [] },
+  body_ex2: { id: 'body_ex2', created_by: 'ex2', modified_by: [] },
+}
 
 function makeFeature(parts: string[] = []): PartFeature {
   return {
@@ -36,6 +42,9 @@ beforeEach(() => {
     activePickField: null,
     modeStack: [],
   })
+  // A body pick resolves against the pick layer, which is where a part field
+  // learns which body the picked face belongs to.
+  usePartEditorStore.setState({ pickParts: PICK_PARTS })
 })
 
 describe('TransformEditor (via FeatureEditor)', () => {
@@ -116,7 +125,7 @@ describe('TransformEditor (via FeatureEditor)', () => {
     // means EVERY body that feature made, and `resolvePartPickRef` would coerce
     // it to `@body_ex1`, moving the first split sibling and leaving the rest.
     const onMutation = vi.fn()
-    for (const picked of ['@ex1', '@body_ex1/face/0', '?4;@body_ex1_1@ex1:face']) {
+    for (const picked of ['@ex1', '@body_ex1/face/0', '?9;@body_ex1:face']) {
       onMutation.mockClear()
       const { unmount } = render(
         <FeatureEditor feature={makeFeature()} onMutation={onMutation} schema={TRANSFORM_SCHEMA} />,
