@@ -10,6 +10,7 @@ import type { Repository } from '../query'
 import { stepBytesToShapeWithIdentity } from '../occ/stepIo'
 import { importedNameMaps } from '../occ/importLineage'
 import { registerSplitParts, splitSolids } from './partSplit'
+import { timePhase } from '../occ/phaseTimer'
 
 type Dict = Record<string, unknown>
 
@@ -66,13 +67,14 @@ export function solveImportStep(
   // instance (one part placed twice) shares its entity ids, so the per-solid
   // index from `splitSolids` -- the same order body ids are minted with -- is
   // folded into the UUID path to keep the copies' `@u|` tokens disjoint.
-  const names = importedNameMaps(oc, scope, shape, faceStepIds, featureId, splitSolids(oc, scope, shape))
+  const names = timePhase('import.names', () =>
+    importedNameMaps(oc, scope, shape, faceStepIds, featureId, splitSolids(oc, scope, shape)))
 
   // A STEP file holding several parts arrives as one compound, so the import is
   // exactly the "a shape becomes bodies" case partSplit owns: one body per
   // solid, or one body carrying the whole shape when the file has no solid at
   // all (surfaces/shells only).
-  const partIds = registerSplitParts(oc, scope, table, partStore, shape, {
+  const partIds = timePhase('import.split', () => registerSplitParts(oc, scope, table, partStore, shape, {
     id: partId,
     createdBy: featureId,
     imported: true,
@@ -80,6 +82,6 @@ export function solveImportStep(
     edgeNames: names.edgeNames,
     faceAncestry: names.faceAncestry,
     edgeAncestry: names.edgeAncestry,
-  })
+  }))
   return { status: 'ok', body_id: partIds[0], body_ids: partIds }
 }

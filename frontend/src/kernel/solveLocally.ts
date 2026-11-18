@@ -20,6 +20,7 @@ import { DisposeScope } from './occ/disposeScope'
 import { HandleTable } from './occ/handleTable'
 import { solidToMesh, solidToEdges, solidToVertices, solidToFaceEdgeQueries, hiddenSubShapeIndices, readShapeFaceMetadata } from './occ/tessellation'
 import type { TessMesh } from './occ/tessellation'
+import { timePhase } from './occ/phaseTimer'
 import { indexModifierDiffs, newIndexSets } from './occ/modifierAttribution'
 import { copyShape, makeScaleTrsf, makeRigidTrsf, transformCopy } from './occ/transforms'
 import { stepShapeToBytes, shapeToStlBytes } from './occ/stepIo'
@@ -259,7 +260,8 @@ export function tessellateParts(
   for (const [bodyId, body] of Object.entries(partStore)) {
     if (body.shape == null) continue
     try {
-      const mesh = solidToMesh(oc, table, body.shape, {
+      const shape = body.shape
+      const mesh = timePhase('render.mesh', () => solidToMesh(oc, table, shape, {
         createdBy: body.created_by || '',
         partId: body.id,
         faceAncestry: body.face_ancestry ?? null,
@@ -267,33 +269,34 @@ export function tessellateParts(
         faceUuids: body.face_uuids ?? null,
         faceOwner: body.face_owner ?? null,
         profileQueries: body.profile_queries ?? [],
-        newElements: newIndexSets(body.brep_new, body.shape),
+        newElements: newIndexSets(body.brep_new, shape),
         modifiedBy: body.modified_by,
-      })
-      const edgeResult = solidToEdges(oc, table, body.shape, {
+      }))
+      const edgeResult = timePhase('render.edges', () => solidToEdges(oc, table, shape, {
         createdBy: body.created_by || '',
         partId: body.id,
         profileQueries: body.profile_queries ?? [],
         edgeAncestry: body.edge_ancestry ?? null,
         edgeUuids: body.edge_uuids ?? null,
         edgeOwner: body.edge_owner ?? null,
-        newElements: newIndexSets(body.brep_new, body.shape),
+        newElements: newIndexSets(body.brep_new, shape),
         modifiedBy: body.modified_by,
         // The final render pass owns the class; the mesh-free metadata pass
         // below deliberately leaves it out.
         computeConvexity: true,
-      })
-      const vertexResult = solidToVertices(oc, table, body.shape, {
+      }))
+      const vertexResult = timePhase('render.vertices', () => solidToVertices(oc, table, shape, {
         createdBy: body.created_by || '',
         partId: body.id,
         profileQueries: body.profile_queries ?? [],
         faceUuids: body.face_uuids ?? null,
         edgeUuids: body.edge_uuids ?? null,
-        newElements: newIndexSets(body.brep_new, body.shape),
+        newElements: newIndexSets(body.brep_new, shape),
         modifiedBy: body.modified_by,
-      })
+      }))
       // Per-face boundary edge queries: a face pick projects as a closed wire.
-      const faceEdgeData = solidToFaceEdgeQueries(oc, table, body.shape, edgeResult.edge_queries)
+      const faceEdgeData = timePhase('render.faceEdges', () =>
+        solidToFaceEdgeQueries(oc, table, shape, edgeResult.edge_queries))
       mesh.face_edge_queries = faceEdgeData.face_edge_queries
       // The edges each face meets twice, so the selector can tell a seam from
       // an open shell's free edge (both are listed by one face only).
@@ -301,7 +304,7 @@ export function tessellateParts(
       // The same walk again, kept as sparse display indices: the viewport skips
       // these seams and the vertices that end no visible open edge. The arrays
       // above are untouched, so every name and query stays byte-identical.
-      const hidden = hiddenSubShapeIndices(oc, table, body.shape)
+      const hidden = timePhase('render.hidden', () => hiddenSubShapeIndices(oc, table, shape))
       out[bodyId] = {
         mesh,
         edges: edgeResult.edges,
@@ -354,17 +357,19 @@ export function extractBrepMetadata(
     const scope = new DisposeScope()
     try {
       const solid = table.get<OccShape>(body.shape)
-      const { face_data, face_queries, face_uuids, face_created_by } = readShapeFaceMetadata(oc, scope, solid, {
-        createdBy: body.created_by || '',
-        partId: body.id,
-        faceAncestry: body.face_ancestry ?? null,
-        faceCapAncestry: body.face_cap_ancestry ?? null,
-        faceUuids: body.face_uuids ?? null,
-        faceOwner: body.face_owner ?? null,
-        profileQueries: body.profile_queries ?? [],
-        newElements: newIndexSets(body.brep_new, body.shape),
-        modifiedBy: body.modified_by,
-      })
+      const shape = body.shape
+      const { face_data, face_queries, face_uuids, face_created_by } = timePhase('meta.faces', () =>
+        readShapeFaceMetadata(oc, scope, solid, {
+          createdBy: body.created_by || '',
+          partId: body.id,
+          faceAncestry: body.face_ancestry ?? null,
+          faceCapAncestry: body.face_cap_ancestry ?? null,
+          faceUuids: body.face_uuids ?? null,
+          faceOwner: body.face_owner ?? null,
+          profileQueries: body.profile_queries ?? [],
+          newElements: newIndexSets(body.brep_new, shape),
+          modifiedBy: body.modified_by,
+        }))
       const mesh: TessMesh = {
         vertices: [],
         faces: [],
@@ -375,25 +380,25 @@ export function extractBrepMetadata(
         face_created_by,
         is_fallback: false,
       }
-      const edgeResult = solidToEdges(oc, table, body.shape, {
+      const edgeResult = timePhase('meta.edges', () => solidToEdges(oc, table, shape, {
         createdBy: body.created_by || '',
         partId: body.id,
         profileQueries: body.profile_queries ?? [],
         edgeAncestry: body.edge_ancestry ?? null,
         edgeUuids: body.edge_uuids ?? null,
         edgeOwner: body.edge_owner ?? null,
-        newElements: newIndexSets(body.brep_new, body.shape),
+        newElements: newIndexSets(body.brep_new, shape),
         modifiedBy: body.modified_by,
-      })
-      const vertexResult = solidToVertices(oc, table, body.shape, {
+      }))
+      const vertexResult = timePhase('meta.vertices', () => solidToVertices(oc, table, shape, {
         createdBy: body.created_by || '',
         partId: body.id,
         profileQueries: body.profile_queries ?? [],
         faceUuids: body.face_uuids ?? null,
         edgeUuids: body.edge_uuids ?? null,
-        newElements: newIndexSets(body.brep_new, body.shape),
+        newElements: newIndexSets(body.brep_new, shape),
         modifiedBy: body.modified_by,
-      })
+      }))
       out[bodyId] = {
         mesh,
         edges: edgeResult.edges,

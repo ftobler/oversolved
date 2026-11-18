@@ -38,6 +38,7 @@ import { classifyFaceEdges } from './moveFace'
 import { emitWithTiesTagged, type QueryParts } from '../tiedQuery'
 import { ref, makeAncestryQuery, constructionUuidToken } from '../query'
 import type { EdgeData } from '@/types/cad'
+import { timePhase } from './phaseTimer'
 
 export interface FaceDatum {
   centroid: Vec3
@@ -137,21 +138,24 @@ export function readShapeFaces(
   for (; exp.More(); exp.Next()) {
     const face = scope.track(oc.TopoDS.Face_1(exp.Current()))
     const canon = canonOf(face as OccSubShape)
-    const { vertices, triangles } = tessellateFace(oc, scope, face, deflection, angularDeflection)
-    const surfaceType = faceSurfaceType(oc, scope, face)
-    // faceCylinderAxis returns null on a degenerate surface; fold to undefined
-    // so the optional field stays absent instead of carrying a null.
-    const axis = (surfaceType === 'cylinderface' ? faceCylinderAxis(oc, scope, face) : undefined) ?? undefined
-    raw.push({
-      vertices,
-      triangles,
-      centroid: faceCentroid(oc, scope, face),
-      normal: faceNormal(oc, scope, face),
-      surfaceType,
-      surfaceFrame: faceSurfaceFrame(oc, scope, face),
-      axis,
-      canon,
-    })
+    const { vertices, triangles } = timePhase('mesh.triangulate', () =>
+      tessellateFace(oc, scope, face, deflection, angularDeflection))
+    raw.push(timePhase('mesh.faceFacts', () => {
+      const surfaceType = faceSurfaceType(oc, scope, face)
+      // faceCylinderAxis returns null on a degenerate surface; fold to undefined
+      // so the optional field stays absent instead of carrying a null.
+      const axis = (surfaceType === 'cylinderface' ? faceCylinderAxis(oc, scope, face) : undefined) ?? undefined
+      return {
+        vertices,
+        triangles,
+        centroid: faceCentroid(oc, scope, face),
+        normal: faceNormal(oc, scope, face),
+        surfaceType,
+        surfaceFrame: faceSurfaceFrame(oc, scope, face),
+        axis,
+        canon,
+      }
+    }))
   }
   return raw
 }

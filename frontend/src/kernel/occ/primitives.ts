@@ -33,6 +33,7 @@ import type { EdgeData } from '@/types/cad'
 import { swallowUnlessTrap } from '../errors'
 import { surfaceAreaOf, surfaceCentroidOf, volumeCentroidOf } from './volume'
 import { MESH_PURPOSE_NONE, noProgress } from './defaultArgs'
+import { timePhase } from './phaseTimer'
 
 // Re-exported so the topological-identity indexes keep their primitives.ts home
 // for every existing caller.
@@ -656,7 +657,7 @@ export function tessellateFace(
   linearDeflection: number,
   angularDeflection: number,
 ): FaceTessellation {
-  meshShape(oc, face, linearDeflection, angularDeflection)
+  timePhase('mesh.mesher', () => meshShape(oc, face, linearDeflection, angularDeflection))
   const loc = scope.track(new oc.TopLoc_Location_1())
   const handle = scope.track(oc.BRep_Tool.Triangulation(face, loc, MESH_PURPOSE_NONE))
   if (handle.IsNull()) return { vertices: [], triangles: [] }
