@@ -20,3 +20,32 @@ export function booleanJoinList(data: JoinFields): string[] {
   // duplicate is folded away here.
   return [...new Set([...base, ...tools])]
 }
+
+/**
+ * What a boolean still needs from the user, in the words its editor uses, or
+ * null when the picks are complete. A union's list counts the base and the
+ * tools together: the stored target is only the list's first pick, so a
+ * lone entry in either key is a list of one. The stored keys never reach the
+ * message. An absent operation is the stored default, union; an unknown one
+ * still gets its pick check first and then its own refusal from the kernel.
+ */
+export function booleanPickProblem(
+  operation: string | undefined,
+  target: string | undefined,
+  tools: string[] | undefined,
+): string | null {
+  if (operation === 'subtract') {
+    if (target === undefined || target === '') return 'boolean: pick the target part to subtract from'
+    if (tools === undefined || tools.length === 0) return 'boolean: pick at least one tool part to subtract'
+    return null
+  }
+  if (operation === 'intersect') {
+    if (target === undefined || target === '') return 'boolean: pick the target part to intersect'
+    if (tools === undefined || tools.length === 0) return 'boolean: pick at least one tool part to intersect with'
+    return null
+  }
+  const picks = booleanJoinList({ target: target ?? '', tools })
+  if (picks.length === 0) return 'boolean: pick at least two parts to join'
+  if (picks.length === 1) return 'boolean: pick at least one more part to join'
+  return null
+}

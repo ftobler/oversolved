@@ -41,6 +41,7 @@ import { transferBooleanNames } from './booleanLineage'
 import { readPartNames } from '../occ/partNames'
 import { stripRefSigil } from '@/utils/refSigil'
 import { patternSubject } from '@/utils/core/patternSubject'
+import { booleanPickProblem } from '@/utils/core/booleanJoin'
 import { isPatternKind } from '@/types/cad'
 import { nestedFeatureParams } from './shared/featureParams'
 import { swallowUnlessTrap } from '../errors'
@@ -318,8 +319,8 @@ export function solveBoolean(
   }
   const clearance = typeof rawClearance === 'number' ? rawClearance : 0
 
-  if (!targetRef) throw new Error("boolean: 'target' is required")
-  if (authoredTools.length === 0) throw new Error("boolean: 'tools' must have at least one entry")
+  const pickProblem = booleanPickProblem(operation, targetRef, authoredTools)
+  if (pickProblem !== null) throw new Error(pickProblem)
 
   const op = OP_MAP[operation]
   if (op === undefined) throw new Error(`boolean: unknown operation '${operation}'`)

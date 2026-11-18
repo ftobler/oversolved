@@ -63,6 +63,15 @@ function part(id: string): PartSolid {
   }
 }
 
+function thrownMessage(fn: () => unknown): string {
+  try {
+    fn()
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e)
+  }
+  throw new Error('expected the solve to throw')
+}
+
 describe('solveBoolean guard paths', () => {
   beforeEach(() => {
     mocks.booleanWithDiff.mockReset()
@@ -71,16 +80,34 @@ describe('solveBoolean guard paths', () => {
     mocks.shapesTouch.mockReset()
   })
 
-  it('requires a target', () => {
-    expect(() =>
-      solveBoolean(oc, scope, table, { id: 'b', boolean: { tools: ['body_u0'] } }, repo, { body_u0: part('body_u0') }),
-    ).toThrow(/'target' is required/)
-  })
+  // Every under-picked boolean names the pick the user still has to make, in
+  // the words of its editor. The stored target/tools split stays internal, so
+  // no thrown message may quote either key at the user.
+  const solve = (operation: string, target: string, tools: string[]) => () =>
+    solveBoolean(oc, scope, table, { id: 'b', boolean: { operation, target, tools } }, repo, {
+      body_t: part('body_t'),
+      body_u0: part('body_u0'),
+    })
 
-  it('requires at least one tool', () => {
-    expect(() =>
-      solveBoolean(oc, scope, table, { id: 'b', boolean: { target: 'body_t', tools: [] } }, repo, { body_t: part('body_t') }),
-    ).toThrow(/must have at least one entry/)
+  const pickProblems: Array<[string, () => unknown, string]> = [
+    ['union with no picks', solve('union', '', []), 'boolean: pick at least two parts to join'],
+    ['union with the base only', solve('union', 'body_t', []), 'boolean: pick at least one more part to join'],
+    ['subtract without a target', solve('subtract', '', ['body_u0']), 'boolean: pick the target part to subtract from'],
+    ['subtract without a tool', solve('subtract', 'body_t', []), 'boolean: pick at least one tool part to subtract'],
+    ['intersect without a target', solve('intersect', '', ['body_u0']), 'boolean: pick the target part to intersect'],
+    ['intersect without a tool', solve('intersect', 'body_t', []), 'boolean: pick at least one tool part to intersect with'],
+  ]
+
+  for (const [name, run, message] of pickProblems) {
+    it(`${name} names the missing pick`, () => {
+      expect(thrownMessage(run)).toBe(message)
+    })
+  }
+
+  it('never quotes a stored key in an under-picked boolean message', () => {
+    for (const [, run] of pickProblems) {
+      expect(thrownMessage(run)).not.toMatch(/'(tools|target)'/)
+    }
   })
 
   it('rejects an unknown operation', () => {
@@ -141,15 +168,36 @@ describe('solveBoolean guard paths', () => {
   it('target listed in tools throws the named error before any boolean runs', () => {
     // The refusal sits in the tool loop, so the target must reach it: a real
     // shape (any disposable) keeps the pre-loop "has no shape" guard from
-    // firing first. The throw happens before any OCC work.
+    // firing first. The throw happens before any OCC work. A subtract keeps
+    // the target/tools roles, so the pick guard is complete and the duplicate
+    // reaches the loop.
     const table = new HandleTable()
     const target = part('body_t')
     target.shape = table.register({ delete: () => {}, isDeleted: () => false })
     expect(() =>
       solveBoolean(oc, scope, table, {
-        id: 'b', boolean: { operation: 'union', target: 'body_t', tools: ['body_t'] },
+        id: 'b', boolean: { operation: 'subtract', target: 'body_t', tools: ['body_t'] },
       }, repo, {
         body_t: target,
+      }),
+    ).toThrow(/cannot be its own tool/)
+  })
+
+  it('a union with another pick still refuses the target listed among its tools', () => {
+    // The join list folds a duplicate of the base away, so a lone target-tool
+    // pick is caught by the pick guard. With a second tool the list is
+    // complete and the duplicate reaches the tool loop's own refusal.
+    const table = new HandleTable()
+    const target = part('body_t')
+    target.shape = table.register({ delete: () => {}, isDeleted: () => false })
+    const other = part('body_u0')
+    other.shape = table.register({ delete: () => {}, isDeleted: () => false })
+    expect(() =>
+      solveBoolean(oc, scope, table, {
+        id: 'b', boolean: { operation: 'union', target: 'body_t', tools: ['body_u0', 'body_t'] },
+      }, repo, {
+        body_t: target,
+        body_u0: other,
       }),
     ).toThrow(/cannot be its own tool/)
   })
@@ -163,7 +211,7 @@ describe('solveBoolean guard paths', () => {
     target.shape = table.register({ delete: () => {}, isDeleted: () => false })
     expect(() =>
       solveBoolean(oc, scope, table, {
-        id: 'b', boolean: { operation: 'union', target: 'body_t', tools: ['@ex1'] },
+        id: 'b', boolean: { operation: 'subtract', target: 'body_t', tools: ['@ex1'] },
       }, repo, {
         body_t: target,
       }),
