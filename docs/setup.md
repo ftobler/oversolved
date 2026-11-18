@@ -71,17 +71,17 @@ one artifact, nothing to configure per deployment. Both assume `public/occ` and
 ## Hosting the OCC payload
 
 The app is static files, and the largest of them is the OCC artifact under
-`/occ/`. Sizes of the pinned `occt-8.0.1-r2` build (`frontend/occ.pin.json`),
-measured 2026-11-15 with Node's zlib (gzip level 9; brotli quality 11 at zlib's
+`/occ/`. Sizes of the pinned `occt-8.0.1-r3` build (`frontend/occ.pin.json`),
+measured 2026-11-18 with Node's zlib (gzip level 9; brotli quality 11 at zlib's
 default 22-bit window):
 
 | file | raw | gzip -9 | brotli q11 |
 | --- | --- | --- | --- |
-| `occt.wasm` | 21,192,467 B (20.2 MiB) | 6,573,904 B (6.3 MiB) | 4,544,675 B (4.3 MiB) |
-| `occt.js` | 111,119 B (109 KiB) | 29,986 B (29 KiB) | 26,456 B (26 KiB) |
+| `occt.wasm` | 22,132,120 B (21.1 MiB) | 6,828,291 B (6.5 MiB) | 4,732,678 B (4.5 MiB) |
+| `occt.js` | 111,932 B (109 KiB) | 30,180 B (29 KiB) | 26,592 B (26 KiB) |
 
-A first visit therefore transfers about 4.5 MB with brotli (6.6 MB with gzip)
-instead of 21 MB; the opencascade.js 1.1.1 build it replaced was 9.5 MB with
+A first visit therefore transfers about 4.8 MB with brotli (6.9 MB with gzip)
+instead of 22 MB; the opencascade.js 1.1.1 build it replaced was 9.5 MB with
 brotli, from a 66 MB wasm that bound over 4000 classes. Nothing in this
 repository configures a server, but the deploy is expected to:
 
@@ -89,7 +89,7 @@ repository configures a server, but the deploy is expected to:
   loader checks the type before streaming the file into
   `WebAssembly.compileStreaming`; a wrong type silently drops to the buffered
   compile (still correct, just without streaming).
-- compress it: brotli (`Content-Encoding: br`) saves another ~32% over gzip.
+- compress it: brotli (`Content-Encoding: br`) saves another ~31% over gzip.
   Precompress once at deploy time; the bytes never change within a pinned
   version.
 - cache `/occ/*` immutably (`Cache-Control: public, max-age=31536000`). The

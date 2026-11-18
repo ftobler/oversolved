@@ -48,10 +48,10 @@ export const SOURCES = [
     sha256: '6297cc55a1720523a437c54d07dc16b9da8c5f5ab5800da3c6ebded568d53c18',
   },
   {
-    name: 'oversolved-occt-1f3b794-src.tar.gz',
-    url: 'https://github.com/ftobler/oversolved-occt/archive/1f3b7945504dbd4ca6baed97524f3fd7b3c22469.tar.gz',
-    what: 'The oversolved-occt build at 1f3b7945504dbd4ca6baed97524f3fd7b3c22469: binding generator, manual bindings, build flags',
-    sha256: '9c20fbce206f904b1601ab33ec8a96f6a0ef7fb6a2f18994a8b3e700a22e0294',
+    name: 'oversolved-occt-2d888f3-src.tar.gz',
+    url: 'https://github.com/ftobler/oversolved-occt/archive/2d888f36721be579263a7e6b8854e7738cf1d575.tar.gz',
+    what: 'The oversolved-occt build at 2d888f36721be579263a7e6b8854e7738cf1d575: binding generator, manual bindings, build flags',
+    sha256: '1c15ee3e1d500e80406e4390d6c31c66396738579e830b1c98750181553de5aa',
   },
 ]
 

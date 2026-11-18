@@ -46,6 +46,7 @@ import { MAX_TWIST_DEG, twistSectionCount } from '@/utils/core/twistLimits'
 import type { PlaneLike } from '../../features/shared/planes'
 import type { LoopEdge } from '../../profileLoops'
 import type { OccModule, OccShape, OccSubShape } from '../occTypes'
+import { boundArity } from './boundArity'
 
 const oc = await loadOcc()
 
@@ -247,10 +248,10 @@ describe.skipIf(!oc)('twist prism spike (real OCC)', () => {
     const proto = (oc!.BRepOffsetAPI_MakePipeShell as unknown as {
       prototype: Record<string, unknown>
     }).prototype
-    const arity = (name: string): number => {
+    const arity = (name: string): number | string => {
       const member = proto[name]
       if (typeof member !== 'function') throw new Error(`${name} is not bound`)
-      return (member as { length: number }).length
+      return boundArity(member)
     }
     // Four one-argument overloads: the Frenet flag, gp_Ax2, gp_Dir and
     // TopoDS_Shape (SpineSupport). CadQuery's `SetMode(auxSpine, false)` needs
