@@ -29,11 +29,11 @@ function totalBytesOf(response: Response): number {
   return Number(response.headers.get('Content-Length') ?? 0)
 }
 
-/** Wrap the body so every chunk is counted before the compiler sees it. */
-function streamingPart(response: Response, total: number, report: OccWasmReport): Response {
-  const part = response.body
-  if (!part) throw new Error('response has no readable body')
-  const reader = part.getReader()
+/** Wrap the response body so every chunk is counted before the compiler sees it. */
+function streamingResponse(response: Response, total: number, report: OccWasmReport): Response {
+  const payload = response.body
+  if (!payload) throw new Error('response has no readable body')
+  const reader = payload.getReader()
   let loaded = 0
   const stream = new ReadableStream<Uint8Array>({
     async pull(controller) {
@@ -62,14 +62,14 @@ async function readWithProgress(
   total: number,
   report: OccWasmReport,
 ): Promise<Uint8Array<ArrayBuffer>> {
-  const part = response.body
-  if (!part) {
+  const payload = response.body
+  if (!payload) {
     const buffer = await response.arrayBuffer()
     report.download(buffer.byteLength, total)
     report.compiling()
     return new Uint8Array(buffer)
   }
-  const reader = part.getReader()
+  const reader = payload.getReader()
   const chunks: Uint8Array[] = []
   let loaded = 0
   for (;;) {
@@ -101,7 +101,7 @@ export async function compileOccWasm(url: string, report: OccWasmReport): Promis
 
   if (canStream) {
     try {
-      return await WebAssembly.compileStreaming(streamingPart(response, total, report))
+      return await WebAssembly.compileStreaming(streamingResponse(response, total, report))
     } catch (streamingError) {
       // The body the compiler consumed cannot be replayed, so a second fetch
       // is the honest recovery. Streaming only fails here on a truncated or
