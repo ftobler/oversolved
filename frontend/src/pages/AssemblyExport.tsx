@@ -10,7 +10,14 @@ import { resolveFilesSessionFirst } from '@/stores/fileRegistry/resolve'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { downloadBlob } from '@/utils/core/downloadBlob'
 import { swapExtension } from '@/utils/core/exportFileName'
-import { assemblyStlBytes, buildExportParts, collectExportFileIds, exportableInstances, loadPartContents } from '@/utils/assemblyExport'
+import {
+  assemblyStlBytes,
+  buildExportPartsFromLeaves,
+  collectExportFileIds,
+  exportableInstances,
+  flattenExportLeaves,
+  loadPartContents,
+} from '@/utils/assemblyExport'
 import { planExport, zipExportFiles, type ExportPart } from '@/utils/exportSelection'
 import type { AssemblyDoc, PartInstance, Transform3D } from '@/types/cad'
 
@@ -148,10 +155,14 @@ async function buildBytes(
   instances: PartInstance[],
   poses: Record<string, Transform3D>,
 ): Promise<Uint8Array | null> {
+  const store = useAssemblyStore.getState()
   if (format === 'stl') {
-    return assemblyStlBytes(useAssemblyStore.getState().parts, instances)
+    return assemblyStlBytes(store.parts, instances, store.hiddenLeafPaths)
   }
-  const parts = buildExportParts(instances, poses, await loadPartContents(instances))
+  // STEP rebuilds the real B-rep of every underlying part, so a rigid
+  // sub-assembly must be flattened to its leaves at their composed poses first.
+  const leaves = flattenExportLeaves(instances, store.leaves, store.hiddenLeafPaths, poses)
+  const parts = buildExportPartsFromLeaves(leaves, await loadPartContents(leaves))
   const session = useWorkspaceSessionStore.getState().session
   const fileIds = fileIdsMissingFromWorker(collectExportFileIds(parts))
   const files = fileIds.length ? await resolveFilesSessionFirst(session, getFileRegistry(), fileIds) : undefined

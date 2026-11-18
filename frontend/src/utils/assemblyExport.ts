@@ -16,6 +16,7 @@
 // looking at, which is the only reading of "hide" that does not surprise.
 
 import type { AssemblyDoc, PartResult, PartInstance, Transform3D } from '@/types/cad'
+import type { AssemblyLeaf } from '@/kernel/assemblyBundle'
 import type { AssemblyExportPartSpec } from '@/kernel/worker/solverProtocol'
 import type { StlMesh } from '@/kernel/stl'
 import { encodeBinaryStl } from '@/kernel/stl'
@@ -36,7 +37,9 @@ export function exportableInstances(doc: AssemblyDoc): PartInstance[] {
  *  whole export rather than silently omitting a body: a STEP file quietly short
  *  a component is worse than no file, and a spec that fails validation would
  *  otherwise rehydrate a half-parsed B-rep. */
-export async function loadPartContents(instances: PartInstance[]): Promise<Record<string, Record<string, unknown>>> {
+export async function loadPartContents(
+  instances: readonly { doc_id: string }[],
+): Promise<Record<string, Record<string, unknown>>> {
   const ids = [...new Set(instances.map(i => i.doc_id))]
   const loaded = await Promise.all(ids.map(id => backendBundle.documents.load(id)))
   const out: Record<string, Record<string, unknown>> = {}
@@ -48,36 +51,83 @@ export async function loadPartContents(instances: PartInstance[]): Promise<Recor
   return out
 }
 
+/** One leaf part at the world pose the flattened export places it at. */
+export interface AssemblyExportLeaf {
+  doc_id: string
+  transform: Transform3D
+}
+
 /**
- * Worker payload for the analytic path: one entry per instance whose PartDoc
- * content we could load, carrying the solved placement.
+ * Flatten a solved assembly's instances to their leaf parts at world poses. A
+ * direct instance is one leaf at its solved transform; a rigid sub-assembly
+ * contributes every leaf its own solve flattened, with the composed pose the
+ * worker returned. Hidden child leaves (the child document's own `visible`) and
+ * rows the tree's view-only eye hides are omitted, matching the drawn scene.
  *
- * Falls back to the instance's own seed transform when the solve produced none
- * for that handle (a never-solved assembly, a handle added since the last
- * solve). Exporting at the seed pose beats refusing to export.
+ * Falls back to the instance's seed when the last solve left no leaves (a
+ * never-solved assembly): exporting at the seed beats refusing.
+ */
+export function flattenExportLeaves(
+  instances: readonly PartInstance[],
+  leaves: Readonly<Record<string, readonly AssemblyLeaf[]>>,
+  hiddenLeafPaths?: ReadonlySet<string>,
+  solvedPoses: Record<string, Transform3D> = {},
+): AssemblyExportLeaf[] {
+  const out: AssemblyExportLeaf[] = []
+  for (const inst of instances) {
+    if (inst.visible === false) continue
+    const solved = leaves[inst.handle]
+    if (!solved || solved.length === 0) {
+      out.push({ doc_id: inst.doc_id, transform: solvedPoses[inst.handle] ?? inst.transform })
+      continue
+    }
+    for (const leaf of solved) {
+      if (leaf.visible === false) continue
+      if (leaf.path !== undefined && hiddenLeafPaths?.has(`${inst.handle}/${leaf.path}`)) continue
+      out.push({ doc_id: leaf.doc_id, transform: leaf.transform })
+    }
+  }
+  return out
+}
+
+/**
+ * Worker payload for the analytic path: one entry per leaf whose PartDoc
+ * content we could load, carrying its flattened world placement.
  *
  * Built-in features are stripped from the spec, as every build path does
  * (`useSolver`, `PartExportImport`): the origin and the three datum planes are
  * seeded by `initGlobalRepo`, not solved as features.
  */
-export function buildExportParts(
-  instances: PartInstance[],
-  transforms: Record<string, Transform3D>,
+export function buildExportPartsFromLeaves(
+  leaves: readonly AssemblyExportLeaf[],
   contents: Record<string, Record<string, unknown>>,
 ): AssemblyExportPartSpec[] {
   const out: AssemblyExportPartSpec[] = []
-  for (const inst of instances) {
-    const content = contents[inst.doc_id]
+  for (const leaf of leaves) {
+    const content = contents[leaf.doc_id]
     if (!content) continue
     const features = Array.isArray(content.features)
       ? (content.features as { id: string }[]).filter(f => !BUILTIN_FEATURE_IDS.has(f.id))
       : []
     out.push({
-      spec: { ...content, id: inst.doc_id, features },
-      transform: transforms[inst.handle] ?? inst.transform,
+      spec: { ...content, id: leaf.doc_id, features },
+      transform: leaf.transform,
     })
   }
   return out
+}
+
+/** The direct-instance form, kept for callers that have not solved (tests, a
+ *  non-editor export path). It is `flattenExportLeaves` with no leaves. */
+export function buildExportParts(
+  instances: PartInstance[],
+  transforms: Record<string, Transform3D>,
+  contents: Record<string, Record<string, unknown>>,
+): AssemblyExportPartSpec[] {
+  return buildExportPartsFromLeaves(
+    instances.map(inst => ({ doc_id: inst.doc_id, transform: transforms[inst.handle] ?? inst.transform })),
+    contents,
+  )
 }
 
 // Every import file the export parts reference, deduped. One shared map means a
@@ -98,11 +148,15 @@ export function collectExportFileIds(parts: AssemblyExportPartSpec[]): string[] 
 export function assemblyStlMeshes(
   parts: Record<string, PartResult>,
   instances: PartInstance[],
+  hiddenLeafPaths?: ReadonlySet<string>,
 ): StlMesh[] {
   const handles = new Set(instances.map(i => i.handle))
   const out: StlMesh[] = []
   for (const part of Object.values(parts)) {
     if (!handles.has(part.created_by)) continue
+    // The tree's view-only eye hides one child leaf; the export mirrors the
+    // scene, so its body is left out of the solid.
+    if (part.leaf_path !== undefined && hiddenLeafPaths?.has(`${part.created_by}/${part.leaf_path}`)) continue
     const mesh = part.mesh
     if (!mesh) continue
     const { vertices, faces } = mesh
@@ -122,8 +176,9 @@ export function assemblyStlMeshes(
 export function assemblyStlBytes(
   parts: Record<string, PartResult>,
   instances: PartInstance[],
+  hiddenLeafPaths?: ReadonlySet<string>,
 ): Uint8Array | null {
-  const meshes = assemblyStlMeshes(parts, instances)
+  const meshes = assemblyStlMeshes(parts, instances, hiddenLeafPaths)
   if (meshes.length === 0) return null
   return encodeBinaryStl(meshes)
 }
