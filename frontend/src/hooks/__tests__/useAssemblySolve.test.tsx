@@ -290,7 +290,7 @@ function childAssemblyText(): string {
   ].join('\n')
 }
 
-function childSolvePayload() {
+function childSolvePayload(): import('@/kernel/worker/solverProtocol').AssemblySolveOkResponse {
   return {
     id: 1, kind: 'solveAssembly' as const, ok: true as const,
     payload: {
@@ -396,8 +396,9 @@ describe('useAssemblySolve sub-assemblies', () => {
 
   it('carries a non-converged child verdict as a warning on the rigid instance', async () => {
     const child = childSolvePayload()
+    const status = child.payload.status!
     child.payload.status = {
-      ...child.payload.status,
+      ...status,
       verdict: 'overconstrained',
       error: 'residual above tolerance',
     }

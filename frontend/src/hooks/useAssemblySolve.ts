@@ -343,17 +343,15 @@ export function useAssemblySolve(
         coldNext.current = false
         // Skip both hash caches for this run, so a later live tick cannot reuse
         // the empty map as if it were the last solve's content hashes. The
-        // previous entry list still travels: it is what tells a sub-assembly
-        // from a part, and re-listing the workspace is exactly the cost a
-        // rebuild must not pay. The first action after opening a sub-assembly
-        // with no prior solve has no list yet; the next ordinary solve repairs
-        // any instance this run could not classify.
+        // previous entry list still travels when there is one: it is what tells
+        // a sub-assembly from a part, and re-listing the workspace is the cost a
+        // rebuild tries not to pay. A rebuild with no prior solve has no list
+        // yet, so it fetches one once; without it a sub-assembly would be
+        // classified as a part and fail red on the user's first action.
         burstHashes.current = null
-        index = {
-          hashes: {},
-          entries: lastHashes.current?.index.entries ?? [],
-          edges: lastHashes.current?.index.edges ?? {},
-        }
+        index = lastHashes.current
+          ? { hashes: {}, entries: lastHashes.current.index.entries, edges: lastHashes.current.index.edges }
+          : { ...(await currentWorkspaceIndex(current)), hashes: {} }
         lastHashes.current = null
       } else if (live && lastHashes.current?.key === key) {
         index = lastHashes.current.index

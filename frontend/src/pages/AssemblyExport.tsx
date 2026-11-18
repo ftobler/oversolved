@@ -161,7 +161,7 @@ async function buildBytes(
   }
   // STEP rebuilds the real B-rep of every underlying part, so a rigid
   // sub-assembly must be flattened to its leaves at their composed poses first.
-  const leaves = flattenExportLeaves(instances, store.leaves, store.hiddenLeafPaths, poses)
+  const leaves = flattenExportLeaves(instances, store.leaves ?? {}, store.hiddenLeafPaths, poses)
   const parts = buildExportPartsFromLeaves(leaves, await loadPartContents(leaves))
   const session = useWorkspaceSessionStore.getState().session
   const fileIds = fileIdsMissingFromWorker(collectExportFileIds(parts))

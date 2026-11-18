@@ -96,7 +96,7 @@ export interface AssemblyEditorData {
   // The flat leaves behind each top-level handle, at solved world poses. A
   // sub-assembly contributes every underlying part, which is what export names
   // instead of the assembly document.
-  leaves: Record<string, AssemblyLeaf[]>
+  leaves?: Record<string, AssemblyLeaf[]>
   // The measurement facts (raw edges + face facts) of the solved bodies, keyed
   // by the same body id. Optional only so older test payloads and a legacy
   // solve reply still type; the current solve always sets it.

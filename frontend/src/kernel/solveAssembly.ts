@@ -148,8 +148,9 @@ export interface AssemblyBuildResponse {
   anchorDescriptors: Record<string, Record<string, MateAnchorDescriptor>>
   // Part handle -> flat leaf list at world poses. A plain part has one leaf; a
   // sub-assembly has every underlying part, so export and headless replies can
-  // name the real documents behind one rigid instance.
-  leaves: Record<string, AssemblyLeaf[]>
+  // name the real documents behind one rigid instance. Optional so test doubles
+  // and older reply shapes still type; `solveAssembly` always sets it.
+  leaves?: Record<string, AssemblyLeaf[]>
   // The solve verdict plus its per-mate and per-part marks.
   status: AssemblySolveStatus
 }
@@ -541,7 +542,14 @@ async function putBundleBestEffort(bundle: PartBundle): Promise<void> {
 }
 
 export async function solveAssembly(
-  parts: { handle: string; doc_id: string; transform: Transform3D; fixed?: boolean }[],
+  parts: {
+    handle: string
+    doc_id: string
+    transform: Transform3D
+    fixed?: boolean
+    visible?: boolean
+    bundle?: PartBundle
+  }[],
   hashes: Record<string, string>,
   mates: MateSpec[],
   relay: RelayService,

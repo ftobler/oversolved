@@ -18,8 +18,8 @@ import { bundleCachePut, resetBundleDbConnection } from '../bundleCache'
 import { loadPkgNodeExport, PKG_MATE } from '../../wasm-kernel/loadPkgNode'
 import { BUNDLE_SCHEMA, type PartBundle } from '../partBundle'
 import { buildAssemblyBundle } from '../assemblyBundle'
-import { composeTransforms, invertTransform, type Transform3D } from '../../utils/transform3d'
-import type { PartInstance } from '../../types/cad'
+import { composeTransforms, invertTransform } from '../../utils/transform3d'
+import type { PartInstance, Transform3D } from '../../types/cad'
 import type { RelayService } from '../worker/solverProtocol'
 
 const solveMate = loadPkgNodeExport<(input: Uint8Array) => Uint8Array>('solve_mate_bytes', PKG_MATE)
@@ -135,7 +135,7 @@ describeReal('a sub-assembly in the parent solve', () => {
     expect(sub.ty).toBeCloseTo(0, 2)
     expect(sub.tz).toBeCloseTo(-child.transforms.c2.tz, 2)
     // Two leaves under one handle, still the child's own relative pose.
-    const leaves = parent.leaves['sub']
+    const leaves = (parent.leaves ?? {})['sub'] ?? []
     expect(leaves.map(leaf => leaf.doc_id).sort()).toEqual(['doc-c1', 'doc-c2'])
     const c1 = leaves.find(leaf => leaf.doc_id === 'doc-c1')!
     const c2 = leaves.find(leaf => leaf.doc_id === 'doc-c2')!
@@ -152,7 +152,7 @@ describeReal('a sub-assembly in the parent solve', () => {
     ]
     const noParentMate: MateSpec[] = []
     const firstParent = await solveAssembly(firstParts, hashes, noParentMate, relay, solveMate!)
-    const firstLeaves = firstParent.leaves['sub']
+    const firstLeaves = (firstParent.leaves ?? {})['sub'] ?? []
     const firstC2 = firstLeaves.find(leaf => leaf.doc_id === 'doc-c2')!
 
     const second = await solveChild(25)
@@ -161,7 +161,7 @@ describeReal('a sub-assembly in the parent solve', () => {
       { handle: 'sub', doc_id: 'doc-child', transform: identity(), bundle: second.bundle },
     ]
     const secondParent = await solveAssembly(secondParts, hashes, noParentMate, relay, solveMate!)
-    const secondC2 = secondParent.leaves['sub'].find(leaf => leaf.doc_id === 'doc-c2')!
+    const secondC2 = ((secondParent.leaves ?? {})['sub'] ?? []).find(leaf => leaf.doc_id === 'doc-c2')!
 
     // The leaf follows the child's own re-solve: the new offset moves c2 inside
     // the child, and the flattened leaf carries exactly that movement.
@@ -188,7 +188,7 @@ describeReal('a sub-assembly in the parent solve', () => {
     const parent = await solveAssembly(parts, hashes, mates, relay, solveMate!)
     expect(parent.status.mates['parent-m1'].error).toBeUndefined()
 
-    const leaves = parent.leaves['sub']
+    const leaves = (parent.leaves ?? {})['sub'] ?? []
     const c1 = leaves.find(leaf => leaf.doc_id === 'doc-c1')!
     const c2 = leaves.find(leaf => leaf.doc_id === 'doc-c2')!
     // The parent's rotation applies to the child as a whole: the relative pose
