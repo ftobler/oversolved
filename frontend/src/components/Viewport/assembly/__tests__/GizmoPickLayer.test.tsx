@@ -29,13 +29,13 @@ vi.mock('@/utils/gizmoPickGeometry', async (importOriginal) => {
 
 function fakePipeline() {
   const keys = new Set<string>()
-  const registerBody = vi.fn((reg: { bodyKey: string }) => { keys.add(reg.bodyKey) })
-  const unregisterBody = vi.fn((bodyKey: string) => { keys.delete(bodyKey) })
+  const registerPart = vi.fn((reg: { partKey: string }) => { keys.add(reg.partKey) })
+  const unregisterPart = vi.fn((partKey: string) => { keys.delete(partKey) })
   const pipeline = {
-    gizmoHandleLayer: { registerBody, unregisterBody },
+    gizmoHandleLayer: { registerPart, unregisterPart },
     markDirty: vi.fn(),
   } as unknown as IdPipeline
-  return { pipeline, keys, registerBody, unregisterBody }
+  return { pipeline, keys, registerPart, unregisterPart }
 }
 
 function tree(pipeline: IdPipeline, children: React.ReactNode) {
@@ -48,25 +48,25 @@ beforeEach(() => {
 
 describe('GizmoPickLayer disabled registration', () => {
   it('does not build or register the soup while disabled', () => {
-    const { pipeline, keys, registerBody, unregisterBody } = fakePipeline()
+    const { pipeline, keys, registerPart, unregisterPart } = fakePipeline()
     const view = render(tree(pipeline, <GizmoPickLayer origin={[0, 0, 0]} orientation={[0, 0, 0, 1]} enabled={false} />))
     for (let i = 1; i <= 10; i++) {
       view.rerender(tree(pipeline, <GizmoPickLayer origin={[i, 0, 0]} orientation={[0, 0, 0, 1]} enabled={false} />))
     }
     expect(buildGizmoPickGeometry).not.toHaveBeenCalled()
-    expect(registerBody).not.toHaveBeenCalled()
+    expect(registerPart).not.toHaveBeenCalled()
     expect(view.container.firstChild).toBeNull()
 
     // Enabling builds and registers exactly once.
     view.rerender(tree(pipeline, <GizmoPickLayer origin={[11, 0, 0]} orientation={[0, 0, 0, 1]} enabled />))
     expect(buildGizmoPickGeometry).toHaveBeenCalledTimes(1)
-    expect(registerBody).toHaveBeenCalledTimes(1)
+    expect(registerPart).toHaveBeenCalledTimes(1)
     expect(keys.size).toBe(1)
 
     // Disabling again stops the build, and the registration is retired.
     view.rerender(tree(pipeline, <GizmoPickLayer origin={[12, 0, 0]} orientation={[0, 0, 0, 1]} enabled={false} />))
     expect(buildGizmoPickGeometry).toHaveBeenCalledTimes(1)
-    expect(unregisterBody).toHaveBeenCalledTimes(1)
+    expect(unregisterPart).toHaveBeenCalledTimes(1)
     expect(keys.size).toBe(0)
   })
 })
@@ -82,16 +82,16 @@ describe('GizmoPickLayer per-instance body key', () => {
   }
 
   it('registers each mounted triad under a distinct body key', () => {
-    const { pipeline, keys, registerBody, unregisterBody } = fakePipeline()
+    const { pipeline, keys, registerPart, unregisterPart } = fakePipeline()
     const view = render(tree(pipeline, <Two showSecond />))
 
-    const registered = registerBody.mock.calls.map(c => c[0].bodyKey)
+    const registered = registerPart.mock.calls.map(c => c[0].partKey)
     expect(new Set(registered).size).toBe(2)
     expect(keys.size).toBe(2)
 
     // Unmounting one leaves the other's registration alone.
     view.rerender(tree(pipeline, <Two showSecond={false} />))
-    expect(unregisterBody).toHaveBeenCalledTimes(1)
+    expect(unregisterPart).toHaveBeenCalledTimes(1)
     expect(keys.size).toBe(1)
     expect(keys.has(registered[0])).toBe(true)
   })

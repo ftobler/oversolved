@@ -30,7 +30,7 @@ describe('useEdgeIdRegistration segment -> edge mapping', () => {
     ]
     renderHook(() => useEdgeIdRegistration({
       featureId: 'f1',
-      bodyId: 'b1',
+      partId: 'b1',
       edges,
       edgeQueries: ['edge@A', 'edge@B'],
     }))
@@ -62,12 +62,12 @@ describe('useEdgeIdRegistration segment -> edge mapping', () => {
     ]
     renderHook(() => useEdgeIdRegistration({
       featureId: 'f1',
-      bodyId: 'b1',
+      partId: 'b1',
       edges,
       edgeQueries: ['edge@A', 'edge@B'],
     }))
 
-    expect(pipeline.edgeLayer.bodyCount()).toBe(0)
+    expect(pipeline.edgeLayer.partCount()).toBe(0)
     expect(pipeline.registry.size()).toBe(0)
   })
 
@@ -83,7 +83,7 @@ describe('useEdgeIdRegistration segment -> edge mapping', () => {
     const edgeQueries = ['edge@A', 'edge@SEAM', 'edge@C']
     renderHook(() => useEdgeIdRegistration({
       featureId: 'f1',
-      bodyId: 'b1',
+      partId: 'b1',
       edges,
       edgeQueries,
       hiddenEdges: new Set([1]),

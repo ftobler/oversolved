@@ -17,12 +17,12 @@ import {
   ThreadProgram,
   analysisMaterialName,
   makeZebraPatch,
-  selectBodyPatch,
-  useBodyAnalysisMaterial,
-  type BodyAnalysisMode,
-  type BodyAnalysisParams,
-  type BodyAnalysisPatch,
-} from '@/components/Geometry3D/bodyAnalysisMaterial'
+  selectPartPatch,
+  usePartAnalysisMaterial,
+  type PartAnalysisMode,
+  type PartAnalysisParams,
+  type PartAnalysisPatch,
+} from '@/components/Geometry3D/partAnalysisMaterial'
 import { aoUniforms } from '@/components/Viewport/ambientOcclusion'
 
 function applyPatch(patch: ReturnType<typeof makeZebraPatch>) {
@@ -35,7 +35,7 @@ function applyPatch(patch: ReturnType<typeof makeZebraPatch>) {
   return shader
 }
 
-const zebraParams: BodyAnalysisParams = {
+const zebraParams: PartAnalysisParams = {
   mode: 'zebra',
   mixVertexColor: true,
   baseColor: '#112233',
@@ -46,7 +46,7 @@ const zebraParams: BodyAnalysisParams = {
 
 // The plain body: no analysis mode, no threads. Every AO test starts here and
 // adds the one flag under test, so a cache key can only move because of it.
-const plainParams: BodyAnalysisParams = {
+const plainParams: PartAnalysisParams = {
   mode: 'none',
   mixVertexColor: true,
   baseColor: '#112233',
@@ -94,7 +94,7 @@ describe('zebra material patch', () => {
   })
 })
 
-const curvatureParams: BodyAnalysisParams = {
+const curvatureParams: PartAnalysisParams = {
   mode: 'curvature',
   mixVertexColor: true,
   baseColor: '#112233',
@@ -103,11 +103,11 @@ const curvatureParams: BodyAnalysisParams = {
   curvatureRange: [-2, 2],
 }
 
-function applyCurvature(params: BodyAnalysisParams) {
+function applyCurvature(params: PartAnalysisParams) {
   const material = new THREE.MeshPhysicalMaterial()
   const ref = { current: material as THREE.Material | null }
-  let patch: ReturnType<typeof useBodyAnalysisMaterial> = null
-  renderHook(({ p }) => { patch = useBodyAnalysisMaterial(ref, p); return patch }, { initialProps: { p: params } })
+  let patch: ReturnType<typeof usePartAnalysisMaterial> = null
+  renderHook(({ p }) => { patch = usePartAnalysisMaterial(ref, p); return patch }, { initialProps: { p: params } })
   const shader = {
     vertexShader: THREE.ShaderLib.physical.vertexShader,
     fragmentShader: THREE.ShaderLib.physical.fragmentShader,
@@ -143,7 +143,7 @@ describe('curvature material patch', () => {
   it('leaves the vertex-colour highlight out of the assembly variant', () => {
     const material = new THREE.MeshStandardMaterial()
     const ref = { current: material as THREE.Material | null }
-    renderHook(() => useBodyAnalysisMaterial(ref, { ...curvatureParams, mixVertexColor: false }))
+    renderHook(() => usePartAnalysisMaterial(ref, { ...curvatureParams, mixVertexColor: false }))
     const shader = {
       vertexShader: THREE.ShaderLib.standard.vertexShader,
       fragmentShader: THREE.ShaderLib.standard.fragmentShader,
@@ -159,7 +159,7 @@ describe('curvature material patch', () => {
     const material = new THREE.MeshPhysicalMaterial()
     const ref = { current: material as THREE.Material | null }
     const { rerender } = renderHook(
-      ({ p }) => useBodyAnalysisMaterial(ref, p),
+      ({ p }) => usePartAnalysisMaterial(ref, p),
       { initialProps: { p: zebraParams } },
     )
     expect(material.customProgramCacheKey()).toBe('zebra-vc')
@@ -200,7 +200,7 @@ describe('useBodyAnalysisMaterial', () => {
     const material = new THREE.MeshPhysicalMaterial()
     const ref = { current: material as THREE.Material | null }
     const { rerender } = renderHook(
-      ({ params }) => useBodyAnalysisMaterial(ref, params),
+      ({ params }) => usePartAnalysisMaterial(ref, params),
       { initialProps: { params: zebraParams } },
     )
 
@@ -220,7 +220,7 @@ describe('useBodyAnalysisMaterial', () => {
     const ref = { current: material as THREE.Material | null }
     let currentUniforms: ReturnType<typeof makeZebraPatch>['uniforms'] | null = null
     const { rerender } = renderHook(({ params }) => {
-      const patch = useBodyAnalysisMaterial(ref, params)
+      const patch = usePartAnalysisMaterial(ref, params)
       currentUniforms = patch?.uniforms ?? null
       return patch
     }, { initialProps: { params: zebraParams } })
@@ -234,7 +234,7 @@ describe('useBodyAnalysisMaterial', () => {
     const material = new THREE.MeshPhysicalMaterial()
     const ref = { current: material as THREE.Material | null }
     const { rerender } = renderHook(
-      ({ params }) => useBodyAnalysisMaterial(ref, params),
+      ({ params }) => usePartAnalysisMaterial(ref, params),
       { initialProps: { params: zebraParams } },
     )
     expect(material.customProgramCacheKey()).toBe('zebra-vc')
@@ -283,17 +283,17 @@ describe('thread shading patch', () => {
 
   it('compiles as its own program, distinct from plain, zebra and curvature', () => {
     const keys = ['zebra', 'curvature', 'none'].map(mode =>
-      selectBodyPatch({ ...plainParams, mode: mode as BodyAnalysisMode, threaded: true })?.customProgramCacheKey() ?? '')
+      selectPartPatch({ ...plainParams, mode: mode as PartAnalysisMode, threaded: true })?.customProgramCacheKey() ?? '')
     expect(keys).toEqual(['zebra-vc', 'curvature-vc', 'thread'])
-    expect(selectBodyPatch({ ...plainParams })).toBeNull()
+    expect(selectPartPatch({ ...plainParams })).toBeNull()
   })
 
   it('gives way to an analysis mode, which must show the true surface, and comes back after it', () => {
     const material = new THREE.MeshPhysicalMaterial()
     const ref = { current: material as THREE.Material | null }
-    const plainThreaded: BodyAnalysisParams = { ...zebraParams, mode: 'none', threaded: true }
+    const plainThreaded: PartAnalysisParams = { ...zebraParams, mode: 'none', threaded: true }
     const { rerender } = renderHook(
-      ({ params }) => useBodyAnalysisMaterial(ref, params),
+      ({ params }) => usePartAnalysisMaterial(ref, params),
       { initialProps: { params: plainThreaded } },
     )
     expect(material.customProgramCacheKey()).toBe('thread')
@@ -309,11 +309,11 @@ describe('thread shading patch', () => {
 // AO is a patch on the same material, exactly like zebra: the caller resolves
 // the flag (isAoActive) and the program only decides how to sample it. Only
 // the strength is live, through the shared uniform.
-function applyBodyParams(params: BodyAnalysisParams) {
+function applyBodyParams(params: PartAnalysisParams) {
   const material = new THREE.MeshPhysicalMaterial()
   const ref = { current: material as THREE.Material | null }
-  let patch: BodyAnalysisPatch | null = null
-  renderHook(({ p }) => { patch = useBodyAnalysisMaterial(ref, p); return patch }, { initialProps: { p: params } })
+  let patch: PartAnalysisPatch | null = null
+  renderHook(({ p }) => { patch = usePartAnalysisMaterial(ref, p); return patch }, { initialProps: { p: params } })
   const shader = {
     vertexShader: THREE.ShaderLib.physical.vertexShader,
     fragmentShader: THREE.ShaderLib.physical.fragmentShader,
@@ -351,8 +351,8 @@ describe('ambient occlusion patch', () => {
   })
 
   it('gives every program its own key, and an analysis mode never gains AO', () => {
-    const key = (params: Partial<BodyAnalysisParams>) =>
-      selectBodyPatch({ ...plainParams, ...params })?.customProgramCacheKey() ?? ''
+    const key = (params: Partial<PartAnalysisParams>) =>
+      selectPartPatch({ ...plainParams, ...params })?.customProgramCacheKey() ?? ''
 
     expect([
       key({}),
@@ -366,16 +366,16 @@ describe('ambient occlusion patch', () => {
   })
 
   it('never samples occlusion on a transparent body', () => {
-    expect(selectBodyPatch({ ...plainParams, ao: true, transparent: true })).toBeNull()
-    const threaded = selectBodyPatch({ ...plainParams, ao: true, transparent: true, threaded: true })
+    expect(selectPartPatch({ ...plainParams, ao: true, transparent: true })).toBeNull()
+    const threaded = selectPartPatch({ ...plainParams, ao: true, transparent: true, threaded: true })
     expect(threaded?.customProgramCacheKey()).toBe('thread')
   })
 
   it('moves the strength through the shared uniform without recompiling', () => {
     const material = new THREE.MeshPhysicalMaterial()
     const ref = { current: material as THREE.Material | null }
-    const { rerender } = renderHook(({ p }) => useBodyAnalysisMaterial(ref, p), {
-      initialProps: { p: { ...plainParams, ao: true, aoStrength: 0.4 } as BodyAnalysisParams },
+    const { rerender } = renderHook(({ p }) => usePartAnalysisMaterial(ref, p), {
+      initialProps: { p: { ...plainParams, ao: true, aoStrength: 0.4 } as PartAnalysisParams },
     })
     expect(aoUniforms.uAoStrength.value).toBe(0.4)
     const version = material.version
@@ -394,8 +394,8 @@ describe('ambient occlusion patch', () => {
   it('recompiles the same material instance when AO toggles', () => {
     const material = new THREE.MeshPhysicalMaterial()
     const ref = { current: material as THREE.Material | null }
-    const { rerender } = renderHook(({ p }) => useBodyAnalysisMaterial(ref, p), {
-      initialProps: { p: { ...plainParams, ao: true } as BodyAnalysisParams },
+    const { rerender } = renderHook(({ p }) => usePartAnalysisMaterial(ref, p), {
+      initialProps: { p: { ...plainParams, ao: true } as PartAnalysisParams },
     })
     expect(material.customProgramCacheKey()).toBe('ao')
     const version = material.version
@@ -416,14 +416,14 @@ describe('ambient occlusion patch', () => {
     const material = new THREE.MeshPhysicalMaterial()
     const dispose = vi.spyOn(material, 'dispose')
     const ref = { current: material as THREE.Material | null }
-    const { rerender } = renderHook(({ p }) => useBodyAnalysisMaterial(ref, p), {
-      initialProps: { p: plainParams as BodyAnalysisParams },
+    const { rerender } = renderHook(({ p }) => usePartAnalysisMaterial(ref, p), {
+      initialProps: { p: plainParams as PartAnalysisParams },
     })
     expect(dispose).toHaveBeenCalled()
 
     dispose.mockClear()
-    rerender({ p: { ...plainParams, ao: true } as BodyAnalysisParams })
-    rerender({ p: plainParams as BodyAnalysisParams })
+    rerender({ p: { ...plainParams, ao: true } as PartAnalysisParams })
+    rerender({ p: plainParams as PartAnalysisParams })
 
     // Once per swap, and the second swap back to the first key is the cache hit
     // that used to skip onBeforeCompile.

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { HighlightIndex } from '../selectionHighlight'
 import { hoverActiveFrom, selectActiveFrom } from '../highlightActive'
-import { bodyKeyFor, primitivePickKey } from '../pickKey'
+import { partKeyFor, primitivePickKey } from '../pickKey'
 import { FACE_LAYER_NAME } from '../layerNames'
 
 /**
@@ -19,7 +19,7 @@ import { FACE_LAYER_NAME } from '../layerNames'
 describe('highlight flags stay reference-stable for uninvolved bodies', () => {
   const FACES_PER_BODY = 400
   const bodies = Array.from({ length: 20 }, (_, b) => {
-    const bodyKey = bodyKeyFor(`extrude${b}`, 'body0')
+    const bodyKey = partKeyFor(`extrude${b}`, 'body0')
     const queries = Array.from({ length: FACES_PER_BODY }, (_, i) => `face@createdBy=extrude${b}#${i}`)
     return { bodyKey, queries, index: new HighlightIndex(bodyKey, FACE_LAYER_NAME, queries) }
   })

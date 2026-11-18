@@ -36,9 +36,9 @@ describe('Body3D edge overlay linewidth', () => {
     useEditorState.setState({
     normalSelection: new Set(['@ex1/edge/0']),
   })
-    const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
+    const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
     const { container } = render(
-      <Body3D featureId="ex1" bodyId="body_ex1" mesh={mesh} edges={edges} edgeQueries={['@ex1/edge/0']} />
+      <Body3D featureId="ex1" partId="body_ex1" mesh={mesh} edges={edges} edgeQueries={['@ex1/edge/0']} />
     )
     const mat = container.querySelector('linebasicmaterial')
     expect(mat?.getAttribute('linewidth')).toBe(String(EDGE_HIGHLIGHT_LINE_WIDTH))
@@ -48,9 +48,9 @@ describe('Body3D edge overlay linewidth', () => {
     useEditorState.setState({
     hoveredSelectionId: '@ex1/edge/0',
   })
-    const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
+    const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
     const { container } = render(
-      <Body3D featureId="ex1" bodyId="body_ex1" mesh={mesh} edges={edges} edgeQueries={['@ex1/edge/0']} />
+      <Body3D featureId="ex1" partId="body_ex1" mesh={mesh} edges={edges} edgeQueries={['@ex1/edge/0']} />
     )
     const mat = container.querySelector('linebasicmaterial')
     expect(mat?.getAttribute('linewidth')).toBe(String(EDGE_HIGHLIGHT_LINE_WIDTH))

@@ -74,7 +74,7 @@ interface HookCase {
   useRun: (args: unknown) => void  // the registration hook call, must start with "use"
   bodyCount: (p: IdPipeline) => number
   registrySize: (p: IdPipeline) => number
-  layer: (p: IdPipeline) => { registerBody: (...a: never[]) => unknown }
+  layer: (p: IdPipeline) => { registerPart: (...a: never[]) => unknown }
 }
 
 const cases: HookCase[] = [
@@ -82,8 +82,8 @@ const cases: HookCase[] = [
     name: 'face',
     makeValid: () => faceMesh(),
     makeEmpty: () => faceMesh([]),
-    useRun: (a) => useFaceIdRegistration({ featureId: 'f', bodyId: 'b', mesh: a as Mesh3D }),
-    bodyCount: (p) => p.faceLayer.bodyCount(),
+    useRun: (a) => useFaceIdRegistration({ featureId: 'f', partId: 'b', mesh: a as Mesh3D }),
+    bodyCount: (p) => p.faceLayer.partCount(),
     registrySize: (p) => p.registry.size(),
     layer: (p) => p.faceLayer,
   },
@@ -93,9 +93,9 @@ const cases: HookCase[] = [
     makeEmpty: () => edgeArgsEmpty(),
     useRun: (a) => {
       const x = a as ReturnType<typeof edgeArgs>
-      useEdgeIdRegistration({ featureId: 'f', bodyId: 'b', edges: x.edges, edgeQueries: x.edgeQueries })
+      useEdgeIdRegistration({ featureId: 'f', partId: 'b', edges: x.edges, edgeQueries: x.edgeQueries })
     },
-    bodyCount: (p) => p.edgeLayer.bodyCount(),
+    bodyCount: (p) => p.edgeLayer.partCount(),
     registrySize: (p) => p.registry.size(),
     layer: (p) => p.edgeLayer,
   },
@@ -105,9 +105,9 @@ const cases: HookCase[] = [
     makeEmpty: () => vertexArgsEmpty(),
     useRun: (a) => {
       const x = a as ReturnType<typeof vertexArgs>
-      useVertexIdRegistration({ featureId: 'f', bodyId: 'b', vertices: x.vertices, vertexQueries: x.vertexQueries })
+      useVertexIdRegistration({ featureId: 'f', partId: 'b', vertices: x.vertices, vertexQueries: x.vertexQueries })
     },
-    bodyCount: (p) => p.vertexLayer.bodyCount(),
+    bodyCount: (p) => p.vertexLayer.partCount(),
     registrySize: (p) => p.registry.size(),
     layer: (p) => p.vertexLayer,
   },
@@ -174,7 +174,7 @@ describe('body registration readiness', () => {
     setLivePipeline(pipeline)
     renderHook(() => useFaceIdRegistration({
       featureId: 'f',
-      bodyId: 'b',
+      partId: 'b',
       mesh: {
         vertices: new Float32Array(0),
         faces: new Uint32Array(0),
@@ -183,7 +183,7 @@ describe('body registration readiness', () => {
       } as Mesh3D,
     }))
 
-    expect(pipeline.faceLayer.bodyCount()).toBe(0)
+    expect(pipeline.faceLayer.partCount()).toBe(0)
     expect(pipeline.registry.size()).toBe(0)
   })
 
@@ -231,7 +231,7 @@ describe('body registration readiness', () => {
   // `IdRegistry.allocate` throws on 24-bit ID exhaustion, and a passive-effect
   // throw unmounts the viewport root (no error boundary above it). Each body
   // hook must warn and continue with that body unregistered, not propagate.
-  describe('a throwing registerBody is swallowed', () => {
+  describe('a throwing registerPart is swallowed', () => {
     afterEach(() => { setLivePipeline(null); vi.restoreAllMocks() })
 
     for (const c of cases) {
@@ -239,7 +239,7 @@ describe('body registration readiness', () => {
         const pipeline = new IdPipeline({ width: 32, height: 32 })
         setLivePipeline(pipeline)
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-        vi.spyOn(c.layer(pipeline), 'registerBody').mockImplementation(() => {
+        vi.spyOn(c.layer(pipeline), 'registerPart').mockImplementation(() => {
           throw new Error('IdRegistry: exhausted 24-bit ID space')
         })
 

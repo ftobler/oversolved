@@ -30,15 +30,15 @@ vi.mock('../../Geometry3D', () => ({
   __esModule: true,
 }))
 
-vi.mock('../../Geometry3D/Body3D', () => ({
-  default: ({ interactive, bodyId, visible, doomed, color, transparency }: {
-    interactive?: boolean; bodyId?: string; visible?: boolean
+vi.mock('../../Geometry3D/Part3D', () => ({
+  default: ({ interactive, partId, visible, doomed, color, transparency }: {
+    interactive?: boolean; partId?: string; visible?: boolean
     doomed?: boolean; color?: string; transparency?: number
   }) => (
     <div
       data-testid="body-3d"
       data-interactive={interactive}
-      data-body-id={bodyId}
+      data-body-id={partId}
       data-visible={String(visible)}
       data-doomed={String(!!doomed)}
       data-color={String(color)}

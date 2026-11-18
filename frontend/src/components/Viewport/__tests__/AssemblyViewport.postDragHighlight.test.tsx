@@ -24,17 +24,17 @@ vi.mock('@/components/Viewport/EnvLight', () => ({ default: () => null, ENV_INTE
 vi.mock('@/components/Viewport/IdDebugOverlay', () => ({ default: () => null }))
 vi.mock('@/components/misc/CubeGizmo', () => ({ CubeGizmoCanvas: () => null }))
 vi.mock('@/components/Viewport/assembly/AnchorGizmos', () => ({ default: () => null }))
-vi.mock('@/components/Viewport/assembly/AssemblyBody', () => ({ default: () => null }))
+vi.mock('@/components/Viewport/assembly/AssemblyPartMesh', () => ({ default: () => null }))
 vi.mock('@/components/Viewport/assembly/AssemblyBuiltin', () => ({ default: () => null }))
 vi.mock('@/components/Viewport/assembly/AssemblyPickLayers', () => ({
-  default: function AssemblyPickLayersMock({ bodies }: { bodies: unknown }) {
-    useEffect(() => { captured.pickBodies = bodies }, [bodies])
+  default: function AssemblyPickLayersMock({ parts }: { parts: unknown }) {
+    useEffect(() => { captured.pickBodies = parts }, [parts])
     return null
   },
 }))
 vi.mock('@/components/Viewport/assembly/AssemblySelectionHighlight', () => ({
-  default: function AssemblySelectionHighlightMock({ pickBodies }: { pickBodies: unknown }) {
-    useEffect(() => { captured.highlightBodies = pickBodies }, [pickBodies])
+  default: function AssemblySelectionHighlightMock({ pickParts }: { pickParts: unknown }) {
+    useEffect(() => { captured.highlightBodies = pickParts }, [pickParts])
     return <div data-testid="assembly-selection-highlight" />
   },
 }))

@@ -17,7 +17,7 @@ import { computePreviewPts } from '@/utils/geometry/drawGeometry'
 import { resolveDrawCursor } from '@/utils/geometry/drawLogic'
 import { markDrawToolClickConsumed } from '@/components/Viewport/idDispatch/drawToolClickGuard'
 import { shouldClearSelectionOnBackplaneClick, resolvePickAtEvent, PART_EDITOR_CONSUMED_LAYERS } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
-import { findEdgeKindForQuery, findFaceBoundaryEdges } from '@/picking/bodyDispatchCallbacks'
+import { findEdgeKindForQuery, findFaceBoundaryEdges } from '@/picking/partDispatchCallbacks'
 import { effectiveAllowedLayers } from '@/registry/toolPickConfig'
 
 // Secondary (bit 2) or middle (bit 4) mouse button held: a camera/navigation

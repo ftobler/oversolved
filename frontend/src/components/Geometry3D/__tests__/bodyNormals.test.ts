@@ -5,7 +5,7 @@
 // averages the surrounding triangles into the radial normal the shader needs.
 import { describe, it, expect } from 'vitest'
 import type { Mesh3D } from '@/types/cad'
-import { buildBodySurfaceGeometry } from '@/components/Geometry3D/bodyGeometry'
+import { buildPartSurfaceGeometry } from '@/components/Geometry3D/bodyGeometry'
 
 /** An open cylinder around +Z with shared ring vertices, wound outward. */
 function cylinder(radius: number, height: number, segments: number): Mesh3D {
@@ -28,7 +28,7 @@ function cylinder(radius: number, height: number, segments: number): Mesh3D {
 }
 
 function normalsOf(mesh: Mesh3D): Float32Array {
-  const geometry = buildBodySurfaceGeometry(mesh)
+  const geometry = buildPartSurfaceGeometry(mesh)
   return geometry.getAttribute('normal').array as Float32Array
 }
 

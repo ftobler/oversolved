@@ -30,7 +30,7 @@ function body(): AssemblyPickPart {
 describe('AssemblySelectionHighlight edge overlay linewidth', () => {
   it('applies EDGE_HIGHLIGHT_LINE_WIDTH to the selected edge overlay', () => {
     const { container } = render(
-      <AssemblySelectionHighlight pickBodies={[body()]} selection={new Set(['e0'])} hovered={null} />
+      <AssemblySelectionHighlight pickParts={[body()]} selection={new Set(['e0'])} hovered={null} />
     )
     const mat = container.querySelector('linebasicmaterial')
     expect(mat?.getAttribute('linewidth')).toBe(String(EDGE_HIGHLIGHT_LINE_WIDTH))
@@ -38,7 +38,7 @@ describe('AssemblySelectionHighlight edge overlay linewidth', () => {
 
   it('applies EDGE_HIGHLIGHT_LINE_WIDTH to the hovered edge overlay', () => {
     const { container } = render(
-      <AssemblySelectionHighlight pickBodies={[body()]} selection={new Set()} hovered="e0" />
+      <AssemblySelectionHighlight pickParts={[body()]} selection={new Set()} hovered="e0" />
     )
     const mat = container.querySelector('linebasicmaterial')
     expect(mat?.getAttribute('linewidth')).toBe(String(EDGE_HIGHLIGHT_LINE_WIDTH))

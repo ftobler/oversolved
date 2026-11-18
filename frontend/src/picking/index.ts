@@ -1,9 +1,9 @@
 export { IdRegistry, type IdRecord } from './IdRegistry'
 export { IdRenderTarget } from './IdRenderTarget'
 export { IdResolver, resolvePixelWindow, resolvePixelWindowAll, type ResolvedHit, type ResolveOptions } from './IdResolver'
-export { FaceIdLayer, FACE_LAYER_NAME, type FaceBodyRegistration } from './FaceIdLayer'
-export { EdgeIdLayer, EDGE_LAYER_NAME, EDGE_DEPTH_BIAS, type EdgeBodyRegistration } from './EdgeIdLayer'
-export { VertexIdLayer, VERTEX_LAYER_NAME, type VertexBodyRegistration, type VertexIdLayerConfig } from './VertexIdLayer'
+export { FaceIdLayer, FACE_LAYER_NAME, type FacePartRegistration } from './FaceIdLayer'
+export { EdgeIdLayer, EDGE_LAYER_NAME, EDGE_DEPTH_BIAS, type EdgePartRegistration } from './EdgeIdLayer'
+export { VertexIdLayer, VERTEX_LAYER_NAME, type VertexPartRegistration, type VertexIdLayerConfig } from './VertexIdLayer'
 export {
   worldUnitsPerPixel, pixelCubeHalfExtent, CUBE_CORNER_SIGNS, CUBE_TRIANGLE_INDICES,
   DEFAULT_WINDOW_SIZE, pickRadiusPx,

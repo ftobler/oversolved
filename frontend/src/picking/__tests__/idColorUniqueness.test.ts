@@ -45,8 +45,8 @@ describe('id-color uniqueness across all pickable primitives', () => {
     const bodyKey = 'feat1/body1'
 
     // Worst case: 3 of each kind, every one carrying the SAME query as its siblings.
-    faceLayer.registerBody({
-      bodyKey,
+    faceLayer.registerPart({
+      partKey: bodyKey,
       positions: new Float32Array([
         0, 0, 0, 1, 0, 0, 0, 1, 0,
         2, 0, 0, 3, 0, 0, 2, 1, 0,
@@ -56,8 +56,8 @@ describe('id-color uniqueness across all pickable primitives', () => {
       faceQueries: ['face@dup', 'face@dup', 'face@dup'],
       perPrimitivePickKeys: true,
     })
-    edgeLayer.registerBody({
-      bodyKey,
+    edgeLayer.registerPart({
+      partKey: bodyKey,
       segmentPositions: new Float32Array([
         0, 0, 0, 1, 0, 0,
         0, 1, 0, 1, 1, 0,
@@ -67,8 +67,8 @@ describe('id-color uniqueness across all pickable primitives', () => {
       edgeQueries: ['edge@dup', 'edge@dup', 'edge@dup'],
       perPrimitivePickKeys: true,
     })
-    vertexLayer.registerBody({
-      bodyKey,
+    vertexLayer.registerPart({
+      partKey: bodyKey,
       vertices: [[0, 0, 0], [1, 0, 0], [2, 0, 0]],
       vertexQueries: ['vtx@dup', 'vtx@dup', 'vtx@dup'],
       perPrimitivePickKeys: true,

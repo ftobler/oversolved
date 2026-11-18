@@ -17,9 +17,9 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { FACE_LAYER_NAME } from '@/picking/layerNames'
 import { parsePickKeyIndex } from '@/picking/pickKey'
 
-export interface BodyDispatchCallbacks {
+export interface PartDispatchCallbacks {
   featureId: string
-  bodyId: string
+  partId: string
   mesh: Mesh3D
   edgeQueries: readonly string[] | undefined
   // Curve kind ('line' | 'circle' | 'arc' | 'spline') parallel to edgeQueries.
@@ -35,20 +35,20 @@ export interface BodyDispatchCallbacks {
  *  the matching query array is absent. `bodyKey` is stored so a resolved face
  *  hit can name its owning body without a reverse walk (face-geometry owner
  *  tracking, pickKey lookup). */
-interface BodyEntry {
-  cb: BodyDispatchCallbacks
-  bodyKey: string
+interface PartEntry {
+  cb: PartDispatchCallbacks
+  partKey: string
   faceIndex: Map<string, number> | null
   edgeIndex: Map<string, number> | null
   vertexIndex: Map<string, number> | null
 }
 
-const byBodyKey = new Map<string, BodyEntry>()
+const byPartKey = new Map<string, PartEntry>()
 // query -> owning entries, in registration order. An array, not a single entry,
 // because two bodies may legitimately carry the same query; the first registered
 // one wins the lookup, which is the order the old full scan resolved in.
-const faceOwners = new Map<string, BodyEntry[]>()
-const edgeOwners = new Map<string, BodyEntry[]>()
+const faceOwners = new Map<string, PartEntry[]>()
+const edgeOwners = new Map<string, PartEntry[]>()
 
 // The one body whose updateFaceGeometryForIndex last wrote the shared
 // hoveredFaceNormal / hoveredFaceCenter store fields. Only one body's geometry
@@ -66,7 +66,7 @@ function buildIndex(queries: readonly string[] | undefined): Map<string, number>
   return map
 }
 
-function addOwner(owners: Map<string, BodyEntry[]>, index: Map<string, number> | null, entry: BodyEntry): void {
+function addOwner(owners: Map<string, PartEntry[]>, index: Map<string, number> | null, entry: PartEntry): void {
   if (!index) return
   for (const q of index.keys()) {
     const list = owners.get(q)
@@ -75,7 +75,7 @@ function addOwner(owners: Map<string, BodyEntry[]>, index: Map<string, number> |
   }
 }
 
-function removeOwner(owners: Map<string, BodyEntry[]>, index: Map<string, number> | null, entry: BodyEntry): void {
+function removeOwner(owners: Map<string, PartEntry[]>, index: Map<string, number> | null, entry: PartEntry): void {
   if (!index) return
   for (const q of index.keys()) {
     const list = owners.get(q)
@@ -86,33 +86,33 @@ function removeOwner(owners: Map<string, BodyEntry[]>, index: Map<string, number
   }
 }
 
-function dropEntry(bodyKey: string, entry: BodyEntry): void {
-  byBodyKey.delete(bodyKey)
+function dropEntry(partKey: string, entry: PartEntry): void {
+  byPartKey.delete(partKey)
   removeOwner(faceOwners, entry.faceIndex, entry)
   removeOwner(edgeOwners, entry.edgeIndex, entry)
-  if (bodyKey === faceGeometryOwnerKey) faceGeometryOwnerKey = null
+  if (partKey === faceGeometryOwnerKey) faceGeometryOwnerKey = null
 }
 
-export function registerBodyCallbacks(bodyKey: string, cb: BodyDispatchCallbacks): () => void {
+export function registerPartCallbacks(partKey: string, cb: PartDispatchCallbacks): () => void {
   // A re-registration under the same key supersedes the previous one; drop its
   // index entries so a stale body can never answer a lookup.
-  const previous = byBodyKey.get(bodyKey)
-  if (previous) dropEntry(bodyKey, previous)
+  const previous = byPartKey.get(partKey)
+  if (previous) dropEntry(partKey, previous)
 
-  const entry: BodyEntry = {
+  const entry: PartEntry = {
     cb,
-    bodyKey,
+    partKey,
     faceIndex: buildIndex(cb.mesh.face_queries),
     edgeIndex: buildIndex(cb.edgeQueries),
     vertexIndex: buildIndex(cb.vertexQueries),
   }
-  byBodyKey.set(bodyKey, entry)
+  byPartKey.set(partKey, entry)
   addOwner(faceOwners, entry.faceIndex, entry)
   addOwner(edgeOwners, entry.edgeIndex, entry)
 
   return () => {
-    if (byBodyKey.get(bodyKey) !== entry) return
-    dropEntry(bodyKey, entry)
+    if (byPartKey.get(partKey) !== entry) return
+    dropEntry(partKey, entry)
     // If this body owns the current hover, clear stale hover state
     const s = useSketchEditorStore.getState()
     const hovered = s.hoveredSelectionId
@@ -132,7 +132,7 @@ export function registerBodyCallbacks(bodyKey: string, cb: BodyDispatchCallbacks
  * teardown stranded the hover. Checking all three is the fix; it matches how
  * faceOwners / edgeOwners are actually built.
  */
-function ownsQuery(entry: BodyEntry, query: string): boolean {
+function ownsQuery(entry: PartEntry, query: string): boolean {
   return (
     (entry.faceIndex?.has(query) ?? false)
     || (entry.edgeIndex?.has(query) ?? false)
@@ -155,15 +155,15 @@ export function findEdgeKindForQuery(q: string): string | undefined {
  *  face index. `bodyKey` names the owner so the face-geometry teardown can
  *  target it without walking every body. */
 export interface ResolvedFace {
-  bodyKey: string
-  body: BodyDispatchCallbacks
+  partKey: string
+  part: PartDispatchCallbacks
   index: number
 }
 
-export function findBodyForFaceQuery(q: string): ResolvedFace | null {
+export function findPartForFaceQuery(q: string): ResolvedFace | null {
   const entry = faceOwners.get(q)?.[0]
   if (!entry) return null
-  return { bodyKey: entry.bodyKey, body: entry.cb, index: entry.faceIndex!.get(q)! }
+  return { partKey: entry.partKey, part: entry.cb, index: entry.faceIndex!.get(q)! }
 }
 
 /**
@@ -174,11 +174,11 @@ export function findBodyForFaceQuery(q: string): ResolvedFace | null {
  * returns whichever face registered first. Returns null when the key does not
  * name a live registered face.
  */
-export function findBodyFaceByPickKey(pickKey: string): ResolvedFace | null {
-  for (const [bodyKey, entry] of byBodyKey) {
+export function findPartFaceByPickKey(pickKey: string): ResolvedFace | null {
+  for (const [bodyKey, entry] of byPartKey) {
     const count = entry.cb.mesh.face_queries?.length ?? 0
     const index = parsePickKeyIndex(pickKey, `${bodyKey}#${FACE_LAYER_NAME}#`, count)
-    if (index >= 0) return { bodyKey, body: entry.cb, index }
+    if (index >= 0) return { partKey: bodyKey, part: entry.cb, index }
   }
   return null
 }
@@ -221,22 +221,22 @@ export function faceBoundaryLookup(q: string): FaceBoundary | null {
  * updateFaceGeometryForIndex names the same primitive the highlight isolates.
  */
 export function applyHoveredFaceGeometry(found: ResolvedFace): void {
-  faceGeometryOwnerKey = found.bodyKey
-  found.body.updateFaceGeometryForIndex(found.index)
+  faceGeometryOwnerKey = found.partKey
+  found.part.updateFaceGeometryForIndex(found.index)
 }
 
 /**
  * Clear the face geometry of the one body that last computed it.
  */
-export function clearAllBodyHover(): void {
+export function clearAllPartHover(): void {
   if (faceGeometryOwnerKey === null) return
-  byBodyKey.get(faceGeometryOwnerKey)?.cb.clearFaceGeometry()
+  byPartKey.get(faceGeometryOwnerKey)?.cb.clearFaceGeometry()
   faceGeometryOwnerKey = null
 }
 
 /** Test helper. */
-export function resetBodyCallbacksForTest(): void {
-  byBodyKey.clear()
+export function resetPartCallbacksForTest(): void {
+  byPartKey.clear()
   faceOwners.clear()
   edgeOwners.clear()
   faceGeometryOwnerKey = null

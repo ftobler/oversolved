@@ -17,7 +17,7 @@ export type { FaceTriangleLookup } from '@/utils/partGeometry'
 // Imported for local use by resolveFaceQueries and planarFaceFrame below.
 import { faceCount, extractFaceGeometry } from '@/utils/partGeometry'
 
-export function buildBodyGeometry(mesh: Mesh3D): {
+export function buildPartGeometry(mesh: Mesh3D): {
   positions: Float32Array
   indices: Uint32Array
 } {
@@ -79,8 +79,8 @@ export function buildBodyGeometry(mesh: Mesh3D): {
  * the per-face colour runs, and the assembly draws it as-is. Curvature is
  * computed on this vertex order.
  */
-export function buildBodySurfaceGeometry(mesh: Mesh3D): THREE.BufferGeometry {
-  const { positions, indices } = buildBodyGeometry(mesh)
+export function buildPartSurfaceGeometry(mesh: Mesh3D): THREE.BufferGeometry {
+  const { positions, indices } = buildPartGeometry(mesh)
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
   geometry.setIndex(new THREE.BufferAttribute(indices, 1))
@@ -99,7 +99,7 @@ export function buildBodySurfaceGeometry(mesh: Mesh3D): THREE.BufferGeometry {
  * null when the mesh carries no usable face queries, in which case the legacy
  * per-triangle highlight path owns the buffer.
  */
-export function resolveFaceQueries(mesh: Mesh3D, bodyId: string): string[] | null {
+export function resolveFaceQueries(mesh: Mesh3D, partId: string): string[] | null {
   const { face_queries, triangle_to_face } = mesh
   if (!face_queries || face_queries.length === 0) return null
   const numTris = faceCount(mesh.faces)
@@ -115,7 +115,7 @@ export function resolveFaceQueries(mesh: Mesh3D, bodyId: string): string[] | nul
   }
   if (rendered === face_queries.length) return face_queries
   return Array.from({ length: rendered }, (_, i) =>
-    face_queries[i] || topoFallbackQuery(bodyId, 'face', i))
+    face_queries[i] || topoFallbackQuery(partId, 'face', i))
 }
 
 /**
@@ -137,7 +137,7 @@ export function resolveFaceQueries(mesh: Mesh3D, bodyId: string): string[] | nul
 export function resolveEdgeQueries(
   edges: ReadonlyArray<unknown> | undefined,
   edgeQueries: ReadonlyArray<string> | undefined,
-  bodyId: string,
+  partId: string,
 ): string[] | null {
   const numEdges = edges?.length ?? 0
   const supplied = edgeQueries?.length ?? 0
@@ -145,7 +145,7 @@ export function resolveEdgeQueries(
   if (total === 0) return null
   if (edgeQueries && supplied >= numEdges && !edgeQueries.some((q) => !q)) return edgeQueries as string[]
   return Array.from({ length: total }, (_, i) =>
-    edgeQueries?.[i] || topoFallbackQuery(bodyId, 'edge', i))
+    edgeQueries?.[i] || topoFallbackQuery(partId, 'edge', i))
 }
 
 /**
@@ -158,12 +158,12 @@ export function resolveEdgeQueries(
 export function resolveVertexQueries(
   vertices: ReadonlyArray<[number, number, number]> | undefined,
   vertexQueries: ReadonlyArray<string> | undefined,
-  bodyId: string,
+  partId: string,
 ): string[] | null {
   if (!vertices || vertices.length === 0) return null
   const supplied = vertexQueries?.length ?? 0
   if (vertexQueries && supplied >= vertices.length && !vertexQueries.some((q) => !q)) return vertexQueries as string[]
-  return vertices.map((_, i) => vertexQueries?.[i] || topoFallbackQuery(bodyId, 'vertex', i))
+  return vertices.map((_, i) => vertexQueries?.[i] || topoFallbackQuery(partId, 'vertex', i))
 }
 
 // Calculate centroid and normal from face vertices.

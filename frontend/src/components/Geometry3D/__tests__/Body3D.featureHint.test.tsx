@@ -52,8 +52,8 @@ beforeEach(() => {
 })
 
 async function renderBody(props: Record<string, unknown> = {}) {
-  const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
-  return render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={mesh} {...props} />)
+  const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
+  return render(<Body3D featureId="ex1" partId="body_ex1" mesh={mesh} {...props} />)
 }
 
 /** The face painter is the first of the two useHighlightColors calls a render
@@ -80,8 +80,8 @@ describe('Body3D feature face hint', () => {
       face_queries: ['face-other1', 'face-other2'],
       face_created_by: ['other1', 'other2'],
     }
-    const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
-    render(<Body3D featureId="other1" bodyId="body_other" mesh={other} />)
+    const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
+    render(<Body3D featureId="other1" partId="body_other" mesh={other} />)
     expect(faceHint()?.some(Boolean)).toBe(false)
   })
 
@@ -91,13 +91,13 @@ describe('Body3D feature face hint', () => {
       face_queries: ['face-other1', 'face-other2'],
       face_created_by: ['other1', 'other2'],
     }
-    const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
-    const { rerender } = render(<Body3D featureId="other1" bodyId="body_other" mesh={other} />)
+    const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
+    const { rerender } = render(<Body3D featureId="other1" partId="body_other" mesh={other} />)
     const before = faceHint()
     act(() => {
       useEditorState.setState({ normalSelection: new Set(['@ex1']) })
     })
-    rerender(<Body3D featureId="other1" bodyId="body_other" mesh={other} />)
+    rerender(<Body3D featureId="other1" partId="body_other" mesh={other} />)
     expect(faceHint()).toBe(before)
   })
 
@@ -129,8 +129,8 @@ describe('Body3D feature face hint', () => {
     // legacy path is flat: it never receives a hint array.
     const legacy: Mesh3D = { ...mesh, triangle_to_face: undefined }
     useEditorState.setState({ normalSelection: new Set(['@ex1']) })
-    const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
-    render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={legacy} />)
+    const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
+    render(<Body3D featureId="ex1" partId="body_ex1" mesh={legacy} />)
     expect(faceHint()).toBeNull()
   })
 })

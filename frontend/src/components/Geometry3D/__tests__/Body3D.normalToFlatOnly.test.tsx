@@ -6,9 +6,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { brepFaceAdapter, clearAllHover } from '@/components/Viewport/idDispatch/brepAdapters'
-import { resetBodyCallbacksForTest } from '@/picking/bodyDispatchCallbacks'
+import { resetPartCallbacksForTest } from '@/picking/partDispatchCallbacks'
 import { faceFrameFromSolve } from '@/viewport/faceFrameFromSolve'
-import { bodyKeyFor } from '@/picking/pickKey'
+import { partKeyFor } from '@/picking/pickKey'
 import { buildContextMenu } from '@/pages/buildContextMenu'
 import type { BuildContextMenuCallbacks } from '@/pages/buildContextMenu'
 import type { Mesh3D } from '@/types/cad'
@@ -67,17 +67,17 @@ function viewportMenuEnabledLabels(): string[] {
   }, callbacks).items.filter(i => !i.disabled).map(i => i.label)
 }
 
-const bodyKey = bodyKeyFor('ex1', 'body_ex1')
+const bodyKey = partKeyFor('ex1', 'body_ex1')
 
 beforeEach(async () => {
-  resetBodyCallbacksForTest()
+  resetPartCallbacksForTest()
   clearAllHover()
   useEditorState.setState({
     normalSelection: new Set(),
     selectedPicks: new Map(),
   })
-  const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
-  render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={mesh} />)
+  const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
+  render(<Body3D featureId="ex1" partId="body_ex1" mesh={mesh} />)
 })
 
 afterEach(() => {

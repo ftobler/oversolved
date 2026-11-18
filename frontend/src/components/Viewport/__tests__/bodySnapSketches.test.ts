@@ -72,10 +72,10 @@ describe('bodySnapSketches', () => {
   it('the viewport builds the snap set from bodyItems, not the raw body map', () => {
     const viewport = readFileSync(join(__dirname, '..', 'index.tsx'), 'utf8')
     expect(viewport).toMatch(/snapSketchesFor\(/)
-    expect(viewport).toMatch(/bodyItems,\s*\n\s*\)/)
+    expect(viewport).toMatch(/partItems,\s*\n\s*\)/)
     expect(viewport).not.toMatch(/bodySnapSketches\(\s*Object\.values\(/)
 
-    const helper = readFileSync(join(__dirname, '..', 'bodyUtils.ts'), 'utf8')
-    expect(helper).toMatch(/partSnapSketches\(bodyItems, planeTransform\)/)
+    const helper = readFileSync(join(__dirname, '..', 'partUtils.ts'), 'utf8')
+    expect(helper).toMatch(/partSnapSketches\(partItems, planeTransform\)/)
   })
 })

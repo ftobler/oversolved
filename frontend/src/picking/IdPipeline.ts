@@ -623,8 +623,8 @@ export class IdPipeline {
     this.capQuad.updateMatrixWorld(true)
 
     renderer.clear(false, false, true)
-    this.faceLayer.renderBodiesWith(renderer, camera, this.capBackMaterial)
-    this.faceLayer.renderBodiesWith(renderer, camera, this.capFrontMaterial)
+    this.faceLayer.renderPartsWith(renderer, camera, this.capBackMaterial)
+    this.faceLayer.renderPartsWith(renderer, camera, this.capFrontMaterial)
     renderer.render(this.capFillScene, camera)
     renderer.clear(false, false, true)
   }

@@ -12,7 +12,7 @@ function makeRegistration() {
     1, 1, 0,  2, 1, 0,  1, 2, 0,
   ])
   return {
-    bodyKey: 'feat1/body1',
+    partKey: 'feat1/body1',
     positions,
     triangleToFace: new Uint32Array([0, 1]),
     faceQueries: ['face@feat1#0', 'face@feat1#1'],
@@ -28,14 +28,14 @@ describe('FaceIdLayer', () => {
   })
 
   it('registers one mesh per body', () => {
-    expect(layer.bodyCount()).toBe(0)
-    layer.registerBody(makeRegistration())
-    expect(layer.bodyCount()).toBe(1)
+    expect(layer.partCount()).toBe(0)
+    layer.registerPart(makeRegistration())
+    expect(layer.partCount()).toBe(1)
     expect(layer.scene.children.length).toBe(1)
   })
 
   it('allocates one id per distinct face query', () => {
-    layer.registerBody(makeRegistration())
+    layer.registerPart(makeRegistration())
     expect(reg.size()).toBe(2)
     expect(reg.lookupKey(FACE_LAYER_NAME, 'face@feat1#0')).toBeDefined()
     expect(reg.lookupKey(FACE_LAYER_NAME, 'face@feat1#1')).toBeDefined()
@@ -47,8 +47,8 @@ describe('FaceIdLayer', () => {
     // ancestral query. Without per-primitive pick keys they collapse onto a single
     // ID and clicking one face selects the whole group. With the keys the IDs are
     // distinct and each record still reports the (shared) query.
-    layer.registerBody({
-      bodyKey: 'feat1/body1',
+    layer.registerPart({
+      partKey: 'feat1/body1',
       positions: new Float32Array([
         0, 0, 0,  1, 0, 0,  0, 1, 0,   // tri 0 (face 0)
         1, 1, 0,  2, 1, 0,  1, 2, 0,   // tri 1 (face 1)
@@ -67,7 +67,7 @@ describe('FaceIdLayer', () => {
   })
 
   it('encodes per-triangle face color as the packed id RGB', () => {
-    layer.registerBody(makeRegistration())
+    layer.registerPart(makeRegistration())
     const mesh = layer.scene.children[0] as import('three').Mesh
     const colorAttr = mesh.geometry.getAttribute('color')
     // Tri 0: all 3 vertices carry the id of face@feat1#0
@@ -88,32 +88,32 @@ describe('FaceIdLayer', () => {
   })
 
   it('unregister removes the mesh and frees its ids next cycle', () => {
-    layer.registerBody(makeRegistration())
+    layer.registerPart(makeRegistration())
     expect(reg.size()).toBe(2)
-    layer.unregisterBody('feat1/body1')
-    expect(layer.bodyCount()).toBe(0)
+    layer.unregisterPart('feat1/body1')
+    expect(layer.partCount()).toBe(0)
     expect(layer.scene.children.length).toBe(0)
     expect(reg.size()).toBe(0)
   })
 
   it('re-registering with same key replaces the mesh', () => {
-    layer.registerBody(makeRegistration())
+    layer.registerPart(makeRegistration())
     const firstMesh = layer.scene.children[0]
-    layer.registerBody(makeRegistration())
-    expect(layer.bodyCount()).toBe(1)
+    layer.registerPart(makeRegistration())
+    expect(layer.partCount()).toBe(1)
     expect(layer.scene.children[0]).not.toBe(firstMesh)
   })
 
   it('dispose clears every body and the material', () => {
-    layer.registerBody(makeRegistration())
+    layer.registerPart(makeRegistration())
     layer.dispose()
-    expect(layer.bodyCount()).toBe(0)
+    expect(layer.partCount()).toBe(0)
     expect(reg.size()).toBe(0)
   })
 
   it('rejects non-multiple-of-9 position arrays', () => {
-    expect(() => layer.registerBody({
-      bodyKey: 'bad',
+    expect(() => layer.registerPart({
+      partKey: 'bad',
       positions: new Float32Array(10),
       triangleToFace: new Uint32Array([0]),
       faceQueries: ['q'],
@@ -123,8 +123,8 @@ describe('FaceIdLayer', () => {
   it('skips triangles whose face index has no query', () => {
     // One triangle pointing at face 5, but only 2 queries -> the triangle's
     // face has no stable key, so no id is allocated for it.
-    layer.registerBody({
-      bodyKey: 'sparse',
+    layer.registerPart({
+      partKey: 'sparse',
       positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
       triangleToFace: new Uint32Array([5]),
       faceQueries: ['q0', 'q1'],
@@ -137,8 +137,8 @@ describe('FaceIdLayer', () => {
   it('throws on a triangleToFace shorter than the triangle count and touches nothing', () => {
     // The former `triangleToFace[tri] ?? 0` fallback recolored the unmapped
     // triangles with face 0's id, so picking them selected the wrong face.
-    expect(() => layer.registerBody({
-      bodyKey: 'bad',
+    expect(() => layer.registerPart({
+      partKey: 'bad',
       positions: new Float32Array(18),  // 2 triangles
       triangleToFace: new Uint32Array([0]),  // one entry short
       faceQueries: ['q0', 'q1'],
@@ -148,10 +148,10 @@ describe('FaceIdLayer', () => {
   })
 
   it('keeps an existing registration intact when a replacement fails validation', () => {
-    layer.registerBody(makeRegistration())
+    layer.registerPart(makeRegistration())
     const before = layer.scene.children[0]
-    expect(() => layer.registerBody({
-      bodyKey: 'feat1/body1',
+    expect(() => layer.registerPart({
+      partKey: 'feat1/body1',
       positions: new Float32Array(18),
       triangleToFace: new Uint32Array([0]),
       faceQueries: ['face@feat1#0', 'face@feat1#1'],
@@ -170,8 +170,8 @@ describe('FaceIdLayer', () => {
     // including at the buffer centre where both triangles overlap here.
     const valid = [0, 0, 5, 10, 0, 5, 5, 10, 5]           // tri over the centre
     const unnamed = [2, 2, 5, 8, 2, 5, 5, 6, 5]           // overlapping tri, face has no query
-    layer.registerBody({
-      bodyKey: 'mixed',
+    layer.registerPart({
+      partKey: 'mixed',
       positions: new Float32Array([...valid, ...unnamed]),
       triangleToFace: new Uint32Array([0, 7]),  // face 7 is out of query range
       faceQueries: ['face@q0'],
@@ -192,8 +192,8 @@ describe('FaceIdLayer', () => {
 
   it('excludes triangles with non-finite positions so they cannot occlude', () => {
     // Collapsed tessellation output: unnameable AND unrasterisable garbage.
-    layer.registerBody({
-      bodyKey: 'nan-tri',
+    layer.registerPart({
+      partKey: 'nan-tri',
       positions: new Float32Array([
         0, 0, 0, 1, 0, 0, 0, 1, 0,
         NaN, 0, 0, 1, 0, 0, 0, 1, 0,
@@ -210,28 +210,28 @@ describe('FaceIdLayer', () => {
     // Every triangle points at an out-of-range face, so drawn === 0. The old
     // code still created an empty mesh and added it, defeating the pipeline's
     // scene.children.length === 0 empty-layer skip.
-    layer.registerBody({
-      bodyKey: 'all-unnamed',
+    layer.registerPart({
+      partKey: 'all-unnamed',
       positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 2, 1, 0, 1, 2, 0]),
       triangleToFace: new Uint32Array([5, 6]),
       faceQueries: ['q0'],
     })
-    expect(layer.bodyCount()).toBe(0)
+    expect(layer.partCount()).toBe(0)
     expect(layer.scene.children.length).toBe(0)
     expect(reg.size()).toBe(0)
   })
 
   it('a fully-filtered re-register still clears the prior body (g4-L3)', () => {
-    layer.registerBody(makeRegistration())
-    expect(layer.bodyCount()).toBe(1)
-    layer.registerBody({
-      bodyKey: 'feat1/body1',
+    layer.registerPart(makeRegistration())
+    expect(layer.partCount()).toBe(1)
+    layer.registerPart({
+      partKey: 'feat1/body1',
       positions: new Float32Array([NaN, 0, 0, 1, 0, 0, 0, 1, 0]),
       triangleToFace: new Uint32Array([0]),
       faceQueries: ['face@feat1#0'],
     })
     // Pre-clear ran before the drawn === 0 exit: the good geometry is gone.
-    expect(layer.bodyCount()).toBe(0)
+    expect(layer.partCount()).toBe(0)
     expect(layer.scene.children.length).toBe(0)
   })
 
@@ -242,7 +242,7 @@ describe('FaceIdLayer', () => {
       if (++calls > 1) throw new Error('IdRegistry: exhausted 24-bit ID space')
       return realAllocate(layer, entityKey, pickKey)
     })
-    expect(() => layer.registerBody(makeRegistration())).toThrow(/exhausted/)
+    expect(() => layer.registerPart(makeRegistration())).toThrow(/exhausted/)
     // Nothing leaked: the first id was freed back, and nothing is registered.
     expect(reg.size()).toBe(0)
     expect(layer.scene.children.length).toBe(0)

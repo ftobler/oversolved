@@ -9,8 +9,8 @@ import type { FaceIdLayer } from '../FaceIdLayer'
 import { IdImage } from './pickCanvasHarness'
 
 function registerFace(layer: FaceIdLayer, key: string): void {
-  layer.registerBody({
-    bodyKey: key,
+  layer.registerPart({
+    partKey: key,
     positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
     triangleToFace: new Uint32Array([0]),
     faceQueries: ['face@q'],
@@ -57,15 +57,15 @@ describe('IdPipeline.render z-policy', () => {
   it('clears depth only for a later clear-then-fresh layer and a no-depth layer', () => {
     const p = new IdPipeline({ width: 32, height: 32 })
     registerFace(p.faceLayer, 'face')
-    p.vertexLayer.registerBody({ bodyKey: 'v', vertices: [[0, 0, 0]], vertexQueries: ['vtx@q'] })
+    p.vertexLayer.registerPart({ partKey: 'v', vertices: [[0, 0, 0]], vertexQueries: ['vtx@q'] })
     registerFace(p.sketchSurfaceLayer, 'surface')
-    p.sketchEntityLayer.registerBody({
-      bodyKey: 'e',
+    p.sketchEntityLayer.registerPart({
+      partKey: 'e',
       segmentPositions: new Float32Array([0, 0, 0, 1, 0, 0]),
       segmentToEdge: new Uint32Array([0]),
       edgeQueries: ['entity@q'],
     })
-    p.originLayer.registerBody({ bodyKey: 'o', vertices: [[0, 0, 0]], vertexQueries: ['origin@q'] })
+    p.originLayer.registerPart({ partKey: 'o', vertices: [[0, 0, 0]], vertexQueries: ['origin@q'] })
 
     const { renderer, clearDepthCalls, rendered } = countingRenderer()
     p.markDirty()
@@ -82,7 +82,7 @@ describe('IdPipeline.render z-policy', () => {
 
   it('threads its pixel ratio and target size into each layer onBeforeRender', () => {
     const p = new IdPipeline({ width: 32, height: 32, pixelRatio: 2 })
-    p.vertexLayer.registerBody({ bodyKey: 'v', vertices: [[0, 0, 0]], vertexQueries: ['vtx@q'] })
+    p.vertexLayer.registerPart({ partKey: 'v', vertices: [[0, 0, 0]], vertexQueries: ['vtx@q'] })
 
     const { renderer } = countingRenderer()
     p.markDirty()

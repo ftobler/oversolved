@@ -6,7 +6,7 @@ import { randomId } from '@/utils/yamlMutations'
 import { isWholePartSelectionId, parseTopoFallbackQuery, stripSelectionWrapper } from '@/utils/query/selectionId'
 import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
-import { findEdgeKindForQuery } from '@/picking/bodyDispatchCallbacks'
+import { findEdgeKindForQuery } from '@/picking/partDispatchCallbacks'
 import { classifyPendingAdd } from '@/kernel/features/constraintProbe'
 import { PROJECTION_NOT_FROZEN_TITLE, projectionNotFrozenMessage } from '@/kernel/features/projectionMembers'
 import { projectedSelectionTargets } from '@/utils/yamlMutations/freezeProjection'
@@ -75,7 +75,7 @@ import { suggestedCloneName, stepImportLimitError } from '@/stores/documentStore
 import { getFileRegistry } from '@/stores/fileRegistry'
 
 import { normalizeHexColor } from '@/utils/core/partColors'
-import { computeEffectiveVisibleBodies } from '@/components/Viewport/bodyUtils'
+import { computeEffectiveVisibleParts } from '@/components/Viewport/partUtils'
 import { builtinPlaneTransform, planeTransformNormal, resolvePlaneTransform } from '@/utils/geometry/partSnapProjection'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/hooks/usePartDoc'
@@ -565,7 +565,7 @@ export default function Part() {
   )
 
   const effectiveVisibleBodies = useMemo(
-    () => computeEffectiveVisibleBodies(bodies, partStyle),
+    () => computeEffectiveVisibleParts(bodies, partStyle),
     [bodies, partStyle],
   )
 

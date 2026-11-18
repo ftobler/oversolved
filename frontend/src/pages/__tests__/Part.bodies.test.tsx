@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { PartDocumentPanel } from '@/components/layout/PartDocumentPanel'
-import { getBodiesToRender } from '@/components/Viewport/bodyUtils'
+import { getPartsToRender } from '@/components/Viewport/partUtils'
 import type { PartFeature, PartResult, Mesh3D } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 
@@ -180,7 +180,7 @@ describe('extrude feature name error state', () => {
 
 describe('no filter-by-kind for bodies', () => {
   it('getBodiesToRender iterates Object.entries(bodies), not features.filter(kind)', () => {
-    const src = getBodiesToRender.toString()
+    const src = getPartsToRender.toString()
     expect(src).toContain('Object.entries')
     expect(src).toContain('parts')
     expect(/bodies.*filter.*kind/.test(src)).toBe(false)

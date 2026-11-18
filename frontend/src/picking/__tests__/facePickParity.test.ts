@@ -34,7 +34,7 @@ describe('facePickParity (structural)', () => {
     const faceQueries = ['face@A', 'face@B']
     const reg = new IdRegistry()
     const layer = new FaceIdLayer(reg)
-    layer.registerBody({ bodyKey: 'b', positions, triangleToFace, faceQueries })
+    layer.registerPart({ partKey: 'b', positions, triangleToFace, faceQueries })
 
     const mesh = layer.scene.children[0] as import('three').Mesh
     const idTri0 = decodeTriangleId(mesh, 0)

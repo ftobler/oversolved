@@ -38,7 +38,7 @@ function body(): AssemblyPickPart {
 function renderAll() {
   return render(
     <AssemblySelectionHighlight
-      pickBodies={[body()]}
+      pickParts={[body()]}
       selection={new Set(['f0', 'e0', 'v0'])}
       hovered="f0"
     />

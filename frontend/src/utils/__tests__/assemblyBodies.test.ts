@@ -4,7 +4,7 @@ import type { MateAnchorDescriptor } from '@/types/cad'
 import { toPartResults, toEdgeCurves, assemblyPartId, buildEntityMateRefs } from '@/utils/assemblyBodies'
 import { assemblyBuiltinEntityKey, assemblyEntityKey } from '@/utils/anchorCandidates'
 import { ASSEMBLY_HANDLE, ASSEMBLY_ORIGIN_ID, ASSEMBLY_TOP_ID } from '@/utils/assemblyBuiltins'
-import { getBodiesToRender } from '@/components/Viewport/bodyUtils'
+import { getPartsToRender } from '@/components/Viewport/partUtils'
 
 const edge = (x: number): EdgeCurve => ({
   id: `e${x}`,
@@ -42,7 +42,7 @@ describe('toBodyResults', () => {
 
   it('feeds the viewport body-render path unchanged', () => {
     const bodies = toPartResults({ h1: [mesh(0)], h2: [mesh(10)] })
-    const items = getBodiesToRender(bodies, undefined, undefined, undefined)
+    const items = getPartsToRender(bodies, undefined, undefined, undefined)
     expect(items).toHaveLength(2)
     expect(items.map(i => i.partId).sort()).toEqual(Object.keys(bodies).sort())
   })
@@ -54,7 +54,7 @@ describe('toEdgeCurves', () => {
     const curves = toEdgeCurves(payload)
     const bodies = toPartResults(payload)
     expect(Object.keys(curves).sort()).toEqual(Object.keys(bodies).sort())
-    for (const item of getBodiesToRender(bodies, undefined, undefined, undefined)) {
+    for (const item of getPartsToRender(bodies, undefined, undefined, undefined)) {
       expect(curves[item.partId]).toBeDefined()
     }
   })

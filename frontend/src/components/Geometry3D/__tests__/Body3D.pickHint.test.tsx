@@ -81,8 +81,8 @@ beforeEach(() => {
 })
 
 async function renderBody(props: Record<string, unknown> = {}) {
-  const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
-  return render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={mesh} edges={edges} edgeQueries={[pickOne, pickTwo]} {...props} />)
+  const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
+  return render(<Body3D featureId="ex1" partId="body_ex1" mesh={mesh} edges={edges} edgeQueries={[pickOne, pickTwo]} {...props} />)
 }
 
 /** The edge painter is the last useHighlightColors call a render makes. */

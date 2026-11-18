@@ -43,7 +43,7 @@ export interface IdLayer {
  * object type a layer draws (Mesh for faces, LineSegments for edges, Points
  * for vertices).
  */
-export interface IdLayerBodyRecord<M extends THREE.Object3D = THREE.Object3D> {
+export interface IdLayerPartRecord<M extends THREE.Object3D = THREE.Object3D> {
   mesh: M
   geometry: THREE.BufferGeometry
   allocatedIds: number[]
@@ -71,7 +71,7 @@ export class PrimitiveIdAllocator {
   private readonly layerName: string
   // Plural primitive name for the diagnostic, e.g. "faces".
   private readonly plural: string
-  private readonly bodyKey: string
+  private readonly partKey: string
   // See the `perPrimitivePickKeys` doc on each layer's registration type.
   private readonly perPrimitive: boolean | undefined
 
@@ -79,11 +79,11 @@ export class PrimitiveIdAllocator {
   private rgbByIndex = new Map<number, [number, number, number]>()
   private idByIndex = new Map<number, number>()
 
-  constructor(registry: IdRegistry, layerName: string, plural: string, bodyKey: string, perPrimitive: boolean | undefined) {
+  constructor(registry: IdRegistry, layerName: string, plural: string, partKey: string, perPrimitive: boolean | undefined) {
     this.registry = registry
     this.layerName = layerName
     this.plural = plural
-    this.bodyKey = bodyKey
+    this.partKey = partKey
     this.perPrimitive = perPrimitive
   }
 
@@ -153,7 +153,7 @@ export class PrimitiveIdAllocator {
     // probe hit a per-primitive pass on the other editor's query.
     if (!this.perPrimitive) this.warnDuplicateQuery(query)
     const pickKey = this.perPrimitive
-      ? primitivePickKey(this.bodyKey, idx, this.layerName)
+      ? primitivePickKey(this.partKey, idx, this.layerName)
       : query
     // A query-keyed pass can mint the same key twice: two primitives of ONE body
     // sharing a query collapse onto one id. The registry counts that id once per
@@ -188,7 +188,7 @@ export class PrimitiveIdAllocator {
     if (_warnedDuplicates.has(dedupKey)) return
     _warnedDuplicates.add(dedupKey)
     console.warn(
-      `[${this.layerName}] Two ${this.plural} share the same query string in ${this.bodyKey}. ` +
+      `[${this.layerName}] Two ${this.plural} share the same query string in ${this.partKey}. ` +
       `query="${query}". Selection IDs will not be unique.`
     )
   }
@@ -206,27 +206,27 @@ export abstract class IdLayerBase<M extends THREE.Object3D = THREE.Object3D> imp
   readonly scene: THREE.Scene = new THREE.Scene()
 
   protected registry: IdRegistry
-  protected bodies = new Map<string, IdLayerBodyRecord<M>>()
+  protected parts = new Map<string, IdLayerPartRecord<M>>()
   // Plural name of the primitive this layer draws, used in dev diagnostics.
   protected abstract readonly primitiveNounPlural: string
   constructor(registry: IdRegistry) { this.registry = registry }
 
-  unregisterBody(bodyKey: string): void {
-    const rec = this.bodies.get(bodyKey)
+  unregisterPart(partKey: string): void {
+    const rec = this.parts.get(partKey)
     if (!rec) return
     this.scene.remove(rec.mesh)
     rec.geometry.dispose()
     for (const id of rec.allocatedIds) this.registry.free(id)
-    this.bodies.delete(bodyKey)
+    this.parts.delete(partKey)
   }
 
   // Test helper: number of registered bodies.
-  bodyCount(): number { return this.bodies.size }
+  partCount(): number { return this.parts.size }
 
   /** Drop every registered body's GPU resources; call from a subclass `dispose`
    *  before disposing the layer's own materials. */
-  protected disposeBodies(): void {
-    for (const key of [...this.bodies.keys()]) this.unregisterBody(key)
+  protected disposeParts(): void {
+    for (const key of [...this.parts.keys()]) this.unregisterPart(key)
   }
 
   /**
@@ -234,8 +234,8 @@ export abstract class IdLayerBase<M extends THREE.Object3D = THREE.Object3D> imp
    * top of each subclass's `registerBody`, after the `unregisterBody` pre-clear
    * that frees whatever the previous pass over this body took.
    */
-  protected primitiveIds(bodyKey: string, perPrimitivePickKeys: boolean | undefined): PrimitiveIdAllocator {
-    return new PrimitiveIdAllocator(this.registry, this.name, this.primitiveNounPlural, bodyKey, perPrimitivePickKeys)
+  protected primitiveIds(partKey: string, perPrimitivePickKeys: boolean | undefined): PrimitiveIdAllocator {
+    return new PrimitiveIdAllocator(this.registry, this.name, this.primitiveNounPlural, partKey, perPrimitivePickKeys)
   }
 
   abstract dispose(): void

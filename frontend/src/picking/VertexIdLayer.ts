@@ -53,8 +53,8 @@ export interface VertexIdLayerConfig {
   depthBias?: number
 }
 
-export interface VertexBodyRegistration {
-  bodyKey: string
+export interface VertexPartRegistration {
+  partKey: string
   vertices: ReadonlyArray<[number, number, number]>
   vertexQueries: ReadonlyArray<string>
   /**
@@ -255,15 +255,15 @@ export class VertexIdLayer extends IdLayerBase<THREE.Points | THREE.Mesh> {
     }
   }
 
-  registerBody(reg: VertexBodyRegistration): void {
-    this.unregisterBody(reg.bodyKey)
+  registerPart(reg: VertexPartRegistration): void {
+    this.unregisterPart(reg.partKey)
     const { vertices, vertexQueries } = reg
     const count = vertices.length
     if (count === 0) return
 
     const positions = new Float32Array(count * 3)
     const colors    = new Float32Array(count * 3)
-    const ids = this.primitiveIds(reg.bodyKey, reg.perPrimitivePickKeys)
+    const ids = this.primitiveIds(reg.partKey, reg.perPrimitivePickKeys)
 
     try {
       let written = 0
@@ -317,7 +317,7 @@ export class VertexIdLayer extends IdLayerBase<THREE.Points | THREE.Mesh> {
         : new THREE.Mesh(geometry, this.material)
       mesh.frustumCulled = false
       this.scene.add(mesh)
-      this.bodies.set(reg.bodyKey, { mesh, geometry, allocatedIds: ids.allocatedIds })
+      this.parts.set(reg.partKey, { mesh, geometry, allocatedIds: ids.allocatedIds })
     } catch (err) {
       // A mid-loop allocation failure (24-bit ID exhaustion) must not leak the
       // ids already taken for this pass, nor their published mark positions
@@ -328,7 +328,7 @@ export class VertexIdLayer extends IdLayerBase<THREE.Points | THREE.Mesh> {
   }
 
   dispose(): void {
-    this.disposeBodies()
+    this.disposeParts()
     this.material.dispose()
   }
 

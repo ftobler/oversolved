@@ -11,16 +11,16 @@
 import { useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import type { ThreeEvent } from '@react-three/fiber'
-import type { BodyRenderItem } from '@/components/Viewport/bodyUtils'
-import { buildBodySurfaceGeometry } from '@/components/Geometry3D/bodyGeometry'
-import { analysisMaterialName, useBodyAnalysisMaterial } from '@/components/Geometry3D/bodyAnalysisMaterial'
+import type { PartRenderItem } from '@/components/Viewport/partUtils'
+import { buildPartSurfaceGeometry } from '@/components/Geometry3D/bodyGeometry'
+import { analysisMaterialName, usePartAnalysisMaterial } from '@/components/Geometry3D/partAnalysisMaterial'
 import { curvatureForMesh, effectiveCurvatureRange } from '@/components/Geometry3D/curvature'
 import { useViewOptionsStore } from '@/stores/viewOptionsStore'
 import {
-  COLOR_BODY_DEFAULT,
-  COLOR_BODY_EDGE,
-  COLOR_BODY_EDGE_SEL,
-  COLOR_BODY_SELECTED,
+  COLOR_PART_DEFAULT,
+  COLOR_PART_EDGE,
+  COLOR_PART_EDGE_SEL,
+  COLOR_PART_SELECTED,
   DEFAULT_PART_ROUGHNESS,
   RENDER_ORDER_DEFAULT,
 } from '@/components/Geometry3D/constants'
@@ -32,8 +32,8 @@ import SectionCap from '@/components/Geometry3D/SectionCap'
 import { getSectionClipPlaneList, isPointClipped } from '@/viewport/sectionClipping'
 import { useSectionActive } from '@/viewport/useSection'
 
-interface AssemblyBodyProps {
-  item: BodyRenderItem
+interface AssemblyPartMeshProps {
+  item: PartRenderItem
   curves: EdgeCurve[]
   selected: boolean
   // A mate reference slot is armed, so a click aims rather than grabs.
@@ -49,7 +49,7 @@ interface AssemblyBodyProps {
   capBand?: number
 }
 
-export default function AssemblyBody({ item, curves, selected, aiming, onGrab, showFaces = true, showEdges = true, capBand = 0 }: AssemblyBodyProps) {
+export default function AssemblyPartMesh({ item, curves, selected, aiming, onGrab, showFaces = true, showEdges = true, capBand = 0 }: AssemblyPartMeshProps) {
   const curvature = useViewOptionsStore(s => s.curvature)
   const curvatureKind = useViewOptionsStore(s => s.curvature_kind)
   const curvatureManualRange = useViewOptionsStore(s => s.curvature_range)
@@ -57,7 +57,7 @@ export default function AssemblyBody({ item, curves, selected, aiming, onGrab, s
   const curvatureActive = showFaces && curvature
 
   const geometry = useMemo(() => {
-    const g = buildBodySurfaceGeometry(item.mesh)
+    const g = buildPartSurfaceGeometry(item.mesh)
     if (curvatureActive) {
       g.setAttribute('aCurvature', new THREE.BufferAttribute(curvatureForMesh(item.mesh).values, 2))
     }
@@ -83,10 +83,10 @@ export default function AssemblyBody({ item, curves, selected, aiming, onGrab, s
   const analysisMode = !showFaces ? 'none' : curvature ? 'curvature' : zebra ? 'zebra' : 'none'
   const materialRef = useRef<THREE.MeshStandardMaterial>(null)
   const sectionActive = useSectionActive()
-  useBodyAnalysisMaterial(materialRef, {
+  usePartAnalysisMaterial(materialRef, {
     mode: analysisMode,
     mixVertexColor: false,
-    baseColor: selected ? COLOR_BODY_SELECTED : COLOR_BODY_DEFAULT,
+    baseColor: selected ? COLOR_PART_SELECTED : COLOR_PART_DEFAULT,
     zebraStripes,
     curvatureKind,
     curvatureRange: effectiveCurvatureRange(curvatureManualRange, curvatureAutoRange),
@@ -117,7 +117,7 @@ export default function AssemblyBody({ item, curves, selected, aiming, onGrab, s
           <meshStandardMaterial
             ref={materialRef}
             name={analysisMaterialName(analysisMode)}
-            color={selected ? COLOR_BODY_SELECTED : COLOR_BODY_DEFAULT}
+            color={selected ? COLOR_PART_SELECTED : COLOR_PART_DEFAULT}
             roughness={DEFAULT_PART_ROUGHNESS}
             metalness={0}
             envMapIntensity={ENV_MAP_INTENSITY}
@@ -140,7 +140,7 @@ export default function AssemblyBody({ item, curves, selected, aiming, onGrab, s
       {showEdges && edgeGeometry && (
         <lineSegments geometry={edgeGeometry} visible={item.visible} renderOrder={RENDER_ORDER_DEFAULT}>
           <lineBasicMaterial
-            color={selected ? COLOR_BODY_EDGE_SEL : COLOR_BODY_EDGE}
+            color={selected ? COLOR_PART_EDGE_SEL : COLOR_PART_EDGE}
             clippingPlanes={sectionActive ? getSectionClipPlaneList() : null}
           />
         </lineSegments>
@@ -149,7 +149,7 @@ export default function AssemblyBody({ item, curves, selected, aiming, onGrab, s
       {showFaces && sectionActive && item.visible && (
         <SectionCap
           geometry={geometry}
-          color={selected ? COLOR_BODY_SELECTED : COLOR_BODY_DEFAULT}
+          color={selected ? COLOR_PART_SELECTED : COLOR_PART_DEFAULT}
           enabled
           band={capBand}
         />

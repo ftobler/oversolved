@@ -12,7 +12,7 @@ function makeReg() {
   ])
   const segmentToEdge = new Uint32Array([0, 0, 1])
   const edgeQueries = ['edge@A', 'edge@B']
-  return { bodyKey: 'b', segmentPositions, segmentToEdge, edgeQueries }
+  return { partKey: 'b', segmentPositions, segmentToEdge, edgeQueries }
 }
 
 describe('EdgeIdLayer', () => {
@@ -24,13 +24,13 @@ describe('EdgeIdLayer', () => {
   })
 
   it('registers one LineSegments per body', () => {
-    layer.registerBody(makeReg())
-    expect(layer.bodyCount()).toBe(1)
+    layer.registerPart(makeReg())
+    expect(layer.partCount()).toBe(1)
     expect(layer.scene.children.length).toBe(1)
   })
 
   it('allocates one id per distinct edge query', () => {
-    layer.registerBody(makeReg())
+    layer.registerPart(makeReg())
     expect(reg.size()).toBe(2)
     expect(reg.lookupKey(EDGE_LAYER_NAME, 'edge@A')).toBeDefined()
     expect(reg.lookupKey(EDGE_LAYER_NAME, 'edge@B')).toBeDefined()
@@ -40,11 +40,11 @@ describe('EdgeIdLayer', () => {
     // Regression lock for the chamfer/curved-edge collision: two edges with the
     // same query string must not share one ID. With per-primitive pick keys the
     // IDs are distinct and each record still reports the (shared) query.
-    const dup = { bodyKey: 'b', segmentPositions: new Float32Array([
+    const dup = { partKey: 'b', segmentPositions: new Float32Array([
       0, 0, 0,  1, 0, 0,   // seg 0 (edge 0)
       0, 1, 0,  0, 2, 0,   // seg 1 (edge 1)
     ]), segmentToEdge: new Uint32Array([0, 1]), edgeQueries: ['edge@dup', 'edge@dup'], perPrimitivePickKeys: true }
-    layer.registerBody(dup)
+    layer.registerPart(dup)
     const seg = layer.scene.children[0] as import('three').LineSegments
     const colorAttr = seg.geometry.getAttribute('aColor')
     const id0 = rgbToId(colorAttr.getX(0) * 255, colorAttr.getY(0) * 255, colorAttr.getZ(0) * 255)
@@ -55,7 +55,7 @@ describe('EdgeIdLayer', () => {
   })
 
   it('each segment produces 2 vertices', () => {
-    layer.registerBody(makeReg())
+    layer.registerPart(makeReg())
     const seg = layer.scene.children[0] as import('three').LineSegments
     const positionAttr = seg.geometry.getAttribute('position')
     // 3 segments * 2 vertices each = 6 vertices.
@@ -63,7 +63,7 @@ describe('EdgeIdLayer', () => {
   })
 
   it('both vertices of a segment carry the same edge id color', () => {
-    layer.registerBody(makeReg())
+    layer.registerPart(makeReg())
     const seg = layer.scene.children[0] as import('three').LineSegments
     const colorAttr = seg.geometry.getAttribute('aColor')
     const idEdgeA = reg.lookupKey(EDGE_LAYER_NAME, 'edge@A')!
@@ -82,7 +82,7 @@ describe('EdgeIdLayer', () => {
   })
 
   it('setXrayEdges swaps to a depthTest:false material on every registered body', () => {
-    layer.registerBody(makeReg())
+    layer.registerPart(makeReg())
     const seg = layer.scene.children[0] as import('three').LineSegments
     const baseMat = seg.material as import('three').ShaderMaterial
     expect(baseMat.depthTest).toBe(true)
@@ -94,27 +94,27 @@ describe('EdgeIdLayer', () => {
     expect((seg.material as import('three').ShaderMaterial).depthTest).toBe(true)
   })
 
-  it('registerBody while xray is on uses the xray material from the start', () => {
+  it('registerPart while xray is on uses the xray material from the start', () => {
     // A body registered after the x-ray toggle (a solve commit) must not come in
     // on the depth-tested material and lose its behind-face pickability.
     layer.setXrayEdges(true)
-    layer.registerBody(makeReg())
+    layer.registerPart(makeReg())
     const seg = layer.scene.children[0] as import('three').LineSegments
     expect((seg.material as import('three').ShaderMaterial).depthTest).toBe(false)
   })
 
   it('unregister removes the LineSegments and frees its ids next cycle', () => {
-    layer.registerBody(makeReg())
-    layer.unregisterBody('b')
-    expect(layer.bodyCount()).toBe(0)
+    layer.registerPart(makeReg())
+    layer.unregisterPart('b')
+    expect(layer.partCount()).toBe(0)
     expect(layer.scene.children.length).toBe(0)
     // size() reflects byKey, which drops immediately on free.
     expect(reg.size()).toBe(0)
   })
 
   it('rejects malformed segment buffers', () => {
-    expect(() => layer.registerBody({
-      bodyKey: 'bad',
+    expect(() => layer.registerPart({
+      partKey: 'bad',
       segmentPositions: new Float32Array(5),  // not a multiple of 6
       segmentToEdge: new Uint32Array([0]),
       edgeQueries: ['e'],
@@ -126,8 +126,8 @@ describe('EdgeIdLayer', () => {
   it('throws on a segmentToEdge shorter than the segment count and touches nothing', () => {
     // The former `segmentToEdge[seg] ?? 0` fallback silently attributed the
     // unmapped segments to edge 0, so picking them selected the wrong edge.
-    expect(() => layer.registerBody({
-      bodyKey: 'bad',
+    expect(() => layer.registerPart({
+      partKey: 'bad',
       segmentPositions: new Float32Array(12),  // 2 segments
       segmentToEdge: new Uint32Array([0]),     // one entry short
       edgeQueries: ['e0', 'e1'],
@@ -137,10 +137,10 @@ describe('EdgeIdLayer', () => {
   })
 
   it('keeps an existing registration intact when a replacement fails validation', () => {
-    layer.registerBody(makeReg())
+    layer.registerPart(makeReg())
     const before = layer.scene.children[0]
-    expect(() => layer.registerBody({
-      bodyKey: 'b',
+    expect(() => layer.registerPart({
+      partKey: 'b',
       segmentPositions: new Float32Array(12),
       segmentToEdge: new Uint32Array([0]),
       edgeQueries: ['edge@A', 'edge@B'],
@@ -152,17 +152,17 @@ describe('EdgeIdLayer', () => {
   })
 
   it('a zero-segment re-register replaces the old registration instead of keeping it stale', () => {
-    layer.registerBody(makeReg())
-    expect(layer.bodyCount()).toBe(1)
-    layer.registerBody({
-      bodyKey: 'b',
+    layer.registerPart(makeReg())
+    expect(layer.partCount()).toBe(1)
+    layer.registerPart({
+      partKey: 'b',
       segmentPositions: new Float32Array(0),
       segmentToEdge: new Uint32Array([]),
       edgeQueries: [],
     })
     // The unregister pre-clear runs before the empty early exit, so nothing of
     // the old body survives a replacement that has nothing to draw.
-    expect(layer.bodyCount()).toBe(0)
+    expect(layer.partCount()).toBe(0)
     expect(layer.scene.children.length).toBe(0)
     expect(reg.size()).toBe(0)
   })
@@ -170,8 +170,8 @@ describe('EdgeIdLayer', () => {
   it('excludes a segment whose edge has no query from the drawn geometry', () => {
     // jsdom has no GPU pass, so "no visible pixels" is pinned structurally:
     // the unnamed segment must not be part of the rasterised position buffer.
-    layer.registerBody({
-      bodyKey: 'mixed',
+    layer.registerPart({
+      partKey: 'mixed',
       segmentPositions: new Float32Array([
         0, 0, 0, 1, 0, 0,   // seg 0 (edge 0, named)
         0, 1, 0, 0, 2, 0,   // seg 1 (edge 5, out of query range)
@@ -188,27 +188,27 @@ describe('EdgeIdLayer', () => {
     // Both segments point at out-of-range edges, so drawn === 0. The old code
     // still added an empty LineSegments, defeating the pipeline's empty-layer
     // skip.
-    layer.registerBody({
-      bodyKey: 'all-unnamed',
+    layer.registerPart({
+      partKey: 'all-unnamed',
       segmentPositions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 2, 0]),
       segmentToEdge: new Uint32Array([5, 6]),
       edgeQueries: ['e0'],
     })
-    expect(layer.bodyCount()).toBe(0)
+    expect(layer.partCount()).toBe(0)
     expect(layer.scene.children.length).toBe(0)
     expect(reg.size()).toBe(0)
   })
 
   it('a fully-filtered re-register still clears the prior body (g4-L3)', () => {
-    layer.registerBody(makeReg())
-    expect(layer.bodyCount()).toBe(1)
-    layer.registerBody({
-      bodyKey: 'b',
+    layer.registerPart(makeReg())
+    expect(layer.partCount()).toBe(1)
+    layer.registerPart({
+      partKey: 'b',
       segmentPositions: new Float32Array([NaN, 0, 0, 1, 0, 0]),
       segmentToEdge: new Uint32Array([0]),
       edgeQueries: ['edge@A'],
     })
-    expect(layer.bodyCount()).toBe(0)
+    expect(layer.partCount()).toBe(0)
     expect(layer.scene.children.length).toBe(0)
   })
 
@@ -219,7 +219,7 @@ describe('EdgeIdLayer', () => {
       if (++calls > 1) throw new Error('IdRegistry: exhausted 24-bit ID space')
       return realAllocate(layerName, entityKey, pickKey)
     })
-    expect(() => layer.registerBody(makeReg())).toThrow(/exhausted/)
+    expect(() => layer.registerPart(makeReg())).toThrow(/exhausted/)
     // Nothing leaked: the first id was freed back, and nothing is registered.
     expect(reg.size()).toBe(0)
     expect(layer.scene.children.length).toBe(0)
@@ -227,9 +227,9 @@ describe('EdgeIdLayer', () => {
   })
 
   it('dispose clears every body and the materials', () => {
-    layer.registerBody(makeReg())
+    layer.registerPart(makeReg())
     layer.dispose()
-    expect(layer.bodyCount()).toBe(0)
+    expect(layer.partCount()).toBe(0)
     expect(reg.size()).toBe(0)
   })
 
@@ -237,26 +237,26 @@ describe('EdgeIdLayer', () => {
 
   it('replaces edge registration on same bodyKey (simulates React in-place update across ternary branches)', () => {
     // Ghost mode: register pickBodies edges
-    layer.registerBody({
-      bodyKey: 'body_ex1',
+    layer.registerPart({
+      partKey: 'body_ex1',
       segmentPositions: new Float32Array([0, 0, 0, 1, 0, 0]),
       segmentToEdge: new Uint32Array([0]),
       edgeQueries: ['?old_pick_edge:edge'],
     })
-    expect(layer.bodyCount()).toBe(1)
+    expect(layer.partCount()).toBe(1)
     const oldId = reg.lookupKey(EDGE_LAYER_NAME, '?old_pick_edge:edge')
     expect(oldId).toBeDefined()
 
     // React updates Body3D in place: cleanup unregisters, setup re-registers
-    layer.unregisterBody('body_ex1')
-    layer.registerBody({
-      bodyKey: 'body_ex1',
+    layer.unregisterPart('body_ex1')
+    layer.registerPart({
+      partKey: 'body_ex1',
       segmentPositions: new Float32Array([0, 0, 0, 1, 1, 0]),
       segmentToEdge: new Uint32Array([0]),
       edgeQueries: ['?new_fillet_edge:edge'],
     })
 
-    expect(layer.bodyCount()).toBe(1)
+    expect(layer.partCount()).toBe(1)
     // Old edge query must be gone from the registry
     expect(reg.lookupKey(EDGE_LAYER_NAME, '?old_pick_edge:edge')).toBeUndefined()
     // New edge query must be registered
@@ -268,54 +268,54 @@ describe('EdgeIdLayer', () => {
 
   it('replaces edge registration on different bodyKey (simulates React unmount/remount across ternary branches)', () => {
     // Ghost mode: pickBodies uses bodyKey 'extrude1/body_ex1'
-    layer.registerBody({
-      bodyKey: 'extrude1/body_ex1',
+    layer.registerPart({
+      partKey: 'extrude1/body_ex1',
       segmentPositions: new Float32Array([0, 0, 0, 1, 0, 0]),
       segmentToEdge: new Uint32Array([0]),
       edgeQueries: ['?pick_edge:edge'],
     })
-    expect(layer.bodyCount()).toBe(1)
+    expect(layer.partCount()).toBe(1)
 
     // Accept: pickBodyItems Body3D unmounts
-    layer.unregisterBody('extrude1/body_ex1')
-    expect(layer.bodyCount()).toBe(0)
+    layer.unregisterPart('extrude1/body_ex1')
+    expect(layer.partCount()).toBe(0)
 
     // bodyItems Body3D mounts with different bodyKey
-    layer.registerBody({
-      bodyKey: 'fillet1/body_ex1',
+    layer.registerPart({
+      partKey: 'fillet1/body_ex1',
       segmentPositions: new Float32Array([0, 0, 0, 1, 1, 0]),
       segmentToEdge: new Uint32Array([0]),
       edgeQueries: ['?fillet_edge:edge'],
     })
 
-    expect(layer.bodyCount()).toBe(1)
+    expect(layer.partCount()).toBe(1)
     // Old pick edge must be freed
     expect(reg.lookupKey(EDGE_LAYER_NAME, '?pick_edge:edge')).toBeUndefined()
     // New fillet edge must be registered
     expect(reg.lookupKey(EDGE_LAYER_NAME, '?fillet_edge:edge')).toBeDefined()
   })
 
-  it('registerBody internally unregisters before registering (defense against missing cleanup)', () => {
-    // Even if the old cleanup effect fails to run, registerBody's own
-    // unregisterBody handles the replacement.
-    layer.registerBody({
-      bodyKey: 'body_ex1',
+  it('registerPart internally unregisters before registering (defense against missing cleanup)', () => {
+    // Even if the old cleanup effect fails to run, registerPart's own
+    // unregisterPart handles the replacement.
+    layer.registerPart({
+      partKey: 'body_ex1',
       segmentPositions: new Float32Array([0, 0, 0, 1, 0, 0]),
       segmentToEdge: new Uint32Array([0]),
       edgeQueries: ['?old_edge:edge'],
     })
-    expect(layer.bodyCount()).toBe(1)
+    expect(layer.partCount()).toBe(1)
 
-    // Call registerBody directly with the same bodyKey (no explicit unregister)
-    layer.registerBody({
-      bodyKey: 'body_ex1',
+    // Call registerPart directly with the same bodyKey (no explicit unregister)
+    layer.registerPart({
+      partKey: 'body_ex1',
       segmentPositions: new Float32Array([0, 0, 0, 1, 1, 0]),
       segmentToEdge: new Uint32Array([0]),
       edgeQueries: ['?new_edge:edge'],
     })
 
     // The old registration must be replaced, not duplicated
-    expect(layer.bodyCount()).toBe(1)
+    expect(layer.partCount()).toBe(1)
     expect(reg.lookupKey(EDGE_LAYER_NAME, '?old_edge:edge')).toBeUndefined()
     expect(reg.lookupKey(EDGE_LAYER_NAME, '?new_edge:edge')).toBeDefined()
     // Scene must have exactly 1 mesh (not 2)

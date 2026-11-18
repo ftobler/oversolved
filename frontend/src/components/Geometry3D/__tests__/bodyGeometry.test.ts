@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import * as THREE from 'three'
-import { buildBodyGeometry, buildEdgeSegments, buildEdgeSegmentGeometry, buildFaceBoundarySegments, extractFaceGeometry, calculateFaceProperties, resolveEdgeQueries } from '@/components/Geometry3D/bodyGeometry'
+import { buildPartGeometry, buildEdgeSegments, buildEdgeSegmentGeometry, buildFaceBoundarySegments, extractFaceGeometry, calculateFaceProperties, resolveEdgeQueries } from '@/components/Geometry3D/bodyGeometry'
 import type { Mesh3D, EdgeData } from '@/types/cad'
 import { ARC_SEGMENTS } from '@/components/Geometry3D/constants'
 
@@ -30,7 +30,7 @@ describe('no EdgesGeometry from mesh', () => {
   it('buildBodyGeometry return value is not a THREE geometry object', () => {
     // Guard against regressions where buildBodyGeometry is changed to return
     // a geometry instance (e.g. EdgesGeometry) instead of raw typed arrays.
-    const result = buildBodyGeometry(CUBE_MESH)
+    const result = buildPartGeometry(CUBE_MESH)
     expect(result instanceof THREE.EdgesGeometry).toBe(false)
     expect(result instanceof THREE.BufferGeometry).toBe(false)
     expect(result).toHaveProperty('positions')
@@ -40,12 +40,12 @@ describe('no EdgesGeometry from mesh', () => {
 
 describe('buildBodyGeometry', () => {
   it('positions array length matches vertex count', () => {
-    const { positions } = buildBodyGeometry(CUBE_MESH)
+    const { positions } = buildPartGeometry(CUBE_MESH)
     expect(positions.length).toBe(CUBE_MESH.vertices.length * 3)  // 24
   })
 
   it('toNonIndexed vertex count equals faces * 3 for per-face color alignment', () => {
-    const { positions, indices } = buildBodyGeometry(CUBE_MESH)
+    const { positions, indices } = buildPartGeometry(CUBE_MESH)
     const indexed = new THREE.BufferGeometry()
     indexed.setAttribute('position', new THREE.BufferAttribute(positions, 3))
     indexed.setIndex(new THREE.BufferAttribute(indices, 1))
@@ -57,20 +57,20 @@ describe('buildBodyGeometry', () => {
   })
 
   it('indices array length matches face count', () => {
-    const { indices } = buildBodyGeometry(CUBE_MESH)
+    const { indices } = buildPartGeometry(CUBE_MESH)
     expect(indices.length).toBe(CUBE_MESH.faces.length * 3)  // 36
   })
 
   it('empty mesh does not crash', () => {
     const empty: Mesh3D = { vertices: [], faces: [] }
-    expect(() => buildBodyGeometry(empty)).not.toThrow()
-    const { positions, indices } = buildBodyGeometry(empty)
+    expect(() => buildPartGeometry(empty)).not.toThrow()
+    const { positions, indices } = buildPartGeometry(empty)
     expect(positions.length).toBe(0)
     expect(indices.length).toBe(0)
   })
 
   it('all index values are within vertex range', () => {
-    const { indices } = buildBodyGeometry(CUBE_MESH)
+    const { indices } = buildPartGeometry(CUBE_MESH)
     for (const idx of indices) {
       expect(idx).toBeLessThan(CUBE_MESH.vertices.length)
     }
@@ -81,7 +81,7 @@ describe('buildBodyGeometry', () => {
       vertices: [[0, 0, 0], [1, NaN, 0], [1, 1, 0]],
       faces: [[0, 1, 2]],
     }
-    expect(() => buildBodyGeometry(badMesh)).toThrow('invalid coordinate')
+    expect(() => buildPartGeometry(badMesh)).toThrow('invalid coordinate')
   })
 
   it('throws on out-of-range face index', () => {
@@ -89,7 +89,7 @@ describe('buildBodyGeometry', () => {
       vertices: [[0, 0, 0], [1, 0, 0], [1, 1, 0]],
       faces: [[0, 1, 99]],
     }
-    expect(() => buildBodyGeometry(badMesh)).toThrow('invalid index')
+    expect(() => buildPartGeometry(badMesh)).toThrow('invalid index')
   })
 
   it('throws on vertex with fewer than 3 coordinates', () => {
@@ -97,7 +97,7 @@ describe('buildBodyGeometry', () => {
       vertices: [[0, 0] as unknown as [number, number, number], [1, 0, 0], [1, 1, 0]],
       faces: [[0, 1, 2]],
     }
-    expect(() => buildBodyGeometry(badMesh)).toThrow('not a 3-element array')
+    expect(() => buildPartGeometry(badMesh)).toThrow('not a 3-element array')
   })
 })
 

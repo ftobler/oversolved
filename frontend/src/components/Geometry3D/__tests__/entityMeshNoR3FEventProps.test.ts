@@ -24,13 +24,13 @@ function assertNoForbiddenProps(src: string, element: string, file: string): voi
 
 describe('Body3D meshes have no R3F event props', () => {
   it('Body3D.tsx has no event props on <mesh>', () => {
-    assertNoForbiddenProps(readFileSync(join(GEOM3D_DIR, 'Body3D.tsx'), 'utf8'), 'mesh', 'Body3D')
+    assertNoForbiddenProps(readFileSync(join(GEOM3D_DIR, 'Part3D.tsx'), 'utf8'), 'mesh', 'Body3D')
   })
   it('Body3D.tsx has no event props on <lineSegments>', () => {
-    assertNoForbiddenProps(readFileSync(join(GEOM3D_DIR, 'Body3D.tsx'), 'utf8'), 'lineSegments', 'Body3D')
+    assertNoForbiddenProps(readFileSync(join(GEOM3D_DIR, 'Part3D.tsx'), 'utf8'), 'lineSegments', 'Body3D')
   })
   it('Body3D.tsx has no event props on <instancedMesh>', () => {
-    assertNoForbiddenProps(readFileSync(join(GEOM3D_DIR, 'Body3D.tsx'), 'utf8'), 'instancedMesh', 'Body3D')
+    assertNoForbiddenProps(readFileSync(join(GEOM3D_DIR, 'Part3D.tsx'), 'utf8'), 'instancedMesh', 'Body3D')
   })
 })
 

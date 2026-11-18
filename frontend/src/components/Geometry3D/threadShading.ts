@@ -13,7 +13,7 @@
 import type { LengthUnit, Mesh3D, SketchData } from '@/types/cad'
 import { parseAncestry, partitionAncestryIds } from '@/kernel/queryWire'
 import { MM_PER_LENGTH_UNIT } from '@/utils/lengthUnit'
-import { buildBodyGeometry } from './bodyGeometry'
+import { buildPartGeometry } from './bodyGeometry'
 
 type Vec3 = [number, number, number]
 
@@ -159,7 +159,7 @@ export function buildThreadAttributes(mesh: Mesh3D, sites: ThreadSiteIndex | nul
   const perFace = tappedFaces(mesh, sites)
   const triToFace = mesh.triangle_to_face
   if (perFace === null || !triToFace) return null
-  const { positions, indices } = buildBodyGeometry(mesh)
+  const { positions, indices } = buildPartGeometry(mesh)
   const vertexCount = positions.length / 3
   const coord = new Float32Array(vertexCount * 4)
   const axisOut = new Float32Array(vertexCount * 3)

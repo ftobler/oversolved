@@ -72,7 +72,7 @@ function Harness({ pipelineRef, onReady }: {
   }, [pipelineRef, onReady])
   // Register a body into the live pipeline, mirroring AssemblyPickLayers so the
   // post-reveal geometry converges on the fresh pipeline (faceLayer.bodyCount).
-  useFaceIdRegistration({ featureId: 'f', bodyId: 'b', mesh: faceMesh() })
+  useFaceIdRegistration({ featureId: 'f', partId: 'b', mesh: faceMesh() })
   return <IdPickingDriver onReady={handleReady} />
 }
 
@@ -127,7 +127,7 @@ describe('assembly hover after a cold-load / Suspense reveal', () => {
     const A = getLivePipeline() as IdPipeline
     expect(A).not.toBeNull()
     expect(A.isDisposed()).toBe(false)
-    expect(A.faceLayer.bodyCount()).toBe(1)
+    expect(A.faceLayer.partCount()).toBe(1)
     // onReady fired with the cold pipeline and seeded the ref.
     expect(pipelineRef.current).toBe(A)
     expect(onReady).toHaveBeenCalledWith(A)
@@ -153,7 +153,7 @@ describe('assembly hover after a cold-load / Suspense reveal', () => {
     const B = getLivePipeline() as IdPipeline
     expect(B).not.toBe(A)
     expect(B.isDisposed()).toBe(false)
-    expect(B.faceLayer.bodyCount()).toBe(1)
+    expect(B.faceLayer.partCount()).toBe(1)
     // The onReady re-fire is what keeps the assembly ref live; pin it here.
     expect(pipelineRef.current).toBe(B)
     expect(onReady).toHaveBeenLastCalledWith(B)

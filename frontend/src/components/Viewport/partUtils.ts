@@ -7,8 +7,8 @@ import { partSnapSketches, builtinPlaneTransform } from '@/utils/geometry/partSn
 // `BodyRenderItem` and `getBodiesToRender` live in the utils leaf so the
 // assembly render path can use them without importing the UI tree. They are
 // re-exported here so the viewport callers keep their existing import site.
-export { getPartsToRender as getBodiesToRender }
-export type { PartRenderItem as BodyRenderItem }
+export { getPartsToRender }
+export type { PartRenderItem }
 
 /**
  * Computes which bodies should be visible given explicit user overrides.
@@ -17,18 +17,18 @@ export type { PartRenderItem as BodyRenderItem }
  * Returns a Set (possibly empty) when at least one body has been explicitly
  * hidden, so that hidden bodies stay hidden instead of snapping back.
  */
-export function computeEffectiveVisibleBodies(
-  bodies: Record<string, PartResult> | undefined,
+export function computeEffectiveVisibleParts(
+  parts: Record<string, PartResult> | undefined,
   partStyle: Record<string, PartStyleEntry>,
 ): Set<string> | undefined {
   const visible = new Set<string>()
   let anyExplicitHide = false
-  for (const bodyId of Object.keys(bodies || {})) {
-    if (partStyle[bodyId]?.visible === false) {
+  for (const partId of Object.keys(parts || {})) {
+    if (partStyle[partId]?.visible === false) {
       anyExplicitHide = true
       continue
     }
-    visible.add(bodyId)
+    visible.add(partId)
   }
   return (visible.size > 0 || anyExplicitHide) ? visible : undefined
 }
@@ -68,9 +68,9 @@ export function getSketchesToRender(
  * soon as the preview leaves no body at all. partStyle is the user's axis
  * alone, which is the only one `visible` may express.
  */
-export function getGhostBodiesToRender(
-  pickBodies: Record<string, PartResult> | undefined,
-  previewBodies: Record<string, PartResult> | undefined,
+export function getGhostPartsToRender(
+  pickParts: Record<string, PartResult> | undefined,
+  previewParts: Record<string, PartResult> | undefined,
   features: Feature[] | undefined,
   partStyle: Record<string, PartStyleEntry> | undefined,
   visibleFeatures?: ReadonlySet<string>,
@@ -78,10 +78,10 @@ export function getGhostBodiesToRender(
   // Feature visibility rides on the item already: a body a hidden feature made
   // stays out of the ghost layer too, so it cannot be picked through a row the
   // user has hidden.
-  const items = getPartsToRender(pickBodies, features, undefined, undefined, visibleFeatures)
+  const items = getPartsToRender(pickParts, features, undefined, undefined, visibleFeatures)
   return items.map(item => {
     const visible = item.visible && partStyle?.[item.partId]?.visible !== false
-    if (previewBodies && !(item.partId in previewBodies)) {
+    if (previewParts && !(item.partId in previewParts)) {
       return { ...item, visible, doomed: true }
     }
     return { ...item, visible }
@@ -128,7 +128,7 @@ export function snapSketchesFor(
   activeFeatureId: string | undefined,
   activeResult: SketchData | undefined,
   activeFeature: Feature | undefined,
-  bodyItems: ReadonlyArray<PartRenderItem>,
+  partItems: ReadonlyArray<PartRenderItem>,
 ): Record<string, Sketch> {
   if (!activeFeatureId) return otherSketches
   // Kernel-provided when the sketch has solved, else derived from the builtin
@@ -137,29 +137,29 @@ export function snapSketchesFor(
     ?? (activeFeature?.kind === 'sketch' && activeFeature.plane
       ? builtinPlaneTransform(activeFeature.plane)
       : null)
-  if (!planeTransform || bodyItems.length === 0) return otherSketches
+  if (!planeTransform || partItems.length === 0) return otherSketches
 
-  const bodySketchEntries = partSnapSketches(bodyItems, planeTransform)
-  if (Object.keys(bodySketchEntries).length === 0) return otherSketches
-  return { ...otherSketches, ...bodySketchEntries }
+  const partSketchEntries = partSnapSketches(partItems, planeTransform)
+  if (Object.keys(partSketchEntries).length === 0) return otherSketches
+  return { ...otherSketches, ...partSketchEntries }
 }
 
 /** Returns bodies created by features at or after rollbackPosition (the "preview" bodies excluded by getBodiesToRender). */
-export function getPreviewBodies(
-  bodies: Record<string, PartResult> | undefined,
+export function getPreviewParts(
+  parts: Record<string, PartResult> | undefined,
   features: Feature[] | undefined,
   rollbackPosition: number | undefined,
-  visibleBodies: Set<string> | undefined,
+  visibleParts: Set<string> | undefined,
   visibleFeatures?: ReadonlySet<string>,
 ): PartRenderItem[] {
   const items: PartRenderItem[] = []
-  if (!bodies || rollbackPosition === undefined) return items
+  if (!parts || rollbackPosition === undefined) return items
 
   // enterEditFeature sets rollbackPosition = idx + 1, so bodies from idx
   // onwards are the preview (the edited feature and everything after it).
   const previewFrom = Math.max(0, rollbackPosition - 1)
 
-  for (const [bodyId, body] of Object.entries(bodies)) {
+  for (const [bodyId, body] of Object.entries(parts)) {
     const createdBy = body.created_by
     const featureId = createdBy || bodyId
     const idx = features?.findIndex(f => f.id === createdBy) ?? -1
@@ -182,7 +182,7 @@ export function getPreviewBodies(
       // The edited feature is forced visible while its editor is open
       // (visibleFeatureIds), so its own preview body still shows even when the
       // user had hidden the feature before opening it.
-      visible: (visibleBodies ? visibleBodies.has(bodyId) : true)
+      visible: (visibleParts ? visibleParts.has(bodyId) : true)
         && !isPartHiddenByFeature(createdBy, features, visibleFeatures),
 
     })

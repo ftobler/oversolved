@@ -3,16 +3,16 @@
 // with two other claims on the same surface; this pins the order.
 import { describe, it, expect } from 'vitest'
 import {
-  bodySurfaceLook,
-  bodyRemovedColorIsDistinct,
+  partSurfaceLook,
+  partRemovedColorIsDistinct,
   hintColorsAreDistinct,
   failedHintColorsAreDistinct,
   REMOVED_COLOR_MIN_DISTANCE,
   HINT_COLOR_MIN_DISTANCE,
   FAILED_HINT_COLOR_MIN_DISTANCE,
-  COLOR_BODY_DEFAULT,
-  COLOR_BODY_SELECTED,
-  COLOR_BODY_REMOVED,
+  COLOR_PART_DEFAULT,
+  COLOR_PART_SELECTED,
+  COLOR_PART_REMOVED,
   COLOR_ERROR,
   COLOR_PREVIEW,
   DEFAULT_PART_ROUGHNESS,
@@ -20,15 +20,15 @@ import {
 
 describe('bodySurfaceLook colour precedence', () => {
   it('falls back to the default body colour', () => {
-    expect(bodySurfaceLook({}).color).toBe(COLOR_BODY_DEFAULT)
+    expect(partSurfaceLook({}).color).toBe(COLOR_PART_DEFAULT)
   })
 
   it('uses the part colour when nothing else claims the surface', () => {
-    expect(bodySurfaceLook({ color: '#123456' }).color).toBe('#123456')
+    expect(partSurfaceLook({ color: '#123456' }).color).toBe('#123456')
   })
 
   it('removal outranks the part colour', () => {
-    expect(bodySurfaceLook({ doomed: true, color: '#123456' }).color).toBe(COLOR_BODY_REMOVED)
+    expect(partSurfaceLook({ doomed: true, color: '#123456' }).color).toBe(COLOR_PART_REMOVED)
   })
 
   it('selection outranks removal on the doomed face', () => {
@@ -36,8 +36,8 @@ describe('bodySurfaceLook colour precedence', () => {
     // never reaches the pixels. It is kept so the precedence stays "selection
     // claims the surface" -- the visible affordance for the re-click is the
     // wireframe brightening, pinned in Body3D.doomed.test.tsx.
-    expect(bodySurfaceLook({ selected: true, doomed: true, color: '#123456' }).color)
-      .toBe(COLOR_BODY_SELECTED)
+    expect(partSurfaceLook({ selected: true, doomed: true, color: '#123456' }).color)
+      .toBe(COLOR_PART_SELECTED)
   })
 
   it('every removal gets the SAME look, whatever the part was wearing', () => {
@@ -48,17 +48,17 @@ describe('bodySurfaceLook colour precedence', () => {
       { color: '#123456', transmission: 1, metalness: 1, roughness: 0.05 },
       { color: '#654321', transparency: 0.2 },
       {},
-    ].map(style => JSON.stringify(bodySurfaceLook({ doomed: true, ...style })))
+    ].map(style => JSON.stringify(partSurfaceLook({ doomed: true, ...style })))
     expect(new Set(looks).size).toBe(1)
   })
 
   it('leaves the material of a body the edit is not removing alone', () => {
     const style = { transmission: 1, metalness: 1, roughness: 0.05, transparency: 0.2 }
-    expect(bodySurfaceLook(style)).toEqual({ color: COLOR_BODY_DEFAULT, ...style })
+    expect(partSurfaceLook(style)).toEqual({ color: COLOR_PART_DEFAULT, ...style })
   })
 
   it('defaults roughness to DEFAULT_PART_ROUGHNESS, matching the old Body3D default', () => {
-    expect(bodySurfaceLook({}).roughness).toBe(DEFAULT_PART_ROUGHNESS)
+    expect(partSurfaceLook({}).roughness).toBe(DEFAULT_PART_ROUGHNESS)
   })
 
   it('the removal colour is far from every other colour in the scene', () => {
@@ -68,7 +68,7 @@ describe('bodySurfaceLook colour precedence', () => {
     // used to hold that spot but was dropped from this guard when the user made
     // the preview overlay share the mark hue exactly (both #bb5be1, distance 0
     // by design, so guarding against it would always fail).
-    const { nearest, distance } = bodyRemovedColorIsDistinct()
+    const { nearest, distance } = partRemovedColorIsDistinct()
     expect(nearest).toBe(COLOR_PREVIEW)
     expect(distance).toBeGreaterThanOrEqual(REMOVED_COLOR_MIN_DISTANCE)
   })
@@ -80,7 +80,7 @@ describe('bodySurfaceLook colour precedence', () => {
     // active sketch is overconstrained. Pinning its distance stops a future
     // hue tweak from drifting the pink toward it.
     const [r, g, b] = [...COLOR_ERROR.slice(1).match(/../g)!].map(h => parseInt(h, 16))
-    const [r2, g2, b2] = [...COLOR_BODY_REMOVED.slice(1).match(/../g)!].map(h => parseInt(h, 16))
+    const [r2, g2, b2] = [...COLOR_PART_REMOVED.slice(1).match(/../g)!].map(h => parseInt(h, 16))
     expect(Math.hypot(r - r2, g - g2, b - b2)).toBeGreaterThanOrEqual(REMOVED_COLOR_MIN_DISTANCE)
   })
 })
@@ -105,21 +105,21 @@ describe('relation hint colours', () => {
 
 describe('bodySurfaceLook transparency', () => {
   it('passes the part transparency through untouched when nothing is removed', () => {
-    expect(bodySurfaceLook({ transparency: 0.25 }).transparency).toBe(0.25)
-    expect(bodySurfaceLook({}).transparency).toBe(0)
+    expect(partSurfaceLook({ transparency: 0.25 }).transparency).toBe(0.25)
+    expect(partSurfaceLook({}).transparency).toBe(0)
   })
 
   it('makes a doomed body fully transparent, whatever the user styled', () => {
     // The old clamp band existed to keep the pink FACE mark visible; the mark
     // has moved to the wireframe, so the face can go all the way to invisible.
     for (const t of [0, 0.2, 1]) {
-      expect(bodySurfaceLook({ doomed: true, transparency: t }).transparency).toBe(1)
+      expect(partSurfaceLook({ doomed: true, transparency: t }).transparency).toBe(1)
     }
   })
 
   it('a selected doomed body stays fully transparent', () => {
     // Selection recolours the surface but does not un-doom; the affordance for
     // the re-click is the brightened wireframe, not the face.
-    expect(bodySurfaceLook({ selected: true, doomed: true }).transparency).toBe(1)
+    expect(partSurfaceLook({ selected: true, doomed: true }).transparency).toBe(1)
   })
 })

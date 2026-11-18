@@ -48,11 +48,11 @@ beforeEach(() => {
 })
 
 async function renderBody(visible = true) {
-  const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
+  const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
   return render(
     <Body3D
       featureId="ex1"
-      bodyId="body_ex1"
+      partId="body_ex1"
       mesh={mesh}
       vertices={vertices}
       vertexQueries={vertexQueries}

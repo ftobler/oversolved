@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import {
-  getBodiesToRender, getGhostBodiesToRender, getPreviewBodies, computeEffectiveVisibleBodies,
+  getPartsToRender, getGhostPartsToRender, getPreviewParts, computeEffectiveVisibleParts,
   sketchForRender, snapSketchesFor,
-} from '@/components/Viewport/bodyUtils'
+} from '@/components/Viewport/partUtils'
 import type { Feature, PartResult, PartStyleEntry, Sketch, SketchFeature, SketchData, DimLinearRender } from '@/types/cad'
 import type { PartRenderItem } from '@/utils/partRender'
 import { PART_SNAP_FEAT_PREFIX } from '@/utils/geometry/partSnapProjection'
@@ -129,31 +129,31 @@ describe('getBodiesToRender', () => {
   }
 
   it('renders all bodies when visibleBodies is undefined', () => {
-    const items = getBodiesToRender(bodies, features, undefined, undefined)
+    const items = getPartsToRender(bodies, features, undefined, undefined)
     expect(items).toHaveLength(1)
     expect(items[0].featureId).toBe('ex1')
   })
 
   it('marks bodies not in visibleBodies set as invisible', () => {
     const visible = new Set<string>()
-    const items = getBodiesToRender(bodies, features, undefined, visible)
+    const items = getPartsToRender(bodies, features, undefined, visible)
     expect(items).toHaveLength(1)
     expect(items[0].visible).toBe(false)
   })
 
   it('marks bodies in visibleBodies set as visible', () => {
     const visible = new Set(['body_ex1'])
-    const items = getBodiesToRender(bodies, features, undefined, visible)
+    const items = getPartsToRender(bodies, features, undefined, visible)
     expect(items).toHaveLength(1)
     expect(items[0].visible).toBe(true)
   })
 
   it('hides a body whose creating feature is hidden in the tree', () => {
-    const shown = getBodiesToRender(bodies, features, undefined, undefined, new Set(['sk1', 'ex1']))
+    const shown = getPartsToRender(bodies, features, undefined, undefined, new Set(['sk1', 'ex1']))
     expect(shown[0].visible).toBe(true)
     // The eye on the extrude writes `visible: false` on the feature; the body
     // it made disappears without a per-body write.
-    const hidden = getBodiesToRender(bodies, features, undefined, undefined, new Set(['sk1']))
+    const hidden = getPartsToRender(bodies, features, undefined, undefined, new Set(['sk1']))
     expect(hidden[0].visible).toBe(false)
   })
 
@@ -168,17 +168,17 @@ describe('getBodiesToRender', () => {
         mesh: { vertices: [], faces: [], face_data: [], face_queries: [] },
       } as unknown as PartResult,
     }
-    const items = getBodiesToRender(orphan, features, undefined, undefined, new Set(['sk1']))
+    const items = getPartsToRender(orphan, features, undefined, undefined, new Set(['sk1']))
     expect(items[0].visible).toBe(true)
   })
 
   it('does not let body visibility resurrect a feature-hidden body', () => {
-    const items = getBodiesToRender(bodies, features, undefined, new Set(['body_ex1']), new Set(['sk1']))
+    const items = getPartsToRender(bodies, features, undefined, new Set(['body_ex1']), new Set(['sk1']))
     expect(items[0].visible).toBe(false)
   })
 
   it('filters by rollbackPosition', () => {
-    const items = getBodiesToRender(bodies, features, 1, new Set(['body_ex1']))
+    const items = getPartsToRender(bodies, features, 1, new Set(['body_ex1']))
     expect(items).toHaveLength(0)
   })
 
@@ -186,11 +186,11 @@ describe('getBodiesToRender', () => {
     const noMesh: Record<string, PartResult> = {
       body_empty: { id: 'body_empty', created_by: 'ex1', modified_by: [] } as unknown as PartResult,
     }
-    expect(getBodiesToRender(noMesh, features, undefined, undefined)).toEqual([])
+    expect(getPartsToRender(noMesh, features, undefined, undefined)).toEqual([])
   })
 
   it('returns [] when the bodies record is undefined', () => {
-    expect(getBodiesToRender(undefined, features, undefined, undefined)).toEqual([])
+    expect(getPartsToRender(undefined, features, undefined, undefined)).toEqual([])
   })
 
   it('keeps rendering when created_by does not match any feature', () => {
@@ -202,7 +202,7 @@ describe('getBodiesToRender', () => {
         mesh: { vertices: [], faces: [], face_data: [], face_queries: [] },
       } as unknown as PartResult,
     }
-    const items = getBodiesToRender(orphanBodies, features, undefined, undefined)
+    const items = getPartsToRender(orphanBodies, features, undefined, undefined)
     expect(items).toHaveLength(1)
     expect(items[0].featureId).toBe('missing_feature')
   })
@@ -215,7 +215,7 @@ describe('getBodiesToRender', () => {
         mesh: { vertices: [], faces: [], face_data: [], face_queries: [] },
       } as unknown as PartResult,
     }
-    const items = getBodiesToRender(noCreatorBodies, features, undefined, undefined)
+    const items = getPartsToRender(noCreatorBodies, features, undefined, undefined)
     expect(items).toHaveLength(1)
     expect(items[0].featureId).toBe('body_no_creator')
   })
@@ -235,7 +235,7 @@ describe('getBodiesToRender', () => {
         mesh: { vertices: new Float32Array(9), indices: new Uint32Array(3), triangle_to_face: new Uint32Array(1) },
       } as unknown as PartResult,
     }
-    const items = getBodiesToRender(assemblyBodies, undefined, undefined, undefined)
+    const items = getPartsToRender(assemblyBodies, undefined, undefined, undefined)
     expect(items).toHaveLength(2)
     expect(items[0].featureId).toBe('handle1')
     expect(items[0].edges).toEqual([])
@@ -259,7 +259,7 @@ describe('getBodiesToRender', () => {
       } as unknown as PartResult,
     }
     const visible = new Set(['body_a_0'])
-    const items = getBodiesToRender(assemblyBodies, undefined, undefined, visible)
+    const items = getPartsToRender(assemblyBodies, undefined, undefined, visible)
     expect(items).toHaveLength(2)
     expect(items[0].visible).toBe(true)
     expect(items[1].visible).toBe(false)
@@ -286,7 +286,7 @@ describe('getGhostBodiesToRender', () => {
     // Still visible: hiding it dropped the body out of the id buffer, so the
     // add_delete_body_ref toggle could never be fired a second time.
     const preview = { body_ex1: pickBodies.body_ex1 }
-    const items = getGhostBodiesToRender(pickBodies, preview, features, {})
+    const items = getGhostPartsToRender(pickBodies, preview, features, {})
     expect(items.map(i => [i.partId, i.visible, !!i.doomed]))
       .toEqual([['body_ex1', true, false], ['body_ex2', true, true]])
   })
@@ -294,18 +294,18 @@ describe('getGhostBodiesToRender', () => {
   it('marks every ghost when the edited feature deletes all bodies', () => {
     // Regression: the preview holds no body at all, so nothing derived from it
     // can name what left -- the removal has to be its own flag.
-    const items = getGhostBodiesToRender(pickBodies, {}, features, {})
+    const items = getGhostPartsToRender(pickBodies, {}, features, {})
     expect(items.map(i => [i.visible, !!i.doomed])).toEqual([[true, true], [true, true]])
   })
 
   it('keeps ghosts of bodies the edit leaves alone unmarked', () => {
-    const items = getGhostBodiesToRender(pickBodies, pickBodies, features, {})
+    const items = getGhostPartsToRender(pickBodies, pickBodies, features, {})
     expect(items.map(i => i.visible)).toEqual([true, true])
     expect(items.some(i => i.doomed)).toBe(false)
   })
 
   it('keeps a user-hidden body hidden even though the edit keeps it', () => {
-    const items = getGhostBodiesToRender(pickBodies, pickBodies, features, hidden('body_ex2'))
+    const items = getGhostPartsToRender(pickBodies, pickBodies, features, hidden('body_ex2'))
     expect(items.map(i => i.visible)).toEqual([true, false])
   })
 
@@ -313,7 +313,7 @@ describe('getGhostBodiesToRender', () => {
     // visible and doomed are orthogonal: the mark says what the edit
     // does, the visibility says what the user asked for, and the user wins.
     const preview = { body_ex1: pickBodies.body_ex1 }
-    const items = getGhostBodiesToRender(pickBodies, preview, features, hidden('body_ex1', 'body_ex2'))
+    const items = getGhostPartsToRender(pickBodies, preview, features, hidden('body_ex1', 'body_ex2'))
     expect(items.map(i => [i.partId, i.visible, !!i.doomed]))
       .toEqual([['body_ex1', false, false], ['body_ex2', false, true]])
   })
@@ -324,21 +324,21 @@ describe('getGhostBodiesToRender', () => {
     // user-hidden body is. Feeding the ghost layer that set made every removal
     // invisible again, which is the bug this feature exists to fix.
     const preview = { body_ex1: pickBodies.body_ex1 }
-    const derived = computeEffectiveVisibleBodies(preview, {})
+    const derived = computeEffectiveVisibleParts(preview, {})
     expect(derived?.has('body_ex2')).toBe(false)  // the trap
-    const items = getGhostBodiesToRender(pickBodies, preview, features, {})
+    const items = getGhostPartsToRender(pickBodies, preview, features, {})
     expect(items.find(i => i.partId === 'body_ex2')?.visible).toBe(true)
   })
 
   it('ignores rollbackPosition so every prior body stays pickable', () => {
-    const items = getGhostBodiesToRender(pickBodies, pickBodies, features, undefined)
+    const items = getGhostPartsToRender(pickBodies, pickBodies, features, undefined)
     expect(items).toHaveLength(2)
   })
 
   it('keeps a hidden feature body out of the ghost layer', () => {
     // A body the user hid through its feature row must not come back as a pick
     // target just because an unrelated feature's editor is open.
-    const items = getGhostBodiesToRender(pickBodies, pickBodies, features, {}, new Set(['ex2', 'db1']))
+    const items = getGhostPartsToRender(pickBodies, pickBodies, features, {}, new Set(['ex2', 'db1']))
     expect(items.map(i => [i.partId, i.visible]))
       .toEqual([['body_ex1', false], ['body_ex2', true]])
   })
@@ -359,14 +359,14 @@ describe('getPreviewBodies', () => {
   }
 
   it('hides the preview body of a hidden creating feature', () => {
-    const items = getPreviewBodies(previewBodies, features, 2, undefined, new Set(['sk1']))
+    const items = getPreviewParts(previewBodies, features, 2, undefined, new Set(['sk1']))
     expect(items.map(i => i.visible)).toEqual([false])
   })
 
   it('shows the preview body while the edit forces its feature visible', () => {
     // Opening the editor puts the feature id in the forced-visible set, so a
     // feature the user had hidden still shows what is being edited.
-    const items = getPreviewBodies(previewBodies, features, 2, undefined, new Set(['sk1', 'ex1']))
+    const items = getPreviewParts(previewBodies, features, 2, undefined, new Set(['sk1', 'ex1']))
     expect(items.map(i => i.visible)).toEqual([true])
   })
 })
@@ -389,29 +389,29 @@ describe('computeEffectiveVisibleBodies', () => {
   }
 
   it('returns undefined when no bodies (nothing to filter)', () => {
-    expect(computeEffectiveVisibleBodies(undefined, {})).toBeUndefined()
+    expect(computeEffectiveVisibleParts(undefined, {})).toBeUndefined()
   })
 
   it('includes all bodies when features are visible and no overrides', () => {
-    const result = computeEffectiveVisibleBodies(bodies, {})
+    const result = computeEffectiveVisibleParts(bodies, {})
     expect(result?.has('body_a')).toBe(true)
     expect(result?.has('body_b')).toBe(true)
   })
 
   it('excludes one body when it is explicitly hidden', () => {
-    const result = computeEffectiveVisibleBodies(bodies, partStyle({ body_a: { visible: false } }))
+    const result = computeEffectiveVisibleParts(bodies, partStyle({ body_a: { visible: false } }))
     expect(result?.has('body_a')).toBe(false)
     expect(result?.has('body_b')).toBe(true)
   })
 
   it('returns empty set (not undefined) when all bodies are explicitly hidden', () => {
-    const result = computeEffectiveVisibleBodies(bodies, partStyle({ body_a: { visible: false }, body_b: { visible: false } }))
+    const result = computeEffectiveVisibleParts(bodies, partStyle({ body_a: { visible: false }, body_b: { visible: false } }))
     expect(result).toBeInstanceOf(Set)
     expect(result?.size).toBe(0)
   })
 
   it('keeps body visibility independent from feature visibility', () => {
-    const result = computeEffectiveVisibleBodies(bodies, partStyle({ body_a: { visible: true } }))
+    const result = computeEffectiveVisibleParts(bodies, partStyle({ body_a: { visible: true } }))
     expect(result?.has('body_a')).toBe(true)
     expect(result?.has('body_b')).toBe(true)
   })
@@ -424,7 +424,7 @@ describe('computeEffectiveVisibleBodies', () => {
       body_UAM7nPd8Trb1gGJ7Wefu6uUc_3: twoBodyResult('body_UAM7nPd8Trb1gGJ7Wefu6uUc_3', 'UAM7nPd8Trb1gGJ7Wefu6uUc'),
     }
 
-    const result = computeEffectiveVisibleBodies(
+    const result = computeEffectiveVisibleParts(
       arrayBodies,
       partStyle({ body_UAM7nPd8Trb1gGJ7Wefu6uUc_1: { visible: false } }),
     )
@@ -436,7 +436,7 @@ describe('computeEffectiveVisibleBodies', () => {
   })
 
   it('treats missing visible', () => {
-    const result = computeEffectiveVisibleBodies(bodies, partStyle({ body_a: { name: 'test' } }))
+    const result = computeEffectiveVisibleParts(bodies, partStyle({ body_a: { name: 'test' } }))
     expect(result?.has('body_a')).toBe(true)
   })
 })

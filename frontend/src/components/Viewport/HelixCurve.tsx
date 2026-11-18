@@ -49,7 +49,7 @@ export default function HelixCurve({
 
   useEdgeIdRegistration({
     featureId,
-    bodyId: featureId,
+    partId: featureId,
     edges,
     edgeQueries,
     enabled: visible,

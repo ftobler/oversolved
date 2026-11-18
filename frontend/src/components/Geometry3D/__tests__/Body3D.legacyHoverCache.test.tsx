@@ -18,7 +18,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, act } from '@testing-library/react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { bodyKeyFor, primitivePickKey } from '@/picking/pickKey'
+import { partKeyFor, primitivePickKey } from '@/picking/pickKey'
 import { FACE_LAYER_NAME } from '@/picking/layerNames'
 import type { Mesh3D } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
@@ -111,9 +111,9 @@ function settledFaceCalls(bodyCount: number) {
 }
 
 async function renderBodies(bodyCount: number) {
-  const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
+  const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
   const bodies = Array.from({ length: bodyCount }, (_, i) =>
-    <Body3D key={i} featureId="ex1" bodyId={`body_${i}`} mesh={legacyMesh()} />)
+    <Body3D key={i} featureId="ex1" partId={`body_${i}`} mesh={legacyMesh()} />)
   render(<>{bodies}</>)
 }
 
@@ -212,8 +212,8 @@ describe('legacy fallback still paints the hovered/selected triangles exactly as
     useEditorState.setState({
     normalSelection: new Set(['@body_ex1/tri/1']),
   })
-    const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
-    render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={legacyMesh()} />)
+    const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
+    render(<Body3D featureId="ex1" partId="body_ex1" mesh={legacyMesh()} />)
 
     const face = settledFaceCalls(1)
     expect(face[0]?.selected).toEqual([false, true])
@@ -223,8 +223,8 @@ describe('legacy fallback still paints the hovered/selected triangles exactly as
     useEditorState.setState({
     hoveredSelectionId: '@body_ex1/tri/0',
   })
-    const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
-    render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={legacyMesh()} />)
+    const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
+    render(<Body3D featureId="ex1" partId="body_ex1" mesh={legacyMesh()} />)
 
     const face = settledFaceCalls(1)
     expect(face[0]?.hovered).toEqual([true, false])
@@ -235,8 +235,8 @@ describe('legacy fallback still paints the hovered/selected triangles exactly as
     normalSelection: new Set(['@body_ex1/tri/0']),
     hoveredSelectionId: '@body_ex1/tri/1',
   })
-    const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
-    render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={legacyMesh()} />)
+    const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
+    render(<Body3D featureId="ex1" partId="body_ex1" mesh={legacyMesh()} />)
 
     const face = settledFaceCalls(1)
     expect(face[0]?.selected).toEqual([true, false])
@@ -249,26 +249,26 @@ describe('legacy fallback still paints the hovered/selected triangles exactly as
   // would claim one triangle of the face and split the highlight. Query
   // membership alone decides, exactly like the pre-index fallback.
   it('a live per-face pickKey on a mapped-but-short mesh still highlights the whole face', async () => {
-    const bodyKey = bodyKeyFor('ex1', 'body_ex1')
+    const bodyKey = partKeyFor('ex1', 'body_ex1')
     useEditorState.setState({
     hoveredSelectionId: 'f0',
     hoveredPickKey: primitivePickKey(bodyKey, 0, FACE_LAYER_NAME),
   })
-    const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
-    render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={mappedButShortMesh()} />)
+    const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
+    render(<Body3D featureId="ex1" partId="body_ex1" mesh={mappedButShortMesh()} />)
 
     // Face 0 owns triangles 0 and 1; both must paint, the unmapped tail must not.
     expect(settledFaceCalls(1)[0]?.hovered).toEqual([true, true, false, false])
   })
 
   it('a per-face selectedPicks claim on a mapped-but-short mesh still selects the whole face', async () => {
-    const bodyKey = bodyKeyFor('ex1', 'body_ex1')
+    const bodyKey = partKeyFor('ex1', 'body_ex1')
     useEditorState.setState({
     normalSelection: new Set(['f0']),
     selectedPicks: new Map([['f0', new Set([primitivePickKey(bodyKey, 0, FACE_LAYER_NAME)])]]),
   })
-    const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
-    render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={mappedButShortMesh()} />)
+    const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
+    render(<Body3D featureId="ex1" partId="body_ex1" mesh={mappedButShortMesh()} />)
 
     expect(settledFaceCalls(1)[0]?.selected).toEqual([true, true, false, false])
   })

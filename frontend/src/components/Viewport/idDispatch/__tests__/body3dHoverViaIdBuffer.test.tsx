@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { registerBodyCallbacks, resetBodyCallbacksForTest } from '@/picking/bodyDispatchCallbacks'
+import { registerPartCallbacks, resetPartCallbacksForTest } from '@/picking/partDispatchCallbacks'
 import { brepFaceAdapter, brepEdgeAdapter, brepVertexAdapter, clearAllHover } from '../brepAdapters'
 
 import type { Mesh3D } from '@/types/cad'
@@ -15,7 +15,7 @@ function stubMesh(faceQueries?: string[]): Mesh3D {
 }
 
 beforeEach(() => {
-  resetBodyCallbacksForTest()
+  resetPartCallbacksForTest()
   useEditorState.setState({
     normalSelection: new Set(),
     activePickField: null,
@@ -28,7 +28,7 @@ beforeEach(() => {
 })
 
 afterEach(() => {
-  resetBodyCallbacksForTest()
+  resetPartCallbacksForTest()
   useEditorState.setState({
     hoveredSelectionId: null,
     hoveredFaceNormal: null,
@@ -39,9 +39,9 @@ afterEach(() => {
 describe('body3dHoverViaIdBuffer', () => {
   it('face hover sets hoveredSelectionId and calls updateFaceGeometry', () => {
     let faceIndexCalled = -1
-    registerBodyCallbacks('feat1/b1', {
+    registerPartCallbacks('feat1/b1', {
       featureId: 'feat1',
-      bodyId: 'b1',
+      partId: 'b1',
       mesh: stubMesh(['@feat1/face/0', '@feat1/face/1']),
       edgeQueries: undefined,
       vertexQueries: undefined,
@@ -58,9 +58,9 @@ describe('body3dHoverViaIdBuffer', () => {
 
   it('face hover propagates the pick key so Body3D can isolate one of two shared-query faces', () => {
     let faceIndexCalled = -1
-    registerBodyCallbacks('feat1b/b1', {
+    registerPartCallbacks('feat1b/b1', {
       featureId: 'feat1b',
-      bodyId: 'b1',
+      partId: 'b1',
       mesh: stubMesh(['@feat1b/face/dup', '@feat1b/face/dup']),
       edgeQueries: undefined,
       vertexQueries: undefined,
@@ -82,9 +82,9 @@ describe('body3dHoverViaIdBuffer', () => {
   // sharing a query used to light face k while the camera oriented to face j.
   it('computes face geometry from the pickKey index, not the first query owner', () => {
     let calledIndex = -1
-    registerBodyCallbacks('feat/b1', {
+    registerPartCallbacks('feat/b1', {
       featureId: 'feat',
-      bodyId: 'b1',
+      partId: 'b1',
       mesh: stubMesh(['dup', 'dup']),
       edgeQueries: undefined,
       vertexQueries: undefined,
@@ -100,9 +100,9 @@ describe('body3dHoverViaIdBuffer', () => {
 
   it('falls back to the first query owner when the hit carries no pickKey', () => {
     let calledIndex = -1
-    registerBodyCallbacks('feat/b1', {
+    registerPartCallbacks('feat/b1', {
       featureId: 'feat',
-      bodyId: 'b1',
+      partId: 'b1',
       mesh: stubMesh(['dup', 'dup']),
       edgeQueries: undefined,
       vertexQueries: undefined,
@@ -116,9 +116,9 @@ describe('body3dHoverViaIdBuffer', () => {
   })
 
   it('edge hover sets hoveredSelectionId', () => {
-    registerBodyCallbacks('feat2/b1', {
+    registerPartCallbacks('feat2/b1', {
       featureId: 'feat2',
-      bodyId: 'b1',
+      partId: 'b1',
       mesh: stubMesh(),
       edgeQueries: ['@feat2/edge/0', '@feat2/edge/1'],
       vertexQueries: undefined,
@@ -133,9 +133,9 @@ describe('body3dHoverViaIdBuffer', () => {
   })
 
   it('vertex hover sets hoveredSelectionId', () => {
-    registerBodyCallbacks('feat3/b1', {
+    registerPartCallbacks('feat3/b1', {
       featureId: 'feat3',
-      bodyId: 'b1',
+      partId: 'b1',
       mesh: stubMesh(),
       edgeQueries: undefined,
       vertexQueries: ['@feat3/vertex/0'],
@@ -153,9 +153,9 @@ describe('body3dHoverViaIdBuffer', () => {
     // HelixCurve registers itself as an edge body under its own feature id
     // (edgeQueries ['@helix1']), so the shared edge adapter is its one hover
     // path; HelixCurve only reads hoveredSelectionId.
-    registerBodyCallbacks('helix1/helix1', {
+    registerPartCallbacks('helix1/helix1', {
       featureId: 'helix1',
-      bodyId: 'helix1',
+      partId: 'helix1',
       mesh: stubMesh(),
       edgeQueries: ['@helix1'],
       vertexQueries: undefined,
@@ -171,9 +171,9 @@ describe('body3dHoverViaIdBuffer', () => {
   it('transition from face to edge clears old hover and sets new hoveredSelectionId', () => {
     let faceGeometryCleared = false
 
-    registerBodyCallbacks('feat4/b1', {
+    registerPartCallbacks('feat4/b1', {
       featureId: 'feat4',
-      bodyId: 'b1',
+      partId: 'b1',
       mesh: stubMesh(['@feat4/face/0']),
       edgeQueries: ['@feat4/edge/0'],
       vertexQueries: undefined,
@@ -196,9 +196,9 @@ describe('body3dHoverViaIdBuffer', () => {
   it('clearAllHover resets all hover state', () => {
     let faceCleared = false
 
-    registerBodyCallbacks('feat5/b1', {
+    registerPartCallbacks('feat5/b1', {
       featureId: 'feat5',
-      bodyId: 'b1',
+      partId: 'b1',
       mesh: stubMesh(['@feat5/face/0']),
       edgeQueries: ['@feat5/edge/0'],
       vertexQueries: ['@feat5/vertex/0'],

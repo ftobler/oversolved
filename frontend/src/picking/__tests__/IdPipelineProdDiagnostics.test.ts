@@ -16,8 +16,8 @@ vi.mock('@/kernel/isDevBuild', () => ({
 import { IdPipeline } from '../IdPipeline'
 
 function registerOneFace(p: IdPipeline, bodyKey: string): void {
-  p.faceLayer.registerBody({
-    bodyKey,
+  p.faceLayer.registerPart({
+    partKey: bodyKey,
     positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
     triangleToFace: new Uint32Array([0]),
     faceQueries: ['face@q'],

@@ -51,9 +51,9 @@ beforeEach(() => {
 
 // Both bodies belong to feature `ex1`; only their body ids separate them.
 async function renderSibling(bodyId: string) {
-  const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
+  const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
   return render(
-    <Body3D featureId="ex1" bodyId={bodyId} mesh={mesh} edges={edges} vertices={vertices} />
+    <Body3D featureId="ex1" partId={bodyId} mesh={mesh} edges={edges} vertices={vertices} />
   )
 }
 
@@ -86,10 +86,10 @@ describe('Body3D topo-fallback queries are keyed on the body', () => {
   // edge/vertex/face resolvers moved to bodyGeometry (one padded list feeds both
   // the highlight index and the ID-layer registration), so scan both files.
   it('has no feature-keyed mint site left in Body3D or bodyGeometry', () => {
-    const src = ['Body3D.tsx', 'bodyGeometry.ts']
+    const src = ['Part3D.tsx', 'bodyGeometry.ts']
       .map(f => readFileSync(join(__dirname, '..', f), 'utf8')).join('\n')
     const sites = [...src.matchAll(/topoFallbackQuery\(\s*(\w+)/g)].map(m => m[1])
     expect(sites.length).toBeGreaterThanOrEqual(3)  // edge, vertex, face
-    expect(sites.filter(s => s !== 'bodyId')).toEqual([])
+    expect(sites.filter(s => s !== 'partId')).toEqual([])
   })
 })

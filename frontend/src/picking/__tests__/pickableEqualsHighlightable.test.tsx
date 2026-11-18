@@ -69,7 +69,7 @@ describe('pickable equals highlightable (g4-H1)', () => {
       { kind: 'line', start: [1, 0, 0], end: [2, 0, 0] },  // kernel gave no query
     ]
     renderHook(() => useEdgeIdRegistration({
-      featureId: 'f1', bodyId: 'b1', edges, edgeQueries: ['edge@A'],
+      featureId: 'f1', partId: 'b1', edges, edgeQueries: ['edge@A'],
     }))
 
     // Both segments drawn (2 vertices each), and both edges have a registry id.
@@ -91,7 +91,7 @@ describe('pickable equals highlightable (g4-H1)', () => {
     setLivePipeline(pipeline)
     const vertices: [number, number, number][] = [[0, 0, 0], [1, 0, 0], [0, 1, 0]]
     renderHook(() => useVertexIdRegistration({
-      featureId: 'f1', bodyId: 'b1', vertices, vertexQueries: ['vtx@A'],
+      featureId: 'f1', partId: 'b1', vertices, vertexQueries: ['vtx@A'],
     }))
 
     const obj = pipeline.vertexLayer.scene.children[0] as THREE.Mesh

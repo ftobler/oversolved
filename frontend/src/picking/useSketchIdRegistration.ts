@@ -106,8 +106,8 @@ export function useSketchIdRegistration(params: {
     // this way.
     if (seg.edgeQueries.length > 0) {
       try {
-        pipeline.sketchEntityLayer.registerBody({
-          bodyKey: featureId,
+        pipeline.sketchEntityLayer.registerPart({
+          partKey: featureId,
           segmentPositions: seg.segmentPositions,
           segmentToEdge: seg.segmentToEdge,
           edgeQueries: seg.edgeQueries,
@@ -118,8 +118,8 @@ export function useSketchIdRegistration(params: {
     }
     if (vtx.vertices.length > 0) {
       try {
-        pipeline.sketchVertexLayer.registerBody({
-          bodyKey: featureId,
+        pipeline.sketchVertexLayer.registerPart({
+          partKey: featureId,
           vertices: vtx.vertices,
           vertexQueries: vtx.vertexQueries,
         })
@@ -131,8 +131,8 @@ export function useSketchIdRegistration(params: {
 
     return () => {
       clearProbeSource(probeKey)
-      pipeline.sketchEntityLayer.unregisterBody(featureId)
-      pipeline.sketchVertexLayer.unregisterBody(featureId)
+      pipeline.sketchEntityLayer.unregisterPart(featureId)
+      pipeline.sketchVertexLayer.unregisterPart(featureId)
       pipeline.markDirty()
     }
     // planeKey is the load-bearing dep for plane changes; planeTransform

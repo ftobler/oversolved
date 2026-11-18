@@ -5,9 +5,9 @@ import type { Mesh3D, EdgeData } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { p2w } from '@/utils/geometry/sketchHelpers'
 import {
-  COLOR_BODY_DEFAULT,
-  COLOR_BODY_EDGE, COLOR_BODY_EDGE_SEL, COLOR_BODY_REMOVED,
-  bodySurfaceLook,
+  COLOR_PART_DEFAULT,
+  COLOR_PART_EDGE, COLOR_PART_EDGE_SEL, COLOR_PART_REMOVED,
+  partSurfaceLook,
   COLOR_SELECTED, COLOR_HOVER, COLOR_HINT, COLOR_HINT_FAILED,
   blendWhite, blendToward, HINT_BLEND,
   POINT_VIS_PIXELS,
@@ -16,7 +16,7 @@ import {
   RENDER_ORDER_HIGHLIGHT,
 } from '@/components/Geometry3D/constants'
 import {
-  buildBodySurfaceGeometry,
+  buildPartSurfaceGeometry,
   buildFaceBoundarySegments,
   planarFaceFrame,
   buildEdgeSegments,
@@ -27,7 +27,7 @@ import {
   resolveEdgeQueries,
   resolveVertexQueries,
 } from '@/components/Geometry3D/bodyGeometry'
-import { analysisMaterialName, useBodyAnalysisMaterial } from '@/components/Geometry3D/bodyAnalysisMaterial'
+import { analysisMaterialName, usePartAnalysisMaterial } from '@/components/Geometry3D/partAnalysisMaterial'
 import { applyAoOccluder, isAoActive } from '@/components/Viewport/ambientOcclusion'
 import { curvatureForMesh, effectiveCurvatureRange } from '@/components/Geometry3D/curvature'
 import { buildThreadAttributes, type ThreadSiteIndex } from '@/components/Geometry3D/threadShading'
@@ -39,7 +39,7 @@ import { useHighlightColors, paletteRGB } from '@/components/Geometry3D/useHighl
 import { VertexInstancePainter } from '@/components/Geometry3D/vertexInstancePainter'
 import { HighlightOverlays } from '@/components/Geometry3D/highlightOverlay'
 import { useFaceIdRegistration, useEdgeIdRegistration, useVertexIdRegistration } from '@/picking'
-import { bodyKeyFor } from '@/picking/pickKey'
+import { partKeyFor } from '@/picking/pickKey'
 import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '@/picking/layerNames'
 import SectionCap from '@/components/Geometry3D/SectionCap'
 import { getSectionClipPlaneList } from '@/viewport/sectionClipping'
@@ -54,7 +54,7 @@ import { usePartRelationHints } from '@/hooks/useRelationHint'
 import { topoFallbackQuery } from '@/utils/query/selectionId'
 import { buildEdgeMaterial } from '@/components/Geometry3D/edgeLineMaterial'
 import { ENV_MAP_INTENSITY } from '@/components/Viewport/EnvLight'
-import { registerBodyCallbacks } from '@/picking/bodyDispatchCallbacks'
+import { registerPartCallbacks } from '@/picking/partDispatchCallbacks'
 
 function useDispose<T extends { dispose(): void }>(obj: T | null | undefined): void {
   useEffect(() => { return () => { obj?.dispose() } }, [obj])
@@ -75,9 +75,9 @@ const NO_EDGES: EdgeData[] = []
 // for the edge HighlightIndex memo dep across renders.
 const NO_QUERIES: string[] = []
 
-interface Body3DProps {
+interface Part3DProps {
   featureId: string
-  bodyId: string
+  partId: string
   mesh: Mesh3D
   edges?: EdgeData[]
   edgeQueries?: string[]
@@ -114,7 +114,7 @@ interface Body3DProps {
   threadSites?: ThreadSiteIndex | null
 }
 
-export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edgeQueries, edgeCreatedBy, vertices, vertexQueries, hiddenEdges, hiddenVertices, visible = true, color, transparency = 0, metalness = 0, roughness = DEFAULT_PART_ROUGHNESS, transmission = 0, interactive = true, doomed = false, showFaces = true, showEdges = true, capBand = 0, threadSites = null }: Body3DProps) {
+export default function Part3D({ featureId, partId, mesh, edges = NO_EDGES, edgeQueries, edgeCreatedBy, vertices, vertexQueries, hiddenEdges, hiddenVertices, visible = true, color, transparency = 0, metalness = 0, roughness = DEFAULT_PART_ROUGHNESS, transmission = 0, interactive = true, doomed = false, showFaces = true, showEdges = true, capBand = 0, threadSites = null }: Part3DProps) {
   // One Set per list, stable across renders, so the edge geometry memo and both
   // registration hooks only re-run when the body's kernel lists actually change.
   const hiddenEdgeSet = useMemo(
@@ -125,14 +125,14 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     () => (hiddenVertices && hiddenVertices.length > 0 ? new Set(hiddenVertices) : undefined),
     [hiddenVertices],
   )
-  useFaceIdRegistration({ featureId, bodyId, mesh, enabled: interactive && visible && showFaces })
+  useFaceIdRegistration({ featureId, partId: partId, mesh, enabled: interactive && visible && showFaces })
   useEdgeIdRegistration({
-    featureId, bodyId, edges, edgeQueries,
+    featureId, partId: partId, edges, edgeQueries,
     hiddenEdges: hiddenEdgeSet,
     enabled: interactive && visible && showEdges,
   })
   useVertexIdRegistration({
-    featureId, bodyId, vertices, vertexQueries,
+    featureId, partId: partId, vertices, vertexQueries,
     hiddenVertices: hiddenVertexSet,
     enabled: interactive && visible,
   })
@@ -189,10 +189,10 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // performed by the dispatcher directly.
   useEffect(() => {
     if (!interactive || !visible) return
-    const bodyKey = bodyKeyFor(featureId, bodyId)
-    return registerBodyCallbacks(bodyKey, {
+    const partKey = partKeyFor(featureId, partId)
+    return registerPartCallbacks(partKey, {
       featureId,
-      bodyId,
+      partId: partId,
       mesh,
       edgeQueries,
       edgeKinds: edges.map(e => e.kind),
@@ -200,11 +200,11 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
       updateFaceGeometryForIndex,
       clearFaceGeometry,
     })
-  }, [interactive, visible, featureId, bodyId, mesh, edges, edgeQueries, vertexQueries, updateFaceGeometryForIndex, clearFaceGeometry])
+  }, [interactive, visible, featureId, partId, mesh, edges, edgeQueries, vertexQueries, updateFaceGeometryForIndex, clearFaceGeometry])
 
-  const isBodySelected = normalSelection.has('@' + bodyId)
+  const isPartSelected = normalSelection.has('@' + partId)
 
-  const bodyKey = useMemo(() => bodyKeyFor(featureId, bodyId), [featureId, bodyId])
+  const partKey = useMemo(() => partKeyFor(featureId, partId), [featureId, partId])
 
   // The two active-highlight requests. Click and hover differ ONLY in which sets
   // they carry -- never in shape or decision logic. Both are fed to the SAME
@@ -227,8 +227,8 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // is keyed on the BODY: this feature's split siblings each index their own
   // edges from 0, so a feature-keyed fallback gave two different edges one query.
   const edgeQueriesResolved = useMemo(
-    () => resolveEdgeQueries(edges, edgeQueries, bodyId) ?? NO_QUERIES,
-    [bodyId, edgeQueries, edges],
+    () => resolveEdgeQueries(edges, edgeQueries, partId) ?? NO_QUERIES,
+    [partId, edgeQueries, edges],
   )
 
   // One highlight index per (body, layer). It answers "nothing of mine is
@@ -238,8 +238,8 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // re-run. That is what keeps hover cost independent of how many bodies and
   // faces the model has.
   const edgeHighlightIndex = useMemo(
-    () => new HighlightIndex(bodyKey, EDGE_LAYER_NAME, edgeQueriesResolved),
-    [bodyKey, edgeQueriesResolved],
+    () => new HighlightIndex(partKey, EDGE_LAYER_NAME, edgeQueriesResolved),
+    [partKey, edgeQueriesResolved],
   )
 
   // Edge highlight is decoupled from the raw query set: the exact pointed edge
@@ -261,8 +261,8 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // queries than the tessellation contains still leaves every face highlightable
   // -- and the two consumers can never disagree about how many faces there are.
   const faceQueriesResolved = useMemo(
-    () => resolveFaceQueries(mesh, bodyId),
-    [mesh, bodyId],
+    () => resolveFaceQueries(mesh, partId),
+    [mesh, partId],
   )
 
   // Face highlight, decoupled from raw query membership exactly like edges:
@@ -271,8 +271,8 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // when triangle_to_face is absent or does not cover the triangles (the
   // fallback path below keeps the legacy per-triangle query-membership highlight).
   const faceHighlightIndex = useMemo(
-    () => faceQueriesResolved && new HighlightIndex(bodyKey, FACE_LAYER_NAME, faceQueriesResolved),
-    [bodyKey, faceQueriesResolved],
+    () => faceQueriesResolved && new HighlightIndex(partKey, FACE_LAYER_NAME, faceQueriesResolved),
+    [partKey, faceQueriesResolved],
   )
 
   const faceSelectionFlags = useMemo(
@@ -329,14 +329,14 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // feature attribution to paint.
   const edgeCreators = useMemo(
     () => edgeCreatorsOf({
-      id: bodyId,
+      id: partId,
       created_by: featureId,
       modified_by: [],
       edges,
       edge_queries: edgeQueries,
       edge_created_by: edgeCreatedBy,
     }),
-    [bodyId, featureId, edges, edgeQueries, edgeCreatedBy],
+    [partId, featureId, edges, edgeQueries, edgeCreatedBy],
   )
 
   const edgeHintIndex = useMemo(() => new HintIndex(edgeCreators), [edgeCreators])
@@ -361,13 +361,13 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // Resolved query per vertex, mirroring edges: the same padded list the vertex
   // ID layer registers from, so a fallback vertex picks where it highlights.
   const vertexQueriesResolved = useMemo(
-    () => resolveVertexQueries(vertices, vertexQueries, bodyId),
-    [bodyId, vertices, vertexQueries],
+    () => resolveVertexQueries(vertices, vertexQueries, partId),
+    [partId, vertices, vertexQueries],
   )
 
   const vertexHighlightIndex = useMemo(
-    () => vertexQueriesResolved && new HighlightIndex(bodyKey, VERTEX_LAYER_NAME, vertexQueriesResolved),
-    [bodyKey, vertexQueriesResolved],
+    () => vertexQueriesResolved && new HighlightIndex(partKey, VERTEX_LAYER_NAME, vertexQueriesResolved),
+    [partKey, vertexQueriesResolved],
   )
 
   // Vertex highlight, decoupled from raw query membership exactly like faces/edges.
@@ -411,7 +411,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   const threadAttributes = useMemo(() => buildThreadAttributes(mesh, threadSites), [mesh, threadSites])
 
   const geometry = useMemo(() => {
-    const indexed = buildBodySurfaceGeometry(mesh)
+    const indexed = buildPartSurfaceGeometry(mesh)
     if (curvatureActive) {
       // The field follows the indexed vertex order, and toNonIndexed below
       // copies this attribute per split vertex exactly like the smooth normals.
@@ -429,7 +429,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     const geo = indexed.toNonIndexed()
     indexed.dispose()
     // Pre-fill color attribute so vertexColors=true doesn't flash black on first render.
-    const { r, g, b } = new THREE.Color(COLOR_BODY_DEFAULT)
+    const { r, g, b } = new THREE.Color(COLOR_PART_DEFAULT)
     const numTris = faceCount(mesh.faces)
     const initialColors = new Float32Array(numTris * 9)
     for (let i = 0; i < numTris * 3; i++) {
@@ -455,7 +455,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     const pts = edgeSegmentGeometry.positions
     geo.setAttribute('position', new THREE.BufferAttribute(pts, 3))
     // Pre-fill color attribute so vertexColors=true doesn't flash black on first render.
-    const { r, g, b } = new THREE.Color(COLOR_BODY_EDGE)
+    const { r, g, b } = new THREE.Color(COLOR_PART_EDGE)
     const initialColors = new Float32Array(pts.length)
     for (let i = 0; i < pts.length / 3; i++) {
       initialColors[i * 3] = r; initialColors[i * 3 + 1] = g; initialColors[i * 3 + 2] = b
@@ -470,10 +470,10 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   useDispose(edgeMaterial)
 
   // The whole surface is one decision (see bodySurfaceLook for the precedence).
-  const surface = bodySurfaceLook({
-    selected: isBodySelected, doomed, color, transparency, metalness, roughness, transmission,
+  const surface = partSurfaceLook({
+    selected: isPartSelected, doomed, color, transparency, metalness, roughness, transmission,
   })
-  const bodyColor = surface.color
+  const partColor = surface.color
 
   // The analysis material replaces the surface colour only where faces are
   // drawn; with shading off there is nothing for it to paint.
@@ -485,7 +485,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // The store keeps the two analysis rows exclusive; the order here only makes
   // the intent readable.
   const analysisMode = !showFaces ? 'none' : curvature ? 'curvature' : zebra ? 'zebra' : 'none'
-  const bodyMaterialRef = useRef<THREE.MeshPhysicalMaterial>(null)
+  const partMaterialRef = useRef<THREE.MeshPhysicalMaterial>(null)
   const sectionActive = useSectionActive()
   // A callback ref rather than an effect: the face mesh is unmounted by the
   // Shading row, and an effect keyed on transparency alone would leave every
@@ -497,12 +497,12 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
     applyAoOccluder(mesh.layers, occluder)
   }, [occluder])
 
-  useBodyAnalysisMaterial(bodyMaterialRef, {
+  usePartAnalysisMaterial(partMaterialRef, {
     mode: analysisMode,
     // The part editor is the one place with a vertex-colour highlight, so the
     // analysis program mixes it back in instead of overwriting the selection.
     mixVertexColor: true,
-    baseColor: bodyColor,
+    baseColor: partColor,
     zebraStripes,
     curvatureKind,
     curvatureRange: effectiveCurvatureRange(curvatureManualRange, curvatureAutoRange),
@@ -533,9 +533,9 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // body is leaving. Selection still outranks removal, mirroring the face
   // precedence in bodySurfaceLook -- the re-click affordance needs the change
   // to be visible while the user points at it.
-  const edgeColor = isBodySelected
-    ? COLOR_BODY_EDGE_SEL
-    : doomed ? COLOR_BODY_REMOVED : COLOR_BODY_EDGE
+  const edgeColor = isPartSelected
+    ? COLOR_PART_EDGE_SEL
+    : doomed ? COLOR_PART_REMOVED : COLOR_PART_EDGE
 
   // Overlay geometry for a hovered or selected B-rep edge, keyed by edge index
   // (not query) so two edges sharing a query keep distinct overlays instead of
@@ -577,8 +577,8 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
         if (query !== undefined) return query
       }
     }
-    return topoFallbackQuery(bodyId, 'tri', triangleIndex)
-  }, [mesh, bodyId])
+    return topoFallbackQuery(partId, 'tri', triangleIndex)
+  }, [mesh, partId])
 
   // Which primitives the face colour buffer is divided into: B-rep faces when the
   // mesh carries usable per-face metadata, else one primitive per triangle (the
@@ -615,8 +615,8 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   }, [mesh, facePaintTarget, resolveFaceQuery, interactive])
 
   const legacyFaceHighlightIndex = useMemo(
-    () => legacyFaceQueries && new HighlightIndex(bodyKey, FACE_LAYER_NAME, legacyFaceQueries),
-    [bodyKey, legacyFaceQueries],
+    () => legacyFaceQueries && new HighlightIndex(partKey, FACE_LAYER_NAME, legacyFaceQueries),
+    [partKey, legacyFaceQueries],
   )
 
   // The legacy index is keyed by TRIANGLE index, but the id layer only ever
@@ -642,12 +642,12 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
   // is why the body's own selection colour lives here and not in the flags. Two
   // slots are hint tiers: the creator/pick hint and the refused-pick mark.
   const facePalette = useMemo<HighlightPalette>(() => ({
-    base: paletteRGB(bodyColor),
+    base: paletteRGB(partColor),
     selected: paletteRGB(COLOR_SELECTED),
-    hovered: paletteRGB(blendWhite(bodyColor)),
-    hinted: paletteRGB(blendToward(bodyColor, COLOR_HINT, HINT_BLEND)),
-    hintedFailed: paletteRGB(blendToward(bodyColor, COLOR_HINT_FAILED, HINT_BLEND)),
-  }), [bodyColor])
+    hovered: paletteRGB(blendWhite(partColor)),
+    hinted: paletteRGB(blendToward(partColor, COLOR_HINT, HINT_BLEND)),
+    hintedFailed: paletteRGB(blendToward(partColor, COLOR_HINT_FAILED, HINT_BLEND)),
+  }), [partColor])
 
   const edgePalette = useMemo<HighlightPalette>(() => ({
     base: paletteRGB(edgeColor),
@@ -755,7 +755,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
           userData={{ orbitPivot: true }}
         >
           <meshPhysicalMaterial
-            ref={bodyMaterialRef}
+            ref={partMaterialRef}
             name={analysisMaterialName(analysisMode)}
             color="white"
             roughness={surface.roughness}
@@ -822,7 +822,7 @@ export default function Body3D({ featureId, bodyId, mesh, edges = NO_EDGES, edge
         />
       )}
       {showFaces && sectionActive && (
-        <SectionCap geometry={geometry} color={bodyColor} enabled={visible} band={capBand} />
+        <SectionCap geometry={geometry} color={partColor} enabled={visible} band={capBand} />
       )}
       {interactive && showFaces && (
         <HighlightOverlays

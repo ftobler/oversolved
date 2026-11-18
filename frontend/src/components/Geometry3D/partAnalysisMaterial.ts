@@ -16,9 +16,9 @@ import type { WebGLProgramParametersWithUniforms } from 'three'
 import type { CurvatureKind } from '@/adapters/preferences'
 import { aoUniforms } from '@/components/Viewport/ambientOcclusion'
 
-export type BodyAnalysisMode = 'none' | 'zebra' | 'curvature'
+export type PartAnalysisMode = 'none' | 'zebra' | 'curvature'
 
-export interface BodyAnalysisPatch {
+export interface PartAnalysisPatch {
   onBeforeCompile: (shader: WebGLProgramParametersWithUniforms) => void
   customProgramCacheKey: () => string
   uniforms: {
@@ -68,9 +68,9 @@ export const ZEBRA_HIGHLIGHT_GLSL = `
  * effect: the uniforms are the patch's mutable channel and the object is the
  * owner of that channel.
  */
-export class ZebraProgram implements BodyAnalysisPatch {
+export class ZebraProgram implements PartAnalysisPatch {
   readonly name = 'zebra-material'
-  readonly uniforms: BodyAnalysisPatch['uniforms']
+  readonly uniforms: PartAnalysisPatch['uniforms']
   private readonly mixVertexColor: boolean
 
   constructor(mixVertexColor: boolean) {
@@ -90,13 +90,13 @@ export class ZebraProgram implements BodyAnalysisPatch {
   onBeforeCompile = (shader: WebGLProgramParametersWithUniforms): void => {
     const declarations = 'uniform float uStripeFrequency;\n'
       + (this.mixVertexColor ? 'uniform vec3 uBaseColor;\n' : '')
-    const body = ZEBRA_GLSL + (this.mixVertexColor ? ZEBRA_HIGHLIGHT_GLSL : '  diffuseColor.rgb = zebraColor;\n')
+    const part = ZEBRA_GLSL + (this.mixVertexColor ? ZEBRA_HIGHLIGHT_GLSL : '  diffuseColor.rgb = zebraColor;\n')
     shader.uniforms.uStripeFrequency = this.uniforms.uStripeFrequency!
     if (this.mixVertexColor && this.uniforms.uBaseColor) shader.uniforms.uBaseColor = this.uniforms.uBaseColor
     shader.fragmentShader = declarations + shader.fragmentShader
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <normal_fragment_begin>',
-      `#include <normal_fragment_begin>\n${body}`,
+      `#include <normal_fragment_begin>\n${part}`,
     )
   }
 }
@@ -128,9 +128,9 @@ export const CURVATURE_HIGHLIGHT_GLSL = `
  * range and the kind are uniforms, so changing either repaints without a
  * recompile.
  */
-export class CurvatureProgram implements BodyAnalysisPatch {
+export class CurvatureProgram implements PartAnalysisPatch {
   readonly name = 'curvature-material'
-  readonly uniforms: BodyAnalysisPatch['uniforms']
+  readonly uniforms: PartAnalysisPatch['uniforms']
   private readonly mixVertexColor: boolean
 
   constructor(mixVertexColor: boolean) {
@@ -155,7 +155,7 @@ export class CurvatureProgram implements BodyAnalysisPatch {
     const vertexDeclarations = 'attribute vec2 aCurvature;\nvarying vec2 vCurvature;\n'
     const fragmentDeclarations = 'varying vec2 vCurvature;\nuniform vec2 uCurvatureRange;\nuniform float uCurvatureKind;\n'
       + (this.mixVertexColor ? 'uniform vec3 uBaseColor;\n' : '')
-    const body = CURVATURE_GLSL + (this.mixVertexColor ? CURVATURE_HIGHLIGHT_GLSL : '  diffuseColor.rgb = curvatureColor;\n')
+    const part = CURVATURE_GLSL + (this.mixVertexColor ? CURVATURE_HIGHLIGHT_GLSL : '  diffuseColor.rgb = curvatureColor;\n')
 
     shader.vertexShader = vertexDeclarations + shader.vertexShader
     shader.vertexShader = shader.vertexShader.replace(
@@ -165,7 +165,7 @@ export class CurvatureProgram implements BodyAnalysisPatch {
     shader.fragmentShader = fragmentDeclarations + shader.fragmentShader
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <normal_fragment_begin>',
-      `#include <normal_fragment_begin>\n${body}`,
+      `#include <normal_fragment_begin>\n${part}`,
     )
     shader.uniforms.uCurvatureRange = this.uniforms.uCurvatureRange!
     shader.uniforms.uCurvatureKind = this.uniforms.uCurvatureKind!
@@ -230,9 +230,9 @@ export const THREAD_GLSL = `
  * keep working on the bore wall. Analysis modes replace it (they must show the
  * true surface), so it is installed only while no analysis mode is on.
  */
-export class ThreadProgram implements BodyAnalysisPatch {
+export class ThreadProgram implements PartAnalysisPatch {
   readonly name = 'thread-material'
-  readonly uniforms: BodyAnalysisPatch['uniforms'] = {}
+  readonly uniforms: PartAnalysisPatch['uniforms'] = {}
 
   customProgramCacheKey = (): string => 'thread'
 
@@ -267,9 +267,9 @@ export const AO_GLSL = `
  * untouched. The texture, its size and the strength are the shared uniforms,
  * so the strength slider never recompiles a program.
  */
-export class AoProgram implements BodyAnalysisPatch {
+export class AoProgram implements PartAnalysisPatch {
   readonly name = 'body-material'
-  readonly uniforms: BodyAnalysisPatch['uniforms'] = {}
+  readonly uniforms: PartAnalysisPatch['uniforms'] = {}
 
   customProgramCacheKey = (): string => 'ao'
 
@@ -292,15 +292,15 @@ export class AoProgram implements BodyAnalysisPatch {
 }
 
 /** Compose multiple patches by chaining their onBeforeCompile calls. */
-export class CompositePatch implements BodyAnalysisPatch {
-  readonly patches: BodyAnalysisPatch[]
+export class CompositePatch implements PartAnalysisPatch {
+  readonly patches: PartAnalysisPatch[]
   readonly name: string
-  readonly uniforms: BodyAnalysisPatch['uniforms']
+  readonly uniforms: PartAnalysisPatch['uniforms']
 
-  constructor(patches: BodyAnalysisPatch[]) {
+  constructor(patches: PartAnalysisPatch[]) {
     this.patches = patches
     this.name = patches.map(p => p.name).join('+') || 'body-material'
-    this.uniforms = patches.reduce<BodyAnalysisPatch['uniforms']>((acc, p) => ({ ...acc, ...p.uniforms }), {})
+    this.uniforms = patches.reduce<PartAnalysisPatch['uniforms']>((acc, p) => ({ ...acc, ...p.uniforms }), {})
   }
 
   customProgramCacheKey = (): string => this.patches.map(p => p.customProgramCacheKey()).filter(Boolean).join('+')
@@ -315,7 +315,7 @@ export function makeZebraPatch(opts: {
   stripes: number
   baseColor: string
   mixVertexColor: boolean
-}): BodyAnalysisPatch {
+}): PartAnalysisPatch {
   const patch = new ZebraProgram(opts.mixVertexColor)
   patch.setStripeCount(opts.stripes)
   patch.setBaseColor(opts.baseColor)
@@ -327,8 +327,8 @@ export function makeZebraPatch(opts: {
 const NO_PATCH = () => {}
 const NO_KEY = () => ''
 
-export interface BodyAnalysisParams {
-  mode: BodyAnalysisMode
+export interface PartAnalysisParams {
+  mode: PartAnalysisMode
   mixVertexColor: boolean
   baseColor: string
   zebraStripes: number
@@ -349,7 +349,7 @@ export interface BodyAnalysisParams {
 /** Which program a body material runs: an analysis mode wins, since it must
  *  show the true surface; the thread shading is the plain view's patch, and AO
  *  composes with it because both shade the body's own material. */
-export function selectBodyPatch(params: BodyAnalysisParams): BodyAnalysisPatch | null {
+export function selectPartPatch(params: PartAnalysisParams): PartAnalysisPatch | null {
   const { mode, mixVertexColor } = params
   if (mode === 'zebra') return new ZebraProgram(mixVertexColor)
   if (mode === 'curvature') return new CurvatureProgram(mixVertexColor)
@@ -367,16 +367,16 @@ export function selectBodyPatch(params: BodyAnalysisParams): BodyAnalysisPatch |
  * compile-time inputs; every other field updates the already compiled program
  * through its uniforms.
  */
-export function useBodyAnalysisMaterial(
+export function usePartAnalysisMaterial(
   materialRef: RefObject<THREE.Material | null>,
-  params: BodyAnalysisParams,
-): BodyAnalysisPatch | null {
+  params: PartAnalysisParams,
+): PartAnalysisPatch | null {
   const { mode, mixVertexColor } = params
   const threaded = params.threaded ?? false
   const ao = params.ao ?? false
   const transparent = params.transparent ?? false
-  const patch = useMemo<BodyAnalysisPatch | null>(
-    () => selectBodyPatch(params),
+  const patch = useMemo<PartAnalysisPatch | null>(
+    () => selectPartPatch(params),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [mode, mixVertexColor, threaded, ao, transparent],
   )
@@ -427,7 +427,7 @@ export function useBodyAnalysisMaterial(
 }
 
 /** The material name the components show: one place for the testable tag. */
-export function analysisMaterialName(mode: BodyAnalysisMode): string {
+export function analysisMaterialName(mode: PartAnalysisMode): string {
   if (mode === 'zebra') return 'zebra-material'
   if (mode === 'curvature') return 'curvature-material'
   return 'body-material'

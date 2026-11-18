@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import type { PartResult, FaceData, Mesh3D } from '@/types/cad'
 import { faceFrameFromSolve } from '@/viewport/faceFrameFromSolve'
-import { findBodyForFaceQuery, resetBodyCallbacksForTest } from '@/picking/bodyDispatchCallbacks'
+import { findPartForFaceQuery, resetPartCallbacksForTest } from '@/picking/partDispatchCallbacks'
 
 function faceData(surface: string, normal: [number, number, number] = [0, 0, 1]): FaceData {
   return { centroid: [0, 0, 0], normal, surface_type: surface }
@@ -25,7 +25,7 @@ function body(createdBy: string | undefined, mesh: Mesh3D): PartResult {
 
 describe('faceFrameFromSolve', () => {
   beforeEach(() => {
-    resetBodyCallbacksForTest()
+    resetPartCallbacksForTest()
   })
 
   it('resolves a planar face straight from the solve mesh', () => {
@@ -59,7 +59,7 @@ describe('faceFrameFromSolve', () => {
     // Hiding a body unregisters it from the hover registry; the registry lookup
     // then answers null. The solve still has the mesh, and that is what the
     // section and "Normal to" must read.
-    expect(findBodyForFaceQuery('face-q')).toBeNull()
+    expect(findPartForFaceQuery('face-q')).toBeNull()
     expect(faceFrameFromSolve(bodies, 'face-q')?.center[2]).toBe(2)
   })
 

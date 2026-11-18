@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useIdPipeline } from './IdPipelineContext'
-import { useRegisteredBody } from './idRegistrationUtils'
+import { useRegisteredPart } from './idRegistrationUtils'
 import { ORIGIN_LAYER_NAME } from './layerNames'
 import { pointPickable } from './probeMarks'
 import { clearProbeSource, probeSourceKeys, replaceProbeSource } from './sceneProbeStore'
@@ -31,11 +31,11 @@ export function useOriginMarkerIdRegistration(params: {
     return () => clearProbeSource(probeKey)
   }, [selectionId, enabled])
 
-  useRegisteredBody(pipeline, enabled, selectionId,
+  useRegisteredPart(pipeline, enabled, selectionId,
     (p) => {
       try {
-        p.originLayer.registerBody({
-          bodyKey: selectionId,
+        p.originLayer.registerPart({
+          partKey: selectionId,
           vertices: [[0, 0, 0]],
           vertexQueries: [selectionId],
         })
@@ -49,7 +49,7 @@ export function useOriginMarkerIdRegistration(params: {
         return false
       }
     },
-    (p) => p.originLayer.unregisterBody(selectionId),
+    (p) => p.originLayer.unregisterPart(selectionId),
     [selectionId],
   )
 }

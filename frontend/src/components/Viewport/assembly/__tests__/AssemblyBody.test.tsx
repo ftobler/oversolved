@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
-import type { BodyRenderItem } from '@/components/Viewport/bodyUtils'
+import type { PartRenderItem } from '@/components/Viewport/partUtils'
 import type { EdgeCurve } from '@/kernel/partBundle'
-import AssemblyBody from '../AssemblyBody'
+import AssemblyPartMesh from '../AssemblyPartMesh'
 
 /**
  * AssemblyBody's only interaction logic is the grab guard: a non-primary
@@ -19,7 +19,7 @@ vi.mock('@/components/Geometry3D/bodyGeometry', () => ({
   }),
   // The item carries no real mesh; these tests only need the element to mount
   // and the geometry to be disposable.
-  buildBodySurfaceGeometry: () => ({ dispose: () => {} }),
+  buildPartSurfaceGeometry: () => ({ dispose: () => {} }),
 }))
 
 vi.mock('@/utils/edgeSampling', () => ({
@@ -28,10 +28,10 @@ vi.mock('@/utils/edgeSampling', () => ({
   buildCurveSegments: () => new Float32Array([0, 0, 0, 1, 0, 0]),
 }))
 
-function makeItem(): BodyRenderItem {
+function makeItem(): PartRenderItem {
   return {
     key: 'b1', featureId: 'F1', partId: 'b1',
-    mesh: {} as BodyRenderItem['mesh'],
+    mesh: {} as PartRenderItem['mesh'],
     edges: [], visible: true,
   }
 }
@@ -39,7 +39,7 @@ function makeItem(): BodyRenderItem {
 function renderBody(overrides: { aiming?: boolean; selected?: boolean; showFaces?: boolean; showEdges?: boolean } = {}) {
   const onGrab = vi.fn()
   const { container } = render(
-    <AssemblyBody
+    <AssemblyPartMesh
       item={makeItem()}
       curves={[] as EdgeCurve[]}
       selected={overrides.selected ?? false}

@@ -71,11 +71,11 @@ describe('the edge painter runs count from the built buffer', () => {
     useEditorState.setState({
     normalSelection: new Set(['?e2']),
   })
-    const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
+    const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
     render(
       <Body3D
         featureId="ex1"
-        bodyId="body_ex1"
+        partId="body_ex1"
         mesh={mesh}
         edges={edges}
         edgeQueries={['?e0', '?e1', '?e2']}
@@ -95,11 +95,11 @@ describe('the edge painter runs count from the built buffer', () => {
   })
 
   it('emits one run per input edge, including the skipped one', async () => {
-    const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
+    const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
     render(
       <Body3D
         featureId="ex1"
-        bodyId="body_ex1"
+        partId="body_ex1"
         mesh={mesh}
         edges={edges}
         edgeQueries={['?e0', '?e1', '?e2']}

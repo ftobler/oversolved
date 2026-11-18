@@ -11,7 +11,7 @@ import { join } from 'node:path'
 describe('Body3D legacy debug-hit path', () => {
   it('has no debugFaceColors / WireframeGeometry usage', () => {
     const src = readFileSync(
-      join(__dirname, '..', 'Body3D.tsx'),
+      join(__dirname, '..', 'Part3D.tsx'),
       'utf8',
     )
     expect(src).not.toMatch(/\bdebugFaceColors\b/)
@@ -25,7 +25,7 @@ describe('Body3D legacy debug-hit path', () => {
     // The live debug-hit view is the store flag read by IdDebugOverlay. Body3D
     // and Geometry3D used to declare the prop without ever reading it, so pin
     // that neither can regrow it.
-    for (const file of ['Body3D.tsx', 'index.tsx']) {
+    for (const file of ['Part3D.tsx', 'index.tsx']) {
       const src = readFileSync(join(__dirname, '..', file), 'utf8')
       expect(src).not.toMatch(/\bshowDebugHit\b/)
     }

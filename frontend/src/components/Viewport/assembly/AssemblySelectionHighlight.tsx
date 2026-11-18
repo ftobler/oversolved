@@ -17,7 +17,7 @@ import type { AssemblyPickPart } from '@/utils/assemblyPick'
 import type { Vec3 } from '@/utils/transform3d'
 
 interface Props {
-  pickBodies: readonly AssemblyPickPart[]
+  pickParts: readonly AssemblyPickPart[]
   selection: ReadonlySet<string>
   hovered: string | null
   /** Entity keys to draw in the hover colour alongside `hovered`, e.g. a mate
@@ -83,14 +83,14 @@ function usePointsGeometry(points: readonly Vec3[]): THREE.BufferGeometry | null
   return geo
 }
 
-export default function AssemblySelectionHighlight({ pickBodies, selection, hovered, mateHighlighted }: Props) {
+export default function AssemblySelectionHighlight({ pickParts, selection, hovered, mateHighlighted }: Props) {
   const sectionActive = useSectionActive()
   const clippingPlanes = sectionActive ? getSectionClipPlaneList() : null
   // The index outlives the pointer: it is keyed on the pick geometry, so a hover
   // change costs only the primitives of the newly hovered entity. Rebuilding it
   // per move (what calling the one-shot helper would do) would walk every
   // entity of the assembly again on each one.
-  const index = useMemo(() => new AssemblySelectionIndex(pickBodies), [pickBodies])
+  const index = useMemo(() => new AssemblySelectionIndex(pickParts), [pickParts])
   const geometry = useMemo(
     () => index.build(selection, hovered, mateHighlighted),
     [index, selection, hovered, mateHighlighted],

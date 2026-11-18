@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import type { Mutation, Sketch } from '@/types/cad'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
-import { registerBodyCallbacks, resetBodyCallbacksForTest, findFaceBoundaryEdges, faceBoundaryLookup } from '@/picking/bodyDispatchCallbacks'
+import { registerPartCallbacks, resetPartCallbacksForTest, findFaceBoundaryEdges, faceBoundaryLookup } from '@/picking/partDispatchCallbacks'
 import { projectionMutationsForId, projectionMutationsForSelection, type ProjectionResolvers } from '@/tools/projectionMutations'
 import { projectSelection, liveProjectionResolvers } from '@/tools/projectSelectionCommand'
 import { useEditorState } from '@/hooks/useEditorState'
@@ -210,7 +210,7 @@ describe('projectSelection', () => {
 describe('liveProjectionResolvers', () => {
   afterEach(() => {
     setSketchCallback('getSketch', null)
-    resetBodyCallbacksForTest()
+    resetPartCallbacksForTest()
   })
 
   it('resolves a foreign sketch entity kind through the live sketch callback', () => {
@@ -225,9 +225,9 @@ describe('liveProjectionResolvers', () => {
   })
 
   it('resolves body edge kinds and face boundaries through the body registry', () => {
-    registerBodyCallbacks('b1', {
+    registerPartCallbacks('b1', {
       featureId: 'ex1',
-      bodyId: 'body_1',
+      partId: 'body_1',
       mesh: {
         vertices: new Float32Array([0, 0, 0]),
         faces: new Uint32Array([0, 0, 0]),
@@ -249,9 +249,9 @@ describe('liveProjectionResolvers', () => {
   it('drops a seam from the face boundary and answers the add-time lookup with tokens', () => {
     const rim = `?d;@u|e_aaaabbbb:straightedge`
     const seam = `?d;@u|e_ccccdddd:straightedge`
-    registerBodyCallbacks('b1', {
+    registerPartCallbacks('b1', {
       featureId: 'ex1',
-      bodyId: 'body_1',
+      partId: 'body_1',
       mesh: {
         vertices: new Float32Array([0, 0, 0]),
         faces: new Uint32Array([0, 0, 0]),

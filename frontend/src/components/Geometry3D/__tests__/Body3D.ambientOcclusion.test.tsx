@@ -43,10 +43,10 @@ beforeEach(() => {
 
 // Imported at module scope: Body3D pulls the whole geometry tree, and paying
 // that transform inside a test counts it against the test timeout.
-import Body3D from '@/components/Geometry3D/Body3D'
+import Part3D from '@/components/Geometry3D/Part3D'
 
 function renderBody(props: Record<string, unknown> = {}) {
-  return render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={mesh} {...props} />)
+  return render(<Part3D featureId="ex1" partId="body_ex1" mesh={mesh} {...props} />)
 }
 
 describe('Body3D ambient occlusion occluders', () => {
@@ -61,7 +61,7 @@ describe('Body3D ambient occlusion occluders', () => {
     expect(container.querySelector('mesh')).toBeNull()
     expect(occluderCalls).toHaveLength(0)
 
-    rerender(<Body3D featureId="ex1" bodyId="body_ex1" mesh={mesh} showFaces />)
+    rerender(<Part3D featureId="ex1" partId="body_ex1" mesh={mesh} showFaces />)
 
     expect(occluderCalls).toHaveLength(1)
     expect(occluderCalls[0].opaque).toBe(true)
@@ -74,7 +74,7 @@ describe('Body3D ambient occlusion occluders', () => {
 
   it('re-applies the bit when the body turns transparent while mounted', () => {
     const { rerender } = renderBody()
-    rerender(<Body3D featureId="ex1" bodyId="body_ex1" mesh={mesh} transparency={0.5} />)
+    rerender(<Part3D featureId="ex1" partId="body_ex1" mesh={mesh} transparency={0.5} />)
     expect(occluderCalls.at(-1)?.opaque).toBe(false)
   })
 })

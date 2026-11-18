@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { computeHighlight } from '../selectionHighlight'
 import { selectActiveFrom, hoverActiveFrom, EMPTY_CLAIM_MAP, EMPTY_STRING_SET } from '../highlightActive'
-import { primitivePickKey, bodyKeyFor } from '../pickKey'
+import { primitivePickKey, partKeyFor } from '../pickKey'
 import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '../layerNames'
 
 /**
@@ -19,7 +19,7 @@ import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '../layerNam
  * pointed primitive of size <= 1 (hoveredPickKey, hoveredSelectionId).
  */
 
-const BODY = bodyKeyFor('extrude1', 'body0')
+const BODY = partKeyFor('extrude1', 'body0')
 const LAYERS = [FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME]
 
 describe('highlight symmetry across {face, edge, vertex} x {hover, click}', () => {

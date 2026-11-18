@@ -13,10 +13,10 @@ import { render } from '@testing-library/react'
 import { paletteRGB } from '@/components/Geometry3D/useHighlightColors'
 import type { HighlightPalette } from '@/components/Geometry3D/highlightColorPainter'
 import {
-  COLOR_BODY_REMOVED,
-  COLOR_BODY_DEFAULT,
-  COLOR_BODY_EDGE,
-  COLOR_BODY_EDGE_SEL,
+  COLOR_PART_REMOVED,
+  COLOR_PART_DEFAULT,
+  COLOR_PART_EDGE,
+  COLOR_PART_EDGE_SEL,
   DEFAULT_PART_ROUGHNESS,
 } from '@/components/Geometry3D/constants'
 import type { Mesh3D } from '@/types/cad'
@@ -79,8 +79,8 @@ beforeEach(() => {
 })
 
 async function renderBody(props: Record<string, unknown>) {
-  const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
-  return render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={mesh} {...props} />)
+  const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
+  return render(<Body3D featureId="ex1" partId="body_ex1" mesh={mesh} {...props} />)
 }
 
 const material = (container: HTMLElement) => container.querySelector('meshphysicalmaterial')
@@ -94,12 +94,12 @@ const edgeBase = () => (palettes[1] as HighlightPalette).base
 describe('Body3D draws a doomed body marked', () => {
   it('marks it with a pink wireframe, overriding the grey edge', async () => {
     await renderBody({ doomed: true })
-    expect(edgeBase()).toEqual(paletteRGB(COLOR_BODY_REMOVED))
+    expect(edgeBase()).toEqual(paletteRGB(COLOR_PART_REMOVED))
   })
 
   it('keeps an ordinary body its grey wireframe', async () => {
     await renderBody({ color: '#123456' })
-    expect(edgeBase()).toEqual(paletteRGB(COLOR_BODY_EDGE))
+    expect(edgeBase()).toEqual(paletteRGB(COLOR_PART_EDGE))
   })
 
   it('keeps the part colour on an ordinary body', async () => {
@@ -109,7 +109,7 @@ describe('Body3D draws a doomed body marked', () => {
 
   it('leaves an unstyled body the default colour', async () => {
     await renderBody({})
-    expect(faceBase()).toEqual(paletteRGB(COLOR_BODY_DEFAULT))
+    expect(faceBase()).toEqual(paletteRGB(COLOR_PART_DEFAULT))
   })
 
   it('brightens the doomed wireframe when selected, keeping the face transparent', async () => {
@@ -117,7 +117,7 @@ describe('Body3D draws a doomed body marked', () => {
     normalSelection: new Set(['@body_ex1']),
   })
     const { container } = await renderBody({ doomed: true })
-    expect(edgeBase()).toEqual(paletteRGB(COLOR_BODY_EDGE_SEL))
+    expect(edgeBase()).toEqual(paletteRGB(COLOR_PART_EDGE_SEL))
     expect(Number(material(container)?.getAttribute('opacity'))).toBe(0)
   })
 

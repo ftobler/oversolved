@@ -34,9 +34,9 @@ export interface EdgeIdLayerConfig {
   depthWrite?: boolean
 }
 
-export interface EdgeBodyRegistration {
+export interface EdgePartRegistration {
   // Stable key, e.g. `${featureId}/${bodyId}`.
-  bodyKey: string
+  partKey: string
   // Flat segment positions (pairs of endpoints), length = 2 * numSegments * 3.
   segmentPositions: Float32Array
   // Per-segment edge index.
@@ -131,12 +131,12 @@ export class EdgeIdLayer extends IdLayerBase<THREE.LineSegments> {
     if (this.xrayEnabled === enabled) return
     this.xrayEnabled = enabled
     const mat = enabled ? this.xrayMaterial : this.material
-    for (const rec of this.bodies.values()) rec.mesh.material = mat
+    for (const rec of this.parts.values()) rec.mesh.material = mat
   }
 
   isXrayEdges(): boolean { return this.xrayEnabled }
 
-  registerBody(reg: EdgeBodyRegistration): void {
+  registerPart(reg: EdgePartRegistration): void {
     const { segmentPositions, segmentToEdge, edgeQueries } = reg
 
     if (segmentPositions.length % 6 !== 0) {
@@ -150,13 +150,13 @@ export class EdgeIdLayer extends IdLayerBase<THREE.LineSegments> {
       throw new Error(`EdgeIdLayer: segmentToEdge length ${segmentToEdge.length} is shorter than the ${numSegments} registered segments`)
     }
 
-    this.unregisterBody(reg.bodyKey)
+    this.unregisterPart(reg.partKey)
     // A re-register with zero segments still replaces (not silently keeps) the
     // old body's registration.
     if (numSegments === 0) return
 
     // 2 vertices per segment (a line), 3 floats per vertex.
-    const ids = this.primitiveIds(reg.bodyKey, reg.perPrimitivePickKeys)
+    const ids = this.primitiveIds(reg.partKey, reg.perPrimitivePickKeys)
     try {
       const drawable: number[] = []
       for (let seg = 0; seg < numSegments; seg++) {
@@ -207,7 +207,7 @@ export class EdgeIdLayer extends IdLayerBase<THREE.LineSegments> {
       const mesh = new THREE.LineSegments(geometry, mat)
       mesh.frustumCulled = false
       this.scene.add(mesh)
-      this.bodies.set(reg.bodyKey, { mesh, geometry, allocatedIds: ids.allocatedIds })
+      this.parts.set(reg.partKey, { mesh, geometry, allocatedIds: ids.allocatedIds })
     } catch (err) {
       // A mid-loop allocation failure (24-bit ID exhaustion) must not leak the
       // ids already taken for this pass.
@@ -217,7 +217,7 @@ export class EdgeIdLayer extends IdLayerBase<THREE.LineSegments> {
   }
 
   dispose(): void {
-    this.disposeBodies()
+    this.disposeParts()
     this.material.dispose()
     this.xrayMaterial.dispose()
   }

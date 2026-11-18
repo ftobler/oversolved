@@ -34,8 +34,8 @@ vi.mock('@/components/Geometry3D/bodyGeometry', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/components/Geometry3D/bodyGeometry')>()
   return {
     ...actual,
-    buildBodySurfaceGeometry: (mesh: Mesh3D) => {
-      const geometry = actual.buildBodySurfaceGeometry(mesh)
+    buildPartSurfaceGeometry: (mesh: Mesh3D) => {
+      const geometry = actual.buildPartSurfaceGeometry(mesh)
       surfaces.push(geometry)
       return geometry
     },
@@ -52,8 +52,8 @@ beforeEach(() => {
 })
 
 async function renderBody() {
-  const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
-  return render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={mesh} />)
+  const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
+  return render(<Body3D featureId="ex1" partId="body_ex1" mesh={mesh} />)
 }
 
 function materialName(container: HTMLElement): string | null {

@@ -20,8 +20,8 @@ vi.mock('@/components/Geometry3D/bodyGeometry', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/components/Geometry3D/bodyGeometry')>()
   return {
     ...actual,
-    buildBodySurfaceGeometry: (mesh: Mesh3D) => {
-      const geometry = actual.buildBodySurfaceGeometry(mesh)
+    buildPartSurfaceGeometry: (mesh: Mesh3D) => {
+      const geometry = actual.buildPartSurfaceGeometry(mesh)
       surfaces.push(geometry)
       return geometry
     },
@@ -48,8 +48,8 @@ beforeEach(() => {
 })
 
 async function renderBody(m: Mesh3D, threadSites: ThreadSiteIndex | null) {
-  const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
-  return render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={m} threadSites={threadSites} />)
+  const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
+  return render(<Body3D featureId="ex1" partId="body_ex1" mesh={m} threadSites={threadSites} />)
 }
 
 describe('Body3D thread shading', () => {

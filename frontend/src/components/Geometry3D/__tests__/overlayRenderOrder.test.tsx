@@ -50,9 +50,9 @@ function overlayFor(container: HTMLElement, color: string) {
 }
 
 async function renderBody() {
-  const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
+  const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
   return render(
-    <Body3D featureId="ex1" bodyId="body_ex1" mesh={mesh} edges={edges} edgeQueries={[EDGE_QUERY]} />,
+    <Body3D featureId="ex1" partId="body_ex1" mesh={mesh} edges={edges} edgeQueries={[EDGE_QUERY]} />,
   )
 }
 

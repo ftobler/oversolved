@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useIdPipeline } from './IdPipelineContext'
-import { useRegisteredBody } from './idRegistrationUtils'
+import { useRegisteredPart } from './idRegistrationUtils'
 import { FEATURE_HANDLE_LAYER_NAME } from './layerNames'
 import { polylinePickable } from './probeMarks'
 import { clearProbeSource, probeSourceKeys, replaceProbeSource } from './sceneProbeStore'
@@ -44,14 +44,14 @@ export function useFeatureHandleIdRegistration(params: {
     return () => clearProbeSource(probeKey)
   }, [enabled, entityKey, sx, sy, sz, ex, ey, ez])
 
-  useRegisteredBody(
+  useRegisteredPart(
     pipeline,
     enabled,
     entityKey,
     (p) => {
       try {
-        p.featureHandleLayer.registerBody({
-          bodyKey: entityKey,
+        p.featureHandleLayer.registerPart({
+          partKey: entityKey,
           segmentPositions: new Float32Array([sx, sy, sz, ex, ey, ez]),
           segmentToEdge: [0],
           edgeQueries: [entityKey],
@@ -65,7 +65,7 @@ export function useFeatureHandleIdRegistration(params: {
         return false
       }
     },
-    (p) => p.featureHandleLayer.unregisterBody(entityKey),
+    (p) => p.featureHandleLayer.unregisterPart(entityKey),
     [sx, sy, sz, ex, ey, ez],
   )
 }

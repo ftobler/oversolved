@@ -94,16 +94,16 @@ export function useSketchSurfaceIdRegistration(params: {
       }
       geo.dispose()
 
-      const bodyKey = `${featureId}/${query}`
+      const partKey = `${featureId}/${query}`
       try {
-        pipeline.sketchSurfaceLayer.registerBody({
-          bodyKey,
+        pipeline.sketchSurfaceLayer.registerPart({
+          partKey,
           positions,
           triangleToFace: tri2face,
           faceQueries: [query],
         })
       } catch (err) {
-        if (isDevBuild()) console.warn('Sketch surface ID registration failed', { bodyKey, err })
+        if (isDevBuild()) console.warn('Sketch surface ID registration failed', { bodyKey: partKey, err })
       }
     }
 
@@ -112,7 +112,7 @@ export function useSketchSurfaceIdRegistration(params: {
     return () => {
       clearProbeSource(probeKey)
       for (const { query } of surfaces) {
-        pipeline.sketchSurfaceLayer.unregisterBody(`${featureId}/${query}`)
+        pipeline.sketchSurfaceLayer.unregisterPart(`${featureId}/${query}`)
       }
       pipeline.markDirty()
     }

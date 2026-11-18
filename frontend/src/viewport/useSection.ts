@@ -30,14 +30,14 @@ export function useSectionFrame(): SectionFrame | null {
   const solveResults = usePartEditorStore(s => s.solveResults) as
     | Record<string, { plane_transform?: { rotation: number[]; origin: number[] } }>
     | undefined
-  const bodies = usePartEditorStore(s => s.parts)
+  const parts = usePartEditorStore(s => s.parts)
   return useMemo(() => resolveSectionFrame(source, {
     planeTransform: query => solveResults?.[query]?.plane_transform ?? null,
     faceFrame: (query, pickKey) => {
-      const frame = faceFrameFromSolve(bodies, query, pickKey)
+      const frame = faceFrameFromSolve(parts, query, pickKey)
       return frame ? { normal: frame.normal, point: frame.center } : null
     },
-  }), [source, solveResults, bodies])
+  }), [source, solveResults, parts])
 }
 
 export interface SectionClipState {

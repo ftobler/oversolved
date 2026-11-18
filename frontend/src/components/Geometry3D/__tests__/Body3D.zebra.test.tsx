@@ -34,8 +34,8 @@ beforeEach(() => {
 })
 
 async function renderBody(props: Record<string, unknown> = {}) {
-  const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
-  return render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={mesh} {...props} />)
+  const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
+  return render(<Body3D featureId="ex1" partId="body_ex1" mesh={mesh} {...props} />)
 }
 
 function materialName(container: HTMLElement): string | null {

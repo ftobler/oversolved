@@ -20,11 +20,11 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { computeHighlight } from '@/picking/selectionHighlight'
 import { selectActiveFrom } from '@/picking/highlightActive'
-import { primitivePickKey, bodyKeyFor } from '@/picking/pickKey'
+import { primitivePickKey, partKeyFor } from '@/picking/pickKey'
 import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '@/picking/layerNames'
 import { useEditorState } from '@/hooks/useEditorState'
 
-const BODY = bodyKeyFor('extrude1', 'body0')
+const BODY = partKeyFor('extrude1', 'body0')
 
 function reset() {
   useEditorState.setState({

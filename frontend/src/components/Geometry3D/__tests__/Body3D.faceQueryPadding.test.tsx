@@ -139,9 +139,9 @@ describe('Body3D renders a tail-face highlight through the fallback', () => {
     useEditorState.setState({
     normalSelection: new Set(['@body_ex1/face/2']),
   })
-    const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
+    const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
     const { container } = render(
-      <Body3D featureId="ex1" bodyId="body_ex1" mesh={mesh} />
+      <Body3D featureId="ex1" partId="body_ex1" mesh={mesh} />
     )
     // No edges are passed, so the only line material is the face selection outline.
     const mat = container.querySelector('linebasicmaterial')
@@ -149,9 +149,9 @@ describe('Body3D renders a tail-face highlight through the fallback', () => {
   })
 
   it('draws no face overlay when no tail face is selected', async () => {
-    const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
+    const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
     const { container } = render(
-      <Body3D featureId="ex1" bodyId="body_ex1" mesh={mesh} />
+      <Body3D featureId="ex1" partId="body_ex1" mesh={mesh} />
     )
     expect(container.querySelector('linebasicmaterial')).toBeNull()
   })
@@ -160,8 +160,8 @@ describe('Body3D renders a tail-face highlight through the fallback', () => {
     useEditorState.setState({
     normalSelection: new Set(['@body_ex1/face/2']),
   })
-    const { default: Body3D } = await import('@/components/Geometry3D/Body3D')
-    render(<Body3D featureId="ex1" bodyId="body_ex1" mesh={mesh} />)
+    const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
+    render(<Body3D featureId="ex1" partId="body_ex1" mesh={mesh} />)
     // The face paint is the first useHighlightColors call; its runs must count
     // the padded list (3), so the painter's primitive count equals the highlight
     // index's in Body3D's actual wiring, not just in the pure helpers.

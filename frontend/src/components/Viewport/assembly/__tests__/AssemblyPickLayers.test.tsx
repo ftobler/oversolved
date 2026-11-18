@@ -43,14 +43,14 @@ function stubPipeline(throwOnEdgeFor?: string) {
   const live = new Set<string>()
   let dirty = 0
   const layer = (kind: string) => ({
-    registerBody: vi.fn((reg: { bodyKey: string }) => {
-      if (kind === 'edge' && reg.bodyKey === throwOnEdgeFor) throw new Error('bad edge payload')
-      registered.push(`${kind}:${reg.bodyKey}`)
-      live.add(`${kind}:${reg.bodyKey}`)
+    registerPart: vi.fn((reg: { partKey: string }) => {
+      if (kind === 'edge' && reg.partKey === throwOnEdgeFor) throw new Error('bad edge payload')
+      registered.push(`${kind}:${reg.partKey}`)
+      live.add(`${kind}:${reg.partKey}`)
     }),
-    unregisterBody: vi.fn((bodyKey: string) => {
-      unregistered.push(`${kind}:${bodyKey}`)
-      live.delete(`${kind}:${bodyKey}`)
+    unregisterPart: vi.fn((partKey: string) => {
+      unregistered.push(`${kind}:${partKey}`)
+      live.delete(`${kind}:${partKey}`)
     }),
   })
   const pipeline = {
@@ -72,7 +72,7 @@ function stubPipeline(throwOnEdgeFor?: string) {
 function tree(pipeline: IdPipeline, bodies: AssemblyPickPart[], layers: { showFaces?: boolean; showEdges?: boolean } = {}) {
   return (
     <IdPipelineContext.Provider value={pipeline}>
-      <AssemblyPickLayers bodies={bodies} {...layers} />
+      <AssemblyPickLayers parts={bodies} {...layers} />
     </IdPipelineContext.Provider>
   )
 }
@@ -104,12 +104,12 @@ describe('AssemblyPickLayers hidden seams', () => {
     const { pipeline } = stubPipeline()
     render(tree(pipeline, [seamBody('p1')]))
 
-    const edgeReg = vi.mocked(pipeline.edgeLayer.registerBody).mock.calls[0][0]
+    const edgeReg = vi.mocked(pipeline.edgeLayer.registerPart).mock.calls[0][0]
     expect([...edgeReg.segmentToEdge]).toEqual([0, 2])
     expect(edgeReg.segmentPositions.length).toBe(2 * 6)
     expect(edgeReg.edgeQueries).toEqual(['p1:edge0', 'p1:edge1', 'p1:edge2'])
 
-    const vertexReg = vi.mocked(pipeline.vertexLayer.registerBody).mock.calls[0][0]
+    const vertexReg = vi.mocked(pipeline.vertexLayer.registerPart).mock.calls[0][0]
     expect(vertexReg.vertices).toEqual([[0, 0, 0], [2, 0, 0]])
     expect(vertexReg.vertexQueries).toEqual(['p1:vtx0', 'p1:vtx2'])
   })
@@ -119,7 +119,7 @@ describe('AssemblyPickLayers hidden seams', () => {
     const seamOnly = seamBody('p2')
     seamOnly.hiddenEdges = [0, 1, 2]
     render(tree(pipeline, [seamOnly]))
-    expect(vi.mocked(pipeline.edgeLayer.registerBody)).not.toHaveBeenCalled()
+    expect(vi.mocked(pipeline.edgeLayer.registerPart)).not.toHaveBeenCalled()
   })
 })
 
@@ -137,7 +137,7 @@ describe('AssemblyPickLayers incremental registration', () => {
 
     // Only the moved body re-registers; the untouched one keeps its resources.
     expect(registered).toEqual(['face:p2:body_0'])
-    // registerBody self-replaces, so no explicit unregister for the moved body.
+    // registerPart self-replaces, so no explicit unregister for the moved body.
     expect(unregistered).toEqual([])
   })
 

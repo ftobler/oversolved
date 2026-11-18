@@ -1,6 +1,6 @@
 import * as THREE from 'three'
 import { useIdPipeline } from './IdPipelineContext'
-import { useRegisteredBody } from './idRegistrationUtils'
+import { useRegisteredPart } from './idRegistrationUtils'
 import { isDevBuild } from '@/kernel/isDevBuild'
 
 /**
@@ -28,7 +28,7 @@ export function usePlaneIdRegistration(params: {
   const rx = rotation?.[0] ?? 0, ry = rotation?.[1] ?? 0, rz = rotation?.[2] ?? 0
   const ox = origin?.[0] ?? 0, oy = origin?.[1] ?? 0, oz = origin?.[2] ?? 0
 
-  useRegisteredBody(pipeline, enabled, selectionId,
+  useRegisteredPart(pipeline, enabled, selectionId,
     (p) => {
       const half = size / 2
       const corners: [number, number, number][] = [
@@ -48,7 +48,7 @@ export function usePlaneIdRegistration(params: {
       const triangleToFace = new Uint32Array([0, 0])
       const faceQueries = [selectionId]
       try {
-        p.planeLayer.registerBody({ bodyKey: selectionId, positions, triangleToFace, faceQueries })
+        p.planeLayer.registerPart({ partKey: selectionId, positions, triangleToFace, faceQueries })
         return true
       } catch (err) {
         // A registerBody throw in a passive effect has no error boundary above
@@ -58,7 +58,7 @@ export function usePlaneIdRegistration(params: {
         return false
       }
     },
-    (p) => p.planeLayer.unregisterBody(selectionId),
+    (p) => p.planeLayer.unregisterPart(selectionId),
     [selectionId, size, rx, ry, rz, ox, oy, oz],
   )
 }

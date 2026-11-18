@@ -18,12 +18,12 @@
  * collide there and cross-highlight. Qualifying by layer keeps the id -> element
  * back-mapping unique across every pickable layer, not just within one.
  */
-export function bodyKeyFor(featureId: string, bodyId: string): string {
-  return `${featureId}/${bodyId}`
+export function partKeyFor(featureId: string, partId: string): string {
+  return `${featureId}/${partId}`
 }
 
-export function primitivePickKey(bodyKey: string, primitiveIndex: number, layer: string): string {
-  return `${bodyKey}#${layer}#${primitiveIndex}`
+export function primitivePickKey(partKey: string, primitiveIndex: number, layer: string): string {
+  return `${partKey}#${layer}#${primitiveIndex}`
 }
 
 // Structural "is this string a per-primitive pickKey" test, tolerant of a body
@@ -50,14 +50,14 @@ export function isPickKeyString(claim: string): boolean {
  * primitive count), bounds every parsed index to what this body/layer actually
  * has.
  */
-export function pickedIndicesForBody(
+export function pickedIndicesForPart(
   pickKeys: ReadonlySet<string>,
-  bodyKey: string,
+  partKey: string,
   layer: string,
   count = Number.MAX_SAFE_INTEGER,
 ): Set<number> | null {
   if (pickKeys.size === 0) return null
-  const prefix = `${bodyKey}#${layer}#`
+  const prefix = `${partKey}#${layer}#`
   let out: Set<number> | null = null
   for (const key of pickKeys) {
     const idx = parsePickKeyIndex(key, prefix, count)

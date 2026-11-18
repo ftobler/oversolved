@@ -60,7 +60,7 @@ const ALLOWLIST = new Set([
   'picking/useVertexIdRegistration.ts',
   // The per-body dispatch registry clears the shared hover fields when a body
   // unregisters, so it reads the sketch editor store directly.
-  'picking/bodyDispatchCallbacks.ts',
+  'picking/partDispatchCallbacks.ts',
 ])
 
 function isForbidden(target: string, roots: string[] = FORBIDDEN): boolean {
@@ -123,7 +123,7 @@ describe('kernel/utils/picking import boundary', () => {
     // A scan that only matched the `@/` alias would miss the identical edge
     // written relatively from a kernel file.
     const fromFile = join(SRC, 'kernel', 'query.ts')
-    for (const specifier of ['@/components/Viewport/bodyUtils', '../../src/components/Viewport/bodyUtils']) {
+    for (const specifier of ['@/components/Viewport/partUtils', '../../src/components/Viewport/partUtils']) {
       const target = resolveSpecifier(SRC, fromFile, specifier)
       expect(target, specifier).not.toBeNull()
       expect(isForbidden(target as string), specifier).toBe(true)

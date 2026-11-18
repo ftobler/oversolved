@@ -26,7 +26,7 @@ import { INITIAL_CAMERA } from '@/components/Viewport/cameraConstants'
 import { fitToContent, shouldAutoFit } from '@/components/Viewport/cameraController'
 import type { TurntableControls } from '@/components/Viewport/turntable'
 import AnchorGizmos from '@/components/Viewport/assembly/AnchorGizmos'
-import AssemblyBody from '@/components/Viewport/assembly/AssemblyBody'
+import AssemblyPartMesh from '@/components/Viewport/assembly/AssemblyPartMesh'
 import AssemblyBuiltin from '@/components/Viewport/assembly/AssemblyBuiltin'
 import AssemblyPickLayers from '@/components/Viewport/assembly/AssemblyPickLayers'
 import AssemblySelectionHighlight from '@/components/Viewport/assembly/AssemblySelectionHighlight'
@@ -140,7 +140,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   const subject = useAssemblyStore(s => s.subject)
   const selectedPartHandle = subject?.kind === 'part' ? subject.handle : null
   const selectedMateId = subject?.kind === 'mate' ? subject.id : null
-  const bodies = useAssemblyStore(s => s.parts)
+  const parts = useAssemblyStore(s => s.parts)
   const edgeCurves = useAssemblyStore(s => s.edgeCurves)
   const instances = useAssemblyStore(s => s.instances)
   const transforms = useAssemblyStore(s => s.transforms)
@@ -264,8 +264,8 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     [subject],
   )
   const groups = useMemo(
-    () => getAssemblyPartGroups(bodies, instances, manipulation, selectedParts, settlingOffsets),
-    [bodies, instances, manipulation, selectedParts, settlingOffsets],
+    () => getAssemblyPartGroups(parts, instances, manipulation, selectedParts, settlingOffsets),
+    [parts, instances, manipulation, selectedParts, settlingOffsets],
   )
   // The drawn pose of every handle, the same offset the render groups carry.
   const drawnPoses = useMemo(
@@ -378,17 +378,17 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     frameWaiterRef.current = null
   }, [manipulating])
   useEffect(() => {
-    if (!shouldAutoFit(fittedRef.current, Object.keys(bodies).length, manipulating)) return
+    if (!shouldAutoFit(fittedRef.current, Object.keys(parts).length, manipulating)) return
     const camera = cameraRef.current as THREE.OrthographicCamera | null
     if (!camera) return
-    if (fitToContent(camera, controlsRef.current, bodies, sceneRef.current)) {
+    if (fitToContent(camera, controlsRef.current, parts, sceneRef.current)) {
       fittedRef.current = true
       framedRef.current = true
       const framed = frameWaiterRef.current
       frameWaiterRef.current = null
       framed?.()
     }
-  }, [bodies, manipulating, sceneTick])
+  }, [parts, manipulating, sceneTick])
 
   // A drag continues while the pointer is outside the pane, so the move/up
   // listeners live on the wrapper (which captures the pointer), not on the
@@ -551,7 +551,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     }
   }, [])
 
-  const handleGrabBody = useCallback((handle: string, point: Vec3, pointer: PointerRef) => {
+  const handleGrabPart = useCallback((handle: string, point: Vec3, pointer: PointerRef) => {
     const camera = cameraRef.current
     if (!camera) return
     // The triad already claimed this pointer-down in the capture phase below.
@@ -767,7 +767,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
         />
 
         <IdPickingDriver onReady={onPipelineReady} />
-        <AssemblyPickLayers bodies={drawnPickGeometry} showFaces={shading} showEdges={edges} />
+        <AssemblyPickLayers parts={drawnPickGeometry} showFaces={shading} showEdges={edges} />
         {collisionDebug && <IdDebugOverlay />}
 
         <Suspense fallback={null}>
@@ -780,13 +780,13 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
         {groups.map(g => (
           <group key={g.handle} position={g.position} quaternion={g.quaternion}>
             {g.items.map(item => (
-              <AssemblyBody
+              <AssemblyPartMesh
                 key={item.key}
                 item={item}
                 curves={edgeCurves[item.partId] ?? EMPTY_CURVES}
                 selected={g.selected}
                 aiming={aiming}
-                onGrab={(point, event) => handleGrabBody(g.handle, point, pointerOf(event))}
+                onGrab={(point, event) => handleGrabPart(g.handle, point, pointerOf(event))}
                 showFaces={shading}
                 showEdges={edges}
                 capBand={capBands.get(item.key) ?? 0}
@@ -802,7 +802,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
             settle rather than hanging at the old solved pose. */}
         {!aiming && !manipulating && (
           <AssemblySelectionHighlight
-            pickBodies={drawnPickGeometry}
+            pickParts={drawnPickGeometry}
             selection={entitySelection}
             hovered={hoveredEntity}
             mateHighlighted={mateHighlighted}

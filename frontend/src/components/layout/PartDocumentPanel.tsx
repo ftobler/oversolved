@@ -1,5 +1,5 @@
 import { FeatureTree } from '@/components/layout/FeatureTree'
-import { BodyPartsList } from '@/components/layout/BodyPartsList'
+import { BodyPartsList } from '@/components/layout/PartsList'
 import '@/components/layout/Glass.css'
 import '@/pages/Part.css'
 

@@ -1,6 +1,6 @@
 import { useIdPipeline } from './IdPipelineContext'
-import { useRegisteredBody } from './idRegistrationUtils'
-import { bodyKeyFor } from './pickKey'
+import { useRegisteredPart } from './idRegistrationUtils'
+import { partKeyFor } from './pickKey'
 import { resolveVertexQueries } from '@/components/Geometry3D/bodyGeometry'
 import { isDevBuild } from '@/kernel/isDevBuild'
 
@@ -10,7 +10,7 @@ import { isDevBuild } from '@/kernel/isDevBuild'
  */
 export function useVertexIdRegistration(params: {
   featureId: string
-  bodyId: string
+  partId: string
   vertices: ReadonlyArray<[number, number, number]> | undefined
   vertexQueries: ReadonlyArray<string> | undefined
   enabled?: boolean
@@ -20,28 +20,28 @@ export function useVertexIdRegistration(params: {
   hiddenVertices?: ReadonlySet<number>
 }): void {
   const pipeline = useIdPipeline()
-  const { featureId, bodyId, vertices, vertexQueries, enabled = true, hiddenVertices } = params
-  const bodyKey = bodyKeyFor(featureId, bodyId)
+  const { featureId, partId, vertices, vertexQueries, enabled = true, hiddenVertices } = params
+  const partKey = partKeyFor(featureId, partId)
 
-  useRegisteredBody(pipeline, enabled, bodyKey,
+  useRegisteredPart(pipeline, enabled, partKey,
     (p) => {
       if (!vertices || vertices.length === 0) return false
       // The padded query list Body3D's vertex HighlightIndex counts from, so a
       // vertex the kernel left unnamed picks where it highlights.
-      const resolvedQueries = resolveVertexQueries(vertices, vertexQueries, bodyId)
+      const resolvedQueries = resolveVertexQueries(vertices, vertexQueries, partId)
       if (!resolvedQueries) return false
       try {
-        p.vertexLayer.registerBody({
-          bodyKey, vertices, vertexQueries: resolvedQueries, perPrimitivePickKeys: true,
+        p.vertexLayer.registerPart({
+          partKey, vertices, vertexQueries: resolvedQueries, perPrimitivePickKeys: true,
           hiddenIndices: hiddenVertices,
         })
         return true
       } catch (err) {
-        if (isDevBuild()) console.warn('Vertex ID registration failed; continuing without vertex picking for this body', { bodyKey, err })
+        if (isDevBuild()) console.warn('Vertex ID registration failed; continuing without vertex picking for this body', { bodyKey: partKey, err })
         return false
       }
     },
-    (p) => p.vertexLayer.unregisterBody(bodyKey),
-    [featureId, bodyId, vertices, vertexQueries, hiddenVertices],
+    (p) => p.vertexLayer.unregisterPart(partKey),
+    [featureId, partId, vertices, vertexQueries, hiddenVertices],
   )
 }

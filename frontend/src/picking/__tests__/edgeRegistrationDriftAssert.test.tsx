@@ -34,11 +34,11 @@ describe('useEdgeIdRegistration single-traversal drift assert', () => {
     const edges: EdgeData[] = [{ kind: 'line', start: [0, 0, 0], end: [1, 0, 0] }]
 
     expect(() => renderHook(() => useEdgeIdRegistration({
-      featureId: 'f1', bodyId: 'b1', edges, edgeQueries: ['edge@A'],
+      featureId: 'f1', partId: 'b1', edges, edgeQueries: ['edge@A'],
     }))).toThrow(/does not match/)
 
     // The failed register must not leave a half-built body claiming picks.
-    expect(pipeline.edgeLayer.bodyCount()).toBe(0)
+    expect(pipeline.edgeLayer.partCount()).toBe(0)
     pipeline.dispose()
   })
 })

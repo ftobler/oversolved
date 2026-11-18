@@ -68,11 +68,11 @@ describe('useSketchIdRegistration', () => {
     try {
       const sketch = makeSketch()
       const { unmount } = renderHook(() => useSketchIdRegistration({ featureId: 'feat1', sketch }))
-      expect(p.sketchEntityLayer.bodyCount()).toBe(1)
-      expect(p.sketchVertexLayer.bodyCount()).toBe(1)
+      expect(p.sketchEntityLayer.partCount()).toBe(1)
+      expect(p.sketchVertexLayer.partCount()).toBe(1)
       act(() => unmount())
-      expect(p.sketchEntityLayer.bodyCount()).toBe(0)
-      expect(p.sketchVertexLayer.bodyCount()).toBe(0)
+      expect(p.sketchEntityLayer.partCount()).toBe(0)
+      expect(p.sketchVertexLayer.partCount()).toBe(0)
     } finally {
       setLivePipeline(null)
       p.dispose()
@@ -86,8 +86,8 @@ describe('useSketchIdRegistration', () => {
       renderHook(() => useSketchIdRegistration({
         featureId: 'feat1', sketch: makeSketch(), enabled: false,
       }))
-      expect(p.sketchEntityLayer.bodyCount()).toBe(0)
-      expect(p.sketchVertexLayer.bodyCount()).toBe(0)
+      expect(p.sketchEntityLayer.partCount()).toBe(0)
+      expect(p.sketchVertexLayer.partCount()).toBe(0)
     } finally {
       setLivePipeline(null)
       p.dispose()
@@ -108,7 +108,7 @@ describe('useSketchIdRegistration', () => {
       rerender({ s: sketch })
       // Stable sketch ref -> hook does not re-register -> id unchanged.
       expect(p.registry.lookupKey('sketchEntity', 'entity:feat1:line1')).toBe(idLine1)
-      expect(p.sketchEntityLayer.bodyCount()).toBe(1)
+      expect(p.sketchEntityLayer.partCount()).toBe(1)
     } finally {
       setLivePipeline(null)
       p.dispose()

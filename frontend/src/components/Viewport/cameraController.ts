@@ -290,8 +290,8 @@ export function alignToFace(
 // armed when the user grabs a part would therefore fire mid-gesture and reframe
 // the camera out from under the part being dragged. Once anything has been
 // grabbed the framing is the user's; the pending fit is abandoned, not deferred.
-export function shouldAutoFit(fitted: boolean, bodyCount: number, manipulating: boolean): boolean {
-  return !fitted && bodyCount > 0 && !manipulating
+export function shouldAutoFit(fitted: boolean, partCount: number, manipulating: boolean): boolean {
+  return !fitted && partCount > 0 && !manipulating
 }
 
 // Min/max accumulation over a body's vertex list, accepting either the flat
@@ -335,7 +335,7 @@ export function computeVertexBounds(
 export function fitToContent(
   camera: THREE.OrthographicCamera,
   controls: Controls,
-  bodies: Record<string, PartResult> | null | undefined,
+  parts: Record<string, PartResult> | null | undefined,
   scene: THREE.Scene | null | undefined,
 ): boolean {
   let minX = Infinity, maxX = -Infinity
@@ -343,9 +343,9 @@ export function fitToContent(
   let minZ = Infinity, maxZ = -Infinity
 
   // Try body vertex data first (fast, accurate).
-  if (bodies && Object.keys(bodies).length > 0) {
-    for (const body of Object.values(bodies)) {
-      const verts = body.mesh?.vertices
+  if (parts && Object.keys(parts).length > 0) {
+    for (const part of Object.values(parts)) {
+      const verts = part.mesh?.vertices
       if (!verts) continue
       const bounds = computeVertexBounds(verts)
       if (!bounds) continue

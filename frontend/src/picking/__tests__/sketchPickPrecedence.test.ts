@@ -119,8 +119,8 @@ describe('sketch precedence: inside the vertex layer, priority has nothing to sa
     // mark that answers for both, and the real point leads because it was
     // registered first.
     const { image, p, renderer } = scene()
-    p.sketchVertexLayer.registerBody({
-      bodyKey: 'S1',
+    p.sketchVertexLayer.registerPart({
+      partKey: 'S1',
       vertices: [[2, 3, 0], [2, 3, 0]],
       vertexQueries: ['vertex:S1:L1:end', 'dock:S1:C1:L1'],
     })
@@ -139,8 +139,8 @@ describe('sketch precedence: inside the vertex layer, priority has nothing to sa
     // and deliberately so, since dropping the constraint must bring both handles
     // back -- so an unconstrained overlap is two live registrations at one spot.
     const { image, p, renderer } = scene()
-    p.sketchVertexLayer.registerBody({
-      bodyKey: 'S1',
+    p.sketchVertexLayer.registerPart({
+      partKey: 'S1',
       vertices: [[5, 5, 0], [5, 5, 0]],
       vertexQueries: ['vertex:S1:L1:end', 'vertex:S1:C1:center'],
     })

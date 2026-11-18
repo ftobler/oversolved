@@ -10,7 +10,7 @@ const QUERIES = ['vtx@A', 'vtx@B', 'vtx@C']
 
 function cubeLayer(reg: IdRegistry) {
   const layer = new VertexIdLayer(reg, { cubePixels: VERTEX_PICK_CUBE_PIXELS })
-  layer.registerBody({ bodyKey: 'b', vertices: VERTICES, vertexQueries: QUERIES, perPrimitivePickKeys: true })
+  layer.registerPart({ partKey: 'b', vertices: VERTICES, vertexQueries: QUERIES, perPrimitivePickKeys: true })
   return layer
 }
 
@@ -125,7 +125,7 @@ describe('vertex pick cubes', () => {
 
   it('the pipeline threads its pixel ratio into the vertex layer onBeforeRender', () => {
     const p = new IdPipeline({ width: 100, height: 100, pixelRatio: 2 })
-    p.vertexLayer.registerBody({ bodyKey: 'b', vertices: VERTICES, vertexQueries: QUERIES, perPrimitivePickKeys: true })
+    p.vertexLayer.registerPart({ partKey: 'b', vertices: VERTICES, vertexQueries: QUERIES, perPrimitivePickKeys: true })
     const mat = (p.vertexLayer.scene.children[0] as THREE.Mesh).material as THREE.ShaderMaterial
     p.vertexLayer.onBeforeRender(100, 100, p.getPixelRatio())
     expect(mat.uniforms.uHalfPixels.value).toBe(2.5)
@@ -153,7 +153,7 @@ describe('vertex pick cubes', () => {
   it('skips vertices without a query in cube mode too', () => {
     const reg = new IdRegistry()
     const layer = new VertexIdLayer(reg, { cubePixels: 3 })
-    layer.registerBody({ bodyKey: 'partial', vertices: [[0, 0, 0], [1, 0, 0]], vertexQueries: ['vtx@only'] })
+    layer.registerPart({ partKey: 'partial', vertices: [[0, 0, 0], [1, 0, 0]], vertexQueries: ['vtx@only'] })
     expect(reg.size()).toBe(1)
     expect((layer.scene.children[0] as THREE.Mesh).geometry.getAttribute('position').count).toBe(8)
     layer.dispose()
@@ -170,7 +170,7 @@ describe('vertex pick cubes', () => {
   it('custom depthBias config overrides the default', () => {
     const reg = new IdRegistry()
     const layer = new VertexIdLayer(reg, { cubePixels: 3, depthBias: -5e-4 })
-    layer.registerBody({ bodyKey: 'b', vertices: VERTICES, vertexQueries: QUERIES, perPrimitivePickKeys: true })
+    layer.registerPart({ partKey: 'b', vertices: VERTICES, vertexQueries: QUERIES, perPrimitivePickKeys: true })
     const mat = (layer.scene.children[0] as THREE.Mesh).material as THREE.ShaderMaterial
     expect(mat.uniforms.uDepthBias.value).toBe(-5e-4)
     layer.dispose()
@@ -179,7 +179,7 @@ describe('vertex pick cubes', () => {
   it('point-mode layers do not carry a depth bias uniform', () => {
     const p = new IdPipeline({ width: 100, height: 100 })
     for (const layer of [p.sketchVertexLayer, p.originLayer, p.dimensionLabelLayer]) {
-      layer.registerBody({ bodyKey: 'h', vertices: VERTICES, vertexQueries: QUERIES })
+      layer.registerPart({ partKey: 'h', vertices: VERTICES, vertexQueries: QUERIES })
       const mat = ((layer.scene.children[0] as THREE.Points).material as THREE.ShaderMaterial)
       expect(mat.uniforms).not.toHaveProperty('uDepthBias')
     }
@@ -193,7 +193,7 @@ describe('vertex pick cubes', () => {
     for (const layer of [p.sketchVertexLayer, p.originLayer, p.dimensionLabelLayer]) {
       expect(layer.getCubePixels()).toBeUndefined()
       expect(layer.zPolicy).toBe('no-depth')
-      layer.registerBody({ bodyKey: 'h', vertices: VERTICES, vertexQueries: QUERIES })
+      layer.registerPart({ partKey: 'h', vertices: VERTICES, vertexQueries: QUERIES })
       const obj = layer.scene.children[0]
       expect(obj).toBeInstanceOf(THREE.Points)
       expect(((obj as THREE.Points).material as THREE.ShaderMaterial).depthTest).toBe(false)

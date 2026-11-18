@@ -1,10 +1,10 @@
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import {
-  findBodyForFaceQuery,
-  findBodyFaceByPickKey,
+  findPartForFaceQuery,
+  findPartFaceByPickKey,
   applyHoveredFaceGeometry,
-  clearAllBodyHover,
-} from '@/picking/bodyDispatchCallbacks'
+  clearAllPartHover,
+} from '@/picking/partDispatchCallbacks'
 
 /**
  * Hover adapters for the three B-rep ID layers.
@@ -35,10 +35,10 @@ export const brepFaceAdapter = {
     // one body. Prefer the pickKey path so the highlight and the stored
     // normal/centre geometry (feeds "Align to face") name the same primitive.
     // Fall back to the first query owner only when the hit carries no key.
-    const found = (pickKey ? findBodyFaceByPickKey(pickKey) : null)
-      ?? findBodyForFaceQuery(entityKey)
+    const found = (pickKey ? findPartFaceByPickKey(pickKey) : null)
+      ?? findPartForFaceQuery(entityKey)
     if (!found) {
-      clearAllBodyHover()
+      clearAllPartHover()
       return
     }
     s.setHoveredSelectionId(entityKey)
@@ -80,5 +80,5 @@ export function clearAllHover(): void {
   s.setHoveredPickKey(null)
   s.setHoveredVertex(null, null, null)
   s.setHoveredFaceGeometry(null, null)
-  clearAllBodyHover()
+  clearAllPartHover()
 }

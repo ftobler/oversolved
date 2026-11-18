@@ -1,9 +1,9 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render } from '@testing-library/react'
-import type { BodyRenderItem } from '@/components/Viewport/bodyUtils'
+import type { PartRenderItem } from '@/components/Viewport/partUtils'
 import type { EdgeData } from '@/types/cad'
 
-vi.mock('../Body3D', () => ({
+vi.mock('../Part3D', () => ({
   buildEdgeSegments: (edges: EdgeData[]) => {
     // Return 6 floats per edge (one line segment) for non-empty input.
     return new Float32Array(edges.length * 6)
@@ -36,12 +36,12 @@ import PreviewEdgeOverlay from '@/components/Geometry3D/PreviewEdgeOverlay'
 import { TOL_PREVIEW_CELL } from '@/kernel/solverConstants'
 import { buildEdgeSegments as tessellateSpy } from '@/components/Geometry3D/bodyGeometry'
 
-function makeItem(key: string, edges: EdgeData[], edgeQueries?: string[]): BodyRenderItem {
+function makeItem(key: string, edges: EdgeData[], edgeQueries?: string[]): PartRenderItem {
   return {
     key,
     featureId: 'feat1',
     partId: key,
-    mesh: {} as BodyRenderItem['mesh'],
+    mesh: {} as PartRenderItem['mesh'],
     edges,
     edgeQueries,
     visible: true,
