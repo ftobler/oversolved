@@ -181,6 +181,51 @@ describe('closing a mate field', () => {
   })
 })
 
+// Closing the editor is one of the ways to leave a mate, and it used to skip
+// the disarm: an armed chip stayed armed, the param edit it was holding stayed
+// owed, and no solve ever landed. Opening another editor (the instance pencil,
+// a mate insert) goes through this exact close, so it was the reported
+// "the assembly edited but never re-solved".
+describe('closing the editor settles the owed solve', () => {
+  it('closing after a deferred edit requests one solve and disarms the field', () => {
+    getState().openMateEditor('m1')
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
+    getState().requestSolveOrDefer()
+    expect(getState().mateFieldDirty).toBe(true)
+    expect(requestSolve).not.toHaveBeenCalled()
+
+    getState().closeEditor()
+
+    expect(requestSolve).toHaveBeenCalledTimes(1)
+    expect(getState().activeMateField).toBeNull()
+    expect(getState().mateFieldDirty).toBe(false)
+    expect(getState().editingSubject).toEqual({ kind: 'none' })
+  })
+
+  it('closing an editor with nothing owed asks for no solve', () => {
+    getState().openMateEditor('m1')
+    getState().closeEditor()
+    expect(requestSolve).not.toHaveBeenCalled()
+    expect(getState().activeMateField).toBeNull()
+  })
+
+  it('a full solve request settles the owed flag, so the later disarm is silent', () => {
+    // Any full solve reads the doc the deferred edit already landed in, so it
+    // pays the debt: the disarm that follows must not request a second solve.
+    getState().setActiveMateField({ featureId: 'm1', field: 'ref_a' })
+    getState().requestSolveOrDefer()
+    expect(getState().mateFieldDirty).toBe(true)
+
+    // A delete's solve cell requests a full solve while the field is armed.
+    getState().deleteSubject({ kind: 'mate', id: 'm1' })
+    expect(requestSolve).toHaveBeenCalledTimes(1)
+    expect(getState().mateFieldDirty).toBe(false)
+
+    getState().setActiveMateField(null)
+    expect(requestSolve).toHaveBeenCalledTimes(1)
+  })
+})
+
 // Completing a mate's reference pair captures the on-screen pose into its
 // authored params (utils/mateCapture.ts): flip/angle, and for a fixed weld the
 // translation as its offset in A's frame. The pose the user picked at is what

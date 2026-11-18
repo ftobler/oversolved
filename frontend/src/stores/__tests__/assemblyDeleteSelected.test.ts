@@ -207,6 +207,27 @@ describe('assemblyStore deleteSelected', () => {
     expect(requestSolve).toHaveBeenCalled()
   })
 
+  // A delete with a chip armed and an edit owed must spend exactly one solve:
+  // the operation's own solve cell already reads the deferred edit, so the
+  // disarm that follows must settle the debt rather than request a second one.
+  it('a mate delete with an armed, edited chip requests exactly one solve', () => {
+    const { host, requestSolve } = mountHost(sampleDoc())
+    const store = useAssemblyStore.getState()
+    store.selectMate('fm1')
+    store.openMateEditor('fm1')
+    store.setActiveMateField({ featureId: 'fm1', field: 'ref_a' })
+    store.requestSolveOrDefer()  // a param edit lands while the chip is armed
+    expect(useAssemblyStore.getState().mateFieldDirty).toBe(true)
+
+    store.deleteSelected()
+
+    expect(ids(host.doc, 'mate')).toEqual([])
+    expect(requestSolve).toHaveBeenCalledTimes(1)
+    expect(useAssemblyStore.getState().activeMateField).toBeNull()
+    expect(useAssemblyStore.getState().mateFieldDirty).toBe(false)
+    expect(useAssemblyStore.getState().editingSubject).toEqual({ kind: 'none' })
+  })
+
   it('the [Delete] path and the row path are the same implementation', () => {
     // The [Delete] key: select, then deleteSelected.
     const viaKey = mountHost(sampleDoc())

@@ -414,6 +414,17 @@ export function useAssemblySolve(
     // stacking, so a burst of drags collapses into one trailing solve.
     if (inFlight.current) {
       queued.current = true
+      // A FULL solve waiting on a live tick still owns the overlay and its
+      // Cancel button, even before it starts. If the tick never settles (a WASM
+      // loop that hangs is indistinguishable from a heavy one), the queue would
+      // otherwise wait forever with no spinner and no way to drop the worker:
+      // the assembly just stops re-solving. A live tick keeps the mirror off,
+      // because the spinner would cover the scene being dragged. When the
+      // trailing solve does start, runSolve arms the mirror again, so the normal
+      // pointer-up sees no difference.
+      if (docRef.current && useAssemblyStore.getState().manipulation === null) {
+        useSolverStore.getState().setIsSolving(true)
+      }
       return
     }
     inFlight.current = true
