@@ -12,7 +12,7 @@
  * (faceFactsReal.test.ts pins the two equal on every surface kind).
  */
 
-import type { OccModule, OccShape } from './occTypes'
+import type { OccFaceFactTable, OccModule, OccShape } from './occTypes'
 import type { SurfaceFrame, SurfaceType, Vec3 } from './primitives'
 
 /** One face's facts, in `TopExp_Explorer(shape, TopAbs_FACE)` order. */
@@ -78,10 +78,25 @@ function frameOf(surfaceType: SurfaceType, row: Float64Array): SurfaceFrame | nu
   }
 }
 
-/** Every face of `shape`, in explorer order, from one helper call. */
+// The helper's table per shape proxy. A shape's facts are a pure function of
+// the shape, and nothing in the kernel mutates a shape in place (no
+// Location/Orientation/Move setter is called) nor re-points a handle, so the
+// table read for a proxy stays its table for as long as the proxy lives. The
+// metadata pass (feature loop) and the render pass (after it) read the same
+// body proxy through its handle, so the second read is a hit. Keyed weakly: a
+// released handle's proxy takes its table with it.
+const tables = new WeakMap<OccShape, OccFaceFactTable>()
+
+/** Every face of `shape`, in explorer order, from one helper call per shape.
+ *  Each call returns fresh objects, so no two callers share a mutable array. */
 export function readFaceFacts(oc: OccModule, shape: OccShape): FaceFact[] {
   const stride = oc.OversolvedFaceFacts.Stride()
-  const { faceCount, facts } = oc.OversolvedFaceFacts.Read(shape)
+  let table = tables.get(shape)
+  if (table === undefined) {
+    table = oc.OversolvedFaceFacts.Read(shape)
+    tables.set(shape, table)
+  }
+  const { faceCount, facts } = table
   const out: FaceFact[] = new Array(faceCount)
   for (let i = 0; i < faceCount; i++) {
     const row = facts.subarray(i * stride, (i + 1) * stride)

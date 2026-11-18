@@ -10,7 +10,7 @@
 
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'
 import {
@@ -123,6 +123,25 @@ describe.skipIf(!oc)('readFaceFacts parity with the per-face readers (real OCC)'
       }
     }, 600_000)
   }
+
+  it('reads a shape once, and hands every caller its own arrays', () => {
+    const scope = new DisposeScope()
+    const read = vi.spyOn(oc!.OversolvedFaceFacts, 'Read')
+    try {
+      const box = makeBox(oc!, scope, 3, 4, 5)
+      const first = readFaceFacts(oc!, box)
+      const second = readFaceFacts(oc!, box)
+      expect(read).toHaveBeenCalledTimes(1)
+      expect(second).toEqual(first)
+      expect(second[0].centroid).not.toBe(first[0].centroid)
+      // A different proxy is a different key, even over the same TShape.
+      readFaceFacts(oc!, scope.track(oc!.TopoDS.Solid_1(box)))
+      expect(read).toHaveBeenCalledTimes(2)
+    } finally {
+      read.mockRestore()
+      scope.dispose()
+    }
+  })
 
   it('refuses facts read off a different solid instead of pairing them', () => {
     const scope = new DisposeScope()
