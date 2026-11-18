@@ -18,7 +18,7 @@ import { makeBox, makeBoxAt, faceCentroid, faceNormal } from '../../occ/primitiv
 import { Repository } from '../../query'
 import { solvePlane } from '../plane'
 import { extractOccFace } from '../../occ/faceLoops'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule } from '../../occ/occTypes'
 import faceLoopsFixture from '../../occ/__fixtures__/faceLoops.json'
 
@@ -66,7 +66,7 @@ describe.skipIf(!oc)('solvePlane on_face topo-fallback (real OCC)', () => {
       // Compute expected centroid + normal before detaching the shape.
       const expectedNormal = faceNormal(occ, scope, extractOccFace(occ, scope, box, 0))
       const expectedCentroid = faceCentroid(occ, scope, extractOccFace(occ, scope, box, 0))
-      const bodyStore: Record<string, Body> = {
+      const partStore: Record<string, PartSolid> = {
         body_feat: {
           id: 'body_feat',
           created_by: 'feat',
@@ -82,7 +82,7 @@ describe.skipIf(!oc)('solvePlane on_face topo-fallback (real OCC)', () => {
       const res = solvePlane(
         occ, scope, table,
         { id: 'pl', kind: 'plane', definition: { mode: 'on_face', face: '@body_feat/face/0' } },
-        repo, bodyStore,
+        repo, partStore,
       )
 
       expect(res.status).toBe('ok')
@@ -102,7 +102,7 @@ describe.skipIf(!oc)('solvePlane on_face topo-fallback (real OCC)', () => {
       const SEP = 100
       const first = makeBox(occ, scope, flx.box[0], flx.box[1], flx.box[2])
       const second = makeBoxAt(occ, scope, [SEP, 0, 0], flx.box[0], flx.box[1], flx.box[2])
-      const body = (id: string, shape: ReturnType<typeof makeBox>): Body => ({
+      const part = (id: string, shape: ReturnType<typeof makeBox>): PartSolid => ({
         id,
         created_by: 'feat',
         modified_by: [],
@@ -111,13 +111,13 @@ describe.skipIf(!oc)('solvePlane on_face topo-fallback (real OCC)', () => {
         brep_diff: null,
         profile_queries: [],
       })
-      const bodyStore: Record<string, Body> = {
-        body_feat: body('body_feat', first),
-        body_feat_1: body('body_feat_1', second),
+      const partStore: Record<string, PartSolid> = {
+        body_feat: part('body_feat', first),
+        body_feat_1: part('body_feat_1', second),
       }
       const repo = new Repository()
       const originFor = (ref: string) =>
-        solvePlane(occ, scope, table, { id: 'pl', kind: 'plane', definition: { mode: 'on_face', face: ref } }, repo, bodyStore).plane.origin
+        solvePlane(occ, scope, table, { id: 'pl', kind: 'plane', definition: { mode: 'on_face', face: ref } }, repo, partStore).plane.origin
 
       const sibling0 = originFor('@body_feat/face/0')
       const sibling1 = originFor('@body_feat_1/face/0')

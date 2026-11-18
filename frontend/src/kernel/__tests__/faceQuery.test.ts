@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest"
 import fixture from "../occ/__fixtures__/faceQueries.json"
 import { buildFaceQuery } from "../faceQuery"
 import { constructionUuidToken, makeAncestryQuery, parseAncestry, Repository } from "../query"
-import { registerBodyBrepFromMeta } from "../builder"
-import type { Body } from "../types3d"
+import { registerPartBrepFromMeta } from "../builder"
+import type { PartSolid } from "../types3d"
 
 type BuildArgs = {
   created_by: string | null
@@ -69,11 +69,11 @@ describe("buildFaceQuery emits the @u| construction token", () => {
 // ancestor tag, and that query resolves to the element the registrar wrote.
 describe("buildFaceQuery last resort (no uuid, body-wide ancestry)", () => {
   const shared: [string, string, number, string] = ["f1", "body_0", 0, "flatface"]
-  const bodyWide = ["?7;@f1"]
+  const partWide = ["?7;@f1"]
 
   it("mints a distinct query for each face that has nothing else to tell it apart", () => {
-    const faceA = buildFaceQuery(...shared, bodyWide, null, null, null)
-    const faceB = buildFaceQuery("f1", "body_0", 1, "flatface", bodyWide, null, null, null)
+    const faceA = buildFaceQuery(...shared, partWide, null, null, null)
+    const faceB = buildFaceQuery("f1", "body_0", 1, "flatface", partWide, null, null, null)
     expect(faceA).toBe(makeAncestryQuery(["@f1", "@body_0", "@body_0/face0", "?7;@f1"], "flatface"))
     expect(faceB).toBe(makeAncestryQuery(["@f1", "@body_0", "@body_0/face1", "?7;@f1"], "flatface"))
   })
@@ -85,22 +85,22 @@ describe("buildFaceQuery last resort (no uuid, body-wide ancestry)", () => {
 
   it("resolves to the element the registrar wrote for that face", () => {
     const repo = new Repository()
-    const body = {
+    const part = {
       id: "body_0", created_by: "f1", modified_by: [], shape: null, sketch_id: "sk1",
-      brep_diff: null, profile_queries: bodyWide,
-    } as unknown as Body
+      brep_diff: null, profile_queries: partWide,
+    } as unknown as PartSolid
     const faceData = [0, 1].map((i) => ({ centroid: [i, 0, 0], normal: [0, 0, 1], surface_type: "flatface", classifiers: [] }))
-    registerBodyBrepFromMeta(repo, body, {
+    registerPartBrepFromMeta(repo, part, {
       mesh: { vertices: [], faces: [], triangle_to_face: [], face_queries: [], face_data: faceData, face_uuids: [null, null], is_fallback: false },
     })
     for (const i of [0, 1]) {
-      const q = buildFaceQuery("f1", "body_0", i, "flatface", bodyWide, null, null, null)!
-      expect((repo.query(q, null, { body_0: body }) as { face_index?: number }).face_index).toBe(i)
+      const q = buildFaceQuery("f1", "body_0", i, "flatface", partWide, null, null, null)!
+      expect((repo.query(q, null, { body_0: part }) as { face_index?: number }).face_index).toBe(i)
     }
   })
 
   it("a uuid restores the emitted query for the same face", () => {
-    const q = buildFaceQuery("f1", "body_0", 0, "flatface", bodyWide, null, null, "u_face")
+    const q = buildFaceQuery("f1", "body_0", 0, "flatface", partWide, null, null, "u_face")
     expect(q).not.toBeNull()
     const [ids] = parseAncestry(q as string)
     expect(ids[0]).toBe(constructionUuidToken("u_face"))

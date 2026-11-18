@@ -17,7 +17,7 @@ import { loadOcc } from '../../occ/loadOcc'
 import { SharedHarness } from '../../occ/sharedHarness'
 import { DisposeScope } from '../../occ/disposeScope'
 import { volumeOf } from '../../occ/volume'
-import { canonicalEdges } from '../../occ/bodyNames'
+import { canonicalEdges } from '../../occ/partNames'
 import { setSketchSolver, setSketchTopology, resetSketchSolver } from '../sketch'
 import { setOccLoader } from '../../solveLocally'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
@@ -28,7 +28,7 @@ import { yieldToEventLoop } from '@/testing/yieldToEventLoop'
 import { emptyDriveDoc, exportHeadless, measureHeadless, runHeadless } from '@/drive/headlessOps'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import { splitPatternDef } from '@/utils/core/patternSplit'
 import type { PartDoc } from '@/types/cad'
 import type { ScriptStep } from '@/drive/scriptRunner'
@@ -76,7 +76,7 @@ function featurePattern(id: string, source: string, fields: Dict): Dict {
   return { id, kind, [kind]: def }
 }
 
-function bodyPattern(id: string, source: string, fields: Dict): Dict {
+function partPattern(id: string, source: string, fields: Dict): Dict {
   const { kind, def } = splitPatternDef({ subject: 'body', source_body: source, ...fields })
   return { id, kind, [kind]: def }
 }
@@ -94,13 +94,13 @@ describe.skipIf(!oc || !solveBytes)('many-instance pattern and array solve cost 
     setSketchSolver(solveBytes)
   })
 
-  function snapshot(r: BuildResponse, featureId: string): Record<string, Body> {
-    return r._build_state!.checkpoints[featureId].body_store_snapshot as Record<string, Body>
+  function snapshot(r: BuildResponse, featureId: string): Record<string, PartSolid> {
+    return r._build_state!.checkpoints[featureId].body_store_snapshot as Record<string, PartSolid>
   }
-  function volumeAt(r: BuildResponse, featureId: string, bodyId: string): number {
+  function volumeAt(r: BuildResponse, featureId: string, partId: string): number {
     const scope = new DisposeScope()
     try {
-      return volumeOf(occ, scope, h.table.get<OccShape>(snapshot(r, featureId)[bodyId].shape!))
+      return volumeOf(occ, scope, h.table.get<OccShape>(snapshot(r, featureId)[partId].shape!))
     } finally {
       scope.dispose()
     }
@@ -247,7 +247,7 @@ describe.skipIf(!oc || !solveBytes)('many-instance pattern and array solve cost 
       features: [
         rectSketch('sk_jack', 0, 0, 10, 10),
         extrude('ex_jack', '$sk_jack', 10),
-        bodyPattern('ar1', 'body_ex_jack', {
+        partPattern('ar1', 'body_ex_jack', {
           mode: 'rectangular', count_x: 5, count_y: 5, pitch_x: 10, pitch_y: 10,
           direction_x: [1, 0, 0], direction_y: [0, 1, 0], operation: 'add',
         }),
@@ -266,7 +266,7 @@ describe.skipIf(!oc || !solveBytes)('many-instance pattern and array solve cost 
       features: [
         rectSketch('sk_tooth', 0, -1, 20, 2),
         extrude('ex_tooth', '$sk_tooth', 2),
-        bodyPattern('ar1', 'body_ex_tooth', {
+        partPattern('ar1', 'body_ex_tooth', {
           mode: 'circular', count: 25, step_angle: 14.4,
           axis_origin: [0, 0, 0], axis_direction: [0, 0, 1],
           operation: 'add',

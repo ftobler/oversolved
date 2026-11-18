@@ -58,7 +58,7 @@ vi.mock('@/components/Viewport/EnvLight', () => ({ default: () => null, ENV_INTE
 vi.mock('@/components/Viewport/IdDebugOverlay', () => ({ default: () => null }))
 vi.mock('@/components/misc/CubeGizmo', () => ({ CubeGizmoCanvas: () => null }))
 vi.mock('@/components/Viewport/assembly/AnchorGizmos', () => ({ default: () => null }))
-vi.mock('@/components/Viewport/assembly/AssemblyBody', () => ({ default: () => null }))
+vi.mock('@/components/Viewport/assembly/AssemblyPartMesh', () => ({ default: () => null }))
 vi.mock('@/components/Viewport/assembly/AssemblyBuiltin', () => ({ default: () => null }))
 vi.mock('@/components/Viewport/assembly/AssemblyPickLayers', () => ({ default: () => null }))
 vi.mock('@/components/Viewport/assembly/AssemblySelectionHighlight', () => ({ default: () => null }))
@@ -100,7 +100,7 @@ function seedStore() {
     doc,
     instances: [{ handle: 'p1', doc_id: 'doc-p1', doc_rev: 1, transform: { ...IDENTITY_TRANSFORM } }],
     transforms: { p1: { ...IDENTITY_TRANSFORM } },
-    bodies: { 'p1:body_0': { id: 'p1:body_0', created_by: 'p1', modified_by: [], mesh: {} } } as never,
+    parts: { 'p1:body_0': { id: 'p1:body_0', created_by: 'p1', modified_by: [], mesh: {} } } as never,
   })
   // `subject`, `entitySelection`, `manipulation` and `gizmoDrag` are store-owned:
   // setSnapshot deliberately preserves them, so the seed is written directly.

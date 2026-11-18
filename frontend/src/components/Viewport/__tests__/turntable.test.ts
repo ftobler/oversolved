@@ -372,16 +372,16 @@ describe('mouse bindings', () => {
 describe('orbit about the cursor point', () => {
   const RECT = { left: 0, top: 0, width: 800, height: 600 }
 
-  function sceneWithBody(z = 20): THREE.Scene {
+  function sceneWithPart(z = 20): THREE.Scene {
     const scene = new THREE.Scene()
-    const body = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshBasicMaterial())
-    body.userData.orbitPivot = true
-    body.position.set(0, 0, z)
-    scene.add(body)
+    const part = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshBasicMaterial())
+    part.userData.orbitPivot = true
+    part.position.set(0, 0, z)
+    scene.add(part)
     return scene
   }
 
-  function setup(withBody = true) {
+  function setup(withPart = true) {
     const camera = makeCamera()
     camera.position.set(0, 0, 100)
     camera.lookAt(0, 0, 0)
@@ -389,7 +389,7 @@ describe('orbit about the cursor point', () => {
     const controls = new TurntableControls(camera)
     const el = makeElement()
     controls.connect(el)
-    const scene = withBody ? sceneWithBody() : new THREE.Scene()
+    const scene = withPart ? sceneWithPart() : new THREE.Scene()
     // The production picker is SceneController's; the geometry of the read is
     // what this case pins, not the wiring.
     controls.pivotPick = (x, y) => pickPivotPoint(camera, scene, RECT, x, y)

@@ -3,10 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom'
 import type { ViewportHandle } from '@/components/Viewport'
 import type { PartDoc, PartFeature, Mutation, Sketch, LengthUnit } from '@/types/cad'
 import { randomId } from '@/utils/yamlMutations'
-import { isWholeBodySelectionId, parseTopoFallbackQuery, stripSelectionWrapper } from '@/utils/query/selectionId'
+import { isWholePartSelectionId, parseTopoFallbackQuery, stripSelectionWrapper } from '@/utils/query/selectionId'
 import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
-import { findEdgeKindForQuery } from '@/picking/bodyDispatchCallbacks'
+import { findEdgeKindForQuery } from '@/picking/partDispatchCallbacks'
 import { classifyPendingAdd } from '@/kernel/features/constraintProbe'
 import { PROJECTION_NOT_FROZEN_TITLE, projectionNotFrozenMessage } from '@/kernel/features/projectionMembers'
 import { projectedSelectionTargets } from '@/utils/yamlMutations/freezeProjection'
@@ -75,15 +75,15 @@ import { suggestedCloneName, stepImportLimitError } from '@/stores/documentStore
 import { getFileRegistry } from '@/stores/fileRegistry'
 
 import { normalizeHexColor } from '@/utils/core/partColors'
-import { computeEffectiveVisibleBodies } from '@/components/Viewport/bodyUtils'
-import { builtinPlaneTransform, planeTransformNormal, resolvePlaneTransform } from '@/utils/geometry/bodySnapProjection'
+import { computeEffectiveVisibleParts } from '@/components/Viewport/partUtils'
+import { builtinPlaneTransform, planeTransformNormal, resolvePlaneTransform } from '@/utils/geometry/partSnapProjection'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
 import { BUILTIN_FEATURE_DEFAULTS } from '@/hooks/usePartDoc'
 import { hasDanglingContentInDoc } from '@/utils/yamlMutations/solveResult'
 
 const BUILT_IN_IDS = new Set(BUILTIN_FEATURE_DEFAULTS.map(f => f.id))
 
-type PartColorPopoverState = { bodyId: string; position: [number, number]; session: number } | null
+type PartColorPopoverState = { partId: string; position: [number, number]; session: number } | null
 
 // The DXF import waiting on the layer chooser: the file text is read once and
 // held here, so the confirm re-parses with the chosen layers rather than
@@ -116,9 +116,9 @@ function nonBuiltInCountBefore(features: PartFeature[], index: number): number {
 // an add; only a part with none starts its first body with `new`. Read from the
 // document, not the last solve, so a pending or failed solve does not seed the
 // wrong operation.
-const BODY_PRODUCING_KINDS: ReadonlySet<string> = new Set(['extrude', 'revolve', 'sweep', 'wrap', 'import_step'])
-function hasBodyProducerBefore(features: PartFeature[], index: number): boolean {
-  return features.slice(0, index).some(f => !f.suppressed && BODY_PRODUCING_KINDS.has(f.kind))
+const PART_PRODUCING_KINDS: ReadonlySet<string> = new Set(['extrude', 'revolve', 'sweep', 'wrap', 'import_step'])
+function hasPartProducerBefore(features: PartFeature[], index: number): boolean {
+  return features.slice(0, index).some(f => !f.suppressed && PART_PRODUCING_KINDS.has(f.kind))
 }
 
 // Pin the bar just after the inserted features so the add's solve includes them
@@ -151,7 +151,7 @@ function dxfImportMessage(profile: DxfProfile, fileName: string, grouped = true)
     parts.push(`skipped ${skipped.map(([kind, n]) => `${n} ${kind}`).join(', ')}`)
   }
   if (picked !== undefined) {
-    // Folded like the parser's match: `Body` and `BODY` are one layer.
+    // Folded like the parser's match: `Part` and `BODY` are one layer.
     const chosen = new Set(picked.map(name => name.toLowerCase()))
     const leftOut = Object.entries(profile.fileLayers)
       .filter(([layer]) => !chosen.has(layer.toLowerCase()))
@@ -564,8 +564,8 @@ export default function Part() {
     [features, editForcedVisible, editingFeatureId, planeSelectionFeatureId, relationHints]
   )
 
-  const effectiveVisibleBodies = useMemo(
-    () => computeEffectiveVisibleBodies(bodies, partStyle),
+  const effectiveVisibleParts = useMemo(
+    () => computeEffectiveVisibleParts(bodies, partStyle),
     [bodies, partStyle],
   )
 
@@ -619,12 +619,12 @@ export default function Part() {
   useEffect(() => {
     usePartEditorStore.getState().publishDerived({
       visibleFeatures: visibleFeaturesWithEdit,
-      visibleBodies: effectiveVisibleBodies,
+      visibleParts: effectiveVisibleParts,
       partLabels,
       otherSketches,
       isRebuilding,
     })
-  }, [visibleFeaturesWithEdit, effectiveVisibleBodies, partLabels, otherSketches, isRebuilding])
+  }, [visibleFeaturesWithEdit, effectiveVisibleParts, partLabels, otherSketches, isRebuilding])
 
   // The editor-derived viewport fields go to L2: ghost mode is an edit-session
   // read, the colors/styles are the live doc's part_style projection and the
@@ -652,8 +652,8 @@ export default function Part() {
   const handleDeleteSelectedFeatures = useCallback(() => {
     const store = useSketchEditorStore.getState()
     const sel = store.normalSelection
-    const bodyIds = new Set(Object.keys(bodies))
-    const bodyDeletes: Mutation[] = []
+    const partIds = new Set(Object.keys(bodies))
+    const partDeletes: Mutation[] = []
     const featureDeletes: Mutation[] = []
     // An edit pins the bar just after the edited feature; moving it here would
     // break that invariant, so a delete during an edit keeps the old append
@@ -687,15 +687,15 @@ export default function Part() {
       // feature through the same machinery the doomed-wireframe preview rides
       // on, instead of a `delete_feature` aimed at a body id that names no
       // feature. Face/edge/vertex picks are body primitives, not the body.
-      if (bodyIds.has(ref) || isWholeBodySelectionId(id)) {
+      if (partIds.has(ref) || isWholePartSelectionId(id)) {
         // The feature that GENERATES the body is deleted in the same selection:
         // the body vanishes with it, and a delete_body would then target a body
         // the final doc no longer contains, failing every later solve.
         const creator = bodies[ref]?.created_by
         if (creator && deletingFeatures.has(creator)) continue
-        bodyDeletes.push({
+        partDeletes.push({
           type: 'add_delete_body', featureId: randomId(18), bodies: [id], label: 'Delete Part',
-          ...insertion(bodyDeletes.length),
+          ...insertion(partDeletes.length),
         })
         continue
       }
@@ -708,11 +708,11 @@ export default function Part() {
     // edit pins the bar, the add_delete_* features carry increasing insertAt
     // slots so they land as one contiguous block, in the order listed, at it.
     const threeD = [
-      ...bodyDeletes,
+      ...partDeletes,
       ...(facePicks.length > 0
         ? [{
           type: 'add_delete_face', featureId: randomId(18), faces: facePicks, label: 'Delete Face',
-          ...insertion(bodyDeletes.length),
+          ...insertion(partDeletes.length),
         } as Mutation]
         : []),
       ...featureDeletes,
@@ -740,7 +740,7 @@ export default function Part() {
       // A Delete while rolled back inserts its delete features at the bar and
       // solves them in the same press. Deleting a feature above the bar shifts
       // the inserted block (and the bar) down with the list.
-      const addCount = bodyDeletes.length + (facePicks.length > 0 ? 1 : 0)
+      const addCount = partDeletes.length + (facePicks.length > 0 ? 1 : 0)
       if (insertAtBar && addCount > 0) {
         const deletedBeforeBar = featureDeletes.filter(m => {
           const idx = m.type === 'delete_feature' ? features.findIndex(f => f.id === m.featureId) : -1
@@ -822,7 +822,7 @@ export default function Part() {
     // check keeps that honest before the first solve lands (and across
     // rollback), where `bodies` is still empty.
     const addExtra = kind === 'extrude' && extra?.operation === undefined &&
-      Object.keys(bodies).length === 0 && !hasBodyProducerBefore(features, insertAt)
+      Object.keys(bodies).length === 0 && !hasPartProducerBefore(features, insertAt)
       ? { ...extra, operation: 'new' }
       : extra
     const result = handleMutation({
@@ -1336,43 +1336,43 @@ export default function Part() {
     handleMutation({ type: 'rename_feature', featureId, label: trimmed })
   }, [handleMutation])
 
-  const handleBodyRename = useCallback((bodyId: string, label: string) => {
+  const handlePartRename = useCallback((partId: string, label: string) => {
     const trimmed = label.trim()
     if (!trimmed) return
-    handleMutation({ type: 'rename_part', bodyId, name: trimmed })
+    handleMutation({ type: 'rename_part', bodyId: partId, name: trimmed })
   }, [handleMutation])
 
   // The context menu only names what is being renamed; the dialog collects the
   // label and routes it back to the kind's own mutation.
   const handleRenameConfirm = useCallback((name: string) => {
     if (!renameTarget) return
-    if (renameTarget.kind === 'body') handleBodyRename(renameTarget.id, name)
+    if (renameTarget.kind === 'body') handlePartRename(renameTarget.id, name)
     else handleFeatureRename(renameTarget.id, name)
     setRenameTarget(null)
-  }, [renameTarget, handleBodyRename, handleFeatureRename])
+  }, [renameTarget, handlePartRename, handleFeatureRename])
 
   const clamp01 = (v: number) => Math.max(0, Math.min(1, v))
 
-  const handleBodyColor = useCallback((bodyId: string, color: string) => {
+  const handlePartColor = useCallback((partId: string, color: string) => {
     const normalized = normalizeHexColor(color)
     if (!normalized) return
-    handleMutation({ type: 'set_part_color', bodyId, color: normalized })
+    handleMutation({ type: 'set_part_color', bodyId: partId, color: normalized })
   }, [handleMutation])
 
-  const handleBodyTransparency = useCallback((bodyId: string, transparency: number) => {
-    handleMutation({ type: 'set_part_transparency', bodyId, transparency: clamp01(transparency) })
+  const handlePartTransparency = useCallback((partId: string, transparency: number) => {
+    handleMutation({ type: 'set_part_transparency', bodyId: partId, transparency: clamp01(transparency) })
   }, [handleMutation])
 
-  const handleBodyMetalness = useCallback((bodyId: string, metalness: number) => {
-    handleMutation({ type: 'set_part_metalness', bodyId, metalness: clamp01(metalness) })
+  const handlePartMetalness = useCallback((partId: string, metalness: number) => {
+    handleMutation({ type: 'set_part_metalness', bodyId: partId, metalness: clamp01(metalness) })
   }, [handleMutation])
 
-  const handleBodyRoughness = useCallback((bodyId: string, roughness: number) => {
-    handleMutation({ type: 'set_part_roughness', bodyId, roughness: clamp01(roughness) })
+  const handlePartRoughness = useCallback((partId: string, roughness: number) => {
+    handleMutation({ type: 'set_part_roughness', bodyId: partId, roughness: clamp01(roughness) })
   }, [handleMutation])
 
-  const handleBodyTransmission = useCallback((bodyId: string, transmission: number) => {
-    handleMutation({ type: 'set_part_transmission', bodyId, transmission: clamp01(transmission) })
+  const handlePartTransmission = useCallback((partId: string, transmission: number) => {
+    handleMutation({ type: 'set_part_transmission', bodyId: partId, transmission: clamp01(transmission) })
   }, [handleMutation])
 
   const handleColorCancel = useCallback(() => {
@@ -1399,7 +1399,7 @@ export default function Part() {
   // path started no preview. A truthy `opts` with a null docRef lands here too,
   // where no preview can start, and any preview an earlier popover left open is
   // resolved rather than stranded.
-  const handleSetPartColorPopover = useCallback((opts: { bodyId: string; position: [number, number] } | null) => {
+  const handleSetPartColorPopover = useCallback((opts: { partId: string; position: [number, number] } | null) => {
     if (opts && docRef.current) {
       startPreviewMode(docRef.current)
       colorPopoverSession.current++
@@ -1518,9 +1518,9 @@ export default function Part() {
       activeSketchFeatureId: activeSketchFeatureId ?? undefined,
       showConstraintTiles: useSketchUiStore.getState().showConstraintTiles,
       partLabels,
-      orderedBodyIds: Object.keys(bodies),
+      orderedPartIds: Object.keys(bodies),
       builtInIds: BUILT_IN_IDS,
-      visibleBodies: effectiveVisibleBodies,
+      visibleParts: effectiveVisibleParts,
       hasDanglingContent,
       projectedTargetIds,
     }
@@ -1541,9 +1541,9 @@ export default function Part() {
         s.setShowConstraintTiles(!s.showConstraintTiles)
       },
       onSetPartColorPopover: handleSetPartColorPopover,
-      onExportBody: (bodyId, name) => exportImportRef.current?.openExport(bodyId, name),
-      onToggleBodyVisibility: (bodyId, visible) => {
-        handleMutation({ type: 'set_body_visibility', bodyId, visible })
+      onExportPart: (partId, name) => exportImportRef.current?.openExport(partId, name),
+      onTogglePartVisibility: (partId, visible) => {
+        handleMutation({ type: 'set_body_visibility', bodyId: partId, visible })
         setContextMenu(null)
       },
       onNewSketchOnPlane: handleNewSketchOnPlane,
@@ -1561,7 +1561,7 @@ export default function Part() {
   }, [handleRebuild, handleRemoveDanglingContent, toggleVisibility, toggleSuppression, enterEditSketch, handleExitSketch, handleDeleteFeature,
     handleAlignCameraToSketchPlane, handleNormalToPlane, handleNewSketchOnPlane,
     features, visibleFeaturesWithEdit, activeSketchFeatureId, partLabels, hasDanglingContent, bodies,
-    effectiveVisibleBodies, viewportRef, handleSetPartColorPopover, handleMutation])
+    effectiveVisibleParts, viewportRef, handleSetPartColorPopover, handleMutation])
 
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
@@ -1642,7 +1642,7 @@ export default function Part() {
           viewportRef={viewportRef}
           handleRightClick={handleRightClick}
           viewportHud={
-            <MeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} solveResults={solveResults} bodies={bodies} lengthUnit={lengthUnitOf(doc?.length_unit)} generation={measureGeneration} measureSet={measureSet} />
+            <MeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} solveResults={solveResults} parts={bodies} lengthUnit={lengthUnitOf(doc?.length_unit)} generation={measureGeneration} measureSet={measureSet} />
           }
           viewportViewOptions={
             <ViewOptionsButton
@@ -1699,11 +1699,11 @@ export default function Part() {
       />
       <PartColorPopover
         popover={partColorPopover}
-        onColorSet={handleBodyColor}
-        onTransparencySet={handleBodyTransparency}
-        onMetalnessSet={handleBodyMetalness}
-        onRoughnessSet={handleBodyRoughness}
-        onTransmissionSet={handleBodyTransmission}
+        onColorSet={handlePartColor}
+        onTransparencySet={handlePartTransparency}
+        onMetalnessSet={handlePartMetalness}
+        onRoughnessSet={handlePartRoughness}
+        onTransmissionSet={handlePartTransmission}
         onCancel={handleColorCancel}
         onApply={handleColorApply}
       />

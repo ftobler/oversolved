@@ -6,7 +6,7 @@ import { setLivePipeline, getLivePipeline } from '@/picking/IdPipelineContext'
 import { useIdPipelineLifecycle } from '@/picking/useIdPipelineLifecycle'
 import { useFaceIdRegistration } from '@/picking/useFaceIdRegistration'
 import { useIdBufferPointerDispatch } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
-import { registerBodyCallbacks, resetBodyCallbacksForTest } from '@/picking/bodyDispatchCallbacks'
+import { registerPartCallbacks, resetPartCallbacksForTest } from '@/picking/partDispatchCallbacks'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useEditorState } from '@/hooks/useEditorState'
 
@@ -62,7 +62,7 @@ describe('hover highlight after a cold-load / Suspense reveal', () => {
   let glRef: { current: import('three').WebGLRenderer | null }
 
   beforeEach(() => {
-    resetBodyCallbacksForTest()
+    resetPartCallbacksForTest()
     canvas = makeCanvas()
     glRef = { current: { domElement: canvas } as unknown as import('three').WebGLRenderer }
     useEditorState.setState({
@@ -73,21 +73,21 @@ describe('hover highlight after a cold-load / Suspense reveal', () => {
   })
 
   afterEach(() => {
-    resetBodyCallbacksForTest()
+    resetPartCallbacksForTest()
     setLivePipeline(null)
   })
 
   it('resolves hover against the live pipeline after a hide/reveal, not the disposed one', async () => {
     const useRegister = () => {
       // The body's face query must be known to the hover adapter so a resolved
-      // face hit actually drives hoveredSelectionId (mirrors Body3D registration).
-      registerBodyCallbacks('f/b', {
-        featureId: 'f', bodyId: 'b',
+      // face hit actually drives hoveredSelectionId (mirrors Part3D registration).
+      registerPartCallbacks('f/b', {
+        featureId: 'f', partId: 'b',
         mesh: faceMesh() as unknown as Mesh3D,
         edgeQueries: undefined, vertexQueries: undefined,
         updateFaceGeometryForIndex: () => {}, clearFaceGeometry: () => {},
       })
-      useFaceIdRegistration({ featureId: 'f', bodyId: 'b', mesh: faceMesh() })
+      useFaceIdRegistration({ featureId: 'f', partId: 'b', mesh: faceMesh() })
     }
     const dispatchProps = { glRef, consumedLayers: new Set([FACE_LAYER_NAME]) }
 
@@ -95,7 +95,7 @@ describe('hover highlight after a cold-load / Suspense reveal', () => {
     const view = render(<Harness useRegister={useRegister} dispatchProps={dispatchProps} />)
     const A = getLivePipeline() as IdPipeline
     expect(A.isDisposed()).toBe(false)
-    expect(A.faceLayer.bodyCount()).toBe(1)
+    expect(A.faceLayer.partCount()).toBe(1)
 
     const hitA = { id: 1, layer: FACE_LAYER_NAME, entityKey: 'f/face/0', distancePx: 0 }
     A.resolveAsync = vi.fn().mockImplementation(async () => hitA)
@@ -121,7 +121,7 @@ describe('hover highlight after a cold-load / Suspense reveal', () => {
     expect(B).not.toBe(A)
     expect(B.isDisposed()).toBe(false)
     // Geometry converged on the fresh pipeline, so a real readback would find it.
-    expect(B.faceLayer.bodyCount()).toBe(1)
+    expect(B.faceLayer.partCount()).toBe(1)
 
     const hitB = { id: 2, layer: FACE_LAYER_NAME, entityKey: 'f/face/0', distancePx: 0 }
     B.resolveAsync = vi.fn().mockImplementation(async () => hitB)

@@ -7,7 +7,7 @@
 // one mutation per edge.
 import type { Mutation } from '@/types/cad'
 import { parseQuery, emitWire, absolute } from '@/utils/query'
-import { isWholeBodySelectionId } from '@/utils/query/selectionId'
+import { isWholePartSelectionId } from '@/utils/query/selectionId'
 import { isFaceRestriction, isEdgeRestriction } from '@/kernel/occ/primitives'
 import { projectedKindForEdge, PROJECTABLE_CURVE_KINDS } from '@/tools/operandProjection'
 
@@ -42,7 +42,7 @@ export function projectionMutationsForId(
   // only body primitives (face/edge/vertex queries) and foreign sketch entities
   // can land on the active sketch plane. Excluded up front rather than falling
   // through to the generic empty return so the decision is explicit.
-  if (isWholeBodySelectionId(id)) return []
+  if (isWholePartSelectionId(id)) return []
 
   // Sketch entity pick: entity:<featureId>:<entityId>
   if (id.startsWith('entity:')) {
@@ -81,7 +81,7 @@ export function projectionMutationsForId(
     return [{ type: 'add_projected_entity', featureId, kind: 'point', source }]
   }
 
-  // Body geometry pick: ancestry query from face/edge/vertex layer
+  // Part geometry pick: ancestry query from face/edge/vertex layer
   if (id.startsWith('?')) {
     let kind = 'point'
     let isFace = false

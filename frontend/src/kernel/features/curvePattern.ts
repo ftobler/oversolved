@@ -13,7 +13,7 @@
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 import type { Repository } from '../query'
 import { makeRigidTrsf } from '../occ/transforms'
 import { swallowUnlessTrap } from '../errors'
@@ -31,7 +31,7 @@ import {
   type Dict, type PatternCopy,
 } from './pattern'
 import type { PatternResult } from './patternFeature'
-import type { BodyPatternResult } from './patternBody'
+import type { PartPatternResult } from './patternPart'
 
 const ORIENTATIONS: readonly CurveOrientation[] = ['tangent', 'normal_to', 'fixed']
 
@@ -45,7 +45,7 @@ const ORIENTATIONS: readonly CurveOrientation[] = ['tangent', 'normal_to', 'fixe
 export function resolveNormalRef(
   ref: string,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): Vec3 {
   if (!ref) {
     throw new Error(
@@ -63,7 +63,7 @@ export function resolveNormalRef(
     // trap escapes here.
     swallowUnlessTrap(err)
   }
-  const dir = resolveDirectionQueryStrict(ref, globalRepo, bodyStore)
+  const dir = resolveDirectionQueryStrict(ref, globalRepo, partStore)
   if (dir === null) {
     throw new Error(
       `curve_pattern: normal_ref '${ref}' did not resolve to a plane, a planar face or a straight edge`,
@@ -98,7 +98,7 @@ export function buildCurvePatternCopies(
   scope: DisposeScope,
   sub: Dict,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   featureId = '',
   featuresById: Record<string, Dict> = {},
 ): CurveCopies {
@@ -117,7 +117,7 @@ export function buildCurvePatternCopies(
   const orientation: CurveOrientation = ORIENTATIONS.includes(sub.orientation as CurveOrientation)
     ? sub.orientation as CurveOrientation
     : 'tangent'
-  const normal = orientation === 'normal_to' ? resolveNormalRef(String(sub.normal_ref ?? ''), globalRepo, bodyStore) : null
+  const normal = orientation === 'normal_to' ? resolveNormalRef(String(sub.normal_ref ?? ''), globalRepo, partStore) : null
 
   const spine = resolvePathSpine(oc, scope, pathRefs, globalRepo, featureId, featuresById, { closedCurve: true })
   const path = samplePath(spineSampler(oc, scope, spine.edges))
@@ -156,21 +156,21 @@ export function solveCurvePattern(
   table: HandleTable,
   feature: Dict,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   featuresById: Record<string, Dict> = {},
   solveContext: { variables: Record<string, number>; laterVariables: Record<string, number> } = {
     variables: {}, laterVariables: {},
   },
-): PatternResult | BodyPatternResult {
+): PatternResult | PartPatternResult {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.curve_pattern as Dict) ?? {}
   // The build runs inside the shared dispatch, so its report is carried out in
   // a holder: a plain `let` assigned in the callback does not narrow after it.
   const built: { value: CurveCopies | null } = { value: null }
   const result = solvePatternInstances(
-    oc, scope, table, feature, sub, globalRepo, bodyStore, featuresById, solveContext,
+    oc, scope, table, feature, sub, globalRepo, partStore, featuresById, solveContext,
     () => {
-      const copies = buildCurvePatternCopies(oc, scope, sub, globalRepo, bodyStore, featureId, featuresById)
+      const copies = buildCurvePatternCopies(oc, scope, sub, globalRepo, partStore, featureId, featuresById)
       built.value = copies
       return { copies: copies.copies, warnings: copies.warnings }
     },

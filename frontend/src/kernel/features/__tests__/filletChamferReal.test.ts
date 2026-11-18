@@ -20,11 +20,11 @@ import { HandleTable } from '../../occ/handleTable'
 import { makeBox, makeCylinder, edgeToGeom } from '../../occ/primitives'
 import { volumeOf } from '../../occ/booleans'
 import { deriveEdgeNames } from '../../occ/constructionLineage'
-import { canonicalEdges, canonicalFaces, namesFromArray, namesToArray } from '../../occ/bodyNames'
+import { canonicalEdges, canonicalFaces, namesFromArray, namesToArray } from '../../occ/partNames'
 import { ref, Repository } from '../../query'
 import { solveFillet, solveChamfer, resolveFilletEdges } from '../filletChamfer'
 import { solidToEdges } from '../../occ/tessellation'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 
 const oc = await loadOcc()
@@ -37,7 +37,7 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
     occ = oc
   })
 
-  function makeBody(scope: DisposeScope, table: HandleTable): Record<string, Body> {
+  function makePart(scope: DisposeScope, table: HandleTable): Record<string, PartSolid> {
     const box = makeBox(occ, scope, 10, 10, 10)
 
     // Name the faces and derive the edges so that solidToEdges and
@@ -70,24 +70,24 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBody(scope, table)
+      const partStore = makePart(scope, table)
       const result = solveFillet(
         occ,
         scope,
         table,
         { id: 'fil1', fillet: { edges: ['?body_b:edge:0'], radius: 2 } },
         new Repository(),
-        bodyStore,
+        partStore,
       )
       expect(result.status).toBe('ok')
       expect(result.body_ids).toEqual(['body_b'])
-      const body = bodyStore.body_b
-      expect(body.modified_by).toEqual(['fil1'])
-      expect(volumeOf(occ, scope, table.get<OccShape>(body.shape!))).toBeLessThan(1000)
-      expect(volumeOf(occ, scope, table.get<OccShape>(body.shape!))).toBeGreaterThan(985)
+      const part = partStore.body_b
+      expect(part.modified_by).toEqual(['fil1'])
+      expect(volumeOf(occ, scope, table.get<OccShape>(part.shape!))).toBeLessThan(1000)
+      expect(volumeOf(occ, scope, table.get<OccShape>(part.shape!))).toBeGreaterThan(985)
       // Original face construction names survive onto the trimmed output faces.
-      expect(body.face_uuids?.some((u) => u !== null)).toBe(true)
-      expect(body.brep_diff).not.toBeNull()
+      expect(part.face_uuids?.some((u) => u !== null)).toBe(true)
+      expect(part.brep_diff).not.toBeNull()
     } finally {
       scope.dispose()
     }
@@ -97,20 +97,20 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBody(scope, table)
+      const partStore = makePart(scope, table)
       const result = solveFillet(
         occ,
         scope,
         table,
         { id: 'fil1', fillet: { edges: ['?body_b:edge:0'], radius: 2, source_body: 'body:body_b' } },
         new Repository(),
-        bodyStore,
+        partStore,
       )
       expect(result.status).toBe('ok')
       expect(result.body_ids).toEqual(['body_b'])
       // The viewport prefix resolves to the real body, so the group key is the
-      // bodyStore id and the edge index builds against it.
-      expect(bodyStore.body_b.modified_by).toEqual(['fil1'])
+      // partStore id and the edge index builds against it.
+      expect(partStore.body_b.modified_by).toEqual(['fil1'])
     } finally {
       scope.dispose()
     }
@@ -120,14 +120,14 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBody(scope, table)
+      const partStore = makePart(scope, table)
       const result = solveFillet(
         occ,
         scope,
         table,
         { id: 'fil1', fillet: { edges: ['?body_b:edge:0'], radius: 2 } },
         new Repository(),
-        bodyStore,
+        partStore,
       )
       expect(result.status).toBe('ok')
       const h = result.handle as Record<string, unknown>
@@ -159,15 +159,15 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBody(scope, table)
+      const partStore = makePart(scope, table)
       const result = solveChamfer(
         occ, scope, table,
         { id: 'cha1', chamfer: { edges: ['?body_b:edge:0'], distance: 2 } },
-        new Repository(), bodyStore,
+        new Repository(), partStore,
       )
       expect(result.status).toBe('ok')
-      expect(bodyStore.body_b.modified_by).toEqual(['cha1'])
-      expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))).toBeCloseTo(980, 1)
+      expect(partStore.body_b.modified_by).toEqual(['cha1'])
+      expect(volumeOf(occ, scope, table.get<OccShape>(partStore.body_b.shape!))).toBeCloseTo(980, 1)
     } finally {
       scope.dispose()
     }
@@ -182,18 +182,18 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBody(scope, table)
-      const body = bodyStore.body_b
-      const shapeBefore = body.shape
-      const faceNamesBefore = JSON.stringify(body.face_uuids)
-      const edgeNamesBefore = JSON.stringify(body.edge_uuids)
+      const partStore = makePart(scope, table)
+      const part = partStore.body_b
+      const shapeBefore = part.shape
+      const faceNamesBefore = JSON.stringify(part.face_uuids)
+      const edgeNamesBefore = JSON.stringify(part.edge_uuids)
 
       let threw: unknown = null
       try {
         solveFillet(
           occ, scope, table,
           { id: 'fil1', fillet: { edges: ['?body_b:edge:0'], radius: 1000 } },
-          new Repository(), bodyStore,
+          new Repository(), partStore,
         )
       } catch (e) {
         threw = e
@@ -203,11 +203,11 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
       expect((threw as Error).message).toContain('body_b')
 
       // No resplit, no metadata writes: the body reads exactly as before.
-      expect(body.modified_by).toEqual([])
-      expect(body.brep_diff).toBeNull()
-      expect(body.shape).toBe(shapeBefore)
-      expect(JSON.stringify(body.face_uuids)).toBe(faceNamesBefore)
-      expect(JSON.stringify(body.edge_uuids)).toBe(edgeNamesBefore)
+      expect(part.modified_by).toEqual([])
+      expect(part.brep_diff).toBeNull()
+      expect(part.shape).toBe(shapeBefore)
+      expect(JSON.stringify(part.face_uuids)).toBe(faceNamesBefore)
+      expect(JSON.stringify(part.edge_uuids)).toBe(edgeNamesBefore)
     } finally {
       scope.dispose()
     }
@@ -223,27 +223,27 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBody(scope, table)
-      const body = bodyStore.body_b
-      const { edges, edge_queries } = solidToEdges(occ, table, body.shape!, {
-        createdBy: body.created_by,
-        bodyId: body.id,
-        profileQueries: body.profile_queries,
-        edgeAncestry: body.edge_ancestry,
-        edgeUuids: body.edge_uuids,
+      const partStore = makePart(scope, table)
+      const part = partStore.body_b
+      const { edges, edge_queries } = solidToEdges(occ, table, part.shape!, {
+        createdBy: part.created_by,
+        partId: part.id,
+        profileQueries: part.profile_queries,
+        edgeAncestry: part.edge_ancestry,
+        edgeUuids: part.edge_uuids,
       })
       expect(edges.length).toBe(12)
       expect(edge_queries.length).toBe(12)
       // Every emitted query resolves to a single edge.
       for (const q of edge_queries) {
-        const resolved = resolveFilletEdges(occ, scope, table, body, [q])
+        const resolved = resolveFilletEdges(occ, scope, table, part, [q])
         expect(resolved.length).toBe(1)
       }
       // And a single picked edge actually fillets the body.
       const result = solveFillet(
         occ, scope, table,
         { id: 'fil1', fillet: { edges: [edge_queries[0]], radius: 2 } },
-        new Repository(), bodyStore,
+        new Repository(), partStore,
       )
       expect(result.status).toBe('ok')
     } finally {
@@ -255,9 +255,9 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBody(scope, table)
+      const partStore = makePart(scope, table)
       const allEdgeQueries = Array.from({ length: 24 }, (_, i) => `?body_b:edge:${i}`)
-      const edges = resolveFilletEdges(occ, scope, table, bodyStore.body_b, allEdgeQueries)
+      const edges = resolveFilletEdges(occ, scope, table, partStore.body_b, allEdgeQueries)
       expect(edges.length).toBe(12)
     } finally {
       scope.dispose()
@@ -274,7 +274,7 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
     const table = new HandleTable()
     try {
       const cyl = makeCylinder(occ, scope, [0, 0, 0], [0, 0, 1], 3, 10)
-      const bodyStore: Record<string, Body> = {
+      const partStore: Record<string, PartSolid> = {
         body_c: {
           id: 'body_c',
           created_by: 'ex_c',
@@ -285,13 +285,13 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
           profile_queries: [],
         },
       }
-      const body = bodyStore.body_c
-      const { edges } = solidToEdges(occ, table, body.shape!, {})
+      const part = partStore.body_c
+      const { edges } = solidToEdges(occ, table, part.shape!, {})
       expect(edges.length).toBe(3)
       // The first emitted edge is the straight seam; the other two are circular.
       expect(edges[0].kind).toBe('line')
       for (let idx = 0; idx < edges.length; idx++) {
-        const resolved = resolveFilletEdges(occ, scope, table, body, [`?body_c:edge:${idx}`])
+        const resolved = resolveFilletEdges(occ, scope, table, part, [`?body_c:edge:${idx}`])
         expect(resolved.length).toBe(1)
         const { ed } = edgeToGeom(occ, scope, resolved[0])
         expect(ed).toEqual(edges[idx])
@@ -309,7 +309,7 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
     const table = new HandleTable()
     try {
       const box = makeBox(occ, scope, 10, 10, 10)
-      const bodyStore: Record<string, Body> = {
+      const partStore: Record<string, PartSolid> = {
         body_b: {
           id: 'body_b', created_by: 'ex1', modified_by: [],
           shape: table.register(box, 'ex1'), sketch_id: 'sk',
@@ -319,13 +319,13 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
       const result = solveFillet(
         occ, scope, table,
         { id: 'fil1', fillet: { edges: ['?body_b:edge:0'], radius: 2 } },
-        new Repository(), bodyStore,
+        new Repository(), partStore,
       )
       expect(result.status).toBe('ok')
       // A body that carried no names gains none: every slot of the rewritten arrays is empty.
-      expect(bodyStore.body_b.face_uuids?.every((u) => u === null)).toBe(true)
-      expect(bodyStore.body_b.edge_uuids?.every((u) => u === null)).toBe(true)
-      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))
+      expect(partStore.body_b.face_uuids?.every((u) => u === null)).toBe(true)
+      expect(partStore.body_b.edge_uuids?.every((u) => u === null)).toBe(true)
+      const vol = volumeOf(occ, scope, table.get<OccShape>(partStore.body_b.shape!))
       expect(vol).toBeLessThan(1000)
       expect(vol).toBeGreaterThan(985)
     } finally {

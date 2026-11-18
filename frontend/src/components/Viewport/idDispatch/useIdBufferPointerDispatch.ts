@@ -13,7 +13,7 @@ import { planeAdapter } from './planeAdapter'
 import { originAdapter } from './originAdapter'
 import { effectiveAllowedLayers } from '@/registry/toolPickConfig'
 import type { ActiveTool } from '@/types/cad'
-import { findEdgeKindForQuery } from '@/picking/bodyDispatchCallbacks'
+import { findEdgeKindForQuery } from '@/picking/partDispatchCallbacks'
 import { dispatchSketchClick } from './dispatchSketchClick'
 import { takeDrawToolClickConsumed } from './drawToolClickGuard'
 import { takeBandClickConsumed } from './bandClickGuard'
@@ -370,7 +370,7 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
           }
         }
         // ─── M1: another writer cleared the store hover under us ───
-        // Body3D's per-body callback teardown (fires on every solve commit) and
+        // Part3D's per-body callback teardown (fires on every solve commit) and
         // Part.tsx resetTransientState both null hoveredSelectionId directly.
         // The dedup cache still names the old primitive, so the next same-pixel
         // move returns at applyHoverHit's guard and the highlight never comes
@@ -496,7 +496,7 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         // why, instead of storing a source that would auto-disable later.
         if (
           hit!.layer === FACE_LAYER_NAME
-          && !faceFrameFromSolve(usePartEditorStore.getState().bodies, hit!.entityKey, hit!.pickKey)
+          && !faceFrameFromSolve(usePartEditorStore.getState().parts, hit!.entityKey, hit!.pickKey)
         ) {
           useSectionStore.getState().setPickError(SECTION_FACE_NOT_FLAT_REASON)
           setLastClickIdHit(true)

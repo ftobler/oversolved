@@ -9,8 +9,8 @@
 // same grammar the part-side `select` tool uses, then compared; it is an
 // authoring aid and is never stored.
 
-import type { AssemblyDoc, BodyResult, MateAnchorDescriptor, MateRef } from '@/types/cad'
-import type { Anchor, BodyMesh, PartBundle } from '@/kernel/partBundle'
+import type { AssemblyDoc, PartResult, MateAnchorDescriptor, MateRef } from '@/types/cad'
+import type { Anchor, PartMesh, PartBundle } from '@/kernel/partBundle'
 import { PART_FRAME_ANCHORS, partFrameAnchorId } from '@/kernel/partBundle'
 import { selectByPredicate, SelectorError, validateSelector, type Selector } from '@/kernel/select'
 import { ASSEMBLY_BUILTIN_ANCHORS, ASSEMBLY_HANDLE } from '@/utils/assemblyBuiltins'
@@ -32,7 +32,7 @@ export type DriveMateRef =
 export interface PartAnchorIndex {
   anchors: Record<string, Anchor>
   byQuery: Map<string, string[]>
-  bodies: Record<string, BodyResult>
+  parts: Record<string, PartResult>
 }
 
 export type ResolvedDriveRef =
@@ -60,9 +60,9 @@ function anchorDescriptor(anchor: Anchor): MateAnchorDescriptor {
 // bounded by the ENTITY array (never the query array) so a short query array
 // cannot drop the tail entities out of the index. An entity with no anchor keeps
 // its empty list, which is the "no matable anchor" answer, not a missing query.
-function indexBody(
-  mesh: BodyMesh,
-  result: BodyResult | undefined,
+function indexPart(
+  mesh: PartMesh,
+  result: PartResult | undefined,
   byQuery: Map<string, string[]>,
 ): void {
   const join = (
@@ -88,14 +88,14 @@ function indexBody(
  */
 export function buildPartAnchorIndex(
   bundle: PartBundle,
-  bodies: Record<string, BodyResult>,
+  parts: Record<string, PartResult>,
 ): PartAnchorIndex {
   const byQuery = new Map<string, string[]>()
-  const bodyResults = Object.values(bodies)
+  const partResults = Object.values(parts)
   for (let i = 0; i < bundle.bodies.length; i++) {
-    indexBody(bundle.bodies[i], bodyResults[i], byQuery)
+    indexPart(bundle.bodies[i], partResults[i], byQuery)
   }
-  return { anchors: bundle.anchors, byQuery, bodies }
+  return { anchors: bundle.anchors, byQuery, parts }
 }
 
 function builtinRef(ref: DriveMateRef): ResolvedDriveRef {
@@ -179,7 +179,7 @@ export function selectorMatches(
     return { ok: false, code: 'invalid-ref', message: e.message }
   }
   try {
-    return { ok: true, queries: selectByPredicate(selector, index.bodies).queries }
+    return { ok: true, queries: selectByPredicate(selector, index.parts).queries }
   } catch (e) {
     // The select engine owns the nearest-miss wording; pass it through.
     return { ok: false, code: 'unresolved-ref', message: e instanceof Error ? e.message : String(e) }

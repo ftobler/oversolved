@@ -89,7 +89,7 @@ export interface RegressionChecks {
 }
 
 /** One body's frozen identity and geometry fingerprints, in sorted order. */
-export interface RegressionSnapshotBody {
+export interface RegressionSnapshotPart {
   created_by: string
   modified_by: string[]
   face_hashes: string[]
@@ -97,7 +97,7 @@ export interface RegressionSnapshotBody {
 }
 
 export interface RegressionSnapshot {
-  bodies: Record<string, RegressionSnapshotBody>
+  bodies: Record<string, RegressionSnapshotPart>
 }
 
 export interface RegressionCase {
@@ -311,20 +311,20 @@ export function parseSnapshot(name: string, text: string): RegressionSnapshot {
   }
   const record = requireRecord(where, raw)
   rejectUnknownKeys(where, record, ['bodies'])
-  const bodiesRecord = requireRecord(`${where}.bodies`, record.bodies)
-  const bodies: Record<string, RegressionSnapshotBody> = {}
-  for (const [id, bodyRaw] of Object.entries(bodiesRecord)) {
-    const bodyWhere = `${where}.bodies.${id}`
-    const body = requireRecord(bodyWhere, bodyRaw)
-    rejectUnknownKeys(bodyWhere, body, ['created_by', 'modified_by', 'face_hashes', 'edge_hashes'])
-    bodies[id] = {
-      created_by: requirePlainString(`${bodyWhere}.created_by`, body.created_by),
-      modified_by: requireStringArray(`${bodyWhere}.modified_by`, body.modified_by),
-      face_hashes: requireStringArray(`${bodyWhere}.face_hashes`, body.face_hashes),
-      edge_hashes: requireStringArray(`${bodyWhere}.edge_hashes`, body.edge_hashes),
+  const partsRecord = requireRecord(`${where}.bodies`, record.bodies)
+  const parts: Record<string, RegressionSnapshotPart> = {}
+  for (const [id, bodyRaw] of Object.entries(partsRecord)) {
+    const partWhere = `${where}.bodies.${id}`
+    const part = requireRecord(partWhere, bodyRaw)
+    rejectUnknownKeys(partWhere, part, ['created_by', 'modified_by', 'face_hashes', 'edge_hashes'])
+    parts[id] = {
+      created_by: requirePlainString(`${partWhere}.created_by`, part.created_by),
+      modified_by: requireStringArray(`${partWhere}.modified_by`, part.modified_by),
+      face_hashes: requireStringArray(`${partWhere}.face_hashes`, part.face_hashes),
+      edge_hashes: requireStringArray(`${partWhere}.edge_hashes`, part.edge_hashes),
     }
   }
-  return { bodies }
+  return { bodies: parts }
 }
 
 /** One case: its recipe text, parsed checks and optional frozen snapshot. */

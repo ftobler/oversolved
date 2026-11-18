@@ -4,7 +4,7 @@ import { INITIAL_CAMERA } from '@/components/Viewport/cameraConstants'
 // The first-frame clip planes. Large models are fitToContent's problem (it
 // resizes both planes); what matters here is that the near plane reaches behind
 // the camera at all, and that the range stays narrow enough for the depth
-// buffer -- Body3D's polygonOffsetUnits=1 is one resolution unit of this range,
+// buffer -- Part3D's polygonOffsetUnits=1 is one resolution unit of this range,
 // so a wide range shows up as small parts turning transparent.
 describe('INITIAL_CAMERA clipping planes', () => {
   const standoff = Math.hypot(...INITIAL_CAMERA.position)

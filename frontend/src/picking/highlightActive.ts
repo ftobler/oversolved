@@ -24,7 +24,7 @@ export const EMPTY_CLAIM_MAP: ReadonlyMap<string, ReadonlySet<string>> = new Map
  * grouping is preserved into `pickKeys` rather than flattened: computeHighlight
  * validates each claim against the primitive that currently owns its index, and
  * that check needs the query the claim was recorded under. This is the ONE
- * builder Body3D uses for the selection highlight, so the memo that wraps it and
+ * builder Part3D uses for the selection highlight, so the memo that wraps it and
  * the symmetry test both exercise identical wiring.
  */
 export function selectActiveFrom(

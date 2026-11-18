@@ -11,7 +11,7 @@
 // step solve; the run asks for the input document's verdict explicitly.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import type { BodyResult, PartDoc } from '@/types/cad'
+import type { PartResult, PartDoc } from '@/types/cad'
 import { makeAncestryQuery } from '@/kernel/query'
 import { emptyDriveDoc } from '../headlessOps'
 import { createHeadlessPart, SETTLE_PASSES } from '../headlessPart'
@@ -57,7 +57,7 @@ function cleanBuild(payload: { features?: PayloadFeature[] }) {
 
 // One flat face on top, enough for a `parallel: [0, 0, 1]` selector to resolve
 // against the body the step is building on.
-function solvedBody(id: string): BodyResult {
+function solvedPart(id: string): PartResult {
   return {
     id,
     created_by: 'ex1',
@@ -71,7 +71,7 @@ function solvedBody(id: string): BodyResult {
       face_queries: [makeAncestryQuery([`@${id}`, '@u|f_0'], 'flatface')],
       face_edge_queries: [[]],
     },
-  } as BodyResult
+  } as PartResult
 }
 
 const addSketch = (id: string): ScriptStep =>
@@ -139,7 +139,7 @@ describe('the headless run solves once per flush', () => {
   it('a selector after three mutations flushes, then solves once at the end', async () => {
     vi.mocked(kernel.solveLocally).mockImplementation(async payload => {
       const build = cleanBuild(payload as never)
-      return { ...build, bodies: { body_ex1: solvedBody('body_ex1') } } as never
+      return { ...build, bodies: { body_ex1: solvedPart('body_ex1') } } as never
     })
     const steps: ScriptStep[] = [
       addSketch('sk1'),
@@ -163,7 +163,7 @@ describe('the headless run solves once per flush', () => {
   it('a selector on the first step still solves before resolving it', async () => {
     vi.mocked(kernel.solveLocally).mockImplementation(async payload => {
       const build = cleanBuild(payload as never)
-      return { ...build, bodies: { body_ex1: solvedBody('body_ex1') } } as never
+      return { ...build, bodies: { body_ex1: solvedPart('body_ex1') } } as never
     })
     const result = await runHeadless({
       doc: emptyDriveDoc(),

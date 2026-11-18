@@ -121,7 +121,7 @@ describe('assemblyStore', () => {
     const { getState } = useAssemblyStore
     expect(getState().solveStatus).toBeNull()
     getState().setSolveResult({
-      transforms: {}, bodies: {}, edgeCurves: {}, entityMateRefs: {},
+      transforms: {}, parts: {}, edgeCurves: {}, entityMateRefs: {},
       anchors: {}, pickGeometry: [], solveStatus: FAILED_STATUS,
     })
     expect(getState().solveStatus).toBe(FAILED_STATUS)
@@ -294,7 +294,7 @@ describe('assemblyStore', () => {
 
   describe('B-rep selection', () => {
     const EMPTY_SOLVE = {
-      transforms: {}, bodies: {}, edgeCurves: {}, entityMateRefs: {},
+      transforms: {}, parts: {}, edgeCurves: {}, entityMateRefs: {},
       anchors: {}, pickGeometry: [], solveStatus: null,
     }
 

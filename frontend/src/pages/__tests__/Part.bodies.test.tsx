@@ -1,8 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { PartDocumentPanel } from '@/components/layout/PartDocumentPanel'
-import { getBodiesToRender } from '@/components/Viewport/bodyUtils'
-import type { PartFeature, BodyResult, Mesh3D } from '@/types/cad'
+import { getPartsToRender } from '@/components/Viewport/partUtils'
+import type { PartFeature, PartResult, Mesh3D } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
@@ -14,7 +14,7 @@ const TEST_CUBE_MESH: Mesh3D = {
   faces: [[0,1,2],[0,2,3],[4,5,6],[4,6,7],[0,4,5],[0,5,1],[1,5,6],[1,6,2],[2,6,7],[2,7,3],[3,7,4],[3,4,0]],
 }
 
-const TEST_BODIES: Record<string, BodyResult> = {
+const TEST_PARTS: Record<string, PartResult> = {
   body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [], mesh: TEST_CUBE_MESH },
 }
 
@@ -40,16 +40,16 @@ function makeCallbacks(): PartEditorCallbacks {
   }
 }
 
-function renderSidebar(features: PartFeature[], solveResults?: Record<string, unknown>, bodies?: Record<string, BodyResult | undefined>) {
+function renderSidebar(features: PartFeature[], solveResults?: Record<string, unknown>, parts?: Record<string, PartResult | undefined>) {
   usePartEditorStore.setState({
     features,
     visibleFeatures: new Set(features.map(f => f.id)),
     doc: null,
-    visibleBodies: new Set(),
+    visibleParts: new Set(),
     partLabels: {},
     solveResults: solveResults ?? {},
-    bodies: (bodies ?? {}) as Record<string,
-    BodyResult>,
+    parts: (parts ?? {}) as Record<string,
+    PartResult>,
     isRebuilding: false,
     featureTimings: {},
   })
@@ -74,10 +74,10 @@ beforeEach(() => {
     features: [],
     visibleFeatures: new Set(),
     doc: null,
-    visibleBodies: new Set(),
+    visibleParts: new Set(),
     partLabels: {},
     solveResults: {},
-    bodies: {},
+    parts: {},
     isRebuilding: false,
     featureTimings: {},
   })
@@ -97,20 +97,20 @@ describe('extrude feature name error state', () => {
     renderSidebar(
       [extrudeFeature],
       { ex1: { status: 'ok', body_id: 'body_ex1' } },
-      TEST_BODIES,
+      TEST_PARTS,
     )
     const name = document.querySelector('.feature-name')
     expect(name?.classList.contains('feature-name-error')).toBe(false)
   })
 
   it('shows error name when status ok but no mesh (mesh_error)', () => {
-    const bodiesWithError: Record<string, BodyResult> = {
+    const partsWithError: Record<string, PartResult> = {
       body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [], mesh_error: 'no shape' },
     }
     renderSidebar(
       [extrudeFeature],
       { ex1: { status: 'ok', body_id: 'body_ex1' } },
-      bodiesWithError,
+      partsWithError,
     )
     const name = screen.getByTitle('no shape')
     expect(name.classList.contains('feature-name-error')).toBe(true)
@@ -120,7 +120,7 @@ describe('extrude feature name error state', () => {
     renderSidebar(
       [extrudeFeature],
       { ex1: { status: 'exception', body_id: 'body_ex1', exception: 'sketch not found' } },
-      TEST_BODIES,
+      TEST_PARTS,
     )
     const name = screen.getByTitle('sketch not found')
     expect(name.classList.contains('feature-name-error')).toBe(true)
@@ -133,7 +133,7 @@ describe('extrude feature name error state', () => {
     renderSidebar(
       [filletFeature],
       { fil1: { status: 'partial', body_id: 'body_ex1', exception: '1 edge(s) could not be applied' } },
-      TEST_BODIES,
+      TEST_PARTS,
     )
     const name = screen.getByTitle('1 edge(s) could not be applied')
     expect(name.classList.contains('feature-name-warning')).toBe(true)
@@ -180,9 +180,9 @@ describe('extrude feature name error state', () => {
 
 describe('no filter-by-kind for bodies', () => {
   it('getBodiesToRender iterates Object.entries(bodies), not features.filter(kind)', () => {
-    const src = getBodiesToRender.toString()
+    const src = getPartsToRender.toString()
     expect(src).toContain('Object.entries')
-    expect(src).toContain('bodies')
+    expect(src).toContain('parts')
     expect(/bodies.*filter.*kind/.test(src)).toBe(false)
   })
 })

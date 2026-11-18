@@ -13,7 +13,7 @@ import { parseQuery } from '@/utils/query'
 // Selection ids that name their owning feature in the segment after the prefix.
 const OWNER_PREFIXES = ['entity:', 'vertex:', 'face:', 'edge:', 'constraint:', 'dock:', 'isect:']
 
-const BODY_PREFIX = 'body_'
+const PART_PREFIX = 'body_'
 
 /**
  * Resolve an ancestor token to the feature that owns it. Handles the three
@@ -35,13 +35,13 @@ export function featureIdOfToken(token: string, known: ReadonlySet<string>): str
 
   // A body is named after the feature that first created it -- but that feature
   // can own several bodies, and split siblings carry a `_1`, `_2` suffix
-  // (kernel/features/bodySplit.ts). Strip the prefix and fall through to the
+  // (kernel/features/partSplit.ts). Strip the prefix and fall through to the
   // longest-known-prefix match below, so `@body_ex1_1` still attributes to
   // `ex1`. Stripping and demanding an EXACT hit resolved every sibling to
   // null, and this guard fails open, so each sibling silently became pickable
   // by the feature that made it.
-  if (id.startsWith(BODY_PREFIX)) {
-    id = id.slice(BODY_PREFIX.length)
+  if (id.startsWith(PART_PREFIX)) {
+    id = id.slice(PART_PREFIX.length)
     if (known.has(id)) return id
   }
 

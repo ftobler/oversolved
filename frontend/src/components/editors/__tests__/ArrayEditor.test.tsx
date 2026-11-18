@@ -34,11 +34,11 @@ function renderEditor(feature: PartFeature, onMutation: () => void) {
   render(<FeatureEditor feature={feature} onMutation={onMutation} features={FEATURES} schema={LINEAR_PATTERN_SCHEMA} />)
 }
 
-/** All pick chips in schema field order. Linear mode: [0] Body, [1] Direction. */
+/** All pick chips in schema field order. Linear mode: [0] Part, [1] Direction. */
 function chips(): NodeListOf<HTMLElement> {
   return document.querySelectorAll<HTMLElement>('.feature-pick-chip')
 }
-const bodyChip = () => chips()[0]
+const partChip = () => chips()[0]
 const dirChip = () => chips()[1]
 
 /** Simulate the viewport click path: every pick lands in normalSelection. */
@@ -60,20 +60,20 @@ beforeEach(() => {
 describe('body pattern source body pick (via FeatureEditor)', () => {
   it('renders an empty part chip asking for the part to copy', () => {
     renderEditor(makeFeature(), vi.fn())
-    const chip = bodyChip()
+    const chip = partChip()
     expect(chip.classList.contains('empty')).toBe(true)
     expect(chip.querySelector('.feature-pick-chip-empty-text')?.textContent).toBe('(pick the part to copy)')
   })
 
   it('renders the source_body ref when set', () => {
     renderEditor(makeFeature({ source_body: '@body_ex1' }), vi.fn())
-    expect(bodyChip().querySelector('.feature-pick-chip-item-text')?.textContent).toBe('body_ex1')
+    expect(partChip().querySelector('.feature-pick-chip-item-text')?.textContent).toBe('body_ex1')
   })
 
   it('picking a body normalizes to an @body_ ref', () => {
     const onMutation = vi.fn()
     renderEditor(makeFeature(), onMutation)
-    fireEvent.click(bodyChip())
+    fireEvent.click(partChip())
     pick('body:body_ex1')
     expect(onMutation).toHaveBeenCalledWith({
       type: 'set_linear_pattern_field', featureId: 'pt1', field: 'source_body', value: '@body_ex1',
@@ -83,7 +83,7 @@ describe('body pattern source body pick (via FeatureEditor)', () => {
   it('picking a face of a body keeps the inner query for the solver to resolve', () => {
     const onMutation = vi.fn()
     renderEditor(makeFeature(), onMutation)
-    fireEvent.click(bodyChip())
+    fireEvent.click(partChip())
     pick('face:ex1:?4;@ex1:face')
     expect(onMutation).toHaveBeenCalledWith({
       type: 'set_linear_pattern_field', featureId: 'pt1', field: 'source_body', value: '?4;@ex1:face',
@@ -93,7 +93,7 @@ describe('body pattern source body pick (via FeatureEditor)', () => {
   it('rejects picking the pattern\'s own body', () => {
     const onMutation = vi.fn()
     renderEditor(makeFeature(), onMutation)
-    fireEvent.click(bodyChip())
+    fireEvent.click(partChip())
     pick('@body_pt1')
     expect(onMutation).not.toHaveBeenCalled()
   })
@@ -101,7 +101,7 @@ describe('body pattern source body pick (via FeatureEditor)', () => {
   it('remove button clears source_body back to the empty pick', () => {
     const onMutation = vi.fn()
     renderEditor(makeFeature({ source_body: '@body_ex1' }), onMutation)
-    fireEvent.click(bodyChip().querySelector('.feature-pick-chip-item-remove')!)
+    fireEvent.click(partChip().querySelector('.feature-pick-chip-item-remove')!)
     expect(onMutation).toHaveBeenCalledWith({
       type: 'set_linear_pattern_field', featureId: 'pt1', field: 'source_body', value: '',
     })
@@ -191,14 +191,14 @@ describe('body pattern direction pick (via FeatureEditor)', () => {
 
   it('hides the Direction 2 chip without a second direction', () => {
     renderEditor(makeFeature(), vi.fn())
-    // One direction: only Body + Direction chips.
+    // One direction: only Part + Direction chips.
     expect(chips().length).toBe(2)
   })
 
   it('shows and picks a Direction 2 chip with the second direction on', () => {
     const onMutation = vi.fn()
     renderEditor(makeFeature({ second_direction: true, count_2: 2, pitch_2: 20 }), onMutation)
-    // Field order: [0] Body, [1] Direction, [2] Direction 2.
+    // Field order: [0] Part, [1] Direction, [2] Direction 2.
     const dir2 = chips()[2]
     expect(dir2.querySelector('.feature-pick-chip-empty-text')?.textContent).toBe('(pick edge or face, required)')
     fireEvent.click(dir2)

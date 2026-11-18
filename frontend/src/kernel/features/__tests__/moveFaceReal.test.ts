@@ -24,7 +24,7 @@ interface FaceInfo {
   // Per-face normal + centroid, aligned with face_queries (tessellation payload).
   face_data?: { normal: number[]; centroid: number[] }[]
 }
-interface BodyView { mesh?: FaceInfo & { vertices?: number[][] }; edge_queries?: string[]; modified_by?: string[] }
+interface PartView { mesh?: FaceInfo & { vertices?: number[][] }; edge_queries?: string[]; modified_by?: string[] }
 
 /** The Construction UUID token of a query, or undefined. */
 const uuidOf = (q: string): string | undefined => parseAncestry(q)[0].find((i) => i.startsWith('@u|'))
@@ -64,16 +64,16 @@ function boxSpec(d = 5): { features: Array<Record<string, unknown>> } {
 }
 
 /** The face whose classifier is `cls` (the box top is `cls_zp`, a side `cls_xp`). */
-function faceQueryAt(bodies: Record<string, unknown>, cls: string): string {
-  const body = Object.values(bodies)[0] as BodyView
-  const queries = body?.mesh?.face_queries ?? []
+function faceQueryAt(parts: Record<string, unknown>, cls: string): string {
+  const part = Object.values(parts)[0] as PartView
+  const queries = part?.mesh?.face_queries ?? []
   const hit = queries.find((q) => q.includes(cls))
   if (hit === undefined) throw new Error(`no ${cls} face among: ${queries.join(' | ')}`)
   return hit
 }
 
-function bbox(body: BodyView): { min: number[]; max: number[] } {
-  const verts = body.mesh?.vertices ?? []
+function bbox(part: PartView): { min: number[]; max: number[] } {
+  const verts = part.mesh?.vertices ?? []
   const min = [Infinity, Infinity, Infinity]
   const max = [-Infinity, -Infinity, -Infinity]
   for (const v of verts) for (let i = 0; i < 3; i++) { min[i] = Math.min(min[i], v[i]); max[i] = Math.max(max[i], v[i]) }
@@ -128,10 +128,10 @@ function uProfileSketch(sketchId: string) {
 }
 
 /** The one face query whose tessellated normal + centroid satisfy `match`. */
-function faceQueryWhere(bodies: Record<string, unknown>, match: (normal: number[], centroid: number[]) => boolean): string {
-  const body = Object.values(bodies)[0] as BodyView
-  const queries = body?.mesh?.face_queries ?? []
-  const data = body?.mesh?.face_data ?? []
+function faceQueryWhere(parts: Record<string, unknown>, match: (normal: number[], centroid: number[]) => boolean): string {
+  const part = Object.values(parts)[0] as PartView
+  const queries = part?.mesh?.face_queries ?? []
+  const data = part?.mesh?.face_data ?? []
   for (let i = 0; i < queries.length; i++) {
     const d = data[i]
     if (d && match(d.normal, d.centroid)) return queries[i]
@@ -182,12 +182,12 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     {
       const r = h.run({ features: [...boxSpec().features, { id: 'mf1', kind: 'move_face', move_face: { faces: [top], distance: 5 } }] })
       expect(h.res(r, 'mf1').status).toBe('ok')
-      expect(bbox(h.body(r, 'body_ex1')).max[2]).toBeCloseTo(10, 6)
+      expect(bbox(h.part(r, 'body_ex1')).max[2]).toBeCloseTo(10, 6)
     }
     {
       const r = h.run({ features: [...boxSpec().features, { id: 'mf1', kind: 'move_face', move_face: { faces: [top], distance: -3 } }] })
       expect(h.res(r, 'mf1').status).toBe('ok')
-      expect(bbox(h.body(r, 'body_ex1')).max[2]).toBeCloseTo(2, 6)
+      expect(bbox(h.part(r, 'body_ex1')).max[2]).toBeCloseTo(2, 6)
     }
   })
 
@@ -198,7 +198,7 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     expect(uuid).toBeDefined()
     const r = h.run({ features: [...boxSpec().features, { id: 'mf1', kind: 'move_face', move_face: { faces: [top], distance: 5 } }] })
     expect(h.res(r, 'mf1').status).toBe('ok')
-    const queries = (h.body(r, 'body_ex1') as BodyView).mesh?.face_queries ?? []
+    const queries = (h.part(r, 'body_ex1') as PartView).mesh?.face_queries ?? []
     expect(queries.filter((q) => uuidOf(q) === uuid)).toHaveLength(1)
     // A second move on the same (now moved) face resolves through the same UUID.
     const r2 = h.run({ features: [
@@ -207,17 +207,17 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
       { id: 'mf2', kind: 'move_face', move_face: { faces: [top], distance: 2 } },
     ] })
     expect(h.res(r2, 'mf2').status).toBe('ok')
-    expect(bbox(h.body(r2, 'body_ex1')).max[2]).toBeCloseTo(12, 6)
+    expect(bbox(h.part(r2, 'body_ex1')).max[2]).toBeCloseTo(12, 6)
   })
 
   it('distance 0 is the identity: ok, shape unchanged, no modified_by', () => {
     const base = h.run(boxSpec())
     const top = faceQueryAt(base.bodies, 'cls_zp')
-    const before = bbox(h.body(base, 'body_ex1'))
+    const before = bbox(h.part(base, 'body_ex1'))
     const r = h.run({ features: [...boxSpec().features, { id: 'mf1', kind: 'move_face', move_face: { faces: [top], distance: 0 } }] })
     expect(h.res(r, 'mf1').status).toBe('ok')
-    expect(bbox(h.body(r, 'body_ex1')).max[2]).toBeCloseTo(before.max[2], 9)
-    expect((h.body(r, 'body_ex1') as BodyView).modified_by ?? []).toEqual([])
+    expect(bbox(h.part(r, 'body_ex1')).max[2]).toBeCloseTo(before.max[2], 9)
+    expect((h.part(r, 'body_ex1') as PartView).modified_by ?? []).toEqual([])
   })
 
   it('top and one side +5 give the same face UUID set in both list orders', () => {
@@ -227,9 +227,9 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     const run = (faces: string[]): Set<string> => {
       const r = h.run({ features: [...boxSpec().features, { id: 'mf1', kind: 'move_face', move_face: { faces, distance: 5 } }] })
       expect(h.res(r, 'mf1').status).toBe('ok')
-      expect(bbox(h.body(r, 'body_ex1')).max[2]).toBeCloseTo(10, 6)
-      expect(bbox(h.body(r, 'body_ex1')).max[0]).toBeCloseTo(15, 6)
-      const queries = (h.body(r, 'body_ex1') as BodyView).mesh?.face_queries ?? []
+      expect(bbox(h.part(r, 'body_ex1')).max[2]).toBeCloseTo(10, 6)
+      expect(bbox(h.part(r, 'body_ex1')).max[0]).toBeCloseTo(15, 6)
+      const queries = (h.part(r, 'body_ex1') as PartView).mesh?.face_queries ?? []
       return new Set(queries.map(uuidOf).filter((u): u is string => u !== undefined))
     }
     const a = run([top, side])
@@ -246,7 +246,7 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
       const r = h.run({ features: [...boxSpec().features, { id: 'mf1', kind: 'move_face', move_face: { faces: [top, stale], distance: 5 } }] })
       expect(h.res(r, 'mf1').status).toBe('partial')
       expect(h.res(r, 'mf1').unresolved_faces).toEqual([stale])
-      expect(bbox(h.body(r, 'body_ex1')).max[2]).toBeCloseTo(10, 6)
+      expect(bbox(h.part(r, 'body_ex1')).max[2]).toBeCloseTo(10, 6)
     }
     {
       const r = h.run({ features: [...boxSpec().features, { id: 'mf1', kind: 'move_face', move_face: { faces: [stale], distance: 5 } }] })
@@ -257,8 +257,8 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
   it('a later pick consumed by an earlier move is failed, not unresolved', () => {
     const base = h.run(boxSpec())
     const top = faceQueryAt(base.bodies, 'cls_zp')
-    const beforeUuids = new Set(((h.body(base, 'body_ex1') as BodyView).mesh?.face_queries ?? []).map(uuidOf))
-    const topEdges = ((h.body(base, 'body_ex1') as BodyView).edge_queries ?? []).filter((q) => q.includes('cls_zp'))
+    const beforeUuids = new Set(((h.part(base, 'body_ex1') as PartView).mesh?.face_queries ?? []).map(uuidOf))
+    const topEdges = ((h.part(base, 'body_ex1') as PartView).edge_queries ?? []).filter((q) => q.includes('cls_zp'))
     expect(topEdges.length).toBeGreaterThanOrEqual(4)
     const chamferSpec = {
       features: [...boxSpec().features, { id: 'ch1', kind: 'chamfer', edges: topEdges.slice(0, 4), distance: 1 }],
@@ -266,7 +266,7 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     const rc = h.run(chamferSpec)
     expect(h.res(rc, 'ch1').status).toBe('ok')
     // A chamfer face is one the chamfer introduced: its UUID is not in the box.
-    const chamferFace = ((h.body(rc, 'body_ex1') as BodyView).mesh?.face_queries ?? []).find((q) => {
+    const chamferFace = ((h.part(rc, 'body_ex1') as PartView).mesh?.face_queries ?? []).find((q) => {
       const u = uuidOf(q)
       return u !== undefined && !beforeUuids.has(u)
     })
@@ -292,7 +292,7 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     expect(h.res(r1, 'mf1').status).toBe('ok')
     // A cap edge: an edge whose representative point sits on the moved z=10
     // plane, i.e. carries the +z classifier.
-    const edges = (h.body(r1, 'body_ex1') as BodyView).edge_queries ?? []
+    const edges = (h.part(r1, 'body_ex1') as PartView).edge_queries ?? []
     const edge = edges.find((q) => q.includes('cls_zp'))
     expect(edge).toBeDefined()
 
@@ -306,7 +306,7 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     spec8.features.push({ id: 'fil1', kind: 'fillet', edges: [edge], radius: 0.5 })
     const r3 = h.run(spec8, { prevState: r2._build_state as BuildState })
     expect(h.res(r3, 'fil1').status).toBe('ok')
-    expect(bbox(h.body(r3, 'body_ex1')).max[2]).toBeCloseTo(13, 6)
+    expect(bbox(h.part(r3, 'body_ex1')).max[2]).toBeCloseTo(13, 6)
   })
 
   it('an inward move that removes the whole body is an exception', () => {
@@ -326,7 +326,7 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     // to re-solve, so the front face UUID set must match the full build.
     const inc = h.run(spec, { prevState: base._build_state as BuildState })
     const uuids = (r: ReturnType<typeof h.run>): string[] =>
-      ((h.body(r, 'body_ex1') as BodyView).mesh?.face_queries ?? []).map(uuidOf).filter((u): u is string => u !== undefined).sort()
+      ((h.part(r, 'body_ex1') as PartView).mesh?.face_queries ?? []).map(uuidOf).filter((u): u is string => u !== undefined).sort()
     expect(uuids(inc)).toEqual(uuids(full))
   })
 
@@ -348,8 +348,8 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     const ids = (h.res(r, 'mf1').body_ids as string[]) ?? []
     expect(ids).toHaveLength(2)
     // Ordered by centroid in the parent frame: the left pillar keeps the base id.
-    expect(bbox(h.body(r, ids[0])).max[0]).toBeCloseTo(10, 6)
-    expect(bbox(h.body(r, ids[1])).min[0]).toBeCloseTo(20, 6)
+    expect(bbox(h.part(r, ids[0])).max[0]).toBeCloseTo(10, 6)
+    expect(bbox(h.part(r, ids[1])).min[0]).toBeCloseTo(20, 6)
   })
 
   it('a top moved past the apex drops the top edge, so a downstream chamfer goes red', () => {
@@ -372,7 +372,7 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     const base = h.run({ features: baseFeatures })
     expect(h.res(base, 'rev1').status).toBe('ok')
     const top = faceQueryWhere(base.bodies, (n, c) => Math.abs(n[1] - 1) < 1e-6 && Math.abs(c[1] - 10) < 1e-6)
-    const edges = ((h.body(base, 'body_rev1') as BodyView).edge_queries ?? [])
+    const edges = ((h.part(base, 'body_rev1') as PartView).edge_queries ?? [])
     const topEdge = edges.find((q) => q.includes('cls_yp'))
     const botEdge = edges.find((q) => q.includes('cls_yn'))
     expect(topEdge).toBeDefined()
@@ -386,7 +386,7 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     const r = h.run(spec)
     expect(h.res(r, 'mf1').status).toBe('ok')
     // Past the apex: the cone reaches y=20, its top face is gone.
-    expect(bbox(h.body(r, 'body_rev1')).max[1]).toBeCloseTo(20, 3)
+    expect(bbox(h.part(r, 'body_rev1')).max[1]).toBeCloseTo(20, 3)
     expect(h.res(r, 'ch1').status).toBe('partial')
     expect(h.res(r, 'ch1').unresolved_edges).toEqual([topEdge])
     expect((h.res(r, 'ch1').failed_edges as string[] | undefined) ?? []).toEqual([])
@@ -413,10 +413,10 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
 
   /** The lateral (radially normal) face query of a revolved or extruded
    *  cylinder. */
-  function lateralFaceQuery(bodies: Record<string, unknown>): string {
-    const body = Object.values(bodies)[0] as BodyView
-    const queries = body?.mesh?.face_queries ?? []
-    const data = body?.mesh?.face_data ?? []
+  function lateralFaceQuery(parts: Record<string, unknown>): string {
+    const part = Object.values(parts)[0] as PartView
+    const queries = part?.mesh?.face_queries ?? []
+    const data = part?.mesh?.face_data ?? []
     for (let i = 0; i < queries.length; i++) {
       const d = data[i]
       if (d && Math.abs(d.normal[2]) < 1e-6) return queries[i]
@@ -436,11 +436,11 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     expect(h.res(r, 'mf1').status).toBe('ok')
     // The bbox comes from the render mesh, whose chords cut a curved face by
     // up to the deflection (0.05); two decimals is the honest precision here.
-    const bb = bbox(h.body(r, 'body_ex1'))
+    const bb = bbox(h.part(r, 'body_ex1'))
     expect(bb.max[0]).toBeCloseTo(7, 2)
     expect(bb.max[1]).toBeCloseTo(7, 2)
     // Exactly one live face claims the moved wall's UUID.
-    const queries = (h.body(r, 'body_ex1') as BodyView).mesh?.face_queries ?? []
+    const queries = (h.part(r, 'body_ex1') as PartView).mesh?.face_queries ?? []
     expect(queries.filter((q) => uuidOf(q) === uuid)).toHaveLength(1)
     // The extended top cap keeps its own UUID (its query's ancestry gains the
     // move's token, so the UUID is what is stable).
@@ -465,7 +465,7 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     })
     const r1 = h.run(withMove(2))
     expect(h.res(r1, 'mf1').status).toBe('ok')
-    const topEdge = ((h.body(r1, 'body_ex1') as BodyView).edge_queries ?? []).find((q) => q.includes('cls_zp'))
+    const topEdge = ((h.part(r1, 'body_ex1') as PartView).edge_queries ?? []).find((q) => q.includes('cls_zp'))
     expect(topEdge).toBeDefined()
 
     const spec = withMove(2)
@@ -479,7 +479,7 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     spec3.features.push({ id: 'fil1', kind: 'fillet', edges: [topEdge], radius: 0.5 })
     const r3 = h.run(spec3, { prevState: r2._build_state as BuildState })
     expect(h.res(r3, 'fil1').status).toBe('ok')
-    const bb = bbox(h.body(r3, 'body_ex1'))
+    const bb = bbox(h.part(r3, 'body_ex1'))
     expect(Math.max(bb.max[0], bb.max[1])).toBeCloseTo(8, 2)
   })
 })

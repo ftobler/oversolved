@@ -151,7 +151,7 @@ export type PatternSubject = 'body' | 'feature'
 
 export type PatternSourceDef = {
   subject?: PatternSubject
-  // Body subject.
+  // Part subject.
   source_body?: string
   operation?: 'add' | 'new'
   // Feature subject. Every source is reapplied at each grid instance; instance
@@ -349,7 +349,7 @@ export type SweepFeatureDef = {
   merge_target?: string
 }
 
-export type DeleteBodyFeatureDef = {
+export type DeletePartFeatureDef = {
   bodies: string[]  // one ref per body to remove; picking is multi-select
 }
 
@@ -434,7 +434,7 @@ export type MirrorFeatureDef = {
   // What is mirrored. Absent means body, so a document authored before the
   // feature subject existed keeps meaning the whole-body mirror it was.
   subject?: 'body' | 'feature'
-  // Body subject: the whole body is reflected, merged or spawned.
+  // Part subject: the whole body is reflected, merged or spawned.
   body?: string
   // Feature subject: earlier extrude/revolve/sweep/wrap rows whose own add or cut is
   // reapplied mirrored inside the body each shaped. Feature-log order decides
@@ -444,7 +444,7 @@ export type MirrorFeatureDef = {
   // source shaped more than one.
   target_body?: string
   plane: string
-  // Body subject only: a feature mirror reapplies the source's own operation
+  // Part subject only: a feature mirror reapplies the source's own operation
   // inside the same body, so the original always stays.
   keep_original?: boolean
   merge?: boolean
@@ -564,7 +564,7 @@ export type EdgeKind = 'convex' | 'concave' | 'tangent' | 'other'
 
 export interface EdgeDataBase {
   // The analyser's class, published only by the final render solve
-  // (`tessellateBodies` with `computeConvexity`). Absent on the metadata pass,
+  // (`tessellateParts` with `computeConvexity`). Absent on the metadata pass,
   // on an older result, and on a body the analyse refused, where the
   // `convexity` selector matches no value rather than guessing `other`.
   convexity?: EdgeKind
@@ -604,7 +604,7 @@ export interface EdgeDataEllipse extends EdgeDataBase {
 
 export type EdgeData = EdgeDataLine | EdgeDataCircleArc | EdgeDataSpline | EdgeDataEllipse
 
-export interface BodyResult {
+export interface PartResult {
   id: string
   created_by: string
   modified_by: string[]
@@ -637,8 +637,8 @@ export interface RebuildValidation {
 export interface BuildResponse {
   solve_ms: number
   result: Record<string, unknown>
-  bodies: Record<string, BodyResult>
-  pick_bodies?: Record<string, BodyResult>
+  bodies: Record<string, PartResult>
+  pick_bodies?: Record<string, PartResult>
   _build_state?: unknown
   validation?: RebuildValidation
   /** The solve generation the rendered bodies belong to (`<bootId>:<n>`); the
@@ -646,7 +646,7 @@ export interface BuildResponse {
   generation?: string
 }
 
-export interface BodyFeatureResult {
+export interface FeaturePartsResult {
   status: 'ok' | 'exception' | 'partial'
   body_id?: string
   body_ids?: string[]
@@ -671,7 +671,7 @@ export interface BodyFeatureResult {
   solve_ms?: number
 }
 
-export function isBodyFeatureResult(r: unknown): r is BodyFeatureResult {
+export function isFeaturePartsResult(r: unknown): r is FeaturePartsResult {
   return typeof r === 'object' && r !== null && ('body_id' in r || 'body_ids' in r)
 }
 
@@ -874,9 +874,9 @@ export type InstancePatternFeature = FeatureBase & {
   instance_pattern: InstancePatternDef
 }
 
-export type DeleteBodyFeature = FeatureBase & {
+export type DeletePartFeature = FeatureBase & {
   kind: 'delete_body'
-  delete_body: DeleteBodyFeatureDef
+  delete_body: DeletePartFeatureDef
 }
 
 export type HoleFeature = FeatureBase & {
@@ -937,7 +937,7 @@ export type PartFeature =
   | CircularPatternFeature
   | CurvePatternFeature
   | InstancePatternFeature
-  | DeleteBodyFeature
+  | DeletePartFeature
   | HoleFeature
   | TransformFeature
   | MirrorFeature

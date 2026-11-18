@@ -18,9 +18,9 @@ import { HandleTable } from '../../occ/handleTable'
 import { countSubShapes, volumeOf } from '../../occ/booleans'
 import { makeBoxAt } from '../../occ/primitives'
 import { Repository } from '../../query'
-import { bareBody } from '../shared/bodyResolution'
+import { barePart } from '../shared/partResolution'
 import { solveBoolean } from '../boolean'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
 
 const loadedOcc = await loadOcc()
@@ -30,7 +30,7 @@ const oc = loadedOcc!
 interface Rig {
   scope: DisposeScope
   table: HandleTable
-  store: Record<string, Body>
+  store: Record<string, PartSolid>
 }
 
 function rig(): Rig {
@@ -38,9 +38,9 @@ function rig(): Rig {
 }
 
 function seedBox(r: Rig, id: string, x: number): void {
-  const body = bareBody(id, id)
-  body.shape = r.table.register(makeBoxAt(oc, r.scope, [x, 0, 0], 10, 10, 10), id)
-  r.store[id] = body
+  const part = barePart(id, id)
+  part.shape = r.table.register(makeBoxAt(oc, r.scope, [x, 0, 0], 10, 10, 10), id)
+  r.store[id] = part
 }
 
 function volume(r: Rig, id: string): number {
@@ -59,7 +59,7 @@ function seedChain(r: Rig): void {
   seedBox(r, 'body_c', 16)
 }
 
-function unionChain(base: string, tools: string[]): { volume: number; faces: number; bodyIds: string[]; store: string[] } {
+function unionChain(base: string, tools: string[]): { volume: number; faces: number; partIds: string[]; store: string[] } {
   const r = rig()
   seedChain(r)
   const res = solveBoolean(oc, r.scope, r.table, {
@@ -68,7 +68,7 @@ function unionChain(base: string, tools: string[]): { volume: number; faces: num
   const out = {
     volume: volume(r, base),
     faces: faces(r, base),
-    bodyIds: res.body_ids,
+    partIds: res.body_ids,
     store: Object.keys(r.store).sort(),
   }
   r.scope.dispose()
@@ -85,8 +85,8 @@ describe.skipIf(!hasOcc)('boolean union: the tools are a set, not a list order',
     const tailFirst = unionChain('body_a', ['body_c', 'body_b'])
     const inOrder = unionChain('body_a', ['body_b', 'body_c'])
 
-    expect(tailFirst.bodyIds).toEqual(['body_a'])
-    expect(inOrder.bodyIds).toEqual(['body_a'])
+    expect(tailFirst.partIds).toEqual(['body_a'])
+    expect(inOrder.partIds).toEqual(['body_a'])
     expect(tailFirst.store).toEqual(['body_a'])
     expect(inOrder.store).toEqual(['body_a'])
     expect(tailFirst.volume).toBeCloseTo(inOrder.volume, 3)
@@ -99,8 +99,8 @@ describe.skipIf(!hasOcc)('boolean union: the tools are a set, not a list order',
     const aBase = unionChain('body_a', ['body_b', 'body_c'])
     const bBase = unionChain('body_b', ['body_a', 'body_c'])
 
-    expect(aBase.bodyIds).toEqual(['body_a'])
-    expect(bBase.bodyIds).toEqual(['body_b'])
+    expect(aBase.partIds).toEqual(['body_a'])
+    expect(bBase.partIds).toEqual(['body_b'])
     // Same material, same face count; the surviving id follows the first pick.
     expect(aBase.volume).toBeCloseTo(bBase.volume, 3)
     expect(aBase.faces).toBe(bBase.faces)
@@ -158,7 +158,7 @@ describe.skipIf(!hasOcc)('boolean intersect: the same base rule', () => {
       const out = {
         volume: volume(r, 'body_a'),
         faces: faces(r, 'body_a'),
-        bodyIds: res.body_ids,
+        partIds: res.body_ids,
         store: Object.keys(r.store).sort(),
       }
       r.scope.dispose()
@@ -167,8 +167,8 @@ describe.skipIf(!hasOcc)('boolean intersect: the same base rule', () => {
 
     const tailFirst = run(['body_c', 'body_b'])
     const inOrder = run(['body_b', 'body_c'])
-    expect(tailFirst.bodyIds).toEqual(['body_a'])
-    expect(inOrder.bodyIds).toEqual(['body_a'])
+    expect(tailFirst.partIds).toEqual(['body_a'])
+    expect(inOrder.partIds).toEqual(['body_a'])
     expect(tailFirst.store).toEqual(['body_a'])
     expect(inOrder.store).toEqual(['body_a'])
     expect(tailFirst.volume).toBeCloseTo(inOrder.volume, 3)

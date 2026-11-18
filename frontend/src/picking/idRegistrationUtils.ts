@@ -24,10 +24,10 @@ export function buildPlaneMatrix(planeTransform?: PlaneTransform): THREE.Matrix4
  * layer-specific register/unregister logic. Returns false from `register`
  * to abort (skip markDirty) when registration itself fails.
  */
-export function useRegisteredBody(
+export function useRegisteredPart(
   pipeline: IdPipeline | null,
   enabled: boolean,
-  bodyKey: string,
+  partKey: string,
   register: (p: IdPipeline) => boolean,
   unregister: (p: IdPipeline) => void,
   deps: unknown[],
@@ -42,5 +42,5 @@ export function useRegisteredBody(
       pipeline.markDirty()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- deps are spread from a caller-supplied array and cannot be listed statically
-  }, [pipeline, enabled, bodyKey, ...deps])
+  }, [pipeline, enabled, partKey, ...deps])
 }

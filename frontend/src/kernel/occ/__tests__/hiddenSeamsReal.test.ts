@@ -25,16 +25,16 @@ import {
   solidToMesh,
   solidToVertices,
 } from '../tessellation'
-import { tessellateBodies } from '../../solveLocally'
+import { tessellateParts } from '../../solveLocally'
 import { toPartBundle } from '../../partBundle'
 import type { OccModule } from '../occTypes'
 import type { OccHandle } from '../handleTable'
-import type { Body } from '../../types3d'
-import type { BodyResult } from '../../../types/cad'
+import type { PartSolid } from '../../types3d'
+import type { PartResult } from '../../../types/cad'
 
 const oc = await loadOcc()
 
-function makeBody(id: string, createdBy: string, shapeHandle: OccHandle | null): Body {
+function makePart(id: string, createdBy: string, shapeHandle: OccHandle | null): PartSolid {
   return {
     id,
     created_by: createdBy,
@@ -119,10 +119,10 @@ describe.skipIf(!oc)('hidden seam indices (real OCC)', () => {
       expect([...hidden.hidden_vertices].sort()).toEqual([0, 1])
 
       // The assembly bundle carries the same lists, so a cached part rebuild
-      // hides them there too. `tessellateBodies` types its payload as a loose
+      // hides them there too. `tessellateParts` types its payload as a loose
       // record; the shape it assembles is a BodyResult.
-      const body = makeBody('body_cyl', 'cyl1', handle)
-      const payload = tessellateBodies(occ, table, { body_cyl: body }) as unknown as Record<string, BodyResult>
+      const part = makePart('body_cyl', 'cyl1', handle)
+      const payload = tessellateParts(occ, table, { body_cyl: part }) as unknown as Record<string, PartResult>
       const bundle = toPartBundle('doc', 'hash', payload)
       expect(bundle.bodies[0].hiddenEdges).toEqual(hidden.hidden_edges)
       expect(bundle.bodies[0].hiddenVertices).toEqual(hidden.hidden_vertices)
@@ -216,7 +216,7 @@ describe.skipIf(!oc)('hidden seam indices (real OCC)', () => {
   // The invariance proof at unit scale: the sparse lists are the ONLY addition.
   // The five arrays below are rebuilt from the per-array producers on the same
   // solid, which know nothing about the classification, and must match what
-  // tessellateBodies emitted byte for byte.
+  // tessellateParts emitted byte for byte.
   it('leaves every name, query and positional array byte-identical', () => {
     const fixtures: Array<[string, (table: HandleTable) => OccHandle]> = [
       ['box', (table) => buildBox(occ, table, { dx: 10, dy: 6, dz: 4 })],
@@ -229,8 +229,8 @@ describe.skipIf(!oc)('hidden seam indices (real OCC)', () => {
       const table = new HandleTable()
       const handle = make(table)
       try {
-        const body = makeBody(`body_${label}`, 'f1', handle)
-        const result = tessellateBodies(occ, table, { [body.id]: body })[body.id] as {
+        const part = makePart(`body_${label}`, 'f1', handle)
+        const result = tessellateParts(occ, table, { [part.id]: part })[part.id] as {
           edges?: unknown
           edge_queries?: unknown
           vertices?: unknown
@@ -239,14 +239,14 @@ describe.skipIf(!oc)('hidden seam indices (real OCC)', () => {
         }
         expect(result, label).toBeDefined()
 
-        // The same options tessellateBodies passes, so the control is the
+        // The same options tessellateParts passes, so the control is the
         // pre-feature result exactly.
         const base = {
           createdBy: 'f1',
-          bodyId: body.id,
+          partId: part.id,
           profileQueries: [] as string[],
           newElements: null,
-          modifiedBy: body.modified_by,
+          modifiedBy: part.modified_by,
         }
         const controlEdges = solidToEdges(occ, table, handle, { ...base, computeConvexity: true })
         const controlVertices = solidToVertices(occ, table, handle, base)

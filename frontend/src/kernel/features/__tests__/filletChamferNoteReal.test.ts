@@ -17,10 +17,10 @@ import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
 import { extrudeProfileWithLineage } from '../../occ/prismLineage'
 import { solidToEdges } from '../../occ/tessellation'
-import { canonicalEdges, canonicalFaces, namesToArray } from '../../occ/bodyNames'
+import { canonicalEdges, canonicalFaces, namesToArray } from '../../occ/partNames'
 import { ref, Repository } from '../../query'
 import { solveFillet, solveChamfer } from '../filletChamfer'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { PlaneLike } from '../shared/planes'
 import type { LoopEdge } from '../../profileLoops'
 import type { OccModule, OccShape } from '../../occ/occTypes'
@@ -43,11 +43,11 @@ function roundedRect(): LoopEdge[] {
 }
 
 /** The extruded plate plus the body metadata the fillet leaf reads. */
-function plate(occ: OccModule, scope: DisposeScope, table: HandleTable): Record<string, Body> {
+function plate(occ: OccModule, scope: DisposeScope, table: HandleTable): Record<string, PartSolid> {
   const res = extrudeProfileWithLineage(occ, scope, [roundedRect()], XY, [0, 0, 1], 5, 'sk1', 'ex1')
   const shape = scope.track(res.solid as OccShape)
   const handle = table.register(shape, 'ex1')
-  const body: Body = {
+  const part: PartSolid = {
     id: 'body_ex1',
     created_by: 'ex1',
     modified_by: [],
@@ -60,22 +60,22 @@ function plate(occ: OccModule, scope: DisposeScope, table: HandleTable): Record<
     face_ancestry: res.faceAncestry,
     edge_ancestry: res.edgeAncestry,
   }
-  return { body_ex1: body }
+  return { body_ex1: part }
 }
 
 /** The query of the top straight edge (y = 10, z = 5): one edge of the loop. */
 function topEdgeQuery(
   occ: OccModule,
   table: HandleTable,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): string {
-  const body = bodyStore.body_ex1
-  const edges = solidToEdges(occ, table, body.shape!, {
+  const part = partStore.body_ex1
+  const edges = solidToEdges(occ, table, part.shape!, {
     createdBy: 'ex1',
-    bodyId: 'body_ex1',
-    edgeUuids: body.edge_uuids,
-    edgeAncestry: body.edge_ancestry,
-    profileQueries: body.profile_queries,
+    partId: 'body_ex1',
+    edgeUuids: part.edge_uuids,
+    edgeAncestry: part.edge_ancestry,
+    profileQueries: part.profile_queries,
   })
   const index = edges.edges.findIndex((edge) =>
     edge.kind === 'line'
@@ -92,11 +92,11 @@ describe.skipIf(!oc)('fillet/chamfer tangent chain is a solver_note (real OCC)',
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = plate(oc, scope, table)
+      const partStore = plate(oc, scope, table)
       const result = solveFillet(
         oc, scope, table,
-        { id: 'fi1', fillet: { edges: [topEdgeQuery(oc, table, bodyStore)], radius: 0.5 } },
-        new Repository(), bodyStore,
+        { id: 'fi1', fillet: { edges: [topEdgeQuery(oc, table, partStore)], radius: 0.5 } },
+        new Repository(), partStore,
       )
       expect(result.status).toBe('ok')
       expect(result.solver_warning).toBeUndefined()
@@ -113,11 +113,11 @@ describe.skipIf(!oc)('fillet/chamfer tangent chain is a solver_note (real OCC)',
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = plate(oc, scope, table)
+      const partStore = plate(oc, scope, table)
       const result = solveChamfer(
         oc, scope, table,
-        { id: 'ch1', chamfer: { edges: [topEdgeQuery(oc, table, bodyStore)], distance: 0.5 } },
-        new Repository(), bodyStore,
+        { id: 'ch1', chamfer: { edges: [topEdgeQuery(oc, table, partStore)], distance: 0.5 } },
+        new Repository(), partStore,
       )
       expect(result.status).toBe('ok')
       expect(result.solver_warning).toBeUndefined()

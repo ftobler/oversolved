@@ -7,16 +7,16 @@
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccXYZ } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 import type { Repository } from '../query'
-import { resolveBody } from './shared/bodyResolution'
-import { resplitBody } from './bodySplit'
-import { readBodyNames, canonicalEdges, type UuidArray } from '../occ/bodyNames'
+import { resolvePart } from './shared/partResolution'
+import { resplitPart } from './partSplit'
+import { readPartNames, canonicalEdges, type UuidArray } from '../occ/partNames'
 import { SubShapeDedup } from '../occ/primitives'
 import { applyShellWithLineage, type ShellDirection, type ShellJoin } from '../occ/thickSolid'
 import { exploreFaces } from '../occ/edgeModifier'
 import { classifyFaceEdges } from '../occ/moveFace'
-import { bodyOfQuery, makeFaceIndexCache, resolveFacesByQuery } from './shared/faceResolution'
+import { partOfQuery, makeFaceIndexCache, resolveFacesByQuery } from './shared/faceResolution'
 import { OCC_CONFUSION, TOL_LENGTH_SLACK } from '../solverConstants'
 import { swallowUnlessTrap } from '../errors'
 
@@ -188,7 +188,7 @@ export function solveShell(
   table: HandleTable,
   feature: Dict,
   _globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): ShellResult {
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.shell as Dict) ?? {}
@@ -197,20 +197,20 @@ export function solveShell(
   const direction: ShellDirection = sub.direction === 'outward' ? 'outward' : 'inward'
   const join: ShellJoin = sub.join === 'arc' ? 'arc' : 'sharp'
   const faces = (sub.faces as string[]) ?? []
-  const sourceBody = (sub.source_body as string) ?? ''
-  if (Object.keys(bodyStore).length === 0) throw new Error('shell: no parts in body_store')
-  if (faces.length === 0 && !sourceBody) throw new Error('shell: no faces and no source_body; a closed hollow needs a part')
+  const sourcePart = (sub.source_body as string) ?? ''
+  if (Object.keys(partStore).length === 0) throw new Error('shell: no parts in body_store')
+  if (faces.length === 0 && !sourcePart) throw new Error('shell: no faces and no source_body; a closed hollow needs a part')
 
   const indexFor = makeFaceIndexCache(oc, scope, table)
 
   // The one body this feature acts on.
   let targetId: string | null = null
-  if (sourceBody) {
-    targetId = resolveBody(sourceBody, bodyStore).id
+  if (sourcePart) {
+    targetId = resolvePart(sourcePart, partStore).id
   } else {
     const ids = new Set<string>()
     for (const q of faces) {
-      const bid = bodyOfQuery(oc, scope, table, bodyStore, indexFor, q)
+      const bid = partOfQuery(oc, scope, table, partStore, indexFor, q)
       if (bid !== null) ids.add(bid)
     }
     if (ids.size > 1) {
@@ -220,16 +220,16 @@ export function solveShell(
   }
   if (targetId === null) throw new Error('shell: no part resolved from the picked faces')
 
-  const body = resolveBody(targetId, bodyStore)
-  if (body.shape === null) throw new Error(`shell: part '${targetId}' has no shape`)
-  const oldShape = table.get<OccShape>(body.shape)
+  const part = resolvePart(targetId, partStore)
+  if (part.shape === null) throw new Error(`shell: part '${targetId}' has no shape`)
+  const oldShape = table.get<OccShape>(part.shape)
 
   // Resolve the picked faces against this one body; a query that matches nothing
   // is unresolved (struck through), not a solve failure.
   const unresolved: string[] = []
   const topoFaces: OccShape[] = []
   const dedup = new SubShapeDedup()
-  const byQuery = resolveFacesByQuery(oc, scope, table, body, indexFor(body), faces, bodyStore)
+  const byQuery = resolveFacesByQuery(oc, scope, table, part, indexFor(part), faces, partStore)
   for (const q of faces) {
     const face = byQuery.get(q) ?? null
     if (face === null) {
@@ -242,8 +242,8 @@ export function solveShell(
     throw new Error(`shell: none of the ${faces.length} picked face(s) resolved`)
   }
 
-  const oldNames = named(body.face_uuids) || named(body.edge_uuids)
-    ? { createdBy: featureId, ...readBodyNames(oc, scope, oldShape, body) }
+  const oldNames = named(part.face_uuids) || named(part.edge_uuids)
+    ? { createdBy: featureId, ...readPartNames(oc, scope, oldShape, part) }
     : null
 
   const res = applyShellWithLineage(oc, scope, oldShape, topoFaces, thickness, direction, oldNames, join)
@@ -265,10 +265,10 @@ export function solveShell(
     throw new Error(`shell: ${res.reason ?? 'unknown failure'}`)
   }
 
-  const ids = resplitBody(oc, scope, table, bodyStore, body, scope.track(res.shape), featureId, res.names ?? {})
+  const ids = resplitPart(oc, scope, table, partStore, part, scope.track(res.shape), featureId, res.names ?? {})
   if (ids.length === 0) throw new Error('shell: the operation removed the whole part')
-  body.brep_diff = res.diff
-  body.modified_by.push(featureId)
+  part.brep_diff = res.diff
+  part.modified_by.push(featureId)
 
   const fallbackWarning = (join === 'sharp' && res.usedJoin === 'arc')
     ? sharpFallbackWarning(res.sharpReason, topoFaces.length === 0)

@@ -65,8 +65,8 @@ function planeOffset(id: string, plane: string, offset: number): Dict {
   return { id, kind: 'plane', definition: { mode: 'offset', plane, offset } }
 }
 
-function split(id: string, bodies: string[], plane: string, keep: string): Dict {
-  return { id, kind: 'split', split: { bodies, plane, keep } }
+function split(id: string, parts: string[], plane: string, keep: string): Dict {
+  return { id, kind: 'split', split: { bodies: parts, plane, keep } }
 }
 
 /** The block, its mid-plane and the split, every length scaled by `k`. */
@@ -110,16 +110,16 @@ describe.skipIf(!oc || !solveBytes)('volume budgets judge a part at any scale (r
   })
 
   // The OCC shape of one body as it stood after `featureId` solved.
-  function shapeOf(r: BuildResponse, featureId: string, bodyId: string): OccShape {
+  function shapeOf(r: BuildResponse, featureId: string, partId: string): OccShape {
     const ckp = r._build_state!.checkpoints[featureId]
-    return h.table.get<OccShape>(ckp.body_store_snapshot[bodyId].shape!)
+    return h.table.get<OccShape>(ckp.body_store_snapshot[partId].shape!)
   }
 
   // The volume of one body of a built document, in model units.
-  function bodyVolume(r: BuildResponse, featureId: string, bodyId: string): number {
+  function partVolume(r: BuildResponse, featureId: string, partId: string): number {
     const scope = new DisposeScope()
     try {
-      return Math.abs(volumeOf(occ, scope, shapeOf(r, featureId, bodyId)))
+      return Math.abs(volumeOf(occ, scope, shapeOf(r, featureId, partId)))
     } finally {
       scope.dispose()
     }
@@ -137,7 +137,7 @@ describe.skipIf(!oc || !solveBytes)('volume budgets judge a part at any scale (r
       expect(h.res(r, 'sp1').status, `scale ${k}`).toBe('ok')
       const ids = (h.res(r, 'sp1').body_ids ?? []) as string[]
       expect(ids.length, `scale ${k}: keep both yields two bodies`).toBe(2)
-      const halves = ids.map((id) => bodyVolume(r, 'sp1', id))
+      const halves = ids.map((id) => partVolume(r, 'sp1', id))
       const source = 1000 * k ** 3
       for (const half of halves) {
         expect(ratio(half, 500 * k ** 3), `scale ${k}: half volume ${half}`).toBeCloseTo(1, 6)
@@ -166,7 +166,7 @@ describe.skipIf(!oc || !solveBytes)('volume budgets judge a part at any scale (r
       const r = h.run(blockSpec(k, 9, 'above'))
       expect(h.res(r, 'sp1').status, `scale ${k}`).toBe('ok')
       const [id] = (h.res(r, 'sp1').body_ids ?? []) as string[]
-      expect(ratio(bodyVolume(r, 'sp1', id), 100 * k ** 3), `scale ${k}`).toBeCloseTo(1, 6)
+      expect(ratio(partVolume(r, 'sp1', id), 100 * k ** 3), `scale ${k}`).toBeCloseTo(1, 6)
     }
   })
 
@@ -270,8 +270,8 @@ describe.skipIf(!oc || !solveBytes)('volume budgets judge a part at any scale (r
       expect(res.status, `scale ${k}: ${String(res.exception ?? '')}`).toBe('ok')
       const ids = (res.body_ids ?? []) as string[]
       expect(ids.length, `scale ${k}: keep both yields two bodies`).toBe(2)
-      const source = bodyVolume(r, 'ho1', 'body_ex1')
-      const halves = ids.map((id) => bodyVolume(r, 'sp1', id))
+      const source = partVolume(r, 'ho1', 'body_ex1')
+      const halves = ids.map((id) => partVolume(r, 'sp1', id))
       expect(Math.abs(halves[0] - halves[1]), `scale ${k}: equal halves`).toBeLessThanOrEqual(GPROP_EPS * source)
       expect(Math.abs(halves[0] + halves[1] - source) / source, `scale ${k}: additivity`).toBeLessThan(TOL_VOLUME_SUM)
     }
@@ -284,7 +284,7 @@ describe.skipIf(!oc || !solveBytes)('volume budgets judge a part at any scale (r
     for (const k of SCALES) {
       const r = h.run(holedSpec(k))
       expect(h.res(r, 'ho1').status, `scale ${k}`).toBe('ok')
-      const drilled = bodyVolume(r, 'ho1', 'body_ex1')
+      const drilled = partVolume(r, 'ho1', 'body_ex1')
       const removed = 1000 * k ** 3 - drilled
       const bore = Math.PI * (2.5 * k) ** 2 * (10 * k)
       expect(ratio(removed, bore), `scale ${k}: removed ${removed}`).toBeCloseTo(1, 4)

@@ -10,12 +10,12 @@ import { clearFeatureGeometryRegistrations } from "../features/postRegister"
 import { assertRepoIndicesConsistent, assertNoDeadUuidBuckets } from "../repoIndexTestUtil"
 
 /** Ancestor ids and payload shaped like `_registerBrepFaceAncestry`'s. */
-function registerFace(repo: Repository, bodyId: string, faceIdx: number, uuid: string | null = null) {
-  const indexTag = `@${bodyId}/face${faceIdx}`
-  const ancestorIds = [indexTag, "@extrude1", `@${bodyId}`, "?4;prof"]
+function registerFace(repo: Repository, partId: string, faceIdx: number, uuid: string | null = null) {
+  const indexTag = `@${partId}/face${faceIdx}`
+  const ancestorIds = [indexTag, "@extrude1", `@${partId}`, "?4;prof"]
   const payload = {
     type: "flatface",
-    body_id: bodyId,
+    body_id: partId,
     created_by: "extrude1",
     face_index: faceIdx,
     centroid: [faceIdx, 0, 0],

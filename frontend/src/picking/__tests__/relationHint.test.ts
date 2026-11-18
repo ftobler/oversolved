@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { BodyResult, Mesh3D } from '@/types/cad'
+import type { PartResult, Mesh3D } from '@/types/cad'
 import { makeAncestryQuery } from '@/kernel/query'
 import {
   EMPTY_RELATION_SET,
@@ -13,11 +13,11 @@ import {
   type RelationRuleLike,
 } from '@/picking/relationHint'
 
-const faceQuery = (creator: string, body = 'body_b1', extra: string[] = []) =>
-  makeAncestryQuery(['@u|uuid-' + creator, `@${creator}`, `@${body}`, ...extra], 'flatface')
+const faceQuery = (creator: string, part = 'body_b1', extra: string[] = []) =>
+  makeAncestryQuery(['@u|uuid-' + creator, `@${creator}`, `@${part}`, ...extra], 'flatface')
 
-const edgeQuery = (creator: string, body = 'body_b1') =>
-  makeAncestryQuery(['@u|edge-' + creator, `@${creator}`, `@${body}`], 'straightedge')
+const edgeQuery = (creator: string, part = 'body_b1') =>
+  makeAncestryQuery(['@u|edge-' + creator, `@${creator}`, `@${part}`], 'straightedge')
 
 function meshWith(overrides: Partial<Mesh3D> = {}): Mesh3D {
   return { vertices: [], faces: [], ...overrides }
@@ -226,19 +226,19 @@ describe('faceCreatorsOf', () => {
 })
 
 describe('edgeCreatorsOf', () => {
-  function body(overrides: Partial<BodyResult> = {}): BodyResult {
+  function part(overrides: Partial<PartResult> = {}): PartResult {
     return { id: 'b1', created_by: 'bodyCreator', modified_by: [], ...overrides }
   }
 
   it('prefers edge_created_by when aligned', () => {
-    expect(edgeCreatorsOf(body({
+    expect(edgeCreatorsOf(part({
       edge_queries: [edgeQuery('fromQuery')],
       edge_created_by: ['fromField'],
     }))).toEqual(['fromField'])
   })
 
   it('falls back to the lineage and then the body creator', () => {
-    expect(edgeCreatorsOf(body({ edge_queries: [edgeQuery('ex1'), ''] })))
+    expect(edgeCreatorsOf(part({ edge_queries: [edgeQuery('ex1'), ''] })))
       .toEqual(['ex1', 'bodyCreator'])
   })
 })

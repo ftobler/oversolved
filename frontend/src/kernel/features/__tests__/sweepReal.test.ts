@@ -20,7 +20,7 @@ import { countSolids } from '../../occ/booleans'
 import { fitSplineFromParams } from '@/utils/geometry/fitSpline'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import type { OccShape } from '../../occ/occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 const oc = await loadOcc()
 const solveBytes = loadSolver()
 
@@ -229,7 +229,7 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
     })
     expect(h.res(result, 'sw1').status).toBe('ok')
     expect(result.bodies).toHaveProperty('body_sw1')
-    const mesh = h.body(result, 'body_sw1').mesh as Record<string, unknown> | undefined
+    const mesh = h.part(result, 'body_sw1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshValid(mesh)
   })
@@ -247,7 +247,7 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
       ],
     })
     expect(h.res(result, 'sw1').status).toBe('ok')
-    const mesh = h.body(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
+    const mesh = h.part(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
     expect(mesh).toBeDefined()
     if (mesh) {
       const xs = mesh.vertices.map((v) => v[0])
@@ -272,7 +272,7 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
       ],
     })
     expect(h.res(result, 'sw1').status).toBe('ok')
-    const mesh = h.body(result, 'body_sw1').mesh as Record<string, unknown> | undefined
+    const mesh = h.part(result, 'body_sw1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshValid(mesh)
   })
@@ -290,7 +290,7 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
       ],
     })
     expect(h.res(result, 'sw1').status).toBe('ok')
-    const mesh = h.body(result, 'body_sw1').mesh as Record<string, unknown> | undefined
+    const mesh = h.part(result, 'body_sw1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshValid(mesh)
   })
@@ -314,7 +314,7 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
       ],
     })
     const r = h.res(result, 'sw1')
-    const mesh = h.body(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
+    const mesh = h.part(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
     expect(r.status).toBe('ok')
     expect(mesh).toBeDefined()
     if (mesh) assertMeshValid(mesh)
@@ -329,7 +329,7 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
       ],
     })
     const r = h.res(result, 'sw1')
-    const mesh = h.body(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
+    const mesh = h.part(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
     expect(r.status).toBe('ok')
     expect(mesh).toBeDefined()
     if (mesh) {
@@ -372,7 +372,7 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
     })
     const swept = h.res(result, 'sw1')
     expect(swept.status).toBe('ok')
-    const mesh = h.body(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
+    const mesh = h.part(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
     expect(mesh).toBeDefined()
     if (mesh) {
       assertMeshValid(mesh)
@@ -397,7 +397,7 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
       ],
     })
     expect(h.res(result, 'sw1').status).toBe('ok')
-    const mesh = h.body(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
+    const mesh = h.part(result, 'body_sw1').mesh as { vertices: number[][] } | undefined
     expect(mesh).toBeDefined()
     if (mesh) {
       assertMeshValid(mesh)
@@ -473,17 +473,17 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
   it('builds a one-profile sweep whose crossing is inside the profile', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
-    const bodyStore: Record<string, Body> = {}
+    const partStore: Record<string, PartSolid> = {}
     const repo = seedOneProfileRepo(squareSurface(0, 0, 1))
     try {
       const result = solveSweep(oc!, scope, table, {
         id: 'sw1', kind: 'sweep',
         sweep: { sketch: ['$prof'], path: '$path', operation: 'new' },
-      }, repo, bodyStore)
+      }, repo, partStore)
       expect(result.status).toBe('ok')
-      const body = bodyStore['body_sw1']
-      expect(body).toBeDefined()
-      const volume = volumeOf(oc!, scope, table.get<OccShape>(body.shape!))
+      const part = partStore['body_sw1']
+      expect(part).toBeDefined()
+      const volume = volumeOf(oc!, scope, table.get<OccShape>(part.shape!))
       expect(volume).toBeCloseTo(40, 2)
     } finally {
       table.disposeAll()
@@ -514,17 +514,17 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
     // The bottle half: the intended thread sits on the helix start side; the
     // same profile on the other side of the neck is not pierced and must not
     // build as a displaced body.
-    const solve = (cx: number): { status?: string; body?: Body; error?: string } => {
+    const solve = (cx: number): { status?: string; body?: PartSolid; error?: string } => {
       const scope = new DisposeScope()
       const table = new HandleTable()
-      const bodyStore: Record<string, Body> = {}
+      const partStore: Record<string, PartSolid> = {}
       try {
         try {
           const result = solveSweep(oc!, scope, table, {
             id: 'sw1', kind: 'sweep',
             sweep: { sketch: ['$prof'], path: '$path', operation: 'new' },
-          }, seedOneProfileRepo(squareSurface(cx, 0, 1)), bodyStore)
-          return { status: result.status, body: bodyStore['body_sw1'] }
+          }, seedOneProfileRepo(squareSurface(cx, 0, 1)), partStore)
+          return { status: result.status, body: partStore['body_sw1'] }
         } catch (exc) {
           return { error: (exc as Error).message }
         }
@@ -550,17 +550,17 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
     const build = (cx: number): { status?: string; volume?: number; error?: string } => {
       const scope = new DisposeScope()
       const table = new HandleTable()
-      const bodyStore: Record<string, Body> = {}
+      const partStore: Record<string, PartSolid> = {}
       try {
         try {
           const result = solveSweep(oc!, scope, table, {
             id: 'sw1', kind: 'sweep',
             sweep: { sketch: ['$prof'], path: '$path', operation: 'new' },
-          }, seedOneProfileRepo(squareSurface(cx, 0, 1)), bodyStore)
-          const body = bodyStore['body_sw1']
+          }, seedOneProfileRepo(squareSurface(cx, 0, 1)), partStore)
+          const part = partStore['body_sw1']
           return {
             status: result.status,
-            volume: body?.shape == null ? undefined : volumeOf(oc!, scope, table.get<OccShape>(body.shape)),
+            volume: part?.shape == null ? undefined : volumeOf(oc!, scope, table.get<OccShape>(part.shape)),
           }
         } catch (exc) {
           return { error: (exc as Error).message }
@@ -631,16 +631,16 @@ type SeededBuild = {
 function solveSeeded(repo: Repository): SeededBuild {
   const scope = new DisposeScope()
   const table = new HandleTable()
-  const bodyStore: Record<string, Body> = {}
+  const partStore: Record<string, PartSolid> = {}
   try {
     try {
       const result = solveSweep(oc!, scope, table, {
         id: 'sw1', kind: 'sweep',
         sweep: { sketch: ['$prof'], path: '$path', operation: 'new' },
-      }, repo, bodyStore)
-      const body = bodyStore['body_sw1']
-      if (body?.shape == null) return { status: result.status }
-      const solid = table.get<OccShape>(body.shape)
+      }, repo, partStore)
+      const part = partStore['body_sw1']
+      if (part?.shape == null) return { status: result.status }
+      const solid = table.get<OccShape>(part.shape)
       return {
         status: result.status,
         volume: volumeOf(oc!, scope, solid),

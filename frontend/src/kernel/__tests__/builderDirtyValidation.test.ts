@@ -201,8 +201,8 @@ describe('validateIncremental', () => {
      * bug in diffRepoSnapshot could silently swallow corruption.
      */
     const deps = makeDeps({
-      trySolveFeature: (_f, _r, bodyStore): FeatureResult => {
-        bodyStore['body_ex1'] = {
+      trySolveFeature: (_f, _r, partStore): FeatureResult => {
+        partStore['body_ex1'] = {
           id: 'body_ex1',
           created_by: 'ex1',
           modified_by: [],
@@ -222,9 +222,9 @@ describe('validateIncremental', () => {
     expect(r.result.ex1).toMatchObject({ status: 'ok' })
 
     const state = r._build_state
-    const body = state.checkpoints.ex1.body_store_snapshot['body_ex1']
-    expect(body).toBeDefined()
-    body.created_by = 'TAMPERED'
+    const part = state.checkpoints.ex1.body_store_snapshot['body_ex1']
+    expect(part).toBeDefined()
+    part.created_by = 'TAMPERED'
 
     const v = validateIncremental(
       state,

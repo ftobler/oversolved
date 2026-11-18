@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import { initGlobalRepo, Repository } from '../../query'
 import { solvePlane } from '../plane'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 type Dict = Record<string, unknown>
 
-function run(repo: Repository, feature: Dict, bodyStore: Record<string, Body> = {}) {
-  return solvePlane(null, null, null, feature, repo, bodyStore)
+function run(repo: Repository, feature: Dict, partStore: Record<string, PartSolid> = {}) {
+  return solvePlane(null, null, null, feature, repo, partStore)
 }
 
 function close(a: number[], b: number[]) {

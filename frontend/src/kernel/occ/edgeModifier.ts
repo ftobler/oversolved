@@ -13,7 +13,7 @@ import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker, OccModifie
 import { faceCentroid, SubShapeIndexMap } from './primitives'
 import { volumeOfDefault } from './volume'
 import { SubShapeDedup, SubShapeMap } from './subshapeIdentity'
-import { canonicalEdges, canonicalVertices, type ShapeNames } from './bodyNames'
+import { canonicalEdges, canonicalVertices, type ShapeNames } from './partNames'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
 import { mergeBrepDiff } from '../features/shared/brepDiff'
 import { mintFaceUuid, filletFacePath, splitFacePath, orderSplitChildren, type SplitChild } from '../constructionName'

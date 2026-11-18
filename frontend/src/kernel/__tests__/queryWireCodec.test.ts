@@ -10,7 +10,7 @@ import {
   absolute,
   ancestry,
   ref,
-  bodyIdOf,
+  partIdOf,
   Repository,
 } from "../query"
 
@@ -61,18 +61,18 @@ describe("parse/emit round-trips", () => {
   it("ref and bodyIdOf", () => {
     expect(ref("body_x")).toBe("@body_x")
     const wire = makeAncestryQuery(["@body_ex1edge0", "@body_ex1"])
-    expect(bodyIdOf(wire, { body_ex1: {} })).toBe("body_ex1")
+    expect(partIdOf(wire, { body_ex1: {} })).toBe("body_ex1")
     // "body_ex1edge0" is a fabricated concatenation of the two ancestor tokens
     // ("body_ex1" + "edge0"), never a real body: it must not resolve when no
     // store (or a store holding no candidate) is present.
-    expect(bodyIdOf(wire)).toBeNull()
-    expect(bodyIdOf(wire, { other: {} })).toBeNull()
-    expect(bodyIdOf("?1;@a")).toBeNull()
+    expect(partIdOf(wire)).toBeNull()
+    expect(partIdOf(wire, { other: {} })).toBeNull()
+    expect(partIdOf("?1;@a")).toBeNull()
 
     // Slash-joined current-format token: with a store the "/face0" tail is
     // stripped and the body id verified; without one nothing is verified.
-    expect(bodyIdOf(makeAncestryQuery(["@body_ex1/face0"]), { body_ex1: {} })).toBe("body_ex1")
-    expect(bodyIdOf(makeAncestryQuery(["@body_ex1/face0"]))).toBeNull()
+    expect(partIdOf(makeAncestryQuery(["@body_ex1/face0"]), { body_ex1: {} })).toBe("body_ex1")
+    expect(partIdOf(makeAncestryQuery(["@body_ex1/face0"]))).toBeNull()
   })
 
   it("bodyIdOf verifies against the store and never fabricates an id", () => {
@@ -80,9 +80,9 @@ describe("parse/emit round-trips", () => {
     // only when the store actually holds it; a no-store or no-candidate call
     // returns null rather than handing back an unverified token.
     const splitSibling = makeAncestryQuery(["@body_ex1_1"])
-    expect(bodyIdOf(splitSibling, { body_ex1_1: {} })).toBe("body_ex1_1")
-    expect(bodyIdOf(splitSibling)).toBeNull()
-    expect(bodyIdOf(splitSibling, { body_ex1: {} })).toBeNull()
+    expect(partIdOf(splitSibling, { body_ex1_1: {} })).toBe("body_ex1_1")
+    expect(partIdOf(splitSibling)).toBeNull()
+    expect(partIdOf(splitSibling, { body_ex1: {} })).toBeNull()
   })
 })
 

@@ -22,7 +22,7 @@ vi.mock('@/stores/solverStore', () => ({
 }))
 
 import { useSolver } from '@/hooks/useSolver'
-import type { PartDoc, BodyResult } from '@/types/cad'
+import type { PartDoc, PartResult } from '@/types/cad'
 
 function makeDoc(): PartDoc {
   return {
@@ -48,7 +48,7 @@ async function solveWith(result: ReturnType<typeof setupHook>, featureResults: R
   mockSolveLocally.mockResolvedValue({
     solve_ms: 0,
     result: featureResults,
-    bodies: {} as Record<string, BodyResult>,
+    bodies: {} as Record<string, PartResult>,
     _build_state: null,
   })
   await act(async () => { await result.current.reSolve(makeDoc()) })

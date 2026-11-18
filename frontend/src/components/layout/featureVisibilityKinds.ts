@@ -8,7 +8,7 @@
 // What the eye does depends on the kind, and the body renderer decides that
 // from the body's `created_by` rather than this table: a sketch-class feature
 // or plane hides its own reference overlay, and any feature that made bodies
-// hides them (utils/bodyRender.ts). The tree only needs to know whether the
+// hides them (utils/partRender.ts). The tree only needs to know whether the
 // row offers the control.
 import type { FeatureKind } from '@/types/cad'
 

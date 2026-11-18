@@ -9,7 +9,7 @@ import { solveRevolve, resolveRevolveAxis } from '../revolve'
 import { collectExtrudeLoops } from '../faceProfile'
 import type { HandleTable } from '../../occ/handleTable'
 import type { OccModule, OccShape } from '../../occ/occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 // The mixed-profile refusal needs a profile that resolves to a body face, which
 // the OCC-free harness cannot produce (a face only ever comes out of an OCC face
@@ -41,7 +41,7 @@ describe('solveRevolve guard paths', () => {
 
   it('surfaces an unresolved sketch ref as the collected profile error', () => {
     const repo = new Repository()
-    const bodyStore: Record<string, Body> = {}
+    const partStore: Record<string, PartSolid> = {}
     expect(() =>
       solveRevolve(
         oc,
@@ -49,7 +49,7 @@ describe('solveRevolve guard paths', () => {
         table,
         { id: 'f1', revolve: { sketch: '$missing', angle: 90 } },
         repo,
-        bodyStore,
+        partStore,
       ),
     ).toThrow(/sketch not found: missing/)
   })

@@ -18,17 +18,17 @@ import { volumeOf } from '../../occ/booleans'
 import { Repository } from '../../query'
 import { solveTransform } from '../transformMirror'
 import type { OccModule, OccShape } from '../../occ/occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = await loadOcc()
 
 type Bbox6 = [number, number, number, number, number, number]
-type Store = Record<string, Body>
+type Store = Record<string, PartSolid>
 
-function makeBoxBody(
+function makeBoxPart(
   occ: OccModule, scope: DisposeScope, table: HandleTable,
   origin: Vec3, size: Vec3, id = 'body_s',
-): Body {
+): PartSolid {
   const box = makeBoxAt(occ, scope, origin, size[0], size[1], size[2])
   return {
     id,
@@ -41,8 +41,8 @@ function makeBoxBody(
   }
 }
 
-function bbox6(occ: OccModule, scope: DisposeScope, table: HandleTable, body: Body): Bbox6 {
-  const verts = readSolidVertices(occ, scope, table.get<OccShape>(body.shape!))
+function bbox6(occ: OccModule, scope: DisposeScope, table: HandleTable, part: PartSolid): Bbox6 {
+  const verts = readSolidVertices(occ, scope, table.get<OccShape>(part.shape!))
   const lo = [Infinity, Infinity, Infinity]
   const hi = [-Infinity, -Infinity, -Infinity]
   for (const v of verts) {
@@ -54,8 +54,8 @@ function bbox6(occ: OccModule, scope: DisposeScope, table: HandleTable, body: Bo
   return [lo[0], lo[1], lo[2], hi[0], hi[1], hi[2]]
 }
 
-function bodyVolume(occ: OccModule, scope: DisposeScope, table: HandleTable, body: Body): number {
-  return volumeOf(occ, scope, table.get<OccShape>(body.shape!))
+function partVolume(occ: OccModule, scope: DisposeScope, table: HandleTable, part: PartSolid): number {
+  return volumeOf(occ, scope, table.get<OccShape>(part.shape!))
 }
 
 function expectBboxClose(actual: Bbox6, expected: Bbox6, digits = 6): void {
@@ -67,7 +67,7 @@ describe.skipIf(!oc)('transform.rotation_euler (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Store = { body_s: makeBoxBody(oc!, scope, table, [0, 0, 0], [10, 2, 3]) }
+      const store: Store = { body_s: makeBoxPart(oc!, scope, table, [0, 0, 0], [10, 2, 3]) }
       const result = solveTransform(oc!, scope, table, {
         id: 'tr1',
         kind: 'transform',
@@ -87,7 +87,7 @@ describe.skipIf(!oc)('transform.rotation_euler (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Store = { body_s: makeBoxBody(oc!, scope, table, [0, 0, 0], [2, 5, 3]) }
+      const store: Store = { body_s: makeBoxPart(oc!, scope, table, [0, 0, 0], [2, 5, 3]) }
       const result = solveTransform(oc!, scope, table, {
         id: 'tr1',
         kind: 'transform',
@@ -104,8 +104,8 @@ describe.skipIf(!oc)('transform.rotation_euler (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Store = { body_s: makeBoxBody(oc!, scope, table, [1, 2, 3], [4, 2, 3]) }
-      const before = bodyVolume(oc!, scope, table, store.body_s)
+      const store: Store = { body_s: makeBoxPart(oc!, scope, table, [1, 2, 3], [4, 2, 3]) }
+      const before = partVolume(oc!, scope, table, store.body_s)
       const result = solveTransform(oc!, scope, table, {
         id: 'tr1',
         kind: 'transform',
@@ -114,7 +114,7 @@ describe.skipIf(!oc)('transform.rotation_euler (real OCC)', () => {
       expect(result.status).toBe('ok')
       const moved = store[result.body_id as string]
       expectBboxClose(bbox6(oc!, scope, table, moved), [1, 2, 3, 5, 4, 6])
-      expect(bodyVolume(oc!, scope, table, moved)).toBeCloseTo(before, 9)
+      expect(partVolume(oc!, scope, table, moved)).toBeCloseTo(before, 9)
     } finally {
       scope.dispose()
     }
@@ -125,7 +125,7 @@ describe.skipIf(!oc)('transform.rotation_euler (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const eulerStore: Store = { body_s: makeBoxBody(oc!, scope, table, [0, 0, 0], size) }
+      const eulerStore: Store = { body_s: makeBoxPart(oc!, scope, table, [0, 0, 0], size) }
       const euler = solveTransform(oc!, scope, table, {
         id: 'tr_e',
         kind: 'transform',
@@ -133,7 +133,7 @@ describe.skipIf(!oc)('transform.rotation_euler (real OCC)', () => {
       }, new Repository(), eulerStore)
       expect(euler.status).toBe('ok')
 
-      const chainStore: Store = { body_s: makeBoxBody(oc!, scope, table, [0, 0, 0], size) }
+      const chainStore: Store = { body_s: makeBoxPart(oc!, scope, table, [0, 0, 0], size) }
       for (const [id, axis, angle] of [
         ['tr_x', [1, 0, 0], 10],
         ['tr_y', [0, 1, 0], 20],
@@ -156,8 +156,8 @@ describe.skipIf(!oc)('transform.rotation_euler (real OCC)', () => {
       const eulerBbox = bbox6(oc!, scope, table, eulerStore.body_s)
       const chainBbox = bbox6(oc!, scope, table, chainStore.body_s)
       expectBboxClose(eulerBbox, chainBbox)
-      expect(bodyVolume(oc!, scope, table, eulerStore.body_s))
-        .toBeCloseTo(bodyVolume(oc!, scope, table, chainStore.body_s), 9)
+      expect(partVolume(oc!, scope, table, eulerStore.body_s))
+        .toBeCloseTo(partVolume(oc!, scope, table, chainStore.body_s), 9)
     } finally {
       scope.dispose()
     }
@@ -168,7 +168,7 @@ describe.skipIf(!oc)('transform.rotation_euler (real OCC)', () => {
     const table = new HandleTable()
     try {
       // A 4 x 2 x 2 box centred on (10, 0, 0) keeps that centre under the turn.
-      const store: Store = { body_s: makeBoxBody(oc!, scope, table, [8, -1, -1], [4, 2, 2]) }
+      const store: Store = { body_s: makeBoxPart(oc!, scope, table, [8, -1, -1], [4, 2, 2]) }
       const result = solveTransform(oc!, scope, table, {
         id: 'tr1',
         kind: 'transform',

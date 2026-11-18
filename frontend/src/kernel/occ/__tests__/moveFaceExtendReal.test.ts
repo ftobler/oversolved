@@ -15,7 +15,7 @@
 import { describe, it, expect } from 'vitest'
 import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'
-import { canonicalFaces, canonicalEdges } from '../bodyNames'
+import { canonicalFaces, canonicalEdges } from '../partNames'
 import { faceArea, faceCentroid, makeBezierEdge, makeLineEdge, makeWire, makeFaceFromWire, makePrism } from '../primitives'
 import { volumeOf } from '../volume'
 import { MoveFaceRefusal } from '../moveFaceSurfaces'
@@ -48,8 +48,8 @@ describe.skipIf(!oc)('neighbour extension rungs (real OCC)', () => {
   it('rung 1 extends a sphere neighbour to the full sphere and offers its solid', () => {
     const scope = new DisposeScope()
     try {
-      const body = ball(scope, 25)
-      const face = canonicalFaces(occ, scope, body)[0] as OccShape
+      const part = ball(scope, 25)
+      const face = canonicalFaces(occ, scope, part)[0] as OccShape
       expect(extensionKind(occ, scope, face)).toBe('sphere')
       const tool = extendNeighbour(occ, scope, face, null, [0, 0, 1], 0.5, 100, 1.5)
       expect(tool.rung).toContain('rung 1')
@@ -64,8 +64,8 @@ describe.skipIf(!oc)('neighbour extension rungs (real OCC)', () => {
   it('rung 1 extends a torus neighbour to the full torus and offers its solid', () => {
     const scope = new DisposeScope()
     try {
-      const body = torus(scope, 10, 2)
-      const face = canonicalFaces(occ, scope, body)[0] as OccShape
+      const part = torus(scope, 10, 2)
+      const face = canonicalFaces(occ, scope, part)[0] as OccShape
       expect(extensionKind(occ, scope, face)).toBe('torus')
       const tool = extendNeighbour(occ, scope, face, null, [0, 0, 1], 0.5, 100, 1.5)
       expect(tool.rung).toContain('rung 1')
@@ -80,12 +80,12 @@ describe.skipIf(!oc)('neighbour extension rungs (real OCC)', () => {
     try {
       // An extruded Bezier-capped D: its side face is a spline surface of
       // extrusion, the same class the fixture's plane-sphere fillet carries.
-      const body = scope.track(prismOfBezierDCap(occ, scope))
-      const spline = (canonicalFaces(occ, scope, body) as OccShape[]).find(
+      const part = scope.track(prismOfBezierDCap(occ, scope))
+      const spline = (canonicalFaces(occ, scope, part) as OccShape[]).find(
         (f) => extensionKind(occ, scope, f) === 'freeform',
       )
       if (!spline) throw new Error('the D prism has no freeform side face')
-      const cap = (canonicalFaces(occ, scope, body) as OccShape[]).find(
+      const cap = (canonicalFaces(occ, scope, part) as OccShape[]).find(
         (f) => Math.abs(faceCentroid(occ, scope, f)[2] - 5) < 1e-6,
       )
       if (!cap) throw new Error('the D prism has no top cap')
@@ -118,8 +118,8 @@ describe.skipIf(!oc)('neighbour extension rungs (real OCC)', () => {
   it('a freeform neighbour without a shared edge still refuses by name with every rung', () => {
     const scope = new DisposeScope()
     try {
-      const body = scope.track(prismOfBezierDCap(occ, scope))
-      const spline = (canonicalFaces(occ, scope, body) as OccShape[]).find(
+      const part = scope.track(prismOfBezierDCap(occ, scope))
+      const spline = (canonicalFaces(occ, scope, part) as OccShape[]).find(
         (f) => extensionKind(occ, scope, f) === 'freeform',
       )
       if (!spline) throw new Error('the D prism has no freeform side face')

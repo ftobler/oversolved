@@ -17,7 +17,7 @@
 import type { OccModule, OccShape } from '../kernel/occ/occTypes'
 import { DisposeScope } from '../kernel/occ/disposeScope'
 import { stepBytesToShape, stepShapeToBytes } from '../kernel/occ/stepIo'
-import { measureBodies, type MeasureRecord } from '../kernel/occ/measure'
+import { measureParts, type MeasureRecord } from '../kernel/occ/measure'
 import { compareMeasures, type MeasureRow } from '../kernel/occ/measureTolerance'
 import { persistentTableForTest, solveLocally } from '../kernel/solveLocally'
 import { partSpecFromText } from '@/utils/partExport'
@@ -74,20 +74,20 @@ export async function buildAndMeasure(oc: OccModule, spec: Record<string, unknow
   const scope = new DisposeScope()
   try {
     const shapes: OccShape[] = []
-    for (const body of Object.values(snapshot ?? {})) {
-      if (body.shape == null) continue
-      shapes.push(table!.get<OccShape>(body.shape))
+    for (const part of Object.values(snapshot ?? {})) {
+      if (part.shape == null) continue
+      shapes.push(table!.get<OccShape>(part.shape))
     }
-    const measures = measureBodies(oc, scope, shapes)
+    const measures = measureParts(oc, scope, shapes)
 
     // The STEP round trip mirrors the app's whole-part export: one body alone,
     // several as one compound. A document with no solid has nothing to
     // serially measure; the (failing) bodies count already names that case.
-    let stepMeasures = measureBodies(oc, scope, [])
+    let stepMeasures = measureParts(oc, scope, [])
     if (shapes.length > 0) {
       const bytes = stepShapeToBytes(oc, scope, compoundOf(oc, scope, shapes))
       const imported = scope.track(stepBytesToShape(oc, scope, bytes))
-      stepMeasures = measureBodies(oc, scope, [imported])
+      stepMeasures = measureParts(oc, scope, [imported])
     }
     return { measures, stepMeasures, statuses, details }
   } finally {

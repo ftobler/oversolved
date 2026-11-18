@@ -4,11 +4,11 @@ import { FaceIdLayer } from '../FaceIdLayer'
 import { rgbToId } from '../idEncoding'
 
 /**
- * Structural checks on the ID layer's encoded face colors. Body3D.resolveFaceQuery
+ * Structural checks on the ID layer's encoded face colors. Part3D.resolveFaceQuery
  * does the same `faceQueries[triangleToFace[tri]]` lookup, but it lives inside a
  * React hook and cannot be imported; asserting parity against a local copy of
  * that one-liner would only compare the copy to itself. The real resolver path
- * is covered by Body3D's component tests.
+ * is covered by Part3D's component tests.
  *
  * The full "render-and-readPixels" parity belongs to GPU-backed test
  * infrastructure that doesn't exist in vitest+jsdom; it's documented as a
@@ -34,7 +34,7 @@ describe('facePickParity (structural)', () => {
     const faceQueries = ['face@A', 'face@B']
     const reg = new IdRegistry()
     const layer = new FaceIdLayer(reg)
-    layer.registerBody({ bodyKey: 'b', positions, triangleToFace, faceQueries })
+    layer.registerPart({ partKey: 'b', positions, triangleToFace, faceQueries })
 
     const mesh = layer.scene.children[0] as import('three').Mesh
     const idTri0 = decodeTriangleId(mesh, 0)

@@ -7,10 +7,10 @@
 // cue to solve the written document again.
 
 import { describe, it, expect } from 'vitest'
-import type { BodyResult, PartDoc } from '@/types/cad'
+import type { PartResult, PartDoc } from '@/types/cad'
 import { applySolveToDoc } from '../solveWriteBack'
 
-function body(id: string): BodyResult {
+function part(id: string): PartResult {
   return { id, created_by: `feature_${id}`, modified_by: [] }
 }
 
@@ -22,7 +22,7 @@ describe('applySolveToDoc', () => {
   it('drops the colour entry of a body the solve consumed', () => {
     const { doc: written } = applySolveToDoc(
       doc({ body_ex1: { name: 'part 1', color: '#111111' }, body_ex2: { name: 'part 2', color: '#222222' } }),
-      { result: {}, bodies: { body_ex1: body('body_ex1') } },
+      { result: {}, bodies: { body_ex1: part('body_ex1') } },
     )
     expect(written.part_style).toHaveProperty('body_ex1')
     expect(written.part_style).not.toHaveProperty('body_ex2')
@@ -31,7 +31,7 @@ describe('applySolveToDoc', () => {
   it('frees the consumed part number for the next new body', () => {
     const { doc: written } = applySolveToDoc(
       doc({ body_ex1: { name: 'part 1', color: '#111111' }, body_ex2: { name: 'part 2', color: '#222222' } }),
-      { result: {}, bodies: { body_ex1: body('body_ex1'), body_ex3: body('body_ex3') } },
+      { result: {}, bodies: { body_ex1: part('body_ex1'), body_ex3: part('body_ex3') } },
     )
     expect(written.part_style!.body_ex3.name).toBe('part 2')
   })

@@ -15,7 +15,8 @@ export type GeometryFormat = 'step' | 'stl'
 
 export interface PartExportOptions {
   format: GeometryFormat
-  // One body of the part, or null for the compound of all of them.
+  // One body of the part, or null for the compound of all of them. The worker
+  // and the drive CLI read this spelling, so it stays the stored one.
   bodyId: string | null
   // A chosen subset of bodies. Non-empty takes precedence over `bodyId`; the
   // worker compounds them into the one requested file.

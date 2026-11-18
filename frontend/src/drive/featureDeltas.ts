@@ -18,7 +18,7 @@
 // inspection opt-in that restores the whole history.
 
 import type { PartDoc } from '@/types/cad'
-import type { FeatureMeasure, FeatureMeasureBody } from '@/kernel/solveLocally'
+import type { FeatureMeasure, FeatureMeasurePart } from '@/kernel/solveLocally'
 import { isBuiltOutcome, type FeatureOutcome, type ProjectionErrorReport } from '@/drive/featureOutcome'
 import { parseSketchTarget } from '@/drive/mutationValues'
 
@@ -108,7 +108,7 @@ function sameMeasure(after: FeatureMeasure, before: FeatureMeasure): boolean {
 // True when the body's own measure moved: volume within the close rule, the
 // face and edge counts exactly. Counting topology as well is what sees a
 // fillet whose additive and subtractive material cancel.
-function bodyChanged(after: FeatureMeasureBody, before: FeatureMeasureBody): boolean {
+function partChanged(after: FeatureMeasurePart, before: FeatureMeasurePart): boolean {
   return !closeNumber(after.volume, before.volume)
     || after.faces !== before.faces
     || after.edges !== before.edges
@@ -117,14 +117,14 @@ function bodyChanged(after: FeatureMeasureBody, before: FeatureMeasureBody): boo
 // Live bodies whose own measure moved, a new id counting as changed. A body the
 // feature removed is not live and is not counted: the row describes what the
 // checkpoint still holds.
-function changedBodyIds(
-  bodies: Record<string, FeatureMeasureBody>,
-  previousBodies: Record<string, FeatureMeasureBody>,
+function changedPartIds(
+  parts: Record<string, FeatureMeasurePart>,
+  previousParts: Record<string, FeatureMeasurePart>,
 ): string[] {
   const changed: string[] = []
-  for (const [id, measure] of Object.entries(bodies)) {
-    const before = previousBodies[id]
-    if (before === undefined || bodyChanged(measure, before)) changed.push(id)
+  for (const [id, measure] of Object.entries(parts)) {
+    const before = previousParts[id]
+    if (before === undefined || partChanged(measure, before)) changed.push(id)
   }
   return changed
 }
@@ -133,30 +133,30 @@ function changedBodyIds(
 // from the kernel's identity anchor. `body_id` stays a feature's stable anchor
 // (a disjoint array deliberately keeps the source's id), so it only names the
 // row when that body itself changed.
-function bodyFields(
+function partFields(
   kind: string,
-  bodyId: string | undefined,
-  bodies: Record<string, FeatureMeasureBody> | undefined,
+  partId: string | undefined,
+  parts: Record<string, FeatureMeasurePart> | undefined,
   changed: readonly string[],
 ): Pick<FeatureDelta, 'body' | 'bodyVolume' | 'changedBodyCount'> {
-  if (bodies === undefined) return {}
+  if (parts === undefined) return {}
   const count = changed.length > 1 ? { changedBodyCount: changed.length } : {}
-  if (bodyId !== undefined && changed.includes(bodyId)) {
-    const measure = bodies[bodyId]
-    if (measure !== undefined) return { body: bodyId, bodyVolume: measure.volume, ...count }
+  if (partId !== undefined && changed.includes(partId)) {
+    const measure = parts[partId]
+    if (measure !== undefined) return { body: partId, bodyVolume: measure.volume, ...count }
   }
   if (changed.length === 1) {
     const only = changed[0]
-    const measure = bodies[only]
+    const measure = parts[only]
     if (measure !== undefined) return { body: only, bodyVolume: measure.volume }
   }
   if (changed.length > 1) return count
   // A rigid move replaces a body's shape or placement without necessarily
   // changing its volume, so the comparison above cannot see it. This exception
   // is what keeps a transform or mirror described.
-  if ((kind === 'transform' || kind === 'mirror') && bodyId !== undefined) {
-    const measure = bodies[bodyId]
-    if (measure !== undefined) return { body: bodyId, bodyVolume: measure.volume }
+  if ((kind === 'transform' || kind === 'mirror') && partId !== undefined) {
+    const measure = parts[partId]
+    if (measure !== undefined) return { body: partId, bodyVolume: measure.volume }
   }
   return {}
 }
@@ -186,7 +186,7 @@ export function featureDeltaRows(
   // The previous checkpoint's body map moves with the volume and bbox above,
   // including past a failed feature: its half-applied bodies are the baseline
   // the next clean row is measured from.
-  let previousBodies: Record<string, FeatureMeasureBody> = {}
+  let previousParts: Record<string, FeatureMeasurePart> = {}
   for (const feature of doc.features ?? []) {
     const id = typeof feature.id === 'string' ? feature.id : ''
     if (id === '') continue
@@ -208,9 +208,9 @@ export function featureDeltaRows(
       if (mode === 'all' || referenceTouched || warnedTouched
         || includeRow(id, kind, measure, volumeDelta, bboxDelta)) {
         const solid = isSolidProducingKind(kind)
-        const bodyId = solid ? outcome.bodyId : undefined
-        const changed = solid && measure.bodies !== undefined
-          ? changedBodyIds(measure.bodies, previousBodies)
+        const partId = solid ? outcome.bodyId : undefined
+        const changed = solid && measure.parts !== undefined
+          ? changedPartIds(measure.parts, previousParts)
           : []
         rows.push({
           id,
@@ -224,7 +224,7 @@ export function featureDeltaRows(
           ...(outcome.direction !== undefined && { direction: outcome.direction }),
           ...(outcome.dof !== undefined && { dof: outcome.dof }),
           ...(outcome.projectionErrors !== undefined && { projectionErrors: outcome.projectionErrors }),
-          ...(solid ? bodyFields(kind, bodyId, measure.bodies, changed) : {}),
+          ...(solid ? partFields(kind, partId, measure.parts, changed) : {}),
         })
       }
     }
@@ -232,7 +232,7 @@ export function featureDeltaRows(
     previousBbox = measure.bbox
     // A checkpoint that carries no body map leaves the last known one in place
     // rather than making the next row treat every live body as new.
-    previousBodies = measure.bodies ?? previousBodies
+    previousParts = measure.parts ?? previousParts
   }
   return rows
 

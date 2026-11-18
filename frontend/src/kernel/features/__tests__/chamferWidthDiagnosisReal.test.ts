@@ -15,12 +15,12 @@ import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
 import { booleanWithDiff } from '../../occ/booleans'
 import { makeBoxAt, edgeToGeom } from '../../occ/primitives'
-import { canonicalEdges } from '../../occ/bodyNames'
-import { bodyFrame, compareEdgeSortKeys } from '../../occ/tessellation'
+import { canonicalEdges } from '../../occ/partNames'
+import { partFrame, compareEdgeSortKeys } from '../../occ/tessellation'
 import { Repository } from '../../query'
-import { bareBody } from '../shared/bodyResolution'
+import { barePart } from '../shared/partResolution'
 import { solveChamfer } from '../filletChamfer'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { EdgeData } from '@/types/cad'
 
@@ -71,19 +71,19 @@ function isUprightTopEdge(ed: EdgeData): boolean {
 }
 
 describe.skipIf(!hasOcc)('chamfer: a distance wider than the adjacent face names the width', () => {
-  function rig(): { scope: DisposeScope; table: HandleTable; store: Record<string, Body> } {
+  function rig(): { scope: DisposeScope; table: HandleTable; store: Record<string, PartSolid> } {
     return { scope: new DisposeScope(), table: new HandleTable(), store: {} }
   }
 
   it('refuses 0.25 on a 0.2 wall and names the 0.2 width', () => {
     const r = rig()
-    const body = bareBody('body_b', 'b')
-    body.shape = r.table.register(bracket(oc, r.scope), body.created_by)
-    r.store.body_b = body
-    const shape = r.table.get<OccShape>(body.shape!)
+    const part = barePart('body_b', 'b')
+    part.shape = r.table.register(bracket(oc, r.scope), part.created_by)
+    r.store.body_b = part
+    const shape = r.table.get<OccShape>(part.shape!)
     // `bodyFrame` is the normalisation the alias numbering uses; calling it here
     // also pins that the helper and the leaf sort the same edges.
-    bodyFrame(oc, r.scope, shape)
+    partFrame(oc, r.scope, shape)
     const idx = aliasIndexOf(oc, r.scope, shape, isUprightTopEdge)
     expect(idx).toBeGreaterThanOrEqual(0)
     expect(() => solveChamfer(oc, r.scope, r.table, {
@@ -95,10 +95,10 @@ describe.skipIf(!hasOcc)('chamfer: a distance wider than the adjacent face names
 
   it('a distance that fits still builds and is not refused', () => {
     const r = rig()
-    const body = bareBody('body_b', 'b')
-    body.shape = r.table.register(bracket(oc, r.scope), body.created_by)
-    r.store.body_b = body
-    const shape = r.table.get<OccShape>(body.shape!)
+    const part = barePart('body_b', 'b')
+    part.shape = r.table.register(bracket(oc, r.scope), part.created_by)
+    r.store.body_b = part
+    const shape = r.table.get<OccShape>(part.shape!)
     const idx = aliasIndexOf(oc, r.scope, shape, isUprightTopEdge)
     const res = solveChamfer(oc, r.scope, r.table, {
       id: 'ch1',

@@ -57,13 +57,13 @@ export function evictAncestryAndRegister(
 
 /** Evict every ancestral entry whose set carries `@bodyId` - a body's whole
  *  face/edge/vertex index range at once - and prune the uuid buckets their
- *  elements left behind. Body-scoped via the reverse index (O(entries sharing
+ *  elements left behind. Part-scoped via the reverse index (O(entries sharing
  *  the tag), not O(repo)), the same lookup `evictAncestryAndRegister` uses for
  *  its index-tag spread. Call before re-registering a body's range so a
  *  shrunken range replaces the old one wholesale instead of leaving indices
  *  k..N-1 resolvable forever; delete_body routes through it too. */
-export function clearBodyAncestry(repo: Repository, bodyId: string): void {
-  const tagged = repo.byAncestorId.get('@' + bodyId)
+export function clearPartAncestry(repo: Repository, partId: string): void {
+  const tagged = repo.byAncestorId.get('@' + partId)
   if (!tagged) return
   for (const key of [...tagged]) {
     const entry = repo.ancestral.get(key)
@@ -87,12 +87,12 @@ export function clearBodyAncestry(repo: Repository, bodyId: string): void {
  *  body's faces stay live in the repo carrying the very construction UUIDs the
  *  surviving body inherited from them, and the resolver's UUID tier reports a
  *  "collision by construction" on every pick of such a face. */
-export function clearConsumedBodyAncestry(
+export function clearConsumedPartAncestry(
   repo: Repository,
-  bodyId: string,
+  partId: string,
   createdBy: string,
 ): void {
-  clearBodyAncestry(repo, bodyId)
+  clearPartAncestry(repo, partId)
   if (!createdBy) return
   const key = canonical([ref(createdBy)])
   const entry = repo.ancestral.get(key)
@@ -100,7 +100,7 @@ export function clearConsumedBodyAncestry(
   const doomed = new Set(
     entry.eids.filter(eid => {
       const el = repo.elements.get(eid)
-      return isDict(el) && el["body_id"] === bodyId
+      return isDict(el) && el["body_id"] === partId
     }),
   )
   if (doomed.size === 0) return

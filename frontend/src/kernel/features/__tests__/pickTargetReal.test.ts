@@ -18,7 +18,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { initGlobalRepo, parseAncestry, parseConstructionUuidId, type Repository } from '../../query'
 import type { OccModule } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import { resolvePickTarget, type PickTargetContext } from '../shared/pickTarget'
 
 const oc = await loadOcc()
@@ -100,7 +100,7 @@ describe.skipIf(!oc || !solveBytes)('the instance pattern pick table', () => {
   })
 
   // The one body a plate with a blind hole leaves, plain or countersunk.
-  function buildPlate(style: 'simple' | 'countersink' = 'simple'): { r: BuildResponse; body: Body; repo: Repository } {
+  function buildPlate(style: 'simple' | 'countersink' = 'simple'): { r: BuildResponse; body: PartSolid; repo: Repository } {
     const hole: Dict = {
       sketch: '@skHole', diameter: 6, depth_mode: 'blind', depth: 5, direction: 'reverse',
       target: '@body_exPlate',
@@ -117,9 +117,9 @@ describe.skipIf(!oc || !solveBytes)('the instance pattern pick table', () => {
       ],
     })
     expect(h.res(r, 'h1').status).toBe('ok')
-    const body = (r._build_state!.checkpoints.h1.body_store_snapshot as Record<string, Body>).body_exPlate
+    const part = (r._build_state!.checkpoints.h1.body_store_snapshot as Record<string, PartSolid>).body_exPlate
     const repo = initGlobalRepo()
-    const payload = h.body(r, 'body_exPlate') as {
+    const payload = h.part(r, 'body_exPlate') as {
       mesh?: { face_data?: Dict[]; face_queries?: string[] }
       edges?: Dict[]
       edge_queries?: string[]
@@ -167,16 +167,16 @@ describe.skipIf(!oc || !solveBytes)('the instance pattern pick table', () => {
       repo.registerAncestor(ids, { type: 'vertex', body_id: 'body_exPlate', vertex_index: i, origin }, uuidOf(query))
     })
     repo.register('_pt_skT', TILTED)
-    return { r, body, repo }
+    return { r, body: part, repo }
   }
 
-  function context(repo: Repository, body: Body): PickTargetContext {
+  function context(repo: Repository, part: PartSolid): PickTargetContext {
     return {
       oc: occ,
       scope: new DisposeScope(),
       table: h.table,
       globalRepo: repo,
-      bodyStore: { body_exPlate: body },
+      partStore: { body_exPlate: part },
       featuresById: {
         skT: { id: 'skT', kind: 'sketch', plane: FRONT, entities: SKETCH_ENTITIES, initial: SKETCH_INITIAL, constraints: [] },
       },
@@ -188,7 +188,7 @@ describe.skipIf(!oc || !solveBytes)('the instance pattern pick table', () => {
     edges: (Dict & { query: string })[]
     vertices: { origin: number[]; query: string }[]
   } {
-    const payload = h.body(r, 'body_exPlate') as {
+    const payload = h.part(r, 'body_exPlate') as {
       mesh?: { face_data?: Dict[]; face_queries?: string[] }
       edges?: Dict[]
       edge_queries?: string[]

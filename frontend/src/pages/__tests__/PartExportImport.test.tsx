@@ -18,7 +18,7 @@ import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA } from '@/stores/partEdito
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useEditorState } from '@/hooks/useEditorState'
 import { ToastProvider } from '@/contexts/ToastContext'
-import type { BodyResult, LengthUnit, PartDoc } from '@/types/cad'
+import type { PartResult, LengthUnit, PartDoc } from '@/types/cad'
 
 const DOC: PartDoc = {
   features: [
@@ -27,7 +27,7 @@ const DOC: PartDoc = {
   ],
 }
 
-const TWO_BODIES: Record<string, BodyResult> = {
+const TWO_PARTS: Record<string, PartResult> = {
   body_a: { id: 'body_a', created_by: 'extrude1', modified_by: [] },
   body_b: { id: 'body_b', created_by: 'extrude2', modified_by: [] },
 }
@@ -139,7 +139,7 @@ describe('PartExportImport worker export', () => {
     usePartEditorStore.setState({
       ...DEFAULT_PART_EDITOR_DATA,
       doc: DOC,
-      bodies: TWO_BODIES,
+      parts: TWO_PARTS,
       partLabels: { body_a: 'Bracket', body_b: 'Plate' },
     })
     exportViaWorker.mockResolvedValue(new Uint8Array([1]))
@@ -156,7 +156,7 @@ describe('PartExportImport worker export', () => {
     usePartEditorStore.setState({
       ...DEFAULT_PART_EDITOR_DATA,
       doc: DOC,
-      bodies: { body_a: TWO_BODIES.body_a },
+      parts: { body_a: TWO_PARTS.body_a },
       partLabels: { body_a: 'Bracket' },
     })
     exportViaWorker.mockResolvedValue(new Uint8Array([1]))
@@ -173,7 +173,7 @@ describe('PartExportImport worker export', () => {
     usePartEditorStore.setState({
       ...DEFAULT_PART_EDITOR_DATA,
       doc: DOC,
-      bodies: TWO_BODIES,
+      parts: TWO_PARTS,
       partLabels: { body_a: 'Bracket', body_b: 'Plate' },
     })
     useSketchEditorStore.getState().setNormalSelection(new Set(['@body_a', '@body_b']))
@@ -196,7 +196,7 @@ describe('PartExportImport worker export', () => {
     usePartEditorStore.setState({
       ...DEFAULT_PART_EDITOR_DATA,
       doc: DOC,
-      bodies: TWO_BODIES,
+      parts: TWO_PARTS,
       partLabels: { body_a: 'Bracket', body_b: 'Plate' },
     })
     useSketchEditorStore.getState().setNormalSelection(new Set(['@body_a', '@body_b']))
@@ -221,7 +221,7 @@ describe('PartExportImport worker export', () => {
     usePartEditorStore.setState({
       ...DEFAULT_PART_EDITOR_DATA,
       doc: DOC,
-      bodies: TWO_BODIES,
+      parts: TWO_PARTS,
       partLabels: { body_a: 'Bracket', body_b: 'Plate' },
     })
     useSketchEditorStore.getState().setNormalSelection(new Set(['@body_a']))
@@ -359,7 +359,7 @@ describe('PartExportImport length unit', () => {
     usePartEditorStore.setState({
       ...DEFAULT_PART_EDITOR_DATA,
       doc: DOC,
-      bodies: TWO_BODIES,
+      parts: TWO_PARTS,
       partLabels: { body_a: 'Bracket', body_b: 'Plate' },
     })
     useSketchEditorStore.getState().setNormalSelection(new Set(['@body_a', '@body_b']))

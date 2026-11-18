@@ -6,7 +6,7 @@
 // deterministic build error is the part's own answer and is reused.
 
 import { describe, it, expect, afterEach } from 'vitest'
-import type { AssemblyDoc, BodyResult, PartDoc, Transform3D } from '@/types/cad'
+import type { AssemblyDoc, PartResult, PartDoc, Transform3D } from '@/types/cad'
 import { BUNDLE_SCHEMA, type PartBundle } from '@/kernel/partBundle'
 import { KernelFault } from '@/kernel/errors'
 import {
@@ -18,7 +18,7 @@ import {
 
 const IDENTITY: Transform3D = { tx: 0, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }
 
-const BODY: BodyResult = {
+const PART: PartResult = {
   id: 'body_ex1',
   created_by: 'ex1',
   modified_by: [],
@@ -63,7 +63,7 @@ function bundle(docId: string): InjectedBundle {
     }],
     anchors: { face: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1], geom_hash: '@u|face', created_by: 'ex1' } },
   }
-  return { bundle: value, bodies: { body_ex1: BODY }, features: [] }
+  return { bundle: value, bodies: { body_ex1: PART }, features: [] }
 }
 
 function sessionFor(partId: string, source: (docId: string, part: PartDoc) => Promise<InjectedBundle | null>) {

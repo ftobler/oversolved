@@ -24,7 +24,7 @@
 
 import { drainList, type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape, OccModifierHistory } from './occTypes'
-import { canonicalFaces, canonicalEdges, canonicalVertices, carryFaceNames } from './bodyNames'
+import { canonicalFaces, canonicalEdges, canonicalVertices, carryFaceNames } from './partNames'
 import { SubShapeDedup, SubShapeMap } from './subshapeIdentity'
 import { SubShapeIndexMap, faceCentroid } from './primitives'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'

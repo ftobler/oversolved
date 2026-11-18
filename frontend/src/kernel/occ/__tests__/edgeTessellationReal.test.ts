@@ -27,10 +27,10 @@ import { Repository } from '../../query'
 import { makeBox, makeCylinder, readSolidEdges, type Vec3 } from '../primitives'
 import { solidToMesh } from '../tessellation'
 import { extractProfileLoops } from '../../features/shared/profileLoops'
-import { extractBrepMetadata, tessellateBodies } from '../../solveLocally'
+import { extractBrepMetadata, tessellateParts } from '../../solveLocally'
 import type { PlaneLike } from '../../features/shared/planes'
 import type { EdgeData } from '@/types/cad'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccHandle } from '../handleTable'
 import type { OccModule, OccShape, OccSubShape } from '../occTypes'
 import { MESH_PURPOSE_NONE } from '../defaultArgs'
@@ -66,13 +66,13 @@ function trapezoidProfile(scale: number) {
   }]
 }
 
-interface ThreadBody {
+interface ThreadPart {
   handle: OccHandle
   solid: OccShape
 }
 
 /** Sweep the trapezoid along the helix, then (by default) mesh it in the render
- *  order: `tessellateBodies` meshes faces before it reads edges. */
+ *  order: `tessellateParts` meshes faces before it reads edges. */
 function buildThread(
   occ: OccModule,
   scope: DisposeScope,
@@ -82,7 +82,7 @@ function buildThread(
   pitch: number,
   scale: number,
   mesh = true,
-): ThreadBody {
+): ThreadPart {
   const loops = extractProfileLoops(trapezoidProfile(scale))
   const repo = new Repository()
   repo.register('_curve_hx1', helixDescriptor(turns, radius, pitch))
@@ -314,12 +314,12 @@ describe.skipIf(!oc)('swept helix edge tessellation (real OCC)', () => {
     const table = new HandleTable()
     try {
       const { handle } = buildThread(oc!, scope, table, 2, THREAD.radius, THREAD.pitch, 1, false)
-      const body: Body = {
+      const part: PartSolid = {
         id: 'body_e1', created_by: 'e1', modified_by: [], shape: handle,
         sketch_id: '', brep_diff: null, profile_queries: [],
       }
-      const meta = extractBrepMetadata(oc!, table, { body_e1: body }).body_e1 as { edge_queries: string[] }
-      const render = tessellateBodies(oc!, table, { body_e1: body }).body_e1 as { edge_queries: string[] }
+      const meta = extractBrepMetadata(oc!, table, { body_e1: part }).body_e1 as { edge_queries: string[] }
+      const render = tessellateParts(oc!, table, { body_e1: part }).body_e1 as { edge_queries: string[] }
       expect(meta.edge_queries.length).toBe(12)
       expect(render.edge_queries).toEqual(meta.edge_queries)
     } finally {

@@ -3,7 +3,7 @@ import type { PartDoc, Mutation, SketchData } from '@/types/cad'
 import { useDocumentState } from '@/hooks/useDocumentState'
 import { useSolver } from '@/hooks/useSolver'
 import { createDocSession, type DocSession, type SessionJournalSink } from '@/session/DocSession'
-import { faceBoundaryLookup } from '@/picking/bodyDispatchCallbacks'
+import { faceBoundaryLookup } from '@/picking/partDispatchCallbacks'
 import type { Result, SessionFailure } from '@/session/result'
 import type { SolveOptions, SolveOutcome } from '@/session/SolveScheduler'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
@@ -57,7 +57,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
   const solveResultsRef = useRef<Record<string, SketchData>>({})
   const setSolveResultsRef = useRef<((next: Record<string, SketchData>) => void) | null>(null)
   const validationRef = useRef<unknown>(null)
-  const bodiesRef = useRef<unknown>(null)
+  const partsRef = useRef<unknown>(null)
 
   // One session per mounted editor, created lazily on first render. Its ports
   // read the refs and stores live, so the captured closures never go stale.
@@ -89,7 +89,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
     },
     docId: uuid ?? null,
     getValidation: () => validationRef.current,
-    getBodies: () => bodiesRef.current,
+    getParts: () => partsRef.current,
     // The face a projection is added from is the one the viewport picked, so
     // the member ids come from the live body registry.
     projectionBoundary: faceBoundaryLookup,
@@ -122,7 +122,7 @@ export function usePartDoc(uuid: string | undefined, { solveOnLoad = true, onFir
   useEffect(() => { solveResultsRef.current = solveResults }, [solveResults])
   useEffect(() => { setSolveResultsRef.current = setSolveResults }, [setSolveResults])
   useEffect(() => { validationRef.current = validation }, [validation])
-  useEffect(() => { bodiesRef.current = bodies }, [bodies])
+  useEffect(() => { partsRef.current = bodies }, [bodies])
 
   // The session is the store; every event bumps its version, so the hook
   // re-renders through useSyncExternalStore. The move events also perform the

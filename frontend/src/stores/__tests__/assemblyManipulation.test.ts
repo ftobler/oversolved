@@ -2,7 +2,7 @@
 // viewport only ever feeds it pointer deltas.
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import type { AssemblyDoc, BodyResult, PartInstance, Transform3D } from '@/types/cad'
+import type { AssemblyDoc, PartResult, PartInstance, Transform3D } from '@/types/cad'
 import {
   useAssemblyStore,
   setAssemblyCallbacks,
@@ -19,7 +19,7 @@ function instance(handle: string, extra: Partial<PartInstance> = {}): PartInstan
 }
 
 /** A one-triangle body, enough for the render path to emit a group for `handle`. */
-function solvedBody(handle: string): BodyResult {
+function solvedPart(handle: string): PartResult {
   return {
     id: `${handle}:body_0`,
     created_by: handle,
@@ -43,7 +43,7 @@ function docWith(...instances: PartInstance[]): AssemblyDoc {
 function drawnPose(handle: string, baked: Transform3D): Transform3D {
   const { manipulation, settlingOffsets } = useAssemblyStore.getState()
   const group = getAssemblyPartGroups(
-    { [`${handle}:body_0`]: solvedBody(handle) },
+    { [`${handle}:body_0`]: solvedPart(handle) },
     [instance(handle)],
     manipulation,
     new Set(),
@@ -146,7 +146,7 @@ describe('assemblyStore part manipulation', () => {
     // applied over vertices already baked at the solved pose.
     const manipulation = useAssemblyStore.getState().manipulation!
     const group = getAssemblyPartGroups(
-      { 'p1:body_0': solvedBody('p1') },
+      { 'p1:body_0': solvedPart('p1') },
       [instance('p1')],
       manipulation,
       new Set(),
@@ -182,7 +182,7 @@ describe('assemblyStore part manipulation', () => {
     // stood in for is retired, or the part would render 3mm past the drop.
     useAssemblyStore.getState().setSolveResult({
       transforms: { p1: { ...IDENTITY_TRANSFORM, tx: 13 } },
-      bodies: {}, edgeCurves: {}, entityMateRefs: {}, anchors: {}, pickGeometry: [], solveStatus: null,
+      parts: {}, edgeCurves: {}, entityMateRefs: {}, anchors: {}, pickGeometry: [], solveStatus: null,
     })
     expect(useAssemblyStore.getState().settlingOffsets).toEqual({})
     expect(drawnPose('p1', { ...IDENTITY_TRANSFORM, tx: 13 }).tx).toBeCloseTo(13, 9)
@@ -333,7 +333,7 @@ describe('assemblyStore part manipulation', () => {
 
     useAssemblyStore.getState().setDragSolveResult({
       transforms: { p2: { ...IDENTITY_TRANSFORM, tx: 4 } },  // only the follower moved
-      bodies: {},
+      parts: {},
       edgeCurves: {},
       solveStatus: null,
     })
@@ -348,13 +348,13 @@ describe('assemblyStore part manipulation', () => {
   // so anything keyed on its identity re-fires throughout the whole gesture.
   it('a live-drag result replaces the bodies record identity even when it adds nothing', () => {
     mountHost(docWith(instance('p1')))
-    const before = useAssemblyStore.getState().bodies
+    const before = useAssemblyStore.getState().parts
 
     useAssemblyStore.getState().setDragSolveResult({
-      transforms: {}, bodies: {}, edgeCurves: {}, solveStatus: null,
+      transforms: {}, parts: {}, edgeCurves: {}, solveStatus: null,
     })
 
-    expect(useAssemblyStore.getState().bodies).not.toBe(before)
+    expect(useAssemblyStore.getState().parts).not.toBe(before)
   })
 
   it('setSnapshot preserves the in-flight manipulation and the selection', () => {
@@ -379,7 +379,7 @@ describe('assemblyStore part manipulation', () => {
   // the parts; it retires exactly when the solve re-bakes them.
   describe('settling offset lifecycle', () => {
     const emptySolve = {
-      transforms: {}, bodies: {}, edgeCurves: {}, entityMateRefs: {},
+      transforms: {}, parts: {}, edgeCurves: {}, entityMateRefs: {},
       anchors: {}, pickGeometry: [], solveStatus: null,
     }
 

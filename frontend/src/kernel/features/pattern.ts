@@ -5,13 +5,13 @@
 //
 // - `body` copies a whole body. `operation: add` fuses the copies into the
 //   source body and `operation: new` mints one body per copy; that half lives in
-//   patternBody.ts.
+//   patternPart.ts.
 // - `feature` repeats one or more earlier solid-producing features' own add or
 //   cut inside the body each feature already shaped. A body array plus a boolean
 //   can produce the same geometry, but it needs the material as its own body
 //   first and a merge afterwards; this subject asks the kernel for each source
 //   feature's tool once and applies those tools at each copy position through the
-//   same `applyBodyOperation` every producer uses.
+//   same `applyPartOperation` every producer uses.
 //
 // Each source feature's tool is obtained by re-solving the source feature with
 // its operation forced to `new` into a throwaway body store: the same leaf, the
@@ -29,9 +29,9 @@
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccTrsf } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 import type { Repository } from '../query'
-import { applyBodyPattern, resolvePatternSourceBody, type BodyPatternResult } from './patternBody'
+import { applyPartPattern, resolvePatternSourcePart, type PartPatternResult } from './patternPart'
 import { solveFeaturePattern, type PatternResult } from './patternFeature'
 import { patternSubject } from '@/utils/core/patternSubject'
 import { canonicalSkip, skipValue, type SkipEntry } from '@/utils/core/patternSkip'
@@ -130,14 +130,14 @@ export function solvePatternInstances(
   feature: Dict,
   sub: Dict,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   featuresById: Record<string, Dict>,
   solveContext: { variables: Record<string, number>; laterVariables: Record<string, number> },
   // Lazy so the subject's own diagnosis (a missing source body, a source that
   // names several) still comes before any direction or axis is resolved, the
   // order the single-kind leaf used to have.
   build: () => PatternCopies,
-): PatternResult | BodyPatternResult {
+): PatternResult | PartPatternResult {
   const featureId = (feature.id as string) ?? ''
   // A document authored before the subject field is read from the source it
   // actually names. The editor and the boolean leaf share this one rule, so an
@@ -145,28 +145,28 @@ export function solvePatternInstances(
   const subject = patternSubject(sub)
 
   if (subject === 'body') {
-    const body = resolvePatternSourceBody(sub, bodyStore)
+    const part = resolvePatternSourcePart(sub, partStore)
     const operation = (sub.operation as string) ?? 'add'
     const built = build()
     // Count 1, 1x1, or a skip list covering every generated instance, leaves the
     // source exactly as it was: ok, no warning, and `new` mints nothing.
     if (built.copies.length === 0) {
-      const noop: BodyPatternResult = {
+      const noop: PartPatternResult = {
         status: 'ok',
-        body_id: body.id,
-        body_ids: operation === 'new' ? [] : [body.id],
+        body_id: part.id,
+        body_ids: operation === 'new' ? [] : [part.id],
         operation,
       }
       return withWarnings(noop, built.warnings, built.extra)
     }
-    const result = applyBodyPattern(oc, scope, table, body, built.copies, operation, featureId, bodyStore)
+    const result = applyPartPattern(oc, scope, table, part, built.copies, operation, featureId, partStore)
     return withWarnings(result, built.warnings, built.extra)
   }
 
   if (subject === 'feature') {
     const built = build()
     return solveFeaturePattern(
-      oc, scope, table, feature, sub, globalRepo, bodyStore, featuresById, solveContext,
+      oc, scope, table, feature, sub, globalRepo, partStore, featuresById, solveContext,
       built.copies, built.warnings, built.extra,
     )
   }

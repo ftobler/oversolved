@@ -39,7 +39,7 @@ function chord(curve: EdgeCurve): Vec3[] {
 /**
  * p(t) = center + a*cos(t)*u + b*sin(t)*v, with v = axis x u. A circle is the
  * a == b case, so both conics share one sweep. Matches the basis convention of
- * the part editor's buildEdgeSegments (bodyGeometry.ts) and of the endpoints
+ * the part editor's buildEdgeSegments (partGeometry.ts) and of the endpoints
  * baked by toEdgeCurve, so a sampled arc starts and ends exactly on them.
  */
 function sampleConic(curve: EdgeCurve, resolution: number): Vec3[] {

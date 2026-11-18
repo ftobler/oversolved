@@ -4,7 +4,7 @@ import { join } from 'node:path'
 
 const PART_CSS = readFileSync(join(__dirname, '../Part.css'), 'utf8')
 
-function ruleBody(selector: string): string {
+function rulePart(selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const match = PART_CSS.match(new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`))
   expect(match, `${selector} rule in pages/Part.css`).not.toBeNull()
@@ -13,7 +13,7 @@ function ruleBody(selector: string): string {
 
 describe('field layout invariant', () => {
   it('gives the field input a min-width floor', () => {
-    expect(ruleBody('.feature-field-input')).toMatch(/min-width:/)
+    expect(rulePart('.feature-field-input')).toMatch(/min-width:/)
   })
 
   it('does not give a non-stacked field row child flex-basis 100%', () => {
@@ -23,8 +23,8 @@ describe('field layout invariant', () => {
     let m: RegExpExecArray | null
     while ((m = ruleRe.exec(PART_CSS)) !== null) {
       const selector = m[1].trim()
-      const body = m[2]
-      if (!/flex-basis:\s*100%/.test(body)) continue
+      const part = m[2]
+      if (!/flex-basis:\s*100%/.test(part)) continue
       if (!selector.includes('.feature-field-row')) continue
 
       const allowed =

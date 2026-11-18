@@ -15,10 +15,10 @@ import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
 import { makeBox, makeBoxAt } from '../../occ/primitives'
 import { sortedFacesOf } from '../../occ/faceLoops'
-import { canonicalFaces, canonicalIndex } from '../../occ/bodyNames'
+import { canonicalFaces, canonicalIndex } from '../../occ/partNames'
 import { Repository } from '../../query'
 import { resolveFaceProfile, resolveFaceIndexViaUuid } from '../faceProfile'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape, OccSubShape } from '../../occ/occTypes'
 import faceLoopsFixture from '../../occ/__fixtures__/faceLoops.json'
 
@@ -79,7 +79,7 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
     const table = new HandleTable()
     try {
       const box = makeBox(occ, scope, flx.box[0], flx.box[1], flx.box[2])
-      const bodyStore: Record<string, Body> = {
+      const partStore: Record<string, PartSolid> = {
         body_feat: {
           id: 'body_feat',
           created_by: 'feat',
@@ -97,7 +97,7 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
         table,
         '@feat/face/0',
         repo,
-        bodyStore,
+        partStore,
       )
       expectClose(loops, box0.loops, 'loops')
       expectClose(
@@ -123,7 +123,7 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
       const SEP = 100
       const first = makeBox(occ, scope, 10, 10, 10)
       const second = makeBoxAt(occ, scope, [SEP, 0, 0], 10, 10, 10)
-      const body = (id: string, shape: ReturnType<typeof makeBox>): Body => ({
+      const part = (id: string, shape: ReturnType<typeof makeBox>): PartSolid => ({
         id,
         created_by: 'feat',
         modified_by: [],
@@ -132,13 +132,13 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
         brep_diff: null,
         profile_queries: [],
       })
-      const bodyStore: Record<string, Body> = {
-        body_feat: body('body_feat', first),
-        body_feat_1: body('body_feat_1', second),
+      const partStore: Record<string, PartSolid> = {
+        body_feat: part('body_feat', first),
+        body_feat_1: part('body_feat_1', second),
       }
       const repo = new Repository()
       const resolve = (ref: string) =>
-        resolveFaceProfile(occ, scope, table, ref, repo, bodyStore).plane.origin
+        resolveFaceProfile(occ, scope, table, ref, repo, partStore).plane.origin
 
       const sibling0 = resolve('@body_feat/face/0')
       const sibling1 = resolve('@body_feat_1/face/0')
@@ -181,7 +181,7 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
         )
       })
 
-      const bodyStore: Record<string, Body> = {
+      const partStore: Record<string, PartSolid> = {
         body_feat: {
           id: 'body_feat',
           created_by: 'feat',
@@ -193,7 +193,7 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
           face_uuids: faceUuids,
         },
       }
-      const remapped = resolveFaceIndexViaUuid(occ, scope, box, 1, repo, bodyStore, faceUuids, faces)
+      const remapped = resolveFaceIndexViaUuid(occ, scope, box, 1, repo, partStore, faceUuids, faces)
       expect(remapped).toBe(5)
     } finally {
       scope.dispose()
@@ -212,7 +212,7 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
       const faces = sortedFacesOf(occ, scope, box)
       // A uuid with no registered element, on sorted face 1.
       const faceUuids = faceUuidsFor(scope, box, faces, (i) => (i === 1 ? 'u_ghost' : null))
-      const bodyStore: Record<string, Body> = {
+      const partStore: Record<string, PartSolid> = {
         body_feat: {
           id: 'body_feat',
           created_by: 'feat',
@@ -225,7 +225,7 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
         },
       }
       const repo = new Repository()
-      expect(() => resolveFaceProfile(occ, scope, table, '@body_feat/face/1', repo, bodyStore))
+      expect(() => resolveFaceProfile(occ, scope, table, '@body_feat/face/1', repo, partStore))
         .toThrow(/Cannot remap persisted face ref '@body_feat\/face\/1'/)
     } finally {
       scope.dispose()
@@ -252,7 +252,7 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
           uuids[i],
         )
       })
-      const bodyStore: Record<string, Body> = {
+      const partStore: Record<string, PartSolid> = {
         body_feat: {
           id: 'body_feat',
           created_by: 'feat',
@@ -265,8 +265,8 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
         },
       }
 
-      const withFaces = resolveFaceIndexViaUuid(occ, scope, box, 1, repo, bodyStore, faceUuids, faces)
-      const withoutFaces = resolveFaceIndexViaUuid(occ, scope, box, 1, repo, bodyStore, faceUuids)
+      const withFaces = resolveFaceIndexViaUuid(occ, scope, box, 1, repo, partStore, faceUuids, faces)
+      const withoutFaces = resolveFaceIndexViaUuid(occ, scope, box, 1, repo, partStore, faceUuids)
       expect(withFaces).toBe(5)
       expect(withoutFaces).toBe(withFaces)
     } finally {
@@ -299,7 +299,7 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
     try {
       const SEP = 100
       const box = makeBoxAt(occ, scope, [SEP, 0, 0], flx.box[0], flx.box[1], flx.box[2])
-      const bodyStore: Record<string, Body> = {
+      const partStore: Record<string, PartSolid> = {
         body_other: {
           id: 'body_other',
           created_by: 'feat',
@@ -311,7 +311,7 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
         },
       }
       const repo = new Repository()
-      const { plane } = resolveFaceProfile(occ, scope, table, '@feat/face/0', repo, bodyStore)
+      const { plane } = resolveFaceProfile(occ, scope, table, '@feat/face/0', repo, partStore)
       expect(plane.origin[0]).toBeCloseTo(SEP, 6)
     } finally {
       scope.dispose()
@@ -328,7 +328,7 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
     try {
       const box = makeBox(occ, scope, flx.box[0], flx.box[1], flx.box[2])
       const faces = sortedFacesOf(occ, scope, box)
-      const bodyStore: Record<string, Body> = {
+      const partStore: Record<string, PartSolid> = {
         body_feat: {
           id: 'body_feat',
           created_by: 'feat',
@@ -340,8 +340,8 @@ describe.skipIf(!oc)('resolveFaceProfile @feat/face/N (real OCC)', () => {
         },
       }
       const repo = new Repository()
-      expect(resolveFaceIndexViaUuid(occ, scope, box, 1, repo, bodyStore, undefined, faces)).toBeNull()
-      const { face } = resolveFaceProfile(occ, scope, table, '@body_feat/face/1', repo, bodyStore)
+      expect(resolveFaceIndexViaUuid(occ, scope, box, 1, repo, partStore, undefined, faces)).toBeNull()
+      const { face } = resolveFaceProfile(occ, scope, table, '@body_feat/face/1', repo, partStore)
       expect(face).not.toBeNull()
     } finally {
       scope.dispose()

@@ -67,17 +67,17 @@ features:
 `
 
 /** The query of the box's top cap (the 4-edge face whose classifier is +z). */
-function topFaceEntry(bodies: Record<string, unknown>): { query: string; edges: string[] } {
-  const body = Object.values(bodies)[0] as { mesh?: { face_queries?: string[]; face_edge_queries?: string[][] } }
-  const queries = body?.mesh?.face_queries ?? []
-  const boundaries = body?.mesh?.face_edge_queries ?? []
+function topFaceEntry(parts: Record<string, unknown>): { query: string; edges: string[] } {
+  const part = Object.values(parts)[0] as { mesh?: { face_queries?: string[]; face_edge_queries?: string[][] } }
+  const queries = part?.mesh?.face_queries ?? []
+  const boundaries = part?.mesh?.face_edge_queries ?? []
   const hit = queries.findIndex((q, i) => q.includes('cls_zp') && (boundaries[i]?.length ?? 0) === 4)
   if (hit < 0) throw new Error(`no top-cap query among ${queries.length} face queries`)
   return { query: queries[hit], edges: boundaries[hit] ?? [] }
 }
 
-function topFaceQuery(bodies: Record<string, unknown>): string {
-  return topFaceEntry(bodies).query
+function topFaceQuery(parts: Record<string, unknown>): string {
+  return topFaceEntry(parts).query
 }
 
 /**
@@ -110,10 +110,10 @@ const REPORT_RECIPE = BASE_RECIPE + `
 `
 
 /** The boss top disc: the one +z face whose boundary is a single circle. */
-function bossTopQuery(bodies: Record<string, unknown>): string {
-  const body = Object.values(bodies)[0] as { mesh?: { face_queries?: string[]; face_edge_queries?: string[][] } }
-  const queries = body?.mesh?.face_queries ?? []
-  const boundaries = body?.mesh?.face_edge_queries ?? []
+function bossTopQuery(parts: Record<string, unknown>): string {
+  const part = Object.values(parts)[0] as { mesh?: { face_queries?: string[]; face_edge_queries?: string[][] } }
+  const queries = part?.mesh?.face_queries ?? []
+  const boundaries = part?.mesh?.face_edge_queries ?? []
   const hit = queries.findIndex((q, i) => q.includes('cls_zp') && (boundaries[i]?.length ?? 0) === 1)
   if (hit < 0) throw new Error(`no boss top query among ${queries.length} face queries`)
   return queries[hit]

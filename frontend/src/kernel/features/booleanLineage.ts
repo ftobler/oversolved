@@ -8,7 +8,7 @@ import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import { SubShapeIndexMap } from '../occ/primitives'
 import { SubShapeMap } from '../occ/subshapeIdentity'
-import type { ShapeNames } from '../occ/bodyNames'
+import type { ShapeNames } from '../occ/partNames'
 import {
   mintFaceUuid,
   splitFacePath,
@@ -23,7 +23,7 @@ import type { FaceOrigin } from '../occ/booleans'
 
 interface TransferNamesInput {
   // The body's shape AFTER the boolean (cleaned) -- the faceOrigin output space.
-  bodyShape: OccShape
+  partShape: OccShape
   // Per-output-face origin from booleanWithDiff.
   faceOrigin: FaceOrigin[]
   // Target body's pre-boolean face names (its faces -> uuid) + ancestry (uuid -> tokens).
@@ -40,7 +40,7 @@ interface TransferNamesInput {
   // Tool body's face names + ancestry (or null for ops without a named tool).
   toolFaceNames: SubShapeMap<string> | null
   toolFaceAncestry: Record<string, string[]> | null
-  // Each side's cap identification nets (Body.face_cap_ancestry), carried onto
+  // Each side's cap identification nets (Part.face_cap_ancestry), carried onto
   // the output face by the same origin mapping. They stay out of faceAncestry
   // so a cap's whole-profile list never becomes an edge's lineage.
   targetCapAncestry?: Record<string, string[]> | null
@@ -71,7 +71,7 @@ export function transferBooleanNames(
   input: TransferNamesInput,
 ): ShapeNames {
   const {
-    bodyShape, faceOrigin, targetFaceNames, targetFaceAncestry,
+    partShape: bodyShape, faceOrigin, targetFaceNames, targetFaceAncestry,
     toolFaceNames, toolFaceAncestry, targetCapAncestry, toolCapAncestry, toolUuidScope,
     targetFaceOwner, toolFaceOwner, toolCreatedBy,
   } = input

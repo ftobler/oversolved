@@ -17,12 +17,12 @@ const FEATURES: PartFeature[] = [
   { id: 'pt1', kind: 'circular_pattern', circular_pattern: { subject: 'body' } },
 ]
 
-function makeFeature(source_body = ''): PartFeature {
+function makeFeature(source_part = ''): PartFeature {
   return {
     id: 'pt1',
     kind: 'circular_pattern',
     label: 'Pattern',
-    circular_pattern: { subject: 'body', source_body, count: 4, operation: 'add' },
+    circular_pattern: { subject: 'body', source_body: source_part, count: 4, operation: 'add' },
   } as unknown as PartFeature
 }
 
@@ -30,11 +30,11 @@ function renderEditor(feature: PartFeature, onMutation: () => void) {
   render(<FeatureEditor feature={feature} onMutation={onMutation} features={FEATURES} schema={CIRCULAR_PATTERN_SCHEMA} />)
 }
 
-/** Pick chips in field order: [0] Body, [1] Axis. */
+/** Pick chips in field order: [0] Part, [1] Axis. */
 function chips(): NodeListOf<HTMLElement> {
   return document.querySelectorAll<HTMLElement>('.feature-pick-chip')
 }
-function bodyChip(): HTMLElement {
+function partChip(): HTMLElement {
   return chips()[0]
 }
 function axisChip(): HTMLElement {
@@ -58,7 +58,7 @@ beforeEach(() => {
 describe('circular pattern body pick (via FeatureEditor)', () => {
   it('renders an empty part chip asking for the part to copy', () => {
     renderEditor(makeFeature(), vi.fn())
-    const chip = bodyChip()
+    const chip = partChip()
     expect(chip.classList.contains('empty')).toBe(true)
     expect(chip.querySelector('.feature-pick-chip-empty-text')?.textContent).toBe('(pick the part to copy)')
   })
@@ -66,13 +66,13 @@ describe('circular pattern body pick (via FeatureEditor)', () => {
   it('renders the source_body ref when set', () => {
     renderEditor(makeFeature('@body_ex1'), vi.fn())
     // PickChip runs the ref through queryLabel when `features` is supplied.
-    expect(bodyChip().querySelector('.feature-pick-chip-item-text')?.textContent).toBe('body_ex1')
+    expect(partChip().querySelector('.feature-pick-chip-item-text')?.textContent).toBe('body_ex1')
   })
 
   it('picking a body normalizes to an @body_ ref', () => {
     const onMutation = vi.fn()
     renderEditor(makeFeature(), onMutation)
-    fireEvent.click(bodyChip())
+    fireEvent.click(partChip())
     pick('body:body_ex1')
     expect(onMutation).toHaveBeenCalledWith({
       type: 'set_circular_pattern_field', featureId: 'pt1', field: 'source_body', value: '@body_ex1',
@@ -82,7 +82,7 @@ describe('circular pattern body pick (via FeatureEditor)', () => {
   it('picking a face of a body keeps the inner query for the solver to resolve', () => {
     const onMutation = vi.fn()
     renderEditor(makeFeature(), onMutation)
-    fireEvent.click(bodyChip())
+    fireEvent.click(partChip())
     pick('face:ex1:?4;@ex1:face')
     expect(onMutation).toHaveBeenCalledWith({
       type: 'set_circular_pattern_field', featureId: 'pt1', field: 'source_body', value: '?4;@ex1:face',
@@ -92,7 +92,7 @@ describe('circular pattern body pick (via FeatureEditor)', () => {
   it('rejects picking the pattern\'s own body', () => {
     const onMutation = vi.fn()
     renderEditor(makeFeature(), onMutation)
-    fireEvent.click(bodyChip())
+    fireEvent.click(partChip())
     pick('@body_pt1')
     expect(onMutation).not.toHaveBeenCalled()
   })
@@ -100,7 +100,7 @@ describe('circular pattern body pick (via FeatureEditor)', () => {
   it('remove button clears source_body back to the empty pick', () => {
     const onMutation = vi.fn()
     renderEditor(makeFeature('@body_ex1'), onMutation)
-    fireEvent.click(bodyChip().querySelector('.feature-pick-chip-item-remove')!)
+    fireEvent.click(partChip().querySelector('.feature-pick-chip-item-remove')!)
     expect(onMutation).toHaveBeenCalledWith({
       type: 'set_circular_pattern_field', featureId: 'pt1', field: 'source_body', value: '',
     })

@@ -18,9 +18,9 @@ import { parseAncestry } from '../../query'
 import { selectByPredicate } from '../../select'
 import { solidToEdges } from '../../occ/tessellation'
 import type { BuildResponse } from '../../builder'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import { splitPatternDef } from '@/utils/core/patternSplit'
-import type { BodyResult, EdgeData } from '@/types/cad'
+import type { PartResult, EdgeData } from '@/types/cad'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -95,20 +95,20 @@ describe.skipIf(!oc || !solveBytes)('pattern attribution (real OCC + Rust solver
     setSketchSolver(solveBytes)
   })
 
-  const facesOf = (r: BuildResponse, bodyId: string): FaceMesh => (h.body(r, bodyId).mesh ?? {}) as FaceMesh
-  function bodyAt(r: BuildResponse, featureId: string, bodyId: string): Body {
-    return r._build_state!.checkpoints[featureId].body_store_snapshot[bodyId] as Body
+  const facesOf = (r: BuildResponse, partId: string): FaceMesh => (h.part(r, partId).mesh ?? {}) as FaceMesh
+  function partAt(r: BuildResponse, featureId: string, partId: string): PartSolid {
+    return r._build_state!.checkpoints[featureId].body_store_snapshot[partId] as PartSolid
   }
-  function edgesOf(r: BuildResponse, featureId: string, bodyId: string): { edges: EdgeData[]; queries: string[] } {
-    const body = bodyAt(r, featureId, bodyId)
-    const res = solidToEdges(oc!, h.table, body.shape!, {
-      createdBy: body.created_by,
-      bodyId: body.id,
-      profileQueries: body.profile_queries,
-      edgeAncestry: body.edge_ancestry ?? null,
-      edgeUuids: body.edge_uuids ?? null,
-      edgeOwner: body.edge_owner ?? null,
-      modifiedBy: body.modified_by,
+  function edgesOf(r: BuildResponse, featureId: string, partId: string): { edges: EdgeData[]; queries: string[] } {
+    const part = partAt(r, featureId, partId)
+    const res = solidToEdges(oc!, h.table, part.shape!, {
+      createdBy: part.created_by,
+      partId: part.id,
+      profileQueries: part.profile_queries,
+      edgeAncestry: part.edge_ancestry ?? null,
+      edgeUuids: part.edge_uuids ?? null,
+      edgeOwner: part.edge_owner ?? null,
+      modifiedBy: part.modified_by,
     })
     return { edges: res.edges, queries: res.edge_queries }
   }
@@ -143,7 +143,7 @@ describe.skipIf(!oc || !solveBytes)('pattern attribution (real OCC + Rust solver
 
     const picked = selectByPredicate(
       { kind: 'face', where: { created_by: 'pat_mh', radius: 0.3125 } },
-      r.bodies as unknown as Record<string, BodyResult>,
+      r.bodies as unknown as Record<string, PartResult>,
     )
     expect(picked.queries).toHaveLength(3)
   })
@@ -272,13 +272,13 @@ describe.skipIf(!oc || !solveBytes)('pattern attribution (real OCC + Rust solver
     expect(h.res(r, 'pt1').status).toBe('ok')
     const wanted = selectByPredicate(
       { kind: 'edge', where: { created_by: 'pt1' } },
-      r.bodies as unknown as Record<string, BodyResult>,
+      r.bodies as unknown as Record<string, PartResult>,
     )
     expect(wanted.queries.length).toBeGreaterThan(0)
     // The base extrude no longer returns the patterned slot edges.
     const base = selectByPredicate(
       { kind: 'edge', where: { created_by: 'ex1' } },
-      r.bodies as unknown as Record<string, BodyResult>,
+      r.bodies as unknown as Record<string, PartResult>,
     )
     expect(base.queries.some((query) => edgeIdsOf(query).includes('@pt1'))).toBe(false)
   })

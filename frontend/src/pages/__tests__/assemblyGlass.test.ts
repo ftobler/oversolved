@@ -11,7 +11,7 @@ const PART_CSS = readFileSync(join(SRC, 'pages/Part.css'), 'utf8')
 const ASSEMBLY_CSS = readFileSync(join(SRC, 'pages/Assembly.css'), 'utf8')
 
 // The declarations of the first rule whose selector is exactly `selector`.
-function ruleBody(css: string, selector: string): string {
+function rulePart(css: string, selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const match = css.match(new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`))
   expect(match, `${selector} rule`).not.toBeNull()
@@ -20,30 +20,30 @@ function ruleBody(css: string, selector: string): string {
 
 describe('assembly glass twins', () => {
   it('keeps the related row tint at alpha, leaving the part editor rule alone', () => {
-    const related = ruleBody(ASSEMBLY_CSS, '.assembly-panel .feature-item.related:not(.selected):not(.editing)')
+    const related = rulePart(ASSEMBLY_CSS, '.assembly-panel .feature-item.related:not(.selected):not(.editing)')
     expect(related).toMatch(/background:\s*rgba\(18, 32, 40, 0\.55\)/)
     // The shared opaque rule is still the part editor's look.
-    expect(ruleBody(PART_CSS, '.feature-item.related')).toMatch(/background:\s*#122028/)
+    expect(rulePart(PART_CSS, '.feature-item.related')).toMatch(/background:\s*#122028/)
   })
 
   it('keeps a selected related row on the shared selected tint', () => {
-    const selected = ruleBody(ASSEMBLY_CSS, '.assembly-panel .feature-item.selected.related')
+    const selected = rulePart(ASSEMBLY_CSS, '.assembly-panel .feature-item.selected.related')
     expect(selected).toMatch(/background:\s*var\(--glass-selected-bg\)/)
   })
 
   it('keeps the verdict row tints at alpha over the frosted Parts card', () => {
-    expect(ruleBody(ASSEMBLY_CSS, '.assembly-verdict-error')).toMatch(/background:\s*rgba\(42, 20, 20, 0\.55\)/)
-    expect(ruleBody(ASSEMBLY_CSS, '.assembly-verdict-warning')).toMatch(/background:\s*rgba\(42, 36, 16, 0\.55\)/)
+    expect(rulePart(ASSEMBLY_CSS, '.assembly-verdict-error')).toMatch(/background:\s*rgba\(42, 20, 20, 0\.55\)/)
+    expect(rulePart(ASSEMBLY_CSS, '.assembly-verdict-warning')).toMatch(/background:\s*rgba\(42, 36, 16, 0\.55\)/)
   })
 
   it('drops the row divider from the editor bodies now the card header separates them', () => {
-    const body = /\.mate-editor,\s*\.instance-editor\s*\{([^}]*)\}/.exec(ASSEMBLY_CSS)![1]
-    expect(body).not.toMatch(/border-top|margin-top|padding-top/)
+    const part = /\.mate-editor,\s*\.instance-editor\s*\{([^}]*)\}/.exec(ASSEMBLY_CSS)![1]
+    expect(part).not.toMatch(/border-top|margin-top|padding-top/)
   })
 
   it('uses the frosted field tint for the mate angle step button', () => {
-    const body = /\.mate-angle-buttons button\s*\{([^}]*)\}/.exec(ASSEMBLY_CSS)![1]
-    expect(body).toContain('var(--glass-field-bg)')
+    const part = /\.mate-angle-buttons button\s*\{([^}]*)\}/.exec(ASSEMBLY_CSS)![1]
+    expect(part).toContain('var(--glass-field-bg)')
   })
 })
 

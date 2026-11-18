@@ -6,7 +6,7 @@
 // producers hand the diff over in the space of the body's own shape, so no
 // geometry is compared. The diff's sub-shapes die with the build, so right
 // after each feature solve the builder has them turned into canonical indices
-// (`Body.brep_new`), which a checkpoint restore carries along with the shape
+// (`Part.brep_new`), which a checkpoint restore carries along with the shape
 // copy. Every consumer reads the indices, so a full build and an incremental
 // one attribute alike.
 //
@@ -15,15 +15,15 @@
 // the next modifier: every earlier modifier's element silently reverted to the
 // body's creator. Face and edge identity is a construction UUID, which does
 // survive the reshaping (it rides the name transfer), so the attribution is
-// recorded against it too (`Body.face_owner` / `edge_owner`). A vertex has no
+// recorded against it too (`Part.face_owner` / `edge_owner`). A vertex has no
 // stored UUID (it is derived from its adjacent faces at tessellation time), so
 // vertices keep the last-modifier rule.
 
 import { DisposeScope } from './disposeScope'
 import type { HandleTable, OccHandle } from './handleTable'
 import type { OccModule, OccShape, OccSubShape } from './occTypes'
-import type { Body, BrepDiff, NewElements } from '../types3d'
-import { canonicalEdges, canonicalFaces, canonicalVertices } from './bodyNames'
+import type { PartSolid, BrepDiff, NewElements } from '../types3d'
+import { canonicalEdges, canonicalFaces, canonicalVertices } from './partNames'
 import { SubShapeDedup } from './subshapeIdentity'
 
 /** The sub-shapes `diff` records as created, as identity sets. */
@@ -88,20 +88,20 @@ const indexedFrom = new WeakMap<BrepDiff, OccHandle>()
  * it no longer lists is attributed from its recorded UUID owner instead of
  * dropping back to the body's creator.
  */
-export function indexModifierDiffs(oc: OccModule, table: HandleTable, bodyStore: Record<string, Body>): void {
+export function indexModifierDiffs(oc: OccModule, table: HandleTable, partStore: Record<string, PartSolid>): void {
   const scope = new DisposeScope()
   try {
-    for (const body of Object.values(bodyStore)) {
-      if (body.shape == null) {
-        body.brep_new = null
-      } else if (body.brep_diff) {
-        if (body.brep_new?.shape === body.shape && indexedFrom.get(body.brep_diff) === body.shape) continue
-        body.brep_new = newElementIndices(oc, scope, body.shape, table.get<OccShape>(body.shape), body.brep_diff)
-        indexedFrom.set(body.brep_diff, body.shape)
-      } else if (body.brep_new && body.brep_new.shape !== body.shape) {
-        body.brep_new = null
+    for (const part of Object.values(partStore)) {
+      if (part.shape == null) {
+        part.brep_new = null
+      } else if (part.brep_diff) {
+        if (part.brep_new?.shape === part.shape && indexedFrom.get(part.brep_diff) === part.shape) continue
+        part.brep_new = newElementIndices(oc, scope, part.shape, table.get<OccShape>(part.shape), part.brep_diff)
+        indexedFrom.set(part.brep_diff, part.shape)
+      } else if (part.brep_new && part.brep_new.shape !== part.shape) {
+        part.brep_new = null
       }
-      recordElementOwners(body)
+      recordElementOwners(part)
     }
   } finally {
     scope.dispose()
@@ -118,11 +118,11 @@ export function indexModifierDiffs(oc: OccModule, table: HandleTable, bodyStore:
  * element the body actually has (a UUID that comes back later names the same
  * element by construction, so a pruned re-stamp is not a loss).
  */
-function recordElementOwners(body: Body): void {
-  const modifier = body.modified_by.at(-1)
-  if (!modifier || !body.brep_new) return
-  body.face_owner = nextOwners(body.face_owner, body.face_uuids, body.brep_new.faces, modifier)
-  body.edge_owner = nextOwners(body.edge_owner, body.edge_uuids, body.brep_new.edges, modifier)
+function recordElementOwners(part: PartSolid): void {
+  const modifier = part.modified_by.at(-1)
+  if (!modifier || !part.brep_new) return
+  part.face_owner = nextOwners(part.face_owner, part.face_uuids, part.brep_new.faces, modifier)
+  part.edge_owner = nextOwners(part.edge_owner, part.edge_uuids, part.brep_new.edges, modifier)
 }
 
 /** The owner map with the `newIndices` UUIDs stamped with `modifier`, keeping the

@@ -42,7 +42,7 @@ const ex1: PartFeature = {
 
 beforeEach(() => {
   MockLine.mockClear()
-  usePartEditorStore.setState({ features: [sk1, ex1], bodies: {} })
+  usePartEditorStore.setState({ features: [sk1, ex1], parts: {} })
   useEditorState.setState({
     normalSelection: new Set(),
     rollbackPosition: null,

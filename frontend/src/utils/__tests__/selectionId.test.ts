@@ -209,21 +209,21 @@ describe('stripSelectionWrapper', () => {
 
 describe('parseTopoFallbackQuery', () => {
   it('parses edge query', () => {
-    expect(parseTopoFallbackQuery('@body_ex1/edge/0')).toEqual({ bodyId: 'body_ex1', kind: 'edge', idx: 0 })
+    expect(parseTopoFallbackQuery('@body_ex1/edge/0')).toEqual({ partId: 'body_ex1', kind: 'edge', idx: 0 })
   })
   it('parses face query', () => {
-    expect(parseTopoFallbackQuery('@body1/face/3')).toEqual({ bodyId: 'body1', kind: 'face', idx: 3 })
+    expect(parseTopoFallbackQuery('@body1/face/3')).toEqual({ partId: 'body1', kind: 'face', idx: 3 })
   })
   it('parses vertex query', () => {
-    expect(parseTopoFallbackQuery('@sk1/vertex/7')).toEqual({ bodyId: 'sk1', kind: 'vertex', idx: 7 })
+    expect(parseTopoFallbackQuery('@sk1/vertex/7')).toEqual({ partId: 'sk1', kind: 'vertex', idx: 7 })
   })
   it('multi-digit index', () => {
-    expect(parseTopoFallbackQuery('@ex1/edge/123')).toEqual({ bodyId: 'ex1', kind: 'edge', idx: 123 })
+    expect(parseTopoFallbackQuery('@ex1/edge/123')).toEqual({ partId: 'ex1', kind: 'edge', idx: 123 })
   })
   // The leading token is a body id, and split siblings carry an `_N` suffix that
   // must survive the round trip -- it is the only thing separating two siblings.
   it('keeps a split sibling id whole', () => {
-    expect(parseTopoFallbackQuery('@body_ex1_1/edge/0')).toEqual({ bodyId: 'body_ex1_1', kind: 'edge', idx: 0 })
+    expect(parseTopoFallbackQuery('@body_ex1_1/edge/0')).toEqual({ partId: 'body_ex1_1', kind: 'edge', idx: 0 })
   })
   it('non-numeric idx returns null', () => {
     expect(parseTopoFallbackQuery('@ex1/edge/abc')).toBeNull()
@@ -249,7 +249,7 @@ describe('parseTopoFallbackQuery', () => {
       expect(topoFallbackQuery('body_ex1', 'tri', 2)).toBe('@body_ex1/tri/2')
     })
     it('parseTopoFallbackQuery round-trips the tri token', () => {
-      expect(parseTopoFallbackQuery('@body_ex1/tri/2')).toEqual({ bodyId: 'body_ex1', kind: 'tri', idx: 2 })
+      expect(parseTopoFallbackQuery('@body_ex1/tri/2')).toEqual({ partId: 'body_ex1', kind: 'tri', idx: 2 })
     })
     it('a tri query is not a face query', () => {
       expect(parseTopoFallbackQuery('@body_ex1/tri/2')!.kind).not.toBe('face')
@@ -257,18 +257,18 @@ describe('parseTopoFallbackQuery', () => {
   })
 
   describe('round-trip with topoFallbackQuery', () => {
-    const cases: Array<{ bodyId: string; kind: 'edge' | 'face' | 'vertex' | 'tri'; idx: number }> = [
-      { bodyId: 'body_ex1', kind: 'edge', idx: 0 },
-      { bodyId: 'body_ex1_1', kind: 'edge', idx: 0 },
-      { bodyId: 'body1', kind: 'face', idx: 5 },
-      { bodyId: 'sk1', kind: 'vertex', idx: 99 },
-      { bodyId: 'body_ex1', kind: 'tri', idx: 2 },
+    const cases: Array<{ partId: string; kind: 'edge' | 'face' | 'vertex' | 'tri'; idx: number }> = [
+      { partId: 'body_ex1', kind: 'edge', idx: 0 },
+      { partId: 'body_ex1_1', kind: 'edge', idx: 0 },
+      { partId: 'body1', kind: 'face', idx: 5 },
+      { partId: 'sk1', kind: 'vertex', idx: 99 },
+      { partId: 'body_ex1', kind: 'tri', idx: 2 },
     ]
-    cases.forEach(({ bodyId, kind, idx }) => {
-      it(`${bodyId} ${kind}/${idx}`, () => {
-        const serialized = topoFallbackQuery(bodyId, kind, idx)
+    cases.forEach(({ partId, kind, idx }) => {
+      it(`${partId} ${kind}/${idx}`, () => {
+        const serialized = topoFallbackQuery(partId, kind, idx)
         const parsed = parseTopoFallbackQuery(serialized)
-        expect(parsed).toEqual({ bodyId, kind, idx })
+        expect(parsed).toEqual({ partId: partId, kind, idx })
       })
     })
   })

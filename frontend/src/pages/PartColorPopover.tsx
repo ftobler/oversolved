@@ -4,18 +4,18 @@ import { useEditorState } from '@/hooks/useEditorState'
 import { DEFAULT_PART_ROUGHNESS, normalizeHexColor, PART_COLOR_PALETTE } from '@/utils/core/partColors'
 
 interface PartColorPopoverProps {
-  popover: { bodyId: string; position: [number, number]; session?: number } | null
-  onColorSet: (bodyId: string, color: string) => void
-  onTransparencySet: (bodyId: string, t: number) => void
-  onMetalnessSet: (bodyId: string, m: number) => void
-  onRoughnessSet: (bodyId: string, r: number) => void
-  onTransmissionSet: (bodyId: string, t: number) => void
+  popover: { partId: string; position: [number, number]; session?: number } | null
+  onColorSet: (partId: string, color: string) => void
+  onTransparencySet: (partId: string, t: number) => void
+  onMetalnessSet: (partId: string, m: number) => void
+  onRoughnessSet: (partId: string, r: number) => void
+  onTransmissionSet: (partId: string, t: number) => void
   onCancel: () => void
   onApply: (mutation: Mutation) => void
 }
 
 interface InnerProps extends PartColorPopoverProps {
-  popover: { bodyId: string; position: [number, number] }
+  popover: { partId: string; position: [number, number] }
 }
 
 const formatPercent = (val: number): string => `${(val * 100).toFixed(0)}%`
@@ -61,7 +61,7 @@ function PartColorPopoverInner({
   onApply,
 }: InnerProps) {
   const partStyle = useEditorState(s => s.partStyle)
-  const style = partStyle[popover.bodyId]
+  const style = partStyle[popover.partId]
 
   const popoverRef = useRef<HTMLDivElement>(null)
   const [colorDraft, setColorDraft] = useState(() => normalizeHexColor(style?.color) || '#6AB59B')
@@ -147,14 +147,14 @@ function PartColorPopoverInner({
               setColorDraft(val)
               const normalized = normalizeHexColor(val)
               if (normalized) {
-                onColorSet(popover.bodyId, normalized)
+                onColorSet(popover.partId, normalized)
               }
             }}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 const normalized = normalizeHexColor(colorDraft)
                 if (normalized) {
-                  onApply({ type: 'set_part_color', bodyId: popover.bodyId, color: normalized })
+                  onApply({ type: 'set_part_color', bodyId: popover.partId, color: normalized })
                 }
               }
             }}
@@ -166,7 +166,7 @@ function PartColorPopoverInner({
           value={transparencyDraft}
           onChange={(val) => {
             setTransparencyDraft(val)
-            onTransparencySet(popover.bodyId, val)
+            onTransparencySet(popover.partId, val)
           }}
           display={(val) => `${((1 - val) * 100).toFixed(0)}%`}
         />
@@ -175,7 +175,7 @@ function PartColorPopoverInner({
           value={metalnessDraft}
           onChange={(val) => {
             setMetalnessDraft(val)
-            onMetalnessSet(popover.bodyId, val)
+            onMetalnessSet(popover.partId, val)
           }}
         />
         <MaterialSlider
@@ -183,7 +183,7 @@ function PartColorPopoverInner({
           value={roughnessDraft}
           onChange={(val) => {
             setRoughnessDraft(val)
-            onRoughnessSet(popover.bodyId, val)
+            onRoughnessSet(popover.partId, val)
           }}
         />
         <MaterialSlider
@@ -191,7 +191,7 @@ function PartColorPopoverInner({
           value={transmissionDraft}
           onChange={(val) => {
             setTransmissionDraft(val)
-            onTransmissionSet(popover.bodyId, val)
+            onTransmissionSet(popover.partId, val)
           }}
         />
         <div className="part-color-swatches">
@@ -203,7 +203,7 @@ function PartColorPopoverInner({
               title={c}
               onClick={() => {
                 setColorDraft(c)
-                onColorSet(popover.bodyId, c)
+                onColorSet(popover.partId, c)
               }}
             />
           ))}
@@ -218,7 +218,7 @@ function PartColorPopoverInner({
           onClick={() => {
             const normalized = normalizeHexColor(colorDraft)
             if (!normalized) return
-            onApply({ type: 'set_part_color', bodyId: popover.bodyId, color: normalized })
+            onApply({ type: 'set_part_color', bodyId: popover.partId, color: normalized })
           }}
         >
           Apply
@@ -234,6 +234,6 @@ function PartColorPopoverInner({
 export default function PartColorPopover(props: PartColorPopoverProps) {
   if (!props.popover) return null
   // Include session so re-opening the same body always re-mounts with fresh draft state
-  const key = `${props.popover.bodyId}-${props.popover.session ?? 0}`
+  const key = `${props.popover.partId}-${props.popover.session ?? 0}`
   return <PartColorPopoverInner key={key} {...props} popover={props.popover} />
 }

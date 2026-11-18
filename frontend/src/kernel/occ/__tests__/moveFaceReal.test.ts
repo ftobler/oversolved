@@ -12,7 +12,7 @@ import { loadOcc } from '../loadOcc'
 import { noProgress } from '../defaultArgs'
 import { DisposeScope } from '../disposeScope'
 import { volumeOf } from '../volume'
-import { canonicalFaces, canonicalEdges } from '../bodyNames'
+import { canonicalFaces, canonicalEdges } from '../partNames'
 import {
   makeBox,
   makeBoxAt,
@@ -53,7 +53,7 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
   const cylinderAt = (scope: DisposeScope, x: number, y: number, z: number, r: number, h: number): OccShape =>
     scope.track(new occ.BRepPrimAPI_MakeCylinder_3(ax2z(scope, x, y, z), r, h).Shape())
 
-  function boolBodies(scope: DisposeScope, a: OccShape, b: OccShape, op: 'fuse' | 'cut'): OccShape {
+  function boolParts(scope: DisposeScope, a: OccShape, b: OccShape, op: 'fuse' | 'cut'): OccShape {
     const algo = scope.track(op === 'fuse' ? new occ.BRepAlgoAPI_Fuse_1() : new occ.BRepAlgoAPI_Cut_1())
     const args = scope.track(new occ.TopTools_ListOfShape_1())
     args.Append_1(a)
@@ -67,11 +67,11 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
 
   // A 10-box with 2mm chamfers on its four top edges.
   function chamferedBox(scope: DisposeScope, size = 10, dist = 2): OccShape {
-    const body = scope.track(makeBox(occ, scope, size, size, size))
-    const mk = scope.track(new occ.BRepFilletAPI_MakeChamfer(body))
+    const part = scope.track(makeBox(occ, scope, size, size, size))
+    const mk = scope.track(new occ.BRepFilletAPI_MakeChamfer(part))
     let topZ = -Infinity
-    for (const f of canonicalFaces(occ, scope, body)) topZ = Math.max(topZ, faceCentroid(occ, scope, f as OccShape)[2])
-    for (const e of canonicalEdges(occ, scope, body)) {
+    for (const f of canonicalFaces(occ, scope, part)) topZ = Math.max(topZ, faceCentroid(occ, scope, f as OccShape)[2])
+    for (const e of canonicalEdges(occ, scope, part)) {
       const vs = vertexZ(scope, e as OccShape)
       if (vs.length === 2 && vs.every((z) => Math.abs(z - topZ) < 1e-6)) mk.Add_2(dist, e as OccShape)
     }
@@ -91,9 +91,9 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
 
   // A 10-box with a 2mm-radius fillet on one top edge (a tangent neighbour).
   function filletedBox(scope: DisposeScope): OccShape {
-    const body = scope.track(makeBox(occ, scope, 10, 10, 10))
-    const mk = scope.track(new occ.BRepFilletAPI_MakeFillet(body, occ.ChFi3d_FilletShape.ChFi3d_Rational))
-    const top = canonicalEdges(occ, scope, body).find((e) => {
+    const part = scope.track(makeBox(occ, scope, 10, 10, 10))
+    const mk = scope.track(new occ.BRepFilletAPI_MakeFillet(part, occ.ChFi3d_FilletShape.ChFi3d_Rational))
+    const top = canonicalEdges(occ, scope, part).find((e) => {
       const vs = vertexZ(scope, e as OccShape)
       return vs.length === 2 && vs.every((z) => Math.abs(z - 10) < 1e-6)
     })
@@ -107,20 +107,20 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
     const base = scope.track(makeBoxAt(occ, scope, [0, 0, 0], 30, 10, 4))
     const left = scope.track(makeBoxAt(occ, scope, [0, 0, 4], 10, 10, 6))
     const right = scope.track(makeBoxAt(occ, scope, [20, 0, 4], 10, 10, 6))
-    return scope.track(boolBodies(scope, boolBodies(scope, base, left, 'fuse'), right, 'fuse'))
+    return scope.track(boolParts(scope, boolParts(scope, base, left, 'fuse'), right, 'fuse'))
   }
 
   // A 10-box with a blind hole r2 d3 (floor at z=7).
   const blindHoleBox = (scope: DisposeScope): OccShape =>
-    scope.track(boolBodies(scope, scope.track(makeBox(occ, scope, 10, 10, 10)), cylinderAt(scope, 5, 5, 7, 2, 3), 'cut'))
+    scope.track(boolParts(scope, scope.track(makeBox(occ, scope, 10, 10, 10)), cylinderAt(scope, 5, 5, 7, 2, 3), 'cut'))
 
   // A 10-box with a boss r2 h3 on top.
   const bossBox = (scope: DisposeScope): OccShape =>
-    scope.track(boolBodies(scope, scope.track(makeBox(occ, scope, 10, 10, 10)), cylinderAt(scope, 5, 5, 10, 2, 3), 'fuse'))
+    scope.track(boolParts(scope, scope.track(makeBox(occ, scope, 10, 10, 10)), cylinderAt(scope, 5, 5, 10, 2, 3), 'fuse'))
 
   // An L plate: 10x10x5 minus a 5x5x5 corner (non-convex top face).
   const lPlate = (scope: DisposeScope): OccShape =>
-    scope.track(boolBodies(scope, scope.track(makeBox(occ, scope, 10, 10, 5)), scope.track(makeBoxAt(occ, scope, [5, 5, 0], 5, 5, 5)), 'cut'))
+    scope.track(boolParts(scope, scope.track(makeBox(occ, scope, 10, 10, 5)), scope.track(makeBoxAt(occ, scope, [5, 5, 0], 5, 5, 5)), 'cut'))
 
   // A right isoceles triangular prism: legs 10/10 in x/z, depth 10 in y.
   function wedge(scope: DisposeScope): OccShape {
@@ -143,22 +143,22 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
 
   // ─── face pickers ───
 
-  const pickMaxZ = (scope: DisposeScope, body: OccShape): OccShape => {
-    let best = canonicalFaces(occ, scope, body)[0] as OccShape
-    for (const f of canonicalFaces(occ, scope, body)) {
+  const pickMaxZ = (scope: DisposeScope, part: OccShape): OccShape => {
+    let best = canonicalFaces(occ, scope, part)[0] as OccShape
+    for (const f of canonicalFaces(occ, scope, part)) {
       if (faceCentroid(occ, scope, f as OccShape)[2] > faceCentroid(occ, scope, best)[2]) best = f as OccShape
     }
     return best
   }
-  const pickMinZ = (scope: DisposeScope, body: OccShape): OccShape => {
-    let best = canonicalFaces(occ, scope, body)[0] as OccShape
-    for (const f of canonicalFaces(occ, scope, body)) {
+  const pickMinZ = (scope: DisposeScope, part: OccShape): OccShape => {
+    let best = canonicalFaces(occ, scope, part)[0] as OccShape
+    for (const f of canonicalFaces(occ, scope, part)) {
       if (faceCentroid(occ, scope, f as OccShape)[2] < faceCentroid(occ, scope, best)[2]) best = f as OccShape
     }
     return best
   }
-  function pickByNormal(scope: DisposeScope, body: OccShape, want: Vec3, atZ?: number): OccShape {
-    for (const f of canonicalFaces(occ, scope, body)) {
+  function pickByNormal(scope: DisposeScope, part: OccShape, want: Vec3, atZ?: number): OccShape {
+    for (const f of canonicalFaces(occ, scope, part)) {
       const n = faceNormal(occ, scope, f as OccShape)
       if (Math.abs(n[0] - want[0]) < 1e-9 && Math.abs(n[1] - want[1]) < 1e-9 && Math.abs(n[2] - want[2]) < 1e-9) {
         if (atZ === undefined || Math.abs(faceCentroid(occ, scope, f as OccShape)[2] - atZ) < 1e-6) return f as OccShape
@@ -167,8 +167,8 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
     throw new Error('no face matched the normal/height')
   }
 
-  const moved = (scope: DisposeScope, body: OccShape, face: OccShape, d: number): OccShape =>
-    applyMoveFace(occ, scope, body, face, d).shape
+  const moved = (scope: DisposeScope, part: OccShape, face: OccShape, d: number): OccShape =>
+    applyMoveFace(occ, scope, part, face, d).shape
 
   function expectVolume(scope: DisposeScope, shape: OccShape, expected: number): void {
     expect(valueWithinTolerance(volumeOf(occ, scope, shape), expected), `volume ${volumeOf(occ, scope, shape)} vs ${expected}`).toBe(true)
@@ -180,8 +180,8 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
     for (const [d, want] of [[5, 1500], [-3, 700]] as const) {
       const scope = new DisposeScope()
       try {
-        const body = scope.track(makeBox(occ, scope, 10, 10, 10))
-        expectVolume(scope, moved(scope, body, pickMaxZ(scope, body), d), want)
+        const part = scope.track(makeBox(occ, scope, 10, 10, 10))
+        expectVolume(scope, moved(scope, part, pickMaxZ(scope, part), d), want)
       } finally { scope.dispose() }
     }
   })
@@ -190,8 +190,8 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
     for (const [d, want] of [[5, coneV(12.5, 25)], [-5, coneV(7.5, 15)]] as const) {
       const scope = new DisposeScope()
       try {
-        const body = scope.track(cone(scope, 10, 0, 20))
-        expectVolume(scope, moved(scope, body, pickMinZ(scope, body), d), want)
+        const part = scope.track(cone(scope, 10, 0, 20))
+        expectVolume(scope, moved(scope, part, pickMinZ(scope, part), d), want)
       } finally { scope.dispose() }
     }
   })
@@ -199,8 +199,8 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
   it('cone base moved -25 consumes the body (empty result)', () => {
     const scope = new DisposeScope()
     try {
-      const body = scope.track(cone(scope, 10, 0, 20))
-      const out = moved(scope, body, pickMinZ(scope, body), -25)
+      const part = scope.track(cone(scope, 10, 0, 20))
+      const out = moved(scope, part, pickMinZ(scope, part), -25)
       expect(volumeOf(occ, scope, out)).toBeCloseTo(0, 6)
     } finally { scope.dispose() }
   })
@@ -208,8 +208,8 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
   it('frustum r10->5 h10 top: +8 exact', () => {
     const scope = new DisposeScope()
     try {
-      const body = scope.track(cone(scope, 10, 5, 10))
-      expectVolume(scope, moved(scope, body, pickMaxZ(scope, body), 8), frustumV(10, 1, 18))
+      const part = scope.track(cone(scope, 10, 5, 10))
+      expectVolume(scope, moved(scope, part, pickMaxZ(scope, part), 8), frustumV(10, 1, 18))
     } finally { scope.dispose() }
   })
 
@@ -217,8 +217,8 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
     for (const d of [10, 15]) {
       const scope = new DisposeScope()
       try {
-        const body = scope.track(cone(scope, 10, 5, 10))
-        const out = moved(scope, body, pickMaxZ(scope, body), d)
+        const part = scope.track(cone(scope, 10, 5, 10))
+        const out = moved(scope, part, pickMaxZ(scope, part), d)
         expectVolume(scope, out, coneV(10, 20))
         expect(canonicalFaces(occ, scope, out)).toHaveLength(2)
       } finally { scope.dispose() }
@@ -229,15 +229,15 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
     {
       const scope = new DisposeScope()
       try {
-        const body = scope.track(cone(scope, 10, 5, 10))
-        expectVolume(scope, moved(scope, body, pickMinZ(scope, body), -4), frustumV(8, 5, 6))
+        const part = scope.track(cone(scope, 10, 5, 10))
+        expectVolume(scope, moved(scope, part, pickMinZ(scope, part), -4), frustumV(8, 5, 6))
       } finally { scope.dispose() }
     }
     {
       const scope = new DisposeScope()
       try {
-        const body = scope.track(cone(scope, 10, 5, 10))
-        expectVolume(scope, moved(scope, body, pickMaxZ(scope, body), -4), frustumV(10, 7, 6))
+        const part = scope.track(cone(scope, 10, 5, 10))
+        expectVolume(scope, moved(scope, part, pickMaxZ(scope, part), -4), frustumV(10, 7, 6))
       } finally { scope.dispose() }
     }
   })
@@ -246,8 +246,8 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
     for (const [d, want] of [[-1, 881.333], [-3, 700], [2, 965.333]] as const) {
       const scope = new DisposeScope()
       try {
-        const body = chamferedBox(scope)
-        const out = moved(scope, body, pickMaxZ(scope, body), d)
+        const part = chamferedBox(scope)
+        const out = moved(scope, part, pickMaxZ(scope, part), d)
         expectVolume(scope, out, want)
         if (d === -3) expect(canonicalFaces(occ, scope, out)).toHaveLength(6)
       } finally { scope.dispose() }
@@ -257,8 +257,8 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
   it('the selection regression: chamfer +2 is 965.333, never the sliver-cell 3369', () => {
     const scope = new DisposeScope()
     try {
-      const body = chamferedBox(scope)
-      const v = volumeOf(occ, scope, moved(scope, body, pickMaxZ(scope, body), 2))
+      const part = chamferedBox(scope)
+      const v = volumeOf(occ, scope, moved(scope, part, pickMaxZ(scope, part), 2))
       expect(v).toBeLessThan(1000)
       expect(valueWithinTolerance(v, 965.333)).toBe(true)
     } finally { scope.dispose() }
@@ -268,9 +268,9 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
     for (const [d, want] of [[-2, 2200], [3, 2700], [8, 3200]] as const) {
       const scope = new DisposeScope()
       try {
-        const body = uChannel(scope)
-        const floor = pickByNormal(scope, body, [0, 0, 1], 4)
-        expectVolume(scope, moved(scope, body, floor, d), want)
+        const part = uChannel(scope)
+        const floor = pickByNormal(scope, part, [0, 0, 1], 4)
+        expectVolume(scope, moved(scope, part, floor, d), want)
       } finally { scope.dispose() }
     }
   })
@@ -278,13 +278,13 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
   it('U left arm top moved -3 leaves the right arm', () => {
     const scope = new DisposeScope()
     try {
-      const body = uChannel(scope)
-      const armTop = canonicalFaces(occ, scope, body).find((f) => {
+      const part = uChannel(scope)
+      const armTop = canonicalFaces(occ, scope, part).find((f) => {
         const n = faceNormal(occ, scope, f as OccShape)
         const c = faceCentroid(occ, scope, f as OccShape)
         return Math.abs(n[2] - 1) < 1e-9 && Math.abs(c[2] - 10) < 1e-6 && c[0] < 6
       }) as OccShape
-      expectVolume(scope, moved(scope, body, armTop, -3), 2100)
+      expectVolume(scope, moved(scope, part, armTop, -3), 2100)
     } finally { scope.dispose() }
   })
 
@@ -292,8 +292,8 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
     for (const [d, want] of [[-2, 787.434], [-5, 500], [4, 1312.035]] as const) {
       const scope = new DisposeScope()
       try {
-        const body = blindHoleBox(scope)
-        expectVolume(scope, moved(scope, body, pickByNormal(scope, body, [0, 0, 1], 10), d), want)
+        const part = blindHoleBox(scope)
+        expectVolume(scope, moved(scope, part, pickByNormal(scope, part, [0, 0, 1], 10), d), want)
       } finally { scope.dispose() }
     }
   })
@@ -302,8 +302,8 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
     for (const [d, want] of [[-2, 862.832], [5, 1500]] as const) {
       const scope = new DisposeScope()
       try {
-        const body = bossBox(scope)
-        expectVolume(scope, moved(scope, body, pickByNormal(scope, body, [0, 0, 1], 10), d), want)
+        const part = bossBox(scope)
+        expectVolume(scope, moved(scope, part, pickByNormal(scope, part, [0, 0, 1], 10), d), want)
       } finally { scope.dispose() }
     }
   })
@@ -311,8 +311,8 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
   it('cylinder top +4 is exact', () => {
     const scope = new DisposeScope()
     try {
-      const body = cylinderAt(scope, 0, 0, 0, 5, 10)
-      expectVolume(scope, moved(scope, body, pickMaxZ(scope, body), 4), PI * 25 * 14)
+      const part = cylinderAt(scope, 0, 0, 0, 5, 10)
+      expectVolume(scope, moved(scope, part, pickMaxZ(scope, part), 4), PI * 25 * 14)
     } finally { scope.dispose() }
   })
 
@@ -320,10 +320,10 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
     for (const [d, want] of [[3, 600], [-2, 225]] as const) {
       const scope = new DisposeScope()
       try {
-        const body = lPlate(scope)
-        const cells = moveFaceCells(occ, scope, body, pickMaxZ(scope, body), d)
+        const part = lPlate(scope)
+        const cells = moveFaceCells(occ, scope, part, pickMaxZ(scope, part), d)
         expect(cells.cells).toHaveLength(3)
-        expectVolume(scope, moved(scope, body, pickMaxZ(scope, body), d), want)
+        expectVolume(scope, moved(scope, part, pickMaxZ(scope, part), d), want)
       } finally { scope.dispose() }
     }
   })
@@ -331,9 +331,9 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
   it('wedge, slanted 45 deg face +1', () => {
     const scope = new DisposeScope()
     try {
-      const body = wedge(scope)
-      const slant = pickByNormal(scope, body, [Math.SQRT1_2, 0, Math.SQRT1_2])
-      expectVolume(scope, moved(scope, body, slant, 1), 651.421)
+      const part = wedge(scope)
+      const slant = pickByNormal(scope, part, [Math.SQRT1_2, 0, Math.SQRT1_2])
+      expectVolume(scope, moved(scope, part, slant, 1), 651.421)
     } finally { scope.dispose() }
   })
 
@@ -342,9 +342,9 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
   it('refuses a tangent neighbour (a filleted box top), not a 48748 slab', () => {
     const scope = new DisposeScope()
     try {
-      const body = filletedBox(scope)
+      const part = filletedBox(scope)
       let threw: unknown = null
-      try { moved(scope, body, pickMaxZ(scope, body), 2) } catch (e) { threw = e }
+      try { moved(scope, part, pickMaxZ(scope, part), 2) } catch (e) { threw = e }
       expect(threw).toBeInstanceOf(MoveFaceRefusal)
       expect((threw as Error).message).toContain('tangent')
     } finally { scope.dispose() }
@@ -353,20 +353,20 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
   it('moves a cylindrical picked face (the planar-only refusal is gone)', () => {
     const scope = new DisposeScope()
     try {
-      const body = scope.track(cylinderAt(scope, 0, 0, 0, 5, 10))
-      const lateral = canonicalFaces(occ, scope, body).find((f) => neighbourSurface(occ, scope, f as OccShape) === 'cylinder')
-      expectVolume(scope, moved(scope, body, lateral as OccShape, 2), PI * 49 * 10)
+      const part = scope.track(cylinderAt(scope, 0, 0, 0, 5, 10))
+      const lateral = canonicalFaces(occ, scope, part).find((f) => neighbourSurface(occ, scope, f as OccShape) === 'cylinder')
+      expectVolume(scope, moved(scope, part, lateral as OccShape, 2), PI * 49 * 10)
     } finally { scope.dispose() }
   })
 
   it('refuses a freeform picked face by surface name', () => {
     const scope = new DisposeScope()
     try {
-      const body = splineNeighbour(scope)
-      const curved = canonicalFaces(occ, scope, body).find((f) => neighbourSurface(occ, scope, f as OccShape) === null)
+      const part = splineNeighbour(scope)
+      const curved = canonicalFaces(occ, scope, part).find((f) => neighbourSurface(occ, scope, f as OccShape) === null)
       expect(curved).toBeDefined()
       let threw: unknown = null
-      try { moved(scope, body, curved as OccShape, 2) } catch (e) { threw = e }
+      try { moved(scope, part, curved as OccShape, 2) } catch (e) { threw = e }
       expect(threw).toBeInstanceOf(MoveFaceRefusal)
       expect((threw as Error).message).toContain('cannot move')
     } finally { scope.dispose() }
@@ -375,13 +375,13 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
   it('extends a spline neighbour by the G1 strip (the shipped refusal is gone)', () => {
     const scope = new DisposeScope()
     try {
-      const body = splineNeighbour(scope)
-      const cap = pickByNormal(scope, body, [0, 0, 1])
+      const part = splineNeighbour(scope)
+      const cap = pickByNormal(scope, part, [0, 0, 1])
       // The D profile's area is 10; the prism is 5 deep (50), so the 2 mm cap
       // move adds exactly 10 * 2. The strip lies on the same extrusion surface
       // as the spline side face, so this case's first-order continuation is
       // exact.
-      expectVolume(scope, moved(scope, body, cap, 2), 70)
+      expectVolume(scope, moved(scope, part, cap, 2), 70)
     } finally { scope.dispose() }
   })
 
@@ -391,9 +391,9 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
     {
       const scope = new DisposeScope()
       try {
-        const body = blindHoleBox(scope)
-        const kind = classifyFaceEdges(occ, scope, body)
-        const kinds = canonicalEdges(occ, scope, body).map((e) => kind(e as OccShape))
+        const part = blindHoleBox(scope)
+        const kind = classifyFaceEdges(occ, scope, part)
+        const kinds = canonicalEdges(occ, scope, part).map((e) => kind(e as OccShape))
         // The hole mouth circle is Convex; a plain box contributes only convex
         // corners, so the pin is that the body reads convex at all (the binding
         // maps the enum correctly, not the number).
@@ -403,9 +403,9 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
     {
       const scope = new DisposeScope()
       try {
-        const body = bossBox(scope)
-        const kind = classifyFaceEdges(occ, scope, body)
-        const kinds = canonicalEdges(occ, scope, body).map((e) => kind(e as OccShape))
+        const part = bossBox(scope)
+        const kind = classifyFaceEdges(occ, scope, part)
+        const kinds = canonicalEdges(occ, scope, part).map((e) => kind(e as OccShape))
         // The boss root circle is Concave: a box alone never reports one.
         expect(kinds).toContain('concave')
       } finally { scope.dispose() }
@@ -413,9 +413,9 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
     {
       const scope = new DisposeScope()
       try {
-        const body = filletedBox(scope)
-        const kind = classifyFaceEdges(occ, scope, body)
-        expect(canonicalEdges(occ, scope, body).some((e) => kind(e as OccShape) === 'tangent')).toBe(true)
+        const part = filletedBox(scope)
+        const kind = classifyFaceEdges(occ, scope, part)
+        expect(canonicalEdges(occ, scope, part).some((e) => kind(e as OccShape) === 'tangent')).toBe(true)
       } finally { scope.dispose() }
     }
   })
@@ -423,8 +423,8 @@ describe.skipIf(!oc)('moveFaceCells / applyMoveFace (real OCC)', () => {
   it('extendNeighbourFace refuses a spline surface by name', () => {
     const scope = new DisposeScope()
     try {
-      const body = splineNeighbour(scope)
-      const spline = canonicalFaces(occ, scope, body).find((f) => neighbourSurface(occ, scope, f as OccShape) === null)
+      const part = splineNeighbour(scope)
+      const spline = canonicalFaces(occ, scope, part).find((f) => neighbourSurface(occ, scope, f as OccShape) === null)
       expect(spline).toBeDefined()
       let threw: unknown = null
       try { extendNeighbourFace(occ, scope, spline as OccShape, 50) } catch (e) { threw = e }

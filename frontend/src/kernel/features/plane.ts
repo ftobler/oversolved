@@ -9,7 +9,7 @@
 import type { Repository } from '../query'
 import { getPoint3d } from '../query'
 import { BUILTIN_PLANES } from '../solverConstants'
-import type { Body, Frame3D } from '../types3d'
+import type { PartSolid, Frame3D } from '../types3d'
 import { normalToFrame } from '../types3d'
 import type { PlaneLike, PlaneRecord } from './shared/planes'
 import { resolvePlaneRecord } from './shared/planes'
@@ -138,7 +138,7 @@ interface ResolvedFace {
 function resolveFaceFrame(
   ref: string,
   repo: Repository,
-  bodyStore: Dict | null,
+  partStore: Dict | null,
   oc: OccModule | null,
   scope: DisposeScope | null,
   table: HandleTable | null,
@@ -147,10 +147,10 @@ function resolveFaceFrame(
     if (!oc || !scope || !table) {
       throw new Error(`face not found: ${JSON.stringify(ref)}`)
     }
-    const frame3d = resolveFaceSlashFrame(oc, scope, table, ref, repo, bodyStore as Record<string, Body>)
+    const frame3d = resolveFaceSlashFrame(oc, scope, table, ref, repo, partStore as Record<string, PartSolid>)
     return { centroid: frame3d.origin, normal: frame3d.normal, frame: frame3d }
   }
-  const face = repo.query(ref, null, bodyStore) as Dict | null
+  const face = repo.query(ref, null, partStore) as Dict | null
   if (face === null) throw new Error(`face not found: ${JSON.stringify(ref)}`)
   return { centroid: face.centroid as Vec3, normal: face.normal as Vec3 }
 }
@@ -158,12 +158,12 @@ function resolveFaceFrame(
 function planeOnFace(
   def: Dict,
   repo: Repository,
-  bodyStore: Dict | null,
+  partStore: Dict | null,
   oc: OccModule | null,
   scope: DisposeScope | null,
   table: HandleTable | null,
 ): Frame3D {
-  const resolved = resolveFaceFrame(def.face as string, repo, bodyStore, oc, scope, table)
+  const resolved = resolveFaceFrame(def.face as string, repo, partStore, oc, scope, table)
   if (resolved.frame) return resolved.frame
   const { x_axis, y_axis } = normalToFrame(resolved.normal)
   return frame(resolved.centroid, x_axis, y_axis, resolved.normal)
@@ -172,7 +172,7 @@ function planeOnFace(
 function planeOnFaceEdgeAngle(
   def: Dict,
   repo: Repository,
-  bodyStore: Dict | null,
+  partStore: Dict | null,
   oc: OccModule | null,
   scope: DisposeScope | null,
   table: HandleTable | null,
@@ -180,8 +180,8 @@ function planeOnFaceEdgeAngle(
   const edgeStr = def.edge as string
   const angle = Number(def.angle ?? 0.0)
 
-  const { centroid: origin, normal } = resolveFaceFrame(def.face as string, repo, bodyStore, oc, scope, table)
-  const edge = repo.query(edgeStr, null, bodyStore) as Dict | null
+  const { centroid: origin, normal } = resolveFaceFrame(def.face as string, repo, partStore, oc, scope, table)
+  const edge = repo.query(edgeStr, null, partStore) as Dict | null
   if (edge === null) throw new Error(`edge not found: ${JSON.stringify(edgeStr)}`)
 
   const edgeDir = normalize(sub(edge.end as Vec3, edge.start as Vec3))
@@ -200,13 +200,13 @@ function planeOnFaceEdgeAngle(
   return frame(origin, xAxis, yAxis, normal)
 }
 
-function planeEdgePoint(def: Dict, repo: Repository, bodyStore: Dict | null): Frame3D {
+function planeEdgePoint(def: Dict, repo: Repository, partStore: Dict | null): Frame3D {
   const edgeStr = def.edge as string
   const pointStr = def.point as string
 
-  const edge = repo.query(edgeStr, null, bodyStore) as Dict | null
+  const edge = repo.query(edgeStr, null, partStore) as Dict | null
   if (edge === null) throw new Error(`edge not found: ${JSON.stringify(edgeStr)}`)
-  const pointRef = repo.query(pointStr, null, bodyStore) as Dict | null
+  const pointRef = repo.query(pointStr, null, partStore) as Dict | null
   if (pointRef === null) throw new Error(`point not found: ${JSON.stringify(pointStr)}`)
 
   const [edgeStart, edgeEnd] = getEdge3d(edge, repo)
@@ -394,7 +394,7 @@ export function solvePlane(
   table: HandleTable | null,
   feature: Dict,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): PlaneResult {
   const definition = (feature.definition as Dict) ?? {}
   const mode = definition.mode as string
@@ -404,9 +404,9 @@ export function solvePlane(
     case 'three_point': f = planeThreePoint(definition, globalRepo); break
     case 'plane_point': f = planeThroughPoint(definition, globalRepo); break
     case 'line_angle': f = planeLineAngle(definition, globalRepo); break
-    case 'on_face': f = planeOnFace(definition, globalRepo, bodyStore, oc, scope, table); break
-    case 'on_face_edge_angle': f = planeOnFaceEdgeAngle(definition, globalRepo, bodyStore, oc, scope, table); break
-    case 'edge_point': f = planeEdgePoint(definition, globalRepo, bodyStore); break
+    case 'on_face': f = planeOnFace(definition, globalRepo, partStore, oc, scope, table); break
+    case 'on_face_edge_angle': f = planeOnFaceEdgeAngle(definition, globalRepo, partStore, oc, scope, table); break
+    case 'edge_point': f = planeEdgePoint(definition, globalRepo, partStore); break
     case 'offset': f = planeOffset(definition, globalRepo); break
     case 'origin_rotation': f = planeOriginRotation(definition, globalRepo); break
     default: throw new Error(`unknown plane mode: ${JSON.stringify(mode)}`)

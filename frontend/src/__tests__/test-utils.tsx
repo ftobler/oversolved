@@ -208,8 +208,8 @@ export async function partDocMockModule(overrides: Record<string, unknown> = {})
         })
         usePartEditorStore.getState().publishSolve({
           solveResults: value.solveResults as never,
-          bodies: value.bodies as never,
-          pickBodies: value.pickBodies as never,
+          parts: value.bodies as never,
+          pickParts: value.pickBodies as never,
           featureTimings: value.featureTimings as never,
           validation: value.validation as never,
         })
@@ -231,15 +231,15 @@ export async function partDocumentPanelMockModule() {
   const { usePartEditorCallbacks } = await import('@/contexts/PartEditorContext')
   return {
     PartDocumentPanel: vi.fn(() => {
-      const bodies = usePartEditorStore(s => s.bodies)
+      const parts = usePartEditorStore(s => s.parts)
       const { onRightClick } = usePartEditorCallbacks()
       return (
         <div data-testid="document-panel">
-          {Object.keys(bodies || {}).map((bodyId: string) => (
-            <div key={bodyId} data-testid={`body-${bodyId}`}>
+          {Object.keys(parts || {}).map((partId: string) => (
+            <div key={partId} data-testid={`body-${partId}`}>
               <button
-                data-testid={`context-btn-${bodyId}`}
-                onClick={(e: React.MouseEvent) => onRightClick([e.clientX, e.clientY], `body:${bodyId}`)}
+                data-testid={`context-btn-${partId}`}
+                onClick={(e: React.MouseEvent) => onRightClick([e.clientX, e.clientY], `body:${partId}`)}
               >
                 Context
               </button>

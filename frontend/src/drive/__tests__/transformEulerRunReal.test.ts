@@ -38,7 +38,7 @@ function emptyDoc(): PartDoc {
 const step = (mutation: Record<string, unknown>): ScriptStep => ({ mutation } as ScriptStep)
 const clone = (doc: PartDoc): PartDoc => structuredClone(doc)
 
-function bodySummary(reply: Record<string, unknown>): string {
+function partSummary(reply: Record<string, unknown>): string {
   const summary = String(reply.summary ?? '')
   return summary.split('bodies: ')[1] ?? ''
 }
@@ -109,8 +109,8 @@ describe.skipIf(!ready)('transform.rotation_euler through run (real OCC + Rust s
 
     const eulerReply = runReply(euler, false, new DocHandleStore())
     const chainReply = runReply(chain, false, new DocHandleStore())
-    expect(bodySummary(eulerReply)).toBe(bodySummary(chainReply))
-    expect(bodySummary(eulerReply)).toContain('body_ex1')
+    expect(partSummary(eulerReply)).toBe(partSummary(chainReply))
+    expect(partSummary(eulerReply)).toContain('body_ex1')
     expect('frames' in eulerReply).toBe('frames' in chainReply)
 
     const eulerRow = findDelta(euler.featureDeltas, 'trE')

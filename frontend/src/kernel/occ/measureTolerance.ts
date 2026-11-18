@@ -175,12 +175,12 @@ export function scaledMeasures(measures: MeasureRecord, scale: number): MeasureR
     area: measures.area * scale ** 2,
     centroid: point(measures.centroid),
     bbox: box(measures.bbox),
-    perBody: measures.perBody.map(body => ({
-      ...body,
-      volume: body.volume * scale ** 3,
-      area: body.area * scale ** 2,
-      centroid: point(body.centroid),
-      bbox: box(body.bbox),
+    perBody: measures.perBody.map(part => ({
+      ...part,
+      volume: part.volume * scale ** 3,
+      area: part.area * scale ** 2,
+      centroid: point(part.centroid),
+      bbox: box(part.bbox),
     })),
   }
 }

@@ -18,7 +18,7 @@ import { MEASURE_DEBOUNCE_MS, useKernelMeasure } from '@/hooks/useKernelMeasure'
 import type { KernelMeasureAsk } from '@/utils/measure/measureSelection'
 import type { MeasureReply } from '@/kernel/worker/solverClient'
 
-const BODY_PAIR: KernelMeasureAsk = {
+const PART_PAIR: KernelMeasureAsk = {
   op: 'clearance',
   picks: [{ bodyId: 'b1', kind: 'body' }, { bodyId: 'b2', kind: 'body' }],
 }
@@ -52,7 +52,7 @@ describe('useKernelMeasure', () => {
   })
 
   it('sends nothing while the solve has no generation', async () => {
-    const { result } = renderHook(() => useKernelMeasure(BODY_PAIR, null, 'final'))
+    const { result } = renderHook(() => useKernelMeasure(PART_PAIR, null, 'final'))
     await afterDebounce()
     expect(mockMeasure).not.toHaveBeenCalled()
     expect(result.current).toEqual({ pending: false, lines: [] })
@@ -61,7 +61,7 @@ describe('useKernelMeasure', () => {
   it('reserves an empty row while measuring, then renders the reply', async () => {
     let resolveReply!: (reply: MeasureReply | null) => void
     mockMeasure.mockImplementation(() => new Promise((resolve) => { resolveReply = resolve }))
-    const { result } = renderHook(() => useKernelMeasure(BODY_PAIR, 'boot:1', 'final'))
+    const { result } = renderHook(() => useKernelMeasure(PART_PAIR, 'boot:1', 'final'))
 
     // The reserved row exists from the first render, before the debounce fires.
     expect(result.current).toEqual({ pending: true, lines: [] })
@@ -77,7 +77,7 @@ describe('useKernelMeasure', () => {
 
   it('states why a clearance reads 0', async () => {
     mockMeasure.mockResolvedValue({ value: 0, note: 'touching' })
-    const { result } = renderHook(() => useKernelMeasure(BODY_PAIR, 'boot:1', 'final'))
+    const { result } = renderHook(() => useKernelMeasure(PART_PAIR, 'boot:1', 'final'))
     await afterDebounce()
     expect(result.current.lines).toEqual(['clearance 0.000 mm (touching)'])
   })
@@ -93,7 +93,7 @@ describe('useKernelMeasure', () => {
     mockMeasure.mockResolvedValue({ value: 1 })
     const { rerender } = renderHook(
       ({ ask }: { ask: KernelMeasureAsk }) => useKernelMeasure(ask, 'boot:1', 'final'),
-      { initialProps: { ask: BODY_PAIR } },
+      { initialProps: { ask: PART_PAIR } },
     )
     // A sweep: each of these lands inside the same debounce window.
     rerender({ ask: { op: 'clearance', picks: [{ bodyId: 'b1', kind: 'body' }, { bodyId: 'b3', kind: 'body' }] } })
@@ -108,7 +108,7 @@ describe('useKernelMeasure', () => {
     let resolveOld!: (reply: MeasureReply | null) => void
     mockMeasure.mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve }))
     const { result, rerender } = renderHook(
-      ({ generation }: { generation: string }) => useKernelMeasure(BODY_PAIR, generation, 'final'),
+      ({ generation }: { generation: string }) => useKernelMeasure(PART_PAIR, generation, 'final'),
       { initialProps: { generation: 'boot:1' } },
     )
     await afterDebounce()
@@ -131,7 +131,7 @@ describe('useKernelMeasure', () => {
     mockMeasure.mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve }))
     const { result, rerender } = renderHook(
       ({ ask }: { ask: KernelMeasureAsk }) => useKernelMeasure(ask, 'boot:1', 'final'),
-      { initialProps: { ask: BODY_PAIR } },
+      { initialProps: { ask: PART_PAIR } },
     )
     await afterDebounce()
 
@@ -150,7 +150,7 @@ describe('useKernelMeasure', () => {
 
   it('reads nothing for a refusal or a dead worker', async () => {
     mockMeasure.mockRejectedValueOnce(new Error('measure stale'))
-    const { result } = renderHook(() => useKernelMeasure(BODY_PAIR, 'boot:1', 'final'))
+    const { result } = renderHook(() => useKernelMeasure(PART_PAIR, 'boot:1', 'final'))
     expect(result.current).toEqual({ pending: true, lines: [] })
     await afterDebounce()
     // A refused ask releases the reserved row instead of showing an error or
@@ -160,7 +160,7 @@ describe('useKernelMeasure', () => {
 
   it('reads nothing when there is no worker to answer', async () => {
     mockMeasure.mockResolvedValueOnce(null)
-    const { result } = renderHook(() => useKernelMeasure(BODY_PAIR, 'boot:1', 'final'))
+    const { result } = renderHook(() => useKernelMeasure(PART_PAIR, 'boot:1', 'final'))
     await afterDebounce()
     expect(result.current).toEqual({ pending: false, lines: [] })
   })

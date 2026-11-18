@@ -7,21 +7,21 @@
 // assertions; this file keeps the generator honest on its own.
 
 import { describe, it, expect } from 'vitest'
-import { generateRecipe, perturbStart, FUZZ_GRID_MM, PRIMARY_BODY, type RecipeStep } from './recipe'
+import { generateRecipe, perturbStart, FUZZ_GRID_MM, PRIMARY_PART, type RecipeStep } from './recipe'
 
 const SEEDS = 200
 
 // The body ids a step produces, so a later step's refs can be checked to have
 // an earlier producer. Tools are produced and consumed inside one boolean step,
 // so they are live for exactly that step.
-function producedBodies(step: RecipeStep): string[] {
+function producedParts(step: RecipeStep): string[] {
   if (step.kind === 'start') return [step.body]
-  if (step.kind === 'boolean') return [step.toolBody]
+  if (step.kind === 'boolean') return [step.toolPart]
   if (step.kind === 'mirror' && step.keepOriginal && !step.merge) return [`body_${step.id}`]
-  return [PRIMARY_BODY]
+  return [PRIMARY_PART]
 }
 
-function referencedBodies(step: RecipeStep): string[] {
+function referencedParts(step: RecipeStep): string[] {
   switch (step.kind) {
     case 'start': return []
     case 'boolean': return [step.target]
@@ -58,10 +58,10 @@ describe('the geometry-fuzz recipe generator', () => {
       const recipe = generateRecipe(seed)
       const available = new Set<string>()
       for (const step of recipe.steps) {
-        for (const ref of referencedBodies(step)) {
+        for (const ref of referencedParts(step)) {
           expect(available.has(ref), `seed ${seed}: step ${step.kind} references ${ref} before it exists`).toBe(true)
         }
-        for (const body of producedBodies(step)) available.add(body)
+        for (const part of producedParts(step)) available.add(part)
       }
     }
   })
@@ -163,7 +163,7 @@ describe('the geometry-fuzz recipe generator', () => {
       const last = tailed.steps.at(-1)!
       expect(last.kind).toBe('instance-array')
       if (last.kind !== 'instance-array') continue
-      expect(last.target).toBe(PRIMARY_BODY)
+      expect(last.target).toBe(PRIMARY_PART)
       expect(last.points.length).toBeGreaterThanOrEqual(2)
       expect(last.points.length).toBeLessThanOrEqual(4)
     }
@@ -180,7 +180,7 @@ describe('the geometry-fuzz recipe generator', () => {
       const last = tailed.steps.at(-1)!
       expect(last.kind).toBe('curve-array')
       if (last.kind !== 'curve-array') continue
-      expect(last.target).toBe(PRIMARY_BODY)
+      expect(last.target).toBe(PRIMARY_PART)
       expect(last.count).toBeGreaterThanOrEqual(2)
       expect(last.count).toBeLessThanOrEqual(4)
       spacings.add(last.spacing)
@@ -203,7 +203,7 @@ describe('the geometry-fuzz recipe generator', () => {
       const last = tailed.steps.at(-1)!
       expect(last.kind).toBe('feature-mirror')
       if (last.kind !== 'feature-mirror') continue
-      expect(last.target).toBe(PRIMARY_BODY)
+      expect(last.target).toBe(PRIMARY_PART)
       expect(['x', 'y', 'z']).toContain(last.plane)
       expect(last.depth % FUZZ_GRID_MM).toBeCloseTo(0, 9)
     }
@@ -215,7 +215,7 @@ describe('the geometry-fuzz recipe generator', () => {
       const last = generateRecipe(seed, { splitTail: true }).steps.at(-1)!
       expect(last.kind).toBe('split')
       if (last.kind !== 'split') continue
-      expect(last.target).toBe(PRIMARY_BODY)
+      expect(last.target).toBe(PRIMARY_PART)
       expect(['x', 'y', 'z']).toContain(last.axis)
       expect(last.fraction).toBeGreaterThanOrEqual(0.2)
       expect(last.fraction).toBeLessThanOrEqual(0.8)

@@ -11,7 +11,7 @@ vi.mock('@/stores/solverStore', () => ({
 }))
 
 import { useSolver } from '@/hooks/useSolver'
-import type { PartDoc, BodyResult } from '@/types/cad'
+import type { PartDoc, PartResult } from '@/types/cad'
 import { featureAt } from '@/testing/featureAccess'
 
 const initial0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').initial!
@@ -33,7 +33,7 @@ describe('useSolver doc integrity', () => {
     mockSolveLocally.mockResolvedValue({
       solve_ms: 0,
       result: { sk1: { geometry: { new_pt: [1, 2] } } },
-      bodies: {} as Record<string, BodyResult>,
+      bodies: {} as Record<string, PartResult>,
       _build_state: null,
     })
 

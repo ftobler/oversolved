@@ -115,7 +115,7 @@ export interface OpaquePrimitive {
 /** A whole-body pick: no analytic rule, a kernel cell like an opaque pick. */
 export interface SolidPrimitive {
   type: 'solid'
-  bodyId: string
+  partId: string
 }
 
 export type Primitive =

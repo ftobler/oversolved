@@ -19,7 +19,7 @@ import { setSketchSolver, resetSketchSolver } from '../../kernel/features/sketch
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { PART_RULES, buildPartRelationCtx } from '@/registry/relationRuleRegistry'
 import { hintDrivers, relatedHints } from '@/picking/relationHint'
-import type { BodyResult, PartFeature } from '@/types/cad'
+import type { PartResult, PartFeature } from '@/types/cad'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -71,7 +71,7 @@ describe.skipIf(!oc || !solveBytes)('feature->picked-edges (real OCC + Rust solv
       { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 5, direction: 'normal', operation: 'new' },
     ]}
     const base = h.run(spec)
-    const picks = uprightEdges((h.body(base, 'body_ex1').edge_queries as string[]) ?? [], 'sk1')
+    const picks = uprightEdges((h.part(base, 'body_ex1').edge_queries as string[]) ?? [], 'sk1')
     expect(picks).toHaveLength(4)
 
     spec.features.push({ id: 'fi1', kind: 'fillet', fillet: { edges: picks, radius: 20 } })
@@ -84,7 +84,7 @@ describe.skipIf(!oc || !solveBytes)('feature->picked-edges (real OCC + Rust solv
     expect(message).toContain('consumes the 10 face between the picked edges')
     expect(message).not.toContain('end face')
 
-    const shown = result.bodies as Record<string, BodyResult>
+    const shown = result.bodies as Record<string, PartResult>
     const shownEdges = new Set(shown.body_ex1.edge_queries ?? [])
     for (const q of picks) expect(shownEdges.has(q)).toBe(true)
 
@@ -105,14 +105,14 @@ describe.skipIf(!oc || !solveBytes)('feature->picked-edges (real OCC + Rust solv
       { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 5, direction: 'normal', operation: 'new' },
     ]}
     const base = h.run(spec)
-    const pick = uprightEdges((h.body(base, 'body_ex1').edge_queries as string[]) ?? [], 'sk1')[0]
+    const pick = uprightEdges((h.part(base, 'body_ex1').edge_queries as string[]) ?? [], 'sk1')[0]
     spec.features.push({ id: 'fi1', kind: 'fillet', fillet: { edges: [pick], radius: 20 } })
     const result = h.run(spec)
     const fillet = h.res(result, 'fi1')
     expect(fillet.status).toBe('exception')
     expect(String(fillet.exception ?? '')).toContain('consumes the 10 adjacent face')
 
-    const shown = result.bodies as Record<string, BodyResult>
+    const shown = result.bodies as Record<string, PartResult>
     const hints = relatedHints(
       hintDrivers(new Set(['@fi1'])),
       PART_RULES,
@@ -132,8 +132,8 @@ describe.skipIf(!oc || !solveBytes)('feature->picked-edges (real OCC + Rust solv
       { id: 'ex2', kind: 'extrude', sketch: '$sk2', distance: 5, direction: 'normal', operation: 'new' },
     ]}
     const base = h.run(spec)
-    const wide = uprightEdges((h.body(base, 'body_ex1').edge_queries as string[]) ?? [], 'sk1')
-    const narrow = uprightEdges((h.body(base, 'body_ex2').edge_queries as string[]) ?? [], 'sk2')
+    const wide = uprightEdges((h.part(base, 'body_ex1').edge_queries as string[]) ?? [], 'sk1')
+    const narrow = uprightEdges((h.part(base, 'body_ex2').edge_queries as string[]) ?? [], 'sk2')
     expect(wide.length).toBe(4)
     expect(narrow.length).toBe(4)
 
@@ -143,7 +143,7 @@ describe.skipIf(!oc || !solveBytes)('feature->picked-edges (real OCC + Rust solv
     expect(fillet.status).toBe('partial')
     expect(fillet.failed_edges).toEqual([narrow[0]])
 
-    const shown = result.bodies as Record<string, BodyResult>
+    const shown = result.bodies as Record<string, PartResult>
     // The blend consumed the applied pick but left the refused one in place.
     expect(shown.body_ex1.edge_queries ?? []).not.toContain(wide[0])
     expect(shown.body_ex2.edge_queries ?? []).toContain(narrow[0])

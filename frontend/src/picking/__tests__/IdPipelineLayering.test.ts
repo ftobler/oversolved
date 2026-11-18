@@ -56,18 +56,18 @@ describe('IdPipeline layering', () => {
   it('dispose tears down every layer', () => {
     const p = new IdPipeline({ width: 100, height: 100 })
     p.dispose()
-    expect(p.faceLayer.bodyCount()).toBe(0)
-    expect(p.edgeLayer.bodyCount()).toBe(0)
-    expect(p.referenceEdgeLayer.bodyCount()).toBe(0)
-    expect(p.vertexLayer.bodyCount()).toBe(0)
-    expect(p.planeLayer.bodyCount()).toBe(0)
-    expect(p.sketchSurfaceLayer.bodyCount()).toBe(0)
-    expect(p.sketchEntityLayer.bodyCount()).toBe(0)
-    expect(p.sketchVertexLayer.bodyCount()).toBe(0)
-    expect(p.originLayer.bodyCount()).toBe(0)
-    expect(p.dimensionLabelLayer.bodyCount()).toBe(0)
-    expect(p.featureHandleLayer.bodyCount()).toBe(0)
-    expect(p.gizmoHandleLayer.bodyCount()).toBe(0)
+    expect(p.faceLayer.partCount()).toBe(0)
+    expect(p.edgeLayer.partCount()).toBe(0)
+    expect(p.referenceEdgeLayer.partCount()).toBe(0)
+    expect(p.vertexLayer.partCount()).toBe(0)
+    expect(p.planeLayer.partCount()).toBe(0)
+    expect(p.sketchSurfaceLayer.partCount()).toBe(0)
+    expect(p.sketchEntityLayer.partCount()).toBe(0)
+    expect(p.sketchVertexLayer.partCount()).toBe(0)
+    expect(p.originLayer.partCount()).toBe(0)
+    expect(p.dimensionLabelLayer.partCount()).toBe(0)
+    expect(p.featureHandleLayer.partCount()).toBe(0)
+    expect(p.gizmoHandleLayer.partCount()).toBe(0)
   })
 
   // Minimal stand-in: only the surface render() touches. The viewport/scissor
@@ -88,9 +88,9 @@ describe('IdPipeline layering', () => {
     } as unknown as THREE.WebGLRenderer
   }
 
-  function registerOneFace(p: IdPipeline, bodyKey: string): void {
-    p.faceLayer.registerBody({
-      bodyKey,
+  function registerOneFace(p: IdPipeline, partKey: string): void {
+    p.faceLayer.registerPart({
+      partKey: partKey,
       positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
       triangleToFace: new Uint32Array([0]),
       faceQueries: ['face@q'],
@@ -246,8 +246,8 @@ describe('IdPipeline layering', () => {
     it('the next clear-then-fresh layer still clears depth after a throwing first layer', () => {
       const p = new IdPipeline({ width: 32, height: 32 })
       registerOneFace(p, 'b1')  // faceLayer, clear-then-fresh, rendered first
-      p.sketchEntityLayer.registerBody({
-        bodyKey: 'sk1',
+      p.sketchEntityLayer.registerPart({
+        partKey: 'sk1',
         segmentPositions: new Float32Array([0, 0, 0, 1, 0, 0]),
         segmentToEdge: new Uint32Array([0]),
         edgeQueries: ['entity@q'],

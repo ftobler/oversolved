@@ -51,9 +51,9 @@ describe('SHELL_SCHEMA', () => {
   })
 
   it('shows the source_body pick only when no faces are open', () => {
-    const body = SHELL_SCHEMA.fields.find((f) => f.type === 'pick' && f.key === 'source_body')
-    expect(body).toBeDefined()
-    expect(body!.showWhen!({ faces: [] })).toBe(true)
-    expect(body!.showWhen!({ faces: ['?f1'] })).toBe(false)
+    const part = SHELL_SCHEMA.fields.find((f) => f.type === 'pick' && f.key === 'source_body')
+    expect(part).toBeDefined()
+    expect(part!.showWhen!({ faces: [] })).toBe(true)
+    expect(part!.showWhen!({ faces: ['?f1'] })).toBe(false)
   })
 })

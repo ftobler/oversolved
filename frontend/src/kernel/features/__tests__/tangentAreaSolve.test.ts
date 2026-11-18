@@ -17,7 +17,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { solveSketch, setSketchSolver, resetSketchSolver } from '../sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import type { Repository } from '../../query'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 type Dict = Record<string, unknown>
 
@@ -70,7 +70,7 @@ interface Solved {
 }
 
 function solve(feature: Dict): Solved {
-  const out = solveSketch(feature, repo, {} as Record<string, Body>) as Dict
+  const out = solveSketch(feature, repo, {} as Record<string, PartSolid>) as Dict
   const topology = out.topology as { surfaces: Solved['surfaces'] }
   return {
     status: out.status as string,

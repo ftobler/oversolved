@@ -35,7 +35,7 @@ import {
   makeWire,
   type Vec3,
 } from '../primitives'
-import { canonicalEdges } from '../bodyNames'
+import { canonicalEdges } from '../partNames'
 import { revolveFace } from '../prismLineage'
 import { applyFilletWithDiff } from '../edgeModifier'
 import type { OccModule, OccShape } from '../occTypes'

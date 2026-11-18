@@ -19,7 +19,7 @@ import { loadPartDoc } from '@/persistence/docSchema'
 import { volumeOf } from '../../occ/volume'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -93,8 +93,8 @@ describe.skipIf(!oc || !solveBytes)('the pattern split through the real kernel',
     setSketchSolver(solveBytes)
   })
 
-  function snapshot(r: BuildResponse): Record<string, Body> {
-    return r._build_state!.checkpoints.pt1.body_store_snapshot as Record<string, Body>
+  function snapshot(r: BuildResponse): Record<string, PartSolid> {
+    return r._build_state!.checkpoints.pt1.body_store_snapshot as Record<string, PartSolid>
   }
 
   function view(r: BuildResponse): View {

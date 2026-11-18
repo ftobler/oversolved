@@ -21,7 +21,7 @@ vi.mock('@/utils/geometry/geometryMapping', () => ({ unflattenGeometry: mockUnfl
 
 import { useSolver } from '@/hooks/useSolver'
 import { useSolverStore } from '@/stores/solverStore'
-import type { BodyResult, PartDoc } from '@/types/cad'
+import type { PartResult, PartDoc } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
 
 function sketch(id: string, entityId: string, initial: number[]): Record<string, unknown> {
@@ -37,7 +37,7 @@ function makeDoc(): PartDoc {
 }
 
 function response(result: Record<string, unknown>) {
-  return { solve_ms: 0, result, bodies: {} as Record<string, BodyResult>, _build_state: null }
+  return { solve_ms: 0, result, bodies: {} as Record<string, PartResult>, _build_state: null }
 }
 
 function setupHook(doc: PartDoc) {

@@ -196,7 +196,7 @@ const FIT_SPLINE_TANGENT_SCALE_NOTE =
   '`scale=True`); false keeps each tangent\'s length as that end\'s magnitude.'
 const edgeQuery = () => query('An edge query as returned by `select`.')
 const faceQuery = () => query('A face query as returned by `select`.')
-const bodyQuery = () => query('A part id such as body_ex1, or a stored part query; ids keep their stored `body` prefix.')
+const partQuery = () => query('A part id such as body_ex1, or a stored part query; ids keep their stored `body` prefix.')
 
 // A sketch plane resolves through the query repository, so a face query from
 // `select` is accepted beside the plane feature ref and the bare name.
@@ -1756,11 +1756,11 @@ export const MUTATION_CATALOG = {
   add_boolean_tool: {
     summary: 'Add one part to a boolean: the first pick of an empty union becomes its base (target), later picks are tools.',
     note: BOOLEAN_ARRAY_TOOL_NOTE,
-    fields: { featureId: str(), tool: bodyQuery() },
+    fields: { featureId: str(), tool: partQuery() },
   },
   remove_boolean_tool: {
     summary: 'Remove a part from a boolean; removing a union base promotes the next part in its list.',
-    fields: { featureId: str(), tool: bodyQuery() },
+    fields: { featureId: str(), tool: partQuery() },
   },
   add_linear_pattern: {
     summary: 'Add a linear pattern of a part or one earlier feature, optionally along a second direction.',
@@ -1981,7 +1981,7 @@ export const MUTATION_CATALOG = {
   },
   add_delete_body_ref: {
     summary: 'Add a part to delete.',
-    fields: { featureId: str(), bodyQuery: bodyQuery() },
+    fields: { featureId: str(), bodyQuery: partQuery() },
   },
   remove_delete_body_ref: {
     summary: 'Remove a delete-part pick by index.',
@@ -2028,7 +2028,7 @@ export const MUTATION_CATALOG = {
   },
   add_transform_body: {
     summary: 'Add a part to a transform.',
-    fields: { featureId: str(), bodyQuery: bodyQuery() },
+    fields: { featureId: str(), bodyQuery: partQuery() },
   },
   remove_transform_body: {
     summary: 'Remove a transform part by index.',
@@ -2109,7 +2109,7 @@ export const MUTATION_CATALOG = {
   },
   add_split_body: {
     summary: 'Add a part to a split.',
-    fields: { featureId: str(), bodyQuery: bodyQuery() },
+    fields: { featureId: str(), bodyQuery: partQuery() },
   },
   remove_split_body: {
     summary: 'Remove a split part by index.',

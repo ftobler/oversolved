@@ -4,7 +4,7 @@
 // as a misleading empty match.
 
 import { describe, it, expect } from 'vitest'
-import type { AssemblyDoc, BodyResult, FaceData } from '@/types/cad'
+import type { AssemblyDoc, PartResult, FaceData } from '@/types/cad'
 import type { Anchor } from '@/kernel/partBundle'
 import { appendPartInstance } from '@/utils/assemblyMutations'
 import { resolveDriveRef, type PartAnchorIndex } from '../assemblyRefs'
@@ -29,7 +29,7 @@ const FACES: FaceData[] = [
 ]
 const QUERIES = ['q_neg_x', 'q_pos_x', 'q_neg_y', 'q_pos_y', 'q_neg_z', 'q_pos_z']
 
-const BODY: BodyResult = {
+const PART: PartResult = {
   id: 'body_ex1',
   created_by: 'ex1',
   modified_by: [],
@@ -50,7 +50,7 @@ function planeAnchor(id: string, point: [number, number, number]): Anchor {
 function index(): PartAnchorIndex {
   const anchors = Object.fromEntries(QUERIES.map((_, i) => [`a${i}`, planeAnchor(`a${i}`, FACES[i].centroid)]))
   const byQuery = new Map(QUERIES.map((query, i) => [query, [`a${i}`]]))
-  return { anchors, byQuery, bodies: { body_ex1: BODY } }
+  return { anchors, byQuery, parts: { body_ex1: PART } }
 }
 
 const indexFor = () => index()

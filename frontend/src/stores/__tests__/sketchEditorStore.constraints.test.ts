@@ -355,19 +355,19 @@ describe('sketchEditorStore', () => {
     it('projects a B-rep vertex picked from the body instead of dropping it', () => {
       const handler = vi.fn()
       const batch = vi.fn()
-      const bodyVertex = emitWire(ancestry(['@b1'], 'vertex'))
+      const partVertex = emitWire(ancestry(['@b1'], 'vertex'))
       setSketchCallback('onMutation', handler)
       setSketchCallback('onMutationBatch', batch)
       useSketchEditorStore.getState().setActiveFeatureId('S1')
       useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L1:start')
-      useSketchEditorStore.getState().toggleNormalSelection(bodyVertex)
+      useSketchEditorStore.getState().toggleNormalSelection(partVertex)
 
       useSketchEditorStore.getState().applyConstraint('coincident')
 
       expect(batch).toHaveBeenCalledOnce()
       const group = batch.mock.calls[0][0]
       expect(group[0]).toMatchObject({
-        type: 'add_projected_entity', featureId: 'S1', kind: 'point', source: bodyVertex,
+        type: 'add_projected_entity', featureId: 'S1', kind: 'point', source: partVertex,
       })
       expect(group[1].targets[1]).toBe(`vertex:S1:${group[0].entityId}:xy`)
     })
@@ -375,21 +375,21 @@ describe('sketchEditorStore', () => {
     it('projects a B-rep edge with its curve kind for the operand-kind check', () => {
       const handler = vi.fn()
       const batch = vi.fn()
-      const bodyEdge = emitWire(ancestry(['@b1'], 'edge'))
+      const partEdge = emitWire(ancestry(['@b1'], 'edge'))
       setSketchCallback('onMutation', handler)
       setSketchCallback('onMutationBatch', batch)
       setSketchCallback('resolveEdgeKind', () => 'circle')
       useSketchEditorStore.getState().setActiveFeatureId('S1')
       useSketchEditorStore.getState().setEntityKindMap({ 'entity:S1:C1': 'circle' })
       useSketchEditorStore.getState().toggleNormalSelection('entity:S1:C1')
-      useSketchEditorStore.getState().toggleNormalSelection(bodyEdge)
+      useSketchEditorStore.getState().toggleNormalSelection(partEdge)
 
       useSketchEditorStore.getState().applyConstraint('concentric')
 
       expect(batch).toHaveBeenCalledOnce()
       const group = batch.mock.calls[0][0]
       expect(group[0]).toMatchObject({
-        type: 'add_projected_entity', featureId: 'S1', kind: 'circle', source: bodyEdge,
+        type: 'add_projected_entity', featureId: 'S1', kind: 'circle', source: partEdge,
       })
       expect(group[1].targets).toEqual(['entity:S1:C1', `entity:S1:${group[0].entityId}`])
     })
@@ -429,14 +429,14 @@ describe('sketchEditorStore', () => {
       // fallback is lost the unknown kind is filtered out and the add passes.
       const handler = vi.fn()
       const batch = vi.fn()
-      const bodyEdge = emitWire(ancestry(['@b1'], 'edge'))
+      const partEdge = emitWire(ancestry(['@b1'], 'edge'))
       setSketchCallback('onMutation', handler)
       setSketchCallback('onMutationBatch', batch)
       setSketchCallback('resolveEdgeKind', () => 'line')
       useSketchEditorStore.getState().setActiveFeatureId('S1')
       useSketchEditorStore.getState().setEntityKindMap({ 'entity:S1:C1': 'circle' })
       useSketchEditorStore.getState().toggleNormalSelection('entity:S1:C1')
-      useSketchEditorStore.getState().toggleNormalSelection(bodyEdge)
+      useSketchEditorStore.getState().toggleNormalSelection(partEdge)
 
       const reason = useSketchEditorStore.getState().applyConstraint('concentric')
 

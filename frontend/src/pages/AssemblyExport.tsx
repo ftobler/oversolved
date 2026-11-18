@@ -149,7 +149,7 @@ async function buildBytes(
   poses: Record<string, Transform3D>,
 ): Promise<Uint8Array | null> {
   if (format === 'stl') {
-    return assemblyStlBytes(useAssemblyStore.getState().bodies, instances)
+    return assemblyStlBytes(useAssemblyStore.getState().parts, instances)
   }
   const parts = buildExportParts(instances, poses, await loadPartContents(instances))
   const session = useWorkspaceSessionStore.getState().session

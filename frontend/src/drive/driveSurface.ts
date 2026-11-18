@@ -191,14 +191,14 @@ export function pickEditorFacts(state: DriveEditorStateLike): DriveEditorFacts {
 }
 
 /**
- * Reduce the session's inspection to JSON-safe, bounded facts. Bodies and
+ * Reduce the session's inspection to JSON-safe, bounded facts. Parts and
  * validation are summarized rather than copied: a body's mesh holds typed
  * arrays, and the full geometry belongs to screenshot and the probe, not to a
  * state readout.
  */
 export function summarizeInspection(inspection: DriveSessionInspectionLike): DriveSessionFacts {
   const validation = inspection.validation as { level?: unknown; passed?: unknown; fp_only?: unknown } | null | undefined
-  const bodies = inspection.bodies as Record<string, unknown> | null | undefined
+  const parts = inspection.bodies as Record<string, unknown> | null | undefined
   return {
     docId: inspection.docId,
     dirty: inspection.dirty,
@@ -220,8 +220,8 @@ export function summarizeInspection(inspection: DriveSessionInspectionLike): Dri
           ...(validation.fp_only === true && { fp_only: true }),
         }
       : null,
-    bodies: bodies
-      ? { count: Object.keys(bodies).length, ids: Object.keys(bodies).sort() }
+    bodies: parts
+      ? { count: Object.keys(parts).length, ids: Object.keys(parts).sort() }
       : null,
   }
 }

@@ -10,7 +10,7 @@ import { Repository, makeAncestryQuery } from '../../query'
 import { collectExtrudeLoops, resolveFaceProfile } from '../faceProfile'
 import type { HandleTable } from '../../occ/handleTable'
 import type { OccModule } from '../../occ/occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import fixture from '../../occ/__fixtures__/faceProfile.json'
 
 const TOL = 1e-9
@@ -61,14 +61,14 @@ describe('collectExtrudeLoops $sketch path parity', () => {
     repo.register('_pt_' + fx.sketch_id, { ...fx.plane })
     repo.register('_topo_' + fx.sketch_id, { surfaces: fx.surfaces.map((s) => ({ ...s })) })
 
-    const bodyStore: Record<string, Body> = {}
+    const partStore: Record<string, PartSolid> = {}
     const result = collectExtrudeLoops(
       oc,
       null as never,
       table,
       '$' + fx.sketch_id,
       repo,
-      bodyStore,
+      partStore,
     )
 
     expectClose(result.loops, fx.expected.loops, 'loops')

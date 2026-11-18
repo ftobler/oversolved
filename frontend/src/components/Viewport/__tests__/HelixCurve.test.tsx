@@ -143,7 +143,7 @@ describe('HelixCurve ID registration', () => {
     await renderHelix()
     expect(MockRegister).toHaveBeenCalledWith(expect.objectContaining({
       featureId: HELIX_ID,
-      bodyId: HELIX_ID,
+      partId: HELIX_ID,
       edgeQueries: [`@${HELIX_ID}`],
       enabled: true,
     }))

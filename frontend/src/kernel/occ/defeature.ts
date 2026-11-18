@@ -52,7 +52,7 @@ import {
 } from './edgeModifier'
 import { SubShapeDedup, SubShapeMultiIndex, SubShapeIndexMap } from './subshapeIdentity'
 import { faceSurfaceType, FACE_RESTRICTION_TYPES, shapeBndBox } from './primitives'
-import { canonicalEdges } from './bodyNames'
+import { canonicalEdges } from './partNames'
 import { sameAnalyticSurface } from './moveFaceSurfaces'
 import { booleanWithDiff, exploreSolids } from './booleans'
 import { volumeOf } from './volume'
@@ -189,13 +189,13 @@ function carryEdgeNames(
 function nameRestoredEdges(
   oc: OccModule,
   scope: DisposeScope,
-  bodyShape: OccShape,
+  partShape: OccShape,
   names: NewNames,
   old: OldNames,
   pairs: readonly (readonly [OccShape, OccShape])[],
 ): void {
   if (pairs.length === 0) return
-  const faces = exploreFaces(oc, scope, bodyShape)
+  const faces = exploreFaces(oc, scope, partShape)
   const adjacency = new SubShapeMultiIndex<OccShape>()
   for (const face of faces) {
     for (const edge of exploreEdges(oc, scope, face)) adjacency.add(edge as OccSubShape, face)
@@ -206,7 +206,7 @@ function nameRestoredEdges(
     const ub = old.faceNames.get(b as OccSubShape)
     if (ua === undefined || ub === undefined) continue
     const found: OccSubShape[] = []
-    for (const edge of canonicalEdges(oc, scope, bodyShape) as OccShape[]) {
+    for (const edge of canonicalEdges(oc, scope, partShape) as OccShape[]) {
       const key = edge as OccSubShape
       if (edgeKeys.has(key)) continue
       const adj = adjacency.get(key)
@@ -279,7 +279,7 @@ function applyWedgeFallback(
         plan: modifierWedge({
           oc,
           scope,
-          body: shape,
+          part: shape,
           groupFaces: g.map((i) => faces[i]),
           ring: neighbourRing(oc, scope, shape, g.map((i) => faces[i])),
         }),
@@ -339,7 +339,7 @@ function applyWedgeFallback(
   let names: NewNames | null = null
   if (old !== null) {
     const transferred = transferBooleanNames(oc, scope, {
-      bodyShape: res.shape,
+      partShape: res.shape,
       faceOrigin: res.faceOrigin,
       targetFaceNames: old.faceNames,
       targetFaceAncestry: old.faceAncestry,
@@ -617,7 +617,7 @@ export function applyDeleteFacesWithLineage(
       const plan = modifierWedge({
         oc,
         scope,
-        body: shape,
+        part: shape,
         groupFaces: only.map((i) => faces[i]),
         ring: neighbourRing(oc, scope, shape, only.map((i) => faces[i])),
       })

@@ -8,7 +8,7 @@ import { ref, makeAncestryQuery, constructionUuidToken, emitWire, absolute } fro
  *  body always gets one: see the last resort below. */
 export function buildFaceQuery(
   createdBy: string | null | undefined,
-  bodyId: string | null | undefined,
+  partId: string | null | undefined,
   faceIdx: number,
   surfaceType: string,
   profileQueries: string[] | null = null,
@@ -17,7 +17,7 @@ export function buildFaceQuery(
   uuid: string | null = null,
 ): string | null {
   if (!createdBy) return null
-  if (bodyId) {
+  if (partId) {
     // Last resort: no construction UUID, no face ancestry, no classifiers. The
     // rest of the net (createdBy+bodyId+body-wide profile queries) is
     // byte-identical for every sibling in that state, and the resolver throws
@@ -33,13 +33,13 @@ export function buildFaceQuery(
     // names nothing more. A refused group is not given up on at once; each later
     // round that names a neighbour of it retries it with the larger neighbour set.
     if (!uuid && !(ancestorTokens && ancestorTokens.length) && !(classifiers && classifiers.length)) {
-      const ids = [ref(createdBy), ref(bodyId), emitWire(absolute(bodyId, `face${faceIdx}`))]
+      const ids = [ref(createdBy), ref(partId), emitWire(absolute(partId, `face${faceIdx}`))]
       if (profileQueries && profileQueries.length) ids.push(...profileQueries)
       return makeAncestryQuery(ids, surfaceType)
     }
     const ids: string[] = []
     if (uuid) ids.push(constructionUuidToken(uuid))
-    ids.push(ref(createdBy), ref(bodyId))
+    ids.push(ref(createdBy), ref(partId))
     if (ancestorTokens && ancestorTokens.length) ids.push(...ancestorTokens)
     else if (profileQueries && profileQueries.length) ids.push(...profileQueries)
     if (classifiers && classifiers.length) ids.push(...classifiers.map(ref))

@@ -125,7 +125,7 @@ describe('Part DXF import', () => {
       ...DEFAULT_PART_EDITOR_DATA,
       features: F.doc.features,
       doc: F.doc,
-      bodies: F.bodies,
+      parts: F.bodies,
       solveResults: F.solve,
     })
     useEditorState.setState({

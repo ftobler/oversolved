@@ -20,7 +20,7 @@ import { shapeBndBox } from '../../occ/primitives'
 import { volumeOf } from '../../occ/volume'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -103,16 +103,16 @@ describe.skipIf(!oc || !solveBytes)('instance pattern through the real kernel', 
     setSketchSolver(solveBytes)
   })
 
-  function store(r: BuildResponse, featureId: string): Record<string, Body> {
-    return r._build_state!.checkpoints[featureId].body_store_snapshot as Record<string, Body>
+  function store(r: BuildResponse, featureId: string): Record<string, PartSolid> {
+    return r._build_state!.checkpoints[featureId].body_store_snapshot as Record<string, PartSolid>
   }
 
-  function boxOf(r: BuildResponse, featureId: string, bodyId: string): number[] {
+  function boxOf(r: BuildResponse, featureId: string, partId: string): number[] {
     const truth = store(r, featureId)
-    expect(Object.keys(truth)).toContain(bodyId)
+    expect(Object.keys(truth)).toContain(partId)
     const scope = new DisposeScope()
     try {
-      const box = shapeBndBox(occ, scope, h.table.get<OccShape>(truth[bodyId].shape!))
+      const box = shapeBndBox(occ, scope, h.table.get<OccShape>(truth[partId].shape!))
       // OCCT hands back -0 for a face on the origin; a box is zero there.
       return [...box.min, ...box.max].map((n) => {
         const rounded = Math.round(n * 1e6) / 1e6
@@ -127,26 +127,26 @@ describe.skipIf(!oc || !solveBytes)('instance pattern through the real kernel', 
     const scope = new DisposeScope()
     try {
       return Object.values(store(r, featureId))
-        .map((body) => volumeOf(occ, scope, h.table.get<OccShape>(body.shape!)))
+        .map((part) => volumeOf(occ, scope, h.table.get<OccShape>(part.shape!)))
         .reduce((a, b) => a + b, 0)
     } finally {
       scope.dispose()
     }
   }
 
-  function faceUuids(r: BuildResponse, featureId: string, bodyId: string): string[] {
-    return [...(store(r, featureId)[bodyId].face_uuids ?? [])]
+  function faceUuids(r: BuildResponse, featureId: string, partId: string): string[] {
+    return [...(store(r, featureId)[partId].face_uuids ?? [])]
       .filter((uuid): uuid is string => uuid !== null)
       .sort()
   }
 
   // A face of the running body's render payload, by predicate over its data.
-  function faceQuery(r: BuildResponse, bodyId: string, predicate: (data: Dict) => boolean): string {
-    const body = h.body(r, bodyId) as { mesh?: { face_data?: Dict[]; face_queries?: string[] } }
-    const data = body.mesh?.face_data ?? []
-    const queries = body.mesh?.face_queries ?? []
+  function faceQuery(r: BuildResponse, partId: string, predicate: (data: Dict) => boolean): string {
+    const part = h.part(r, partId) as { mesh?: { face_data?: Dict[]; face_queries?: string[] } }
+    const data = part.mesh?.face_data ?? []
+    const queries = part.mesh?.face_queries ?? []
     const index = data.findIndex(predicate)
-    if (index < 0) throw new Error(`no face of ${bodyId} matched the predicate`)
+    if (index < 0) throw new Error(`no face of ${partId} matched the predicate`)
     return queries[index]
   }
 
@@ -260,9 +260,9 @@ describe.skipIf(!oc || !solveBytes)('instance pattern through the real kernel', 
     expect(h.res(legacy, 'ip1').status).toBe('ok')
     expect(h.res(targets, 'ip1').status).toBe('ok')
     expect(Object.keys(store(targets, 'ip1')).sort()).toEqual(Object.keys(store(legacy, 'ip1')).sort())
-    for (const bodyId of ['body_ip1', 'body_ip1_1', 'body_ip1_2']) {
-      expect(boxOf(targets, 'ip1', bodyId)).toEqual(boxOf(legacy, 'ip1', bodyId))
-      expect(faceUuids(targets, 'ip1', bodyId)).toEqual(faceUuids(legacy, 'ip1', bodyId))
+    for (const partId of ['body_ip1', 'body_ip1_1', 'body_ip1_2']) {
+      expect(boxOf(targets, 'ip1', partId)).toEqual(boxOf(legacy, 'ip1', partId))
+      expect(faceUuids(targets, 'ip1', partId)).toEqual(faceUuids(legacy, 'ip1', partId))
     }
     expect(h.res(targets, 'ip1').target_count).toBe(4)
   })
@@ -283,10 +283,10 @@ describe.skipIf(!oc || !solveBytes)('instance pattern through the real kernel', 
       version: 9, kind: 'part',
       features: [...plate(), ...boss()],
     })
-    const body = h.body(pre, 'body_exPlate') as { vertices?: number[][]; vertex_queries?: string[] }
-    const vertexIndex = (body.vertices ?? []).findIndex((v) => v[0] > 25 && v[1] > 25 && v[2] > 9)
+    const part = h.part(pre, 'body_exPlate') as { vertices?: number[][]; vertex_queries?: string[] }
+    const vertexIndex = (part.vertices ?? []).findIndex((v) => v[0] > 25 && v[1] > 25 && v[2] > 9)
     expect(vertexIndex).toBeGreaterThanOrEqual(0)
-    const vertexQuery = (body.vertex_queries ?? [])[vertexIndex]!
+    const vertexQuery = (part.vertex_queries ?? [])[vertexIndex]!
     const r = h.run({
       version: 9, kind: 'part',
       features: [
@@ -403,8 +403,8 @@ describe.skipIf(!oc || !solveBytes)('instance pattern through the real kernel', 
     const fixed = h.run(pointPatternDoc({ orientation: 'fixed' }))
     expect(h.res(normal, 'ip1').status).toBe('ok')
     expect(h.res(fixed, 'ip1').status).toBe('ok')
-    for (const bodyId of ['body_ip1', 'body_ip1_1', 'body_ip1_2']) {
-      expect(boxOf(fixed, 'ip1', bodyId)).toEqual(boxOf(normal, 'ip1', bodyId))
+    for (const partId of ['body_ip1', 'body_ip1_1', 'body_ip1_2']) {
+      expect(boxOf(fixed, 'ip1', partId)).toEqual(boxOf(normal, 'ip1', partId))
     }
   })
 
@@ -545,10 +545,10 @@ describe.skipIf(!oc || !solveBytes)('instance pattern through the real kernel', 
       data.surface_type === 'flatface' && (data.normal as number[])[2] > 0.99 && (data.centroid as number[])[2] > 9)
     const capQuery = faceQuery(pre, 'body_exBoss', (data) =>
       data.surface_type === 'flatface' && (data.normal as number[])[2] > 0.99)
-    const body = h.body(pre, 'body_exPlate') as { vertices?: number[][]; vertex_queries?: string[] }
-    const vertexIndex = (body.vertices ?? []).findIndex((v) => v[0] > 25 && v[1] > 25 && v[2] > 9)
+    const part = h.part(pre, 'body_exPlate') as { vertices?: number[][]; vertex_queries?: string[] }
+    const vertexIndex = (part.vertices ?? []).findIndex((v) => v[0] > 25 && v[1] > 25 && v[2] > 9)
     expect(vertexIndex).toBeGreaterThanOrEqual(0)
-    const vertexQuery = (body.vertex_queries ?? [])[vertexIndex]
+    const vertexQuery = (part.vertex_queries ?? [])[vertexIndex]
     const r = h.run({
       version: 9, kind: 'part',
       features: [
@@ -589,7 +589,7 @@ describe.skipIf(!oc || !solveBytes)('instance pattern through the real kernel', 
     ]
     const pre = h.run({ version: 9, kind: 'part', features: [...plate(), topPlane(10), ...holes(), ...screw()] })
     expect(h.res(pre, 'exHead').status).toBe('ok')
-    const bores = (h.body(pre, 'body_exPlate') as { mesh?: { face_data?: Dict[]; face_queries?: string[] } })
+    const bores = (h.part(pre, 'body_exPlate') as { mesh?: { face_data?: Dict[]; face_queries?: string[] } })
     const boreQueries = (bores.mesh?.face_data ?? [])
       .map((data, index) => ({ data, query: bores.mesh?.face_queries?.[index] ?? '' }))
       .filter((row) => row.data.surface_type === 'cylinderface')
@@ -616,7 +616,7 @@ describe.skipIf(!oc || !solveBytes)('instance pattern through the real kernel', 
     expect(boxOf(r, 'ip1', 'body_ip1')).toEqual([15, 15, 0, 25, 25, 13])
     expect(boxOf(r, 'ip1', 'body_ip1_1')).toEqual([35, 15, 0, 45, 25, 13])
     // The shank's own cylinder axis is on the bore axis.
-    const copied = h.body(r, 'body_ip1') as { mesh?: { face_data?: Dict[] } }
+    const copied = h.part(r, 'body_ip1') as { mesh?: { face_data?: Dict[] } }
     const shank = (copied.mesh?.face_data ?? []).find((data) =>
       data.surface_type === 'cylinderface'
       && Math.abs(((data.surface_frame as Dict).radius as number) - 3) < 1e-6)!

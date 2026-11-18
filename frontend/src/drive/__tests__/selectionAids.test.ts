@@ -8,15 +8,15 @@
 // (selectionAidsReal.test.ts).
 
 import { describe, it, expect } from 'vitest'
-import type { BodyResult, FaceData, EdgeData, PartDoc } from '@/types/cad'
+import type { PartResult, FaceData, EdgeData, PartDoc } from '@/types/cad'
 import { makeAncestryQuery } from '@/kernel/query'
 import { resolveSelectionAids, usesSelectionAid } from '../selectionAids'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
 import { seedBuiltins } from '../headlessOps'
 
 type V3 = [number, number, number]
-function q(bodyId: string, tokens: string[], type: string): string {
-  return makeAncestryQuery([`@${bodyId}`, ...tokens], type)
+function q(partId: string, tokens: string[], type: string): string {
+  return makeAncestryQuery([`@${partId}`, ...tokens], type)
 }
 function face(centroid: V3, normal: V3): FaceData {
   return { centroid, normal, surface_type: 'flatface' }
@@ -26,19 +26,19 @@ function lineEdge(start: V3, end: V3): EdgeData {
 }
 // Two Z-parallel edges and one X-parallel edge on body_a, so an edge selector
 // can expand to several picks and a string entry can sit beside it.
-function bodiesWithEdges(): Record<string, BodyResult> {
-  const bodies = twoBodies()
-  bodies.body_a.edges = [
+function partsWithEdges(): Record<string, PartResult> {
+  const parts = twoParts()
+  parts.body_a.edges = [
     lineEdge([0, 0, 0], [0, 0, 10]),
     lineEdge([10, 0, 0], [10, 0, 10]),
     lineEdge([0, 0, 0], [10, 0, 0]),
   ]
-  bodies.body_a.edge_queries = [
+  parts.body_a.edge_queries = [
     q('body_a', ['@u|e_0'], 'straightedge'),
     q('body_a', ['@u|e_1'], 'straightedge'),
     q('body_a', ['@u|e_2'], 'straightedge'),
   ]
-  return bodies
+  return parts
 }
 const zEdgeSelector = { selector: { kind: 'edge', where: { parallel: [0, 0, 1] } } }
 // The middle of body_a's two Z-parallel edges sits at x=10, so this narrows the
@@ -48,21 +48,21 @@ const oneEdgeSelector = {
 }
 // One circle edge and one corner vertex on body_a, for the projection source:
 // an edge selector's own kind picks the curve kind, a vertex's the point kind.
-function bodiesWithSourceShapes(): Record<string, BodyResult> {
-  const bodies = twoBodies()
-  bodies.body_a.edges = [{
+function partsWithSourceShapes(): Record<string, PartResult> {
+  const parts = twoParts()
+  parts.body_a.edges = [{
     kind: 'circle', center: [5, 5, 0], radius: 4, axis: [0, 0, 1],
     x_axis: [1, 0, 0], angle_start: 0, angle_end: 360,
   }]
-  bodies.body_a.edge_queries = [q('body_a', ['@u|e_c'], 'circleedge')]
-  bodies.body_a.vertices = [[0, 0, 10]]
-  bodies.body_a.vertex_queries = [q('body_a', ['@u|v_0'], 'vertex')]
-  return bodies
+  parts.body_a.edge_queries = [q('body_a', ['@u|e_c'], 'circleedge')]
+  parts.body_a.vertices = [[0, 0, 10]]
+  parts.body_a.vertex_queries = [q('body_a', ['@u|v_0'], 'vertex')]
+  return parts
 }
 const circleEdgeSelector = { selector: { kind: 'edge', where: { type: 'circle' } } }
 const cornerVertexSelector = { selector: { kind: 'vertex' } }
-function twoBodies(): Record<string, BodyResult> {
-  const body = (id: string, faces: FaceData[]): BodyResult => ({
+function twoParts(): Record<string, PartResult> {
+  const part = (id: string, faces: FaceData[]): PartResult => ({
     id,
     created_by: 'ex1',
     modified_by: [],
@@ -75,22 +75,22 @@ function twoBodies(): Record<string, BodyResult> {
     },
   })
   return {
-    body_a: body('body_a', [face([5, 5, 10], [0, 0, 1]), face([5, 5, 0], [0, 0, -1])]),
-    body_b: body('body_b', [face([15, 5, 10], [0, 0, 1])]),
+    body_a: part('body_a', [face([5, 5, 10], [0, 0, 1]), face([5, 5, 0], [0, 0, -1])]),
+    body_b: part('body_b', [face([15, 5, 10], [0, 0, 1])]),
   }
 }
 const planeSelector = { selector: { kind: 'face', where: { parallel: [0, 0, 1] } } }
 describe('resolveSelectionAids', () => {
   it('leaves a step without a selector untouched', () => {
     const step = { type: 'add_sketch', featureId: 'sk1', plane: '@builtin_plane_top' }
-    const resolved = resolveSelectionAids(step, twoBodies())
+    const resolved = resolveSelectionAids(step, twoParts())
     expect(resolved.ok).toBe(true)
     expect(resolved.ok && resolved.mutation).toBe(step)
   })
 
   it('rewrites a sketch plane selector into the one face query it matched', () => {
-    const bodies = { body_b: twoBodies().body_b }
-    const resolved = resolveSelectionAids({ type: 'add_sketch', featureId: 'sk1', plane: planeSelector }, bodies)
+    const parts = { body_b: twoParts().body_b }
+    const resolved = resolveSelectionAids({ type: 'add_sketch', featureId: 'sk1', plane: planeSelector }, parts)
     expect(resolved.ok).toBe(true)
     if (!resolved.ok) return
     expect(resolved.mutation).toEqual({
@@ -99,7 +99,7 @@ describe('resolveSelectionAids', () => {
   })
 
   it('refuses a plane selector that matches several faces', () => {
-    const resolved = resolveSelectionAids({ type: 'add_sketch', featureId: 'sk1', plane: planeSelector }, twoBodies())
+    const resolved = resolveSelectionAids({ type: 'add_sketch', featureId: 'sk1', plane: planeSelector }, twoParts())
     expect(resolved.ok).toBe(false)
     if (resolved.ok) return
     expect(resolved.code).toBe('unresolved-ref')
@@ -107,12 +107,12 @@ describe('resolveSelectionAids', () => {
   })
 
   it('refuses a selector that matched an edge where faces are required', () => {
-    const bodies = twoBodies()
-    bodies.body_a.edges = [{ kind: 'line', start: [0, 0, 0], end: [0, 0, 10] }]
-    bodies.body_a.edge_queries = [q('body_a', ['@u|e_0'], 'straightedge')]
+    const parts = twoParts()
+    parts.body_a.edges = [{ kind: 'line', start: [0, 0, 0], end: [0, 0, 10] }]
+    parts.body_a.edge_queries = [q('body_a', ['@u|e_0'], 'straightedge')]
     const resolved = resolveSelectionAids(
       { type: 'add_shell', featureId: 'sh1', faces: [{ selector: { kind: 'edge' } }] },
-      bodies,
+      parts,
     )
     expect(resolved.ok).toBe(false)
     if (resolved.ok) return
@@ -123,7 +123,7 @@ describe('resolveSelectionAids', () => {
   it('refuses a selector that matches nothing as unresolved, not invalid', () => {
     const resolved = resolveSelectionAids(
       { type: 'add_sketch', featureId: 'sk1', plane: { selector: { kind: 'face', where: { parallel: [1, 1, 1] } } } },
-      twoBodies(),
+      twoParts(),
     )
     expect(resolved.ok).toBe(false)
     if (resolved.ok) return
@@ -134,7 +134,7 @@ describe('resolveSelectionAids', () => {
   it('refuses a selector naming a body that is not in the solve', () => {
     const resolved = resolveSelectionAids(
       { type: 'add_sketch', featureId: 'sk1', plane: { selector: { kind: 'face', from: 'body_gone' } } },
-      twoBodies(),
+      twoParts(),
     )
     expect(resolved.ok).toBe(false)
     if (resolved.ok) return
@@ -154,7 +154,7 @@ describe('resolveSelectionAids', () => {
   it('refuses a malformed selector as invalid-ref, not a failed match', () => {
     const resolved = resolveSelectionAids(
       { type: 'add_sketch', featureId: 'sk1', plane: { selector: { kind: 'edge', where: { bogus: 1 } } } },
-      twoBodies(),
+      twoParts(),
     )
     expect(resolved.ok).toBe(false)
     if (resolved.ok) return
@@ -164,7 +164,7 @@ describe('resolveSelectionAids', () => {
   it('names the selector shape when a predicate sits where the selector belongs', () => {
     const resolved = resolveSelectionAids(
       { type: 'add_shell', featureId: 'sh1', faces: [{ selector: { type: 'flatface' } }] },
-      twoBodies(),
+      twoParts(),
     )
     expect(resolved.ok).toBe(false)
     if (resolved.ok) return
@@ -178,7 +178,7 @@ describe('resolveSelectionAids', () => {
   it('keeps the plain unknown-key message for a key that is not a predicate', () => {
     const resolved = resolveSelectionAids(
       { type: 'add_shell', featureId: 'sh1', faces: [{ selector: { kind: 'face', bogus: 1 } }] },
-      twoBodies(),
+      twoParts(),
     )
     expect(resolved.ok).toBe(false)
     if (resolved.ok) return
@@ -196,7 +196,7 @@ describe('resolveSelectionAids', () => {
           selector: { kind: 'face', where: { within: { axis: 'z', min: 0, type: 'x' } } },
         }],
       },
-      twoBodies(),
+      twoParts(),
     )
     expect(resolved.ok).toBe(false)
     if (resolved.ok) return
@@ -209,7 +209,7 @@ describe('resolveSelectionAids', () => {
     for (const type of ['add_fillet', 'add_chamfer'] as const) {
       const resolved = resolveSelectionAids(
         { type, featureId: 'f1', edges: [{ selector: { seam: false } }] },
-        bodiesWithEdges(),
+        partsWithEdges(),
       )
       expect(resolved.ok, type).toBe(false)
       if (resolved.ok) continue
@@ -221,14 +221,14 @@ describe('resolveSelectionAids', () => {
   })
 
   it('expands every shell face selector and keeps the string entries', () => {
-    const bodies = twoBodies()
+    const parts = twoParts()
     const existing = q('body_a', ['@u|f_1'], 'flatface')
     const resolved = resolveSelectionAids(
       {
         type: 'add_shell', featureId: 'sh1',
         faces: [existing, { selector: { kind: 'face', where: { parallel: [0, 0, 1] } } }],
       },
-      bodies,
+      parts,
     )
     expect(resolved.ok).toBe(true)
     if (!resolved.ok) return
@@ -240,7 +240,7 @@ describe('resolveSelectionAids', () => {
   })
 
   it('expands an edge selector in a fillet list, keeping string entries in place', () => {
-    const bodies = bodiesWithEdges()
+    const parts = partsWithEdges()
     const existing = q('body_a', ['@u|e_2'], 'straightedge')
     const resolved = resolveSelectionAids(
       {
@@ -248,7 +248,7 @@ describe('resolveSelectionAids', () => {
         edges: [existing, zEdgeSelector, '?body_a:edge:2'],
         radius: 1,
       },
-      bodies,
+      parts,
     )
     expect(resolved.ok).toBe(true)
     if (!resolved.ok) return
@@ -263,7 +263,7 @@ describe('resolveSelectionAids', () => {
   it('dedupes an edge a second selector names again', () => {
     const resolved = resolveSelectionAids(
       { type: 'add_fillet', featureId: 'fi1', edges: [zEdgeSelector, zEdgeSelector], radius: 1 },
-      bodiesWithEdges(),
+      partsWithEdges(),
     )
     expect(resolved.ok).toBe(true)
     if (!resolved.ok) return
@@ -277,7 +277,7 @@ describe('resolveSelectionAids', () => {
     for (const type of ['add_fillet', 'add_chamfer']) {
       const resolved = resolveSelectionAids(
         { type, featureId: 'f1', edges: [{ selector: { kind: 'face', where: { parallel: [0, 0, 1] } } }] },
-        bodiesWithEdges(),
+        partsWithEdges(),
       )
       expect(resolved.ok, type).toBe(false)
       if (resolved.ok) continue
@@ -302,7 +302,7 @@ describe('resolveSelectionAids', () => {
   it('keeps the select engine nearest-miss text for an empty edge match', () => {
     const resolved = resolveSelectionAids(
       { type: 'add_chamfer', featureId: 'ch1', edges: [{ selector: { kind: 'edge', where: { parallel: [1, 1, 1] } } }] },
-      bodiesWithEdges(),
+      partsWithEdges(),
     )
     expect(resolved.ok).toBe(false)
     if (resolved.ok) return
@@ -314,7 +314,7 @@ describe('resolveSelectionAids', () => {
   it('rewrites a projection source selector into the one edge query it matched', () => {
     const resolved = resolveSelectionAids(
       { type: 'add_projected_entity', featureId: 'sk2', kind: 'line', source: oneEdgeSelector },
-      bodiesWithEdges(),
+      partsWithEdges(),
     )
     expect(resolved.ok).toBe(true)
     if (!resolved.ok) return
@@ -327,7 +327,7 @@ describe('resolveSelectionAids', () => {
   it('refuses a projection source matching two edges with its own one-element rule', () => {
     const resolved = resolveSelectionAids(
       { type: 'add_projected_entity', featureId: 'sk2', kind: 'line', source: zEdgeSelector },
-      bodiesWithEdges(),
+      partsWithEdges(),
     )
     expect(resolved.ok).toBe(false)
     if (resolved.ok) return
@@ -342,7 +342,7 @@ describe('resolveSelectionAids', () => {
         type: 'add_projected_entity', featureId: 'sk2', kind: 'line',
         source: { selector: { kind: 'edge', where: { parallel: [1, 1, 1] } } },
       },
-      bodiesWithEdges(),
+      partsWithEdges(),
     )
     expect(resolved.ok).toBe(false)
     if (resolved.ok) return
@@ -354,7 +354,7 @@ describe('resolveSelectionAids', () => {
   it('names the selector shape for a malformed projection source', () => {
     const resolved = resolveSelectionAids(
       { type: 'add_projected_entity', featureId: 'sk2', kind: 'line', source: { selector: { type: 'line' } } },
-      bodiesWithEdges(),
+      partsWithEdges(),
     )
     expect(resolved.ok).toBe(false)
     if (resolved.ok) return
@@ -371,7 +371,7 @@ describe('resolveSelectionAids', () => {
         type: 'add_projected_entity', featureId: 'sk2', kind: 'point',
         source: { selector: { kind: 'face', type: 'flatface' } },
       },
-      twoBodies(),
+      twoParts(),
     )
     expect(resolved.ok).toBe(false)
     if (resolved.ok) return
@@ -382,7 +382,7 @@ describe('resolveSelectionAids', () => {
   it('leaves a present non-string kind for the value rules to refuse', () => {
     const resolved = resolveSelectionAids(
       { type: 'add_projected_entity', featureId: 'sk2', kind: 5, source: oneEdgeSelector },
-      bodiesWithEdges(),
+      partsWithEdges(),
     )
     expect(resolved.ok).toBe(true)
     if (!resolved.ok) return
@@ -396,7 +396,7 @@ describe('resolveSelectionAids', () => {
     // are already the stored form and have no selector spelling.
     for (const source of ['@builtin_origin', '@sk2/l1', '?body_a:edge:1']) {
       const step = { type: 'add_projected_entity', featureId: 'sk2', kind: 'point', source }
-      const resolved = resolveSelectionAids(step, bodiesWithEdges())
+      const resolved = resolveSelectionAids(step, partsWithEdges())
       expect(resolved.ok, source).toBe(true)
       expect(resolved.ok && resolved.mutation, source).toBe(step)
     }
@@ -405,11 +405,11 @@ describe('resolveSelectionAids', () => {
   it('infers the projection entity kind from the element the selector matched', () => {
     // The same mapping the UI's projection path uses: an edge keeps its curve
     // kind, a vertex or face projects as its own point.
-    const cases: Array<[Record<string, BodyResult>, Record<string, unknown>, string, string]> = [
-      [bodiesWithEdges(), oneEdgeSelector, 'line', q('body_a', ['@u|e_1'], 'straightedge')],
-      [bodiesWithSourceShapes(), circleEdgeSelector, 'circle', q('body_a', ['@u|e_c'], 'circleedge')],
-      [bodiesWithSourceShapes(), cornerVertexSelector, 'point', q('body_a', ['@u|v_0'], 'vertex')],
-      [twoBodies(), { selector: { kind: 'face', from: 'body_b' } }, 'point', q('body_b', ['@u|f_0'], 'flatface')],
+    const cases: Array<[Record<string, PartResult>, Record<string, unknown>, string, string]> = [
+      [partsWithEdges(), oneEdgeSelector, 'line', q('body_a', ['@u|e_1'], 'straightedge')],
+      [partsWithSourceShapes(), circleEdgeSelector, 'circle', q('body_a', ['@u|e_c'], 'circleedge')],
+      [partsWithSourceShapes(), cornerVertexSelector, 'point', q('body_a', ['@u|v_0'], 'vertex')],
+      [twoParts(), { selector: { kind: 'face', from: 'body_b' } }, 'point', q('body_b', ['@u|f_0'], 'flatface')],
     ]
     for (const [bodies, source, kind, query] of cases) {
       const resolved = resolveSelectionAids(
@@ -427,7 +427,7 @@ describe('resolveSelectionAids', () => {
   it('keeps a declared kind instead of inferring one', () => {
     const resolved = resolveSelectionAids(
       { type: 'add_projected_entity', featureId: 'sk2', kind: 'point', source: circleEdgeSelector },
-      bodiesWithSourceShapes(),
+      partsWithSourceShapes(),
     )
     expect(resolved.ok).toBe(true)
     if (!resolved.ok) return

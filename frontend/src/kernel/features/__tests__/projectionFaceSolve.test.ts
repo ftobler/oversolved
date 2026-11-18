@@ -13,7 +13,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { applyGeometryToFeature } from '@/utils/yamlMutations/solveResult'
 import { deriveMemberIds } from '../projectionMembers'
 import type { Repository } from '../../query'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { FaceBoundaryLookup } from '../faceBoundary'
 import type { FaceBoundaryEdge } from '../projectionMembers'
 import type { PartConstraint, PartDoc, SketchFeature } from '@/types/cad'
@@ -74,7 +74,7 @@ describe.skipIf(!solveBytes)('face projection lowering', () => {
   it('derives every boundary edge as a member and leaves the input feature untouched', () => {
     const feature = faceFeature()
     const before = structuredClone(feature)
-    const out = solveSketch(feature, memberRepo(), {} as Record<string, Body>, {}, boundary)
+    const out = solveSketch(feature, memberRepo(), {} as Record<string, PartSolid>, {}, boundary)
     expect(feature).toEqual(before)
     const report = out.projection_members?.proj_face
     expect(report).toBeDefined()
@@ -88,7 +88,7 @@ describe.skipIf(!solveBytes)('face projection lowering', () => {
   })
 
   it('derives no members and reports the projection when the face does not resolve', () => {
-    const out = solveSketch(faceFeature(), memberRepo(), {} as Record<string, Body>, {}, () => null)
+    const out = solveSketch(faceFeature(), memberRepo(), {} as Record<string, PartSolid>, {}, () => null)
     expect(out.projection_members?.proj_face.members).toEqual({})
     expect(out.projection_members?.proj_face.entities).toEqual([])
     expect(out.projection_errors).toContain('proj_face')
@@ -101,7 +101,7 @@ describe.skipIf(!solveBytes)('face projection lowering', () => {
       id: 'proj_face', kind: 'projection', source: FACE_QUERY,
       members, excluded: [...EDGE_TOKENS],
     }
-    const out = solveSketch(feature, memberRepo(), {} as Record<string, Body>, {}, boundary)
+    const out = solveSketch(feature, memberRepo(), {} as Record<string, PartSolid>, {}, boundary)
     expect(out.projection_members?.proj_face.entities).toEqual([])
     expect(out.projection_errors).toBeUndefined()
   })
@@ -143,7 +143,7 @@ describe('face projection write-back', () => {
       constraints: [{ id: 'proj_c0', kind: 'projection', target: '$c0', source: '?edge;circle' }],
     }
     const before = structuredClone(feature)
-    const out = solveSketch(feature, repo, {} as Record<string, Body>, {}, () => null)
+    const out = solveSketch(feature, repo, {} as Record<string, PartSolid>, {}, () => null)
     expect(feature).toEqual(before)
     expect(out.resolved_kinds).toEqual({ c0: 'ellipse' })
     const doc = { version: 7, kind: 'part', features: [feature] } as unknown as PartDoc

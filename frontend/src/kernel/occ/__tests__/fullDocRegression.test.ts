@@ -74,10 +74,10 @@ interface BaselineEntry {
   spec: Record<string, unknown>
   input_sketches?: unknown[]
   result: Record<string, unknown>
-  bodies: Record<string, BaselineBody>
+  bodies: Record<string, BaselinePart>
 }
 
-interface BaselineBody {
+interface BaselinePart {
   id: string
   created_by: string
   modified_by: string[]
@@ -206,32 +206,32 @@ function sortedVerts(v: number[][]): number[][] {
 
 const VERT_TOL = 1e-4
 
-function diffBodies(
-  tsBodies: Record<string, Record<string, unknown>>,
-  baseBodies: Record<string, BaselineBody>,
+function diffParts(
+  tsParts: Record<string, Record<string, unknown>>,
+  baseParts: Record<string, BaselinePart>,
   label: string,
 ): string[] {
   const issues: string[] = []
 
-  for (const [bid, baseBody] of Object.entries(baseBodies)) {
-    const tsBody = tsBodies[bid]
-    if (!tsBody) {
+  for (const [bid, baseBody] of Object.entries(baseParts)) {
+    const tsPart = tsParts[bid]
+    if (!tsPart) {
       issues.push(`${label}/bodies/${bid}: missing in TS output`)
       continue
     }
 
     // Lineage identity.
-    if ((tsBody.created_by ?? '') !== baseBody.created_by) {
-      issues.push(`${label}/bodies/${bid}/created_by: TS=${tsBody.created_by} baseline=${baseBody.created_by}`)
+    if ((tsPart.created_by ?? '') !== baseBody.created_by) {
+      issues.push(`${label}/bodies/${bid}/created_by: TS=${tsPart.created_by} baseline=${baseBody.created_by}`)
     }
-    const tsMod = sortHashes((tsBody.modified_by as string[]) ?? [])
+    const tsMod = sortHashes((tsPart.modified_by as string[]) ?? [])
     const baseMod = sortHashes(baseBody.modified_by ?? [])
     if (JSON.stringify(tsMod) !== JSON.stringify(baseMod)) {
       issues.push(`${label}/bodies/${bid}/modified_by: TS=[${tsMod}] baseline=[${baseMod}]`)
     }
 
     // mesh_error presence must match (a silent unit-cube fallback must not pass).
-    const tsErr = tsBody.mesh_error != null
+    const tsErr = tsPart.mesh_error != null
     const baseErr = baseBody.mesh_error != null
     if (tsErr !== baseErr) {
       issues.push(`${label}/bodies/${bid}/mesh_error: TS=${tsErr} baseline=${baseErr}`)
@@ -239,18 +239,18 @@ function diffBodies(
 
     // Structural counts. A missing or non-numeric count must fail, never pass
     // as if it matched: the live body is always enriched to carry real numbers.
-    const faceCountOk = typeof tsBody.face_count === 'number' && tsBody.face_count === baseBody.face_count
-    const edgeCountOk = typeof tsBody.edge_count === 'number' && tsBody.edge_count === baseBody.edge_count
+    const faceCountOk = typeof tsPart.face_count === 'number' && tsPart.face_count === baseBody.face_count
+    const edgeCountOk = typeof tsPart.edge_count === 'number' && tsPart.edge_count === baseBody.edge_count
     if (!faceCountOk) {
-      issues.push(`${label}/bodies/${bid}/face_count: TS=${tsBody.face_count} baseline=${baseBody.face_count}`)
+      issues.push(`${label}/bodies/${bid}/face_count: TS=${tsPart.face_count} baseline=${baseBody.face_count}`)
     }
     if (!edgeCountOk) {
-      issues.push(`${label}/bodies/${bid}/edge_count: TS=${tsBody.edge_count} baseline=${baseBody.edge_count}`)
+      issues.push(`${label}/bodies/${bid}/edge_count: TS=${tsPart.edge_count} baseline=${baseBody.edge_count}`)
     }
 
     // Vertex multiset within tolerance (count is a fast pre-filter).
     let vertsOk = false
-    const tsMesh = tsBody.mesh as { vertices?: number[][] } | undefined
+    const tsMesh = tsPart.mesh as { vertices?: number[][] } | undefined
     if (tsMesh?.vertices && baseBody.mesh.vertices) {
       const tsV = tsMesh.vertices
       const baseV = baseBody.mesh.vertices
@@ -283,13 +283,13 @@ function diffBodies(
     // hash rounding is sensitive to it, though the body is equal within
     // tolerance. Warn but do not fail -- the structural + vertex checks already
     // passed. Any hash mismatch with a count or vertex mismatch stays a failure.
-    const bodyGeomOk = faceCountOk && edgeCountOk && vertsOk
+    const partGeomOk = faceCountOk && edgeCountOk && vertsOk
     for (const field of ['face_hashes', 'edge_hashes'] as const) {
-      const tsHashes = sortHashes((tsBody[field] as string[]) ?? [])
+      const tsHashes = sortHashes((tsPart[field] as string[]) ?? [])
       const baseHashes = sortHashes((baseBody[field] as string[]) ?? [])
       if (JSON.stringify(tsHashes) !== JSON.stringify(baseHashes)) {
         const msg = `${label}/bodies/${bid}/${field}: mismatch (TS=${tsHashes.length} baseline=${baseHashes.length})`
-        if (bodyGeomOk) {
+        if (partGeomOk) {
           console.warn(`[regression] ${msg} -- accepted curved-face divergence`)
         } else {
           issues.push(msg)
@@ -301,8 +301,8 @@ function diffBodies(
   // Symmetric pass: bodies the live TS kernel produced but the baseline never
   // froze are extra bodies on the TS side (e.g. a boolean that leaves two
   // bodies instead of fusing). Flag them rather than letting them pass unseen.
-  for (const bid of Object.keys(tsBodies)) {
-    if (!(bid in baseBodies)) {
+  for (const bid of Object.keys(tsParts)) {
+    if (!(bid in baseParts)) {
       issues.push(`${label}/bodies/${bid}: extra body in TS output`)
     }
   }
@@ -320,11 +320,11 @@ function diffBodies(
 // (mesh_error, edges, queries) that diffBodies reads but the golden shape drops.
 // The golden face_count/edge_count and geometry hashes survive because the live
 // body carries none of them.
-function enrichBodyHashes(
+function enrichPartHashes(
   bid: string,
-  body: Record<string, unknown>,
+  part: Record<string, unknown>,
 ): Record<string, unknown> {
-  return { ...buildBaselineBody(bid, body), ...body }
+  return { ...buildBaselineBody(bid, part), ...part }
 }
 
 // ─── Null-solve guard ───
@@ -452,15 +452,15 @@ describe.skipIf(!provisioned)('full-doc regression (TS kernel vs frozen baseline
       const tsResponse = await solveWithTimeout(spec, { prevState: null })
       assertSolveResponse(tsResponse, entry.label)
       const tsResult = tsResponse.result as Record<string, unknown>
-      const rawBodies = tsResponse.bodies as Record<string, Record<string, unknown>>
-      const tsBodies: Record<string, Record<string, unknown>> = {}
-      for (const [bid, body] of Object.entries(rawBodies)) {
-        tsBodies[bid] = enrichBodyHashes(bid, body)
+      const rawParts = tsResponse.bodies as Record<string, Record<string, unknown>>
+      const tsParts: Record<string, Record<string, unknown>> = {}
+      for (const [bid, body] of Object.entries(rawParts)) {
+        tsParts[bid] = enrichPartHashes(bid, body)
       }
 
       const allIssues: string[] = [
         ...diffResult(tsResult, entry.result, entry.label),
-        ...diffBodies(tsBodies, entry.bodies, entry.label),
+        ...diffParts(tsParts, entry.bodies, entry.label),
       ]
 
       if (allIssues.length > 0) {

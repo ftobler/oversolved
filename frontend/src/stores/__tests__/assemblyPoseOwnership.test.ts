@@ -12,17 +12,17 @@ import {
 } from '@/stores/assemblyStore'
 import { findInstance } from '@/utils/assemblyMutations'
 import { settledTransforms } from '@/utils/partManipulation'
-import { offsetPickBodies, type AssemblyPickBody } from '@/utils/assemblyPick'
+import { offsetPickParts, type AssemblyPickPart } from '@/utils/assemblyPick'
 import { composeTransforms, IDENTITY_TRANSFORM } from '@/utils/transform3d'
 
 function instance(handle: string, extra: Partial<PartInstance> = {}): PartInstance {
   return { handle, doc_id: `doc-${handle}`, doc_rev: 1, transform: { ...IDENTITY_TRANSFORM }, ...extra }
 }
 
-function pickBody(handle: string): AssemblyPickBody {
+function pickPart(handle: string): AssemblyPickPart {
   return {
     handle,
-    bodyKey: `${handle}:body_0`,
+    partKey: `${handle}:body_0`,
     faces: {
       positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
       triangleToFace: new Uint32Array([0]),
@@ -107,8 +107,8 @@ describe('assembly pose ownership', () => {
   // offset keeps the two systems agreeing through the restore.
   it('a cancelled drag leaves the pick buffer following the moved followers', () => {
     mountHost(docWith(instance('p1'), instance('p2')))
-    const p1 = pickBody('p1')
-    const p2 = pickBody('p2')
+    const p1 = pickPart('p1')
+    const p2 = pickPart('p2')
     useAssemblyStore.setState({
       transforms: { p1: { ...IDENTITY_TRANSFORM }, p2: { ...IDENTITY_TRANSFORM } },
       pickGeometry: [p1, p2],
@@ -121,13 +121,13 @@ describe('assembly pose ownership', () => {
     // A live drag tick re-poses the follower p2; the pick snapshot stays baked.
     useAssemblyStore.getState().setDragSolveResult({
       transforms: { p2: { ...IDENTITY_TRANSFORM, tx: 7 } },
-      bodies: {}, edgeCurves: {}, solveStatus: null,
+      parts: {}, edgeCurves: {}, solveStatus: null,
     })
     useAssemblyStore.getState().cancelPartManipulation()
 
     const state = useAssemblyStore.getState()
     expect(state.manipulation).toBeNull()
-    const [movedP1, movedP2] = offsetPickBodies(
+    const [movedP1, movedP2] = offsetPickParts(
       state.pickGeometry, state.pickGeometryPose, state.settledPoses(),
     )
     expect(movedP1).toBe(p1)  // grabbed part back at its settled pose, no churn

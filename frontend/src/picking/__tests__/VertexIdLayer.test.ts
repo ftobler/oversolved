@@ -10,7 +10,7 @@ function makeReg() {
     [0, 1, 0],
   ]
   const vertexQueries = ['vtx@A', 'vtx@B', 'vtx@C']
-  return { bodyKey: 'b', vertices, vertexQueries }
+  return { partKey: 'b', vertices, vertexQueries }
 }
 
 describe('VertexIdLayer', () => {
@@ -22,15 +22,15 @@ describe('VertexIdLayer', () => {
   })
 
   it('registers one Points per body', () => {
-    layer.registerBody(makeReg())
-    expect(layer.bodyCount()).toBe(1)
+    layer.registerPart(makeReg())
+    expect(layer.partCount()).toBe(1)
     expect(layer.scene.children.length).toBe(1)
     const pts = layer.scene.children[0] as import('three').Points
     expect(pts.geometry.getAttribute('position').count).toBe(3)
   })
 
   it('allocates one id per vertex query', () => {
-    layer.registerBody(makeReg())
+    layer.registerPart(makeReg())
     expect(reg.size()).toBe(3)
     for (const q of ['vtx@A', 'vtx@B', 'vtx@C']) {
       expect(reg.lookupKey(VERTEX_LAYER_NAME, q)).toBeDefined()
@@ -38,7 +38,7 @@ describe('VertexIdLayer', () => {
   })
 
   it('aColor per vertex decodes to the vertex id', () => {
-    layer.registerBody(makeReg())
+    layer.registerPart(makeReg())
     const pts = layer.scene.children[0] as import('three').Points
     const aColor = pts.geometry.getAttribute('aColor')
     for (let i = 0; i < 3; i++) {
@@ -53,7 +53,7 @@ describe('VertexIdLayer', () => {
   })
 
   it('position attribute holds the world-space vertex positions', () => {
-    layer.registerBody(makeReg())
+    layer.registerPart(makeReg())
     const pts = layer.scene.children[0] as import('three').Points
     const pos = pts.geometry.getAttribute('position')
     const expected = [[0, 0, 0], [1, 0, 0], [0, 1, 0]]
@@ -63,15 +63,15 @@ describe('VertexIdLayer', () => {
   })
 
   it('material runs with depthTest=false (vertices always win where drawn)', () => {
-    layer.registerBody(makeReg())
+    layer.registerPart(makeReg())
     const pts = layer.scene.children[0] as import('three').Points
     const mat = pts.material as import('three').ShaderMaterial
     expect(mat.depthTest).toBe(false)
   })
 
   it('skips vertices whose query is missing', () => {
-    layer.registerBody({
-      bodyKey: 'partial',
+    layer.registerPart({
+      partKey: 'partial',
       vertices: [[0, 0, 0], [1, 0, 0]],
       vertexQueries: ['vtx@only'],  // length 1, vertex[1] has no query
     })
@@ -83,7 +83,7 @@ describe('VertexIdLayer', () => {
   it('writes no id for a hidden index and keeps the next vertex on its own pick key', () => {
     // The middle vertex is a closed edge's own vertex (a hole rim dot): no id,
     // no mark, and the third vertex must still resolve to its own query.
-    layer.registerBody({
+    layer.registerPart({
       ...makeReg(),
       perPrimitivePickKeys: true,
       hiddenIndices: new Set([1]),
@@ -100,8 +100,8 @@ describe('VertexIdLayer', () => {
     // markPosition: axisCell(NaN) buckets at the origin and axisCoincides reads
     // a NaN pair as coincident, so an un-filtered NaN vertex would be offered as
     // a candidate for every click near 0,0,0. Skip it like the face/edge layers.
-    layer.registerBody({
-      bodyKey: 'nan',
+    layer.registerPart({
+      partKey: 'nan',
       vertices: [[0, 0, 0], [NaN, 0, 0], [1, 0, 0]],
       vertexQueries: ['vtx@A', 'vtx@B', 'vtx@C'],
     })
@@ -120,7 +120,7 @@ describe('VertexIdLayer', () => {
       if (++calls > 1) throw new Error('IdRegistry: exhausted 24-bit ID space')
       return realAllocate(layerName, entityKey, pickKey)
     })
-    expect(() => layer.registerBody(makeReg())).toThrow(/exhausted/)
+    expect(() => layer.registerPart(makeReg())).toThrow(/exhausted/)
     spy.mockRestore()
     // Nothing leaked: the first id (and its published mark position) freed back,
     // nothing registered.
@@ -134,15 +134,15 @@ describe('VertexIdLayer', () => {
   })
 
   it('unregister removes Points and frees ids', () => {
-    layer.registerBody(makeReg())
-    layer.unregisterBody('b')
-    expect(layer.bodyCount()).toBe(0)
+    layer.registerPart(makeReg())
+    layer.unregisterPart('b')
+    expect(layer.partCount()).toBe(0)
     expect(reg.size()).toBe(0)
   })
 
   it('registers no body for an empty vertex list', () => {
-    layer.registerBody({ bodyKey: 'empty', vertices: [], vertexQueries: [] })
-    expect(layer.bodyCount()).toBe(0)
+    layer.registerPart({ partKey: 'empty', vertices: [], vertexQueries: [] })
+    expect(layer.partCount()).toBe(0)
     expect(layer.scene.children.length).toBe(0)
     expect(reg.size()).toBe(0)
   })
@@ -150,19 +150,19 @@ describe('VertexIdLayer', () => {
   it('registers no body when every vertex is filtered as non-finite', () => {
     // An all-NaN body would otherwise add an empty Points and hand the pipeline
     // a pickable layer with no pixels.
-    layer.registerBody({
-      bodyKey: 'all-nan',
+    layer.registerPart({
+      partKey: 'all-nan',
       vertices: [[NaN, 0, 0], [0, NaN, 0]],
       vertexQueries: ['vtx@A', 'vtx@B'],
     })
-    expect(layer.bodyCount()).toBe(0)
+    expect(layer.partCount()).toBe(0)
     expect(layer.scene.children.length).toBe(0)
     expect(reg.size()).toBe(0)
   })
 
   it('dispose clears every body and the material', () => {
-    layer.registerBody(makeReg())
+    layer.registerPart(makeReg())
     layer.dispose()
-    expect(layer.bodyCount()).toBe(0)
+    expect(layer.partCount()).toBe(0)
   })
 })

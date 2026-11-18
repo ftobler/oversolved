@@ -8,12 +8,12 @@
 // axes: a cylinder that merely looks like the bore is not threaded.
 //
 // Pure: no three.js, no React, so the data path tests without a canvas. The
-// shader that consumes the attributes is ThreadProgram (bodyAnalysisMaterial.ts).
+// shader that consumes the attributes is ThreadProgram (partAnalysisMaterial.ts).
 
 import type { LengthUnit, Mesh3D, SketchData } from '@/types/cad'
 import { parseAncestry, partitionAncestryIds } from '@/kernel/queryWire'
 import { MM_PER_LENGTH_UNIT } from '@/utils/lengthUnit'
-import { buildBodyGeometry } from './bodyGeometry'
+import { buildPartGeometry } from './partGeometry'
 
 type Vec3 = [number, number, number]
 
@@ -145,7 +145,7 @@ function crossFrame(axis: Vec3): [Vec3, Vec3] {
 }
 
 /**
- * The thread attributes for the INDEXED body geometry (the form Body3D builds
+ * The thread attributes for the INDEXED body geometry (the form Part3D builds
  * before `toNonIndexed`, which then copies them per split vertex like the
  * normals), or null when the body has no tapped face.
  *
@@ -159,7 +159,7 @@ export function buildThreadAttributes(mesh: Mesh3D, sites: ThreadSiteIndex | nul
   const perFace = tappedFaces(mesh, sites)
   const triToFace = mesh.triangle_to_face
   if (perFace === null || !triToFace) return null
-  const { positions, indices } = buildBodyGeometry(mesh)
+  const { positions, indices } = buildPartGeometry(mesh)
   const vertexCount = positions.length / 3
   const coord = new Float32Array(vertexCount * 4)
   const axisOut = new Float32Array(vertexCount * 3)

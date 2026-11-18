@@ -84,13 +84,13 @@ function normalizedPlane(plane: string | undefined): string {
 function operandSource(ref: string, sourceIds: readonly string[]): { sourceId: string; key: string; prefix: string } | null {
   if (ref.startsWith('@')) return null
   const prefix = ref.startsWith('$') ? ref.slice(0, 1) : ''
-  const body = ref.slice(prefix.length)
+  const part = ref.slice(prefix.length)
   for (const id of sourceIds) {
-    if (body === id) return { sourceId: id, key: '', prefix }
+    if (part === id) return { sourceId: id, key: '', prefix }
     // Exact id plus a known vertex suffix, as refMatchesEntity reads it, so
     // `l10` is never taken for a vertex of `l1`.
-    if (body.startsWith(id) && isVertexPointKey(body.slice(id.length))) {
-      return { sourceId: id, key: body.slice(id.length), prefix }
+    if (part.startsWith(id) && isVertexPointKey(part.slice(id.length))) {
+      return { sourceId: id, key: part.slice(id.length), prefix }
     }
   }
   return null

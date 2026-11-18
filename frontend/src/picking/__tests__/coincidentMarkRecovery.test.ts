@@ -10,7 +10,7 @@ import { IdImage } from './pickCanvasHarness'
  * A mark that lost its pixel is still pickable.
  *
  * Driven through the real layers rather than a hand-built buffer, because the
- * position index is populated by `registerBody` and a synthetic `allocate` does
+ * position index is populated by `registerPart` and a synthetic `allocate` does
  * not have it -- which is exactly why the erasure characterisations could pass
  * for so long. Here the entities are registered the way the app registers them,
  * and only then is one of their pixels painted.
@@ -37,8 +37,8 @@ describe('coincident marks: the loser of the pixel is still an answer', () => {
     // other entity was simply gone.
     for (const painted of ['vertex:S1:L1:end', 'vertex:S1:C1:center']) {
       const { image, p, renderer } = scene()
-      p.sketchVertexLayer.registerBody({
-        bodyKey: 'S1',
+      p.sketchVertexLayer.registerPart({
+        partKey: 'S1',
         vertices: [[3, 4, 0], [3, 4, 0]],
         vertexQueries: ['vertex:S1:L1:end', 'vertex:S1:C1:center'],
       })
@@ -55,8 +55,8 @@ describe('coincident marks: the loser of the pixel is still an answer', () => {
     // sat on. Registration order is the sketch's own entity order, so this is
     // stable across re-registrations of an unchanged sketch.
     const { image, p, renderer } = scene()
-    p.sketchVertexLayer.registerBody({
-      bodyKey: 'S1',
+    p.sketchVertexLayer.registerPart({
+      partKey: 'S1',
       vertices: [[1, 1, 0], [1, 1, 0]],
       vertexQueries: ['vertex:S1:L1:end', 'dock:S1:C1:L1'],
     })
@@ -78,8 +78,8 @@ describe('coincident marks: the loser of the pixel is still an answer', () => {
     const FOOT: [number, number, number] = [7.934064194956269, 5.225000198183635, 0]
     for (const painted of ['vertex:S1:L1:end', 'dock:S1:c_tangent']) {
       const { image, p, renderer } = scene()
-      p.sketchVertexLayer.registerBody({
-        bodyKey: 'S1',
+      p.sketchVertexLayer.registerPart({
+        partKey: 'S1',
         vertices: [END, FOOT],
         vertexQueries: ['vertex:S1:L1:end', 'dock:S1:c_tangent'],
       })
@@ -96,13 +96,13 @@ describe('coincident marks: the loser of the pixel is still an answer', () => {
     // window alone -- 1e-17 at that magnitude -- would never join them, and the
     // marker would go on answering for a point it cannot drag or dimension.
     const { image, p, renderer } = scene()
-    p.sketchVertexLayer.registerBody({
-      bodyKey: 'S1',
+    p.sketchVertexLayer.registerPart({
+      partKey: 'S1',
       vertices: [[-4.353449892247063e-12, -4.043118964625059e-11, 0]],
       vertexQueries: ['vertex:S1:C1:center'],
     })
-    p.originLayer.registerBody({
-      bodyKey: '@builtin_origin', vertices: [[0, 0, 0]], vertexQueries: ['@builtin_origin'],
+    p.originLayer.registerPart({
+      partKey: '@builtin_origin', vertices: [[0, 0, 0]], vertexQueries: ['@builtin_origin'],
     })
     image.mark(MID, MID, idOf(p, ORIGIN_LAYER_NAME, '@builtin_origin'))
     expect(p.resolveAllSync(renderer, CURSOR).map(h => h.entityKey))
@@ -114,8 +114,8 @@ describe('coincident marks: the loser of the pixel is still an answer', () => {
     // They are separate entities that happen to coincide, so highlight
     // isolation has to keep working per member.
     const { image, p, renderer } = scene()
-    p.sketchVertexLayer.registerBody({
-      bodyKey: 'S1',
+    p.sketchVertexLayer.registerPart({
+      partKey: 'S1',
       vertices: [[0, 2, 0], [0, 2, 0]],
       vertexQueries: ['vertex:S1:A:start', 'vertex:S1:B:end'],
     })
@@ -134,11 +134,11 @@ describe('coincident marks: the loser of the pixel is still an answer', () => {
     // from underneath it -- then ranked ahead of it, because a recovered mark is
     // sorted on its OWN priority and the point outranks the datum it sits on.
     const { image, p, renderer } = scene()
-    p.sketchVertexLayer.registerBody({
-      bodyKey: 'S1', vertices: [[0, 0, 0]], vertexQueries: ['vertex:S1:C1:center'],
+    p.sketchVertexLayer.registerPart({
+      partKey: 'S1', vertices: [[0, 0, 0]], vertexQueries: ['vertex:S1:C1:center'],
     })
-    p.originLayer.registerBody({
-      bodyKey: '@builtin_origin', vertices: [[0, 0, 0]], vertexQueries: ['@builtin_origin'],
+    p.originLayer.registerPart({
+      partKey: '@builtin_origin', vertices: [[0, 0, 0]], vertexQueries: ['@builtin_origin'],
     })
     image.mark(MID, MID, idOf(p, ORIGIN_LAYER_NAME, '@builtin_origin'))
     const all = p.resolveAllSync(renderer, CURSOR)
@@ -152,11 +152,11 @@ describe('coincident marks: the loser of the pixel is still an answer', () => {
     // distance. A recovered mark is sorted on its own priority, not on the
     // priority of whatever outdrew it.
     const { image, p, renderer } = scene()
-    p.sketchVertexLayer.registerBody({
-      bodyKey: 'S1', vertices: [[0, 0, 0]], vertexQueries: ['vertex:S1:C1:center'],
+    p.sketchVertexLayer.registerPart({
+      partKey: 'S1', vertices: [[0, 0, 0]], vertexQueries: ['vertex:S1:C1:center'],
     })
-    p.originLayer.registerBody({
-      bodyKey: '@builtin_origin', vertices: [[0, 0, 0]], vertexQueries: ['@builtin_origin'],
+    p.originLayer.registerPart({
+      partKey: '@builtin_origin', vertices: [[0, 0, 0]], vertexQueries: ['@builtin_origin'],
     })
     const curve = p.registry.allocate(SKETCH_ENTITY_LAYER_NAME, 'entity:S1:C1')
     image.line(MID - 30, MID, MID + 30, MID, curve)
@@ -168,11 +168,11 @@ describe('coincident marks: the loser of the pixel is still an answer', () => {
 
   it('drops a recovered mark the tool is not allowed to pick', () => {
     const { image, p, renderer } = scene()
-    p.sketchVertexLayer.registerBody({
-      bodyKey: 'S1', vertices: [[0, 0, 0]], vertexQueries: ['vertex:S1:C1:center'],
+    p.sketchVertexLayer.registerPart({
+      partKey: 'S1', vertices: [[0, 0, 0]], vertexQueries: ['vertex:S1:C1:center'],
     })
-    p.originLayer.registerBody({
-      bodyKey: '@builtin_origin', vertices: [[0, 0, 0]], vertexQueries: ['@builtin_origin'],
+    p.originLayer.registerPart({
+      partKey: '@builtin_origin', vertices: [[0, 0, 0]], vertexQueries: ['@builtin_origin'],
     })
     image.mark(MID, MID, idOf(p, ORIGIN_LAYER_NAME, '@builtin_origin'))
     expect(p.resolveAllSync(renderer, CURSOR, {
@@ -183,16 +183,16 @@ describe('coincident marks: the loser of the pixel is still an answer', () => {
 
   it('stops recovering once the body is unregistered', () => {
     const { image, p, renderer } = scene()
-    const body = {
-      bodyKey: 'S1',
+    const part = {
+      partKey: 'S1',
       vertices: [[3, 4, 0], [3, 4, 0]] as [number, number, number][],
       vertexQueries: ['vertex:S1:L1:end', 'vertex:S1:C1:center'],
     }
-    p.sketchVertexLayer.registerBody(body)
+    p.sketchVertexLayer.registerPart(part)
     const winner = idOf(p, SKETCH_VERTEX_LAYER_NAME, 'vertex:S1:L1:end')
     image.mark(MID, MID, winner)
     expect(p.resolveAllSync(renderer, CURSOR)).toHaveLength(2)
-    p.sketchVertexLayer.unregisterBody('S1')
+    p.sketchVertexLayer.unregisterPart('S1')
     expect(p.registry.coincidentMarkIds(winner)).toEqual([])
     p.dispose()
   })
@@ -201,8 +201,8 @@ describe('coincident marks: the loser of the pixel is still an answer', () => {
     // The box never sees the covered mark by scanning -- it owns no pixel
     // anywhere -- but it is inside the box just the same.
     const { p } = scene()
-    p.sketchVertexLayer.registerBody({
-      bodyKey: 'S1',
+    p.sketchVertexLayer.registerPart({
+      partKey: 'S1',
       vertices: [[3, 4, 0], [3, 4, 0]],
       vertexQueries: ['vertex:S1:L1:end', 'vertex:S1:C1:center'],
     })

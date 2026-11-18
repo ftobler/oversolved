@@ -22,7 +22,7 @@ vi.mock('@/utils/geometry/geometryMapping', () => ({ unflattenGeometry: mockUnfl
 import { useSolver, reconcilePartStyle } from '@/hooks/useSolver'
 
 import { useSolverStore } from '@/stores/solverStore'
-import type { PartDoc, BodyResult } from '@/types/cad'
+import type { PartDoc, PartResult } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
 
 function makeDoc(overrides?: Partial<PartDoc>): PartDoc {
@@ -37,7 +37,7 @@ function setupHook(doc: PartDoc = makeDoc()) {
 }
 
 function response(result: Record<string, unknown>) {
-  return { solve_ms: 0, result, bodies: {} as Record<string, BodyResult>, _build_state: null }
+  return { solve_ms: 0, result, bodies: {} as Record<string, PartResult>, _build_state: null }
 }
 
 beforeEach(() => {

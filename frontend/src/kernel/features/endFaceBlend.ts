@@ -21,7 +21,7 @@
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
-import { canonicalVertices } from '../occ/bodyNames'
+import { canonicalVertices } from '../occ/partNames'
 import { SubShapeMap } from '../occ/subshapeIdentity'
 import { booleanWithDiff, type FaceOrigin } from '../occ/booleans'
 import {
@@ -176,7 +176,7 @@ function carryNames(
   const toolFaceNames = new SubShapeMap<string>()
   toolFaceNames.set(blend.blendFace as OccSubShape, blend.blendUuid)
   const carried = transferBooleanNames(oc, scope, {
-    bodyShape: cut.shape,
+    partShape: cut.shape,
     faceOrigin: cut.faceOrigin,
     targetFaceNames: names.faceNames,
     targetFaceAncestry: names.faceAncestry,

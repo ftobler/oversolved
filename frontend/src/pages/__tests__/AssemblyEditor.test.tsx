@@ -158,7 +158,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
   it('mounts the assembly viewport and solves once on load', async () => {
     await renderLoaded()
     expect(screen.getByTestId('assembly-viewport')).toBeTruthy()
-    // Bodies only exist after a solve, so the load must ask for one.
+    // Parts only exist after a solve, so the load must ask for one.
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1))
   })
 
@@ -183,7 +183,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
     await tick()
     await tick()
     await insertPart('Bracket')
-    await waitFor(() => expect(Object.keys(useAssemblyStore.getState().bodies).length).toBeGreaterThan(0))
+    await waitFor(() => expect(Object.keys(useAssemblyStore.getState().parts).length).toBeGreaterThan(0))
     expect(useAssemblyStore.getState().doc).not.toBeNull()
     expect(useAssemblyStore.getState().instances).toHaveLength(1)
 
@@ -193,7 +193,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(store.doc).toBeNull()
     expect(store.instances).toEqual([])
     expect(store.mates).toEqual([])
-    expect(store.bodies).toEqual({})
+    expect(store.parts).toEqual({})
     expect(store.transforms).toEqual({})
     expect(store.solveStatus).toBeNull()
     expect(store.edgeCurves).toEqual({})

@@ -4,7 +4,7 @@
 // readable.
 
 import {
-  clearBodyAncestry,
+  clearPartAncestry,
   emitWire,
   absolute,
   canonical,
@@ -14,7 +14,7 @@ import {
 } from './query'
 import type { Repository } from './query'
 import { normalToFrame } from './types3d'
-import type { Body, FeatureCheckpoint } from './types3d'
+import type { PartSolid, FeatureCheckpoint } from './types3d'
 import type { TessMesh } from './occ/tessellation'
 import type { BuildDeps } from './builderTypes'
 import { repoFromSnapshot, snapshotRepo } from './builderSnapshot'
@@ -25,7 +25,7 @@ import { swallowUnlessTrap } from './errors'
 // ``BuildDeps.extractBrepMetadata`` and the build-scoped memoised wrapper the
 // solve loop and the checkpoint pass share.
 export type MetaExtractor = (
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   repo: Repository | null,
 ) => Record<string, Record<string, unknown>>
 
@@ -35,17 +35,17 @@ export type MetaExtractor = (
 // from the extractor (occ/tessellation.ts, occ/modifierAttribution.ts), the
 // same values it minted into the element's query.
 
-function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: TessMesh): void {
-  if (!body.created_by || !mesh.face_data) return
+function _registerBrepFaceAncestry(globalRepo: Repository, part: PartSolid, mesh: TessMesh): void {
+  if (!part.created_by || !mesh.face_data) return
   for (let faceIdx = 0; faceIdx < mesh.face_data.length; faceIdx++) {
     const faceInfo = mesh.face_data[faceIdx]
     const centroid = faceInfo.centroid
     const normal = faceInfo.normal
-    const faceCreatedBy = mesh.face_created_by?.[faceIdx] || body.created_by
+    const faceCreatedBy = mesh.face_created_by?.[faceIdx] || part.created_by
     const ancestorIds = [
-      emitWire(absolute(body.id, `face${faceIdx}`)),
+      emitWire(absolute(part.id, `face${faceIdx}`)),
       emitWire(absolute(faceCreatedBy)),
-      emitWire(absolute(body.id)),
+      emitWire(absolute(part.id)),
     ]
     // The UUID the tessellator minted into this face's query: one source, so
     // the query and the registered element cannot disagree.
@@ -53,20 +53,20 @@ function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: Tes
     // A cap's net lives in `face_cap_ancestry` (it is kept out of
     // face_ancestry, which also feeds edge lineage): a joined cap names its
     // producing profile instead of falling through to the body-wide queries.
-    const faceTokens = uuid ? (body.face_ancestry?.[uuid] ?? null) : null
+    const faceTokens = uuid ? (part.face_ancestry?.[uuid] ?? null) : null
     const ancestryTokens = (faceTokens && faceTokens.length)
       ? faceTokens
-      : (uuid ? (body.face_cap_ancestry?.[uuid] ?? null) : null)
+      : (uuid ? (part.face_cap_ancestry?.[uuid] ?? null) : null)
     if (ancestryTokens && ancestryTokens.length) {
       ancestorIds.push(...ancestryTokens)
-    } else if (body.profile_queries.length) {
-      ancestorIds.push(...body.profile_queries)
+    } else if (part.profile_queries.length) {
+      ancestorIds.push(...part.profile_queries)
     }
     const { x_axis, y_axis } = normalToFrame(normal)
     const axis = faceInfo.axis ?? undefined
     const payload = {
       type: faceInfo.surface_type ?? 'face',
-      body_id: body.id,
+      body_id: part.id,
       created_by: faceCreatedBy,
       face_index: faceIdx,
       centroid,
@@ -78,7 +78,7 @@ function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: Tes
       ...(uuid !== null ? { uuid } : {}),
       ...(axis ? { axis } : {}),
     }
-    const indexTag = emitWire(absolute(body.id, `face${faceIdx}`))
+    const indexTag = emitWire(absolute(part.id, `face${faceIdx}`))
     evictAncestryAndRegister(globalRepo, ancestorIds, payload, indexTag, uuid)
   }
 }
@@ -103,14 +103,14 @@ function _registerBrepFaceAncestry(globalRepo: Repository, body: Body, mesh: Tes
  */
 export function edgeAncestryPayload(
   edge: Record<string, unknown>,
-  bodyId: string,
+  partId: string,
   edgeCreatedBy: string,
   idx: number,
   classifiers: string[] = [],
 ): Record<string, unknown> {
   return {
     type: edge.kind === 'line' ? 'straightedge' : 'edge',
-    body_id: bodyId,
+    body_id: partId,
     created_by: edgeCreatedBy,
     edge_index: idx,
     kind: edge.kind,
@@ -131,66 +131,66 @@ export function edgeAncestryPayload(
 
 function _registerBrepEdgeAncestry(
   globalRepo: Repository,
-  body: Body,
+  part: PartSolid,
   edges: Array<Record<string, unknown>>,
   edgeQueries: string[],
   edgeUuids: Array<string | null>,
   edgeCreators: string[],
 ): void {
-  if (!body.created_by || !edgeQueries.length) return
+  if (!part.created_by || !edgeQueries.length) return
   for (let idx = 0; idx < edges.length && idx < edgeQueries.length; idx++) {
     const edge = edges[idx]
-    const edgeCreatedBy = edgeCreators[idx] || body.created_by
+    const edgeCreatedBy = edgeCreators[idx] || part.created_by
     const ancestorIds = [
-      emitWire(absolute(body.id, `edge${idx}`)),
+      emitWire(absolute(part.id, `edge${idx}`)),
       emitWire(absolute(edgeCreatedBy)),
-      emitWire(absolute(body.id)),
+      emitWire(absolute(part.id)),
     ]
     const uuid = edgeUuids[idx] ?? null
-    const ancestryTokens = (uuid && body.edge_ancestry) ? (body.edge_ancestry[uuid] ?? null) : null
+    const ancestryTokens = (uuid && part.edge_ancestry) ? (part.edge_ancestry[uuid] ?? null) : null
     if (ancestryTokens && ancestryTokens.length) {
       ancestorIds.push(...ancestryTokens)
-    } else if (body.profile_queries.length) {
-      ancestorIds.push(...body.profile_queries)
+    } else if (part.profile_queries.length) {
+      ancestorIds.push(...part.profile_queries)
     }
     const classifiers = classifiersOfQuery(edgeQueries[idx])
     const payload = {
-      ...edgeAncestryPayload(edge, body.id, edgeCreatedBy, idx, classifiers),
+      ...edgeAncestryPayload(edge, part.id, edgeCreatedBy, idx, classifiers),
       ...(uuid !== null ? { uuid } : {}),
     }
-    const indexTag = emitWire(absolute(body.id, `edge${idx}`))
+    const indexTag = emitWire(absolute(part.id, `edge${idx}`))
     evictAncestryAndRegister(globalRepo, ancestorIds, payload, indexTag, uuid)
   }
 }
 
 function _registerBrepVertexAncestry(
   globalRepo: Repository,
-  body: Body,
+  part: PartSolid,
   vertices: Array<number[]>,
   vertexQueries: string[],
   vertexUuids: Array<string | null>,
   vertexCreators: string[],
 ): void {
-  if (!body.created_by || !vertexQueries.length) return
+  if (!part.created_by || !vertexQueries.length) return
   for (let idx = 0; idx < vertices.length && idx < vertexQueries.length; idx++) {
     const pt = vertices[idx]
-    const vertexCreatedBy = vertexCreators[idx] || body.created_by
+    const vertexCreatedBy = vertexCreators[idx] || part.created_by
     const ancestorIds = [
-      emitWire(absolute(body.id, `vertex${idx}`)),
+      emitWire(absolute(part.id, `vertex${idx}`)),
       emitWire(absolute(vertexCreatedBy)),
-      emitWire(absolute(body.id)),
+      emitWire(absolute(part.id)),
     ]
-    if (body.profile_queries.length) ancestorIds.push(...body.profile_queries)
+    if (part.profile_queries.length) ancestorIds.push(...part.profile_queries)
     const uuid = vertexUuids[idx] ?? null
     const payload = {
       type: 'vertex',
-      body_id: body.id,
+      body_id: part.id,
       created_by: vertexCreatedBy,
       vertex_index: idx,
       origin: pt,
       ...(uuid !== null ? { uuid } : {}),
     }
-    const indexTag = emitWire(absolute(body.id, `vertex${idx}`))
+    const indexTag = emitWire(absolute(part.id, `vertex${idx}`))
     evictAncestryAndRegister(globalRepo, ancestorIds, payload, indexTag, uuid)
   }
 }
@@ -200,7 +200,7 @@ function _registerBrepVertexAncestry(
 // entry ends up holding N solid elements, each with its own `body_id` (the
 // restore dedupe keeps them all; they are distinct payloads). Deliberate: a
 // `:solid`-restricted query over a multi-body feature is ambiguous and fails
-// loud. The ambiguity is NOT unobservable: `resolveBodyPickRef` lets a `?` pick
+// loud. The ambiguity is NOT unobservable: `resolvePartPickRef` lets a `?` pick
 // through and it is persisted as `merge_target`/`source_body`, and at solve time
 // `resolveBodyRefKeys` runs it through the repo query, catches the ambiguity,
 // and falls back to reading the `@body_*` ancestor from the query. So an
@@ -208,12 +208,12 @@ function _registerBrepVertexAncestry(
 // rather than to a wrong single solid. `reconcileFeatureSolids` keeps the count
 // equal to the live body store after every re-solve, so N is the number of
 // bodies the feature owns right now.
-export function registerSolidAncestry(globalRepo: Repository, body: Body): void {
-  if (!body.created_by) return
-  globalRepo.registerAncestor([ref(body.created_by)], {
+export function registerSolidAncestry(globalRepo: Repository, part: PartSolid): void {
+  if (!part.created_by) return
+  globalRepo.registerAncestor([ref(part.created_by)], {
     type: 'solid',
-    body_id: body.id,
-    created_by: body.created_by,
+    body_id: part.id,
+    created_by: part.created_by,
   })
 }
 
@@ -267,7 +267,7 @@ function _evictFeatureSolidAncestry(globalRepo: Repository, fid: string): void {
   globalRepo.prunePendingUuids()
 }
 
-// Make the `[@fid]` solid/extrusion entries match the current bodyStore: every body
+// Make the `[@fid]` solid/extrusion entries match the current partStore: every body
 // the feature owns (`created_by === fid`) contributes exactly one `solid` and one
 // `extrusion-feature` element. `registerAncestor` accumulates (query.ts), so the
 // reconcile evicts the previous solid/extrusion elements first and re-registers --
@@ -278,7 +278,7 @@ function _evictFeatureSolidAncestry(globalRepo: Repository, fid: string): void {
 export function reconcileFeatureSolids(
   globalRepo: Repository,
   fid: string,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   shapeOwningFids?: ReadonlySet<string>,
 ): void {
   // Most features (sketches, planes, modifiers, ...) own no shaped body, so the
@@ -288,13 +288,13 @@ export function reconcileFeatureSolids(
   // shaped owned bodies, so nothing to evict or register here either.
   if (shapeOwningFids && !shapeOwningFids.has(fid)) return
   _evictFeatureSolidAncestry(globalRepo, fid)
-  for (const body of Object.values(bodyStore)) {
-    if (body.created_by !== fid) continue
+  for (const part of Object.values(partStore)) {
+    if (part.created_by !== fid) continue
     // Mirror the solve loop's shaped-body guard so reconcile registers only
     // what the loop would.
-    if (body.shape == null) continue
-    registerSolidAncestry(globalRepo, body)
-    registerExtrusionFeature(globalRepo, body.created_by || '', body.sketch_id)
+    if (part.shape == null) continue
+    registerSolidAncestry(globalRepo, part)
+    registerExtrusionFeature(globalRepo, part.created_by || '', part.sketch_id)
   }
 }
 
@@ -315,18 +315,18 @@ function arrayOr<T>(value: unknown, fallback: T[] = []): T[] {
   return Array.isArray(value) ? (value as T[]) : fallback
 }
 
-export function registerBodyBrepFromMeta(
+export function registerPartBrepFromMeta(
   repo: Repository,
-  body: Body,
+  part: PartSolid,
   meta: Record<string, unknown>,
 ): void {
   // Replace the body's whole index range, old and shrunken tails included: the
   // index-tag eviction inside each registrar only touches the indices about to
   // be re-registered, so a body that comes back with fewer faces/edges/vertices
   // would otherwise leave k..N-1 resolvable forever (index-shrink-ghost-eviction).
-  clearBodyAncestry(repo, body.id)
+  clearPartAncestry(repo, part.id)
   const mesh = meta['mesh'] as TessMesh | undefined
-  if (mesh && !mesh.is_fallback) _registerBrepFaceAncestry(repo, body, mesh)
+  if (mesh && !mesh.is_fallback) _registerBrepFaceAncestry(repo, part, mesh)
   // Non-array geometry is treated as absent rather than trusted: both registration
   // passes route the registrar through `_tryRegisterBodyBrepFromMeta`, so a throw
   // costs one body its ancestry, but a deps wiring that hands back the wrong shape
@@ -335,12 +335,12 @@ export function registerBodyBrepFromMeta(
   const edgeQueries = arrayOr<string>(meta['edge_queries'], edges.map(() => ''))
   const edgeUuids = arrayOr<string | null>(meta['edge_uuids'])
   const edgeCreators = arrayOr<string>(meta['edge_created_by'])
-  if (edges.length) _registerBrepEdgeAncestry(repo, body, edges, edgeQueries, edgeUuids, edgeCreators)
+  if (edges.length) _registerBrepEdgeAncestry(repo, part, edges, edgeQueries, edgeUuids, edgeCreators)
   const verts = arrayOr<number[]>(meta['vertices'])
   const vertQueries = arrayOr<string>(meta['vertex_queries'], verts.map(() => ''))
   const vertUuids = arrayOr<string | null>(meta['vertex_uuids'])
   const vertCreators = arrayOr<string>(meta['vertex_created_by'])
-  if (verts.length) _registerBrepVertexAncestry(repo, body, verts, vertQueries, vertUuids, vertCreators)
+  if (verts.length) _registerBrepVertexAncestry(repo, part, verts, vertQueries, vertUuids, vertCreators)
 }
 
 // One registrar, one error contract, honoured by BOTH registration passes: a body that
@@ -349,13 +349,13 @@ export function registerBodyBrepFromMeta(
 // throw from the registrar's own code (a malformed payload, a NaN face/edge sort key)
 // or from a deps wiring that does not shield per body aborted the whole build instead
 // of costing one body its ancestry.
-function _tryRegisterBodyBrepFromMeta(
+function _tryRegisterPartBrepFromMeta(
   repo: Repository,
-  body: Body,
+  part: PartSolid,
   meta: Record<string, unknown>,
 ): boolean {
   try {
-    registerBodyBrepFromMeta(repo, body, meta)
+    registerPartBrepFromMeta(repo, part, meta)
     return true
   } catch (e) {
     swallowUnlessTrap(e)
@@ -372,22 +372,22 @@ function _tryRegisterBodyBrepFromMeta(
 // (a body that cannot be identified still solves, it just loses its ancestry), and the
 // caller MUST NOT record such a body as registered: the checkpoint pass would then skip
 // a body whose ancestry is in no snapshot at all. `extractBrepMetadata` fails exactly
-// this way, per body, while `tessellateBodies` may still succeed for the same body --
+// this way, per body, while `tessellateParts` may still succeed for the same body --
 // which is what gives the checkpoint pass something to recover from.
-export function registerBodyFaces(
+export function registerPartFaces(
   globalRepo: Repository,
-  body: Body,
+  part: PartSolid,
   deps: BuildDeps,
   extractCached?: MetaExtractor,
 ): boolean {
-  if (body.shape == null) return false
+  if (part.shape == null) return false
   try {
     // Identify off the B-rep alone (no triangulation); fall back to the mesh
     // path when no metadata extractor is wired (pure non-OCC tests).
-    const extract = extractCached ?? deps.extractBrepMetadata ?? deps.tessellateBodies
-    const out = extract({ [body.id]: body }, globalRepo)[body.id]
+    const extract = extractCached ?? deps.extractBrepMetadata ?? deps.tessellateParts
+    const out = extract({ [part.id]: part }, globalRepo)[part.id]
     if (!out) return false
-    return _tryRegisterBodyBrepFromMeta(globalRepo, body, out)  // shared error contract
+    return _tryRegisterPartBrepFromMeta(globalRepo, part, out)  // shared error contract
   } catch (e) {
     swallowUnlessTrap(e)
     // Only the extractor call can still throw to here; the registrar throw is handled
@@ -407,10 +407,10 @@ export function registerBodyFaces(
  *  `face_uuids` / `face_ancestry` / `edge_uuids` / `edge_ancestry` / `profile_queries`
  *  WITHOUT minting a shape handle and WITHOUT appending to `modified_by` would produce
  *  the same string for different ancestry. No solver can today: the name arrays are
- *  written only by `registerSplitBodies` / `resplitBody` (features/bodySplit.ts), in
+ *  written only by `registerSplitParts` / `resplitBody` (features/partSplit.ts), in
  *  the same step that registers the fresh handle they index (`HandleTable.register`
  *  never recycles ids). */
-export function bodyVersion(b: Body): string {
+export function partVersion(b: PartSolid): string {
   return `${b.id}|${b.created_by}|${String(b.shape)}|${b.modified_by.length}`
 }
 
@@ -431,13 +431,13 @@ export function bodyVersion(b: Body): string {
  * checkpoint pass reads a different producer and may well succeed where the loop's did
  * not.
  */
-export function bodiesNeedingCheckpointRegistration(
-  bodyStoreSnapshot: Record<string, Body>,
+export function partsNeedingCheckpointRegistration(
+  partStoreSnapshot: Record<string, PartSolid>,
   registeredVersions: ReadonlyMap<string, string>,
 ): Set<string> {
   const out = new Set<string>()
-  for (const [bodyId, body] of Object.entries(bodyStoreSnapshot)) {
-    if (registeredVersions.get(bodyId) !== bodyVersion(body)) out.add(bodyId)
+  for (const [bodyId, body] of Object.entries(partStoreSnapshot)) {
+    if (registeredVersions.get(bodyId) !== partVersion(body)) out.add(bodyId)
   }
   return out
 }
@@ -447,7 +447,7 @@ export function bodiesNeedingCheckpointRegistration(
 // body", the pre-skip behaviour.
 export function snapshotWithBrepGeometry(
   checkpoint: FeatureCheckpoint,
-  bodiesOut: Record<string, Record<string, unknown>>,
+  partsOut: Record<string, Record<string, unknown>>,
   needing?: ReadonlySet<string>,
 ): Record<string, unknown> {
   const repo = repoFromSnapshot(checkpoint.repo_snapshot as Record<string, unknown>)
@@ -458,7 +458,7 @@ export function snapshotWithBrepGeometry(
     // rehydrated here: `needing` is empty for a body whose version has not moved since
     // the loop registered it, and its ancestry is therefore already in the snapshot.
     if (needing && !needing.has(bodyId)) continue
-    _tryRegisterBodyBrepFromMeta(repo, body, bodiesOut[bodyId] ?? {})
+    _tryRegisterPartBrepFromMeta(repo, body, partsOut[bodyId] ?? {})
     if (body.created_by) {
       ownedFids.add(body.created_by)
       // A needing body is shaped (the loop only attempts shaped bodies), so the

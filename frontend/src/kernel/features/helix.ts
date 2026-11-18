@@ -3,16 +3,16 @@
 // computes the parameters with helixMath, and registers the curve as PLAIN DATA
 // under `_curve_<id>` plus a bare-id axis entry and the two endpoints, exactly
 // as solvePlane registers its frame. A helix is not a body: it never touches
-// bodyStore. The OCC edge is rebuilt on demand by occ/helixEdge.buildCurveEdge,
+// partStore. The OCC edge is rebuilt on demand by occ/helixEdge.buildCurveEdge,
 // so a checkpoint restore needs no special handling.
 
 import type { Repository } from '../query'
 import type { OccModule, OccShape } from '../occ/occTypes'
 import type { DisposeScope } from '../occ/disposeScope'
 import type { HandleTable } from '../occ/handleTable'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 import { sortedFacesOf } from '../occ/faceLoops'
-import { findBodyForRef, remapFaceIndex, SLASH_FACE } from './faceProfile'
+import { findPartForRef, remapFaceIndex, SLASH_FACE } from './faceProfile'
 import { resolveCircularReference } from './shared/directionQuery'
 import {
   helixFrame,
@@ -45,10 +45,10 @@ function occFaceForRef(
   table: HandleTable,
   refStr: string,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): OccShape {
   const slash = SLASH_FACE.exec(refStr)
-  let body: Body | null
+  let part: PartSolid | null
   let faceIndex: number
   // Only a persisted slash index needs the UUID remap. A repo query already
   // resolved to the CURRENT face index, which stays valid even when that face
@@ -56,25 +56,25 @@ function occFaceForRef(
   // refuse a live pick, as the profile path's repo branch also does not.
   const persisted = slash !== null
   if (slash) {
-    body = findBodyForRef(bodyStore, slash[1])
+    part = findPartForRef(partStore, slash[1])
     faceIndex = parseInt(slash[2], 10)
   } else {
-    const entry = globalRepo.query(refStr, null, bodyStore) as Dict | null
-    const bodyId = entry?.body_id as string | undefined
+    const entry = globalRepo.query(refStr, null, partStore) as Dict | null
+    const partId = entry?.body_id as string | undefined
     const idx = entry?.face_index as number | undefined
-    if (bodyId === undefined || idx === undefined) {
+    if (partId === undefined || idx === undefined) {
       throw new Error(`helix: reference ${JSON.stringify(refStr)} is not a part face`)
     }
-    body = bodyStore[bodyId] ?? null
+    part = partStore[partId] ?? null
     faceIndex = idx
   }
-  if (body === null || body.shape === null) throw new Error(`helix: reference part not found for ${JSON.stringify(refStr)}`)
-  const shape = table.get<OccShape>(body.shape)
+  if (part === null || part.shape === null) throw new Error(`helix: reference part not found for ${JSON.stringify(refStr)}`)
+  const shape = table.get<OccShape>(part.shape)
   const faces = sortedFacesOf(oc, scope, shape)
   // Same remap the profile paths use: a body carrying face identity refuses a
   // persisted ref whose construction UUID no longer maps rather than reading
   // the raw index into a face the user never picked.
-  if (persisted) faceIndex = remapFaceIndex(oc, scope, shape, faceIndex, globalRepo, bodyStore, body, faces, refStr)
+  if (persisted) faceIndex = remapFaceIndex(oc, scope, shape, faceIndex, globalRepo, partStore, part, faces, refStr)
   if (faceIndex >= faces.length) throw new Error(`helix: face index ${faceIndex} out of range for ${JSON.stringify(refStr)}`)
   return faces[faceIndex]
 }
@@ -87,9 +87,9 @@ function cylinderFaceReference(
   table: HandleTable,
   refStr: string,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): HelixReference {
-  const face = occFaceForRef(oc, scope, table, refStr, globalRepo, bodyStore)
+  const face = occFaceForRef(oc, scope, table, refStr, globalRepo, partStore)
   const ad = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
   if (ad.GetType().value !== oc.GeomAbs_SurfaceType.GeomAbs_Cylinder.value) {
     throw new Error('helix: the picked face is not cylindrical; pick a cylinder face')
@@ -122,8 +122,8 @@ function cylinderFaceReference(
 }
 
 /** Refuse a reference by its own name when it is a shape a helix cannot sit on. */
-function refuseUnsupportedReference(refStr: string, globalRepo: Repository, bodyStore: Record<string, Body>): void {
-  const entry = globalRepo.query(refStr, null, bodyStore) as Dict | null
+function refuseUnsupportedReference(refStr: string, globalRepo: Repository, partStore: Record<string, PartSolid>): void {
+  const entry = globalRepo.query(refStr, null, partStore) as Dict | null
   if (entry === null) return
   const type = entry.type as string | undefined
   if (type === 'flatface') {
@@ -171,7 +171,7 @@ export function solveHelix(
   table: HandleTable,
   feature: Dict,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): HelixResult {
   const featureId = feature.id as string
   const definition = (feature.helix as Dict) ?? ({} as Dict)
@@ -180,15 +180,15 @@ export function solveHelix(
     throw new Error('helix: a reference pick is required')
   }
 
-  refuseUnsupportedReference(refStr, globalRepo, bodyStore)
-  const base = resolveCircularReference(refStr, globalRepo, bodyStore)
+  refuseUnsupportedReference(refStr, globalRepo, partStore)
+  const base = resolveCircularReference(refStr, globalRepo, partStore)
   if (base === null) {
     throw new Error(`helix: could not resolve reference ${JSON.stringify(refStr)}`)
   }
 
   const ref: HelixReference =
     base.kind === 'cylinderface'
-      ? cylinderFaceReference(oc, scope, table, refStr, globalRepo, bodyStore)
+      ? cylinderFaceReference(oc, scope, table, refStr, globalRepo, partStore)
       : {
           kind: base.kind,
           axis: base.axis as Vec3,

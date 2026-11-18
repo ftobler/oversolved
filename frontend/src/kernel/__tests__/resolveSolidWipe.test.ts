@@ -20,13 +20,13 @@ import { build, type BuildDeps, type FeatureResult } from '../builder'
 import { Repository, makeAncestryQuery } from '../query'
 import { postRegister } from '../features/postRegister'
 import { repoFromSnapshot } from '../builder'
-import type { Body, FeatureCheckpoint, BuildState } from '../types3d'
+import type { PartSolid, FeatureCheckpoint, BuildState } from '../types3d'
 
 const SHAPE_SEED: Record<string, number> = { f1: 100, f2: 200 }
-function shapeOf(n: number): Body['shape'] {
-  return n as unknown as Body['shape']
+function shapeOf(n: number): PartSolid['shape'] {
+  return n as unknown as PartSolid['shape']
 }
-function makeBody(fid: string, seed: number, extra?: Record<string, unknown>): Body {
+function makePart(fid: string, seed: number, extra?: Record<string, unknown>): PartSolid {
   return {
     id: 'body_' + fid,
     created_by: fid,
@@ -41,21 +41,21 @@ function makeBody(fid: string, seed: number, extra?: Record<string, unknown>): B
 const solve = (
   feature: Record<string, unknown>,
   _repo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): FeatureResult => {
   const fid = String(feature.id ?? '')
   if (feature.kind === 'make') {
-    bodyStore['body_' + fid] = makeBody(fid, SHAPE_SEED[fid] ?? 1000)
+    partStore['body_' + fid] = makePart(fid, SHAPE_SEED[fid] ?? 1000)
   } else if (feature.kind === 'modify') {
-    const body = bodyStore[String(feature.target)]
-    if (body) {
-      body.shape = shapeOf(Number(body.shape) + 1)
-      body.modified_by = [...body.modified_by, fid]
+    const part = partStore[String(feature.target)]
+    if (part) {
+      part.shape = shapeOf(Number(part.shape) + 1)
+      part.modified_by = [...part.modified_by, fid]
     }
   }
   return { status: 'ok' }
 }
-function fakeMeta(_body: Body): Record<string, unknown> {
+function fakeMeta(_part: PartSolid): Record<string, unknown> {
   return {
     mesh: {
       vertices: [], faces: [], triangle_to_face: [], face_queries: [],
@@ -65,7 +65,7 @@ function fakeMeta(_body: Body): Record<string, unknown> {
   }
 }
 interface HarnessOptions {
-  /** Body ids the METADATA extractor drops (the loop cannot register their faces,
+  /** Part ids the METADATA extractor drops (the loop cannot register their faces,
    *  so the checkpoint pass is the one that has to). */
   metaOmits?: string[]
 }
@@ -77,10 +77,10 @@ class Harness {
   }
 
   deps(): BuildDeps {
-    const meta = (bodyStore: Record<string, Body>, isMetadataPath: boolean) =>
+    const meta = (partStore: Record<string, PartSolid>, isMetadataPath: boolean) =>
       Object.fromEntries(
-        Object.entries(bodyStore)
-          .filter(([bid]) => bodyStore[bid].shape != null
+        Object.entries(partStore)
+          .filter(([bid]) => partStore[bid].shape != null
             && !(isMetadataPath && (this.options.metaOmits?.includes(bid) ?? false)))
           .map(([bid, b]) => [bid, fakeMeta(b)]),
       )
@@ -88,7 +88,7 @@ class Harness {
       trySolveFeature: solve,
       postRegister,
       initGlobalRepo: () => new Repository(),
-      tessellateBodies: (store) => meta(store, false),
+      tessellateParts: (store) => meta(store, false),
       extractBrepMetadata: (store) => meta(store, true),
     }
   }
@@ -137,17 +137,17 @@ function buildNullShapePair(secondShapeNull: boolean) {
   const solvePair = (
     feature: Record<string, unknown>,
     _repo: Repository,
-    bodyStore: Record<string, Body>,
+    partStore: Record<string, PartSolid>,
   ): FeatureResult => {
     const fid = String(feature.id ?? '')
-    bodyStore['body_' + fid] = makeBody(fid, SHAPE_SEED[fid] ?? 1000, { id: 'body_' + fid })
-    bodyStore['body_' + fid + '_null'] = makeBody(fid, (SHAPE_SEED[fid] ?? 1000) + 1, {
+    partStore['body_' + fid] = makePart(fid, SHAPE_SEED[fid] ?? 1000, { id: 'body_' + fid })
+    partStore['body_' + fid + '_null'] = makePart(fid, (SHAPE_SEED[fid] ?? 1000) + 1, {
       id: 'body_' + fid + '_null',
       ...(secondShapeNull ? { shape: null } : {}),
     })
     return { status: 'ok' }
   }
-  const meta = (store: Record<string, Body>) =>
+  const meta = (store: Record<string, PartSolid>) =>
     Object.fromEntries(
       Object.entries(store)
         .filter(([, b]) => b.shape != null)
@@ -157,7 +157,7 @@ function buildNullShapePair(secondShapeNull: boolean) {
     trySolveFeature: solvePair,
     postRegister,
     initGlobalRepo: () => new Repository(),
-    tessellateBodies: meta,
+    tessellateParts: meta,
     extractBrepMetadata: meta,
   }
   return build(spec, { prevState: null }, deps)
@@ -230,20 +230,20 @@ describe('real postRegister: solids survive a re-solve', () => {
     const solveMulti = (
       feature: Record<string, unknown>,
       _repo: Repository,
-      bodyStore: Record<string, Body>,
+      partStore: Record<string, PartSolid>,
     ): FeatureResult => {
       const fid = String(feature.id ?? '')
-      bodyStore['body_' + fid] = makeBody(fid, SHAPE_SEED[fid] ?? 1000, { id: 'body_' + fid })
-      bodyStore['body_' + fid + '_1'] = makeBody(fid, (SHAPE_SEED[fid] ?? 1000) + 1, { id: 'body_' + fid + '_1' })
+      partStore['body_' + fid] = makePart(fid, SHAPE_SEED[fid] ?? 1000, { id: 'body_' + fid })
+      partStore['body_' + fid + '_1'] = makePart(fid, (SHAPE_SEED[fid] ?? 1000) + 1, { id: 'body_' + fid + '_1' })
       return { status: 'ok' }
     }
     const deps: BuildDeps = {
       trySolveFeature: solveMulti,
       postRegister,
       initGlobalRepo: () => new Repository(),
-      tessellateBodies: (store: Record<string, Body>) =>
+      tessellateParts: (store: Record<string, PartSolid>) =>
         Object.fromEntries(Object.entries(store).map(([bid, b]) => [bid, fakeMeta(b)])),
-      extractBrepMetadata: (store: Record<string, Body>) =>
+      extractBrepMetadata: (store: Record<string, PartSolid>) =>
         Object.fromEntries(Object.entries(store).map(([bid, b]) => [bid, fakeMeta(b)])),
     }
     const cold = build(multi, { prevState: null }, deps)
@@ -315,9 +315,9 @@ describe('reconcile hardening: the evict drops dead eids', () => {
   it('an eid whose element was deleted is not carried forward by the reconcile', () => {
     const liveRepo = new Repository()
     const deps: BuildDeps = {
-      trySolveFeature: (feature, repo, bodyStore) => {
+      trySolveFeature: (feature, repo, partStore) => {
         const fid = String(feature.id ?? '')
-        bodyStore['body_' + fid] = makeBody(fid, SHAPE_SEED[fid] ?? 1000)
+        partStore['body_' + fid] = makePart(fid, SHAPE_SEED[fid] ?? 1000)
         // Plant the supported dangling-eid state (the kind clearBySketchId leaves):
         // register under `[@fid]`, then delete the element without pruning the entry.
         const eid = repo.registerAncestor(['@' + fid], { type: 'sketch-feature', feature_id: fid })
@@ -326,7 +326,7 @@ describe('reconcile hardening: the evict drops dead eids', () => {
       },
       postRegister: () => {},
       initGlobalRepo: () => liveRepo,
-      tessellateBodies: () => ({}),
+      tessellateParts: () => ({}),
       extractBrepMetadata: () => ({}),
     }
     build({ features: [{ id: 'f1', kind: 'make' }] }, { prevState: null }, deps)
@@ -347,14 +347,14 @@ describe('reconcile hardening: no-body features exit early', () => {
   it('a feature owning no body registers no solid while an owning feature keeps exactly one', () => {
     const liveRepo = new Repository()
     const deps: BuildDeps = {
-      trySolveFeature: (feature, _repo, bodyStore) => {
+      trySolveFeature: (feature, _repo, partStore) => {
         const fid = String(feature.id ?? '')
-        if (feature.kind === 'make') bodyStore['body_' + fid] = makeBody(fid, SHAPE_SEED[fid] ?? 1000)
+        if (feature.kind === 'make') partStore['body_' + fid] = makePart(fid, SHAPE_SEED[fid] ?? 1000)
         return { status: 'ok' }
       },
       postRegister: () => {},
       initGlobalRepo: () => liveRepo,
-      tessellateBodies: () => ({}),
+      tessellateParts: () => ({}),
       extractBrepMetadata: () => ({}),
     }
     build(
@@ -365,12 +365,12 @@ describe('reconcile hardening: no-body features exit early', () => {
 
     const entry = entryUnder(liveRepo, 'f1')
     expect(entry).toBeDefined()
-    const solidBodies = entry!.eids
+    const solidParts = entry!.eids
       .map((eid) => liveRepo.elements.get(eid) as Record<string, unknown> | undefined)
       .filter((el) => el?.type === 'solid')
       .map((el) => el!.body_id)
       .sort()
-    expect(solidBodies).toEqual(['body_f1'])
+    expect(solidParts).toEqual(['body_f1'])
 
     // sk1 owns no body, so its reconcile early-exits and `[@sk1]` carries no solid.
     const skEntry = entryUnder(liveRepo, 'sk1')
@@ -384,14 +384,14 @@ describe('reconcile hardening: no-body features exit early', () => {
   it('a feature owning only a null-shape body registers no solid under [@fid]', () => {
     const liveRepo = new Repository()
     const deps: BuildDeps = {
-      trySolveFeature: (feature, _repo, bodyStore) => {
+      trySolveFeature: (feature, _repo, partStore) => {
         const fid = String(feature.id ?? '')
-        bodyStore['body_' + fid] = { ...makeBody(fid, SHAPE_SEED[fid] ?? 1000), shape: null }
+        partStore['body_' + fid] = { ...makePart(fid, SHAPE_SEED[fid] ?? 1000), shape: null }
         return { status: 'ok' }
       },
       postRegister: () => {},
       initGlobalRepo: () => liveRepo,
-      tessellateBodies: () => ({}),
+      tessellateParts: () => ({}),
       extractBrepMetadata: () => ({}),
     }
     build({ features: [{ id: 'f1', kind: 'make' }] }, { prevState: null }, deps)

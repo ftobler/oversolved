@@ -9,19 +9,19 @@
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 import { getPoint3d, type Repository } from '../query'
 import type { PlaneLike } from './shared/planes'
 import { resolvePlaneRef } from './shared/planes'
-import { resolveBody, resolveBodyRefList } from './shared/bodyResolution'
+import { resolvePart, resolvePartRefList } from './shared/partResolution'
 import { makeMirrorTrsf, makeTranslationTrsf, makeRotationTrsf, makeScaleTrsf } from '../occ/transforms'
 import { booleanWithDiff, booleanWithHistory } from '../occ/booleans'
 import { volumeOf } from '../occ/volume'
 import { shapeBndBox } from '../occ/primitives'
-import { transformCopyWithMapping, rekeyNamesForTransformedBody, rebuildNamesForTransformedCopy, readSourceFaceRows, type NameMaps } from '../occ/transformLineage'
+import { transformCopyWithMapping, rekeyNamesForTransformedPart, rebuildNamesForTransformedCopy, readSourceFaceRows, type NameMaps } from '../occ/transformLineage'
 import { transferBooleanNames } from './booleanLineage'
-import { registerSplitBodies, resplitBody } from './bodySplit'
-import { readBodyNames } from '../occ/bodyNames'
+import { registerSplitParts, resplitPart } from './partSplit'
+import { readPartNames } from '../occ/partNames'
 import { precisionCeilingWarning } from '../precision'
 import { solveFeaturePattern } from './patternFeature'
 import { mirrorSubject } from '@/utils/core/mirrorSubject'
@@ -68,7 +68,7 @@ export function solveTransform(
   table: HandleTable,
   feature: Dict,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): TransformResult {
   const featureId = (feature.id as string) ?? ''
   // Params live in the kind sub-dict only; the solver adapter folds any legacy
@@ -78,25 +78,25 @@ export function solveTransform(
   // Every source body is resolved up front, before any shape is touched: a ref
   // that names nothing has to fail the feature outright rather than after half
   // the picks were already moved.
-  const bodyQueries = (cfg.bodies as string[] | undefined) ?? []
-  if (bodyQueries.length === 0) throw new Error('transform: no parts picked')
-  const sources = resolveBodyRefList(bodyQueries, globalRepo, bodyStore, 'transform').map((key) => {
-    const body = bodyStore[key]
+  const partQueries = (cfg.bodies as string[] | undefined) ?? []
+  if (partQueries.length === 0) throw new Error('transform: no parts picked')
+  const sources = resolvePartRefList(partQueries, globalRepo, partStore, 'transform').map((key) => {
+    const part = partStore[key]
     // A resolved key is not automatically a live store key: the `?` branch of
     // resolveBodyRefKeys reads the id off the REPO (`body_id` on a face record),
     // which can name a body a later feature has since deleted. Diagnose it here
     // rather than let `body.shape` throw a bare TypeError out of the solve.
-    if (body === undefined) throw new Error(`transform: part no longer exists: ${JSON.stringify(key)}`)
-    if (body.shape === null) throw new Error(`transform: part has no shape: ${JSON.stringify(key)}`)
-    return { body, shape: body.shape }
+    if (part === undefined) throw new Error(`transform: part no longer exists: ${JSON.stringify(key)}`)
+    if (part.shape === null) throw new Error(`transform: part has no shape: ${JSON.stringify(key)}`)
+    return { body: part, shape: part.shape }
   })
 
   let translation = (cfg.translation as number[] | undefined) ?? null
   const trFrom = cfg.translation_from as string | undefined
   const trTo = cfg.translation_to as string | undefined
   if (trFrom && trTo) {
-    const p0Ref = globalRepo.query(trFrom, null, bodyStore) as Dict | null
-    const p1Ref = globalRepo.query(trTo, null, bodyStore) as Dict | null
+    const p0Ref = globalRepo.query(trFrom, null, partStore) as Dict | null
+    const p1Ref = globalRepo.query(trTo, null, partStore) as Dict | null
     if (p0Ref === null) throw new Error(`transform: translation_from not found: ${JSON.stringify(trFrom)}`)
     if (p1Ref === null) throw new Error(`transform: translation_to not found: ${JSON.stringify(trTo)}`)
     const p0 = getPoint3d(p0Ref, globalRepo)
@@ -156,7 +156,7 @@ export function solveTransform(
     )
   }
   if (axisQuery) {
-    const edgeRef = globalRepo.query(axisQuery, null, bodyStore) as Dict | null
+    const edgeRef = globalRepo.query(axisQuery, null, partStore) as Dict | null
     if (edgeRef === null) throw new Error(`transform: rotation_axis not found: ${JSON.stringify(axisQuery)}`)
     // An explicit direction from cfg already counts as resolved; the query
     // exists to derive one, and a query that derives none is a bad pick.
@@ -188,7 +188,7 @@ export function solveTransform(
   let scaleCenter = (cfg.scale_center as number[] | undefined) ?? null
   const scaleCenterQuery = cfg.scale_center_from as string | undefined
   if (scaleCenterQuery) {
-    const ptRef = globalRepo.query(scaleCenterQuery, null, bodyStore) as Dict | null
+    const ptRef = globalRepo.query(scaleCenterQuery, null, partStore) as Dict | null
     if (ptRef === null) throw new Error(`transform: scale_center_from not found: ${JSON.stringify(scaleCenterQuery)}`)
     scaleCenter = getPoint3d(ptRef, globalRepo)
   }
@@ -218,22 +218,22 @@ export function solveTransform(
   }
 
   const operation = (cfg.operation as string) ?? 'new'
-  const bodyIds: string[] = []
+  const partIds: string[] = []
   let consumedReplace: string | null = null  // a source the replace resplit deleted (defensive)
   sources.forEach(({ body: sourceBody, shape: sourceHandle }, index) => {
     const sourceShape = table.get<OccShape>(sourceHandle)
-    const sourceNames: NameMaps = readBodyNames(oc, scope, sourceShape, sourceBody)
+    const sourceNames: NameMaps = readPartNames(oc, scope, sourceShape, sourceBody)
     // One transform copy per source body, so there is nothing per-instance to
     // hoist: the source rows are read once here, per body (M37 Change 2a).
     const rows = readSourceFaceRows(oc, scope, sourceShape, sourceNames.faceNames, sourceNames.faceAncestry)
     const { shape: newShape, builder } = transformCopyWithMapping(oc, scope, sourceShape, combined)
 
     if (operation === 'replace') {
-      const names = rekeyNamesForTransformedBody(oc, scope, newShape, sourceShape, sourceNames, builder)
+      const names = rekeyNamesForTransformedPart(oc, scope, newShape, sourceShape, sourceNames, builder)
       // A rigid transform cannot disconnect a body, but a non-uniform scale is in
       // the same composed Trsf, so this goes through the one path anyway rather
       // than resting on that argument.
-      const ids = resplitBody(oc, scope, table, bodyStore, sourceBody, scope.track(newShape), featureId, names)
+      const ids = resplitPart(oc, scope, table, partStore, sourceBody, scope.track(newShape), featureId, names)
       if (ids.length === 0) {
         // Defensive: a transform copy cannot consume its source, but if the
         // resplit ever deleted it there is nothing to register here; the
@@ -241,21 +241,21 @@ export function solveTransform(
         consumedReplace = sourceBody.id
         return
       }
-      bodyIds.push(...ids)
+      partIds.push(...ids)
       sourceBody.modified_by = [...(sourceBody.modified_by ?? []), featureId]
       return
     }
     // `index` is the instance index the lineage remap mints fresh construction
     // UUIDs from, so two picked bodies cannot end up sharing face/edge UUIDs.
-    // The new-body ids all share one base: `registerSplitBodies`' collision walk
+    // The new-body ids all share one base: `registerSplitParts`' collision walk
     // then composes them into one flat, gap-free `body_<feature>[_n]` run.
     const names = rebuildNamesForTransformedCopy(oc, scope, newShape, rows, featureId, index, builder)
-    bodyIds.push(...registerSplitBodies(oc, scope, table, bodyStore, scope.track(newShape), {
+    partIds.push(...registerSplitParts(oc, scope, table, partStore, scope.track(newShape), {
       id: 'body_' + featureId, createdBy: featureId, sketchId: sourceBody.sketch_id,
       profileQueries: sourceBody.profile_queries, precision: sourceBody.precision, ...names,
     }))
   })
-  if (bodyIds.length === 0 && consumedReplace !== null) {
+  if (partIds.length === 0 && consumedReplace !== null) {
     // Every picked source was consumed (defensive; see the replace branch).
     // body_ids: [] says nothing survives; body_id names the body the feature
     // row points at.
@@ -269,8 +269,8 @@ export function solveTransform(
   }
   return {
     status: 'ok',
-    body_id: bodyIds[0],
-    body_ids: bodyIds,
+    body_id: partIds[0],
+    body_ids: partIds,
     operation: operation === 'replace' ? 'replace' : 'new',
   }
 }
@@ -307,7 +307,7 @@ export function solveMirror(
   table: HandleTable,
   feature: Dict,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   featuresById: Record<string, Dict> = {},
   solveContext: { variables: Record<string, number>; laterVariables: Record<string, number> } = {
     variables: {}, laterVariables: {},
@@ -334,10 +334,10 @@ export function solveMirror(
     }
     const planeQuery = (cfg.plane as string) ?? ''
     if (!planeQuery) throw new Error('mirror: plane is required')
-    const { origin, normal } = resolvePlaneRef(globalRepo, planeQuery, bodyStore, 'mirror')
+    const { origin, normal } = resolvePlaneRef(globalRepo, planeQuery, partStore, 'mirror')
     const trsf = makeMirrorTrsf(oc, scope, origin, normal)
     const result = solveFeaturePattern(
-      oc, scope, table, feature, cfg, globalRepo, bodyStore, featuresById, solveContext,
+      oc, scope, table, feature, cfg, globalRepo, partStore, featuresById, solveContext,
       [{ key: 'm', trsf }], [],
       {},
       {
@@ -356,21 +356,21 @@ export function solveMirror(
     }
   }
 
-  const bodyQuery = (cfg.body as string) ?? ''
-  const sourceBody = bodyQuery ? resolveBody(bodyQuery, bodyStore) : null
-  if (sourceBody === null || sourceBody.shape === null) {
-    throw new Error(`mirror: part not found: ${JSON.stringify(bodyQuery)}`)
+  const partQuery = (cfg.body as string) ?? ''
+  const sourcePart = partQuery ? resolvePart(partQuery, partStore) : null
+  if (sourcePart === null || sourcePart.shape === null) {
+    throw new Error(`mirror: part not found: ${JSON.stringify(partQuery)}`)
   }
 
   const planeQuery = (cfg.plane as string) ?? ''
   if (!planeQuery) throw new Error('mirror: plane is required')
-  const { origin, normal } = resolvePlaneRef(globalRepo, planeQuery, bodyStore, 'mirror')
+  const { origin, normal } = resolvePlaneRef(globalRepo, planeQuery, partStore, 'mirror')
 
   const keepOriginal = (cfg.keep_original as boolean) ?? true
   const merge = (cfg.merge as boolean) ?? true
 
-  const sourceShape = table.get<OccShape>(sourceBody.shape)
-  const sourceNames: NameMaps = readBodyNames(oc, scope, sourceShape, sourceBody)
+  const sourceShape = table.get<OccShape>(sourcePart.shape)
+  const sourceNames: NameMaps = readPartNames(oc, scope, sourceShape, sourcePart)
   // One mirror copy of one source body: no per-instance repetition, so the rows
   // are simply read once here (M37 Change 2a).
   const rows = readSourceFaceRows(oc, scope, sourceShape, sourceNames.faceNames, sourceNames.faceAncestry)
@@ -380,35 +380,35 @@ export function solveMirror(
   // When replacing (keep_original: false), preserve the original body's face
   // UUIDs so existing picks survive. When spawning a new body, mint fresh UUIDs.
   const mirroredNames = !keepOriginal
-    ? rekeyNamesForTransformedBody(oc, scope, mirrored, sourceShape, sourceNames, builder)
+    ? rekeyNamesForTransformedPart(oc, scope, mirrored, sourceShape, sourceNames, builder)
     : rebuildNamesForTransformedCopy(oc, scope, mirrored, rows, featureId, 0, builder)
 
   if (!keepOriginal) {
-    const bodyIds = resplitBody(oc, scope, table, bodyStore, sourceBody, scope.track(mirrored), featureId, mirroredNames)
-    if (bodyIds.length === 0) {
+    const partIds = resplitPart(oc, scope, table, partStore, sourcePart, scope.track(mirrored), featureId, mirroredNames)
+    if (partIds.length === 0) {
       // Defensive: mirroring cannot consume a body, but if the resplit ever
       // deleted it, body_ids must not name a live id for a body that is gone.
       return {
         status: 'ok',
-        body_id: sourceBody.id,
+        body_id: sourcePart.id,
         body_ids: [],
         operation: 'replace',
-        solver_warning: `mirror: the replace removed all of part '${sourceBody.id}'; the part was deleted`,
+        solver_warning: `mirror: the replace removed all of part '${sourcePart.id}'; the part was deleted`,
       }
     }
-    sourceBody.modified_by.push(featureId)
-    return { status: 'ok', body_id: bodyIds[0], body_ids: bodyIds, operation: 'replace' }
+    sourcePart.modified_by.push(featureId)
+    return { status: 'ok', body_id: partIds[0], body_ids: partIds, operation: 'replace' }
   }
 
   if (merge) {
     // A mirror is a fuse, so the merge reads the same reported precision the
     // source body carries: the mirrored copy is the same geometry.
-    const precision = sourceBody.precision
+    const precision = sourcePart.precision
     const res = booleanWithDiff(oc, scope, sourceShape, mirrored, 'fuse', {
-      unifyFaces: !sourceBody.imported, precision,
+      unifyFaces: !sourcePart.imported, precision,
     })
     const names = transferBooleanNames(oc, scope, {
-      bodyShape: res.shape,
+      partShape: res.shape,
       faceOrigin: res.faceOrigin,
       targetFaceNames: sourceNames.faceNames,
       targetFaceAncestry: sourceNames.faceAncestry,
@@ -426,36 +426,36 @@ export function solveMirror(
     })
     // "merge" is a fuse, and a body mirrored across a plane it does not reach
     // fuses into two disjoint solids: two parts, not one merged part.
-    const bodyIds = resplitBody(
-      oc, scope, table, bodyStore, sourceBody, scope.track(res.shape), featureId, names, null, precision,
+    const partIds = resplitPart(
+      oc, scope, table, partStore, sourcePart, scope.track(res.shape), featureId, names, null, precision,
     )
-    if (bodyIds.length === 0) {
+    if (partIds.length === 0) {
       // Defensive: a fuse of a body with its mirror cannot consume it, but if
       // the resplit ever deleted it, report the deletion rather than a live id.
       return {
         status: 'ok',
-        body_id: sourceBody.id,
+        body_id: sourcePart.id,
         body_ids: [],
         operation: 'merge',
-        solver_warning: `mirror: the merge removed all of part '${sourceBody.id}'; the part was deleted`,
+        solver_warning: `mirror: the merge removed all of part '${sourcePart.id}'; the part was deleted`,
       }
     }
-    sourceBody.modified_by.push(featureId)
-    sourceBody.brep_diff = res.diff
+    sourcePart.modified_by.push(featureId)
+    sourcePart.brep_diff = res.diff
     const ceiling = precision ? precisionCeilingWarning(precision) : null
     return {
       status: 'ok',
-      body_id: bodyIds[0],
-      body_ids: bodyIds,
+      body_id: partIds[0],
+      body_ids: partIds,
       operation: 'merge',
       ...(ceiling !== null ? { solver_warning: ceiling } : {}),
     }
   }
 
-  const newBodyId = 'body_' + featureId
-  const newIds = registerSplitBodies(oc, scope, table, bodyStore, scope.track(mirrored), {
-    id: newBodyId, createdBy: featureId, sketchId: sourceBody.sketch_id,
-    profileQueries: sourceBody.profile_queries, precision: sourceBody.precision, ...mirroredNames,
+  const newPartId = 'body_' + featureId
+  const newIds = registerSplitParts(oc, scope, table, partStore, scope.track(mirrored), {
+    id: newPartId, createdBy: featureId, sketchId: sourcePart.sketch_id,
+    profileQueries: sourcePart.profile_queries, precision: sourcePart.precision, ...mirroredNames,
   })
   return { status: 'ok', body_id: newIds[0], body_ids: newIds, operation: 'new' }
 }

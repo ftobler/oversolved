@@ -34,15 +34,15 @@ function sortedOpaque(dimensionRenderOrder: number) {
   const dimension = new THREE.Line(new THREE.BufferGeometry(), dimensionMaterial)
   dimension.renderOrder = dimensionRenderOrder
 
-  const bodyMaterial = new THREE.MeshPhysicalMaterial()
-  const body = new THREE.Mesh(new THREE.BoxGeometry(), bodyMaterial)
+  const partMaterial = new THREE.MeshPhysicalMaterial()
+  const part = new THREE.Mesh(new THREE.BoxGeometry(), partMaterial)
 
   const list = renderList()
   list.push(dimension, dimension.geometry, dimensionMaterial, 0, 50, null)
-  list.push(body, body.geometry, bodyMaterial, 0, 10, null)
+  list.push(part, part.geometry, partMaterial, 0, 10, null)
   list.sort(undefined as never, undefined as never)
 
-  expect(materialId(dimensionMaterial)).toBeLessThan(materialId(bodyMaterial))
+  expect(materialId(dimensionMaterial)).toBeLessThan(materialId(partMaterial))
   return list.opaque.map(item => item.object)
 }
 

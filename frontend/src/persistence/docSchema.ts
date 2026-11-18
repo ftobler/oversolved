@@ -22,7 +22,7 @@ import { isLengthUnit } from '@/utils/lengthUnit'
 import { normalizeMateLimitDeg } from '@/utils/mateKinds'
 import { isDocumentConstraintKind } from '@/wasm-kernel/partDocToSketches'
 import { deriveMemberIds, isFaceProjectionSource } from '@/kernel/features/projectionMembers'
-import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateInstancePatternSketch, migrateLegacyBodyPicks, migratePatternSourceFeatures, canonicalizeFeatureParams, migrateProjectionConstraints, migrateLineDistanceOperandOrder } from '@/utils/yamlMigrations'
+import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateInstancePatternSketch, migrateLegacyPartPicks, migratePatternSourceFeatures, canonicalizeFeatureParams, migrateProjectionConstraints, migrateLineDistanceOperandOrder } from '@/utils/yamlMigrations'
 import { MAX_ARRAY_COUNT, MAX_ARRAY_CELLS } from '@/utils/core/arrayLimits'
 import { skipProblem } from '@/utils/core/patternSkip'
 import { splitStoredPattern } from '@/utils/core/patternSplit'
@@ -142,7 +142,7 @@ const MIGRATION_STEPS: MigrationStep[] = [
   { id: 'canonical-feature-params', to: 3, apply: stepCanonicalFeatureParams },
   { id: 'feature-refs-absolute', to: 3, apply: stepFeatureRefsAbsolute },
   { id: 'drop-dead-axis-constraints', to: 2, apply: stepDropDeadAxisConstraints },
-  { id: 'plural-body-picks', to: 2, apply: stepPluralBodyPicks },
+  { id: 'plural-body-picks', to: 2, apply: stepPluralPartPicks },
   { id: 'drop-redundant-inline-step-payload', to: 2, apply: stepDropRedundantInlineStepPayload },
 ]
 
@@ -192,9 +192,9 @@ function stepDropDeadAxisConstraints(doc: DocRecord): number {
   return part ? dropDeadAxisConstraints(part) : 0
 }
 
-function stepPluralBodyPicks(doc: DocRecord): number {
+function stepPluralPartPicks(doc: DocRecord): number {
   const part = migratablePartDoc(doc)
-  return part ? migrateLegacyBodyPicks(part) : 0
+  return part ? migrateLegacyPartPicks(part) : 0
 }
 
 function stepPatternSourceFeatures(doc: DocRecord): number {
@@ -1067,7 +1067,7 @@ export function arrayCountProblem(
   return field === 'count_2' ? arrayCellsProblem(otherCount, resolved) : null
 }
 
-function checkDeleteBody(sub: DocRecord, field: string): void {
+function checkDeletePart(sub: DocRecord, field: string): void {
   checkOptional(sub, 'bodies', field, checkRefList)
 }
 
@@ -1336,7 +1336,7 @@ const FEATURE_DEF_CHECKS = new Map<string, (sub: DocRecord, field: string) => vo
   ['circular_pattern', checkCircularPattern],
   ['curve_pattern', checkCurvePattern],
   ['instance_pattern', checkInstancePattern],
-  ['delete_body', checkDeleteBody],
+  ['delete_body', checkDeletePart],
   ['hole', checkHole],
   ['transform', checkTransform],
   ['mirror', checkMirror],

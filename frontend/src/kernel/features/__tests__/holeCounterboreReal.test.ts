@@ -23,7 +23,7 @@ import { setSketchSolver, resetSketchSolver } from '../sketch'
 import { SharedHarness } from '../../occ/sharedHarness'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { holeFacePath, mintFaceUuid } from '../../constructionName'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 
 const oc = await loadOcc()
@@ -33,7 +33,7 @@ const PLANE = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal:
 const BOX = 20 * 20 * 10
 
 /** A 20 x 20 x 10 box with its top face on the Front plane (z = 0). */
-function boxTarget(occ: OccModule, scope: DisposeScope, table: HandleTable): Record<string, Body> {
+function boxTarget(occ: OccModule, scope: DisposeScope, table: HandleTable): Record<string, PartSolid> {
   const box = makeBox(occ, scope, 20, 20, 10)
   return {
     body_t: {
@@ -61,22 +61,22 @@ function runHole(
   hole: Record<string, unknown>,
   repoSetup: (repo: Repository) => void,
   entities: Array<{ id: string; kind: string }>,
-): { volume: number; result: Record<string, unknown>; body: Body } {
+): { volume: number; result: Record<string, unknown>; body: PartSolid } {
   const scope = new DisposeScope()
   const table = new HandleTable()
   try {
     const repo = new Repository()
     repo.register('_pt_sk', PLANE)
     repoSetup(repo)
-    const bodyStore = boxTarget(oc!, scope, table)
+    const partStore = boxTarget(oc!, scope, table)
     const result = solveHole(oc!, scope, table, {
       id: 'h1',
       hole: { sketch: '@sk', target: 'body_t', ...hole },
-    }, repo, bodyStore, { sk: { entities } })
+    }, repo, partStore, { sk: { entities } })
     return {
       result,
-      body: bodyStore.body_t,
-      volume: volumeOf(oc!, scope, table.get<OccShape>(bodyStore.body_t.shape!)),
+      body: partStore.body_t,
+      volume: volumeOf(oc!, scope, table.get<OccShape>(partStore.body_t.shape!)),
     }
   } finally {
     scope.dispose()
@@ -265,13 +265,13 @@ describe.skipIf(!oc)('hole drill-point tip (real OCC)', () => {
       const repo = new Repository()
       repo.register('_pt_sk', { ...PLANE, origin: [0, 0, 10] })
       pointSite(repo)
-      const bodyStore = boxTarget(oc!, scope, table)
+      const partStore = boxTarget(oc!, scope, table)
       const result = solveHole(oc!, scope, table, {
         id: 'h1',
         hole: { sketch: '@sk', target: 'body_t', diameter: 4, depth: 8, direction: 'reverse', tip: 'drill_point' },
-      }, repo, bodyStore, { sk: { entities: pointEntity } })
+      }, repo, partStore, { sk: { entities: pointEntity } })
       expect(result.status).toBe('ok')
-      const volume = volumeOf(oc!, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+      const volume = volumeOf(oc!, scope, table.get<OccShape>(partStore.body_t.shape!))
       expect(volume).toBeCloseTo(BOX - (Math.PI * 4 * 8 + drillPointVolume(2, 118)), 4)
     } finally {
       scope.dispose()
@@ -351,8 +351,8 @@ describe.skipIf(!oc || !solveBytes)('hole widened-mouth naming survives an upstr
   })
 
   // The query of the face whose construction uuid is the hole role's.
-  function faceQueryForRole(r: ReturnType<SharedHarness['run']>, bodyId: string, role: string): string {
-    const mesh = h.body(r, bodyId).mesh as { face_queries?: string[]; face_uuids?: (string | null)[] } | undefined
+  function faceQueryForRole(r: ReturnType<SharedHarness['run']>, partId: string, role: string): string {
+    const mesh = h.part(r, partId).mesh as { face_queries?: string[]; face_uuids?: (string | null)[] } | undefined
     const wanted = mintFaceUuid(holeFacePath('h1', 'skh/p1', role as never))
     const at = (mesh?.face_uuids ?? []).indexOf(wanted)
     if (at < 0) throw new Error(`no face named ${role}`)

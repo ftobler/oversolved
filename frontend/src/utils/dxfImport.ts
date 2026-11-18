@@ -54,7 +54,7 @@ export interface DxfProfile {
 
 export interface DxfImportOptions {
   // The layer names to import, matched case-insensitively after trimming (DXF
-  // layer names are case-insensitive, so `Body` and `BODY` are one layer).
+  // layer names are case-insensitive, so `Part` and `BODY` are one layer).
   // Absent imports every layer.
   layers?: readonly string[]
 }
@@ -163,10 +163,10 @@ function sectionPairs(pairs: Pair[], name: string): Pair[] | null {
     if (pairs[i].code !== 0 || pairs[i].value.trim().toUpperCase() !== 'SECTION') continue
     const title = pairs[i + 1]
     if (title?.code !== 2 || title.value.trim().toUpperCase() !== name) continue
-    const body: Pair[] = []
+    const part: Pair[] = []
     for (let j = i + 2; j < pairs.length; j++) {
-      if (pairs[j].code === 0 && pairs[j].value.trim().toUpperCase() === 'ENDSEC') return body
-      body.push(pairs[j])
+      if (pairs[j].code === 0 && pairs[j].value.trim().toUpperCase() === 'ENDSEC') return part
+      part.push(pairs[j])
     }
     fail(`malformed DXF: ${name} section has no ENDSEC`)
   }
@@ -578,7 +578,7 @@ export function parseDxfProfile(
   const raw = rawEntities(section)
   const fileLayers = fileLayerMap(raw)
   const pickedLayers = options.layers === undefined ? undefined : resolvePickedLayers(options.layers, fileLayers)
-  // Folded for the same reason the name lookup is: `Body` and `BODY` are one
+  // Folded for the same reason the name lookup is: `Part` and `BODY` are one
   // layer to DXF even when a writer spelled both.
   const picked = pickedLayers === undefined ? null : new Set(pickedLayers.map(name => name.toLowerCase()))
   const entities: DxfEntity[] = []

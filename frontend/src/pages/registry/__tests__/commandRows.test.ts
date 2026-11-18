@@ -63,8 +63,8 @@ describe('buildCommandRows', () => {
 describe('docs table block', () => {
   it('renders one markdown row per command between the markers', () => {
     const block = renderCommandTable()
-    const body = block.slice(COMMAND_TABLE_START.length, block.length - COMMAND_TABLE_END.length)
-    const dataRows = body.split('\n').filter(line => line.startsWith('| `'))
+    const part = block.slice(COMMAND_TABLE_START.length, block.length - COMMAND_TABLE_END.length)
+    const dataRows = part.split('\n').filter(line => line.startsWith('| `'))
     expect(dataRows).toHaveLength(rows.length)
   })
 

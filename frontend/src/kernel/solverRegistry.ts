@@ -18,7 +18,7 @@ import type { OccModule } from './occ/occTypes'
 import type { DisposeScope } from './occ/disposeScope'
 import type { HandleTable } from './occ/handleTable'
 import type { Repository } from './query'
-import type { Body } from './types3d'
+import type { PartSolid } from './types3d'
 import type { FeatureKind, PartFeature } from '@/types/cad'
 import type { FeatureSolver } from './builder'
 import { solveExtrude } from './features/extrude'
@@ -37,7 +37,7 @@ import { solveCurvePattern } from './features/curvePattern'
 import { solveInstancePattern } from './features/instancePattern'
 import { solveTransform, solveMirror } from './features/transformMirror'
 import { solveSplit } from './features/splitByPlane'
-import { solveDeleteBody } from './features/deleteBody'
+import { solveDeletePart } from './features/deletePart'
 import { solveImportStep } from './features/importStep'
 import { solveSketch } from './features/sketch'
 import { faceBoundaryLookup } from './features/faceBoundary'
@@ -82,7 +82,7 @@ type LeafSolver<K extends DispatchedKind> = (
   table: HandleTable,
   feature: FeatureOf<K>,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   featuresById: Record<string, Record<string, unknown>>,
   solveContext?: SolveVariableContext,
 ) => Record<string, unknown>
@@ -90,15 +90,15 @@ type LeafSolver<K extends DispatchedKind> = (
 export type SolverTable = { [K in DispatchedKind]: LeafSolver<K> }
 
 const KIND_SOLVER: SolverTable = {
-  sketch: (oc, _scope, table, feature, globalRepo, bodyStore, featuresById) =>
+  sketch: (oc, _scope, table, feature, globalRepo, partStore, featuresById) =>
     solveSketch(
       feature,
       globalRepo,
-      bodyStore,
+      partStore,
       featuresById,
       // The sketch leaf is blind to OCC; the builder hands it the one lookup it
       // needs for a face projection's boundary (plain strings out).
-      faceBoundaryLookup(oc, table, bodyStore, globalRepo),
+      faceBoundaryLookup(oc, table, partStore, globalRepo),
     ),
   plane: solvePlane,
   helix: solveHelix,
@@ -120,7 +120,7 @@ const KIND_SOLVER: SolverTable = {
   transform: solveTransform,
   mirror: solveMirror,
   split: solveSplit,
-  delete_body: solveDeleteBody,
+  delete_body: solveDeletePart,
   // Variables carry no OCC geometry. The builder path short-circuits them in
   // ``createFeatureSolver`` (passing the live variable context); this entry is
   // the ``getSolver`` fallback and resolves against an empty context.
@@ -202,7 +202,7 @@ export function createFeatureSolver(
   return (
     feature: Record<string, unknown>,
     globalRepo: Repository,
-    bodyStore: Record<string, Body>,
+    partStore: Record<string, PartSolid>,
     featuresById: Record<string, Record<string, unknown>>,
     variableContext: Record<string, number> = {},
     laterVariables: Record<string, number> = {},
@@ -230,7 +230,7 @@ export function createFeatureSolver(
       if ('exception' in resolvedImport) {
         return { status: 'exception', exception: resolvedImport.exception }
       }
-      return solveImportStep(oc, scope, table, resolvedImport.feature, globalRepo, bodyStore, files)
+      return solveImportStep(oc, scope, table, resolvedImport.feature, globalRepo, partStore, files)
     }
     if (!isDispatchedKind(kind)) {
       return { status: 'exception', exception: `unported feature kind: ${kind}` }
@@ -247,7 +247,7 @@ export function createFeatureSolver(
     // resolve an earlier source feature's expressions exactly as the source's
     // own solve did.
     return dispatchFeature(
-      kind, oc, scope, table, resolved.feature, globalRepo, bodyStore, featuresById,
+      kind, oc, scope, table, resolved.feature, globalRepo, partStore, featuresById,
       { variables: variableContext, laterVariables },
     )
   }
@@ -267,11 +267,11 @@ function dispatchFeature<K extends DispatchedKind>(
   table: HandleTable,
   feature: Record<string, unknown>,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   featuresById: Record<string, Record<string, unknown>>,
   solveContext: SolveVariableContext,
 ): Record<string, unknown> {
   return KIND_SOLVER[kind](
-    oc, scope, table, feature as FeatureOf<K>, globalRepo, bodyStore, featuresById, solveContext,
+    oc, scope, table, feature as FeatureOf<K>, globalRepo, partStore, featuresById, solveContext,
   )
 }

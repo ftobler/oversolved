@@ -40,7 +40,7 @@ describe.skipIf(!oc || !solveBytes)('imported STEP extrude-a-face rebuild', () =
     const r1 = h.run({ features: [stepFeat] }, { files })
     expect(h.res(r1, IMP).status).toBe('ok')
 
-    const faceQueries = (h.body(r1, `body_${IMP}`).mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
+    const faceQueries = (h.part(r1, `body_${IMP}`).mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
     const faceQuery = faceQueries.find(q => q.includes(':flatface') && q.includes('@cls_zp')) ?? faceQueries[0]
     expect(faceQuery).toBeTruthy()
 

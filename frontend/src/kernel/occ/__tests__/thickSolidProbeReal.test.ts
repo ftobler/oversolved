@@ -23,7 +23,7 @@ import { noProgress } from '../defaultArgs'
 import { DisposeScope } from '../disposeScope'
 import { makeBox, makeCylinder, makeCylinderWithFaces, faceCentroid } from '../primitives'
 import { volumeOf } from '../volume'
-import { canonicalFaces, canonicalEdges, canonicalVertices } from '../bodyNames'
+import { canonicalFaces, canonicalEdges, canonicalVertices } from '../partNames'
 import { booleanWithDiff } from '../booleans'
 import { applyFilletWithDiff } from '../edgeModifier'
 import { applyShellWithLineage } from '../thickSolid'
@@ -280,17 +280,17 @@ describe.skipIf(!oc)('thickSolid phase-1 probe (real OCC)', () => {
     try {
       const plate = makeBox(module, scope, 10, 10, 2)
       const boss = makeCylinder(module, scope, [5, 5, 2], [0, 0, 1], 5, 1)
-      const body = scope.track(booleanWithDiff(module, scope, plate, boss, 'fuse').shape)
-      const top = topFace(module, scope, body)
+      const part = scope.track(booleanWithDiff(module, scope, plate, boss, 'fuse').shape)
+      const top = topFace(module, scope, part)
 
-      const sharp = applyShellWithLineage(module, scope, body, [top], 0.5, 'inward', null, 'sharp')
+      const sharp = applyShellWithLineage(module, scope, part, [top], 0.5, 'inward', null, 'sharp')
       expect(sharp.success).toBe(true)
       expect(sharp.usedJoin).toBe('arc')
       expect(sharp.sharpReason).toBe('build_not_done')
       expect(volumeOf(module, scope, scope.track(sharp.shape))).toBeCloseTo(100.9553, 4)
 
       // An explicit arc request never tries sharp, so it reports no substitution.
-      const arc = applyShellWithLineage(module, scope, body, [top], 0.5, 'inward', null, 'arc')
+      const arc = applyShellWithLineage(module, scope, part, [top], 0.5, 'inward', null, 'arc')
       expect(arc.success).toBe(true)
       expect(arc.usedJoin).toBe('arc')
       expect(arc.sharpReason).toBeNull()

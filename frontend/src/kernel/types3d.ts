@@ -37,7 +37,7 @@ export interface NewElements {
 }
 
 /** A 3D solid body tracked through the feature stack. */
-export interface Body {
+export interface PartSolid {
   id: string
   created_by: string
   modified_by: string[]
@@ -49,8 +49,8 @@ export interface Body {
   /**
    * Construction-by-name identity (query-naming-by-construction). `face_uuids`/
    * `edge_uuids` hold one construction UUID (or null) per face/edge of `shape`,
-   * in its canonical sub-shape order (occ/bodyNames.ts): written by the one
-   * place a shape becomes a body (features/bodySplit.ts) and read on that same
+   * in its canonical sub-shape order (occ/partNames.ts): written by the one
+   * place a shape becomes a body (features/partSplit.ts) and read on that same
    * shape, so they change whenever `shape` does. `face_ancestry`/`edge_ancestry`
    * map each UUID to its ancestral fallback tokens.
    */
@@ -96,7 +96,7 @@ export interface Body {
   imported?: boolean
   /**
    * Runtime-only provenance for a body a split minted: the feature whose solve
-   * broke it off and the body it was a solid of (features/bodySplit.ts). A
+   * broke it off and the body it was a solid of (features/partSplit.ts). A
    * later split of the body writes its own entry on the new siblings; the entry
    * is never inherited, so it always names the split that produced that body.
    * It is never persisted and never part of a geometry hash; its job is to let a
@@ -121,7 +121,7 @@ export interface FeatureCheckpoint {
   spec: Record<string, unknown>
   result: Record<string, unknown>
   repo_snapshot: Record<string, unknown>
-  body_store_snapshot: Record<string, Body>
+  body_store_snapshot: Record<string, PartSolid>
   bodies_snapshot: Record<string, unknown>
 }
 

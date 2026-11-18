@@ -127,7 +127,7 @@ describeReal('headless mixed-unit assembly', () => {
     measured!.measures.bbox!.forEach((value, i) => {
       expect(value).toBeCloseTo([0, 0, 0, SIDE_MM, SIDE_MM, 2 * SIDE_MM][i], 5)
     })
-    expect(measured!.measures.perBody.map(body => body.volume)).toEqual([
+    expect(measured!.measures.perBody.map(part => part.volume)).toEqual([
       expect.closeTo(UNIT_VOLUME, 4),
       expect.closeTo(UNIT_VOLUME, 4),
     ])

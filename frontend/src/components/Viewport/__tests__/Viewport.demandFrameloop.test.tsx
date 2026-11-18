@@ -56,7 +56,7 @@ vi.mock('@react-three/drei', () => ({
 }))
 
 vi.mock('../../Geometry3D', () => ({ default: () => null, __esModule: true }))
-vi.mock('../../Geometry3D/Body3D', () => ({ default: () => null, __esModule: true }))
+vi.mock('../../Geometry3D/Part3D', () => ({ default: () => null, __esModule: true }))
 vi.mock('../../Geometry3D/PreviewEdgeOverlay', () => ({ default: () => null, __esModule: true }))
 
 vi.mock('../../misc/CubeGizmo', () => ({
@@ -110,10 +110,10 @@ beforeEach(() => {
   h.gizmoProps = null
   usePartEditorStore.setState({
     features: [],
-    bodies: {},
-    pickBodies: {},
+    parts: {},
+    pickParts: {},
     visibleFeatures: new Set(),
-    visibleBodies: new Set(),
+    visibleParts: new Set(),
     solveResults: {},
     otherSketches: {},
     doc: null,

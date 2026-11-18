@@ -39,7 +39,7 @@ describe('useDimensionLabelIdRegistration', () => {
       }))
       expect(p.registry.lookupKey(DIMENSION_LABEL_LAYER_NAME, 'dim:cid1:value-1')).toBeDefined()
       expect(p.registry.lookupKey(DIMENSION_LABEL_LAYER_NAME, 'dim:cid1:value-2')).toBeDefined()
-      expect(p.dimensionLabelLayer.bodyCount()).toBe(2)
+      expect(p.dimensionLabelLayer.partCount()).toBe(2)
     } finally {
       setLivePipeline(null)
       p.dispose()
@@ -62,7 +62,7 @@ describe('useDimensionLabelIdRegistration', () => {
       // A fresh object with identical values: the hook keyed the effect on
       // planeTransformKey, so no free + realloc churn.
       rerender({ planeTransform: IDENTITY_PLANE() })
-      expect(p.dimensionLabelLayer.bodyCount()).toBe(1)
+      expect(p.dimensionLabelLayer.partCount()).toBe(1)
       expect(p.registry.lookupKey(DIMENSION_LABEL_LAYER_NAME, 'dim:cid1')).toBe(id1)
 
       // A genuinely different plane does re-register.
@@ -82,7 +82,7 @@ describe('useDimensionLabelIdRegistration', () => {
         constraintId: 'cid1', position: [0, 0, 0], enabled: false,
       }))
       expect(p.registry.lookupKey(DIMENSION_LABEL_LAYER_NAME, 'dim:cid1')).toBeUndefined()
-      expect(p.dimensionLabelLayer.bodyCount()).toBe(0)
+      expect(p.dimensionLabelLayer.partCount()).toBe(0)
     } finally {
       setLivePipeline(null)
       p.dispose()

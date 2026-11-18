@@ -5,7 +5,7 @@
 import { describe, it, expect } from 'vitest'
 import { selectByPredicate, validateSelector, SelectorError } from '@/kernel/select'
 import type { Selector } from '@/kernel/select'
-import type { BodyResult, EdgeData, FaceData } from '@/types/cad'
+import type { PartResult, EdgeData, FaceData } from '@/types/cad'
 
 type V3 = [number, number, number]
 
@@ -13,13 +13,13 @@ function line(a: V3, b: V3): EdgeData {
   return { kind: 'line', start: a, end: b }
 }
 
-function bodyResult(
+function partResult(
   id: string,
   edges: EdgeData[],
   edgeQueries: string[],
   faces: FaceData[] = [],
   faceQueries: string[] = [],
-): BodyResult {
+): PartResult {
   return {
     id,
     created_by: 'ex1',
@@ -31,18 +31,18 @@ function bodyResult(
 }
 
 // Three lines whose midpoints sit at z = -40, 0, 40.
-function plate(): Record<string, BodyResult> {
+function plate(): Record<string, PartResult> {
   const edges: EdgeData[] = [
     line([0, 0, -40], [10, 0, -40]),
     line([0, 0, 0], [10, 0, 0]),
     line([0, 0, 40], [10, 0, 40]),
   ]
   const queries = edges.map((_, i) => `q_${i}`)
-  return { body_p: bodyResult('body_p', edges, queries) }
+  return { body_p: partResult('body_p', edges, queries) }
 }
 
-function queriesOf(selector: Selector, bodies: Record<string, BodyResult>): string[] {
-  return selectByPredicate(selector, bodies).queries
+function queriesOf(selector: Selector, parts: Record<string, PartResult>): string[] {
+  return selectByPredicate(selector, parts).queries
 }
 
 describe('selectByPredicate: center (axis range)', () => {
@@ -59,10 +59,10 @@ describe('selectByPredicate: center (axis range)', () => {
     const faces: FaceData[] = [
       { centroid: [5, 5, 0], normal: [0, 0, 1], surface_type: 'flatface' },
     ]
-    const bodies = { body_b: bodyResult('body_b', [], [], faces, ['f0']) }
+    const parts = { body_b: partResult('body_b', [], [], faces, ['f0']) }
     // center on the centroid's z matches; within with a tiny range also matches
     // a point-sized bbox, so just ensure center works on faces.
-    expect(queriesOf({ kind: 'face', where: { center: { axis: 'z', at: 0 } } }, bodies))
+    expect(queriesOf({ kind: 'face', where: { center: { axis: 'z', at: 0 } } }, parts))
       .toEqual(['f0'])
   })
 

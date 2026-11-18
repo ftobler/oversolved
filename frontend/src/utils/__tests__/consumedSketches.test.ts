@@ -8,7 +8,7 @@ const ex = (id: string, profiles: string[]): PartFeature => ({ id, kind: 'extrud
 
 // The side face of an extruded rectangle, as the real kernel names it: the
 // sketch edge that swept it sits in the ancestry next to the extrude.
-const bodyFace = makeAncestryQuery(['@u|u_0a3cb58fde38f980', '@ex1', '@body_ex1', '@sk1/left', '@cls_xn'], 'flatface')
+const partFace = makeAncestryQuery(['@u|u_0a3cb58fde38f980', '@ex1', '@body_ex1', '@sk1/left', '@cls_xn'], 'flatface')
 
 // The sketches one extrude profile consumes.
 const fromProfile = (profile: string, features: PartFeature[]) =>
@@ -31,7 +31,7 @@ describe('consumedSketchIds', () => {
 
   it('does not count a body face as its sketch, although its ancestry names the sketch', () => {
     // Extruding off that face consumes the body, not the sketch behind it.
-    expect(fromProfile(bodyFace, [sk('sk1'), ex('ex1', [])])).toEqual([])
+    expect(fromProfile(partFace, [sk('sk1'), ex('ex1', [])])).toEqual([])
   })
 
   it('collects profile and path sketches of a sweep, without duplicates', () => {
@@ -67,7 +67,7 @@ describe('consumedSketchIds', () => {
 
 describe('allConsumedSketchIds', () => {
   it('unions what every feature consumes', () => {
-    const features = [sk('sk1'), sk('sk2'), sk('sk3'), ex('ex1', ['@sk1/c1']), ex('ex2', ['@sk2/c1', bodyFace])]
+    const features = [sk('sk1'), sk('sk2'), sk('sk3'), ex('ex1', ['@sk1/c1']), ex('ex2', ['@sk2/c1', partFace])]
     expect([...allConsumedSketchIds(features)].sort()).toEqual(['sk1', 'sk2'])
   })
 })

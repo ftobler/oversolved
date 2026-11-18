@@ -9,7 +9,7 @@ import { failLoud } from '@/utils/invariants'
 // The body-style mutations whose no-op slice keys on a single part_style
 // entry. A missing bodyId writes part_style[undefined] - a real doc change the
 // slice cannot represent - so these are the ones the guard must never swallow.
-export const BODY_STYLE_MUTATION_TYPES = new Set<Mutation['type']>([
+export const PART_STYLE_MUTATION_TYPES = new Set<Mutation['type']>([
   'rename_part',
   'set_body_visibility',
   'set_part_color',
@@ -40,8 +40,8 @@ export function noOpSliceFor(m: Mutation, doc: PartDoc): unknown {
   // under a key this function never learns to read; the classification is what
   // is bound to those keys, by SliceReadableMutation in mutationIdempotence.
   const featureId = 'featureId' in m ? m.featureId : undefined
-  const bodyId = 'bodyId' in m ? m.bodyId : undefined
-  if (bodyId === undefined && BODY_STYLE_MUTATION_TYPES.has(m.type)) {
+  const partId = 'bodyId' in m ? m.bodyId : undefined
+  if (partId === undefined && PART_STYLE_MUTATION_TYPES.has(m.type)) {
     failLoud('[noOpGuard] body-style mutation dispatched without a bodyId')
     return GUARD_BYPASS
   }
@@ -62,8 +62,8 @@ export function noOpSliceFor(m: Mutation, doc: PartDoc): unknown {
   } else if (featureId !== undefined) {
     slice.features = [(doc.features ?? []).find(f => f.id === featureId)]
   }
-  if (bodyId !== undefined) {
-    slice.part_style = { [bodyId]: doc.part_style?.[bodyId] }
+  if (partId !== undefined) {
+    slice.part_style = { [partId]: doc.part_style?.[partId] }
   }
   return slice
 }

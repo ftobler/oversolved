@@ -15,7 +15,7 @@
 import type { DisposeScope } from './disposeScope'
 import type { OccModule, OccShape } from './occTypes'
 import type { Vec3 } from './primitives'
-import { canonicalFaces, canonicalVertices, pickableEdgeCount } from './bodyNames'
+import { canonicalFaces, canonicalVertices, pickableEdgeCount } from './partNames'
 import { shapeBbox } from './faceBounds'
 import { surfaceAreaOf, volumeAndCentroidOf } from './volume'
 
@@ -39,7 +39,7 @@ export interface ShapeMeasure {
 }
 
 /** One body's own measure, keyed by the live body id the solve reported. */
-export interface BodyMeasure extends ShapeMeasure {
+export interface PartMeasure extends ShapeMeasure {
   id: string
 }
 
@@ -47,7 +47,7 @@ export interface MeasureRecord extends ShapeMeasure {
   bodies: number
   // Per-body measures in the body set's iteration order. Empty when the caller
   // did not supply body ids (the oracle's internal checks do not need them).
-  perBody: BodyMeasure[]
+  perBody: PartMeasure[]
 }
 
 /**
@@ -83,11 +83,11 @@ export function measureShape(
  * `bodyIds` is supplied it is parallel to `shapes`, and the record carries one
  * per-body measure per entry; otherwise `perBody` stays empty.
  */
-export function measureBodies(
+export function measureParts(
   oc: OccModule,
   scope: DisposeScope,
   shapes: readonly OccShape[],
-  bodyIds?: readonly string[],
+  partIds?: readonly string[],
 ): MeasureRecord {
   let volume = 0
   let area = 0
@@ -97,38 +97,38 @@ export function measureBodies(
   let bbox: Bbox6 | null = null
   const weighted: Vec3 = [0, 0, 0]
   const centroidSum: Vec3 = [0, 0, 0]
-  const perBody: BodyMeasure[] = []
+  const perPart: PartMeasure[] = []
 
   for (const [index, shape] of shapes.entries()) {
-    const body = measureShape(oc, scope, shape)
-    volume += body.volume
-    area += body.area
-    faces += body.faces
-    edges += body.edges
-    vertices += body.vertices
-    if (bodyIds !== undefined) perBody.push({ id: bodyIds[index] ?? '', ...body })
+    const part = measureShape(oc, scope, shape)
+    volume += part.volume
+    area += part.area
+    faces += part.faces
+    edges += part.edges
+    vertices += part.vertices
+    if (partIds !== undefined) perPart.push({ id: partIds[index] ?? '', ...part })
     for (let axis = 0; axis < 3; axis++) {
-      weighted[axis] += body.centroid![axis] * body.volume
-      centroidSum[axis] += body.centroid![axis]
+      weighted[axis] += part.centroid![axis] * part.volume
+      centroidSum[axis] += part.centroid![axis]
     }
     if (bbox === null) {
-      bbox = [...body.bbox!] as Bbox6
+      bbox = [...part.bbox!] as Bbox6
     } else {
       for (let axis = 0; axis < 3; axis++) {
-        bbox[axis] = Math.min(bbox[axis], body.bbox![axis])
-        bbox[axis + 3] = Math.max(bbox[axis + 3], body.bbox![axis + 3])
+        bbox[axis] = Math.min(bbox[axis], part.bbox![axis])
+        bbox[axis + 3] = Math.max(bbox[axis + 3], part.bbox![axis + 3])
       }
     }
   }
 
-  const bodies = shapes.length
+  const parts = shapes.length
   // An open shell integrates to zero volume, so there is no mass to weight by:
   // fall back to the plain body average instead of dividing by ~0.
-  const centroid: Vec3 | null = bodies === 0
+  const centroid: Vec3 | null = parts === 0
     ? null
     : Math.abs(volume) > 1e-12
       ? [weighted[0] / volume, weighted[1] / volume, weighted[2] / volume]
-      : [centroidSum[0] / bodies, centroidSum[1] / bodies, centroidSum[2] / bodies]
+      : [centroidSum[0] / parts, centroidSum[1] / parts, centroidSum[2] / parts]
 
-  return { bodies, volume, area, centroid, bbox, faces, edges, vertices, perBody }
+  return { bodies: parts, volume, area, centroid, bbox, faces, edges, vertices, perBody: perPart }
 }

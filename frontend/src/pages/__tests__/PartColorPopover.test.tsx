@@ -31,7 +31,7 @@ function renderPopover(session?: number) {
   }
   const view = render(
     <PartColorPopover
-      popover={{ bodyId: 'b1', position: [100, 200], session }}
+      popover={{ partId: 'b1', position: [100, 200], session }}
       {...handlers}
     />,
   )
@@ -150,7 +150,7 @@ describe('PartColorPopover', () => {
 
     rerender(
       <PartColorPopover
-        popover={{ bodyId: 'b1', position: [100, 200], session: 2 }}
+        popover={{ partId: 'b1', position: [100, 200], session: 2 }}
         onColorSet={vi.fn()}
         onTransparencySet={vi.fn()}
         onMetalnessSet={vi.fn()}

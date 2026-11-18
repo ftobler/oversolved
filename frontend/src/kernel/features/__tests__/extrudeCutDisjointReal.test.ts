@@ -33,7 +33,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): c
     expect(h.res(result, 'ex2').status).toBe('ok')
     expect(result.bodies).not.toHaveProperty('body_ex2')
     expect(result.bodies).toHaveProperty('body_ex1')
-    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.part(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshBbox(mesh, [0, 10], [0, 10], [5, 10])
   })
@@ -66,7 +66,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): c
     expect(h.res(result, 'ex2').status).toBe('ok')
     expect(result.bodies).not.toHaveProperty('body_ex2')
     expect(result.bodies).toHaveProperty('body_ex1')
-    const mesh = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const mesh = h.part(result, 'body_ex1').mesh as Record<string, unknown> | undefined
     expect(mesh).toBeDefined()
     if (mesh) assertMeshBbox(mesh, [0, 10], [0, 10], [5, 10])
   })
@@ -92,8 +92,8 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): c
     expect(result.bodies).toHaveProperty('body_ex1')
     expect(result.bodies).toHaveProperty('body_ex1_1')
     expect(h.res(result, 'ex1').body_ids).toEqual(['body_ex1', 'body_ex1_1'])
-    const m1 = h.body(result, 'body_ex1').mesh as Record<string, unknown> | undefined
-    const m2 = h.body(result, 'body_ex1_1').mesh as Record<string, unknown> | undefined
+    const m1 = h.part(result, 'body_ex1').mesh as Record<string, unknown> | undefined
+    const m2 = h.part(result, 'body_ex1_1').mesh as Record<string, unknown> | undefined
     expect(m1).toBeDefined(); if (m1) assertMeshValid(m1)
     expect(m2).toBeDefined(); if (m2) assertMeshValid(m2)
   })
@@ -136,9 +136,9 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): c
   it('disjoint extrude has body_ids field', () => {
     // body_ids field lists all split body IDs.
     const result = h.run(disjointTwoRectSpec('new'))
-    const bodyIds = h.res(result, 'ex1').body_ids as string[] | undefined
-    expect(bodyIds).toBeDefined()
-    expect(new Set(bodyIds)).toEqual(new Set(['body_ex1', 'body_ex1_1']))
+    const partIds = h.res(result, 'ex1').body_ids as string[] | undefined
+    expect(partIds).toBeDefined()
+    expect(new Set(partIds)).toEqual(new Set(['body_ex1', 'body_ex1_1']))
   })
 
   it('two independent extrudes produce two bodies', () => {
@@ -160,8 +160,8 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): c
     // Two-body extrude face queries must be unique per body.
     const result = h.run(disjointTwoRectSpec('new'))
     expect(h.res(result, 'ex1').status).toBe('ok')
-    const m1 = h.body(result, 'body_ex1').mesh as { face_queries?: string[] } | undefined
-    const m2 = h.body(result, 'body_ex1_1').mesh as { face_queries?: string[] } | undefined
+    const m1 = h.part(result, 'body_ex1').mesh as { face_queries?: string[] } | undefined
+    const m2 = h.part(result, 'body_ex1_1').mesh as { face_queries?: string[] } | undefined
     expect(m1?.face_queries?.length).toBeGreaterThan(0)
     expect(m2?.face_queries?.length).toBeGreaterThan(0)
     const fq1 = new Set(m1?.face_queries ?? [])
@@ -173,8 +173,8 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): c
     // Edge queries from two bodies of the same extrude must be disjoint.
     const result = h.run(disjointTwoRectSpec('new'))
     expect(h.res(result, 'ex1').status).toBe('ok')
-    const eq1 = new Set((h.body(result, 'body_ex1').edge_queries as string[]) ?? [])
-    const eq2 = new Set((h.body(result, 'body_ex1_1').edge_queries as string[]) ?? [])
+    const eq1 = new Set((h.part(result, 'body_ex1').edge_queries as string[]) ?? [])
+    const eq2 = new Set((h.part(result, 'body_ex1_1').edge_queries as string[]) ?? [])
     expect(eq1.size).toBeGreaterThan(0)
     expect(eq2.size).toBeGreaterThan(0)
     for (const q of eq1) expect(eq2.has(q)).toBe(false)
@@ -184,8 +184,8 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): c
     // Vertex queries from two bodies of the same extrude must be disjoint.
     const result = h.run(disjointTwoRectSpec('new'))
     expect(h.res(result, 'ex1').status).toBe('ok')
-    const vq1 = new Set((h.body(result, 'body_ex1').vertex_queries as string[]) ?? [])
-    const vq2 = new Set((h.body(result, 'body_ex1_1').vertex_queries as string[]) ?? [])
+    const vq1 = new Set((h.part(result, 'body_ex1').vertex_queries as string[]) ?? [])
+    const vq2 = new Set((h.part(result, 'body_ex1_1').vertex_queries as string[]) ?? [])
     expect(vq1.size).toBeGreaterThan(0)
     expect(vq2.size).toBeGreaterThan(0)
     for (const q of vq1) expect(vq2.has(q)).toBe(false)
@@ -212,7 +212,7 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): c
     const repo = repoFromSnapshot(checkpoint.repo_snapshot as Record<string, unknown>)
     let resolved = 0
     for (const bid of ['body_ex1', 'body_ex1_1']) {
-      const b = h.body(result, bid) as { mesh?: { face_queries?: string[] } }
+      const b = h.part(result, bid) as { mesh?: { face_queries?: string[] } }
       const faceQueries = b?.mesh?.face_queries ?? []
       for (const fq of faceQueries) {
         let r: { body_id?: string } | null = null
@@ -235,8 +235,8 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): c
     const r1 = h.run(disjointTwoRectSpec('new'))
     expect(h.res(r1, 'ex1').status).toBe('ok')
 
-    const faceData = (h.body(r1, 'body_ex1_1').mesh as { face_data?: Array<{ surface_type?: string }> } | undefined)?.face_data ?? []
-    const faceQueries = (h.body(r1, 'body_ex1_1').mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
+    const faceData = (h.part(r1, 'body_ex1_1').mesh as { face_data?: Array<{ surface_type?: string }> } | undefined)?.face_data ?? []
+    const faceQueries = (h.part(r1, 'body_ex1_1').mesh as { face_queries?: string[] } | undefined)?.face_queries ?? []
     let flatQuery: string | undefined
     for (let i = 0; i < faceData.length; i++) {
       if (faceData[i].surface_type === 'flatface') { flatQuery = faceQueries[i]; break }

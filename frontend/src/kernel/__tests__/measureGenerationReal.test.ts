@@ -17,7 +17,7 @@ import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { resetSketchSolver, setSketchSolver, setSketchTopology } from '../features/sketch'
 import { currentGeneration, measureGeneration, measurePicksLocally, setSolveLocalsForTest, solveLocally } from '../solveLocally'
 import { MEASURE_STALE, MEASURE_UNRESOLVED, type MeasurePickRef } from '../worker/solverProtocol'
-import type { BodyResult, EdgeData, FaceData } from '@/types/cad'
+import type { PartResult, EdgeData, FaceData } from '@/types/cad'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -58,35 +58,35 @@ function rectSketch(
 const extrude = (sketch: string, id: string, distance: number): Record<string, unknown> =>
   ({ id, kind: 'extrude', extrude: { sketch: `$${sketch}`, distance, direction: 'normal', operation: 'new' } })
 
-const BODY = (id: string): MeasurePickRef => ({ bodyId: id, kind: 'body' })
+const PART = (id: string): MeasurePickRef => ({ bodyId: id, kind: 'body' })
 
 async function solve(
   doc: Record<string, unknown>,
   options: { pickBoundary?: number; rollbackPosition?: number } = {},
-): Promise<{ bodies: Record<string, BodyResult>; generation: string }> {
+): Promise<{ bodies: Record<string, PartResult>; generation: string }> {
   const response = await solveLocally(doc, options)
   if (!response) throw new Error('no build response')
   const failed = Object.entries(response.result)
     .filter(([, r]) => (r as { status?: string }).status === 'exception')
   if (failed.length) throw new Error(`feature exception: ${JSON.stringify(failed)}`)
-  return { bodies: response.bodies as Record<string, BodyResult>, generation: response.generation ?? '' }
+  return { bodies: response.bodies as Record<string, PartResult>, generation: response.generation ?? '' }
 }
 
-const faceIndex = (body: BodyResult, match: (face: FaceData) => boolean): number => {
-  const index = (body.mesh?.face_data ?? []).findIndex(match)
-  if (index < 0) throw new Error(`no matching face: ${JSON.stringify(body.mesh?.face_data)}`)
+const faceIndex = (part: PartResult, match: (face: FaceData) => boolean): number => {
+  const index = (part.mesh?.face_data ?? []).findIndex(match)
+  if (index < 0) throw new Error(`no matching face: ${JSON.stringify(part.mesh?.face_data)}`)
   return index
 }
 
-const edgeIndex = (body: BodyResult, match: (edge: EdgeData) => boolean): number => {
-  const index = (body.edges ?? []).findIndex(match)
-  if (index < 0) throw new Error(`no matching edge: ${JSON.stringify(body.edges)}`)
+const edgeIndex = (part: PartResult, match: (edge: EdgeData) => boolean): number => {
+  const index = (part.edges ?? []).findIndex(match)
+  if (index < 0) throw new Error(`no matching edge: ${JSON.stringify(part.edges)}`)
   return index
 }
 
 /** The flat face on the given world x, read off the render array. */
-const faceAtX = (body: BodyResult, x: number): number =>
-  faceIndex(body, (face) => face.surface_type === 'flatface' &&
+const faceAtX = (part: PartResult, x: number): number =>
+  faceIndex(part, (face) => face.surface_type === 'flatface' &&
     Math.abs(face.normal[0]) > 0.99 && Math.abs(face.centroid[0] - x) < 1e-6)
 
 describe.skipIf(!oc || !solveBytes)('measureGeneration (real OCC)', () => {
@@ -113,7 +113,7 @@ describe.skipIf(!oc || !solveBytes)('measureGeneration (real OCC)', () => {
     }
     const first = await solve(separate)
     expect(first.generation).toMatch(/^[0-9a-z]+:[0-9]+$/)
-    const picks: MeasurePickRef[] = [BODY('body_ex1'), BODY('body_ex2')]
+    const picks: MeasurePickRef[] = [PART('body_ex1'), PART('body_ex2')]
 
     const fresh = await measureGeneration({
       generation: first.generation, set: 'final', op: 'clearance', picks,
@@ -154,7 +154,7 @@ describe.skipIf(!oc || !solveBytes)('measureGeneration (real OCC)', () => {
       ],
     }
     const { bodies, generation } = await solve(doc, { pickBoundary: 4, rollbackPosition: 5 })
-    const picks: MeasurePickRef[] = [BODY('body_ex1'), BODY('body_ex2')]
+    const picks: MeasurePickRef[] = [PART('body_ex1'), PART('body_ex2')]
 
     const final = await measureGeneration({ generation, set: 'final', op: 'clearance', picks })
     expect(final.ok).toBe(true)
@@ -173,7 +173,7 @@ describe.skipIf(!oc || !solveBytes)('measureGeneration (real OCC)', () => {
     // set.
     expect(bodies.body_ex1).toBeDefined()
     const missing = await measureGeneration({
-      generation, set: 'pick', op: 'clearance', picks: [BODY('body_nope'), BODY('body_ex2')],
+      generation, set: 'pick', op: 'clearance', picks: [PART('body_nope'), PART('body_ex2')],
     })
     expect(missing).toEqual({ ok: false, error: MEASURE_UNRESOLVED })
   }, 300_000)
@@ -198,7 +198,7 @@ describe.skipIf(!oc || !solveBytes)('measureGeneration (real OCC)', () => {
     const ids = { a: 'body_exA', b: 'body_exB', c: 'body_exC', d: 'body_exD' }
 
     const gap = await measureGeneration({
-      generation, set: 'final', op: 'clearance', picks: [BODY(ids.a), BODY(ids.b)],
+      generation, set: 'final', op: 'clearance', picks: [PART(ids.a), PART(ids.b)],
     })
     expect(gap.ok).toBe(true)
     if (!gap.ok) throw new Error('unreachable')
@@ -206,7 +206,7 @@ describe.skipIf(!oc || !solveBytes)('measureGeneration (real OCC)', () => {
     expect(gap.note).toBeUndefined()
 
     const touching = await measureGeneration({
-      generation, set: 'final', op: 'clearance', picks: [BODY(ids.a), BODY(ids.c)],
+      generation, set: 'final', op: 'clearance', picks: [PART(ids.a), PART(ids.c)],
     })
     expect(touching.ok).toBe(true)
     if (!touching.ok) throw new Error('unreachable')
@@ -217,7 +217,7 @@ describe.skipIf(!oc || !solveBytes)('measureGeneration (real OCC)', () => {
     // read alone would report a positive gap; the overlap probe is what makes
     // this 0.
     const inside = await measureGeneration({
-      generation, set: 'final', op: 'clearance', picks: [BODY(ids.a), BODY(ids.d)],
+      generation, set: 'final', op: 'clearance', picks: [PART(ids.a), PART(ids.d)],
     })
     expect(inside.ok).toBe(true)
     if (!inside.ok) throw new Error('unreachable')
@@ -281,8 +281,8 @@ describe.skipIf(!oc || !solveBytes)('measureGeneration (real OCC)', () => {
     }
     const { bodies, generation } = await solve(doc)
     const id = Object.keys(bodies)[0]
-    const body = bodies[id]
-    const index = edgeIndex(body, (edge) => edge.kind === 'spline')
+    const part = bodies[id]
+    const index = edgeIndex(part, (edge) => edge.kind === 'spline')
 
     const read = await measureGeneration({
       generation, set: 'final', op: 'length', picks: [{ bodyId: id, kind: 'edge', index }],
@@ -291,7 +291,7 @@ describe.skipIf(!oc || !solveBytes)('measureGeneration (real OCC)', () => {
     if (!read.ok) throw new Error('unreachable')
     // The render polyline is the curve sampled; the exact integral is within 1%
     // of it and strictly longer than the chord.
-    const points = (body.edges![index] as { points: [number, number, number][] }).points
+    const points = (part.edges![index] as { points: [number, number, number][] }).points
     let sampled = 0
     for (let i = 1; i < points.length; i++) {
       sampled += Math.hypot(

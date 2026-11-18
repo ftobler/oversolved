@@ -115,7 +115,7 @@ describe.skipIf(!oc)('fuse of coaxial cylinder walls with opposite axes (real OC
 // onto the rim as add (repro (a) of the report, with the closing arc drawn).
 const SHELL_LIP = readFileSync(new URL('../__fixtures__/shell-lip-coincident-fillet.yaml', import.meta.url), 'utf8')
 
-interface BodyView {
+interface PartView {
   mesh?: { face_queries?: string[] }
 }
 
@@ -127,9 +127,9 @@ describe.skipIf(!oc || !solveBytes)('shell lip on the cavity fillet walls (real 
     if (result === null) throw new Error('OCC.js is unavailable in the solve child')
     const features = result.result as Record<string, { status?: string }>
     expect(features.ex2?.status).toBe('ok')
-    const body = (result.bodies as Record<string, BodyView>).body_ex1
+    const part = (result.bodies as Record<string, PartView>).body_ex1
     // 52 raw faces less the eight lip walls merged into the cavity walls.
-    expect(body?.mesh?.face_queries).toHaveLength(44)
+    expect(part?.mesh?.face_queries).toHaveLength(44)
   }, 60000)
 })
 

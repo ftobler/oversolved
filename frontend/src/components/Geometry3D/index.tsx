@@ -47,7 +47,7 @@ import { DrawPreview, DrawPlane } from '@/components/Geometry3D/Drawing'
 
 // Utilities
 import { planeRotation, planeRotationFromTransform } from '@/components/Geometry3D/utils'
-import { resolvePlaneTransform } from '@/utils/geometry/bodySnapProjection'
+import { resolvePlaneTransform } from '@/utils/geometry/partSnapProjection'
 
 // Colors
 import { entityStatusColor, sketchStatusColor } from '@/utils/core/entityStatusColor'

@@ -57,7 +57,7 @@ const SKIP_INDEX_LIST: JsonSchema = { type: 'array', items: { type: 'integer' } 
 // schema read one list.
 export const PATTERN_SOURCE_FIELDS: JsonSchema = {
   subject: { enum: ['body', 'feature'] },
-  // Body subject. The source is always instance 0; the retired
+  // Part subject. The source is always instance 0; the retired
   // `include_source` flag is deliberately absent, so the setters and the
   // strict drive check refuse it while the tolerant loader still accepts an
   // old document that carries it.

@@ -11,7 +11,7 @@ import { join } from 'node:path'
 const PART_CSS = readFileSync(join(__dirname, '../Part.css'), 'utf8')
 
 // The declarations of the first rule whose selector is exactly `selector`.
-function ruleBody(selector: string): string {
+function rulePart(selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const match = PART_CSS.match(new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`))
   expect(match, `${selector} rule in pages/Part.css`).not.toBeNull()
@@ -20,29 +20,29 @@ function ruleBody(selector: string): string {
 
 describe('editor status line', () => {
   it('starts at the left edge whatever the ancestor aligns', () => {
-    const body = ruleBody('.status-message')
-    expect(body).toMatch(/text-align:\s*left/)
-    expect(body).toMatch(/align-self:\s*stretch/)
+    const part = rulePart('.status-message')
+    expect(part).toMatch(/text-align:\s*left/)
+    expect(part).toMatch(/align-self:\s*stretch/)
   })
 
   it('still carries the level colours the tree rows use', () => {
-    expect(ruleBody('.status-message--error')).toMatch(/color:\s*#f44336/)
-    expect(ruleBody('.status-message--warning')).toMatch(/color:\s*#ecad2b/)
+    expect(rulePart('.status-message--error')).toMatch(/color:\s*#f44336/)
+    expect(rulePart('.status-message--warning')).toMatch(/color:\s*#ecad2b/)
   })
 })
 
 describe('plane editor frame', () => {
   it('draws no divider above the fields', () => {
-    expect(ruleBody('.plane-editor')).not.toMatch(/border/)
+    expect(rulePart('.plane-editor')).not.toMatch(/border/)
   })
 
   it('separates from the line above by the same gap as its rows', () => {
     // With the border gone the old padding-top had nothing left to hold the
     // rows off, so the margin carries the whole separation.
-    const body = ruleBody('.plane-editor')
-    const gap = Number(/gap:\s*(\d+)px/.exec(body)![1])
-    const margin = Number(/margin-top:\s*(\d+)px/.exec(body)![1])
+    const part = rulePart('.plane-editor')
+    const gap = Number(/gap:\s*(\d+)px/.exec(part)![1])
+    const margin = Number(/margin-top:\s*(\d+)px/.exec(part)![1])
     expect(margin).toBe(gap)
-    expect(body).not.toMatch(/padding-top/)
+    expect(part).not.toMatch(/padding-top/)
   })
 })

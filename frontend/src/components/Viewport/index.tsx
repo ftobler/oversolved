@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Environment } from '@react-three/drei'
 import * as THREE from 'three'
-import type { Feature, PartFeature, Sketch, BodyResult, PlaneTransform } from '@/types/cad'
+import type { Feature, PartFeature, Sketch, PartResult, PlaneTransform } from '@/types/cad'
 import Geometry3D from '@/components/Geometry3D'
 import { CubeGizmoCanvas } from '@/components/misc/CubeGizmo'
 import '@/components/Viewport/ViewportHud.css'
@@ -13,7 +13,7 @@ import { useViewOptionsStore } from '@/stores/viewOptionsStore'
 import { useSectionStore } from '@/stores/sectionStore'
 import { useEditorState } from '@/hooks/useEditorState'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import Body3D from '@/components/Geometry3D/Body3D'
+import Part3D from '@/components/Geometry3D/Part3D'
 import PreviewEdgeOverlay from '@/components/Geometry3D/PreviewEdgeOverlay'
 import OriginMarker from '@/components/Viewport/OriginMarker'
 import FeatureHandles from '@/components/Viewport/FeatureHandles'
@@ -64,14 +64,14 @@ import { useSelectionPointerUpCleanup } from '@/components/interaction/useSelect
 import { useDrawToolClickGuardCleanup } from '@/components/Viewport/idDispatch/drawToolClickGuard'
 import { useBandClickGuardCleanup } from '@/components/Viewport/idDispatch/bandClickGuard'
 import {
-  getBodiesToRender,
-  getGhostBodiesToRender,
+  getPartsToRender,
+  getGhostPartsToRender,
   getSketchesToRender,
-  getPreviewBodies,
+  getPreviewParts,
   sketchForRender,
   snapSketchesFor,
-  type BodyRenderItem,
-} from '@/components/Viewport/bodyUtils'
+  type PartRenderItem,
+} from '@/components/Viewport/partUtils'
 import type { SketchData } from '@/types/cad'
 
 // Stabilized props for the R3F Canvas. Inline objects would produce new
@@ -144,10 +144,10 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const features = usePartEditorStore(s => s.features) as Feature[]
   const doc = usePartEditorStore(s => s.doc)
   const visibleFeatures = usePartEditorStore(s => s.visibleFeatures)
-  const visibleBodies = usePartEditorStore(s => s.visibleBodies)
+  const visibleParts = usePartEditorStore(s => s.visibleParts)
   const solveResults = usePartEditorStore(s => s.solveResults) as Record<string, SketchData> | undefined
-  const bodies = usePartEditorStore(s => s.bodies)
-  const pickBodies = usePartEditorStore(s => s.pickBodies)
+  const parts = usePartEditorStore(s => s.parts)
+  const pickParts = usePartEditorStore(s => s.pickParts)
   const otherSketches = usePartEditorStore(s => s.otherSketches) as Record<string, Sketch>
   const rollbackPosition = useEditorState(s => s.rollbackPosition) ?? undefined
   const ghostMode = useEditorState(s => s.ghostMode)
@@ -177,9 +177,9 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // draws on demand, so the camera paths below (fit, plane/face alignment) have
   // to ask for their frame themselves.
   const invalidateRef = useRef<(() => void) | null>(null)
-  const bodiesRef = useRef<Record<string, BodyResult> | undefined>(undefined)
+  const partsRef = useRef<Record<string, PartResult> | undefined>(undefined)
   // eslint-disable-next-line react-hooks/refs -- mirror latest bodies into a ref for use inside stable callbacks
-  bodiesRef.current = bodies
+  partsRef.current = parts
   const idPipelineRef = useRef<IdPipeline | null>(null)
   const onIdPipelineReady = useCallback((p: IdPipeline) => { idPipelineRef.current = p }, [])
 
@@ -257,7 +257,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     if (!camera) return
     // Geometry (binary) arrives after the JSON solve, so the first attempts may
     // find no bounds; stay pending and retry as `bodies` populate.
-    if (fitToContent(camera, controlsRef.current, bodiesRef.current, sceneRef.current)) {
+    if (fitToContent(camera, controlsRef.current, partsRef.current, sceneRef.current)) {
       fitPendingRef.current = false
       invalidateRef.current?.()  // the fit moved the camera outside React
       traceCamera('fit:done')
@@ -293,7 +293,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // armed, so steady-state solves are inert.
   useEffect(() => {
     tryFit()
-  }, [bodies, sceneTick, tryFit])
+  }, [parts, sceneTick, tryFit])
 
   // Disarm any pending (deferred) fit so a subsequent doc/body change cannot
   // reframe the camera. Undo/redo use this: undo exits the active sketch edit,
@@ -462,38 +462,38 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const showTop    = isActive('Top',    features, rollbackPosition, visibleFeatures)
   const showRight  = isActive('Right',  features, rollbackPosition, visibleFeatures)
 
-  const bodyItems = useMemo(
-    () => getBodiesToRender(bodies, features, rollbackPosition, visibleBodies, visibleFeatures),
-    [bodies, features, rollbackPosition, visibleBodies, visibleFeatures]
+  const partItems = useMemo(
+    () => getPartsToRender(parts, features, rollbackPosition, visibleParts, visibleFeatures),
+    [parts, features, rollbackPosition, visibleParts, visibleFeatures]
   )
 
   // The legend names the range the bodies are actually painted with, and the
-  // range spans the whole visible scene. Bodies only compute their own field;
+  // range spans the whole visible scene. Parts only compute their own field;
   // this is the one place that sees them all.
   useEffect(() => {
     if (!curvature) {
       setCurvatureAutoRange(null)
       return
     }
-    const meshes = bodyItems.filter(item => item.visible).map(item => item.mesh)
+    const meshes = partItems.filter(item => item.visible).map(item => item.mesh)
     setCurvatureAutoRange(autoRangeFromMeshes(meshes, curvatureKind))
-  }, [curvature, curvatureKind, bodyItems, setCurvatureAutoRange])
+  }, [curvature, curvatureKind, partItems, setCurvatureAutoRange])
 
   // Show ALL pickBodies regardless of rollbackPosition -- these represent the body
   // state before entering edit mode, and the user needs to see every prior body to
-  // pick faces/edges as references for the feature being edited. Bodies the edit
+  // pick faces/edges as references for the feature being edited. Parts the edit
   // removes stay, marked doomed (see getGhostBodiesToRender).
-  const pickBodyItems = useMemo(
-    () => getGhostBodiesToRender(pickBodies, bodies, features, partStyle, visibleFeatures),
-    [pickBodies, bodies, features, partStyle, visibleFeatures]
+  const pickPartItems = useMemo(
+    () => getGhostPartsToRender(pickParts, parts, features, partStyle, visibleFeatures),
+    [pickParts, parts, features, partStyle, visibleFeatures]
   )
 
-  const previewBodyItems = useMemo(() => {
+  const previewPartItems = useMemo(() => {
     if (ghostMode) {
-      return getBodiesToRender(bodies, features, undefined, visibleBodies, visibleFeatures)
+      return getPartsToRender(parts, features, undefined, visibleParts, visibleFeatures)
     }
-    return getPreviewBodies(bodies, features, rollbackPosition, visibleBodies, visibleFeatures)
-  }, [bodies, features, rollbackPosition, visibleBodies, visibleFeatures, ghostMode])
+    return getPreviewParts(parts, features, rollbackPosition, visibleParts, visibleFeatures)
+  }, [parts, features, rollbackPosition, visibleParts, visibleFeatures, ghostMode])
 
   const activeSketchFeatures = useMemo(
     () => getSketchesToRender(features, rollbackPosition, visibleFeatures),
@@ -501,29 +501,29 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   )
 
   // Build a combined otherSketches that includes cross-sketch entities AND projected body geometry.
-  // Body geometry is projected to 2D using the active sketch's plane transform so snap detection
+  // Part geometry is projected to 2D using the active sketch's plane transform so snap detection
   // can treat it as regular sketch candidates (with a BODY_SNAP_FEAT_PREFIX sentinel featureId).
-  // The decision lives in bodyUtils so it is unit tested away from the Viewport.
+  // The decision lives in partUtils so it is unit tested away from the Viewport.
   const combinedOtherSketches = useMemo(
     () => snapSketchesFor(
       otherSketches,
       activeFeatureId,
       activeFeatureId ? solveResults?.[activeFeatureId] : undefined,
       features?.find(f => f.id === activeFeatureId),
-      bodyItems,
+      partItems,
     ),
-    [activeFeatureId, solveResults, features, bodyItems, otherSketches],
+    [activeFeatureId, solveResults, features, partItems, otherSketches],
   )
 
   const planeSizes = useMemo(() => {
     const sizes: Record<string, number> = {}
     features?.forEach(f => {
       if (f.kind === 'plane') {
-        sizes[f.id] = calculatePlaneSize(f.definition, bodies)
+        sizes[f.id] = calculatePlaneSize(f.definition, parts)
       }
     })
     return sizes
-  }, [features, bodies])
+  }, [features, parts])
 
   // The tapped bores each body shades. The hide/rollback filter runs on the
   // feature list first, so a hidden hole takes its thread shading with it. The
@@ -568,11 +568,11 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => { e.preventDefault() }, [])
 
-  const renderBodyItem = (b: BodyRenderItem, capBand: number) => (
-    <Body3D
+  const renderPartItem = (b: PartRenderItem, capBand: number) => (
+    <Part3D
       key={b.key}
       featureId={b.featureId}
-      bodyId={b.bodyId}
+      partId={b.partId}
       mesh={b.mesh}
       edges={b.edges}
       edgeQueries={b.edgeQueries}
@@ -713,7 +713,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           const authored = featureDefs?.find(fd => fd.id === f.id)
           const fullFeatureDef = authored?.kind === 'sketch' ? authored : f
           // Solved geometry when the solve has landed, else the authored
-          // `initial` shape: the choice is pure and tested in bodyUtils.
+          // `initial` shape: the choice is pure and tested in partUtils.
           const { sketch, constraints } = sketchForRender(solveResults?.[f.id], fullFeatureDef)
           // Face-projection members are solve-time entities, not document rows;
           // the editor's kind/selection maps need them alongside the authored
@@ -747,11 +747,11 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
         {ghostMode ? (
           <>
-            {pickBodyItems.map(renderBodyItem)}
-            <PreviewEdgeOverlay items={previewBodyItems} pickItems={pickBodyItems} />
+            {pickPartItems.map(renderPartItem)}
+            <PreviewEdgeOverlay items={previewPartItems} pickItems={pickPartItems} />
           </>
         ) : (
-          bodyItems.map(renderBodyItem)
+          partItems.map(renderPartItem)
         )}
 
         {/* Draggable editing arrow for the feature open in the editor panel. */}

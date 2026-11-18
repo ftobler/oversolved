@@ -1,12 +1,12 @@
 import { useIdPipeline } from './IdPipelineContext'
-import { useRegisteredBody } from './idRegistrationUtils'
-import { bodyKeyFor } from './pickKey'
+import { useRegisteredPart } from './idRegistrationUtils'
+import { partKeyFor } from './pickKey'
 import type { EdgeData } from '@/types/cad'
-import { buildEdgeSegmentGeometry, resolveEdgeQueries } from '@/components/Geometry3D/bodyGeometry'
+import { buildEdgeSegmentGeometry, resolveEdgeQueries } from '@/components/Geometry3D/partGeometry'
 import { isDevBuild } from '@/kernel/isDevBuild'
 
 /**
- * Hook used by Body3D (and the helix, through `layer: 'reference'`) to register
+ * Hook used by Part3D (and the helix, through `layer: 'reference'`) to register
  * edges with an edge ID layer. No-op when the pipeline isn't mounted or the
  * body has no edges.
  *
@@ -19,7 +19,7 @@ import { isDevBuild } from '@/kernel/isDevBuild'
  */
 export function useEdgeIdRegistration(params: {
   featureId: string
-  bodyId: string
+  partId: string
   edges: EdgeData[] | undefined
   edgeQueries: ReadonlyArray<string> | undefined
   enabled?: boolean
@@ -31,16 +31,16 @@ export function useEdgeIdRegistration(params: {
   layer?: 'edge' | 'reference'
 }): void {
   const pipeline = useIdPipeline()
-  const { featureId, bodyId, edges, edgeQueries, enabled = true, hiddenEdges, layer = 'edge' } = params
-  const bodyKey = bodyKeyFor(featureId, bodyId)
+  const { featureId, partId, edges, edgeQueries, enabled = true, hiddenEdges, layer = 'edge' } = params
+  const partKey = partKeyFor(featureId, partId)
 
-  useRegisteredBody(pipeline, enabled, bodyKey,
+  useRegisteredPart(pipeline, enabled, partKey,
     (p) => {
       if (!edges || edges.length === 0) return false
-      // The padded query list Body3D's edge HighlightIndex counts from, so a
+      // The padded query list Part3D's edge HighlightIndex counts from, so a
       // tail edge the kernel left unnamed picks where it highlights instead of
       // being highlight-only.
-      const resolvedQueries = resolveEdgeQueries(edges, edgeQueries, bodyId)
+      const resolvedQueries = resolveEdgeQueries(edges, edgeQueries, partId)
       if (!resolvedQueries) return false
       const { positions: segmentPositions, segmentToEdge } = buildEdgeSegmentGeometry(edges, hiddenEdges)
       if (segmentPositions.length === 0) return false
@@ -50,19 +50,19 @@ export function useEdgeIdRegistration(params: {
       if (segmentToEdge.length * 6 !== segmentPositions.length) {
         throw new Error(
           `useEdgeIdRegistration: segmentToEdge length ${segmentToEdge.length} does not match `
-          + `${segmentPositions.length / 6} built segments for ${bodyKey}`,
+          + `${segmentPositions.length / 6} built segments for ${partKey}`,
         )
       }
       const target = layer === 'reference' ? p.referenceEdgeLayer : p.edgeLayer
       try {
-        target.registerBody({ bodyKey, segmentPositions, segmentToEdge, edgeQueries: resolvedQueries, perPrimitivePickKeys: true })
+        target.registerPart({ partKey, segmentPositions, segmentToEdge, edgeQueries: resolvedQueries, perPrimitivePickKeys: true })
         return true
       } catch (err) {
-        if (isDevBuild()) console.warn('Edge ID registration failed; continuing without edge picking for this body', { bodyKey, err })
+        if (isDevBuild()) console.warn('Edge ID registration failed; continuing without edge picking for this body', { bodyKey: partKey, err })
         return false
       }
     },
-    (p) => (layer === 'reference' ? p.referenceEdgeLayer : p.edgeLayer).unregisterBody(bodyKey),
-    [featureId, bodyId, edges, edgeQueries, hiddenEdges, layer],
+    (p) => (layer === 'reference' ? p.referenceEdgeLayer : p.edgeLayer).unregisterPart(partKey),
+    [featureId, partId, edges, edgeQueries, hiddenEdges, layer],
   )
 }

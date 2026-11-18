@@ -89,8 +89,8 @@ describe('useSketchIdRegistration inferred-contact finite guard (g4-H2)', () => 
     try {
       renderHook(() => useSketchIdRegistration({ featureId: 'S1', sketch: {} }))
 
-      expect(p.sketchEntityLayer.bodyCount()).toBe(0)
-      expect(p.sketchVertexLayer.bodyCount()).toBe(0)
+      expect(p.sketchEntityLayer.partCount()).toBe(0)
+      expect(p.sketchVertexLayer.partCount()).toBe(0)
       // A delete-all sketch must not re-dirty the ID buffer on every render.
       expect(p.isDirty()).toBe(false)
     } finally {

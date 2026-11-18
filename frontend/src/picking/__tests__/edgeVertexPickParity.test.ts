@@ -7,7 +7,7 @@ import { rgbToId } from '../idEncoding'
 /**
  * Structural parity for edges and vertices: every segment / instance
  * decodes (via the registry) to the same `entityKey` that the legacy
- * raycaster path (Body3D.getIsEdgeSelected / vertexQueries[i]) would
+ * raycaster path (Part3D.getIsEdgeSelected / vertexQueries[i]) would
  * resolve.
  *
  * The full GPU-rendered parity (cursor grid over a fixture cube) belongs
@@ -25,7 +25,7 @@ describe('edgeVertexPickParity (structural)', () => {
 
     const reg = new IdRegistry()
     const layer = new EdgeIdLayer(reg)
-    layer.registerBody({ bodyKey: 'cube', segmentPositions, segmentToEdge, edgeQueries })
+    layer.registerPart({ partKey: 'cube', segmentPositions, segmentToEdge, edgeQueries })
 
     const segs = layer.scene.children[0] as import('three').LineSegments
     const aColor = segs.geometry.getAttribute('aColor')
@@ -50,7 +50,7 @@ describe('edgeVertexPickParity (structural)', () => {
 
     const reg = new IdRegistry()
     const layer = new VertexIdLayer(reg)
-    layer.registerBody({ bodyKey: 'cube', vertices, vertexQueries })
+    layer.registerPart({ partKey: 'cube', vertices, vertexQueries })
 
     const im = layer.scene.children[0] as import('three').Points
     const aColor = im.geometry.getAttribute('aColor')

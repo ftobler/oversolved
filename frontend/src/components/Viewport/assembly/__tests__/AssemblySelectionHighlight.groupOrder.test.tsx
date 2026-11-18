@@ -3,7 +3,7 @@
 // groupOrder of its whole subtree, and reversePainterSortStable compares
 // groupOrder BEFORE renderOrder, so the highlights out-sorted the collision/ID
 // debug pass (IdDebugOverlay: renderOrder 9999 but groupOrder 0) and painted
-// over it in assembly mode. Part mode was correct only because Body3D's root
+// over it in assembly mode. Part mode was correct only because Part3D's root
 // group has no renderOrder.
 //
 // Two halves, and both matter: the group must stay renderOrder-free, AND every
@@ -13,12 +13,12 @@ import { describe, it, expect } from 'vitest'
 import { render } from '@testing-library/react'
 import AssemblySelectionHighlight from '@/components/Viewport/assembly/AssemblySelectionHighlight'
 import { RENDER_ORDER_HIGHLIGHT } from '@/components/Geometry3D/constants'
-import type { AssemblyPickBody } from '@/utils/assemblyPick'
+import type { AssemblyPickPart } from '@/utils/assemblyPick'
 
-function body(): AssemblyPickBody {
+function part(): AssemblyPickPart {
   return {
     handle: 'B',
-    bodyKey: 'B',
+    partKey: 'B',
     faces: {
       positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
       triangleToFace: new Uint32Array([0]),
@@ -38,7 +38,7 @@ function body(): AssemblyPickBody {
 function renderAll() {
   return render(
     <AssemblySelectionHighlight
-      pickBodies={[body()]}
+      pickParts={[part()]}
       selection={new Set(['f0', 'e0', 'v0'])}
       hovered="f0"
     />

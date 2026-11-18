@@ -47,7 +47,7 @@ afterEach(() => {
 describe('useSketchSurfaceIdRegistration', () => {
   it('registers one face body per buildable area, stamped with the surface query', () => {
     const p = livePipeline()
-    const spy = vi.spyOn(p.sketchSurfaceLayer, 'registerBody')
+    const spy = vi.spyOn(p.sketchSurfaceLayer, 'registerPart')
 
     renderHook(() => useSketchSurfaceIdRegistration({
       featureId: 'S1',
@@ -55,15 +55,15 @@ describe('useSketchSurfaceIdRegistration', () => {
     }))
 
     expect(spy).toHaveBeenCalledTimes(1)
-    const body = spy.mock.calls[0][0]
-    expect(body.bodyKey).toBe('S1/?1;@a')
-    expect(body.faceQueries).toEqual(['?1;@a'])
+    const part = spy.mock.calls[0][0]
+    expect(part.partKey).toBe('S1/?1;@a')
+    expect(part.faceQueries).toEqual(['?1;@a'])
     // A square triangulates to at least two triangles; every one maps back to
     // the single face this body represents.
-    expect(body.positions.length % 9).toBe(0)
-    expect(body.positions.length / 9).toBeGreaterThanOrEqual(2)
-    expect(Array.from(body.triangleToFace)).toEqual(
-      Array.from({ length: body.positions.length / 9 }, () => 0),
+    expect(part.positions.length % 9).toBe(0)
+    expect(part.positions.length / 9).toBeGreaterThanOrEqual(2)
+    expect(Array.from(part.triangleToFace)).toEqual(
+      Array.from({ length: part.positions.length / 9 }, () => 0),
     )
     expect(p.registry.lookupKey(SKETCH_SURFACE_LAYER_NAME, '?1;@a')).toBeDefined()
     p.dispose()
@@ -71,7 +71,7 @@ describe('useSketchSurfaceIdRegistration', () => {
 
   it('applies the plane transform to the registered triangles', () => {
     const p = livePipeline()
-    const spy = vi.spyOn(p.sketchSurfaceLayer, 'registerBody')
+    const spy = vi.spyOn(p.sketchSurfaceLayer, 'registerPart')
 
     renderHook(() => useSketchSurfaceIdRegistration({
       featureId: 'S1',
@@ -90,7 +90,7 @@ describe('useSketchSurfaceIdRegistration', () => {
 
   it('tessellates holes so a holed area has more triangles than the outer loop alone', () => {
     const p = livePipeline()
-    const spy = vi.spyOn(p.sketchSurfaceLayer, 'registerBody')
+    const spy = vi.spyOn(p.sketchSurfaceLayer, 'registerPart')
 
     const hole = [
       { kind: 'line', start: [1, 1], end: [3, 1] },
@@ -116,7 +116,7 @@ describe('useSketchSurfaceIdRegistration', () => {
 
   it('skips a degenerate area whose boundary cannot form a polygon', () => {
     const p = livePipeline()
-    const spy = vi.spyOn(p.sketchSurfaceLayer, 'registerBody')
+    const spy = vi.spyOn(p.sketchSurfaceLayer, 'registerPart')
 
     renderHook(() => useSketchSurfaceIdRegistration({
       featureId: 'S1',
@@ -145,7 +145,7 @@ describe('useSketchSurfaceIdRegistration', () => {
 
   it('does nothing when disabled, without topology, or without any surfaces', () => {
     const p = livePipeline()
-    const spy = vi.spyOn(p.sketchSurfaceLayer, 'registerBody')
+    const spy = vi.spyOn(p.sketchSurfaceLayer, 'registerPart')
 
     renderHook(() => useSketchSurfaceIdRegistration({
       featureId: 'S1', enabled: false, topology: topology([{ boundary: square, query: '?a' }]),
@@ -162,7 +162,7 @@ describe('useSketchSurfaceIdRegistration', () => {
   it('does not register while no pipeline is live', () => {
     const p = new IdPipeline({ width: 32, height: 32 })
     setLivePipeline(null)
-    const spy = vi.spyOn(p.sketchSurfaceLayer, 'registerBody')
+    const spy = vi.spyOn(p.sketchSurfaceLayer, 'registerPart')
 
     expect(() => renderHook(() => useSketchSurfaceIdRegistration({
       featureId: 'S1',
@@ -175,7 +175,7 @@ describe('useSketchSurfaceIdRegistration', () => {
   it('a registerBody throw is swallowed and does not unmount the caller', () => {
     const p = livePipeline()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    vi.spyOn(p.sketchSurfaceLayer, 'registerBody').mockImplementation(() => {
+    vi.spyOn(p.sketchSurfaceLayer, 'registerPart').mockImplementation(() => {
       throw new Error('IdRegistry: exhausted 24-bit ID space')
     })
 
@@ -190,7 +190,7 @@ describe('useSketchSurfaceIdRegistration', () => {
 
   it('registers even an area stamped unbuildable, so a dead area stays clickable', () => {
     const p = livePipeline()
-    const spy = vi.spyOn(p.sketchSurfaceLayer, 'registerBody')
+    const spy = vi.spyOn(p.sketchSurfaceLayer, 'registerPart')
 
     renderHook(() => useSketchSurfaceIdRegistration({
       featureId: 'S1',
@@ -206,7 +206,7 @@ describe('useSketchSurfaceIdRegistration', () => {
     // A one-edge "hole" yields two points, not a polygon. It is dropped like a
     // degenerate boundary, and the outer area still registers.
     const p = livePipeline()
-    const spy = vi.spyOn(p.sketchSurfaceLayer, 'registerBody')
+    const spy = vi.spyOn(p.sketchSurfaceLayer, 'registerPart')
 
     renderHook(() => useSketchSurfaceIdRegistration({
       featureId: 'S1',
@@ -224,7 +224,7 @@ describe('useSketchSurfaceIdRegistration', () => {
   // arc edge. This pins the registered triangle vertices to the drawn ring.
   it('registers the same vertex ring the visible fill draws, arc samples included', () => {
     const p = livePipeline()
-    const spy = vi.spyOn(p.sketchSurfaceLayer, 'registerBody')
+    const spy = vi.spyOn(p.sketchSurfaceLayer, 'registerPart')
 
     const semicircle = [
       {

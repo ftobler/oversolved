@@ -12,7 +12,7 @@ import { Repository } from '../../query'
 import { solveBoolean } from '../boolean'
 import { HandleTable } from '../../occ/handleTable'
 import type { OccModule } from '../../occ/occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const mocks = vi.hoisted(() => ({
   booleanWithDiff: vi.fn(),
@@ -38,12 +38,12 @@ vi.mock('../booleanLineage', () => ({
   }),
 }))
 // Reading a body's names walks its OCC shape; these bodies have none.
-vi.mock('../../occ/bodyNames', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../occ/bodyNames')>()
-  return { ...actual, readBodyNames: () => actual.emptyShapeNames() }
+vi.mock('../../occ/partNames', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../occ/partNames')>()
+  return { ...actual, readPartNames: () => actual.emptyShapeNames() }
 })
-vi.mock('../bodySplit', () => ({
-  resplitBody: () => ['body_t'],
+vi.mock('../partSplit', () => ({
+  resplitPart: () => ['body_t'],
 }))
 
 const oc = null as unknown as OccModule
@@ -51,7 +51,7 @@ const scope = null as never
 const table = null as unknown as HandleTable
 const repo = new Repository()
 
-function body(id: string): Body {
+function part(id: string): PartSolid {
   return {
     id,
     created_by: 'ex',
@@ -73,13 +73,13 @@ describe('solveBoolean guard paths', () => {
 
   it('requires a target', () => {
     expect(() =>
-      solveBoolean(oc, scope, table, { id: 'b', boolean: { tools: ['body_u0'] } }, repo, { body_u0: body('body_u0') }),
+      solveBoolean(oc, scope, table, { id: 'b', boolean: { tools: ['body_u0'] } }, repo, { body_u0: part('body_u0') }),
     ).toThrow(/'target' is required/)
   })
 
   it('requires at least one tool', () => {
     expect(() =>
-      solveBoolean(oc, scope, table, { id: 'b', boolean: { target: 'body_t', tools: [] } }, repo, { body_t: body('body_t') }),
+      solveBoolean(oc, scope, table, { id: 'b', boolean: { target: 'body_t', tools: [] } }, repo, { body_t: part('body_t') }),
     ).toThrow(/must have at least one entry/)
   })
 
@@ -91,7 +91,7 @@ describe('solveBoolean guard paths', () => {
         table,
         { id: 'b', boolean: { operation: 'xor', target: 'body_t', tools: ['body_u0'] } },
         repo,
-        { body_t: body('body_t'), body_u0: body('body_u0') },
+        { body_t: part('body_t'), body_u0: part('body_u0') },
       ),
     ).toThrow(/unknown operation 'xor'/)
   })
@@ -107,7 +107,7 @@ describe('solveBoolean guard paths', () => {
         table,
         { id: 'b', boolean: { operation: 'subtract', target: 'body_t', tools: ['body_u0'], clearance: 'oops' } },
         repo,
-        { body_t: body('body_t'), body_u0: body('body_u0') },
+        { body_t: part('body_t'), body_u0: part('body_u0') },
       ),
     ).toThrow(/'clearance' must be a number, got string/)
   })
@@ -116,7 +116,7 @@ describe('solveBoolean guard paths', () => {
     // The target must carry a real shape so the pre-loop "has no shape" guard
     // passes and the tool resolution is what fails.
     const table = new HandleTable()
-    const target = body('body_t')
+    const target = part('body_t')
     target.shape = table.register({ delete: () => {}, isDeleted: () => false })
     expect(() =>
       solveBoolean(oc, scope, table, {
@@ -133,7 +133,7 @@ describe('solveBoolean guard paths', () => {
       solveBoolean(oc, scope, table, {
         id: 'b', boolean: { operation: 'union', target: '@body_missing', tools: ['body_u0'] },
       }, repo, {
-        body_u0: body('body_u0'),
+        body_u0: part('body_u0'),
       }),
     ).toThrow(/part not found/)
   })
@@ -143,7 +143,7 @@ describe('solveBoolean guard paths', () => {
     // shape (any disposable) keeps the pre-loop "has no shape" guard from
     // firing first. The throw happens before any OCC work.
     const table = new HandleTable()
-    const target = body('body_t')
+    const target = part('body_t')
     target.shape = table.register({ delete: () => {}, isDeleted: () => false })
     expect(() =>
       solveBoolean(oc, scope, table, {
@@ -158,7 +158,7 @@ describe('solveBoolean guard paths', () => {
     // The id comparison catches aliases too: '@ex1' and 'body_t' are the same
     // body, and resolving the tool must not be allowed to eat the target.
     const table = new HandleTable()
-    const target = body('body_t')
+    const target = part('body_t')
     target.created_by = 'ex1'
     target.shape = table.register({ delete: () => {}, isDeleted: () => false })
     expect(() =>
@@ -178,9 +178,9 @@ describe('solveBoolean guard paths', () => {
     // ('common').
     const scope = new DisposeScope()
     const table = new HandleTable()
-    const target = body('body_t')
+    const target = part('body_t')
     target.shape = table.register({ delete: () => {}, isDeleted: () => false })
-    const tool = body('body_u0')
+    const tool = part('body_u0')
     tool.shape = table.register({ delete: () => {}, isDeleted: () => false })
     const dummy = {
       shape: { delete: () => {}, isDeleted: () => false },
@@ -207,9 +207,9 @@ describe('solveBoolean guard paths', () => {
     // names it instead of reporting a green no-op.
     const scope = new DisposeScope()
     const table = new HandleTable()
-    const target = body('body_t')
+    const target = part('body_t')
     target.shape = table.register({ delete: () => {}, isDeleted: () => false })
-    const tool = body('body_u0')
+    const tool = part('body_u0')
     tool.shape = table.register({ delete: () => {}, isDeleted: () => false })
     mocks.booleanWithDiff.mockReturnValue({
       shape: { delete: () => {}, isDeleted: () => false },
@@ -230,9 +230,9 @@ describe('solveBoolean guard paths', () => {
   it('leaves no empty-result warning when the volume probe itself fails', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
-    const target = body('body_t')
+    const target = part('body_t')
     target.shape = table.register({ delete: () => {}, isDeleted: () => false })
-    const tool = body('body_u0')
+    const tool = part('body_u0')
     tool.shape = table.register({ delete: () => {}, isDeleted: () => false })
     mocks.booleanWithDiff.mockReturnValue({
       shape: { delete: () => {}, isDeleted: () => false },
@@ -259,7 +259,7 @@ describe('solveBoolean symmetric union/intersect (mock OCC)', () => {
     mocks.shapesTouch.mockReset()
   })
 
-  function rig3(): { scope: DisposeScope; table: HandleTable; store: Record<string, Body>; shapes: Record<string, { delete: () => void; isDeleted: () => boolean }> } {
+  function rig3(): { scope: DisposeScope; table: HandleTable; store: Record<string, PartSolid>; shapes: Record<string, { delete: () => void; isDeleted: () => boolean }> } {
     const scope = new DisposeScope()
     const table = new HandleTable()
     const shapes: Record<string, { delete: () => void; isDeleted: () => boolean }> = {
@@ -268,9 +268,9 @@ describe('solveBoolean symmetric union/intersect (mock OCC)', () => {
       c: { delete: () => {}, isDeleted: () => false },
       far: { delete: () => {}, isDeleted: () => false },
     }
-    const store: Record<string, Body> = {}
+    const store: Record<string, PartSolid> = {}
     for (const [key, id] of [['a', 'body_a'], ['b', 'body_b'], ['c', 'body_c'], ['far', 'body_far']] as const) {
-      const b = body(id)
+      const b = part(id)
       b.created_by = key
       b.shape = table.register(shapes[key], id)
       store[id] = b

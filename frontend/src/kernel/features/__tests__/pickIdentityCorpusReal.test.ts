@@ -39,7 +39,7 @@ import corpus from '../../occ/__fixtures__/pickIdentityCorpus.json'
 const oc = await loadOcc()
 const solveBytes = loadSolver()
 
-const BODY = 'body_e1tMr2u-m4rxTxhoZSw2z05E'
+const PART = 'body_e1tMr2u-m4rxTxhoZSw2z05E'
 const BOOLEAN = '4g6penAMAb__68YySKl9knDI'
 // The last feature of the corpus that must produce geometry, in document order.
 const SOLID_FEATURES = [
@@ -69,9 +69,9 @@ describe.skipIf(!oc || !solveBytes)('pick identity corpus (real OCC + Rust solve
       expect(`${fid}: ${(h.res(result, fid) as { status: string }).status}`).toBe(`${fid}: ok`)
     }
 
-    const body = h.body(result, BODY)
-    const edges = (body.edge_queries as string[]) ?? []
-    const faces = ((body.mesh as { face_queries?: string[] }).face_queries) ?? []
+    const part = h.part(result, PART)
+    const edges = (part.edge_queries as string[]) ?? []
+    const faces = ((part.mesh as { face_queries?: string[] }).face_queries) ?? []
     expect(edges.length).toBeGreaterThan(0)
     expect(faces.length).toBeGreaterThan(0)
 
@@ -89,7 +89,7 @@ describe.skipIf(!oc || !solveBytes)('pick identity corpus (real OCC + Rust solve
     // kernel level with build_failed, which since the swallowed-failure fix
     // surfaces as a feature exception instead of a green ok that changed
     // nothing.
-    const picked = ((h.body(h.run(spec()), BODY).edge_queries as string[]) ?? [])
+    const picked = ((h.part(h.run(spec()), PART).edge_queries as string[]) ?? [])
       .filter((q) => q.endsWith(':straightedge') && q.includes('/pwfYD59xKWiSyQhm@'))
     expect(picked.length).toBeGreaterThan(0)
 

@@ -16,7 +16,7 @@
 // Every operation now goes through `resplitBody`. A union pick that does not touch the
 // base at all is skipped instead, so disjoint material never reaches the split.
 //
-// Construction names are folded through the tool loop the same way bodyOps' cut/add and the
+// Construction names are folded through the tool loop the same way partOps' cut/add and the
 // array fuse do: each `booleanWithDiff` hands back a faceOrigin map, and `transferBooleanNames`
 // carries the accumulated names onto the new shape by subshape identity. Skipping that (which
 // this leaf used to do, keeping names keyed by the target's pre-boolean faces) silently unnamed every
@@ -26,9 +26,9 @@
 import { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
-import type { Body, BrepDiff } from '../types3d'
+import type { PartSolid, BrepDiff } from '../types3d'
 import type { Repository } from '../query'
-import { resolveBody } from './shared/bodyResolution'
+import { resolvePart } from './shared/partResolution'
 import { brepDiffIsEmpty } from './shared/brepDiff'
 import { booleanWithDiff, volumeOf, shapesIntersect, shapesTouch, BooleanSoundnessError } from '../occ/booleans'
 import { maxPrecision, precisionCeilingWarning, type KernelPrecision } from '../precision'
@@ -36,9 +36,9 @@ import { nearCoaxialCylinderWarning, shapeHasCoaxialCylinder } from '../occ/near
 import { helixAxisOfSweepDef } from './shared/helixPath'
 import { offsetSolid, OffsetError } from '../occ/offsetShape'
 import { SubShapeMap } from '../occ/subshapeIdentity'
-import { resplitBody } from './bodySplit'
+import { resplitPart } from './partSplit'
 import { transferBooleanNames } from './booleanLineage'
-import { readBodyNames } from '../occ/bodyNames'
+import { readPartNames } from '../occ/partNames'
 import { stripRefSigil } from '@/utils/refSigil'
 import { patternSubject } from '@/utils/core/patternSubject'
 import { isPatternKind } from '@/types/cad'
@@ -102,7 +102,7 @@ function growTool(
  *  feature behavior, not a body-list expansion. Every pattern kind is decided
  *  through PATTERN_KINDS, so a later kind joins the expansion by joining the
  *  list. */
-function isBodyPattern(def: Dict): boolean {
+function isPartPattern(def: Dict): boolean {
   const kind = def.kind
   if (typeof kind !== 'string' || !isPatternKind(kind)) return false
   const sub = (nestedFeatureParams(def).feature[kind] as Dict | undefined) ?? {}
@@ -125,7 +125,7 @@ function isBodyPattern(def: Dict): boolean {
  * pattern. `modified_by` is deliberately NOT consulted either: it would catch
  * both of those over-attributions.
  */
-function patternMemberIds(patternId: string, def: Dict, bodyStore: Record<string, Body>): string[] {
+function patternMemberIds(patternId: string, def: Dict, partStore: Record<string, PartSolid>): string[] {
   // The builder folds legacy flat params only into the feature being solved, so
   // an upstream pattern's source is read through the same canonicalizer.
   const sub = (nestedFeatureParams(def).feature[def.kind as string] as Dict | undefined) ?? {}
@@ -133,13 +133,13 @@ function patternMemberIds(patternId: string, def: Dict, bodyStore: Record<string
   const source = sub.source_body
   if (typeof source === 'string' && source !== '') {
     try {
-      ids.push(resolveBody(source, bodyStore).id)
+      ids.push(resolvePart(source, partStore).id)
     } catch (e) {
       swallowUnlessTrap(e)
       // A source that no longer resolves leaves only the minted copies.
     }
   }
-  for (const [bid, body] of Object.entries(bodyStore)) {
+  for (const [bid, body] of Object.entries(partStore)) {
     if (body.created_by === patternId || body.split_from?.feature === patternId) {
       if (!ids.includes(bid)) ids.push(bid)
     }
@@ -161,7 +161,7 @@ function expandPatternTools(
   targetId: string,
   featureId: string,
   featuresById: Record<string, Dict>,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): { refs: string[]; namedPatterns: Set<string> } {
   const refs: string[] = []
   const namedPatterns = new Set<string>()
@@ -179,9 +179,9 @@ function expandPatternTools(
     // sees every feature, unlike a per-step one). Leave the ref unresolved so
     // the tool loop refuses it by name.
     const upstream = key !== featureId && (selfIndex < 0 || order.indexOf(key) < selfIndex)
-    if (def !== undefined && isBodyPattern(def) && upstream && !(key in bodyStore)) {
+    if (def !== undefined && isPartPattern(def) && upstream && !(key in partStore)) {
       namedPatterns.add(key)
-      refs.push(...patternMemberIds(key, def, bodyStore).filter((id) => id !== targetId))
+      refs.push(...patternMemberIds(key, def, partStore).filter((id) => id !== targetId))
     } else {
       refs.push(ref)
     }
@@ -201,15 +201,15 @@ function partialPatternWarnings(
   featureId: string,
   namedPatterns: Set<string>,
   featuresById: Record<string, Dict>,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): string[] {
   const warnings: string[] = []
   const order = Object.keys(featuresById)
   const selfIndex = order.indexOf(featureId)
   for (const [fid, def] of Object.entries(featuresById)) {
     const upstream = fid !== featureId && (selfIndex < 0 || order.indexOf(fid) < selfIndex)
-    if (!isBodyPattern(def) || !upstream || namedPatterns.has(fid)) continue
-    const members = patternMemberIds(fid, def, bodyStore).filter((id) => id !== targetId)
+    if (!isPartPattern(def) || !upstream || namedPatterns.has(fid)) continue
+    const members = patternMemberIds(fid, def, partStore).filter((id) => id !== targetId)
     const used = members.filter((id) => toolIds.has(id)).length
     if (used > 0 && used < members.length) {
       warnings.push(
@@ -224,7 +224,7 @@ function partialPatternWarnings(
 /** One resolved tool pick: the authored ref (for a warning) and the body it names. */
 interface ToolEntry {
   ref: string
-  body: Body
+  part: PartSolid
 }
 
 /**
@@ -252,13 +252,13 @@ function orderSymmetricTools(
   op: 'fuse' | 'common',
   baseShape: OccShape,
   tools: ToolEntry[],
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): { ordered: ToolEntry[]; disconnected: ToolEntry[] } {
-  const storeIndex = new Map(Object.keys(bodyStore).map((id, i) => [id, i]))
-  const storePosition = (body: Body): number => storeIndex.get(body.id) ?? Number.MAX_SAFE_INTEGER
+  const storeIndex = new Map(Object.keys(partStore).map((id, i) => [id, i]))
+  const storePosition = (part: PartSolid): number => storeIndex.get(part.id) ?? Number.MAX_SAFE_INTEGER
   // The candidates are deduped by resolved body id above, and every one is a
   // live store entry, so the positions are distinct and this is a total order.
-  const sorted = [...tools].sort((a, b) => storePosition(a.body) - storePosition(b.body))
+  const sorted = [...tools].sort((a, b) => storePosition(a.part) - storePosition(b.part))
   const connects = op === 'fuse' ? shapesTouch : shapesIntersect
   const frontier: OccShape[] = [baseShape]
   const accepted: ToolEntry[] = []
@@ -270,24 +270,24 @@ function orderSymmetricTools(
   while (grew) {
     grew = false
     for (const tool of sorted) {
-      if (acceptedIds.has(tool.body.id)) continue
-      const shape = table.get<OccShape>(tool.body.shape!)
-      let at = probedTo.get(tool.body.id) ?? 0
+      if (acceptedIds.has(tool.part.id)) continue
+      const shape = table.get<OccShape>(tool.part.shape!)
+      let at = probedTo.get(tool.part.id) ?? 0
       let hit = false
       for (; at < frontier.length; at++) {
         if (connects(oc, frontier[at], shape)) { hit = true; break }
       }
       if (!hit) {
-        probedTo.set(tool.body.id, frontier.length)
+        probedTo.set(tool.part.id, frontier.length)
         continue
       }
       accepted.push(tool)
-      acceptedIds.add(tool.body.id)
+      acceptedIds.add(tool.part.id)
       frontier.push(shape)
       grew = true
     }
   }
-  return { ordered: accepted, disconnected: sorted.filter((tool) => !acceptedIds.has(tool.body.id)) }
+  return { ordered: accepted, disconnected: sorted.filter((tool) => !acceptedIds.has(tool.part.id)) }
 }
 
 /** Solve a boolean feature into the body store (mirrors `_solve_boolean`). */
@@ -297,7 +297,7 @@ export function solveBoolean(
   table: HandleTable,
   feature: Dict,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   featuresById: Record<string, Dict> = {},
 ): BooleanResult {
   const featureId = (feature.id as string) ?? ''
@@ -324,25 +324,25 @@ export function solveBoolean(
   const op = OP_MAP[operation]
   if (op === undefined) throw new Error(`boolean: unknown operation '${operation}'`)
 
-  const targetBody = resolveBody(targetRef, bodyStore)
-  if (targetBody.shape === null) throw new Error(`boolean: target '${targetRef}' has no shape`)
-  const { refs: toolRefs, namedPatterns } = expandPatternTools(authoredTools, targetBody.id, featureId, featuresById, bodyStore)
+  const targetPart = resolvePart(targetRef, partStore)
+  if (targetPart.shape === null) throw new Error(`boolean: target '${targetRef}' has no shape`)
+  const { refs: toolRefs, namedPatterns } = expandPatternTools(authoredTools, targetPart.id, featureId, featuresById, partStore)
   if (toolRefs.length === 0) {
     throw new Error(`boolean: the pattern tool(s) ${[...namedPatterns].join(', ')} have no part besides the target`)
   }
 
-  let resultShape: OccShape = table.get<OccShape>(targetBody.shape)
+  let resultShape: OccShape = table.get<OccShape>(targetPart.shape)
   const consumedKeys: string[] = []
   let lastDiff: BrepDiff | null = null
   let foldedAny = false
   // Folded across the tools: each step's output names are the next step's target
   // names, so a face keeps its identity through a multi-tool boolean.
   let { faceNames, edgeNames, faceAncestry, edgeAncestry, capAncestry, faceOwner, edgeOwner } =
-    readBodyNames(oc, scope, resultShape, targetBody)
-  const result: BooleanResult = { status: 'ok', body_id: targetBody.id, body_ids: [], operation }
+    readPartNames(oc, scope, resultShape, targetPart)
+  const result: BooleanResult = { status: 'ok', body_id: targetPart.id, body_ids: [], operation }
   // The merge widens by the max reported precision over the target and every
   // tool that actually contributes, up to the ceiling (kernel/precision.ts).
-  let precision: KernelPrecision | null = targetBody.precision ?? null
+  let precision: KernelPrecision | null = targetPart.precision ?? null
   const warn = (msg: string): void => {
     result.solver_warning = result.solver_warning === undefined ? msg : `${result.solver_warning}; ${msg}`
   }
@@ -351,13 +351,13 @@ export function solveBoolean(
   const explicitToolIds = new Set<string>()
   for (const ref of toolRefs) {
     try {
-      explicitToolIds.add(resolveBody(ref, bodyStore).id)
+      explicitToolIds.add(resolvePart(ref, partStore).id)
     } catch (e) {
       swallowUnlessTrap(e)
       // The tool loop below reports a bad ref by name.
     }
   }
-  for (const w of partialPatternWarnings(explicitToolIds, targetBody.id, featureId, namedPatterns, featuresById, bodyStore)) warn(w)
+  for (const w of partialPatternWarnings(explicitToolIds, targetPart.id, featureId, namedPatterns, featuresById, partStore)) warn(w)
 
   // Resolve every tool before any OCC work: a bad ref or a self-pick should
   // fail by name without first folding half the list. A symmetric operation
@@ -365,21 +365,21 @@ export function solveBoolean(
   const symmetric = op === 'fuse' || op === 'common'
   const toolEntries: ToolEntry[] = []
   for (const toolRef of toolRefs) {
-    const toolBody = resolveBody(toolRef, bodyStore)
-    if (toolBody.shape === null) throw new Error(`boolean: tool '${toolRef}' has no shape`)
-    if (toolBody.id === targetBody.id) {
+    const toolPart = resolvePart(toolRef, partStore)
+    if (toolPart.shape === null) throw new Error(`boolean: tool '${toolRef}' has no shape`)
+    if (toolPart.id === targetPart.id) {
       // The target and the tool resolved to the same body. A union/common is a
       // no-op with a real cost, a cut eats the whole target, and the tool
       // cleanup below would release the target's handle and then resplitBody
       // would release it again. Refuse before any OCC work, even with
       // keep_tools: target-as-tool is a spec error regardless.
       throw new Error(
-        `boolean: tool '${toolRef}' resolves to the target part '${targetBody.id}'; ` +
+        `boolean: tool '${toolRef}' resolves to the target part '${targetPart.id}'; ` +
         'a part cannot be its own tool',
       )
     }
-    if (symmetric && toolEntries.some((entry) => entry.body.id === toolBody.id)) continue
-    toolEntries.push({ ref: toolRef, body: toolBody })
+    if (symmetric && toolEntries.some((entry) => entry.part.id === toolPart.id)) continue
+    toolEntries.push({ ref: toolRef, part: toolPart })
   }
 
   // The base anchors the fold. A union/intersect folds the base's connected
@@ -388,7 +388,7 @@ export function solveBoolean(
   let foldEntries = toolEntries
   if (symmetric) {
     const { ordered, disconnected } = orderSymmetricTools(
-      oc, table, op, resultShape, toolEntries, bodyStore,
+      oc, table, op, resultShape, toolEntries, partStore,
     )
     for (const tool of disconnected) {
       warn(`${operation}: tool '${tool.ref}' does not intersect the target; skipped`)
@@ -396,25 +396,25 @@ export function solveBoolean(
     foldEntries = ordered
   }
 
-  for (const { ref: toolRef, body: toolBody } of foldEntries) {
+  for (const { ref: toolRef, part: toolBody } of foldEntries) {
     const toolShape = table.get<OccShape>(toolBody.shape!)
     // A helical band meeting the wall of its coaxial cylinder makes the clean's
     // face merge (ShapeUpgrade_UnifySameDomain with unifyFaces) spin forever;
     // the edge merge is safe, so only the face merge is skipped for that
     // geometry. `created_by` names the sweep, and the repo descriptor its path
     // registered is the same curve the sweep built.
-    const targetAxis = helixAxisOfSweepDef(featuresById[targetBody.created_by], globalRepo)
+    const targetAxis = helixAxisOfSweepDef(featuresById[targetPart.created_by], globalRepo)
     const toolAxis = helixAxisOfSweepDef(featuresById[toolBody.created_by], globalRepo)
     const coaxialHelix = (targetAxis !== null && shapeHasCoaxialCylinder(oc, scope, toolShape, targetAxis))
       || (toolAxis !== null && shapeHasCoaxialCylinder(oc, scope, resultShape, toolAxis))
-    const unifyFaces = !(targetBody.imported || toolBody.imported) && !coaxialHelix
+    const unifyFaces = !(targetPart.imported || toolBody.imported) && !coaxialHelix
 
     // A subtract grows each tool before the cut (clearance > 0) or shrinks it
     // (clearance < 0). The grown shape is a transient operand of this step: the
     // tool body, the consumed-tool release, keep_tools and the resplit all keep
     // seeing the authored tool. Grown faces carry their source face's UUID, so a
     // pick on a hole wall keeps its identity across a clearance edit.
-    const toolNames = readBodyNames(oc, scope, toolShape, toolBody)
+    const toolNames = readPartNames(oc, scope, toolShape, toolBody)
     let cutTool = toolShape
     if (op === 'cut' && clearance !== 0) {
       const grown = growTool(oc, scope, toolShape, clearance, toolRef)
@@ -426,7 +426,7 @@ export function solveBoolean(
       toolNames.faceNames = rekeyed
     }
 
-    // Mirror the implicit cut/add guards (bodyOps.applyBodyOperation): probe the
+    // Mirror the implicit cut/add guards (partOps.applyPartOperation): probe the
     // overlap before folding so a disjoint tool is neither consumed nor left
     // silent. A subtract of a non-overlapping tool would otherwise eat the body
     // with no visible effect; an intersect of disjoint bodies yields an empty
@@ -471,7 +471,7 @@ export function solveBoolean(
     resultShape = scope.track(res.shape)
     if (foldedAny) scope.release(prevShape)
     const names = transferBooleanNames(oc, scope, {
-      bodyShape: resultShape,
+      partShape: resultShape,
       faceOrigin: res.faceOrigin,
       targetFaceNames: faceNames,
       targetFaceAncestry: faceAncestry,
@@ -492,8 +492,8 @@ export function solveBoolean(
     if (!keepTools) consumedKeys.push(toolBody.id)
   }
 
-  targetBody.modified_by.push(featureId)
-  targetBody.brep_diff = lastDiff
+  targetPart.modified_by.push(featureId)
+  targetPart.brep_diff = lastDiff
 
   // A union can keep two near-coaxial cylinder faces with a microscopic
   // shoulder; name it before a later fillet at the junction refuses opaquely.
@@ -532,7 +532,7 @@ export function solveBoolean(
   // live faces with nothing left to notice. Nothing between here and the
   // resplit reads a tool.
   for (const key of new Set(consumedKeys)) {
-    const tool = bodyStore[key]
+    const tool = partStore[key]
     if (tool !== undefined) {
       if (tool.shape !== null) {
         // The consumed tool's shape was minted by its own producer (last
@@ -540,27 +540,27 @@ export function solveBoolean(
         // `releaseOwner` cannot over-decrement (see releaseFor).
         table.releaseFor(tool.shape, tool.modified_by.at(-1) ?? tool.created_by)
       }
-      delete bodyStore[key]
+      delete partStore[key]
     }
   }
 
-  const bodyIds = resplitBody(oc, scope, table, bodyStore, targetBody, resultShape, featureId, {
+  const partIds = resplitPart(oc, scope, table, partStore, targetPart, resultShape, featureId, {
     faceNames, edgeNames, faceAncestry, edgeAncestry, faceOwner, edgeOwner,
   }, null, precision)
 
   const ceiling = foldedAny && precision !== null ? precisionCeilingWarning(precision) : null
   if (ceiling !== null) warn(ceiling)
 
-  if (bodyIds.length === 0) {
+  if (partIds.length === 0) {
     // The operation ate the whole target (a subtract whose tool swallows it).
     // resplitBody deleted the body from the store; report the deletion with
     // body_id still naming the consumed body and body_ids: [] for "nothing
     // survives" (the convention stated in resplitBody's docstring).
-    warn(`boolean: the ${operation} removed all of part '${targetBody.id}'; the part was deleted`)
+    warn(`boolean: the ${operation} removed all of part '${targetPart.id}'; the part was deleted`)
     result.body_ids = []
     return result
   }
 
-  result.body_ids = bodyIds
+  result.body_ids = partIds
   return result
 }

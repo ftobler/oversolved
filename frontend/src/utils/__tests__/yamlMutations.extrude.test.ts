@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
-import { isBodyFeatureResult } from '@/types/cad'
+import { isFeaturePartsResult } from '@/types/cad'
 import {
   applyAddExtrude,
   applySetExtrudeField,
@@ -585,23 +585,23 @@ describe('set_extrude_merge_target', () => {
 
 describe('isBodyFeatureResult type guard', () => {
   it('returns true for object with body_id', () => {
-    expect(isBodyFeatureResult({ body_id: 'x', status: 'ok' })).toBe(true)
+    expect(isFeaturePartsResult({ body_id: 'x', status: 'ok' })).toBe(true)
   })
 
   it('returns true for object with body_id and exception', () => {
-    expect(isBodyFeatureResult({ body_id: 'x', status: 'exception', exception: 'some error' })).toBe(true)
+    expect(isFeaturePartsResult({ body_id: 'x', status: 'exception', exception: 'some error' })).toBe(true)
   })
 
   it('returns false for object without body_id', () => {
-    expect(isBodyFeatureResult({ geometry: {} })).toBe(false)
+    expect(isFeaturePartsResult({ geometry: {} })).toBe(false)
   })
 
   it('returns false for null', () => {
-    expect(isBodyFeatureResult(null)).toBe(false)
+    expect(isFeaturePartsResult(null)).toBe(false)
   })
 
   it('returns false for primitive', () => {
-    expect(isBodyFeatureResult('string')).toBe(false)
-    expect(isBodyFeatureResult(123)).toBe(false)
+    expect(isFeaturePartsResult('string')).toBe(false)
+    expect(isFeaturePartsResult(123)).toBe(false)
   })
 })

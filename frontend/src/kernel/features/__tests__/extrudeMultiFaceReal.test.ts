@@ -18,7 +18,7 @@ import { sortedFacesOf } from '../../occ/faceLoops'
 import { volumeOf } from '../../occ/booleans'
 import { Repository } from '../../query'
 import { solveExtrude } from '../extrude'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 
 const oc = await loadOcc()
@@ -39,7 +39,7 @@ describe.skipIf(!oc)('solveExtrude multi-face profiles (real OCC)', () => {
     throw new Error('box has no +z face')
   }
 
-  function twoBoxes(scope: DisposeScope, table: HandleTable): Record<string, Body> {
+  function twoBoxes(scope: DisposeScope, table: HandleTable): Record<string, PartSolid> {
     const a = makeBox(occ, scope, 10, 10, 10)
     const b = makeBoxAt(occ, scope, [20, 0, 0], 10, 10, 10)
     return {
@@ -55,7 +55,7 @@ describe.skipIf(!oc)('solveExtrude multi-face profiles (real OCC)', () => {
   }
 
   // Sum the volume of every body the feature minted (ids other than the sources).
-  function mintedVolume(scope: DisposeScope, table: HandleTable, store: Record<string, Body>): { volume: number; count: number } {
+  function mintedVolume(scope: DisposeScope, table: HandleTable, store: Record<string, PartSolid>): { volume: number; count: number } {
     let volume = 0
     let count = 0
     for (const [bid, body] of Object.entries(store)) {
@@ -66,7 +66,7 @@ describe.skipIf(!oc)('solveExtrude multi-face profiles (real OCC)', () => {
     return { volume, count }
   }
 
-  function solve(scope: DisposeScope, table: HandleTable, store: Record<string, Body>, sub: Record<string, unknown>) {
+  function solve(scope: DisposeScope, table: HandleTable, store: Record<string, PartSolid>, sub: Record<string, unknown>) {
     return solveExtrude(occ, scope, table, { id: 'm1', extrude: sub }, new Repository(), store)
   }
 

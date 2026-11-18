@@ -1,4 +1,4 @@
-import { pickedIndicesForBody } from './pickKey'
+import { pickedIndicesForPart } from './pickKey'
 
 /**
  * An active highlight request. This is the ONE shape every highlight decision
@@ -65,7 +65,7 @@ export interface ActiveHighlight {
  *   durable selection no longer contains.
  */
 export function computeHighlight(
-  bodyKey: string,
+  partKey: string,
   layer: string,
   queries: ReadonlyArray<string>,
   active: ActiveHighlight,
@@ -82,7 +82,7 @@ export function computeHighlight(
   const isolated = new Set<number>()
   const claimed = new Set<string>()
   for (const [claimQuery, keys] of active.pickKeys) {
-    const picked = pickedIndicesForBody(keys, bodyKey, layer, queries.length)
+    const picked = pickedIndicesForPart(keys, partKey, layer, queries.length)
     if (!picked) continue
     for (const i of picked) {
       if (queries[i] !== claimQuery) continue
@@ -136,13 +136,13 @@ export function orFlags(
 export class HighlightIndex {
   // The all-false answer, shared by reference so memos can skip on identity.
   readonly none: readonly boolean[]
-  private readonly bodyKey: string
+  private readonly partKey: string
   private readonly layer: string
   private readonly queries: ReadonlyArray<string>
   private readonly querySet: ReadonlySet<string>
 
-  constructor(bodyKey: string, layer: string, queries: ReadonlyArray<string>) {
-    this.bodyKey = bodyKey
+  constructor(partKey: string, layer: string, queries: ReadonlyArray<string>) {
+    this.partKey = partKey
     this.layer = layer
     this.queries = queries
     this.querySet = new Set(queries)
@@ -151,7 +151,7 @@ export class HighlightIndex {
 
   compute(active: ActiveHighlight): readonly boolean[] {
     if (!this.intersects(active.queries)) return this.none
-    return computeHighlight(this.bodyKey, this.layer, this.queries, active)
+    return computeHighlight(this.partKey, this.layer, this.queries, active)
   }
 
   // Whether any primitive is flagged. O(1) for the shared all-false answer.

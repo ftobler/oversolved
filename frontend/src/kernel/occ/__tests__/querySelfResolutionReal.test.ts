@@ -82,19 +82,19 @@ const box = (): Spec => ({ features: [
 ] })
 
 /** The emitted queries of one kind for a body, index-aligned with its primitives. */
-function queriesOf(h: SharedHarness, r: BuildResponse, bodyId: string, kind: Kind): string[] {
-  const b = h.body(r, bodyId)
+function queriesOf(h: SharedHarness, r: BuildResponse, partId: string, kind: Kind): string[] {
+  const b = h.part(r, partId)
   if (kind === 'face') return ((b.mesh as { face_queries?: string[] } | undefined)?.face_queries) ?? []
   return (b[`${kind}_queries`] as string[] | undefined) ?? []
 }
 
 /** The registered element for primitive `idx` of `kind` on `bodyId`. */
-function registeredElement(repo: Repository, bodyId: string, kind: Kind, idx: number): unknown {
+function registeredElement(repo: Repository, partId: string, kind: Kind, idx: number): unknown {
   const hits = [...repo.elements.values()].filter((el) => {
     const e = el as Record<string, unknown>
-    return e?.body_id === bodyId && e[`${kind}_index`] === idx
+    return e?.body_id === partId && e[`${kind}_index`] === idx
   })
-  expect(hits, `${kind} ${idx} of ${bodyId} is registered exactly once`).toHaveLength(1)
+  expect(hits, `${kind} ${idx} of ${partId} is registered exactly once`).toHaveLength(1)
   return hits[0]
 }
 
@@ -124,13 +124,13 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
 
   /** Builds `tail` in full and on top of `prefix`'s checkpoints, and expects both to
    *  emit the same face, edge and vertex queries for `bodyId`. */
-  function expectRestoredMatchesFull(prefix: Spec, tail: Spec, bodyId: string): void {
+  function expectRestoredMatchesFull(prefix: Spec, tail: Spec, partId: string): void {
     const full = h.run(tail)
     const restored = h.run(tail, { prevState: h.run(prefix)._build_state })
     expectRestored(prefix, tail)
     for (const kind of ['face', 'edge', 'vertex'] as const) {
-      expect(queriesOf(h, restored, bodyId, kind), `${kind} queries, restored vs full`)
-        .toEqual(queriesOf(h, full, bodyId, kind))
+      expect(queriesOf(h, restored, partId, kind), `${kind} queries, restored vs full`)
+        .toEqual(queriesOf(h, full, partId, kind))
     }
   }
 
@@ -138,7 +138,7 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
    *  first extrude, so the modifier cases can prove they exercised one. With
    *  `restoreFrom`, that spec is built first and `spec` incrementally on top, so
    *  its clean prefix comes back from the checkpoint copy (no `brep_diff`). */
-  function expectSelfResolution(spec: Spec, bodyId: string, opts?: { restoreFrom?: Spec }): number {
+  function expectSelfResolution(spec: Spec, partId: string, opts?: { restoreFrom?: Spec }): number {
     const prevState = opts?.restoreFrom ? h.run(opts.restoreFrom)._build_state : null
     const r = h.run(spec, { prevState })
     if (opts?.restoreFrom) expectRestored(opts.restoreFrom, spec)
@@ -152,28 +152,28 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
     }
     const checkpoint = state.checkpoints[lastFid]
     const repo = repoFromSnapshot(checkpoint.repo_snapshot as Record<string, unknown>)
-    const bodyStore = checkpoint.body_store_snapshot as Record<string, unknown>
+    const partStore = checkpoint.body_store_snapshot as Record<string, unknown>
 
     let checked = 0
     let modifierOwned = 0
     for (const kind of ['face', 'edge', 'vertex'] as const) {
-      const queries = queriesOf(h, r, bodyId, kind)
-      expect(queries.length, `${bodyId} emits ${kind} queries`).toBeGreaterThan(0)
+      const queries = queriesOf(h, r, partId, kind)
+      expect(queries.length, `${partId} emits ${kind} queries`).toBeGreaterThan(0)
       queries.forEach((query, idx) => {
-        const element = registeredElement(repo, bodyId, kind, idx)
+        const element = registeredElement(repo, partId, kind, idx)
         const label = `${kind} ${idx}: ${query}`
 
-        expect(repo.query(query, null, bodyStore), label).toBe(element)
+        expect(repo.query(query, null, partStore), label).toBe(element)
         if (query.includes('@u|')) expect(repo._lastTier, label).toBe('uuid')
 
         // The ancestral net alone: the element or an ambiguity that includes it.
         const stripped = withoutUuid(query)
         try {
-          expect(repo.query(stripped, null, bodyStore), `ancestral net of ${label}`).toBe(element)
+          expect(repo.query(stripped, null, partStore), `ancestral net of ${label}`).toBe(element)
         } catch (e) {
           if (!(e instanceof AmbiguousQueryError)) throw e
           // Ambiguous among siblings is fine only when the element is one of them.
-          expect(repo.queryAll(stripped, null, bodyStore), `ancestral candidates of ${label}`).toContain(element)
+          expect(repo.queryAll(stripped, null, partStore), `ancestral candidates of ${label}`).toContain(element)
         }
         if ((element as { created_by?: string }).created_by !== spec.features.find((f) => f.kind === 'extrude')?.id) {
           modifierOwned++
@@ -210,7 +210,7 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
 
   // The fillet restored from its checkpoint copy: the live `brep_diff` is gone,
   // so the fillet's elements must stay attributed to it through the canonical
-  // indices the body carries (`Body.brep_new`), or the incremental build mints
+  // indices the body carries (`Part.brep_new`), or the incremental build mints
   // other queries than the full one.
   it('filleted box restored from its checkpoint', () => {
     const base = box()
@@ -333,7 +333,7 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
   /** Each hole face's uuid, keyed by where the face is (test-side only: it pairs
    *  the same face across two documents, it identifies nothing in the kernel). */
   function holeFaceUuidsByPlace(spec: Spec): Map<string, string> {
-    const mesh = h.body(h.run(spec), 'body_ex1').mesh as {
+    const mesh = h.part(h.run(spec), 'body_ex1').mesh as {
       face_data: Array<{ centroid: number[]; normal: number[] }>
       face_uuids: (string | null)[]
       face_queries: string[]
@@ -428,7 +428,7 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
     ] }
     expectSelfResolution(spec, 'body_ex1')
 
-    const mesh = h.body(h.run(spec), 'body_ex1').mesh as {
+    const mesh = h.part(h.run(spec), 'body_ex1').mesh as {
       face_data: Array<{ centroid: number[]; normal: number[] }>
       face_uuids: (string | null)[]
     }

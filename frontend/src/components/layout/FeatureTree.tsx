@@ -29,7 +29,7 @@ export function FeatureTree() {
   const editingFeatureId = useEditorState(s => s.editingFeatureId)
   const visibleFeatures = usePartEditorStore(s => s.visibleFeatures)
   const solveResults = usePartEditorStore(s => s.solveResults)
-  const bodies = usePartEditorStore(s => s.bodies)
+  const parts = usePartEditorStore(s => s.parts)
   const isRebuilding = usePartEditorStore(s => s.isRebuilding)
   const featureTimings = usePartEditorStore(s => s.featureTimings)
   const validation = usePartEditorStore(s => s.validation)
@@ -166,7 +166,7 @@ export function FeatureTree() {
           // kind, so the tree asks the same question for every kind
           // (utils/core/featureFailure.ts). The row and the open editor show
           // this one mark.
-          const mark = featureFailure(feature.id, solveResults, bodies)
+          const mark = featureFailure(feature.id, solveResults, parts)
 
           return (
           <Fragment key={`feature-${feature.id}`}>

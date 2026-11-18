@@ -13,11 +13,11 @@ import { COLOR_SELECTED, COLOR_HOVER, RENDER_ORDER_HIGHLIGHT, EDGE_HIGHLIGHT_LIN
 import { AssemblySelectionIndex } from '@/utils/assemblySelectionGeometry'
 import { getSectionClipPlaneList } from '@/viewport/sectionClipping'
 import { useSectionActive } from '@/viewport/useSection'
-import type { AssemblyPickBody } from '@/utils/assemblyPick'
+import type { AssemblyPickPart } from '@/utils/assemblyPick'
 import type { Vec3 } from '@/utils/transform3d'
 
 interface Props {
-  pickBodies: readonly AssemblyPickBody[]
+  pickParts: readonly AssemblyPickPart[]
   selection: ReadonlySet<string>
   hovered: string | null
   /** Entity keys to draw in the hover colour alongside `hovered`, e.g. a mate
@@ -83,14 +83,14 @@ function usePointsGeometry(points: readonly Vec3[]): THREE.BufferGeometry | null
   return geo
 }
 
-export default function AssemblySelectionHighlight({ pickBodies, selection, hovered, mateHighlighted }: Props) {
+export default function AssemblySelectionHighlight({ pickParts, selection, hovered, mateHighlighted }: Props) {
   const sectionActive = useSectionActive()
   const clippingPlanes = sectionActive ? getSectionClipPlaneList() : null
   // The index outlives the pointer: it is keyed on the pick geometry, so a hover
   // change costs only the primitives of the newly hovered entity. Rebuilding it
   // per move (what calling the one-shot helper would do) would walk every
   // entity of the assembly again on each one.
-  const index = useMemo(() => new AssemblySelectionIndex(pickBodies), [pickBodies])
+  const index = useMemo(() => new AssemblySelectionIndex(pickParts), [pickParts])
   const geometry = useMemo(
     () => index.build(selection, hovered, mateHighlighted),
     [index, selection, hovered, mateHighlighted],
@@ -116,7 +116,7 @@ export default function AssemblySelectionHighlight({ pickBodies, selection, hove
   // renderOrder is -- notably the collision/ID debug pass (IdDebugOverlay,
   // renderOrder 9999 at groupOrder 0), which the highlights then painted over.
   // Every child below sets RENDER_ORDER_HIGHLIGHT itself, so layering against
-  // the bodies is unaffected. The part editor's Body3D root group is likewise
+  // the bodies is unaffected. The part editor's Part3D root group is likewise
   // renderOrder-free, which is why part mode never had this bug.
   return (
     <group>

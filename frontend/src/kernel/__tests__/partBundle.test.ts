@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { toEdgeCurve, toBodyMesh, toPartBundle, scaleBundleToMillimetres, extractBodyAnchors, anchorIdFor, anchorKindHasAxis, anchorByDescriptor, ANCHOR_TIE_EPSILON_SQ, BUNDLE_SCHEMA, BUNDLE_BUILD_ID, BUNDLE_BUILD_FINGERPRINT, buildBundleFingerprint, PART_FRAME_ANCHORS, partFrameAnchorId } from '../partBundle'
+import { toEdgeCurve, toPartMesh, toPartBundle, scaleBundleToMillimetres, extractPartAnchors, anchorIdFor, anchorKindHasAxis, anchorByDescriptor, ANCHOR_TIE_EPSILON_SQ, BUNDLE_SCHEMA, BUNDLE_BUILD_ID, BUNDLE_BUILD_FINGERPRINT, buildBundleFingerprint, PART_FRAME_ANCHORS, partFrameAnchorId } from '../partBundle'
 import type { Anchor, AnchorKind, PartBundle } from '../partBundle'
-import type { EdgeData, BodyResult, FaceData, MateAnchorDescriptor } from '../../types/cad'
+import type { EdgeData, PartResult, FaceData, MateAnchorDescriptor } from '../../types/cad'
 import { initGlobalRepo } from '../query'
 import { resolvePlaneRef } from '../features/shared/planes'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
@@ -12,7 +12,7 @@ const FRAME_IDS = new Set(
 )
 
 /** The anchors a body contributed, i.e. everything that is not the part frame. */
-function bodyAnchorIds(bundle: { anchors: Record<string, Anchor> }): string[] {
+function partAnchorIds(bundle: { anchors: Record<string, Anchor> }): string[] {
   return Object.keys(bundle.anchors).filter(id => !FRAME_IDS.has(id))
 }
 
@@ -199,9 +199,9 @@ describe('toEdgeCurve', () => {
   })
 })
 
-describe('toBodyMesh', () => {
+describe('toPartMesh', () => {
   it('converts a BodyResult with tuple mesh into typed arrays', () => {
-    const body: BodyResult = {
+    const part: PartResult = {
       id: 'body_1',
       created_by: 'ex1',
       modified_by: [],
@@ -214,7 +214,7 @@ describe('toBodyMesh', () => {
       edges: [],
       edge_queries: [],
     }
-    const result = toBodyMesh(body)
+    const result = toPartMesh(part)
     expect(result.mesh.vertices).toBeInstanceOf(Float32Array)
     expect(result.mesh.indices).toBeInstanceOf(Uint32Array)
     expect(result.mesh.faceIdsPerTriangle).toBeInstanceOf(Uint32Array)
@@ -225,7 +225,7 @@ describe('toBodyMesh', () => {
   })
 
   it('carries the sparse hidden lists and owns its copy of each', () => {
-    const body: BodyResult = {
+    const part: PartResult = {
       id: 'body_seam',
       created_by: 'cyl1',
       modified_by: [],
@@ -238,17 +238,17 @@ describe('toBodyMesh', () => {
       hidden_edges: [0],
       hidden_vertices: [0, 1],
     }
-    const result = toBodyMesh(body)
+    const result = toPartMesh(part)
     expect(result.hiddenEdges).toEqual([0])
     expect(result.hiddenVertices).toEqual([0, 1])
     // A bundle is transferred to the anchor worker, so it must own its arrays.
-    body.hidden_edges!.push(1)
-    body.hidden_vertices!.push(2)
+    part.hidden_edges!.push(1)
+    part.hidden_vertices!.push(2)
     expect(result.hiddenEdges).toEqual([0])
     expect(result.hiddenVertices).toEqual([0, 1])
   })
 
-  it('converts edges from the body into EdgeCurves', () => {    const body: BodyResult = {
+  it('converts edges from the body into EdgeCurves', () => {    const part: PartResult = {
       id: 'body_2',
       created_by: 'ex2',
       modified_by: [],
@@ -262,7 +262,7 @@ describe('toBodyMesh', () => {
       ],
       edge_queries: ['@gde|line1', '@gde|line2'],
     }
-    const result = toBodyMesh(body)
+    const result = toPartMesh(part)
     expect(result.edges).toHaveLength(2)
     expect(result.edges[0].kind).toBe('line')
     expect(result.edges[0].id).toBe('@gde|line1')
@@ -277,7 +277,7 @@ describe('toBodyMesh', () => {
   // Nothing throws on that -- it just yields a bundle of edges whose id nothing
   // matches, which is why it went unnoticed.
   it('never leaves EdgeCurve.id undefined when edge_queries is short', () => {
-    const body: BodyResult = {
+    const part: PartResult = {
       id: 'body_short',
       created_by: '',
       modified_by: [],
@@ -287,7 +287,7 @@ describe('toBodyMesh', () => {
       ],
       edge_queries: [],
     }
-    const result = toBodyMesh(body)
+    const result = toPartMesh(part)
     expect(result.edges).toHaveLength(2)
     for (const e of result.edges) {
       expect(e.id).toBeDefined()
@@ -296,7 +296,7 @@ describe('toBodyMesh', () => {
   })
 
   it('handles a body with no mesh (produces empty typed arrays)', () => {
-    const body: BodyResult = {
+    const part: PartResult = {
       id: 'body_3',
       created_by: 'ex3',
       modified_by: [],
@@ -305,7 +305,7 @@ describe('toBodyMesh', () => {
       ],
       edge_queries: ['@gde|only_edge'],
     }
-    const result = toBodyMesh(body)
+    const result = toPartMesh(part)
     expect(result.mesh.vertices).toBeInstanceOf(Float32Array)
     expect(result.mesh.vertices.length).toBe(0)
     expect(result.mesh.indices.length).toBe(0)
@@ -314,7 +314,7 @@ describe('toBodyMesh', () => {
   })
 
   it('handles a body with no triangle_to_face (zero-filled faceIdsPerTriangle)', () => {
-    const body: BodyResult = {
+    const part: PartResult = {
       id: 'body_4',
       created_by: 'ex4',
       modified_by: [],
@@ -323,7 +323,7 @@ describe('toBodyMesh', () => {
         faces: [[0, 1, 2]],
       },
     }
-    const result = toBodyMesh(body)
+    const result = toPartMesh(part)
     expect(result.mesh.faceIdsPerTriangle.length).toBe(1)
     expect(result.mesh.faceIdsPerTriangle[0]).toBe(0)
   })
@@ -335,13 +335,13 @@ describe('toBodyMesh', () => {
     // copy and the input stays intact.
     const engineVerts = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0])
     const engineFaces = new Uint32Array([0, 1, 2])
-    const body: BodyResult = {
+    const part: PartResult = {
       id: 'body_typed',
       created_by: 'ex1',
       modified_by: [],
       mesh: { vertices: engineVerts, faces: engineFaces, triangle_to_face: [0] },
     }
-    const result = toBodyMesh(body)
+    const result = toPartMesh(part)
     // Buffer identity differs: the bundle owns its arrays.
     expect(result.mesh.vertices.buffer).not.toBe(engineVerts.buffer)
     expect(result.mesh.indices.buffer).not.toBe(engineFaces.buffer)
@@ -355,7 +355,7 @@ describe('toBodyMesh', () => {
 
 describe('toPartBundle', () => {
   it('converts a Record of BodyResults into a PartBundle with anchors', () => {
-    const bodies: Record<string, BodyResult> = {
+    const parts: Record<string, PartResult> = {
       body_1: {
         id: 'body_1',
         created_by: 'ex1',
@@ -371,19 +371,19 @@ describe('toPartBundle', () => {
         edge_queries: ['edge1'],
       },
     }
-    const bundle = toPartBundle('doc123', 'h5', bodies)
+    const bundle = toPartBundle('doc123', 'h5', parts)
     expect(bundle.doc_id).toBe('doc123')
     expect(bundle.content_hash).toBe('h5')
     expect(bundle.bodies).toHaveLength(2)
     expect(bundle.bodies[1].edges).toHaveLength(1)
     // These mock bodies carry no ancestry-format queries, so no body mints an
     // anchor; the four part-frame anchors are still there on every bundle.
-    expect(bodyAnchorIds(bundle)).toEqual([])
+    expect(partAnchorIds(bundle)).toEqual([])
     expect(Object.keys(bundle.anchors)).toHaveLength(4)
   })
 
   it('adds exactly the four part-frame anchors to a two-body bundle, with stable ids', () => {
-    const bodyWithFace = (uuid: string): BodyResult => ({
+    const partWithFace = (uuid: string): PartResult => ({
       id: uuid, created_by: EX_FEATURE, modified_by: [],
       mesh: {
         vertices: [], faces: [],
@@ -391,16 +391,16 @@ describe('toPartBundle', () => {
         face_data: [{ centroid: [0, 0, 0], normal: [0, 0, 1], area: 1, surface_type: 'flatface' }],
       },
     })
-    const bodies: Record<string, BodyResult> = {
-      b1: bodyWithFace('f:a'),
-      b2: bodyWithFace('f:b'),
+    const parts: Record<string, PartResult> = {
+      b1: partWithFace('f:a'),
+      b2: partWithFace('f:b'),
     }
-    const first = toPartBundle('doc', 'h1', bodies)
-    const second = toPartBundle('doc', 'h2', bodies)
+    const first = toPartBundle('doc', 'h1', parts)
+    const second = toPartBundle('doc', 'h2', parts)
 
     // Two body anchors plus exactly the four frame anchors.
     expect(Object.keys(first.anchors)).toHaveLength(2 + 4)
-    expect(bodyAnchorIds(first)).toHaveLength(2)
+    expect(partAnchorIds(first)).toHaveLength(2)
 
     const expected: Record<string, { point: [number, number, number]; axis: [number, number, number] }> = {
       Origin: { point: [0, 0, 0], axis: [0, 0, 1] },
@@ -431,7 +431,7 @@ describe('toPartBundle', () => {
     // minter drew a random prefix per build, which made two cold builds of one
     // rev mint DIFFERENT ids and strand every persisted mate ref on a cache
     // wipe.
-    const bodies: Record<string, BodyResult> = {
+    const parts: Record<string, PartResult> = {
       b1: {
         id: 'b1', created_by: 'ex1', modified_by: [],
         mesh: {
@@ -441,10 +441,10 @@ describe('toPartBundle', () => {
         },
       },
     }
-    const bundleA = toPartBundle('doc1', 'h1', bodies)
-    const bundleB = toPartBundle('doc1', 'h2', bodies)
-    const idsA = bodyAnchorIds(bundleA)
-    const idsB = bodyAnchorIds(bundleB)
+    const bundleA = toPartBundle('doc1', 'h1', parts)
+    const bundleB = toPartBundle('doc1', 'h2', parts)
+    const idsA = partAnchorIds(bundleA)
+    const idsB = partAnchorIds(bundleB)
     expect(idsA).toHaveLength(1)
     expect(idsB).toHaveLength(1)
     // Same geom_hash + kind -> same id, across builds and doc revs.
@@ -465,7 +465,7 @@ describe('toPartBundle', () => {
     // Same geom_hash + kind in one bundle (two elements carrying one uuid
     // token): the first keeps the bare id, the second gets a disambiguation
     // suffix. Never two elements on one id.
-    const bodies: Record<string, BodyResult> = {
+    const parts: Record<string, PartResult> = {
       b1: {
         id: 'b1', created_by: 'ex1', modified_by: [],
         mesh: {
@@ -481,8 +481,8 @@ describe('toPartBundle', () => {
         },
       },
     }
-    const bundle = toPartBundle('doc1', 'h1', bodies)
-    const ids = bodyAnchorIds(bundle)
+    const bundle = toPartBundle('doc1', 'h1', parts)
+    const ids = partAnchorIds(bundle)
     expect(ids).toHaveLength(2)
     expect(new Set(ids).size).toBe(2)
     const base = anchorIdFor('@u|f:0,0,0|0,0,1', 'plane')
@@ -551,8 +551,8 @@ describe('scaleBundleToMillimetres', () => {
 /** Build a query string in the ancestry format that `uuidTokenOfQuery` can parse. */
 function makeQuery(ids: string[], typeRestriction: string | null): string {
   const hexLengths = ids.map((id) => id.length.toString(16)).join(',')
-  const body = ids.join('')
-  return typeRestriction ? `?${hexLengths};${body}:${typeRestriction}` : `?${hexLengths};${body}`
+  const part = ids.join('')
+  return typeRestriction ? `?${hexLengths};${part}:${typeRestriction}` : `?${hexLengths};${part}`
 }
 
 const EX_FEATURE = 'ex123'
@@ -568,7 +568,7 @@ describe('extractBodyAnchors', () => {
   // therefore be bounded by face_data / edges / vertices, never by the parallel
   // query array, which is the one that can come up short.
   it('gives every entity a slot even when the query arrays are short or absent', () => {
-    const body: BodyResult = {
+    const part: PartResult = {
       id: 'body_short_anchors',
       created_by: '',
       modified_by: [],
@@ -588,7 +588,7 @@ describe('extractBodyAnchors', () => {
       // edge_queries / vertex_queries absent entirely
       vertices: [[0, 0, 0], [10, 0, 0], [10, 5, 0]],
     }
-    const { entityAnchors } = extractBodyAnchors(body, mintFactory())
+    const { entityAnchors } = extractPartAnchors(part, mintFactory())
     expect(entityAnchors.faces).toHaveLength(2)
     expect(entityAnchors.edges).toHaveLength(2)
     expect(entityAnchors.vertices).toHaveLength(3)
@@ -603,16 +603,16 @@ describe('extractBodyAnchors', () => {
     // runs off the end. That used to throw out of the descriptor lookup and,
     // since toPartBundle's body loop has no per-body catch, cost EVERY body its
     // anchors -- not just this one.
-    const body: BodyResult = {
+    const part: PartResult = {
       id: 'b1', created_by: '', modified_by: [],
       mesh: { vertices: [], faces: [], face_queries: [], face_data: [] },
       edges: [{ kind: 'line', start: [0, 0, 0], end: [1, 0, 0] }],
       edge_queries: [],
       vertices: [[0, 0, 0], [1, 0, 0]],
       vertex_queries: [],
-    } as unknown as BodyResult
+    } as unknown as PartResult
 
-    const { anchors, entityAnchors } = extractBodyAnchors(body, mintFactory())
+    const { anchors, entityAnchors } = extractPartAnchors(part, mintFactory())
 
     expect(anchors).toEqual({})
     // Each entity still keeps its positional slot, empty, so the join to
@@ -641,11 +641,11 @@ describe('extractBodyAnchors', () => {
         surface_frame: axis ? { axis, origin: [5, 5, i] } : undefined,
       })
     }
-    const body: BodyResult = {
+    const part: PartResult = {
       id: 'b1', created_by: EX_FEATURE, modified_by: [],
       mesh: { vertices: [], faces: [], face_queries: fqs, face_data: fds },
     }
-    const { anchors } = extractBodyAnchors(body, mintFactory())
+    const { anchors } = extractPartAnchors(part, mintFactory())
     const vals = Object.values(anchors)
     expect(vals).toHaveLength(5)
     const kinds = vals.map((a) => a.kind).sort()
@@ -669,7 +669,7 @@ describe('extractBodyAnchors', () => {
 
   it('emits no anchor for a curved face with no surface_frame (fail-safe, not fail-wrong)', () => {
     const fq = makeQuery([`@u|f:0,0,0|0,0,1`, `@${EX_FEATURE}`], 'cylinderface')
-    const body: BodyResult = {
+    const part: PartResult = {
       id: 'b1', created_by: EX_FEATURE, modified_by: [],
       mesh: {
         vertices: [], faces: [],
@@ -677,13 +677,13 @@ describe('extractBodyAnchors', () => {
         face_data: [{ centroid: [0, 0, 0], normal: [0, 0, 1], area: 1, surface_type: 'cylinderface' }],
       },
     }
-    const { anchors } = extractBodyAnchors(body, mintFactory())
+    const { anchors } = extractPartAnchors(part, mintFactory())
     expect(Object.keys(anchors)).toHaveLength(0)
   })
 
   it('skips faces with unsupported surface type (bspline)', () => {
     const fq = makeQuery([`@u|f:10,10,5|0,0,1`, `@${EX_FEATURE}`], 'face')
-    const body: BodyResult = {
+    const part: PartResult = {
       id: 'b1', created_by: EX_FEATURE, modified_by: [],
       mesh: {
         vertices: [], faces: [],
@@ -691,12 +691,12 @@ describe('extractBodyAnchors', () => {
         face_data: [{ centroid: [10, 10, 5], normal: [0, 0, 1], area: 1, surface_type: 'face' }],
       },
     }
-    const { anchors } = extractBodyAnchors(body, mintFactory())
+    const { anchors } = extractPartAnchors(part, mintFactory())
     expect(Object.keys(anchors)).toHaveLength(0)
   })
 
   it('emits line and circle edge anchors, skips ellipse and spline', () => {
-    const body: BodyResult = {
+    const part: PartResult = {
       id: 'b1', created_by: EX_FEATURE, modified_by: [],
       edges: [
         { kind: 'line', start: [0, 0, 0], end: [10, 0, 0] },
@@ -711,7 +711,7 @@ describe('extractBodyAnchors', () => {
         makeQuery([`@u|e:spline|1,0,0|0,0,0|0`, `@${EX_FEATURE}`], 'edge'),
       ],
     }
-    const { anchors } = extractBodyAnchors(body, mintFactory())
+    const { anchors } = extractPartAnchors(part, mintFactory())
     const vals = Object.values(anchors)
     expect(vals).toHaveLength(2)
     expect(vals[0].kind).toBe('line')
@@ -729,7 +729,7 @@ describe('extractBodyAnchors', () => {
   })
 
   it('emits vertex anchors for all vertices', () => {
-    const body: BodyResult = {
+    const part: PartResult = {
       id: 'b1', created_by: EX_FEATURE, modified_by: [],
       vertices: [[0, 0, 0], [10, 0, 0], [10, 10, 0]],
       vertex_queries: [
@@ -738,7 +738,7 @@ describe('extractBodyAnchors', () => {
         makeQuery([`@u|v:10,10,0`, `@${EX_FEATURE}`], 'vertex'),
       ],
     }
-    const { anchors } = extractBodyAnchors(body, mintFactory())
+    const { anchors } = extractPartAnchors(part, mintFactory())
     const vals = Object.values(anchors)
     expect(vals).toHaveLength(3)
     for (const a of vals) {
@@ -754,16 +754,16 @@ describe('extractBodyAnchors', () => {
   })
 
   it('returns empty anchors for a body with no queries', () => {
-    const body: BodyResult = {
+    const part: PartResult = {
       id: 'b1', created_by: EX_FEATURE, modified_by: [],
       mesh: { vertices: [], faces: [] },
     }
-    const { anchors } = extractBodyAnchors(body, mintFactory())
+    const { anchors } = extractPartAnchors(part, mintFactory())
     expect(Object.keys(anchors)).toHaveLength(0)
   })
 
   it('produces unique anchor ids across body types', () => {
-    const body: BodyResult = {
+    const part: PartResult = {
       id: 'b1', created_by: EX_FEATURE, modified_by: [],
       mesh: {
         vertices: [], faces: [],
@@ -783,14 +783,14 @@ describe('extractBodyAnchors', () => {
       vertices: [[0, 0, 0]],
       vertex_queries: [makeQuery([`@u|v:0,0,0`, `@${EX_FEATURE}`], 'vertex')],
     }
-    const { anchors } = extractBodyAnchors(body, mintFactory())
+    const { anchors } = extractPartAnchors(part, mintFactory())
     const keys = Object.keys(anchors)
     expect(keys).toHaveLength(4)  // 2 faces + 1 edge + 1 vertex
     expect(new Set(keys).size).toBe(keys.length)
   })
 
   it('keys each anchor on the @u| construction UUID of its query', () => {
-    const body: BodyResult = {
+    const part: PartResult = {
       id: 'b1', created_by: EX_FEATURE, modified_by: [],
       mesh: {
         vertices: [], faces: [],
@@ -806,7 +806,7 @@ describe('extractBodyAnchors', () => {
       vertices: [[0, 0, 0]],
       vertex_queries: [makeQuery(['@u|ccc1112223334445', `@${EX_FEATURE}`], 'vertex')],
     }
-    const { anchors } = extractBodyAnchors(body, mintFactory())
+    const { anchors } = extractPartAnchors(part, mintFactory())
     expect(Object.keys(anchors)).toHaveLength(3)
     const faceAnchors = Object.values(anchors).filter((a) => a.kind === 'plane')
     expect(faceAnchors[0].geom_hash).toBe('@u|aaa1112223334445')
@@ -817,7 +817,7 @@ describe('extractBodyAnchors', () => {
   })
 
   it('emits no anchor for a primitive whose query carries no @u| uuid', () => {
-    const body: BodyResult = {
+    const part: PartResult = {
       id: 'b1', created_by: EX_FEATURE, modified_by: [],
       mesh: {
         vertices: [], faces: [],
@@ -825,7 +825,7 @@ describe('extractBodyAnchors', () => {
         face_data: [{ centroid: [0, 0, 0], normal: [0, 0, 1], area: 1, surface_type: 'flatface' }],
       },
     }
-    const { anchors } = extractBodyAnchors(body, mintFactory())
+    const { anchors } = extractPartAnchors(part, mintFactory())
     expect(Object.keys(anchors)).toHaveLength(0)
   })
 })
@@ -839,7 +839,7 @@ describe('extractBodyAnchors entity index', () => {
   }
 
   // One flat face, one freeform face, one line edge, one ellipse edge, one vertex.
-  function mixedBody(): BodyResult {
+  function mixedPart(): PartResult {
     return {
       id: 'b1', created_by: EX_FEATURE, modified_by: [],
       mesh: {
@@ -867,7 +867,7 @@ describe('extractBodyAnchors entity index', () => {
   }
 
   it('names every anchor it minted, under the entity that owns it', () => {
-    const { anchors, entityAnchors } = extractBodyAnchors(mixedBody(), mintFactory())
+    const { anchors, entityAnchors } = extractPartAnchors(mixedPart(), mintFactory())
     const named = [
       ...entityAnchors.faces.flat(), ...entityAnchors.edges.flat(), ...entityAnchors.vertices.flat(),
     ]
@@ -875,14 +875,14 @@ describe('extractBodyAnchors entity index', () => {
   })
 
   it('keeps a slot for every entity, so the positional join to the mesh holds', () => {
-    const { entityAnchors } = extractBodyAnchors(mixedBody(), mintFactory())
+    const { entityAnchors } = extractPartAnchors(mixedPart(), mintFactory())
     expect(entityAnchors.faces).toHaveLength(2)
     expect(entityAnchors.edges).toHaveLength(2)
     expect(entityAnchors.vertices).toHaveLength(1)
   })
 
   it('leaves the unmatable entities empty rather than shifting their neighbours', () => {
-    const { entityAnchors } = extractBodyAnchors(mixedBody(), mintFactory())
+    const { entityAnchors } = extractPartAnchors(mixedPart(), mintFactory())
     expect(entityAnchors.faces[0]).toHaveLength(1)   // flatface
     expect(entityAnchors.faces[1]).toEqual([])       // freeform
     expect(entityAnchors.edges[0]).toHaveLength(1)   // line
@@ -890,14 +890,14 @@ describe('extractBodyAnchors entity index', () => {
   })
 
   it('resolves each entity to the anchor whose geometry it carries', () => {
-    const { anchors, entityAnchors } = extractBodyAnchors(mixedBody(), mintFactory())
+    const { anchors, entityAnchors } = extractPartAnchors(mixedPart(), mintFactory())
     expect(anchors[entityAnchors.faces[0][0]].kind).toBe('plane')
     expect(anchors[entityAnchors.edges[0][0]].kind).toBe('line')
     expect(anchors[entityAnchors.vertices[0][0]].kind).toBe('point')
   })
 
   it('toPartBundle carries the index onto each BodyMesh', () => {
-    const bundle = toPartBundle('doc1', 'h3', { b1: mixedBody() })
+    const bundle = toPartBundle('doc1', 'h3', { b1: mixedPart() })
     expect(bundle.bodies[0].entityAnchors!.faces[0][0]).toBeDefined()
     expect(bundle.anchors[bundle.bodies[0].entityAnchors!.faces[0][0]]).toBeDefined()
   })

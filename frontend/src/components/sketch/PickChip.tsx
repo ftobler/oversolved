@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import dragHandleIcon from '@/assets/icons/toolbar-menu.svg'
 import type { PartFeature } from '@/types/cad'
-import type { BodyResult } from '@/types/cad'
+import type { PartResult } from '@/types/cad'
 import { queryLabel } from '@/utils/query/queryLabel'
-import { bodyPickLabel } from '@/utils/query/bodyPickLabel'
+import { partPickLabel } from '@/utils/query/partPickLabel'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 
 export interface PickChipProps {
@@ -15,7 +15,7 @@ export interface PickChipProps {
   emptyText?: string
   features?: PartFeature[]
   partLabels?: Record<string, string>
-  bodies?: Record<string, BodyResult>
+  parts?: Record<string, PartResult>
   // When set, each value is labelled as a body (part) pick instead of an
   // element pick. Passed by PickFieldWidget from the field's `names` flag.
   labelKind?: 'body'
@@ -47,7 +47,7 @@ export function PickChip({
   emptyText,
   features,
   partLabels,
-  bodies,
+  parts: bodies,
   labelKind,
   unresolvedValues,
   failedValues,
@@ -72,7 +72,7 @@ export function PickChip({
   const labels = useMemo(
     () => (features
       ? valuesFromKey.map(v => (labelKind === 'body'
-        ? bodyPickLabel(v, bodies, partLabels, features)
+        ? partPickLabel(v, bodies, partLabels, features)
         : queryLabel(v, features, partLabels)))
       : null),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- valuesKey is the content identity of valuesFromKey

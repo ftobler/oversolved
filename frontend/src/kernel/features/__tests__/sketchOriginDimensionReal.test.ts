@@ -45,7 +45,7 @@ describe.skipIf(!oc || !solveBytes)('sketch origin dimension on a face (real sol
         extrudeSpec('sk1', 'ex1', { distance: 5 }),
       ],
     })
-    const mesh = h.body(plate, 'body_ex1').mesh as FaceMesh | undefined
+    const mesh = h.part(plate, 'body_ex1').mesh as FaceMesh | undefined
     if (!mesh) throw new Error('plate mesh missing')
     const plane = topFaceQuery(mesh)
 

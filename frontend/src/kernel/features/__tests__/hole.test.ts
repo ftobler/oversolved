@@ -6,7 +6,7 @@ import { Repository, makeAncestryQuery } from '../../query'
 import { solveHole } from '../hole'
 import type { HandleTable } from '../../occ/handleTable'
 import type { OccModule } from '../../occ/occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = null as unknown as OccModule
 const scope = null as never
@@ -14,7 +14,7 @@ const table = null as unknown as HandleTable
 
 const PLANE = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
 
-function nullBody(id: string): Body {
+function nullPart(id: string): PartSolid {
   return {
     id,
     created_by: 'ex',
@@ -29,7 +29,7 @@ function nullBody(id: string): Body {
 describe('solveHole guard paths', () => {
   it('throws when the sketch plane is not registered', () => {
     expect(() =>
-      solveHole(oc, scope, table, { id: 'h', hole: { sketch: '@sk', target: 'body_t' } }, new Repository(), { body_t: nullBody('body_t') }, {}),
+      solveHole(oc, scope, table, { id: 'h', hole: { sketch: '@sk', target: 'body_t' } }, new Repository(), { body_t: nullPart('body_t') }, {}),
     ).toThrow(/has no plane transform registered/)
   })
 
@@ -53,7 +53,7 @@ describe('solveHole guard paths', () => {
     const repo = new Repository()
     repo.register('_pt_sk', PLANE)
     expect(() =>
-      solveHole(oc, scope, table, { id: 'h', hole: { sketch: '@sk', target: 'body_t' } }, repo, { body_t: nullBody('body_t') }, {}),
+      solveHole(oc, scope, table, { id: 'h', hole: { sketch: '@sk', target: 'body_t' } }, repo, { body_t: nullPart('body_t') }, {}),
     ).toThrow(/has no shape/)
   })
 
@@ -63,7 +63,7 @@ describe('solveHole guard paths', () => {
     repo.register('_pt_sk', PLANE)
     expect(() =>
       solveHole(oc, scope, table, { id: 'h', hole: { sketch: '@sk', target: 'body_t' } }, repo, {
-        body_t: { ...nullBody('body_t'), shape: 1 as never },
+        body_t: { ...nullPart('body_t'), shape: 1 as never },
       }, { sk: { entities: [{ id: 'l1', kind: 'line' }] } }),
     ).toThrow("hole: sketch 'sk' has no point entities; the hole needs a point in its sketch to drill")
   })
@@ -77,7 +77,7 @@ describe('solveHole guard paths', () => {
     repo.register('_pt_sk', PLANE)
     const drill = (entities: Array<Record<string, unknown>>) =>
       solveHole(oc, scope, table, { id: 'h', hole: { sketch: '@sk', target: 'body_t' } }, repo, {
-        body_t: { ...nullBody('body_t'), shape: 1 as never },
+        body_t: { ...nullPart('body_t'), shape: 1 as never },
       }, { sk: { entities } })
     expect(() => drill([
       { id: 'pc', kind: 'point', construction: true },
@@ -99,13 +99,13 @@ describe('solveHole guard paths', () => {
     const repo = new Repository()
     repo.register('_pt_sk', PLANE)
     const table = { get: () => null } as unknown as HandleTable
-    const body = { ...nullBody('body_t'), shape: 1 as never, modified_by: ['ex_t'] }
+    const part = { ...nullPart('body_t'), shape: 1 as never, modified_by: ['ex_t'] }
     expect(() =>
       solveHole(oc, scope, table, { id: 'h9', hole: { sketch: '@sk', target: 'body_t' } }, repo, {
-        body_t: body,
+        body_t: part,
       }, { sk: { entities: [{ id: 'p1', kind: 'point' }] } }),
     ).toThrow(/nothing to place/)
-    expect(body.modified_by).toEqual(['ex_t'])
+    expect(part.modified_by).toEqual(['ex_t'])
   })
 
   it('throws when target body does not exist', () => {
@@ -114,7 +114,7 @@ describe('solveHole guard paths', () => {
     repo.register('_pt_sk', PLANE)
     expect(() =>
       solveHole(oc, scope, table, { id: 'h', hole: { sketch: '@sk', target: '@body_missing' } }, repo, {
-        body_ex1: nullBody('body_ex1'),
+        body_ex1: nullPart('body_ex1'),
       }, { sk: { entities: [{ id: 'p1', kind: 'point' }] } }),
     ).toThrow(/part not found/)
   })
@@ -142,7 +142,7 @@ describe('solveHole sketch picks', () => {
     // far as an OCC call.
     const stub = { get: () => null } as unknown as HandleTable
     return solveHole(oc, scope, stub, { id: 'h', hole: { sketch, target: 'body_t' } }, repo, {
-      body_t: { ...nullBody('body_t'), shape: 1 as never },
+      body_t: { ...nullPart('body_t'), shape: 1 as never },
     }, features as Record<string, never>)
   }
 

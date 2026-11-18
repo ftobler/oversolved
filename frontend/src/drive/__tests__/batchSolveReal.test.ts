@@ -36,7 +36,7 @@ const ready = oc && solveBytes
 const m = (mutation: Record<string, unknown>): ScriptStep => ({ mutation } as ScriptStep)
 
 // Two bodies built by six accepted steps, the shape a caller chains on.
-function twoBodyScript(): ScriptStep[] {
+function twoPartScript(): ScriptStep[] {
   return [
     m({ type: 'add_sketch', featureId: 'sk1', label: 'Plate', plane: '@builtin_plane_front' }),
     m({ type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [10, 6] }),
@@ -69,7 +69,7 @@ async function runOnePerCall(steps: ScriptStep[], docId: string) {
 
 describe.skipIf(!ready)('one deferred solve per run (real OCC + Rust solver)', () => {
   it('one call and single-step calls answer the same volume, deltas and features', async () => {
-    const steps = twoBodyScript()
+    const steps = twoPartScript()
     const once = await runWhole(steps, 'batch-once')
     const singles = await runOnePerCall(steps, 'batch-singles')
 
@@ -118,7 +118,7 @@ describe.skipIf(!ready)('one deferred solve per run (real OCC + Rust solver)', (
     const start = emptyDriveDoc()
     const recorded = createDriveJournal(start)
     const part = createHeadlessPart({ doc: start, docId: 'batch-repro-record', journal: recorded })
-    const outcome = await part.run(twoBodyScript())
+    const outcome = await part.run(twoPartScript())
     expect(outcome.ok).toBe(true)
     const repro = recorded.repro()!
     expect(repro.version).toBe(3)

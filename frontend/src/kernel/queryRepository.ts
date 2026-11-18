@@ -362,7 +362,7 @@ export class Repository {
    * on FEATURE activity. An entry lives while any of its feature-shaped tags
    * (`@<featureId>`, e.g. the `@createdBy` every producer emits) names an
    * active feature; a feature's elements die when the feature leaves the order.
-   * Body ownership is NOT a gc concern: bodies are re-registered and evicted by
+   * Part ownership is NOT a gc concern: bodies are re-registered and evicted by
    * index-tag registration (`evictAncestryAndRegister` / `clearBodyAncestry`,
    * see index-shrink-ghost-eviction), so body tags and entity identity tags
    * (`@u|`, `@cls_*`, `@body_*`) are classified away
@@ -448,11 +448,11 @@ export class Repository {
   query(
     queryStr: string | QueryType,
     context: string | null = null,
-    bodyStore: Record<string, unknown> | null = null,
+    partStore: Record<string, unknown> | null = null,
     currentFeatureId: string | null = null,
   ): unknown {
     if (typeof queryStr !== "string") {
-      return this.queryTyped(queryStr, context, bodyStore, currentFeatureId)
+      return this.queryTyped(queryStr, context, partStore, currentFeatureId)
     }
     if (!queryStr) return null
     const start = queryStr[0]
@@ -461,7 +461,7 @@ export class Repository {
       // share ONE lookup (the full-id-first tie-break plus the slash-key
       // fallback); localFromString's split has eid + sub == the whole body, so
       // the shared probe reads identically from either entry point.
-      return this.queryTyped(localFromString(queryStr), context, bodyStore, currentFeatureId)
+      return this.queryTyped(localFromString(queryStr), context, partStore, currentFeatureId)
     }
     if (start === "@") {
       // Strict: route through parseAbsolute so the string and typed paths agree
@@ -474,7 +474,7 @@ export class Repository {
     }
     if (start === "?") {
       const [ids, typeRestriction] = parseAncestry(queryStr)
-      return this.resolveAncestryIds(ids, typeRestriction, bodyStore, currentFeatureId)
+      return this.resolveAncestryIds(ids, typeRestriction, partStore, currentFeatureId)
     }
     return null
   }
@@ -507,7 +507,7 @@ export class Repository {
   private queryTyped(
     q: QueryType,
     context: string | null,
-    bodyStore: Record<string, unknown> | null,
+    partStore: Record<string, unknown> | null,
     currentFeatureId: string | null,
   ): unknown {
     switch (q.kind) {
@@ -521,14 +521,14 @@ export class Repository {
         return this.elements.get(key) ?? null
       }
       case "ancestry":
-        return this.resolveAncestryIds(q.ancestorIds, q.typeRestriction, bodyStore, currentFeatureId)
+        return this.resolveAncestryIds(q.ancestorIds, q.typeRestriction, partStore, currentFeatureId)
     }
   }
 
   private resolveAncestryIds(
     ids: string[],
     typeRestriction: string | null,
-    bodyStore: Record<string, unknown> | null = null,
+    partStore: Record<string, unknown> | null = null,
     currentFeatureId: string | null = null,
   ): unknown {
     this._lastTier = "miss"
@@ -642,7 +642,7 @@ export class Repository {
         const seen = new Set<unknown>()
         for (const eid of candidateIds) {
           const element = this.elements.get(eid)
-          const coerced = coerceType(element, typeRestriction, bodyStore, this, querySet, visible)
+          const coerced = coerceType(element, typeRestriction, partStore, this, querySet, visible)
           if (coerced !== null && coerced !== undefined && !seen.has(coerced)) {
             seen.add(coerced)
             coercedResults.push(coerced)
@@ -705,21 +705,21 @@ export class Repository {
   queryAll(
     queryStr: string,
     currentFeatureId: string | null = null,
-    bodyStore: Record<string, unknown> | null = null,
+    partStore: Record<string, unknown> | null = null,
   ): unknown[] {
     if (!queryStr || queryStr[0] !== "?") return []
     const orderFilter = this.orderFilter(currentFeatureId)
     const [ids, typeRestriction] = parseAncestry(queryStr)
-    return this.resolveAllAncestryIds(ids, typeRestriction, orderFilter, bodyStore)
+    return this.resolveAllAncestryIds(ids, typeRestriction, orderFilter, partStore)
   }
 
   queryAllTyped(
     q: AncestryQuery,
     currentFeatureId: string | null = null,
-    bodyStore: Record<string, unknown> | null = null,
+    partStore: Record<string, unknown> | null = null,
   ): unknown[] {
     const orderFilter = this.orderFilter(currentFeatureId)
-    return this.resolveAllAncestryIds(q.ancestorIds, q.typeRestriction, orderFilter, bodyStore)
+    return this.resolveAllAncestryIds(q.ancestorIds, q.typeRestriction, orderFilter, partStore)
   }
 
   /** Multi-result analogue of resolveAncestryIds for queryAll/queryAllTyped.
@@ -760,7 +760,7 @@ export class Repository {
     ids: string[],
     typeRestriction: string | null,
     orderFilter: (eids: string[]) => string[],
-    bodyStore: Record<string, unknown> | null,
+    partStore: Record<string, unknown> | null,
   ): unknown[] {
     const { uuids: uuidTokens, classifiers: classifierIds, lineage } = partitionAncestryIds(ids)
     if (uuidTokens.length) {
@@ -831,7 +831,7 @@ export class Repository {
         const seen = new Set<unknown>()
         for (const eid of candidateIds) {
           const element = this.elements.get(eid)
-          const coerced = coerceType(element, typeRestriction, bodyStore, this, querySet, visible)
+          const coerced = coerceType(element, typeRestriction, partStore, this, querySet, visible)
           if (coerced !== null && coerced !== undefined && !seen.has(coerced)) {
             seen.add(coerced)
             coercedResults.push(coerced)

@@ -127,7 +127,7 @@ describe("ancestral-partial tier type restriction", () => {
 })
 
 describe("queryAll classifier narrowing precedes the type block", () => {
-  const body = { id: "body_1", modified_by: [] }
+  const part = { id: "body_1", modified_by: [] }
   function repoWithEdge(classifiers: string[]): Repository {
     const repo = new Repository()
     repo.registerAncestor(["@ex1", "@body_1", "@body_1/edge0"], {
@@ -139,15 +139,15 @@ describe("queryAll classifier narrowing precedes the type block", () => {
   it("a contradicted candidate does not coerce to its solid in queryAll (matches query())", () => {
     const repo = repoWithEdge(["cls_zn"])
     const q = makeAncestryQuery(["@ex1", "@body_1", "@cls_zp"], "solid")
-    expect(repo.query(q, null, { body_1: body })).toBeNull()
-    expect(repo.queryAll(q, null, { body_1: body })).toEqual([])
+    expect(repo.query(q, null, { body_1: part })).toBeNull()
+    expect(repo.queryAll(q, null, { body_1: part })).toEqual([])
     expect(repo._lastTier).toBe("miss")
   })
 
   it("a non-contradicted candidate still coerces upward in both", () => {
     const repo = repoWithEdge(["cls_zp"])
     const q = makeAncestryQuery(["@ex1", "@body_1", "@cls_zp"], "solid")
-    expect(repo.query(q, null, { body_1: body })).toBe(body)
-    expect(repo.queryAll(q, null, { body_1: body })).toEqual([body])
+    expect(repo.query(q, null, { body_1: part })).toBe(part)
+    expect(repo.queryAll(q, null, { body_1: part })).toEqual([part])
   })
 })

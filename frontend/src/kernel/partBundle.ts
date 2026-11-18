@@ -4,7 +4,7 @@
 // assembly worker never touches OCC or runs solveLocally. The bundle is cached
 // in IndexedDb keyed by (doc_id, content_hash); a miss triggers a cold rebuild.
 
-import type { EdgeData, BodyResult, FaceData, MateAnchorDescriptor, Mesh3D } from '../types/cad'
+import type { EdgeData, PartResult, FaceData, MateAnchorDescriptor, Mesh3D } from '../types/cad'
 import { sha256Hex } from './sha256'
 import { constructionUuidToken, parseAncestry, partitionAncestryIds } from './queryWire'
 import { BUILTIN_PLANES, resolveBarePlaneId } from './solverConstants'
@@ -73,7 +73,7 @@ export interface EntityAnchorIndex {
   vertices: string[][]
 }
 
-export interface BodyMesh {
+export interface PartMesh {
   mesh: {
     vertices: Float32Array
     indices: Uint32Array
@@ -98,7 +98,7 @@ export interface PartBundle {
   doc_id: string
   content_hash: string
   schema: number
-  bodies: BodyMesh[]
+  bodies: PartMesh[]
   anchors: Record<string, Anchor>
 }
 
@@ -356,17 +356,17 @@ function toUint32(arr: number[]): Uint32Array {
 }
 
 /** Convert a single BodyResult (raw from tessellation) to a BodyMesh for the bundle. */
-export function toBodyMesh(bodyResult: BodyResult): BodyMesh {
-  const mesh = bodyResult.mesh
+export function toPartMesh(partResult: PartResult): PartMesh {
+  const mesh = partResult.mesh
   const edges: EdgeCurve[] = []
-  if (bodyResult.edges && bodyResult.edge_queries) {
-    for (let i = 0; i < bodyResult.edges.length; i++) {
+  if (partResult.edges && partResult.edge_queries) {
+    for (let i = 0; i < partResult.edges.length; i++) {
       // `?? ''` because the zip is positional and `edge_queries` can be shorter
       // than `edges` (a bundle produced before solidToEdges padded, or one that
       // arrived from outside this kernel). An unguarded index puts `undefined`
       // into `id`, which is typed `string`: no throw, just a bundle of edges
       // whose id nothing matches.
-      edges.push(toEdgeCurve(bodyResult.edges[i], bodyResult.edge_queries[i] ?? ''))
+      edges.push(toEdgeCurve(partResult.edges[i], partResult.edge_queries[i] ?? ''))
     }
   }
   if (!mesh) {
@@ -391,8 +391,8 @@ export function toBodyMesh(bodyResult: BodyResult): BodyMesh {
     edges,
     // Copied, so the bundle owns them: it is transferred to the anchor worker
     // and an engine-owned array would detach the producer's result.
-    hiddenEdges: bodyResult.hidden_edges ? [...bodyResult.hidden_edges] : undefined,
-    hiddenVertices: bodyResult.hidden_vertices ? [...bodyResult.hidden_vertices] : undefined,
+    hiddenEdges: partResult.hidden_edges ? [...partResult.hidden_edges] : undefined,
+    hiddenVertices: partResult.hidden_vertices ? [...partResult.hidden_vertices] : undefined,
   }
 }
 
@@ -400,9 +400,9 @@ export function toBodyMesh(bodyResult: BodyResult): BodyMesh {
 export function toPartBundle(
   doc_id: string,
   content_hash: string,
-  bodyResults: Record<string, BodyResult>,
+  partResults: Record<string, PartResult>,
 ): PartBundle {
-  const bodies: BodyMesh[] = []
+  const parts: PartMesh[] = []
   // Anchor ids are deterministic from the element's stable geom_hash + kind, so
   // a persisted mate ref survives any rebuild with no cache at all. The old
   // minter drew a random prefix per build, which stranded every ref on a cache
@@ -417,9 +417,9 @@ export function toPartBundle(
     return n === 0 ? base : `${base}_${n + 1}`
   }
   const allAnchors: Record<string, Anchor> = {}
-  for (const body of Object.values(bodyResults)) {
-    const { anchors, entityAnchors } = extractBodyAnchors(body, mintAnchorId)
-    bodies.push({ ...toBodyMesh(body), entityAnchors })
+  for (const part of Object.values(partResults)) {
+    const { anchors, entityAnchors } = extractPartAnchors(part, mintAnchorId)
+    parts.push({ ...toPartMesh(part), entityAnchors })
     Object.assign(allAnchors, anchors)
   }
   // The part frame is intrinsic to the document, so every bundle carries it,
@@ -434,7 +434,7 @@ export function toPartBundle(
       axis: [...anchor.axis] as Vec3,
     }
   }
-  return { doc_id, content_hash, schema: BUNDLE_SCHEMA, bodies, anchors: allAnchors }
+  return { doc_id, content_hash, schema: BUNDLE_SCHEMA, bodies: parts, anchors: allAnchors }
 }
 
 function scaleVec(v: Vec3, factor: number): Vec3 {
@@ -453,10 +453,10 @@ function scaleVec(v: Vec3, factor: number): Vec3 {
  */
 export function scaleBundleToMillimetres(bundle: PartBundle, factor: number): PartBundle {
   if (factor === 1) return bundle
-  for (const body of bundle.bodies) {
-    const vertices = body.mesh.vertices
+  for (const part of bundle.bodies) {
+    const vertices = part.mesh.vertices
     for (let i = 0; i < vertices.length; i++) vertices[i] *= factor
-    for (const edge of body.edges) {
+    for (const edge of part.edges) {
       edge.point = scaleVec(edge.point, factor)
       edge.endpoints = [scaleVec(edge.endpoints[0], factor), scaleVec(edge.endpoints[1], factor)]
       if (edge.radius !== undefined) edge.radius *= factor
@@ -528,7 +528,7 @@ function vertexAt(verts: Mesh3D['vertices'], i: number): Vec3 {
  * sliver that tessellated to nothing) gets no entry, and its anchor falls back
  * to the frame origin -- the old anchor, which is at least on the axis.
  */
-function faceAxialMidpoints(bodyResult: BodyResult, fds: FaceData[]): Map<number, number> {
+function faceAxialMidpoints(partResult: PartResult, fds: FaceData[]): Map<number, number> {
   const out = new Map<number, number>()
   const wanted = new Set<number>()
   const origins: Vec3[] = []
@@ -545,7 +545,7 @@ function faceAxialMidpoints(bodyResult: BodyResult, fds: FaceData[]): Map<number
   }
   if (wanted.size === 0) return out
 
-  const mesh = bodyResult.mesh
+  const mesh = partResult.mesh
   const triangles = mesh?.faces
   const triangleToFace = mesh?.triangle_to_face
   const vertices = mesh?.vertices
@@ -641,7 +641,7 @@ function uuidTokenOfQuery(query: string | undefined): string | null {
   return uuid === undefined ? null : constructionUuidToken(uuid)
 }
 
-export interface BodyAnchorExtraction {
+export interface PartAnchorExtraction {
   anchors: Record<string, Anchor>
   // Positional entity → anchor-id lists, the join a pick needs.
   entityAnchors: EntityAnchorIndex
@@ -661,13 +661,13 @@ export interface BodyAnchorExtraction {
  * @param mintId factory for deterministic anchor ids within this bundle, keyed
  *        on the anchor's own geom_hash + kind.
  */
-export function extractBodyAnchors(
-  bodyResult: BodyResult,
+export function extractPartAnchors(
+  partResult: PartResult,
   mintId: (geomHash: string, kind: AnchorKind) => string,
-): BodyAnchorExtraction {
+): PartAnchorExtraction {
   const anchors: Record<string, Anchor> = {}
   const entityAnchors: EntityAnchorIndex = { faces: [], edges: [], vertices: [] }
-  const created_by = bodyResult.created_by || ''
+  const created_by = partResult.created_by || ''
 
   const emit = (slot: string[][], anchor: Anchor): void => {
     const id = mintId(anchor.geom_hash, anchor.kind)
@@ -676,11 +676,11 @@ export function extractBodyAnchors(
   }
 
   // Face anchors: centroid + normal from face_data, kind from surface_type.
-  const fqs = bodyResult.mesh?.face_queries
-  const fds = bodyResult.mesh?.face_data
+  const fqs = partResult.mesh?.face_queries
+  const fds = partResult.mesh?.face_data
   if (fds) {
     // Measured once per body: one pass over its triangles, not one per face.
-    const axialMids = faceAxialMidpoints(bodyResult, fds)
+    const axialMids = faceAxialMidpoints(partResult, fds)
     for (let i = 0; i < fds.length; i++) {
       entityAnchors.faces.push([])
       const fd = fds[i]
@@ -702,13 +702,13 @@ export function extractBodyAnchors(
   }
 
   // Edge anchors: representative point + axis from EdgeData.
-  if (bodyResult.edges) {
-    for (let i = 0; i < bodyResult.edges.length; i++) {
+  if (partResult.edges) {
+    for (let i = 0; i < partResult.edges.length; i++) {
       entityAnchors.edges.push([])
-      const ed = bodyResult.edges[i]
+      const ed = partResult.edges[i]
       const kind = edgeAnchorKind(ed)
       if (!kind) continue
-      const eq = bodyResult.edge_queries?.[i]
+      const eq = partResult.edge_queries?.[i]
       const desc = uuidTokenOfQuery(eq)
       if (!desc) continue
       emit(entityAnchors.edges, {
@@ -722,15 +722,15 @@ export function extractBodyAnchors(
   }
 
   // Vertex anchors: point from vertices array.
-  if (bodyResult.vertices) {
-    for (let i = 0; i < bodyResult.vertices.length; i++) {
+  if (partResult.vertices) {
+    for (let i = 0; i < partResult.vertices.length; i++) {
       entityAnchors.vertices.push([])
-      const vq = bodyResult.vertex_queries?.[i]
+      const vq = partResult.vertex_queries?.[i]
       const desc = uuidTokenOfQuery(vq)
       if (!desc) continue
       emit(entityAnchors.vertices, {
         kind: 'point',
-        point: bodyResult.vertices[i] as Vec3,
+        point: partResult.vertices[i] as Vec3,
         axis: [0, 0, 1],
         geom_hash: desc,
         created_by,

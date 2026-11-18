@@ -23,7 +23,7 @@ import { postRegister } from '../features/postRegister'
 import { solidToMesh, solidToEdges, solidToVertices, solidToFaceEdgeQueries, hiddenSubShapeIndices } from '../occ/tessellation'
 import { extractBrepMetadata } from '../solveLocally'
 import { copyShape } from '../occ/transforms'
-import { assertOneSolidPerBody } from '../features/bodySplit'
+import { assertOneSolidPerPart } from '../features/partSplit'
 import type { OccShape } from '../occ/occTypes'
 import { indexModifierDiffs, newIndexSets } from './modifierAttribution'
 import { swallowUnlessTrap } from '../errors'
@@ -79,19 +79,19 @@ export class SharedHarness {
     return {
       trySolveFeature: createFeatureSolver(this.oc, scope, table, files),
       postRegister, initGlobalRepo,
-      tessellateBodies: (bodyStore) => {
-        // The one-Body-one-solid gate, at the point every real-OCC build test
+      tessellateParts: (partStore) => {
+        // The one-Part-one-solid gate, at the point every real-OCC build test
         // already passes through: a leaf that produces a multi-solid body
         // fails its own test rather than shipping one Parts row that is
-        // really N parts. See features/bodySplit.ts.
-        assertOneSolidPerBody(this.oc, scope, table, bodyStore)
+        // really N parts. See features/partSplit.ts.
+        assertOneSolidPerPart(this.oc, scope, table, partStore)
         const out: Record<string, Record<string, unknown>> = {}
-        for (const [, body] of Object.entries(bodyStore)) {
+        for (const [, body] of Object.entries(partStore)) {
           if (!body.shape) continue
           try {
             const mesh = solidToMesh(this.oc, table, body.shape, {
               createdBy: body.created_by || '',
-              bodyId: body.id,
+              partId: body.id,
               faceAncestry: body.face_ancestry ?? null,
               faceCapAncestry: body.face_cap_ancestry ?? null,
               faceUuids: body.face_uuids ?? null,
@@ -102,7 +102,7 @@ export class SharedHarness {
             })
             const edgeResult = solidToEdges(this.oc, table, body.shape, {
               createdBy: body.created_by || '',
-              bodyId: body.id,
+              partId: body.id,
               profileQueries: body.profile_queries ?? [],
               edgeAncestry: body.edge_ancestry ?? null,
               edgeUuids: body.edge_uuids ?? null,
@@ -112,14 +112,14 @@ export class SharedHarness {
             })
             const vertexResult = solidToVertices(this.oc, table, body.shape, {
               createdBy: body.created_by || '',
-              bodyId: body.id,
+              partId: body.id,
               profileQueries: body.profile_queries ?? [],
               faceUuids: body.face_uuids ?? null,
               edgeUuids: body.edge_uuids ?? null,
               newElements: newIndexSets(body.brep_new, body.shape),
               modifiedBy: body.modified_by,
             })
-            // The same per-face boundary and seam arrays production tessellateBodies
+            // The same per-face boundary and seam arrays production tessellateParts
             // emits, so selector tests through this harness see the same data.
             const faceEdgeData = solidToFaceEdgeQueries(this.oc, table, body.shape, edgeResult.edge_queries)
             mesh.face_edge_queries = faceEdgeData.face_edge_queries
@@ -139,7 +139,7 @@ export class SharedHarness {
               vertex_created_by: vertexResult.vertex_created_by,
               hidden_edges: hidden.hidden_edges,
               hidden_vertices: hidden.hidden_vertices,
-              // Mirror production tessellateBodies: the per-body creator and
+              // Mirror production tessellateParts: the per-body creator and
               // modifier tags are part of the render payload, not just inputs.
               created_by: body.created_by ?? '',
               modified_by: body.modified_by ?? [],
@@ -152,13 +152,13 @@ export class SharedHarness {
       },
       // Wire the real production metadata extractor so the build-level tests
       // exercise the mesh-free in-loop registration path (not the fallback).
-      extractBrepMetadata: (bodyStore) => extractBrepMetadata(this.oc, table, bodyStore),
-      indexModifierDiffs: (bodyStore) => indexModifierDiffs(this.oc, table, bodyStore),
+      extractBrepMetadata: (partStore) => extractBrepMetadata(this.oc, table, partStore),
+      indexModifierDiffs: (partStore) => indexModifierDiffs(this.oc, table, partStore),
       retainCheckpointShape: (h, owner) => table.retain(h, owner),
-      copyBodyShape: (h, owner) =>
+      copyPartShape: (h, owner) =>
         table.register(copyShape(this.oc, scope, table.get<OccShape>(h)), owner),
       // Mirrors the production wiring: a discarded generation loses its
-      // checkpoint retain AND its base body registrations (bodySplit tags
+      // checkpoint retain AND its base body registrations (partSplit tags
       // those with the producing feature id) -- or superseded solids strand
       // across an incremental test sequence.
       releaseCheckpoint: (fid) => {
@@ -186,7 +186,7 @@ export class SharedHarness {
     return (result.result as Record<string, Record<string, unknown>>)[featureId] ?? {}
   }
 
-  body(result: BuildResponse, bodyId: string): Record<string, unknown> {
-    return (result.bodies as Record<string, Record<string, unknown>>)[bodyId] ?? {}
+  part(result: BuildResponse, partId: string): Record<string, unknown> {
+    return (result.bodies as Record<string, Record<string, unknown>>)[partId] ?? {}
   }
 }

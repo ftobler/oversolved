@@ -81,7 +81,7 @@ export function roundNumericFields(def: object, fn: string): boolean {
  *  the mutator unmigrated carries only the singular legacy `body`; seed `bodies`
  *  from it so the user's original pick is not silently dropped on the next save.
  *  Mirrors migrateLegacyBodyPicks, which the parse seams run first. */
-function _ensureBodies(sub: { bodies?: string[]; body?: string }): string[] {
+function _ensureParts(sub: { bodies?: string[]; body?: string }): string[] {
   if (!sub.bodies) {
     sub.bodies = typeof sub.body === 'string' && sub.body ? [sub.body] : []
     delete sub.body
@@ -1372,25 +1372,25 @@ export function applyRemovePatternSource(doc: PartDoc, featureId: string, index:
   sources.splice(index, 1)
 }
 
-// ─── Delete Body ───
+// ─── Delete Part ───
 
-export function applyAddDeleteBody(
+export function applyAddDeletePart(
   doc: PartDoc,
   featureId: string,
-  bodies: string[] = [],
+  parts: string[] = [],
   label?: string,
 ): void {
   pushFeature(doc, {
     id: featureId,
     kind: 'delete_body',
     label: label ?? 'Delete Part',
-    delete_body: { bodies: [...bodies] },
+    delete_body: { bodies: [...parts] },
   })
 }
 
 // Picking is a toggle, like the fillet/chamfer edge lists: re-picking a body
 // that is already listed drops it again.
-export function applyAddDeleteBodyRef(doc: PartDoc, featureId: string, bodyQuery: string): void {
+export function applyAddDeletePartRef(doc: PartDoc, featureId: string, partQuery: string): void {
   const feature = findFeature(doc, featureId)
   const sub = feature?.kind === 'delete_body' ? feature.delete_body : undefined
   if (!sub) {
@@ -1400,16 +1400,16 @@ export function applyAddDeleteBodyRef(doc: PartDoc, featureId: string, bodyQuery
   // A legacy doc reaching a mutation path unmigrated has no `bodies`; seed it
   // from the singular pick so the user's choice survives, and so indexOf/splice
   // cannot throw and take the UI down with them.
-  const bodies = _ensureBodies(sub)
-  const idx = bodies.indexOf(bodyQuery)
+  const parts = _ensureParts(sub)
+  const idx = parts.indexOf(partQuery)
   if (idx >= 0) {
-    bodies.splice(idx, 1)
+    parts.splice(idx, 1)
   } else {
-    bodies.push(bodyQuery)
+    parts.push(partQuery)
   }
 }
 
-export function applyRemoveDeleteBodyRef(doc: PartDoc, featureId: string, index: number): void {
+export function applyRemoveDeletePartRef(doc: PartDoc, featureId: string, index: number): void {
   const feature = findFeature(doc, featureId)
   const sub = feature?.kind === 'delete_body' ? feature.delete_body : undefined
   if (!sub) {
@@ -1417,9 +1417,9 @@ export function applyRemoveDeleteBodyRef(doc: PartDoc, featureId: string, index:
     return
   }
   // Same legacy-doc healing as applyAddDeleteBodyRef.
-  const bodies = _ensureBodies(sub)
-  if (!removableIndex(bodies, index)) return
-  bodies.splice(index, 1)
+  const parts = _ensureParts(sub)
+  if (!removableIndex(parts, index)) return
+  parts.splice(index, 1)
 }
 
 /** Add a hole, optionally already configured. Only defined fields override the
@@ -1492,7 +1492,7 @@ export function applyAddTransform(
 }
 
 /** Toggle a body ref in/out of the transform's pick list (re-picking removes). */
-export function applyAddTransformBody(doc: PartDoc, featureId: string, bodyQuery: string): void {
+export function applyAddTransformPart(doc: PartDoc, featureId: string, partQuery: string): void {
   const feature = findFeature(doc, featureId)
   const sub = feature?.kind === 'transform' ? feature.transform : undefined
   if (!sub) {
@@ -1502,16 +1502,16 @@ export function applyAddTransformBody(doc: PartDoc, featureId: string, bodyQuery
   // A legacy doc reaching a mutation path unmigrated has no `bodies`; seed it
   // from the singular pick so the user's choice survives, and so indexOf/splice
   // cannot throw and take the UI down with them.
-  const bodies = _ensureBodies(sub)
-  const idx = bodies.indexOf(bodyQuery)
+  const parts = _ensureParts(sub)
+  const idx = parts.indexOf(partQuery)
   if (idx >= 0) {
-    bodies.splice(idx, 1)
+    parts.splice(idx, 1)
   } else {
-    bodies.push(bodyQuery)
+    parts.push(partQuery)
   }
 }
 
-export function applyRemoveTransformBody(doc: PartDoc, featureId: string, index: number): void {
+export function applyRemoveTransformPart(doc: PartDoc, featureId: string, index: number): void {
   const feature = findFeature(doc, featureId)
   const sub = feature?.kind === 'transform' ? feature.transform : undefined
   if (!sub) {
@@ -1519,9 +1519,9 @@ export function applyRemoveTransformBody(doc: PartDoc, featureId: string, index:
     return
   }
   // Same legacy-doc healing as applyAddTransformBody.
-  const bodies = _ensureBodies(sub)
-  if (!removableIndex(bodies, index)) return
-  bodies.splice(index, 1)
+  const parts = _ensureParts(sub)
+  if (!removableIndex(parts, index)) return
+  parts.splice(index, 1)
 }
 
 export function applySetTransformField(
@@ -1657,7 +1657,7 @@ export function applyAddSplit(
   doc: PartDoc,
   featureId: string,
   label?: string,
-  bodies?: string[],
+  parts?: string[],
   plane?: string,
   keep?: SplitKeep,
 ): void {
@@ -1672,7 +1672,7 @@ export function applyAddSplit(
     split: {
       // The pick list is copied: the mutation payload may be journaled and
       // replayed from the same array, and a later toggle must not edit it.
-      bodies: [...(bodies ?? [])],
+      bodies: [...(parts ?? [])],
       plane: plane ?? '',
       keep: keep ?? 'above',
     },
@@ -1690,11 +1690,11 @@ export function applySetSplitField(
 }
 
 /** Toggle a body ref in/out of the split's pick list (re-picking removes). */
-export function applyAddSplitBody(doc: PartDoc, featureId: string, bodyQuery: string): void {
-  toggleListValue(doc, featureId, 'split', 'bodies', bodyQuery, 'applyAddSplitBody')
+export function applyAddSplitPart(doc: PartDoc, featureId: string, partQuery: string): void {
+  toggleListValue(doc, featureId, 'split', 'bodies', partQuery, 'applyAddSplitBody')
 }
 
-export function applyRemoveSplitBody(doc: PartDoc, featureId: string, index: number): void {
+export function applyRemoveSplitPart(doc: PartDoc, featureId: string, index: number): void {
   removeListAt(doc, featureId, 'split', 'bodies', index, 'applyRemoveSplitBody')
 }
 

@@ -54,7 +54,7 @@ describe('seedAssembly', () => {
     const m2 = record({ bodyA: 1, bodyB: 2, flip: true, pointA: [0, 0, 8] })
     const seeded = seedAssembly(p, Uint8Array.of(0b001), [m1, m2])
     const end = worldPoint(seeded, 2, [0, 0, 0])
-    // Body 1 is turned over at z = 5; its +8 local z points back to z = -3.
+    // Part 1 is turned over at z = 5; its +8 local z points back to z = -3.
     expect(end[2]).toBeCloseTo(5 - 8, 9)
     expect(worldDir(seeded, 2, [0, 0, 1])[2]).toBeCloseTo(1, 9)
   })

@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest'
 import { selectByPredicate, validateSelector, SelectorError } from '@/kernel/select'
 import type { Selector } from '@/kernel/select'
 import { makeAncestryQuery } from '@/kernel/query'
-import type { BodyResult } from '@/types/cad'
+import type { PartResult } from '@/types/cad'
 
 type V3 = [number, number, number]
 
@@ -17,7 +17,7 @@ const CORNERS: V3[] = [
   [0, 0, 4], [10, 0, 4], [10, 6, 4], [0, 6, 4],
 ]
 
-function vertexBody(id: string, points: V3[], queries: string[]): BodyResult {
+function vertexPart(id: string, points: V3[], queries: string[]): PartResult {
   return {
     id,
     created_by: 'ex1',
@@ -30,12 +30,12 @@ function vertexBody(id: string, points: V3[], queries: string[]): BodyResult {
   }
 }
 
-function box(): Record<string, BodyResult> {
-  return { body_p: vertexBody('body_p', CORNERS, CORNERS.map((_, i) => `vq${i}`)) }
+function box(): Record<string, PartResult> {
+  return { body_p: vertexPart('body_p', CORNERS, CORNERS.map((_, i) => `vq${i}`)) }
 }
 
-function queriesOf(selector: Selector, bodies: Record<string, BodyResult>): string[] {
-  return selectByPredicate(selector, bodies).queries
+function queriesOf(selector: Selector, parts: Record<string, PartResult>): string[] {
+  return selectByPredicate(selector, parts).queries
 }
 
 describe('selectByPredicate: vertex kind', () => {
@@ -51,29 +51,29 @@ describe('selectByPredicate: vertex kind', () => {
   it('reports the vertex position as the geometry summary', () => {
     const items = selectByPredicate({ kind: 'vertex' }, box()).items
     expect(items.map(item => item.geometry)).toEqual(CORNERS.map(point => ({ kind: 'vertex', point })))
-    expect(items[5].body).toBe('body_p')
+    expect(items[5].part).toBe('body_p')
     expect(items[5].index).toBe(5)
   })
 
   it('skips a vertex with no query, the way the edge and face kinds do', () => {
-    const bodies = { body_p: vertexBody('body_p', CORNERS, ['vq0', '', 'vq2']) }
-    expect(queriesOf({ kind: 'vertex' }, bodies)).toEqual(['vq0', 'vq2'])
+    const parts = { body_p: vertexPart('body_p', CORNERS, ['vq0', '', 'vq2']) }
+    expect(queriesOf({ kind: 'vertex' }, parts)).toEqual(['vq0', 'vq2'])
   })
 
   it('orders by body id, not object insertion', () => {
-    const bodies = {
-      body_z: vertexBody('body_z', [[1, 1, 1]], ['z0']),
-      body_a: vertexBody('body_a', [[2, 2, 2]], ['a0']),
+    const parts = {
+      body_z: vertexPart('body_z', [[1, 1, 1]], ['z0']),
+      body_a: vertexPart('body_a', [[2, 2, 2]], ['a0']),
     }
-    expect(queriesOf({ kind: 'vertex' }, bodies)).toEqual(['a0', 'z0'])
+    expect(queriesOf({ kind: 'vertex' }, parts)).toEqual(['a0', 'z0'])
   })
 
   it('honors `from`', () => {
-    const bodies = {
-      body_a: vertexBody('body_a', [[1, 1, 1]], ['a0']),
-      body_b: vertexBody('body_b', [[2, 2, 2]], ['b0']),
+    const parts = {
+      body_a: vertexPart('body_a', [[1, 1, 1]], ['a0']),
+      body_b: vertexPart('body_b', [[2, 2, 2]], ['b0']),
     }
-    expect(queriesOf({ kind: 'vertex', from: 'body_b' }, bodies)).toEqual(['b0'])
+    expect(queriesOf({ kind: 'vertex', from: 'body_b' }, parts)).toEqual(['b0'])
   })
 })
 
@@ -136,9 +136,9 @@ describe('selectByPredicate: vertex position predicates', () => {
 
   it('created_by reads the vertex ancestry query', () => {
     const query = makeAncestryQuery(['@ex1', '@body_p'], 'vertex')
-    const bodies = { body_p: vertexBody('body_p', [[1, 2, 3]], [query]) }
-    expect(queriesOf({ kind: 'vertex', where: { created_by: 'ex1' } }, bodies)).toEqual([query])
-    expect(() => queriesOf({ kind: 'vertex', where: { created_by: 'nope' } }, bodies))
+    const parts = { body_p: vertexPart('body_p', [[1, 2, 3]], [query]) }
+    expect(queriesOf({ kind: 'vertex', where: { created_by: 'ex1' } }, parts)).toEqual([query])
+    expect(() => queriesOf({ kind: 'vertex', where: { created_by: 'nope' } }, parts))
       .toThrow(SelectorError)
   })
 

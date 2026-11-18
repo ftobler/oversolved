@@ -40,7 +40,7 @@ import { DisposeScope } from '../disposeScope'
 import { HandleTable } from '../handleTable'
 import { extrudeProfileWithLineage } from '../prismLineage'
 import { solidToEdges } from '../tessellation'
-import { canonicalEdges, namesToArray } from '../bodyNames'
+import { canonicalEdges, namesToArray } from '../partNames'
 import { faceNormal } from '../primitives'
 import type { PlaneLike } from '../../features/shared/planes'
 import type { LoopEdge } from '../../profileLoops'
@@ -96,7 +96,7 @@ function coverage(loops: LoopEdge[][]): Coverage {
     }
     const handle = table.register(res.solid)
     const eres = solidToEdges(oc!, table, handle, {
-      createdBy: 'ex1', bodyId: 'body_ex1',
+      createdBy: 'ex1', partId: 'body_ex1',
       edgeAncestry: res.edgeAncestry, profileQueries: [],
       edgeUuids: namesToArray(canonicalEdges(oc!, scope, res.solid as OccShape), res.edgeNames),
     })

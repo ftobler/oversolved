@@ -2,7 +2,7 @@
 // pick field's ARMED path already draws its picks.
 //
 // PickChip mirrors its values into the store's chipOwnedSelection while
-// `isPicking`, syncChipSelection merges them into normalSelection, and Body3D's
+// `isPicking`, syncChipSelection merges them into normalSelection, and Part3D's
 // selection highlight is query membership. So an armed field paints its picks
 // in the SELECTION colour (orange), not the hint colour, and a pick that no
 // longer resolves is invisible even then.
@@ -26,7 +26,7 @@ beforeEach(() => {
   useSketchEditorStore.getState().clearChipSelection()
 })
 
-/** The flags Body3D's selection painter computes for one body. */
+/** The flags Part3D's selection painter computes for one body. */
 function selectionFlags(queries: string[]): readonly boolean[] {
   const store = useSketchEditorStore.getState()
   return new HighlightIndex('body_ex1', EDGE_LAYER_NAME, queries)

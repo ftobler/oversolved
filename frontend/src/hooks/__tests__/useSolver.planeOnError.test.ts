@@ -14,7 +14,7 @@ vi.mock('@/stores/solverStore', () => ({
 }))
 
 import { useSolver } from '@/hooks/useSolver'
-import type { PartDoc, BodyResult } from '@/types/cad'
+import type { PartDoc, PartResult } from '@/types/cad'
 
 const FRONT_TRANSFORM = {
   rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1],
@@ -54,7 +54,7 @@ describe('applySolveResult -- plane_transform on error', () => {
           plane_transform: FRONT_TRANSFORM,
         },
       },
-      bodies: {} as Record<string, BodyResult>,
+      bodies: {} as Record<string, PartResult>,
       _build_state: null,
     })
 
@@ -74,7 +74,7 @@ describe('applySolveResult -- plane_transform on error', () => {
           exception: 'something went wrong',
         },
       },
-      bodies: {} as Record<string, BodyResult>,
+      bodies: {} as Record<string, PartResult>,
       _build_state: null,
     })
 

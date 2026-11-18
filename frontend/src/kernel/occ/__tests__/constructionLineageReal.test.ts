@@ -28,7 +28,7 @@ import {
 } from '../primitives'
 import { booleanWithDiff } from '../booleans'
 import { transformCopy, makeScaleTrsf } from '../transforms'
-import { canonicalEdges, canonicalFaces } from '../bodyNames'
+import { canonicalEdges, canonicalFaces } from '../partNames'
 import { SubShapeMap } from '../subshapeIdentity'
 import {
   faceSplitKey,

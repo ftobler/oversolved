@@ -24,7 +24,7 @@ function defaultInput(overrides?: Partial<BuildContextMenuInput>): BuildContextM
     builtInIds: new Set(),
     hasDanglingContent: false,
     projectedTargetIds: [],
-    visibleBodies: undefined,
+    visibleParts: undefined,
     ...overrides,
   }
 }
@@ -44,8 +44,8 @@ function defaultCallbacks(): BuildContextMenuCallbacks {
     onAlignCameraToSketchPlane: () => {},
     onSetPartColorPopover: () => {},
     onToggleConstraintTiles: () => {},
-    onExportBody: () => {},
-    onToggleBodyVisibility: () => {},
+    onExportPart: () => {},
+    onTogglePartVisibility: () => {},
     onNewSketchOnPlane: () => {},
     onFreezeProjection: () => {},
     onShowContextMenu: () => {},
@@ -142,25 +142,25 @@ describe('buildContextMenu', () => {
   })
 
   it('names no body in any menu label', () => {
-    const body = buildContextMenu(
+    const part = buildContextMenu(
       defaultInput({ targetId: 'body:abc123', partLabels: { abc123: 'MyBody' } }),
       defaultCallbacks(),
     )
     const feature = buildContextMenu(defaultInput(), defaultCallbacks())
-    const labels = [...body.items, ...feature.items].map(i => i.label)
+    const labels = [...part.items, ...feature.items].map(i => i.label)
     expect(labels.filter(label => /\bbod(?:y|ies)\b/i.test(label))).toEqual([])
   })
 
   it('shows Hide for a visible body and calls onToggleBodyVisibility(id, false)', () => {
     const seen: [string, boolean][] = []
     const callbacks = defaultCallbacks()
-    callbacks.onToggleBodyVisibility = (bodyId, visible) => { seen.push([bodyId, visible]) }
-    for (const visibleBodies of [undefined, new Set(['abc123'])]) {
+    callbacks.onTogglePartVisibility = (partId, visible) => { seen.push([partId, visible]) }
+    for (const visibleParts of [undefined, new Set(['abc123'])]) {
       const result = buildContextMenu(
         defaultInput({
           targetId: 'body:abc123',
           partLabels: { abc123: 'MyBody' },
-          visibleBodies,
+          visibleParts: visibleParts,
         }),
         callbacks,
       )
@@ -174,12 +174,12 @@ describe('buildContextMenu', () => {
   it('shows Show for a hidden body and calls onToggleBodyVisibility(id, true)', () => {
     const seen: [string, boolean][] = []
     const callbacks = defaultCallbacks()
-    callbacks.onToggleBodyVisibility = (bodyId, visible) => { seen.push([bodyId, visible]) }
+    callbacks.onTogglePartVisibility = (partId, visible) => { seen.push([partId, visible]) }
     const result = buildContextMenu(
       defaultInput({
         targetId: 'body:abc123',
         partLabels: { abc123: 'MyBody' },
-        visibleBodies: new Set(),
+        visibleParts: new Set(),
       }),
       callbacks,
     )
@@ -191,7 +191,7 @@ describe('buildContextMenu', () => {
   it('exports a body, falling back to the body id when it has no label', () => {
     const seen: [string, string][] = []
     const callbacks = defaultCallbacks()
-    callbacks.onExportBody = (bodyId, name) => { seen.push([bodyId, name]) }
+    callbacks.onExportPart = (partId, name) => { seen.push([partId, name]) }
     const result = buildContextMenu(defaultInput({ targetId: 'body:b1' }), callbacks)
     findLabel(result.items, 'Export')!.onClick()
     expect(seen).toEqual([['b1', 'part 1']])

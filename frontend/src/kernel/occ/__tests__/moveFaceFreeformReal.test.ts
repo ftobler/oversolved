@@ -34,20 +34,20 @@ import { setSketchSolver, setSketchTopology, resetSketchSolver } from '../../fea
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { DisposeScope, withTransientScope } from '../disposeScope'
-import { readBodyNames } from '../bodyNames'
+import { readPartNames } from '../partNames'
 import { applyMoveFace, MoveFaceRefusal } from '../moveFace'
 import { faceArea } from '../primitives'
 import { volumeForMeasure } from '../volume'
 import { rungCatalog } from '../moveFaceRungs'
 import { makeFaceIndexCache, resolveFacesByQuery } from '../../features/shared/faceResolution'
 import type { OccModule, OccShape, OccSubShape } from '../occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
 const topologyBytes = loadTopology()
 
-const BODY = 'body_ESrRWmJlIltOOJE-A1VbLhzR'
+const PART = 'body_ESrRWmJlIltOOJE-A1VbLhzR'
 const CHAMFER_ID = 'BeXVLtIhoq94L87Qll4xewnr'
 const MOVED_ID = 'cHBOnYil8ViF7HhF_DAmiu3T'
 
@@ -94,7 +94,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('move face across freeform
   if (!oc || !solveBytes || !topologyBytes) return
   const occ = oc
   const h = new SharedHarness(occ)
-  let body: Body
+  let part: PartSolid
   let live: DisposeScope
   let shape: OccShape
   let faces: OccShape[]
@@ -106,13 +106,13 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('move face across freeform
     const features = fixture.features as Record<string, unknown>[]
     const last = features.findIndex((f) => f.id === MOVED_ID)
     const result = h.run({ features: features.slice(0, last), part_style: fixture.part_style })
-    const snapshot = result._build_state.checkpoints[CHAMFER_ID]?.body_store_snapshot?.[BODY]
+    const snapshot = result._build_state.checkpoints[CHAMFER_ID]?.body_store_snapshot?.[PART]
     if (!snapshot) throw new Error('the matrix document has no body after the chamfer')
-    body = snapshot
+    part = snapshot
     live = new DisposeScope()
-    const index = makeFaceIndexCache(occ, live, h.table)(body)
+    const index = makeFaceIndexCache(occ, live, h.table)(part)
     const resolved = resolveFacesByQuery(
-      occ, live, h.table, body, index,
+      occ, live, h.table, part, index,
       (fixture.picks as { query: string }[]).map((p) => p.query),
     )
     faces = (fixture.picks as { query: string }[]).map((p) => {
@@ -120,7 +120,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('move face across freeform
       if (!face) throw new Error(`pick did not resolve: ${p.query}`)
       return face
     })
-    shape = h.table.get<OccShape>(body.shape!)
+    shape = h.table.get<OccShape>(part.shape!)
   })
 
   afterAll(() => live?.dispose())
@@ -136,7 +136,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('move face across freeform
         try {
           result = withTransientScope((scope) => {
             const res = applyMoveFace(occ, scope, shape, faces[pick - 1], d)
-            const names = readBodyNames(occ, scope, shape, body)
+            const names = readPartNames(occ, scope, shape, part)
             let extensions = 0
             for (const [, neighbour] of res.cells.extensionOf.entries()) {
               expect(names.faceNames.get(neighbour as OccSubShape)).toBeTruthy()

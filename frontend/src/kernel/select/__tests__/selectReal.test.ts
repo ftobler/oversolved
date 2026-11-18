@@ -18,9 +18,9 @@ import { setSketchSolver, resetSketchSolver } from '../../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { selectByPredicate, SelectorError } from '@/kernel/select'
 import type { Selector, VertexGeometry } from '@/kernel/select'
-import { resolveEdgeQueries } from '@/components/Geometry3D/bodyGeometry'
+import { resolveEdgeQueries } from '@/components/Geometry3D/partGeometry'
 import { topoFallbackQuery } from '@/utils/query/selectionId'
-import type { BodyResult } from '@/types/cad'
+import type { PartResult } from '@/types/cad'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -59,36 +59,36 @@ function extrude(id: string, distance: number, extra: Record<string, unknown> = 
 
 const PARALLEL_Z: Selector = { kind: 'edge', where: { parallel: [0, 0, 1] } }
 
-async function bodiesOf(spec: Record<string, unknown>): Promise<Record<string, BodyResult>> {
+async function partsOf(spec: Record<string, unknown>): Promise<Record<string, PartResult>> {
   const response = await solveLocally(spec)
   if (!response) throw new Error('unreachable: skipIf guards the kernel')
-  return response.bodies as Record<string, BodyResult>
+  return response.bodies as Record<string, PartResult>
 }
 
-function firstBody(bodies: Record<string, BodyResult>): BodyResult {
-  const ids = Object.keys(bodies).sort()
-  const body = bodies[ids[0]]
-  if (!body) throw new Error('solve produced no body')
-  return body
+function firstPart(parts: Record<string, PartResult>): PartResult {
+  const ids = Object.keys(parts).sort()
+  const part = parts[ids[0]]
+  if (!part) throw new Error('solve produced no body')
+  return part
 }
 
-function faceCount(body: BodyResult): number {
-  return body.mesh?.face_data?.length ?? 0
+function faceCount(part: PartResult): number {
+  return part.mesh?.face_data?.length ?? 0
 }
 
 /** The producer's own seam list for a body, not the selector's check, so the
  *  expectation stays independent of the code it judges. */
-function seamQueries(body: BodyResult): Set<string> {
-  return new Set((body.mesh?.face_seam_queries ?? []).flat())
+function seamQueries(part: PartResult): Set<string> {
+  return new Set((part.mesh?.face_seam_queries ?? []).flat())
 }
 
 /** The queries of the edges that run along Z, the plate extrusion direction. */
-function zLineQueries(body: BodyResult): string[] {
-  return (body.edges ?? []).flatMap((edge, index) => {
+function zLineQueries(part: PartResult): string[] {
+  return (part.edges ?? []).flatMap((edge, index) => {
     if (edge.kind !== 'line') return []
     const length = Math.hypot(edge.end[0] - edge.start[0], edge.end[1] - edge.start[1], edge.end[2] - edge.start[2])
     if (length === 0 || Math.abs(edge.end[2] - edge.start[2]) / length < 1 - 1e-6) return []
-    const query = body.edge_queries?.[index] ?? ''
+    const query = part.edge_queries?.[index] ?? ''
     return query ? [query] : []
   })
 }
@@ -141,8 +141,8 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
   })
 
   it('selects the four vertical edges of a box and reports their length', async () => {
-    const bodies = await bodiesOf({ id: 'sel-basic', features: [rectSketch('sk1', 10, 10), extrude('ex1', 6)] })
-    const result = selectByPredicate(PARALLEL_Z, bodies)
+    const parts = await partsOf({ id: 'sel-basic', features: [rectSketch('sk1', 10, 10), extrude('ex1', 6)] })
+    const result = selectByPredicate(PARALLEL_Z, parts)
     expect(result.queries).toHaveLength(4)
     for (const item of result.items) {
       expect(item.kind).toBe('edge')
@@ -159,7 +159,7 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
       id: 'sel-fillet-parallel',
       features: [rectSketch('sk1', 40, 30, 0, 0, '@builtin_plane_top'), extrude('ex1', 10)],
     }
-    const plate = await bodiesOf(base)
+    const plate = await partsOf(base)
     const verticals = selectByPredicate({ kind: 'edge', where: { parallel: [0, 1, 0] } }, plate)
     expect(verticals.queries).toHaveLength(4)
     for (const item of verticals.items) expect(item.geometry).toMatchObject({ kind: 'line', length: 10 })
@@ -168,16 +168,16 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
       id: base.id,
       features: [...base.features, { id: 'fi1', kind: 'fillet', fillet: { edges: verticals.queries, radius: 3 } }],
     }
-    const bodies = await bodiesOf(filleted)
-    const body = firstBody(bodies)
+    const parts = await partsOf(filleted)
+    const part = firstPart(parts)
     // The regression case must exist on this body, or the assertion below is
     // vacuous: at least one arc whose underlying circle axis is Y.
-    const yArcs = (body.edges ?? []).filter(
+    const yArcs = (part.edges ?? []).filter(
       (e): boolean => (e.kind === 'arc' || e.kind === 'circle') && Math.abs(e.axis[1]) > 1 - 1e-6,
     )
     expect(yArcs.length).toBeGreaterThan(0)
 
-    const selected = selectByPredicate({ kind: 'edge', where: { parallel: [0, 1, 0] } }, bodies)
+    const selected = selectByPredicate({ kind: 'edge', where: { parallel: [0, 1, 0] } }, parts)
     // The four corners each split into two tangent seams, so the fillet leaves
     // more than four straight Y edges; every one of them is a line, though.
     expect(selected.queries.length).toBeGreaterThanOrEqual(4)
@@ -186,7 +186,7 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
 
   it('feeds the selected queries to a fillet and reproduces oracle 09-fillet-vertical-naming', async () => {
     const box = { id: 'sel-oracle', features: [rectSketch('sk1', 20, 10), extrude('ex1', 6)] }
-    const queries = selectByPredicate(PARALLEL_Z, await bodiesOf(box)).queries
+    const queries = selectByPredicate(PARALLEL_Z, await partsOf(box)).queries
     expect(queries).toHaveLength(4)
 
     const filleted = {
@@ -200,31 +200,31 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
   })
 
   it('returns exactly the queries the picking path registers for the same named edges', async () => {
-    const bodies = await bodiesOf({ id: 'sel-click', features: [rectSketch('sk1', 10, 10), extrude('ex1', 5)] })
-    const body = firstBody(bodies)
+    const parts = await partsOf({ id: 'sel-click', features: [rectSketch('sk1', 10, 10), extrude('ex1', 5)] })
+    const part = firstPart(parts)
     // All 12 box edges are named, so the picking path returns the kernel array
     // by identity and the selector's whole-edge list is that same list, in order.
-    expect(resolveEdgeQueries(body.edges, body.edge_queries, body.id)).toBe(body.edge_queries)
-    const selected = selectByPredicate({ kind: 'edge' }, bodies).queries
-    expect(selected).toEqual(body.edge_queries)
+    expect(resolveEdgeQueries(part.edges, part.edge_queries, part.id)).toBe(part.edge_queries)
+    const selected = selectByPredicate({ kind: 'edge' }, parts).queries
+    expect(selected).toEqual(part.edge_queries)
     expect(selected).toHaveLength(12)
   })
 
   it('cannot name an edge the kernel left unnamed, where a click stores a topo fallback', async () => {
-    const bodies = await bodiesOf({ id: 'sel-unnamed', features: [rectSketch('sk1', 10, 10), extrude('ex1', 5)] })
-    const bodyId = Object.keys(bodies).sort()[0]
-    const body = bodies[bodyId]
+    const parts = await partsOf({ id: 'sel-unnamed', features: [rectSketch('sk1', 10, 10), extrude('ex1', 5)] })
+    const partId = Object.keys(parts).sort()[0]
+    const part = parts[partId]
     // Poke the defensive-alignment gap: a short kernel query array. The picking
     // path pads the missing slot with a body/index topo fallback, while the
     // selector only ever returns kernel-named queries and so drops that edge.
     // The divergence is the documented limit of selector output under a click.
-    const queries = [...(body.edge_queries ?? []).slice(0, -1), '']
-    const registered = resolveEdgeQueries(body.edges, queries, bodyId)
+    const queries = [...(part.edge_queries ?? []).slice(0, -1), '']
+    const registered = resolveEdgeQueries(part.edges, queries, partId)
     expect(registered).not.toBeNull()
-    const fallback = topoFallbackQuery(bodyId, 'edge', queries.length - 1)
+    const fallback = topoFallbackQuery(partId, 'edge', queries.length - 1)
     expect(registered![registered!.length - 1]).toBe(fallback)
 
-    const unnamed = { [bodyId]: { ...body, edge_queries: queries } }
+    const unnamed = { [partId]: { ...part, edge_queries: queries } }
     const selected = selectByPredicate({ kind: 'edge' }, unnamed).queries
     expect(selected).toHaveLength(11)
     expect(selected).not.toContain(fallback)
@@ -234,12 +234,12 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
     const base = [rectSketch('sk1', 20, 10), extrude('ex1', 6)]
     const r1 = await solveLocally({ id: 'sel-edit', features: base })
     expect(r1).not.toBeNull()
-    const queries = selectByPredicate(PARALLEL_Z, r1!.bodies as Record<string, BodyResult>).queries
+    const queries = selectByPredicate(PARALLEL_Z, r1!.bodies as Record<string, PartResult>).queries
 
     const filletFeature = { id: 'fi1', kind: 'fillet', fillet: { edges: queries, radius: 2 } }
     const r2 = await solveLocally({ id: 'sel-edit', features: [...base, filletFeature] })
     expect(r2).not.toBeNull()
-    expect(faceCount(firstBody(r2!.bodies as Record<string, BodyResult>))).toBe(10)
+    expect(faceCount(firstPart(r2!.bodies as Record<string, PartResult>))).toBe(10)
 
     // Edit the extrude distance 6 -> 10 against the previous build; the stored
     // fillet queries must still resolve to the same edges.
@@ -247,14 +247,14 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
     const r3 = await solveLocally({ id: 'sel-edit', features: taller }, { prevState: r2!._build_state })
     expect(r3).not.toBeNull()
     expect((r3!.result.fi1 as { status: string }).status).toBe('ok')
-    expect(faceCount(firstBody(r3!.bodies as Record<string, BodyResult>))).toBe(10)
+    expect(faceCount(firstPart(r3!.bodies as Record<string, PartResult>))).toBe(10)
 
     const measure = await measureLocally({ id: 'sel-edit-measure', features: taller })
     expect(measure!.faces).toBe(10)
     expect(measure!.volume).toBeCloseTo(1965.6637061435918, 6)
   })
 
-  it('created_by narrows to the edges a feature made', async () => {    const bodies = await bodiesOf({
+  it('created_by narrows to the edges a feature made', async () => {    const parts = await partsOf({
       id: 'sel-created-by',
       features: [
         rectSketch('sk1', 20, 20), extrude('ex1', 10),
@@ -264,11 +264,11 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
         { id: 'ex2', kind: 'extrude', sketch: '$sk2', distance: 15, direction: 'normal', operation: 'add', merge_target: 'body_ex1' },
       ],
     })
-    const madeByEx2 = selectByPredicate({ kind: 'edge', where: { created_by: 'ex2' } }, bodies)
+    const madeByEx2 = selectByPredicate({ kind: 'edge', where: { created_by: 'ex2' } }, parts)
     expect(madeByEx2.queries.length).toBeGreaterThan(0)
     for (const item of madeByEx2.items) expect(item.query).toContain('@ex2')
     // The base feature still owns the edges it made; the two sets partition.
-    const madeByEx1 = selectByPredicate({ kind: 'edge', where: { created_by: 'ex1' } }, bodies)
+    const madeByEx1 = selectByPredicate({ kind: 'edge', where: { created_by: 'ex1' } }, parts)
     expect(madeByEx1.queries.length).toBeGreaterThan(0)
     for (const item of madeByEx1.items) expect(item.query).toContain('@ex1')
   })
@@ -290,19 +290,19 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
         ...extra,
       ],
     })
-    const base = await bodiesOf(doc([]))
+    const base = await partsOf(doc([]))
     const added = selectByPredicate({ kind: 'face', where: { created_by: 'ex2' } }, base)
     expect(added.queries, 'the boss top and its wall').toHaveLength(2)
 
     // The junction edge, found by geometry test-side only to feed the fillet.
-    const body = firstBody(base)
-    const junction = (body.edge_queries ?? []).find((_q, i) => {
-      const edge = body.edges?.[i]
+    const part = firstPart(base)
+    const junction = (part.edge_queries ?? []).find((_q, i) => {
+      const edge = part.edges?.[i]
       return edge?.kind === 'circle' && Math.abs((edge.center?.[2] ?? -1) - 2) < 1e-6
     })
     expect(junction, 'the boss/plate junction edge').toBeTruthy()
 
-    const filleted = await bodiesOf(doc([{ id: 'fi1', kind: 'fillet', fillet: { edges: [junction], radius: 0.5 } }]))
+    const filleted = await partsOf(doc([{ id: 'fi1', kind: 'fillet', fillet: { edges: [junction], radius: 0.5 } }]))
     const kept = selectByPredicate({ kind: 'face', where: { created_by: 'ex2' } }, filleted)
     expect(kept.queries, 'still the boss top and its wall').toHaveLength(2)
     for (const item of kept.items) {
@@ -315,8 +315,8 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
   })
 
   it('picks a corner edge by the midpoint of its curve', async () => {
-    const bodies = await bodiesOf({ id: 'sel-center', features: [rectSketch('sk1', 10, 10), extrude('ex1', 6)] })
-    const selected = selectByPredicate({ kind: 'edge', where: { center: { point: [0, 0, 3] } } }, bodies)
+    const parts = await partsOf({ id: 'sel-center', features: [rectSketch('sk1', 10, 10), extrude('ex1', 6)] })
+    const selected = selectByPredicate({ kind: 'edge', where: { center: { point: [0, 0, 3] } } }, parts)
     expect(selected.queries).toHaveLength(1)
     const geometry = selected.items[0].geometry as { kind: string; start: number[]; end: number[] }
     expect(geometry.kind).toBe('line')
@@ -325,7 +325,7 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
   })
 
   it('picks a curved edge by its conic centre', async () => {
-    const bodies = await bodiesOf({
+    const parts = await partsOf({
       id: 'sel-center-circle',
       features: [
         rectSketch('sk1', 20, 10),
@@ -337,14 +337,14 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
         { id: 'ho1', kind: 'hole', hole: { sketch: '@sk2', diameter: 4, depth_mode: 'through_all', target: 'body_ex1' } },
       ],
     })
-    const selected = selectByPredicate({ kind: 'edge', where: { center: { point: [10, 5, 0] } } }, bodies)
+    const selected = selectByPredicate({ kind: 'edge', where: { center: { point: [10, 5, 0] } } }, parts)
     expect(selected.queries).toHaveLength(1)
     expect(selected.items[0].geometry).toMatchObject({ kind: 'circle', center: [10, 5, 0], radius: 2 })
   })
 
   it('selects the short chamfer edge by a point', async () => {
     const base = [rectSketch('sk1', 20, 10), extrude('ex1', 6)]
-    const baseBodies = await bodiesOf({ id: 'sel-chamfer', features: base })
+    const baseParts = await partsOf({ id: 'sel-chamfer', features: base })
     // Two edges that meet at the corner (0,0,6): the front-left vertical and
     // the front-top edge along X.
     const vertical = selectByPredicate({
@@ -354,7 +354,7 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
         { extreme: { axis: [1, 0, 0], side: 'min' } },
         { extreme: { axis: [0, 1, 0], side: 'min' } },
       ] },
-    }, baseBodies)
+    }, baseParts)
     const top = selectByPredicate({
       kind: 'edge',
       where: { and: [
@@ -362,11 +362,11 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
         { extreme: { axis: [0, 0, 1], side: 'max' } },
         { extreme: { axis: [0, 1, 0], side: 'min' } },
       ] },
-    }, baseBodies)
+    }, baseParts)
     expect(vertical.queries).toHaveLength(1)
     expect(top.queries).toHaveLength(1)
 
-    const chamfered = await bodiesOf({
+    const chamfered = await partsOf({
       id: 'sel-chamfer',
       features: [
         ...base,
@@ -397,7 +397,7 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
     try {
       const table = new HandleTable()
       const handle = table.register(openBentSheet(oc!, scope), 'bend1')
-      const edges = solidToEdges(oc!, table, handle, { createdBy: 'bend1', bodyId: 'body_bend' })
+      const edges = solidToEdges(oc!, table, handle, { createdBy: 'bend1', partId: 'body_bend' })
       const faceData = solidToFaceEdgeQueries(oc!, table, handle, edges.edge_queries)
       // An open shell has no seam: every face meets each of its edges once.
       expect(faceData.face_seam_queries.flat()).toEqual([])
@@ -412,7 +412,7 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
       for (const query of incidences) counts.set(query, (counts.get(query) ?? 0) + 1)
       expect(counts.size).toBe(edges.edge_queries.length)
       expect([...counts.values()].sort()).toEqual([1, 1, 1, 1, 1, 1, 2])
-      const body: BodyResult = {
+      const part: PartResult = {
         id: 'body_bend',
         created_by: 'bend1',
         modified_by: [],
@@ -425,7 +425,7 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
           face_seam_queries: faceData.face_seam_queries,
         },
       }
-      const selected = selectByPredicate({ kind: 'edge', where: { parallel: [0, 1, 0] } }, { body_bend: body })
+      const selected = selectByPredicate({ kind: 'edge', where: { parallel: [0, 1, 0] } }, { body_bend: part })
       // The two Y edges of the first face are free (one face each). The old
       // count rule called them seams and returned none.
       expect(selected.queries).toHaveLength(2)
@@ -435,7 +435,7 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
   })
 
   it('parallel drops the bore seam of a plate with a through hole', async () => {
-    const bodies = await bodiesOf({
+    const parts = await partsOf({
       id: 'sel-seam',
       features: [
         rectSketch('sk1', 20, 10),
@@ -447,21 +447,21 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
         { id: 'ho1', kind: 'hole', hole: { sketch: '@sk2', diameter: 4, depth_mode: 'through_all', target: 'body_ex1' } },
       ],
     })
-    const body = firstBody(bodies)
-    const seams = seamQueries(body)
+    const part = firstPart(parts)
+    const seams = seamQueries(part)
     expect(seams.size, 'the bore lateral seam').toBe(1)
     // Today's unfiltered reading: the four plate corners plus the seam.
-    const alongZ = zLineQueries(body)
+    const alongZ = zLineQueries(part)
     expect(alongZ).toHaveLength(5)
     expect(alongZ).toEqual(expect.arrayContaining([...seams]))
 
-    const selected = selectByPredicate({ kind: 'edge', where: { parallel: [0, 0, 1] } }, bodies)
+    const selected = selectByPredicate({ kind: 'edge', where: { parallel: [0, 0, 1] } }, parts)
     expect(selected.queries).toHaveLength(4)
     for (const query of selected.queries) expect(seams.has(query)).toBe(false)
   })
 
   it('a bare cylinder is now a clean empty parallel match', async () => {
-    const bodies = await bodiesOf({
+    const parts = await partsOf({
       id: 'sel-cylinder',
       features: [
         {
@@ -472,36 +472,36 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
       ],
     })
     // The seam is the only Y-parallel line, so the old reading matched one edge.
-    const body = firstBody(bodies)
-    const yLines = (body.edges ?? []).filter((edge) => {
+    const part = firstPart(parts)
+    const yLines = (part.edges ?? []).filter((edge) => {
       if (edge.kind !== 'line') return false
       const length = Math.hypot(edge.end[0] - edge.start[0], edge.end[1] - edge.start[1], edge.end[2] - edge.start[2])
       return length > 0 && Math.abs(edge.end[1] - edge.start[1]) / length > 1 - 1e-6
     })
     expect(yLines).toHaveLength(1)
-    expect(seamQueries(body).size).toBe(1)
+    expect(seamQueries(part).size).toBe(1)
 
-    expect(() => selectByPredicate({ kind: 'edge', where: { parallel: [0, 1, 0] } }, bodies))
+    expect(() => selectByPredicate({ kind: 'edge', where: { parallel: [0, 1, 0] } }, parts))
       .toThrow(SelectorError)
     try {
-      selectByPredicate({ kind: 'edge', where: { parallel: [0, 1, 0] } }, bodies)
+      selectByPredicate({ kind: 'edge', where: { parallel: [0, 1, 0] } }, parts)
     } catch (e) {
       expect((e as Error).message).toContain('parallel [0, 1, 0] matched 0')
     }
 
     // The seam also runs perpendicular to X, so the other direction test had a
     // seam-only match before and is now empty too.
-    expect(() => selectByPredicate({ kind: 'edge', where: { perpendicular: [1, 0, 0] } }, bodies))
+    expect(() => selectByPredicate({ kind: 'edge', where: { perpendicular: [1, 0, 0] } }, parts))
       .toThrow(SelectorError)
     try {
-      selectByPredicate({ kind: 'edge', where: { perpendicular: [1, 0, 0] } }, bodies)
+      selectByPredicate({ kind: 'edge', where: { perpendicular: [1, 0, 0] } }, parts)
     } catch (e) {
       expect((e as Error).message).toContain('perpendicular [1, 0, 0] matched 0')
     }
   })
 
   it('names the one box corner the three-extreme idiom selects, at its real point', async () => {
-    const bodies = await bodiesOf({ id: 'sel-corner', features: [rectSketch('sk1', 10, 10), extrude('ex1', 5)] })
+    const parts = await partsOf({ id: 'sel-corner', features: [rectSketch('sk1', 10, 10), extrude('ex1', 5)] })
     const corner = selectByPredicate({
       kind: 'vertex',
       where: {
@@ -511,7 +511,7 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
           { extreme: { axis: [0, 0, 1], side: 'max' } },
         ],
       },
-    }, bodies)
+    }, parts)
     expect(corner.queries).toHaveLength(1)
     const geo = corner.items[0].geometry
     expect(geo.kind).toBe('vertex')
@@ -521,8 +521,8 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
   })
 
   it('the corner query is one of the body arrays a viewport click reads', async () => {
-    const bodies = await bodiesOf({ id: 'sel-corner-click', features: [rectSketch('sk1', 10, 10), extrude('ex1', 5)] })
-    const body = firstBody(bodies)
+    const parts = await partsOf({ id: 'sel-corner-click', features: [rectSketch('sk1', 10, 10), extrude('ex1', 5)] })
+    const part = firstPart(parts)
     const corner = selectByPredicate({
       kind: 'vertex',
       where: {
@@ -532,9 +532,9 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
           { extreme: { axis: [0, 0, 1], side: 'max' } },
         ],
       },
-    }, bodies)
-    const vertices = body.vertices ?? []
-    const queries = body.vertex_queries ?? []
+    }, parts)
+    const vertices = part.vertices ?? []
+    const queries = part.vertex_queries ?? []
     expect(queries).toHaveLength(vertices.length)
     // The vertex the click sees (same index in both arrays) is the corner the
     // idiom selected, so the select query and the click hit the same corner.
@@ -543,6 +543,6 @@ describe.skipIf(!oc || !solveBytes)('selectByPredicate (real OCC + Rust solver)'
     expect(queries[idx]).toBe(corner.queries[0])
     // A click on an unnamed vertex falls back to body/index; the selector only
     // returns kernel-named queries, the documented divergence from the edge path.
-    expect(topoFallbackQuery(body.id, 'vertex', idx)).not.toBe(corner.queries[0])
+    expect(topoFallbackQuery(part.id, 'vertex', idx)).not.toBe(corner.queries[0])
   })
 })

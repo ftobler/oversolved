@@ -7,7 +7,7 @@ import { COLOR_SELECTED, COLOR_HOVER, COLOR_HINT, COLOR_HINT_FAILED } from '@/co
 
 /**
  * The wiring half of the incremental highlight: the geometry's colour attribute
- * must be the SAME object across hover changes. Replacing it (what Body3D used to
+ * must be the SAME object across hover changes. Replacing it (what Part3D used to
  * do, once per pointer move) drops the GL buffer and re-uploads the body's whole
  * colour array -- the cost that made hovering an imported solid unusable.
  */

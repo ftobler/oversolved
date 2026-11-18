@@ -121,11 +121,11 @@ describe('catch geometry: one pixel marked, eight pixels of reach', () => {
     // back in the list -- and ahead of the marker, which is where the ladder
     // puts it.
     const { image, p, renderer } = scene()
-    p.sketchVertexLayer.registerBody({
-      bodyKey: 'S1', vertices: [[0, 0, 0]], vertexQueries: ['vertex:S1:E1:start'],
+    p.sketchVertexLayer.registerPart({
+      partKey: 'S1', vertices: [[0, 0, 0]], vertexQueries: ['vertex:S1:E1:start'],
     })
-    p.originLayer.registerBody({
-      bodyKey: '@builtin_origin', vertices: [[0, 0, 0]], vertexQueries: ['@builtin_origin'],
+    p.originLayer.registerPart({
+      partKey: '@builtin_origin', vertices: [[0, 0, 0]], vertexQueries: ['@builtin_origin'],
     })
     image.mark(MID, MID, p.registry.lookupKey(ORIGIN_LAYER_NAME, '@builtin_origin')!)
     expect(p.resolveAllSync(renderer, { x: MID + 0.5, y: MID + 0.5 }).map(h => h.entityKey))

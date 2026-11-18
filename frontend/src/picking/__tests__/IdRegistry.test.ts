@@ -148,7 +148,7 @@ describe('IdRegistry', () => {
   })
 
   it('freeing an id that was never allocated is a no-op', () => {
-    // Body teardown can outlive its allocation (a failed mid-pass register frees
+    // Part teardown can outlive its allocation (a failed mid-pass register frees
     // what it took); a double free must not touch the live entries.
     const live = reg.allocate('face', 'face@e1#1')
     expect(() => reg.free(424242)).not.toThrow()

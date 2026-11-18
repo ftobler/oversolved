@@ -71,7 +71,7 @@ describe('MsaaRender', () => {
   })
 
   it('gates AO on the resolved section, the same flag the body material reads', () => {
-    // The present gate and the Body3D gate must agree: while the section is
+    // The present gate and the Part3D gate must agree: while the section is
     // enabled but its plane has not resolved, the body does not sample AO, so
     // the presenter must not claim AO is active either.
     const spy = vi.spyOn(MsaaPresenter.prototype, 'render').mockImplementation(() => {})

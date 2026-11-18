@@ -6,11 +6,11 @@
 import { describe, it, expect } from 'vitest'
 import { resolveLinearStep } from '../linearPattern'
 import { Repository } from '../../query'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 type Dict = Record<string, unknown>
 
-const store: Record<string, Body> = {}
+const store: Record<string, PartSolid> = {}
 
 /** A repo holding the direction payloads the tests name, all under their own
  *  feature ref so the plain query path resolves them. */

@@ -92,8 +92,8 @@ describe('golden documents load and migrate', () => {
     expect(second.doc).toEqual(first.doc)
   })
 
-  it('keeps a stored Delete Body label instead of relabelling it', () => {
-    // `Delete Body` was the default label new documents carried before the UI
+  it('keeps a stored Delete Part label instead of relabelling it', () => {
+    // `Delete Part` was the default label new documents carried before the UI
     // said part. It is user text stored in the document, so the loader passes
     // it through unchanged; only new features get the `Delete Part` default.
     const result = loadPartDocText(`version: 1
@@ -117,12 +117,12 @@ features:
 
 describe('the version gate', () => {
   // A stale singular body pick, the shape the plural-body-picks step heals.
-  const staleBodyPick = () => ({
+  const stalePartPick = () => ({
     features: [{ id: 't1', kind: 'transform', transform: { body: '@body_ex1' } }],
   })
 
   it('runs a step for a document behind its target version', () => {
-    const doc = staleBodyPick()
+    const doc = stalePartPick()
     expect(migrate(doc, 1)).toEqual(['plural-body-picks'])
     expect((doc.features[0].transform as { bodies?: string[] }).bodies).toEqual(['@body_ex1'])
   })
@@ -133,7 +133,7 @@ describe('the version gate', () => {
     // in the payload. The app writes the stamp only where a migration step
     // flips stored data (the mate offset sign flip) or where a drive tier
     // saves, so an older stamp from another writer is the normal case here.
-    const doc = staleBodyPick()
+    const doc = stalePartPick()
     expect(migrate(doc, CURRENT_DOC_VERSION)).toEqual([])
     expect((doc.features[0].transform as { body?: string }).body).toBe('@body_ex1')
   })

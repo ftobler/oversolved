@@ -120,9 +120,9 @@ function droppedConstraintTiles(
 ): { id: string; at: [number, number]; url: string; title: string; highlightIds: string[] }[] {
   const tiles: { id: string; at: [number, number]; url: string; title: string; highlightIds: string[] }[] = []
   for (const entry of dropped) {
-    const body = authored?.find(c => c.id === entry.id)
-    if (!body) continue
-    const render = computeConstraintRender(body, sketch)
+    const part = authored?.find(c => c.id === entry.id)
+    if (!part) continue
+    const render = computeConstraintRender(part, sketch)
     const at = ('at' in render && render.at ? render.at : [0, 0]) as [number, number]
     const renderKind = typeof render.kind === 'string' ? render.kind : ''
     const defKind = CONSTRAINT_BY_KIND.get(entry.kind)?.renderKind ?? ''

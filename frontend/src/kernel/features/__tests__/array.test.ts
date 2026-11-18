@@ -10,10 +10,10 @@ import type { DisposeScope } from '../../occ/disposeScope'
 import type { Repository } from '../../query'
 import { Repository as RealRepository } from '../../query'
 import type { HandleTable } from '../../occ/handleTable'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import { buildLinearCopies, solveLinearPattern } from '../linearPattern'
 import { buildCircularCopies, solveCircularPattern } from '../circularPattern'
-import { bareBody } from '../shared/bodyResolution'
+import { barePart } from '../shared/partResolution'
 
 type Dict = Record<string, unknown>
 
@@ -22,9 +22,9 @@ function buildLinear(
   scope: DisposeScope,
   sub: Dict,
   repo: Repository,
-  bodyStore: Record<string, Body> = {},
+  partStore: Record<string, PartSolid> = {},
 ) {
-  return buildLinearCopies(oc, scope, sub, repo, bodyStore).copies.map((copy) => copy.trsf)
+  return buildLinearCopies(oc, scope, sub, repo, partStore).copies.map((copy) => copy.trsf)
 }
 
 function buildCircular(
@@ -32,9 +32,9 @@ function buildCircular(
   scope: DisposeScope,
   sub: Dict,
   repo: Repository,
-  bodyStore: Record<string, Body> = {},
+  partStore: Record<string, PartSolid> = {},
 ) {
-  return buildCircularCopies(oc, scope, sub, repo, bodyStore).copies.map((copy) => copy.trsf)
+  return buildCircularCopies(oc, scope, sub, repo, partStore).copies.map((copy) => copy.trsf)
 }
 
 function solveLinear(
@@ -43,7 +43,7 @@ function solveLinear(
   table: HandleTable,
   feature: Dict,
   repo: Repository,
-  store: Record<string, Body>,
+  store: Record<string, PartSolid>,
 ) {
   return solveLinearPattern(oc, scope, table, {
     ...feature,
@@ -57,7 +57,7 @@ function solveCircular(
   table: HandleTable,
   feature: Dict,
   repo: Repository,
-  store: Record<string, Body>,
+  store: Record<string, PartSolid>,
 ) {
   return solveCircularPattern(oc, scope, table, {
     ...feature,
@@ -253,10 +253,10 @@ describe('buildLinearCopies (one direction)', () => {
       ['@ex1'],
       { type: 'flatface', body_id: 'body_ex1', face_index: 0, created_by: 'ex1' },
     )
-    const bodyStore = { body_ex1: { id: 'body_ex1', normal: [0, 0, 2] } } as unknown as Record<string, Body>
+    const partStore = { body_ex1: { id: 'body_ex1', normal: [0, 0, 2] } } as unknown as Record<string, PartSolid>
     const feature = { count: 2, pitch: 5, direction_query: '?4;@ex1:solid' }
     expect(() => buildLinear(makeFake(), scope, feature, realRepo)).toThrow()
-    const t = buildLinear(makeFake(), scope, feature, realRepo, bodyStore)
+    const t = buildLinear(makeFake(), scope, feature, realRepo, partStore)
     expect(translations(t)).toEqual([[0, 0, 5]])
   })
 })
@@ -570,9 +570,9 @@ describe('buildCircularCopies', () => {
 // Both leaves resolve their source body before touching OCC, so the two
 // diagnoses they can report are reachable with no kernel at all.
 describe('pattern source body diagnosis', () => {
-  const store = (): Record<string, Body> => ({
-    body_ex1: bareBody('body_ex1', 'ex1'),
-    body_ex1_1: bareBody('body_ex1_1', 'ex1'),
+  const store = (): Record<string, PartSolid> => ({
+    body_ex1: barePart('body_ex1', 'ex1'),
+    body_ex1_1: barePart('body_ex1_1', 'ex1'),
   })
   const noOcc = null as unknown as OccModule
   const noRepo = null as unknown as Repository
@@ -599,12 +599,12 @@ describe('pattern source body diagnosis', () => {
 // untouched, with no warning, for either operation.
 describe('count 1 through the leaf', () => {
   it.each(['add', 'new'])('leaves the source untouched for operation %s', (operation) => {
-    const body = { ...bareBody('body_ex1', 'ex1'), shape: 1 as never }
+    const part = { ...barePart('body_ex1', 'ex1'), shape: 1 as never }
     const table = { get: () => { throw new Error('count 1 must not touch a shape') } } as unknown as HandleTable
     const result = solveLinear(
       makeFake(), scope, table,
       { id: 'ar9', linear_pattern: { source_body: 'body_ex1', count: 1, pitch: 10, direction_query: 'qx', operation } },
-      xyRepo, { body_ex1: body },
+      xyRepo, { body_ex1: part },
     ) as { status: string; body_ids: string[]; solver_warning?: string }
     expect(result.status).toBe('ok')
     expect(result.body_ids).toEqual(operation === 'new' ? [] : ['body_ex1'])

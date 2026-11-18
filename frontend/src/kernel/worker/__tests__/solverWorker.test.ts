@@ -322,12 +322,12 @@ describe('handleBundleRequest', () => {
     // part-frame anchors ride on every bundle (partBundle.ts PART_FRAME_ANCHORS).
     expect(res.ok && Object.keys(res.payload.anchors)).toHaveLength(4)
     expect(res.ok && res.payload.bodies.length).toBe(1)
-    const body = res.ok && res.payload.bodies[0]
-    expect(body && body.mesh.vertices).toBeInstanceOf(Float32Array)
-    expect(body && body.mesh.indices).toBeInstanceOf(Uint32Array)
-    expect(body && body.mesh.faceIdsPerTriangle).toBeInstanceOf(Uint32Array)
-    expect(body && body.edges).toHaveLength(1)
-    expect(body && body.edges[0].kind).toBe('line')
+    const part = res.ok && res.payload.bodies[0]
+    expect(part && part.mesh.vertices).toBeInstanceOf(Float32Array)
+    expect(part && part.mesh.indices).toBeInstanceOf(Uint32Array)
+    expect(part && part.mesh.faceIdsPerTriangle).toBeInstanceOf(Uint32Array)
+    expect(part && part.edges).toHaveLength(1)
+    expect(part && part.edges[0].kind).toBe('line')
   })
 
   it('collects vertex, index, and faceId buffers as transferables', async () => {

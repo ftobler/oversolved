@@ -19,7 +19,7 @@ vi.mock('@/components/layout/AppHeader', () => ({
 const SRC = join(__dirname, '../..')
 
 // The declarations of the first rule whose selector is exactly `selector`.
-function ruleBody(cssPath: string, selector: string): string {
+function rulePart(cssPath: string, selector: string): string {
   const css = readFileSync(join(SRC, cssPath), 'utf8')
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const match = css.match(new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`))
@@ -44,15 +44,15 @@ describe('undo/redo button spacing', () => {
   })
 
   it('the group spaces its buttons with the header gap', () => {
-    const group = ruleBody('pages/Part.css', '.undo-redo-btn-group')
+    const group = rulePart('pages/Part.css', '.undo-redo-btn-group')
     expect(group).toMatch(/gap:\s*var\(--toolbar-gap\)/)
     // The tooltips are absolutely positioned against the group.
     expect(group).toMatch(/position:\s*relative/)
   })
 
   it('the header defines the gap once and both sides use it', () => {
-    expect(ruleBody('components/layout/AppHeader.css', '.app-header')).toMatch(/--toolbar-gap:\s*\d+px/)
-    expect(ruleBody('components/layout/AppHeader.css', '.app-header-left')).toMatch(/gap:\s*var\(--toolbar-gap\)/)
-    expect(ruleBody('components/layout/AppHeader.css', '.app-header-right')).toMatch(/gap:\s*var\(--toolbar-gap\)/)
+    expect(rulePart('components/layout/AppHeader.css', '.app-header')).toMatch(/--toolbar-gap:\s*\d+px/)
+    expect(rulePart('components/layout/AppHeader.css', '.app-header-left')).toMatch(/gap:\s*var\(--toolbar-gap\)/)
+    expect(rulePart('components/layout/AppHeader.css', '.app-header-right')).toMatch(/gap:\s*var\(--toolbar-gap\)/)
   })
 })

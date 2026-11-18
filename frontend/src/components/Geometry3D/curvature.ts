@@ -17,7 +17,7 @@
 // the shader paints per vertex rather than trying to smooth across a crease.
 import type { Mesh3D } from '@/types/cad'
 import type { CurvatureKind } from '@/adapters/preferences'
-import { buildBodyGeometry } from '@/components/Geometry3D/bodyGeometry'
+import { buildPartGeometry } from '@/components/Geometry3D/partGeometry'
 
 export interface CurvatureField {
   // Interleaved (mean, gaussian), two floats per vertex, matching the mesh's
@@ -278,7 +278,7 @@ const meshFields = new WeakMap<Mesh3D, CurvatureField>()
 export function curvatureForMesh(mesh: Mesh3D): CurvatureField {
   const cached = meshFields.get(mesh)
   if (cached) return cached
-  const { positions, indices } = buildBodyGeometry(mesh)
+  const { positions, indices } = buildPartGeometry(mesh)
   const field = computeCurvature(positions, indices)
   meshFields.set(mesh, field)
   return field

@@ -54,7 +54,7 @@ features:
     radius: 1
 `
 
-const BODIES = { body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [] } }
+const PARTS = { body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [] } }
 
 const FACE_A = '?4;@ex1:flatface'
 const FACE_B = '?9;@body_ex1:cylinderface'
@@ -86,7 +86,7 @@ async function mountPart(content = DOC) {
     </MemoryRouter>,
     { wrapper: Wrapper },
   )
-  await waitFor(() => expect(usePartEditorStore.getState().bodies?.body_ex1).toBeTruthy())
+  await waitFor(() => expect(usePartEditorStore.getState().parts?.body_ex1).toBeTruthy())
   fireEvent.click(screen.getByTitle('Feature mode'))
 }
 
@@ -94,7 +94,7 @@ describe('Delete key on a face selection', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     resetSelection()
-    mockSolveViaWorker.mockResolvedValue({ result: {}, bodies: BODIES, pick_bodies: {}, _build_state: null })
+    mockSolveViaWorker.mockResolvedValue({ result: {}, bodies: PARTS, pick_bodies: {}, _build_state: null })
   })
 
   it('folds two faces of one body plus a feature into one group and one undo entry', async () => {

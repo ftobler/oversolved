@@ -3,7 +3,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
-import type { BodyResult, PartFeature } from '@/types/cad'
+import type { PartResult, PartFeature } from '@/types/cad'
 import { makeAncestryQuery } from '@/kernel/query'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useEditorState } from '@/hooks/useEditorState'
@@ -17,7 +17,7 @@ const sketch = (id: string): PartFeature => ({ id, kind: 'sketch' })
 const extrude = (id: string, profiles: string[]): PartFeature =>
   ({ id, kind: 'extrude', extrude: { sketch: profiles, distance: 10 } })
 
-function body(id: string, createdBy: string, faceQueries: string[] = []): BodyResult {
+function part(id: string, createdBy: string, faceQueries: string[] = []): PartResult {
   return {
     id,
     created_by: createdBy,
@@ -34,18 +34,18 @@ function body(id: string, createdBy: string, faceQueries: string[] = []): BodyRe
   }
 }
 
-function seed(features: PartFeature[], bodies: Record<string, BodyResult> = {}) {
+function seed(features: PartFeature[], parts: Record<string, PartResult> = {}) {
   usePartEditorStore.setState({
     features,
-    bodies,
+    parts: parts,
     visibleFeatures: new Set(features.map(f => f.id)),
     doc: null,
-    visibleBodies: new Set(),
+    visibleParts: new Set(),
     partLabels: {},
     solveResults: {},
     isRebuilding: false,
     featureTimings: {},
-    pickBodies: {},
+    pickParts: {},
   })
   useEditorState.setState({
     rollbackPosition: null,
@@ -77,7 +77,7 @@ beforeEach(() => {
 describe('FeatureTree relation hint', () => {
   it('a selected face marks the row of the feature that created it', () => {
     const features = [sketch('sk1'), extrude('ex1', [area('sk1')])]
-    seed(features, { body_ex1: body('body_ex1', 'ex1', [faceQuery('ex1')]) })
+    seed(features, { body_ex1: part('body_ex1', 'ex1', [faceQuery('ex1')]) })
     const { container } = renderSidebar()
 
     select([faceQuery('ex1')])
@@ -88,7 +88,7 @@ describe('FeatureTree relation hint', () => {
 
   it('two selected faces of two features mark both rows', () => {
     const features = [extrude('ex1', []), extrude('cut1', [])]
-    seed(features, { body_cut1: body('body_cut1', 'cut1', [faceQuery('ex1'), faceQuery('cut1')]) })
+    seed(features, { body_cut1: part('body_cut1', 'cut1', [faceQuery('ex1'), faceQuery('cut1')]) })
     const { container } = renderSidebar()
 
     select([faceQuery('ex1'), faceQuery('cut1')])
@@ -99,7 +99,7 @@ describe('FeatureTree relation hint', () => {
 
   it('a hovered face marks nothing', () => {
     const features = [extrude('ex1', [])]
-    seed(features, { body_ex1: body('body_ex1', 'ex1', [faceQuery('ex1')]) })
+    seed(features, { body_ex1: part('body_ex1', 'ex1', [faceQuery('ex1')]) })
     const { container } = renderSidebar()
 
     act(() => {

@@ -62,7 +62,7 @@ function circlesSpec(circles: number[][], withSquare: boolean) {
 describe.skipIf(!oc || !solveBytes)('a hole tangent to the outer loop (real OCC + Rust solver)', () => {
   const h = extrudeTestHarness()
 
-  function bodyIds(result: BuildResponse): string[] {
+  function partIds(result: BuildResponse): string[] {
     const store = result._build_state!.checkpoints['ex1'].body_store_snapshot
     return Object.keys(store).filter((id) => id === 'body_ex1' || id.startsWith('body_ex1_'))
   }
@@ -74,7 +74,7 @@ describe.skipIf(!oc || !solveBytes)('a hole tangent to the outer loop (real OCC 
     const scope = new DisposeScope()
     try {
       let total = 0
-      for (const id of bodyIds(result)) {
+      for (const id of partIds(result)) {
         total += volumeOf(oc!, scope, h.table.get<OccShape>(store[id].shape!))
       }
       return total
@@ -106,7 +106,7 @@ describe.skipIf(!oc || !solveBytes)('a hole tangent to the outer loop (real OCC 
     // The corner pocket meets the rest of the square only along the two
     // tangent lines, so it is its own solid (one body per area that shares no
     // face with another), not a non-manifold single body.
-    expect(bodyIds(result)).toHaveLength(2)
+    expect(partIds(result)).toHaveLength(2)
   })
 
   it('cuts four corner holes, the enclosure lip', () => {
@@ -115,7 +115,7 @@ describe.skipIf(!oc || !solveBytes)('a hole tangent to the outer loop (real OCC 
     expect(ex.status).toBe('ok')
     expect(ex.exception).toBeUndefined()
     expect(volume(result)).toBeCloseTo((SQUARE - 4 * DISC) * DEPTH, 3)
-    expect(bodyIds(result)).toHaveLength(5)
+    expect(partIds(result)).toHaveLength(5)
   })
 
   it('fills an island inside the corner hole', () => {

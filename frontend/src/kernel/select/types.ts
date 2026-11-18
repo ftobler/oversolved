@@ -135,7 +135,7 @@ export interface VertexGeometry {
 export interface SelectItem {
   query: string
   kind: SelectKind
-  body: string
+  part: string
   index: number
   geometry: EdgeGeometry | FaceGeometry | VertexGeometry
 }

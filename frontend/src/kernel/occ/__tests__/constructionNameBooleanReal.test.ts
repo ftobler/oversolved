@@ -20,10 +20,10 @@ import { solveBoolean } from '../../features/boolean'
 import { SharedHarness } from '../sharedHarness'
 import { setSketchSolver, resetSketchSolver } from '../../features/sketch'
 import { Repository } from '../../query'
-import { canonicalFaces, namesToArray } from '../bodyNames'
+import { canonicalFaces, namesToArray } from '../partNames'
 import type { SubShapeMap } from '../subshapeIdentity'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { PlaneLike } from '../../features/shared/planes'
 import type { LoopEdge } from '../../profileLoops'
 import type { OccModule, OccShape, OccSubShape } from '../occTypes'
@@ -77,7 +77,7 @@ describe.skipIf(!oc)('construction-name threading through ops (real OCC)', () =>
 
       const { shape: fused, faceOrigin } = booleanWithDiff(occ, scope, base.solid, bump.solid, 'fuse')
       const names = transferBooleanNames(occ, scope, {
-        bodyShape: fused,
+        partShape: fused,
         faceOrigin,
         targetFaceNames: base.faceNames,
         targetFaceAncestry: base.faceAncestry,
@@ -114,7 +114,7 @@ describe.skipIf(!oc)('construction-name threading through ops (real OCC)', () =>
       const { shape: fused, faceOrigin } = booleanWithDiff(occ, scope, base.solid, bump.solid, 'fuse')
 
       const kept = transferBooleanNames(occ, scope, {
-        bodyShape: fused,
+        partShape: fused,
         faceOrigin,
         targetFaceNames: base.faceNames,
         targetFaceAncestry: base.faceAncestry,
@@ -140,7 +140,7 @@ describe.skipIf(!oc)('construction-name threading through ops (real OCC)', () =>
       // A consuming boolean keeps the verbatim carry-over: its tool is gone, so
       // the inherited UUID is unique and re-minting would only churn it.
       const consumed = transferBooleanNames(occ, scope, {
-        bodyShape: fused,
+        partShape: fused,
         faceOrigin,
         targetFaceNames: base.faceNames,
         targetFaceAncestry: base.faceAncestry,
@@ -243,7 +243,7 @@ describe.skipIf(!oc)('boolean clearance naming (real OCC)', () => {
         const tool = extrudeProfileWithLineage(
           occ, scope, square(3, 3, 4), planeAt(-1), [0, 0, 1] as Vec3, 12, 'sk_u', 'e_u',
         )
-        const store: Record<string, Body> = {
+        const store: Record<string, PartSolid> = {
           body_t: {
             id: 'body_t', created_by: 'e_t', modified_by: [], sketch_id: 'sk_t',
             shape: table.register(target.solid, 'e_t'), brep_diff: null, profile_queries: [],
@@ -331,10 +331,10 @@ describe.skipIf(!oc || !solveBytes)('clearance naming through the builder (real 
 
     // The hole-rim edges between the tool wall and the target top answer to the
     // tool body ex2 under per-application ownership, not to the boolean.
-    const body = (r0.bodies as Record<string, { edge_queries?: string[]; edge_created_by?: string[] }>).body_ex1
-    const idx = (body.edge_created_by ?? []).findIndex((cb) => cb === 'ex2')
+    const part = (r0.bodies as Record<string, { edge_queries?: string[]; edge_created_by?: string[] }>).body_ex1
+    const idx = (part.edge_created_by ?? []).findIndex((cb) => cb === 'ex2')
     expect(idx, 'the tool body should own the hole-rim edges').toBeGreaterThanOrEqual(0)
-    const edgeQuery = body.edge_queries![idx]
+    const edgeQuery = part.edge_queries![idx]
 
     const withClearance = (clearance: number) => ({
       version: 1, kind: 'part', features: [

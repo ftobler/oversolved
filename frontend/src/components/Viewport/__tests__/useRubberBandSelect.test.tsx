@@ -794,11 +794,11 @@ describe('useRubberBandSelect over a body with a hidden seam', () => {
     try {
       renderHook(() => {
         useEdgeIdRegistration({
-          featureId: 'f1', bodyId: 'b1', edges: EDGES, edgeQueries: QUERIES,
+          featureId: 'f1', partId: 'b1', edges: EDGES, edgeQueries: QUERIES,
           hiddenEdges: new Set([0]),
         })
         useVertexIdRegistration({
-          featureId: 'f1', bodyId: 'b1', vertices: VERTICES, vertexQueries: VERTEX_QUERIES,
+          featureId: 'f1', partId: 'b1', vertices: VERTICES, vertexQueries: VERTEX_QUERIES,
           hiddenVertices: new Set([0, 1]),
         })
       })
@@ -807,7 +807,7 @@ describe('useRubberBandSelect over a body with a hidden seam', () => {
       const rimBottom = p.registry.lookupKey(EDGE_LAYER_NAME, 'f1/b1#edge#2')!
       // Neither the seam edge nor either seam vertex was registered at all.
       expect(p.registry.lookupKey(EDGE_LAYER_NAME, 'f1/b1#edge#0')).toBeUndefined()
-      expect(p.vertexLayer.bodyCount()).toBe(0)
+      expect(p.vertexLayer.partCount()).toBe(0)
 
       // Paint three bands: one per rim plus an id-less stretch where a seam
       // would have been drawn, then sweep the whole box.

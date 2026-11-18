@@ -15,15 +15,15 @@ import type { DisposeScope } from './disposeScope'
 import type { OccModule, OccShape } from './occTypes'
 import { mintFaceUuid, importedInstanceFacePath } from '../constructionName'
 import { nameNeighboursAndDeriveEdges } from './constructionLineage'
-import { canonicalFaces, type ShapeNames } from './bodyNames'
+import { canonicalFaces, type ShapeNames } from './partNames'
 import { SubShapeMap } from './subshapeIdentity'
 
 export type ImportedNameMaps = ShapeNames
 
 /**
  * Per face: which split solid of the import it belongs to. The caller hands in
- * `splitSolids` (features/bodySplit.ts) so the index is the SAME order
- * `registerSplitBodies` names the sibling bodies with (`body_x_1`'s faces carry
+ * `splitSolids` (features/partSplit.ts) so the index is the SAME order
+ * `registerSplitParts` names the sibling bodies with (`body_x_1`'s faces carry
  * index 1), and a near-tie refusal falls back the same way body ids do. A face
  * with no entry (a shell-only shape has no solids) defaults to 0.
  */

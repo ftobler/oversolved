@@ -25,12 +25,12 @@ export interface QueryParts {
  * the named edges at a vertex) all left the element indistinguishable, and a
  * query with no tie is left exactly as it was.
  */
-export function emitWithTiesTagged(parts: readonly QueryParts[], bodyId: string, kind: "edge" | "vertex"): string[] {
+export function emitWithTiesTagged(parts: readonly QueryParts[], partId: string, kind: "edge" | "vertex"): string[] {
   const plain = parts.map((p) => makeAncestryQuery(p.ids, p.type))
   const count = new Map<string, number>()
   for (const q of plain) count.set(q, (count.get(q) ?? 0) + 1)
   return parts.map((p, i) => {
     if (p.named || count.get(plain[i])! < 2) return plain[i]
-    return makeAncestryQuery([...p.ids, emitWire(absolute(bodyId, `${kind}${i}`))], p.type)
+    return makeAncestryQuery([...p.ids, emitWire(absolute(partId, `${kind}${i}`))], p.type)
   })
 }

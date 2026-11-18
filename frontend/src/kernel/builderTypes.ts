@@ -3,7 +3,7 @@
 // without importing builder.ts back (which would close a cycle).
 
 import type { Repository } from './query'
-import type { Body, BuildState } from './types3d'
+import type { PartSolid, BuildState } from './types3d'
 
 export interface FeatureResult {
   [key: string]: unknown
@@ -14,7 +14,7 @@ export interface FeatureResult {
 export type FeatureSolver = (
   feature: Record<string, unknown>,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   featuresById: Record<string, Record<string, unknown>>,
   variableContext?: Record<string, number>,
   // Variable names defined after this feature, mapped to their feature-log
@@ -36,25 +36,25 @@ export interface BuildDeps {
   // Create a fresh global repository.
   initGlobalRepo: () => Repository
   // Tessellate all bodies in the store (triangles for rendering).
-  tessellateBodies: (
-    bodyStore: Record<string, Body>,
+  tessellateParts: (
+    partStore: Record<string, PartSolid>,
     repo: Repository | null,
   ) => Record<string, Record<string, unknown>>
   /** Mesh-free B-rep identification (face_data/face_queries + edges/vertices and
    *  their queries) used by the in-loop ancestry registration, so "tessellation
    *  is for eyes only": the feature loop never triangulates to identify entities.
-   *  Returns the same shape as ``tessellateBodies`` (a ``mesh`` with empty
+   *  Returns the same shape as ``tessellateParts`` (a ``mesh`` with empty
    *  geometry arrays but populated ``face_data``). Optional -- when omitted (pure
-   *  non-OCC tests) registration falls back to ``tessellateBodies``. */
+   *  non-OCC tests) registration falls back to ``tessellateParts``. */
   extractBrepMetadata?: (
-    bodyStore: Record<string, Body>,
+    partStore: Record<string, PartSolid>,
     repo: Repository | null,
   ) => Record<string, Record<string, unknown>>
   /** Record, on each body, the canonical indices of the elements its last
-   *  modifier created (``Body.brep_new``), while the feature's ``brep_diff``
+   *  modifier created (``Part.brep_new``), while the feature's ``brep_diff``
    *  sub-shapes are still alive. Called after every feature solve. Optional --
    *  when omitted (pure non-OCC tests) nothing is attributed to a modifier. */
-  indexModifierDiffs?: (bodyStore: Record<string, Body>) => void
+  indexModifierDiffs?: (partStore: Record<string, PartSolid>) => void
   // Optional: normalize legacy projected_* entity kinds. Defaults to identity.
   normalizeProjectedEntities?: (f: Record<string, unknown>) => Record<string, unknown>
   /** Retain a checkpoint's live shape under an owner tag so a later feature in
@@ -62,7 +62,7 @@ export interface BuildDeps {
    *  and the shape survives into the next build for incremental restore. A pure
    *  refcount bump -- it never touches the OCC shape, so it cannot disturb a
    *  downstream maker operating on the same handle (copying it here does). */
-  retainCheckpointShape?: (shape: NonNullable<Body['shape']>, owner: string) => void
+  retainCheckpointShape?: (shape: NonNullable<PartSolid['shape']>, owner: string) => void
   /** Defensive copy of a (pristine, prev-build) checkpoint shape into a fresh
    *  handle, used only when restoring the clean prefix: the rebuilt tail may
    *  consume/free it, so it must be independent of the retained checkpoint copy
@@ -71,15 +71,15 @@ export interface BuildDeps {
    *  build [[RESTORE_OWNER]] tag) so the next build's ``releaseRestoreCopies``
    *  can free it once the live store has replaced it -- an untagged copy would
    *  strand forever, invisible to every ``releaseOwner``. */
-  copyBodyShape?: (
-    shape: NonNullable<Body['shape']>,
+  copyPartShape?: (
+    shape: NonNullable<PartSolid['shape']>,
     owner?: string,
-  ) => NonNullable<Body['shape']>
+  ) => NonNullable<PartSolid['shape']>
   /** Evict every shape a discarded checkpoint held, by owner tag. Called for
    *  prev-state checkpoints that a new build discards. The wiring must drop
    *  BOTH remaining owners of the outgoing generation: the checkpoint retain
    *  (``'cp:' + fid``) and the base body registration (owner = the PRODUCING
-   *  feature id -- bodySplit tags new bodies and replacements alike with the
+   *  feature id -- partSplit tags new bodies and replacements alike with the
    *  feature that minted them). The retain alone leaves rc>=1 on every
    *  superseded shape; for a modifier edit the leftover ref sits under a
    *  still-clean creator and strands one solid per edit. */

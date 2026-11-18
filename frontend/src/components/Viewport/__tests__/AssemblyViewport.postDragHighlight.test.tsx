@@ -24,17 +24,17 @@ vi.mock('@/components/Viewport/EnvLight', () => ({ default: () => null, ENV_INTE
 vi.mock('@/components/Viewport/IdDebugOverlay', () => ({ default: () => null }))
 vi.mock('@/components/misc/CubeGizmo', () => ({ CubeGizmoCanvas: () => null }))
 vi.mock('@/components/Viewport/assembly/AnchorGizmos', () => ({ default: () => null }))
-vi.mock('@/components/Viewport/assembly/AssemblyBody', () => ({ default: () => null }))
+vi.mock('@/components/Viewport/assembly/AssemblyPartMesh', () => ({ default: () => null }))
 vi.mock('@/components/Viewport/assembly/AssemblyBuiltin', () => ({ default: () => null }))
 vi.mock('@/components/Viewport/assembly/AssemblyPickLayers', () => ({
-  default: function AssemblyPickLayersMock({ bodies }: { bodies: unknown }) {
-    useEffect(() => { captured.pickBodies = bodies }, [bodies])
+  default: function AssemblyPickLayersMock({ parts }: { parts: unknown }) {
+    useEffect(() => { captured.pickBodies = parts }, [parts])
     return null
   },
 }))
 vi.mock('@/components/Viewport/assembly/AssemblySelectionHighlight', () => ({
-  default: function AssemblySelectionHighlightMock({ pickBodies }: { pickBodies: unknown }) {
-    useEffect(() => { captured.highlightBodies = pickBodies }, [pickBodies])
+  default: function AssemblySelectionHighlightMock({ pickParts }: { pickParts: unknown }) {
+    useEffect(() => { captured.highlightBodies = pickParts }, [pickParts])
     return <div data-testid="assembly-selection-highlight" />
   },
 }))
@@ -44,13 +44,13 @@ vi.mock('@/components/Viewport/assembly/TriadGizmo', () => ({ default: () => nul
 
 import AssemblyViewport from '../AssemblyViewport'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assemblyStore'
-import type { AssemblyPickBody } from '@/utils/assemblyPick'
+import type { AssemblyPickPart } from '@/utils/assemblyPick'
 import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
 
-function pickBody(): AssemblyPickBody {
+function pickPart(): AssemblyPickPart {
   return {
     handle: 'p1',
-    bodyKey: 'p1:body_0',
+    partKey: 'p1:body_0',
     faces: {
       positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
       triangleToFace: new Uint32Array([0]),
@@ -74,9 +74,9 @@ beforeEach(() => {
 
 describe('AssemblyViewport drawn pick geometry', () => {
   it('offsets the pick layers and the highlight onto the settling pose', () => {
-    const body = pickBody()
+    const part = pickPart()
     useAssemblyStore.setState({
-      pickGeometry: [body],
+      pickGeometry: [part],
       pickGeometryPose: { p1: IDENTITY_TRANSFORM },
       transforms: { p1: IDENTITY_TRANSFORM },
       settlingOffsets: { p1: { ...IDENTITY_TRANSFORM, tx: 3 } },
@@ -84,25 +84,25 @@ describe('AssemblyViewport drawn pick geometry', () => {
 
     render(<AssemblyViewport />)
 
-    const bodies = captured.pickBodies as AssemblyPickBody[]
-    expect(bodies).toHaveLength(1)
-    expect(bodies[0].faces!.positions[0]).toBeCloseTo(3, 9)
-    expect(captured.highlightBodies).toBe(bodies)
+    const parts = captured.pickBodies as AssemblyPickPart[]
+    expect(parts).toHaveLength(1)
+    expect(parts[0].faces!.positions[0]).toBeCloseTo(3, 9)
+    expect(captured.highlightBodies).toBe(parts)
   })
 
   it('hands the baked body straight through at rest (identity offset, no churn)', () => {
-    const body = pickBody()
+    const part = pickPart()
     useAssemblyStore.setState({
-      pickGeometry: [body],
+      pickGeometry: [part],
       pickGeometryPose: { p1: IDENTITY_TRANSFORM },
       transforms: { p1: IDENTITY_TRANSFORM },
     } as never)
 
     render(<AssemblyViewport />)
 
-    const bodies = captured.pickBodies as AssemblyPickBody[]
-    expect(bodies[0]).toBe(body)
-    expect(captured.highlightBodies).toBe(bodies)
+    const parts = captured.pickBodies as AssemblyPickPart[]
+    expect(parts[0]).toBe(part)
+    expect(captured.highlightBodies).toBe(parts)
   })
 
   it('mounts the selection highlight in the plain settled state', () => {

@@ -10,7 +10,7 @@ const SRC = join(__dirname, '../..')
 const PART_CSS = readFileSync(join(SRC, 'pages/Part.css'), 'utf8')
 
 // The declarations of the first rule whose selector is exactly `selector`.
-function ruleBody(selector: string): string {
+function rulePart(selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const match = PART_CSS.match(new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`))
   expect(match, `${selector} rule in pages/Part.css`).not.toBeNull()
@@ -18,7 +18,7 @@ function ruleBody(selector: string): string {
 }
 
 function token(name: string): string {
-  const match = new RegExp(`${name}:\\s*([^;]+);`).exec(ruleBody(':root'))
+  const match = new RegExp(`${name}:\\s*([^;]+);`).exec(rulePart(':root'))
   expect(match, `${name} in :root`).not.toBeNull()
   return match![1].trim()
 }
@@ -30,7 +30,7 @@ function token(name: string): string {
 const ACTION_BTN = 28
 
 function rowHeight(selector: string): number {
-  const row = ruleBody(selector)
+  const row = rulePart(selector)
   const margin = Number(/margin:\s*(\d+)px 0/.exec(row)![1])
   const padding = /padding:\s*var\(--list-row-pad-block\)/.test(row)
     ? Number.parseFloat(token('--list-row-pad-block'))
@@ -46,7 +46,7 @@ describe('feature list density', () => {
   })
 
   it('trims the feature row by a few percent', () => {
-    const row = ruleBody('.feature-item')
+    const row = rulePart('.feature-item')
     expect(row).toMatch(/padding:\s*var\(--list-row-pad-block\)\s+8px/)
     const margin = Number(/margin:\s*(\d+)px 0/.exec(row)![1])
 
@@ -58,7 +58,7 @@ describe('feature list density', () => {
   })
 
   it('gives the parts row the same token and the same row height', () => {
-    const row = ruleBody('.part-item')
+    const row = rulePart('.part-item')
     expect(row).toMatch(/padding:\s*var\(--list-row-pad-block\)\s+8px/)
     expect(rowHeight('.part-item')).toBe(rowHeight('.feature-item'))
     expect(rowHeight('.part-item')).toBe(46)
@@ -67,8 +67,8 @@ describe('feature list density', () => {
   it('keeps the action buttons and icons legible on a denser row', () => {
     const buttons = /\.feature-edit-btn,[\s\S]*?\.part-context-btn\s*\{([^}]*)\}/.exec(PART_CSS)![1]
     expect(buttons).toMatch(/height:\s*28px/)
-    expect(ruleBody('.feature-icon')).toMatch(/width:\s*20px/)
-    expect(ruleBody('.feature-icon')).toMatch(/height:\s*20px/)
+    expect(rulePart('.feature-icon')).toMatch(/width:\s*20px/)
+    expect(rulePart('.feature-icon')).toMatch(/height:\s*20px/)
   })
 })
 
@@ -76,7 +76,7 @@ describe('side panel height split', () => {
   // The two cards are flex children of .document-panel: the grow factors share
   // the height the panel reserves, so a larger factor is a larger card.
   function grow(selector: string): number {
-    const match = /flex:\s*(\d+) 1 0/.exec(ruleBody(selector))
+    const match = /flex:\s*(\d+) 1 0/.exec(rulePart(selector))
     expect(match, `${selector} grow factor`).not.toBeNull()
     return Number(match![1])
   }
@@ -91,7 +91,7 @@ describe('side panel height split', () => {
     // 36% of the 85% panel share still clears the 60px min-height the shared
     // card rules give each side on any viewport tall enough to show the column.
     expect(grow('.document-panel > .sidebar-bottom')).toBeGreaterThan(0)
-    expect(ruleBody('.sidebar-top')).toMatch(/min-height:\s*60px/)
-    expect(ruleBody('.sidebar-bottom')).toMatch(/min-height:\s*60px/)
+    expect(rulePart('.sidebar-top')).toMatch(/min-height:\s*60px/)
+    expect(rulePart('.sidebar-bottom')).toMatch(/min-height:\s*60px/)
   })
 })

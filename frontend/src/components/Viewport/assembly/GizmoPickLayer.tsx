@@ -11,7 +11,7 @@
 import { useId, useMemo, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useIdPipeline } from '@/picking'
-import { useRegisteredBody } from '@/picking/idRegistrationUtils'
+import { useRegisteredPart } from '@/picking/idRegistrationUtils'
 import { p2w } from '@/utils/geometry/sketchHelpers'
 import { buildGizmoPickGeometry, GIZMO_PIXELS } from '@/utils/gizmoPickGeometry'
 import type { Quat, Vec3 } from '@/utils/transform3d'
@@ -34,7 +34,7 @@ export default function GizmoPickLayer({ origin, orientation, enabled }: GizmoPi
   // StrictMode remount whose cleanup races the new register) must not overwrite
   // the first's registration, and one instance's unregister must not remove the
   // other's. The single-viewport-only invariant is broader than this layer.
-  const bodyKey = `assembly-triad-gizmo:${useId()}`
+  const partKey = `assembly-triad-gizmo:${useId()}`
   const [pxToWorld, setPxToWorld] = useState(() => p2w(camera))
 
   useFrame(() => {
@@ -55,16 +55,16 @@ export default function GizmoPickLayer({ origin, orientation, enabled }: GizmoPi
     [enabled, ox, oy, oz, qx, qy, qz, qw, scale],
   )
 
-  useRegisteredBody(
+  useRegisteredPart(
     pipeline,
     enabled,
-    bodyKey,
+    partKey,
     (p) => {
       if (!geometry) return false
-      p.gizmoHandleLayer.registerBody({ bodyKey, ...geometry })
+      p.gizmoHandleLayer.registerPart({ partKey, ...geometry })
       return true
     },
-    (p) => p.gizmoHandleLayer.unregisterBody(bodyKey),
+    (p) => p.gizmoHandleLayer.unregisterPart(partKey),
     [geometry],
   )
 

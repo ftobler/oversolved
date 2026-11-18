@@ -15,12 +15,12 @@
 //
 // The resolver is read-only: it reads sub-shapes of a shape the solve holds and
 // allocates its proxies in the caller's DisposeScope.
-import { canonicalEdges, canonicalVertices } from './occ/bodyNames'
+import { canonicalEdges, canonicalVertices } from './occ/partNames'
 import { renderEdgeRows, renderFaceRows } from './occ/tessellation'
 import type { DisposeScope } from './occ/disposeScope'
 import type { HandleTable } from './occ/handleTable'
 import type { OccModule, OccShape } from './occ/occTypes'
-import type { Body } from './types3d'
+import type { PartSolid } from './types3d'
 import type { MeasurePickRef } from './worker/solverProtocol'
 
 /**
@@ -32,12 +32,12 @@ export function resolveMeasurePick(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-  bodies: Record<string, Body>,
+  parts: Record<string, PartSolid>,
   pick: MeasurePickRef,
 ): OccShape | null {
-  const body = bodies[pick.bodyId]
-  if (!body || body.shape == null) return null
-  const solid = table.get<OccShape>(body.shape)
+  const part = parts[pick.bodyId]
+  if (!part || part.shape == null) return null
+  const solid = table.get<OccShape>(part.shape)
   if (pick.kind === 'body') return solid
 
   if (pick.kind === 'vertex') {

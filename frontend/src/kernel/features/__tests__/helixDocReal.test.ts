@@ -88,7 +88,7 @@ describe.skipIf(!oc || !solveBytes)('helix full-document (real OCC + Rust solver
     // cylinder; the doc then references that face by slash id.
     const r1 = h.run({ features: [circleSketch('skc', 5), extrude('ex1', 'skc', 10)] })
     expect(h.res(r1, 'ex1').status).toBe('ok')
-    const ref = cylinderFaceQuery(h.body(r1, 'body_ex1').mesh as { face_data?: Array<{ surface_type?: string }>; face_queries?: string[] })
+    const ref = cylinderFaceQuery(h.part(r1, 'body_ex1').mesh as { face_data?: Array<{ surface_type?: string }>; face_queries?: string[] })
 
     const spec = (distance: number) => ({
       features: [
@@ -150,7 +150,7 @@ describe.skipIf(!oc || !solveBytes)('helix full-document (real OCC + Rust solver
     const r1 = h.run(spec('5'))
     expect(h.res(r1, 'hx1').status).toBe('ok')
     expect(h.res(r1, 'sw1').status).toBe('ok')
-    const v1 = meshVolume(h.body(r1, 'body_sw1').mesh as MeshLike)
+    const v1 = meshVolume(h.part(r1, 'body_sw1').mesh as MeshLike)
     // Pappus: A * 2 pi rbar * turns = 1 * 2 pi * 10 * 4 = 80 pi.
     expect(Math.abs(v1 - 80 * Math.PI)).toBeLessThan(80 * Math.PI * 0.02)
 
@@ -160,7 +160,7 @@ describe.skipIf(!oc || !solveBytes)('helix full-document (real OCC + Rust solver
     expect(h.lastSolved).not.toContain('hx1')
     expect(h.lastSolved).toContain('sw1')
     expect(h.res(r2, 'sw1').status).toBe('ok')
-    const v2 = meshVolume(h.body(r2, 'body_sw1').mesh as MeshLike)
+    const v2 = meshVolume(h.part(r2, 'body_sw1').mesh as MeshLike)
     expect(v2).toBeCloseTo(v1, 6)
 
     // And the descriptor is plain data in the checkpoint snapshot.

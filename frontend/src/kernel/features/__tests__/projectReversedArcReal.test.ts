@@ -27,7 +27,7 @@ describe.skipIf(!oc || !solveBytes)('a projected fillet arc keeps its sweep (rea
 
   function filleted(): Record<string, unknown>[] {
     const r0 = h.run({ features: [sk1, ex1] })
-    const edges = (h.body(r0, 'body_ex1').edge_queries as string[]) ?? []
+    const edges = (h.part(r0, 'body_ex1').edge_queries as string[]) ?? []
     // The vertical edge at the (10, 10) corner: on the +x and +y walls only.
     const corner = edges.filter((q) => q.endsWith(':straightedge') && q.includes('@cls_xp@cls_yp') && !q.includes('cls_z'))
     expect(corner).toHaveLength(1)
@@ -50,9 +50,9 @@ describe.skipIf(!oc || !solveBytes)('a projected fillet arc keeps its sweep (rea
   it.each([['back cap', 'cls_zp'], ['front cap', 'cls_zn']])('projects the %s arc as its own quarter', (_, side) => {
     const base = filleted()
     const r1 = h.run({ features: base })
-    const body = h.body(r1, 'body_ex1')
-    const edges = (body.edge_queries as string[]) ?? []
-    const faces = ((body.mesh as Record<string, unknown>).face_queries as string[]) ?? []
+    const part = h.part(r1, 'body_ex1')
+    const edges = (part.edge_queries as string[]) ?? []
+    const faces = ((part.mesh as Record<string, unknown>).face_queries as string[]) ?? []
     const arc = edges.filter((q) => q.endsWith(':edge') && q.includes(`@cls_xp@cls_yp@${side}`))
     const cap = faces.filter((q) => q.endsWith(`@${side}:flatface`))
     expect(arc).toHaveLength(1)

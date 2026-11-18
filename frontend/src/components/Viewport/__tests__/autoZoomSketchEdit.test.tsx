@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, act } from '@testing-library/react'
 import { useSketchUiStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import type { Feature, BodyResult } from '@/types/cad'
+import type { Feature, PartResult } from '@/types/cad'
 import Viewport, { type ViewportHandle } from '@/components/Viewport'
 import * as THREE from 'three'
 import { useEditorState } from '@/hooks/useEditorState'
@@ -36,7 +36,7 @@ vi.mock('@react-three/drei', () => ({
 }))
 
 vi.mock('../../Geometry3D', () => ({ default: () => null, __esModule: true }))
-vi.mock('../../Geometry3D/Body3D', () => ({ default: () => null, __esModule: true }))
+vi.mock('../../Geometry3D/Part3D', () => ({ default: () => null, __esModule: true }))
 vi.mock('../../Geometry3D/PreviewEdgeOverlay', () => ({ default: () => null, __esModule: true }))
 vi.mock('../../misc/CubeGizmo', () => ({ CubeGizmoCanvas: () => null }))
 vi.mock('../../dialogs/ContextMenuDialog', () => ({ default: () => null, __esModule: true }))
@@ -53,7 +53,7 @@ vi.mock('../idDispatch/useIdBufferPointerDispatch', async (importOriginal) => {
 vi.mock('../../../picking/IdPickingDriver', () => ({ default: () => null, __esModule: true }))
 vi.mock('../IdDebugOverlay', () => ({ default: () => null, __esModule: true }))
 
-function makeBodyWithVertices(): Record<string, BodyResult> {
+function makePartWithVertices(): Record<string, PartResult> {
   // Provide non-degenerate Float32Array vertices so autoZoomToFitNow can compute a bounding box.
   return {
     body1: {
@@ -66,7 +66,7 @@ function makeBodyWithVertices(): Record<string, BodyResult> {
         face_data: [],
         face_queries: [],
       },
-    } as unknown as BodyResult,
+    } as unknown as PartResult,
   }
 }
 
@@ -83,10 +83,10 @@ beforeEach(() => {
   })
   usePartEditorStore.setState({
     features: [] as Feature[],
-    bodies: {},
-    pickBodies: {},
+    parts: {},
+    pickParts: {},
     visibleFeatures: new Set(),
-    visibleBodies: new Set(),
+    visibleParts: new Set(),
     solveResults: {},
     otherSketches: {},
     doc: null,
@@ -109,7 +109,7 @@ describe('auto-zoom does not fire while editing a sketch', () => {
     ref.current?.autoZoomToFit()
 
     await act(async () => {
-      usePartEditorStore.setState({ bodies: makeBodyWithVertices() })
+      usePartEditorStore.setState({ parts: makePartWithVertices() })
     })
 
     // autoZoomToFitNow succeeded: camera zoom changed from its initial value.
@@ -126,7 +126,7 @@ describe('auto-zoom does not fire while editing a sketch', () => {
     expect(settled).not.toHaveBeenCalled()
 
     await act(async () => {
-      usePartEditorStore.setState({ bodies: makeBodyWithVertices() })
+      usePartEditorStore.setState({ parts: makePartWithVertices() })
     })
 
     expect(settled).toHaveBeenCalledTimes(1)
@@ -141,7 +141,7 @@ describe('auto-zoom does not fire while editing a sketch', () => {
     ref.current?.cancelPendingFit()
 
     await act(async () => {
-      usePartEditorStore.setState({ bodies: makeBodyWithVertices() })
+      usePartEditorStore.setState({ parts: makePartWithVertices() })
     })
 
     expect(settled).not.toHaveBeenCalled()
@@ -157,7 +157,7 @@ describe('auto-zoom does not fire while editing a sketch', () => {
     ref.current?.autoZoomToFit(true)
 
     await act(async () => {
-      usePartEditorStore.setState({ bodies: makeBodyWithVertices() })
+      usePartEditorStore.setState({ parts: makePartWithVertices() })
     })
 
     expect(settled).not.toHaveBeenCalled()
@@ -171,7 +171,7 @@ describe('auto-zoom does not fire while editing a sketch', () => {
     // then reset camera and enter edit mode.
     ref.current?.autoZoomToFit()
     await act(async () => {
-      usePartEditorStore.setState({ bodies: makeBodyWithVertices() })
+      usePartEditorStore.setState({ parts: makePartWithVertices() })
     })
     // Reset camera zoom to a sentinel value to detect any further zoom.
     testCamera.zoom = 999
@@ -182,10 +182,10 @@ describe('auto-zoom does not fire while editing a sketch', () => {
       useEditorState.setState({
     activeSketchFeatureId: 'sk1',
   })
-      // Bodies change as rollback takes effect (e.g. extrude disappears).
-      usePartEditorStore.setState({ bodies: {} })
-      // Bodies come back for the sketch solve.
-      usePartEditorStore.setState({ bodies: makeBodyWithVertices() })
+      // Parts change as rollback takes effect (e.g. extrude disappears).
+      usePartEditorStore.setState({ parts: {} })
+      // Parts come back for the sketch solve.
+      usePartEditorStore.setState({ parts: makePartWithVertices() })
     })
 
     // Camera zoom must not have been changed: auto-zoom is suppressed during sketch edit.
@@ -197,15 +197,15 @@ describe('auto-zoom does not fire while editing a sketch', () => {
     render(<Viewport ref={ref} />)
 
     await act(async () => {
-      usePartEditorStore.setState({ bodies: makeBodyWithVertices() })
+      usePartEditorStore.setState({ parts: makePartWithVertices() })
     })
     testCamera.zoom = 999
     testCamera.updateProjectionMatrix()
 
     // Simulate the race: bodies update arrives in a separate act before activeSketchFeatureId is set.
     await act(async () => {
-      usePartEditorStore.setState({ bodies: {} })
-      usePartEditorStore.setState({ bodies: makeBodyWithVertices() })
+      usePartEditorStore.setState({ parts: {} })
+      usePartEditorStore.setState({ parts: makePartWithVertices() })
     })
     await act(async () => {
       useEditorState.setState({
@@ -223,7 +223,7 @@ describe('auto-zoom does not fire while editing a sketch', () => {
     // First document: geometry arrives and the camera fits.
     ref.current?.autoZoomToFit()
     await act(async () => {
-      usePartEditorStore.setState({ bodies: makeBodyWithVertices() })
+      usePartEditorStore.setState({ parts: makePartWithVertices() })
     })
     expect(testCamera.zoom).not.toBe(200)
 
@@ -252,7 +252,7 @@ describe('auto-zoom does not fire while editing a sketch', () => {
     // sketch edit before onFirstSolve's setTimeout fires.
     await act(async () => {
       usePartEditorStore.setState({
-    bodies: makeBodyWithVertices(),
+    parts: makePartWithVertices(),
   })
   useEditorState.setState({
     activeSketchFeatureId: 'sk1',
@@ -277,7 +277,7 @@ describe('auto-zoom does not fire while editing a sketch', () => {
     // Enter sketch edit with geometry present. An unforced fit is suppressed here.
     await act(async () => {
       usePartEditorStore.setState({
-    bodies: makeBodyWithVertices(),
+    parts: makePartWithVertices(),
   })
   useEditorState.setState({
     activeSketchFeatureId: 'sk1',

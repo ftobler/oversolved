@@ -76,13 +76,13 @@ export interface BuildContextMenuInput {
   activeSketchFeatureId: string | undefined
   showConstraintTiles: boolean
   partLabels: Record<string, string>
-  // Body ids in store order, for the `part N` fallback when a body has no
+  // Part ids in store order, for the `part N` fallback when a body has no
   // stored label. Absent in unit tests; buildBodyMenu synthesises a single
   // entry so an unlabelled body still reads `part 1`.
-  orderedBodyIds?: string[]
+  orderedPartIds?: string[]
   builtInIds: Set<string>
-  // Body visibility as the list reads it: undefined means nothing is hidden.
-  visibleBodies: Set<string> | undefined
+  // Part visibility as the list reads it: undefined means nothing is hidden.
+  visibleParts: Set<string> | undefined
   // Whether the last solve flagged any dangling projections or superfluous
   // constraints; gates the cleanup item so an empty command is never offered.
   hasDanglingContent: boolean
@@ -106,9 +106,9 @@ export interface BuildContextMenuCallbacks {
   onNormalToPlane: (featureId: string) => void
   onAlignCameraToSketchPlane: () => void
   onToggleConstraintTiles: () => void
-  onSetPartColorPopover: (opts: { bodyId: string; position: [number, number] } | null) => void
-  onExportBody: (bodyId: string, name: string) => void
-  onToggleBodyVisibility: (bodyId: string, visible: boolean) => void
+  onSetPartColorPopover: (opts: { partId: string; position: [number, number] } | null) => void
+  onExportPart: (partId: string, name: string) => void
+  onTogglePartVisibility: (partId: string, visible: boolean) => void
   onNewSketchOnPlane: (planeQuery: string) => void
   onFreezeProjection: (mode: FreezeProjectionMode, targets: readonly string[]) => void
   onShowContextMenu: (items: ContextMenuItem[], targetId?: string) => void
@@ -125,7 +125,7 @@ export function buildContextMenu(
   input: BuildContextMenuInput,
   callbacks: BuildContextMenuCallbacks,
 ): BuildContextMenuOutput {
-  if (input.targetId?.startsWith('body:')) return buildBodyMenu(input, callbacks)
+  if (input.targetId?.startsWith('body:')) return buildPartMenu(input, callbacks)
 
   const ctx = buildMenuContext(input, callbacks)
   return {
@@ -141,40 +141,40 @@ export function buildContextMenu(
 }
 
 /** The body menu is its own four-item board, independent of the feature menu. */
-function buildBodyMenu(
+function buildPartMenu(
   input: BuildContextMenuInput,
   callbacks: BuildContextMenuCallbacks,
 ): BuildContextMenuOutput {
-  const bodyId = input.targetId!.slice('body:'.length)
-  const ordered = [...(input.orderedBodyIds ?? Object.keys(input.partLabels))]
-  if (!ordered.includes(bodyId)) ordered.push(bodyId)
-  const currentName = partDisplayName(bodyId, input.partLabels, ordered)
-  const visible = input.visibleBodies === undefined || input.visibleBodies.has(bodyId)
+  const partId = input.targetId!.slice('body:'.length)
+  const ordered = [...(input.orderedPartIds ?? Object.keys(input.partLabels))]
+  if (!ordered.includes(partId)) ordered.push(partId)
+  const currentName = partDisplayName(partId, input.partLabels, ordered)
+  const visible = input.visibleParts === undefined || input.visibleParts.has(partId)
   return {
     items: [
       {
         label: visible ? 'Hide' : 'Show',
         icon: contextHideIcon,
-        onClick: () => callbacks.onToggleBodyVisibility(bodyId, !visible),
+        onClick: () => callbacks.onTogglePartVisibility(partId, !visible),
       },
       {
         label: 'Rename',
         icon: iconRenameIcon,
         onClick: () => callbacks.onRequestRename({
           kind: 'body',
-          id: bodyId,
+          id: partId,
           currentName,
         }),
       },
       {
         label: 'Color',
         icon: contextColorIcon,
-        onClick: () => callbacks.onSetPartColorPopover({ bodyId, position: input.pos }),
+        onClick: () => callbacks.onSetPartColorPopover({ partId, position: input.pos }),
       },
       {
         label: 'Export',
         icon: featureExportIcon,
-        onClick: () => callbacks.onExportBody(bodyId, currentName),
+        onClick: () => callbacks.onExportPart(partId, currentName),
       },
     ],
   }

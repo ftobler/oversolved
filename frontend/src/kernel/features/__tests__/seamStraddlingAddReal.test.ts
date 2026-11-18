@@ -32,7 +32,7 @@ import { volumeForMeasure } from '../../occ/volume'
 import { splitPatternDef } from '@/utils/core/patternSplit'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -122,7 +122,7 @@ function boxSketch(id: string, x0: number, y0: number, x1: number, y1: number): 
 }
 
 /** The reported document's rib as its own body. */
-function ribBody(): Dict {
+function ribPart(): Dict {
   return {
     id: 'ex1', kind: 'extrude',
     extrude: { sketch: '@sk3', distance: 2.25, direction: 'symmetric', operation: 'new' },
@@ -166,7 +166,7 @@ function unionDoc(): Record<string, unknown> {
     version: 9, kind: 'part',
     features: [
       funnelSketch('@builtin_plane_front'), axisSketch(), revolve('@sk1'),
-      ribSketch(), ribBody(),
+      ribSketch(), ribPart(),
       {
         id: 'cp1', kind: 'circular_pattern',
         circular_pattern: {
@@ -192,22 +192,22 @@ describe.skipIf(!oc || !solveBytes)('a seam-straddling add (accepted limitation)
     setSketchSolver(solveBytes)
   })
 
-  function bodyAt(r: BuildResponse, featureId: string, bodyId: string): Body | undefined {
-    const store = r._build_state!.checkpoints[featureId].body_store_snapshot as Record<string, Body>
-    return store[bodyId]
+  function partAt(r: BuildResponse, featureId: string, partId: string): PartSolid | undefined {
+    const store = r._build_state!.checkpoints[featureId].body_store_snapshot as Record<string, PartSolid>
+    return store[partId]
   }
 
-  function shapeAt(r: BuildResponse, featureId: string, bodyId: string): OccShape {
-    const body = bodyAt(r, featureId, bodyId)
-    if (body?.shape === null || body?.shape === undefined) throw new Error(`no body ${bodyId} at ${featureId}`)
-    return h.table.get<OccShape>(body.shape)
+  function shapeAt(r: BuildResponse, featureId: string, partId: string): OccShape {
+    const part = partAt(r, featureId, partId)
+    if (part?.shape === null || part?.shape === undefined) throw new Error(`no body ${partId} at ${featureId}`)
+    return h.table.get<OccShape>(part.shape)
   }
 
-  function faceCountAt(r: BuildResponse, featureId: string, bodyId: string): number {
+  function faceCountAt(r: BuildResponse, featureId: string, partId: string): number {
     const scope = new DisposeScope()
     try {
       const E = occ.TopAbs_ShapeEnum
-      const exp = scope.track(new occ.TopExp_Explorer_2(shapeAt(r, featureId, bodyId), E.TopAbs_FACE, E.TopAbs_SHAPE))
+      const exp = scope.track(new occ.TopExp_Explorer_2(shapeAt(r, featureId, partId), E.TopAbs_FACE, E.TopAbs_SHAPE))
       let count = 0
       for (; exp.More(); exp.Next()) count++
       return count
@@ -217,10 +217,10 @@ describe.skipIf(!oc || !solveBytes)('a seam-straddling add (accepted limitation)
   }
 
   // Every face of the body named, and no UUID minted twice.
-  function expectEveryFaceNamed(r: BuildResponse, featureId: string, bodyId: string): void {
-    const uuids = (bodyAt(r, featureId, bodyId)?.face_uuids ?? []).filter((u): u is string => u !== null)
+  function expectEveryFaceNamed(r: BuildResponse, featureId: string, partId: string): void {
+    const uuids = (partAt(r, featureId, partId)?.face_uuids ?? []).filter((u): u is string => u !== null)
     expect(new Set(uuids).size).toBe(uuids.length)
-    expect(uuids.length).toBe(faceCountAt(r, featureId, bodyId))
+    expect(uuids.length).toBe(faceCountAt(r, featureId, partId))
   }
 
   it('keeps the source add sound and exact, then refuses the first copy', { timeout: 120_000 }, () => {
@@ -236,7 +236,7 @@ describe.skipIf(!oc || !solveBytes)('a seam-straddling add (accepted limitation)
       version: 9, kind: 'part',
       features: [
         funnelSketch('@builtin_plane_front'), axisSketch(), revolve('@sk1'),
-        ribSketch(), ribBody(),
+        ribSketch(), ribPart(),
       ],
     })
     const scope = new DisposeScope()

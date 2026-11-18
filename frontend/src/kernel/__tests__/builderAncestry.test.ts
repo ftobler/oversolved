@@ -6,9 +6,9 @@ import {
   type BuildDeps,
 } from '../builder'
 import { resolve3dGeometry, projectTo2d } from '../features/projectionLowering'
-import type { BuildState, FeatureCheckpoint, Body } from '../types3d'
+import type { BuildState, FeatureCheckpoint, PartSolid } from '../types3d'
 import { makeDeps } from '../builderTestUtils'
-import { registerBodyBrepFromMeta } from '../builderAncestry'
+import { registerPartBrepFromMeta } from '../builderAncestry'
 import { Repository, makeAncestryQuery, constructionUuidToken, classifiersOfQuery } from '../query'
 
 describe('edgeAncestryPayload (projection round-trip)', () => {
@@ -62,10 +62,10 @@ describe('edgeAncestryPayload (projection round-trip)', () => {
 })
 
 describe('B-rep edge registration carries the classifiers of its own query', () => {
-  const body = {
+  const part = {
     id: 'body_ex1', created_by: 'ex1', modified_by: [], shape: null, sketch_id: '',
     brep_diff: null, profile_queries: [],
-  } as unknown as Body
+  } as unknown as PartSolid
   const edges = [
     { kind: 'line', start: [0, 0, 0], end: [10, 0, 0] },
     { kind: 'line', start: [0, 0, 5], end: [10, 0, 5] },
@@ -75,7 +75,7 @@ describe('B-rep edge registration carries the classifiers of its own query', () 
     // The registered payload used to be [] for every OCC edge while the query
     // carried @cls_* tokens, so the classifier tier had no evidence on edges.
     const repo = new Repository()
-    registerBodyBrepFromMeta(repo, body, {
+    registerPartBrepFromMeta(repo, part, {
       edges,
       edge_queries: [
         makeAncestryQuery(['@ex1', '@body_ex1', '@cls_zn'], 'straightedge'),
@@ -97,7 +97,7 @@ describe('B-rep edge registration carries the classifiers of its own query', () 
     // With real evidence on edges, a stale pick no longer resolves a sibling as
     // "no evidence": it goes red instead of actuating a different edge.
     const repo = new Repository()
-    registerBodyBrepFromMeta(repo, body, {
+    registerPartBrepFromMeta(repo, part, {
       edges,
       edge_queries: [
         makeAncestryQuery(['@ex1', '@body_ex1', '@cls_zn'], 'straightedge'),
@@ -124,11 +124,11 @@ describe('classifiersOfQuery', () => {
 })
 
 describe('clean-prefix restore copies are owned per build', () => {
-  // Body shapes are opaque handles to the deps; plain numbers suffice here.
-  const shapeOf = (n: number): NonNullable<Body['shape']> => n as unknown as NonNullable<Body['shape']>
+  // Part shapes are opaque handles to the deps; plain numbers suffice here.
+  const shapeOf = (n: number): NonNullable<PartSolid['shape']> => n as unknown as NonNullable<PartSolid['shape']>
 
-  function bodySnapshot(fid: string, shapes: number[]): Record<string, Body> {
-    const out: Record<string, Body> = {}
+  function partSnapshot(fid: string, shapes: number[]): Record<string, PartSolid> {
+    const out: Record<string, PartSolid> = {}
     shapes.forEach((s, i) => {
       out[`body_${fid}_${i}`] = {
         id: `body_${fid}_${i}`,
@@ -143,19 +143,19 @@ describe('clean-prefix restore copies are owned per build', () => {
     return out
   }
 
-  function cpWithBodies(fid: string, spec: Record<string, unknown>, shapes: number[]): FeatureCheckpoint {
+  function cpWithParts(fid: string, spec: Record<string, unknown>, shapes: number[]): FeatureCheckpoint {
     return {
       spec,
       result: {},
       repo_snapshot: { elements: {}, ancestral: {}, byUuid: {} },
-      body_store_snapshot: bodySnapshot(fid, shapes),
+      body_store_snapshot: partSnapshot(fid, shapes),
       bodies_snapshot: {},
     }
   }
 
   function makeRestoreTrackingDeps(events: string[]): BuildDeps {
     return makeDeps({
-      copyBodyShape: (_shape, owner) => {
+      copyPartShape: (_shape, owner) => {
         events.push(`copy:${owner}`)
         return shapeOf(1000 + events.length)
       },
@@ -173,7 +173,7 @@ describe('clean-prefix restore copies are owned per build', () => {
     const specB = { id: 'b', kind: 'extrude', distance: 5 }
     const prev: BuildState = {
       feature_order: ['a', 'b'],
-      checkpoints: { a: cpWithBodies('a', specA, [1]), b: cpWithBodies('b', specB, []) },
+      checkpoints: { a: cpWithParts('a', specA, [1]), b: cpWithParts('b', specB, []) },
     }
 
     // First incremental build: evict the discarded checkpoint, release the
@@ -212,7 +212,7 @@ describe('clean-prefix restore copies are owned per build', () => {
     const specB = { id: 'b', kind: 'extrude' }
     const prev: BuildState = {
       feature_order: ['a', 'b'],
-      checkpoints: { a: cpWithBodies('a', specA, [1]), b: cpWithBodies('b', specB, [2]) },
+      checkpoints: { a: cpWithParts('a', specA, [1]), b: cpWithParts('b', specB, [2]) },
     }
     const events: string[] = []
     build({ features: [specA, { ...specB, distance: 3 }] }, { prevState: prev }, makeRestoreTrackingDeps(events))

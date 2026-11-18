@@ -23,7 +23,7 @@ import { makeCylinderWithFaces } from '../../occ/primitives'
 import { solveHelix } from '../helix'
 import type { Disposable } from '../../occ/disposeScope'
 import type { OccModule, OccShape } from '../../occ/occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = await loadOcc()
 
@@ -86,11 +86,11 @@ describe.skipIf(!oc)('a helix reference frees its gp proxies (real OCC)', () => 
     try {
       const { shape, faces } = makeCylinderWithFaces(occ, scope, [0, 0, 0], [0, 0, 1], 5, 10)
       const handle = table.register(shape, 'ex1')
-      const body: Body = {
+      const part: PartSolid = {
         id: 'body_ex1', created_by: 'ex1', modified_by: [], shape: handle,
         sketch_id: 'sk1', brep_diff: null, profile_queries: [],
       }
-      const bodyStore: Record<string, Body> = { body_ex1: body }
+      const partStore: Record<string, PartSolid> = { body_ex1: part }
       const index = sortedFacesOf(occ, scope, shape)
         .findIndex((f) => (f as OccShape & { IsSame(o: OccShape): boolean }).IsSame(faces.lateral))
       repo.register('cf', {
@@ -104,7 +104,7 @@ describe.skipIf(!oc)('a helix reference frees its gp proxies (real OCC)', () => 
           reference: '@cf', radius_mode: 'derived', mode: 'pitch_height', pitch: 2,
           height_from_reference: true, hand: 'right', direction: 'normal', start_angle: 0, offset: 0,
         },
-      }, repo, bodyStore)
+      }, repo, partStore)
       expect(result.status).toBe('ok')
       // The accessor chain ran: without it this test would pass vacuously.
       expect(live.size).toBeGreaterThan(0)

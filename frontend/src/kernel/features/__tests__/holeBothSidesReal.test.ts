@@ -22,10 +22,10 @@ import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
 import { makeBoxAt, faceSurfaceType } from '../../occ/primitives'
 import { booleanWithDiff, volumeOf } from '../../occ/booleans'
-import { bodyFrame } from '../../occ/tessellation'
+import { partFrame } from '../../occ/tessellation'
 import { Repository } from '../../query'
 import { solveHole } from '../hole'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
 
 const oc = await loadOcc()
@@ -64,21 +64,21 @@ function drill(hole: Record<string, unknown>, plane: typeof UP = UP): Drill {
     repo.register('sk/p_clear/xy', { external_xy: sites.clear })
     const plate = makeBoxAt(oc!, scope, [-20, -20, -5], 40, 40, 10)
     const block = makeBoxAt(oc!, scope, [-20, 0, 5], 40, 20, 10)
-    const body = scope.track(booleanWithDiff(oc!, scope, plate, block, 'fuse').shape)
-    const bodyStore: Record<string, Body> = {
+    const part = scope.track(booleanWithDiff(oc!, scope, plate, block, 'fuse').shape)
+    const partStore: Record<string, PartSolid> = {
       body_t: {
         id: 'body_t', created_by: 'ex', modified_by: [],
-        shape: table.register(body, 'ex'), sketch_id: 'sk',
+        shape: table.register(part, 'ex'), sketch_id: 'sk',
         brep_diff: null, profile_queries: [],
       },
     }
     const result = solveHole(
       oc!, scope, table,
       { id: 'h1', hole: { sketch: '@sk', target: 'body_t', diameter: 2 * BORE_R, depth_mode: 'through_all', ...hole } },
-      repo, bodyStore,
+      repo, partStore,
       { sk: { entities: [{ id: 'p_under', kind: 'point' }, { id: 'p_clear', kind: 'point' }] } },
     )
-    const shape = table.get<OccShape>(bodyStore.body_t.shape!)
+    const shape = table.get<OccShape>(partStore.body_t.shape!)
     return { result, volume: volumeOf(oc!, scope, shape), cylinders: cylinderFaces(shape, scope) }
   } finally {
     scope.dispose()
@@ -95,7 +95,7 @@ function cylinderFaces(shape: OccShape, scope: DisposeScope): CylinderFace[] {
     if (faceSurfaceType(oc!, scope, face) !== 'cylinderface') continue
     const adaptor = scope.track(new oc!.BRepAdaptor_Surface_2(face, true))
     const radius = scope.track(adaptor.Cylinder()).Radius()
-    const { center, half } = bodyFrame(oc!, scope, face)
+    const { center, half } = partFrame(oc!, scope, face)
     out.push({ radius, zMin: center[2] - half[2], zMax: center[2] + half[2] })
   }
   return out

@@ -34,7 +34,7 @@ import {
   DEFAULT_ASSEMBLY_EDITOR_DATA,
 } from '@/stores/assemblyStore'
 import { useSolverStore } from '@/stores/solverStore'
-import { assemblyBodyId } from '@/utils/assemblyBodies'
+import { assemblyPartId } from '@/utils/assemblyBodies'
 import { assemblyVerdict } from '@/utils/core/assemblyStatus'
 import { DRAG_MATE_ID, DRAG_WEIGHT } from '@/kernel/assemblyDrag'
 import { resetFakeIndexedDb } from '@/stores/documentStore/__tests__/fakeIndexedDb'
@@ -512,9 +512,9 @@ describe('useAssemblySolve', () => {
     const store = useAssemblyStore.getState()
     // The follower lands in the store; the grabbed part is dropped so the live
     // offset is the only thing that moves it.
-    expect(store.bodies[assemblyBodyId('p2', 0)]).toBeDefined()
-    expect(store.bodies[assemblyBodyId('p1', 0)]).toBeUndefined()
-    expect(store.edgeCurves[assemblyBodyId('p1', 0)]).toBeUndefined()
+    expect(store.parts[assemblyPartId('p2', 0)]).toBeDefined()
+    expect(store.parts[assemblyPartId('p1', 0)]).toBeUndefined()
+    expect(store.edgeCurves[assemblyPartId('p1', 0)]).toBeUndefined()
     // Its transform is likewise held at the pre-drag pose, not the pinned one.
     expect(store.transforms.p1).toMatchObject({ tx: 0 })
 

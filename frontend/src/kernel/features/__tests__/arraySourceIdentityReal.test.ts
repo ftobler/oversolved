@@ -18,10 +18,10 @@ import { HandleTable } from '../../occ/handleTable'
 import { booleanWithDiff, volumeOf } from '../../occ/booleans'
 import { makeBoxAt, solidCentroid } from '../../occ/primitives'
 import { Repository } from '../../query'
-import { bareBody } from '../shared/bodyResolution'
-import { solveArray } from './patternBodyTestAdapters'
+import { barePart } from '../shared/partResolution'
+import { solveArray } from './patternPartTestAdapters'
 import { solveBoolean } from '../boolean'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
 
 const loadedOcc = await loadOcc()
@@ -31,7 +31,7 @@ const oc = loadedOcc!
 interface Rig {
   scope: DisposeScope
   table: HandleTable
-  store: Record<string, Body>
+  store: Record<string, PartSolid>
 }
 
 function rig(): Rig {
@@ -48,11 +48,11 @@ function railShape(r: Rig): OccShape {
   return r.scope.track(booleanWithDiff(oc, r.scope, first, wallB, 'fuse').shape)
 }
 
-function seedRail(r: Rig): Body {
-  const body = bareBody('body_src', 'src')
-  body.shape = r.table.register(r.scope.detach(railShape(r)), body.created_by)
-  r.store.body_src = body
-  return body
+function seedRail(r: Rig): PartSolid {
+  const part = barePart('body_src', 'src')
+  part.shape = r.table.register(r.scope.detach(railShape(r)), part.created_by)
+  r.store.body_src = part
+  return part
 }
 
 function centroidZ(r: Rig, id: string): number {
@@ -118,7 +118,7 @@ describe.skipIf(!hasOcc)('array add: the source keeps its id across a disjoint s
     )
 
     // A notch in one corner of the source's base flange only.
-    const tool = bareBody('body_tool', 'tool')
+    const tool = barePart('body_tool', 'tool')
     tool.shape = r.table.register(makeBoxAt(oc, r.scope, [-1, -1, 199], 10, 10, 7), 'tool')
     r.store.body_tool = tool
     const cut = solveBoolean(oc, r.scope, r.table, {

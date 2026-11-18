@@ -37,7 +37,7 @@ features:
     extrude: { sketch: '$sk1', distance: 10, direction: 'normal' }
 `
 
-const BODIES = { body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [] } }
+const PARTS = { body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [] } }
 
 function resetSelection() {
   useEditorState.setState({
@@ -56,7 +56,7 @@ describe('Delete on a body plus its generator feature', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     resetSelection()
-    mockSolveViaWorker.mockResolvedValue({ result: {}, bodies: BODIES, pick_bodies: {}, _build_state: null })
+    mockSolveViaWorker.mockResolvedValue({ result: {}, bodies: PARTS, pick_bodies: {}, _build_state: null })
   })
 
   it('hands the kernel a doc with the feature gone and no delete_body feature', async () => {
@@ -70,7 +70,7 @@ describe('Delete on a body plus its generator feature', () => {
       { wrapper: Wrapper }
     )
 
-    await waitFor(() => expect(usePartEditorStore.getState().bodies?.body_ex1).toBeTruthy())
+    await waitFor(() => expect(usePartEditorStore.getState().parts?.body_ex1).toBeTruthy())
     fireEvent.click(screen.getByTitle('Feature mode'))
 
     act(() => { useSketchEditorStore.getState().addToNormalSelection('@ex1') })
@@ -102,7 +102,7 @@ describe('Delete on a body plus its generator feature', () => {
       { wrapper: Wrapper }
     )
 
-    await waitFor(() => expect(usePartEditorStore.getState().bodies?.body_ex1).toBeTruthy())
+    await waitFor(() => expect(usePartEditorStore.getState().parts?.body_ex1).toBeTruthy())
     fireEvent.click(screen.getByTitle('Feature mode'))
 
     act(() => {
@@ -144,7 +144,7 @@ describe('Delete on a body plus its generator feature', () => {
       { wrapper: Wrapper }
     )
 
-    await waitFor(() => expect(usePartEditorStore.getState().bodies?.body_ex1).toBeTruthy())
+    await waitFor(() => expect(usePartEditorStore.getState().parts?.body_ex1).toBeTruthy())
     fireEvent.click(screen.getByTitle('Feature mode'))
 
     // Mixed: a sketch entity plus a 3D feature target, with tile hover set.

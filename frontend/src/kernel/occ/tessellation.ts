@@ -28,7 +28,7 @@ import {
 } from './primitives'
 import { triangleArea, faceSortKey, compareFaceSortKeys, type FaceSortItem } from './shapes'
 import { geometryClassifiers } from '../geomHash'
-import { assertAligned, canonicalEdges, canonicalFaces, canonicalIndex, canonicalVertices } from './bodyNames'
+import { assertAligned, canonicalEdges, canonicalFaces, canonicalIndex, canonicalVertices } from './partNames'
 import { elementCreator, namedElementCreator, type NewIndexSets } from './modifierAttribution'
 import { deriveVertexUuid, deriveEdgesVertexUuid, orderSplitChildren, type SplitChild } from '../constructionName'
 import { shapeNormalFrame, normalizedWorldKey, type NormalFrame } from './constructionLineage'
@@ -93,7 +93,7 @@ export interface RawFaceGeom {
   surfaceFrame: SurfaceFrame | null
   // Cylinder axis direction; set for cylinderface only (circular-array axis picks).
   axis?: Vec3
-  // The face's position in the shape's canonical order (occ/bodyNames.ts),
+  // The face's position in the shape's canonical order (occ/partNames.ts),
   // which indexes the body's `face_uuids`. Never leaves the worker; always set
   // by `readShapeFaces`, optional only for hand-built mesh fixtures.
   canon?: number
@@ -255,14 +255,14 @@ const SAMPLES_PER_EDGE = 16
  * measure record), but this frame stays edge-sampled on purpose: identification
  * runs on every solve and the classifiers only need a stable, cheap frame.
  */
-export function bodyFrame(oc: OccModule, scope: DisposeScope, solid: OccShape): { center: Vec3; half: Vec3 } {
+export function partFrame(oc: OccModule, scope: DisposeScope, solid: OccShape): { center: Vec3; half: Vec3 } {
   // The two point sets are folded separately, never concatenated: an imported
   // STEP assembly has tens of thousands of edges, and `push(...samples)` passes
   // one argument per point, which overflows the call stack well before the
   // geometry itself is a problem. That threw a RangeError out of every
-  // identification path, and `tessellateBodies`/`extractBrepMetadata` swallow a
+  // identification path, and `tessellateParts`/`extractBrepMetadata` swallow a
   // per-body throw, so the whole import silently rendered as nothing.
-  return bodyFrameFromPoints(
+  return partFrameFromPoints(
     readSolidVertices(oc, scope, solid),
     readEdgeSamplePoints(oc, scope, solid, SAMPLES_PER_EDGE),
   )
@@ -270,18 +270,18 @@ export function bodyFrame(oc: OccModule, scope: DisposeScope, solid: OccShape): 
 
 interface SolidMeshOptions extends TessellateOptions {
   createdBy?: string
-  bodyId?: string
+  partId?: string
   profileQueries?: string[] | null
   faceAncestry?: Record<string, string[]> | null
-  // A cap face's identification net (Body.face_cap_ancestry): read where a face
+  // A cap face's identification net (Part.face_cap_ancestry): read where a face
   // has no `faceAncestry` entry, so a cap still carries its producing profile.
   faceCapAncestry?: Record<string, string[]> | null
-  // The body's face UUIDs in the solid's canonical order (Body.face_uuids).
+  // The body's face UUIDs in the solid's canonical order (Part.face_uuids).
   faceUuids?: (string | null)[] | null
-  // UUID -> the feature that minted it (Body.face_owner), for a face a later
+  // UUID -> the feature that minted it (Part.face_owner), for a face a later
   // modifier reshaped without recreating it.
   faceOwner?: Record<string, string> | null
-  // What the body's last modifier created (Body.brep_new) and the modifier
+  // What the body's last modifier created (Part.brep_new) and the modifier
   // history, for the per-face creator.
   newElements?: NewIndexSets | null
   modifiedBy?: string[]
@@ -320,9 +320,9 @@ export function solidToMesh(
   const scope = new DisposeScope()
   try {
     const raw = readShapeFaces(oc, scope, solid, deflection, angularDeflection)
-    assertAligned(canonicalCount(raw), opts.faceUuids, `${opts.bodyId ?? 'solid'} faces`)
+    assertAligned(canonicalCount(raw), opts.faceUuids, `${opts.partId ?? 'solid'} faces`)
     const { mesh, sorted } = assembleMeshKeeping(raw)
-    const { center, half } = bodyFrame(oc, scope, solid)
+    const { center, half } = partFrame(oc, scope, solid)
     const faceQueries: string[] = []
     const faceUuids: (string | null)[] = []
     const creators = faceCreators(oc, scope, solid, opts)
@@ -385,7 +385,7 @@ function classifyFace(
   const fallbackPq = ancestorTokens ? null : opts.profileQueries
   const query = buildFaceQuery(
     opts.createdBy ? creator : undefined,
-    opts.bodyId,
+    opts.partId,
     faceIdx,
     surfaceType,
     fallbackPq,
@@ -420,8 +420,8 @@ export function readShapeFaceMetadata(
   opts: SolidMeshOptions = {},
 ): { face_data: FaceDatum[]; face_queries: string[]; face_uuids: (string | null)[]; face_created_by: string[] } {
   const rows = sortedFaceRows(oc, scope, solid)
-  assertAligned(rows.length, opts.faceUuids, `${opts.bodyId ?? 'solid'} faces`)
-  const { center, half } = bodyFrame(oc, scope, solid)
+  assertAligned(rows.length, opts.faceUuids, `${opts.partId ?? 'solid'} faces`)
+  const { center, half } = partFrame(oc, scope, solid)
   const face_data: FaceDatum[] = []
   const face_queries: string[] = []
   const face_uuids: (string | null)[] = []
@@ -451,7 +451,7 @@ export function readShapeFaceMetadata(
 }
 
 /** One face of a solid with the sort facts the render order is derived from,
- *  and its canonical index (occ/bodyNames.ts). */
+ *  and its canonical index (occ/partNames.ts). */
 interface FaceRow extends FaceSortItem {
   shape: OccSubShape
   canon: number
@@ -523,17 +523,17 @@ export function compareEdgeSortKeys(a: EdgeSortKey, b: EdgeSortKey): number {
 
 interface SolidEdgesOptions {
   createdBy?: string
-  bodyId?: string
+  partId?: string
   profileQueries?: string[] | null
   edgeAncestry?: Record<string, string[]> | null
-  // The body's edge UUIDs in the solid's canonical order (Body.edge_uuids).
+  // The body's edge UUIDs in the solid's canonical order (Part.edge_uuids).
   edgeUuids?: (string | null)[] | null
-  // UUID -> the feature that minted it (Body.edge_owner).
+  // UUID -> the feature that minted it (Part.edge_owner).
   edgeOwner?: Record<string, string> | null
   newElements?: NewIndexSets | null
   modifiedBy?: string[]
   // Fill EdgeData.convexity from one BRepOffset_Analyse over the solid. Opt-in
-  // and set only by the final render pass (`tessellateBodies`): the metadata
+  // and set only by the final render pass (`tessellateParts`): the metadata
   // pass runs per body per feature version and its ancestry output never reads
   // the class, so it must not pay for the analyse.
   computeConvexity?: boolean
@@ -551,13 +551,13 @@ interface SolidEdgesResult {
 
 interface SolidVerticesOptions {
   createdBy?: string
-  bodyId?: string
+  partId?: string
   profileQueries?: string[] | null
-  // The body's face UUIDs in canonical order (Body.face_uuids). A vertex UUID
+  // The body's face UUIDs in canonical order (Part.face_uuids). A vertex UUID
   // is derived from the UUIDs of the faces meeting at it, so the emitter needs
   // the face names to walk the adjacency.
   faceUuids?: (string | null)[] | null
-  // The body's edge UUIDs in canonical order (Body.edge_uuids): the symbolic
+  // The body's edge UUIDs in canonical order (Part.edge_uuids): the symbolic
   // tiebreak for vertices whose face sets match and whose positions near-tie.
   edgeUuids?: (string | null)[] | null
   // What the body's last modifier created and the modifier history, for the
@@ -714,7 +714,7 @@ function vertexBoundingEdges(
 /** AABB center + half-extents over one or more point clouds; degrades to
  *  zero-extent. Takes the clouds separately so a caller never has to merge two
  *  large arrays just to bound them. */
-function bodyFrameFromPoints(...clouds: Vec3[][]): { center: Vec3; half: Vec3 } {
+function partFrameFromPoints(...clouds: Vec3[][]): { center: Vec3; half: Vec3 } {
   const min: Vec3 = [Infinity, Infinity, Infinity]
   const max: Vec3 = [-Infinity, -Infinity, -Infinity]
   let seen = 0
@@ -753,7 +753,7 @@ export function edgeRepresentativePoint(ed: EdgeData): Vec3 | null {
 
 /**
  * The edges of a solid in the order `solidToEdges` publishes them, with the
- * canonical index behind each row (occ/bodyNames.ts). A measurement pick names
+ * canonical index behind each row (occ/partNames.ts). A measurement pick names
  * an edge by that render index, so this is the walk that maps it back. Shares
  * `readSolidEdges` and `compareEdgeSortKeys` with the render pass: the order is
  * the same code, not a copy of it, including the dropped degenerated edges.
@@ -786,7 +786,7 @@ export function solidToEdges(
   try {
     const raw = renderEdgeRows(oc, scope, solid)
     const canon = canonicalEdges(oc, scope, solid)
-    assertAligned(canon.length, opts.edgeUuids, `${opts.bodyId ?? 'solid'} edges`)
+    assertAligned(canon.length, opts.edgeUuids, `${opts.partId ?? 'solid'} edges`)
     const edges = raw.map((r) => r.ed)
     const edge_uuids = raw.map((r) => opts.edgeUuids?.[r.canon] ?? null)
     const edge_queries: string[] = []
@@ -805,9 +805,9 @@ export function solidToEdges(
         if (isKernelTrap(e)) throw e
       }
     }
-    const { createdBy, bodyId } = opts
+    const { createdBy, partId: bodyId } = opts
     if (createdBy) {
-      const { center, half } = bodyFrame(oc, scope, solid)
+      const { center, half } = partFrame(oc, scope, solid)
       const parts: QueryParts[] = []
       // A named face keeps the feature that minted its UUID; an element with no
       // recorded owner (or none at all) falls back to the last-modifier rule,
@@ -1116,7 +1116,7 @@ export function solidToVertices(
     const vertices = readSolidVertices(oc, scope, solid)
     const vertex_queries: string[] = []
     const vertex_uuids: (string | null)[] = vertices.map(() => null)
-    const { createdBy, bodyId } = opts
+    const { createdBy, partId: bodyId } = opts
     // A vertex the last modifier created is attributed to it, in the query and
     // in the registered ancestry alike, so the query's ancestral net matches.
     // `readSolidVertices` walks the canonical vertex order (see below).

@@ -2,7 +2,7 @@
 
 export { parseTarget, randomId, normalizeRefList, setIdSource, getIdSource, setIdScope, type IdSource } from './helpers'
 
-export { migrateLegacyBodyPicks, dropDeadAxisConstraints } from '../yamlMigrations'
+export { migrateLegacyPartPicks, dropDeadAxisConstraints } from '../yamlMigrations'
 
 export {
   applyMoveVertex,
@@ -95,23 +95,23 @@ export {
   applyRemoveInstancePatternTarget,
   applyAddPatternSource,
   applyRemovePatternSource,
-  applyAddDeleteBody,
-  applyAddDeleteBodyRef,
-  applyRemoveDeleteBodyRef,
+  applyAddDeletePart,
+  applyAddDeletePartRef,
+  applyRemoveDeletePartRef,
   applyAddHole,
   applySetHoleField,
   applyAddTransform,
   applySetTransformField,
-  applyAddTransformBody,
-  applyRemoveTransformBody,
+  applyAddTransformPart,
+  applyRemoveTransformPart,
   applyAddMirror,
   applySetMirrorField,
   applyAddMirrorSource,
   applyRemoveMirrorSource,
   applyAddSplit,
   applySetSplitField,
-  applyAddSplitBody,
-  applyRemoveSplitBody,
+  applyAddSplitPart,
+  applyRemoveSplitPart,
   applyAddVariable,
   applySetVariableField,
   applyAddHelix,
@@ -122,7 +122,7 @@ export {
 
 export {
   applyRenamePart,
-  applySetBodyVisibility,
+  applySetPartVisibility,
   applySetPartColor,
   applySetPartTransparency,
   applySetPartMetalness,

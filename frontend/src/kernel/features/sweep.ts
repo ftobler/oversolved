@@ -14,14 +14,14 @@ import type { DisposeScope } from '../occ/disposeScope'
 import { extractErrorMessage, swallowUnlessTrap } from '../errors'
 import type { OccModule, OccShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 import type { Repository } from '../query'
 import { parseAncestry, featureRefId } from '../query'
 import { collectExtrudeLoops } from './faceProfile'
 import { samePlane, sketchToWorld2d, type PlaneLike } from './shared/planes'
 import { extractProfileLoops, profileAreaReport, loopDiagReasons, type ProfileLoopDiag } from './shared/profileLoops'
-import { parseSketchEntityRef, surfaceEntityIds } from './shared/bodyRef'
-import { applyBodyOperation, type BodyOperation } from './bodyOps'
+import { parseSketchEntityRef, surfaceEntityIds } from './shared/partRef'
+import { applyPartOperation, type PartOperation } from './partOps'
 import { sweepProfileWithLineage, type LineageResult } from '../occ/prismLineage'
 import { sweepSectionsWithLineage, type SweepSection } from '../occ/sweepSections'
 import { orderSections, profilePlacement, describeProfileMiss, type ProfileMiss, type SectionInput, type SpineSampler, type Station } from './sweepStations'
@@ -868,7 +868,7 @@ export function solveSweep(
   table: HandleTable,
   feature: Dict,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   featuresById: Record<string, Dict> = {},
 ): { [key: string]: unknown; status: string; body_id: string; body_ids?: string[] } {
   const featureId = (feature.id as string) ?? ''
@@ -946,7 +946,7 @@ export function solveSweep(
     }
     let resolved
     try {
-      resolved = collectExtrudeLoops(oc, scope, table, sketchRef, globalRepo, bodyStore)
+      resolved = collectExtrudeLoops(oc, scope, table, sketchRef, globalRepo, partStore)
     } catch (exc) {
       swallowUnlessTrap(exc)
       profileErrors.push(extractErrorMessage(exc))
@@ -1137,9 +1137,9 @@ export function solveSweep(
     }
   }
 
-  const bodyId = 'body_' + featureId
-  const result: { [key: string]: unknown; status: string; body_id: string; body_ids?: string[] } = { status: 'ok', body_id: bodyId }
-  const operation = ((sub.operation as string) ?? 'add') as BodyOperation
+  const partId = 'body_' + featureId
+  const result: { [key: string]: unknown; status: string; body_id: string; body_ids?: string[] } = { status: 'ok', body_id: partId }
+  const operation = ((sub.operation as string) ?? 'add') as PartOperation
 
   // Both forms sample the same spine: the station rule is one rule, and the
   // one-profile form only differs in its slope floor.
@@ -1188,12 +1188,12 @@ export function solveSweep(
     throw new Error('sweep: profile overlaps the next turn: pitch < profile height')
   }
 
-  const opResult = applyBodyOperation(oc, scope, table, {
+  const opResult = applyPartOperation(oc, scope, table, {
     toolShape: swept,
-    bodyStore,
+    partStore,
     operation,
     mergeTarget,
-    bodyId,
+    partId,
     featureId,
     sketchId: opSketchId,
     opName: 'sweep',

@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest'
 import { selectByPredicate, validateSelector, SelectorError } from '@/kernel/select'
 import type { Selector } from '@/kernel/select'
 import { edgeCandidates, faceCandidates, geometryOf, vertexCandidates } from '../geometry'
-import type { BodyResult, EdgeData, EdgeKind, FaceData } from '@/types/cad'
+import type { PartResult, EdgeData, EdgeKind, FaceData } from '@/types/cad'
 
 type V3 = [number, number, number]
 
@@ -36,7 +36,7 @@ const QUERIES = ['q_convex', 'q_concave', 'q_tangent', 'q_other', 'q_seam', 'q_m
 
 const FACE: FaceData = { centroid: [0, 0, 0], normal: [0, 0, 1], surface_type: 'flatface' }
 
-function body(): Record<string, BodyResult> {
+function part(): Record<string, PartResult> {
   return {
     body_ex1: {
       id: 'body_ex1',
@@ -59,8 +59,8 @@ function body(): Record<string, BodyResult> {
   }
 }
 
-function queriesOf(selector: Selector, bodies = body()): string[] {
-  return selectByPredicate(selector, bodies).queries
+function queriesOf(selector: Selector, parts = part()): string[] {
+  return selectByPredicate(selector, parts).queries
 }
 
 describe('selectByPredicate: convexity', () => {
@@ -81,13 +81,13 @@ describe('selectByPredicate: convexity', () => {
     // so BRepOffset_Analyse has no dihedral angle and leaves it `other`. The
     // seam leaf is the direct way to name it; `{convexity: "tangent"}` must not
     // quietly include seams.
-    const bodies = body()
-    expect(queriesOf({ kind: 'edge', where: { convexity: 'tangent' } }, bodies))
+    const parts = part()
+    expect(queriesOf({ kind: 'edge', where: { convexity: 'tangent' } }, parts))
       .not.toContain('q_seam')
-    expect(queriesOf({ kind: 'edge', where: { convexity: 'other' } }, bodies))
+    expect(queriesOf({ kind: 'edge', where: { convexity: 'other' } }, parts))
       .toContain('q_seam')
     // The seam is still exactly the seam leaf's match.
-    expect(queriesOf({ kind: 'edge', where: { seam: true } }, bodies)).toEqual(['q_seam'])
+    expect(queriesOf({ kind: 'edge', where: { seam: true } }, parts)).toEqual(['q_seam'])
   })
 
   it('an edge with no published class matches no value, never "other"', () => {
@@ -129,24 +129,24 @@ describe('selectByPredicate: convexity', () => {
 
 describe('selectByPredicate: item geometry carries the class and the seam flag', () => {
   it('reports convexity and seam on an edge item', () => {
-    const candidate = edgeCandidates(body())[0]
+    const candidate = edgeCandidates(part())[0]
     const geometry = geometryOf(candidate)
     expect(geometry).toMatchObject({ kind: 'line', convexity: 'convex', seam: false })
   })
 
   it('reports seam true on the seam edge and omits convexity when absent', () => {
-    const bodies = body()
-    const missing = edgeCandidates(bodies)[5]
+    const parts = part()
+    const missing = edgeCandidates(parts)[5]
     expect(geometryOf(missing)).toMatchObject({ seam: false })
     expect(geometryOf(missing)).not.toHaveProperty('convexity')
-    const seam = selectByPredicate({ kind: 'edge', where: { seam: true } }, bodies).items[0]
+    const seam = selectByPredicate({ kind: 'edge', where: { seam: true } }, parts).items[0]
     expect(seam.geometry).toMatchObject({ convexity: 'other', seam: true })
   })
 
   it('omits both fields on a face and a vertex item', () => {
-    const bodies = body()
-    const face = geometryOf(faceCandidates(bodies)[0])
-    const vertex = geometryOf(vertexCandidates(bodies)[0])
+    const parts = part()
+    const face = geometryOf(faceCandidates(parts)[0])
+    const vertex = geometryOf(vertexCandidates(parts)[0])
     for (const geometry of [face, vertex]) {
       expect(geometry).not.toHaveProperty('convexity')
       expect(geometry).not.toHaveProperty('seam')

@@ -76,10 +76,10 @@ export interface CircularReference {
 export function resolveCircularReference(
   query: string,
   globalRepo: Repository,
-  bodyStore: Record<string, unknown> | null,
+  partStore: Record<string, unknown> | null,
 ): CircularReference | null {
   if (!query) return null
-  const data = globalRepo.query(query, null, bodyStore) as Dict | null
+  const data = globalRepo.query(query, null, partStore) as Dict | null
   if (!data) return null
 
   // Circular / arc / ellipse edge: truthy center/axis. Checked BEFORE the
@@ -156,13 +156,13 @@ export function resolveCircularReference(
 function resolveQueryToLine(
   query: string,
   globalRepo: Repository,
-  bodyStore: Record<string, unknown> | null,
+  partStore: Record<string, unknown> | null,
 ): { start: number[]; dir: number[] } | null {
-  const circ = resolveCircularReference(query, globalRepo, bodyStore)
+  const circ = resolveCircularReference(query, globalRepo, partStore)
   if (circ) return { start: [...circ.origin], dir: circ.axis }
 
   if (!query) return null
-  const data = globalRepo.query(query, null, bodyStore) as Dict | null
+  const data = globalRepo.query(query, null, partStore) as Dict | null
   if (!data) return null
 
   // Planar face: the array runs along the face normal.
@@ -187,9 +187,9 @@ export function resolveDirectionQuery(
   query: string,
   globalRepo: Repository,
   fallback: number[],
-  bodyStore: Record<string, unknown> | null = null,
+  partStore: Record<string, unknown> | null = null,
 ): number[] {
-  const line = resolveQueryToLine(query, globalRepo, bodyStore)
+  const line = resolveQueryToLine(query, globalRepo, partStore)
   return line ? line.dir : fallback
 }
 
@@ -203,9 +203,9 @@ export function resolveAxisQuery(
   globalRepo: Repository,
   fallbackOrigin: number[],
   fallbackDirection: number[],
-  bodyStore: Record<string, unknown> | null = null,
+  partStore: Record<string, unknown> | null = null,
 ): [number[], number[]] {
-  const line = resolveQueryToLine(query, globalRepo, bodyStore)
+  const line = resolveQueryToLine(query, globalRepo, partStore)
   return line ? [[...line.start], line.dir] : [fallbackOrigin, fallbackDirection]
 }
 
@@ -223,21 +223,21 @@ export function resolveAxisQuery(
 export function resolveDirectionQueryStrict(
   query: string,
   globalRepo: Repository,
-  bodyStore: Record<string, unknown> | null = null,
+  partStore: Record<string, unknown> | null = null,
   axisContext: AxisSenseContext | null = null,
 ): number[] | null {
   if (!query) return null
-  const carrier = resolveAxisCarrierRef(query, globalRepo, bodyStore)
+  const carrier = resolveAxisCarrierRef(query, globalRepo, partStore)
   if (carrier !== null) {
-    if (axisContext === null || bodyStore === null) return carrier.axis
+    if (axisContext === null || partStore === null) return carrier.axis
     const sense = resolveAxisCarrier(
       carrier.kind, query,
       carrier.axis === null ? null : carrier.axis as [number, number, number],
-      axisContext, globalRepo, bodyStore,
+      axisContext, globalRepo, partStore,
     )
     return sense?.direction ?? carrier.axis
   }
-  const line = resolveQueryToLine(query, globalRepo, bodyStore)
+  const line = resolveQueryToLine(query, globalRepo, partStore)
   return line ? line.dir : null
 }
 
@@ -250,15 +250,15 @@ export function resolveDirectionQueryStrict(
 export function resolveAxisCarrierRef(
   query: string,
   globalRepo: Repository,
-  bodyStore: Dict | null,
+  partStore: Dict | null,
 ): { kind: AxisCarrierKind; axis: number[] | null } | null {
   if (!query) return null
-  const circ = resolveCircularReference(query, globalRepo, bodyStore)
+  const circ = resolveCircularReference(query, globalRepo, partStore)
   if (circ !== null
     && (circ.kind === 'cylinderface' || circ.kind === 'circular_edge' || circ.kind === 'sketch_circle')) {
     return { kind: circ.kind, axis: circ.axis }
   }
-  const data = globalRepo.query(query, null, bodyStore) as Dict | null
+  const data = globalRepo.query(query, null, partStore) as Dict | null
   if (data?.type !== 'coneface') return null
   const frame = data.surface_frame as { axis?: number[] } | undefined
   const raw = Array.isArray(frame?.axis) ? normalize3(frame.axis as number[]) : null
@@ -274,8 +274,8 @@ export function resolveAxisCarrierRef(
 export function resolveAxisQueryStrict(
   query: string,
   globalRepo: Repository,
-  bodyStore: Record<string, unknown> | null = null,
+  partStore: Record<string, unknown> | null = null,
 ): [number[], number[]] | null {
-  const line = resolveQueryToLine(query, globalRepo, bodyStore)
+  const line = resolveQueryToLine(query, globalRepo, partStore)
   return line ? [[...line.start], line.dir] : null
 }

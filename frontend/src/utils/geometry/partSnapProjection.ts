@@ -1,0 +1,134 @@
+// PURE LOGIC -- no Three.js, no React refs, no R3F hooks.
+// This file must be importable in a plain vitest test without a DOM.
+import type { PlaneTransform, EdgeData, Sketch } from '@/types/cad'
+import type { PartRenderItem } from '@/utils/partRender'
+import { stripRefSigil } from '@/utils/refSigil'
+
+/** Sentinel prefix for body-snap featureIds in synthetic otherSketches entries.
+ *  computeDragMutation detects this to emit move_vertex (position only, no constraint). */
+export const PART_SNAP_FEAT_PREFIX = '__body__'
+
+/** Project a 3D world point onto the sketch plane, returning 2D local coordinates.
+ *  PlaneTransform.rotation stores axes as rows: [x0,x1,x2, y0,y1,y2, n0,n1,n2]. */
+export function projectWorldToSketch(
+  worldPoint: readonly [number, number, number],
+  planeTransform: Pick<PlaneTransform, 'rotation' | 'origin'>,
+): [number, number] {
+  const r = planeTransform.rotation
+  const o = planeTransform.origin
+  const dx = worldPoint[0] - o[0]
+  const dy = worldPoint[1] - o[1]
+  const dz = worldPoint[2] - o[2]
+  return [
+    dx * r[0] + dy * r[1] + dz * r[2],
+    dx * r[3] + dy * r[4] + dz * r[5],
+  ]
+}
+
+/** World-space normal of a plane transform. Its rotation stores the axes as rows
+ *  [x_axis, y_axis, normal], so the last triplet is the normal. */
+export function planeTransformNormal(
+  planeTransform: Pick<PlaneTransform, 'rotation'>,
+): [number, number, number] {
+  const r = planeTransform.rotation
+  return [r[6], r[7], r[8]]
+}
+
+/** Derive a PlaneTransform for a builtin sketch plane when no backend transform is available. */
+export function builtinPlaneTransform(plane: string): PlaneTransform | null {
+  const p = stripRefSigil(plane, '@')
+  if (p === 'builtin_plane_front') {
+    return { rotation: [1, 0, 0,  0, 1, 0,  0, 0, 1], origin: [0, 0, 0] }
+  }
+  if (p === 'builtin_plane_top') {
+    // Rx(-π/2): local x→world x, local y→world -z, local z→world y
+    return { rotation: [1, 0, 0,  0, 0, -1,  0, 1, 0], origin: [0, 0, 0] }
+  }
+  if (p === 'builtin_plane_right') {
+    // Ry(+π/2): local x→world -z, local y→world y, local z→world x
+    return { rotation: [0, 0, -1,  0, 1, 0,  1, 0, 0], origin: [0, 0, 0] }
+  }
+  return null
+}
+
+/** The sketch plane transform a Geometry3D render should use: the solver's when
+ *  it supplied one, else the builtin fallback for the named plane. */
+export function resolvePlaneTransform(
+  planeTransform: PlaneTransform | undefined,
+  plane: string | undefined,
+): PlaneTransform | undefined {
+  if (planeTransform) return planeTransform
+  if (plane) return builtinPlaneTransform(plane) ?? undefined
+  return undefined
+}
+
+/** Build a synthetic 2D Sketch from body vertices and edges projected onto a sketch plane.
+ *  Vertices become PointEntity entries. Line edges become LineSegment entries.
+ *  Circle/arc/ellipse edges contribute only their center as a PointEntity.
+ *  Splines contribute only their first and last point. */
+export function buildPartSnapSketch(
+  vertices: [number, number, number][] | undefined,
+  edges: EdgeData[] | undefined,
+  planeTransform: Pick<PlaneTransform, 'rotation' | 'origin'>,
+): Sketch {
+  const sketch: Sketch = {}
+  let idx = 0
+
+  if (vertices) {
+    for (const v of vertices) {
+      const [x, y] = projectWorldToSketch(v, planeTransform)
+      sketch[`bv${idx++}`] = { x, y } as Sketch[string]
+    }
+  }
+
+  if (edges) {
+    for (const edge of edges) {
+      if (edge.kind === 'line') {
+        const start = projectWorldToSketch(edge.start, planeTransform)
+        const end = projectWorldToSketch(edge.end, planeTransform)
+        sketch[`be${idx++}`] = { start, end } as Sketch[string]
+      } else if (edge.kind === 'circle' || edge.kind === 'arc' || edge.kind === 'ellipse') {
+        const [cx, cy] = projectWorldToSketch(edge.center, planeTransform)
+        sketch[`bec${idx++}`] = { x: cx, y: cy } as Sketch[string]
+      } else if (edge.kind === 'spline' && edge.points.length > 0) {
+        const [fx, fy] = projectWorldToSketch(edge.points[0], planeTransform)
+        sketch[`bsp${idx++}`] = { x: fx, y: fy } as Sketch[string]
+        if (edge.points.length > 1) {
+          const last = edge.points[edge.points.length - 1]
+          const [lx, ly] = projectWorldToSketch(last, planeTransform)
+          sketch[`bsp${idx++}`] = { x: lx, y: ly } as Sketch[string]
+        }
+      }
+    }
+  }
+
+  return sketch
+}
+
+/** The slice of a render item body snapping needs: only what is drawn. */
+export type SnapPartItem = Pick<PartRenderItem, 'partId' | 'vertices' | 'edges' | 'visible'>
+
+/**
+ * Synthetic snap sketches for every body the normal render list draws, keyed by
+ * the sentinel feature id (`__body__<bodyId>`) that computeDragMutation reads.
+ * (Ghost mode is the edited feature's preview, not the normal render list: its
+ * pick bodies are reference geometry for the edit, not snap targets.)
+ *
+ * Driven by the render list, not by the raw body map: a body hidden by the
+ * visibility row, or one the rollback bar has not reached, is not on screen, so
+ * it must not offer a vertex or an edge to snap to. Hidden geometry that still
+ * answers the cursor is the same bug as hidden geometry that still picks.
+ */
+export function partSnapSketches(
+  items: ReadonlyArray<SnapPartItem>,
+  planeTransform: Pick<PlaneTransform, 'rotation' | 'origin'>,
+): Record<string, Sketch> {
+  const out: Record<string, Sketch> = {}
+  for (const item of items) {
+    if (!item.visible) continue
+    const snapSketch = buildPartSnapSketch(item.vertices, item.edges, planeTransform)
+    if (Object.keys(snapSketch).length === 0) continue
+    out[`${PART_SNAP_FEAT_PREFIX}${item.partId}`] = snapSketch
+  }
+  return out
+}

@@ -189,9 +189,9 @@ describe('solveAssembly', () => {
 
     // With no mates the solver never runs; the part's own transform (identity)
     // passes through unchanged, so vertices land at identity too.
-    const body = result.bodies['p1'][0]
-    expect(body.vertices[0]).toBeCloseTo(0)
-    expect(body.vertices[3]).toBeCloseTo(10)
+    const part = result.bodies['p1'][0]
+    expect(part.vertices[0]).toBeCloseTo(0)
+    expect(part.vertices[3]).toBeCloseTo(10)
   })
 
   it('normalizes a solved quaternion that is unit only to solver tolerance (qw = 1.02), leaving vertex distances from the origin unchanged', async () => {
@@ -218,7 +218,7 @@ describe('solveAssembly', () => {
     const mates = [
       { id: 'm1', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
     ]
-    // Body index 1 is p2 (p1 is index 0).
+    // Part index 1 is p2 (p1 is index 0).
     const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, makeScaledQwSolver(1, 1.02))
 
     const t = result.transforms['p2']

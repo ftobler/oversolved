@@ -59,8 +59,8 @@ describe.skipIf(!ready)('cosmetic thread shading through the real solve (real OC
     const sites = collectThreadSites(doc.features as { id: string; kind?: string }[], results, 'mm')
     expect(sites, 'collectThreadSites').not.toBeNull()
 
-    const bodies = Object.values(response!.bodies) as { mesh?: Mesh3D }[]
-    const meshes = bodies.map(b => b.mesh).filter((m): m is Mesh3D => m !== undefined)
+    const parts = Object.values(response!.bodies) as { mesh?: Mesh3D }[]
+    const meshes = parts.map(b => b.mesh).filter((m): m is Mesh3D => m !== undefined)
     expect(meshes.length).toBeGreaterThan(0)
     // Name what the mesh carries if the match fails, so the broken link shows.
     const cylinders = meshes.flatMap(m => (m.face_data ?? [])

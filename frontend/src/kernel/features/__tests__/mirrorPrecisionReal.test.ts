@@ -17,7 +17,7 @@
 
 import { describe, it, expect } from 'vitest'
 import type { BuildResponse } from '../../builder'
-import type { Body, BuildState } from '../../types3d'
+import type { PartSolid, BuildState } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import { SharedHarness } from '../../occ/sharedHarness'
 import { exploreFaces } from '../../occ/edgeModifier'
@@ -94,12 +94,12 @@ function halfCubeDoc(sketch: Record<string, unknown>, mirror = true) {
 /** How many planar faces point up (+Y): the top face, split at the mirror plane
  *  until the merge folds the halves. The half-cube's sketch is on Front, so its
  *  "up" is world +Y. */
-function upFaces(ocModule: OccModule, h: SharedHarness, snapshot: Record<string, Body>, bodyId: string): number {
-  const body = snapshot[bodyId]
-  if (!body || body.shape === null) return -1
+function upFaces(ocModule: OccModule, h: SharedHarness, snapshot: Record<string, PartSolid>, partId: string): number {
+  const part = snapshot[partId]
+  if (!part || part.shape === null) return -1
   const scope = new DisposeScope()
   try {
-    const shape = h.table.get<OccShape>(body.shape)
+    const shape = h.table.get<OccShape>(part.shape)
     let n = 0
     for (const face of exploreFaces(ocModule, scope, shape)) {
       try {
@@ -114,18 +114,18 @@ function upFaces(ocModule: OccModule, h: SharedHarness, snapshot: Record<string,
   }
 }
 
-function lastSnapshot(result: BuildResponse): Record<string, Body> {
+function lastSnapshot(result: BuildResponse): Record<string, PartSolid> {
   const state = result._build_state as BuildState
   const last = state.feature_order[state.feature_order.length - 1]
   return state.checkpoints[last].body_store_snapshot
 }
 
-function faceCount(ocModule: OccModule, h: SharedHarness, snapshot: Record<string, Body>, bodyId: string): number {
-  const body = snapshot[bodyId]
-  if (!body || body.shape === null) return -1
+function faceCount(ocModule: OccModule, h: SharedHarness, snapshot: Record<string, PartSolid>, partId: string): number {
+  const part = snapshot[partId]
+  if (!part || part.shape === null) return -1
   const scope = new DisposeScope()
   try {
-    return exploreFaces(ocModule, scope, h.table.get<OccShape>(body.shape)).length
+    return exploreFaces(ocModule, scope, h.table.get<OccShape>(part.shape)).length
   } finally {
     scope.dispose()
   }
@@ -133,8 +133,8 @@ function faceCount(ocModule: OccModule, h: SharedHarness, snapshot: Record<strin
 
 /** A shallow store copy safe to hand to a solver: live B-rep handles are
  *  numbers, but `brep_diff`'s sub-shape proxies are not ours to copy. */
-function cloneStore(snapshot: Record<string, Body>): Record<string, Body> {
-  const out: Record<string, Body> = {}
+function cloneStore(snapshot: Record<string, PartSolid>): Record<string, PartSolid> {
+  const out: Record<string, PartSolid> = {}
   for (const [id, body] of Object.entries(snapshot)) {
     out[id] = {
       ...body,
@@ -196,10 +196,10 @@ describe.skipIf(!oc)('mirror precision (real OCC)', () => {
     expect(Math.abs(left[0] - -1e-5)).toBeLessThan(1e-9)
     expect(Math.abs(left[2] - 1e-5)).toBeLessThan(1e-9)
 
-    const body = lastSnapshot(result).body_ex1
+    const part = lastSnapshot(result).body_ex1
     const scope = new DisposeScope()
     try {
-      const shape = h.table.get<OccShape>(body.shape!)
+      const shape = h.table.get<OccShape>(part.shape!)
       const normals: number[][] = []
       for (const face of exploreFaces(oc!, scope, shape)) {
         try {
@@ -240,7 +240,7 @@ describe.skipIf(!oc)('mirror precision (real OCC)', () => {
     expect(build.res(result, 'ex1').status).toBe('ok')
     const snapshot = lastSnapshot(result)
 
-    const mirror = (precision: Body['precision']): { faces: number; up: number; warning?: string } => {
+    const mirror = (precision: PartSolid['precision']): { faces: number; up: number; warning?: string } => {
       const store = cloneStore(snapshot)
       if (precision !== undefined) store.body_ex1.precision = precision
       else delete store.body_ex1.precision
@@ -250,11 +250,11 @@ describe.skipIf(!oc)('mirror precision (real OCC)', () => {
           id: 'mi1', kind: 'mirror',
           mirror: { body: 'body_ex1', plane: 'Right', keep_original: true, merge: true },
         }, initGlobalRepo(), store)
-        const body = store[res.body_id]
-        const faces = body?.shape != null
-          ? exploreFaces(oc!, scope, build.table.get<OccShape>(body.shape)).length
+        const part = store[res.body_id]
+        const faces = part?.shape != null
+          ? exploreFaces(oc!, scope, build.table.get<OccShape>(part.shape)).length
           : -1
-        return { faces, up: body?.shape != null ? upFaces(oc!, build, store, res.body_id) : -1, warning: res.solver_warning }
+        return { faces, up: part?.shape != null ? upFaces(oc!, build, store, res.body_id) : -1, warning: res.solver_warning }
       } finally {
         scope.dispose()
       }

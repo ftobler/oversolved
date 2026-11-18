@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
-import type { PartDoc, SketchData, EntityStatus, BuildResponse, BodyResult, RebuildValidation, FeatureHandleData } from '@/types/cad'
+import type { PartDoc, SketchData, EntityStatus, BuildResponse, PartResult, RebuildValidation, FeatureHandleData } from '@/types/cad'
 import { useSolverStore } from '@/stores/solverStore'
 import { editorState, clampRollback } from '@/stores/editorState'
 import { usePartEditorStore } from '@/stores/partEditorStore'
@@ -34,7 +34,7 @@ const BENIGN_SOLVE_FAILURES = new Set([
 // Frozen so the one shared instance is structurally immutable: WorldState hands
 // it out verbatim in the 'full' world, so an accidental write would otherwise
 // poison every world state of every hook instance.
-const EMPTY_PICK_BODIES: Readonly<Record<string, BodyResult>> = Object.freeze({})
+const EMPTY_PICK_PARTS: Readonly<Record<string, PartResult>> = Object.freeze({})
 
 /**
  * Discriminated union over the dual-world invariant:
@@ -50,11 +50,11 @@ const EMPTY_PICK_BODIES: Readonly<Record<string, BodyResult>> = Object.freeze({}
  * made on. Null when the solve carried none (an old or OCC-less reply).
  */
 type WorldState =
-  | { status: 'full'; bodies: Record<string, BodyResult>; generation: string | null }
+  | { status: 'full'; parts: Record<string, PartResult>; generation: string | null }
   | {
     status: 'editing'
-    bodies: Record<string, BodyResult>
-    pickBodies: Readonly<Record<string, BodyResult>>
+    parts: Record<string, PartResult>
+    pickParts: Readonly<Record<string, PartResult>>
     generation: string | null
   }
 
@@ -74,9 +74,9 @@ export function useSolver(
   // normal mode vs. the pair (bodies + pickBodies) during feature editing.
   // The WorldState union enforces at compile time that pickBodies only exists
   // inside the 'editing' variant, accessing it on 'full' is a type error.
-  const [world, setWorld] = useState<WorldState>({ status: 'full', bodies: {}, generation: null })
-  const bodies: Record<string, BodyResult> = world.bodies
-  const pickBodies: Readonly<Record<string, BodyResult>> = world.status === 'editing' ? world.pickBodies : EMPTY_PICK_BODIES
+  const [world, setWorld] = useState<WorldState>({ status: 'full', parts: {}, generation: null })
+  const parts: Record<string, PartResult> = world.parts
+  const pickParts: Readonly<Record<string, PartResult>> = world.status === 'editing' ? world.pickParts : EMPTY_PICK_PARTS
   // True once a solve carrying pick bodies has landed. Entering an edit flips
   // the store's editing flags immediately, but the two worlds only exist after
   // that solve returns -- a ghost preview drawn before it has no "before" state
@@ -333,9 +333,9 @@ export function useSolver(
     const wasEditing = editorState.getState().pickBoundary !== null
     const generation = data.generation ?? null
     if (wasEditing && data.pick_bodies !== undefined) {
-      setWorld({ status: 'editing', bodies: data.bodies ?? {}, pickBodies: data.pick_bodies, generation })
+      setWorld({ status: 'editing', parts: data.bodies ?? {}, pickParts: data.pick_bodies, generation })
     } else {
-      setWorld({ status: 'full', bodies: data.bodies ?? {}, generation })
+      setWorld({ status: 'full', parts: data.bodies ?? {}, generation })
     }
     return cloned
   }, [applySolveResult])
@@ -430,7 +430,7 @@ export function useSolver(
       if (solveFeatures.length === 0) {
         if (isStale()) return
         setSolveResults({})
-        setWorld({ status: 'full', bodies: {}, generation: null })
+        setWorld({ status: 'full', parts: {}, generation: null })
         setSolveError(null)
         markFirstSolve(opts)
         if (!cancelledRef.current) setSolving(false)
@@ -539,7 +539,7 @@ export function useSolver(
   useEffect(() => {
     return editorState.subscribe((state, prev) => {
       if (prev.pickBoundary !== null && state.pickBoundary === null) {
-        setWorld({ status: 'full', bodies: worldRef.current.bodies, generation: worldRef.current.generation })
+        setWorld({ status: 'full', parts: worldRef.current.parts, generation: worldRef.current.generation })
       }
     })
   }, [])
@@ -551,8 +551,8 @@ export function useSolver(
   useEffect(() => {
     usePartEditorStore.getState().publishSolve({
       solveResults,
-      bodies: world.bodies,
-      pickBodies: world.status === 'editing' ? { ...world.pickBodies } : {},
+      parts: world.parts,
+      pickParts: world.status === 'editing' ? { ...world.pickParts } : {},
       featureTimings,
       validation,
     })
@@ -561,8 +561,8 @@ export function useSolver(
   return {
     solveResults,
     setSolveResults,
-    bodies,
-    pickBodies,
+    bodies: parts,
+    pickBodies: pickParts,
     pickStateReady,
     // The solve the rendered bodies belong to, and which set a pick is in: the
     // request a kernel measurement names. A pick made while a feature edit is

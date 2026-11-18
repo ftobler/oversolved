@@ -35,7 +35,7 @@ import {
   faceNormal,
   type Vec3,
 } from '../primitives'
-import { canonicalFaces, canonicalEdges, readBodyNames } from '../bodyNames'
+import { canonicalFaces, canonicalEdges, readPartNames } from '../partNames'
 import { applyFilletWithDiff, applyChamferWithDiff, isValidShape } from '../edgeModifier'
 import { applyDeleteFacesWithLineage, neighbourRing } from '../defeature'
 import { modifierWedge, RUNG_WEDGE } from '../defeatureWedge'
@@ -45,7 +45,7 @@ import { noProgress } from '../defaultArgs'
 import { deriveEdgeUuid } from '../../constructionName'
 import { makeFaceIndexCache, resolveFacesByQuery } from '../../features/shared/faceResolution'
 import type { OccShape, OccSubShape } from '../occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -76,10 +76,10 @@ describe.skipIf(!oc)('delete-face rung 2: the splitter wedge (real OCC)', () => 
   // The delete-face adapter on one group, with the names off (diff only).
   const deleteModifier = (
     scope: DisposeScope,
-    body: OccShape,
+    part: OccShape,
     faces: OccShape[],
   ): { shape: OccShape; applied: boolean } => {
-    const res = applyDeleteFacesWithLineage(occ, scope, body, faces)
+    const res = applyDeleteFacesWithLineage(occ, scope, part, faces)
     return { shape: res.shape, applied: res.applied }
   }
 
@@ -93,7 +93,7 @@ describe.skipIf(!oc)('delete-face rung 2: the splitter wedge (real OCC)', () => 
       const picks = fil.diff.new_faces as OccShape[]
       expect(picks).toHaveLength(1)
       const ring = neighbourRing(occ, scope, shaped, picks)
-      const plan = modifierWedge({ oc: occ, scope, body: shaped, groupFaces: picks, ring })
+      const plan = modifierWedge({ oc: occ, scope, part: shaped, groupFaces: picks, ring })
       expect(plan.corner).toBe('convex')
       expect(plan.action).toBe('fuse')
       expect(plan.volume).toBeGreaterThan(0)
@@ -122,7 +122,7 @@ describe.skipIf(!oc)('delete-face rung 2: the splitter wedge (real OCC)', () => 
       const shaped = scope.track(ch.shape)
       const picks = ch.diff.new_faces as OccShape[]
       const ring = neighbourRing(occ, scope, shaped, picks)
-      const plan = modifierWedge({ oc: occ, scope, body: shaped, groupFaces: picks, ring })
+      const plan = modifierWedge({ oc: occ, scope, part: shaped, groupFaces: picks, ring })
       expect(plan.corner).toBe('convex')
       expect(plan.action).toBe('fuse')
     } finally {
@@ -149,7 +149,7 @@ describe.skipIf(!oc)('delete-face rung 2: the splitter wedge (real OCC)', () => 
       const shaped = scope.track(fil.shape)
       const picks = fil.diff.new_faces as OccShape[]
       const ring = neighbourRing(occ, scope, shaped, picks)
-      const plan = modifierWedge({ oc: occ, scope, body: shaped, groupFaces: picks, ring })
+      const plan = modifierWedge({ oc: occ, scope, part: shaped, groupFaces: picks, ring })
       expect(plan.corner).toBe('concave')
       expect(plan.action).toBe('cut')
       const before = volumeOf(occ, scope, shaped)
@@ -181,7 +181,7 @@ describe.skipIf(!oc)('delete-face rung 2: the splitter wedge (real OCC)', () => 
       const shaped = scope.track(ch.shape)
       const picks = ch.diff.new_faces as OccShape[]
       const ring = neighbourRing(occ, scope, shaped, picks)
-      const plan = modifierWedge({ oc: occ, scope, body: shaped, groupFaces: picks, ring })
+      const plan = modifierWedge({ oc: occ, scope, part: shaped, groupFaces: picks, ring })
       expect(plan.corner).toBe('concave')
       expect(plan.action).toBe('cut')
       const cut = scope.track(booleanWithDiff(occ, scope, shaped, scope.track(plan.shape), 'cut').shape)
@@ -217,7 +217,7 @@ describe.skipIf(!oc)('delete-face rung 2: the splitter wedge (real OCC)', () => 
       const shaped = scope.track(fil.shape)
       const picks = fil.diff.new_faces as OccShape[]
       const plan = modifierWedge({
-        oc: occ, scope, body: shaped, groupFaces: picks, ring: neighbourRing(occ, scope, shaped, picks),
+        oc: occ, scope, part: shaped, groupFaces: picks, ring: neighbourRing(occ, scope, shaped, picks),
       })
       // The boss standing on a plate is a CONCAVE corner (material fills 270
       // degrees), so the fillet there added material and rung 2 cuts it again.
@@ -253,7 +253,7 @@ describe.skipIf(!oc)('delete-face rung 2: the splitter wedge (real OCC)', () => 
       const shaped = scope.track(fil.shape)
       const picks = fil.diff.new_faces as OccShape[]
       const plan = modifierWedge({
-        oc: occ, scope, body: shaped, groupFaces: picks, ring: neighbourRing(occ, scope, shaped, picks),
+        oc: occ, scope, part: shaped, groupFaces: picks, ring: neighbourRing(occ, scope, shaped, picks),
       })
       expect(plan.corner).toBe('convex')
       const res = applyDeleteFacesWithLineage(occ, scope, shaped, picks)
@@ -270,7 +270,7 @@ describe.skipIf(!oc)('delete-face rung 2: the splitter wedge (real OCC)', () => 
 
 // ─── the 2026-11-15 report document ───
 
-const BODY = 'body_ESrRWmJlIltOOJE-A1VbLhzR'
+const PART = 'body_ESrRWmJlIltOOJE-A1VbLhzR'
 const CHAMFER_ID = 'BeXVLtIhoq94L87Qll4xewnr'
 const CHAMFER_DELETE = 'GpyTc0jipDArcxEoOFcx_DBl'
 const FILLET_DELETE = 'OtcaB1IDf8ybp7bHGwOri-JM'
@@ -297,7 +297,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('delete face on the report
   const h = new SharedHarness(occ)
   let live: DisposeScope
   let shape: OccShape
-  let body: Body
+  let part: PartSolid
   let groups: OccShape[][]
 
   beforeAll(() => {
@@ -307,13 +307,13 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('delete face on the report
     const features = fixture.features as Record<string, unknown>[]
     const firstDelete = features.findIndex((f) => f.id === CHAMFER_DELETE)
     const result = h.run({ features: features.slice(0, firstDelete), part_style: fixture.part_style })
-    const snapshot: Body | undefined = result._build_state.checkpoints[CHAMFER_ID]?.body_store_snapshot?.[BODY]
+    const snapshot: PartSolid | undefined = result._build_state.checkpoints[CHAMFER_ID]?.body_store_snapshot?.[PART]
     if (!snapshot) throw new Error('the fixture document has no body after the chamfer')
-    body = snapshot
+    part = snapshot
     live = new DisposeScope()
-    const index = makeFaceIndexCache(occ, live, h.table)(body)
+    const index = makeFaceIndexCache(occ, live, h.table)(part)
     const resolved = resolveFacesByQuery(
-      occ, live, h.table, body, index,
+      occ, live, h.table, part, index,
       (fixture.picks as { query: string }[]).map((p) => p.query),
     )
     const picked = (fixture.picks as { query: string }[]).map((p) => {
@@ -321,7 +321,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('delete face on the report
       if (!face) throw new Error(`pick did not resolve: ${p.query}`)
       return face
     })
-    shape = h.table.get<OccShape>(body.shape!)
+    shape = h.table.get<OccShape>(part.shape!)
     // The picks come chamfer-first, fillet-second, so each connected pair is one
     // group and the split stays visible in the matrix label.
     groups = [picked.slice(0, 2), picked.slice(2, 4)]
@@ -350,7 +350,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('delete face on the report
   const rung2 = (scope: DisposeScope, picks: OccShape[]): CellResult => {
     try {
       const plan = modifierWedge({
-        oc: occ, scope, body: shape, groupFaces: picks, ring: neighbourRing(occ, scope, shape, picks),
+        oc: occ, scope, part: shape, groupFaces: picks, ring: neighbourRing(occ, scope, shape, picks),
       })
       const before = volumeOf(occ, scope, shape)
       const tool = scope.track(plan.shape)
@@ -386,7 +386,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('delete face on the report
       // The names the first deletion produced are the second deletion's input:
       // the body store's name arrays describe the original shape, not the
       // intermediate one.
-      let currentNames: ReturnType<typeof readBodyNames> = readBodyNames(occ, scope, shape, body)
+      let currentNames: ReturnType<typeof readPartNames> = readPartNames(occ, scope, shape, part)
       for (const [index, featureId] of [[0, CHAMFER_DELETE], [1, FILLET_DELETE]] as const) {
         const picks = groups[index]
         const ring = neighbourRing(occ, scope, current, picks)
@@ -445,9 +445,9 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('delete face on the report
     const filletIndex = features.findIndex((f) => f.id === 'e1Hi6Ty5NHzMKPHP-_M4WQvS')
     expect(filletIndex).toBeGreaterThan(0)
     const pre = h.run({ features: features.slice(0, filletIndex), part_style: fixture.part_style })
-    const preBody: Body | undefined = pre._build_state.checkpoints['yvwbBkwvs8_z6Ens36yxDiO8']?.body_store_snapshot?.[BODY]
-    if (!preBody) throw new Error('no body after extrude 2')
-    const preShape = h.table.get<OccShape>(preBody.shape!)
+    const prePart: PartSolid | undefined = pre._build_state.checkpoints['yvwbBkwvs8_z6Ens36yxDiO8']?.body_store_snapshot?.[PART]
+    if (!prePart) throw new Error('no body after extrude 2')
+    const preShape = h.table.get<OccShape>(prePart.shape!)
     const scope = new DisposeScope()
     try {
       const wallOf = (s: OccShape): OccShape | undefined =>

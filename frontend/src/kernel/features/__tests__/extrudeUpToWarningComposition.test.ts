@@ -8,7 +8,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { Repository } from '../../query'
 import { solveExtrude } from '../extrude'
-import { emptyShapeNames } from '../../occ/bodyNames'
+import { emptyShapeNames } from '../../occ/partNames'
 import type { DisposeScope } from '../../occ/disposeScope'
 import type { HandleTable } from '../../occ/handleTable'
 import type { OccModule, OccShape } from '../../occ/occTypes'
@@ -21,14 +21,14 @@ vi.mock('../../occ/prismLineage', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../occ/prismLineage')>()
   return { ...actual, extrudeProfileWithLineage: vi.fn() }
 })
-vi.mock('../bodyOps', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../bodyOps')>()
-  return { ...actual, applyBodyOperation: vi.fn() }
+vi.mock('../partOps', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../partOps')>()
+  return { ...actual, applyPartOperation: vi.fn() }
 })
 
 import { collectExtrudeLoops } from '../faceProfile'
 import { extrudeProfileWithLineage } from '../../occ/prismLineage'
-import { applyBodyOperation } from '../bodyOps'
+import { applyPartOperation } from '../partOps'
 
 const plane = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
 
@@ -42,7 +42,7 @@ describe('extrude up_to without a usable target', () => {
     vi.mocked(extrudeProfileWithLineage).mockReturnValue({
       solid: fakeShape, ...emptyShapeNames(),
     })
-    vi.mocked(applyBodyOperation).mockReturnValue({
+    vi.mocked(applyPartOperation).mockReturnValue({
       status: 'ok', body_id: 'body_ex2',
       solver_warning: 'extrude: operation produced no geometry change',
     })
@@ -64,6 +64,6 @@ describe('extrude up_to without a usable target', () => {
     // The fallback path does not write the informational note.
     expect(result.solver_note).toBeUndefined()
     expect(vi.mocked(extrudeProfileWithLineage)).not.toHaveBeenCalled()
-    expect(vi.mocked(applyBodyOperation)).not.toHaveBeenCalled()
+    expect(vi.mocked(applyPartOperation)).not.toHaveBeenCalled()
   })
 })

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { renderHook, act, cleanup } from '@testing-library/react'
-import type { BodyResult, FaceData, Mesh3D } from '@/types/cad'
+import type { PartResult, FaceData, Mesh3D } from '@/types/cad'
 import { DEFAULT_PART_EDITOR_DATA, usePartEditorStore } from '@/stores/partEditorStore'
 import { DEFAULT_SECTION_STATE, useSectionStore } from '@/stores/sectionStore'
 import { useSectionClip, useSectionFrame } from '@/viewport/useSection'
@@ -21,12 +21,12 @@ function quadMeshAt(z: number): Mesh3D {
   }
 }
 
-function bodyAt(z: number): BodyResult {
+function partAt(z: number): PartResult {
   return { id: 'body_ex1', created_by: 'ex1', modified_by: [], mesh: quadMeshAt(z) }
 }
 
-function setBodies(z: number): void {
-  usePartEditorStore.setState({ bodies: { body_ex1: bodyAt(z) } })
+function setParts(z: number): void {
+  usePartEditorStore.setState({ parts: { body_ex1: partAt(z) } })
 }
 
 describe('section on a solve-derived face source', () => {
@@ -38,7 +38,7 @@ describe('section on a solve-derived face source', () => {
       plane: { kind: 'query', query: 'face-q', pickKey: 'ex1/body_ex1#face#0' },
     })
     usePartEditorStore.setState({ ...DEFAULT_PART_EDITOR_DATA })
-    setBodies(0)
+    setParts(0)
   })
 
   afterEach(() => {
@@ -49,7 +49,7 @@ describe('section on a solve-derived face source', () => {
   })
 
   it('stays on when the source body is hidden from the hover registry', () => {
-    // Hiding a body leaves it in the solve but unregisters its Body3D hover
+    // Hiding a body leaves it in the solve but unregisters its Part3D hover
     // callbacks. The old frame lookup read that registry and turned the section
     // off with "source gone"; the solve-derived frame does not.
     const { result } = renderHook(() => useSectionClip())
@@ -61,7 +61,7 @@ describe('section on a solve-derived face source', () => {
     const { result, rerender } = renderHook(() => useSectionFrame())
     expect(result.current?.point[2]).toBe(0)
 
-    act(() => { setBodies(3) })
+    act(() => { setParts(3) })
     rerender()
 
     expect(result.current?.point[2]).toBe(3)

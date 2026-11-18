@@ -42,7 +42,7 @@ vi.mock('@/components/Viewport/EnvLight', () => ({ default: () => null, ENV_INTE
 vi.mock('@/components/Viewport/IdDebugOverlay', () => ({ default: () => null }))
 vi.mock('@/components/misc/CubeGizmo', () => ({ CubeGizmoCanvas: () => null }))
 vi.mock('@/components/Viewport/assembly/AnchorGizmos', () => ({ default: () => null }))
-vi.mock('@/components/Viewport/assembly/AssemblyBody', () => ({ default: () => null }))
+vi.mock('@/components/Viewport/assembly/AssemblyPartMesh', () => ({ default: () => null }))
 vi.mock('@/components/Viewport/assembly/AssemblyBuiltin', () => ({ default: () => null }))
 vi.mock('@/components/Viewport/assembly/AssemblyPickLayers', () => ({ default: () => null }))
 vi.mock('@/components/Viewport/assembly/AssemblySelectionHighlight', () => ({ default: () => null }))

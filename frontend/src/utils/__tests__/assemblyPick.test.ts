@@ -3,11 +3,11 @@
 // it names must be the entity `entityAnchors` indexed anchors under.
 
 import { describe, it, expect } from 'vitest'
-import type { BodyResult, PartInstance, Transform3D } from '@/types/cad'
+import type { PartResult, PartInstance, Transform3D } from '@/types/cad'
 import type { MeshPayload } from '@/kernel/solveAssembly'
 import { assemblyEntityKey } from '@/utils/anchorCandidates'
 import { buildAnchorTable, type AnchorTable } from '@/utils/anchorGizmos'
-import { buildPickBodies, offsetPickBodies, pickEdgesForRegistration, pickVerticesForRegistration } from '@/utils/assemblyPick'
+import { buildPickParts, offsetPickParts, pickEdgesForRegistration, pickVerticesForRegistration } from '@/utils/assemblyPick'
 import { getAssemblyPartGroups } from '@/utils/assemblyRender'
 import { IDENTITY_TRANSFORM, makeTransform, rotateVector } from '@/utils/transform3d'
 import type { EdgeCurve } from '@/kernel/partBundle'
@@ -51,15 +51,15 @@ const ANCHORS: AnchorTable = buildAnchorTable({
 })
 
 function build(mesh: MeshPayload, anchors: AnchorTable = ANCHORS) {
-  return buildPickBodies({ [PART]: [mesh] }, anchors)[0]
+  return buildPickParts({ [PART]: [mesh] }, anchors)[0]
 }
 
 describe('buildPickBodies', () => {
   it('names one body per mesh, keyed the way the render list keys it', () => {
-    const bodies = buildPickBodies({ [PART]: [makeMesh(), makeMesh()] }, ANCHORS)
-    expect(bodies.map(b => b.bodyKey)).toEqual([`${PART}:body_0`, `${PART}:body_1`])
+    const parts = buildPickParts({ [PART]: [makeMesh(), makeMesh()] }, ANCHORS)
+    expect(parts.map(b => b.partKey)).toEqual([`${PART}:body_0`, `${PART}:body_1`])
     // The offsetter keys each body's pose by its instance handle, not the bodyKey.
-    expect(bodies.map(b => b.handle)).toEqual([PART, PART])
+    expect(parts.map(b => b.handle)).toEqual([PART, PART])
   })
 
   it('expands the index into a non-indexed triangle soup the face layer wants', () => {
@@ -120,20 +120,20 @@ describe('buildPickBodies', () => {
   })
 
   it('carries the bundle hidden lists onto the pick body', () => {
-    const body = build(makeMesh({ hiddenEdges: [0], hiddenVertices: [1] }))
-    expect(body.hiddenEdges).toEqual([0])
-    expect(body.hiddenVertices).toEqual([1])
+    const part = build(makeMesh({ hiddenEdges: [0], hiddenVertices: [1] }))
+    expect(part.hiddenEdges).toEqual([0])
+    expect(part.hiddenVertices).toEqual([1])
     // The payloads themselves stay whole: the selection overlay draws from them.
-    expect(body.edges!.segmentToEdge).toEqual(new Uint32Array([0]))
-    expect(body.vertices!.vertices).toHaveLength(2)
+    expect(part.edges!.segmentToEdge).toEqual(new Uint32Array([0]))
+    expect(part.vertices!.vertices).toHaveLength(2)
   })
 
   it('offers no edge or vertex layer for a bundle cached before the entity index existed', () => {
-    const body = build(makeMesh({ edges: [], entityAnchors: undefined }))
-    expect(body.edges).toBeNull()
-    expect(body.vertices).toBeNull()
+    const part = build(makeMesh({ edges: [], entityAnchors: undefined }))
+    expect(part.edges).toBeNull()
+    expect(part.vertices).toBeNull()
     // Faces survive: their count comes from the triangle map, not the index.
-    expect(body.faces!.faceQueries).toHaveLength(2)
+    expect(part.faces!.faceQueries).toHaveLength(2)
   })
 
   it('builds a triangle-perimeter boundary loop for a face with one triangle', () => {
@@ -154,25 +154,25 @@ describe('buildPickBodies', () => {
   })
 
   it('offers no face boundaries for an empty mesh', () => {
-    const body = build({
+    const part = build({
       vertices: new Float32Array(0),
       indices: new Uint32Array(0),
       faceIdsPerTriangle: new Uint32Array(0),
       edges: [],
     })
-    expect(body.faceBoundaries).toBeNull()
+    expect(part.faceBoundaries).toBeNull()
   })
 
   it('offers no layers at all for an empty mesh', () => {
-    const body = build({
+    const part = build({
       vertices: new Float32Array(0),
       indices: new Uint32Array(0),
       faceIdsPerTriangle: new Uint32Array(0),
       edges: [],
     })
-    expect(body.faces).toBeNull()
-    expect(body.edges).toBeNull()
-    expect(body.vertices).toBeNull()
+    expect(part.faces).toBeNull()
+    expect(part.edges).toBeNull()
+    expect(part.vertices).toBeNull()
   })
 })
 
@@ -184,40 +184,40 @@ describe('picking payloads with hidden seams', () => {
   // LINE is curve 0 and CIRCLE curve 1. Hiding curve 0 must drop only its
   // segment and leave the circle's 64 segments naming entity 1.
   it('pickEdgesForRegistration drops a hidden edge\'s segments and keeps later ownership', () => {
-    const body = build(makeMesh({ edges: [LINE, CIRCLE], hiddenEdges: [0] }))
-    const reg = pickEdgesForRegistration(body.edges, body.hiddenEdges)!
+    const part = build(makeMesh({ edges: [LINE, CIRCLE], hiddenEdges: [0] }))
+    const reg = pickEdgesForRegistration(part.edges, part.hiddenEdges)!
     expect(reg.segmentToEdge).toHaveLength(64)
     expect(new Set(reg.segmentToEdge)).toEqual(new Set([1]))
-    expect(reg.edgeQueries).toEqual(body.edges!.edgeQueries)
+    expect(reg.edgeQueries).toEqual(part.edges!.edgeQueries)
     expect(reg.segmentPositions.length).toBe(reg.segmentToEdge.length * 6)
   })
 
   it('pickEdgesForRegistration refuses an all-hidden edge payload', () => {
-    const body = build(makeMesh({ edges: [LINE], hiddenEdges: [0] }))
-    expect(pickEdgesForRegistration(body.edges, body.hiddenEdges)).toBeNull()
+    const part = build(makeMesh({ edges: [LINE], hiddenEdges: [0] }))
+    expect(pickEdgesForRegistration(part.edges, part.hiddenEdges)).toBeNull()
   })
 
   it('pickVerticesForRegistration filters slots, not compacted positions', () => {
     // Slot 0 has no anchor, slot 1 is the hidden seam vertex, slot 2 survives.
-    const body = build(makeMesh({
+    const part = build(makeMesh({
       entityAnchors: { faces: [], edges: [], vertices: [[], ['a_v1'], ['a_v0']] },
       hiddenVertices: [1],
     }))
-    expect(body.vertices!.slotIndices).toEqual([1, 2])
-    const reg = pickVerticesForRegistration(body.vertices, body.hiddenVertices)!
+    expect(part.vertices!.slotIndices).toEqual([1, 2])
+    const reg = pickVerticesForRegistration(part.vertices, part.hiddenVertices)!
     expect(reg.vertexQueries).toEqual([assemblyEntityKey(PART, 0, 'vertex', 2)])
     expect(reg.vertices).toEqual([[0, 0, 0]])
   })
 
   it('leaves a payload untouched when nothing is hidden', () => {
-    const body = build(makeMesh())
-    expect(pickEdgesForRegistration(body.edges, undefined)).toBe(body.edges)
-    expect(pickVerticesForRegistration(body.vertices, [])).toBe(body.vertices)
+    const part = build(makeMesh())
+    expect(pickEdgesForRegistration(part.edges, undefined)).toBe(part.edges)
+    expect(pickVerticesForRegistration(part.vertices, [])).toBe(part.vertices)
   })
 })
 
 describe('offsetPickBodies', () => {
-  function renderBody(handle: string): BodyResult {
+  function renderPart(handle: string): PartResult {
     return {
       id: `${handle}:body_0`,
       created_by: handle,
@@ -236,7 +236,7 @@ describe('offsetPickBodies', () => {
   it('translates every layer of the pick body onto the drawn pose', () => {
     const pick = build(makeMesh())
     const drawn = { [PART]: { ...IDENTITY_TRANSFORM, tx: 3 } }
-    const [moved] = offsetPickBodies([pick], { [PART]: IDENTITY_TRANSFORM }, drawn)
+    const [moved] = offsetPickParts([pick], { [PART]: IDENTITY_TRANSFORM }, drawn)
 
     // Faces: the first triangle's first vertex sits at the part origin.
     expect([...moved.faces!.positions.slice(0, 3)]).toEqual([3, 0, 0])
@@ -251,10 +251,10 @@ describe('offsetPickBodies', () => {
   it('places a pick vertex at the same world point the render group draws', () => {
     const pick = build(makeMesh())
     const offset: Transform3D = { ...IDENTITY_TRANSFORM, tx: 3, ty: -2 }
-    const [moved] = offsetPickBodies([pick], { [PART]: IDENTITY_TRANSFORM }, { [PART]: offset })
+    const [moved] = offsetPickParts([pick], { [PART]: IDENTITY_TRANSFORM }, { [PART]: offset })
 
     const group = getAssemblyPartGroups(
-      { [`${PART}:body_0`]: renderBody(PART) },
+      { [`${PART}:body_0`]: renderPart(PART) },
       [part(PART)],
       null,
       new Set(),
@@ -272,7 +272,7 @@ describe('offsetPickBodies', () => {
 
   it('returns an identity-offset body by reference (no churn)', () => {
     const pick = build(makeMesh())
-    const same = offsetPickBodies([pick], { [PART]: IDENTITY_TRANSFORM }, { [PART]: IDENTITY_TRANSFORM })
+    const same = offsetPickParts([pick], { [PART]: IDENTITY_TRANSFORM }, { [PART]: IDENTITY_TRANSFORM })
     expect(same[0]).toBe(pick)
   })
 
@@ -281,7 +281,7 @@ describe('offsetPickBodies', () => {
   // return the body by reference, not churn a fresh soup every settle tick.
   it('treats a negligible quaternion perturbation as at rest', () => {
     const pick = build(makeMesh())
-    const same = offsetPickBodies(
+    const same = offsetPickParts(
       [pick],
       { [PART]: IDENTITY_TRANSFORM },
       { [PART]: { ...IDENTITY_TRANSFORM, qx: 1e-7 } },
@@ -291,7 +291,7 @@ describe('offsetPickBodies', () => {
 
   it('still offsets a rotation above the tolerance', () => {
     const pick = build(makeMesh())
-    const moved = offsetPickBodies(
+    const moved = offsetPickParts(
       [pick],
       { [PART]: IDENTITY_TRANSFORM },
       { [PART]: { ...IDENTITY_TRANSFORM, qx: 1e-2 } },
@@ -301,7 +301,7 @@ describe('offsetPickBodies', () => {
 
   it('leaves a body with no baked pose alone', () => {
     const pick = build(makeMesh())
-    const same = offsetPickBodies([pick], {}, { [PART]: { ...IDENTITY_TRANSFORM, tx: 3 } })
+    const same = offsetPickParts([pick], {}, { [PART]: { ...IDENTITY_TRANSFORM, tx: 3 } })
     expect(same[0]).toBe(pick)
   })
 })

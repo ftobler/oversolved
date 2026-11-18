@@ -24,19 +24,19 @@ describe('ID-layer edge shader', () => {
     // must not, or moving the Brightness slider would change the bytes the pick
     // pass reads back and every id would decode differently.
     const p = new IdPipeline({ width: 8, height: 8 })
-    p.faceLayer.registerBody({
-      bodyKey: 'b',
+    p.faceLayer.registerPart({
+      partKey: 'b',
       positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
       triangleToFace: new Uint32Array([0]),
       faceQueries: ['face@b#0'],
     })
-    p.edgeLayer.registerBody({
-      bodyKey: 'b',
+    p.edgeLayer.registerPart({
+      partKey: 'b',
       segmentPositions: new Float32Array([0, 0, 0, 1, 0, 0]),
       segmentToEdge: new Uint32Array([0]),
       edgeQueries: ['edge@b#0'],
     })
-    p.vertexLayer.registerBody({ bodyKey: 'b', vertices: [[0, 0, 0]], vertexQueries: ['vtx@b#0'] })
+    p.vertexLayer.registerPart({ partKey: 'b', vertices: [[0, 0, 0]], vertexQueries: ['vtx@b#0'] })
 
     for (const layer of [p.faceLayer, p.edgeLayer, p.vertexLayer]) {
       const obj = layer.scene.children[0] as THREE.Mesh

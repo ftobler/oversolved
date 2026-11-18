@@ -11,7 +11,7 @@ import { faceNormal, faceCentroid } from '../../occ/primitives'
 import { DisposeScope } from '../../occ/disposeScope'
 import type { HandleTable } from '../../occ/handleTable'
 import type { OccModule, OccShape } from '../../occ/occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 // The mixed-profile and non-coplanar refusals need a profile that resolves to a
 // body face, which the OCC-free harness cannot produce (a face only ever comes
@@ -122,7 +122,7 @@ describe('solveExtrude guard paths', () => {
 
   it('surfaces an unresolved sketch ref as the collected profile error', () => {
     const repo = new Repository()
-    const bodyStore: Record<string, Body> = {}
+    const partStore: Record<string, PartSolid> = {}
     expect(() =>
       solveExtrude(
         oc,
@@ -130,7 +130,7 @@ describe('solveExtrude guard paths', () => {
         table,
         { id: 'f1', extrude: { sketch: '$missing', distance: 5 } },
         repo,
-        bodyStore,
+        partStore,
       ),
     ).toThrow(/sketch not found: missing/)
   })

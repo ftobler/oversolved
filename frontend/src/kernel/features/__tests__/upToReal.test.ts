@@ -17,7 +17,7 @@ import { solveExtrude } from '../extrude'
 import { extrudeTestHarness, extrudeSpec, rectSketchSk, solveBytes } from '../extrudeRealSupport'
 import { AmbiguousQueryError, initGlobalRepo, makeAncestryQuery } from '../../query'
 import type { Repository } from '../../query'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 
 const oc = await loadOcc()
@@ -33,7 +33,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     occ = oc
   })
 
-  function makeBoxBody(scope: DisposeScope, table: HandleTable): Record<string, Body> {
+  function makeBoxPart(scope: DisposeScope, table: HandleTable): Record<string, PartSolid> {
     const box = makeBox(occ, scope, 10, 10, 10)
     return {
       body_b: {
@@ -44,11 +44,11 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     }
   }
 
-  function bottomLoop(table: HandleTable, body: Body): string[] {
-    const { edges, edge_queries } = solidToEdges(occ, table, body.shape!, {
-      createdBy: body.created_by, bodyId: body.id,
-      profileQueries: body.profile_queries,
-      edgeAncestry: body.edge_ancestry ?? null, edgeUuids: body.edge_uuids ?? null,
+  function bottomLoop(table: HandleTable, part: PartSolid): string[] {
+    const { edges, edge_queries } = solidToEdges(occ, table, part.shape!, {
+      createdBy: part.created_by, partId: part.id,
+      profileQueries: part.profile_queries,
+      edgeAncestry: part.edge_ancestry ?? null, edgeUuids: part.edge_uuids ?? null,
     })
     const out: string[] = []
     for (let i = 0; i < edges.length; i++) {
@@ -64,8 +64,8 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBoxBody(scope, table)
-      const face = edgesToProfileFace(occ, scope, resolveProfileEdges(occ, scope, table, bottomLoop(table, bodyStore.body_b), bodyStore))
+      const partStore = makeBoxPart(scope, table)
+      const face = edgesToProfileFace(occ, scope, resolveProfileEdges(occ, scope, table, bottomLoop(table, partStore.body_b), partStore))
       const n = faceNormal(occ, scope, face) as Vec3
       const prism = makePrism(occ, scope, face, n, 1e4)
       // Plane offset 7 along the face normal from the z=0 profile.
@@ -84,8 +84,8 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBoxBody(scope, table)
-      const face = edgesToProfileFace(occ, scope, resolveProfileEdges(occ, scope, table, bottomLoop(table, bodyStore.body_b), bodyStore))
+      const partStore = makeBoxPart(scope, table)
+      const face = edgesToProfileFace(occ, scope, resolveProfileEdges(occ, scope, table, bottomLoop(table, partStore.body_b), partStore))
       const dir: Vec3 = [0, 0, 1]
       const prism = makePrism(occ, scope, face, dir, 1e4)
       // Keep side is -dir (z <= -5000); the prism spans z >= 0.
@@ -100,9 +100,9 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBoxBody(scope, table)
+      const partStore = makeBoxPart(scope, table)
       // z=0 square, x,y in [0,10].
-      const face = edgesToProfileFace(occ, scope, resolveProfileEdges(occ, scope, table, bottomLoop(table, bodyStore.body_b), bodyStore))
+      const face = edgesToProfileFace(occ, scope, resolveProfileEdges(occ, scope, table, bottomLoop(table, partStore.body_b), partStore))
       const dir: Vec3 = [0, 0, 1]
       const prism = makePrism(occ, scope, face, dir, 1e4)
       // Plane through z=5 at y=0, tilted 45deg in y: z_top = 5 + y. Whole profile
@@ -120,10 +120,10 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBoxBody(scope, table)
-      const loop = bottomLoop(table, bodyStore.body_b)
+      const partStore = makeBoxPart(scope, table)
+      const loop = bottomLoop(table, partStore.body_b)
       // Find the profile normal so the up-to plane sits 7 ahead of it.
-      const face = edgesToProfileFace(occ, scope, resolveProfileEdges(occ, scope, table, loop, bodyStore))
+      const face = edgesToProfileFace(occ, scope, resolveProfileEdges(occ, scope, table, loop, partStore))
       const n = faceNormal(occ, scope, face) as Vec3
       const c = faceCentroid(occ, scope, face)
       const planeEntry = { type: 'flatface', origin: [c[0] + 7 * n[0], c[1] + 7 * n[1], c[2] + 7 * n[2]], normal: n }
@@ -131,10 +131,10 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
       const result = solveExtrude(
         occ, scope, table,
         { id: 'ex2', extrude: { sketch: loop, distance: 999, termination: 'up_to', up_to: 'plane_q', operation: 'new' } },
-        repoReturning(planeEntry), bodyStore,
+        repoReturning(planeEntry), partStore,
       )
       expect(result.status).toBe('ok')
-      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_ex2.shape!))
+      const vol = volumeOf(occ, scope, table.get<OccShape>(partStore.body_ex2.shape!))
       expect(vol).toBeCloseTo(700, 2)  // 100 area * 7, not 100 * 999
     } finally {
       scope.dispose()
@@ -145,9 +145,9 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBoxBody(scope, table)
-      const loop = bottomLoop(table, bodyStore.body_b)
-      const face = edgesToProfileFace(occ, scope, resolveProfileEdges(occ, scope, table, loop, bodyStore))
+      const partStore = makeBoxPart(scope, table)
+      const loop = bottomLoop(table, partStore.body_b)
+      const face = edgesToProfileFace(occ, scope, resolveProfileEdges(occ, scope, table, loop, partStore))
       const n = faceNormal(occ, scope, face) as Vec3
       const c = faceCentroid(occ, scope, face)
       // Plane 5 behind the profile along the extrude direction: the pick, not the
@@ -156,10 +156,10 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
       const result = solveExtrude(
         occ, scope, table,
         { id: 'ex2', extrude: { sketch: loop, distance: 999, termination: 'up_to', up_to: 'plane_q', operation: 'new' } },
-        repoReturning(planeEntry), bodyStore,
+        repoReturning(planeEntry), partStore,
       )
       expect(result.status).toBe('ok')
-      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_ex2.shape!))
+      const vol = volumeOf(occ, scope, table.get<OccShape>(partStore.body_ex2.shape!))
       expect(vol).toBeCloseTo(500, 2)  // 100 area * 5, swept backwards
     } finally {
       scope.dispose()
@@ -170,9 +170,9 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBoxBody(scope, table)
-      const loop = bottomLoop(table, bodyStore.body_b)
-      const face = edgesToProfileFace(occ, scope, resolveProfileEdges(occ, scope, table, loop, bodyStore))
+      const partStore = makeBoxPart(scope, table)
+      const loop = bottomLoop(table, partStore.body_b)
+      const face = edgesToProfileFace(occ, scope, resolveProfileEdges(occ, scope, table, loop, partStore))
       const n = faceNormal(occ, scope, face) as Vec3
       const c = faceCentroid(occ, scope, face)
       const planeEntry = { type: 'flatface', origin: [c[0], c[1], c[2]], normal: n }
@@ -180,7 +180,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
         solveExtrude(
           occ, scope, table,
           { id: 'ex2', extrude: { sketch: loop, distance: 5, termination: 'up_to', up_to: 'plane_q', operation: 'new' } },
-          repoReturning(planeEntry), bodyStore,
+          repoReturning(planeEntry), partStore,
         ),
       ).toThrow(/no distance to extrude/)
     } finally {
@@ -192,9 +192,9 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBoxBody(scope, table)
-      const loop = bottomLoop(table, bodyStore.body_b)
-      const faces = sortedFacesOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))
+      const partStore = makeBoxPart(scope, table)
+      const loop = bottomLoop(table, partStore.body_b)
+      const faces = sortedFacesOf(occ, scope, table.get<OccShape>(partStore.body_b.shape!))
       const topIdx = faces.findIndex((f) => faceNormal(occ, scope, f)[2] > 0.9)
       expect(topIdx).toBeGreaterThanOrEqual(0)
 
@@ -204,10 +204,10 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
         // A repo face entry carrying body_id + face_index; the resolver reads the
         // face's own OCC plane and terminates the 10-tall box prism on it.
         repoReturning({ type: 'face', body_id: 'body_b', face_index: topIdx }),
-        bodyStore,
+        partStore,
       )
       expect(result.status).toBe('ok')
-      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_ex2.shape!))
+      const vol = volumeOf(occ, scope, table.get<OccShape>(partStore.body_ex2.shape!))
       expect(vol).toBeCloseTo(1000, 2)
     } finally {
       scope.dispose()
@@ -221,14 +221,14 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBoxBody(scope, table)
+      const partStore = makeBoxPart(scope, table)
       const repo = initGlobalRepo()
       const ref = '@body_b/face/2'
       expect(repo.query(ref)).toBeNull()
 
-      const cut = resolveUpToPlane(occ, scope, table, ref, [0, 0, 1], repo, bodyStore)
+      const cut = resolveUpToPlane(occ, scope, table, ref, [0, 0, 1], repo, partStore)
       expect(cut).not.toBeNull()
-      const faces = sortedFacesOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))
+      const faces = sortedFacesOf(occ, scope, table.get<OccShape>(partStore.body_b.shape!))
       const plane = computeFacePlane(occ, scope, faces[2])
       const n = cut!.normal
       const parallel = n[0] * plane.normal[0] + n[1] * plane.normal[1] + n[2] * plane.normal[2]
@@ -287,13 +287,13 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBoxBody(scope, table)
-      const loop = bottomLoop(table, bodyStore.body_b)
+      const partStore = makeBoxPart(scope, table)
+      const loop = bottomLoop(table, partStore.body_b)
       const repo = initGlobalRepo()
       const result = solveExtrude(
         occ, scope, table,
         { id: 'ex2', extrude: { sketch: loop, distance: 3, termination: 'up_to', operation: 'new' } },
-        repo, bodyStore,
+        repo, partStore,
       )
       expect(result.status).toBe('ok')
       expect(result.solver_warning).toBe('extrude: up_to has no target; nothing was built')
@@ -301,10 +301,10 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
       // A soft failure stays a warning; only the tangent chain moved to solver_note.
       expect(result.solver_note).toBeUndefined()
       expect(result.body_ids).toEqual([])
-      expect(bodyStore.body_ex2).toBeUndefined()
+      expect(partStore.body_ex2).toBeUndefined()
       // No handle survives to name phantom geometry a later feature could read.
       expect(repo.elements.has('ex2/top_face')).toBe(false)
-      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))
+      const vol = volumeOf(occ, scope, table.get<OccShape>(partStore.body_b.shape!))
       expect(vol).toBeCloseTo(1000, 2)
     } finally {
       scope.dispose()
@@ -318,19 +318,19 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBoxBody(scope, table)
-      const loop = bottomLoop(table, bodyStore.body_b)
+      const partStore = makeBoxPart(scope, table)
+      const loop = bottomLoop(table, partStore.body_b)
       for (const distance of [undefined, 0]) {
         const extrude: Record<string, unknown> = { sketch: loop, termination: 'up_to', operation: 'new' }
         if (distance !== undefined) extrude.distance = distance
-        const result = solveExtrude(occ, scope, table, { id: 'ex2', extrude }, repoReturning(null), bodyStore)
+        const result = solveExtrude(occ, scope, table, { id: 'ex2', extrude }, repoReturning(null), partStore)
         expect(result.status, String(distance)).toBe('ok')
         expect(result.solver_warning, String(distance)).toBe(
           'extrude: up_to has no target; nothing was built',
         )
-        expect(bodyStore.body_ex2).toBeUndefined()
+        expect(partStore.body_ex2).toBeUndefined()
       }
-      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))
+      const vol = volumeOf(occ, scope, table.get<OccShape>(partStore.body_b.shape!))
       expect(vol).toBeCloseTo(1000, 2)
     } finally {
       scope.dispose()
@@ -341,18 +341,18 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBoxBody(scope, table)
-      const loop = bottomLoop(table, bodyStore.body_b)
+      const partStore = makeBoxPart(scope, table)
+      const loop = bottomLoop(table, partStore.body_b)
       const result = solveExtrude(
         occ, scope, table,
         { id: 'ex2', extrude: { sketch: loop, distance: 3, up_to: 'plane_q', operation: 'new' } },
         // A target seven ahead would give 700 if it were read; blind distance is 300.
         repoReturning({ type: 'flatface', origin: [0, 0, 7], normal: [0, 0, 1] }),
-        bodyStore,
+        partStore,
       )
       expect(result.status).toBe('ok')
       expect(result.solver_warning).toBeUndefined()
-      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_ex2.shape!))
+      const vol = volumeOf(occ, scope, table.get<OccShape>(partStore.body_ex2.shape!))
       expect(vol).toBeCloseTo(300, 2)
     } finally {
       scope.dispose()
@@ -363,9 +363,9 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBoxBody(scope, table)
-      const loop = bottomLoop(table, bodyStore.body_b)
-      const faces = sortedFacesOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))
+      const partStore = makeBoxPart(scope, table)
+      const loop = bottomLoop(table, partStore.body_b)
+      const faces = sortedFacesOf(occ, scope, table.get<OccShape>(partStore.body_b.shape!))
       const topIdx = faces.findIndex((f) => faceNormal(occ, scope, f)[2] > 0.9)
       expect(topIdx).toBeGreaterThanOrEqual(0)
 
@@ -378,11 +378,11 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
             up_to: `@body_b/face/${topIdx}`, operation: 'new',
           },
         },
-        initGlobalRepo(), bodyStore,
+        initGlobalRepo(), partStore,
       )
       expect(result.status).toBe('ok')
       expect(result.solver_warning).toBeUndefined()
-      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_ex2.shape!))
+      const vol = volumeOf(occ, scope, table.get<OccShape>(partStore.body_ex2.shape!))
       expect(vol).toBeCloseTo(1000, 2)
     } finally {
       scope.dispose()
@@ -393,11 +393,11 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBoxBody(scope, table)
+      const partStore = makeBoxPart(scope, table)
       // A 6-tall cylinder at x=40: its top plane (z=6) differs from the box's
       // top plane (z=10), so a resolver reading the wrong body is visible.
       const cyl = makeCylinder(occ, scope, [40, 0, 0], [0, 0, 1], 5, 6)
-      bodyStore.body_cyl = {
+      partStore.body_cyl = {
         id: 'body_cyl', created_by: 'cy1', modified_by: [],
         shape: table.register(cyl, 'cy1'), sketch_id: 'skc',
         brep_diff: null, profile_queries: [],
@@ -407,7 +407,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
       expect(topIdx).toBeGreaterThanOrEqual(0)
 
       const cut = resolveUpToPlane(
-        occ, scope, table, `@body_cyl/face/${topIdx}`, [0, 0, 1], initGlobalRepo(), bodyStore,
+        occ, scope, table, `@body_cyl/face/${topIdx}`, [0, 0, 1], initGlobalRepo(), partStore,
       )
       expect(cut).not.toBeNull()
       expect(cut!.origin[2]).toBeCloseTo(6, 6)
@@ -421,9 +421,9 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBoxBody(scope, table)
+      const partStore = makeBoxPart(scope, table)
       const cyl = makeCylinder(occ, scope, [40, 0, 0], [0, 0, 1], 5, 10)
-      bodyStore.body_cyl = {
+      partStore.body_cyl = {
         id: 'body_cyl', created_by: 'cy1', modified_by: [],
         shape: table.register(cyl, 'cy1'), sketch_id: 'skc',
         brep_diff: null, profile_queries: [],
@@ -434,7 +434,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
 
       expect(() =>
         resolveUpToPlane(
-          occ, scope, table, `@body_cyl/face/${sideIdx}`, [0, 0, 1], initGlobalRepo(), bodyStore,
+          occ, scope, table, `@body_cyl/face/${sideIdx}`, [0, 0, 1], initGlobalRepo(), partStore,
         ),
       ).toThrow(/extrude up_to: target face is not planar/)
     } finally {
@@ -468,27 +468,27 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBoxBody(scope, table)
+      const partStore = makeBoxPart(scope, table)
       const inner = makeBox(occ, scope, 2, 2, 2)
-      const innerBody: Body = {
+      const innerPart: PartSolid = {
         id: 'body_inner', created_by: 'in1', modified_by: [],
         shape: table.register(inner, 'in1'), sketch_id: 'ski',
         brep_diff: null, profile_queries: [],
       }
       // The profile edges name this body, so its entry must resolve in the store.
-      bodyStore.body_inner = innerBody
-      const loop = bottomLoop(table, innerBody)
+      partStore.body_inner = innerPart
+      const loop = bottomLoop(table, innerPart)
       const result = solveExtrude(
         occ, scope, table,
         { id: 'ex2', extrude: { sketch: loop, distance: 2, termination: 'up_to', operation: 'add' } },
-        repoReturning(null), bodyStore,
+        repoReturning(null), partStore,
       )
       expect(result.status).toBe('ok')
       expect(result.solver_warning).toBe('extrude: up_to has no target; nothing was built')
       expect(result.body_ids).toEqual([])
-      expect(Object.keys(bodyStore).sort()).toEqual(['body_b', 'body_inner'])
-      expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_inner.shape!))).toBeCloseTo(8, 2)
-      expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))).toBeCloseTo(1000, 2)
+      expect(Object.keys(partStore).sort()).toEqual(['body_b', 'body_inner'])
+      expect(volumeOf(occ, scope, table.get<OccShape>(partStore.body_inner.shape!))).toBeCloseTo(8, 2)
+      expect(volumeOf(occ, scope, table.get<OccShape>(partStore.body_b.shape!))).toBeCloseTo(1000, 2)
     } finally {
       scope.dispose()
     }
@@ -501,10 +501,10 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBoxBody(scope, table)
-      const loop = bottomLoop(table, bodyStore.body_b)
+      const partStore = makeBoxPart(scope, table)
+      const loop = bottomLoop(table, partStore.body_b)
       const cyl = makeCylinder(occ, scope, [40, 0, 0], [0, 0, 1], 5, 10)
-      bodyStore.body_cyl = {
+      partStore.body_cyl = {
         id: 'body_cyl', created_by: 'cy1', modified_by: [],
         shape: table.register(cyl, 'cy1'), sketch_id: 'skc',
         brep_diff: null, profile_queries: [],
@@ -518,7 +518,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
           occ, scope, table,
           { id: 'ex2', extrude: { sketch: loop, distance: 5, termination: 'up_to', up_to: 'face_q', operation: 'new' } },
           repoReturning({ type: 'face', body_id: 'body_cyl', face_index: sideIdx }),
-          bodyStore,
+          partStore,
         ),
       ).toThrow(/does not cover the profile/)
     } finally {
@@ -530,12 +530,12 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBoxBody(scope, table)
-      const loop = bottomLoop(table, bodyStore.body_b)
+      const partStore = makeBoxPart(scope, table)
+      const loop = bottomLoop(table, partStore.body_b)
       const result = solveExtrude(
         occ, scope, table,
         { id: 'ex2', extrude: { sketch: loop, distance: 3, termination: 'up_to', up_to: 'missing_q', operation: 'new' } },
-        repoReturning(null), bodyStore,
+        repoReturning(null), partStore,
       )
       expect(result.status).toBe('ok')
       expect(result.solver_warning).toBe(
@@ -543,8 +543,8 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
       )
       expect(result.solver_warning).not.toMatch(/blind/)
       expect(result.body_ids).toEqual([])
-      expect(bodyStore.body_ex2).toBeUndefined()
-      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))
+      expect(partStore.body_ex2).toBeUndefined()
+      const vol = volumeOf(occ, scope, table.get<OccShape>(partStore.body_b.shape!))
       expect(vol).toBeCloseTo(1000, 2)
     } finally {
       scope.dispose()
@@ -557,17 +557,17 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBoxBody(scope, table)
-      const loop = bottomLoop(table, bodyStore.body_b)
+      const partStore = makeBoxPart(scope, table)
+      const loop = bottomLoop(table, partStore.body_b)
       const result = solveExtrude(
         occ, scope, table,
         { id: 'ex2', extrude: { sketch: loop, distance: 3, termination: 'up_to', operation: 'cut' } },
-        repoReturning(null), bodyStore,
+        repoReturning(null), partStore,
       )
       expect(result.status).toBe('ok')
       expect(result.solver_warning).toBe('extrude: up_to has no target; nothing was built')
       expect(result.body_ids).toEqual([])
-      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))
+      const vol = volumeOf(occ, scope, table.get<OccShape>(partStore.body_b.shape!))
       expect(vol).toBeCloseTo(1000, 2)
     } finally {
       scope.dispose()
@@ -580,8 +580,8 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBoxBody(scope, table)
-      const loop = bottomLoop(table, bodyStore.body_b)
+      const partStore = makeBoxPart(scope, table)
+      const loop = bottomLoop(table, partStore.body_b)
       const ambiguousRepo = {
         query: (q: unknown) => {
           if (q === 'amb_q') throw new AmbiguousQueryError("query 'amb_q' matched 2 elements")
@@ -592,7 +592,7 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
       const result = solveExtrude(
         occ, scope, table,
         { id: 'ex3', extrude: { sketch: loop, distance: 3, termination: 'up_to', up_to: 'amb_q', operation: 'new' } },
-        ambiguousRepo, bodyStore,
+        ambiguousRepo, partStore,
       )
       expect(result.status).toBe('ok')
       expect(result.solver_warning).toBe(
@@ -600,8 +600,8 @@ describe.skipIf(!oc)('extrude up-to termination (real OCC)', () => {
       )
       expect(result.solver_warning).not.toMatch(/did not resolve/)
       expect(result.body_ids).toEqual([])
-      expect(bodyStore.body_ex3).toBeUndefined()
-      const vol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_b.shape!))
+      expect(partStore.body_ex3).toBeUndefined()
+      const vol = volumeOf(occ, scope, table.get<OccShape>(partStore.body_b.shape!))
       expect(vol).toBeCloseTo(1000, 2)
     } finally {
       scope.dispose()

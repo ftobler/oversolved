@@ -18,7 +18,7 @@ import { shapeBndBox } from '../../occ/primitives'
 import { volumeOf } from '../../occ/volume'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -66,11 +66,11 @@ describe.skipIf(!oc || !solveBytes)('circular pattern through the real kernel', 
   })
 
   function boxes(r: BuildResponse): number[][] {
-    const store = r._build_state!.checkpoints.cp1.body_store_snapshot as Record<string, Body>
+    const store = r._build_state!.checkpoints.cp1.body_store_snapshot as Record<string, PartSolid>
     const scope = new DisposeScope()
     try {
-      return Object.values(store).map((body) => {
-        const box = shapeBndBox(occ, scope, h.table.get<OccShape>(body.shape!))
+      return Object.values(store).map((part) => {
+        const box = shapeBndBox(occ, scope, h.table.get<OccShape>(part.shape!))
         return [...box.min, ...box.max]
       })
     } finally {
@@ -79,11 +79,11 @@ describe.skipIf(!oc || !solveBytes)('circular pattern through the real kernel', 
   }
 
   function volume(r: BuildResponse): number {
-    const store = r._build_state!.checkpoints.cp1.body_store_snapshot as Record<string, Body>
+    const store = r._build_state!.checkpoints.cp1.body_store_snapshot as Record<string, PartSolid>
     const scope = new DisposeScope()
     try {
       return Object.values(store)
-        .map((body) => volumeOf(occ, scope, h.table.get<OccShape>(body.shape!)))
+        .map((part) => volumeOf(occ, scope, h.table.get<OccShape>(part.shape!)))
         .reduce((a, b) => a + b, 0)
     } finally {
       scope.dispose()

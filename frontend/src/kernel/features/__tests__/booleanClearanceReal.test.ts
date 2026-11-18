@@ -17,7 +17,7 @@ import { mintFaceUuid, toolCopyFacePath } from '../../constructionName'
 import { offsetSolid } from '../../occ/offsetShape'
 import { Repository } from '../../query'
 import { solveBoolean } from '../boolean'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { Vec3 } from '../../occ/primitives'
 
@@ -31,7 +31,7 @@ vi.mock('../../occ/offsetShape', async (importOriginal) => {
 const oc = await loadOcc()
 const offsetSpy = vi.mocked(offsetSolid)
 
-function boxBody(
+function boxPart(
   occ: OccModule,
   scope: DisposeScope,
   table: HandleTable,
@@ -41,7 +41,7 @@ function boxBody(
   dy: number,
   dz: number,
   faceUuids?: string[],
-): Body {
+): PartSolid {
   const box = makeBoxAt(occ, scope, corner, dx, dy, dz)
   return {
     id, created_by: `ex_${id}`, modified_by: [],
@@ -50,7 +50,7 @@ function boxBody(
   }
 }
 
-function cylinderBody(
+function cylinderPart(
   occ: OccModule,
   scope: DisposeScope,
   table: HandleTable,
@@ -58,7 +58,7 @@ function cylinderBody(
   center: Vec3,
   radius: number,
   height: number,
-): Body {
+): PartSolid {
   const cyl = makeCylinder(occ, scope, center, [0, 0, 1] as Vec3, radius, height)
   return {
     id, created_by: `ex_${id}`, modified_by: [],
@@ -67,7 +67,7 @@ function cylinderBody(
   }
 }
 
-function filletedBody(
+function filletedPart(
   occ: OccModule,
   scope: DisposeScope,
   table: HandleTable,
@@ -77,7 +77,7 @@ function filletedBody(
   dy: number,
   dz: number,
   radius: number,
-): Body {
+): PartSolid {
   const box = makeBoxAt(occ, scope, corner, dx, dy, dz)
   const exp = scope.track(new occ.TopExp_Explorer_2(box, occ.TopAbs_ShapeEnum.TopAbs_EDGE, occ.TopAbs_ShapeEnum.TopAbs_SHAPE))
   const edges: OccShape[] = []
@@ -91,17 +91,17 @@ function filletedBody(
   }
 }
 
-function targetBody(occ: OccModule, scope: DisposeScope, table: HandleTable, faceUuids?: string[]): Body {
-  return boxBody(occ, scope, table, 'body_t', [0, 0, 0] as Vec3, 10, 10, 8, faceUuids)
+function targetPart(occ: OccModule, scope: DisposeScope, table: HandleTable, faceUuids?: string[]): PartSolid {
+  return boxPart(occ, scope, table, 'body_t', [0, 0, 0] as Vec3, 10, 10, 8, faceUuids)
 }
 
 function solve(
   occ: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-  store: Record<string, Body>,
+  store: Record<string, PartSolid>,
   sub: Record<string, unknown>,
-): { result: ReturnType<typeof solveBoolean>; store: Record<string, Body> } {
+): { result: ReturnType<typeof solveBoolean>; store: Record<string, PartSolid> } {
   const result = solveBoolean(
     occ, scope, table,
     { id: 'bool1', boolean: sub },
@@ -111,8 +111,8 @@ function solve(
   return { result, store }
 }
 
-function volumeOfBody(occ: OccModule, scope: DisposeScope, table: HandleTable, body: Body): number {
-  return volumeOf(occ, scope, table.get<OccShape>(body.shape!))
+function volumeOfPart(occ: OccModule, scope: DisposeScope, table: HandleTable, part: PartSolid): number {
+  return volumeOf(occ, scope, table.get<OccShape>(part.shape!))
 }
 
 const V0 = 800  // 10x10x8 target
@@ -129,15 +129,15 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {
-        body_t: targetBody(occ, scope, table),
-        body_u: boxBody(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12),
+      const store: Record<string, PartSolid> = {
+        body_t: targetPart(occ, scope, table),
+        body_u: boxPart(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12),
       }
       const { result, store: after } = solve(occ, scope, table, store, {
         operation: 'subtract', target: 'body_t', tools: ['body_u'],
       })
       expect(result.status).toBe('ok')
-      expect(volumeOfBody(occ, scope, table, after.body_t)).toBeCloseTo(V0 - 4 * 4 * 8, 3)
+      expect(volumeOfPart(occ, scope, table, after.body_t)).toBeCloseTo(V0 - 4 * 4 * 8, 3)
       expect(offsetSpy).not.toHaveBeenCalled()
     } finally {
       scope.dispose()
@@ -148,15 +148,15 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {
-        body_t: targetBody(occ, scope, table),
-        body_u: boxBody(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12),
+      const store: Record<string, PartSolid> = {
+        body_t: targetPart(occ, scope, table),
+        body_u: boxPart(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12),
       }
       const { result, store: after } = solve(occ, scope, table, store, {
         operation: 'subtract', target: 'body_t', tools: ['body_u'], clearance: 0,
       })
       expect(result.status).toBe('ok')
-      expect(volumeOfBody(occ, scope, table, after.body_t)).toBeCloseTo(V0 - 4 * 4 * 8, 3)
+      expect(volumeOfPart(occ, scope, table, after.body_t)).toBeCloseTo(V0 - 4 * 4 * 8, 3)
       expect(offsetSpy).not.toHaveBeenCalled()
     } finally {
       scope.dispose()
@@ -167,15 +167,15 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {
-        body_t: targetBody(occ, scope, table),
-        body_u: boxBody(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12),
+      const store: Record<string, PartSolid> = {
+        body_t: targetPart(occ, scope, table),
+        body_u: boxPart(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12),
       }
       const { result, store: after } = solve(occ, scope, table, store, {
         operation: 'subtract', target: 'body_t', tools: ['body_u'], clearance: 0.1,
       })
       expect(result.status).toBe('ok')
-      expect(volumeOfBody(occ, scope, table, after.body_t)).toBeCloseTo(V0 - 4.2 * 4.2 * 8, 3)
+      expect(volumeOfPart(occ, scope, table, after.body_t)).toBeCloseTo(V0 - 4.2 * 4.2 * 8, 3)
       expect(offsetSpy).toHaveBeenCalledTimes(1)
     } finally {
       scope.dispose()
@@ -186,15 +186,15 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {
-        body_t: targetBody(occ, scope, table),
-        body_u: boxBody(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12),
+      const store: Record<string, PartSolid> = {
+        body_t: targetPart(occ, scope, table),
+        body_u: boxPart(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12),
       }
       const { result, store: after } = solve(occ, scope, table, store, {
         operation: 'subtract', target: 'body_t', tools: ['body_u'], clearance: -0.1,
       })
       expect(result.status).toBe('ok')
-      expect(volumeOfBody(occ, scope, table, after.body_t)).toBeCloseTo(V0 - 3.8 * 3.8 * 8, 3)
+      expect(volumeOfPart(occ, scope, table, after.body_t)).toBeCloseTo(V0 - 3.8 * 3.8 * 8, 3)
     } finally {
       scope.dispose()
     }
@@ -204,15 +204,15 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {
-        body_t: targetBody(occ, scope, table),
-        body_u: cylinderBody(occ, scope, table, 'body_u', [5, 5, -2] as Vec3, 2, 12),
+      const store: Record<string, PartSolid> = {
+        body_t: targetPart(occ, scope, table),
+        body_u: cylinderPart(occ, scope, table, 'body_u', [5, 5, -2] as Vec3, 2, 12),
       }
       const { result, store: after } = solve(occ, scope, table, store, {
         operation: 'subtract', target: 'body_t', tools: ['body_u'], clearance: 0.1,
       })
       expect(result.status).toBe('ok')
-      expect(volumeOfBody(occ, scope, table, after.body_t)).toBeCloseTo(V0 - Math.PI * 2.1 * 2.1 * 8, 3)
+      expect(volumeOfPart(occ, scope, table, after.body_t)).toBeCloseTo(V0 - Math.PI * 2.1 * 2.1 * 8, 3)
     } finally {
       scope.dispose()
     }
@@ -224,15 +224,15 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
     try {
       // Tool occupies z 4..10, poking out the top of the z 0..8 target: the
       // overlap is z 4..8 and +0.1 grows the pocket to depth 4.1 (floor moves).
-      const store: Record<string, Body> = {
-        body_t: targetBody(occ, scope, table),
-        body_u: boxBody(occ, scope, table, 'body_u', [3, 3, 4] as Vec3, 4, 4, 6),
+      const store: Record<string, PartSolid> = {
+        body_t: targetPart(occ, scope, table),
+        body_u: boxPart(occ, scope, table, 'body_u', [3, 3, 4] as Vec3, 4, 4, 6),
       }
       const { result, store: after } = solve(occ, scope, table, store, {
         operation: 'subtract', target: 'body_t', tools: ['body_u'], clearance: 0.1,
       })
       expect(result.status).toBe('ok')
-      expect(volumeOfBody(occ, scope, table, after.body_t)).toBeCloseTo(V0 - 4.2 * 4.2 * 4.1, 3)
+      expect(volumeOfPart(occ, scope, table, after.body_t)).toBeCloseTo(V0 - 4.2 * 4.2 * 4.1, 3)
     } finally {
       scope.dispose()
     }
@@ -242,15 +242,15 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {
-        body_t: targetBody(occ, scope, table),
-        body_u: filletedBody(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12, 0.5),
+      const store: Record<string, PartSolid> = {
+        body_t: targetPart(occ, scope, table),
+        body_u: filletedPart(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12, 0.5),
       }
       const { result, store: after } = solve(occ, scope, table, store, {
         operation: 'subtract', target: 'body_t', tools: ['body_u'], clearance: 0.1,
       })
       expect(result.status).toBe('ok')
-      const vol = volumeOfBody(occ, scope, table, after.body_t)
+      const vol = volumeOfPart(occ, scope, table, after.body_t)
       expect(vol).toBeGreaterThan(0)
       expect(vol).toBeLessThan(V0)
     } finally {
@@ -264,9 +264,9 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
     try {
       // A 1x1x1 tool cannot shrink by 0.6 on every side (its walls would cross);
       // offsetSolid refuses, and the feature must say so rather than cut ungrown.
-      const store: Record<string, Body> = {
-        body_t: targetBody(occ, scope, table),
-        body_u: boxBody(occ, scope, table, 'body_u', [4, 4, 3] as Vec3, 1, 1, 1),
+      const store: Record<string, PartSolid> = {
+        body_t: targetPart(occ, scope, table),
+        body_u: boxPart(occ, scope, table, 'body_u', [4, 4, 3] as Vec3, 1, 1, 1),
       }
       let message = ''
       try {
@@ -290,9 +290,9 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
       // The r0.5 fillet cannot take -0.6: the grown (shrunk) tool no longer
       // reaches the target and the kernel cuts nothing. That must be a
       // clearance error, never a status: ok with the hole missing (decision 6).
-      const store: Record<string, Body> = {
-        body_t: targetBody(occ, scope, table),
-        body_u: filletedBody(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12, 0.5),
+      const store: Record<string, PartSolid> = {
+        body_t: targetPart(occ, scope, table),
+        body_u: filletedPart(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12, 0.5),
       }
       let message = ''
       try {
@@ -311,20 +311,20 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
   })
 
   it('only lets a flush tool bite once it has grown', () => {
-    const flushTool = (occ: OccModule, scope: DisposeScope, table: HandleTable): Body =>
-      boxBody(occ, scope, table, 'body_u', [10, 3, 0] as Vec3, 4, 4, 8)
+    const flushTool = (occ: OccModule, scope: DisposeScope, table: HandleTable): PartSolid =>
+      boxPart(occ, scope, table, 'body_u', [10, 3, 0] as Vec3, 4, 4, 8)
     // clearance 0: the authored tool touches the x=10 face but shares no
     // material, so the cut is skipped and the target keeps its volume.
     {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const store: Record<string, Body> = { body_t: targetBody(occ, scope, table), body_u: flushTool(occ, scope, table) }
+        const store: Record<string, PartSolid> = { body_t: targetPart(occ, scope, table), body_u: flushTool(occ, scope, table) }
         const { result, store: after } = solve(occ, scope, table, store, {
           operation: 'subtract', target: 'body_t', tools: ['body_u'],
         })
         expect(result.status).toBe('ok')
-        expect(volumeOfBody(occ, scope, table, after.body_t)).toBeCloseTo(V0, 3)
+        expect(volumeOfPart(occ, scope, table, after.body_t)).toBeCloseTo(V0, 3)
       } finally {
         scope.dispose()
       }
@@ -335,12 +335,12 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const store: Record<string, Body> = { body_t: targetBody(occ, scope, table), body_u: flushTool(occ, scope, table) }
+        const store: Record<string, PartSolid> = { body_t: targetPart(occ, scope, table), body_u: flushTool(occ, scope, table) }
         const { result, store: after } = solve(occ, scope, table, store, {
           operation: 'subtract', target: 'body_t', tools: ['body_u'], clearance: 0.1,
         })
         expect(result.status).toBe('ok')
-        expect(volumeOfBody(occ, scope, table, after.body_t)).toBeCloseTo(V0 - 0.1 * 4.2 * 8, 3)
+        expect(volumeOfPart(occ, scope, table, after.body_t)).toBeCloseTo(V0 - 0.1 * 4.2 * 8, 3)
       } finally {
         scope.dispose()
       }
@@ -352,9 +352,9 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
     const table = new HandleTable()
     try {
       const toolFaces = ['u0', 'u1', 'u2', 'u3', 'u4', 'u5']
-      const store: Record<string, Body> = {
-        body_t: targetBody(occ, scope, table, ['t0', 't1', 't2', 't3', 't4', 't5']),
-        body_u: boxBody(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12, toolFaces),
+      const store: Record<string, PartSolid> = {
+        body_t: targetPart(occ, scope, table, ['t0', 't1', 't2', 't3', 't4', 't5']),
+        body_u: boxPart(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12, toolFaces),
       }
       const { result, store: after } = solve(occ, scope, table, store, {
         operation: 'subtract', target: 'body_t', tools: ['body_u'], keep_tools: true, clearance: 0.1,
@@ -362,7 +362,7 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
       expect(result.status).toBe('ok')
       // The kept tool keeps its authored shape and its own UUIDs.
       expect(after.body_u).toBeDefined()
-      expect(volumeOfBody(occ, scope, table, after.body_u)).toBeCloseTo(4 * 4 * 12, 3)
+      expect(volumeOfPart(occ, scope, table, after.body_u)).toBeCloseTo(4 * 4 * 12, 3)
       expect(after.body_u.face_uuids).toEqual(toolFaces)
 
       // The target carries SCOPED copies, never the tool's own UUIDs.
@@ -380,16 +380,16 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {
-        body_t: targetBody(occ, scope, table),
-        body_u: boxBody(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12),
+      const store: Record<string, PartSolid> = {
+        body_t: targetPart(occ, scope, table),
+        body_u: boxPart(occ, scope, table, 'body_u', [3, 3, -2] as Vec3, 4, 4, 12),
       }
       const { result, store: after } = solve(occ, scope, table, store, {
         operation: 'union', target: 'body_t', tools: ['body_u'], clearance: 0.1,
       })
       expect(result.status).toBe('ok')
       // union of 10x10x8 with a 4x4x12 tool overlapping in z 0..8.
-      expect(volumeOfBody(occ, scope, table, after.body_t)).toBeCloseTo(V0 + 4 * 4 * 12 - 4 * 4 * 8, 3)
+      expect(volumeOfPart(occ, scope, table, after.body_t)).toBeCloseTo(V0 + 4 * 4 * 12 - 4 * 4 * 8, 3)
       expect(result.solver_warning).toContain('clearance applies to subtract only')
       expect(offsetSpy).not.toHaveBeenCalled()
     } finally {
@@ -401,10 +401,10 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const store: Record<string, Body> = {
-        body_t: targetBody(occ, scope, table),
-        body_u0: boxBody(occ, scope, table, 'body_u0', [1, 1, -2] as Vec3, 4, 4, 12),
-        body_u1: boxBody(occ, scope, table, 'body_u1', [5, 5, -2] as Vec3, 4, 4, 12),
+      const store: Record<string, PartSolid> = {
+        body_t: targetPart(occ, scope, table),
+        body_u0: boxPart(occ, scope, table, 'body_u0', [1, 1, -2] as Vec3, 4, 4, 12),
+        body_u1: boxPart(occ, scope, table, 'body_u1', [5, 5, -2] as Vec3, 4, 4, 12),
       }
       const { result, store: after } = solve(occ, scope, table, store, {
         operation: 'subtract', target: 'body_t', tools: ['body_u0', 'body_u1'], clearance: 0.1,
@@ -412,7 +412,7 @@ describe.skipIf(!oc)('boolean clearance (real OCC)', () => {
       expect(result.status).toBe('ok')
       expect(offsetSpy).toHaveBeenCalledTimes(2)
       // Two grown through tools remove well over one tool's overlap.
-      expect(volumeOfBody(occ, scope, table, after.body_t)).toBeLessThan(V0 - 2 * 4 * 4 * 8)
+      expect(volumeOfPart(occ, scope, table, after.body_t)).toBeLessThan(V0 - 2 * 4 * 4 * 8)
     } finally {
       scope.dispose()
     }

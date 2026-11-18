@@ -15,7 +15,7 @@
 // where the reported overhang lives.
 
 import type { SharedHarness } from '../../occ/sharedHarness'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 type Dict = Record<string, unknown>
 
@@ -112,29 +112,29 @@ export function enclosureBase(
   const fillet = spec.features.find((f) => f.id === 'fi1')
   let withPlate = plate
   if (fillet !== undefined) {
-    const plateEdges = uprightEdges((h.body(plate, 'body_ex1').edge_queries as string[]) ?? [], 'sk1')
+    const plateEdges = uprightEdges((h.part(plate, 'body_ex1').edge_queries as string[]) ?? [], 'sk1')
     if (plateEdges.length !== 4) throw new Error(`enclosure fixture: expected 4 plate upright edges, found ${plateEdges.length}`)
     ;(fillet.fillet as Dict).edges = plateEdges
     withPlate = h.run(spec)
   }
-  if (((h.body(withPlate, 'body_ex1').edge_queries as string[]) ?? []).length === 0) {
+  if (((h.part(withPlate, 'body_ex1').edge_queries as string[]) ?? []).length === 0) {
     throw new Error('enclosure fixture: the plate carried no edges')
   }
   spec.features.push(...lipFeatures(opts.taper ?? 0))
   const added = h.run(spec)
-  const lipEdges = uprightEdges((h.body(added, 'body_ex1').edge_queries as string[]) ?? [], 'sk2')
+  const lipEdges = uprightEdges((h.part(added, 'body_ex1').edge_queries as string[]) ?? [], 'sk2')
   if (lipEdges.length !== 4) throw new Error(`enclosure fixture: expected 4 lip upright edges, found ${lipEdges.length}`)
   return { spec, lipEdges, result: added }
 }
 
-/** The Body a build checkpoint holds for `bodyId`, which carries its shape
+/** The Part a build checkpoint holds for `bodyId`, which carries its shape
  *  handle and its construction names. */
-export function bodyAt(
+export function partAt(
   result: ReturnType<SharedHarness['run']>,
   featureId: string,
-  bodyId = 'body_ex1',
-): Body {
-  const body = result._build_state!.checkpoints[featureId]?.body_store_snapshot[bodyId]
-  if (body === undefined) throw new Error(`enclosure fixture: no ${bodyId} at checkpoint ${featureId}`)
-  return body
+  partId = 'body_ex1',
+): PartSolid {
+  const part = result._build_state!.checkpoints[featureId]?.body_store_snapshot[partId]
+  if (part === undefined) throw new Error(`enclosure fixture: no ${partId} at checkpoint ${featureId}`)
+  return part
 }

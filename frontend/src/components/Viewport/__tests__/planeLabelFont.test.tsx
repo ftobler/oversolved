@@ -266,7 +266,7 @@ describe('AngleDial readout font', () => {
     const cold = await renderDial(false)
     const { container, rerender } = render(cold)
     await settle()
-    const bodyBeforeDrag = container.querySelector('[data-testid="scene-body"]')
+    const partBeforeDrag = container.querySelector('[data-testid="scene-body"]')
 
     rerender(await renderDial(true))
     await settle()
@@ -274,6 +274,6 @@ describe('AngleDial readout font', () => {
     expect(container.querySelector('[data-testid="canvas-fallback"]')).toBeNull()
     // Same node: the Canvas-wide boundary never re-entered its fallback, which
     // is what R3F turns into hideInstance() on every object in the scene.
-    expect(container.querySelector('[data-testid="scene-body"]')).toBe(bodyBeforeDrag)
+    expect(container.querySelector('[data-testid="scene-body"]')).toBe(partBeforeDrag)
   })
 })

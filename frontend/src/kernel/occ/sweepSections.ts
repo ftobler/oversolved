@@ -172,7 +172,7 @@ export type SweepSectionsResult = LineageResult & { namingSketchId: string }
  * Sweep two or more section wires along the spine and return (solid +
  * construction-name maps). Sections must already be in station order.
  * OWNERSHIP: the returned `solid` is UNTRACKED; the caller tracks it or hands
- * it to `applyBodyOperation`, the same contract the other producers keep.
+ * it to `applyPartOperation`, the same contract the other producers keep.
  */
 export function sweepSectionsWithLineage(
   oc: OccModule,

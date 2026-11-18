@@ -10,7 +10,7 @@
 // invocation); a driver that keeps the process alive (MCP) must serialize its
 // calls, which its stdio loop does by construction.
 
-import type { PartDoc, BodyResult, AssemblyDoc, Transform3D } from '@/types/cad'
+import type { PartDoc, PartResult, AssemblyDoc, Transform3D } from '@/types/cad'
 import type { SolveSchedulerState } from '@/session/SolveScheduler'
 import { exportLocallyInspect, solveLocally, buildAndMeasureLocally, measurePicksLocally, measureSolveFeatures, measureAssemblyLocally, exportAssemblyLocally, type FeatureMeasure, type LocalExportOptions, type LocalPickMeasure } from '@/kernel/solveLocally'
 import { MM_PER_LENGTH_UNIT, lengthUnitOf } from '@/utils/lengthUnit'
@@ -502,7 +502,7 @@ export async function selectHeadless(
     ...(opts.files ? { files: opts.files } : {}),
   })
   if (!response) return null
-  return selectByPredicate(selector, response.bodies as Record<string, BodyResult>)
+  return selectByPredicate(selector, response.bodies as Record<string, PartResult>)
 }
 
 // ─── assembly ───

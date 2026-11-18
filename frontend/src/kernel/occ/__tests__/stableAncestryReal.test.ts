@@ -167,8 +167,8 @@ describe.skipIf(!oc || !solveBytes)('stable ancestry build-level (real OCC + Rus
   it('vertex queries are registered in the repo after extrude', () => {
     // Vertex elements exist in the repo and carry vertex_queries.
     const r = h.run(fullRectExtrudeSpec(10, 10, 5))
-    const bodyResult = (r.bodies as Record<string, { vertex_queries?: string[] }>)['body_ex1']
-    const vertexQueries = bodyResult?.vertex_queries ?? []
+    const partResult = (r.bodies as Record<string, { vertex_queries?: string[] }>)['body_ex1']
+    const vertexQueries = partResult?.vertex_queries ?? []
     expect(vertexQueries.length).toBeGreaterThan(0)
   })
 

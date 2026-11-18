@@ -51,22 +51,22 @@ function recordingRenderer(): {
   return { renderer, renders, get stencilClears() { return stencilClears } }
 }
 
-function registerBody(p: IdPipeline): void {
-  p.faceLayer.registerBody({
-    bodyKey: 'b',
+function registerPart(p: IdPipeline): void {
+  p.faceLayer.registerPart({
+    partKey: 'b',
     positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
     triangleToFace: new Uint32Array([0]),
     faceQueries: ['face@b#0'],
   })
-  p.edgeLayer.registerBody({
-    bodyKey: 'b',
+  p.edgeLayer.registerPart({
+    partKey: 'b',
     segmentPositions: new Float32Array([0, 0, 0, 1, 0, 0]),
     segmentToEdge: new Uint32Array([0]),
     edgeQueries: ['edge@b#0'],
   })
-  p.vertexLayer.registerBody({ bodyKey: 'b', vertices: [[0, 0, 0]], vertexQueries: ['vtx@b#0'] })
-  p.referenceEdgeLayer.registerBody({
-    bodyKey: 'helix',
+  p.vertexLayer.registerPart({ partKey: 'b', vertices: [[0, 0, 0]], vertexQueries: ['vtx@b#0'] })
+  p.referenceEdgeLayer.registerPart({
+    partKey: 'helix',
     segmentPositions: new Float32Array([0, 0, 0, 1, 0, 0]),
     segmentToEdge: new Uint32Array([0]),
     edgeQueries: ['@helix'],
@@ -83,7 +83,7 @@ describe('IdPipeline section clipping', () => {
   it('clips the face, edge and vertex layers with the shared plane while active', () => {
     setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 0, 1], point: [0, 0, 0] }, 0, false))
     const p = new IdPipeline({ width: 8, height: 8 })
-    registerBody(p)
+    registerPart(p)
 
     p.setSectionActive(true)
 
@@ -138,7 +138,7 @@ describe('IdPipeline section cap occluder', () => {
   it('runs the stencil count and fills the cap with the nothing id after the face layer', () => {
     setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 0, 1], point: [0, 0, 0] }, 0, false))
     const p = new IdPipeline({ width: 8, height: 8 })
-    registerBody(p)
+    registerPart(p)
     p.setSectionActive(true)
 
     const recorder = recordingRenderer()
@@ -191,7 +191,7 @@ describe('IdPipeline section cap occluder', () => {
 
   it('runs no cap pass while the section is off', () => {
     const p = new IdPipeline({ width: 8, height: 8 })
-    registerBody(p)
+    registerPart(p)
 
     const recorder = recordingRenderer()
     p.markDirty()
@@ -205,7 +205,7 @@ describe('IdPipeline section cap occluder', () => {
   it('draws the unclipped reference curve after the cap, so it depth-tests against the cut face', () => {
     setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 0, 1], point: [0, 0, 0] }, 0, false))
     const p = new IdPipeline({ width: 8, height: 8 })
-    registerBody(p)
+    registerPart(p)
     p.setSectionActive(true)
 
     const recorder = recordingRenderer()

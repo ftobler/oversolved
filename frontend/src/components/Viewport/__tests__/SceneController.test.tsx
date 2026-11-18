@@ -423,7 +423,7 @@ describe('SceneController camera gestures', () => {
 
 describe('SceneController cursor pivot', () => {
   // A renderer canvas with a real layout, and one body surface tagged the way
-  // Body3D tags it, so the whole read (rect -> ray -> world point) runs.
+  // Part3D tags it, so the whole read (rect -> ray -> world point) runs.
   function glWithLayout() {
     const gl = makeGl()
     Object.defineProperty(gl.domElement, 'getBoundingClientRect', {
@@ -432,12 +432,12 @@ describe('SceneController cursor pivot', () => {
     return gl
   }
 
-  function sceneWithBody(): THREE.Scene {
+  function sceneWithPart(): THREE.Scene {
     const scene = new THREE.Scene()
-    const body = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshBasicMaterial())
-    body.userData.orbitPivot = true
-    body.position.set(0, 0, 20)
-    scene.add(body)
+    const part = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshBasicMaterial())
+    part.userData.orbitPivot = true
+    part.position.set(0, 0, 20)
+    scene.add(part)
     return scene
   }
 
@@ -448,7 +448,7 @@ describe('SceneController cursor pivot', () => {
     cam.lookAt(0, 0, 0)
     cam.updateMatrixWorld()
     const gl = glWithLayout()
-    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue(useThreeState(cam, gl, sceneWithBody()))
+    ;(useThree as unknown as ReturnType<typeof vi.fn>).mockReturnValue(useThreeState(cam, gl, sceneWithPart()))
 
     useViewOptionsStore.setState({ orbit_around_cursor: true })
     const props = propsFor()

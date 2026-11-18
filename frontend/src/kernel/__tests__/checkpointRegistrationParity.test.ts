@@ -9,10 +9,10 @@
 // byte-identical geometry and any fingerprint drift is the builder's doing.
 
 import { describe, it, expect } from 'vitest'
-import { build, bodiesNeedingCheckpointRegistration, bodyVersion, type BuildDeps, type FeatureResult } from '../builder'
+import { build, partsNeedingCheckpointRegistration, partVersion, type BuildDeps, type FeatureResult } from '../builder'
 import { Repository } from '../query'
 import { repoSemanticFingerprint, checkpointFingerprints } from '../repoFingerprintTestUtil'
-import type { Body, BuildState } from '../types3d'
+import type { PartSolid, BuildState } from '../types3d'
 
 // ─── fake geometry ───
 
@@ -38,30 +38,30 @@ function verticesOf(shape: number): number[][] {
 
 // The fake geometry's canonical order is its display order, so the body's
 // arrays pass straight through, the way the real tessellator emits them.
-function fakeMeta(body: Body, isFallback = false): Record<string, unknown> {
-  const shape = Number(body.shape)
+function fakeMeta(part: PartSolid, isFallback = false): Record<string, unknown> {
+  const shape = Number(part.shape)
   return {
     mesh: {
       vertices: [], faces: [], triangle_to_face: [], face_queries: [],
       face_data: faceData(shape),
-      face_uuids: body.face_uuids ?? [],
+      face_uuids: part.face_uuids ?? [],
       is_fallback: isFallback,
     },
     edges: edgesOf(shape),
     edge_queries: ['@eq0', '@eq1'],
-    edge_uuids: body.edge_uuids ?? [],
+    edge_uuids: part.edge_uuids ?? [],
     edge_created_by: [],
     vertices: verticesOf(shape),
     vertex_queries: ['@vq0', '@vq1'],
-    vertex_uuids: [`u_${body.id}_v0`, null],
+    vertex_uuids: [`u_${part.id}_v0`, null],
   }
 }
 
 // Construction UUIDs index the body's shape, so they are rewritten with it.
-function refreshNames(body: Body): void {
-  const shape = Number(body.shape)
-  body.face_uuids = faceData(shape).map((_, i) => `u_${body.id}_f${i}`)
-  body.edge_uuids = edgesOf(shape).map((_, i) => `u_${body.id}_e${i}`)
+function refreshNames(part: PartSolid): void {
+  const shape = Number(part.shape)
+  part.face_uuids = faceData(shape).map((_, i) => `u_${part.id}_f${i}`)
+  part.edge_uuids = edgesOf(shape).map((_, i) => `u_${part.id}_e${i}`)
 }
 
 // ─── stub build deps ───
@@ -72,12 +72,12 @@ function refreshNames(body: Body): void {
 // not about `bodyVersion`, which is never compared across builds.)
 const SHAPE_SEED: Record<string, number> = { f1: 100, f2: 200, f6: 600, heavy: 900 }
 
-function shapeOf(n: number): Body['shape'] {
-  return n as unknown as Body['shape']
+function shapeOf(n: number): PartSolid['shape'] {
+  return n as unknown as PartSolid['shape']
 }
 
-function makeBody(fid: string, seed: number): Body {
-  const body: Body = {
+function makePart(fid: string, seed: number): PartSolid {
+  const part: PartSolid = {
     id: 'body_' + fid,
     created_by: fid,
     modified_by: [],
@@ -86,41 +86,41 @@ function makeBody(fid: string, seed: number): Body {
     brep_diff: null,
     profile_queries: ['@profile_' + fid],
   }
-  refreshNames(body)
-  return body
+  refreshNames(part)
+  return part
 }
 
 const solve = (
   feature: Record<string, unknown>,
   _repo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): FeatureResult => {
   const fid = String(feature.id ?? '')
   if (feature.kind === 'make') {
-    bodyStore['body_' + fid] = makeBody(fid, SHAPE_SEED[fid] ?? 1000)
+    partStore['body_' + fid] = makePart(fid, SHAPE_SEED[fid] ?? 1000)
   } else if (feature.kind === 'modify') {
-    const body = bodyStore[String(feature.target)]
-    if (body) {
-      body.shape = shapeOf(Number(body.shape) + 1)
-      body.modified_by = [...body.modified_by, fid]
-      refreshNames(body)
+    const part = partStore[String(feature.target)]
+    if (part) {
+      part.shape = shapeOf(Number(part.shape) + 1)
+      part.modified_by = [...part.modified_by, fid]
+      refreshNames(part)
     }
   }
   return { status: 'ok' }
 }
 
 interface HarnessOptions {
-  // Body ids whose mesh comes back flagged as a fallback (no real B-rep behind it).
-  fallbackBodies?: string[]
-  /** Body ids the METADATA extractor drops while tessellation still succeeds, mimicking
+  // Part ids whose mesh comes back flagged as a fallback (no real B-rep behind it).
+  fallbackParts?: string[]
+  /** Part ids the METADATA extractor drops while tessellation still succeeds, mimicking
    *  `extractBrepMetadata`'s per-body failure exit (it logs and omits the body). */
   metaOmits?: string[]
-  // Body ids whose blob carries edges/vertices but no `edge_queries`/`vertex_queries`.
+  // Part ids whose blob carries edges/vertices but no `edge_queries`/`vertex_queries`.
   queryless?: string[]
-  /** Body ids for which the face-hash diff throws, standing in for a throw from deep
+  /** Part ids for which the face-hash diff throws, standing in for a throw from deep
    *  inside the registrar (edgeGeometryHash on a malformed arc, a NaN sort key). */
   registrarThrows?: string[]
-  // Body ids for which the METADATA extractor throws outright instead of omitting.
+  // Part ids for which the METADATA extractor throws outright instead of omitting.
   metaThrows?: string[]
 }
 
@@ -137,15 +137,15 @@ class Harness {
   }
 
   private meta = (
-    bodyStore: Record<string, Body>,
+    partStore: Record<string, PartSolid>,
     isMetadataPath: boolean,
   ): Record<string, Record<string, unknown>> =>
     Object.fromEntries(
-      Object.entries(bodyStore)
+      Object.entries(partStore)
         .filter(([bid, body]) => body.shape != null
           && !(isMetadataPath && (this.options.metaOmits?.includes(bid) ?? false)))
         .map(([bid, body]) => {
-          const blob = fakeMeta(body, this.options.fallbackBodies?.includes(bid) ?? false)
+          const blob = fakeMeta(body, this.options.fallbackParts?.includes(bid) ?? false)
           if (this.options.queryless?.includes(bid)) {
             delete blob.edge_queries
             delete blob.vertex_queries
@@ -158,13 +158,13 @@ class Harness {
    *  registrar for a body named in `registrarThrows`. The builder caches one blob per
    *  body version, so the count must be per registrar call, never per blob: a once-per-
    *  blob latch would hide an untouched body re-registered from its cached blob. */
-  private probe(body: Body, blob: Record<string, unknown>): Record<string, unknown> {
+  private probe(part: PartSolid, blob: Record<string, unknown>): Record<string, unknown> {
     const mesh = blob.mesh as Record<string, unknown>
     Object.defineProperty(blob, 'mesh', {
       enumerable: true,
       get: () => {
         // The registrar reads `mesh` once per call and skips a fallback mesh.
-        if (!mesh.is_fallback) this.faceRegistrations.push(body.id)
+        if (!mesh.is_fallback) this.faceRegistrations.push(part.id)
         return mesh
       },
     })
@@ -172,7 +172,7 @@ class Harness {
     Object.defineProperty(mesh, 'face_data', {
       enumerable: true,
       get: () => {
-        if (this.options.registrarThrows?.includes(body.id)) throw new Error('synthetic registrar throw')
+        if (this.options.registrarThrows?.includes(part.id)) throw new Error('synthetic registrar throw')
         return faceData
       },
     })
@@ -184,7 +184,7 @@ class Harness {
       trySolveFeature: solve,
       postRegister: () => {},
       initGlobalRepo: () => new Repository(),
-      tessellateBodies: (store) => this.meta(store, false),
+      tessellateParts: (store) => this.meta(store, false),
       extractBrepMetadata: (store) => {
         for (const bid of Object.keys(store)) {
           if (this.options.metaThrows?.includes(bid)) throw new Error('synthetic metadata throw')
@@ -198,8 +198,8 @@ class Harness {
     return build(spec, { prevState: prevState ?? null }, this.deps())
   }
 
-  countFaces(bodyId: string): number {
-    return this.faceRegistrations.filter((b) => b === bodyId).length
+  countFaces(partId: string): number {
+    return this.faceRegistrations.filter((b) => b === partId).length
   }
 }
 
@@ -327,37 +327,37 @@ describe('checkpoint registration parity', () => {
 })
 
 describe('bodiesNeedingCheckpointRegistration', () => {
-  const body = (id: string, shape: number, modifiedBy: string[] = []): Body => ({
+  const part = (id: string, shape: number, modifiedBy: string[] = []): PartSolid => ({
     id, created_by: 'f1', modified_by: modifiedBy, shape: shapeOf(shape),
     sketch_id: '', brep_diff: null, profile_queries: [],
   })
 
   it('skips a body whose registered version still matches', () => {
-    const b = body('body_a', 1)
-    const registered = new Map([['body_a', bodyVersion(b)]])
-    expect(bodiesNeedingCheckpointRegistration({ body_a: b }, registered)).toEqual(new Set())
+    const b = part('body_a', 1)
+    const registered = new Map([['body_a', partVersion(b)]])
+    expect(partsNeedingCheckpointRegistration({ body_a: b }, registered)).toEqual(new Set())
   })
 
   it('registers a body whose shape handle moved', () => {
-    const registered = new Map([['body_a', bodyVersion(body('body_a', 1))]])
-    expect(bodiesNeedingCheckpointRegistration({ body_a: body('body_a', 2) }, registered))
+    const registered = new Map([['body_a', partVersion(part('body_a', 1))]])
+    expect(partsNeedingCheckpointRegistration({ body_a: part('body_a', 2) }, registered))
       .toEqual(new Set(['body_a']))
   })
 
   it('registers a body whose modified_by grew', () => {
-    const registered = new Map([['body_a', bodyVersion(body('body_a', 1))]])
-    expect(bodiesNeedingCheckpointRegistration({ body_a: body('body_a', 1, ['f2']) }, registered))
+    const registered = new Map([['body_a', partVersion(part('body_a', 1))]])
+    expect(partsNeedingCheckpointRegistration({ body_a: part('body_a', 1, ['f2']) }, registered))
       .toEqual(new Set(['body_a']))
   })
 
   it('registers a body absent from the map', () => {
-    expect(bodiesNeedingCheckpointRegistration({ body_a: body('body_a', 1) }, new Map()))
+    expect(partsNeedingCheckpointRegistration({ body_a: part('body_a', 1) }, new Map()))
       .toEqual(new Set(['body_a']))
   })
 
   it('ignores a registered body that is absent from the checkpoint', () => {
     const registered = new Map([['body_gone', 'body_gone|f1|1|0']])
-    expect(bodiesNeedingCheckpointRegistration({}, registered)).toEqual(new Set())
+    expect(partsNeedingCheckpointRegistration({}, registered)).toEqual(new Set())
   })
 })
 
@@ -396,11 +396,11 @@ describe('checkpoint registration cost', () => {
 
 describe('fallback meshes', () => {
   // Ids of the face-ancestry elements a checkpoint carries for one body.
-  function faceElements(state: BuildState, fid: string, bodyId: string): string[] {
+  function faceElements(state: BuildState, fid: string, partId: string): string[] {
     const elements = (state.checkpoints[fid].repo_snapshot as Record<string, unknown>)
       .elements as Record<string, Record<string, unknown>>
     return Object.keys(elements).filter(
-      (eid) => elements[eid]?.body_id === bodyId && elements[eid]?.face_index !== undefined,
+      (eid) => elements[eid]?.body_id === partId && elements[eid]?.face_index !== undefined,
     )
   }
 
@@ -408,7 +408,7 @@ describe('fallback meshes', () => {
     // The loop refuses to identify faces off a fallback mesh (there is no real B-rep
     // behind it, so the payloads would be fiction). The checkpoint pass must agree,
     // otherwise which pass ran last decides what a query resolves to.
-    const h = new Harness({ fallbackBodies: ['body_f1'] })
+    const h = new Harness({ fallbackParts: ['body_f1'] })
     const r = h.run({ features: [{ id: 'f1', kind: 'make' }, { id: 'f2', kind: 'make' }] })
     const state = r._build_state
     for (const fid of ['f1', 'f2']) expect(faceElements(state, fid, 'body_f1')).toEqual([])
@@ -421,18 +421,18 @@ describe('fallback meshes', () => {
 })
 
 // Ids of the ancestry elements a checkpoint carries for one body, by payload field.
-function elementsOf(state: BuildState, fid: string, bodyId: string, field: string): string[] {
+function elementsOf(state: BuildState, fid: string, partId: string, field: string): string[] {
   const elements = (state.checkpoints[fid].repo_snapshot as Record<string, unknown>)
     .elements as Record<string, Record<string, unknown>>
   return Object.keys(elements).filter(
-    (eid) => elements[eid]?.body_id === bodyId && elements[eid]?.[field] !== undefined,
+    (eid) => elements[eid]?.body_id === partId && elements[eid]?.[field] !== undefined,
   )
 }
 
 describe('a body the solve loop could not identify', () => {
 
   // `extractBrepMetadata` fails per body and silently: it logs and omits that body from
-  // its output. `tessellateBodies` is a different producer and may still succeed, which
+  // its output. `tessellateParts` is a different producer and may still succeed, which
   // is what makes the checkpoint pass a RECOVERY path rather than a duplicate of the
   // loop. Recording such a body as registered would skip the only pass that can save it.
   it('is still registered by the checkpoint pass, off the render mesh', () => {
@@ -478,7 +478,7 @@ describe('a throwing registrar in the checkpoint-recovery pass', () => {
   })
 
   it('a throwing metadata extractor costs only the needing body its ancestry', () => {
-    // The last checkpoint recovers off the render mesh (tessellateBodies, which does
+    // The last checkpoint recovers off the render mesh (tessellateParts, which does
     // not throw); the earlier checkpoint that must re-extract loses the ancestry.
     const h = new Harness({ metaThrows: ['body_f1'] })
     const r = h.run({ features: [{ id: 'f1', kind: 'make' }, { id: 'f2', kind: 'make' }] })

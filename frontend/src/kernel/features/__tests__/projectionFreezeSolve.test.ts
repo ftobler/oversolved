@@ -9,7 +9,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { solveSketch, setSketchSolver, resetSketchSolver } from '../sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import type { Repository } from '../../query'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 type Dict = Record<string, unknown>
 
@@ -55,7 +55,7 @@ describe('a frozen projection solves fully constrained for every kind', () => {
         initial: { e1: initial },
         constraints: [{ id: `c_fixed_${c.kind}`, kind: 'fixed', target: '$e1' }],
       }
-      const out = solveSketch(feature, deadRepo(), {} as Record<string, Body>)
+      const out = solveSketch(feature, deadRepo(), {} as Record<string, PartSolid>)
       expect(out.status).toBe('fully_constrained')
       expect(out.dof).toBe(0)
       expect(out.solver_warning).toBeUndefined()
@@ -83,7 +83,7 @@ describe('a frozen projection solves fully constrained for every kind', () => {
       initial: {},
       constraints: [{ id: 'proj_e1', kind: 'projection', target: '$e1', source: '?edge;line' }],
     }
-    const first = solveSketch(held, repo, {} as Record<string, Body>)
+    const first = solveSketch(held, repo, {} as Record<string, PartSolid>)
     const baked = [...(first.geometry?.e1 ?? [])]
     expect(baked).toHaveLength(4)
 
@@ -95,7 +95,7 @@ describe('a frozen projection solves fully constrained for every kind', () => {
         { id: 'c_fixed_e1', kind: 'fixed', target: '$e1' },
       ],
     }
-    const second = solveSketch(frozen, deadRepo(), {} as Record<string, Body>)
+    const second = solveSketch(frozen, deadRepo(), {} as Record<string, PartSolid>)
     expect(second.status).toBe('fully_constrained')
     expect(second.dof).toBe(0)
     expect(second.solver_warning).toBeUndefined()

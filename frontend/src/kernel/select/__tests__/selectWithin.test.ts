@@ -7,7 +7,7 @@
 import { describe, it, expect } from 'vitest'
 import { selectByPredicate, validateSelector, SelectorError } from '@/kernel/select'
 import type { Selector } from '@/kernel/select'
-import type { BodyResult, EdgeData, FaceData } from '@/types/cad'
+import type { PartResult, EdgeData, FaceData } from '@/types/cad'
 
 type V3 = [number, number, number]
 
@@ -15,14 +15,14 @@ function line(a: V3, b: V3): EdgeData {
   return { kind: 'line', start: a, end: b }
 }
 
-function bodyResult(
+function partResult(
   id: string,
   edges: EdgeData[],
   edgeQueries: string[],
   faces: FaceData[] = [],
   faceQueries: string[] = [],
-  mesh?: Pick<NonNullable<BodyResult['mesh']>, 'vertices' | 'faces' | 'triangle_to_face'>,
-): BodyResult {
+  mesh?: Pick<NonNullable<PartResult['mesh']>, 'vertices' | 'faces' | 'triangle_to_face'>,
+): PartResult {
   return {
     id,
     created_by: 'ex1',
@@ -35,7 +35,7 @@ function bodyResult(
 
 // A stepped block: a 10 x 10 base ring at z=0, a 6 x 6 step ring at z=10 and a
 // 2 x 2 top ring at z=20, plus one vertical edge through all three levels.
-function steppedBlock(): Record<string, BodyResult> {
+function steppedBlock(): Record<string, PartResult> {
   const edges: EdgeData[] = [
     // bottom ring
     line([0, 0, 0], [10, 0, 0]), line([10, 0, 0], [10, 10, 0]),
@@ -50,13 +50,13 @@ function steppedBlock(): Record<string, BodyResult> {
     line([0, 0, 0], [0, 0, 20]),
   ]
   const queries = edges.map((_, i) => `q_e${i}`)
-  return { body_block: bodyResult('body_block', edges, queries) }
+  return { body_block: partResult('body_block', edges, queries) }
 }
 
 const ALL_EDGE_QUERIES = Array.from({ length: 13 }, (_, i) => `q_e${i}`)
 
-function queriesOf(selector: Selector, bodies: Record<string, BodyResult>): string[] {
-  return selectByPredicate(selector, bodies).queries
+function queriesOf(selector: Selector, parts: Record<string, PartResult>): string[] {
+  return selectByPredicate(selector, parts).queries
 }
 
 describe('selectByPredicate: within', () => {
@@ -95,14 +95,14 @@ describe('selectByPredicate: within', () => {
       { centroid: [0.5, 0.5, 0], normal: [0, 0, 1], surface_type: 'flatface' },
       { centroid: [5.5, 0.5, 0], normal: [0, 0, 1], surface_type: 'flatface' },
     ]
-    const bodies = {
-      body_b: bodyResult('body_b', [], [], faces, ['f0', 'f1'], {
+    const parts = {
+      body_b: partResult('body_b', [], [], faces, ['f0', 'f1'], {
         vertices: [[0, 0, 0], [1, 0, 0], [0, 1, 0], [5, 0, 0], [6, 0, 0], [5, 1, 0]],
         faces: [[0, 1, 2], [3, 4, 5]],
         triangle_to_face: [0, 1],
       }),
     }
-    expect(queriesOf({ kind: 'face', where: { within: { axis: 'x', min: 0, max: 2 } } }, bodies))
+    expect(queriesOf({ kind: 'face', where: { within: { axis: 'x', min: 0, max: 2 } } }, parts))
       .toEqual(['f0'])
   })
 })

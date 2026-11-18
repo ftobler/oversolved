@@ -1,0 +1,573 @@
+// The central add/cut/new body-store dispatch every leaf brep producer (extrude, revolve,
+// hole,...) calls after building its tool shape. Mirrors the Python branch structure exactly.
+//
+// Ownership contract (the TS-specific part Python gets from GC): - `toolShape` is a raw
+// OccShape the CALLER owns (built in the caller's scope). This function never registers the
+// tool itself; for "new"/separate bodies it registers the extracted SOLIDS (detached from
+// `scope`) and the caller disposes the tool afterwards. - Shapes that become a body's `.shape`
+// are registered in the HandleTable (refcount 1, owner = the body's creating feature) and
+// detached from `scope` so the scope's dispose() does not double-free them. When an existing
+// body's shape is replaced (cut/add), its old handle is released. - `body.brep_diff`'s
+// sub-shape handles are tracked in `scope`; they are read by the lineage transfer here, then
+// remain valid only while `scope` is open. The builder keeps `scope` open across post-boolean
+// ancestry registration (the same lifetime the diff already had in 2d's design).
+
+import type { DisposeScope } from '../occ/disposeScope'
+import type { OccModule, OccShape } from '../occ/occTypes'
+import type { PartSolid } from '../types3d'
+import type { HandleTable } from '../occ/handleTable'
+import { resolveMergeTargets } from './shared/partResolution'
+import { brepDiffIsEmpty } from './shared/brepDiff'
+import { booleanWithDiff, countSolids, shapesIntersect, volumeOf } from '../occ/booleans'
+import { DEFAULT_MEASURE_TOLERANCE, valueWithinTolerance } from '../occ/measureTolerance'
+import { nearCoaxialCylinderWarning, shapeHasCoaxialCylinder } from '../occ/nearCoaxial'
+import type { HelixAxis } from './shared/helixPath'
+import { transferBooleanNames } from './booleanLineage'
+import { registerSplitParts, resplitPart, solidHoldingFaces } from './partSplit'
+import { readPartNames } from '../occ/partNames'
+import type { SubShapeMap } from '../occ/subshapeIdentity'
+import { maxPrecision, precisionCeilingWarning, type KernelPrecision } from '../precision'
+import { swallowUnlessTrap } from '../errors'
+
+export type PartOperation = 'add' | 'cut' | 'new'
+
+export interface ApplyPartOperationInput {
+  toolShape: OccShape
+  partStore: Record<string, PartSolid>
+  operation: PartOperation
+  mergeTarget: string | null
+  partId: string
+  featureId: string
+  sketchId: string
+  opName?: string
+  profileQueries?: string[]
+  // The tool body's construction-name maps (query-naming-by-construction).
+  faceNames?: SubShapeMap<string> | null
+  edgeNames?: SubShapeMap<string> | null
+  faceAncestry?: Record<string, string[]> | null
+  edgeAncestry?: Record<string, string[]> | null
+  capAncestry?: Record<string, string[]> | null
+  // Per-uuid creators the tool body already has (a pattern copy's UUIDs belong
+  // to the pattern). Carried through the transfer so a body's owner maps keep
+  // every earlier application's attribution.
+  faceOwner?: Record<string, string> | null
+  edgeOwner?: Record<string, string> | null
+  // A cut that misses every target probes this before it fails: the same tool
+  // built the opposite way. When it would remove material the error names the
+  // one-field fix (`message`) instead of only "nothing to remove". A face
+  // sketch's normal points out of the body, so this is the common miss.
+  oppositeProbe?: { tool: () => OccShape | null; message: string }
+  // An add is material added to an existing body, so a leaf that sets this
+  // refuses to mint a body when its tool reaches none. Without it an add is the
+  // general "make material" operation (revolve, sweep) and mints its own
+  // body, which extrude no longer wants: an extrude that joins nothing is a
+  // silently misplaced profile, not a new part.
+  addRequiresExisting?: boolean
+  /** The tool geometry's realised precision (kernel/precision.ts): what the
+   *  leaf's sketch solve reported. A merge widens the clean by the max of this
+   *  and the target body's record; a new body carries it. */
+  precision?: KernelPrecision | null
+  /** Set by the sweep leaf when the tool follows a helix. The merge into a
+   *  coaxial cylinder skips the clean's face merge, which spins forever on that
+   *  geometry (see booleanWithDiffMany). */
+  helixAxis?: HelixAxis | null
+}
+
+export interface ApplyPartOperationResult {
+  status: string
+  body_id: string
+  operation?: string
+  body_ids?: string[]
+  solver_warning?: string
+}
+
+/**
+ * Refuse a shape whose shell orientation makes it integrate to a negative
+ * volume. A body's material is signed by its outer shell, so a reversed shell
+ * reads as negative material everywhere downstream even though BRepCheck can
+ * call the topology valid. The nested-loop extrude once registered such a body
+ * (V_outer - 2 * V_inner = -9927) and later features silently changed nothing;
+ * this turns any repeat of that class into a red feature naming the shape.
+ */
+function assertPositiveVolume(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+  what: string,
+  opName: string,
+): void {
+  const volume = volumeOf(oc, scope, shape)
+  if (volume < -NEGATIVE_VOLUME_EPS) {
+    throw new Error(
+      `${opName}: ${what} has a negative volume (${volume.toFixed(6)}); a shell is inside out`,
+    )
+  }
+}
+
+// Rounding on a sliver can make a near-zero volume read a hair negative; only a
+// sign that survives that noise is a reversed shell.
+const NEGATIVE_VOLUME_EPS = 1e-9
+
+/** Count the faces of a shape via a TopExp walk (every occurrence). */
+function countFaces(oc: OccModule, scope: DisposeScope, shape: OccShape): number {
+  const E = oc.TopAbs_ShapeEnum
+  const exp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
+  let n = 0
+  for (; exp.More(); exp.Next()) n++
+  return n
+}
+
+/** Count the edges of a shape via a TopExp walk (every occurrence). */
+function countEdges(oc: OccModule, scope: DisposeScope, shape: OccShape): number {
+  const E = oc.TopAbs_ShapeEnum
+  const exp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_EDGE, E.TopAbs_SHAPE))
+  let n = 0
+  for (; exp.More(); exp.Next()) n++
+  return n
+}
+
+/** True when two shapes agree on volume (within the measure tolerance) and on
+ *  face and edge counts. A flush add can split a face with zero volume change
+ *  and still counts as "changed" once the face count moves, so all three have
+ *  to agree before the operation is called a no-op. */
+function shapeUnchanged(
+  oc: OccModule,
+  scope: DisposeScope,
+  before: { volume: number; faces: number; edges: number },
+  afterShape: OccShape,
+): boolean {
+  const afterVolume = volumeOf(oc, scope, afterShape)
+  if (!valueWithinTolerance(afterVolume, before.volume, DEFAULT_MEASURE_TOLERANCE)) return false
+  if (countFaces(oc, scope, afterShape) !== before.faces) return false
+  if (countEdges(oc, scope, afterShape) !== before.edges) return false
+  return true
+}
+
+/**
+ * The error an `add` that must extend existing material raises. The two texts
+ * separate the two causes a user can see: no body at all in the document, and a
+ * profile placed beside the part. Both name the one-field fix, because the
+ * geometry the caller would otherwise get -- a new body nobody asked for -- is
+ * exactly what the warning used to paper over.
+ */
+function addWithNothingMessage(opName: string, hadParts: boolean): string {
+  return hadParts
+    ? `${opName}: add does not merge with any existing part (the profile shares no volume with one); ` +
+        'move it onto the part, or use operation: new to create a part'
+    : `${opName}: add has no existing part to extend; use operation: new to create one`
+}
+
+/**
+ * Whether a cut that consumed whole bodies owes the user a word.
+ *
+ * A body vanishing under a cut is only news when the user aimed at it, or when
+ * nothing is left for a later feature to work on. An automatic cut reaches
+ * every body, so a lump in its path is removed by design: the practice run
+ * `01_openscad__openscad-official-examples__examples__Old__example008.scad`
+ * leaves a disconnected 10 mm lump from a three-way intersect, the automatic
+ * 20 mm core cut swallows it, and the model was correct while the document
+ * could never read clean. Keeping the warning for every consumption turned a
+ * routine boolean into a permanent red row.
+ *
+ * `mergeTarget` is the authored field, not the resolved ids: an explicit target
+ * makes the cut's target list exactly the bodies that ref names, so any
+ * consumption under it is a body the user picked. Other CAD does not warn about
+ * this at all (user decision 2026-11-12); these two cases are the ones where
+ * the deletion is a surprise rather than the asked-for result.
+ */
+function cutConsumptionIsWorthReporting(
+  mergeTarget: string | null,
+  partStore: Record<string, PartSolid>,
+): boolean {
+  if (mergeTarget) return true
+  // A body with no shape is a placeholder, not material: it cannot be what a
+  // user or a later feature builds on, so only a shaped survivor counts as
+  // "the part is not empty".
+  return !Object.values(partStore).some((part) => part.shape !== null)
+}
+
+/**
+ * Apply a boolean body operation (add / cut / new) using `toolShape`.
+ * Mirrors `_apply_body_operation`; raises (throws) for user-facing errors which
+ * the caller catches and records as status. Guaranteed result keys: status,
+ * body_id, operation.
+ */
+export function applyPartOperation(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  input: ApplyPartOperationInput,
+): ApplyPartOperationResult {
+  const {
+    toolShape,
+    partStore: bodyStore,
+    operation,
+    mergeTarget,
+    partId: bodyId,
+    featureId,
+    sketchId,
+    opName = '',
+    profileQueries = [],
+    faceNames = null,
+    edgeNames = null,
+    faceAncestry = null,
+    edgeAncestry = null,
+    capAncestry = null,
+    faceOwner = null,
+    edgeOwner = null,
+    oppositeProbe,
+    addRequiresExisting = false,
+    precision: toolPrecision = null,
+    helixAxis = null,
+  } = input
+
+  // The tool body's construction-name maps, carried onto a body the tool becomes
+  // (the "new"/no-target paths) and narrowed per sibling when it splits. Boolean
+  // paths (add/cut) rebuild them in Stage 2.
+  const toolNames = { faceNames, edgeNames, faceAncestry, edgeAncestry, capAncestry, faceOwner, edgeOwner }
+
+  const result: ApplyPartOperationResult = { status: 'ok', body_id: bodyId }
+  // One message per missing sketch precision, however many targets a cut
+  // reaches: the same body record usually drives them all.
+  const ceilingWarnings = new Set<string>()
+  const noteCeiling = (p: KernelPrecision | null): void => {
+    if (p === null) return
+    const warning = precisionCeilingWarning(p)
+    if (warning !== null) ceilingWarnings.add(warning)
+  }
+  const appendCeilingWarnings = (): void => {
+    if (ceilingWarnings.size === 0) return
+    const joined = [...ceilingWarnings].join('; ')
+    result.solver_warning = result.solver_warning === undefined
+      ? joined
+      : `${result.solver_warning}; ${joined}`
+  }
+
+  // The tool is checked lazily: the OCC-free early branches (a cut with no
+  // target, an unresolvable merge target) never touch either handle, and the
+  // their unit tests pin that. The first branch that is about to turn the tool
+  // into material or feed it to a boolean causes the check.
+  let toolVolumeChecked = false
+  const requireToolVolume = (): void => {
+    if (toolVolumeChecked) return
+    toolVolumeChecked = true
+    assertPositiveVolume(oc, scope, toolShape, 'the tool solid', opName)
+  }
+
+  // A helical tool meeting the wall of the cylinder it winds around is the one
+  // geometry the clean's face merge cannot finish (kernel/occ/nearCoaxial.ts).
+  // Only the face merge is skipped: the edge merge, the volume guard and the
+  // whole-shape validity check still run on the result.
+  const skipFaceMerge = (target: OccShape): boolean =>
+    helixAxis !== null && shapeHasCoaxialCylinder(oc, scope, target, helixAxis)
+
+  let needNewPart = false
+  let targetIds: string[] = []
+  if (operation === 'add' || operation === 'cut') {
+    targetIds = resolveMergeTargets(mergeTarget, bodyStore, opName)
+    if (!targetIds.length && !mergeTarget && operation === 'add') {
+      if (addRequiresExisting) throw new Error(addWithNothingMessage(opName, false))
+      needNewPart = true
+    } else {
+      if (!targetIds.length && !mergeTarget && operation === 'cut') {
+        // No bodies exist and no target specified: silently succeed. `body_id`
+        // keeps the id this feature WOULD have minted (parity with Python), so
+        // `body_ids` has to be explicitly empty -- a consumer reading
+        // `body_ids ?? [body_id]` would otherwise chase a body that was never
+        // created.
+        result.operation = 'cut'
+        result.body_ids = []
+        return result
+      }
+    }
+  }
+
+  if (operation === 'cut') {
+    let cutAnything = false
+    let cutPartId: string | null = null
+    const cutPartIds: string[] = []
+    const consumedPartIds: string[] = []
+    // Whether any target body actually changed shape (volume or topology). A
+    // cut that reached a body but removed nothing leaves this false, so the
+    // operation is reported as a no-op instead of a silent green.
+    let anyPartChanged = false
+    for (const bid of targetIds) {
+      const existingPart = bodyStore[bid]
+      if (existingPart.shape === null) continue
+      const oldShape = table.get<OccShape>(existingPart.shape)
+      // Skip targets the tool does not actually intersect. A bare Common probe
+      // with history off; the verdict is a solid count, not a volume, so an
+      // open-shelled imported body is not read as disjoint (L5). A failed probe
+      // returns true, so nothing here can skip on a throw.
+      if (!shapesIntersect(oc, oldShape, toolShape)) continue
+
+      // Snapshot the target before the boolean so a no-op cut (tool inside a
+      // void, or flush with the surface) can be detected on the result rather
+      // than by probing the tool.
+      const oldMetrics = oc === null
+        ? null
+        : {
+            volume: volumeOf(oc, scope, oldShape),
+            faces: countFaces(oc, scope, oldShape),
+            edges: countEdges(oc, scope, oldShape),
+          }
+
+      // Widen the merge by what the solver reported for this body and this
+      // tool, up to the ceiling; a clamped merge is named on the result.
+      const mergePrecision = maxPrecision(existingPart.precision, toolPrecision)
+      const unifyOpts = {
+        unifyFaces: !existingPart.imported && !skipFaceMerge(oldShape),
+        precision: mergePrecision,
+      }
+      requireToolVolume()
+      const { shape: newShape, diff, faceOrigin } = booleanWithDiff(oc, scope, oldShape, toolShape, 'cut', unifyOpts)
+      scope.track(newShape)
+      assertPositiveVolume(oc, scope, newShape, 'the cut result', opName)
+
+      // If the cut consumed the entire body, remove it rather than registering
+      // an empty compound.  Mirrors the auto-deletion in `solveDeleteBody`
+      // (`deletePart.ts`).
+      if (countSolids(oc, scope, newShape) === 0) {
+        // The owner tag is settled with the body, so a later `releaseOwner`
+        // cannot over-decrement (see releaseFor).
+        if (existingPart.shape !== null) {
+          table.releaseFor(existingPart.shape, existingPart.modified_by.at(-1) ?? existingPart.created_by)
+        }
+        delete bodyStore[bid]
+        cutAnything = true
+        consumedPartIds.push(bid)
+        anyPartChanged = true
+        continue
+      }
+
+      const partChanged = oldMetrics === null
+        ? true
+        : !shapeUnchanged(oc, scope, oldMetrics, newShape)
+      if (partChanged) anyPartChanged = true
+
+      const targetNames = readPartNames(oc, scope, oldShape, existingPart)
+      const names = transferBooleanNames(oc, scope, {
+        partShape: newShape,
+        faceOrigin,
+        targetFaceNames: targetNames.faceNames,
+        targetFaceAncestry: existingPart.face_ancestry ?? {},
+        targetCapAncestry: existingPart.face_cap_ancestry ?? {},
+        targetFaceOwner: targetNames.faceOwner,
+        targetEdgeOwner: targetNames.edgeOwner,
+        toolFaceNames: faceNames,
+        toolFaceAncestry: faceAncestry,
+        toolCapAncestry: capAncestry,
+        toolFaceOwner: faceOwner,
+        toolEdgeOwner: edgeOwner,
+        toolCreatedBy: featureId,
+        // The tool shape itself is transient, but with no `merge_target` a cut
+        // reaches EVERY body, and each one it hits inherits the same tool face
+        // names. The first body cut keeps them verbatim -- so a single-target
+        // cut, which is nearly all of them, names its walls as it always has --
+        // and every further body scopes its copy to itself.
+        toolUuidScope: cutAnything ? bid : null,
+      })
+      existingPart.modified_by.push(featureId)
+      existingPart.brep_diff = diff
+
+      cutAnything = true
+      if (cutPartId === null) cutPartId = bid
+
+      // A cut is the classic disconnector, and the sibling bodies inherit the
+      // names just transferred onto `newShape`, narrowed to the faces each one
+      // actually owns.
+      cutPartIds.push(...resplitPart(
+        oc, scope, table, bodyStore, existingPart, newShape, featureId, names, null, mergePrecision,
+      ))
+      noteCeiling(mergePrecision)
+    }
+    if (!cutAnything) {
+      const flipped = oppositeProbe?.tool() ?? null
+      if (flipped !== null) {
+        const reaches = targetIds.some((bid) => {
+          const handle = bodyStore[bid]?.shape
+          return handle != null && shapesIntersect(oc, table.get<OccShape>(handle), flipped)
+        })
+        scope.release(flipped)
+        if (reaches) throw new Error(`${opName}: ${oppositeProbe!.message}`)
+      }
+      throw new Error(`${opName}: cut does not intersect any target part - nothing to remove`)
+    }
+    // A merge-target cut that consumes the target never mints `bodyId`, so
+    // body_id keeps that would-be id; hole and array instead keep the consumed
+    // body's real id. body_ids is empty either way.
+    result.body_id = cutPartId ?? bodyId
+    result.body_ids = cutPartIds
+    result.operation = 'cut'
+    // `cutBodyId` is only ever set for a body that still holds a solid (the
+    // consumed branch continues before it), so this reads the body the feature
+    // actually changed and never a deleted one. A cut whose only effect was a
+    // consumption therefore leaves this undefined and the check silent.
+    const cutPart = cutPartId !== null ? bodyStore[cutPartId] : undefined
+    if (cutPart && brepDiffIsEmpty(cutPart.brep_diff)) {
+      result.solver_warning = `${opName}: operation produced no geometry change`
+    }
+    if (cutAnything && !anyPartChanged && !String(result.solver_warning ?? '').includes('no geometry change')) {
+      const noChange = `${opName}: operation produced no geometry change`
+      result.solver_warning = result.solver_warning === undefined
+        ? noChange
+        : `${result.solver_warning}; ${noChange}`
+    }
+    if (consumedPartIds.length > 0 && cutConsumptionIsWorthReporting(mergeTarget, bodyStore)) {
+      // The bodies are gone, so body_ids must not name them. This is the same
+      // deletion event hole and array report, with the same wording.
+      const deleted = consumedPartIds
+        .map((id) => `${opName}: the cut removed all of part '${id}'; the part was deleted`)
+        .join('; ')
+      result.solver_warning = result.solver_warning === undefined
+        ? deleted
+        : `${result.solver_warning}; ${deleted}`
+    }
+    appendCeilingWarnings()
+    return result
+  }
+
+  if (operation === 'new') {
+    requireToolVolume()
+    const partIds = registerSplitParts(oc, scope, table, bodyStore, toolShape, {
+      id: bodyId, createdBy: featureId, sketchId, profileQueries, precision: toolPrecision, ...toolNames,
+    })
+    result.body_id = partIds[0]
+    result.body_ids = partIds
+    result.operation = 'new'
+    return result
+  }
+
+  // operation === 'add'
+  let fused = false
+  let fusedPartId: string | null = null
+  let fusedIds: string[] = []
+  // Read on the fused shell, where the two faces the boolean kept still exist.
+  let nearCoaxial: string | null = null
+  // Whether the fused body's shape actually changed (volume or topology). A
+  // contained add leaves it unchanged, so the operation is a no-op.
+  let fusedPartChanged = false
+  if (!needNewPart) {
+    for (const bid of targetIds) {
+      const existingPart = bodyStore[bid]
+      if (existingPart.shape === null) continue
+      const oldShape = table.get<OccShape>(existingPart.shape)
+      let newShape: OccShape
+      let diff
+      let faceOrigin
+      // The merge widens by what the solver reported for this body and this
+      // tool, up to the ceiling; a clamped merge is named on the result.
+      const mergePrecision = maxPrecision(existingPart.precision, toolPrecision)
+      try {
+        requireToolVolume()
+        // Imported bodies skip the face merge (hang guard); see booleanWithDiff.
+        const res = booleanWithDiff(oc, scope, oldShape, toolShape, 'fuse', {
+          unifyFaces: !existingPart.imported && !skipFaceMerge(oldShape), precision: mergePrecision,
+        })
+        newShape = res.shape
+        diff = res.diff
+        faceOrigin = res.faceOrigin
+      } catch (exc) {
+        swallowUnlessTrap(exc)
+        throw new Error(`${opName}: add operation failed: ${String(exc)}`)
+      }
+      scope.track(newShape)
+      assertPositiveVolume(oc, scope, newShape, 'the fused result', opName)
+      // An explicit target asks for a fuse, but a copy that does not touch it is
+      // a separate part, a regular outcome. Let resplitBody mint the island as
+      // its own body and keep the target id on the target material, identified
+      // by the faces the boolean carried over from the target.
+      let preferredFirst: OccShape | null = null
+      if (mergeTarget) {
+        const targetFaces = faceOrigin
+          .filter((origin) => !origin.fromTool)
+          .map((origin) => origin.output as OccShape)
+        preferredFirst = solidHoldingFaces(oc, scope, newShape, targetFaces)
+      } else {
+        // Default add (no explicit target): only fuse with a body the new solid
+        // actually connects to. If the union stays disjoint (solid count does
+        // not drop), the profile is a separate part; skip and let it be its own.
+        const oldN = countSolids(oc, scope, oldShape)
+        const toolN = countSolids(oc, scope, toolShape)
+        if (countSolids(oc, scope, newShape) >= oldN + toolN) continue
+      }
+      // Only a shape that will actually replace the body is worth warning
+      // about; a disjoint default-add attempt is discarded above.
+      // Snapshot the target now (after the disjoint skip) so a skipped body
+      // does not pay for the face/edge walks.
+      const oldMetrics = oc === null
+        ? null
+        : {
+            volume: volumeOf(oc, scope, oldShape),
+            faces: countFaces(oc, scope, oldShape),
+            edges: countEdges(oc, scope, oldShape),
+          }
+      fusedPartChanged = oldMetrics === null
+        ? true
+        : !shapeUnchanged(oc, scope, oldMetrics, newShape)
+      nearCoaxial = nearCoaxialCylinderWarning(oc, scope, newShape)
+      const targetNames = readPartNames(oc, scope, oldShape, existingPart)
+      const names = transferBooleanNames(oc, scope, {
+        partShape: newShape,
+        faceOrigin,
+        targetFaceNames: targetNames.faceNames,
+        targetFaceAncestry: existingPart.face_ancestry ?? {},
+        targetCapAncestry: existingPart.face_cap_ancestry ?? {},
+        targetFaceOwner: targetNames.faceOwner,
+        targetEdgeOwner: targetNames.edgeOwner,
+        toolFaceNames: faceNames,
+        toolFaceAncestry: faceAncestry,
+        toolCapAncestry: capAncestry,
+        toolFaceOwner: faceOwner,
+        toolEdgeOwner: edgeOwner,
+        toolCreatedBy: featureId,
+        // A fuse lands on exactly one target (the loop breaks below), and the
+        // tool shape is transient, so nothing else claims these names.
+        toolUuidScope: null,
+      })
+      // A default add reaches here only when the fuse connected, while an
+      // explicit merge target may leave an island. resplitBody hands the target
+      // material the existing id through preferredFirst and mints the island as
+      // a sibling.
+      fusedIds = resplitPart(
+        oc, scope, table, bodyStore, existingPart, newShape, featureId, names, preferredFirst, mergePrecision,
+      )
+      existingPart.modified_by.push(featureId)
+      existingPart.brep_diff = diff
+      fused = true
+      fusedPartId = bid
+      noteCeiling(mergePrecision)
+      break
+    }
+  }
+
+  if (fused) {
+    result.body_id = fusedPartId as string
+    result.body_ids = fusedIds
+    result.operation = 'add'
+    const fusedPart = fusedPartId !== null ? bodyStore[fusedPartId] : undefined
+    if (fusedPart && (!fusedPartChanged || brepDiffIsEmpty(fusedPart.brep_diff))) {
+      result.solver_warning = `${opName}: operation produced no geometry change`
+    }
+    if (nearCoaxial !== null) {
+      result.solver_warning = result.solver_warning === undefined
+        ? nearCoaxial
+        : `${result.solver_warning}; ${nearCoaxial}`
+    }
+    appendCeilingWarnings()
+    return result
+  }
+  if (mergeTarget) {
+    throw new Error(`${opName}: add could not fuse with any target part`)
+  }
+  if (addRequiresExisting) throw new Error(addWithNothingMessage(opName, true))
+  // No target body: the tool becomes its own body (one per solid).
+  requireToolVolume()
+  const partIds = registerSplitParts(oc, scope, table, bodyStore, toolShape, {
+    id: bodyId, createdBy: featureId, sketchId, profileQueries, precision: toolPrecision, ...toolNames,
+  })
+  result.body_id = partIds[0]
+  result.body_ids = partIds
+  result.operation = 'add'
+  return result
+}

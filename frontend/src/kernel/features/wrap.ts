@@ -3,7 +3,7 @@
 // normal, keeping lengths at the reference parallel (features/wrapMath.ts). It
 // is the revolve leaf's shape: resolve the profile loops, resolve the target
 // face, build the tool with lineage (occ/wrapSolid.ts through
-// sweepLoopsWithLineage) and hand it to applyBodyOperation.
+// sweepLoopsWithLineage) and hand it to applyPartOperation.
 //
 // The datum is the target's own axis or centre, read in closed form off the
 // face; there is no origin, direction or seed pick, so nothing here infers or
@@ -15,13 +15,13 @@ import type { DisposeScope } from '../occ/disposeScope'
 import { extractErrorMessage, swallowUnlessTrap } from '../errors'
 import type { OccModule, OccShape, OccXYZ } from '../occ/occTypes'
 import type { HandleTable, OccHandle } from '../occ/handleTable'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 import { AmbiguousQueryError, type Repository } from '../query'
 import { collectExtrudeLoops, resolveFaceSlashFace } from './faceProfile'
 import { samePlane, type PlaneLike } from './shared/planes'
-import { surfaceEntityIds } from './shared/bodyRef'
+import { surfaceEntityIds } from './shared/partRef'
 import { openJointHint, profileAreaReport } from './shared/profileLoops'
-import { applyBodyOperation, type BodyOperation } from './bodyOps'
+import { applyPartOperation, type PartOperation } from './partOps'
 import { maxPrecision, sketchPrecision, type KernelPrecision } from '../precision'
 import { sweepLoopsWithLineage } from '../occ/prismLineage'
 import { extractOccFace } from '../occ/faceLoops'
@@ -53,7 +53,7 @@ interface WrapResult {
 }
 
 /** The operations a wrap may perform; an extrude's set. */
-const OPERATIONS: readonly BodyOperation[] = ['add', 'cut', 'new']
+const OPERATIONS: readonly PartOperation[] = ['add', 'cut', 'new']
 
 /** Boundary samples per arc or curve when testing a footprint's extent. */
 const FOOTPRINT_ARC_SAMPLES = 16
@@ -95,11 +95,11 @@ function resolveTargetFace(
   table: HandleTable,
   ref: string,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): OccShape | null {
   let entry: Dict | null
   try {
-    entry = globalRepo.query(ref, null, bodyStore) as Dict | null
+    entry = globalRepo.query(ref, null, partStore) as Dict | null
   } catch (e) {
     swallowUnlessTrap(e)
     if (e instanceof AmbiguousQueryError) throw e
@@ -107,16 +107,16 @@ function resolveTargetFace(
   }
   if (entry === null) {
     if (!SLASH_FACE_REF.test(ref)) return null
-    return resolveFaceSlashFace(oc, scope, table, ref, globalRepo, bodyStore).face
+    return resolveFaceSlashFace(oc, scope, table, ref, globalRepo, partStore).face
   }
-  const bodyId = entry.body_id as string | undefined
+  const partId = entry.body_id as string | undefined
   const faceIndex = entry.face_index as number | undefined
-  if (bodyId === undefined || faceIndex === undefined) {
+  if (partId === undefined || faceIndex === undefined) {
     throw new Error(`wrap: the target '${ref}' is not a part face; pick a cylinder, cone, sphere or torus face`)
   }
-  const body = bodyStore[bodyId]
-  if (body === undefined || body.shape === null) return null
-  return extractOccFace(oc, scope, table.get<OccShape>(body.shape as OccHandle), faceIndex)
+  const part = partStore[partId]
+  if (part === undefined || part.shape === null) return null
+  return extractOccFace(oc, scope, table.get<OccShape>(part.shape as OccHandle), faceIndex)
 }
 
 /**
@@ -238,11 +238,11 @@ function mapOnFace(
 /** A pattern or mirror rebuilding an earlier wrap's tool. The tool is
  *  registered as `new` into a scratch store, but on a wrap the operation also
  *  signs the height (a cut goes into the material), so the source's own
- *  operation rides along. `bodies` is the real part store, read only when the
+ *  operation rides along. `parts` is the real part store, read only when the
  *  wrap left no record of its target (see `WrapTargetRecord`). */
 export interface WrapRebuild {
-  operation: BodyOperation
-  bodies: Record<string, Body>
+  operation: PartOperation
+  parts: Record<string, PartSolid>
 }
 
 /** What a caller other than the feature log hands a wrap. The registry's
@@ -277,13 +277,13 @@ export function solveWrap(
   table: HandleTable,
   feature: Dict,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
   // The registry's featuresById slot; a wrap reads no other feature.
   _featuresById?: unknown,
   solveContext?: WrapSolveContext,
 ): WrapResult {
   const rebuild = solveContext?.rebuild
-  const targetBodies = rebuild?.bodies ?? bodyStore
+  const targetParts = rebuild?.parts ?? partStore
   const featureId = (feature.id as string) ?? ''
   const sub = (feature.wrap as Dict) ?? {}
   const mergeTarget = (sub.merge_target as string) ?? null
@@ -295,7 +295,7 @@ export function solveWrap(
       : []
   const height = Number(sub.height)
   if (!Number.isFinite(height) || height <= 0) throw new Error('wrap: height must be a positive length')
-  const operation = ((sub.operation as string) ?? 'add') as BodyOperation
+  const operation = ((sub.operation as string) ?? 'add') as PartOperation
   if (!OPERATIONS.includes(operation)) throw new Error(`wrap: unknown operation ${JSON.stringify(operation)}`)
   if (sketchRefs.length === 0) throw new Error('wrap: requires a profile; pick a sketch or a sketch area')
 
@@ -312,7 +312,7 @@ export function solveWrap(
   for (const sketchRef of sketchRefs) {
     let resolved
     try {
-      resolved = collectExtrudeLoops(oc, scope, table, sketchRef, globalRepo, bodyStore)
+      resolved = collectExtrudeLoops(oc, scope, table, sketchRef, globalRepo, partStore)
     } catch (exc) {
       swallowUnlessTrap(exc)
       profileErrors.push(extractErrorMessage(exc))
@@ -347,8 +347,8 @@ export function solveWrap(
   }
   if (profileErrors.length && allLoops.length === 0) throw new Error(profileErrors.join('; '))
 
-  const bodyId = 'body_' + featureId
-  const result: WrapResult = { status: 'ok', body_id: bodyId }
+  const partId = 'body_' + featureId
+  const result: WrapResult = { status: 'ok', body_id: partId }
   if (allLoops.length === 0 || plane === null) {
     result.status = 'error'
     const why = unbuildableReasons.length ? ` (${unbuildableReasons.join('; ')})` : ''
@@ -371,7 +371,7 @@ export function solveWrap(
     warning = 'wrap: has no target face; nothing was built'
   } else {
     try {
-      targetFace = resolveTargetFace(oc, scope, table, targetRef, globalRepo, targetBodies)
+      targetFace = resolveTargetFace(oc, scope, table, targetRef, globalRepo, targetParts)
     } catch (e) {
       if (!(e instanceof AmbiguousQueryError)) throw e
       warning = `wrap: target '${targetRef}' matched several elements (${e.message}); nothing was built`
@@ -381,7 +381,7 @@ export function solveWrap(
     }
   }
   if (recorded === undefined && targetFace === null) {
-    result.body_id = mergeTarget ?? Object.keys(bodyStore).sort()[0] ?? bodyId
+    result.body_id = mergeTarget ?? Object.keys(partStore).sort()[0] ?? partId
     result.body_ids = []
     result.solver_warning = warning
     return result
@@ -416,12 +416,12 @@ export function solveWrap(
   )
   const toolShape = scope.track(lineage.solid)
 
-  const opResult = applyBodyOperation(oc, scope, table, {
+  const opResult = applyPartOperation(oc, scope, table, {
     toolShape,
-    bodyStore,
+    partStore,
     operation,
     mergeTarget,
-    bodyId,
+    partId,
     featureId,
     sketchId,
     opName: 'wrap',

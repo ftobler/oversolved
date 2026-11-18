@@ -2,7 +2,7 @@
 // space triangles the planeFace ID layer rasterizes. The geometry must match
 // the drawn plane exactly or picks would resolve to the wrong surface, so the
 // known-input-to-known-output corner transform is pinned here. The existing
-// helperHookRegisterThrow test covers only the registerBody-throw path.
+// helperHookRegisterThrow test covers only the registerPart-throw path.
 import { describe, it, expect, afterEach, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import type { Mesh } from 'three'
@@ -33,7 +33,7 @@ describe('usePlaneIdRegistration', () => {
       usePlaneIdRegistration({ selectionId: '@builtin_plane_top', size: 2 }),
     )
 
-    expect(p.planeLayer.bodyCount()).toBe(1)
+    expect(p.planeLayer.partCount()).toBe(1)
     // Corners at +/- half, wound (-,-) (+,-) (+,+) then (-,-) (+,+) (-,+).
     expect(planePositions(p)).toEqual([
       -1, -1, 0,  1, -1, 0,  1, 1, 0,
@@ -88,10 +88,10 @@ describe('usePlaneIdRegistration', () => {
       { initialProps: { enabled: false } },
     )
 
-    expect(p.planeLayer.bodyCount()).toBe(0)
+    expect(p.planeLayer.partCount()).toBe(0)
 
     rerender({ enabled: true })
-    expect(p.planeLayer.bodyCount()).toBe(1)
+    expect(p.planeLayer.partCount()).toBe(1)
 
     unmount()
     p.dispose()
@@ -102,10 +102,10 @@ describe('usePlaneIdRegistration', () => {
     const { unmount } = renderHook(() =>
       usePlaneIdRegistration({ selectionId: '@p', size: 2 }),
     )
-    expect(p.planeLayer.bodyCount()).toBe(1)
+    expect(p.planeLayer.partCount()).toBe(1)
 
     unmount()
-    expect(p.planeLayer.bodyCount()).toBe(0)
+    expect(p.planeLayer.partCount()).toBe(0)
 
     p.dispose()
   })

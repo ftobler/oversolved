@@ -1,5 +1,5 @@
 // Registers the assembly scene's face/edge/vertex ID layers. The part editor
-// does this from Body3D, keyed by ancestry query strings; an assembly has none,
+// does this from Part3D, keyed by ancestry query strings; an assembly has none,
 // so the keys are the bundle's positional entity ids (`assemblyEntityKey`) and
 // the payloads are pre-computed in utils/assemblyPick.ts. This component only
 // carries them across the pipeline boundary.
@@ -18,14 +18,14 @@ import { isDevBuild } from '@/kernel/isDevBuild'
 import {
   pickEdgesForRegistration,
   pickVerticesForRegistration,
-  type AssemblyPickBody,
+  type AssemblyPickPart,
 } from '@/utils/assemblyPick'
 
-function unregisterAll(pipeline: IdPipeline, registered: Map<string, AssemblyPickBody>): void {
-  for (const bodyKey of registered.keys()) {
-    pipeline.faceLayer.unregisterBody(bodyKey)
-    pipeline.edgeLayer.unregisterBody(bodyKey)
-    pipeline.vertexLayer.unregisterBody(bodyKey)
+function unregisterAll(pipeline: IdPipeline, registered: Map<string, AssemblyPickPart>): void {
+  for (const partKey of registered.keys()) {
+    pipeline.faceLayer.unregisterPart(partKey)
+    pipeline.edgeLayer.unregisterPart(partKey)
+    pipeline.vertexLayer.unregisterPart(partKey)
   }
   registered.clear()
 }
@@ -35,15 +35,15 @@ function layerKey(showFaces: boolean, showEdges: boolean): string {
   return `${showFaces ? 'f' : ''}${showEdges ? 'e' : ''}`
 }
 
-export default function AssemblyPickLayers({ bodies, showFaces = true, showEdges = true }: {
-  bodies: AssemblyPickBody[]
+export default function AssemblyPickLayers({ parts, showFaces = true, showEdges = true }: {
+  parts: AssemblyPickPart[]
   showFaces?: boolean
   showEdges?: boolean
 }) {
   const pipeline = useIdPipeline()
   // The body objects currently registered, keyed by bodyKey. A body whose
   // object identity is unchanged needs no re-registration.
-  const registeredRef = useRef<Map<string, AssemblyPickBody>>(new Map())
+  const registeredRef = useRef<Map<string, AssemblyPickPart>>(new Map())
   const layersRef = useRef(layerKey(showFaces, showEdges))
 
   // Unmount / pipeline swap frees every id this component registered. Kept
@@ -61,7 +61,7 @@ export default function AssemblyPickLayers({ bodies, showFaces = true, showEdges
   useEffect(() => {
     if (!pipeline) return
     const registered = registeredRef.current
-    const next = new Set(bodies.map(body => body.bodyKey))
+    const next = new Set(parts.map(part => part.partKey))
     let changed = false
 
     // A viewer layer toggle changes which layers exist, not the bodies. The
@@ -77,58 +77,58 @@ export default function AssemblyPickLayers({ bodies, showFaces = true, showEdges
     }
 
     // Drop bodies that left the snapshot.
-    for (const bodyKey of [...registered.keys()]) {
-      if (next.has(bodyKey)) continue
-      pipeline.faceLayer.unregisterBody(bodyKey)
-      pipeline.edgeLayer.unregisterBody(bodyKey)
-      pipeline.vertexLayer.unregisterBody(bodyKey)
-      registered.delete(bodyKey)
+    for (const partKey of [...registered.keys()]) {
+      if (next.has(partKey)) continue
+      pipeline.faceLayer.unregisterPart(partKey)
+      pipeline.edgeLayer.unregisterPart(partKey)
+      pipeline.vertexLayer.unregisterPart(partKey)
+      registered.delete(partKey)
       changed = true
     }
 
     // Register new and moved bodies; unchanged ones keep their GPU resources.
     // Each layer's registerBody pre-clears its own key, so a replaced body is
     // dropped before the new geometry lands.
-    for (const body of bodies) {
-      if (registered.get(body.bodyKey) === body) continue
-      const { bodyKey } = body
+    for (const part of parts) {
+      if (registered.get(part.partKey) === part) continue
+      const { partKey } = part
       try {
-        if (showFaces && body.faces) {
-          pipeline.faceLayer.registerBody({ bodyKey, ...body.faces })
+        if (showFaces && part.faces) {
+          pipeline.faceLayer.registerPart({ partKey: partKey, ...part.faces })
         }
         // The bundle's sparse seam lists apply here only: `body.edges` and
         // `body.vertices` stay whole for the selection overlay, so a seam an
         // authored mate names still highlights from the tree.
-        const edges = pickEdgesForRegistration(body.edges, body.hiddenEdges)
+        const edges = pickEdgesForRegistration(part.edges, part.hiddenEdges)
         if (showEdges && edges) {
-          pipeline.edgeLayer.registerBody({ bodyKey, ...edges })
+          pipeline.edgeLayer.registerPart({ partKey: partKey, ...edges })
         }
-        const vertices = pickVerticesForRegistration(body.vertices, body.hiddenVertices)
+        const vertices = pickVerticesForRegistration(part.vertices, part.hiddenVertices)
         if (vertices) {
-          pipeline.vertexLayer.registerBody({
-            bodyKey,
+          pipeline.vertexLayer.registerPart({
+            partKey: partKey,
             vertices: vertices.vertices,
             vertexQueries: vertices.vertexQueries,
           })
         }
-        registered.set(bodyKey, body)
+        registered.set(partKey, part)
       } catch (err) {
         // One malformed body must not cost the whole assembly its picking. A
         // layer that registered before the throw has to release its ids here:
         // the bookkeeping below drops the body, so the next cleanup -- which
         // walks `registered` -- would never see it again and its face/vertex
         // meshes would live until the pipeline is disposed.
-        pipeline.faceLayer.unregisterBody(bodyKey)
-        pipeline.edgeLayer.unregisterBody(bodyKey)
-        pipeline.vertexLayer.unregisterBody(bodyKey)
-        registered.delete(bodyKey)
-        if (isDevBuild()) console.warn('Assembly ID registration failed for a body', { bodyKey, err })
+        pipeline.faceLayer.unregisterPart(partKey)
+        pipeline.edgeLayer.unregisterPart(partKey)
+        pipeline.vertexLayer.unregisterPart(partKey)
+        registered.delete(partKey)
+        if (isDevBuild()) console.warn('Assembly ID registration failed for a body', { bodyKey: partKey, err })
       }
       changed = true
     }
 
     if (changed) pipeline.markDirty('assembly-pick-geometry')
-  }, [pipeline, bodies, showFaces, showEdges])
+  }, [pipeline, parts, showFaces, showEdges])
 
   return null
 }

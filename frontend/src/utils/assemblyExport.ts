@@ -15,7 +15,7 @@
 // A hidden part is absent from both. The export mirrors the scene the user is
 // looking at, which is the only reading of "hide" that does not surprise.
 
-import type { AssemblyDoc, BodyResult, PartInstance, Transform3D } from '@/types/cad'
+import type { AssemblyDoc, PartResult, PartInstance, Transform3D } from '@/types/cad'
 import type { AssemblyExportPartSpec } from '@/kernel/worker/solverProtocol'
 import type { StlMesh } from '@/kernel/stl'
 import { encodeBinaryStl } from '@/kernel/stl'
@@ -96,21 +96,21 @@ export function collectExportFileIds(parts: AssemblyExportPartSpec[]): string[] 
  * `[x,y,z][]` as a flat buffer would write garbage triangles.
  */
 export function assemblyStlMeshes(
-  bodies: Record<string, BodyResult>,
+  parts: Record<string, PartResult>,
   instances: PartInstance[],
 ): StlMesh[] {
   const handles = new Set(instances.map(i => i.handle))
   const out: StlMesh[] = []
-  for (const body of Object.values(bodies)) {
-    if (!handles.has(body.created_by)) continue
-    const mesh = body.mesh
+  for (const part of Object.values(parts)) {
+    if (!handles.has(part.created_by)) continue
+    const mesh = part.mesh
     if (!mesh) continue
     const { vertices, faces } = mesh
     if (!(vertices instanceof Float32Array) || !(faces instanceof Uint32Array)) {
       // Tuple form means the export would quietly miss bodies shown on screen.
       // Never mis-encode them as a flat buffer; make the gap visible instead of
       // handing the user an STL that is silently short a solid.
-      if (import.meta.env.DEV) console.warn(`assemblyStlMeshes: skipping body "${body.id}" whose mesh is tuple form, not typed arrays`)
+      if (import.meta.env.DEV) console.warn(`assemblyStlMeshes: skipping body "${part.id}" whose mesh is tuple form, not typed arrays`)
       continue
     }
     out.push({ vertices, indices: faces })
@@ -120,10 +120,10 @@ export function assemblyStlMeshes(
 
 /** The mesh fast path: solved bodies straight to binary STL, no OCC, no worker. */
 export function assemblyStlBytes(
-  bodies: Record<string, BodyResult>,
+  parts: Record<string, PartResult>,
   instances: PartInstance[],
 ): Uint8Array | null {
-  const meshes = assemblyStlMeshes(bodies, instances)
+  const meshes = assemblyStlMeshes(parts, instances)
   if (meshes.length === 0) return null
   return encodeBinaryStl(meshes)
 }

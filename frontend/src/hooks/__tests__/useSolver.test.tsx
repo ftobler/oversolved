@@ -18,7 +18,7 @@ import { PART_COLOR_PALETTE } from '@/utils/core/partColors'
 import { useSolverStore } from '@/stores/solverStore'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import type { WorkspaceSession } from '@/workspace/session'
-import type { PartDoc, BodyResult } from '@/types/cad'
+import type { PartDoc, PartResult } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
 import { editorState } from '@/stores/editorState'
 import type { PartFeature } from '@/types/cad'
@@ -33,7 +33,7 @@ function solvableDoc(overrides?: Partial<PartDoc>): PartDoc {
   return makeDoc({ features: [{ id: 'feat1', kind: 'sketch', entities: [] }], ...overrides })
 }
 
-function makeBody(id: string, overrides?: Partial<BodyResult>): BodyResult {
+function makePart(id: string, overrides?: Partial<PartResult>): PartResult {
   return { id, created_by: `feature_${id}`, modified_by: [], ...overrides }
 }
 
@@ -58,8 +58,8 @@ describe('pickPartColor', () => {
 describe('reconcilePartStyle', () => {
   it('assigns names and colors to new bodies', () => {
     const doc = makeDoc()
-    const bodies = { a: makeBody('a'), b: makeBody('b') }
-    reconcilePartStyle(doc, bodies)
+    const parts = { a: makePart('a'), b: makePart('b') }
+    reconcilePartStyle(doc, parts)
     expect(doc.part_style?.a?.name).toBe('part 1')
     expect(doc.part_style?.a?.color).toBe(PART_COLOR_PALETTE[0])
     expect(doc.part_style?.b?.name).toBe('part 2')
@@ -68,8 +68,8 @@ describe('reconcilePartStyle', () => {
 
   it('preserves existing body names and colors', () => {
     const doc = makeDoc({ part_style: { a: { name: 'custom', color: '#FF0000' } } })
-    const bodies = { a: makeBody('a'), b: makeBody('b') }
-    reconcilePartStyle(doc, bodies)
+    const parts = { a: makePart('a'), b: makePart('b') }
+    reconcilePartStyle(doc, parts)
     expect(doc.part_style?.a?.name).toBe('custom')
     expect(doc.part_style?.a?.color).toBe('#FF0000')
     expect(doc.part_style?.b?.name).toBe('part 1')
@@ -79,37 +79,37 @@ describe('reconcilePartStyle', () => {
     // Normalizing would rewrite an authored color on every solve, invisible to
     // undo. The reconcile only adds entries for bodies it has never seen.
     const doc = makeDoc({ part_style: { a: { name: 'part 1', color: '#abcabc' } } })
-    const bodies = { a: makeBody('a') }
-    reconcilePartStyle(doc, bodies)
+    const parts = { a: makePart('a') }
+    reconcilePartStyle(doc, parts)
     expect(doc.part_style?.a?.color).toBe('#abcabc')
   })
 
   it('leaves invalid hex colors as-is', () => {
     const doc = makeDoc({ part_style: { a: { name: 'part 1', color: '#ZZZZZZ' } } })
-    const bodies = { a: makeBody('a') }
-    reconcilePartStyle(doc, bodies)
+    const parts = { a: makePart('a') }
+    reconcilePartStyle(doc, parts)
     expect(doc.part_style?.a?.color).toBe('#ZZZZZZ')
   })
 
   it('assigns sequential part numbers skipping existing numbers', () => {
     const doc = makeDoc({ part_style: { a: { name: 'part 1', color: PART_COLOR_PALETTE[0] } } })
-    const bodies = { a: makeBody('a'), b: makeBody('b'), c: makeBody('c') }
-    reconcilePartStyle(doc, bodies)
+    const parts = { a: makePart('a'), b: makePart('b'), c: makePart('c') }
+    reconcilePartStyle(doc, parts)
     expect(doc.part_style?.b?.name).toBe('part 2')
     expect(doc.part_style?.c?.name).toBe('part 3')
   })
 
   it('sets created_by field for new bodies', () => {
     const doc = makeDoc()
-    const bodies = { a: makeBody('a', { created_by: 'extrude1' }) }
-    reconcilePartStyle(doc, bodies)
+    const parts = { a: makePart('a', { created_by: 'extrude1' }) }
+    reconcilePartStyle(doc, parts)
     expect(doc.part_style?.a?.created_by).toBe('extrude1')
   })
 
   it('does not mutate style entries for bodies not in the result', () => {
     const doc = makeDoc({ part_style: { old: { name: 'legacy', color: '#FF0000' } } })
-    const bodies = { a: makeBody('a') }
-    reconcilePartStyle(doc, bodies)
+    const parts = { a: makePart('a') }
+    reconcilePartStyle(doc, parts)
     expect(doc.part_style?.old?.name).toBe('legacy')
     expect(doc.part_style?.old?.color).toBe('#FF0000')
   })
@@ -129,8 +129,8 @@ describe('reconcilePartStyle', () => {
   it('does not mutate the original doc when called on a clone (in-place mutation guard)', () => {
     const original = makeDoc()
     const clone = structuredClone(original)
-    const bodies = { a: makeBody('a', { created_by: 'feat1' }) }
-    reconcilePartStyle(clone, bodies)
+    const parts = { a: makePart('a', { created_by: 'feat1' }) }
+    reconcilePartStyle(clone, parts)
     // Clone gets the style
     expect(clone.part_style?.a?.name).toBe('part 1')
     // Original must remain untouched
@@ -140,8 +140,8 @@ describe('reconcilePartStyle', () => {
   it('clone-then-reconcile pattern preserves existing styles', () => {
     const original = makeDoc({ part_style: { x: { name: 'custom', color: '#FF0000' } } })
     const clone = structuredClone(original)
-    const bodies = { x: makeBody('x'), y: makeBody('y') }
-    reconcilePartStyle(clone, bodies)
+    const parts = { x: makePart('x'), y: makePart('y') }
+    reconcilePartStyle(clone, parts)
     // Clone has updated style
     expect(clone.part_style?.x?.name).toBe('custom')
     expect(clone.part_style?.y?.name).toBe('part 1')
@@ -157,7 +157,7 @@ describe('useSolver', () => {
     mockSolveLocally.mockResolvedValue({
       solve_ms: 0,
       result: {},
-      bodies: {} as Record<string, BodyResult>,
+      bodies: {} as Record<string, PartResult>,
       _build_state: null,
     })
     mockUnflattenGeometry.mockReturnValue({})
@@ -184,7 +184,7 @@ describe('useSolver', () => {
       mockSolveLocally.mockResolvedValue({
         solve_ms: 0,
         result: {},
-        bodies: { a: makeBody('a') } as Record<string, BodyResult>,
+        bodies: { a: makePart('a') } as Record<string, PartResult>,
         _build_state: null,
       })
       await act(async () => { await result.current.reSolve(solvableDoc()) })
@@ -196,7 +196,7 @@ describe('useSolver', () => {
       mockSolveLocally.mockResolvedValue({
         solve_ms: 0,
         result: {},
-        bodies: { a: makeBody('a') } as Record<string, BodyResult>,
+        bodies: { a: makePart('a') } as Record<string, PartResult>,
         _build_state: null,
       })
       await act(async () => { await result.current.reSolve(solvableDoc()) })
@@ -539,7 +539,7 @@ describe('useSolver', () => {
             solve_ms: 123,
           },
         },
-        bodies: {} as Record<string, BodyResult>,
+        bodies: {} as Record<string, PartResult>,
         _build_state: null,
       })
       const doc = makeDoc({

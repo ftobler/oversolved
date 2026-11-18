@@ -16,7 +16,7 @@ import { describe, it, expectTypeOf } from 'vitest'
 import type {
   BooleanFeature,
   ChamferFeature,
-  DeleteBodyFeature,
+  DeletePartFeature,
   DeleteFaceFeature,
   ExtrudeFeature,
   FilletFeature,
@@ -92,7 +92,7 @@ describe('solver dispatch maps each kind to its variant', () => {
     expectTypeOf<FeatureParam<'linear_pattern'>>().toEqualTypeOf<LinearPatternFeature>()
     expectTypeOf<FeatureParam<'circular_pattern'>>().toEqualTypeOf<CircularPatternFeature>()
     expectTypeOf<FeatureParam<'instance_pattern'>>().toEqualTypeOf<InstancePatternFeature>()
-    expectTypeOf<FeatureParam<'delete_body'>>().toEqualTypeOf<DeleteBodyFeature>()
+    expectTypeOf<FeatureParam<'delete_body'>>().toEqualTypeOf<DeletePartFeature>()
     expectTypeOf<FeatureParam<'hole'>>().toEqualTypeOf<HoleFeature>()
     expectTypeOf<FeatureParam<'transform'>>().toEqualTypeOf<TransformFeature>()
     expectTypeOf<FeatureParam<'mirror'>>().toEqualTypeOf<MirrorFeature>()

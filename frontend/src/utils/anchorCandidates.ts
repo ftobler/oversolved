@@ -23,9 +23,9 @@ export type AssemblyEntityKind = 'face' | 'edge' | 'vertex'
  * two instances of the same part never share a pick id.
  */
 export function assemblyEntityKey(
-  handle: string, bodyIndex: number, kind: AssemblyEntityKind, index: number,
+  handle: string, partIndex: number, kind: AssemblyEntityKind, index: number,
 ): string {
-  return `${handle}|${bodyIndex}|${kind}|${index}`
+  return `${handle}|${partIndex}|${kind}|${index}`
 }
 
 /** Entity pick id for an assembly built-in (its origin, its 3 planes). */

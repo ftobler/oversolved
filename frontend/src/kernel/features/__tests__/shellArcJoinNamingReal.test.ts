@@ -20,7 +20,7 @@ import { loadOcc } from '../../occ/loadOcc'
 import { DisposeScope } from '../../occ/disposeScope'
 import { HandleTable } from '../../occ/handleTable'
 import { makeBox, faceCentroid } from '../../occ/primitives'
-import { canonicalEdges, canonicalFaces, canonicalVertices, namesFromArray, namesToArray } from '../../occ/bodyNames'
+import { canonicalEdges, canonicalFaces, canonicalVertices, namesFromArray, namesToArray } from '../../occ/partNames'
 import { deriveEdgeNames } from '../../occ/constructionLineage'
 import { exploreEdges } from '../../occ/edgeModifier'
 import { buildFaceIndex } from '../shared/faceResolution'
@@ -28,7 +28,7 @@ import { makeEdgeIndexCache, resolveEdgesByQuery } from '../filletChamfer'
 import { makeAncestryQuery, constructionUuidToken, ref, Repository } from '../../query'
 import { mintFaceUuid, shellFacePath } from '../../constructionName'
 import { solveShell } from '../shell'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape, OccSubShape } from '../../occ/occTypes'
 
 const oc = await loadOcc()
@@ -40,7 +40,7 @@ describe.skipIf(!oc)('arc join naming (real OCC)', () => {
   let occ: OccModule
   if (oc) occ = oc
 
-  function namedBody(scope: DisposeScope, table: HandleTable): Body {
+  function namedPart(scope: DisposeScope, table: HandleTable): PartSolid {
     const box = makeBox(occ, scope, 2, 2, 2)
     const faces = canonicalFaces(occ, scope, box)
     const face_uuids = faces.map((_, i) => `f${i}`)
@@ -54,8 +54,8 @@ describe.skipIf(!oc)('arc join naming (real OCC)', () => {
     }
   }
 
-  function topFaceIndex(scope: DisposeScope, table: HandleTable, body: Body): number {
-    const faces = canonicalFaces(occ, scope, table.get<OccShape>(body.shape!))
+  function topFaceIndex(scope: DisposeScope, table: HandleTable, part: PartSolid): number {
+    const faces = canonicalFaces(occ, scope, table.get<OccShape>(part.shape!))
     let best = 0
     faces.forEach((f, i) => {
       if (faceCentroid(occ, scope, f as never)[2] > faceCentroid(occ, scope, faces[best] as never)[2]) best = i
@@ -63,14 +63,14 @@ describe.skipIf(!oc)('arc join naming (real OCC)', () => {
     return best
   }
 
-  function arcShell(scope: DisposeScope, table: HandleTable, thickness: number): Body {
-    const body = namedBody(scope, table)
-    const q = faceQuery(body.face_uuids![topFaceIndex(scope, table, body)]!)
+  function arcShell(scope: DisposeScope, table: HandleTable, thickness: number): PartSolid {
+    const part = namedPart(scope, table)
+    const q = faceQuery(part.face_uuids![topFaceIndex(scope, table, part)]!)
     const res = solveShell(occ, scope, table, {
       id: 'sh1', shell: { faces: [q], thickness, direction: 'outward', join: 'arc' },
-    }, new Repository(), { body_b: body })
+    }, new Repository(), { body_b: part })
     expect(res.status).toBe('ok')
-    return body
+    return part
   }
 
   // The uuids a corner face is keyed on: sorted incident edge uuids per vertex.
@@ -92,18 +92,18 @@ describe.skipIf(!oc)('arc join naming (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const original = namedBody(scope, table)
+      const original = namedPart(scope, table)
       const shape = table.get<OccShape>(original.shape!)
       const topUuid = original.face_uuids![topFaceIndex(scope, table, original)]!
       const keptUuids = original.face_uuids!.filter((u): u is string => u !== null && u !== topUuid)
       const edgeUuids = original.edge_uuids!.filter((u): u is string => typeof u === 'string')
       const corners = cornerKeys(scope, shape, original.edge_uuids!)
 
-      const body = arcShell(scope, table, 0.05)
-      expect(body.face_uuids).toHaveLength(23)
-      expect(body.face_uuids!.every((u) => typeof u === 'string' && u !== '')).toBe(true)
+      const part = arcShell(scope, table, 0.05)
+      expect(part.face_uuids).toHaveLength(23)
+      expect(part.face_uuids!.every((u) => typeof u === 'string' && u !== '')).toBe(true)
 
-      const has = (uuid: string): boolean => body.face_uuids!.includes(uuid)
+      const has = (uuid: string): boolean => part.face_uuids!.includes(uuid)
       const expected = new Set<string>()
       for (const uuid of keptUuids) {
         expect(has(uuid), `kept ${uuid}`).toBe(true)
@@ -131,7 +131,7 @@ describe.skipIf(!oc)('arc join naming (real OCC)', () => {
       for (const uuid of [...blends, ...cornerFaces]) expected.add(uuid)
       // Every face is accounted for by exactly the construction roles.
       expect(expected.size).toBe(23)
-      for (const uuid of body.face_uuids!) expect(expected.has(uuid!), `unexpected ${uuid}`).toBe(true)
+      for (const uuid of part.face_uuids!) expect(expected.has(uuid!), `unexpected ${uuid}`).toBe(true)
     } finally {
       scope.dispose()
     }
@@ -141,19 +141,19 @@ describe.skipIf(!oc)('arc join naming (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const body = namedBody(scope, table)
-      const shape = table.get<OccShape>(body.shape!)
-      const edgeUuids = body.edge_uuids!.filter((u): u is string => typeof u === 'string')
-      const corners = cornerKeys(scope, shape, body.edge_uuids!)
+      const part = namedPart(scope, table)
+      const shape = table.get<OccShape>(part.shape!)
+      const edgeUuids = part.edge_uuids!.filter((u): u is string => typeof u === 'string')
+      const corners = cornerKeys(scope, shape, part.edge_uuids!)
       const res = solveShell(occ, scope, table, {
         id: 'sh1',
         shell: { faces: [], thickness: 0.05, direction: 'outward', source_body: '@body_b', join: 'arc' },
-      }, new Repository(), { body_b: body })
+      }, new Repository(), { body_b: part })
       expect(res.status).toBe('ok')
-      expect(body.face_uuids!.every((u) => typeof u === 'string' && u !== '')).toBe(true)
-      expect(body.face_uuids!.some((u) =>
+      expect(part.face_uuids!.every((u) => typeof u === 'string' && u !== '')).toBe(true)
+      expect(part.face_uuids!.some((u) =>
         typeof u === 'string' && edgeUuids.some((e) => u === mintFaceUuid(shellFacePath('sh1', 'blend', e))))).toBe(true)
-      expect(body.face_uuids!.some((u) =>
+      expect(part.face_uuids!.some((u) =>
         typeof u === 'string' && corners.some((k) => u === mintFaceUuid(shellFacePath('sh1', 'corner', k))))).toBe(true)
     } finally {
       scope.dispose()
@@ -164,7 +164,7 @@ describe.skipIf(!oc)('arc join naming (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const first = namedBody(scope, table)
+      const first = namedPart(scope, table)
       const blendUuids = new Set(first.edge_uuids!
         .filter((u): u is string => typeof u === 'string')
         .map((u) => mintFaceUuid(shellFacePath('sh1', 'blend', u))))

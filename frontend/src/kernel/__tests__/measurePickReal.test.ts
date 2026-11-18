@@ -17,12 +17,12 @@ import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { resetSketchSolver, setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import { persistentTableForTest, setSolveLocalsForTest, solveLocally } from '@/kernel/solveLocally'
 import { DisposeScope } from '@/kernel/occ/disposeScope'
-import { canonicalEdges } from '@/kernel/occ/bodyNames'
+import { canonicalEdges } from '@/kernel/occ/partNames'
 import { renderEdgeRows } from '@/kernel/occ/tessellation'
 import { makeCone } from '@/kernel/occ/primitives'
 import { resolveMeasurePick } from '@/kernel/measurePick'
-import type { Body, BuildState } from '@/kernel/types3d'
-import type { BodyResult, EdgeData, FaceData } from '@/types/cad'
+import type { PartSolid, BuildState } from '@/kernel/types3d'
+import type { PartResult, EdgeData, FaceData } from '@/types/cad'
 import type { OccCurveAdaptor, OccModule, OccShape } from '@/kernel/occ/occTypes'
 import type { Vec3 } from '@/utils/measure/primitives'
 
@@ -82,9 +82,9 @@ function plateDoc(docId: string): Record<string, unknown> {
   }
 }
 
-async function solvedBodies(doc: Record<string, unknown>): Promise<{
-  result: Record<string, BodyResult>
-  store: Record<string, Body>
+async function solvedParts(doc: Record<string, unknown>): Promise<{
+  result: Record<string, PartResult>
+  store: Record<string, PartSolid>
   table: NonNullable<ReturnType<typeof persistentTableForTest>>
 }> {
   const response = await solveLocally(doc)
@@ -94,13 +94,13 @@ async function solvedBodies(doc: Record<string, unknown>): Promise<{
   if (failed.length) throw new Error(`feature exception: ${JSON.stringify(failed)}`)
   const state = response._build_state as BuildState
   const store = state.checkpoints[state.feature_order[state.feature_order.length - 1]]
-    .body_store_snapshot as Record<string, Body>
+    .body_store_snapshot as Record<string, PartSolid>
   const table = persistentTableForTest()
   if (!table) throw new Error('no handle table')
-  return { result: response.bodies as Record<string, BodyResult>, store, table }
+  return { result: response.bodies as Record<string, PartResult>, store, table }
 }
 
-const bodyIdOf = (result: Record<string, BodyResult>): string => {
+const partIdOf = (result: Record<string, PartResult>): string => {
   const id = Object.keys(result).find((key) => key.startsWith('body_ex'))
   if (!id) throw new Error(`no extruded body in ${JSON.stringify(Object.keys(result))}`)
   return id
@@ -169,10 +169,10 @@ describe.skipIf(!oc || !solveBytes)('resolveMeasurePick follows the render order
   it('maps every edge index of a filleted plate with a bore back to the same edge', async () => {
     const occ2 = oc as OccModule
     // First solve: the plate, whose edges name the vertical ones a fillet takes.
-    const first = await solvedBodies(plateDoc('measure-pick-first'))
-    const firstBody = first.result[bodyIdOf(first.result)]
-    const vertical = (firstBody.edges ?? [])
-      .map((edge, i) => ({ edge, query: firstBody.edge_queries?.[i] ?? '' }))
+    const first = await solvedParts(plateDoc('measure-pick-first'))
+    const firstPart = first.result[partIdOf(first.result)]
+    const vertical = (firstPart.edges ?? [])
+      .map((edge, i) => ({ edge, query: firstPart.edge_queries?.[i] ?? '' }))
       .filter(({ edge }) => edge.kind === 'line' && close(lineLength(edge), 10) && edge.start[0] === edge.end[0])
     expect(vertical.length).toBeGreaterThanOrEqual(4)
     const filletQueries = vertical.slice(0, 4).map(({ query }) => query)
@@ -184,12 +184,12 @@ describe.skipIf(!oc || !solveBytes)('resolveMeasurePick follows the render order
     ;(doc.features as Record<string, unknown>[]).push({
       id: 'fi1', kind: 'fillet', fillet: { edges: filletQueries, radius: 2 },
     })
-    const second = await solvedBodies(doc)
-    const id = bodyIdOf(second.result)
-    const body = second.result[id]
+    const second = await solvedParts(doc)
+    const id = partIdOf(second.result)
+    const part = second.result[id]
     const scope = new DisposeScope()
     try {
-      const edges = body.edges ?? []
+      const edges = part.edges ?? []
       expect(edges.length).toBeGreaterThanOrEqual(14)
       const kinds = new Set(edges.map((e) => e.kind))
       // The point of the fixture: more than one edge kind, so a shifted index
@@ -220,12 +220,12 @@ describe.skipIf(!oc || !solveBytes)('resolveMeasurePick follows the render order
 
   it('maps every face and vertex index back to the same element', async () => {
     const occ2 = oc as OccModule
-    const solved = await solvedBodies(plateDoc('measure-pick-plate'))
-    const id = bodyIdOf(solved.result)
-    const body = solved.result[id]
+    const solved = await solvedParts(plateDoc('measure-pick-plate'))
+    const id = partIdOf(solved.result)
+    const part = solved.result[id]
     const scope = new DisposeScope()
     try {
-      const faces = body.mesh?.face_data ?? []
+      const faces = part.mesh?.face_data ?? []
       expect(faces.length).toBeGreaterThan(6)
       for (let i = 0; i < faces.length; i++) {
         const shape = resolveMeasurePick(occ2, scope, solved.table, solved.store, { bodyId: id, kind: 'face', index: i })
@@ -244,7 +244,7 @@ describe.skipIf(!oc || !solveBytes)('resolveMeasurePick follows the render order
           .toBeLessThan(5)
       }
 
-      const vertices = body.vertices ?? []
+      const vertices = part.vertices ?? []
       expect(vertices.length).toBeGreaterThan(4)
       for (let i = 0; i < vertices.length; i++) {
         const shape = resolveMeasurePick(occ2, scope, solved.table, solved.store, { bodyId: id, kind: 'vertex', index: i })

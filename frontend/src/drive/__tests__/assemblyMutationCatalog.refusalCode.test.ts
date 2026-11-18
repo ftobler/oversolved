@@ -26,7 +26,7 @@ const doc: AssemblyDoc = {
 
 // A built part whose index carries no queries: an anchor id would resolve, a
 // query is stale.
-const index: PartAnchorIndex = { anchors: {}, byQuery: new Map(), bodies: {} }
+const index: PartAnchorIndex = { anchors: {}, byQuery: new Map(), parts: {} }
 
 const ctx = {
   doc,

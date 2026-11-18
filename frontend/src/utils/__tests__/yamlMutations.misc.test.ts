@@ -13,7 +13,7 @@ const pattern0 = (doc: PartDoc) => featureAt(doc, 0, 'linear_pattern').linear_pa
 const boolean0 = (doc: PartDoc) => featureAt(doc, 0, 'boolean').boolean
 const chamfer0 = (doc: PartDoc) => featureAt(doc, 0, 'chamfer').chamfer
 const constraints0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').constraints!
-const delete_body0 = (doc: PartDoc) => featureAt(doc, 0, 'delete_body').delete_body
+const delete_part0 = (doc: PartDoc) => featureAt(doc, 0, 'delete_body').delete_body
 const entities0 = (doc: PartDoc) => featureAt(doc, 0, 'sketch').entities!
 const extrude0 = (doc: PartDoc) => featureAt(doc, 0, 'extrude').extrude
 const fillet0 = (doc: PartDoc) => featureAt(doc, 0, 'fillet').fillet
@@ -457,7 +457,7 @@ describe('applyReorderPickField', () => {
   it('reorders delete_body bodies', () => {
     const doc: PartDoc = { version: 1, kind: 'part', features: [{ id: 'db1', kind: 'delete_body', delete_body: { bodies: ['@body_a', '@body_b', '@body_c'] } }] }
     applyReorderPickField(doc, 'db1', 'bodies', 2, 0)
-    expect(delete_body0(doc).bodies).toEqual(['@body_c', '@body_a', '@body_b'])
+    expect(delete_part0(doc).bodies).toEqual(['@body_c', '@body_a', '@body_b'])
   })
 
   it('reorders transform bodies', () => {

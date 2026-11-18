@@ -88,10 +88,10 @@ function parseInterfaces(src: string): Map<string, Block> {
   for (let i = 0; i < lines.length; i++) {
     const head = /^export interface (\w+)(?:<\w+>)?(?: extends ([\w, <>]+))? \{$/.exec(lines[i])
     if (!head) continue
-    const body: string[] = []
-    for (i++; i < lines.length && lines[i] !== '}'; i++) body.push(lines[i])
+    const part: string[] = []
+    for (i++; i < lines.length && lines[i] !== '}'; i++) part.push(lines[i])
     const parents = (head[2] ?? '').split(',').map((s) => s.trim().replace(/<.*>$/, '')).filter(Boolean)
-    out.set(head[1], { name: head[1], extends: parents, members: parseMembers(body, '  ') })
+    out.set(head[1], { name: head[1], extends: parents, members: parseMembers(part, '  ') })
   }
   return out
 }
@@ -126,9 +126,9 @@ function parseModule(block: Block | undefined, src: string, name: string): Modul
     }
     m = /^ {2}(\w+): \{$/.exec(line)
     if (m) {
-      const body: string[] = []
-      for (i++; i < lines.length && lines[i] !== '  }'; i++) body.push(lines[i])
-      out.push({ kind: 'block', name: m[1], arity: -1, members: parseMembers(body, '    ') })
+      const part: string[] = []
+      for (i++; i < lines.length && lines[i] !== '  }'; i++) part.push(lines[i])
+      out.push({ kind: 'block', name: m[1], arity: -1, members: parseMembers(part, '    ') })
     }
   }
   return out

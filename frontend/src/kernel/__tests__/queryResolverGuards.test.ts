@@ -14,8 +14,8 @@ import {
   local,
   constructionUuidToken,
   evictAncestryAndRegister,
-  clearBodyAncestry,
-  clearConsumedBodyAncestry,
+  clearPartAncestry,
+  clearConsumedPartAncestry,
 } from "../query"
 
 type Payload = Record<string, unknown>
@@ -68,7 +68,7 @@ describe("typed absolute lookups", () => {
 describe("coercion scan rejection rules", () => {
   it("skips non-object, typeless, wrong-body, wrong-type and foreign-creator siblings", () => {
     const repo = new Repository()
-    const bodyStore = { body_x: { id: "body_x", created_by: "ex1" } }
+    const partStore = { body_x: { id: "body_x", created_by: "ex1" } }
     const face: Payload = { type: "flatface", body_id: "body_x", face_index: 0, created_by: "ex1" }
     // The candidate set: a real face, a typeless payload and an array that
     // carries a type field so coerceType reaches the isDict guard.
@@ -91,7 +91,7 @@ describe("coercion scan rejection rules", () => {
     // must skip it rather than assume every indexed key has an entry.
     repo.byAncestorId.get("@ex1")!.add("dangling-coerce-key")
 
-    const result = repo.query(makeAncestryQuery(["@ex1face0", "@ex1"], "edge"), null, bodyStore) as Payload
+    const result = repo.query(makeAncestryQuery(["@ex1face0", "@ex1"], "edge"), null, partStore) as Payload
     expect(result).toMatchObject({ type: "straightedge", edge_index: 2 })
     expect(repo._lastTier).toBe("ancestral")
   })
@@ -161,14 +161,14 @@ describe("reverse-index rot self-heal", () => {
   it("clearBodyAncestry removes a dangling index-tag key and does not throw", () => {
     const repo = new Repository()
     repo.byAncestorId.set("@body_x", new Set(["dead-key"]))
-    expect(() => clearBodyAncestry(repo, "body_x")).not.toThrow()
+    expect(() => clearPartAncestry(repo, "body_x")).not.toThrow()
     expect(repo.byAncestorId.get("@body_x")?.has("dead-key")).toBe(false)
   })
 
   it("clearConsumedBodyAncestry returns early without a createdBy feature", () => {
     const repo = new Repository()
     repo.registerAncestor(["@body_x/face0", "@body_x"], { type: "flatface", body_id: "body_x" })
-    clearConsumedBodyAncestry(repo, "body_x", "")
+    clearConsumedPartAncestry(repo, "body_x", "")
     // The body range is still swept; the empty creator tag only skips the
     // solid-owner sweep, so no dangling ancestral entry is left behind.
     expect(repo.ancestral.size).toBe(0)

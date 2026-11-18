@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react'
 import * as THREE from 'three'
 import { useIdPipeline } from './IdPipelineContext'
 import type { PlaneTransform } from '@/types/cad'
-import { buildPlaneMatrix, useRegisteredBody } from './idRegistrationUtils'
+import { buildPlaneMatrix, useRegisteredPart } from './idRegistrationUtils'
 import { planeTransformKey } from './planeTransformKey'
 import { DIMENSION_LABEL_LAYER_NAME } from './layerNames'
 import { pointPickable } from './probeMarks'
@@ -61,15 +61,15 @@ export function useDimensionLabelIdRegistration(params: {
     return () => clearProbeSource(probeKey)
   }, [enabled, entityKey, px, py, pz, matrix])
 
-  useRegisteredBody(
+  useRegisteredPart(
     pipeline,
     enabled,
     entityKey,
     (p) => {
       const v = new THREE.Vector3(px, py, pz).applyMatrix4(matrix)
       try {
-        p.dimensionLabelLayer.registerBody({
-          bodyKey: entityKey,
+        p.dimensionLabelLayer.registerPart({
+          partKey: entityKey,
           vertices: [[v.x, v.y, v.z]],
           vertexQueries: [entityKey],
         })
@@ -82,7 +82,7 @@ export function useDimensionLabelIdRegistration(params: {
         return false
       }
     },
-    (p) => p.dimensionLabelLayer.unregisterBody(entityKey),
+    (p) => p.dimensionLabelLayer.unregisterPart(entityKey),
     [px, py, pz, planeKey],
   )
 }

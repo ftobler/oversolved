@@ -2,11 +2,11 @@ import {
   RENDER_ORDER_DEFAULT,
   RENDER_ORDER_EDITING,
   RENDER_ORDER_HIGHLIGHT,
-  COLOR_BODY_DEFAULT,
-  COLOR_BODY_SELECTED,
-  COLOR_BODY_EDGE,
-  COLOR_BODY_EDGE_SEL,
-  COLOR_BODY_REMOVED,
+  COLOR_PART_DEFAULT,
+  COLOR_PART_SELECTED,
+  COLOR_PART_EDGE,
+  COLOR_PART_EDGE_SEL,
+  COLOR_PART_REMOVED,
   DEFAULT_PART_ROUGHNESS,
   COLOR_ERROR,
   COLOR_SOLVED,
@@ -26,11 +26,11 @@ import {
 } from '@/utils/core/partColors'
 
 export {
-  COLOR_BODY_DEFAULT,
-  COLOR_BODY_EDGE,
-  COLOR_BODY_SELECTED,
-  COLOR_BODY_EDGE_SEL,
-  COLOR_BODY_REMOVED,
+  COLOR_PART_DEFAULT,
+  COLOR_PART_EDGE,
+  COLOR_PART_SELECTED,
+  COLOR_PART_EDGE_SEL,
+  COLOR_PART_REMOVED,
   DEFAULT_PART_ROUGHNESS,
   COLOR_SOLVED,
   COLOR_FULLY_CONSTRAINED,
@@ -166,7 +166,7 @@ export function dimensionRenderLayer(): { depthTest: false; renderOrder: number 
 // different material and washes the mark out. Deciding the colour here and
 // leaving the other four to the caller would make that claim false at exactly
 // the point it is supposed to hold.
-export interface BodySurfaceState {
+export interface PartSurfaceState {
   selected?: boolean
   doomed?: boolean
   color?: string
@@ -176,7 +176,7 @@ export interface BodySurfaceState {
   transmission?: number
 }
 
-export interface BodySurfaceLook {
+export interface PartSurfaceLook {
   color: string
   transparency: number
   metalness: number
@@ -184,7 +184,7 @@ export interface BodySurfaceLook {
   transmission: number
 }
 
-export function bodySurfaceLook({
+export function partSurfaceLook({
   selected = false,
   doomed = false,
   color,
@@ -192,15 +192,15 @@ export function bodySurfaceLook({
   metalness = 0,
   roughness = DEFAULT_PART_ROUGHNESS,
   transmission = 0,
-}: BodySurfaceState): BodySurfaceLook {
+}: PartSurfaceState): PartSurfaceLook {
   if (doomed) {
     return {
       // The face goes fully see-through so the doomed body stops obscuring
-      // what survives; the removal mark moves to the wireframe, which Body3D
+      // what survives; the removal mark moves to the wireframe, which Part3D
       // paints pink. Selection still claims the surface so the "click again
       // to un-pick" affordance stays defined -- the visible half of it is the
       // wireframe brightening to the selected edge colour.
-      color: selected ? COLOR_BODY_SELECTED : COLOR_BODY_REMOVED,
+      color: selected ? COLOR_PART_SELECTED : COLOR_PART_REMOVED,
       transparency: 1,
       metalness: 0,
       roughness: DEFAULT_PART_ROUGHNESS,
@@ -208,7 +208,7 @@ export function bodySurfaceLook({
     }
   }
   return {
-    color: selected ? COLOR_BODY_SELECTED : (color || COLOR_BODY_DEFAULT),
+    color: selected ? COLOR_PART_SELECTED : (color || COLOR_PART_DEFAULT),
     transparency,
     metalness,
     roughness,
@@ -224,7 +224,7 @@ export function bodySurfaceLook({
 // on distance 0 -- the preview overlay and the doomed mark share the pink on
 // purpose.
 const SCENE_COLORS_AGAINST_REMOVED = [
-  COLOR_BODY_DEFAULT, COLOR_BODY_SELECTED, COLOR_BODY_EDGE, COLOR_BODY_EDGE_SEL,
+  COLOR_PART_DEFAULT, COLOR_PART_SELECTED, COLOR_PART_EDGE, COLOR_PART_EDGE_SEL,
   COLOR_ERROR, COLOR_SOLVED, COLOR_FULLY_CONSTRAINED, COLOR_INACTIVE,
   COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER,
   COLOR_HINT, COLOR_PREVIEW, COLOR_PROJECTED, COLOR_SNAP,
@@ -250,8 +250,8 @@ function nearestRival(color: string, rivals: readonly string[]): { nearest: stri
 }
 
 /** Smallest RGB distance from COLOR_BODY_REMOVED to any other scene colour. */
-export function bodyRemovedColorIsDistinct(): { nearest: string; distance: number } {
-  return nearestRival(COLOR_BODY_REMOVED, SCENE_COLORS_AGAINST_REMOVED)
+export function partRemovedColorIsDistinct(): { nearest: string; distance: number } {
+  return nearestRival(COLOR_PART_REMOVED, SCENE_COLORS_AGAINST_REMOVED)
 }
 
 // The colours a hint must never be mistaken for: the two stronger highlights,
@@ -260,7 +260,7 @@ export function bodyRemovedColorIsDistinct(): { nearest: string; distance: numbe
 // actually paints; the line colour is COLOR_HINT at full strength.
 export const HINT_COLOR_MIN_DISTANCE = 40
 
-const HINT_RIVALS = [COLOR_HOVER, COLOR_SELECTED, COLOR_BODY_REMOVED, COLOR_BODY_DEFAULT, COLOR_HINT_FAILED] as const
+const HINT_RIVALS = [COLOR_HOVER, COLOR_SELECTED, COLOR_PART_REMOVED, COLOR_PART_DEFAULT, COLOR_HINT_FAILED] as const
 
 /** How far the hinted face fill and the hinted line colour sit from every
  *  stronger highlight and from the default body. Shared constants, not
@@ -270,7 +270,7 @@ export function hintColorsAreDistinct(): {
   line: { nearest: string; distance: number }
 } {
   return {
-    face: nearestRival(blendToward(COLOR_BODY_DEFAULT, COLOR_HINT, HINT_BLEND), HINT_RIVALS),
+    face: nearestRival(blendToward(COLOR_PART_DEFAULT, COLOR_HINT, HINT_BLEND), HINT_RIVALS),
     line: nearestRival(COLOR_HINT, HINT_RIVALS),
   }
 }
@@ -282,7 +282,7 @@ export function hintColorsAreDistinct(): {
 export const FAILED_HINT_COLOR_MIN_DISTANCE = 40
 
 const FAILED_HINT_RIVALS = [
-  COLOR_HOVER, COLOR_SELECTED, COLOR_HINT, COLOR_BODY_REMOVED, COLOR_BODY_DEFAULT,
+  COLOR_HOVER, COLOR_SELECTED, COLOR_HINT, COLOR_PART_REMOVED, COLOR_PART_DEFAULT,
 ] as const
 
 export function failedHintColorsAreDistinct(): {
@@ -290,7 +290,7 @@ export function failedHintColorsAreDistinct(): {
   line: { nearest: string; distance: number }
 } {
   return {
-    face: nearestRival(blendToward(COLOR_BODY_DEFAULT, COLOR_HINT_FAILED, HINT_BLEND), FAILED_HINT_RIVALS),
+    face: nearestRival(blendToward(COLOR_PART_DEFAULT, COLOR_HINT_FAILED, HINT_BLEND), FAILED_HINT_RIVALS),
     line: nearestRival(COLOR_HINT_FAILED, FAILED_HINT_RIVALS),
   }
 }

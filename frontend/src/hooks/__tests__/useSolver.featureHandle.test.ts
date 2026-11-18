@@ -16,7 +16,7 @@ vi.mock('@/stores/solverStore', () => ({
 }))
 
 import { useSolver } from '@/hooks/useSolver'
-import type { PartDoc, BodyResult, FeatureHandleData } from '@/types/cad'
+import type { PartDoc, PartResult, FeatureHandleData } from '@/types/cad'
 
 const EXTRUDE_HANDLE: FeatureHandleData = {
   kind: 'linear',
@@ -64,7 +64,7 @@ describe('applySolveResult -- handle descriptor on brep results', () => {
           handle: EXTRUDE_HANDLE,
         },
       },
-      bodies: {} as Record<string, BodyResult>,
+      bodies: {} as Record<string, PartResult>,
       _build_state: null,
     })
 
@@ -84,7 +84,7 @@ describe('applySolveResult -- handle descriptor on brep results', () => {
           body_id: 'body1',
         },
       },
-      bodies: {} as Record<string, BodyResult>,
+      bodies: {} as Record<string, PartResult>,
       _build_state: null,
     })
 

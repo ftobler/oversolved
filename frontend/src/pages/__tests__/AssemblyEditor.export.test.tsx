@@ -100,7 +100,7 @@ describe('AssemblyEditor export (Stage 9)', () => {
   ].join('\n')
 
   // One triangle, in the typed-array form the anchor solver always emits.
-  const SOLVED_BODIES = {
+  const SOLVED_PARTS = {
     hA: [{
       vertices: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
       indices: new Uint32Array([0, 1, 2]),
@@ -116,7 +116,7 @@ describe('AssemblyEditor export (Stage 9)', () => {
     h.partContent = 'features:\n  - id: Origin\n    kind: origin\n  - id: ex1\n    kind: extrude'
     h.list = [{ uuid: 'part-1', name: 'Bracket', kind: 'part', meta: { rev: 1 } }]
     h.solveAssemblyViaWorker.mockResolvedValue({
-      payload: { transforms: { hA: SOLVED_TRANSFORM }, bodies: SOLVED_BODIES },
+      payload: { transforms: { hA: SOLVED_TRANSFORM }, bodies: SOLVED_PARTS },
     })
     h.exportAssemblyViaWorker.mockResolvedValue(new Uint8Array([1, 2, 3]))
     useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
@@ -258,7 +258,7 @@ describe('AssemblyEditor export (Stage 9)', () => {
     beforeEach(() => {
       h.loadContent = ASSEMBLY_TWO_HANDLES
       h.solveAssemblyViaWorker.mockResolvedValue({
-        payload: { transforms: { hA: SOLVED_TRANSFORM, hB: SECOND_TRANSFORM }, bodies: SOLVED_BODIES },
+        payload: { transforms: { hA: SOLVED_TRANSFORM, hB: SECOND_TRANSFORM }, bodies: SOLVED_PARTS },
       })
       useAssemblyStore.getState().selectPart(null)
     })

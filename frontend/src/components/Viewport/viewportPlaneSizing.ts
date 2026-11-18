@@ -1,4 +1,4 @@
-import type { BodyResult, Feature, PlaneDef } from '@/types/cad'
+import type { PartResult, Feature, PlaneDef } from '@/types/cad'
 import { computeVertexBounds } from '@/components/Viewport/cameraController'
 import { DEFAULT_PLANE_SIZE } from '@/components/Viewport/planeConstants'
 
@@ -27,13 +27,13 @@ export function calculateMeshExtent(vertices: Float32Array | [number, number, nu
   )
 }
 
-export function getModelBoundingBoxExtent(bodies: Record<string, BodyResult> | undefined): number {
-  if (!bodies) return 0
+export function getModelBoundingBoxExtent(parts: Record<string, PartResult> | undefined): number {
+  if (!parts) return 0
 
   let maxExtent = 0
-  for (const body of Object.values(bodies)) {
-    if (body.mesh?.vertices) {
-      const e = calculateMeshExtent(body.mesh.vertices)
+  for (const part of Object.values(parts)) {
+    if (part.mesh?.vertices) {
+      const e = calculateMeshExtent(part.mesh.vertices)
       if (e > maxExtent) maxExtent = e
     }
   }
@@ -41,33 +41,33 @@ export function getModelBoundingBoxExtent(bodies: Record<string, BodyResult> | u
   return maxExtent
 }
 
-export function getFaceExtent(faceQuery: string, bodies: Record<string, BodyResult>): number {
+export function getFaceExtent(faceQuery: string, parts: Record<string, PartResult>): number {
   const match = faceQuery.match(/@([^/]+)/)
   if (!match) return 0
 
-  const bodyId = match[1]
-  const body = bodies[bodyId]
-  if (!body?.mesh?.vertices) return 0
+  const partId = match[1]
+  const part = parts[partId]
+  if (!part?.mesh?.vertices) return 0
 
-  return calculateMeshExtent(body.mesh.vertices)
+  return calculateMeshExtent(part.mesh.vertices)
 }
 
 export function calculatePlaneSize(
   planeDefinition: PlaneDef | undefined,
-  bodies: Record<string, BodyResult> | undefined,
+  parts: Record<string, PartResult> | undefined,
 ): number {
   const EXPANSION_FACTOR = 1.1
 
-  if (!planeDefinition || !bodies) return DEFAULT_PLANE_SIZE
+  if (!planeDefinition || !parts) return DEFAULT_PLANE_SIZE
 
   // Plane defined on a face (on_face mode)
   if (planeDefinition.mode === 'on_face' && planeDefinition.face) {
-    const faceExtent = getFaceExtent(planeDefinition.face, bodies)
+    const faceExtent = getFaceExtent(planeDefinition.face, parts)
     if (faceExtent > 0) return faceExtent * EXPANSION_FACTOR
   }
 
   // Fallback: use model bounding box
-  const modelExtent = getModelBoundingBoxExtent(bodies)
+  const modelExtent = getModelBoundingBoxExtent(parts)
   if (modelExtent > 0) return modelExtent * EXPANSION_FACTOR
 
   // Final fallback

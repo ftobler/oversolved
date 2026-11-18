@@ -26,7 +26,7 @@ import { extractProfileLoops } from '../shared/profileLoops'
 import { volumeOf, surfaceAreaOf } from '../../occ/volume'
 import { countSolids } from '../../occ/booleans'
 import type { OccShape } from '../../occ/occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { PlaneLike } from '../shared/planes'
 
 const oc = await loadOcc()
@@ -119,16 +119,16 @@ type ThreadBuild = { status?: string; error?: string; volume?: number; area?: nu
 function buildThread(zOffset: number): ThreadBuild {
   const scope = new DisposeScope()
   const table = new HandleTable()
-  const bodyStore: Record<string, Body> = {}
+  const partStore: Record<string, PartSolid> = {}
   try {
     try {
       const result = solveSweep(oc!, scope, table, {
         id: 'sw1', kind: 'sweep',
         sweep: { sketch: ['$skP'], path: '@hx1', operation: 'new' },
-      }, seedThreadRepo(zOffset), bodyStore)
-      const body = bodyStore['body_sw1']
-      if (body?.shape == null) return { status: result.status }
-      const solid = table.get<OccShape>(body.shape)
+      }, seedThreadRepo(zOffset), partStore)
+      const part = partStore['body_sw1']
+      if (part?.shape == null) return { status: result.status }
+      const solid = table.get<OccShape>(part.shape)
       return {
         status: result.status,
         volume: volumeOf(oc!, scope, solid),
@@ -182,13 +182,13 @@ describe.skipIf(!oc)('sweep along a helix (real OCC)', () => {
   it('refuses a mixed helix + sketch path by name through solveSweep', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
-    const bodyStore: Record<string, Body> = {}
+    const partStore: Record<string, PartSolid> = {}
     try {
       const repo = seedRepo()
       expect(() => solveSweep(oc!, scope, table, {
         id: 'sw1', kind: 'sweep',
         sweep: { sketch: ['$skP'], path: ['@hx1', '$skOther'], operation: 'new' },
-      }, repo, bodyStore)).toThrow(/must stand alone/)
+      }, repo, partStore)).toThrow(/must stand alone/)
     } finally {
       table.disposeAll()
       scope.dispose()
@@ -198,17 +198,17 @@ describe.skipIf(!oc)('sweep along a helix (real OCC)', () => {
   it('solveSweep builds a valid body of the Pappus volume along a helix path', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
-    const bodyStore: Record<string, Body> = {}
+    const partStore: Record<string, PartSolid> = {}
     try {
       const repo = seedRepo()
       const result = solveSweep(oc!, scope, table, {
         id: 'sw1', kind: 'sweep',
         sweep: { sketch: ['$skP'], path: '@hx1', operation: 'new' },
-      }, repo, bodyStore)
+      }, repo, partStore)
       expect(result.status).toBe('ok')
-      const body = bodyStore['body_sw1']
-      expect(body).toBeDefined()
-      const volume = volumeOf(oc!, scope, table.get<OccShape>(body.shape!))
+      const part = partStore['body_sw1']
+      expect(part).toBeDefined()
+      const volume = volumeOf(oc!, scope, table.get<OccShape>(part.shape!))
       expect(Math.abs(volume - PAPPUS)).toBeLessThan(PAPPUS * 5e-3)
     } finally {
       table.disposeAll()
@@ -241,13 +241,13 @@ describe.skipIf(!oc)('sweep along a helix (real OCC)', () => {
     const build = (cx: number): { status?: string; error?: string } => {
       const scope = new DisposeScope()
       const table = new HandleTable()
-      const bodyStore: Record<string, Body> = {}
+      const partStore: Record<string, PartSolid> = {}
       try {
         try {
           const result = solveSweep(oc!, scope, table, {
             id: 'sw1', kind: 'sweep',
             sweep: { sketch: ['$skP'], path: '@hx1', operation: 'new' },
-          }, seed(cx), bodyStore)
+          }, seed(cx), partStore)
           return { status: result.status }
         } catch (exc) {
           return { error: (exc as Error).message }
@@ -325,7 +325,7 @@ describe.skipIf(!oc)('sweep along a helix (real OCC)', () => {
     // and must not have minted a body.
     const scope = new DisposeScope()
     const table = new HandleTable()
-    const bodyStore: Record<string, Body> = {}
+    const partStore: Record<string, PartSolid> = {}
     try {
       const repo = new Repository()
       repo.register('_pt_skP', PROFILE_PLANE)
@@ -334,8 +334,8 @@ describe.skipIf(!oc)('sweep along a helix (real OCC)', () => {
       expect(() => solveSweep(oc!, scope, table, {
         id: 'sw1', kind: 'sweep',
         sweep: { sketch: ['$skP'], path: '@hx1', operation: 'new' },
-      }, repo, bodyStore)).toThrow(/overlaps the next turn/)
-      expect(bodyStore['body_sw1']).toBeUndefined()
+      }, repo, partStore)).toThrow(/overlaps the next turn/)
+      expect(partStore['body_sw1']).toBeUndefined()
     } finally {
       table.disposeAll()
       scope.dispose()

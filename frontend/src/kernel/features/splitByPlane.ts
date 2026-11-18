@@ -17,21 +17,21 @@
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
-import type { Body, BrepDiff } from '../types3d'
+import type { PartSolid, BrepDiff } from '../types3d'
 import type { SplitFeatureDef, SplitKeep } from '@/types/cad'
 import type { Repository } from '../query'
-import type { ShapeNames } from '../occ/bodyNames'
+import type { ShapeNames } from '../occ/partNames'
 import type { FaceOrigin } from '../occ/booleans'
-import { readBodyNames } from '../occ/bodyNames'
+import { readPartNames } from '../occ/partNames'
 import { booleanWithDiff, exploreSolids } from '../occ/booleans'
 import { volumeForMeasure } from '../occ/volume'
 import { SubShapeMap } from '../occ/subshapeIdentity'
 import { makeHalfSpaceBox } from '../occ/halfSpace'
 import { mintFaceUuid, splitPlaneFacePath, type SplitSide } from '../constructionName'
-import { resolveBodyRefList } from './shared/bodyResolution'
+import { resolvePartRefList } from './shared/partResolution'
 import { resolvePlaneRef } from './shared/planes'
 import { transferBooleanNames } from './booleanLineage'
-import { resplitBody, splitSolids } from './bodySplit'
+import { resplitPart, splitSolids } from './partSplit'
 import { TOL_VOLUME_DEGENERATE, TOL_VOLUME_SUM } from '../solverConstants'
 
 const KEEP_VALUES: readonly SplitKeep[] = ['above', 'below', 'both']
@@ -58,7 +58,7 @@ interface HalfCut {
 // Everything a body needs before any store mutation, so a later failure cannot
 // leave the earlier bodies half applied.
 interface SplitPlan {
-  body: Body
+  part: PartSolid
   // The shape the body is re-seated on: the one kept cut, or the compound of
   // both halves for `keep: both`.
   shape: OccShape
@@ -80,8 +80,8 @@ function keepOf(cfg: Partial<SplitFeatureDef>): SplitKeep {
   )
 }
 
-function capName(featureId: string, bodySlot: string, side: SplitSide): string {
-  return mintFaceUuid(splitPlaneFacePath(featureId, bodySlot, side))
+function capName(featureId: string, partSlot: string, side: SplitSide): string {
+  return mintFaceUuid(splitPlaneFacePath(featureId, partSlot, side))
 }
 
 /**
@@ -90,12 +90,12 @@ function capName(featureId: string, bodySlot: string, side: SplitSide): string {
  * one in the history means the box was too small and the cap would be named off
  * the wrong face. Internal by construction; a user cannot cause it.
  */
-function assertOnlyBaseToolFaces(faceOrigin: FaceOrigin[], bases: SubShapeMap<string>, bodyId: string): void {
+function assertOnlyBaseToolFaces(faceOrigin: FaceOrigin[], bases: SubShapeMap<string>, partId: string): void {
   for (const origin of faceOrigin) {
     if (!origin.fromTool) continue
     if (!bases.has(origin.source)) {
       throw new Error(
-        `split: internal: the half-space box for body '${bodyId}' was too small ` +
+        `split: internal: the half-space box for body '${partId}' was too small ` +
         '(a tool face other than its base reached the result)',
       )
     }
@@ -113,35 +113,35 @@ export function solveSplit(
   table: HandleTable,
   feature: { id?: string; split?: Partial<SplitFeatureDef> },
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): SplitResult {
   const featureId = feature.id ?? ''
   const cfg = feature.split ?? {}
   const keep = keepOf(cfg)
 
-  const bodyQueries = cfg.bodies ?? []
-  if (bodyQueries.length === 0) throw new Error('split: no parts picked')
+  const partQueries = cfg.bodies ?? []
+  if (partQueries.length === 0) throw new Error('split: no parts picked')
   const planeQuery = cfg.plane ?? ''
   if (!planeQuery) throw new Error('split: plane is required')
-  const { origin, normal } = resolvePlaneRef(globalRepo, planeQuery, bodyStore, 'split')
+  const { origin, normal } = resolvePlaneRef(globalRepo, planeQuery, partStore, 'split')
 
   // Resolve every target before touching a shape, so a bad ref fails the whole
   // feature instead of after some bodies were already split.
-  const targets = resolveBodyRefList(bodyQueries, globalRepo, bodyStore, 'split')
+  const targets = resolvePartRefList(partQueries, globalRepo, partStore, 'split')
 
   const plans: SplitPlan[] = targets.map((key) => {
-    const body = bodyStore[key]
-    if (body === undefined) throw new Error(`split: part no longer exists: ${JSON.stringify(key)}`)
-    if (body.shape === null) throw new Error(`split: part has no shape: ${JSON.stringify(key)}`)
-    const shape = table.get<OccShape>(body.shape)
-    const names = readBodyNames(oc, scope, shape, body)
+    const part = partStore[key]
+    if (part === undefined) throw new Error(`split: part no longer exists: ${JSON.stringify(key)}`)
+    if (part.shape === null) throw new Error(`split: part has no shape: ${JSON.stringify(key)}`)
+    const shape = table.get<OccShape>(part.shape)
+    const names = readPartNames(oc, scope, shape, part)
     // Additivity is judged once per split, not in the boolean hot path, so it
     // pays the accurate read: the eps decision read is 0.6% high on a
     // BSPLINE-surfaced body, which would make its own halves miss.
     const sourceVolume = Math.abs(volumeForMeasure(oc, scope, shape))
-    const unifyFaces = !body.imported
+    const unifyFaces = !part.imported
     // The body's inherited precision widens the cut's clean like any merge.
-    const precision = body.precision ?? null
+    const precision = part.precision ?? null
 
     // `above` keeps the normal side, so it cuts away a box on the opposite
     // normal and its cap is that box's base; `below` is the mirror image.
@@ -213,9 +213,9 @@ export function solveSplit(
       )
       // The above half keeps the body id: it is the material on the normal
       // side, which is what the id meant before the split. The geometric order
-      // bodySplit uses names that solid, never the OCC explorer order.
+      // partSplit uses names that solid, never the OCC explorer order.
       return {
-        body,
+        part,
         shape: compound,
         names: produced,
         diff: halfAbove.diff,
@@ -226,7 +226,7 @@ export function solveSplit(
     // kept side's base.
     const kept = (keep === 'below' ? below : above) as HalfCut
     return {
-      body,
+      part,
       shape: kept.shape,
       names: transferFor(oc, scope, featureId, names, kept.shape, kept.faceOrigin, bases),
       diff: kept.diff,
@@ -235,15 +235,15 @@ export function solveSplit(
   })
 
   // Second pass: every body passed its guards and every name is minted, so the
-  // store may now change. Only the re-seat can still throw (bodySplit refuses a
+  // store may now change. Only the re-seat can still throw (partSplit refuses a
   // near-tie body order); that is an accepted limitation, documented.
   const allIds: string[] = []
   for (const plan of plans) {
-    const ids = resplitBody(
-      oc, scope, table, bodyStore, plan.body, plan.shape, featureId, plan.names, plan.preferred,
+    const ids = resplitPart(
+      oc, scope, table, partStore, plan.part, plan.shape, featureId, plan.names, plan.preferred,
     )
-    plan.body.brep_diff = plan.diff
-    plan.body.modified_by.push(featureId)
+    plan.part.brep_diff = plan.diff
+    plan.part.modified_by.push(featureId)
     allIds.push(...ids)
   }
 
@@ -272,12 +272,12 @@ function transferFor(
   scope: DisposeScope,
   featureId: string,
   names: ShapeNames,
-  bodyShape: OccShape,
+  partShape: OccShape,
   faceOrigin: FaceOrigin[],
   toolFaceNames: SubShapeMap<string>,
 ): ShapeNames {
   return transferBooleanNames(oc, scope, {
-    bodyShape,
+    partShape,
     faceOrigin,
     targetFaceNames: names.faceNames,
     targetFaceAncestry: names.faceAncestry,

@@ -14,7 +14,7 @@ import { solidToMesh, solidToEdges, solidToFaceEdgeQueries, solidToVertices, typ
 import { booleanWithDiff } from '../booleans'
 import { makeBox, makeBoxAt, makeCone } from '../primitives'
 import { isSeamEdge } from '@/kernel/select/geometry'
-import type { BodyResult } from '@/types/cad'
+import type { PartResult } from '@/types/cad'
 import { parseAncestry } from '../../query'
 import type { OccModule } from '../occTypes'
 import type { OccHandle } from '../handleTable'
@@ -230,7 +230,7 @@ describe.skipIf(!oc)('tessellation dual-run parity (OCC.js vs Python)', () => {
     const h = buildFixture(occ, table, fx)
     const mesh = solidToMesh(occ, table, h, {
       createdBy: 'ex1',
-      bodyId: 'body_ex1',
+      partId: 'body_ex1',
       profileQueries: ['@sk1/line1'],
     })
     table.release(h)
@@ -259,14 +259,14 @@ describe.skipIf(!oc)('tessellation dual-run parity (OCC.js vs Python)', () => {
       // One uuid per canonical edge; the first call reports which one the
       // first displayed edge carries, and that one gets the empty list.
       const edgeUuids = Array.from({ length: 12 }, (_, i) => `u_${i}`)
-      const base = solidToEdges(occ, table, h, { createdBy: 'ex1', bodyId: 'body_ex1', edgeUuids })
+      const base = solidToEdges(occ, table, h, { createdBy: 'ex1', partId: 'body_ex1', edgeUuids })
       const edgeAncestry: Record<string, string[]> = {}
       base.edge_uuids.forEach((uuid, idx) => {
         edgeAncestry[uuid!] = idx === 0 ? [] : ['@sk1/bottom']
       })
       const out = solidToEdges(occ, table, h, {
         createdBy: 'ex1',
-        bodyId: 'body_ex1',
+        partId: 'body_ex1',
         edgeUuids,
         edgeAncestry,
         profileQueries: ['@sk1/bottom', '@sk1/top'],
@@ -295,7 +295,7 @@ describe.skipIf(!oc)('tessellation dual-run parity (OCC.js vs Python)', () => {
     try {
       const out = solidToVertices(occ, table, h, {
         createdBy: 'ex1',
-        bodyId: 'body_ex1',
+        partId: 'body_ex1',
         profileQueries: ['@sk1/bottom', '@sk1/top'],
       })
       expect(out.vertex_queries.length).toBe(8)
@@ -325,12 +325,12 @@ describe.skipIf(!oc)('tessellation dual-run parity (OCC.js vs Python)', () => {
     const h = buildBox(occ, table, { dx: 10, dy: 10, dz: 5 })
     try {
       // Exactly what the callers pass for a body with a falsy `created_by`.
-      const e = solidToEdges(occ, table, h, { createdBy: '', bodyId: 'body_ex1' })
+      const e = solidToEdges(occ, table, h, { createdBy: '', partId: 'body_ex1' })
       expect(e.edges.length).toBe(12)
       expect(e.edge_queries.length, 'edge_queries must line up with edges').toBe(e.edges.length)
       expect(e.edge_queries.every((q) => q === '')).toBe(true)
 
-      const v = solidToVertices(occ, table, h, { createdBy: '', bodyId: 'body_ex1' })
+      const v = solidToVertices(occ, table, h, { createdBy: '', partId: 'body_ex1' })
       expect(v.vertices.length).toBe(8)
       expect(v.vertex_queries.length, 'vertex_queries must line up with vertices').toBe(v.vertices.length)
       expect(v.vertex_queries.every((q) => q === '')).toBe(true)
@@ -447,7 +447,7 @@ describe.skipIf(!oc)('solidToEdges convexity (real OCC)', () => {
     const table = new HandleTable()
     const h = buildCylinder(occ, table, { center: [0, 0, 0], axis: [0, 0, 1], radius: 5, height: 10 })
     try {
-      const out = solidToEdges(occ, table, h, { computeConvexity: true, createdBy: 'ex1', bodyId: 'body_c' })
+      const out = solidToEdges(occ, table, h, { computeConvexity: true, createdBy: 'ex1', partId: 'body_c' })
       const faceData = solidToFaceEdgeQueries(occ, table, h, out.edge_queries)
       const seams = new Set(faceData.face_seam_queries.flat())
       expect(seams.size, 'one lateral seam').toBe(1)
@@ -460,7 +460,7 @@ describe.skipIf(!oc)('solidToEdges convexity (real OCC)', () => {
       // only direct way to name it.
       expect(out.edges[index].convexity).toBe('other')
 
-      const body: BodyResult = {
+      const part: PartResult = {
         id: 'body_c',
         created_by: 'ex1',
         modified_by: [],
@@ -475,9 +475,9 @@ describe.skipIf(!oc)('solidToEdges convexity (real OCC)', () => {
           face_seam_queries: faceData.face_seam_queries,
         },
       }
-      expect(isSeamEdge({ body, bodyId: 'body_c', kind: 'edge', index, query: seamQuery })).toBe(true)
+      expect(isSeamEdge({ part: part, partId: 'body_c', kind: 'edge', index, query: seamQuery })).toBe(true)
       const otherIndex = out.edge_queries.findIndex((q) => q !== seamQuery)
-      expect(isSeamEdge({ body, bodyId: 'body_c', kind: 'edge', index: otherIndex, query: out.edge_queries[otherIndex] })).toBe(false)
+      expect(isSeamEdge({ part: part, partId: 'body_c', kind: 'edge', index: otherIndex, query: out.edge_queries[otherIndex] })).toBe(false)
     } finally {
       table.release(h)
       table.assertNoLeaks()
@@ -505,7 +505,7 @@ describe.skipIf(!oc)('solidToEdges convexity (real OCC)', () => {
     const cone = scope.track(makeCone(occ, scope, [0, 0, 0], [0, 0, 1], 5, 2, 10))
     const h = table.register(scope.detach(cone), 'cone')
     try {
-      const out = solidToEdges(occ, table, h, { computeConvexity: true, createdBy: 'ex1', bodyId: 'body_cone' })
+      const out = solidToEdges(occ, table, h, { computeConvexity: true, createdBy: 'ex1', partId: 'body_cone' })
       const faceData = solidToFaceEdgeQueries(occ, table, h, out.edge_queries)
       const seams = new Set(faceData.face_seam_queries.flat())
       expect(seams.size, 'one lateral seam').toBe(1)

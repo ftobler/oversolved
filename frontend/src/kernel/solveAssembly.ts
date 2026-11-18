@@ -8,7 +8,7 @@
 
 import { bundleCacheGet, bundleCachePut } from './bundleCache'
 import { anchorByDescriptor, anchorIdFor, anchorKindHasAxis } from './partBundle'
-import type { PartBundle, BodyMesh, Anchor, AnchorPose, EdgeCurve, EntityAnchorIndex } from './partBundle'
+import type { PartBundle, PartMesh, Anchor, AnchorPose, EdgeCurve, EntityAnchorIndex } from './partBundle'
 import type { Transform3D, MateKind, MateOffset, NumberOrExpr, MateAnchorDescriptor } from '../types/cad'
 import type { RelayService } from './worker/solverProtocol'
 import { ASSEMBLY_BUILTIN_ANCHORS, ASSEMBLY_HANDLE } from '../utils/assemblyBuiltins'
@@ -305,43 +305,43 @@ export interface MateWireRecord {
   weight: number
 }
 
-function pinnedMaskBytes(nBodies: number): number {
-  return Math.ceil(nBodies / 8)
+function pinnedMaskBytes(nParts: number): number {
+  return Math.ceil(nParts / 8)
 }
 
 export function encodeMateInput(
-  bodyCount: number,
+  partCount: number,
   params: Float64Array,  // 7 * bodyCount
   fixedMask: Uint8Array,  // ceil(bodyCount/8) bytes
   mates: MateWireRecord[],
 ): Uint8Array {
-  const maskLen = pinnedMaskBytes(bodyCount)
+  const maskLen = pinnedMaskBytes(partCount)
   // header: magic(4) + n_bodies(4) + n_params(4) + n_mates(4) + n_fixed(4) = 20
   // bodies: n_bodies * 4
   // params: bodyCount * 7 * 8
   // fixedMask: maskLen
   // mates: n_mates * 228
   const headerSize = 20
-  const bodiesSize = bodyCount * 4
+  const partsSize = partCount * 4
   const paramsSize = params.length * 8
   const maskSize = maskLen
   // 228, not 212: the record gained the two limit f64s. This stride and
   // mate.rs's decode move together or the solver reads the wrong field -- see
   // the shared tests/fixtures/mate_wire.txt that both sides pin against.
   const matesSize = mates.length * 228
-  const total = headerSize + bodiesSize + paramsSize + maskSize + matesSize
+  const total = headerSize + partsSize + paramsSize + maskSize + matesSize
 
   const buf = new ArrayBuffer(total)
   const w = new DataView(buf)
   let pos = 0
 
   w.setUint32(pos, MATE_MAGIC, true); pos += 4
-  w.setUint32(pos, bodyCount, true); pos += 4
+  w.setUint32(pos, partCount, true); pos += 4
   w.setUint32(pos, params.length, true); pos += 4
   w.setUint32(pos, mates.length, true); pos += 4
   w.setUint32(pos, 0, true); pos += 4  // n_fixed_bodies (informational)
 
-  for (let i = 0; i < bodyCount; i++) {
+  for (let i = 0; i < partCount; i++) {
     w.setUint32(pos, i, true); pos += 4
   }
 
@@ -446,9 +446,9 @@ export function decodeMateOutput(buf: Uint8Array, expectedParams: number): Decod
   }
   // One byte per body: the solver's moved report (MTR5). nParams / 7 is the
   // body count the params count already fixed, so no separate header count.
-  const nBodies = nParams / BPB
-  const moved = new Uint8Array(nBodies)
-  for (let i = 0; i < nBodies; i++) {
+  const nParts = nParams / BPB
+  const moved = new Uint8Array(nParts)
+  for (let i = 0; i < nParts; i++) {
     moved[i] = r.getUint8(pos); pos += 1
   }
   const residualNorm = r.getFloat64(pos, true); pos += 8
@@ -514,7 +514,7 @@ export async function solveAssembly(
   solveMateFn: ((input: Uint8Array) => Uint8Array) | null,
 ): Promise<AssemblyBuildResponse> {
   const partBundles = new Map<string, { bundle: PartBundle; anchors: Record<string, Anchor> }>()
-  const bodyMeshes = new Map<string, BodyMesh[]>()  // keyed by part handle
+  const partMeshes = new Map<string, PartMesh[]>()  // keyed by part handle
   const partResults: Record<string, PartSolveResult> = {}
   let handleIndex = 0
   const handleToIndex = new Map<string, number>()
@@ -554,7 +554,7 @@ export async function solveAssembly(
       }
 
       partBundles.set(part.handle, { bundle, anchors: bundle.anchors })
-      bodyMeshes.set(part.handle, bundle.bodies)
+      partMeshes.set(part.handle, bundle.bodies)
       // Only a loaded part takes a solver body index: a failed part occupies
       // none, so handleToIndex stays the single handle-to-body mapping every
       // later pass reads.
@@ -575,7 +575,7 @@ export async function solveAssembly(
   const usesAssemblyFrame = mates.some(
     m => m.ref_a.part === ASSEMBLY_HANDLE || m.ref_b.part === ASSEMBLY_HANDLE,
   )
-  const assemblyBodyIndex = usesAssemblyFrame ? handleIndex : -1
+  const assemblyPartIndex = usesAssemblyFrame ? handleIndex : -1
   if (usesAssemblyFrame) {
     handleToIndex.set(ASSEMBLY_HANDLE, handleIndex)
     handleIndex++
@@ -588,21 +588,21 @@ export async function solveAssembly(
   // Mate ids in wire order, so the solver's per-mate residual block can be
   // folded back onto the right `MateResult`.
   const mateRecordIds: string[] = []
-  const bodyCount = handleIndex  // parts + optional assembly frame
+  const partCount = handleIndex  // parts + optional assembly frame
 
   // Resolve a mate ref to its anchor + solver body index. ASSEMBLY_HANDLE routes
   // to the static assembly-frame anchors; any other handle routes to that part
   // instance's bundle. A missing bundle or missing anchor yields undefined,
   // which the caller flags as a stale ref (fail-safe over fail-wrong).
-  const resolveRef = (ref: MateRefSpec): { anchor: Anchor | undefined; bodyIndex: number } => {
-    const bodyIndex = ref.part === ASSEMBLY_HANDLE
-      ? assemblyBodyIndex
+  const resolveRef = (ref: MateRefSpec): { anchor: Anchor | undefined; partIndex: number } => {
+    const partIndex = ref.part === ASSEMBLY_HANDLE
+      ? assemblyPartIndex
       : (handleToIndex.get(ref.part) ?? -1)
     // An inline anchor is authored on the ref itself (the drag objective), so it
     // resolves against neither a part bundle nor the static assembly frame.
-    if (ref.inlineAnchor) return { anchor: ref.inlineAnchor, bodyIndex }
+    if (ref.inlineAnchor) return { anchor: ref.inlineAnchor, partIndex }
     if (ref.part === ASSEMBLY_HANDLE) {
-      return { anchor: assemblyAnchors[ref.anchor], bodyIndex }
+      return { anchor: assemblyAnchors[ref.anchor], partIndex }
     }
     const b = partBundles.get(ref.part)
     let anchor = b?.anchors[ref.anchor]
@@ -617,7 +617,7 @@ export async function solveAssembly(
     if (!anchor && b && ref.anchor_descriptor) {
       anchor = anchorByDescriptor(b.anchors, ref.anchor_descriptor)
     }
-    return { anchor, bodyIndex }
+    return { anchor, partIndex }
   }
 
   // Belt-and-braces re-parent for a stale anchor id: recompute the
@@ -760,8 +760,8 @@ export async function solveAssembly(
 
     mateRecords.push({
       kindCode,
-      bodyA: rA.bodyIndex,
-      bodyB: rB.bodyIndex,
+      bodyA: rA.partIndex,
+      bodyB: rB.partIndex,
       anchorKindA,
       anchorKindB,
       pointA: rA.anchor!.point,
@@ -788,9 +788,9 @@ export async function solveAssembly(
 
   // ─── Call the Rust mate solver ───
 
-  const paramCount = bodyCount * BPB
+  const paramCount = partCount * BPB
   const paramsInitial = new Float64Array(paramCount)
-  const fixedMaskLen = pinnedMaskBytes(bodyCount)
+  const fixedMaskLen = pinnedMaskBytes(partCount)
   const fixedMask = new Uint8Array(fixedMaskLen)
 
   // Read part transforms + fixed mask from parts (not bundles), keyed by the
@@ -818,8 +818,8 @@ export async function solveAssembly(
   // is the identity (qw = 1; the rest stay zero from Float64Array init) and its
   // fixed-mask bit is set so the solver excludes it from the moving DOF.
   if (usesAssemblyFrame) {
-    paramsInitial[assemblyBodyIndex * BPB + 6] = 1
-    fixedMask[Math.floor(assemblyBodyIndex / 8)] |= (1 << (assemblyBodyIndex % 8))
+    paramsInitial[assemblyPartIndex * BPB + 6] = 1
+    fixedMask[Math.floor(assemblyPartIndex / 8)] |= (1 << (assemblyPartIndex % 8))
   }
 
   const transforms: Record<string, Transform3D> = {}
@@ -831,7 +831,7 @@ export async function solveAssembly(
   // keeps its authored poses. A part is echoed from `part.transform` whenever
   // the solve does not run, so nothing downstream reads the seeded copy.
   const seeded = seedAssembly(paramsInitial, fixedMask, mateRecords)
-  const encoded = encodeMateInput(bodyCount, seeded, fixedMask, mateRecords)
+  const encoded = encodeMateInput(partCount, seeded, fixedMask, mateRecords)
   let status: AssemblySolveStatus
 
   if (solveMateFn && mateRecords.length > 0) {
@@ -864,9 +864,9 @@ export async function solveAssembly(
       // transformed edge curves) then inherits a unit quaternion and never
       // has to think about it again.
       for (const part of parts) {
-        const bodyIndex = handleToIndex.get(part.handle)
+        const partIndex = handleToIndex.get(part.handle)
         // A failed bundle never entered the solver: keep its placement.
-        if (bodyIndex === undefined) {
+        if (partIndex === undefined) {
           transforms[part.handle] = { ...part.transform }
           continue
         }
@@ -883,15 +883,15 @@ export async function solveAssembly(
         }
         transforms[part.handle] = makeTransform(
           [
-            decoded.paramsSolved[bodyIndex * BPB + 0],
-            decoded.paramsSolved[bodyIndex * BPB + 1],
-            decoded.paramsSolved[bodyIndex * BPB + 2],
+            decoded.paramsSolved[partIndex * BPB + 0],
+            decoded.paramsSolved[partIndex * BPB + 1],
+            decoded.paramsSolved[partIndex * BPB + 2],
           ],
           [
-            decoded.paramsSolved[bodyIndex * BPB + 3],
-            decoded.paramsSolved[bodyIndex * BPB + 4],
-            decoded.paramsSolved[bodyIndex * BPB + 5],
-            decoded.paramsSolved[bodyIndex * BPB + 6],
+            decoded.paramsSolved[partIndex * BPB + 3],
+            decoded.paramsSolved[partIndex * BPB + 4],
+            decoded.paramsSolved[partIndex * BPB + 5],
+            decoded.paramsSolved[partIndex * BPB + 6],
           ],
         )
       }
@@ -902,9 +902,9 @@ export async function solveAssembly(
       // seeded bytes differ from the authored ones counts too. Comparing
       // bytes, not an envelope: the two arrays share one origin.
       for (const part of parts) {
-        const bodyIndex = handleToIndex.get(part.handle)
-        if (bodyIndex === undefined || part.fixed) continue
-        const seedOffset = bodyIndex * BPB
+        const partIndex = handleToIndex.get(part.handle)
+        if (partIndex === undefined || part.fixed) continue
+        const seedOffset = partIndex * BPB
         let replaced = false
         for (let k = 0; k < BPB; k++) {
           if (seeded[seedOffset + k] !== paramsInitial[seedOffset + k]) {
@@ -912,7 +912,7 @@ export async function solveAssembly(
             break
           }
         }
-        if (decoded.moved[bodyIndex] !== 0 || replaced) movedParts.push(part.handle)
+        if (decoded.moved[partIndex] !== 0 || replaced) movedParts.push(part.handle)
       }
       status = {
         verdict: mateVerdict(decoded.overallStatus),
@@ -963,7 +963,7 @@ export async function solveAssembly(
 
   // ─── Apply transforms to body meshes ───
 
-  const transformedBodies: Record<string, MeshPayload[]> = {}
+  const transformedParts: Record<string, MeshPayload[]> = {}
   const posedAnchors: Record<string, Record<string, AnchorPose>> = {}
   // The authoring-only mirror of `posedAnchors`: the same part/anchor keys, but
   // carrying the raw descriptor (geom_hash, created_by, kind and the LOCAL
@@ -1001,9 +1001,9 @@ export async function solveAssembly(
     posedAnchors[part.handle] = posed
     anchorDescriptors[part.handle] = descriptors
 
-    const meshes = bodyMeshes.get(part.handle)
+    const meshes = partMeshes.get(part.handle)
     if (!meshes) {
-      transformedBodies[part.handle] = []
+      transformedParts[part.handle] = []
       continue
     }
     const transformed: MeshPayload[] = meshes.map((m) => ({
@@ -1017,8 +1017,8 @@ export async function solveAssembly(
       hiddenVertices: m.hiddenVertices,
       entityAnchors: m.entityAnchors,
     }))
-    transformedBodies[part.handle] = transformed
+    transformedParts[part.handle] = transformed
   }
 
-  return { transforms, movedParts, bodies: transformedBodies, anchors: posedAnchors, anchorDescriptors, status }
+  return { transforms, movedParts, bodies: transformedParts, anchors: posedAnchors, anchorDescriptors, status }
 }

@@ -23,10 +23,10 @@
 import type { DisposeScope } from '../../occ/disposeScope'
 import type { HandleTable } from '../../occ/handleTable'
 import type { OccModule, OccShape, OccSubShape } from '../../occ/occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { Repository } from '../../query'
 import { extractOccFace } from '../../occ/faceLoops'
-import { canonicalEdges } from '../../occ/bodyNames'
+import { canonicalEdges } from '../../occ/partNames'
 import { exploreEdges, exploreFaces } from '../../occ/edgeModifier'
 import { SubShapeMultiIndex } from '../../occ/subshapeIdentity'
 import { faceNormal, faceSurfaceFrame, type Vec3 } from '../../occ/primitives'
@@ -60,30 +60,30 @@ const unit = (v: Vec3): Vec3 | null => {
 }
 
 /** The payload a query resolved into, or null. */
-function payloadOf(query: string, globalRepo: Repository, bodyStore: Dict): Dict | null {
-  return globalRepo.query(query, null, bodyStore) as Dict | null
+function payloadOf(query: string, globalRepo: Repository, partStore: Dict): Dict | null {
+  return globalRepo.query(query, null, partStore) as Dict | null
 }
 
 /** The OCC shape of the body a payload names, or null when the store no longer
  *  holds it. */
-function bodyShapeOf(data: Dict, bodyStore: Dict, ctx: AxisSenseContext): OccShape | null {
-  const bodyId = data.body_id as string | undefined
-  if (bodyId === undefined) return null
-  const body = bodyStore[bodyId] as Body | undefined
-  if (body === undefined || body.shape === null) return null
-  return ctx.table.get<OccShape>(body.shape)
+function partShapeOf(data: Dict, partStore: Dict, ctx: AxisSenseContext): OccShape | null {
+  const partId = data.body_id as string | undefined
+  if (partId === undefined) return null
+  const part = partStore[partId] as PartSolid | undefined
+  if (part === undefined || part.shape === null) return null
+  return ctx.table.get<OccShape>(part.shape)
 }
 
 function faceOfQuery(
   query: string,
   globalRepo: Repository,
-  bodyStore: Dict,
+  partStore: Dict,
   ctx: AxisSenseContext,
 ): OccShape | null {
-  const data = payloadOf(query, globalRepo, bodyStore)
+  const data = payloadOf(query, globalRepo, partStore)
   if (data === null) return null
   const index = data.face_index as number | undefined
-  const shape = bodyShapeOf(data, bodyStore, ctx)
+  const shape = partShapeOf(data, partStore, ctx)
   if (shape === null || index === undefined) return null
   try {
     return extractOccFace(ctx.oc, ctx.scope, shape, index)
@@ -95,13 +95,13 @@ function faceOfQuery(
 function edgeOfQuery(
   query: string,
   globalRepo: Repository,
-  bodyStore: Dict,
+  partStore: Dict,
   ctx: AxisSenseContext,
 ): OccShape | null {
-  const data = payloadOf(query, globalRepo, bodyStore)
+  const data = payloadOf(query, globalRepo, partStore)
   if (data === null) return null
   const index = data.edge_index as number | undefined
-  const shape = bodyShapeOf(data, bodyStore, ctx)
+  const shape = partShapeOf(data, partStore, ctx)
   if (shape === null || index === undefined) return null
   return canonicalEdges(ctx.oc, ctx.scope, shape)[index] ?? null
 }
@@ -241,20 +241,20 @@ export function resolveAxisCarrier(
   rawAxis: Vec3 | null,
   ctx: AxisSenseContext,
   globalRepo: Repository,
-  bodyStore: Dict,
+  partStore: Dict,
 ): AxisCarrierResult | null {
   if (kind === 'sketch_circle') {
     const axis = rawAxis === null ? null : unit(rawAxis)
     return axis === null ? null : { direction: axis, extent: null }
   }
-  const data = payloadOf(query, globalRepo, bodyStore)
+  const data = payloadOf(query, globalRepo, partStore)
   if (data === null) return null
-  const shape = bodyShapeOf(data, bodyStore, ctx)
+  const shape = partShapeOf(data, partStore, ctx)
   if (shape === null) return null
 
   if (kind === 'circular_edge') {
     const axis = rawAxis === null ? null : unit(rawAxis)
-    const edge = edgeOfQuery(query, globalRepo, bodyStore, ctx)
+    const edge = edgeOfQuery(query, globalRepo, partStore, ctx)
     if (axis === null || edge === null) return null
     const direction = circularEdgeDirection(ctx, edge, shape, axis)
     return direction === null ? null : { direction, extent: null }
@@ -262,7 +262,7 @@ export function resolveAxisCarrier(
 
   // A cylinder or cone: the face itself carries the axis (the payload's `axis`
   // is cylinder-only), and the free-end rule reads the neighbour faces.
-  const face = faceOfQuery(query, globalRepo, bodyStore, ctx)
+  const face = faceOfQuery(query, globalRepo, partStore, ctx)
   if (face === null) return null
   const direction = faceDirection(ctx, face, shape)
   if (direction === null) return null

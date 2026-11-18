@@ -46,7 +46,7 @@
 
 import type { DisposeScope } from './disposeScope'
 import type { OccModule, OccOrientedShape, OccShape, OccSubShape, OccXYZ } from './occTypes'
-import { canonicalEdges } from './bodyNames'
+import { canonicalEdges } from './partNames'
 import {
   bboxDiagonal,
   faceCentroid,
@@ -163,11 +163,11 @@ function isSeamOrDegenerate(oc: OccModule, face: OccShape, edge: OccShape): bool
 function classifyBand(
   oc: OccModule,
   scope: DisposeScope,
-  body: OccShape,
+  part: OccShape,
   groupFaces: readonly OccShape[],
   ring: readonly OccShape[],
 ): BandSides {
-  const kindOf = classifyFaceEdges(oc, scope, body)
+  const kindOf = classifyFaceEdges(oc, scope, part)
   const edges: BandEdge[] = []
   const isGroupFace = (other: OccShape): boolean =>
     groupFaces.some((f) => (f as OccSubShape).IsSame(other as OccSubShape))
@@ -485,7 +485,7 @@ function halfSpace(
 export interface WedgeInput {
   oc: OccModule
   scope: DisposeScope
-  body: OccShape
+  part: OccShape
   groupFaces: readonly OccShape[]
   ring: readonly OccShape[]
 }
@@ -497,7 +497,7 @@ export interface WedgeInput {
  * is not one bounded solid.
  */
 export function modifierWedge(input: WedgeInput): WedgePlan {
-  const { oc, scope, body, groupFaces, ring } = input
+  const { oc, scope, part: body, groupFaces, ring } = input
   if (groupFaces.length === 0) throw new WedgeRefusal(`${RUNG_WEDGE}: no picked faces`)
   const sides = classifyBand(oc, scope, body, groupFaces, ring)
   const contact = sides.contact

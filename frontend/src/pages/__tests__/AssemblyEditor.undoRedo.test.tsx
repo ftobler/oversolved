@@ -644,7 +644,7 @@ describe('AssemblyEditor undo/redo', () => {
     // mate, so nothing may keep aiming into it.
     act(() => {
       useAssemblyStore.getState().setSolveResult({
-        transforms: {}, bodies: {}, edgeCurves: {}, anchors: {}, pickGeometry: [],
+        transforms: {}, parts: {}, edgeCurves: {}, anchors: {}, pickGeometry: [],
         entityMateRefs: { [VERT]: [{ part: 'hA', anchor: 'a_v' }] }, solveStatus: null,
       })
       useAssemblyStore.getState().setPickFromHits([{ entityKey: VERT }])

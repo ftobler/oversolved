@@ -20,7 +20,7 @@ import { shapeBndBox } from '../../occ/primitives'
 import { volumeOf } from '../../occ/volume'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -95,13 +95,13 @@ describe.skipIf(!oc || !solveBytes)('curve pattern through the real kernel', () 
     setSketchSolver(solveBytes)
   })
 
-  function snapshot(r: BuildResponse, featureId: string): Record<string, Body> {
-    return r._build_state!.checkpoints[featureId].body_store_snapshot as Record<string, Body>
+  function snapshot(r: BuildResponse, featureId: string): Record<string, PartSolid> {
+    return r._build_state!.checkpoints[featureId].body_store_snapshot as Record<string, PartSolid>
   }
 
   /** The store's bodies' bounding boxes, sorted by body id so a reader can
    *  predict which copy is which. */
-  function boxesOf(store: Record<string, Body>): number[][] {
+  function boxesOf(store: Record<string, PartSolid>): number[][] {
     const scope = new DisposeScope()
     try {
       return Object.keys(store).sort().map((id) => {
@@ -116,11 +116,11 @@ describe.skipIf(!oc || !solveBytes)('curve pattern through the real kernel', () 
     }
   }
 
-  function volumeOfStore(store: Record<string, Body>): number {
+  function volumeOfStore(store: Record<string, PartSolid>): number {
     const scope = new DisposeScope()
     try {
       return Object.values(store)
-        .map((body) => volumeOf(occ, scope, h.table.get<OccShape>(body.shape!)))
+        .map((part) => volumeOf(occ, scope, h.table.get<OccShape>(part.shape!)))
         .reduce((a, b) => a + b, 0)
     } finally {
       scope.dispose()
@@ -131,10 +131,10 @@ describe.skipIf(!oc || !solveBytes)('curve pattern through the real kernel', () 
 
   /** One body's bounding box, so a copy is named by its id instead of by the
    *  order the store happens to iterate. */
-  function boxOf(r: BuildResponse, featureId: string, bodyId: string): number[] {
+  function boxOf(r: BuildResponse, featureId: string, partId: string): number[] {
     const store = snapshot(r, featureId)
-    expect(Object.keys(store)).toContain(bodyId)
-    return boxesOf({ [bodyId]: store[bodyId] })[0]
+    expect(Object.keys(store)).toContain(partId)
+    return boxesOf({ [partId]: store[partId] })[0]
   }
 
   /** A box compared within a millimetre-hundredth: the path is sampled, so a

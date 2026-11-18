@@ -283,18 +283,18 @@ describe("queryAll", () => {
 
   it("coerces candidates upward to a solid via the body store", () => {
     const repo = new Repository()
-    const bodyStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
+    const partStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
     repo.registerAncestor(
       ["@feat1"],
       { type: "flatface", body_id: "body_ex1", created_by: "ex1" },
     )
-    const results = repo.queryAll(makeAncestryQuery(["@feat1"], "solid"), null, bodyStore)
-    expect(results).toEqual([bodyStore["body_ex1"]])
+    const results = repo.queryAll(makeAncestryQuery(["@feat1"], "solid"), null, partStore)
+    expect(results).toEqual([partStore["body_ex1"]])
   })
 
   it("coerces candidates downward to a same-lineage sibling", () => {
     const repo = new Repository()
-    const bodyStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
+    const partStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
     repo.registerAncestor(
       ["@ex1"],
       { type: "solid", body_id: "body_ex1", created_by: "ex1" },
@@ -306,7 +306,7 @@ describe("queryAll", () => {
     const results = repo.queryAll(
       makeAncestryQuery(["@ex1"], "edge"),
       null,
-      bodyStore,
+      partStore,
     ) as Record<string, unknown>[]
     expect(results.length).toBe(1)
     expect(results[0].type).toBe("straightedge")

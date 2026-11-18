@@ -15,7 +15,7 @@ import { executeCommand } from '@/utils/core/commandRegistry'
 import { MAX_STEP_IMPORT_BYTES } from '@/stores/documentStore/stepImport'
 import { useEditorState } from '@/hooks/useEditorState'
 import type { PartDoc } from '@/types/cad'
-import { builtinPlaneTransform } from '@/utils/geometry/bodySnapProjection'
+import { builtinPlaneTransform } from '@/utils/geometry/partSnapProjection'
 
 const F = vi.hoisted(() => {
   const doc: PartDoc = {
@@ -37,10 +37,10 @@ const F = vi.hoisted(() => {
     ],
     part_style: { 'body-1': { name: 'Body One', color: '#FF0000' } },
   }
-  const bodies = { 'body-1': { id: 'body-1', created_by: 'extrude1', modified_by: [] } }
+  const parts = { 'body-1': { id: 'body-1', created_by: 'extrude1', modified_by: [] } }
   const self = {
     doc,
-    bodies,
+    bodies: parts,
     solve: {
       sketch1: { solved: {}, constraints: { c1: { superfluous: true } } },
       extrude1: { solved: {} },
@@ -139,14 +139,14 @@ vi.mock('@/components/layout/PartDocumentPanel', async () => {
   return {
     PartDocumentPanel: () => {
       const features = useStore(s => s.features)
-      const bodies = useStore(s => s.bodies)
+      const parts = useStore(s => s.parts)
       const { onRightClick, onRebuild, onSetRollbackPosition, onRename } = usePartEditorCallbacks()
       return (
         <div data-testid="sidebar">
           {features.map(f => (
             <button key={f.id} data-testid={`feature-ctx-${f.id}`} onClick={() => onRightClick([0, 0], f.id)}>{f.id}</button>
           ))}
-          {Object.keys(bodies ?? {}).map(id => (
+          {Object.keys(parts ?? {}).map(id => (
             <button key={id} data-testid={`body-ctx-${id}`} onClick={() => onRightClick([0, 0], `body:${id}`)}>{id}</button>
           ))}
           <button data-testid="sidebar-rebuild" onClick={() => onRebuild?.()} />
@@ -199,7 +199,7 @@ describe('Part page actions', () => {
     ...DEFAULT_PART_EDITOR_DATA,
     features: F.doc.features,
     doc: F.doc,
-    bodies: F.bodies,
+    parts: F.bodies,
     solveResults: F.solve,
   })
   useEditorState.setState({

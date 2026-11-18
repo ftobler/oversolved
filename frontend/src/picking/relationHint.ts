@@ -12,7 +12,7 @@
 // per-body creator index the face/edge hints read. A new relation is one table
 // row there, not a new code path here.
 
-import type { BodyResult, Mesh3D, PartFeature } from '@/types/cad'
+import type { PartResult, Mesh3D, PartFeature } from '@/types/cad'
 import { featureRefId, parseQuery } from '@/utils/query'
 import { isSubtype } from '@/kernel/queryCoerce'
 
@@ -236,7 +236,7 @@ export function creatorOfQuery(query: string | undefined): string | null {
  */
 export function faceCreatorsOf(
   mesh: Mesh3D | undefined,
-  bodyCreatedBy: string,
+  partCreatedBy: string,
   faceCount?: number,
 ): readonly string[] {
   if (!mesh) return []
@@ -247,20 +247,20 @@ export function faceCreatorsOf(
   const aligned = supplied !== undefined && supplied.length === count
   const out = new Array<string>(count)
   for (let i = 0; i < count; i++) {
-    out[i] = (aligned ? supplied[i] : '') || creatorOfQuery(queries[i]) || bodyCreatedBy
+    out[i] = (aligned ? supplied[i] : '') || creatorOfQuery(queries[i]) || partCreatedBy
   }
   return out
 }
 
 /** The same recovery for a body's edges, aligned with `edge_queries`. */
-export function edgeCreatorsOf(body: BodyResult): readonly string[] {
-  const count = Math.max(body.edge_queries?.length ?? 0, body.edges?.length ?? 0)
+export function edgeCreatorsOf(part: PartResult): readonly string[] {
+  const count = Math.max(part.edge_queries?.length ?? 0, part.edges?.length ?? 0)
   if (count === 0) return []
-  const supplied = body.edge_created_by
+  const supplied = part.edge_created_by
   const aligned = supplied !== undefined && supplied.length === count
   const out = new Array<string>(count)
   for (let i = 0; i < count; i++) {
-    out[i] = (aligned ? supplied[i] : '') || creatorOfQuery(body.edge_queries?.[i]) || body.created_by
+    out[i] = (aligned ? supplied[i] : '') || creatorOfQuery(part.edge_queries?.[i]) || part.created_by
   }
   return out
 }
@@ -272,7 +272,7 @@ export function edgeCreatorsOf(body: BodyResult): readonly string[] {
  * answers all of them, never an arbitrary one.
  */
 export function buildCreatorIndex(
-  bodies: Readonly<Record<string, BodyResult>>,
+  parts: Readonly<Record<string, PartResult>>,
 ): (query: string) => readonly string[] {
   const index = new Map<string, Set<string>>()
   const add = (query: string | undefined, creator: string): void => {
@@ -281,12 +281,12 @@ export function buildCreatorIndex(
     if (!creators) index.set(query, (creators = new Set()))
     creators.add(creator)
   }
-  for (const body of Object.values(bodies)) {
-    const faceQueries = body.mesh?.face_queries ?? []
-    const faceCreators = faceCreatorsOf(body.mesh, body.created_by, faceQueries.length)
+  for (const part of Object.values(parts)) {
+    const faceQueries = part.mesh?.face_queries ?? []
+    const faceCreators = faceCreatorsOf(part.mesh, part.created_by, faceQueries.length)
     faceCreators.forEach((creator, i) => add(faceQueries[i], creator))
-    const edgeQueries = body.edge_queries ?? []
-    const edgeCreators = edgeCreatorsOf(body)
+    const edgeQueries = part.edge_queries ?? []
+    const edgeCreators = edgeCreatorsOf(part)
     edgeCreators.forEach((creator, i) => add(edgeQueries[i], creator))
   }
   return (query) => {

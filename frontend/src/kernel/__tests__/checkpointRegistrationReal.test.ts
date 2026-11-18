@@ -5,7 +5,7 @@
 //
 // Every other checkpoint identifies off `extractBrepMetadata` (mesh-free), exactly what
 // the feature loop used, so "the loop already registered this body version" is trivially
-// true. The final checkpoint instead reuses the RENDER tessellation (`tessellateBodies`)
+// true. The final checkpoint instead reuses the RENDER tessellation (`tessellateParts`)
 // for both its display snapshot and its ancestry -- a different producer. Face INDEX
 // agreement is a real invariant, not a given (a zero-triangle face once got dropped
 // from the render mesh only), and face indices are both a payload field and part of
@@ -20,17 +20,17 @@ import { describe, it, expect, beforeAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
 import { DisposeScope } from '../occ/disposeScope'
 import { HandleTable } from '../occ/handleTable'
-import { build, registerBodyBrepFromMeta, snapshotRepo, RESTORE_OWNER, type BuildDeps, type BuildResponse } from '../builder'
+import { build, registerPartBrepFromMeta, snapshotRepo, RESTORE_OWNER, type BuildDeps, type BuildResponse } from '../builder'
 import { Repository, initGlobalRepo } from '../query'
 import { createFeatureSolver } from '../solverRegistry'
 import { postRegister } from '../features/postRegister'
-import { extractBrepMetadata, tessellateBodies } from '../solveLocally'
+import { extractBrepMetadata, tessellateParts } from '../solveLocally'
 import { copyShape } from '../occ/transforms'
 import type { OccShape } from '../occ/occTypes'
 import { setSketchSolver, resetSketchSolver } from '../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { repoSemanticFingerprint } from '../repoFingerprintTestUtil'
-import type { Body } from '../types3d'
+import type { PartSolid } from '../types3d'
 import { indexModifierDiffs } from '../occ/modifierAttribution'
 import importFixture from '../occ/__fixtures__/importStep.json'
 import arrayCutCorpus from '../features/__fixtures__/faceExtrudeAfterArrayCut.json'
@@ -78,11 +78,11 @@ class Harness {
       const deps: BuildDeps = {
         trySolveFeature: createFeatureSolver(oc!, scope, this.table, files),
         postRegister, initGlobalRepo,
-        tessellateBodies: (bodyStore) => tessellateBodies(oc!, this.table, bodyStore),
-        extractBrepMetadata: (bodyStore) => extractBrepMetadata(oc!, this.table, bodyStore),
-        indexModifierDiffs: (bodyStore) => indexModifierDiffs(oc!, this.table, bodyStore),
+        tessellateParts: (partStore) => tessellateParts(oc!, this.table, partStore),
+        extractBrepMetadata: (partStore) => extractBrepMetadata(oc!, this.table, partStore),
+        indexModifierDiffs: (partStore) => indexModifierDiffs(oc!, this.table, partStore),
         retainCheckpointShape: (h, owner) => this.table.retain(h, owner),
-        copyBodyShape: (h, owner) =>
+        copyPartShape: (h, owner) =>
           this.table.register(copyShape(oc!, scope, this.table.get<OccShape>(h)), owner),
         releaseCheckpoint: (fid) => {
           this.table.releaseOwner('cp:' + fid)
@@ -97,20 +97,20 @@ class Harness {
   }
 
   // The body as the final checkpoint holds it (retained shape, live handle).
-  finalBody(r: BuildResponse, bodyId: string): Body {
+  finalPart(r: BuildResponse, partId: string): PartSolid {
     const order = r._build_state.feature_order
     const cp = r._build_state.checkpoints[order[order.length - 1]]
-    return cp.body_store_snapshot[bodyId]
+    return cp.body_store_snapshot[partId]
   }
 
   // Fingerprint of a repo holding only this body's B-rep ancestry, per producer.
-  fingerprints(body: Body): { meta: string; render: string; faceCounts: [number, number] } {
-    const metaOut = extractBrepMetadata(oc!, this.table, { [body.id]: body })[body.id]
-    const renderOut = tessellateBodies(oc!, this.table, { [body.id]: body })[body.id]
+  fingerprints(part: PartSolid): { meta: string; render: string; faceCounts: [number, number] } {
+    const metaOut = extractBrepMetadata(oc!, this.table, { [part.id]: part })[part.id]
+    const renderOut = tessellateParts(oc!, this.table, { [part.id]: part })[part.id]
     const repoMeta = new Repository()
-    registerBodyBrepFromMeta(repoMeta, body, metaOut)
+    registerPartBrepFromMeta(repoMeta, part, metaOut)
     const repoRender = new Repository()
-    registerBodyBrepFromMeta(repoRender, body, renderOut)
+    registerPartBrepFromMeta(repoRender, part, renderOut)
     const faces = (out: Record<string, unknown>): number =>
       ((out.mesh as { face_data: unknown[] }).face_data ?? []).length
     return {
@@ -134,7 +134,7 @@ describe.skipIf(!oc || !solveBytes)('checkpoint registration: metadata vs render
       { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'new' },
     ] })
     expect((r.result as Record<string, Record<string, unknown>>).ex1.status).toBe('ok')
-    const fp = h.fingerprints(h.finalBody(r, 'body_ex1'))
+    const fp = h.fingerprints(h.finalPart(r, 'body_ex1'))
     expect(fp.meta).toContain('flatface')  // not vacuous: real payloads on both sides
     expect(fp.faceCounts[0]).toBe(6)
     expect(fp.faceCounts[1]).toBe(fp.faceCounts[0])
@@ -154,18 +154,18 @@ describe.skipIf(!oc || !solveBytes)('checkpoint registration: metadata vs render
     const h = new Harness()
     const r = h.run(structuredClone(arrayCutCorpus) as unknown as Record<string, unknown>)
     const order = r._build_state.feature_order
-    const bodies = r._build_state.checkpoints[order[order.length - 1]].body_store_snapshot
-    for (const body of Object.values(bodies)) {
-      const metaOut = extractBrepMetadata(oc!, h.table, { [body.id]: body })[body.id]
-      const renderOut = tessellateBodies(oc!, h.table, { [body.id]: body })[body.id]
+    const parts = r._build_state.checkpoints[order[order.length - 1]].body_store_snapshot
+    for (const part of Object.values(parts)) {
+      const metaOut = extractBrepMetadata(oc!, h.table, { [part.id]: part })[part.id]
+      const renderOut = tessellateParts(oc!, h.table, { [part.id]: part })[part.id]
       const meta = metaOut.mesh as { face_queries: string[]; face_uuids: (string | null)[] }
       const render = renderOut.mesh as {
         face_data: unknown[]; triangle_to_face: number[]; face_queries: string[]; face_uuids: (string | null)[]
       }
-      expect(render.face_queries, `${body.id} face queries`).toEqual(meta.face_queries)
-      expect(render.face_uuids, `${body.id} face uuids`).toEqual(meta.face_uuids)
-      const fp = h.fingerprints(body)
-      expect(fp.render, `${body.id} registration`).toEqual(fp.meta)
+      expect(render.face_queries, `${part.id} face queries`).toEqual(meta.face_queries)
+      expect(render.face_uuids, `${part.id} face uuids`).toEqual(meta.face_uuids)
+      const fp = h.fingerprints(part)
+      expect(fp.render, `${part.id} registration`).toEqual(fp.meta)
     }
   }, 120_000)
 
@@ -175,7 +175,7 @@ describe.skipIf(!oc || !solveBytes)('checkpoint registration: metadata vs render
       { id: 'imp1', kind: 'import_step', file_id: 'imp1', scale: 1 },
     ] }, importFiles)
     expect((r.result as Record<string, Record<string, unknown>>).imp1.status).toBe('ok')
-    const fp = h.fingerprints(h.finalBody(r, 'body_imp1'))
+    const fp = h.fingerprints(h.finalPart(r, 'body_imp1'))
     expect(fp.meta).toContain('face_index')  // not vacuous: real payloads on both sides
     expect(fp.faceCounts[0]).toBeGreaterThan(0)
     expect(fp.faceCounts[1]).toBe(fp.faceCounts[0])

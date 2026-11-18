@@ -30,15 +30,15 @@ describe('featureHandle ID layer', () => {
     expect(key).toBe('fhandle:ex1:distance')
     // One segment spanning the whole arrow (tail to cone tip), one id: every
     // pixel of the arrow resolves to the same grab key.
-    p.featureHandleLayer.registerBody({
-      bodyKey: key,
+    p.featureHandleLayer.registerPart({
+      partKey: key,
       segmentPositions: new Float32Array([0, 0, 0, 5, 5, 5]),
       segmentToEdge: [0],
       edgeQueries: [key],
     })
     expect(p.registry.lookupKey(FEATURE_HANDLE_LAYER_NAME, key)).toBeDefined()
     expect(p.registry.size()).toBe(1)
-    p.featureHandleLayer.unregisterBody(key)
+    p.featureHandleLayer.unregisterPart(key)
     expect(p.registry.size()).toBe(0)
     p.dispose()
   })

@@ -13,7 +13,7 @@ import { Repository } from '../../query'
 import { solidToEdges } from '../../occ/tessellation'
 import { solveExtrude } from '../extrude'
 import { resolveProfileEdges, edgesToProfileFace, resolveEdgeProfileFace } from '../edgeProfile'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 
 const oc = await loadOcc()
@@ -25,7 +25,7 @@ describe.skipIf(!oc)('extrude profile from B-rep edges (real OCC)', () => {
     occ = oc
   })
 
-  function makeBoxBody(scope: DisposeScope, table: HandleTable): Record<string, Body> {
+  function makeBoxPart(scope: DisposeScope, table: HandleTable): Record<string, PartSolid> {
     const box = makeBox(occ, scope, 10, 10, 10)
     return {
       body_b: {
@@ -43,15 +43,15 @@ describe.skipIf(!oc)('extrude profile from B-rep edges (real OCC)', () => {
   // Ancestry queries for the four edges whose endpoints both lie at z == zPlane.
   function edgeLoopAtZ(
     table: HandleTable,
-    body: Body,
+    part: PartSolid,
     zPlane: number,
   ): string[] {
-    const { edges, edge_queries } = solidToEdges(occ, table, body.shape!, {
-      createdBy: body.created_by,
-      bodyId: body.id,
-      profileQueries: body.profile_queries,
-      edgeAncestry: body.edge_ancestry ?? null,
-      edgeUuids: body.edge_uuids ?? null,
+    const { edges, edge_queries } = solidToEdges(occ, table, part.shape!, {
+      createdBy: part.created_by,
+      partId: part.id,
+      profileQueries: part.profile_queries,
+      edgeAncestry: part.edge_ancestry ?? null,
+      edgeUuids: part.edge_uuids ?? null,
     })
     const out: string[] = []
     for (let i = 0; i < edges.length; i++) {
@@ -68,11 +68,11 @@ describe.skipIf(!oc)('extrude profile from B-rep edges (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBoxBody(scope, table)
-      const bottom = edgeLoopAtZ(table, bodyStore.body_b, 0)
+      const partStore = makeBoxPart(scope, table)
+      const bottom = edgeLoopAtZ(table, partStore.body_b, 0)
       expect(bottom.length).toBe(4)
 
-      const edges = resolveProfileEdges(occ, scope, table, bottom, bodyStore)
+      const edges = resolveProfileEdges(occ, scope, table, bottom, partStore)
       expect(edges.length).toBe(4)
 
       const face = edgesToProfileFace(occ, scope, edges)
@@ -89,18 +89,18 @@ describe.skipIf(!oc)('extrude profile from B-rep edges (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBoxBody(scope, table)
-      const bottom = edgeLoopAtZ(table, bodyStore.body_b, 0)
+      const partStore = makeBoxPart(scope, table)
+      const bottom = edgeLoopAtZ(table, partStore.body_b, 0)
 
       const result = solveExtrude(
         occ, scope, table,
         { id: 'ex2', extrude: { sketch: bottom, distance: 5, operation: 'new' } },
-        new Repository(), bodyStore,
+        new Repository(), partStore,
       )
       expect(result.status).toBe('ok')
-      const newBody = bodyStore.body_ex2
-      expect(newBody).toBeDefined()
-      expect(volumeOf(occ, scope, table.get<OccShape>(newBody.shape!))).toBeCloseTo(500, 3)
+      const newPart = partStore.body_ex2
+      expect(newPart).toBeDefined()
+      expect(volumeOf(occ, scope, table.get<OccShape>(newPart.shape!))).toBeCloseTo(500, 3)
     } finally {
       scope.dispose()
     }
@@ -110,12 +110,12 @@ describe.skipIf(!oc)('extrude profile from B-rep edges (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore = makeBoxBody(scope, table)
-      const bottom = edgeLoopAtZ(table, bodyStore.body_b, 0)
-      const top = edgeLoopAtZ(table, bodyStore.body_b, 10)
+      const partStore = makeBoxPart(scope, table)
+      const bottom = edgeLoopAtZ(table, partStore.body_b, 0)
+      const top = edgeLoopAtZ(table, partStore.body_b, 10)
       // One bottom edge + one top edge: not connected, not a closed coplanar loop.
       expect(() =>
-        resolveEdgeProfileFace(occ, scope, table, [bottom[0], top[0]], bodyStore),
+        resolveEdgeProfileFace(occ, scope, table, [bottom[0], top[0]], partStore),
       ).toThrow()
     } finally {
       scope.dispose()

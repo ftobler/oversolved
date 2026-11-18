@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { mergeSnapshot, pickOwnedFields } from '@/stores/storeSnapshot'
 import { assemblyHistory, setAssemblyHistoryMirror } from '@/stores/assemblyHistory'
 import type { HistoryEntry } from '@/session/History'
-import type { AssemblyDoc, PartInstance, MateFeature, MateRef, MateRefField, MateAnchorDescriptor, Transform3D, BodyResult } from '@/types/cad'
+import type { AssemblyDoc, PartInstance, MateFeature, MateRef, MateRefField, MateAnchorDescriptor, Transform3D, PartResult } from '@/types/cad'
 import type { EdgeCurve } from '@/kernel/partBundle'
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { cycleIndex, resolveCandidates, sameCandidateSet, type EntityMateRefs } from '@/utils/anchorCandidates'
@@ -13,7 +13,7 @@ import type { AssemblySubject } from '@/utils/assemblySelection'
 import { runAssemblyOperation } from '@/utils/assemblyOperations'
 import { ASSEMBLY_UNDO_LABELS, type AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
 import { captureMateOrientationPatch } from '@/utils/mateCapture'
-import type { AssemblyPickBody } from '@/utils/assemblyPick'
+import type { AssemblyPickPart } from '@/utils/assemblyPick'
 import type { GizmoAxisName } from '@/utils/gizmoPickGeometry'
 import { composeTransforms, IDENTITY_TRANSFORM, transformsEqual, type Vec3 } from '@/utils/transform3d'
 
@@ -58,7 +58,7 @@ function sameEntityHits(a: readonly EntityHit[], b: readonly EntityHit[]): boole
   return a.length === b.length && a.every((h, i) => h.entityKey === b[i].entityKey)
 }
 import {
-  beginBodyManipulation,
+  beginPartManipulation,
   beginManipulation,
   commitManipulation,
   dragTranslate,
@@ -88,7 +88,7 @@ export interface AssemblyEditorData {
    *  leaves it out. A fixed part is never here. Undefined means no report
    *  reached the store (a legacy payload), so the bake writes every pose. */
   movedParts?: ReadonlySet<string>
-  bodies: Record<string, BodyResult>
+  parts: Record<string, PartResult>
   // Analytic edges of the solved bodies, keyed by the same body id.
   edgeCurves: Record<string, EdgeCurve[]>
   // Entity pick id -> the mate refs it offers. The Stage 7 pick lookup.
@@ -100,7 +100,7 @@ export interface AssemblyEditorData {
   // whose id went stale can re-find its element by descriptor (lookupAnchor).
   anchorDescriptors?: Record<string, Record<string, MateAnchorDescriptor>>
   // ID-layer registration payloads for the solved scene.
-  pickGeometry: AssemblyPickBody[]
+  pickGeometry: AssemblyPickPart[]
   // The solved pose `pickGeometry` was baked at. The ID buffer offsets from this
   // onto the drawn pose, so a committed drag's pick geometry follows the parts.
   pickGeometryPose: Record<string, Transform3D>
@@ -183,7 +183,7 @@ export function createDefaultAssemblyEditorData(): AssemblyEditorData {
     solveStatus: null,
     transforms: {},
     movedParts: undefined,
-    bodies: {},
+    parts: {},
     edgeCurves: {},
     entityMateRefs: {},
     anchors: {},
@@ -219,7 +219,7 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData =
  *  pick geometry) cannot be added to the solve and forgotten at the store. */
 export type AssemblySolveResult = Pick<
   AssemblyEditorData,
-  'transforms' | 'movedParts' | 'bodies' | 'edgeCurves' | 'entityMateRefs' | 'anchors' | 'anchorDescriptors' | 'pickGeometry' | 'solveStatus'
+  'transforms' | 'movedParts' | 'parts' | 'edgeCurves' | 'entityMateRefs' | 'anchors' | 'anchorDescriptors' | 'pickGeometry' | 'solveStatus'
 >
 
 /**
@@ -231,7 +231,7 @@ export type AssemblySolveResult = Pick<
  * mate) still arrives with a freshly built array. Passing that on re-keys the
  * viewport's `groups` memo (AssemblyViewport), which re-runs
  * `getAssemblyPartGroups` and mints a new `items` array for every part, so
- * every AssemblyBody sees new props for a scene that did not change.
+ * every AssemblyPartMesh sees new props for a scene that did not change.
  *
  * Compared field by field rather than with an epsilon: this decides object
  * identity, and a pose that differs at all is a different pose. The element
@@ -335,7 +335,7 @@ interface AssemblyEditorState extends AssemblyEditorData {
    * drag has none) and does not clear the grabbed part's own entries, which the
    * caller drops so it keeps rendering from its drag offset.
    */
-  setDragSolveResult: (result: Pick<AssemblyEditorData, 'transforms' | 'movedParts' | 'bodies' | 'edgeCurves' | 'solveStatus'>) => void
+  setDragSolveResult: (result: Pick<AssemblyEditorData, 'transforms' | 'movedParts' | 'parts' | 'edgeCurves' | 'solveStatus'>) => void
   // Resolve an ordered hit list into the candidate set, aiming its first entry.
   setPickFromHits: (hits: readonly EntityHit[]) => void
   // A Ctrl+click: re-aim, or advance the cycle when it lands on the same set.
@@ -372,7 +372,7 @@ interface AssemblyEditorState extends AssemblyEditorData {
    * point under the cursor. `worldGrab` is that point in world space. No-op for a
    * `fixed` instance.
    */
-  beginBodyDrag: (handle: string, worldGrab: Vec3) => boolean
+  beginPartDrag: (handle: string, worldGrab: Vec3) => boolean
   // Move where the grabbed point is pulled to; re-solves so the part tracks it.
   setDragTarget: (target: Vec3) => void
   /** Fold the drag solve's grabbed-part pose into the session (what it draws and
@@ -498,7 +498,7 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     ...(result.movedParts !== undefined && {
       movedParts: new Set([...(prev.movedParts ?? []), ...result.movedParts]),
     }),
-    bodies: { ...prev.bodies, ...result.bodies },
+    parts: { ...prev.parts, ...result.parts },
     edgeCurves: { ...prev.edgeCurves, ...result.edgeCurves },
     solveStatus: result.solveStatus,
     // The parts this tick re-posed are re-baked with it; only a part it left
@@ -635,14 +635,14 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
     return true
   },
 
-  beginBodyDrag: (handle, worldGrab) => {
+  beginPartDrag: (handle, worldGrab) => {
     const { doc } = get()
     if (!doc) return false
     // The grab landed on where the part is DRAWN: its settled pose, falling back
     // to the doc seed before the first solve.
     const drawn = get().settledPose(handle) ?? findInstance(doc, handle)?.transform
     if (!drawn) return false
-    const session = beginBodyManipulation(doc, handle, worldGrab, drawn)
+    const session = beginPartManipulation(doc, handle, worldGrab, drawn)
     if (!session) return false
     set({ manipulation: session })
     return true

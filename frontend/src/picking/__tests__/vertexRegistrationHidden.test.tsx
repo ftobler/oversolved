@@ -24,7 +24,7 @@ describe('useVertexIdRegistration hidden vertices', () => {
     const vertices: [number, number, number][] = [[0, 0, 0], [1, 0, 0], [2, 0, 0]]
     renderHook(() => useVertexIdRegistration({
       featureId: 'f1',
-      bodyId: 'b1',
+      partId: 'b1',
       vertices,
       vertexQueries: ['vtx@A', 'vtx@SEAM', 'vtx@C'],
       hiddenVertices: new Set([1]),

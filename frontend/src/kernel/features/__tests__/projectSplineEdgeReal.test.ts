@@ -63,9 +63,9 @@ describe.skipIf(!oc || !solveBytes)('project a body spline edge into a sketch (r
     const r1 = h.run({ features: [sk1, ex1] })
     expect(h.res(r1, 'ex1').status).toBe('ok')
 
-    const body = h.body(r1, 'body_ex1')
-    const edges = (body.edges as Array<{ kind?: string; points?: number[][] }>) ?? []
-    const queries = (body.edge_queries as string[]) ?? []
+    const part = h.part(r1, 'body_ex1')
+    const edges = (part.edges as Array<{ kind?: string; points?: number[][] }>) ?? []
+    const queries = (part.edge_queries as string[]) ?? []
     expect(queries.length).toBe(edges.length)
     // The extruded cap (Top's normal is +Y, so the far cap sits at |y| = 5): a
     // sampled spline edge, exactly what the picker hands the project tool as a

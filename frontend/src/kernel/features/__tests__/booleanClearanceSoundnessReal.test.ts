@@ -20,7 +20,7 @@ import { makeBoxAt } from '../../occ/primitives'
 import { applyFilletWithDiff } from '../../occ/edgeModifier'
 import { Repository } from '../../query'
 import { solveBoolean } from '../boolean'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { Vec3 } from '../../occ/primitives'
 
@@ -43,7 +43,7 @@ describe.skipIf(!oc)('boolean clearance soundness translation (real OCC)', () =>
     const table = new HandleTable()
     try {
       const targetShape = makeBoxAt(occ, scope, [0, 0, 0] as Vec3, 10, 10, 8)
-      const target: Body = {
+      const target: PartSolid = {
         id: 'body_t', created_by: 'ex_t', modified_by: [],
         shape: table.register(targetShape, 'ex_t'), sketch_id: 'sk_t',
         brep_diff: null, profile_queries: [],
@@ -54,7 +54,7 @@ describe.skipIf(!oc)('boolean clearance soundness translation (real OCC)', () =>
       for (; exp.More(); exp.Next()) edges.push(scope.track(occ.TopoDS.Edge_1(exp.Current())))
       const fillet = applyFilletWithDiff(occ, scope, box, 0.5, edges)
       expect(fillet.success).toBe(true)
-      const tool: Body = {
+      const tool: PartSolid = {
         id: 'body_u', created_by: 'ex_u', modified_by: [],
         shape: table.register(scope.track(fillet.shape), 'ex_u'), sketch_id: 'sk_u',
         brep_diff: null, profile_queries: [],

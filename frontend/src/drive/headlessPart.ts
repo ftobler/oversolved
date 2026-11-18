@@ -11,11 +11,11 @@
 // command step, the end) instead of after every step. The browser adapter keeps
 // its immediate scheduler; only this drive surface wraps one.
 
-import type { PartDoc, Mutation, SketchData, BodyResult, BuildResponse } from '@/types/cad'
+import type { PartDoc, Mutation, SketchData, PartResult, BuildResponse } from '@/types/cad'
 import {
-  faceBoundaryFromBodies, freezeRowsForDelete, isFaceProjectionSource,
+  faceBoundaryFromParts, freezeRowsForDelete, isFaceProjectionSource,
   projectionDependentsReport, projectionNotFrozenMessage, projectionsFreezingNothing,
-  type FaceBoundaryBodyLike, type ProjectionMemberEntity,
+  type FaceBoundaryPartLike, type ProjectionMemberEntity,
 } from '@/kernel/features/projectionMembers'
 import { repoFromSnapshot } from '@/kernel/builder'
 import type { BuildState } from '@/kernel/types3d'
@@ -29,7 +29,7 @@ import { projectionTargetRef } from '@/utils/yamlMutations/freezeProjection'
 import { errorResult } from '@/session/result'
 import { createWorkerSolveScheduler, type ReSolveFn } from '@/hooks/workerSolveScheduler'
 import { createDeferredSolveScheduler, type DeferredSolveScheduler } from '@/drive/deferredSolveScheduler'
-import { finalLiveBodyIds, measureSolveFeatures, solveLocally, type FeatureMeasure } from '@/kernel/solveLocally'
+import { finalLivePartIds, measureSolveFeatures, solveLocally, type FeatureMeasure } from '@/kernel/solveLocally'
 import { CommandRegistry } from '@/utils/core/commandSpec'
 import type { CommandName } from '@/utils/core/commandNames'
 import { PART_COMMAND_SPECS, getSketchState, type PartCommandContext } from '@/pages/commandEntries'
@@ -213,7 +213,7 @@ function isFaceProjectionStep(mutation: unknown): boolean {
  * drive flushes an owed solve before such a step, so the checkpoint exists; a
  * refused answer means the source is gone from the current document.
  */
-function bodyProjectionResolveCheck(
+function partProjectionResolveCheck(
   getResponse: () => Awaited<ReturnType<typeof solveLocally>>,
 ): (source: string, featureId: string) => { ok: true } | { ok: false; reason: string } {
   return (source, featureId) => {
@@ -336,7 +336,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
   // each solve so a failed rebuild cannot leave the previous outcome standing
   // as if it described the current document.
   const outcomesBox: { current: Record<string, FeatureOutcome> } = { current: {} }
-  const bodiesBox: { current: string[] | null } = { current: null }
+  const partsBox: { current: string[] | null } = { current: null }
   const responseBox: { current: Awaited<ReturnType<typeof solveLocally>> } = { current: null }
   const settleNoteBox: { current: FeatureNote | null } = { current: null }
   const solvedBox = { current: false }
@@ -352,7 +352,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     // The body set belongs to the response being replaced: a faulted re-solve
     // must not leave the previous document's live set to be reported as this
     // one's.
-    bodiesBox.current = null
+    partsBox.current = null
     // A failed or faulted solve must not leave the previous response standing:
     // featureMeasures and featureFrames read it against the CURRENT document, so
     // pairing the old frames with a document edited since would report a plane
@@ -400,7 +400,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     // write-back: this is what the reply summary reports, not the accumulated
     // part_style keys and not the render map (which drops a body whose
     // tessellation failed while the solve still holds it).
-    bodiesBox.current = finalLiveBodyIds(response)
+    partsBox.current = finalLivePartIds(response)
     if (stillMoving.length > 0) {
       // The cap was hit with the write-back still installing geometry. Report
       // the sketches in feature order; the note alone acknowledges the gap.
@@ -434,10 +434,10 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     docId,
     // A face projection is added with the members the last solve derived from
     // the solved bodies; the headless host answers from its own response box.
-    projectionBoundary: faceBoundaryFromBodies(
-      () => responseBox.current?.bodies as Record<string, FaceBoundaryBodyLike> | undefined,
+    projectionBoundary: faceBoundaryFromParts(
+      () => responseBox.current?.bodies as Record<string, FaceBoundaryPartLike> | undefined,
     ),
-    projectionResolves: bodyProjectionResolveCheck(() => responseBox.current),
+    projectionResolves: partProjectionResolveCheck(() => responseBox.current),
     ...(opts.journal && { journal: journalSink(opts.journal) }),
   })
 
@@ -522,23 +522,23 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
           // a solve still owed is spent first, and a run that starts from an
           // unsolved document (a fresh doc, or a chained docHash whose reply
           // carried no bodies) solves once before its first selector step.
-          let bodies = responseBox.current?.bodies as Record<string, BodyResult> | undefined
+          let parts = responseBox.current?.bodies as Record<string, PartResult> | undefined
           // A face projection needs the last solve's body mesh to derive its
           // member ids, and a body-query projection resolves only against that
           // same solve. A delete of a face projection needs the settled face too,
           // so its freeze rows are the current members, not the previous solve's.
-          const needsBodies = usesSelectionAid(step.mutation) || isFaceProjectionStep(step.mutation)
+          const needsParts = usesSelectionAid(step.mutation) || isFaceProjectionStep(step.mutation)
           const needsSettled = usesSettledSketchGeometry(step.mutation, docBox.current)
-          if (needsBodies || needsSettled) {
+          if (needsParts || needsSettled) {
             if (solve.owed()) {
               await solve.flush()
-            } else if ((needsBodies || needsSettled) && responseBox.current === null) {
+            } else if ((needsParts || needsSettled) && responseBox.current === null) {
               session.refreshSolve()
               await solve.flush()
             }
-            bodies = responseBox.current?.bodies as Record<string, BodyResult> | undefined
+            parts = responseBox.current?.bodies as Record<string, PartResult> | undefined
           }
-          const resolved = resolveSelectionAids(step.mutation, bodies ?? null)
+          const resolved = resolveSelectionAids(step.mutation, parts ?? null)
           if (!resolved.ok) return { ok: false, code: resolved.code, message: resolved.message }
           // The script carries untyped JSON; validate before the cast so a typo
           // is a named step failure and the doc stays as it was. The live doc lets
@@ -611,7 +611,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
           if (doc === null) return
           opts.onStepSettled?.({
             doc,
-            bodies: bodiesBox.current,
+            bodies: partsBox.current,
             solve: solve.state(),
             // A snapshot: the runner keeps pushing onto its own array, and a
             // consumer that holds this checkpoint must not see later steps.
@@ -633,7 +633,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     registry,
     solve,
     getDoc: () => docBox.current,
-    bodyIds: () => bodiesBox.current,
+    bodyIds: () => partsBox.current,
     solveOutcomes: () => outcomesBox.current,
     solveAttempted: () => solvedBox.current,
     featureFrames: opts => responseBox.current === null

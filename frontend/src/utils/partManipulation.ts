@@ -59,7 +59,7 @@ export function beginManipulation(doc: AssemblyDoc, handle: string): Manipulatio
  * which is what the grab point must be captured against -- a mate can have pulled
  * the part off its doc seed, and the grab landed on where the part is DRAWN.
  */
-export function beginBodyManipulation(
+export function beginPartManipulation(
   doc: AssemblyDoc,
   handle: string,
   worldGrab: Vec3,

@@ -91,7 +91,7 @@ describe.skipIf(!oc || !solveBytes)('checkpoint meshing across builds (real OCC 
       extrudeSpec('sk1', 'ex1', { distance: 5 }),
     ]}
     const r0 = h.run(spec)
-    const eq = (h.body(r0, 'body_ex1').edge_queries as string[]) ?? []
+    const eq = (h.part(r0, 'body_ex1').edge_queries as string[]) ?? []
     expect(eq.length).toBeGreaterThan(0)
 
     spec.features.push({ id: 'fi1', kind: 'fillet', edges: [eq[0]], radius: 0.5 })

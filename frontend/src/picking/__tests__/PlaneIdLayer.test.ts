@@ -16,19 +16,19 @@ describe('PlaneIdLayer (via pipeline)', () => {
       -1, -1, 0,  1, -1, 0,  1, 1, 0,
       -1, -1, 0,  1, 1, 0,  -1, 1, 0,
     ])
-    p.planeLayer.registerBody({
-      bodyKey: '@builtin_plane_top',
+    p.planeLayer.registerPart({
+      partKey: '@builtin_plane_top',
       positions,
       triangleToFace: tri2,
       faceQueries: ['@builtin_plane_top'],
     })
-    p.planeLayer.registerBody({
-      bodyKey: '@builtin_plane_front',
+    p.planeLayer.registerPart({
+      partKey: '@builtin_plane_front',
       positions,
       triangleToFace: tri2,
       faceQueries: ['@builtin_plane_front'],
     })
-    expect(p.planeLayer.bodyCount()).toBe(2)
+    expect(p.planeLayer.partCount()).toBe(2)
     expect(p.registry.lookupKey(PLANE_LAYER_NAME, '@builtin_plane_top')).toBeDefined()
     expect(p.registry.lookupKey(PLANE_LAYER_NAME, '@builtin_plane_front')).toBeDefined()
     p.dispose()

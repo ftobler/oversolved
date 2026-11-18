@@ -18,14 +18,14 @@ import type { DisposeScope } from '../../occ/disposeScope'
 import type { HandleTable } from '../../occ/handleTable'
 import type { OccHandle } from '../../occ/handleTable'
 import type { OccModule, OccShape, OccSubShape } from '../../occ/occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 const oc = null as unknown as OccModule
 const scope = null as never
 const table = null as unknown as HandleTable
 const repo = new Repository()
 
-function oneBody(): Record<string, Body> {
+function onePart(): Record<string, PartSolid> {
   return {
     body_b: {
       id: 'body_b',
@@ -42,19 +42,19 @@ function oneBody(): Record<string, Body> {
 describe('solveFillet guard paths', () => {
   it('rejects a non-positive radius', () => {
     expect(() =>
-      solveFillet(oc, scope, table, { id: 'f', fillet: { edges: ['?b:edge:0'], radius: 0 } }, repo, oneBody()),
+      solveFillet(oc, scope, table, { id: 'f', fillet: { edges: ['?b:edge:0'], radius: 0 } }, repo, onePart()),
     ).toThrow(/radius must be positive/)
   })
 
   it('rejects a NaN radius the same way as a non-positive radius', () => {
     expect(() =>
-      solveFillet(oc, scope, table, { id: 'f', fillet: { edges: ['?b:edge:0'], radius: NaN } }, repo, oneBody()),
+      solveFillet(oc, scope, table, { id: 'f', fillet: { edges: ['?b:edge:0'], radius: NaN } }, repo, onePart()),
     ).toThrow(/radius must be positive/)
   })
 
   it('requires at least one edge', () => {
     expect(() =>
-      solveFillet(oc, scope, table, { id: 'f', fillet: { edges: [], radius: 2 } }, repo, oneBody()),
+      solveFillet(oc, scope, table, { id: 'f', fillet: { edges: [], radius: 2 } }, repo, onePart()),
     ).toThrow(/requires at least one edge/)
   })
 
@@ -65,14 +65,14 @@ describe('solveFillet guard paths', () => {
   })
 
   it('an unknown viewport-form source_body throws the named error, never a TypeError', () => {
-    // M21: a 'body:<id>' ref is invisible to resolveBodyIds, so the group key
-    // used to stay the raw ref and indexFor dereferenced bodyStore[undefined]
+    // M21: a 'body:<id>' ref is invisible to resolvePartIds, so the group key
+    // used to stay the raw ref and indexFor dereferenced partStore[undefined]
     // into a TypeError. The resolver itself must reject it by name, before any
     // OCC call -- hence oc = null is fine here.
     expect(() =>
       solveFillet(oc, scope, table, {
         id: 'f', fillet: { edges: ['?b:edge:0'], radius: 2, source_body: 'body:body_nope' },
-      }, repo, oneBody()),
+      }, repo, onePart()),
     ).toThrow(/source part 'body:body_nope' not found/)
   })
 
@@ -80,7 +80,7 @@ describe('solveFillet guard paths', () => {
     // '@ex1' resolves to both siblings of a split feature. Grouping every edge
     // onto one of them silently would fillet the wrong body; the pick must name
     // exactly one.
-    const store: Record<string, Body> = {
+    const store: Record<string, PartSolid> = {
       body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [], shape: null, sketch_id: 'sk', brep_diff: null, profile_queries: [] },
       body_ex1_1: { id: 'body_ex1_1', created_by: 'ex1', modified_by: [], shape: null, sketch_id: 'sk', brep_diff: null, profile_queries: [] },
     }
@@ -97,13 +97,13 @@ describe('solveFillet guard paths', () => {
     expect(() =>
       solveFillet(oc, scope, table, {
         id: 'f', fillet: { edges: ['?b:edge:0'], radius: 2, source_body: 'body_b' },
-      }, repo, oneBody()),
+      }, repo, onePart()),
     ).toThrow(/fillet: no edges resolved/)
   })
 
   it('treats a null OCC shape as no edges resolved', () => {
     const nullShape = { get: () => ({ IsNull: () => true }) } as unknown as HandleTable
-    const store: Record<string, Body> = { body_b: { ...oneBody().body_b, shape: 1 as never } }
+    const store: Record<string, PartSolid> = { body_b: { ...onePart().body_b, shape: 1 as never } }
     expect(() =>
       solveFillet(oc, scope, nullShape, {
         id: 'f', fillet: { edges: ['?b:edge:0'], radius: 2, source_body: 'body_b' },
@@ -119,7 +119,7 @@ describe('solveFillet guard paths', () => {
         },
       }),
     } as unknown as HandleTable
-    const store: Record<string, Body> = { body_b: { ...oneBody().body_b, shape: 1 as never } }
+    const store: Record<string, PartSolid> = { body_b: { ...onePart().body_b, shape: 1 as never } }
     expect(() =>
       solveChamfer(oc, scope, throwing, {
         id: 'c', chamfer: { edges: ['?b:edge:0'], distance: 2, source_body: 'body_b' },
@@ -131,19 +131,19 @@ describe('solveFillet guard paths', () => {
 describe('solveChamfer guard paths', () => {
   it('rejects a non-positive distance', () => {
     expect(() =>
-      solveChamfer(oc, scope, table, { id: 'c', chamfer: { edges: ['?b:edge:0'], distance: -1 } }, repo, oneBody()),
+      solveChamfer(oc, scope, table, { id: 'c', chamfer: { edges: ['?b:edge:0'], distance: -1 } }, repo, onePart()),
     ).toThrow(/distance must be positive/)
   })
 
   it('rejects a NaN distance the same way as a non-positive distance', () => {
     expect(() =>
-      solveChamfer(oc, scope, table, { id: 'c', chamfer: { edges: ['?b:edge:0'], distance: NaN } }, repo, oneBody()),
+      solveChamfer(oc, scope, table, { id: 'c', chamfer: { edges: ['?b:edge:0'], distance: NaN } }, repo, onePart()),
     ).toThrow(/distance must be positive/)
   })
 
   it('requires at least one edge', () => {
     expect(() =>
-      solveChamfer(oc, scope, table, { id: 'c', chamfer: { edges: [], distance: 2 } }, repo, oneBody()),
+      solveChamfer(oc, scope, table, { id: 'c', chamfer: { edges: [], distance: 2 } }, repo, onePart()),
     ).toThrow(/requires at least one edge/)
   })
 })
@@ -153,7 +153,7 @@ describe('resolveFilletEdges guard', () => {
   const scopeNull = null as unknown as DisposeScope
 
   it('returns empty array when edgeQueries is empty (body with valid shape)', () => {
-    const body: Body = {
+    const part: PartSolid = {
       id: 'b1',
       created_by: 'f1',
       modified_by: [],
@@ -162,11 +162,11 @@ describe('resolveFilletEdges guard', () => {
       brep_diff: null,
       profile_queries: [],
     }
-    expect(resolveFilletEdges(oc, scopeNull, table, body, [])).toEqual([])
+    expect(resolveFilletEdges(oc, scopeNull, table, part, [])).toEqual([])
   })
 
   it('returns empty array when edgeQueries is empty (body with null shape)', () => {
-    expect(resolveFilletEdges(oc, scopeNull, table, oneBody().body_b, [])).toEqual([])
+    expect(resolveFilletEdges(oc, scopeNull, table, onePart().body_b, [])).toEqual([])
   })
 })
 
@@ -201,7 +201,7 @@ describe('exact-match edge tier ambiguity refusal', () => {
     registerExactEdge(index.queryToEdge, index.ambiguousQueries, q, edgeB)
 
     expect(index.ambiguousQueries.has(q)).toBe(true)  // collision recorded, not last-wins
-    const resolved = resolveEdgesWithIndex(oc, scopeNull, table, oneBody().body_b, index, [q])
+    const resolved = resolveEdgesWithIndex(oc, scopeNull, table, onePart().body_b, index, [q])
     expect(resolved).toEqual([])  // refuses rather than picking edgeA or edgeB
   })
 
@@ -213,7 +213,7 @@ describe('exact-match edge tier ambiguity refusal', () => {
     registerExactEdge(index.queryToEdge, index.ambiguousQueries, q, edge)  // IsSame -> no collision
 
     expect(index.ambiguousQueries.has(q)).toBe(false)
-    const resolved = resolveEdgesWithIndex(oc, scopeNull, table, oneBody().body_b, index, [q])
+    const resolved = resolveEdgesWithIndex(oc, scopeNull, table, onePart().body_b, index, [q])
     expect(resolved).toEqual([edge])
   })
 
@@ -223,7 +223,7 @@ describe('exact-match edge tier ambiguity refusal', () => {
     const edge = fakeEdge()
     registerExactEdge(index.queryToEdge, index.ambiguousQueries, q, edge)
 
-    const resolved = resolveEdgesWithIndex(oc, scopeNull, table, oneBody().body_b, index, [q])
+    const resolved = resolveEdgesWithIndex(oc, scopeNull, table, onePart().body_b, index, [q])
     expect(resolved).toEqual([edge])
   })
 })
@@ -251,7 +251,7 @@ describe('resolveEdgesByQuery provenance', () => {
   it('an unmatched query comes back with an empty list under its own key', () => {
     const index = emptyIndex()
     const q = makeAncestryQuery(['@ex1', '@body_b'], 'straightedge')
-    const byQuery = resolveEdgesByQuery(oc, scopeNull, table, oneBody().body_b, index, [q])
+    const byQuery = resolveEdgesByQuery(oc, scopeNull, table, onePart().body_b, index, [q])
     expect(byQuery.has(q)).toBe(true)
     expect(byQuery.get(q)).toEqual([])
   })
@@ -262,8 +262,8 @@ describe('resolveEdgesByQuery provenance', () => {
     const edge = fakeEdge()
     registerExactEdge(index.queryToEdge, index.ambiguousQueries, q, edge)
 
-    const byQuery = resolveEdgesByQuery(oc, scopeNull, table, oneBody().body_b, index, [q])
-    const flat = resolveEdgesWithIndex(oc, scopeNull, table, oneBody().body_b, index, [q])
+    const byQuery = resolveEdgesByQuery(oc, scopeNull, table, onePart().body_b, index, [q])
+    const flat = resolveEdgesWithIndex(oc, scopeNull, table, onePart().body_b, index, [q])
     expect(byQuery.get(q)).toEqual([edge])
     expect(flat).toEqual([edge])
   })
@@ -275,7 +275,7 @@ describe('resolveEdgesByQuery provenance', () => {
     const edge = fakeEdge()
     registerExactEdge(index.queryToEdge, index.ambiguousQueries, qGood, edge)
 
-    const byQuery = resolveEdgesByQuery(oc, scopeNull, table, oneBody().body_b, index, [qGood, qBad])
+    const byQuery = resolveEdgesByQuery(oc, scopeNull, table, onePart().body_b, index, [qGood, qBad])
     expect(byQuery.get(qGood)).toEqual([edge])
     expect(byQuery.get(qBad)).toEqual([])
   })
@@ -288,8 +288,8 @@ describe('resolveEdgesByQuery provenance', () => {
     registerExactEdge(index.queryToEdge, index.ambiguousQueries, qA, edge)
     registerExactEdge(index.queryToEdge, index.ambiguousQueries, qB, edge)
 
-    const byQuery = resolveEdgesByQuery(oc, scopeNull, table, oneBody().body_b, index, [qA, qB])
-    const flat = resolveEdgesWithIndex(oc, scopeNull, table, oneBody().body_b, index, [qA, qB])
+    const byQuery = resolveEdgesByQuery(oc, scopeNull, table, onePart().body_b, index, [qA, qB])
+    const flat = resolveEdgesWithIndex(oc, scopeNull, table, onePart().body_b, index, [qA, qB])
     expect(byQuery.get(qA)).toEqual([edge])
     expect(byQuery.get(qB)).toEqual([edge])
     expect(flat).toEqual([edge])
@@ -300,7 +300,7 @@ describe('resolveEdgesByQuery provenance', () => {
     // body's OCC shape; a shape-less body must come back empty.
     const index = emptyIndex()
     const faceQuery = makeAncestryQuery(['@body_b'], 'flatface')
-    const byQuery = resolveEdgesByQuery(oc, scopeNull, table, oneBody().body_b, index, [faceQuery])
+    const byQuery = resolveEdgesByQuery(oc, scopeNull, table, onePart().body_b, index, [faceQuery])
     expect(byQuery.get(faceQuery)).toEqual([])
   })
 })

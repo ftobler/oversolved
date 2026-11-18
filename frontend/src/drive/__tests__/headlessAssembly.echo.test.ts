@@ -6,7 +6,7 @@
 // drive's error posture rests on.
 
 import { describe, it, expect, afterEach } from 'vitest'
-import type { AssemblyDoc, BodyResult, PartDoc } from '@/types/cad'
+import type { AssemblyDoc, PartResult, PartDoc } from '@/types/cad'
 import type { PartBundle } from '@/kernel/partBundle'
 import { BUNDLE_SCHEMA } from '@/kernel/partBundle'
 import { makeEchoSolver, makeTranslateSolver } from '@/kernel/solveAssemblyTestUtils'
@@ -19,7 +19,7 @@ function partDoc(id: string): PartDoc {
   return { version: 1, kind: 'part', features: [{ id, kind: 'sketch' }] } as PartDoc
 }
 
-const BODY: BodyResult = {
+const PART: PartResult = {
   id: 'body_ex1',
   created_by: 'ex1',
   modified_by: [],
@@ -45,7 +45,7 @@ function bundle(docId: string): InjectedBundle {
     }],
     anchors: { face: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1], geom_hash: '@u|face', created_by: 'ex1' } },
   }
-  return { bundle, bodies: { body_ex1: BODY } }
+  return { bundle, bodies: { body_ex1: PART } }
 }
 
 function session(doc: AssemblyDoc = emptyDriveAssemblyDoc()) {

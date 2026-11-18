@@ -1,0 +1,494 @@
+/**
+ * THE one place a shape becomes Part entries.
+ *
+ * The invariant (knowledgebase.agent.md, "Separated"): one `Part` in the body
+ * store is exactly one OCC solid, and that solid carries material. A
+ * zero-volume solid a boolean left BESIDE real material is kernel debris, not a
+ * part, so it is dropped here (`materialSolids`) rather than registered as a
+ * phantom part. Disjoint solids are separate parts, and the
+ * geometry driver decides -- there is no intentional/accidental distinction.
+ *
+ * Before this module the rule was hand-copied into five feature leaves, each
+ * with its own id scheme, collision handling and 0/1-solid behaviour, and it
+ * was missing outright from boolean union/intersect, pattern add, mirror merge,
+ * hole and fillet/chamfer -- so those silently produced one Part holding
+ * several solids, i.e. one Parts-list row that was really N parts. Every leaf
+ * now routes through `registerSplitParts` (a shape becomes new bodies) or
+ * `resplitBody` (an existing body's shape was replaced and may have split).
+ * `exploreSolids` must not be called for body creation anywhere else.
+ *
+ * Sibling ORDER is geometric on purpose and only here: the split children are
+ * sorted by their centroid in the parent's own normalized frame, which is the
+ * single use of geometry the identity design allows (the same "confined
+ * split-sibling ordering key" `orderSplitChildren` already provides for faces,
+ * edges and vertices). It makes `body_x_1` denote the same half across a
+ * rebuild instead of whatever order OCC's TopExp walk happened to produce.
+ * A near-tie is a LOUD refusal (an exception): naming a flipped half `body_x`
+ * and its mirror `body_x_1` would silently swap the persisted id a part's
+ * name/colour ride on, so the solve fails instead (user decision 2026-08-12).
+ */
+
+import type { DisposeScope } from '../occ/disposeScope'
+import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
+import type { HandleTable } from '../occ/handleTable'
+import type { PartSolid } from '../types3d'
+import type { KernelPrecision } from '../precision'
+import { exploreSolids, volumeOf } from '../occ/booleans'
+import { TOL_VOLUME_DEGENERATE } from '../solverConstants'
+import { solidCentroid } from '../occ/primitives'
+import { canonicalEdges, canonicalFaces, namesToArray, type UuidArray } from '../occ/partNames'
+import type { SubShapeMap } from '../occ/subshapeIdentity'
+import { orderSplitChildren, type SplitChild } from '../constructionName'
+import { shapeNormalFrame } from '../occ/constructionLineage'
+
+/** The construction names a producer hands over, keyed by the shape it built. */
+export interface ProducedNames {
+  faceNames?: SubShapeMap<string> | null
+  edgeNames?: SubShapeMap<string> | null
+  faceAncestry?: Record<string, string[]> | null
+  edgeAncestry?: Record<string, string[]> | null
+  capAncestry?: Record<string, string[]> | null
+  faceOwner?: Record<string, string> | null
+  edgeOwner?: Record<string, string> | null
+}
+
+/** The per-body identity fields a split has to hand down to every sibling. */
+export interface PartTemplate extends ProducedNames {
+  // Base id: the first sibling takes it verbatim, the rest get `_1`, `_2`, ...
+  id: string
+  createdBy: string
+  sketchId?: string
+  profileQueries?: string[]
+  imported?: boolean
+  /** The realised precision of the geometry the shape was built from
+   *  (kernel/precision.ts); a copied body carries its source's. */
+  precision?: KernelPrecision | null
+}
+
+/** The names one body stores, read off the solid it was given. */
+interface SiblingNames {
+  face_uuids: UuidArray
+  edge_uuids: UuidArray
+  face_ancestry: Record<string, string[]>
+  edge_ancestry: Record<string, string[]>
+  face_cap_ancestry: Record<string, string[]>
+  face_owner?: Record<string, string>
+  edge_owner?: Record<string, string>
+}
+
+/**
+ * The solids of `shape` that carry material, in explorer order.
+ *
+ * A boolean over coincident faces can return a zero-volume solid beside the
+ * real result: a closed, BRepCheck-valid flat skin with no material in it.
+ * OCCT 8 does this for a corner cut whose tool face is exactly flush with a
+ * target wall (robustness-fuzz seed 990): the cut is a sound cut, and the skin
+ * is debris the kernel left in the compound. Registering it would put a phantom
+ * zero-volume part in the Parts list, so body creation drops it here, the one
+ * place a shape becomes bodies.
+ *
+ * The budget is the degenerate rung of the volume ladder (`solverConstants.ts`)
+ * read as a fraction of the shape's own material, so a genuine thin wall
+ * survives at any model scale and only a fragment a billionth of the body does
+ * not. A shape that reads no material at all is left alone: an open shell
+ * integrates to zero under `volumeOf`'s `OnlyClosed` read and is a supported
+ * body (L5, an imported surface body), not debris, so only a solid beside real
+ * material can be a fragment of it.
+ *
+ * A non-finite read is a kernel failure, not evidence of no material: it
+ * refuses the solve the way a NaN ordering key does, rather than silently
+ * dropping geometry.
+ */
+function materialSolids(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape[] {
+  const solids = exploreSolids(oc, scope, shape)
+  // A lone solid is the whole body: there is no sibling to be debris relative
+  // to, so the read is not paid on the common one-solid path.
+  if (solids.length < 2) return solids
+  const volumes = solids.map((solid) => {
+    const volume = Math.abs(volumeOf(oc, scope, solid))
+    if (!Number.isFinite(volume)) {
+      throw new Error(
+        'bodySplit: a solid volume read failed (non-finite); refusing to register a body it cannot weigh',
+      )
+    }
+    return volume
+  })
+  const total = volumes.reduce((sum, volume) => sum + volume, 0)
+  // Nothing weighs anything: an open-shell body (volume reads 0 because its
+  // shell is not closed) or a geometry-only import. That is not debris to drop.
+  if (total === 0) return solids
+  const budget = TOL_VOLUME_DEGENERATE * total
+  return solids.filter((_, i) => volumes[i] > budget)
+}
+
+/**
+ * Order split siblings deterministically, or fail the solve on a near-tie.
+ *
+ * The key is each solid's centre of mass relative to the parent's own bounding
+ * centre, divided by the parent's span (via the shared `shapeNormalFrame`), so
+ * a uniform resize of the parent cancels and the key stays a pure relative
+ * position. A near-tie is a refusal, and here a refusal is a throw: every other
+ * UUID-minting caller turns a refusal into "leave unnamed" and the ancestral
+ * path recovers, but a body id names a persisted part (name/colour/visibility)
+ * so the id must never be assigned in OCC explorer order. A flipped body id is
+ * worse than a failed split (user decision 2026-08-12).
+ */
+function orderSolids(oc: OccModule, scope: DisposeScope, parent: OccShape, solids: OccShape[]): OccShape[] {
+  if (solids.length < 2) return solids
+  const { centre, span } = shapeNormalFrame(oc, scope, parent)
+  const children: SplitChild<OccShape>[] = solids.map((solid) => {
+    const c = solidCentroid(oc, scope, solid)
+    return { item: solid, key: [(c[0] - centre[0]) / span, (c[1] - centre[1]) / span, (c[2] - centre[2]) / span] }
+  })
+  // A NaN key component is a geometry-read failure (a centroid the kernel could
+  // not compute), not an ambiguity: `orderSplitChildren` would refuse it with
+  // the same null return, but a near-tie has a real fix (nudge the split) while
+  // a NaN centroid has none. Name the failure. Still pre-side-effect: no
+  // sibling has been registered or mutated yet.
+  if (children.some((c) => c.key.some((k) => Number.isNaN(k)))) {
+    throw new Error(
+      'bodySplit: a split sibling centroid read failed (NaN ordering key); refusing to order the siblings ' +
+      '(a flipped body id is worse than a failed split)',
+    )
+  }
+  const ordered = orderSplitChildren(children)
+  if (ordered === null) {
+    throw new Error(
+      'bodySplit: split siblings are a near-tie in the parent frame; refusing to order them ' +
+        '(a flipped body id is worse than a failed split)',
+    )
+  }
+  return ordered
+}
+
+/**
+ * The names the body holding `solid` stores: one uuid per face and edge in the
+ * solid's canonical order, so a split sibling keeps exactly the names of its
+ * own sub-shapes. With `narrow` the ancestry maps keep only the UUIDs that
+ * landed (a split sibling must not carry its neighbour's); a lone part keeps
+ * the producer's maps whole. Without the narrowing a split sibling inherited
+ * either everything or nothing, and picks on it fell back to the ancestral path.
+ */
+function namesForSolid(
+  oc: OccModule,
+  scope: DisposeScope,
+  solid: OccShape,
+  names: ProducedNames,
+  narrow: boolean,
+): SiblingNames {
+  const face_uuids = namesToArray(canonicalFaces(oc, scope, solid), names.faceNames ?? null)
+  const edge_uuids = namesToArray(canonicalEdges(oc, scope, solid), names.edgeNames ?? null)
+  const srcFaceAnc = names.faceAncestry ?? {}
+  const srcEdgeAnc = names.edgeAncestry ?? {}
+  const srcCapAnc = names.capAncestry ?? {}
+  // Owners are pruned to the UUIDs that landed on this solid the same way the
+  // ancestry maps are: a sibling must not carry its neighbour's ownership.
+  const owners = (uuids: UuidArray, src: Record<string, string> | null | undefined): Record<string, string> => {
+    const out: Record<string, string> = {}
+    for (const uuid of uuids) {
+      if (uuid !== null && src?.[uuid] !== undefined) out[uuid] = src[uuid]
+    }
+    return out
+  }
+  const faceOwner = owners(face_uuids, names.faceOwner)
+  const edgeOwner = owners(edge_uuids, names.edgeOwner)
+  if (!narrow) {
+    return {
+      face_uuids, edge_uuids,
+      face_ancestry: { ...srcFaceAnc }, edge_ancestry: { ...srcEdgeAnc }, face_cap_ancestry: { ...srcCapAnc },
+      face_owner: faceOwner, edge_owner: edgeOwner,
+    }
+  }
+  const pick = (uuids: UuidArray, src: Record<string, string[]>): Record<string, string[]> => {
+    const out: Record<string, string[]> = {}
+    for (const uuid of uuids) if (uuid !== null && src[uuid] !== undefined) out[uuid] = [...src[uuid]]
+    return out
+  }
+  return {
+    face_uuids, edge_uuids,
+    face_ancestry: pick(face_uuids, srcFaceAnc), edge_ancestry: pick(edge_uuids, srcEdgeAnc),
+    face_cap_ancestry: pick(face_uuids, srcCapAnc),
+    face_owner: faceOwner, edge_owner: edgeOwner,
+  }
+}
+
+/**
+ * `base`, `base_1`, `base_2`, ... skipping ids the store already holds.
+ *
+ * The collision walk covers index 0 as well, which is what lets a caller invoke
+ * `registerSplitParts` repeatedly with the SAME base id and get one flat,
+ * gap-free sibling run: the body-pattern leaf registers one instance after another,
+ * and an instance that itself splits must not silently overwrite the next
+ * instance's id. Split ids derived from an existing body id (a cut re-splitting
+ * `body_x_1`) can collide for the same reason.
+ */
+function mintSiblingId(base: string, index: number, partStore: Record<string, PartSolid>): string {
+  if (index === 0 && !(base in partStore)) return base
+  let suffix = Math.max(index, 1)
+  while (`${base}_${suffix}` in partStore) suffix++
+  return `${base}_${suffix}`
+}
+
+/**
+ * Split `parent` into its solids with the caller-preferred solid first.
+ *
+ * The geometric ordering above is a relative key for naming new siblings, but
+ * it must not decide which existing identity survives: after a disjoint pattern
+ * the source body keeps its id, so the source solid has to stay first even when
+ * a copy sits at a smaller centroid. `preferred` is a solid of the very shape
+ * being split (topological identity, no coordinates), found by the caller
+ * through its own construction lineage. It is removed BEFORE ordering, so a
+ * preferred solid and one identical island do not have to be told apart by a
+ * relative centroid key that can tie. When the union changed it so no sibling
+ * is that exact solid, the relative order stays.
+ */
+function orderedSolidsWithPreferred(
+  oc: OccModule,
+  scope: DisposeScope,
+  parent: OccShape,
+  preferred: OccShape | null,
+): OccShape[] {
+  const solids = materialSolids(oc, scope, parent)
+  if (preferred === null || solids.length < 2) return orderSolids(oc, scope, parent, solids)
+  const at = solids.findIndex((s) => (s as OccSubShape).IsSame(preferred as OccSubShape))
+  if (at < 0) return orderSolids(oc, scope, parent, solids)
+  const [kept] = solids.splice(at, 1)
+  return [kept, ...orderSolids(oc, scope, parent, solids)]
+}
+
+/** The solids `shape` decomposes into that carry material, in stable sibling order.
+ *  Empty only when the shape has no solid sub-shape at all. */
+export function splitSolids(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape[] {
+  return orderSolids(oc, scope, shape, materialSolids(oc, scope, shape))
+}
+
+/**
+ * The solid of `shape` that owns one of `faces`, by face identity. The caller
+ * tracks the source material's faces through a boolean's face origin, so this
+ * names the solid that must keep the existing body id when the boolean also
+ * minted disjoint islands. Null when the tracked set no longer identifies one
+ * solid; the caller then keeps the geometric sibling order.
+ */
+export function solidHoldingFaces(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+  faces: OccShape[],
+): OccShape | null {
+  if (faces.length === 0) return null
+  for (const solid of exploreSolids(oc, scope, shape)) {
+    const own = canonicalFaces(oc, scope, solid) as OccShape[]
+    if (own.some((face) => faces.some((sf) => (face as OccSubShape).IsSame(sf as OccSubShape)))) return solid
+  }
+  return null
+}
+
+// The handle-table owner tag of a body shape is its PRODUCING feature -- the
+// feature whose solve minted this exact solid -- never `created_by`. The two
+// roles diverge the moment a modifier (fillet/cut/hole/...) replaces another
+// feature's shape: `releaseCheckpoint` drops the owner tag of the evicted
+// feature, so a replacement tagged with its still-clean creator would strand
+// one full solid per edit of the modifier. Tagging by producer groups every
+// shape a feature generated (new bodies AND replacements, including split
+// siblings) under the one tag that dies exactly when its checkpoint does.
+// `created_by` keeps its separate job: identity and ancestry attribution.
+
+/**
+ * Register `shape` as one Part per solid and return the new ids (first id
+ * first). The caller must not have detached `shape` yet: this takes ownership
+ * of the parts it registers.
+ *
+ * A shape with no solid at all (surfaces or shells only, e.g. a STEP file
+ * holding just geometry) becomes a single body carrying the whole shape --
+ * there is nothing to split, and dropping it would leave the feature with no
+ * body id at all.
+ */
+export function registerSplitParts(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  partStore: Record<string, PartSolid>,
+  shape: OccShape,
+  template: PartTemplate,
+): string[] {
+  const solids = splitSolids(oc, scope, shape)
+  const parts = solids.length > 0 ? solids : [shape]
+  const ids: string[] = []
+  parts.forEach((part, i) => {
+    const id = mintSiblingId(template.id, i, partStore)
+    // Read before `detach`: the arrays index the part's own sub-shapes.
+    const names = namesForSolid(oc, scope, part, template, parts.length > 1)
+    partStore[id] = {
+      id,
+      created_by: template.createdBy,
+      modified_by: [],
+      shape: table.register(scope.detach(part), template.createdBy),
+      sketch_id: template.sketchId ?? '',
+      brep_diff: null,
+      profile_queries: [...(template.profileQueries ?? [])],
+      ...names,
+      ...(template.imported ? { imported: true } : {}),
+      ...(template.precision ? { precision: { ...template.precision } } : {}),
+    }
+    ids.push(id)
+  })
+  return ids
+}
+
+/**
+ * Re-seat an existing body on `newShape`, splitting it into extra sibling
+ * bodies when the operation disconnected it. Returns every id the body now
+ * occupies, `body.id` first. `newShape` must be tracked by `scope`; ownership
+ * transfers to the HandleTable.
+ *
+ * `body` keeps its identity (id, created_by, modified_by, sketch_id,
+ * brep_diff, profile_queries, imported, and any `split_from` it already had) and
+ * takes the first solid; siblings are fresh bodies that inherit those fields,
+ * minus the diff (the diff describes the whole pre-split shape and no sibling
+ * owns all of it), and carry `split_from` naming this split (see
+ * `Part.split_from`). `produced` are the
+ * construction names the producer built for the WHOLE new shape, keyed by its
+ * faces and edges; this writes them onto each sibling's own sub-shapes. The
+ * old handle is released here.
+ *
+ * `featureId` is the feature doing the splitting. A sibling MUST carry the same
+ * `modified_by` history as the body it broke off, or it reads as untouched
+ * since its `created_by`: `reuseCleanImportedBodyMeshes` (builder.ts) would
+ * then hand a sibling of an imported body last solve's mesh even though the
+ * splitting feature is dirty and just rebuilt it with different geometry.
+ * Passing the id explicitly rather than trusting the caller to have pushed it
+ * first is deliberate -- the leaves disagree on whether they push before or
+ * after this call.
+ *
+ * `preferredFirst` is a sub-shape of `newShape` the caller knows by construction
+ * (a body pattern's source solid, or a merge-target add's target material). It
+ * takes the first sibling slot, so `body.id`
+ * stays on that material instead of on whichever sibling the relative centroid
+ * order ranks first. Null keeps the geometric order; see `orderedSolidsWithPreferred`.
+ *
+ * `precision` is the realised precision of the shape's producing solves when the
+ * caller just ran a merge (kernel/precision.ts). Absent keeps the body's own
+ * record, which is what a modifier that reuses the same sketch geometry wants;
+ * siblings inherit whichever record the parent ends up with.
+ *
+ * An EMPTY result (the new shape holds no solid) deletes the body from the
+ * store and returns `[]`, so a caller that re-resolves the old id later fails
+ * with "body not found" instead of reading a `shape: null`. The one invariant
+ * every caller keeps is that a consumed id never appears in `body_ids`: this
+ * returns `[]` for "nothing survives", and a leaf that deletes a body reports
+ * the same empty list. `body_id` still names the id the feature row points at
+ * (hole and pattern keep the consumed body's real id; a merge-target cut keeps
+ * the would-be id it never minted). The deletion is complete here (store entry
+ * gone, handle released); the build loop's eviction pass (builder.ts) clears
+ * the body's repo registrations, the same path a consumed boolean tool takes.
+ */
+export function resplitPart(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  partStore: Record<string, PartSolid>,
+  part: PartSolid,
+  newShape: OccShape,
+  featureId: string,
+  produced: ProducedNames,
+  preferredFirst: OccShape | null = null,
+  precision?: KernelPrecision | null,
+): string[] {
+  const solids = orderedSolidsWithPreferred(oc, scope, newShape, preferredFirst)
+  const oldHandle = part.shape
+  const ids = [part.id]
+  // A merge passes the max of its operands; a modifier passes nothing and the
+  // body keeps the precision of the sketches that made its geometry.
+  const carriedPrecision = precision ?? part.precision
+
+  // The superseded handle's owner tag is the feature that minted the shape
+  // being replaced, never `featureId` (a modifier re-seating another feature's
+  // body) and never `created_by` when a modifier already ran. Read it with the
+  // same last-entry test the history line uses: the caller may push
+  // `featureId` before OR after this call, and either way every sibling ends
+  // up with the same history the parent has. Pass the producer to `releaseFor`
+  // so the settled claim's tag is cleared and eviction-time `releaseOwner`
+  // cannot over-decrement (see releaseFor's docstring).
+  const last = part.modified_by[part.modified_by.length - 1]
+  const history = last === featureId ? [...part.modified_by] : [...part.modified_by, featureId]
+  const oldProducer =
+    last === featureId
+      ? (part.modified_by[part.modified_by.length - 2] ?? part.created_by)
+      : (last ?? part.created_by)
+
+  if (solids.length <= 1) {
+    // Nothing disconnected: register the solid itself when there is one, so a
+    // compound wrapper never survives as a body shape and `countSolids === 1`
+    // stays literally true.
+    if (solids.length === 0) {
+      // The operation consumed the whole body. Release the handle AND drop the
+      // body: leaving it behind with shape:null keeps it resolvable as a later
+      // feature's target and puts a shapeless row in the parts list.
+      if (oldHandle !== null) table.releaseFor(oldHandle, oldProducer)
+      delete partStore[part.id]
+      return []
+    }
+    Object.assign(part, namesForSolid(oc, scope, solids[0], produced, false))
+    part.shape = table.register(scope.detach(solids[0]), featureId)
+    if (precision) part.precision = { ...precision }
+    if (oldHandle !== null) table.releaseFor(oldHandle, oldProducer)
+    return ids
+  }
+
+  // The caller may push `featureId` onto the parent before OR after this call;
+  // either way every sibling ends up with the same history the parent has.
+  Object.assign(part, namesForSolid(oc, scope, solids[0], produced, true))
+  part.shape = table.register(scope.detach(solids[0]), featureId)
+  if (precision) part.precision = { ...precision }
+  if (oldHandle !== null) table.releaseFor(oldHandle, oldProducer)
+
+  // The split this sibling line began in. Deliberately NOT inherited by a
+  // later split of the sibling: membership means "minted by THIS feature's
+  // split", so a nested pattern's copies belong to the inner pattern, and a
+  // disjoint union folded into a copy does not hand the merged material to the
+  // outer pattern (features/boolean.ts patternMemberIds).
+  const splitFrom = { feature: featureId, body: part.id }
+  for (let i = 1; i < solids.length; i++) {
+    const id = mintSiblingId(part.id, i, partStore)
+    partStore[id] = {
+      id,
+      created_by: part.created_by,
+      modified_by: [...history],
+      shape: table.register(scope.detach(solids[i]), featureId),
+      sketch_id: part.sketch_id,
+      brep_diff: null,
+      profile_queries: [...part.profile_queries],
+      split_from: { ...splitFrom },
+      ...namesForSolid(oc, scope, solids[i], produced, true),
+      ...(part.imported ? { imported: true } : {}),
+      ...(carriedPrecision ? { precision: { ...carriedPrecision } } : {}),
+    }
+    ids.push(id)
+  }
+  return ids
+}
+
+/**
+ * Throw if any body in the store holds more than one solid. The build-level
+ * gate for the invariant: a leaf that forgets to route through this module
+ * fails here instead of silently shipping one Parts row that is really N parts.
+ */
+export function assertOneSolidPerPart(
+  oc: OccModule,
+  scope: DisposeScope,
+  table: HandleTable,
+  partStore: Record<string, PartSolid>,
+): void {
+  const bad: string[] = []
+  for (const [id, body] of Object.entries(partStore)) {
+    if (body.shape === null) continue
+    const n = exploreSolids(oc, scope, table.get<OccShape>(body.shape)).length
+    if (n > 1) bad.push(`${id} (${n} solids)`)
+  }
+  if (bad.length > 0) {
+    throw new Error(
+      `one Body == one solid violated: ${bad.join(', ')}. ` +
+      'The producing leaf must route through registerSplitBodies/resplitBody (features/bodySplit.ts).',
+    )
+  }
+}

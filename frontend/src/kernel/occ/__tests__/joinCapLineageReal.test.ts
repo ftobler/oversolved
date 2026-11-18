@@ -128,9 +128,9 @@ describe.skipIf(!oc || !solveBytes)('a joined extrude cap keeps its profile line
     setSketchSolver(solveBytes)
   })
 
-  function meshOf(result: BuildResponse, bodyId: string): Mesh {
-    const mesh = h.body(result, bodyId).mesh as Mesh | undefined
-    if (!mesh) throw new Error(`body ${bodyId} has no mesh`)
+  function meshOf(result: BuildResponse, partId: string): Mesh {
+    const mesh = h.part(result, partId).mesh as Mesh | undefined
+    if (!mesh) throw new Error(`body ${partId} has no mesh`)
     return mesh
   }
 
@@ -166,15 +166,15 @@ describe.skipIf(!oc || !solveBytes)('a joined extrude cap keeps its profile line
   }
 
   // The registered B-rep element for one face of the last checkpoint.
-  function registeredFace(result: BuildResponse, bodyId: string, faceIndex: number): Record<string, unknown> {
+  function registeredFace(result: BuildResponse, partId: string, faceIndex: number): Record<string, unknown> {
     const state = result._build_state!
     const last = state.feature_order[state.feature_order.length - 1]
     const repo = repoFromSnapshot(state.checkpoints[last].repo_snapshot as Record<string, unknown>)
     const hits = [...repo.elements.values()].filter((el) => {
       const e = el as Record<string, unknown>
-      return e.body_id === bodyId && e.face_index === faceIndex
+      return e.body_id === partId && e.face_index === faceIndex
     })
-    expect(hits, `face ${faceIndex} of ${bodyId} is registered exactly once`).toHaveLength(1)
+    expect(hits, `face ${faceIndex} of ${partId} is registered exactly once`).toHaveLength(1)
     return hits[0] as Record<string, unknown>
   }
 
@@ -257,8 +257,8 @@ describe.skipIf(!oc || !solveBytes)('a joined extrude cap keeps its profile line
 
     // The junction is the circle where the boss wall meets the plate's top face,
     // picked by geometry test-side only (the kernel names it, not the test).
-    const edges = h.body(base, 'body_ex1').edges as Array<{ kind: string; center?: number[] }>
-    const junction = (h.body(base, 'body_ex1').edge_queries as string[]).find((_q, i) =>
+    const edges = h.part(base, 'body_ex1').edges as Array<{ kind: string; center?: number[] }>
+    const junction = (h.part(base, 'body_ex1').edge_queries as string[]).find((_q, i) =>
       edges[i]?.kind === 'circle' && Math.abs((edges[i].center?.[1] ?? -1) - PLATE_TOP) < 1e-6)
     expect(junction, 'the boss/plate junction edge').toBeTruthy()
 

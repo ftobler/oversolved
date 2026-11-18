@@ -18,7 +18,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { setSolveLocalsForTest, solveLocally } from '@/kernel/solveLocally'
 import { measureSelection } from '@/utils/measure/measureSelection'
-import type { BodyResult, EdgeData, FaceData } from '@/types/cad'
+import type { PartResult, EdgeData, FaceData } from '@/types/cad'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -82,8 +82,8 @@ function close(value: number, expected: number): boolean {
 }
 
 describe.skipIf(!oc || !solveBytes)('measureSelection on the probe plate (real OCC + Rust solver)', () => {
-  let bodies: Record<string, BodyResult>
-  let body: BodyResult
+  let parts: Record<string, PartResult>
+  let part: PartResult
 
   beforeAll(async () => {
     resetSketchSolver()
@@ -97,10 +97,10 @@ describe.skipIf(!oc || !solveBytes)('measureSelection on the probe plate (real O
     const failed = Object.entries(response.result)
       .filter(([, result]) => (result as { status?: string }).status === 'exception')
     if (failed.length) throw new Error(`feature exception: ${JSON.stringify(failed)}`)
-    bodies = response.bodies as Record<string, BodyResult>
-    const id = Object.keys(bodies).find((key) => key.startsWith('body_ex'))
-    if (!id) throw new Error(`no extruded body in ${JSON.stringify(Object.keys(bodies))} result=${JSON.stringify(response.result)}`)
-    body = bodies[id]
+    parts = response.bodies as Record<string, PartResult>
+    const id = Object.keys(parts).find((key) => key.startsWith('body_ex'))
+    if (!id) throw new Error(`no extruded body in ${JSON.stringify(Object.keys(parts))} result=${JSON.stringify(response.result)}`)
+    part = parts[id]
   }, 180_000)
 
   afterAll(() => {
@@ -109,7 +109,7 @@ describe.skipIf(!oc || !solveBytes)('measureSelection on the probe plate (real O
   })
 
   function measure(ids: string[]): string[] {
-    return measureSelection(new Set(ids), { bodies })
+    return measureSelection(new Set(ids), { parts: parts })
   }
 
   function lineLength(edge: EdgeData): number {
@@ -122,23 +122,23 @@ describe.skipIf(!oc || !solveBytes)('measureSelection on the probe plate (real O
   }
 
   function edgeQuery(match: (edge: EdgeData) => boolean): string {
-    const index = (body.edges ?? []).findIndex(match)
-    const query = index >= 0 ? body.edge_queries?.[index] : undefined
-    if (!query) throw new Error(`no matching edge query; edges: ${JSON.stringify(body.edges)}`)
+    const index = (part.edges ?? []).findIndex(match)
+    const query = index >= 0 ? part.edge_queries?.[index] : undefined
+    if (!query) throw new Error(`no matching edge query; edges: ${JSON.stringify(part.edges)}`)
     return query
   }
 
   function faceQuery(match: (face: FaceData) => boolean): string {
-    const index = (body.mesh?.face_data ?? []).findIndex(match)
-    const query = index >= 0 ? body.mesh?.face_queries?.[index] : undefined
-    if (!query) throw new Error(`no matching face query; faces: ${JSON.stringify(body.mesh?.face_data)}`)
+    const index = (part.mesh?.face_data ?? []).findIndex(match)
+    const query = index >= 0 ? part.mesh?.face_queries?.[index] : undefined
+    if (!query) throw new Error(`no matching face query; faces: ${JSON.stringify(part.mesh?.face_data)}`)
     return query
   }
 
   function vertexQuery(at: [number, number, number]): string {
-    const index = (body.vertices ?? []).findIndex((v) => close(v[0], at[0]) && close(v[1], at[1]) && close(v[2], at[2]))
-    const query = index >= 0 ? body.vertex_queries?.[index] : undefined
-    if (!query) throw new Error(`no vertex at ${JSON.stringify(at)}; vertices: ${JSON.stringify(body.vertices)}`)
+    const index = (part.vertices ?? []).findIndex((v) => close(v[0], at[0]) && close(v[1], at[1]) && close(v[2], at[2]))
+    const query = index >= 0 ? part.vertex_queries?.[index] : undefined
+    if (!query) throw new Error(`no vertex at ${JSON.stringify(at)}; vertices: ${JSON.stringify(part.vertices)}`)
     return query
   }
 

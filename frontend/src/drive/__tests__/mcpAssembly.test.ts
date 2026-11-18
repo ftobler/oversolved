@@ -136,7 +136,7 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP assembly protocol (real 
       expect(measured.ok).toBe(true)
       expect(measured.kind).toBe('assembly')
       expect(measured.volume as number).toBeCloseTo(TOTAL_VOLUME, 3)
-      expect((measured.perBody as Array<{ id: string }>).map(body => body.id).sort()).toEqual([
+      expect((measured.perBody as Array<{ id: string }>).map(part => part.id).sort()).toEqual([
         'pin/body_ex1', 'plate/body_ex1',
       ])
       expect(measured.perBody as Array<{ id: string }>).toHaveLength(2)
@@ -248,11 +248,11 @@ describe.skipIf(!oc || !solveBytes || !stripTypes)('MCP assembly protocol (real 
       }))
       expect(String(refusedDetail.error)).toContain('detail applies only to assembly documents')
 
-      const refusedBody = errorPayload(await client.request('tools/call', {
+      const refusedPart = errorPayload(await client.request('tools/call', {
         name: 'export',
         arguments: { docHash: a1, format: 'step', out: stepFile, body: 'body_ex1' },
       }))
-      expect(String(refusedBody.error)).toContain('per-instance export')
+      expect(String(refusedPart.error)).toContain('per-instance export')
 
       // Two conflicting fixed mates make the solve overconstrained. The export
       // still writes the best-effort placement, but says so: ok false with the

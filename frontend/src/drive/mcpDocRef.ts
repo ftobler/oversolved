@@ -170,7 +170,7 @@ export function resolveDoc(req: McpDocArguments, documents: DocHandleStore): Res
   return { ok: true, kind: 'part', doc, docHash }
 }
 
-// The reply's one-line index of what the script built. Body ids are the live
+// The reply's one-line index of what the script built. Part ids are the live
 // bodies the final solve reported when the caller has them: part_style can
 // keep a colour entry for a body a boolean or join consumed (an older document,
 // or the browser's add-only reconcile), so its keys alone would name dead
@@ -179,36 +179,36 @@ export function resolveDoc(req: McpDocArguments, documents: DocHandleStore): Res
 // not solved), plus whether the stopping step was refused or timed out.
 export function summarizeDoc(
   doc: PartDoc,
-  liveBodies?: readonly string[] | null,
+  liveParts?: readonly string[] | null,
   stopped?: StoppedStep | null,
 ): string {
   const features = (doc.features ?? []).map(feature => `${feature.id} (${feature.kind})`)
-  let bodies: string
+  let parts: string
   if (stopped) {
     const timedOut = stopped.code === 'solve-timeout'
     const verb = timedOut ? 'timed out' : 'refused'
-    const live = liveBodies ?? null
+    const live = liveParts ?? null
     const finalSolve = stopped.id === FINAL_SOLVE_STEP_ID
     if (live === null) {
-      bodies = finalSolve
+      parts = finalSolve
         ? 'not solved (final solve timed out)'
         : `not solved (step ${stopped.index} ${verb})`
     } else if (finalSolve) {
       const list = live.join(', ') || 'none'
-      bodies = `${list} (solved through step ${stopped.index - 1}; the final solve timed out)`
+      parts = `${list} (solved through step ${stopped.index - 1}; the final solve timed out)`
     } else {
       const list = live.join(', ') || 'none'
       // A timeout applied its mutation and lost only the settle, so the report
       // stops before it without calling it refused; a refused step never landed.
-      bodies = stopped.index === 0
+      parts = stopped.index === 0
         ? `${list} (step 0 ${timedOut ? 'timed out' : 'refused, not applied'})`
         : `${list} (solved through step ${stopped.index - 1}; step ${stopped.index} ${timedOut ? 'timed out' : 'refused, not applied'})`
     }
   } else {
-    bodies = (liveBodies ?? Object.keys(doc.part_style ?? {})).join(', ') || 'none'
+    parts = (liveParts ?? Object.keys(doc.part_style ?? {})).join(', ') || 'none'
   }
   return `features: ${features.length > 0 ? features.join(', ') : 'none'}; `
-    + `bodies: ${bodies}`
+    + `bodies: ${parts}`
 }
 
 /** The synthetic step a stall reports. A solve that stalls inside a step names

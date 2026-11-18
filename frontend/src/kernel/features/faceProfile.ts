@@ -4,18 +4,18 @@
 // into 2D loops + the plane to build on. The OCC face->loops work lives in occ/faceLoops.ts;
 // the pure surface-loop assembly is extractProfileLoops (features/shared/profileLoops.ts).
 //
-// Body shapes are HandleTable handles, so the OCC-backed branches resolve them via the table;
+// Part shapes are HandleTable handles, so the OCC-backed branches resolve them via the table;
 // the topo-surface branches (`@`/`?` against stored sketch topology) are pure and need no OCC.
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
 import type { HandleTable, OccHandle } from '../occ/handleTable'
-import type { Body, Frame3D } from '../types3d'
+import type { PartSolid, Frame3D } from '../types3d'
 import { Repository, parseAncestry, makeAncestryQuery, ref, constructionUuidToken, featureRefId } from '../query'
-import { canonicalFaces, canonicalIndex, assertAligned } from '../occ/bodyNames'
+import { canonicalFaces, canonicalIndex, assertAligned } from '../occ/partNames'
 import { extractOccFace, extractFaceLoops, sortedFacesOf, faceLoopsOfFace, computeFaceDatumFrame } from '../occ/faceLoops'
 import { extractProfileLoops, type ProfileLoopDiag } from './shared/profileLoops'
-import { parseSketchEntityRef, sketchIdFromQuery, surfaceEntityIds } from './shared/bodyRef'
+import { parseSketchEntityRef, sketchIdFromQuery, surfaceEntityIds } from './shared/partRef'
 import type { PlaneLike } from './shared/planes'
 import { stripRefSigil } from '@/utils/refSigil'
 import { swallowUnlessTrap } from '../errors'
@@ -37,9 +37,9 @@ interface FaceProfile {
   builtSurfaces?: number[]
 }
 
-function bodyShape(table: HandleTable, body: Body): OccShape {
-  if (body.shape === null) throw new Error(`part ${body.id} has no shape`)
-  return table.get<OccShape>(body.shape as OccHandle)
+function partShape(table: HandleTable, part: PartSolid): OccShape {
+  if (part.shape === null) throw new Error(`part ${part.id} has no shape`)
+  return table.get<OccShape>(part.shape as OccHandle)
 }
 
 /**
@@ -56,7 +56,7 @@ export function resolveFaceIndexViaUuid(
   shape: OccShape,
   oldIndex: number,
   globalRepo: Repository,
-  bodyStore: Record<string, unknown> | null = null,
+  partStore: Record<string, unknown> | null = null,
   faceUuids?: (string | null)[],
   faces?: OccShape[],
 ): number | null {
@@ -87,7 +87,7 @@ export function resolveFaceIndexViaUuid(
   if (uuid) {
     try {
       const uuidQuery = makeAncestryQuery([constructionUuidToken(uuid)], 'face')
-      const faceEntry = globalRepo.query(uuidQuery, null, bodyStore) as Dict | null
+      const faceEntry = globalRepo.query(uuidQuery, null, partStore) as Dict | null
       if (faceEntry && 'face_index' in faceEntry) {
         return faceEntry.face_index as number
       }
@@ -111,7 +111,7 @@ export function extractLoopsFromOccFace(
 }
 
 /**
- * Body a `@<id>/...` reference names. `<id>` is a BODY id in everything the
+ * Part a `@<id>/...` reference names. `<id>` is a BODY id in everything the
  * render layer mints today (utils/query/selectionId.ts topoFallbackQuery), so
  * an exact body id has to be tried FIRST: a sibling ref `body_ex1_1` would
  * otherwise be read as a feature name, looked up as `body_body_ex1_1`, miss,
@@ -119,12 +119,12 @@ export function extractLoopsFromOccFace(
  * they answer with the feature's first body, which is also the index space
  * `@<feat>/face/N` was always understood in.
  */
-export function findBodyForRef(bodyStore: Record<string, Body>, id: string): Body | null {
-  const exact = bodyStore[id]
+export function findPartForRef(partStore: Record<string, PartSolid>, id: string): PartSolid | null {
+  const exact = partStore[id]
   if (exact !== undefined && exact.shape !== null) return exact
-  const prefixed = bodyStore['body_' + id]
+  const prefixed = partStore['body_' + id]
   if (prefixed !== undefined && prefixed.shape !== null) return prefixed
-  for (const b of Object.values(bodyStore)) {
+  for (const b of Object.values(partStore)) {
     if (b.created_by === id && b.shape !== null) return b
   }
   return null
@@ -154,16 +154,16 @@ export function remapFaceIndex(
   shape: OccShape,
   faceIndex: number,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
-  body: Body,
+  partStore: Record<string, PartSolid>,
+  part: PartSolid,
   faces: OccShape[],
   refStr: string,
 ): number {
-  const resolved = resolveFaceIndexViaUuid(oc, scope, shape, faceIndex, globalRepo, bodyStore, body.face_uuids, faces)
+  const resolved = resolveFaceIndexViaUuid(oc, scope, shape, faceIndex, globalRepo, partStore, part.face_uuids, faces)
   if (resolved !== null) return resolved
-  if (body.face_uuids?.some((u) => u !== null)) {
+  if (part.face_uuids?.some((u) => u !== null)) {
     throw new Error(
-      `Cannot remap persisted face ref '${refStr}': part '${body.id}' carries face identity ` +
+      `Cannot remap persisted face ref '${refStr}': part '${part.id}' carries face identity ` +
         `but its face at index ${faceIndex} has no resolvable construction UUID`,
     )
   }
@@ -181,43 +181,43 @@ export function resolveFaceProfile(
   table: HandleTable,
   sketchRef: string,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): FaceProfile {
   const slash = SLASH_FACE.exec(sketchRef)
   if (slash) {
     const refId = slash[1]
     let faceIndex = parseInt(slash[2], 10)
-    const body = findBodyForRef(bodyStore, refId)
-    if (body === null) throw new Error(`No part found for '${refId}'`)
-    const shape = bodyShape(table, body)
+    const part = findPartForRef(partStore, refId)
+    if (part === null) throw new Error(`No part found for '${refId}'`)
+    const shape = partShape(table, part)
     // One sorted traversal serves both the index resolution and the loop
     // extraction. Both index the same shape with the same sort, so the two
     // index spaces are identical even though the remap returns a different
     // index than the literal one it resolved (M45).
     const faces = sortedFacesOf(oc, scope, shape)
-    faceIndex = remapFaceIndex(oc, scope, shape, faceIndex, globalRepo, bodyStore, body, faces, sketchRef)
+    faceIndex = remapFaceIndex(oc, scope, shape, faceIndex, globalRepo, partStore, part, faces, sketchRef)
     if (faceIndex >= faces.length) throw new Error(`face_index ${faceIndex} out of range`)
     return faceLoopsOfFace(oc, scope, faces[faceIndex])
   }
 
-  const faceEntry = globalRepo.query(sketchRef, null, bodyStore) as Dict | null
+  const faceEntry = globalRepo.query(sketchRef, null, partStore) as Dict | null
   if (faceEntry === null) throw new Error(`Profile face not found: ${sketchRef}`)
 
-  const bodyId = faceEntry.body_id as string | undefined
+  const partId = faceEntry.body_id as string | undefined
   const faceIndex = faceEntry.face_index as number | undefined
-  if (bodyId !== undefined && faceIndex !== undefined) {
-    const body = bodyStore[bodyId]
-    if (body === undefined || body.shape === null) {
-      throw new Error(`Part '${bodyId}' not found or has no shape`)
+  if (partId !== undefined && faceIndex !== undefined) {
+    const part = partStore[partId]
+    if (part === undefined || part.shape === null) {
+      throw new Error(`Part '${partId}' not found or has no shape`)
     }
-    return extractLoopsFromOccFace(oc, scope, bodyShape(table, body), faceIndex)
+    return extractLoopsFromOccFace(oc, scope, partShape(table, part), faceIndex)
   }
 
   if (sketchRef.startsWith('@')) {
     const refId = sketchRef.slice(1).split('/')[0]
-    const body = findBodyForRef(bodyStore, refId)
-    if (body === null) throw new Error(`No part found for '${refId}'`)
-    const topo = (globalRepo.elements.get('_topo_' + body.sketch_id) as Dict | undefined) ?? {}
+    const part = findPartForRef(partStore, refId)
+    if (part === null) throw new Error(`No part found for '${refId}'`)
+    const topo = (globalRepo.elements.get('_topo_' + part.sketch_id) as Dict | undefined) ?? {}
     const surfaces = (topo.surfaces as Dict[]) ?? []
     const effectivePlane: PlaneLike = {
       origin: (faceEntry.origin as number[]) ?? [0, 0, 0],
@@ -281,21 +281,21 @@ export function resolveFaceSlashFace(
   table: HandleTable,
   ref: string,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
-): { face: OccShape; bodyId: string } {
+  partStore: Record<string, PartSolid>,
+): { face: OccShape; partId: string } {
   const slash = SLASH_FACE.exec(ref)
   if (slash === null) throw new Error(`not a slash face ref: ${ref}`)
   const refId = slash[1]
   let faceIndex = parseInt(slash[2], 10)
-  const body = findBodyForRef(bodyStore, refId)
-  if (body === null) throw new Error(`No part found for '${refId}'`)
-  const shape = bodyShape(table, body)
+  const part = findPartForRef(partStore, refId)
+  if (part === null) throw new Error(`No part found for '${refId}'`)
+  const shape = partShape(table, part)
   // Same one-traversal-per-pick deal as resolveFaceProfile's slash branch: the
   // remap and the final pick both index the same sorted list (M45).
   const faces = sortedFacesOf(oc, scope, shape)
-  faceIndex = remapFaceIndex(oc, scope, shape, faceIndex, globalRepo, bodyStore, body, faces, ref)
+  faceIndex = remapFaceIndex(oc, scope, shape, faceIndex, globalRepo, partStore, part, faces, ref)
   if (faceIndex >= faces.length) throw new Error(`face_index ${faceIndex} out of range`)
-  return { face: faces[faceIndex], bodyId: body.id }
+  return { face: faces[faceIndex], partId: part.id }
 }
 
 /**
@@ -311,9 +311,9 @@ export function resolveFaceSlashFrame(
   table: HandleTable,
   ref: string,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): Frame3D {
-  const { face } = resolveFaceSlashFace(oc, scope, table, ref, globalRepo, bodyStore)
+  const { face } = resolveFaceSlashFace(oc, scope, table, ref, globalRepo, partStore)
   return computeFaceDatumFrame(oc, scope, face)
 }
 
@@ -430,7 +430,7 @@ export function collectExtrudeLoops(
   table: HandleTable,
   sketchRef: string,
   globalRepo: Repository,
-  bodyStore: Record<string, Body>,
+  partStore: Record<string, PartSolid>,
 ): ExtrudeLoops {
   const picked = parseSketchEntityRef(sketchRef)
   if (picked !== null) {
@@ -457,7 +457,7 @@ export function collectExtrudeLoops(
       sketchId = sketchRef.slice(1).split('/')[0]
     }
     const { loops, plane, face, loopDiags, profileSurfaces, builtSurfaces } =
-      resolveFaceProfile(oc, scope, table, sketchRef, globalRepo, bodyStore)
+      resolveFaceProfile(oc, scope, table, sketchRef, globalRepo, partStore)
     return { loops, plane, sketchId, face, loopDiags, profileSurfaces, builtSurfaces }
   }
 

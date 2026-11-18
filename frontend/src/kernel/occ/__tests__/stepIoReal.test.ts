@@ -17,7 +17,7 @@ import { noProgress } from '../defaultArgs'
 import { makeBox, makeBoxAt, faceCentroid } from '../primitives'
 import { makeTranslationTrsf } from '../transforms'
 import { stepShapeToBytes, stepBytesToShape, stepBytesToShapeWithIdentity, shapeToStlBytes, type StepReadResult } from '../stepIo'
-import { canonicalFaces } from '../bodyNames'
+import { canonicalFaces } from '../partNames'
 import { volumeOf } from '../booleans'
 
 const oc = await loadOcc()

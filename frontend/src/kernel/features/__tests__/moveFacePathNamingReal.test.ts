@@ -67,23 +67,23 @@ function cylinderSpec(r = 5, h = 10): { features: Array<Record<string, unknown>>
   ]}
 }
 
-interface BodyView {
+interface PartView {
   mesh?: {
     face_queries?: string[]
     face_data?: { normal: number[] }[]
   }
 }
-const faceQueries = (body: unknown): string[] => ((body as BodyView).mesh?.face_queries) ?? []
-const faceAt = (bodies: Record<string, unknown>, cls: string): string => {
-  const hit = faceQueries(Object.values(bodies)[0]).find((q) => q.includes(cls))
+const faceQueries = (part: unknown): string[] => ((part as PartView).mesh?.face_queries) ?? []
+const faceAt = (parts: Record<string, unknown>, cls: string): string => {
+  const hit = faceQueries(Object.values(parts)[0]).find((q) => q.includes(cls))
   if (hit === undefined) throw new Error(`no ${cls} face`)
   return hit
 }
 /** The lateral (radially normal) face of the extruded cylinder. */
-const lateralFace = (bodies: Record<string, unknown>): string => {
-  const body = Object.values(bodies)[0] as BodyView
-  const queries = body.mesh?.face_queries ?? []
-  const data = body.mesh?.face_data ?? []
+const lateralFace = (parts: Record<string, unknown>): string => {
+  const part = Object.values(parts)[0] as PartView
+  const queries = part.mesh?.face_queries ?? []
+  const data = part.mesh?.face_data ?? []
   for (let i = 0; i < queries.length; i++) {
     if (data[i] && Math.abs(data[i].normal[2]) < 1e-6) return queries[i]
   }

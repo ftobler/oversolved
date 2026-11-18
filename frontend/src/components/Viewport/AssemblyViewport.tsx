@@ -26,7 +26,7 @@ import { INITIAL_CAMERA } from '@/components/Viewport/cameraConstants'
 import { fitToContent, shouldAutoFit } from '@/components/Viewport/cameraController'
 import type { TurntableControls } from '@/components/Viewport/turntable'
 import AnchorGizmos from '@/components/Viewport/assembly/AnchorGizmos'
-import AssemblyBody from '@/components/Viewport/assembly/AssemblyBody'
+import AssemblyPartMesh from '@/components/Viewport/assembly/AssemblyPartMesh'
 import AssemblyBuiltin from '@/components/Viewport/assembly/AssemblyBuiltin'
 import AssemblyPickLayers from '@/components/Viewport/assembly/AssemblyPickLayers'
 import AssemblySelectionHighlight from '@/components/Viewport/assembly/AssemblySelectionHighlight'
@@ -64,7 +64,7 @@ import type { PointerRef } from '@/utils/assemblyGesture'
 import { p2w } from '@/utils/geometry/sketchHelpers'
 import { GIZMO_PIXELS, parseGizmoHandleKey } from '@/utils/gizmoPickGeometry'
 import { isManipulable } from '@/utils/partManipulation'
-import { offsetPickBodies } from '@/utils/assemblyPick'
+import { offsetPickParts } from '@/utils/assemblyPick'
 import { readSelection } from '@/utils/assemblySelection'
 import { decideAssemblyHit } from '@/utils/assemblyHitDecision'
 import { HoverScheduler } from '@/picking/HoverScheduler'
@@ -82,7 +82,7 @@ const ASSEMBLY_PICK_LAYERS: ReadonlySet<string> = new Set([
   GIZMO_HANDLE_LAYER_NAME,
 ])
 
-// Stable identity: AssemblyBody memoizes its edge buffer on `curves`, so a fresh
+// Stable identity: AssemblyPartMesh memoizes its edge buffer on `curves`, so a fresh
 // [] per render would rebuild every body's line geometry on every frame.
 const EMPTY_CURVES: EdgeCurve[] = []
 
@@ -140,7 +140,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   const subject = useAssemblyStore(s => s.subject)
   const selectedPartHandle = subject?.kind === 'part' ? subject.handle : null
   const selectedMateId = subject?.kind === 'mate' ? subject.id : null
-  const bodies = useAssemblyStore(s => s.bodies)
+  const parts = useAssemblyStore(s => s.parts)
   const edgeCurves = useAssemblyStore(s => s.edgeCurves)
   const instances = useAssemblyStore(s => s.instances)
   const transforms = useAssemblyStore(s => s.transforms)
@@ -194,7 +194,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
 
   const adapter = useMemo(() => createAssemblyPointerAdapter({
     beginPartManipulation: (h) => useAssemblyStore.getState().beginPartManipulation(h),
-    beginBodyDrag: (h, grab) => useAssemblyStore.getState().beginBodyDrag(h, grab),
+    beginPartDrag: (h, grab) => useAssemblyStore.getState().beginPartDrag(h, grab),
     setDragTarget: (t) => useAssemblyStore.getState().setDragTarget(t),
     dragPartTranslate: (d) => useAssemblyStore.getState().dragPartTranslate(d),
     rotatePartGizmo: (a, angle, pivot) => useAssemblyStore.getState().rotatePartGizmo(a, angle, pivot),
@@ -264,8 +264,8 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     [subject],
   )
   const groups = useMemo(
-    () => getAssemblyPartGroups(bodies, instances, manipulation, selectedParts, settlingOffsets),
-    [bodies, instances, manipulation, selectedParts, settlingOffsets],
+    () => getAssemblyPartGroups(parts, instances, manipulation, selectedParts, settlingOffsets),
+    [parts, instances, manipulation, selectedParts, settlingOffsets],
   )
   // The drawn pose of every handle, the same offset the render groups carry.
   const drawnPoses = useMemo(
@@ -275,7 +275,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   // The ID buffer follows the drawn pose, so a click in the settle window lands
   // on the entity the user sees rather than the one the old solve baked.
   const drawnPickGeometry = useMemo(
-    () => offsetPickBodies(pickGeometry, pickGeometryPose, drawnPoses),
+    () => offsetPickParts(pickGeometry, pickGeometryPose, drawnPoses),
     [pickGeometry, pickGeometryPose, drawnPoses],
   )
 
@@ -378,17 +378,17 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     frameWaiterRef.current = null
   }, [manipulating])
   useEffect(() => {
-    if (!shouldAutoFit(fittedRef.current, Object.keys(bodies).length, manipulating)) return
+    if (!shouldAutoFit(fittedRef.current, Object.keys(parts).length, manipulating)) return
     const camera = cameraRef.current as THREE.OrthographicCamera | null
     if (!camera) return
-    if (fitToContent(camera, controlsRef.current, bodies, sceneRef.current)) {
+    if (fitToContent(camera, controlsRef.current, parts, sceneRef.current)) {
       fittedRef.current = true
       framedRef.current = true
       const framed = frameWaiterRef.current
       frameWaiterRef.current = null
       framed?.()
     }
-  }, [bodies, manipulating, sceneTick])
+  }, [parts, manipulating, sceneTick])
 
   // A drag continues while the pointer is outside the pane, so the move/up
   // listeners live on the wrapper (which captures the pointer), not on the
@@ -415,7 +415,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
 
   // The ID buffer is read in drawing-buffer pixels; the pointer speaks CSS.
   //
-  // Division of labour with the R3F raycast: a grab is geometric, so AssemblyBody's
+  // Division of labour with the R3F raycast: a grab is geometric, so AssemblyPartMesh's
   // raycast against the drawn mesh is the grab authority. The ID buffer is the
   // entity-reference authority for mate picks and B-rep selection. Both read the
   // drawn pose now, so neither can answer "what is under this pixel" with a
@@ -551,18 +551,18 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     }
   }, [])
 
-  const handleGrabBody = useCallback((handle: string, point: Vec3, pointer: PointerRef) => {
+  const handleGrabPart = useCallback((handle: string, point: Vec3, pointer: PointerRef) => {
     const camera = cameraRef.current
     if (!camera) return
     // The triad already claimed this pointer-down in the capture phase below.
-    // AssemblyBody's R3F handler runs later (R3F listens natively on its own
+    // AssemblyPartMesh's R3F handler runs later (R3F listens natively on its own
     // canvas wrapper, which this div encloses), so without this the body grab
     // would overwrite the gesture the user actually started.
     if (adapter.isActive()) return
     // Free drag happens in the plane facing the camera through the grab point,
     // so the part follows the cursor exactly under any view direction.
     const forward = camera.getWorldDirection(new THREE.Vector3())
-    if (adapter.onBodyPointerDown(handle, point, [forward.x, forward.y, forward.z], pointer)) {
+    if (adapter.onPartPointerDown(handle, point, [forward.x, forward.y, forward.z], pointer)) {
       // The ID buffer keeps the solved pose while the drag offsets the drawn
       // part, so anchors held over from before the grab would trail behind it.
       clearHover()
@@ -572,7 +572,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   // The triad's pointer-down, run in the CAPTURE phase. React registers capture
   // listeners on its root container, an ancestor of this div, so this fires
   // while the event is still travelling down -- before it reaches the canvas
-  // wrapper R3F listens on, and therefore before AssemblyBody's body grab. That
+  // wrapper R3F listens on, and therefore before AssemblyPartMesh's body grab. That
   // ordering is the whole fix: the gizmo is drawn on top and now decides first
   // too, with the ID buffer's layer priority as the single arbiter of what the
   // pixel under the cursor belongs to.
@@ -614,7 +614,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
       e.currentTarget.setPointerCapture(e.pointerId)
       return
     }
-    // Ctrl+click aims a mate reference instead of grabbing the part (AssemblyBody
+    // Ctrl+click aims a mate reference instead of grabbing the part (AssemblyPartMesh
     // declines the grab for the same modifier), and so does a plain click while a
     // mate chip is armed. Landing on the pixel that produced the current set
     // advances the cycle, so a corner's seven entities are all reachable without
@@ -767,7 +767,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
         />
 
         <IdPickingDriver onReady={onPipelineReady} />
-        <AssemblyPickLayers bodies={drawnPickGeometry} showFaces={shading} showEdges={edges} />
+        <AssemblyPickLayers parts={drawnPickGeometry} showFaces={shading} showEdges={edges} />
         {collisionDebug && <IdDebugOverlay />}
 
         <Suspense fallback={null}>
@@ -780,13 +780,13 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
         {groups.map(g => (
           <group key={g.handle} position={g.position} quaternion={g.quaternion}>
             {g.items.map(item => (
-              <AssemblyBody
+              <AssemblyPartMesh
                 key={item.key}
                 item={item}
-                curves={edgeCurves[item.bodyId] ?? EMPTY_CURVES}
+                curves={edgeCurves[item.partId] ?? EMPTY_CURVES}
                 selected={g.selected}
                 aiming={aiming}
-                onGrab={(point, event) => handleGrabBody(g.handle, point, pointerOf(event))}
+                onGrab={(point, event) => handleGrabPart(g.handle, point, pointerOf(event))}
                 showFaces={shading}
                 showEdges={edges}
                 capBand={capBands.get(item.key) ?? 0}
@@ -802,7 +802,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
             settle rather than hanging at the old solved pose. */}
         {!aiming && !manipulating && (
           <AssemblySelectionHighlight
-            pickBodies={drawnPickGeometry}
+            pickParts={drawnPickGeometry}
             selection={entitySelection}
             hovered={hoveredEntity}
             mateHighlighted={mateHighlighted}

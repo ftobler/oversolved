@@ -12,9 +12,9 @@ import {
   getActiveSketchPlane,
 } from '@/components/Viewport/viewportPlaneSizing'
 import { isActive } from '@/components/Viewport'
-import type { BodyResult, Feature, PlaneDef } from '@/types/cad'
+import type { PartResult, Feature, PlaneDef } from '@/types/cad'
 
-function body(id: string, vertices: Float32Array | [number, number, number][] | undefined): BodyResult {
+function part(id: string, vertices: Float32Array | [number, number, number][] | undefined): PartResult {
   return {
     id,
     created_by: 'test',
@@ -72,15 +72,15 @@ describe('getModelBoundingBoxExtent', () => {
   it('returns 0 for undefined, empty or meshless bodies', () => {
     expect(getModelBoundingBoxExtent(undefined)).toBe(0)
     expect(getModelBoundingBoxExtent({})).toBe(0)
-    expect(getModelBoundingBoxExtent({ b1: body('b1', undefined) })).toBe(0)
+    expect(getModelBoundingBoxExtent({ b1: part('b1', undefined) })).toBe(0)
   })
 
   it('takes the largest body extent', () => {
-    const bodies = {
-      b1: body('b1', boxFlat(2, 2, 2)),
-      b2: body('b2', boxFlat(10, 3, 1)),
+    const parts = {
+      b1: part('b1', boxFlat(2, 2, 2)),
+      b2: part('b2', boxFlat(10, 3, 1)),
     }
-    expect(getModelBoundingBoxExtent(bodies)).toBe(10)
+    expect(getModelBoundingBoxExtent(parts)).toBe(10)
   })
 })
 
@@ -91,11 +91,11 @@ describe('getFaceExtent', () => {
 
   it('returns 0 when the named body is absent or meshless', () => {
     expect(getFaceExtent('@missing/face0', {})).toBe(0)
-    expect(getFaceExtent('@b1/face0', { b1: body('b1', undefined) })).toBe(0)
+    expect(getFaceExtent('@b1/face0', { b1: part('b1', undefined) })).toBe(0)
   })
 
   it('reads the body id off the query and measures that body', () => {
-    expect(getFaceExtent('@b1/face0', { b1: body('b1', boxFlat(4, 1, 1)) })).toBe(4)
+    expect(getFaceExtent('@b1/face0', { b1: part('b1', boxFlat(4, 1, 1)) })).toBe(4)
   })
 })
 
@@ -107,20 +107,20 @@ describe('calculatePlaneSize', () => {
 
   it('expands the on_face referenced body extent by 1.1', () => {
     const def: PlaneDef = { mode: 'on_face', face: '@b1/face0' }
-    expect(calculatePlaneSize(def, { b1: body('b1', boxFlat(10, 4, 4)) })).toBeCloseTo(11)
+    expect(calculatePlaneSize(def, { b1: part('b1', boxFlat(10, 4, 4)) })).toBeCloseTo(11)
   })
 
   it('falls back to the model extent when the face body is missing', () => {
     const def: PlaneDef = { mode: 'on_face', face: '@missing/face0' }
-    expect(calculatePlaneSize(def, { b1: body('b1', boxFlat(6, 2, 2)) })).toBeCloseTo(6.6)
+    expect(calculatePlaneSize(def, { b1: part('b1', boxFlat(6, 2, 2)) })).toBeCloseTo(6.6)
   })
 
   it('expands the model extent for a non on_face plane', () => {
-    expect(calculatePlaneSize({ mode: 'offset' }, { b1: body('b1', boxFlat(20, 2, 2)) })).toBeCloseTo(22)
+    expect(calculatePlaneSize({ mode: 'offset' }, { b1: part('b1', boxFlat(20, 2, 2)) })).toBeCloseTo(22)
   })
 
   it('returns 100 when no body carries a mesh', () => {
-    expect(calculatePlaneSize({ mode: 'offset' }, { b1: body('b1', undefined) })).toBe(100)
+    expect(calculatePlaneSize({ mode: 'offset' }, { b1: part('b1', undefined) })).toBe(100)
   })
 })
 

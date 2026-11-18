@@ -24,7 +24,7 @@ export function extractFeatureId(ancestorId: string): string | null {
   if (!m) return null
   let id = m[1]
 
-  // Body tags are "body_<featureId>": the owning feature is the suffix.
+  // Part tags are "body_<featureId>": the owning feature is the suffix.
   // Derived bodies (array/mirror/split siblings) mint "body_<feat>_<N>", so a
   // trailing numbered suffix belongs to the body scheme, not the feature id.
   if (id.startsWith("body_")) {
@@ -95,7 +95,7 @@ export function queryLabel(
     // split-sibling suffix included.
     const featureId = ownerOf(query)
     const feature = featureId ? features.find(f => f.id === featureId) : undefined
-    const owner = feature ? (feature.label || feature.id) : (featureId ?? topo.bodyId)
+    const owner = feature ? (feature.label || feature.id) : (featureId ?? topo.partId)
     return `${kind} of ${owner}`
   }
 

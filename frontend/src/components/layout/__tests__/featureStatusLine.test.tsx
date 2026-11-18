@@ -13,7 +13,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act, fireEvent, render, screen } from '@testing-library/react'
 import { PartDocumentPanel } from '@/components/layout/PartDocumentPanel'
 import { FeatureEditPanel } from '@/components/layout/FeatureEditPanel'
-import type { PartFeature, BodyResult } from '@/types/cad'
+import type { PartFeature, PartResult } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { PartEditorProvider, type PartEditorCallbacks } from '@/contexts/PartEditorContext'
 import { useEditorState } from '@/hooks/useEditorState'
@@ -29,10 +29,10 @@ function callbacks(): PartEditorCallbacks {
 
 /** Render the navigator and the floating edit panel with `feature` open, the
  *  way the part editor mounts them on either side of the viewport. */
-function renderEditing(feature: PartFeature, solveResults: Record<string, unknown>, bodies: Record<string, BodyResult> = {}) {
+function renderEditing(feature: PartFeature, solveResults: Record<string, unknown>, parts: Record<string, PartResult> = {}) {
   usePartEditorStore.setState({
     features: [feature], visibleFeatures: new Set([feature.id]), doc: { version: 1, kind: 'part', features: [feature] } as never,
-    visibleBodies: new Set(), partLabels: {}, solveResults, bodies, isRebuilding: false, featureTimings: {},
+    visibleParts: new Set(), partLabels: {}, solveResults, parts: parts, isRebuilding: false, featureTimings: {},
   })
   useEditorState.setState({
     editingFeatureId: feature.id, rollbackPosition: null,
@@ -121,8 +121,8 @@ describe('feature status line', () => {
     const rowClick = vi.fn()
     const cb = callbacks()
     usePartEditorStore.setState({
-      features: [EXTRUDE], visibleFeatures: new Set(['ex1']), doc: null, visibleBodies: new Set(), partLabels: {},
-      solveResults: { ex1: { status: 'exception', exception: 'sketch not found' } }, bodies: {}, isRebuilding: false, featureTimings: {},
+      features: [EXTRUDE], visibleFeatures: new Set(['ex1']), doc: null, visibleParts: new Set(), partLabels: {},
+      solveResults: { ex1: { status: 'exception', exception: 'sketch not found' } }, parts: {}, isRebuilding: false, featureTimings: {},
     })
     useEditorState.setState({ editingFeatureId: 'ex1', normalSelection: new Set(), activePickField: null, modeStack: [] })
     render(

@@ -1,8 +1,8 @@
 import { useMemo, useEffect } from 'react'
 import * as THREE from 'three'
 import type { EdgeData } from '@/types/cad'
-import type { BodyRenderItem } from '@/components/Viewport/bodyUtils'
-import { buildEdgeSegments } from '@/components/Geometry3D/bodyGeometry'
+import type { PartRenderItem } from '@/components/Viewport/partUtils'
+import { buildEdgeSegments } from '@/components/Geometry3D/partGeometry'
 import { COLOR_PREVIEW_EDGE, RENDER_ORDER_HIGHLIGHT } from '@/components/Geometry3D/constants'
 import { TOL_PREVIEW_CELL } from '@/kernel/solverConstants'
 import { MARK_CELL_NEIGHBOURS } from '@/picking/markPosition'
@@ -10,11 +10,11 @@ import { getSectionClipPlaneList } from '@/viewport/sectionClipping'
 import { useSectionActive } from '@/viewport/useSection'
 
 interface PreviewEdgeOverlayProps {
-  items: BodyRenderItem[]
-  pickItems?: BodyRenderItem[]
+  items: PartRenderItem[]
+  pickItems?: PartRenderItem[]
 }
 
-interface PreviewBodyEdgesProps {
+interface PreviewPartEdgesProps {
   edges: EdgeData[]
   // The body's sparse seam indices: a preview ghost hides them like the solid
   // preview of the same body does.
@@ -110,7 +110,7 @@ function coincides(a: EdgeCells, b: EdgeCells): boolean {
   return covers(a, b) && covers(b, a)
 }
 
-function PreviewBodyEdges({ edges, hiddenEdges, existingGeom }: PreviewBodyEdgesProps) {
+function PreviewPartEdges({ edges, hiddenEdges, existingGeom }: PreviewPartEdgesProps) {
   // The preview is body geometry: it is cut with the same plane as the solid it
   // previews, or a pending edit would draw through the removed half.
   const sectionActive = useSectionActive()
@@ -194,7 +194,7 @@ export default function PreviewEdgeOverlay({ items, pickItems }: PreviewEdgeOver
       {items.map(item => {
         if (!item.visible || item.edges.length === 0) return null
         return (
-          <PreviewBodyEdges
+          <PreviewPartEdges
             key={item.key}
             edges={item.edges}
             hiddenEdges={item.hiddenEdges}

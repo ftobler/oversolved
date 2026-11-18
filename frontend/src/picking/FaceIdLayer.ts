@@ -13,7 +13,7 @@ import { applySectionClipping } from '@/viewport/sectionClipping'
  * channel acts as the "occupied" flag).
  *
  * Vertices are expected to be non-indexed (one triangle = 3 unique
- * vertices), matching the layout `Body3D` already builds via
+ * vertices), matching the layout `Part3D` already builds via
  * `buildBodyGeometry(mesh).toNonIndexed()`. Each triangle's 3 vertex
  * colors are identical -- the face ID.
  */
@@ -25,9 +25,9 @@ export interface FaceIdLayerConfig {
   zPolicy?: LayerZPolicy
 }
 
-export interface FaceBodyRegistration {
+export interface FacePartRegistration {
   // Stable key for the registered body (e.g. `${featureId}/${bodyId}`).
-  bodyKey: string
+  partKey: string
   // Non-indexed triangle positions, length = numTris * 9.
   positions: Float32Array
   // Per-triangle B-rep face index (length = numTris).
@@ -95,7 +95,7 @@ export class FaceIdLayer extends IdLayerBase<THREE.Mesh> {
     this.zPolicy = config?.zPolicy ?? 'clear-then-fresh'
   }
 
-  registerBody(reg: FaceBodyRegistration): void {
+  registerPart(reg: FacePartRegistration): void {
     const { positions, triangleToFace, faceQueries } = reg
     if (positions.length % 9 !== 0) {
       throw new Error(`FaceIdLayer: positions length ${positions.length} is not a multiple of 9`)
@@ -109,9 +109,9 @@ export class FaceIdLayer extends IdLayerBase<THREE.Mesh> {
     }
 
     // If already registered under this key, replace (geometry may have changed).
-    this.unregisterBody(reg.bodyKey)
+    this.unregisterPart(reg.partKey)
 
-    const ids = this.primitiveIds(reg.bodyKey, reg.perPrimitivePickKeys)
+    const ids = this.primitiveIds(reg.partKey, reg.perPrimitivePickKeys)
     try {
       const drawable: number[] = []
       for (let tri = 0; tri < numTris; tri++) {
@@ -164,7 +164,7 @@ export class FaceIdLayer extends IdLayerBase<THREE.Mesh> {
       mesh.frustumCulled = false
       this.scene.add(mesh)
 
-      this.bodies.set(reg.bodyKey, { mesh, geometry, allocatedIds: ids.allocatedIds })
+      this.parts.set(reg.partKey, { mesh, geometry, allocatedIds: ids.allocatedIds })
     } catch (err) {
       // A mid-loop allocation failure (24-bit ID exhaustion) must not leak the
       // ids already taken for this pass.
@@ -174,7 +174,7 @@ export class FaceIdLayer extends IdLayerBase<THREE.Mesh> {
   }
 
   dispose(): void {
-    this.disposeBodies()
+    this.disposeParts()
     this.material.dispose()
   }
 
@@ -193,10 +193,10 @@ export class FaceIdLayer extends IdLayerBase<THREE.Mesh> {
   // stencil count and cap fill. The bodies are the same triangles the face IDs
   // are drawn from, so the cap can never disagree with the silhouette the ID
   // pass already has. The real material is restored before returning.
-  renderBodiesWith(renderer: THREE.WebGLRenderer, camera: THREE.Camera, material: THREE.Material): void {
-    if (this.bodies.size === 0) return
+  renderPartsWith(renderer: THREE.WebGLRenderer, camera: THREE.Camera, material: THREE.Material): void {
+    if (this.parts.size === 0) return
     const previous: { mesh: THREE.Mesh; material: THREE.Material | THREE.Material[] }[] = []
-    for (const rec of this.bodies.values()) {
+    for (const rec of this.parts.values()) {
       previous.push({ mesh: rec.mesh, material: rec.mesh.material })
       rec.mesh.material = material
     }

@@ -29,7 +29,7 @@ const solveBytes = loadSolver()
 
 const SK = 'ej5yKuzkrjyx1bIum42EJLki'
 const EX = 'UU4SAjHG0AQZAsU8C2j5JKjo'
-const BODY = `body_${EX}`
+const PART = `body_${EX}`
 const PROFILE =
   `?2a,2a,2a,2a,9,19;@${SK}/0IPnfibogdJZCeul@${SK}/0IPnfibogdJZCeul` +
   `@${SK}/43NO99KuPeLF1spx@${SK}/_yxEcYDVIUOLVgBHsurface:2@${SK}:flatface`
@@ -71,17 +71,17 @@ const BASE_FEATURES: Array<Record<string, unknown>> = [
 
 // The literal stored picks of the four reports.
 const BORE =
-  `?15,19,1e,2a;@u|u_12fe4d96581d211f@${EX}@${BODY}@${SK}/_yxEcYDVIUOLVgBH:cylinderface`
+  `?15,19,1e,2a;@u|u_12fe4d96581d211f@${EX}@${PART}@${SK}/_yxEcYDVIUOLVgBH:cylinderface`
 const UPPER =
-  `?15,19,1e,2a,7,7;@u|u_8fee0efaff178537@${EX}@${BODY}@${SK}/0IPnfibogdJZCeul@cls_xp@cls_yp:cylinderface`
+  `?15,19,1e,2a,7,7;@u|u_8fee0efaff178537@${EX}@${PART}@${SK}/0IPnfibogdJZCeul@cls_xp@cls_yp:cylinderface`
 // 0648's second move stores the first move's token in its ancestry.
 const UPPER_AFTER_BORE =
-  `?15,19,1e,2a,7,7;@u|u_8fee0efaff178537@kaq8NQBPIvFccTpLoxMfHDEV@${BODY}` +
+  `?15,19,1e,2a,7,7;@u|u_8fee0efaff178537@kaq8NQBPIvFccTpLoxMfHDEV@${PART}` +
   `@${SK}/0IPnfibogdJZCeul@cls_xp@cls_yp:cylinderface`
 const LOWER =
-  `?15,19,1e,2a,7,7;@u|u_ddc9b0766a2715e7@${EX}@${BODY}@${SK}/0IPnfibogdJZCeul@cls_xp@cls_yn:cylinderface`
+  `?15,19,1e,2a,7,7;@u|u_ddc9b0766a2715e7@${EX}@${PART}@${SK}/0IPnfibogdJZCeul@cls_xp@cls_yn:cylinderface`
 const TOP_FLAT =
-  `?15,19,1e,2a,2a,2a,2a,2a,2a,2a,2a,2a,2a,2a,2a,7;@u|u_d555c033af1edc8d@${EX}@${BODY}` +
+  `?15,19,1e,2a,2a,2a,2a,2a,2a,2a,2a,2a,2a,2a,2a,7;@u|u_d555c033af1edc8d@${EX}@${PART}` +
   `@${SK}/0IPnfibogdJZCeul@${SK}/43NO99KuPeLF1spx@${SK}/_yxEcYDVIUOLVgBH` +
   `@${SK}/0IPnfibogdJZCeul@${SK}/43NO99KuPeLF1spx@${SK}/0IPnfibogdJZCeul` +
   `@${SK}/43NO99KuPeLF1spx@${SK}/_yxEcYDVIUOLVgBH@${SK}/0IPnfibogdJZCeul` +
@@ -92,7 +92,7 @@ interface FaceDatum {
   surface_frame?: { radius?: number }
   centroid?: number[]
 }
-interface BodyView {
+interface PartView {
   mesh?: { face_queries?: string[]; face_data?: FaceDatum[]; vertices?: number[][] }
 }
 interface Face {
@@ -105,14 +105,14 @@ const uuidOf = (query: string): string | null => {
   return token === undefined ? null : token.slice(3)
 }
 
-function facesOf(body: BodyView): Face[] {
-  const queries = body.mesh?.face_queries ?? []
-  const data = body.mesh?.face_data ?? []
+function facesOf(part: PartView): Face[] {
+  const queries = part.mesh?.face_queries ?? []
+  const data = part.mesh?.face_data ?? []
   return queries.map((query, index) => ({ query, data: data[index] ?? {} }))
 }
 
-function radiusByUuid(body: BodyView, uuid: string): number {
-  const face = facesOf(body).find((f) => uuidOf(f.query) === uuid)
+function radiusByUuid(part: PartView, uuid: string): number {
+  const face = facesOf(part).find((f) => uuidOf(f.query) === uuid)
   const radius = face?.data.surface_frame?.radius
   if (radius === undefined) throw new Error(`no cylinder face for ${uuid}`)
   return radius
@@ -131,8 +131,8 @@ function bbox(verts: number[][]): { min: number[]; max: number[] } {
 function resultOf(result: BuildResponse, id: string): Record<string, unknown> {
   return (result.result as Record<string, Record<string, unknown>>)[id] ?? {}
 }
-function bodyOf(result: BuildResponse): BodyView {
-  return ((result.bodies as Record<string, BodyView>)[BODY] ?? {})
+function partOf(result: BuildResponse): PartView {
+  return ((result.bodies as Record<string, PartView>)[PART] ?? {})
 }
 
 describe.skipIf(!oc || !solveBytes)('move face corner and split-sibling reports (real OCC)', () => {
@@ -147,7 +147,7 @@ describe.skipIf(!oc || !solveBytes)('move face corner and split-sibling reports 
   /** Volume of the body the last feature built, read from its checkpoint shape
    *  (the build response only carries the mesh). */
   function volumeAfter(result: BuildResponse, lastId: string): number {
-    const handle = result._build_state.checkpoints[lastId]?.body_store_snapshot?.[BODY]?.shape
+    const handle = result._build_state.checkpoints[lastId]?.body_store_snapshot?.[PART]?.shape
     if (!handle) throw new Error(`no checkpoint shape for ${lastId}`)
     const scope = new DisposeScope()
     try {
@@ -174,12 +174,12 @@ describe.skipIf(!oc || !solveBytes)('move face corner and split-sibling reports 
     expect(resultOf(r, 'kaq8NQBPIvFccTpLoxMfHDEV').status).toBe('ok')
     expect(resultOf(r, '3mVx0XBPxQbI51eD-BLbrEhA').status).toBe('ok')
 
-    const body = bodyOf(r)
-    const faces = facesOf(body)
+    const part = partOf(r)
+    const faces = facesOf(part)
     expect(faces).toHaveLength(6)
-    expect(radiusByUuid(body, 'u_12fe4d96581d211f')).toBeCloseTo(10, 6)
-    expect(radiusByUuid(body, 'u_8fee0efaff178537')).toBeCloseTo(23, 6)
-    expect(radiusByUuid(body, 'u_ddc9b0766a2715e7')).toBeCloseTo(25, 6)
+    expect(radiusByUuid(part, 'u_12fe4d96581d211f')).toBeCloseTo(10, 6)
+    expect(radiusByUuid(part, 'u_8fee0efaff178537')).toBeCloseTo(23, 6)
+    expect(radiusByUuid(part, 'u_ddc9b0766a2715e7')).toBeCloseTo(25, 6)
     const uuids = faces.map((f) => uuidOf(f.query)).filter((u): u is string => u !== null)
     expect(new Set(uuids).size).toBe(uuids.length)
     expect(volumeAfter(r, '3mVx0XBPxQbI51eD-BLbrEhA')).toBeCloseTo(11747.93, 1)
@@ -198,8 +198,8 @@ describe.skipIf(!oc || !solveBytes)('move face corner and split-sibling reports 
     expect(resultOf(r, 'kaq8NQBPIvFccTpLoxMfHDEV').status).toBe('ok')
     expect(resultOf(r, 'kaq8NQBPIvFccTpLoxMfHDEV').body_ids).toHaveLength(1)
 
-    const body = bodyOf(r)
-    const faces = facesOf(body)
+    const part = partOf(r)
+    const faces = facesOf(part)
     // The old corner strips were r25 bite pieces and r15 relics; the moved bite
     // is r20 everywhere and the bore is r10.
     const bite = faces.filter((f) => f.data.surface_type === 'cylinderface' && f.query.includes('0IPnfibogdJZCeul'))
@@ -224,15 +224,15 @@ describe.skipIf(!oc || !solveBytes)('move face corner and split-sibling reports 
     })
     expect(resultOf(r, 'kaq8NQBPIvFccTpLoxMfHDEV').status).toBe('ok')
 
-    const body = bodyOf(r)
-    const faces = facesOf(body)
+    const part = partOf(r)
+    const faces = facesOf(part)
     expect(faces).toHaveLength(6)
     const bite = faces.filter((f) => f.data.surface_type === 'cylinderface' && f.query.includes('0IPnfibogdJZCeul'))
     const upper = bite.find((f) => (f.data.centroid?.[1] ?? 0) > 0)
     const lower = bite.find((f) => (f.data.centroid?.[1] ?? 0) < 0)
     expect(upper?.data.surface_frame?.radius).toBeCloseTo(20, 5)
     expect(lower?.data.surface_frame?.radius).toBeCloseTo(25, 5)
-    expect(radiusByUuid(body, 'u_12fe4d96581d211f')).toBeCloseTo(10, 6)
+    expect(radiusByUuid(part, 'u_12fe4d96581d211f')).toBeCloseTo(10, 6)
     expect(faces.some((f) => f.data.surface_frame?.radius !== undefined && Math.abs(f.data.surface_frame.radius - 15) < 1e-4)).toBe(false)
     const uuids = faces.map((f) => uuidOf(f.query)).filter((u): u is string => u !== null)
     expect(new Set(uuids).size).toBe(uuids.length)
@@ -265,19 +265,19 @@ describe.skipIf(!oc || !solveBytes)('move face corner and split-sibling reports 
     expect(reverse.ms).toBeLessThan(30000)
 
     const signature = (result: BuildResponse): string[] =>
-      facesOf(bodyOf(result))
+      facesOf(partOf(result))
         .map((f) => `${f.data.surface_type}:${(f.data.surface_frame?.radius ?? 0).toFixed(4)}:${(f.data.centroid ?? []).map((x) => x.toFixed(3)).join(',')}`)
         .sort()
     expect(signature(reported.result)).toEqual(signature(reverse.result))
     expect(signature(reported.result)).toHaveLength(6)
 
-    const body = bodyOf(reported.result)
-    const radii = facesOf(body).map((f) => f.data.surface_frame?.radius).filter((x): x is number => x !== undefined)
+    const part = partOf(reported.result)
+    const radii = facesOf(part).map((f) => f.data.surface_frame?.radius).filter((x): x is number => x !== undefined)
     expect(radii.filter((r) => Math.abs(r - 20) < 1e-4)).toHaveLength(1)
     expect(radii.filter((r) => Math.abs(r - 10) < 1e-4)).toHaveLength(1)
     expect(radii.filter((r) => Math.abs(r - 25) < 1e-4)).toHaveLength(2)
     // The top face moved from z=10 to z=15.
-    const box = bbox(body.mesh?.vertices ?? [])
+    const box = bbox(part.mesh?.vertices ?? [])
     expect(box.min[2]).toBeCloseTo(0, 6)
     expect(box.max[2]).toBeCloseTo(15, 6)
   }, 90000)

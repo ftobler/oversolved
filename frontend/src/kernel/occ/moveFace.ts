@@ -30,7 +30,7 @@
 
 import { type DisposeScope } from './disposeScope'
 import type { OccModule, OccShape, OccSubShape } from './occTypes'
-import { canonicalFaces, canonicalEdges } from './bodyNames'
+import { canonicalFaces, canonicalEdges } from './partNames'
 import { SubShapeMap } from './subshapeIdentity'
 import { faceCentroid, faceArea, bboxDiagonal, shapeBndBox } from './primitives'
 import { volumeForMeasure } from './volume'
@@ -156,9 +156,9 @@ export function extendNeighbourFace(
 export function classifyFaceEdges(
   oc: OccModule,
   scope: DisposeScope,
-  body: OccShape,
+  part: OccShape,
 ): (edge: OccShape) => EdgeKind {
-  const analyse = scope.track(new oc.BRepOffset_Analyse_2(body, TOL_MOVE_FACE_TANGENT))
+  const analyse = scope.track(new oc.BRepOffset_Analyse_2(part, TOL_MOVE_FACE_TANGENT))
   const names: Record<number, EdgeKind> = {
     [oc.ChFiDS_TypeOfConcavity.ChFiDS_Convex.value]: 'convex',
     [oc.ChFiDS_TypeOfConcavity.ChFiDS_Concave.value]: 'concave',
@@ -202,11 +202,11 @@ function innerWireKinds(
 function neighbourAcross(
   oc: OccModule,
   scope: DisposeScope,
-  body: OccShape,
+  part: OccShape,
   face: OccShape,
   edge: OccShape,
 ): OccShape | null {
-  for (const other of exploreFaces(oc, scope, body)) {
+  for (const other of exploreFaces(oc, scope, part)) {
     if ((other as OccSubShape).IsSame(face as OccSubShape)) continue
     if (exploreEdges(oc, scope, other).some((e) => (e as OccSubShape).IsSame(edge as OccSubShape))) {
       return other
@@ -343,7 +343,7 @@ export function retryReplacementSplits(
 export function moveFaceCells(
   oc: OccModule,
   scope: DisposeScope,
-  body: OccShape,
+  part: OccShape,
   face: OccShape,
   d: number,
 ): MoveFaceCells {
@@ -354,10 +354,10 @@ export function moveFaceCells(
   // validates a planar picked face.
   const moveNormal = surface.anchor().normal
 
-  const bboxL = bboxDiagonal(oc, scope, body)
+  const bboxL = bboxDiagonal(oc, scope, part)
   const L = 4 * (bboxL + Math.abs(d))
 
-  const edgeKind = classifyFaceEdges(oc, scope, body)
+  const edgeKind = classifyFaceEdges(oc, scope, part)
   const edges = exploreEdges(oc, scope, face)
 
   // Extended neighbour per edge; a tangent-bound face is refused (an extension
@@ -395,7 +395,7 @@ export function moveFaceCells(
         `Rungs: ${rungCatalog(oc)}. Move the tangent chain together or remove the fillet first`,
       )
     }
-    const neighbour = neighbourAcross(oc, scope, body, face, e)
+    const neighbour = neighbourAcross(oc, scope, part, face, e)
     if (neighbour === null) continue
     const tool = extendNeighbour(oc, scope, neighbour, e, moveNormal, d, L, margin)
     if (tool.rung !== RUNG_1 || tool.solid !== null) usedFreeformExtension = true
@@ -558,7 +558,7 @@ export interface ApplyMoveFaceSetResult {
 export function combineMoveFaceCells(
   oc: OccModule,
   scope: DisposeScope,
-  body: OccShape,
+  part: OccShape,
   steps: MoveFaceStep[],
   d: number,
 ): ApplyMoveFaceSetResult {
@@ -574,7 +574,7 @@ export function combineMoveFaceCells(
   const builder = scope.track(new oc.BRep_Builder())
   builder.MakeCompound(compound)
   for (const { cell } of keyed) builder.Add(compound, cell)
-  const res = booleanWithDiff(oc, scope, body, compound, d > 0 ? 'fuse' : 'cut')
+  const res = booleanWithDiff(oc, scope, part, compound, d > 0 ? 'fuse' : 'cut')
   return { shape: res.shape, faceOrigin: res.faceOrigin, diff: res.diff }
 }
 
@@ -622,13 +622,13 @@ function assertVolumeOracle(
 export function applyMoveFace(
   oc: OccModule,
   scope: DisposeScope,
-  body: OccShape,
+  part: OccShape,
   face: OccShape,
   d: number,
 ): ApplyMoveFaceResult {
-  const cells = moveFaceCells(oc, scope, body, face, d)
-  const before = cells.usedFreeformExtension ? volumeForMeasure(oc, scope, body) : 0
-  const res = combineMoveFaceCells(oc, scope, body, [{ face, cells }], d)
+  const cells = moveFaceCells(oc, scope, part, face, d)
+  const before = cells.usedFreeformExtension ? volumeForMeasure(oc, scope, part) : 0
+  const res = combineMoveFaceCells(oc, scope, part, [{ face, cells }], d)
   if (cells.usedFreeformExtension) {
     assertVolumeOracle(oc, scope, face, d, before, volumeForMeasure(oc, scope, res.shape))
   }

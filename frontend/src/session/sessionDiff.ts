@@ -86,13 +86,13 @@ const stripSolvedGeometry = (feature: PartFeature): Record<string, unknown> => {
 export function previewMutationFor(original: PartDoc, current: PartDoc): Mutation | null {
   const before = original.part_style ?? {}
   const after = current.part_style ?? {}
-  const bodyIds = new Set([...Object.keys(before), ...Object.keys(after)])
+  const partIds = new Set([...Object.keys(before), ...Object.keys(after)])
   const changed: string[] = []
-  for (const bodyId of bodyIds) {
-    const a = (before[bodyId] ?? {}) as Record<string, unknown>
-    const b = (after[bodyId] ?? {}) as Record<string, unknown>
+  for (const partId of partIds) {
+    const a = (before[partId] ?? {}) as Record<string, unknown>
+    const b = (after[partId] ?? {}) as Record<string, unknown>
     const fields = Object.keys({ ...a, ...b }).filter(f => a[f] !== b[f])
-    if (fields.length > 0) changed.push(`edit ${bodyId}: ${fields.join(', ')}`)
+    if (fields.length > 0) changed.push(`edit ${partId}: ${fields.join(', ')}`)
   }
   if (changed.length === 0) return null
   return { type: 'preview_commit', description: changed.join('; ') }

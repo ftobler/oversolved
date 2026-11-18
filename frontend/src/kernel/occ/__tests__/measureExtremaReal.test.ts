@@ -18,10 +18,10 @@ import { DisposeScope } from '../disposeScope'
 import { makeBox, makeBoxAt, readSolidEdges } from '../primitives'
 import { booleanWithDiff } from '../booleans'
 import { makeHalfSpaceBox } from '../halfSpace'
-import { canonicalEdges } from '../bodyNames'
+import { canonicalEdges } from '../partNames'
 import { edgeLength, minDistance } from '../measureExtrema'
 import { segmentDistance, type Vec3 } from '@/utils/measure/primitives'
-import type { Body, BuildState } from '@/kernel/types3d'
+import type { PartSolid, BuildState } from '@/kernel/types3d'
 import type { OccCurveAdaptor, OccModule, OccShape } from '../occTypes'
 
 const loaded = await loadOcc()
@@ -278,11 +278,11 @@ describe.skipIf(!oc)('measureExtrema (real OCC)', () => {
       })
       if (!response) throw new Error('no response')
       const state = response._build_state as BuildState
-      const store = state.checkpoints[state.feature_order[state.feature_order.length - 1]].body_store_snapshot as Record<string, Body>
+      const store = state.checkpoints[state.feature_order[state.feature_order.length - 1]].body_store_snapshot as Record<string, PartSolid>
       const table = persistentTableForTest()
       if (!table) throw new Error('no table')
-      const bodyId = Object.keys(store)[0]
-      const shape = table.get<OccShape>(store[bodyId].shape!)
+      const partId = Object.keys(store)[0]
+      const shape = table.get<OccShape>(store[partId].shape!)
       const scope2 = new DisposeScope()
       try {
         // The spline edge the render pass reports as `kind: 'spline'`; the

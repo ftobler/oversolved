@@ -208,11 +208,11 @@ export function relayReplyTransferables(subKind: AnchorRelayRequest['subKind'], 
     }
     return []
   }
-  const bodies = bundle.bodies
-  if (!bodies) return []  // stamped but empty: nothing to transfer
+  const parts = bundle.bodies
+  if (!parts) return []  // stamped but empty: nothing to transfer
   const out: Transferable[] = []
-  for (const body of bodies) {
-    const m = body?.mesh
+  for (const part of parts) {
+    const m = part?.mesh
     if (m?.vertices instanceof Float32Array) out.push(m.vertices.buffer)
     if (m?.indices instanceof Uint32Array) out.push(m.indices.buffer)
     if (m?.faceIdsPerTriangle instanceof Uint32Array) out.push(m.faceIdsPerTriangle.buffer)

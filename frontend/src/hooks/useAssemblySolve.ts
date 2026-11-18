@@ -13,9 +13,9 @@ import type { AssemblyDoc } from '@/types/cad'
 import { docLoadErrorMessage, loadPartDocText } from '@/persistence/docSchema'
 import { useAssemblyStore } from '@/stores/assemblyStore'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
-import { buildEntityMateRefs, toBodyResults, toEdgeCurves } from '@/utils/assemblyBodies'
+import { buildEntityMateRefs, toPartResults, toEdgeCurves } from '@/utils/assemblyBodies'
 import { buildAnchorTable } from '@/utils/anchorGizmos'
-import { buildPickBodies } from '@/utils/assemblyPick'
+import { buildPickParts } from '@/utils/assemblyPick'
 import { setRelayHandlers, clearRelayHandlers, solveAssemblyViaWorker, cancelAssemblySolver } from '@/kernel/worker/anchorSolverClient'
 import { buildBundleViaWorker } from '@/kernel/worker/solverClient'
 import { fileIdsMissingFromWorker } from '@/kernel/worker/workerFiles'
@@ -318,14 +318,14 @@ export function useAssemblySolve(
           useAssemblyStore.getState().setDragSolvedPose(transforms[grab])
         }
         delete transforms[grab]
-        const payloadBodies = { ...res.payload.bodies }
-        delete payloadBodies[grab]
-        const bodies = toBodyResults(payloadBodies)
-        const edgeCurves = toEdgeCurves(payloadBodies)
+        const payloadParts = { ...res.payload.bodies }
+        delete payloadParts[grab]
+        const parts = toPartResults(payloadParts)
+        const edgeCurves = toEdgeCurves(payloadParts)
         useAssemblyStore.getState().setDragSolveResult({
           transforms,
           movedParts: res.payload.movedParts ? new Set(res.payload.movedParts) : undefined,
-          bodies,
+          parts,
           edgeCurves,
           solveStatus: liveStatus(res.payload.status),
         })
@@ -336,12 +336,12 @@ export function useAssemblySolve(
       useAssemblyStore.getState().setSolveResult({
         transforms: res.payload.transforms,
         movedParts: res.payload.movedParts ? new Set(res.payload.movedParts) : undefined,
-        bodies: toBodyResults(res.payload.bodies),
+        parts: toPartResults(res.payload.bodies),
         edgeCurves: toEdgeCurves(res.payload.bodies),
         entityMateRefs: buildEntityMateRefs(res.payload.bodies, res.payload.anchorDescriptors),
         anchors,
         anchorDescriptors: res.payload.anchorDescriptors ?? {},
-        pickGeometry: buildPickBodies(res.payload.bodies, anchors),
+        pickGeometry: buildPickParts(res.payload.bodies, anchors),
         // The whole verdict: the per-mate and per-part marks plus the overall
         // status. A mate whose reference no longer resolves comes back in
         // `status.mates`, and that is what turns its row red.

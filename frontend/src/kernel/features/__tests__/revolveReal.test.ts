@@ -15,7 +15,7 @@ import { makeAncestryQuery } from '../../query'
 import { setSketchSolver, resetSketchSolver } from '../../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import type { BuildResponse } from '../../builder'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -80,15 +80,15 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
     run: (spec: { features: unknown[] } & Record<string, unknown>) =>
       harness.run({ ...spec, features: [axisSketch(), ...spec.features] }),
     res: harness.res.bind(harness),
-    body: harness.body.bind(harness),
+    body: harness.part.bind(harness),
   }
 
-  function volumeAt(r: BuildResponse, featureId: string, bodyId: string): number {
+  function volumeAt(r: BuildResponse, featureId: string, partId: string): number {
     const checkpoint = r._build_state!.checkpoints[featureId]
-    const body = (checkpoint.body_store_snapshot as Record<string, Body>)[bodyId]
+    const part = (checkpoint.body_store_snapshot as Record<string, PartSolid>)[partId]
     const scope = new DisposeScope()
     try {
-      return volumeOf(oc!, scope, harness.table.get<OccShape>(body.shape!))
+      return volumeOf(oc!, scope, harness.table.get<OccShape>(part.shape!))
     } finally {
       scope.dispose()
     }
@@ -135,7 +135,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
     // The cut profile spans only PART of the height (a groove), so the cut keeps
     // body_rev1 connected and the operation succeeds. A full-height concentric
     // profile would sever it into two coaxial rings whose centroids both lie on
-    // the revolve axis -- an orderless bodySplit near-tie that now refuses
+    // the revolve axis -- an orderless partSplit near-tie that now refuses
     // loudly (see the symmetric-split test below).
     const result = h.run({
       version: 1, kind: 'part',
@@ -151,7 +151,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
 
   it('a concentric revolve cut severs into coaxial rings and refuses loudly', () => {
     // A full-height inner annulus cut out of the outer annulus leaves two rings
-    // whose volume centroids both sit exactly on the revolve axis. bodySplit
+    // whose volume centroids both sit exactly on the revolve axis. partSplit
     // cannot order them positionally, and per the user decision (2026-08-12) a
     // flipped body id is worse than a failed split: the solve surfaces as an
     // exception instead of naming the rings in OCC explorer order.
@@ -269,11 +269,11 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
     /**
      * Two independent rectangle sketches revolved together around the same
      * axis produce two disconnected toroidal solids. Per the separated-parts
-     * doctrine (one Body == one OCC solid, disjoint solids are separate parts)
+     * doctrine (one Part == one OCC solid, disjoint solids are separate parts)
      * these are TWO bodies, reported through `body_ids` -- the old guide said
      * "one body" and the missing profile was silently dropped. The two rects
      * sit at different heights so the swept tori have distinct centroids and
-     * bodySplit can order them (coaxial same-height tori are the known
+     * partSplit can order them (coaxial same-height tori are the known
      * near-tie refusal, pinned by the concentric revolve-cut case below).
      */
     const result = h.run({
@@ -299,7 +299,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
 
   it('revolve with two coaxial profile sketches refuses loudly (near-tie)', () => {
     // Two same-height disjoint profiles revolve into two coaxial tori whose
-    // centroids both sit on the rotation axis -- bodySplit cannot order them
+    // centroids both sit on the rotation axis -- partSplit cannot order them
     // positionally, so the solve surfaces as an exception instead of dropping
     // one profile silently or naming the tori in OCC explorer order.
     const result = h.run({

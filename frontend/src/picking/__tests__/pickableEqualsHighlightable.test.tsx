@@ -8,17 +8,17 @@ import { useEdgeIdRegistration } from '../useEdgeIdRegistration'
 import { useVertexIdRegistration } from '../useVertexIdRegistration'
 import {
   resolveEdgeQueries, resolveVertexQueries, resolveFaceQueries,
-} from '@/components/Geometry3D/bodyGeometry'
+} from '@/components/Geometry3D/partGeometry'
 import { topoFallbackQuery } from '@/utils/query/selectionId'
 import { rgbToId } from '../idEncoding'
 import type { Mesh3D } from '@/types/cad'
 
 /**
- * g4-H1: the ID-layer index space is the SAME padded query list Body3D's
+ * g4-H1: the ID-layer index space is the SAME padded query list Part3D's
  * HighlightIndex counts from. A body with fewer kernel queries than tessellated
  * primitives used to highlight the tail primitives while leaving them with no
  * ID-buffer pixel, so they could be hovered-onto only by the highlight but never
- * clicked. Body3D has no R3F pointer handlers, so the ID buffer is the only pick
+ * clicked. Part3D has no R3F pointer handlers, so the ID buffer is the only pick
  * route: highlightable-but-unpickable is a real dead spot.
  */
 describe('pickable equals highlightable (g4-H1)', () => {
@@ -69,7 +69,7 @@ describe('pickable equals highlightable (g4-H1)', () => {
       { kind: 'line', start: [1, 0, 0], end: [2, 0, 0] },  // kernel gave no query
     ]
     renderHook(() => useEdgeIdRegistration({
-      featureId: 'f1', bodyId: 'b1', edges, edgeQueries: ['edge@A'],
+      featureId: 'f1', partId: 'b1', edges, edgeQueries: ['edge@A'],
     }))
 
     // Both segments drawn (2 vertices each), and both edges have a registry id.
@@ -91,7 +91,7 @@ describe('pickable equals highlightable (g4-H1)', () => {
     setLivePipeline(pipeline)
     const vertices: [number, number, number][] = [[0, 0, 0], [1, 0, 0], [0, 1, 0]]
     renderHook(() => useVertexIdRegistration({
-      featureId: 'f1', bodyId: 'b1', vertices, vertexQueries: ['vtx@A'],
+      featureId: 'f1', partId: 'b1', vertices, vertexQueries: ['vtx@A'],
     }))
 
     const obj = pipeline.vertexLayer.scene.children[0] as THREE.Mesh
@@ -102,7 +102,7 @@ describe('pickable equals highlightable (g4-H1)', () => {
     pipeline.dispose()
   })
 
-  it('the face hook and Body3D count from one resolveFaceQueries result', () => {
+  it('the face hook and Part3D count from one resolveFaceQueries result', () => {
     // Faces already shared the resolver; this pins that edges/vertices now do
     // too by exercising the same call the hook makes.
     const mesh: Mesh3D = {

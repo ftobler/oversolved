@@ -26,7 +26,7 @@
  * later shows up rather than disappearing -- `'error'` (extrude/revolve "no
  * closed profile") is already such a word.
  */
-import { isBodyFeatureResult } from '@/types/cad'
+import { isFeaturePartsResult } from '@/types/cad'
 import { STATUS_NAME, Status } from '@/wasm-kernel/codec'
 import { degenerateEntityWarning, type DegenerateEntity } from '@/utils/entitySizeProblems'
 import { NO_MARK, type StatusMark } from './statusMark'
@@ -55,7 +55,7 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== 
  * `bodies` is consulted because a feature can solve fine and still produce
  * geometry that will not tessellate. Any ONE of its bodies failing has to
  * redden the row: a feature owns every body it made
- * (kernel/features/bodySplit.ts), so reading only `body_id` left a split sibling
+ * (kernel/features/partSplit.ts), so reading only `body_id` left a split sibling
  * rendering nothing behind a healthy-looking feature.
  *
  * The severity split is intentional: a `partial` result (fillet/chamfer, hole,
@@ -71,16 +71,16 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== 
 export function featureFailure(
   featureId: string,
   solveResults: Record<string, unknown> | undefined | null,
-  bodies: Record<string, { mesh_error?: string }> | undefined | null,
+  parts: Record<string, { mesh_error?: string }> | undefined | null,
 ): StatusMark {
   const result = solveResults?.[featureId]
   if (typeof result !== 'object' || result === null) return NO_MARK
 
-  const bodyResult = isBodyFeatureResult(result) ? result : undefined
-  const bodyIds = bodyResult
-    ? (bodyResult.body_ids ?? (bodyResult.body_id ? [bodyResult.body_id] : []))
+  const partResult = isFeaturePartsResult(result) ? result : undefined
+  const partIds = partResult
+    ? (partResult.body_ids ?? (partResult.body_id ? [partResult.body_id] : []))
     : []
-  const meshError = bodyIds.map(bid => bodies?.[bid]?.mesh_error).find(m => !!m)
+  const meshError = partIds.map(bid => parts?.[bid]?.mesh_error).find(m => !!m)
 
   const status = (result as { status?: unknown }).status
   const statusFailed = typeof status === 'string'

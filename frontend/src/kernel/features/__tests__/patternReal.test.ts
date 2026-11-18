@@ -16,12 +16,12 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadPartDoc } from '@/persistence/docSchema'
 import { parseAncestry } from '../../query'
 import { volumeOf } from '../../occ/volume'
-import { canonicalFaces } from '../../occ/bodyNames'
+import { canonicalFaces } from '../../occ/partNames'
 import { shapeBndBox } from '../../occ/primitives'
 import { markFeatureProgress } from '../../featureProgress'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import { splitPatternDef } from '@/utils/core/patternSplit'
 
 // The mark is recorded, not redirected: the real functions still run, so the
@@ -44,7 +44,7 @@ interface FaceMesh {
   face_data?: { centroid: number[]; normal: number[]; surface_type?: string }[]
   face_queries?: string[]
 }
-interface BodyView {
+interface PartView {
   mesh?: FaceMesh
   modified_by?: string[]
 }
@@ -110,33 +110,33 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
     setSketchSolver(solveBytes)
   })
 
-  const meshOf = (r: BuildResponse, bodyId: string): FaceMesh => (h.body(r, bodyId).mesh ?? {}) as FaceMesh
-  const viewOf = (r: BuildResponse, bodyId: string): BodyView => h.body(r, bodyId) as BodyView
+  const meshOf = (r: BuildResponse, partId: string): FaceMesh => (h.part(r, partId).mesh ?? {}) as FaceMesh
+  const viewOf = (r: BuildResponse, partId: string): PartView => h.part(r, partId) as PartView
 
-  function snapshot(r: BuildResponse, featureId: string): Record<string, Body> {
+  function snapshot(r: BuildResponse, featureId: string): Record<string, PartSolid> {
     const ckp = r._build_state!.checkpoints[featureId]
-    return ckp.body_store_snapshot as Record<string, Body>
+    return ckp.body_store_snapshot as Record<string, PartSolid>
   }
-  function shapeAt(r: BuildResponse, featureId: string, bodyId: string): OccShape {
-    return h.table.get<OccShape>(snapshot(r, featureId)[bodyId].shape!)
+  function shapeAt(r: BuildResponse, featureId: string, partId: string): OccShape {
+    return h.table.get<OccShape>(snapshot(r, featureId)[partId].shape!)
   }
-  function volumeAt(r: BuildResponse, featureId: string, bodyId: string): number {
+  function volumeAt(r: BuildResponse, featureId: string, partId: string): number {
     const scope = new DisposeScope()
-    try { return volumeOf(occ, scope, shapeAt(r, featureId, bodyId)) } finally { scope.dispose() }
+    try { return volumeOf(occ, scope, shapeAt(r, featureId, partId)) } finally { scope.dispose() }
   }
-  function bboxAt(r: BuildResponse, featureId: string, bodyId: string) {
+  function bboxAt(r: BuildResponse, featureId: string, partId: string) {
     const scope = new DisposeScope()
-    try { return shapeBndBox(occ, scope, shapeAt(r, featureId, bodyId)) } finally { scope.dispose() }
+    try { return shapeBndBox(occ, scope, shapeAt(r, featureId, partId)) } finally { scope.dispose() }
   }
-  function faceCountAt(r: BuildResponse, featureId: string, bodyId: string): number {
+  function faceCountAt(r: BuildResponse, featureId: string, partId: string): number {
     const scope = new DisposeScope()
-    try { return canonicalFaces(occ, scope, shapeAt(r, featureId, bodyId)).length } finally { scope.dispose() }
+    try { return canonicalFaces(occ, scope, shapeAt(r, featureId, partId)).length } finally { scope.dispose() }
   }
-  function liveFaceUuids(r: BuildResponse, bodyId: string): string[] {
-    return (meshOf(r, bodyId).face_queries ?? []).map(uuidTokenOf).filter((u): u is string => u !== undefined)
+  function liveFaceUuids(r: BuildResponse, partId: string): string[] {
+    return (meshOf(r, partId).face_queries ?? []).map(uuidTokenOf).filter((u): u is string => u !== undefined)
   }
-  function bodyFaceUuids(r: BuildResponse, featureId: string, bodyId: string): string[] {
-    return (snapshot(r, featureId)[bodyId].face_uuids ?? []).filter((uuid): uuid is string => uuid !== null)
+  function partFaceUuids(r: BuildResponse, featureId: string, partId: string): string[] {
+    return (snapshot(r, featureId)[partId].face_uuids ?? []).filter((uuid): uuid is string => uuid !== null)
   }
   function expectUniqueFaceUuids(r: BuildResponse, featureId: string): void {
     const seen = new Set<string>()
@@ -420,14 +420,14 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
   })
 
   it('refuses a source that starts a new body or trims up_to', () => {
-    const newBody = h.run({
+    const newPart = h.run({
       features: [
         rectSketch('sk', 10, 10),
         extrude('ex', '$sk', 5),
         pattern('pt1', 'ex', linear({})),
       ],
     })
-    expect(String(h.res(newBody, 'pt1').exception)).toContain("operation 'new'")
+    expect(String(h.res(newPart, 'pt1').exception)).toContain("operation 'new'")
 
     const upTo = h.run({
       features: [
@@ -661,7 +661,7 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
     // The source cut already ran; nothing else is applied.
     expect(volumeAt(r, 'pt1', 'body_ex_plate')).toBeCloseTo(4000 - 80, 6)
     expect(volumeAt(r, 'pt1', 'body_ex_plate')).toBeCloseTo(volumeAt(baseline, 'ex_slot', 'body_ex_plate'), 6)
-    expect(bodyFaceUuids(r, 'pt1', 'body_ex_plate')).toEqual(bodyFaceUuids(baseline, 'ex_slot', 'body_ex_plate'))
+    expect(partFaceUuids(r, 'pt1', 'body_ex_plate')).toEqual(partFaceUuids(baseline, 'ex_slot', 'body_ex_plate'))
   })
 
   it('treats a body count of 1 as a quiet no-op', () => {
@@ -682,7 +682,7 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
     expect(res.solver_warning).toBeUndefined()
     expect(res.body_ids).toEqual(['body_ex_plate'])
     expect(volumeAt(r, 'pt1', 'body_ex_plate')).toBeCloseTo(500, 6)
-    expect(bodyFaceUuids(r, 'pt1', 'body_ex_plate')).toEqual(bodyFaceUuids(baseline, 'ex_plate', 'body_ex_plate'))
+    expect(partFaceUuids(r, 'pt1', 'body_ex_plate')).toEqual(partFaceUuids(baseline, 'ex_plate', 'body_ex_plate'))
   })
 
   it('opens a count-1 document and builds it as a no-op', () => {
@@ -774,7 +774,7 @@ describe.skipIf(!oc || !solveBytes)('solvePattern through the builder (real OCC 
     expect(res.status).toBe('ok')
     expect(res.solver_warning).toBeUndefined()
     expect(volumeAt(r, 'pt1', 'body_ex_plate')).toBeCloseTo(4000 - 80, 6)
-    expect(bodyFaceUuids(r, 'pt1', 'body_ex_plate')).toEqual(bodyFaceUuids(baseline, 'ex_slot', 'body_ex_plate'))
+    expect(partFaceUuids(r, 'pt1', 'body_ex_plate')).toEqual(partFaceUuids(baseline, 'ex_slot', 'body_ex_plate'))
   })
 
   it('loads a legacy include_source: false body pattern and always counts the source', () => {

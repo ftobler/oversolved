@@ -16,7 +16,7 @@ import { collectExtrudeLoops } from '../faceProfile'
 import { loopSignedArea, CENTROID_ARC_SAMPLES } from '../../profileLoops'
 import type { HandleTable } from '../../occ/handleTable'
 import type { OccModule } from '../../occ/occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 import fixtures from '../../occ/__fixtures__/topology.json'
 
 type Dict = Record<string, unknown>
@@ -29,7 +29,7 @@ const PLANE = { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal:
 // The entity path never touches OCC: no shape is read and no face is returned.
 const oc = null as unknown as OccModule
 const table = null as unknown as HandleTable
-const bodyStore: Record<string, Body> = {}
+const partStore: Record<string, PartSolid> = {}
 
 function repoFor(name: string): { repo: Repository; sketchId: string } {
   const fx = FIXTURES[name]
@@ -44,7 +44,7 @@ function repoFor(name: string): { repo: Repository; sketchId: string } {
 
 function resolve(name: string, ref: string) {
   const { repo } = repoFor(name)
-  return collectExtrudeLoops(oc, null as never, table, ref, repo, bodyStore)
+  return collectExtrudeLoops(oc, null as never, table, ref, repo, partStore)
 }
 
 /**
@@ -114,7 +114,7 @@ describe('profile pick of a sketch entity', () => {
     const repo = new Repository()
     repo.register('_pt_skW', { ...PLANE })
     repo.register('_topo_skW', washerTopo(divided))
-    return collectExtrudeLoops(oc, null as never, table, 'entity:skW:co', repo, bodyStore).loops
+    return collectExtrudeLoops(oc, null as never, table, 'entity:skW:co', repo, partStore).loops
   }
 
   it('extrudes what the picked circle encloses, hole included', () => {
@@ -150,7 +150,7 @@ describe('profile pick of a sketch entity', () => {
 
   it('reports the missing sketch, not a missing entity', () => {
     const { repo } = repoFor('standalone_circle')
-    expect(() => collectExtrudeLoops(oc, null as never, table, 'entity:gone:ci', repo, bodyStore))
+    expect(() => collectExtrudeLoops(oc, null as never, table, 'entity:gone:ci', repo, partStore))
       .toThrow(/sketch not found: gone/)
   })
 })

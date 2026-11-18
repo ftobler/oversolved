@@ -33,7 +33,7 @@ interface Ratchet {
 // corpus landed on (its loader validates untyped JSON and the runner reads
 // solve results, which are legitimate loose records). A merge that adds a
 // token is allowed to raise a baseline (the new kinds add their leaf
-// `bodyStore` records, the generic sub-dict accessor and a couple of casts),
+// `partStore` records, the generic sub-dict accessor and a couple of casts),
 // but a change to union-affected code is not: that growth is exactly what this
 // test is for.
 const RATCHETS: Ratchet[] = [

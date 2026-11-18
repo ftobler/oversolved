@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { BodyResult, Sketch } from '@/types/cad'
+import type { PartResult, Sketch } from '@/types/cad'
 import { measureSelection, measureSelectionPicks } from '@/utils/measure/measureSelection'
 import type { SketchFrame } from '@/utils/measure/adapters/sketch'
 
@@ -14,7 +14,7 @@ const flat: Sketch = {
   L1: { start: [0, 0], end: [10, 0] },
 }
 
-const body: BodyResult = {
+const part: PartResult = {
   id: 'body_1',
   created_by: 'ex',
   modified_by: [],
@@ -39,7 +39,7 @@ const solveResults = {
   builtin_plane_top: { plane: FRONT },
 }
 
-const ctx = { solveResults, bodies: { body_1: body } }
+const ctx = { solveResults, parts: { body_1: part } }
 
 describe('measureSelection: mixed picks keep both sides (defect 1)', () => {
   it('measures a datum plane plus a cylinder face as an axis distance, not the diameter', () => {
@@ -121,15 +121,15 @@ describe('measureSelection: kernel cells read nothing until the follow-up', () =
 })
 
 describe('measureSelection: the kernel ask names the picks', () => {
-  const spline: BodyResult = {
-    ...body,
+  const spline: PartResult = {
+    ...part,
     id: 'body_2',
     edges: [{ kind: 'spline', points: [[0, 0, 0], [1, 1, 0], [2, 0, 0]] }],
     edge_queries: ['?sp'],
     vertices: [],
     vertex_queries: [],
   }
-  const two = { ...ctx, bodies: { body_1: body, body_2: spline } }
+  const two = { ...ctx, parts: { body_1: part, body_2: spline } }
 
   it('asks for a spline edge length with the body and the render index', () => {
     expect(measureSelectionPicks(new Set(['?sp']), two)).toEqual({
@@ -178,15 +178,15 @@ describe('measureSelection: the document unit and its extras', () => {
   })
 
   it('returns the second readout of a pair on its own HUD line', () => {
-    const skew: BodyResult = {
-      ...body,
+    const skew: PartResult = {
+      ...part,
       edges: [
         { kind: 'line', start: [0, 0, 0], end: [10, 0, 0] },
         { kind: 'line', start: [5, 3, 4], end: [5, 7, 4] },
       ],
       edge_queries: ['?a', '?b'],
     }
-    expect(measureSelection(new Set(['?a', '?b']), { bodies: { body_1: skew } }))
+    expect(measureSelection(new Set(['?a', '?b']), { parts: { body_1: skew } }))
       .toEqual(['angle 90.0°', 'distance 5.000 mm'])
   })
 })

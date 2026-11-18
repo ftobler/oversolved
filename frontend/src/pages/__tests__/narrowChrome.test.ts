@@ -79,13 +79,13 @@ function matchingBrace(css: string, open: number): number {
 
 /** Splits a declaration block on `;`, ignoring separators inside quotes or
  *  parentheses (the sheet's inline SVG carries both). */
-function splitDeclarations(body: string): string[] {
+function splitDeclarations(part: string): string[] {
   const parts: string[] = []
   let depth = 0
   let quote = ''
   let start = 0
-  for (let i = 0; i < body.length; i++) {
-    const char = body[i]
+  for (let i = 0; i < part.length; i++) {
+    const char = part[i]
     if (quote) {
       if (char === quote) quote = ''
       continue
@@ -94,11 +94,11 @@ function splitDeclarations(body: string): string[] {
     else if (char === '(') depth += 1
     else if (char === ')') depth -= 1
     else if (char === ';' && depth === 0) {
-      parts.push(body.slice(start, i))
+      parts.push(part.slice(start, i))
       start = i + 1
     }
   }
-  parts.push(body.slice(start))
+  parts.push(part.slice(start))
   return parts.map(part => part.trim()).filter(Boolean)
 }
 

@@ -6,10 +6,10 @@
 
 import { describe, it, expect } from 'vitest'
 import { indexModifierDiffs, namedElementCreator } from '../modifierAttribution'
-import { bareBody } from '../../features/shared/bodyResolution'
+import { barePart } from '../../features/shared/partResolution'
 import type { OccHandle } from '../handleTable'
 import type { OccModule } from '../occTypes'
-import type { Body } from '../../types3d'
+import type { PartSolid } from '../../types3d'
 
 describe('modifier attribution owner fallback order', () => {
   it('prefers a recorded owner, then the last modifier for a new element, then the creator', () => {
@@ -21,8 +21,8 @@ describe('modifier attribution owner fallback order', () => {
 
   it('does not overwrite an owner the name transfer already recorded', () => {
     const handle = 1 as OccHandle
-    const body: Body = {
-      ...bareBody('body_ex1', 'ex1'),
+    const part: PartSolid = {
+      ...barePart('body_ex1', 'ex1'),
       shape: handle,
       modified_by: ['m1', 'm2'],
       face_uuids: ['u1', 'u2', 'u3'],
@@ -37,16 +37,16 @@ describe('modifier attribution owner fallback order', () => {
     indexModifierDiffs(
       null as unknown as OccModule,
       null as unknown as never,
-      { body_ex1: body },
+      { body_ex1: part },
     )
-    expect(body.face_owner).toEqual({ u1: 'transfer-owner', u2: 'm2' })
-    expect(body.edge_owner).toEqual({ e1: 'transfer-owner', e2: 'm2' })
+    expect(part.face_owner).toEqual({ u1: 'transfer-owner', u2: 'm2' })
+    expect(part.edge_owner).toEqual({ e1: 'transfer-owner', e2: 'm2' })
   })
 
   it('prunes owners whose UUID the current shape no longer carries', () => {
     const handle = 2 as OccHandle
-    const body: Body = {
-      ...bareBody('body_ex2', 'ex1'),
+    const part: PartSolid = {
+      ...barePart('body_ex2', 'ex1'),
       shape: handle,
       modified_by: ['m1'],
       face_uuids: ['u1'],
@@ -56,8 +56,8 @@ describe('modifier attribution owner fallback order', () => {
       brep_new: { shape: handle, faces: [], edges: [], vertices: [] },
       brep_diff: null,
     }
-    indexModifierDiffs(null as unknown as OccModule, null as unknown as never, { body_ex2: body })
-    expect(body.face_owner).toEqual({ u1: 'ex1' })
-    expect(body.edge_owner).toEqual({})
+    indexModifierDiffs(null as unknown as OccModule, null as unknown as never, { body_ex2: part })
+    expect(part.face_owner).toEqual({ u1: 'ex1' })
+    expect(part.edge_owner).toEqual({})
   })
 })
