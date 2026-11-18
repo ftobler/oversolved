@@ -260,7 +260,7 @@ describe('camera alignment on the turntable state', () => {
     expect(camera.position.z).toBeCloseTo(3, 9)
   })
 
-  it('snaps a cube top click to the canonical top roll, not the leftover azimuth', () => {
+  it('snaps a cube top click to the cardinal nearest the carried up, not azimuth 0', () => {
     const camera = makeCamera()
     const controls = makeControls(camera)
     controls.azimuth = 2.4
@@ -269,9 +269,95 @@ describe('camera alignment on the turntable state', () => {
 
     snapToDirection(camera, controls, new THREE.Vector3(0, 1, 0))
 
-    expect(controls.azimuth).toBeCloseTo(0, 12)
+    // The carried up is the horizontal direction away from the old camera,
+    // (-sin 2.4, 0, -cos 2.4); its nearest world axis is +Z, which is the
+    // azimuth pi top view. The canonical azimuth 0 top view (screen up -Z) is
+    // no longer forced.
+    expect(controls.azimuth).toBeCloseTo(Math.PI, 12)
+    expect(controls.elevation).toBeCloseTo(Math.PI / 2, 12)
     const up = localAxis(camera, new THREE.Vector3(0, 1, 0))
-    expect(up.toArray().map(v => Math.round(v * 1e9) / 1e9)).toEqual([0, 0, -1])
+    expect(up.x).toBeCloseTo(0, 9)
+    expect(up.y).toBeCloseTo(0, 9)
+    expect(up.z).toBeCloseTo(1, 9)
+  })
+
+  it('leaves the unrolled front view on the same pose as before for every face', () => {
+    const faces: [string, [number, number, number], number, number][] = [
+      ['Front', [0, 0, 1], 0, 0],
+      ['Back', [0, 0, -1], Math.PI, 0],
+      ['Right', [1, 0, 0], Math.PI / 2, 0],
+      ['Left', [-1, 0, 0], -Math.PI / 2, 0],
+      ['Top', [0, 1, 0], 0, Math.PI / 2],
+      ['Bottom', [0, -1, 0], 0, -Math.PI / 2],
+    ]
+    for (const [name, dir, azimuth, elevation] of faces) {
+      const camera = makeCamera()
+      const controls = makeControls(camera)
+      controls.setDirection(new THREE.Vector3(0, 0, 1), { distance: 100, target: new THREE.Vector3() })
+
+      snapToDirection(camera, controls, new THREE.Vector3(...dir))
+
+      expect(controls.azimuth, name).toBeCloseTo(azimuth, 9)
+      expect(controls.elevation, name).toBeCloseTo(elevation, 9)
+      expect(controls.roll, name).toBeCloseTo(0, 9)
+      // Roll never tilts the axis: the pose's view direction is the click.
+      const view = orbitDirection(controls.azimuth, controls.elevation)
+      expect(view.x, name).toBeCloseTo(dir[0], 9)
+      expect(view.y, name).toBeCloseTo(dir[1], 9)
+      expect(view.z, name).toBeCloseTo(dir[2], 9)
+    }
+  })
+
+  it('lands a right click from a 100 degree rolled front view on the nearest quarter turn', () => {
+    const camera = makeCamera()
+    const controls = makeControls(camera)
+    controls.setDirection(new THREE.Vector3(0, 0, 1), { distance: 100, target: new THREE.Vector3() })
+    controls.roll = (100 * Math.PI) / 180
+    controls.update()
+
+    snapToDirection(camera, controls, new THREE.Vector3(1, 0, 0))
+
+    expect(controls.azimuth).toBeCloseTo(Math.PI / 2, 9)
+    expect(controls.elevation).toBeCloseTo(0, 9)
+    expect(controls.roll).toBeCloseTo(Math.PI / 2, 9)
+  })
+
+  it('lands a top click from a 170 degree rolled front view upside down', () => {
+    const camera = makeCamera()
+    const controls = makeControls(camera)
+    controls.setDirection(new THREE.Vector3(0, 0, 1), { distance: 100, target: new THREE.Vector3() })
+    controls.roll = (170 * Math.PI) / 180
+    controls.update()
+
+    snapToDirection(camera, controls, new THREE.Vector3(0, 1, 0))
+
+    // Screen up is +Z here, the reverse of the canonical top view (-Z): the
+    // user asked for the nearest mark even when it is upside down.
+    const up = localAxis(camera, new THREE.Vector3(0, 1, 0))
+    expect(up.x).toBeCloseTo(0, 9)
+    expect(up.y).toBeCloseTo(0, 9)
+    expect(up.z).toBeCloseTo(1, 9)
+  })
+
+  it('gives Normal To and a parallel cube click the same pose', () => {
+    const pose = { azimuth: 2.4, elevation: 0.1, roll: 0.7 }
+    const viaGizmo = makeControls()
+    viaGizmo.azimuth = pose.azimuth
+    viaGizmo.elevation = pose.elevation
+    viaGizmo.roll = pose.roll
+    viaGizmo.update()
+    snapToDirection(viaGizmo.camera, viaGizmo, new THREE.Vector3(1, 0, 0))
+
+    const viaFace = makeControls()
+    viaFace.azimuth = pose.azimuth
+    viaFace.elevation = pose.elevation
+    viaFace.roll = pose.roll
+    viaFace.update()
+    alignToFace(viaFace.camera, viaFace, [1, 0, 0], [0, 0, 0])
+
+    expect(viaGizmo.azimuth).toBeCloseTo(viaFace.azimuth, 12)
+    expect(viaGizmo.elevation).toBeCloseTo(viaFace.elevation, 12)
+    expect(viaGizmo.roll).toBeCloseTo(viaFace.roll, 12)
   })
 })
 

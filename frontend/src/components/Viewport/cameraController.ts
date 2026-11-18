@@ -2,7 +2,7 @@ import * as THREE from 'three'
 import type { PartResult, PlaneTransform } from '@/types/cad'
 import { INITIAL_ZOOM } from './cameraConstants'
 import type { TurntableControls } from './turntable'
-import { anglesFromDirection, rolledBasis, orbitUp } from './turntable'
+import { anglesFromDirection, orbitDirection, rolledBasis, orbitUp } from './turntable'
 
 // How much of the viewport the framed content fills: targetViewHeight =
 // contentHeight * FIT_MARGIN, so content occupies 1/FIT_MARGIN of the frustum.
@@ -81,9 +81,7 @@ function pointCamera(
 // preserving the current distance from the origin.
 export function snapToDirection(camera: THREE.Camera, controls: Controls, dir: THREE.Vector3): void {
   traceCamera('snapToDirection', 'dir=', dir.toArray())
-  // A straight-up or straight-down snap gets the canonical top-view roll
-  // (screen up -Z), never whatever azimuth the previous drag left behind.
-  pointCamera(camera, controls, dir, camera.position.length(), new THREE.Vector3(), 0)
+  snapView(camera, controls, dir, camera.position.length(), new THREE.Vector3())
 }
 
 // Turn the view about the camera's own axis (the cube's roll arrows), keeping
@@ -199,8 +197,99 @@ export function nearestSquareRoll(
   return { azimuth: base.azimuth, elevation: base.elevation, roll: (bestK * Math.PI) / 2 }
 }
 
+// The screen up a snap inherits: the old up carried by the shortest rotation
+// that takes the old view direction to the new one, which is what a physical
+// camera tilt does. Projecting the old up onto the new view plane instead is
+// degenerate on the most common gizmo move (a 90 degree tip puts the old up
+// along the new view axis), and carrying is never degenerate except on the
+// antipodal flip (Front to Back), where any perpendicular axis is a valid
+// shortest turn and the old up is the one that keeps the view upright.
+export function carriedUp(
+  oldUp: THREE.Vector3 | readonly [number, number, number],
+  oldDir: THREE.Vector3 | readonly [number, number, number],
+  newDir: THREE.Vector3 | readonly [number, number, number],
+): THREE.Vector3 {
+  const toVec = (v: THREE.Vector3 | readonly [number, number, number]): THREE.Vector3 =>
+    v instanceof THREE.Vector3 ? v.clone() : new THREE.Vector3(v[0], v[1], v[2])
+
+  const from = toVec(oldDir)
+  const to = toVec(newDir)
+  const up = toVec(oldUp)
+  if (!(from.lengthSq() > 0) || !(to.lengthSq() > 0)) return up
+  from.normalize()
+  to.normalize()
+
+  // Only the component across the old view axis is carried: a stale camera.up
+  // with a radial part would otherwise land slightly off the new screen plane.
+  up.addScaledVector(from, -up.dot(from))
+  if (up.lengthSq() < 1e-24) {
+    // An up along the view direction cannot name a screen up. World Y is the
+    // expected one whenever it is usable; otherwise any perpendicular axis.
+    const basis = Math.abs(from.y) < 0.9 ? new THREE.Vector3(0, 1, 0) : new THREE.Vector3(1, 0, 0)
+    up.copy(basis).addScaledVector(from, -basis.dot(from))
+  }
+  up.normalize()
+
+  if (from.dot(to) < -1 + 1e-9) return up
+  return up.applyQuaternion(new THREE.Quaternion().setFromUnitVectors(from, to))
+}
+
+// The one programmatic snap used by both the cube click and Normal To: read the
+// pose the user is in, carry its screen up to the new view direction, snap that
+// to the nearest quarter turn about the direction, then hand the result to the
+// controller (or write it onto a controller-less camera). Keeping the block in
+// one place is what stops the two snaps drifting apart: the cube click used to
+// reset the roll while Normal To kept only a projection of it.
+function snapView(
+  camera: THREE.Camera,
+  controls: Controls,
+  direction: THREE.Vector3,
+  distance: number,
+  target: THREE.Vector3,
+): void {
+  const oldDir = new THREE.Vector3()
+  const oldUp = new THREE.Vector3()
+  if (controls) {
+    orbitDirection(controls.azimuth, controls.elevation, oldDir)
+    rolledBasis(controls.azimuth, controls.elevation, controls.roll, new THREE.Vector3(), oldUp)
+  } else {
+    // Without a controller the camera is the state: its up is the screen up and
+    // its position lies along the orbit direction from the point it faces.
+    camera.updateMatrixWorld()
+    oldUp.copy(camera.up)
+    oldDir.copy(camera.position).sub(target)
+    if (oldDir.lengthSq() < 1e-24) oldDir.copy(camera.getWorldDirection(new THREE.Vector3())).negate()
+  }
+
+  const pose = nearestSquareRoll(carriedUp(oldUp, oldDir, direction), direction)
+  const isPole = Math.hypot(direction.x, direction.z) < 1e-9
+
+  if (controls) {
+    controls.setDirection(direction, {
+      distance,
+      target,
+      poleAzimuth: isPole ? pose.azimuth : undefined,
+      roll: pose.roll,
+    })
+    return
+  }
+
+  // Rebuild the chosen mark's screen up for the controller-less fallback.
+  let chosenUp: THREE.Vector3
+  if (isPole) {
+    chosenUp = orbitUp(pose.azimuth, pose.elevation)
+  } else {
+    const right = new THREE.Vector3()
+    const up = new THREE.Vector3()
+    rolledBasis(pose.azimuth, pose.elevation, pose.roll, right, up)
+    chosenUp = up
+  }
+  camera.up.copy(chosenUp)
+  pointCamera(camera, controls, direction, distance, target, isPole ? pose.azimuth : 0)
+}
+
 // Look straight at a sketch (or plane) frame from its normal side, centred on
-// its origin. The turntable never rolls, so a tilted frame keeps the level
+// its origin. This move lands unrolled, so a tilted frame keeps the level
 // horizon; only a frame facing straight up or down has a free roll, and there
 // the frame's own y axis is put up the screen, so the sketch reads the way it
 // was drawn. For the builtin Top plane that is the canonical top view (Front
@@ -227,58 +316,9 @@ export function alignToFace(
   if (norm === 0) { traceCamera('alignToFace', 'degenerate normal'); return }
   traceCamera('alignToFace', 'center=', faceCenter)
 
-  // The current screen up before the move: from the controls' rolled pose when
-  // available, else the camera's own up vector.
-  let currentUp: THREE.Vector3
-  if (controls) {
-    const right = new THREE.Vector3()
-    const up = new THREE.Vector3()
-    rolledBasis(controls.azimuth, controls.elevation, controls.roll, right, up)
-    currentUp = up
-  } else {
-    camera.updateMatrixWorld()
-    currentUp = camera.up.clone()
-  }
-
-  const direction = new THREE.Vector3(nx, ny, nz).divideScalar(norm)
-  const pose = nearestSquareRoll(currentUp, direction)
-
-  const isPole = Math.hypot(direction.x, direction.z) < 1e-9
-
-  // Rebuild the screen up of the chosen mark, for the no-controls fallback.
-  let chosenUp: THREE.Vector3
-  if (isPole) {
-    chosenUp = orbitUp(pose.azimuth, pose.elevation)
-  } else {
-    const right = new THREE.Vector3()
-    const up = new THREE.Vector3()
-    rolledBasis(pose.azimuth, pose.elevation, pose.roll, right, up)
-    chosenUp = up
-  }
-
-  if (controls) {
-    // The azimuth is no longer kept as is: the nearest 90-degree mark is, so a
-    // top or bottom face straightens instead of inheriting the last orbit's roll.
-    controls.setDirection(
-      new THREE.Vector3(nx, ny, nz),
-      {
-        distance: 100,
-        target: new THREE.Vector3(...faceCenter),
-        poleAzimuth: isPole ? pose.azimuth : undefined,
-        roll: pose.roll,
-      },
-    )
-  } else {
-    camera.up.copy(chosenUp)
-    pointCamera(
-      camera,
-      controls,
-      new THREE.Vector3(nx, ny, nz),
-      100,
-      new THREE.Vector3(...faceCenter),
-      isPole ? pose.azimuth : 0,
-    )
-  }
+  // Same carried-up snap as a gizmo click: Normal To on a face and a cube click
+  // on the parallel face from the same pose must land identically.
+  snapView(camera, controls, new THREE.Vector3(nx, ny, nz), 100, new THREE.Vector3(...faceCenter))
 }
 
 // Auto-fit is a document-load intent, not a running behaviour: it stays armed
