@@ -15,7 +15,7 @@
  * here persists state the host cannot rebuild from it.
  */
 
-import { solveLocally, exportLocally, exportAssemblyLocally, setOccLoader, preloadOcc, measureGeneration } from '../solveLocally'
+import { solveLocally, exportLocally, exportAssemblyLocally, setOccLoader, preloadOcc, measureGeneration, splitStepLocally } from '../solveLocally'
 import { loadSolverWasm } from '../../wasm-kernel/solverWasm'
 import { isDevBuild } from '../isDevBuild'
 import { extractErrorMessage } from '../errors'
@@ -29,6 +29,7 @@ import type {
   ExportAssemblyRequest,
   FileBytes,
   MeasureRequest, MeasureResponse,
+  SplitStepRequest, SplitStepResponse,
   OccProgressMessage,
   FeatureProgressMessage,
   SolverWorkerMessage,
@@ -156,6 +157,36 @@ export async function handleMeasureRequest(
 /** The transferable buffer in an export response (for postMessage's transfer arg). */
 export function exportTransferables(res: ExportResponse): Transferable[] {
   return res.ok && res.bytes ? [res.bytes.buffer] : []
+}
+
+/** The engine signature [[handleSplitStepRequest]] depends on (production:
+ *  solveLocally.splitStepLocally). */
+type SplitStepEngine = typeof splitStepLocally
+
+/**
+ * Split one STEP file into per-solid STEP files for the B2 import. A kernel that
+ * is not loaded answers with an error tied to the request id: the import then
+ * refuses the split instead of silently importing the whole file as one part.
+ */
+export async function handleSplitStepRequest(
+  req: SplitStepRequest,
+  splitFn: SplitStepEngine,
+): Promise<SplitStepResponse> {
+  try {
+    const result = await splitFn(req.bytes, req.scale)
+    if (!result) {
+      return { id: req.id, ok: false, error: 'local solver unavailable (OCC.js is not provisioned)' }
+    }
+    return { id: req.id, ok: true, solids: result.solids, leftovers: result.leftovers }
+  } catch (e) {
+    return { id: req.id, ok: false, error: extractErrorMessage(e) }
+  }
+}
+
+/** Every solid's bytes cross by transfer: they were just encoded in the Worker. */
+export function splitStepTransferables(res: SplitStepResponse): Transferable[] {
+  if (!res.ok || !('solids' in res)) return []
+  return res.solids.map(solid => solid.bytes.buffer)
 }
 
 /** The engine signature [[handleExportAssemblyRequest]] depends on. */
@@ -460,7 +491,7 @@ interface WorkerCtx {
  */
 export function handleWorkerMessage(
   msg: WorkerRequest,
-  post: (message: SolveResponse | ExportResponse | BundleResponse | MeasureResponse, transfer: Transferable[]) => void,
+  post: (message: SolveResponse | ExportResponse | BundleResponse | MeasureResponse | SplitStepResponse, transfer: Transferable[]) => void,
   actor: WorkerActor,
 ): void {
   // Most request shapes may carry file bytes; absorb them first so every
@@ -471,6 +502,13 @@ export function handleWorkerMessage(
     actor.submit(oneShot(
       () => handleExportRequest(msg, exportLocally, fileCache),
       (res) => { post(res, exportTransferables(res)) },
+    ))
+  } else if (msg.kind === 'splitStep') {
+    // An import click, not a burst: it neither replaces an in-flight solve nor
+    // gets replaced by one, so it lands in the one-shot lane.
+    actor.submit(oneShot(
+      () => handleSplitStepRequest(msg, splitStepLocally),
+      (res) => { post(res, splitStepTransferables(res)) },
     ))
   } else if (msg.kind === 'exportAssembly') {
     actor.submit(oneShot(

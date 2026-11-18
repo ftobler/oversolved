@@ -23,6 +23,7 @@ import type { TessMesh } from './occ/tessellation'
 import { indexModifierDiffs, newIndexSets } from './occ/modifierAttribution'
 import { copyShape, makeScaleTrsf, makeRigidTrsf, transformCopy } from './occ/transforms'
 import { stepShapeToBytes, shapeToStlBytes } from './occ/stepIo'
+import { splitStepSolids } from './occ/stepSplit'
 import { resolveTessellation, type TessellationPreset } from './tessellationPresets'
 import { measureParts, type Bbox6, type MeasureRecord } from './occ/measure'
 import { surfaceAreaOf, volumeForMeasure } from './occ/volume'
@@ -780,6 +781,40 @@ export async function exportLocally(
 ): Promise<Uint8Array | null> {
   const outcome = await exportLocallyInspect(spec, opts, files)
   return outcome?.bytes ?? null
+}
+
+// ─── local STEP split ───
+
+/** One solid of a STEP file, written out as its own STEP bytes. */
+export interface LocalStepSplit {
+  solids: { bytes: Uint8Array; volume: number }[]
+  leftovers: number
+}
+
+/**
+ * Split one STEP file into one STEP file per solid, for the B2 import. A
+ * deliberate single import, not a burst request: it loads OCC if it has not
+ * been loaded yet and it never touches the cross-solve cache.
+ *
+ * Returns null when OCC.js is unavailable; the caller refuses the split import
+ * rather than falling back to a mode the user did not pick.
+ */
+export async function splitStepLocally(bytes: Uint8Array, scale = 1.0): Promise<LocalStepSplit | null> {
+  const oc = await ensureOcc()
+  if (!oc) return null
+  const scope = new DisposeScope()
+  let faulted = false
+  try {
+    return splitStepSolids(oc, scope, bytes, scale)
+  } catch (e) {
+    if (isKernelTrap(e)) {
+      faulted = true
+      recoverTrap(e)
+    }
+    throw e
+  } finally {
+    if (!faulted) cleanupKernel(() => { scope.dispose() })
+  }
 }
 
 // ─── local measure ───
