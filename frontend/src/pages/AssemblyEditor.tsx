@@ -6,6 +6,7 @@ import { useAssemblySolve } from '@/hooks/useAssemblySolve'
 import { capturePreview } from '@/stores/previewStore/capture'
 import { useAssemblyUndoRedo } from '@/hooks/useAssemblyUndoRedo'
 import { useAssemblyStore, setAssemblyCallbacks, DEFAULT_ASSEMBLY_EDITOR_DATA, type MateFieldTarget } from '@/stores/assemblyStore'
+import { useSolverStore } from '@/stores/solverStore'
 import { ErrorBanner } from '@/components/shared/ErrorBanner'
 import { LoadingState } from '@/components/shared/LoadingState'
 import LoadingOverlay from '@/components/dialogs/LoadingOverlay'
@@ -103,7 +104,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
       void capturePreview(viewportRef.current?.captureScreenshotForSaving, workspaceId, uuid)
     })
   }, [uuid, workspaceId])
-  const { requestSolve } = useAssemblySolve(uuid, doc, { onFirstSolve: handleFirstSolve })
+  const { requestSolve, rebuild } = useAssemblySolve(uuid, doc, { onFirstSolve: handleFirstSolve })
   const {
     commitSession,
     cancelSession,
@@ -119,6 +120,10 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   const selectedMateId = subject?.kind === 'mate' ? subject.id : null
   const activeMateField = useAssemblyStore(s => s.activeMateField)
   const solveStatus = useAssemblyStore(s => s.solveStatus)
+  // The assembly solve mirrors its running flag into the solver store for the
+  // shared LoadingOverlay; the Parts header's rebuild button reads the same flag,
+  // so a running solve spins it and refuses a second request.
+  const isSolving = useSolverStore(s => s.isSolving)
   // One store-owned tagged subject instead of two useState ids. The selectors
   // are the only place "which editor is open" is read.
   const editingSubject = useAssemblyStore(s => s.editingSubject)
@@ -801,6 +806,8 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
                 mates={mates}
                 status={solveStatus}
                 labelFor={labelFor}
+                onRebuild={rebuild}
+                isRebuilding={isSolving}
                 subject={subject}
                 editingMateId={editingMateId}
                 editingInstanceHandle={editingInstanceHandle}

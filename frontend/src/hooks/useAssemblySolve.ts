@@ -142,6 +142,10 @@ export function useAssemblySolve(
   // bumped the workspace revision changes the key, so the next run re-fetches
   // instead of committing against a pre-edit bundle.
   const burstHashes = useRef<{ key: string; hashes: Record<string, string> } | null>(null)
+  // Set by rebuild(), consumed by the next full solve it produced: the run sends
+  // an empty hash map, which is the wire's cold signal (every part bypasses the
+  // bundle cache). One-shot so ordinary solves return to cache hits.
+  const coldNext = useRef(false)
   // The hash map from the last solve, with the key it was computed for. A live
   // drag tick reuses it only while the key still matches: no part is edited
   // mid-drag (applyUndoRedo clears the drag), and re-listing entries per tick is
@@ -284,8 +288,21 @@ export function useAssemblySolve(
       // so a doc swap or a mid-burst edit invalidates rather than feeding stale
       // keys into the bundle cache.
       const key = hashCacheKey(uuid, workspaceStoreRevision())
+      // A rebuild sends an empty hash map: every part misses the bundle cache and
+      // cold-rebuilds from its current document. Only the run the rebuild's own
+      // request produced may consume the flag. A run the rebuild superseded is
+      // stale and leaves it to its coalesced trailing solve, which is the one
+      // that commits. A live drag tick never takes the cold path.
+      const cold = !live && coldNext.current && version === solveVersion.current
       let hashes: Record<string, string>
-      if (live && lastHashes.current?.key === key) {
+      if (cold) {
+        coldNext.current = false
+        // Skip both hash caches for this run, so a later live tick cannot reuse
+        // the empty map as if it were the last solve's content hashes.
+        burstHashes.current = null
+        lastHashes.current = null
+        hashes = {}
+      } else if (live && lastHashes.current?.key === key) {
         hashes = lastHashes.current.hashes
       } else {
         if (!burstHashes.current || burstHashes.current.key !== key) {
@@ -394,6 +411,18 @@ export function useAssemblySolve(
     setSolveToken(t => t + 1)
   }, [])
 
+  // Cold-rebuild every part bundle and re-solve. The flag rides the request
+  // rather than running a solve inline: the coalescing drain decides which run
+  // owns the scene, and that run is the one that reads it. A rebuild re-derives
+  // geometry, it is not an edit, so no undo entry and no dirty flag. The empty
+  // hash map is the only cache to clear: the anchor worker keeps no warm-start
+  // pose or per-doc bundle memo beyond the (doc, hash) bundle cache it keys on
+  // these hashes.
+  const rebuild = useCallback(() => {
+    coldNext.current = true
+    requestSolve()
+  }, [requestSolve])
+
   useEffect(() => {
     // A uuid change drives a different assembly now (the editor remounts keyed
     // by uuid, but a rerender can race the remount): bump the version so any
@@ -405,6 +434,9 @@ export function useAssemblySolve(
       queued.current = false
       inFlight.current = false
       burstHashes.current = null
+      // A rebuild asked for before the switch belonged to the old assembly's
+      // bundles; the new one must not inherit the cold path.
+      coldNext.current = false
       // A different assembly gets its own first solve, exactly as usePartDoc
       // re-arms firstSolveDone across a document swap.
       firstSolveDone.current = false
@@ -453,5 +485,5 @@ export function useAssemblySolve(
     }
   }, [])
 
-  return { requestSolve }
+  return { requestSolve, rebuild }
 }

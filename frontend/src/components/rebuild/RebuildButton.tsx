@@ -12,9 +12,13 @@ interface RebuildButtonProps {
   isLoading?: boolean
   disabled?: boolean
   validation?: RebuildValidation | null
+  // What the hover tooltip says. The accessible name stays "Rebuild geometry"
+  // for both editors; the assembly only widens the tooltip to say what its
+  // rebuild covers.
+  title?: string
 }
 
-export function RebuildButton({ featureTimings, features, onClick, isLoading, disabled, validation }: RebuildButtonProps) {
+export function RebuildButton({ featureTimings, features, onClick, isLoading, disabled, validation, title = 'Rebuild geometry (clears cache)' }: RebuildButtonProps) {
   const [isButtonHovered, setIsButtonHovered] = useState(false)
   const [isPopoverHovered, setIsPopoverHovered] = useState(false)
   const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -51,7 +55,7 @@ export function RebuildButton({ featureTimings, features, onClick, isLoading, di
         className="rebuild-button"
         onClick={onClick}
         disabled={disabled || isLoading}
-        title="Rebuild geometry (clears cache)"
+        title={title}
         aria-label="Rebuild geometry"
         onMouseEnter={() => {
           cancelHide()
