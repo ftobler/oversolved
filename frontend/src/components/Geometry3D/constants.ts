@@ -148,16 +148,50 @@ export function dimensionRenderLayer(): { depthTest: false; renderOrder: number 
   return { depthTest: false, renderOrder: RENDER_ORDER_EDITING }
 }
 
+// ─── body mark selection ───
+// Whether a body counts as selected, which is the one input both its surface
+// look and its wireframe mark read. Keeping it in one function is what stops
+// the two layers from disagreeing about a body that is both selected and
+// doomed.
+//
+// A pick chip's mirror is not a selection. While a pick field is armed, the
+// chip copies the values it already holds into the normal selection
+// (`syncChipSelection`), so during the very session that shows a doomed body
+// the body is chip-owned by definition. Letting that claim outrank the removal
+// mark painted the doomed wireframe white exactly when the user was choosing
+// what the edit takes; opening the feature later through Edit has no armed
+// field, which is why the same preview looked right there.
+//
+// A click the user made is never chip-owned, so a genuinely selected doomed
+// body still brightens. That keeps the "click again to un-pick" affordance the
+// precedence was written for.
+export function bodyMarkSelected({
+  bodyId,
+  normalSelection,
+  chipOwnedSelection,
+  doomed = false,
+}: {
+  bodyId: string
+  normalSelection: ReadonlySet<string>
+  chipOwnedSelection: ReadonlySet<string>
+  doomed?: boolean
+}): boolean {
+  const id = '@' + bodyId
+  if (!normalSelection.has(id)) return false
+  return !(doomed && chipOwnedSelection.has(id))
+}
+
 // ─── body surface look ───
 // The one place that decides how a solid body is drawn. Three inputs can each
 // claim the surface, so the precedence has to be stated somewhere rather than
 // fall out of the order of a ternary chain:
 //
-//   selected > doomed > the part's own colour
+//   selected (by the user) > doomed > the part's own colour
 //
 // Selection wins because it answers "what am I acting on", which is what the
-// user asked for most recently. The removal mark answers "what is this edit
-// about to take away" and outranks the part colour, which only carries
+// user asked for most recently. A chip's mirror of its own value is not that
+// selection (see bodyMarkSelected). The removal mark answers "what is this
+// edit about to take away" and outranks the part colour, which only carries
 // identity.
 //
 // It returns the WHOLE surface, not just the colour, because "one look for
