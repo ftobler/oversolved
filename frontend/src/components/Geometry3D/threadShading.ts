@@ -13,7 +13,7 @@
 import type { LengthUnit, Mesh3D, SketchData } from '@/types/cad'
 import { parseAncestry, partitionAncestryIds } from '@/kernel/queryWire'
 import { MM_PER_LENGTH_UNIT } from '@/utils/lengthUnit'
-import { buildPartGeometry } from './bodyGeometry'
+import { buildPartGeometry } from './partGeometry'
 
 type Vec3 = [number, number, number]
 

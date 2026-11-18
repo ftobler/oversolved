@@ -71,8 +71,8 @@ export function headingSlug(text: string): string {
 // here would be one more place to forget.
 export function noticeSections(markdown: string): NoticeSection[] {
   // Fenced code can contain a line starting with ##, which is not a heading.
-  const body = markdown.replace(/^```[\s\S]*?^```/gm, '')
-  return [...body.matchAll(/^##[ \t]+(.+?)[ \t]*$/gm)]
+  const part = markdown.replace(/^```[\s\S]*?^```/gm, '')
+  return [...part.matchAll(/^##[ \t]+(.+?)[ \t]*$/gm)]
     .map(match => match[1].trim())
     .map(label => ({ id: headingSlug(label), label }))
 }

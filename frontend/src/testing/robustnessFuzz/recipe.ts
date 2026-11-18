@@ -35,7 +35,7 @@ export type AxisName = 'x' | 'y' | 'z'
 // keep the target's id (resplitBody re-seats the parent), so the chain stays on
 // one part and a cut that disconnects it splits off siblings without renaming
 // the primary.
-export const PRIMARY_BODY = 'body_seed'
+export const PRIMARY_PART = 'body_seed'
 
 export interface RecipeStart {
   kind: 'start'
@@ -62,7 +62,7 @@ export interface RecipeBoolean {
   // it takes in the store. Both are deterministic so a persisted target ref
   // stays stable across a rebuild of the same recipe.
   toolId: string
-  toolBody: string
+  toolPart: string
   // box: [dx, dy, dz]; cylinder: [diameter, diameter, height]; sphere: [diameter, 0, 0].
   size: [number, number, number]
   anchor: ToolAnchor
@@ -306,7 +306,7 @@ function drawStart(rnd: () => number, forced?: StartShapeKind): RecipeStart {
     const outer = grid(drawInt(rnd, 8, 18))
     const wall = grid(drawInt(rnd, 1, 3))
     return {
-      kind: 'start', id: 'seed', body: PRIMARY_BODY, shape: 'ring',
+      kind: 'start', id: 'seed', body: PRIMARY_PART, shape: 'ring',
       size: [outer, outer - 2 * wall, grid(drawInt(rnd, 4, 9))],
       arcRadius: 0, angleDeg: 0,
     }
@@ -314,20 +314,20 @@ function drawStart(rnd: () => number, forced?: StartShapeKind): RecipeStart {
   const roll = rnd()
   if (roll < 0.45) {
     return {
-      kind: 'start', id: 'seed', body: PRIMARY_BODY, shape: 'box',
+      kind: 'start', id: 'seed', body: PRIMARY_PART, shape: 'box',
       size: [grid(drawInt(rnd, 8, 18)), grid(drawInt(rnd, 8, 18)), grid(drawInt(rnd, 4, 9))],
       arcRadius: 0, angleDeg: 0,
     }
   }
   if (roll < 0.75) {
     return {
-      kind: 'start', id: 'seed', body: PRIMARY_BODY, shape: 'arc-profile',
+      kind: 'start', id: 'seed', body: PRIMARY_PART, shape: 'arc-profile',
       size: [grid(drawInt(rnd, 10, 18)), grid(drawInt(rnd, 10, 18)), grid(drawInt(rnd, 4, 8))],
       arcRadius: grid(drawInt(rnd, 2, 4)), angleDeg: 0,
     }
   }
   return {
-    kind: 'start', id: 'seed', body: PRIMARY_BODY, shape: 'revolve',
+    kind: 'start', id: 'seed', body: PRIMARY_PART, shape: 'revolve',
     size: [grid(drawInt(rnd, 1, 3)), grid(drawInt(rnd, 2, 4)), grid(drawInt(rnd, 4, 8))],
     arcRadius: 0, angleDeg: drawOf(rnd, [180, 270, 360]),
   }
@@ -349,8 +349,8 @@ function drawTool(rnd: () => number): { tool: ToolShapeKind; size: [number, numb
 function drawBoolean(rnd: () => number, id: string): RecipeBoolean {
   const { tool, size } = drawTool(rnd)
   return {
-    kind: 'boolean', id, operation: drawOf(rnd, ['union', 'subtract'] as const), target: PRIMARY_BODY,
-    tool, toolId: `tool_${id}`, toolBody: `body_tool_${id}`, size,
+    kind: 'boolean', id, operation: drawOf(rnd, ['union', 'subtract'] as const), target: PRIMARY_PART,
+    tool, toolId: `tool_${id}`, toolPart: `body_tool_${id}`, size,
     anchor: drawOf(rnd, ['center', 'min', 'min', 'max', 'max'] as const),
     offset: [drawInt(rnd, -2, 2), drawInt(rnd, -2, 2), drawInt(rnd, -2, 1)],
   }
@@ -399,9 +399,9 @@ function drawStep(rnd: () => number, id: string, budget: StepBudget): RecipeStep
   switch (kind) {
     case 'boolean': return drawBoolean(rnd, id)
     case 'fillet':
-      return { kind: 'fillet', id, target: PRIMARY_BODY, edge: drawInt(rnd, 0, 11), radius: grid(drawInt(rnd, 1, 2)) }
+      return { kind: 'fillet', id, target: PRIMARY_PART, edge: drawInt(rnd, 0, 11), radius: grid(drawInt(rnd, 1, 2)) }
     case 'chamfer':
-      return { kind: 'chamfer', id, target: PRIMARY_BODY, edge: drawInt(rnd, 0, 11), distance: grid(drawInt(rnd, 1, 2)) }
+      return { kind: 'chamfer', id, target: PRIMARY_PART, edge: drawInt(rnd, 0, 11), distance: grid(drawInt(rnd, 1, 2)) }
     case 'hole': {
       const face = drawInt(rnd, 0, 3)
       // Drawn in the original order (diameter, depth, mode): reordering the
@@ -410,7 +410,7 @@ function drawStep(rnd: () => number, id: string, budget: StepBudget): RecipeStep
       const depth = grid(drawInt(rnd, 2, 4))
       const depthMode = rnd() < 0.7 ? 'blind' : 'through_all'
       return {
-        kind: 'hole', id, target: PRIMARY_BODY, face, diameter, depth, depthMode,
+        kind: 'hole', id, target: PRIMARY_PART, face, diameter, depth, depthMode,
         // A tapped run shorter than the bore on odd faces, an overrun the leaf
         // must clamp on face 2, the whole bore otherwise. Derived from the
         // drawn values for the same no-extra-randomness reason as `thread`.
@@ -426,24 +426,24 @@ function drawStep(rnd: () => number, id: string, budget: StepBudget): RecipeStep
     }
     case 'array': {
       if (rnd() < 0.7) {
-        return { kind: 'linear-array', id, target: PRIMARY_BODY, count: drawInt(rnd, 2, 3), pitch: grid(drawInt(rnd, 2, 4)), axis: drawOf(rnd, ['x', 'y', 'z'] as const) }
+        return { kind: 'linear-array', id, target: PRIMARY_PART, count: drawInt(rnd, 2, 3), pitch: grid(drawInt(rnd, 2, 4)), axis: drawOf(rnd, ['x', 'y', 'z'] as const) }
       }
-      return { kind: 'circular-array', id, target: PRIMARY_BODY, count: drawInt(rnd, 3, 4), stepDeg: drawOf(rnd, [90, 120] as const), axis: drawOf(rnd, ['x', 'y', 'z'] as const) }
+      return { kind: 'circular-array', id, target: PRIMARY_PART, count: drawInt(rnd, 3, 4), stepDeg: drawOf(rnd, [90, 120] as const), axis: drawOf(rnd, ['x', 'y', 'z'] as const) }
     }
     case 'mirror':
       return {
-        kind: 'mirror', id, target: PRIMARY_BODY,
+        kind: 'mirror', id, target: PRIMARY_PART,
         plane: drawOf(rnd, ['x', 'y', 'z', 'face'] as const), face: drawInt(rnd, 0, 3),
         keepOriginal: rnd() < 0.7, merge: rnd() < 0.8,
       }
     case 'shell':
       return {
-        kind: 'shell', id, target: PRIMARY_BODY, face: drawInt(rnd, 0, 3),
+        kind: 'shell', id, target: PRIMARY_PART, face: drawInt(rnd, 0, 3),
         thickness: grid(drawInt(rnd, 1, 2)),
       }
     case 'helix':
       return {
-        kind: 'helix', id, target: PRIMARY_BODY, face: drawInt(rnd, 0, 3),
+        kind: 'helix', id, target: PRIMARY_PART, face: drawInt(rnd, 0, 3),
         pitch: grid(drawInt(rnd, 2, 4)), turns: drawInt(rnd, 2, 4),
       }
   }
@@ -484,7 +484,7 @@ function drawCurvePatternTail(seed: number): RecipeCurveArray {
   return {
     kind: 'curve-array',
     id: 'curve_tail',
-    target: PRIMARY_BODY,
+    target: PRIMARY_PART,
     count: drawInt(rnd, 2, 4),
     length: grid(drawInt(rnd, 4, 8)),
     spacing: drawOf(rnd, ['equal', 'distance'] as const),
@@ -508,7 +508,7 @@ function drawInstancePatternTail(seed: number): RecipeInstanceArray {
   for (let i = 0; i < count; i++) {
     points.push([grid(drawInt(rnd, -4, 4)), grid(drawInt(rnd, -4, 4))])
   }
-  return { kind: 'instance-array', id: 'instance_tail', target: PRIMARY_BODY, points }
+  return { kind: 'instance-array', id: 'instance_tail', target: PRIMARY_PART, points }
 }
 
 /** The derived stream the instance-model sweep reads. */
@@ -558,7 +558,7 @@ function drawFeatureMirrorTail(seed: number): RecipeFeatureMirror {
   return {
     kind: 'feature-mirror',
     id: 'feature_mirror_tail',
-    target: PRIMARY_BODY,
+    target: PRIMARY_PART,
     plane: drawOf(rnd, ['x', 'y', 'z'] as const),
     face: drawInt(rnd, 0, 3),
     depth: grid(drawInt(rnd, 2, 4)),
@@ -570,7 +570,7 @@ function drawSplitTail(seed: number): RecipeSplit {
   return {
     kind: 'split',
     id: 'split_tail',
-    target: PRIMARY_BODY,
+    target: PRIMARY_PART,
     axis: drawOf(rnd, ['x', 'y', 'z'] as const),
     fraction: drawInt(rnd, 2, 8) / 10,
     keep: drawOf(rnd, ['above', 'below', 'both'] as const),

@@ -42,7 +42,7 @@ import type { Repository } from '@/kernel/query'
 import type { PartSolid } from '@/kernel/types3d'
 import type { LoopEdge } from '@/kernel/profileLoops'
 import type { PlaneLike } from '@/kernel/features/shared/planes'
-import { FUZZ_GRID_MM, PRIMARY_BODY, EDGE_PICK_WINDOW, perturbStart, type Recipe, type RecipeStep, type AxisName } from './recipe'
+import { FUZZ_GRID_MM, PRIMARY_PART, EDGE_PICK_WINDOW, perturbStart, type Recipe, type RecipeStep, type AxisName } from './recipe'
 
 type Dict = Record<string, unknown>
 
@@ -264,46 +264,46 @@ class SkipStepError extends Error {}
 
 interface LiveChain {
   table: HandleTable
-  bodyStore: Record<string, PartSolid>
+  partStore: Record<string, PartSolid>
   run: ChainRun
 }
 
 // ─── the runner ───
 
-function shapedBodyCount(bodyStore: Record<string, PartSolid>): number {
-  return Object.values(bodyStore).filter((body) => body.shape !== null).length
+function shapedPartCount(partStore: Record<string, PartSolid>): number {
+  return Object.values(partStore).filter((part) => part.shape !== null).length
 }
 
-function readVolumes(oc: OccModule, scope: DisposeScope, table: HandleTable, bodyStore: Record<string, PartSolid>): Map<string, number> {
+function readVolumes(oc: OccModule, scope: DisposeScope, table: HandleTable, partStore: Record<string, PartSolid>): Map<string, number> {
   const out = new Map<string, number>()
-  for (const [id, body] of Object.entries(bodyStore)) {
+  for (const [id, body] of Object.entries(partStore)) {
     if (body.shape === null) continue
     out.set(id, volumeOf(oc, scope, table.get<OccShape>(body.shape)))
   }
   return out
 }
 
-function bodyMetaOpts(body: PartSolid): Dict {
+function partMetaOpts(part: PartSolid): Dict {
   return {
-    createdBy: body.created_by,
-    partId: body.id,
-    faceAncestry: body.face_ancestry ?? null,
-    faceUuids: body.face_uuids ?? null,
-    edgeAncestry: body.edge_ancestry ?? null,
+    createdBy: part.created_by,
+    partId: part.id,
+    faceAncestry: part.face_ancestry ?? null,
+    faceUuids: part.face_uuids ?? null,
+    edgeAncestry: part.edge_ancestry ?? null,
     // Without the edge UUIDs the display queries come back tie-tagged and
     // uuid-less, and the leaf resolver (built from the production query stream
     // that always carries them) cannot match any of them; solveLocally and the
     // shared harness pass the same pair.
-    edgeUuids: body.edge_uuids ?? null,
-    profileQueries: body.profile_queries,
-    modifiedBy: body.modified_by,
+    edgeUuids: part.edge_uuids ?? null,
+    profileQueries: part.profile_queries,
+    modifiedBy: part.modified_by,
   }
 }
 
 /** The store's invariant sweep after one built step, as the plan's checks. */
-function checkStore(oc: OccModule, scope: DisposeScope, table: HandleTable, bodyStore: Record<string, PartSolid>, step: number, violations: ChainViolation[]): void {
+function checkStore(oc: OccModule, scope: DisposeScope, table: HandleTable, partStore: Record<string, PartSolid>, step: number, violations: ChainViolation[]): void {
   const push = (message: string): void => { violations.push({ step, message }) }
-  for (const [id, body] of Object.entries(bodyStore)) {
+  for (const [id, body] of Object.entries(partStore)) {
     if (body.shape === null) {
       push(`body ${id} has no shape`)
       continue
@@ -330,7 +330,7 @@ function checkStore(oc: OccModule, scope: DisposeScope, table: HandleTable, body
     }
   }
 
-  const shaped = shapedBodyCount(bodyStore)
+  const shaped = shapedPartCount(partStore)
   if (shaped === 0) push('the step consumed every body in the store')
   const live = table.liveCount()
   if (live !== shaped) push(`handle table holds ${live} handles for ${shaped} bodies`)
@@ -397,7 +397,7 @@ function checkSplit(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-  bodyStore: Record<string, PartSolid>,
+  partStore: Record<string, PartSolid>,
   targetBefore: number | undefined,
   outcome: StepOutcome,
   step: Extract<RecipeStep, { kind: 'split' }>,
@@ -411,8 +411,8 @@ function checkSplit(
   }
   const ids = outcome.editedIds ?? []
   const volumes = ids.map((id) => {
-    const body = bodyStore[id]
-    return body === undefined || body.shape === null ? 0 : volumeOf(oc, scope, table.get<OccShape>(body.shape as OccHandle))
+    const part = partStore[id]
+    return part === undefined || part.shape === null ? 0 : volumeOf(oc, scope, table.get<OccShape>(part.shape as OccHandle))
   })
   const sum = volumes.reduce((total, volume) => total + volume, 0)
   const tol = 1e-6 * Math.max(1, Math.abs(targetBefore))
@@ -432,13 +432,13 @@ function checkSplit(
   const index = axis === 'x' ? 0 : axis === 'y' ? 1 : 2
   const sideTol = 1e-6 * span
   for (const id of ids) {
-    const body = bodyStore[id]
-    if (body === undefined || body.shape === null) continue
+    const part = partStore[id]
+    if (part === undefined || part.shape === null) continue
     // Vertices, not the shape's bbox: a cut can leave a face with a large
     // tolerance, and BRepBndLib.Add inflates the box by it (seed 14 grew by
     // 2.56 mm). The cut is planar, so the kept side's extreme along its normal
     // is on the cap's vertices. A vertex-less solid falls back to the bbox.
-    const solid = exploreSolids(oc, scope, table.get<OccShape>(body.shape as OccHandle))[0]
+    const solid = exploreSolids(oc, scope, table.get<OccShape>(part.shape as OccHandle))[0]
     const verts = readSolidVertices(oc, scope, solid)
     const box = shapeBndBox(oc, scope, solid)
     const lo = verts.length > 0 ? Math.min(...verts.map((v) => v[index])) : box.min[index]
@@ -461,7 +461,7 @@ function checkSplit(
     }
   }
   const seen = new Set<string>()
-  for (const [id, body] of Object.entries(bodyStore)) {
+  for (const [id, body] of Object.entries(partStore)) {
     for (const uuid of body.face_uuids ?? []) {
       if (uuid === null) continue
       if (seen.has(uuid)) push(`UUID ${uuid} is claimed by two live faces (again on ${id})`)
@@ -470,25 +470,25 @@ function checkSplit(
   }
 }
 
-function requireBody(bodyStore: Record<string, PartSolid>, id: string): PartSolid {
-  const body = bodyStore[id]
-  if (body === undefined || body.shape === null) throw new Error(`body '${id}' is not in the store`)
-  return body
+function requirePart(partStore: Record<string, PartSolid>, id: string): PartSolid {
+  const part = partStore[id]
+  if (part === undefined || part.shape === null) throw new Error(`body '${id}' is not in the store`)
+  return part
 }
 
 /** Register the recipe's start body, with the construction names its producer minted. */
-function applyStart(oc: OccModule, scope: DisposeScope, table: HandleTable, bodyStore: Record<string, PartSolid>, step: Extract<RecipeStep, { kind: 'start' }>): void {
-  const template = { id: PRIMARY_BODY, createdBy: step.id, sketchId: 'sk_seed', profileQueries: [] as string[] }
+function applyStart(oc: OccModule, scope: DisposeScope, table: HandleTable, partStore: Record<string, PartSolid>, step: Extract<RecipeStep, { kind: 'start' }>): void {
+  const template = { id: PRIMARY_PART, createdBy: step.id, sketchId: 'sk_seed', profileQueries: [] as string[] }
   if (step.shape === 'box') {
     const solid = scope.track(makeBoxAt(oc, scope, [0, 0, 0], step.size[0], step.size[1], step.size[2]))
-    registerSplitParts(oc, scope, table, bodyStore, solid, template)
+    registerSplitParts(oc, scope, table, partStore, solid, template)
     return
   }
   if (step.shape === 'arc-profile') {
     const loops = [roundedRectLoop(step.size[0], step.size[1], step.arcRadius)]
     const lineage = extrudeProfileWithLineage(oc, scope, loops, PLANE_XY, [0, 0, 1], step.size[2], 'sk_seed', step.id)
     scope.track(lineage.solid)
-    registerSplitParts(oc, scope, table, bodyStore, lineage.solid, { ...template, ...lineage })
+    registerSplitParts(oc, scope, table, partStore, lineage.solid, { ...template, ...lineage })
     return
   }
   if (step.shape === 'ring') {
@@ -499,13 +499,13 @@ function applyStart(oc: OccModule, scope: DisposeScope, table: HandleTable, body
     const loops = [circleLoop(0, 0, outerD / 2, 'o1'), circleLoop(0, 0, innerD / 2, 'i1')]
     const lineage = extrudeProfileWithLineage(oc, scope, loops, PLANE_XY, [0, 0, 1], height, 'sk_seed', step.id)
     scope.track(lineage.solid)
-    registerSplitParts(oc, scope, table, bodyStore, lineage.solid, { ...template, ...lineage })
+    registerSplitParts(oc, scope, table, partStore, lineage.solid, { ...template, ...lineage })
     return
   }
   const loops = [rectLoop(step.size[0], step.size[0] + step.size[1], 0, step.size[2])]
   const lineage = revolveProfileWithLineage(oc, scope, loops, PLANE_XZ, [0, 0, 0], [0, 0, 1], step.angleDeg, 'sk_seed', step.id)
   scope.track(lineage.solid)
-  registerSplitParts(oc, scope, table, bodyStore, lineage.solid, { ...template, ...lineage })
+  registerSplitParts(oc, scope, table, partStore, lineage.solid, { ...template, ...lineage })
 }
 
 function toolBboxSize(step: Extract<RecipeStep, { kind: 'boolean' }>): Vec3 {
@@ -588,8 +588,8 @@ export function classifyUnionContact(oc: OccModule, scope: DisposeScope, target:
 }
 
 /** Build and register one boolean tool body from the recipe's placement. */
-function applyTool(oc: OccModule, scope: DisposeScope, table: HandleTable, bodyStore: Record<string, PartSolid>, step: Extract<RecipeStep, { kind: 'boolean' }>): string {
-  const target = requireBody(bodyStore, step.target)
+function applyTool(oc: OccModule, scope: DisposeScope, table: HandleTable, partStore: Record<string, PartSolid>, step: Extract<RecipeStep, { kind: 'boolean' }>): string {
+  const target = requirePart(partStore, step.target)
   const targetShape = table.get<OccShape>(target.shape as OccHandle)
   const { center, half } = partFrame(oc, scope, targetShape)
   const corner = toolCorner(step, center, half)
@@ -605,8 +605,8 @@ function applyTool(oc: OccModule, scope: DisposeScope, table: HandleTable, bodyS
     solid = makeSphereAt(oc, scope, [corner[0] + r, corner[1] + r, corner[2] + r], r)
   }
   scope.track(solid)
-  registerSplitParts(oc, scope, table, bodyStore, solid, { id: step.toolBody, createdBy: step.toolId, profileQueries: [] })
-  return step.toolBody
+  registerSplitParts(oc, scope, table, partStore, solid, { id: step.toolPart, createdBy: step.toolId, profileQueries: [] })
+  return step.toolPart
 }
 
 /**
@@ -619,13 +619,13 @@ function applyTool(oc: OccModule, scope: DisposeScope, table: HandleTable, bodyS
  * visible without failing on it. Production's own unnamed bodies (imports)
  * meet the same seam through the pick repository, not this runner.
  */
-function pickEdge(oc: OccModule, table: HandleTable, body: PartSolid, edgeIndex: number): { query: string; kind: string } {
-  const result = solidToEdges(oc, table, body.shape as OccHandle, bodyMetaOpts(body))
-  if (result.edges.length === 0) throw new Error(`body '${body.id}' has no edges to pick`)
+function pickEdge(oc: OccModule, table: HandleTable, part: PartSolid, edgeIndex: number): { query: string; kind: string } {
+  const result = solidToEdges(oc, table, part.shape as OccHandle, partMetaOpts(part))
+  if (result.edges.length === 0) throw new Error(`body '${part.id}' has no edges to pick`)
   const window = Math.min(result.edges.length, EDGE_PICK_WINDOW)
   const at = edgeIndex % window
   const query = result.edge_queries[at]
-  if (!query) throw new Error(`edge ${at} of body '${body.id}' has no query`)
+  if (!query) throw new Error(`edge ${at} of body '${part.id}' has no query`)
   return { query, kind: result.edges[at].kind }
 }
 
@@ -634,8 +634,8 @@ function pickEdge(oc: OccModule, table: HandleTable, body: PartSolid, edgeIndex:
  * resolveFilletEdges path the fillet leaf uses. Throws StalePickError when the
  * query matches nothing or now names another curve class.
  */
-function resolveRecordedEdge(oc: OccModule, scope: DisposeScope, table: HandleTable, body: PartSolid, pick: PickRecord): { query: string; kind: string } {
-  const edges = resolveFilletEdges(oc, scope, table, body, [pick.query], null)
+function resolveRecordedEdge(oc: OccModule, scope: DisposeScope, table: HandleTable, part: PartSolid, pick: PickRecord): { query: string; kind: string } {
+  const edges = resolveFilletEdges(oc, scope, table, part, [pick.query], null)
   if (edges.length === 0) throw new StalePickError(`edge query ${pick.query} no longer resolves`)
   for (const edge of edges) {
     const kind = edgeToGeom(oc, scope, edge).ed.kind
@@ -658,9 +658,9 @@ function resolveRecordedEdge(oc: OccModule, scope: DisposeScope, table: HandleTa
  * a red pick. Unnamed faces carry no UUID and have no persistent reference, so
  * the drawn pick stands in.
  */
-function resolveRecordedFace(oc: OccModule, scope: DisposeScope, shape: OccShape, body: PartSolid, faceIndex: number, pick: PickRecord): AnyFace {
+function resolveRecordedFace(oc: OccModule, scope: DisposeScope, shape: OccShape, part: PartSolid, faceIndex: number, pick: PickRecord): AnyFace {
   const token = /@u\|([^@&|:]+)/.exec(pick.query)
-  const faces = facesOf(oc, scope, shape, body)
+  const faces = facesOf(oc, scope, shape, part)
   if (token === null) return pickFace(faces, faceIndex)
   const uuid = token[1]
   const at = faces.findIndex((face) => face.query.includes(`@u|${uuid}`))
@@ -684,8 +684,8 @@ interface AnyFace {
 }
 
 /** The body's faces in display order, the pool face picks are drawn from and resolved against. */
-function facesOf(oc: OccModule, scope: DisposeScope, shape: OccShape, body: PartSolid): AnyFace[] {
-  const meta = readShapeFaceMetadata(oc, scope, shape, bodyMetaOpts(body))
+function facesOf(oc: OccModule, scope: DisposeScope, shape: OccShape, part: PartSolid): AnyFace[] {
+  const meta = readShapeFaceMetadata(oc, scope, shape, partMetaOpts(part))
   return meta.face_data.map((datum, index) => ({
     centroid: datum.centroid as Vec3,
     normal: datum.normal as Vec3,
@@ -717,7 +717,7 @@ function applyStep(
   oc: OccModule,
   scope: DisposeScope,
   table: HandleTable,
-  bodyStore: Record<string, PartSolid>,
+  partStore: Record<string, PartSolid>,
   repo: ChainRepo,
   step: RecipeStep,
   stepIndex: number,
@@ -727,34 +727,34 @@ function applyStep(
   const repoForLeaves = repo as unknown as Repository
   const expected = overridePicks?.get(stepIndex)
   if (step.kind === 'start') {
-    applyStart(oc, scope, table, bodyStore, step)
+    applyStart(oc, scope, table, partStore, step)
     return {}
   }
   if (step.kind === 'boolean') {
-    const toolBody = applyTool(oc, scope, table, bodyStore, step)
+    const toolPart = applyTool(oc, scope, table, partStore, step)
     let unionContact: UnionContact | null = null
     if (step.operation === 'union') {
-      const target = requireBody(bodyStore, step.target)
-      const tool = requireBody(bodyStore, toolBody)
+      const target = requirePart(partStore, step.target)
+      const tool = requirePart(partStore, toolPart)
       unionContact = classifyUnionContact(oc, scope, table.get<OccShape>(target.shape as OccHandle), table.get<OccShape>(tool.shape as OccHandle))
       if (unionContact === 'tangent') {
         // Drop the tool we just minted; the store is exactly as before.
         table.releaseFor(tool.shape as OccHandle, step.toolId)
-        delete bodyStore[toolBody]
+        delete partStore[toolPart]
         throw new SkipStepError('union tool only touches the target in a zero-measure set; skipped (an OCC weld of that tangency is non-manifold)')
       }
     }
     const result = solveBoolean(oc, scope, table, {
       id: step.id,
-      boolean: { operation: step.operation, target: step.target, tools: [toolBody] },
-    }, repoForLeaves, bodyStore)
+      boolean: { operation: step.operation, target: step.target, tools: [toolPart] },
+    }, repoForLeaves, partStore)
     if (unionContact === 'disjoint') {
       // The leaf treats a union pick that touches nothing as a miss: it warns,
       // keeps the tool body and leaves the target alone. Assert that shape so a
       // regression back to fusing disjoint material cannot pass as a quiet store
       // change.
       const skipped = result.solver_warning?.includes('does not intersect the target; skipped') ?? false
-      const toolKept = bodyStore[toolBody] !== undefined
+      const toolKept = partStore[toolPart] !== undefined
       const targetKept = result.body_ids.length === 1 && result.body_ids[0] === step.target
       if (!skipped || !toolKept || !targetKept) {
         return {
@@ -768,29 +768,29 @@ function applyStep(
     return { editedIds: result.body_ids }
   }
   if (step.kind === 'fillet' || step.kind === 'chamfer') {
-    const body = requireBody(bodyStore, step.target)
+    const part = requirePart(partStore, step.target)
     const { query, kind } = expected !== undefined && expected.kind === 'edge'
-      ? resolveRecordedEdge(oc, scope, table, body, expected)
-      : pickEdge(oc, table, body, step.edge)
+      ? resolveRecordedEdge(oc, scope, table, part, expected)
+      : pickEdge(oc, table, part, step.edge)
     picks.push({ step: stepIndex, kind: 'edge', body: step.target, query, elementKind: kind })
     if (step.kind === 'fillet') {
       solveFillet(oc, scope, table, {
         id: step.id,
         fillet: { source_body: step.target, edges: [query], radius: step.radius },
-      }, repoForLeaves, bodyStore)
+      }, repoForLeaves, partStore)
     } else {
       solveChamfer(oc, scope, table, {
         id: step.id,
         chamfer: { source_body: step.target, edges: [query], distance: step.distance, kind: 'distance' },
-      }, repoForLeaves, bodyStore)
+      }, repoForLeaves, partStore)
     }
     return {}
   }
   if (step.kind === 'hole') {
-    const body = requireBody(bodyStore, step.target)
+    const part = requirePart(partStore, step.target)
     const face = expected !== undefined && expected.kind === 'face'
-      ? resolveRecordedFace(oc, scope, table.get<OccShape>(body.shape as OccHandle), body, step.face, expected)
-      : pickFace(facesOf(oc, scope, table.get<OccShape>(body.shape as OccHandle), body), step.face)
+      ? resolveRecordedFace(oc, scope, table.get<OccShape>(part.shape as OccHandle), part, step.face, expected)
+      : pickFace(facesOf(oc, scope, table.get<OccShape>(part.shape as OccHandle), part), step.face)
     if (face.query) picks.push({ step: stepIndex, kind: 'face', body: step.target, query: face.query, elementKind: face.surfaceType })
     const xAxis = perpendicular(face.normal)
     const yAxis = cross(face.normal, xAxis)
@@ -811,7 +811,7 @@ function applyStep(
         ...(step.thread !== null ? { thread: threadSpec(step.thread) } : {}),
         ...(step.threadDepth != null ? { thread_depth: step.threadDepth } : {}),
       },
-    }, repoForLeaves, bodyStore, { [sketchId]: { entities: [{ id: 'p1', kind: 'point' }] } })
+    }, repoForLeaves, partStore, { [sketchId]: { entities: [{ id: 'p1', kind: 'point' }] } })
     return { editedIds: result.body_ids }
   }
   if (step.kind === 'linear-array') {
@@ -825,12 +825,12 @@ function applyStep(
         ...(step.centered === true ? { centered: true } : {}),
         ...(step.skip !== undefined ? { skip: step.skip } : {}),
       },
-    } as Dict, repoForLeaves, bodyStore)
+    } as Dict, repoForLeaves, partStore)
     return { editedIds: result.body_ids }
   }
   if (step.kind === 'circular-array') {
-    const body = requireBody(bodyStore, step.target)
-    const { center } = partFrame(oc, scope, table.get<OccShape>(body.shape as OccHandle))
+    const part = requirePart(partStore, step.target)
+    const { center } = partFrame(oc, scope, table.get<OccShape>(part.shape as OccHandle))
     const dir = axisVec(step.axis)
     const query = `@fuzz/axis/${step.id}`
     repo.registerQuery(query, () => ({ start: center, end: add(center, dir) }))
@@ -845,7 +845,7 @@ function applyStep(
         ...(stepped ? { angle: step.stepDeg as number, equal_spacing: false } : {}),
         operation: 'add', axis: query,
       },
-    } as Dict, repoForLeaves, bodyStore)
+    } as Dict, repoForLeaves, partStore)
     return { editedIds: result.body_ids }
   }
   if (step.kind === 'curve-array') {
@@ -865,7 +865,7 @@ function applyStep(
         ...(step.spacing === 'distance' ? { spacing: 'distance', distance: step.distance } : {}),
         ...(step.orientation === 'fixed' ? { orientation: 'fixed' } : {}),
       },
-    } as Dict, repoForLeaves, bodyStore)
+    } as Dict, repoForLeaves, partStore)
     return { editedIds: result.body_ids }
   }
   if (step.kind === 'instance-array') {
@@ -883,21 +883,21 @@ function applyStep(
         subject: 'body', source_body: step.target, operation: 'add',
         targets: ['@' + sketchId], orientation: 'fixed',
       },
-    } as Dict, repoForLeaves, bodyStore, {
+    } as Dict, repoForLeaves, partStore, {
       [sketchId]: { id: sketchId, kind: 'sketch', entities, initial, constraints: [] },
     })
     return { editedIds: result.body_ids }
   }
   if (step.kind === 'shell') {
-    const body = requireBody(bodyStore, step.target)
+    const part = requirePart(partStore, step.target)
     const face = expected !== undefined && expected.kind === 'face'
-      ? resolveRecordedFace(oc, scope, table.get<OccShape>(body.shape as OccHandle), body, step.face, expected)
-      : pickFace(facesOf(oc, scope, table.get<OccShape>(body.shape as OccHandle), body), step.face)
+      ? resolveRecordedFace(oc, scope, table.get<OccShape>(part.shape as OccHandle), part, step.face, expected)
+      : pickFace(facesOf(oc, scope, table.get<OccShape>(part.shape as OccHandle), part), step.face)
     if (face.query) picks.push({ step: stepIndex, kind: 'face', body: step.target, query: face.query, elementKind: face.surfaceType })
     const result = solveShell(oc, scope, table, {
       id: step.id,
       shell: { faces: [face.query], thickness: step.thickness, direction: 'inward' },
-    }, repoForLeaves, bodyStore)
+    }, repoForLeaves, partStore)
     return { editedIds: result.body_ids }
   }
   if (step.kind === 'helix') {
@@ -905,14 +905,14 @@ function applyStep(
     // changes no body, only registers the `_curve_<id>` descriptor and its
     // axis/endpoints. The reference resolves through the same repo the leaves
     // use, so a degenerate body (no cylinder face) refuses by name.
-    const body = requireBody(bodyStore, step.target)
-    const faces = facesOf(oc, scope, table.get<OccShape>(body.shape as OccHandle), body)
+    const part = requirePart(partStore, step.target)
+    const faces = facesOf(oc, scope, table.get<OccShape>(part.shape as OccHandle), part)
     const cylinders = faces.filter((f) => f.surfaceType === 'cylinderface')
     if (cylinders.length === 0) throw new Error('the body has no cylinder face to carry a helix')
     const face = cylinders[step.face % cylinders.length]
     const query = `@fuzz/helix/${step.id}`
     repo.registerQuery(query, () => ({
-      type: 'cylinderface', body_id: body.id, face_index: faces.indexOf(face),
+      type: 'cylinderface', body_id: part.id, face_index: faces.indexOf(face),
       axis: face.normal, centroid: face.centroid,
     }))
     solveHelix(oc, scope, table, {
@@ -922,15 +922,15 @@ function applyStep(
         pitch: step.pitch, turns: step.turns, hand: 'right', direction: 'normal',
         start_angle: 0, offset: 0,
       },
-    }, repoForLeaves, bodyStore)
+    }, repoForLeaves, partStore)
     return {}
   }
   if (step.kind === 'split') {
     // The plane crosses the body by construction: it is normal to the drawn
     // axis at a drawn fraction of the body's own bbox along it, grid-snapped so
     // the chain reads like an authored document.
-    const body = requireBody(bodyStore, step.target)
-    const bbox = shapeBndBox(oc, scope, table.get<OccShape>(body.shape as OccHandle))
+    const part = requirePart(partStore, step.target)
+    const bbox = shapeBndBox(oc, scope, table.get<OccShape>(part.shape as OccHandle))
     const axis = axisVec(step.axis)
     const index = step.axis === 'x' ? 0 : step.axis === 'y' ? 1 : 2
     const raw = bbox.min[index] + step.fraction * (bbox.max[index] - bbox.min[index])
@@ -940,7 +940,7 @@ function applyStep(
     const result = solveSplit(oc, scope, table, {
       id: step.id,
       split: { bodies: [step.target], plane: planeQuery, keep: step.keep },
-    }, repoForLeaves, bodyStore)
+    }, repoForLeaves, partStore)
     return {
       editedIds: result.body_ids,
       splitPlane: { axis: step.axis, offset, span: Math.max(1e-9, bbox.max[index] - bbox.min[index]) },
@@ -951,11 +951,11 @@ function applyStep(
     // real so the mirror re-solves the same feature spec the document would
     // hold. Its sketch lives only in the chain's repo, exactly like the split
     // plane.
-    const body = requireBody(bodyStore, step.target)
-    const shape = table.get<OccShape>(body.shape as OccHandle)
+    const part = requirePart(partStore, step.target)
+    const shape = table.get<OccShape>(part.shape as OccHandle)
     const face = expected !== undefined && expected.kind === 'face'
-      ? resolveRecordedFace(oc, scope, shape, body, step.face, expected)
-      : pickFace(facesOf(oc, scope, shape, body), step.face)
+      ? resolveRecordedFace(oc, scope, shape, part, step.face, expected)
+      : pickFace(facesOf(oc, scope, shape, part), step.face)
     if (face.query) picks.push({ step: stepIndex, kind: 'face', body: step.target, query: face.query, elementKind: face.surfaceType })
     const xAxis = perpendicular(face.normal)
     const yAxis = cross(face.normal, xAxis)
@@ -979,11 +979,11 @@ function applyStep(
         operation: 'cut',
       },
     }
-    const source = solveExtrude(oc, scope, table, sourceFeature, repoForLeaves, bodyStore)
+    const source = solveExtrude(oc, scope, table, sourceFeature, repoForLeaves, partStore)
     if (source.status !== 'ok') {
       throw new Error(`feature mirror source: ${String(source.exception ?? source.status)}`)
     }
-    const bbox = shapeBndBox(oc, scope, table.get<OccShape>(requireBody(bodyStore, step.target).shape as OccHandle))
+    const bbox = shapeBndBox(oc, scope, table.get<OccShape>(requirePart(partStore, step.target).shape as OccHandle))
     const axis = axisVec(step.plane)
     const index = step.plane === 'x' ? 0 : step.plane === 'y' ? 1 : 2
     const centre = (bbox.min[index] + bbox.max[index]) / 2
@@ -997,16 +997,16 @@ function applyStep(
         target_body: step.target,
         plane: planeQuery,
       },
-    }, repoForLeaves, bodyStore, { [sourceId]: sourceFeature })
+    }, repoForLeaves, partStore, { [sourceId]: sourceFeature })
     return { editedIds: result.body_ids }
   }
   // mirror
-  const body = requireBody(bodyStore, step.target)
+  const part = requirePart(partStore, step.target)
   let planeQuery: string
   if (step.plane === 'face') {
     const face = expected !== undefined && expected.kind === 'face'
-      ? resolveRecordedFace(oc, scope, table.get<OccShape>(body.shape as OccHandle), body, step.face, expected)
-      : pickFace(facesOf(oc, scope, table.get<OccShape>(body.shape as OccHandle), body), step.face)
+      ? resolveRecordedFace(oc, scope, table.get<OccShape>(part.shape as OccHandle), part, step.face, expected)
+      : pickFace(facesOf(oc, scope, table.get<OccShape>(part.shape as OccHandle), part), step.face)
     if (face.query) picks.push({ step: stepIndex, kind: 'face', body: step.target, query: face.query, elementKind: face.surfaceType })
     planeQuery = `@fuzz/plane/${step.id}`
     repo.registerQuery(planeQuery, () => ({ type: 'flatface', origin: face.centroid, normal: face.normal }))
@@ -1017,14 +1017,14 @@ function applyStep(
   const result = solveMirror(oc, scope, table, {
     id: step.id,
     mirror: { body: step.target, plane: planeQuery, keep_original: step.keepOriginal, merge: step.merge },
-  }, repoForLeaves, bodyStore)
+  }, repoForLeaves, partStore)
   return { editedIds: result.body_ids }
 }
 
 /** Execute a recipe, holding all live resources; the caller disposes `table`. */
 function executeChain(oc: OccModule, recipe: Recipe, options: ChainRunOptions): LiveChain {
   const table = new HandleTable()
-  const bodyStore: Record<string, PartSolid> = {}
+  const partStore: Record<string, PartSolid> = {}
   const repo = new ChainRepo()
   const run: ChainRun = { violations: [], reports: [], refusals: [], picks: [], stalePicks: [], completed: true }
 
@@ -1032,11 +1032,11 @@ function executeChain(oc: OccModule, recipe: Recipe, options: ChainRunOptions): 
     for (let i = 0; i < recipe.steps.length; i++) {
       const step = recipe.steps[i]
       options.onStep?.(i, step.kind)
-      const before = withTransientScope((s) => readVolumes(oc, s, table, bodyStore))
+      const before = withTransientScope((s) => readVolumes(oc, s, table, partStore))
       const scope = new CountingScope()
       let report: StepReport
       try {
-        const outcome = applyStep(oc, scope, table, bodyStore, repo, step, i, run.picks, options.overridePicks)
+        const outcome = applyStep(oc, scope, table, partStore, repo, step, i, run.picks, options.overridePicks)
         if (outcome.violation !== undefined) {
           run.violations.push({ step: i, message: outcome.violation })
         }
@@ -1048,12 +1048,12 @@ function executeChain(oc: OccModule, recipe: Recipe, options: ChainRunOptions): 
         if (options.faultAtId === step.id) {
           run.violations.push({ step: i, message: `injected fault at ${step.id}` })
         }
-        checkStore(oc, scope, table, bodyStore, i, run.violations)
+        checkStore(oc, scope, table, partStore, i, run.violations)
         if (step.kind === 'split') {
-          checkSplit(oc, scope, table, bodyStore, before.get(step.target), outcome, step, i, run.violations)
+          checkSplit(oc, scope, table, partStore, before.get(step.target), outcome, step, i, run.violations)
         }
         const editedVolumes = (outcome.editedIds ?? []).map((id) => {
-          const edited = bodyStore[id]
+          const edited = partStore[id]
           return edited === undefined || edited.shape === null ? 0 : volumeOf(oc, scope, table.get<OccShape>(edited.shape))
         })
         checkMonotonic(step, step.kind === 'start' ? undefined : before.get(step.target), editedVolumes, i, run.violations)
@@ -1097,7 +1097,7 @@ function executeChain(oc: OccModule, recipe: Recipe, options: ChainRunOptions): 
     run.violations.push({ step: run.reports.length, message: `the runner itself threw: ${extractOccErrorMessage(oc, e)}` })
     run.completed = false
   }
-  return { table, bodyStore, run }
+  return { table, partStore, run }
 }
 
 /** Replay a recipe and return its violations, refusals and reports. */

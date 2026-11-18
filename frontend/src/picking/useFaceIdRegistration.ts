@@ -2,7 +2,7 @@ import { useIdPipeline } from './IdPipelineContext'
 import { useRegisteredPart } from './idRegistrationUtils'
 import { partKeyFor } from './pickKey'
 import type { Mesh3D } from '@/types/cad'
-import { buildPartGeometry, faceCount, toNonIndexedPositions, resolveFaceQueries } from '@/components/Geometry3D/bodyGeometry'
+import { buildPartGeometry, faceCount, toNonIndexedPositions, resolveFaceQueries } from '@/components/Geometry3D/partGeometry'
 import { isDevBuild } from '@/kernel/isDevBuild'
 
 /**

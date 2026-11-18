@@ -74,9 +74,9 @@ export async function buildAndMeasure(oc: OccModule, spec: Record<string, unknow
   const scope = new DisposeScope()
   try {
     const shapes: OccShape[] = []
-    for (const body of Object.values(snapshot ?? {})) {
-      if (body.shape == null) continue
-      shapes.push(table!.get<OccShape>(body.shape))
+    for (const part of Object.values(snapshot ?? {})) {
+      if (part.shape == null) continue
+      shapes.push(table!.get<OccShape>(part.shape))
     }
     const measures = measureParts(oc, scope, shapes)
 

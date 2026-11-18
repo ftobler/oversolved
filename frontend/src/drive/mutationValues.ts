@@ -2205,7 +2205,7 @@ function addDeleteFace(raw: RawStep): ValueViolation | null {
   return problem === null ? null : invalid(problem)
 }
 
-function addDeleteBody(raw: RawStep): ValueViolation | null {
+function addDeletePart(raw: RawStep): ValueViolation | null {
   if (raw.bodies === undefined) return null
   const problem = stringListProblem(raw.bodies, 'bodies')
   return problem === null ? null : invalid(problem)
@@ -2694,7 +2694,7 @@ export const MUTATION_VALUE_RULES = {
   remove_instance_pattern_target: indexField('index'),
   add_pattern_source: queryField('sourceFeature'),
   remove_pattern_source: indexField('index'),
-  add_delete_body: addDeleteBody,
+  add_delete_body: addDeletePart,
   add_delete_body_ref: queryField('bodyQuery'),
   remove_delete_body_ref: indexField('index'),
   add_hole: addHole,

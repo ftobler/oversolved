@@ -5,7 +5,7 @@
 // registry only holds bodies that are drawn and interactive, so a hidden body
 // used to take its face frame with it even though the solve still had it.
 import type { PartResult } from '@/types/cad'
-import { planarFaceFrame } from '@/components/Geometry3D/bodyGeometry'
+import { planarFaceFrame } from '@/components/Geometry3D/partGeometry'
 import { FACE_LAYER_NAME } from '@/picking/layerNames'
 import { partKeyFor, parsePickKeyIndex } from '@/picking/pickKey'
 

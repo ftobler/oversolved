@@ -921,7 +921,7 @@ export const INSTANCE_PATTERN_SCHEMA: FeatureEditorSchema = {
   ],
 }
 
-export const DELETE_BODY_SCHEMA: FeatureEditorSchema = {
+export const DELETE_PART_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_delete_body',
   subKey: 'delete_body',
   defaults: { bodies: [] },
@@ -1036,7 +1036,7 @@ export const EDITOR_SCHEMAS: Record<string, FeatureEditorSchema> = {
   circular_pattern: CIRCULAR_PATTERN_SCHEMA,
   curve_pattern: CURVE_PATTERN_SCHEMA,
   instance_pattern: INSTANCE_PATTERN_SCHEMA,
-  delete_body: DELETE_BODY_SCHEMA,
+  delete_body: DELETE_PART_SCHEMA,
   variable: VARIABLE_SCHEMA,
   helix: HELIX_SCHEMA,
 }

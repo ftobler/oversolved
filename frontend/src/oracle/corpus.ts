@@ -109,10 +109,10 @@ export function requireMeasures(where: string, value: unknown, withMethod: boole
   if (withMethod && (typeof m.method !== 'string' || m.method.trim() === '')) {
     throw new Error(`${where}.method: must be a non-empty string`)
   }
-  const bodies = requireFiniteNumber(`${where}.bodies`, m.bodies)
-  if (!Number.isInteger(bodies) || bodies < 0) throw new Error(`${where}.bodies: must be a non-negative integer`)
+  const parts = requireFiniteNumber(`${where}.bodies`, m.bodies)
+  if (!Number.isInteger(parts) || parts < 0) throw new Error(`${where}.bodies: must be a non-negative integer`)
   const out: OracleMeasures & { method?: string } = {
-    bodies,
+    bodies: parts,
     volume: requireFiniteNumber(`${where}.volume`, m.volume),
     area: requireFiniteNumber(`${where}.area`, m.area),
     centroid: requireVector(`${where}.centroid`, m.centroid, 3) as [number, number, number],

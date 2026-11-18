@@ -21,8 +21,8 @@ vi.mock('three', () => {
 })
 
 // Real tessellation, but counted: the overlay must not pass over one edge twice.
-vi.mock('@/components/Geometry3D/bodyGeometry', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/components/Geometry3D/bodyGeometry')>()
+vi.mock('@/components/Geometry3D/partGeometry', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/components/Geometry3D/partGeometry')>()
   return { ...actual, buildEdgeSegments: vi.fn(actual.buildEdgeSegments) }
 })
 
@@ -34,7 +34,7 @@ vi.mock('@react-three/fiber', () => ({
 
 import PreviewEdgeOverlay from '@/components/Geometry3D/PreviewEdgeOverlay'
 import { TOL_PREVIEW_CELL } from '@/kernel/solverConstants'
-import { buildEdgeSegments as tessellateSpy } from '@/components/Geometry3D/bodyGeometry'
+import { buildEdgeSegments as tessellateSpy } from '@/components/Geometry3D/partGeometry'
 
 function makeItem(key: string, edges: EdgeData[], edgeQueries?: string[]): PartRenderItem {
   return {

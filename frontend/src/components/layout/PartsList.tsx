@@ -7,10 +7,10 @@ import iconEyeIcon from '@/assets/icons/icon-eye.svg'
 import iconEyeOffIcon from '@/assets/icons/icon-eye-off.svg'
 import iconDotsIcon from '@/assets/icons/dots.svg'
 
-export function BodyPartsList() {
+export function PartsList() {
   const doc = usePartEditorStore(s => s.doc)
-  const bodies = usePartEditorStore(s => s.parts)
-  const visibleBodies = usePartEditorStore(s => s.visibleParts)
+  const parts = usePartEditorStore(s => s.parts)
+  const visibleParts = usePartEditorStore(s => s.visibleParts)
   const partLabels = usePartEditorStore(s => s.partLabels)
   const selection = useSketchEditorStore(s => s.normalSelection)
 
@@ -20,20 +20,20 @@ export function BodyPartsList() {
     onMutation,
   } = usePartEditorCallbacks()
 
-  const handleClick = (bodyId: string) => {
-    onToggleSelect(`@${bodyId}`)
+  const handleClick = (partId: string) => {
+    onToggleSelect(`@${partId}`)
   }
 
   return (
     <div className="sidebar-bottom glass-panel">
       <div className="sidebar-header">Parts</div>
       <ul className="parts-list">
-        {doc && Object.keys(bodies || {}).length === 0 ? (
+        {doc && Object.keys(parts || {}).length === 0 ? (
           <li className="empty">No parts</li>
         ) : (
-          Object.entries(bodies || {}).map(([bodyId]) => {
-            const isHidden = visibleBodies ? !visibleBodies.has(bodyId) : false
-            const partLabel = partDisplayName(bodyId, partLabels, Object.keys(bodies || {}))
+          Object.entries(parts || {}).map(([bodyId]) => {
+            const isHidden = visibleParts ? !visibleParts.has(bodyId) : false
+            const partLabel = partDisplayName(bodyId, partLabels, Object.keys(parts || {}))
             return (
               <li
                 key={bodyId}

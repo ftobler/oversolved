@@ -1,5 +1,5 @@
 import { FeatureTree } from '@/components/layout/FeatureTree'
-import { BodyPartsList } from '@/components/layout/PartsList'
+import { PartsList } from '@/components/layout/PartsList'
 import '@/components/layout/Glass.css'
 import '@/pages/Part.css'
 
@@ -13,7 +13,7 @@ export function PartDocumentPanel() {
   return (
     <div className="document-panel">
       <FeatureTree />
-      <BodyPartsList />
+      <PartsList />
     </div>
   )
 }

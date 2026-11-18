@@ -8,7 +8,7 @@ import { useEdgeIdRegistration } from '../useEdgeIdRegistration'
 import { useVertexIdRegistration } from '../useVertexIdRegistration'
 import {
   resolveEdgeQueries, resolveVertexQueries, resolveFaceQueries,
-} from '@/components/Geometry3D/bodyGeometry'
+} from '@/components/Geometry3D/partGeometry'
 import { topoFallbackQuery } from '@/utils/query/selectionId'
 import { rgbToId } from '../idEncoding'
 import type { Mesh3D } from '@/types/cad'

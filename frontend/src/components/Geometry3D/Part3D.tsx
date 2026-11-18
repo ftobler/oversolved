@@ -26,7 +26,7 @@ import {
   resolveFaceQueries,
   resolveEdgeQueries,
   resolveVertexQueries,
-} from '@/components/Geometry3D/bodyGeometry'
+} from '@/components/Geometry3D/partGeometry'
 import { analysisMaterialName, usePartAnalysisMaterial } from '@/components/Geometry3D/partAnalysisMaterial'
 import { applyAoOccluder, isAoActive } from '@/components/Viewport/ambientOcclusion'
 import { curvatureForMesh, effectiveCurvatureRange } from '@/components/Geometry3D/curvature'

@@ -20,7 +20,7 @@ import type {
   RegressionCase,
   RegressionChecks,
   RegressionSnapshot,
-  RegressionSnapshotBody,
+  RegressionSnapshotPart,
 } from './corpus'
 
 export interface RegressionIssue {
@@ -76,17 +76,17 @@ export async function buildRegression(name: string, recipe: string): Promise<Reg
     else if (typeof row.solver_warning === 'string' && row.solver_warning !== '') details[fid] = row.solver_warning
   }
 
-  const bodies: Record<string, RegressionSnapshotBody> = {}
+  const parts: Record<string, RegressionSnapshotPart> = {}
   for (const [bid, body] of Object.entries(built.response.bodies)) {
     const golden = buildBaselineBody(bid, body as Record<string, unknown>)
-    bodies[bid] = {
+    parts[bid] = {
       created_by: golden.created_by,
       modified_by: golden.modified_by,
       face_hashes: golden.face_hashes,
       edge_hashes: golden.edge_hashes,
     }
   }
-  return { measures: built.measures, statuses, details, snapshot: { bodies } }
+  return { measures: built.measures, statuses, details, snapshot: { bodies: parts } }
 }
 
 function sorted(values: readonly string[]): string[] {

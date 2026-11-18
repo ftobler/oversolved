@@ -38,9 +38,9 @@ const callbacks: BuildContextMenuCallbacks = {
   onToggleSuppression: noop, onEnterEditSketch: noop, onExitSketch: noop,
   onDeleteFeature: noop, onRequestRename: noop, onAlignToFace: noop,
   onNormalToPlane: noop, onAlignCameraToSketchPlane: noop, onToggleConstraintTiles: noop,
-  onSetPartColorPopover: noop, onExportBody: noop, onNewSketchOnPlane: noop,
+  onSetPartColorPopover: noop, onExportPart: noop, onNewSketchOnPlane: noop,
   onFreezeProjection: noop,
-  onToggleBodyVisibility: noop,
+  onTogglePartVisibility: noop,
   onShowContextMenu: noop,
 }
 
@@ -63,7 +63,7 @@ function viewportMenuEnabledLabels(): string[] {
     builtInIds: new Set(),
     hasDanglingContent: false,
     projectedTargetIds: [],
-    visibleBodies: undefined,
+    visibleParts: undefined,
   }, callbacks).items.filter(i => !i.disabled).map(i => i.label)
 }
 

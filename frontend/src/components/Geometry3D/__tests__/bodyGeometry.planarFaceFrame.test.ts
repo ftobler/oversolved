@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import type { Mesh3D, FaceData } from '@/types/cad'
-import { planarFaceFrame } from '@/components/Geometry3D/bodyGeometry'
+import { planarFaceFrame } from '@/components/Geometry3D/partGeometry'
 
 // "Normal to" on a face reads its frame through planarFaceFrame from both the
 // hover path (Body3D) and the selection path (bodyDispatchCallbacks), so the

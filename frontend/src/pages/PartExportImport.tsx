@@ -25,7 +25,7 @@ interface PartExportImportProps {
 }
 
 export interface PartExportImportHandle {
-  openExport: (bodyId?: string | null, defaultName?: string) => void
+  openExport: (partId?: string | null, defaultName?: string) => void
 }
 
 const PartExportImport = forwardRef<PartExportImportHandle, PartExportImportProps>(
@@ -44,7 +44,7 @@ const PartExportImport = forwardRef<PartExportImportHandle, PartExportImportProp
     const [exportDefaultScope, setExportDefaultScope] = useState<ExportScope>('all')
 
     useImperativeHandle(ref, () => ({
-      openExport: (bodyId, defaultName) => {
+      openExport: (partId, defaultName) => {
         // The header export is disabled while an edit is open because the
         // document is half authored; the body context menu reaches this same
         // dialog, so it takes the same gate instead of reading the draft.
@@ -53,21 +53,23 @@ const PartExportImport = forwardRef<PartExportImportHandle, PartExportImportProp
           return
         }
         const name = defaultName ?? 'export'
-        const bodies = usePartEditorStore.getState().parts
+        // The store map is the solve's live parts; `parts` is the export
+        // selection this dialog builds from it.
+        const solveParts = usePartEditorStore.getState().parts
         const labels = usePartEditorStore.getState().partLabels
-        const parts: ExportPart[] = Object.keys(bodies).map((id) => ({
+        const parts: ExportPart[] = Object.keys(solveParts).map((id) => ({
           id,
-          name: partDisplayName(id, labels, Object.keys(bodies)),
+          name: partDisplayName(id, labels, Object.keys(solveParts)),
         }))
         // A body context-menu export can name a body the current solve has not
         // published yet. Keep it as the one available part rather than losing
         // the explicit target.
-        if (bodyId && !parts.some(part => part.id === bodyId)) {
-          parts.unshift({ id: bodyId, name })
+        if (partId && !parts.some(part => part.id === partId)) {
+          parts.unshift({ id: partId, name })
         }
         setExportParts(parts)
-        setExportSelectedIds(bodyId ? [bodyId] : selectedBodyIds(useSketchEditorStore.getState().normalSelection, parts))
-        setExportDefaultScope(bodyId ? 'selected' : 'all')
+        setExportSelectedIds(partId ? [partId] : selectedPartIds(useSketchEditorStore.getState().normalSelection, parts))
+        setExportDefaultScope(partId ? 'selected' : 'all')
         setExportDefaultName(name)
         setExportDialogOpen(true)
       },
@@ -177,7 +179,7 @@ const PartExportImport = forwardRef<PartExportImportHandle, PartExportImportProp
 /** The body ids the document had selected, in the parts list's order. Face and
  *  edge picks name geometry inside a body, not the body itself, so only a plain
  *  `@<bodyId>` entry counts. */
-function selectedBodyIds(
+function selectedPartIds(
   selection: ReadonlySet<string>,
   parts: readonly ExportPart[],
 ): string[] {

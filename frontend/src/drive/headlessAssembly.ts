@@ -289,7 +289,7 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
       const message = e instanceof Error ? e.message : String(e)
       const entry: BundleMemoEntry = {
         bundle: { doc_id: docId, content_hash: '', schema: 0, bodies: [], anchors: {} },
-        index: { anchors: {}, byQuery: new Map(), bodies: {} },
+        index: { anchors: {}, byQuery: new Map(), parts: {} },
         outcome: { features: [], error: `bundle build failed: ${message}` },
       }
       partOutcomes[docId] = entry.outcome

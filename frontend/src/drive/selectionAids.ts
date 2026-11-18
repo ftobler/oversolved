@@ -135,7 +135,7 @@ const PROJECTION_SOURCE_PICK: PickRule = {
 /** Resolve one `{selector}` pick to the queries it matches. */
 function resolvePick(
   value: unknown,
-  bodies: Record<string, PartResult> | null,
+  parts: Record<string, PartResult> | null,
   label: string,
   rule: PickRule,
 ): PickQueries | PickRefusal {
@@ -162,7 +162,7 @@ function resolvePick(
         + `got ${JSON.stringify(value)}`,
     }
   }
-  if (bodies === null) {
+  if (parts === null) {
     return {
       ok: false,
       code: 'unresolved-ref',
@@ -172,7 +172,7 @@ function resolvePick(
   }
   let items
   try {
-    items = selectByPredicate(selector, bodies).items
+    items = selectByPredicate(selector, parts).items
   } catch (e) {
     // The select engine owns the nearest-miss wording, and it throws on both a
     // missing `from` body and an empty match: those are unresolved picks, not
@@ -203,9 +203,9 @@ function resolvePick(
   return { ok: true, queries: items.map(item => item.query), items }
 }
 
-function planeStep(raw: RawStep, bodies: Record<string, PartResult> | null): SelectionAidResolution {
+function planeStep(raw: RawStep, parts: Record<string, PartResult> | null): SelectionAidResolution {
   if (!pickOf(raw.plane)) return { ok: true, mutation: raw }
-  const pick = resolvePick(raw.plane, bodies, `${raw.type as string} plane`, PLANE_PICK)
+  const pick = resolvePick(raw.plane, parts, `${raw.type as string} plane`, PLANE_PICK)
   if (!pick.ok) return pick
   return { ok: true, mutation: { ...raw, plane: pick.queries[0] } }
 }
@@ -221,9 +221,9 @@ function projectedKindOf(item: SelectItem): string {
   return item.kind === 'edge' ? projectedKindForEdge(item.geometry.kind) : 'point'
 }
 
-function sourceStep(raw: RawStep, bodies: Record<string, PartResult> | null): SelectionAidResolution {
+function sourceStep(raw: RawStep, parts: Record<string, PartResult> | null): SelectionAidResolution {
   if (!pickOf(raw.source)) return { ok: true, mutation: raw }
-  const pick = resolvePick(raw.source, bodies, `${raw.type as string} source`, PROJECTION_SOURCE_PICK)
+  const pick = resolvePick(raw.source, parts, `${raw.type as string} source`, PROJECTION_SOURCE_PICK)
   if (!pick.ok) return pick
   // Fill only a missing kind. A present but wrong one (kind: 5) is left for the
   // value rules to refuse rather than silently corrected here, the same refusal
@@ -238,7 +238,7 @@ function sourceStep(raw: RawStep, bodies: Record<string, PartResult> | null): Se
 function pickListStep(
   raw: RawStep,
   field: string,
-  bodies: Record<string, PartResult> | null,
+  parts: Record<string, PartResult> | null,
   kind: SelectKind,
 ): SelectionAidResolution {
   const entries = raw[field]
@@ -252,7 +252,7 @@ function pickListStep(
       queries.push(entry)
       continue
     }
-    const pick = resolvePick(entry, bodies, `${raw.type as string} ${field}[${i}]`, { kind, oneOnly: null })
+    const pick = resolvePick(entry, parts, `${raw.type as string} ${field}[${i}]`, { kind, oneOnly: null })
     if (!pick.ok) return pick
     for (const query of pick.queries) {
       if (!queries.includes(query)) queries.push(query)
@@ -261,12 +261,12 @@ function pickListStep(
   return { ok: true, mutation: { ...raw, [field]: queries } }
 }
 
-function shellStep(raw: RawStep, bodies: Record<string, PartResult> | null): SelectionAidResolution {
-  return pickListStep(raw, 'faces', bodies, 'face')
+function shellStep(raw: RawStep, parts: Record<string, PartResult> | null): SelectionAidResolution {
+  return pickListStep(raw, 'faces', parts, 'face')
 }
 
-function edgeStep(raw: RawStep, bodies: Record<string, PartResult> | null): SelectionAidResolution {
-  return pickListStep(raw, 'edges', bodies, 'edge')
+function edgeStep(raw: RawStep, parts: Record<string, PartResult> | null): SelectionAidResolution {
+  return pickListStep(raw, 'edges', parts, 'edge')
 }
 
 /** Rewrite every selector pick in a part mutation into the query string(s) it
@@ -274,20 +274,20 @@ function edgeStep(raw: RawStep, bodies: Record<string, PartResult> | null): Sele
  *  can run this on every step. */
 export function resolveSelectionAids(
   raw: unknown,
-  bodies: Record<string, PartResult> | null,
+  parts: Record<string, PartResult> | null,
 ): SelectionAidResolution {
   if (!isRecord(raw)) return { ok: true, mutation: raw }
   switch (raw.type) {
     case 'add_sketch':
     case 'set_feature_plane':
-      return planeStep(raw, bodies)
+      return planeStep(raw, parts)
     case 'add_shell':
-      return shellStep(raw, bodies)
+      return shellStep(raw, parts)
     case 'add_fillet':
     case 'add_chamfer':
-      return edgeStep(raw, bodies)
+      return edgeStep(raw, parts)
     case 'add_projected_entity':
-      return sourceStep(raw, bodies)
+      return sourceStep(raw, parts)
     default:
       return { ok: true, mutation: raw }
   }

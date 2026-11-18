@@ -15,7 +15,7 @@ export interface PickChipProps {
   emptyText?: string
   features?: PartFeature[]
   partLabels?: Record<string, string>
-  bodies?: Record<string, PartResult>
+  parts?: Record<string, PartResult>
   // When set, each value is labelled as a body (part) pick instead of an
   // element pick. Passed by PickFieldWidget from the field's `names` flag.
   labelKind?: 'body'
@@ -47,7 +47,7 @@ export function PickChip({
   emptyText,
   features,
   partLabels,
-  bodies,
+  parts: bodies,
   labelKind,
   unresolvedValues,
   failedValues,

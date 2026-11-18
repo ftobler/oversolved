@@ -86,7 +86,7 @@ describe('Body3D topo-fallback queries are keyed on the body', () => {
   // edge/vertex/face resolvers moved to bodyGeometry (one padded list feeds both
   // the highlight index and the ID-layer registration), so scan both files.
   it('has no feature-keyed mint site left in Body3D or bodyGeometry', () => {
-    const src = ['Part3D.tsx', 'bodyGeometry.ts']
+    const src = ['Part3D.tsx', 'partGeometry.ts']
       .map(f => readFileSync(join(__dirname, '..', f), 'utf8')).join('\n')
     const sites = [...src.matchAll(/topoFallbackQuery\(\s*(\w+)/g)].map(m => m[1])
     expect(sites.length).toBeGreaterThanOrEqual(3)  // edge, vertex, face

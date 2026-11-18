@@ -27,7 +27,7 @@ export function FeatureEditPanel() {
   const doc = usePartEditorStore(s => s.doc)
   const partLabels = usePartEditorStore(s => s.partLabels)
   const solveResults = usePartEditorStore(s => s.solveResults)
-  const bodies = usePartEditorStore(s => s.parts)
+  const parts = usePartEditorStore(s => s.parts)
   const { onEditCommit, onEditCancel, onMutation } = usePartEditorCallbacks()
 
   // Nothing open, or the open id names a feature with no editor body (a
@@ -67,7 +67,7 @@ export function FeatureEditPanel() {
           onMutation={onMutation}
           features={features}
           partLabels={partLabels}
-          status={featureFailure(feature.id, solveResults, bodies)}
+          status={featureFailure(feature.id, solveResults, parts)}
           solved={solved}
         />
       </div>

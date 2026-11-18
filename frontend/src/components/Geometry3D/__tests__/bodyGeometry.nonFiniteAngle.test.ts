@@ -2,7 +2,7 @@
 // Infinity angle the segment count became Infinity and the tessellation loop
 // never terminated, freezing the whole viewport on one malformed edge.
 import { describe, it, expect } from 'vitest'
-import { buildEdgeSegmentGeometry } from '@/components/Geometry3D/bodyGeometry'
+import { buildEdgeSegmentGeometry } from '@/components/Geometry3D/partGeometry'
 import type { EdgeData } from '@/types/cad'
 
 describe('buildEdgeSegmentGeometry non-finite angles', () => {

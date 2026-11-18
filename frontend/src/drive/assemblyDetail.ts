@@ -162,6 +162,6 @@ export function shapeAssemblyMeasures(
   detail: AssemblyDetail,
 ): MeasureRecord | Omit<MeasureRecord, 'perBody'> {
   if (detail === 'full') return measures
-  const { perBody: _perBody, ...aggregate } = measures
+  const { perBody: _perPart, ...aggregate } = measures
   return aggregate
 }

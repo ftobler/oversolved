@@ -40,13 +40,13 @@ describe('MeasurementDisplay', () => {
   })
 
   it('renders the two-pick body readout from the canned BodyResult', () => {
-    render(<MeasurementDisplay sketch={{}} bodies={{ body_1: body }} />)
+    render(<MeasurementDisplay sketch={{}} parts={{ body_1: body }} />)
     expect(screen.getByText('distance 5.000 mm')).toBeTruthy()
   })
 
   it('renders nothing for a single face', () => {
     useSketchEditorStore.setState({ normalSelection: new Set(['?f0:flatface']) })
-    render(<MeasurementDisplay sketch={{}} bodies={{ body_1: body }} />)
+    render(<MeasurementDisplay sketch={{}} parts={{ body_1: body }} />)
     expect(screen.queryByText(/distance/)).toBeNull()
   })
 
@@ -55,7 +55,7 @@ describe('MeasurementDisplay', () => {
     useSketchEditorStore.setState({ normalSelection: new Set(['@body_1', '@body_2']) })
     mockMeasure.mockResolvedValue({ value: 4 })
     const { container } = render(
-      <MeasurementDisplay sketch={{}} bodies={{ body_1: body, body_2: body }} generation="boot:1" />,
+      <MeasurementDisplay sketch={{}} parts={{ body_1: body, body_2: body }} generation="boot:1" />,
     )
 
     // The row is reserved (and empty) while the reply is in flight.
@@ -73,7 +73,7 @@ describe('MeasurementDisplay', () => {
 
   it('asks nothing without a solve generation', () => {
     useSketchEditorStore.setState({ normalSelection: new Set(['@body_1', '@body_2']) })
-    const { container } = render(<MeasurementDisplay sketch={{}} bodies={{ body_1: body, body_2: body }} />)
+    const { container } = render(<MeasurementDisplay sketch={{}} parts={{ body_1: body, body_2: body }} />)
     // No generation means no question: neither a readout nor a reserved row.
     expect(container.querySelector('.measurement-pending')).toBeNull()
   })

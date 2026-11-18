@@ -1,7 +1,7 @@
 import { useIdPipeline } from './IdPipelineContext'
 import { useRegisteredPart } from './idRegistrationUtils'
 import { partKeyFor } from './pickKey'
-import { resolveVertexQueries } from '@/components/Geometry3D/bodyGeometry'
+import { resolveVertexQueries } from '@/components/Geometry3D/partGeometry'
 import { isDevBuild } from '@/kernel/isDevBuild'
 
 /**

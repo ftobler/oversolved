@@ -50,7 +50,7 @@ function planeAnchor(id: string, point: [number, number, number]): Anchor {
 function index(): PartAnchorIndex {
   const anchors = Object.fromEntries(QUERIES.map((_, i) => [`a${i}`, planeAnchor(`a${i}`, FACES[i].centroid)]))
   const byQuery = new Map(QUERIES.map((query, i) => [query, [`a${i}`]]))
-  return { anchors, byQuery, bodies: { body_ex1: BODY } }
+  return { anchors, byQuery, parts: { body_ex1: BODY } }
 }
 
 const indexFor = () => index()

@@ -17,7 +17,7 @@
 // the shader paints per vertex rather than trying to smooth across a crease.
 import type { Mesh3D } from '@/types/cad'
 import type { CurvatureKind } from '@/adapters/preferences'
-import { buildPartGeometry } from '@/components/Geometry3D/bodyGeometry'
+import { buildPartGeometry } from '@/components/Geometry3D/partGeometry'
 
 export interface CurvatureField {
   // Interleaved (mean, gaussian), two floats per vertex, matching the mesh's

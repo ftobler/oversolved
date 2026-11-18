@@ -172,7 +172,7 @@ export function readSolveOutcomes(
     // Only the hole result writes this field; anything but a drill side word
     // is not one and is dropped rather than echoed.
     const direction = row.direction === 'normal' || row.direction === 'reverse' ? row.direction : undefined
-    const bodyId = typeof row.body_id === 'string' && row.body_id !== '' ? row.body_id : undefined
+    const partId = typeof row.body_id === 'string' && row.body_id !== '' ? row.body_id : undefined
     const dof = typeof row.dof === 'number' && Number.isFinite(row.dof) ? row.dof : undefined
     const projectionErrors = projectionErrorReport(row.projection_errors, row.projection_unpositioned)
     outcomes[id] = {
@@ -182,7 +182,7 @@ export function readSolveOutcomes(
       ...(note !== undefined && { note }),
       ...(resolvedWarning !== undefined && { resolvedWarning }),
       ...(direction !== undefined && { direction }),
-      ...(bodyId !== undefined && { bodyId }),
+      ...(partId !== undefined && { bodyId: partId }),
       ...(dof !== undefined && { dof }),
       ...(projectionErrors !== undefined && { projectionErrors }),
     }

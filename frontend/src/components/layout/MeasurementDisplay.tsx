@@ -10,7 +10,7 @@ interface MeasurementDisplayProps {
   sketch: Sketch
   measurementIcon?: string
   solveResults?: Record<string, unknown>
-  bodies?: Record<string, PartResult>
+  parts?: Record<string, PartResult>
   // The part document's unit; the numbers are in it already, only the suffix
   // follows.
   lengthUnit?: LengthUnit
@@ -32,7 +32,7 @@ export default function MeasurementDisplay({
   sketch,
   measurementIcon,
   solveResults,
-  bodies,
+  parts: bodies,
   lengthUnit = 'mm',
   generation = null,
   measureSet = 'final',

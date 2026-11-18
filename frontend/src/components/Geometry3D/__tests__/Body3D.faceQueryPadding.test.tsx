@@ -7,7 +7,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render } from '@testing-library/react'
 
-import { resolveFaceQueries, faceCount } from '@/components/Geometry3D/bodyGeometry'
+import { resolveFaceQueries, faceCount } from '@/components/Geometry3D/partGeometry'
 import { HighlightIndex } from '@/picking/selectionHighlight'
 import { FACE_LAYER_NAME } from '@/picking/layerNames'
 import { faceRuns, HighlightColorPainter, type HighlightPalette } from '@/components/Geometry3D/highlightColorPainter'

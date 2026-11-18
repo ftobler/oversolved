@@ -18,7 +18,7 @@ import { setSketchSolver, resetSketchSolver } from '../../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { selectByPredicate, SelectorError } from '@/kernel/select'
 import type { Selector, VertexGeometry } from '@/kernel/select'
-import { resolveEdgeQueries } from '@/components/Geometry3D/bodyGeometry'
+import { resolveEdgeQueries } from '@/components/Geometry3D/partGeometry'
 import { topoFallbackQuery } from '@/utils/query/selectionId'
 import type { PartResult } from '@/types/cad'
 

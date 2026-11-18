@@ -52,7 +52,7 @@ function index(): PartAnchorIndex {
       ['q_edge', ['a_edge']],
       ['q_free', []],
     ]),
-    bodies: { body_ex1: BODY },
+    parts: { body_ex1: BODY },
   }
 }
 

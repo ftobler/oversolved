@@ -976,7 +976,7 @@ function parseExportArgs(raw: unknown): McpExportRequest {
   if (format !== 'step' && format !== 'stl') throw new McpInvalidParams('field "format" must be "step" or "stl"')
   const out = record.out
   if (typeof out !== 'string' || out.length === 0) throw new McpInvalidParams('field "out" must be a non-empty string')
-  const body = optionalString(record.body, 'body')
+  const part = optionalString(record.body, 'body')
   const parts = readParts(record.parts)
   const detail = readDetail(record.detail)
   return {
@@ -984,7 +984,7 @@ function parseExportArgs(raw: unknown): McpExportRequest {
     ...(parts !== undefined && { parts }),
     format,
     out,
-    ...(body !== undefined && { body }),
+    ...(part !== undefined && { body: part }),
     ...(detail !== undefined && { detail }),
     ...(optionalString(record.docId, 'docId') !== undefined && { docId: record.docId as string }),
     files: readFiles(record.files),

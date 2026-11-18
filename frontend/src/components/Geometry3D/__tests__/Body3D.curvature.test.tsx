@@ -30,8 +30,8 @@ vi.mock('@/components/Geometry3D/curvature', async (importOriginal) => {
   }
 })
 
-vi.mock('@/components/Geometry3D/bodyGeometry', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/components/Geometry3D/bodyGeometry')>()
+vi.mock('@/components/Geometry3D/partGeometry', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/components/Geometry3D/partGeometry')>()
   return {
     ...actual,
     buildPartSurfaceGeometry: (mesh: Mesh3D) => {

@@ -9,8 +9,8 @@ import { setLivePipeline } from '../IdPipelineContext'
 // that agreement so a future refactor that derives them separately cannot
 // silently shift every later segment onto the wrong edge query. This stubs the
 // builder to disagree and pins the loud failure.
-vi.mock('@/components/Geometry3D/bodyGeometry', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/components/Geometry3D/bodyGeometry')>()
+vi.mock('@/components/Geometry3D/partGeometry', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/components/Geometry3D/partGeometry')>()
   return {
     ...actual,
     buildEdgeSegmentGeometry: () => ({

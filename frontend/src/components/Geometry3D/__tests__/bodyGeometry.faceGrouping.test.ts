@@ -6,7 +6,7 @@ import {
   groupTrianglesByFace,
   lazyFaceTriangles,
   resolveFaceQueries,
-} from '@/components/Geometry3D/bodyGeometry'
+} from '@/components/Geometry3D/partGeometry'
 
 /**
  * `buildFaceBoundarySegments` used to find its face's triangles by scanning the

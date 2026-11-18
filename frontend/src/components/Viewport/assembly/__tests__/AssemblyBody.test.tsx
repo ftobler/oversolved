@@ -12,7 +12,7 @@ import AssemblyPartMesh from '../AssemblyPartMesh'
  * was aiming at.
  */
 
-vi.mock('@/components/Geometry3D/bodyGeometry', () => ({
+vi.mock('@/components/Geometry3D/partGeometry', () => ({
   buildBodyGeometry: () => ({
     positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
     indices: new Uint32Array([0, 1, 2]),

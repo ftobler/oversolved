@@ -2,7 +2,7 @@ import { useIdPipeline } from './IdPipelineContext'
 import { useRegisteredPart } from './idRegistrationUtils'
 import { partKeyFor } from './pickKey'
 import type { EdgeData } from '@/types/cad'
-import { buildEdgeSegmentGeometry, resolveEdgeQueries } from '@/components/Geometry3D/bodyGeometry'
+import { buildEdgeSegmentGeometry, resolveEdgeQueries } from '@/components/Geometry3D/partGeometry'
 import { isDevBuild } from '@/kernel/isDevBuild'
 
 /**

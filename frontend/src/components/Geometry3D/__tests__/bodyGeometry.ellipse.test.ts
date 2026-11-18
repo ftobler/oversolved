@@ -2,7 +2,7 @@
 // Guards the ellipse arms of buildEdgeSegmentGeometry that the circle/arc/spline
 // arms previously did not cover.
 import { describe, it, expect } from 'vitest'
-import { buildEdgeSegments, buildEdgeSegmentGeometry } from '@/components/Geometry3D/bodyGeometry'
+import { buildEdgeSegments, buildEdgeSegmentGeometry } from '@/components/Geometry3D/partGeometry'
 import type { EdgeData } from '@/types/cad'
 
 describe('buildEdgeSegments ellipse', () => {

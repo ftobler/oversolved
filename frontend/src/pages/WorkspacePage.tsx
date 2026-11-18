@@ -157,10 +157,10 @@ export default function WorkspacePage() {
   // clearing them on unmount), so the guarded links have to be reachable here
   // to ask about them -- and a refused entry is a wrong turn, not a dead end
   // with no way back.
-  const chrome = (body: ReactNode) => (
+  const chrome = (part: ReactNode) => (
     <div className="document-viewer">
       <AppHeader breadcrumb={<Breadcrumb />} />
-      {body}
+      {part}
     </div>
   )
 

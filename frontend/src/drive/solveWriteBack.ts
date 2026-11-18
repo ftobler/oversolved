@@ -82,8 +82,8 @@ export function applySolveToDoc(doc: PartDoc, response: SolveResponseLike): Solv
     // drifting upward. The browser adapter still reconciles additively; this
     // headless write-back is where the stale entry is removed.
     const live = new Set(Object.keys(response.bodies))
-    for (const bodyId of Object.keys(cloned.part_style ?? {})) {
-      if (!live.has(bodyId)) delete cloned.part_style![bodyId]
+    for (const partId of Object.keys(cloned.part_style ?? {})) {
+      if (!live.has(partId)) delete cloned.part_style![partId]
     }
     reconcilePartStyle(cloned, response.bodies as Record<string, PartResult>)
   }
