@@ -25,6 +25,9 @@ vi.mock('@/kernel/worker/solverClient', () => ({ buildBundleViaWorker: h.buildBu
 
 import { useAssemblySolve, partSpecs, mateSpecs, currentHashes } from '@/hooks/useAssemblySolve'
 import { partBundleKey } from '@/workspace/contentHash'
+import { IdbWorkspaceStore } from '@/workspace/store'
+import { createWorkspaceSession } from '@/workspace/session'
+import { resetWorkspaceIdb } from '@/workspace/__tests__/idbHarness'
 import { bumpWorkspaceStoreRevision } from '@/workspace/storeEvents'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import type { WorkspaceSession } from '@/workspace/session'
@@ -244,6 +247,32 @@ describe('currentHashes', () => {
     h.listEntries.mockResolvedValue([{ id: 'doc-p1', kind: 'document', name: 'P1', contentHash: 'ch-after' }])
     expect(await currentHashes(asm)).toEqual({ 'doc-p1': partBundleKey('ch-after', []) })
   })
+
+  // The same claim driven through a REAL workspace store, so it is the
+  // working-copy write that moves the key, not a mock handing back a new hash.
+  // A part editor's save writes the edited text here before the assembly is
+  // reopened, which is exactly the "edit a part, come back" sequence.
+  it('a working-copy write to the part moves its bundle key', async () => {
+    resetWorkspaceIdb()
+    const store = new IdbWorkspaceStore()
+    const { workspace } = await store.create('P1', { docKind: 'part' })
+    await store.writeEntry(workspace, {
+      id: workspace, kind: 'document', name: 'P1', docKind: 'part', text: 'kind: part\nfeatures: []\n',
+    })
+    useWorkspaceSessionStore.setState({ session: createWorkspaceSession(workspace, store) })
+    const asm = docWith(instance('p1', { doc_id: workspace }))
+
+    const before = await currentHashes(asm)
+    expect(before[workspace]).toBeDefined()
+
+    await store.writeEntry(workspace, {
+      id: workspace, kind: 'document', name: 'P1', docKind: 'part', text: 'kind: part\nfeatures: []\n# edit\n',
+    })
+    const after = await currentHashes(asm)
+
+    expect(after[workspace]).toBeDefined()
+    expect(after[workspace]).not.toBe(before[workspace])
+  })
 })
 
 describe('useAssemblySolve', () => {
@@ -309,6 +338,42 @@ describe('useAssemblySolve', () => {
 
     await act(async () => { release(); await gate })
     expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2)
+  })
+
+  // H3 pin: every version bump that can drop an in-flight result is a
+  // requestSolve, which also bumps the token and therefore starts the trailing
+  // solve. So a dropped result is always followed by one that owns the record,
+  // and that trailing result is what the store keeps.
+  it('a dropped in-flight result is followed by the trailing solve that wins', async () => {
+    const withTx = (tx: number) => ({
+      id: 1, kind: 'solveAssembly' as const, ok: true as const,
+      payload: { transforms: { p1: { ...IDENTITY_TRANSFORM, tx } }, bodies: { p1: [meshPayload()] } },
+    })
+    let releaseA!: () => void
+    const gateA = new Promise<void>(r => { releaseA = r })
+    h.solveAssemblyViaWorker
+      .mockImplementationOnce(async () => { await gateA; return withTx(111) })
+      .mockImplementationOnce(async () => withTx(7))
+
+    const { result } = renderHook(() => useAssemblySolve('asm-1', docWith(instance('p1'))))
+
+    await act(async () => { result.current.requestSolve() })  // solve A in flight
+    expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1)
+
+    // Two requests during A: the version moves so A's result is dropped, and the
+    // coalescer owes exactly one solve, not two.
+    await act(async () => {
+      result.current.requestSolve()
+      result.current.requestSolve()
+    })
+    expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1)
+
+    await act(async () => { releaseA(); await gateA })
+    await act(async () => {})
+
+    expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2)
+    // The trailing solve's result owns the scene; A's pose never landed.
+    expect(useAssemblyStore.getState().transforms.p1.tx).toBe(7)
   })
 
   it('two requestSolve calls in one burst list the workspace entries once', async () => {

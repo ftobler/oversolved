@@ -296,8 +296,27 @@ export interface AssemblyCallbacks {
 
 let callbacks: AssemblyCallbacks | null = null
 
+/**
+ * Register the page's doc mutators and solve trigger.
+ *
+ * The solve trigger is wrapped, not stored, so every solve the store asks for
+ * also settles the owed flag: a full solve reads the document the deferred mate
+ * edit already landed in, so the debt is paid by definition. Clearing it on the
+ * way through is what keeps a later disarm (the editor close, a delete, an
+ * undo) from spending a second solve on an edit the first one already picked up.
+ */
 export function setAssemblyCallbacks(cb: AssemblyCallbacks | null): void {
-  callbacks = cb
+  if (!cb) {
+    callbacks = null
+    return
+  }
+  callbacks = {
+    ...cb,
+    requestSolve: () => {
+      if (useAssemblyStore.getState().mateFieldDirty) useAssemblyStore.setState({ mateFieldDirty: false })
+      cb.requestSolve()
+    },
+  }
 }
 
 interface AssemblyEditorState extends AssemblyEditorData {
@@ -323,6 +342,8 @@ interface AssemblyEditorState extends AssemblyEditorData {
   // read it without the page threading it through every call.
   openInstanceEditor: (handle: string) => void
   openMateEditor: (id: string) => void
+  // Close the open editor. Disarms the mate field first, so the solve a deferred
+  // edit owes lands here rather than waiting for a disarm that never comes.
   closeEditor: () => void
   // Arm a reference slot for the next pick; `null` disarms and re-solves if owed.
   setActiveMateField: (target: MateFieldTarget | null) => void
@@ -425,9 +446,17 @@ export const useAssemblyStore = create<AssemblyEditorState>((set, get) => ({
   openMateEditor: (id) => set(prev => ({
     editingSubject: reduceEditingSubject(prev.editingSubject, { type: 'open_mate', id }),
   })),
-  closeEditor: () => set(prev => ({
-    editingSubject: reduceEditingSubject(prev.editingSubject, { type: 'close' }),
-  })),
+  // Closing an editor is a way of leaving a mate, so it goes through the same
+  // disarm as selecting away: an armed chip left behind would keep aiming into
+  // a closed editor and, worse, keep a deferred parameter edit owed with no
+  // close left to settle it. Every close path (opening another editor, a
+  // delete, undo) funnels here, so none of them can forget.
+  closeEditor: () => {
+    get().setActiveMateField(null)
+    set(prev => ({
+      editingSubject: reduceEditingSubject(prev.editingSubject, { type: 'close' }),
+    }))
+  },
 
   // The document swapped: the History (and through it the mirror) must not
   // carry the previous document's entries into the new one.

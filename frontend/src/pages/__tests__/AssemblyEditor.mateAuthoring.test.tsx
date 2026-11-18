@@ -82,7 +82,7 @@ import { findMate } from '@/utils/assemblyMutations'
 import { MATE_KINDS } from '@/utils/mateKinds'
 import { insertMateCommand } from '@/pages/assemblyCommandEntries'
 import type { MateKind } from '@/types/cad'
-import { tick, renderEditor, installSessionFromList, cardAction } from './AssemblyEditor.harness'
+import { tick, renderEditor, installSessionFromList, cardAction, insertPart } from './AssemblyEditor.harness'
 
 // Stage 8: mate authoring. The picks are synthetic ID-buffer hits fed straight
 // to the store, because the viewport is mocked out here; the pointer surface
@@ -197,6 +197,37 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
 
     fireEvent.click(cardAction('OK'))
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2))
+  })
+
+  // The reported stall. Opening another editor closes the mate one through
+  // closeOpenEditor (commitSession + closeEditor), which used to leave the chip
+  // armed and the edit owed: the doc changed and the scene never followed.
+  it('opening the instance editor settles the solve an armed, edited chip owes', async () => {
+    h.list = [{ uuid: 'part-1', name: 'Bracket', kind: 'part', meta: { rev: 5 } }]
+    renderEditor()
+    await tick()
+    await tick()
+    await insertPart('Bracket')
+    act(() => { executeCommand(insertMateCommand('fixed')) })
+    await tick()
+    expect(useAssemblyStore.getState().activeMateField).toEqual({ featureId: mateId(), field: 'ref_a' })
+
+    // A parameter edit while the chip is armed is deferred, exactly as the
+    // param box does it.
+    fireEvent.change(screen.getByLabelText('Offset X, millimetres'), { target: { value: '5' } })
+    await tick()
+    expect(mateDef().offset).toEqual({ x: 5 })
+    expect(useAssemblyStore.getState().mateFieldDirty).toBe(true)
+    await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2))  // load + insert part
+    const before = h.solveAssemblyViaWorker.mock.calls.length
+
+    fireEvent.click(screen.getByLabelText('Edit part instance'))
+    await tick()
+    await tick()
+
+    expect(useAssemblyStore.getState().activeMateField).toBeNull()
+    expect(useAssemblyStore.getState().mateFieldDirty).toBe(false)
+    await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(before + 1))
   })
 
   // Clicking the armed chip disarms it, leaving the editor open.
