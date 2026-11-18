@@ -80,7 +80,7 @@ export class SharedHarness {
       trySolveFeature: createFeatureSolver(this.oc, scope, table, files),
       postRegister, initGlobalRepo,
       tessellateParts: (partStore) => {
-        // The one-Body-one-solid gate, at the point every real-OCC build test
+        // The one-Part-one-solid gate, at the point every real-OCC build test
         // already passes through: a leaf that produces a multi-solid body
         // fails its own test rather than shipping one Parts row that is
         // really N parts. See features/partSplit.ts.

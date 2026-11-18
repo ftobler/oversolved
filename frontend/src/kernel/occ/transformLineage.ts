@@ -18,9 +18,9 @@ import { noProgress } from './defaultArgs'
 export interface FaceNameMaps {
   faceNames: SubShapeMap<string>
   faceAncestry: Record<string, string[]>
-  // Cap identification nets keyed by the mapped face uuid (Body.face_cap_ancestry).
+  // Cap identification nets keyed by the mapped face uuid (Part.face_cap_ancestry).
   capAncestry: Record<string, string[]>
-  // The minting feature, per face uuid (Body.face_owner). A transformed copy's
+  // The minting feature, per face uuid (Part.face_owner). A transformed copy's
   // identity belongs to the leaf that copied it, not to the source feature.
   faceOwner: Record<string, string>
   edgeOwner: Record<string, string>

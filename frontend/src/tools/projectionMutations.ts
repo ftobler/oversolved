@@ -81,7 +81,7 @@ export function projectionMutationsForId(
     return [{ type: 'add_projected_entity', featureId, kind: 'point', source }]
   }
 
-  // Body geometry pick: ancestry query from face/edge/vertex layer
+  // Part geometry pick: ancestry query from face/edge/vertex layer
   if (id.startsWith('?')) {
     let kind = 'point'
     let isFace = false

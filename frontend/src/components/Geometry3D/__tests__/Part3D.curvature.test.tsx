@@ -61,7 +61,7 @@ function materialName(container: HTMLElement): string | null {
   return material ? (material.getAttribute('name') ?? (material as unknown as { name: string }).name ?? null) : null
 }
 
-describe('Body3D curvature', () => {
+describe('Part3D curvature', () => {
   it('computes nothing while the row is off', async () => {
     await renderPart()
     expect(curvatureSpy).not.toHaveBeenCalled()

@@ -43,7 +43,7 @@ function materialName(container: HTMLElement): string | null {
   return material ? (material.getAttribute('name') ?? (material as unknown as { name: string }).name ?? null) : null
 }
 
-describe('Body3D zebra', () => {
+describe('Part3D zebra', () => {
   it('uses the plain body material while zebra is off', async () => {
     const { container } = await renderPart()
     expect(materialName(container)).toBe('body-material')

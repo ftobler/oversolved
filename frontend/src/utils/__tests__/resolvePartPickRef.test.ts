@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { resolvePartPickRef, resolveAxisQuery } from '@/utils/query/resolvePartPickRef'
 
-describe('resolveBodyPickRef', () => {
+describe('resolvePartPickRef', () => {
   it('converts body: prefix to @body_ ref', () => {
     expect(resolvePartPickRef('body:body_ex1')).toBe('@body_ex1')
   })
@@ -40,7 +40,7 @@ describe('resolveBodyPickRef', () => {
   // A merge target is written by the same transform as a source_body pick. The
   // merge-target variant used to mint '@body_' + everything before the first
   // slash of a '?' query, i.e. the literal id '@body_4;@ex1:solid', and persist
-  // it; nothing could ever resolve that. Body-exact refs must survive verbatim.
+  // it; nothing could ever resolve that. Part-exact refs must survive verbatim.
   it('never mints a "@body_" id out of a ? query', () => {
     for (const q of ['?4;@ex1:solid', '?9,9;@ex1face0@ex1face1:face']) {
       expect(resolvePartPickRef(q)).toBe(q)

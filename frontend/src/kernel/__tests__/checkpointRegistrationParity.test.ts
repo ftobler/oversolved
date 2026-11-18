@@ -110,17 +110,17 @@ const solve = (
 }
 
 interface HarnessOptions {
-  // Body ids whose mesh comes back flagged as a fallback (no real B-rep behind it).
+  // Part ids whose mesh comes back flagged as a fallback (no real B-rep behind it).
   fallbackParts?: string[]
-  /** Body ids the METADATA extractor drops while tessellation still succeeds, mimicking
+  /** Part ids the METADATA extractor drops while tessellation still succeeds, mimicking
    *  `extractBrepMetadata`'s per-body failure exit (it logs and omits the body). */
   metaOmits?: string[]
-  // Body ids whose blob carries edges/vertices but no `edge_queries`/`vertex_queries`.
+  // Part ids whose blob carries edges/vertices but no `edge_queries`/`vertex_queries`.
   queryless?: string[]
-  /** Body ids for which the face-hash diff throws, standing in for a throw from deep
+  /** Part ids for which the face-hash diff throws, standing in for a throw from deep
    *  inside the registrar (edgeGeometryHash on a malformed arc, a NaN sort key). */
   registrarThrows?: string[]
-  // Body ids for which the METADATA extractor throws outright instead of omitting.
+  // Part ids for which the METADATA extractor throws outright instead of omitting.
   metaThrows?: string[]
 }
 

@@ -54,7 +54,7 @@ export interface DxfProfile {
 
 export interface DxfImportOptions {
   // The layer names to import, matched case-insensitively after trimming (DXF
-  // layer names are case-insensitive, so `Body` and `BODY` are one layer).
+  // layer names are case-insensitive, so `Part` and `BODY` are one layer).
   // Absent imports every layer.
   layers?: readonly string[]
 }
@@ -578,7 +578,7 @@ export function parseDxfProfile(
   const raw = rawEntities(section)
   const fileLayers = fileLayerMap(raw)
   const pickedLayers = options.layers === undefined ? undefined : resolvePickedLayers(options.layers, fileLayers)
-  // Folded for the same reason the name lookup is: `Body` and `BODY` are one
+  // Folded for the same reason the name lookup is: `Part` and `BODY` are one
   // layer to DXF even when a writer spelled both.
   const picked = pickedLayers === undefined ? null : new Set(pickedLayers.map(name => name.toLowerCase()))
   const entities: DxfEntity[] = []

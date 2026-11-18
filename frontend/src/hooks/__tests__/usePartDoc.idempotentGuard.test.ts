@@ -583,7 +583,7 @@ it('the add_* toggle families are classified false, so a re-pick is never swallo
   }
 })
 
-// ─── Body-style mutations with a missing bodyId ───
+// ─── Part-style mutations with a missing bodyId ───
 
 // A body-style mutation without a bodyId writes part_style[undefined] - a real
 // doc change the no-op slice cannot represent - so the guard must never swallow

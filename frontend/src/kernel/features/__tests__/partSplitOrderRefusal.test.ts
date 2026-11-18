@@ -36,7 +36,7 @@ import { DisposeScope } from '../../occ/disposeScope'
 import { SPLIT_EPS } from '../../constructionName'
 import type { OccShape } from '../../occ/occTypes'
 
-describe('bodySplit: orderSolids refusal messages', () => {
+describe('partSplit: orderSolids refusal messages', () => {
   // Give the split two solid placeholders whose centroids read as `centroids`.
   function stubSplit(centroids: Vec3[]): void {
     const items = centroids.map(() => ({}) as OccShape)

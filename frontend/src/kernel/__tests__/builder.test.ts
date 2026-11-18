@@ -198,7 +198,7 @@ describe('build with mock solvers', () => {
     expect(Object.keys(cp.bodies_snapshot as object).length).toBe(0)
   })
 
-  it('calls deps.tessellateBodies with the body store', () => {
+  it('calls deps.tessellateParts with the body store', () => {
     let calledWith: unknown = null
     const deps = makeDeps({
       tessellateParts: (store, _repo) => {

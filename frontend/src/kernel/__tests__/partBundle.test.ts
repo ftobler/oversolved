@@ -199,7 +199,7 @@ describe('toEdgeCurve', () => {
   })
 })
 
-describe('toBodyMesh', () => {
+describe('toPartMesh', () => {
   it('converts a BodyResult with tuple mesh into typed arrays', () => {
     const part: PartResult = {
       id: 'body_1',

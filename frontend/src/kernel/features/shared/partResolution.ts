@@ -1,4 +1,4 @@
-// Body and merge-target resolution shared by the boolean, transform, delete
+// Part and merge-target resolution shared by the boolean, transform, delete
 // and pattern leaves. Pure store lookups, no OCC.
 
 import type { PartSolid } from '../../types3d'
@@ -35,7 +35,7 @@ function singlePartOf(ref: string, partStore: Record<string, PartSolid>): PartSo
 }
 
 /**
- * Resolve a body reference to its Body (mirrors `_resolve_body`). Accepts
+ * Resolve a body reference to its Part (mirrors `_resolve_body`). Accepts
  * "@feat", "feat", "body_feat", viewport selection forms ("face:id:...",
  * "entity:...", "body:id", "edge:...", "vertex:..."), and "?...:type" ancestry
  * queries (matched via their "@body_*" ancestors). Throws if nothing matches.
@@ -60,8 +60,8 @@ export function resolvePart(ref: string, partStore: Record<string, PartSolid>): 
 }
 
 /**
- * Build an empty Body shell with default fields (shape is assigned by the caller
- * after registration). Mirrors Python Body(id, created_by, shape, sketch_id).
+ * Build an empty Part shell with default fields (shape is assigned by the caller
+ * after registration). Mirrors Python Part(id, created_by, shape, sketch_id).
  */
 export function barePart(id: string, createdBy: string, sketchId = ''): PartSolid {
   return {
@@ -175,7 +175,7 @@ export function resolvePartRefKeys(
     // though the face is not. Anything else the repo throws is a real failure.
     if (!(e instanceof AmbiguousQueryError)) throw e
   }
-  // A resolved Body carries created_by + id; a geometry dict carries body_id.
+  // A resolved Part carries created_by + id; a geometry dict carries body_id.
   if (resolved !== null) {
     if ('created_by' in resolved && typeof resolved.id === 'string') return [resolved.id]
     if (resolved.body_id) return [String(resolved.body_id)]
@@ -213,7 +213,7 @@ export function resolvePartRefList(
 }
 
 /**
- * Body IDs a body operation should target (mirrors `_resolve_merge_targets`).
+ * Part IDs a body operation should target (mirrors `_resolve_merge_targets`).
  * Empty/None merge target means ALL bodies; anything else goes through
  * `resolvePartIds`.
  *

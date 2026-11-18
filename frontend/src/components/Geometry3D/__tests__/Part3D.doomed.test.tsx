@@ -91,7 +91,7 @@ const faceBase = () => (palettes[0] as HighlightPalette).base
 /** The edge palette is the second useHighlightColors call of a render. */
 const edgeBase = () => (palettes[1] as HighlightPalette).base
 
-describe('Body3D draws a doomed body marked', () => {
+describe('Part3D draws a doomed body marked', () => {
   it('marks it with a pink wireframe, overriding the grey edge', async () => {
     await renderPart({ doomed: true })
     expect(edgeBase()).toEqual(paletteRGB(COLOR_PART_REMOVED))
@@ -162,7 +162,7 @@ describe('Body3D draws a doomed body marked', () => {
   })
 })
 
-describe('Body3D keeps a doomed body in the id buffer', () => {
+describe('Part3D keeps a doomed body in the id buffer', () => {
   // This is the half that makes the feature more than cosmetic: hiding the
   // ghost took it out of the id buffer, so add_delete_body_ref -- a toggle --
   // could never receive the second click that un-picks it.

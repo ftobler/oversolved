@@ -207,7 +207,7 @@ export function makeTranslateSolver(dx: number): (input: Uint8Array) => Uint8Arr
       out.setFloat64(pos, params[i], true); pos += 8
     }
     out.setUint32(pos, 0, true); pos += 4  // n_mates
-    // Body 1 is the one this stand-in moved.
+    // Part 1 is the one this stand-in moved.
     for (let i = 0; i < nParts; i++) out.setUint8(pos + i, i === 1 && dx !== 0 ? 1 : 0)
     pos += nParts
     out.setFloat64(pos, 0.0, true); pos += 8

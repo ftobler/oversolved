@@ -97,7 +97,7 @@ describe('overlay material recipe', () => {
   })
 })
 
-describe('Body3D overlays share render order and blending', () => {
+describe('Part3D overlays share render order and blending', () => {
   // react-dom drops the `transparent` boolean for these host elements, so the
   // blending half of the recipe is asserted on overlayLineMaterialProps above;
   // what is pinned here is that BOTH states reach the shared component, and

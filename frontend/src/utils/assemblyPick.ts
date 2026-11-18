@@ -270,7 +270,7 @@ function isIdentityOffset(t: Transform3D): boolean {
 /**
  * Translate a baked pick snapshot onto the drawn pose. Each body carries its
  * instance handle; its offset is the drawn pose relative to the pose the
- * snapshot was baked at. Bodies already at their drawn pose are returned by
+ * snapshot was baked at. Parts already at their drawn pose are returned by
  * reference, so a settle re-registers only the parts that actually moved.
  */
 export function offsetPickParts(

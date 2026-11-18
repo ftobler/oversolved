@@ -151,7 +151,7 @@ function dxfImportMessage(profile: DxfProfile, fileName: string, grouped = true)
     parts.push(`skipped ${skipped.map(([kind, n]) => `${n} ${kind}`).join(', ')}`)
   }
   if (picked !== undefined) {
-    // Folded like the parser's match: `Body` and `BODY` are one layer.
+    // Folded like the parser's match: `Part` and `BODY` are one layer.
     const chosen = new Set(picked.map(name => name.toLowerCase()))
     const leftOut = Object.entries(profile.fileLayers)
       .filter(([layer]) => !chosen.has(layer.toLowerCase()))

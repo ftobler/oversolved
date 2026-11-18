@@ -476,7 +476,7 @@ describe('resolveDirection parity', () => {
   }
 })
 
-describe('resolveBody parity', () => {
+describe('resolvePart parity', () => {
   for (const c of f.resolve_body) {
     it(c.name as string, () => {
       const store = makeStore(c.store as Record<string, string>)
@@ -489,7 +489,7 @@ describe('resolveBody parity', () => {
   }
 })
 
-describe('resolveBody fallback resolution paths', () => {
+describe('resolvePart fallback resolution paths', () => {
   it('resolves a "?"-ancestry ref via its @body_ ancestor', () => {
     const store = makeStore({ body_1: 'extrude1' })
     // A viewport ancestry query carries the body as an "@body_<id>" ancestor.
@@ -545,7 +545,7 @@ describe('resolveBody fallback resolution paths', () => {
 // hole target). Once a feature owns several bodies, a ref that names the
 // FEATURE has no single answer, and the old "first match wins" quietly picked
 // half of a split body and reported success.
-describe('resolveBody ambiguity', () => {
+describe('resolvePart ambiguity', () => {
   const split = () => makeStore({ body_ex1: 'ex1', body_ex1_1: 'ex1', body_other: 'ex2' })
 
   it('throws, naming the candidates, when a feature ref covers several bodies', () => {

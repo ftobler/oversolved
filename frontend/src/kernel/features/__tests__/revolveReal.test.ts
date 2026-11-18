@@ -269,7 +269,7 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
     /**
      * Two independent rectangle sketches revolved together around the same
      * axis produce two disconnected toroidal solids. Per the separated-parts
-     * doctrine (one Body == one OCC solid, disjoint solids are separate parts)
+     * doctrine (one Part == one OCC solid, disjoint solids are separate parts)
      * these are TWO bodies, reported through `body_ids` -- the old guide said
      * "one body" and the missing profile was silently dropped. The two rects
      * sit at different heights so the swept tori have distinct centroids and

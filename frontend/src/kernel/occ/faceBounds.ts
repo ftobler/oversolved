@@ -190,7 +190,7 @@ export function faceBbox(oc: OccModule, scope: DisposeScope, face: OccShape): Bb
 }
 
 /**
- * A shape's AABB: the union of its faces' tightened boxes. Body shapes are
+ * A shape's AABB: the union of its faces' tightened boxes. Part shapes are
  * solids and shells, which their faces cover; a shape with no face (a wire, a
  * vertex) falls back to the plain optimal read.
  */

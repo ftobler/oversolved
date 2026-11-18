@@ -61,7 +61,7 @@ async function renderPart(visible = true) {
   )
 }
 
-describe('Body3D visible vertex pass', () => {
+describe('Part3D visible vertex pass', () => {
   it('draws exactly one instanced vertex mesh: the dot', async () => {
     const { container } = await renderPart()
     expect(container.querySelectorAll('instancedmesh')).toHaveLength(1)

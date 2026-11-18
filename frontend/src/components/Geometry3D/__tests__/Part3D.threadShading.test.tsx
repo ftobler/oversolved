@@ -52,7 +52,7 @@ async function renderPart(m: Mesh3D, threadSites: ThreadSiteIndex | null) {
   return render(<Part3D featureId="ex1" partId="body_ex1" mesh={m} threadSites={threadSites} />)
 }
 
-describe('Body3D thread shading', () => {
+describe('Part3D thread shading', () => {
   it('puts both thread attributes on a body with a tapped bore', async () => {
     await renderPart(mesh('u_bore'), sites)
     const surface = surfaces.at(-1)!

@@ -1,4 +1,4 @@
-// Body extents along a sweep direction, shared by the through-all cutters.
+// Part extents along a sweep direction, shared by the through-all cutters.
 // The hole leaf sizes a through bore from them and the extrude leaf sizes a
 // through-all cut, so the measurement lives here rather than in either leaf.
 //

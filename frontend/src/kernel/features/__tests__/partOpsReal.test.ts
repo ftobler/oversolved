@@ -92,7 +92,7 @@ describe.skipIf(!oc)('applyBodyOperation (real OCC)', () => {
       for (const [k, v] of Object.entries(result)) if (v !== undefined) cleanResult[k] = v
       expect(cleanResult).toEqual(scenario.result)
 
-      // Body-store parity.
+      // Part-store parity.
       expect(Object.keys(partStore).sort()).toEqual(Object.keys(scenario.store).sort())
       for (const [bid, exp] of Object.entries(scenario.store)) {
         const part = partStore[bid]

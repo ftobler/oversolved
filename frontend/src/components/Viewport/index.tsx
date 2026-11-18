@@ -468,7 +468,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   )
 
   // The legend names the range the bodies are actually painted with, and the
-  // range spans the whole visible scene. Bodies only compute their own field;
+  // range spans the whole visible scene. Parts only compute their own field;
   // this is the one place that sees them all.
   useEffect(() => {
     if (!curvature) {
@@ -481,7 +481,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
 
   // Show ALL pickBodies regardless of rollbackPosition -- these represent the body
   // state before entering edit mode, and the user needs to see every prior body to
-  // pick faces/edges as references for the feature being edited. Bodies the edit
+  // pick faces/edges as references for the feature being edited. Parts the edit
   // removes stay, marked doomed (see getGhostBodiesToRender).
   const pickPartItems = useMemo(
     () => getGhostPartsToRender(pickParts, parts, features, partStyle, visibleFeatures),
@@ -501,7 +501,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   )
 
   // Build a combined otherSketches that includes cross-sketch entities AND projected body geometry.
-  // Body geometry is projected to 2D using the active sketch's plane transform so snap detection
+  // Part geometry is projected to 2D using the active sketch's plane transform so snap detection
   // can treat it as regular sketch candidates (with a BODY_SNAP_FEAT_PREFIX sentinel featureId).
   // The decision lives in partUtils so it is unit tested away from the Viewport.
   const combinedOtherSketches = useMemo(

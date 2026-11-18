@@ -176,7 +176,7 @@ describe('body key single source', () => {
   // same key for the dispatch registry. A source pin there is the cheap guard
   // that the re-typed literal does not creep back (the format lives only in
   // pickKey.ts).
-  it('Body3D does not re-type the `${featureId}/${bodyId}` literal', () => {
+  it('Part3D does not re-type the `${featureId}/${bodyId}` literal', () => {
     const file = join(__dirname, '..', '..', 'components', 'Geometry3D', 'Part3D.tsx')
     const src = readFileSync(file, 'utf8')
     expect(src, file).not.toMatch(/\$\{featureId\}\/\$\{bodyId\}/)

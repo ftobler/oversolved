@@ -191,7 +191,7 @@ export function pickEditorFacts(state: DriveEditorStateLike): DriveEditorFacts {
 }
 
 /**
- * Reduce the session's inspection to JSON-safe, bounded facts. Bodies and
+ * Reduce the session's inspection to JSON-safe, bounded facts. Parts and
  * validation are summarized rather than copied: a body's mesh holds typed
  * arrays, and the full geometry belongs to screenshot and the probe, not to a
  * state readout.

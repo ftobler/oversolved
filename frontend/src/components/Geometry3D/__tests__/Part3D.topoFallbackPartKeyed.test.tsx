@@ -57,7 +57,7 @@ async function renderSibling(partId: string) {
   )
 }
 
-describe('Body3D topo-fallback queries are keyed on the body', () => {
+describe('Part3D topo-fallback queries are keyed on the body', () => {
   // All three mint sites run during this render: the legacy per-triangle one is
   // reached through `legacyFaceQueries` and mints a `tri` token, the paint path
   // taken when the mesh carries no `face_queries`.
@@ -85,7 +85,7 @@ describe('Body3D topo-fallback queries are keyed on the body', () => {
   // not see: no site may take the feature id, however many there are. The
   // edge/vertex/face resolvers moved to partGeometry (one padded list feeds both
   // the highlight index and the ID-layer registration), so scan both files.
-  it('has no feature-keyed mint site left in Body3D or bodyGeometry', () => {
+  it('has no feature-keyed mint site left in Part3D or partGeometry', () => {
     const src = ['Part3D.tsx', 'partGeometry.ts']
       .map(f => readFileSync(join(__dirname, '..', f), 'utf8')).join('\n')
     const sites = [...src.matchAll(/topoFallbackQuery\(\s*(\w+)/g)].map(m => m[1])

@@ -151,7 +151,7 @@ export type PatternSubject = 'body' | 'feature'
 
 export type PatternSourceDef = {
   subject?: PatternSubject
-  // Body subject.
+  // Part subject.
   source_body?: string
   operation?: 'add' | 'new'
   // Feature subject. Every source is reapplied at each grid instance; instance
@@ -434,7 +434,7 @@ export type MirrorFeatureDef = {
   // What is mirrored. Absent means body, so a document authored before the
   // feature subject existed keeps meaning the whole-body mirror it was.
   subject?: 'body' | 'feature'
-  // Body subject: the whole body is reflected, merged or spawned.
+  // Part subject: the whole body is reflected, merged or spawned.
   body?: string
   // Feature subject: earlier extrude/revolve/sweep/wrap rows whose own add or cut is
   // reapplied mirrored inside the body each shaped. Feature-log order decides
@@ -444,7 +444,7 @@ export type MirrorFeatureDef = {
   // source shaped more than one.
   target_body?: string
   plane: string
-  // Body subject only: a feature mirror reapplies the source's own operation
+  // Part subject only: a feature mirror reapplies the source's own operation
   // inside the same body, so the original always stays.
   keep_original?: boolean
   merge?: boolean

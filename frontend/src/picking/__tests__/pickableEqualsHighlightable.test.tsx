@@ -102,7 +102,7 @@ describe('pickable equals highlightable (g4-H1)', () => {
     pipeline.dispose()
   })
 
-  it('the face hook and Body3D count from one resolveFaceQueries result', () => {
+  it('the face hook and Part3D count from one resolveFaceQueries result', () => {
     // Faces already shared the resolver; this pins that edges/vertices now do
     // too by exercising the same call the hook makes.
     const mesh: Mesh3D = {

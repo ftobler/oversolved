@@ -218,7 +218,7 @@ describe('solveAssembly', () => {
     const mates = [
       { id: 'm1', kind: 'spherical', ref_a: { part: 'p1', anchor: 'a1' }, ref_b: { part: 'p2', anchor: 'a1' } },
     ]
-    // Body index 1 is p2 (p1 is index 0).
+    // Part index 1 is p2 (p1 is index 0).
     const result = await solveAssembly(parts, { 'doc-a': '1', 'doc-b': '1' }, mates, relay, makeScaledQwSolver(1, 1.02))
 
     const t = result.transforms['p2']

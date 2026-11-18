@@ -170,7 +170,7 @@ export function resolveDoc(req: McpDocArguments, documents: DocHandleStore): Res
   return { ok: true, kind: 'part', doc, docHash }
 }
 
-// The reply's one-line index of what the script built. Body ids are the live
+// The reply's one-line index of what the script built. Part ids are the live
 // bodies the final solve reported when the caller has them: part_style can
 // keep a colour entry for a body a boolean or join consumed (an older document,
 // or the browser's add-only reconcile), so its keys alone would name dead

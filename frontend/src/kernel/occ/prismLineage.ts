@@ -894,7 +894,7 @@ export function revolveFace(
  * maps) (mirrors `revolve_profile_with_lineage`). Disjoint loop groups are
  * revolved and fused; nested loops become holes -- the same fan-out extrude has,
  * so two separate profile areas become a compound the caller side splits into
- * separate bodies (one Body == one OCC solid). A single group keeps the raw
+ * separate bodies (one Part == one OCC solid). A single group keeps the raw
  * one-face revolve. Lineage tokens are `@sketch_id/entity`; a multi-group
  * revolve keeps each group's tokens, merged onto the fused solid.
  * OWNERSHIP: the returned `solid` is UNTRACKED. The caller must `scope.track()`

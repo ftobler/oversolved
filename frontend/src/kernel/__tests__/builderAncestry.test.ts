@@ -124,7 +124,7 @@ describe('classifiersOfQuery', () => {
 })
 
 describe('clean-prefix restore copies are owned per build', () => {
-  // Body shapes are opaque handles to the deps; plain numbers suffice here.
+  // Part shapes are opaque handles to the deps; plain numbers suffice here.
   const shapeOf = (n: number): NonNullable<PartSolid['shape']> => n as unknown as NonNullable<PartSolid['shape']>
 
   function partSnapshot(fid: string, shapes: number[]): Record<string, PartSolid> {

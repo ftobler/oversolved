@@ -1,4 +1,4 @@
-// Body-store and repository snapshots for the incremental builder: the
+// Part-store and repository snapshots for the incremental builder: the
 // persisted repo shape, its rehydration, the restore dedupe, and the per-build
 // body deep copies.
 

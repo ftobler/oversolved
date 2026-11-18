@@ -30,7 +30,7 @@ function renderEditor(feature: PartFeature, onMutation: () => void) {
   render(<FeatureEditor feature={feature} onMutation={onMutation} features={FEATURES} schema={CIRCULAR_PATTERN_SCHEMA} />)
 }
 
-/** Pick chips in field order: [0] Body, [1] Axis. */
+/** Pick chips in field order: [0] Part, [1] Axis. */
 function chips(): NodeListOf<HTMLElement> {
   return document.querySelectorAll<HTMLElement>('.feature-pick-chip')
 }

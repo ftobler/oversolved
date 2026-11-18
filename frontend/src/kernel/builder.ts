@@ -405,7 +405,7 @@ export function build(
     if (part.shape != null && part.created_by) shapeOwningFids.add(part.created_by)
   }
 
-  // Body version -> "its B-rep ancestry is in `globalRepo` right now", so the post-loop
+  // Part version -> "its B-rep ancestry is in `globalRepo` right now", so the post-loop
   // checkpoint pass can tell what a checkpoint's own snapshot already carries. Clean-prefix
   // bodies count as registered without being touched this build: their ancestry arrived
   // with the restored snapshot above, which is exactly the state every checkpoint of this
@@ -525,7 +525,7 @@ export function build(
         registeredPartIds.add(bodyId)
         if (landed) registeredVersions.set(bodyId, partVersion(body))
       } else if (body.shape != null && body.modified_by.length > (before[bodyId]?.modifiedByLen ?? 0)) {
-        // Body was modified; re-register faces so downstream features see updates. A
+        // Part was modified; re-register faces so downstream features see updates. A
         // failed re-registration must also drop the stale entry: the snapshot now holds
         // the PREVIOUS version's ancestry, which is not what this checkpoint carries.
         if (registerPartFaces(globalRepo, body, deps, extractMetaCached)) {

@@ -6,7 +6,7 @@
 // producers hand the diff over in the space of the body's own shape, so no
 // geometry is compared. The diff's sub-shapes die with the build, so right
 // after each feature solve the builder has them turned into canonical indices
-// (`Body.brep_new`), which a checkpoint restore carries along with the shape
+// (`Part.brep_new`), which a checkpoint restore carries along with the shape
 // copy. Every consumer reads the indices, so a full build and an incremental
 // one attribute alike.
 //
@@ -15,7 +15,7 @@
 // the next modifier: every earlier modifier's element silently reverted to the
 // body's creator. Face and edge identity is a construction UUID, which does
 // survive the reshaping (it rides the name transfer), so the attribution is
-// recorded against it too (`Body.face_owner` / `edge_owner`). A vertex has no
+// recorded against it too (`Part.face_owner` / `edge_owner`). A vertex has no
 // stored UUID (it is derived from its adjacent faces at tessellation time), so
 // vertices keep the last-modifier rule.
 

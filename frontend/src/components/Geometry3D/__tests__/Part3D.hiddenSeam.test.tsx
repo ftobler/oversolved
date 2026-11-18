@@ -87,7 +87,7 @@ beforeEach(() => {
   resetStore()
 })
 
-describe('Body3D hidden seam', () => {
+describe('Part3D hidden seam', () => {
   it('builds the beauty buffer without the hidden edge but keeps its run slot', async () => {
     await renderPart()
     const paint = edgePaint()

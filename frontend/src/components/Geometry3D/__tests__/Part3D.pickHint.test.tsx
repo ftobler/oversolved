@@ -90,7 +90,7 @@ const edgePaint = () => calls[calls.length - 1]
 /** The face painter is the call before it. */
 const facePaint = () => calls[calls.length - 2]
 
-describe('Body3D picked-primitive hint', () => {
+describe('Part3D picked-primitive hint', () => {
   it('a selected failed fillet draws exactly its picks', async () => {
     setSolve()
     useEditorState.setState({ normalSelection: new Set(['@fi1']) })

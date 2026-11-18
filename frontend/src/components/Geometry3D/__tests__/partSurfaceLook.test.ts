@@ -57,7 +57,7 @@ describe('bodySurfaceLook colour precedence', () => {
     expect(partSurfaceLook(style)).toEqual({ color: COLOR_PART_DEFAULT, ...style })
   })
 
-  it('defaults roughness to DEFAULT_PART_ROUGHNESS, matching the old Body3D default', () => {
+  it('defaults roughness to DEFAULT_PART_ROUGHNESS, matching the old Part3D default', () => {
     expect(partSurfaceLook({}).roughness).toBe(DEFAULT_PART_ROUGHNESS)
   })
 

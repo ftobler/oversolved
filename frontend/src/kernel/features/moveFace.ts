@@ -78,7 +78,7 @@ interface AppliedPick {
 }
 
 /** UUID -> face for a shape's face names (the mapping `resolveFacesByQuery`
- *  builds on a stored Body, rebuilt here on an intermediate move shape). */
+ *  builds on a stored Part, rebuilt here on an intermediate move shape). */
 function uuidMap(names: SubShapeMap<string>): Map<string, OccShape> {
   const out = new Map<string, OccShape>()
   for (const [face, uuid] of names.entries()) out.set(uuid, face as OccShape)

@@ -49,7 +49,7 @@ function renderPart(props: Record<string, unknown> = {}) {
   return render(<Part3D featureId="ex1" partId="body_ex1" mesh={mesh} {...props} />)
 }
 
-describe('Body3D ambient occlusion occluders', () => {
+describe('Part3D ambient occlusion occluders', () => {
   it('marks the face mesh as an occluder when it attaches', () => {
     renderPart()
     expect(occluderCalls).toHaveLength(1)

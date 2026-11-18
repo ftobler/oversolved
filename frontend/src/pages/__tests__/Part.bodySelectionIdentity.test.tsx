@@ -1,5 +1,5 @@
 /**
- * Body-level selections (`@body_...` from the parts list and pick chips) are
+ * Part-level selections (`@body_...` from the parts list and pick chips) are
  * consumed as if they were feature ids by the Delete key, and addPlane's
  * on_face misses topo-fallback face queries. Pins the selection-body-identity
  * decisions: a picked body inserts a real delete_body feature (no phantom

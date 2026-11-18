@@ -56,7 +56,7 @@ describe('body3dHoverViaIdBuffer', () => {
     expect(faceIndexCalled).toBe(0)  // resolved by the reverse index, not re-scanned here
   })
 
-  it('face hover propagates the pick key so Body3D can isolate one of two shared-query faces', () => {
+  it('face hover propagates the pick key so Part3D can isolate one of two shared-query faces', () => {
     let faceIndexCalled = -1
     registerPartCallbacks('feat1b/b1', {
       featureId: 'feat1b',

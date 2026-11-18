@@ -22,7 +22,7 @@ export function partDisplayName(
   }
 
   // Walk the ordered body ids so a body with no label is minted the same
-  // number partStyle.ts would give it at that position. Bodies not in the list
+  // number partStyle.ts would give it at that position. Parts not in the list
   // (a stale ref) get the next free number.
   let result: string | null = null
   const seen = new Set(orderedPartIds)

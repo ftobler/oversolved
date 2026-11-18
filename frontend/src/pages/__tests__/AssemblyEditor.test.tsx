@@ -158,7 +158,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
   it('mounts the assembly viewport and solves once on load', async () => {
     await renderLoaded()
     expect(screen.getByTestId('assembly-viewport')).toBeTruthy()
-    // Bodies only exist after a solve, so the load must ask for one.
+    // Parts only exist after a solve, so the load must ask for one.
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1))
   })
 

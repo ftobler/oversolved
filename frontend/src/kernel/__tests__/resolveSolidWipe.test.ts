@@ -65,7 +65,7 @@ function fakeMeta(_part: PartSolid): Record<string, unknown> {
   }
 }
 interface HarnessOptions {
-  /** Body ids the METADATA extractor drops (the loop cannot register their faces,
+  /** Part ids the METADATA extractor drops (the loop cannot register their faces,
    *  so the checkpoint pass is the one that has to). */
   metaOmits?: string[]
 }

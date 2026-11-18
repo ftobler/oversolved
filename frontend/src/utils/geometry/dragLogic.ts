@@ -233,7 +233,7 @@ export function computeDragMutation(
   }
 
   if (snapTarget?.kind === 'vertex') {
-    // Body snap targets encode the body featureId with BODY_SNAP_FEAT_PREFIX; no constraint is
+    // Part snap targets encode the body featureId with BODY_SNAP_FEAT_PREFIX; no constraint is
     // created because the projected 3D position is a positional reference only.
     const isPartSnap = snapTarget.vertexId?.startsWith(`vertex:${PART_SNAP_FEAT_PREFIX}`)
     if (isPartSnap) {
@@ -259,7 +259,7 @@ export function computeDragMutation(
   }
 
   if (snapTarget?.kind === 'entity') {
-    // Body edge snap: position only, no constraint.
+    // Part edge snap: position only, no constraint.
     const isPartEntitySnap = snapTarget.entityRef?.startsWith(`entity:${PART_SNAP_FEAT_PREFIX}`)
     if (isPartEntitySnap) {
       return {

@@ -6,7 +6,7 @@ import { getPartsToRender } from '@/utils/partRender'
 import type { Feature, PartResult } from '@/types/cad'
 
 /**
- * Body snapping is a viewport promise: the cursor can land on what is drawn.
+ * Part snapping is a viewport promise: the cursor can land on what is drawn.
  * The snap set used to be built from the raw body map, so a body hidden with
  * the visibility row -- or one the rollback bar has not reached -- still offered
  * vertices and edges to snap to, off screen. The helper is fed the render list

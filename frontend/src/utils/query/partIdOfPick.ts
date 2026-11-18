@@ -3,7 +3,7 @@ import { resolvePartIds } from '@/kernel/features/shared/partResolution'
 
 // UI-side twin of the kernel's `resolvePartIds` (kernel/features/shared/
 // partResolution.ts), operating on the plain `BodyResult` records the store
-// publishes (`usePartEditorStore.bodies`) instead of the kernel's `Body`
+// publishes (`usePartEditorStore.bodies`) instead of the kernel's `Part`
 // objects. The kernel resolver is not imported here: it lives behind the OCC
 // kernel, and this module must stay free of it.
 //

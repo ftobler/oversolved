@@ -40,7 +40,7 @@ interface TransferNamesInput {
   // Tool body's face names + ancestry (or null for ops without a named tool).
   toolFaceNames: SubShapeMap<string> | null
   toolFaceAncestry: Record<string, string[]> | null
-  // Each side's cap identification nets (Body.face_cap_ancestry), carried onto
+  // Each side's cap identification nets (Part.face_cap_ancestry), carried onto
   // the output face by the same origin mapping. They stay out of faceAncestry
   // so a cap's whole-profile list never becomes an edge's lineage.
   targetCapAncestry?: Record<string, string[]> | null

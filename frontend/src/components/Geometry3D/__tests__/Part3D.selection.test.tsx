@@ -10,7 +10,7 @@ beforeEach(() => {
   })
 })
 
-describe('Body3D selection - store behavior', () => {
+describe('Part3D selection - store behavior', () => {
   it('setHoveredSelectionId updates store', () => {
     useSketchEditorStore.getState().setHoveredSelectionId('ex1')
     expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('ex1')
@@ -55,7 +55,7 @@ describe('Body3D selection - store behavior', () => {
   })
 })
 
-describe('Body3D selection - bodyId format', () => {
+describe('Part3D selection - bodyId format', () => {
   it('selects body using @body_<featureId> format', () => {
     useSketchEditorStore.getState().toggleNormalSelection('@body_extrude1')
     expect(useSketchEditorStore.getState().normalSelection.has('@body_extrude1')).toBe(true)
@@ -73,7 +73,7 @@ describe('Body3D selection - bodyId format', () => {
   })
 })
 
-describe('Body3D selection - face queries', () => {
+describe('Part3D selection - face queries', () => {
   it('toggleNormalSelection adds face query', () => {
     useSketchEditorStore.getState().toggleNormalSelection('@ex1/face/0')
     expect(useSketchEditorStore.getState().normalSelection.has('@ex1/face/0')).toBe(true)
@@ -94,7 +94,7 @@ describe('Body3D selection - face queries', () => {
   })
 })
 
-describe('Body3D selection - edge queries', () => {
+describe('Part3D selection - edge queries', () => {
   it('toggleNormalSelection adds edge query', () => {
     useSketchEditorStore.getState().toggleNormalSelection('@ex1/edge/0')
     expect(useSketchEditorStore.getState().normalSelection.has('@ex1/edge/0')).toBe(true)
@@ -115,7 +115,7 @@ describe('Body3D selection - edge queries', () => {
   })
 })
 
-describe('Body3D hover surface - store behavior', () => {
+describe('Part3D hover surface - store behavior', () => {
   it('setHoveredSelectionId sets hoveredSelectionId', () => {
     useSketchEditorStore.getState().setHoveredSelectionId('?d,d;@extrude1face0:face')
     expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('?d,d;@extrude1face0:face')
@@ -135,7 +135,7 @@ describe('Body3D hover surface - store behavior', () => {
   })
 })
 
-describe('Body3D selection - chip highlights ride normalSelection', () => {
+describe('Part3D selection - chip highlights ride normalSelection', () => {
   it('syncChipSelection puts body ref into normalSelection so isBodySelected is true', () => {
     useSketchEditorStore.getState().syncChipSelection(['@body_ex1'])
     expect(useSketchEditorStore.getState().normalSelection.has('@body_ex1')).toBe(true)
@@ -171,7 +171,7 @@ describe('Body3D selection - chip highlights ride normalSelection', () => {
   })
 })
 
-describe('Body3D selection - mixed selection types', () => {
+describe('Part3D selection - mixed selection types', () => {
   it('supports body, face, and edge selection simultaneously', () => {
     useSketchEditorStore.getState().toggleNormalSelection('@body_ex1')  // body
     useSketchEditorStore.getState().toggleNormalSelection('@ex1/face/0')  // face 0

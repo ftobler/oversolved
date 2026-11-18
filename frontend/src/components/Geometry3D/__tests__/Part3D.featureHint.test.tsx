@@ -60,7 +60,7 @@ async function renderPart(props: Record<string, unknown> = {}) {
  *  makes; keep the current render's pair rather than a previous render's. */
 const faceHint = () => calls[calls.length - 2]?.hinted
 
-describe('Body3D feature face hint', () => {
+describe('Part3D feature face hint', () => {
   it('tints only the faces the selected feature created', async () => {
     useEditorState.setState({ normalSelection: new Set(['@ex1']) })
     await renderPart()

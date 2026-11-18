@@ -57,7 +57,7 @@ export function evictAncestryAndRegister(
 
 /** Evict every ancestral entry whose set carries `@bodyId` - a body's whole
  *  face/edge/vertex index range at once - and prune the uuid buckets their
- *  elements left behind. Body-scoped via the reverse index (O(entries sharing
+ *  elements left behind. Part-scoped via the reverse index (O(entries sharing
  *  the tag), not O(repo)), the same lookup `evictAncestryAndRegister` uses for
  *  its index-tag spread. Call before re-registering a body's range so a
  *  shrunken range replaces the old one wholesale instead of leaving indices

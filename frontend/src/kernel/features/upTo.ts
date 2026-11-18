@@ -146,7 +146,7 @@ export function resolveUpToTarget(
     return { kind: 'plane', cut: { origin: [...(planeOrigin as number[])] as Vec3, normal: n } }
   }
 
-  // Body face: planar goes through the same half-space every planar target
+  // Part face: planar goes through the same half-space every planar target
   // already used, curved keeps the face for the split trim.
   const partId = entry.body_id as string | undefined
   const faceIndex = entry.face_index as number | undefined
@@ -159,7 +159,7 @@ export function resolveUpToTarget(
   }
 
   // Point / vertex: the plane through the point, perpendicular to the extrude.
-  // Body vertices register `origin` and sketch points register `external_xy`
+  // Part vertices register `origin` and sketch points register `external_xy`
   // lifted through their sketch plane, so the shared converter owns the reading
   // (a bare `point`/`position` lookup missed both). Only the conversion is
   // guarded: a degenerate direction is a real error, not an unresolved ref.

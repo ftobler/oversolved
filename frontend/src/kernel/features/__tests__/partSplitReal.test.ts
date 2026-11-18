@@ -1,6 +1,6 @@
 // @vitest-environment node
 //
-// The gate for "one Body == one solid" (knowledgebase.agent.md, "Separated").
+// The gate for "one Part == one solid" (knowledgebase.agent.md, "Separated").
 //
 // The rule used to be hand-copied into six feature leaves and missing from five
 // more, so a union of two disjoint bodies, an array with a pitch wider than the
@@ -89,7 +89,7 @@ function expectOnePartEach(r: Rig, expected: number): void {
 }
 
 describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
-  it('registerSplitBodies makes one body per solid', () => {
+  it('registerSplitParts makes one body per solid', () => {
     const r = rig()
     const shape = compoundOf(r.scope, [
       makeBoxAt(oc, r.scope, [0, 0, 0], 10, 10, 10),
@@ -101,7 +101,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
     r.scope.dispose()
   })
 
-  it('registerSplitBodies keeps a lone solid as one body under the base id', () => {
+  it('registerSplitParts keeps a lone solid as one body under the base id', () => {
     const r = rig()
     expect(registerSplitParts(
       oc, r.scope, r.table, r.store, makeBoxAt(oc, r.scope, [0, 0, 0], 3, 3, 3), { id: 'body_x', createdBy: 'x' }))
@@ -550,7 +550,7 @@ describe.skipIf(!hasOcc)('bodySplit: the leaves that used to leak', () => {
     r.scope.dispose()
   })
 
-  it('bodyOps cut that severs a body makes two parts', () => {
+  it('partOps cut that severs a body makes two parts', () => {
     const r = rig()
     const bar = barePart('body_bar', 'bar')
     bar.shape = r.table.register(makeBoxAt(oc, r.scope, [0, 0, 0], 100, 5, 5), 'bar')
@@ -565,7 +565,7 @@ describe.skipIf(!hasOcc)('bodySplit: the leaves that used to leak', () => {
     r.scope.dispose()
   })
 
-  it('bodyOps new on a two-solid tool makes two parts carrying the sketch id', () => {
+  it('partOps new on a two-solid tool makes two parts carrying the sketch id', () => {
     const r = rig()
     const tool = compoundOf(r.scope, [
       makeBoxAt(oc, r.scope, [0, 0, 0], 5, 5, 5),

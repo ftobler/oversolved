@@ -679,7 +679,7 @@ function resolveExportShape(
     if (chosen) refuseMissing(chosen[0], [])
     return null
   }
-  // Bodies accumulate across the feature stack, so the last feature's snapshot
+  // Parts accumulate across the feature stack, so the last feature's snapshot
   // is the final body set (deletions already removed). Its shape handles are
   // retained in `table` until disposeAll, so they are safe to dereference here.
   const lastCp = state.checkpoints[order[order.length - 1]]

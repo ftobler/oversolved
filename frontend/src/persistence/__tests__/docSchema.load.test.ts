@@ -92,8 +92,8 @@ describe('golden documents load and migrate', () => {
     expect(second.doc).toEqual(first.doc)
   })
 
-  it('keeps a stored Delete Body label instead of relabelling it', () => {
-    // `Delete Body` was the default label new documents carried before the UI
+  it('keeps a stored Delete Part label instead of relabelling it', () => {
+    // `Delete Part` was the default label new documents carried before the UI
     // said part. It is user text stored in the document, so the loader passes
     // it through unchanged; only new features get the `Delete Part` default.
     const result = loadPartDocText(`version: 1

@@ -182,9 +182,9 @@ describe('auto-zoom does not fire while editing a sketch', () => {
       useEditorState.setState({
     activeSketchFeatureId: 'sk1',
   })
-      // Bodies change as rollback takes effect (e.g. extrude disappears).
+      // Parts change as rollback takes effect (e.g. extrude disappears).
       usePartEditorStore.setState({ parts: {} })
-      // Bodies come back for the sketch solve.
+      // Parts come back for the sketch solve.
       usePartEditorStore.setState({ parts: makePartWithVertices() })
     })
 

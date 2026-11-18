@@ -8,7 +8,7 @@ import { join } from 'node:path'
  * that removal so a future "let's bring back the rainbow" can't slip in
  * silently and override face colors on the visible mesh.
  */
-describe('Body3D legacy debug-hit path', () => {
+describe('Part3D legacy debug-hit path', () => {
   it('has no debugFaceColors / WireframeGeometry usage', () => {
     const src = readFileSync(
       join(__dirname, '..', 'Part3D.tsx'),

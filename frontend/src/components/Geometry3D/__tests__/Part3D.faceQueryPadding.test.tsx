@@ -134,7 +134,7 @@ describe('face HighlightIndex and painter agree on one primitive count', () => {
   })
 })
 
-describe('Body3D renders a tail-face highlight through the fallback', () => {
+describe('Part3D renders a tail-face highlight through the fallback', () => {
   it('highlights face 2 when its topo fallback query is selected', async () => {
     useEditorState.setState({
     normalSelection: new Set(['@body_ex1/face/2']),

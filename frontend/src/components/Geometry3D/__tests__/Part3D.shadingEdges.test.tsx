@@ -63,7 +63,7 @@ function renderPart(props: Record<string, unknown>) {
 
 const enabled = (hook: string) => registrations.filter(r => r.hook === hook).some(r => r.enabled)
 
-describe('Body3D shading and edges', () => {
+describe('Part3D shading and edges', () => {
   it('draws and registers both layers by default', () => {
     const { container } = renderPart({})
     expect(container.querySelector('meshphysicalmaterial')).not.toBeNull()

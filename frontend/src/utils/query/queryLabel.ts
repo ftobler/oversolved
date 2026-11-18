@@ -24,7 +24,7 @@ export function extractFeatureId(ancestorId: string): string | null {
   if (!m) return null
   let id = m[1]
 
-  // Body tags are "body_<featureId>": the owning feature is the suffix.
+  // Part tags are "body_<featureId>": the owning feature is the suffix.
   // Derived bodies (array/mirror/split siblings) mint "body_<feat>_<N>", so a
   // trailing numbered suffix belongs to the body scheme, not the feature id.
   if (id.startsWith("body_")) {

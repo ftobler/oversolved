@@ -51,7 +51,7 @@ export interface BuildDeps {
     repo: Repository | null,
   ) => Record<string, Record<string, unknown>>
   /** Record, on each body, the canonical indices of the elements its last
-   *  modifier created (``Body.brep_new``), while the feature's ``brep_diff``
+   *  modifier created (``Part.brep_new``), while the feature's ``brep_diff``
    *  sub-shapes are still alive. Called after every feature solve. Optional --
    *  when omitted (pure non-OCC tests) nothing is attributed to a modifier. */
   indexModifierDiffs?: (partStore: Record<string, PartSolid>) => void

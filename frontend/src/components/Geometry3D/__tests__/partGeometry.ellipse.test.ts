@@ -1,4 +1,4 @@
-// Body B-rep ellipse edges (full-brep-projection) render as a closed polyline.
+// Part B-rep ellipse edges (full-brep-projection) render as a closed polyline.
 // Guards the ellipse arms of buildEdgeSegmentGeometry that the circle/arc/spline
 // arms previously did not cover.
 import { describe, it, expect } from 'vitest'

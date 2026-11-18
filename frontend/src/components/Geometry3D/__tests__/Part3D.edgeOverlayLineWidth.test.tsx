@@ -31,7 +31,7 @@ beforeEach(() => {
   })
 })
 
-describe('Body3D edge overlay linewidth', () => {
+describe('Part3D edge overlay linewidth', () => {
   it('renders the selected edge overlay at EDGE_HIGHLIGHT_LINE_WIDTH', async () => {
     useEditorState.setState({
     normalSelection: new Set(['@ex1/edge/0']),

@@ -85,7 +85,7 @@ afterEach(() => {
   clearAllHover()
 })
 
-describe('Body3D hover feeds Normal to only for flat faces', () => {
+describe('Part3D hover feeds Normal to only for flat faces', () => {
   it('a hovered flat face gets New Sketch and Normal to', () => {
     brepFaceAdapter.onHover('?flatQ', `${partKey}#face#0`)
     expect(useSketchEditorStore.getState().hoveredFaceNormal).not.toBeNull()

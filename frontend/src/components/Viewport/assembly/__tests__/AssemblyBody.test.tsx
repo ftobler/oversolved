@@ -53,7 +53,7 @@ function renderPart(overrides: { aiming?: boolean; selected?: boolean; showFaces
   return { container, mesh, onGrab }
 }
 
-describe('AssemblyBody grab guard', () => {
+describe('AssemblyPartMesh grab guard', () => {
   it('renders the body mesh', () => {
     const { mesh } = renderPart()
     expect(mesh).not.toBeNull()
@@ -78,7 +78,7 @@ describe('AssemblyBody grab guard', () => {
   })
 })
 
-describe('AssemblyBody viewer layers', () => {
+describe('AssemblyPartMesh viewer layers', () => {
   // The assembly spec registers its pick layers scene-wide, but the mesh is
   // also an R3F raycast target, so a "hidden" face must not be mounted at all:
   // an invisible-but-present mesh would still swallow the grab.

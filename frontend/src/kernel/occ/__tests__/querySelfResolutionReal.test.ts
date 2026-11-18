@@ -210,7 +210,7 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
 
   // The fillet restored from its checkpoint copy: the live `brep_diff` is gone,
   // so the fillet's elements must stay attributed to it through the canonical
-  // indices the body carries (`Body.brep_new`), or the incremental build mints
+  // indices the body carries (`Part.brep_new`), or the incremental build mints
   // other queries than the full one.
   it('filleted box restored from its checkpoint', () => {
     const base = box()

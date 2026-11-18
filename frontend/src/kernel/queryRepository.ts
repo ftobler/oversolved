@@ -362,7 +362,7 @@ export class Repository {
    * on FEATURE activity. An entry lives while any of its feature-shaped tags
    * (`@<featureId>`, e.g. the `@createdBy` every producer emits) names an
    * active feature; a feature's elements die when the feature leaves the order.
-   * Body ownership is NOT a gc concern: bodies are re-registered and evicted by
+   * Part ownership is NOT a gc concern: bodies are re-registered and evicted by
    * index-tag registration (`evictAncestryAndRegister` / `clearBodyAncestry`,
    * see index-shrink-ghost-eviction), so body tags and entity identity tags
    * (`@u|`, `@cls_*`, `@body_*`) are classified away

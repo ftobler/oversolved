@@ -127,7 +127,7 @@ export function enclosureBase(
   return { spec, lipEdges, result: added }
 }
 
-/** The Body a build checkpoint holds for `bodyId`, which carries its shape
+/** The Part a build checkpoint holds for `bodyId`, which carries its shape
  *  handle and its construction names. */
 export function partAt(
   result: ReturnType<SharedHarness['run']>,

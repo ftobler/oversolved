@@ -1372,7 +1372,7 @@ export function applyRemovePatternSource(doc: PartDoc, featureId: string, index:
   sources.splice(index, 1)
 }
 
-// ─── Delete Body ───
+// ─── Delete Part ───
 
 export function applyAddDeletePart(
   doc: PartDoc,

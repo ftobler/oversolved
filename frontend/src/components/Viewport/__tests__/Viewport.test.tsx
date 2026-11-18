@@ -238,7 +238,7 @@ describe('Viewport body interactivity', () => {
     // Only pickBodyItems rendered as Part3D, no duplicate for preview
     const items = getAllByTestId('body-3d')
     expect(items.length).toBe(1)
-    // Bodies are not forced inert.
+    // Parts are not forced inert.
     items.forEach(el => expect(el.getAttribute('data-interactive')).not.toBe('false'))
     // Preview edge overlay is present
     expect(getByTestId('preview-edge-overlay')).toBeTruthy()

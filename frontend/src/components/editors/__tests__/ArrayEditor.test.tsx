@@ -34,7 +34,7 @@ function renderEditor(feature: PartFeature, onMutation: () => void) {
   render(<FeatureEditor feature={feature} onMutation={onMutation} features={FEATURES} schema={LINEAR_PATTERN_SCHEMA} />)
 }
 
-/** All pick chips in schema field order. Linear mode: [0] Body, [1] Direction. */
+/** All pick chips in schema field order. Linear mode: [0] Part, [1] Direction. */
 function chips(): NodeListOf<HTMLElement> {
   return document.querySelectorAll<HTMLElement>('.feature-pick-chip')
 }
@@ -191,14 +191,14 @@ describe('body pattern direction pick (via FeatureEditor)', () => {
 
   it('hides the Direction 2 chip without a second direction', () => {
     renderEditor(makeFeature(), vi.fn())
-    // One direction: only Body + Direction chips.
+    // One direction: only Part + Direction chips.
     expect(chips().length).toBe(2)
   })
 
   it('shows and picks a Direction 2 chip with the second direction on', () => {
     const onMutation = vi.fn()
     renderEditor(makeFeature({ second_direction: true, count_2: 2, pitch_2: 20 }), onMutation)
-    // Field order: [0] Body, [1] Direction, [2] Direction 2.
+    // Field order: [0] Part, [1] Direction, [2] Direction 2.
     const dir2 = chips()[2]
     expect(dir2.querySelector('.feature-pick-chip-empty-text')?.textContent).toBe('(pick edge or face, required)')
     fireEvent.click(dir2)

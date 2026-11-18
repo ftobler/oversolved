@@ -17,7 +17,7 @@ import {
   ASSEMBLY_HANDLE,
 } from '@/utils/assemblyBuiltins'
 
-// Body ids are scoped by part handle, so two instances of the same part never
+// Part ids are scoped by part handle, so two instances of the same part never
 // collide in the flat dict.
 export function assemblyPartId(handle: string, index: number): string {
   return `${handle}:body_${index}`

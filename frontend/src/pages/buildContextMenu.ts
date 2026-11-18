@@ -76,12 +76,12 @@ export interface BuildContextMenuInput {
   activeSketchFeatureId: string | undefined
   showConstraintTiles: boolean
   partLabels: Record<string, string>
-  // Body ids in store order, for the `part N` fallback when a body has no
+  // Part ids in store order, for the `part N` fallback when a body has no
   // stored label. Absent in unit tests; buildBodyMenu synthesises a single
   // entry so an unlabelled body still reads `part 1`.
   orderedPartIds?: string[]
   builtInIds: Set<string>
-  // Body visibility as the list reads it: undefined means nothing is hidden.
+  // Part visibility as the list reads it: undefined means nothing is hidden.
   visibleParts: Set<string> | undefined
   // Whether the last solve flagged any dangling projections or superfluous
   // constraints; gates the cleanup item so an empty command is never offered.

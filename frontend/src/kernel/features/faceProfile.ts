@@ -4,7 +4,7 @@
 // into 2D loops + the plane to build on. The OCC face->loops work lives in occ/faceLoops.ts;
 // the pure surface-loop assembly is extractProfileLoops (features/shared/profileLoops.ts).
 //
-// Body shapes are HandleTable handles, so the OCC-backed branches resolve them via the table;
+// Part shapes are HandleTable handles, so the OCC-backed branches resolve them via the table;
 // the topo-surface branches (`@`/`?` against stored sketch topology) are pure and need no OCC.
 
 import type { DisposeScope } from '../occ/disposeScope'
@@ -111,7 +111,7 @@ export function extractLoopsFromOccFace(
 }
 
 /**
- * Body a `@<id>/...` reference names. `<id>` is a BODY id in everything the
+ * Part a `@<id>/...` reference names. `<id>` is a BODY id in everything the
  * render layer mints today (utils/query/selectionId.ts topoFallbackQuery), so
  * an exact body id has to be tried FIRST: a sibling ref `body_ex1_1` would
  * otherwise be read as a feature name, looked up as `body_body_ex1_1`, miss,

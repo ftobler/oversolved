@@ -273,15 +273,15 @@ interface SolidMeshOptions extends TessellateOptions {
   partId?: string
   profileQueries?: string[] | null
   faceAncestry?: Record<string, string[]> | null
-  // A cap face's identification net (Body.face_cap_ancestry): read where a face
+  // A cap face's identification net (Part.face_cap_ancestry): read where a face
   // has no `faceAncestry` entry, so a cap still carries its producing profile.
   faceCapAncestry?: Record<string, string[]> | null
-  // The body's face UUIDs in the solid's canonical order (Body.face_uuids).
+  // The body's face UUIDs in the solid's canonical order (Part.face_uuids).
   faceUuids?: (string | null)[] | null
-  // UUID -> the feature that minted it (Body.face_owner), for a face a later
+  // UUID -> the feature that minted it (Part.face_owner), for a face a later
   // modifier reshaped without recreating it.
   faceOwner?: Record<string, string> | null
-  // What the body's last modifier created (Body.brep_new) and the modifier
+  // What the body's last modifier created (Part.brep_new) and the modifier
   // history, for the per-face creator.
   newElements?: NewIndexSets | null
   modifiedBy?: string[]
@@ -526,9 +526,9 @@ interface SolidEdgesOptions {
   partId?: string
   profileQueries?: string[] | null
   edgeAncestry?: Record<string, string[]> | null
-  // The body's edge UUIDs in the solid's canonical order (Body.edge_uuids).
+  // The body's edge UUIDs in the solid's canonical order (Part.edge_uuids).
   edgeUuids?: (string | null)[] | null
-  // UUID -> the feature that minted it (Body.edge_owner).
+  // UUID -> the feature that minted it (Part.edge_owner).
   edgeOwner?: Record<string, string> | null
   newElements?: NewIndexSets | null
   modifiedBy?: string[]
@@ -553,11 +553,11 @@ interface SolidVerticesOptions {
   createdBy?: string
   partId?: string
   profileQueries?: string[] | null
-  // The body's face UUIDs in canonical order (Body.face_uuids). A vertex UUID
+  // The body's face UUIDs in canonical order (Part.face_uuids). A vertex UUID
   // is derived from the UUIDs of the faces meeting at it, so the emitter needs
   // the face names to walk the adjacency.
   faceUuids?: (string | null)[] | null
-  // The body's edge UUIDs in canonical order (Body.edge_uuids): the symbolic
+  // The body's edge UUIDs in canonical order (Part.edge_uuids): the symbolic
   // tiebreak for vertices whose face sets match and whose positions near-tie.
   edgeUuids?: (string | null)[] | null
   // What the body's last modifier created and the modifier history, for the

@@ -31,11 +31,11 @@ export interface ShapeNames {
   edgeNames: SubShapeMap<string>
   faceAncestry: Record<string, string[]>
   edgeAncestry: Record<string, string[]>
-  // A cap face's identification net, kept apart from `faceAncestry` (Body
+  // A cap face's identification net, kept apart from `faceAncestry` (Part
   // `face_cap_ancestry`): edge lineage unions faceAncestry, and a cap's
   // whole-profile list is not the entity an edge lies on.
   capAncestry: Record<string, string[]>
-  // UUID -> the feature that minted it (Body.face_owner / edge_owner). The
+  // UUID -> the feature that minted it (Part.face_owner / edge_owner). The
   // transfer carries an owner over with its UUID, so an earlier producer's
   // element keeps its creator when a later one reshapes the body. Empty for
   // producers that do not record owners; those fall back to the last modifier.

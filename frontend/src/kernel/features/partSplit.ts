@@ -1,7 +1,7 @@
 /**
- * THE one place a shape becomes Body entries.
+ * THE one place a shape becomes Part entries.
  *
- * The invariant (knowledgebase.agent.md, "Separated"): one `Body` in the body
+ * The invariant (knowledgebase.agent.md, "Separated"): one `Part` in the body
  * store is exactly one OCC solid, and that solid carries material. A
  * zero-volume solid a boolean left BESIDE real material is kernel debris, not a
  * part, so it is dropped here (`materialSolids`) rather than registered as a
@@ -11,7 +11,7 @@
  * Before this module the rule was hand-copied into five feature leaves, each
  * with its own id scheme, collision handling and 0/1-solid behaviour, and it
  * was missing outright from boolean union/intersect, pattern add, mirror merge,
- * hole and fillet/chamfer -- so those silently produced one Body holding
+ * hole and fillet/chamfer -- so those silently produced one Part holding
  * several solids, i.e. one Parts-list row that was really N parts. Every leaf
  * now routes through `registerSplitParts` (a shape becomes new bodies) or
  * `resplitBody` (an existing body's shape was replaced and may have split).
@@ -294,7 +294,7 @@ export function solidHoldingFaces(
 // `created_by` keeps its separate job: identity and ancestry attribution.
 
 /**
- * Register `shape` as one Body per solid and return the new ids (first id
+ * Register `shape` as one Part per solid and return the new ids (first id
  * first). The caller must not have detached `shape` yet: this takes ownership
  * of the parts it registers.
  *
@@ -346,7 +346,7 @@ export function registerSplitParts(
  * takes the first solid; siblings are fresh bodies that inherit those fields,
  * minus the diff (the diff describes the whole pre-split shape and no sibling
  * owns all of it), and carry `split_from` naming this split (see
- * `Body.split_from`). `produced` are the
+ * `Part.split_from`). `produced` are the
  * construction names the producer built for the WHOLE new shape, keyed by its
  * faces and edges; this writes them onto each sibling's own sub-shapes. The
  * old handle is released here.

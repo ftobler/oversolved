@@ -12,7 +12,7 @@ import type { OccModule, OccShape } from '../../occ/occTypes'
 const oc = null as unknown as OccModule
 const toolShape = null as unknown as OccShape
 
-describe('applyBodyOperation OCC-free branches', () => {
+describe('applyPartOperation OCC-free branches', () => {
   it('cut against an empty store with no target succeeds as a no-op', () => {
     const result = applyPartOperation(oc, new DisposeScope(), new HandleTable(), {
       toolShape,

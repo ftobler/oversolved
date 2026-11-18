@@ -51,7 +51,7 @@ function kept(a: number, b: number): number {
   return splitSolids(noOc, new DisposeScope(), noShape).length
 }
 
-describe('bodySplit: material-free solids', () => {
+describe('partSplit: material-free solids', () => {
   it('drops a zero-volume sibling and keeps the body with material', () => {
     const [real, skin] = stubSolids([1000, 0])
     expect(splitSolids(noOc, new DisposeScope(), noShape)).toEqual([real])

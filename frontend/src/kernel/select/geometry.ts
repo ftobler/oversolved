@@ -93,7 +93,7 @@ export function vertexCandidates(parts: Record<string, PartResult>, from?: strin
   return out
 }
 
-/** Body ids sorted, so the output order does not depend on object key
+/** Part ids sorted, so the output order does not depend on object key
  *  insertion: the same document and solve must yield the same list. */
 export function sortedPartIds(parts: Record<string, PartResult>): string[] {
   return Object.keys(parts).sort()
@@ -141,7 +141,7 @@ function conicTangent(
 /** Whether an edge is a face seam: an edge its own face meets twice (a full
  *  cylinder, cone, sphere or torus closes on itself). `face_seam_queries` emits
  *  exactly that second visit, so a free edge of an open shell, which is also
- *  listed by only one face, is not mistaken for a seam. Bodies decoded before
+ *  listed by only one face, is not mistaken for a seam. Parts decoded before
  *  the seam list existed fall back to the face-boundary count; that rule cannot
  *  tell the two apart, so it is only trusted when every face reported a boundary
  *  (a missing or unnamed neighbour would otherwise look like a seam). */
