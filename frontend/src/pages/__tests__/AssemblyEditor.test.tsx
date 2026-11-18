@@ -34,11 +34,17 @@ const h = vi.hoisted(() => ({
   exportAssemblyViaWorker: vi.fn(),
   downloadBlob: vi.fn(),
   addStepPart: vi.fn(),
+  addStepAssembly: vi.fn(),
+  splitStepViaWorker: vi.fn(),
 }))
 
 // The import gesture's workspace write is the store's, covered by its own
-// suite; here it only has to hand back a registered part id.
-vi.mock('@/workspace/stepPart', () => ({ addStepPart: h.addStepPart }))
+// suite; here it only has to hand back registered part ids.
+vi.mock('@/workspace/stepPart', () => ({
+  addStepPart: h.addStepPart,
+  addStepAssembly: h.addStepAssembly,
+  STEP_NO_SOLIDS: 'this STEP file has no solids to split; import it as one part',
+}))
 
 vi.mock('@/adapters/backend', () => ({
   backendBundle: {
@@ -76,6 +82,7 @@ vi.mock('@/kernel/worker/anchorSolverClient', () => ({
 vi.mock('@/kernel/worker/solverClient', () => ({
   buildBundleViaWorker: h.buildBundleViaWorker,
   exportAssemblyViaWorker: h.exportAssemblyViaWorker,
+  splitStepViaWorker: h.splitStepViaWorker,
 }))
 vi.mock('@/utils/core/downloadBlob', () => ({ downloadBlob: h.downloadBlob }))
 vi.mock('@/stores/previewStore', () => ({
@@ -661,7 +668,10 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(exportButton.closest('.app-header')).not.toBeNull()
   })
 
-  async function importStepFile(file: { name: string; size: number; arrayBuffer: () => Promise<ArrayBuffer> }) {
+  async function importStepFile(
+    file: { name: string; size: number; arrayBuffer: () => Promise<ArrayBuffer> },
+    mode: 'Add as one part' | 'Add a part per solid' = 'Add as one part',
+  ) {
     const created: HTMLInputElement[] = []
     const make = document.createElement.bind(document)
     const createSpy = vi.spyOn(document, 'createElement').mockImplementation(((tag: string, opts?: ElementCreationOptions) => {
@@ -679,6 +689,14 @@ describe('AssemblyEditor (Stage 6b)', () => {
 
     createSpy.mockRestore()
     clickSpy.mockRestore()
+
+    // A STEP asks how to land before anything is written; these tests pick the
+    // mode row and confirm, the way the header gesture does.
+    const choice = screen.queryByLabelText(mode)
+    if (choice !== null) {
+      fireEvent.click(choice)
+      await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Import' })) })
+    }
   }
 
   it('imports a STEP into the workspace and instances the new part', async () => {
@@ -696,8 +714,39 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(instances[0]).toMatchObject({ doc_id: 'step-part' })
   })
 
-  it('offers a STEP part imported while the assembly is open to the rebind picker', async () => {
-    h.loadContent = DANGLING_ASSEMBLY
+  it('imports a STEP as one part per solid into this assembly', async () => {
+    h.splitStepViaWorker.mockResolvedValue({
+      solids: [{ bytes: new Uint8Array([1]), volume: 1 }, { bytes: new Uint8Array([2]), volume: 2 }],
+      leftovers: 0,
+    })
+    h.addStepAssembly.mockResolvedValue({
+      assemblyId: 'asm-1',
+      parts: [
+        { id: 'step-part-1', name: 'Bracket_1', fileId: 'step-file-1' },
+        { id: 'step-part-2', name: 'Bracket_2', fileId: 'step-file-2' },
+      ],
+      fileIds: ['step-file-1', 'step-file-2'],
+    })
+    await renderLoaded()
+
+    const bytes = new Uint8Array([1, 2, 3])
+    await importStepFile({ name: 'bracket.step', size: 3, arrayBuffer: async () => bytes.buffer }, 'Add a part per solid')
+    await tick()
+
+    expect(h.splitStepViaWorker).toHaveBeenCalledWith(expect.any(Uint8Array))
+    // The aggregate is the open assembly's: no second assembly document, and the
+    // parts land in the workspace before the batch instance command runs.
+    expect(h.addStepAssembly).toHaveBeenCalledWith('asm-1', expect.any(Uint8Array), {
+      fileName: 'bracket.step',
+      mode: 'assembly_split',
+      solids: [new Uint8Array([1]), new Uint8Array([2])],
+      intoAssembly: 'asm-1',
+    })
+    expect(useAssemblyStore.getState().instances.map(instance => instance.doc_id))
+      .toEqual(['step-part-1', 'step-part-2'])
+  })
+
+  it('offers a STEP part imported while the assembly is open to the rebind picker', async () => {    h.loadContent = DANGLING_ASSEMBLY
     // The workspace write the import performs is what a later list sees.
     h.addStepPart.mockImplementation(async () => {
       h.list = [...h.list, { uuid: 'step-part', name: 'Housing', kind: 'part', meta: { rev: 0 } }]

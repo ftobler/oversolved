@@ -21,6 +21,7 @@ import { ASSEMBLY_COMMAND_SPECS, type AssemblyCommandContext } from '@/pages/ass
 import {
   planAssemblyOperation,
   runAssemblyOperation,
+  type AddPartInput,
   type AssemblyOperationHost,
   type AssemblyOperationId,
   type AssemblyOperationInputs,
@@ -31,7 +32,7 @@ import { ASSEMBLY_BUILTIN_DEFAULTS } from '@/utils/assemblyBuiltins'
 import { findInstance, findMate, partInstances, setInstanceFixedFromSolved } from '@/utils/assemblyMutations'
 import { partSpecs, mateSpecs } from '@/utils/assemblySolveInput'
 import { solveAssembly, type AssemblyBuildResponse } from '@/kernel/solveAssembly'
-import { solveLocally } from '@/kernel/solveLocally'
+import { solveLocally, splitStepLocally } from '@/kernel/solveLocally'
 import { KernelFault } from '@/kernel/errors'
 import { scaleBundleToMillimetres, toPartBundle, type Anchor, type PartBundle } from '@/kernel/partBundle'
 import { partToAssemblyScale } from '@/utils/lengthUnit'
@@ -43,7 +44,7 @@ import { CURRENT_DOC_VERSION } from '@/persistence/docSchema'
 import { stepSeedFor, seededIdSource } from '@/drive/seededIds'
 import { randomId, setIdSource } from '@/utils/yamlMutations'
 import { buildStepDoc } from '@/stores/documentStore/stepImport'
-import { runScript, type AnnotatedSuccess, type KeptPose, type MateCapture, type ScriptRunOutcome, type ScriptFailure } from '@/drive/scriptRunner'
+import { runScript, type AnnotatedSuccess, type KeptPose, type MateCapture, type ScriptRunOutcome, type ScriptFailure, type StepPartBinding } from '@/drive/scriptRunner'
 import type { AssemblyWireMutation, PartPatternRequest, StepPartRequest } from '@/drive/assemblyMutationCatalog'
 import { expandPartPattern } from '@/drive/assemblyPatternExpand'
 import { captureMateAtSeeds, seedAnchorTable } from '@/drive/assemblyCapture'
@@ -117,6 +118,10 @@ export interface HeadlessAssembly {
   // The binding after the run: a STEP import grows it, so a caller minting a
   // composite handle must read this rather than the input map.
   boundParts(): Record<string, PartDoc>
+  // The file bytes this session solved with, including the per-solid STEP files
+  // a split import wrote. A caller that measures or exports after the run must
+  // pass them on: the derived ids are not in the call's own files map.
+  files(): Record<string, Uint8Array>
   solve(): Promise<AssemblyBuildResponse>
   run(steps: readonly AssemblyScriptStep[]): Promise<ScriptRunOutcome>
 }
@@ -212,6 +217,9 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
   // A STEP import binds a part mid-run, so the binding is this session's own
   // map rather than the caller's read-only input.
   const binding = new Map<string, PartDoc>(opts.parts)
+  // This session's solve file map. A split import grows it with the per-solid
+  // STEP bytes it wrote, so a later step in the same run finds them.
+  const files = new Map<string, Uint8Array>(opts.files ?? [])
   const fileIds = opts.files === undefined ? null : new Set(opts.files.keys())
   const history = new History<AssemblyDoc>({ cloneDoc: doc => structuredClone(doc), cap: 200 })
   const partOutcomes: Record<string, PartOutcome> = {}
@@ -221,10 +229,13 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
   let lastSolvedDoc: AssemblyDoc | null = null
   let needsSolve = false
 
-  const filesKey = [...(opts.files?.keys() ?? [])].sort().join(',')
+  // The split adds file ids mid-run, so the key is read when a build needs it,
+  // not once at session creation: a part built before and after a split must not
+  // share a memo entry under a stale file set.
+  const filesKey = () => [...files.keys()].sort().join(',')
 
   function memoKey(partDoc: PartDoc): string {
-    return partBundleKey(docHashOf(partDoc), [filesKey])
+    return partBundleKey(docHashOf(partDoc), [filesKey()])
   }
 
   function remember(key: string, entry: BundleMemoEntry): BundleMemoEntry {
@@ -271,7 +282,7 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
       }
       const response = await solveLocally(payload, {
         rollbackPosition: payload.rollback_position,
-        ...(opts.files ? { files: opts.files } : {}),
+        files,
       })
       if (!response) throw new Error('local solver unavailable (OCC.js is not provisioned)')
       const bundle = scaleBundleToMillimetres(
@@ -538,14 +549,29 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
   // The binding is session state, not document state: undo removes the instance
   // and leaves the part available, exactly like the workspace gesture where the
   // part entry outlives the instance.
+  //
+  // With `split`, the file is parsed once and each solid is written to its own
+  // STEP bytes (the same split the B2 workspace import uses), so every part is an
+  // ordinary single-solid import. A one-solid file falls through to the plain
+  // import above; a file with no solids is refused rather than instanced empty.
   async function runStepPart(request: StepPartRequest): Promise<ScriptFailure | AnnotatedSuccess> {
     const fileId = request.file
-    const bytes = opts.files?.get(fileId)
+    const bytes = files.get(fileId)
     if (bytes === undefined) {
       return failure('unknown-target', `file "${fileId}" has no bytes in this call; pass it in the files map`)
     }
     if (bytes.byteLength === 0) {
       return failure('invalid-mutation', `file "${fileId}" is empty; a STEP import needs file bytes`)
+    }
+    if (request.split === true) {
+      const split = await splitStepLocally(bytes)
+      if (split === null) {
+        return failure('unsupported', 'STEP splitting needs the local kernel (OCC.js is not provisioned)')
+      }
+      if (split.solids.length === 0) {
+        return failure('invalid-mutation', `file "${fileId}" has no solids to split; import it as one part`)
+      }
+      if (split.solids.length > 1) return runSplitStepPart(request, split.solids)
     }
     const docId = stepPartDocId(fileId)
     const existing = binding.get(docId)
@@ -561,6 +587,60 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
     return {
       ...okResult([`inst_${request.handle}`]),
       part: { docId, name: stepPartName(part, fileId), fileId },
+      handles: [request.handle],
+    }
+  }
+
+  // One part per solid, placed in solid order. The derived file ids are stable
+  // (`<file>#<i>`), so a second split of the same file reuses the part documents
+  // and only adds instances. `position`/`rotation` move the whole set: each
+  // solid's bytes keep their own world coordinates, so one transform keeps the
+  // file's internal layout exactly as the plain import places it.
+  async function runSplitStepPart(
+    request: StepPartRequest,
+    solids: readonly { bytes: Uint8Array }[],
+  ): Promise<ScriptFailure | AnnotatedSuccess> {
+    const base = request.name?.trim() || request.file
+    const width = String(solids.length).length
+    const handles: string[] = []
+    const parts: StepPartBinding[] = []
+    const inputs: AddPartInput[] = []
+    for (const [index, solid] of solids.entries()) {
+      const suffix = String(index + 1).padStart(width, '0')
+      const solidFile = `${request.file}#${suffix}`
+      const docId = stepPartDocId(solidFile)
+      const existing = binding.get(docId)
+      if (existing !== undefined && !importsFile(existing, solidFile)) {
+        return failure('unknown-target', `the STEP binding "${docId}" already names a part document that does not import `
+          + `file "${solidFile}"; bind the STEP under a fresh file id`)
+      }
+      const handle = `${request.handle}_${suffix}`
+      if (findInstance(docBox.current, handle) !== undefined
+          || (docBox.current.features ?? []).some(feature => feature.id === `inst_${handle}`)) {
+        return failure('invalid-mutation', `handle "${handle}" already exists in this assembly; the split derives `
+          + `${request.handle}_1..${solids.length} from the step's handle`)
+      }
+      const part = existing ?? buildStepDoc(solidFile, randomId(18), `${base}_${suffix}`)
+      binding.set(docId, part)
+      files.set(solidFile, solid.bytes)
+      handles.push(handle)
+      parts.push({ docId, name: stepPartName(part, solidFile), fileId: solidFile })
+      inputs.push(addPartInput({
+        handle,
+        position: request.position,
+        rotation: request.rotation,
+        // Only the anchor carries the flag: a free sibling keeps its seed pose
+        // and must not materialize an authored `fixed: false`.
+        ...(index === 0 && { fixed: true }),
+      }, docId))
+    }
+    needsSolve = false
+    runAssemblyOperation('add_parts', inputs, host())
+    if (needsSolve) await solve()
+    return {
+      ...okResult(handles.map(handle => `inst_${handle}`)),
+      handles,
+      parts,
     }
   }
 
@@ -652,6 +732,7 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
     lastSolve: () => last,
     partOutcomes: () => ({ ...partOutcomes }),
     boundParts: () => Object.fromEntries(binding),
+    files: () => Object.fromEntries(files),
     solve,
     run,
   }

@@ -54,6 +54,15 @@ export interface ImportResult {
   // Paths the manifest named and the bag did not carry. The entry is skipped
   // and the rest of the bag still imports.
   missingPayloads: string[]
+  // Present when the picked file was a STEP landed as an assembly (B1 or B2):
+  // the ids the import wrote, and the shells/faces a split left outside every
+  // solid (0 when the file held solids only). Absent for every other import.
+  step?: {
+    assemblyId: string
+    partIds: string[]
+    fileIds: string[]
+    leftovers: number
+  }
 }
 
 export interface ImportedTree {

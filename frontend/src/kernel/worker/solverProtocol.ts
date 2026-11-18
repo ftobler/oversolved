@@ -105,7 +105,40 @@ export interface ExportAssemblyRequest {
 }
 
 /** Either request the Worker can receive; discriminated by `kind`. */
-export type WorkerRequest = SolveRequest | ExportRequest | BundleRequest | ExportAssemblyRequest | MeasureRequest
+export type WorkerRequest = SolveRequest | ExportRequest | BundleRequest | ExportAssemblyRequest | MeasureRequest | SplitStepRequest
+
+// ─── STEP split (the B2 import's kernel half) ───
+// One STEP file in, one STEP file per solid out. The import asks before it
+// writes any part, so a file with no solids is refused without a workspace
+// write; each solid is then imported by its own part through the ordinary leaf.
+
+/** One solid of a STEP file, written back as its own standalone STEP file. */
+export interface SplitStepSolid {
+  bytes: Uint8Array
+  // The solid's volume in the file's units, so the caller can report what
+  // landed without re-reading the bytes.
+  volume: number
+}
+
+export interface SplitStepRequest {
+  id: number
+  kind: 'splitStep'
+  bytes: Uint8Array
+  // The uniform scale the parts will import with, applied before splitting.
+  scale?: number
+}
+
+export interface SplitStepOkResponse {
+  id: number
+  ok: true
+  // In splitSolids order: the order a multi-solid import's bodies are minted.
+  solids: SplitStepSolid[]
+  // Shells and faces outside every solid, the shapes a surfaces-only file has
+  // instead of solids.
+  leftovers: number
+}
+
+export type SplitStepResponse = SplitStepOkResponse | WorkerErrResponse
 
 // ─── measurement (measure-auto-readout's kernel cells) ───
 // A readout is view state, not a document write: the request names the solve
@@ -247,7 +280,7 @@ export interface KernelReadyMessage {
 
 /** Every message the solver Worker sends to the main thread. */
 export type SolverWorkerMessage =
-  | SolveResponse | ExportResponse | BundleResponse | MeasureResponse
+  | SolveResponse | ExportResponse | BundleResponse | MeasureResponse | SplitStepResponse
   | OccProgressMessage | FeatureProgressMessage | KernelReadyMessage
 
 // ─── assembly protocol ───

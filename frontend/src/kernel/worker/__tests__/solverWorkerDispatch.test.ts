@@ -9,6 +9,7 @@ const engines = vi.hoisted(() => ({
   exportLocally: vi.fn(),
   exportAssemblyLocally: vi.fn(),
   measureGeneration: vi.fn(),
+  splitStepLocally: vi.fn(),
 }))
 
 vi.mock('../../solveLocally', () => ({
@@ -16,13 +17,14 @@ vi.mock('../../solveLocally', () => ({
   exportLocally: (...args: unknown[]) => engines.exportLocally(...args),
   exportAssemblyLocally: (...args: unknown[]) => engines.exportAssemblyLocally(...args),
   measureGeneration: (...args: unknown[]) => engines.measureGeneration(...args),
+  splitStepLocally: (...args: unknown[]) => engines.splitStepLocally(...args),
   setOccLoader: vi.fn(),
 }))
 
 import { handleWorkerMessage, WorkerActor } from '../solverWorker'
-import type { BundleResponse, ExportResponse, MeasureResponse, SolveResponse } from '../solverProtocol'
+import type { BundleResponse, ExportResponse, MeasureResponse, SolveResponse, SplitStepResponse } from '../solverProtocol'
 
-type Posted = { res: SolveResponse | ExportResponse | BundleResponse | MeasureResponse; transfer: Transferable[] }
+type Posted = { res: SolveResponse | ExportResponse | BundleResponse | MeasureResponse | SplitStepResponse; transfer: Transferable[] }
 
 function postInto(): { posted: Posted[]; post: (res: Posted['res'], transfer: Transferable[]) => void } {
   const posted: Posted[] = []
@@ -73,6 +75,45 @@ describe('handleWorkerMessage dispatch', () => {
     expect(engines.exportAssemblyLocally).toHaveBeenCalledWith([], { format: 'step' }, expect.any(Map))
     expect(posted[0].res).toMatchObject({ id: 6, ok: true, bytes })
     expect(posted[0].transfer).toEqual([bytes.buffer])
+  })
+
+  it('routes a split message to splitStepLocally and transfers every solid', async () => {
+    const first = new Uint8Array([1, 2, 3])
+    const second = new Uint8Array([4, 5])
+    engines.splitStepLocally.mockResolvedValueOnce({
+      solids: [{ bytes: first, volume: 8 }, { bytes: second, volume: 27 }],
+      leftovers: 0,
+    })
+    const actor = new WorkerActor()
+    const { posted, post } = postInto()
+
+    handleWorkerMessage(
+      { id: 8, kind: 'splitStep', bytes: new Uint8Array([0]) },
+      post,
+      actor,
+    )
+    await flush()
+
+    expect(engines.splitStepLocally).toHaveBeenCalledWith(new Uint8Array([0]), undefined)
+    expect(posted[0].res).toMatchObject({ id: 8, ok: true, leftovers: 0 })
+    expect((posted[0].res as SplitStepResponse).ok).toBe(true)
+    expect(posted[0].transfer).toEqual([first.buffer, second.buffer])
+  })
+
+  it('answers a split with the kernel error when OCC is unavailable', async () => {
+    engines.splitStepLocally.mockResolvedValueOnce(null)
+    const actor = new WorkerActor()
+    const { posted, post } = postInto()
+
+    handleWorkerMessage(
+      { id: 9, kind: 'splitStep', bytes: new Uint8Array([0]) },
+      post,
+      actor,
+    )
+    await flush()
+
+    expect(posted[0].res).toMatchObject({ id: 9, ok: false })
+    expect(String((posted[0].res as { error?: string }).error)).toContain('local solver unavailable')
   })
 
   it('routes a bundle message to solveLocally and posts a PartBundle', async () => {

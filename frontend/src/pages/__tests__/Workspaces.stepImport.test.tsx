@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
 import { freshLocalDb } from './workspacesHarness'
 import Workspaces from '@/pages/Workspaces'
@@ -42,6 +42,13 @@ describe('Workspaces STEP import', () => {
     const bytes = new TextEncoder().encode('ISO-10303-21;\nHEADER;\nENDSEC;\nEND-STEP;\n')
     await act(async () => {
       fireEvent.change(input, { target: { files: [stepFile('bracket.step', bytes)] } })
+    })
+
+    // The STEP asks how to land; the default row is today's one-part adoption.
+    // The library toolbar also has an Import button, so scope to the dialog.
+    const dialog = document.querySelector('.dialog-component-overlay')!
+    await act(async () => {
+      fireEvent.click(within(dialog as HTMLElement).getByRole('button', { name: 'Import' }))
     })
 
     await waitFor(() => expect(screen.getByTitle('bracket')).toBeInTheDocument())

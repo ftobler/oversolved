@@ -19,6 +19,8 @@ import { deserializeTree } from '@/workspace/serializer'
 import { EntryReferencedError, type EntryReferrer } from '@/workspace/errors'
 import { createWorkspaceSession } from '@/workspace/session'
 import { importPickedFile } from '@/workspace/importFile'
+import { isStepFileName, type StepImportMode } from '@/workspace/stepImportMode'
+import StepImportDialog from '@/components/dialogs/StepImportDialog'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { confirmDiscardUnsavedChanges, useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { discardUnsavedEdits } from '@/recovery/discardUnsavedEdits'
@@ -125,6 +127,10 @@ export default function WorkspaceView() {
   // be reachable. `attempt` is what re-runs the effect.
   const [loadFailed, setLoadFailed] = useState(false)
   const [attempt, setAttempt] = useState(0)
+  // The picked STEP waiting for its import mode, and the report an assembly
+  // import leaves once it lands. Both are page state, not document state.
+  const [stepImportFile, setStepImportFile] = useState<File | null>(null)
+  const [stepImportNotice, setStepImportNotice] = useState<string | null>(null)
 
   // The session is installed by the page above, whose effect runs AFTER this
   // one; and a same-route navigation (duplicate) swaps workspaceId while the
@@ -251,10 +257,31 @@ export default function WorkspaceView() {
   // STEP lands with a part that imports it, a document as a document, anything
   // else as a file entry. No navigation afterwards, since several uploads in a
   // row are the common case; the new rows appear through the store event.
-  const handleUpload = (chosen: File) => runBusy('upload', `Failed to upload ${chosen.name}`, async () => {
-    if (!workspaceId) return
-    await importPickedFile(chosen, { into: workspaceId })
-  })
+  //
+  // A STEP with an assembly mode reports what it created, because the new rows
+  // are several and one of them is the assembly to open next.
+  const handleUpload = (chosen: File, stepMode: StepImportMode = 'part') =>
+    runBusy('upload', `Failed to upload ${chosen.name}`, async () => {
+      if (!workspaceId) return
+      const result = await importPickedFile(chosen, { into: workspaceId, stepMode })
+      if (result.step === undefined) return
+      const parts = result.step.partIds.length
+      const leftover = result.step.leftovers > 0
+        ? ` ${result.step.leftovers} surface ${result.step.leftovers === 1 ? 'shape was' : 'shapes were'}`
+          + ' left out; only a one-part import keeps them.'
+        : ''
+      setStepImportNotice(
+        `Imported ${chosen.name} as 1 assembly with ${parts} ${parts === 1 ? 'part' : 'parts'}.${leftover}`,
+      )
+    })
+
+  // A picked STEP asks how to land before anything is written. The dialog is
+  // the only place the mode is chosen, so a zip (a workspace restore) and every
+  // non-STEP file skip it and keep the classifier's adoption.
+  const handleUploadPicked = (chosen: File) => {
+    if (isStepFileName(chosen.name)) setStepImportFile(chosen)
+    else void handleUpload(chosen)
+  }
 
   // Where a document's referenced STEP bytes come from. The bound session is
   // the authority when it is this workspace's; otherwise a session is built on
@@ -511,7 +538,7 @@ export default function WorkspaceView() {
                 const chosen = e.target.files?.[0]
                 // Cleared so the same file can be picked again right after.
                 e.target.value = ''
-                if (chosen && !busy.has('upload')) void handleUpload(chosen)
+                if (chosen && !busy.has('upload')) handleUploadPicked(chosen)
               }}
             />
             <span className="material-icons">{busy.has('upload') ? 'hourglass_empty' : 'upload'}</span>
@@ -592,6 +619,24 @@ export default function WorkspaceView() {
         formats={(exportTarget && entryExportFormats(exportTarget)) ?? undefined}
         onDownload={handleExportDownload}
         onCancel={() => setExportTarget(null)}
+      />
+
+      <StepImportDialog
+        isOpen={stepImportFile !== null}
+        fileName={stepImportFile?.name ?? ''}
+        onImport={mode => {
+          const chosen = stepImportFile
+          setStepImportFile(null)
+          if (chosen !== null) void handleUpload(chosen, mode)
+        }}
+        onCancel={() => setStepImportFile(null)}
+      />
+
+      <MessageDialog
+        isOpen={stepImportNotice !== null}
+        title="STEP Imported"
+        message={stepImportNotice ?? ''}
+        onClose={() => setStepImportNotice(null)}
       />
 
       <Dialog

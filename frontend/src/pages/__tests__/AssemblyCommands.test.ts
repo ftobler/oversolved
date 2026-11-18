@@ -90,6 +90,10 @@ describe('assembly operation coverage', () => {
     // mate chip commits a pick), not a command: the command table inserts the
     // mate and opens its editor, and the pick is what writes the reference.
     invoked.add('set_mate_ref')
+    // add_parts is the split STEP import's batch: the Import STEP gesture calls
+    // runOperation directly (one undo entry for one part per solid), so no
+    // command reaches it.
+    invoked.add('add_parts')
     for (const id of Object.keys(ASSEMBLY_OPERATIONS) as AssemblyOperationId[]) {
       expect(invoked.has(id), `operation "${id}" is not wired to any command`).toBe(true)
     }

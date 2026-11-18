@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { handleSolveRequest, handleExportRequest, handleExportAssemblyRequest, handleBundleRequest, collectTransferables, exportTransferables, bundleTransferables, handleWorkerMessage, WorkerActor, absorbFilesForTest, fileCacheForTest, clearFileCacheForTest, relayOccLoadProgress, relayFeatureProgress, preloadWorkerWasm } from '../solverWorker'
 import { markFeatureStart } from '../../featureProgress'
 import { reportOccCompiling, reportOccDownload, reportOccReady, resetOccLoadProgress } from '../../occ/loadProgress'
-import type { SolveRequest, ExportRequest, ExportAssemblyRequest, BundleRequest, SolveResponse, ExportResponse, BundleResponse, MeasureResponse, WorkerRequest } from '../solverProtocol'
+import type { SolveRequest, ExportRequest, ExportAssemblyRequest, BundleRequest, SolveResponse, ExportResponse, BundleResponse, MeasureResponse, SplitStepResponse, WorkerRequest } from '../solverProtocol'
 import { SUPERSEDED_ERROR } from '../solverProtocol'
 import { solveLocally, exportLocally, exportAssemblyLocally } from '../../solveLocally'
 import type { BuildResponse } from '../../builder'
@@ -391,7 +391,7 @@ describe('dispatcher', () => {
   it('routes a solve message to the solve lane', () => {
     const actor = new WorkerActor()
     const submitSpy = vi.spyOn(actor, 'submit')
-    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse | MeasureResponse; transfer: Transferable[] }> = []
+    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse | MeasureResponse | SplitStepResponse; transfer: Transferable[] }> = []
     handleWorkerMessage(
       { id: 77, kind: 'solve', spec: { id: 'doc1' }, options: {} },
       (res, transfer) => { posted.push({ message: res, transfer }) },
@@ -411,7 +411,7 @@ describe('dispatcher', () => {
     try {
       const actor = new WorkerActor()
       const submitSpy = vi.spyOn(actor, 'submit')
-      const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse | MeasureResponse; transfer: Transferable[] }> = []
+      const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse | MeasureResponse | SplitStepResponse; transfer: Transferable[] }> = []
       handleWorkerMessage(
         { id: 99, kind: 'futureKind', spec: {}, options: {} } as unknown as WorkerRequest,
         (res, transfer) => { posted.push({ message: res, transfer }) },
@@ -434,7 +434,7 @@ describe('dispatcher', () => {
   it('settles a kind-less solve-shaped message with an error instead of dropping it', () => {
     const actor = new WorkerActor()
     const submitSpy = vi.spyOn(actor, 'submit')
-    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse | MeasureResponse; transfer: Transferable[] }> = []
+    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse | MeasureResponse | SplitStepResponse; transfer: Transferable[] }> = []
     handleWorkerMessage(
       { id: 55, spec: { id: 'doc1' }, options: {} } as WorkerRequest,
       (res, transfer) => { posted.push({ message: res, transfer }) },
@@ -452,7 +452,7 @@ describe('dispatcher', () => {
     vi.mocked(exportLocally).mockResolvedValue(bytes)
     const actor = new WorkerActor()
     const submitSpy = vi.spyOn(actor, 'submit').mockImplementation(() => {})
-    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse | MeasureResponse; transfer: Transferable[] }> = []
+    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse | MeasureResponse | SplitStepResponse; transfer: Transferable[] }> = []
     handleWorkerMessage(
       { id: 21, kind: 'export', spec: { id: 'doc1' }, options: { format: 'step' } },
       (res, transfer) => { posted.push({ message: res, transfer }) },
@@ -477,7 +477,7 @@ describe('dispatcher', () => {
     ]
     const actor = new WorkerActor()
     const submitSpy = vi.spyOn(actor, 'submit').mockImplementation(() => {})
-    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse | MeasureResponse; transfer: Transferable[] }> = []
+    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse | MeasureResponse | SplitStepResponse; transfer: Transferable[] }> = []
     handleWorkerMessage(
       { id: 22, kind: 'exportAssembly', parts, options: { format: 'step' } },
       (res, transfer) => { posted.push({ message: res, transfer }) },
@@ -506,7 +506,7 @@ describe('dispatcher', () => {
     })
     const actor = new WorkerActor()
     const submitSpy = vi.spyOn(actor, 'submit').mockImplementation(() => {})
-    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse | MeasureResponse; transfer: Transferable[] }> = []
+    const posted: Array<{ message: SolveResponse | ExportResponse | BundleResponse | MeasureResponse | SplitStepResponse; transfer: Transferable[] }> = []
     handleWorkerMessage(
       { id: 23, kind: 'buildBundle', spec: { id: 'doc1' }, doc_id: 'd1', content_hash: 'h1' },
       (res, transfer) => { posted.push({ message: res, transfer }) },

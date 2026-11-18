@@ -50,6 +50,7 @@ import type {
   ExportRequestOptions, ExportOkResponse, WorkerRequest,
   BundleOkResponse,
   MeasureOkResponse, MeasureOp, MeasurePickRef, MeasureSet, MeasureExtra,
+  SplitStepOkResponse,
   SolverWorkerMessage,
   OccProgressMessage,
   FeatureProgressMessage,
@@ -81,7 +82,7 @@ export const EMPTY_BUILD_STATE: Readonly<BuildState> = Object.freeze({
 }) as Readonly<BuildState>
 
 /** Successful response carrying the value to extract for an in-flight request. */
-type OkResponse = SolveOkResponse | ExportOkResponse | BundleOkResponse | MeasureOkResponse
+type OkResponse = SolveOkResponse | ExportOkResponse | BundleOkResponse | MeasureOkResponse | SplitStepOkResponse
 
 // One in-flight request. `resolve` already closes over the per-request extractor
 // (solve fills `_build_state`, export pulls bytes), so the shared dispatcher in
@@ -409,6 +410,29 @@ export function buildBundleViaWorker(
   return sendRequest(
     (id) => ({ id, kind: 'buildBundle', spec, doc_id, content_hash, files: fileDelta(files) }),
     (res) => (res as BundleOkResponse).payload,
+  )
+}
+
+/** One solid of a STEP file, written as its own STEP bytes by the Worker. */
+export interface StepSplitReply {
+  solids: { bytes: Uint8Array; volume: number }[]
+  leftovers: number
+}
+
+/**
+ * Split a STEP file into one STEP file per solid, for the B2 import. A
+ * deliberate single click like an export, so it bypasses the crash cooldown and
+ * may spawn the Worker: an import is worth the kernel. Resolves null only when
+ * no Worker can be created.
+ */
+export function splitStepViaWorker(bytes: Uint8Array, scale = 1.0): Promise<StepSplitReply | null> {
+  return sendRequest(
+    (id) => ({ id, kind: 'splitStep', bytes, scale }),
+    (res) => {
+      const split = res as SplitStepOkResponse
+      return { solids: split.solids, leftovers: split.leftovers }
+    },
+    true,
   )
 }
 

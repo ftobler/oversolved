@@ -79,6 +79,11 @@ describe('WorkspaceView upload', () => {
     const bytes = new TextEncoder().encode('ISO-10303-21;\nHEADER;\nENDSEC;\nEND-STEP;\n')
 
     await upload(pickedFile('bracket.step', bytes))
+    // A STEP asks how to land; the default row is today's one-part import.
+    await screen.findByRole('heading', { name: 'Import bracket.step' })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Import' }))
+    })
     await settle()
 
     const store = seedStore()
@@ -95,6 +100,33 @@ describe('WorkspaceView upload', () => {
     // No navigation: the rows appear in place.
     await waitFor(() => expect(screen.getByLabelText('bracket')).toBeTruthy())
     expect(screen.queryByText('EDITOR')).toBeNull()
+  })
+
+  it('lands a STEP picked as an assembly with the one part inside it', async () => {
+    const workspace = await openWorkspace()
+    const bytes = new TextEncoder().encode('ISO-10303-21;\nHEADER;\nENDSEC;\nEND-STEP;\n')
+
+    await upload(pickedFile('bracket.step', bytes))
+    await screen.findByRole('heading', { name: 'Import bracket.step' })
+    fireEvent.click(screen.getByLabelText('Assembly with one part'))
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Import' }))
+    })
+    await settle()
+
+    const entries = await seedStore().listEntries(workspace)
+    const assembly = entries.find(e => e.docKind === 'assembly' && e.name === 'bracket')
+    const part = entries.find(e => e.docKind === 'part')
+    const file = entries.find(e => e.kind === 'file')
+    expect(assembly).toBeDefined()
+    expect(part).toMatchObject({ name: 'bracket', docKind: 'part' })
+    expect(file).toMatchObject({ name: 'bracket.step', fileKind: 'step' })
+    // The assembly names the part its one instance places.
+    const text = (await seedStore().readEntry(workspace, assembly!.id)).text ?? ''
+    const features = (parseYaml(text) as { features: { kind: string; instance?: { doc_id: string } }[] }).features
+    expect(features.filter(f => f.kind === 'part_instance').map(f => f.instance!.doc_id)).toEqual([part!.id])
+    // The file's stem names both rows; the row metadata says which is which.
+    await waitFor(() => expect(screen.getAllByLabelText('bracket')).toHaveLength(2))
   })
 
   it('lands any other file as one file entry', async () => {

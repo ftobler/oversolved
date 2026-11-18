@@ -16,6 +16,9 @@ import { subscribeWorkspaceStore } from '@/workspace/storeEvents'
 import { buildZipBytes } from '@/workspace/zipCarrier'
 import { deserializeTree } from '@/workspace/serializer'
 import { importBag, readDirectoryBag, readZipBag } from '@/workspace/import'
+import { importPickedFile } from '@/workspace/importFile'
+import { isStepFileName, type StepImportMode } from '@/workspace/stepImportMode'
+import StepImportDialog from '@/components/dialogs/StepImportDialog'
 import { canPickDirectory, canPickWorkspaceZip, pickLibraryDirectory, pickWorkspaceZip } from '@/adapters/fileSystemAccess'
 import '@/pages/Documents.css'
 
@@ -49,6 +52,9 @@ export default function Workspaces() {
   const importButtonRef = useRef<HTMLButtonElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [importMenu, setImportMenu] = useState<[number, number] | null>(null)
+  // The picked STEP waiting for its import mode. A STEP creates a workspace
+  // either way; the mode only decides what lands inside it.
+  const [stepImportFile, setStepImportFile] = useState<File | null>(null)
   // Import, export and duplicate can take long enough that a second click
   // lands before the first settles, and a duplicated slow verb would run twice.
   // Each in-flight verb names its own key here: the control that owns it goes
@@ -186,23 +192,30 @@ export default function Workspaces() {
     }
   }
 
-  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    e.target.value = ''
+  // A picked STEP asks how to land, then the picked mode builds the workspace in
+  // one gesture: mode A keeps adoption's pair, B1/B2 create the workspace and
+  // land the assembly inside it (importPickedFile owns that split).
+  const importChosenFile = async (file: File, stepMode: StepImportMode) => {
     try {
       await withBusy('import', async () => {
-        const bytes = new Uint8Array(await file.arrayBuffer())
-        const bag = /\.(zip|oversolved)$/i.test(file.name)
-          ? await readZipBag(bytes)
-          : { items: [{ path: file.name, bytes }] }
-        const result = await importBag(bag)
+        const result = await importPickedFile(file, { stepMode })
         setImportedCount(result.documents + result.files)
         await refresh(false, debouncedSearch)
       })
     } catch (err) {
       setError(errorMessage(err, 'Failed to import file'))
     }
+  }
+
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    e.target.value = ''
+    if (isStepFileName(file.name)) {
+      setStepImportFile(file)
+      return
+    }
+    await importChosenFile(file, 'part')
   }
 
   const handleImportFolder = async () => {
@@ -388,6 +401,17 @@ export default function Workspaces() {
             title="Copied into Workspace"
             message={`Copied ${importedCount ?? 0} entries into this workspace. Edits to the source will not propagate.`}
             onClose={() => setImportedCount(null)}
+          />
+
+          <StepImportDialog
+            isOpen={stepImportFile !== null}
+            fileName={stepImportFile?.name ?? ''}
+            onImport={mode => {
+              const file = stepImportFile
+              setStepImportFile(null)
+              if (file !== null) void importChosenFile(file, mode)
+            }}
+            onCancel={() => setStepImportFile(null)}
           />
 
           {loading && <LoadingState label="Loading workspaces..." />}

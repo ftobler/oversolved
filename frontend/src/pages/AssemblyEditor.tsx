@@ -30,7 +30,10 @@ import { runAssemblyOperation, type AssemblyOperationId, type AssemblyOperationI
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { interpretEntry } from '@/workspace/kinds'
 import type { EntryMeta } from '@/workspace/types'
-import { addStepPart } from '@/workspace/stepPart'
+import { addStepAssembly, addStepPart, STEP_NO_SOLIDS } from '@/workspace/stepPart'
+import { splitStepViaWorker } from '@/kernel/worker/solverClient'
+import StepImportDialog from '@/components/dialogs/StepImportDialog'
+import type { StepImportMode } from '@/workspace/stepImportMode'
 import { stepImportLimitError } from '@/stores/documentStore/stepImport'
 import type { AssemblySubject } from '@/utils/assemblySelection'
 import { executeCommand } from '@/utils/core/commandRegistry'
@@ -395,6 +398,36 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   // one save (the file entry, the part and their edge), so the pair cannot
   // half-exist; undo covers the instance and leaves the part in the workspace,
   // the same way delete_part never deletes the document it placed.
+  //
+  // A picked file opens the mode dialog first: A is this whole-file import, and
+  // B2 splits it into one part per solid (the assembly already exists, so B1
+  // would be A and is not offered).
+  const [stepImport, setStepImport] = useState<{ fileName: string; bytes: Uint8Array } | null>(null)
+
+  // Every part a gesture just created joins the live-part set before its
+  // add_part(s) command runs, so the outward-link guard accepts them; the picker
+  // view gets the same entries, so a later rebind can choose them too. The
+  // workspace list is asked again afterwards so the optimistic entries and the
+  // stored rows cannot drift.
+  const registerImportedParts = useCallback((parts: readonly { id: string; name: string }[]) => {
+    if (parts.length === 0) return
+    if (knownPartIds.current) {
+      knownPartIds.current = new Set([...knownPartIds.current, ...parts.map(part => part.id)])
+    }
+    setPartList(prev => {
+      if (prev === null) return prev
+      const names = { ...prev.names }
+      const options = [...prev.options]
+      for (const part of parts) {
+        names[part.id] = part.name
+        if (!options.some(option => option.id === part.id)) options.push({ id: part.id, name: part.name })
+      }
+      options.sort((a, b) => a.name.localeCompare(b.name))
+      return { names, options }
+    })
+    refreshPartList()
+  }, [refreshPartList])
+
   const handleImportStep = useCallback(() => {
     const input = document.createElement('input')
     input.type = 'file'
@@ -418,32 +451,58 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
         setError('STEP file is empty')
         return
       }
-      const workspace = workspaceId ?? session?.workspace ?? uuid
-      try {
-        const imported = await addStepPart(workspace, bytes, { fileName: file.name })
-        // The add_part guard reads this set, so the new part must be in it
-        // before the command runs. The picker's view gets the same entry, so
-        // the part this gesture just created can be chosen for a rebind too.
-        if (knownPartIds.current) knownPartIds.current = new Set([...knownPartIds.current, imported.partId])
-        setPartList(prev => prev === null ? prev : {
-          names: { ...prev.names, [imported.partId]: imported.name },
-          options: prev.options.some(option => option.id === imported.partId)
-            ? prev.options
-            : [...prev.options, { id: imported.partId, name: imported.name }]
-              .sort((a, b) => a.name.localeCompare(b.name)),
-        })
-        // A list fetched before the import landed does not name the new part;
-        // ask the workspace again so the optimistic entry and the stored one
-        // cannot drift.
-        refreshPartList()
-        const added = executeCommand('add_part', { docId: imported.partId, docRev: 0 })
-        if (!added.ok) setError(added.message)
-      } catch (e) {
-        setError(errorMessage(e, 'Failed to import STEP'))
-      }
+      setStepImport({ fileName: file.name, bytes })
     }
     input.click()
-  }, [uuid, workspaceId, session, setError, refreshPartList])
+  }, [setError])
+
+  // The STEP mode the user picked. A adds the whole file as one part through
+  // the ordinary add_part command; B2 splits the file into per-solid STEP bytes,
+  // writes one part per solid, and adds every instance in ONE add_parts command
+  // so undo covers the whole import. A one-solid file falls through to A: the
+  // split proved it has nothing to split, and importing the original bytes keeps
+  // the part identical to modes A and B1.
+  const handleStepImportConfirm = useCallback(async (mode: StepImportMode) => {
+    const picked = stepImport
+    setStepImport(null)
+    if (picked === null) return
+    const workspace = workspaceId ?? session?.workspace ?? uuid
+    const importWhole = async () => {
+      const imported = await addStepPart(workspace, picked.bytes, { fileName: picked.fileName })
+      registerImportedParts([{ id: imported.partId, name: imported.name }])
+      const added = executeCommand('add_part', { docId: imported.partId, docRev: 0 })
+      if (!added.ok) setError(added.message)
+    }
+    try {
+      if (mode === 'part') {
+        await importWhole()
+        return
+      }
+      const split = await splitStepViaWorker(picked.bytes)
+      if (split === null) {
+        setError('STEP splitting needs the local kernel; reload the page and try again')
+        return
+      }
+      if (split.solids.length === 0) {
+        setError(STEP_NO_SOLIDS)
+        return
+      }
+      if (split.solids.length === 1) {
+        await importWhole()
+        return
+      }
+      const imported = await addStepAssembly(workspace, picked.bytes, {
+        fileName: picked.fileName,
+        mode: 'assembly_split',
+        solids: split.solids.map(solid => solid.bytes),
+        intoAssembly: uuid,
+      })
+      registerImportedParts(imported.parts)
+      runOperation('add_parts', imported.parts.map(part => ({ docId: part.id, docRev: 0 })))
+    } catch (e) {
+      setError(errorMessage(e, 'Failed to import STEP'))
+    }
+  }, [uuid, workspaceId, session, stepImport, setError, registerImportedParts, runOperation])
 
   const openEntryInNewTab = useOpenEntryInNewTab(workspaceId ?? uuid)
   const handleOpenPartNewTab = useCallback((handle: string) => {
@@ -864,6 +923,13 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
         currentName={renameMateTarget?.currentName ?? ''}
         onRename={handleRenameMateConfirm}
         onCancel={() => setRenameMateTarget(null)}
+      />
+      <StepImportDialog
+        isOpen={stepImport !== null}
+        fileName={stepImport?.fileName ?? ''}
+        variant="assembly"
+        onImport={mode => { void handleStepImportConfirm(mode) }}
+        onCancel={() => setStepImport(null)}
       />
       <AssemblyExport ref={exportRef} doc={doc} docName={docName} docNames={docNames} />
     </div>
