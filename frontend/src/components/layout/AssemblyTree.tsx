@@ -274,7 +274,7 @@ export function AssemblyTree({
                 {expandable ? (
                   <button
                     type="button"
-                    className="assembly-tree-chevron"
+                    className="subassembly-chevron"
                     onClick={(e) => { e.stopPropagation(); toggleExpanded(child.key) }}
                     aria-label={`${expanded.has(child.key) ? 'Collapse' : 'Expand'} ${child.label}`}
                     aria-expanded={expanded.has(child.key)}
@@ -283,10 +283,10 @@ export function AssemblyTree({
                     <span className="material-icons">{expanded.has(child.key) ? 'expand_more' : 'chevron_right'}</span>
                   </button>
                 ) : (
-                  <span className="assembly-tree-chevron-spacer" aria-hidden="true" />
+                  <span className="subassembly-chevron-spacer" aria-hidden="true" />
                 )}
                 {child.kind === 'assembly'
-                  ? <span className="material-icons feature-icon assembly-node-icon" aria-hidden="true">account_tree</span>
+                  ? <span className="material-icons feature-icon subassembly-node-icon" aria-hidden="true">account_tree</span>
                   : <img className="feature-icon" src={featurePartIcon} alt="" />}
                 <span className={`feature-name${child.failed ? ' failed' : ''}`}>{child.label}</span>
                 <div className="feature-item-actions">
@@ -446,7 +446,7 @@ export function AssemblyTree({
                   {node?.children.length ? (
                     <button
                       type="button"
-                      className="assembly-tree-chevron"
+                      className="subassembly-chevron"
                       onClick={(e) => { e.stopPropagation(); toggleExpanded(node.key) }}
                       aria-label={`${expanded.has(node.key) ? 'Collapse' : 'Expand'} ${label}`}
                       aria-expanded={expanded.has(node.key)}
@@ -455,10 +455,10 @@ export function AssemblyTree({
                       <span className="material-icons">{expanded.has(node.key) ? 'expand_more' : 'chevron_right'}</span>
                     </button>
                   ) : (
-                    <span className="assembly-tree-chevron-spacer" aria-hidden="true" />
+                    <span className="subassembly-chevron-spacer" aria-hidden="true" />
                   )}
                   {isAssembly
-                    ? <span className="material-icons feature-icon assembly-node-icon" aria-hidden="true">account_tree</span>
+                    ? <span className="material-icons feature-icon subassembly-node-icon" aria-hidden="true">account_tree</span>
                     : <img className="feature-icon" src={featurePartIcon} alt="" />}
                   <span className={`feature-name${markNameClass(failMark)}`}>{label}</span>
                   {/* A fixed part carries the fixed-mate glyph, greyed, after its

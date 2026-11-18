@@ -62,36 +62,39 @@ describe('AssemblyPartPicker (workspace scoped)', () => {
     expect(h.listEntries).toHaveBeenCalled()
   })
 
-  it('shows only parts, never assemblies', async () => {
+  it('lists parts and assemblies in their own groups', async () => {
     h.listEntries.mockResolvedValue([
       entry('part-1', 'Bracket', 5, 'part'),
       entry('asm-2', 'Other Assembly', 1, 'assembly'),
     ])
     renderPicker()
     await waitFor(() => expect(screen.getByText('Bracket')).toBeInTheDocument())
-    expect(screen.queryByText('Other Assembly')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Parts')).toBeInTheDocument()
+    expect(screen.getByLabelText('Assemblies')).toBeInTheDocument()
+    expect(screen.getByText('Other Assembly')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Insert' })).toBeDisabled()
   })
 
-  it('shows the parts empty state when the filter leaves no tiles', async () => {
+  it('keeps an assembly tile pickable when no cycle forbids it', async () => {
     h.listEntries.mockResolvedValue([entry('asm-2', 'Other Assembly', 1, 'assembly')])
     renderPicker()
-    await waitFor(() => expect(screen.getByText('No parts available.')).toBeInTheDocument())
-    expect(screen.queryByText('Other Assembly')).not.toBeInTheDocument()
+    await waitFor(() => expect(screen.getByText('Other Assembly')).toBeInTheDocument())
+    fireEvent.click(screen.getByText('Other Assembly'))
+    expect(screen.getByRole('button', { name: 'Insert' })).toBeEnabled()
   })
 
   // I6: an unknown kind is refused, never treated as an insertable part.
   it('excludes a document with an unknown kind', async () => {
     h.listEntries.mockResolvedValue([entry('weird', 'Draft', 1, 'drawing')])
     renderPicker()
-    await waitFor(() => expect(screen.getByText('No parts available.')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('No parts or assemblies available.')).toBeInTheDocument())
     expect(screen.queryByText('Draft')).not.toBeInTheDocument()
   })
 
   it('shows no workspace at all when the session is absent', async () => {
     renderPicker({ session: null })
     await waitFor(() => expect(h.listEntries).not.toHaveBeenCalled())
-    expect(screen.getByText('No parts available.')).toBeInTheDocument()
+    expect(screen.getByText('No parts or assemblies available.')).toBeInTheDocument()
   })
 
   it('titles itself with an icon, like every other dialog on the shell', () => {

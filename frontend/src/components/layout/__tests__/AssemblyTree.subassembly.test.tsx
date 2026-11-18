@@ -60,7 +60,7 @@ describe('AssemblyTree sub-assemblies', () => {
     expect(rowByName(container, 'Gripper')).toBeTruthy()
     expect(container.querySelector('.assembly-subtree')).toBeNull()
 
-    const chevron = rowByName(container, 'Gripper').querySelector('.assembly-tree-chevron')!
+    const chevron = rowByName(container, 'Gripper').querySelector('.subassembly-chevron')!
     fireEvent.click(chevron)
 
     const subtree = container.querySelector('.assembly-subtree')!
@@ -79,7 +79,7 @@ describe('AssemblyTree sub-assemblies', () => {
   it('selecting a child selects the top-level instance plus its leaf path', () => {
     const onSelectPart = vi.fn()
     const { container } = renderTree({ onSelectPart })
-    fireEvent.click(rowByName(container, 'Gripper').querySelector('.assembly-tree-chevron')!)
+    fireEvent.click(rowByName(container, 'Gripper').querySelector('.subassembly-chevron')!)
     fireEvent.click(rowByName(container, 'Bolt'))
     expect(onSelectPart).toHaveBeenCalledWith('sub', 'bolt')
   })
@@ -87,7 +87,7 @@ describe('AssemblyTree sub-assemblies', () => {
   it('the child eye is a view filter callback, not a document write', () => {
     const onSetLeafVisible = vi.fn()
     const { container } = renderTree({ onSetLeafVisible })
-    fireEvent.click(rowByName(container, 'Gripper').querySelector('.assembly-tree-chevron')!)
+    fireEvent.click(rowByName(container, 'Gripper').querySelector('.subassembly-chevron')!)
     const hide = rowByName(container, 'Bolt').querySelector('[aria-label="Hide Bolt"]')!
     fireEvent.click(hide)
     expect(onSetLeafVisible).toHaveBeenCalledWith('sub/bolt', false)

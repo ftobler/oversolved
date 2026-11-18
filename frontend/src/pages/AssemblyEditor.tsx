@@ -278,11 +278,13 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   // model renders as a failed row rather than hiding the placement.
   const [subassemblyDocs, setSubassemblyDocs] = useState<Record<string, AssemblyDoc | null>>({})
   useEffect(() => {
-    if (!session) {
-      setSubassemblyDocs({})
-      return
-    }
     let cancelled = false
+    if (!session) {
+      // Deferred a microtask: no session is a mount-time state, and clearing it
+      // synchronously in the effect would cascade a render.
+      queueMicrotask(() => { if (!cancelled) setSubassemblyDocs({}) })
+      return () => { cancelled = true }
+    }
     void (async () => {
       const docs: Record<string, AssemblyDoc | null> = {}
       const seen = new Set<string>()

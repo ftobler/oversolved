@@ -288,8 +288,8 @@
 
 /* A sub-assembly is a directory row: one disclosure chevron, the assembly
    glyph, and children indented under the parent's list. */
-.assembly-tree-chevron,
-.assembly-tree-chevron-spacer {
+.subassembly-chevron,
+.subassembly-chevron-spacer {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -298,7 +298,7 @@
   flex-shrink: 0;
 }
 
-.assembly-tree-chevron {
+.subassembly-chevron {
   padding: 0;
   border: none;
   background: none;
@@ -306,15 +306,15 @@
   cursor: pointer;
 }
 
-.assembly-tree-chevron .material-icons {
+.subassembly-chevron .material-icons {
   font-size: 18px;
 }
 
-.assembly-tree-chevron:hover {
+.subassembly-chevron:hover {
   color: #fff;
 }
 
-.assembly-node-icon {
+.subassembly-node-icon {
   font-size: 20px;
   line-height: 20px;
   color: #9fc7ea;

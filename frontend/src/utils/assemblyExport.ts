@@ -25,6 +25,10 @@ import { backendBundle } from '@/adapters/backend'
 import { docLoadErrorMessage, loadPartDocText } from '@/persistence/docSchema'
 import { fileIdsInParts } from '@/stores/fileRegistry/resolve'
 
+/** A loaded PartDoc as the worker spec builder reads it. */
+type PartContent = Record<string, unknown>
+type PartContents = Record<string, PartContent>
+
 /** Visible part instances, in document order. */
 export function exportableInstances(doc: AssemblyDoc): PartInstance[] {
   return (doc.features ?? [])
@@ -39,10 +43,10 @@ export function exportableInstances(doc: AssemblyDoc): PartInstance[] {
  *  otherwise rehydrate a half-parsed B-rep. */
 export async function loadPartContents(
   instances: readonly { doc_id: string }[],
-): Promise<Record<string, Record<string, unknown>>> {
+): Promise<PartContents> {
   const ids = [...new Set(instances.map(i => i.doc_id))]
   const loaded = await Promise.all(ids.map(id => backendBundle.documents.load(id)))
-  const out: Record<string, Record<string, unknown>> = {}
+  const out: PartContents = {}
   ids.forEach((id, i) => {
     const parsed = loadPartDocText(loaded[i].content, { name: loaded[i].name })
     if (!parsed.ok) throw new Error(`Part ${id}: ${docLoadErrorMessage(parsed.error)}`)
@@ -100,7 +104,7 @@ export function flattenExportLeaves(
  */
 export function buildExportPartsFromLeaves(
   leaves: readonly AssemblyExportLeaf[],
-  contents: Record<string, Record<string, unknown>>,
+  contents: PartContents,
 ): AssemblyExportPartSpec[] {
   const out: AssemblyExportPartSpec[] = []
   for (const leaf of leaves) {
@@ -122,7 +126,7 @@ export function buildExportPartsFromLeaves(
 export function buildExportParts(
   instances: PartInstance[],
   transforms: Record<string, Transform3D>,
-  contents: Record<string, Record<string, unknown>>,
+  contents: PartContents,
 ): AssemblyExportPartSpec[] {
   return buildExportPartsFromLeaves(
     instances.map(inst => ({ doc_id: inst.doc_id, transform: transforms[inst.handle] ?? inst.transform })),
