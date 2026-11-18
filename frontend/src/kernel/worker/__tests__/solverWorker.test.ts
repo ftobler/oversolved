@@ -703,6 +703,24 @@ describe('scheduleWarmUp', () => {
     expect(order).toEqual(['warm0', 'solve'])
   })
 
+  it('never starts once a real request was submitted, even one already done', async () => {
+    const actor = new WorkerActor()
+    actor.submit({ lane: 'solve', run: async () => {} })
+    await settle()
+    const warm = vi.fn().mockResolvedValue(true)
+    scheduleWarmUp(actor, warm)
+    await settle()
+    expect(warm).not.toHaveBeenCalled()
+  })
+
+  it('stops after a step that did not run clean', async () => {
+    const actor = new WorkerActor()
+    const warm = vi.fn().mockResolvedValue(false)
+    scheduleWarmUp(actor, warm)
+    await settle()
+    expect(warm).toHaveBeenCalledTimes(1)
+  })
+
   it('a queued step is dropped by any real submit, a one-shot included', async () => {
     const actor = new WorkerActor()
     const warm = vi.fn().mockResolvedValue(true)

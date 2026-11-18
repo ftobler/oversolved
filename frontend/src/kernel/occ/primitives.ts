@@ -792,6 +792,10 @@ export function bboxDiagonal(oc: OccModule, scope: DisposeScope, shape: OccShape
  * `gp_Cylinder` the V parameter runs along the axis, so dv is the axis
  * direction (unnormalised). Returns null for non-cylinder faces or when the
  * dv vector is degenerate.
+ *
+ * The kernel reads this through `readFaceFacts` (faceFacts.ts) now; this
+ * per-face reader stays as the definition the bulk read is pinned against in
+ * faceFactsReal.test.ts.
  */
 export function faceCylinderAxis(oc: OccModule, scope: DisposeScope, face: OccShape): Vec3 | null {
   const adaptor = scope.track(new oc.BRepAdaptor_Surface_2(face, true))

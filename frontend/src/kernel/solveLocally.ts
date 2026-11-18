@@ -307,10 +307,6 @@ export function tessellateParts(
       // The edges each face meets twice, so the selector can tell a seam from
       // an open shell's free edge (both are listed by one face only).
       mesh.face_seam_queries = faceEdgeData.face_seam_queries
-      // The same walk, kept as sparse display indices: the viewport skips these
-      // seams and the vertices that end no visible open edge. The arrays above
-      // are untouched, so every name and query stays byte-identical.
-      const hidden = faceEdgeData
       out[bodyId] = {
         mesh,
         edges: edgeResult.edges,
@@ -321,8 +317,11 @@ export function tessellateParts(
         vertex_queries: vertexResult.vertex_queries,
         vertex_uuids: vertexResult.vertex_uuids,
         vertex_created_by: vertexResult.vertex_created_by,
-        hidden_edges: hidden.hidden_edges,
-        hidden_vertices: hidden.hidden_vertices,
+        // The same walk, kept as sparse display indices: the viewport skips
+        // these seams and the vertices that end no visible open edge. The arrays
+        // above are untouched, so every name and query stays byte-identical.
+        hidden_edges: faceEdgeData.hidden_edges,
+        hidden_vertices: faceEdgeData.hidden_vertices,
         created_by: body.created_by ?? '',
         modified_by: body.modified_by ?? [],
       }
@@ -832,9 +831,11 @@ export async function splitStepLocally(bytes: Uint8Array, scale = 1.0): Promise<
  * Run warm-up step `index` (occ/warmUp.ts) on the kernel. Never touches the
  * cross-solve cache or the persistent handle table. The Worker schedules it only
  * after the OCC preload produced a module, so this reads the memoized one rather
- * than starting a load. A trap recovers exactly as a split import's does, so the
- * next real solve meets a fresh module; any other failure is only logged, since
- * nothing waits on the warm-up. Returns whether a step ran.
+ * than starting a load. A trap discards the module the way a split import's does
+ * (`recoverLocalKernel`), so the next real solve meets a fresh one, but it is not
+ * thrown: nothing waits on the warm-up, and the actor would swallow the fault
+ * unlogged. Every failure is logged here and ends the warm-up (returns false);
+ * true means the step ran clean.
  */
 export async function warmUpLocally(index: number, state: WarmUpState): Promise<boolean> {
   const step = WARM_UP_STEPS[index]
@@ -843,11 +844,14 @@ export async function warmUpLocally(index: number, state: WarmUpState): Promise<
   if (!oc) return false
   try {
     step(oc, state)
+    return true
   } catch (e) {
-    if (isKernelTrap(e)) recoverTrap(e)
-    console.warn(`[kernel] warm-up step ${index} failed; the first import runs cold`, e)
+    const trapped = isKernelTrap(e)
+    console.warn(`[kernel] warm-up step ${index} ${trapped ? 'trapped; the kernel reloads' : 'failed'}; `
+      + 'the first import runs cold', e)
+    if (trapped) recoverLocalKernel()
+    return false
   }
-  return true
 }
 
 // ─── local measure ───

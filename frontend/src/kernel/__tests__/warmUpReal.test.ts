@@ -53,6 +53,14 @@ describe.skipIf(!oc || !solveBytes)('kernel warm-up (real OCC)', () => {
     resetSketchSolver()
   })
 
+  it('every step runs clean on its own', () => {
+    // Unwrapped: warmUpLocally logs a failing step and moves on, so only a
+    // direct call can see a step that throws.
+    const state: WarmUpState = {}
+    for (const step of WARM_UP_STEPS) step(oc!, state)
+    expect(state.step?.length).toBeGreaterThan(0)
+  })
+
   it('runs every step and leaves the persistent table as it found it', async () => {
     const files = new Map([['imp1', STEP]])
     await solveLocally(importDoc('warm-a'), { files })

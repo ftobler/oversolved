@@ -23,6 +23,7 @@ import { stepBytesToShapeWithIdentity, stepShapeToBytes } from './stepIo'
 import { readFaceFacts } from './faceFacts'
 import { readShapeFaceMetadata, solidFaceEdgeData, solidToEdges, solidToMesh, solidToVertices } from './tessellation'
 import type { OccModule } from './occTypes'
+import type { OccHandle } from './handleTable'
 
 /** What one step leaves for the next: plain bytes, never a handle. */
 export interface WarmUpState {
@@ -36,7 +37,7 @@ export type WarmUpStep = (oc: OccModule, state: WarmUpState) => void
 function buildAndWrite(oc: OccModule, state: WarmUpState): void {
   const scope = new DisposeScope()
   try {
-    const plate = makeBoxAt(oc, scope, [0, 0, 0], 20, 12, 4)
+    const plate = scope.track(makeBoxAt(oc, scope, [0, 0, 0], 20, 12, 4))
     const drill = scope.track(makeCylinder(oc, scope, [10, 6, -1], [0, 0, 1], 3, 6))
     state.step = stepShapeToBytes(oc, scope, scope.track(booleanWithDiff(oc, scope, plate, drill, 'cut').shape))
   } finally {
@@ -48,10 +49,11 @@ function buildAndWrite(oc: OccModule, state: WarmUpState): void {
 function readAndRender(oc: OccModule, state: WarmUpState): void {
   if (!state.step) return
   const scope = new DisposeScope()
-  // The read shape is untracked (the caller owns it); the private table takes it.
   const table = new HandleTable()
-  const handle = table.register(stepBytesToShapeWithIdentity(oc, scope, state.step).shape)
+  let handle: OccHandle | null = null
   try {
+    // The read shape is untracked (the caller owns it); the private table takes it.
+    handle = table.register(stepBytesToShapeWithIdentity(oc, scope, state.step).shape)
     const solid = table.get(handle)
     readShapeFaceMetadata(oc, scope, solid)
     const faceFacts = readFaceFacts(oc, solid)
@@ -60,7 +62,7 @@ function readAndRender(oc: OccModule, state: WarmUpState): void {
     solidToVertices(oc, table, handle)
     solidFaceEdgeData(oc, table, handle, edges.edge_queries, faceFacts)
   } finally {
-    table.release(handle)
+    if (handle !== null) table.release(handle)
     scope.dispose()
   }
 }

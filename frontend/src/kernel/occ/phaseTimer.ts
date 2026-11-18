@@ -2,8 +2,8 @@
  * Opt-in wall-clock accounting for the kernel's import and render phases.
  *
  * Off by default: `timePhase` is then one null check around the call, so the
- * call sites can stay in the production path. A bench (scripts/benchStepImport.ts)
- * or a profiling session turns it on, runs a solve, and reads back how long each
+ * call sites can stay in the production path. A bench
+ * (src/kernel/__tests__/stepImportBenchReal.test.ts) or a profiling session turns it on, runs a solve, and reads back how long each
  * named phase took in total and how often it ran. The point is to measure the
  * real pipeline, not a copy of it that drifts.
  *

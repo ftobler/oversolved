@@ -494,7 +494,7 @@ function sortedFaceRows(oc: OccModule, scope: DisposeScope, solid: OccShape): Fa
   for (let i = 0; exp.More(); exp.Next(), i++) {
     const face = scope.track(oc.TopoDS.Face_1(exp.Current())) as OccSubShape
     const canon = canonOf(face)
-    const fact = facts[i]
+    const fact = factAt(facts, i)
     rows.push({
       shape: face,
       centroid: fact.centroid,
@@ -504,6 +504,7 @@ function sortedFaceRows(oc: OccModule, scope: DisposeScope, solid: OccShape): Fa
       fact,
     })
   }
+  assertFactCount(facts, rows.length)
   rows.sort((a, b) => compareFaceSortKeys(faceSortKey(a), faceSortKey(b)))
   return rows
 }

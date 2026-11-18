@@ -14,7 +14,8 @@
 // STEP_BENCH_FILES takes a comma-separated list of project-relative STEP paths
 // (relative to the repo root) in place of the default set. Each file is solved
 // twice from scratch: the first solve of the process also pays the WASM tier-up,
-// the second is the steady state. Numbers live in feature/step-load-speed.md.
+// the second is the steady state. Numbers taken with it live in the
+// step-load-speed post-mortem in feature/knowledgebase.history.md.
 
 import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve, basename } from 'node:path'
