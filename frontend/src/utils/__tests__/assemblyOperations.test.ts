@@ -409,4 +409,73 @@ describe('runAssemblyOperation effect dispatch', () => {
       expect(host.requestSolve).not.toHaveBeenCalled()
     })
   })
+
+  // A sub-assembly is an ordinary add_part whose doc_id names an assembly. The
+  // cycle rule is the only new refusal; the live-entry check widens to accept
+  // the assembly set the page passes.
+  describe('sub-assembly placement', () => {
+    const names = (id: string) => ({ host: 'Robot', sub: 'Gripper', deep: 'Finger' })[id]
+
+    it('accepts an assembly id that does not close a cycle', () => {
+      const host = fakeHost({ kind: 'assembly', features: [] })
+      host.knownPartIds = new Set()
+      host.knownAssemblyIds = new Set(['sub'])
+      host.references = {}
+      host.assemblyDocId = 'host'
+      host.nameOf = names
+
+      runAssemblyOperation('add_part', { docId: 'sub', docRev: 0 }, host)
+
+      expect(host.mutateOneShot).toHaveBeenCalledTimes(1)
+      expect(host.live().features?.[0].instance?.doc_id).toBe('sub')
+    })
+
+    it('refuses a direct cycle with the path by display name', () => {
+      const host = fakeHost({ kind: 'assembly', features: [] })
+      host.knownPartIds = new Set()
+      host.knownAssemblyIds = new Set(['sub'])
+      // The sub-assembly already contains the host, so host -> sub closes it.
+      host.references = { sub: ['host'] }
+      host.assemblyDocId = 'host'
+      host.nameOf = names
+
+      expect(() => runAssemblyOperation('add_part', { docId: 'sub', docRev: 0 }, host))
+        .toThrow('Adding Gripper would make a circular assembly: Gripper > this assembly')
+      expect(host.mutateOneShot).not.toHaveBeenCalled()
+    })
+
+    it('names an indirect cycle path through every container', () => {
+      const host = fakeHost({ kind: 'assembly', features: [] })
+      host.knownPartIds = new Set()
+      host.knownAssemblyIds = new Set(['deep'])
+      host.references = { deep: ['sub'], sub: ['host'] }
+      host.assemblyDocId = 'host'
+      host.nameOf = names
+
+      expect(() => runAssemblyOperation('add_part', { docId: 'deep', docRev: 0 }, host))
+        .toThrow('Adding Finger would make a circular assembly: Finger > Gripper > this assembly')
+    })
+
+    it('a rebind to the assembly itself still refuses through the same rule', () => {
+      const host = fakeHost()
+      host.assemblyDocId = 'd-p1'
+
+      expect(() => runAssemblyOperation('set_part_doc', { handle: 'p1', docId: 'd-p1' }, host))
+        .toThrow(/cannot point at the assembly it belongs to: d-p1/)
+    })
+
+    it('a rebind that closes an indirect cycle is refused', () => {
+      const host = fakeHost()
+      host.transforms = {}
+      host.knownPartIds = new Set()
+      host.knownAssemblyIds = new Set(['sub'])
+      host.references = { sub: ['host'] }
+      host.assemblyDocId = 'host'
+      host.nameOf = names
+
+      expect(() => runAssemblyOperation('set_part_doc', { handle: 'p1', docId: 'sub' }, host))
+        .toThrow(/circular assembly/)
+      expect(host.mutateSession).not.toHaveBeenCalled()
+    })
+  })
 })

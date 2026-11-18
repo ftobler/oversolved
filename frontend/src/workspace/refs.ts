@@ -45,6 +45,47 @@ export function resolveReferences(tree: WorkspaceTree): ResolvedEdge[] {
   return edges
 }
 
+/**
+ * The reference path from `candidate` down to `host`, or null when `host` is not
+ * reachable from `candidate`. This is the cycle rule for placing an assembly:
+ * `candidate` already reaching `host` means a new `host -> candidate` edge would
+ * close the loop. Self is the zero-length path (`[host]`).
+ *
+ * Breadth-first with a visited set rather than a recursive walk: a hand-edited
+ * workspace can already hold a cycle, and a path through it must terminate
+ * rather than overflow the stack.
+ */
+export function cyclePath(references: ReferenceEdges, host: string, candidate: string): string[] | null {
+  if (candidate === host) return [host]
+  const parent = new Map<string, string>()
+  const seen = new Set<string>([candidate])
+  const queue: string[] = [candidate]
+  while (queue.length > 0) {
+    const from = queue.shift()!
+    for (const to of references[from] ?? []) {
+      if (seen.has(to)) continue
+      seen.add(to)
+      parent.set(to, from)
+      if (to === host) {
+        const path: string[] = [host]
+        let at = host
+        while (at !== candidate) {
+          at = parent.get(at)!
+          path.push(at)
+        }
+        return path.reverse()
+      }
+      queue.push(to)
+    }
+  }
+  return null
+}
+
+/** True when placing `candidate` inside `host` would make `host` reach itself. */
+export function wouldCreateCycle(references: ReferenceEdges, host: string, candidate: string): boolean {
+  return cyclePath(references, host, candidate) !== null
+}
+
 export function canonicalizeReferences(edges: ReferenceEdges): ReferenceEdges {
   const out: ReferenceEdges = {}
   for (const from of Object.keys(edges).sort()) {

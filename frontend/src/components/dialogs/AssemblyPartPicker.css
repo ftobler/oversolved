@@ -48,9 +48,32 @@
   margin: 0;
 }
 
-.doc-browser-tiles {
+.doc-browser-groups {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.doc-browser-group-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #9aa7b4;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.doc-browser-group-title .material-icons {
+  font-size: 16px;
+}
+
+.doc-browser-tiles {
   align-content: start;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
 }
@@ -71,4 +94,12 @@
 .doc-browser-tile.selected {
   border-color: #6ab0ff;
   background: #1c2b3a;
+}
+
+/* A cycle-making assembly stays visible so its reason can be read, but it can
+   neither be selected nor inserted. The tile is a disabled button, so the
+   cursor and the dimmed body carry the refusal as well as the tooltip. */
+.doc-browser-tile.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
