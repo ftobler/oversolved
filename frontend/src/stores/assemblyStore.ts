@@ -4,6 +4,7 @@ import { assemblyHistory, setAssemblyHistoryMirror } from '@/stores/assemblyHist
 import type { HistoryEntry } from '@/session/History'
 import type { AssemblyDoc, PartInstance, MateFeature, MateRef, MateRefField, MateAnchorDescriptor, Transform3D, PartResult } from '@/types/cad'
 import type { EdgeCurve } from '@/kernel/partBundle'
+import type { AssemblyLeaf } from '@/kernel/assemblyBundle'
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { cycleIndex, resolveCandidates, sameCandidateSet, type EntityMateRefs } from '@/utils/anchorCandidates'
 import { hoverScopeEntity, type AnchorTable } from '@/utils/anchorGizmos'
@@ -91,6 +92,10 @@ export interface AssemblyEditorData {
   parts: Record<string, PartResult>
   // Analytic edges of the solved bodies, keyed by the same body id.
   edgeCurves: Record<string, EdgeCurve[]>
+  // The flat leaves behind each top-level handle, at solved world poses. A
+  // sub-assembly contributes every underlying part, which is what export names
+  // instead of the assembly document.
+  leaves: Record<string, AssemblyLeaf[]>
   // Entity pick id -> the mate refs it offers. The Stage 7 pick lookup.
   entityMateRefs: EntityMateRefs
   // Solved-pose anchor geometry, by part handle plus the assembly's own frame.
@@ -185,6 +190,7 @@ export function createDefaultAssemblyEditorData(): AssemblyEditorData {
     movedParts: undefined,
     parts: {},
     edgeCurves: {},
+    leaves: {},
     entityMateRefs: {},
     anchors: {},
     anchorDescriptors: {},
@@ -219,7 +225,7 @@ export const DEFAULT_ASSEMBLY_EDITOR_DATA: AssemblyEditorData =
  *  pick geometry) cannot be added to the solve and forgotten at the store. */
 export type AssemblySolveResult = Pick<
   AssemblyEditorData,
-  'transforms' | 'movedParts' | 'parts' | 'edgeCurves' | 'entityMateRefs' | 'anchors' | 'anchorDescriptors' | 'pickGeometry' | 'solveStatus'
+  'transforms' | 'movedParts' | 'parts' | 'edgeCurves' | 'leaves' | 'entityMateRefs' | 'anchors' | 'anchorDescriptors' | 'pickGeometry' | 'solveStatus'
 >
 
 /**

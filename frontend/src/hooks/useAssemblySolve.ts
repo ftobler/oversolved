@@ -10,7 +10,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AssemblyDoc } from '@/types/cad'
-import { docLoadErrorMessage, loadPartDocText } from '@/persistence/docSchema'
+import { docLoadErrorMessage, loadAssemblyDocText, loadPartDocText } from '@/persistence/docSchema'
 import { useAssemblyStore } from '@/stores/assemblyStore'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { buildEntityMateRefs, toPartResults, toEdgeCurves } from '@/utils/assemblyBodies'
@@ -21,13 +21,15 @@ import { buildBundleViaWorker } from '@/kernel/worker/solverClient'
 import { fileIdsMissingFromWorker } from '@/kernel/worker/workerFiles'
 import { getFileRegistry } from '@/stores/fileRegistry'
 import { fileIdsInSpec } from '@/stores/fileRegistry/resolve'
-import { partBundleKey } from '@/workspace/contentHash'
 import { workspaceStoreRevision } from '@/workspace/storeEvents'
 import { partSpecs, mateSpecs } from '@/utils/assemblySolveInput'
 import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { dragTargetMate, dragTargetPoseMate } from '@/kernel/assemblyDrag'
 import { extractErrorMessage } from '@/kernel/errors'
-import { findInstance } from '@/utils/assemblyMutations'
+import { findInstance, partInstances } from '@/utils/assemblyMutations'
+import { assemblyHashes, type AssemblyGraphSource } from '@/kernel/assemblyGraph'
+import { createCompositeMemo, resolveSubassemblyBundles } from '@/kernel/assemblyComposite'
+import type { EntryMeta, ReferenceEdges } from '@/workspace/types'
 import { livePartPose } from '@/utils/partManipulation'
 import { useSolverStore } from '@/stores/solverStore'
 
@@ -69,50 +71,89 @@ function hashCacheKey(uuid: string, revision: number): string {
   return `${uuid}|${revision}`
 }
 
+export interface WorkspaceSolveIndex {
+  // Doc id -> bundle key, recursively covering parts and sub-assemblies.
+  hashes: Record<string, string>
+  // The entry list is what decides part vs assembly for the recursive walk, so
+  // it travels with the hashes instead of being fetched a second time.
+  entries: EntryMeta[]
+  edges: ReferenceEdges
+}
+
+/** The workspace reads the recursive walk needs. Kept separate from the hook
+ *  so `currentHashes` stays the narrow hash contract the tests pin. */
+export function workspaceGraph(
+  readEntry: (id: string) => Promise<{ kind: string; text?: string; name: string }>,
+  entries: readonly EntryMeta[],
+  edges: ReferenceEdges,
+): { source: AssemblyGraphSource; contentHashOf: (id: string) => string | undefined } {
+  const byId = new Map(entries.map(entry => [entry.id, entry]))
+  return {
+    source: {
+      entry(docId) {
+        const entry = byId.get(docId)
+        if (!entry?.contentHash) return null
+        // Only an entry the workspace calls an assembly recurses. A part (or an
+        // older entry with no docKind) keeps the always-part behaviour.
+        if (entry.docKind === 'assembly') {
+          return { kind: 'assembly', contentHash: entry.contentHash }
+        }
+        const fileHashes: string[] = []
+        for (const fileId of edges[docId] ?? []) {
+          const file = byId.get(fileId)
+          // A target with no live content hash (a deleted, trashed or not yet
+          // adopted entry) is unknown input, so the whole part bypasses the
+          // cache. Keying it as an empty dependency list would serve a bundle
+          // built from bytes the worker still holds.
+          if (!file?.contentHash) return null
+          fileHashes.push(file.contentHash)
+        }
+        return { kind: 'part', contentHash: entry.contentHash, fileHashes }
+      },
+      async readAssembly(docId) {
+        try {
+          const entry = await readEntry(docId)
+          if (entry.kind !== 'document') return null
+          const loaded = loadAssemblyDocText(entry.text ?? '', { name: entry.name })
+          return loaded.ok ? loaded.doc : null
+        } catch {
+          // A missing or unreadable child is a refused placement, reported by
+          // the composite resolver; it must not take the whole solve down.
+          return null
+        }
+      },
+    },
+    contentHashOf: docId => byId.get(docId)?.contentHash,
+  }
+}
+
 /**
- * The content-hash key per referenced part, the bundle cache's invalidation
- * signal. The instance's own recorded `doc_rev` is only placement provenance now;
- * the current content comes from the open workspace session's entry hash, with
- * the content hashes of its one-level file dependencies folded in so replacing a
- * referenced STEP's bytes invalidates too. Refs are read from the session, never
- * the library, so an assembly can only key against documents that live beside it.
+ * The content-hash keys per referenced document, the bundle cache's
+ * invalidation signal. The instance's recorded `doc_rev` is only placement
+ * provenance; the current content comes from the open workspace session, with a
+ * part's one-level file dependencies folded in. A sub-assembly keys recursively
+ * on its children, so a deep edit invalidates every ancestor.
  *
- * A part whose hash is unknown (a store read failure) is omitted, which bypasses
- * the cache for that part rather than ever risking a stale hit.
+ * A document whose hash is unknown (a store read failure) is omitted, which
+ * bypasses the cache for it rather than ever risking a stale hit.
  */
-export async function currentHashes(doc: AssemblyDoc): Promise<Record<string, string>> {
+export async function currentWorkspaceIndex(doc: AssemblyDoc): Promise<WorkspaceSolveIndex> {
   const session = useWorkspaceSessionStore.getState().session
-  if (!session) return {}
-  const hashes: Record<string, string> = {}
+  if (!session) return { hashes: {}, entries: [], edges: {} }
   try {
     const [entries, edges] = await Promise.all([session.listEntries(), session.referenceEdges()])
-    const byId = new Map(entries.map(entry => [entry.id, entry]))
-    for (const part of partSpecs(doc)) {
-      const entry = byId.get(part.doc_id)
-      if (!entry?.contentHash) continue
-      const fileHashes: string[] = []
-      let missing = false
-      for (const fileId of edges[part.doc_id] ?? []) {
-        const file = byId.get(fileId)
-        if (file?.contentHash) fileHashes.push(file.contentHash)
-        // A target with no live content hash (a deleted, trashed or not yet
-        // adopted entry) is unknown input, so the whole part bypasses the
-        // cache. Keying it as an empty dependency list would serve a bundle
-        // built from bytes the worker still holds.
-        else missing = true
-      }
-      // A referenced file whose hash is unknown is a cache bypass, never a
-      // stale hit. A part's outgoing edges name file entries only; anything
-      // else in that list is an unknown input for the same reason.
-      if (missing) continue
-      hashes[part.doc_id] = partBundleKey(entry.contentHash, fileHashes)
-    }
+    const graph = workspaceGraph(id => session.readEntry(id), entries, edges)
+    const { hashes } = await assemblyHashes(partInstances(doc), graph.source)
+    return { hashes, entries, edges }
   } catch {
-    // Store unreachable: no hashes means every part bypasses the cache and
+    // Store unreachable: no hashes means every document bypasses the cache and
     // cold-rebuilds uncached. Never fall back to a revision key.
-    return {}
+    return { hashes: {}, entries: [], edges: {} }
   }
-  return hashes
+}
+
+export async function currentHashes(doc: AssemblyDoc): Promise<Record<string, string>> {
+  return (await currentWorkspaceIndex(doc)).hashes
 }
 
 export function useAssemblySolve(
@@ -141,7 +182,7 @@ export function useAssemblySolve(
   // so a coalesced burst reuses the map. A doc swap or a mid-burst edit that
   // bumped the workspace revision changes the key, so the next run re-fetches
   // instead of committing against a pre-edit bundle.
-  const burstHashes = useRef<{ key: string; hashes: Record<string, string> } | null>(null)
+  const burstHashes = useRef<{ key: string; index: WorkspaceSolveIndex } | null>(null)
   // Set by rebuild(), consumed by the next full solve it produced: the run sends
   // an empty hash map, which is the wire's cold signal (every part bypasses the
   // bundle cache). One-shot so ordinary solves return to cache hits.
@@ -150,7 +191,10 @@ export function useAssemblySolve(
   // drag tick reuses it only while the key still matches: no part is edited
   // mid-drag (applyUndoRedo clears the drag), and re-listing entries per tick is
   // the exact cost this cache avoids.
-  const lastHashes = useRef<{ key: string; hashes: Record<string, string> } | null>(null)
+  const lastHashes = useRef<{ key: string; index: WorkspaceSolveIndex } | null>(null)
+  // One LRU for this editor's rigid sub-assemblies. A remount gets a fresh one
+  // so a long-lived tab does not accumulate every assembly it ever opened.
+  const compositeMemoRef = useRef(createCompositeMemo())
   // The assembly id the current render is solving for. The solve drain aborts
   // when it changes, so an old IIFE cannot keep solving against an abandoned doc.
   // Kept current in the render body so the abort check never sees a lagging uuid
@@ -294,24 +338,84 @@ export function useAssemblySolve(
       // stale and leaves it to its coalesced trailing solve, which is the one
       // that commits. A live drag tick never takes the cold path.
       const cold = !live && coldNext.current && version === solveVersion.current
-      let hashes: Record<string, string>
+      let index: WorkspaceSolveIndex
       if (cold) {
         coldNext.current = false
         // Skip both hash caches for this run, so a later live tick cannot reuse
-        // the empty map as if it were the last solve's content hashes.
+        // the empty map as if it were the last solve's content hashes. The
+        // previous entry list still travels: it is what tells a sub-assembly
+        // from a part, and re-listing the workspace is exactly the cost a
+        // rebuild must not pay. The first action after opening a sub-assembly
+        // with no prior solve has no list yet; the next ordinary solve repairs
+        // any instance this run could not classify.
         burstHashes.current = null
+        index = {
+          hashes: {},
+          entries: lastHashes.current?.index.entries ?? [],
+          edges: lastHashes.current?.index.edges ?? {},
+        }
         lastHashes.current = null
-        hashes = {}
       } else if (live && lastHashes.current?.key === key) {
-        hashes = lastHashes.current.hashes
+        index = lastHashes.current.index
       } else {
         if (!burstHashes.current || burstHashes.current.key !== key) {
-          burstHashes.current = { key, hashes: await currentHashes(current) }
+          burstHashes.current = { key, index: await currentWorkspaceIndex(current) }
         }
-        hashes = burstHashes.current.hashes
-        lastHashes.current = { key, hashes }
+        index = burstHashes.current.index
+        lastHashes.current = { key, index }
       }
-      const res = await solveAssemblyViaWorker(uuid, parts, hashes, mates, live)
+      const hashes = index.hashes
+      // Resolve every rigid sub-assembly before the parent. The child solve is
+      // the ordinary worker solve over the child document; the composite is
+      // memoised by its recursive key, so a drag burst reuses it and a deep
+      // edit misses by construction.
+      const session = useWorkspaceSessionStore.getState().session
+      const graph = session
+        ? workspaceGraph(id => session.readEntry(id), index.entries, index.edges)
+        : null
+      const resolution = graph
+        ? await resolveSubassemblyBundles(current, {
+          kindOf: (docId) => {
+            const entry = index.entries.find(candidate => candidate.id === docId)
+            if (!entry) return undefined
+            return entry.docKind === 'assembly' ? 'assembly' : 'part'
+          },
+          readAssembly: graph.source.readAssembly,
+          contentHashOf: graph.contentHashOf,
+          hashes,
+          memo: compositeMemoRef.current,
+          solve: async (docId, childParts, childMates) => {
+            const child = await solveAssemblyViaWorker(docId, childParts, hashes, childMates, false)
+            return child ? child.payload : null
+          },
+        }, new Set([uuid]))
+        : { overrides: {}, failures: {} }
+      const solveParts = Object.keys(resolution.overrides).length === 0
+        ? parts
+        : parts.map(part => (
+          resolution.overrides[part.handle] === undefined
+            ? part
+            : { ...part, bundle: resolution.overrides[part.handle] }
+        ))
+      const res = await solveAssemblyViaWorker(uuid, solveParts, hashes, mates, live)
+      // A sub-assembly that could not be resolved at all is a named failure on
+      // its instance row, even though the worker also tried to load the doc as a
+      // part and failed it with its own message. The resolver's reason is the one
+      // that names what actually went wrong.
+      if (res?.payload.status && Object.keys(resolution.failures).length > 0) {
+        res.payload.status = {
+          ...res.payload.status,
+          parts: {
+            ...res.payload.status.parts,
+            ...Object.fromEntries(
+              Object.entries(resolution.failures).map(([handle, reason]) => [
+                handle,
+                { failed: true, error: reason },
+              ]),
+            ),
+          },
+        }
+      }
       if (!res) throw new Error('assembly solver unavailable')
       // Stale-guard: a request that landed while this solve was in flight (undo/
       // redo restoring a doc is the classic case) owns the record. Writing a
@@ -355,6 +459,7 @@ export function useAssemblySolve(
         movedParts: res.payload.movedParts ? new Set(res.payload.movedParts) : undefined,
         parts: toPartResults(res.payload.bodies),
         edgeCurves: toEdgeCurves(res.payload.bodies),
+        leaves: res.payload.leaves ?? {},
         entityMateRefs: buildEntityMateRefs(res.payload.bodies, res.payload.anchorDescriptors),
         anchors,
         anchorDescriptors: res.payload.anchorDescriptors ?? {},

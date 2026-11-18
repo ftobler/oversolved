@@ -16,6 +16,7 @@ import type { TessellationPreset } from '../tessellationPresets'
 import type { Transform3D, MateAnchorDescriptor } from '../../types/cad'
 import type { Vec3 } from '../../utils/vec3'
 import type { MateSpec, AssemblySolveStatus, MeshPayload, AnchorPose } from '../solveAssembly'
+import type { AssemblyLeaf } from '../assemblyBundle'
 import type { OccLoadProgress } from '../occ/loadProgress'
 
 /**
@@ -298,6 +299,16 @@ export interface PartInputSpec {
   /** The instance-level fixed flag, not a fixed mate: the transform is pinned
    *  and excluded from the LM state. */
   fixed?: boolean
+  /** Instance visibility. A hidden instance still solves (its anchors must
+   *  resolve for a mate), but its leaves are marked hidden for the render and
+   *  export flatteners. */
+  visible?: boolean
+  /**
+   * A prebuilt rigid bundle for a sub-assembly composite. When present the
+   * worker uses it directly instead of the bundle cache or a relayed build; the
+   * composite already holds the child's solved meshes and path-prefixed anchors.
+   */
+  bundle?: PartBundle
 }
 
 /** Sent from the main thread to the anchor solver worker to solve an assembly. */
@@ -328,6 +339,10 @@ export interface AssemblySolveOkResponse {
     movedParts?: string[]
     bodies: Record<string, MeshPayload[]>
     anchors: Record<string, Record<string, AnchorPose>>
+    /** Part handle -> the flat leaf list behind it, at world poses. A plain part
+     *  contributes one leaf; a sub-assembly contributes every leaf its own solve
+     *  flattened, so export can name each underlying document and pose. */
+    leaves?: Record<string, AssemblyLeaf[]>
     /** Authoring-only: part handle -> anchor id -> the raw descriptor that id
      *  was minted from, so a pick can stamp a durable MateRef.anchor_descriptor.
      *  Optional only so test doubles and older reply shapes can omit it. */
