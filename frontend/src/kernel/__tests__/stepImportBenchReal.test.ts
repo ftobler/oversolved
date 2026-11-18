@@ -20,7 +20,8 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join, resolve, basename } from 'node:path'
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
-import { solveLocally, setSolveLocalsForTest } from '../solveLocally'
+import { solveLocally, setSolveLocalsForTest, warmUpLocally } from '../solveLocally'
+import type { WarmUpState } from '../occ/warmUp'
 import { setSketchSolver, resetSketchSolver } from '../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { startPhaseTiming, stopPhaseTiming, type PhaseTotal } from '../occ/phaseTimer'
@@ -95,10 +96,19 @@ function report(name: string, label: string, run: Run): void {
 }
 
 describe.skipIf(!enabled)('STEP import phase bench', () => {
-  beforeAll(() => {
+  beforeAll(async () => {
     resetSketchSolver()
     setSketchSolver(solveBytes)
     setSolveLocalsForTest(async () => oc)
+    // STEP_BENCH_WARM runs the Worker's idle warm-up first, to compare the
+    // first file's first solve with and without it.
+    if (process.env.STEP_BENCH_WARM) {
+      const state: WarmUpState = {}
+      const start = performance.now()
+      let step = 0
+      while (await warmUpLocally(step, state)) step++
+      console.log(`warm-up: ${step} steps, ${(performance.now() - start).toFixed(0)} ms`)
+    }
   })
   afterAll(() => {
     setSolveLocalsForTest(null)

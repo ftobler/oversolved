@@ -22,6 +22,7 @@ import { solidToMesh, solidToEdges, solidToVertices, solidFaceEdgeData, readShap
 import type { TessMesh } from './occ/tessellation'
 import { timePhase } from './occ/phaseTimer'
 import { readFaceFacts } from './occ/faceFacts'
+import { WARM_UP_STEPS, type WarmUpState } from './occ/warmUp'
 import { indexModifierDiffs, newIndexSets } from './occ/modifierAttribution'
 import { copyShape, makeScaleTrsf, makeRigidTrsf, transformCopy } from './occ/transforms'
 import { stepShapeToBytes, shapeToStlBytes } from './occ/stepIo'
@@ -825,6 +826,28 @@ export async function splitStepLocally(bytes: Uint8Array, scale = 1.0): Promise<
   } finally {
     if (!faulted) cleanupKernel(() => { scope.dispose() })
   }
+}
+
+/**
+ * Run warm-up step `index` (occ/warmUp.ts) on the kernel. Never touches the
+ * cross-solve cache or the persistent handle table. The Worker schedules it only
+ * after the OCC preload produced a module, so this reads the memoized one rather
+ * than starting a load. A trap recovers exactly as a split import's does, so the
+ * next real solve meets a fresh module; any other failure is only logged, since
+ * nothing waits on the warm-up. Returns whether a step ran.
+ */
+export async function warmUpLocally(index: number, state: WarmUpState): Promise<boolean> {
+  const step = WARM_UP_STEPS[index]
+  if (!step) return false
+  const oc = await ensureOcc()
+  if (!oc) return false
+  try {
+    step(oc, state)
+  } catch (e) {
+    if (isKernelTrap(e)) recoverTrap(e)
+    console.warn(`[kernel] warm-up step ${index} failed; the first import runs cold`, e)
+  }
+  return true
 }
 
 // ─── local measure ───

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { handleSolveRequest, handleExportRequest, handleExportAssemblyRequest, handleBundleRequest, collectTransferables, exportTransferables, bundleTransferables, handleWorkerMessage, WorkerActor, absorbFilesForTest, fileCacheForTest, clearFileCacheForTest, relayOccLoadProgress, relayFeatureProgress, preloadWorkerWasm } from '../solverWorker'
+import { handleSolveRequest, handleExportRequest, handleExportAssemblyRequest, handleBundleRequest, collectTransferables, exportTransferables, bundleTransferables, handleWorkerMessage, WorkerActor, absorbFilesForTest, fileCacheForTest, clearFileCacheForTest, relayOccLoadProgress, relayFeatureProgress, preloadWorkerWasm, scheduleWarmUp } from '../solverWorker'
 import { markFeatureStart } from '../../featureProgress'
 import { reportOccCompiling, reportOccDownload, reportOccReady, resetOccLoadProgress } from '../../occ/loadProgress'
 import type { SolveRequest, ExportRequest, ExportAssemblyRequest, BundleRequest, SolveResponse, ExportResponse, BundleResponse, MeasureResponse, SplitStepResponse, WorkerRequest } from '../solverProtocol'
@@ -655,5 +655,72 @@ describe('preloadWorkerWasm', () => {
     }, { timeout: 1000 })
     expect(String(error.mock.calls[0][0])).toContain('OCC preload failed')
     error.mockRestore()
+  })
+
+  it('reports whether OCC came up, so only a loaded kernel is warmed', async () => {
+    const sketch = vi.fn().mockResolvedValue(null)
+    expect(await preloadWorkerWasm({ occ: vi.fn().mockResolvedValue({}), sketch })).toEqual({ occReady: true })
+    expect(await preloadWorkerWasm({ occ: vi.fn().mockResolvedValue(null), sketch })).toEqual({ occReady: false })
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    expect(await preloadWorkerWasm({ occ: vi.fn().mockRejectedValue(new Error('x')), sketch })).toEqual({ occReady: false })
+    error.mockRestore()
+  })
+})
+
+describe('scheduleWarmUp', () => {
+  // Resolve once the actor has drained everything queued so far.
+  async function settle(): Promise<void> {
+    for (let i = 0; i < 20; i++) await new Promise((r) => { setTimeout(r, 0) })
+  }
+
+  it('runs the steps in order until the runner reports none left', async () => {
+    const actor = new WorkerActor()
+    const ran: number[] = []
+    scheduleWarmUp(actor, async (index) => {
+      if (index > 2) return false
+      ran.push(index)
+      return true
+    })
+    await settle()
+    expect(ran).toEqual([0, 1, 2])
+  })
+
+  it('stops for good once a real request is submitted, and lets it run first', async () => {
+    const actor = new WorkerActor()
+    const order: string[] = []
+    let release: () => void = () => {}
+    scheduleWarmUp(actor, async (index) => {
+      order.push(`warm${index}`)
+      // Step 0 holds the thread until the test submits a solve behind it.
+      if (index === 0) await new Promise<void>((r) => { release = r })
+      return true
+    })
+    await settle()
+    expect(order).toEqual(['warm0'])
+    actor.submit({ lane: 'solve', run: async () => { order.push('solve') } })
+    release()
+    await settle()
+    expect(order).toEqual(['warm0', 'solve'])
+  })
+
+  it('a queued step is dropped by any real submit, a one-shot included', async () => {
+    const actor = new WorkerActor()
+    const warm = vi.fn().mockResolvedValue(true)
+    scheduleWarmUp(actor, warm)
+    // Submitted in the same tick: step 0 is still queued when the export lands.
+    actor.submit({ lane: null, run: async () => {} })
+    await settle()
+    expect(warm).not.toHaveBeenCalled()
+  })
+
+  it('a warm-up step drops nothing already queued', async () => {
+    const actor = new WorkerActor()
+    const order: string[] = []
+    actor.submit({ lane: 'measure', run: async () => { order.push('measure') } })
+    const before = actor.realJobCount
+    actor.submit({ lane: 'warmup', run: async () => { order.push('warm') } })
+    expect(actor.realJobCount).toBe(before)
+    await settle()
+    expect(order).toEqual(['measure', 'warm'])
   })
 })
