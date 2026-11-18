@@ -66,12 +66,13 @@ export interface PlanePrimitive {
 
 /** A cylinder face's pair rules use only the axis; `radius` is absent on an
  *  assembly anchor, which carries no face extent, so a single pick states
- *  nothing. */
+ *  nothing. `length` is the face's own axial extent, read from its mesh. */
 export interface CylinderPrimitive {
   type: 'cylinder'
   axisPoint: Vec3
   axis: Vec3
   radius?: number
+  length?: number
 }
 
 /** A sphere face's centre; `radius` is absent on an assembly anchor, so a
