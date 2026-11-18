@@ -27,7 +27,7 @@ import { fileIdsInParts } from '@/stores/fileRegistry/resolve'
 
 /** A loaded PartDoc as the worker spec builder reads it. */
 type PartContent = Record<string, unknown>
-type PartContents = Record<string, PartContent>
+type PartContents = Record<string, Record<string, unknown>>
 
 /** Visible part instances, in document order. */
 export function exportableInstances(doc: AssemblyDoc): PartInstance[] {
@@ -43,7 +43,7 @@ export function exportableInstances(doc: AssemblyDoc): PartInstance[] {
  *  otherwise rehydrate a half-parsed B-rep. */
 export async function loadPartContents(
   instances: readonly { doc_id: string }[],
-): Promise<PartContents> {
+): Promise<Record<string, Record<string, unknown>>> {
   const ids = [...new Set(instances.map(i => i.doc_id))]
   const loaded = await Promise.all(ids.map(id => backendBundle.documents.load(id)))
   const out: PartContents = {}
