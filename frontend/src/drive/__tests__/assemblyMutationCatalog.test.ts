@@ -57,12 +57,12 @@ function validate(raw: unknown, doc: AssemblyDoc | null = docWithLeft(), boundPa
 }
 
 describe('ASSEMBLY_MUTATION_CATALOG', () => {
-  it('covers every operation except the hidden fold twin', () => {
+  it('covers every operation except the hidden fold and batch twins', () => {
     const expected = (Object.keys(ASSEMBLY_OPERATIONS) as AssemblyOperationId[])
-      .filter(id => id !== 'set_part_fixed_oneshot')
+      .filter(id => id !== 'set_part_fixed_oneshot' && id !== 'add_parts')
     // The two macros expand in the drive session: add_part_pattern into
     // add_part and add_mate operations, add_step_part into a bound part plus
-    // an add_part. Neither has an operation of its own.
+    // an add_part (or add_parts, split). Neither has an operation of its own.
     expect(Object.keys(ASSEMBLY_MUTATION_CATALOG).sort()).toEqual([...expected, 'add_part_pattern', 'add_step_part'].sort())
     // Every row maps onto a real operation, and the one wire spelling that
     // differs is the structural fixed toggle.

@@ -35,7 +35,12 @@ export type AssemblyMutationCatalogFieldsCheck = Expect<Equal<AllRowsMatch, true
 
 export type DebugRow<K extends AssemblyWireType> = RowMatch<K>
 
-// The macro rows expand in the drive session and have no operation of their own.
+// The macro rows expand in the drive session and have no operation of their own;
+// `add_parts` is the split STEP import's hidden batch twin of `add_part`, called
+// straight from the assembly editor rather than from a command.
 export type AssemblyWireTypeCheck = Expect<
-  Equal<Exclude<AssemblyWireType, 'add_part_pattern' | 'add_step_part'>, Exclude<AssemblyOperationId, 'set_part_fixed_oneshot'>>
+  Equal<
+    Exclude<AssemblyWireType, 'add_part_pattern' | 'add_step_part'>,
+    Exclude<AssemblyOperationId, 'set_part_fixed_oneshot' | 'add_parts'>
+  >
 >

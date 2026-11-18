@@ -104,6 +104,10 @@ export interface ScriptStepOutcome {
   poseKept?: KeptPose
   // Present only on an add_step_part step: the part it bound and instanced.
   part?: StepPartBinding
+  // Present only on a split add_step_part step: one binding per solid, in solid
+  // order, and the instance handles it minted (`<handle>_1..n`).
+  parts?: StepPartBinding[]
+  handles?: string[]
   // A step-level caveat the reply carries beside `ok` (a face projection the
   // delete removed without freezing its members, or projections that keep their
   // last position after a source delete).
@@ -136,6 +140,10 @@ export interface AnnotatedSuccess {
   captured?: MateCapture
   poseKept?: KeptPose
   part?: StepPartBinding
+  // The split STEP import's per-solid bindings and the instance handles it
+  // minted, in solid order.
+  parts?: StepPartBinding[]
+  handles?: string[]
   // The import_dxf layer summary, present only on a successful filtered or
   // unfiltered import step (see ScriptStepOutcome.layers).
   layers?: Record<string, number>
@@ -232,6 +240,8 @@ function outcomeFor(index: number, step: unknown, result: ScriptStepResult): Scr
     const captured = 'captured' in result ? result.captured : undefined
     const poseKept = 'poseKept' in result ? result.poseKept : undefined
     const part = 'part' in result ? result.part : undefined
+    const parts = 'parts' in result ? result.parts : undefined
+    const handles = 'handles' in result ? result.handles : undefined
     const constraints = 'constraints' in result ? result.constraints : undefined
     const replacedConstraints = 'replacedConstraints' in result ? result.replacedConstraints : undefined
     // The import layer summary rides the step result, so the runner reports it
@@ -258,6 +268,8 @@ function outcomeFor(index: number, step: unknown, result: ScriptStepResult): Scr
       ...(captured !== undefined && { captured }),
       ...(poseKept !== undefined && { poseKept }),
       ...(part !== undefined && { part }),
+      ...(parts !== undefined && { parts }),
+      ...(handles !== undefined && { handles }),
       ...(note !== undefined && { note }),
       ...(noteIds !== undefined && { noteIds }),
     }

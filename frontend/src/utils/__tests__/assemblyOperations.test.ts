@@ -19,6 +19,7 @@ const EXPECTED: Array<Pick<
   'id' | 'label' | 'bake' | 'undo' | 'solve'
 >> = [
   { id: 'add_part', label: 'Add part', bake: true, undo: 'one-shot', solve: 'solve' },
+  { id: 'add_parts', label: 'Add part', bake: true, undo: 'one-shot', solve: 'solve' },
   { id: 'duplicate_part', label: 'Duplicate part', bake: true, undo: 'one-shot', solve: 'solve' },
   { id: 'delete_part', label: 'Delete part', bake: true, undo: 'one-shot', solve: 'solve' },
   { id: 'set_part_visible', label: 'Toggle visibility', bake: false, undo: 'one-shot', solve: 'skip' },
@@ -74,6 +75,7 @@ function operationDoc(): AssemblyDoc {
 // the table test only needs one value per id.
 const INPUTS: { [K in AssemblyOperationId]: AssemblyOperationInputs[K] } = {
   add_part: { docId: 'd-new', docRev: 3 },
+  add_parts: [{ docId: 'd-new-a', docRev: 3 }, { docId: 'd-new-b', docRev: 3 }],
   duplicate_part: 'p1',
   delete_part: 'p1',
   set_part_visible: { handle: 'p1', visible: false },
@@ -363,5 +365,48 @@ describe('runAssemblyOperation effect dispatch', () => {
       expect(host.mutateOneShot, id).not.toHaveBeenCalled()
       expect(host.mutateSession, id).not.toHaveBeenCalled()
     }
+  })
+
+  // The split STEP import's batch: one undo entry for the whole set, and the
+  // live-part guard refusing the set before anything lands.
+  describe('add_parts', () => {
+    const PARTS = [
+      { docId: 'd-a', docRev: 0 },
+      { docId: 'd-b', docRev: 0 },
+      { docId: 'd-c', docRev: 0 },
+    ]
+
+    it('appends every instance under one undo entry and one solve', () => {
+      const host = fakeHost({ kind: 'assembly', features: [] })
+      host.knownPartIds = new Set(['d-a', 'd-b', 'd-c'])
+
+      runAssemblyOperation('add_parts', PARTS, host)
+
+      expect(host.mutateOneShot).toHaveBeenCalledTimes(1)
+      expect(host.mutateSession).not.toHaveBeenCalled()
+      expect(host.requestSolve).toHaveBeenCalledTimes(1)
+      const docIds = (host.live().features ?? []).map(f => f.instance?.doc_id)
+      expect(docIds).toEqual(['d-a', 'd-b', 'd-c'])
+    })
+
+    it('refuses the whole batch when any id is not a live part', () => {
+      const host = fakeHost({ kind: 'assembly', features: [] })
+      host.knownPartIds = new Set(['d-a', 'd-b'])
+
+      expect(() => runAssemblyOperation('add_parts', PARTS, host)).toThrow(/d-c/)
+      expect(host.mutateOneShot).not.toHaveBeenCalled()
+      expect(host.mutateSession).not.toHaveBeenCalled()
+      expect(host.requestSolve).not.toHaveBeenCalled()
+      expect(host.live().features ?? []).toEqual([])
+    })
+
+    it('an empty batch is a no-op', () => {
+      const host = fakeHost({ kind: 'assembly', features: [] })
+
+      runAssemblyOperation('add_parts', [], host)
+
+      expect(host.mutateOneShot).not.toHaveBeenCalled()
+      expect(host.requestSolve).not.toHaveBeenCalled()
+    })
   })
 })

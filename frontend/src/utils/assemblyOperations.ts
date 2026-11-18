@@ -41,15 +41,20 @@ export type AssemblySolvePolicy = 'solve' | 'defer' | 'skip'
 // The payload each operation reads. Keeping them in one map makes the
 // operation id an enumerable union and gives runAssemblyOperation a typed input
 // for whatever name a command carries.
+export interface AddPartInput {
+  docId: string
+  docRev: number
+  handle?: string
+  featureId?: string
+  transform?: Transform3D
+  fixed?: boolean
+}
+
 export interface AssemblyOperationInputs {
-  add_part: {
-    docId: string
-    docRev: number
-    handle?: string
-    featureId?: string
-    transform?: Transform3D
-    fixed?: boolean
-  }
+  add_part: AddPartInput
+  // The batch twin: the split STEP import places one instance per solid through
+  // it, so the whole import is one undo entry and one solve.
+  add_parts: readonly AddPartInput[]
   // The UI names one handle; the drive also authors the copy's ids (D10).
   duplicate_part: string | { handle: string; newHandle?: string; featureId?: string }
   delete_part: string
@@ -136,6 +141,17 @@ export const ASSEMBLY_OPERATIONS: {
       ...(input.transform !== undefined && { transform: input.transform }),
       ...(input.fixed !== undefined && { fixed: input.fixed }),
     }),
+  },
+  add_parts: {
+    // The batch is add_part repeated: the bake runs once for the whole set, the
+    // set is one undo entry and one solve. The split STEP import is its caller.
+    id: 'add_parts', label: ASSEMBLY_UNDO_LABELS.addPart, bake: true, undo: 'one-shot', solve: 'solve',
+    apply: (doc, parts) => parts.reduce((next, part) => appendPartInstance(next, part.docId, part.docRev, {
+      ...(part.handle !== undefined && { handle: part.handle }),
+      ...(part.featureId !== undefined && { featureId: part.featureId }),
+      ...(part.transform !== undefined && { transform: part.transform }),
+      ...(part.fixed !== undefined && { fixed: part.fixed }),
+    }), doc),
   },
   duplicate_part: {
     id: 'duplicate_part', label: ASSEMBLY_UNDO_LABELS.duplicatePart, bake: true, undo: 'one-shot', solve: 'solve',
@@ -255,8 +271,10 @@ export interface AssemblyOperationPlan {
 // the value no-ops a reference fast path misses.
 //
 // I8: `add_part` is the only site that authors an outward link, so it refuses
-// when the named doc is not a live part entry in the open workspace. The guard
-// rides the context because the pure mutation has no store access; an absent
+// when the named doc is not a live part entry in the open workspace. The batch
+// twin `add_parts` refuses the whole set if any one id is not live, before the
+// bake or any append, so a split import can never half-land. The guard rides the
+// context because the pure mutation has no store access; an absent
 // `knownPartIds` (a caller that does not scope its picks) skips the check.
 export function planAssemblyOperation<K extends AssemblyOperationId>(
   id: K,
@@ -271,10 +289,14 @@ export function planAssemblyOperation<K extends AssemblyOperationId>(
 ): AssemblyOperationPlan | null {
   if (!ctx.doc) return null
   const def = ASSEMBLY_OPERATIONS[id] as AssemblyOperationDef<AssemblyOperationInputs[K]>
-  if (id === 'add_part' && ctx.knownPartIds) {
-    const { docId } = input as AssemblyOperationInputs['add_part']
-    if (!ctx.knownPartIds.has(docId)) {
-      throw new Error(`Part is not a live entry in this workspace: ${docId}`)
+  if ((id === 'add_part' || id === 'add_parts') && ctx.knownPartIds) {
+    const requested = id === 'add_part'
+      ? [(input as AssemblyOperationInputs['add_part']).docId]
+      : (input as AssemblyOperationInputs['add_parts']).map(part => part.docId)
+    for (const docId of requested) {
+      if (!ctx.knownPartIds.has(docId)) {
+        throw new Error(`Part is not a live entry in this workspace: ${docId}`)
+      }
     }
   }
   // A rebind authors the same outward link add_part does, plus the one link that

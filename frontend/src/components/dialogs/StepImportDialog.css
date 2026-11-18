@@ -1,0 +1,39 @@
+/* The mode rows of the STEP import chooser. The overlay, header and footer
+   buttons come from the shared dialog shell. */
+
+.step-import-dialog-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.step-import-dialog-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+/* The shell stretches and pads every input; a radio keeps its own size. */
+.step-import-dialog-row input {
+  flex: none;
+  width: auto;
+  margin: 2px 0 0;
+  padding: 0;
+}
+
+.step-import-dialog-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.step-import-dialog-label {
+  font-size: 13px;
+  color: #ddd;
+}
+
+.step-import-dialog-hint {
+  font-size: 12px;
+  color: #888;
+}

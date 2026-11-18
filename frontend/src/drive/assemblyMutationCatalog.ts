@@ -53,6 +53,7 @@ export type AssemblyWireMutation =
     handle: string
     file: string
     name?: string
+    split?: boolean
     position?: Vec3Tuple
     rotation?: Vec3Tuple
     fixed?: boolean
@@ -253,12 +254,19 @@ export const ASSEMBLY_MUTATION_CATALOG = {
       + 'again under another handle reuses that one part document (and the name the first import gave it), which '
       + 'is how two copies of one imported body share a bundle. A derived binding that already names a part which does '
       + 'not import this file is refused rather than replaced. '
-      + 'The undo entry covers the instance, not the binding: the part document lives outside the assembly. '
+      + 'With `split: true` the file is parsed once and each solid becomes its own part document, derived id '
+      + '`step_<file>#<i>`, placed at identity in solid order: the instances are `<handle>_1..n`, the first is '
+      + 'fixed and the rest follow their seed pose. `position`/`rotation` move the whole set; the reply lists the '
+      + 'minted handles in `handles` and every binding in `parts`. A one-solid file lands as the plain import, a '
+      + 'file with no solids is refused. The split part documents import derived file ids whose bytes exist only '
+      + 'inside this call, so a later measure or export call finds no bytes for them. '
+      + 'The undo entry covers the instance(s), not the binding: the part documents live outside the assembly. '
       + '`name` labels the import feature and the reply and defaults to the file id. ' + POSITION_NOTE + ' ' + ROTATION_NOTE,
     fields: {
-      handle: str('The instance handle, unique in this assembly and never "__assembly".'),
+      handle: str('The instance handle, unique in this assembly and never "__assembly". With split it is the prefix of `<handle>_1..n`.'),
       file: str('A file id from the run call\'s `files` map; the synthesized part is bound under `step_<file id>`.'),
       name: optStr('The imported part\'s display name and import label; defaults to the file id.'),
+      split: optBool('Import one part per solid instead of one part for the whole file.'),
       position: optVec3(POSITION_NOTE),
       rotation: optVec3(ROTATION_NOTE),
       fixed: optBool(),
@@ -829,6 +837,9 @@ function validateValues(
       }
       if (raw.name !== undefined && (raw.name as string).trim() === '') {
         return fail('invalid-mutation', 'name must be a non-empty string when given')
+      }
+      if (raw.split !== undefined && typeof raw.split !== 'boolean') {
+        return fail('invalid-mutation', 'split must be a boolean when given')
       }
       if (raw.position !== undefined) {
         const problem = vec3Problem(raw.position, 'position')
