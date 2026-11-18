@@ -1,7 +1,7 @@
 // What a change to the drawn layers owes the picking pipeline.
 //
 // Shading and Edges change both what is painted and what the ID buffer
-// registers (Body3D gates its face/edge registrations on them). The
+// registers (Part3D gates its face/edge registrations on them). The
 // registration hooks mark the buffer dirty themselves when they mount or
 // unmount, but the toggle also has to invalidate the hover: a resolve already
 // launched for a face that just stopped being drawn would land a frame later

@@ -93,7 +93,7 @@ export interface RawFaceGeom {
   surfaceFrame: SurfaceFrame | null
   // Cylinder axis direction; set for cylinderface only (circular-array axis picks).
   axis?: Vec3
-  // The face's position in the shape's canonical order (occ/bodyNames.ts),
+  // The face's position in the shape's canonical order (occ/partNames.ts),
   // which indexes the body's `face_uuids`. Never leaves the worker; always set
   // by `readShapeFaces`, optional only for hand-built mesh fixtures.
   canon?: number
@@ -260,7 +260,7 @@ export function partFrame(oc: OccModule, scope: DisposeScope, solid: OccShape): 
   // STEP assembly has tens of thousands of edges, and `push(...samples)` passes
   // one argument per point, which overflows the call stack well before the
   // geometry itself is a problem. That threw a RangeError out of every
-  // identification path, and `tessellateBodies`/`extractBrepMetadata` swallow a
+  // identification path, and `tessellateParts`/`extractBrepMetadata` swallow a
   // per-body throw, so the whole import silently rendered as nothing.
   return partFrameFromPoints(
     readSolidVertices(oc, scope, solid),
@@ -451,7 +451,7 @@ export function readShapeFaceMetadata(
 }
 
 /** One face of a solid with the sort facts the render order is derived from,
- *  and its canonical index (occ/bodyNames.ts). */
+ *  and its canonical index (occ/partNames.ts). */
 interface FaceRow extends FaceSortItem {
   shape: OccSubShape
   canon: number
@@ -533,7 +533,7 @@ interface SolidEdgesOptions {
   newElements?: NewIndexSets | null
   modifiedBy?: string[]
   // Fill EdgeData.convexity from one BRepOffset_Analyse over the solid. Opt-in
-  // and set only by the final render pass (`tessellateBodies`): the metadata
+  // and set only by the final render pass (`tessellateParts`): the metadata
   // pass runs per body per feature version and its ancestry output never reads
   // the class, so it must not pay for the analyse.
   computeConvexity?: boolean
@@ -753,7 +753,7 @@ export function edgeRepresentativePoint(ed: EdgeData): Vec3 | null {
 
 /**
  * The edges of a solid in the order `solidToEdges` publishes them, with the
- * canonical index behind each row (occ/bodyNames.ts). A measurement pick names
+ * canonical index behind each row (occ/partNames.ts). A measurement pick names
  * an edge by that render index, so this is the walk that maps it back. Shares
  * `readSolidEdges` and `compareEdgeSortKeys` with the render pass: the order is
  * the same code, not a copy of it, including the dropped degenerated edges.

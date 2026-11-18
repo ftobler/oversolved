@@ -62,14 +62,14 @@ export function solveImportStep(
   // Named from the STEP file's own entity ids. Without this every face of the
   // import shares one query string (`@<feature>@<body>`) and none of them is
   // individually selectable -- see occ/importLineage.ts. Computed on the whole
-  // shape; `registerSplitBodies` narrows the maps per sibling. A repeated
+  // shape; `registerSplitParts` narrows the maps per sibling. A repeated
   // instance (one part placed twice) shares its entity ids, so the per-solid
   // index from `splitSolids` -- the same order body ids are minted with -- is
   // folded into the UUID path to keep the copies' `@u|` tokens disjoint.
   const names = importedNameMaps(oc, scope, shape, faceStepIds, featureId, splitSolids(oc, scope, shape))
 
   // A STEP file holding several parts arrives as one compound, so the import is
-  // exactly the "a shape becomes bodies" case bodySplit owns: one body per
+  // exactly the "a shape becomes bodies" case partSplit owns: one body per
   // solid, or one body carrying the whole shape when the file has no solid at
   // all (surfaces/shells only).
   const partIds = registerSplitParts(oc, scope, table, partStore, shape, {

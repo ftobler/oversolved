@@ -1,6 +1,6 @@
 // The feature subject of a pattern: repeat one or more earlier solid-producing
 // features' own add or cut inside the body each feature already shaped. This is
-// the half pattern.ts delegates to; the body subject lives in patternBody.ts and
+// the half pattern.ts delegates to; the body subject lives in patternPart.ts and
 // both share the copies the pattern kind built. The sub-def arrives as a
 // parameter, so every pattern kind reuses this leaf without teaching it a new
 // sub-dict key, and the mirror's feature subject calls it with one reflect
@@ -67,7 +67,7 @@ export interface FeatureCopiesOptions {
   coincides?: (tool: OccShape, copy: OccShape) => boolean
 }
 
-/** The kinds whose leaf builds a tool and routes it through applyBodyOperation
+/** The kinds whose leaf builds a tool and routes it through applyPartOperation
  *  with add/cut/new, so `operation: new` hands the same tool back as a body. */
 const TOOL_LEAVES = {
   extrude: solveExtrude,
@@ -375,7 +375,7 @@ function applyCopiesToTarget(
           }
         } catch (e) {
           swallowUnlessTrap(e)
-          // applyBodyOperation already prefixes its message with opName; the
+          // applyPartOperation already prefixes its message with opName; the
           // copy prefix is the part the user needs, so drop the repeated name.
           const message = extractErrorMessage(e)
           const prefix = `${opName}: `

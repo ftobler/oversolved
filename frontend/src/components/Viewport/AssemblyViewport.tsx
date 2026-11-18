@@ -82,7 +82,7 @@ const ASSEMBLY_PICK_LAYERS: ReadonlySet<string> = new Set([
   GIZMO_HANDLE_LAYER_NAME,
 ])
 
-// Stable identity: AssemblyBody memoizes its edge buffer on `curves`, so a fresh
+// Stable identity: AssemblyPartMesh memoizes its edge buffer on `curves`, so a fresh
 // [] per render would rebuild every body's line geometry on every frame.
 const EMPTY_CURVES: EdgeCurve[] = []
 
@@ -415,7 +415,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
 
   // The ID buffer is read in drawing-buffer pixels; the pointer speaks CSS.
   //
-  // Division of labour with the R3F raycast: a grab is geometric, so AssemblyBody's
+  // Division of labour with the R3F raycast: a grab is geometric, so AssemblyPartMesh's
   // raycast against the drawn mesh is the grab authority. The ID buffer is the
   // entity-reference authority for mate picks and B-rep selection. Both read the
   // drawn pose now, so neither can answer "what is under this pixel" with a
@@ -555,7 +555,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     const camera = cameraRef.current
     if (!camera) return
     // The triad already claimed this pointer-down in the capture phase below.
-    // AssemblyBody's R3F handler runs later (R3F listens natively on its own
+    // AssemblyPartMesh's R3F handler runs later (R3F listens natively on its own
     // canvas wrapper, which this div encloses), so without this the body grab
     // would overwrite the gesture the user actually started.
     if (adapter.isActive()) return
@@ -572,7 +572,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   // The triad's pointer-down, run in the CAPTURE phase. React registers capture
   // listeners on its root container, an ancestor of this div, so this fires
   // while the event is still travelling down -- before it reaches the canvas
-  // wrapper R3F listens on, and therefore before AssemblyBody's body grab. That
+  // wrapper R3F listens on, and therefore before AssemblyPartMesh's body grab. That
   // ordering is the whole fix: the gizmo is drawn on top and now decides first
   // too, with the ID buffer's layer priority as the single arbiter of what the
   // pixel under the cursor belongs to.
@@ -614,7 +614,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
       e.currentTarget.setPointerCapture(e.pointerId)
       return
     }
-    // Ctrl+click aims a mate reference instead of grabbing the part (AssemblyBody
+    // Ctrl+click aims a mate reference instead of grabbing the part (AssemblyPartMesh
     // declines the grab for the same modifier), and so does a plain click while a
     // mate chip is armed. Landing on the pixel that produced the current set
     // advances the cycle, so a corner's seven entities are all reachable without

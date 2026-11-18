@@ -281,7 +281,7 @@ export class VertexIdLayer extends IdLayerBase<THREE.Points | THREE.Mesh> {
         // B-rep vertex would make clicking the origin offer it as a candidate.
         if (!Number.isFinite(v[0]) || !Number.isFinite(v[1]) || !Number.isFinite(v[2])) continue
         // Keyed on the vertex's own index i, not on `written`: the pick key has
-        // to match what Body3D recomputes from the registration's vertex list,
+        // to match what Part3D recomputes from the registration's vertex list,
         // which includes the vertices this loop skips.
         const id = ids.idFor(i, query)
         const [r, g, b] = idToRGBNormalized(id)

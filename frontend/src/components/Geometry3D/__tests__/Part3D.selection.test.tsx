@@ -18,7 +18,7 @@ describe('Body3D selection - store behavior', () => {
 
   it('imperative getState reads current hoveredSelectionId without stale closure', () => {
     // Regression: handleMeshClick used a closed-over hoveredSelectionId value
-    // that could be stale if React had not re-rendered Body3D between
+    // that could be stale if React had not re-rendered Part3D between
     // onPointerOver and onClick. Fix: read from store imperatively.
     useSketchEditorStore.getState().setHoveredSelectionId('?d,d;@extrude1face0:face')
     const currentHover = useSketchEditorStore.getState().hoveredSelectionId

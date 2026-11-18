@@ -18,7 +18,7 @@ import { parseTarget } from '@/utils/yamlMutations'
 import { parseSelectionId } from '@/utils/query/selectionId'
 
 // The raw `?...` ancestral queries are minted by the kernel and stored verbatim
-// by Body3D; they never pass through parseSelectionId, so they are covered by
+// by Part3D; they never pass through parseSelectionId, so they are covered by
 // the wrapper-strip cases below rather than a parse table here.
 const HANDLER_IDS: { id: string; kind: 'entity' | 'vertex' | 'plane' }[] = [
   { id: 'entity:Sketch1:line1', kind: 'entity' },        // EntityLines.tsx

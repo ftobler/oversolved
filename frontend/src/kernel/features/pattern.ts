@@ -5,13 +5,13 @@
 //
 // - `body` copies a whole body. `operation: add` fuses the copies into the
 //   source body and `operation: new` mints one body per copy; that half lives in
-//   patternBody.ts.
+//   patternPart.ts.
 // - `feature` repeats one or more earlier solid-producing features' own add or
 //   cut inside the body each feature already shaped. A body array plus a boolean
 //   can produce the same geometry, but it needs the material as its own body
 //   first and a merge afterwards; this subject asks the kernel for each source
 //   feature's tool once and applies those tools at each copy position through the
-//   same `applyBodyOperation` every producer uses.
+//   same `applyPartOperation` every producer uses.
 //
 // Each source feature's tool is obtained by re-solving the source feature with
 // its operation forced to `new` into a throwaway body store: the same leaf, the

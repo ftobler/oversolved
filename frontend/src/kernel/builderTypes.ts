@@ -43,9 +43,9 @@ export interface BuildDeps {
   /** Mesh-free B-rep identification (face_data/face_queries + edges/vertices and
    *  their queries) used by the in-loop ancestry registration, so "tessellation
    *  is for eyes only": the feature loop never triangulates to identify entities.
-   *  Returns the same shape as ``tessellateBodies`` (a ``mesh`` with empty
+   *  Returns the same shape as ``tessellateParts`` (a ``mesh`` with empty
    *  geometry arrays but populated ``face_data``). Optional -- when omitted (pure
-   *  non-OCC tests) registration falls back to ``tessellateBodies``. */
+   *  non-OCC tests) registration falls back to ``tessellateParts``. */
   extractBrepMetadata?: (
     partStore: Record<string, PartSolid>,
     repo: Repository | null,
@@ -79,7 +79,7 @@ export interface BuildDeps {
    *  prev-state checkpoints that a new build discards. The wiring must drop
    *  BOTH remaining owners of the outgoing generation: the checkpoint retain
    *  (``'cp:' + fid``) and the base body registration (owner = the PRODUCING
-   *  feature id -- bodySplit tags new bodies and replacements alike with the
+   *  feature id -- partSplit tags new bodies and replacements alike with the
    *  feature that minted them). The retain alone leaves rc>=1 on every
    *  superseded shape; for a modifier edit the leftover ref sits under a
    *  still-clean creator and strands one solid per edit. */

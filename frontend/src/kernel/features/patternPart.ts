@@ -97,7 +97,7 @@ export function applyPartPattern(
       })
     }
     // One instance is normally one solid, so this normally mints exactly the
-    // old `body_<feat>`, `body_<feat>_1`, ... run. Going through bodySplit is
+    // old `body_<feat>`, `body_<feat>_1`, ... run. Going through partSplit is
     // what keeps that true when the source body is itself multi-solid: the
     // instances would otherwise each copy the violation verbatim.
     const partIds: string[] = []

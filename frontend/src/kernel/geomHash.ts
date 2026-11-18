@@ -2,7 +2,7 @@
 // spatial classifier tokens. A fingerprint only compares whole builds as sorted
 // sets (`wasm-kernel/baselineBody.ts`); it is never an identity or a lookup
 // key for a face or edge: construction names travel by sub-shape identity and
-// history (`occ/bodyNames.ts`). The float formatting below must reproduce
+// history (`occ/partNames.ts`). The float formatting below must reproduce
 // CPython's str(round(v, 4)) exactly: geomHash.test.ts pins it against a frozen
 // golden snapshot of the Python kernel's digests.
 

@@ -80,7 +80,7 @@ describe('hover highlight after a cold-load / Suspense reveal', () => {
   it('resolves hover against the live pipeline after a hide/reveal, not the disposed one', async () => {
     const useRegister = () => {
       // The body's face query must be known to the hover adapter so a resolved
-      // face hit actually drives hoveredSelectionId (mirrors Body3D registration).
+      // face hit actually drives hoveredSelectionId (mirrors Part3D registration).
       registerPartCallbacks('f/b', {
         featureId: 'f', partId: 'b',
         mesh: faceMesh() as unknown as Mesh3D,

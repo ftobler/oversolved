@@ -83,7 +83,7 @@ export class SharedHarness {
         // The one-Body-one-solid gate, at the point every real-OCC build test
         // already passes through: a leaf that produces a multi-solid body
         // fails its own test rather than shipping one Parts row that is
-        // really N parts. See features/bodySplit.ts.
+        // really N parts. See features/partSplit.ts.
         assertOneSolidPerPart(this.oc, scope, table, partStore)
         const out: Record<string, Record<string, unknown>> = {}
         for (const [, body] of Object.entries(partStore)) {
@@ -119,7 +119,7 @@ export class SharedHarness {
               newElements: newIndexSets(body.brep_new, body.shape),
               modifiedBy: body.modified_by,
             })
-            // The same per-face boundary and seam arrays production tessellateBodies
+            // The same per-face boundary and seam arrays production tessellateParts
             // emits, so selector tests through this harness see the same data.
             const faceEdgeData = solidToFaceEdgeQueries(this.oc, table, body.shape, edgeResult.edge_queries)
             mesh.face_edge_queries = faceEdgeData.face_edge_queries
@@ -139,7 +139,7 @@ export class SharedHarness {
               vertex_created_by: vertexResult.vertex_created_by,
               hidden_edges: hidden.hidden_edges,
               hidden_vertices: hidden.hidden_vertices,
-              // Mirror production tessellateBodies: the per-body creator and
+              // Mirror production tessellateParts: the per-body creator and
               // modifier tags are part of the render payload, not just inputs.
               created_by: body.created_by ?? '',
               modified_by: body.modified_by ?? [],
@@ -158,7 +158,7 @@ export class SharedHarness {
       copyPartShape: (h, owner) =>
         table.register(copyShape(this.oc, scope, table.get<OccShape>(h)), owner),
       // Mirrors the production wiring: a discarded generation loses its
-      // checkpoint retain AND its base body registrations (bodySplit tags
+      // checkpoint retain AND its base body registrations (partSplit tags
       // those with the producing feature id) -- or superseded solids strand
       // across an incremental test sequence.
       releaseCheckpoint: (fid) => {

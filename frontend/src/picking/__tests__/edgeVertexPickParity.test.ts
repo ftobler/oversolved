@@ -7,7 +7,7 @@ import { rgbToId } from '../idEncoding'
 /**
  * Structural parity for edges and vertices: every segment / instance
  * decodes (via the registry) to the same `entityKey` that the legacy
- * raycaster path (Body3D.getIsEdgeSelected / vertexQueries[i]) would
+ * raycaster path (Part3D.getIsEdgeSelected / vertexQueries[i]) would
  * resolve.
  *
  * The full GPU-rendered parity (cursor grid over a fixture cube) belongs

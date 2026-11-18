@@ -6,7 +6,7 @@
 // more, so a union of two disjoint bodies, an array with a pitch wider than the
 // part, a mirror across a gap and a severing hole each produced ONE Parts-list
 // row that was really N parts. Every leaf now routes through
-// features/bodySplit.ts; these tests drive the leaves directly against real OCC
+// features/partSplit.ts; these tests drive the leaves directly against real OCC
 // and assert the body STORE, not just the ids a leaf happens to return.
 //
 // Skips when the OCC build is absent.
@@ -225,7 +225,7 @@ describe.skipIf(!hasOcc)('bodySplit: the shared helper', () => {
 
   it('a caller that already pushed the feature id does not get it twice', () => {
     // The leaves disagree on whether they push before or after resplitBody
-    // (array/boolean/bodyOps push first, mirror/hole/fillet push after), so the
+    // (array/boolean/partOps push first, mirror/hole/fillet push after), so the
     // helper takes the id explicitly and tolerates both orders.
     const r = rig()
     const part = seedBox(r, 'body_t', [0, 0, 0], 10)

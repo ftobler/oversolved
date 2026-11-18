@@ -5,7 +5,7 @@ import { resolveVertexQueries } from '@/components/Geometry3D/partGeometry'
 import { isDevBuild } from '@/kernel/isDevBuild'
 
 /**
- * Hook used by Body3D to register a body's vertices with the vertex ID
+ * Hook used by Part3D to register a body's vertices with the vertex ID
  * layer. No-op when the pipeline isn't mounted or the body has no vertices.
  */
 export function useVertexIdRegistration(params: {
@@ -26,7 +26,7 @@ export function useVertexIdRegistration(params: {
   useRegisteredPart(pipeline, enabled, partKey,
     (p) => {
       if (!vertices || vertices.length === 0) return false
-      // The padded query list Body3D's vertex HighlightIndex counts from, so a
+      // The padded query list Part3D's vertex HighlightIndex counts from, so a
       // vertex the kernel left unnamed picks where it highlights.
       const resolvedQueries = resolveVertexQueries(vertices, vertexQueries, partId)
       if (!resolvedQueries) return false

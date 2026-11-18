@@ -3,7 +3,7 @@
 // groupOrder of its whole subtree, and reversePainterSortStable compares
 // groupOrder BEFORE renderOrder, so the highlights out-sorted the collision/ID
 // debug pass (IdDebugOverlay: renderOrder 9999 but groupOrder 0) and painted
-// over it in assembly mode. Part mode was correct only because Body3D's root
+// over it in assembly mode. Part mode was correct only because Part3D's root
 // group has no renderOrder.
 //
 // Two halves, and both matter: the group must stay renderOrder-free, AND every

@@ -13,7 +13,7 @@ import { applySectionClipping } from '@/viewport/sectionClipping'
  * channel acts as the "occupied" flag).
  *
  * Vertices are expected to be non-indexed (one triangle = 3 unique
- * vertices), matching the layout `Body3D` already builds via
+ * vertices), matching the layout `Part3D` already builds via
  * `buildBodyGeometry(mesh).toNonIndexed()`. Each triangle's 3 vertex
  * colors are identical -- the face ID.
  */

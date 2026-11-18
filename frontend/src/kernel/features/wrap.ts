@@ -3,7 +3,7 @@
 // normal, keeping lengths at the reference parallel (features/wrapMath.ts). It
 // is the revolve leaf's shape: resolve the profile loops, resolve the target
 // face, build the tool with lineage (occ/wrapSolid.ts through
-// sweepLoopsWithLineage) and hand it to applyBodyOperation.
+// sweepLoopsWithLineage) and hand it to applyPartOperation.
 //
 // The datum is the target's own axis or centre, read in closed form off the
 // face; there is no origin, direction or seed pick, so nothing here infers or

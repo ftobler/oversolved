@@ -247,7 +247,7 @@ export function solveTransform(
     }
     // `index` is the instance index the lineage remap mints fresh construction
     // UUIDs from, so two picked bodies cannot end up sharing face/edge UUIDs.
-    // The new-body ids all share one base: `registerSplitBodies`' collision walk
+    // The new-body ids all share one base: `registerSplitParts`' collision walk
     // then composes them into one flat, gap-free `body_<feature>[_n]` run.
     const names = rebuildNamesForTransformedCopy(oc, scope, newShape, rows, featureId, index, builder)
     partIds.push(...registerSplitParts(oc, scope, table, partStore, scope.track(newShape), {

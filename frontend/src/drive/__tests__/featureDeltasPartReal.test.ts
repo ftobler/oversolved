@@ -6,7 +6,7 @@
 // source claims volume the source never gained (build123d topology_selection
 // F5). A fused add, a split and a boolean union still name the body they
 // changed. `body_id` itself is untouched, so the kernel half is pinned in
-// bodySplit/patternBody tests.
+// partSplit/patternPart tests.
 
 import { describe, it, expect } from 'vitest'
 import { runHeadless, emptyDriveDoc } from '../headlessOps'

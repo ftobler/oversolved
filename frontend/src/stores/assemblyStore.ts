@@ -231,7 +231,7 @@ export type AssemblySolveResult = Pick<
  * mate) still arrives with a freshly built array. Passing that on re-keys the
  * viewport's `groups` memo (AssemblyViewport), which re-runs
  * `getAssemblyPartGroups` and mints a new `items` array for every part, so
- * every AssemblyBody sees new props for a scene that did not change.
+ * every AssemblyPartMesh sees new props for a scene that did not change.
  *
  * Compared field by field rather than with an epsilon: this decides object
  * identity, and a pose that differs at all is a different pose. The element

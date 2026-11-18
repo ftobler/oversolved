@@ -116,7 +116,7 @@ export default function AssemblySelectionHighlight({ pickParts, selection, hover
   // renderOrder is -- notably the collision/ID debug pass (IdDebugOverlay,
   // renderOrder 9999 at groupOrder 0), which the highlights then painted over.
   // Every child below sets RENDER_ORDER_HIGHLIGHT itself, so layering against
-  // the bodies is unaffected. The part editor's Body3D root group is likewise
+  // the bodies is unaffected. The part editor's Part3D root group is likewise
   // renderOrder-free, which is why part mode never had this bug.
   return (
     <group>

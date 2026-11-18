@@ -213,7 +213,7 @@ export function solveSplit(
       )
       // The above half keeps the body id: it is the material on the normal
       // side, which is what the id meant before the split. The geometric order
-      // bodySplit uses names that solid, never the OCC explorer order.
+      // partSplit uses names that solid, never the OCC explorer order.
       return {
         part,
         shape: compound,
@@ -235,7 +235,7 @@ export function solveSplit(
   })
 
   // Second pass: every body passed its guards and every name is minted, so the
-  // store may now change. Only the re-seat can still throw (bodySplit refuses a
+  // store may now change. Only the re-seat can still throw (partSplit refuses a
   // near-tie body order); that is an accepted limitation, documented.
   const allIds: string[] = []
   for (const plan of plans) {

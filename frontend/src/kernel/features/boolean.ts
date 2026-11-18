@@ -16,7 +16,7 @@
 // Every operation now goes through `resplitBody`. A union pick that does not touch the
 // base at all is skipped instead, so disjoint material never reaches the split.
 //
-// Construction names are folded through the tool loop the same way bodyOps' cut/add and the
+// Construction names are folded through the tool loop the same way partOps' cut/add and the
 // array fuse do: each `booleanWithDiff` hands back a faceOrigin map, and `transferBooleanNames`
 // carries the accumulated names onto the new shape by subshape identity. Skipping that (which
 // this leaf used to do, keeping names keyed by the target's pre-boolean faces) silently unnamed every
@@ -426,7 +426,7 @@ export function solveBoolean(
       toolNames.faceNames = rekeyed
     }
 
-    // Mirror the implicit cut/add guards (bodyOps.applyBodyOperation): probe the
+    // Mirror the implicit cut/add guards (partOps.applyPartOperation): probe the
     // overlap before folding so a disjoint tool is neither consumed nor left
     // silent. A subtract of a non-overlapping tool would otherwise eat the body
     // with no visible effect; an intersect of disjoint bodies yields an empty

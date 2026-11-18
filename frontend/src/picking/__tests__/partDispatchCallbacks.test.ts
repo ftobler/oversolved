@@ -14,7 +14,7 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { Mesh3D } from '@/types/cad'
 
 // The id-buffer dispatcher resolves a picked face/edge query back to the owning
-// Body3D through this module-level registry. The registry is process-global, so
+// Part3D through this module-level registry. The registry is process-global, so
 // every test resets it first; the store is exercised directly (no mocks) per the
 // project's "Zustand works directly" rule.
 

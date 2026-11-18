@@ -35,7 +35,7 @@ export function featureIdOfToken(token: string, known: ReadonlySet<string>): str
 
   // A body is named after the feature that first created it -- but that feature
   // can own several bodies, and split siblings carry a `_1`, `_2` suffix
-  // (kernel/features/bodySplit.ts). Strip the prefix and fall through to the
+  // (kernel/features/partSplit.ts). Strip the prefix and fall through to the
   // longest-known-prefix match below, so `@body_ex1_1` still attributes to
   // `ex1`. Stripping and demanding an EXACT hit resolved every sibling to
   // null, and this guard fails open, so each sibling silently became pickable

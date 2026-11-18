@@ -1,6 +1,6 @@
 // @vitest-environment node
 //
-// The refusal contract of `orderSolids` (features/bodySplit.ts), driven through
+// The refusal contract of `orderSolids` (features/partSplit.ts), driven through
 // `splitSolids` with the three OCC reads stubbed. A NaN ordering key (a
 // centroid the kernel failed to read) and a genuine near-tie both fail the
 // solve, but with distinct messages: the first is a geometry failure with no

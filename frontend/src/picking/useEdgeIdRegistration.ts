@@ -6,7 +6,7 @@ import { buildEdgeSegmentGeometry, resolveEdgeQueries } from '@/components/Geome
 import { isDevBuild } from '@/kernel/isDevBuild'
 
 /**
- * Hook used by Body3D (and the helix, through `layer: 'reference'`) to register
+ * Hook used by Part3D (and the helix, through `layer: 'reference'`) to register
  * edges with an edge ID layer. No-op when the pipeline isn't mounted or the
  * body has no edges.
  *
@@ -37,7 +37,7 @@ export function useEdgeIdRegistration(params: {
   useRegisteredPart(pipeline, enabled, partKey,
     (p) => {
       if (!edges || edges.length === 0) return false
-      // The padded query list Body3D's edge HighlightIndex counts from, so a
+      // The padded query list Part3D's edge HighlightIndex counts from, so a
       // tail edge the kernel left unnamed picks where it highlights instead of
       // being highlight-only.
       const resolvedQueries = resolveEdgeQueries(edges, edgeQueries, partId)

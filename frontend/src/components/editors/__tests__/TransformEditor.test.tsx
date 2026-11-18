@@ -113,7 +113,7 @@ describe('TransformEditor (via FeatureEditor)', () => {
 
   it('stores a picked ref verbatim, never narrowed to one body', () => {
     // Same reason DELETE_BODY_SCHEMA's field carries no transform: `@ex1` here
-    // means EVERY body that feature made, and `resolveBodyPickRef` would coerce
+    // means EVERY body that feature made, and `resolvePartPickRef` would coerce
     // it to `@body_ex1`, moving the first split sibling and leaving the rest.
     const onMutation = vi.fn()
     for (const picked of ['@ex1', '@body_ex1/face/0', '?4;@body_ex1_1@ex1:face']) {

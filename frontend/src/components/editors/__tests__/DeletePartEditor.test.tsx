@@ -108,11 +108,11 @@ describe('DeleteBodyEditor (via FeatureEditor)', () => {
   })
 
   it('stores a picked ref verbatim, never narrowed to one body', () => {
-    // This field must NOT carry `resolveBodyPickRef` the way the singular body
+    // This field must NOT carry `resolvePartPickRef` the way the singular body
     // fields do. That transform coerces a feature ref to a body id
     // (`@ex1` -> `@body_ex1`), and here `@ex1` means EVERY body that feature
     // made -- coercing it deletes the first split sibling and leaves the rest
-    // standing, which is the bug `resolveBodyIds` exists to prevent. The topo
+    // standing, which is the bug `resolvePartIds` exists to prevent. The topo
     // fallback is likewise left for the kernel to resolve.
     const onMutation = vi.fn()
     for (const picked of ['@ex1', '@body_ex1/face/0']) {

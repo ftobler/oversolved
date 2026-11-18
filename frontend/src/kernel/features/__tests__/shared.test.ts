@@ -541,7 +541,7 @@ describe('resolveBody fallback resolution paths', () => {
   })
 })
 
-// `resolveBody` answers with ONE body (a boolean target, a mirror source, a
+// `resolvePart` answers with ONE body (a boolean target, a mirror source, a
 // hole target). Once a feature owns several bodies, a ref that names the
 // FEATURE has no single answer, and the old "first match wins" quietly picked
 // half of a split body and reported success.
@@ -611,7 +611,7 @@ describe('resolveMergeTargets parity', () => {
 
   // Deliberately beyond the frozen Python cases, which only ever had one body
   // per creator: a feature routinely owns several bodies once its result splits
-  // (features/bodySplit.ts), and targeting the FEATURE must reach all of them.
+  // (features/partSplit.ts), and targeting the FEATURE must reach all of them.
   it('a feature id resolves to every body that feature made, not just the first', () => {
     const store = makeStore({
       body_ex1: 'ex1',

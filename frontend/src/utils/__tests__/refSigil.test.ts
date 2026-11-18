@@ -1,6 +1,6 @@
 // Unit coverage for the shared reference-sigil strip. Every call site that used
-// to spell this inline (hole, postRegister, bodyResolution, faceProfile, sweep,
-// bodySnapProjection, Geometry3D/utils, selectionId) now routes through it.
+// to spell this inline (hole, postRegister, partResolution, faceProfile, sweep,
+// partSnapProjection, Geometry3D/utils, selectionId) now routes through it.
 
 import { describe, it, expect } from 'vitest'
 import { stripRefSigil } from '@/utils/refSigil'

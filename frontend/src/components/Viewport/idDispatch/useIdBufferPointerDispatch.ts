@@ -370,7 +370,7 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
           }
         }
         // ─── M1: another writer cleared the store hover under us ───
-        // Body3D's per-body callback teardown (fires on every solve commit) and
+        // Part3D's per-body callback teardown (fires on every solve commit) and
         // Part.tsx resetTransientState both null hoveredSelectionId directly.
         // The dedup cache still names the old primitive, so the next same-pixel
         // move returns at applyHoverHit's guard and the highlight never comes

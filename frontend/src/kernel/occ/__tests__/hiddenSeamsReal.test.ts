@@ -119,7 +119,7 @@ describe.skipIf(!oc)('hidden seam indices (real OCC)', () => {
       expect([...hidden.hidden_vertices].sort()).toEqual([0, 1])
 
       // The assembly bundle carries the same lists, so a cached part rebuild
-      // hides them there too. `tessellateBodies` types its payload as a loose
+      // hides them there too. `tessellateParts` types its payload as a loose
       // record; the shape it assembles is a BodyResult.
       const part = makePart('body_cyl', 'cyl1', handle)
       const payload = tessellateParts(occ, table, { body_cyl: part }) as unknown as Record<string, PartResult>
@@ -216,7 +216,7 @@ describe.skipIf(!oc)('hidden seam indices (real OCC)', () => {
   // The invariance proof at unit scale: the sparse lists are the ONLY addition.
   // The five arrays below are rebuilt from the per-array producers on the same
   // solid, which know nothing about the classification, and must match what
-  // tessellateBodies emitted byte for byte.
+  // tessellateParts emitted byte for byte.
   it('leaves every name, query and positional array byte-identical', () => {
     const fixtures: Array<[string, (table: HandleTable) => OccHandle]> = [
       ['box', (table) => buildBox(occ, table, { dx: 10, dy: 6, dz: 4 })],
@@ -239,7 +239,7 @@ describe.skipIf(!oc)('hidden seam indices (real OCC)', () => {
         }
         expect(result, label).toBeDefined()
 
-        // The same options tessellateBodies passes, so the control is the
+        // The same options tessellateParts passes, so the control is the
         // pre-feature result exactly.
         const base = {
           createdBy: 'f1',

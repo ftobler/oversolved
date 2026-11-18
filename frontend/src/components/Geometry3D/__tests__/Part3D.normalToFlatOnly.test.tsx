@@ -1,7 +1,7 @@
 // "Normal to" and "New Sketch" on a hovered face are only offered for a face the
 // kernel classified as flat. The hover path runs dispatcher -> registry ->
-// Body3D -> store -> buildContextMenu, and this drives that whole chain with a
-// real Body3D so a curved face cannot slip through on a local normal.
+// Part3D -> store -> buildContextMenu, and this drives that whole chain with a
+// real Part3D so a curved face cannot slip through on a local normal.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, cleanup } from '@testing-library/react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'

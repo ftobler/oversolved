@@ -3,7 +3,7 @@
 // computes the parameters with helixMath, and registers the curve as PLAIN DATA
 // under `_curve_<id>` plus a bare-id axis entry and the two endpoints, exactly
 // as solvePlane registers its frame. A helix is not a body: it never touches
-// bodyStore. The OCC edge is rebuilt on demand by occ/helixEdge.buildCurveEdge,
+// partStore. The OCC edge is rebuilt on demand by occ/helixEdge.buildCurveEdge,
 // so a checkpoint restore needs no special handling.
 
 import type { Repository } from '../query'

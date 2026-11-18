@@ -44,7 +44,7 @@ function singlePartOf(ref: string, partStore: Record<string, PartSolid>): PartSo
  * target, a mirror source, a hole target). Exact body ids and `?` queries are
  * body-exact and always safe; a bare feature ref is only safe while that
  * feature owns one body, and fails loud otherwise (see `singleBodyOf`). Use
- * `resolveBodyIds` where every body of a feature is the right answer.
+ * `resolvePartIds` where every body of a feature is the right answer.
  */
 export function resolvePart(ref: string, partStore: Record<string, PartSolid>): PartSolid {
   const direct = singlePartOf(ref, partStore)
@@ -80,17 +80,17 @@ const TOPO_FALLBACK_REF = /^@([^/]+)\/(?:face|edge|vertex)\/\d+$/
 
 /**
  * Every body id a ref names, or `[]` when it names none. The plural counterpart
- * to `resolveBody`, and the one place the feature->bodies direction is decided.
+ * to `resolvePart`, and the one place the feature->bodies direction is decided.
  *
  * A FEATURE id resolves to every body that feature made, not just the first.
  * One feature routinely owns several bodies -- it produced disjoint solids, or a
- * later cut severed what it produced (features/bodySplit.ts) -- so returning
+ * later cut severed what it produced (features/partSplit.ts) -- so returning
  * only the first meant "cut everything @extrude1 made" quietly cut one half and
  * left the other standing.
  *
  * Callers decide what "no match" means, which is why this returns `[]` rather
  * than throwing: the merge-target and delete-body errors read differently, and
- * delete-body still falls back to `resolveBody` for viewport-prefix forms.
+ * delete-body still falls back to `resolvePart` for viewport-prefix forms.
  */
 export function resolvePartIds<T extends { created_by: string }>(ref: string, partStore: Record<string, T>): string[] {
   const key = stripRefSigil(ref, '@')
@@ -106,7 +106,7 @@ export function resolvePartIds<T extends { created_by: string }>(ref: string, pa
   if (topo) return resolvePartIds(topo[1], partStore)
   // A `?` ancestry query is body-exact: it resolves through one picked face or
   // edge, so the `@body_*` ancestor it carries IS the answer and no feature
-  // scan applies. First match only, like `resolveBody` -- a query can name more
+  // scan applies. First match only, like `resolvePart` -- a query can name more
   // than one body (a boolean face descends from both inputs), and the owner is
   // the first one written.
   if (ref.startsWith('?')) {
@@ -140,8 +140,8 @@ export function resolvePartIds<T extends { created_by: string }>(ref: string, pa
  * A `?` query is body-exact -- it resolves through a specific face/edge, so it
  * names the one sibling that owns it, and that is what the UI picker writes. A
  * plain ref may instead name a FEATURE, and a feature owns every body it made
- * (features/bodySplit.ts): `['@extrude1']` has to name `body_extrude1` AND its
- * split siblings, not quietly leave the other halves behind. `resolveBody` is
+ * (features/partSplit.ts): `['@extrude1']` has to name `body_extrude1` AND its
+ * split siblings, not quietly leave the other halves behind. `resolvePart` is
  * still the fallback for the viewport-prefix forms (`face:id:...`) it alone
  * understands.
  *
@@ -215,7 +215,7 @@ export function resolvePartRefList(
 /**
  * Body IDs a body operation should target (mirrors `_resolve_merge_targets`).
  * Empty/None merge target means ALL bodies; anything else goes through
- * `resolveBodyIds`.
+ * `resolvePartIds`.
  *
  * `opName` names the calling operation in the failure so a bad merge target on
  * a revolve or sweep is not misreported as an extrude.

@@ -151,7 +151,7 @@ export function resolveEdgeQueries(
 /**
  * The query list every rendered B-rep vertex indexes, padded like
  * `resolveEdgeQueries`. Null when the body has no vertices (the one state where
- * Body3D drops the whole vertex highlight index), otherwise one query per
+ * Part3D drops the whole vertex highlight index), otherwise one query per
  * vertex, raw where the kernel named them and a topo fallback where it fell
  * short -- an '' placeholder from `solidToVertices` counting as short.
  */

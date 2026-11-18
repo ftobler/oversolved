@@ -72,7 +72,7 @@ interface ThreadPart {
 }
 
 /** Sweep the trapezoid along the helix, then (by default) mesh it in the render
- *  order: `tessellateBodies` meshes faces before it reads edges. */
+ *  order: `tessellateParts` meshes faces before it reads edges. */
 function buildThread(
   occ: OccModule,
   scope: DisposeScope,

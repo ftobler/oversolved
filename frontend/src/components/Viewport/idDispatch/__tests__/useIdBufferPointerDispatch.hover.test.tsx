@@ -198,7 +198,7 @@ describe('useIdBufferPointerDispatch', () => {
   })
 
   // M1: the dedup cache is this dispatcher's private record of what is hovered.
-  // Another writer that nulls the store hover (Body3D teardown on a solve
+  // Another writer that nulls the store hover (Part3D teardown on a solve
   // commit, Part.tsx resetTransientState) leaves the cache naming the old
   // primitive, so the next same-pixel move returns at applyHoverHit's guard and
   // the highlight never comes back. The store subscription drops the cache so

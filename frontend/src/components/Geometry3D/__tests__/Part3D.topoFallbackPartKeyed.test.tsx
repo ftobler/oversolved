@@ -1,6 +1,6 @@
 // The topo fallback fires only where the kernel supplied no query for a
 // primitive, and it used to be keyed on `created_by`: `body_ex1` and
-// `body_ex1_1` -- two bodies of ONE feature (kernel/features/bodySplit.ts) --
+// `body_ex1_1` -- two bodies of ONE feature (kernel/features/partSplit.ts) --
 // then both minted `@ex1/edge/0` for their own edge 0. Two different edges,
 // one query string: duplicate-query warnings and cross-body highlight.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
@@ -83,7 +83,7 @@ describe('Body3D topo-fallback queries are keyed on the body', () => {
 
   // Cheap guard for a mint site added later, which the assertions above would
   // not see: no site may take the feature id, however many there are. The
-  // edge/vertex/face resolvers moved to bodyGeometry (one padded list feeds both
+  // edge/vertex/face resolvers moved to partGeometry (one padded list feeds both
   // the highlight index and the ID-layer registration), so scan both files.
   it('has no feature-keyed mint site left in Body3D or bodyGeometry', () => {
     const src = ['Part3D.tsx', 'partGeometry.ts']

@@ -31,7 +31,7 @@ interface RevolveResult {
   [key: string]: unknown
   status: string
   body_id: string
-  // Every body the operation produced; `body_id` is just the first (features/bodySplit.ts).
+  // Every body the operation produced; `body_id` is just the first (features/partSplit.ts).
   body_ids?: string[]
 }
 
@@ -334,7 +334,7 @@ export function solveRevolve(
 
   if (cqFaces.length > 0 && allLoops.length > 0) {
     // Both were built; only one branch below can consume them, and the silent
-    // drop reached applyBodyOperation with profile_queries naming geometry the
+    // drop reached applyPartOperation with profile_queries naming geometry the
     // body does not contain. sweep's mixed-profile guard refuses the same mix by name.
     throw new Error(
       'revolve: a profile mixing picked faces/edges with sketch areas is not supported; ' +

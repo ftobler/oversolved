@@ -10,7 +10,7 @@ import {
 
 /**
  * `buildFaceBoundarySegments` used to find its face's triangles by scanning the
- * whole mesh, so building the outline of every face -- which is what Body3D and
+ * whole mesh, so building the outline of every face -- which is what Part3D and
  * the assembly pick bundle both do -- cost O(faces x triangles). Measured on this
  * box at 20 000 faces / 400 000 triangles: 12 s per body, run synchronously
  * between the finished solve and the first painted frame. Grouping the triangles
@@ -77,7 +77,7 @@ describe('lazyFaceTriangles', () => {
 
 describe('resolveFaceQueries empty-string fallback', () => {
   // M5: tessellation pushes the `''` placeholder for a face whose buildFaceQuery
-  // returned null, and bodyGeometry pads the tail with the topo fallback. The
+  // returned null, and partGeometry pads the tail with the topo fallback. The
   // fallback used `??`, which treats `''` as a value, so an empty-string entry
   // stayed empty and the face got a selection id that resolves to null. `||`
   // makes both the placeholder and a missing tail land on the index-keyed

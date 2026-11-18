@@ -21,7 +21,7 @@ vi.mock('@react-three/fiber', () => ({
 }))
 
 // Captures the `runs` prop of every useHighlightColors call so a test can pin
-// that Body3D hands the painter face runs counting the resolved list.
+// that Part3D hands the painter face runs counting the resolved list.
 const { facePaintRuns } = vi.hoisted(() => ({ facePaintRuns: [] as { count: number }[] }))
 
 vi.mock('@/components/Geometry3D/useHighlightColors', async (importOriginal) => {
@@ -164,7 +164,7 @@ describe('Body3D renders a tail-face highlight through the fallback', () => {
     render(<Part3D featureId="ex1" partId="body_ex1" mesh={mesh} />)
     // The face paint is the first useHighlightColors call; its runs must count
     // the padded list (3), so the painter's primitive count equals the highlight
-    // index's in Body3D's actual wiring, not just in the pure helpers.
+    // index's in Part3D's actual wiring, not just in the pure helpers.
     expect(facePaintRuns[0]?.count).toBe(3)
   })
 })

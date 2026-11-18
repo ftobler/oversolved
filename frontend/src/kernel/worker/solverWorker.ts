@@ -224,7 +224,7 @@ export function bundleTransferables(res: BundleResponse): Transferable[] {
 // `[a,b,c][]` triangles). Across postMessage those structured-clone into a deep
 // copy of thousands of tiny arrays. Convert the two heavy arrays to flat typed
 // arrays so the clone is one contiguous buffer that we then *transfer*
-// (zero-copy); the main-thread `bodyGeometry` zero-copy branch consumes them
+// (zero-copy); the main-thread `partGeometry` zero-copy branch consumes them
 // straight as GPU buffers, skipping its tuple validate-and-rebuild loop.
 //
 // Non-mutating by construction: the builder shares each mesh object with its

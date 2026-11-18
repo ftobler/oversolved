@@ -9,7 +9,7 @@
  * of primitives, so its index within that body is a stable, always-unique key.
  *
  * `bodyKey` is the same `${featureId}/${bodyId}` the ID layers register under,
- * so the key computed here (registry side) matches the one Body3D recomputes to
+ * so the key computed here (registry side) matches the one Part3D recomputes to
  * isolate the single hovered primitive.
  *
  * `layer` is load-bearing: the store's `hoveredPickKey` / `selectedPicks` hold

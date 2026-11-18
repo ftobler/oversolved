@@ -137,7 +137,7 @@ describe('cameraController', () => {
 
 // fitToContent owns the clip planes because a fixed range cannot serve both
 // ends: wide enough for a large model makes the depth-buffer resolution unit
-// coarse, and Body3D's polygonOffsetUnits=1 is one such unit, so the edge/face
+// coarse, and Part3D's polygonOffsetUnits=1 is one such unit, so the edge/face
 // separation grows into a visible penetration depth that makes small parts
 // transparent. Sized to the content, neither end has to lose.
 describe('fitToContent clip planes', () => {

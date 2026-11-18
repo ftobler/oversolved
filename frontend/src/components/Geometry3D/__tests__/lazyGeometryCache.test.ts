@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from 'vitest'
 import { lazyGeometryCache } from '@/components/Geometry3D/lazyGeometryCache'
 
 /**
- * Body3D used to mint one BufferGeometry per face AND per edge when a body
+ * Part3D used to mint one BufferGeometry per face AND per edge when a body
  * mounted, for overlays that only ever draw for the handful of primitives under
  * the pointer or in the selection. On a heavy model that whole build sat between
  * the finished solve and the first painted frame. The cache below is what makes

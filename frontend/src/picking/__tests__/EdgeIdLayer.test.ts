@@ -247,7 +247,7 @@ describe('EdgeIdLayer', () => {
     const oldId = reg.lookupKey(EDGE_LAYER_NAME, '?old_pick_edge:edge')
     expect(oldId).toBeDefined()
 
-    // React updates Body3D in place: cleanup unregisters, setup re-registers
+    // React updates Part3D in place: cleanup unregisters, setup re-registers
     layer.unregisterPart('body_ex1')
     layer.registerPart({
       partKey: 'body_ex1',
@@ -276,11 +276,11 @@ describe('EdgeIdLayer', () => {
     })
     expect(layer.partCount()).toBe(1)
 
-    // Accept: pickBodyItems Body3D unmounts
+    // Accept: pickBodyItems Part3D unmounts
     layer.unregisterPart('extrude1/body_ex1')
     expect(layer.partCount()).toBe(0)
 
-    // bodyItems Body3D mounts with different bodyKey
+    // bodyItems Part3D mounts with different bodyKey
     layer.registerPart({
       partKey: 'fillet1/body_ex1',
       segmentPositions: new Float32Array([0, 0, 0, 1, 1, 0]),

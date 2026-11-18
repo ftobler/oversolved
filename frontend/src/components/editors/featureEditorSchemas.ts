@@ -445,7 +445,7 @@ export const TRANSFORM_SCHEMA: FeatureEditorSchema = {
   fields: [
     // Plural, and deliberately without a `transform:` coercion, for the same
     // reason DELETE_BODY_SCHEMA's field has none: `@ex1` here means every body
-    // that feature made, split siblings included, and `resolveBodyPickRef`
+    // that feature made, split siblings included, and `resolvePartPickRef`
     // would narrow it to the first sibling.
     { type: 'pick', key: 'bodies', label: 'Parts', multi: true, names: 'body',
       addMutationType: 'add_transform_body', addValueKey: 'bodyQuery',
@@ -927,10 +927,10 @@ export const DELETE_PART_SCHEMA: FeatureEditorSchema = {
   defaults: { bodies: [] },
   fields: [
     // Deliberately NO transform, unlike every other body-naming field. Those are
-    // singular by contract, so `resolveBodyPickRef` coercing a feature ref `@ex1`
+    // singular by contract, so `resolvePartPickRef` coercing a feature ref `@ex1`
     // to the body id `@body_ex1` is right for them. This field is the plural one:
     // `@ex1` here means every body that feature made, split siblings included
-    // (kernel/features/deleteBody.ts), and that coercion would silently narrow it
+    // (kernel/features/deletePart.ts), and that coercion would silently narrow it
     // to the first sibling -- deleting half a severed part and reporting success.
     // A face pick is body-exact already and resolves in the kernel.
     { type: 'pick', key: 'bodies', label: 'Parts', multi: true, names: 'body',

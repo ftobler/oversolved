@@ -768,7 +768,7 @@ export function faceArea(oc: OccModule, scope: DisposeScope, face: OccShape): nu
 
 /**
  * Centre of mass of a solid. The volume integral (not the vertex hull) so the
- * split-sibling ordering key in `features/bodySplit.ts` follows where the
+ * split-sibling ordering key in `features/partSplit.ts` follows where the
  * material actually is, which is what makes it survive a resize of the parent.
  */
 export function solidCentroid(oc: OccModule, scope: DisposeScope, solid: OccShape): Vec3 {
@@ -1064,7 +1064,7 @@ export function readSolidEdges(
   const exp = scope.track(new oc.TopExp_Explorer_2(solid, E.TopAbs_EDGE, E.TopAbs_SHAPE))
   const dedup = new SubShapeDedup()
   const uniq: { edge: OccSubShape; canon: number }[] = []
-  // The position in the canonical edge order (occ/bodyNames.ts), which counts
+  // The position in the canonical edge order (occ/partNames.ts), which counts
   // degenerated edges even though they are skipped here.
   let canon = 0
   for (; exp.More(); exp.Next()) {

@@ -14,11 +14,11 @@ import { rgbToId } from '../idEncoding'
 import type { Mesh3D } from '@/types/cad'
 
 /**
- * g4-H1: the ID-layer index space is the SAME padded query list Body3D's
+ * g4-H1: the ID-layer index space is the SAME padded query list Part3D's
  * HighlightIndex counts from. A body with fewer kernel queries than tessellated
  * primitives used to highlight the tail primitives while leaving them with no
  * ID-buffer pixel, so they could be hovered-onto only by the highlight but never
- * clicked. Body3D has no R3F pointer handlers, so the ID buffer is the only pick
+ * clicked. Part3D has no R3F pointer handlers, so the ID buffer is the only pick
  * route: highlightable-but-unpickable is a real dead spot.
  */
 describe('pickable equals highlightable (g4-H1)', () => {

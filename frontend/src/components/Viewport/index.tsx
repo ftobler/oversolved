@@ -503,7 +503,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   // Build a combined otherSketches that includes cross-sketch entities AND projected body geometry.
   // Body geometry is projected to 2D using the active sketch's plane transform so snap detection
   // can treat it as regular sketch candidates (with a BODY_SNAP_FEAT_PREFIX sentinel featureId).
-  // The decision lives in bodyUtils so it is unit tested away from the Viewport.
+  // The decision lives in partUtils so it is unit tested away from the Viewport.
   const combinedOtherSketches = useMemo(
     () => snapSketchesFor(
       otherSketches,
@@ -713,7 +713,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           const authored = featureDefs?.find(fd => fd.id === f.id)
           const fullFeatureDef = authored?.kind === 'sketch' ? authored : f
           // Solved geometry when the solve has landed, else the authored
-          // `initial` shape: the choice is pure and tested in bodyUtils.
+          // `initial` shape: the choice is pure and tested in partUtils.
           const { sketch, constraints } = sketchForRender(solveResults?.[f.id], fullFeatureDef)
           // Face-projection members are solve-time entities, not document rows;
           // the editor's kind/selection maps need them alongside the authored

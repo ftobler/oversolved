@@ -48,7 +48,7 @@ describe('vertex hasAny is memoized on the pick set', () => {
     await renderPart()
     const afterMount = spy.mock.calls.length
 
-    // Re-render Body3D with a hovered query that matches NO vertex: compute
+    // Re-render Part3D with a hovered query that matches NO vertex: compute
     // returns the shared all-false array, so the flags identity is unchanged and
     // neither hasAny memo may recompute.
     await act(async () => {

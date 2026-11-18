@@ -6,7 +6,7 @@ import { buildPartGeometry, faceCount, toNonIndexedPositions, resolveFaceQueries
 import { isDevBuild } from '@/kernel/isDevBuild'
 
 /**
- * Hook used by Body3D to register a body's per-face geometry with the
+ * Hook used by Part3D to register a body's per-face geometry with the
  * face ID layer. No-op when:
  *   - the pipeline isn't mounted (no <IdPickingDriver> in tree)
  *   - the mesh lacks stable face queries (no triangle_to_face / face_queries)
@@ -26,11 +26,11 @@ export function useFaceIdRegistration(params: {
 
   useRegisteredPart(pipeline, enabled, partKey,
     (p) => {
-      // The padded query list Body3D's face HighlightIndex counts from, so the
+      // The padded query list Part3D's face HighlightIndex counts from, so the
       // ID-layer index space matches: a tail face with only a topo fallback is
       // pickable exactly when it is highlightable. Null (no face_queries, or
       // triangle_to_face missing or too short) leaves face picking unregistered
-      // so it matches Body3D's legacy per-triangle highlight path for that mesh.
+      // so it matches Part3D's legacy per-triangle highlight path for that mesh.
       const faceQueries = resolveFaceQueries(mesh, partId)
       if (!faceQueries) return false
       const { triangle_to_face } = mesh

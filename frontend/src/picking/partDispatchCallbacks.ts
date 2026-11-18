@@ -1,7 +1,7 @@
 /**
- * Per-Body3D callbacks consumed by the id-buffer pointer dispatcher.
+ * Per-Part3D callbacks consumed by the id-buffer pointer dispatcher.
  * Only face-geometry computation remains, edge/vertex hover is now
- * handled entirely via the store's `hoveredSelectionId` field (Body3D
+ * handled entirely via the store's `hoveredSelectionId` field (Part3D
  * resolves the index locally from its query arrays).
  *
  * Lookups here run on every pointer move, so a query resolves through reverse

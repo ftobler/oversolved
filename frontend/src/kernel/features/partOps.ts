@@ -326,7 +326,7 @@ export function applyPartOperation(
 
       // If the cut consumed the entire body, remove it rather than registering
       // an empty compound.  Mirrors the auto-deletion in `solveDeleteBody`
-      // (`deleteBody.ts`).
+      // (`deletePart.ts`).
       if (countSolids(oc, scope, newShape) === 0) {
         // The owner tag is settled with the body, so a later `releaseOwner`
         // cannot over-decrement (see releaseFor).

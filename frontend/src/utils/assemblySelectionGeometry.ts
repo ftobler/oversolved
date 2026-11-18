@@ -2,7 +2,7 @@
 // viewport.
 //
 // The part editor recolours a body's own vertex-colour attribute per face
-// (Body3D). The assembly cannot: its render meshes carry no per-triangle face
+// (Part3D). The assembly cannot: its render meshes carry no per-triangle face
 // ids. But `pickGeometry` (AssemblyPickBody[]) already holds, per body, the
 // non-indexed face triangles, the edge segments and the vertex points, each
 // keyed by `assemblyEntityKey` and already in solved-pose world coordinates.

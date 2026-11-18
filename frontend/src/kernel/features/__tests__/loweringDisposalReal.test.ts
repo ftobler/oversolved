@@ -229,7 +229,7 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
   // H21: the array add fuse loop releases the superseded fused solid and the
   // consumed instance at the end of every copy (`applyBodyPattern`). The
   // loop is the ONLY release traffic on this path (booleans/transformLineage/
-  // bodySplit never call scope.release), so releaseCount is exactly 2 per
+  // partSplit never call scope.release), so releaseCount is exactly 2 per
   // copy after the first: the first copy fuses into the table-owned source and
   // contributes a single release, every later copy two.
   function arrayRun(countX: number): { released: number } {

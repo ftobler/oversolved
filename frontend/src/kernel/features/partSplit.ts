@@ -13,7 +13,7 @@
  * was missing outright from boolean union/intersect, pattern add, mirror merge,
  * hole and fillet/chamfer -- so those silently produced one Body holding
  * several solids, i.e. one Parts-list row that was really N parts. Every leaf
- * now routes through `registerSplitBodies` (a shape becomes new bodies) or
+ * now routes through `registerSplitParts` (a shape becomes new bodies) or
  * `resplitBody` (an existing body's shape was replaced and may have split).
  * `exploreSolids` must not be called for body creation anywhere else.
  *
@@ -216,7 +216,7 @@ function namesForSolid(
  * `base`, `base_1`, `base_2`, ... skipping ids the store already holds.
  *
  * The collision walk covers index 0 as well, which is what lets a caller invoke
- * `registerSplitBodies` repeatedly with the SAME base id and get one flat,
+ * `registerSplitParts` repeatedly with the SAME base id and get one flat,
  * gap-free sibling run: the body-pattern leaf registers one instance after another,
  * and an instance that itself splits must not silently overwrite the next
  * instance's id. Split ids derived from an existing body id (a cut re-splitting

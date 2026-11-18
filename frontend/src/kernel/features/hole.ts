@@ -540,11 +540,11 @@ function cutterReaches(
 
 /** True when `tool` shares any volume with `shape`.
  *
- *  The same bare BRepAlgoAPI_Common probe bodyOps and boolean run before a cut
+ *  The same bare BRepAlgoAPI_Common probe partOps and boolean run before a cut
  *  to skip disjoint tools. The cut's BrepDiff cannot decide this: a disjoint
  *  cut still writes a NON-empty diff because OCC's history marks the whole
  *  tool as deleted, which reads as "material removed" even though the body is
- *  untouched. A failed probe is not evidence of disjointness (mirror bodyOps),
+ *  untouched. A failed probe is not evidence of disjointness (mirror partOps),
  *  so the cut proceeds and surfaces its own failure. */
 function intersects(oc: OccModule, shape: OccShape, tool: OccShape): boolean {
   const probe = new DisposeScope()
@@ -641,7 +641,7 @@ function defaultTargetPart(
  * where SOME sites cut and some missed is `partial` and names the missed sites;
  * a swallowed site never makes the hole partial. A hole where every site missed
  * keeps `status: 'ok'` with a solver warning (the body is unchanged, and a
- * warning beats the old silent ok), matching the bodyOps warning-with-ok
+ * warning beats the old silent ok), matching the partOps warning-with-ok
  * convention. `partial` is reserved for the mixed case. A hole that consumes the
  * whole body (a through-hole wider than the body) goes through resplitBody's
  * deletion path: the body leaves the store and the result reports it with
@@ -875,7 +875,7 @@ export function solveHole(
   // widened mouth (no tapped run), named in the warning.
   const threadClamped: string[] = []
   const threadUntapped: string[] = []
-  // This hole's own cuts only, like boolean and bodyOps. Seeding with the body's
+  // This hole's own cuts only, like boolean and partOps. Seeding with the body's
   // previous diff credited the last modifier's surviving elements to the hole in a
   // full build, while a build restored past that modifier has no diff to seed with.
   let accumulatedDiff: BrepDiff | null = null

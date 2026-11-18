@@ -6,7 +6,7 @@ import { COLOR_SELECTED } from '@/components/Geometry3D/constants'
 import { useEditorState } from '@/hooks/useEditorState'
 
 /**
- * The seam rule at the Body3D seam: the beauty pass and the ID layer skip a
+ * The seam rule at the Part3D seam: the beauty pass and the ID layer skip a
  * hidden edge, but the overlay stays index-keyed. A seam picked into a document
  * (MCP `select`, a restored selection set) therefore still draws its highlight
  * instead of becoming an invisible selection.

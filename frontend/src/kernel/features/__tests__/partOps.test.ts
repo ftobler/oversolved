@@ -1,4 +1,4 @@
-// Always-on coverage for applyBodyOperation's OCC-free control-flow branches
+// Always-on coverage for applyPartOperation's OCC-free control-flow branches
 // (no boolean is reached, so no real OCC module is needed). The geometry-bearing
 // add/cut/new paths are gated against Python in bodyOpsReal.test.ts.
 
@@ -8,7 +8,7 @@ import { DisposeScope } from '../../occ/disposeScope'
 import { applyPartOperation } from '../partOps'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 
-// applyBodyOperation never touches `oc` or `toolShape` on these branches.
+// applyPartOperation never touches `oc` or `toolShape` on these branches.
 const oc = null as unknown as OccModule
 const toolShape = null as unknown as OccShape
 

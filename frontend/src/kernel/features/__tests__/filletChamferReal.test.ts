@@ -109,7 +109,7 @@ describe.skipIf(!oc)('solveFillet/solveChamfer leaf (real OCC)', () => {
       expect(result.status).toBe('ok')
       expect(result.body_ids).toEqual(['body_b'])
       // The viewport prefix resolves to the real body, so the group key is the
-      // bodyStore id and the edge index builds against it.
+      // partStore id and the edge index builds against it.
       expect(partStore.body_b.modified_by).toEqual(['fil1'])
     } finally {
       scope.dispose()

@@ -34,7 +34,7 @@ function normalizePartRef(ref: string): string {
  * Picking a face of the body is the natural gesture, so a `face:` selection
  * yields its inner ancestry query and a `?` query passes through untouched:
  * both are body-exact and resolve to the owning body in the kernel
- * (`resolveBody` / `resolveBodyIds`). An `edge:` pick now yields its inner
+ * (`resolvePart` / `resolvePartIds`). An `edge:` pick now yields its inner
  * query too, through the shared wrapper stripper, and resolves the same way.
  *
  * The merge-target field used to have its own variant that mapped a `?` query

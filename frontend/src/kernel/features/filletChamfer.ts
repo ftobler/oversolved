@@ -475,7 +475,7 @@ function applyEdgeFeature(
   // marks these red; the parameter or geometry is the fix, not the pick.
   const failed: string[] = []
   if (sourcePart) {
-    // `resolveBodyIds` rather than a local created_by scan: a feature ref can
+    // `resolvePartIds` rather than a local created_by scan: a feature ref can
     // name several bodies, and every edge would otherwise be grouped onto
     // whichever sibling came first. A ref matching nothing stays as-is, so the
     // group lookup below reports it as unresolved.
@@ -491,8 +491,8 @@ function applyEdgeFeature(
       if (ids.length === 1) resolvedSrc = ids[0]
       else {
         // Viewport-prefix forms (body:<id>, face:<id>:...) are accepted by
-        // resolveBody but invisible to resolveBodyIds; ask the resolver itself so
-        // the group key is always a real bodyStore id.
+        // resolvePart but invisible to resolvePartIds; ask the resolver itself so
+        // the group key is always a real partStore id.
         try {
           resolvedSrc = resolvePart(sourcePart, partStore).id
         } catch (e) {

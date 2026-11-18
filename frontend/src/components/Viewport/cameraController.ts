@@ -15,7 +15,7 @@ const FIT_MARGIN = 2.5
 // ─── clip planes ───
 // near/far are sized to the content, not fixed, because the depth range is not
 // free: for an ortho camera the depth-buffer resolution unit is proportional to
-// (far - near), and Body3D pushes faces back by polygonOffsetUnits=1 of exactly
+// (far - near), and Part3D pushes faces back by polygonOffsetUnits=1 of exactly
 // that unit to keep edges off their own faces. A range big enough for the worst
 // case therefore turns that offset into a visible penetration depth and makes
 // small parts look transparent (their back faces beat the offset front faces).

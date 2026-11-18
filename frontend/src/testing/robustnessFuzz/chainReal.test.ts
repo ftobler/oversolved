@@ -410,7 +410,7 @@ describe.skipIf(!occAvailable || !stripTypes)('the seeded geometry fuzz (real ke
   // The 2026-11-04 fuzz failure: batching the fuzz's three-copy arrays moved a
   // source face's UUID under the +2.5 mm perturbed start, so seed 235's hole
   // pick went red. Short arrays went back to the one-at-a-time path
-  // (patternBody's chunk gate) and the pick resolved again on 7.4.
+  // (patternPart's chunk gate) and the pick resolved again on 7.4.
   //
   // On OCCT 8 the same perturbed array cuts the picked bottom face into four
   // sectors: the face no longer exists as one face, so the parent UUID dies and

@@ -1,5 +1,5 @@
-// The Body3D half of delete-preview-marking. `bodySurfaceLook` is unit-tested
-// on its own, but Body3D is the ONLY place the decision becomes pixels, and a
+// The Part3D half of delete-preview-marking. `bodySurfaceLook` is unit-tested
+// on its own, but Part3D is the ONLY place the decision becomes pixels, and a
 // mutation that passed `doomed: false` into it -- deleting the whole
 // visual half of the feature -- left the rest of the suite green. This renders
 // the real component and observes the two things that actually reach the GPU:

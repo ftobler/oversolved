@@ -41,7 +41,7 @@ beforeEach(() => {
   occluderCalls.length = 0
 })
 
-// Imported at module scope: Body3D pulls the whole geometry tree, and paying
+// Imported at module scope: Part3D pulls the whole geometry tree, and paying
 // that transform inside a test counts it against the test timeout.
 import Part3D from '@/components/Geometry3D/Part3D'
 

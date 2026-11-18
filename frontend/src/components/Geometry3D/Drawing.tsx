@@ -122,7 +122,7 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
     get current() { return meshRef.current?.parent ?? null },
   }
 
-  // Window-level pointermove: bypasses R3F event bubbling so Body3D/Surfaces meshes
+  // Window-level pointermove: bypasses R3F event bubbling so Part3D/Surfaces meshes
   // cannot block the draw hover cursor. The handler ref is updated every render so the
   // closure always captures fresh props/derived values without effect dependency issues.
   // meshRef is only attached in drawing-tool mode; when null the handler is a no-op.

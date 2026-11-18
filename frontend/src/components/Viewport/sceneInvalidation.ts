@@ -20,7 +20,7 @@
 // callback would ask for the next frame from inside one (R3F turns an
 // invalidate issued mid-frame into two more frames), so the loop could never
 // settle. Frame callbacks must keep their writes in per-instance painter state
-// (Body3D's VertexInstancePainter is the pattern), not in these stores.
+// (Part3D's VertexInstancePainter is the pattern), not in these stores.
 import { editorState } from '@/stores/editorState'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSketchUiStore } from '@/stores/sketchEditorStore'

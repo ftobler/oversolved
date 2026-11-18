@@ -102,7 +102,7 @@ describe('Body3D overlays share render order and blending', () => {
   // blending half of the recipe is asserted on overlayLineMaterialProps above;
   // what is pinned here is that BOTH states reach the shared component, and
   // that the component puts them at the shared order. Only the first render
-  // needs the longer budget: it pays Body3D's whole geometry import graph in
+  // needs the longer budget: it pays Part3D's whole geometry import graph in
   // jsdom, while the later renders reuse the loaded modules.
   const FIRST_MOUNT_TIMEOUT = 15_000
 

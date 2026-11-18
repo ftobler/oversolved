@@ -1,6 +1,6 @@
 // @vitest-environment node
 //
-// Gated real-OCC parity gate for the transform-group leaves (patternBody.ts +
+// Gated real-OCC parity gate for the transform-group leaves (patternPart.ts +
 // transformMirror.ts): body-subject pattern (linear and circular) / transform /
 // mirror. Rebuilds the
 // same source box body (+ registered mirror plane) as
@@ -13,7 +13,7 @@
 // phase 4d.
 //
 // The fixture was deliberately re-frozen when the leaves moved onto
-// features/bodySplit.ts, in two ways:
+// features/partSplit.ts, in two ways:
 //   - every result gained `body_ids`, which these leaves did not use to emit;
 //   - `circular_add` and `mirror_merge` changed STORE SHAPE. Both fuse copies
 //     that never touch (4 boxes around an axis at radius 5; a box at z=[2,6]
@@ -379,7 +379,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
        * 2x2 array, pitch 15, on a 5-cube: the three
        * instances never touch, so "add" fuses them into a 3-solid compound.
        * That is 3 parts, not one 375-volume part -- this used to assert the
-       * fused volume on `body_s`, i.e. the pre-bodySplit behaviour.
+       * fused volume on `body_s`, i.e. the pre-partSplit behaviour.
        */
       const scope = new DisposeScope()
       const table = new HandleTable()
@@ -705,7 +705,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
   describe('mirror new body keeps the source profile queries (L22)', () => {
     // A profile-derived pick is a query built from the body's `profile_queries`
     // (the fallback ancestry of an edge with no construction UUID). The mirror
-    // "new" template omitted them, so registerSplitBodies defaulted the copy to
+    // "new" template omitted them, so registerSplitParts defaulted the copy to
     // [] and the same pick resolved differently on the copy than on the source.
     const exactQueryFor = (scope: DisposeScope, table: HandleTable, part: PartSolid, target: Vec3): string => {
       const shape = table.get<OccShape>(part.shape!)

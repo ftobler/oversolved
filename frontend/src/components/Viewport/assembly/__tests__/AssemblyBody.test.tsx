@@ -5,7 +5,7 @@ import type { EdgeCurve } from '@/kernel/partBundle'
 import AssemblyPartMesh from '../AssemblyPartMesh'
 
 /**
- * AssemblyBody's only interaction logic is the grab guard: a non-primary
+ * AssemblyPartMesh's only interaction logic is the grab guard: a non-primary
  * button, a ctrl-click, or any click while a mate reference is armed must not
  * grab (drag) the part. The last two are the same gesture the mate picker
  * consumes, so grabbing here would drag the part away from the anchor the user

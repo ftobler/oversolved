@@ -49,7 +49,7 @@ describe('section on a solve-derived face source', () => {
   })
 
   it('stays on when the source body is hidden from the hover registry', () => {
-    // Hiding a body leaves it in the solve but unregisters its Body3D hover
+    // Hiding a body leaves it in the solve but unregisters its Part3D hover
     // callbacks. The old frame lookup read that registry and turned the section
     // off with "source gone"; the solve-derived frame does not.
     const { result } = renderHook(() => useSectionClip())

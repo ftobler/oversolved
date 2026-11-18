@@ -1,8 +1,8 @@
 // @vitest-environment node
 //
-// Gated real-OCC parity gate for bodyOps.ts (phase 2e): the _apply_body_operation
+// Gated real-OCC parity gate for partOps.ts (phase 2e): the _apply_body_operation
 // add/cut/new dispatch. Builds the same boxes + geometry-derived lineage as
-// the now-removed gen_bodyop_fixture.py, runs the ported applyBodyOperation,
+// the now-removed gen_bodyop_fixture.py, runs the ported applyPartOperation,
 // and asserts the result dict + the full post-op body-store state (per body:
 // volume, created_by, modified_by, face/edge lineage) match Python.
 //

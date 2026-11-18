@@ -1,8 +1,8 @@
 import type { PartResult } from '@/types/cad'
 import { resolvePartIds } from '@/kernel/features/shared/partResolution'
 
-// UI-side twin of the kernel's `resolveBodyIds` (kernel/features/shared/
-// bodyResolution.ts), operating on the plain `BodyResult` records the store
+// UI-side twin of the kernel's `resolvePartIds` (kernel/features/shared/
+// partResolution.ts), operating on the plain `BodyResult` records the store
 // publishes (`usePartEditorStore.bodies`) instead of the kernel's `Body`
 // objects. The kernel resolver is not imported here: it lives behind the OCC
 // kernel, and this module must stay free of it.
@@ -18,8 +18,8 @@ export function partIdsOfPick(
   parts: Record<string, PartResult> | null | undefined,
 ): string[] {
   if (!query) return []
-  // Shared with the kernel's `resolveBodyIds` (kernel/features/shared/
-  // bodyResolution.ts) so the chip's body resolution cannot drift from the
+  // Shared with the kernel's `resolvePartIds` (kernel/features/shared/
+  // partResolution.ts) so the chip's body resolution cannot drift from the
   // solve's. The kernel resolver is pure store lookup with no OCC, so
   // importing it here is safe.
   return resolvePartIds(query, (parts ?? {}) as Record<string, { created_by: string }>)

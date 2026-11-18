@@ -1,6 +1,6 @@
 // @vitest-environment node
 //
-// The material filter of `splitSolids` (features/bodySplit.ts): body creation
+// The material filter of `splitSolids` (features/partSplit.ts): body creation
 // drops a solid with no material in it, so a boolean's zero-volume debris never
 // becomes a phantom part. The case is real (robustness-fuzz seed 990: an OCCT 8
 // corner cut leaves a flat zero-volume skin beside the result; pinned by

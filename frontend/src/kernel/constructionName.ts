@@ -167,8 +167,8 @@ export function importedFacePath(createdBy: string, stepEntityId: number): strin
 
 /**
  * An imported face inside ONE `import_step` feature that produced several
- * solids. The `solidIndex` is the bodySplit solid order (features/bodySplit.ts),
- * the same order `registerSplitBodies` hands out as `body_x_1`, `body_x_2`, ...
+ * solids. The `solidIndex` is the partSplit solid order (features/partSplit.ts),
+ * the same order `registerSplitParts` hands out as `body_x_1`, `body_x_2`, ...
  * A shared STEP entity id (a repeated instance) therefore lands in a disjoint
  * UUID namespace per placement, so the resolver's UUID tier no longer sees a
  * "collision by construction" on every pick. Index 0 is exactly

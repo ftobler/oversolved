@@ -3,7 +3,7 @@
 // Per-UUID ownership across repeated applications and boolean tools. The
 // attribution bug was last-application-wins: only the surviving `brep_diff`
 // was stamped, so every earlier copy of a pattern fell back to the body's
-// creator. These pin the two paths the fix records owners on: `applyBodyOperation`
+// creator. These pin the two paths the fix records owners on: `applyPartOperation`
 // called twice with the same feature id, and `transferBooleanNames` carrying a
 // target and a tool owner through one boolean.
 //

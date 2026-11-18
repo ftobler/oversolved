@@ -423,7 +423,7 @@ describe('SceneController camera gestures', () => {
 
 describe('SceneController cursor pivot', () => {
   // A renderer canvas with a real layout, and one body surface tagged the way
-  // Body3D tags it, so the whole read (rect -> ray -> world point) runs.
+  // Part3D tags it, so the whole read (rect -> ray -> world point) runs.
   function glWithLayout() {
     const gl = makeGl()
     Object.defineProperty(gl.domElement, 'getBoundingClientRect', {

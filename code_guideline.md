@@ -44,15 +44,44 @@ length = distance_between(A, B)
 - **Do not** use em-dashes or en-dashes
 - **Do not** use emojis in code and documentation
 
-### User-Facing Wording
+### Part Vocabulary
 
-- **UI says part, storage and code say body.** Every string a human reads
-  (editor label, toolbar title, menu item, undo label, solver message, MCP
-  description) calls the item a part; stored keys, ids, mutation types and the
-  stored `'body'` enum value keep `body`, and a document's authored label is
-  user text that is never rewritten.
+- **UI and code say part; only the register's stored and wire names say body.**
+  Every string a human reads (editor label, toolbar title, menu item, undo
+  label, solver message, MCP description) and every identifier calls the item
+  a part. Stored keys, ids, mutation types, result fields and the stored
+  `'body'` enum value keep `body`, and a document's authored label is user text
+  that is never rewritten.
+- `frontend/src/partNamingRegister.ts` is the keeps-body register: one entry per
+  surviving `body` spelling with the stored key, wire field, fixture shape or
+  third-party reason. `frontend/src/__tests__/partNaming.test.ts` fails on a
+  declaration, export alias or file name that is not on it, and on an assembly
+  file where one identifier means both the part document and a user part. Name
+  a user part `part` or add the stored key to the register; never invent a
+  second vocabulary.
+- The part document keeps its own `Part*` names (`PartDoc`, `PartFeature`,
+  `usePartDoc`, `PartEditor*`, `Part.tsx`): in the assembly, a "part" is the
+  bound part document, and the user part is the part inside it. Where both meet
+  the document is `doc`/`partDoc` and the user part is `part`.
+
+| Old | New |
+|-----|-----|
+| `Body` (kernel solid type) | `PartSolid` |
+| `BodyResult`, `BodyFeatureResult` | `PartResult`, `FeaturePartsResult` |
+| `Body3D`, `BodyPartsList`, `AssemblyBody` | `Part3D`, `PartsList`, `AssemblyPartMesh` |
+| `body`/`bodies` locals, `bodyId`, `bodyStore`, `visibleBodies`, `pickBodies` | `part`/`parts`, `partId`, `partStore`, `visibleParts`, `pickParts` |
+| `bodyOps.ts`, `bodySplit.ts`, `bodyRender.ts`, `bodyUtils.ts`, `bodyGeometry.ts`, `bodyAnalysisMaterial.ts`, `bodyResolution.ts`, `bodyNames.ts` | `partOps.ts`, `partSplit.ts`, `partRender.ts`, `partUtils.ts`, `partGeometry.ts`, `partAnalysisMaterial.ts`, `partResolution.ts`, `partNames.ts` |
+| `resolveBody`, `resolveBodyIds`, `resolveBodyPickRef`, `registerSplitBodies` | `resolvePart`, `resolvePartIds`, `resolvePartPickRef`, `registerSplitParts` |
+
+- Kept on purpose, with the register's reason: `source_body`, `target_body`,
+  `delete_body`, `bodies`, `pick_bodies`, `body_id`, `body_ids`, the mirror
+  `body` subject, `body_store_snapshot`, `bodyQuery`/`bodyId` in the mutation
+  catalog, the export options' `bodyId`/`bodyIds`, the mate ABI's `bodyA`/
+  `bodyB`, and the body id strings (`body_<feature>`, `@body_`, `body:`) that
+  ride queries and picks. Renaming any is a storage migration or a wire break,
+  not a refactor.
 - A user-facing message another module matches on is a contract: name both
-  sides in the change. `features/extrude.ts` turns the `bodyOps.ts` cut-miss
+  sides in the change. `features/extrude.ts` turns the `partOps.ts` cut-miss
   error into the no-change warning by regex on its text, and the robustness
   fuzz's `isExpectedSplitRefusal` (`testing/robustnessFuzz/chain.ts`) classifies
   a split refusal by the message `features/splitByPlane.ts` throws. Rewording
@@ -207,7 +236,7 @@ identity), a classifier `@cls_*` (a tie-break), or lineage (everything else).
 **Classifiers** (edit-stable tie-break tier; minted `@cls_*` tokens that ride the
 ancestry id list, not a separate suffix):
 - `@cls_xp`/`@cls_xn`/`@cls_yp`/`@cls_yn`/`@cls_zp`/`@cls_zn` - which end of the
-  body AABB an element sits past, per world axis (cardinal/axial)
+  part AABB an element sits past, per world axis (cardinal/axial)
 - `@cls_ld_<lineid>_p|n` - side of a shared bounding line for a sketch surface split
   from a same-ancestry sibling (line division)
 

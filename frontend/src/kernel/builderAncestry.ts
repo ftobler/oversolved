@@ -200,7 +200,7 @@ function _registerBrepVertexAncestry(
 // entry ends up holding N solid elements, each with its own `body_id` (the
 // restore dedupe keeps them all; they are distinct payloads). Deliberate: a
 // `:solid`-restricted query over a multi-body feature is ambiguous and fails
-// loud. The ambiguity is NOT unobservable: `resolveBodyPickRef` lets a `?` pick
+// loud. The ambiguity is NOT unobservable: `resolvePartPickRef` lets a `?` pick
 // through and it is persisted as `merge_target`/`source_body`, and at solve time
 // `resolveBodyRefKeys` runs it through the repo query, catches the ambiguity,
 // and falls back to reading the `@body_*` ancestor from the query. So an
@@ -267,7 +267,7 @@ function _evictFeatureSolidAncestry(globalRepo: Repository, fid: string): void {
   globalRepo.prunePendingUuids()
 }
 
-// Make the `[@fid]` solid/extrusion entries match the current bodyStore: every body
+// Make the `[@fid]` solid/extrusion entries match the current partStore: every body
 // the feature owns (`created_by === fid`) contributes exactly one `solid` and one
 // `extrusion-feature` element. `registerAncestor` accumulates (query.ts), so the
 // reconcile evicts the previous solid/extrusion elements first and re-registers --
@@ -372,7 +372,7 @@ function _tryRegisterPartBrepFromMeta(
 // (a body that cannot be identified still solves, it just loses its ancestry), and the
 // caller MUST NOT record such a body as registered: the checkpoint pass would then skip
 // a body whose ancestry is in no snapshot at all. `extractBrepMetadata` fails exactly
-// this way, per body, while `tessellateBodies` may still succeed for the same body --
+// this way, per body, while `tessellateParts` may still succeed for the same body --
 // which is what gives the checkpoint pass something to recover from.
 export function registerPartFaces(
   globalRepo: Repository,
@@ -407,7 +407,7 @@ export function registerPartFaces(
  *  `face_uuids` / `face_ancestry` / `edge_uuids` / `edge_ancestry` / `profile_queries`
  *  WITHOUT minting a shape handle and WITHOUT appending to `modified_by` would produce
  *  the same string for different ancestry. No solver can today: the name arrays are
- *  written only by `registerSplitBodies` / `resplitBody` (features/bodySplit.ts), in
+ *  written only by `registerSplitParts` / `resplitBody` (features/partSplit.ts), in
  *  the same step that registers the fresh handle they index (`HandleTable.register`
  *  never recycles ids). */
 export function partVersion(b: PartSolid): string {

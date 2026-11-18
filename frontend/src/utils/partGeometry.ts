@@ -2,7 +2,7 @@
 // The triangle-soup and per-face boundary helpers shared by the part editor's
 // body registration and the assembly's ID pick geometry. Re-homed here so
 // `utils/assemblyPick.ts` does not import across the UI boundary into
-// `components/Geometry3D/bodyGeometry`.
+// `components/Geometry3D/partGeometry`.
 import type { Mesh3D } from '@/types/cad'
 
 /**

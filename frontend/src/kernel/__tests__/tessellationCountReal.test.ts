@@ -2,7 +2,7 @@
 //
 // Benchmark / regression guard for the rebuild tessellation cost (feature
 // `rebuild-tessellation-cost`). Counts how many times the RENDER triangulation
-// (`solidToMesh`, via `tessellateBodies`) runs during a build. The mesh-free
+// (`solidToMesh`, via `tessellateParts`) runs during a build. The mesh-free
 // metadata path (`extractBrepMetadata`) is intentionally NOT counted -- it does
 // no triangulation.
 //
@@ -70,7 +70,7 @@ function extrudeSpec(sketchId: string, extrudeId: string, distance: number) {
 }
 
 // Counting harness: identical wiring to SharedHarness, but every body meshed by
-// the RENDER path (`tessellateBodies` -> `solidToMesh`) bumps `renderCount`, and
+// the RENDER path (`tessellateParts` -> `solidToMesh`) bumps `renderCount`, and
 // every body read by the mesh-free metadata path is recorded in `metaExtracted`.
 class CountingHarness {
   readonly table = new HandleTable()

@@ -196,7 +196,7 @@ export function partSurfaceLook({
   if (doomed) {
     return {
       // The face goes fully see-through so the doomed body stops obscuring
-      // what survives; the removal mark moves to the wireframe, which Body3D
+      // what survives; the removal mark moves to the wireframe, which Part3D
       // paints pink. Selection still claims the surface so the "click again
       // to un-pick" affordance stays defined -- the visible half of it is the
       // wireframe brightening to the selected edge colour.

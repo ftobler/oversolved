@@ -42,8 +42,8 @@ export interface NormalFrame {
  * The characteristic frame of a parent shape: its B-rep vertex AABB centre and
  * max-axis span. This is the length every world-coordinate ordering key divides
  * by, so a uniform resize of the parent cancels and the key is dimensionless
- * (comparable to `faceSplitKey`'s sqrt-area scaling and bodySplit's span
- * scaling). Vertex-based like bodySplit's frame, so a curved-face bulge cannot
+ * (comparable to `faceSplitKey`'s sqrt-area scaling and partSplit's span
+ * scaling). Vertex-based like partSplit's frame, so a curved-face bulge cannot
  * shift it between two rebuilds of the same shape.
  *
  * A vertex-less shape, or any shape whose span is at or below 1e-9 world units,
@@ -140,7 +140,7 @@ export function edgeMidpoint(oc: OccModule, scope: DisposeScope, edge: OccShape)
         const kCircle = finite(radius) ? radius : null
         const kEllipse = finite(a) && finite(b) ? ([a, b] as const) : null
         if (kCircle === null && kEllipse === null) return [...c]
-        // v = axis x u makes a right-handed in-plane basis (bodyGeometry.ts
+        // v = axis x u makes a right-handed in-plane basis (partGeometry.ts
         // uses the same convention); p(t) = center + kU*cos t*u + kV*sin t*v.
         const [kU, kV] = kEllipse ?? [kCircle as number, kCircle as number]
         const t = (a0 + a1) / 2
@@ -196,7 +196,7 @@ export interface FaceRow {
 /**
  * One traversal of a shape's faces and their edges, the topology every
  * construction-naming pass reads. Rows are the shape's canonical face order
- * (occ/bodyNames.ts), so a pass that walks them visits faces and edges in an
+ * (occ/partNames.ts), so a pass that walks them visits faces and edges in an
  * order fixed by the shape alone.
  *
  * `centroidNormal`, `area` and `surfaceType` are computed lazily per row,

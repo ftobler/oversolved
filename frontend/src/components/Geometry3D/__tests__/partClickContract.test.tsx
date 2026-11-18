@@ -6,7 +6,7 @@
  *    ancestrally."
  *
  * The click path lives in the id-buffer dispatcher (Viewport/idDispatch/
- * bodyDispatchCallbacks.ts) now; Body3D carries no R3F event props (enforced by
+ * partDispatchCallbacks.ts) now; Part3D carries no R3F event props (enforced by
  * entityMeshNoR3FEventProps.test.ts). These tests exercise the store API
  * sequence that path performs and assert normalSelection contains exactly the
  * face/edge query, never the bodyId.

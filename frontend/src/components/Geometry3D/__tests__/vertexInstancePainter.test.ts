@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import { VertexInstancePainter, type InstanceTarget, type VertexList } from '@/components/Geometry3D/vertexInstancePainter'
 
 /**
- * Body3D used to recompose one matrix per vertex, for both instanced vertex
+ * Part3D used to recompose one matrix per vertex, for both instanced vertex
  * meshes, on EVERY frame -- still camera, nothing hovered, no exceptions -- and
  * re-upload the whole instanceMatrix with it. On an imported body that is tens of
  * thousands of matrices per frame for a picture that did not change.

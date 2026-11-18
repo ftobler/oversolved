@@ -1,5 +1,5 @@
 // A part instance's mesh + analytic edges in the assembly scene. Deliberately
-// not Body3D: that component registers face/edge/vertex ID layers from ancestry
+// not Part3D: that component registers face/edge/vertex ID layers from ancestry
 // queries and reads sketchEditorStore, both part-editor concerns. The assembly's
 // ID layers are keyed by the bundle's positional entity ids instead, and are
 // registered once for the whole scene by AssemblyPickLayers.
@@ -122,7 +122,7 @@ export default function AssemblyPartMesh({ item, curves, selected, aiming, onGra
             metalness={0}
             envMapIntensity={ENV_MAP_INTENSITY}
             // Push the surface back so an edge lying exactly on it draws crisp
-            // instead of z-fighting, as Body3D does in the part editor.
+            // instead of z-fighting, as Part3D does in the part editor.
             polygonOffset
             polygonOffsetFactor={1}
             polygonOffsetUnits={1}

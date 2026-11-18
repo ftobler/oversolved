@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { getSketchesToRender, getPreviewParts } from '@/components/Viewport/partUtils'
 import type { Feature, PartResult } from '@/types/cad'
 
-// bodyUtils is pure render-list selection (no R3F). bodyUtils.test.ts covers
+// partUtils is pure render-list selection (no R3F). partUtils.test.ts covers
 // getBodiesToRender + computeEffectiveVisibleBodies; this pins the two
 // previously-uncovered selectors: getSketchesToRender and getPreviewBodies.
 

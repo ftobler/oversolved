@@ -172,7 +172,7 @@ describe('body key single source', () => {
   })
 
   // The registration hooks above prove the string the ID layers get, so the
-  // only mint site without a behavior route is Body3D, which recomputes the
+  // only mint site without a behavior route is Part3D, which recomputes the
   // same key for the dispatch registry. A source pin there is the cheap guard
   // that the re-typed literal does not creep back (the format lives only in
   // pickKey.ts).

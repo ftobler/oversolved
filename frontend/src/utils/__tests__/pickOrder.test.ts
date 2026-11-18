@@ -31,7 +31,7 @@ describe('selectionSourceFeatureIds', () => {
 
   it('maps a SPLIT SIBLING body ref back to the same feature', () => {
     // One feature owns several bodies once its result splits into disjoint
-    // solids (kernel/features/bodySplit.ts). Stripping `body_` and demanding an
+    // solids (kernel/features/partSplit.ts). Stripping `body_` and demanding an
     // exact feature-id hit attributed every sibling to nothing, and this guard
     // fails open, so `ex1` could pick its own second half.
     expect(selectionSourceFeatureIds('@body_ex1_1', KNOWN)).toEqual(['ex1'])

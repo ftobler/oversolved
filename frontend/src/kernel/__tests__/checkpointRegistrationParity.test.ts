@@ -432,7 +432,7 @@ function elementsOf(state: BuildState, fid: string, partId: string, field: strin
 describe('a body the solve loop could not identify', () => {
 
   // `extractBrepMetadata` fails per body and silently: it logs and omits that body from
-  // its output. `tessellateBodies` is a different producer and may still succeed, which
+  // its output. `tessellateParts` is a different producer and may still succeed, which
   // is what makes the checkpoint pass a RECOVERY path rather than a duplicate of the
   // loop. Recording such a body as registered would skip the only pass that can save it.
   it('is still registered by the checkpoint pass, off the render mesh', () => {
@@ -478,7 +478,7 @@ describe('a throwing registrar in the checkpoint-recovery pass', () => {
   })
 
   it('a throwing metadata extractor costs only the needing body its ancestry', () => {
-    // The last checkpoint recovers off the render mesh (tessellateBodies, which does
+    // The last checkpoint recovers off the render mesh (tessellateParts, which does
     // not throw); the earlier checkpoint that must re-extract loses the ancestry.
     const h = new Harness({ metaThrows: ['body_f1'] })
     const r = h.run({ features: [{ id: 'f1', kind: 'make' }, { id: 'f2', kind: 'make' }] })

@@ -1,7 +1,7 @@
 // `_build_prism_lineage_map`, `extrude_profile_with_lineage`. This is the OCC
 // adapter the extrude/revolve/sweep leaves call to turn a built solid plus its
 // generating profile face into the per-face / per-edge construction names,
-// keyed by the solid's own faces and edges (occ/bodyNames.ts).
+// keyed by the solid's own faces and edges (occ/partNames.ts).
 //
 // The profile-edge -> lateral face association comes from
 // BRepPrimAPI_MakePrism.Generated() (the lineage sharp edge), drained via
@@ -736,7 +736,7 @@ function perGroupPrismWithLineage(
  * (mirrors `extrude_profile_with_lineage`). Disjoint loop groups are extruded
  * and fused; nested loops become holes. Lineage tokens are `@sketch_id/entity`.
  * OWNERSHIP: the returned `solid` is UNTRACKED. The caller must `scope.track()`
- * it or hand it to a registrar (`applyBodyOperation`, `registerSplitBodies`),
+ * it or hand it to a registrar (`applyPartOperation`, `registerSplitParts`),
  * and is responsible for releasing it. This is the same contract every
  * `occ/primitives.ts` producer keeps; see the module header there.
  *
@@ -898,7 +898,7 @@ export function revolveFace(
  * one-face revolve. Lineage tokens are `@sketch_id/entity`; a multi-group
  * revolve keeps each group's tokens, merged onto the fused solid.
  * OWNERSHIP: the returned `solid` is UNTRACKED. The caller must `scope.track()`
- * it or hand it to a registrar (`applyBodyOperation`, `registerSplitBodies`),
+ * it or hand it to a registrar (`applyPartOperation`, `registerSplitParts`),
  * and is responsible for releasing it. This is the same contract every
  * `occ/primitives.ts` producer keeps; see the module header there.
  */
@@ -1127,7 +1127,7 @@ function holeSweepFailure(ids: string[]): Error {
  * A hole whose shell does not build, or whose cut leaves an invalid solid,
  * fails the feature by name instead of building the hole as material.
  * OWNERSHIP: the returned `solid` is UNTRACKED. The caller must `scope.track()`
- * it or hand it to a registrar (`applyBodyOperation`, `registerSplitBodies`),
+ * it or hand it to a registrar (`applyPartOperation`, `registerSplitParts`),
  * and is responsible for releasing it. This is the same contract every
  * `occ/primitives.ts` producer keeps; see the module header there.
  */

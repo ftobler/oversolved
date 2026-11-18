@@ -292,7 +292,7 @@ describe.skipIf(!oc || !solveBytes)('no-duplicate-query regression lock (real OC
   })
 
   // The EXPLICIT boolean leaf (features/boolean.ts), which the cut case above
-  // does not reach -- that one goes through bodyOps. This leaf used to skip the
+  // does not reach -- that one goes through partOps. This leaf used to skip the
   // construction-name transfer entirely ("the target keeps its now partly stale
   // lineage dicts"), so every face the fuse reshaped lost its UUID and every
   // edge around it fell back to the body-wide ancestral string. See

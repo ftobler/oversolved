@@ -58,7 +58,7 @@ function partModifiersOf(
   return Array.isArray(mods) ? (mods as string[]) : null
 }
 
-/** Attempt to coerce element to targetType using bodyStore and the repository.
+/** Attempt to coerce element to targetType using partStore and the repository.
  *  `orderFilter` is the caller's ordering guard: the coerce scan walks the
  *  lineage independently of the ancestry-tier candidate filter, so it must apply
  *  the same owner-order rule or a coerced sibling could belong to a feature

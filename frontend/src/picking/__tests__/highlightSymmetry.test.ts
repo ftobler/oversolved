@@ -7,10 +7,10 @@ import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '../layerNam
 /**
  * The point of the selection/hover unification: face / edge / vertex and hover /
  * click all decide highlighting through the ONE computeHighlight function, and
- * both framings are assembled by the SAME two builders Body3D uses
+ * both framings are assembled by the SAME two builders Part3D uses
  * (selectActiveFrom / hoverActiveFrom, from highlightActive.ts). There is no
  * second path. This suite is the anti-regression that keeps it that way: it does
- * NOT re-implement the framing locally, so if Body3D is ever rewired to a
+ * NOT re-implement the framing locally, so if Part3D is ever rewired to a
  * divergent hover path the parity assertions below break.
  *
  * Click and hover differ only in how the ActiveHighlight is assembled, never in
@@ -25,8 +25,8 @@ const LAYERS = [FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME]
 describe('highlight symmetry across {face, edge, vertex} x {hover, click}', () => {
   // A single primitive pointed at, whose query collides with a sibling. A hover
   // and a click built from the SAME resolved hit (same pickKey, same query) must
-  // highlight identically -- this is the Body3D-level wiring, exercised through
-  // the exact builders Body3D imports.
+  // highlight identically -- this is the Part3D-level wiring, exercised through
+  // the exact builders Part3D imports.
   for (const layer of LAYERS) {
     it(`[${layer}] hover and click on the same hit produce identical flags`, () => {
       const queries = ['Q', 'Q', 'R']
@@ -104,7 +104,7 @@ describe('highlight symmetry across {face, edge, vertex} x {hover, click}', () =
 
   it('the shared empty containers keep an empty hover reference-stable across builds', () => {
     // Two independent empty hovers must reuse the SAME container instances so the
-    // memos in Body3D do not thrash. This pins the reference-stability contract
+    // memos in Part3D do not thrash. This pins the reference-stability contract
     // the builder promises for both halves of the framing.
     const a = hoverActiveFrom(null, null)
     const b = hoverActiveFrom(null, null)

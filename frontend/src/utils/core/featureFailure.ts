@@ -55,7 +55,7 @@ const str = (v: unknown): string | undefined => (typeof v === 'string' && v !== 
  * `bodies` is consulted because a feature can solve fine and still produce
  * geometry that will not tessellate. Any ONE of its bodies failing has to
  * redden the row: a feature owns every body it made
- * (kernel/features/bodySplit.ts), so reading only `body_id` left a split sibling
+ * (kernel/features/partSplit.ts), so reading only `body_id` left a split sibling
  * rendering nothing behind a healthy-looking feature.
  *
  * The severity split is intentional: a `partial` result (fillet/chamfer, hole,

@@ -5,7 +5,7 @@
 //
 // Every other checkpoint identifies off `extractBrepMetadata` (mesh-free), exactly what
 // the feature loop used, so "the loop already registered this body version" is trivially
-// true. The final checkpoint instead reuses the RENDER tessellation (`tessellateBodies`)
+// true. The final checkpoint instead reuses the RENDER tessellation (`tessellateParts`)
 // for both its display snapshot and its ancestry -- a different producer. Face INDEX
 // agreement is a real invariant, not a given (a zero-triangle face once got dropped
 // from the render mesh only), and face indices are both a payload field and part of

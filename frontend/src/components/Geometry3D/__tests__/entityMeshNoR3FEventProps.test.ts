@@ -3,7 +3,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 
 /**
- * 267.4 / 267.5 cutover: Body3D, EntityLines, VertexDots, ReferencePlane,
+ * 267.4 / 267.5 cutover: Part3D, EntityLines, VertexDots, ReferencePlane,
  * UserDefinedPlane, and OriginMarker meshes have zero R3F event props.
  * The id-buffer dispatcher is now the sole pick source for all layers.
  */

@@ -50,7 +50,7 @@ beforeEach(() => {
   registrations.length = 0
 })
 
-// Imported at module scope, not inside the first test: Body3D pulls the whole
+// Imported at module scope, not inside the first test: Part3D pulls the whole
 // geometry tree, and paying that transform inside a test counts it against the
 // test timeout.
 import Part3D from '@/components/Geometry3D/Part3D'

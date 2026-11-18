@@ -247,7 +247,7 @@ export function preloadOcc(): Promise<OccModule | null> {
 
 /**
  * Tessellate every body in the store and return per-body mesh/edge/vertex
- * data. Used as ``BuildDeps.tessellateBodies``.
+ * data. Used as ``BuildDeps.tessellateParts``.
  */
 export function tessellateParts(
   oc: OccModule,
@@ -338,7 +338,7 @@ export function tessellateParts(
  * with NO triangulation. Used as ``BuildDeps.extractBrepMetadata`` so the
  * feature loop registers ancestry off the B-rep alone; the expensive
  * ``solidToMesh`` runs once post-loop for rendering. The returned shape matches
- * ``tessellateBodies`` (a ``mesh`` with empty geometry arrays but populated
+ * ``tessellateParts`` (a ``mesh`` with empty geometry arrays but populated
  * ``face_data``/``face_queries``) so the builder's registration path is
  * identical whether it is handed metadata or a full mesh.
  */
@@ -442,7 +442,7 @@ function buildDeps(oc: OccModule, scope: DisposeScope, table: HandleTable, files
     // under RESTORE_OWNER so the copy dies with its build); evict a discarded
     // checkpoint's retained shapes by owner. The eviction drops BOTH remaining
     // owners of the outgoing generation: the checkpoint retain, and the base
-    // body registration -- which bodySplit tags with the PRODUCING feature id,
+    // body registration -- which partSplit tags with the PRODUCING feature id,
     // covering shapes the fid created AND replacements it made while modifying
     // another feature's body. Without the second release every superseded
     // shape strands forever: the retain alone leaves rc>=1, and for a modifier

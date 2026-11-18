@@ -5,13 +5,13 @@ import { partKeyFor, primitivePickKey } from '../pickKey'
 import { FACE_LAYER_NAME } from '../layerNames'
 
 /**
- * Hover is global state: one `hoveredSelectionId` write re-renders EVERY Body3D
+ * Hover is global state: one `hoveredSelectionId` write re-renders EVERY Part3D
  * in the scene. What must not follow from that re-render is per-body work --
- * Body3D turns its highlight flags into a per-triangle colour buffer and uploads
+ * Part3D turns its highlight flags into a per-triangle colour buffer and uploads
  * it to the GPU, so a body whose flags did not actually change has to come out of
  * its memos untouched, by reference.
  *
- * This mirrors Body3D's memo chain (one HighlightIndex per body/layer, fed the
+ * This mirrors Part3D's memo chain (one HighlightIndex per body/layer, fed the
  * active sets the store builders produce) and asserts the property the memos
  * depend on. Without it, moving the pointer over one part rebuilt and re-uploaded
  * the colour buffer of every part in the model.

@@ -51,7 +51,7 @@ describe('PrimitiveIdAllocator, per-primitive keying (b-rep)', () => {
     expect(reg.lookup(id0)!.entityKey).toBe('face@dup')
     expect(reg.lookup(id1)!.entityKey).toBe('face@dup')
     // ...and the layer-qualified primitive key as their uniqueness key, which is
-    // what Body3D recomputes to isolate the one primitive under the cursor.
+    // what Part3D recomputes to isolate the one primitive under the cursor.
     expect(reg.lookup(id0)!.pickKey).toBe(primitivePickKey(PART, 0, 'testLayer'))
     expect(reg.lookup(id1)!.pickKey).toBe(primitivePickKey(PART, 1, 'testLayer'))
   })

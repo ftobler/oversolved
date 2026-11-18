@@ -35,7 +35,7 @@ describe('bodySurfaceLook colour precedence', () => {
     // Nominal only: the doomed face renders fully transparent, so this colour
     // never reaches the pixels. It is kept so the precedence stays "selection
     // claims the surface" -- the visible affordance for the re-click is the
-    // wireframe brightening, pinned in Body3D.doomed.test.tsx.
+    // wireframe brightening, pinned in Part3D.doomed.test.tsx.
     expect(partSurfaceLook({ selected: true, doomed: true, color: '#123456' }).color)
       .toBe(COLOR_PART_SELECTED)
   })

@@ -5,7 +5,7 @@ import { EdgeIdLayer } from '../EdgeIdLayer'
 /**
  * Registration-churn regression guard.
  *
- * If a future change makes Body3D pass a freshly-allocated `edges` array
+ * If a future change makes Part3D pass a freshly-allocated `edges` array
  * each render, the registration hook would call registerPart per render,
  * which re-allocates IDs and rebuilds the ribbon geometry. The hook's
  * dep array uses array identity, so the protective layer here is at the
@@ -17,7 +17,7 @@ import { EdgeIdLayer } from '../EdgeIdLayer'
  *
  * The test below documents the layer's behavior, NOT a future-proof
  * memoization guarantee. If this breaks, it's a signal to add a memo at
- * the call site in Body3D.
+ * the call site in Part3D.
  */
 
 describe('EdgeIdLayer registration cost', () => {

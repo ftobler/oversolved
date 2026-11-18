@@ -4,9 +4,9 @@
 //
 // This is the wiring layer: collectExtrudeLoops (faceProfile.ts), resolveDirection
 // (shared/directionQuery.ts),
-// extrudeProfileWithLineage (occ/prismLineage.ts), and applyBodyOperation (bodyOps.ts) do the
+// extrudeProfileWithLineage (occ/prismLineage.ts), and applyPartOperation (partOps.ts) do the
 // work. Like every OCC-backed leaf it takes (oc, scope, table) ahead of the Python (feature,
-// globalRepo, bodyStore) signature; the caller owns `scope` and disposes it after ancestry
+// globalRepo, partStore) signature; the caller owns `scope` and disposes it after ancestry
 // registration.
 
 import type { DisposeScope } from '../occ/disposeScope'
@@ -57,7 +57,7 @@ interface ExtrudeResult {
   [key: string]: unknown
   status: string
   body_id: string
-  // Every body the operation produced; `body_id` is just the first (features/bodySplit.ts).
+  // Every body the operation produced; `body_id` is just the first (features/partSplit.ts).
   body_ids?: string[]
 }
 
@@ -142,7 +142,7 @@ function partFaceName(
 }
 
 /**
- * The opposite-direction probe a missed cut runs (bodyOps): the tool moved back
+ * The opposite-direction probe a missed cut runs (partOps): the tool moved back
  * by its own sweep spans the profile minus [0, sweep], which is exactly the
  * prism the other `direction` builds. Built only when the cut missed.
  */
@@ -557,7 +557,7 @@ export function solveExtrude(
 
   if (cqFaces.length > 0 && allLoops.length > 0) {
     // Both were built; only one branch below can consume them, and the silent
-    // drop reached applyBodyOperation with profile_queries naming geometry the
+    // drop reached applyPartOperation with profile_queries naming geometry the
     // body does not contain. sweep's mixed-profile guard refuses the same mix by name.
     throw new Error(
       'extrude: a profile mixing picked faces/edges with sketch areas is not supported; ' +
@@ -905,7 +905,7 @@ export function solveExtrude(
         taperDeg, apexMode, twistDeg, direction === 'reverse',
       )
     }
-    // The tool is scope-owned from here: applyBodyOperation detaches whatever
+    // The tool is scope-owned from here: applyPartOperation detaches whatever
     // becomes a body, and the leftover (an add/cut tool, a compound wrapper)
     // frees at dispose instead of living for the worker session.
     const swept = scope.track(lineage.solid)
@@ -1017,7 +1017,7 @@ export function solveExtrude(
     // removes no material by construction; the same holds for the surface
     // mode's air-side pairing. Report the no-change warning rather than the
     // miss error a blind cut earns, because the stop is the authored geometry.
-    // The regex reads bodyOps' own miss text: that message is user-facing and
+    // The regex reads partOps' own miss text: that message is user-facing and
     // may be reworded, so the two must change together.
     const missed =
       upToMode &&

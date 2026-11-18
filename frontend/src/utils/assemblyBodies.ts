@@ -1,5 +1,5 @@
 // Bridge the anchor solver's per-part mesh payloads into the `BodyResult` dict
-// the viewport's getBodiesToRender already consumes (bodyUtils.ts). Pure and
+// the viewport's getBodiesToRender already consumes (partUtils.ts). Pure and
 // viewport-free: the transforms are already baked into the vertices worker-side,
 // so this is a relabelling, not geometry work.
 

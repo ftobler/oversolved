@@ -65,8 +65,8 @@ describe('solveFillet guard paths', () => {
   })
 
   it('an unknown viewport-form source_body throws the named error, never a TypeError', () => {
-    // M21: a 'body:<id>' ref is invisible to resolveBodyIds, so the group key
-    // used to stay the raw ref and indexFor dereferenced bodyStore[undefined]
+    // M21: a 'body:<id>' ref is invisible to resolvePartIds, so the group key
+    // used to stay the raw ref and indexFor dereferenced partStore[undefined]
     // into a TypeError. The resolver itself must reject it by name, before any
     // OCC call -- hence oc = null is fine here.
     expect(() =>

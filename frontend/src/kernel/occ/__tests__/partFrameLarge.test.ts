@@ -7,7 +7,7 @@
 // That passes one argument per point, so past the engine's argument limit it
 // threw `RangeError: Maximum call stack size exceeded` -- out of EVERY
 // identification path (`solidToMesh`, `readShapeFaceMetadata`, `solidToEdges`),
-// each of which sits inside the per-body catch in `tessellateBodies` /
+// each of which sits inside the per-body catch in `tessellateParts` /
 // `extractBrepMetadata`. The import therefore "succeeded" with zero bodies and
 // no error: a silently empty part.
 //

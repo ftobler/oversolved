@@ -1,6 +1,6 @@
 // The ID-buffer geometry of an assembly scene, computed without a viewport.
 //
-// The part editor's Body3D registers its layers from `BodyResult` queries. An
+// The part editor's Part3D registers its layers from `BodyResult` queries. An
 // assembly has no queries: its entities are named positionally by the bundle
 // (`assemblyEntityKey`), and the anchors they offer come from `entityAnchors`.
 // So the registration payloads are built here, from the solved mesh payloads,

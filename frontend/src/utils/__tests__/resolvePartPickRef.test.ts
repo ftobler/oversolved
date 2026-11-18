@@ -55,7 +55,7 @@ describe('resolveBodyPickRef', () => {
   })
 
   // A datum-plane pick owns no body: minting '@body_' + tail persisted
-  // '@body_builtin_plane_front', which resolveBody throws on every solve.
+  // '@body_builtin_plane_front', which resolvePart throws on every solve.
   // Pass the honest ref through so the kernel reports the plane pick itself.
   it('passes a builtin plane ref through unchanged', () => {
     expect(resolvePartPickRef('@builtin_plane_front')).toBe('@builtin_plane_front')

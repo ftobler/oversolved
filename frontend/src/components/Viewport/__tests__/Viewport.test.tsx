@@ -170,7 +170,7 @@ describe('Viewport body interactivity', () => {
     usePartEditorStore.setState({ features: [sketch, extrude], parts: makePart() })
     const { container } = render(<Viewport />)
     container.querySelectorAll('[data-testid="body-3d"]').forEach(el => {
-      // Viewport leaves Body3D's `interactive` default (true) in place.
+      // Viewport leaves Part3D's `interactive` default (true) in place.
       expect(el.getAttribute('data-interactive')).not.toBe('false')
     })
   })
@@ -179,7 +179,7 @@ describe('Viewport body interactivity', () => {
     // User invariant: during sketch editing the collision renderpass works
     // normally so the Project tool can pick 3D body geometry. Sketch geometry
     // takes precedence over bodies via ID-buffer layer priority (z-index), not
-    // by making bodies inert -- so Body3D must NOT be forced interactive=false.
+    // by making bodies inert -- so Part3D must NOT be forced interactive=false.
     usePartEditorStore.setState({
     features: [sketch, extrude],
     parts: makePart(),
@@ -235,7 +235,7 @@ describe('Viewport body interactivity', () => {
     rollbackPosition: 1,
   })
     const { getAllByTestId, getByTestId } = render(<Viewport />)
-    // Only pickBodyItems rendered as Body3D, no duplicate for preview
+    // Only pickBodyItems rendered as Part3D, no duplicate for preview
     const items = getAllByTestId('body-3d')
     expect(items.length).toBe(1)
     // Bodies are not forced inert.
@@ -325,7 +325,7 @@ describe('Viewport delete_body ghost preview', () => {
     const { container } = render(<Viewport />)
     expect(ghostAttr(container, 'data-color')).toEqual({ body_ex1: '#123456', body_ex2: '#654321' })
     expect(ghostAttr(container, 'data-transparency')).toEqual({ body_ex1: '0.25', body_ex2: '0' })
-    // Body3D itself, not the Viewport, turns the mark into the doomed look.
+    // Part3D itself, not the Viewport, turns the mark into the doomed look.
     expect(ghostAttr(container, 'data-doomed')).toEqual({ body_ex1: 'false', body_ex2: 'true' })
   })
 

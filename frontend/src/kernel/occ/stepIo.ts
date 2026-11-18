@@ -276,7 +276,7 @@ function faceEntityIds(
  * would leave a repeated assembly instance (the same part placed twice, hence
  * the same TShape and the same STEP face entity) entirely unnamed past the
  * first copy. Every instance gets the entity id instead; they stay pickable
- * apart because the per-solid index (importLineage.ts) folds the bodySplit
+ * apart because the per-solid index (importLineage.ts) folds the partSplit
  * solid order into the UUID path, so each copy's faces carry disjoint `@u|`
  * tokens.
  */

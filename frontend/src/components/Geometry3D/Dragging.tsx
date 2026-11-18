@@ -43,7 +43,7 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
 
   const resolvedGroupRef: React.RefObject<THREE.Object3D | null> = sketchGroupRef ?? { current: null }
 
-  // Window-level pointermove: bypasses R3F event bubbling so scene geometry (Body3D, Surfaces)
+  // Window-level pointermove: bypasses R3F event bubbling so scene geometry (Part3D, Surfaces)
   // can never block drag events. The handler ref is updated every render so the closure always
   // captures fresh props/derived values without listing them as useEffect dependencies.
   const handleMoveRef = useRef<((e: PointerEvent) => void) | null>(null)

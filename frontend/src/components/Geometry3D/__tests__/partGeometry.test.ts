@@ -477,7 +477,7 @@ describe('calculateFaceProperties', () => {
 
 describe('resolveEdgeQueries accepts a non-body registration', () => {
   // A helix registers its curve under its own feature id (bodyId === featureId);
-  // the resolver must not assume `bodyId` names an entry in bodyStore. The
+  // the resolver must not assume `bodyId` names an entry in partStore. The
   // supplied query wins, so nothing falls back to a `@<bodyId>/edge/N` path.
   const spline: EdgeData = { kind: 'spline', points: [[0, 0, 0], [1, 0, 0]] }
 

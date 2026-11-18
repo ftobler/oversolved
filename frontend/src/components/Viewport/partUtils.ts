@@ -56,7 +56,7 @@ export function getSketchesToRender(
  * A body the edited feature removes (delete_body, or a boolean that swallows its
  * tool) is marked `doomed` rather than hidden. It used to be hidden, but
  * that told the user nothing about WHICH body was leaving, and it dropped the
- * body out of the id buffer (Body3D gates its registrations on `visible`), so
+ * body out of the id buffer (Part3D gates its registrations on `visible`), so
  * the toggle in `add_delete_body_ref` could never fire a second time and the
  * pick could not be undone from the viewport.
  *

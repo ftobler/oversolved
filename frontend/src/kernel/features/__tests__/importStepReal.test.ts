@@ -419,7 +419,7 @@ describe.skipIf(!oc)('imported face queries are individually selectable', () => 
   }, 60000)
 
   it('mints the same per-placement UUIDs on a rebuild of the same file', () => {
-    // The per-solid index comes from the bodySplit solid order (geometric,
+    // The per-solid index comes from the partSplit solid order (geometric,
     // near-tie refusal falls back like body ids do), so a reload must hand the
     // SAME uuid to the same (placement, face) -- or persisted picks would break.
     // Per-BODY comparison (not one flattened multiset) also pins that a rebuild

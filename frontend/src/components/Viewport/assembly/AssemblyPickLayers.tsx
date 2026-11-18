@@ -1,5 +1,5 @@
 // Registers the assembly scene's face/edge/vertex ID layers. The part editor
-// does this from Body3D, keyed by ancestry query strings; an assembly has none,
+// does this from Part3D, keyed by ancestry query strings; an assembly has none,
 // so the keys are the bundle's positional entity ids (`assemblyEntityKey`) and
 // the payloads are pre-computed in utils/assemblyPick.ts. This component only
 // carries them across the pipeline boundary.

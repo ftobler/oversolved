@@ -595,7 +595,7 @@ export function build(
   // `bodyVersion` does not), and a body whose loop-side identification failed -- that last
   // one is why this pass is a recovery path and not just a fallback, since it reads a
   // different producer. Pure non-OCC tests wire no extractor, so the metadata read falls
-  // back to tessellateBodies.
+  // back to tessellateParts.
   for (const fid of Object.keys(newCheckpoints)) {
     if (cleanPrefixFids.has(fid)) continue
     const checkpoint = newCheckpoints[fid]

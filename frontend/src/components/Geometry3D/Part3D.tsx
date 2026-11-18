@@ -715,7 +715,7 @@ export default function Part3D({ featureId, partId, mesh, edges = NO_EDGES, edge
 
   useFrame(({ camera }) => {
     // A hidden body (rollback bar, per-body hide) is still mounted as
-    // <Body3D visible={false}>; without this every camera move recomposes and
+    // <Part3D visible={false}>; without this every camera move recomposes and
     // re-uploads one matrix per vertex for geometry nobody can see.
     if (!visible || !vertices?.length) return
     const dmesh = vertexDotRef.current

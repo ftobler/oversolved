@@ -143,7 +143,7 @@ describe('featureFailure', () => {
   })
 
   it('fails when ANY body the feature made will not tessellate', () => {
-    // A feature owns every body it made (kernel/features/bodySplit.ts), so
+    // A feature owns every body it made (kernel/features/partSplit.ts), so
     // reading `body_id` alone left a split sibling rendering nothing behind a
     // healthy row.
     const result = { ex1: { status: 'ok', body_id: 'body_ex1', body_ids: ['body_ex1', 'body_ex1_1'] } }

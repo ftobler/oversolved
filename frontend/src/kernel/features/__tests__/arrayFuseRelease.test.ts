@@ -9,7 +9,7 @@
 // Mocks stand in for OCC so every double records delete(): `../occ/booleans`
 // provides booleanWithDiffMany, `./booleanLineage` transferBooleanNames,
 // `../occ/transformLineage` the per-instance copy + name remap, and
-// `./bodySplit` resplitPart. Drive solveArray (the exported entry; applyArray
+// `./partSplit` resplitPart. Drive solveArray (the exported entry; applyArray
 // is module-private) with operation 'add'.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'

@@ -209,7 +209,7 @@ describe('fenced yaml examples', () => {
 
   // Known gap, not fixable from the doc side: a sigil-less body ref such as
   // `source_body: "extrude1"` passes both validators (`REF` in partDocSchema.ts
-  // only bans a leading `$`, and kernel resolveBody accepts the bare spelling),
+  // only bans a leading `$`, and kernel resolvePart accepts the bare spelling),
   // so the guard cannot require the `@` the examples use.
   it('validates every feature example through the loader and the JSON Schema', () => {
     const features = YAML_BLOCKS.flatMap(b => (Array.isArray(b.parsed) ? b.parsed : []))

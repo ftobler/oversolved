@@ -564,7 +564,7 @@ export type EdgeKind = 'convex' | 'concave' | 'tangent' | 'other'
 
 export interface EdgeDataBase {
   // The analyser's class, published only by the final render solve
-  // (`tessellateBodies` with `computeConvexity`). Absent on the metadata pass,
+  // (`tessellateParts` with `computeConvexity`). Absent on the metadata pass,
   // on an older result, and on a body the analyse refused, where the
   // `convexity` selector matches no value rather than guessing `other`.
   convexity?: EdgeKind

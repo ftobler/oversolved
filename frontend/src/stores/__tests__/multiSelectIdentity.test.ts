@@ -42,7 +42,7 @@ function click(layer: string, index: number, query: string) {
   useSketchEditorStore.getState().toggleNormalSelection(query, primitivePickKey(PART, index, layer))
 }
 
-/** The highlight flags Body3D would render for `queries` in `layer`. */
+/** The highlight flags Part3D would render for `queries` in `layer`. */
 function highlightOf(layer: string, queries: string[]): boolean[] {
   const { selectedPicks, normalSelection } = useSketchEditorStore.getState()
   return computeHighlight(PART, layer, queries, selectActiveFrom(selectedPicks, normalSelection))

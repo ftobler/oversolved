@@ -170,7 +170,7 @@ describe('getAssemblyPartGroups', () => {
   // leaves it does not construct -- the BodyRenderItem objects out of
   // getBodiesToRender, and the typed-array meshes inside them -- carry through.
   //
-  // So the identity every AssemblyBody sees is decided entirely upstream, by
+  // So the identity every AssemblyPartMesh sees is decided entirely upstream, by
   // whether AssemblyViewport's `groups` memo re-runs. That memo is keyed on
   // `instances` among others, which is exactly why the store hands back the
   // array it already holds when nothing about the parts changed

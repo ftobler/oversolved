@@ -3,7 +3,7 @@ import type { Mesh3D, FaceData } from '@/types/cad'
 import { planarFaceFrame } from '@/components/Geometry3D/partGeometry'
 
 // "Normal to" on a face reads its frame through planarFaceFrame from both the
-// hover path (Body3D) and the selection path (bodyDispatchCallbacks), so the
+// hover path (Part3D) and the selection path (partDispatchCallbacks), so the
 // two can never disagree about which faces have a normal to align to.
 
 // Face 0: unit square in z=0. Face 1: unit square in x=5.

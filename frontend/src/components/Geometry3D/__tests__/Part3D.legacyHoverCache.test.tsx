@@ -83,7 +83,7 @@ function legacyMesh(): Mesh3D {
 
 // A mapped-but-short mesh: face_queries present but triangle_to_face covering
 // only the first two of four triangles. `resolveFaceQueries` rejects it (short
-// mapping), so Body3D lands on the legacy per-triangle path, while the face
+// mapping), so Part3D lands on the legacy per-triangle path, while the face
 // layer still registers it and mints pick keys keyed on the B-rep FACE index
 // (FaceIdLayer.ts). Triangle 0 and 1 both map to face 0 ('f0'); triangles 2 and
 // 3 are unmapped and fall back to per-triangle queries.

@@ -89,12 +89,12 @@ export function selectionToQuery(selection: SelectionId, hostFeatureId: string):
  * wire format lives in one place rather than scattered across render code.
  *
  * The leading token is a BODY id, not a feature id: one feature owns N bodies
- * (kernel/features/bodySplit.ts), and the index is per body, so keying on the
+ * (kernel/features/partSplit.ts), and the index is per body, so keying on the
  * creating feature made `body_ex1` and `body_ex1_1` mint the same query for two
  * different edges. The kernel's real query minting is body-scoped for the same
  * reason (kernel/faceQuery.ts, occ/tessellation.ts push `ref(bodyId)`).
  *
- * `tri` is the legacy per-triangle highlight fallback (Body3D), kept distinct
+ * `tri` is the legacy per-triangle highlight fallback (Part3D), kept distinct
  * from `face` so a triangle index is never resolved as a B-rep face index.
  */
 export function topoFallbackQuery(

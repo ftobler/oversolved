@@ -1,4 +1,4 @@
-// Always-on tests for the delete_body leaf (features/deleteBody.ts). delete_body
+// Always-on tests for the delete_body leaf (features/deletePart.ts). delete_body
 // is pure store logic + handle release, so it needs no OCC: a stub Disposable
 // stands in for a body shape to verify the HandleTable handle is released.
 
@@ -132,7 +132,7 @@ describe('solveDeleteBody', () => {
   })
 
   it('a feature ref deletes every body that feature made, siblings included', () => {
-    // A feature owns each solid its result split into (features/bodySplit.ts).
+    // A feature owns each solid its result split into (features/partSplit.ts).
     // Resolving '@ex1' to the first sibling alone deleted one half of a severed
     // part and reported status ok, leaving the rest of it standing.
     const table = new HandleTable()

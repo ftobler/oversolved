@@ -131,7 +131,7 @@ export class SubShapeMultiIndex<T> {
 /**
  * A mutable map from a sub-shape's topological identity to one value: set
  * overwrites, delete removes. The construction names a producer builds are
- * held in one (`bodyNames.ts`), keyed by the sub-shape itself rather than by
+ * held in one (`partNames.ts`), keyed by the sub-shape itself rather than by
  * anything derived from its geometry. Same HashCode bucketing and IsSame
  * confirm as the indexes above; placement-sensitive, like plain `IsSame`.
  */

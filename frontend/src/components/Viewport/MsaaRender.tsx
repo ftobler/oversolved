@@ -43,7 +43,7 @@ export function MsaaRender() {
   // the presenter's target (disposing the old one) rather than leaving a
   // stencil-less target under cap geometry.
   const sectionEnabled = useSectionStore(s => s.enabled)
-  // The body material gates on the *resolved* section (see Body3D), so the
+  // The body material gates on the *resolved* section (see Part3D), so the
   // presenter must too: gating the stage on the raw flag alone would leave the
   // material sampling a stale texture while the section is waiting for a solve,
   // and the two sides would disagree on when AO is on.

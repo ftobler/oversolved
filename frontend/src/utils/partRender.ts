@@ -2,7 +2,7 @@
 // The single source of the body-to-render selection shared by the part
 // viewport and the assembly render computation. It lives here, below the UI
 // tree, so the assembly render path can use it without importing
-// `components/Viewport/bodyUtils`; that module re-exports these instead of
+// `components/Viewport/partUtils`; that module re-exports these instead of
 // keeping its own copy.
 import type { Feature, PartResult, EdgeData } from '@/types/cad'
 
@@ -13,7 +13,7 @@ export interface PartRenderItem {
   mesh: NonNullable<PartResult['mesh']>
   edges: EdgeData[]
   edgeQueries?: string[]
-  // Per-edge creating feature, for the viewport's relation hint (Body3D reads
+  // Per-edge creating feature, for the viewport's relation hint (Part3D reads
   // it to tint the wireframe of a selected feature).
   edgeCreatedBy?: string[]
   vertices?: [number, number, number][]

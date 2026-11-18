@@ -8,7 +8,7 @@
 // axes: a cylinder that merely looks like the bore is not threaded.
 //
 // Pure: no three.js, no React, so the data path tests without a canvas. The
-// shader that consumes the attributes is ThreadProgram (bodyAnalysisMaterial.ts).
+// shader that consumes the attributes is ThreadProgram (partAnalysisMaterial.ts).
 
 import type { LengthUnit, Mesh3D, SketchData } from '@/types/cad'
 import { parseAncestry, partitionAncestryIds } from '@/kernel/queryWire'
@@ -145,7 +145,7 @@ function crossFrame(axis: Vec3): [Vec3, Vec3] {
 }
 
 /**
- * The thread attributes for the INDEXED body geometry (the form Body3D builds
+ * The thread attributes for the INDEXED body geometry (the form Part3D builds
  * before `toNonIndexed`, which then copies them per split vertex like the
  * normals), or null when the body has no tapped face.
  *
