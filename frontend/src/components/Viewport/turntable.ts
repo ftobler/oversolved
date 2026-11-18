@@ -99,9 +99,9 @@ export function orbitUp(
 
 // Direction (target -> camera) to the unbounded angles. `poleAzimuth` supplies
 // the roll of a straight-up or straight-down view, where the direction itself
-// says nothing about it: the cube snap asks for 0 (Top with screen up -Z),
-// alignToFrame the azimuth that puts the sketch's y axis up, while alignToFace
-// passes the current azimuth so fitting a horizontal face does not spin the view.
+// says nothing about it: alignToFrame asks for the azimuth that puts the
+// sketch's y axis up, the cube snap and alignToFace pass the nearest quarter
+// turn they picked, and a plain setDirection keeps the current azimuth.
 export function anglesFromDirection(
   direction: THREE.Vector3,
   poleAzimuth = 0,
@@ -196,8 +196,9 @@ export function turnAbout(
 // spun the view, the very effect this style removes.
 //
 // The pose is (azimuth, elevation, roll): the turntable basis turned by `roll`
-// about the view direction. roll = 0 is exactly the turntable pose, so every
-// programmatic snap (cube, align, fit) lands upright.
+// about the view direction. roll = 0 is exactly the turntable pose; fit lands
+// there, while the cube and align snaps carry the user's screen up to the
+// nearest quarter turn.
 
 export type OrbitStyle = 'turntable' | 'trackball'
 
@@ -322,8 +323,9 @@ export class TurntableControls {
   distance = 1
   azimuth = 0
   elevation = 0
-  // Turn about the view direction on top of the turntable basis. Only the
-  // trackball style ever makes it non-zero; every programmatic pose resets it.
+  // Turn about the view direction on top of the turntable basis. The trackball
+  // style, the roll arrows and the carried-up snaps can all move it;
+  // setDirection defaults it back to 0.
   roll = 0
   // The class keeps the turntable as its own default so the turntable law
   // stays testable alone; SceneController picks the style the app uses.

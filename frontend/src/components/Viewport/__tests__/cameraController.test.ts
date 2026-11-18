@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import * as THREE from 'three'
-import { snapToDirection, alignToFrame, alignToFace, fitToContent, shouldAutoFit, nearestSquareRoll } from '@/components/Viewport/cameraController'
+import { snapToDirection, alignToFrame, alignToFace, fitToContent, shouldAutoFit, nearestSquareRoll, carriedUp } from '@/components/Viewport/cameraController'
 import { TurntableControls } from '@/components/Viewport/turntable'
 import type { PartResult } from '@/types/cad'
 
@@ -276,6 +276,61 @@ describe('shouldAutoFit', () => {
       expect(x).toBeCloseTo(d.x, 9)
       expect(y).toBeCloseTo(d.y, 9)
       expect(z).toBeCloseTo(d.z, 9)
+    }
+  })
+})
+
+// The snap law needs the up the user had, moved to the new view without
+// resetting it. Carrying it by the shortest rotation is what a physical camera
+// tilt does; projecting it instead degenerates exactly on the common 90 degree
+// tip, where the old up lies along the new view axis.
+describe('carriedUp', () => {
+  const V = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z)
+
+  it('carries the front view up onto the canonical top view', () => {
+    const up = carriedUp(V(0, 1, 0), V(0, 0, 1), V(0, 1, 0))
+    expect(up.x).toBeCloseTo(0, 12)
+    expect(up.y).toBeCloseTo(0, 12)
+    expect(up.z).toBeCloseTo(-1, 12)
+  })
+
+  it('keeps a 90 degree rolled front view rolled when tipping to the top', () => {
+    const up = carriedUp(V(-1, 0, 0), V(0, 0, 1), V(0, 1, 0))
+    expect(Math.abs(up.y)).toBeLessThan(1e-12)
+    expect(up.x).toBeCloseTo(-1, 12)
+    expect(up.z).toBeCloseTo(0, 12)
+  })
+
+  it('keeps the up through the antipodal front to back flip', () => {
+    const up = carriedUp(V(0, 1, 0), V(0, 0, 1), V(0, 0, -1))
+    expect(up.x).toBeCloseTo(0, 12)
+    expect(up.y).toBeCloseTo(1, 12)
+    expect(up.z).toBeCloseTo(0, 12)
+  })
+
+  it('always lands perpendicular to the new direction', () => {
+    // A seeded sweep, so a failure is reproducible rather than a once-in-a-
+    // thousand CI surprise.
+    let state = 0x5eed
+    const rand = () => {
+      state = (Math.imul(1664525, state) + 1013904223) >>> 0
+      return state / 0x100000000
+    }
+    const randomDirection = () => {
+      const z = rand() * 2 - 1
+      const a = rand() * Math.PI * 2
+      const r = Math.sqrt(1 - z * z)
+      return V(r * Math.cos(a), z, r * Math.sin(a))
+    }
+    for (let i = 0; i < 64; i++) {
+      const oldDir = randomDirection()
+      const newDir = randomDirection()
+      // Any unit vector perpendicular to oldDir is a legitimate screen up.
+      const seed = randomDirection()
+      seed.addScaledVector(oldDir, -seed.dot(oldDir)).normalize()
+      const up = carriedUp(seed, oldDir, newDir)
+      expect(up.length()).toBeCloseTo(1, 9)
+      expect(up.dot(newDir)).toBeCloseTo(0, 9)
     }
   })
 })
