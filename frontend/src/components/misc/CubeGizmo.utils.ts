@@ -16,6 +16,10 @@ export const GIZMO_CANVAS_HEIGHT = GIZMO_PAD + GIZMO_HEIGHT
 // How far the whole widget sits below its layout slot, into the readout
 // gap and floor under it: tuned by eye so the cube sits low in the corner.
 export const GIZMO_SINK = 10
+// How far the cube square is held in from the HUD column's right edge, so it is
+// no longer flush with the measurement readout right-aligned under it: tuned by
+// eye with the user. Only the cube moves; the readout keeps the viewport edge.
+export const GIZMO_INSET = 6
 // Placement is the viewport HUD column's job (ViewportHud.css): the cube is the
 // top item of a bottom-right stack that the measurement readout sits under, so
 // the widget itself only declares its size and that it still takes clicks --
@@ -24,12 +28,15 @@ export const GIZMO_SINK = 10
 // The roll strip hangs below the layout box (negative bottom margin): the
 // column is bottom-anchored, so counting the strip in the layout would lift
 // the cube by its height. The overhang (GIZMO_PAD) is cancelled the same way
-// on the top and right. The stack still reserves only GIZMO_SIZE.
+// on the top, and on the right only down to GIZMO_INSET: the cube square then
+// stops GIZMO_INSET short of the column edge instead of sitting flush with it.
+// The stack still reserves only GIZMO_SIZE; hit-tests measure from the canvas
+// rect, so the margin moves the box and leaves every pointer offset alone.
 export const GIZMO_STYLE: React.CSSProperties = {
   width: GIZMO_CANVAS_WIDTH,
   height: GIZMO_CANVAS_HEIGHT,
   marginTop: -GIZMO_PAD,
-  marginRight: -GIZMO_PAD,
+  marginRight: GIZMO_INSET - GIZMO_PAD,
   marginBottom: -(GIZMO_ROLL_STRIP + GIZMO_SINK),
   pointerEvents: 'auto',
   cursor: 'default',

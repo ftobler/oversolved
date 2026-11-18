@@ -3,7 +3,7 @@ import { render, fireEvent } from '@testing-library/react'
 import * as THREE from 'three'
 import { createRef } from 'react'
 import { CubeGizmoCanvas } from '@/components/misc/CubeGizmo'
-import { GIZMO_PAD, GIZMO_SIZE, ROLL_CENTER, ROLL_STEP } from '@/components/misc/CubeGizmo.utils'
+import { GIZMO_INSET, GIZMO_PAD, GIZMO_SIZE, ROLL_CENTER, ROLL_STEP } from '@/components/misc/CubeGizmo.utils'
 import type { GizmoRequest, Pv, Hit } from '@/components/misc/CubeGizmo.utils'
 
 // Pointer events are canvas px; the canvas overhangs the cube square by
@@ -194,6 +194,25 @@ describe('CubeGizmo asks for its frame', () => {
     fireEvent.click(m.canvas, { clientX: 2, clientY: 2 })
 
     expect(onRequestRender).not.toHaveBeenCalled()
+  })
+})
+
+describe('CubeGizmo sits in from the readout edge', () => {
+  let m: ReturnType<typeof mount>
+  beforeEach(() => { m = mount() })
+
+  it('cancels the canvas overhang only down to GIZMO_INSET', () => {
+    // The column right-aligns its children, so the margin is what places the
+    // cube: -GIZMO_PAD alone put the cube square flush with the readout's edge.
+    expect(m.canvas.style.marginRight).toBe(`${GIZMO_INSET - GIZMO_PAD}px`)
+  })
+
+  it('still hits the cube centre, since hit-tests measure from the canvas rect', () => {
+    const C = CENTER_PX
+    fireEvent.click(m.canvas, { clientX: C, clientY: C })
+    const dir = m.snapRef.current
+    expect(dir).toBeInstanceOf(THREE.Vector3)
+    expect((dir as THREE.Vector3).z).toBeCloseTo(1)
   })
 })
 
