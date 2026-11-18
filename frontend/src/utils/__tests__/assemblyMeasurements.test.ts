@@ -44,7 +44,7 @@ describe('computeAssemblyMeasurements', () => {
       f1: { kind: 'plane', point: [0, 0, 0], axis: [1, 0, 0] },
     })
     expect(computeAssemblyMeasurements(new Set(['f0', 'f1']), entityMateRefs, anchors))
-      .toEqual(['angle 90.0°'])
+      .toEqual(['angle 90.0°', 'supplement 90.0°'])
   })
 
   it('measures a vertex to plane perpendicular distance', () => {
@@ -56,16 +56,16 @@ describe('computeAssemblyMeasurements', () => {
       .toEqual(['distance 7.000 mm'])
   })
 
-  it('measures the distance between two vertices', () => {
+  it('measures the distance between two vertices and its delta legs', () => {
     const { entityMateRefs, anchors } = fixture({
       p0: { kind: 'point', point: [0, 0, 0], axis: [0, 0, 0] },
       p1: { kind: 'point', point: [3, 4, 0], axis: [0, 0, 0] },
     })
     expect(computeAssemblyMeasurements(new Set(['p0', 'p1']), entityMateRefs, anchors))
-      .toEqual(['distance 5.000 mm'])
+      .toEqual(['distance 5.000 mm', 'dx 3.000 mm', 'dy 4.000 mm', 'dz 0.000 mm'])
   })
 
-  it('reads two coincident vertices as a zero distance', () => {
+  it('reads two coincident vertices as a zero distance with zero legs', () => {
     // The old assembly rule suppressed anything at or below 0.01; a zero is a
     // real answer to "how far apart are these" and the shared core states it.
     const { entityMateRefs, anchors } = fixture({
@@ -73,16 +73,16 @@ describe('computeAssemblyMeasurements', () => {
       p1: { kind: 'point', point: [1, 2, 3], axis: [0, 0, 0] },
     })
     expect(computeAssemblyMeasurements(new Set(['p0', 'p1']), entityMateRefs, anchors))
-      .toEqual(['distance 0.000 mm'])
+      .toEqual(['distance 0.000 mm', 'dx 0.000 mm', 'dy 0.000 mm', 'dz 0.000 mm'])
   })
 
-  it('measures the angle between two edges', () => {
+  it('measures the angle between two edges and its supplement', () => {
     const { entityMateRefs, anchors } = fixture({
       e0: { kind: 'line', point: [0, 0, 0], axis: [1, 0, 0] },
       e1: { kind: 'line', point: [0, 0, 0], axis: [0, 1, 0] },
     })
     expect(computeAssemblyMeasurements(new Set(['e0', 'e1']), entityMateRefs, anchors))
-      .toEqual(['angle 90.0°'])
+      .toEqual(['angle 90.0°', 'supplement 90.0°'])
   })
 
   it('measures the perpendicular distance between parallel edges', () => {
@@ -94,13 +94,15 @@ describe('computeAssemblyMeasurements', () => {
       .toEqual(['distance 4.000 mm'])
   })
 
-  it('measures center distance between two circular edges', () => {
+  it('measures coaxial circular edges as an axial distance', () => {
     const { entityMateRefs, anchors } = fixture({
       c0: { kind: 'circle', point: [0, 0, 0], axis: [0, 0, 1] },
       c1: { kind: 'circle', point: [0, 0, 10], axis: [0, 0, 1] },
     })
+    // Two coaxial rims with no stated radii: the step along the axis is the
+    // number, not the slanted centre distance.
     expect(computeAssemblyMeasurements(new Set(['c0', 'c1']), entityMateRefs, anchors))
-      .toEqual(['center distance 10.000 mm'])
+      .toEqual(['axial distance 10.000 mm'])
   })
 
   it('measures a cylinder axis against a plane', () => {
@@ -167,7 +169,7 @@ describe('computeAssemblyMeasurements', () => {
     // 45 deg between the unit direction and the normal reports the 45 deg it
     // makes with the plane, not the 45 deg against the normal.
     expect(computeAssemblyMeasurements(new Set(['e0', 'f0']), entityMateRefs, anchors))
-      .toEqual(['angle 45.0°'])
+      .toEqual(['angle 45.0°', 'supplement 135.0°'])
   })
 
   it('measures a sphere anchor as its centre point', () => {
@@ -220,15 +222,15 @@ describe('computeAssemblyMeasurements', () => {
       .toEqual(['distance 5.000 mm'])
   })
 
-  it('measures a circle to a point by center distance, either way round', () => {
+  it('measures a circle to a point by center distance and its delta legs, either way round', () => {
     const { entityMateRefs, anchors } = fixture({
       c0: { kind: 'circle', point: [0, 0, 0], axis: [0, 0, 1] },
       p0: { kind: 'point', point: [3, 4, 0], axis: [0, 0, 0] },
     })
     expect(computeAssemblyMeasurements(new Set(['c0', 'p0']), entityMateRefs, anchors))
-      .toEqual(['center distance 5.000 mm'])
+      .toEqual(['center distance 5.000 mm', 'dx 3.000 mm', 'dy 4.000 mm', 'dz 0.000 mm'])
     expect(computeAssemblyMeasurements(new Set(['p0', 'c0']), entityMateRefs, anchors))
-      .toEqual(['center distance 5.000 mm'])
+      .toEqual(['center distance 5.000 mm', 'dx 3.000 mm', 'dy 4.000 mm', 'dz 0.000 mm'])
   })
 
   it('measures a circle to a line by the centre-to-line distance', () => {
@@ -242,15 +244,15 @@ describe('computeAssemblyMeasurements', () => {
       .toEqual(['center distance 3.000 mm'])
   })
 
-  it('measures a circle standing perpendicular to a plane as an angle', () => {
+  it('measures a circle standing perpendicular to a plane by centre-to-face distance', () => {
     const { entityMateRefs, anchors } = fixture({
       c0: { kind: 'circle', point: [3, 0, 0], axis: [0, 0, 1] },
       f0: { kind: 'plane', point: [0, 0, 0], axis: [1, 0, 0] },
     })
-    // The circle's own plane is perpendicular to the target plane (axes at 90
-    // degrees), so the pair reads the angle, not a distance along its axis.
+    // The circle's axis lies along the plane, so the useful number is how far
+    // its centre sits from the face, not the 90 degree angle between them.
     expect(computeAssemblyMeasurements(new Set(['c0', 'f0']), entityMateRefs, anchors))
-      .toEqual(['angle 90.0°'])
+      .toEqual(['distance 3.000 mm'])
   })
 
   it('treats an anchor whose direction cannot be normalized as unmeasurable', () => {

@@ -175,8 +175,7 @@ describe('bodyPrimitive: edges and vertices', () => {
 // The topo fallback (`@<body>/<kind>/<idx>`) is keyed by BODY id: one feature
 // owns N bodies after a split, and the index is per body, so the token must name
 // the sibling the user picked.
-describe('bodyPrimitive: topo-fallback ids across split siblings', () => {
-  const siblings = (): Record<string, PartResult> => ({
+describe('bodyPrimitive: topo-fallback ids across split siblings', () => {  const siblings = (): Record<string, PartResult> => ({
     body_ex: partOf({ id: 'body_ex', edges: [line([0, 0, 0], [10, 0, 0])] }),
     body_ex_1: partOf({ id: 'body_ex_1', edges: [line([0, 5, 0], [3, 5, 0])] }),
   })
@@ -191,6 +190,165 @@ describe('bodyPrimitive: topo-fallback ids across split siblings', () => {
   it('measures between the two siblings own edges', () => {
     const a = partPrimitive('@body_ex/edge/0', siblings())!
     const b = partPrimitive('@body_ex_1/edge/0', siblings())!
-    expect(readoutLines(measurePair(a, b))).toEqual(['distance 5.000 mm'])
+    expect(readoutLines(measurePair(a, b))).toEqual([
+      'distance 5.000 mm',
+      'alignment offset 3.500 mm',
+    ])
+  })
+})
+
+// ─── Split circles and circular planar faces ───
+
+function arcEdge(
+  center: [number, number, number],
+  radius: number,
+  angleStart: number,
+  angleEnd: number,
+): EdgeData {
+  return {
+    kind: 'arc', center, radius, axis: [0, 0, 1], x_axis: [1, 0, 0],
+    angle_start: angleStart, angle_end: angleEnd,
+  }
+}
+
+function circleEdge(center: [number, number, number], radius: number): EdgeData {
+  return {
+    kind: 'circle', center, radius, axis: [0, 0, 1], x_axis: [1, 0, 0],
+    angle_start: 0, angle_end: Math.PI * 2,
+  }
+}
+
+/** A flat face bounded by the given queries, with the area the geometry states. */
+function flatFacePart(edges: EdgeData[], queries: string[], area: number): PartResult {
+  return partOf({
+    edges,
+    edge_queries: queries,
+    mesh: {
+      vertices: [], faces: [],
+      face_data: [{ centroid: [0, 0, 0], normal: [0, 0, 1], surface_type: 'flatface', area }],
+      face_queries: ['?disc'],
+      face_edge_queries: [queries],
+    },
+  })
+}
+
+describe('bodyPrimitive: a split circle is one circle', () => {
+  const half = Math.PI
+  const split = flatFacePart(
+    [arcEdge([0, 0, 0], 4, 0, half), arcEdge([0, 0, 0], 4, half, Math.PI * 2)],
+    ['?a0', '?a1'],
+    Math.PI * 16,
+  )
+  const parts = partsOf(split)
+
+  it('reads each half arc as the full diameter it belongs to', () => {
+    expect(measureOne(partPrimitive('?a0', parts)!)).toEqual({
+      kind: 'diameter', value: 8, label: 'diameter',
+    })
+    expect(measureOne(partPrimitive('?a1', parts)!)).toEqual({
+      kind: 'diameter', value: 8, label: 'diameter',
+    })
+  })
+
+  it('keeps a lone half arc a radius with its sweep', () => {
+    const lone = flatFacePart([arcEdge([0, 0, 0], 4, 0, half)], ['?a0'], Math.PI * 8)
+    expect(measureOne(partPrimitive('?a0', partsOf(lone))!)).toMatchObject({
+      kind: 'radius', value: 4, label: 'radius',
+    })
+  })
+
+  it('does not merge arcs of equal radius with different centres', () => {
+    const apart = flatFacePart(
+      [arcEdge([0, 0, 0], 4, 0, half), arcEdge([20, 0, 0], 4, half, Math.PI * 2)],
+      ['?a0', '?a1'],
+      Math.PI * 32,
+    )
+    expect(measureOne(partPrimitive('?a0', partsOf(apart))!)).toMatchObject({
+      kind: 'radius', value: 4, label: 'radius',
+    })
+    expect(measureOne(partPrimitive('?a1', partsOf(apart))!)).toMatchObject({
+      kind: 'radius', value: 4, label: 'radius',
+    })
+  })
+})
+
+describe('bodyPrimitive: a circular planar face is a circle', () => {
+  it('reads a disc face as its outer diameter', () => {
+    const disc = flatFacePart([circleEdge([0, 0, 0], 4)], ['?c0'], Math.PI * 16)
+    expect(partPrimitive('?disc', partsOf(disc))).toMatchObject({
+      type: 'circle', center: [0, 0, 0], radius: 4, sweep: Math.PI * 2,
+    })
+    expect(measureOne(partPrimitive('?disc', partsOf(disc))!)).toEqual({
+      kind: 'diameter', value: 8, label: 'diameter',
+    })
+  })
+
+  it('reads a ring face as its outer diameter', () => {
+    const ring = flatFacePart(
+      [circleEdge([0, 0, 0], 6), circleEdge([0, 0, 0], 2)],
+      ['?outer', '?inner'],
+      Math.PI * (36 - 4),
+    )
+    const primitive = partPrimitive('?disc', partsOf(ring))
+    expect(primitive).toMatchObject({ type: 'circle', radius: 6 })
+    expect(measureOne(primitive!)).toEqual({ kind: 'diameter', value: 12, label: 'diameter' })
+  })
+
+  it('keeps a rectangular face with a hole a plane', () => {
+    const edges: EdgeData[] = [
+      line([0, 0, 0], [40, 0, 0]),
+      line([40, 0, 0], [40, 30, 0]),
+      line([40, 30, 0], [0, 30, 0]),
+      line([0, 30, 0], [0, 0, 0]),
+      circleEdge([20, 15, 0], 4),
+    ]
+    const plate = flatFacePart(edges, ['?l0', '?l1', '?l2', '?l3', '?hole'], 40 * 30 - Math.PI * 16)
+    expect(partPrimitive('?disc', partsOf(plate))?.type).toBe('plane')
+  })
+
+  it('keeps a circle-bounded face a plane when its area is not the disc the boundary states', () => {
+    // A slot or pocket floor can be bounded by a circle without being a disc;
+    // the area is what tells the two apart.
+    const slot = flatFacePart([circleEdge([0, 0, 0], 4)], ['?c0'], Math.PI * 40)
+    expect(partPrimitive('?disc', partsOf(slot))?.type).toBe('plane')
+  })
+
+  it('keeps a face without an area a plane rather than guessing from its boundary', () => {
+    const old = partOf({
+      edges: [circleEdge([0, 0, 0], 4)],
+      edge_queries: ['?c0'],
+      mesh: {
+        vertices: [], faces: [],
+        face_data: [{ centroid: [0, 0, 0], normal: [0, 0, 1], surface_type: 'flatface' }],
+        face_queries: ['?disc'],
+        face_edge_queries: [['?c0']],
+      },
+    })
+    expect(partPrimitive('?disc', partsOf(old))?.type).toBe('plane')
+  })
+})
+
+describe('bodyPrimitive: a cylinder face states its axial extent', () => {
+  it('reads the length along the axis from the face mesh', () => {
+    const part = partOf({
+      mesh: {
+        vertices: [[4, 0, 0], [4, 0, 10], [0, 4, 5]],
+        faces: [[0, 1, 2]],
+        triangle_to_face: [0],
+        face_data: [{
+          centroid: [4, 0, 5], normal: [1, 0, 0], surface_type: 'cylinderface',
+          surface_frame: { axis: [0, 0, 1], origin: [0, 0, 0], radius: 4 },
+        }],
+        face_queries: ['?wall'],
+      },
+    })
+    const primitive = partPrimitive('?wall', partsOf(part))
+    expect(primitive).toMatchObject({ type: 'cylinder', radius: 4, length: 10 })
+    expect(measureOne(primitive!)).toEqual({
+      kind: 'diameter',
+      value: 8,
+      label: 'diameter',
+      extra: [{ kind: 'length', value: 10, label: 'length' }],
+    })
   })
 })

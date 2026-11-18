@@ -32,7 +32,7 @@ import {
 /** The vocabulary every readout label comes from. The qualifier (`axis
  *  distance`, `center distance`) is kept only where the measured reference is
  *  not visible on screen. */
-export type ReadoutKind = 'length' | 'distance' | 'angle' | 'diameter' | 'radius'
+export type ReadoutKind = 'length' | 'distance' | 'angle' | 'diameter' | 'radius' | 'area' | 'volume'
 
 export interface Readout {
   kind: ReadoutKind
@@ -40,17 +40,23 @@ export interface Readout {
   value: number
   label: string
   /** A second readout for one pick pair or single: the sweep of an arc, the
-   *  minor radius of an ellipse/torus, the distance of a skew edge pair. */
+   *  minor radius of an ellipse/torus, the distance of a skew edge pair, a
+   *  delta leg, the supplement of an angle. */
   extra?: Readout[]
+  /** A text-free qualifier on the number itself: the foot of a point-to-line
+   *  distance lies on the edge's extension, not on the edge. The formatter
+   *  renders it, so labels stay from one vocabulary. */
+  note?: 'on extension'
 }
 
-/** A cell OCCT must answer: a spline edge's length, the clearance between two
- *  bodies, the minimum distance one freeform pick leaves an analytic one. */
+/** A cell OCCT must answer: a spline edge's length or a face's area, the
+ *  clearance between two bodies, the minimum distance one freeform pick leaves
+ *  an analytic one, a body's volume. */
 export interface KernelAsk {
   kernel: KernelOp
 }
 
-export type KernelOp = 'length' | 'distance' | 'clearance'
+export type KernelOp = 'length' | 'distance' | 'clearance' | 'area' | 'volume'
 
 export type MeasureResult = Readout | KernelAsk | null
 
@@ -70,6 +76,9 @@ export const PERPENDICULAR_ANGLE_EPS_RAD = 1e-4
 // angle alone, because the segment-to-segment minimum is the crossing point
 // (zero) rather than a gap worth a second readout.
 const COPLANAR_EPS = 1e-6
+// Two parallel lines or axes closer than this are the same line: collinear
+// edges, coaxial rims.
+const AXIS_EPS = 1e-6
 const TWO_PI = Math.PI * 2
 // A full circle's sweep, with room for a solver that reports 2 pi minus a
 // rounding step:
@@ -93,17 +102,43 @@ function degrees(rad: number): number {
   return (rad * 180) / Math.PI
 }
 
+/** An angle plus its supplement: the two wedges a pair of directions admits,
+ *  stated together so the user need not subtract. */
+function angleWithSupplement(value: number): Readout {
+  return {
+    kind: 'angle',
+    value,
+    label: 'angle',
+    extra: [{ kind: 'angle', value: 180 - value, label: 'supplement' }],
+  }
+}
+
 function angleReadout(a: Vec3, b: Vec3): Readout {
-  return { kind: 'angle', value: degrees(acuteAngle(a, b)), label: 'angle' }
+  return angleWithSupplement(degrees(acuteAngle(a, b)))
 }
 
 /** Angle a direction makes with a plane, from its angle to the plane normal. */
 function directionPlaneAngle(dir: Vec3, normal: Vec3): Readout {
-  return { kind: 'angle', value: 90 - degrees(acuteAngle(dir, normal)), label: 'angle' }
+  return angleWithSupplement(90 - degrees(acuteAngle(dir, normal)))
 }
 
 function distanceReadout(value: number, label = 'distance'): Readout {
   return { kind: 'distance', value, label }
+}
+
+/**
+ * The three world-axis legs between two points. The sign is dropped on purpose:
+ * the pair table is unordered, and a signed delta would flip the whole readout
+ * when the user picks the same two elements the other way round. The legs are
+ * in the document frame and unit, so they square back to the distance.
+ */
+function deltaExtras(a: Vec3, b: Vec3): Readout[] {
+  const delta = sub(b, a)
+  return [
+    distanceReadout(Math.abs(delta[0]), 'dx'),
+    distanceReadout(Math.abs(delta[1]), 'dy'),
+    distanceReadout(Math.abs(delta[2]), 'dz'),
+  ]
 }
 
 function pointToPlane(p: Vec3, plane: PlanePrimitive): number {
@@ -173,6 +208,38 @@ function axisOfCircle(c: CircleLike): Vec3 {
   return c.axis
 }
 
+/** The radius a pair rule can use, when the primitive states one. An assembly
+ *  circle anchor carries a centre and an axis but no extent, and an ellipse's
+ *  two semi-axes are not one radius. */
+function radiusOfCircle(c: CircleLike): number | null {
+  return c.type === 'circle' && c.radius != null ? c.radius : null
+}
+
+/** A cylinder face states a radius; a cone's frame radius is a reference
+ *  height's radius and a torus's is its major radius, so neither names the
+ *  outer surface a gap or span would be measured from. */
+function axisRadiusOf(p: AxisLike): number | null {
+  return p.type === 'cylinder' && p.radius != null ? p.radius : null
+}
+
+function midpoint(a: Vec3, b: Vec3): Vec3 {
+  return [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2]
+}
+
+/** Distance from a point to the infinite line (the sketch distance constraint
+ *  and D6, not the nearest point of the segment), with the foot's position on a
+ *  bounded edge reported as a qualifier. */
+function pointLineReadout(p: PointLike, l: LinePrimitive): Readout {
+  const point = centreOf(p)
+  const readout = distanceReadout(pointToAxisDistance(point, l.p0, l.dir))
+  if (!l.bounded) return readout
+  const length = distance(l.p0, l.p1)
+  const foot = dot(sub(point, l.p0), l.dir)
+  const slack = 1e-9 * Math.max(1, length)
+  if (foot >= -slack && foot <= length + slack) return readout
+  return { ...readout, note: 'on extension' }
+}
+
 // ─── The pair table ───
 
 interface PairCell {
@@ -180,28 +247,33 @@ interface PairCell {
   b: MeasureClass
   // The registry page's one-line description of the cell.
   readout: string
-  measure: (a: Primitive, b: Primitive) => Readout | null
+  measure: (a: Primitive, b: Primitive) => MeasureResult
 }
 
 function cell<A extends MeasureClass, B extends MeasureClass>(
   a: A,
   b: B,
   readout: string,
-  measure: (a: ClassPrimitive[A], b: ClassPrimitive[B]) => Readout | null,
+  measure: (a: ClassPrimitive[A], b: ClassPrimitive[B]) => MeasureResult,
 ): PairCell {
-  return { a, b, readout, measure: measure as (a: Primitive, b: Primitive) => Readout | null }
+  return { a, b, readout, measure: measure as (a: Primitive, b: Primitive) => MeasureResult }
 }
 
 const PAIR_TABLE: readonly PairCell[] = [
-  cell('point', 'point', 'distance', (a, b) => distanceReadout(distance(centreOf(a), centreOf(b)))),
+  cell('point', 'point', 'distance, with dx/dy/dz', (a, b) => {
+    const pa = centreOf(a)
+    const pb = centreOf(b)
+    return { ...distanceReadout(distance(pa, pb)), extra: deltaExtras(pa, pb) }
+  }),
 
-  cell('point', 'line', 'distance to the line', (p, l) =>
-    // The infinite line, matching the sketch distance constraint and the
-    // assembly rule (D6), not the nearest point of the segment.
-    distanceReadout(pointToAxisDistance(centreOf(p), l.p0, l.dir))),
+  cell('point', 'line', 'distance to the line, from its extension too', (p, l) =>
+    pointLineReadout(p, l)),
 
-  cell('point', 'circle', 'distance to the centre', (p, c) =>
-    distanceReadout(distance(centreOf(p), centreOf(c)), 'center distance')),
+  cell('point', 'circle', 'distance to the centre, with dx/dy/dz', (p, c) => {
+    const pa = centreOf(p)
+    const pc = centreOf(c)
+    return { ...distanceReadout(distance(pa, pc), 'center distance'), extra: deltaExtras(pa, pc) }
+  }),
 
   cell('point', 'plane', 'distance to the plane', (p, pl) =>
     distanceReadout(pointToPlane(centreOf(p), pl))),
@@ -209,8 +281,17 @@ const PAIR_TABLE: readonly PairCell[] = [
   cell('point', 'axis', 'distance to the axis', (p, ax) =>
     distanceReadout(pointToAxisDistance(centreOf(p), axisPointOf(ax), axisOf(ax)), 'axis distance')),
 
-  cell('line', 'line', 'parallel: distance; else angle', (a, b) => {
-    if (isParallel(a.dir, b.dir)) return distanceReadout(parallelLineDistance(a.p0, b.p0, a.dir))
+  cell('line', 'line', 'parallel: distance and alignment offset; collinear: kernel gap; else angle', (a, b) => {
+    if (isParallel(a.dir, b.dir)) {
+      const offset = parallelLineDistance(a.p0, b.p0, a.dir)
+      // Two collinear bounded edges do not touch across their gap; the infinite
+      // line's zero is not the useful number, so OCCT states the edge gap.
+      if (offset <= AXIS_EPS && a.bounded && b.bounded) return { kernel: 'distance' }
+      const readout = distanceReadout(offset)
+      if (!a.bounded || !b.bounded) return readout
+      const slide = Math.abs(dot(sub(midpoint(b.p0, b.p1), midpoint(a.p0, a.p1)), a.dir))
+      return { ...readout, extra: [distanceReadout(slide, 'alignment offset')] }
+    }
     const angle = angleReadout(a.dir, b.dir)
     // Non-parallel, non-coplanar segments: the angle alone does not describe the
     // pair, so the closed-form segment minimum rides along as a second readout
@@ -218,7 +299,7 @@ const PAIR_TABLE: readonly PairCell[] = [
     const normal = normalize(cross(a.dir, b.dir))
     if (!normal || !a.bounded || !b.bounded) return angle
     if (Math.abs(dot(sub(b.p0, a.p0), normal)) <= COPLANAR_EPS) return angle
-    return { ...angle, extra: [distanceReadout(segmentDistance(a.p0, a.p1, b.p0, b.p1))] }
+    return { ...angle, extra: [...(angle.extra ?? []), distanceReadout(segmentDistance(a.p0, a.p1, b.p0, b.p1))] }
   }),
 
   cell('line', 'circle', 'distance from the centre to the line', (l, c) =>
@@ -236,12 +317,47 @@ const PAIR_TABLE: readonly PairCell[] = [
     return angleReadout(l.dir, axisOf(ax))
   }),
 
-  cell('circle', 'circle', 'center distance', (a, b) =>
-    distanceReadout(distance(centreOf(a), centreOf(b)), 'center distance')),
+  cell('circle', 'circle', 'parallel axes: pitch; coaxial: axial distance; else center distance or angle', (a, b) => {
+    const ca = centreOf(a)
+    const cb = centreOf(b)
+    const axisA = axisOfCircle(a)
+    const axisB = axisOfCircle(b)
+    if (!isParallel(axisA, axisB)) return angleReadout(axisA, axisB)
 
-  cell('circle', 'plane', 'parallel: center-to-plane distance; else angle', (c, pl) => {
-    if (isParallel(axisOfCircle(c), pl.normal)) return distanceReadout(pointToPlane(centreOf(c), pl))
-    return angleReadout(axisOfCircle(c), pl.normal)
+    // Square to the axes: the pitch a bolt pattern is laid out on.
+    const pitch = parallelLineDistance(ca, cb, axisA)
+    const centreDistance = distance(ca, cb)
+    const axial = Math.abs(dot(sub(cb, ca), axisA))
+    const radiusA = radiusOfCircle(a)
+    const radiusB = radiusOfCircle(b)
+
+    if (pitch <= AXIS_EPS) {
+      // Coaxial rims: the step between them is the axial distance, and two
+      // different diameters add the radial gap between their circles.
+      const radial = radiusA !== null && radiusB !== null ? Math.abs(radiusA - radiusB) : null
+      return radial === null
+        ? distanceReadout(axial, 'axial distance')
+        : { ...distanceReadout(axial, 'axial distance'), extra: [distanceReadout(radial, 'radial gap')] }
+    }
+
+    const extra: Readout[] = [distanceReadout(centreDistance, 'center distance')]
+    if (axial > AXIS_EPS) extra.push(distanceReadout(axial, 'axial offset'))
+    if (radiusA !== null && radiusB !== null) {
+      const minGap = pitch - radiusA - radiusB
+      // A negative min gap is the overlap: the two circles cross.
+      extra.push({ kind: 'distance', value: minGap, label: minGap < 0 ? 'overlap' : 'min gap' })
+      extra.push(distanceReadout(pitch + radiusA + radiusB, 'max span'))
+    }
+    extra.push(...deltaExtras(ca, cb))
+    return { ...distanceReadout(pitch, 'pitch'), extra }
+  }),
+
+  cell('circle', 'plane', 'axis along or square to the face: center-to-plane distance; else angle', (c, pl) => {
+    const axis = axisOfCircle(c)
+    if (isParallel(axis, pl.normal) || isPerpendicular(axis, pl.normal)) {
+      return distanceReadout(pointToPlane(centreOf(c), pl))
+    }
+    return angleReadout(axis, pl.normal)
   }),
 
   cell('circle', 'axis', 'parallel axes: distance; else angle', (c, ax) => {
@@ -251,8 +367,15 @@ const PAIR_TABLE: readonly PairCell[] = [
     return angleReadout(axisOfCircle(c), axisOf(ax))
   }),
 
-  cell('plane', 'plane', 'parallel: distance; else angle', (a, b) => {
-    if (isParallel(a.normal, b.normal)) return distanceReadout(pointToPlane(b.point, a))
+  cell('plane', 'plane', 'parallel: distance, coplanar faces ask the kernel; else angle', (a, b) => {
+    if (isParallel(a.normal, b.normal)) {
+      const gap = pointToPlane(b.point, a)
+      // Two coplanar faces read 0 through the infinite-plane formula; their real
+      // gap (a slot's sides, two halves of a split face) is OCCT's to state. A
+      // datum plane has no shape, so it keeps the analytic 0 (K3).
+      if (gap <= AXIS_EPS && a.bounded && b.bounded) return { kernel: 'distance' }
+      return distanceReadout(gap)
+    }
     return angleReadout(a.normal, b.normal)
   }),
 
@@ -263,9 +386,27 @@ const PAIR_TABLE: readonly PairCell[] = [
     return directionPlaneAngle(axisOf(ax), pl.normal)
   }),
 
-  cell('axis', 'axis', 'parallel axes: distance; else angle', (a, b) => {
+  cell('axis', 'axis', 'parallel axes: distance, with gaps for two radii; else angle', (a, b) => {
     if (isParallel(axisOf(a), axisOf(b))) {
-      return distanceReadout(parallelLineDistance(axisPointOf(a), axisPointOf(b), axisOf(a)), 'axis distance')
+      const offset = parallelLineDistance(axisPointOf(a), axisPointOf(b), axisOf(a))
+      const readout = distanceReadout(offset, 'axis distance')
+      const radiusA = axisRadiusOf(a)
+      const radiusB = axisRadiusOf(b)
+      if (offset <= AXIS_EPS) {
+        // Coaxial axes: two different radii leave a radial gap between the
+        // surfaces, which the axis distance alone cannot state.
+        if (radiusA === null || radiusB === null) return readout
+        return { ...readout, extra: [distanceReadout(Math.abs(radiusA - radiusB), 'radial gap')] }
+      }
+      if (radiusA === null || radiusB === null) return readout
+      const minGap = offset - radiusA - radiusB
+      return {
+        ...readout,
+        extra: [
+          { kind: 'distance', value: minGap, label: minGap < 0 ? 'overlap' : 'min gap' },
+          distanceReadout(offset + radiusA + radiusB, 'max span'),
+        ],
+      }
     }
     return angleReadout(axisOf(a), axisOf(b))
   }),
@@ -307,9 +448,10 @@ function kernelOpFor(classA: MeasureClass, classB: MeasureClass): KernelOp | nul
 }
 
 /**
- * The one measurement a single pick states. A flat face, a vertex, a datum
- * plane and a whole body deliberately read nothing (D2); a curved face reads
- * its diameter, an arc its radius and sweep, a line its length.
+ * The one measurement a single pick states. A flat face reads its area and a
+ * whole body its volume through the kernel (R2), a circular flat face its
+ * diameter (R1), a curved face its diameter, an arc its radius and sweep, a
+ * line its length; a vertex and a datum plane deliberately read nothing (D2).
  */
 export function measureOne(p: Primitive): MeasureResult {
   switch (p.type) {
@@ -332,7 +474,13 @@ export function measureOne(p: Primitive): MeasureResult {
         extra: [{ kind: 'radius', value: p.b, label: 'minor radius' }],
       }
     case 'cylinder':
-      return p.radius == null ? null : { kind: 'diameter', value: p.radius * 2, label: 'diameter' }
+      if (p.radius == null) return null
+      return {
+        kind: 'diameter',
+        value: p.radius * 2,
+        label: 'diameter',
+        ...(p.length != null && { extra: [{ kind: 'length' as const, value: p.length, label: 'length' }] }),
+      }
     case 'sphere':
       return p.radius == null ? null : { kind: 'diameter', value: p.radius * 2, label: 'diameter' }
     case 'cone':
@@ -349,9 +497,12 @@ export function measureOne(p: Primitive): MeasureResult {
       }
     case 'opaque':
       return { kernel: 'length' }
-    case 'point':
     case 'plane':
+      // A bounded face states its area; a datum plane has no shape (R2, K3).
+      return p.bounded ? { kernel: 'area' } : null
     case 'solid':
+      return { kernel: 'volume' }
+    case 'point':
       return null
   }
 }
@@ -383,15 +534,18 @@ export interface SingleRuleRow {
  *  names the same branches `measureOne` implements; keep the two together. */
 export const SINGLE_RULES: readonly SingleRuleRow[] = [
   { pick: 'line (edge or sketch)', readout: 'length' },
-  { pick: 'arc', readout: 'radius and sweep' },
-  { pick: 'full circle', readout: 'diameter' },
-  { pick: 'cylinder face', readout: 'diameter' },
+  { pick: 'arc (an unpaired one)', readout: 'radius and sweep' },
+  { pick: 'full circle, split circle on one face', readout: 'diameter' },
+  { pick: 'circular flat face (disc, ring)', readout: 'outer diameter' },
+  { pick: 'cylinder face', readout: 'diameter and axial length' },
   { pick: 'sphere face', readout: 'diameter' },
   { pick: 'ellipse', readout: 'major and minor radius' },
   { pick: 'cone face', readout: 'half angle' },
   { pick: 'torus face', readout: 'major and minor radius' },
   { pick: 'spline edge, partial ellipse edge', readout: 'kernel length' },
-  { pick: 'flat face, vertex, datum plane, whole body', readout: 'nothing' },
+  { pick: 'flat face', readout: 'kernel area' },
+  { pick: 'whole body', readout: 'kernel volume and area' },
+  { pick: 'vertex, datum plane', readout: 'nothing' },
 ]
 
 export interface PairRuleRow {

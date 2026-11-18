@@ -4,7 +4,7 @@
 
 import { useMemo } from 'react'
 import { useAssemblyStore } from '@/stores/assemblyStore'
-import { computeAssemblyMeasurements } from '@/utils/assemblyMeasurements'
+import { computeAssemblyHud } from '@/utils/assemblyMeasurements'
 import MeasurementList from '@/components/layout/MeasurementList'
 
 interface Props {
@@ -16,10 +16,16 @@ export default function AssemblyMeasurementDisplay({ measurementIcon }: Props) {
   const entityMateRefs = useAssemblyStore(s => s.entityMateRefs)
   const anchors = useAssemblyStore(s => s.anchors)
 
-  const measurements = useMemo(
-    () => computeAssemblyMeasurements(entitySelection, entityMateRefs, anchors),
+  const measurement = useMemo(
+    () => computeAssemblyHud(entitySelection, entityMateRefs, anchors),
     [entitySelection, entityMateRefs, anchors],
   )
 
-  return <MeasurementList measurements={measurements} measurementIcon={measurementIcon} />
+  return (
+    <MeasurementList
+      measurements={measurement.lines}
+      more={measurement.more}
+      measurementIcon={measurementIcon}
+    />
+  )
 }

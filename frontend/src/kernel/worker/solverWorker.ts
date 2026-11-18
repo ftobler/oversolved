@@ -144,6 +144,7 @@ export async function handleMeasureRequest(
       id: req.id,
       ok: true,
       value: result.value,
+      ...(result.extra !== undefined && { extra: result.extra }),
       ...(result.points !== undefined && { points: result.points }),
       ...(result.note !== undefined && { note: result.note }),
     }

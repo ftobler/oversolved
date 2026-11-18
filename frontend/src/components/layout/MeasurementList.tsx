@@ -2,13 +2,16 @@
 // Each caller computes its own strings; this owns only the HUD markup.
 //
 // `pending` reserves one more row with no text: a kernel readout is on its way
-// and the row is held so the HUD does not jump when the number lands.
-export default function MeasurementList({ measurements, pending = false, measurementIcon }: {
+// and the row is held so the HUD does not jump when the number lands. `more`
+// holds the extras the cell emitted past the first two: they stay reachable
+// behind a disclosure instead of widening the row across the viewport.
+export default function MeasurementList({ measurements, more = [], pending = false, measurementIcon }: {
   measurements: string[]
+  more?: string[]
   pending?: boolean
   measurementIcon?: string
 }) {
-  if (measurements.length === 0 && !pending) return null
+  if (measurements.length === 0 && more.length === 0 && !pending) return null
   return (
     <div className="measurement-display">
       {measurements.map((m, idx) => (
@@ -17,6 +20,17 @@ export default function MeasurementList({ measurements, pending = false, measure
           <span>{m}</span>
         </div>
       ))}
+      {more.length > 0 && (
+        <details className="measurement-more">
+          <summary>more</summary>
+          {more.map((m, idx) => (
+            <div key={idx} className="measurement-item">
+              <img className="measurement-icon" src={measurementIcon} alt="" />
+              <span>{m}</span>
+            </div>
+          ))}
+        </details>
+      )}
       {pending && (
         <div className="measurement-item measurement-pending" aria-hidden="true">
           <img className="measurement-icon" src={measurementIcon} alt="" />

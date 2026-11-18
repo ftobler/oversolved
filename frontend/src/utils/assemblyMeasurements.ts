@@ -13,8 +13,8 @@
 import { lookupAnchor, type AnchorTable } from '@/utils/anchorGizmos'
 import type { EntityMateRefs } from '@/utils/anchorCandidates'
 import { anchorPrimitive } from './measure/adapters/anchor'
-import { formatReadouts } from './measure/format'
-import { isKernelAsk, measurePair } from './measure/rules'
+import { formatReadoutHud, formatReadouts } from './measure/format'
+import { isKernelAsk, measurePair, type Readout } from './measure/rules'
 import type { Primitive } from './measure/primitives'
 
 /** Resolve one selected entity key to its primary anchor's primitive. */
@@ -30,29 +30,50 @@ function primitiveForEntity(
 }
 
 /**
- * The measurement lines for the current assembly selection.
+ * The readout for the current assembly selection, or null.
  *
  * Exactly two resolved picks are measured. An assembly anchor carries no radius,
  * length or area, so a single pick has nothing to state (D2), and three or more
  * picks would be a "first two" guess (D3, matching the part editor). A pick that
  * does not resolve makes the selection unmeasurable rather than shrinking it.
  */
+export function computeAssemblyReadout(
+  selection: ReadonlySet<string>,
+  entityMateRefs: Readonly<EntityMateRefs>,
+  anchors: Readonly<AnchorTable>,
+): Readout | null {
+  const primitives: Primitive[] = []
+  for (const key of selection) {
+    const primitive = primitiveForEntity(key, entityMateRefs, anchors)
+    if (!primitive) return null
+    primitives.push(primitive)
+    if (primitives.length > 2) return null
+  }
+  if (primitives.length !== 2) return null
+  const result = measurePair(primitives[0], primitives[1])
+  if (result == null || isKernelAsk(result)) return null
+  return result
+}
+
+/** The measurement lines for the current assembly selection. */
 export function computeAssemblyMeasurements(
   selection: ReadonlySet<string>,
   entityMateRefs: Readonly<EntityMateRefs>,
   anchors: Readonly<AnchorTable>,
 ): string[] {
-  const primitives: Primitive[] = []
-  for (const key of selection) {
-    const primitive = primitiveForEntity(key, entityMateRefs, anchors)
-    if (!primitive) return []
-    primitives.push(primitive)
-    if (primitives.length > 2) return []
-  }
-  if (primitives.length !== 2) return []
-  const result = measurePair(primitives[0], primitives[1])
-  if (result == null || isKernelAsk(result)) return []
+  const readout = computeAssemblyReadout(selection, entityMateRefs, anchors)
   // An assembly document has no length unit; its frame and every anchor are
   // millimetres.
-  return formatReadouts(result, 'mm')
+  return readout === null ? [] : formatReadouts(readout, 'mm')
+}
+
+/** The HUD's split of the same readout: the primary plus a short inline tail,
+ *  the rest behind the disclosure. */
+export function computeAssemblyHud(
+  selection: ReadonlySet<string>,
+  entityMateRefs: Readonly<EntityMateRefs>,
+  anchors: Readonly<AnchorTable>,
+): { lines: string[]; more: string[] } {
+  const readout = computeAssemblyReadout(selection, entityMateRefs, anchors)
+  return readout === null ? { lines: [], more: [] } : formatReadoutHud(readout, 'mm')
 }

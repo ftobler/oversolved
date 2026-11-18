@@ -54,7 +54,7 @@ describe('measureSelection: mixed picks keep both sides (defect 1)', () => {
     // The Top sketch's local y is world -z, but this line runs along local x, so
     // it lies at world y=0,z=0; the body edge is parallel at y=5.
     expect(measureSelection(new Set(['entity:skTop:L1', '?e1']), ctx))
-      .toEqual(['distance 5.000 mm'])
+      .toEqual(['distance 5.000 mm', 'alignment offset 0.000 mm'])
   })
 
   it('measures a body vertex plus a datum plane', () => {
@@ -110,12 +110,12 @@ describe('measureSelection: an unresolvable pick does not shrink the selection',
   })
 })
 
-describe('measureSelection: kernel cells read nothing until the follow-up', () => {
-  it('reads nothing for a whole-body pick alone', () => {
+describe('measureSelection: kernel cells', () => {
+  it('reads no sync line for a whole-body pick alone', () => {
     expect(measureSelection(new Set(['@body_1']), ctx)).toEqual([])
   })
 
-  it('reads nothing for a pair that needs the kernel', () => {
+  it('reads no sync line for a pair that needs the kernel', () => {
     expect(measureSelection(new Set(['@body_1', '?e1']), ctx)).toEqual([])
   })
 })
@@ -134,6 +134,7 @@ describe('measureSelection: the kernel ask names the picks', () => {
   it('asks for a spline edge length with the body and the render index', () => {
     expect(measureSelectionPicks(new Set(['?sp']), two)).toEqual({
       lines: [],
+      more: [],
       ask: { op: 'length', picks: [{ bodyId: 'body_2', kind: 'edge', index: 0 }] },
     })
   })
@@ -141,6 +142,7 @@ describe('measureSelection: the kernel ask names the picks', () => {
   it('asks for a clearance between two whole bodies', () => {
     expect(measureSelectionPicks(new Set(['@body_1', '@body_2']), two)).toEqual({
       lines: [],
+      more: [],
       ask: {
         op: 'clearance',
         picks: [{ bodyId: 'body_1', kind: 'body' }, { bodyId: 'body_2', kind: 'body' }],
@@ -148,9 +150,29 @@ describe('measureSelection: the kernel ask names the picks', () => {
     })
   })
 
+  it('asks for a flat face area and a whole body volume', () => {
+    const flat: PartResult = {
+      ...part,
+      id: 'body_3',
+      edges: [],
+      edge_queries: [],
+      mesh: {
+        vertices: [], faces: [],
+        face_data: [{ centroid: [0, 0, 0], normal: [0, 0, 1], surface_type: 'flatface', area: 50 }],
+        face_queries: ['?flat'],
+      },
+    }
+    const withFlat = { ...two, parts: { ...two.parts, body_3: flat } }
+    expect(measureSelectionPicks(new Set(['?flat']), withFlat).ask)
+      .toEqual({ op: 'area', picks: [{ bodyId: 'body_3', kind: 'face', index: 0 }] })
+    expect(measureSelectionPicks(new Set(['@body_1']), withFlat).ask)
+      .toEqual({ op: 'volume', picks: [{ bodyId: 'body_1', kind: 'body' }] })
+  })
+
   it('asks for the distance between a body element and a freeform edge', () => {
     expect(measureSelectionPicks(new Set(['?e1', '?sp']), two)).toEqual({
       lines: [],
+      more: [],
       ask: {
         op: 'distance',
         picks: [
@@ -165,9 +187,9 @@ describe('measureSelection: the kernel ask names the picks', () => {
     // A datum plane against a freeform edge, and a sketch entity against the
     // same: nothing to measure, so no request rather than a made-up face.
     expect(measureSelectionPicks(new Set(['@builtin_plane_top', '?sp']), two))
-      .toEqual({ lines: [], ask: null })
+      .toEqual({ lines: [], more: [], ask: null })
     expect(measureSelectionPicks(new Set(['entity:skTop:L1', '?sp']), two))
-      .toEqual({ lines: [], ask: null })
+      .toEqual({ lines: [], more: [], ask: null })
   })
 })
 
@@ -177,7 +199,7 @@ describe('measureSelection: the document unit and its extras', () => {
       .toEqual(['length 10.000 in'])
   })
 
-  it('returns the second readout of a pair on its own HUD line', () => {
+  it('returns every extra of a pair on its own HUD line', () => {
     const skew: PartResult = {
       ...part,
       edges: [
@@ -187,7 +209,19 @@ describe('measureSelection: the document unit and its extras', () => {
       edge_queries: ['?a', '?b'],
     }
     expect(measureSelection(new Set(['?a', '?b']), { parts: { body_1: skew } }))
-      .toEqual(['angle 90.0°', 'distance 5.000 mm'])
+      .toEqual(['angle 90.0°', 'supplement 90.0°', 'distance 5.000 mm'])
+  })
+
+  it('states the delta legs in the document unit, not millimetres', () => {
+    const vertices: PartResult = {
+      ...part,
+      edges: [],
+      edge_queries: [],
+      vertices: [[0, 0, 0], [3, 4, 0]],
+      vertex_queries: ['?v0', '?v1'],
+    }
+    expect(measureSelection(new Set(['?v0', '?v1']), { parts: { body_1: vertices }, unit: 'inch' }))
+      .toEqual(['distance 5.000 in', 'dx 3.000 in', 'dy 4.000 in', 'dz 0.000 in'])
   })
 })
 
