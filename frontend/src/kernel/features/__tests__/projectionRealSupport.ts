@@ -33,7 +33,7 @@ export const BOX_SKETCH_ID = 'sk1'
 export const BOX_EXTRUDE_ID = 'ex1'
 export const HOLE_SKETCH_ID = 'skh'
 export const HOLE_EXTRUDE_ID = 'exh'
-export const BOX_BODY_ID = `body_${BOX_EXTRUDE_ID}`
+export const BOX_PART_ID = `body_${BOX_EXTRUDE_ID}`
 
 /** How far the body geometry is allowed to drift from the probe's numbers. The
  *  predicates name topology, not a solved value, so the tolerance is the
@@ -132,22 +132,22 @@ export function sketchOut(h: SharedHarness, result: BuildResponse, id: string): 
 }
 
 /** Volume of one body a feature produced, read from that feature's checkpoint. */
-export function bodyVolume(h: SharedHarness, result: BuildResponse, extrudeId: string, bodyId: string): number {
+export function partVolume(h: SharedHarness, result: BuildResponse, extrudeId: string, partId: string): number {
   if (!oc) throw new Error('real OCC is required to measure a body')
   const store = result._build_state!.checkpoints[extrudeId].body_store_snapshot
   const scope = new DisposeScope()
   try {
-    return volumeOf(oc, scope, h.table.get<OccShape>(store[bodyId].shape!))
+    return volumeOf(oc, scope, h.table.get<OccShape>(store[partId].shape!))
   } finally {
     scope.dispose()
   }
 }
 
 function readBaseGeometry(h: SharedHarness, result: BuildResponse): BaseGeometry {
-  const body = h.part(result, BOX_BODY_ID)
-  const edges = (body.edges as EdgeData[]) ?? []
-  const edgeQueries = (body.edge_queries as string[]) ?? []
-  const mesh = (body.mesh ?? {}) as { face_queries?: string[]; face_data?: FaceDatumLike[] }
+  const part = h.part(result, BOX_PART_ID)
+  const edges = (part.edges as EdgeData[]) ?? []
+  const edgeQueries = (part.edge_queries as string[]) ?? []
+  const mesh = (part.mesh ?? {}) as { face_queries?: string[]; face_data?: FaceDatumLike[] }
   const faceQueries = mesh.face_queries ?? []
   const faceData = mesh.face_data ?? []
 

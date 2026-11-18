@@ -66,7 +66,7 @@ function trapezoidProfile(scale: number) {
   }]
 }
 
-interface ThreadBody {
+interface ThreadPart {
   handle: OccHandle
   solid: OccShape
 }
@@ -82,7 +82,7 @@ function buildThread(
   pitch: number,
   scale: number,
   mesh = true,
-): ThreadBody {
+): ThreadPart {
   const loops = extractProfileLoops(trapezoidProfile(scale))
   const repo = new Repository()
   repo.register('_curve_hx1', helixDescriptor(turns, radius, pitch))
@@ -314,12 +314,12 @@ describe.skipIf(!oc)('swept helix edge tessellation (real OCC)', () => {
     const table = new HandleTable()
     try {
       const { handle } = buildThread(oc!, scope, table, 2, THREAD.radius, THREAD.pitch, 1, false)
-      const body: PartSolid = {
+      const part: PartSolid = {
         id: 'body_e1', created_by: 'e1', modified_by: [], shape: handle,
         sketch_id: '', brep_diff: null, profile_queries: [],
       }
-      const meta = extractBrepMetadata(oc!, table, { body_e1: body }).body_e1 as { edge_queries: string[] }
-      const render = tessellateParts(oc!, table, { body_e1: body }).body_e1 as { edge_queries: string[] }
+      const meta = extractBrepMetadata(oc!, table, { body_e1: part }).body_e1 as { edge_queries: string[] }
+      const render = tessellateParts(oc!, table, { body_e1: part }).body_e1 as { edge_queries: string[] }
       expect(meta.edge_queries.length).toBe(12)
       expect(render.edge_queries).toEqual(meta.edge_queries)
     } finally {

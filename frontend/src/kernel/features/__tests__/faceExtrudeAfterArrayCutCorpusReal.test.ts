@@ -31,7 +31,7 @@ const solveBytes = loadSolver()
 const ARRAY = 'WlujpF0qBTE8m31DjT3ftNfT'
 const CUT = 'WiX1LqiIKPCzclGQHqNuVK9_'
 const FACE_EXTRUDE = 'U9r4BTz3QTVHLLlOe3PGl2BO'
-const TARGET_BODY = 'body_n5fZFV21_P-zHwbXGC-I_BKG'
+const TARGET_PART = 'body_n5fZFV21_P-zHwbXGC-I_BKG'
 
 // The outward normal of the picked pocket wall (the `cls_zp` flat face on the
 // cylinder body). The array rotates its instances, but the picked face is the
@@ -45,7 +45,7 @@ const PICKED_FACE_NORMAL = [-0.8214498774108969, 0.5702807193844297, 0]
 function expectPickedWallExtrude(res: Record<string, unknown>): void {
   expect(res.exception ?? '').toBe('')
   expect(res.status).toBe('ok')
-  expect(res.body_id).toBe(TARGET_BODY)
+  expect(res.body_id).toBe(TARGET_PART)
 
   // The editing handle pushes along the picked face's own normal, so it pins
   // WHICH face resolved, not just that something did.

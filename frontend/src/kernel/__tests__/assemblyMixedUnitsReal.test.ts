@@ -93,8 +93,8 @@ async function buildBundle(doc: PartDoc, doc_id: string): Promise<PartBundle> {
 
 function meshBbox(bundle: PartBundle): number[] {
   const out = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]
-  for (const body of bundle.bodies) {
-    const v = body.mesh.vertices
+  for (const part of bundle.bodies) {
+    const v = part.mesh.vertices
     for (let i = 0; i < v.length; i += 3) {
       for (let axis = 0; axis < 3; axis++) {
         out[axis] = Math.min(out[axis], v[i + axis])
@@ -122,8 +122,8 @@ function zFaceAnchor(bundle: PartBundle, side: 'min' | 'max'): string {
 
 function worldBbox(bundle: PartBundle, t: Transform3D): number[] {
   const out = [Infinity, Infinity, Infinity, -Infinity, -Infinity, -Infinity]
-  for (const body of bundle.bodies) {
-    const v = body.mesh.vertices
+  for (const part of bundle.bodies) {
+    const v = part.mesh.vertices
     for (let i = 0; i < v.length; i += 3) {
       const [x, y, z] = rotateVector([t.qx, t.qy, t.qz, t.qw], [v[i], v[i + 1], v[i + 2]])
       const p = [x + t.tx, y + t.ty, z + t.tz]
@@ -247,7 +247,7 @@ describeReal('assembly mixed units', () => {
     expect(measure!.bodies).toBe(2)
     expect(measure!.volume).toBeCloseTo(2 * UNIT_VOLUME, 4)
     expectBbox(measure!.bbox!, [0, 0, 0, 50 + SIDE_MM, SIDE_MM, SIDE_MM])
-    for (const body of measure!.perBody) expect(body.volume).toBeCloseTo(UNIT_VOLUME, 4)
+    for (const part of measure!.perBody) expect(part.volume).toBeCloseTo(UNIT_VOLUME, 4)
   }, 180_000)
 
   it('mates the imperial cube flush onto the metric cube with no scale gap', async () => {

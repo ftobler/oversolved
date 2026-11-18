@@ -19,18 +19,18 @@ import { primitivePickKey } from '../pickKey'
  * pass or fail depending on file order.
  */
 
-const BODY = 'feat1/body1'
+const PART = 'feat1/body1'
 
 function makeAllocator(reg: IdRegistry, opts?: {
   perPrimitive?: boolean
   layerName?: string
-  bodyKey?: string
+  partKey?: string
 }): PrimitiveIdAllocator {
   return new PrimitiveIdAllocator(
     reg,
     opts?.layerName ?? 'testLayer',
     'widgets',
-    opts?.bodyKey ?? BODY,
+    opts?.partKey ?? PART,
     opts?.perPrimitive ?? true,
   )
 }
@@ -52,8 +52,8 @@ describe('PrimitiveIdAllocator, per-primitive keying (b-rep)', () => {
     expect(reg.lookup(id1)!.entityKey).toBe('face@dup')
     // ...and the layer-qualified primitive key as their uniqueness key, which is
     // what Body3D recomputes to isolate the one primitive under the cursor.
-    expect(reg.lookup(id0)!.pickKey).toBe(primitivePickKey(BODY, 0, 'testLayer'))
-    expect(reg.lookup(id1)!.pickKey).toBe(primitivePickKey(BODY, 1, 'testLayer'))
+    expect(reg.lookup(id0)!.pickKey).toBe(primitivePickKey(PART, 0, 'testLayer'))
+    expect(reg.lookup(id1)!.pickKey).toBe(primitivePickKey(PART, 1, 'testLayer'))
   })
 
   it('lists allocatedIds in ask order', () => {
@@ -76,7 +76,7 @@ describe('PrimitiveIdAllocator, per-primitive keying (b-rep)', () => {
   it('returns exactly the packed RGB of the allocated ID', () => {
     const ids = makeAllocator(reg)
     const rgb = ids.rgbFor(3, 'q3')
-    const id = reg.lookupKey('testLayer', primitivePickKey(BODY, 3, 'testLayer'))!
+    const id = reg.lookupKey('testLayer', primitivePickKey(PART, 3, 'testLayer'))!
     expect(rgb).toEqual(idToRGBNormalized(id))
   })
 
@@ -155,7 +155,7 @@ describe('PrimitiveIdAllocator, query keying (layer reusers)', () => {
     const msg = warn.mock.calls[0][0] as string
     expect(msg).toContain('[warnsOnce]')     // the layer INSTANCE, not the class
     expect(msg).toContain('Two widgets')     // the layer's primitive noun
-    expect(msg).toContain(BODY)
+    expect(msg).toContain(PART)
     expect(msg).toContain('query="dup"')
   })
 
@@ -171,9 +171,9 @@ describe('PrimitiveIdAllocator, query keying (layer reusers)', () => {
     // Two bodies of one layer legitimately share a query (see selectionHighlight):
     // the "at least one earlier allocation in THIS body" guard is what keeps that
     // case from crying wolf on every registration.
-    const first = makeAllocator(reg, { perPrimitive: false, layerName: 'quietCrossBody', bodyKey: 'b1' })
+    const first = makeAllocator(reg, { perPrimitive: false, layerName: 'quietCrossBody', partKey: 'b1' })
     first.rgbFor(0, 'shared')
-    const second = makeAllocator(reg, { perPrimitive: false, layerName: 'quietCrossBody', bodyKey: 'b2' })
+    const second = makeAllocator(reg, { perPrimitive: false, layerName: 'quietCrossBody', partKey: 'b2' })
     second.rgbFor(0, 'shared')
     expect(warn).not.toHaveBeenCalled()
   })
@@ -191,7 +191,7 @@ describe('id layers share one allocator', () => {
   // Two triangles, face 0 and face 1, sharing whatever queries are passed.
   function registerTwoFaces(layer: FaceIdLayer, faceQueries: string[]): void {
     layer.registerPart({
-      partKey: BODY,
+      partKey: PART,
       positions: new Float32Array([
         0, 0, 0, 1, 0, 0, 0, 1, 0,
         1, 1, 0, 2, 1, 0, 1, 2, 0,
@@ -202,9 +202,9 @@ describe('id layers share one allocator', () => {
   }
 
   // One triangle, one face, under an explicit body key.
-  function registerOneFace(layer: FaceIdLayer, bodyKey: string, query: string): void {
+  function registerOneFace(layer: FaceIdLayer, partKey: string, query: string): void {
     layer.registerPart({
-      partKey: bodyKey,
+      partKey: partKey,
       positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
       triangleToFace: new Uint32Array([0]),
       faceQueries: [query],
@@ -220,7 +220,7 @@ describe('id layers share one allocator', () => {
     registerTwoFaces(layer, ['dup', 'dup'])
     expect(reg.size()).toBe(1)
 
-    layer.unregisterPart(BODY)
+    layer.unregisterPart(PART)
     reg.bumpCycle()
 
     expect(reg.allocate('doubleFree', 'alpha')).not.toBe(reg.allocate('doubleFree', 'beta'))
@@ -235,7 +235,7 @@ describe('id layers share one allocator', () => {
     const shared = reg.lookupKey('collapseFree', 'dup')!
     expect(reg.lookup(shared)).toBeDefined()
 
-    layer.unregisterPart(BODY)
+    layer.unregisterPart(PART)
     reg.bumpCycle()
 
     expect(reg.lookup(shared)).toBeUndefined()
@@ -296,7 +296,7 @@ describe('id layers share one allocator', () => {
   it('the edge layer reports duplicate edge queries', () => {
     const layer = new EdgeIdLayer(reg, { name: 'edgeDupWarn' })
     layer.registerPart({
-      partKey: BODY,
+      partKey: PART,
       segmentPositions: new Float32Array([0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 1, 0]),
       segmentToEdge: new Uint32Array([0, 1]),
       edgeQueries: ['edge@dup', 'edge@dup'],
@@ -310,7 +310,7 @@ describe('id layers share one allocator', () => {
     // so a reuser stacking two vertices on one query collapsed them silently.
     const layer = new VertexIdLayer(reg, { name: 'vertexDupWarn' })
     layer.registerPart({
-      partKey: BODY,
+      partKey: PART,
       vertices: [[0, 0, 0], [1, 0, 0]],
       vertexQueries: ['vtx@dup', 'vtx@dup'],
     })
@@ -324,12 +324,12 @@ describe('id layers share one allocator', () => {
     // registration list (see computeHighlight), not the drawn subset.
     const layer = new VertexIdLayer(reg, { name: 'vertexSparse' })
     layer.registerPart({
-      partKey: BODY,
+      partKey: PART,
       vertices: [[0, 0, 0], [1, 0, 0]],
       vertexQueries: [undefined as unknown as string, 'vtx@second'],
       perPrimitivePickKeys: true,
     })
-    const id = reg.lookupKey('vertexSparse', primitivePickKey(BODY, 1, 'vertexSparse'))
+    const id = reg.lookupKey('vertexSparse', primitivePickKey(PART, 1, 'vertexSparse'))
     expect(id).toBeDefined()
     expect(reg.lookup(id!)!.entityKey).toBe('vtx@second')
     expect(reg.size()).toBe(1)

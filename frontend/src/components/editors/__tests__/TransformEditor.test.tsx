@@ -10,12 +10,12 @@ import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { PartFeature } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
 
-function makeFeature(bodies: string[] = []): PartFeature {
+function makeFeature(parts: string[] = []): PartFeature {
   return {
     id: 'tr1',
     kind: 'transform',
     label: 'Transform',
-    transform: { bodies, operation: 'new', translation: [0, 0, 0], rotation_angle: 0, scale: 1 },
+    transform: { bodies: parts, operation: 'new', translation: [0, 0, 0], rotation_angle: 0, scale: 1 },
   }
 }
 
@@ -25,7 +25,7 @@ function pick(selectionId: string) {
 }
 
 /** The bodies chip is the first pick chip in the transform editor. */
-function bodiesChip(): Element {
+function partsChip(): Element {
   return document.querySelector('.feature-pick-chip')!
 }
 
@@ -48,7 +48,7 @@ describe('TransformEditor (via FeatureEditor)', () => {
   it('picking a body emits add_transform_body and keeps the field armed', () => {
     const onMutation = vi.fn()
     render(<FeatureEditor feature={makeFeature()} onMutation={onMutation} schema={TRANSFORM_SCHEMA} />)
-    fireEvent.click(bodiesChip())
+    fireEvent.click(partsChip())
     pick('@body_ex1')
     expect(onMutation).toHaveBeenCalledWith({
       type: 'add_transform_body', featureId: 'tr1', bodyQuery: '@body_ex1',
@@ -64,7 +64,7 @@ describe('TransformEditor (via FeatureEditor)', () => {
     const { rerender } = render(
       <FeatureEditor feature={makeFeature()} onMutation={onMutation} schema={TRANSFORM_SCHEMA} />,
     )
-    fireEvent.click(bodiesChip())
+    fireEvent.click(partsChip())
     pick('@body_ex1')
     rerender(<FeatureEditor feature={makeFeature(['@body_ex1'])} onMutation={onMutation} schema={TRANSFORM_SCHEMA} />)
     pick('@body_ex2')
@@ -84,7 +84,7 @@ describe('TransformEditor (via FeatureEditor)', () => {
   it('re-picking an already-picked body removes it again', () => {
     const onMutation = vi.fn()
     render(<FeatureEditor feature={makeFeature(['@body_ex1'])} onMutation={onMutation} schema={TRANSFORM_SCHEMA} />)
-    fireEvent.click(bodiesChip())
+    fireEvent.click(partsChip())
     // Arming syncs the chip's values into the selection; toggling one back off is
     // the viewport re-click.
     pick('@body_ex1')
@@ -104,7 +104,7 @@ describe('TransformEditor (via FeatureEditor)', () => {
     const chips = [...document.querySelectorAll('.feature-pick-chip-item-text')]
     expect(chips).toHaveLength(0)
 
-    fireEvent.click(bodiesChip())
+    fireEvent.click(partsChip())
     pick('@body_ex2')
     expect(onMutation).toHaveBeenCalledWith({
       type: 'add_transform_body', featureId: 'tr1', bodyQuery: '@body_ex2',
@@ -121,7 +121,7 @@ describe('TransformEditor (via FeatureEditor)', () => {
       const { unmount } = render(
         <FeatureEditor feature={makeFeature()} onMutation={onMutation} schema={TRANSFORM_SCHEMA} />,
       )
-      fireEvent.click(bodiesChip())
+      fireEvent.click(partsChip())
       pick(picked)
       expect(onMutation, picked).toHaveBeenCalledWith({
         type: 'add_transform_body', featureId: 'tr1', bodyQuery: picked,

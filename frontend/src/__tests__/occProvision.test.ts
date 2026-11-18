@@ -64,11 +64,11 @@ function fakeManifest(occtTag = 'V8.0.1'): Record<string, unknown> {
     },
     emcc: 'emcc 6.0.13',
     build_commit: 'b'.repeat(40),
-    files: Object.fromEntries(FILES.map((name) => [name, sha256(body(name))])),
+    files: Object.fromEntries(FILES.map((name) => [name, sha256(part(name))])),
   }
 }
 
-function body(name: string): string {
+function part(name: string): string {
   return `fake ${name} bytes`
 }
 
@@ -76,7 +76,7 @@ function body(name: string): string {
 function makeCache(dir: string, manifest = fakeManifest()): void {
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, 'manifest.json'), JSON.stringify(manifest))
-  for (const name of FILES) writeFileSync(join(dir, name), body(name))
+  for (const name of FILES) writeFileSync(join(dir, name), part(name))
 }
 
 /** A fetch stub serving the fake release; `tamper` replaces one file's bytes. */
@@ -87,7 +87,7 @@ function fakeFetch(manifest: Record<string, unknown>, tamper?: string) {
     const name = url.split('/').pop() as string
     const text = name === 'manifest.json'
       ? JSON.stringify(manifest)
-      : name === tamper ? 'tampered' : body(name)
+      : name === tamper ? 'tampered' : part(name)
     return { ok: true, status: 200, arrayBuffer: async () => new TextEncoder().encode(text).buffer }
   }
   return { impl, asked }
@@ -219,7 +219,7 @@ describe('occProvision', () => {
     writeFileSync(join(outDir, 'opencascade.wasm.wasm'), 'old build')
     provisionOcc(pin, cache, outDir)
     expect(readdirSync(outDir).sort()).toEqual([...FILES].sort())
-    for (const name of FILES) expect(readFileSync(join(outDir, name), 'utf8')).toBe(body(name))
+    for (const name of FILES) expect(readFileSync(join(outDir, name), 'utf8')).toBe(part(name))
   })
 
   it('accepts a shared symlink that already holds the pin, without writing through it', () => {
@@ -228,7 +228,7 @@ describe('occProvision', () => {
     const pin = pinFromManifest('r/o', 'occt-8.0.1-r1', fakeManifest())
     const shared = join(workDir, 'link-match-shared')
     mkdirSync(shared, { recursive: true })
-    for (const name of FILES) writeFileSync(join(shared, name), body(name))
+    for (const name of FILES) writeFileSync(join(shared, name), part(name))
     const outDir = join(workDir, 'link-match-out')
     symlinkSync(shared, outDir)
     provisionOcc(pin, cache, outDir)

@@ -94,7 +94,7 @@ describeReal('assembly measure and export', () => {
     expect(measure!.bodies).toBe(2)
     expect(measure!.volume).toBeCloseTo(2000, 6)
     expectBbox(measure!.bbox, [0, 0, 0, 30, 10, 10])
-    expect(measure!.perBody.map(body => body.id)).toEqual(['a/body_ex1', 'b/body_ex1'])
+    expect(measure!.perBody.map(part => part.id)).toEqual(['a/body_ex1', 'b/body_ex1'])
     // The dedupe: two instances of one spec id build the part once.
     expect(assemblyBuildCountForTest()).toBe(1)
   }, 120_000)

@@ -53,19 +53,19 @@ interface Gauges {
 describe.skipIf(!oc || !solveBytes)('extrude twist (real OCC + Rust solver)', () => {
   const h = extrudeTestHarness()
 
-  function gauges(result: BuildResponse, featureId: string, bodyId: string): Gauges {
+  function gauges(result: BuildResponse, featureId: string, partId: string): Gauges {
     const cp = result._build_state!.checkpoints[featureId]
     expect(cp, `no checkpoint for ${featureId}`).toBeDefined()
-    const shape = h.table.get<OccShape>(cp.body_store_snapshot[bodyId].shape!)
+    const shape = h.table.get<OccShape>(cp.body_store_snapshot[partId].shape!)
     const scope = new DisposeScope()
     try {
       return {
         volume: volumeForMeasure(oc!, scope, shape),
         faces: canonicalFaces(oc!, scope, shape).length,
-        edges: ((h.part(result, bodyId).edges as unknown[]) ?? []).length,
+        edges: ((h.part(result, partId).edges as unknown[]) ?? []).length,
         bbox: shapeBbox(oc!, scope, shape),
         valid: scope.track(new oc!.BRepCheck_Analyzer(shape, true, false, false)).IsValid_2(),
-        mesh: (h.part(result, bodyId).mesh as Dict) ?? {},
+        mesh: (h.part(result, partId).mesh as Dict) ?? {},
       }
     } finally {
       scope.dispose()

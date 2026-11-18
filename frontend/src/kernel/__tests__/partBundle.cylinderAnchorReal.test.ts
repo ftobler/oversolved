@@ -76,9 +76,9 @@ describe.skipIf(!oc || !solveBytes)('axial midpoint anchors (real OCC + Rust sol
 
   function build(features: unknown[]): { bundle: PartBundle; fds: FaceData[] } {
     const result = harness.run({ version: 1, kind: 'part', features })
-    const bodies = result.bodies as Record<string, PartResult>
-    const fds = Object.values(bodies).flatMap((b) => b.mesh?.face_data ?? [])
-    return { bundle: toPartBundle('doc-anchor', 'hash-anchor', bodies), fds }
+    const parts = result.bodies as Record<string, PartResult>
+    const fds = Object.values(parts).flatMap((b) => b.mesh?.face_data ?? [])
+    return { bundle: toPartBundle('doc-anchor', 'hash-anchor', parts), fds }
   }
 
   // The one face of a surface type; more than one means the pick is ambiguous.

@@ -231,15 +231,15 @@ export async function partDocumentPanelMockModule() {
   const { usePartEditorCallbacks } = await import('@/contexts/PartEditorContext')
   return {
     PartDocumentPanel: vi.fn(() => {
-      const bodies = usePartEditorStore(s => s.parts)
+      const parts = usePartEditorStore(s => s.parts)
       const { onRightClick } = usePartEditorCallbacks()
       return (
         <div data-testid="document-panel">
-          {Object.keys(bodies || {}).map((bodyId: string) => (
-            <div key={bodyId} data-testid={`body-${bodyId}`}>
+          {Object.keys(parts || {}).map((partId: string) => (
+            <div key={partId} data-testid={`body-${partId}`}>
               <button
-                data-testid={`context-btn-${bodyId}`}
-                onClick={(e: React.MouseEvent) => onRightClick([e.clientX, e.clientY], `body:${bodyId}`)}
+                data-testid={`context-btn-${partId}`}
+                onClick={(e: React.MouseEvent) => onRightClick([e.clientX, e.clientY], `body:${partId}`)}
               >
                 Context
               </button>

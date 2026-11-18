@@ -78,15 +78,15 @@ const widenedHoles = (
 ]
 
 /** The emitted queries of one kind for a body, index-aligned with its primitives. */
-function queriesOf(body: Record<string, unknown>, kind: Kind): string[] {
-  if (kind === 'face') return ((body.mesh as { face_queries?: string[] } | undefined)?.face_queries) ?? []
-  return (body[`${kind}_queries`] as string[] | undefined) ?? []
+function queriesOf(part: Record<string, unknown>, kind: Kind): string[] {
+  if (kind === 'face') return ((part.mesh as { face_queries?: string[] } | undefined)?.face_queries) ?? []
+  return (part[`${kind}_queries`] as string[] | undefined) ?? []
 }
 
 /** How many primitives of `kind` the body has, independent of its query list. */
-function primitiveCount(body: Record<string, unknown>, kind: Kind): number {
-  if (kind === 'face') return ((body.mesh as { face_data?: unknown[] } | undefined)?.face_data ?? []).length
-  return ((body[kind === 'edge' ? 'edges' : 'vertices'] as unknown[] | undefined) ?? []).length
+function primitiveCount(part: Record<string, unknown>, kind: Kind): number {
+  if (kind === 'face') return ((part.mesh as { face_data?: unknown[] } | undefined)?.face_data ?? []).length
+  return ((part[kind === 'edge' ? 'edges' : 'vertices'] as unknown[] | undefined) ?? []).length
 }
 
 describe.skipIf(!oc || !solveBytes)('every primitive carries a resolving query (real OCC + Rust solver)', () => {
@@ -117,13 +117,13 @@ describe.skipIf(!oc || !solveBytes)('every primitive carries a resolving query (
     const lastFid = state.feature_order[state.feature_order.length - 1]
     const checkpoint = state.checkpoints[lastFid]
     const repo = repoFromSnapshot(checkpoint.repo_snapshot as Record<string, unknown>)
-    const bodyStore = checkpoint.body_store_snapshot as Record<string, unknown>
+    const partStore = checkpoint.body_store_snapshot as Record<string, unknown>
     const elements = [...repo.elements.values()] as Array<Record<string, unknown>>
 
     let checked = 0
     const indexTagged: string[] = []
     for (const [bodyId, body] of Object.entries((r.bodies ?? {}) as Record<string, Record<string, unknown>>)) {
-      if (!(bodyId in bodyStore)) continue  // a body the build did not keep has no registration to match
+      if (!(bodyId in partStore)) continue  // a body the build did not keep has no registration to match
       for (const kind of ['face', 'edge', 'vertex'] as const) {
         const queries = queriesOf(body, kind)
         queries.forEach((query, idx) => {
@@ -139,7 +139,7 @@ describe.skipIf(!oc || !solveBytes)('every primitive carries a resolving query (
           expect(hits, `${where} is registered exactly once`).toHaveLength(1)
           let resolved: unknown
           try {
-            resolved = repo.query(query, null, bodyStore)
+            resolved = repo.query(query, null, partStore)
           } catch (e) {
             throw new Error(`${where}: ${query}: ${(e as Error).message}`)
           }
@@ -154,7 +154,7 @@ describe.skipIf(!oc || !solveBytes)('every primitive carries a resolving query (
   // Baseline documents written in a feature schema the TS kernel no longer reads
   // (a sweep's old profile field): they build no body today, so they have no
   // query to check.
-  const NO_BODY_TODAY = new Set(['sweep_straight_z'])
+  const NO_PART_TODAY = new Set(['sweep_straight_z'])
 
   describe('regression baseline', () => {
     const entries = baseline as unknown as Array<{ label: string; ok: boolean; spec: Spec }>
@@ -162,7 +162,7 @@ describe.skipIf(!oc || !solveBytes)('every primitive carries a resolving query (
       const features = entry.spec?.features ?? []
       // Same gate as the full-doc regression test: a document the frozen kernel could not build,
       // or one with a kind the TS kernel does not solve, is not a coverage case.
-      if (!entry.ok || unportedKinds(features).size > 0 || NO_BODY_TODAY.has(entry.label)) continue
+      if (!entry.ok || unportedKinds(features).size > 0 || NO_PART_TODAY.has(entry.label)) continue
       if (!features.some((f) => f.kind !== 'sketch' && f.kind !== 'plane')) continue  // no body
       it(entry.label, () => {
         expect(expectFullCoverage(structuredClone(entry.spec), entry.label)).toBeGreaterThan(0)
@@ -188,9 +188,9 @@ describe.skipIf(!oc || !solveBytes)('every primitive carries a resolving query (
   // vertex, tell them apart, so none needs the index-tag last resort.
   it('array cut corpus names every edge and vertex', () => {
     const r = h.run(structuredClone(arrayCutCorpus) as unknown as Spec)
-    const bodies = Object.entries((r.bodies ?? {}) as Record<string, Record<string, unknown>>)
-    expect(bodies.length).toBeGreaterThan(0)
-    for (const [bodyId, body] of bodies) {
+    const parts = Object.entries((r.bodies ?? {}) as Record<string, Record<string, unknown>>)
+    expect(parts.length).toBeGreaterThan(0)
+    for (const [bodyId, body] of parts) {
       for (const kind of ['edge', 'vertex'] as const) {
         const uuids = (body[`${kind}_uuids`] as (string | null)[] | undefined) ?? []
         expect(uuids.length, `${bodyId} has ${kind}s`).toBeGreaterThan(0)

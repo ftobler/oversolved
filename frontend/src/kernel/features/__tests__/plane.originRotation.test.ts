@@ -10,8 +10,8 @@ import type { PartSolid } from '../../types3d'
 
 type Dict = Record<string, unknown>
 
-function run(repo: Repository, feature: Dict, bodyStore: Record<string, PartSolid> = {}) {
-  return solvePlane(null, null, null, feature, repo, bodyStore)
+function run(repo: Repository, feature: Dict, partStore: Record<string, PartSolid> = {}) {
+  return solvePlane(null, null, null, feature, repo, partStore)
 }
 
 function planeFeature(id: string, definition: Dict): Dict {

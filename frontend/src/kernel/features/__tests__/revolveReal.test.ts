@@ -83,12 +83,12 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
     body: harness.part.bind(harness),
   }
 
-  function volumeAt(r: BuildResponse, featureId: string, bodyId: string): number {
+  function volumeAt(r: BuildResponse, featureId: string, partId: string): number {
     const checkpoint = r._build_state!.checkpoints[featureId]
-    const body = (checkpoint.body_store_snapshot as Record<string, PartSolid>)[bodyId]
+    const part = (checkpoint.body_store_snapshot as Record<string, PartSolid>)[partId]
     const scope = new DisposeScope()
     try {
-      return volumeOf(oc!, scope, harness.table.get<OccShape>(body.shape!))
+      return volumeOf(oc!, scope, harness.table.get<OccShape>(part.shape!))
     } finally {
       scope.dispose()
     }

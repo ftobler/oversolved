@@ -69,17 +69,17 @@ function drill(
     const repo = new Repository()
     repo.register('_pt_sk', FACE_PLANE)
     for (const site of sites) repo.register(`sk/${site.eid}/xy`, { external_xy: site.xy })
-    const bodyStore = plateTarget(oc!, scope, table)
+    const partStore = plateTarget(oc!, scope, table)
     const result = solveHole(oc!, scope, table, {
       id: 'h1',
       hole: { sketch: '@sk', target: 'body_t', ...hole },
-    }, repo, bodyStore, {
+    }, repo, partStore, {
       sk: {
         entities: sites.map((site) => ({ id: site.eid, kind: 'point' })),
         constraints,
       },
     })
-    return { result, volume: volumeOf(oc!, scope, table.get<OccShape>(bodyStore.body_t.shape!)) }
+    return { result, volume: volumeOf(oc!, scope, table.get<OccShape>(partStore.body_t.shape!)) }
   } finally {
     scope.dispose()
   }

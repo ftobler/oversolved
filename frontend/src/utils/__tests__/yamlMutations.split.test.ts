@@ -23,11 +23,11 @@ describe('applyAddSplit', () => {
   })
 
   it('copies the inline fields instead of aliasing the payload', () => {
-    const bodies = ['@ex1']
+    const parts = ['@ex1']
     const doc: PartDoc = {}
-    applyAddSplit(doc, 'sp1', 'Cut', bodies, '@pl1', 'below')
+    applyAddSplit(doc, 'sp1', 'Cut', parts, '@pl1', 'below')
     expect(split0(doc)).toEqual({ bodies: ['@ex1'], plane: '@pl1', keep: 'below' })
-    bodies.push('@ex2')
+    parts.push('@ex2')
     expect(split0(doc).bodies).toEqual(['@ex1'])
   })
 

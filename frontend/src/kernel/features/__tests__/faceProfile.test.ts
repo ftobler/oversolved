@@ -61,14 +61,14 @@ describe('collectExtrudeLoops $sketch path parity', () => {
     repo.register('_pt_' + fx.sketch_id, { ...fx.plane })
     repo.register('_topo_' + fx.sketch_id, { surfaces: fx.surfaces.map((s) => ({ ...s })) })
 
-    const bodyStore: Record<string, PartSolid> = {}
+    const partStore: Record<string, PartSolid> = {}
     const result = collectExtrudeLoops(
       oc,
       null as never,
       table,
       '$' + fx.sketch_id,
       repo,
-      bodyStore,
+      partStore,
     )
 
     expectClose(result.loops, fx.expected.loops, 'loops')

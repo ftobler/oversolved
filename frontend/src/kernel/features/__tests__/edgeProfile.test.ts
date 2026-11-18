@@ -55,10 +55,10 @@ describe('makeEdgeIndexCache', () => {
     // buildEdgeIndex returns early on a null shape before touching oc, so the
     // cache can be probed without OCC.
     const indexFor = makeEdgeIndexCache(oc, scope, table)
-    const bodyA = { id: 'body_a', shape: null } as unknown as PartSolid
-    const bodyB = { id: 'body_b', shape: null } as unknown as PartSolid
-    expect(indexFor(bodyA)).toBe(indexFor(bodyA))
-    expect(indexFor(bodyA)).not.toBe(indexFor(bodyB))
+    const partA = { id: 'body_a', shape: null } as unknown as PartSolid
+    const partB = { id: 'body_b', shape: null } as unknown as PartSolid
+    expect(indexFor(partA)).toBe(indexFor(partA))
+    expect(indexFor(partA)).not.toBe(indexFor(partB))
   })
 })
 
@@ -66,7 +66,7 @@ describe('resolveProfileEdges', () => {
   it('builds one edge index per body, not one per ref', () => {
     const dummyEdge = {} as unknown as OccShape
     vi.mocked(resolveEdgesWithIndex).mockReturnValue([dummyEdge])
-    const makeBody = (id: string): PartSolid =>
+    const makePart = (id: string): PartSolid =>
       ({
         id,
         created_by: 'ex1',
@@ -76,10 +76,10 @@ describe('resolveProfileEdges', () => {
         brep_diff: null,
         profile_queries: [],
       }) as unknown as PartSolid
-    const bodyStore: Record<string, PartSolid> = {
-      body_a: makeBody('body_a'),
-      body_b: makeBody('body_b'),
-      body_c: makeBody('body_c'),
+    const partStore: Record<string, PartSolid> = {
+      body_a: makePart('body_a'),
+      body_b: makePart('body_b'),
+      body_c: makePart('body_c'),
     }
     // Four refs over three bodies, body_a resolved twice: the L11 contract is
     // one index build per distinct body for the whole ref set.
@@ -95,25 +95,25 @@ describe('resolveProfileEdges', () => {
       // cache whatever the test order; `built` only records cache misses.
       const seen = new Set<string>()
       const dummy = new Map<string, EdgeIndex>()
-      return (body: PartSolid): EdgeIndex => {
-        if (!seen.has(body.id)) {
-          seen.add(body.id)
-          built.push(body.id)
+      return (part: PartSolid): EdgeIndex => {
+        if (!seen.has(part.id)) {
+          seen.add(part.id)
+          built.push(part.id)
         }
-        let idx = dummy.get(body.id)
+        let idx = dummy.get(part.id)
         if (idx === undefined) {
           idx = {
             queryToEdge: new Map(),
             ambiguousQueries: new Set(),
             ancestryRepo: new Repository(),
           }
-          dummy.set(body.id, idx)
+          dummy.set(part.id, idx)
         }
         return idx
       }
     })
 
-    const result = resolveProfileEdges(oc, scope, table, edgeRefs, bodyStore)
+    const result = resolveProfileEdges(oc, scope, table, edgeRefs, partStore)
 
     expect(result).toHaveLength(4)
     // One cache above the ref loop, and no body's index is ever built twice.

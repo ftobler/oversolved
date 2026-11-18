@@ -32,13 +32,13 @@ const oc = await loadOcc()
 const solveBytes = loadSolver()
 const topologyBytes = loadTopology()
 
-const BODY = 'body_ESrRWmJlIltOOJE-A1VbLhzR'
+const PART = 'body_ESrRWmJlIltOOJE-A1VbLhzR'
 const CHAMFER_ID = 'BeXVLtIhoq94L87Qll4xewnr'
 const MOVED_ID = 'cHBOnYil8ViF7HhF_DAmiu3T'
 
 /** The face adjacent to `face` across `edge`, ignoring `face` itself. */
-function neighbourAcross(occ: OccModule, scope: DisposeScope, body: OccShape, face: OccShape, edge: OccShape): OccShape | null {
-  for (const other of canonicalFaces(occ, scope, body) as OccShape[]) {
+function neighbourAcross(occ: OccModule, scope: DisposeScope, part: OccShape, face: OccShape, edge: OccShape): OccShape | null {
+  for (const other of canonicalFaces(occ, scope, part) as OccShape[]) {
     if ((other as OccSubShape).IsSame(face as OccSubShape)) continue
     if (canonicalEdges(occ, scope, other).some((e) => (e as OccSubShape).IsSame(edge as OccSubShape))) return other
   }
@@ -79,7 +79,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('move face across freeform
   if (!oc || !solveBytes || !topologyBytes) return
   const occ = oc
   const h = new SharedHarness(occ)
-  let body: PartSolid
+  let part: PartSolid
   let live: DisposeScope
   let shape: OccShape
   let faces: OccShape[]
@@ -96,13 +96,13 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('move face across freeform
       features: features.slice(0, last),
       part_style: fixture.part_style,
     })
-    const snapshot = result._build_state.checkpoints[CHAMFER_ID]?.body_store_snapshot?.[BODY]
+    const snapshot = result._build_state.checkpoints[CHAMFER_ID]?.body_store_snapshot?.[PART]
     if (!snapshot) throw new Error('the probe document has no body after the chamfer')
-    body = snapshot
+    part = snapshot
     live = new DisposeScope()
-    const index = makeFaceIndexCache(occ, live, h.table)(body)
+    const index = makeFaceIndexCache(occ, live, h.table)(part)
     const resolved = resolveFacesByQuery(
-      occ, live, h.table, body, index,
+      occ, live, h.table, part, index,
       (fixture.picks as { query: string }[]).map((p) => p.query),
     )
     faces = (fixture.picks as { query: string }[]).map((p) => {
@@ -110,7 +110,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('move face across freeform
       if (!face) throw new Error(`pick did not resolve: ${p.query}`)
       return face
     })
-    shape = h.table.get<OccShape>(body.shape!)
+    shape = h.table.get<OccShape>(part.shape!)
     const edgeKind = classifyFaceEdges(occ, live, shape)
     probes = faces.map((face) => {
       const neighbours: string[] = []

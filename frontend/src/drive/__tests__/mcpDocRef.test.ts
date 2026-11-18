@@ -12,12 +12,12 @@ import { requirePartDoc, resolveDoc, runReply, selectReply, summarizeDoc } from 
 import { CURRENT_DOC_VERSION } from '@/persistence/docSchema'
 import type { SelectResult } from '@/kernel/select'
 
-function doc(label: string, body = 'body_ex1'): PartDoc {
+function doc(label: string, part = 'body_ex1'): PartDoc {
   return {
     version: 1,
     kind: 'part',
     features: [{ id: label, kind: 'sketch' }],
-    part_style: { [body]: {} },
+    part_style: { [part]: {} },
   } as PartDoc
 }
 

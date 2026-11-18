@@ -521,10 +521,10 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     const r = h.run(spec)
     expect(h.res(r, 'fillet1').status).toBe('ok')
     const ckp = r._build_state!.checkpoints['fillet1']
-    const body = ckp.body_store_snapshot['body_ex1']
-    expect(body).toBeDefined()
-    expect(body.brep_diff).not.toBeNull()
-    expect((body.brep_diff as { new_edges: unknown[] }).new_edges.length).toBeGreaterThan(0)
+    const part = ckp.body_store_snapshot['body_ex1']
+    expect(part).toBeDefined()
+    expect(part.brep_diff).not.toBeNull()
+    expect((part.brep_diff as { new_edges: unknown[] }).new_edges.length).toBeGreaterThan(0)
   })
 
   it('chamfer populates brepDiff on the modified body', () => {
@@ -535,10 +535,10 @@ describe.skipIf(!oc || !solveBytes)('fillet chamfer build-level (real OCC + Rust
     const r = h.run(spec)
     expect(h.res(r, 'chamfer1').status).toBe('ok')
     const ckp = r._build_state!.checkpoints['chamfer1']
-    const body = ckp.body_store_snapshot['body_ex1']
-    expect(body).toBeDefined()
-    expect(body.brep_diff).not.toBeNull()
-    expect((body.brep_diff as { new_edges: unknown[] }).new_edges.length).toBeGreaterThan(0)
+    const part = ckp.body_store_snapshot['body_ex1']
+    expect(part).toBeDefined()
+    expect(part.brep_diff).not.toBeNull()
+    expect((part.brep_diff as { new_edges: unknown[] }).new_edges.length).toBeGreaterThan(0)
   })
 
   it('a countersink cone face pick expands to its rim edges', () => {

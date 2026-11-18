@@ -42,7 +42,7 @@ interface FaceMesh {
   face_created_by?: string[]
   face_edge_queries?: string[][]
 }
-interface BodyView {
+interface PartView {
   mesh?: FaceMesh
   edges?: Array<{ kind: string; start?: number[]; end?: number[]; center?: number[] }>
   edge_queries?: string[]
@@ -162,9 +162,9 @@ const uuidTokenOf = (query: string): string | undefined => {
   return token?.slice('@u|'.length)
 }
 
-const bodyOf = (r: BuildResponse, bodyId = 'body_ex1'): BodyView => (r.bodies as Record<string, BodyView>)[bodyId]
+const partOf = (r: BuildResponse, partId = 'body_ex1'): PartView => (r.bodies as Record<string, PartView>)[partId]
 
-const meshOf = (r: BuildResponse, bodyId = 'body_ex1'): FaceMesh => bodyOf(r, bodyId).mesh ?? {}
+const meshOf = (r: BuildResponse, partId = 'body_ex1'): FaceMesh => partOf(r, partId).mesh ?? {}
 
 /** Index of the face whose query ancestry names `token` (`@sk2/c1`, a uuid...). */
 function faceWithToken(mesh: FaceMesh, token: string): number {
@@ -182,20 +182,20 @@ function edgesBetween(mesh: FaceMesh, a: number, b: number): string[] {
 }
 
 /** The attributed creator of an edge, read where a pick reads it. */
-function creatorOf(view: BodyView, query: string): string | undefined {
+function creatorOf(view: PartView, query: string): string | undefined {
   const at = (view.edge_queries ?? []).indexOf(query)
   expect(at, `the edge query is in the payload: ${query}`).toBeGreaterThanOrEqual(0)
   return (view.edge_created_by ?? [])[at]
 }
 
-function edgeAt(view: BodyView, query: string): { kind: string; center?: number[]; start?: number[]; end?: number[] } {
+function edgeAt(view: PartView, query: string): { kind: string; center?: number[]; start?: number[]; end?: number[] } {
   const at = (view.edge_queries ?? []).indexOf(query)
   expect(at).toBeGreaterThanOrEqual(0)
   return (view.edges ?? [])[at]
 }
 
 /** Every edge query that names `token`, with its creator. */
-function edgesNaming(view: BodyView, token: string): Array<{ query: string; creator: string }> {
+function edgesNaming(view: PartView, token: string): Array<{ query: string; creator: string }> {
   const out: Array<{ query: string; creator: string }> = []
   ;(view.edge_queries ?? []).forEach((q, i) => {
     if (!tokensOf(q).includes(token)) return
@@ -204,8 +204,8 @@ function edgesNaming(view: BodyView, token: string): Array<{ query: string; crea
   return out
 }
 
-const capUuid = (featureId: string, bodySlot: string, side: 'above' | 'below'): string =>
-  mintFaceUuid(splitPlaneFacePath(featureId, bodySlot, side))
+const capUuid = (featureId: string, partSlot: string, side: 'above' | 'below'): string =>
+  mintFaceUuid(splitPlaneFacePath(featureId, partSlot, side))
 
 describe.skipIf(!oc || !solveBytes)('hole and self-tool edge credit (real OCC + Rust solver)', () => {
   const h = new SharedHarness(oc!)
@@ -222,7 +222,7 @@ describe.skipIf(!oc || !solveBytes)('hole and self-tool edge credit (real OCC + 
     expect(h.res(r, 'ho1').status).toBe('ok')
     expect(h.res(r, 'ho1').hole_count).toBe(1)
 
-    const view = bodyOf(r)
+    const view = partOf(r)
     const mesh = meshOf(r)
     const bore = faceWithToken(mesh, '@skh/p1')
     const pocketWall = faceWithToken(mesh, '@sk2/c1')
@@ -270,7 +270,7 @@ describe.skipIf(!oc || !solveBytes)('hole and self-tool edge credit (real OCC + 
       ],
     })
     expect(h.res(r, 'ho1').status).toBe('ok')
-    const view = bodyOf(r)
+    const view = partOf(r)
     const circles = edgesNaming(view, '@skh/p1').filter((e) => edgeAt(view, e.query).kind === 'circle')
     // The entry circle on the -Y face and the exit circle on the +Y face.
     expect(circles).toHaveLength(2)
@@ -287,7 +287,7 @@ describe.skipIf(!oc || !solveBytes)('hole and self-tool edge credit (real OCC + 
       ],
     })
     expect(h.res(r, 'exc1').status).toBe('ok')
-    const view = bodyOf(r)
+    const view = partOf(r)
     const mesh = meshOf(r)
     const breakout = edgesBetween(mesh, faceWithToken(mesh, '@skh/c1'), faceWithToken(mesh, '@sk2/c1'))
     expect(breakout).toHaveLength(1)
@@ -318,7 +318,7 @@ describe.skipIf(!oc || !solveBytes)('hole and self-tool edge credit (real OCC + 
     expect(h.res(r, 'ho2').status).toBe('ok')
     expect(h.res(r, 'ho2').hole_count).toBe(1)
 
-    const view = bodyOf(r)
+    const view = partOf(r)
     const mesh = meshOf(r)
     const crossing = edgesBetween(mesh, faceWithToken(mesh, '@skh1/p1'), faceWithToken(mesh, '@skh2/p1'))
     expect(crossing.length).toBeGreaterThanOrEqual(1)
@@ -346,7 +346,7 @@ describe.skipIf(!oc || !solveBytes)('hole and self-tool edge credit (real OCC + 
       ],
     })
     expect(h.res(r, 'sp1').status).toBe('ok')
-    const view = bodyOf(r)
+    const view = partOf(r)
     const mesh = meshOf(r)
     const cap = faceWithToken(mesh, '@u|' + capUuid('sp1', 'body_ex1', 'above'))
     const pocketWall = faceWithToken(mesh, '@sk2/c1')
@@ -391,7 +391,7 @@ describe.skipIf(!oc || !solveBytes)('hole and self-tool edge credit (real OCC + 
       features: [...shallowPocketBlock(), { id: 'mf1', kind: 'move_face', move_face: { faces: [floorQuery], distance: 4 } }],
     })
     expect(h.res(r, 'mf1').status).toBe('ok')
-    const view = bodyOf(r)
+    const view = partOf(r)
     const mesh = meshOf(r)
     // The extension face is the minted `<mf1>|extend|<old wall>` face the boss
     // wall became; the boolean only folds it when a live twin shares the surface
@@ -429,7 +429,7 @@ describe.skipIf(!oc || !solveBytes)('hole and self-tool edge credit (real OCC + 
       ],
     })
     expect(h.res(r, 'bo1').status).toBe('ok')
-    const view = bodyOf(r)
+    const view = partOf(r)
     // The seam lines sit on the target's top plane, z=10, and carry the bump's
     // profile ancestry. The bump's walls own them; the target's own edges stay
     // the target's.

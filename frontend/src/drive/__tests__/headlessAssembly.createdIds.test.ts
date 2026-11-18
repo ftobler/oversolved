@@ -20,7 +20,7 @@ function partDoc(id: string): PartDoc {
   return { version: 1, kind: 'part', features: [{ id, kind: 'sketch' }] } as PartDoc
 }
 
-const BODY: PartResult = {
+const PART: PartResult = {
   id: 'body_ex1',
   created_by: 'ex1',
   modified_by: [],
@@ -46,7 +46,7 @@ function bundle(docId: string): InjectedBundle {
     }],
     anchors: { face: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1], geom_hash: '@u|face', created_by: 'ex1' } },
   }
-  return { bundle: part, bodies: { body_ex1: BODY } }
+  return { bundle: part, bodies: { body_ex1: PART } }
 }
 
 function session(doc: AssemblyDoc = emptyDriveAssemblyDoc()) {

@@ -57,7 +57,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
           repo.register(`sk/${eid}/xy`, { external_xy: xy })
         }
         const box = makeBox(occ, scope, c.box[0], c.box[1], c.box[2])
-        const bodyStore: Record<string, PartSolid> = {
+        const partStore: Record<string, PartSolid> = {
           body_t: {
             id: 'body_t',
             created_by: 'ex_t',
@@ -86,7 +86,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
             },
           },
           repo,
-          bodyStore,
+          partStore,
           featuresById,
         )
         // The resolved drill side postdates the frozen Python snapshot, so it is
@@ -94,7 +94,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         const { direction, ...parity } = result
         expect(parity).toEqual(c.result)
         expect(direction).toBe('normal')
-        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeCloseTo(c.volume, 2)
+        expect(volumeOf(occ, scope, table.get<OccShape>(partStore.body_t.shape!))).toBeCloseTo(c.volume, 2)
       } finally {
         scope.dispose()
       }
@@ -116,7 +116,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
         repo.register('sk/p1/xy', { external_xy: [10, 10] })
         const box = makeBoxAt(occ, scope, [0, 0, -10], 20, 20, 10)
-        const bodyStore: Record<string, PartSolid> = {
+        const partStore: Record<string, PartSolid> = {
           body_t: {
             id: 'body_t', created_by: 'ex_t', modified_by: [],
             shape: table.register(box, 'ex_t'),
@@ -127,10 +127,10 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         const result = solveHole(occ, scope, table, {
           id: 'hole1',
           hole: { sketch: '@sk', diameter: 10, depth: 5, direction: 'reverse', target: 'body_t' },
-        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
+        }, repo, partStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
         expect(result.status).toBe('ok')
         expect(result.hole_count).toBe(1)
-        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeLessThan(20 * 20 * 10)
+        expect(volumeOf(occ, scope, table.get<OccShape>(partStore.body_t.shape!))).toBeLessThan(20 * 20 * 10)
       } finally {
         scope.dispose()
       }
@@ -148,7 +148,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
         repo.register('sk/p1/xy', { external_xy: [5, 5] })
         const box = makeBox(occ, scope, 10, 10, 10)
-        const bodyStore: Record<string, PartSolid> = {
+        const partStore: Record<string, PartSolid> = {
           body_first: {
             id: 'body_first', created_by: 'ex_first', modified_by: [],
             shape: table.register(box, 'ex_first'),
@@ -160,10 +160,10 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         const result = solveHole(occ, scope, table, {
           id: 'hole1',
           hole: { sketch: '@sk', diameter: 4, depth: 5 },
-        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
+        }, repo, partStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
         expect(result.status).toBe('ok')
         expect(result.hole_count).toBe(1)
-        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_first.shape!))).toBeLessThan(1000)
+        expect(volumeOf(occ, scope, table.get<OccShape>(partStore.body_first.shape!))).toBeLessThan(1000)
       } finally {
         scope.dispose()
       }
@@ -181,7 +181,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('sk/p1/xy', { external_xy: [0, 0] })
         const first = makeBoxAt(occ, scope, [0, 0, 0], 20, 20, 10)
         const second = makeBoxAt(occ, scope, [40, 0, 0], 20, 20, 10)
-        const bodyStore: Record<string, PartSolid> = {
+        const partStore: Record<string, PartSolid> = {
           body_first: {
             id: 'body_first', created_by: 'ex_first', modified_by: [],
             shape: table.register(first, 'ex_first'),
@@ -199,12 +199,12 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         const result = solveHole(occ, scope, table, {
           id: 'hole1',
           hole: { sketch: '@sk', diameter: 4, depth: 5, direction: 'reverse' },
-        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
+        }, repo, partStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
         expect(result.status).toBe('ok')
         expect(result.body_id).toBe('body_second')
         expect(result.hole_count).toBe(1)
-        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_first.shape!))).toBeCloseTo(20 * 20 * 10, 6)
-        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_second.shape!))).toBeLessThan(20 * 20 * 10)
+        expect(volumeOf(occ, scope, table.get<OccShape>(partStore.body_first.shape!))).toBeCloseTo(20 * 20 * 10, 6)
+        expect(volumeOf(occ, scope, table.get<OccShape>(partStore.body_second.shape!))).toBeLessThan(20 * 20 * 10)
       } finally {
         scope.dispose()
       }
@@ -221,7 +221,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('sk/p1/xy', { external_xy: [0, 0] })
         const first = makeBoxAt(occ, scope, [0, 0, 0], 20, 20, 10)
         const second = makeBoxAt(occ, scope, [40, 0, 0], 20, 20, 10)
-        const bodyStore: Record<string, PartSolid> = {
+        const partStore: Record<string, PartSolid> = {
           body_first: {
             id: 'body_first', created_by: 'ex_first', modified_by: [],
             shape: table.register(first, 'ex_first'),
@@ -238,12 +238,12 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         const result = solveHole(occ, scope, table, {
           id: 'hole1',
           hole: { sketch: '@sk', diameter: 4, depth: 4 },
-        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
+        }, repo, partStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
         expect(result.status).toBe('ok')
         expect(result.body_id).toBe('body_second')
         expect(result.hole_count).toBe(1)
-        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_first.shape!))).toBeCloseTo(20 * 20 * 10, 6)
-        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_second.shape!))).toBeLessThan(20 * 20 * 10)
+        expect(volumeOf(occ, scope, table.get<OccShape>(partStore.body_first.shape!))).toBeCloseTo(20 * 20 * 10, 6)
+        expect(volumeOf(occ, scope, table.get<OccShape>(partStore.body_second.shape!))).toBeLessThan(20 * 20 * 10)
       } finally {
         scope.dispose()
       }
@@ -261,7 +261,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('sk/p1/xy', { external_xy: [0, 0] })
         const first = makeBox(occ, scope, 10, 10, 10)
         const second = makeBoxAt(occ, scope, [100, 0, 0], 10, 10, 10)
-        const bodyStore: Record<string, PartSolid> = {
+        const partStore: Record<string, PartSolid> = {
           body_first: {
             id: 'body_first', created_by: 'ex_first', modified_by: [],
             shape: table.register(first, 'ex_first'),
@@ -278,7 +278,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         const result = solveHole(occ, scope, table, {
           id: 'hole1',
           hole: { sketch: '@sk', diameter: 4, depth: 5 },
-        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
+        }, repo, partStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
         expect(result.status).toBe('ok')
         expect(result.body_id).toBe('body_first')
         expect(result.hole_count).toBe(0)
@@ -314,15 +314,15 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
         repo.register('sk/ci', { external_params: [3, 3, 3], kind: 'circle', sketch_id: 'sk' })
         repo.register('sk/p1/xy', { external_xy: [10, 10] })
-        const bodyStore = boxTarget(occ, scope, table)
+        const partStore = boxTarget(occ, scope, table)
         const result = solveHole(occ, scope, table, {
           id: 'hole1',
           hole: { sketch: 'entity:sk:p1', diameter: 6, depth: 5, target: 'body_t' },
-        }, repo, bodyStore, { sk: { entities: [{ id: 'ci', kind: 'circle' }, { id: 'p1', kind: 'point' }] } })
+        }, repo, partStore, { sk: { entities: [{ id: 'ci', kind: 'circle' }, { id: 'p1', kind: 'point' }] } })
         expect(result.status).toBe('ok')
         // One hole: the circle beside the point is not part of this pick.
         expect(result.hole_count).toBe(1)
-        const volume = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+        const volume = volumeOf(occ, scope, table.get<OccShape>(partStore.body_t.shape!))
         expect(volume).toBeCloseTo(20 * 20 * 10 - Math.PI * 3 * 3 * 5, 2)
       } finally {
         scope.dispose()
@@ -339,14 +339,14 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
         repo.register('sk/p1/xy', { external_xy: [5, 5] })
         repo.register('sk/p2/xy', { external_xy: [15, 15] })
-        const bodyStore = boxTarget(occ, scope, table)
+        const partStore = boxTarget(occ, scope, table)
         const result = solveHole(occ, scope, table, {
           id: 'hole1',
           hole: { sketch: 'vertex:sk:p1:xy', diameter: 4, depth: 5, target: 'body_t' },
-        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }, { id: 'p2', kind: 'point' }] } })
+        }, repo, partStore, { sk: { entities: [{ id: 'p1', kind: 'point' }, { id: 'p2', kind: 'point' }] } })
         expect(result.status).toBe('ok')
         expect(result.hole_count).toBe(1)
-        const volume = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+        const volume = volumeOf(occ, scope, table.get<OccShape>(partStore.body_t.shape!))
         expect(volume).toBeCloseTo(20 * 20 * 10 - Math.PI * 2 * 2 * 5, 2)
       } finally {
         scope.dispose()
@@ -365,21 +365,21 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('sk/c1', { external_params: [3, 3, 2], kind: 'circle', sketch_id: 'sk' })
         repo.register('sk/c2', { external_params: [16, 16, 3], kind: 'circle', sketch_id: 'sk' })
         repo.register('sk/p1/xy', { external_xy: [10, 10] })
-        const bodyStore = boxTarget(occ, scope, table)
+        const partStore = boxTarget(occ, scope, table)
         const result = solveHole(occ, scope, table, {
           id: 'hole1',
           hole: {
             sketch: '@sk', diameter: 10, depth: 5, target: 'body_t',
             thread: { designation: 'M6x1', nominal: 6, pitch: 1 },
           },
-        }, repo, bodyStore, {
+        }, repo, partStore, {
           sk: { entities: [{ id: 'c1', kind: 'circle' }, { id: 'p1', kind: 'point' }, { id: 'c2', kind: 'circle' }] },
         })
         expect(result.status).toBe('ok')
         expect(result.hole_count).toBe(1)
         const sites = (result.thread as { sites: Array<{ radius: number }> }).sites
         expect(sites.map((s) => s.radius)).toEqual([5])
-        const volume = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+        const volume = volumeOf(occ, scope, table.get<OccShape>(partStore.body_t.shape!))
         expect(volume).toBeCloseTo(20 * 20 * 10 - Math.PI * 5 * 5 * 5, 2)
       } finally {
         scope.dispose()
@@ -401,11 +401,11 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('sk/pc/xy', { external_xy: [4, 4] })
         repo.register('sk/cc', { external_params: [15, 15, 3], kind: 'circle', sketch_id: 'sk' })
         repo.register('sk/p1/xy', { external_xy: [10, 10] })
-        const bodyStore = boxTarget(occ, scope, table)
+        const partStore = boxTarget(occ, scope, table)
         const result = solveHole(occ, scope, table, {
           id: 'hole1',
           hole: { sketch: '@sk', diameter: 4, depth: 5, target: 'body_t' },
-        }, repo, bodyStore, {
+        }, repo, partStore, {
           sk: { entities: [
             { id: 'pc', kind: 'point', construction: true },
             { id: 'cc', kind: 'circle', construction: true },
@@ -414,7 +414,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         })
         expect(result.status).toBe('ok')
         expect(result.hole_count).toBe(1)
-        const volume = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+        const volume = volumeOf(occ, scope, table.get<OccShape>(partStore.body_t.shape!))
         expect(volume).toBeCloseTo(20 * 20 * 10 - Math.PI * 2 * 2 * 5, 2)
       } finally {
         scope.dispose()
@@ -433,16 +433,16 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
         repo.register('sk/cc', { external_params: [10, 10, 6], kind: 'circle', sketch_id: 'sk' })
         repo.register('sk/p1/xy', { external_xy: [10, 10] })
-        const bodyStore = boxTarget(occ, scope, table)
+        const partStore = boxTarget(occ, scope, table)
         const result = solveHole(occ, scope, table, {
           id: 'hole1',
           hole: { sketch: '@sk', diameter: 4, depth: 5, target: 'body_t' },
-        }, repo, bodyStore, {
+        }, repo, partStore, {
           sk: { entities: [{ id: 'cc', kind: 'circle' }, { id: 'p1', kind: 'point' }] },
         })
         expect(result.status).toBe('ok')
         expect(result.hole_count).toBe(1)
-        const volume = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+        const volume = volumeOf(occ, scope, table.get<OccShape>(partStore.body_t.shape!))
         expect(volume).toBeCloseTo(20 * 20 * 10 - Math.PI * 2 * 2 * 5, 2)
       } finally {
         scope.dispose()
@@ -461,20 +461,20 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
         repo.register('sk/cc', { external_params: [10, 10, 6], kind: 'circle', sketch_id: 'sk' })
         repo.register('sk/p1/xy', { external_xy: [10, 10] })
-        const bodyStore = boxTarget(occ, scope, table)
+        const partStore = boxTarget(occ, scope, table)
         const result = solveHole(occ, scope, table, {
           id: 'hole1',
           hole: {
             sketch: '@sk', diameter: 4, depth: 5, target: 'body_t',
             style: 'counterbore', cb_diameter: 8, cb_depth: 2,
           },
-        }, repo, bodyStore, {
+        }, repo, partStore, {
           sk: { entities: [{ id: 'cc', kind: 'circle' }, { id: 'p1', kind: 'point' }] },
         })
         expect(result.status).toBe('ok')
         expect(result.hole_count).toBe(1)
         const removed = Math.PI * 2 * 2 * 5 + Math.PI * (4 * 4 - 2 * 2) * 2
-        const volume = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+        const volume = volumeOf(occ, scope, table.get<OccShape>(partStore.body_t.shape!))
         expect(volume).toBeCloseTo(20 * 20 * 10 - removed, 2)
       } finally {
         scope.dispose()
@@ -496,7 +496,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('_pt_sk', { origin: [-15, 0, 10], x_axis: [0, 1, 0], y_axis: [0, 0, 1], normal: [-1, 0, 0] })
         repo.register('sk/p1/xy', { external_xy: [0, 0] })
         const cyl = makeCylinder(occ, scope, [0, 0, 0], [0, 0, 1], 15, 20)
-        const bodyStore: Record<string, PartSolid> = {
+        const partStore: Record<string, PartSolid> = {
           body_t: {
             id: 'body_t', created_by: 'ex_t', modified_by: [],
             shape: table.register(cyl, 'ex_t'),
@@ -507,14 +507,14 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         const result = solveHole(occ, scope, table, {
           id: 'hole1',
           hole: { sketch: '@sk', diameter: 6, depth_mode: 'through_all', direction: 'normal', target: 'body_t' },
-        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
+        }, repo, partStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
         expect(result.status).toBe('ok')
         expect(result.body_ids).toHaveLength(1)
 
-        const refBody = makeCylinder(occ, scope, [0, 0, 0], [0, 0, 1], 15, 20)
+        const refPart = makeCylinder(occ, scope, [0, 0, 0], [0, 0, 1], 15, 20)
         const refCutter = makeCylinder(occ, scope, [45, 0, 10], [-1, 0, 0], 3, 90)
-        const refCut = booleanWithDiff(occ, scope, refBody, refCutter, 'cut')
-        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeCloseTo(
+        const refCut = booleanWithDiff(occ, scope, refPart, refCutter, 'cut')
+        expect(volumeOf(occ, scope, table.get<OccShape>(partStore.body_t.shape!))).toBeCloseTo(
           volumeOf(occ, scope, refCut.shape),
           3,
         )
@@ -535,7 +535,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('_pt_sk', { origin: [0, 43, 0], x_axis: [1, 0, 0], y_axis: [0, 0, 1], normal: [0, 1, 0] })
         repo.register('sk/p1/xy', { external_xy: [0, 0] })
         const cup = makeCylinder(occ, scope, [0, 43, 0], [0, 1, 0], 4, 7)
-        const bodyStore: Record<string, PartSolid> = {
+        const partStore: Record<string, PartSolid> = {
           body_cup: {
             id: 'body_cup', created_by: 'exCup', modified_by: [],
             shape: table.register(cup, 'exCup'),
@@ -543,14 +543,14 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
             profile_queries: [],
           },
         }
-        const before = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_cup.shape!))
+        const before = volumeOf(occ, scope, table.get<OccShape>(partStore.body_cup.shape!))
         const result = solveHole(occ, scope, table, {
           id: 'hoCup',
           hole: { sketch: '@sk', diameter: 4, depth_mode: 'through_all', depth: 20, direction: 'normal', target: 'body_cup' },
-        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
+        }, repo, partStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
         expect(result.status).toBe('ok')
         expect(result.hole_count).toBe(1)
-        const after = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_cup.shape!))
+        const after = volumeOf(occ, scope, table.get<OccShape>(partStore.body_cup.shape!))
         expect(after).toBeCloseTo(before - Math.PI * 2 * 2 * 7, 3)
       } finally {
         scope.dispose()
@@ -580,7 +580,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: xAxis, y_axis: yAxis, normal })
         repo.register('sk/p1/xy', { external_xy: [0, 0] })
         const box = makeBox(occ, scope, 10, 10, 10)
-        const bodyStore: Record<string, PartSolid> = {
+        const partStore: Record<string, PartSolid> = {
           body_t: {
             id: 'body_t', created_by: 'ex_t', modified_by: [],
             shape: table.register(box, 'ex_t'),
@@ -591,17 +591,17 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         const result = solveHole(occ, scope, table, {
           id: 'hole1',
           hole: { sketch: '@sk', diameter: 6, depth_mode: 'through_all', direction: 'normal', target: 'body_t' },
-        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
+        }, repo, partStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
         expect(result.status).toBe('ok')
         expect(result.body_ids).toHaveLength(1)
 
-        const refBody = makeBox(occ, scope, 10, 10, 10)
+        const refPart = makeBox(occ, scope, 10, 10, 10)
         // Centre the reference cutter well before the corner along the axis so
         // it spans both directions through the body diagonal.
         const refCenter: Vec3 = [normal[0] * -100, normal[1] * -100, normal[2] * -100]
         const refCutter = makeCylinder(occ, scope, refCenter, normal as Vec3, 3, 200)
-        const refCut = booleanWithDiff(occ, scope, refBody, refCutter, 'cut')
-        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeCloseTo(
+        const refCut = booleanWithDiff(occ, scope, refPart, refCutter, 'cut')
+        expect(volumeOf(occ, scope, table.get<OccShape>(partStore.body_t.shape!))).toBeCloseTo(
           volumeOf(occ, scope, refCut.shape),
           3,
         )
@@ -622,7 +622,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('_pt_sk', { origin: [0, 0, 0], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] })
         repo.register('sk/p1/xy', { external_xy: [5, 5] })
         const box = makeBox(occ, scope, 10, 10, 10)
-        const bodyStore: Record<string, PartSolid> = {
+        const partStore: Record<string, PartSolid> = {
           body_t: {
             id: 'body_t', created_by: 'ex_t', modified_by: [],
             shape: table.register(box, 'ex_t'),
@@ -634,17 +634,17 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         const r1 = solveHole(occ, scope, table, {
           id: 'hole1',
           hole: { sketch: '@sk', diameter: 4, depth: 2, target: 'body_t' },
-        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
+        }, repo, partStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
         expect(r1.status).toBe('ok')
-        const volAfterShallow = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+        const volAfterShallow = volumeOf(occ, scope, table.get<OccShape>(partStore.body_t.shape!))
 
         // Edit hole to be deeper: body should re-drill with less volume.
         const r2 = solveHole(occ, scope, table, {
           id: 'hole1',
           hole: { sketch: '@sk', diameter: 4, depth: 8, target: 'body_t' },
-        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
+        }, repo, partStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
         expect(r2.status).toBe('ok')
-        const volAfterDeep = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+        const volAfterDeep = volumeOf(occ, scope, table.get<OccShape>(partStore.body_t.shape!))
         // Deeper hole removes more material.
         expect(volAfterDeep).toBeLessThan(volAfterShallow)
       } finally {
@@ -677,19 +677,19 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         const repo = new Repository()
         repo.register('_pt_sk', PLANE)
         repo.register('sk/p1/xy', { external_xy: [100, 100] })
-        const bodyStore = boxTarget(occ, scope, table)
-        const boxVol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+        const partStore = boxTarget(occ, scope, table)
+        const boxVol = volumeOf(occ, scope, table.get<OccShape>(partStore.body_t.shape!))
 
         const result = solveHole(occ, scope, table, {
           id: 'hole1',
           hole: { sketch: '@sk', diameter: 4, depth: 5, target: 'body_t' },
-        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
+        }, repo, partStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
 
         expect(result.status).toBe('ok')
         expect(result.hole_count).toBe(0)
         expect(result.solver_warning).toMatch(/none of the 1 drill site\(s\) intersect part 'body_t'; nothing was removed/)
         expect(result.body_ids).toEqual(['body_t'])
-        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeCloseTo(boxVol, 6)
+        expect(volumeOf(occ, scope, table.get<OccShape>(partStore.body_t.shape!))).toBeCloseTo(boxVol, 6)
       } finally {
         scope.dispose()
       }
@@ -705,18 +705,18 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         const repo = new Repository()
         repo.register('_pt_sk', PLANE)
         repo.register('sk/p1/xy', { external_xy: [10, 10] })
-        const bodyStore = boxTarget(occ, scope, table)
+        const partStore = boxTarget(occ, scope, table)
 
         const result = solveHole(occ, scope, table, {
           id: 'hole1',
           hole: { sketch: '@sk', diameter: 30, depth_mode: 'through_all', target: 'body_t' },
-        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
+        }, repo, partStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } })
 
         expect(result.status).toBe('ok')
         expect(result.body_ids).toEqual([])
         expect(result.body_id).toBe('body_t')  // still names the consumed body
         expect(result.solver_warning).toMatch(/the cut removed all of part 'body_t'; the part was deleted/)
-        expect('body_t' in bodyStore).toBe(false)
+        expect('body_t' in partStore).toBe(false)
       } finally {
         scope.dispose()
       }
@@ -732,18 +732,18 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
         repo.register('_pt_sk', PLANE)
         repo.register('sk/p1/xy', { external_xy: [5, 5] })
         repo.register('sk/p2/xy', { external_xy: [100, 100] })
-        const bodyStore = boxTarget(occ, scope, table)
+        const partStore = boxTarget(occ, scope, table)
 
         const result = solveHole(occ, scope, table, {
           id: 'hole1',
           hole: { sketch: '@sk', diameter: 4, depth: 5, target: 'body_t' },
-        }, repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }, { id: 'p2', kind: 'point' }] } })
+        }, repo, partStore, { sk: { entities: [{ id: 'p1', kind: 'point' }, { id: 'p2', kind: 'point' }] } })
 
         expect(result.status).toBe('partial')
         expect(result.hole_count).toBe(1)
         expect(result.exception).toMatch(/1\/2 drill site\(s\) did not intersect part 'body_t': p2/)
         expect(result.solver_warning).toBeUndefined()
-        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeLessThan(20 * 20 * 10)
+        expect(volumeOf(occ, scope, table.get<OccShape>(partStore.body_t.shape!))).toBeLessThan(20 * 20 * 10)
       } finally {
         scope.dispose()
       }

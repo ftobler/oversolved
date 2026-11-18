@@ -19,7 +19,7 @@ function cameraAtOriginLookingDownZ(): THREE.OrthographicCamera {
   return camera
 }
 
-function taggedBody(z: number, size = 200): THREE.Mesh {
+function taggedPart(z: number, size = 200): THREE.Mesh {
   const mesh = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial())
   mesh.userData.orbitPivot = true
   mesh.position.set(0, 0, z)
@@ -42,7 +42,7 @@ describe('pointerToNdc', () => {
 describe('pickPivotPoint', () => {
   it('returns the point on the tagged body under the cursor', () => {
     const scene = new THREE.Scene()
-    scene.add(taggedBody(20))
+    scene.add(taggedPart(20))
     const hit = pickPivotPoint(cameraAtOriginLookingDownZ(), scene, RECT, 500, 350)
     expect(hit).not.toBeNull()
     expect(hit!.x).toBeCloseTo(0, 9)
@@ -55,8 +55,8 @@ describe('pickPivotPoint', () => {
     const untagged = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshBasicMaterial())
     untagged.position.set(0, 0, 80)
     scene.add(untagged)
-    scene.add(taggedBody(40))
-    scene.add(taggedBody(-20))
+    scene.add(taggedPart(40))
+    scene.add(taggedPart(-20))
 
     const hit = pickPivotPoint(cameraAtOriginLookingDownZ(), scene, RECT, 500, 350)
     expect(hit!.z).toBeCloseTo(40, 9)
@@ -66,9 +66,9 @@ describe('pickPivotPoint', () => {
     const scene = new THREE.Scene()
     const hiddenGroup = new THREE.Group()
     hiddenGroup.visible = false
-    hiddenGroup.add(taggedBody(40))
+    hiddenGroup.add(taggedPart(40))
     scene.add(hiddenGroup)
-    scene.add(taggedBody(20, 10))
+    scene.add(taggedPart(20, 10))
 
     // The visible body is small and sits on the axis: a press beside it is a
     // miss, even though the hidden body behind it would have caught the ray.
@@ -83,8 +83,8 @@ describe('pickPivotPoint', () => {
 
   it('turns about the first body point the section still draws', () => {
     const scene = new THREE.Scene()
-    scene.add(taggedBody(20))
-    scene.add(taggedBody(-20))
+    scene.add(taggedPart(20))
+    scene.add(taggedPart(-20))
     const camera = cameraAtOriginLookingDownZ()
     expect(pickPivotPoint(camera, scene, RECT, 500, 350)!.z).toBeCloseTo(20, 9)
 

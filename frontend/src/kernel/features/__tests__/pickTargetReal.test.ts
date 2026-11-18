@@ -117,7 +117,7 @@ describe.skipIf(!oc || !solveBytes)('the instance pattern pick table', () => {
       ],
     })
     expect(h.res(r, 'h1').status).toBe('ok')
-    const body = (r._build_state!.checkpoints.h1.body_store_snapshot as Record<string, PartSolid>).body_exPlate
+    const part = (r._build_state!.checkpoints.h1.body_store_snapshot as Record<string, PartSolid>).body_exPlate
     const repo = initGlobalRepo()
     const payload = h.part(r, 'body_exPlate') as {
       mesh?: { face_data?: Dict[]; face_queries?: string[] }
@@ -167,16 +167,16 @@ describe.skipIf(!oc || !solveBytes)('the instance pattern pick table', () => {
       repo.registerAncestor(ids, { type: 'vertex', body_id: 'body_exPlate', vertex_index: i, origin }, uuidOf(query))
     })
     repo.register('_pt_skT', TILTED)
-    return { r, body, repo }
+    return { r, body: part, repo }
   }
 
-  function context(repo: Repository, body: PartSolid): PickTargetContext {
+  function context(repo: Repository, part: PartSolid): PickTargetContext {
     return {
       oc: occ,
       scope: new DisposeScope(),
       table: h.table,
       globalRepo: repo,
-      partStore: { body_exPlate: body },
+      partStore: { body_exPlate: part },
       featuresById: {
         skT: { id: 'skT', kind: 'sketch', plane: FRONT, entities: SKETCH_ENTITIES, initial: SKETCH_INITIAL, constraints: [] },
       },

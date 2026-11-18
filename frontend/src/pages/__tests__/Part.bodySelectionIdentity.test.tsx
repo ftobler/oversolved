@@ -31,7 +31,7 @@ const DOC = vi.hoisted(() => ({
     { id: 'ex2', kind: 'extrude', label: 'Extrude 2', extrude: { sketch: '$sk1', distance: 5, direction: 'normal' } },
   ],
 }))
-const BODIES = vi.hoisted(() => ({
+const PARTS = vi.hoisted(() => ({
   body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [] },
   body_ex2: { id: 'body_ex2', created_by: 'ex2', modified_by: [] },
 }))
@@ -39,7 +39,7 @@ const BODIES = vi.hoisted(() => ({
 vi.mock('../../hooks/usePartDoc', async () =>
   (await import('@/__tests__/test-utils')).partDocMockModule({
     doc: DOC,
-    bodies: BODIES,
+    bodies: PARTS,
     handleMutation: mockHandleMutation,
     commitMutationGroup: mockCommitMutationGroup,
   }))

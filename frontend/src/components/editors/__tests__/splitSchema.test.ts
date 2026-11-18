@@ -20,12 +20,12 @@ describe('SPLIT_SCHEMA', () => {
   })
 
   it('picks bodies through the plural toggles with no ref coercion', () => {
-    const bodies = pick('bodies')
-    expect(bodies.multi).toBe(true)
-    expect(bodies.addMutationType).toBe('add_split_body')
-    expect(bodies.addValueKey).toBe('bodyQuery')
-    expect(bodies.removeMutationType).toBe('remove_split_body')
-    expect(bodies.transform).toBeUndefined()
+    const parts = pick('bodies')
+    expect(parts.multi).toBe(true)
+    expect(parts.addMutationType).toBe('add_split_body')
+    expect(parts.addValueKey).toBe('bodyQuery')
+    expect(parts.removeMutationType).toBe('remove_split_body')
+    expect(parts.transform).toBeUndefined()
   })
 
   it('accepts a builtin plane, a datum plane and a flat face', () => {

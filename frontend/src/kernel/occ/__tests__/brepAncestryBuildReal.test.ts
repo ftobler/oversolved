@@ -71,10 +71,10 @@ describe.skipIf(!oc || !solveBytes)('brep ancestry build-level (real OCC + Rust 
     const r = h.run(cutFixture())
     expect(h.res(r, 'ex2').status).toBe('ok')
     const state = r._build_state!
-    const body = state.checkpoints['ex2'].body_store_snapshot['body_ex1']
-    expect(body).toBeDefined()
-    expect(body.brep_diff).not.toBeNull()
-    expect((body.brep_diff as { new_faces: unknown[] }).new_faces.length).toBeGreaterThan(0)
+    const part = state.checkpoints['ex2'].body_store_snapshot['body_ex1']
+    expect(part).toBeDefined()
+    expect(part.brep_diff).not.toBeNull()
+    expect((part.brep_diff as { new_faces: unknown[] }).new_faces.length).toBeGreaterThan(0)
   })
 
   it('new faces tagged with cutting feature in ancestry', () => {

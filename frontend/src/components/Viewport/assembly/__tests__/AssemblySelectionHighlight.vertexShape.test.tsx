@@ -10,7 +10,7 @@ import AssemblySelectionHighlight, {
 } from '@/components/Viewport/assembly/AssemblySelectionHighlight'
 import type { AssemblyPickPart } from '@/utils/assemblyPick'
 
-function body(): AssemblyPickPart {
+function part(): AssemblyPickPart {
   return {
     handle: 'B',
     partKey: 'B',
@@ -32,7 +32,7 @@ function body(): AssemblyPickPart {
 describe('AssemblySelectionHighlight vertex overlay shape', () => {
   it('gives the selected vertex overlay a circular alpha mask', () => {
     const { container } = render(
-      <AssemblySelectionHighlight pickParts={[body()]} selection={new Set(['v0'])} hovered={null} />
+      <AssemblySelectionHighlight pickParts={[part()]} selection={new Set(['v0'])} hovered={null} />
     )
     const mat = container.querySelector('pointsmaterial')
     expect(mat?.hasAttribute('alphamap')).toBe(true)
@@ -40,7 +40,7 @@ describe('AssemblySelectionHighlight vertex overlay shape', () => {
 
   it('gives the hovered vertex overlay a circular alpha mask', () => {
     const { container } = render(
-      <AssemblySelectionHighlight pickParts={[body()]} selection={new Set()} hovered="v0" />
+      <AssemblySelectionHighlight pickParts={[part()]} selection={new Set()} hovered="v0" />
     )
     const mat = container.querySelector('pointsmaterial')
     expect(mat?.hasAttribute('alphamap')).toBe(true)

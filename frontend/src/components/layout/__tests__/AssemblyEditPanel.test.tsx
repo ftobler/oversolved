@@ -131,8 +131,8 @@ describe('AssemblyEditPanel', () => {
       editing: { kind: 'instance', handle: 'p1' },
       status: status({ parts: { p1: { failed: true, error: 'part doc not found: p1' } } }),
     })
-    const body = container.querySelector('.feature-edit-panel-body') as HTMLElement
-    const line = body.firstElementChild as HTMLElement
+    const part = container.querySelector('.feature-edit-panel-body') as HTMLElement
+    const line = part.firstElementChild as HTMLElement
     expect(line.className).toContain('status-message')
     expect(line.className).toContain('status-message--error')
     expect(line.textContent).toBe('part doc not found: p1')
@@ -143,8 +143,8 @@ describe('AssemblyEditPanel', () => {
       editing: { kind: 'mate', id: 'm1' },
       status: status({ mates: { m1: { stale: true, error: "unsupported mate kind 'worm_gear'" } } }),
     })
-    const body = container.querySelector('.feature-edit-panel-body') as HTMLElement
-    const line = body.firstElementChild as HTMLElement
+    const part = container.querySelector('.feature-edit-panel-body') as HTMLElement
+    const line = part.firstElementChild as HTMLElement
     expect(line.className).toContain('status-message')
     expect(line.className).toContain('status-message--error')
     expect(line.textContent).toBe("unsupported mate kind 'worm_gear'")

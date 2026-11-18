@@ -331,10 +331,10 @@ describe.skipIf(!oc || !solveBytes)('clearance naming through the builder (real 
 
     // The hole-rim edges between the tool wall and the target top answer to the
     // tool body ex2 under per-application ownership, not to the boolean.
-    const body = (r0.bodies as Record<string, { edge_queries?: string[]; edge_created_by?: string[] }>).body_ex1
-    const idx = (body.edge_created_by ?? []).findIndex((cb) => cb === 'ex2')
+    const part = (r0.bodies as Record<string, { edge_queries?: string[]; edge_created_by?: string[] }>).body_ex1
+    const idx = (part.edge_created_by ?? []).findIndex((cb) => cb === 'ex2')
     expect(idx, 'the tool body should own the hole-rim edges').toBeGreaterThanOrEqual(0)
-    const edgeQuery = body.edge_queries![idx]
+    const edgeQuery = part.edge_queries![idx]
 
     const withClearance = (clearance: number) => ({
       version: 1, kind: 'part', features: [

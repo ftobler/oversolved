@@ -36,7 +36,7 @@ function makeItem(): PartRenderItem {
   }
 }
 
-function renderBody(overrides: { aiming?: boolean; selected?: boolean; showFaces?: boolean; showEdges?: boolean } = {}) {
+function renderPart(overrides: { aiming?: boolean; selected?: boolean; showFaces?: boolean; showEdges?: boolean } = {}) {
   const onGrab = vi.fn()
   const { container } = render(
     <AssemblyPartMesh
@@ -55,24 +55,24 @@ function renderBody(overrides: { aiming?: boolean; selected?: boolean; showFaces
 
 describe('AssemblyBody grab guard', () => {
   it('renders the body mesh', () => {
-    const { mesh } = renderBody()
+    const { mesh } = renderPart()
     expect(mesh).not.toBeNull()
   })
 
   it('ignores a non-primary button', () => {
-    const { mesh, onGrab } = renderBody()
+    const { mesh, onGrab } = renderPart()
     fireEvent.pointerDown(mesh, { button: 2 })
     expect(onGrab).not.toHaveBeenCalled()
   })
 
   it('ignores a ctrl-click (it aims a mate reference instead)', () => {
-    const { mesh, onGrab } = renderBody()
+    const { mesh, onGrab } = renderPart()
     fireEvent.pointerDown(mesh, { button: 0, ctrlKey: true })
     expect(onGrab).not.toHaveBeenCalled()
   })
 
   it('ignores a primary click while a mate slot is armed', () => {
-    const { mesh, onGrab } = renderBody({ aiming: true })
+    const { mesh, onGrab } = renderPart({ aiming: true })
     fireEvent.pointerDown(mesh, { button: 0 })
     expect(onGrab).not.toHaveBeenCalled()
   })
@@ -83,19 +83,19 @@ describe('AssemblyBody viewer layers', () => {
   // also an R3F raycast target, so a "hidden" face must not be mounted at all:
   // an invisible-but-present mesh would still swallow the grab.
   it('draws both layers by default, which is today\'s look', () => {
-    const { container } = renderBody()
+    const { container } = renderPart()
     expect(container.querySelector('mesh')).not.toBeNull()
     expect(container.querySelector('linesegments')).not.toBeNull()
   })
 
   it('shading off removes the mesh, leaving the wireframe drawn', () => {
-    const { container } = renderBody({ showFaces: false })
+    const { container } = renderPart({ showFaces: false })
     expect(container.querySelector('mesh')).toBeNull()
     expect(container.querySelector('linesegments')).not.toBeNull()
   })
 
   it('edges off removes the wireframe, leaving the mesh drawn', () => {
-    const { container } = renderBody({ showEdges: false })
+    const { container } = renderPart({ showEdges: false })
     expect(container.querySelector('linesegments')).toBeNull()
     expect(container.querySelector('mesh')).not.toBeNull()
   })

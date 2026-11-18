@@ -93,7 +93,7 @@ function doc(features: Dict[], fields: Dict): Record<string, unknown> {
 
 interface FaceView { surface_type?: string, normal?: number[], centroid?: number[] }
 interface EdgeView { kind: string, start?: number[], end?: number[], center?: number[] }
-interface BodyView {
+interface PartView {
   mesh?: { face_data?: FaceView[], face_queries?: string[] }
   edges?: EdgeView[]
   edge_queries?: string[]
@@ -109,7 +109,7 @@ describe.skipIf(!oc || !solveBytes)('axis carrier directions through the real ke
     setSketchSolver(solveBytes)
   })
 
-  const viewOf = (r: BuildResponse, bodyId = 'body_ex1'): BodyView => h.part(r, bodyId) as BodyView
+  const viewOf = (r: BuildResponse, partId = 'body_ex1'): PartView => h.part(r, partId) as PartView
 
   function faceQuery(r: BuildResponse, type: string): string {
     const mesh = viewOf(r).mesh
@@ -129,8 +129,8 @@ describe.skipIf(!oc || !solveBytes)('axis carrier directions through the real ke
     const store = r._build_state!.checkpoints.lp1.body_store_snapshot as Record<string, PartSolid>
     const scope = new DisposeScope()
     try {
-      return Object.values(store).map((body) => {
-        const box = shapeBndBox(occ, scope, h.table.get<OccShape>(body.shape!))
+      return Object.values(store).map((part) => {
+        const box = shapeBndBox(occ, scope, h.table.get<OccShape>(part.shape!))
         return [...box.min, ...box.max]
       })
     } finally {

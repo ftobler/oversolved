@@ -115,23 +115,23 @@ describe.skipIf(!oc || !solveBytes)('the mirror feature subject through the buil
   function snapshot(r: BuildResponse, featureId: string): Record<string, PartSolid> {
     return r._build_state!.checkpoints[featureId].body_store_snapshot as Record<string, PartSolid>
   }
-  function shapeAt(r: BuildResponse, featureId: string, bodyId: string): OccShape {
-    return h.table.get<OccShape>(snapshot(r, featureId)[bodyId].shape!)
+  function shapeAt(r: BuildResponse, featureId: string, partId: string): OccShape {
+    return h.table.get<OccShape>(snapshot(r, featureId)[partId].shape!)
   }
-  function volumeAt(r: BuildResponse, featureId: string, bodyId: string): number {
+  function volumeAt(r: BuildResponse, featureId: string, partId: string): number {
     const scope = new DisposeScope()
-    try { return volumeOf(occ, scope, shapeAt(r, featureId, bodyId)) } finally { scope.dispose() }
+    try { return volumeOf(occ, scope, shapeAt(r, featureId, partId)) } finally { scope.dispose() }
   }
-  function faceCountAt(r: BuildResponse, featureId: string, bodyId: string): number {
+  function faceCountAt(r: BuildResponse, featureId: string, partId: string): number {
     const scope = new DisposeScope()
-    try { return canonicalFaces(occ, scope, shapeAt(r, featureId, bodyId)).length } finally { scope.dispose() }
+    try { return canonicalFaces(occ, scope, shapeAt(r, featureId, partId)).length } finally { scope.dispose() }
   }
-  function faceData(r: BuildResponse, bodyId: string): FaceDatum[] {
-    const mesh = (h.part(r, bodyId).mesh ?? {}) as { face_data?: FaceDatum[] }
+  function faceData(r: BuildResponse, partId: string): FaceDatum[] {
+    const mesh = (h.part(r, partId).mesh ?? {}) as { face_data?: FaceDatum[] }
     return mesh.face_data ?? []
   }
-  function liveFaceUuids(r: BuildResponse, bodyId: string): string[] {
-    const mesh = (h.part(r, bodyId).mesh ?? {}) as { face_queries?: string[] }
+  function liveFaceUuids(r: BuildResponse, partId: string): string[] {
+    const mesh = (h.part(r, partId).mesh ?? {}) as { face_queries?: string[] }
     return (mesh.face_queries ?? []).map(uuidTokenOf).filter((u): u is string => u !== undefined)
   }
 

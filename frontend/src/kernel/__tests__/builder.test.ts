@@ -166,9 +166,9 @@ describe('build with mock solvers', () => {
 // pre-stored snapshot.
     let created = false
     const deps = makeDeps({
-      trySolveFeature: (_f, _r, bodyStore): FeatureResult => {
+      trySolveFeature: (_f, _r, partStore): FeatureResult => {
         if (!created) {
-          bodyStore['body_a'] = {
+          partStore['body_a'] = {
             id: 'body_a',
             created_by: 'f1',
             modified_by: [],
@@ -205,8 +205,8 @@ describe('build with mock solvers', () => {
         calledWith = Object.keys(store)
         return { body_x: { mesh: { face_data: [] } } }
       },
-      trySolveFeature: (_f, _r, bodyStore): FeatureResult => {
-        bodyStore['body_x'] = {
+      trySolveFeature: (_f, _r, partStore): FeatureResult => {
+        partStore['body_x'] = {
           id: 'body_x',
           created_by: 'sk1',
           modified_by: [],
@@ -238,7 +238,7 @@ describe('build with mock solvers', () => {
     const edge = { kind: 'line', start: [0, 0, 0], end: [0, 10, 0] }
     const edgePayload = { type: 'straightedge', kind: 'line', start: [0, 0, 0], end: [0, 10, 0], body_id: 'body_f1', created_by: 'f1', edge_index: 0 }
     let resolvedDuringF2: unknown = undefined
-    const makeBody = (): PartSolid => ({
+    const makePart = (): PartSolid => ({
       id: 'body_f1', created_by: 'f1', modified_by: [], shape: 1 as unknown as PartSolid['shape'], sketch_id: '',
       brep_diff: null, profile_queries: [],
     })
@@ -246,9 +246,9 @@ describe('build with mock solvers', () => {
       tessellateParts: (store) => Object.fromEntries(
         Object.keys(store).map((bid) => [bid, { mesh: { face_data: [] }, edges: [edge], vertices: [] }]),
       ),
-      trySolveFeature: (feature, repo, bodyStore): FeatureResult => {
+      trySolveFeature: (feature, repo, partStore): FeatureResult => {
         if (feature.id === 'f1') {
-          bodyStore['body_f1'] = makeBody()
+          partStore['body_f1'] = makePart()
           repo.registerAncestor(['@body_f1/edge0', '@f1', '@body_f1'], edgePayload)
         } else if (feature.id === 'f2') {
           const q = makeAncestryQuery(['@body_f1/edge0', '@f1'], 'straightedge')
@@ -533,14 +533,14 @@ describe('edge cases', () => {
 
 describe('body snapshot provenance', () => {
   it('carries split_from, so a restored body would keep its array membership', () => {
-    const body: PartSolid = {
+    const part: PartSolid = {
       ...barePart('body_ex2_1', 'ex2'),
       split_from: { feature: 'ca1', body: 'body_ex2' },
     }
-    const snap = snapshotParts({ body_ex2_1: body })
+    const snap = snapshotParts({ body_ex2_1: part })
     expect(snap.body_ex2_1.split_from).toEqual({ feature: 'ca1', body: 'body_ex2' })
     // A copy, not the live entry: a later resplit of the restored body must not
     // rewrite the provenance the checkpoint still holds.
-    expect(snap.body_ex2_1.split_from).not.toBe(body.split_from)
+    expect(snap.body_ex2_1.split_from).not.toBe(part.split_from)
   })
 })

@@ -79,11 +79,11 @@ describe.skipIf(driveUnavailable)('drive CLI (real OCC + Rust solver)', () => {
     expect(measure.payload).toMatchObject({ ok: true, bodies: 1, faces: 6, edges: 12, vertices: 8 })
     expect(measure.payload.volume as number).toBeCloseTo(500, 6)
     expect(measure.payload.features).toEqual([])
-    const perBody = measure.payload.perBody as Array<{ id: string; volume: number; centroid: number[] }>
-    expect(perBody).toHaveLength(1)
-    expect(perBody[0].id).toBe('body_ex1')
-    expect(perBody[0].volume).toBeCloseTo(500, 6)
-    expect(perBody[0].centroid).toHaveLength(3)
+    const perPart = measure.payload.perBody as Array<{ id: string; volume: number; centroid: number[] }>
+    expect(perPart).toHaveLength(1)
+    expect(perPart[0].id).toBe('body_ex1')
+    expect(perPart[0].volume).toBeCloseTo(500, 6)
+    expect(perPart[0].centroid).toHaveLength(3)
     expectBbox(measure.payload.bbox, [0, 0, 0, 10, 10, 5])
 
     const exported = await drive('export', boxDoc, '--format', 'step', '--out', stepFile)

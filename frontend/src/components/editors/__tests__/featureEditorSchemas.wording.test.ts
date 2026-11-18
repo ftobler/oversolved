@@ -7,7 +7,7 @@ import { describe, it, expect } from 'vitest'
 import { EDITOR_SCHEMAS } from '@/components/editors/featureEditorSchemas'
 import type { EditorFieldDef } from '@/components/editors/widgets/fieldTypes'
 
-const BODY_WORD = /\bbod(?:y|ies)\b/i
+const STORED_WORD = /\bbod(?:y|ies)\b/i
 
 /** Every string a field shows, from the label to a select's option labels.
  *  A function hint is computed from the form and has no static text to scan. */
@@ -31,7 +31,7 @@ describe('feature editor wording', () => {
     for (const [kind, schema] of Object.entries(EDITOR_SCHEMAS)) {
       for (const field of schema.fields) {
         for (const text of visibleStrings(field)) {
-          if (BODY_WORD.test(text)) offenders.push(`${kind}.${field.key}: "${text}"`)
+          if (STORED_WORD.test(text)) offenders.push(`${kind}.${field.key}: "${text}"`)
         }
       }
     }

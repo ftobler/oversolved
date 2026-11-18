@@ -34,7 +34,7 @@ function bundleOf(docId: string, points: Array<[number, number, number]>): Injec
   points.forEach((point, i) => {
     anchors[`a${i}`] = { kind: 'plane', point, axis: [0, 1, 0], geom_hash: `@u|${docId}${i}`, created_by: 'ex1' }
   })
-  const body: PartResult = {
+  const part: PartResult = {
     id: 'body_ex1',
     created_by: 'ex1',
     modified_by: [],
@@ -58,7 +58,7 @@ function bundleOf(docId: string, points: Array<[number, number, number]>): Injec
     }],
     anchors,
   }
-  return { bundle, bodies: { body_ex1: body } }
+  return { bundle, bodies: { body_ex1: part } }
 }
 
 // The bundle memo is keyed by part content, so each wall variant gets its own

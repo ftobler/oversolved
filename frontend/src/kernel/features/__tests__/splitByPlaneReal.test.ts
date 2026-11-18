@@ -41,7 +41,7 @@ interface FaceMesh {
   face_data?: FaceDatum[]
   face_queries?: string[]
 }
-interface BodyView {
+interface PartView {
   mesh?: FaceMesh
   edges?: { kind: string; start?: number[]; end?: number[] }[]
   edge_queries?: string[]
@@ -88,16 +88,16 @@ function planeOffset(id: string, plane: string, offset: number): Dict {
   return { id, kind: 'plane', definition: { mode: 'offset', plane, offset } }
 }
 
-function split(id: string, bodies: string[], plane: string, keep?: string): Dict {
-  return { id, kind: 'split', split: { bodies, plane, ...(keep === undefined ? {} : { keep }) } }
+function split(id: string, parts: string[], plane: string, keep?: string): Dict {
+  return { id, kind: 'split', split: { bodies: parts, plane, ...(keep === undefined ? {} : { keep }) } }
 }
 
 /** The construction-UUID token (`@u|<uuid>`) of a query, if any. */
 const uuidTokenOf = (q: string): string | undefined =>
   parseAncestry(q)[0].find((i) => i.startsWith('@u|'))?.slice('@u|'.length)
 
-const capUuid = (featureId: string, bodySlot: string, side: 'above' | 'below'): string =>
-  mintFaceUuid(splitPlaneFacePath(featureId, bodySlot, side))
+const capUuid = (featureId: string, partSlot: string, side: 'above' | 'below'): string =>
+  mintFaceUuid(splitPlaneFacePath(featureId, partSlot, side))
 
 const splitChildUuid = (parent: string, index: number): string => mintFaceUuid(splitFacePath(parent, index))
 
@@ -111,27 +111,27 @@ describe.skipIf(!oc || !solveBytes)('solveSplit through the builder (real OCC + 
     setSketchSolver(solveBytes)
   })
 
-  const meshOf = (r: BuildResponse, bodyId: string): FaceMesh => (h.part(r, bodyId).mesh ?? {}) as FaceMesh
-  const viewOf = (r: BuildResponse, bodyId: string): BodyView => h.part(r, bodyId) as BodyView
+  const meshOf = (r: BuildResponse, partId: string): FaceMesh => (h.part(r, partId).mesh ?? {}) as FaceMesh
+  const viewOf = (r: BuildResponse, partId: string): PartView => h.part(r, partId) as PartView
 
   function snapshot(r: BuildResponse, featureId: string): Record<string, PartSolid> {
     const ckp = r._build_state!.checkpoints[featureId]
     return ckp.body_store_snapshot as Record<string, PartSolid>
   }
-  function shapeOf(r: BuildResponse, featureId: string, bodyId: string): OccShape {
-    return h.table.get<OccShape>(snapshot(r, featureId)[bodyId].shape!)
+  function shapeOf(r: BuildResponse, featureId: string, partId: string): OccShape {
+    return h.table.get<OccShape>(snapshot(r, featureId)[partId].shape!)
   }
-  function volumeAt(r: BuildResponse, featureId: string, bodyId: string): number {
+  function volumeAt(r: BuildResponse, featureId: string, partId: string): number {
     const scope = new DisposeScope()
-    try { return volumeOf(occ, scope, shapeOf(r, featureId, bodyId)) } finally { scope.dispose() }
+    try { return volumeOf(occ, scope, shapeOf(r, featureId, partId)) } finally { scope.dispose() }
   }
-  function bboxAt(r: BuildResponse, featureId: string, bodyId: string) {
+  function bboxAt(r: BuildResponse, featureId: string, partId: string) {
     const scope = new DisposeScope()
-    try { return shapeBndBox(occ, scope, shapeOf(r, featureId, bodyId)) } finally { scope.dispose() }
+    try { return shapeBndBox(occ, scope, shapeOf(r, featureId, partId)) } finally { scope.dispose() }
   }
-  function faceCountAt(r: BuildResponse, featureId: string, bodyId: string): number {
+  function faceCountAt(r: BuildResponse, featureId: string, partId: string): number {
     const scope = new DisposeScope()
-    try { return canonicalFaces(occ, scope, shapeOf(r, featureId, bodyId)).length } finally { scope.dispose() }
+    try { return canonicalFaces(occ, scope, shapeOf(r, featureId, partId)).length } finally { scope.dispose() }
   }
   // Every UUID in the store, asserting no live face claims one twice.
   function expectUniqueFaceUuids(r: BuildResponse, featureId: string): void {
@@ -157,16 +157,16 @@ describe.skipIf(!oc || !solveBytes)('solveSplit through the builder (real OCC + 
     expect(bestDist, `a flat face near ${JSON.stringify(at)}`).toBeLessThan(tol)
     return best
   }
-  function faceQueryAt(r: BuildResponse, bodyId: string, at: [number, number, number], tol = 1e-6): string {
-    const mesh = meshOf(r, bodyId)
+  function faceQueryAt(r: BuildResponse, partId: string, at: [number, number, number], tol = 1e-6): string {
+    const mesh = meshOf(r, partId)
     return mesh.face_queries?.[flatFaceIndex(mesh, at, tol)] ?? ''
   }
-  function uuidAt(r: BuildResponse, bodyId: string, at: [number, number, number]): string | undefined {
-    return uuidTokenOf(faceQueryAt(r, bodyId, at))
+  function uuidAt(r: BuildResponse, partId: string, at: [number, number, number]): string | undefined {
+    return uuidTokenOf(faceQueryAt(r, partId, at))
   }
   // The UUIDs of every live face in `bodyId`.
-  function liveFaceUuids(r: BuildResponse, bodyId: string): string[] {
-    return (meshOf(r, bodyId).face_queries ?? []).map(uuidTokenOf).filter((u): u is string => u !== undefined)
+  function liveFaceUuids(r: BuildResponse, partId: string): string[] {
+    return (meshOf(r, partId).face_queries ?? []).map(uuidTokenOf).filter((u): u is string => u !== undefined)
   }
 
   // ─── fixtures ───
@@ -326,9 +326,9 @@ describe.skipIf(!oc || !solveBytes)('solveSplit through the builder (real OCC + 
         capUuids.push(uuid)
         const query = (meshOf(r, bodyId).face_queries ?? []).find((q) => uuidTokenOf(q) === uuid)
         expect(query, `${bodyId} carries its ${side} cap ${uuid}`).toBeTruthy()
-        const body = store[bodyId]
-        const index = buildFaceIndex(occ, scope, h.table, body)
-        const resolved = resolveFacesByQuery(occ, scope, h.table, body, index, [query as string], store)
+        const part = store[bodyId]
+        const index = buildFaceIndex(occ, scope, h.table, part)
+        const resolved = resolveFacesByQuery(occ, scope, h.table, part, index, [query as string], store)
         expect(resolved.get(query as string), `${bodyId} ${side} cap pick resolves`).not.toBeNull()
       }
       expect(new Set(capUuids).size).toBe(4)

@@ -59,7 +59,7 @@ function boxDoc() {
 }
 
 // Two solids: 10*10*5 = 500 plus 6*6*4 = 144.
-function twoBodyDoc() {
+function twoPartDoc() {
   return {
     id: 'measureDoc',
     features: [
@@ -262,7 +262,7 @@ describe.skipIf(!oc || !solveBytes)('measureLocally (real OCC + Rust solver)', (
   })
 
   it('sums volumes and areas over two bodies and unions their AABBs', async () => {
-    const measure = await measureLocally(twoBodyDoc())
+    const measure = await measureLocally(twoPartDoc())
     expect(measure).not.toBeNull()
     expect(measure!.bodies).toBe(2)
     expect(measure!.volume).toBeCloseTo(644, 6)
@@ -329,8 +329,8 @@ describe.skipIf(!oc || !solveBytes)('measureLocally (real OCC + Rust solver)', (
     const table = persistentTableForTest()
     expect(table).not.toBeNull()
     const shapes: OccShape[] = []
-    for (const body of Object.values(snapshot ?? {})) {
-      if (body.shape != null) shapes.push(table!.get<OccShape>(body.shape))
+    for (const part of Object.values(snapshot ?? {})) {
+      if (part.shape != null) shapes.push(table!.get<OccShape>(part.shape))
     }
     expect(shapes).toHaveLength(1)
 

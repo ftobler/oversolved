@@ -40,11 +40,11 @@ function face(centroid: V3, normal: V3, surface_type: string, radius?: number, a
 }
 
 /** A wire query naming body `bodyId` and the tokens given, with a type tail. */
-function q(bodyId: string, tokens: string[], type: string): string {
-  return makeAncestryQuery([`@${bodyId}`, ...tokens], type)
+function q(partId: string, tokens: string[], type: string): string {
+  return makeAncestryQuery([`@${partId}`, ...tokens], type)
 }
 
-function bodyResult(
+function partResult(
   id: string,
   edges: EdgeData[],
   edgeQueries: string[],
@@ -74,8 +74,8 @@ const BOX_EDGES: EdgeData[] = [
   line([10, 10, 0], [0, 10, 0]), line([0, 10, 0], [0, 0, 0]),
 ]
 
-function edgeQueriesFor(bodyId: string, count: number): string[] {
-  return Array.from({ length: count }, (_, i) => q(bodyId, [`@u|e_${i}`], 'straightedge'))
+function edgeQueriesFor(partId: string, count: number): string[] {
+  return Array.from({ length: count }, (_, i) => q(partId, [`@u|e_${i}`], 'straightedge'))
 }
 
 function box(): Record<string, PartResult> {
@@ -92,19 +92,19 @@ function box(): Record<string, PartResult> {
   ]
   const faceQueries = faces.map((f, i) => q('body_ex1', [`@u|f_${i}`], f.surface_type!))
   const faceEdgeQueries = [topBoundary, bottomBoundary, [], [], [], []]
-  return { body_ex1: bodyResult('body_ex1', BOX_EDGES, eq, faces, faceQueries, faceEdgeQueries) }
+  return { body_ex1: partResult('body_ex1', BOX_EDGES, eq, faces, faceQueries, faceEdgeQueries) }
 }
 
 function withCircle(): Record<string, PartResult> {
-  const bodies = box()
-  const b = bodies.body_ex1
+  const parts = box()
+  const b = parts.body_ex1
   b.edges!.push(circle([5, 5, 5], 2, [0, 0, 1]))
   b.edge_queries!.push(q('body_ex1', ['@u|e_c'], 'edge'))
-  return bodies
+  return parts
 }
 
-function queriesOf(selector: Selector, bodies: Record<string, PartResult>): string[] {
-  return selectByPredicate(selector, bodies).queries
+function queriesOf(selector: Selector, parts: Record<string, PartResult>): string[] {
+  return selectByPredicate(selector, parts).queries
 }
 
 describe('selectByPredicate: direction predicates', () => {
@@ -119,8 +119,8 @@ describe('selectByPredicate: direction predicates', () => {
   })
 
   it('parallel on faces keeps the faces whose normal is parallel, both caps', () => {
-    const bodies = box()
-    const items = selectByPredicate({ kind: 'face', where: { parallel: [0, 0, 1] } }, bodies).items
+    const parts = box()
+    const items = selectByPredicate({ kind: 'face', where: { parallel: [0, 0, 1] } }, parts).items
     // A parallel test ignores sign, so both the +Z top and the -Z bottom cap match.
     expect(items).toHaveLength(2)
     for (const item of items) expect(item.geometry).toMatchObject({ kind: 'face', surface_type: 'flatface' })
@@ -144,8 +144,8 @@ describe('selectByPredicate: direction predicates', () => {
   it('parallel on a curved face tests its analytic axis, not the radial normal or a seam', () => {
     // A Y-axis cylinder: its normal is radial (+X here) while the frame carries
     // the real axis. "parallel Y" means the axis, so a seam normal cannot win.
-    const bodies = {
-      body_ex1: bodyResult(
+    const parts = {
+      body_ex1: partResult(
         'body_ex1',
         [],
         [],
@@ -158,10 +158,10 @@ describe('selectByPredicate: direction predicates', () => {
         [],
       ),
     }
-    expect(queriesOf({ kind: 'face', where: { parallel: [0, 1, 0] } }, bodies))
+    expect(queriesOf({ kind: 'face', where: { parallel: [0, 1, 0] } }, parts))
       .toEqual(['q_cyl_a', 'q_cyl_b'])
     // The radial normal no longer matches as a direction.
-    expect(() => queriesOf({ kind: 'face', where: { parallel: [1, 0, 0] } }, bodies))
+    expect(() => queriesOf({ kind: 'face', where: { parallel: [1, 0, 0] } }, parts))
       .toThrow(SelectorError)
   })
 
@@ -177,7 +177,7 @@ describe('selectByPredicate: edge tangent semantics', () => {
   // own direction it names.
   function lines(): Record<string, PartResult> {
     return {
-      body_ex1: bodyResult(
+      body_ex1: partResult(
         'body_ex1',
         [line([0, 0, 0], [0, 5, 0]), line([0, 0, 0], [5, 0, 0])],
         ['q_y', 'q_x'],
@@ -196,59 +196,59 @@ describe('selectByPredicate: edge tangent semantics', () => {
     // A vertical fillet's top/bottom boundary arc on a plate: its circle axis
     // is Y, but the arc is swept in the XZ plane, so its tangent never is.
     const filletArc = arc([3, 0, -27], 3, [0, 1, 0], [1, 0, 0], Math.PI, 1.5 * Math.PI)
-    const bodies = {
-      body_ex1: bodyResult('body_ex1', [filletArc, line([0, 0, 0], [0, 5, 0])], ['q_arc', 'q_line'], [], [], []),
+    const parts = {
+      body_ex1: partResult('body_ex1', [filletArc, line([0, 0, 0], [0, 5, 0])], ['q_arc', 'q_line'], [], [], []),
     }
-    expect(queriesOf({ kind: 'edge', where: { parallel: [0, 1, 0] } }, bodies)).toEqual(['q_line'])
-    expect(queriesOf({ kind: 'edge', where: { perpendicular: [0, 1, 0] } }, bodies)).toEqual(['q_arc'])
+    expect(queriesOf({ kind: 'edge', where: { parallel: [0, 1, 0] } }, parts)).toEqual(['q_line'])
+    expect(queriesOf({ kind: 'edge', where: { perpendicular: [0, 1, 0] } }, parts)).toEqual(['q_arc'])
     // Mid-sweep is 5*pi/4, where the tangent is the 45 degree XZ direction.
-    expect(queriesOf({ kind: 'edge', where: { parallel: [1, 0, 1] } }, bodies)).toEqual(['q_arc'])
+    expect(queriesOf({ kind: 'edge', where: { parallel: [1, 0, 1] } }, parts)).toEqual(['q_arc'])
   })
 
   it('a full circle has no direction, so no direction clause picks it', () => {
-    const bodies = {
-      body_ex1: bodyResult('body_ex1', [circle([0, 0, 0], 2, [0, 0, 1])], ['q_circle'], [], [], []),
+    const parts = {
+      body_ex1: partResult('body_ex1', [circle([0, 0, 0], 2, [0, 0, 1])], ['q_circle'], [], [], []),
     }
-    expect(() => queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, bodies))
+    expect(() => queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, parts))
       .toThrow(/parallel \[0, 0, 1\] matched 0/)
-    expect(() => queriesOf({ kind: 'edge', where: { perpendicular: [0, 0, 1] } }, bodies)).toThrow(SelectorError)
+    expect(() => queriesOf({ kind: 'edge', where: { perpendicular: [0, 0, 1] } }, parts)).toThrow(SelectorError)
     // It stays reachable by kind and radius, and a negation never drops it.
-    expect(queriesOf({ kind: 'edge', where: { type: 'circle' } }, bodies)).toEqual(['q_circle'])
-    expect(queriesOf({ kind: 'edge', where: { not: { parallel: [0, 0, 1] } } }, bodies)).toEqual(['q_circle'])
+    expect(queriesOf({ kind: 'edge', where: { type: 'circle' } }, parts)).toEqual(['q_circle'])
+    expect(queriesOf({ kind: 'edge', where: { not: { parallel: [0, 0, 1] } } }, parts)).toEqual(['q_circle'])
   })
 
   it('tests an ellipse tangent at mid-sweep, not its plane normal', () => {
     // A half ellipse in the XZ plane (axis Y), semi axes 4 and 2.
     const half = ellipse([0, 0, 0], 4, 2, [0, 1, 0], [1, 0, 0], 0, Math.PI / 2)
-    const bodies = {
-      body_ex1: bodyResult('body_ex1', [half, line([0, 0, 0], [0, 5, 0])], ['q_ellipse', 'q_line'], [], [], []),
+    const parts = {
+      body_ex1: partResult('body_ex1', [half, line([0, 0, 0], [0, 5, 0])], ['q_ellipse', 'q_line'], [], [], []),
     }
     // At t = pi/4 the tangent is (-2, 0, -1); the Y normal is never a match.
-    expect(queriesOf({ kind: 'edge', where: { parallel: [-2, 0, -1] } }, bodies)).toEqual(['q_ellipse'])
-    expect(queriesOf({ kind: 'edge', where: { parallel: [0, 1, 0] } }, bodies)).toEqual(['q_line'])
+    expect(queriesOf({ kind: 'edge', where: { parallel: [-2, 0, -1] } }, parts)).toEqual(['q_ellipse'])
+    expect(queriesOf({ kind: 'edge', where: { parallel: [0, 1, 0] } }, parts)).toEqual(['q_line'])
   })
 
   it('tests a spline tangent at its middle sample, not its end chord', () => {
     // The middle sample's central difference is (1, 0, 1); first-to-last is
     // (1, 0, 2), so the old chord reading would miss the real tangent.
-    const bodies = {
-      body_ex1: bodyResult(
+    const parts = {
+      body_ex1: partResult(
         'body_ex1',
         [spline([[0, 0, 0], [0, 0, 1], [1, 0, 1], [1, 0, 2]]), line([0, 0, 0], [0, 5, 0])],
         ['q_spline', 'q_line'],
         [], [], [],
       ),
     }
-    expect(queriesOf({ kind: 'edge', where: { parallel: [1, 0, 1] } }, bodies)).toEqual(['q_spline'])
-    expect(() => queriesOf({ kind: 'edge', where: { parallel: [1, 0, 2] } }, bodies)).toThrow(SelectorError)
+    expect(queriesOf({ kind: 'edge', where: { parallel: [1, 0, 1] } }, parts)).toEqual(['q_spline'])
+    expect(() => queriesOf({ kind: 'edge', where: { parallel: [1, 0, 2] } }, parts)).toThrow(SelectorError)
   })
 })
 
 describe('selectByPredicate: type and radius', () => {
   it('type filters edge kinds', () => {
-    const bodies = withCircle()
-    expect(queriesOf({ kind: 'edge', where: { type: 'circle' } }, bodies)).toHaveLength(1)
-    expect(queriesOf({ kind: 'edge', where: { type: 'line' } }, bodies)).toHaveLength(12)
+    const parts = withCircle()
+    expect(queriesOf({ kind: 'edge', where: { type: 'circle' } }, parts)).toHaveLength(1)
+    expect(queriesOf({ kind: 'edge', where: { type: 'line' } }, parts)).toHaveLength(12)
   })
 
   it('type filters face surface types', () => {
@@ -258,20 +258,20 @@ describe('selectByPredicate: type and radius', () => {
   it('type "face" matches the freeform catch-all surface type', () => {
     // surfaceTypeOf reports `face` for a BSpline or otherwise unmodelled
     // surface, and evaluate accepts it exactly; the vocabulary must offer it.
-    const bodies = {
-      body_ex1: bodyResult('body_ex1', [], [], [face([0, 0, 0], [0, 0, 1], 'face')], ['qf'], []),
+    const parts = {
+      body_ex1: partResult('body_ex1', [], [], [face([0, 0, 0], [0, 0, 1], 'face')], ['qf'], []),
     }
-    expect(queriesOf({ kind: 'face', where: { type: 'face' } }, bodies)).toEqual(['qf'])
+    expect(queriesOf({ kind: 'face', where: { type: 'face' } }, parts)).toEqual(['qf'])
   })
 
   it('radius matches a circle edge and a cylinder face', () => {
-    const bodies = withCircle()
-    expect(queriesOf({ kind: 'edge', where: { radius: { eq: 2 } } }, bodies)).toHaveLength(1)
+    const parts = withCircle()
+    expect(queriesOf({ kind: 'edge', where: { radius: { eq: 2 } } }, parts)).toHaveLength(1)
     // A radius test that no candidate satisfies leaves the selector empty, and
     // an empty selector is an error (not a silent zero).
-    expect(() => queriesOf({ kind: 'edge', where: { radius: { min: 3 } } }, bodies)).toThrow(SelectorError)
+    expect(() => queriesOf({ kind: 'edge', where: { radius: { min: 3 } } }, parts)).toThrow(SelectorError)
     // A line edge has no radius: the test is a non-match, not a throw of its own.
-    expect(() => queriesOf({ kind: 'edge', where: { and: [{ type: 'line' }, { radius: 2 }] } }, bodies))
+    expect(() => queriesOf({ kind: 'edge', where: { and: [{ type: 'line' }, { radius: 2 }] } }, parts))
       .toThrow(SelectorError)
   })
 })
@@ -289,14 +289,14 @@ describe('selectByPredicate: extreme', () => {
       line([0, 2, 10 + 2e-7], [10, 2, 10 + 2e-7]),
       line([0, 3, 5], [10, 3, 5]),
     ]
-    const bodies = {
-      body_ex1: bodyResult(
+    const parts = {
+      body_ex1: partResult(
         'body_ex1', edges, edgeQueriesFor('body_ex1', 4), [], [], [],
       ),
     }
     // Three projections a fraction of a micron apart form one group; the far
     // edge is left out.
-    const out = queriesOf({ kind: 'edge', where: { extreme: { axis: [0, 0, 1], side: 'max' } } }, bodies)
+    const out = queriesOf({ kind: 'edge', where: { extreme: { axis: [0, 0, 1], side: 'max' } } }, parts)
     expect(out).toHaveLength(3)
   })
 
@@ -400,20 +400,20 @@ describe('selectByPredicate: adjacency and composition', () => {
 
 describe('selectByPredicate: from, order and provenance', () => {
   it('orders by body id then index', () => {
-    const bodies = {
-      body_zeta: bodyResult('body_zeta', [line([0, 0, 0], [0, 0, 1])], ['q_zeta_0'], [], [], []),
-      body_alpha: bodyResult('body_alpha', [line([0, 0, 0], [0, 0, 1])], ['q_alpha_0'], [], [], []),
+    const parts = {
+      body_zeta: partResult('body_zeta', [line([0, 0, 0], [0, 0, 1])], ['q_zeta_0'], [], [], []),
+      body_alpha: partResult('body_alpha', [line([0, 0, 0], [0, 0, 1])], ['q_alpha_0'], [], [], []),
     }
-    const out = queriesOf({ kind: 'edge' }, bodies)
+    const out = queriesOf({ kind: 'edge' }, parts)
     expect(out).toEqual(['q_alpha_0', 'q_zeta_0'])
   })
 
   it('from restricts to one body', () => {
-    const bodies = {
-      body_a: bodyResult('body_a', [line([0, 0, 0], [0, 0, 1])], ['qa'], [], [], []),
-      body_b: bodyResult('body_b', [line([0, 0, 0], [0, 0, 1])], ['qb'], [], [], []),
+    const parts = {
+      body_a: partResult('body_a', [line([0, 0, 0], [0, 0, 1])], ['qa'], [], [], []),
+      body_b: partResult('body_b', [line([0, 0, 0], [0, 0, 1])], ['qb'], [], [], []),
     }
-    expect(queriesOf({ from: 'body_b', kind: 'edge' }, bodies)).toEqual(['qb'])
+    expect(queriesOf({ from: 'body_b', kind: 'edge' }, parts)).toEqual(['qb'])
   })
 
   it('from naming a missing body fails loud', () => {
@@ -421,31 +421,31 @@ describe('selectByPredicate: from, order and provenance', () => {
   })
 
   it('created_by matches an ancestry feature token', () => {
-    const bodies = {
-      body_ex1: bodyResult(
+    const parts = {
+      body_ex1: partResult(
         'body_ex1',
         [line([0, 0, 0], [0, 0, 1]), line([1, 0, 0], [1, 0, 1])],
         [q('body_ex1', ['@u|e_0', '@ex1'], 'straightedge'), q('body_ex1', ['@u|e_1', '@ex2'], 'straightedge')],
         [], [], [],
       ),
     }
-    expect(queriesOf({ kind: 'edge', where: { created_by: 'ex2' } }, bodies))
+    expect(queriesOf({ kind: 'edge', where: { created_by: 'ex2' } }, parts))
       .toEqual([q('body_ex1', ['@u|e_1', '@ex2'], 'straightedge')])
-    expect(queriesOf({ kind: 'edge', where: { created_by: 'ex1' } }, bodies)).toHaveLength(1)
+    expect(queriesOf({ kind: 'edge', where: { created_by: 'ex1' } }, parts)).toHaveLength(1)
   })
 })
 
 describe('selectByPredicate: alignment and diagnostics', () => {
   it('skips unnamed edges and reads a short query array defensively', () => {
-    const bodies = {
-      body_ex1: bodyResult(
+    const parts = {
+      body_ex1: partResult(
         'body_ex1',
         [line([0, 0, 0], [0, 0, 1]), line([1, 0, 0], [1, 0, 1]), line([2, 0, 0], [2, 0, 1])],
         ['qa', ''],  // edge 1 is unnamed, edge 2 has no query slot
         [], [], [],
       ),
     }
-    expect(queriesOf({ kind: 'edge' }, bodies)).toEqual(['qa'])
+    expect(queriesOf({ kind: 'edge' }, parts)).toEqual(['qa'])
   })
 
   it('an empty result names the nearest-miss count per predicate', () => {
@@ -580,7 +580,7 @@ describe('selectByPredicate: the direction rung and the extreme floor', () => {
   function tipped(sine: number): Record<string, PartResult> {
     const run = 10 * Math.sqrt(1 - sine * sine)
     return {
-      body_ex1: bodyResult('body_ex1', [line([0, 0, 0], [10 * sine, 0, run])], [q('body_ex1', ['@u|e_tip'], 'straightedge')], [], [], []),
+      body_ex1: partResult('body_ex1', [line([0, 0, 0], [10 * sine, 0, run])], [q('body_ex1', ['@u|e_tip'], 'straightedge')], [], [], []),
     }
   }
 
@@ -588,7 +588,7 @@ describe('selectByPredicate: the direction rung and the extreme floor', () => {
   // `cosine`, so its dot against +Z is that cosine.
   function tippedFlat(cosine: number): Record<string, PartResult> {
     return {
-      body_ex1: bodyResult('body_ex1', [line([0, 0, 0], [10 * Math.sqrt(1 - cosine * cosine), 0, 10 * cosine])],
+      body_ex1: partResult('body_ex1', [line([0, 0, 0], [10 * Math.sqrt(1 - cosine * cosine), 0, 10 * cosine])],
         [q('body_ex1', ['@u|e_tip'], 'straightedge')], [], [], []),
     }
   }
@@ -596,15 +596,15 @@ describe('selectByPredicate: the direction rung and the extreme floor', () => {
   it('parallel refuses a tilt perpendicular already refused', () => {
     // A sine of 1e-4 against Z is ~0.006 degrees, a 1 micron lean per millimetre
     // of edge: a visibly different direction, and the one the dot form let through.
-    const bodies = tipped(1e-4)
-    expect(() => queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, bodies)).toThrow(/matched 0/)
-    expect(queriesOf({ kind: 'edge', where: { not: { parallel: [0, 0, 1] } } }, bodies))
+    const parts = tipped(1e-4)
+    expect(() => queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, parts)).toThrow(/matched 0/)
+    expect(queriesOf({ kind: 'edge', where: { not: { parallel: [0, 0, 1] } } }, parts))
       .toEqual([q('body_ex1', ['@u|e_tip'], 'straightedge')])
   })
 
   it('parallel accepts a tilt under the rung, the noise an exact solve leaves', () => {
-    const bodies = tipped(1e-7)
-    expect(queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, bodies))
+    const parts = tipped(1e-7)
+    expect(queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, parts))
       .toEqual([q('body_ex1', ['@u|e_tip'], 'straightedge')])
   })
 
@@ -640,7 +640,7 @@ describe('selectByPredicate: the direction rung and the extreme floor', () => {
       line([0, 1, z0 + gap], [10, 1, z0 + gap]),
       line([0, 2, z0 - 1], [10, 2, z0 - 1]),
     ]
-    return { body_ex1: bodyResult('body_ex1', edges, edgeQueriesFor('body_ex1', 3), [], [], []) }
+    return { body_ex1: partResult('body_ex1', edges, edgeQueriesFor('body_ex1', 3), [], [], []) }
   }
 
   it('extreme groups the same way wherever the part sits on the axis', () => {
@@ -658,7 +658,7 @@ describe('selectByPredicate: the direction rung and the extreme floor', () => {
     // against the 1e-6 measure floor) they group, over it (5e-4) they do not,
     // and the verdict may not depend on where the pair sits on the axis.
     const pair = (z0: number, gap: number): Record<string, PartResult> => ({
-      body_ex1: bodyResult('body_ex1', [
+      body_ex1: partResult('body_ex1', [
         line([0, 0, z0], [10, 0, z0]),
         line([0, 1, z0 + gap], [10, 1, z0 + gap]),
       ], edgeQueriesFor('body_ex1', 2), [], [], []),

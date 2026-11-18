@@ -14,7 +14,7 @@ const TEST_CUBE_MESH: Mesh3D = {
   faces: [[0,1,2],[0,2,3],[4,5,6],[4,6,7],[0,4,5],[0,5,1],[1,5,6],[1,6,2],[2,6,7],[2,7,3],[3,7,4],[3,4,0]],
 }
 
-const TEST_BODIES: Record<string, PartResult> = {
+const TEST_PARTS: Record<string, PartResult> = {
   body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [], mesh: TEST_CUBE_MESH },
 }
 
@@ -40,7 +40,7 @@ function makeCallbacks(): PartEditorCallbacks {
   }
 }
 
-function renderSidebar(features: PartFeature[], solveResults?: Record<string, unknown>, bodies?: Record<string, PartResult | undefined>) {
+function renderSidebar(features: PartFeature[], solveResults?: Record<string, unknown>, parts?: Record<string, PartResult | undefined>) {
   usePartEditorStore.setState({
     features,
     visibleFeatures: new Set(features.map(f => f.id)),
@@ -48,7 +48,7 @@ function renderSidebar(features: PartFeature[], solveResults?: Record<string, un
     visibleParts: new Set(),
     partLabels: {},
     solveResults: solveResults ?? {},
-    parts: (bodies ?? {}) as Record<string,
+    parts: (parts ?? {}) as Record<string,
     PartResult>,
     isRebuilding: false,
     featureTimings: {},
@@ -97,20 +97,20 @@ describe('extrude feature name error state', () => {
     renderSidebar(
       [extrudeFeature],
       { ex1: { status: 'ok', body_id: 'body_ex1' } },
-      TEST_BODIES,
+      TEST_PARTS,
     )
     const name = document.querySelector('.feature-name')
     expect(name?.classList.contains('feature-name-error')).toBe(false)
   })
 
   it('shows error name when status ok but no mesh (mesh_error)', () => {
-    const bodiesWithError: Record<string, PartResult> = {
+    const partsWithError: Record<string, PartResult> = {
       body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [], mesh_error: 'no shape' },
     }
     renderSidebar(
       [extrudeFeature],
       { ex1: { status: 'ok', body_id: 'body_ex1' } },
-      bodiesWithError,
+      partsWithError,
     )
     const name = screen.getByTitle('no shape')
     expect(name.classList.contains('feature-name-error')).toBe(true)
@@ -120,7 +120,7 @@ describe('extrude feature name error state', () => {
     renderSidebar(
       [extrudeFeature],
       { ex1: { status: 'exception', body_id: 'body_ex1', exception: 'sketch not found' } },
-      TEST_BODIES,
+      TEST_PARTS,
     )
     const name = screen.getByTitle('sketch not found')
     expect(name.classList.contains('feature-name-error')).toBe(true)
@@ -133,7 +133,7 @@ describe('extrude feature name error state', () => {
     renderSidebar(
       [filletFeature],
       { fil1: { status: 'partial', body_id: 'body_ex1', exception: '1 edge(s) could not be applied' } },
-      TEST_BODIES,
+      TEST_PARTS,
     )
     const name = screen.getByTitle('1 edge(s) could not be applied')
     expect(name.classList.contains('feature-name-warning')).toBe(true)

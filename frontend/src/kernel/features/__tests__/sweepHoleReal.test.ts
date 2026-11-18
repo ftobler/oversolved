@@ -109,9 +109,9 @@ function sweepProfile(
         id: 'sw1', kind: 'sweep',
         sweep: { sketch: ['$prof'], path: '$path', operation: 'new', ...sweep },
       }, seedRepo(loops, pathEdges), store)
-      const body = store['body_sw1']
-      if (body?.shape == null) return { status: result.status, store }
-      const shape = table.get<OccShape>(body.shape)
+      const part = store['body_sw1']
+      if (part?.shape == null) return { status: result.status, store }
+      const shape = table.get<OccShape>(part.shape)
       const E = oc!.TopAbs_ShapeEnum
       const surfaceTypes: SurfaceType[] = []
       const exp = scope.track(new oc!.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
@@ -121,7 +121,7 @@ function sweepProfile(
       return {
         status: result.status,
         store,
-        body,
+        body: part,
         shape,
         volume: volumeOf(oc!, scope, shape),
         faces: countSubShapes(oc!, scope, shape, E.TopAbs_FACE),
@@ -236,26 +236,26 @@ describe.skipIf(!oc)('sweep of a profile with holes (real OCC)', () => {
       const profile = [circleLoop('outer', 2), circleLoop('inner', 1.5)]
       const first = sweepProfile(profile, straightPath(10, 0.5), {}, resources)
       expect(first.error).toBeUndefined()
-      const body = first.body!
+      const part = first.body!
       // The bore wall is the inner circle and the outer wall the outer circle.
-      const bore = uuidsWithToken(body.face_ancestry, '@prof/inner')
-      const shell = uuidsWithToken(body.face_ancestry, '@prof/outer')
+      const bore = uuidsWithToken(part.face_ancestry, '@prof/inner')
+      const shell = uuidsWithToken(part.face_ancestry, '@prof/outer')
       expect(bore).toHaveLength(1)
       expect(shell).toHaveLength(1)
       // The caps are the annuli the cut left. Each keeps the outer shell's cap
       // token: a cut modifies the cap, it does not create a new one, so the
       // bore's token belongs to the bore wall and not to the cap.
-      const caps = uuidsWithToken(body.face_cap_ancestry, '@prof/outer')
+      const caps = uuidsWithToken(part.face_cap_ancestry, '@prof/outer')
       expect(caps).toHaveLength(2)
 
       // Find the bore rim on the far (end) cap: the pair of the bore wall and
       // one of the caps, whichever rim sits at the swept-to end (y = 10).
       const rimUuids = caps.map((cap) => deriveEdgeUuid(bore[0], cap))
-      const edges = solidToEdges(oc!, resources.table, body.shape!, {
-        createdBy: body.created_by,
-        partId: body.id,
-        edgeAncestry: body.edge_ancestry,
-        edgeUuids: body.edge_uuids,
+      const edges = solidToEdges(oc!, resources.table, part.shape!, {
+        createdBy: part.created_by,
+        partId: part.id,
+        edgeAncestry: part.edge_ancestry,
+        edgeUuids: part.edge_uuids,
       })
       const endRim = edges.edges.findIndex((edge, i) =>
         rimUuids.includes(edges.edge_uuids[i] ?? '') &&

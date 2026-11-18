@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-interface BodyEntry {
+interface PartEntry {
   id: string
   created_by: string
   modified_by: string[]
@@ -35,7 +35,7 @@ interface RegressionEntry {
   ok: boolean
   error: string | null
   result: Record<string, FeatureResult>
-  bodies: Record<string, BodyEntry>
+  bodies: Record<string, PartEntry>
   spec: Record<string, unknown>
 }
 

@@ -157,7 +157,7 @@ function circleSketch(sketchId: string, diameter: number) {
   }
 }
 
-const CORPUS_BODY = 'body_e1tMr2u-m4rxTxhoZSw2z05E'
+const CORPUS_PART = 'body_e1tMr2u-m4rxTxhoZSw2z05E'
 
 // Each case: a spec, the body to check, and the build files it needs. The
 // filleted box picks its edge from a first build, so it is a function of the harness.
@@ -185,17 +185,17 @@ const CASES: Array<{ name: string; body: string; spec: (h: SharedHarness) => Spe
     { id: 'ex2', kind: 'extrude', sketch: '$sk2', distance: 12, direction: 'normal', operation: 'cut' },
   ] }) },
   // extrude -> linear array -> fillet -> transform -> circular array -> up_to extrude -> 3-tool union
-  { name: 'pick identity corpus', body: CORPUS_BODY, spec: () => structuredClone(corpus) as unknown as Spec },
+  { name: 'pick identity corpus', body: CORPUS_PART, spec: () => structuredClone(corpus) as unknown as Spec },
   { name: 'imported STEP', body: 'body_imp1', files: importFiles, spec: () => ({ features: [
     { id: 'imp1', kind: 'import_step', file_id: 'imp1', scale: 1 },
   ] }) },
 ]
 
-function finalBody(r: BuildResponse, bodyId: string): PartSolid {
+function finalPart(r: BuildResponse, partId: string): PartSolid {
   const state = r._build_state!
-  const body = state.checkpoints[state.feature_order[state.feature_order.length - 1]].body_store_snapshot[bodyId]
-  expect(body?.shape, `${bodyId} has a shape`).not.toBeNull()
-  return body
+  const part = state.checkpoints[state.feature_order[state.feature_order.length - 1]].body_store_snapshot[partId]
+  expect(part?.shape, `${partId} has a shape`).not.toBeNull()
+  return part
 }
 
 // Sketches report their constraint state and datums are not solved here; only
@@ -233,7 +233,7 @@ describe.skipIf(!oc || !solveBytes)('canonical sub-shape order survives the pipe
       expectSolidsOk(h, spec, r)
       const scope = new DisposeScope()
       try {
-        const original = h.table.get<OccShape>(finalBody(r, c.body).shape!)
+        const original = h.table.get<OccShape>(finalPart(r, c.body).shape!)
         const once = scope.track(copyShape(occ, scope, original))
         const twice = scope.track(copyShape(occ, scope, once))
         const sig0 = signature(occ, scope, original)
@@ -255,8 +255,8 @@ describe.skipIf(!oc || !solveBytes)('canonical sub-shape order survives the pipe
       expectSolidsOk(h, tail, r2)
       const scope = new DisposeScope()
       try {
-        const built = h.table.get<OccShape>(finalBody(r1, c.body).shape!)
-        const restored = h.table.get<OccShape>(finalBody(r2, c.body).shape!)
+        const built = h.table.get<OccShape>(finalPart(r1, c.body).shape!)
+        const restored = h.table.get<OccShape>(finalPart(r2, c.body).shape!)
         expectSameOrder(signature(occ, scope, built), signature(occ, scope, restored), `${c.name} restore`)
       } finally {
         scope.dispose()

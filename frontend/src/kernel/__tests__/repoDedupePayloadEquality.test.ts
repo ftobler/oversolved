@@ -25,7 +25,7 @@ import { Repository, makeAncestryQuery, AmbiguousQueryError, canonical } from '.
 import { repoSemanticFingerprint } from '../repoFingerprintTestUtil'
 import type { PartSolid } from '../types3d'
 
-function makeBody(fid: string, id: string): PartSolid {
+function makePart(fid: string, id: string): PartSolid {
   return {
     id,
     created_by: fid,
@@ -39,20 +39,20 @@ function makeBody(fid: string, id: string): PartSolid {
 
 /** A `trySolveFeature` that creates TWO bodies for one feature, so `[@fid]`
  *  would receive one solid + one extrusion-feature per body. */
-function solveTwoBodies(
+function solveTwoParts(
   feature: Record<string, unknown>,
   _repo: Repository,
-  bodyStore: Record<string, PartSolid>,
+  partStore: Record<string, PartSolid>,
 ): FeatureResult {
   const fid = String(feature.id ?? '')
-  bodyStore['body_' + fid] = makeBody(fid, 'body_' + fid)
-  bodyStore['body_' + fid + '_1'] = makeBody(fid, 'body_' + fid + '_1')
+  partStore['body_' + fid] = makePart(fid, 'body_' + fid)
+  partStore['body_' + fid + '_1'] = makePart(fid, 'body_' + fid + '_1')
   return { status: 'ok' }
 }
 
-function twoBodyDeps(liveRepo: Repository): BuildDeps {
+function twoPartDeps(liveRepo: Repository): BuildDeps {
   return {
-    trySolveFeature: solveTwoBodies,
+    trySolveFeature: solveTwoParts,
     postRegister: () => {},
     initGlobalRepo: () => liveRepo,
     tessellateParts: () => ({}),
@@ -66,7 +66,7 @@ describe('live == restored duplicate semantics', () => {
     build(
       { features: [{ id: 'f1', kind: 'make' }] },
       { prevState: null },
-      twoBodyDeps(liveRepo),
+      twoPartDeps(liveRepo),
     )
 
     const entry = [...liveRepo.ancestral.values()].find((e) => {
@@ -102,7 +102,7 @@ describe('live == restored duplicate semantics', () => {
     build(
       { features: [{ id: 'f1', kind: 'make' }] },
       { prevState: null },
-      twoBodyDeps(liveRepo),
+      twoPartDeps(liveRepo),
     )
     const q = makeAncestryQuery(['@f1'], 'solid')
 
@@ -116,12 +116,12 @@ describe('live == restored duplicate semantics', () => {
       const set = [...e.set]
       return set.length === 1 && set[0] === '@f1'
     })!
-    const solidBodies = entry.eids
+    const solidParts = entry.eids
       .map((eid) => restored.elements.get(eid) as Record<string, unknown> | undefined)
       .filter((el) => el?.type === 'solid')
       .map((el) => el!.body_id)
       .sort()
-    expect(solidBodies).toEqual(['body_f1', 'body_f1_1'])
+    expect(solidParts).toEqual(['body_f1', 'body_f1_1'])
   })
 })
 

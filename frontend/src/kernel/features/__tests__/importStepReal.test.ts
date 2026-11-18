@@ -109,20 +109,20 @@ describe.skipIf(!oc)('solveImportStep (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, PartSolid> = {}
+        const partStore: Record<string, PartSolid> = {}
         const result = solveImportStep(
           occ,
           scope,
           table,
           { id: c.feature_id, file_id: c.feature_id, scale: c.scale },
           new Repository(),
-          bodyStore,
+          partStore,
           filesFor(c.feature_id, fixtureBytes),
         )
         // The fixture predates `body_ids`; a one-solid file yields the single body it named.
         expect(result).toEqual({ ...c.result, body_ids: [c.result.body_id] })
-        const body = bodyStore[c.result.body_id as string]
-        expect(volumeOf(occ, scope, table.get<OccShape>(body.shape!))).toBeCloseTo(c.volume, 2)
+        const part = partStore[c.result.body_id as string]
+        expect(volumeOf(occ, scope, table.get<OccShape>(part.shape!))).toBeCloseTo(c.volume, 2)
       } finally {
         scope.dispose()
       }
@@ -145,7 +145,7 @@ describe.skipIf(!oc)('solveImportStep (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const bodyStore: Record<string, PartSolid> = {}
+      const partStore: Record<string, PartSolid> = {}
       const base = fx.cases.find((c) => c.scale === 1) ?? fx.cases[0]
       const result = solveImportStep(
         occ,
@@ -153,11 +153,11 @@ describe.skipIf(!oc)('solveImportStep (real OCC)', () => {
         table,
         { id: 'imp_inch', file_id: 'imp_inch', scale: 1 / 25.4 },
         new Repository(),
-        bodyStore,
+        partStore,
         filesFor('imp_inch', fixtureBytes),
       )
-      const body = bodyStore[result.body_id as string]
-      const volume = volumeOf(occ, scope, table.get<OccShape>(body.shape!))
+      const part = partStore[result.body_id as string]
+      const volume = volumeOf(occ, scope, table.get<OccShape>(part.shape!))
       expect(volume).toBeCloseTo(base.volume / 25.4 ** 3, 6)
     } finally {
       scope.dispose()
@@ -170,28 +170,28 @@ describe.skipIf(!oc)('solveImportStep (real OCC)', () => {
     const table = new HandleTable()
     try {
       const fileData = twoBoxStepB64(occ)
-      const bodyStore: Record<string, PartSolid> = {}
+      const partStore: Record<string, PartSolid> = {}
       const result = solveImportStep(
         occ,
         scope,
         table,
         { id: 'imp1', file_id: 'imp1' },
         new Repository(),
-        bodyStore,
+        partStore,
         filesFor('imp1', base64ToBytes(fileData)),
       )
 
       expect(result.body_ids).toEqual(['body_imp1', 'body_imp1_1'])
       expect(result.body_id).toBe('body_imp1')
-      expect(Object.keys(bodyStore)).toEqual(['body_imp1', 'body_imp1_1'])
+      expect(Object.keys(partStore)).toEqual(['body_imp1', 'body_imp1_1'])
       const volumes = result.body_ids
-        .map(id => volumeOf(occ, scope, table.get<OccShape>(bodyStore[id].shape!)))
+        .map(id => volumeOf(occ, scope, table.get<OccShape>(partStore[id].shape!)))
         .sort((a, b) => a - b)
       expect(volumes[0]).toBeCloseTo(125, 3)
       expect(volumes[1]).toBeCloseTo(1000, 3)
       for (const id of result.body_ids) {
-        expect(bodyStore[id].imported).toBe(true)
-        expect(bodyStore[id].created_by).toBe('imp1')
+        expect(partStore[id].imported).toBe(true)
+        expect(partStore[id].created_by).toBe('imp1')
       }
     } finally {
       scope.dispose()
@@ -203,19 +203,19 @@ describe.skipIf(!oc)('solveImportStep (real OCC)', () => {
     const table = new HandleTable()
     try {
       const fileData = twoBoxStepB64(occ)
-      const bodyStore: Record<string, PartSolid> = {}
+      const partStore: Record<string, PartSolid> = {}
       const result = solveImportStep(
         occ,
         scope,
         table,
         { id: 'imp2', file_id: 'imp2', scale: 2 },
         new Repository(),
-        bodyStore,
+        partStore,
         filesFor('imp2', base64ToBytes(fileData)),
       )
 
       const volumes = result.body_ids
-        .map(id => volumeOf(occ, scope, table.get<OccShape>(bodyStore[id].shape!)))
+        .map(id => volumeOf(occ, scope, table.get<OccShape>(partStore[id].shape!)))
         .sort((x, y) => x - y)
       expect(volumes[0]).toBeCloseTo(125 * 8, 2)
       expect(volumes[1]).toBeCloseTo(1000 * 8, 2)
@@ -282,9 +282,9 @@ describe.skipIf(!oc)('multi-part STEP through a full build', () => {
     }, { files: filesFor(IMP, base64ToBytes(twoBoxStepB64(occ))) })
 
     expect(h.res(r, IMP).status).toBe('ok')
-    const bodyIds = Object.keys(r.bodies as Record<string, unknown>)
-    expect(bodyIds).toEqual([`body_${IMP}`, `body_${IMP}_1`])
-    for (const bid of bodyIds) {
+    const partIds = Object.keys(r.bodies as Record<string, unknown>)
+    expect(partIds).toEqual([`body_${IMP}`, `body_${IMP}_1`])
+    for (const bid of partIds) {
       const mesh = h.part(r, bid).mesh as { vertices?: unknown[]; faces?: unknown[] } | undefined
       expect(mesh?.faces?.length).toBeGreaterThan(0)
       // Each part must own its faces, or picking one would select the other.
@@ -387,18 +387,18 @@ describe.skipIf(!oc)('imported face queries are individually selectable', () => 
     const h = new SharedHarness(occ)
     const IMP = 'stepimp5'
     const r = h.run({ features: [{ id: IMP, kind: 'import_step', file_id: IMP }] }, { files: filesFor(IMP, base64ToBytes(file)) })
-    const bodyIds = Object.keys(r.bodies as Record<string, unknown>)
-    expect(bodyIds.length).toBe(2)
+    const partIds = Object.keys(r.bodies as Record<string, unknown>)
+    expect(partIds.length).toBe(2)
 
-    const perBody = bodyIds.map((bid) => (h.part(r, bid).mesh as { face_queries: string[] }).face_queries)
-    for (const queries of perBody) {
+    const perPart = partIds.map((bid) => (h.part(r, bid).mesh as { face_queries: string[] }).face_queries)
+    for (const queries of perPart) {
       expect(queries.length).toBe(6)
       for (const q of queries) expect(uuidToken(q)).not.toBeNull()
     }
     // The placements do NOT share their UUIDs any more, and no whole query may
     // repeat, or a pick would hit both copies.
-    expect(new Set(perBody[0].map(uuidToken))).not.toEqual(new Set(perBody[1].map(uuidToken)))
-    expect(new Set([...perBody[0], ...perBody[1]]).size).toBe(12)
+    expect(new Set(perPart[0].map(uuidToken))).not.toEqual(new Set(perPart[1].map(uuidToken)))
+    expect(new Set([...perPart[0], ...perPart[1]]).size).toBe(12)
 
     // A real resolve: every face query of both bodies resolves in the UUID
     // tier to exactly the queried body's face. Pre-fix the shared-uuid faces
@@ -406,7 +406,7 @@ describe.skipIf(!oc)('imported face queries are individually selectable', () => 
     const repo = repoFromSnapshot(
       (r._build_state.checkpoints[IMP] as unknown as { repo_snapshot: Record<string, unknown> }).repo_snapshot,
     )
-    for (const bid of bodyIds) {
+    for (const bid of partIds) {
       const mesh = h.part(r, bid).mesh as { face_queries: string[] }
       for (let i = 0; i < mesh.face_queries.length; i++) {
         const hit = repo.query(mesh.face_queries[i], null, null, null) as
@@ -427,12 +427,12 @@ describe.skipIf(!oc)('imported face queries are individually selectable', () => 
     const occ = oc!
     const file = twoPlacementStepB64(occ)
     const h = new SharedHarness(occ)
-    const tokensByBody = (): Record<string, string[]> => {
+    const tokensByPart = (): Record<string, string[]> => {
       const r = h.run({ features: [{ id: 'impA', kind: 'import_step', file_id: 'impA' }] }, { files: filesFor('impA', base64ToBytes(file)) })
-      const bodyIds = Object.keys(r.bodies as Record<string, unknown>)
-      expect(bodyIds.length).toBe(2)
+      const partIds = Object.keys(r.bodies as Record<string, unknown>)
+      expect(partIds.length).toBe(2)
       const out: Record<string, string[]> = {}
-      for (const bid of bodyIds) {
+      for (const bid of partIds) {
         const tokens: string[] = []
         const queries = (h.part(r, bid).mesh as { face_queries: string[] }).face_queries
         for (const q of queries) {
@@ -444,18 +444,18 @@ describe.skipIf(!oc)('imported face queries are individually selectable', () => 
       }
       return out
     }
-    expect(tokensByBody()).toEqual(tokensByBody())
+    expect(tokensByPart()).toEqual(tokensByPart())
   }, 60000)
 
   it('keeps two parts of a multi-solid STEP in disjoint name sets', () => {
     const h = new SharedHarness(oc!)
     const IMP = 'stepimp4'
     const r = h.run({ features: [{ id: IMP, kind: 'import_step', file_id: IMP }] }, { files: filesFor(IMP, base64ToBytes(twoBoxStepB64(oc!))) })
-    const bodyIds = Object.keys(r.bodies as Record<string, unknown>)
-    expect(bodyIds.length).toBe(2)
+    const partIds = Object.keys(r.bodies as Record<string, unknown>)
+    expect(partIds.length).toBe(2)
 
     const seen = new Set<string>()
-    for (const bid of bodyIds) {
+    for (const bid of partIds) {
       const queries = (h.part(r, bid).mesh as { face_queries: string[] }).face_queries
       expect(queries.length).toBe(6)
       for (const q of queries) {

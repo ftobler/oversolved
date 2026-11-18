@@ -45,7 +45,7 @@ function setupHook() {
 }
 
 /** The editor store as enterEditFeature leaves it for the delete_body feature. */
-function enterEditOfDeleteBody() {
+function enterEditOfDeletePart() {
   useEditorState.setState({
     editingFeatureId: null,
     rollbackPosition: 2,
@@ -79,7 +79,7 @@ describe('useSolver pick state readiness', () => {
 
   it('stays false while the edit solve is still in flight', async () => {
     const result = setupHook()
-    enterEditOfDeleteBody()
+    enterEditOfDeletePart()
     let release!: (v: unknown) => void
     mockSolveViaWorker.mockReturnValueOnce(new Promise(r => { release = r }))
 
@@ -97,7 +97,7 @@ describe('useSolver pick state readiness', () => {
 
   it('goes false again when the edit ends', async () => {
     const result = setupHook()
-    enterEditOfDeleteBody()
+    enterEditOfDeletePart()
     mockSolveViaWorker.mockResolvedValueOnce({
       solve_ms: 0, result: {}, bodies: {}, pick_bodies: { body_ex1: {} }, _build_state: null,
     })

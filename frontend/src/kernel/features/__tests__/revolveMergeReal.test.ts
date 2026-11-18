@@ -63,7 +63,7 @@ function revolveSpec(sketchId: string, revId: string, opts: { angle?: number; op
   return r
 }
 
-function bodyA() {
+function partA() {
   return { features: [
     axisSketch(),
     rectSketchAt('sk0', 2, 1, 1),
@@ -71,7 +71,7 @@ function bodyA() {
   ]}
 }
 
-function twoBodies() {
+function twoParts() {
   return { features: [
     axisSketch(),
     rectSketchAt('sk0', 2, 1, 1),
@@ -90,7 +90,7 @@ describe.skipIf(!oc || !solveBytes)('revolve merge target (real OCC + Rust solve
   })
 
   it('add with merge_target fuses to specific body', () => {
-    const doc = twoBodies()
+    const doc = twoParts()
     doc.features.push(rectSketchAt('sk2', 2, 1, 2))
     doc.features.push(revolveSpec('sk2', 'rev2', { operation: 'add', mergeTarget: '@body_rev0' }))
     const r = h.run(doc)
@@ -104,7 +104,7 @@ describe.skipIf(!oc || !solveBytes)('revolve merge target (real OCC + Rust solve
     // The tool does not touch the named target, so the fuse is a two-solid
     // compound: the target keeps its id and the island becomes a new body.
     // That is a regular outcome, not an error.
-    const doc = bodyA()
+    const doc = partA()
     // The island sits on the NEGATIVE side, so geometric centroid order would
     // rank it before the target. The target id must still stay on the target.
     doc.features.push(rectSketchAt('sk2', 2, 1, -20))
@@ -118,7 +118,7 @@ describe.skipIf(!oc || !solveBytes)('revolve merge target (real OCC + Rust solve
   })
 
   it('add with nonexistent merge_target fails', () => {
-    const doc = bodyA()
+    const doc = partA()
     doc.features.push(rectSketchAt('sk2', 2, 1, 2))
     doc.features.push(revolveSpec('sk2', 'rev2', { operation: 'add', mergeTarget: '@body_nonexistent' }))
     const r = h.run(doc)
@@ -126,7 +126,7 @@ describe.skipIf(!oc || !solveBytes)('revolve merge target (real OCC + Rust solve
   })
 
   it('cut with merge_target cuts specific body', () => {
-    const doc = twoBodies()
+    const doc = twoParts()
     doc.features.push(rectSketchAt('sk2', 2, 0.5, 1))
     doc.features.push(revolveSpec('sk2', 'rev2', { operation: 'cut', mergeTarget: '@body_rev0' }))
     const r = h.run(doc)
@@ -136,7 +136,7 @@ describe.skipIf(!oc || !solveBytes)('revolve merge target (real OCC + Rust solve
   })
 
   it('cut with no intersection fails', () => {
-    const doc = twoBodies()
+    const doc = twoParts()
     doc.features.push(rectSketchAt('sk2', 2, 1, 50))
     doc.features.push(revolveSpec('sk2', 'rev2', { operation: 'cut' }))
     const r = h.run(doc)
@@ -144,7 +144,7 @@ describe.skipIf(!oc || !solveBytes)('revolve merge target (real OCC + Rust solve
   })
 
   it('cut with nonexistent merge_target fails', () => {
-    const doc = twoBodies()
+    const doc = twoParts()
     doc.features.push(rectSketchAt('sk2', 2, 0.5, 1))
     doc.features.push(revolveSpec('sk2', 'rev2', { operation: 'cut', mergeTarget: '@body_nonexistent' }))
     const r = h.run(doc)
@@ -152,13 +152,13 @@ describe.skipIf(!oc || !solveBytes)('revolve merge target (real OCC + Rust solve
   })
 
   it('new creates independent body', () => {
-    const r = h.run(bodyA())
+    const r = h.run(partA())
     expect(h.res(r, 'rev0').status).toBe('ok')
     expect(h.res(r, 'rev0').operation).toBe('new')
   })
 
   it('merge_target preserved in feature spec', () => {
-    const doc = bodyA()
+    const doc = partA()
     doc.features.push(rectSketchAt('sk2', 1, 1, 2))
     doc.features.push(revolveSpec('sk2', 'rev2', { operation: 'add', mergeTarget: '@body_rev0' }))
     const r = h.run(doc)

@@ -14,7 +14,7 @@ const featureMirrorDoc = (): PartDoc => makeDoc({
   mirror: { subject: 'feature', source_features: ['@ex1'], plane: '@builtin_plane_top' },
 })
 
-const bodyMirrorDoc = (): PartDoc => makeDoc({
+const partMirrorDoc = (): PartDoc => makeDoc({
   id: 'mi1', kind: 'mirror', label: 'Mirror',
   mirror: { subject: 'body', body: '@body_ex1', plane: '@builtin_plane_top', keep_original: true, merge: true },
 })
@@ -50,7 +50,7 @@ describe('mirror feature subject at the drive boundary', () => {
     // The same field is a plain edit on a body mirror.
     expect(validateMutation(
       { type: 'set_mirror_field', featureId: 'mi1', field: 'keep_original', value: false },
-      { doc: bodyMirrorDoc() },
+      { doc: partMirrorDoc() },
     )).toMatchObject({ ok: true })
   })
 
@@ -68,7 +68,7 @@ describe('mirror feature subject at the drive boundary', () => {
   })
 
   it('clears the body-only flags when the subject switches to feature', () => {
-    const doc = bodyMirrorDoc()
+    const doc = partMirrorDoc()
     applySetMirrorField(doc, 'mi1', 'subject', 'feature')
     const feature = doc.features?.find((candidate) => candidate.id === 'mi1')
     if (feature?.kind !== 'mirror') throw new Error('mirror row lost')

@@ -32,10 +32,10 @@ vi.mock('@/adapters/backend', () => ({
       load: (uuid: string) => (h.loads[uuid] ??= h.make()).promise,
       // Deferred like the loads: a manual save spends multiple awaits
       // (screenshot, then the store), and tests need to hold it open.
-      save: (uuid: string, body: { content: string; preview_image?: string }) => {
+      save: (uuid: string, part: { content: string; preview_image?: string }) => {
         const gate = h.make()
         h.saveGates.push(gate)
-        h.saves.push({ uuid, ...body })
+        h.saves.push({ uuid, ...part })
         return gate.promise
       },
       rename: (uuid: string, name: string) => {

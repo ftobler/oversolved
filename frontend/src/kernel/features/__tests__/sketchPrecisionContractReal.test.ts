@@ -42,11 +42,11 @@ const doc = mirrorSeams as unknown as {
 /** The live body shape at the last checkpoint. The harness table keeps the
  *  handles across builds (the scope is per build), so the final body is
  *  readable here. */
-function lastBodyShape(h: ReturnType<typeof extrudeTestHarness>, result: BuildResponse, bodyId: string): OccShape | null {
+function lastPartShape(h: ReturnType<typeof extrudeTestHarness>, result: BuildResponse, partId: string): OccShape | null {
   const state = result._build_state as BuildState
   const order = state.feature_order
   const checkpoint = order.length > 0 ? state.checkpoints[order[order.length - 1]] : undefined
-  const handle = checkpoint?.body_store_snapshot[bodyId]?.shape
+  const handle = checkpoint?.body_store_snapshot[partId]?.shape
   if (!handle) return null
   return h.table.get<OccShape>(handle)
 }
@@ -250,7 +250,7 @@ describe.skipIf(!oc || !solveBytes)('sketch precision contract (real OCC)', () =
     const row = h.res(result, 'sk1')
     expect(row.status).toBe('underconstrained')
     expect(Number(row.angular_miss)).toBeLessThanOrEqual(OCC_ANGULAR)
-    const shape = lastBodyShape(h, result, 'body_ex1')
+    const shape = lastPartShape(h, result, 'body_ex1')
     expect(shape).not.toBeNull()
     const seams = seamEdges(oc!, scope, shape!)
     // The authored horizontal pins the top wall's merge too, so the whole body
@@ -283,10 +283,10 @@ describe.skipIf(!oc || !solveBytes)('sketch precision contract (real OCC)', () =
     // read, not a guess.
     const state = result._build_state as BuildState
     const last = state.feature_order[state.feature_order.length - 1]
-    const body = state.checkpoints[last].body_store_snapshot.body_ex1
-    expect(body.precision?.angular).toBe(OCC_ANGULAR)
-    expect(body.precision?.sketch).toBe('sk1')
-    const shape = lastBodyShape(h, result, 'body_ex1')
+    const part = state.checkpoints[last].body_store_snapshot.body_ex1
+    expect(part.precision?.angular).toBe(OCC_ANGULAR)
+    expect(part.precision?.sketch).toBe('sk1')
+    const shape = lastPartShape(h, result, 'body_ex1')
     expect(shape).not.toBeNull()
     const seams = seamEdges(oc!, scope, shape!)
     expect(seams).toHaveLength(2)

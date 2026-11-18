@@ -87,27 +87,27 @@ class CountingHarness {
       const deps: BuildDeps = {
         trySolveFeature: createFeatureSolver(oc!, scope, this.table, importFiles),
         postRegister, initGlobalRepo,
-        tessellateParts: (bodyStore) => {
+        tessellateParts: (partStore) => {
           const out: Record<string, Record<string, unknown>> = {}
-          for (const body of Object.values(bodyStore)) {
-            if (!body.shape) continue
+          for (const part of Object.values(partStore)) {
+            if (!part.shape) continue
             try {
               this.renderCount += 1  // one render triangulation for this body
-              this.rendered.push(body.id)
-              const mesh = solidToMesh(oc!, this.table, body.shape, {
-                createdBy: body.created_by || '', partId: body.id,
-                faceAncestry: body.face_ancestry ?? null, faceUuids: body.face_uuids ?? null,
-                profileQueries: body.profile_queries ?? [],
+              this.rendered.push(part.id)
+              const mesh = solidToMesh(oc!, this.table, part.shape, {
+                createdBy: part.created_by || '', partId: part.id,
+                faceAncestry: part.face_ancestry ?? null, faceUuids: part.face_uuids ?? null,
+                profileQueries: part.profile_queries ?? [],
               })
-              const edgeResult = solidToEdges(oc!, this.table, body.shape, {
-                createdBy: body.created_by || '', partId: body.id,
-                profileQueries: body.profile_queries ?? [],
-                edgeAncestry: body.edge_ancestry ?? null, edgeUuids: body.edge_uuids ?? null,
+              const edgeResult = solidToEdges(oc!, this.table, part.shape, {
+                createdBy: part.created_by || '', partId: part.id,
+                profileQueries: part.profile_queries ?? [],
+                edgeAncestry: part.edge_ancestry ?? null, edgeUuids: part.edge_uuids ?? null,
               })
-              const vertexResult = solidToVertices(oc!, this.table, body.shape, {
-                createdBy: body.created_by || '', partId: body.id, profileQueries: body.profile_queries ?? [],
+              const vertexResult = solidToVertices(oc!, this.table, part.shape, {
+                createdBy: part.created_by || '', partId: part.id, profileQueries: part.profile_queries ?? [],
               })
-              out[body.id] = {
+              out[part.id] = {
                 mesh, edges: edgeResult.edges, edge_queries: edgeResult.edge_queries, edge_uuids: edgeResult.edge_uuids,
                 vertices: vertexResult.vertices, vertex_queries: vertexResult.vertex_queries,
               }
@@ -115,9 +115,9 @@ class CountingHarness {
           }
           return out
         },
-        extractBrepMetadata: (bodyStore) => {
-          for (const b of Object.values(bodyStore)) if (b.shape) this.metaExtracted.push(b.id)
-          return extractBrepMetadata(oc!, this.table, bodyStore)
+        extractBrepMetadata: (partStore) => {
+          for (const b of Object.values(partStore)) if (b.shape) this.metaExtracted.push(b.id)
+          return extractBrepMetadata(oc!, this.table, partStore)
         },
         retainCheckpointShape: (h, owner) => this.table.retain(h, owner),
         copyPartShape: (h, owner) =>
@@ -138,7 +138,7 @@ class CountingHarness {
     }
   }
 
-  body(r: BuildResponse, bid: string): Record<string, unknown> {
+  part(r: BuildResponse, bid: string): Record<string, unknown> {
     return (r.bodies as Record<string, Record<string, unknown>>)[bid] ?? {}
   }
 }
@@ -166,7 +166,7 @@ describe.skipIf(!oc || !solveBytes)('rebuild tessellation count (real OCC + Rust
     const h = new CountingHarness()
     // First build the box alone to harvest distinct edge queries for the fillets.
     const seed = h.run({ features: [rectSketch('sk1', 20, 20), extrudeSpec('sk1', 'ex1', 10)] })
-    const eq = (h.body(seed, 'body_ex1').edge_queries as string[]) ?? []
+    const eq = (h.part(seed, 'body_ex1').edge_queries as string[]) ?? []
     expect(eq.length).toBeGreaterThanOrEqual(3)
 
     const h2 = new CountingHarness()
@@ -175,17 +175,17 @@ describe.skipIf(!oc || !solveBytes)('rebuild tessellation count (real OCC + Rust
     for (const fid of ['ex1', 'fi1', 'fi2', 'fi3']) {
       expect((r.result as Record<string, Record<string, unknown>>)[fid].status).toBe('ok')
     }
-    const finalBodies = Object.keys(r.bodies).length
-    expect(finalBodies).toBe(1)
+    const finalParts = Object.keys(r.bodies).length
+    expect(finalParts).toBe(1)
     // The proof of reduction: exactly one render triangulation per final body,
     // NOT one per feature checkpoint (which would be >= 4 here).
-    expect(h2.renderCount).toBe(finalBodies)
+    expect(h2.renderCount).toBe(finalParts)
   })
 
   it('adds exactly one lazy tessellation for a mid-stack pick_boundary', () => {
     const h = new CountingHarness()
     const seed = h.run({ features: [rectSketch('sk1', 20, 20), extrudeSpec('sk1', 'ex1', 10)] })
-    const eq = (h.body(seed, 'body_ex1').edge_queries as string[]) ?? []
+    const eq = (h.part(seed, 'body_ex1').edge_queries as string[]) ?? []
 
     const h2 = new CountingHarness()
     const r = h2.run(chainDoc(eq), { pickBoundary: 2 })  // boundary after ex1
@@ -198,7 +198,7 @@ describe.skipIf(!oc || !solveBytes)('rebuild tessellation count (real OCC + Rust
   it('renders zero times on a fully-clean rebuild (final mesh reused)', () => {
     const h = new CountingHarness()
     const seed = h.run({ features: [rectSketch('sk1', 20, 20), extrudeSpec('sk1', 'ex1', 10)] })
-    const eq = (h.body(seed, 'body_ex1').edge_queries as string[]) ?? []
+    const eq = (h.part(seed, 'body_ex1').edge_queries as string[]) ?? []
 
     const h2 = new CountingHarness()
     const doc = chainDoc(eq)
@@ -252,10 +252,10 @@ describe.skipIf(!oc || !solveBytes)('rebuild tessellation count (real OCC + Rust
   it('reused imported mesh is byte-identical to a fresh tessellation', () => {
     const h = new CountingHarness()
     const r1 = h.run(importPlusNativeDoc(10))
-    const fresh = h.body(r1, 'body_imp1').mesh
+    const fresh = h.part(r1, 'body_imp1').mesh
 
     const r2 = h.run(importPlusNativeDoc(15), { prevState: r1._build_state })
-    const reused = h.body(r2, 'body_imp1').mesh
+    const reused = h.part(r2, 'body_imp1').mesh
     expect(reused).toEqual(fresh)
   })
 
@@ -306,7 +306,7 @@ describe.skipIf(!oc || !solveBytes)('rebuild tessellation count (real OCC + Rust
   it('re-reads metadata for a body that actually changes between checkpoints', () => {
     const h = new CountingHarness()
     const seed = h.run({ features: [rectSketch('sk1', 20, 20), extrudeSpec('sk1', 'ex1', 10)] })
-    const eq = (h.body(seed, 'body_ex1').edge_queries as string[]) ?? []
+    const eq = (h.part(seed, 'body_ex1').edge_queries as string[]) ?? []
     expect(eq.length).toBeGreaterThanOrEqual(3)
 
     const h2 = new CountingHarness()
@@ -347,7 +347,7 @@ describe.skipIf(!oc || !solveBytes)('rebuild tessellation count (real OCC + Rust
       const h = new CountingHarness()
       const doc = importPlusTwoNativeDoc()
       const r1 = h.run(doc)
-      const fresh = (h.body(r1, 'body_imp1').mesh)
+      const fresh = (h.part(r1, 'body_imp1').mesh)
 
       const r2 = h.run(doc, { prevState: r1._build_state, pickBoundary: 4 })
       const picked = (r2.pick_bodies as Record<string, Record<string, unknown>>)['body_imp1']
@@ -377,7 +377,7 @@ describe.skipIf(!oc || !solveBytes)('rebuild tessellation count (real OCC + Rust
       const imp = { id: 'imp1', kind: 'import_step', file_id: 'imp1', scale: 1 }
       const seedH = new CountingHarness()
       const seed = seedH.run({ features: [imp] })
-      const eq = (seedH.body(seed, 'body_imp1').edge_queries as string[]) ?? []
+      const eq = (seedH.part(seed, 'body_imp1').edge_queries as string[]) ?? []
       expect(eq.length).toBeGreaterThan(0)
 
       const h = new CountingHarness()
@@ -401,7 +401,7 @@ describe.skipIf(!oc || !solveBytes)('rebuild tessellation count (real OCC + Rust
       expect(h.rendered).toContain('body_imp1')
       // The point of the guard, stated as geometry rather than as a call count:
       // the pick world must not be handed the modified shape.
-      expect(pick['body_imp1'].mesh).not.toEqual(h.body(r2, 'body_imp1').mesh)
+      expect(pick['body_imp1'].mesh).not.toEqual(h.part(r2, 'body_imp1').mesh)
     })
   })
 })

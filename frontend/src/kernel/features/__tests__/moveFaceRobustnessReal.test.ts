@@ -50,7 +50,7 @@ interface FaceInfo {
   surface_type?: string
   surface_frame?: { radius?: number }
 }
-interface BodyView {
+interface PartView {
   mesh?: { face_queries?: string[]; face_data?: FaceInfo[]; vertices?: number[][] }
 }
 
@@ -98,8 +98,8 @@ const uuidOf = (q: string): string | null => {
   return tok === undefined ? null : tok.slice(3)
 }
 
-function bbox(body: BodyView): { min: number[]; max: number[] } {
-  const verts = body.mesh?.vertices ?? []
+function bbox(part: PartView): { min: number[]; max: number[] } {
+  const verts = part.mesh?.vertices ?? []
   const min = [Infinity, Infinity, Infinity]
   const max = [-Infinity, -Infinity, -Infinity]
   for (const v of verts) for (let i = 0; i < 3; i++) {
@@ -111,7 +111,7 @@ function bbox(body: BodyView): { min: number[]; max: number[] } {
 
 describe.skipIf(!oc || !solveBytes)('move-face multi-face robustness (real OCC + Rust solver)', () => {
   const h = new SharedHarness(oc!)
-  const bodyId = `body_${EX}`
+  const partId = `body_${EX}`
 
   beforeAll(() => {
     if (!oc || !solveBytes) throw new Error('unreachable: skipIf guards this')
@@ -119,14 +119,14 @@ describe.skipIf(!oc || !solveBytes)('move-face multi-face robustness (real OCC +
     setSketchSolver(solveBytes)
   })
 
-  function bodyOf(r: ReturnType<typeof h.run>): BodyView {
-    return h.part(r, bodyId) as BodyView
+  function partOf(r: ReturnType<typeof h.run>): PartView {
+    return h.part(r, partId) as PartView
   }
 
   // The cylinder radius of the one live face carrying `uuid`.
-  function radiusByUuid(body: BodyView, uuid: string): number {
-    const queries = body.mesh?.face_queries ?? []
-    const data = body.mesh?.face_data ?? []
+  function radiusByUuid(part: PartView, uuid: string): number {
+    const queries = part.mesh?.face_queries ?? []
+    const data = part.mesh?.face_data ?? []
     const idx = queries.findIndex((q) => uuidOf(q) === uuid)
     const radius = idx < 0 ? undefined : data[idx]?.surface_frame?.radius
     if (radius === undefined) throw new Error(`no cylinder face for ${uuid}`)
@@ -142,9 +142,9 @@ describe.skipIf(!oc || !solveBytes)('move-face multi-face robustness (real OCC +
     lower: string
     bore: string
   } {
-    const body = bodyOf(r)
-    const queries = body.mesh?.face_queries ?? []
-    const data = body.mesh?.face_data ?? []
+    const part = partOf(r)
+    const queries = part.mesh?.face_queries ?? []
+    const data = part.mesh?.face_data ?? []
     const cylinders = queries.filter((_, i) => data[i]?.surface_type === 'cylinderface')
     expect(cylinders, 'four cylinder faces').toHaveLength(4)
     const forEntity = (eid: string): string[] => cylinders.filter((q) => q.includes(`/${eid}`))
@@ -169,12 +169,12 @@ describe.skipIf(!oc || !solveBytes)('move-face multi-face robustness (real OCC +
     const lower = uuidOf(picks.lower)
     if (upper === null || lower === null) throw new Error('the split sibling arcs carry no UUID')
     expect(upper).not.toBe(lower)
-    const run = (faces: string[]): BodyView => {
+    const run = (faces: string[]): PartView => {
       const r = h.run({
         features: [...DOCUMENT.features, { id: 'mf1', kind: 'move_face', move_face: { faces, distance: 5 } }],
       })
       expect(h.res(r, 'mf1').status).toBe('ok')
-      return bodyOf(r)
+      return partOf(r)
     }
     // The two arcs are the +y and -y halves of one r25 cylinder. Each pick
     // must move the cap that inherits its own UUID by 5 (whichever way its
@@ -215,7 +215,7 @@ describe.skipIf(!oc || !solveBytes)('move-face multi-face robustness (real OCC +
       })
       const res = h.res(r, 'mf1')
       expect(res.status, String(res.exception ?? '')).toBe('ok')
-      const uuids = (bodyOf(r).mesh?.face_queries ?? [])
+      const uuids = (partOf(r).mesh?.face_queries ?? [])
         .map(uuidOf)
         .filter((u): u is string => u !== null)
       expect(new Set(uuids).size, 'no two resulting faces share a name').toBe(uuids.length)
@@ -226,14 +226,14 @@ describe.skipIf(!oc || !solveBytes)('move-face multi-face robustness (real OCC +
   it('distance 0 on sibling picks is still the identity', () => {
     const base = h.run(DOCUMENT)
     const p = cylinderPicks(base)
-    const before = bbox(bodyOf(base))
+    const before = bbox(partOf(base))
     const r = h.run({
       features: [...DOCUMENT.features, {
         id: 'mf1', kind: 'move_face', move_face: { faces: [p.upper, p.lower], distance: 0 },
       }],
     })
     expect(h.res(r, 'mf1').status).toBe('ok')
-    const after = bbox(bodyOf(r))
+    const after = bbox(partOf(r))
     for (let i = 0; i < 3; i++) {
       expect(after.min[i]).toBeCloseTo(before.min[i], 6)
       expect(after.max[i]).toBeCloseTo(before.max[i], 6)
@@ -261,7 +261,7 @@ describe.skipIf(!oc || !solveBytes)('move-face multi-face robustness (real OCC +
 
   it('all four faces move together in list order and in reverse, with the same result', async () => {
     const base = h.run(DOCUMENT)
-    const baseBox = bbox(bodyOf(base))
+    const baseBox = bbox(partOf(base))
     const p = cylinderPicks(base)
     const picked = [p.outerLeft, p.upper, p.lower, p.bore]
     const runs = [picked, [...picked].reverse()]
@@ -272,7 +272,7 @@ describe.skipIf(!oc || !solveBytes)('move-face multi-face robustness (real OCC +
       })
       expect(h.res(r, 'mf1').status).toBe('ok')
       expect((h.res(r, 'mf1').body_ids as string[])).toHaveLength(1)
-      const bb = bbox(bodyOf(r))
+      const bb = bbox(partOf(r))
       // The three outer arcs grow by 5; the bore closes inward.
       expect(bb.min[0]).toBeLessThan(baseBox.min[0] - 4.5)
       expect(bb.max[0]).toBeGreaterThan(baseBox.max[0] + 4.5)

@@ -20,7 +20,7 @@ import { booleanWithDiff, volumeOf } from '../../occ/booleans'
 import { makeBoxAt, makeCylinder, solidCentroid } from '../../occ/primitives'
 import { Repository } from '../../query'
 import { barePart } from '../shared/partResolution'
-import { patternFeature, solveArray, solveCircularArray } from './patternBodyTestAdapters'
+import { patternFeature, solveArray, solveCircularArray } from './patternPartTestAdapters'
 import { solveBoolean } from '../boolean'
 import type { PartSolid } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
@@ -40,10 +40,10 @@ function rig(): Rig {
 }
 
 function seed(r: Rig, id: string, createdBy: string, shape: OccShape): PartSolid {
-  const body = barePart(id, createdBy)
-  body.shape = r.table.register(r.scope.detach(r.scope.track(shape)), createdBy)
-  r.store[id] = body
-  return body
+  const part = barePart(id, createdBy)
+  part.shape = r.table.register(r.scope.detach(r.scope.track(shape)), createdBy)
+  r.store[id] = part
+  return part
 }
 
 function volume(r: Rig, id: string): number {

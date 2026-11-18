@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { Repository } from '../../query'
-import { solveArray, solveCircularArray } from './patternBodyTestAdapters'
+import { solveArray, solveCircularArray } from './patternPartTestAdapters'
 import { solveTransform, solveMirror } from '../transformMirror'
 import type { HandleTable } from '../../occ/handleTable'
 import type { OccModule } from '../../occ/occTypes'
@@ -14,7 +14,7 @@ const scope = null as never
 const table = null as unknown as HandleTable
 const repo = new Repository()
 
-function nullBody(id: string): PartSolid {
+function nullPart(id: string): PartSolid {
   return {
     id,
     created_by: 'ex',
@@ -29,13 +29,13 @@ function nullBody(id: string): PartSolid {
 describe('array / circular_array guard paths', () => {
   it('array: source body not found', () => {
     expect(() =>
-      solveArray(oc, scope, table, { id: 'a', array: { source_body: 'nope' } }, repo, { body_s: nullBody('body_s') }),
+      solveArray(oc, scope, table, { id: 'a', array: { source_body: 'nope' } }, repo, { body_s: nullPart('body_s') }),
     ).toThrow(/source part 'nope' not found/)
   })
 
   it('array: source body has no shape', () => {
     expect(() =>
-      solveArray(oc, scope, table, { id: 'a', array: { source_body: 'body_s' } }, repo, { body_s: nullBody('body_s') }),
+      solveArray(oc, scope, table, { id: 'a', array: { source_body: 'body_s' } }, repo, { body_s: nullPart('body_s') }),
     ).toThrow(/source part has no shape/)
   })
 
@@ -43,18 +43,18 @@ describe('array / circular_array guard paths', () => {
     /** No source_body pick must be a solve error, not a silent auto-pick of
      *  the first body in the store. */
     expect(() =>
-      solveCircularArray(oc, scope, table, { id: 'c', circular_array: {} }, repo, { body_s: nullBody('body_s') }),
+      solveCircularArray(oc, scope, table, { id: 'c', circular_array: {} }, repo, { body_s: nullPart('body_s') }),
     ).toThrow(/source part is required/)
   })
 
   it('array: missing source body pick raises even when a body is available', () => {
     expect(() =>
-      solveArray(oc, scope, table, { id: 'a', array: {} }, repo, { body_s: nullBody('body_s') }),
+      solveArray(oc, scope, table, { id: 'a', array: {} }, repo, { body_s: nullPart('body_s') }),
     ).toThrow(/source part is required/)
   })
 
   it('array: count 0 is refused and count 1 is the quiet no-op', () => {
-    const store = { body_s: { ...nullBody('body_s'), shape: 1 as never } }
+    const store = { body_s: { ...nullPart('body_s'), shape: 1 as never } }
     expect(() =>
       solveArray(oc, scope, table, {
         id: 'a', array: { source_body: 'body_s', mode: 'linear', count_x: 0, direction: [1, 0, 0] },
@@ -70,7 +70,7 @@ describe('array / circular_array guard paths', () => {
   it('circular_array: count 0 is refused and count 1 is the quiet no-op', () => {
     // count 0 has no generated list; count 1 keeps the original and copies
     // nothing.
-    const store = { body_s: { ...nullBody('body_s'), shape: 1 as never } }
+    const store = { body_s: { ...nullPart('body_s'), shape: 1 as never } }
     expect(() =>
       solveCircularArray(oc, scope, table, {
         id: 'c', circular_array: { source_body: 'body_s', count: 0, axis_origin: [0, 0, 0], axis_direction: [0, 0, 1] },
@@ -88,12 +88,12 @@ describe('array / circular_array guard paths', () => {
     expect(() =>
       solveCircularArray(oc, scope, table, {
         id: 'c', circular_array: { source_body: 'nonexistent' },
-      }, repo, { body_real: nullBody('body_real') }),
+      }, repo, { body_real: nullPart('body_real') }),
     ).toThrow(/source part 'nonexistent' not found/)
     try {
       solveCircularArray(oc, scope, table, {
         id: 'c', circular_array: { source_body: 'nonexistent' },
-      }, repo, { body_real: nullBody('body_real') })
+      }, repo, { body_real: nullPart('body_real') })
     } catch (e) {
       expect((e as Error).message).toMatch(/available part IDs/)
     }
@@ -104,12 +104,12 @@ describe('array / circular_array guard paths', () => {
     expect(() =>
       solveArray(oc, scope, table, {
         id: 'a', array: { source_body: 'nonexistent' },
-      }, repo, { body_real: nullBody('body_real') }),
+      }, repo, { body_real: nullPart('body_real') }),
     ).toThrow(/source part 'nonexistent' not found/)
     try {
       solveArray(oc, scope, table, {
         id: 'a', array: { source_body: 'nonexistent' },
-      }, repo, { body_real: nullBody('body_real') })
+      }, repo, { body_real: nullPart('body_real') })
     } catch (e) {
       expect((e as Error).message).toMatch(/available part IDs/)
     }
@@ -119,7 +119,7 @@ describe('array / circular_array guard paths', () => {
 describe('transform / mirror guard paths', () => {
   it('transform: body not found', () => {
     expect(() =>
-      solveTransform(oc, scope, table, { id: 't', transform: { bodies: ['nope'] } }, repo, { body_s: nullBody('body_s') }),
+      solveTransform(oc, scope, table, { id: 't', transform: { bodies: ['nope'] } }, repo, { body_s: nullPart('body_s') }),
     ).toThrow(/part not found/)
   })
 
@@ -131,7 +131,7 @@ describe('transform / mirror guard paths', () => {
     const staleRepo = { query: () => ({ body_id: 'gone' }) } as unknown as Repository
     expect(() =>
       solveTransform(oc, scope, table, { id: 't', transform: { bodies: ['?1;@ex1:flatface'] } }, staleRepo, {
-        body_s: nullBody('body_s'),
+        body_s: nullPart('body_s'),
       }),
     ).toThrow(/part no longer exists: "gone"/)
   })
@@ -139,7 +139,7 @@ describe('transform / mirror guard paths', () => {
   it('transform: rotation_angle without an axis', () => {
     expect(() =>
       solveTransform(oc, scope, table, { id: 't', transform: { bodies: ['body_s'], rotation_angle: 90 } }, repo, {
-        body_s: { ...nullBody('body_s'), shape: 1 as never },
+        body_s: { ...nullPart('body_s'), shape: 1 as never },
       }),
     ).toThrow(/no rotation axis specified/)
   })
@@ -150,7 +150,7 @@ describe('transform / mirror guard paths', () => {
     // axis present.
     expect(() =>
       solveTransform(oc, scope, table, { id: 't', transform: { bodies: ['body_s'], rotation_angle: NaN } }, repo, {
-        body_s: { ...nullBody('body_s'), shape: 1 as never },
+        body_s: { ...nullPart('body_s'), shape: 1 as never },
       }),
     ).toThrow(/rotation_angle must be a finite number/)
     expect(() =>
@@ -158,7 +158,7 @@ describe('transform / mirror guard paths', () => {
         id: 't',
         transform: { bodies: ['body_s'], rotation_angle: Infinity, rotation_axis_origin: [0, 0, 0], rotation_axis_direction: [0, 0, 1] },
       }, repo, {
-        body_s: { ...nullBody('body_s'), shape: 1 as never },
+        body_s: { ...nullPart('body_s'), shape: 1 as never },
       }),
     ).toThrow(/rotation_angle must be a finite number/)
   })
@@ -168,7 +168,7 @@ describe('transform / mirror guard paths', () => {
     for (const bad of [NaN, Infinity]) {
       expect(() =>
         solveTransform(oc, scope, table, { id: 't', transform: { bodies: ['body_s'], scale: bad } }, repo, {
-          body_s: { ...nullBody('body_s'), shape: 1 as never },
+          body_s: { ...nullPart('body_s'), shape: 1 as never },
         }),
       ).toThrow(/scale must be a finite number/)
     }
@@ -177,14 +177,14 @@ describe('transform / mirror guard paths', () => {
   it('mirror: plane is required', () => {
     expect(() =>
       solveMirror(oc, scope, table, { id: 'm', mirror: { body: 'body_s' } }, repo, {
-        body_s: { ...nullBody('body_s'), shape: 1 as never },
+        body_s: { ...nullPart('body_s'), shape: 1 as never },
       }),
     ).toThrow(/plane is required/)
   })
 
   it('mirror: body not found', () => {
     expect(() =>
-      solveMirror(oc, scope, table, { id: 'm', mirror: { body: 'nope' } }, repo, { body_s: nullBody('body_s') }),
+      solveMirror(oc, scope, table, { id: 'm', mirror: { body: 'nope' } }, repo, { body_s: nullPart('body_s') }),
     ).toThrow(/part not found/)
   })
 
@@ -196,7 +196,7 @@ describe('transform / mirror guard paths', () => {
       solveTransform(oc, scope, table, {
         id: 't',
         transform: { bodies: ['body_s'], translation_from: '@missing', translation_to: '@p1' },
-      }, repo, { body_s: { ...nullBody('body_s'), shape: 1 as never } }),
+      }, repo, { body_s: { ...nullPart('body_s'), shape: 1 as never } }),
     ).toThrow(/translation_from not found/)
   })
 
@@ -207,7 +207,7 @@ describe('transform / mirror guard paths', () => {
       solveTransform(oc, scope, table, {
         id: 't',
         transform: { bodies: ['body_s'], translation_from: '@from', translation_to: '@missing' },
-      }, repo, { body_s: { ...nullBody('body_s'), shape: 1 as never } }),
+      }, repo, { body_s: { ...nullPart('body_s'), shape: 1 as never } }),
     ).toThrow(/translation_to not found/)
   })
 
@@ -217,7 +217,7 @@ describe('transform / mirror guard paths', () => {
       solveTransform(oc, scope, table, {
         id: 't',
         transform: { bodies: ['body_s'], rotation_axis: '@missing' },
-      }, repo, { body_s: { ...nullBody('body_s'), shape: 1 as never } }),
+      }, repo, { body_s: { ...nullPart('body_s'), shape: 1 as never } }),
     ).toThrow(/rotation_axis not found/)
   })
 
@@ -227,7 +227,7 @@ describe('transform / mirror guard paths', () => {
       solveTransform(oc, scope, table, {
         id: 't',
         transform: { bodies: ['body_s'], scale: 2, scale_center_from: '@missing' },
-      }, repo, { body_s: { ...nullBody('body_s'), shape: 1 as never } }),
+      }, repo, { body_s: { ...nullPart('body_s'), shape: 1 as never } }),
     ).toThrow(/scale_center_from not found/)
   })
 
@@ -235,7 +235,7 @@ describe('transform / mirror guard paths', () => {
     const repo = new Repository()
     expect(() =>
       solveMirror(oc, scope, table, { id: 'm', mirror: { body: 'body_s', plane: '@missing' } }, repo, {
-        body_s: { ...nullBody('body_s'), shape: 1 as never },
+        body_s: { ...nullPart('body_s'), shape: 1 as never },
       }),
     ).toThrow(/plane not found: "@missing"/)
   })
@@ -247,7 +247,7 @@ describe('transform / mirror guard paths', () => {
     repo.register('notaplane', { type: 'weird' })
     expect(() =>
       solveMirror(oc, scope, table, { id: 'm', mirror: { body: 'body_s', plane: '@notaplane' } }, repo, {
-        body_s: { ...nullBody('body_s'), shape: 1 as never },
+        body_s: { ...nullPart('body_s'), shape: 1 as never },
       }),
     ).toThrow(/did not resolve to a plane/)
   })

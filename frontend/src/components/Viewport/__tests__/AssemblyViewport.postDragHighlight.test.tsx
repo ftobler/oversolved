@@ -47,7 +47,7 @@ import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assembl
 import type { AssemblyPickPart } from '@/utils/assemblyPick'
 import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
 
-function pickBody(): AssemblyPickPart {
+function pickPart(): AssemblyPickPart {
   return {
     handle: 'p1',
     partKey: 'p1:body_0',
@@ -74,9 +74,9 @@ beforeEach(() => {
 
 describe('AssemblyViewport drawn pick geometry', () => {
   it('offsets the pick layers and the highlight onto the settling pose', () => {
-    const body = pickBody()
+    const part = pickPart()
     useAssemblyStore.setState({
-      pickGeometry: [body],
+      pickGeometry: [part],
       pickGeometryPose: { p1: IDENTITY_TRANSFORM },
       transforms: { p1: IDENTITY_TRANSFORM },
       settlingOffsets: { p1: { ...IDENTITY_TRANSFORM, tx: 3 } },
@@ -84,25 +84,25 @@ describe('AssemblyViewport drawn pick geometry', () => {
 
     render(<AssemblyViewport />)
 
-    const bodies = captured.pickBodies as AssemblyPickPart[]
-    expect(bodies).toHaveLength(1)
-    expect(bodies[0].faces!.positions[0]).toBeCloseTo(3, 9)
-    expect(captured.highlightBodies).toBe(bodies)
+    const parts = captured.pickBodies as AssemblyPickPart[]
+    expect(parts).toHaveLength(1)
+    expect(parts[0].faces!.positions[0]).toBeCloseTo(3, 9)
+    expect(captured.highlightBodies).toBe(parts)
   })
 
   it('hands the baked body straight through at rest (identity offset, no churn)', () => {
-    const body = pickBody()
+    const part = pickPart()
     useAssemblyStore.setState({
-      pickGeometry: [body],
+      pickGeometry: [part],
       pickGeometryPose: { p1: IDENTITY_TRANSFORM },
       transforms: { p1: IDENTITY_TRANSFORM },
     } as never)
 
     render(<AssemblyViewport />)
 
-    const bodies = captured.pickBodies as AssemblyPickPart[]
-    expect(bodies[0]).toBe(body)
-    expect(captured.highlightBodies).toBe(bodies)
+    const parts = captured.pickBodies as AssemblyPickPart[]
+    expect(parts[0]).toBe(part)
+    expect(captured.highlightBodies).toBe(parts)
   })
 
   it('mounts the selection highlight in the plain settled state', () => {

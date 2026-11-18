@@ -59,10 +59,10 @@ describe.skipIf(!hasOcc)('makeHalfSpaceBox', () => {
   it('puts the base in the plane and the box on the normal side', () => {
     const scope = new DisposeScope()
     try {
-      const body = makeBoxAt(oc, scope, [0, 0, 0], 10, 10, 10)
+      const part = makeBoxAt(oc, scope, [0, 0, 0], 10, 10, 10)
       const origin: Vec3 = [0, 5, 0]
       const normal: Vec3 = [0, 1, 0]
-      const { shape, base } = makeHalfSpaceBox(oc, scope, origin, normal, body)
+      const { shape, base } = makeHalfSpaceBox(oc, scope, origin, normal, part)
 
       const baseVerts = faceVertices(scope, base)
       expect(baseVerts).toHaveLength(4)
@@ -79,8 +79,8 @@ describe.skipIf(!hasOcc)('makeHalfSpaceBox', () => {
   it('reports the base as a face of the prism, by construction', () => {
     const scope = new DisposeScope()
     try {
-      const body = makeBoxAt(oc, scope, [0, 0, 0], 10, 10, 10)
-      const { shape, base } = makeHalfSpaceBox(oc, scope, [0, 3, 0], [0, 1, 0], body)
+      const part = makeBoxAt(oc, scope, [0, 0, 0], 10, 10, 10)
+      const { shape, base } = makeHalfSpaceBox(oc, scope, [0, 3, 0], [0, 1, 0], part)
       expect(faceIsSame(shape, base)).toBe(true)
     } finally {
       scope.dispose()
@@ -90,11 +90,11 @@ describe.skipIf(!hasOcc)('makeHalfSpaceBox', () => {
   it('covers a body a long way from the origin', () => {
     const scope = new DisposeScope()
     try {
-      const body = makeBoxAt(oc, scope, [1e4, -1e4, 5e3], 10, 10, 10)
+      const part = makeBoxAt(oc, scope, [1e4, -1e4, 5e3], 10, 10, 10)
       // The plane of the body's bottom face: everything above it must be covered.
       const origin: Vec3 = [1e4 + 5, -1e4, 5e3 + 5]
-      const { shape } = makeHalfSpaceBox(oc, scope, origin, [0, 1, 0], body)
-      for (const p of readSolidVertices(oc, scope, body)) expect(isInside(scope, shape, p)).toBe(true)
+      const { shape } = makeHalfSpaceBox(oc, scope, origin, [0, 1, 0], part)
+      for (const p of readSolidVertices(oc, scope, part)) expect(isInside(scope, shape, p)).toBe(true)
     } finally {
       scope.dispose()
     }
@@ -103,11 +103,11 @@ describe.skipIf(!hasOcc)('makeHalfSpaceBox', () => {
   it('covers the body when the plane origin sits 1e3 away in-plane', () => {
     const scope = new DisposeScope()
     try {
-      const body = makeBoxAt(oc, scope, [0, 0, 0], 10, 10, 10)
+      const part = makeBoxAt(oc, scope, [0, 0, 0], 10, 10, 10)
       // The plane y = 0 is the same plane whatever in-plane point names it.
       const origin: Vec3 = [1000, 0, -1000]
-      const { shape } = makeHalfSpaceBox(oc, scope, origin, [0, 1, 0], body)
-      for (const p of readSolidVertices(oc, scope, body)) expect(isInside(scope, shape, p)).toBe(true)
+      const { shape } = makeHalfSpaceBox(oc, scope, origin, [0, 1, 0], part)
+      for (const p of readSolidVertices(oc, scope, part)) expect(isInside(scope, shape, p)).toBe(true)
     } finally {
       scope.dispose()
     }

@@ -52,7 +52,7 @@ import AssemblyViewport, { type AssemblyViewportHandle } from '../AssemblyViewpo
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assemblyStore'
 
 // Non-degenerate vertices so fitToContent has real bounds to frame.
-function bodyWithVertices(): Record<string, unknown> {
+function partWithVertices(): Record<string, unknown> {
   return {
     body1: {
       id: 'body1',
@@ -85,7 +85,7 @@ describe('AssemblyViewport fit on a late scene camera', () => {
     const cam = probeCamera()
     // Geometry is already in the store: the bodies-driven fit effect ran at
     // mount as a no-op, because the scene tree has not rendered yet.
-    useAssemblyStore.setState({ parts: bodyWithVertices() } as never)
+    useAssemblyStore.setState({ parts: partWithVertices() } as never)
 
     const { rerender } = render(<AssemblyViewport />)
 
@@ -102,7 +102,7 @@ describe('AssemblyViewport fit on a late scene camera', () => {
 
   it('reports framed only after the fit lands, then immediately once it has', () => {
     const cam = probeCamera()
-    useAssemblyStore.setState({ parts: bodyWithVertices() } as never)
+    useAssemblyStore.setState({ parts: partWithVertices() } as never)
     const ref = createRef<AssemblyViewportHandle>()
 
     const { rerender } = render(<AssemblyViewport ref={ref} />)

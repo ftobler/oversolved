@@ -20,7 +20,7 @@ function instance(handle: string, extra: Partial<PartInstance> = {}): PartInstan
   return { handle, doc_id: `doc-${handle}`, doc_rev: 1, transform: { ...IDENTITY_TRANSFORM }, ...extra }
 }
 
-function body(handle: string, index: number): PartResult {
+function part(handle: string, index: number): PartResult {
   return {
     id: `${handle}:body_${index}`,
     created_by: handle,
@@ -29,9 +29,9 @@ function body(handle: string, index: number): PartResult {
   }
 }
 
-function bodyDict(...handles: string[]): Record<string, PartResult> {
+function partDict(...handles: string[]): Record<string, PartResult> {
   const out: Record<string, PartResult> = {}
-  for (const h of handles) out[`${h}:body_0`] = body(h, 0)
+  for (const h of handles) out[`${h}:body_0`] = part(h, 0)
   return out
 }
 
@@ -110,7 +110,7 @@ describe('getAssemblyBuiltins', () => {
 
 describe('getAssemblyPartGroups', () => {
   it('groups each instance-s bodies and leaves them at their solved pose', () => {
-    const groups = getAssemblyPartGroups(bodyDict('p1', 'p2'), [instance('p1'), instance('p2')], null, new Set())
+    const groups = getAssemblyPartGroups(partDict('p1', 'p2'), [instance('p1'), instance('p2')], null, new Set())
 
     expect(groups.map(g => g.handle)).toEqual(['p1', 'p2'])
     expect(groups[0].items).toHaveLength(1)
@@ -121,7 +121,7 @@ describe('getAssemblyPartGroups', () => {
 
   it('drops a hidden instance and an instance with no bodies', () => {
     const groups = getAssemblyPartGroups(
-      bodyDict('p1', 'p2'),
+      partDict('p1', 'p2'),
       [instance('p1', { visible: false }), instance('p2'), instance('p3')],
       null,
       new Set(),
@@ -130,13 +130,13 @@ describe('getAssemblyPartGroups', () => {
   })
 
   it('marks the selected instance', () => {
-    const groups = getAssemblyPartGroups(bodyDict('p1', 'p2'), [instance('p1'), instance('p2')], null, new Set(['p2']))
+    const groups = getAssemblyPartGroups(partDict('p1', 'p2'), [instance('p1'), instance('p2')], null, new Set(['p2']))
     expect(groups.map(g => g.selected)).toEqual([false, true])
   })
 
   it('offsets only the dragged part, by the drag delta', () => {
     const drag = session('p2', IDENTITY_TRANSFORM, { ...IDENTITY_TRANSFORM, tx: 3, ty: 4 })
-    const groups = getAssemblyPartGroups(bodyDict('p1', 'p2'), [instance('p1'), instance('p2')], drag, new Set())
+    const groups = getAssemblyPartGroups(partDict('p1', 'p2'), [instance('p1'), instance('p2')], drag, new Set())
 
     expect(groups[0].manipulating).toBe(false)
     expect(groups[0].position).toEqual([0, 0, 0])
@@ -150,14 +150,14 @@ describe('getAssemblyPartGroups', () => {
     // wherever the mate solve put it, and must move by exactly the drag delta.
     const seed: Transform3D = { ...IDENTITY_TRANSFORM, tx: 10 }
     const drag = session('p1', seed, { ...seed, tx: 12 })
-    const groups = getAssemblyPartGroups(bodyDict('p1'), [instance('p1')], drag, new Set())
+    const groups = getAssemblyPartGroups(partDict('p1'), [instance('p1')], drag, new Set())
     expect(groups[0].position[0]).toBeCloseTo(2, 6)
   })
 
   it('carries a gizmo rotation into the group quaternion', () => {
     const q = quatFromAxisAngle([0, 0, 1], Math.PI / 2)
     const drag = session('p1', IDENTITY_TRANSFORM, makeTransform([0, 0, 0], q))
-    const groups = getAssemblyPartGroups(bodyDict('p1'), [instance('p1')], drag, new Set())
+    const groups = getAssemblyPartGroups(partDict('p1'), [instance('p1')], drag, new Set())
     expect(groups[0].quaternion[2]).toBeCloseTo(Math.SQRT1_2, 6)
     expect(groups[0].quaternion[3]).toBeCloseTo(Math.SQRT1_2, 6)
   })
@@ -177,11 +177,11 @@ describe('getAssemblyPartGroups', () => {
   // (`sameInstances`, stores/assemblyStore.ts). Without that, a doc edit that
   // moved no part still landed here and re-minted the whole render tree.
   it('rebuilds every group and items array it returns, keeping only the leaves', () => {
-    const bodies = bodyDict('p1', 'p2')
+    const parts = partDict('p1', 'p2')
     const instances = [instance('p1'), instance('p2')]
 
-    const first = getAssemblyPartGroups(bodies, instances, null, new Set())
-    const second = getAssemblyPartGroups(bodies, instances, null, new Set())
+    const first = getAssemblyPartGroups(parts, instances, null, new Set())
+    const second = getAssemblyPartGroups(parts, instances, null, new Set())
 
     expect(second).toEqual(first)  // content-equal, group for group
     expect(second).not.toBe(first)
@@ -202,20 +202,20 @@ describe('gizmoOrigin', () => {
   const solved: Record<string, Transform3D> = { p1: { ...IDENTITY_TRANSFORM, tx: 5 } }
 
   it('sits at the part-s solved origin', () => {
-    const groups = getAssemblyPartGroups(bodyDict('p1'), [instance('p1')], null, new Set(['p1']))
+    const groups = getAssemblyPartGroups(partDict('p1'), [instance('p1')], null, new Set(['p1']))
     expect(gizmoOrigin('p1', groups, solved, [instance('p1')])).toEqual([5, 0, 0])
   })
 
   it('follows a live drag', () => {
     const drag = session('p1', IDENTITY_TRANSFORM, { ...IDENTITY_TRANSFORM, ty: 2 })
-    const groups = getAssemblyPartGroups(bodyDict('p1'), [instance('p1')], drag, new Set(['p1']))
+    const groups = getAssemblyPartGroups(partDict('p1'), [instance('p1')], drag, new Set(['p1']))
     const o = gizmoOrigin('p1', groups, solved, [instance('p1')])!
     expect(o[0]).toBeCloseTo(5, 6)
     expect(o[1]).toBeCloseTo(2, 6)
   })
 
   it('falls back to the placed transform before the first solve, and is null with no selection', () => {
-    const groups = getAssemblyPartGroups(bodyDict('p1'), [instance('p1', { transform: { ...IDENTITY_TRANSFORM, tz: 7 } })], null, new Set(['p1']))
+    const groups = getAssemblyPartGroups(partDict('p1'), [instance('p1', { transform: { ...IDENTITY_TRANSFORM, tz: 7 } })], null, new Set(['p1']))
     expect(gizmoOrigin('p1', groups, {}, [instance('p1', { transform: { ...IDENTITY_TRANSFORM, tz: 7 } })])).toEqual([0, 0, 7])
     expect(gizmoOrigin(null, groups, solved, [instance('p1')])).toBeNull()
   })
@@ -225,7 +225,7 @@ describe('gizmoOrientation', () => {
   it('matches the part-s solved orientation, so the triad tilts with the part', () => {
     const q = quatFromAxisAngle([0, 0, 1], Math.PI / 2)
     const solved: Record<string, Transform3D> = { p1: makeTransform([0, 0, 0], q) }
-    const groups = getAssemblyPartGroups(bodyDict('p1'), [instance('p1')], null, new Set(['p1']))
+    const groups = getAssemblyPartGroups(partDict('p1'), [instance('p1')], null, new Set(['p1']))
     const o = gizmoOrientation('p1', groups, solved, [instance('p1')])!
     expect(o[2]).toBeCloseTo(Math.SQRT1_2, 6)
     expect(o[3]).toBeCloseTo(Math.SQRT1_2, 6)
@@ -235,14 +235,14 @@ describe('gizmoOrientation', () => {
     // Solved at +90-deg about Z, then dragged another +90; the triad shows 180.
     const solved: Record<string, Transform3D> = { p1: makeTransform([0, 0, 0], quatFromAxisAngle([0, 0, 1], Math.PI / 2)) }
     const drag = session('p1', IDENTITY_TRANSFORM, makeTransform([0, 0, 0], quatFromAxisAngle([0, 0, 1], Math.PI / 2)))
-    const groups = getAssemblyPartGroups(bodyDict('p1'), [instance('p1')], drag, new Set(['p1']))
+    const groups = getAssemblyPartGroups(partDict('p1'), [instance('p1')], drag, new Set(['p1']))
     const o = gizmoOrientation('p1', groups, solved, [instance('p1')])!
     expect(o[2]).toBeCloseTo(1, 6)  // sin(90 deg) about Z
     expect(o[3]).toBeCloseTo(0, 6)  // cos(90 deg)
   })
 
   it('is null with no selection', () => {
-    const groups = getAssemblyPartGroups(bodyDict('p1'), [instance('p1')], null, new Set(['p1']))
+    const groups = getAssemblyPartGroups(partDict('p1'), [instance('p1')], null, new Set(['p1']))
     expect(gizmoOrientation(null, groups, {}, [instance('p1')])).toBeNull()
   })
 })
@@ -277,9 +277,9 @@ describe('capBandsFor', () => {
   it('numbers every drawn body uniquely across part groups', () => {
     const groups = getAssemblyPartGroups(
       {
-        'p1:body_0': body('p1', 0),
-        'p1:body_1': body('p1', 1),
-        'p2:body_0': body('p2', 0),
+        'p1:body_0': part('p1', 0),
+        'p1:body_1': part('p1', 1),
+        'p2:body_0': part('p2', 0),
       },
       [instance('p1'), instance('p2')],
       null,

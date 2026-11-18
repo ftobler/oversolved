@@ -196,7 +196,7 @@ const treeDoc = (): PartDoc => makeDoc(
   makeSketch('f2', { label: 'second' }),
 )
 
-const deleteBodyDoc = (): PartDoc => makeDoc(
+const deletePartDoc = (): PartDoc => makeDoc(
   { id: 'ex1', kind: 'extrude', label: 'Ext', extrude: { sketch: [], distance: 1 } },
   { id: 'db1', kind: 'delete_body', label: 'Delete Body', delete_body: { bodies: ['@b1', '@b2'] } },
 )
@@ -767,11 +767,11 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
     mutation: { type: 'add_delete_body', featureId: 'db1', bodies: ['@b1'], label: 'Delete Body' },
   },
   add_delete_body_ref: {
-    makeDoc: deleteBodyDoc,
+    makeDoc: deletePartDoc,
     mutation: { type: 'add_delete_body_ref', featureId: 'db1', bodyQuery: '@b3' },
   },
   remove_delete_body_ref: {
-    makeDoc: deleteBodyDoc,
+    makeDoc: deletePartDoc,
     mutation: { type: 'remove_delete_body_ref', featureId: 'db1', index: 0 },
   },
 

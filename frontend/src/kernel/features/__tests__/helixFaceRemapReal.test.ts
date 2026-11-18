@@ -36,11 +36,11 @@ describe.skipIf(!oc)('helix face remap (real OCC)', () => {
     const repo = new Repository()
     try {
       const { shape, faces } = makeCylinderWithFaces(oc!, scope, [0, 0, 0], [0, 0, 1], 5, 10)
-      const body: PartSolid = {
+      const part: PartSolid = {
         id: 'body_ex1', created_by: 'ex1', modified_by: [], shape: table.register(shape, 'ex1'),
         sketch_id: 'sk1', brep_diff: null, profile_queries: [],
       }
-      const bodyStore: Record<string, PartSolid> = { body_ex1: body }
+      const partStore: Record<string, PartSolid> = { body_ex1: part }
       const lateral = indexOfFace(oc!, scope, shape, faces.lateral)
 
       // The repo entry a slash pick resolves through, as the builder registers a
@@ -58,7 +58,7 @@ describe.skipIf(!oc)('helix face remap (real OCC)', () => {
       const at = canonicalIndex(canon).get(faces.top as OccSubShape)
       const uuids: (string | null)[] = canon.map(() => null)
       if (at >= 0) uuids[at] = 'u_surviving_face'
-      body.face_uuids = uuids
+      part.face_uuids = uuids
 
       expect(() => solveHelix(oc!, scope, table, {
         id: 'hx1', kind: 'helix',
@@ -67,7 +67,7 @@ describe.skipIf(!oc)('helix face remap (real OCC)', () => {
           mode: 'pitch_height', pitch: 2, height_from_reference: true,
           hand: 'right', direction: 'normal', start_angle: 0, offset: 0,
         },
-      }, repo, bodyStore)).toThrow(/Cannot remap persisted face ref/)
+      }, repo, partStore)).toThrow(/Cannot remap persisted face ref/)
     } finally {
       table.disposeAll()
       scope.dispose()
@@ -83,7 +83,7 @@ describe.skipIf(!oc)('helix face remap (real OCC)', () => {
     const repo = new Repository()
     try {
       const { shape, faces } = makeCylinderWithFaces(oc!, scope, [0, 0, 0], [0, 0, 1], 5, 10)
-      const body: PartSolid = {
+      const part: PartSolid = {
         id: 'body_ex1', created_by: 'ex1', modified_by: [], shape: table.register(shape, 'ex1'),
         sketch_id: 'sk1', brep_diff: null, profile_queries: [],
       }
@@ -96,7 +96,7 @@ describe.skipIf(!oc)('helix face remap (real OCC)', () => {
       const at = canonicalIndex(canon).get(faces.top as OccSubShape)
       const uuids: (string | null)[] = canon.map(() => null)
       if (at >= 0) uuids[at] = 'u_surviving_face'
-      body.face_uuids = uuids
+      part.face_uuids = uuids
 
       const result = solveHelix(oc!, scope, table, {
         id: 'hx1', kind: 'helix',
@@ -105,7 +105,7 @@ describe.skipIf(!oc)('helix face remap (real OCC)', () => {
           mode: 'pitch_height', pitch: 2, height_from_reference: true,
           hand: 'right', direction: 'normal', start_angle: 0, offset: 0,
         },
-      }, repo, { body_ex1: body })
+      }, repo, { body_ex1: part })
       expect(result.status).toBe('ok')
       expect(result.helix.radius).toBeCloseTo(5)
     } finally {
@@ -120,7 +120,7 @@ describe.skipIf(!oc)('helix face remap (real OCC)', () => {
     const repo = new Repository()
     try {
       const { shape, faces } = makeCylinderWithFaces(oc!, scope, [0, 0, 0], [0, 0, 1], 5, 10)
-      const body: PartSolid = {
+      const part: PartSolid = {
         id: 'body_ex1', created_by: 'ex1', modified_by: [], shape: table.register(shape, 'ex1'),
         sketch_id: 'sk1', brep_diff: null, profile_queries: [],
       }
@@ -136,7 +136,7 @@ describe.skipIf(!oc)('helix face remap (real OCC)', () => {
           mode: 'pitch_height', pitch: 2, height_from_reference: true,
           hand: 'right', direction: 'normal', start_angle: 0, offset: 0,
         },
-      }, repo, { body_ex1: body })
+      }, repo, { body_ex1: part })
       expect(result.status).toBe('ok')
       expect(result.helix.radius).toBeCloseTo(5)
     } finally {

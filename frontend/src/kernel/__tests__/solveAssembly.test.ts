@@ -189,9 +189,9 @@ describe('solveAssembly', () => {
 
     // With no mates the solver never runs; the part's own transform (identity)
     // passes through unchanged, so vertices land at identity too.
-    const body = result.bodies['p1'][0]
-    expect(body.vertices[0]).toBeCloseTo(0)
-    expect(body.vertices[3]).toBeCloseTo(10)
+    const part = result.bodies['p1'][0]
+    expect(part.vertices[0]).toBeCloseTo(0)
+    expect(part.vertices[3]).toBeCloseTo(10)
   })
 
   it('normalizes a solved quaternion that is unit only to solver tolerance (qw = 1.02), leaving vertex distances from the origin unchanged', async () => {

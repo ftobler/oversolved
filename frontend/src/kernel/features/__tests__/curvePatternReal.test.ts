@@ -120,7 +120,7 @@ describe.skipIf(!oc || !solveBytes)('curve pattern through the real kernel', () 
     const scope = new DisposeScope()
     try {
       return Object.values(store)
-        .map((body) => volumeOf(occ, scope, h.table.get<OccShape>(body.shape!)))
+        .map((part) => volumeOf(occ, scope, h.table.get<OccShape>(part.shape!)))
         .reduce((a, b) => a + b, 0)
     } finally {
       scope.dispose()
@@ -131,10 +131,10 @@ describe.skipIf(!oc || !solveBytes)('curve pattern through the real kernel', () 
 
   /** One body's bounding box, so a copy is named by its id instead of by the
    *  order the store happens to iterate. */
-  function boxOf(r: BuildResponse, featureId: string, bodyId: string): number[] {
+  function boxOf(r: BuildResponse, featureId: string, partId: string): number[] {
     const store = snapshot(r, featureId)
-    expect(Object.keys(store)).toContain(bodyId)
-    return boxesOf({ [bodyId]: store[bodyId] })[0]
+    expect(Object.keys(store)).toContain(partId)
+    return boxesOf({ [partId]: store[partId] })[0]
   }
 
   /** A box compared within a millimetre-hundredth: the path is sampled, so a

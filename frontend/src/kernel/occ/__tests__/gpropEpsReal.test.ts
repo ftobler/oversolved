@@ -169,33 +169,33 @@ describe.skipIf(!oc || !solveBytes)('the shared volume read on a spline-trimmed 
     setSketchSolver(solveBytes!)
   })
 
-  function shapeOf(r: BuildResponse, featureId: string, bodyId: string): OccShape {
+  function shapeOf(r: BuildResponse, featureId: string, partId: string): OccShape {
     const ckp = r._build_state!.checkpoints[featureId]
-    return h.table.get<OccShape>(ckp.body_store_snapshot[bodyId].shape!)
+    return h.table.get<OccShape>(ckp.body_store_snapshot[partId].shape!)
   }
 
-  function bodyVolume(r: BuildResponse, featureId: string, bodyId: string): number {
+  function partVolume(r: BuildResponse, featureId: string, partId: string): number {
     const scope = new DisposeScope()
     try {
-      return Math.abs(volumeOf(occ, scope, shapeOf(r, featureId, bodyId)))
+      return Math.abs(volumeOf(occ, scope, shapeOf(r, featureId, partId)))
     } finally {
       scope.dispose()
     }
   }
 
-  function measuredBodyVolume(r: BuildResponse, featureId: string, bodyId: string): number {
+  function measuredPartVolume(r: BuildResponse, featureId: string, partId: string): number {
     const scope = new DisposeScope()
     try {
-      return Math.abs(volumeForMeasure(occ, scope, shapeOf(r, featureId, bodyId)))
+      return Math.abs(volumeForMeasure(occ, scope, shapeOf(r, featureId, partId)))
     } finally {
       scope.dispose()
     }
   }
 
-  function defaultBodyVolume(r: BuildResponse, featureId: string, bodyId: string): number {
+  function defaultPartVolume(r: BuildResponse, featureId: string, partId: string): number {
     const scope = new DisposeScope()
     try {
-      return Math.abs(volumeOfDefault(occ, scope, shapeOf(r, featureId, bodyId)))
+      return Math.abs(volumeOfDefault(occ, scope, shapeOf(r, featureId, partId)))
     } finally {
       scope.dispose()
     }
@@ -205,8 +205,8 @@ describe.skipIf(!oc || !solveBytes)('the shared volume read on a spline-trimmed 
     const r = h.run(splineTrimDoc(1))
     expect(h.res(r, 'rev1').status).toBe('ok')
     expect(h.res(r, 'ho1').status).toBe('ok')
-    const before = bodyVolume(r, 'rev1', 'body_ex1')
-    const after = bodyVolume(r, 'ho1', 'body_ex1')
+    const before = partVolume(r, 'rev1', 'body_ex1')
+    const after = partVolume(r, 'ho1', 'body_ex1')
     const removed = before - after
     const analytic = analyticHoleRemoval(1)
     // The default rule was 0.0446 (8.6e-7 of the body) off here; the plan's
@@ -220,8 +220,8 @@ describe.skipIf(!oc || !solveBytes)('the shared volume read on a spline-trimmed 
     expect(res.status, String(res.exception ?? '')).toBe('ok')
     const ids = (res.body_ids ?? []) as string[]
     expect(ids).toHaveLength(2)
-    const source = bodyVolume(r, 'ho1', 'body_ex1')
-    const halves = ids.map((id) => bodyVolume(r, 'sp1', id))
+    const source = partVolume(r, 'ho1', 'body_ex1')
+    const halves = ids.map((id) => partVolume(r, 'sp1', id))
     // The body is mirror symmetric about x = 0, so the two halves are the same
     // material; the eps read has to resolve that to its own target.
     expect(Math.abs(halves[0] - halves[1])).toBeLessThanOrEqual(GPROP_EPS * source)
@@ -239,15 +239,15 @@ describe.skipIf(!oc || !solveBytes)('the shared volume read on a spline-trimmed 
     expect(res.status, String(res.exception ?? '')).toBe('ok')
     const ids = (res.body_ids ?? []) as string[]
     expect(ids).toHaveLength(2)
-    const source = measuredBodyVolume(r, 'ex1', 'body_ex1')
-    const halves = ids.map((id) => measuredBodyVolume(r, 'sp1', id))
+    const source = measuredPartVolume(r, 'ex1', 'body_ex1')
+    const halves = ids.map((id) => measuredPartVolume(r, 'sp1', id))
     expect(source).toBeCloseTo(1.8925296444, 6)
     expect(Math.abs(halves[0] + halves[1] - source)).toBeLessThanOrEqual(TOL_VOLUME_SUM * source)
     // Red-before proof: the old default read and the eps decision read are
     // both over the additivity budget on this body.
-    expect(Math.abs(defaultBodyVolume(r, 'ex1', 'body_ex1') - source))
+    expect(Math.abs(defaultPartVolume(r, 'ex1', 'body_ex1') - source))
       .toBeGreaterThan(TOL_VOLUME_SUM * source)
-    expect(Math.abs(bodyVolume(r, 'ex1', 'body_ex1') - source))
+    expect(Math.abs(partVolume(r, 'ex1', 'body_ex1') - source))
       .toBeGreaterThan(TOL_VOLUME_SUM * source)
   }, 120_000)
 })
@@ -318,8 +318,8 @@ describe.runIf(!!oc && !!solveBytes && timing)('GPROP_EPS timing (real OCC)', ()
     const r = h.run(splineTrimDoc(1))
     expect(h.res(r, 'ho1').status).toBe('ok')
     const ckp = r._build_state!.checkpoints['ho1']
-    const body = h.table.get<OccShape>(ckp.body_store_snapshot['body_ex1'].shape!)
-    report('centre-hole body', [body])
+    const part = h.table.get<OccShape>(ckp.body_store_snapshot['body_ex1'].shape!)
+    report('centre-hole body', [part])
 
     const scope = new DisposeScope()
     try {
@@ -327,7 +327,7 @@ describe.runIf(!!oc && !!solveBytes && timing)('GPROP_EPS timing (real OCC)', ()
       for (let i = 0; i < 32; i++) {
         const dx = (i % 8) * 150
         const dy = Math.floor(i / 8) * 60
-        copies.push(scope.track(transformCopy(occ, scope, body, makeTranslationTrsf(occ, scope, dx, dy, 0))))
+        copies.push(scope.track(transformCopy(occ, scope, part, makeTranslationTrsf(occ, scope, dx, dy, 0))))
       }
       report('32-copy body pattern', copies)
       report('translated centre-hole body', [copies[31]])

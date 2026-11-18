@@ -19,7 +19,7 @@ function instance(handle: string, extra: Partial<PartInstance> = {}): PartInstan
 }
 
 /** A one-triangle body, enough for the render path to emit a group for `handle`. */
-function solvedBody(handle: string): PartResult {
+function solvedPart(handle: string): PartResult {
   return {
     id: `${handle}:body_0`,
     created_by: handle,
@@ -43,7 +43,7 @@ function docWith(...instances: PartInstance[]): AssemblyDoc {
 function drawnPose(handle: string, baked: Transform3D): Transform3D {
   const { manipulation, settlingOffsets } = useAssemblyStore.getState()
   const group = getAssemblyPartGroups(
-    { [`${handle}:body_0`]: solvedBody(handle) },
+    { [`${handle}:body_0`]: solvedPart(handle) },
     [instance(handle)],
     manipulation,
     new Set(),
@@ -146,7 +146,7 @@ describe('assemblyStore part manipulation', () => {
     // applied over vertices already baked at the solved pose.
     const manipulation = useAssemblyStore.getState().manipulation!
     const group = getAssemblyPartGroups(
-      { 'p1:body_0': solvedBody('p1') },
+      { 'p1:body_0': solvedPart('p1') },
       [instance('p1')],
       manipulation,
       new Set(),

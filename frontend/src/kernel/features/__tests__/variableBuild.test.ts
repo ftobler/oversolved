@@ -12,7 +12,7 @@ import { resolveFeatureExpressions } from '../../solverRegistry'
 
 function deps(): BuildDeps {
   return {
-    trySolveFeature: (feature, _repo, _bodyStore, _featuresById, variableContext, laterVariables): FeatureResult => {
+    trySolveFeature: (feature, _repo, _partStore, _featuresById, variableContext, laterVariables): FeatureResult => {
       const ctx = variableContext ?? {}
       if (feature.kind === 'variable') return solveVariable(feature, ctx, laterVariables ?? {})
       if (feature.kind === 'extrude') {

@@ -15,7 +15,7 @@ import type { ScriptStepOutcome } from '../scriptRunner'
 
 const STEP_BYTES = new TextEncoder().encode('ISO-10303-21;\nEND-ISO-10303-21;\n')
 
-const BODY: PartResult = {
+const PART: PartResult = {
   id: 'body_ex1',
   created_by: 'ex1',
   modified_by: [],
@@ -41,7 +41,7 @@ function bundle(docId: string): InjectedBundle {
     }],
     anchors: { face: { kind: 'plane', point: [0, 0, 0], axis: [0, 0, 1], geom_hash: '@u|face', created_by: 'ex1' } },
   }
-  return { bundle: part, bodies: { body_ex1: BODY } }
+  return { bundle: part, bodies: { body_ex1: PART } }
 }
 
 function authoredPart(id: string): PartDoc {

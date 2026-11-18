@@ -27,7 +27,7 @@ import fixture from '../../occ/__fixtures__/booleanSolve.json'
 
 const oc = await loadOcc()
 
-type BodyState = { volume: number | null; created_by: string; modified_by: string[] }
+type PartState = { volume: number | null; created_by: string; modified_by: string[] }
 type BoxSpec = [number[], number[]]
 type Case = {
   name: string
@@ -37,11 +37,11 @@ type Case = {
   target_spec: BoxSpec
   tool_specs: BoxSpec[]
   result: { status: string; body_id: string; body_ids: string[]; operation: string }
-  store: Record<string, BodyState>
+  store: Record<string, PartState>
 }
 const fx = fixture as unknown as { cases: Case[] }
 
-function bodyFromSpec(
+function partFromSpec(
   occ: OccModule,
   scope: DisposeScope,
   table: HandleTable,
@@ -110,11 +110,11 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, PartSolid> = {
-          body_t: bodyFromSpec(occ, scope, table, 'body_t', 'ex_t', c.target_spec),
+        const partStore: Record<string, PartSolid> = {
+          body_t: partFromSpec(occ, scope, table, 'body_t', 'ex_t', c.target_spec),
         }
         c.tool_specs.forEach((spec, i) => {
-          bodyStore[`body_u${i}`] = bodyFromSpec(occ, scope, table, `body_u${i}`, `ex_u${i}`, spec)
+          partStore[`body_u${i}`] = partFromSpec(occ, scope, table, `body_u${i}`, `ex_u${i}`, spec)
         })
 
         const result = solveBoolean(
@@ -123,12 +123,12 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
           table,
           { id: 'bool1', boolean: { operation: c.operation, target: 'body_t', tools: c.tool_refs, keep_tools: c.keep_tools } },
           new Repository(),
-          bodyStore,
+          partStore,
         )
         expect(result).toEqual(c.result)
 
-        const got: Record<string, BodyState> = {}
-        for (const [bid, b] of Object.entries(bodyStore)) {
+        const got: Record<string, PartState> = {}
+        for (const [bid, b] of Object.entries(partStore)) {
           got[bid] = {
             volume: b.shape === null ? null : volumeOf(occ, scope, table.get<OccShape>(b.shape)),
             created_by: b.created_by,
@@ -155,26 +155,26 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, PartSolid> = {
-          body_t: bodyFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
-          body_u0: bodyFromSpec(occ, scope, table, 'body_u0', 'ex_u0', [[0, 0, 0], [2, 2, 2]]),
-          body_u1: bodyFromSpec(occ, scope, table, 'body_u1', 'ex_u1', [[3, 0, 0], [2, 2, 2]]),
+        const partStore: Record<string, PartSolid> = {
+          body_t: partFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
+          body_u0: partFromSpec(occ, scope, table, 'body_u0', 'ex_u0', [[0, 0, 0], [2, 2, 2]]),
+          body_u1: partFromSpec(occ, scope, table, 'body_u1', 'ex_u1', [[3, 0, 0], [2, 2, 2]]),
         }
-        const targetVol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+        const targetVol = volumeOf(occ, scope, table.get<OccShape>(partStore.body_t.shape!))
 
         const result = solveBoolean(
           occ, scope, table,
           { id: 'bool1', boolean: { operation: 'subtract', target: 'body_t', tools: ['body_u0', 'body_u1'] } },
           new Repository(),
-          bodyStore,
+          partStore,
         )
         expect(result.status).toBe('ok')
         expect(result.operation).toBe('subtract')
         // Both tools consumed
-        expect('body_u0' in bodyStore).toBe(false)
-        expect('body_u1' in bodyStore).toBe(false)
+        expect('body_u0' in partStore).toBe(false)
+        expect('body_u1' in partStore).toBe(false)
         // Target volume reduced
-        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeLessThan(targetVol)
+        expect(volumeOf(occ, scope, table.get<OccShape>(partStore.body_t.shape!))).toBeLessThan(targetVol)
       } finally {
         scope.dispose()
       }
@@ -186,23 +186,23 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, PartSolid> = {
-          body_t: bodyFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
-          body_u0: bodyFromSpec(occ, scope, table, 'body_u0', 'ex_u0', [[100, 0, 0], [2, 2, 2]]),
+        const partStore: Record<string, PartSolid> = {
+          body_t: partFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
+          body_u0: partFromSpec(occ, scope, table, 'body_u0', 'ex_u0', [[100, 0, 0], [2, 2, 2]]),
         }
-        const targetVol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+        const targetVol = volumeOf(occ, scope, table.get<OccShape>(partStore.body_t.shape!))
 
         const result = solveBoolean(
           occ, scope, table,
           { id: 'bool1', boolean: { operation: 'subtract', target: 'body_t', tools: ['body_u0'] } },
           new Repository(),
-          bodyStore,
+          partStore,
         )
         expect(result.status).toBe('ok')
         // The missed tool is preserved (the old code consumed it anyway).
-        expect('body_u0' in bodyStore).toBe(true)
+        expect('body_u0' in partStore).toBe(true)
         // Target is unchanged because nothing was subtracted.
-        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeCloseTo(targetVol, 3)
+        expect(volumeOf(occ, scope, table.get<OccShape>(partStore.body_t.shape!))).toBeCloseTo(targetVol, 3)
         expect(result.solver_warning).toContain('does not intersect')
       } finally {
         scope.dispose()
@@ -215,23 +215,23 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, PartSolid> = {
-          body_t: bodyFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
-          body_u0: bodyFromSpec(occ, scope, table, 'body_u0', 'ex_u0', [[100, 0, 0], [2, 2, 2]]),
+        const partStore: Record<string, PartSolid> = {
+          body_t: partFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
+          body_u0: partFromSpec(occ, scope, table, 'body_u0', 'ex_u0', [[100, 0, 0], [2, 2, 2]]),
         }
-        const targetVol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+        const targetVol = volumeOf(occ, scope, table.get<OccShape>(partStore.body_t.shape!))
 
         const result = solveBoolean(
           occ, scope, table,
           { id: 'bool1', boolean: { operation: 'intersect', target: 'body_t', tools: ['body_u0'] } },
           new Repository(),
-          bodyStore,
+          partStore,
         )
         expect(result.status).toBe('ok')
         // The disjoint tool is preserved (not consumed by an empty common).
-        expect('body_u0' in bodyStore).toBe(true)
+        expect('body_u0' in partStore).toBe(true)
         // Target volume is unchanged (no empty compound replaced it).
-        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_t.shape!))).toBeCloseTo(targetVol, 3)
+        expect(volumeOf(occ, scope, table.get<OccShape>(partStore.body_t.shape!))).toBeCloseTo(targetVol, 3)
         expect(result.solver_warning).toContain('does not intersect')
       } finally {
         scope.dispose()
@@ -248,9 +248,9 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, PartSolid> = {
-          body_t: bodyFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
-          body_u0: bodyFromSpec(occ, scope, table, 'body_u0', 'ex_u0', [[0, 0, 0], [2, 2, 2]]),
+        const partStore: Record<string, PartSolid> = {
+          body_t: partFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
+          body_u0: partFromSpec(occ, scope, table, 'body_u0', 'ex_u0', [[0, 0, 0], [2, 2, 2]]),
         }
 
         const occAny = occ as unknown as { ShapeUpgrade_UnifySameDomain_2: unknown }
@@ -265,7 +265,7 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
             occ, scope, table,
             { id: 'bool1', boolean: { operation: 'subtract', target: 'body_t', tools: ['body_u0'] } },
             new Repository(),
-            bodyStore,
+            partStore,
           )
           expect(result.status).toBe('ok')
         } finally {
@@ -303,7 +303,7 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
         expect(countSolids(occ, scope, inter)).toBeGreaterThan(0)
         expect(volumeOf(occ, scope, inter)).toBeLessThan(1e-10)
 
-        const bodyStore: Record<string, PartSolid> = {
+        const partStore: Record<string, PartSolid> = {
           body_t: {
             id: 'body_t', created_by: 'ex_t', modified_by: [], sketch_id: '',
             shape: table.register(targetShape, 'ex_t'), brep_diff: null, profile_queries: [], imported: true,
@@ -316,12 +316,12 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
         const result = solveBoolean(
           occ, scope, table,
           { id: 'bool1', boolean: { operation: 'subtract', target: 'body_t', tools: ['body_u0'] } },
-          new Repository(), bodyStore,
+          new Repository(), partStore,
         )
         expect(result.status).toBe('ok')
         expect(result.solver_warning).toBeUndefined()
-        expect('body_u0' in bodyStore).toBe(false)  // the tool was consumed, not skipped
-        expect('body_t' in bodyStore).toBe(true)    // the cut ran and the body survived
+        expect('body_u0' in partStore).toBe(false)  // the tool was consumed, not skipped
+        expect('body_t' in partStore).toBe(true)    // the cut ran and the body survived
       } finally {
         scope.dispose()
       }
@@ -335,24 +335,24 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, PartSolid> = {
-          body_t: bodyFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
-          body_u0: bodyFromSpec(occ, scope, table, 'body_u0', 'ex_u0', [[-5, -5, -5], [20, 20, 20]]),
+        const partStore: Record<string, PartSolid> = {
+          body_t: partFromSpec(occ, scope, table, 'body_t', 'ex_t', [[0, 0, 0], [10, 10, 10]]),
+          body_u0: partFromSpec(occ, scope, table, 'body_u0', 'ex_u0', [[-5, -5, -5], [20, 20, 20]]),
         }
 
         const result = solveBoolean(
           occ, scope, table,
           { id: 'bool1', boolean: { operation: 'subtract', target: 'body_t', tools: ['body_u0'] } },
           new Repository(),
-          bodyStore,
+          partStore,
         )
         expect(result.status).toBe('ok')
         expect(result.body_ids).toEqual([])
         expect(result.body_id).toBe('body_t')  // still names the consumed body
         expect(result.solver_warning).toMatch(/removed all of part 'body_t'; the part was deleted/)
-        expect('body_t' in bodyStore).toBe(false)
+        expect('body_t' in partStore).toBe(false)
         // The tool is consumed too (keep_tools false), leaving an empty store.
-        expect('body_u0' in bodyStore).toBe(false)
+        expect('body_u0' in partStore).toBe(false)
 
         // A second feature naming the deleted target fails by name, not with a
         // null-shape error.
@@ -361,7 +361,7 @@ describe.skipIf(!oc)('solveBoolean (real OCC)', () => {
             occ, scope, table,
             { id: 'bool2', boolean: { operation: 'subtract', target: 'body_t', tools: ['body_u0'] } },
             new Repository(),
-            bodyStore,
+            partStore,
           ),
         ).toThrow(/part not found for ref 'body_t'/)
       } finally {

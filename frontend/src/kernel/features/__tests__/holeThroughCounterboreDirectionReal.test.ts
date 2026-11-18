@@ -62,7 +62,7 @@ function drill(planeZ: number, boxStartZ: number, hole: Record<string, unknown>)
     repo.register('_pt_sk', FRAME_AT(planeZ))
     repo.register('sk/p1/xy', { external_xy: [20, 20] })
     const box = makeBoxAt(oc!, scope, [0, 0, boxStartZ], PLATE_X, PLATE_Y, PLATE_Z)
-    const bodyStore: Record<string, PartSolid> = {
+    const partStore: Record<string, PartSolid> = {
       body_t: {
         id: 'body_t', created_by: 'ex', modified_by: [],
         shape: table.register(box, 'ex'), sketch_id: 'sk',
@@ -72,12 +72,12 @@ function drill(planeZ: number, boxStartZ: number, hole: Record<string, unknown>)
     const result = solveHole(
       oc!, scope, table,
       { id: 'h1', hole: { sketch: '@sk', target: 'body_t', ...hole } },
-      repo, bodyStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } },
+      repo, partStore, { sk: { entities: [{ id: 'p1', kind: 'point' }] } },
     )
     return {
       result,
-      volume: volumeOf(oc!, scope, table.get<OccShape>(bodyStore.body_t.shape!)),
-      uuids: bodyStore.body_t.face_uuids ?? [],
+      volume: volumeOf(oc!, scope, table.get<OccShape>(partStore.body_t.shape!)),
+      uuids: partStore.body_t.face_uuids ?? [],
     }
   } finally {
     scope.dispose()

@@ -207,17 +207,17 @@ function duplicates(queries: string[]): string[] {
   return [...dup]
 }
 
-function faceQueriesOf(h: SharedHarness, r: BuildResponse, bodyId: string): string[] {
-  const mesh = h.part(r, bodyId).mesh as { face_queries?: string[] } | undefined
+function faceQueriesOf(h: SharedHarness, r: BuildResponse, partId: string): string[] {
+  const mesh = h.part(r, partId).mesh as { face_queries?: string[] } | undefined
   return mesh?.face_queries ?? []
 }
 
-function edgeQueriesOf(h: SharedHarness, r: BuildResponse, bodyId: string): string[] {
-  return (h.part(r, bodyId).edge_queries as string[]) ?? []
+function edgeQueriesOf(h: SharedHarness, r: BuildResponse, partId: string): string[] {
+  return (h.part(r, partId).edge_queries as string[]) ?? []
 }
 
-function vertexQueriesOf(h: SharedHarness, r: BuildResponse, bodyId: string): string[] {
-  return (h.part(r, bodyId).vertex_queries as string[]) ?? []
+function vertexQueriesOf(h: SharedHarness, r: BuildResponse, partId: string): string[] {
+  return (h.part(r, partId).vertex_queries as string[]) ?? []
 }
 
 /**
@@ -230,10 +230,10 @@ function vertexQueriesOf(h: SharedHarness, r: BuildResponse, bodyId: string): st
  * query carries no classifiers to fall back on (faces and edges do), so both
  * collapsed onto a single `createdBy + bodyId` string.
  */
-function expectUniquePrimitiveQueries(h: SharedHarness, r: BuildResponse, bodyId: string) {
-  const faces = faceQueriesOf(h, r, bodyId)
-  const edges = edgeQueriesOf(h, r, bodyId)
-  const vertices = vertexQueriesOf(h, r, bodyId)
+function expectUniquePrimitiveQueries(h: SharedHarness, r: BuildResponse, partId: string) {
+  const faces = faceQueriesOf(h, r, partId)
+  const edges = edgeQueriesOf(h, r, partId)
+  const vertices = vertexQueriesOf(h, r, partId)
   expect(faces.length).toBeGreaterThan(0)
   expect(edges.length).toBeGreaterThan(0)
   expect(vertices.length).toBeGreaterThan(0)
@@ -251,8 +251,8 @@ describe.skipIf(!oc || !solveBytes)('no-duplicate-query regression lock (real OC
   })
 
   // Build the spec, then assert the body's face, edge and vertex queries are unique.
-  function expectUniqueQueries(spec: { features: Array<Record<string, unknown>> }, bodyId: string) {
-    expectUniquePrimitiveQueries(h, h.run(spec), bodyId)
+  function expectUniqueQueries(spec: { features: Array<Record<string, unknown>> }, partId: string) {
+    expectUniquePrimitiveQueries(h, h.run(spec), partId)
   }
 
   it('box: no duplicate face or edge queries', () => {
@@ -392,8 +392,8 @@ describe.skipIf(!oc || !solveBytes)('no-duplicate-query regression lock (real OC
         },
       },
     ] })
-    for (const bodyId of ['body_ca1', 'body_ca1_1']) {
-      expectUniquePrimitiveQueries(h, r, bodyId)
+    for (const partId of ['body_ca1', 'body_ca1_1']) {
+      expectUniquePrimitiveQueries(h, r, partId)
     }
   })
 })

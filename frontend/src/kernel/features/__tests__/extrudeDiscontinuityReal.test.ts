@@ -22,7 +22,7 @@ const solveBytes = loadSolver()
 // Exact peanut-with-hole sketch from the bug-report document (entity ids
 // preserved so the face / edge queries resolve to the same geometry).
 const SK = '6pRTd41W5i8Ux58DLe2HoXwA'
-const BODY1 = 'b9WPcaHhXLtCABRq9yR_GR84'
+const PART1 = 'b9WPcaHhXLtCABRq9yR_GR84'
 
 const peanutWithHoleSketch = {
   id: SK, kind: 'sketch', label: 'sketch 1', plane: '@builtin_plane_front', visible: false,
@@ -70,8 +70,8 @@ function surfaceQueriesFromSketch(result: BuildResponse): string[] {
   return (topo?.surfaces ?? []).map((s) => s.query ?? '')
 }
 
-function topFaceQuery(result: BuildResponse, bodyId: string): string {
-  const bd = (result.bodies as Record<string, Record<string, unknown>>)[bodyId] ?? {}
+function topFaceQuery(result: BuildResponse, partId: string): string {
+  const bd = (result.bodies as Record<string, Record<string, unknown>>)[partId] ?? {}
   const mesh = bd.mesh as {
     face_data?: Array<{ normal: number[]; surface_type?: string }>
     face_queries?: string[]
@@ -101,12 +101,12 @@ describe.skipIf(!oc || !solveBytes)('extrude add of a body face after a large fi
     const r1 = h.run({
       features: [
         peanutWithHoleSketch,
-        { id: BODY1, kind: 'extrude', label: 'extrude 1', sketch: profile, distance: 10, direction: 'normal', operation: 'new' },
+        { id: PART1, kind: 'extrude', label: 'extrude 1', sketch: profile, distance: 10, direction: 'normal', operation: 'new' },
       ],
     })
-    expect(h.res(r1, BODY1).status).toBe('ok')
-    const edgeQueries = (h.part(r1, `body_${BODY1}`).edge_queries as string[]) ?? []
-    const edges = (h.part(r1, `body_${BODY1}`).edges as Array<{
+    expect(h.res(r1, PART1).status).toBe('ok')
+    const edgeQueries = (h.part(r1, `body_${PART1}`).edge_queries as string[]) ?? []
+    const edges = (h.part(r1, `body_${PART1}`).edges as Array<{
       kind?: string; start?: number[]; end?: number[]
     }>) ?? []
     // The two vertical lobe-intersection edges: straight edges at x~=0 spanning
@@ -119,18 +119,18 @@ describe.skipIf(!oc || !solveBytes)('extrude add of a body face after a large fi
       const en = e.end ?? [0, 0, 0]
       const vertical = Math.abs(s[0] - en[0]) < 1e-3 && Math.abs(s[1] - en[1]) < 1e-3 && Math.abs(s[2] - en[2]) > 1
       const onLensLine = Math.abs((s[0] + en[0]) / 2) < 0.2  // x ~= 0
-      const spansBody = Math.min(s[2], en[2]) < 1e-2 && Math.max(s[2], en[2]) > 10 - 1e-2  // z 0..10
-      if (vertical && onLensLine && spansBody) vertEdgeIndex.push(i)
+      const spansPart = Math.min(s[2], en[2]) < 1e-2 && Math.max(s[2], en[2]) > 10 - 1e-2  // z 0..10
+      if (vertical && onLensLine && spansPart) vertEdgeIndex.push(i)
     }
     expect(vertEdgeIndex).toHaveLength(2)
     const filletEdges = vertEdgeIndex.map((i) => edgeQueries[i]).filter((q) => !!q)
     expect(filletEdges).toHaveLength(2)
-    const topQuery = topFaceQuery(r1, `body_${BODY1}`)
+    const topQuery = topFaceQuery(r1, `body_${PART1}`)
     expect(topQuery).not.toBe('')
     return {
       features: [
         peanutWithHoleSketch,
-        { id: BODY1, kind: 'extrude', label: 'extrude 1', sketch: profile, distance: 10, direction: 'normal', operation: 'new' },
+        { id: PART1, kind: 'extrude', label: 'extrude 1', sketch: profile, distance: 10, direction: 'normal', operation: 'new' },
         { id: 'fil1', kind: 'fillet', edges: filletEdges, radius: filletRadius },
         { id: 'ex2', kind: 'extrude', label: 'extrude 2', sketch: topQuery, distance: 10, direction: 'normal' },
       ],
@@ -155,26 +155,26 @@ describe.skipIf(!oc || !solveBytes)('extrude add of a body face after a large fi
     const r1 = h.run({
       features: [
         peanutWithHoleSketch,
-        { id: BODY1, kind: 'extrude', label: 'extrude 1', sketch: profile, distance: 10, direction: 'normal', operation: 'new' },
+        { id: PART1, kind: 'extrude', label: 'extrude 1', sketch: profile, distance: 10, direction: 'normal', operation: 'new' },
       ],
     })
-    const topQuery = topFaceQuery(r1, `body_${BODY1}`)
+    const topQuery = topFaceQuery(r1, `body_${PART1}`)
     const result = h.run({
       features: [
         peanutWithHoleSketch,
-        { id: BODY1, kind: 'extrude', label: 'extrude 1', sketch: profile, distance: 10, direction: 'normal', operation: 'new' },
+        { id: PART1, kind: 'extrude', label: 'extrude 1', sketch: profile, distance: 10, direction: 'normal', operation: 'new' },
         { id: 'ex2', kind: 'extrude', label: 'extrude 2', sketch: topQuery, distance: 10, direction: 'normal' },
       ],
     })
     expect(h.res(result, 'ex2').status).toBe('ok')
-    const fd = (h.part(result, `body_${BODY1}`).mesh as { face_data?: Array<{ centroid: number[]; normal: number[]; surface_type?: string }> }).face_data ?? []
+    const fd = (h.part(result, `body_${PART1}`).mesh as { face_data?: Array<{ centroid: number[]; normal: number[]; surface_type?: string }> }).face_data ?? []
     expect(wallSplitsAtZ10(fd)).toBe(0)
   })
 
   it('small fillet (radius 0.5): outer walls stay continuous after add', () => {
     const result = h.run(buildSpec(0.5))
     expect(h.res(result, 'ex2').status).toBe('ok')
-    const fd = (h.part(result, `body_${BODY1}`).mesh as { face_data?: Array<{ centroid: number[]; normal: number[]; surface_type?: string }> }).face_data ?? []
+    const fd = (h.part(result, `body_${PART1}`).mesh as { face_data?: Array<{ centroid: number[]; normal: number[]; surface_type?: string }> }).face_data ?? []
     if ((import.meta.env.DEBUG_FACES ?? '') !== '') {
       console.log('radius 0.5 face count', fd.length)
       fd.forEach((f, i) => {
@@ -187,7 +187,7 @@ describe.skipIf(!oc || !solveBytes)('extrude add of a body face after a large fi
   it('large fillet (radius 5) then top-face add keeps a single continuous hole wall', () => {
     const result = h.run(buildSpec(5))
     expect(h.res(result, 'ex2').status).toBe('ok')
-    const mesh = h.part(result, `body_${BODY1}`).mesh as {
+    const mesh = h.part(result, `body_${PART1}`).mesh as {
       face_data?: Array<{ centroid: number[]; normal: number[]; surface_type?: string }>
     } | undefined
     const fd = mesh?.face_data ?? []

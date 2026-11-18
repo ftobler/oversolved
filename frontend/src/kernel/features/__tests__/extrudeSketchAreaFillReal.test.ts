@@ -91,7 +91,7 @@ function slotSketch(
 describe.skipIf(!oc || !solveBytes)('sketch area fill (real OCC + Rust solver)', () => {
   const h = extrudeTestHarness()
 
-  function bodyIds(result: BuildResponse): string[] {
+  function partIds(result: BuildResponse): string[] {
     const store = result._build_state!.checkpoints['ex1'].body_store_snapshot
     return Object.keys(store).filter((id) => id === 'body_ex1' || id.startsWith('body_ex1_'))
   }
@@ -101,7 +101,7 @@ describe.skipIf(!oc || !solveBytes)('sketch area fill (real OCC + Rust solver)',
     const scope = new DisposeScope()
     try {
       let total = 0
-      for (const id of bodyIds(result)) {
+      for (const id of partIds(result)) {
         total += volumeOf(oc!, scope, h.table.get<OccShape>(store[id].shape!))
       }
       return total
@@ -123,7 +123,7 @@ describe.skipIf(!oc || !solveBytes)('sketch area fill (real OCC + Rust solver)',
     expect(ex.exception).toBeUndefined()
     expect(ex.solver_warning).toBeUndefined()
     expect(volume(result)).toBeCloseTo(32, 3)
-    expect(bodyIds(result)).toHaveLength(1)
+    expect(partIds(result)).toHaveLength(1)
   })
 
   it('keeps the L of two touching rectangles material', () => {
@@ -143,7 +143,7 @@ describe.skipIf(!oc || !solveBytes)('sketch area fill (real OCC + Rust solver)',
     expect(ex.status).toBe('ok')
     expect(ex.exception).toBeUndefined()
     expect(volume(result)).toBeCloseTo(122.0845, 3)
-    expect(bodyIds(result)).toHaveLength(1)
+    expect(partIds(result)).toHaveLength(1)
   })
 
   it('gives the same union when the concentric arc is a line', () => {
@@ -170,6 +170,6 @@ describe.skipIf(!oc || !solveBytes)('sketch area fill (real OCC + Rust solver)',
     expect(ex.status).toBe('ok')
     expect(ex.exception).toBeUndefined()
     expect(volume(result)).toBeCloseTo(91, 3)
-    expect(bodyIds(result)).toHaveLength(1)
+    expect(partIds(result)).toHaveLength(1)
   })
 })

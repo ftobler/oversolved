@@ -25,7 +25,7 @@ import { makeEdgeIndexCache, resolveEdgesWithIndex } from '../filletChamfer'
 import { endFaceDiagnosis } from '../edgeFailureDiagnosis'
 import { makeFilletPrismFallback, setEndFacePrismEnabledForTest } from '../endFaceBlend'
 import { tangentChain } from '../tangentChain'
-import { bodyAt, enclosureBase, END_FACE_LEG } from './enclosureFixture'
+import { partAt, enclosureBase, END_FACE_LEG } from './enclosureFixture'
 import type { OccShape } from '../../occ/occTypes'
 
 const oc = await loadOcc()
@@ -90,11 +90,11 @@ describe.skipIf(!oc || !solveBytes)('fillet end-face refusal naming (real OCC + 
     // the picked edge, so no single end-face reach exists; the message says so
     // instead of inventing a number, and the prism cut refuses the edge.
     const { lipEdges, result } = enclosureBase(h, { taper: 10 })
-    const body = bodyAt(result, 'ex2')
+    const part = partAt(result, 'ex2')
     const scope = new DisposeScope()
-    const shape = h.table.get<OccShape>(body.shape!)
+    const shape = h.table.get<OccShape>(part.shape!)
     const indexFor = makeEdgeIndexCache(oc!, scope, h.table)
-    const picked = resolveEdgesWithIndex(oc!, scope, h.table, body, indexFor(body), lipEdges)
+    const picked = resolveEdgesWithIndex(oc!, scope, h.table, part, indexFor(part), lipEdges)
     expect(picked).toHaveLength(4)
 
     const text = endFaceDiagnosis(oc!, scope, shape, picked, { kind: 'fillet', radius: 2 })
@@ -114,12 +114,12 @@ describe.skipIf(!oc || !solveBytes)('fillet end-face refusal naming (real OCC + 
     // G1-continuous with the r12 corner arc beside it. OCC follows that joint, a
     // prism cannot, so every edge whose chain is longer than itself is refused.
     const { result } = enclosureBase(h)
-    const body = bodyAt(result, 'ex2')
+    const part = partAt(result, 'ex2')
     const scope = new DisposeScope()
-    const shape = h.table.get<OccShape>(body.shape!)
+    const shape = h.table.get<OccShape>(part.shape!)
     const indexFor = makeEdgeIndexCache(oc!, scope, h.table)
     const plateQueries = ((h.part(result, 'body_ex1').edge_queries as string[]) ?? []).filter((q) => q.includes('@ex1@'))
-    const picked = resolveEdgesWithIndex(oc!, scope, h.table, body, indexFor(body), plateQueries)
+    const picked = resolveEdgesWithIndex(oc!, scope, h.table, part, indexFor(part), plateQueries)
     const fallback = makeFilletPrismFallback(2, 'fi2')
     let chained = 0
     let qualified = 0

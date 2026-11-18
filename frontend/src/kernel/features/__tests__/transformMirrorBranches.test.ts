@@ -76,7 +76,7 @@ const table = { get: (h: unknown): unknown => h } as unknown as HandleTable
 
 const NAMES = { faceNames: {}, faceAncestry: {}, edgeNames: {}, edgeAncestry: {} }
 
-function body(id = 'body_a', shape: number | null = 1): PartSolid {
+function part(id = 'body_a', shape: number | null = 1): PartSolid {
   return {
     id,
     created_by: 'ex',
@@ -113,7 +113,7 @@ describe('solveTransform composed trsf', () => {
     solveTransform(oc, scope, table, {
       id: 't1',
       transform: { bodies: ['body_a'], translation_from: '@from', translation_to: '@to' },
-    }, repo, { body_a: body() })
+    }, repo, { body_a: part() })
     expect(trsfOps).toContainEqual({ tag: 'translate', dx: 3, dy: 5, dz: 8 })
   })
 
@@ -124,7 +124,7 @@ describe('solveTransform composed trsf', () => {
     solveTransform(oc, scope, table, {
       id: 't1',
       transform: { bodies: ['body_a'], rotation_angle: 90, rotation_axis: '@axis' },
-    }, repo, { body_a: body() })
+    }, repo, { body_a: part() })
     expect(trsfOps).toContainEqual({ tag: 'rotate', origin: [10, 0, 0], dir: [1, 0, 0], angle: Math.PI / 2 })
   })
 
@@ -134,7 +134,7 @@ describe('solveTransform composed trsf', () => {
     solveTransform(oc, scope, table, {
       id: 't1',
       transform: { bodies: ['body_a'], rotation_angle: 90, rotation_axis: '@axis' },
-    }, repo, { body_a: body() })
+    }, repo, { body_a: part() })
     const rotate = trsfOps.find((o) => o.tag === 'rotate')!
     expect(rotate.origin).toEqual([1, 2, 0])
     const dir = rotate.dir as number[]
@@ -151,7 +151,7 @@ describe('solveTransform composed trsf', () => {
       solveTransform(oc, scope, table, {
         id: 't1',
         transform: { bodies: ['body_a'], rotation_angle: 90, rotation_axis: '@axis' },
-      }, repo, { body_a: body() }),
+      }, repo, { body_a: part() }),
     ).toThrow(/edge reference has no line coordinates/)
   })
 
@@ -161,7 +161,7 @@ describe('solveTransform composed trsf', () => {
     solveTransform(oc, scope, table, {
       id: 't1',
       transform: { bodies: ['body_a'], scale: 2, scale_center_from: '@center' },
-    }, repo, { body_a: body() })
+    }, repo, { body_a: part() })
     expect(trsfOps).toContainEqual({ tag: 'scale', center: [5, 5, 5], factor: 2 })
   })
 })
@@ -169,7 +169,7 @@ describe('solveTransform composed trsf', () => {
 describe('solveTransform operation selection', () => {
   it('replace resplits in place and records the feature on the source', () => {
     mocks.resplitPart.mockReturnValue(['body_a'])
-    const source = body('body_a')
+    const source = part('body_a')
     const result = solveTransform(oc, scope, table, {
       id: 't1',
       transform: { bodies: ['body_a'], operation: 'replace', translation: [1, 0, 0] },
@@ -180,7 +180,7 @@ describe('solveTransform operation selection', () => {
 
   it('new registers a fresh body off the feature id', () => {
     mocks.registerSplitParts.mockReturnValue(['body_t1'])
-    const source = body('body_a')
+    const source = part('body_a')
     const result = solveTransform(oc, scope, table, {
       id: 't1',
       transform: { bodies: ['body_a'], operation: 'new', translation: [1, 0, 0] },
@@ -194,7 +194,7 @@ describe('solveTransform operation selection', () => {
     // when the resplit ever deletes it is that nothing survives and body_id
     // names the body the feature row points at.
     mocks.resplitPart.mockReturnValue([])
-    const source = body('body_a')
+    const source = part('body_a')
     const result = solveTransform(oc, scope, table, {
       id: 't1',
       transform: { bodies: ['body_a'], operation: 'replace', translation: [1, 0, 0] },
@@ -216,7 +216,7 @@ describe('solveTransform rotation axis guard', () => {
       solveTransform(oc, scope, table, {
         id: 't1',
         transform: { bodies: ['body_a'], rotation_angle: 45, rotation_axis_direction: [0, 0, 0] },
-      }, new Repository(), { body_a: body() }),
+      }, new Repository(), { body_a: part() }),
     ).toThrow(/rotation axis direction must be a non-zero vector/)
   })
 
@@ -230,7 +230,7 @@ describe('solveTransform rotation axis guard', () => {
       solveTransform(oc, scope, table, {
         id: 't1',
         transform: { bodies: ['body_a'], rotation_angle: 45, rotation_axis: '@axis' },
-      }, repo, { body_a: body() }),
+      }, repo, { body_a: part() }),
     ).toThrow(/rotation_axis/)
   })
 })
@@ -244,7 +244,7 @@ describe('solveTransform rotation_euler conflict', () => {
       solveTransform(oc, scope, table, {
         id: 't1',
         transform: { bodies: ['body_a'], rotation_euler: [0, 0, 0], rotation_angle: 0 },
-      }, new Repository(), { body_a: body() }),
+      }, new Repository(), { body_a: part() }),
     ).toThrow(/rotation_euler cannot be combined with rotation_angle.*null/)
   })
 
@@ -253,7 +253,7 @@ describe('solveTransform rotation_euler conflict', () => {
       solveTransform(oc, scope, table, {
         id: 't1',
         transform: { bodies: ['body_a'], rotation_euler: [10, 20, 300], rotation_axis: '@axis' },
-      }, new Repository(), { body_a: body() }),
+      }, new Repository(), { body_a: part() }),
     ).toThrow(/rotation_euler cannot be combined with rotation_axis.*null/)
   })
 
@@ -262,7 +262,7 @@ describe('solveTransform rotation_euler conflict', () => {
       solveTransform(oc, scope, table, {
         id: 't1',
         transform: { bodies: ['body_a'], rotation_euler: [10, 20, 300], rotation_axis_direction: [0, 0, 1] },
-      }, new Repository(), { body_a: body() }),
+      }, new Repository(), { body_a: part() }),
     ).toThrow(/rotation_euler cannot be combined with rotation_axis_direction.*null/)
   })
 
@@ -271,14 +271,14 @@ describe('solveTransform rotation_euler conflict', () => {
       solveTransform(oc, scope, table, {
         id: 't1',
         transform: { bodies: ['body_a'], rotation_euler: [10, 20] },
-      }, new Repository(), { body_a: body() }),
+      }, new Repository(), { body_a: part() }),
     ).toThrow(/rotation_euler must be three finite numbers/)
   })
 })
 
 describe('solveMirror plane payloads and operation selection', () => {
-  function bodyStore(): Record<string, PartSolid> {
-    return { body_a: body('body_a') }
+  function partStore(): Record<string, PartSolid> {
+    return { body_a: part('body_a') }
   }
 
   it('reads a numeric plane payload without a type tag via x_axis/normal/origin', () => {
@@ -286,7 +286,7 @@ describe('solveMirror plane payloads and operation selection', () => {
     repo.register('plane_q', { origin: [0, 0, 0], x_axis: [1, 0, 0], normal: [0, 0, 1] })
     const result = solveMirror(oc, scope, table, {
       id: 'm1', mirror: { body: 'body_a', plane: '@plane_q', keep_original: true, merge: false },
-    }, repo, bodyStore())
+    }, repo, partStore())
     expect(mocks.makeMirrorTrsf).toHaveBeenCalledWith(oc, scope, [0, 0, 0], [0, 0, 1])
     expect(result).toEqual({ status: 'ok', body_id: 'body_t1', body_ids: ['body_t1'], operation: 'new' })
   })
@@ -296,7 +296,7 @@ describe('solveMirror plane payloads and operation selection', () => {
     repo.register('plane_q', { type: 'flatface', origin: [0, 0, 3], normal: [0, 0, 1] })
     solveMirror(oc, scope, table, {
       id: 'm1', mirror: { body: 'body_a', plane: '@plane_q', keep_original: true, merge: false },
-    }, repo, bodyStore())
+    }, repo, partStore())
     expect(mocks.makeMirrorTrsf).toHaveBeenCalledWith(oc, scope, [0, 0, 3], [0, 0, 1])
   })
 
@@ -306,7 +306,7 @@ describe('solveMirror plane payloads and operation selection', () => {
     expect(() =>
       solveMirror(oc, scope, table, {
         id: 'm1', mirror: { body: 'body_a', plane: '@plane_q' },
-      }, repo, { body_a: body('body_a', null) }),
+      }, repo, { body_a: part('body_a', null) }),
     ).toThrow(/part not found for ref 'body_a'|mirror: part not found/)
   })
 
@@ -316,7 +316,7 @@ describe('solveMirror plane payloads and operation selection', () => {
     expect(() =>
       solveMirror(oc, scope, table, {
         id: 'm1', mirror: { body: 'body_a', plane: '@plane_q' },
-      }, repo, bodyStore()),
+      }, repo, partStore()),
     ).toThrow(/plane normal must be a non-zero vector/)
   })
 
@@ -324,7 +324,7 @@ describe('solveMirror plane payloads and operation selection', () => {
     mocks.resplitPart.mockReturnValue(['body_a'])
     const repo = new Repository()
     repo.register('plane_q', { type: 'plane', origin: [0, 0, 0], normal: [0, 0, 1] })
-    const store = bodyStore()
+    const store = partStore()
     const result = solveMirror(oc, scope, table, {
       id: 'm1', mirror: { body: 'body_a', plane: '@plane_q', keep_original: false },
     }, repo, store)
@@ -338,7 +338,7 @@ describe('solveMirror plane payloads and operation selection', () => {
     repo.register('plane_q', { type: 'plane', origin: [0, 0, 0], normal: [0, 0, 1] })
     const result = solveMirror(oc, scope, table, {
       id: 'm1', mirror: { body: 'body_a', plane: '@plane_q', keep_original: false },
-    }, repo, bodyStore())
+    }, repo, partStore())
     expect(result).toEqual({
       status: 'ok',
       body_id: 'body_a',
@@ -352,7 +352,7 @@ describe('solveMirror plane payloads and operation selection', () => {
     mocks.resplitPart.mockReturnValue(['body_a'])
     const repo = new Repository()
     repo.register('plane_q', { type: 'plane', origin: [0, 0, 0], normal: [0, 0, 1] })
-    const store = bodyStore()
+    const store = partStore()
     const result = solveMirror(oc, scope, table, {
       id: 'm1', mirror: { body: 'body_a', plane: '@plane_q', keep_original: true, merge: true },
     }, repo, store)
@@ -367,7 +367,7 @@ describe('solveMirror plane payloads and operation selection', () => {
     repo.register('plane_q', { type: 'plane', origin: [0, 0, 0], normal: [0, 0, 1] })
     const result = solveMirror(oc, scope, table, {
       id: 'm1', mirror: { body: 'body_a', plane: '@plane_q', keep_original: true, merge: true },
-    }, repo, bodyStore())
+    }, repo, partStore())
     expect(result).toEqual({
       status: 'ok',
       body_id: 'body_a',

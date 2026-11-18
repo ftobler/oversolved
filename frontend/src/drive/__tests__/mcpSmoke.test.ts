@@ -156,10 +156,10 @@ describe.skipIf(driveUnavailable)('MCP server (real OCC + Rust solver)', () => {
       }))
       expect(measure.volume as number).toBeCloseTo(800, 6)
       expect(measure.docHash).toBe(edited.docHash)
-      const perBody = measure.perBody as Array<{ id: string; volume: number }>
-      expect(perBody).toHaveLength(1)
-      expect(perBody[0]).toMatchObject({ id: 'body_ex1' })
-      expect(perBody[0].volume).toBeCloseTo(800, 6)
+      const perPart = measure.perBody as Array<{ id: string; volume: number }>
+      expect(perPart).toHaveLength(1)
+      expect(perPart[0]).toMatchObject({ id: 'body_ex1' })
+      expect(perPart[0].volume).toBeCloseTo(800, 6)
       expectBbox(measure.bbox, [0, 0, 0, 10, 10, 8])
 
       // Compare the same document against a reference stated from its own

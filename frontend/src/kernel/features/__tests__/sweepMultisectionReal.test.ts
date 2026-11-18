@@ -168,19 +168,19 @@ function solve(
 ): { solved: Solved | null; error: string | null } {
   const scope = new DisposeScope()
   const table = new HandleTable()
-  const bodyStore: Record<string, PartSolid> = {}
+  const partStore: Record<string, PartSolid> = {}
   try {
     try {
       const result = solveSweep(
-        occ, scope, table, { id: 'sw1', kind: 'sweep', sweep }, repo, bodyStore,
+        occ, scope, table, { id: 'sw1', kind: 'sweep', sweep }, repo, partStore,
       )
-      const body = bodyStore['body_sw1']
-      if (body === undefined || body.shape === null) throw new Error('no body')
-      const solid = table.get<OccShape>(body.shape)
+      const part = partStore['body_sw1']
+      if (part === undefined || part.shape === null) throw new Error('no body')
+      const solid = table.get<OccShape>(part.shape)
       return {
         solved: {
           volume: volumeOf(occ, scope, solid),
-          body,
+          body: part,
           bbox: bboxOf(occ, scope, solid),
           status: String(result.status),
           exception: typeof result.exception === 'string' ? result.exception : undefined,
@@ -488,14 +488,14 @@ describe.skipIf(!oc)('sweep multisection (real OCC)', () => {
   it('keeps one body for the handle', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
-    const bodyStore: Record<string, PartSolid> = {}
+    const partStore: Record<string, PartSolid> = {}
     try {
       const result = solveSweep(oc!, scope, table, {
         id: 'sw1', kind: 'sweep',
         sweep: { sketch: HANDLE_SECTIONS, path: '@path', multisection: true, operation: 'new' },
-      }, seedHandleRepo(), bodyStore)
+      }, seedHandleRepo(), partStore)
       expect(result.status).toBe('ok')
-      expect(Object.keys(bodyStore)).toEqual(['body_sw1'])
+      expect(Object.keys(partStore)).toEqual(['body_sw1'])
     } finally {
       table.disposeAll()
       scope.dispose()

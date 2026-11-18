@@ -19,7 +19,7 @@ import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '../layerNam
  * pointed primitive of size <= 1 (hoveredPickKey, hoveredSelectionId).
  */
 
-const BODY = partKeyFor('extrude1', 'body0')
+const PART = partKeyFor('extrude1', 'body0')
 const LAYERS = [FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME]
 
 describe('highlight symmetry across {face, edge, vertex} x {hover, click}', () => {
@@ -30,12 +30,12 @@ describe('highlight symmetry across {face, edge, vertex} x {hover, click}', () =
   for (const layer of LAYERS) {
     it(`[${layer}] hover and click on the same hit produce identical flags`, () => {
       const queries = ['Q', 'Q', 'R']
-      const pointedPickKey = primitivePickKey(BODY, 0, layer)
+      const pointedPickKey = primitivePickKey(PART, 0, layer)
       const pointedQuery = 'Q'
 
-      const clickFlags = computeHighlight(BODY, layer, queries,
+      const clickFlags = computeHighlight(PART, layer, queries,
         selectActiveFrom(new Map([[pointedQuery, new Set([pointedPickKey])]]), new Set([pointedQuery])))
-      const hoverFlags = computeHighlight(BODY, layer, queries,
+      const hoverFlags = computeHighlight(PART, layer, queries,
         hoverActiveFrom(pointedPickKey, pointedQuery))
 
       expect(hoverFlags).toEqual(clickFlags)
@@ -46,11 +46,11 @@ describe('highlight symmetry across {face, edge, vertex} x {hover, click}', () =
     it(`[${layer}] precise pickKey isolates exactly index i, in both framings`, () => {
       const queries = ['Q', 'Q', 'Q']  // worst case: every sibling shares the query
       for (let i = 0; i < queries.length; i++) {
-        const pkI = primitivePickKey(BODY, i, layer)
+        const pkI = primitivePickKey(PART, i, layer)
         const expected = queries.map((_, j) => j === i)
-        expect(computeHighlight(BODY, layer, queries,
+        expect(computeHighlight(PART, layer, queries,
           selectActiveFrom(new Map([['Q', new Set([pkI])]]), new Set(['Q'])))).toEqual(expected)
-        expect(computeHighlight(BODY, layer, queries,
+        expect(computeHighlight(PART, layer, queries,
           hoverActiveFrom(pkI, 'Q'))).toEqual(expected)
       }
     })
@@ -58,12 +58,12 @@ describe('highlight symmetry across {face, edge, vertex} x {hover, click}', () =
     it(`[${layer}] a pickKey minted by another layer highlights nothing`, () => {
       const queries = ['Q', 'Q', 'Q']
       const otherLayer = LAYERS.find(l => l !== layer)!
-      const foreignKey = primitivePickKey(BODY, 0, otherLayer)
+      const foreignKey = primitivePickKey(PART, 0, otherLayer)
       // The foreign pickKey never matches this layer, and its query is not active,
       // so nothing lights up in either framing.
-      expect(computeHighlight(BODY, layer, queries,
+      expect(computeHighlight(PART, layer, queries,
         selectActiveFrom(new Map([['Q', new Set([foreignKey])]]), new Set<string>()))).toEqual([false, false, false])
-      expect(computeHighlight(BODY, layer, queries,
+      expect(computeHighlight(PART, layer, queries,
         hoverActiveFrom(foreignKey, null))).toEqual([false, false, false])
     })
 
@@ -73,9 +73,9 @@ describe('highlight symmetry across {face, edge, vertex} x {hover, click}', () =
       // query. This residual grouping is inherent to non-unique queries and is
       // the seam to naming-by-construction, not a bug -- both framings agree.
       const queries = ['Q', 'Q', 'R']
-      const clickFlags = computeHighlight(BODY, layer, queries,
+      const clickFlags = computeHighlight(PART, layer, queries,
         selectActiveFrom(new Map<string, Set<string>>(), new Set(['Q'])))
-      const hoverFlags = computeHighlight(BODY, layer, queries,
+      const hoverFlags = computeHighlight(PART, layer, queries,
         hoverActiveFrom(null, 'Q'))
       expect(clickFlags).toEqual([true, true, false])
       expect(hoverFlags).toEqual(clickFlags)
@@ -89,15 +89,15 @@ describe('highlight symmetry across {face, edge, vertex} x {hover, click}', () =
     // would light both.
     const layer = EDGE_LAYER_NAME
     const queries = ['Q', 'Q']
-    const kB = primitivePickKey(BODY, 1, layer)
-    expect(computeHighlight(BODY, layer, queries,
+    const kB = primitivePickKey(PART, 1, layer)
+    expect(computeHighlight(PART, layer, queries,
       selectActiveFrom(new Map([['Q', new Set([kB])]]), new Set(['Q'])))).toEqual([false, true])
   })
 
   it('an empty hover (nothing under the cursor) highlights nothing', () => {
     const queries = ['Q', 'Q', 'R']
     for (const layer of LAYERS) {
-      expect(computeHighlight(BODY, layer, queries,
+      expect(computeHighlight(PART, layer, queries,
         hoverActiveFrom(null, null))).toEqual([false, false, false])
     }
   })

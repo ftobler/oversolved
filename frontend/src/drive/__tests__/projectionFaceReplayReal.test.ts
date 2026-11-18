@@ -20,7 +20,7 @@ import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import type { PartDoc } from '@/types/cad'
 import {
-  BOX_BODY_ID, BOX_SKETCH_ID, oc, projectionBaseDoc, projectionTestHarness, solveBytes,
+  BOX_PART_ID, BOX_SKETCH_ID, oc, projectionBaseDoc, projectionTestHarness, solveBytes,
 } from '@/kernel/features/__tests__/projectionRealSupport'
 
 const { h, base } = projectionTestHarness()
@@ -44,8 +44,8 @@ interface FaceFixture {
  *  from the one base build by geometry. */
 function faceFixture(): FaceFixture {
   const { result, geometry } = base()
-  const body = h.part(result, BOX_BODY_ID)
-  const boundary = faceBoundaryFromParts(() => ({ [BOX_BODY_ID]: body }))(geometry.frontFace)
+  const part = h.part(result, BOX_PART_ID)
+  const boundary = faceBoundaryFromParts(() => ({ [BOX_PART_ID]: part }))(geometry.frontFace)
   if (!boundary) throw new Error('base body: front face has no boundary')
   const cid = faceProjectionConstraintId(geometry.frontFace)
   if (cid === null) throw new Error('front face query carries no construction UUID')

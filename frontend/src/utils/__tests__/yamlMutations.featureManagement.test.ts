@@ -10,7 +10,7 @@ import {
 import { featureAt } from '@/testing/featureAccess'
 
 const definition0 = (doc: PartDoc) => featureAt(doc, 0, 'plane').definition!
-const delete_body0 = (doc: PartDoc) => featureAt(doc, 0, 'delete_body').delete_body
+const delete_part0 = (doc: PartDoc) => featureAt(doc, 0, 'delete_body').delete_body
 const extrude0 = (doc: PartDoc) => featureAt(doc, 0, 'extrude').extrude
 const fillet0 = (doc: PartDoc) => featureAt(doc, 0, 'fillet').fillet
 const transform0 = (doc: PartDoc) => featureAt(doc, 0, 'transform').transform
@@ -290,7 +290,7 @@ describe('remove-by-index mutators refuse out-of-range indices', () => {
         features: [{ id: 'db1', kind: 'delete_body', delete_body: { bodies: ['a', 'b'] } }],
       }),
       remove: (doc, index) => applyRemoveDeletePartRef(doc, 'db1', index),
-      list: (doc) => delete_body0(doc).bodies,
+      list: (doc) => delete_part0(doc).bodies,
     },
     {
       name: 'applyRemoveTransformBody',

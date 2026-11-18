@@ -49,10 +49,10 @@ function overlayFor(container: HTMLElement, color: string) {
   return { material: material!, segments: material!.parentElement as HTMLElement }
 }
 
-async function renderBody() {
-  const { default: Body3D } = await import('@/components/Geometry3D/Part3D')
+async function renderPart() {
+  const { default: Part3D } = await import('@/components/Geometry3D/Part3D')
   return render(
-    <Body3D featureId="ex1" partId="body_ex1" mesh={mesh} edges={edges} edgeQueries={[EDGE_QUERY]} />,
+    <Part3D featureId="ex1" partId="body_ex1" mesh={mesh} edges={edges} edgeQueries={[EDGE_QUERY]} />,
   )
 }
 
@@ -108,7 +108,7 @@ describe('Body3D overlays share render order and blending', () => {
 
   it('a hovered edge draws at the highlight order', async () => {
     resetStore({ hoveredSelectionId: EDGE_QUERY })
-    const { container } = await renderBody()
+    const { container } = await renderPart()
 
     const { segments } = overlayFor(container, COLOR_HOVER)
     expect(segments.getAttribute('renderorder')).toBe(String(RENDER_ORDER_HIGHLIGHT))
@@ -116,7 +116,7 @@ describe('Body3D overlays share render order and blending', () => {
 
   it('a selected edge draws at the same order', async () => {
     resetStore({ normalSelection: new Set([EDGE_QUERY]) })
-    const { container } = await renderBody()
+    const { container } = await renderPart()
 
     const { segments } = overlayFor(container, COLOR_SELECTED)
     expect(segments.getAttribute('renderorder')).toBe(String(RENDER_ORDER_HIGHLIGHT))
@@ -124,7 +124,7 @@ describe('Body3D overlays share render order and blending', () => {
 
   it('a hovered face outline carries the same layer as the edge overlays', async () => {
     resetStore({ hoveredSelectionId: 'f0' })
-    const { container } = await renderBody()
+    const { container } = await renderPart()
 
     const { segments } = overlayFor(container, COLOR_HOVER)
     expect(segments.getAttribute('renderorder')).toBe(String(RENDER_ORDER_HIGHLIGHT))
@@ -132,7 +132,7 @@ describe('Body3D overlays share render order and blending', () => {
 
   it('a selected face outline carries the same layer as the edge overlays', async () => {
     resetStore({ normalSelection: new Set(['f0']) })
-    const { container } = await renderBody()
+    const { container } = await renderPart()
 
     const { segments } = overlayFor(container, COLOR_SELECTED)
     expect(segments.getAttribute('renderorder')).toBe(String(RENDER_ORDER_HIGHLIGHT))
@@ -140,7 +140,7 @@ describe('Body3D overlays share render order and blending', () => {
 
   it('a face that is both selected and hovered draws the selection colour only', async () => {
     resetStore({ normalSelection: new Set(['f0']), hoveredSelectionId: 'f0' })
-    const { container } = await renderBody()
+    const { container } = await renderPart()
 
     overlayFor(container, COLOR_SELECTED)
     const hoverCount = [...container.querySelectorAll('linebasicmaterial')]

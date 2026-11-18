@@ -24,7 +24,7 @@ interface FaceMesh {
   face_queries?: string[]
 }
 
-interface BodyOutput {
+interface PartOutput {
   mesh?: FaceMesh
 }
 
@@ -101,9 +101,9 @@ function extrudeDoc(): Dict {
  * Return the first face query from the first body in a build result.
  */
 function faceQueryFromBuild(r: BuildResponse): string | null {
-  const bodies = (r.bodies as Record<string, BodyOutput>) ?? {}
-  for (const body of Object.values(bodies)) {
-    const mesh = body.mesh
+  const parts = (r.bodies as Record<string, PartOutput>) ?? {}
+  for (const part of Object.values(parts)) {
+    const mesh = part.mesh
     const queries = mesh?.face_queries ?? []
     if (queries.length) return queries[0]
   }
@@ -182,7 +182,7 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
    */
   it('a sketch on a flat face query lies in that face plane', () => {
     const r = h.run(extrudeDoc())
-    const mesh = Object.values(r.bodies as Record<string, BodyOutput>)[0]?.mesh
+    const mesh = Object.values(r.bodies as Record<string, PartOutput>)[0]?.mesh
     expect(mesh?.face_data?.length).toBeGreaterThan(0)
 
     const dot = (a: number[], b: number[]) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
@@ -257,14 +257,14 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
     const ex2 = extrudeSpec('sk2', 'ex2', 2.0, 'normal', 'add')
     const rPost = h.run({ features: [sk1, ex1, sk2Dummy, ex2] })
 
-    const bodies = (rPost.bodies as Record<string, BodyOutput>) ?? {}
+    const parts = (rPost.bodies as Record<string, PartOutput>) ?? {}
     // The fused body is body_ex1 (ex2 fused into ex1).
-    const bodyEx1 = bodies['body_ex1']
-    if (!bodyEx1) {
+    const partEx1 = parts['body_ex1']
+    if (!partEx1) {
       // If the body is named differently, skip gracefully.
       return
     }
-    const mesh = bodyEx1.mesh
+    const mesh = partEx1.mesh
     if (!mesh?.face_data) return
 
     // Find the top face (+z normal) from the post-fuse tessellation.
@@ -373,8 +373,8 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
 
     // Pick any face query from ex1's body.
     let faceQuery: string | null = null
-    for (const body of Object.values(r1.bodies as Record<string, BodyOutput>)) {
-      const queries = body.mesh?.face_queries ?? []
+    for (const part of Object.values(r1.bodies as Record<string, PartOutput>)) {
+      const queries = part.mesh?.face_queries ?? []
       if (queries.length) {
         faceQuery = queries[0]
         break
@@ -428,7 +428,7 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
     // Build base body, then pick a flat end-cap face from the result mesh
     // (this is the query the frontend would store).
     const r0 = h.run({ features: [sk1, ex1] })
-    const mesh = (r0.bodies as Record<string, BodyOutput>)['body_ex1']?.mesh
+    const mesh = (r0.bodies as Record<string, PartOutput>)['body_ex1']?.mesh
     if (!mesh?.face_data || !mesh?.face_queries) return
 
     let faceQuery: string | null = null
@@ -488,7 +488,7 @@ describe.skipIf(!oc || !solveBytes)('sketch on face (real OCC)', () => {
 
     // Pick the +y end-cap at distance 10.
     const r0 = h.run({ features: [sk1, extrudeOp(10.0)] })
-    const mesh0 = (r0.bodies as Record<string, BodyOutput>)['body_ex1']?.mesh
+    const mesh0 = (r0.bodies as Record<string, PartOutput>)['body_ex1']?.mesh
     if (!mesh0?.face_data || !mesh0?.face_queries) return
 
     let picked: string | null = null

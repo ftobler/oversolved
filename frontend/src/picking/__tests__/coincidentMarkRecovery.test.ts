@@ -183,12 +183,12 @@ describe('coincident marks: the loser of the pixel is still an answer', () => {
 
   it('stops recovering once the body is unregistered', () => {
     const { image, p, renderer } = scene()
-    const body = {
+    const part = {
       partKey: 'S1',
       vertices: [[3, 4, 0], [3, 4, 0]] as [number, number, number][],
       vertexQueries: ['vertex:S1:L1:end', 'vertex:S1:C1:center'],
     }
-    p.sketchVertexLayer.registerPart(body)
+    p.sketchVertexLayer.registerPart(part)
     const winner = idOf(p, SKETCH_VERTEX_LAYER_NAME, 'vertex:S1:L1:end')
     image.mark(MID, MID, winner)
     expect(p.resolveAllSync(renderer, CURSOR)).toHaveLength(2)

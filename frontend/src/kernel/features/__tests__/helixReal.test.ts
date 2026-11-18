@@ -37,17 +37,17 @@ describe.skipIf(!oc)('helix leaf (real OCC)', () => {
     const repo = new Repository()
     const { shape, faces } = makeCylinderWithFaces(oc!, scope, [0, 0, 0], [0, 0, 1], 5, 10)
     const handle = table.register(shape, 'ex1')
-    const body: PartSolid = {
+    const part: PartSolid = {
       id: 'body_ex1', created_by: 'ex1', modified_by: [], shape: handle,
       sketch_id: 'sk1', brep_diff: null, profile_queries: [],
     }
-    const bodyStore: Record<string, PartSolid> = { body_ex1: body }
+    const partStore: Record<string, PartSolid> = { body_ex1: part }
     const idx = faceIndex(oc!, scope, shape, faces.lateral)
     repo.register('cf', {
       type: 'cylinderface', body_id: 'body_ex1', face_index: idx,
       axis: [0, 0, 1], centroid: [0, 0, 5], normal: [1, 0, 0],
     })
-    return { scope, table, repo, bodyStore, shape, faces }
+    return { scope, table, repo, bodyStore: partStore, shape, faces }
   }
 
   it('a face helix spans the cylinder and sits on radius 5', () => {

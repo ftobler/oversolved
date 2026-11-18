@@ -55,15 +55,15 @@ describe('useSketchSurfaceIdRegistration', () => {
     }))
 
     expect(spy).toHaveBeenCalledTimes(1)
-    const body = spy.mock.calls[0][0]
-    expect(body.partKey).toBe('S1/?1;@a')
-    expect(body.faceQueries).toEqual(['?1;@a'])
+    const part = spy.mock.calls[0][0]
+    expect(part.partKey).toBe('S1/?1;@a')
+    expect(part.faceQueries).toEqual(['?1;@a'])
     // A square triangulates to at least two triangles; every one maps back to
     // the single face this body represents.
-    expect(body.positions.length % 9).toBe(0)
-    expect(body.positions.length / 9).toBeGreaterThanOrEqual(2)
-    expect(Array.from(body.triangleToFace)).toEqual(
-      Array.from({ length: body.positions.length / 9 }, () => 0),
+    expect(part.positions.length % 9).toBe(0)
+    expect(part.positions.length / 9).toBeGreaterThanOrEqual(2)
+    expect(Array.from(part.triangleToFace)).toEqual(
+      Array.from({ length: part.positions.length / 9 }, () => 0),
     )
     expect(p.registry.lookupKey(SKETCH_SURFACE_LAYER_NAME, '?1;@a')).toBeDefined()
     p.dispose()

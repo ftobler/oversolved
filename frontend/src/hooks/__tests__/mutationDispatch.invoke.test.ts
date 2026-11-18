@@ -14,7 +14,7 @@ const chamfer = (doc: PartDoc) => featureById(doc, 'CH', 'chamfer').chamfer
 const boolean = (doc: PartDoc) => featureById(doc, 'BL', 'boolean').boolean
 const linearPattern = (doc: PartDoc) => featureById(doc, 'PT', 'linear_pattern').linear_pattern
 const circularPattern = (doc: PartDoc) => featureById(doc, 'CP', 'circular_pattern').circular_pattern
-const delBody = (doc: PartDoc) => featureById(doc, 'DB', 'delete_body').delete_body
+const delPart = (doc: PartDoc) => featureById(doc, 'DB', 'delete_body').delete_body
 const transform = (doc: PartDoc) => featureById(doc, 'TR', 'transform').transform
 
 // The exhaustive suite proves the handler TABLE has a key for every Mutation
@@ -330,9 +330,9 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
     mutationHandlers.set_variable_field(doc, { type: 'set_variable_field', featureId: 'VR', field: 'value', value: '2*3' })
     mutationHandlers.add_delete_body(doc, { type: 'add_delete_body', featureId: 'DB', bodies: ['@body_1'] })
     mutationHandlers.add_delete_body_ref(doc, { type: 'add_delete_body_ref', featureId: 'DB', bodyQuery: '@body_2' })
-    expect(delBody(doc)!.bodies).toEqual(['@body_1', '@body_2'])
+    expect(delPart(doc)!.bodies).toEqual(['@body_1', '@body_2'])
     mutationHandlers.remove_delete_body_ref(doc, { type: 'remove_delete_body_ref', featureId: 'DB', index: 0 })
-    expect(delBody(doc)!.bodies).toEqual(['@body_2'])
+    expect(delPart(doc)!.bodies).toEqual(['@body_2'])
     expect(['HO', 'TR', 'MI', 'VR', 'DB'].every(id => !!feature(doc, id))).toBe(true)
   })
 
@@ -450,11 +450,11 @@ describe('mutationHandlers forward feature-creation + field + child mutations', 
     expect(() => {
       mutationHandlers.add_delete_body_ref(doc, { type: 'add_delete_body_ref', featureId: 'DB', bodyQuery: '@body_2' })
     }).not.toThrow()
-    expect(delBody(doc)!.bodies).toEqual(['@body_1', '@body_2'])
+    expect(delPart(doc)!.bodies).toEqual(['@body_1', '@body_2'])
     expect(() => {
       mutationHandlers.remove_delete_body_ref(doc, { type: 'remove_delete_body_ref', featureId: 'DB', index: 0 })
     }).not.toThrow()
-    expect(delBody(doc)!.bodies).toEqual(['@body_2'])
+    expect(delPart(doc)!.bodies).toEqual(['@body_2'])
   })
 
   it('transform handlers do not crash on a legacy singular-body doc', () => {

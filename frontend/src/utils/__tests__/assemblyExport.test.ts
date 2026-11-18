@@ -21,7 +21,7 @@ function doc(instances: PartInstance[]): AssemblyDoc {
   }
 }
 
-function body(id: string, createdBy: string, mesh?: PartResult['mesh']): PartResult {
+function part(id: string, createdBy: string, mesh?: PartResult['mesh']): PartResult {
   return { id, created_by: createdBy, modified_by: [], mesh }
 }
 
@@ -101,24 +101,24 @@ describe('buildExportParts', () => {
 })
 
 describe('assemblyStlMeshes', () => {
-  const bodies = {
-    'h1:body_0': body('h1:body_0', 'h1', TRI_MESH),
-    'h2:body_0': body('h2:body_0', 'h2', TRI_MESH),
+  const parts = {
+    'h1:body_0': part('h1:body_0', 'h1', TRI_MESH),
+    'h2:body_0': part('h2:body_0', 'h2', TRI_MESH),
   }
 
   it('scopes bodies to their owning instance via created_by', () => {
-    expect(assemblyStlMeshes(bodies, [instance('h1', 'doc_a')])).toHaveLength(1)
-    expect(assemblyStlMeshes(bodies, [instance('h1', 'doc_a'), instance('h2', 'doc_b')])).toHaveLength(2)
+    expect(assemblyStlMeshes(parts, [instance('h1', 'doc_a')])).toHaveLength(1)
+    expect(assemblyStlMeshes(parts, [instance('h1', 'doc_a'), instance('h2', 'doc_b')])).toHaveLength(2)
   })
 
   it('skips a body with no mesh', () => {
-    const withEmpty = { ...bodies, 'h1:body_1': body('h1:body_1', 'h1') }
+    const withEmpty = { ...parts, 'h1:body_1': part('h1:body_1', 'h1') }
     expect(assemblyStlMeshes(withEmpty, [instance('h1', 'doc_a')])).toHaveLength(1)
   })
 
   it('skips a tuple-form mesh rather than mis-reading it as a flat buffer', () => {
     const tuples = {
-      't:body_0': body('t:body_0', 't', {
+      't:body_0': part('t:body_0', 't', {
         vertices: [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
         faces: [[0, 1, 2]],
       }),
@@ -131,8 +131,8 @@ describe('assemblyStlMeshes', () => {
   it('warns once, naming the body, when a tuple-form mesh is skipped', () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
     const mixed = {
-      'h1:body_0': body('h1:body_0', 'h1', TRI_MESH),
-      't:body_0': body('t:body_0', 't', {
+      'h1:body_0': part('h1:body_0', 'h1', TRI_MESH),
+      't:body_0': part('t:body_0', 't', {
         vertices: [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
         faces: [[0, 1, 2]],
       }),
@@ -147,11 +147,11 @@ describe('assemblyStlMeshes', () => {
 
 describe('assemblyStlBytes', () => {
   it('encodes every visible part into one solid', () => {
-    const bodies = {
-      'h1:body_0': body('h1:body_0', 'h1', TRI_MESH),
-      'h2:body_0': body('h2:body_0', 'h2', TRI_MESH),
+    const parts = {
+      'h1:body_0': part('h1:body_0', 'h1', TRI_MESH),
+      'h2:body_0': part('h2:body_0', 'h2', TRI_MESH),
     }
-    const bytes = assemblyStlBytes(bodies, [instance('h1', 'doc_a'), instance('h2', 'doc_b')])!
+    const bytes = assemblyStlBytes(parts, [instance('h1', 'doc_a'), instance('h2', 'doc_b')])!
     expect(bytes.length).toBe(84 + 2 * 50)
     expect(new DataView(bytes.buffer).getUint32(80, true)).toBe(2)
   })

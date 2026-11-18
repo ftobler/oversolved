@@ -84,24 +84,24 @@ const UUID_RE = /@u\|([uev]_[0-9a-f]{16})/
 
 type ResolvedEl = { uuid?: string; created_by?: string; type?: string } | null
 
-function faceQueries(r: BuildResponse, bodyId: string): string[] {
-  const body = (r.bodies as Record<string, { mesh?: { face_queries?: string[] } }>)[bodyId]
-  return body?.mesh?.face_queries ?? []
+function faceQueries(r: BuildResponse, partId: string): string[] {
+  const part = (r.bodies as Record<string, { mesh?: { face_queries?: string[] } }>)[partId]
+  return part?.mesh?.face_queries ?? []
 }
 
-function edgeQueries(r: BuildResponse, bodyId: string): string[] {
-  const body = (r.bodies as Record<string, { edge_queries?: string[] }>)[bodyId]
-  return body?.edge_queries ?? []
+function edgeQueries(r: BuildResponse, partId: string): string[] {
+  const part = (r.bodies as Record<string, { edge_queries?: string[] }>)[partId]
+  return part?.edge_queries ?? []
 }
 
-function vertexQueries(r: BuildResponse, bodyId: string): string[] {
-  const body = (r.bodies as Record<string, { vertex_queries?: string[] }>)[bodyId]
-  return body?.vertex_queries ?? []
+function vertexQueries(r: BuildResponse, partId: string): string[] {
+  const part = (r.bodies as Record<string, { vertex_queries?: string[] }>)[partId]
+  return part?.vertex_queries ?? []
 }
 
 /** The face query carrying a specific construction UUID (the @u| token). */
-function faceQueryWithUuid(r: BuildResponse, bodyId: string, uuid: string): string | undefined {
-  return faceQueries(r, bodyId).find((q) => q.includes(`@u|${uuid}`))
+function faceQueryWithUuid(r: BuildResponse, partId: string, uuid: string): string | undefined {
+  return faceQueries(r, partId).find((q) => q.includes(`@u|${uuid}`))
 }
 
 /** Rebuild the global repo from the last feature's checkpoint snapshot. */

@@ -460,7 +460,7 @@ describe.skipIf(!oc)('solidToEdges convexity (real OCC)', () => {
       // only direct way to name it.
       expect(out.edges[index].convexity).toBe('other')
 
-      const body: PartResult = {
+      const part: PartResult = {
         id: 'body_c',
         created_by: 'ex1',
         modified_by: [],
@@ -475,9 +475,9 @@ describe.skipIf(!oc)('solidToEdges convexity (real OCC)', () => {
           face_seam_queries: faceData.face_seam_queries,
         },
       }
-      expect(isSeamEdge({ part: body, partId: 'body_c', kind: 'edge', index, query: seamQuery })).toBe(true)
+      expect(isSeamEdge({ part: part, partId: 'body_c', kind: 'edge', index, query: seamQuery })).toBe(true)
       const otherIndex = out.edge_queries.findIndex((q) => q !== seamQuery)
-      expect(isSeamEdge({ part: body, partId: 'body_c', kind: 'edge', index: otherIndex, query: out.edge_queries[otherIndex] })).toBe(false)
+      expect(isSeamEdge({ part: part, partId: 'body_c', kind: 'edge', index: otherIndex, query: out.edge_queries[otherIndex] })).toBe(false)
     } finally {
       table.release(h)
       table.assertNoLeaks()

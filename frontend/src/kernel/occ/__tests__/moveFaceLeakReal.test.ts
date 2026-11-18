@@ -44,8 +44,8 @@ function recordingOcc(real: OccModule, created: Disposable[]): OccModule {
   return clone as unknown as OccModule
 }
 
-function facesMatching(occ: OccModule, scope: DisposeScope, body: OccShape, normal: Vec3): OccShape {
-  for (const f of canonicalFaces(occ, scope, body)) {
+function facesMatching(occ: OccModule, scope: DisposeScope, part: OccShape, normal: Vec3): OccShape {
+  for (const f of canonicalFaces(occ, scope, part)) {
     const n = faceNormal(occ, scope, f as OccShape)
     if (Math.abs(n[0] - normal[0]) < 1e-9 && Math.abs(n[1] - normal[1]) < 1e-9 && Math.abs(n[2] - normal[2]) < 1e-9) {
       return f as OccShape
@@ -60,9 +60,9 @@ describe.skipIf(!oc)('a move face owns every builder it makes (real OCC)', () =>
     const occ = recordingOcc(oc!, created)
     const scope = new DisposeScope()
     try {
-      const body = scope.track(makeBox(occ, scope, 10, 10, 10))
-      const top = facesMatching(occ, scope, body, [0, 0, 1])
-      scope.track(applyMoveFace(occ, scope, body, top, 5).shape)
+      const part = scope.track(makeBox(occ, scope, 10, 10, 10))
+      const top = facesMatching(occ, scope, part, [0, 0, 1])
+      scope.track(applyMoveFace(occ, scope, part, top, 5).shape)
       expect(created.length).toBeGreaterThan(0)
       for (const builder of created) expect(scope.isTracked(builder)).toBe(true)
     } finally {
@@ -78,11 +78,11 @@ describe.skipIf(!oc)('a move face owns every builder it makes (real OCC)', () =>
     const occ = recordingOcc(oc!, created)
     const scope = new DisposeScope()
     try {
-      const body = scope.track(makeCylinder(occ, scope, [0, 0, 0], [0, 0, 1], 5, 10))
-      const lateral = canonicalFaces(occ, scope, body)
+      const part = scope.track(makeCylinder(occ, scope, [0, 0, 0], [0, 0, 1], 5, 10))
+      const lateral = canonicalFaces(occ, scope, part)
         .find((f) => neighbourSurface(occ, scope, f as OccShape) === 'cylinder') as OccShape
       expect(lateral).toBeDefined()
-      scope.track(applyMoveFace(occ, scope, body, lateral, 2).shape)
+      scope.track(applyMoveFace(occ, scope, part, lateral, 2).shape)
       expect(created.length).toBeGreaterThan(0)
       for (const builder of created) expect(scope.isTracked(builder)).toBe(true)
     } finally {

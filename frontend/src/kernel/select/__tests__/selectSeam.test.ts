@@ -19,7 +19,7 @@ function circle(center: V3, radius: number, axis: V3): EdgeData {
   return { kind: 'circle', center, radius, axis, x_axis: [1, 0, 0], angle_start: 0, angle_end: 2 * Math.PI }
 }
 
-function bodyResult(
+function partResult(
   id: string,
   edges: EdgeData[],
   edgeQueries: string[],
@@ -57,7 +57,7 @@ const WALL_B = { centroid: [-34 / 3, 0, 5], normal: [0, 1, 0], surface_type: 'fl
 // direction test alone would return both; the seam list tells them apart.
 function cylinder({ seamFlag = true }: { seamFlag?: boolean } = {}): Record<string, PartResult> {
   return {
-    body_ex1: bodyResult(
+    body_ex1: partResult(
       'body_ex1',
       [
         line([5, 0, 0], [5, 0, 10]),
@@ -86,22 +86,22 @@ function cylinder({ seamFlag = true }: { seamFlag?: boolean } = {}): Record<stri
 
 // A cylinder with no ordinary line: the seam is the only Z-parallel edge.
 function bareCylinder(): Record<string, PartResult> {
-  const bodies = cylinder()
-  const body = bodies.body_ex1
-  body.edges!.splice(3)
-  body.edge_queries!.splice(3)
-  body.mesh!.face_data!.splice(3)
-  body.mesh!.face_queries!.splice(3)
-  body.mesh!.face_edge_queries!.splice(3)
-  body.mesh!.face_seam_queries!.splice(3)
-  return bodies
+  const parts = cylinder()
+  const part = parts.body_ex1
+  part.edges!.splice(3)
+  part.edge_queries!.splice(3)
+  part.mesh!.face_data!.splice(3)
+  part.mesh!.face_queries!.splice(3)
+  part.mesh!.face_edge_queries!.splice(3)
+  part.mesh!.face_seam_queries!.splice(3)
+  return parts
 }
 
 // Two rectangular faces that meet at the shared Z line, with their own free
 // boundary edges. A free edge is listed by one face only, exactly like a seam.
 function openShell(): Record<string, PartResult> {
   return {
-    body_bend: bodyResult(
+    body_bend: partResult(
       'body_bend',
       [
         line([-8, 0, 0], [-8, 0, 10]),
@@ -124,8 +124,8 @@ function openShell(): Record<string, PartResult> {
   }
 }
 
-function queriesOf(selector: Selector, bodies: Record<string, PartResult>): string[] {
-  return selectByPredicate(selector, bodies).queries
+function queriesOf(selector: Selector, parts: Record<string, PartResult>): string[] {
+  return selectByPredicate(selector, parts).queries
 }
 
 describe('selectByPredicate: seam exclusion', () => {
@@ -143,11 +143,11 @@ describe('selectByPredicate: seam exclusion', () => {
   })
 
   it('the other predicates still return the seam', () => {
-    const bodies = cylinder()
-    expect(queriesOf({ kind: 'edge', where: { type: 'line' } }, bodies)).toContain('q_seam')
-    expect(queriesOf({ kind: 'edge', where: { center: { point: [5, 0, 5] } } }, bodies)).toContain('q_seam')
-    expect(queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, bodies)).not.toContain('q_seam')
-    expect(queriesOf({ kind: 'edge', where: { perpendicular: [1, 1, 0] } }, bodies)).not.toContain('q_seam')
+    const parts = cylinder()
+    expect(queriesOf({ kind: 'edge', where: { type: 'line' } }, parts)).toContain('q_seam')
+    expect(queriesOf({ kind: 'edge', where: { center: { point: [5, 0, 5] } } }, parts)).toContain('q_seam')
+    expect(queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, parts)).not.toContain('q_seam')
+    expect(queriesOf({ kind: 'edge', where: { perpendicular: [1, 1, 0] } }, parts)).not.toContain('q_seam')
   })
 
   it('a body without the seam list still drops the seam through the count fallback', () => {
@@ -159,8 +159,8 @@ describe('selectByPredicate: seam exclusion', () => {
     // A partial decode whose one preserved seam list belongs to the cap, not
     // the lateral face. Trusting it would keep the seam; the face list is still
     // complete, so the count fallback finds it in the second face.
-    const bodies = {
-      body_ex1: bodyResult(
+    const parts = {
+      body_ex1: partResult(
         'body_ex1',
         [line([0, 0, 0], [0, 0, 10]), circle([0, 0, 0], 5, [0, 0, 1])],
         ['q_seam', 'q_bottom'],
@@ -170,15 +170,15 @@ describe('selectByPredicate: seam exclusion', () => {
         [[]],
       ),
     }
-    expect(() => queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, bodies))
+    expect(() => queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, parts))
       .toThrow(/parallel .* matched 0/)
   })
 
   it('a seam list longer than the face list keeps the edge', () => {
     // A truncated face list cannot be used for the count rule: the missing face
     // would make its edges look like seams, so keep them selectable instead.
-    const bodies = {
-      body_ex1: bodyResult(
+    const parts = {
+      body_ex1: partResult(
         'body_ex1',
         [line([0, 0, 0], [0, 0, 10]), circle([0, 0, 0], 5, [0, 0, 1])],
         ['q_seam', 'q_bottom'],
@@ -188,7 +188,7 @@ describe('selectByPredicate: seam exclusion', () => {
         [[], ['q_seam']],
       ),
     }
-    expect(queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, bodies)).toEqual(['q_seam'])
+    expect(queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, parts)).toEqual(['q_seam'])
   })
 
   it('an open shell keeps its free edges in parallel', () => {
@@ -212,8 +212,8 @@ describe('selectByPredicate: seam exclusion', () => {
     // The synthetic box in select.test.ts carries only two face boundary lists.
     // An edge seen once is only a seam when every face reported its boundary;
     // otherwise the missing neighbour would make a normal edge look like one.
-    const bodies = {
-      body_ex1: bodyResult(
+    const parts = {
+      body_ex1: partResult(
         'body_ex1',
         [line([0, 0, 0], [0, 0, 10])],
         ['q_only'],
@@ -222,42 +222,42 @@ describe('selectByPredicate: seam exclusion', () => {
         [['q_only'], []],
       ),
     }
-    expect(queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, bodies)).toEqual(['q_only'])
+    expect(queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, parts)).toEqual(['q_only'])
   })
 
   it('a body without face boundaries keeps the older reading', () => {
-    const bodies = {
-      body_ex1: bodyResult('body_ex1', [line([0, 0, 0], [0, 0, 10])], ['q_only'], [], [], []),
+    const parts = {
+      body_ex1: partResult('body_ex1', [line([0, 0, 0], [0, 0, 10])], ['q_only'], [], [], []),
     }
-    expect(queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, bodies)).toEqual(['q_only'])
+    expect(queriesOf({ kind: 'edge', where: { parallel: [0, 0, 1] } }, parts)).toEqual(['q_only'])
   })
 })
 
 describe('selectByPredicate: the seam predicate', () => {
   it('{seam: true} returns the seam and {seam: false} the rest', () => {
-    const bodies = cylinder()
-    expect(queriesOf({ kind: 'edge', where: { seam: true } }, bodies)).toEqual(['q_seam'])
+    const parts = cylinder()
+    expect(queriesOf({ kind: 'edge', where: { seam: true } }, parts)).toEqual(['q_seam'])
     const rest = ['q_bottom', 'q_top', 'q_wall', 'q_wa_upper', 'q_wa_lower', 'q_wb_upper', 'q_wb_lower']
-    expect(queriesOf({ kind: 'edge', where: { seam: false } }, bodies)).toEqual(rest)
+    expect(queriesOf({ kind: 'edge', where: { seam: false } }, parts)).toEqual(rest)
   })
 
   it('not({seam: true}) is the same set as {seam: false}', () => {
-    const bodies = cylinder()
-    expect(queriesOf({ kind: 'edge', where: { not: { seam: true } } }, bodies))
-      .toEqual(queriesOf({ kind: 'edge', where: { seam: false } }, bodies))
+    const parts = cylinder()
+    expect(queriesOf({ kind: 'edge', where: { not: { seam: true } } }, parts))
+      .toEqual(queriesOf({ kind: 'edge', where: { seam: false } }, parts))
   })
 
   it('a face or vertex has no seam flag and matches neither value', () => {
-    const bodies = cylinder()
-    bodies.body_ex1.vertices = [[0, 0, 0]]
-    bodies.body_ex1.vertex_queries = ['q_v']
-    expect(() => queriesOf({ kind: 'face', where: { seam: true } }, bodies))
+    const parts = cylinder()
+    parts.body_ex1.vertices = [[0, 0, 0]]
+    parts.body_ex1.vertex_queries = ['q_v']
+    expect(() => queriesOf({ kind: 'face', where: { seam: true } }, parts))
       .toThrow(/seam true matched 0/)
-    expect(() => queriesOf({ kind: 'face', where: { seam: false } }, bodies))
+    expect(() => queriesOf({ kind: 'face', where: { seam: false } }, parts))
       .toThrow(/seam false matched 0/)
-    expect(() => queriesOf({ kind: 'vertex', where: { seam: true } }, bodies))
+    expect(() => queriesOf({ kind: 'vertex', where: { seam: true } }, parts))
       .toThrow(/seam true matched 0/)
-    expect(() => queriesOf({ kind: 'vertex', where: { seam: false } }, bodies))
+    expect(() => queriesOf({ kind: 'vertex', where: { seam: false } }, parts))
       .toThrow(/seam false matched 0/)
   })
 

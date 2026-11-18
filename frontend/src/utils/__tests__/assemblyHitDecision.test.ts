@@ -54,7 +54,7 @@ describe('decideAssemblyHit through the one layer set', () => {
 })
 
 // One face with two triangles, the minimal pick body that lights a primitive.
-function body(): AssemblyPickPart {
+function part(): AssemblyPickPart {
   return {
     handle: 'B',
     partKey: 'B',
@@ -77,8 +77,8 @@ describe('assembly highlight geometry parity', () => {
   // slots identically, the parity the part editor's highlightSymmetry test
   // locks for its two builders.
   it('the same primitive lights the selected and hovered slots', () => {
-    const selected = buildAssemblySelectionGeometry([body()], new Set(['k']), null)
-    const hovered = buildAssemblySelectionGeometry([body()], new Set(), 'k')
+    const selected = buildAssemblySelectionGeometry([part()], new Set(['k']), null)
+    const hovered = buildAssemblySelectionGeometry([part()], new Set(), 'k')
     expect(selected.selectedFaces.length).toBeGreaterThan(0)
     expect(hovered.hoveredFaces.length).toBeGreaterThan(0)
     // Same triangles, different colour slot: the decision feeds one build shape.

@@ -28,7 +28,7 @@ function face(centroid: [number, number, number], normal: [number, number, numbe
 
 const EDGE: EdgeData = { kind: 'line', start: [0, 0, 0], end: [0, 0, 10] }
 
-const BODY: PartResult = {
+const PART: PartResult = {
   id: 'body_ex1',
   created_by: 'ex1',
   modified_by: [],
@@ -52,7 +52,7 @@ function index(): PartAnchorIndex {
       ['q_edge', ['a_edge']],
       ['q_free', []],
     ]),
-    parts: { body_ex1: BODY },
+    parts: { body_ex1: PART },
   }
 }
 
@@ -175,7 +175,7 @@ describe('buildPartAnchorIndex', () => {
       }],
       anchors: { a_face: A_FACE, a_edge: A_EDGE, a_vert: planeAnchor('@u|v') },
     }
-    const built = buildPartAnchorIndex(bundle, { body_ex1: BODY })
+    const built = buildPartAnchorIndex(bundle, { body_ex1: PART })
     expect(built.byQuery.get('q_face')).toEqual(['a_face'])
     expect(built.byQuery.get('q_edge')).toEqual(['a_edge'])
     // The second face slot's own query is present and records its empty anchor
@@ -198,7 +198,7 @@ describe('buildPartAnchorIndex', () => {
       }],
       anchors: {},
     }
-    const built = buildPartAnchorIndex(bundle, { body_ex1: BODY })
+    const built = buildPartAnchorIndex(bundle, { body_ex1: PART })
     expect(built.byQuery.get('q_face')).toEqual([])
   })
 })

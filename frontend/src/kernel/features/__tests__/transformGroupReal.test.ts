@@ -39,7 +39,7 @@ import { canonicalFaces } from '../../occ/partNames'
 import { partFrame, edgeRepresentativePoint, solidToEdges } from '../../occ/tessellation'
 import { geometryClassifiers } from '../../geomHash'
 import { Repository, ref, makeAncestryQuery } from '../../query'
-import { solveArray, solveCircularArray } from './patternBodyTestAdapters'
+import { solveArray, solveCircularArray } from './patternPartTestAdapters'
 import { solveTransform, solveMirror } from '../transformMirror'
 import { resolveFilletEdges } from '../filletChamfer'
 import type { PartSolid } from '../../types3d'
@@ -50,7 +50,7 @@ import fixture from '../../occ/__fixtures__/transformGroup.json'
 
 const oc = await loadOcc()
 
-type BodyState = { volume: number | null; created_by: string; modified_by: string[] }
+type PartState = { volume: number | null; created_by: string; modified_by: string[] }
 type BoxSpec = [number[], number[]]
 type Case = {
   name: string
@@ -60,7 +60,7 @@ type Case = {
   sub: Record<string, unknown>
   register_plane: boolean
   result: Record<string, unknown>
-  store: Record<string, BodyState>
+  store: Record<string, PartState>
 }
 const fx = fixture as unknown as { cases: Case[] }
 
@@ -98,7 +98,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
         repo.register('dir_y', { start: [0, 0, 0], end: [0, 1, 0] })
         repo.register('axis_z', { start: [0, 0, 0], end: [0, 0, 1] })
         const box = makeBoxAt(occ, scope, c.source_spec[0] as Vec3, c.source_spec[1][0], c.source_spec[1][1], c.source_spec[1][2])
-        const bodyStore: Record<string, PartSolid> = {
+        const partStore: Record<string, PartSolid> = {
           body_s: {
             id: 'body_s',
             created_by: 'ex_s',
@@ -110,12 +110,12 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
           },
         }
         const feature = { id: c.feature_id, kind: c.kind, [c.kind]: c.sub }
-        const result = SOLVERS[c.kind](occ, scope, table, feature, repo, bodyStore)
+        const result = SOLVERS[c.kind](occ, scope, table, feature, repo, partStore)
         expect(result).toEqual(c.result)
 
-        expect(Object.keys(bodyStore).sort()).toEqual(Object.keys(c.store).sort())
+        expect(Object.keys(partStore).sort()).toEqual(Object.keys(c.store).sort())
         for (const bid of Object.keys(c.store)) {
-          const b = bodyStore[bid]
+          const b = partStore[bid]
           expect(b.created_by).toBe(c.store[bid].created_by)
           expect(b.modified_by).toEqual(c.store[bid].modified_by)
           const vol = b.shape === null ? null : volumeOf(occ, scope, table.get<OccShape>(b.shape))
@@ -137,8 +137,8 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
     const table = new HandleTable()
     try {
       const repo = new Repository()
-      const bodyStore: Record<string, PartSolid> = {
-        body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 1, 2, 3, 'body_s', 'ex_s'),
+      const partStore: Record<string, PartSolid> = {
+        body_s: makeBoxPart(occ, scope, table, [0, 0, 0], 1, 2, 3, 'body_s', 'ex_s'),
       }
       const result = solveTransform(occ, scope, table, {
         id: 'tr1',
@@ -151,9 +151,9 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
           rotation_axis_origin: [0, 0, 0],
           rotation_axis_direction: [0, 0, 1],
         },
-      }, repo, bodyStore)
+      }, repo, partStore)
       expect(result.status).toBe('ok')
-      const moved = bodyStore[result.body_id as string]
+      const moved = partStore[result.body_id as string]
       expect(moved).toBeDefined()
       expectCentreClose(centreOf(scope, table, moved), [9, 0.5, 1.5])
     } finally {
@@ -162,7 +162,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
   })
 
   // Create a box body at the given origin and size.
-  function makeBoxBody(
+  function makeBoxPart(
     oc: OccModule, scope: DisposeScope, table: HandleTable,
     origin: Vec3, w: number, h: number, d: number,
     id: string, createdBy: string,
@@ -180,8 +180,8 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
   }
 
   // Axis-aligned bounding-box centre of a body's shape, for "did it move, and how far".
-  function centreOf(scope: DisposeScope, table: HandleTable, body: PartSolid): Vec3 {
-    const verts = readSolidVertices(occ, scope, table.get<OccShape>(body.shape!))
+  function centreOf(scope: DisposeScope, table: HandleTable, part: PartSolid): Vec3 {
+    const verts = readSolidVertices(occ, scope, table.get<OccShape>(part.shape!))
     const lo = [Infinity, Infinity, Infinity]
     const hi = [-Infinity, -Infinity, -Infinity]
     for (const v of verts) {
@@ -202,13 +202,13 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
    * congruent bodies named this way get the SAME UUID strings, which is what
    * makes instance disambiguation testable.
    */
-  function nameFacesInOrder(scope: DisposeScope, table: HandleTable, body: PartSolid) {
-    const faces = canonicalFaces(occ, scope, table.get<OccShape>(body.shape!))
-    body.face_uuids = faces.map((_, i) => `u_face${i}`)
-    body.face_ancestry = Object.fromEntries(body.face_uuids.map((u) => [u, ['@anc']]))
+  function nameFacesInOrder(scope: DisposeScope, table: HandleTable, part: PartSolid) {
+    const faces = canonicalFaces(occ, scope, table.get<OccShape>(part.shape!))
+    part.face_uuids = faces.map((_, i) => `u_face${i}`)
+    part.face_ancestry = Object.fromEntries(part.face_uuids.map((u) => [u, ['@anc']]))
   }
 
-  const namedUuids = (body: PartSolid): string[] => (body.face_uuids ?? []).filter((u): u is string => u !== null)
+  const namedUuids = (part: PartSolid): string[] => (part.face_uuids ?? []).filter((u): u is string => u !== null)
 
   describe('transform over a list of picks', () => {
     // The pick is a LIST and the one composed Trsf is applied to every entry
@@ -221,32 +221,32 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, PartSolid> = {
-          body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
-          body_b: makeBoxBody(occ, scope, table, [20, 0, 0], 6, 6, 6, 'body_b', 'ex_b'),
+        const partStore: Record<string, PartSolid> = {
+          body_a: makeBoxPart(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
+          body_b: makeBoxPart(occ, scope, table, [20, 0, 0], 6, 6, 6, 'body_b', 'ex_b'),
         }
-        const centreA = centreOf(scope, table, bodyStore.body_a)
-        const centreB = centreOf(scope, table, bodyStore.body_b)
+        const centreA = centreOf(scope, table, partStore.body_a)
+        const centreB = centreOf(scope, table, partStore.body_b)
         const result = solveTransform(occ, scope, table, {
           id: 'tr1',
           transform: { bodies: ['body_a', 'body_b'], operation: 'new', translation: [0, 0, 50] },
-        }, new Repository(), bodyStore)
+        }, new Repository(), partStore)
 
         expect(result.status).toBe('ok')
         expect(result.operation).toBe('new')
         // One flat, gap-free run off the single `body_<feature>` base.
         expect(result.body_ids).toEqual(['body_tr1', 'body_tr1_1'])
         expect(result.body_id).toBe('body_tr1')
-        expect(Object.keys(bodyStore).sort()).toEqual(['body_a', 'body_b', 'body_tr1', 'body_tr1_1'])
-        expectCentreClose(centreOf(scope, table, bodyStore.body_tr1), [centreA[0], centreA[1], centreA[2] + 50])
-        expectCentreClose(centreOf(scope, table, bodyStore.body_tr1_1), [centreB[0], centreB[1], centreB[2] + 50])
+        expect(Object.keys(partStore).sort()).toEqual(['body_a', 'body_b', 'body_tr1', 'body_tr1_1'])
+        expectCentreClose(centreOf(scope, table, partStore.body_tr1), [centreA[0], centreA[1], centreA[2] + 50])
+        expectCentreClose(centreOf(scope, table, partStore.body_tr1_1), [centreB[0], centreB[1], centreB[2] + 50])
         // Sources are untouched by a "new" transform, both in place and in history.
-        expectCentreClose(centreOf(scope, table, bodyStore.body_a), centreA)
-        expectCentreClose(centreOf(scope, table, bodyStore.body_b), centreB)
-        expect(bodyStore.body_a.modified_by).toEqual([])
-        expect(bodyStore.body_b.modified_by).toEqual([])
-        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_tr1.shape!))).toBeCloseTo(64, 2)
-        expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_tr1_1.shape!))).toBeCloseTo(216, 2)
+        expectCentreClose(centreOf(scope, table, partStore.body_a), centreA)
+        expectCentreClose(centreOf(scope, table, partStore.body_b), centreB)
+        expect(partStore.body_a.modified_by).toEqual([])
+        expect(partStore.body_b.modified_by).toEqual([])
+        expect(volumeOf(occ, scope, table.get<OccShape>(partStore.body_tr1.shape!))).toBeCloseTo(64, 2)
+        expect(volumeOf(occ, scope, table.get<OccShape>(partStore.body_tr1_1.shape!))).toBeCloseTo(216, 2)
       } finally {
         scope.dispose()
       }
@@ -258,20 +258,20 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, PartSolid> = {
-          body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
-          body_b: makeBoxBody(occ, scope, table, [20, 0, 0], 4, 4, 4, 'body_b', 'ex_b'),
+        const partStore: Record<string, PartSolid> = {
+          body_a: makeBoxPart(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
+          body_b: makeBoxPart(occ, scope, table, [20, 0, 0], 4, 4, 4, 'body_b', 'ex_b'),
         }
         // Identical geometry AND identical source UUIDs: the worst case for
         // reuse, since only the instance index can tell the two copies apart.
-        for (const bid of ['body_a', 'body_b']) nameFacesInOrder(scope, table, bodyStore[bid])
+        for (const bid of ['body_a', 'body_b']) nameFacesInOrder(scope, table, partStore[bid])
         solveTransform(occ, scope, table, {
           id: 'tr1',
           transform: { bodies: ['body_a', 'body_b'], operation: 'new', translation: [0, 0, 50] },
-        }, new Repository(), bodyStore)
+        }, new Repository(), partStore)
 
-        const uuidsA = new Set(namedUuids(bodyStore.body_tr1))
-        const uuidsB = new Set(namedUuids(bodyStore.body_tr1_1))
+        const uuidsA = new Set(namedUuids(partStore.body_tr1))
+        const uuidsB = new Set(namedUuids(partStore.body_tr1_1))
         expect(uuidsA.size).toBeGreaterThan(0)
         expect(uuidsB.size).toBeGreaterThan(0)
         for (const u of uuidsB) expect(uuidsA.has(u)).toBe(false)
@@ -284,24 +284,24 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, PartSolid> = {
-          body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
-          body_b: makeBoxBody(occ, scope, table, [20, 0, 0], 4, 4, 4, 'body_b', 'ex_b'),
+        const partStore: Record<string, PartSolid> = {
+          body_a: makeBoxPart(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
+          body_b: makeBoxPart(occ, scope, table, [20, 0, 0], 4, 4, 4, 'body_b', 'ex_b'),
         }
-        const centreA = centreOf(scope, table, bodyStore.body_a)
-        const centreB = centreOf(scope, table, bodyStore.body_b)
+        const centreA = centreOf(scope, table, partStore.body_a)
+        const centreB = centreOf(scope, table, partStore.body_b)
         const result = solveTransform(occ, scope, table, {
           id: 'tr1',
           transform: { bodies: ['body_a', 'body_b'], operation: 'replace', translation: [0, 7, 0] },
-        }, new Repository(), bodyStore)
+        }, new Repository(), partStore)
 
         expect(result.operation).toBe('replace')
         expect(result.body_ids).toEqual(['body_a', 'body_b'])
-        expect(Object.keys(bodyStore).sort()).toEqual(['body_a', 'body_b'])
-        expectCentreClose(centreOf(scope, table, bodyStore.body_a), [centreA[0], centreA[1] + 7, centreA[2]])
-        expectCentreClose(centreOf(scope, table, bodyStore.body_b), [centreB[0], centreB[1] + 7, centreB[2]])
-        expect(bodyStore.body_a.modified_by).toContain('tr1')
-        expect(bodyStore.body_b.modified_by).toContain('tr1')
+        expect(Object.keys(partStore).sort()).toEqual(['body_a', 'body_b'])
+        expectCentreClose(centreOf(scope, table, partStore.body_a), [centreA[0], centreA[1] + 7, centreA[2]])
+        expectCentreClose(centreOf(scope, table, partStore.body_b), [centreB[0], centreB[1] + 7, centreB[2]])
+        expect(partStore.body_a.modified_by).toContain('tr1')
+        expect(partStore.body_b.modified_by).toContain('tr1')
       } finally {
         scope.dispose()
       }
@@ -313,18 +313,18 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, PartSolid> = {
-          body_ex1: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_ex1', 'ex1'),
-          body_ex1_1: makeBoxBody(occ, scope, table, [20, 0, 0], 4, 4, 4, 'body_ex1_1', 'ex1'),
+        const partStore: Record<string, PartSolid> = {
+          body_ex1: makeBoxPart(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_ex1', 'ex1'),
+          body_ex1_1: makeBoxPart(occ, scope, table, [20, 0, 0], 4, 4, 4, 'body_ex1_1', 'ex1'),
         }
-        const centres = [centreOf(scope, table, bodyStore.body_ex1), centreOf(scope, table, bodyStore.body_ex1_1)]
+        const centres = [centreOf(scope, table, partStore.body_ex1), centreOf(scope, table, partStore.body_ex1_1)]
         const result = solveTransform(occ, scope, table, {
           id: 'tr1', transform: { bodies: ['@ex1'], operation: 'replace', translation: [0, 0, 9] },
-        }, new Repository(), bodyStore)
+        }, new Repository(), partStore)
 
         expect(result.body_ids).toEqual(['body_ex1', 'body_ex1_1'])
-        expectCentreClose(centreOf(scope, table, bodyStore.body_ex1), [centres[0][0], centres[0][1], centres[0][2] + 9])
-        expectCentreClose(centreOf(scope, table, bodyStore.body_ex1_1), [centres[1][0], centres[1][1], centres[1][2] + 9])
+        expectCentreClose(centreOf(scope, table, partStore.body_ex1), [centres[0][0], centres[0][1], centres[0][2] + 9])
+        expectCentreClose(centreOf(scope, table, partStore.body_ex1_1), [centres[1][0], centres[1][1], centres[1][2] + 9])
       } finally {
         scope.dispose()
       }
@@ -334,17 +334,17 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, PartSolid> = {
-          body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
+        const partStore: Record<string, PartSolid> = {
+          body_a: makeBoxPart(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
         }
-        const centreA = centreOf(scope, table, bodyStore.body_a)
+        const centreA = centreOf(scope, table, partStore.body_a)
         const result = solveTransform(occ, scope, table, {
           id: 'tr1',
           transform: { bodies: ['body_a', '@body_a', '@ex_a'], operation: 'replace', translation: [10, 0, 0] },
-        }, new Repository(), bodyStore)
+        }, new Repository(), partStore)
 
         expect(result.body_ids).toEqual(['body_a'])
-        expectCentreClose(centreOf(scope, table, bodyStore.body_a), [centreA[0] + 10, centreA[1], centreA[2]])
+        expectCentreClose(centreOf(scope, table, partStore.body_a), [centreA[0] + 10, centreA[1], centreA[2]])
       } finally {
         scope.dispose()
       }
@@ -354,17 +354,17 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, PartSolid> = {
-          body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
+        const partStore: Record<string, PartSolid> = {
+          body_a: makeBoxPart(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
         }
-        const centreA = centreOf(scope, table, bodyStore.body_a)
+        const centreA = centreOf(scope, table, partStore.body_a)
         expect(() => solveTransform(occ, scope, table, {
           id: 'tr1',
           transform: { bodies: ['body_a', 'nope'], operation: 'replace', translation: [10, 0, 0] },
-        }, new Repository(), bodyStore)).toThrow(/part not found/)
-        expect(Object.keys(bodyStore)).toEqual(['body_a'])
-        expectCentreClose(centreOf(scope, table, bodyStore.body_a), centreA)
-        expect(bodyStore.body_a.modified_by).toEqual([])
+        }, new Repository(), partStore)).toThrow(/part not found/)
+        expect(Object.keys(partStore)).toEqual(['body_a'])
+        expectCentreClose(centreOf(scope, table, partStore.body_a), centreA)
+        expect(partStore.body_a.modified_by).toEqual([])
       } finally {
         scope.dispose()
       }
@@ -387,10 +387,10 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
         const repo = new Repository()
         repo.register('dir_x', { start: [0, 0, 0], end: [1, 0, 0] })
         repo.register('dir_y', { start: [0, 0, 0], end: [0, 1, 0] })
-        const bodyStore: Record<string, PartSolid> = {
-          body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 5, 5, 5, 'body_s', 'ex_s'),
+        const partStore: Record<string, PartSolid> = {
+          body_s: makeBoxPart(occ, scope, table, [0, 0, 0], 5, 5, 5, 'body_s', 'ex_s'),
         }
-        const srcVol = volumeOf(occ, scope, table.get<OccShape>(bodyStore.body_s.shape!))
+        const srcVol = volumeOf(occ, scope, table.get<OccShape>(partStore.body_s.shape!))
         const result = solveArray(occ, scope, table, {
           id: 'arr1',
           array: {
@@ -400,16 +400,16 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
             count_y: 2, pitch_y: 15, direction_y_query: '@dir_y',
             operation: 'add',
           },
-        }, repo, bodyStore)
+        }, repo, partStore)
         expect(result.status).toBe('ok')
         expect(result.body_id).toBe('body_s')
         // 4 instances: source + copies at (15,0), (0,15), and (15,15), each its own part.
         expect(result.body_ids).toEqual(['body_s', 'body_s_1', 'body_s_2', 'body_s_3'])
-        expect(Object.keys(bodyStore).sort()).toEqual(['body_s', 'body_s_1', 'body_s_2', 'body_s_3'])
+        expect(Object.keys(partStore).sort()).toEqual(['body_s', 'body_s_1', 'body_s_2', 'body_s_3'])
         for (const bid of ['body_s', 'body_s_1', 'body_s_2', 'body_s_3']) {
-          expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore[bid].shape!))).toBeCloseTo(srcVol, 2)
+          expect(volumeOf(occ, scope, table.get<OccShape>(partStore[bid].shape!))).toBeCloseTo(srcVol, 2)
         }
-        expect(bodyStore.body_s.modified_by).toContain('arr1')
+        expect(partStore.body_s.modified_by).toContain('arr1')
       } finally {
         scope.dispose()
       }
@@ -423,8 +423,8 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       try {
         const repo = new Repository()
         repo.register('dir_x', { start: [0, 0, 0], end: [1, 0, 0] })
-        const bodyStore: Record<string, PartSolid> = {
-          body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 5, 5, 5, 'body_s', 'ex_s'),
+        const partStore: Record<string, PartSolid> = {
+          body_s: makeBoxPart(occ, scope, table, [0, 0, 0], 5, 5, 5, 'body_s', 'ex_s'),
         }
         const result = solveArray(occ, scope, table, {
           id: 'arr1',
@@ -432,10 +432,10 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
             source_body: 'body_s', mode: 'linear', count_x: count, pitch_x: 15,
             direction_x_query: '@dir_x', operation: 'add',
           },
-        }, repo, bodyStore)
+        }, repo, partStore)
         expect(result.status).toBe('ok')
         expect(result.body_ids).toHaveLength(count)
-        expect(Object.keys(bodyStore)).toHaveLength(count)
+        expect(Object.keys(partStore)).toHaveLength(count)
         expect(result.body_ids[0]).toBe('body_s')
       } finally {
         scope.dispose()
@@ -457,8 +457,8 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
         const repo = new Repository()
         repo.register('dir_x', { start: [0, 0, 0], end: [1, 0, 0] })
         repo.register('dir_y', { start: [0, 0, 0], end: [0, 1, 0] })
-        const bodyStore: Record<string, PartSolid> = {
-          body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 5, 5, 5, 'body_s', 'ex_s'),
+        const partStore: Record<string, PartSolid> = {
+          body_s: makeBoxPart(occ, scope, table, [0, 0, 0], 5, 5, 5, 'body_s', 'ex_s'),
         }
         const shapeClass = (
           occ as unknown as {
@@ -475,7 +475,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
           // Prove the spy intercepts BEFORE the solve: a silent prototype-chain
           // miss would make the zero assertion below pass vacuously.
           const E = occ.TopAbs_ShapeEnum
-          const exp = scope.track(new occ.TopExp_Explorer_2(table.get<OccShape>(bodyStore.body_s.shape!), E.TopAbs_FACE, E.TopAbs_SHAPE))
+          const exp = scope.track(new occ.TopExp_Explorer_2(table.get<OccShape>(partStore.body_s.shape!), E.TopAbs_FACE, E.TopAbs_SHAPE))
           const firstFace = scope.track(occ.TopoDS.Face_1(exp.Current()))
           shapeClass.prototype.IsPartner.call(firstFace, firstFace)
           expect(partnerCalls).toBe(1)
@@ -490,7 +490,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
               count_y: 2, pitch_y: 15, direction_y_query: '@dir_y',
               operation: 'add',
             },
-          }, repo, bodyStore)
+          }, repo, partStore)
           expect(result.status).toBe('ok')
           expect(partnerCalls).toBe(0)
         } finally {
@@ -512,8 +512,8 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       try {
         const repo = new Repository()
         repo.register('axis_z', { start: [0, 0, 0], end: [0, 0, 1] })
-        const bodyStore: Record<string, PartSolid> = {
-          body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 2, 2, 2, 'body_s', 'ex_s'),
+        const partStore: Record<string, PartSolid> = {
+          body_s: makeBoxPart(occ, scope, table, [0, 0, 0], 2, 2, 2, 'body_s', 'ex_s'),
         }
         const result = solveTransform(occ, scope, table, {
           id: 'tr4',
@@ -525,9 +525,9 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
             translation: [10, 0, 0],
             operation: 'replace',
           },
-        }, repo, bodyStore)
+        }, repo, partStore)
         expect(result.status).toBe('ok')
-        expectCentreClose(centreOf(scope, table, bodyStore.body_s), [9, 1, 1])
+        expectCentreClose(centreOf(scope, table, partStore.body_s), [9, 1, 1])
       } finally {
         scope.dispose()
       }
@@ -545,8 +545,8 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
         const repo = new Repository()
         repo.register('axis_z', { start: [0, 0, 0], end: [0, 0, 1] })
         // Box offset from origin so copies don't overlap
-        const bodyStore: Record<string, PartSolid> = {
-          body_s: makeBoxBody(occ, scope, table, [5, -2, -2], 4, 4, 4, 'body_s', 'ex_s'),
+        const partStore: Record<string, PartSolid> = {
+          body_s: makeBoxPart(occ, scope, table, [5, -2, -2], 4, 4, 4, 'body_s', 'ex_s'),
         }
         const result = solveCircularArray(occ, scope, table, {
           id: 'ca1',
@@ -556,14 +556,14 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
             axis: '@axis_z',
             operation: 'new',
           },
-        }, repo, bodyStore)
+        }, repo, partStore)
         expect(result.status).toBe('ok')
-        const bodyIds = Object.keys(bodyStore).filter((b) => b.startsWith('body_ca1')).sort()
-        expect(bodyIds.length).toBe(3)
+        const partIds = Object.keys(partStore).filter((b) => b.startsWith('body_ca1')).sort()
+        expect(partIds.length).toBe(3)
         expect(result.body_ids).not.toContain('body_s')
-        for (const bid of bodyIds) {
-          expect(bodyStore[bid].shape).not.toBeNull()
-          expect(volumeOf(occ, scope, table.get<OccShape>(bodyStore[bid].shape!))).toBeGreaterThan(0)
+        for (const bid of partIds) {
+          expect(partStore[bid].shape).not.toBeNull()
+          expect(volumeOf(occ, scope, table.get<OccShape>(partStore[bid].shape!))).toBeGreaterThan(0)
         }
       } finally {
         scope.dispose()
@@ -581,8 +581,8 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       try {
         const repo = new Repository()
         repo.register('axis_z', { start: [0, 0, 0], end: [0, 0, 1] })
-        const bodyStore: Record<string, PartSolid> = {
-          body_s: makeBoxBody(occ, scope, table, [5, -2, -2], 4, 4, 4, 'body_s', 'ex_s'),
+        const partStore: Record<string, PartSolid> = {
+          body_s: makeBoxPart(occ, scope, table, [5, -2, -2], 4, 4, 4, 'body_s', 'ex_s'),
         }
         const result = solveCircularArray(occ, scope, table, {
           id: 'ca1',
@@ -592,13 +592,13 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
             axis: '@axis_z',
             operation: 'new',
           },
-        }, repo, bodyStore)
+        }, repo, partStore)
         expect(result.status).toBe('ok')
-        const copyIds = Object.keys(bodyStore).filter((b) => b.startsWith('body_ca1')).sort()
+        const copyIds = Object.keys(partStore).filter((b) => b.startsWith('body_ca1')).sort()
         expect(copyIds).toHaveLength(3)
         const angles = copyIds
           .map((bid) => {
-            const c = centreOf(scope, table, bodyStore[bid])
+            const c = centreOf(scope, table, partStore[bid])
             const deg = (Math.atan2(c[1], c[0]) * 180) / Math.PI
             return ((Math.round(deg) % 360) + 360) % 360
           })
@@ -618,8 +618,8 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       try {
         const repo = new Repository()
         repo.register('axis_z', { start: [0, 0, 0], end: [0, 0, 1] })
-        const bodyStore: Record<string, PartSolid> = {
-          body_s: makeBoxBody(occ, scope, table, [5, -2, -2], 4, 4, 4, 'body_s', 'ex_s'),
+        const partStore: Record<string, PartSolid> = {
+          body_s: makeBoxPart(occ, scope, table, [5, -2, -2], 4, 4, 4, 'body_s', 'ex_s'),
         }
         const result = solveCircularArray(occ, scope, table, {
           id: 'ca1',
@@ -629,9 +629,9 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
             axis: '@axis_z',
             operation: 'add',
           },
-        }, repo, bodyStore)
+        }, repo, partStore)
         expect(result.status).toBe('ok')
-        expect(bodyStore.body_s.modified_by).toContain('ca1')
+        expect(partStore.body_s.modified_by).toContain('ca1')
       } finally {
         scope.dispose()
       }
@@ -649,8 +649,8 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       try {
         const repo = new Repository()
         repo.register('axis_z', { start: [0, 0, 0], end: [0, 0, 1] })
-        const bodyStore: Record<string, PartSolid> = {
-          body_s: makeBoxBody(occ, scope, table, [5, -2, -2], 4, 4, 4, 'body_s', 'ex_s'),
+        const partStore: Record<string, PartSolid> = {
+          body_s: makeBoxPart(occ, scope, table, [5, -2, -2], 4, 4, 4, 'body_s', 'ex_s'),
         }
         const result = solveCircularArray(occ, scope, table, {
           id: 'ca1',
@@ -660,7 +660,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
             axis: '@axis_z',
             operation: 'add',
           },
-        }, repo, bodyStore)
+        }, repo, partStore)
         expect(result.status).toBe('ok')
       } finally {
         scope.dispose()
@@ -675,8 +675,8 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       try {
         const repo = new Repository()
         repo.register('dir_x', { start: [0, 0, 0], end: [1, 0, 0] })
-        const bodyStore: Record<string, PartSolid> = {
-          body_s: makeBoxBody(occ, scope, table, [0, 0, 0], 5, 5, 5, 'body_s', 'ex_s'),
+        const partStore: Record<string, PartSolid> = {
+          body_s: makeBoxPart(occ, scope, table, [0, 0, 0], 5, 5, 5, 'body_s', 'ex_s'),
         }
         expect(() => solveArray(occ, scope, table, {
           id: 'arr1',
@@ -684,7 +684,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
             source_body: 'body_s', mode: 'linear', count_x: 0, pitch_x: 20,
             direction_x_query: '@dir_x', operation: 'add',
           },
-        }, repo, bodyStore)).toThrow(/whole number of at least 1/)
+        }, repo, partStore)).toThrow(/whole number of at least 1/)
 
         const result = solveArray(occ, scope, table, {
           id: 'arr2',
@@ -692,7 +692,7 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
             source_body: 'body_s', mode: 'linear', count_x: 1, pitch_x: 20,
             direction_x_query: '@dir_x', operation: 'add',
           },
-        }, repo, bodyStore)
+        }, repo, partStore)
         expect(result.status).toBe('ok')
         expect(result.body_ids).toEqual(['body_s'])
         expect(result.solver_warning).toBeUndefined()
@@ -707,17 +707,17 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
     // (the fallback ancestry of an edge with no construction UUID). The mirror
     // "new" template omitted them, so registerSplitBodies defaulted the copy to
     // [] and the same pick resolved differently on the copy than on the source.
-    const exactQueryFor = (scope: DisposeScope, table: HandleTable, body: PartSolid, target: Vec3): string => {
-      const shape = table.get<OccShape>(body.shape!)
+    const exactQueryFor = (scope: DisposeScope, table: HandleTable, part: PartSolid, target: Vec3): string => {
+      const shape = table.get<OccShape>(part.shape!)
       const { center, half } = partFrame(occ, scope, shape)
-      const { edges } = solidToEdges(occ, table, body.shape!, {})
+      const { edges } = solidToEdges(occ, table, part.shape!, {})
       const ed = edges.find((e) => {
         const pt = edgeRepresentativePoint(e)
         return pt !== null && pt.every((c, i) => c === target[i])
       })
       if (ed === undefined) throw new Error('no edge at ' + JSON.stringify(target))
       const classifiers = geometryClassifiers(edgeRepresentativePoint(ed)!, center, half)
-      const ids = [ref(body.created_by), ref(body.id), ...body.profile_queries, ...classifiers.map(ref)]
+      const ids = [ref(part.created_by), ref(part.id), ...part.profile_queries, ...classifiers.map(ref)]
       return makeAncestryQuery(ids, ed.kind === 'line' ? 'straightedge' : 'edge')
     }
 
@@ -725,26 +725,26 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, PartSolid> = {
-          body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
+        const partStore: Record<string, PartSolid> = {
+          body_a: makeBoxPart(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
         }
-        bodyStore.body_a.profile_queries = ['@sk_a']
+        partStore.body_a.profile_queries = ['@sk_a']
         const repo = new Repository()
         repo.register('builtin_plane_front', { type: 'plane', origin: [0, 0, 0], normal: [0, 0, 1] })
         const result = solveMirror(occ, scope, table, {
           id: 'mi1', mirror: { body: 'body_a', plane: '@builtin_plane_front', keep_original: true, merge: false },
-        }, repo, bodyStore)
+        }, repo, partStore)
         expect(result.status).toBe('ok')
         expect(result.operation).toBe('new')
-        const copy = bodyStore[result.body_id]
+        const copy = partStore[result.body_id]
         // THE fix: the copy must carry the source's profile queries.
         expect(copy.profile_queries).toEqual(['@sk_a'])
 
         // The source's bottom-back edge (y=0, z=4) mirrors across the z=0 plane
         // to the copy's bottom-back edge (y=0, z=-4); the profile-derived query
         // must resolve to exactly that edge on each body.
-        const srcQ = exactQueryFor(scope, table, bodyStore.body_a, [2, 0, 4])
-        const srcResolved = resolveFilletEdges(occ, scope, table, bodyStore.body_a, [srcQ])
+        const srcQ = exactQueryFor(scope, table, partStore.body_a, [2, 0, 4])
+        const srcResolved = resolveFilletEdges(occ, scope, table, partStore.body_a, [srcQ])
         expect(srcResolved.length).toBe(1)
         const copyQ = exactQueryFor(scope, table, copy, [2, 0, -4])
         const copyResolved = resolveFilletEdges(occ, scope, table, copy, [copyQ])
@@ -772,25 +772,25 @@ describe.skipIf(!oc)('transform-group leaves (real OCC)', () => {
       const scope = new DisposeScope()
       const table = new HandleTable()
       try {
-        const bodyStore: Record<string, PartSolid> = {
-          body_a: makeBoxBody(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
+        const partStore: Record<string, PartSolid> = {
+          body_a: makeBoxPart(occ, scope, table, [0, 0, 0], 4, 4, 4, 'body_a', 'ex_a'),
         }
-        nameFacesInOrder(scope, table, bodyStore.body_a)
-        const uuidsBefore = new Set(namedUuids(bodyStore.body_a))
+        nameFacesInOrder(scope, table, partStore.body_a)
+        const uuidsBefore = new Set(namedUuids(partStore.body_a))
         expect(uuidsBefore.size).toBeGreaterThan(0)
 
         const repo = new Repository()
         repo.register('builtin_plane_front', { type: 'plane', origin: [0, 0, 0], normal: [0, 0, 1] })
         const result = solveMirror(occ, scope, table, {
           id: 'mi1', mirror: { body: 'body_a', plane: '@builtin_plane_front', keep_original: false, merge: false },
-        }, repo, bodyStore)
+        }, repo, partStore)
 
         expect(result).toMatchObject({ status: 'ok', operation: 'replace', body_id: 'body_a', body_ids: ['body_a'] })
-        expect(Object.keys(bodyStore)).toEqual(['body_a'])
+        expect(Object.keys(partStore)).toEqual(['body_a'])
         // The 4-cube sits at [0,4]^3, so its centre reflects from (2,2,2) to (2,2,-2).
-        expectCentreClose(centreOf(scope, table, bodyStore.body_a), [2, 2, -2])
-        expect(bodyStore.body_a.modified_by).toContain('mi1')
-        expect(new Set(namedUuids(bodyStore.body_a))).toEqual(uuidsBefore)
+        expectCentreClose(centreOf(scope, table, partStore.body_a), [2, 2, -2])
+        expect(partStore.body_a.modified_by).toContain('mi1')
+        expect(new Set(namedUuids(partStore.body_a))).toEqual(uuidsBefore)
       } finally {
         scope.dispose()
       }

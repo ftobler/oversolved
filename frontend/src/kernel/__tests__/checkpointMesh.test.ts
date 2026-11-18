@@ -21,14 +21,14 @@ import type { PartSolid } from '../types3d'
 
 function makeDeps(overrides?: Partial<BuildDeps>): BuildDeps {
   return {
-    trySolveFeature: (_feature, _repo, _bodyStore, _featuresById): FeatureResult => ({ status: 'ok' }),
+    trySolveFeature: (_feature, _repo, _partStore, _featuresById): FeatureResult => ({ status: 'ok' }),
     postRegister: () => {},
     initGlobalRepo: () => new Repository(),
     tessellateParts: () => ({}),
     ...overrides,
   }
 }
-function makeBody(id: string, createdBy: string): PartSolid {
+function makePart(id: string, createdBy: string): PartSolid {
   return {
     id,
     created_by: createdBy,
@@ -40,10 +40,10 @@ function makeBody(id: string, createdBy: string): PartSolid {
   }
 }
 describe('lazy checkpoint meshing contract', () => {
-  const trySolveFeature = (feature: Record<string, unknown>, _repo: Repository, bodyStore: Record<string, PartSolid>): FeatureResult => {
+  const trySolveFeature = (feature: Record<string, unknown>, _repo: Repository, partStore: Record<string, PartSolid>): FeatureResult => {
     if (String(feature.kind) === 'extrude') {
       const bid = 'body_' + String(feature.id)
-      bodyStore[bid] = makeBody(bid, String(feature.id))
+      partStore[bid] = makePart(bid, String(feature.id))
     }
     return { status: 'ok' }
   }

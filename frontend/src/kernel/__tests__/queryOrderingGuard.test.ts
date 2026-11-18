@@ -158,7 +158,7 @@ describe("ordering guard: coerce scan", () => {
     // references in the ancestry tiers, so the coercion misses.
     const repo = new Repository()
     repo.setFeatureOrder(["ex0", "ex1", "fillet"])
-    const bodyStore: Record<string, unknown> = {
+    const partStore: Record<string, unknown> = {
       body_x: { id: "body_x", created_by: "ex1", modified_by: ["ex1", "fillet"] },
     }
     repo.registerAncestor(
@@ -170,14 +170,14 @@ describe("ordering guard: coerce scan", () => {
       { type: "straightedge", body_id: "body_x", edge_index: 0, created_by: "fillet" },
     )
     const q = makeAncestryQuery(["@ex1face0", "@ex1"], "edge")
-    const result = repo.query(q, null, bodyStore, "ex1")
+    const result = repo.query(q, null, partStore, "ex1")
     expect(result).toBeNull()
   })
 
   it("still coerces to a same-feature sibling under the guard", () => {
     const repo = new Repository()
     repo.setFeatureOrder(["ex0", "ex1", "fillet"])
-    const bodyStore: Record<string, unknown> = {
+    const partStore: Record<string, unknown> = {
       body_x: { id: "body_x", created_by: "ex1", modified_by: ["ex1"] },
     }
     repo.registerAncestor(
@@ -189,7 +189,7 @@ describe("ordering guard: coerce scan", () => {
       { type: "straightedge", body_id: "body_x", edge_index: 0, created_by: "ex1" },
     )
     const q = makeAncestryQuery(["@ex1face0", "@ex1"], "edge")
-    const result = repo.query(q, null, bodyStore, "ex1") as Record<string, unknown> | null
+    const result = repo.query(q, null, partStore, "ex1") as Record<string, unknown> | null
     expect(result).not.toBeNull()
     expect(result!.created_by).toBe("ex1")
   })
@@ -198,7 +198,7 @@ describe("ordering guard: coerce scan", () => {
     // From 'fillet' the ex1-owned edge is a backward reference and stays legal.
     const repo = new Repository()
     repo.setFeatureOrder(["ex0", "ex1", "fillet"])
-    const bodyStore: Record<string, unknown> = {
+    const partStore: Record<string, unknown> = {
       body_x: { id: "body_x", created_by: "ex1", modified_by: ["ex1", "fillet"] },
     }
     repo.registerAncestor(
@@ -210,7 +210,7 @@ describe("ordering guard: coerce scan", () => {
       { type: "straightedge", body_id: "body_x", edge_index: 0, created_by: "ex1" },
     )
     const q = makeAncestryQuery(["@ex1face0", "@ex1"], "edge")
-    const result = repo.query(q, null, bodyStore, "fillet") as Record<string, unknown> | null
+    const result = repo.query(q, null, partStore, "fillet") as Record<string, unknown> | null
     expect(result).not.toBeNull()
     expect(result!.created_by).toBe("ex1")
   })
@@ -218,7 +218,7 @@ describe("ordering guard: coerce scan", () => {
   it("queryAll applies the guard to the coerce scan", () => {
     const repo = new Repository()
     repo.setFeatureOrder(["ex0", "ex1", "fillet"])
-    const bodyStore: Record<string, unknown> = {
+    const partStore: Record<string, unknown> = {
       body_x: { id: "body_x", created_by: "ex1", modified_by: ["ex1", "fillet"] },
     }
     repo.registerAncestor(
@@ -229,14 +229,14 @@ describe("ordering guard: coerce scan", () => {
       ["@ex1edge0", "@ex1"],
       { type: "straightedge", body_id: "body_x", edge_index: 0, created_by: "fillet" },
     )
-    const results = repo.queryAll(makeAncestryQuery(["@ex1"], "edge"), "ex1", bodyStore)
+    const results = repo.queryAll(makeAncestryQuery(["@ex1"], "edge"), "ex1", partStore)
     expect(results).toEqual([])
   })
 
   it("queryAllTyped applies the guard to the coerce scan", () => {
     const repo = new Repository()
     repo.setFeatureOrder(["ex0", "ex1", "fillet"])
-    const bodyStore: Record<string, unknown> = {
+    const partStore: Record<string, unknown> = {
       body_x: { id: "body_x", created_by: "ex1", modified_by: ["ex1", "fillet"] },
     }
     repo.registerAncestor(
@@ -247,7 +247,7 @@ describe("ordering guard: coerce scan", () => {
       ["@ex1edge0", "@ex1"],
       { type: "straightedge", body_id: "body_x", edge_index: 0, created_by: "fillet" },
     )
-    const results = repo.queryAllTyped(ancestry(["@ex1"], "edge"), "ex1", bodyStore)
+    const results = repo.queryAllTyped(ancestry(["@ex1"], "edge"), "ex1", partStore)
     expect(results).toEqual([])
   })
 
@@ -258,7 +258,7 @@ describe("ordering guard: coerce scan", () => {
     // contextvar and the fillet-owned sibling stays hidden from 'ex1'.
     const repo = new Repository()
     repo.setFeatureOrder(["ex0", "ex1", "fillet"])
-    const bodyStore: Record<string, unknown> = {
+    const partStore: Record<string, unknown> = {
       body_x: { id: "body_x", created_by: "ex1", modified_by: ["ex1", "fillet"] },
     }
     repo.registerAncestor(
@@ -273,7 +273,7 @@ describe("ordering guard: coerce scan", () => {
 
     setCurrentFeatureId("ex1")
     try {
-      const result = repo.query(q, null, bodyStore)
+      const result = repo.query(q, null, partStore)
       expect(result).toBeNull()
     } finally {
       setCurrentFeatureId(null)

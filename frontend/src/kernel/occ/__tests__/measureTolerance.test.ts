@@ -69,7 +69,7 @@ describe('valueWithinTolerance', () => {
 })
 
 describe('scaledMeasures', () => {
-  const body: PartMeasure = {
+  const part: PartMeasure = {
     id: 'body_ex1',
     volume: 100,
     area: 60,
@@ -81,7 +81,7 @@ describe('scaledMeasures', () => {
   }
 
   it('scales every length in the record and the per-body rows, keeping counts and ids', () => {
-    const scaled = scaledMeasures(record({ perBody: [body] }), 25.4)
+    const scaled = scaledMeasures(record({ perBody: [part] }), 25.4)
     expect(scaled.volume).toBeCloseTo(100 * 25.4 ** 3, 6)
     expect(scaled.area).toBeCloseTo(60 * 25.4 ** 2, 6)
     scaled.centroid!.forEach((value, index) => expect(value).toBeCloseTo([127, 127, 127][index], 9))
@@ -90,20 +90,20 @@ describe('scaledMeasures', () => {
     expect(scaled.faces).toBe(6)
     expect(scaled.edges).toBe(12)
     expect(scaled.vertices).toBe(8)
-    const scaledBody = scaled.perBody[0]
-    expect(scaledBody.id).toBe('body_ex1')
-    expect(scaledBody.volume).toBeCloseTo(100 * 25.4 ** 3, 6)
-    expect(scaledBody.area).toBeCloseTo(60 * 25.4 ** 2, 6)
-    scaledBody.centroid!.forEach((value, index) => expect(value).toBeCloseTo([127, 127, 127][index], 9))
-    scaledBody.bbox!.forEach((value, index) => expect(value).toBeCloseTo([0, 0, 0, 254, 254, 254][index], 9))
-    expect(scaledBody.faces).toBe(6)
-    expect(scaledBody.edges).toBe(12)
-    expect(scaledBody.vertices).toBe(8)
+    const scaledPart = scaled.perBody[0]
+    expect(scaledPart.id).toBe('body_ex1')
+    expect(scaledPart.volume).toBeCloseTo(100 * 25.4 ** 3, 6)
+    expect(scaledPart.area).toBeCloseTo(60 * 25.4 ** 2, 6)
+    scaledPart.centroid!.forEach((value, index) => expect(value).toBeCloseTo([127, 127, 127][index], 9))
+    scaledPart.bbox!.forEach((value, index) => expect(value).toBeCloseTo([0, 0, 0, 254, 254, 254][index], 9))
+    expect(scaledPart.faces).toBe(6)
+    expect(scaledPart.edges).toBe(12)
+    expect(scaledPart.vertices).toBe(8)
   })
 
   it('keeps a null centroid and bbox null', () => {
     const scaled = scaledMeasures(
-      record({ centroid: null, bbox: null, bodies: 0, perBody: [{ ...body, centroid: null, bbox: null }] }),
+      record({ centroid: null, bbox: null, bodies: 0, perBody: [{ ...part, centroid: null, bbox: null }] }),
       25.4,
     )
     expect(scaled.centroid).toBeNull()

@@ -44,7 +44,7 @@ const EXTRUDE = 'XQve4bZ3hUdqFK-heNCKkm0T'
 // the last feature, filleting an edge where the first fillet and the chamfer meet.
 const GOOD_FILLET = 'EOvC6_TiiTec0XZuKCcwJYlz'
 const BAD_FILLET = 'YrOFu4qequmOjI-UO1K_PMc-'
-const BODY = `body_${EXTRUDE}`
+const PART = `body_${EXTRUDE}`
 
 const features = doc as unknown as Array<Record<string, unknown>>
 
@@ -56,7 +56,7 @@ function statusOf(r: BuildResponse, fid: string): string {
 function shapeAfter(h: SharedHarness, r: BuildResponse, fid: string): OccShape {
   const state = r._build_state as BuildState
   const snapshot = state.checkpoints[fid].body_store_snapshot
-  return h.table.get<OccShape>(snapshot[BODY].shape as never)
+  return h.table.get<OccShape>(snapshot[PART].shape as never)
 }
 
 describe.skipIf(!oc || !solveBytes)('fillet invalid-result gate (real OCC + Rust solver)', () => {

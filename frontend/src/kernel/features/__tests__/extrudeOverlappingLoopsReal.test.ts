@@ -98,10 +98,10 @@ describe.skipIf(!oc || !solveBytes)('extrude with overlapping sketch loops (real
     if (solveBytes) { resetSketchSolver(); setSketchSolver(solveBytes) }
   })
 
-  function gauges(result: BuildResponse, featureId: string, bodyId: string) {
+  function gauges(result: BuildResponse, featureId: string, partId: string) {
     const cp = result._build_state!.checkpoints[featureId]
     expect(cp, `no checkpoint for ${featureId}`).toBeDefined()
-    const shape = h.table.get<OccShape>(cp.body_store_snapshot[bodyId].shape!)
+    const shape = h.table.get<OccShape>(cp.body_store_snapshot[partId].shape!)
     const scope = new DisposeScope()
     try {
       return {

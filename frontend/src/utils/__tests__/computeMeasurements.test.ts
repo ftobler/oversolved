@@ -29,7 +29,7 @@ describe('computeMeasurements: the document length unit', () => {
   })
 
   it('forwards the unit to the 3D body measurements', () => {
-    const bodies: Record<string, PartResult> = {
+    const parts: Record<string, PartResult> = {
       body_ex: {
         id: 'body_ex',
         created_by: 'ex',
@@ -38,7 +38,7 @@ describe('computeMeasurements: the document length unit', () => {
         edge_queries: ['?body_ex:edge:0'],
       },
     }
-    expect(computeMeasurements(sel('?body_ex:edge:0'), sketch, undefined, bodies, 'inch'))
+    expect(computeMeasurements(sel('?body_ex:edge:0'), sketch, undefined, parts, 'inch'))
       .toEqual(['length 5.000 in'])
   })
 })

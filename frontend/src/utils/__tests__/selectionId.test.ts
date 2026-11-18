@@ -257,18 +257,18 @@ describe('parseTopoFallbackQuery', () => {
   })
 
   describe('round-trip with topoFallbackQuery', () => {
-    const cases: Array<{ bodyId: string; kind: 'edge' | 'face' | 'vertex' | 'tri'; idx: number }> = [
-      { bodyId: 'body_ex1', kind: 'edge', idx: 0 },
-      { bodyId: 'body_ex1_1', kind: 'edge', idx: 0 },
-      { bodyId: 'body1', kind: 'face', idx: 5 },
-      { bodyId: 'sk1', kind: 'vertex', idx: 99 },
-      { bodyId: 'body_ex1', kind: 'tri', idx: 2 },
+    const cases: Array<{ partId: string; kind: 'edge' | 'face' | 'vertex' | 'tri'; idx: number }> = [
+      { partId: 'body_ex1', kind: 'edge', idx: 0 },
+      { partId: 'body_ex1_1', kind: 'edge', idx: 0 },
+      { partId: 'body1', kind: 'face', idx: 5 },
+      { partId: 'sk1', kind: 'vertex', idx: 99 },
+      { partId: 'body_ex1', kind: 'tri', idx: 2 },
     ]
-    cases.forEach(({ bodyId, kind, idx }) => {
-      it(`${bodyId} ${kind}/${idx}`, () => {
-        const serialized = topoFallbackQuery(bodyId, kind, idx)
+    cases.forEach(({ partId, kind, idx }) => {
+      it(`${partId} ${kind}/${idx}`, () => {
+        const serialized = topoFallbackQuery(partId, kind, idx)
         const parsed = parseTopoFallbackQuery(serialized)
-        expect(parsed).toEqual({ partId: bodyId, kind, idx })
+        expect(parsed).toEqual({ partId: partId, kind, idx })
       })
     })
   })

@@ -54,7 +54,7 @@ function expectClose(actual: unknown, expected: unknown, path = ''): void {
   expect(actual, path).toEqual(expected)
 }
 
-function makeBody(id: string, createdBy: string): PartSolid {
+function makePart(id: string, createdBy: string): PartSolid {
   return {
     id,
     created_by: createdBy,
@@ -68,7 +68,7 @@ function makeBody(id: string, createdBy: string): PartSolid {
 
 function makeStore(spec: Record<string, string>): Record<string, PartSolid> {
   const store: Record<string, PartSolid> = {}
-  for (const [bid, cb] of Object.entries(spec)) store[bid] = makeBody(bid, cb)
+  for (const [bid, cb] of Object.entries(spec)) store[bid] = makePart(bid, cb)
   return store
 }
 

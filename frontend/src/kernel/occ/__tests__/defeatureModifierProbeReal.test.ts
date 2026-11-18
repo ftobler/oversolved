@@ -40,7 +40,7 @@ const oc = await loadOcc()
 const solveBytes = loadSolver()
 const topologyBytes = loadTopology()
 
-const BODY = 'body_ESrRWmJlIltOOJE-A1VbLhzR'
+const PART = 'body_ESrRWmJlIltOOJE-A1VbLhzR'
 const CHAMFER_ID = 'BeXVLtIhoq94L87Qll4xewnr'
 const CHAMFER_DELETE = 'GpyTc0jipDArcxEoOFcx_DBl'
 
@@ -111,12 +111,12 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('delete face on edge-modif
     const firstDelete = features.findIndex((f) => f.id === CHAMFER_DELETE)
     expect(firstDelete).toBeGreaterThan(0)
     const result = h.run({ features: features.slice(0, firstDelete), part_style: fixture.part_style })
-    const body: PartSolid | undefined = result._build_state.checkpoints[CHAMFER_ID]?.body_store_snapshot?.[BODY]
-    if (!body) throw new Error('the probe document has no body after the chamfer')
+    const part: PartSolid | undefined = result._build_state.checkpoints[CHAMFER_ID]?.body_store_snapshot?.[PART]
+    if (!part) throw new Error('the probe document has no body after the chamfer')
     live = new DisposeScope()
-    const index = makeFaceIndexCache(occ, live, h.table)(body)
+    const index = makeFaceIndexCache(occ, live, h.table)(part)
     const resolved = resolveFacesByQuery(
-      occ, live, h.table, body, index,
+      occ, live, h.table, part, index,
       (fixture.picks as { query: string }[]).map((p) => p.query),
     )
     picks = new Map()
@@ -125,7 +125,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('delete face on edge-modif
       if (!face) throw new Error(`pick did not resolve: ${p.query}`)
       picks.set(p.query, face)
     }
-    shape = h.table.get<OccShape>(body.shape!)
+    shape = h.table.get<OccShape>(part.shape!)
     groups = faceGroups(occ, live, [...picks.values()])
   })
 

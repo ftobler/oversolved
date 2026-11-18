@@ -31,7 +31,7 @@ import { isValidShape } from '../../occ/edgeModifier'
 import { makeEdgeIndexCache, resolveEdgesWithIndex } from '../filletChamfer'
 import { makeFilletPrismFallback } from '../endFaceBlend'
 import { filletFacePath, mintFaceUuid } from '../../constructionName'
-import { CORNER_CUT_VOLUME, LIP_RADIUS, bodyAt, enclosureBase } from './enclosureFixture'
+import { CORNER_CUT_VOLUME, LIP_RADIUS, partAt, enclosureBase } from './enclosureFixture'
 import type { OccModule, OccShape, OccSubShape } from '../../occ/occTypes'
 
 const oc = await loadOcc()
@@ -42,11 +42,11 @@ type Harness = SharedHarness
 /** The base body, its shape and the resolved lip edges, with the names the
  *  feature would hand the modifier. */
 function baseOf(h: Harness, result: ReturnType<Harness['run']>, scope: DisposeScope, queries: string[]) {
-  const body = bodyAt(result, 'ex2')
-  const shape = h.table.get<OccShape>(body.shape!)
+  const part = partAt(result, 'ex2')
+  const shape = h.table.get<OccShape>(part.shape!)
   const indexFor = makeEdgeIndexCache(oc!, scope, h.table)
-  const edges = resolveEdgesWithIndex(oc!, scope, h.table, body, indexFor(body), queries)
-  const oldNames: OldNames = { createdBy: 'fi2', ...readPartNames(oc!, scope, shape, body) }
+  const edges = resolveEdgesWithIndex(oc!, scope, h.table, part, indexFor(part), queries)
+  const oldNames: OldNames = { createdBy: 'fi2', ...readPartNames(oc!, scope, shape, part) }
   return { shape, edges, oldNames }
 }
 
@@ -128,7 +128,7 @@ describe.skipIf(!oc || !solveBytes)('end-face prism fallback (real OCC + Rust so
     // from the lip-on-filleted-plate body, which is exactly the four overhang
     // corner wedges (the tool is wholly inside the lip there).
     const { spec, lipEdges, result } = enclosureBase(h)
-    const base = bodyAt(result, 'ex2')
+    const base = partAt(result, 'ex2')
     const scope = new DisposeScope()
     const baseShape = h.table.get<OccShape>(base.shape!)
     const baseVolume = volumeOf(oc!, scope, baseShape)
@@ -144,8 +144,8 @@ describe.skipIf(!oc || !solveBytes)('end-face prism fallback (real OCC + Rust so
       'because the rolling-ball blend could not consume its end face',
     )
 
-    const body = bodyAt(built, 'fi2')
-    const shape = h.table.get<OccShape>(body.shape!)
+    const part = partAt(built, 'fi2')
+    const shape = h.table.get<OccShape>(part.shape!)
     expect(countSolids(oc!, scope, shape)).toBe(1)
     expect(isValidShape(oc!, scope, shape)).toBe(true)
     expect(volumeOf(oc!, scope, shape)).toBeCloseTo(baseVolume - 4 * CORNER_CUT_VOLUME, 6)
@@ -167,18 +167,18 @@ describe.skipIf(!oc || !solveBytes)('end-face prism fallback (real OCC + Rust so
     // maker accepts. The maker blends its edge, the fallback cuts the corners,
     // and the note names exactly the four fallback positions.
     const { spec, lipEdges, result } = enclosureBase(h)
-    const body = bodyAt(result, 'ex2')
+    const part = partAt(result, 'ex2')
     const scope = new DisposeScope()
-    const shape = h.table.get<OccShape>(body.shape!)
+    const shape = h.table.get<OccShape>(part.shape!)
     const indexFor = makeEdgeIndexCache(oc!, scope, h.table)
     const plateQueries = ((h.part(result, 'body_ex1').edge_queries as string[]) ?? []).filter((q) => q.includes('@ex1@'))
-    const plateEdges = resolveEdgesWithIndex(oc!, scope, h.table, body, indexFor(body), plateQueries)
+    const plateEdges = resolveEdgesWithIndex(oc!, scope, h.table, part, indexFor(part), plateQueries)
     const fallback = makeFilletPrismFallback(2, 'fi2')
     // An edge the maker will take at r2 and the fallback will not touch.
     const ordinary = plateEdges.find((edge) => !fallback.qualifies(oc!, scope, shape, edge))
     expect(ordinary).toBeDefined()
     const ordinaryQuery = plateQueries.find((q) => {
-      const resolved = resolveEdgesWithIndex(oc!, scope, h.table, body, indexFor(body), [q])
+      const resolved = resolveEdgesWithIndex(oc!, scope, h.table, part, indexFor(part), [q])
       return resolved.length === 1 && (resolved[0] as OccSubShape).IsSame(ordinary as OccSubShape)
     })
     expect(ordinaryQuery).toBeDefined()
@@ -194,7 +194,7 @@ describe.skipIf(!oc || !solveBytes)('end-face prism fallback (real OCC + Rust so
     const note = String(res.solver_note ?? '')
     expect(note).toContain('edges[0], edges[2], edges[3], edges[4] blended by a prism cut')
     expect(note).not.toContain('edges[1]')
-    const out = bodyAt(built, 'fi2')
+    const out = partAt(built, 'fi2')
     const outShape = h.table.get<OccShape>(out.shape!)
     expect(volumeOf(oc!, scope, outShape)).toBeLessThan(volumeOf(oc!, scope, shape))
     scope.dispose()
@@ -206,7 +206,7 @@ describe.skipIf(!oc || !solveBytes)('end-face prism fallback (real OCC + Rust so
     // pins the chord path and its note wording, which the fillet tests never
     // reach.
     const { spec, lipEdges, result } = enclosureBase(h)
-    const base = bodyAt(result, 'ex2')
+    const base = partAt(result, 'ex2')
     const scope = new DisposeScope()
     const baseVolume = volumeOf(oc!, scope, h.table.get<OccShape>(base.shape!))
     spec.features.push({ id: 'ch1', kind: 'chamfer', chamfer: { edges: lipEdges, distance: 2, kind: 'distance', angle: 45 } })
@@ -217,8 +217,8 @@ describe.skipIf(!oc || !solveBytes)('end-face prism fallback (real OCC + Rust so
       'chamfer: edges[0], edges[1], edges[2], edges[3] blended by a prism cut ' +
       'because the rolling-ball blend could not consume its end face',
     )
-    const body = bodyAt(built, 'ch1')
-    const shape = h.table.get<OccShape>(body.shape!)
+    const part = partAt(built, 'ch1')
+    const shape = h.table.get<OccShape>(part.shape!)
     expect(isValidShape(oc!, scope, shape)).toBe(true)
     expect(volumeOf(oc!, scope, shape)).toBeCloseTo(baseVolume - 4 * (0.5 * 4 * 3), 6)
     scope.dispose()
@@ -230,7 +230,7 @@ describe.skipIf(!oc || !solveBytes)('end-face prism fallback (real OCC + Rust so
     // edge's blend face carries the UUID the maker would mint for it, so a later
     // pick resolves through the same identity on either builder.
     const { spec, lipEdges, result } = enclosureBase(h)
-    const base = bodyAt(result, 'ex2')
+    const base = partAt(result, 'ex2')
     const scope = new DisposeScope()
     const baseShape = h.table.get<OccShape>(base.shape!)
     const indexFor = makeEdgeIndexCache(oc!, scope, h.table)
@@ -240,9 +240,9 @@ describe.skipIf(!oc || !solveBytes)('end-face prism fallback (real OCC + Rust so
     spec.features.push({ id: 'fi2', kind: 'fillet', fillet: { edges: lipEdges, radius: LIP_RADIUS } })
     const built = h.run(spec)
     expect(h.res(built, 'fi2').status).toBe('ok')
-    const body = bodyAt(built, 'fi2')
-    const shape = h.table.get<OccShape>(body.shape!)
-    const uuids = (body.face_uuids ?? []).filter((u): u is string => u !== null && u !== undefined)
+    const part = partAt(built, 'fi2')
+    const shape = h.table.get<OccShape>(part.shape!)
+    const uuids = (part.face_uuids ?? []).filter((u): u is string => u !== null && u !== undefined)
     expect(uuids).toHaveLength(canonicalFaces(oc!, scope, shape).length)
 
     const expected = picked.map((edge) => {

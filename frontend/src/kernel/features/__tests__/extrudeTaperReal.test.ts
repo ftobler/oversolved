@@ -127,19 +127,19 @@ describe.skipIf(!oc || !solveBytes)('extrude taper (real OCC + Rust solver)', ()
     mesh: Dict
   }
 
-  function gauges(result: BuildResponse, featureId: string, bodyId: string): Gauges {
+  function gauges(result: BuildResponse, featureId: string, partId: string): Gauges {
     const cp = result._build_state!.checkpoints[featureId]
     expect(cp, `no checkpoint for ${featureId}`).toBeDefined()
-    const shape = h.table.get<OccShape>(cp.body_store_snapshot[bodyId].shape!)
+    const shape = h.table.get<OccShape>(cp.body_store_snapshot[partId].shape!)
     const scope = new DisposeScope()
     try {
       return {
         volume: volumeOf(oc!, scope, shape),
         faces: canonicalFaces(oc!, scope, shape).length,
-        edges: ((h.part(result, bodyId).edges as unknown[]) ?? []).length,
+        edges: ((h.part(result, partId).edges as unknown[]) ?? []).length,
         bbox: shapeBbox(oc!, scope, shape),
         valid: scope.track(new oc!.BRepCheck_Analyzer(shape, true, false, false)).IsValid_2(),
-        mesh: (h.part(result, bodyId).mesh as Dict) ?? {},
+        mesh: (h.part(result, partId).mesh as Dict) ?? {},
       }
     } finally {
       scope.dispose()
@@ -358,16 +358,16 @@ describe.skipIf(!oc || !solveBytes)('extrude taper (real OCC + Rust solver)', ()
       ],
     })
     expect(h.res(result, 'ex1').status).toBe('ok')
-    const bodies = Object.keys(result.bodies ?? {}).sort()
-    expect(bodies).toEqual(['body_ex1', 'body_ex1_1'])
+    const parts = Object.keys(result.bodies ?? {}).sort()
+    expect(parts).toEqual(['body_ex1', 'body_ex1_1'])
     const offset = 5 * Math.tan((10 * Math.PI) / 180)
     const expected = (5 / 6) * (
       6 * 6 + 4 * ((6 - offset) * (6 - offset)) + (6 - 2 * offset) * (6 - 2 * offset)
     )
-    for (const bodyId of bodies) {
-      const g = gauges(result, 'ex1', bodyId)
-      expect(g.volume, bodyId).toBeCloseTo(expected, 3)
-      expect(g.valid, bodyId).toBe(true)
+    for (const partId of parts) {
+      const g = gauges(result, 'ex1', partId)
+      expect(g.volume, partId).toBeCloseTo(expected, 3)
+      expect(g.valid, partId).toBe(true)
     }
   })
 

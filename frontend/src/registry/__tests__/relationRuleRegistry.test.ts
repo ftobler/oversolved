@@ -13,10 +13,10 @@ import {
 import { hintDrivers, relatedHints } from '@/picking/relationHint'
 import { EMPTY_RELATION_SET } from '@/picking/relationHint'
 
-const faceQuery = (creator: string, body = 'body_ex1') =>
-  makeAncestryQuery(['@u|uuid-' + creator, `@${creator}`, `@${body}`], 'flatface')
-const edgeQuery = (creator: string, body = 'body_ex1') =>
-  makeAncestryQuery(['@u|edge-' + creator, `@${creator}`, `@${body}`], 'straightedge')
+const faceQuery = (creator: string, part = 'body_ex1') =>
+  makeAncestryQuery(['@u|uuid-' + creator, `@${creator}`, `@${part}`], 'flatface')
+const edgeQuery = (creator: string, part = 'body_ex1') =>
+  makeAncestryQuery(['@u|edge-' + creator, `@${creator}`, `@${part}`], 'straightedge')
 
 const extrude = (id: string, sketch: string): PartFeature => ({
   id,
@@ -25,11 +25,11 @@ const extrude = (id: string, sketch: string): PartFeature => ({
 })
 
 /** A named edge pick on a body, distinct per tag. */
-const pickEdge = (tag: string, body = 'body_ex1') =>
-  makeAncestryQuery(['@u|pick-' + tag, `@ex1`, `@${body}`], 'straightedge')
+const pickEdge = (tag: string, part = 'body_ex1') =>
+  makeAncestryQuery(['@u|pick-' + tag, `@ex1`, `@${part}`], 'straightedge')
 /** A named face pick on a body, distinct per tag. */
-const pickFace = (tag: string, body = 'body_ex1') =>
-  makeAncestryQuery(['@u|pick-' + tag, `@ex1`, `@${body}`], 'flatface')
+const pickFace = (tag: string, part = 'body_ex1') =>
+  makeAncestryQuery(['@u|pick-' + tag, `@ex1`, `@${part}`], 'flatface')
 
 const fillet = (id: string, edges: string[], radius = 1): PartFeature => ({
   id,
@@ -47,21 +47,21 @@ const shell = (id: string, faces: string[]): PartFeature => ({
   shell: { faces, thickness: 1 },
 })
 
-function body(id: string, createdBy: string, overrides: Partial<PartResult> = {}): PartResult {
+function part(id: string, createdBy: string, overrides: Partial<PartResult> = {}): PartResult {
   return { id, created_by: createdBy, modified_by: [], ...overrides }
 }
 
 function partHints(
   selection: string[],
   features: PartFeature[],
-  bodies: Record<string, PartResult> = {},
+  parts: Record<string, PartResult> = {},
   activeFeatureIds?: ReadonlySet<string>,
   failedPicks: ReadonlySet<string> = new Set(),
 ) {
   return relatedHints(
     hintDrivers(selection),
     PART_RULES,
-    buildPartRelationCtx(features, bodies, activeFeatureIds, failedPicks),
+    buildPartRelationCtx(features, parts, activeFeatureIds, failedPicks),
   )
 }
 
@@ -95,11 +95,11 @@ describe('relation rule registry coverage', () => {
 
 describe('face->creator', () => {
   const features = [extrude('ex1', '@sk1'), extrude('cut1', '@sk2')]
-  const bodies = {
-    b1: body('b1', 'ex1', {
+  const parts = {
+    b1: part('b1', 'ex1', {
       mesh: { vertices: [], faces: [], face_queries: [faceQuery('ex1')], face_created_by: ['ex1'] },
     }),
-    b2: body('b2', 'cut1', {
+    b2: part('b2', 'cut1', {
       edges: [],
       edge_queries: [edgeQuery('cut1')],
       edge_created_by: ['cut1'],
@@ -107,13 +107,13 @@ describe('face->creator', () => {
   }
 
   it('a selected face marks the feature that created it', () => {
-    const hints = partHints([faceQuery('ex1')], features, bodies)
+    const hints = partHints([faceQuery('ex1')], features, parts)
     expect(hints.tree).toEqual(new Set(['@ex1']))
     expect(hints.viewport).toEqual(new Set())
   })
 
   it('a face and an edge of two features mark both', () => {
-    const hints = partHints([faceQuery('ex1'), edgeQuery('cut1')], features, bodies)
+    const hints = partHints([faceQuery('ex1'), edgeQuery('cut1')], features, parts)
     expect(hints.tree).toEqual(new Set(['@ex1', '@cut1']))
   })
 
@@ -123,28 +123,28 @@ describe('face->creator', () => {
 
   it('a face query a body owns answers every recorded creator', () => {
     const shared = faceQuery('ex1')
-    const bodies = {
-      b1: body('b1', 'ex1', {
+    const parts = {
+      b1: part('b1', 'ex1', {
         mesh: { vertices: [], faces: [], face_queries: [shared], face_created_by: ['ex1'] },
       }),
-      b2: body('b2', 'cut1', {
+      b2: part('b2', 'cut1', {
         mesh: { vertices: [], faces: [], face_queries: [shared], face_created_by: ['cut1'] },
       }),
     }
-    expect(new Set(partHints([shared], features, bodies).tree)).toEqual(new Set(['@ex1', '@cut1']))
+    expect(new Set(partHints([shared], features, parts).tree)).toEqual(new Set(['@ex1', '@cut1']))
   })
 })
 
 describe('edge->creator', () => {
   it('a selected edge marks its creating feature through edge_created_by', () => {
-    const bodies = {
-      b1: body('b1', 'ex1', {
+    const parts = {
+      b1: part('b1', 'ex1', {
         edges: [],
         edge_queries: [edgeQuery('fil1')],
         edge_created_by: ['fil1'],
       }),
     }
-    expect(partHints([edgeQuery('fil1')], [extrude('ex1', '@sk1'), extrude('fil1', '@sk1')], bodies).tree)
+    expect(partHints([edgeQuery('fil1')], [extrude('ex1', '@sk1'), extrude('fil1', '@sk1')], parts).tree)
       .toEqual(new Set(['@fil1']))
   })
 })
@@ -167,10 +167,10 @@ describe('feature->picked-edges', () => {
   const q2 = pickEdge('two')
   const q3 = pickEdge('other')
   const features: PartFeature[] = [extrude('ex1', '@sk1'), fillet('fi1', [q1, q2])]
-  const bodyWith = (queries: string[], createdBy = 'ex1') => ({
-    body_ex1: body('body_ex1', createdBy, { edges: [], edge_queries: queries }),
+  const partWith = (queries: string[], createdBy = 'ex1') => ({
+    body_ex1: part('body_ex1', createdBy, { edges: [], edge_queries: queries }),
   })
-  const allPicks = bodyWith([q1, q2, q3])
+  const allPicks = partWith([q1, q2, q3])
 
   it('a failed fillet draws every pick that still exists in the shown solve', () => {
     const hints = partHints(['@fi1'], features, allPicks)
@@ -191,21 +191,21 @@ describe('feature->picked-edges', () => {
   it('a built fillet consumed its picks: no pick hint, its created faces stay the answer', () => {
     // The blend replaced both picked edges, so neither query exists any more.
     // `feature->faces` is what a built feature shows, not this rule.
-    const hints = partHints(['@fi1'], features, bodyWith([q3], 'fi1'))
+    const hints = partHints(['@fi1'], features, partWith([q3], 'fi1'))
     expect(hints.picked.size).toBe(0)
     expect(hints.failedPicks.size).toBe(0)
     expect(hints.viewport).toEqual(new Set(['fi1']))
   })
 
   it('a partial fillet draws only the pick that refused; the applied one is gone', () => {
-    const partial = bodyWith([q2, q3])
+    const partial = partWith([q2, q3])
     const hints = partHints(['@fi1'], features, partial, undefined, new Set([q2]))
     expect(hints.picked.size).toBe(0)
     expect(hints.failedPicks).toEqual(new Set([q2]))
   })
 
   it('a stale pick absent from every shown body draws nothing', () => {
-    const hints = partHints(['@fi1'], features, bodyWith([q3]))
+    const hints = partHints(['@fi1'], features, partWith([q3]))
     expect(hints.picked.size).toBe(0)
     expect(hints.failedPicks.size).toBe(0)
   })
@@ -235,12 +235,12 @@ describe('feature->picked-faces', () => {
   const f2 = pickFace('two')
   const f3 = pickFace('other')
   const features: PartFeature[] = [extrude('ex1', '@sk1'), shell('sh1', [f1, f2])]
-  const bodyWith = (queries: string[]) => ({
-    body_ex1: body('body_ex1', 'ex1', {
+  const partWith = (queries: string[]) => ({
+    body_ex1: part('body_ex1', 'ex1', {
       mesh: { vertices: [], faces: [], face_queries: queries },
     }),
   })
-  const allFaces = bodyWith([f1, f2, f3])
+  const allFaces = partWith([f1, f2, f3])
 
   it('a failed shell draws the open faces it still has', () => {
     expect(partHints(['@sh1'], features, allFaces).picked).toEqual(new Set([f1, f2]))
@@ -253,7 +253,7 @@ describe('feature->picked-faces', () => {
   })
 
   it('a built shell consumed its openings: no face pick hint', () => {
-    expect(partHints(['@sh1'], features, bodyWith([f3])).picked.size).toBe(0)
+    expect(partHints(['@sh1'], features, partWith([f3])).picked.size).toBe(0)
   })
 
   it('move face and delete face rows draw their face picks', () => {

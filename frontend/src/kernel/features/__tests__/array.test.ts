@@ -22,9 +22,9 @@ function buildLinear(
   scope: DisposeScope,
   sub: Dict,
   repo: Repository,
-  bodyStore: Record<string, PartSolid> = {},
+  partStore: Record<string, PartSolid> = {},
 ) {
-  return buildLinearCopies(oc, scope, sub, repo, bodyStore).copies.map((copy) => copy.trsf)
+  return buildLinearCopies(oc, scope, sub, repo, partStore).copies.map((copy) => copy.trsf)
 }
 
 function buildCircular(
@@ -32,9 +32,9 @@ function buildCircular(
   scope: DisposeScope,
   sub: Dict,
   repo: Repository,
-  bodyStore: Record<string, PartSolid> = {},
+  partStore: Record<string, PartSolid> = {},
 ) {
-  return buildCircularCopies(oc, scope, sub, repo, bodyStore).copies.map((copy) => copy.trsf)
+  return buildCircularCopies(oc, scope, sub, repo, partStore).copies.map((copy) => copy.trsf)
 }
 
 function solveLinear(
@@ -253,10 +253,10 @@ describe('buildLinearCopies (one direction)', () => {
       ['@ex1'],
       { type: 'flatface', body_id: 'body_ex1', face_index: 0, created_by: 'ex1' },
     )
-    const bodyStore = { body_ex1: { id: 'body_ex1', normal: [0, 0, 2] } } as unknown as Record<string, PartSolid>
+    const partStore = { body_ex1: { id: 'body_ex1', normal: [0, 0, 2] } } as unknown as Record<string, PartSolid>
     const feature = { count: 2, pitch: 5, direction_query: '?4;@ex1:solid' }
     expect(() => buildLinear(makeFake(), scope, feature, realRepo)).toThrow()
-    const t = buildLinear(makeFake(), scope, feature, realRepo, bodyStore)
+    const t = buildLinear(makeFake(), scope, feature, realRepo, partStore)
     expect(translations(t)).toEqual([[0, 0, 5]])
   })
 })
@@ -599,12 +599,12 @@ describe('pattern source body diagnosis', () => {
 // untouched, with no warning, for either operation.
 describe('count 1 through the leaf', () => {
   it.each(['add', 'new'])('leaves the source untouched for operation %s', (operation) => {
-    const body = { ...barePart('body_ex1', 'ex1'), shape: 1 as never }
+    const part = { ...barePart('body_ex1', 'ex1'), shape: 1 as never }
     const table = { get: () => { throw new Error('count 1 must not touch a shape') } } as unknown as HandleTable
     const result = solveLinear(
       makeFake(), scope, table,
       { id: 'ar9', linear_pattern: { source_body: 'body_ex1', count: 1, pitch: 10, direction_query: 'qx', operation } },
-      xyRepo, { body_ex1: body },
+      xyRepo, { body_ex1: part },
     ) as { status: string; body_ids: string[]; solver_warning?: string }
     expect(result.status).toBe('ok')
     expect(result.body_ids).toEqual(operation === 'new' ? [] : ['body_ex1'])

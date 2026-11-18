@@ -77,10 +77,10 @@ describe.skipIf(!hasOcc)('chamfer: a distance wider than the adjacent face names
 
   it('refuses 0.25 on a 0.2 wall and names the 0.2 width', () => {
     const r = rig()
-    const body = barePart('body_b', 'b')
-    body.shape = r.table.register(bracket(oc, r.scope), body.created_by)
-    r.store.body_b = body
-    const shape = r.table.get<OccShape>(body.shape!)
+    const part = barePart('body_b', 'b')
+    part.shape = r.table.register(bracket(oc, r.scope), part.created_by)
+    r.store.body_b = part
+    const shape = r.table.get<OccShape>(part.shape!)
     // `bodyFrame` is the normalisation the alias numbering uses; calling it here
     // also pins that the helper and the leaf sort the same edges.
     partFrame(oc, r.scope, shape)
@@ -95,10 +95,10 @@ describe.skipIf(!hasOcc)('chamfer: a distance wider than the adjacent face names
 
   it('a distance that fits still builds and is not refused', () => {
     const r = rig()
-    const body = barePart('body_b', 'b')
-    body.shape = r.table.register(bracket(oc, r.scope), body.created_by)
-    r.store.body_b = body
-    const shape = r.table.get<OccShape>(body.shape!)
+    const part = barePart('body_b', 'b')
+    part.shape = r.table.register(bracket(oc, r.scope), part.created_by)
+    r.store.body_b = part
+    const shape = r.table.get<OccShape>(part.shape!)
     const idx = aliasIndexOf(oc, r.scope, shape, isUprightTopEdge)
     const res = solveChamfer(oc, r.scope, r.table, {
       id: 'ch1',

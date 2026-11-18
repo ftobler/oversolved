@@ -29,10 +29,10 @@ function callbacks(): PartEditorCallbacks {
 
 /** Render the navigator and the floating edit panel with `feature` open, the
  *  way the part editor mounts them on either side of the viewport. */
-function renderEditing(feature: PartFeature, solveResults: Record<string, unknown>, bodies: Record<string, PartResult> = {}) {
+function renderEditing(feature: PartFeature, solveResults: Record<string, unknown>, parts: Record<string, PartResult> = {}) {
   usePartEditorStore.setState({
     features: [feature], visibleFeatures: new Set([feature.id]), doc: { version: 1, kind: 'part', features: [feature] } as never,
-    visibleParts: new Set(), partLabels: {}, solveResults, parts: bodies, isRebuilding: false, featureTimings: {},
+    visibleParts: new Set(), partLabels: {}, solveResults, parts: parts, isRebuilding: false, featureTimings: {},
   })
   useEditorState.setState({
     editingFeatureId: feature.id, rollbackPosition: null,

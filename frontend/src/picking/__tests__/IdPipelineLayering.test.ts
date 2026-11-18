@@ -88,9 +88,9 @@ describe('IdPipeline layering', () => {
     } as unknown as THREE.WebGLRenderer
   }
 
-  function registerOneFace(p: IdPipeline, bodyKey: string): void {
+  function registerOneFace(p: IdPipeline, partKey: string): void {
     p.faceLayer.registerPart({
-      partKey: bodyKey,
+      partKey: partKey,
       positions: new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0]),
       triangleToFace: new Uint32Array([0]),
       faceQueries: ['face@q'],

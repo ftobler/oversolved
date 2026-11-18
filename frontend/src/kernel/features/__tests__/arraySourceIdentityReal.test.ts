@@ -19,7 +19,7 @@ import { booleanWithDiff, volumeOf } from '../../occ/booleans'
 import { makeBoxAt, solidCentroid } from '../../occ/primitives'
 import { Repository } from '../../query'
 import { barePart } from '../shared/partResolution'
-import { solveArray } from './patternBodyTestAdapters'
+import { solveArray } from './patternPartTestAdapters'
 import { solveBoolean } from '../boolean'
 import type { PartSolid } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
@@ -49,10 +49,10 @@ function railShape(r: Rig): OccShape {
 }
 
 function seedRail(r: Rig): PartSolid {
-  const body = barePart('body_src', 'src')
-  body.shape = r.table.register(r.scope.detach(railShape(r)), body.created_by)
-  r.store.body_src = body
-  return body
+  const part = barePart('body_src', 'src')
+  part.shape = r.table.register(r.scope.detach(railShape(r)), part.created_by)
+  r.store.body_src = part
+  return part
 }
 
 function centroidZ(r: Rig, id: string): number {

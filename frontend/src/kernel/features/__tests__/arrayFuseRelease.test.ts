@@ -52,7 +52,7 @@ vi.mock('../../occ/partNames', async (importOriginal) => {
 import { HandleTable } from '../../occ/handleTable'
 import { SubShapeMap } from '../../occ/subshapeIdentity'
 import { DisposeScope } from '../../occ/disposeScope'
-import { solveArray } from './patternBodyTestAdapters'
+import { solveArray } from './patternPartTestAdapters'
 import { INSTANCE_FUSE_CHUNK } from '../patternPart'
 import { barePart } from '../shared/partResolution'
 import { emptyBrepDiff } from '../../types3d'
@@ -129,9 +129,9 @@ function run(countX: number): {
 
   const table = new HandleTable()
   const source = makeDouble('source')
-  const body: PartSolid = { ...barePart('body_ex1', 'ex1'), shape: table.register(source, 'ex1') }
+  const part: PartSolid = { ...barePart('body_ex1', 'ex1'), shape: table.register(source, 'ex1') }
   const scope = new DisposeScope()
-  const bodyStore: Record<string, PartSolid> = { body_ex1: body }
+  const partStore: Record<string, PartSolid> = { body_ex1: part }
   const repo = { query: () => ({ start: [0, 0, 0], end: [1, 0, 0] }), elements: new Map() } as unknown as Repository
 
   solveArray(
@@ -150,7 +150,7 @@ function run(countX: number): {
       },
     },
     repo,
-    bodyStore,
+    partStore,
   )
   return { table, scope, source }
 }
@@ -206,9 +206,9 @@ describe('array add fuse releases (H21)', () => {
 
     const table = new HandleTable()
     const source = makeDouble('source')
-    const body: PartSolid = { ...barePart('body_ex1', 'ex1'), shape: table.register(source, 'ex1') }
+    const part: PartSolid = { ...barePart('body_ex1', 'ex1'), shape: table.register(source, 'ex1') }
     const scope = new DisposeScope()
-    const bodyStore: Record<string, PartSolid> = { body_ex1: body }
+    const partStore: Record<string, PartSolid> = { body_ex1: part }
     const repo = { query: () => ({ start: [0, 0, 0], end: [1, 0, 0] }), elements: new Map() } as unknown as Repository
     try {
       const result = solveArray(
@@ -227,7 +227,7 @@ describe('array add fuse releases (H21)', () => {
           },
         },
         repo,
-        bodyStore,
+        partStore,
       )
       expect(result).toEqual({
         status: 'ok',

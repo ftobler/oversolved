@@ -19,7 +19,7 @@ function instance(handle: string, extra: Partial<PartInstance> = {}): PartInstan
   return { handle, doc_id: `doc-${handle}`, doc_rev: 1, transform: { ...IDENTITY_TRANSFORM }, ...extra }
 }
 
-function pickBody(handle: string): AssemblyPickPart {
+function pickPart(handle: string): AssemblyPickPart {
   return {
     handle,
     partKey: `${handle}:body_0`,
@@ -107,8 +107,8 @@ describe('assembly pose ownership', () => {
   // offset keeps the two systems agreeing through the restore.
   it('a cancelled drag leaves the pick buffer following the moved followers', () => {
     mountHost(docWith(instance('p1'), instance('p2')))
-    const p1 = pickBody('p1')
-    const p2 = pickBody('p2')
+    const p1 = pickPart('p1')
+    const p2 = pickPart('p2')
     useAssemblyStore.setState({
       transforms: { p1: { ...IDENTITY_TRANSFORM }, p2: { ...IDENTITY_TRANSFORM } },
       pickGeometry: [p1, p2],

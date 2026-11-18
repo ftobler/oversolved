@@ -17,25 +17,25 @@ import { FACE_LAYER_NAME } from '../layerNames'
  * the colour buffer of every part in the model.
  */
 describe('highlight flags stay reference-stable for uninvolved bodies', () => {
-  const FACES_PER_BODY = 400
-  const bodies = Array.from({ length: 20 }, (_, b) => {
-    const bodyKey = partKeyFor(`extrude${b}`, 'body0')
-    const queries = Array.from({ length: FACES_PER_BODY }, (_, i) => `face@createdBy=extrude${b}#${i}`)
-    return { bodyKey, queries, index: new HighlightIndex(bodyKey, FACE_LAYER_NAME, queries) }
+  const FACES_PER_PART = 400
+  const parts = Array.from({ length: 20 }, (_, b) => {
+    const partKey = partKeyFor(`extrude${b}`, 'body0')
+    const queries = Array.from({ length: FACES_PER_PART }, (_, i) => `face@createdBy=extrude${b}#${i}`)
+    return { bodyKey: partKey, queries, index: new HighlightIndex(partKey, FACE_LAYER_NAME, queries) }
   })
 
   // What a memo keyed on the flags array would see: it re-runs only on a new reference.
   const memoWouldRerun = (before: readonly boolean[], after: readonly boolean[]) => before !== after
 
   it('a hover walking across the scene only re-runs the body under the pointer', () => {
-    let flags = bodies.map(b => b.index.compute(hoverActiveFrom(null, null)))
+    let flags = parts.map(b => b.index.compute(hoverActiveFrom(null, null)))
 
     for (const pointed of [3, 7, 19, 0]) {
       const active = hoverActiveFrom(
-        primitivePickKey(bodies[pointed].bodyKey, 5, FACE_LAYER_NAME),
-        bodies[pointed].queries[5],
+        primitivePickKey(parts[pointed].bodyKey, 5, FACE_LAYER_NAME),
+        parts[pointed].queries[5],
       )
-      const next = bodies.map(b => b.index.compute(active))
+      const next = parts.map(b => b.index.compute(active))
       const rerun = next.map((f, i) => memoWouldRerun(flags[i], f))
 
       // Exactly the newly pointed body (and, on the previous iteration's body,
@@ -48,7 +48,7 @@ describe('highlight flags stay reference-stable for uninvolved bodies', () => {
   })
 
   it('an unrelated hover returns the identical all-false array, not a fresh one', () => {
-    const [a, b] = bodies
+    const [a, b] = parts
     const first = a.index.compute(hoverActiveFrom(
       primitivePickKey(b.bodyKey, 1, FACE_LAYER_NAME), b.queries[1]))
     const second = a.index.compute(hoverActiveFrom(
@@ -58,7 +58,7 @@ describe('highlight flags stay reference-stable for uninvolved bodies', () => {
   })
 
   it('a growing selection elsewhere leaves an unselected body stable', () => {
-    const [a, ...rest] = bodies
+    const [a, ...rest] = parts
     const picks = new Map<string, Set<string>>()
     const selection = new Set<string>()
     let flags = a.index.compute(selectActiveFrom(picks, selection))

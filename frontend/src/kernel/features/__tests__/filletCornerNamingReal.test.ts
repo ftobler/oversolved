@@ -42,7 +42,7 @@ const DIR = 'dirLine'
 const EX = 'ex1'
 const ARR = 'arr1'
 const FIL = 'fil1'
-const BODY = `body_${EX}`
+const PART = `body_${EX}`
 
 /** Concentric circles on the top plane, plus the construction line the array
  *  takes its direction from (mirrors the bug report's sketch 1). */
@@ -84,14 +84,14 @@ const array = {
   linear_pattern: {
     subject: 'body', count: 2, pitch: 4, operation: 'add',
     direction: [1, 0, 0], direction_query: `@${SK}/${DIR}`,
-    source_body: `@${BODY}`,
+    source_body: `@${PART}`,
   },
 }
 
 function edgeQueriesOf(h: SharedHarness, spec: Record<string, unknown>): string[] {
   const result = h.run(spec)
-  const body = h.part(result, BODY)
-  return (body.edge_queries as string[]) ?? []
+  const part = h.part(result, PART)
+  return (part.edge_queries as string[]) ?? []
 }
 
 // Each case runs real OCC builds (and the corner blend heals through ShapeFix),
@@ -122,7 +122,7 @@ describe.skipIf(!oc || !solveBytes)('fillet corner-patch naming (real OCC + Rust
     const result = h.run(spec)
     expect((h.res(result, FIL) as { status: string }).status).toBe('ok')
 
-    const queries = (h.part(result, BODY).edge_queries as string[]) ?? []
+    const queries = (h.part(result, PART).edge_queries as string[]) ?? []
     expect(queries.length).toBeGreaterThan(rims.length)
 
     // No edge may fall back to the body-wide `profile_queries` ancestry: that
@@ -155,7 +155,7 @@ describe.skipIf(!oc || !solveBytes)('fillet corner-patch naming (real OCC + Rust
     const state = result._build_state as unknown as {
       checkpoints: Record<string, { body_store_snapshot: Record<string, { brep_diff: { new_faces: unknown[]; inherited_faces: unknown[] } | null }> }>
     }
-    const diff = state.checkpoints[FIL].body_store_snapshot[BODY].brep_diff
+    const diff = state.checkpoints[FIL].body_store_snapshot[PART].brep_diff
     expect(diff).not.toBeNull()
     // The flats, bores and bottoms predate the fillet and must stay inherited;
     // only the blend faces and their corner patch are new. Reading off the

@@ -88,8 +88,8 @@ function splitBoth(spec: { features: Dict[] }): { features: Dict[] } {
   ]}
 }
 
-function meshOf(h: SharedHarness, r: BuildResponse, bodyId: string): FaceMesh {
-  return ((h.part(r, bodyId).mesh ?? {}) as FaceMesh)
+function meshOf(h: SharedHarness, r: BuildResponse, partId: string): FaceMesh {
+  return ((h.part(r, partId).mesh ?? {}) as FaceMesh)
 }
 
 /** The flat face whose centroid y is nearest `y`. */

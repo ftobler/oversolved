@@ -7,7 +7,7 @@ import AssemblySelectionHighlight from '@/components/Viewport/assembly/AssemblyS
 import type { AssemblyPickPart } from '@/utils/assemblyPick'
 import { DEFAULT_SECTION_STATE, useSectionStore } from '@/stores/sectionStore'
 
-function body(): AssemblyPickPart {
+function part(): AssemblyPickPart {
   return {
     handle: 'B',
     partKey: 'B',
@@ -35,7 +35,7 @@ describe('AssemblySelectionHighlight section clipping', () => {
     useSectionStore.setState({ ...DEFAULT_SECTION_STATE, enabled: true, resolved: true })
     const { container } = render(
       <AssemblySelectionHighlight
-        pickParts={[body()]}
+        pickParts={[part()]}
         selection={new Set(['f0', 'e0', 'v0'])}
         hovered="e0"
       />,
@@ -53,7 +53,7 @@ describe('AssemblySelectionHighlight section clipping', () => {
 
   it('leaves the overlays unclipped when the section is off', () => {
     const { container } = render(
-      <AssemblySelectionHighlight pickParts={[body()]} selection={new Set(['e0'])} hovered={null} />,
+      <AssemblySelectionHighlight pickParts={[part()]} selection={new Set(['e0'])} hovered={null} />,
     )
     const material = container.querySelector('linebasicmaterial')
     expect(material?.hasAttribute('clippingplanes')).toBe(false)

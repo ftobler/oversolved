@@ -54,7 +54,7 @@ function extrude(sketchId: string, id: string, distance: number, operation = 'ne
 const VOL_A = 500
 const VOL_B = 144
 
-function twoBodyDoc() {
+function twoPartDoc() {
   return {
     id: 'exportDoc',
     features: [
@@ -109,7 +109,7 @@ describe.skipIf(!oc || !solveBytes)('exportLocally (real OCC + Rust solver)', ()
   })
 
   it('builds the two-body doc with both bodies present', async () => {
-    const r = await solveLocally(twoBodyDoc())
+    const r = await solveLocally(twoPartDoc())
     expect(r).not.toBeNull()
     expect(Object.keys(r!.bodies).sort()).toEqual(['body_ex1', 'body_ex2'])
   })
@@ -117,7 +117,7 @@ describe.skipIf(!oc || !solveBytes)('exportLocally (real OCC + Rust solver)', ()
   it('STEP-exports the whole assembly as a compound (sum of both volumes)', async () => {
     const scope = new DisposeScope()
     try {
-      const bytes = await exportLocally(twoBodyDoc(), { format: 'step' })
+      const bytes = await exportLocally(twoPartDoc(), { format: 'step' })
       expect(bytes).not.toBeNull()
       const text = new TextDecoder().decode(bytes!)
       expect(text).toContain('ISO-10303-21')
@@ -133,7 +133,7 @@ describe.skipIf(!oc || !solveBytes)('exportLocally (real OCC + Rust solver)', ()
   it('STEP-exports a single body by id', async () => {
     const scope = new DisposeScope()
     try {
-      const bytes = await exportLocally(twoBodyDoc(), { format: 'step', bodyId: 'body_ex1' })
+      const bytes = await exportLocally(twoPartDoc(), { format: 'step', bodyId: 'body_ex1' })
       expect(bytes).not.toBeNull()
       const shape = scope.track(stepBytesToShape(occ, scope, bytes!))
       expect(volumeOf(occ, scope, shape)).toBeCloseTo(VOL_A, 1)
@@ -145,7 +145,7 @@ describe.skipIf(!oc || !solveBytes)('exportLocally (real OCC + Rust solver)', ()
   it('STEP-exports only the chosen body subset', async () => {
     const scope = new DisposeScope()
     try {
-      const bytes = await exportLocally(twoBodyDoc(), { format: 'step', bodyIds: ['body_ex1'] })
+      const bytes = await exportLocally(twoPartDoc(), { format: 'step', bodyIds: ['body_ex1'] })
       expect(bytes).not.toBeNull()
       const shape = scope.track(stepBytesToShape(occ, scope, bytes!))
       expect(volumeOf(occ, scope, shape)).toBeCloseTo(VOL_A, 1)
@@ -155,8 +155,8 @@ describe.skipIf(!oc || !solveBytes)('exportLocally (real OCC + Rust solver)', ()
   })
 
   it('STL-exports only the chosen body subset', async () => {
-    const whole = await exportLocally(twoBodyDoc(), { format: 'stl', tessellation: 'normal' })
-    const subset = await exportLocally(twoBodyDoc(), { format: 'stl', bodyIds: ['body_ex1'], tessellation: 'normal' })
+    const whole = await exportLocally(twoPartDoc(), { format: 'stl', tessellation: 'normal' })
+    const subset = await exportLocally(twoPartDoc(), { format: 'stl', bodyIds: ['body_ex1'], tessellation: 'normal' })
     expect(whole).not.toBeNull()
     expect(subset).not.toBeNull()
     expect(stlTriangleCount(subset!)).toBeGreaterThanOrEqual(12)
@@ -164,8 +164,8 @@ describe.skipIf(!oc || !solveBytes)('exportLocally (real OCC + Rust solver)', ()
   })
 
   it('STL-exports the whole assembly (both boxes meshed)', async () => {
-    const whole = await exportLocally(twoBodyDoc(), { format: 'stl', tessellation: 'normal' })
-    const single = await exportLocally(twoBodyDoc(), { format: 'stl', bodyId: 'body_ex1', tessellation: 'normal' })
+    const whole = await exportLocally(twoPartDoc(), { format: 'stl', tessellation: 'normal' })
+    const single = await exportLocally(twoPartDoc(), { format: 'stl', bodyId: 'body_ex1', tessellation: 'normal' })
     expect(whole).not.toBeNull()
     expect(single).not.toBeNull()
     const wholeTris = stlTriangleCount(whole!)
@@ -179,7 +179,7 @@ describe.skipIf(!oc || !solveBytes)('exportLocally (real OCC + Rust solver)', ()
   it('scales an inch document into millimetres on STEP export', async () => {
     const scope = new DisposeScope()
     try {
-      const bytes = await exportLocally({ ...twoBodyDoc(), length_unit: 'inch' }, { format: 'step' })
+      const bytes = await exportLocally({ ...twoPartDoc(), length_unit: 'inch' }, { format: 'step' })
       expect(bytes).not.toBeNull()
       const shape = scope.track(stepBytesToShape(occ, scope, bytes!))
       // A 10-unit side in an inch document is 254 mm in the file; volume scales
@@ -193,7 +193,7 @@ describe.skipIf(!oc || !solveBytes)('exportLocally (real OCC + Rust solver)', ()
   it('leaves the same numbers at their authored size in a millimetre document', async () => {
     const scope = new DisposeScope()
     try {
-      const bytes = await exportLocally(twoBodyDoc(), { format: 'step' })
+      const bytes = await exportLocally(twoPartDoc(), { format: 'step' })
       const shape = scope.track(stepBytesToShape(occ, scope, bytes!))
       // The regression guard for the absent field: no scaling at all.
       expect(volumeOf(occ, scope, shape)).toBeCloseTo(VOL_A + VOL_B, 1)
@@ -203,8 +203,8 @@ describe.skipIf(!oc || !solveBytes)('exportLocally (real OCC + Rust solver)', ()
   })
 
   it('scales an inch document into millimetres on STL export', async () => {
-    const mm = await exportLocally(twoBodyDoc(), { format: 'stl', tessellation: 'normal' })
-    const inch = await exportLocally({ ...twoBodyDoc(), length_unit: 'inch' }, { format: 'stl', tessellation: 'normal' })
+    const mm = await exportLocally(twoPartDoc(), { format: 'stl', tessellation: 'normal' })
+    const inch = await exportLocally({ ...twoPartDoc(), length_unit: 'inch' }, { format: 'stl', tessellation: 'normal' })
     expect(mm).not.toBeNull()
     expect(inch).not.toBeNull()
     // Same tessellation, so the ratio is purely the unit scale.
@@ -212,12 +212,12 @@ describe.skipIf(!oc || !solveBytes)('exportLocally (real OCC + Rust solver)', ()
   })
 
   it('throws for an unknown body id', async () => {
-    await expect(exportLocally(twoBodyDoc(), { format: 'step', bodyId: 'nope' }))
+    await expect(exportLocally(twoPartDoc(), { format: 'step', bodyId: 'nope' }))
       .rejects.toThrow(/not found/)
   })
 
   it('throws when one id in a chosen subset is unknown', async () => {
-    await expect(exportLocally(twoBodyDoc(), { format: 'step', bodyIds: ['body_ex1', 'nope'] }))
+    await expect(exportLocally(twoPartDoc(), { format: 'step', bodyIds: ['body_ex1', 'nope'] }))
       .rejects.toThrow(/not found/)
   })
 

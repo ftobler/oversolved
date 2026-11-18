@@ -36,7 +36,7 @@ const solveBytes = loadSolver()
 
 const SKETCH_ID = 'ej5yKuzkrjyx1bIum42EJLki'
 const EXTRUDE_ID = 'UU4SAjHG0AQZAsU8C2j5JKjo'
-const BODY_ID = 'body_' + EXTRUDE_ID
+const PART_ID = 'body_' + EXTRUDE_ID
 const CIRCLE = '0IPnfibogdJZCeul'
 // The pick stored in the bug report's document: the pre-split proto uuid and
 // the `cls_yn` classifier of the sibling the shell is meant to open.
@@ -93,7 +93,7 @@ interface FaceDatum {
 
 /** The two sibling half-cylinders of the x = 30 circle, by query and centroid. */
 function siblingFaces(r: BuildResponse): Array<{ query: string; y: number }> {
-  const mesh = ((r.bodies as Record<string, { mesh?: { face_data?: FaceDatum[]; face_queries?: string[] } }>)[BODY_ID]?.mesh) ?? {}
+  const mesh = ((r.bodies as Record<string, { mesh?: { face_data?: FaceDatum[]; face_queries?: string[] } }>)[PART_ID]?.mesh) ?? {}
   const data = mesh.face_data ?? []
   const queries = mesh.face_queries ?? []
   const out: Array<{ query: string; y: number }> = []
@@ -131,12 +131,12 @@ describe.skipIf(!oc || !solveBytes)('shell sibling opening pick (real OCC + Rust
     setSketchSolver(solveBytes)
   })
 
-  function bodyOf(r: BuildResponse, featureId: string): PartSolid {
-    return r._build_state!.checkpoints[featureId].body_store_snapshot[BODY_ID]
+  function partOf(r: BuildResponse, featureId: string): PartSolid {
+    return r._build_state!.checkpoints[featureId].body_store_snapshot[PART_ID]
   }
 
   function shapeOf(r: BuildResponse, featureId: string): OccShape {
-    return h.table.get<OccShape>(bodyOf(r, featureId).shape!)
+    return h.table.get<OccShape>(partOf(r, featureId).shape!)
   }
 
   it('one profile entity split into two side faces gets two truthful, resolvable UUIDs', () => {
@@ -154,14 +154,14 @@ describe.skipIf(!oc || !solveBytes)('shell sibling opening pick (real OCC + Rust
 
     const scope = new DisposeScope()
     try {
-      const body = bodyOf(r, EXTRUDE_ID)
-      const index = buildFaceIndex(occ, scope, h.table, body)
+      const part = partOf(r, EXTRUDE_ID)
+      const index = buildFaceIndex(occ, scope, h.table, part)
       expect(index.byUuid.get(queryUuid(yp.query)!)).toBeDefined()
       expect(index.byUuid.get(queryUuid(yn.query)!)).toBeDefined()
       expect(index.byUuid.get(queryUuid(yp.query)!)).not.toBe(index.byUuid.get(queryUuid(yn.query)!))
 
       const resolved = resolveFacesByQuery(
-        occ, scope, h.table, body, index, [yp.query, yn.query], { [BODY_ID]: body },
+        occ, scope, h.table, part, index, [yp.query, yn.query], { [PART_ID]: part },
       )
       const faceYp = resolved.get(yp.query)!
       const faceYn = resolved.get(yn.query)!
@@ -176,7 +176,7 @@ describe.skipIf(!oc || !solveBytes)('shell sibling opening pick (real OCC + Rust
       // and land on the sibling the query itself describes.
       const legacy = (q: string): string => withUuid(q, 'u_d81d3a83278682b2')
       const legacyResolved = resolveFacesByQuery(
-        occ, scope, h.table, body, index, [legacy(yp.query), legacy(yn.query)], { [BODY_ID]: body },
+        occ, scope, h.table, part, index, [legacy(yp.query), legacy(yn.query)], { [PART_ID]: part },
       )
       const legacyYp = legacyResolved.get(legacy(yp.query))!
       const legacyYn = legacyResolved.get(legacy(yn.query))!
@@ -192,7 +192,7 @@ describe.skipIf(!oc || !solveBytes)('shell sibling opening pick (real OCC + Rust
       const probe = { byUuid: new Map<string, OccShape>(), ancestryRepo: index.ancestryRepo }
       const liveForeign = withUuid(legacy(yn.query), queryUuid(yp.query)!)
       const probeResolved = resolveFacesByQuery(
-        occ, scope, h.table, body, probe, [liveForeign], { [BODY_ID]: body },
+        occ, scope, h.table, part, probe, [liveForeign], { [PART_ID]: part },
       )
       expect(probeResolved.get(liveForeign)).toBeNull()
 
@@ -200,13 +200,13 @@ describe.skipIf(!oc || !solveBytes)('shell sibling opening pick (real OCC + Rust
       // pre-split prism side face either, so it misses rather than migrating.
       const unknownDead = withUuid(legacy(yn.query), 'u_0123456789abcdef')
       const unknownResolved = resolveFacesByQuery(
-        occ, scope, h.table, body, index, [unknownDead], { [BODY_ID]: body },
+        occ, scope, h.table, part, index, [unknownDead], { [PART_ID]: part },
       )
       expect(unknownResolved.get(unknownDead)).toBeNull()
 
       // A profile entity that still reaches exactly one face keeps the old
       // per-entity UUID, so every existing document query for it stays live.
-      const mesh = (r.bodies as Record<string, { mesh?: { face_data?: FaceDatum[]; face_queries?: string[] } }>)[BODY_ID]!.mesh!
+      const mesh = (r.bodies as Record<string, { mesh?: { face_data?: FaceDatum[]; face_queries?: string[] } }>)[PART_ID]!.mesh!
       const cylinderQuery = (entity: string): string => {
         const i = (mesh.face_data ?? []).findIndex((fd, at) =>
           fd.surface_type === 'cylinderface' && (mesh.face_queries?.[at] ?? '').includes(`/${entity}`))
@@ -236,8 +236,8 @@ describe.skipIf(!oc || !solveBytes)('shell sibling opening pick (real OCC + Rust
       })
       const shellResult = r.result.TE3etvAaKLdhcbtaACRcuK1q as { status: string }
       expect(shellResult.status).toBe('ok')
-      const body = bodyOf(r, 'TE3etvAaKLdhcbtaACRcuK1q')
-      const uuids = body.face_uuids ?? []
+      const part = partOf(r, 'TE3etvAaKLdhcbtaACRcuK1q')
+      const uuids = part.face_uuids ?? []
       // The opening consumes the picked face's UUID; the sibling survives.
       expect(uuids).toContain(queryUuid(kept.query))
       expect(uuids).not.toContain(queryUuid(picked.query))
@@ -281,7 +281,7 @@ describe.skipIf(!oc || !solveBytes)('shell sibling opening pick (real OCC + Rust
       ],
     })
     expect((r.result.TE3etvAaKLdhcbtaACRcuK1q as { status: string }).status).toBe('ok')
-    const uuids = bodyOf(r, 'TE3etvAaKLdhcbtaACRcuK1q').face_uuids ?? []
+    const uuids = partOf(r, 'TE3etvAaKLdhcbtaACRcuK1q').face_uuids ?? []
     // The stored query names the y-negative sibling, so that is the opening;
     // the y-positive sibling survives.
     expect(uuids).not.toContain(queryUuid(yn.query))

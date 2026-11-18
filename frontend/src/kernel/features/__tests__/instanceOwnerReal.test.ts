@@ -31,9 +31,9 @@ describe.skipIf(!loadedOcc)('per-UUID owner recording (real OCC)', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
-      const body = barePart('body_base', 'ex1')
-      body.shape = table.register(makeBoxAt(oc, scope, [-5, -5, -5], 10, 10, 10), 'ex1')
-      const store: Record<string, PartSolid> = { body_base: body }
+      const part = barePart('body_base', 'ex1')
+      part.shape = table.register(makeBoxAt(oc, scope, [-5, -5, -5], 10, 10, 10), 'ex1')
+      const store: Record<string, PartSolid> = { body_base: part }
 
       const firstOwners = new Set<string>()
       for (let copy = 0; copy < 2; copy++) {
@@ -62,24 +62,24 @@ describe.skipIf(!loadedOcc)('per-UUID owner recording (real OCC)', () => {
         })
         // Both applications' surviving face UUIDs answer to this feature after
         // each step, not just the last one's.
-        for (const [uuid, owner] of Object.entries(body.face_owner ?? {})) {
+        for (const [uuid, owner] of Object.entries(part.face_owner ?? {})) {
           if (uuid.startsWith('copy')) expect(owner, uuid).toBe('pt1')
         }
         if (copy === 0) {
-          for (const uuid of Object.keys(body.face_owner ?? {})) {
+          for (const uuid of Object.keys(part.face_owner ?? {})) {
             if (uuid.startsWith('copy0-')) firstOwners.add(uuid)
           }
         }
       }
       expect(firstOwners.size).toBeGreaterThan(0)
-      expect([...firstOwners].every((uuid) => body.face_owner?.[uuid] === 'pt1')).toBe(true)
-      expect(Object.keys(body.face_owner ?? {}).some((uuid) => uuid.startsWith('copy1-'))).toBe(true)
+      expect([...firstOwners].every((uuid) => part.face_owner?.[uuid] === 'pt1')).toBe(true)
+      expect(Object.keys(part.face_owner ?? {}).some((uuid) => uuid.startsWith('copy1-'))).toBe(true)
       // Edges the tool minted are owned too, so a copy's boundary edge does not
       // fall back to the body's creator.
-      expect(Object.values(body.edge_owner ?? {})).toContain('pt1')
+      expect(Object.values(part.edge_owner ?? {})).toContain('pt1')
 
-      const faces = canonicalFaces(oc, scope, table.get<OccShape>(body.shape!))
-      const toolFaces = (body.face_uuids ?? []).filter((uuid) => uuid !== null && uuid.startsWith('copy'))
+      const faces = canonicalFaces(oc, scope, table.get<OccShape>(part.shape!))
+      const toolFaces = (part.face_uuids ?? []).filter((uuid) => uuid !== null && uuid.startsWith('copy'))
       expect(toolFaces.length).toBeGreaterThan(0)
       expect(faces.length).toBeGreaterThanOrEqual(toolFaces.length)
     } finally {

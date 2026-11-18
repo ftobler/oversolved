@@ -132,8 +132,8 @@ describe('resolveUpToPlane', () => {
     const missing = repoReturning({ body_id: 'gone', face_index: 0 })
     expect(resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 1], missing, {})).toBeNull()
     const shapeLess = repoReturning({ body_id: 'b1', face_index: 0 })
-    const noShapeBody = { b1: { shape: null } } as unknown as Record<string, never>
-    expect(resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 1], shapeLess, noShapeBody)).toBeNull()
+    const noShapePart = { b1: { shape: null } } as unknown as Record<string, never>
+    expect(resolveUpToPlane(noOcc, noScope, noTable, 'q', [0, 0, 1], shapeLess, noShapePart)).toBeNull()
   })
 
   it('returns null for a payload that names no plane, face or point', () => {
@@ -146,7 +146,7 @@ describe('resolveUpToPlane', () => {
     // the body shape and reads its surface plane. A non-unit surface normal must
     // come back normalized, not as raw OCC units.
     const table = { get: () => ({}) } as unknown as HandleTable
-    const bodyStore = { body_b: { shape: 7 } } as unknown as Record<string, PartSolid>
+    const partStore = { body_b: { shape: 7 } } as unknown as Record<string, PartSolid>
     const face = { fake: 'face' } as unknown as OccShape
     vi.mocked(extractOccFace).mockReturnValue(face)
     vi.mocked(faceSurfaceType).mockReturnValue('flatface')
@@ -154,7 +154,7 @@ describe('resolveUpToPlane', () => {
     vi.mocked(computeFacePlane).mockReturnValue({
       origin: [1, 2, 10], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 4],
     })
-    const cut = resolveUpToPlane(noOcc, noScope, table, 'q', [0, 0, 1], repoReturning({ body_id: 'body_b', face_index: 2 }), bodyStore)
+    const cut = resolveUpToPlane(noOcc, noScope, table, 'q', [0, 0, 1], repoReturning({ body_id: 'body_b', face_index: 2 }), partStore)
     expect(cut).toEqual({ origin: [1, 2, 10], normal: [0, 0, 1], outward: [0, 0, 1], face })
     // The body shape must be resolved through the handle table and the picked
     // face index handed to extractOccFace, or the plane would come from the
@@ -168,11 +168,11 @@ describe('resolveUpToPlane', () => {
     // pick would hide the real cause behind a "did not resolve" sentence, so the
     // refusal is named.
     const table = { get: () => ({}) } as unknown as HandleTable
-    const bodyStore = { body_b: { shape: 7 } } as unknown as Record<string, PartSolid>
+    const partStore = { body_b: { shape: 7 } } as unknown as Record<string, PartSolid>
     vi.mocked(extractOccFace).mockReturnValue({ fake: 'face' } as unknown as OccShape)
     vi.mocked(faceSurfaceType).mockReturnValue('cylinderface')
     expect(() =>
-      resolveUpToPlane(noOcc, noScope, table, 'q', [0, 0, 1], repoReturning({ body_id: 'body_b', face_index: 3 }), bodyStore),
+      resolveUpToPlane(noOcc, noScope, table, 'q', [0, 0, 1], repoReturning({ body_id: 'body_b', face_index: 3 }), partStore),
     ).toThrow(/target face is not planar/)
   })
 })

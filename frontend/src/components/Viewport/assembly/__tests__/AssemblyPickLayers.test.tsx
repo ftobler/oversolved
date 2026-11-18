@@ -8,7 +8,7 @@ import { IdPipelineContext, type IdPipeline } from '@/picking'
 import AssemblyPickLayers from '@/components/Viewport/assembly/AssemblyPickLayers'
 import type { AssemblyPickPart } from '@/utils/assemblyPick'
 
-function body(handle: string): AssemblyPickPart {
+function part(handle: string): AssemblyPickPart {
   return {
     handle,
     partKey: `${handle}:body_0`,
@@ -23,9 +23,9 @@ function body(handle: string): AssemblyPickPart {
   }
 }
 
-function fullBody(handle: string): AssemblyPickPart {
+function fullPart(handle: string): AssemblyPickPart {
   return {
-    ...body(handle),
+    ...part(handle),
     edges: {
       segmentPositions: new Float32Array([0, 0, 0, 1, 0, 0]),
       segmentToEdge: new Uint32Array([0]),
@@ -69,18 +69,18 @@ function stubPipeline(throwOnEdgeFor?: string) {
   }
 }
 
-function tree(pipeline: IdPipeline, bodies: AssemblyPickPart[], layers: { showFaces?: boolean; showEdges?: boolean } = {}) {
+function tree(pipeline: IdPipeline, parts: AssemblyPickPart[], layers: { showFaces?: boolean; showEdges?: boolean } = {}) {
   return (
     <IdPipelineContext.Provider value={pipeline}>
-      <AssemblyPickLayers parts={bodies} {...layers} />
+      <AssemblyPickLayers parts={parts} {...layers} />
     </IdPipelineContext.Provider>
   )
 }
 
 describe('AssemblyPickLayers hidden seams', () => {
-  function seamBody(handle: string): AssemblyPickPart {
+  function seamPart(handle: string): AssemblyPickPart {
     return {
-      ...body(handle),
+      ...part(handle),
       edges: {
         segmentPositions: new Float32Array([
           0, 0, 0, 1, 0, 0,
@@ -102,7 +102,7 @@ describe('AssemblyPickLayers hidden seams', () => {
 
   it('skips the seam segment and the hidden vertex at registration, keeping their neighbours', () => {
     const { pipeline } = stubPipeline()
-    render(tree(pipeline, [seamBody('p1')]))
+    render(tree(pipeline, [seamPart('p1')]))
 
     const edgeReg = vi.mocked(pipeline.edgeLayer.registerPart).mock.calls[0][0]
     expect([...edgeReg.segmentToEdge]).toEqual([0, 2])
@@ -116,7 +116,7 @@ describe('AssemblyPickLayers hidden seams', () => {
 
   it('registers no edge layer at all when every curve is a hidden seam', () => {
     const { pipeline } = stubPipeline()
-    const seamOnly = seamBody('p2')
+    const seamOnly = seamPart('p2')
     seamOnly.hiddenEdges = [0, 1, 2]
     render(tree(pipeline, [seamOnly]))
     expect(vi.mocked(pipeline.edgeLayer.registerPart)).not.toHaveBeenCalled()
@@ -126,13 +126,13 @@ describe('AssemblyPickLayers hidden seams', () => {
 describe('AssemblyPickLayers incremental registration', () => {
   it('re-registers only the bodies whose object identity changed', () => {
     const { pipeline, registered, unregistered, reset } = stubPipeline()
-    const a = body('p1')
-    const b = body('p2')
+    const a = part('p1')
+    const b = part('p2')
     const view = render(tree(pipeline, [a, b]))
     expect(registered).toEqual(['face:p1:body_0', 'face:p2:body_0'])
 
     reset()
-    const bMoved = body('p2')  // a fresh object, as offsetPickBodies returns for a moved part
+    const bMoved = part('p2')  // a fresh object, as offsetPickBodies returns for a moved part
     view.rerender(tree(pipeline, [a, bMoved]))
 
     // Only the moved body re-registers; the untouched one keeps its resources.
@@ -143,7 +143,7 @@ describe('AssemblyPickLayers incremental registration', () => {
 
   it('does not touch the pipeline when the same body objects are re-passed', () => {
     const { pipeline, registered, unregistered, dirty, reset } = stubPipeline()
-    const a = body('p1')
+    const a = part('p1')
     const view = render(tree(pipeline, [a]))
     reset()
 
@@ -157,8 +157,8 @@ describe('AssemblyPickLayers incremental registration', () => {
 
   it('unregisters only the bodies that left the snapshot', () => {
     const { pipeline, unregistered, reset } = stubPipeline()
-    const a = body('p1')
-    const b = body('p2')
+    const a = part('p1')
+    const b = part('p2')
     const view = render(tree(pipeline, [a, b]))
     reset()
 
@@ -169,7 +169,7 @@ describe('AssemblyPickLayers incremental registration', () => {
 
   it('registers a layer only while the viewer draws it', () => {
     const { pipeline, registered, unregistered, dirty, reset } = stubPipeline()
-    const a = fullBody('p1')
+    const a = fullPart('p1')
     const view = render(tree(pipeline, [a], { showFaces: false }))
     // Shading off: no face entries at all, the wireframe and vertices still pick.
     expect(new Set(registered)).toEqual(new Set(['edge:p1:body_0', 'vertex:p1:body_0']))
@@ -191,7 +191,7 @@ describe('AssemblyPickLayers incremental registration', () => {
 
   it('frees every registered body on unmount', () => {
     const { pipeline, unregistered, reset } = stubPipeline()
-    const view = render(tree(pipeline, [body('p1'), body('p2')]))
+    const view = render(tree(pipeline, [part('p1'), part('p2')]))
     reset()
 
     view.unmount()
@@ -208,8 +208,8 @@ describe('AssemblyPickLayers incremental registration', () => {
     // registrations would outlive the body until the pipeline is disposed.
     const p2Key = 'p2:body_0'
     const { pipeline, live, reset } = stubPipeline(p2Key)
-    const a = fullBody('p1')
-    const b = fullBody('p2')
+    const a = fullPart('p1')
+    const b = fullPart('p2')
     const view = render(tree(pipeline, [a, b]))
 
     expect(live.has(`face:${p2Key}`)).toBe(false)
@@ -228,8 +228,8 @@ describe('AssemblyPickLayers incremental registration', () => {
     // transient failure would leave it unpickable for the scene's lifetime.
     const p2Key = 'p2:body_0'
     const { pipeline, registered, reset } = stubPipeline(p2Key)
-    const a = fullBody('p1')
-    const b = fullBody('p2')
+    const a = fullPart('p1')
+    const b = fullPart('p2')
     const view = render(tree(pipeline, [a, b]))
     reset()
 

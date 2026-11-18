@@ -55,7 +55,7 @@ function doc(pattern: Dict, width = 4, height = 4, depth = 5): Record<string, un
 }
 
 /** The source body alone, for the first pass that reads a pick off it. */
-function bodyDoc(width: number, height: number, depth: number): Record<string, unknown> {
+function partDoc(width: number, height: number, depth: number): Record<string, unknown> {
   return {
     version: 9, kind: 'part',
     features: [
@@ -79,8 +79,8 @@ describe.skipIf(!oc || !solveBytes)('linear pattern through the real kernel', ()
     const store = r._build_state!.checkpoints.lp1.body_store_snapshot as Record<string, PartSolid>
     const scope = new DisposeScope()
     try {
-      return Object.values(store).map((body) => {
-        const box = shapeBndBox(occ, scope, h.table.get<OccShape>(body.shape!))
+      return Object.values(store).map((part) => {
+        const box = shapeBndBox(occ, scope, h.table.get<OccShape>(part.shape!))
         return [...box.min, ...box.max]
       })
     } finally {
@@ -187,7 +187,7 @@ describe.skipIf(!oc || !solveBytes)('linear pattern through the real kernel', ()
   }
 
   it('directive length spaces by the picked edge, and follows it when it grows', () => {
-    const probe = h.run(bodyDoc(15, 4, 5))
+    const probe = h.run(partDoc(15, 4, 5))
     const q = edgeQueryOf(probe, 0, 15)
     const r = h.run(doc({ count: 3, direction_mode: 'directive_length', direction_query: q }, 15, 4, 5))
     const res = h.res(r, 'lp1')
@@ -249,7 +249,7 @@ describe.skipIf(!oc || !solveBytes)('linear pattern through the real kernel', ()
   })
 
   it('lets direction 2 run in a different mode from direction 1', () => {
-    const probe = h.run(bodyDoc(4, 4, 5))
+    const probe = h.run(partDoc(4, 4, 5))
     const q2 = edgeQueryOf(probe, 1, 4)
     const r = h.run(doc({
       count: 2, count_2: 2, second_direction: true,

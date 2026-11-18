@@ -21,7 +21,7 @@ describe('modifier attribution owner fallback order', () => {
 
   it('does not overwrite an owner the name transfer already recorded', () => {
     const handle = 1 as OccHandle
-    const body: PartSolid = {
+    const part: PartSolid = {
       ...barePart('body_ex1', 'ex1'),
       shape: handle,
       modified_by: ['m1', 'm2'],
@@ -37,15 +37,15 @@ describe('modifier attribution owner fallback order', () => {
     indexModifierDiffs(
       null as unknown as OccModule,
       null as unknown as never,
-      { body_ex1: body },
+      { body_ex1: part },
     )
-    expect(body.face_owner).toEqual({ u1: 'transfer-owner', u2: 'm2' })
-    expect(body.edge_owner).toEqual({ e1: 'transfer-owner', e2: 'm2' })
+    expect(part.face_owner).toEqual({ u1: 'transfer-owner', u2: 'm2' })
+    expect(part.edge_owner).toEqual({ e1: 'transfer-owner', e2: 'm2' })
   })
 
   it('prunes owners whose UUID the current shape no longer carries', () => {
     const handle = 2 as OccHandle
-    const body: PartSolid = {
+    const part: PartSolid = {
       ...barePart('body_ex2', 'ex1'),
       shape: handle,
       modified_by: ['m1'],
@@ -56,8 +56,8 @@ describe('modifier attribution owner fallback order', () => {
       brep_new: { shape: handle, faces: [], edges: [], vertices: [] },
       brep_diff: null,
     }
-    indexModifierDiffs(null as unknown as OccModule, null as unknown as never, { body_ex2: body })
-    expect(body.face_owner).toEqual({ u1: 'ex1' })
-    expect(body.edge_owner).toEqual({})
+    indexModifierDiffs(null as unknown as OccModule, null as unknown as never, { body_ex2: part })
+    expect(part.face_owner).toEqual({ u1: 'ex1' })
+    expect(part.edge_owner).toEqual({})
   })
 })

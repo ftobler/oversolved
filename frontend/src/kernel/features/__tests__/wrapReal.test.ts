@@ -76,8 +76,8 @@ describe.skipIf(!oc || !solveBytes)('wrap (real OCC + Rust solver)', { timeout: 
 
   /** The face queries of one surface kind on a body, nearest-radius first when
    *  several (a tube's bore and skin). */
-  function faceQueries(result: BuildResponse, bodyId: string, kind: string): string[] {
-    const mesh = h.part(result, bodyId).mesh as { face_data: { surface_type?: string; centroid: number[] }[]; face_queries: string[] }
+  function faceQueries(result: BuildResponse, partId: string, kind: string): string[] {
+    const mesh = h.part(result, partId).mesh as { face_data: { surface_type?: string; centroid: number[] }[]; face_queries: string[] }
     return mesh.face_data
       .map((f, i) => ({ f, q: mesh.face_queries[i] }))
       .filter(({ f }) => f.surface_type === kind)
@@ -85,14 +85,14 @@ describe.skipIf(!oc || !solveBytes)('wrap (real OCC + Rust solver)', { timeout: 
       .map(({ q }) => q)
   }
 
-  function shapeOf(result: BuildResponse, featureId: string, bodyId: string): OccShape {
+  function shapeOf(result: BuildResponse, featureId: string, partId: string): OccShape {
     const cp = result._build_state!.checkpoints[featureId]
     expect(cp, `no checkpoint for ${featureId}`).toBeDefined()
-    return h.table.get<OccShape>(cp.body_store_snapshot[bodyId].shape!)
+    return h.table.get<OccShape>(cp.body_store_snapshot[partId].shape!)
   }
 
-  function gauges(result: BuildResponse, featureId: string, bodyId: string) {
-    const shape = shapeOf(result, featureId, bodyId)
+  function gauges(result: BuildResponse, featureId: string, partId: string) {
+    const shape = shapeOf(result, featureId, partId)
     const scope = new DisposeScope()
     try {
       return {

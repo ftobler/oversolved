@@ -84,8 +84,8 @@ describe("type coercion tier scope", () => {
     face_index: 0,
     created_by: "ex1",
   }
-  const bodyObj = { id: "body_ex1" }
-  const bodyStoreWithSolid = { body_ex1: bodyObj }
+  const partObj = { id: "body_ex1" }
+  const partStoreWithSolid = { body_ex1: partObj }
 
   function repoWithFlatface(ancestors: string[], uuid?: string): Repository {
     const repo = new Repository()
@@ -97,7 +97,7 @@ describe("type coercion tier scope", () => {
   it("coercion happens in exact tier", () => {
     const repo = repoWithFlatface(["@A"])
     const q = makeAncestryQuery(["@A"], "solid")
-    expect(repo.query(q, null, bodyStoreWithSolid)).toBe(bodyObj)
+    expect(repo.query(q, null, partStoreWithSolid)).toBe(partObj)
   })
 
   /** Same flatface reached via the partial tier (query carries an extra id)
@@ -107,14 +107,14 @@ describe("type coercion tier scope", () => {
     // query_set {@A, @extra} is not a subset of {@A}, so the exact tier misses
     // and the partial tier ({@A} <= {@A, @extra}) is what fires
     const q = makeAncestryQuery(["@A", "@extra"], "solid")
-    expect(repo.query(q, null, bodyStoreWithSolid)).toBeNull()
+    expect(repo.query(q, null, partStoreWithSolid)).toBeNull()
   })
 
   // Contrast: the same partial match resolves fine when no type is demanded.
   it("partial tier resolves without type restriction", () => {
     const repo = repoWithFlatface(["@A"])
     const q = makeAncestryQuery(["@A", "@extra"])
-    const result = repo.query(q, null, bodyStoreWithSolid)
+    const result = repo.query(q, null, partStoreWithSolid)
     expect(result).not.toBeNull()
     expect((result as Record<string, unknown>).type).toBe("flatface")
   })
@@ -125,14 +125,14 @@ describe("type coercion tier scope", () => {
     // @X shares no subset relation with @A (tiers 1+2 miss); only the UUID
     // matches. With type_restriction=solid the strict filter drops it.
     const q = makeAncestryQuery([constructionUuidToken("u_h"), "@X"], "solid")
-    expect(repo.query(q, null, bodyStoreWithSolid)).toBeNull()
+    expect(repo.query(q, null, partStoreWithSolid)).toBeNull()
   })
 
   // Contrast: the UUID fallback resolves the face when no type is demanded.
   it("UUID fallback resolves without type restriction", () => {
     const repo = repoWithFlatface(["@A"], "u_h")
     const q = makeAncestryQuery([constructionUuidToken("u_h"), "@X"])
-    const result = repo.query(q, null, bodyStoreWithSolid)
+    const result = repo.query(q, null, partStoreWithSolid)
     expect(result).not.toBeNull()
     expect((result as Record<string, unknown>).type).toBe("flatface")
   })
@@ -142,7 +142,7 @@ describe("type coercion tier scope", () => {
 describe("coerceType scoped to same created_by feature", () => {
   it("coerces within the same feature", () => {
     const repo = new Repository()
-    const bodyStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
+    const partStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
     repo.registerAncestor(
       ["@ex1face0", "@ex1"],
       { type: "flatface", body_id: "body_ex1", face_index: 0, created_by: "ex1" },
@@ -152,14 +152,14 @@ describe("coerceType scoped to same created_by feature", () => {
       { type: "straightedge", body_id: "body_ex1", edge_index: 0, created_by: "ex1" },
     )
     const q = makeAncestryQuery(["@ex1face0", "@ex1"], "edge")
-    const result = repo.query(q, null, bodyStore) as Record<string, unknown> | null
+    const result = repo.query(q, null, partStore) as Record<string, unknown> | null
     expect(result).not.toBeNull()
     expect(result!.type).toBe("straightedge")
   })
 
   it("does not coerce across features (different created_by on same body_id)", () => {
     const repo = new Repository()
-    const bodyStore: Record<string, unknown> = { shared_body: { id: "shared_body" } }
+    const partStore: Record<string, unknown> = { shared_body: { id: "shared_body" } }
     repo.registerAncestor(
       ["@ex1face0", "@ex1"],
       { type: "flatface", body_id: "shared_body", face_index: 0, created_by: "ex1" },
@@ -169,13 +169,13 @@ describe("coerceType scoped to same created_by feature", () => {
       { type: "straightedge", body_id: "shared_body", edge_index: 0, created_by: "ex2" },
     )
     const q = makeAncestryQuery(["@ex1face0", "@ex1"], "edge")
-    const result = repo.query(q, null, bodyStore)
+    const result = repo.query(q, null, partStore)
     expect(result).toBeNull()
   })
 
   it("rejects coercion when created_by is missing", () => {
     const repo = new Repository()
-    const bodyStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
+    const partStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
     repo.registerAncestor(
       ["@ex1face0", "@ex1"],
       { type: "flatface", body_id: "body_ex1", face_index: 0 },
@@ -185,7 +185,7 @@ describe("coerceType scoped to same created_by feature", () => {
       { type: "straightedge", body_id: "body_ex1", edge_index: 0 },
     )
     const q = makeAncestryQuery(["@ex1face0", "@ex1"], "edge")
-    const result = repo.query(q, null, bodyStore)
+    const result = repo.query(q, null, partStore)
     expect(result).toBeNull()
   })
 })

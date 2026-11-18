@@ -85,10 +85,10 @@ function rectAt(
 }
 
 /** The live body's own volume at the checkpoint a feature left behind. */
-function bodyVolume(h: SharedHarness, result: BuildResponse, featureId: string, bodyId: string): number {
+function partVolume(h: SharedHarness, result: BuildResponse, featureId: string, partId: string): number {
   const snapshot = result._build_state!.checkpoints[featureId].body_store_snapshot
-  const handle = snapshot[bodyId]?.shape
-  if (handle === undefined || handle === null) throw new Error(`body '${bodyId}' is not live at ${featureId}`)
+  const handle = snapshot[partId]?.shape
+  if (handle === undefined || handle === null) throw new Error(`body '${partId}' is not live at ${featureId}`)
   const scope = new DisposeScope()
   try {
     return volumeOf(oc!, scope, h.table.get<OccShape>(handle))
@@ -105,7 +105,7 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
     expect(h.res(result, 'ex2').status).toBe('ok')
     expect(h.res(result, 'ex2').solver_warning).toBeUndefined()
     // 12000 - 25 * 10. The blind control below leaves the 1 mm pocket.
-    expect(bodyVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
+    expect(partVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
   }, 240_000)
 
   it('builds the same cut when a stored distance is 0 and warns instead of failing', () => {
@@ -115,7 +115,7 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
     expect(String(res.solver_warning)).toBe(
       'extrude: through_all takes no distance; the stored value is ignored',
     )
-    expect(bodyVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
+    expect(partVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
   }, 240_000)
 
   it('builds the same cut when a stored distance is 5 and warns the same way', () => {
@@ -125,7 +125,7 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
     expect(String(res.solver_warning)).toBe(
       'extrude: through_all takes no distance; the stored value is ignored',
     )
-    expect(bodyVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
+    expect(partVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
   }, 240_000)
 
   it('leaves the pinned 1 mm pocket when the same cut is blind', () => {
@@ -134,19 +134,19 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
     // only 25 * 1 and leaves 9 mm of the slot as a pocket.
     const result = h.run({ features: [...plate(10), slotSketch(), cut('blind')] })
     expect(h.res(result, 'ex2').status).toBe('ok')
-    expect(bodyVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(12000 - 25, 6)
+    expect(partVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(12000 - 25, 6)
   }, 240_000)
 
   it('re-sizes when the base grows, where a blind guess would leave a plug', () => {
     const grown = h.run({ features: [...plate(20), slotSketch(), cut('through_all')] })
     expect(h.res(grown, 'ex2').status).toBe('ok')
     // 24000 - 25 * 20: the cut follows the grown thickness.
-    expect(bodyVolume(h, grown, 'ex2', 'body_ex1')).toBeCloseTo(23500, 6)
+    expect(partVolume(h, grown, 'ex2', 'body_ex1')).toBeCloseTo(23500, 6)
 
     // The old guessed distance cuts only the first 10 mm and leaves a plug.
     const blind = h.run({ features: [...plate(20), slotSketch(), cut('blind', { distance: 10 })] })
     expect(h.res(blind, 'ex2').status).toBe('ok')
-    expect(bodyVolume(h, blind, 'ex2', 'body_ex1')).toBeCloseTo(23750, 6)
+    expect(partVolume(h, blind, 'ex2', 'body_ex1')).toBeCloseTo(23750, 6)
   }, 240_000)
 
   it('narrows to merge_target and leaves a far body whole', () => {
@@ -171,8 +171,8 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
       ],
     })
     expect(h.res(result, 'exC').status).toBe('ok')
-    expect(bodyVolume(h, result, 'exC', 'body_exA')).toBeCloseTo(500 - 4 * 5, 6)
-    expect(bodyVolume(h, result, 'exC', 'body_exB')).toBeCloseTo(500, 6)
+    expect(partVolume(h, result, 'exC', 'body_exA')).toBeCloseTo(500 - 4 * 5, 6)
+    expect(partVolume(h, result, 'exC', 'body_exB')).toBeCloseTo(500, 6)
   }, 240_000)
 
   it('sizes from the whole store when merge_target names no live body, then refuses it', () => {
@@ -195,7 +195,7 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
     const res = h.res(result, 'exC')
     expect(res.status).toBe('exception')
     expect(String(res.exception)).toContain("merge target 'body_missing' not found")
-    expect(bodyVolume(h, result, 'exC', 'body_exA')).toBeCloseTo(500, 6)
+    expect(partVolume(h, result, 'exC', 'body_exA')).toBeCloseTo(500, 6)
   }, 240_000)
 
   it('reports a named exception when there is no body to size the cut from', () => {
@@ -249,7 +249,7 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
     })
     expect(h.res(result, 'ex2').status).toBe('ok')
     expect(h.res(result, 'ex2').solver_warning).toBeUndefined()
-    expect(bodyVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
+    expect(partVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
   }, 240_000)
 
   it('cuts the whole body with symmetric when the plane is the body bottom face', () => {
@@ -260,7 +260,7 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
       features: [...plate(10), slotSketch(), cut('through_all', { direction: 'symmetric' })],
     })
     expect(h.res(result, 'ex2').status).toBe('ok')
-    expect(bodyVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
+    expect(partVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
   }, 240_000)
 
   it('cuts the whole body with symmetric from an off-centre interior plane', () => {
@@ -275,7 +275,7 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
       ],
     })
     expect(h.res(result, 'ex2').status).toBe('ok')
-    expect(bodyVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
+    expect(partVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
   }, 240_000)
 
   it('cuts the whole body with symmetric from a plane outside the body', () => {
@@ -290,7 +290,7 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
       ],
     })
     expect(h.res(result, 'ex2').status).toBe('ok')
-    expect(bodyVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
+    expect(partVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
   }, 240_000)
 
   it('cuts the whole body with symmetric from a body-face profile', () => {
@@ -327,7 +327,7 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
     })
     expect(h.res(result, 'exCut').status).toBe('ok')
     // 40 x 30 x 10 plate + 10 x 10 x 5 boss minus a 10 x 10 x 15 column.
-    expect(bodyVolume(h, result, 'exCut', 'body_ex1')).toBeCloseTo(12000 + 500 - 1500, 6)
+    expect(partVolume(h, result, 'exCut', 'body_ex1')).toBeCloseTo(12000 + 500 - 1500, 6)
   }, 240_000)
 
   it('cuts only the reverse side from an offset plane inside the body', () => {
@@ -344,7 +344,7 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
     })
     expect(h.res(result, 'ex2').status).toBe('ok')
     expect(h.res(result, 'ex2').solver_warning).toBeUndefined()
-    expect(bodyVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(12000 - 25 * 4, 6)
+    expect(partVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(12000 - 25 * 4, 6)
   }, 240_000)
 
   it('leaves the material behind the plane with normal from an interior plane', () => {
@@ -359,7 +359,7 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
       ],
     })
     expect(h.res(result, 'ex2').status).toBe('ok')
-    expect(bodyVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(12000 - 25 * 6, 6)
+    expect(partVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(12000 - 25 * 6, 6)
   }, 240_000)
 
   it('replays the three-axis through_all cuts from Old example 024', () => {
@@ -394,7 +394,7 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
       expect(res.solver_warning, id).toBeUndefined()
     }
     const expected = 1e6 - 259259.2592592593
-    const volume = bodyVolume(h, result, 'exX', 'body_exCube')
+    const volume = partVolume(h, result, 'exX', 'body_exCube')
     expect(Math.abs(volume - expected) / expected).toBeLessThan(1e-3)
   }, 240_000)
 
@@ -432,7 +432,7 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
       )
     }
     const expected = 1e6 - 259259.2592592593
-    const volume = bodyVolume(h, result, 'exX', 'body_exCube')
+    const volume = partVolume(h, result, 'exX', 'body_exCube')
     expect(Math.abs(volume - expected) / expected).toBeLessThan(1e-3)
   }, 240_000)
 

@@ -24,7 +24,7 @@ import { primitivePickKey, partKeyFor } from '@/picking/pickKey'
 import { FACE_LAYER_NAME, EDGE_LAYER_NAME, VERTEX_LAYER_NAME } from '@/picking/layerNames'
 import { useEditorState } from '@/hooks/useEditorState'
 
-const BODY = partKeyFor('extrude1', 'body0')
+const PART = partKeyFor('extrude1', 'body0')
 
 function reset() {
   useEditorState.setState({
@@ -39,13 +39,13 @@ function reset() {
 
 /** Click primitive `i` of `layer`, carrying the query the ID buffer resolved. */
 function click(layer: string, index: number, query: string) {
-  useSketchEditorStore.getState().toggleNormalSelection(query, primitivePickKey(BODY, index, layer))
+  useSketchEditorStore.getState().toggleNormalSelection(query, primitivePickKey(PART, index, layer))
 }
 
 /** The highlight flags Body3D would render for `queries` in `layer`. */
 function highlightOf(layer: string, queries: string[]): boolean[] {
   const { selectedPicks, normalSelection } = useSketchEditorStore.getState()
-  return computeHighlight(BODY, layer, queries, selectActiveFrom(selectedPicks, normalSelection))
+  return computeHighlight(PART, layer, queries, selectActiveFrom(selectedPicks, normalSelection))
 }
 
 beforeEach(reset)

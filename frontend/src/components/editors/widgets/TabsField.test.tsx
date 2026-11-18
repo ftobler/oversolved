@@ -46,9 +46,9 @@ describe('TabsFieldWidget', () => {
   it('moves and selects with arrow keys', () => {
     const onMutation = vi.fn()
     render(<TabsField {...baseProps} onMutation={onMutation} />)
-    const body = screen.getByRole('tab', { name: 'Body' })
-    body.focus()
-    fireEvent.keyDown(body, { key: 'ArrowRight' })
+    const part = screen.getByRole('tab', { name: 'Body' })
+    part.focus()
+    fireEvent.keyDown(part, { key: 'ArrowRight' })
     expect(onMutation).toHaveBeenCalledWith({ type: 'set_test_field', featureId: 'f1', field: 'subject', value: 'feature' })
   })
 

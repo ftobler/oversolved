@@ -15,7 +15,7 @@ function line(a: V3, b: V3): EdgeData {
   return { kind: 'line', start: a, end: b }
 }
 
-function bodyResult(
+function partResult(
   id: string,
   edges: EdgeData[],
   edgeQueries: string[],
@@ -50,13 +50,13 @@ function steppedBlock(): Record<string, PartResult> {
     line([0, 0, 0], [0, 0, 20]),
   ]
   const queries = edges.map((_, i) => `q_e${i}`)
-  return { body_block: bodyResult('body_block', edges, queries) }
+  return { body_block: partResult('body_block', edges, queries) }
 }
 
 const ALL_EDGE_QUERIES = Array.from({ length: 13 }, (_, i) => `q_e${i}`)
 
-function queriesOf(selector: Selector, bodies: Record<string, PartResult>): string[] {
-  return selectByPredicate(selector, bodies).queries
+function queriesOf(selector: Selector, parts: Record<string, PartResult>): string[] {
+  return selectByPredicate(selector, parts).queries
 }
 
 describe('selectByPredicate: within', () => {
@@ -95,14 +95,14 @@ describe('selectByPredicate: within', () => {
       { centroid: [0.5, 0.5, 0], normal: [0, 0, 1], surface_type: 'flatface' },
       { centroid: [5.5, 0.5, 0], normal: [0, 0, 1], surface_type: 'flatface' },
     ]
-    const bodies = {
-      body_b: bodyResult('body_b', [], [], faces, ['f0', 'f1'], {
+    const parts = {
+      body_b: partResult('body_b', [], [], faces, ['f0', 'f1'], {
         vertices: [[0, 0, 0], [1, 0, 0], [0, 1, 0], [5, 0, 0], [6, 0, 0], [5, 1, 0]],
         faces: [[0, 1, 2], [3, 4, 5]],
         triangle_to_face: [0, 1],
       }),
     }
-    expect(queriesOf({ kind: 'face', where: { within: { axis: 'x', min: 0, max: 2 } } }, bodies))
+    expect(queriesOf({ kind: 'face', where: { within: { axis: 'x', min: 0, max: 2 } } }, parts))
       .toEqual(['f0'])
   })
 })

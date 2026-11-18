@@ -481,9 +481,9 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): n
   // Volume and face count read off the body's own shape through the harness's
   // persistent table: the response's tessellated body has no shape handle, the
   // checkpoint snapshot is where the live shape lives.
-  function gauges(result: BuildResponse, bodyId: string): { volume: number; faces: number } {
+  function gauges(result: BuildResponse, partId: string): { volume: number; faces: number } {
     const cp = result._build_state!.checkpoints['ex1']
-    const shape = h.table.get<OccShape>(cp.body_store_snapshot[bodyId].shape!)
+    const shape = h.table.get<OccShape>(cp.body_store_snapshot[partId].shape!)
     const scope = new DisposeScope()
     try {
       return { volume: volumeOf(oc!, scope, shape), faces: canonicalFaces(oc!, scope, shape).length }

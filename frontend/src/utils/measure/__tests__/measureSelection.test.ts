@@ -14,7 +14,7 @@ const flat: Sketch = {
   L1: { start: [0, 0], end: [10, 0] },
 }
 
-const body: PartResult = {
+const part: PartResult = {
   id: 'body_1',
   created_by: 'ex',
   modified_by: [],
@@ -39,7 +39,7 @@ const solveResults = {
   builtin_plane_top: { plane: FRONT },
 }
 
-const ctx = { solveResults, parts: { body_1: body } }
+const ctx = { solveResults, parts: { body_1: part } }
 
 describe('measureSelection: mixed picks keep both sides (defect 1)', () => {
   it('measures a datum plane plus a cylinder face as an axis distance, not the diameter', () => {
@@ -122,14 +122,14 @@ describe('measureSelection: kernel cells read nothing until the follow-up', () =
 
 describe('measureSelection: the kernel ask names the picks', () => {
   const spline: PartResult = {
-    ...body,
+    ...part,
     id: 'body_2',
     edges: [{ kind: 'spline', points: [[0, 0, 0], [1, 1, 0], [2, 0, 0]] }],
     edge_queries: ['?sp'],
     vertices: [],
     vertex_queries: [],
   }
-  const two = { ...ctx, parts: { body_1: body, body_2: spline } }
+  const two = { ...ctx, parts: { body_1: part, body_2: spline } }
 
   it('asks for a spline edge length with the body and the render index', () => {
     expect(measureSelectionPicks(new Set(['?sp']), two)).toEqual({
@@ -179,7 +179,7 @@ describe('measureSelection: the document unit and its extras', () => {
 
   it('returns the second readout of a pair on its own HUD line', () => {
     const skew: PartResult = {
-      ...body,
+      ...part,
       edges: [
         { kind: 'line', start: [0, 0, 0], end: [10, 0, 0] },
         { kind: 'line', start: [5, 3, 4], end: [5, 7, 4] },

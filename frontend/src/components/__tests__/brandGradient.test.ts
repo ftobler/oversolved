@@ -14,7 +14,7 @@ const SPLASH_CSS = readFileSync(join(SRC, 'components/SplashScreen.css'), 'utf8'
 // The declarations of the first rule whose selector is exactly `selector`.
 // index.css nests a media query inside :root, so its tokens are read from the
 // whole sheet instead of a body.
-function ruleBody(css: string, file: string, selector: string): string {
+function rulePart(css: string, file: string, selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const match = css.match(new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`))
   expect(match, `${selector} rule in ${file}`).not.toBeNull()
@@ -34,14 +34,14 @@ describe('brand gradient', () => {
   })
 
   it('paints the header logo from the token', () => {
-    expect(ruleBody(HEADER_CSS, 'AppHeader.css', '.logo')).toMatch(/background:\s*var\(--brand-gradient\);/)
-    expect(ruleBody(HEADER_CSS, 'AppHeader.css', '.logo:hover')).toMatch(/background:\s*var\(--brand-gradient-hover\);/)
+    expect(rulePart(HEADER_CSS, 'AppHeader.css', '.logo')).toMatch(/background:\s*var\(--brand-gradient\);/)
+    expect(rulePart(HEADER_CSS, 'AppHeader.css', '.logo:hover')).toMatch(/background:\s*var\(--brand-gradient-hover\);/)
     // No literal gradient may survive here, or the token stops being the source.
     expect(HEADER_CSS).not.toMatch(/linear-gradient/)
   })
 
   it('paints the splash title with the same token and clip', () => {
-    const title = ruleBody(SPLASH_CSS, 'SplashScreen.css', '.splash-screen-title')
+    const title = rulePart(SPLASH_CSS, 'SplashScreen.css', '.splash-screen-title')
     expect(title).toMatch(/background:\s*var\(--brand-gradient\);/)
     expect(title).toMatch(/-webkit-background-clip:\s*text;/)
     expect(title).toMatch(/background-clip:\s*text;/)

@@ -30,9 +30,9 @@ describe('toBodyResults', () => {
 
   it('carries the solved vertices through untouched (transforms are baked worker-side)', () => {
     const out = toPartResults({ h1: [mesh(5)] })
-    const body = out[assemblyPartId('h1', 0)]
-    expect(body.mesh!.vertices).toEqual(mesh(5).vertices)
-    expect(body.mesh!.faces).toEqual(mesh(5).indices)
+    const part = out[assemblyPartId('h1', 0)]
+    expect(part.mesh!.vertices).toEqual(mesh(5).vertices)
+    expect(part.mesh!.faces).toEqual(mesh(5).indices)
   })
 
   it('numbers multiple bodies of one part instance distinctly', () => {
@@ -41,10 +41,10 @@ describe('toBodyResults', () => {
   })
 
   it('feeds the viewport body-render path unchanged', () => {
-    const bodies = toPartResults({ h1: [mesh(0)], h2: [mesh(10)] })
-    const items = getPartsToRender(bodies, undefined, undefined, undefined)
+    const parts = toPartResults({ h1: [mesh(0)], h2: [mesh(10)] })
+    const items = getPartsToRender(parts, undefined, undefined, undefined)
     expect(items).toHaveLength(2)
-    expect(items.map(i => i.partId).sort()).toEqual(Object.keys(bodies).sort())
+    expect(items.map(i => i.partId).sort()).toEqual(Object.keys(parts).sort())
   })
 })
 
@@ -52,9 +52,9 @@ describe('toEdgeCurves', () => {
   it('keys curves by the same body id toBodyResults mints, so the viewport can join them', () => {
     const payload = { h1: [mesh(0)], h2: [mesh(10)] }
     const curves = toEdgeCurves(payload)
-    const bodies = toPartResults(payload)
-    expect(Object.keys(curves).sort()).toEqual(Object.keys(bodies).sort())
-    for (const item of getPartsToRender(bodies, undefined, undefined, undefined)) {
+    const parts = toPartResults(payload)
+    expect(Object.keys(curves).sort()).toEqual(Object.keys(parts).sort())
+    for (const item of getPartsToRender(parts, undefined, undefined, undefined)) {
       expect(curves[item.partId]).toBeDefined()
     }
   })
@@ -65,8 +65,8 @@ describe('toEdgeCurves', () => {
   })
 
   it('drops a hidden seam from the drawn curves only, keeping the pick payload whole', () => {
-    const body = { ...mesh(0), edges: [edge(0), edge(1)], hiddenEdges: [0] }
-    const drawn = toEdgeCurves({ h1: [body] })[assemblyPartId('h1', 0)]
+    const part = { ...mesh(0), edges: [edge(0), edge(1)], hiddenEdges: [0] }
+    const drawn = toEdgeCurves({ h1: [part] })[assemblyPartId('h1', 0)]
     expect(drawn).toEqual([edge(1)])
   })
 

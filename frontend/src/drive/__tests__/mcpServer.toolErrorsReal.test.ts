@@ -64,13 +64,13 @@ describe.skipIf(!ready)('MCP user errors (real OCC + Rust solver)', () => {
 
       // A body id typo names the live ids the caller can pick from, and is not
       // a protocol error.
-      const unknownBody = errorPayload(await client.request('tools/call', {
+      const unknownPart = errorPayload(await client.request('tools/call', {
         name: 'export',
         arguments: { docHash, format: 'step', out: 'tmp/tool-errors/unknown.step', body: 'nope' },
       }))
-      expect(unknownBody.ok).toBe(false)
-      expect(String(unknownBody.error)).toContain("part 'nope' not found")
-      expect(String(unknownBody.error)).toContain('body_ex1')
+      expect(unknownPart.ok).toBe(false)
+      expect(String(unknownPart.error)).toContain("part 'nope' not found")
+      expect(String(unknownPart.error)).toContain('body_ex1')
 
       // A `files` path outside the read roots is refused by the project rule.
       const outside = errorPayload(await client.request('tools/call', {

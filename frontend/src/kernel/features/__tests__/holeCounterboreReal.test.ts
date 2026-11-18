@@ -68,15 +68,15 @@ function runHole(
     const repo = new Repository()
     repo.register('_pt_sk', PLANE)
     repoSetup(repo)
-    const bodyStore = boxTarget(oc!, scope, table)
+    const partStore = boxTarget(oc!, scope, table)
     const result = solveHole(oc!, scope, table, {
       id: 'h1',
       hole: { sketch: '@sk', target: 'body_t', ...hole },
-    }, repo, bodyStore, { sk: { entities } })
+    }, repo, partStore, { sk: { entities } })
     return {
       result,
-      body: bodyStore.body_t,
-      volume: volumeOf(oc!, scope, table.get<OccShape>(bodyStore.body_t.shape!)),
+      body: partStore.body_t,
+      volume: volumeOf(oc!, scope, table.get<OccShape>(partStore.body_t.shape!)),
     }
   } finally {
     scope.dispose()
@@ -265,13 +265,13 @@ describe.skipIf(!oc)('hole drill-point tip (real OCC)', () => {
       const repo = new Repository()
       repo.register('_pt_sk', { ...PLANE, origin: [0, 0, 10] })
       pointSite(repo)
-      const bodyStore = boxTarget(oc!, scope, table)
+      const partStore = boxTarget(oc!, scope, table)
       const result = solveHole(oc!, scope, table, {
         id: 'h1',
         hole: { sketch: '@sk', target: 'body_t', diameter: 4, depth: 8, direction: 'reverse', tip: 'drill_point' },
-      }, repo, bodyStore, { sk: { entities: pointEntity } })
+      }, repo, partStore, { sk: { entities: pointEntity } })
       expect(result.status).toBe('ok')
-      const volume = volumeOf(oc!, scope, table.get<OccShape>(bodyStore.body_t.shape!))
+      const volume = volumeOf(oc!, scope, table.get<OccShape>(partStore.body_t.shape!))
       expect(volume).toBeCloseTo(BOX - (Math.PI * 4 * 8 + drillPointVolume(2, 118)), 4)
     } finally {
       scope.dispose()
@@ -351,8 +351,8 @@ describe.skipIf(!oc || !solveBytes)('hole widened-mouth naming survives an upstr
   })
 
   // The query of the face whose construction uuid is the hole role's.
-  function faceQueryForRole(r: ReturnType<SharedHarness['run']>, bodyId: string, role: string): string {
-    const mesh = h.part(r, bodyId).mesh as { face_queries?: string[]; face_uuids?: (string | null)[] } | undefined
+  function faceQueryForRole(r: ReturnType<SharedHarness['run']>, partId: string, role: string): string {
+    const mesh = h.part(r, partId).mesh as { face_queries?: string[]; face_uuids?: (string | null)[] } | undefined
     const wanted = mintFaceUuid(holeFacePath('h1', 'skh/p1', role as never))
     const at = (mesh?.face_uuids ?? []).indexOf(wanted)
     if (at < 0) throw new Error(`no face named ${role}`)

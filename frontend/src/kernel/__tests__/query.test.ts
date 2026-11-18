@@ -192,19 +192,19 @@ describe("local query key shape (context + eid[/sub])", () => {
 describe("query coercion", () => {
   it("coerces face to solid via body_store", () => {
     const repo = new Repository()
-    const bodyStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
+    const partStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
     repo.registerAncestor(
       ["@ex1"],
       { type: "flatface", body_id: "body_ex1", face_index: 0, created_by: "ex1" },
     )
     const q = makeAncestryQuery(["@ex1"], "solid")
-    const result = repo.query(q, null, bodyStore)
-    expect(result).toBe(bodyStore["body_ex1"])
+    const result = repo.query(q, null, partStore)
+    expect(result).toBe(partStore["body_ex1"])
   })
 
   it("coerces solid to face via repo elements", () => {
     const repo = new Repository()
-    const bodyStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
+    const partStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
     repo.registerAncestor(
       ["@ex1"],
       { type: "solid", body_id: "body_ex1", created_by: "ex1" },
@@ -214,14 +214,14 @@ describe("query coercion", () => {
       { type: "flatface", body_id: "body_ex1", face_index: 0, created_by: "ex1" },
     )
     const q = makeAncestryQuery(["@ex1"], "face")
-    const result = repo.query(q, null, bodyStore)
+    const result = repo.query(q, null, partStore)
     expect(result).not.toBeNull()
     expect(result).toHaveProperty("type", "flatface")
   })
 
   it("coerces edge to vertex via repo elements", () => {
     const repo = new Repository()
-    const bodyStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
+    const partStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
     repo.registerAncestor(
       ["@ex1edge0", "@ex1"],
       { type: "straightedge", body_id: "body_ex1", edge_index: 0, created_by: "ex1" },
@@ -231,14 +231,14 @@ describe("query coercion", () => {
       { type: "vertex", body_id: "body_ex1", vertex_index: 0, created_by: "ex1" },
     )
     const q = makeAncestryQuery(["@ex1edge0", "@ex1"], "vertex")
-    const result = repo.query(q, null, bodyStore)
+    const result = repo.query(q, null, partStore)
     expect(result).not.toBeNull()
     expect(result).toHaveProperty("type", "vertex")
   })
 
   it("exact type match takes precedence over coercion", () => {
     const repo = new Repository()
-    const bodyStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
+    const partStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
     repo.registerAncestor(
       ["@ex1"],
       { type: "face", body_id: "body_ex1", created_by: "ex1" },
@@ -248,20 +248,20 @@ describe("query coercion", () => {
       { type: "solid", body_id: "body_ex1", created_by: "ex1" },
     )
     const q = makeAncestryQuery(["@ex1"], "face")
-    const result = repo.query(q, null, bodyStore)
+    const result = repo.query(q, null, partStore)
     expect(result).not.toBeNull()
     expect(result).toHaveProperty("type", "face")
   })
 
   it("flatface subtype matches face restriction", () => {
     const repo = new Repository()
-    const bodyStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
+    const partStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
     repo.registerAncestor(
       ["@ex1"],
       { type: "flatface", body_id: "body_ex1", face_index: 0, created_by: "ex1" },
     )
     const q = makeAncestryQuery(["@ex1"], "face")
-    const result = repo.query(q, null, bodyStore)
+    const result = repo.query(q, null, partStore)
     expect(result).not.toBeNull()
     expect(result).toHaveProperty("type", "flatface")
   })
@@ -272,13 +272,13 @@ describe("query coercion", () => {
     // carrying only cls_zn is a contradiction and must miss, never resolve the
     // contradicted element.
     const repo = new Repository()
-    const bodyStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
+    const partStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
     repo.registerAncestor(
       ["@ex1"],
       { ...makeFacePayload("body_ex1", "ex1", 0), classifiers: ["cls_zn"] },
     )
     const q = makeAncestryQuery(["@ex1", "@cls_zp"], "face")
-    expect(repo.query(q, null, bodyStore)).toBeNull()
+    expect(repo.query(q, null, partStore)).toBeNull()
     expect(repo._lastTier).toBe("miss")
   })
 
@@ -286,13 +286,13 @@ describe("query coercion", () => {
     // Same lone flatface but with the wanted classifier: the classifier narrows
     // first, then the :face coerce path returns the flatface as before.
     const repo = new Repository()
-    const bodyStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
+    const partStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
     repo.registerAncestor(
       ["@ex1"],
       { ...makeFacePayload("body_ex1", "ex1", 0), classifiers: ["cls_zp"] },
     )
     const q = makeAncestryQuery(["@ex1", "@cls_zp"], "face")
-    const result = repo.query(q, null, bodyStore)
+    const result = repo.query(q, null, partStore)
     expect(result).not.toBeNull()
     expect(result).toHaveProperty("type", "flatface")
     expect((result as Payload).classifiers).toEqual(["cls_zp"])
@@ -315,7 +315,7 @@ describe("query coercion", () => {
     // sibling match must miss. The edge's created_by matches the face, so the
     // miss is the ancestry scoping, not the creator check.
     const repo = new Repository()
-    const bodyStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
+    const partStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
     repo.registerAncestor(
       ["@ex1face0", "@ex1"],
       { type: "flatface", body_id: "body_ex1", face_index: 0, created_by: "ex1" },
@@ -325,7 +325,7 @@ describe("query coercion", () => {
       { type: "straightedge", body_id: "body_ex1", edge_index: 0, created_by: "ex1" },
     )
     const q = makeAncestryQuery(["@ex1face0", "@ex1"], "edge")
-    const result = repo.query(q, null, bodyStore)
+    const result = repo.query(q, null, partStore)
     expect(result).toBeNull()
   })
 
@@ -333,7 +333,7 @@ describe("query coercion", () => {
     // The edge shares the query's feature token (@ex1), so it is a legitimate
     // same-lineage sibling and the coercion resolves it.
     const repo = new Repository()
-    const bodyStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
+    const partStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
     repo.registerAncestor(
       ["@ex1face0", "@ex1"],
       { type: "flatface", body_id: "body_ex1", face_index: 0, created_by: "ex1" },
@@ -343,7 +343,7 @@ describe("query coercion", () => {
       { type: "straightedge", body_id: "body_ex1", edge_index: 0, created_by: "ex1" },
     )
     const q = makeAncestryQuery(["@ex1face0", "@ex1"], "edge")
-    const result = repo.query(q, null, bodyStore)
+    const result = repo.query(q, null, partStore)
     expect(result).not.toBeNull()
     expect(result).toHaveProperty("type", "straightedge")
   })
@@ -352,7 +352,7 @@ describe("query coercion", () => {
     // Two edges share the face's lineage; the sibling scan must fail loud
     // instead of first-wins onto whichever registered first.
     const repo = new Repository()
-    const bodyStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
+    const partStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
     repo.registerAncestor(
       ["@ex1face0", "@ex1"],
       { type: "flatface", body_id: "body_ex1", face_index: 0, created_by: "ex1" },
@@ -366,7 +366,7 @@ describe("query coercion", () => {
       { type: "straightedge", body_id: "body_ex1", edge_index: 1, created_by: "ex1" },
     )
     const q = makeAncestryQuery(["@ex1face0", "@ex1"], "edge")
-    expect(() => repo.query(q, null, bodyStore)).toThrow(AmbiguousQueryError)
+    expect(() => repo.query(q, null, partStore)).toThrow(AmbiguousQueryError)
   })
 
   it("coerces a fillet-created face to its body's solid and to an original-feature edge", () => {
@@ -375,7 +375,7 @@ describe("query coercion", () => {
     // edge whose creator is a body modifier, and upward coercion must still hit
     // the store.
     const repo = new Repository()
-    const bodyStore: Record<string, unknown> = {
+    const partStore: Record<string, unknown> = {
       body_x: { id: "body_x", created_by: "ex1", modified_by: ["ex1", "fillet"] },
     }
     repo.registerAncestor(
@@ -387,9 +387,9 @@ describe("query coercion", () => {
       { type: "straightedge", body_id: "body_x", edge_index: 0, created_by: "ex1" },
     )
     const faceQuery = makeAncestryQuery(["@body_x/face0", "@fillet", "@body_x"])
-    const solid = repo.query(makeAncestryQuery(["@body_x/face0", "@fillet", "@body_x"], "solid"), null, bodyStore)
-    expect(solid).toBe(bodyStore["body_x"])
-    const edge = repo.query(makeAncestryQuery(["@body_x/face0", "@fillet", "@body_x"], "edge"), null, bodyStore)
+    const solid = repo.query(makeAncestryQuery(["@body_x/face0", "@fillet", "@body_x"], "solid"), null, partStore)
+    expect(solid).toBe(partStore["body_x"])
+    const edge = repo.query(makeAncestryQuery(["@body_x/face0", "@fillet", "@body_x"], "edge"), null, partStore)
     expect(edge).not.toBeNull()
     expect(edge).toHaveProperty("type", "straightedge")
     expect(edge).toHaveProperty("created_by", "ex1")
@@ -400,7 +400,7 @@ describe("query coercion", () => {
   // Two candidates coercing to different solids is ambiguous -> fail loud.
   it("raises when coercion yields distinct solids (ambiguous)", () => {
     const repo = new Repository()
-    const bodyStore: Record<string, unknown> = {
+    const partStore: Record<string, unknown> = {
       body_a: { id: "body_a" },
       body_b: { id: "body_b" },
     }
@@ -413,13 +413,13 @@ describe("query coercion", () => {
       { type: "flatface", body_id: "body_b", face_index: 0, created_by: "exB" },
     )
     const q = makeAncestryQuery(["@shared"], "solid")
-    expect(() => repo.query(q, null, bodyStore)).toThrow(AmbiguousQueryError)
+    expect(() => repo.query(q, null, partStore)).toThrow(AmbiguousQueryError)
   })
 
   // Several faces of one body coerce to the same solid -> resolve cleanly.
   it("resolves cleanly when several faces coerce to the same solid", () => {
     const repo = new Repository()
-    const bodyStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
+    const partStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
     repo.registerAncestor(
       ["@shared"],
       { type: "flatface", body_id: "body_ex1", face_index: 0, created_by: "ex1" },
@@ -429,13 +429,13 @@ describe("query coercion", () => {
       { type: "flatface", body_id: "body_ex1", face_index: 1, created_by: "ex1" },
     )
     const q = makeAncestryQuery(["@shared"], "solid")
-    const result = repo.query(q, null, bodyStore)
-    expect(result).toBe(bodyStore["body_ex1"])
+    const result = repo.query(q, null, partStore)
+    expect(result).toBe(partStore["body_ex1"])
   })
 
   it("coerces solid to edge (downward via repo elements)", () => {
     const repo = new Repository()
-    const bodyStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
+    const partStore: Record<string, unknown> = { body_ex1: { id: "body_ex1" } }
     repo.registerAncestor(
       ["@ex1"],
       { type: "solid", body_id: "body_ex1", created_by: "ex1" },
@@ -445,7 +445,7 @@ describe("query coercion", () => {
       { type: "straightedge", body_id: "body_ex1", edge_index: 0, created_by: "ex1" },
     )
     const q = makeAncestryQuery(["@ex1"], "edge")
-    const result = repo.query(q, null, bodyStore)
+    const result = repo.query(q, null, partStore)
     expect(result).not.toBeNull()
     expect(result).toHaveProperty("type", "straightedge")
   })

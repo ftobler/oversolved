@@ -19,7 +19,7 @@ function quadMeshAt(z: number, surface = 'flatface'): Mesh3D {
   }
 }
 
-function body(createdBy: string | undefined, mesh: Mesh3D): PartResult {
+function part(createdBy: string | undefined, mesh: Mesh3D): PartResult {
   return { id: createdBy ?? 'body_x', created_by: createdBy ?? '', modified_by: [], mesh }
 }
 
@@ -29,7 +29,7 @@ describe('faceFrameFromSolve', () => {
   })
 
   it('resolves a planar face straight from the solve mesh', () => {
-    const frame = faceFrameFromSolve({ b1: body('ex1', quadMeshAt(4)) }, 'face-q')
+    const frame = faceFrameFromSolve({ b1: part('ex1', quadMeshAt(4)) }, 'face-q')
     expect(frame).not.toBeNull()
     expect(frame!.normal[0]).toBeCloseTo(0)
     expect(frame!.normal[1]).toBeCloseTo(0)
@@ -38,29 +38,29 @@ describe('faceFrameFromSolve', () => {
   })
 
   it('refuses a curved face even though its triangles are flat', () => {
-    expect(faceFrameFromSolve({ b1: body('ex1', quadMeshAt(0, 'cylinderface')) }, 'face-q')).toBeNull()
+    expect(faceFrameFromSolve({ b1: part('ex1', quadMeshAt(0, 'cylinderface')) }, 'face-q')).toBeNull()
   })
 
   it('returns null for a query no body carries', () => {
-    expect(faceFrameFromSolve({ b1: body('ex1', quadMeshAt(0)) }, 'gone')).toBeNull()
+    expect(faceFrameFromSolve({ b1: part('ex1', quadMeshAt(0)) }, 'gone')).toBeNull()
   })
 
   it('uses the pickKey to pick the clicked owner of a shared query', () => {
-    const bodies = {
-      b1: body('ex1', quadMeshAt(0)),
-      b2: body('ex2', quadMeshAt(5)),
+    const parts = {
+      b1: part('ex1', quadMeshAt(0)),
+      b2: part('ex2', quadMeshAt(5)),
     }
-    expect(faceFrameFromSolve(bodies, 'face-q')?.center[2]).toBe(0)
-    expect(faceFrameFromSolve(bodies, 'face-q', 'ex2/b2#face#0')?.center[2]).toBe(5)
+    expect(faceFrameFromSolve(parts, 'face-q')?.center[2]).toBe(0)
+    expect(faceFrameFromSolve(parts, 'face-q', 'ex2/b2#face#0')?.center[2]).toBe(5)
   })
 
   it('does not depend on the hover registry, so a hidden body keeps its frame', () => {
-    const bodies = { b1: body('ex1', quadMeshAt(2)) }
+    const parts = { b1: part('ex1', quadMeshAt(2)) }
     // Hiding a body unregisters it from the hover registry; the registry lookup
     // then answers null. The solve still has the mesh, and that is what the
     // section and "Normal to" must read.
     expect(findPartForFaceQuery('face-q')).toBeNull()
-    expect(faceFrameFromSolve(bodies, 'face-q')?.center[2]).toBe(2)
+    expect(faceFrameFromSolve(parts, 'face-q')?.center[2]).toBe(2)
   })
 
   it('refuses the clicked curved face instead of falling back to a flat sibling', () => {
@@ -74,15 +74,15 @@ describe('faceFrameFromSolve', () => {
       face_queries: ['q', 'q'],
       face_data: [faceData('flatface'), faceData('cylinderface')],
     } satisfies Mesh3D
-    const bodies = { b1: body('ex1', shared) }
+    const parts = { b1: part('ex1', shared) }
 
-    expect(faceFrameFromSolve(bodies, 'q', 'ex1/b1#face#1')).toBeNull()
+    expect(faceFrameFromSolve(parts, 'q', 'ex1/b1#face#1')).toBeNull()
     // Without a pickKey the query still names the first face, as before.
-    expect(faceFrameFromSolve(bodies, 'q')?.center[2]).toBe(0)
+    expect(faceFrameFromSolve(parts, 'q')?.center[2]).toBe(0)
   })
 
   it('a pickKey that names a body but an invalid face is authoritative too', () => {
-    const bodies = { b1: body('ex1', quadMeshAt(0)) }
-    expect(faceFrameFromSolve(bodies, 'face-q', 'ex1/b1#face#9')).toBeNull()
+    const parts = { b1: part('ex1', quadMeshAt(0)) }
+    expect(faceFrameFromSolve(parts, 'face-q', 'ex1/b1#face#9')).toBeNull()
   })
 })

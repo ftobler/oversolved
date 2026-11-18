@@ -22,7 +22,7 @@ import { applySolveToDoc } from '@/drive/solveWriteBack'
 import type { PartDoc, PartFeature, SketchFeature } from '@/types/cad'
 import {
   BOX, BOX_EXTRUDE_ID, BOX_SKETCH_ID, HOLE_CENTRE,
-  bodyVolume, oc, projectionBaseDoc, projectionTestHarness, sketchOut, solveBytes,
+  partVolume, oc, projectionBaseDoc, projectionTestHarness, sketchOut, solveBytes,
   type SketchOut,
 } from './projectionRealSupport'
 
@@ -121,7 +121,7 @@ describe.skipIf(!oc || !solveBytes)('projection against a real body (real OCC + 
     expect(sketchOf(result, 'skW').projection_errors).toBeUndefined()
     expect(h.res(result, 'exW').status).toBe('ok')
     // 40 x 30 cap, 5 deep.
-    expect(bodyVolume(h, result, 'exW', 'body_exW')).toBeCloseTo(6000, 4)
+    expect(partVolume(h, result, 'exW', 'body_exW')).toBeCloseTo(6000, 4)
   })
 
   it('3. a tilted plane projects the hole circle as an ellipse', () => {
@@ -138,7 +138,7 @@ describe.skipIf(!oc || !solveBytes)('projection against a real body (real OCC + 
     expect(sketch.resolved_kinds).toEqual({ tc: 'ellipse' })
     expect(sketch.geometry!.tc).toHaveLength(5)
     // pi * 3 * 3 cos 30 * 2
-    expectRelative(bodyVolume(h, result, 'exTilt', 'body_exTilt'), Math.PI * 3 * 3 * Math.cos(Math.PI / 6) * 2)
+    expectRelative(partVolume(h, result, 'exTilt', 'body_exTilt'), Math.PI * 3 * 3 * Math.cos(Math.PI / 6) * 2)
   })
 
   it('4. the projected circle kind round-trips 0 -> 30 -> 0 degrees', () => {
@@ -147,7 +147,7 @@ describe.skipIf(!oc || !solveBytes)('projection against a real body (real OCC + 
 
     const flat = run(doc)
     expect(sketchOf(flat, 'skK').projection_errors).toBeUndefined()
-    expectRelative(bodyVolume(h, flat, 'exK', 'body_exK'), Math.PI * (25 - 9) * 2)
+    expectRelative(partVolume(h, flat, 'exK', 'body_exK'), Math.PI * (25 - 9) * 2)
     const flatDoc = applySolveToDoc(doc, flat).doc
     // The setters below mutate the document in place, so the 0 degree state has
     // to be kept aside before the tilt.
@@ -161,7 +161,7 @@ describe.skipIf(!oc || !solveBytes)('projection against a real body (real OCC + 
     const pc = sketchFeature(flatDoc, 'skK').entities!.find(e => e.id === 'pc')!
     expect(pc.kind).toBe('circle')
     expect(tiltedSketch.resolved_kinds).toEqual({ pc: 'ellipse' })
-    expectRelative(bodyVolume(h, tilted, 'exK', 'body_exK'), Math.PI * (25 - 9 * Math.cos(Math.PI / 6)) * 2)
+    expectRelative(partVolume(h, tilted, 'exK', 'body_exK'), Math.PI * (25 - 9 * Math.cos(Math.PI / 6)) * 2)
     const tiltedDoc = applySolveToDoc(flatDoc, tilted).doc
     expect(sketchFeature(tiltedDoc, 'skK').entities!.find(e => e.id === 'pc')!.kind).toBe('ellipse')
 

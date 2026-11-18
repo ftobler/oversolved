@@ -14,14 +14,14 @@ const SEEDS = 200
 // The body ids a step produces, so a later step's refs can be checked to have
 // an earlier producer. Tools are produced and consumed inside one boolean step,
 // so they are live for exactly that step.
-function producedBodies(step: RecipeStep): string[] {
+function producedParts(step: RecipeStep): string[] {
   if (step.kind === 'start') return [step.body]
   if (step.kind === 'boolean') return [step.toolPart]
   if (step.kind === 'mirror' && step.keepOriginal && !step.merge) return [`body_${step.id}`]
   return [PRIMARY_PART]
 }
 
-function referencedBodies(step: RecipeStep): string[] {
+function referencedParts(step: RecipeStep): string[] {
   switch (step.kind) {
     case 'start': return []
     case 'boolean': return [step.target]
@@ -58,10 +58,10 @@ describe('the geometry-fuzz recipe generator', () => {
       const recipe = generateRecipe(seed)
       const available = new Set<string>()
       for (const step of recipe.steps) {
-        for (const ref of referencedBodies(step)) {
+        for (const ref of referencedParts(step)) {
           expect(available.has(ref), `seed ${seed}: step ${step.kind} references ${ref} before it exists`).toBe(true)
         }
-        for (const body of producedBodies(step)) available.add(body)
+        for (const part of producedParts(step)) available.add(part)
       }
     }
   })

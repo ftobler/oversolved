@@ -122,7 +122,7 @@ describe('solveExtrude guard paths', () => {
 
   it('surfaces an unresolved sketch ref as the collected profile error', () => {
     const repo = new Repository()
-    const bodyStore: Record<string, PartSolid> = {}
+    const partStore: Record<string, PartSolid> = {}
     expect(() =>
       solveExtrude(
         oc,
@@ -130,7 +130,7 @@ describe('solveExtrude guard paths', () => {
         table,
         { id: 'f1', extrude: { sketch: '$missing', distance: 5 } },
         repo,
-        bodyStore,
+        partStore,
       ),
     ).toThrow(/sketch not found: missing/)
   })

@@ -22,10 +22,10 @@ describe('Dragging.tsx (math-plane invariants)', () => {
     // (DragSnapIndicator etc.) is allowed to render scene objects.
     const start = SRC.indexOf('export function DragPlane')
     const next = SRC.indexOf('export function ', start + 1)
-    const body = SRC.slice(start, next === -1 ? SRC.length : next)
-    expect(body).not.toMatch(/<mesh\b/)
-    expect(body).not.toMatch(/planeGeometry/)
-    expect(body).not.toMatch(/meshBasicMaterial/)
+    const part = SRC.slice(start, next === -1 ? SRC.length : next)
+    expect(part).not.toMatch(/<mesh\b/)
+    expect(part).not.toMatch(/planeGeometry/)
+    expect(part).not.toMatch(/meshBasicMaterial/)
   })
 
   it('uses THREE.Plane math via the projectCursorToSketchPlane helper', () => {

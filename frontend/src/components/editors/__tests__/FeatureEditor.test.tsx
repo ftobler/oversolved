@@ -306,7 +306,7 @@ describe('FeatureEditor boolean union picker', () => {
   it('labels each joined body by its part name and follows a rename', () => {
     // The field is body-typed, so the chip names the resolved body (the Part
     // list's own name), not the face or feature query the click stored.
-    const bodiesBefore = usePartEditorStore.getState().parts
+    const partsBefore = usePartEditorStore.getState().parts
     usePartEditorStore.setState({
       parts: {
         body_a: { id: 'body_a', created_by: 'ex1', modified_by: [] },
@@ -341,7 +341,7 @@ describe('FeatureEditor boolean union picker', () => {
       // The store is shared by the whole file; a later test must not inherit
       // these fixture bodies. Wrapped in act because the rendered chip is still
       // subscribed when the test body restores it.
-      act(() => { usePartEditorStore.setState({ parts: bodiesBefore }) })
+      act(() => { usePartEditorStore.setState({ parts: partsBefore }) })
     }
   })
 })

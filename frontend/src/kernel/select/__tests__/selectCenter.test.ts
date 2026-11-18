@@ -17,7 +17,7 @@ function circle(center: V3, radius: number, axis: V3): EdgeData {
   return { kind: 'circle', center, radius, axis, x_axis: [1, 0, 0], angle_start: 0, angle_end: 2 * Math.PI }
 }
 
-function bodyResult(
+function partResult(
   id: string,
   edges: EdgeData[],
   edgeQueries: string[],
@@ -38,7 +38,7 @@ function bodyResult(
 // curve whose centre point is its circle centre, far from both.
 function edges(): Record<string, PartResult> {
   return {
-    body_ex1: bodyResult(
+    body_ex1: partResult(
       'body_ex1',
       [
         line([0, 0, 0], [10, 0, 0]),
@@ -50,8 +50,8 @@ function edges(): Record<string, PartResult> {
   }
 }
 
-function queriesOf(selector: Selector, bodies: Record<string, PartResult>): string[] {
-  return selectByPredicate(selector, bodies).queries
+function queriesOf(selector: Selector, parts: Record<string, PartResult>): string[] {
+  return selectByPredicate(selector, parts).queries
 }
 
 describe('selectByPredicate: center', () => {
@@ -90,11 +90,11 @@ describe('selectByPredicate: center', () => {
       kind: 'arc', center: [0, 0, 0], radius: 5, axis: [0, 0, 1], x_axis: [1, 0, 0],
       angle_start: 0, angle_end: Math.PI / 2,
     }
-    const bodies = { body_ex1: bodyResult('body_ex1', [arc], ['q_arc']) }
-    expect(queriesOf({ kind: 'edge', where: { center: { point: [0, 0, 0] } } }, bodies))
+    const parts = { body_ex1: partResult('body_ex1', [arc], ['q_arc']) }
+    expect(queriesOf({ kind: 'edge', where: { center: { point: [0, 0, 0] } } }, parts))
       .toEqual(['q_arc'])
     const midSweep: V3 = [5 / Math.SQRT2, 5 / Math.SQRT2, 0]
-    expect(() => queriesOf({ kind: 'edge', where: { center: { point: midSweep } } }, bodies))
+    expect(() => queriesOf({ kind: 'edge', where: { center: { point: midSweep } } }, parts))
       .toThrow(SelectorError)
   })
 
@@ -121,8 +121,8 @@ describe('selectByPredicate: center', () => {
       { centroid: [5, 5, 10], normal: [0, 0, 1], surface_type: 'flatface' },
       { centroid: [5, 5, 0], normal: [0, 0, -1], surface_type: 'flatface' },
     ]
-    const bodies = { body_ex1: bodyResult('body_ex1', [], [], faces, ['f_top', 'f_bottom']) }
-    expect(queriesOf({ kind: 'face', where: { center: { point: [5, 5, 10] } } }, bodies))
+    const parts = { body_ex1: partResult('body_ex1', [], [], faces, ['f_top', 'f_bottom']) }
+    expect(queriesOf({ kind: 'face', where: { center: { point: [5, 5, 10] } } }, parts))
       .toEqual(['f_top'])
   })
 

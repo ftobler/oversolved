@@ -39,10 +39,10 @@ vi.mock('@/adapters/backend', () => ({
   backendBundle: {
     documents: {
       load: vi.fn(),
-      save: (uuid: string, body: { content: string }) => {
+      save: (uuid: string, part: { content: string }) => {
         const gate = h.makeGate()
         h.saveGates.push(gate)
-        h.saves.push({ uuid, ...body })
+        h.saves.push({ uuid, ...part })
         return gate.promise
       },
       rename: (uuid: string, name: string) => {

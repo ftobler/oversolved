@@ -64,21 +64,21 @@ function drill(hole: Record<string, unknown>, plane: typeof UP = UP): Drill {
     repo.register('sk/p_clear/xy', { external_xy: sites.clear })
     const plate = makeBoxAt(oc!, scope, [-20, -20, -5], 40, 40, 10)
     const block = makeBoxAt(oc!, scope, [-20, 0, 5], 40, 20, 10)
-    const body = scope.track(booleanWithDiff(oc!, scope, plate, block, 'fuse').shape)
-    const bodyStore: Record<string, PartSolid> = {
+    const part = scope.track(booleanWithDiff(oc!, scope, plate, block, 'fuse').shape)
+    const partStore: Record<string, PartSolid> = {
       body_t: {
         id: 'body_t', created_by: 'ex', modified_by: [],
-        shape: table.register(body, 'ex'), sketch_id: 'sk',
+        shape: table.register(part, 'ex'), sketch_id: 'sk',
         brep_diff: null, profile_queries: [],
       },
     }
     const result = solveHole(
       oc!, scope, table,
       { id: 'h1', hole: { sketch: '@sk', target: 'body_t', diameter: 2 * BORE_R, depth_mode: 'through_all', ...hole } },
-      repo, bodyStore,
+      repo, partStore,
       { sk: { entities: [{ id: 'p_under', kind: 'point' }, { id: 'p_clear', kind: 'point' }] } },
     )
-    const shape = table.get<OccShape>(bodyStore.body_t.shape!)
+    const shape = table.get<OccShape>(partStore.body_t.shape!)
     return { result, volume: volumeOf(oc!, scope, shape), cylinders: cylinderFaces(shape, scope) }
   } finally {
     scope.dispose()

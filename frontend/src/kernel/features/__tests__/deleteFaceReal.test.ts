@@ -96,8 +96,8 @@ function holedStepBytes(occ: OccModule): Uint8Array {
   }
 }
 
-function meshOf(h: SharedHarness, r: BuildResponse, bodyId: string): FaceMesh {
-  return (h.part(r, bodyId).mesh ?? {}) as FaceMesh
+function meshOf(h: SharedHarness, r: BuildResponse, partId: string): FaceMesh {
+  return (h.part(r, partId).mesh ?? {}) as FaceMesh
 }
 function queryByType(mesh: FaceMesh, type: string): string[] {
   const out: string[] = []
@@ -129,17 +129,17 @@ describe.skipIf(!oc || !solveBytes)('solveDeleteFace through the builder (real O
   })
 
   // The body shape of `featureId`'s checkpoint, for a geometric read.
-  function bodyShape(r: BuildResponse, featureId: string, bodyId: string): OccShape {
+  function partShape(r: BuildResponse, featureId: string, partId: string): OccShape {
     const ckp = r._build_state!.checkpoints[featureId]
-    return h.table.get<OccShape>(ckp.body_store_snapshot[bodyId].shape!)
+    return h.table.get<OccShape>(ckp.body_store_snapshot[partId].shape!)
   }
-  function bodyVolume(r: BuildResponse, featureId: string, bodyId: string): number {
+  function partVolume(r: BuildResponse, featureId: string, partId: string): number {
     const scope = new DisposeScope()
-    try { return volumeOf(occ, scope, bodyShape(r, featureId, bodyId)) } finally { scope.dispose() }
+    try { return volumeOf(occ, scope, partShape(r, featureId, partId)) } finally { scope.dispose() }
   }
-  function bodyFaceCount(r: BuildResponse, featureId: string, bodyId: string): number {
+  function partFaceCount(r: BuildResponse, featureId: string, partId: string): number {
     const scope = new DisposeScope()
-    try { return canonicalFaces(occ, scope, bodyShape(r, featureId, bodyId)).length } finally { scope.dispose() }
+    try { return canonicalFaces(occ, scope, partShape(r, featureId, partId)).length } finally { scope.dispose() }
   }
 
   // A 20x20x10 plain box document.
@@ -156,8 +156,8 @@ describe.skipIf(!oc || !solveBytes)('solveDeleteFace through the builder (real O
   })
 
   // The bore wall + floor queries of a solved holed body.
-  function holeFaces(r: BuildResponse, bodyId = 'body_ex1'): { bore: string; floor: string } {
-    const mesh = meshOf(h, r, bodyId)
+  function holeFaces(r: BuildResponse, partId = 'body_ex1'): { bore: string; floor: string } {
+    const mesh = meshOf(h, r, partId)
     const bore = queryByType(mesh, 'cylinderface')
     expect(bore.length, 'one bore wall').toBe(1)
     const floor = smallestFlatQuery(mesh)
@@ -178,8 +178,8 @@ describe.skipIf(!oc || !solveBytes)('solveDeleteFace through the builder (real O
     const r = h.run(spec, { prevState: r1._build_state })
     expect(h.res(r, 'df1').status).toBe('ok')
     expect(h.res(r, 'df1').body_ids).toEqual(['body_ex1'])
-    expect(bodyVolume(r, 'df1', 'body_ex1')).toBeCloseTo(4000, 3)
-    expect(bodyFaceCount(r, 'df1', 'body_ex1')).toBe(6)
+    expect(partVolume(r, 'df1', 'body_ex1')).toBeCloseTo(4000, 3)
+    expect(partFaceCount(r, 'df1', 'body_ex1')).toBe(6)
 
     // Every pre-hole face UUID is live exactly once: the healed top face kept
     // the identity it had before the hole.
@@ -194,8 +194,8 @@ describe.skipIf(!oc || !solveBytes)('solveDeleteFace through the builder (real O
     spec.features.push({ id: 'df1', kind: 'delete_face', delete_face: { faces: [floor] } })
     const r = h.run(spec, { prevState: r1._build_state })
     expect(h.res(r, 'df1').status).toBe('ok')
-    expect(bodyVolume(r, 'df1', 'body_ex1')).toBeCloseTo(4000 - Math.PI * 4 * 10, 2)
-    expect(bodyFaceCount(r, 'df1', 'body_ex1')).toBe(7)
+    expect(partVolume(r, 'df1', 'body_ex1')).toBeCloseTo(4000 - Math.PI * 4 * 10, 2)
+    expect(partFaceCount(r, 'df1', 'body_ex1')).toBe(7)
   })
 
   it('a hole wall alone refuses the whole feature and leaves the body for downstream', () => {
@@ -211,8 +211,8 @@ describe.skipIf(!oc || !solveBytes)('solveDeleteFace through the builder (real O
     const r = h.run(spec, { prevState: r1._build_state })
     expect(h.res(r, 'df1').status).toBe('exception')
     expect(h.res(r, 'df2').status).toBe('ok')
-    expect(bodyVolume(r, 'df1', 'body_ex1')).toBeCloseTo(4000 - Math.PI * 4 * 5, 2)
-    expect(bodyVolume(r, 'df2', 'body_ex1')).toBeCloseTo(4000 - Math.PI * 4 * 10, 2)
+    expect(partVolume(r, 'df1', 'body_ex1')).toBeCloseTo(4000 - Math.PI * 4 * 5, 2)
+    expect(partVolume(r, 'df2', 'body_ex1')).toBeCloseTo(4000 - Math.PI * 4 * 10, 2)
   })
 
   it('a stale pick is unresolved_faces; every pick stale throws', () => {
@@ -227,7 +227,7 @@ describe.skipIf(!oc || !solveBytes)('solveDeleteFace through the builder (real O
     const r = h.run(spec, { prevState: r1._build_state })
     expect(h.res(r, 'df1').status).toBe('partial')
     expect(h.res(r, 'df1').unresolved_faces).toEqual([stale])
-    expect(bodyVolume(r, 'df1', 'body_ex1')).toBeCloseTo(4000, 2)
+    expect(partVolume(r, 'df1', 'body_ex1')).toBeCloseTo(4000, 2)
 
     // All stale: drop the hole feature so the bore/floor no longer exist.
     const gone = boxSpec()
@@ -247,7 +247,7 @@ describe.skipIf(!oc || !solveBytes)('solveDeleteFace through the builder (real O
     spec.features.push({ id: 'df1', kind: 'delete_face', delete_face: { faces: [bore, floor] } })
     const r = h.run(spec)
     expect(h.res(r, 'df1').status).toBe('ok')
-    expect(bodyVolume(r, 'df1', 'body_ex1')).toBeCloseTo(4000, 2)
+    expect(partVolume(r, 'df1', 'body_ex1')).toBeCloseTo(4000, 2)
   })
 
   it('an upstream extrude edit keeps the picks resolving (incremental and full rebuild)', () => {
@@ -261,11 +261,11 @@ describe.skipIf(!oc || !solveBytes)('solveDeleteFace through the builder (real O
     }
     const incremental = h.run(edited(), { prevState: r1._build_state })
     expect(h.res(incremental, 'df1').status).toBe('ok')
-    expect(bodyVolume(incremental, 'df1', 'body_ex1')).toBeCloseTo(20 * 20 * 14, 2)
+    expect(partVolume(incremental, 'df1', 'body_ex1')).toBeCloseTo(20 * 20 * 14, 2)
 
     const full = h.run(edited())
     expect(h.res(full, 'df1').status).toBe('ok')
-    expect(bodyVolume(full, 'df1', 'body_ex1')).toBeCloseTo(20 * 20 * 14, 2)
+    expect(partVolume(full, 'df1', 'body_ex1')).toBeCloseTo(20 * 20 * 14, 2)
   })
 
   it('a partial pick: one healable group applies, one unhealable group fails', () => {
@@ -290,7 +290,7 @@ describe.skipIf(!oc || !solveBytes)('solveDeleteFace through the builder (real O
     expect(h.res(r, 'df1').failed_faces).toEqual([bore2])
     expect(h.res(r, 'df1').unresolved_faces).toEqual([])
     // Hole 1 filled, hole 2 intact: 4000 - hole2 volume.
-    expect(bodyVolume(r, 'df1', 'body_ex1')).toBeCloseTo(4000 - Math.PI * 4 * 5, 2)
+    expect(partVolume(r, 'df1', 'body_ex1')).toBeCloseTo(4000 - Math.PI * 4 * 5, 2)
   })
 
   it('an edge deleted by a fillet comes back with its UUID after delete_face', () => {
@@ -358,8 +358,8 @@ describe.skipIf(!oc || !solveBytes)('solveDeleteFace through the builder (real O
     const r = h.run(withDelete)
     expect(h.res(r, 'df1').status).toBe('ok')
     expect((h.res(r, 'df1').body_ids as string[]).sort()).toEqual(['body_ex1', 'body_ex2'])
-    expect(bodyVolume(r, 'df1', 'body_ex1')).toBeCloseTo(4000, 2)
-    expect(bodyVolume(r, 'df1', 'body_ex2')).toBeCloseTo(4000, 2)
+    expect(partVolume(r, 'df1', 'body_ex1')).toBeCloseTo(4000, 2)
+    expect(partVolume(r, 'df1', 'body_ex2')).toBeCloseTo(4000, 2)
   })
 
   it('a duplicate query naming one refused face reports every query in failed_faces', () => {
@@ -408,8 +408,8 @@ describe.skipIf(!oc || !solveBytes)('solveDeleteFace through the builder (real O
     const spec = { features: [...importSpec.features, { id: 'df1', kind: 'delete_face', delete_face: { faces: [wall[0]] } }] }
     const r = h.run(spec, { files })
     expect(h.res(r, 'df1').status).toBe('ok')
-    expect(bodyVolume(r, 'df1', bid)).toBeCloseTo(4000, 2)
-    expect(bodyFaceCount(r, 'df1', bid)).toBe(6)
+    expect(partVolume(r, 'df1', bid)).toBeCloseTo(4000, 2)
+    expect(partFaceCount(r, 'df1', bid)).toBe(6)
     const after = new Set((meshOf(h, r, bid).face_queries ?? []).map(uuidTokenOf))
     for (const u of boxUuids) expect(after.has(u)).toBe(true)
   })
@@ -419,7 +419,7 @@ describe.skipIf(!oc || !solveBytes)('solveDeleteFace through the builder (real O
   // modifier. Rung 1 (OCCT defeaturing) refuses both; rung 2 (the wedge) heals
   // them, and the restored sharp edges regain the UUIDs the fillet and chamfer
   // consumed (the `@u|e_...` tokens the document's own queries name).
-  const reportBody = 'body_ESrRWmJlIltOOJE-A1VbLhzR'
+  const reportPart = 'body_ESrRWmJlIltOOJE-A1VbLhzR'
   const reportChamfer = 'GpyTc0jipDArcxEoOFcx_DBl'
   const reportFillet = 'OtcaB1IDf8ybp7bHGwOri-JM'
 
@@ -430,13 +430,13 @@ describe.skipIf(!oc || !solveBytes)('solveDeleteFace through the builder (real O
     })
     expect(h.res(r, reportChamfer).status).toBe('ok')
     expect(h.res(r, reportFillet).status).toBe('ok')
-    const edges = (h.part(r, reportBody).edge_queries as string[]) ?? []
+    const edges = (h.part(r, reportPart).edge_queries as string[]) ?? []
     // The pre-modifier edge UUIDs from the document's own fillet/chamfer
     // queries: the healed sharp edges carry them again.
     expect(edges.some((q) => q.includes('e_29ca332f03bb4c0d'))).toBe(true)
     expect(edges.some((q) => q.includes('e_abf884afd86b6aef'))).toBe(true)
     // No B-spline modifier band is left.
-    expect(meshOf(h, r, reportBody).face_data?.some((d) => d.surface_type === 'face')).toBe(false)
+    expect(meshOf(h, r, reportPart).face_data?.some((d) => d.surface_type === 'face')).toBe(false)
   }, 300_000)
 
   it('a refusal on a modifier face reports the rungs in the feature exception', () => {

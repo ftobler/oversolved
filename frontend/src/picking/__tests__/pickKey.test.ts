@@ -13,21 +13,21 @@ import { useVertexIdRegistration } from '../useVertexIdRegistration'
 import type { Mesh3D, EdgeData } from '@/types/cad'
 
 describe('primitivePickKey', () => {
-  const body = partKeyFor('extrude1', 'body0')
+  const part = partKeyFor('extrude1', 'body0')
 
   it('is stable for the same body / layer / index', () => {
-    expect(primitivePickKey(body, 3, FACE_LAYER_NAME)).toBe(primitivePickKey(body, 3, FACE_LAYER_NAME))
+    expect(primitivePickKey(part, 3, FACE_LAYER_NAME)).toBe(primitivePickKey(part, 3, FACE_LAYER_NAME))
   })
 
   it('differs across layers at the same index (back-mapping stays unique)', () => {
-    const face = primitivePickKey(body, 2, FACE_LAYER_NAME)
-    const edge = primitivePickKey(body, 2, EDGE_LAYER_NAME)
-    const vertex = primitivePickKey(body, 2, VERTEX_LAYER_NAME)
+    const face = primitivePickKey(part, 2, FACE_LAYER_NAME)
+    const edge = primitivePickKey(part, 2, EDGE_LAYER_NAME)
+    const vertex = primitivePickKey(part, 2, VERTEX_LAYER_NAME)
     expect(new Set([face, edge, vertex]).size).toBe(3)
   })
 
   it('differs across indices within a layer', () => {
-    expect(primitivePickKey(body, 0, EDGE_LAYER_NAME)).not.toBe(primitivePickKey(body, 1, EDGE_LAYER_NAME))
+    expect(primitivePickKey(part, 0, EDGE_LAYER_NAME)).not.toBe(primitivePickKey(part, 1, EDGE_LAYER_NAME))
   })
 
   it('differs across bodies at the same layer / index', () => {
@@ -38,8 +38,8 @@ describe('primitivePickKey', () => {
 })
 
 describe('parsePickKeyIndex (prefix + digit tail -> index)', () => {
-  const body = partKeyFor('extrude1', 'body0')
-  const prefix = `${body}#${EDGE_LAYER_NAME}#`
+  const part = partKeyFor('extrude1', 'body0')
+  const prefix = `${part}#${EDGE_LAYER_NAME}#`
 
   it('resolves a normal digit tail', () => {
     expect(parsePickKeyIndex(`${prefix}7`, prefix)).toBe(7)
@@ -88,12 +88,12 @@ describe('isPickKeyString (structural pickKey test, no concrete prefix)', () => 
 })
 
 describe('pickedIndicesForBody (pick set -> this body/layer)', () => {
-  const body = partKeyFor('extrude1', 'body0')
+  const part = partKeyFor('extrude1', 'body0')
   const other = partKeyFor('extrude1', 'body1')
 
   it('collects every index the pick set claims in this body / layer', () => {
-    const keys = new Set([primitivePickKey(body, 4, EDGE_LAYER_NAME), primitivePickKey(body, 7, EDGE_LAYER_NAME)])
-    expect([...pickedIndicesForPart(keys, body, EDGE_LAYER_NAME)!].sort()).toEqual([4, 7])
+    const keys = new Set([primitivePickKey(part, 4, EDGE_LAYER_NAME), primitivePickKey(part, 7, EDGE_LAYER_NAME)])
+    expect([...pickedIndicesForPart(keys, part, EDGE_LAYER_NAME)!].sort()).toEqual([4, 7])
   })
 
   it('returns null when nothing in the set belongs here (the skip-everything path)', () => {
@@ -101,32 +101,32 @@ describe('pickedIndicesForBody (pick set -> this body/layer)', () => {
     // claims at all, so the caller can bypass the claim logic entirely.
     const keys = new Set([
       primitivePickKey(other, 4, EDGE_LAYER_NAME),
-      primitivePickKey(body, 4, VERTEX_LAYER_NAME),
+      primitivePickKey(part, 4, VERTEX_LAYER_NAME),
     ])
-    expect(pickedIndicesForPart(keys, body, EDGE_LAYER_NAME)).toBeNull()
-    expect(pickedIndicesForPart(new Set<string>(), body, EDGE_LAYER_NAME)).toBeNull()
+    expect(pickedIndicesForPart(keys, part, EDGE_LAYER_NAME)).toBeNull()
+    expect(pickedIndicesForPart(new Set<string>(), part, EDGE_LAYER_NAME)).toBeNull()
   })
 
   it('ignores a key whose tail is not a bare index', () => {
-    expect(pickedIndicesForPart(new Set([`${body}#${EDGE_LAYER_NAME}#2x`]), body, EDGE_LAYER_NAME)).toBeNull()
+    expect(pickedIndicesForPart(new Set([`${part}#${EDGE_LAYER_NAME}#2x`]), part, EDGE_LAYER_NAME)).toBeNull()
   })
 
   it('drops only the indices at or beyond a provided count', () => {
     // The highlight path passes the body primitive count it already holds, so
     // an out-of-range pick key cannot even enter the claimed set.
     const keys = new Set([
-      primitivePickKey(body, 2, EDGE_LAYER_NAME),
-      primitivePickKey(body, 9, EDGE_LAYER_NAME),
+      primitivePickKey(part, 2, EDGE_LAYER_NAME),
+      primitivePickKey(part, 9, EDGE_LAYER_NAME),
     ])
-    expect([...pickedIndicesForPart(keys, body, EDGE_LAYER_NAME, 5)!]).toEqual([2])
+    expect([...pickedIndicesForPart(keys, part, EDGE_LAYER_NAME, 5)!]).toEqual([2])
   })
 
   it('costs the size of the pick set, not the size of the body', () => {
     // The old direction minted a key per primitive to test against the set. With
     // a single live pick this must not touch the body's primitive count at all,
     // which is only observable as: the call carries no per-body allocation.
-    const keys = new Set([primitivePickKey(body, 12345, FACE_LAYER_NAME)])
-    expect([...pickedIndicesForPart(keys, body, FACE_LAYER_NAME)!]).toEqual([12345])
+    const keys = new Set([primitivePickKey(part, 12345, FACE_LAYER_NAME)])
+    expect([...pickedIndicesForPart(keys, part, FACE_LAYER_NAME)!]).toEqual([12345])
   })
 })
 

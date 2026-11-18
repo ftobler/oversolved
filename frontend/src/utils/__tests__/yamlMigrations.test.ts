@@ -19,7 +19,7 @@ function legacyTransformDoc(): PartDoc {
   } as unknown as PartDoc
 }
 
-function legacyDeleteBodyDoc(): PartDoc {
+function legacyDeletePartDoc(): PartDoc {
   return {
     version: 1,
     kind: 'part',
@@ -39,7 +39,7 @@ describe('migrateLegacyBodyPicks', () => {
   })
 
   it('rewrites a delete_body singular body the same way', () => {
-    const doc = legacyDeleteBodyDoc()
+    const doc = legacyDeletePartDoc()
     expect(migrateLegacyPartPicks(doc)).toBe(1)
     const sub = doc.features![0] as unknown as { delete_body: { bodies: string[]; body?: string } }
     expect(sub.delete_body.bodies).toEqual(['@body_ex1'])

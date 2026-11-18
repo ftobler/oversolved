@@ -15,7 +15,7 @@ import AssemblySelectionHighlight from '@/components/Viewport/assembly/AssemblyS
 import { RENDER_ORDER_HIGHLIGHT } from '@/components/Geometry3D/constants'
 import type { AssemblyPickPart } from '@/utils/assemblyPick'
 
-function body(): AssemblyPickPart {
+function part(): AssemblyPickPart {
   return {
     handle: 'B',
     partKey: 'B',
@@ -38,7 +38,7 @@ function body(): AssemblyPickPart {
 function renderAll() {
   return render(
     <AssemblySelectionHighlight
-      pickParts={[body()]}
+      pickParts={[part()]}
       selection={new Set(['f0', 'e0', 'v0'])}
       hovered="f0"
     />

@@ -129,12 +129,12 @@ export function enclosureBase(
 
 /** The Body a build checkpoint holds for `bodyId`, which carries its shape
  *  handle and its construction names. */
-export function bodyAt(
+export function partAt(
   result: ReturnType<SharedHarness['run']>,
   featureId: string,
-  bodyId = 'body_ex1',
+  partId = 'body_ex1',
 ): PartSolid {
-  const body = result._build_state!.checkpoints[featureId]?.body_store_snapshot[bodyId]
-  if (body === undefined) throw new Error(`enclosure fixture: no ${bodyId} at checkpoint ${featureId}`)
-  return body
+  const part = result._build_state!.checkpoints[featureId]?.body_store_snapshot[partId]
+  if (part === undefined) throw new Error(`enclosure fixture: no ${partId} at checkpoint ${featureId}`)
+  return part
 }

@@ -130,11 +130,11 @@ describe('HighlightColorPainter', () => {
     const painter = new HighlightColorPainter(colors, CONTIGUOUS)
     painter.apply(null, flags(FACES, 2), PALETTE)
 
-    const bodySelected: HighlightPalette = { ...PALETTE, base: [0.5, 0.25, 1] }
-    const result = painter.apply(null, flags(FACES, 2), bodySelected)
+    const partSelected: HighlightPalette = { ...PALETTE, base: [0.5, 0.25, 1] }
+    const result = painter.apply(null, flags(FACES, 2), partSelected)
 
     expect(result.full).toBe(true)
-    expect(colors).toEqual(reference(CONTIGUOUS, TRI_COUNT * 3, null, flags(FACES, 2), bodySelected))
+    expect(colors).toEqual(reference(CONTIGUOUS, TRI_COUNT * 3, null, flags(FACES, 2), partSelected))
   })
 
   it('covers vertices no primitive claims, so an unmapped triangle still gets the base colour', () => {

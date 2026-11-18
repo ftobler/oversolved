@@ -136,9 +136,9 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): c
   it('disjoint extrude has body_ids field', () => {
     // body_ids field lists all split body IDs.
     const result = h.run(disjointTwoRectSpec('new'))
-    const bodyIds = h.res(result, 'ex1').body_ids as string[] | undefined
-    expect(bodyIds).toBeDefined()
-    expect(new Set(bodyIds)).toEqual(new Set(['body_ex1', 'body_ex1_1']))
+    const partIds = h.res(result, 'ex1').body_ids as string[] | undefined
+    expect(partIds).toBeDefined()
+    expect(new Set(partIds)).toEqual(new Set(['body_ex1', 'body_ex1_1']))
   })
 
   it('two independent extrudes produce two bodies', () => {

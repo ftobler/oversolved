@@ -57,7 +57,7 @@ function cleanBuild(payload: { features?: PayloadFeature[] }) {
 
 // One flat face on top, enough for a `parallel: [0, 0, 1]` selector to resolve
 // against the body the step is building on.
-function solvedBody(id: string): PartResult {
+function solvedPart(id: string): PartResult {
   return {
     id,
     created_by: 'ex1',
@@ -139,7 +139,7 @@ describe('the headless run solves once per flush', () => {
   it('a selector after three mutations flushes, then solves once at the end', async () => {
     vi.mocked(kernel.solveLocally).mockImplementation(async payload => {
       const build = cleanBuild(payload as never)
-      return { ...build, bodies: { body_ex1: solvedBody('body_ex1') } } as never
+      return { ...build, bodies: { body_ex1: solvedPart('body_ex1') } } as never
     })
     const steps: ScriptStep[] = [
       addSketch('sk1'),
@@ -163,7 +163,7 @@ describe('the headless run solves once per flush', () => {
   it('a selector on the first step still solves before resolving it', async () => {
     vi.mocked(kernel.solveLocally).mockImplementation(async payload => {
       const build = cleanBuild(payload as never)
-      return { ...build, bodies: { body_ex1: solvedBody('body_ex1') } } as never
+      return { ...build, bodies: { body_ex1: solvedPart('body_ex1') } } as never
     })
     const result = await runHeadless({
       doc: emptyDriveDoc(),

@@ -23,7 +23,7 @@ import { solidToEdges } from '../../occ/tessellation'
 import { extrudeProfileWithLineage } from '../../occ/prismLineage'
 import { solveExtrude } from '../extrude'
 import { solveRevolve } from '../revolve'
-import { solveArray } from './patternBodyTestAdapters'
+import { solveArray } from './patternPartTestAdapters'
 import type { Repository } from '../../query'
 import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
@@ -113,19 +113,19 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
   function leafFixture(): {
     table: HandleTable
     loop: string[]
-    bodyStore: Record<string, PartSolid>
+    partStore: Record<string, PartSolid>
   } {
     const table = new HandleTable()
     const scope = new DisposeScope()
     try {
       const box = makeBox(occ, scope, 10, 10, 10)
-      const bodyB: PartSolid = {
+      const partB: PartSolid = {
         id: 'body_b', created_by: 'seed', modified_by: [],
         shape: table.register(box, 'seed'), sketch_id: 'sk',
         brep_diff: null, profile_queries: [],
       }
-      const { edges, edge_queries } = solidToEdges(occ, table, bodyB.shape!, {
-        createdBy: bodyB.created_by, partId: bodyB.id,
+      const { edges, edge_queries } = solidToEdges(occ, table, partB.shape!, {
+        createdBy: partB.created_by, partId: partB.id,
         profileQueries: [],
         edgeAncestry: null, edgeUuids: null,
       })
@@ -136,7 +136,7 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
           loop.push(edge_queries[i])
         }
       }
-      return { table, loop, bodyStore: { body_b: bodyB } }
+      return { table, loop, partStore: { body_b: partB } }
     } finally {
       scope.dispose()
     }
@@ -147,7 +147,7 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
     runs: number,
     solve: (
       scope: CountingScope,
-      fx: { table: HandleTable; loop: string[]; bodyStore: Record<string, PartSolid> },
+      fx: { table: HandleTable; loop: string[]; partStore: Record<string, PartSolid> },
     ) => number,
   ): { released: number[]; volumes: number[] } {
     const fx = leafFixture()
@@ -157,7 +157,7 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
       for (let i = 0; i < runs; i++) {
         // Drop only the feature's own body from the previous edit.
         fx.table.releaseOwner('ex9')
-        delete fx.bodyStore.body_ex9
+        delete fx.partStore.body_ex9
         const scope = new CountingScope()
         try {
           volumes.push(solve(scope, fx))
@@ -177,10 +177,10 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
       const result = solveExtrude(
         occ, scope, fx.table,
         { id: 'ex9', extrude: { sketch: fx.loop, distance: 8, direction: 'symmetric', operation: 'new' } },
-        nullRepo, fx.bodyStore,
+        nullRepo, fx.partStore,
       )
       expect(result.status).toBe('ok')
-      return volumeOf(occ, scope, fx.table.get<OccShape>(fx.bodyStore.body_ex9!.shape!))
+      return volumeOf(occ, scope, fx.table.get<OccShape>(fx.partStore.body_ex9!.shape!))
     })
     volumes.forEach((v) => expect(v).toBeCloseTo(volumes[0], 6))
     volumes.forEach((v) => expect(v).toBeGreaterThan(0))
@@ -194,10 +194,10 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
       const result = solveExtrude(
         occ, scope, fx.table,
         { id: 'ex9', extrude: { sketch: fx.loop, distance: 999, termination: 'up_to', up_to: 'plane_q', operation: 'new' } },
-        repo, fx.bodyStore,
+        repo, fx.partStore,
       )
       expect(result.status).toBe('ok')
-      return volumeOf(occ, scope, fx.table.get<OccShape>(fx.bodyStore.body_ex9!.shape!))
+      return volumeOf(occ, scope, fx.table.get<OccShape>(fx.partStore.body_ex9!.shape!))
     })
     volumes.forEach((v) => expect(v).toBeCloseTo(700, 2))
     expectFlat(released)
@@ -216,10 +216,10 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
           sketch: '@body_b/face/0', angle: 120, direction: 'symmetric', operation: 'new',
           axis: '@zaxis',
         } },
-        zAxisRepo, fx.bodyStore,
+        zAxisRepo, fx.partStore,
       )
       expect(result.status).toBe('ok')
-      return volumeOf(occ, scope, fx.table.get<OccShape>(fx.bodyStore.body_ex9!.shape!))
+      return volumeOf(occ, scope, fx.table.get<OccShape>(fx.partStore.body_ex9!.shape!))
     })
     volumes.forEach((v) => expect(v).toBeCloseTo(volumes[0], 6))
     volumes.forEach((v) => expect(v).toBeGreaterThan(0))
@@ -237,12 +237,12 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
     const scope = new CountingScope()
     try {
       const box = makeBox(occ, scope, 10, 10, 10)
-      const bodyB: PartSolid = {
+      const partB: PartSolid = {
         id: 'body_b', created_by: 'seed', modified_by: [],
         shape: table.register(box, 'seed'), sketch_id: 'sk',
         brep_diff: null, profile_queries: [],
       }
-      const bodyStore: Record<string, PartSolid> = { body_b: bodyB }
+      const partStore: Record<string, PartSolid> = { body_b: partB }
       // The direction query resolves to a straight edge along +X so the leaf
       // does not refuse the array.
       const repo = { query: () => ({ start: [0, 0, 0], end: [1, 0, 0] }), elements: new Map() } as unknown as Repository
@@ -252,7 +252,7 @@ describe.skipIf(!oc)('lowering-path intermediates do not accumulate (real OCC)',
           source_body: 'body_b', mode: 'linear', count_x: countX, pitch_x: 20,
           operation: 'add', direction_x_query: 'qx',
         } },
-        repo, bodyStore,
+        repo, partStore,
       )
       expect(result.status).toBe('ok')
       return { released: scope.releaseCount }

@@ -297,7 +297,7 @@ describe('solveSweep guard paths', () => {
   })
 
   it('surfaces an unresolved profile ref as the collected error', () => {
-    const bodyStore: Record<string, PartSolid> = {}
+    const partStore: Record<string, PartSolid> = {}
     expect(() =>
       solveSweep(
         oc,
@@ -305,7 +305,7 @@ describe('solveSweep guard paths', () => {
         table,
         { id: 'f1', sweep: { sketch: '$missing', path: '$p' } },
         new Repository(),
-        bodyStore,
+        partStore,
       ),
     ).toThrow(/sketch not found: missing/)
   })

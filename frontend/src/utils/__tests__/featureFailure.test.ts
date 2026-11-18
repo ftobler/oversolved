@@ -147,8 +147,8 @@ describe('featureFailure', () => {
     // reading `body_id` alone left a split sibling rendering nothing behind a
     // healthy row.
     const result = { ex1: { status: 'ok', body_id: 'body_ex1', body_ids: ['body_ex1', 'body_ex1_1'] } }
-    const bodies = { body_ex1: {}, body_ex1_1: { mesh_error: 'no shape' } }
-    expect(featureFailure('ex1', result, bodies)).toEqual({ failed: true, level: 'error', message: 'no shape' })
+    const parts = { body_ex1: {}, body_ex1_1: { mesh_error: 'no shape' } }
+    expect(featureFailure('ex1', result, parts)).toEqual({ failed: true, level: 'error', message: 'no shape' })
   })
 
   it('prefers the exception message over a mesh error', () => {

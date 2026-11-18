@@ -473,17 +473,17 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
   it('builds a one-profile sweep whose crossing is inside the profile', () => {
     const scope = new DisposeScope()
     const table = new HandleTable()
-    const bodyStore: Record<string, PartSolid> = {}
+    const partStore: Record<string, PartSolid> = {}
     const repo = seedOneProfileRepo(squareSurface(0, 0, 1))
     try {
       const result = solveSweep(oc!, scope, table, {
         id: 'sw1', kind: 'sweep',
         sweep: { sketch: ['$prof'], path: '$path', operation: 'new' },
-      }, repo, bodyStore)
+      }, repo, partStore)
       expect(result.status).toBe('ok')
-      const body = bodyStore['body_sw1']
-      expect(body).toBeDefined()
-      const volume = volumeOf(oc!, scope, table.get<OccShape>(body.shape!))
+      const part = partStore['body_sw1']
+      expect(part).toBeDefined()
+      const volume = volumeOf(oc!, scope, table.get<OccShape>(part.shape!))
       expect(volume).toBeCloseTo(40, 2)
     } finally {
       table.disposeAll()
@@ -517,14 +517,14 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
     const solve = (cx: number): { status?: string; body?: PartSolid; error?: string } => {
       const scope = new DisposeScope()
       const table = new HandleTable()
-      const bodyStore: Record<string, PartSolid> = {}
+      const partStore: Record<string, PartSolid> = {}
       try {
         try {
           const result = solveSweep(oc!, scope, table, {
             id: 'sw1', kind: 'sweep',
             sweep: { sketch: ['$prof'], path: '$path', operation: 'new' },
-          }, seedOneProfileRepo(squareSurface(cx, 0, 1)), bodyStore)
-          return { status: result.status, body: bodyStore['body_sw1'] }
+          }, seedOneProfileRepo(squareSurface(cx, 0, 1)), partStore)
+          return { status: result.status, body: partStore['body_sw1'] }
         } catch (exc) {
           return { error: (exc as Error).message }
         }
@@ -550,17 +550,17 @@ describe.skipIf(!oc || !solveBytes)('sweep feature (real OCC + Rust solver)', ()
     const build = (cx: number): { status?: string; volume?: number; error?: string } => {
       const scope = new DisposeScope()
       const table = new HandleTable()
-      const bodyStore: Record<string, PartSolid> = {}
+      const partStore: Record<string, PartSolid> = {}
       try {
         try {
           const result = solveSweep(oc!, scope, table, {
             id: 'sw1', kind: 'sweep',
             sweep: { sketch: ['$prof'], path: '$path', operation: 'new' },
-          }, seedOneProfileRepo(squareSurface(cx, 0, 1)), bodyStore)
-          const body = bodyStore['body_sw1']
+          }, seedOneProfileRepo(squareSurface(cx, 0, 1)), partStore)
+          const part = partStore['body_sw1']
           return {
             status: result.status,
-            volume: body?.shape == null ? undefined : volumeOf(oc!, scope, table.get<OccShape>(body.shape)),
+            volume: part?.shape == null ? undefined : volumeOf(oc!, scope, table.get<OccShape>(part.shape)),
           }
         } catch (exc) {
           return { error: (exc as Error).message }
@@ -631,16 +631,16 @@ type SeededBuild = {
 function solveSeeded(repo: Repository): SeededBuild {
   const scope = new DisposeScope()
   const table = new HandleTable()
-  const bodyStore: Record<string, PartSolid> = {}
+  const partStore: Record<string, PartSolid> = {}
   try {
     try {
       const result = solveSweep(oc!, scope, table, {
         id: 'sw1', kind: 'sweep',
         sweep: { sketch: ['$prof'], path: '$path', operation: 'new' },
-      }, repo, bodyStore)
-      const body = bodyStore['body_sw1']
-      if (body?.shape == null) return { status: result.status }
-      const solid = table.get<OccShape>(body.shape)
+      }, repo, partStore)
+      const part = partStore['body_sw1']
+      if (part?.shape == null) return { status: result.status }
+      const solid = table.get<OccShape>(part.shape)
       return {
         status: result.status,
         volume: volumeOf(oc!, scope, solid),

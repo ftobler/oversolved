@@ -66,9 +66,9 @@ function run(spec: Record<string, unknown>): BuildResponse {
     const deps: BuildDeps = {
       trySolveFeature: createFeatureSolver(oc!, scope, table),
       postRegister, initGlobalRepo,
-      tessellateParts: (bodyStore) => {
+      tessellateParts: (partStore) => {
         const out: Record<string, Record<string, unknown>> = {}
-        for (const [, body] of Object.entries(bodyStore)) {
+        for (const [, body] of Object.entries(partStore)) {
           if (!body.shape) continue
           try {
             const mesh = solidToMesh(oc!, table, body.shape, {
@@ -131,19 +131,19 @@ describe.skipIf(!oc || !solveBytes)('bundle extraction (real OCC + Rust solver)'
     expect(typeof bundle.anchors).toBe('object')
     expect(Object.keys(bundle.anchors).length).toBeGreaterThan(0)
     expect(bundle.bodies.length).toBeGreaterThan(0)
-    for (const bodyMesh of bundle.bodies) {
-      expect(bodyMesh.mesh.vertices).toBeInstanceOf(Float32Array)
-      expect(bodyMesh.mesh.indices).toBeInstanceOf(Uint32Array)
-      expect(bodyMesh.mesh.faceIdsPerTriangle).toBeInstanceOf(Uint32Array)
+    for (const partMesh of bundle.bodies) {
+      expect(partMesh.mesh.vertices).toBeInstanceOf(Float32Array)
+      expect(partMesh.mesh.indices).toBeInstanceOf(Uint32Array)
+      expect(partMesh.mesh.faceIdsPerTriangle).toBeInstanceOf(Uint32Array)
     }
   })
 
   it('faceIdsPerTriangle length equals triangle count', () => {
     const result = run({ features: [rectSketchSpec('sk1', 10, 10), extrudeSpec('sk1', 'ex1', 5)] })
     const bundle = toPartBundle('doc2', 'h1', result.bodies as Record<string, PartResult>)
-    for (const bodyMesh of bundle.bodies) {
-      const triCount = bodyMesh.mesh.indices.length / 3
-      expect(bodyMesh.mesh.faceIdsPerTriangle.length).toBe(triCount)
+    for (const partMesh of bundle.bodies) {
+      const triCount = partMesh.mesh.indices.length / 3
+      expect(partMesh.mesh.faceIdsPerTriangle.length).toBe(triCount)
     }
   })
 

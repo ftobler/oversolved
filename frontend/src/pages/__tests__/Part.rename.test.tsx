@@ -19,12 +19,12 @@ const STYLED_DOC = vi.hoisted(() => ({
     'body-1': { name: 'Test Body', color: '#FF0000', transparency: 0, metalness: 0.3 },
   },
 }))
-const BODIES = vi.hoisted(() => ({ 'body-1': { id: 'body-1', created_by: 'feature-1', modified_by: [] } }))
+const PARTS = vi.hoisted(() => ({ 'body-1': { id: 'body-1', created_by: 'feature-1', modified_by: [] } }))
 
 vi.mock('../../hooks/usePartDoc', async () =>
   (await import('@/__tests__/test-utils')).partDocMockModule({
     doc: STYLED_DOC,
-    bodies: BODIES,
+    bodies: PARTS,
     handleMutation: mockHandleMutation,
   }))
 

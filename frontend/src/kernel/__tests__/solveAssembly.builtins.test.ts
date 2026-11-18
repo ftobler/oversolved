@@ -456,10 +456,10 @@ describe('solveAssembly', () => {
     // residual: the real-WASM counterpart lives in solveAssemblyReal.test.ts.
     const overSolver = (input: Uint8Array): Uint8Array => {
       const view = new DataView(input.buffer, input.byteOffset, input.byteLength)
-      const nBodies = view.getUint32(4, true)
-      const nParams = nBodies * 7
-      const paramsOffset = 20 + nBodies * 4
-      const outSize = 4 + 4 + 1 + nParams * 8 + 4 + nBodies + 28
+      const nParts = view.getUint32(4, true)
+      const nParams = nParts * 7
+      const paramsOffset = 20 + nParts * 4
+      const outSize = 4 + 4 + 1 + nParams * 8 + 4 + nParts + 28
       const out = new DataView(new ArrayBuffer(outSize))
       let pos = 0
       out.setUint32(pos, 0x3552544D, true); pos += 4
@@ -468,8 +468,8 @@ describe('solveAssembly', () => {
       for (let i = 0; i < nParams; i++) { out.setFloat64(pos, view.getFloat64(paramsOffset + i * 8, true), true); pos += 8 }
       out.setUint32(pos, 0, true); pos += 4  // n_mates
       // Echoed poses: nothing moved.
-      for (let i = 0; i < nBodies; i++) out.setUint8(pos + i, 0)
-      pos += nBodies
+      for (let i = 0; i < nParts; i++) out.setUint8(pos + i, 0)
+      pos += nParts
       out.setFloat64(pos, 0.5, true); pos += 8
       out.setUint32(pos, 13, true); pos += 4
       out.setUint32(pos, 0, true); pos += 4

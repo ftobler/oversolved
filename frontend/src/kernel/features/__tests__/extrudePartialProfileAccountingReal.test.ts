@@ -92,9 +92,9 @@ describe.skipIf(!oc || !solveBytes)('partial profile reporting (real OCC)', () =
     if (solveBytes) { resetSketchSolver(); setSketchSolver(solveBytes) }
   })
 
-  function builtVolume(result: BuildResponse, featureId: string, bodyId: string): number {
+  function builtVolume(result: BuildResponse, featureId: string, partId: string): number {
     const cp = result._build_state!.checkpoints[featureId]
-    const shape = h.table.get<OccShape>(cp.body_store_snapshot[bodyId].shape!)
+    const shape = h.table.get<OccShape>(cp.body_store_snapshot[partId].shape!)
     const scope = new DisposeScope()
     try {
       return volumeOf(oc!, scope, shape)
@@ -133,8 +133,8 @@ describe.skipIf(!oc || !solveBytes)('partial profile reporting (real OCC)', () =
     expect(cut.status).toBe('partial')
     expect(String(cut.exception)).toContain('extrude: built 1 of 2 profile areas')
     // The plate is 40x40x2 and the square removed the 20x20x2 corner region.
-    const cutBody = String(h.res(result, 'cut1').body_id)
-    expect(builtVolume(result, 'cut1', cutBody)).toBeCloseTo(40 * 40 * 2 - 20 * 20 * 2, 6)
+    const cutPart = String(h.res(result, 'cut1').body_id)
+    expect(builtVolume(result, 'cut1', cutPart)).toBeCloseTo(40 * 40 * 2 - 20 * 20 * 2, 6)
   })
 
   it('stays ok with no message when every referenced area builds', () => {

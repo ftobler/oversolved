@@ -22,8 +22,8 @@ import { docHashOf } from '@/drive/docHash'
 import { faceProjectionConstraintId, faceBoundaryFromParts, edgeUuidToken } from '../projectionMembers'
 import type { PartDoc, PartFeature, SketchFeature } from '@/types/cad'
 import {
-  BOX_BODY_ID, BOX_EXTRUDE_ID, BOX_SKETCH_ID,
-  bodyVolume, oc, projectionBaseDoc, projectionTestHarness, solveBytes,
+  BOX_PART_ID, BOX_EXTRUDE_ID, BOX_SKETCH_ID,
+  partVolume, oc, projectionBaseDoc, projectionTestHarness, solveBytes,
 } from './projectionRealSupport'
 import type { BuildResponse } from '../../builder'
 
@@ -72,9 +72,9 @@ function addFaceProjection(
   faceQuery: string,
 ): string {
   applyAddSketch(doc, sketchId, 'Projection', '@builtin_plane_front')
-  const body = h.part(baseResult, BOX_BODY_ID)
+  const part = h.part(baseResult, BOX_PART_ID)
   applyAddProjectedEntity(doc, sketchId, '', faceQuery, undefined, undefined, {
-    faceBoundary: faceBoundaryFromParts(() => ({ [BOX_BODY_ID]: body })),
+    faceBoundary: faceBoundaryFromParts(() => ({ [BOX_PART_ID]: part })),
   })
   const cid = faceProjectionConstraintId(faceQuery)
   if (cid === null) throw new Error('face query carries no construction UUID')
@@ -99,12 +99,12 @@ function profileExtent(sketch: SketchOut): number {
  *  replaces it with an arc ON THE FRONT FACE, which is what makes the live-add
  *  case observable. */
 function frontLeftEdge(baseResult: BuildResponse): string {
-  const body = h.part(baseResult, BOX_BODY_ID) as {
+  const part = h.part(baseResult, BOX_PART_ID) as {
     edges?: Array<{ kind: string; start: number[]; end: number[] }>
     edge_queries?: string[]
   }
-  const edges = body.edges ?? []
-  const queries = body.edge_queries ?? []
+  const edges = part.edges ?? []
+  const queries = part.edge_queries ?? []
   for (let i = 0; i < edges.length; i++) {
     const edge = edges[i]
     if (edge.kind !== 'line') continue
@@ -151,7 +151,7 @@ describe.skipIf(!oc || !solveBytes)('face projection (real OCC + Rust solver)', 
     expect(Object.keys(row.constraints![0].members ?? {})).toHaveLength(5)
     expect(h.res(result, 'exF').status).toBe('ok')
     // 40 x 10 minus the r3 bore, 2 mm deep.
-    expect(bodyVolume(h, result, 'exF', 'body_exF')).toBeCloseTo((400 - 9 * Math.PI) * 2, 4)
+    expect(partVolume(h, result, 'exF', 'body_exF')).toBeCloseTo((400 - 9 * Math.PI) * 2, 4)
   })
 
   it('10. a cut inserted upstream adds an arc member and keeps the wire closed', () => {
@@ -183,7 +183,7 @@ describe.skipIf(!oc || !solveBytes)('face projection (real OCC + Rust solver)', 
     expect(report.entities.filter(e => e.kind === 'arc').length).toBeGreaterThanOrEqual(1)
     expect(report.entities.length).toBeGreaterThan(beforeReport.entities.length)
     expect(h.res(result, 'exF').status).toBe('ok')
-    const volume = bodyVolume(h, result, 'exF', 'body_exF')
+    const volume = partVolume(h, result, 'exF', 'body_exF')
     expect(volume).toBeGreaterThan(0)
     // The notch removed area, so the extruded profile is smaller.
     expect(volume).toBeLessThan((400 - 9 * Math.PI) * 2)

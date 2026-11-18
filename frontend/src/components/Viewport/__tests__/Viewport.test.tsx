@@ -115,7 +115,7 @@ function makeFeature(id: string, kind: string, overrides?: Partial<Feature>): Fe
   return { id, kind, ...overrides } as Feature
 }
 
-function makeNamedBody(id: string, createdBy: string): PartResult {
+function makeNamedPart(id: string, createdBy: string): PartResult {
   return {
     id,
     created_by: createdBy,
@@ -124,7 +124,7 @@ function makeNamedBody(id: string, createdBy: string): PartResult {
   } as unknown as PartResult
 }
 
-function makeBody(): Record<string, PartResult> {
+function makePart(): Record<string, PartResult> {
   return {
     body_ex1: {
       id: 'body_ex1',
@@ -167,7 +167,7 @@ const extrude: Feature = makeFeature('ex1', 'extrude')
 
 describe('Viewport body interactivity', () => {
   it('does not force bodies inert when no feature is active', () => {
-    usePartEditorStore.setState({ features: [sketch, extrude], parts: makeBody() })
+    usePartEditorStore.setState({ features: [sketch, extrude], parts: makePart() })
     const { container } = render(<Viewport />)
     container.querySelectorAll('[data-testid="body-3d"]').forEach(el => {
       // Viewport leaves Body3D's `interactive` default (true) in place.
@@ -182,7 +182,7 @@ describe('Viewport body interactivity', () => {
     // by making bodies inert -- so Body3D must NOT be forced interactive=false.
     usePartEditorStore.setState({
     features: [sketch, extrude],
-    parts: makeBody(),
+    parts: makePart(),
   })
   useEditorState.setState({
     activeSketchFeatureId: 'sk1',
@@ -227,8 +227,8 @@ describe('Viewport body interactivity', () => {
   it('ghostMode renders pickBodies and shows a preview edge overlay', () => {
     usePartEditorStore.setState({
     features: [sketch, extrude],
-    parts: makeBody(),
-    pickParts: makeBody(),
+    parts: makePart(),
+    pickParts: makePart(),
   })
   useEditorState.setState({
     ghostMode: true,
@@ -252,8 +252,8 @@ describe('Viewport body interactivity', () => {
     previewEdgeOverlayProps.mockClear()
     usePartEditorStore.setState({
     features: [sketch, extrude],
-    parts: makeBody(),
-    pickParts: makeBody(),
+    parts: makePart(),
+    pickParts: makePart(),
   })
   useEditorState.setState({
     ghostMode: true,
@@ -272,11 +272,11 @@ describe('Viewport body interactivity', () => {
 describe('Viewport delete_body ghost preview', () => {
   const ex2: Feature = makeFeature('ex2', 'extrude')
   const del: Feature = makeFeature('db1', 'delete_body')
-  const twoBodies = () => ({
-    body_ex1: makeNamedBody('body_ex1', 'ex1'),
-    body_ex2: makeNamedBody('body_ex2', 'ex2'),
+  const twoParts = () => ({
+    body_ex1: makeNamedPart('body_ex1', 'ex1'),
+    body_ex2: makeNamedPart('body_ex2', 'ex2'),
   })
-  const visibleOf = (bodies: Record<string, PartResult>) => new Set(Object.keys(bodies))
+  const visibleOf = (parts: Record<string, PartResult>) => new Set(Object.keys(parts))
 
   const ghostAttr = (container: HTMLElement, attr: string) =>
     Object.fromEntries(
@@ -285,12 +285,12 @@ describe('Viewport delete_body ghost preview', () => {
     )
 
   const renderDeleteOfEx2 = () => {
-    const preview = { body_ex1: makeNamedBody('body_ex1', 'ex1') }
+    const preview = { body_ex1: makeNamedPart('body_ex1', 'ex1') }
     usePartEditorStore.setState({
     features: [sketch, extrude, ex2, del],
     visibleFeatures: new Set(['sk1', 'ex1', 'ex2', 'db1']),
     parts: preview,
-    pickParts: twoBodies(),
+    pickParts: twoParts(),
     visibleParts: visibleOf(preview),
   })
   useEditorState.setState({
@@ -308,12 +308,12 @@ describe('Viewport delete_body ghost preview', () => {
 
   it('leaves the survivor its own partColors and partStyle', () => {
     // The removal look must override exactly one body, never the whole layer.
-    const preview = { body_ex1: makeNamedBody('body_ex1', 'ex1') }
+    const preview = { body_ex1: makeNamedPart('body_ex1', 'ex1') }
     usePartEditorStore.setState({
     features: [sketch, extrude, ex2, del],
     visibleFeatures: new Set(['sk1', 'ex1', 'ex2', 'db1']),
     parts: preview,
-    pickParts: twoBodies(),
+    pickParts: twoParts(),
     visibleParts: visibleOf(preview),
   })
   useEditorState.setState({
@@ -330,12 +330,12 @@ describe('Viewport delete_body ghost preview', () => {
   })
 
   it('does not resurrect a doomed body the user hid', () => {
-    const preview = { body_ex1: makeNamedBody('body_ex1', 'ex1') }
+    const preview = { body_ex1: makeNamedPart('body_ex1', 'ex1') }
     usePartEditorStore.setState({
     features: [sketch, extrude, ex2, del],
     visibleFeatures: new Set(['sk1', 'ex1', 'ex2', 'db1']),
     parts: preview,
-    pickParts: twoBodies(),
+    pickParts: twoParts(),
     visibleParts: visibleOf(preview),
   })
   useEditorState.setState({
@@ -355,7 +355,7 @@ describe('Viewport delete_body ghost preview', () => {
     usePartEditorStore.setState({
     features: [sketch, extrude, ex2, del],
     parts: {},
-    pickParts: twoBodies(),
+    pickParts: twoParts(),
     visibleParts: undefined,
   })
   useEditorState.setState({
@@ -382,7 +382,7 @@ describe('Viewport overlay stacking pen', () => {
 
 describe('Viewport collision debug gate', () => {
   it('mounts IdDebugOverlay only while the collision debug option is on', () => {
-    usePartEditorStore.setState({ features: [sketch], parts: makeBody() })
+    usePartEditorStore.setState({ features: [sketch], parts: makePart() })
 
     useViewOptionsStore.setState({ collisionDebug: false })
     const off = render(<Viewport />)

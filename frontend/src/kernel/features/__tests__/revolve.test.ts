@@ -41,7 +41,7 @@ describe('solveRevolve guard paths', () => {
 
   it('surfaces an unresolved sketch ref as the collected profile error', () => {
     const repo = new Repository()
-    const bodyStore: Record<string, PartSolid> = {}
+    const partStore: Record<string, PartSolid> = {}
     expect(() =>
       solveRevolve(
         oc,
@@ -49,7 +49,7 @@ describe('solveRevolve guard paths', () => {
         table,
         { id: 'f1', revolve: { sketch: '$missing', angle: 90 } },
         repo,
-        bodyStore,
+        partStore,
       ),
     ).toThrow(/sketch not found: missing/)
   })

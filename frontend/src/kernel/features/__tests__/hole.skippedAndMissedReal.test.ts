@@ -26,7 +26,7 @@ describe.skipIf(!oc)('hole skipped and missed sites (real OCC)', () => {
     const repo = new Repository()
     try {
       const shape = makeBox(oc!, scope, 20, 20, 20)
-      const body: PartSolid = {
+      const part: PartSolid = {
         id: 'body_t', created_by: 'ex', modified_by: [], shape: table.register(shape, 'ex'),
         sketch_id: 'sk', brep_diff: null, profile_queries: [],
       }
@@ -40,7 +40,7 @@ describe.skipIf(!oc)('hole skipped and missed sites (real OCC)', () => {
       const result = solveHole(oc!, scope, table, {
         id: 'h1', kind: 'hole',
         hole: { sketch: '@sk', target: 'body_t', diameter: 2, depth: 5 },
-      }, repo, { body_t: body }, {
+      }, repo, { body_t: part }, {
         sk: {
           entities: [
             { id: 'p1', kind: 'point' }, { id: 'p2', kind: 'point' },

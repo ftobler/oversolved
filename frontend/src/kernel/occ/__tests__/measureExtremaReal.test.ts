@@ -281,8 +281,8 @@ describe.skipIf(!oc)('measureExtrema (real OCC)', () => {
       const store = state.checkpoints[state.feature_order[state.feature_order.length - 1]].body_store_snapshot as Record<string, PartSolid>
       const table = persistentTableForTest()
       if (!table) throw new Error('no table')
-      const bodyId = Object.keys(store)[0]
-      const shape = table.get<OccShape>(store[bodyId].shape!)
+      const partId = Object.keys(store)[0]
+      const shape = table.get<OccShape>(store[partId].shape!)
       const scope2 = new DisposeScope()
       try {
         // The spline edge the render pass reports as `kind: 'spline'`; the

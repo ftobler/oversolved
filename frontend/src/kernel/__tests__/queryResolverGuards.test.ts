@@ -68,7 +68,7 @@ describe("typed absolute lookups", () => {
 describe("coercion scan rejection rules", () => {
   it("skips non-object, typeless, wrong-body, wrong-type and foreign-creator siblings", () => {
     const repo = new Repository()
-    const bodyStore = { body_x: { id: "body_x", created_by: "ex1" } }
+    const partStore = { body_x: { id: "body_x", created_by: "ex1" } }
     const face: Payload = { type: "flatface", body_id: "body_x", face_index: 0, created_by: "ex1" }
     // The candidate set: a real face, a typeless payload and an array that
     // carries a type field so coerceType reaches the isDict guard.
@@ -91,7 +91,7 @@ describe("coercion scan rejection rules", () => {
     // must skip it rather than assume every indexed key has an entry.
     repo.byAncestorId.get("@ex1")!.add("dangling-coerce-key")
 
-    const result = repo.query(makeAncestryQuery(["@ex1face0", "@ex1"], "edge"), null, bodyStore) as Payload
+    const result = repo.query(makeAncestryQuery(["@ex1face0", "@ex1"], "edge"), null, partStore) as Payload
     expect(result).toMatchObject({ type: "straightedge", edge_index: 2 })
     expect(repo._lastTier).toBe("ancestral")
   })

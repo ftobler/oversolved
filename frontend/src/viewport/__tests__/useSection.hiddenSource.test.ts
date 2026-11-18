@@ -21,12 +21,12 @@ function quadMeshAt(z: number): Mesh3D {
   }
 }
 
-function bodyAt(z: number): PartResult {
+function partAt(z: number): PartResult {
   return { id: 'body_ex1', created_by: 'ex1', modified_by: [], mesh: quadMeshAt(z) }
 }
 
-function setBodies(z: number): void {
-  usePartEditorStore.setState({ parts: { body_ex1: bodyAt(z) } })
+function setParts(z: number): void {
+  usePartEditorStore.setState({ parts: { body_ex1: partAt(z) } })
 }
 
 describe('section on a solve-derived face source', () => {
@@ -38,7 +38,7 @@ describe('section on a solve-derived face source', () => {
       plane: { kind: 'query', query: 'face-q', pickKey: 'ex1/body_ex1#face#0' },
     })
     usePartEditorStore.setState({ ...DEFAULT_PART_EDITOR_DATA })
-    setBodies(0)
+    setParts(0)
   })
 
   afterEach(() => {
@@ -61,7 +61,7 @@ describe('section on a solve-derived face source', () => {
     const { result, rerender } = renderHook(() => useSectionFrame())
     expect(result.current?.point[2]).toBe(0)
 
-    act(() => { setBodies(3) })
+    act(() => { setParts(3) })
     rerender()
 
     expect(result.current?.point[2]).toBe(3)

@@ -87,7 +87,7 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
   const torus = (scope: DisposeScope, major: number, minor: number): OccShape =>
     scope.track(new occ.BRepPrimAPI_MakeTorus_5(ax2z(scope), major, minor).Shape())
 
-  function boolBodies(scope: DisposeScope, a: OccShape, b: OccShape, op: 'fuse' | 'cut'): OccShape {
+  function boolParts(scope: DisposeScope, a: OccShape, b: OccShape, op: 'fuse' | 'cut'): OccShape {
     const algo = scope.track(op === 'fuse' ? new occ.BRepAlgoAPI_Fuse_1() : new occ.BRepAlgoAPI_Cut_1())
     const args = scope.track(new occ.TopTools_ListOfShape_1())
     args.Append_1(a)
@@ -104,12 +104,12 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
   const kindOf = (scope: DisposeScope, f: OccShape): number =>
     scope.track(new occ.BRepAdaptor_Surface_2(f, true)).GetType().value
 
-  const facesOf = (scope: DisposeScope, body: OccShape): OccShape[] =>
-    canonicalFaces(occ, scope, body) as OccShape[]
+  const facesOf = (scope: DisposeScope, part: OccShape): OccShape[] =>
+    canonicalFaces(occ, scope, part) as OccShape[]
 
   // The one face of the requested analytic kind, or a clear failure.
-  function pickKind(scope: DisposeScope, body: OccShape, kind: number): OccShape {
-    const hit = facesOf(scope, body).filter((f) => kindOf(scope, f) === kind)
+  function pickKind(scope: DisposeScope, part: OccShape, kind: number): OccShape {
+    const hit = facesOf(scope, part).filter((f) => kindOf(scope, f) === kind)
     if (hit.length !== 1) throw new Error(`expected 1 face of the kind, got ${hit.length}`)
     return hit[0]
   }
@@ -119,16 +119,16 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
   const sphereKind = S.GeomAbs_Sphere.value
   const torusKind = S.GeomAbs_Torus.value
 
-  const moved = (scope: DisposeScope, body: OccShape, face: OccShape, d: number): OccShape =>
-    applyMoveFace(occ, scope, body, face, d).shape
+  const moved = (scope: DisposeScope, part: OccShape, face: OccShape, d: number): OccShape =>
+    applyMoveFace(occ, scope, part, face, d).shape
 
   function expectVolume(scope: DisposeScope, shape: OccShape, expected: number): void {
     const v = volumeOf(occ, scope, shape)
     expect(valueWithinTolerance(v, expected), `volume ${v} vs ${expected}`).toBe(true)
   }
 
-  const cylindricalFaces = (scope: DisposeScope, body: OccShape): number =>
-    facesOf(scope, body).filter((f) => kindOf(scope, f) === cylKind).length
+  const cylindricalFaces = (scope: DisposeScope, part: OccShape): number =>
+    facesOf(scope, part).filter((f) => kindOf(scope, f) === cylKind).length
 
   // ─── cylinder ───
 
@@ -136,9 +136,9 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
     for (const [d, want] of [[2, PI * 49 * 10], [-2, PI * 9 * 10]] as const) {
       const scope = new DisposeScope()
       try {
-        const body = scope.track(cylinderAt(scope, 0, 0, 0, 5, 10))
-        const wall = pickKind(scope, body, cylKind)
-        expectVolume(scope, moved(scope, body, wall, d), want)
+        const part = scope.track(cylinderAt(scope, 0, 0, 0, 5, 10))
+        const wall = pickKind(scope, part, cylKind)
+        expectVolume(scope, moved(scope, part, wall, d), want)
       } finally { scope.dispose() }
     }
   })
@@ -146,11 +146,11 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
   it('a full cylinder face moves without a tangent refusal (its seam is skipped)', () => {
     const scope = new DisposeScope()
     try {
-      const body = scope.track(cylinderAt(scope, 0, 0, 0, 5, 10))
-      const wall = pickKind(scope, body, cylKind)
+      const part = scope.track(cylinderAt(scope, 0, 0, 0, 5, 10))
+      const wall = pickKind(scope, part, cylKind)
       // The face carries a seam (and both circles); a naive tangent check would
       // refuse it. Reaching a volume is the assertion.
-      const out = moved(scope, body, wall, 2)
+      const out = moved(scope, part, wall, 2)
       expectVolume(scope, out, PI * 49 * 10)
       expect(facesOf(scope, out)).toHaveLength(3)
     } finally { scope.dispose() }
@@ -158,7 +158,7 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
 
   it('boss wall on a 40x40x10 box: +2 / -2 grow and shrink the boss, -5 removes it', () => {
     const build = (scope: DisposeScope): OccShape =>
-      boolBodies(scope, scope.track(makeBox(occ, scope, 40, 40, 10)), cylinderAt(scope, 20, 20, 10, 5, 10), 'fuse')
+      boolParts(scope, scope.track(makeBox(occ, scope, 40, 40, 10)), cylinderAt(scope, 20, 20, 10, 5, 10), 'fuse')
     for (const [d, want, cylFaces] of [
       [2, 16000 + PI * 49 * 10, 1],
       [-2, 16000 + PI * 9 * 10, 1],
@@ -166,9 +166,9 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
     ] as const) {
       const scope = new DisposeScope()
       try {
-        const body = build(scope)
-        const wall = pickKind(scope, body, cylKind)
-        const out = moved(scope, body, wall, d)
+        const part = build(scope)
+        const wall = pickKind(scope, part, cylKind)
+        const out = moved(scope, part, wall, d)
         expectVolume(scope, out, want)
         expect(cylindricalFaces(scope, out)).toBe(cylFaces)
       } finally { scope.dispose() }
@@ -177,16 +177,16 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
 
   it('through bore r5 in a 40x40x10 box: wall +2 closes it to r3, +5 fills it', () => {
     const build = (scope: DisposeScope): OccShape =>
-      boolBodies(scope, scope.track(makeBox(occ, scope, 40, 40, 10)), cylinderAt(scope, 20, 20, -5, 5, 20), 'cut')
+      boolParts(scope, scope.track(makeBox(occ, scope, 40, 40, 10)), cylinderAt(scope, 20, 20, -5, 5, 20), 'cut')
     for (const [d, want, cylFaces] of [
       [2, 16000 - PI * 9 * 10, 1],
       [5, 16000, 0],
     ] as const) {
       const scope = new DisposeScope()
       try {
-        const body = build(scope)
-        const wall = pickKind(scope, body, cylKind)
-        const out = moved(scope, body, wall, d)
+        const part = build(scope)
+        const wall = pickKind(scope, part, cylKind)
+        const out = moved(scope, part, wall, d)
         expectVolume(scope, out, want)
         expect(cylindricalFaces(scope, out)).toBe(cylFaces)
       } finally { scope.dispose() }
@@ -196,14 +196,14 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
   it('blind bore r5 d3: wall -1 widens the hole and its floor', () => {
     const scope = new DisposeScope()
     try {
-      const body = boolBodies(
+      const part = boolParts(
         scope,
         scope.track(makeBox(occ, scope, 40, 40, 10)),
         cylinderAt(scope, 20, 20, 7, 5, 3),
         'cut',
       )
-      const wall = pickKind(scope, body, cylKind)
-      expectVolume(scope, moved(scope, body, wall, -1), 16000 - PI * 36 * 3)
+      const wall = pickKind(scope, part, cylKind)
+      expectVolume(scope, moved(scope, part, wall, -1), 16000 - PI * 36 * 3)
     } finally { scope.dispose() }
   })
 
@@ -215,16 +215,16 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
     // column out of the added material on a growth and inside the removed
     // material on a shrink.
     const build = (scope: DisposeScope): OccShape => {
-      const pipe = boolBodies(
+      const pipe = boolParts(
         scope,
         cylinderAt(scope, 0, 0, 0, 10, 10),
         cylinderAt(scope, 0, 0, -1, 6, 12),
         'cut',
       )
-      return boolBodies(scope, pipe, cylAx(scope, [-11, 0, 5], [1, 0, 0], 1.5, 22), 'cut')
+      return boolParts(scope, pipe, cylAx(scope, [-11, 0, 5], [1, 0, 0], 1.5, 22), 'cut')
     }
-    const outerWall = (scope: DisposeScope, body: OccShape): OccShape =>
-      facesOf(scope, body).find((f) => {
+    const outerWall = (scope: DisposeScope, part: OccShape): OccShape =>
+      facesOf(scope, part).find((f) => {
         if (kindOf(scope, f) !== cylKind) return false
         const cyl = scope.track(new occ.BRepAdaptor_Surface_2(f, true)).Cylinder()
         return Math.abs(scope.track(cyl).Radius() - 10) < 1e-9
@@ -233,8 +233,8 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
     for (const [d, want] of [[1, net(11)], [-1, net(9)]] as const) {
       const scope = new DisposeScope()
       try {
-        const body = build(scope)
-        expectVolume(scope, moved(scope, body, outerWall(scope, body), d), want)
+        const part = build(scope)
+        expectVolume(scope, moved(scope, part, outerWall(scope, part), d), want)
       } finally { scope.dispose() }
     }
   }, 30000)
@@ -246,13 +246,13 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
     // boss stays attached and reaches further in). The boss's protrusion is a
     // numerical integral: the wall's chord varies with y.
     const build = (scope: DisposeScope): OccShape => {
-      const pipe = boolBodies(
+      const pipe = boolParts(
         scope,
         cylinderAt(scope, 0, 0, 0, 10, 10),
         cylinderAt(scope, 0, 0, -1, 6, 12),
         'cut',
       )
-      return boolBodies(scope, pipe, cylAx(scope, [8, 0, 5], [1, 0, 0], 2, 6), 'fuse')
+      return boolParts(scope, pipe, cylAx(scope, [8, 0, 5], [1, 0, 0], 2, 6), 'fuse')
     }
     const bossBeyondWall = (wallR: number): number => {
       const half = simpson(0, PI / 2, 2000, (t) => {
@@ -261,8 +261,8 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
       })
       return 2 * half
     }
-    const outerWall = (scope: DisposeScope, body: OccShape): OccShape =>
-      facesOf(scope, body).find((f) => {
+    const outerWall = (scope: DisposeScope, part: OccShape): OccShape =>
+      facesOf(scope, part).find((f) => {
         if (kindOf(scope, f) !== cylKind) return false
         const cyl = scope.track(new occ.BRepAdaptor_Surface_2(f, true)).Cylinder()
         return Math.abs(scope.track(cyl).Radius() - 10) < 1e-9
@@ -273,11 +273,11 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
     ] as const) {
       const scope = new DisposeScope()
       try {
-        const body = build(scope)
+        const part = build(scope)
         // The root loop is a cylinder-cylinder intersection, so the boolean's
         // faces there carry tolerance-level slop; 1e-5 relative is the honest
         // budget (the measured deviation is 1.8e-6).
-        const v = volumeOf(occ, scope, moved(scope, body, outerWall(scope, body), d))
+        const v = volumeOf(occ, scope, moved(scope, part, outerWall(scope, part), d))
         expect(valueWithinTolerance(v, want, { rel: 1e-5, abs: 1e-6 }), `volume ${v} vs ${want}`).toBe(true)
       } finally { scope.dispose() }
     }
@@ -286,9 +286,9 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
   it('a filleted cylinder top edge is still refused as a tangent neighbour', () => {
     const scope = new DisposeScope()
     try {
-      const body0 = scope.track(cylinderAt(scope, 0, 0, 0, 5, 10))
-      const mk = scope.track(new occ.BRepFilletAPI_MakeFillet(body0, occ.ChFi3d_FilletShape.ChFi3d_Rational))
-      for (const e of canonicalEdges(occ, scope, body0)) {
+      const part0 = scope.track(cylinderAt(scope, 0, 0, 0, 5, 10))
+      const mk = scope.track(new occ.BRepFilletAPI_MakeFillet(part0, occ.ChFi3d_FilletShape.ChFi3d_Rational))
+      for (const e of canonicalEdges(occ, scope, part0)) {
         const ad = scope.track(new occ.BRepAdaptor_Curve_2(e as OccShape))
         if (ad.GetType().value !== occ.GeomAbs_CurveType.GeomAbs_Circle.value) continue
         const circ = scope.track(ad.Circle())
@@ -296,10 +296,10 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
         if (Math.abs(loc.Z() - 10) < 1e-6) mk.Add_2(1, e as OccShape)
       }
       mk.Build(noProgress(occ))
-      const body = scope.track(mk.Shape())
-      const wall = pickKind(scope, body, cylKind)
+      const part = scope.track(mk.Shape())
+      const wall = pickKind(scope, part, cylKind)
       let threw: unknown = null
-      try { moved(scope, body, wall, 2) } catch (e) { threw = e }
+      try { moved(scope, part, wall, 2) } catch (e) { threw = e }
       expect(threw).toBeInstanceOf(MoveFaceRefusal)
       expect((threw as Error).message).toContain('tangent')
     } finally { scope.dispose() }
@@ -316,9 +316,9 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
     ] as const) {
       const scope = new DisposeScope()
       try {
-        const body = scope.track(cone(scope, 10, 5, 10))
-        const slant = pickKind(scope, body, coneKind)
-        expectVolume(scope, moved(scope, body, slant, d), want)
+        const part = scope.track(cone(scope, 10, 5, 10))
+        const slant = pickKind(scope, part, coneKind)
+        expectVolume(scope, moved(scope, part, slant, d), want)
       } finally { scope.dispose() }
     }
   }, 30000)
@@ -334,9 +334,9 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
     ] as const) {
       const scope = new DisposeScope()
       try {
-        const body = scope.track(cone(scope, 10, 0, 10))
-        const slant = pickKind(scope, body, coneKind)
-        expectVolume(scope, moved(scope, body, slant, d), want)
+        const part = scope.track(cone(scope, 10, 0, 10))
+        const slant = pickKind(scope, part, coneKind)
+        expectVolume(scope, moved(scope, part, slant, d), want)
       } finally { scope.dispose() }
     }
   }, 30000)
@@ -347,10 +347,10 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
     // surface is the mirrored nappe and the offset has no same-nappe meaning.
     const scope = new DisposeScope()
     try {
-      const body = scope.track(cone(scope, 10, 5, 10))
-      const slant = pickKind(scope, body, coneKind)
+      const part = scope.track(cone(scope, 10, 5, 10))
+      const slant = pickKind(scope, part, coneKind)
       let threw: unknown = null
-      try { moved(scope, body, slant, -9) } catch (e) { threw = e }
+      try { moved(scope, part, slant, -9) } catch (e) { threw = e }
       expect(threw).toBeInstanceOf(MoveFaceRefusal)
       expect((threw as Error).message).toContain('past its apex')
     } finally { scope.dispose() }
@@ -366,9 +366,9 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
     const baseR = apexZ * Math.tan(semi)
     const scope = new DisposeScope()
     try {
-      const body = scope.track(cone(scope, 10, 5, 10))
-      const slant = pickKind(scope, body, coneKind)
-      expectVolume(scope, moved(scope, body, slant, -6), coneV(baseR, apexZ))
+      const part = scope.track(cone(scope, 10, 5, 10))
+      const slant = pickKind(scope, part, coneKind)
+      expectVolume(scope, moved(scope, part, slant, -6), coneV(baseR, apexZ))
     } finally { scope.dispose() }
   })
 
@@ -377,7 +377,7 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
   it('hemispherical dome on a plane: +1 / -1 grow and shrink it, -r removes it', () => {
     const build = (scope: DisposeScope): OccShape => {
       const sphere = ball(scope, [0, 0, 0], 5)
-      return boolBodies(scope, sphere, scope.track(makeBoxAt(occ, scope, [-10, -10, -10], 20, 20, 10)), 'cut')
+      return boolParts(scope, sphere, scope.track(makeBoxAt(occ, scope, [-10, -10, -10], 20, 20, 10)), 'cut')
     }
     for (const [d, want] of [
       [1, ballV(6) / 2],
@@ -386,9 +386,9 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
     ] as const) {
       const scope = new DisposeScope()
       try {
-        const body = build(scope)
-        const dome = pickKind(scope, body, sphereKind)
-        expectVolume(scope, moved(scope, body, dome, d), want)
+        const part = build(scope)
+        const dome = pickKind(scope, part, sphereKind)
+        expectVolume(scope, moved(scope, part, dome, d), want)
       } finally { scope.dispose() }
     }
   })
@@ -398,7 +398,7 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
   it('torus upper half bounded by the z=0 plane: +-0.5 grow and shrink the tube', () => {
     const build = (scope: DisposeScope): OccShape => {
       const tor = torus(scope, 10, 2)
-      return boolBodies(scope, tor, scope.track(makeBoxAt(occ, scope, [-20, -20, -20], 40, 40, 20)), 'cut')
+      return boolParts(scope, tor, scope.track(makeBoxAt(occ, scope, [-20, -20, -20], 40, 40, 20)), 'cut')
     }
     for (const [d, want] of [
       [0.5, torusV(10, 2.5) / 2],
@@ -406,9 +406,9 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
     ] as const) {
       const scope = new DisposeScope()
       try {
-        const body = build(scope)
-        const tube = pickKind(scope, body, torusKind)
-        expectVolume(scope, moved(scope, body, tube, d), want)
+        const part = build(scope)
+        const tube = pickKind(scope, part, torusKind)
+        expectVolume(scope, moved(scope, part, tube, d), want)
       } finally { scope.dispose() }
     }
   }, 30000)
@@ -425,13 +425,13 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
       ))
       const cyl = (z: number, r: number, h: number): OccShape =>
         scope.track(new occ.BRepPrimAPI_MakeCylinder_3(ax2(z), r, h).Shape())
-      const body = scope.track(boolBodies(scope, cyl(0, 7, 10), cyl(10, 5, 10), 'fuse'))
-      const small = facesOf(scope, body).find((f) => {
+      const part = scope.track(boolParts(scope, cyl(0, 7, 10), cyl(10, 5, 10), 'fuse'))
+      const small = facesOf(scope, part).find((f) => {
         if (kindOf(scope, f) !== cylKind) return false
         const c = scope.track(new occ.BRepAdaptor_Surface_2(f, true)).Cylinder()
         return Math.abs(scope.track(c).Radius() - 5) < 1e-9
       }) as OccShape
-      const out = moved(scope, body, small, 2)
+      const out = moved(scope, part, small, 2)
       expectVolume(scope, out, PI * 49 * 20)
       expect(facesOf(scope, out)).toHaveLength(3)
     } finally { scope.dispose() }
@@ -473,16 +473,16 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
       wireBuilder.Add_1(line)
       const faceBuilder = scope.track(new occ.BRepBuilderAPI_MakeFace_15(scope.track(wireBuilder.Wire()), true))
       const profile = scope.track(faceBuilder.Face())
-      const body = scope.track(new occ.BRepPrimAPI_MakePrism_1(
+      const part = scope.track(new occ.BRepPrimAPI_MakePrism_1(
         profile, scope.track(new occ.gp_Vec_4(0, 0, 5)), true, true,
       ).Shape())
-      const freeform = facesOf(scope, body).find((f) => {
+      const freeform = facesOf(scope, part).find((f) => {
         const t = kindOf(scope, f)
         return t !== S.GeomAbs_Plane.value
       }) as OccShape
       expect(freeform).toBeDefined()
       let threw: unknown = null
-      try { moved(scope, body, freeform, 1) } catch (e) { threw = e }
+      try { moved(scope, part, freeform, 1) } catch (e) { threw = e }
       expect(threw).toBeInstanceOf(MoveFaceRefusal)
       expect((threw as Error).message).toContain('cannot move a SurfaceOfExtrusion face')
     } finally { scope.dispose() }
@@ -491,8 +491,8 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
   it('the handle anchor of a full cylinder face lies on the face with a radial normal', () => {
     const scope = new DisposeScope()
     try {
-      const body = scope.track(cylinderAt(scope, 0, 0, 0, 5, 10))
-      const wall = pickKind(scope, body, cylKind)
+      const part = scope.track(cylinderAt(scope, 0, 0, 0, 5, 10))
+      const wall = pickKind(scope, part, cylKind)
       const { normal, centroid } = faceNormalAndCentroid(occ, scope, wall)
       // The anchor is ON the face: 5 from the axis, 5 up its height.
       expect(Math.hypot(centroid[0], centroid[1])).toBeCloseTo(5, 6)
@@ -507,12 +507,12 @@ describe.skipIf(!oc)('move face on curved surfaces (real OCC)', () => {
   it('the planar path is unchanged: the box top still moves by volume', () => {
     const scope = new DisposeScope()
     try {
-      const body = scope.track(makeBox(occ, scope, 10, 10, 10))
-      const top = facesOf(scope, body).find((f) => {
+      const part = scope.track(makeBox(occ, scope, 10, 10, 10))
+      const top = facesOf(scope, part).find((f) => {
         const c = faceCentroid(occ, scope, f)
         return kindOf(scope, f) === S.GeomAbs_Plane.value && Math.abs(c[2] - 10) < 1e-9
       }) as OccShape
-      expectVolume(scope, moved(scope, body, top, 5), 1500)
+      expectVolume(scope, moved(scope, part, top, 5), 1500)
     } finally { scope.dispose() }
   })
 })

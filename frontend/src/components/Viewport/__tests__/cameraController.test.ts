@@ -68,10 +68,10 @@ describe('cameraController', () => {
     const cam = makeOrtho()
     expect(fitToContent(cam, makeControls(cam), {}, null)).toBe(false)
 
-    const bodies: Record<string, PartResult> = {
+    const parts: Record<string, PartResult> = {
       a: { mesh: { vertices: new Float32Array([-10, -10, -10, 10, 10, 10]) } } as unknown as PartResult,
     }
-    const fit = fitToContent(cam, makeControls(cam), bodies, null)
+    const fit = fitToContent(cam, makeControls(cam), parts, null)
     expect(fit).toBe(true)
     expect(cam.zoom).toBeGreaterThan(0)
     expect(Number.isFinite(cam.zoom)).toBe(true)
@@ -79,10 +79,10 @@ describe('cameraController', () => {
 
   it('fits tuple (array) vertex data, not only Float32Array', () => {
     const cam = makeOrtho()
-    const bodies: Record<string, PartResult> = {
+    const parts: Record<string, PartResult> = {
       a: { mesh: { vertices: [[-10, -10, -10], [10, 10, 10]] } } as unknown as PartResult,
     }
-    expect(fitToContent(cam, makeControls(cam), bodies, null)).toBe(true)
+    expect(fitToContent(cam, makeControls(cam), parts, null)).toBe(true)
     expect(Number.isFinite(cam.zoom)).toBe(true)
     expect(cam.zoom).toBeGreaterThan(0)
   })
@@ -94,10 +94,10 @@ describe('cameraController', () => {
     controls.elevation = 0.31
     controls.update()
     const directionBefore = cam.position.clone().sub(controls.target).normalize()
-    const bodies: Record<string, PartResult> = {
+    const parts: Record<string, PartResult> = {
       a: { mesh: { vertices: new Float32Array([90, 90, 90, 110, 110, 110]) } } as unknown as PartResult,
     }
-    expect(fitToContent(cam, controls, bodies, null)).toBe(true)
+    expect(fitToContent(cam, controls, parts, null)).toBe(true)
     expect(controls.target.toArray()).toEqual([100, 100, 100])
     const directionAfter = cam.position.clone().sub(controls.target).normalize()
     expect(directionAfter.x).toBeCloseTo(directionBefore.x, 9)
@@ -141,7 +141,7 @@ describe('cameraController', () => {
 // separation grows into a visible penetration depth that makes small parts
 // transparent. Sized to the content, neither end has to lose.
 describe('fitToContent clip planes', () => {
-  function boxBody(cx: number, cy: number, cz: number, half: number): Record<string, PartResult> {
+  function boxPart(cx: number, cy: number, cz: number, half: number): Record<string, PartResult> {
     return {
       a: {
         mesh: {
@@ -167,13 +167,13 @@ describe('fitToContent clip planes', () => {
 
   it('keeps the range tight for a small model so the polygon offset stays invisible', () => {
     const cam = makeOrtho()
-    expect(fitToContent(cam, makeControls(cam), boxBody(0, 0, 0, 10), null)).toBe(true)
+    expect(fitToContent(cam, makeControls(cam), boxPart(0, 0, 0, 10), null)).toBe(true)
     expect(cam.far - cam.near).toBeLessThanOrEqual(1500)
   })
 
   it('clips neither end of a model far deeper than any fixed range', () => {
     const cam = makeOrtho()
-    expect(fitToContent(cam, makeControls(cam), boxBody(0, 0, 0, 10000), null)).toBe(true)
+    expect(fitToContent(cam, makeControls(cam), boxPart(0, 0, 0, 10000), null)).toBe(true)
     for (const corner of cornersOf(0, 0, 0, 10000)) {
       const depth = depthOf(cam, corner)
       expect(depth).toBeGreaterThan(cam.near)
@@ -183,7 +183,7 @@ describe('fitToContent clip planes', () => {
 
   it('keeps the world origin visible when the model sits far from it', () => {
     const cam = makeOrtho()
-    expect(fitToContent(cam, makeControls(cam), boxBody(0, 0, 3000, 10), null)).toBe(true)
+    expect(fitToContent(cam, makeControls(cam), boxPart(0, 0, 3000, 10), null)).toBe(true)
     const originDepth = depthOf(cam, [0, 0, 0])
     expect(originDepth).toBeGreaterThan(cam.near)
     expect(originDepth).toBeLessThan(cam.far)
@@ -191,12 +191,12 @@ describe('fitToContent clip planes', () => {
 
   it('does not let the origin drag the framing away from the model', () => {
     const atOrigin = makeOrtho()
-    fitToContent(atOrigin, makeControls(atOrigin), boxBody(0, 0, 0, 10), null)
+    fitToContent(atOrigin, makeControls(atOrigin), boxPart(0, 0, 0, 10), null)
 
     // Same model, moved far off. The origin counts for depth only, so zoom -
     // which is decided by the lateral extents - must not change.
     const farOff = makeOrtho()
-    fitToContent(farOff, makeControls(farOff), boxBody(3000, 3000, 0, 10), null)
+    fitToContent(farOff, makeControls(farOff), boxPart(3000, 3000, 0, 10), null)
     expect(farOff.zoom).toBeCloseTo(atOrigin.zoom, 6)
   })
 })

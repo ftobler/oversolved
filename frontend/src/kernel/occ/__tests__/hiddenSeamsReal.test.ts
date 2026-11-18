@@ -34,7 +34,7 @@ import type { PartResult } from '../../../types/cad'
 
 const oc = await loadOcc()
 
-function makeBody(id: string, createdBy: string, shapeHandle: OccHandle | null): PartSolid {
+function makePart(id: string, createdBy: string, shapeHandle: OccHandle | null): PartSolid {
   return {
     id,
     created_by: createdBy,
@@ -121,8 +121,8 @@ describe.skipIf(!oc)('hidden seam indices (real OCC)', () => {
       // The assembly bundle carries the same lists, so a cached part rebuild
       // hides them there too. `tessellateBodies` types its payload as a loose
       // record; the shape it assembles is a BodyResult.
-      const body = makeBody('body_cyl', 'cyl1', handle)
-      const payload = tessellateParts(occ, table, { body_cyl: body }) as unknown as Record<string, PartResult>
+      const part = makePart('body_cyl', 'cyl1', handle)
+      const payload = tessellateParts(occ, table, { body_cyl: part }) as unknown as Record<string, PartResult>
       const bundle = toPartBundle('doc', 'hash', payload)
       expect(bundle.bodies[0].hiddenEdges).toEqual(hidden.hidden_edges)
       expect(bundle.bodies[0].hiddenVertices).toEqual(hidden.hidden_vertices)
@@ -229,8 +229,8 @@ describe.skipIf(!oc)('hidden seam indices (real OCC)', () => {
       const table = new HandleTable()
       const handle = make(table)
       try {
-        const body = makeBody(`body_${label}`, 'f1', handle)
-        const result = tessellateParts(occ, table, { [body.id]: body })[body.id] as {
+        const part = makePart(`body_${label}`, 'f1', handle)
+        const result = tessellateParts(occ, table, { [part.id]: part })[part.id] as {
           edges?: unknown
           edge_queries?: unknown
           vertices?: unknown
@@ -243,10 +243,10 @@ describe.skipIf(!oc)('hidden seam indices (real OCC)', () => {
         // pre-feature result exactly.
         const base = {
           createdBy: 'f1',
-          partId: body.id,
+          partId: part.id,
           profileQueries: [] as string[],
           newElements: null,
-          modifiedBy: body.modified_by,
+          modifiedBy: part.modified_by,
         }
         const controlEdges = solidToEdges(occ, table, handle, { ...base, computeConvexity: true })
         const controlVertices = solidToVertices(occ, table, handle, base)

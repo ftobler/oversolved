@@ -29,7 +29,7 @@ vi.mock('@/kernel/worker/solverClient', () => ({
   cancelSolver: vi.fn(),
 }))
 
-const BODY_WORD = /\bbod(?:y|ies)\b/i
+const STORED_WORD = /\bbod(?:y|ies)\b/i
 
 describe('part editor toolbar wording', () => {
   beforeEach(() => {
@@ -55,7 +55,7 @@ describe('part editor toolbar wording', () => {
       .map(node => node.getAttribute('title') ?? '')
     const alts = [...document.querySelectorAll('.editor-toolbar [alt]')]
       .map(node => node.getAttribute('alt') ?? '')
-    expect([...titles, ...alts].filter(text => BODY_WORD.test(text))).toEqual([])
+    expect([...titles, ...alts].filter(text => STORED_WORD.test(text))).toEqual([])
   })
 
   it('names the row the toolbar adds Delete Part', async () => {

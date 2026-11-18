@@ -677,12 +677,12 @@ describe('assembly pointer adapter (triad plane handles)', () => {
   // geometric translation of the whole part (a triad drag). This asserts the
   // split rather than the old equivalence -- the body grab opens no triad drag.
   it('the body grab is solver-driven while the plane handle is a geometric triad drag', () => {
-    const bodyRun = mountHost(docWith(instance('p1')))
-    bodyRun.adapter.onBodyPointerDown('p1', [0, 0, 0], VIEW_NORMAL)
-    bodyRun.adapter.onPointerMove(ray([3, 4, 10], [0, 0, -1]))
+    const partRun = mountHost(docWith(instance('p1')))
+    partRun.adapter.onBodyPointerDown('p1', [0, 0, 0], VIEW_NORMAL)
+    partRun.adapter.onPointerMove(ray([3, 4, 10], [0, 0, -1]))
     expect(useAssemblyStore.getState().manipulation!.dragObjective).toBeDefined()
     expect(useAssemblyStore.getState().gizmoDrag).toBeNull()
-    bodyRun.adapter.onPointerUp()
+    partRun.adapter.onPointerUp()
 
     const handleRun = mountHost(docWith(instance('p1')))
     handleRun.adapter.onGizmoPointerDown('p1', 'plane', 'z', VIEW_NORMAL, [1, 0, 0], [0, 0, 0], ray([0, 0, 10], [0, 0, -1]))

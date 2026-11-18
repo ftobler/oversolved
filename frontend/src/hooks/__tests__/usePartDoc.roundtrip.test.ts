@@ -191,7 +191,7 @@ const treeDoc = (): PartDoc => ({
   ],
 } as unknown as PartDoc)
 
-const deleteBodyDoc = (): PartDoc => ({
+const deletePartDoc = (): PartDoc => ({
   version: 1,
   kind: 'part',
   features: [
@@ -374,8 +374,8 @@ const ROUND_TRIPS: RoundTripCase[] = [
 
   // delete body
   { name: 'delete-body add_delete_body', makeDoc: emptyDoc, mutation: { type: 'add_delete_body', featureId: 'db1', bodies: ['@b1'], label: 'Delete Body' } as Mutation },
-  { name: 'delete-body add_delete_body_ref', makeDoc: deleteBodyDoc, mutation: { type: 'add_delete_body_ref', featureId: 'db1', bodyQuery: '@b3' } as Mutation },
-  { name: 'delete-body remove_delete_body_ref', makeDoc: deleteBodyDoc, mutation: { type: 'remove_delete_body_ref', featureId: 'db1', index: 0 } as Mutation },
+  { name: 'delete-body add_delete_body_ref', makeDoc: deletePartDoc, mutation: { type: 'add_delete_body_ref', featureId: 'db1', bodyQuery: '@b3' } as Mutation },
+  { name: 'delete-body remove_delete_body_ref', makeDoc: deletePartDoc, mutation: { type: 'remove_delete_body_ref', featureId: 'db1', index: 0 } as Mutation },
 
   // import
   { name: 'import add_import_step', makeDoc: emptyDoc, mutation: { type: 'add_import_step', featureId: 'imp1', fileId: 'file-1', label: 'part' } as Mutation },
