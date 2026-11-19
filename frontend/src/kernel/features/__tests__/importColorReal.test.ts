@@ -6,7 +6,8 @@
 // presentation entities added by hand (STYLED_ITEM -> ... -> COLOUR_RGB):
 //
 //   color_solid.step           (a) the solid alone is #808080
-//   color_faces.step           (b) six faces #cc3333, the smallest #3333cc
+//   color_faces.step           (b) six faces #cc3333 (one of them written as
+//                                  0.80001/0.19999/0.2), the smallest #3333cc
 //   color_solid_and_face.step  (c) solid #33cc33, one face #3333cc
 //   color_two_solids.step      (d) a 10^3 box #cc3333, a 4x5x6 box #3333cc
 //   color_instance.step        (e) one part placed twice: the part #808080,
@@ -119,12 +120,18 @@ describe.skipIf(!oc)('STEP import colours (real OCC)', () => {
       scope.track(read.shape)
       let red = 0
       let blue = 0
+      let redFaces = 0
       for (const face of canonicalFaces(occ, scope, read.shape)) {
         const area = faceArea(occ, scope, face as OccShape)
-        if (read.faceColors.get(face) === 0xcc3333) red += area
-        else if (read.faceColors.get(face) === 0x3333cc) blue += area
+        if (read.faceColors.get(face) === 0xcc3333) {
+          red += area
+          redFaces++
+        } else if (read.faceColors.get(face) === 0x3333cc) blue += area
         else throw new Error('every face of color_faces.step is coloured')
       }
+      // Six, not five: the face written as (0.80001, 0.19999, 0.2) rounds to the
+      // same 8-bit sRGB value as 0.8/0.2/0.2 and votes with the others.
+      expect(redFaces).toBe(6)
       expect(blue).toBeGreaterThan(0)
       expect(red).toBeGreaterThan(blue)
       expect(read.solidColors.size).toBe(0)

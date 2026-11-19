@@ -137,7 +137,7 @@ function applyImportColors(
     const solidPacked = solidColors.get(part as OccSubShape)
     const chosen = bodyImportColor(samples, solidPacked === undefined ? null : hexOfPackedRgb(solidPacked))
     if (chosen === null) return
-    body.import_color = chosen.color
+    if (chosen.color !== null) body.import_color = chosen.color
     if (chosen.note) notes.push(importColorNoteText(ids[i], chosen.note))
   })
   return notes

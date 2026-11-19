@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { bodyImportColor, hexOfPackedRgb, hexOfUnitRgb, importColorNoteText } from '../importColor'
+import { bodyImportColor, hexOfPackedRgb, importColorNoteText, UNCOLOURED } from '../importColor'
 
 const RED = '#cc3333'
 const BLUE = '#3333cc'
@@ -27,18 +27,22 @@ describe('bodyImportColor', () => {
       { color: RED, area: 10 },
     ], null)
     expect(result?.color).toBe(RED)
+    expect(result?.note?.choice).toBe('majority')
     expect(result?.note?.share).toBeCloseTo(10 / 13, 12)
     expect(result?.note?.dropped).toEqual([BLUE])
   })
 
-  it('lets uncoloured area outvote a lone coloured face', () => {
-    // A logo face does not paint the body.
-    expect(bodyImportColor([{ color: null, area: 9 }, { color: RED, area: 1 }], null)).toBeNull()
+  it('lets uncoloured area outvote a lone coloured face, and still says so', () => {
+    // A logo face does not paint the body, but the faces disagreed.
+    const result = bodyImportColor([{ color: null, area: 9 }, { color: RED, area: 1 }], null)
+    expect(result?.color).toBeNull()
+    expect(result?.note).toEqual({ color: null, share: 0.9, choice: 'majority', dropped: [RED] })
   })
 
   it('breaks a tie towards the solid colour', () => {
     const result = bodyImportColor([{ color: RED, area: 2 }, { color: BLUE, area: 2 }], BLUE)
     expect(result?.color).toBe(BLUE)
+    expect(result?.note?.choice).toBe('solid-tie')
     expect(result?.note?.dropped).toEqual([RED])
   })
 
@@ -55,6 +59,7 @@ describe('bodyImportColor', () => {
       { color: RED, area: 1 }, { color: RED, area: 1 }, { color: BLUE, area: 2 },
     ], null)
     expect(result?.color).toBe(BLUE)
+    expect(result?.note?.choice).toBe('largest-face-tie')
   })
 
   it('treats areas within a relative 1e-9 as tied', () => {
@@ -62,12 +67,12 @@ describe('bodyImportColor', () => {
     expect(result?.color).toBe(RED)
   })
 
-  it('lists every dropped colour, largest area first', () => {
+  it('lists every dropped colour, largest area first, the uncoloured share by name', () => {
     const result = bodyImportColor([
       { color: RED, area: 10 }, { color: BLUE, area: 1 }, { color: GREEN, area: 3 }, { color: null, area: 2 },
     ], null)
     expect(result?.color).toBe(RED)
-    expect(result?.note?.dropped).toEqual([GREEN, 'none', BLUE])
+    expect(result?.note?.dropped).toEqual([GREEN, UNCOLOURED, BLUE])
     expect(result?.note?.share).toBeCloseTo(10 / 16, 12)
   })
 
@@ -83,20 +88,30 @@ describe('colour encoding', () => {
     expect(hexOfPackedRgb(0x0000ff)).toBe('#0000ff')
     expect(hexOfPackedRgb(0xCC3333)).toBe('#cc3333')
   })
-
-  it('rounds unit channels to 8 bits, so near-equal colours vote together', () => {
-    expect(hexOfUnitRgb(0.8, 0.2, 0.2)).toBe(hexOfUnitRgb(0.80001, 0.19999, 0.2))
-    expect(hexOfUnitRgb(0.8, 0.2, 0.2)).toBe(RED)
-    expect(hexOfUnitRgb(128 / 255, 128 / 255, 128 / 255)).toBe('#808080')
-    expect(hexOfUnitRgb(1.2, -0.1, 0)).toBe('#ff0000')
-  })
 })
 
 describe('importColorNoteText', () => {
   it('names the body, the colour, its share and the dropped colours', () => {
-    expect(importColorNoteText('body_imp', { color: RED, share: 0.8571, dropped: [BLUE] }))
+    expect(importColorNoteText('body_imp', { color: RED, share: 0.8571, choice: 'majority', dropped: [BLUE] }))
       .toBe('body body_imp takes #cc3333 from the STEP file (86% of its face area); 1 other colour dropped (#3333cc)')
-    expect(importColorNoteText('b', { color: RED, share: 0.5, dropped: [BLUE, 'none'] }))
-      .toContain('2 other colours dropped (#3333cc, none)')
+    expect(importColorNoteText('b', { color: RED, share: 0.5, choice: 'majority', dropped: [BLUE, UNCOLOURED] }))
+      .toContain('2 other colours dropped (#3333cc, uncoloured)')
+  })
+
+  it('says a solid colour settled a tie instead of quoting a 0% share', () => {
+    const text = importColorNoteText('b', { color: GREEN, share: 0, choice: 'solid-tie', dropped: [RED, BLUE] })
+    expect(text).toBe("body b takes #33cc33, the STEP file's colour for the solid, because its face colours tie; "
+      + '2 other colours dropped (#cc3333, #3333cc)')
+    expect(text).not.toContain('0%')
+  })
+
+  it('names a tie broken by the largest face', () => {
+    expect(importColorNoteText('b', { color: BLUE, share: 0.5, choice: 'largest-face-tie', dropped: [RED] }))
+      .toContain('(50% of its face area, a tie broken by its largest face)')
+  })
+
+  it('says when the body stays uncoloured', () => {
+    expect(importColorNoteText('b', { color: null, share: 0.9, choice: 'majority', dropped: [RED] }))
+      .toBe('body b stays uncoloured: 90% of its face area has no colour in the STEP file; 1 other colour dropped (#cc3333)')
   })
 })
