@@ -80,6 +80,17 @@ describe('handleGestureOwner', () => {
     expect(owner.takeClick()).toBe(false)
   })
 
+  it('a stranded release also drops an activated sketch drag\'s click ownership', () => {
+    const owner = createHandleGestureOwner()
+    owner.press(SKETCH_VERTEX_LAYER_NAME)
+    owner.noteDragArmed(true)
+    owner.noteDragActivated()
+
+    owner.move(0)
+
+    expect(owner.takeClick()).toBe(false)
+  })
+
   it('reports a press on nothing as owning nothing', () => {
     const owner = createHandleGestureOwner()
     owner.press(null)

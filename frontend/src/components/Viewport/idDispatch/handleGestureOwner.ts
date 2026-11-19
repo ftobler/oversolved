@@ -71,14 +71,14 @@ export function createHandleGestureOwner(): HandleGestureOwner {
     },
 
     move(buttons: number): void {
-      if (!pressedOnHandle) return
       // No button held means the release was never seen: no click is coming, so
-      // drop ownership and let hover resume instead of freezing it until the
-      // next press.
+      // drop all ownership and let hover resume instead of freezing it until
+      // the next press. This covers an armed sketch drag as well as a handle.
       if ((buttons & 1) === 0) {
         reset()
         return
       }
+      if (!pressedOnHandle) return
       // The handle's own hover is what keeps the arrow painted hot and
       // labelled, so this does not clear hover; it only stops new resolves.
       hoverFrozen = true
