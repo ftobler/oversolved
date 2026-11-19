@@ -34,13 +34,13 @@ export function reconcilePartStyle(doc: PartDoc, parts: Record<string, PartResul
     // one after the import's file bytes were replaced.
     if (nextStyle[partId]) continue
     const partNumber = nextFreePartNumber()
-    const body = parts?.[partId]
+    const part = parts?.[partId]
     nextStyle[partId] = {
       name: `part ${partNumber}`,
-      // A STEP import seeds the colour its file gives the body; the palette
-      // is the fallback for a modelled body and an uncoloured file.
-      color: body?.import_color ?? pickPartColor(partNumber),
-      created_by: body?.created_by,
+      // A STEP import seeds the colour its file gives the part; the palette
+      // is the fallback for a modelled part and an uncoloured file.
+      color: part?.import_color ?? pickPartColor(partNumber),
+      created_by: part?.created_by,
     }
   }
 

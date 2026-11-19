@@ -544,17 +544,17 @@ export function toPartMesh(partResult: PartResult): PartMesh {
 }
 
 /**
- * A body's display colour in the assembly: the part document's own part_style
+ * A part's display colour in the assembly: the part document's own part_style
  * colour (what the part editor shows, including a user recolour), else the
- * colour its STEP file gave it (a headless add_step_part part has no
+ * colour its STEP file gave it (a headless add_step_part document has no
  * part_style until a write-back runs on it), else none.
  */
-export function bundleBodyColor(
-  bodyId: string,
+export function bundlePartColor(
+  partId: string,
   partResult: PartResult,
   partStyle: Readonly<Record<string, PartStyleEntry>> | undefined,
 ): string | undefined {
-  return partStyle?.[bodyId]?.color ?? partResult.import_color
+  return partStyle?.[partId]?.color ?? partResult.import_color
 }
 
 /** Build a PartBundle from the raw solve output (tuples still in place from tessellation). */
@@ -579,9 +579,9 @@ export function toPartBundle(
     return n === 0 ? base : `${base}_${n + 1}`
   }
   const allAnchors: Record<string, Anchor> = {}
-  for (const [bodyId, part] of Object.entries(partResults)) {
+  for (const [partId, part] of Object.entries(partResults)) {
     const { anchors, entityAnchors } = extractPartAnchors(part, mintAnchorId)
-    const color = bundleBodyColor(bodyId, part, partStyle)
+    const color = bundlePartColor(partId, part, partStyle)
     parts.push({ ...toPartMesh(part), entityAnchors, ...(color !== undefined && { color }) })
     Object.assign(allAnchors, anchors)
   }

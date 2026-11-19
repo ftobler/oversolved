@@ -76,7 +76,7 @@ interface Tally {
  * - When more than one share appeared, the result carries a note, also when
  *   the uncoloured share won and the body keeps no file colour.
  */
-export function bodyImportColor(
+export function partImportColor(
   faces: readonly FaceColorSample[],
   solidColor: string | null,
 ): ImportColor | null {
@@ -125,16 +125,16 @@ function breakTie(tied: Tally[], solidColor: string | null): { key: string; choi
 }
 
 /** The reply text for a body whose faces disagreed. */
-export function importColorNoteText(bodyId: string, note: ImportColorNote): string {
+export function importColorNoteText(partId: string, note: ImportColorNote): string {
   const percent = Math.round(note.share * 100)
   const others = note.dropped.length === 1 ? '1 other colour' : `${note.dropped.length} other colours`
   const tail = `; ${others} dropped (${note.dropped.join(', ')})`
   if (note.color === null) {
-    return `body ${bodyId} stays uncoloured: ${percent}% of its face area has no colour in the STEP file${tail}`
+    return `part ${partId} stays uncoloured: ${percent}% of its face area has no colour in the STEP file${tail}`
   }
   if (note.choice === 'solid-tie') {
-    return `body ${bodyId} takes ${note.color}, the STEP file's colour for the solid, because its face colours tie${tail}`
+    return `part ${partId} takes ${note.color}, the STEP file's colour for the solid, because its face colours tie${tail}`
   }
   const how = note.choice === 'largest-face-tie' ? ', a tie broken by its largest face' : ''
-  return `body ${bodyId} takes ${note.color} from the STEP file (${percent}% of its face area${how})${tail}`
+  return `part ${partId} takes ${note.color} from the STEP file (${percent}% of its face area${how})${tail}`
 }

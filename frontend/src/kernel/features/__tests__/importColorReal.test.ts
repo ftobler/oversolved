@@ -46,7 +46,7 @@ function fixture(name: string): Uint8Array {
   return new Uint8Array(readFileSync(new URL(`../../occ/__fixtures__/${name}`, import.meta.url)))
 }
 
-interface ImportedBody {
+interface ImportedPart {
   id: string
   color: string | undefined
   volume: number
@@ -54,7 +54,7 @@ interface ImportedBody {
 }
 
 interface Imported {
-  bodies: ImportedBody[]
+  bodies: ImportedPart[]
   note: string | undefined
 }
 
@@ -140,7 +140,7 @@ describe.skipIf(!oc)('STEP import colours (real OCC)', () => {
     }
     const imported = importFixture(occ, 'color_faces.step')
     expect(imported.bodies.map((b) => b.color)).toEqual(['#cc3333'])
-    expect(imported.note).toMatch(/^body body_imp takes #cc3333 from the STEP file \(\d+% of its face area\); 1 other colour dropped \(#3333cc\)$/)
+    expect(imported.note).toMatch(/^part body_imp takes #cc3333 from the STEP file \(\d+% of its face area\); 1 other colour dropped \(#3333cc\)$/)
   })
 
   it('(c) a solid colour with one differently coloured face: the face keeps its own, the body the solid', () => {

@@ -383,16 +383,16 @@ describe('toPartBundle', () => {
   })
 
   it('colours each body from part_style, else from its STEP file, else not at all', () => {
-    const body = (id: string, importColor?: string): PartResult => ({
+    const part = (id: string, importColor?: string): PartResult => ({
       id, created_by: 'imp', modified_by: [],
       mesh: { vertices: [[0, 0, 0]], faces: [[0, 0, 0]] },
       ...(importColor !== undefined && { import_color: importColor }),
     })
     const parts: Record<string, PartResult> = {
       // A user recolour in the part document beats the file colour.
-      a: body('a', '#808080'),
-      b: body('b', '#cc3333'),
-      c: body('c'),
+      a: part('a', '#808080'),
+      b: part('b', '#cc3333'),
+      c: part('c'),
     }
     const bundle = toPartBundle('doc', 'h', parts, { a: { name: 'part 1', color: '#123456' } })
     expect(bundle.bodies.map(b => b.color)).toEqual(['#123456', '#cc3333', undefined])

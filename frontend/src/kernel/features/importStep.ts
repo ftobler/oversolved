@@ -8,7 +8,7 @@ import type { SubShapeMap } from '../occ/subshapeIdentity'
 import { canonicalFaces } from '../occ/partNames'
 import { faceArea } from '../occ/primitives'
 import {
-  bodyImportColor, hexOfPackedRgb, importColorNoteText, type FaceColorSample,
+  partImportColor, hexOfPackedRgb, importColorNoteText, type FaceColorSample,
 } from '../occ/importColor'
 import type { HandleTable } from '../occ/handleTable'
 import type { PartSolid } from '../types3d'
@@ -108,16 +108,16 @@ export function solveImportStep(
 }
 
 /**
- * Stamp each new body with the colour its file gives it (occ/importColor.ts)
- * and return the notes for the bodies whose faces disagreed. `parts[i]` is the
- * solid `ids[i]` was minted from. Face areas are read only for a body whose
+ * Stamp each new part with the colour its file gives it (occ/importColor.ts)
+ * and return the notes for the parts whose faces disagreed. `solids[i]` is the
+ * solid `ids[i]` was minted from. Face areas are read only for a part whose
  * faces carry more than one colour: in the common case (one colour, or none)
  * there is nothing to weigh.
  */
 function applyImportColors(
   oc: OccModule,
   scope: DisposeScope,
-  parts: OccShape[],
+  solids: OccShape[],
   ids: string[],
   faceColors: SubShapeMap<number>,
   solidColors: SubShapeMap<number>,
@@ -125,10 +125,10 @@ function applyImportColors(
 ): string[] {
   const notes: string[] = []
   if (faceColors.size === 0 && solidColors.size === 0) return notes
-  parts.forEach((part, i) => {
-    const body = partStore[ids[i]]
-    if (!body) return
-    const faces = canonicalFaces(oc, scope, part)
+  solids.forEach((solid, i) => {
+    const part = partStore[ids[i]]
+    if (!part) return
+    const faces = canonicalFaces(oc, scope, solid)
     const colors = faces.map((face) => {
       const packed = faceColors.get(face)
       return packed === undefined ? null : hexOfPackedRgb(packed)
@@ -138,10 +138,10 @@ function applyImportColors(
       color,
       area: uniform ? 1 : faceArea(oc, scope, faces[at] as OccShape),
     }))
-    const solidPacked = solidColors.get(part as OccSubShape)
-    const chosen = bodyImportColor(samples, solidPacked === undefined ? null : hexOfPackedRgb(solidPacked))
+    const solidPacked = solidColors.get(solid as OccSubShape)
+    const chosen = partImportColor(samples, solidPacked === undefined ? null : hexOfPackedRgb(solidPacked))
     if (chosen === null) return
-    if (chosen.color !== null) body.import_color = chosen.color
+    if (chosen.color !== null) part.import_color = chosen.color
     if (chosen.note) notes.push(importColorNoteText(ids[i], chosen.note))
   })
   return notes

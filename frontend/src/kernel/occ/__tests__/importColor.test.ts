@@ -1,28 +1,29 @@
 import { describe, it, expect } from 'vitest'
-import { bodyImportColor, hexOfPackedRgb, importColorNoteText, UNCOLOURED } from '../importColor'
+import { partImportColor, hexOfPackedRgb, importColorNoteText, UNCOLOURED } from '../importColor'
 
 const RED = '#cc3333'
 const BLUE = '#3333cc'
 const GREEN = '#33cc33'
 
-describe('bodyImportColor', () => {
+describe('partImportColor', () => {
+  // Every case is one part (one solid) of an import.
   it('gives null when nothing is coloured', () => {
-    expect(bodyImportColor([], null)).toBeNull()
-    expect(bodyImportColor([{ color: null, area: 4 }, { color: null, area: 2 }], null)).toBeNull()
+    expect(partImportColor([], null)).toBeNull()
+    expect(partImportColor([{ color: null, area: 4 }, { color: null, area: 2 }], null)).toBeNull()
   })
 
   it('takes the one colour every face agrees on, with no note', () => {
-    expect(bodyImportColor([{ color: RED, area: 1 }, { color: RED, area: 3 }], null))
+    expect(partImportColor([{ color: RED, area: 1 }, { color: RED, area: 3 }], null))
       .toEqual({ color: RED, note: null })
   })
 
   it('falls back to the solid colour when the body has no faces to vote', () => {
-    expect(bodyImportColor([], GREEN)).toEqual({ color: GREEN, note: null })
+    expect(partImportColor([], GREEN)).toEqual({ color: GREEN, note: null })
   })
 
   it('picks the majority by area, not by face count', () => {
     // Three small blue faces against one large red one: area wins.
-    const result = bodyImportColor([
+    const result = partImportColor([
       { color: BLUE, area: 1 }, { color: BLUE, area: 1 }, { color: BLUE, area: 1 },
       { color: RED, area: 10 },
     ], null)
@@ -34,20 +35,20 @@ describe('bodyImportColor', () => {
 
   it('lets uncoloured area outvote a lone coloured face, and still says so', () => {
     // A logo face does not paint the body, but the faces disagreed.
-    const result = bodyImportColor([{ color: null, area: 9 }, { color: RED, area: 1 }], null)
+    const result = partImportColor([{ color: null, area: 9 }, { color: RED, area: 1 }], null)
     expect(result?.color).toBeNull()
     expect(result?.note).toEqual({ color: null, share: 0.9, choice: 'majority', dropped: [RED] })
   })
 
   it('breaks a tie towards the solid colour', () => {
-    const result = bodyImportColor([{ color: RED, area: 2 }, { color: BLUE, area: 2 }], BLUE)
+    const result = partImportColor([{ color: RED, area: 2 }, { color: BLUE, area: 2 }], BLUE)
     expect(result?.color).toBe(BLUE)
     expect(result?.note?.choice).toBe('solid-tie')
     expect(result?.note?.dropped).toEqual([RED])
   })
 
   it('breaks a tie towards the solid colour even when no face shows it', () => {
-    const result = bodyImportColor([{ color: RED, area: 2 }, { color: BLUE, area: 2 }], GREEN)
+    const result = partImportColor([{ color: RED, area: 2 }, { color: BLUE, area: 2 }], GREEN)
     expect(result?.color).toBe(GREEN)
     expect(result?.note?.share).toBe(0)
     expect(result?.note?.dropped).toEqual([RED, BLUE])
@@ -55,7 +56,7 @@ describe('bodyImportColor', () => {
 
   it('breaks a tie without a solid colour towards the largest single face', () => {
     // Equal totals; blue owns the single biggest face.
-    const result = bodyImportColor([
+    const result = partImportColor([
       { color: RED, area: 1 }, { color: RED, area: 1 }, { color: BLUE, area: 2 },
     ], null)
     expect(result?.color).toBe(BLUE)
@@ -63,12 +64,12 @@ describe('bodyImportColor', () => {
   })
 
   it('treats areas within a relative 1e-9 as tied', () => {
-    const result = bodyImportColor([{ color: RED, area: 1 }, { color: BLUE, area: 1 + 1e-12 }], RED)
+    const result = partImportColor([{ color: RED, area: 1 }, { color: BLUE, area: 1 + 1e-12 }], RED)
     expect(result?.color).toBe(RED)
   })
 
   it('lists every dropped colour, largest area first, the uncoloured share by name', () => {
-    const result = bodyImportColor([
+    const result = partImportColor([
       { color: RED, area: 10 }, { color: BLUE, area: 1 }, { color: GREEN, area: 3 }, { color: null, area: 2 },
     ], null)
     expect(result?.color).toBe(RED)
@@ -77,7 +78,7 @@ describe('bodyImportColor', () => {
   })
 
   it('ignores a non-finite or negative area', () => {
-    const result = bodyImportColor([{ color: RED, area: Number.NaN }, { color: BLUE, area: -5 }, { color: RED, area: 1 }], null)
+    const result = partImportColor([{ color: RED, area: Number.NaN }, { color: BLUE, area: -5 }, { color: RED, area: 1 }], null)
     expect(result?.color).toBe(RED)
   })
 })
@@ -93,14 +94,14 @@ describe('colour encoding', () => {
 describe('importColorNoteText', () => {
   it('names the body, the colour, its share and the dropped colours', () => {
     expect(importColorNoteText('body_imp', { color: RED, share: 0.8571, choice: 'majority', dropped: [BLUE] }))
-      .toBe('body body_imp takes #cc3333 from the STEP file (86% of its face area); 1 other colour dropped (#3333cc)')
+      .toBe('part body_imp takes #cc3333 from the STEP file (86% of its face area); 1 other colour dropped (#3333cc)')
     expect(importColorNoteText('b', { color: RED, share: 0.5, choice: 'majority', dropped: [BLUE, UNCOLOURED] }))
       .toContain('2 other colours dropped (#3333cc, uncoloured)')
   })
 
   it('says a solid colour settled a tie instead of quoting a 0% share', () => {
     const text = importColorNoteText('b', { color: GREEN, share: 0, choice: 'solid-tie', dropped: [RED, BLUE] })
-    expect(text).toBe("body b takes #33cc33, the STEP file's colour for the solid, because its face colours tie; "
+    expect(text).toBe("part b takes #33cc33, the STEP file's colour for the solid, because its face colours tie; "
       + '2 other colours dropped (#cc3333, #3333cc)')
     expect(text).not.toContain('0%')
   })
@@ -112,6 +113,6 @@ describe('importColorNoteText', () => {
 
   it('says when the body stays uncoloured', () => {
     expect(importColorNoteText('b', { color: null, share: 0.9, choice: 'majority', dropped: [RED] }))
-      .toBe('body b stays uncoloured: 90% of its face area has no colour in the STEP file; 1 other colour dropped (#cc3333)')
+      .toBe('part b stays uncoloured: 90% of its face area has no colour in the STEP file; 1 other colour dropped (#cc3333)')
   })
 })
