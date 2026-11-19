@@ -25,7 +25,7 @@
 //! Residuals per mate kind:
 //! - Fixed:              point coincidence plus the offset vector in A's frame (3) + signed axis difference w/ flip (3) + absolute roll to authored angle (1)
 //! - Spherical:          point coincidence (3)
-//! - Parallel:           dot product of axes minus sign (1)
+//! - Parallel:           signed axis difference w/ flip (3)
 //! - Sliding:            signed axis difference w/ flip (3) + perp displacement cross (3) + absolute roll to authored angle (1) + one row per authored distance bound
 //!   -- prismatic: slide is the only free DOF
 //! - Rotating:           point coincidence plus the axial offset along A's axis (3) + signed axis difference w/ flip (3) + absolute roll to authored angle (1, only when `angle_set`) + one row per authored angle bound
@@ -34,7 +34,7 @@
 //!   -- cylindrical: slide + roll are free DOF
 //! - Tangential:         signed-distance formula (1), surface-pair dependent
 //! - CopyRotation:       roll_b - ratio * roll_a around seed-frame axes (1)
-//! - ParallelPlaneDistance: dot(diff, normal) - offset (1) + axis-dot parallelism w/ flip (1)
+//! - ParallelPlaneDistance: dot(diff, normal) - offset (1) + signed axis difference w/ flip (3)
 //!
 //! Orientation is authored data, never seed state: every orientation target
 //! above comes off the wire (`flip`, `angle`), so a solve is a pure function of
@@ -213,7 +213,7 @@ enum RowClass {
     /// A scale-free orientation measure, read against `RESIDUAL_ANGLE_TOL`
     /// (radians). This covers both a radian row (the roll target, a gear
     /// ratio) and a dimensionless trigonometric one (the unit-axis
-    /// difference, `dot - sign`).
+    /// difference, whose components read the chord of the misalignment).
     Angle,
 }
 
@@ -226,7 +226,8 @@ fn mate_row_classes(mate: &Mate) -> Vec<RowClass> {
         // Point coincidence, axis difference, absolute roll.
         MateKind::Fixed => vec![Length, Length, Length, Angle, Angle, Angle, Angle],
         MateKind::Spherical => vec![Length; 3],
-        MateKind::Parallel => vec![Angle],
+        // Axis difference.
+        MateKind::Parallel => vec![Angle; 3],
         // Axis difference, perp displacement, absolute roll, then one row per
         // authored slide bound.
         MateKind::Sliding => {
@@ -259,8 +260,8 @@ fn mate_row_classes(mate: &Mate) -> Vec<RowClass> {
         MateKind::SlidingRotating => vec![Angle, Angle, Angle, Length, Length, Length],
         MateKind::Tangential => vec![Length],
         MateKind::CopyRotation => vec![Angle],
-        // Plane separation, then axis parallelism.
-        MateKind::ParallelPlaneDistance => vec![Length, Angle],
+        // Plane separation, then the axis difference.
+        MateKind::ParallelPlaneDistance => vec![Length, Angle, Angle, Angle],
     }
 }
 
@@ -1033,11 +1034,11 @@ impl MateProblem {
                     r.push(pa[2] - pb[2]);
                 }
                 MateKind::Parallel => {
-                    let a_w = world_direction(x, off_a, &mate.a.geometry.axis);
-                    let b_w = world_direction(x, off_b, &mate.b.geometry.axis);
-                    let dot = a_w[0] * b_w[0] + a_w[1] * b_w[1] + a_w[2] * b_w[2];
-                    let sign = if mate.flip { -1.0 } else { 1.0 };
-                    r.push(dot - sign);
+                    // Signed axis difference w/ flip (see Fixed's arm). Not the
+                    // cosine `dot - sign`: that row is quadratic in the angle,
+                    // so its slope vanishes at the solution and LM stalled a
+                    // milliradian short, creeping on every re-solve.
+                    self.push_axis_difference(&mut r, x, mate, off_a, off_b);
                 }
                 MateKind::Sliding => {
                     // Prismatic: signed axis difference + perp displacement cross
@@ -1176,11 +1177,8 @@ impl MateProblem {
                     // deliberately leaves free. See `Mate::axial_offset`.
                     r.push(dist - mate.axial_offset());
                     // Parallelism: nothing above aligns the normals -- the name and
-                    // the Flip checkbox both promised it. Same formula as `Parallel`.
-                    let b_w = world_direction(x, off_b, &mate.b.geometry.axis);
-                    let dot = a_w[0] * b_w[0] + a_w[1] * b_w[1] + a_w[2] * b_w[2];
-                    let sign = if mate.flip { -1.0 } else { 1.0 };
-                    r.push(dot - sign);
+                    // the Flip checkbox both promised it. Same rows as `Parallel`.
+                    self.push_axis_difference(&mut r, x, mate, off_a, off_b);
                 }
             }
 
@@ -1194,6 +1192,26 @@ impl MateProblem {
         }
 
         r
+    }
+
+    /// The face-parallel kinds' alignment rows, `a_w - s * b_w` with the
+    /// authored flip sign: the same three rows Fixed, Sliding and Rotating
+    /// push inline. Linear in the misalignment angle (their norm is the chord
+    /// `2 sin(theta/2)`), so LM converges quadratically onto exact parallel.
+    fn push_axis_difference(
+        &self,
+        r: &mut Vec<f64>,
+        x: &[f64],
+        mate: &Mate,
+        off_a: usize,
+        off_b: usize,
+    ) {
+        let a_w = world_direction(x, off_a, &mate.a.geometry.axis);
+        let b_w = world_direction(x, off_b, &mate.b.geometry.axis);
+        let s = axis_sign(mate.flip);
+        r.push(a_w[0] - s * b_w[0]);
+        r.push(a_w[1] - s * b_w[1]);
+        r.push(a_w[2] - s * b_w[2]);
     }
 
     /// Tangential signed-distance residual, formula selected by anchor kind pair.

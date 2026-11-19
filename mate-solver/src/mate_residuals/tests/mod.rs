@@ -11,6 +11,7 @@ mod dynamics;
 mod jacobian_fd;
 mod limits;
 mod manifold;
+mod parallel_precision;
 mod roll_scale;
 mod seed_moved;
 mod seeding;

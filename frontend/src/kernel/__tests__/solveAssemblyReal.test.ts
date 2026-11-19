@@ -426,6 +426,49 @@ describeReal('solveAssembly with the real mate solver', () => {
     expect(dist(settled.transforms['pb'])).toBeLessThan(0.01)
   })
 
+  // A bar laid on a plate by a plane contact must land flat, and the editor's
+  // bake-then-solve (every drag pointer-up, fix toggle and delete) must leave it
+  // there. The cosine alignment row this pins against stopped 2e-3 rad short --
+  // half a millimetre at the ends of a 500 bar -- and every re-solve moved it
+  // again, so the assembly crept on each bake.
+  it('a plane contact lands a tilted bar flat and a baked re-solve moves nothing', async () => {
+    const bar = planeBundle('doc-b', '1')
+    bar.anchors = {
+      face: {
+        kind: 'plane',
+        point: [250, 10, 0],
+        axis: [0, 0, -1],
+        geom_hash: '@gdf|250.000|10.000|0.000|0.000|0.000|-1.000',
+        created_by: 'feat1',
+      },
+    }
+    await bundleCachePut(bar)
+    // Seeded at a compound tilt: 20 deg about X then 15 about Y.
+    const h = (deg: number) => (deg * Math.PI) / 360
+    const [sx, cx, sy, cy] = [Math.sin(h(20)), Math.cos(h(20)), Math.sin(h(15)), Math.cos(h(15))]
+    const tilted: Transform3D = { tx: 10, ty: 20, tz: 40, qx: cy * sx, qy: sy * cx, qz: -sy * sx, qw: cy * cx }
+    const parts = [
+      { handle: 'pa', doc_id: 'doc-a', transform: identity(), fixed: true },
+      { handle: 'pb', doc_id: 'doc-b', transform: tilted },
+    ]
+    const mates = [{
+      id: 'm1', kind: 'parallel_plane_distance' as const, flip: true,
+      ref_a: { part: 'pa', anchor: 'face' },
+      ref_b: { part: 'pb', anchor: 'face' },
+    }]
+
+    const first = await solveAssembly(parts, revs, mates, relay, solveMate!)
+    const pose = first.transforms['pb']
+    const normal = rotateVector([pose.qx, pose.qy, pose.qz, pose.qw], [0, 0, -1])
+    // Face to face with the plate's +Z: the bar's outward normal is exactly -Z.
+    expect(Math.hypot(normal[0], normal[1])).toBeLessThan(1e-9)
+    expect(first.status.verdict).toBe('underconstrained')
+
+    const baked = parts.map(p => p.handle === 'pb' ? { ...p, transform: { ...pose } } : p)
+    const second = await solveAssembly(baked, revs, mates, relay, solveMate!)
+    expect(second.movedParts).toEqual([])
+  })
+
   it('bakes the solved transform into the rendered vertices', async () => {
     const parts = [
       { handle: 'pa', doc_id: 'doc-a', transform: identity(), fixed: true },

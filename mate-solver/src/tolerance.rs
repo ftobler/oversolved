@@ -32,9 +32,10 @@ pub(crate) const RESIDUAL_REL_TOL: f64 = 1e-4;
 ///
 /// The unit-axis difference `|a_w - s * b_w|` is the chord of the same angle
 /// (`2 sin(theta/2)`, equal to `theta` to third order), so it reads against
-/// this width too. `dot - sign` is the cosine form of that angle: it reads
-/// `1 - cos(theta)` near a solution, so this width bounds the misalignment it
-/// can hide at about 0.8 degrees, the same reading it had at unit scale.
+/// this width too. Every alignment row is that difference now: the cosine
+/// form `dot - sign` that Parallel and ParallelPlaneDistance once used reads
+/// `1 - cos(theta)`, which hid up to 0.8 degrees inside this width and
+/// stalled the descent short of parallel.
 pub(crate) const RESIDUAL_ANGLE_TOL: f64 = 1e-4;
 
 /// How far a solved pose may sit from the seed it was solved from and still

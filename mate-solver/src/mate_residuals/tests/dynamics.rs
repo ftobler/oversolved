@@ -84,7 +84,7 @@ fn sliding_reports_dof_one_and_holds_authored_roll() {
 
 #[test]
 fn parallel_plane_distance_aligns_normals_and_holds_the_offset() {
-    // Stage D: parallel_plane_distance gains the Parallel axis-dot residual,
+    // Stage D: parallel_plane_distance gains the Parallel alignment rows,
     // so it now actually aligns the normals (previously only the distance
     // along A's axis was constrained; nothing stopped the planes fanning
     // apart). flip=false -> parallel; the distance-along-axis residual is
@@ -118,8 +118,11 @@ fn parallel_plane_distance_aligns_normals_and_holds_the_offset() {
         "tz should hold the 5-unit offset, got {}",
         p[9]
     );
-    // Parallelism pins 2 more rotational DOF than the distance-only formula did.
-    assert_eq!(out.diagnostics.dof, 4);
+    // A plane contact leaves the two in-plane slides and the spin: the
+    // distance row plus the two tilts the axis difference pins. The cosine row
+    // this replaced read 4, because its slope fades to zero at the solution
+    // and the SVD saw only one of the two tilts it was meant to hold.
+    assert_eq!(out.diagnostics.dof, 3);
 }
 
 #[test]
@@ -165,14 +168,14 @@ fn mate_residual_count_matches_actual_residuals_pushed() {
     let expected: &[(MateKind, bool, usize)] = &[
         (MateKind::Fixed, false, 7),
         (MateKind::Spherical, false, 3),
-        (MateKind::Parallel, false, 1),
+        (MateKind::Parallel, false, 3),
         (MateKind::Sliding, false, 7),
         (MateKind::Rotating, false, 6),
         (MateKind::Rotating, true, 7),
         (MateKind::SlidingRotating, false, 6),
         (MateKind::Tangential, false, 1),
         (MateKind::CopyRotation, false, 1),
-        (MateKind::ParallelPlaneDistance, false, 2),
+        (MateKind::ParallelPlaneDistance, false, 4),
     ];
     for &(kind, angle_set, want) in expected {
         let mut one = mate(
@@ -265,7 +268,7 @@ enum Row {
     Coincidence,
     /// A signed separation measured along an axis, in wire units.
     Distance,
-    /// A unit-axis alignment: the axis difference or its `dot - sign` form.
+    /// A unit-axis alignment: one component of the signed axis difference.
     Axis,
     /// A roll angle, in radians.
     Roll,
@@ -304,7 +307,7 @@ fn row_classes_pin_the_unit_of_every_row() {
             ],
         ),
         (MateKind::Spherical, false, &[Coincidence; 3]),
-        (MateKind::Parallel, false, &[Axis]),
+        (MateKind::Parallel, false, &[Axis, Axis, Axis]),
         (
             MateKind::Sliding,
             false,
@@ -335,7 +338,11 @@ fn row_classes_pin_the_unit_of_every_row() {
         ),
         (MateKind::Tangential, false, &[Distance]),
         (MateKind::CopyRotation, false, &[Roll]),
-        (MateKind::ParallelPlaneDistance, false, &[Distance, Axis]),
+        (
+            MateKind::ParallelPlaneDistance,
+            false,
+            &[Distance, Axis, Axis, Axis],
+        ),
     ];
     for &(kind, angle_set, rows) in cases {
         let mut one = mate(

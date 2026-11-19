@@ -73,7 +73,7 @@ impl MateProblem {
                     row += 3;
                 }
                 MateKind::Parallel => {
-                    self.fill_axis_dot(
+                    self.fill_axis_difference(
                         &mut j,
                         row,
                         off_a,
@@ -81,8 +81,9 @@ impl MateProblem {
                         x,
                         &mate.a.geometry.axis,
                         &mate.b.geometry.axis,
+                        axis_sign(mate.flip),
                     );
-                    row += 1;
+                    row += 3;
                 }
                 MateKind::Sliding => {
                     // Signed axis difference w/ flip.
@@ -204,7 +205,7 @@ impl MateProblem {
                         &mate.a.geometry.axis,
                     );
                     row += 1;
-                    self.fill_axis_dot(
+                    self.fill_axis_difference(
                         &mut j,
                         row,
                         off_a,
@@ -212,8 +213,9 @@ impl MateProblem {
                         x,
                         &mate.a.geometry.axis,
                         &mate.b.geometry.axis,
+                        axis_sign(mate.flip),
                     );
-                    row += 1;
+                    row += 3;
                 }
             }
 
@@ -376,33 +378,6 @@ impl MateProblem {
                 j[(r, off_a + 3 + qi)] += da[qi][comp];
                 j[(r, off_b + 3 + qi)] += -sign * db[qi][comp];
             }
-        }
-    }
-
-    /// Axis dot product: `dot(a_w, b_w) - sign` (1 residual).
-    #[allow(clippy::too_many_arguments)]
-    fn fill_axis_dot(
-        &self,
-        j: &mut DMatrix<f64>,
-        row: usize,
-        off_a: usize,
-        off_b: usize,
-        x: &[f64],
-        axis_a: &[f64; 3],
-        axis_b: &[f64; 3],
-    ) {
-        let qa = (x[off_a + 3], x[off_a + 4], x[off_a + 5], x[off_a + 6]);
-        let qb = (x[off_b + 3], x[off_b + 4], x[off_b + 5], x[off_b + 6]);
-        let a_w = rotate_vec(qa.0, qa.1, qa.2, qa.3, axis_a);
-        let b_w = rotate_vec(qb.0, qb.1, qb.2, qb.3, axis_b);
-        let da = drot_vec_dq(qa.0, qa.1, qa.2, qa.3, axis_a);
-        let db = drot_vec_dq(qb.0, qb.1, qb.2, qb.3, axis_b);
-
-        for qi in 0..4 {
-            j[(row, off_a + 3 + qi)] +=
-                da[qi][0] * b_w[0] + da[qi][1] * b_w[1] + da[qi][2] * b_w[2];
-            j[(row, off_b + 3 + qi)] +=
-                a_w[0] * db[qi][0] + a_w[1] * db[qi][1] + a_w[2] * db[qi][2];
         }
     }
 
