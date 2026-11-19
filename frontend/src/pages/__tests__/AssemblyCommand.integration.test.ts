@@ -40,4 +40,32 @@ describe('assembly command integration: add_part end to end', () => {
     // The operation's solve cell is what the page host turns into a request.
     expect(effects).toEqual(['solve'])
   })
+
+  // I8's refusal is a failed Result at the command seam, not an exception: the
+  // page shows the message instead of the click handler unwinding silently.
+  it('returns the guard message as a failed Result when the part is not live', () => {
+    let doc: AssemblyDoc = { version: 1, kind: 'assembly', features: [] }
+    const runOperation = vi.fn(<K extends AssemblyOperationId>(id: K, payload: AssemblyOperationInputs[K]) => {
+      runAssemblyOperation(id, payload, {
+        doc,
+        transforms: {},
+        knownPartIds: new Set(['part-1']),
+        mutateSession: (_label, apply) => { doc = apply(doc) },
+        mutateOneShot: (_label, apply) => { doc = apply(doc) },
+        requestSolve: () => {},
+        requestSolveOrDefer: () => {},
+      })
+    })
+    const registry = new CommandRegistry<AssemblyCommandContext>(() => assemblyContext({ runOperation }))
+    for (const spec of ASSEMBLY_COMMAND_SPECS) registry.register(spec)
+
+    const result = registry.execute('add_part', { docId: 'ghost', docRev: 1 })
+
+    expect(result).toEqual({
+      ok: false,
+      code: 'refused',
+      message: 'Part is not a live entry in this workspace: ghost',
+    })
+    expect(doc.features ?? []).toHaveLength(0)
+  })
 })

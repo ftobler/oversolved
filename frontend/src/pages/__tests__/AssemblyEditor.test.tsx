@@ -91,10 +91,14 @@ vi.mock('@/stores/previewStore', () => ({
 }))
 
 import { executeCommand, setEditorCommandRegistry } from '@/utils/core/commandRegistry'
-import { CommandRegistry } from '@/utils/core/commandSpec'
+import { CommandRegistry, objectParams, Field } from '@/utils/core/commandSpec'
+import { errorResult } from '@/session/result'
 import { assemblyContext } from './commandFixtures'
 import type { AssemblyCommandContext } from '@/pages/assemblyCommandEntries'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
+import type { WorkspaceSession } from '@/workspace/session'
+import type { EntryMeta } from '@/workspace/types'
 import { useEditorModeStore } from '@/stores/editorModeStore'
 import { backendBundle } from '@/adapters/backend'
 import { MAX_STEP_IMPORT_BYTES } from '@/stores/documentStore/stepImport'
@@ -115,6 +119,49 @@ const DANGLING_ASSEMBLY = [
   '      transform: { tx: 10, ty: 0, tz: 0, qx: 0, qy: 0, qz: 0, qw: 1 }',
   '',
 ].join('\n')
+
+const BRACKET: EntryMeta = {
+  id: 'part-1', path: 'documents/Bracket.yaml', kind: 'document', name: 'Bracket', docKind: 'part', rev: 5,
+}
+const BOLT: EntryMeta = {
+  id: 'part-2', path: 'documents/Bolt.yaml', kind: 'document', name: 'Bolt', docKind: 'part', rev: 2,
+}
+
+// A workspace session whose list read the test can hold open. The gates are a
+// bag, not a per-caller queue: the assembly solve reads the same session for its
+// hash index, and every held read may be released or failed together.
+function gatedSession(initial: EntryMeta[]) {
+  let current = initial
+  let gated = false
+  const gates: Array<{ resolve: (value: EntryMeta[]) => void; reject: (error: unknown) => void }> = []
+  useWorkspaceSessionStore.setState({
+    session: {
+      workspace: 'asm-1',
+      listEntries: () => {
+        if (!gated) return Promise.resolve(current)
+        return new Promise<EntryMeta[]>((resolve, reject) => { gates.push({ resolve, reject }) })
+      },
+      readEntry: vi.fn(),
+      writeEntry: vi.fn(),
+      resolveFile: vi.fn(),
+      referencesOf: vi.fn(),
+      referenceEdges: vi.fn(async () => ({})),
+      savedRevs: async () => new Map(),
+    } as unknown as WorkspaceSession,
+  })
+  return {
+    hold(next?: EntryMeta[]) { if (next) current = next; gated = true },
+    release(next?: EntryMeta[]) { if (next) current = next; gated = false },
+    held() { return gates.length },
+    resolveHeld(next: EntryMeta[]) {
+      current = next
+      for (const gate of gates.splice(0)) gate.resolve(next)
+    },
+    rejectHeld(error: unknown) {
+      for (const gate of gates.splice(0)) gate.reject(error)
+    },
+  }
+}
 
 describe('AssemblyEditor (Stage 6b)', () => {
   beforeEach(() => {
@@ -214,6 +261,150 @@ describe('AssemblyEditor (Stage 6b)', () => {
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1))
     await insertPart('Bracket')
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2))
+  })
+
+  it('inserts a part created after the editor mounted', async () => {
+    h.list = [{ uuid: 'part-1', name: 'Bracket', kind: 'part', meta: { rev: 5 } }]
+    await renderLoaded()
+    h.list = [
+      { uuid: 'part-1', name: 'Bracket', kind: 'part', meta: { rev: 5 } },
+      { uuid: 'part-2', name: 'Bolt', kind: 'part', meta: { rev: 2 } },
+    ]
+    await insertPart('Bolt')
+    expect(useAssemblyStore.getState().instances.map(inst => inst.doc_id)).toEqual(['part-2'])
+  })
+
+  // Opening the picker asks for a fresh list while the mount's read may still
+  // be in flight. An older answer landing last must not replace the newer list
+  // (or the guard set): that is the same stale-list mismatch as above, just
+  // decided by response order instead of by mount time.
+  it('ignores an older list read that lands after a newer one', async () => {
+    const pending: Array<(value: EntryMeta[]) => void> = []
+    useWorkspaceSessionStore.setState({
+      session: {
+        workspace: 'asm-1',
+        listEntries: () => new Promise<EntryMeta[]>(resolve => { pending.push(resolve) }),
+        readEntry: vi.fn(),
+        writeEntry: vi.fn(),
+        resolveFile: vi.fn(),
+        referencesOf: vi.fn(),
+        referenceEdges: vi.fn(async () => ({})),
+        savedRevs: async () => new Map(),
+      } as unknown as WorkspaceSession,
+    })
+    renderEditor()
+    await tick()
+
+    act(() => { executeCommand('insert_part_instance') })
+    await waitFor(() => expect(pending.length).toBeGreaterThanOrEqual(2))
+    // The newest request is the picker's open, however many mount reads ran.
+    const newest = pending[pending.length - 1]
+    const older = pending[0]
+
+    // The newer read (the picker's open) lands first, with both parts.
+    await act(async () => { newest([BRACKET, BOLT]) })
+    await waitFor(() => expect(pickerItem('Bolt')).toBeTruthy())
+    // The older read then answers without Bolt. It must be dropped.
+    await act(async () => { older([BRACKET]) })
+
+    expect(pickerItem('Bolt')).toBeTruthy()
+    fireEvent.click(pickerItem('Bolt')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Insert' }))
+    await tick()
+    expect(useAssemblyStore.getState().instances.map(inst => inst.doc_id)).toEqual(['part-2'])
+  })
+
+  // The open refresh is a pending answer, not an empty one. Until it lands, the
+  // previous rows must not be offered: a part deleted since the mount read
+  // would otherwise be inserted against the same stale guard set.
+  it('holds the previous rows back while the open refresh is pending', async () => {
+    const session = gatedSession([BRACKET, BOLT])
+    renderEditor()
+    await tick()
+    await tick()
+
+    session.hold([BRACKET])
+    act(() => { executeCommand('insert_part_instance') })
+    await waitFor(() => expect(session.held()).toBeGreaterThan(0))
+
+    expect(screen.getByText('Loading...')).toBeTruthy()
+    expect(screen.queryByText('Bracket')).toBeNull()
+    expect(screen.queryByText('Bolt')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Insert' })).toBeDisabled()
+
+    await act(async () => { session.resolveHeld([BRACKET]) })
+    await waitFor(() => expect(pickerItem('Bracket')).toBeTruthy())
+    expect(screen.queryByText('Bolt')).toBeNull()
+  })
+
+  // A failed read is visible, keeps the last good rows on screen, and refuses to
+  // confirm (the list vouching for those rows is the thing that failed). Opening
+  // again retries, clears the message and lands the current rows.
+  it('shows a failed refresh above the old rows and clears it on a retry', async () => {
+    const session = gatedSession([BRACKET, BOLT])
+    renderEditor()
+    await tick()
+    await tick()
+
+    session.hold()
+    act(() => { executeCommand('insert_part_instance') })
+    await waitFor(() => expect(session.held()).toBeGreaterThan(0))
+    await act(async () => { session.rejectHeld(new Error('workspace is busy')) })
+
+    await waitFor(() => expect(screen.getByText('workspace is busy')).toBeTruthy())
+    // The rows are still readable, but nothing can be confirmed from them.
+    fireEvent.click(pickerItem('Bolt')!)
+    expect(screen.getByRole('button', { name: 'Insert' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    session.release([BRACKET])
+    act(() => { executeCommand('insert_part_instance') })
+    await waitFor(() => expect(screen.queryByText('workspace is busy')).toBeNull())
+    await waitFor(() => expect(pickerItem('Bracket')).toBeTruthy())
+    expect(screen.queryByText('Bolt')).toBeNull()
+  })
+
+  // Double-clicking is the other confirm gesture: a real double click is two
+  // click events and then dblclick. Only the dblclick may insert, and it must
+  // land exactly one instance.
+  it('adds exactly one instance when a tile is double-clicked', async () => {
+    await renderLoaded()
+    act(() => { executeCommand('insert_part_instance') })
+    await waitFor(() => expect(pickerItem('Bracket')).toBeTruthy())
+    const tile = pickerItem('Bracket')!
+    fireEvent.click(tile)
+    fireEvent.click(tile)
+    fireEvent.doubleClick(tile)
+    await tick()
+    expect(useAssemblyStore.getState().instances.map(inst => inst.doc_id)).toEqual(['part-1'])
+  })
+
+  // A refused insert used to throw inside the click handler and disappear into
+  // a console error: the dialog stayed up and nothing said why. Whatever the
+  // command refuses with must reach the banner.
+  it('shows the refusal message when the add_part command fails', async () => {
+    await renderLoaded()
+    act(() => { executeCommand('insert_part_instance') })
+    await waitFor(() => expect(pickerItem('Bracket')).toBeTruthy())
+    fireEvent.click(pickerItem('Bracket')!)
+
+    // Swap only add_part; the dialog is already open and the Insert click is
+    // what resolves the registry, so no other command needs registering.
+    const refusing = new CommandRegistry<AssemblyCommandContext>(() => assemblyContext())
+    refusing.register({
+      id: 'add_part',
+      label: 'Add part',
+      params: objectParams({ docId: Field.string(), docRev: Field.number() }),
+      enabled: () => true,
+      run: () => errorResult('refused', 'Part is not a live entry in this workspace: part-1'),
+      undoable: true,
+    })
+    act(() => { setEditorCommandRegistry('assembly', refusing) })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Insert' }))
+    await tick()
+    expect(screen.getByText(/Part is not a live entry in this workspace: part-1/)).toBeTruthy()
+    expect(useAssemblyStore.getState().instances).toHaveLength(0)
   })
 
   // A sub-assembly is a directory row, so the picker grows an Assemblies group.
