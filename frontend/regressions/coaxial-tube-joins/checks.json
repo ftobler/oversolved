@@ -1,0 +1,55 @@
+{
+  "origin": {
+    "kind": "bug_report",
+    "ref": "bugreports/mcp-practice/03_build123d__build123d-official-examples__examples__intersecting_pipes.py/report.md",
+    "date": "2026-11-19"
+  },
+  "license": "own",
+  "severity": "hard",
+  "what": "six bores and coaxial tubes; every inner r4 joint folds to one cylinder",
+  "features": {
+    "default": "ok",
+    "except": {
+      "Origin": "exception",
+      "Top": "exception",
+      "Front": "exception",
+      "Right": "exception",
+      "sk_box": "underconstrained",
+      "c_f": "underconstrained",
+      "c_t": "underconstrained",
+      "c_r": "underconstrained",
+      "p_px": "underconstrained",
+      "p_nx": "underconstrained",
+      "p_py": "underconstrained",
+      "p_ny": "underconstrained",
+      "p_pz": "underconstrained",
+      "p_nz": "underconstrained"
+    }
+  },
+  "tolerance": {
+    "rel": 0.000001,
+    "abs": 0.000001
+  },
+  "topology": "strict",
+  "measures": {
+    "bodies": 1,
+    "volume": 1017.2189985477036,
+    "area": 3713.7558435353185,
+    "centroid": [
+      7.821792821931593e-9,
+      -4.167535020483844e-9,
+      -1.1947429967331407e-8
+    ],
+    "bbox": [
+      -15,
+      -15,
+      -15,
+      15,
+      15,
+      15
+    ],
+    "faces": 25,
+    "edges": 73
+  },
+  "snapshot": true
+}

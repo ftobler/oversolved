@@ -17,14 +17,19 @@
  * far around for a safe seam, or has holes, is left untouched; if the rebuilt
  * solid fails the validity or volume check the original shape is returned.
  *
- * Analytic cylinder faces join the clusters too, for a second reason: OCCT
- * 7.4's UnifySameDomain face merge spins forever (never throws) on two
+ * Analytic cylinder faces join the clusters too, for two reasons.  First,
+ * OCCT 7.4's UnifySameDomain face merge spins forever (never throws) on two
  * coaxial partial cylinder faces whose axes run opposite ways, e.g. a lip
  * extruded from a sketch arc (axis -Y) standing on a shell cavity's fillet
  * wall (axis +Y) (bug-fuse-hang).  The first analytic member of a cluster
  * sets the cluster's axis direction; every other member whose axis opposes it
  * is rebuilt on the shared cylinder, so the merge only ever sees one
- * direction.  An analytic member already pointing that way is left as it is.
+ * direction.  Second, two analytic faces can point the same way yet carry
+ * different X directions, i.e. different U=0 seams, and UnifySameDomain then
+ * cannot fold the boundary where they meet; a cluster that disagrees on the
+ * seam is rebuilt the same way, so every member takes the shared seam.  An
+ * analytic member that already points the anchor's way on the anchor's seam
+ * is left as it is.
  */
 
 import type { DisposeScope } from './disposeScope'
@@ -38,7 +43,7 @@ import type {
   OccSurfaceAdaptor,
 } from './occTypes'
 import { volumeOfDefault } from './volume'
-import { faceSurfaceFrame } from './primitives'
+import { faceCylinderXDirection, faceSurfaceFrame } from './primitives'
 import { swallowUnlessTrap } from '../errors'
 import { noProgress } from './defaultArgs'
 
@@ -209,6 +214,9 @@ interface CylMember {
   c: V3
   r: number
   fit: CylFit | null
+  // The analytic surface's own X direction, where the seam sits. Null for a
+  // fitted face: its underlying surface has no seam to compare.
+  xDir: V3 | null
 }
 
 type CylAxis = Pick<CylFit, 'd' | 'c' | 'r'>
@@ -218,6 +226,17 @@ function sameCylinder(a: CylAxis, b: CylAxis): boolean {
   if (Math.abs(Math.abs(dot(a.d, b.d)) - 1) > 1e-9) return false
   if (Math.abs(a.r - b.r) > CLUSTER_TOL) return false
   return norm(cross(sub(b.c, a.c), a.d)) < CLUSTER_TOL
+}
+
+/**
+ * Would UnifySameDomain see these two analytic cylinders as one surface? It
+ * needs the same seam direction, i.e. the same X direction. A fitted face has
+ * no vote: it is rebuilt onto the anchor's surface either way, so this answers
+ * only the analytic pair a same-direction cluster would otherwise leave split.
+ */
+function sameSeam(a: CylMember, b: CylMember): boolean {
+  if (a.xDir === null || b.xDir === null) return true
+  return dot(a.xDir, b.xDir) > 1 - 1e-9
 }
 
 /**
@@ -289,12 +308,19 @@ export function canonicalizeCylinderFaces(
         if (t === cylType) {
           const frame = faceSurfaceFrame(oc, scope, face)
           if (frame?.radius === undefined) continue
-          members.push({ face, d: frame.axis, c: frame.origin, r: frame.radius, fit: null })
+          members.push({
+            face,
+            d: frame.axis,
+            c: frame.origin,
+            r: frame.radius,
+            fit: null,
+            xDir: faceCylinderXDirection(oc, scope, face),
+          })
           continue
         }
         const fit = fitCylinder(oc, scope, face)
         if (fit) {
-          members.push({ face, d: fit.d, c: fit.c, r: fit.r, fit })
+          members.push({ face, d: fit.d, c: fit.c, r: fit.r, fit, xDir: null })
           fitCount++
         }
       }
@@ -323,7 +349,17 @@ export function canonicalizeCylinderFaces(
       // placed in the gap all members leave free, gives every member pcurves in
       // one u range, exactly as the fitted halves of a weld get.
       const opposed = members.some((m) => m.fit === null && dot(m.d, anchor.d) < 0)
-      const rebuild = opposed ? members : members.filter((m) => m.fit !== null)
+      // A same-direction cluster with two seams is the same defect: the faces
+      // are one geometric cylinder but their pcurves run in different u ranges,
+      // so UnifySameDomain cannot fold the boundary where they meet. Rebuilding
+      // the whole cluster puts every face on one shared gp_Cylinder: the anchor
+      // supplies its axis and radius, and seamAngleFor places the seam in the
+      // gap all members leave free, so each face takes that seam. Fitted members
+      // do not vote (sameSeam is true for them); they are rebuilt below anyway.
+      const seamDisagrees =
+        members.length > 1 &&
+        members.some((m, i) => members.slice(i + 1).some((other) => !sameSeam(m, other)))
+      const rebuild = opposed || seamDisagrees ? members : members.filter((m) => m.fit !== null)
       if (rebuild.length === 0) continue
       const cluster: CylFit[] = []
       for (const m of rebuild) {

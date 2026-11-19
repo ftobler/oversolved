@@ -931,6 +931,27 @@ export function faceSurfaceFrame(oc: OccModule, scope: DisposeScope, face: OccSh
   return null
 }
 
+/**
+ * A cylinder face's X direction: the radial direction its U=0 seam sits on.
+ * Two coaxial faces with different X directions carry their pcurves in
+ * different u ranges, so UnifySameDomain cannot fold the boundary between them.
+ *
+ * Deliberately separate from `faceSurfaceFrame`: the bulk reader
+ * (`OversolvedFaceFacts`) has no x slot, and adding one would rebuild the OCC
+ * helper for a value only the seam pass wants. Null for a non-cylinder face.
+ */
+export function faceCylinderXDirection(oc: OccModule, scope: DisposeScope, face: OccShape): Vec3 | null {
+  const adaptor = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
+  if (adaptor.GetType().value !== oc.GeomAbs_SurfaceType.GeomAbs_Cylinder.value) return null
+  const cyl = scope.track(adaptor.Cylinder())
+  const pos = cyl.Position()
+  const xd = pos.XDirection()
+  const out: Vec3 = [xd.X(), xd.Y(), xd.Z()]
+  xd.delete()
+  pos.delete()
+  return out
+}
+
 // ─── edge / vertex geometry readers ───
 
 const TWO_PI = 2 * Math.PI

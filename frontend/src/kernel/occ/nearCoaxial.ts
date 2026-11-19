@@ -4,9 +4,10 @@
 //
 // The fuse keeps two analytic cylinder faces when their radii or axes differ
 // at all: ShapeUpgrade_UnifySameDomain only merges faces that share the same
-// surface, and canonicalSurfaces.ts rebuilds fitted/opposed faces, not two
-// analytic cylinders that merely sit within CLUSTER_TOL. The result is a real
-// but microscopic shoulder. A fillet at the junction then has nowhere to roll
+// surface, and canonicalSurfaces.ts rebuilds a clustered analytic pair only
+// when its seams disagree. A pair outside CLUSTER_TOL is never snapped or
+// rebuilt, so the two surfaces stay distinct. The result is a real but
+// microscopic shoulder. A fillet at the junction then has nowhere to roll
 // and the kernel refuses with the bare `build_failed`; the practice trigger
 // (a boss cylinder swallowing a tangent-arc wall) and the precision audit's
 // stepped-shaft table both land there.
