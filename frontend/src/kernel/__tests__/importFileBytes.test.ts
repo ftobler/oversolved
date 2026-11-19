@@ -43,4 +43,14 @@ describe('featuresWithImportDigests', () => {
     const feature = { id: 'imp1', kind: 'import_step', file_id: 'missing' }
     expect(featuresWithImportDigests([feature], new Map([['f1', bytes('a')]]))[0]).toBe(feature)
   })
+
+  it('skips imports past the rollback prefix, which the build never solves', () => {
+    const features = [
+      { id: 'sk1', kind: 'sketch' },
+      { id: 'imp1', kind: 'import_step', file_id: 'f1' },
+    ]
+    const out = featuresWithImportDigests(features, new Map([['f1', bytes('a')]]), 1)
+    expect(out).toBe(features)
+    expect(digestOf(out[1])).toBeUndefined()
+  })
 })

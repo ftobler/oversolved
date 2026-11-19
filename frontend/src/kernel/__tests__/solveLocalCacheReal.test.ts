@@ -144,6 +144,20 @@ describe.skipIf(!oc || !solveBytes)('solveLocally cross-solve cache (real OCC + 
     expect(Object.keys(b!.bodies)).not.toEqual(Object.keys(a!.bodies))
   })
 
+  it('reuses the import checkpoint when the same bytes are solved again', async () => {
+    // The other half of the key: the digest must depend on the content alone,
+    // never on the buffer identity or solve order. Each `importFiles` call reads
+    // a fresh array, so an unstable digest would rebuild the import here and the
+    // dirty test above would keep passing. A reused checkpoint is by reference,
+    // the same discriminator the other cache tests use.
+    setSolveLocalsForTest(async () => oc)
+    const doc = { id: 'docImportClean', features: [{ id: 'imp1', kind: 'import_step', file_id: 'f1' }] }
+    const r1 = await solveLocally(doc, { files: importFiles('color_solid.step') })
+    const r2 = await solveLocally(doc, { files: importFiles('color_solid.step') })
+    expect((r2!.result.imp1 as { status?: string }).status).toBe('ok')
+    expect(checkpoints(r2).imp1).toBe(checkpoints(r1).imp1)
+  })
+
   it('solves a reopened part from the replaced bytes, not the cross-solve cache', async () => {
     // The app path: the part was the Worker's last solved document, its file
     // bytes were replaced under the same id, and opening the document again

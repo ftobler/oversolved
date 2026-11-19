@@ -22,8 +22,10 @@ export interface ImportFeatureShape {
 
 // The Worker's per-generation file cache hands the same buffer to every solve
 // in that generation, so memoising on the array keeps a large STEP file hashed
-// once per read. Replacing the entry's bytes is a new array, hence a new
-// digest, which is exactly the invalidation signal the cache needs.
+// once per read. A buffer handed to a solve is immutable for its lifetime: the
+// Worker cache holds structured clones, OCC writes into copies, and a headless
+// run builds a fresh map. A replace is a new array and therefore a new digest,
+// which is exactly the invalidation signal the cache needs.
 const digests = new WeakMap<Uint8Array, string>()
 
 function digestOf(bytes: Uint8Array): string {
@@ -38,15 +40,19 @@ function digestOf(bytes: Uint8Array): string {
 /**
  * The features with a digest folded into every import_step that has bytes in
  * this solve's file map. The input array and its feature objects are left
- * untouched; an array with no resolvable import is returned as is.
+ * untouched; an array with no resolvable import is returned as is. `limit` is
+ * the rollback prefix the build actually solves; a feature past it is never
+ * solved or checkpointed, so its bytes need no digest.
  */
 export function featuresWithImportDigests<T extends ImportFeatureShape>(
   features: readonly T[],
   files: ReadonlyMap<string, Uint8Array> | undefined,
+  limit: number = features.length,
 ): readonly T[] {
   if (!files || files.size === 0) return features
+  const end = Math.max(0, Math.min(limit, features.length))
   let out: Array<T> | null = null
-  for (let i = 0; i < features.length; i++) {
+  for (let i = 0; i < end; i++) {
     const feature = features[i]
     if (feature.kind !== 'import_step') continue
     const fileId = feature.file_id

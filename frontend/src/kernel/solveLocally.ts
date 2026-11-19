@@ -616,7 +616,11 @@ async function solveLocallyGuarded(
     // check compares; this is the only place that sees both the document and
     // the file map, so every path through the cache gets it.
     const digestedFeatures = Array.isArray(spec.features)
-      ? featuresWithImportDigests(spec.features as ImportFeatureShape[], options.files)
+      ? featuresWithImportDigests(
+        spec.features as ImportFeatureShape[],
+        options.files,
+        options.rollbackPosition ?? spec.features.length,
+      )
       : null
     const digested = digestedFeatures === null || digestedFeatures === spec.features
       ? spec
