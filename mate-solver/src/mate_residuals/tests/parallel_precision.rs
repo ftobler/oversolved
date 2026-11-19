@@ -172,14 +172,11 @@ fn ppd_conflicting_half_degree_reads_overconstrained() {
     // so the verdict alone would not tell a real one from a stuck descent.
     let tilt = face_tilt(&out.params_solved);
     assert!(tilt < 0.5f64.to_radians(), "bar stalled at tilt {tilt} rad");
-    assert_ne!(
+    // Overconstrained exactly: NotConverged would tell the user to reseed a
+    // conflict that no seed can satisfy.
+    assert_eq!(
         out.overall_status,
-        MateStatus::FullyConstrained.to_u8(),
-        "half a degree of conflict read as satisfied"
-    );
-    assert_ne!(
-        out.overall_status,
-        MateStatus::Underconstrained.to_u8(),
-        "half a degree of conflict read as satisfied"
+        MateStatus::Overconstrained.to_u8(),
+        "half a degree of conflict did not read as a conflict"
     );
 }

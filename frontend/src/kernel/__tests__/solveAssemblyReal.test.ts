@@ -722,9 +722,9 @@ const kindRows: KindRow[] = [
       expect(Math.abs(t.ty - 4)).toBeLessThan(0.01)
       expect(Math.abs(t.tz - 5)).toBeLessThan(0.01)
       const [ax, ay, az] = worldZAround(t)
-      // The dot residual is only quadratic near parallel, so LM stops a hair
-      // short; far tighter than the ~1.4 an unswung +X axis would show.
-      expect(Math.hypot(ax, ay, az - 1)).toBeLessThan(0.05)
+      // The axis-difference rows converge onto exact parallel; an unswung +X
+      // axis would read ~1.4 here.
+      expect(Math.hypot(ax, ay, az - 1)).toBeLessThan(1e-6)
     },
   },
   {
