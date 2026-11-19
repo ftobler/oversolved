@@ -17,6 +17,7 @@ import { findEdgeKindForQuery } from '@/picking/partDispatchCallbacks'
 import { dispatchSketchClick } from './dispatchSketchClick'
 import { takeDrawToolClickConsumed } from './drawToolClickGuard'
 import { takeBandClickConsumed } from './bandClickGuard'
+import { createHandleGestureOwner } from './handleGestureOwner'
 import { missClearsNormalSelection } from '@/components/Viewport/emptyClickClear'
 import { dimensionLabelDomHit } from '@/picking/dimensionLabelDom'
 import { usePartEditorStore } from '@/stores/partEditorStore'
@@ -247,6 +248,11 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
     let attached: HTMLCanvasElement | null = null
     let raf = 0
 
+    // One gesture owner per attached dispatcher: its press/move/click state is
+    // the whole-"gesture" rule, kept outside React so it unit-tests without a
+    // Viewport.
+    const handleGesture = createHandleGestureOwner()
+
     // The effective allowed set is re-read on every pointermove and again on the
     // rAF flush; under a filtered tool that is a fresh Set allocation each call.
     // Cache it keyed on activeTool: consumedLayers is a stable prop (the effect
@@ -345,6 +351,12 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
     // writes the store again while this listener is on the stack.
     let handlingStoreHoverChange = false
     const unsubStoreHover = useSketchEditorStore.subscribe((state, prev) => {
+      // A sketch vertex / edge or dimension-label drag turns live on a move
+      // (Dragging.tsx) after its adapter armed it on the press. Observing it
+      // here, not in onPointerMove, keeps the click verdict independent of
+      // canvas-vs-window listener order: the activation move may be the last
+      // move before release.
+      if (state.drag !== null && prev.drag === null) handleGesture.noteDragActivated()
       if (handlingStoreHoverChange) return
       handlingStoreHoverChange = true
       try {
@@ -420,6 +432,15 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
      */
     const onPointerMove = (e: MouseEvent) => {
       if (!attached) return
+      // A handle drag owns the gesture: do not resolve a hover for whatever the
+      // arrow passes over. invalidate(), not clearHover(), because the handle's
+      // own hover is what keeps it painted hot and labelled; a stray resolve
+      // already in flight must still land as a no-op.
+      handleGesture.move(e.buttons)
+      if (handleGesture.suppressHover()) {
+        hoverScheduler.invalidate()
+        return
+      }
       const allowed = computeAllowed()
       if (allowed.size === 0) {
         // clearHover drops the queued trailing resolve AND invalidates any
@@ -452,6 +473,17 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       setLastClickIdHit(false)
       lastClickWasStale = false
       if (e.button !== 0 || !attached) return
+      // A press that owns the gesture must not resolve the RELEASE pixel. For a
+      // handle that pixel is whatever face, edge or vertex the arrow has moved
+      // away from (it unregisters its own ID geometry while dragging), and for
+      // a sketch drag it is the dragged element: picking either one selects an
+      // element the user never aimed at, and an open feature's pick chip takes
+      // the pick too. Consumed also claims the click for onPointerMissed, so
+      // the backplane does not clear the selection either.
+      if (handleGesture.takeClick()) {
+        setLastClickIdHit(true)
+        return
+      }
       // A sketch drawing tool (e.g. project) already consumed this click on
       // pointer-down and may have reset the tool to null since. Don't let the
       // click also toggle normal selection on the entity it just acted on.
@@ -624,7 +656,12 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
     const onPointerDown = (e: MouseEvent) => {
       if (e.button !== 0 || !attached) return
       const hit = resolveSync(e, attached)
+      // The press starts the gesture: ownership comes from this hit only (a miss
+      // clears it), before the adapter runs so a refusing handle still owns the
+      // gesture it was pressed on.
+      handleGesture.press(hit?.layer ?? null)
       if (!hit) return
+      const dragPendingBefore = useSketchEditorStore.getState().dragPending
       const tool = useSketchEditorStore.getState().activeTool
       if (hit.layer === FEATURE_HANDLE_LAYER_NAME) {
         featureHandleAdapter.onPointerDown(hit.entityKey, e.clientX, e.clientY)
@@ -635,6 +672,12 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       } else if (hit.layer === SKETCH_ENTITY_LAYER_NAME && (tool === 'drag' || tool === null)) {
         sketchEntityAdapter.onPointerDown(hit.entityKey, e.clientX, e.clientY)
       }
+      // Armed means this press's adapter set a pending drag. A pending flag left
+      // by an earlier gesture is not this gesture's, so only a null -> set
+      // transition arms the click half of the owner rule.
+      handleGesture.noteDragArmed(
+        dragPendingBefore === null && useSketchEditorStore.getState().dragPending !== null,
+      )
     }
 
     const attach = (c: HTMLCanvasElement) => {
