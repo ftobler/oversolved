@@ -22,12 +22,12 @@ interface MeasurementDisplayProps {
 }
 
 // The part editor's measurement readout for the current selection. Lives in
-// the viewport's bottom-right HUD, under the orientation cube.
+// the viewport's bottom-left corner (`.viewport-readout`).
 //
 // The sync readout paints at once. A cell the pair table sends to the kernel (a
 // spline edge's length, a clearance) reserves its row and fills it when the
 // Worker answers; while the reply is in flight the row is there and empty, so
-// the HUD does not jump when it lands (K2).
+// the readout does not jump when it lands (K2).
 export default function MeasurementDisplay({
   sketch,
   measurementIcon,

@@ -967,7 +967,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
             <EditorErrorBoundary label="assembly viewport">
               <AssemblyViewport
                 ref={viewportRef}
-                hud={<AssemblyMeasurementDisplay measurementIcon={measurementIcon} />}
+                readout={<AssemblyMeasurementDisplay measurementIcon={measurementIcon} />}
                 // No Show group: an assembly has no feature tree, so the part
                 // editor alone supplies the document-visibility rows.
                 viewOptions={<ViewOptionsButton allowSectionPick={false} allowAmbientOcclusion={false} />}

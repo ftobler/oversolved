@@ -125,14 +125,14 @@ export interface AssemblyViewportHandle {
 }
 
 export interface AssemblyViewportProps {
-  // Bottom-right overlay content, stacked under the orientation cube. Mirrors
-  // the part viewport's `hud`.
-  hud?: ReactNode
+  // Bottom-left overlay content: the measurement readout. Mirrors the part
+  // viewport's `readout`.
+  readout?: ReactNode
   // The viewer options button, above the cube; same slot as the part editor's.
   viewOptions?: ReactNode
 }
 
-export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(function AssemblyViewport({ hud, viewOptions }, ref) {
+export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(function AssemblyViewport({ readout, viewOptions }, ref) {
   const doc = useAssemblyStore(s => s.doc)
   const mates = useAssemblyStore(s => s.mates)
   // One subject slot instead of two independent selected fields: the part handle
@@ -834,8 +834,8 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
           snapRef={snapRef}
           cameraRef={cameraRef}
         />
-        <div className="viewport-hud-readout">{hud}</div>
       </div>
+      <div className="viewport-readout">{readout}</div>
     </div>
   )
 })

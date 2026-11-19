@@ -64,8 +64,8 @@ interface PartEditorPanelProps {
   canImportDxf: boolean
   viewportRef: React.RefObject<ViewportHandle | null>
   handleRightClick: (pos: [number, number], targetId?: string, pickedSelectionId?: string) => void
-  // Bottom-right in-viewport overlay (the measurement readout).
-  viewportHud?: ReactNode
+  // Bottom-left in-viewport overlay (the measurement readout).
+  viewportReadout?: ReactNode
   // The viewer options button, stacked above the orientation cube.
   viewportViewOptions?: ReactNode
 }
@@ -87,7 +87,7 @@ export default function PartEditorPanel({
   canImportDxf,
   viewportRef,
   handleRightClick,
-  viewportHud,
+  viewportReadout,
   viewportViewOptions,
 }: PartEditorPanelProps) {
   // The phone drawer's open flag. It only means anything below the breakpoint
@@ -153,7 +153,7 @@ export default function PartEditorPanel({
               ref={viewportRef}
               onRightClick={(pos) => handleRightClick(pos)}
               onSelectionContextMenu={(selectionId, pos) => handleRightClick(pos, undefined, selectionId)}
-              hud={viewportHud}
+              readout={viewportReadout}
               viewOptions={viewportViewOptions}
             />
           </EditorErrorBoundary>

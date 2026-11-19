@@ -1,8 +1,9 @@
 // Where the editor chrome lives after the footer was removed: the copyright
 // note became a logo tooltip, the debug toggles moved into the header's
-// right-hand slot, and the measurement readout moved inside the viewport. With
-// floating panels (phase 1) the part navigator and the open feature editor are
-// overlay cards inside the viewport stage as well, not sidebar columns.
+// right-hand slot, and the measurement readout moved into the viewport's
+// bottom-left slot. With floating panels (phase 1) the part navigator and the
+// open feature editor are overlay cards inside the viewport stage as well, not
+// sidebar columns.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, cleanup, screen, waitFor, fireEvent, within, act } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
@@ -79,18 +80,19 @@ describe('Part editor chrome', () => {
     expect(screen.getByTitle('Toggle debug panel (F2)')).toBeInTheDocument()
   })
 
-  it('puts the measurement readout inside the viewport HUD', async () => {
+  it('puts the measurement readout in its own bottom-left slot, not the HUD', async () => {
     await renderPageLoaded()
     const readout = screen.getByTestId('measurement-readout')
-    expect(screen.getByTestId('viewport-hud').contains(readout)).toBe(true)
+    expect(screen.getByTestId('viewport-readout').contains(readout)).toBe(true)
+    expect(screen.getByTestId('viewport-hud').contains(readout)).toBe(false)
   })
 
   it('hands the view options button to the HUD slot above the cube', async () => {
     await renderPageLoaded()
     const slot = screen.getByTestId('viewport-hud-view-options')
     expect(slot.querySelector('button[aria-label="View options"]')).not.toBeNull()
-    // The stack order is options, cube, readout: the mock renders the two
-    // handed-in slots, and the option slot comes first.
+    // The stack order is options then cube; the readout left this column for
+    // its own bottom-left slot, so the option slot is the column's first child.
     const hud = screen.getByTestId('viewport-hud')
     expect(hud.firstElementChild).toBe(slot)
   })

@@ -113,7 +113,7 @@ vi.mock('@/components/Viewport', async () => {
   return {
     __esModule: true,
     default: React.forwardRef(function MockViewport(
-      props: { onRightClick?: (pos: [number, number]) => void; hud?: import('react').ReactNode },
+      props: { onRightClick?: (pos: [number, number]) => void; readout?: import('react').ReactNode },
       ref: import('react').Ref<unknown>,
     ) {
       React.useImperativeHandle(ref, () => ({
@@ -126,7 +126,7 @@ vi.mock('@/components/Viewport', async () => {
       return (
         <div data-testid="viewport">
           <button data-testid="viewport-ctx" onClick={() => props.onRightClick?.([0, 0])} />
-          <div data-testid="viewport-hud">{props.hud}</div>
+          <div data-testid="viewport-readout">{props.readout}</div>
         </div>
       )
     }),

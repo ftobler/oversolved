@@ -1642,7 +1642,7 @@ export default function Part() {
           canImportDxf={activeSketchFeatureId !== undefined}
           viewportRef={viewportRef}
           handleRightClick={handleRightClick}
-          viewportHud={
+          viewportReadout={
             <MeasurementDisplay sketch={measurementSketch} measurementIcon={measurementIcon} solveResults={solveResults} parts={bodies} lengthUnit={lengthUnitOf(doc?.length_unit)} generation={measureGeneration} measureSet={measureSet} />
           }
           viewportViewOptions={

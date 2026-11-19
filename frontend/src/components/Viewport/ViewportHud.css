@@ -1,7 +1,12 @@
-/* The viewport's bottom-right overlay stack: the orientation cube on top, the
-   measurement readout directly under it, both right-aligned against the
-   viewport edge. The column is click-through so it never steals a drag from
-   the scene; the cube opts back in (GIZMO_STYLE). */
+/* The viewport's bottom-right overlay stack: the view options button over the
+   orientation cube. The column is click-through so it never steals a drag from
+   the scene; the cube opts back in (GIZMO_STYLE).
+
+   The 20px under the cube is not a slot: its canvas hangs that far below its
+   layout box (the roll strip plus GIZMO_SINK), and it used to land on the
+   measurement readout that lived here. The readout now sits in the bottom-left
+   `.viewport-readout`, so the floor is padding and the cube keeps the corner
+   position it was tuned to. */
 .viewport-hud {
   position: absolute;
   right: 12px;
@@ -10,26 +15,30 @@
   flex-direction: column;
   align-items: flex-end;
   gap: 4px;
+  padding-bottom: 20px;
   pointer-events: none;
 }
 
-/* Reserved even when empty: a readout that appeared with the selection would
-   otherwise shove the cube up and down as the user picks. */
-.viewport-hud-readout {
-  min-height: 16px;
+/* The measurement readout's own slot, in the bottom-left corner clear of the
+   right column. Its min-height is the one-row floor the readout had in the HUD,
+   so an empty slot reserves the same space the pick's text will take. */
+.viewport-readout {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
   display: flex;
-  justify-content: flex-end;
+  justify-content: flex-start;
+  min-height: 16px;
+  pointer-events: none;
 }
 
 .measurement-display {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: 6px;
   font-family: var(--sans);  /* reads as prose ("plane distance 4.000mm"), not tabular data */
   font-size: 12px;
   color: #cccccc;
-  text-align: right;
   /* The readout floats over the 3D scene now, not over a solid footer bar. */
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
 }
@@ -41,17 +50,16 @@
   white-space: nowrap;
 }
 
-/* A kernel readout is in flight: the row holds its height so the HUD does not
-   jump when the number lands, but it paints nothing until then (K2). */
+/* A kernel readout is in flight: the row holds its height so the readout does
+   not jump when the number lands, but it paints nothing until then (K2). */
 .measurement-pending {
   visibility: hidden;
 }
 
-/* The folded extras sit behind a disclosure. The HUD column is click-through,
+/* The folded extras sit behind a disclosure. The readout slot is click-through,
    so the disclosure opts back in, the same way the orientation cube does. */
 .measurement-more {
   pointer-events: auto;
-  text-align: right;
 }
 
 .measurement-more summary {
