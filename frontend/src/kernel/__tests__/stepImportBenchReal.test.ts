@@ -50,7 +50,7 @@ const files = (process.env.STEP_BENCH_FILES?.split(',') ?? DEFAULT_FILES)
 // Report order: the import leaf, then the metadata pass, then the render pass,
 // with the render mesh's two inner halves under it.
 const PHASES = [
-  'step.read', 'step.transfer', 'step.identity', 'import.names', 'import.split',
+  'step.read', 'step.transfer', 'step.colors', 'step.identity', 'import.names', 'import.split', 'import.colors',
   'meta.faces', 'meta.edges', 'meta.vertices',
   'render.faceFacts', 'render.mesh', 'mesh.triangulate', 'mesh.mesher', 'mesh.faceFacts',
   // render.faceEdges covers the seam lists too since they share one walk.
