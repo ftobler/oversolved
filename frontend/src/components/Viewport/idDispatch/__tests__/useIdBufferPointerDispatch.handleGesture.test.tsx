@@ -16,6 +16,9 @@ import { initializeTools } from '@/tools'
 import { newIdBufferDispatchFixture, disposeIdBufferDispatchFixture } from './idBufferDispatchHarness'
 import { takeDrawToolClickConsumed } from '../drawToolClickGuard'
 import { takeBandClickConsumed } from '../bandClickGuard'
+import { installPointerEventStub } from '@/testing/pointerEventStub'
+
+installPointerEventStub('mouse')
 
 const HANDLE_KEY = 'fhandle:extrude1:distance'
 const FACE_KEY = '?2;@body_1@extrude1/face/3'
@@ -227,6 +230,43 @@ describe('useIdBufferPointerDispatch handle gesture', () => {
       expect(useSketchEditorStore.getState().normalSelection.has(FACE_KEY)).toBe(true)
       expect(wasLastClickConsumedByIdDispatch()).toBe(true)
     })
+
+    // Chrome dispatches click as a PointerEvent with isPrimary false even for a
+    // plain mouse click. A gate on the click's isPrimary swallowed every click:
+    // nothing selected, and the claimed miss kept the backplane from clearing.
+    it('toggles a face on a browser-shaped click whose isPrimary is false', async () => {
+      pipeline.resolveSync = vi.fn().mockReturnValue(faceHit)
+
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([FACE_LAYER_NAME]),
+      }))
+
+      await act(async () => {
+        canvas.dispatchEvent(new PointerEvent('pointerdown', { button: 0, isPrimary: true, pointerId: 1 }))
+        canvas.dispatchEvent(new PointerEvent('click', { button: 0, isPrimary: false, pointerId: 1 }))
+      })
+
+      expect(useSketchEditorStore.getState().normalSelection.has(FACE_KEY)).toBe(true)
+      expect(wasLastClickConsumedByIdDispatch()).toBe(true)
+    })
+
+    it('leaves a browser-shaped miss unclaimed so the backplane can deselect', async () => {
+      useEditorState.setState({ normalSelection: new Set([FACE_KEY]) })
+      pipeline.resolveSync = vi.fn().mockReturnValue(null)
+
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([FACE_LAYER_NAME]),
+      }))
+
+      await act(async () => {
+        canvas.dispatchEvent(new PointerEvent('pointerdown', { button: 0, isPrimary: true, pointerId: 1 }))
+        canvas.dispatchEvent(new PointerEvent('click', { button: 0, isPrimary: false, pointerId: 1 }))
+      })
+
+      expect(wasLastClickConsumedByIdDispatch()).toBe(false)
+    })
   })
 
   describe('T8 (audit): a sketch vertex drag release', () => {
@@ -323,11 +363,15 @@ describe('useIdBufferPointerDispatch handle gesture', () => {
       await act(async () => {
         pointerDown(canvas)
       })
-      const secondFinger = new MouseEvent('click', { button: 0, clientX: 70, clientY: 90 })
-      Object.defineProperty(secondFinger, 'isPrimary', { value: false })
+      // The second finger is recognised by its press: the click it produces
+      // carries the same pointerId and, like every browser click, isPrimary false.
       await act(async () => {
-        canvas.dispatchEvent(secondFinger)
+        canvas.dispatchEvent(new PointerEvent('pointerdown', { button: 0, isPrimary: false, pointerId: 2 }))
       })
+      await act(async () => {
+        canvas.dispatchEvent(new PointerEvent('click', { button: 0, isPrimary: false, pointerId: 2 }))
+      })
+      expect(wasLastClickConsumedByIdDispatch()).toBe(true)
       await act(async () => {
         click(canvas)
       })
@@ -336,23 +380,22 @@ describe('useIdBufferPointerDispatch handle gesture', () => {
       expect(wasLastClickConsumedByIdDispatch()).toBe(true)
     })
 
-    it('a second finger double click does not open the handle dialog', async () => {
-      const onDoubleClick = vi.fn()
-      registerFeatureHandleCallbacks(HANDLE_KEY, { onPointerDown: () => {}, onDoubleClick })
-      pipeline.resolveSync = vi.fn().mockReturnValue(handleHit)
+    it('a primary press forgets a secondary id whose click never came', async () => {
+      // Otherwise a later pointer reusing that id would have its click swallowed.
+      pipeline.resolveSync = vi.fn().mockReturnValue(faceHit)
 
       renderHook(() => useIdBufferPointerDispatch({
         glRef: glRef as { current: import('three').WebGLRenderer | null },
-        consumedLayers: new Set([FEATURE_HANDLE_LAYER_NAME]),
+        consumedLayers: new Set([FACE_LAYER_NAME]),
       }))
 
-      const secondFinger = new MouseEvent('dblclick', { button: 0, clientX: 70, clientY: 90 })
-      Object.defineProperty(secondFinger, 'isPrimary', { value: false })
       await act(async () => {
-        canvas.dispatchEvent(secondFinger)
+        canvas.dispatchEvent(new PointerEvent('pointerdown', { button: 0, isPrimary: false, pointerId: 1 }))
+        canvas.dispatchEvent(new PointerEvent('pointerdown', { button: 0, isPrimary: true, pointerId: 1 }))
+        canvas.dispatchEvent(new PointerEvent('click', { button: 0, isPrimary: false, pointerId: 1 }))
       })
 
-      expect(onDoubleClick).not.toHaveBeenCalled()
+      expect(useSketchEditorStore.getState().normalSelection.has(FACE_KEY)).toBe(true)
     })
 
     it('arms when this press replaces a dragPending stranded by an earlier gesture', async () => {

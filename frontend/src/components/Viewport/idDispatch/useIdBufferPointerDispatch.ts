@@ -254,6 +254,12 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
     // freezes hover.
     const handleGesture = createHandleGestureOwner()
     let pressedHandleKey: string | null = null
+    // Pointer ids of the secondary presses since the primary one. The click
+    // cannot ask isPrimary itself: Chrome dispatches click as a PointerEvent
+    // whose isPrimary is false even for a plain mouse click, so a gate on it
+    // swallowed every click. The click's pointerId is reliable, so it is matched
+    // against the presses that were seen as secondary.
+    const secondaryPointerIds = new Set<number>()
 
     // The effective allowed set is re-read on every pointermove and again on the
     // rAF flush; under a filtered tool that is a fresh Set allocation each call.
@@ -492,7 +498,8 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       // keeps the backplane from clearing on an ignored tap, and it must not
       // reach takeClick: that would consume the primary pointer's ownership and
       // let the primary release click resolve the pixel again.
-      if ((e as PointerEvent).isPrimary === false) {
+      const clickPointerId = (e as PointerEvent).pointerId
+      if (typeof clickPointerId === 'number' && secondaryPointerIds.delete(clickPointerId)) {
         setLastClickIdHit(true)
         return
       }
@@ -651,12 +658,8 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
     }
 
     const onDoubleClick = (e: MouseEvent) => {
-      // A second finger's double tap must not open the arrow or label dialog,
-      // for the same reason its click is ignored.
-      if ((e as PointerEvent).isPrimary === false) {
-        setLastClickIdHit(true)
-        return
-      }
+      // dblclick is a plain MouseEvent in every browser, with neither isPrimary
+      // nor pointerId, so a second finger's double tap cannot be told apart here.
       if (e.button !== 0 || !attached) return
       const hit = resolveSync(e, attached)
       if (!hit) return
@@ -687,7 +690,15 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
     const onPointerDown = (e: MouseEvent) => {
       // A second finger must not take a gesture that is already owned or start a
       // parallel one; the Viewport's parent press handler applies the same rule.
-      if ((e as PointerEvent).isPrimary === false) return
+      // isPrimary is trustworthy on pointerdown, unlike on click.
+      const pe = e as PointerEvent
+      if (pe.isPrimary === false) {
+        if (typeof pe.pointerId === 'number') secondaryPointerIds.add(pe.pointerId)
+        return
+      }
+      // A primary press starts a new gesture, so secondary ids left by a finger
+      // whose click never arrived cannot match a later pointer that reuses them.
+      secondaryPointerIds.clear()
       if (e.button !== 0 || !attached) return
       const hit = resolveSync(e, attached)
       // The press starts the gesture: ownership comes from this hit only (a miss
