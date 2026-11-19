@@ -110,11 +110,31 @@ describe.skipIf(!oc)('OversolvedStepCaf keeps the plain reader identity (real OC
     })
   }
 
+  it('converts an inch file to millimetres exactly as the plain reader does', () => {
+    // double_with_hole_inch.step is the same file with its length unit declared
+    // as INCH, so a reader left in another length unit would show up as a
+    // volume off by a power of 25.4.
+    const mm = identityRead(occ, new Uint8Array(readFileSync(new URL('double_with_hole.step', FIXTURES))), 1, 'caf')
+    const inch = identityRead(occ, new Uint8Array(readFileSync(new URL('double_with_hole_inch.step', FIXTURES))), 1, 'caf')
+    expect(inch.volume / mm.volume).toBeCloseTo(25.4 ** 3, 3)
+  })
+
   it('double_with_hole.step scaled: the identity survives the transform copy', () => {
     expectSameIdentity(occ, new Uint8Array(readFileSync(new URL('double_with_hole.step', FIXTURES))), 2.5)
   })
 
   it('a generated multi-root file with a repeated instance', () => {
     expectSameIdentity(occ, generatedAssemblyBytes(occ))
+  })
+
+  it('the repeated instance scaled: each placement keeps its own ids through the copy', () => {
+    expectSameIdentity(occ, generatedAssemblyBytes(occ), 2.5)
+    const read = identityRead(occ, generatedAssemblyBytes(occ), 2.5, 'caf')
+    // Every face of both placements is named, not only the first placement's.
+    expect(read.faceIds.every((id) => id !== undefined)).toBe(true)
+    // The plain read shares the pairing, so equality alone cannot catch a
+    // placement collapse: the two copies must also stay apart by name.
+    expect(new Set(read.faceNames).size).toBe(read.faceNames.length)
+    expect(read.faceIds.length).toBe(18)
   })
 })

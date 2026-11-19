@@ -171,6 +171,12 @@ describe.skipIf(!oc)('STEP import colours (real OCC)', () => {
     expect(byX.map((b) => b.color)).toEqual(['#808080', '#cc3333'])
   })
 
+  it('(e) scaled: the override stays on its own placement through the transform copy', () => {
+    const imported = importFixture(occ, 'color_instance.step', 2.5)
+    const byX = [...imported.bodies].sort((p, q) => p.centroid[0] - q.centroid[0])
+    expect(byX.map((b) => b.color)).toEqual(['#808080', '#cc3333'])
+  })
+
   it('(f) an uncoloured file sets no colour and no note', () => {
     const imported = importFixture(occ, 'double_with_hole.step')
     expect(imported.bodies.map((b) => b.color)).toEqual([undefined])
