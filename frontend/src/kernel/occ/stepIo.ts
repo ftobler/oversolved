@@ -57,6 +57,9 @@ export interface StepReadResult {
   faceColors: SubShapeMap<number>
   // A solid of `shape` -> the colour the file put on the solid itself.
   solidColors: SubShapeMap<number>
+  // Present when the colours could not be paired with the shape and were
+  // dropped; the shape and its identity are unaffected.
+  colorWarning?: string
 }
 
 /**
@@ -142,25 +145,30 @@ function readStep(
   oc.FS.writeFile(path, bytes)
   try {
     const { source: reader, read, colors } = transfer(oc, scope, path, kind)
+    // Tracked while this read runs, so a throw below cannot strand it on the
+    // heap. On the scaled path the OneShape() result is an intermediate only
+    // the identity map reads and stays tracked; unscaled it IS the returned
+    // shape and is detached on the way out (producers return untracked shapes).
+    scope.track(read)
     // The scaled copy is a NEW shape the transfer map knows nothing about, so
     // the builder has to stay in hand to carry identity across it.
     const builder = scale !== 1.0
       ? transformBuilder(oc, scope, read, scale)
       : null
-    // On the scaled path the OneShape() result becomes an intermediate only
-    // the identity map reads; track it so the copy does not strand it on the
-    // heap (unscaled, it IS the returned shape and stays untracked).
-    if (builder !== null) scope.track(read)
     const shape = builder ? builder.Shape() : read
+    const handOut = (result: StepReadResult): StepReadResult => {
+      if (builder === null) scope.detach(read)
+      return result
+    }
     if (!withIdentity) {
-      return { shape, faceStepIds: new SubShapeMap(), faceColors: new SubShapeMap(), solidColors: new SubShapeMap() }
+      return handOut({ shape, faceStepIds: new SubShapeMap(), faceColors: new SubShapeMap(), solidColors: new SubShapeMap() })
     }
     // The reader (and with it the transfer map) is tracked in `scope`, but the
     // caller's scope may outlive this call by a lot -- read the map now.
     const faces = pairReadFaces(oc, scope, read, shape, builder)
     const faceStepIds = timePhase('step.identity', () => faceEntityIds(oc, scope, reader, faces))
-    const { faceColors, solidColors } = colorMaps(oc, scope, colors, faces, read, shape, builder)
-    return { shape, faceStepIds, faceColors, solidColors }
+    const { faceColors, solidColors, colorWarning } = colorMaps(oc, scope, colors, faces, read, shape, builder)
+    return handOut({ shape, faceStepIds, faceColors, solidColors, ...(colorWarning && { colorWarning }) })
   } finally {
     try {
       oc.FS.unlink(path)
@@ -236,8 +244,35 @@ function pairReadFaces(
 }
 
 /**
+ * One `Colors` array keyed by the sub-shapes it was read for, -1 (no colour)
+ * left out; null when the counts differ. A mismatch means the helper walked
+ * another shape than ours, and pairing by position would put colours on the
+ * wrong faces.
+ */
+export function keyColors(
+  values: ArrayLike<number>,
+  targets: readonly (OccShape | null)[],
+): SubShapeMap<number> | null {
+  if (values.length !== targets.length) return null
+  const out = new SubShapeMap<number>()
+  targets.forEach((target, i) => {
+    if (target !== null && values[i] >= 0) out.set(target as OccSubShape, values[i])
+  })
+  return out
+}
+
+interface ColorMaps {
+  faceColors: SubShapeMap<number>
+  solidColors: SubShapeMap<number>
+  // Set when the colours had to be dropped; the import itself still stands.
+  colorWarning?: string
+}
+
+/**
  * `Colors`' explorer-ordered arrays keyed by the final shape's own faces and
- * solids, -1 (no colour) left out. A plain read has no colours at all.
+ * solids. A plain read has no colours at all. Colours are decoration: when
+ * they cannot be paired, the import goes on uncoloured and says so instead of
+ * failing.
  */
 function colorMaps(
   oc: OccModule,
@@ -247,30 +282,28 @@ function colorMaps(
   readShape: OccShape,
   finalShape: OccShape,
   builder: OccTransformBuilder | null,
-): { faceColors: SubShapeMap<number>, solidColors: SubShapeMap<number> } {
-  const faceColors = new SubShapeMap<number>()
-  const solidColors = new SubShapeMap<number>()
-  if (colors === null) return { faceColors, solidColors }
-  const keyed = (out: SubShapeMap<number>, values: Int32Array, targets: (OccShape | null)[]): void => {
-    // A count mismatch means the helper walked another shape than ours: refuse
-    // rather than pair colours with the wrong faces.
-    if (values.length !== targets.length) {
-      throw new Error(`import_step: ${values.length} colours read for ${targets.length} sub-shapes`)
-    }
-    targets.forEach((target, i) => {
-      if (target !== null && values[i] >= 0) out.set(target as OccSubShape, values[i])
-    })
+): ColorMaps {
+  const none = (): ColorMaps => ({ faceColors: new SubShapeMap(), solidColors: new SubShapeMap() })
+  if (colors === null) return none()
+  const faceColors = keyColors(colors.faceColor, faces.targets)
+  if (faceColors === null) {
+    return { ...none(), colorWarning: colorMismatch(colors.faceColor.length, faces.targets.length, 'faces') }
   }
-  keyed(faceColors, colors.faceColor, faces.targets)
-  if (colors.solidColor.some((c) => c >= 0)) {
-    const finalSolids = explodeSolids(oc, scope, finalShape)
-    const solidTargets = builder
-      ? pairAcrossTransform(oc, scope, explodeSolids(oc, scope, readShape), finalSolids, builder,
-        (s) => oc.TopoDS.Solid_1(s))
-      : finalSolids
-    keyed(solidColors, colors.solidColor, solidTargets)
+  if (!colors.solidColor.some((c) => c >= 0)) return { faceColors, solidColors: new SubShapeMap() }
+  const finalSolids = explodeSolids(oc, scope, finalShape)
+  const solidTargets = builder
+    ? pairAcrossTransform(oc, scope, explodeSolids(oc, scope, readShape), finalSolids, builder,
+      (s) => oc.TopoDS.Solid_1(s))
+    : finalSolids
+  const solidColors = keyColors(colors.solidColor, solidTargets)
+  if (solidColors === null) {
+    return { ...none(), colorWarning: colorMismatch(colors.solidColor.length, solidTargets.length, 'solids') }
   }
   return { faceColors, solidColors }
+}
+
+function colorMismatch(read: number, have: number, what: string): string {
+  return `the STEP file's colours were dropped: ${read} colours read for ${have} ${what}`
 }
 
 /**

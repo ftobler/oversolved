@@ -63,7 +63,8 @@ export function solveImportStep(
   if (!bytes) throw new Error(`import_step: file '${fileId}' is not present in the solve file set`)
 
   const partId = 'body_' + featureId
-  const { shape: read, faceStepIds, faceColors, solidColors } = stepBytesToShapeWithIdentity(oc, scope, bytes, scale)
+  const { shape: read, faceStepIds, faceColors, solidColors, colorWarning } =
+    stepBytesToShapeWithIdentity(oc, scope, bytes, scale)
   const shape = scope.track(read)
   // The same sibling order `registerSplitParts` mints body ids in.
   const solids = splitSolids(oc, scope, shape)
@@ -100,6 +101,9 @@ export function solveImportStep(
     // Not a problem: the import built what the file holds. The note says which
     // colour a body took when its faces disagreed, so the pick is not silent.
     ...(notes.length > 0 ? { solver_note: notes.join('; ') } : {}),
+    // The geometry imported but its colours could not be paired with it, so
+    // every body took the palette: worth a warning, never a failed import.
+    ...(colorWarning !== undefined ? { solver_warning: colorWarning } : {}),
   }
 }
 
