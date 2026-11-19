@@ -1342,6 +1342,8 @@ export interface OccModule extends OccBaseModule {
     readFile(path: string): Uint8Array
   }
   STEPControl_Reader_1: new () => OccStepReader
+  // The colour-aware import reader (oversolved-occt helper, not OCCT API).
+  OversolvedStepCaf: new () => OccStepCafReader
   // STEPControl_Writer: serialise a shape to the emscripten FS.
   STEPControl_Writer_1: new () => OccStepWriter
   STEPControl_StepModelType: {
@@ -1452,6 +1454,36 @@ export interface OccCopyBuilder extends OccDisposable {
 export interface OccTransientHandle<T> extends OccDisposable {
   get(): T
   IsNull(): boolean
+}
+
+/**
+ * `OversolvedStepCaf.Colors`' result, one `0xRRGGBB` sRGB value or -1 (no
+ * colour) per entry. `faceColor` is per face of the shape in explorer order and
+ * already EFFECTIVE (the face's own colour, else the nearest owner's: shell,
+ * solid, part label, referring instance, parent assembly); `solidColor` is per
+ * solid in explorer order and only the solid's own colour.
+ */
+export interface OccStepCafColors {
+  faceColor: Int32Array
+  solidColor: Int32Array
+}
+
+/**
+ * OversolvedStepCaf (oversolved-occt r3): STEPCAFControl_Reader transferring
+ * into a private XCAF document, colour and name modes on. `OneShape`, `Model`
+ * and `WS` come from the inner STEPControl_Reader after that transfer, so the
+ * transfer-map walk reads it exactly as it reads a plain reader.
+ */
+export interface OccStepCafReader extends OccDisposable {
+  ReadFile(path: string): OccEnumValue
+  Transfer(): boolean
+  OneShape(): OccShape
+  WS(): OccTransientHandle<OccWorkSession>
+  Model(): OccTransientHandle<OccInterfaceModel>
+  // `shape` is `OneShape()` or a sub-shape of it; colours are sRGB.
+  Colors(shape: OccShape): OccStepCafColors
+  // Per solid in explorer order, the product name (empty when none).
+  Names(shape: OccShape): string[]
 }
 
 /** STEPControl_Reader: read a STEP file from the emscripten FS into a shape. */

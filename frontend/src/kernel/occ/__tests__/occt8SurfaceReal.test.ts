@@ -146,6 +146,7 @@ const INTERFACE_CLASSES: Record<string, string[] | null> = {
   // Plain JS objects of typed arrays the r3 helpers return.
   OccFaceTriangulation: null,
   OccFaceFactTable: null,
+  OccStepCafColors: null,
   OccPntArray: ['TColgp_Array1OfPnt'],
   OccRealArray: ['TColStd_Array1OfReal'],
   OccIntArray: ['TColStd_Array1OfInteger'],
@@ -230,6 +231,7 @@ const INTERFACE_CLASSES: Record<string, string[] | null> = {
   OccCopyBuilder: ['BRepBuilderAPI_Copy'],
   OccTransientHandle: null,
   OccStepReader: ['STEPControl_Reader'],
+  OccStepCafReader: ['OversolvedStepCaf'],
   OccWorkSession: ['XSControl_WorkSession'],
   OccTransferReader: ['XSControl_TransferReader'],
   OccTransientProcess: ['Transfer_TransientProcess'],

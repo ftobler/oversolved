@@ -152,6 +152,24 @@ describe('solveAssembly', () => {
     expect(result.bodies['p2'][0].edges[0].endpoints[0][0]).toBeCloseTo(-100)
   })
 
+  it('carries each body\'s part colour to every instance of the part', async () => {
+    const { relay, partDocs } = makeRelay()
+    partDocs.set('doc-a', { kind: 'part', features: [] })
+    const base = makeBundle('doc-a', '1')
+    await bundleCachePut({ ...base, bodies: [{ ...base.bodies[0], color: '#808080' }, base.bodies[0]] })
+
+    const parts = [
+      { handle: 'p1', doc_id: 'doc-a', transform: translationTransform(100, 0, 0) },
+      { handle: 'p2', doc_id: 'doc-a', transform: identityTransform() },
+    ]
+    const result = await solveAssembly(parts, { 'doc-a': '1' }, [], relay, makeEchoSolver())
+
+    for (const handle of ['p1', 'p2']) {
+      expect(result.bodies[handle][0].color).toBe('#808080')
+      expect(result.bodies[handle][1]).not.toHaveProperty('color')
+    }
+  })
+
   it('carries the bundle face facts into the solved pose, points moved and directions only rotated', async () => {
     const { relay, partDocs } = makeRelay()
     partDocs.set('doc-a', { kind: 'part', features: [] })

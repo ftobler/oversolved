@@ -143,6 +143,7 @@ export class SharedHarness {
               // modifier tags are part of the render payload, not just inputs.
               created_by: body.created_by ?? '',
               modified_by: body.modified_by ?? [],
+              ...(body.import_color ? { import_color: body.import_color } : {}),
             }
           } catch (e) {
             swallowUnlessTrap(e)  // a trap here means the render copy is not the only loss

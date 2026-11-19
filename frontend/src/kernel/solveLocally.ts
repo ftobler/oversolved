@@ -324,6 +324,7 @@ export function tessellateParts(
         hidden_vertices: faceEdgeData.hidden_vertices,
         created_by: body.created_by ?? '',
         modified_by: body.modified_by ?? [],
+        ...(body.import_color ? { import_color: body.import_color } : {}),
       }
     } catch (e) {
       // A trap is not this body's problem: the module is unusable, so the whole

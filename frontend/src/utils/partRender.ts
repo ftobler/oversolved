@@ -24,6 +24,9 @@ export interface PartRenderItem {
   hiddenVertices?: number[]
   // Assembly only: the child handle path of a rigid sub-assembly leaf.
   leafPath?: string
+  // Assembly only: the body's colour from its part document; absent draws the
+  // assembly default.
+  color?: string
   visible: boolean
   // Ghost layer only: the edit being previewed consumes this body. Orthogonal to
   // `visible`, which is the user's own show/hide -- a doomed body the user hid
@@ -92,6 +95,7 @@ export function getPartsToRender(
       hiddenEdges: body.hidden_edges,
       hiddenVertices: body.hidden_vertices,
       leafPath: body.leaf_path,
+      ...(body.display_color !== undefined && { color: body.display_color }),
       visible: partVisible && !isPartHiddenByFeature(createdBy, features, visibleFeatures),
     })
   }

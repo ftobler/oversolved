@@ -461,6 +461,8 @@ export function resplitPart(
       split_from: { ...splitFrom },
       ...namesForSolid(oc, scope, solids[i], produced, true),
       ...(part.imported ? { imported: true } : {}),
+      // A sibling broken off an imported body is still the file's material.
+      ...(part.import_color ? { import_color: part.import_color } : {}),
       ...(carriedPrecision ? { precision: { ...carriedPrecision } } : {}),
     }
     ids.push(id)

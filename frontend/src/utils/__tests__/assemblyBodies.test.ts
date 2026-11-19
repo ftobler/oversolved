@@ -35,6 +35,15 @@ describe('toBodyResults', () => {
     expect(part.mesh!.faces).toEqual(mesh(5).indices)
   })
 
+  it('carries each body\'s part colour to the render item, and none when the bundle has none', () => {
+    const out = toPartResults({ h1: [{ ...mesh(0), color: '#808080' }, mesh(3)] })
+    expect(out[assemblyPartId('h1', 0)].display_color).toBe('#808080')
+    expect(out[assemblyPartId('h1', 1)]).not.toHaveProperty('display_color')
+    const items = getPartsToRender(out, undefined, undefined, undefined)
+    expect(items.find(i => i.partId === assemblyPartId('h1', 0))?.color).toBe('#808080')
+    expect(items.find(i => i.partId === assemblyPartId('h1', 1))?.color).toBeUndefined()
+  })
+
   it('numbers multiple bodies of one part instance distinctly', () => {
     const out = toPartResults({ h1: [mesh(0), mesh(3)] })
     expect(Object.keys(out)).toHaveLength(2)

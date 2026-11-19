@@ -4,7 +4,7 @@
 // assembly worker never touches OCC or runs solveLocally. The bundle is cached
 // in IndexedDb keyed by (doc_id, content_hash); a miss triggers a cold rebuild.
 
-import type { EdgeData, PartResult, FaceData, MateAnchorDescriptor, Mesh3D } from '../types/cad'
+import type { EdgeData, PartResult, PartStyleEntry, FaceData, MateAnchorDescriptor, Mesh3D } from '../types/cad'
 import { sha256Hex } from './sha256'
 import { constructionUuidToken, parseAncestry, partitionAncestryIds } from './queryWire'
 import { BUILTIN_PLANES, resolveBarePlaneId } from './solverConstants'
@@ -128,6 +128,10 @@ export interface PartMesh {
   // A rigid sub-assembly's leaf path inside the composite (`child` or
   // `child/grandchild`). Absent for an ordinary part bundle.
   leafPath?: string
+  // The body's display colour (`#rrggbb`): its part document's part_style
+  // colour, else the colour its STEP file gave it. Absent leaves the assembly
+  // default; the selection colour always wins over it.
+  color?: string
 }
 
 export interface PartBundle {
@@ -156,9 +160,11 @@ export interface PartBundle {
  * would keep drawing and picking every seam. Schema 6 adds the per-face
  * `faces` facts (surface class, frame, area, boundary edges, axial length) the
  * assembly measurement classifies from, so a cached schema-5 bundle would keep
- * blanking every face pick's readout. See `bundleCache.bundleCacheGet`.
+ * blanking every face pick's readout. Schema 7 adds the per-body `color`, so a
+ * cached schema-6 bundle would keep every instance in the default grey. See
+ * `bundleCache.bundleCacheGet`.
  */
-export const BUNDLE_SCHEMA = 6
+export const BUNDLE_SCHEMA = 7
 
 // Bumped whenever geometry-producing code changes at an unchanged BUNDLE_SCHEMA
 // (a tessellation tweak, a boolean-op fix, a builder behavior change). The
@@ -537,11 +543,26 @@ export function toPartMesh(partResult: PartResult): PartMesh {
   }
 }
 
+/**
+ * A part's display colour in the assembly: the part document's own part_style
+ * colour (what the part editor shows, including a user recolour), else the
+ * colour its STEP file gave it (a headless add_step_part document has no
+ * part_style until a write-back runs on it), else none.
+ */
+export function bundlePartColor(
+  partId: string,
+  partResult: PartResult,
+  partStyle: Readonly<Record<string, PartStyleEntry>> | undefined,
+): string | undefined {
+  return partStyle?.[partId]?.color ?? partResult.import_color
+}
+
 /** Build a PartBundle from the raw solve output (tuples still in place from tessellation). */
 export function toPartBundle(
   doc_id: string,
   content_hash: string,
   partResults: Record<string, PartResult>,
+  partStyle?: Readonly<Record<string, PartStyleEntry>>,
 ): PartBundle {
   const parts: PartMesh[] = []
   // Anchor ids are deterministic from the element's stable geom_hash + kind, so
@@ -558,9 +579,10 @@ export function toPartBundle(
     return n === 0 ? base : `${base}_${n + 1}`
   }
   const allAnchors: Record<string, Anchor> = {}
-  for (const part of Object.values(partResults)) {
+  for (const [partId, part] of Object.entries(partResults)) {
     const { anchors, entityAnchors } = extractPartAnchors(part, mintAnchorId)
-    parts.push({ ...toPartMesh(part), entityAnchors })
+    const color = bundlePartColor(partId, part, partStyle)
+    parts.push({ ...toPartMesh(part), entityAnchors, ...(color !== undefined && { color }) })
     Object.assign(allAnchors, anchors)
   }
   // The part frame is intrinsic to the document, so every bundle carries it,

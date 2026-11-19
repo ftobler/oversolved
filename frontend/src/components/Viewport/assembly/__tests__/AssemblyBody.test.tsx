@@ -3,6 +3,7 @@ import { render, fireEvent } from '@testing-library/react'
 import type { PartRenderItem } from '@/components/Viewport/partUtils'
 import type { EdgeCurve } from '@/kernel/partBundle'
 import AssemblyPartMesh from '../AssemblyPartMesh'
+import { COLOR_PART_DEFAULT, COLOR_PART_SELECTED } from '@/components/Geometry3D/constants'
 
 /**
  * AssemblyPartMesh's only interaction logic is the grab guard: a non-primary
@@ -28,19 +29,22 @@ vi.mock('@/utils/edgeSampling', () => ({
   buildCurveSegments: () => new Float32Array([0, 0, 0, 1, 0, 0]),
 }))
 
-function makeItem(): PartRenderItem {
+function makeItem(color?: string): PartRenderItem {
   return {
     key: 'b1', featureId: 'F1', partId: 'b1',
     mesh: {} as PartRenderItem['mesh'],
     edges: [], visible: true,
+    ...(color !== undefined && { color }),
   }
 }
 
-function renderPart(overrides: { aiming?: boolean; selected?: boolean; showFaces?: boolean; showEdges?: boolean } = {}) {
+function renderPart(overrides: {
+  aiming?: boolean; selected?: boolean; showFaces?: boolean; showEdges?: boolean; color?: string
+} = {}) {
   const onGrab = vi.fn()
   const { container } = render(
     <AssemblyPartMesh
-      item={makeItem()}
+      item={makeItem(overrides.color)}
       curves={[] as EdgeCurve[]}
       selected={overrides.selected ?? false}
       aiming={overrides.aiming ?? false}
@@ -75,6 +79,23 @@ describe('AssemblyPartMesh grab guard', () => {
     const { mesh, onGrab } = renderPart({ aiming: true })
     fireEvent.pointerDown(mesh, { button: 0 })
     expect(onGrab).not.toHaveBeenCalled()
+  })
+})
+
+describe('AssemblyPartMesh body colour', () => {
+  const faceColor = (container: HTMLElement): string | null =>
+    container.querySelector('meshstandardmaterial')?.getAttribute('color') ?? null
+
+  it('draws the instance in its part document\'s body colour', () => {
+    expect(faceColor(renderPart({ color: '#808080' }).container)).toBe('#808080')
+  })
+
+  it('falls back to the assembly default without one', () => {
+    expect(faceColor(renderPart().container)).toBe(COLOR_PART_DEFAULT)
+  })
+
+  it('lets the selection colour win over the body colour', () => {
+    expect(faceColor(renderPart({ color: '#808080', selected: true }).container)).toBe(COLOR_PART_SELECTED)
   })
 })
 

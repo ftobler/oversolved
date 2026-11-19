@@ -29,13 +29,18 @@ export function reconcilePartStyle(doc: PartDoc, parts: Record<string, PartResul
   }
 
   for (const partId of partIds) {
+    // An existing entry is never touched, so a colour the user picked (or the
+    // file colour an earlier solve seeded) survives every re-solve, including
+    // one after the import's file bytes were replaced.
     if (nextStyle[partId]) continue
     const partNumber = nextFreePartNumber()
-    const createdBy = parts?.[partId]?.created_by
+    const part = parts?.[partId]
     nextStyle[partId] = {
       name: `part ${partNumber}`,
-      color: pickPartColor(partNumber),
-      created_by: createdBy,
+      // A STEP import seeds the colour its file gives the part; the palette
+      // is the fallback for a modelled part and an uncoloured file.
+      color: part?.import_color ?? pickPartColor(partNumber),
+      created_by: part?.created_by,
     }
   }
 

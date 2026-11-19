@@ -1,12 +1,14 @@
 // STEP read/write adapter for the import_step leaf. Import writes
-// the STEP bytes to the emscripten in-memory FS, reads them with
-// STEPControl_Reader, and applies an optional uniform scale. Export writes a
+// the STEP bytes to the emscripten in-memory FS, reads them with the
+// colour-aware OversolvedStepCaf (STEPControl_Reader for the identity-free
+// round trips), and applies an optional uniform scale. Export writes a
 // shape to the FS with STEPControl_Writer and reads the resulting bytes back.
 
 import type { DisposeScope } from './disposeScope'
 import type {
   OccModule, OccShape, OccSubShape, OccStepReader, OccTransformBuilder,
   OccDisposable, OccTransferBinder, OccMaybeShape, OccTransientHandle,
+  OccStepCafColors, OccShapeEnumValue,
 } from './occTypes'
 import { makeScaleTrsf } from './transforms'
 import { readShapeFaces, assembleMesh } from './tessellation'
@@ -16,6 +18,7 @@ import { enumVal, sameEnum } from './enumValue'
 import { encodeBinaryStl } from '../stl'
 import { noProgress } from './defaultArgs'
 import { timePhase } from './phaseTimer'
+import { extractOccErrorMessage, isKernelTrap } from '../errors'
 
 // A fixed short scratch path in the emscripten MEMFS. Two quirks of the 7.4
 // build forced both choices: STEPControl_Reader failed
@@ -47,7 +50,29 @@ export interface StepReadResult {
    * instead.
    */
   faceStepIds: SubShapeMap<number>
+  /**
+   * A face of `shape` -> its effective file colour (`0xRRGGBB`, sRGB): its own,
+   * else the nearest owner's. A face the file leaves uncoloured is absent, so
+   * an uncoloured file yields an empty map.
+   */
+  faceColors: SubShapeMap<number>
+  // A solid of `shape` -> the colour the file put on the solid itself.
+  solidColors: SubShapeMap<number>
+  // Present when the colours could not be paired with the shape and were
+  // dropped; the shape and its identity are unaffected.
+  colorWarning?: string
 }
+
+/**
+ * Which reader drives an identity read. `caf` (OversolvedStepCaf) is the import
+ * path: it reads colours from the same transfer the identity comes from.
+ * `plain` (STEPControl_Reader) is the reference the identity guard compares it
+ * against, face for face (`stepCafIdentityReal.test.ts`).
+ */
+export type StepReaderKind = 'caf' | 'plain'
+
+// What the transfer-map walk needs of either reader.
+type TransferSource = Pick<OccStepReader, 'Model' | 'WS'>
 
 /**
  * Read STEP bytes into a shape, optionally scaled about the origin (mirrors
@@ -62,22 +87,67 @@ export function stepBytesToShape(
   bytes: Uint8Array,
   scale = 1.0,
 ): OccShape {
-  return readStep(oc, scope, bytes, scale, false).shape
+  return readStep(oc, scope, bytes, scale, false, 'plain').shape
 }
 
 /**
  * Read STEP bytes into a shape AND recover each face's STEP entity id, the
  * ingredient imported faces are named by (`importedFacePath`). Without it every
  * face of an imported body collapses onto one query string and none of them is
- * individually selectable.
+ * individually selectable. The colours come from the same transfer.
  */
 export function stepBytesToShapeWithIdentity(
   oc: OccModule,
   scope: DisposeScope,
   bytes: Uint8Array,
   scale = 1.0,
+  reader: StepReaderKind = 'caf',
 ): StepReadResult {
-  return readStep(oc, scope, bytes, scale, true)
+  return readStep(oc, scope, bytes, scale, true, reader)
+}
+
+// A read reader after its transfer: the shape (already tracked in the scope),
+// and the colours when it has any.
+interface Transferred {
+  source: TransferSource
+  read: OccShape
+  colors: OccStepCafColors | null
+  // Set when the colour read itself threw; the shape still stands.
+  colorWarning?: string
+}
+
+function transfer(oc: OccModule, scope: DisposeScope, path: string, kind: StepReaderKind): Transferred {
+  const doneVal = enumVal(oc.IFSelect_ReturnStatus.IFSelect_RetDone)
+  const refuseStatus = (status: unknown): void => {
+    const statusVal = enumVal(status)
+    if (statusVal !== doneVal) throw new Error(`import_step: STEP read failed (status ${statusVal})`)
+  }
+  if (kind === 'plain') {
+    const reader = scope.track(new oc.STEPControl_Reader_1())
+    refuseStatus(timePhase('step.read', () => reader.ReadFile_1(path)))
+    timePhase('step.transfer', () => reader.TransferRoots(noProgress(oc)))
+    return { source: reader, read: scope.track(reader.OneShape()), colors: null }
+  }
+  const reader = scope.track(new oc.OversolvedStepCaf())
+  refuseStatus(timePhase('step.read', () => reader.ReadFile(path)))
+  if (!timePhase('step.transfer', () => reader.Transfer())) {
+    throw new Error('import_step: STEP transfer failed')
+  }
+  // Tracked at once, so nothing between here and the hand-out can strand it.
+  const read = scope.track(reader.OneShape())
+  try {
+    return { source: reader, read, colors: timePhase('step.colors', () => reader.Colors(read)) }
+  } catch (e) {
+    // A trap leaves the module unusable and must abort the build; any other
+    // throw only costs the colours, never the import.
+    if (isKernelTrap(e)) throw e
+    return {
+      source: reader,
+      read,
+      colors: null,
+      colorWarning: `the STEP file's colours were dropped: reading them failed (${extractOccErrorMessage(oc, e)})`,
+    }
+  }
 }
 
 function readStep(
@@ -86,35 +156,39 @@ function readStep(
   bytes: Uint8Array,
   scale: number,
   withIdentity: boolean,
+  kind: StepReaderKind,
 ): StepReadResult {
   const path = SCRATCH_PATH
   oc.FS.writeFile(path, bytes)
   try {
-    const reader = scope.track(new oc.STEPControl_Reader_1())
-    const status = timePhase('step.read', () => reader.ReadFile_1(path))
-    const statusVal = enumVal(status)
-    const doneVal = enumVal(oc.IFSelect_ReturnStatus.IFSelect_RetDone)
-    if (statusVal !== doneVal) {
-      throw new Error(`import_step: STEP read failed (status ${statusVal})`)
-    }
-    timePhase('step.transfer', () => reader.TransferRoots(noProgress(oc)))
-    const read = reader.OneShape()
+    // `read` arrives tracked, so a throw below cannot strand it on the heap. On
+    // the scaled path the OneShape() result is an intermediate only the
+    // identity map reads and stays tracked; unscaled it IS the returned shape
+    // and is detached on the way out (producers return untracked shapes).
+    const { source: reader, read, colors, colorWarning: readWarning } = transfer(oc, scope, path, kind)
     // The scaled copy is a NEW shape the transfer map knows nothing about, so
     // the builder has to stay in hand to carry identity across it.
     const builder = scale !== 1.0
       ? transformBuilder(oc, scope, read, scale)
       : null
-    // On the scaled path the OneShape() result becomes an intermediate only
-    // the identity map reads; track it so the copy does not strand it on the
-    // heap (unscaled, it IS the returned shape and stays untracked).
-    if (builder !== null) scope.track(read)
     const shape = builder ? builder.Shape() : read
+    const handOut = (result: StepReadResult): StepReadResult => {
+      if (builder === null) scope.detach(read)
+      return result
+    }
+    if (!withIdentity) {
+      return handOut({ shape, faceStepIds: new SubShapeMap(), faceColors: new SubShapeMap(), solidColors: new SubShapeMap() })
+    }
     // The reader (and with it the transfer map) is tracked in `scope`, but the
     // caller's scope may outlive this call by a lot -- read the map now.
-    const faceStepIds = withIdentity
-      ? timePhase('step.identity', () => faceEntityIds(oc, scope, reader, read, shape, builder))
-      : new SubShapeMap<number>()
-    return { shape, faceStepIds }
+    const faces = pairReadFaces(oc, scope, read, shape, builder)
+    const faceStepIds = timePhase('step.identity', () => faceEntityIds(oc, scope, reader, faces))
+    const maps = colorMaps(oc, scope, colors, faces, read, shape, builder)
+    const colorWarning = readWarning ?? maps.colorWarning
+    return handOut({
+      shape, faceStepIds, faceColors: maps.faceColors, solidColors: maps.solidColors,
+      ...(colorWarning !== undefined && { colorWarning }),
+    })
   } finally {
     try {
       oc.FS.unlink(path)
@@ -137,13 +211,119 @@ function transformBuilder(
   return builder
 }
 
+type Cast = (shape: OccShape) => OccShape
+
 /** Explorer-ordered faces of `shape`, as `TopoDS_Face`. */
 function explodeFaces(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape[] {
-  const E = oc.TopAbs_ShapeEnum
-  const exp = scope.track(new oc.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
+  return explode(oc, scope, shape, oc.TopAbs_ShapeEnum.TopAbs_FACE, (s) => oc.TopoDS.Face_1(s))
+}
+
+/** Explorer-ordered solids of `shape`, as `TopoDS_Solid`. */
+function explodeSolids(oc: OccModule, scope: DisposeScope, shape: OccShape): OccShape[] {
+  return explode(oc, scope, shape, oc.TopAbs_ShapeEnum.TopAbs_SOLID, (s) => oc.TopoDS.Solid_1(s))
+}
+
+function explode(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+  kind: OccShapeEnumValue,
+  cast: Cast,
+): OccShape[] {
+  const exp = scope.track(new oc.TopExp_Explorer_2(shape, kind, oc.TopAbs_ShapeEnum.TopAbs_SHAPE))
   const out: OccShape[] = []
-  for (; exp.More(); exp.Next()) out.push(scope.track(oc.TopoDS.Face_1(exp.Current())))
+  for (; exp.More(); exp.Next()) out.push(scope.track(cast(exp.Current())))
   return out
+}
+
+/**
+ * The read shape's faces in explorer order (`sourceFaces`, the order the
+ * transfer map and `Colors` speak), the final shape's (`finalFaces`), and
+ * `targets[i]`, the final face `sourceFaces[i]` became, paired ONCE. Doing the
+ * pairing inside the entity loop instead would put the quadratic straight back.
+ * Without a scale copy the two lists are one.
+ */
+interface ReadFaces {
+  sourceFaces: OccShape[]
+  finalFaces: OccShape[]
+  targets: (OccShape | null)[]
+}
+
+function pairReadFaces(
+  oc: OccModule,
+  scope: DisposeScope,
+  readShape: OccShape,
+  finalShape: OccShape,
+  builder: OccTransformBuilder | null,
+): ReadFaces {
+  const finalFaces = explodeFaces(oc, scope, finalShape)
+  if (!builder) return { sourceFaces: finalFaces, finalFaces, targets: finalFaces }
+  const sourceFaces = explodeFaces(oc, scope, readShape)
+  const targets = pairAcrossTransform(oc, scope, sourceFaces, finalFaces, builder, (s) => oc.TopoDS.Face_1(s))
+  return { sourceFaces, finalFaces, targets }
+}
+
+/**
+ * One `Colors` array keyed by the sub-shapes it was read for, -1 (no colour)
+ * left out; null when the counts differ. A mismatch means the helper walked
+ * another shape than ours, and pairing by position would put colours on the
+ * wrong faces.
+ */
+export function keyColors(
+  values: ArrayLike<number>,
+  targets: readonly (OccShape | null)[],
+): SubShapeMap<number> | null {
+  if (values.length !== targets.length) return null
+  const out = new SubShapeMap<number>()
+  targets.forEach((target, i) => {
+    if (target !== null && values[i] >= 0) out.set(target as OccSubShape, values[i])
+  })
+  return out
+}
+
+interface ColorMaps {
+  faceColors: SubShapeMap<number>
+  solidColors: SubShapeMap<number>
+  // Set when the colours had to be dropped; the import itself still stands.
+  colorWarning?: string
+}
+
+/**
+ * `Colors`' explorer-ordered arrays keyed by the final shape's own faces and
+ * solids. A plain read has no colours at all. Colours are decoration: when
+ * they cannot be paired, the import goes on uncoloured and says so instead of
+ * failing.
+ */
+function colorMaps(
+  oc: OccModule,
+  scope: DisposeScope,
+  colors: OccStepCafColors | null,
+  faces: ReadFaces,
+  readShape: OccShape,
+  finalShape: OccShape,
+  builder: OccTransformBuilder | null,
+): ColorMaps {
+  const none = (): ColorMaps => ({ faceColors: new SubShapeMap(), solidColors: new SubShapeMap() })
+  if (colors === null) return none()
+  const faceColors = keyColors(colors.faceColor, faces.targets)
+  if (faceColors === null) {
+    return { ...none(), colorWarning: colorMismatch(colors.faceColor.length, faces.targets.length, 'faces') }
+  }
+  if (!colors.solidColor.some((c) => c >= 0)) return { faceColors, solidColors: new SubShapeMap() }
+  const finalSolids = explodeSolids(oc, scope, finalShape)
+  const solidTargets = builder
+    ? pairAcrossTransform(oc, scope, explodeSolids(oc, scope, readShape), finalSolids, builder,
+      (s) => oc.TopoDS.Solid_1(s))
+    : finalSolids
+  const solidColors = keyColors(colors.solidColor, solidTargets)
+  if (solidColors === null) {
+    return { ...none(), colorWarning: colorMismatch(colors.solidColor.length, solidTargets.length, 'solids') }
+  }
+  return { faceColors, solidColors }
+}
+
+function colorMismatch(read: number, have: number, what: string): string {
+  return `the STEP file's colours were dropped: ${read} colours read for ${have} ${what}`
 }
 
 /**
@@ -167,7 +347,7 @@ function explodeFaces(oc: OccModule, scope: DisposeScope, shape: OccShape): OccS
  */
 function forEachTransferredFace(
   oc: OccModule,
-  reader: OccStepReader,
+  reader: TransferSource,
   visit: (face: OccShape, entityId: number) => void,
 ): void {
   const modelHandle = reader.Model()
@@ -226,22 +406,13 @@ function drop(...objects: (OccDisposable | null | undefined)[]): void {
 function faceEntityIds(
   oc: OccModule,
   scope: DisposeScope,
-  reader: OccStepReader,
-  readShape: OccShape,
-  finalShape: OccShape,
-  builder: OccTransformBuilder | null,
+  reader: TransferSource,
+  faces: ReadFaces,
 ): SubShapeMap<number> {
+  const { sourceFaces, finalFaces, targets } = faces
   const unplaced = unplacer(oc, scope)
-  const finalFaces = explodeFaces(oc, scope, finalShape)
-  // The transfer only knows the shape it read, which IS the final one unless a
-  // scale copied it.
-  const sourceFaces = builder ? explodeFaces(oc, scope, readShape) : finalFaces
   const sourceIndex = new UnplacedFaceIndex()
   sourceFaces.forEach((face, i) => sourceIndex.add(unplaced.keep(face), i))
-
-  // source position -> the final face it became, paired ONCE. Doing this inside
-  // the entity loop instead would put the quadratic straight back.
-  const targets = builder ? pairAcrossTransform(oc, scope, sourceFaces, finalFaces, builder) : finalFaces
 
   const out = new SubShapeMap<number>()
   let transferred = 0
@@ -304,19 +475,21 @@ class UnplacedFaceIndex {
   }
 }
 
-/** `sourceFaces[i]` -> the face of the transformed shape it became, or null. */
+/** `sourceFaces[i]` -> the sub-shape of the transformed shape it became, or
+ *  null. Faces or solids alike; `cast` restores the type ModifiedShape drops. */
 function pairAcrossTransform(
   oc: OccModule,
   scope: DisposeScope,
   sourceFaces: OccShape[],
   finalFaces: OccShape[],
   builder: OccTransformBuilder,
+  cast: Cast,
 ): (OccShape | null)[] {
   const unplaced = unplacer(oc, scope)
   const finalIndex = new SubShapeIndexMap()
   finalFaces.forEach((face, i) => finalIndex.set(unplaced.keep(face), i))
   return sourceFaces.map((face) => {
-    const moved = scope.track(oc.TopoDS.Face_1(builder.ModifiedShape(face)))
+    const moved = scope.track(cast(builder.ModifiedShape(face)))
     const at = unplaced.borrow(moved, (bare) => finalIndex.get(bare))
     return at >= 0 ? finalFaces[at] : null
   })

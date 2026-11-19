@@ -40,7 +40,7 @@ import { onFeatureStart } from '../featureProgress'
 import { MEASURE_SUPERSEDED, SUPERSEDED_ERROR } from './solverProtocol'
 import { scaleBundleToMillimetres, toPartBundle } from '../partBundle'
 import { partToAssemblyScale } from '@/utils/lengthUnit'
-import type { PartResult } from '../../types/cad'
+import type { PartResult, PartStyleEntry } from '../../types/cad'
 
 // The worker's per-generation import byte cache. The client sends each id's
 // bytes once (fileDelta in solverClient); every request this generation then
@@ -262,6 +262,8 @@ export async function handleBundleRequest(
         req.doc_id,
         req.content_hash,
         response.bodies as Record<string, PartResult>,
+        // The spec is the whole part document, so its body colours ride along.
+        (req.spec as { part_style?: Record<string, PartStyleEntry> }).part_style,
       ),
       partToAssemblyScale(req.spec),
     )

@@ -3,7 +3,13 @@
 // feature's `file_id`; the STEP parse itself lives in occ/stepIo.ts.
 
 import type { DisposeScope } from '../occ/disposeScope'
-import type { OccModule } from '../occ/occTypes'
+import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
+import type { SubShapeMap } from '../occ/subshapeIdentity'
+import { canonicalFaces } from '../occ/partNames'
+import { faceArea } from '../occ/primitives'
+import {
+  partImportColor, hexOfPackedRgb, importColorNoteText, type FaceColorSample,
+} from '../occ/importColor'
 import type { HandleTable } from '../occ/handleTable'
 import type { PartSolid } from '../types3d'
 import type { Repository } from '../query'
@@ -57,8 +63,11 @@ export function solveImportStep(
   if (!bytes) throw new Error(`import_step: file '${fileId}' is not present in the solve file set`)
 
   const partId = 'body_' + featureId
-  const { shape: read, faceStepIds } = stepBytesToShapeWithIdentity(oc, scope, bytes, scale)
+  const { shape: read, faceStepIds, faceColors, solidColors, colorWarning } =
+    stepBytesToShapeWithIdentity(oc, scope, bytes, scale)
   const shape = scope.track(read)
+  // The same sibling order `registerSplitParts` mints body ids in.
+  const solids = splitSolids(oc, scope, shape)
 
   // Named from the STEP file's own entity ids. Without this every face of the
   // import shares one query string (`@<feature>@<body>`) and none of them is
@@ -68,7 +77,7 @@ export function solveImportStep(
   // index from `splitSolids` -- the same order body ids are minted with -- is
   // folded into the UUID path to keep the copies' `@u|` tokens disjoint.
   const names = timePhase('import.names', () =>
-    importedNameMaps(oc, scope, shape, faceStepIds, featureId, splitSolids(oc, scope, shape)))
+    importedNameMaps(oc, scope, shape, faceStepIds, featureId, solids))
 
   // A STEP file holding several parts arrives as one compound, so the import is
   // exactly the "a shape becomes bodies" case partSplit owns: one body per
@@ -83,5 +92,57 @@ export function solveImportStep(
     faceAncestry: names.faceAncestry,
     edgeAncestry: names.edgeAncestry,
   }))
-  return { status: 'ok', body_id: partIds[0], body_ids: partIds }
+  const notes = timePhase('import.colors', () =>
+    applyImportColors(oc, scope, solids.length > 0 ? solids : [shape], partIds, faceColors, solidColors, partStore))
+  return {
+    status: 'ok',
+    body_id: partIds[0],
+    body_ids: partIds,
+    // Not a problem: the import built what the file holds. The note says which
+    // colour a part took when its faces disagreed, so the pick is not silent.
+    ...(notes.length > 0 ? { solver_note: notes.join('; ') } : {}),
+    // The geometry imported but its colours could not be read or paired with
+    // it, so every part took the palette: worth a warning, never a failed import.
+    ...(colorWarning !== undefined ? { solver_warning: colorWarning } : {}),
+  }
+}
+
+/**
+ * Stamp each new part with the colour its file gives it (occ/importColor.ts)
+ * and return the notes for the parts whose faces disagreed. `solids[i]` is the
+ * solid `ids[i]` was minted from. Face areas are read only for a part whose
+ * faces carry more than one colour: in the common case (one colour, or none)
+ * there is nothing to weigh.
+ */
+function applyImportColors(
+  oc: OccModule,
+  scope: DisposeScope,
+  solids: OccShape[],
+  ids: string[],
+  faceColors: SubShapeMap<number>,
+  solidColors: SubShapeMap<number>,
+  partStore: Record<string, PartSolid>,
+): string[] {
+  const notes: string[] = []
+  if (faceColors.size === 0 && solidColors.size === 0) return notes
+  solids.forEach((solid, i) => {
+    const part = partStore[ids[i]]
+    if (!part) return
+    const faces = canonicalFaces(oc, scope, solid)
+    const colors = faces.map((face) => {
+      const packed = faceColors.get(face)
+      return packed === undefined ? null : hexOfPackedRgb(packed)
+    })
+    const uniform = colors.every((c) => c === colors[0])
+    const samples: FaceColorSample[] = colors.map((color, at) => ({
+      color,
+      area: uniform ? 1 : faceArea(oc, scope, faces[at] as OccShape),
+    }))
+    const solidPacked = solidColors.get(solid as OccSubShape)
+    const chosen = partImportColor(samples, solidPacked === undefined ? null : hexOfPackedRgb(solidPacked))
+    if (chosen === null) return
+    if (chosen.color !== null) part.import_color = chosen.color
+    if (chosen.note) notes.push(importColorNoteText(ids[i], chosen.note))
+  })
+  return notes
 }

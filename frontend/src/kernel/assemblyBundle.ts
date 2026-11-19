@@ -124,6 +124,7 @@ export function buildAssemblyBundle(
           // A nested composite already carries its own inner path; prefix it
           // with this handle so the tree key is the full path from the parent.
           leafPath: mesh.leafPath === undefined ? handle : `${handle}/${mesh.leafPath}`,
+          ...(mesh.color !== undefined && { color: mesh.color }),
           entityAnchors: prefixEntityAnchors(handle, mesh.entityAnchors),
         })
       }
