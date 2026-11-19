@@ -1,8 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Dialog from '@/components/dialogs/Dialog'
 import { LoadingState } from '@/components/shared/LoadingState'
 import DocTilePreview from '@/components/shared/DocTilePreview'
-import { errorMessage } from '@/utils/core/errorMessage'
 import { formatRelativeDate } from '@/utils/core/relativeDate'
 import type { WorkspaceSession } from '@/workspace/session'
 import type { EntryMeta } from '@/workspace/types'
@@ -17,10 +16,22 @@ interface AssemblyPartPickerProps {
   isOpen: boolean
   // The current assembly's own uuid, filtered out of the pick list.
   selfUuid: string
-  // The open workspace session: the pick source is exactly this workspace's
-  // parts, never the library. Null means no workspace is bound (the picker
-  // shows its empty state rather than reaching across workspaces).
+  // The open workspace session. It names the workspace for the tile previews
+  // and marks "no workspace bound" as a terminal empty state; the pick source
+  // itself is `entries`, never a fetch of its own.
   session: WorkspaceSession | null
+  // The editor's one workspace entry list, the same rows the add_part guard
+  // checks. Null means it has not landed yet (the dialog shows its spinner).
+  // Sharing this list is what keeps a listed tile from being refused as an
+  // unknown document: the picker and the guard cannot disagree.
+  entries: readonly EntryMeta[] | null
+  // Why the shared list could not be read. A failed read is shown here rather
+  // than left as a spinner, because an insert that cannot even list its parts
+  // must not look like a button that does nothing.
+  listError?: string | null
+  // Ask the editor for a fresh list. Called on open, so a part added since the
+  // editor mounted is both shown and accepted.
+  onRefresh: () => void
   // Why an assembly cannot be placed here (a cycle), by doc id. A refused
   // assembly stays listed, disabled, so the user sees the reason instead of
   // wondering why it vanished.
@@ -47,23 +58,23 @@ function insertableKind(entry: EntryMeta): InsertableKind | null {
 // It browses the open workspace's documents, minus the assembly itself, and
 // carries no tile verbs (duplicate/export/delete): this dialog only browses and
 // picks.
+//
+// The rows arrive from the editor instead of being fetched here. The editor's
+// list is also where the add_part guard's live set comes from, so a tile the
+// user can click is exactly a document the operation will accept; a second
+// fetch could list a part the guard had not learned about and turn Insert into
+// a silent refusal.
 export default function AssemblyPartPicker({
-  isOpen, selfUuid, session, cycleReasonFor, onClose, onPick,
+  isOpen, selfUuid, session, entries, listError, onRefresh, cycleReasonFor, onClose, onPick,
 }: AssemblyPartPickerProps) {
-  const [docs, setDocs] = useState<EntryMeta[]>([])
   const [selected, setSelected] = useState<string | null>(null)
-  // Starts true so opening the dialog can never paint "No parts available."
-  // before the first list answers; the close reset restores it for the reopen.
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
 
   // Each open starts fresh: empty search, nothing selected. The reset runs on
   // CLOSE (the dialog stays mounted, only isOpen toggles) so reopening never
-  // paints, fetches, or double-click-inserts the previous session's stale
-  // selection. Deferred a microtask to satisfy the no-sync-setState-in-effect
-  // rule.
+  // paints or double-click-inserts the previous session's stale selection.
+  // Deferred a microtask to satisfy the no-sync-setState-in-effect rule.
   useEffect(() => {
     if (isOpen) return
     let cancelled = false
@@ -72,8 +83,6 @@ export default function AssemblyPartPicker({
       setSearchQuery('')
       setDebouncedSearch('')
       setSelected(null)
-      setDocs([])
-      setLoading(true)
     })
     return () => { cancelled = true }
   }, [isOpen])
@@ -83,48 +92,24 @@ export default function AssemblyPartPicker({
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-  // Stale-response guard: typing fires a fresh list per debounce tick and
-  // nothing promises they resolve in order, so only the latest sets state.
-  const listReqRef = useRef(0)
+  // The one fetch on this path is the editor's, freshened when the dialog
+  // opens so the tiles and the guard both learn about a part added since mount.
   useEffect(() => {
-    if (!isOpen) return
-    const reqId = ++listReqRef.current
-    // No session is terminal, not pending: the picker has nothing to list, so
-    // it settles into its empty state instead of holding the spinner up.
-    if (!session) {
-      queueMicrotask(() => {
-        if (reqId !== listReqRef.current) return
-        setDocs([])
-        setError(null)
-        setLoading(false)
-      })
-      return
-    }
-    queueMicrotask(() => {
-      if (reqId !== listReqRef.current) return
-      setLoading(true)
-      setError(null)
-    })
+    if (isOpen) onRefresh()
+  }, [isOpen, onRefresh])
+
+  const docs = useMemo(() => {
     const needle = debouncedSearch.toLowerCase()
-    session.listEntries()
-      .then(list => {
-        if (reqId !== listReqRef.current) return
-        const visible = list
-          .filter(entry => entry.id !== selfUuid && insertableKind(entry) !== null)
-          .filter(entry => !needle || entry.name.toLowerCase().includes(needle))
-          .sort((a, b) => a.name.localeCompare(b.name))
-        setDocs(visible)
-        // Keep the selection only while its tile is still on screen, so the
-        // Insert button can never confirm a doc the user no longer sees.
-        setSelected(prev => (visible.some(entry => entry.id === prev) ? prev : null))
-        setLoading(false)
-      })
-      .catch(e => {
-        if (reqId !== listReqRef.current) return
-        setError(errorMessage(e, 'Failed to list parts'))
-        setLoading(false)
-      })
-  }, [isOpen, session, debouncedSearch, selfUuid])
+    return (entries ?? [])
+      .filter(entry => entry.id !== selfUuid && insertableKind(entry) !== null)
+      .filter(entry => !needle || entry.name.toLowerCase().includes(needle))
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [entries, selfUuid, debouncedSearch])
+
+  // Null covers "no workspace bound" as well: with nothing to list, the dialog
+  // settles into its empty state instead of holding the spinner up.
+  const loading = session !== null && entries === null && !listError
+  const error = listError ?? null
 
   const cycleReason = (entry: EntryMeta): string | undefined =>
     insertableKind(entry) === 'assembly' ? cycleReasonFor?.(entry.id) : undefined
@@ -138,17 +123,18 @@ export default function AssemblyPartPicker({
     onClose()
   }
 
-  const confirm = () => {
-    const entry = docs.find(d => d.id === selected)
-    if (entry) pick(entry)
-  }
-
   const parts = docs.filter(entry => insertableKind(entry) === 'part')
   const assemblies = docs.filter(entry => insertableKind(entry) === 'assembly')
-  // A selection made before the graph changed can become refused; the Insert
-  // button must follow the same reason the tile does.
+  // The selection is resolved against the VISIBLE rows on every render, so a
+  // tile a search (or a refresh) narrowed away cannot be confirmed: Insert
+  // disables itself instead. The id itself is kept, so clearing the search
+  // restores the highlight rather than silently dropping the pick.
   const selectedEntry = docs.find(entry => entry.id === selected)
   const selectedRefused = selectedEntry !== undefined && cycleReason(selectedEntry) !== undefined
+
+  const confirm = () => {
+    if (selectedEntry) pick(selectedEntry)
+  }
 
   const tile = (entry: EntryMeta) => {
     const reason = cycleReason(entry)
@@ -186,7 +172,7 @@ export default function AssemblyPartPicker({
       onClose={onClose}
       onConfirm={confirm}
       confirmLabel="Insert"
-      confirmDisabled={!selected || selectedRefused}
+      confirmDisabled={!selectedEntry || selectedRefused}
       className="doc-browser-dialog"
     >
       <div className="doc-browser">

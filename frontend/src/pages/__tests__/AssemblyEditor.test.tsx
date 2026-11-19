@@ -91,10 +91,14 @@ vi.mock('@/stores/previewStore', () => ({
 }))
 
 import { executeCommand, setEditorCommandRegistry } from '@/utils/core/commandRegistry'
-import { CommandRegistry } from '@/utils/core/commandSpec'
+import { CommandRegistry, objectParams, Field } from '@/utils/core/commandSpec'
+import { errorResult } from '@/session/result'
 import { assemblyContext } from './commandFixtures'
 import type { AssemblyCommandContext } from '@/pages/assemblyCommandEntries'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
+import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
+import type { WorkspaceSession } from '@/workspace/session'
+import type { EntryMeta } from '@/workspace/types'
 import { useEditorModeStore } from '@/stores/editorModeStore'
 import { backendBundle } from '@/adapters/backend'
 import { MAX_STEP_IMPORT_BYTES } from '@/stores/documentStore/stepImport'
@@ -214,6 +218,102 @@ describe('AssemblyEditor (Stage 6b)', () => {
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(1))
     await insertPart('Bracket')
     await waitFor(() => expect(h.solveAssemblyViaWorker).toHaveBeenCalledTimes(2))
+  })
+
+  it('inserts a part created after the editor mounted', async () => {
+    h.list = [{ uuid: 'part-1', name: 'Bracket', kind: 'part', meta: { rev: 5 } }]
+    await renderLoaded()
+    h.list = [
+      { uuid: 'part-1', name: 'Bracket', kind: 'part', meta: { rev: 5 } },
+      { uuid: 'part-2', name: 'Bolt', kind: 'part', meta: { rev: 2 } },
+    ]
+    await insertPart('Bolt')
+    expect(useAssemblyStore.getState().instances.map(inst => inst.doc_id)).toEqual(['part-2'])
+  })
+
+  // Opening the picker asks for a fresh list while the mount's read may still
+  // be in flight. An older answer landing last must not replace the newer list
+  // (or the guard set): that is the same stale-list mismatch as above, just
+  // decided by response order instead of by mount time.
+  it('ignores an older list read that lands after a newer one', async () => {
+    const pending: Array<(value: EntryMeta[]) => void> = []
+    useWorkspaceSessionStore.setState({
+      session: {
+        workspace: 'asm-1',
+        listEntries: () => new Promise<EntryMeta[]>(resolve => { pending.push(resolve) }),
+        readEntry: vi.fn(),
+        writeEntry: vi.fn(),
+        resolveFile: vi.fn(),
+        referencesOf: vi.fn(),
+        referenceEdges: vi.fn(async () => ({})),
+        savedRevs: async () => new Map(),
+      } as unknown as WorkspaceSession,
+    })
+    renderEditor()
+    await tick()
+
+    act(() => { executeCommand('insert_part_instance') })
+    await waitFor(() => expect(pending.length).toBeGreaterThanOrEqual(2))
+    // The newest request is the picker's open, however many mount reads ran.
+    const newest = pending[pending.length - 1]
+    const older = pending[0]
+
+    const bracket: EntryMeta = {
+      id: 'part-1', path: 'documents/Bracket.yaml', kind: 'document', name: 'Bracket', docKind: 'part', rev: 5,
+    }
+    const bolt: EntryMeta = {
+      id: 'part-2', path: 'documents/Bolt.yaml', kind: 'document', name: 'Bolt', docKind: 'part', rev: 2,
+    }
+    // The newer read (the picker's open) lands first, with both parts.
+    await act(async () => { newest([bracket, bolt]) })
+    await waitFor(() => expect(pickerItem('Bolt')).toBeTruthy())
+    // The older read then answers without Bolt. It must be dropped.
+    await act(async () => { older([bracket]) })
+
+    expect(pickerItem('Bolt')).toBeTruthy()
+    fireEvent.click(pickerItem('Bolt')!)
+    fireEvent.click(screen.getByRole('button', { name: 'Insert' }))
+    await tick()
+    expect(useAssemblyStore.getState().instances.map(inst => inst.doc_id)).toEqual(['part-2'])
+  })
+
+  // Double-clicking is the other confirm gesture. It must land exactly one
+  // instance even though it follows the selecting click events.
+  it('adds exactly one instance when a tile is double-clicked', async () => {
+    await renderLoaded()
+    act(() => { executeCommand('insert_part_instance') })
+    await waitFor(() => expect(pickerItem('Bracket')).toBeTruthy())
+    fireEvent.doubleClick(pickerItem('Bracket')!)
+    await tick()
+    expect(useAssemblyStore.getState().instances.map(inst => inst.doc_id)).toEqual(['part-1'])
+  })
+
+  // A refused insert used to throw inside the click handler and disappear into
+  // a console error: the dialog stayed up and nothing said why. Whatever the
+  // command refuses with must reach the banner.
+  it('shows the refusal message when the add_part command fails', async () => {
+    await renderLoaded()
+    act(() => { executeCommand('insert_part_instance') })
+    await waitFor(() => expect(pickerItem('Bracket')).toBeTruthy())
+    fireEvent.click(pickerItem('Bracket')!)
+
+    // Swap only add_part; the dialog is already open and the Insert click is
+    // what resolves the registry, so no other command needs registering.
+    const refusing = new CommandRegistry<AssemblyCommandContext>(() => assemblyContext())
+    refusing.register({
+      id: 'add_part',
+      label: 'Add part',
+      params: objectParams({ docId: Field.string(), docRev: Field.number() }),
+      enabled: () => true,
+      run: () => errorResult('refused', 'Part is not a live entry in this workspace: part-1'),
+      undoable: true,
+    })
+    act(() => { setEditorCommandRegistry('assembly', refusing) })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Insert' }))
+    await tick()
+    expect(screen.getByText(/Part is not a live entry in this workspace: part-1/)).toBeTruthy()
+    expect(useAssemblyStore.getState().instances).toHaveLength(0)
   })
 
   // A sub-assembly is a directory row, so the picker grows an Assemblies group.

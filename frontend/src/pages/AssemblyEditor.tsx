@@ -158,11 +158,13 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   // Part document names, so the tree shows 'Bracket' rather than the raw uuid,
   // plus the instance editor's rebind options: this workspace's parts, minus
   // the assembly itself (pointing an instance at its own assembly is a cycle).
-  // A failed list is swallowed on purpose: names are a nicety here and the tree
-  // falls back to the uuid, which is worse to read but never wrong. The same
-  // fetch is where the add_part guard's live-part set comes from, so the names,
-  // the guard and the picker can never disagree about which parts exist.
+  // This one list is also the picker's tile source and the add_part guard's
+  // live-part set, so the names, the guard and the tiles can never disagree
+  // about which parts exist. A read failure is kept rather than swallowed: the
+  // picker shows it, since a list that never lands is otherwise an Insert
+  // button with nothing to pick and no reason why.
   const [partList, setPartList] = useState<PartListView | null>(null)
+  const [partListError, setPartListError] = useState<string | null>(null)
   // The workspace reference graph, refreshed with the list. Cycles are a
   // placement rule over this graph, so the picker and the operation guard read
   // the same snapshot.
@@ -172,6 +174,11 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   // but an unloaded one must not refuse a pick the user just made.
   const knownPartIds = useRef<ReadonlySet<string> | null>(null)
   const knownAssemblyIds = useRef<ReadonlySet<string> | null>(null)
+  // The newest list request only. Two reads are in flight whenever the picker
+  // opens (the mount read is still going), and an older answer landing last
+  // would overwrite the newer guard set with the stale one, which is the exact
+  // mismatch this list exists to prevent.
+  const listReqRef = useRef(0)
 
   const applyPartList = useCallback((list: readonly EntryMeta[], edges: ReferenceEdges) => {
     const names: Record<string, string> = {}
@@ -190,21 +197,36 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     setPartList({ names, entries: list as EntryMeta[] })
   }, [])
 
-  // The list is a view, not the document: refresh it on mount, when the instance
-  // editor opens, and after a STEP import, so a part or assembly added or
-  // deleted in another tab is pickable (or gone) without reopening the assembly.
+  // The list is a view, not the document: refresh it on mount, when the picker
+  // opens, when the instance editor opens, and after a STEP import, so a part
+  // or assembly added or deleted in another tab is pickable (or gone) without
+  // reopening the assembly. The picker reads the same list, so its tiles and
+  // the add_part guard learn about that part together.
   const refreshPartList = useCallback((isCancelled: () => boolean = () => false) => {
+    const reqId = ++listReqRef.current
+    const current = () => reqId === listReqRef.current && !isCancelled()
     if (!session) {
       knownPartIds.current = null
       knownAssemblyIds.current = null
       // Deferred a microtask: a synchronous clear here is a setState inside the
       // mount effect's body, and nothing may be picked before it lands anyway.
-      queueMicrotask(() => { if (!isCancelled()) setPartList(null) })
+      queueMicrotask(() => {
+        if (!current()) return
+        setPartList(null)
+        setPartListError(null)
+      })
       return
     }
     Promise.all([session.listEntries(), session.referenceEdges()])
-      .then(([list, edges]) => { if (!isCancelled()) applyPartList(list, edges) })
-      .catch(() => undefined)
+      .then(([list, edges]) => {
+        if (!current()) return
+        setPartListError(null)
+        applyPartList(list, edges)
+      })
+      .catch(e => {
+        if (!current()) return
+        setPartListError(errorMessage(e, 'Failed to list workspace documents'))
+      })
   }, [session, applyPartList])
 
   useEffect(() => {
@@ -502,10 +524,14 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   }, [])
 
   // The picker's commit runs the add_part operation through the registry, the
-  // same one path every other mutation takes.
+  // same one path every other mutation takes. A refused insert (the I8 guard,
+  // a cycle) comes back as a failed Result and is shown: without this the
+  // dialog closed and nothing happened, which is the bug this path was fixed
+  // for.
   const handlePick = useCallback((docId: string, docRev: number) => {
-    executeCommand('add_part', { docId, docRev })
-  }, [])
+    const added = executeCommand('add_part', { docId, docRev })
+    if (!added.ok) setError(added.message)
+  }, [setError])
 
   // Import STEP drops a file into the open workspace as its own part document,
   // then instances it through the ordinary add_part command. The store write is
@@ -852,15 +878,11 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
       partOptions={partOptions}
       onSetPartDoc={docId => {
         if (!docId) return  // the missing placeholder is not a choice
-        try {
-          const result = executeCommand('set_part_doc', { handle: inst.handle, docId })
-          if (!result.ok) setError(result.message)
-        } catch (e) {
-          // The operation guard throws by name for a part that is no longer a
-          // live entry (deleted since the list landed) or the assembly itself; a
-          // React event handler must report that rather than unwind the tree.
-          setError(errorMessage(e, 'Failed to rebind part'))
-        }
+        // The command reports its own refusal (a stale part, the assembly
+        // itself) as a failed Result, so the rebind path shows it the same way
+        // the insert path does.
+        const result = executeCommand('set_part_doc', { handle: inst.handle, docId })
+        if (!result.ok) setError(result.message)
       }}
       onSetFixed={f => executeCommand('set_part_fixed', { handle: inst.handle, fixed: f })}
       onSetPosition={pos => executeCommand('set_part_position', { handle: inst.handle, pos })}
@@ -1045,6 +1067,9 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
         isOpen={pickerOpen}
         selfUuid={uuid}
         session={session}
+        entries={partList?.entries ?? null}
+        listError={partListError}
+        onRefresh={refreshPartList}
         cycleReasonFor={cycleReasonFor}
         onClose={() => setPickerOpen(false)}
         onPick={handlePick}

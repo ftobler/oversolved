@@ -3,7 +3,8 @@ import { MATE_KINDS, MATE_KIND_LABELS } from '@/utils/mateKinds'
 import type { AssemblySubject } from '@/utils/assemblySelection'
 import type { AssemblyOperationId, AssemblyOperationInputs } from '@/utils/assemblyOperations'
 import type { MateParamPatch } from '@/utils/assemblyMutations'
-import { okResult } from '@/session/result'
+import { okResult, errorResult } from '@/session/result'
+import { errorMessage } from '@/utils/core/errorMessage'
 import { ASSEMBLY_KEYBINDINGS } from '@/utils/core/commandRegistry'
 import type { CommandName } from '@/utils/core/commandNames'
 import {
@@ -168,6 +169,21 @@ function spec<P>(options: SpecOptions<P>): AssemblyCommandSpec {
   }
 }
 
+// An operation's guard refuses by throwing a named Error: the I8 live-entry
+// rule, the cycle rule, an empty rebind target. A command is a gesture whose
+// caller reports the outcome, so the refusal comes back as a failed Result with
+// that message instead of an exception unwinding the click handler. A thrown
+// refusal used to escape `executeCommand` and vanish into a console error,
+// which is exactly how the Insert part button came to look dead.
+function guardedOperation(run: () => void, fallback: string): CommandResult {
+  try {
+    run()
+    return okResult()
+  } catch (e) {
+    return errorResult('refused', errorMessage(e, fallback))
+  }
+}
+
 const MATE_INSERT_SPECS: AssemblyCommandSpec[] = MATE_KINDS.map((kind): AssemblyCommandSpec => ({
   id: insertMateCommand(kind),
   label: `Insert ${MATE_KIND_LABELS[kind]} mate`,
@@ -264,10 +280,10 @@ export const ASSEMBLY_COMMAND_SPECS: readonly AssemblyCommandSpec[] = [
     id: 'add_part',
     label: 'Add part',
     params: objectParams({ docId: Field.string(), docRev: Field.number() }),
-    run: (ctx, params) => {
-      ctx.runOperation('add_part', params)
-      return okResult()
-    },
+    run: (ctx, params) => guardedOperation(
+      () => ctx.runOperation('add_part', params),
+      'Failed to insert part',
+    ),
   }),
   spec({
     id: 'duplicate_part',
@@ -351,10 +367,10 @@ export const ASSEMBLY_COMMAND_SPECS: readonly AssemblyCommandSpec[] = [
     id: 'set_part_doc',
     label: 'Set part document',
     params: objectParams({ handle: Field.string(), docId: Field.string() }),
-    run: (ctx, params) => {
-      ctx.runOperation('set_part_doc', params)
-      return okResult()
-    },
+    run: (ctx, params) => guardedOperation(
+      () => ctx.runOperation('set_part_doc', params),
+      'Failed to rebind part',
+    ),
   }),
   spec({
     id: 'delete_mate',
