@@ -190,7 +190,48 @@ describe.skipIf(!oc)('STEP import colours (real OCC)', () => {
     expect(imported.note).toBeUndefined()
   })
 
-  it('carries the colour to the body result of a full build', () => {
+  // The colour read is decoration: when the helper throws or answers for
+  // another shape, the import still succeeds, uncoloured, with a warning. The
+  // bound method is swapped on the prototype for one call and put back.
+  describe('a colour read that cannot be used', () => {
+    type ColorsFn = (shape: OccShape) => { faceColor: Int32Array; solidColor: Int32Array }
+    const proto = (): { Colors: ColorsFn } =>
+      (occ as unknown as { OversolvedStepCaf: { prototype: { Colors: ColorsFn } } }).OversolvedStepCaf.prototype
+
+    function importWith(colors: ColorsFn): { status: string; warning: unknown; color: string | undefined } {
+      const original = proto().Colors
+      proto().Colors = colors
+      const scope = new DisposeScope()
+      const table = new HandleTable()
+      try {
+        const partStore: Record<string, PartSolid> = {}
+        const result = solveImportStep(occ, scope, table, { id: 'imp', file_id: 'f' }, new Repository(), partStore,
+          new Map([['f', fixture('color_solid.step')]]))
+        expect(table.get<OccShape>(partStore[result.body_id].shape!)).toBeDefined()
+        return { status: result.status, warning: result.solver_warning, color: partStore[result.body_id].import_color }
+      } finally {
+        proto().Colors = original
+        scope.dispose()
+        table.disposeAll()
+      }
+    }
+
+    it('imports uncoloured with a solver_warning when the helper throws', () => {
+      const out = importWith(() => { throw new Error('colour walk failed') })
+      expect(out.status).toBe('ok')
+      expect(out.color).toBeUndefined()
+      expect(out.warning).toBe("the STEP file's colours were dropped: reading them failed (colour walk failed)")
+    })
+
+    it('imports uncoloured with a solver_warning when the counts do not match the shape', () => {
+      const out = importWith(() => ({ faceColor: Int32Array.from([0x808080]), solidColor: Int32Array.from([0x808080]) }))
+      expect(out.status).toBe('ok')
+      expect(out.color).toBeUndefined()
+      expect(out.warning).toBe("the STEP file's colours were dropped: 1 colours read for 7 faces")
+    })
+  })
+
+  it('carries the colour to the part result of a full build', () => {
     const h = new SharedHarness(occ)
     const r = h.run({
       features: [{ id: 'imp', kind: 'import_step', file_id: 'f' }],

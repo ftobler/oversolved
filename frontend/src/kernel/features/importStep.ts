@@ -99,10 +99,10 @@ export function solveImportStep(
     body_id: partIds[0],
     body_ids: partIds,
     // Not a problem: the import built what the file holds. The note says which
-    // colour a body took when its faces disagreed, so the pick is not silent.
+    // colour a part took when its faces disagreed, so the pick is not silent.
     ...(notes.length > 0 ? { solver_note: notes.join('; ') } : {}),
-    // The geometry imported but its colours could not be paired with it, so
-    // every body took the palette: worth a warning, never a failed import.
+    // The geometry imported but its colours could not be read or paired with
+    // it, so every part took the palette: worth a warning, never a failed import.
     ...(colorWarning !== undefined ? { solver_warning: colorWarning } : {}),
   }
 }
