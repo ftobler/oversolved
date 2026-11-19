@@ -165,6 +165,10 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   // button with nothing to pick and no reason why.
   const [partList, setPartList] = useState<PartListView | null>(null)
   const [partListError, setPartListError] = useState<string | null>(null)
+  // A read is in flight. The picker shows its spinner and refuses to confirm
+  // while this is true, so the previous rows cannot be inserted against a
+  // workspace that has since dropped one of them.
+  const [partListRefreshing, setPartListRefreshing] = useState(false)
   // The workspace reference graph, refreshed with the list. Cycles are a
   // placement rule over this graph, so the picker and the operation guard read
   // the same snapshot.
@@ -214,20 +218,36 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
         if (!current()) return
         setPartList(null)
         setPartListError(null)
+        setPartListRefreshing(false)
       })
       return
     }
+    // A read is a pending answer, not an empty one: mark it before the request
+    // so the picker cannot confirm a row from the previous read while the
+    // workspace may already have dropped it. Same microtask reason as above.
+    queueMicrotask(() => {
+      if (!current()) return
+      setPartListError(null)
+      setPartListRefreshing(true)
+    })
     Promise.all([session.listEntries(), session.referenceEdges()])
       .then(([list, edges]) => {
         if (!current()) return
-        setPartListError(null)
         applyPartList(list, edges)
+        setPartListRefreshing(false)
       })
       .catch(e => {
         if (!current()) return
         setPartListError(errorMessage(e, 'Failed to list workspace documents'))
+        setPartListRefreshing(false)
       })
   }, [session, applyPartList])
+
+  // The picker's zero-arg refresh. Kept as a stable callback rather than an
+  // inline arrow: the picker re-runs its open effect when this identity
+  // changes, and a fresh arrow per render would read the list again on every
+  // landing (a refresh loop).
+  const refreshPartListNow = useCallback(() => refreshPartList(), [refreshPartList])
 
   useEffect(() => {
     let cancelled = false
@@ -1068,8 +1088,9 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
         selfUuid={uuid}
         session={session}
         entries={partList?.entries ?? null}
+        refreshing={partListRefreshing}
         listError={partListError}
-        onRefresh={refreshPartList}
+        onRefresh={refreshPartListNow}
         cycleReasonFor={cycleReasonFor}
         onClose={() => setPickerOpen(false)}
         onPick={handlePick}

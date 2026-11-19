@@ -120,6 +120,49 @@ const DANGLING_ASSEMBLY = [
   '',
 ].join('\n')
 
+const BRACKET: EntryMeta = {
+  id: 'part-1', path: 'documents/Bracket.yaml', kind: 'document', name: 'Bracket', docKind: 'part', rev: 5,
+}
+const BOLT: EntryMeta = {
+  id: 'part-2', path: 'documents/Bolt.yaml', kind: 'document', name: 'Bolt', docKind: 'part', rev: 2,
+}
+
+// A workspace session whose list read the test can hold open. The gates are a
+// bag, not a per-caller queue: the assembly solve reads the same session for its
+// hash index, and every held read may be released or failed together.
+function gatedSession(initial: EntryMeta[]) {
+  let current = initial
+  let gated = false
+  const gates: Array<{ resolve: (value: EntryMeta[]) => void; reject: (error: unknown) => void }> = []
+  useWorkspaceSessionStore.setState({
+    session: {
+      workspace: 'asm-1',
+      listEntries: () => {
+        if (!gated) return Promise.resolve(current)
+        return new Promise<EntryMeta[]>((resolve, reject) => { gates.push({ resolve, reject }) })
+      },
+      readEntry: vi.fn(),
+      writeEntry: vi.fn(),
+      resolveFile: vi.fn(),
+      referencesOf: vi.fn(),
+      referenceEdges: vi.fn(async () => ({})),
+      savedRevs: async () => new Map(),
+    } as unknown as WorkspaceSession,
+  })
+  return {
+    hold(next?: EntryMeta[]) { if (next) current = next; gated = true },
+    release(next?: EntryMeta[]) { if (next) current = next; gated = false },
+    held() { return gates.length },
+    resolveHeld(next: EntryMeta[]) {
+      current = next
+      for (const gate of gates.splice(0)) gate.resolve(next)
+    },
+    rejectHeld(error: unknown) {
+      for (const gate of gates.splice(0)) gate.reject(error)
+    },
+  }
+}
+
 describe('AssemblyEditor (Stage 6b)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -258,17 +301,11 @@ describe('AssemblyEditor (Stage 6b)', () => {
     const newest = pending[pending.length - 1]
     const older = pending[0]
 
-    const bracket: EntryMeta = {
-      id: 'part-1', path: 'documents/Bracket.yaml', kind: 'document', name: 'Bracket', docKind: 'part', rev: 5,
-    }
-    const bolt: EntryMeta = {
-      id: 'part-2', path: 'documents/Bolt.yaml', kind: 'document', name: 'Bolt', docKind: 'part', rev: 2,
-    }
     // The newer read (the picker's open) lands first, with both parts.
-    await act(async () => { newest([bracket, bolt]) })
+    await act(async () => { newest([BRACKET, BOLT]) })
     await waitFor(() => expect(pickerItem('Bolt')).toBeTruthy())
     // The older read then answers without Bolt. It must be dropped.
-    await act(async () => { older([bracket]) })
+    await act(async () => { older([BRACKET]) })
 
     expect(pickerItem('Bolt')).toBeTruthy()
     fireEvent.click(pickerItem('Bolt')!)
@@ -277,13 +314,67 @@ describe('AssemblyEditor (Stage 6b)', () => {
     expect(useAssemblyStore.getState().instances.map(inst => inst.doc_id)).toEqual(['part-2'])
   })
 
-  // Double-clicking is the other confirm gesture. It must land exactly one
-  // instance even though it follows the selecting click events.
+  // The open refresh is a pending answer, not an empty one. Until it lands, the
+  // previous rows must not be offered: a part deleted since the mount read
+  // would otherwise be inserted against the same stale guard set.
+  it('holds the previous rows back while the open refresh is pending', async () => {
+    const session = gatedSession([BRACKET, BOLT])
+    renderEditor()
+    await tick()
+    await tick()
+
+    session.hold([BRACKET])
+    act(() => { executeCommand('insert_part_instance') })
+    await waitFor(() => expect(session.held()).toBeGreaterThan(0))
+
+    expect(screen.getByText('Loading...')).toBeTruthy()
+    expect(screen.queryByText('Bracket')).toBeNull()
+    expect(screen.queryByText('Bolt')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Insert' })).toBeDisabled()
+
+    await act(async () => { session.resolveHeld([BRACKET]) })
+    await waitFor(() => expect(pickerItem('Bracket')).toBeTruthy())
+    expect(screen.queryByText('Bolt')).toBeNull()
+  })
+
+  // A failed read is visible, keeps the last good rows on screen, and refuses to
+  // confirm (the list vouching for those rows is the thing that failed). Opening
+  // again retries, clears the message and lands the current rows.
+  it('shows a failed refresh above the old rows and clears it on a retry', async () => {
+    const session = gatedSession([BRACKET, BOLT])
+    renderEditor()
+    await tick()
+    await tick()
+
+    session.hold()
+    act(() => { executeCommand('insert_part_instance') })
+    await waitFor(() => expect(session.held()).toBeGreaterThan(0))
+    await act(async () => { session.rejectHeld(new Error('workspace is busy')) })
+
+    await waitFor(() => expect(screen.getByText('workspace is busy')).toBeTruthy())
+    // The rows are still readable, but nothing can be confirmed from them.
+    fireEvent.click(pickerItem('Bolt')!)
+    expect(screen.getByRole('button', { name: 'Insert' })).toBeDisabled()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }))
+    session.release([BRACKET])
+    act(() => { executeCommand('insert_part_instance') })
+    await waitFor(() => expect(screen.queryByText('workspace is busy')).toBeNull())
+    await waitFor(() => expect(pickerItem('Bracket')).toBeTruthy())
+    expect(screen.queryByText('Bolt')).toBeNull()
+  })
+
+  // Double-clicking is the other confirm gesture: a real double click is two
+  // click events and then dblclick. Only the dblclick may insert, and it must
+  // land exactly one instance.
   it('adds exactly one instance when a tile is double-clicked', async () => {
     await renderLoaded()
     act(() => { executeCommand('insert_part_instance') })
     await waitFor(() => expect(pickerItem('Bracket')).toBeTruthy())
-    fireEvent.doubleClick(pickerItem('Bracket')!)
+    const tile = pickerItem('Bracket')!
+    fireEvent.click(tile)
+    fireEvent.click(tile)
+    fireEvent.doubleClick(tile)
     await tick()
     expect(useAssemblyStore.getState().instances.map(inst => inst.doc_id)).toEqual(['part-1'])
   })

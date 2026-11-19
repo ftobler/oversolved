@@ -37,6 +37,7 @@ function renderPicker(overrides: Partial<ComponentProps<typeof AssemblyPartPicke
     selfUuid: 'asm-1',
     session: session(),
     entries: [entry('part-1', 'Bracket', 5), entry('part-2', 'Bolt', 2)],
+    refreshing: false,
     onRefresh: vi.fn(),
     onClose: vi.fn(),
     onPick: vi.fn(),
@@ -105,6 +106,25 @@ describe('AssemblyPartPicker (workspace scoped)', () => {
     expect(screen.getByText('Failed to list workspace documents: blocked')).toBeInTheDocument()
   })
 
+  // The refresh an open starts is a pending answer: the previous rows are held
+  // back (no tile, no confirm) until it lands, so a part deleted since the last
+  // read cannot be inserted from the stale list.
+  it('holds the previous rows back while a read is in flight', () => {
+    renderPicker({ refreshing: true })
+    expect(screen.getByText('Loading...')).toBeInTheDocument()
+    expect(screen.queryByText('Bracket')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Insert' })).toBeDisabled()
+  })
+
+  // A failed retry keeps the last good rows on screen, but they are not
+  // confirmable: the list that vouches for them is exactly what failed.
+  it('shows a failed read above the still-visible rows and refuses to confirm', () => {
+    renderPicker({ listError: 'Failed to list workspace documents: blocked' })
+    expect(screen.getByText('Failed to list workspace documents: blocked')).toBeInTheDocument()
+    fireEvent.click(screen.getByText('Bracket'))
+    expect(screen.getByRole('button', { name: 'Insert' })).toBeDisabled()
+  })
+
   it('titles itself with an icon, like every other dialog on the shell', () => {
     renderPicker()
     expect(document.querySelector('.dialog-component-icon')).toHaveTextContent('library_add')
@@ -141,15 +161,21 @@ describe('AssemblyPartPicker (workspace scoped)', () => {
   })
 
   // A selection must never outlive its tile: Insert confirms by id, so a doc the
-  // user can no longer see would otherwise still be insertable.
-  it('drops a selection that a search narrowed out of view', async () => {
-    renderPicker()
+  // user can no longer see would otherwise still be insertable. The id is kept,
+  // so clearing the search restores the same pick rather than dropping it.
+  it('refuses to confirm a selection the search narrowed out of view, then restores it', async () => {
+    const { props } = renderPicker()
+    const insert = screen.getByRole('button', { name: 'Insert' })
     fireEvent.click(screen.getByText('Bracket'))
-    expect(screen.getByRole('button', { name: 'Insert' })).toBeEnabled()
+    expect(insert).toBeEnabled()
 
     fireEvent.change(screen.getByPlaceholderText('Search documents...'), { target: { value: 'bolt' } })
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Insert' })).toBeDisabled())
+    await waitFor(() => expect(insert).toBeDisabled())
+
+    fireEvent.change(screen.getByPlaceholderText('Search documents...'), { target: { value: '' } })
+    await waitFor(() => expect(insert).toBeEnabled())
+    fireEvent.click(insert)
+    expect(props.onPick).toHaveBeenCalledWith('part-1', 5)
   })
 
   // The debounce re-renders the grid after the click that selected a tile; the

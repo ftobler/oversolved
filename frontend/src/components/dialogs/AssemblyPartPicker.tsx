@@ -25,6 +25,10 @@ interface AssemblyPartPickerProps {
   // Sharing this list is what keeps a listed tile from being refused as an
   // unknown document: the picker and the guard cannot disagree.
   entries: readonly EntryMeta[] | null
+  // A read is in flight. The dialog shows its spinner and cannot confirm while
+  // true, so the previous rows are never offered against a list that may have
+  // dropped one of them.
+  refreshing: boolean
   // Why the shared list could not be read. A failed read is shown here rather
   // than left as a spinner, because an insert that cannot even list its parts
   // must not look like a button that does nothing.
@@ -65,7 +69,7 @@ function insertableKind(entry: EntryMeta): InsertableKind | null {
 // fetch could list a part the guard had not learned about and turn Insert into
 // a silent refusal.
 export default function AssemblyPartPicker({
-  isOpen, selfUuid, session, entries, listError, onRefresh, cycleReasonFor, onClose, onPick,
+  isOpen, selfUuid, session, entries, refreshing, listError, onRefresh, cycleReasonFor, onClose, onPick,
 }: AssemblyPartPickerProps) {
   const [selected, setSelected] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -106,9 +110,11 @@ export default function AssemblyPartPicker({
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [entries, selfUuid, debouncedSearch])
 
-  // Null covers "no workspace bound" as well: with nothing to list, the dialog
-  // settles into its empty state instead of holding the spinner up.
-  const loading = session !== null && entries === null && !listError
+  // A read in flight is a pending answer, so the grid is held back rather than
+  // painted from the previous read. Null covers "no workspace bound" as well:
+  // with nothing to list, the dialog settles into its empty state instead of
+  // holding the spinner up.
+  const busy = session !== null && (refreshing || (entries === null && !listError))
   const error = listError ?? null
 
   const cycleReason = (entry: EntryMeta): string | undefined =>
@@ -172,7 +178,7 @@ export default function AssemblyPartPicker({
       onClose={onClose}
       onConfirm={confirm}
       confirmLabel="Insert"
-      confirmDisabled={!selectedEntry || selectedRefused}
+      confirmDisabled={busy || error !== null || !selectedEntry || selectedRefused}
       className="doc-browser-dialog"
     >
       <div className="doc-browser">
@@ -197,14 +203,14 @@ export default function AssemblyPartPicker({
               </button>
             )}
           </div>
-          {loading && <LoadingState label="Loading..." />}
+          {busy && <LoadingState label="Loading..." />}
           {error && <p className="error-text">{error}</p>}
-          {!loading && !error && docs.length === 0 && (
+          {!busy && !error && docs.length === 0 && (
             <p className="doc-browser-status">
               {debouncedSearch ? `No documents match "${debouncedSearch}"` : 'No parts or assemblies available.'}
             </p>
           )}
-          {!loading && !error && docs.length > 0 && (
+          {!busy && docs.length > 0 && (
             <div className="doc-browser-groups">
               {parts.length > 0 && (
                 <section className="doc-browser-group" aria-label="Parts">
