@@ -11,7 +11,7 @@ import MeasurementDisplay from '@/components/layout/MeasurementDisplay'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { PartResult } from '@/types/cad'
 
-// One jsdom smoke test for the HUD wiring: the component reads the store's
+// One jsdom smoke test for the readout wiring: the component reads the store's
 // selection, calls the pure core and renders the lines. Everything below it is
 // pure and tested without a DOM.
 const part: PartResult = {

@@ -98,12 +98,12 @@ export interface ViewportProps {
   // listener never sees it, so the overlay names the selection it picked and the
   // page can open the same menu with that target.
   onSelectionContextMenu?: (selectionId: string, pos: [number, number]) => void
-  // Bottom-right overlay content, stacked under the orientation cube (the
-  // measurement readout). A node rather than a fixed component so the part and
-  // assembly editors can each hand in their own readout.
-  hud?: ReactNode
-  // The viewer options button, stacked ABOVE the cube. Separate from `hud`
-  // because the stack order is part of the layout (options, cube, readout), not
+  // Bottom-left overlay content: the measurement readout for the current picks.
+  // A node rather than a fixed component so the part and assembly editors can
+  // each hand in their own readout.
+  readout?: ReactNode
+  // The viewer options button, stacked ABOVE the cube. Separate from `readout`
+  // because the stack order is part of the layout (options, cube), not
   // something a caller should have to reproduce.
   viewOptions?: ReactNode
 }
@@ -136,7 +136,7 @@ export interface ViewportHandle {
 export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   onRightClick,
   onSelectionContextMenu,
-  hud,
+  readout,
   viewOptions,
 }: ViewportProps, ref) {
   // Session/solver facts come from the publication store; the editor FSM and
@@ -812,8 +812,8 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           // useFrame; with the loop on demand each of those needs a frame.
           onRequestRender={requestRender}
         />
-        <div className="viewport-hud-readout">{hud}</div>
       </div>
+      <div className="viewport-readout">{readout}</div>
       <ContextMenuDialog />
     </div>
   )

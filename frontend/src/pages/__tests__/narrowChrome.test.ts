@@ -351,23 +351,68 @@ describe('phone-width chrome', () => {
     expect(effective(css, 'flex-wrap', row, TOP_LEVEL)).toBeNull()
   })
 
-  it('reserves bottom clearance for the whole viewport HUD stack', () => {
+  it('reserves bottom clearance for the view options and cube stack', () => {
     // The right panel must clear the stack the viewport puts in the corner:
-    // the view options button, the orientation cube, the readout and the
-    // stack's gaps. Every number below is read from the sheet that owns it, so
-    // a widget resize that outgrows the clearance fails here instead of
+    // the view options button, the orientation cube, the cube's sink floor and
+    // the stack's gap. Every number below is read from the sheet that owns it,
+    // so a widget resize that outgrows the clearance fails here instead of
     // letting the panel overlap the cube. The one literal is the intent:
-    // 206px of stack plus margin.
+    // 206px of stack plus margin. The measurement readout used to be the
+    // bottom item of this stack; it moved to the bottom-left slot, and the
+    // floor it left under the cube stayed as padding, so the stack is the same
+    // height it was.
     const css = readFileSync(join(SRC, 'pages/Part.css'), 'utf8')
     const clearance = Number(/--hud-clearance:\s*(\d+)px/.exec(css)![1])
     const inset = Number(/--floating-inset:\s*(\d+)px/.exec(css)![1])
     const button = Number(pinned('components/Viewport/ViewOptions.css', 'height', chain('view-options', 'view-options-btn'), TOP_LEVEL)!.replace('px', ''))
-    const readout = Number(pinned('components/Viewport/ViewportHud.css', 'min-height', chain('viewport-hud', 'viewport-hud-readout'), TOP_LEVEL)!.replace('px', ''))
+    const floor = Number(pinned('components/Viewport/ViewportHud.css', 'padding-bottom', chain('viewport-hud'), TOP_LEVEL)!.replace('px', ''))
     const gap = Number(pinned('components/Viewport/ViewportHud.css', 'gap', chain('viewport-hud'), TOP_LEVEL)!.replace('px', ''))
 
-    const stack = GIZMO_SIZE + button + readout + 2 * gap + inset
+    const stack = GIZMO_SIZE + button + floor + gap + inset
     expect(clearance).toBe(228)
     expect(clearance).toBeGreaterThanOrEqual(stack)
+  })
+
+  it('leaves the measurement readout in the bottom-left, left-aligned', () => {
+    // The readout left the right-aligned HUD column for its own corner slot.
+    // No rule may re-right-align it: the slot's flex start is the whole rule,
+    // and the display keeps the text flow's natural (left) alignment.
+    const css = 'components/Viewport/ViewportHud.css'
+    const slot = chain('viewport-readout')
+    const display = chain('viewport-readout', 'measurement-display')
+    expect(pinned(css, 'left', slot, TOP_LEVEL)).toBe('12px')
+    expect(pinned(css, 'bottom', slot, TOP_LEVEL)).toBe('12px')
+    expect(pinned(css, 'justify-content', slot, TOP_LEVEL)).toBe('flex-start')
+    expect(effective(css, 'right', slot, TOP_LEVEL)).toBeNull()
+    expect(effective(css, 'text-align', slot, TOP_LEVEL)).toBeNull()
+    expect(effective(css, 'text-align', display, TOP_LEVEL)).toBeNull()
+    expect(effective(css, 'justify-content', display, TOP_LEVEL)).toBeNull()
+  })
+
+  it('keeps the extras disclosure out of the readout row', () => {
+    // The slot reserves one row; opening "more" must not grow the readout up
+    // into the navigator card's band past --readout-clearance. The panel is
+    // absolute above the summary, so the row's height never changes.
+    const css = 'components/Viewport/ViewportHud.css'
+    const more = chain('viewport-readout', 'measurement-display', 'measurement-more')
+    const extras = chain('viewport-readout', 'measurement-display', 'measurement-more', 'measurement-extras')
+    expect(pinned(css, 'position', more, TOP_LEVEL)).toBe('relative')
+    expect(pinned(css, 'position', extras, TOP_LEVEL)).toBe('absolute')
+    expect(pinned(css, 'bottom', extras, TOP_LEVEL)).toBe('calc(100% + 4px)')
+    // An author `display` would override the UA rule that hides a closed
+    // details' content, so the panel must not declare one.
+    expect(effective(css, 'display', extras, TOP_LEVEL)).toBeNull()
+  })
+
+  it('bounds the left card column above the bottom-left readout', () => {
+    // A tall Features/Parts list must stop above the readout instead of
+    // letting its glass card cover the text. The clearance is one 16px
+    // readout row plus a 12px gap above the bottom inset.
+    const css = readFileSync(join(SRC, 'pages/Part.css'), 'utf8')
+    expect(Number(/--readout-clearance:\s*(\d+)px/.exec(css)![1])).toBe(28)
+    expect(pinned('pages/Part.css', 'bottom', partCards, TOP_LEVEL))
+      .toBe('calc(var(--floating-inset) + var(--readout-clearance))')
+    expect(pinned('components/Viewport/ViewportHud.css', 'min-height', chain('viewport-readout'), TOP_LEVEL)).toBe('16px')
   })
 
   it('turns the view options card into a bottom sheet on a phone', () => {

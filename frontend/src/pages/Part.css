@@ -2,16 +2,22 @@
   --tiling-sine: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='15' height='9' viewBox='0 0 10 6'><path d='M-1 2 L0 3 Q2.5 0 5 3 T10 3 L11 4' stroke='gray' fill='transparent' stroke-width='1'/></svg>");
   --tiling-sine-fine: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='7.5' height='4.5' viewBox='0 0 10 6'><path d='M-1 2 L0 3 Q2.5 0 5 3 T10 3 L11 4' stroke='%23666' fill='transparent' stroke-width='0.5'/></svg>");
   /* Edge distance of the floating navigator panels, and the space the right
-     panel leaves free at the bottom for the HUD stack (view options button, cube
-     gizmo, measurement readout). Clearance arithmetic: GIZMO_SIZE 140
+     panel leaves free at the bottom for the HUD stack (view options button and
+     cube gizmo). Clearance arithmetic: GIZMO_SIZE 140
      (components/misc/CubeGizmo.utils.ts; the roll arrow strip hangs below it
      and takes no layout) + the 30px view options button (ViewOptions.css) +
-     the 16px readout floor and the two 4px stack gaps (ViewportHud.css) +
+     the 20px sink floor under the cube (the padding in ViewportHud.css; the
+     measurement readout used to occupy it) + the 4px stack gap +
      the 12px inset = 206; 228
      leaves margin, so a gizmo
      resize can be checked against this one number. */
   --floating-inset: 12px;
   --hud-clearance: 228px;
+  /* The left cards stop this far above the viewport's bottom inset, clearing
+     the measurement readout slot at the bottom-left: one 16px row
+     (ViewportHud.css) plus a 12px gap. Without it a tall Features/Parts card
+     would run over the readout, and the glass would garble the text behind it. */
+  --readout-clearance: 28px;
   /* The two navigator cards (Features/Parts for the part editor, Parts/Mates for
      the assembly) reserve their height up front instead of hugging their
      content, so a short list keeps its card at its size and a long one scrolls
@@ -71,12 +77,14 @@
 
 .floating-left {
   left: var(--floating-inset);
-  bottom: var(--floating-inset);
+  /* Kept above the bottom-left measurement readout: a tall navigator card stops
+     at this bound and scrolls instead of covering the text. */
+  bottom: calc(var(--floating-inset) + var(--readout-clearance));
   width: 280px;
 }
 
 /* The edit card sizes to its content, but never grows into the bottom-right
-   HUD stack (cube gizmo + measurement readout): the reserved clearance plus
+   HUD stack (view options button + cube gizmo): the reserved clearance plus
    the top inset bound the column, and the card centers in what is left, so a
    short editor sits on the middle of the right side. The card's own body
    scrolls when the editor is taller than that. */

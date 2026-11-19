@@ -13,25 +13,27 @@ export const GIZMO_HEIGHT = GIZMO_SIZE + GIZMO_ROLL_STRIP
 export const GIZMO_PAD = 8
 export const GIZMO_CANVAS_WIDTH = GIZMO_SIZE + 2 * GIZMO_PAD
 export const GIZMO_CANVAS_HEIGHT = GIZMO_PAD + GIZMO_HEIGHT
-// How far the whole widget sits below its layout slot, into the readout
-// gap and floor under it: tuned by eye so the cube sits low in the corner.
+// How far the whole widget sits below its layout slot: tuned by eye so the cube
+// sits low in the corner. The slot's own floor in ViewportHud.css is sized to
+// take this sink plus the roll strip, so the canvas never hangs off the frame.
 export const GIZMO_SINK = 10
-// How far the cube square is held in from the HUD column's right edge, so it is
-// no longer flush with the measurement readout right-aligned under it: tuned by
-// eye with the user. Only the cube moves; the readout keeps the viewport edge.
+// How far the cube square is held in from the HUD column's right edge: tuned by
+// eye with the user. Only the cube moves; the column edge stays the viewport
+// inset.
 export const GIZMO_INSET = 6
-// Placement is the viewport HUD column's job (ViewportHud.css): the cube is the
-// top item of a bottom-right stack that the measurement readout sits under, so
-// the widget itself only declares its size and that it still takes clicks --
-// the column around it is click-through.
+// Placement is the viewport HUD column's job (ViewportHud.css): the cube sits
+// under the view options button in the bottom-right stack, so the widget itself
+// only declares its size and that it still takes clicks -- the column around it
+// is click-through.
 //
 // The roll strip hangs below the layout box (negative bottom margin): the
 // column is bottom-anchored, so counting the strip in the layout would lift
 // the cube by its height. The overhang (GIZMO_PAD) is cancelled the same way
 // on the top, and on the right only down to GIZMO_INSET: the cube square then
 // stops GIZMO_INSET short of the column edge instead of sitting flush with it.
-// The stack still reserves only GIZMO_SIZE; hit-tests measure from the canvas
-// rect, so the margin moves the box and leaves every pointer offset alone.
+// The stack's padding-bottom is what leaves room for the overhang; hit-tests
+// measure from the canvas rect, so the margin moves the box and leaves every
+// pointer offset alone.
 export const GIZMO_STYLE: React.CSSProperties = {
   width: GIZMO_CANVAS_WIDTH,
   height: GIZMO_CANVAS_HEIGHT,

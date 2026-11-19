@@ -1,5 +1,6 @@
 // The assembly viewport's measurement readout. Mirrors MeasurementDisplay (the
-// part editor's), but reads the assembly's own selection: the B-rep entity set,
+// part editor's), including its bottom-left slot in the viewport, but reads the
+// assembly's own selection: the B-rep entity set,
 // or the tree's part subject as a whole-instance pick. The picks resolve through
 // the solved bundle's analytic facts, so the assembly states the same numbers
 // the part editor does; a cell that needs OCC goes to the solver Worker with
