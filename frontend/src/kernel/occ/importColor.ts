@@ -1,4 +1,4 @@
-// The body colour a STEP import takes from its file. Oversolved colours a body,
+// The part colour a STEP import takes from its file. Oversolved colours a part,
 // never a face, so where the file colours faces one colour has to win: the
 // area-weighted majority of the faces' effective colours. Pure on purpose: the
 // kernel hands in per-face colours and areas (occ/stepIo.ts reads them through
@@ -28,11 +28,11 @@ export type ImportColorChoice =
   // Shares tied with no solid colour; the tied colour with the largest face won.
   | 'largest-face-tie'
 
-/** Why a body took its colour (or stayed uncoloured) when its faces disagreed. */
+/** Why a part took its colour (or stayed uncoloured) when its faces disagreed. */
 export interface ImportColorNote {
   // The chosen colour, or null when the uncoloured share won.
   color: string | null
-  // The chosen share of the body's face area, 0..1 (0 for a solid colour that
+  // The chosen share of the part's face area, 0..1 (0 for a solid colour that
   // settled a tie without any face showing it).
   share: number
   choice: ImportColorChoice
@@ -64,17 +64,17 @@ interface Tally {
 }
 
 /**
- * The body colour for one solid, or null when the file says nothing about it
+ * The part colour for one solid, or null when the file says nothing about it
  * (every face uncoloured, no solid colour): the palette colour then applies,
- * as for a modelled body.
+ * as for a modelled part.
  *
  * - Each face votes its effective colour with its area; uncoloured faces vote
  *   as one `uncoloured` share, so a file that colours only a logo face does
- *   not paint the body.
+ *   not paint the part.
  * - A tie goes to `solidColor` (the colour the file put on the solid itself)
  *   when there is one, else to the tied colour owning the largest single face.
  * - When more than one share appeared, the result carries a note, also when
- *   the uncoloured share won and the body keeps no file colour.
+ *   the uncoloured share won and the part keeps no file colour.
  */
 export function partImportColor(
   faces: readonly FaceColorSample[],
@@ -117,14 +117,14 @@ function sameArea(a: number, b: number): boolean {
 }
 
 // The solid's own colour settles a tie even when no face shows it any more
-// (every face overrode it): it is the colour the file declared for the body.
+// (every face overrode it): it is the colour the file declared for the part.
 function breakTie(tied: Tally[], solidColor: string | null): { key: string; choice: ImportColorChoice } {
   if (solidColor !== null) return { key: solidColor, choice: 'solid-tie' }
   const best = tied.reduce((winner, t) => (t.largestFace > winner.largestFace ? t : winner))
   return { key: best.key, choice: 'largest-face-tie' }
 }
 
-/** The reply text for a body whose faces disagreed. */
+/** The reply text for a part whose faces disagreed. */
 export function importColorNoteText(partId: string, note: ImportColorNote): string {
   const percent = Math.round(note.share * 100)
   const others = note.dropped.length === 1 ? '1 other colour' : `${note.dropped.length} other colours`

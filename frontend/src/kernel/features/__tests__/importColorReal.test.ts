@@ -1,6 +1,6 @@
 // @vitest-environment node
 //
-// Gated real-OCC tests for the body colour a STEP import takes from its file
+// Gated real-OCC tests for the part colour a STEP import takes from its file
 // (occ/importColor.ts, read through OversolvedStepCaf in occ/stepIo.ts). The
 // fixtures are double_with_hole.step and two OCCT-written assemblies with
 // presentation entities added by hand (STYLED_ITEM -> ... -> COLOUR_RGB):
@@ -54,11 +54,11 @@ interface ImportedPart {
 }
 
 interface Imported {
-  bodies: ImportedPart[]
+  parts: ImportedPart[]
   note: string | undefined
 }
 
-/** Run the import leaf on one fixture and read each body's colour back. */
+/** Run the import leaf on one fixture and read each part's colour back. */
 function importFixture(occ: OccModule, name: string, scale = 1): Imported {
   const scope = new DisposeScope()
   const table = new HandleTable()
@@ -68,7 +68,7 @@ function importFixture(occ: OccModule, name: string, scale = 1): Imported {
       occ, scope, table, { id: 'imp', file_id: 'f', scale }, new Repository(), partStore, new Map([['f', fixture(name)]]),
     )
     return {
-      bodies: result.body_ids.map((id) => {
+      parts: result.body_ids.map((id) => {
         const part = partStore[id]
         const { volume, centroid } = volumeAndCentroidOf(occ, scope, table.get<OccShape>(part.shape!))
         return { id, color: part.import_color, volume, centroid: centroid as [number, number, number] }
@@ -102,14 +102,14 @@ describe.skipIf(!oc)('STEP import colours (real OCC)', () => {
     }
   })
 
-  it('(a) a solid colour alone becomes the body colour, with no note', () => {
+  it('(a) a solid colour alone becomes the part colour, with no note', () => {
     const imported = importFixture(occ, 'color_solid.step')
-    expect(imported.bodies.map((b) => b.color)).toEqual(['#808080'])
+    expect(imported.parts.map((b) => b.color)).toEqual(['#808080'])
     expect(imported.note).toBeUndefined()
   })
 
   it('(a) keeps the colour through a scaled import', () => {
-    expect(importFixture(occ, 'color_solid.step', 2.5).bodies.map((b) => b.color)).toEqual(['#808080'])
+    expect(importFixture(occ, 'color_solid.step', 2.5).parts.map((b) => b.color)).toEqual(['#808080'])
   })
 
   it('(b) face colours only: the majority by area wins and the note names the dropped colour', () => {
@@ -139,11 +139,11 @@ describe.skipIf(!oc)('STEP import colours (real OCC)', () => {
       scope.dispose()
     }
     const imported = importFixture(occ, 'color_faces.step')
-    expect(imported.bodies.map((b) => b.color)).toEqual(['#cc3333'])
+    expect(imported.parts.map((b) => b.color)).toEqual(['#cc3333'])
     expect(imported.note).toMatch(/^part body_imp takes #cc3333 from the STEP file \(\d+% of its face area\); 1 other colour dropped \(#3333cc\)$/)
   })
 
-  it('(c) a solid colour with one differently coloured face: the face keeps its own, the body the solid', () => {
+  it('(c) a solid colour with one differently coloured face: the face keeps its own, the part the solid', () => {
     const scope = new DisposeScope()
     try {
       const read = stepBytesToShapeWithIdentity(occ, scope, fixture('color_solid_and_face.step'))
@@ -156,14 +156,14 @@ describe.skipIf(!oc)('STEP import colours (real OCC)', () => {
       scope.dispose()
     }
     const imported = importFixture(occ, 'color_solid_and_face.step')
-    expect(imported.bodies.map((b) => b.color)).toEqual(['#33cc33'])
+    expect(imported.parts.map((b) => b.color)).toEqual(['#33cc33'])
     expect(imported.note).toContain('1 other colour dropped (#3333cc)')
   })
 
-  it('(d) two solids keep their own colours, body by body', () => {
+  it('(d) two solids keep their own colours, part by part', () => {
     const imported = importFixture(occ, 'color_two_solids.step')
-    expect(imported.bodies).toHaveLength(2)
-    const byVolume = new Map(imported.bodies.map((b) => [Math.round(b.volume), b.color]))
+    expect(imported.parts).toHaveLength(2)
+    const byVolume = new Map(imported.parts.map((b) => [Math.round(b.volume), b.color]))
     expect(byVolume.get(1000)).toBe('#cc3333')
     expect(byVolume.get(120)).toBe('#3333cc')
     expect(imported.note).toBeUndefined()
@@ -171,8 +171,8 @@ describe.skipIf(!oc)('STEP import colours (real OCC)', () => {
 
   it('(e) a referenced part takes its part colour, and an instance override wins on its placement', () => {
     const imported = importFixture(occ, 'color_instance.step')
-    expect(imported.bodies).toHaveLength(2)
-    const byX = [...imported.bodies].sort((p, q) => p.centroid[0] - q.centroid[0])
+    expect(imported.parts).toHaveLength(2)
+    const byX = [...imported.parts].sort((p, q) => p.centroid[0] - q.centroid[0])
     // The file places the part at x = 0 (NAUO '3') and x = 40 (NAUO '4', the
     // overridden one).
     expect(byX.map((b) => b.color)).toEqual(['#808080', '#cc3333'])
@@ -180,13 +180,13 @@ describe.skipIf(!oc)('STEP import colours (real OCC)', () => {
 
   it('(e) scaled: the override stays on its own placement through the transform copy', () => {
     const imported = importFixture(occ, 'color_instance.step', 2.5)
-    const byX = [...imported.bodies].sort((p, q) => p.centroid[0] - q.centroid[0])
+    const byX = [...imported.parts].sort((p, q) => p.centroid[0] - q.centroid[0])
     expect(byX.map((b) => b.color)).toEqual(['#808080', '#cc3333'])
   })
 
   it('(f) an uncoloured file sets no colour and no note', () => {
     const imported = importFixture(occ, 'double_with_hole.step')
-    expect(imported.bodies.map((b) => b.color)).toEqual([undefined])
+    expect(imported.parts.map((b) => b.color)).toEqual([undefined])
     expect(imported.note).toBeUndefined()
   })
 

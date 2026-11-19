@@ -39,7 +39,7 @@ describeReal('STEP import colour through the headless drive', () => {
     setSketchSolver(solveBytes!)
   })
 
-  it('seeds the new body with the file colour and notes the dropped face colour', async () => {
+  it('seeds the new part with the file colour and notes the dropped face colour', async () => {
     const run = await runHeadless({ doc: emptyDriveDoc(), steps: IMPORT, files: new Map([['f1', fixture('color_faces.step')]]) })
     expect(run.ok).toBe(true)
     expect(colorOf(run.doc)).toBe('#cc3333')
@@ -65,10 +65,11 @@ describeReal('STEP import colour through the headless drive', () => {
     const imported = await runHeadless({ doc: emptyDriveDoc(), steps: IMPORT, files: new Map([['f1', fixture('color_solid.step')]]) })
     expect(colorOf(imported.doc)).toBe('#808080')
 
-    // The file's bytes are replaced under the same id: the body keeps its id and
+    // The file's bytes are replaced under the same id: the part keeps its id and
     // with it the colour an earlier solve seeded, though the new bytes say red.
-    // Its own docId: the solve cache keys an import by its file id, not the
-    // bytes, so the shared default id would serve the previous read.
+    // Its own docId works around a known bug, not intended behaviour: the
+    // solve cache serves the previous read when only the bytes behind a file
+    // id change (planned in feature/bug-import-replace-stale-cache.md).
     const replaced = await runHeadless({
       doc: imported.doc!, docId: 'replace-a', steps: rename('A'), files: new Map([['f1', fixture('color_faces.step')]]),
     })

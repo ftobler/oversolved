@@ -17,7 +17,7 @@ describe('partImportColor', () => {
       .toEqual({ color: RED, note: null })
   })
 
-  it('falls back to the solid colour when the body has no faces to vote', () => {
+  it('falls back to the solid colour when the part has no faces to vote', () => {
     expect(partImportColor([], GREEN)).toEqual({ color: GREEN, note: null })
   })
 
@@ -34,7 +34,7 @@ describe('partImportColor', () => {
   })
 
   it('lets uncoloured area outvote a lone coloured face, and still says so', () => {
-    // A logo face does not paint the body, but the faces disagreed.
+    // A logo face does not paint the part, but the faces disagreed.
     const result = partImportColor([{ color: null, area: 9 }, { color: RED, area: 1 }], null)
     expect(result?.color).toBeNull()
     expect(result?.note).toEqual({ color: null, share: 0.9, choice: 'majority', dropped: [RED] })
@@ -92,7 +92,7 @@ describe('colour encoding', () => {
 })
 
 describe('importColorNoteText', () => {
-  it('names the body, the colour, its share and the dropped colours', () => {
+  it('names the part, the colour, its share and the dropped colours', () => {
     expect(importColorNoteText('body_imp', { color: RED, share: 0.8571, choice: 'majority', dropped: [BLUE] }))
       .toBe('part body_imp takes #cc3333 from the STEP file (86% of its face area); 1 other colour dropped (#3333cc)')
     expect(importColorNoteText('b', { color: RED, share: 0.5, choice: 'majority', dropped: [BLUE, UNCOLOURED] }))
@@ -111,7 +111,7 @@ describe('importColorNoteText', () => {
       .toContain('(50% of its face area, a tie broken by its largest face)')
   })
 
-  it('says when the body stays uncoloured', () => {
+  it('says when the part stays uncoloured', () => {
     expect(importColorNoteText('b', { color: null, share: 0.9, choice: 'majority', dropped: [RED] }))
       .toBe('part b stays uncoloured: 90% of its face area has no colour in the STEP file; 1 other colour dropped (#cc3333)')
   })
