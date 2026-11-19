@@ -14,13 +14,33 @@
 // Skips when OCC.js or the Rust solver is absent.
 
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { loadOcc } from '../occ/loadOcc'
-import { solveLocally, setSolveLocalsForTest, persistentTableForTest } from '../solveLocally'
+import { solveLocally, setSolveLocalsForTest, persistentTableForTest, measureSolveFeatures } from '../solveLocally'
 import { setSketchSolver, resetSketchSolver } from '../features/sketch'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
+
+function importFixture(name: string): Uint8Array {
+  return new Uint8Array(readFileSync(new URL(`../occ/__fixtures__/${name}`, import.meta.url)))
+}
+
+const importDoc = { id: 'docImportReplace', features: [{ id: 'imp1', kind: 'import_step', file_id: 'f1' }] }
+
+function importFiles(name: string): Map<string, Uint8Array> {
+  return new Map([['f1', importFixture(name)]])
+}
+
+function importColors(r: Awaited<ReturnType<typeof solveLocally>>): (string | undefined)[] {
+  return Object.keys(r!.bodies).sort().map((id) => (r!.bodies[id] as { import_color?: string }).import_color)
+}
+
+async function importVolume(r: Awaited<ReturnType<typeof solveLocally>>): Promise<number> {
+  const measures = await measureSolveFeatures(r!)
+  return measures!.find((m) => m.id === 'imp1')!.volume
+}
 
 function rectSketch(sketchId: string, w: number, h: number, plane = '@builtin_plane_front') {
   return {
@@ -102,6 +122,43 @@ describe.skipIf(!oc || !solveBytes)('solveLocally cross-solve cache (real OCC + 
     const r2 = await solveLocally({ ...doc, features: [...doc.features] })
     expect(checkpoints(r2).sk1).toBe(checkpoints(r1).sk1)
     expect(checkpoints(r2).ex1).toBe(checkpoints(r1).ex1)
+  })
+
+  it('rebuilds an import when the bytes behind its file id are replaced', async () => {
+    // The workspace's Replace bytes gesture (and a headless/MCP run reusing a
+    // doc id) keeps both the document and the file id: only the payload moves.
+    // The spec alone cannot tell, so the dirty key must carry the bytes'
+    // digest; otherwise the clean prefix restored the old imported body and
+    // both the geometry and the file colour came from the previous file.
+    setSolveLocalsForTest(async () => oc)
+    const a = await solveLocally(importDoc, { files: importFiles('color_solid.step') })
+    expect((a!.result.imp1 as { status?: string }).status).toBe('ok')
+    const aVolume = await importVolume(a)
+    expect(aVolume).toBeGreaterThan(0)
+    expect(importColors(a)).toEqual(['#808080'])
+
+    const b = await solveLocally(importDoc, { files: importFiles('color_two_solids.step') })
+    expect((b!.result.imp1 as { status?: string }).status).toBe('ok')
+    expect(await importVolume(b)).toBeCloseTo(1120, 3)
+    expect(importColors(b)).toEqual(['#cc3333', '#3333cc'])
+    expect(Object.keys(b!.bodies)).not.toEqual(Object.keys(a!.bodies))
+  })
+
+  it('solves a reopened part from the replaced bytes, not the cross-solve cache', async () => {
+    // The app path: the part was the Worker's last solved document, its file
+    // bytes were replaced under the same id, and opening the document again
+    // does not bypass the cache (only the explicit Re-solve button does). A
+    // reopened doc is a fresh object with the same id, which is exactly what
+    // the doc loader hands the solver.
+    setSolveLocalsForTest(async () => oc)
+    const doc = { id: 'docImportReopen', features: [{ id: 'imp1', kind: 'import_step', file_id: 'f1' }] }
+    await solveLocally(doc, { files: importFiles('color_solid.step') })
+    const reopened = { id: doc.id, features: doc.features.map((f) => ({ ...f })) }
+
+    const r = await solveLocally(reopened, { files: importFiles('color_two_solids.step') })
+    expect((r!.result.imp1 as { status?: string }).status).toBe('ok')
+    expect(await importVolume(r)).toBeCloseTo(1120, 3)
+    expect(importColors(r)).toEqual(['#cc3333', '#3333cc'])
   })
 
   it('switching documents discards the prior cache (no stale reuse)', async () => {
