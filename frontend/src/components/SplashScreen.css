@@ -18,15 +18,26 @@
 
 /* Painted from the same token as the header wordmark, clipped to the glyphs.
    The background shorthand resets background-clip, so the clip declarations
-   must follow it. */
+   must follow it. The family is explicit because the global `h1` rule sets
+   `var(--heading)`; the size is the only thing the splash owns. */
 .splash-screen-title {
   margin: 0;
+  font-family: var(--sans);
   font-size: 2rem;
-  font-weight: 500;
+  font-weight: var(--brand-weight);
+  letter-spacing: var(--brand-tracking);
   background: var(--brand-gradient);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
+}
+
+/* First paint has no Roboto 700 yet; the title would swap fonts mid-load and
+   visibly change its spacing. Opacity rather than display or visibility so the
+   heading keeps its layout box (the spinner below does not jump) and stays in
+   the accessibility tree while it waits. */
+.splash-screen-title-pending {
+  opacity: 0;
 }
 
 .splash-screen-status {

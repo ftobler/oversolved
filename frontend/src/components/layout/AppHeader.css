@@ -206,7 +206,9 @@ button.breadcrumb-name:disabled {
 
 .logo {
   font-size: 18px;
-  font-weight: 700;
+  font-family: var(--sans);
+  font-weight: var(--brand-weight);
+  letter-spacing: var(--brand-tracking);
   background: var(--brand-gradient);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -218,7 +220,6 @@ button.breadcrumb-name:disabled {
   transition: all 0.2s;
   border: none;
   background-color: transparent;
-  font-family: inherit;
 }
 
 .logo:hover {

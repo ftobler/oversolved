@@ -21,6 +21,10 @@
      (`background-clip: text`), which is why they must stay opaque colours. */
   --brand-gradient: linear-gradient(90deg, #81c784, #f06292);
   --brand-gradient-hover: linear-gradient(90deg, #c7c781, #dd62f0);
+  /* The wordmark's typography. The header logo and the splash title are the
+     same mark at two sizes, so weight and tracking are declared here once. */
+  --brand-weight: 700;
+  --brand-tracking: normal;
 
   font: 18px/145% var(--sans);
   color-scheme: light dark;
