@@ -35,6 +35,10 @@ export interface HandleGestureOwner {
   move(buttons: number): void
   // Whether hover must stay frozen for this move (a handle drag is live).
   suppressHover(): boolean
+  // Whether the gesture still belongs to the handle press. The dispatcher keys
+  // the pressed arrow's hover on this, so a stranded-release reset drops both
+  // together.
+  ownsHandle(): boolean
   // Read-and-clear the click verdict: does this gesture own the release click?
   takeClick(): boolean
 }
@@ -86,6 +90,10 @@ export function createHandleGestureOwner(): HandleGestureOwner {
 
     suppressHover(): boolean {
       return hoverFrozen
+    },
+
+    ownsHandle(): boolean {
+      return pressedOnHandle
     },
 
     takeClick(): boolean {

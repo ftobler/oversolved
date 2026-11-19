@@ -441,11 +441,18 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       // or a hover a mid-drag pointerleave cleared, would otherwise stay lit or
       // leave the arrow cold.
       handleGesture.move(e.buttons)
+      // Keep the key on exactly the owner's handle state: a stranded release
+      // (move with no button held) resets the owner, so it must drop the key
+      // too or a later suppressed branch could repaint a dead gesture.
+      if (!handleGesture.ownsHandle()) pressedHandleKey = null
       if (handleGesture.suppressHover()) {
         hoverScheduler.invalidate()
-        if (pressedHandleKey === null) {
-          clearHover()
-        } else if (lastHoverLayer !== FEATURE_HANDLE_LAYER_NAME || lastHoverEntity !== pressedHandleKey) {
+        // suppressHover implies the handle press, so the key is the pressed
+        // arrow here.
+        if (
+          pressedHandleKey !== null
+          && (lastHoverLayer !== FEATURE_HANDLE_LAYER_NAME || lastHoverEntity !== pressedHandleKey)
+        ) {
           applyHoverHit(FEATURE_HANDLE_LAYER_NAME, pressedHandleKey)
         }
         return
@@ -481,6 +488,14 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
     const onClick = (e: MouseEvent) => {
       setLastClickIdHit(false)
       lastClickWasStale = false
+      // A tap from a second finger is not this gesture's click. Claiming it
+      // keeps the backplane from clearing on an ignored tap, and it must not
+      // reach takeClick: that would consume the primary pointer's ownership and
+      // let the primary release click resolve the pixel again.
+      if ((e as PointerEvent).isPrimary === false) {
+        setLastClickIdHit(true)
+        return
+      }
       if (e.button !== 0 || !attached) return
       // A press that owns the gesture must not resolve the RELEASE pixel. For a
       // handle that pixel is whatever face, edge or vertex the arrow has moved
@@ -636,6 +651,12 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
     }
 
     const onDoubleClick = (e: MouseEvent) => {
+      // A second finger's double tap must not open the arrow or label dialog,
+      // for the same reason its click is ignored.
+      if ((e as PointerEvent).isPrimary === false) {
+        setLastClickIdHit(true)
+        return
+      }
       if (e.button !== 0 || !attached) return
       const hit = resolveSync(e, attached)
       if (!hit) return

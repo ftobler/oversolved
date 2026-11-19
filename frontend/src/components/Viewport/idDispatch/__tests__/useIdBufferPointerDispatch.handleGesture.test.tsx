@@ -309,6 +309,52 @@ describe('useIdBufferPointerDispatch handle gesture', () => {
       expect(wasLastClickConsumedByIdDispatch()).toBe(true)
     })
 
+    it('a second finger click does not consume the primary handle gesture', async () => {
+      registerFeatureHandleCallbacks(HANDLE_KEY, { onPointerDown: () => {}, onDoubleClick: () => {} })
+      pipeline.resolveSync = vi.fn()
+        .mockReturnValueOnce(handleHit)
+        .mockReturnValue(faceHit)
+
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([FEATURE_HANDLE_LAYER_NAME, FACE_LAYER_NAME]),
+      }))
+
+      await act(async () => {
+        pointerDown(canvas)
+      })
+      const secondFinger = new MouseEvent('click', { button: 0, clientX: 70, clientY: 90 })
+      Object.defineProperty(secondFinger, 'isPrimary', { value: false })
+      await act(async () => {
+        canvas.dispatchEvent(secondFinger)
+      })
+      await act(async () => {
+        click(canvas)
+      })
+
+      expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+      expect(wasLastClickConsumedByIdDispatch()).toBe(true)
+    })
+
+    it('a second finger double click does not open the handle dialog', async () => {
+      const onDoubleClick = vi.fn()
+      registerFeatureHandleCallbacks(HANDLE_KEY, { onPointerDown: () => {}, onDoubleClick })
+      pipeline.resolveSync = vi.fn().mockReturnValue(handleHit)
+
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([FEATURE_HANDLE_LAYER_NAME]),
+      }))
+
+      const secondFinger = new MouseEvent('dblclick', { button: 0, clientX: 70, clientY: 90 })
+      Object.defineProperty(secondFinger, 'isPrimary', { value: false })
+      await act(async () => {
+        canvas.dispatchEvent(secondFinger)
+      })
+
+      expect(onDoubleClick).not.toHaveBeenCalled()
+    })
+
     it('arms when this press replaces a dragPending stranded by an earlier gesture', async () => {
       // A release outside the window can leave a pending drag behind. This
       // press replaces it, which must still arm the click owner.

@@ -27,10 +27,12 @@ describe('handleGestureOwner', () => {
     owner.press(FEATURE_HANDLE_LAYER_NAME)
     owner.move(1)
     expect(owner.suppressHover()).toBe(true)
+    expect(owner.ownsHandle()).toBe(true)
 
     owner.move(0)
 
     expect(owner.suppressHover()).toBe(false)
+    expect(owner.ownsHandle()).toBe(false)
     expect(owner.takeClick()).toBe(false)
   })
 
