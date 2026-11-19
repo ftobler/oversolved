@@ -26,6 +26,34 @@ const oc = await loadOcc()
 setFlagsFromString('--expose-gc')
 const gc = runInNewContext('gc') as () => void
 
+// The heap test's window. The leak it guards against keeps every read's
+// buffer, about 15 MB over the measured passes; the bound sits well under that
+// and well over the few hundred KB of process-wide noise a loaded CI runner
+// adds (a 1 MB bound failed there at 1.4 MB with nothing retained).
+const WARMUP_PASSES = 3
+const MEASURED_PASSES = 50
+const GROWTH_BOUND = 4 << 20
+
+/**
+ * The process's ArrayBuffer bytes once dead buffers are actually released.
+ *
+ * A forced `gc()` finds the dead typed arrays at once, but the counter is a
+ * process-wide figure that other in-flight buffers (the worker's RPC to the
+ * vitest host) also move, and it can lag the collection on a busy host. So
+ * each sample yields to the event loop after collecting, and the lowest of a
+ * few samples is the reading: transient bytes only ever raise a sample, while
+ * retained bytes are in every one.
+ */
+async function settledArrayBuffers(): Promise<number> {
+  let lowest = Infinity
+  for (let sample = 0; sample < 3; sample++) {
+    gc()
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    lowest = Math.min(lowest, process.memoryUsage().arrayBuffers)
+  }
+  return lowest
+}
+
 const LINEAR = 0.1
 const ANGULAR = 0.1
 const FINE_LINEAR = 0.0005
@@ -128,30 +156,33 @@ describe.skipIf(!oc)('tessellateFace bulk read parity (real OCC)', () => {
     }
   })
 
-  it('reading a large mesh over and over does not grow the heap', () => {
+  it('reading a large mesh over and over does not grow the heap', async () => {
     // The per-call reader made one heap proxy per node and per triangle (the
     // heap note this replaced); the helper copies into JS-owned arrays and frees
     // its buffer before returning. Mesh first, so the mesher's own growth is
     // out of the window, then read every face many times over. The module
     // exports no heap view, so this reads the process's ArrayBuffer bytes (as
-    // solveLocallySoakReal does) with a forced GC around it: the JS copies are
-    // collected, while wasm memory never shrinks, so a retained per-read buffer
-    // stays as growth (about 15 MB over these passes).
+    // solveLocallySoakReal does): the JS copies are collected, while wasm
+    // memory never shrinks, so a retained per-read buffer stays as growth
+    // (about 15 MB over these passes).
     const scope = new DisposeScope()
     try {
       const fine = makeCylinder(oc!, scope, [0, 0, 0], [0, 0, 1], 40, 80)
       const faces = facesOf(oc!, scope, fine)
-      let triangles = 0
-      // Deflection is relative to the shape, so the angular bound sets the count.
-      for (const face of faces) triangles += tessellateFace(oc!, scope, face, FINE_LINEAR, FINE_ANGULAR).triangles.length
-      expect(triangles).toBeGreaterThan(10_000)
-      gc()
-      const before = process.memoryUsage().arrayBuffers
-      for (let pass = 0; pass < 50; pass++) {
-        for (const face of faces) tessellateFace(oc!, scope, face, FINE_LINEAR, FINE_ANGULAR)
+      const readAll = (): number => {
+        let triangles = 0
+        for (const face of faces) triangles += tessellateFace(oc!, scope, face, FINE_LINEAR, FINE_ANGULAR).triangles.length
+        return triangles
       }
-      gc()
-      expect(process.memoryUsage().arrayBuffers - before).toBeLessThan(1 << 20)
+      // Deflection is relative to the shape, so the angular bound sets the count.
+      expect(readAll()).toBeGreaterThan(10_000)
+      // A few reads before the baseline, so any one-time allocation on the
+      // read path lands outside the window and only per-read growth is left.
+      for (let pass = 0; pass < WARMUP_PASSES; pass++) readAll()
+      const before = await settledArrayBuffers()
+      for (let pass = 0; pass < MEASURED_PASSES; pass++) readAll()
+      const growth = await settledArrayBuffers() - before
+      expect(growth, `ArrayBuffer growth over ${MEASURED_PASSES} passes`).toBeLessThan(GROWTH_BOUND)
     } finally {
       scope.dispose()
     }
