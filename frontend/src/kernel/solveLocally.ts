@@ -8,6 +8,7 @@
  */
 
 import { build, RESTORE_OWNER, type BuildDeps, type BuildResponse } from './builder'
+import { featuresWithImportDigests, type ImportFeatureShape } from './importFileBytes'
 import { isDevBuild } from './isDevBuild'
 import { ExportSelectionError, extractErrorMessage, isKernelTrap, KernelFault } from './errors'
 import { initGlobalRepo } from './query'
@@ -609,9 +610,24 @@ async function solveLocallyGuarded(
       deps.releaseRestoreCopies?.()
     }
 
+    // An import's spec carries its file id, never its bytes, so a replaced file
+    // would leave the feature clean and the restored checkpoint would serve the
+    // old geometry and colour. Fold the digested bytes into the spec the dirty
+    // check compares; this is the only place that sees both the document and
+    // the file map, so every path through the cache gets it.
+    const digestedFeatures = Array.isArray(spec.features)
+      ? featuresWithImportDigests(
+        spec.features as ImportFeatureShape[],
+        options.files,
+        options.rollbackPosition ?? spec.features.length,
+      )
+      : null
+    const digested = digestedFeatures === null || digestedFeatures === spec.features
+      ? spec
+      : { ...spec, features: digestedFeatures }
     const specForBuild = options.validate
-      ? { ...spec, _validate: true }
-      : spec
+      ? { ...digested, _validate: true }
+      : digested
 
     const response = build(specForBuild, {
       prevState,

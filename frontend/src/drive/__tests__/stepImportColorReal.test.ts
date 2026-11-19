@@ -67,11 +67,9 @@ describeReal('STEP import colour through the headless drive', () => {
 
     // The file's bytes are replaced under the same id: the part keeps its id and
     // with it the colour an earlier solve seeded, though the new bytes say red.
-    // Its own docId works around a known bug, not intended behaviour: the
-    // solve cache serves the previous read when only the bytes behind a file
-    // id change (planned in feature/bug-import-replace-stale-cache.md).
+    // The solve still has to read the new payload, which the note proves.
     const replaced = await runHeadless({
-      doc: imported.doc!, docId: 'replace-a', steps: rename('A'), files: new Map([['f1', fixture('color_faces.step')]]),
+      doc: imported.doc!, steps: rename('A'), files: new Map([['f1', fixture('color_faces.step')]]),
     })
     expect(replaced.solved).toBe(true)
     expect(replaced.notes.some((n) => n.text.includes('#cc3333'))).toBe(true)
@@ -85,7 +83,7 @@ describeReal('STEP import colour through the headless drive', () => {
     expect(recoloured.solved).toBe(true)
     expect(colorOf(recoloured.doc)).toBe('#123456')
     const again = await runHeadless({
-      doc: recoloured.doc!, docId: 'replace-b', steps: rename('B'), files: new Map([['f1', fixture('color_faces.step')]]),
+      doc: recoloured.doc!, steps: rename('B'), files: new Map([['f1', fixture('color_faces.step')]]),
     })
     expect(again.solved).toBe(true)
     expect(again.notes.some((n) => n.text.includes('#cc3333'))).toBe(true)
