@@ -106,7 +106,7 @@ export interface PartOutcome {
 }
 
 /** The solver notes of one part build, in feature order. */
-function buildNotes(result: Record<string, unknown> | undefined): string[] {
+function buildNotes(result: Parameters<typeof readSolveOutcomes>[0]): string[] {
   return Object.values(readSolveOutcomes(result))
     .map(outcome => outcome.note)
     .filter((note): note is string => note !== undefined)
