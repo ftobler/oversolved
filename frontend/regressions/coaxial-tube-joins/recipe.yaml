@@ -1,0 +1,317 @@
+version: 5
+kind: part
+features:
+  - id: Origin
+    kind: origin
+  - id: Top
+    kind: plane
+    visible: false
+  - id: Front
+    kind: plane
+    visible: false
+  - id: Right
+    kind: plane
+    visible: false
+  - id: sk_box
+    kind: sketch
+    plane: Front
+    initial:
+      qtmSAPONkTqI5LXd:
+        - -5
+        - -5
+        - 5
+        - -5
+      w4kldSzg_ncgSy2T:
+        - 5
+        - -5
+        - 5
+        - 5
+      tV8s-7vufYAHRpZe:
+        - 5
+        - 5
+        - -5
+        - 5
+      Q82KIHu_eMnjgBaW:
+        - -5
+        - 5
+        - -5
+        - -5
+      mJti5SZ9x6iK_0b5:
+        - 0
+        - 0
+    entities:
+      - id: qtmSAPONkTqI5LXd
+        kind: line
+      - id: w4kldSzg_ncgSy2T
+        kind: line
+      - id: tV8s-7vufYAHRpZe
+        kind: line
+      - id: Q82KIHu_eMnjgBaW
+        kind: line
+      - id: mJti5SZ9x6iK_0b5
+        kind: point
+    constraints:
+      - id: c_coincident_PjB6orF-
+        kind: coincident
+        a: $qtmSAPONkTqI5LXdend
+        b: $w4kldSzg_ncgSy2Tstart
+      - id: c_coincident_7T868bvc
+        kind: coincident
+        a: $w4kldSzg_ncgSy2Tend
+        b: $tV8s-7vufYAHRpZestart
+      - id: c_coincident_rhD4mDxq
+        kind: coincident
+        a: $tV8s-7vufYAHRpZeend
+        b: $Q82KIHu_eMnjgBaWstart
+      - id: c_coincident_TxcumVI8
+        kind: coincident
+        a: $Q82KIHu_eMnjgBaWend
+        b: $qtmSAPONkTqI5LXdstart
+      - id: c_equal_length_6Ld7_Vfd
+        kind: equal_length
+        a: $qtmSAPONkTqI5LXd
+        b: $tV8s-7vufYAHRpZe
+      - id: c_equal_length_qu1-UySC
+        kind: equal_length
+        a: $w4kldSzg_ncgSy2T
+        b: $Q82KIHu_eMnjgBaW
+      - id: c_horizontal_fD5VnIL7
+        kind: horizontal
+        target: $qtmSAPONkTqI5LXd
+      - id: c_vertical_B1Nq7S1P
+        kind: vertical
+        target: $w4kldSzg_ncgSy2T
+      - id: c_midpoint_KvAUd_Vl
+        kind: midpoint
+        point_a: $qtmSAPONkTqI5LXdstart
+        point_b: $tV8s-7vufYAHRpZestart
+        point: $mJti5SZ9x6iK_0b5xy
+      - id: c_midpoint_4kCJLSH5
+        kind: midpoint
+        point_a: $w4kldSzg_ncgSy2Tstart
+        point_b: $Q82KIHu_eMnjgBaWstart
+        point: $mJti5SZ9x6iK_0b5xy
+  - id: ex_box
+    kind: extrude
+    label: Extrude
+    extrude:
+      sketch:
+        - $sk_box
+      distance: 10
+      direction: symmetric
+      operation: new
+  - id: c_f
+    kind: sketch
+    plane: Front
+    initial:
+      x5nhv-bbDGURy3Cr:
+        - 0
+        - 0
+        - 4
+    entities:
+      - id: x5nhv-bbDGURy3Cr
+        kind: circle
+  - id: cut_f
+    kind: extrude
+    label: Extrude
+    extrude:
+      sketch:
+        - $c_f
+      distance: 10
+      direction: symmetric
+      operation: cut
+  - id: c_t
+    kind: sketch
+    plane: Top
+    initial:
+      m1I6IyjbuzTB97zn:
+        - 0
+        - 0
+        - 4
+    entities:
+      - id: m1I6IyjbuzTB97zn
+        kind: circle
+  - id: cut_t
+    kind: extrude
+    label: Extrude
+    extrude:
+      sketch:
+        - $c_t
+      distance: 10
+      direction: symmetric
+      operation: cut
+  - id: c_r
+    kind: sketch
+    plane: Right
+    initial:
+      W1E_6OREHHcQPIAx:
+        - 0
+        - 0
+        - 4
+    entities:
+      - id: W1E_6OREHHcQPIAx
+        kind: circle
+  - id: cut_r
+    kind: extrude
+    label: Extrude
+    extrude:
+      sketch:
+        - $c_r
+      distance: 10
+      direction: symmetric
+      operation: cut
+  - id: p_px
+    kind: sketch
+    plane: ?15,7,c,18,7;@u|u_4dc2f8c8f7d29c27@ex_box@body_ex_box@sk_box/w4kldSzg_ncgSy2T@cls_xp:flatface
+    initial:
+      Ku6IC50fYt-RIdxv:
+        - 0
+        - 0
+        - 4.5
+      gcHwEcHCQK-iYtfd:
+        - 0
+        - 0
+        - 4
+    entities:
+      - id: Ku6IC50fYt-RIdxv
+        kind: circle
+      - id: gcHwEcHCQK-iYtfd
+        kind: circle
+  - id: e_px
+    kind: extrude
+    label: Extrude
+    extrude:
+      sketch:
+        - $p_px
+      distance: 10
+      direction: normal
+  - id: p_nx
+    kind: sketch
+    plane: ?15,7,c,18,7;@u|u_e3f93363279decaa@ex_box@body_ex_box@sk_box/Q82KIHu_eMnjgBaW@cls_xn:flatface
+    initial:
+      0nbVWAsagayCjKQR:
+        - 0
+        - 0
+        - 4.5
+      wbpJBtIchwlCRX16:
+        - 0
+        - 0
+        - 4
+    entities:
+      - id: 0nbVWAsagayCjKQR
+        kind: circle
+      - id: wbpJBtIchwlCRX16
+        kind: circle
+  - id: e_nx
+    kind: extrude
+    label: Extrude
+    extrude:
+      sketch:
+        - $p_nx
+      distance: 10
+      direction: normal
+  - id: p_py
+    kind: sketch
+    plane: ?15,7,c,18,7;@u|u_b467b8c0e7d62e09@ex_box@body_ex_box@sk_box/tV8s-7vufYAHRpZe@cls_yp:flatface
+    initial:
+      l5TSnOaLZP_b9cvO:
+        - 0
+        - 0
+        - 4.5
+      -XelJl3Ypva_sOEM:
+        - 0
+        - 0
+        - 4
+    entities:
+      - id: l5TSnOaLZP_b9cvO
+        kind: circle
+      - id: -XelJl3Ypva_sOEM
+        kind: circle
+  - id: e_py
+    kind: extrude
+    label: Extrude
+    extrude:
+      sketch:
+        - $p_py
+      distance: 10
+      direction: normal
+  - id: p_ny
+    kind: sketch
+    plane: ?15,7,c,18,7;@u|u_55fb96f101af3e17@ex_box@body_ex_box@sk_box/qtmSAPONkTqI5LXd@cls_yn:flatface
+    initial:
+      GkyJnn__h4PRW-pf:
+        - 0
+        - 0
+        - 4.5
+      9sqKRrXJRsSTXtsV:
+        - 0
+        - 0
+        - 4
+    entities:
+      - id: GkyJnn__h4PRW-pf
+        kind: circle
+      - id: 9sqKRrXJRsSTXtsV
+        kind: circle
+  - id: e_ny
+    kind: extrude
+    label: Extrude
+    extrude:
+      sketch:
+        - $p_ny
+      distance: 10
+      direction: normal
+  - id: p_pz
+    kind: sketch
+    plane: ?15,7,c,18,18,18,18,7;@u|u_8985c30e42584dd9@ex_box@body_ex_box@sk_box/Q82KIHu_eMnjgBaW@sk_box/qtmSAPONkTqI5LXd@sk_box/tV8s-7vufYAHRpZe@sk_box/w4kldSzg_ncgSy2T@cls_zp:flatface
+    initial:
+      dHq7kmbdFtC4zzPC:
+        - 0
+        - 0
+        - 4.5
+      WsagfquUqTdij90R:
+        - 0
+        - 0
+        - 4
+    entities:
+      - id: dHq7kmbdFtC4zzPC
+        kind: circle
+      - id: WsagfquUqTdij90R
+        kind: circle
+  - id: e_pz
+    kind: extrude
+    label: Extrude
+    extrude:
+      sketch:
+        - $p_pz
+      distance: 10
+      direction: normal
+  - id: p_nz
+    kind: sketch
+    plane: ?15,7,c,18,18,18,18,7;@u|u_b65474bd23d3556a@ex_box@body_ex_box@sk_box/Q82KIHu_eMnjgBaW@sk_box/qtmSAPONkTqI5LXd@sk_box/tV8s-7vufYAHRpZe@sk_box/w4kldSzg_ncgSy2T@cls_zn:flatface
+    initial:
+      WNZnYnkYnQa6Njh6:
+        - 0
+        - 0
+        - 4.5
+      16E9WCDKjtuhQk06:
+        - 0
+        - 0
+        - 4
+    entities:
+      - id: WNZnYnkYnQa6Njh6
+        kind: circle
+      - id: 16E9WCDKjtuhQk06
+        kind: circle
+  - id: e_nz
+    kind: extrude
+    label: Extrude
+    extrude:
+      sketch:
+        - $p_nz
+      distance: 10
+      direction: normal
+part_style:
+  body_ex_box:
+    name: part 1
+    color: "#6AB59B"
+    created_by: ex_box

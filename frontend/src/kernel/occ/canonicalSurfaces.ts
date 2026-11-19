@@ -38,7 +38,7 @@ import type {
   OccSurfaceAdaptor,
 } from './occTypes'
 import { volumeOfDefault } from './volume'
-import { faceSurfaceFrame } from './primitives'
+import { faceCylinderXDirection, faceSurfaceFrame } from './primitives'
 import { swallowUnlessTrap } from '../errors'
 import { noProgress } from './defaultArgs'
 
@@ -209,6 +209,9 @@ interface CylMember {
   c: V3
   r: number
   fit: CylFit | null
+  // The analytic surface's own X direction, where the seam sits. Null for a
+  // fitted face: its underlying surface has no seam to compare.
+  xDir: V3 | null
 }
 
 type CylAxis = Pick<CylFit, 'd' | 'c' | 'r'>
@@ -218,6 +221,17 @@ function sameCylinder(a: CylAxis, b: CylAxis): boolean {
   if (Math.abs(Math.abs(dot(a.d, b.d)) - 1) > 1e-9) return false
   if (Math.abs(a.r - b.r) > CLUSTER_TOL) return false
   return norm(cross(sub(b.c, a.c), a.d)) < CLUSTER_TOL
+}
+
+/**
+ * Would UnifySameDomain see these two analytic cylinders as one surface? It
+ * needs the same seam direction, i.e. the same X direction. A fitted face has
+ * no vote: it is rebuilt onto the anchor's surface either way, so this answers
+ * only the analytic pair a same-direction cluster would otherwise leave split.
+ */
+function sameSeam(a: CylMember, b: CylMember): boolean {
+  if (a.xDir === null || b.xDir === null) return true
+  return dot(a.xDir, b.xDir) > 1 - 1e-9
 }
 
 /**
@@ -289,12 +303,19 @@ export function canonicalizeCylinderFaces(
         if (t === cylType) {
           const frame = faceSurfaceFrame(oc, scope, face)
           if (frame?.radius === undefined) continue
-          members.push({ face, d: frame.axis, c: frame.origin, r: frame.radius, fit: null })
+          members.push({
+            face,
+            d: frame.axis,
+            c: frame.origin,
+            r: frame.radius,
+            fit: null,
+            xDir: faceCylinderXDirection(oc, scope, face),
+          })
           continue
         }
         const fit = fitCylinder(oc, scope, face)
         if (fit) {
-          members.push({ face, d: fit.d, c: fit.c, r: fit.r, fit })
+          members.push({ face, d: fit.d, c: fit.c, r: fit.r, fit, xDir: null })
           fitCount++
         }
       }
@@ -323,7 +344,15 @@ export function canonicalizeCylinderFaces(
       // placed in the gap all members leave free, gives every member pcurves in
       // one u range, exactly as the fitted halves of a weld get.
       const opposed = members.some((m) => m.fit === null && dot(m.d, anchor.d) < 0)
-      const rebuild = opposed ? members : members.filter((m) => m.fit !== null)
+      // A same-direction cluster with two seams is the same defect: the faces
+      // are one geometric cylinder but their pcurves run in different u ranges,
+      // so UnifySameDomain cannot fold the boundary where they meet. Rebuilding
+      // the whole cluster puts every face on the anchor's seam. Fitted members
+      // do not vote (sameSeam is true for them); they are rebuilt below anyway.
+      const seamDisagrees =
+        members.length > 1 &&
+        members.some((m, i) => members.slice(i + 1).some((other) => !sameSeam(m, other)))
+      const rebuild = opposed || seamDisagrees ? members : members.filter((m) => m.fit !== null)
       if (rebuild.length === 0) continue
       const cluster: CylFit[] = []
       for (const m of rebuild) {
