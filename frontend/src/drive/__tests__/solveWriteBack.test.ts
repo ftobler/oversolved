@@ -44,6 +44,24 @@ describe('applySolveToDoc', () => {
     expect(written.part_style).toEqual({})
   })
 
+  it('seeds a new body with the colour its STEP file gave it', () => {
+    const { doc: written } = applySolveToDoc(doc({}), {
+      result: {},
+      bodies: { body_imp: { ...part('body_imp'), import_color: '#808080' }, body_ex1: part('body_ex1') },
+    })
+    expect(written.part_style!.body_imp).toMatchObject({ name: 'part 1', color: '#808080' })
+    // A modelled body beside it still takes the palette colour.
+    expect(written.part_style!.body_ex1.color).not.toBe('#808080')
+  })
+
+  it('never repaints an existing entry from the file colour', () => {
+    const { doc: written } = applySolveToDoc(doc({ body_imp: { name: 'Housing', color: '#123456' } }), {
+      result: {},
+      bodies: { body_imp: { ...part('body_imp'), import_color: '#808080' } },
+    })
+    expect(written.part_style!.body_imp).toEqual({ name: 'Housing', color: '#123456' })
+  })
+
   it('does not touch part_style when the response carries no body set', () => {
     const { doc: written } = applySolveToDoc(doc({ body_ex1: { name: 'kept' } }), { result: {} })
     expect(written.part_style).toEqual({ body_ex1: { name: 'kept' } })

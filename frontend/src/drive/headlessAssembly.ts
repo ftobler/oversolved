@@ -100,6 +100,16 @@ export interface InjectedBundle {
 export interface PartOutcome {
   features: FeatureProblem[]
   error?: string
+  // The informational notes of the part's build (FeatureOutcome.note), e.g.
+  // which colour a STEP import took when its faces disagreed. Not problems.
+  notes?: string[]
+}
+
+/** The solver notes of one part build, in feature order. */
+function buildNotes(result: Record<string, unknown> | undefined): string[] {
+  return Object.values(readSolveOutcomes(result))
+    .map(outcome => outcome.note)
+    .filter((note): note is string => note !== undefined)
 }
 
 /** One assembly script step: a command id or one wire mutation. */
@@ -289,10 +299,14 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
         toPartBundle(docId, docHashOf(partDoc), response.bodies as Record<string, PartResult>),
         partToAssemblyScale(partDoc),
       )
+      const notes = buildNotes(response.result)
       const entry = remember(key, {
         bundle,
         index: buildPartAnchorIndex(bundle, response.bodies as Record<string, PartResult>),
-        outcome: { features: featureProblems(partDoc, readSolveOutcomes(response.result)) },
+        outcome: {
+          features: featureProblems(partDoc, readSolveOutcomes(response.result)),
+          ...(notes.length > 0 && { notes }),
+        },
       })
       partOutcomes[docId] = entry.outcome
       return entry
@@ -584,10 +598,14 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
     needsSolve = false
     runAssemblyOperation('add_part', addPartInput(request, docId), host())
     if (needsSolve) await solve()
+    // The import's own notes, e.g. the colour it picked when the file's faces
+    // disagreed: the reply is the only place a headless caller sees that pick.
+    const notes = partOutcomes[docId]?.notes ?? []
     return {
       ...okResult([`inst_${request.handle}`]),
       part: { docId, name: stepPartName(part, fileId), fileId },
       handles: [request.handle],
+      ...(notes.length > 0 && { note: notes.join('; ') }),
     }
   }
 
