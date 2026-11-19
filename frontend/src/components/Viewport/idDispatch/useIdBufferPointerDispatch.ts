@@ -250,8 +250,10 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
 
     // One gesture owner per attached dispatcher: its press/move/click state is
     // the whole-"gesture" rule, kept outside React so it unit-tests without a
-    // Viewport.
+    // Viewport. The pressed arrow's key is what keeps it hot while the owner
+    // freezes hover.
     const handleGesture = createHandleGestureOwner()
+    let pressedHandleKey: string | null = null
 
     // The effective allowed set is re-read on every pointermove and again on the
     // rAF flush; under a filtered tool that is a fresh Set allocation each call.
@@ -433,12 +435,19 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
     const onPointerMove = (e: MouseEvent) => {
       if (!attached) return
       // A handle drag owns the gesture: do not resolve a hover for whatever the
-      // arrow passes over. invalidate(), not clearHover(), because the handle's
-      // own hover is what keeps it painted hot and labelled; a stray resolve
-      // already in flight must still land as a no-op.
+      // arrow passes over. invalidate() stops a resolve already in flight from
+      // landing, and the arrow itself is re-applied because it is the one hover
+      // this gesture may paint: a face that was hovered just before the press,
+      // or a hover a mid-drag pointerleave cleared, would otherwise stay lit or
+      // leave the arrow cold.
       handleGesture.move(e.buttons)
       if (handleGesture.suppressHover()) {
         hoverScheduler.invalidate()
+        if (pressedHandleKey === null) {
+          clearHover()
+        } else if (lastHoverLayer !== FEATURE_HANDLE_LAYER_NAME || lastHoverEntity !== pressedHandleKey) {
+          applyHoverHit(FEATURE_HANDLE_LAYER_NAME, pressedHandleKey)
+        }
         return
       }
       const allowed = computeAllowed()
@@ -482,6 +491,7 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       // the backplane does not clear the selection either.
       if (handleGesture.takeClick()) {
         setLastClickIdHit(true)
+        pressedHandleKey = null
         return
       }
       // A sketch drawing tool (e.g. project) already consumed this click on
@@ -654,13 +664,24 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
     }
 
     const onPointerDown = (e: MouseEvent) => {
+      // A second finger must not take a gesture that is already owned or start a
+      // parallel one; the Viewport's parent press handler applies the same rule.
+      if ((e as PointerEvent).isPrimary === false) return
       if (e.button !== 0 || !attached) return
       const hit = resolveSync(e, attached)
       // The press starts the gesture: ownership comes from this hit only (a miss
       // clears it), before the adapter runs so a refusing handle still owns the
       // gesture it was pressed on.
       handleGesture.press(hit?.layer ?? null)
+      pressedHandleKey = hit?.layer === FEATURE_HANDLE_LAYER_NAME ? hit.entityKey : null
       if (!hit) return
+      // From the press on, the arrow is the only hover this gesture may paint.
+      // Clearing a face that the cursor passed over on its way to the arrow is
+      // what stops the drag from promising a pick it cannot make.
+      if (hit.layer === FEATURE_HANDLE_LAYER_NAME) {
+        hoverScheduler.invalidate()
+        applyHoverHit(FEATURE_HANDLE_LAYER_NAME, hit.entityKey)
+      }
       const dragPendingBefore = useSketchEditorStore.getState().dragPending
       const tool = useSketchEditorStore.getState().activeTool
       if (hit.layer === FEATURE_HANDLE_LAYER_NAME) {
@@ -672,12 +693,11 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       } else if (hit.layer === SKETCH_ENTITY_LAYER_NAME && (tool === 'drag' || tool === null)) {
         sketchEntityAdapter.onPointerDown(hit.entityKey, e.clientX, e.clientY)
       }
-      // Armed means this press's adapter set a pending drag. A pending flag left
-      // by an earlier gesture is not this gesture's, so only a null -> set
-      // transition arms the click half of the owner rule.
-      handleGesture.noteDragArmed(
-        dragPendingBefore === null && useSketchEditorStore.getState().dragPending !== null,
-      )
+      // Armed means this press's adapter changed the pending drag. A pending left
+      // by an earlier gesture is not this gesture's, so only a set or replace
+      // during this press arms the click half of the owner rule.
+      const dragPendingAfter = useSketchEditorStore.getState().dragPending
+      handleGesture.noteDragArmed(dragPendingAfter !== null && dragPendingAfter !== dragPendingBefore)
     }
 
     const attach = (c: HTMLCanvasElement) => {
