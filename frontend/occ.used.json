@@ -75,6 +75,7 @@
     "Message_ProgressRange",
     "OversolvedFaceFacts",
     "OversolvedMesh",
+    "OversolvedStepCaf",
     "STEPControl_Reader",
     "STEPControl_StepModelType",
     "STEPControl_Writer",
