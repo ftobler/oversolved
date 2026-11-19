@@ -384,8 +384,24 @@ describe('phone-width chrome', () => {
     expect(pinned(css, 'bottom', slot, TOP_LEVEL)).toBe('12px')
     expect(pinned(css, 'justify-content', slot, TOP_LEVEL)).toBe('flex-start')
     expect(effective(css, 'right', slot, TOP_LEVEL)).toBeNull()
+    expect(effective(css, 'text-align', slot, TOP_LEVEL)).toBeNull()
     expect(effective(css, 'text-align', display, TOP_LEVEL)).toBeNull()
     expect(effective(css, 'justify-content', display, TOP_LEVEL)).toBeNull()
+  })
+
+  it('keeps the extras disclosure out of the readout row', () => {
+    // The slot reserves one row; opening "more" must not grow the readout up
+    // into the navigator card's band past --readout-clearance. The panel is
+    // absolute above the summary, so the row's height never changes.
+    const css = 'components/Viewport/ViewportHud.css'
+    const more = chain('viewport-readout', 'measurement-display', 'measurement-more')
+    const extras = chain('viewport-readout', 'measurement-display', 'measurement-more', 'measurement-extras')
+    expect(pinned(css, 'position', more, TOP_LEVEL)).toBe('relative')
+    expect(pinned(css, 'position', extras, TOP_LEVEL)).toBe('absolute')
+    expect(pinned(css, 'bottom', extras, TOP_LEVEL)).toBe('calc(100% + 4px)')
+    // An author `display` would override the UA rule that hides a closed
+    // details' content, so the panel must not declare one.
+    expect(effective(css, 'display', extras, TOP_LEVEL)).toBeNull()
   })
 
   it('bounds the left card column above the bottom-left readout', () => {

@@ -45,7 +45,9 @@ vi.mock('@/components/Viewport/AssemblyViewport', () => ({
     useImperativeHandle(ref, () => ({ captureScreenshotForSaving: vi.fn(async () => null) }))
     return (
       <div data-testid="assembly-viewport">
-        <div data-testid="viewport-hud">{props.viewOptions}</div>
+        <div data-testid="viewport-hud">
+          <div data-testid="viewport-hud-view-options">{props.viewOptions}</div>
+        </div>
         <div data-testid="viewport-readout">{props.readout}</div>
       </div>
     )
@@ -92,6 +94,10 @@ describe('Assembly editor chrome', () => {
 
   it('hands the view options button to the HUD column on the right', async () => {
     await renderLoaded()
-    expect(screen.getByTestId('viewport-hud').querySelector('button[aria-label="View options"]')).not.toBeNull()
+    const slot = screen.getByTestId('viewport-hud-view-options')
+    expect(slot.querySelector('button[aria-label="View options"]')).not.toBeNull()
+    // The option slot is the HUD column's first child: the readout is not in
+    // this column, so nothing may be stacked above the view options button.
+    expect(screen.getByTestId('viewport-hud').firstElementChild).toBe(slot)
   })
 })
