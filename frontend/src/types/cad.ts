@@ -629,6 +629,10 @@ export interface PartResult {
   // solved body this is (`child` or `child/grandchild`). Absent for a direct
   // part instance. The tree's view-only eye and leaf highlight key on it.
   leaf_path?: string
+  // The body colour a STEP import read from its file (`#rrggbb`, sRGB). The
+  // write-back seeds a NEW part_style entry with it instead of the palette;
+  // an existing entry is never changed (utils/core/partStyle.ts).
+  import_color?: string
 }
 
 export interface RebuildValidation {

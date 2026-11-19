@@ -46,6 +46,7 @@ function _copyPart(part: PartSolid, mapShape?: ShapeMapper): PartSolid {
       ? { brep_new: { ...part.brep_new, shape } }
       : {}),
     ...(part.imported ? { imported: true } : {}),
+    ...(part.import_color ? { import_color: part.import_color } : {}),
     // Derived from the producing solves, carried with the body so a checkpoint
     // restore hands the next merge the same widening it had before.
     ...(part.precision ? { precision: { ...part.precision } } : {}),

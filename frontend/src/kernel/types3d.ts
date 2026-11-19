@@ -95,6 +95,13 @@ export interface PartSolid {
    */
   imported?: boolean
   /**
+   * The colour (`#rrggbb`, sRGB) a STEP import read for this body from its
+   * file (occ/importColor.ts), absent when the file colours nothing. Derived
+   * from the file bytes, carried like `imported`, and surfaced on the body
+   * result so the write-back can seed a NEW part_style entry with it.
+   */
+  import_color?: string
+  /**
    * Runtime-only provenance for a body a split minted: the feature whose solve
    * broke it off and the body it was a solid of (features/partSplit.ts). A
    * later split of the body writes its own entry on the new siblings; the entry
