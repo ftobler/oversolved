@@ -6,6 +6,7 @@ import {
   subscribeOccLoadProgress,
 } from '@/kernel/occ/loadProgress'
 import { useKernelReady } from '@/kernel/worker/kernelReady'
+import { SPLASH_TITLE_TEXT, useFontReady } from '@/hooks/useFontReady'
 import './SplashScreen.css'
 
 // Flip to true to keep the splash mounted regardless of kernel readiness, so
@@ -21,6 +22,9 @@ export default function SplashScreen({ debugHold = SPLASH_DEBUG_HOLD }: SplashSc
   const ready = useKernelReady()
   const held = debugHold || SPLASH_DEBUG_HOLD
   const occLoad = useSyncExternalStore(subscribeOccLoadProgress, getOccLoadProgress)
+  // Only the wordmark waits for its face; the spinner and status are visible
+  // from the first paint, so the load never looks stalled.
+  const fontReady = useFontReady()
 
   if (ready && !held) return null
 
@@ -39,7 +43,13 @@ export default function SplashScreen({ debugHold = SPLASH_DEBUG_HOLD }: SplashSc
   return (
     <div className="splash-screen" data-testid="splash-screen" role="status">
       <div className="splash-screen-content">
-        <h1 className="splash-screen-title">Oversolved</h1>
+        <h1
+          className={
+            fontReady ? 'splash-screen-title' : 'splash-screen-title splash-screen-title-pending'
+          }
+        >
+          {SPLASH_TITLE_TEXT}
+        </h1>
         <div className="md3-spinner-container">
           <div className="md3-spinner-rotator">
             <Spinner className="md3-spinner-svg" circleClassName="md3-spinner-path" />
