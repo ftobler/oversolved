@@ -18,6 +18,7 @@ import { enumVal, sameEnum } from './enumValue'
 import { encodeBinaryStl } from '../stl'
 import { noProgress } from './defaultArgs'
 import { timePhase } from './phaseTimer'
+import { extractOccErrorMessage, isKernelTrap } from '../errors'
 
 // A fixed short scratch path in the emscripten MEMFS. Two quirks of the 7.4
 // build forced both choices: STEPControl_Reader failed
@@ -105,11 +106,14 @@ export function stepBytesToShapeWithIdentity(
   return readStep(oc, scope, bytes, scale, true, reader)
 }
 
-// A read reader after its transfer: the shape, and the colours when it has any.
+// A read reader after its transfer: the shape (already tracked in the scope),
+// and the colours when it has any.
 interface Transferred {
   source: TransferSource
   read: OccShape
   colors: OccStepCafColors | null
+  // Set when the colour read itself threw; the shape still stands.
+  colorWarning?: string
 }
 
 function transfer(oc: OccModule, scope: DisposeScope, path: string, kind: StepReaderKind): Transferred {
@@ -122,15 +126,28 @@ function transfer(oc: OccModule, scope: DisposeScope, path: string, kind: StepRe
     const reader = scope.track(new oc.STEPControl_Reader_1())
     refuseStatus(timePhase('step.read', () => reader.ReadFile_1(path)))
     timePhase('step.transfer', () => reader.TransferRoots(noProgress(oc)))
-    return { source: reader, read: reader.OneShape(), colors: null }
+    return { source: reader, read: scope.track(reader.OneShape()), colors: null }
   }
   const reader = scope.track(new oc.OversolvedStepCaf())
   refuseStatus(timePhase('step.read', () => reader.ReadFile(path)))
   if (!timePhase('step.transfer', () => reader.Transfer())) {
     throw new Error('import_step: STEP transfer failed')
   }
-  const read = reader.OneShape()
-  return { source: reader, read, colors: timePhase('step.colors', () => reader.Colors(read)) }
+  // Tracked at once, so nothing between here and the hand-out can strand it.
+  const read = scope.track(reader.OneShape())
+  try {
+    return { source: reader, read, colors: timePhase('step.colors', () => reader.Colors(read)) }
+  } catch (e) {
+    // A trap leaves the module unusable and must abort the build; any other
+    // throw only costs the colours, never the import.
+    if (isKernelTrap(e)) throw e
+    return {
+      source: reader,
+      read,
+      colors: null,
+      colorWarning: `the STEP file's colours were dropped: reading them failed (${extractOccErrorMessage(oc, e)})`,
+    }
+  }
 }
 
 function readStep(
@@ -144,12 +161,11 @@ function readStep(
   const path = SCRATCH_PATH
   oc.FS.writeFile(path, bytes)
   try {
-    const { source: reader, read, colors } = transfer(oc, scope, path, kind)
-    // Tracked while this read runs, so a throw below cannot strand it on the
-    // heap. On the scaled path the OneShape() result is an intermediate only
-    // the identity map reads and stays tracked; unscaled it IS the returned
-    // shape and is detached on the way out (producers return untracked shapes).
-    scope.track(read)
+    // `read` arrives tracked, so a throw below cannot strand it on the heap. On
+    // the scaled path the OneShape() result is an intermediate only the
+    // identity map reads and stays tracked; unscaled it IS the returned shape
+    // and is detached on the way out (producers return untracked shapes).
+    const { source: reader, read, colors, colorWarning: readWarning } = transfer(oc, scope, path, kind)
     // The scaled copy is a NEW shape the transfer map knows nothing about, so
     // the builder has to stay in hand to carry identity across it.
     const builder = scale !== 1.0
@@ -167,8 +183,12 @@ function readStep(
     // caller's scope may outlive this call by a lot -- read the map now.
     const faces = pairReadFaces(oc, scope, read, shape, builder)
     const faceStepIds = timePhase('step.identity', () => faceEntityIds(oc, scope, reader, faces))
-    const { faceColors, solidColors, colorWarning } = colorMaps(oc, scope, colors, faces, read, shape, builder)
-    return handOut({ shape, faceStepIds, faceColors, solidColors, ...(colorWarning && { colorWarning }) })
+    const maps = colorMaps(oc, scope, colors, faces, read, shape, builder)
+    const colorWarning = readWarning ?? maps.colorWarning
+    return handOut({
+      shape, faceStepIds, faceColors: maps.faceColors, solidColors: maps.solidColors,
+      ...(colorWarning !== undefined && { colorWarning }),
+    })
   } finally {
     try {
       oc.FS.unlink(path)
