@@ -57,12 +57,23 @@ describeReal('STEP import colour through the headless drive', () => {
   })
 
   it('never repaints an existing entry: a user recolour survives a re-solve and a file replace', async () => {
+    // A rename lands a real mutation, so each later run solves and writes back
+    // (an empty script never solves) without touching the colour itself.
+    const rename = (name: string): ScriptStep[] =>
+      [{ mutation: { type: 'rename_part', bodyId: 'body_imp1', name } } as ScriptStep]
+
     const imported = await runHeadless({ doc: emptyDriveDoc(), steps: IMPORT, files: new Map([['f1', fixture('color_solid.step')]]) })
     expect(colorOf(imported.doc)).toBe('#808080')
 
     // The file's bytes are replaced under the same id: the body keeps its id and
-    // with it the colour an earlier solve seeded.
-    const replaced = await runHeadless({ doc: imported.doc!, steps: [], files: new Map([['f1', fixture('color_faces.step')]]) })
+    // with it the colour an earlier solve seeded, though the new bytes say red.
+    // Its own docId: the solve cache keys an import by its file id, not the
+    // bytes, so the shared default id would serve the previous read.
+    const replaced = await runHeadless({
+      doc: imported.doc!, docId: 'replace-a', steps: rename('A'), files: new Map([['f1', fixture('color_faces.step')]]),
+    })
+    expect(replaced.solved).toBe(true)
+    expect(replaced.notes.some((n) => n.text.includes('#cc3333'))).toBe(true)
     expect(colorOf(replaced.doc)).toBe('#808080')
 
     const recoloured = await runHeadless({
@@ -70,8 +81,13 @@ describeReal('STEP import colour through the headless drive', () => {
       steps: [{ mutation: { type: 'set_part_color', bodyId: 'body_imp1', color: '#123456' } } as ScriptStep],
       files: new Map([['f1', fixture('color_solid.step')]]),
     })
+    expect(recoloured.solved).toBe(true)
     expect(colorOf(recoloured.doc)).toBe('#123456')
-    const again = await runHeadless({ doc: recoloured.doc!, steps: [], files: new Map([['f1', fixture('color_faces.step')]]) })
+    const again = await runHeadless({
+      doc: recoloured.doc!, docId: 'replace-b', steps: rename('B'), files: new Map([['f1', fixture('color_faces.step')]]),
+    })
+    expect(again.solved).toBe(true)
+    expect(again.notes.some((n) => n.text.includes('#cc3333'))).toBe(true)
     expect(colorOf(again.doc)).toBe('#123456')
   })
 
