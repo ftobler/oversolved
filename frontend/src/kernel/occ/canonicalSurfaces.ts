@@ -17,14 +17,19 @@
  * far around for a safe seam, or has holes, is left untouched; if the rebuilt
  * solid fails the validity or volume check the original shape is returned.
  *
- * Analytic cylinder faces join the clusters too, for a second reason: OCCT
- * 7.4's UnifySameDomain face merge spins forever (never throws) on two
+ * Analytic cylinder faces join the clusters too, for two reasons.  First,
+ * OCCT 7.4's UnifySameDomain face merge spins forever (never throws) on two
  * coaxial partial cylinder faces whose axes run opposite ways, e.g. a lip
  * extruded from a sketch arc (axis -Y) standing on a shell cavity's fillet
  * wall (axis +Y) (bug-fuse-hang).  The first analytic member of a cluster
  * sets the cluster's axis direction; every other member whose axis opposes it
  * is rebuilt on the shared cylinder, so the merge only ever sees one
- * direction.  An analytic member already pointing that way is left as it is.
+ * direction.  Second, two analytic faces can point the same way yet carry
+ * different X directions, i.e. different U=0 seams, and UnifySameDomain then
+ * cannot fold the boundary where they meet; a cluster that disagrees on the
+ * seam is rebuilt the same way, so every member takes the shared seam.  An
+ * analytic member that already points the anchor's way on the anchor's seam
+ * is left as it is.
  */
 
 import type { DisposeScope } from './disposeScope'
@@ -347,7 +352,9 @@ export function canonicalizeCylinderFaces(
       // A same-direction cluster with two seams is the same defect: the faces
       // are one geometric cylinder but their pcurves run in different u ranges,
       // so UnifySameDomain cannot fold the boundary where they meet. Rebuilding
-      // the whole cluster puts every face on the anchor's seam. Fitted members
+      // the whole cluster puts every face on one shared gp_Cylinder: the anchor
+      // supplies its axis and radius, and seamAngleFor places the seam in the
+      // gap all members leave free, so each face takes that seam. Fitted members
       // do not vote (sameSeam is true for them); they are rebuilt below anyway.
       const seamDisagrees =
         members.length > 1 &&

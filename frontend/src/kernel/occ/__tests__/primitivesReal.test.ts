@@ -16,6 +16,7 @@ import { sortedFacesOf } from '../faceLoops'
 import { buildBox, buildCylinder, buildExtrudedProfile } from '../shapes'
 import {
   faceCentroid,
+  faceCylinderXDirection,
   faceNormal,
   faceArea,
   faceSurfaceFrame,
@@ -277,6 +278,35 @@ describe.skipIf(!oc)('make-a-body primitives (real OCC)', () => {
     } finally {
       scope.dispose()
       table.release(h)
+    }
+  })
+
+  it('faceCylinderXDirection returns the cylinder frame X direction, not its Y', () => {
+    const scope = new DisposeScope()
+    try {
+      // A frame whose X and Y differ: a reader that picked any other axis
+      // component would return [0,0,1] (the axis) or [-1,0,0] (the Y).
+      const ax2 = scope.track(new occ.gp_Ax2_2(
+        scope.track(new occ.gp_Pnt_3(1, 2, 3)),
+        scope.track(new occ.gp_Dir_5(0, 0, 1)),
+        scope.track(new occ.gp_Dir_5(0, 1, 0)),
+      ))
+      const shape = scope.track(new occ.BRepPrimAPI_MakeCylinder_3(ax2, 3, 10)).Shape()
+      const E = occ.TopAbs_ShapeEnum
+      const exp = scope.track(new occ.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
+      let wall: OccShape | null = null
+      for (; exp.More(); exp.Next()) {
+        const f = scope.track(occ.TopoDS.Face_1(exp.Current()))
+        if (faceSurfaceType(occ, scope, f) === 'cylinderface') wall = f
+      }
+      expect(wall).not.toBeNull()
+      const xDir = faceCylinderXDirection(occ, scope, wall!)
+      expect(xDir).not.toBeNull()
+      expect(xDir![0]).toBeCloseTo(0, 9)
+      expect(xDir![1]).toBeCloseTo(1, 9)
+      expect(xDir![2]).toBeCloseTo(0, 9)
+    } finally {
+      scope.dispose()
     }
   })
 

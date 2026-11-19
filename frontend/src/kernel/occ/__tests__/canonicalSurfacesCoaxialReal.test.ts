@@ -17,7 +17,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'
-import { readSolidEdges } from '../primitives'
+import { faceCylinderXDirection, readSolidEdges } from '../primitives'
 import { booleanWithHistoryMany, cleanWithHistory } from '../booleans'
 import { canonicalizeCylinderFaces } from '../canonicalSurfaces'
 import { volumeOfDefault } from '../volume'
@@ -57,15 +57,14 @@ function cylinderFaces(
     if (ad.GetType().value !== oc2.GeomAbs_SurfaceType.GeomAbs_Cylinder.value) continue
     const cyl = scope.track(ad.Cylinder())
     if (Math.abs(cyl.Radius() - radius) > 1e-9) continue
+    // Use the production reader so a wrong-component bug cannot pass this
+    // fixture by comparing the same wrong vector on both faces.
+    const xDir = faceCylinderXDirection(oc2, scope, face)
+    if (xDir === null) continue
     const pos = cyl.Position()
-    const xd = pos.XDirection()
     const loc = pos.Location()
-    out.push({
-      xDir: [xd.X(), xd.Y(), xd.Z()],
-      loc: [loc.X(), loc.Y(), loc.Z()],
-    })
+    out.push({ xDir, loc: [loc.X(), loc.Y(), loc.Z()] })
     loc.delete()
-    xd.delete()
     pos.delete()
   }
   return out
@@ -162,6 +161,7 @@ describe.skipIf(!oc)('canonicalizeCylinderFaces coaxial seam', () => {
       expect(result.shape).toBe(shape)
       expect(cylinderFaces(oc!, scope, result.shape, 4)).toHaveLength(2)
       expect(readSolidEdges(oc!, scope, result.shape).length).toBe(edgesBefore)
+      expect(isValid(oc!, scope, result.shape)).toBe(true)
       close(volumeOfDefault(oc!, scope, result.shape), volume)
     } finally {
       scope.dispose()
@@ -176,10 +176,12 @@ describe.skipIf(!oc)('canonicalizeCylinderFaces coaxial seam', () => {
       // face across the joint, and no rebuild on a second pass.
       const cleaned = scope.track(cleanWithHistory(oc!, scope, shape).shape)
       expect(cylinderFaces(oc!, scope, cleaned, 4)).toHaveLength(1)
+      expect(isValid(oc!, scope, cleaned)).toBe(true)
       const volume = volumeOfDefault(oc!, scope, cleaned)
       const result = canonicalizeCylinderFaces(oc!, scope, cleaned)
       expect(result.changed).toBe(false)
       expect(cylinderFaces(oc!, scope, result.shape, 4)).toHaveLength(1)
+      expect(isValid(oc!, scope, result.shape)).toBe(true)
       close(volumeOfDefault(oc!, scope, result.shape), volume)
     } finally {
       scope.dispose()
@@ -215,7 +217,10 @@ describe.skipIf(!oc || !solveBytes)('coaxial joins in the pipes report document'
 
   async function buildOnce(): Promise<OccShape> {
     if (response === null) {
-      const text = readFileSync('regressions/coaxial-tube-joins/recipe.yaml', 'utf8')
+      const text = readFileSync(
+        new URL('../../../../regressions/coaxial-tube-joins/recipe.yaml', import.meta.url),
+        'utf8',
+      )
       response = await solveLocally(partSpecFromText(text))
     }
     // The shape is owned by the persistent cross-solve table, not by a scope
