@@ -296,7 +296,7 @@ export function createHeadlessAssembly(opts: HeadlessAssemblyOptions): HeadlessA
       })
       if (!response) throw new Error('local solver unavailable (OCC.js is not provisioned)')
       const bundle = scaleBundleToMillimetres(
-        toPartBundle(docId, docHashOf(partDoc), response.bodies as Record<string, PartResult>),
+        toPartBundle(docId, docHashOf(partDoc), response.bodies as Record<string, PartResult>, partDoc.part_style),
         partToAssemblyScale(partDoc),
       )
       const notes = buildNotes(response.result)

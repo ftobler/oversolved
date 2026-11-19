@@ -34,6 +34,7 @@ export function toPartResults(parts: Record<string, MeshPayload[]>): Record<stri
         modified_by: [],
         mesh: { vertices: m.vertices, faces: m.indices },
         ...(m.leafPath !== undefined && { leaf_path: m.leafPath }),
+        ...(m.color !== undefined && { display_color: m.color }),
       }
     })
   }

@@ -633,6 +633,9 @@ export interface PartResult {
   // write-back seeds a NEW part_style entry with it instead of the palette;
   // an existing entry is never changed (utils/core/partStyle.ts).
   import_color?: string
+  // Assembly only: the colour the instance's part document gives this body
+  // (its bundle's PartMesh.color). The part editor reads part_style instead.
+  display_color?: string
 }
 
 export interface RebuildValidation {

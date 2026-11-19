@@ -173,6 +173,8 @@ export interface MeshPayload {
   // The child handle path inside a rigid sub-assembly, carried through so the
   // tree's view filter and leaf highlight can address one leaf of a composite.
   leafPath?: string
+  // The body's display colour from its bundle (PartMesh.color).
+  color?: string
   // Anchor ids per picked entity. Ids, not geometry, so the solved
   // transform leaves them untouched: the same entity names the same anchor at
   // every pose. Absent for a bundle cached before entityAnchors existed.
@@ -1073,6 +1075,7 @@ export async function solveAssembly(
       hiddenEdges: m.hiddenEdges,
       hiddenVertices: m.hiddenVertices,
       leafPath: m.leafPath,
+      ...(m.color !== undefined && { color: m.color }),
       entityAnchors: m.entityAnchors,
     }))
     transformedParts[part.handle] = transformed

@@ -65,6 +65,14 @@ describe('buildAssemblyBundle', () => {
     expect(bundle.anchors['left/a_left'].geom_hash).toBe('@u|left')
   })
 
+  it('keeps each leaf body\'s part colour inside the composite', () => {
+    const payload = childPayload()
+    payload.bodies.left = [{ ...mesh(10), color: '#808080' }]
+    const bundle = buildAssemblyBundle('ch', instances, payload)
+    expect(bundle.bodies[0].color).toBe('#808080')
+    expect(bundle.bodies[1]).not.toHaveProperty('color')
+  })
+
   it('mints the sub-assembly frame anchors like a part', () => {
     const bundle = buildAssemblyBundle('ch', instances, childPayload())
     for (const name of ['Origin', 'Front', 'Top', 'Right']) {

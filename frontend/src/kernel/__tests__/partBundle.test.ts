@@ -382,6 +382,30 @@ describe('toPartBundle', () => {
     expect(Object.keys(bundle.anchors)).toHaveLength(4)
   })
 
+  it('colours each body from part_style, else from its STEP file, else not at all', () => {
+    const body = (id: string, importColor?: string): PartResult => ({
+      id, created_by: 'imp', modified_by: [],
+      mesh: { vertices: [[0, 0, 0]], faces: [[0, 0, 0]] },
+      ...(importColor !== undefined && { import_color: importColor }),
+    })
+    const parts: Record<string, PartResult> = {
+      // A user recolour in the part document beats the file colour.
+      a: body('a', '#808080'),
+      b: body('b', '#cc3333'),
+      c: body('c'),
+    }
+    const bundle = toPartBundle('doc', 'h', parts, { a: { name: 'part 1', color: '#123456' } })
+    expect(bundle.bodies.map(b => b.color)).toEqual(['#123456', '#cc3333', undefined])
+    expect(bundle.bodies[2]).not.toHaveProperty('color')
+    expect(toPartBundle('doc', 'h', parts).bodies.map(b => b.color)).toEqual(['#808080', '#cc3333', undefined])
+  })
+
+  it('moved to schema 7 with the body colour, so a schema-6 bundle reads as a miss', () => {
+    // bundleCacheGet treats any schema other than BUNDLE_SCHEMA as a miss; a
+    // cached schema-6 bundle has no colour and would keep every instance grey.
+    expect(BUNDLE_SCHEMA).toBe(7)
+  })
+
   it('adds exactly the four part-frame anchors to a two-body bundle, with stable ids', () => {
     const partWithFace = (uuid: string): PartResult => ({
       id: uuid, created_by: EX_FEATURE, modified_by: [],

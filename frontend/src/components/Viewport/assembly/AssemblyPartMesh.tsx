@@ -17,12 +17,11 @@ import { analysisMaterialName, usePartAnalysisMaterial } from '@/components/Geom
 import { curvatureForMesh, effectiveCurvatureRange } from '@/components/Geometry3D/curvature'
 import { useViewOptionsStore } from '@/stores/viewOptionsStore'
 import {
-  COLOR_PART_DEFAULT,
   COLOR_PART_EDGE,
   COLOR_PART_EDGE_SEL,
-  COLOR_PART_SELECTED,
   DEFAULT_PART_ROUGHNESS,
   RENDER_ORDER_DEFAULT,
+  partSurfaceLook,
 } from '@/components/Geometry3D/constants'
 import { ENV_MAP_INTENSITY } from '@/components/Viewport/EnvLight'
 import type { EdgeCurve } from '@/kernel/partBundle'
@@ -83,10 +82,13 @@ export default function AssemblyPartMesh({ item, curves, selected, aiming, onGra
   const analysisMode = !showFaces ? 'none' : curvature ? 'curvature' : zebra ? 'zebra' : 'none'
   const materialRef = useRef<THREE.MeshStandardMaterial>(null)
   const sectionActive = useSectionActive()
+  // The part's own body colour (its part document, or its STEP file), picked
+  // by the same rule the part editor uses: the selection colour wins over it.
+  const faceColor = partSurfaceLook({ selected, color: item.color }).color
   usePartAnalysisMaterial(materialRef, {
     mode: analysisMode,
     mixVertexColor: false,
-    baseColor: selected ? COLOR_PART_SELECTED : COLOR_PART_DEFAULT,
+    baseColor: faceColor,
     zebraStripes,
     curvatureKind,
     curvatureRange: effectiveCurvatureRange(curvatureManualRange, curvatureAutoRange),
@@ -117,7 +119,7 @@ export default function AssemblyPartMesh({ item, curves, selected, aiming, onGra
           <meshStandardMaterial
             ref={materialRef}
             name={analysisMaterialName(analysisMode)}
-            color={selected ? COLOR_PART_SELECTED : COLOR_PART_DEFAULT}
+            color={faceColor}
             roughness={DEFAULT_PART_ROUGHNESS}
             metalness={0}
             envMapIntensity={ENV_MAP_INTENSITY}
@@ -149,7 +151,7 @@ export default function AssemblyPartMesh({ item, curves, selected, aiming, onGra
       {showFaces && sectionActive && item.visible && (
         <SectionCap
           geometry={geometry}
-          color={selected ? COLOR_PART_SELECTED : COLOR_PART_DEFAULT}
+          color={faceColor}
           enabled
           band={capBand}
         />
