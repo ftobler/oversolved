@@ -117,6 +117,10 @@ export interface ActivePickField {
   featureId: string
   field: string
   multi?: boolean
+  // What the field names, carried from its schema. `'body'` marks a field that
+  // picks whole parts, so a panel that lists the document's parts can tell it
+  // is a pick surface and show the bodies the chip resolves against.
+  names?: 'body'
 }
 
 export interface SketchEditorState {

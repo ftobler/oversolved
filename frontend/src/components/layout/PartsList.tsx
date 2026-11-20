@@ -1,4 +1,4 @@
-import { usePartEditorStore } from '@/stores/partEditorStore'
+import { selectPartsListParts, usePartEditorStore } from '@/stores/partEditorStore'
 import { partDisplayName } from '@/utils/core/partDisplayName'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorCallbacks } from '@/contexts/PartEditorContext'
@@ -9,7 +9,10 @@ import iconDotsIcon from '@/assets/icons/dots.svg'
 
 export function PartsList() {
   const doc = usePartEditorStore(s => s.doc)
-  const parts = usePartEditorStore(s => s.parts)
+  const activePickField = useSketchEditorStore(s => s.activePickField)
+  // A row click is a pick while a part chip is armed, so the card lists the same
+  // bodies that chip resolves against; otherwise it shows the preview.
+  const parts = usePartEditorStore(s => selectPartsListParts(s, activePickField))
   const visibleParts = usePartEditorStore(s => s.visibleParts)
   const partLabels = usePartEditorStore(s => s.partLabels)
   const selection = useSketchEditorStore(s => s.normalSelection)

@@ -63,7 +63,7 @@ describe('TransformEditor (via FeatureEditor)', () => {
       type: 'add_transform_body', featureId: 'tr1', bodyQuery: '@body_ex1',
     })
     // multi: the chip stays armed so the next body can be picked without re-arming.
-    expect(useSketchEditorStore.getState().activePickField).toEqual({ featureId: 'tr1', field: 'bodies', multi: true })
+    expect(useSketchEditorStore.getState().activePickField).toEqual({ featureId: 'tr1', field: 'bodies', multi: true, names: 'body' })
   })
 
   it('collects a second pick instead of replacing the first', () => {

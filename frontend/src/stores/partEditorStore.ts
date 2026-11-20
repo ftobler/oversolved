@@ -7,9 +7,12 @@
 // editingFeatureId live in stores/editorState.ts, and the viewport's derived
 // non-solve fields (ghostMode, partColors, partStyle, activeSketchFeatureId)
 // live there too. The old useSyncPartEditorStore mirror that copied React state
-// through setSnapshot is gone; nothing here merges snapshots.
+// through setSnapshot is gone; nothing here merges snapshots. The pure
+// selectors over those facts live here as well, so a reader and the pick chip
+// cannot derive two different part sets.
 import { create } from 'zustand'
 import type { PartResult, PartFeature, PartDoc, Sketch, Mutation, RebuildValidation } from '@/types/cad'
+import type { ActivePickField } from '@/stores/sketchEditorTypes'
 
 type UndoEntry = { doc: unknown; mutation: Mutation }
 
@@ -73,3 +76,32 @@ export const usePartEditorStore = create<PartEditorState>((set) => ({
   publishDerived: (data) => set(data),
   resetPublishedState: () => set({ ...DEFAULT_PART_EDITOR_DATA }),
 }))
+
+/**
+ * The bodies a part pick resolves against: during a feature edit that is the
+ * PRE-feature pick layer (`pickParts`), the same set the viewport makes
+ * pickable, because the preview has already consumed the parts the user is
+ * picking (a boolean tool, a deleted part). Outside an edit, or before the
+ * pick-layer solve lands, it is the preview/full solve.
+ *
+ * The chip and the Parts card both read this, so a row can never name a body
+ * the chip would resolve to nothing.
+ */
+export function pickLayerParts(
+  state: Pick<PartEditorData, 'parts' | 'pickParts'>,
+): Record<string, PartResult> {
+  return Object.keys(state.pickParts).length > 0 ? state.pickParts : state.parts
+}
+
+/**
+ * The part set the Parts card lists. While a field that names parts is armed
+ * the card is a pick surface, so it lists the bodies the chip resolves against
+ * (`pickLayerParts`); otherwise it keeps showing the preview, where the user
+ * sees what the open edit produces.
+ */
+export function selectPartsListParts(
+  state: Pick<PartEditorData, 'parts' | 'pickParts'>,
+  activePickField: ActivePickField | null,
+): Record<string, PartResult> {
+  return activePickField?.names === 'body' ? pickLayerParts(state) : state.parts
+}
