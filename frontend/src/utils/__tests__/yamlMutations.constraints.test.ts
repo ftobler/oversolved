@@ -55,6 +55,26 @@ describe('applyAddConstraint', () => {
     expect(added!.b).toEqual('$circ1')
   })
 
+  it('leaves a sketch unchanged when a pair kind is picked with one line', () => {
+    // The bugreport document, trimmed to its two free lines: pressing [e] with
+    // one line selected stored `equal_length` with a lone `target`, which the
+    // solver has no row for and the canvas could not render.
+    const doc: PartDoc = {
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1',
+        kind: 'sketch',
+        initial: { L1: [-10.05, 12.08, 15.69, 12.08], L2: [-8.14, 2.11, 18.21, 8.01] },
+        entities: [{ id: 'L1', kind: 'line' }, { id: 'L2', kind: 'line' }],
+        constraints: [],
+      }],
+    }
+    const before = JSON.stringify(doc)
+    applyAddConstraint(doc, 'sk1', 'equal_length', ['entity:sk1:L1'])
+    expect(JSON.stringify(doc)).toBe(before)
+  })
+
   it('stores a point-first line_distance line-first, keeping the value and sign', () => {
     const doc = makeSampleDoc()
     applyAddConstraint(
@@ -377,9 +397,19 @@ describe('applyAddConstraint operand guards', () => {
     applyAddConstraint(doc, 'Sketch1', 'parallel', [])
     expect(constraints0(doc).length).toBe(countBefore)
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('parallel'),
+      expect.stringContaining('Parallel needs two operands'),
       expect.anything(),
     )
+  })
+
+  it('a kind outside the registry with no target adds nothing instead of throwing', () => {
+    // The registry arity rule owns every real kind; a hand-authored mutation can
+    // still name one it does not own, and the applier must refuse the empty pick
+    // rather than index it.
+    const doc = makeSampleDoc()
+    const before = JSON.stringify(doc)
+    expect(() => applyAddConstraint(doc, 'Sketch1', 'not_a_constraint', [])).not.toThrow()
+    expect(JSON.stringify(doc)).toBe(before)
   })
 
   it('coincident with a single target is rejected rather than authored half-picked', () => {
@@ -387,7 +417,7 @@ describe('applyAddConstraint operand guards', () => {
     applyAddConstraint(doc, 'Sketch1', 'coincident', ['entity:Sketch1:circ1'])
     expect(constraints0(doc).find(c => c.kind === 'coincident')).toBeUndefined()
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining('coincident'),
+      expect.stringContaining('Coincident needs two operands, got one'),
       expect.anything(),
     )
   })
@@ -686,7 +716,10 @@ describe('constraint dimension value stored precision', () => {
 
   it('keeps an angle constraint value of 22.5 exact', () => {
     const doc = makeSampleDoc()
-    applyAddConstraint(doc, 'Sketch1', 'angle', ['entity:Sketch1:line1'], 22.5)
+    // An angle is a pair: one line has no wedge to measure.
+    entities0(doc).push({ id: 'line2', kind: 'line' })
+    initial0(doc).line2 = [0, 0, 0, 10]
+    applyAddConstraint(doc, 'Sketch1', 'angle', ['entity:Sketch1:line1', 'entity:Sketch1:line2'], 22.5)
     const added = constraints0(doc).find(c => c.kind === 'angle')
     expect(added!.value).toBe(22.5)
   })

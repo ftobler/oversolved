@@ -52,6 +52,20 @@ export interface ConstraintDef {
   refPattern: 'target' | 'a_b' | 'midpoint' | 'targets'
 
   /**
+   * How many operands the constraint takes. The single arity source: the
+   * add-time rule, the editor command, the applier and the solve lowering all
+   * read it through `constraintOperandProblem`/`constraintOperandArity`.
+   *   - "one"         → exactly one (a size dimension, fixed, projection)
+   *   - "pair"        → exactly two (coincident, parallel, an a_b dimension)
+   *   - "one_or_pair" → one line or two points (horizontal, vertical)
+   *   - "own"         → the kind's own shape rule owns the count (midpoint,
+   *                     group, colinear)
+   * Every registry kind must declare one; an unresolved kind would fall back to
+   * "at least one" and could store a pair row the solver has no residual for.
+   */
+  operands: 'one' | 'pair' | 'one_or_pair' | 'own'
+
+  /**
    * The render kind returned by computeConstraintRender.
    * Used to look up the correct icon for on-canvas display.
    *   - Symbols: "symbol_h", "symbol_v", "symbol_coincident", …
@@ -121,6 +135,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     category: 'geometric',
     hasValue: false,
     refPattern: 'target',  // single line (target) or two points (a/b), overloaded
+    operands: 'one_or_pair',
     renderKind: 'symbol_h',
     symbolIcon: 'constraint-horizontal',
     toolbarIcon: 'constraint-horizontal',
@@ -134,6 +149,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     category: 'geometric',
     hasValue: false,
     refPattern: 'target',  // single line (target) or two points (a/b), overloaded
+    operands: 'one_or_pair',
     renderKind: 'symbol_v',
     symbolIcon: 'constraint-vertical',
     toolbarIcon: 'constraint-vertical',
@@ -147,6 +163,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     category: 'geometric',
     hasValue: false,
     refPattern: 'a_b',
+    operands: 'pair',
     renderKind: 'symbol_coincident',
     symbolIcon: 'constraint-coincident',
     toolbarIcon: 'constraint-coincident',
@@ -160,6 +177,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     category: 'geometric',
     hasValue: false,
     refPattern: 'a_b',
+    operands: 'pair',
     renderKind: 'symbol_concentric',
     symbolIcon: 'constraint-concentric',
     toolbarIcon: 'constraint-concentric',
@@ -176,6 +194,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     category: 'geometric',
     hasValue: false,
     refPattern: 'a_b',
+    operands: 'pair',
     renderKind: 'symbol_equal',
     symbolIcon: 'constraint-equal',
     toolbarIcon: 'constraint-equal',
@@ -192,6 +211,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     category: 'geometric',
     hasValue: false,
     refPattern: 'a_b',
+    operands: 'pair',
     renderKind: 'symbol_parallel',
     symbolIcon: 'constraint-parallel',
     toolbarIcon: 'constraint-parallel',
@@ -210,6 +230,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     category: 'geometric',
     hasValue: false,
     refPattern: 'a_b',
+    operands: 'pair',
     renderKind: 'symbol_normal',
     symbolIcon: 'constraint-square',
     toolbarIcon: 'constraint-square',
@@ -223,6 +244,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     category: 'geometric',
     hasValue: false,
     refPattern: 'a_b',
+    operands: 'pair',
     renderKind: 'symbol_tangent',
     symbolIcon: 'constraint-tangent',
     toolbarIcon: 'constraint-tangent',
@@ -236,6 +258,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     category: 'geometric',
     hasValue: false,
     refPattern: 'midpoint',
+    operands: 'own',
     renderKind: 'symbol_midpoint',
     symbolIcon: 'constraint-midpoint',
     toolbarIcon: 'constraint-midpoint',
@@ -249,6 +272,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     category: 'geometric',
     hasValue: false,
     refPattern: 'target',
+    operands: 'one',
     renderKind: 'symbol_fixed',
     symbolIcon: 'constraint-fixed',
     toolbarIcon: 'constraint-fixed',
@@ -262,6 +286,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     category: 'geometric',
     hasValue: false,
     refPattern: 'targets',
+    operands: 'own',
     renderKind: 'symbol_group',
     symbolIcon: 'constraint-group',
     toolbarIcon: 'constraint-group',
@@ -275,6 +300,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     category: 'geometric',
     hasValue: false,
     refPattern: 'a_b',
+    operands: 'own',
     renderKind: 'symbol_colinear',
     symbolIcon: 'constraint-colinear',
     showInToolbar: false,
@@ -286,6 +312,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     category: 'geometric',
     hasValue: false,
     refPattern: 'target',
+    operands: 'one',
     renderKind: 'symbol_projection',
     symbolIcon: 'constraint-projection',
     showInToolbar: false,
@@ -302,6 +329,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     category: 'dimensional',
     hasValue: true,
     refPattern: 'target',
+    operands: 'one',
     renderKind: 'dim_linear',
     showInToolbar: false,  // accessed via Dimension tool
   },
@@ -312,6 +340,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     category: 'dimensional',
     hasValue: true,
     refPattern: 'target',
+    operands: 'one',
     renderKind: 'dim_radius',
     showInToolbar: false,
   },
@@ -322,6 +351,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     category: 'dimensional',
     hasValue: true,
     refPattern: 'target',
+    operands: 'one',
     renderKind: 'dim_diameter',
     showInToolbar: false,
   },
@@ -332,6 +362,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     category: 'dimensional',
     hasValue: true,
     refPattern: 'a_b',
+    operands: 'pair',
     renderKind: 'dim_linear',
     showInToolbar: false,
   },
@@ -342,6 +373,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     category: 'dimensional',
     hasValue: true,
     refPattern: 'a_b',
+    operands: 'pair',
     renderKind: 'dim_linear',
     showInToolbar: false,
   },
@@ -352,6 +384,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     category: 'dimensional',
     hasValue: true,
     refPattern: 'a_b',
+    operands: 'pair',
     renderKind: 'dim_linear',
     showInToolbar: false,
   },
@@ -362,6 +395,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     category: 'dimensional',
     hasValue: true,
     refPattern: 'a_b',
+    operands: 'pair',
     renderKind: 'dim_linear',
     showInToolbar: false,
   },
@@ -372,6 +406,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     category: 'dimensional',
     hasValue: true,
     refPattern: 'a_b',
+    operands: 'pair',
     renderKind: 'dim_angle',
     symbolIcon: 'constraint-angle',
     showInToolbar: false,
@@ -383,6 +418,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
     category: 'dimensional',
     hasValue: true,
     refPattern: 'a_b',
+    operands: 'pair',
     renderKind: 'dim_linear',  // drawn as a radial linear gap dimension
     showInToolbar: false,  // accessed via the Dimension tool on two circles/arcs
   },
@@ -465,6 +501,65 @@ export const CONSTRAINT_BY_KIND: ReadonlyMap<string, ConstraintDef> =
 // dimension, so it must not match.
 export function isDimensionKind(kind: string): boolean {
   return CONSTRAINT_BY_KIND.get(kind)?.category === 'dimensional'
+}
+
+/** The operand arity a registry kind declares, or null for a kind the registry
+ *  does not own (the sugar kinds `ngon` and `dock`, which own their shapes). */
+export function constraintOperandArity(kind: string): ConstraintDef['operands'] | null {
+  return CONSTRAINT_BY_KIND.get(kind)?.operands ?? null
+}
+
+// The entity kinds are a closed set; only the ellipse needs more than an `s`.
+const OPERAND_KIND_PLURALS: Readonly<Record<string, string>> = { ellipse: 'ellipses' }
+
+function pluralKind(kind: string): string {
+  return OPERAND_KIND_PLURALS[kind] ?? `${kind}s`
+}
+
+/** The parenthesis a pair refusal carries, built from the registry's entity-kind
+ *  groups so it teaches the pick: "(two lines, or two arcs/circles)". Absent for
+ *  a pair with no group (coincident between two points, a line and a curve). */
+function pairOperandHint(groups: ConstraintDef['entityKindGroups']): string {
+  if (!groups || groups.length === 0) return ''
+  const forms = groups.map(group => `two ${group.map(pluralKind).join('/')}`)
+  return ` (${forms.join(', or ')})`
+}
+
+const OPERAND_COUNT_WORDS = ['none', 'one', 'two', 'three'] as const
+
+function operandCountWord(count: number): string {
+  return OPERAND_COUNT_WORDS[count] ?? String(count)
+}
+
+/**
+ * Why `kind` cannot take `count` operands, or null when it can. This is the one
+ * arity source: `addConstraintProblem` (applier and drive), the editor command,
+ * the applier's stored field choice and the solve lowering all read it, so a
+ * pick refused at add time is one the solve would drop with the same sentence.
+ *
+ * The sentence names the label and the pick the kind wants. The parenthesis
+ * comes from the registry's `entityKindGroups`, so an equal that compares two
+ * lines or two curves says so. Kinds whose own shape rule owns the count
+ * (midpoint, group, colinear) and the sugar kinds return null.
+ */
+export function constraintOperandProblem(kind: string, count: number): string | null {
+  const def = CONSTRAINT_BY_KIND.get(kind)
+  if (def === undefined) return null
+  const got = operandCountWord(count)
+  switch (def.operands) {
+    case 'one':
+      return count === 1 ? null : `${def.label} needs one operand, got ${got}`
+    case 'pair':
+      return count === 2
+        ? null
+        : `${def.label} needs two operands${pairOperandHint(def.entityKindGroups)}, got ${got}`
+    case 'one_or_pair':
+      return count === 1 || count === 2
+        ? null
+        : `${def.label} needs one or two operands, got ${got}`
+    case 'own':
+      return null
+  }
 }
 
 // Map from render kind → icon filename (for on-canvas symbols). The sugar

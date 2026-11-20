@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { addConstraintProblem, midpointShapeReason } from '@/utils/constraintProblems'
+import { CONSTRAINT_BY_KIND, CONSTRAINTS, constraintOperandProblem } from '@/registry'
 import { applyAddConstraint } from '@/utils/yamlMutations'
 import { sketchAt } from '@/testing/featureAccess'
 import { COLINEAR_SHAPE_REASON } from '@/utils/constraintOperands'
@@ -126,13 +127,13 @@ const cases: Case[] = [
   {
     name: 'coincident one ref',
     kind: 'coincident', targets: ['$oxy'],
-    problem: 'coincident needs two targets, got ["$oxy"]',
+    problem: 'Coincident needs two operands, got one',
   },
   { name: 'length one ref', kind: 'length', targets: ['$ax'], value: 4, problem: null },
   {
     name: 'generic kind with no target',
     kind: 'parallel', targets: [],
-    problem: 'parallel needs a target, got []',
+    problem: 'Parallel needs two operands (two lines), got none',
   },
   { name: 'zero point_distance', kind: 'point_distance', targets: ['$oxy', '$pxy'], value: 0,
     problem: 'point_distance value 0 is a coincident, not a dimension; use the coincident constraint between the two points' },
@@ -226,5 +227,68 @@ describe('addConstraintProblem', () => {
     }]
     const problem = addConstraintProblem(sketch, 'group', [`entity:sk1:${member}`], undefined)
     expect(problem).toContain('projected member')
+  })
+})
+
+// The operand count is a registry fact, so this table is driven from CONSTRAINTS:
+// a new pair kind is covered without editing the test, and no kind can fall back
+// to "at least one" silently.
+const IDS_BY_KIND: Record<string, readonly string[]> = {
+  line: ['ax', 'bx'], circle: ['c1'], arc: ['a1', 'a2'], ellipse: ['e1'], point: ['o', 'p'],
+}
+
+/** Two operands a pair kind can take: the first two ids of its first entity-kind
+ *  group, or two vertex picks for a kind with no entity-kind restriction. */
+function pairTargets(kind: string): string[] {
+  const group = CONSTRAINT_BY_KIND.get(kind)?.entityKindGroups?.[0]
+  const ids = (group ?? []).flatMap(entityKind => IDS_BY_KIND[entityKind] ?? []).slice(0, 2)
+  return ids.length === 2
+    ? ids.map(id => `entity:sk1:${id}`)
+    : ['vertex:sk1:ax:start', 'vertex:sk1:ax:end']
+}
+
+describe('constraint operand arity', () => {
+  const pairKinds = CONSTRAINTS.filter(c => c.operands === 'pair').map(c => c.kind)
+
+  it('names the count and the pick a pair needs', () => {
+    expect(constraintOperandProblem('equal_length', 1))
+      .toBe('Equal needs two operands (two lines, or two arcs/circles), got one')
+    expect(constraintOperandProblem('parallel', 3))
+      .toBe('Parallel needs two operands (two lines), got three')
+    expect(constraintOperandProblem('coincident', 1))
+      .toBe('Coincident needs two operands, got one')
+    expect(constraintOperandProblem('length', 2)).toBe('Length needs one operand, got two')
+    expect(constraintOperandProblem('horizontal', 3))
+      .toBe('Horizontal needs one or two operands, got three')
+    // The kinds with their own shape rule own the count too.
+    expect(constraintOperandProblem('group', 0)).toBeNull()
+    expect(constraintOperandProblem('midpoint', 1)).toBeNull()
+    expect(constraintOperandProblem('colinear', 1)).toBeNull()
+    expect(constraintOperandProblem('ngon', 0)).toBeNull()
+  })
+
+  it.each(pairKinds)('%s refuses one operand with the pair sentence', kind => {
+    expect(addConstraintProblem(sketchAt(shapeDoc()), kind, ['entity:sk1:ax'], undefined))
+      .toBe(constraintOperandProblem(kind, 1))
+    expect(constraintOperandProblem(kind, 1)).toContain('got one')
+  })
+
+  it.each(pairKinds)('%s accepts two operands', kind => {
+    expect(addConstraintProblem(sketchAt(shapeDoc()), kind, pairTargets(kind), undefined)).toBeNull()
+  })
+
+  it.each(pairKinds)('%s refuses three operands', kind => {
+    expect(addConstraintProblem(
+      sketchAt(shapeDoc()), kind, [...pairTargets(kind), 'entity:sk1:o'], undefined,
+    )).toBe(constraintOperandProblem(kind, 3))
+  })
+
+  it('the one-or-pair kinds accept one and two operands', () => {
+    for (const kind of ['horizontal', 'vertical']) {
+      expect(addConstraintProblem(sketchAt(shapeDoc()), kind, ['entity:sk1:ax'], undefined)).toBeNull()
+      expect(addConstraintProblem(
+        sketchAt(shapeDoc()), kind, ['vertex:sk1:ax:start', 'vertex:sk1:ax:end'], undefined,
+      )).toBeNull()
+    }
   })
 })

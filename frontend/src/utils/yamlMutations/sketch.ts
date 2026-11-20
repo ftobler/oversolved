@@ -1,5 +1,5 @@
 import type { PartDoc, PartConstraint, PartTarget } from '@/types/cad'
-import { entityVertexIndices, entityCoordPairs } from '@/registry'
+import { entityVertexIndices, entityCoordPairs, constraintOperandArity } from '@/registry'
 import {
   warn, round, allFinite, findSketchFeature, parseTarget, uniqueConstraintId,
   resolveSketch, mintEntityId, CONSTRAINT_REF_FIELDS, refMatchesEntity,
@@ -537,13 +537,20 @@ export function applyAddConstraint(
     c.a = pt(targets[0])
     c.b = pt(targets[1])
   } else {
-    // addConstraintProblem guaranteed the operand count: coincident pairs two
-    // refs, everything else at least one.
-    if (targets.length >= 2) {
+    // addConstraintProblem guaranteed the operand count from the registry arity,
+    // so a pair kind stores `a`/`b` and a one-operand kind stores `target`. The
+    // branch says which field it writes instead of inferring it from the pick
+    // count, so a future arity cannot silently store a lone pair operand in
+    // `target` (the row the canvas draws as an unknown tile). A kind outside the
+    // registry has no arity rule, and an empty pick has no target to store.
+    if (constraintOperandArity(kind) === 'pair') {
       c.a = pt(targets[0])
       c.b = pt(targets[1])
-    } else {
+    } else if (targets.length > 0) {
       c.target = pt(targets[0])
+    } else {
+      warn(`applyAddConstraint: ${kind} needs a target`, { featureId, kind, targets })
+      return
     }
   }
   // An angle mutation carries the number the dimension label shows, which is

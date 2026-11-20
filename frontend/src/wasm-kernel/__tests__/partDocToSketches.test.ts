@@ -228,6 +228,35 @@ describe('partDocToSketches', () => {
     ])
   })
 
+  it('drops the bugreport pair row stored with one operand, and keeps it in the document', () => {
+    // `[e]` with one line selected stored `equal_length` with a lone `target`.
+    // The solver has no row for it and the canvas fell back to the unknown tile;
+    // the lowering must name it in `dropped_constraints` so the sketch warning
+    // reports it, while the document row stays for a later repair.
+    const H1 = 'rcjQSMetlzxm_FLy'
+    const H2 = 'hGSMz-tT0wmaSsM8'
+    const features: PartFeature[] = [
+      {
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [{ id: H1, kind: 'line' }, { id: H2, kind: 'line' }],
+        initial: { [H1]: [-10.05, 12.08, 15.69, 12.08], [H2]: [-8.14, 2.11, 18.21, 8.01] },
+        constraints: [{ id: 'c_equal_length_NQcN7hWJ', kind: 'equal_length', target: `$${H2}` }],
+      },
+    ]
+    const before = JSON.stringify(features)
+    const { sketches } = partDocToSketches(features)
+    expect(sketches[0].sketch.constraints).toEqual([])
+    expect(sketches[0].sketch.entities.map(e => e.id)).toEqual([H1, H2])
+    expect(sketches[0].droppedConstraints).toEqual([{
+      id: 'c_equal_length_NQcN7hWJ',
+      kind: 'equal_length',
+      reason: 'Equal needs two operands (two lines, or two arcs/circles), got one',
+    }])
+    expect(JSON.stringify(features)).toBe(before)
+  })
+
   it('lowers the vertical pair the add-time rule authors for two point entities', () => {
     // The parity the table claims, end to end: what `addConstraintProblem`
     // accepts for a whole point pair is exactly what the lowering keeps.

@@ -8,6 +8,7 @@ import type { SketchFeature } from '@/types/cad'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { resolveVertexRef } from '@/types/vertexRef'
 import { entityPointKeys } from '@/registry/entityRegistry'
+import { constraintOperandProblem } from '@/registry/constraintRegistry'
 import {
   constraintEntityKindProblem,
   type ConstraintKindOperand,
@@ -340,6 +341,15 @@ export function addConstraintProblem(
     return groupProblem(feature, featureId, targets, value)
   }
 
+  // The operand count is a registry fact, judged before the entity-kind table
+  // for the same reason the per-kind shape rules are judged first: a wrong
+  // count already has the more specific sentence. A pair kind stored with one
+  // operand (the bugreport's `[e]` with one line selected) has no solver row and
+  // no render, so it is refused here and dropped with the same sentence by the
+  // lowering.
+  const operandProblem = constraintOperandProblem(kind, targets.length)
+  if (operandProblem !== null) return operandProblem
+
   // A well-formed pick whose entity kind the constraint cannot represent has no
   // solver row: a length on an arc, an equal across a line and an ellipse, a
   // horizontal on a point. The one applicability table (constraintApplicability)
@@ -353,14 +363,5 @@ export function addConstraintProblem(
     wholeEntityOperands(featureId, entityIds, kindById, targets),
   )
   if (kindProblem !== null) return kindProblem
-
-  // Generic kinds need operands: coincident pairs two refs, everything else at
-  // least one. An empty (or single-target coincident) pick would otherwise
-  // author an operand-less, or half-authored, constraint the solver can only
-  // read as garbage.
-  const min = kind === 'coincident' ? 2 : 1
-  if (targets.length < min) {
-    return `${kind} needs ${min === 1 ? 'a target' : 'two targets'}, got ${JSON.stringify(targets)}`
-  }
   return null
 }
