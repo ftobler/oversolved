@@ -60,7 +60,7 @@ import type { SessionJournalSink } from '@/session/DocSession'
 import MessageDialog from '@/components/dialogs/MessageDialog'
 import DxfLayerDialog from '@/components/dialogs/DxfLayerDialog'
 import { useEditFeature } from '@/pages/useEditFeature'
-
+import { firstPickField } from '@/pages/firstPickField'
 import measurementIcon from '@/assets/icons/measurement.svg'
 import ViewOptionsButton from '@/components/Viewport/ViewOptionsButton'
 import { showGroupStates, showGroupToggleMutations, type ShowGroup } from '@/components/Viewport/viewOptionsShow'
@@ -163,26 +163,6 @@ function dxfImportMessage(profile: DxfProfile, fileName: string, grouped = true)
   if (profile.unit.code === 0) parts.push('unitless DXF read in document units')
   else if (profile.scale !== 1) parts.push(`converted from ${profile.unit.name} to the document unit`)
   return parts.join('; ')
-}
-
-const FIRST_PICK_FIELD: Record<string, { field: string; multi?: boolean }> = {
-  plane: { field: 'plane' },
-  extrude: { field: 'sketch', multi: true },
-  revolve: { field: 'sketch', multi: true },
-  sweep: { field: 'sketch', multi: true },
-  wrap: { field: 'sketch' },
-  fillet: { field: 'edges', multi: true },
-  chamfer: { field: 'edges', multi: true },
-  shell: { field: 'faces', multi: true },
-  move_face: { field: 'faces', multi: true },
-  delete_face: { field: 'faces', multi: true },
-  hole: { field: 'sketch' },
-  boolean: { field: 'target' },
-  transform: { field: 'bodies', multi: true },
-  mirror: { field: 'body' },
-  split: { field: 'bodies', multi: true },
-  delete_body: { field: 'bodies', multi: true },
-  helix: { field: 'reference' },
 }
 
 /**
@@ -852,7 +832,7 @@ export default function Part() {
     // the id is set eagerly; the session started above already owns commit and
     // cancel, so unlike the old no-session path Cancel now removes the add.
     store.setEditingFeatureId(fid)
-    const firstPick = FIRST_PICK_FIELD[kind]
+    const firstPick = firstPickField(kind)
     if (firstPick) setActivePickField({ featureId: fid, ...firstPick })
     // The Result rides back to the command spec so a programmatic caller sees
     // the created feature id.
@@ -874,7 +854,7 @@ export default function Part() {
     startEditSession(true)
     handleMutation({ type: 'add_plane', featureId, label, definition, insertAt })
     editorState.getState().setEditingFeatureId(featureId)
-    const firstPick = FIRST_PICK_FIELD['plane']
+    const firstPick = firstPickField('plane')
     if (firstPick) setActivePickField({ featureId, ...firstPick })
   }, [doc, features, handleMutation, selection, setActivePickField, startEditSession, closeOpenEditorForAdd])
 

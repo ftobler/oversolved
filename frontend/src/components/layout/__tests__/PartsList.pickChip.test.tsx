@@ -25,9 +25,9 @@ const part = (id: string, createdBy: string): PartResult => ({ id, created_by: c
 
 const FEATURES: PartFeature[] = [
   { id: 'sk1', kind: 'sketch' },
-  { id: 'ex1', kind: 'extrude' },
-  { id: 'ex2', kind: 'extrude' },
-  { id: 'bo1', kind: 'boolean' },
+  { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
+  { id: 'ex2', kind: 'extrude', extrude: { sketch: [], distance: 1 } },
+  { id: 'bo1', kind: 'boolean', boolean: { operation: 'subtract', target: '', tools: [] } },
 ]
 
 // The pick layer before the boolean: its two input bodies. The preview during
