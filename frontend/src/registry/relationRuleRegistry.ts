@@ -12,6 +12,7 @@ import { featureRefId } from '@/utils/query'
 import {
   EMPTY_RELATION_SET,
   buildCreatorIndex,
+  buildOwnerIndex,
   featureKindFor,
   type RelationEditor,
   type RelationKind,
@@ -35,6 +36,9 @@ export interface PartRelationCtx extends RelationKindCtx {
   featureIdOf: (selectionId: string) => string
   // Query -> creator features, over every body in the store.
   creators: (query: string) => readonly string[]
+  // Query -> every body that publishes it, i.e. the part rows a face or edge
+  // belongs to.
+  owners: (query: string) => readonly string[]
   // Feature -> the sketch-class features it consumes as profile or path.
   consumedByFeature: ReadonlyMap<string, readonly string[]>
   // Sketch-class feature -> the features consuming it.
@@ -118,6 +122,7 @@ export function buildPartRelationCtx(
     featureKinds,
     featureIdOf: (selectionId) => featureRefId(selectionId) ?? selectionId,
     creators: buildCreatorIndex(parts),
+    owners: buildOwnerIndex(parts),
     consumedByFeature,
     consumersBySketch: new Map([...consumersBySketch].map(([id, set]) => [id, [...set]] as const)),
     activeFeatureIds: activeFeatureIds ?? new Set(features.map(f => f.id)),
@@ -181,6 +186,28 @@ export const PART_RULES: readonly RelationRule<PartRelationCtx>[] = [
     enabled: true,
     description: 'A selected edge marks the feature that created it.',
     related: (query, ctx) => ctx.creators(query),
+  },
+  {
+    id: 'face->part',
+    editor: 'part',
+    from: 'face',
+    to: 'part',
+    show: ['tree'],
+    enabled: true,
+    row: 'ref',
+    description: 'A selected face marks the part it belongs to.',
+    related: (query, ctx) => ctx.owners(query),
+  },
+  {
+    id: 'edge->part',
+    editor: 'part',
+    from: 'edge',
+    to: 'part',
+    show: ['tree'],
+    enabled: true,
+    row: 'ref',
+    description: 'A selected edge marks the part it belongs to.',
+    related: (query, ctx) => ctx.owners(query),
   },
   {
     id: 'feature->faces',

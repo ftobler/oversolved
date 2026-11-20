@@ -1246,6 +1246,22 @@
   outline: 1px solid #1e3a4a;
 }
 
+/* A part row is marked by the same rules, so it uses the same hint family.
+   These sit after the `.document-panel` row overrides above: with equal
+   specificity the companion below keeps a selected-and-related row reading as
+   selected, as the feature rows do. */
+.part-item.related {
+  background: #122028;
+  color: #cfeaf7;
+  outline: 1px solid #2f6f85;
+}
+
+.part-item.selected.related {
+  background: #1a1a2a;
+  color: white;
+  outline: 1px solid #1e3a4a;
+}
+
 /* No divider line: the block sits off the line above it by the same gap it
    spaces its own field rows with. The margin carries all of that space; the
    old `padding-top` only held the rows off the border. */

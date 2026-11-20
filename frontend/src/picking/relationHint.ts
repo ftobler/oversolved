@@ -34,6 +34,14 @@ export type RelationShow = 'tree' | 'viewport'
 export type RelationPaint = 'creator' | 'pick'
 
 /**
+ * How a rule's tree targets are spelled. `ref` is the `@<id>` reference a
+ * feature or sketch row selects with; `bare` is the bare id an assembly handle
+ * or mate row uses. The default follows the target kind, and a rule overrides it
+ * when its editor spells a row against that default (a part row is `@<bodyId>`).
+ */
+export type RelationRow = 'ref' | 'bare'
+
+/**
  * The structural half of a rule. The registry's `RelationRule` extends it with
  * an editor, a description and a test-facing identity; the executor needs only
  * these fields, which is what keeps the executor import-free of the registry.
@@ -45,6 +53,7 @@ export interface RelationRuleLike<Ctx> {
   show: readonly RelationShow[]
   enabled: boolean
   paint?: RelationPaint
+  row?: RelationRow
   related(driverId: string, ctx: Ctx): Iterable<string>
 }
 
@@ -169,11 +178,13 @@ export function relatedHints<Ctx extends RelationKindCtx>(
           const id = canonical(target)
           // Tree rows are selected by their `@<feature>` spelling; an assembly
           // handle or mate id is selected bare. The rule returns the canonical
-          // bare id and the executor applies the tree's one spelling. A selected
-          // row never marks itself; the viewport may still name its own driver,
-          // because a feature's own faces are the hint for that feature.
+          // bare id and the executor applies the tree's one spelling, taken from
+          // the rule's own `row` when it sets one. A selected row never marks
+          // itself; the viewport may still name its own driver, because a
+          // feature's own faces are the hint for that feature.
           if (rule.show.includes('tree') && id !== canonical(driver)) {
-            const rowId = rule.to === 'feature' || rule.to === 'sketch' ? `@${id}` : id
+            const row = rule.row ?? (rule.to === 'feature' || rule.to === 'sketch' ? 'ref' : 'bare')
+            const rowId = row === 'ref' ? `@${id}` : id
             ;(tree ??= new Set()).add(rowId)
           }
           if (!rule.show.includes('viewport')) continue
@@ -292,6 +303,34 @@ export function buildCreatorIndex(
   return (query) => {
     const creators = index.get(query)
     return creators ? [...creators] : []
+  }
+}
+
+/**
+ * Query -> every body that publishes it as one of its own primitives, keyed by
+ * the ids the Parts card selects rows with. Built from the shown solve's
+ * `face_queries` / `edge_queries`, never from the query's ancestry: a split or
+ * boolean can move a primitive to a body whose id is not in that ancestry. A
+ * query published by more than one body answers every one of them, matching the
+ * creator index's "never an arbitrary one" rule.
+ */
+export function buildOwnerIndex(
+  parts: Readonly<Record<string, PartResult>>,
+): (query: string) => readonly string[] {
+  const index = new Map<string, Set<string>>()
+  const add = (query: string | undefined, owner: string): void => {
+    if (!query || !owner) return
+    let owners = index.get(query)
+    if (!owners) index.set(query, (owners = new Set()))
+    owners.add(owner)
+  }
+  for (const [bodyId, part] of Object.entries(parts)) {
+    for (const query of part.mesh?.face_queries ?? []) add(query, bodyId)
+    for (const query of part.edge_queries ?? []) add(query, bodyId)
+  }
+  return (query) => {
+    const owners = index.get(query)
+    return owners ? [...owners] : []
   }
 }
 

@@ -146,6 +146,42 @@ describe('relatedHints core', () => {
   })
 })
 
+describe('relatedHints tree row spelling', () => {
+  const ctx = {
+    featureKinds: new Map([['a', 'feature']] as const),
+    partHandles: new Set(['p1']),
+  }
+
+  const ruleToPart = (row?: 'ref' | 'bare'): RelationRuleLike<typeof ctx> => ({
+    id: 'a->p', from: 'feature', to: 'part', show: ['tree'], enabled: true, row,
+    related: () => ['p1'],
+  })
+
+  it("a rule marked row: 'ref' spells a part target as the row's @id", () => {
+    expect(relatedHints(['@a'], [ruleToPart('ref')], ctx).tree).toEqual(new Set(['@p1']))
+  })
+
+  it('a part target stays bare by default, so the assembly rules are unchanged', () => {
+    expect(relatedHints(['@a'], [ruleToPart()], ctx).tree).toEqual(new Set(['p1']))
+  })
+
+  it('feature and sketch targets keep their @id default', () => {
+    const toFeature: RelationRuleLike<typeof ctx> = {
+      id: 'a->b', from: 'feature', to: 'feature', show: ['tree'], enabled: true,
+      related: () => ['b'],
+    }
+    expect(relatedHints(['@a'], [toFeature], ctx).tree).toEqual(new Set(['@b']))
+  })
+
+  it("an explicit row: 'bare' strips the sigil off a feature target", () => {
+    const bare: RelationRuleLike<typeof ctx> = {
+      id: 'a->b', from: 'feature', to: 'feature', show: ['tree'], enabled: true, row: 'bare',
+      related: () => ['b'],
+    }
+    expect(relatedHints(['@a'], [bare], ctx).tree).toEqual(new Set(['b']))
+  })
+})
+
 describe('relatedHints pick paint', () => {
   const ctx = {
     featureKinds: new Map([['a', 'feature'], ['b', 'feature']] as const),

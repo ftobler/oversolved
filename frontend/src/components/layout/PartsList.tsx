@@ -2,6 +2,7 @@ import { usePartEditorStore } from '@/stores/partEditorStore'
 import { partDisplayName } from '@/utils/core/partDisplayName'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorCallbacks } from '@/contexts/PartEditorContext'
+import { usePartRelationHints } from '@/hooks/useRelationHint'
 import featurePartIcon from '@/assets/icons/feature-part.svg'
 import iconEyeIcon from '@/assets/icons/icon-eye.svg'
 import iconEyeOffIcon from '@/assets/icons/icon-eye-off.svg'
@@ -13,6 +14,9 @@ export function PartsList() {
   const visibleParts = usePartEditorStore(s => s.visibleParts)
   const partLabels = usePartEditorStore(s => s.partLabels)
   const selection = useSketchEditorStore(s => s.normalSelection)
+  // The same derivation the Features card reads, so the two cards cannot
+  // disagree about which part a selected face or edge belongs to.
+  const relatedIds = usePartRelationHints().tree
 
   const {
     onToggleSelect,
@@ -37,7 +41,7 @@ export function PartsList() {
             return (
               <li
                 key={bodyId}
-                className={`part-item ${selection.has(`@${bodyId}`) ? 'selected' : ''}`}
+                className={`part-item ${selection.has(`@${bodyId}`) ? 'selected' : ''} ${relatedIds.has(`@${bodyId}`) ? 'related' : ''}`}
                 onClick={() => handleClick(bodyId)}
               >
                 <img className="part-icon" src={featurePartIcon} alt="" />
