@@ -6,9 +6,11 @@
 //! sparse form (conjugate gradient) for the drag fast path. Both share a seed
 //! anchor that keeps directions the constraints leave free near their seed.
 
-use nalgebra::{DMatrix, DVector};
+use nalgebra::DMatrix;
 
 use crate::sparse::{self, SparseRow};
+
+mod dense;
 
 // Shared LM tuning. Both drivers use the same cold-solve and drag-fast-path
 // constants: a change to one must not silently desynchronize the two paths, so
@@ -53,7 +55,7 @@ pub struct LmResult {
     pub stop: LmStop,
     /// Index of the phase `stop` describes: 0 is the anchored phase, 1 the
     /// proximal polish. Both are 0 when the driver returned before iterating.
-    /// The dense driver runs both phases, so a normal solve reports 1.
+    /// The dense driver always ends on the polish, so a normal solve reports 1.
     pub stop_phase: u8,
 }
 
@@ -70,6 +72,9 @@ pub enum LmStop {
     NoDescent,
     /// The phase's iteration budget ran out.
     Budget,
+    /// The anchored phase handed over to the manifold phase: its residual
+    /// had collapsed under the anchor's own cost. Never ends a solve.
+    Handover,
     /// The gradient went non-finite; the driver stopped rather than step on it.
     GradientNonFinite,
     /// No residual rows or no params: nothing to solve.
@@ -214,217 +219,27 @@ pub fn solve_lm_damped_retract(
     damp_scale: &[f64],
     retract: &mut dyn FnMut(&mut [f64]),
 ) -> LmResult {
-    let n = x0.len();
-    // Length contract: one entry per param. Deliberately NOT debug_assert'ed:
-    // release wasm compiles asserts out anyway, and the defensive reads in
-    // `damp_scale_at` make a short slice degrade to undamped instead of
-    // trapping mid-solve -- which the regression test below pins.
-    let mut x = x0.to_vec();
-    let mut r = f(&x);
-    let m = r.len();
+    dense::solve(x0, f, jac, damp_scale, retract, false)
+}
 
-    // Degenerate problem: no residuals. Nothing to solve; report a 0xn Jacobian.
-    if m == 0 || n == 0 {
-        return LmResult {
-            x,
-            jacobian: DMatrix::zeros(m, n),
-            residual_norm: norm2(&r),
-            jacobian_finite: true,
-            iters: 0,
-            stop: LmStop::Degenerate,
-            stop_phase: 0,
-        };
-    }
-
-    // Non-finite contract: a NaN/Inf residual would poison every subsequent
-    // cost comparison, so the driver refuses to step and returns the seed
-    // unchanged. The caller sees a non-finite `residual_norm` and can report
-    // the malformed problem instead of a silent "converged" seed. The returned
-    // matrix is a placeholder, so the finite flag is false whatever it holds.
-    if r.iter().any(|&v| !v.is_finite()) {
-        return LmResult {
-            x,
-            jacobian: DMatrix::zeros(m, n),
-            residual_norm: norm2(&r),
-            jacobian_finite: false,
-            iters: 0,
-            stop: LmStop::NonFinite,
-            stop_phase: 0,
-        };
-    }
-
-    let mut jacm = jac(&x);
-
-    // Initial damping from the scale of JᵀJ's diagonal.
-    let mut jtj = jacm.transpose() * &jacm;
-    let max_diag = (0..n)
-        .map(|i| jtj[(i, i)])
-        .fold(0.0_f64, f64::max)
-        .max(1e-12);
-    let lambda0 = 1e-3 * max_diag;
-    let mut lambda = lambda0;
-
-    // Seed anchor (Tikhonov toward x0). Pure Marquardt damping (lambda * diag(JᵀJ))
-    // gives a null-space DOF -- a direction the constraints leave free -- almost no
-    // regularization, so off-diagonal coupling and finite-difference Jacobian noise
-    // can drive that direction to absurd values: an under-constrained line asked
-    // only to pass through a point would collapse to zero length or fly off to
-    // 1e4+. A small absolute pull toward the seed bounds those free directions to
-    // their drawn position while staying negligible against any real curvature, so
-    // well-constrained solves are unaffected (the gradient at x=x0 is unchanged).
-    // `damp_scale` weights this anchor per param as well as the Marquardt term.
-    // The anchor is what resolves an underdetermined direction (there the
-    // curvature is zero and only this pull acts), so weighting it is what makes a
-    // free rotation-vs-translation choice settle on the slide: unlike the
-    // Marquardt term it does not vanish as lambda shrinks. Still O(mu), so a
-    // rotation a mate actually constrains is unmoved.
-    //
-    // The anchor is a penalty, so it also moves the minimizer: a converged
-    // anchored solve leaves `|r| ~ mu * |x - x0|` in every constrained
-    // direction, which a fixed r=2000 arc with a coincident line endpoint
-    // showed as a 5e-3 gap reported as satisfied. So the first phase only
-    // picks WHERE on the solution set to land, and a polish phase then
-    // re-anchors at the current iterate after every accepted step (a proximal
-    // point iteration). The anchor still damps each step's free directions
-    // (dropping it outright let a vertical line through a point slide off to
-    // 1e4 along its own valley), but it never pulls toward a fixed spot, so it
-    // cannot leave a residual behind; re-anchoring once at the landing point
-    // still left 3e-6 of that 5e-3 gap.
-    let mu = 2e-9 * max_diag;
-    let scale_v = DVector::from_iterator(n, (0..n).map(|i| damp_scale_at(damp_scale, i)));
-    // Augmented objective 0.5||r||² + 0.5·μ·||x - target||² -- the
-    // gradient/damping and the accept test must use the SAME cost or step
-    // acceptance is inconsistent.
-    let anchor_cost = |xs: &[f64], target: &[f64]| -> f64 {
-        0.5 * mu
-            * (0..n)
-                .map(|i| damp_scale_at(damp_scale, i) * (xs[i] - target[i]).powi(2))
-                .sum::<f64>()
-    };
-
-    let mut iters = 0;
-    let mut target = x0.to_vec();
-    // Why the phase that ends the solve stopped, and which phase that was.
-    let mut stop = LmStop::Budget;
-    let mut stop_phase = 0u8;
-    for (phase, budget) in [MAX_ITERS, POLISH_ITERS].into_iter().enumerate() {
-        let proximal = phase > 0;
-        stop_phase = phase as u8;
-        if proximal {
-            target.clone_from(&x);
-        }
-        // A phase that ended on the lambda ceiling would hand the next one a
-        // frozen damped system, so each phase starts no stiffer than the seed.
-        lambda = lambda.min(lambda0);
-        let mut cost = 0.5 * r.iter().map(|&e| e * e).sum::<f64>() + anchor_cost(&x, &target);
-        let mut phase_iters = 0;
-        let mut phase_stop: Option<LmStop> = None;
-        while phase_iters < budget {
-            phase_iters += 1;
-            iters += 1;
-            let rv = DVector::from_vec(r.clone());
-            let xv = DVector::from_column_slice(&x);
-            let target_v = DVector::from_column_slice(&target);
-            // gradient Jᵀr + μ·scale·(x - target)
-            let g = jacm.transpose() * &rv + mu * scale_v.component_mul(&(&xv - &target_v));
-
-            // A non-finite gradient means the curvature/probe has gone bad; stop
-            // here rather than let the comparison below step on NaN.
-            if g.iter().any(|&v| !v.is_finite()) {
-                phase_stop = Some(LmStop::GradientNonFinite);
-                break;
-            }
-            if g.amax() < GTOL {
-                phase_stop = Some(LmStop::Gradient);
-                break;
-            }
-
-            // Try damped steps, increasing lambda until the step reduces cost.
-            let mut accepted = false;
-            for _ in 0..MAX_RETRIES {
-                let mut a = jtj.clone();
-                for i in 0..n {
-                    // Marquardt scaling: damp proportional to each column's
-                    // curvature (times the caller's per-param `damp_scale`), plus
-                    // the absolute seed-anchor floor `mu` so flat (free)
-                    // directions stay finite.
-                    a[(i, i)] +=
-                        (lambda * jtj[(i, i)].max(1e-12) + mu) * damp_scale_at(damp_scale, i);
-                }
-                let Some(delta) = a.lu().solve(&(-&g)) else {
-                    lambda *= LAMBDA_UP;
-                    continue;
-                };
-
-                let x_new: Vec<f64> = (0..n).map(|i| x[i] + delta[i]).collect();
-                let r_new = f(&x_new);
-                let cost_new =
-                    0.5 * r_new.iter().map(|&e| e * e).sum::<f64>() + anchor_cost(&x_new, &target);
-
-                if cost_new < cost {
-                    let dx = norm2(delta.as_slice());
-                    let cost_drop = cost - cost_new;
-                    x = x_new;
-                    // The retraction runs before anything reads `x` again, so
-                    // the Jacobian below and the anchor target after it both
-                    // see the folded state with its redundant coordinates back
-                    // at their reference.
-                    retract(&mut x);
-                    r = r_new;
-                    jacm = jac(&x);
-                    jtj = jacm.transpose() * &jacm;
-                    lambda = (lambda * LAMBDA_DOWN).max(1e-12);
-                    accepted = true;
-
-                    // Convergence on tiny step or tiny relative cost reduction.
-                    let xnorm = norm2(&x).max(1e-30);
-                    if dx < XTOL * xnorm {
-                        phase_stop = Some(LmStop::Step);
-                    } else if cost_drop < FTOL * cost.max(1e-30) {
-                        phase_stop = Some(LmStop::Cost);
-                    }
-                    // Re-read the cost at the retracted point rather than
-                    // reusing `cost_new`: the fold zeroed whatever coordinates
-                    // it folded, and the anchor priced those on the trial
-                    // vector. For a retract that changed nothing this
-                    // recomputes `cost_new` exactly.
-                    cost = 0.5 * r.iter().map(|&e| e * e).sum::<f64>() + anchor_cost(&x, &target);
-                    if proximal {
-                        // The anchor follows the iterate, so its cost drops to 0.
-                        target.clone_from(&x);
-                        cost = 0.5 * r.iter().map(|&e| e * e).sum::<f64>();
-                    }
-                    break;
-                }
-                lambda *= LAMBDA_UP;
-                if lambda > LAMBDA_MAX {
-                    break;
-                }
-            }
-
-            // No downhill step found means a local min of this phase's cost.
-            if phase_stop.is_some() || !accepted {
-                if phase_stop.is_none() {
-                    phase_stop = Some(LmStop::NoDescent);
-                }
-                break;
-            }
-        }
-        stop = phase_stop.unwrap_or(LmStop::Budget);
-    }
-
-    // The gate both SVD call sites read before decomposing: a non-finite
-    // entry here would spin nalgebra's SVD forever (see the field's doc).
-    let jacobian_finite = jacm.iter().all(|v| v.is_finite()) && norm2(&r).is_finite();
-    LmResult {
-        x,
-        jacobian: jacm,
-        residual_norm: norm2(&r),
-        jacobian_finite,
-        iters,
-        stop,
-        stop_phase,
-    }
+/// As `solve_lm_damped_retract`, with a manifold phase between the anchored
+/// phase and the polish: the free directions land at the seed anchor's
+/// minimiser on the solution set, not wherever the anchored descent happened
+/// to leave them. The anchored phase hands over as soon as its residual has
+/// collapsed under the anchor's own cost, so a free direction never creeps
+/// toward its seed for the rest of the budget. See `dense::manifold_phase`.
+///
+/// The mate solver's entry: a plane contact leaves its spin free, and the
+/// anchored descent closing the contact's gap through a long lever spun the
+/// part 56 degrees, which the plain driver then froze where it stood.
+pub fn solve_lm_anchor_projected(
+    x0: &[f64],
+    f: &impl Fn(&[f64]) -> Vec<f64>,
+    jac: &impl Fn(&[f64]) -> DMatrix<f64>,
+    damp_scale: &[f64],
+    retract: &mut dyn FnMut(&mut [f64]),
+) -> LmResult {
+    dense::solve(x0, f, jac, damp_scale, retract, true)
 }
 
 // ─── Sparse LM solver (CG-based) for the drag fast path ───

@@ -16,7 +16,7 @@
 //! anchored to the seed rather than being folded step by step -- the seed
 //! anchor then keeps meaning "stay oriented as you were placed"
 //! (`ROT_DAMP_SCALE` records how the damping was re-measured). The one fold
-//! is `retract`, driven through `lm::solve_lm_damped_retract`: past a
+//! is `retract`, driven through `lm::solve_lm_anchor_projected`: past a
 //! rotation-vector radius of 4 radians `exp` starts losing conditioning and at
 //! a full turn it collapses outright, so a stray body is re-based onto its
 //! reference there with the pose unchanged. The wire and the rank analysis
@@ -956,7 +956,7 @@ impl MateProblem {
     }
 
     /// Residuals over the reduced state (the closure
-    /// `solve_lm_damped_retract` walks). Identical rows to `residuals` on the
+    /// LM driver walks). Identical rows to `residuals` on the
     /// pose it expands to.
     pub(crate) fn residuals_reduced(&self, y: &[f64]) -> Vec<f64> {
         self.residuals(&self.expand(y))
@@ -1561,13 +1561,22 @@ fn solve_mate_impl(input: &MateInput, budget: usize, live: bool) -> MateOutput {
     // lands, fold this into the driver so the seed Jacobian is built once.
     let damp_scale = problem.reduced_damp_scale();
     // The retraction hook: it folds a rotation vector that has strayed past
-    // the chart's radius back onto its reference, which is what keeps every
-    // Jacobian evaluation (the driver asks only after retracting) away from
-    // the degeneracy of `exp` at a full turn. The pose is unchanged by the
-    // fold, so the residual the accept test priced still holds.
+    // the chart's radius back onto its reference, which is what keeps the
+    // LM steps' Jacobians (the driver asks only after retracting) away from
+    // the degeneracy of `exp` at a full turn. The manifold phase's trials are
+    // the exception: they evaluate unretracted, since retracting a refused
+    // trial would move `q_ref` under an iterate that stayed put. They start
+    // at a retracted point and their tangent shrinks `w` toward the seed, so
+    // they stay well inside the chart. The pose is unchanged by the fold, so
+    // the residual the accept test priced still holds.
     let mut retract = |y: &mut [f64]| problem.retract(y);
+    // The projected driver lands every free DOF (a plane contact's spin, a
+    // slide along a rail) at the seed anchor's minimiser on the solution set,
+    // so where a part ends up is a property of the seed and the mates, not of
+    // the descent's path. The verdict retry below keeps the plain driver: it
+    // asks only whether a tolerance-meeting pose exists, never where.
     let lm_result =
-        lm::solve_lm_damped_retract(&y0, &residuals_fn, &jacobian_fn, &damp_scale, &mut retract);
+        lm::solve_lm_anchor_projected(&y0, &residuals_fn, &jacobian_fn, &damp_scale, &mut retract);
 
     // Rank analysis via SVD. Skipped on a live drag tick, which reads only the
     // pose and discards the verdict: the SVD is pure per-frame cost there, and

@@ -9,7 +9,7 @@
 
 use super::common::*;
 use crate::mate::*;
-use crate::mate_residuals::math::{quat_exp, quat_mul, quat_normalize, rotate_vec};
+use crate::mate_residuals::math::{quat_exp, quat_mul, quat_normalize, rotate_vec, twist_angle};
 use crate::mate_residuals::*;
 
 /// Quaternion for extrinsic XYZ Euler degrees, the editor's RX/RY/RZ boxes.
@@ -75,10 +75,50 @@ fn ppd_converges_to_exact_parallel_from_tilted_seed() {
     assert!(tilt < 1e-9, "bar left tilted by {tilt} rad");
     let gap = plane_gap(&out.params_solved);
     assert!(gap.abs() < 1e-9, "plane gap {gap}");
-    // No iteration bound here, unlike Parallel's: this fixture's free spin
-    // drifts during the anchored phase, which then runs to its 200-step cap
-    // before the polish lands it exactly. That is the separate free-DOF plan
-    // (feature/bug-mate-free-spin-drift.md), not this row's convergence.
+    // The anchored phase once crept along the free spin to its 200-step cap
+    // (203 in all). It now hands over to the manifold phase once the gap and
+    // tilt are closed (70 in all, measured). What remains is the descent
+    // through the 250 lever, about 50 steps; this bound catches the creep
+    // coming back, not that descent's own speed.
+    assert!(
+        out.diagnostics.iters < 80,
+        "took {} iterations",
+        out.diagnostics.iters
+    );
+}
+
+/// The relative rotation from the seed to the solved pose, as a quaternion.
+fn seed_to_solved(seed: &[f64], solved: &[f64]) -> [f64; 4] {
+    let s = [seed[10], seed[11], seed[12], seed[13]];
+    let inv = [-s[0], -s[1], -s[2], s[3]];
+    quat_mul(&[solved[10], solved[11], solved[12], solved[13]], &inv)
+}
+
+#[test]
+fn ppd_free_spin_lands_where_the_seed_anchor_holds_it() {
+    // A plane contact leaves the spin about its normal free, so the anchor
+    // alone decides it: the landing is the seed turned by the smallest tilt
+    // that lays the faces flat, which has no twist about the contact normal.
+    // The descent used to close the gap partly by spinning the 250 lever and
+    // then froze that spin: 56 degrees about the normal.
+    let input = plate_bar_input(MateKind::ParallelPlaneDistance);
+    let out = solve_mate(&input);
+    let q = seed_to_solved(&input.params_initial, &out.params_solved);
+    let spin = twist_angle(q[0], q[1], q[2], q[3], &[0.0, 0.0, 1.0]);
+    assert!(
+        spin.abs() < 1e-6,
+        "bar spun {spin} rad about the contact normal"
+    );
+    // Parallel leaves the gap free as well, so both kinds share one anchor
+    // minimiser: the same orientation, reached by different descents.
+    let par = solve_mate(&plate_bar_input(MateKind::Parallel));
+    for i in 10..14 {
+        let (a, b) = (out.params_solved[i], par.params_solved[i]);
+        assert!(
+            (a - b).abs() < 1e-6,
+            "quaternion {i}: ppd {a} vs parallel {b}"
+        );
+    }
 }
 
 #[test]
