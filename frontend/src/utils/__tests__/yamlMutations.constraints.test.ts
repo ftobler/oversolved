@@ -402,6 +402,16 @@ describe('applyAddConstraint operand guards', () => {
     )
   })
 
+  it('a kind outside the registry with no target adds nothing instead of throwing', () => {
+    // The registry arity rule owns every real kind; a hand-authored mutation can
+    // still name one it does not own, and the applier must refuse the empty pick
+    // rather than index it.
+    const doc = makeSampleDoc()
+    const before = JSON.stringify(doc)
+    expect(() => applyAddConstraint(doc, 'Sketch1', 'not_a_constraint', [])).not.toThrow()
+    expect(JSON.stringify(doc)).toBe(before)
+  })
+
   it('coincident with a single target is rejected rather than authored half-picked', () => {
     const doc = makeSampleDoc()
     applyAddConstraint(doc, 'Sketch1', 'coincident', ['entity:Sketch1:circ1'])
