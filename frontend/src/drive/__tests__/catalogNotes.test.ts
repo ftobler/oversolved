@@ -634,6 +634,17 @@ describe('vertex keys named per entity kind', () => {
       }
     }
   })
+
+  it('names the same keys on a projection source', () => {
+    // The bug-1 practice run could not project an arc end although a constraint
+    // may name it; the projection note must teach the operand keys, not a short
+    // hand list that omits them.
+    const info = mutationInfoOf('add_projected_entity')
+    for (const note of [info.note!, info.fields.source.note!]) {
+      expect(note).toContain('start/end/center on an arc')
+      expect(note).toContain('center/major1/major2/minor1/minor2 on an ellipse')
+    }
+  })
 })
 
 describe('angle value is the displayed corner', () => {

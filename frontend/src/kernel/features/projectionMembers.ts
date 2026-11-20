@@ -14,7 +14,7 @@
 
 import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/faceTypes'
-import { entityVertexIndices, getDefaultParams, ENTITY_BY_KIND } from '@/registry'
+import { entityPointKeys, getDefaultParams, ENTITY_BY_KIND } from '@/registry'
 import type { PartDoc } from '@/types/cad'
 
 /** Hex characters of the construction UUID a member id starts with. */
@@ -339,16 +339,17 @@ export function classifyProjectionSource(
         + 'solve that sketch before projecting it',
     }
   }
-  // A vertex suffix is checked against the kind's own keys: `/nope` on a line
-  // can never resolve, so it is a document authoring mistake, not a solve miss.
+  // A vertex suffix is checked against the kind's own operand keys: `/nope` on a
+  // line can never resolve, so it is a document authoring mistake, not a solve
+  // miss. The sentence lists the same set `registerSolvedGeometrySlash` publishes.
   if (parsed.vertexKey !== undefined) {
     const params = sourceFeature.initial?.[entityId] ?? []
-    const keys = entityVertexIndices(entity.kind, params.length, entity.handles)
-    if (keys !== undefined && keys[parsed.vertexKey] === undefined) {
+    const keys = entityPointKeys(entity.kind, params.length, entity.handles)
+    if (keys !== undefined && !keys.has(parsed.vertexKey)) {
       return {
         kind: 'unknown entity',
         message: `projection source ${source} names no vertex '${parsed.vertexKey}' on `
-          + `${sketchId}/${entityId} (${entity.kind}); vertices: ${Object.keys(keys).join(', ')}`,
+          + `${sketchId}/${entityId} (${entity.kind}); vertices: ${[...keys].join(', ')}`,
       }
     }
   }

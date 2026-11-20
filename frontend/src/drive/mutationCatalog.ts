@@ -209,14 +209,22 @@ const PLANE_QUERY_NOTE =
   + 'The measure reply `frames` map reports the resolved origin and axes; a run reports the ones this call '
   + 'touched or moved, and `frames: "all"` restores every resolved frame.'
 
+// A slash suffix on a sketch projection source names the same point keys a
+// constraint may name on that kind, so a projection note and the constraint
+// notes cannot name different sets.
+const PROJECTION_VERTEX_KEYS_NOTE =
+  'add `/<key>` for one vertex, where key is start/end on a line, center on a circle, '
+  + 'start/end/center on an arc, center/major1/major2/minor1/minor2 on an ellipse, '
+  + 'start/c1/c2/end on a spline, start/fit<k>/end/c1/c2 on a fit_spline, or xy on a point'
+
 // A projection source is a body query or a sketch ref. A body element (and only
 // a body element: `select` walks bodies) can be named by a selector the drive
 // resolves, like a sketch plane; the origin and another sketch's geometry stay
 // plain strings because `select` cannot name them.
 const PROJECTION_SOURCE_NOTE =
   'A part edge, vertex or face query from `select` (the stored ?... string), `@builtin_origin`, or a whole '
-  + 'entity of another sketch (`@<sketchId>/<entityId>`; add `/start`, `/end`, `/center` or `/xy` for one '
-  + 'vertex). Instead of pasting a part query, `source` also takes the selector itself as '
+  + 'entity of another sketch (`@<sketchId>/<entityId>`; ' + PROJECTION_VERTEX_KEYS_NOTE + '). Instead of '
+  + 'pasting a part query, `source` also takes the selector itself as '
   + '`{selector: <a select selector naming exactly one edge, vertex or face>}`; the headless drive resolves it '
   + 'against the settled solve and stores the query it matched, so the document never carries a selector. '
   + 'Only part elements take a selector: `@builtin_origin` and `@<sketchId>/<entityId>` are named directly.'
@@ -1312,7 +1320,7 @@ export const MUTATION_CATALOG = {
   add_projected_entity: {
     summary: 'Project a part edge, face or another sketch\'s geometry into a sketch as a live projection constraint.',
     note: 'The source is a part edge/vertex/face query, `@builtin_origin`, or a whole entity of another sketch '
-      + '(`@<sketchId>/<entityId>`; add `/start`, `/end`, `/center` or `/xy` for one vertex). A sketch line, '
+      + '(`@<sketchId>/<entityId>`; ' + PROJECTION_VERTEX_KEYS_NOTE + '). A sketch line, '
       + 'circle or arc projects as that curve; a foreign spline or ellipse is refused and reported in '
       + '`projection_errors` (a projection that already had a position keeps it; one that never had any is left '
       + 'out of the profile). A part circle, arc or ellipse edge, or another sketch\'s circle or arc, seen '
