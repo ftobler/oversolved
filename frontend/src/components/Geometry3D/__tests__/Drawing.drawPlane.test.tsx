@@ -33,7 +33,7 @@ vi.mock('@/components/Geometry3D/dragMathPlane', async (importOriginal) => {
   }
 })
 
-const pick = vi.hoisted(() => ({ hit: null as { entityKey: string } | null, calls: 0 }))
+const pick = vi.hoisted(() => ({ hit: null as { entityKey: string; layer?: string } | null, calls: 0 }))
 vi.mock('@/components/Viewport/idDispatch/useIdBufferPointerDispatch', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/components/Viewport/idDispatch/useIdBufferPointerDispatch')>()
   return { ...actual, resolvePickAtEvent: () => { pick.calls++; return pick.hit } }
@@ -63,6 +63,7 @@ vi.mock('@/components/interaction/useAlignmentSnapEffect', async (importOriginal
 import { DrawPlane } from '@/components/Geometry3D/Drawing'
 import { createDrawingTool } from '@/tools/DrawingTool'
 import { useEditorState } from '@/hooks/useEditorState'
+import { SKETCH_ENTITY_LAYER_NAME, SKETCH_VERTEX_LAYER_NAME } from '@/picking/layerNames'
 
 function makeCanvas(): HTMLCanvasElement {
   const c = document.createElement('canvas')
@@ -153,6 +154,23 @@ describe('DrawPlane alignment guide', () => {
     render(<DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />)
 
     expect(align.cursors.at(-1)).toEqual([4, 1])
+  })
+
+  it('a named vertex hands the alignment effect no cursor', () => {
+    // The commit lets the vertex beat the axis, so an alignment guide would
+    // promise a snap the click never makes.
+    toolRegistry.register(stubTool('line'))
+    useEditorState.setState({
+      activeTool: 'line',
+      drawPoints: [[0, 0]],
+      drawHover: [4, 1],
+      hoveredVertexId: 'vertex:S1:V1:end',
+      hoveredSnapKind: 'vertex',
+    })
+    render(<DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />)
+
+    expect(align.cursors.length).toBeGreaterThan(0)
+    expect(align.cursors.every(c => c === null)).toBe(true)
   })
 })
 
@@ -258,13 +276,17 @@ describe('DrawPlane commit click', () => {
     expect(takeDrawToolClickConsumed()).toBe(true)
   })
 
-  it('passes the store hover for a non-project drawing tool without resolving a pick', () => {
+  it('resolves the press pixel for every drawing tool, not only project', () => {
+    // The async hover lags a frame and can name a different pixel's hit. Every
+    // draw tool now reads the pixel it was pressed on; the hover survives only
+    // for the preview.
     const onPointerDown = vi.fn()
     toolRegistry.register(stubTool('line', onPointerDown))
     useEditorState.setState({
     activeTool: 'line',
-    hoveredSelectionId: 'entity:S1:L1',
+    hoveredSelectionId: 'entity:S1:STALE',
   })
+    pick.hit = { layer: SKETCH_ENTITY_LAYER_NAME, entityKey: 'entity:S1:L2' }
     proj.point = { x: 4, y: 5, z: 0 }
     const { container } = render(
       <DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />,
@@ -272,15 +294,40 @@ describe('DrawPlane commit click', () => {
 
     clickDrawMesh(container.querySelector('mesh')!)
 
-    expect(pick.calls).toBe(0)
-    expect(onPointerDown.mock.calls[0][2].hoveredSelectionId).toBe('entity:S1:L1')
+    expect(pick.calls).toBe(1)
+    expect(onPointerDown.mock.calls[0][2].hoveredSelectionId).toBe('entity:S1:L2')
   })
 
-  it('reads the store at click time, not the last render, for two clicks in one frame', () => {
+  it('does not fall back to the async hover when the press pixel resolves nothing', () => {
+    const onPointerDown = vi.fn()
+    toolRegistry.register(stubTool('line', onPointerDown))
+    useEditorState.setState({
+    activeTool: 'line',
+    hoveredVertexId: 'vertex:S1:L1:end',
+    hoveredVertexPosition: [10, 0],
+    hoveredSnapKind: 'vertex',
+    hoveredSelectionId: 'entity:S1:L1',
+  })
+    pick.hit = null
+    proj.point = { x: 4, y: 5, z: 0 }
+    const { container } = render(
+      <DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />,
+    )
+
+    clickDrawMesh(container.querySelector('mesh')!)
+
+    const context = onPointerDown.mock.calls[0][2]
+    expect(context.hoveredVertexId).toBeNull()
+    expect(context.hoveredVertexPosition).toBeNull()
+    expect(context.hoveredSelectionId).toBeNull()
+  })
+
+  it('reads the store and the press pixel at click time, not the last render', () => {
     // Both clicks land inside one act scope, so React flushes no re-render
     // between them and the second handler still carries the first render's
-    // closures. It must see the point the first click wrote, and the hover the
-    // store holds now, or a line restarts instead of continuing.
+    // closures. It must see the point the first click wrote, and the pixel the
+    // press resolved now, or a line restarts instead of continuing (and snaps
+    // to an earlier pixel's hit).
     const seen: { drawPoints: unknown; hoveredVertexId: unknown }[] = []
     toolRegistry.register(stubTool('line', (_e, pt, ctx) => {
       const c = ctx as import('@/tools/DrawingTool').DrawingToolContext
@@ -299,9 +346,7 @@ describe('DrawPlane commit click', () => {
     act(() => {
       proj.point = { x: 1, y: 0, z: 0 }
       mesh.dispatchEvent(new MouseEvent('pointerdown', { clientX: 100, clientY: 100, bubbles: true, button: 0 }))
-      useEditorState.setState({
-    hoveredVertexId: 'vertex:S1:V1:end',
-  })
+      pick.hit = { layer: SKETCH_VERTEX_LAYER_NAME, entityKey: 'vertex:S1:V1:end' }
       proj.point = { x: 6, y: 0, z: 0 }
       mesh.dispatchEvent(new MouseEvent('pointerdown', { clientX: 100, clientY: 100, bubbles: true, button: 0 }))
     })
@@ -310,6 +355,123 @@ describe('DrawPlane commit click', () => {
       { drawPoints: [], hoveredVertexId: null },
       { drawPoints: [[1, 0]], hoveredVertexId: 'vertex:S1:V1:end' },
     ])
+  })
+
+  it('commits the vertex at the press pixel, never the one the store still names', () => {
+    // #draw-snap-coincident C1: the press resolved vertex Y while the lagging
+    // hover named vertex X (or nothing). The commit must follow the pixel.
+    toolRegistry.register(createDrawingTool({ entityKind: 'line', paramCount: 4 }))
+    const onMutationBatch = vi.fn()
+    setSketchCallback('onMutationBatch', onMutationBatch)
+    useEditorState.setState({
+      activeTool: 'line',
+      drawPoints: [],
+      drawSnapRefs: [],
+      // The stale hover names the segment's own start vertex.
+      hoveredVertexId: 'vertex:S1:L1:start',
+      hoveredVertexPosition: [0, 0],
+      hoveredSnapKind: 'vertex',
+      hoveredSelectionId: null,
+    })
+    const sketch = { L1: { start: [0, 0], end: [10, 0] } } as unknown as import('@/types/cad').Sketch
+    const { container } = render(
+      <DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} sketch={sketch} />,
+    )
+    const mesh = container.querySelector('mesh')!
+
+    act(() => {
+      pick.hit = null
+      proj.point = { x: 0, y: 0, z: 0 }
+      mesh.dispatchEvent(new MouseEvent('pointerdown', { clientX: 100, clientY: 100, bubbles: true, button: 0 }))
+    })
+    act(() => {
+      pick.hit = { layer: SKETCH_VERTEX_LAYER_NAME, entityKey: 'vertex:S1:L1:end' }
+      proj.point = { x: 10.2, y: 0.1, z: 0 }
+      mesh.dispatchEvent(new MouseEvent('pointerdown', { clientX: 101, clientY: 101, bubbles: true, button: 0 }))
+    })
+
+    expect(onMutationBatch).toHaveBeenCalledOnce()
+    const mutations = onMutationBatch.mock.calls[0][0] as import('@/types/cad').Mutation[]
+    const add = mutations[0]
+    expect(add.type).toBe('add_entity')
+    if (add.type === 'add_entity') expect(add.params).toEqual([0, 0, 10, 0])
+    const constraint = mutations[1]
+    expect(constraint.type).toBe('add_constraint')
+    if (constraint.type === 'add_constraint') {
+      expect(constraint.kind).toBe('coincident')
+      expect(constraint.targets[1]).toBe('vertex:S1:L1:end')
+    }
+    // The indicator is rewritten from the same resolution, so it cannot keep
+    // promising the stale vertex after the press.
+    expect(useSketchEditorStore.getState().hoveredVertexId).toBe('vertex:S1:L1:end')
+    expect(useSketchEditorStore.getState().hoveredVertexPosition).toEqual([10, 0])
+  })
+
+  it('keeps snapping after a solve commit clears the hover between clicks', () => {
+    // C2: a segment commits, the solve lands and Part3D's teardown nulls the
+    // hover, then the user clicks again with no move. The press pixel is the
+    // only evidence, so the next segment still ends on its vertex.
+    toolRegistry.register(createDrawingTool({ entityKind: 'line', paramCount: 4 }))
+    const onMutationBatch = vi.fn()
+    setSketchCallback('onMutationBatch', onMutationBatch)
+    useEditorState.setState({
+      activeTool: 'line',
+      drawPoints: [],
+      drawSnapRefs: [],
+      hoveredVertexId: null,
+      hoveredVertexPosition: null,
+      hoveredSnapKind: null,
+      hoveredSelectionId: null,
+    })
+    const sketch = {
+      A: { start: [0, 0], end: [0, 1] },
+      B: { start: [10, 0], end: [10, 1] },
+      C: { start: [10, 10], end: [10, 11] },
+    } as unknown as import('@/types/cad').Sketch
+    const { container } = render(
+      <DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} sketch={sketch} />,
+    )
+    const mesh = container.querySelector('mesh')!
+
+    act(() => {
+      pick.hit = { layer: SKETCH_VERTEX_LAYER_NAME, entityKey: 'vertex:S1:A:start' }
+      proj.point = { x: 0, y: 0, z: 0 }
+      mesh.dispatchEvent(new MouseEvent('pointerdown', { clientX: 100, clientY: 100, bubbles: true, button: 0 }))
+    })
+    act(() => {
+      pick.hit = { layer: SKETCH_VERTEX_LAYER_NAME, entityKey: 'vertex:S1:B:start' }
+      proj.point = { x: 10, y: 0, z: 0 }
+      mesh.dispatchEvent(new MouseEvent('pointerdown', { clientX: 101, clientY: 101, bubbles: true, button: 0 }))
+    })
+    // The solve commit's hover teardown, between two presses.
+    act(() => {
+      useEditorState.setState({
+        hoveredVertexId: null,
+        hoveredVertexPosition: null,
+        hoveredSnapKind: null,
+        hoveredSelectionId: null,
+      })
+    })
+    act(() => {
+      pick.hit = { layer: SKETCH_VERTEX_LAYER_NAME, entityKey: 'vertex:S1:C:start' }
+      proj.point = { x: 10.2, y: 10.1, z: 0 }
+      mesh.dispatchEvent(new MouseEvent('pointerdown', { clientX: 102, clientY: 102, bubbles: true, button: 0 }))
+    })
+
+    expect(onMutationBatch).toHaveBeenCalledTimes(2)
+    const second = onMutationBatch.mock.calls[1][0] as import('@/types/cad').Mutation[]
+    const constraint = second.find(m => m.type === 'add_constraint')
+    expect(constraint).toBeDefined()
+    if (constraint?.type === 'add_constraint') {
+      expect(constraint.kind).toBe('coincident')
+      expect(constraint.targets[1]).toBe('vertex:S1:C:start')
+    }
+    const add = second[0]
+    expect(add.type).toBe('add_entity_with_constraint')
+    if (add.type === 'add_entity_with_constraint') {
+      // The chain's start follows the segment before it, not a lost hover.
+      expect(add.snapVertexId).toBe('vertex:S1:B:start')
+    }
   })
 
   it('fails loud and drops the click when the ray misses the plane', () => {

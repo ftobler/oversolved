@@ -15,6 +15,7 @@ import type { Sketch } from '@/types/cad'
 import type { DrawingToolContext } from '@/tools/DrawingTool'
 import { computePreviewPts } from '@/utils/geometry/drawGeometry'
 import { resolveDrawCursor } from '@/utils/geometry/drawLogic'
+import { resolveDrawPressSnap } from '@/utils/geometry/drawPressSnap'
 import { markDrawToolClickConsumed } from '@/components/Viewport/idDispatch/drawToolClickGuard'
 import { shouldClearSelectionOnBackplaneClick, resolvePickAtEvent, PART_EDITOR_CONSUMED_LAYERS } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
 import { findEdgeKindForQuery, findFaceBoundaryEdges } from '@/picking/partDispatchCallbacks'
@@ -23,6 +24,16 @@ import { effectiveAllowedLayers } from '@/registry/toolPickConfig'
 // Secondary (bit 2) or middle (bit 4) mouse button held: a camera/navigation
 // gesture, not a draw hover. Back/forward buttons are not draw gestures either.
 const NAV_BUTTONS = 6
+
+/** World length of one screen pixel on the sketch plane, or null when the
+ *  camera carries no distance-free scale. The draw snap gate needs it to stay
+ *  a screen-space reach instead of a fixed document tolerance. */
+function screenPixelSize(camera: THREE.Camera | null | undefined): number | null {
+  if (!camera) return null
+  const ortho = camera as THREE.OrthographicCamera
+  if (!ortho.isOrthographicCamera || !Number.isFinite(ortho.zoom) || ortho.zoom === 0) return null
+  return 1 / ortho.zoom
+}
 
 export function DrawPreview({ featureId, activeFeatureId, sketch, otherSketches }: {
   featureId?: string
@@ -44,6 +55,7 @@ export function DrawPreview({ featureId, activeFeatureId, sketch, otherSketches 
   const hoveredSnapKind = useSketchEditorStore(s => s.hoveredSnapKind)
   const hoveredSelectionId = useSketchEditorStore(s => s.hoveredSelectionId)
   const drawSnapRefs = useSketchEditorStore(s => s.drawSnapRefs)
+  const { camera } = useThree()
 
   if (activeFeatureId === null) return null
   // The preview lives inside each sketch's transformed group; only the active
@@ -56,9 +68,12 @@ export function DrawPreview({ featureId, activeFeatureId, sketch, otherSketches 
 
   // Draw to where the click would commit, not to the raw cursor, so the
   // preview does not jump when a snap moves the committed point.
+  // The same screen-scaled vertex gate the press uses, so a hover the pointer
+  // already left cannot make the preview promise a snap the click will not make.
   const cursor = drawHover && resolveDrawCursor(effectiveTool, drawPoints, drawHover, {
     hoveredVertexId, hoveredVertexPosition, hoveredSnapKind, hoveredSelectionId,
     drawSnapRefs, alignmentSnapPoint, alignmentSnapKind, ngonSides,
+    pixelSize: screenPixelSize(camera),
   }, sketch, otherSketches)
   const previewPts = computePreviewPts(effectiveTool, drawPoints, cursor, ngonSides)
   // The alignment guide runs from its anchor to the cursor it measured.
@@ -112,10 +127,17 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
   const onMutationBatch = getSketchCallback('onMutationBatch')
   const clearNormalSelection = useSketchEditorStore(s => s.clearNormalSelection)
   const drawHover = useSketchEditorStore(s => s.drawHover)
+  const hoveredVertexId = useSketchEditorStore(s => s.hoveredVertexId)
   const { camera, gl } = useThree()
 
   const drawLastPoint = drawPoints.length > 0 ? drawPoints[drawPoints.length - 1] : null
-  useAlignmentSnapEffect(toolTakesAlignmentSnap(effectiveTool) ? drawHover : null, drawLastPoint)
+  // A named vertex beats the axis in the commit, so the guide would promise a
+  // snap the click never makes. The rule is the commit's, not a second copy:
+  // only hand the effect a cursor when no vertex owns the point.
+  const alignmentCursor = toolTakesAlignmentSnap(effectiveTool) && hoveredVertexId === null
+    ? drawHover
+    : null
+  useAlignmentSnapEffect(alignmentCursor, drawLastPoint)
 
   // Resolve the sketch group ref: prefer explicit prop, fall back to mesh parent.
   const resolvedGroupRef: React.RefObject<THREE.Object3D | null> = sketchGroupRef ?? {
@@ -238,31 +260,36 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
         // so two clicks in one frame would pair a fresh ref list with a stale
         // point list and restart the gesture instead of continuing it.
         const state = useSketchEditorStore.getState()
-        // The project tool picks B-rep / sketch identity to project. Resolve the
-        // ID buffer at THIS click pixel instead of reading the async hover the
-        // move-handler last wrote: hover lags a frame and can hold a different
-        // pixel's hit, which made edge picks flaky. Same resolve seam the
-        // click-selection path uses -- one identity source, no dual path.
-        let pickedSelectionId = state.hoveredSelectionId
-        if (effectiveTool === 'project') {
-          const hit = resolvePickAtEvent(
-            e.nativeEvent as PointerEvent,
-            gl.domElement,
-            gl,
-            effectiveAllowedLayers(PART_EDITOR_CONSUMED_LAYERS, 'project'),
-          )
-          pickedSelectionId = hit?.entityKey ?? null
-        }
+        // One resolve seam for every drawing tool: read the ID buffer at THIS
+        // press pixel with the tool's allowed layers, the same path a selection
+        // click takes. The async hover lags a frame, can name an earlier pixel's
+        // hit, and a solve commit nulls it, which is why a click on a vertex
+        // sometimes authored no coincident (and why the project tool already
+        // resolved its own pick).
+        const hit = resolvePickAtEvent(
+          e.nativeEvent as PointerEvent,
+          gl.domElement,
+          gl,
+          effectiveAllowedLayers(PART_EDITOR_CONSUMED_LAYERS, effectiveTool),
+        )
+        const pressSnap = resolveDrawPressSnap(hit, state.activeOriginLocal, { sketch, otherSketches })
+        // The preview and the snap indicator read the store. Publishing the
+        // press resolution there keeps them on the same point the click commits,
+        // instead of showing the hover the press superseded.
+        state.setHoveredVertex(
+          pressSnap.hoveredVertexId, pressSnap.hoveredVertexPosition, pressSnap.hoveredSnapKind,
+        )
+        state.setHoveredSelectionId(pressSnap.hoveredSelectionId)
         const context: DrawingToolContext = {
           normalSelection: state.normalSelection,
-          hoveredSelectionId: pickedSelectionId,
-          hoveredSourceKind: findEdgeKindForQuery(pickedSelectionId ?? '') ?? null,
-          hoveredFaceEdges: findFaceBoundaryEdges(pickedSelectionId ?? ''),
+          hoveredSelectionId: pressSnap.hoveredSelectionId,
+          hoveredSourceKind: findEdgeKindForQuery(pressSnap.hoveredSelectionId ?? '') ?? null,
+          hoveredFaceEdges: findFaceBoundaryEdges(pressSnap.hoveredSelectionId ?? ''),
           isPointerDown: state.isPointerDown,
           activeFeatureId: state.activeFeatureId,
-          hoveredVertexId: state.hoveredVertexId,
-          hoveredVertexPosition: state.hoveredVertexPosition,
-          hoveredSnapKind: state.hoveredSnapKind,
+          hoveredVertexId: pressSnap.hoveredVertexId,
+          hoveredVertexPosition: pressSnap.hoveredVertexPosition,
+          hoveredSnapKind: pressSnap.hoveredSnapKind,
           onMutation,
           onMutationBatch,
           drawPoints: state.drawPoints,

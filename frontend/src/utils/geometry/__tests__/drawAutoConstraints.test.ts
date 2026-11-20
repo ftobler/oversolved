@@ -8,9 +8,10 @@ import {
   insertAxisConstraint,
   carriedSnapFields,
 } from '@/utils/geometry/drawAutoConstraints'
-import type { Entity } from '@/types/cad'
+import type { Entity, Mutation } from '@/types/cad'
 import type { DrawSnapState } from '@/utils/geometry/drawAutoConstraints'
 import { computeDrawClick } from '@/utils/geometry/drawLogic'
+import { computeDrawFinish } from '@/utils/geometry/drawFinish'
 
 const FEATURE = 'S1'
 let idCounter = 0
@@ -47,7 +48,10 @@ describe('snappableVertexAt', () => {
   })
 
   it('answers null for a published position the click did not land on', () => {
-    expect(snappableVertexAt(onVertex('vertex:S1:V1:end', [4, 0]), 9, 9)).toBeNull()
+    // The gate is screen-scaled: at 0.01 world units per pixel a 7.4-unit miss
+    // is hundreds of pixels away, far outside the pick reach.
+    const snap = { ...onVertex('vertex:S1:V1:end', [4, 0]), pixelSize: 0.01 }
+    expect(snappableVertexAt(snap, 9, 9)).toBeNull()
   })
 
   it('falls back to the id/kind pair when the hover published no position', () => {
@@ -96,7 +100,7 @@ describe('snappablePathAt', () => {
 describe('resolveInsertSnap', () => {
   it('reads a vertex hover as a coincident against that vertex', () => {
     expect(resolveInsertSnap(onVertex('vertex:S1:V1:end', [4, 0]), [4, 0]))
-      .toEqual({ kind: 'coincident', vertexId: 'vertex:S1:V1:end' })
+      .toEqual({ kind: 'coincident', vertexId: 'vertex:S1:V1:end', at: [4, 0] })
   })
 
   it('reads a curve hover as a point on that path', () => {
@@ -107,7 +111,7 @@ describe('resolveInsertSnap', () => {
   it('lets a named vertex win over the curve it sits on', () => {
     const snap = { ...onVertex('vertex:S1:L1:end', [10, 0]), hoveredSelectionId: 'entity:S1:L1' }
     expect(resolveInsertSnap(snap, [10, 0], { sketch: LINE }))
-      .toEqual({ kind: 'coincident', vertexId: 'vertex:S1:L1:end' })
+      .toEqual({ kind: 'coincident', vertexId: 'vertex:S1:L1:end', at: [10, 0] })
   })
 
   it('reads a kinda_horizontal alignment as a horizontal, naming no element', () => {
@@ -117,11 +121,43 @@ describe('resolveInsertSnap', () => {
     expect(resolveInsertSnap(snap, [7, 5])).toEqual({ kind: 'horizontal' })
   })
 
-  it('lets the alignment win over a vertex hover, as the point placement does', () => {
+  it('lets a named vertex win over the alignment snap', () => {
+    // The axis is measured against the segment's own start; the click landed on
+    // a real vertex, which says strictly more. The axis is dropped rather than
+    // added, because the coincident plus the vertex already fixes the end and a
+    // second relation between the two existing points could over-constrain.
     const snap = onVertex('vertex:S1:V1:end', [4, 0])
     snap.alignmentSnapPoint = [0, 5]
     snap.alignmentSnapKind = 'kinda_vertical'
-    expect(resolveInsertSnap(snap, [0, 3])).toEqual({ kind: 'vertical' })
+    expect(resolveInsertSnap(snap, [0, 3])).toEqual({
+      kind: 'coincident', vertexId: 'vertex:S1:V1:end', at: [4, 0],
+    })
+  })
+
+  it('resolves a vertex position the hover did not publish', () => {
+    // A sketch vertex hover publishes an id but no position; the position comes
+    // from the entity the ref names, so the click lands on the vertex.
+    const snap: DrawSnapState = {
+      ...emptySnap(),
+      hoveredVertexId: 'vertex:S1:L1:end',
+      hoveredSnapKind: 'vertex',
+    }
+    expect(resolveInsertSnap(snap, [10.1, 0.05], { sketch: LINE }))
+      .toEqual({ kind: 'coincident', vertexId: 'vertex:S1:L1:end', at: [10, 0] })
+  })
+
+  it('rejects a hover the click has already left, measured in screen units', () => {
+    // `pixelSize` is the world length of one screen pixel on the sketch plane,
+    // so the gate follows the zoom: a stale hover 7.4 world units away at this
+    // scale is hundreds of pixels off, not a snap.
+    const snap = { ...onVertex('vertex:S1:V1:end', [4, 0]), pixelSize: 0.01 }
+    expect(resolveInsertSnap(snap, [9, 9])).toBeNull()
+  })
+
+  it('accepts a click within the pick reach of the vertex', () => {
+    const snap = { ...onVertex('vertex:S1:V1:end', [4, 0]), pixelSize: 0.01 }
+    expect(resolveInsertSnap(snap, [4.05, 0]))
+      .toEqual({ kind: 'coincident', vertexId: 'vertex:S1:V1:end', at: [4, 0] })
   })
 })
 
@@ -275,13 +311,15 @@ describe('auto-inserted constraints per draw tool', () => {
     }
   })
 
-  it('circle: a centre click the alignment moved off the vertex carries nothing', () => {
+  it('circle: a centre click on a vertex keeps the vertex even with an alignment snap', () => {
+    // The axis is measured against the (absent) previous point here, but the
+    // vertex says strictly more: the centre lands on it and carries its ref.
     const snap = onVertex('vertex:S1:V1:end', [4, 0])
     snap.alignmentSnapPoint = [0, 5]
     snap.alignmentSnapKind = 'kinda_horizontal'
     const first = computeDrawClick('circle', [], [4, 0], snap, FEATURE, newId)
-    expect(first.nextDrawPoints).toEqual([[4, 5]])
-    expect(first.nextDrawSnap).toEqual({ refs: [null] })
+    expect(first.nextDrawPoints).toEqual([[4, 0]])
+    expect(first.nextDrawSnap).toEqual({ refs: ['vertex:S1:V1:end'] })
   })
 
   it('ellipse: a centre click on a curve carries that curve to the commit', () => {
@@ -365,6 +403,131 @@ describe('auto-inserted constraints per draw tool', () => {
     if (result.mutations[1].type === 'add_constraint') {
       expect(result.mutations[1].kind).toBe('horizontal')
       expect(result.mutations[1].targets).toHaveLength(1)
+    }
+  })
+
+  it('line: a vertex end beats an active alignment snap, and lands on the vertex', () => {
+    const snap = onVertex('vertex:S1:L1:end', [10, 0])
+    snap.alignmentSnapPoint = [0, 0]
+    snap.alignmentSnapKind = 'kinda_horizontal'
+    const result = computeDrawClick('line', [[0, 0]], [10.2, 0.1], snap, FEATURE, newId, LINE)
+    expect(result.mutations).toHaveLength(2)
+    const add = result.mutations[0]
+    expect(add.type).toBe('add_entity')
+    if (add.type === 'add_entity') expect(add.params).toEqual([0, 0, 10, 0])
+    expect(result.mutations[1]).toMatchObject({
+      type: 'add_constraint', kind: 'coincident',
+    })
+    const constraint = result.mutations[1]
+    if (constraint.type === 'add_constraint') {
+      expect(constraint.targets[1]).toBe('vertex:S1:L1:end')
+    }
+  })
+})
+
+// "Not line only": every drawing tool that can take a first and a last click
+// on an existing vertex must author the coincident for both. The line is where
+// the report was seen; the shared press/resolve seam is the subject.
+const VERTEX_A = { id: 'vertex:S1:A1:end', at: [4, 0] as [number, number] }
+const VERTEX_B = { id: 'vertex:S1:B1:start', at: [10, 5] as [number, number] }
+const VERTEX_SKETCH: Record<string, Entity> = {
+  A1: { start: [0, 0], end: [4, 0] } as Entity,
+  B1: { start: [10, 5], end: [10, 8] } as Entity,
+}
+
+interface ClickStep {
+  raw: [number, number]
+  vertex?: { id: string; at: [number, number] }
+}
+
+const onVertexStep = (vertex: { id: string; at: [number, number] }): ClickStep => ({
+  // A press is rarely the exact stored coordinate; the snap position is what
+  // the commit must use.
+  raw: [vertex.at[0] + 0.2, vertex.at[1] + 0.1],
+  vertex,
+})
+
+function runGesture(tool: string, steps: ClickStep[], finish = false): Mutation[] {
+  let points: [number, number][] = []
+  let refs: (string | null)[] = []
+  const mutations: Mutation[] = []
+  steps.forEach((step, i) => {
+    const snap: DrawSnapState = {
+      ...emptySnap(),
+      drawSnapRefs: refs,
+      ...(step.vertex
+        ? {
+            hoveredVertexId: step.vertex.id,
+            hoveredVertexPosition: step.vertex.at,
+            hoveredSnapKind: 'vertex' as const,
+          }
+        : {}),
+    }
+    const result = computeDrawClick(tool, points, step.raw, snap, FEATURE, () => `E${tool}${i}`, VERTEX_SKETCH)
+    mutations.push(...result.mutations)
+    if (result.nextDrawPoints !== null) points = result.nextDrawPoints
+    if (result.nextDrawSnap !== null) refs = result.nextDrawSnap.refs
+  })
+  if (finish) {
+    const stamped = computeDrawFinish(tool, points, refs, FEATURE, () => `E${tool}finish`)
+    mutations.push(...stamped.mutations)
+  }
+  return mutations
+}
+
+/** Every ref a mutation carries, whichever field shape its own tool uses. */
+function refsOf(m: Mutation): string[] {
+  switch (m.type) {
+    case 'add_entity_with_constraint':
+      return [m.snapVertexId, m.snapEntityRef].filter((r): r is string => typeof r === 'string')
+    case 'add_constraint':
+      return m.targets
+    case 'add_rect':
+      return [m.p0Ref, m.p1Ref].filter((r): r is string => typeof r === 'string')
+    case 'add_center_rect':
+      return [m.centerRef, m.cornerRef].filter((r): r is string => typeof r === 'string')
+    case 'add_ngon':
+      return [m.centerRef, m.cornerRef].filter((r): r is string => typeof r === 'string')
+    case 'add_three_point_arc':
+      return [m.startRef, m.endRef].filter((r): r is string => typeof r === 'string')
+    default:
+      return []
+  }
+}
+
+describe('a vertex snapped first and last click authors its coincident for every tool', () => {
+  const rows: Array<{ tool: string; steps: ClickStep[]; finish?: boolean; secondVertex: boolean }> = [
+    { tool: 'line', steps: [onVertexStep(VERTEX_A), onVertexStep(VERTEX_B)], secondVertex: true },
+    { tool: 'arc', steps: [onVertexStep(VERTEX_A), onVertexStep(VERTEX_B), { raw: [7, 2] }], secondVertex: true },
+    { tool: 'rect', steps: [onVertexStep(VERTEX_A), onVertexStep(VERTEX_B)], secondVertex: true },
+    { tool: 'center_rect', steps: [onVertexStep(VERTEX_A), onVertexStep(VERTEX_B)], secondVertex: true },
+    { tool: 'circle', steps: [onVertexStep(VERTEX_A), onVertexStep(VERTEX_B)], secondVertex: true },
+    { tool: 'ellipse', steps: [onVertexStep(VERTEX_A), onVertexStep(VERTEX_B)], secondVertex: true },
+    {
+      tool: 'spline',
+      steps: [onVertexStep(VERTEX_A), { raw: [6, 2] }, { raw: [8, 2] }, onVertexStep(VERTEX_B)],
+      secondVertex: true,
+    },
+    { tool: 'fit_spline', steps: [onVertexStep(VERTEX_A), onVertexStep(VERTEX_B)], finish: true, secondVertex: true },
+    { tool: 'point', steps: [onVertexStep(VERTEX_A)], secondVertex: false },
+    { tool: 'ngon', steps: [onVertexStep(VERTEX_A), onVertexStep(VERTEX_B)], secondVertex: true },
+  ]
+
+  it.each(rows)('$tool', ({ tool, steps, finish, secondVertex }) => {
+    const refs = runGesture(tool, steps, finish).flatMap(refsOf)
+    expect(refs).toContain(VERTEX_A.id)
+    if (secondVertex) expect(refs).toContain(VERTEX_B.id)
+  })
+
+  it('every multi-click row lands the first point on the vertex, not on the press pixel', () => {
+    for (const { tool, steps } of rows.filter(row => row.tool !== 'point')) {
+      const result = computeDrawClick(tool, [], steps[0].raw, {
+        ...emptySnap(),
+        hoveredVertexId: VERTEX_A.id,
+        hoveredVertexPosition: VERTEX_A.at,
+        hoveredSnapKind: 'vertex',
+      }, FEATURE, () => 'E1', VERTEX_SKETCH)
+      expect(result.nextDrawPoints?.[0]).toEqual(VERTEX_A.at)
     }
   })
 })
