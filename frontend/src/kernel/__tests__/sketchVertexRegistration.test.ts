@@ -35,6 +35,18 @@ function registerOne(kind: string): ReturnType<typeof initGlobalRepo> {
   return repo
 }
 
+/** Every entity kind with a solved block. `project` is a tool registration, not
+ *  a kind the solver emits. A missing fixture throws instead of skipping the
+ *  kind, so the parity guard cannot silently stop pinning a new kind. */
+function solvedKinds(): Array<{ kind: string; block: (typeof SOLVED)[string] }> {
+  return ENTITIES.flatMap(def => {
+    if (def.kind === 'project') return []
+    const block = SOLVED[def.kind]
+    if (block === undefined) throw new Error(`no solved fixture for entity kind '${def.kind}'`)
+    return [{ kind: def.kind, block }]
+  })
+}
+
 function slashKeys(repo: ReturnType<typeof initGlobalRepo>): string[] {
   return [...repo.elements.keys()]
     .filter(key => key.startsWith('sk1/e1/'))
@@ -48,27 +60,23 @@ function registeredXy(repo: ReturnType<typeof initGlobalRepo>, key: string): num
 
 describe('a projected vertex key resolves wherever a constraint may name it', () => {
   it('registers exactly the point keys of every kind', () => {
-    for (const def of ENTITIES) {
-      const block = SOLVED[def.kind]
-      if (block === undefined) continue  // `project` is a tool registration, not an entity
-      const expected = entityPointKeys(def.kind, block.params.length, block.handles)
-      expect(expected, def.kind).toBeDefined()
-      expect(new Set(slashKeys(registerOne(def.kind))), def.kind).toEqual(new Set(expected))
+    for (const { kind, block } of solvedKinds()) {
+      const expected = entityPointKeys(kind, block.params.length, block.handles)
+      expect(expected, kind).toBeDefined()
+      expect(new Set(slashKeys(registerOne(kind))), kind).toEqual(new Set(expected))
     }
   })
 
   it('registers each key at the point entityPointXY names', () => {
-    for (const def of ENTITIES) {
-      const block = SOLVED[def.kind]
-      if (block === undefined) continue
-      const repo = registerOne(def.kind)
-      for (const key of entityPointKeys(def.kind, block.params.length, block.handles)!) {
-        const xy = entityPointXY(def.kind, block.params, key, block.handles)
-        expect(xy, `${def.kind}/${key}`).toBeDefined()
+    for (const { kind, block } of solvedKinds()) {
+      const repo = registerOne(kind)
+      for (const key of entityPointKeys(kind, block.params.length, block.handles)!) {
+        const xy = entityPointXY(kind, block.params, key, block.handles)
+        expect(xy, `${kind}/${key}`).toBeDefined()
         const published = registeredXy(repo, key)
-        expect(published, `${def.kind}/${key}`).toBeDefined()
-        expect(published![0], `${def.kind}/${key} x`).toBeCloseTo(xy![0], 9)
-        expect(published![1], `${def.kind}/${key} y`).toBeCloseTo(xy![1], 9)
+        expect(published, `${kind}/${key}`).toBeDefined()
+        expect(published![0], `${kind}/${key} x`).toBeCloseTo(xy![0], 9)
+        expect(published![1], `${kind}/${key} y`).toBeCloseTo(xy![1], 9)
       }
     }
   })
