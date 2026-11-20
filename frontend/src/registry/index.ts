@@ -18,6 +18,8 @@ export {
   VERTEX_INDICES,
   ALL_COORD_INDICES,
   entityVertexIndices,
+  entityPointKeys,
+  entityPointXY,
   entityCoordPairs,
   fitSplineHandlesFromFlags,
   fitSplineVertices,

@@ -24,11 +24,12 @@ import {
   isClassifierId,
 } from '../query'
 import { frameFromPlaneTransform, normalToFrame } from '../types3d'
-import { loopCentroid, radians, type LoopEdge } from '../profileLoops'
+import { loopCentroid, type LoopEdge } from '../profileLoops'
 import { BUILTIN_PLANES } from '../solverConstants'
 import { sketchToWorld2d, type PlaneLike } from './shared/planes'
 import { precisionKey, precisionOfSolve } from '../precision'
 import { stripRefSigil } from '@/utils/refSigil'
+import { entityPointKeys, entityPointXY } from '@/registry'
 
 type Dict = Record<string, unknown>
 
@@ -325,6 +326,9 @@ function registerSolvedGeometrySlash(
       } else if (kind === 'point') {
         params = [...((val.xy as number[]) ?? [0, 0])]
       } else {
+        // The solver emits flat params for ellipse, spline and fit_spline; no
+        // rich-dict shape exists for them, and inventing one would be a second
+        // wire form to keep in step.
         continue
       }
     } else {
@@ -332,24 +336,18 @@ function registerSolvedGeometrySlash(
     }
 
     globalRepo.register(prefix, { external_params: params, kind, sketch_id: featureId })
-    if (kind === 'line') {
-      globalRepo.register(prefix + '/start', { external_xy: params.slice(0, 2), sketch_id: featureId })
-      globalRepo.register(prefix + '/end', { external_xy: params.slice(2, 4), sketch_id: featureId })
-    } else if (kind === 'circle') {
-      globalRepo.register(prefix + '/center', { external_xy: params.slice(0, 2), sketch_id: featureId })
-    } else if (kind === 'arc') {
-      const [cx, cy, r, aStart, aEnd] = params
-      globalRepo.register(prefix + '/start', {
-        external_xy: [cx + r * Math.cos(radians(aStart)), cy + r * Math.sin(radians(aStart))],
-        sketch_id: featureId,
-      })
-      globalRepo.register(prefix + '/end', {
-        external_xy: [cx + r * Math.cos(radians(aEnd)), cy + r * Math.sin(radians(aEnd))],
-        sketch_id: featureId,
-      })
-      globalRepo.register(prefix + '/center', { external_xy: [cx, cy], sketch_id: featureId })
-    } else if (kind === 'point') {
-      globalRepo.register(prefix + '/xy', { external_xy: params.slice(0, 2), sketch_id: featureId })
+    // Every point key a constraint may name on this kind is published at the
+    // same position, so a foreign-vertex projection of any of them resolves.
+    // Arc, line, circle and point keep the paths they always had (`/xy` is read
+    // by the hole leaf); the loop only adds the ellipse axis ends and the
+    // spline/fit-spline points that were missing.
+    const handles = entity.handles as 'start' | 'end' | 'both' | undefined
+    const keys = entityPointKeys(kind, params.length, handles)
+    if (keys === undefined) continue
+    for (const key of keys) {
+      const xy = entityPointXY(kind, params, key, handles)
+      if (xy === undefined) continue
+      globalRepo.register(prefix + '/' + key, { external_xy: xy, sketch_id: featureId })
     }
   }
 }

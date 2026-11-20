@@ -16,6 +16,7 @@
 
 import type { ActiveTool, EntityKind } from '@/types/cad'
 import { narrowCommandName, type CommandName } from '@/utils/core/commandNames'
+import { ellipseAxisPoints, isEllipseAxisKey } from '@/utils/geometry/ellipseAxis'
 import { MAX_FIT_POINTS } from '@/utils/geometry/fitSpline'
 
 // ─── Entity definition ───
@@ -357,10 +358,18 @@ export function entityVertexIndices(
 }
 
 /**
- * The point keys a CONSTRAINT may name on an entity of `kind`: which selectors
- * the entity actually has. Broader than `vertices` above, which is the set of
- * draggable snapshot points: an arc's ends are real operands (start is the
- * `a0` end), and an ellipse's axis ends dimension its major/minor radius.
+ * The point keys a CONSTRAINT or a foreign-vertex projection may name on an
+ * entity of `kind`: which selectors the entity actually has. Broader than
+ * `vertices` above, which is the set of draggable snapshot points: an arc's
+ * ends are real operands (start is the `a0` end), and an ellipse's axis ends
+ * dimension its major/minor radius.
+ *
+ * This is the one set both sides read: the lowering validates a constraint
+ * operand against it, and `classifyProjectionSource` accepts a source
+ * `@<sketch>/<entity>/<key>` exactly when the key is in it, while
+ * `registerSolvedGeometrySlash` publishes the same keys through
+ * `entityPointXY`. A source is therefore either refused at apply or resolves
+ * at solve, never accepted and then unresolvable.
  *
  * A selector outside this set is not a meaningful operand. The solver's
  * `point()` falls back to the entity's first point for an inapplicable
@@ -373,7 +382,9 @@ export function entityVertexIndices(
  * an entity's param block, and `ref_valid` only re-checks the variable
  * fit-spline slots because the fixed-size kinds are expected to be validated
  * here. The table below is a hand-copied mirror of those arms; keep it in step
- * when a kind gains a point (the residual test suite covers the Rust side).
+ * when a kind gains a point (the residual test suite covers the Rust side, and
+ * `kernel/__tests__/sketchVertexRegistration.test.ts` pins the published slash
+ * paths to it).
  *
  * Undefined for an unknown kind or a malformed fit-spline block, so a caller
  * keeps its existing path instead of guessing the block's shape.
@@ -398,6 +409,43 @@ export function entityPointKeys(
   }
   const keys = ENTITY_POINT_KEYS[kind]
   return keys ? new Set(keys) : undefined
+}
+
+/** The 2D point an entity's `key` names in its own params frame, or undefined
+ *  when the kind or key has no such point. It is the one mapping from a point
+ *  key to a position: `registerSolvedGeometrySlash` publishes every key
+ *  `entityPointKeys` names at this point, so a projection source resolves where
+ *  the constraint operand table says it may. An arc end comes from the stored
+ *  angle (degrees) and an ellipse's axis ends from `ellipseAxisPoints`, the TS
+ *  mirror of the solver's Major/MajorNeg/Minor/MinorNeg arms. */
+export function entityPointXY(
+  kind: string,
+  params: readonly number[],
+  key: string,
+  handles?: 'start' | 'end' | 'both',
+): [number, number] | undefined {
+  if (kind === 'arc') {
+    if (params.length < 5) return undefined
+    const [cx, cy, r, a0, a1] = params
+    if (key === 'center') return [cx, cy]
+    const deg = key === 'start' ? a0 : key === 'end' ? a1 : undefined
+    if (deg === undefined) return undefined
+    const angle = deg * (Math.PI / 180)
+    return [cx + r * Math.cos(angle), cy + r * Math.sin(angle)]
+  }
+  if (kind === 'ellipse') {
+    if (params.length < 5) return undefined
+    const [cx, cy, a, b, theta] = params
+    if (key === 'center') return [cx, cy]
+    if (!isEllipseAxisKey(key)) return undefined
+    return ellipseAxisPoints(cx, cy, a, b, theta)[key]
+  }
+  const indices = entityVertexIndices(kind, params.length, handles)?.[key]
+  if (indices === undefined) return undefined
+  const [ix, iy] = indices
+  const x = params[ix]
+  const y = params[iy]
+  return x === undefined || y === undefined ? undefined : [x, y]
 }
 
 /** The coordinate pairs to translate for ONE entity instance, the instance-aware

@@ -6,6 +6,7 @@
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
 import { applyAddProjectedEntity, applyDeleteElements } from '@/utils/yamlMutations/sketch'
+import { projectionMutationsForId } from '@/tools/projectionMutations'
 
 function doc(): PartDoc {
   return {
@@ -165,6 +166,95 @@ describe('add_projected_entity accepts a source that can resolve', () => {  it('
       members: { 'u|e_aaaabbbb': 'proj_face.aaaabbbb' },
     }]
     expect(() => add(d, 'sk2', '@sk1/proj_face.aaaabbbb')).not.toThrow()
+  })
+})
+
+// The vertex keys a foreign projection may name are the keys a constraint may
+// name on that kind: an arc's ends, an ellipse's axis ends and a spline's
+// control points all have a position, so refusing them hid real geometry.
+function vertexDoc(): PartDoc {
+  return {
+    version: 1,
+    kind: 'part',
+    features: [
+      {
+        id: 'sk1', kind: 'sketch', plane: '@builtin_plane_front',
+        entities: [
+          { id: 'l1', kind: 'line' },
+          { id: 'A', kind: 'arc' },
+          { id: 'E', kind: 'ellipse' },
+          { id: 'S', kind: 'spline' },
+        ],
+        initial: {
+          l1: [0, 0, 10, 0],
+          A: [-15, 20, 17, 90, 270],
+          E: [4.5, 40, 20, 8, 0],
+          S: [0, 0, 10, 20, 20, 20, 30, 0],
+        },
+        constraints: [],
+      },
+      {
+        id: 'sk2', kind: 'sketch', plane: '@builtin_plane_right',
+        entities: [], initial: {}, constraints: [],
+      },
+    ],
+  }
+}
+
+describe('add_projected_entity accepts every vertex key the kind has', () => {
+  it('accepts an arc start/end/center, an ellipse axis end and a spline control point', () => {
+    const d = vertexDoc()
+    for (const source of [
+      '@sk1/A/start', '@sk1/A/end', '@sk1/A/center',
+      '@sk1/E/center', '@sk1/E/major1', '@sk1/E/minor2',
+      '@sk1/S/start', '@sk1/S/c1',
+    ]) {
+      expect(() => add(d, 'sk2', source), source).not.toThrow()
+    }
+    const sk2 = d.features![1]
+    if (sk2.kind !== 'sketch') throw new Error('not a sketch')
+    const sources = sk2.constraints!.filter(c => c.kind === 'projection').map(c => c.source)
+    expect(sources).toEqual([
+      '@sk1/A/start', '@sk1/A/end', '@sk1/A/center',
+      '@sk1/E/center', '@sk1/E/major1', '@sk1/E/minor2',
+      '@sk1/S/start', '@sk1/S/c1',
+    ])
+  })
+
+  it('still refuses an unknown suffix and lists the keys the kind really has', () => {
+    const d = vertexDoc()
+    expect(() => add(d, 'sk2', '@sk1/A/nope')).toThrow(
+      "names no vertex 'nope' on sk1/A (arc); vertices: center, start, end",
+    )
+    expect(() => add(d, 'sk2', '@sk1/l1/center')).toThrow(
+      "names no vertex 'center' on sk1/l1 (line); vertices: start, end",
+    )
+  })
+})
+
+describe('the project tool click path projects a foreign arc endpoint', () => {
+  it('emits one point projection that the applier accepts', () => {
+    const d = vertexDoc()
+    const noResolvers = {
+      entityKind: () => null,
+      edgeKind: () => null,
+      faceEdges: () => null,
+    }
+    const mutations = projectionMutationsForId('vertex:sk1:A:end', 'sk2', noResolvers)
+    expect(mutations).toEqual([
+      { type: 'add_projected_entity', featureId: 'sk2', kind: 'point', source: '@sk1/A/end' },
+    ])
+    for (const mutation of mutations) {
+      if (mutation.type !== 'add_projected_entity') throw new Error('unexpected mutation')
+      applyAddProjectedEntity(d, mutation.featureId, mutation.kind ?? 'point', mutation.source as string)
+    }
+    const sk2 = d.features![1]
+    if (sk2.kind !== 'sketch') throw new Error('not a sketch')
+    expect(sk2.entities).toHaveLength(1)
+    expect(sk2.entities![0].kind).toBe('point')
+    expect(sk2.constraints).toEqual([
+      { id: `proj_${sk2.entities![0].id}`, kind: 'projection', target: `$${sk2.entities![0].id}`, source: '@sk1/A/end' },
+    ])
   })
 })
 
