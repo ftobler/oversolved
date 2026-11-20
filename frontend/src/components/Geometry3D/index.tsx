@@ -323,7 +323,8 @@ export default function Geometry3D({ featureId, solved, entities, projectionMemb
   //
   // New R3F event consumers must fit into this stack via z-positioning.
   // Drag-time snap uses findSnapTarget() in Dragging.tsx (full scan, dragged element hidden).
-  // Draw-time snap reads hoveredVertexPosition from the store (hover comes from the ID buffer).
+  // Draw-time snap resolves the ID buffer at the press pixel (Drawing.tsx); the
+  // hover only feeds the preview, which draws to the same resolved point.
   return (
     <group ref={groupRef} rotation={rot} position={pos ?? [0, 0, 0]}>
       {topology && !stale && <TopologySurfaces topology={topology} isEditing={isEditing} activeFeatureId={activeFeatureId} />}
