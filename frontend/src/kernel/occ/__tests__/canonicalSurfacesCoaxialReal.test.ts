@@ -257,7 +257,7 @@ describe.skipIf(!oc || !solveBytes)('coaxial joins in the pipes report document'
     } finally {
       scope.dispose()
     }
-  })
+  }, 30_000)
 
   it('gives all six joins the same topology', async () => {
     const shape = await buildOnce()

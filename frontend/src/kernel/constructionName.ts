@@ -43,9 +43,35 @@ export function sideFacePath(createdBy: string, sketchEntityId: string): string 
   return `${createdBy}|side|${sketchEntityId}`
 }
 
-/** A sweep cap (start = sketch side, end = swept-to side). */
-export function capFacePath(createdBy: string, which: 'start' | 'end', groupIndex = 0): string {
-  return groupIndex > 0 ? `${createdBy}|cap|${which}|g${groupIndex}` : `${createdBy}|cap|${which}`
+/**
+ * The sorted, deduped profile-entity key of one region (outer loop plus holes),
+ * as `<sketchId>/<entityId>` tokens. The cap path is keyed by this, never by the
+ * region's position in the loop order: deleting an earlier region must not
+ * rename the caps after it. Tokens are symbolic, so the key rebuilds
+ * byte-identically.
+ */
+export function capRegionKey(tokens: string[]): string {
+  return [...new Set(tokens)].sort().join('+')
+}
+
+/**
+ * A prism/revolve/sweep cap: `<createdBy>|cap|<which>|r|<regionKey>`. The key is
+ * the region's own profile entities, so a cap keeps its identity when other
+ * regions come or go. `which` distinguishes the profile-side cap from the far
+ * one when both exist.
+ */
+export function capFacePath(createdBy: string, which: 'start' | 'end', regionKey: string): string {
+  return `${createdBy}|cap|${which}|r|${regionKey}`
+}
+
+/**
+ * The pre-fix cap path, `<createdBy>|cap|<which>` (a bare single-group cap) or
+ * `<createdBy>|cap|<which>|g<i>` (a multi-group cap keyed by loop order). Only
+ * the bare form can hand off to a stored pick: the query's own lineage has to
+ * recompute a live region, which the ordinal form cannot prove.
+ */
+export function legacyCapFacePath(createdBy: string, which: 'start' | 'end'): string {
+  return `${createdBy}|cap|${which}`
 }
 
 /** A fillet/chamfer face generated on one edge: `<createdBy>|fillet|<edgeUuid>`. */

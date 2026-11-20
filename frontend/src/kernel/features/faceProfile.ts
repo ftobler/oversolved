@@ -18,6 +18,7 @@ import { extractProfileLoops, type ProfileLoopDiag } from './shared/profileLoops
 import { parseSketchEntityRef, sketchIdFromQuery, surfaceEntityIds } from './shared/partRef'
 import type { PlaneLike } from './shared/planes'
 import { stripRefSigil } from '@/utils/refSigil'
+import { resolveLegacyCapQuery } from './shared/legacyCapHandoff'
 import { swallowUnlessTrap } from '../errors'
 
 type Dict = Record<string, unknown>
@@ -200,7 +201,8 @@ export function resolveFaceProfile(
     return faceLoopsOfFace(oc, scope, faces[faceIndex])
   }
 
-  const faceEntry = globalRepo.query(sketchRef, null, partStore) as Dict | null
+  const faceEntry = (resolveLegacyCapQuery(globalRepo, sketchRef) ??
+    globalRepo.query(sketchRef, null, partStore)) as Dict | null
   if (faceEntry === null) throw new Error(`Profile face not found: ${sketchRef}`)
 
   const partId = faceEntry.body_id as string | undefined

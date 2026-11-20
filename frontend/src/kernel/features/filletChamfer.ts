@@ -13,6 +13,7 @@ import { Repository, ref, makeAncestryQuery, parseAncestry, partIdOf, isClassifi
 import { geometryClassifiers } from '../geomHash'
 import { resolvePart, resolvePartIds } from './shared/partResolution'
 import { buildFaceIndex, makeFaceIndexCache, resolveFacesByQuery, type FaceIndex } from './shared/faceResolution'
+import { resolveLegacyCapRimQuery } from './shared/legacyCapHandoff'
 import { resplitPart } from './partSplit'
 import { canonicalEdges, assertAligned, readPartNames } from '../occ/partNames'
 import { namedElementCreator, newIndexSets } from '../occ/modifierAttribution'
@@ -285,7 +286,7 @@ export function resolveEdgesByQuery(
     }
     let edge = index.ambiguousQueries.has(q) ? undefined : index.queryToEdge.get(q)
     if (edge === undefined && q.startsWith('?') && !isFaceQuery(q)) {
-      edge = resolveByStableAncestry(index.ancestryRepo, q, partStore)
+      edge = resolveByStableAncestry(index.ancestryRepo, q, part, partStore)
     }
     if (edge === undefined && isFaceQuery(q)) {
       // A face query resolves every edge of the face: build the per-body face
@@ -332,8 +333,20 @@ export function resolveEdgesWithIndex(
 function resolveByStableAncestry(
   repo: Repository,
   q: string,
+  part: PartSolid,
   partStore: Record<string, unknown> | null = null,
 ): OccShape | undefined {
+  // A stored cap rim pick minted before caps were keyed by their region.
+  // The query's own side entity plus the body's cap tokens recompute the live
+  // edge, so this is a verified hand-off, never a positional guess.
+  const migrated = resolveLegacyCapRimQuery(repo, q, part)
+  if (migrated !== null && typeof migrated === 'object' && 'shape' in migrated) {
+    const payload = migrated as AncestryEdgePayload
+    const [ids] = parseAncestry(q)
+    const wanted = ids.filter(isClassifierId).map((i) => i.slice(1))
+    if (wanted.every((c) => payload.classifiers.includes(c))) return payload.shape
+    return undefined
+  }
   try {
     const resolved = repo.query(q, null, partStore)
     if (resolved !== null && typeof resolved === 'object' && 'shape' in resolved) {

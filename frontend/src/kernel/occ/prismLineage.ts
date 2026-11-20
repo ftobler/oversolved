@@ -55,6 +55,7 @@ import {
   mintFaceUuid,
   sideFacePath,
   capFacePath,
+  capRegionKey,
   splitFacePath,
   orderSplitChildren,
   type SplitChild,
@@ -220,7 +221,6 @@ export function buildPrismLineageMap(
   plane: PlaneLike,
   createdBy = '',
   sketchId = '',
-  groupIndex = 0,
   /**
    * The shape whose edges were handed to the builder, when that is not the
    * face itself. The sweep heals its outer wire before sweeping it, and
@@ -381,6 +381,12 @@ export function buildPrismLineageMap(
   ))].sort()
   const capTokensFor = (which: 'start' | 'end'): string[] =>
     capTokensByRole === null ? capTokens : capTokensByRole[which]
+  // The minted path needs the same tokens the query will carry, so a bare
+  // entity id is qualified with this profile's sketch exactly as the later
+  // prefix pass will do it. The stored capAncestry keeps the raw list.
+  const qualifiedCapTokens = (which: 'start' | 'end'): string[] =>
+    capTokensFor(which).map((t) =>
+      t.startsWith('@') ? t : (sketchId ? `@${sketchId}/${t}` : `@${t}`))
 
   // solid face -> construction uuid, its tokens the generating profile entity.
   const faceNames = new SubShapeMap<string>()
@@ -399,7 +405,10 @@ export function buildPrismLineageMap(
         // cheaper than an index build, so it stays a find.
         const cap = capCandidates.find((c) => (sf as OccSubShape).IsSame(c.face))
         if (cap) {
-          uuid = mintFaceUuid(capFacePath(createdBy, cap.which, groupIndex))
+          // The cap is keyed by the region's own profile entities, never by
+          // the group's position in the loop order.
+          const regionKey = capRegionKey(qualifiedCapTokens(cap.which))
+          uuid = mintFaceUuid(capFacePath(createdBy, cap.which, regionKey))
           capRole = cap.which
         }
       }
@@ -635,6 +644,21 @@ function namedFuse(oc: OccModule, scope: DisposeScope) {
   return {
     // `part` must be tracked in `scope`; it is consumed by the next fuse.
     add(part: OccShape, lineage: LineageMaps): void {
+      // A multi-group cap's own token list has to travel with its uuid, or the
+      // consumer falls back to the body-wide profile queries and both caps read
+      // as the same face (join-cap-lineage).
+      for (const uuid of Object.keys(lineage.capAncestry)) {
+        if (uuid in names.capAncestry) {
+          // Two regions that name the same profile entities have no way to tell
+          // their caps apart. A shared uuid is a collision the resolver refuses
+          // later; refuse here, while the cause is still nameable.
+          throw new Error(
+            'prism lineage: two fused profile regions minted the same cap identity; ' +
+            'a cap must be told apart by its own profile entities',
+          )
+        }
+        names.capAncestry[uuid] = lineage.capAncestry[uuid]
+      }
       Object.assign(names.faceAncestry, lineage.faceAncestry)
       Object.assign(names.edgeAncestry, lineage.edgeAncestry)
       if (solid === null) {
@@ -705,8 +729,7 @@ function perGroupPrismWithLineage(
   // even when its other groups end in one.
   let apex: Vec3 | null = null
 
-  for (let groupIdx = 0; groupIdx < groups.length; groupIdx++) {
-    const [outer, holes] = groups[groupIdx]
+  for (const [outer, holes] of groups) {
     const face = scope.track(sketchLoopsToFace(oc, scope, [outer, ...holes], plane))
     const builder = makeBuilder(face)
     if (!builder.IsDone()) throw new Error('prism builder did not complete')
@@ -716,7 +739,7 @@ function perGroupPrismWithLineage(
     // except the survivor returned at the end; scope-own them all here and
     // detach only that survivor, which the caller takes over.
     scope.track(part)
-    const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane, createdBy, sketchId, groupIdx)
+    const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane, createdBy, sketchId)
     prefixLineageMaps(lineage, tokenPrefix)
     // The profile face is dead once the lineage has been read off it.
     scope.release(face)
@@ -941,8 +964,7 @@ export function revolveProfileWithLineage(
   // edit cut in two) fuse into one solid; the clean folds their coplanar seam
   // faces, and a clean that rejects the compound keeps the raw fused solid.
   const fuse = namedFuse(oc, scope)
-  for (let groupIdx = 0; groupIdx < groups.length; groupIdx++) {
-    const [outer, holes] = groups[groupIdx]
+  for (const [outer, holes] of groups) {
     const face = scope.track(sketchLoopsToFace(oc, scope, [outer, ...holes], plane))
     const ax = makeAxis(oc, scope, axisOrigin, axisDirection)
     const builder = scope.track(new oc.BRepPrimAPI_MakeRevol_1(face, ax as unknown as OccShape, angleRad, true))
@@ -952,7 +974,7 @@ export function revolveProfileWithLineage(
     // except the survivor returned at the end; scope-own them all here and
     // detach only that survivor, which the caller takes over.
     scope.track(part)
-    const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane, createdBy, sketchId, groupIdx)
+    const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane, createdBy, sketchId)
     prefixLineageMaps(lineage, tokenPrefix)
     // The profile face is dead once the lineage has been read off it.
     scope.release(face)
@@ -1183,7 +1205,7 @@ export function sweepProfileWithLineage(
   const { solid, pipeBuilder, mode } = result
 
   const lineage = buildPrismLineageMap(
-    oc, scope, face, pipeBuilder, fusedLoops, plane, createdBy, sketchId, 0, outerWire,
+    oc, scope, face, pipeBuilder, fusedLoops, plane, createdBy, sketchId, outerWire,
   )
   if (holeWires.length === 0) {
     // The shell builder holds its own handle to the spine wire.
@@ -1212,11 +1234,11 @@ export function sweepProfileWithLineage(
     if (attempt.result === null) throw holeSweepFailure(innerWireIds(holeWire))
     const inner = attempt.result
     holeSolids.push(inner.solid)
-    // The group index keeps a hole's cap UUID out of the outer caps' name
-    // space. The hole caps are cut away, so their names are never carried.
+    // Each hole's cap is keyed by the hole loop's own profile entities, so it
+    // cannot claim the outer caps' name space. The hole caps are cut away, so
+    // their names are never carried.
     holeLineages.push(buildPrismLineageMap(
-      oc, scope, face, inner.pipeBuilder, fusedLoops, plane, createdBy, sketchId,
-      holeSolids.length, holeWire,
+      oc, scope, face, inner.pipeBuilder, fusedLoops, plane, createdBy, sketchId, holeWire,
     ))
   }
   scope.release(spineWire)

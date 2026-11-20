@@ -76,6 +76,42 @@ function circleSketch(sketchId: string, diameter: number) {
   }
 }
 
+/** A sketch with several disjoint 4 x 4 rectangles, each on its own prefix. */
+function chipSketch(sketchId: string, plane: string, xs: number[]) {
+  const prefixes = ['a', 'b', 'c'].slice(0, xs.length)
+  const rects = prefixes.map((prefix, i) => {
+    const cx = xs[i]
+    const entities = ['bottom', 'right', 'top', 'left'].map((side) => ({ id: `${prefix}_${side}`, kind: 'line' as const }))
+    const initial = {
+      [`${prefix}_bottom`]: [cx - 2, -2, cx + 2, -2],
+      [`${prefix}_right`]: [cx + 2, -2, cx + 2, 2],
+      [`${prefix}_top`]: [cx + 2, 2, cx - 2, 2],
+      [`${prefix}_left`]: [cx - 2, 2, cx - 2, -2],
+    }
+    const sides = ['bottom', 'right', 'top', 'left']
+    const constraints = [
+      ...sides.map((side, k) => ({
+        id: `${prefix}_co${k}`, kind: 'coincident' as const,
+        a: { entity: `${prefix}_${side}`, point: 'end' as const },
+        b: { entity: `${prefix}_${sides[(k + 1) % 4]}`, point: 'start' as const },
+      })),
+      { id: `${prefix}_h1`, kind: 'horizontal' as const, target: { entity: `${prefix}_bottom` } },
+      { id: `${prefix}_h2`, kind: 'horizontal' as const, target: { entity: `${prefix}_top` } },
+      { id: `${prefix}_v1`, kind: 'vertical' as const, target: { entity: `${prefix}_right` } },
+      { id: `${prefix}_v2`, kind: 'vertical' as const, target: { entity: `${prefix}_left` } },
+      { id: `${prefix}_l1`, kind: 'length' as const, target: { entity: `${prefix}_bottom` }, value: 4 },
+      { id: `${prefix}_l2`, kind: 'length' as const, target: { entity: `${prefix}_left` }, value: 4 },
+    ]
+    return { entities, initial, constraints }
+  })
+  return {
+    id: sketchId, kind: 'sketch' as const, label: 'Chips', plane,
+    entities: rects.flatMap((r) => r.entities),
+    initial: Object.assign({}, ...rects.map((r) => r.initial)),
+    constraints: rects.flatMap((r) => r.constraints),
+  }
+}
+
 const box = (): Spec => ({ features: [
   rectSketch('sk1', 10, 10),
   { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 5, direction: 'normal', operation: 'new' },
@@ -193,6 +229,19 @@ describe.skipIf(!oc || !solveBytes)('query self-resolution (real OCC + Rust solv
     expectSelfResolution({ features: [
       circleSketch('sk1', 10),
       { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 8, direction: 'normal', operation: 'new' },
+    ] }, 'body_ex1')
+  })
+
+  // A multi-region add: every cap, rim edge and corner has to resolve to its
+  // own element with the UUID stripped too, which is what pins RC2's own
+  // per-region cap tokens (they used to fall back to the target body's).
+  it('multi-region add onto a plate', () => {
+    expectSelfResolution({ features: [
+      rectSketch('sk1', 60, 20, { offsetX: -30, offsetY: -10 }),
+      { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 2, direction: 'normal', operation: 'new' },
+      { id: 'pl2', kind: 'plane', definition: { mode: 'offset', plane: '@builtin_plane_front', offset: 2 } },
+      chipSketch('sk2', '@pl2', [-20, 20]),
+      { id: 'ex2', kind: 'extrude', sketch: '$sk2', distance: 1, direction: 'normal', operation: 'add' },
     ] }, 'body_ex1')
   })
 

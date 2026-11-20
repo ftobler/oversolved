@@ -211,7 +211,7 @@
       "id": "sk_cb",
       "kind": "sketch",
       "label": "Counterbore centre",
-      "plane": "?15,8,c,19,19,19,19,7;@u|u_a88b163bb146c2d0@ex_boss@body_ex_web@sk_rect/1uGWfp1-Iw7zmS8O@sk_rect/RbyzDekiMba0yyFD@sk_rect/fe5LE9bUMv2jGdmt@sk_rect/nJUiBJquZer4NmG6@cls_yp:flatface",
+      "plane": "?15,8,c,b,7;@u|u_5c50cdf64a9db7df@ex_boss@body_ex_web@sk_boss/b0@cls_yp:flatface",
       "initial": {
         "cb0": [
           0,
@@ -296,16 +296,16 @@
       "label": "Casting fillet R1",
       "fillet": {
         "edges": [
-          "?15,7,c,b,7,7;@u|e_f5e97cd624d2ce68@ex_web@body_ex_web@sk_endL/eL@cls_xn@cls_yn:edge",
-          "?15,7,c,b,7;@u|e_b3039d1ea5c76103@ex_web@body_ex_web@sk_endL/eL@cls_xn:edge",
-          "?15,7,c,b,7;@u|e_f51841e458cbfba9@ex_web@body_ex_web@sk_boss/b0@cls_yn:edge",
-          "?15,7,c,b,7;@u|e_0f4ddd3ca2b5a581@ex_web@body_ex_web@sk_boss/b0@cls_yn:edge",
-          "?15,7,c,b;@u|e_8de3cbd85ab04d01@ex_web@body_ex_web@sk_boss/b0:edge",
-          "?15,7,c,b;@u|e_7038746d22252348@ex_web@body_ex_web@sk_boss/b0:edge",
-          "?15,7,c,b;@u|e_12c2c5821c189ac2@ex_web@body_ex_web@sk_boss/b0:edge",
-          "?15,7,c,b,7,7;@u|e_c0439e382f2eaad7@ex_web@body_ex_web@sk_endR/eR@cls_xp@cls_yn:edge",
-          "?15,7,c,b,7;@u|e_3c0d22c86929931e@ex_web@body_ex_web@sk_endR/eR@cls_xp:edge",
-          "?15,7,c,b,7;@u|e_13e606548b60135a@ex_web@body_ex_web@sk_boss/b0@cls_yp:edge"
+          "?15,8,c,b,7,7;@u|e_80d5372937ff389c@ex_endL@body_ex_web@sk_endL/eL@cls_xn@cls_yn:edge",
+          "?15,8,c,b,7;@u|e_210430aac9796d7c@ex_endL@body_ex_web@sk_endL/eL@cls_xn:edge",
+          "?15,7,c,b,7;@u|e_a19c2ef85664d4ae@ex_web@body_ex_web@sk_boss/b0@cls_yn:edge",
+          "?15,7,c,b,7;@u|e_782105db5b86ecd8@ex_web@body_ex_web@sk_boss/b0@cls_yn:edge",
+          "?15,7,c,b;@u|e_56fc00ae3d9f2998@ex_web@body_ex_web@sk_boss/b0:edge",
+          "?15,7,c,b;@u|e_6eb0b86b23033c38@ex_web@body_ex_web@sk_boss/b0:edge",
+          "?15,7,c,b;@u|e_49d1b009d0bcc12a@ex_web@body_ex_web@sk_boss/b0:edge",
+          "?15,8,c,b,7,7;@u|e_6cd0cd8ee0f8e381@ex_endR@body_ex_web@sk_endR/eR@cls_xp@cls_yn:edge",
+          "?15,8,c,b,7;@u|e_8665d43691b9ff53@ex_endR@body_ex_web@sk_endR/eR@cls_xp:edge",
+          "?15,8,c,b,7;@u|e_637a455b5b697625@ex_boss@body_ex_web@sk_boss/b0@cls_yp:edge"
         ],
         "radius": 1
       }

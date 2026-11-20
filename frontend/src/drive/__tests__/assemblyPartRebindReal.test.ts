@@ -139,7 +139,7 @@ const STUD_WALL: AssemblyDoc = {
         ref_b: {
           part: 's0', anchor: 'a_701e2b1d8bfb8511',
           anchor_descriptor: {
-            geom_hash: '@u|u_97769ef7877b7211', kind: 'plane', created_by: 'ex',
+            geom_hash: '@u|u_2212259b6ef6e6aa', kind: 'plane', created_by: 'ex',
             point: [-3.4559767292579276e-16, 0, -9.131065399428788e-16],
           },
         },

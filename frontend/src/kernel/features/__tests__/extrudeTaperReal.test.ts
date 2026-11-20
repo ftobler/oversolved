@@ -16,7 +16,7 @@ import { shapeBbox } from '../../occ/faceBounds'
 import { faceArea, faceNormal } from '../../occ/primitives'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import { sketchLoopsToFace } from '../../occ/prismLineage'
-import { capFacePath, mintFaceUuid } from '../../constructionName'
+import { capFacePath, capRegionKey, mintFaceUuid } from '../../constructionName'
 import type { PlaneLike } from '../shared/planes'
 import type { LoopEdge } from '../../profileLoops'
 import { oc, solveBytes, extrudeTestHarness } from '../extrudeRealSupport'
@@ -684,7 +684,8 @@ describe.skipIf(!oc || !solveBytes)('extrude taper (real OCC + Rust solver)', ()
       ({ face }) => face.surface_type === 'flatface' && Math.abs(face.normal[1]) > 0.9,
     )
     expect(caps.length, 'the base cap is the only cap').toBe(1)
-    expect(caps[0].query).toContain(`@u|${mintFaceUuid(capFacePath('ex1', 'start'))}`)
+    const regionKey = capRegionKey(['sk1b', 'sk1l', 'sk1r', 'sk1t'].map((e) => `@sk1/${e}`))
+    expect(caps[0].query).toContain(`@u|${mintFaceUuid(capFacePath('ex1', 'start', regionKey))}`)
     // No top face exists, so a plane naming one is refused by name.
     const bad = h.res(result, 'plBad')
     expect(bad.status).toBe('exception')

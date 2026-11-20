@@ -32,12 +32,18 @@ import {
   mintFaceUuid,
   sideFacePath,
   capFacePath,
+  capRegionKey,
   filletFacePath,
   toolCopyFacePath,
 } from '../../constructionName'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
+
+/** The region key of the `l0..l3` square the box tests extrude. */
+function boxKey(sketchId: string): string {
+  return capRegionKey(['l0', 'l1', 'l2', 'l3'].map((e) => `@${sketchId}/${e}`))
+}
 
 function planeAt(z: number): PlaneLike {
   return { origin: [0, 0, z], x_axis: [1, 0, 0], y_axis: [0, 1, 0], normal: [0, 0, 1] }
@@ -89,7 +95,7 @@ describe.skipIf(!oc)('construction-name threading through ops (real OCC)', () =>
 
       // The base box's bottom cap and 4 side walls are untouched by the fuse, so
       // their exact minted UUIDs must survive.
-      expect(carried.has(mintFaceUuid(capFacePath('e1', 'start')))).toBe(true)
+      expect(carried.has(mintFaceUuid(capFacePath('e1', 'start', boxKey('sk1'))))).toBe(true)
       for (let i = 0; i < 4; i++) {
         expect(carried.has(mintFaceUuid(sideFacePath('e1', `sk1/l${i}`)))).toBe(true)
       }
@@ -135,7 +141,7 @@ describe.skipIf(!oc)('construction-name threading through ops (real OCC)', () =>
         expect(carried.has(mintFaceUuid(toolCopyFacePath(toolUuid, 'bool1')))).toBe(true)
       }
       // The target's own faces are untouched by the re-mint.
-      expect(carried.has(mintFaceUuid(capFacePath('e1', 'start')))).toBe(true)
+      expect(carried.has(mintFaceUuid(capFacePath('e1', 'start', boxKey('sk1'))))).toBe(true)
 
       // A consuming boolean keeps the verbatim carry-over: its tool is gone, so
       // the inherited UUID is unique and re-minting would only churn it.
@@ -206,7 +212,7 @@ describe.skipIf(!oc)('construction-name threading through ops (real OCC)', () =>
       expect(carried.has(mintFaceUuid(filletFacePath('f1', pickedUuid)))).toBe(true)
       // A box face not adjacent to the filleted edge keeps its UUID; the bottom
       // cap (start) survives every single-edge fillet.
-      expect(carried.has(mintFaceUuid(capFacePath('e1', 'start')))).toBe(true)
+      expect(carried.has(mintFaceUuid(capFacePath('e1', 'start', boxKey('sk1'))))).toBe(true)
     } finally {
       scope.dispose()
     }

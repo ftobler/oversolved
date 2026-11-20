@@ -29,6 +29,7 @@ import { BUILTIN_PLANES } from '../solverConstants'
 import { sketchToWorld2d, type PlaneLike } from './shared/planes'
 import { precisionKey, precisionOfSolve } from '../precision'
 import { stripRefSigil } from '@/utils/refSigil'
+import { resolveLegacyCapQuery } from './shared/legacyCapHandoff'
 
 type Dict = Record<string, unknown>
 
@@ -128,7 +129,7 @@ export function resolveSketchPlane(
   if (planeQuery.startsWith('?')) {
     let resolved: unknown
     try {
-      resolved = globalRepo.query(planeQuery, null)
+      resolved = resolveLegacyCapQuery(globalRepo, planeQuery) ?? globalRepo.query(planeQuery, null)
     } catch (e) {
       throw new Error(`face '${planeQuery}' did not resolve: ${e instanceof Error ? e.message : String(e)}`)
     }
