@@ -35,8 +35,10 @@ export interface DrawSnapState {
   ngonSides?: number
   /** World units spanned by one screen pixel on the sketch plane. When set, a
    *  vertex snap must lie within the ID buffer's pick reach of the click, so a
-   *  hover the pointer has already left cannot claim it. Absent for headless
-   *  callers, whose vertex id was itself resolved at the click pixel. */
+   *  hover the pointer has already left cannot claim it. Absent where the
+   *  caller's vertex id was itself resolved at the click pixel (the press seam,
+   *  headless callers): there the id is the evidence, and a world-space gate
+   *  would wrongly reject a plane seen at a steep angle. */
   pixelSize?: number | null
 }
 

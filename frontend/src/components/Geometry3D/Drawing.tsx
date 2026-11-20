@@ -306,8 +306,6 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
           sketch: sketch as Record<string, import('@/types/cad').Entity> | undefined,
           otherSketches: otherSketches as Record<string, Record<string, import('@/types/cad').Entity>> | undefined,
           ngonSides: useSketchUiStore.getState().ngonSides,
-          // Same screen scale the preview uses, so the vertex gate is one rule.
-          pixelSize: screenPixelSize(camera),
           // The mode stack is store-owned (activate/deactivate); the pointer-down
           // context never pushes or pops, so these are inert here.
           pushMode: () => {},
