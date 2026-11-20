@@ -16,7 +16,7 @@ import type { PlaneLike } from '../../features/shared/planes'
 import type { LoopEdge } from '../../profileLoops'
 import type { OccModule } from '../occTypes'
 import type { Vec3 } from '../primitives'
-import { mintFaceUuid, sideFacePath, capFacePath } from '../../constructionName'
+import { mintFaceUuid, sideFacePath, capFacePath, capRegionKey } from '../../constructionName'
 
 const oc = await loadOcc()
 
@@ -90,9 +90,11 @@ describe.skipIf(!oc)('construction-name minting (real OCC)', () => {
     const expectedSides = ['l0', 'l1', 'l2', 'l3'].map((e) =>
       mintFaceUuid(sideFacePath(CREATED_BY, `${SKETCH_ID}/${e}`)),
     )
+    const capTokens = ['l0', 'l1', 'l2', 'l3'].map((e) => `@${SKETCH_ID}/${e}`).sort()
+    const regionKey = capRegionKey(capTokens)
     const expectedCaps = [
-      mintFaceUuid(capFacePath(CREATED_BY, 'start')),
-      mintFaceUuid(capFacePath(CREATED_BY, 'end')),
+      mintFaceUuid(capFacePath(CREATED_BY, 'start', regionKey)),
+      mintFaceUuid(capFacePath(CREATED_BY, 'end', regionKey)),
     ]
     for (const u of [...expectedSides, ...expectedCaps]) {
       expect(uuids).toContain(u)
@@ -104,7 +106,6 @@ describe.skipIf(!oc)('construction-name minting (real OCC)', () => {
     for (let i = 0; i < 4; i++) {
       expect(faceAncestry[expectedSides[i]]).toEqual([`@${SKETCH_ID}/l${i}`])
     }
-    const capTokens = ['l0', 'l1', 'l2', 'l3'].map((e) => `@${SKETCH_ID}/${e}`).sort()
     for (const cap of expectedCaps) {
       expect(faceAncestry[cap]).toEqual([])
       expect(capAncestry[cap]).toEqual(capTokens)

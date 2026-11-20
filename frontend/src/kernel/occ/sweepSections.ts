@@ -233,7 +233,7 @@ export function sweepSectionsWithLineage(
   }
   const lineage = buildPrismLineageMap(
     oc, scope, naming.face, pipeBuilder, [naming.section.loop], naming.section.plane,
-    createdBy, naming.section.sketchId, 0, naming.wire,
+    createdBy, naming.section.sketchId, naming.wire,
     { start: prepared[0].tokens, end: prepared[prepared.length - 1].tokens },
   )
   prefixLineageMaps(lineage, naming.section.sketchId ? `@${naming.section.sketchId}/` : '@')

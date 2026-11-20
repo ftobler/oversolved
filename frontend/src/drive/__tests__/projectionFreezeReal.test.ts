@@ -79,7 +79,7 @@ describe.skipIf(!ready)('frozen projections (real OCC + Rust solver)', () => {
   }, 180_000)
 
   it('freezes a face projection into its derived member rows', async () => {
-    const topFace = '?15,4,9,15,15,15,15,7;@u|u_42825f874782e937@ex1@body_ex1@sk1/FTWh9huZRvo1rGJ6@sk1/Xkck0RRPy6V4_iVJ@sk1/eKPSVl164lTIlYEW@sk1/usUy8mnQpMYZgmKh@cls_yp:flatface'
+    const topFace = '?15,4,9,15,15,15,15,7;@u|u_ecef3db5d2b83b9c@ex1@body_ex1@sk1/FTWh9huZRvo1rGJ6@sk1/Xkck0RRPy6V4_iVJ@sk1/eKPSVl164lTIlYEW@sk1/usUy8mnQpMYZgmKh@cls_yp:flatface'
     const setup = await runHeadless({
       doc: emptyDoc(),
       steps: [
@@ -145,7 +145,7 @@ describe.skipIf(!ready)('frozen projections (real OCC + Rust solver)', () => {
         {
           mutation: {
             type: 'add_projected_entity', featureId: 'sk2', kind: 'line',
-            source: '?15,4,9,15,7,7;@u|e_37a33df87b666c99@ex1@body_ex1@sk1/Xkck0RRPy6V4_iVJ@cls_yp@cls_zp:straightedge',
+            source: '?15,4,9,15,7,7;@u|e_92c5d4ed1b46bd1d@ex1@body_ex1@sk1/Xkck0RRPy6V4_iVJ@cls_yp@cls_zp:straightedge',
             entityId: 'pe1',
           },
         },

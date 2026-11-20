@@ -6,6 +6,8 @@ import {
   SPLIT_EPS,
   sideFacePath,
   capFacePath,
+  capRegionKey,
+  legacyCapFacePath,
   filletFacePath,
   moveFaceExtendPath,
   moveFaceSetExtendPath,
@@ -30,14 +32,27 @@ describe('construction path grammar', () => {
   it('builds symbolic-only paths (no float ever)', () => {
     const paths = [
       sideFacePath('extrude1', 'line3'),
-      capFacePath('extrude1', 'start'),
-      capFacePath('extrude1', 'end'),
+      capFacePath('extrude1', 'start', capRegionKey(['@sk1/l1', '@sk1/l2'])),
+      capFacePath('extrude1', 'end', capRegionKey(['@sk1/l1', '@sk1/l2'])),
       filletFacePath('fillet2', 'e_abc123'),
       splitFacePath('u_deadbeef', 7),
       importedFacePath('import1', 17),
       importedInstanceFacePath('import1', 17, 1),
     ]
     for (const p of paths) expect(p).not.toMatch(FLOAT_RE)
+  })
+
+  it('keys a cap by its own region entities, never by a group ordinal', () => {
+    const region = capRegionKey(['@sk1/top', '@sk1/bottom'])
+    expect(capFacePath('ex1', 'end', region)).toBe('ex1|cap|end|r|@sk1/bottom+@sk1/top')
+    expect(legacyCapFacePath('ex1', 'end')).toBe('ex1|cap|end')
+    // Two regions keep two names; the same region keeps one across a set order.
+    expect(capRegionKey(['@sk1/b', '@sk1/a'])).toBe(capRegionKey(['@sk1/a', '@sk1/b']))
+    expect(capFacePath('ex1', 'end', capRegionKey(['@sk1/a'])))
+      .not.toBe(capFacePath('ex1', 'end', capRegionKey(['@sk1/b'])))
+    // A first region's cap must not depend on how many regions precede it:
+    // the old ordinal suffix is not part of the path.
+    expect(capFacePath('ex1', 'end', region)).not.toContain('|g0')
   })
 
   it('gives each pick in a multi-pick move its own extend name', () => {
@@ -54,7 +69,7 @@ describe('construction path grammar', () => {
 
   it('round-trips the expected path shapes', () => {
     expect(sideFacePath('extrude1', 'line3')).toBe('extrude1|side|line3')
-    expect(capFacePath('extrude1', 'end')).toBe('extrude1|cap|end')
+    expect(capFacePath('extrude1', 'end', 'k')).toBe('extrude1|cap|end|r|k')
     expect(filletFacePath('fillet2', 'e_abc')).toBe('fillet2|fillet|e_abc')
     expect(splitFacePath('u_p', 2)).toBe('u_p|split|2')
     expect(importedFacePath('import1', 17)).toBe('import1|step|17')
@@ -119,7 +134,7 @@ describe('face UUID minting', () => {
   it('distinguishes different construction slots', () => {
     const side = mintFaceUuid(sideFacePath('extrude1', 'line3'))
     const other = mintFaceUuid(sideFacePath('extrude1', 'line4'))
-    const cap = mintFaceUuid(capFacePath('extrude1', 'start'))
+    const cap = mintFaceUuid(capFacePath('extrude1', 'start', 'k'))
     expect(new Set([side, other, cap]).size).toBe(3)
   })
 })
@@ -127,7 +142,7 @@ describe('face UUID minting', () => {
 describe('edge/vertex derivation', () => {
   it('derives an edge UUID from the unordered face pair', () => {
     const fa = mintFaceUuid(sideFacePath('e1', 'l1'))
-    const fb = mintFaceUuid(capFacePath('e1', 'start'))
+    const fb = mintFaceUuid(capFacePath('e1', 'start', 'k'))
     expect(deriveEdgeUuid(fa, fb)).toBe(deriveEdgeUuid(fb, fa))
     expect(deriveEdgeUuid(fa, fb).startsWith(EDGE_UUID_PREFIX)).toBe(true)
   })

@@ -83,8 +83,8 @@ const TWISTED_BAR_STEPS: ScriptStep[] = [
 // sketch, and a rectangle whose corner is anchored to that projected vertex.
 // The sketch's numbers depend on the projection, not on the face centroid, so
 // the law's normal face-sketch drift cannot reinterpret them.
-const TOP_FACE = '?15,4,9,15,15,15,15,7;@u|u_42825f874782e937@ex1@body_ex1@sk1/FTWh9huZRvo1rGJ6@sk1/Xkck0RRPy6V4_iVJ@sk1/eKPSVl164lTIlYEW@sk1/usUy8mnQpMYZgmKh@cls_yp:flatface'
-const TOP_EDGE = '?15,4,9,15,7,7;@u|e_37a33df87b666c99@ex1@body_ex1@sk1/Xkck0RRPy6V4_iVJ@cls_yp@cls_zp:straightedge'
+const TOP_FACE = '?15,4,9,15,15,15,15,7;@u|u_ecef3db5d2b83b9c@ex1@body_ex1@sk1/FTWh9huZRvo1rGJ6@sk1/Xkck0RRPy6V4_iVJ@sk1/eKPSVl164lTIlYEW@sk1/usUy8mnQpMYZgmKh@cls_yp:flatface'
+const TOP_EDGE = '?15,4,9,15,7,7;@u|e_92c5d4ed1b46bd1d@ex1@body_ex1@sk1/Xkck0RRPy6V4_iVJ@cls_yp@cls_zp:straightedge'
 
 const PROJECTION_STEPS: ScriptStep[] = [
   ...BOX_STEPS,

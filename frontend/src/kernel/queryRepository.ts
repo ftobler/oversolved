@@ -15,6 +15,7 @@ import {
 } from './queryWire'
 import type { LocalQuery, AncestryQuery, Query } from "@/types/query"
 import { AmbiguousQueryError, coerceType, isDict, isSubtype, objType } from './queryCoerce'
+import { legacyCapUuid } from './queryLegacyCap'
 
 /** Local alias for the canonical Query union (re-exported by query.ts as QueryType). */
 type QueryType = Query
@@ -581,6 +582,55 @@ export class Repository {
     if (uuidResolution !== null) {
       this._lastTier = "uuid"
       return uuidResolution
+    }
+    // A stored cap pick minted before caps were keyed by their region's own
+    // profile entities. The query's lineage recomputes the live uuid, so this
+    // is a verified identity hand-off, not a positional guess. It lives here,
+    // at the one tier every face consumer shares, so a pattern axis, a
+    // projection source and a sketch plane all recover alike.
+    if (uuidTokens.length === 1) {
+      const migrated = legacyCapUuid(ids, uuidTokens[0])
+      if (migrated !== null) {
+        const liveHits = (this.byUuid.get(migrated) ?? []).filter(eid => this.elements.has(eid))
+        if (liveHits.length > 1) {
+          throw new AmbiguousQueryError(
+            `Migrated cap UUID ${migrated} matched ${liveHits.length} live elements (collision by construction)`,
+          )
+        }
+        const eid = liveHits[0]
+        if (eid !== undefined && orderFilter([eid]).length > 0) {
+          const element = this.elements.get(eid)
+          const t = objType(element)
+          if (typeRestriction === null || t === typeRestriction || isSubtype(t, typeRestriction)) {
+            uuidResolution = element ?? null
+          } else {
+            uuidTypeExcluded = uuidTokens[0]
+          }
+        }
+        // A downstream producer (a pattern, a transform, a boolean) may have
+        // re-minted the cap, so the exact recompute can name a uuid the body no
+        // longer carries. The query's own lineage still has to name exactly one
+        // live named face, with no classifier contradiction, before the
+        // hand-off fires. Anything else stays red.
+        if (uuidResolution === null && uuidTypeExcluded === null && lineage.length > 0) {
+          const querySet = new Set(lineage)
+          let candidates: string[] = []
+          for (const entry of this.entriesContainingAll(querySet)) {
+            candidates.push(...this.liveEntryEids(entry))
+          }
+          candidates = candidates.filter(eid => this.elementUuid.has(eid) && orderFilter([eid]).length > 0)
+          if (typeRestriction !== null) candidates = this.typeCompatible(candidates, typeRestriction)
+          if (classifierIds.length && candidates.length) {
+            candidates = this.narrowByClassifier(candidates, classifierIds)
+          }
+          const unique = [...new Set(candidates)]
+          if (unique.length === 1) uuidResolution = this.elements.get(unique[0]) ?? null
+        }
+      }
+      if (uuidResolution !== null) {
+        this._lastTier = "uuid"
+        return uuidResolution
+      }
     }
     // Gate every non-null exit of the weaker tiers while a live uuid element
     // was excluded by the type restriction: such a result is a different

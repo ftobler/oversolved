@@ -26,6 +26,7 @@ import { faceCentroid, faceSurfaceType, type Vec3 } from '../../occ/primitives'
 import { geometryClassifiers } from '../../geomHash'
 import { mintFaceUuid, sideFacePath, splitFacePath } from '../../constructionName'
 import { partFrame } from '../../occ/tessellation'
+import { resolveLegacyCapQuery } from './legacyCapHandoff'
 
 /** Payload registered per face in the ancestry repo; carries the OCC shape out. */
 interface FaceAncestryPayload {
@@ -233,6 +234,11 @@ function resolveByStableAncestry(
     }
     return null
   }
+  // A stored cap pick minted before caps were keyed by their region entities.
+  // The query's own lineage recomputes the live cap, so this is a verified
+  // hand-off, never a positional guess.
+  const migrated = resolveLegacyCapQuery(repo, q)
+  if (migrated !== null) return accept(migrated)
   try {
     const hit = accept(repo.query(q, null, partStore))
     if (hit !== null) return hit

@@ -81,11 +81,8 @@ const UPPER_AFTER_BORE =
 const LOWER =
   `?15,19,1e,2a,7,7;@u|u_ddc9b0766a2715e7@${EX}@${PART}@${SK}/0IPnfibogdJZCeul@cls_xp@cls_yn:cylinderface`
 const TOP_FLAT =
-  `?15,19,1e,2a,2a,2a,2a,2a,2a,2a,2a,2a,2a,2a,2a,7;@u|u_d555c033af1edc8d@${EX}@${PART}` +
-  `@${SK}/0IPnfibogdJZCeul@${SK}/43NO99KuPeLF1spx@${SK}/_yxEcYDVIUOLVgBH` +
-  `@${SK}/0IPnfibogdJZCeul@${SK}/43NO99KuPeLF1spx@${SK}/0IPnfibogdJZCeul` +
-  `@${SK}/43NO99KuPeLF1spx@${SK}/_yxEcYDVIUOLVgBH@${SK}/0IPnfibogdJZCeul` +
-  `@${SK}/_yxEcYDVIUOLVgBH@${SK}/0IPnfibogdJZCeul@${SK}/_yxEcYDVIUOLVgBH@cls_zp:flatface`
+  `?15,19,1e,2a,2a,2a,7;@u|u_9c1f24e62f9dae31@${EX}@${PART}` +
+  `@${SK}/0IPnfibogdJZCeul@${SK}/43NO99KuPeLF1spx@${SK}/_yxEcYDVIUOLVgBH@cls_zp:flatface`
 
 interface FaceDatum {
   surface_type?: string

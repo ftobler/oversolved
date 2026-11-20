@@ -23,7 +23,9 @@ import { volumeOf } from '../../occ/volume'
 import { countSolids, countSubShapes, shapeIsValid } from '../../occ/booleans'
 import { faceSurfaceType, type SurfaceType } from '../../occ/primitives'
 import { solidToEdges } from '../../occ/tessellation'
-import { deriveEdgeUuid } from '../../constructionName'
+import {
+  deriveEdgeUuid, deriveSeamEdgeUuid, capFacePath, capRegionKey, mintFaceUuid, sideFacePath,
+} from '../../constructionName'
 import type { PartSolid } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
 import type { PlaneLike } from '../shared/planes'
@@ -312,11 +314,13 @@ describe.skipIf(!oc)('sweep of a profile with holes (real OCC)', () => {
     expect(built.faces).toBe(3)
     const faces = (built.body!.face_uuids ?? []).filter((u): u is string => u !== null).sort()
     const edges = (built.body!.edge_uuids ?? []).filter((u): u is string => u !== null).sort()
-    expect(faces).toEqual([
-      'u_07d420aa81f0f479', 'u_4ef6cb2c52d70ad4', 'u_dab0b483c67eecfe',
-    ])
+    const region = capRegionKey(['@prof/c0'])
+    const side = mintFaceUuid(sideFacePath('sw1', 'prof/c0'))
+    const start = mintFaceUuid(capFacePath('sw1', 'start', region))
+    const end = mintFaceUuid(capFacePath('sw1', 'end', region))
+    expect(faces).toEqual([side, start, end].sort())
     expect(edges).toEqual([
-      'e_33fd589792c6e15e', 'e_6b3b7482a08328d3', 'e_f455723936a95de5',
-    ])
+      deriveEdgeUuid(side, start), deriveEdgeUuid(side, end), deriveSeamEdgeUuid(side),
+    ].sort())
   })
 })

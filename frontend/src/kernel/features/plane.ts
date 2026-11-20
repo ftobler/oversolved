@@ -18,6 +18,7 @@ import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import { resolveFaceSlashFrame } from './faceProfile'
+import { resolveLegacyCapQuery } from './shared/legacyCapHandoff'
 
 type Dict = Record<string, unknown>
 
@@ -150,7 +151,8 @@ function resolveFaceFrame(
     const frame3d = resolveFaceSlashFrame(oc, scope, table, ref, repo, partStore as Record<string, PartSolid>)
     return { centroid: frame3d.origin, normal: frame3d.normal, frame: frame3d }
   }
-  const face = repo.query(ref, null, partStore) as Dict | null
+  const face = (resolveLegacyCapQuery(repo, ref) ??
+    repo.query(ref, null, partStore)) as Dict | null
   if (face === null) throw new Error(`face not found: ${JSON.stringify(ref)}`)
   return { centroid: face.centroid as Vec3, normal: face.normal as Vec3 }
 }

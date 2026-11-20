@@ -16,12 +16,17 @@ import { setSketchSolver, resetSketchSolver } from '../features/sketch'
 import { repoFromSnapshot } from '../builder'
 import type { BuildResponse } from '../builder'
 import type { BuildState, FeatureCheckpoint } from '../types3d'
-import { mintFaceUuid, capFacePath, filletFacePath, splitFacePath, sideFacePath } from '../constructionName'
+import { mintFaceUuid, capFacePath, capRegionKey, filletFacePath, splitFacePath, sideFacePath } from '../constructionName'
 import { parseAncestry } from '../query'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
+
+/** The region key of `rectSketch`'s four named lines. */
+function rectKey(sketchId: string): string {
+  return capRegionKey(['bottom', 'left', 'right', 'top'].map((e) => `@${sketchId}/${e}`))
+}
 
 /** A rectangle sketch (four constrained lines) at an optional in-plane offset. */
 function rectSketch(sketchId: string, w: number, h: number, opts?: { offsetX?: number; offsetY?: number }) {
@@ -159,7 +164,7 @@ describe.skipIf(!oc || !solveBytes)('naming-by-construction corpus (real OCC + R
     // face of the body (ambiguous or silently-wrong).
     const s1 = { features: [rectSketch('sk1', 10, 10), { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'new' }] }
     const r1 = h.run(s1)
-    const capUuid = mintFaceUuid(capFacePath('ex1', 'start'))
+    const capUuid = mintFaceUuid(capFacePath('ex1', 'start', rectKey('sk1')))
     const q = faceQueryWithUuid(r1, 'body_ex1', capUuid)
     expect(q, 'the start cap should carry its minted UUID').toBeDefined()
 
@@ -285,7 +290,7 @@ describe.skipIf(!oc || !solveBytes)('naming-by-construction corpus (real OCC + R
     // NOT geometry: the persisted query resolves on the UUID tier after the fuse.
     const s1 = { features: [rectSketch('sk1', 20, 20), { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: 10, direction: 'normal', operation: 'new' }] }
     const r1 = h.run(s1)
-    const capUuid = mintFaceUuid(capFacePath('ex1', 'start'))
+    const capUuid = mintFaceUuid(capFacePath('ex1', 'start', rectKey('sk1')))
     const q = faceQueryWithUuid(r1, 'body_ex1', capUuid)
     expect(q, 'the base box bottom cap should carry its minted UUID').toBeDefined()
 
@@ -321,7 +326,7 @@ describe.skipIf(!oc || !solveBytes)('naming-by-construction corpus (real OCC + R
     const filletQ = faceQueryWithUuid(r1, 'body_ex1', filletFaceUuid)
     expect(filletQ, 'the fillet face should carry its role=fillet UUID').toBeDefined()
     // A neighbour untouched by the fillet: the bottom cap keeps its own UUID.
-    const capUuid = mintFaceUuid(capFacePath('ex1', 'start'))
+    const capUuid = mintFaceUuid(capFacePath('ex1', 'start', rectKey('sk1')))
     const capQ = faceQueryWithUuid(r1, 'body_ex1', capUuid)
     expect(capQ, 'the untouched bottom cap should carry its UUID').toBeDefined()
 
@@ -358,7 +363,7 @@ describe.skipIf(!oc || !solveBytes)('naming-by-construction corpus (real OCC + R
     ]
     const r1 = h.run({ features: [...base, ...tool] })
 
-    const parentUuid = mintFaceUuid(capFacePath('ex1', 'start'))
+    const parentUuid = mintFaceUuid(capFacePath('ex1', 'start', rectKey('sk1')))
     const child0 = mintFaceUuid(splitFacePath(parentUuid, 0))
     const child1 = mintFaceUuid(splitFacePath(parentUuid, 1))
     const q0 = faceQueryWithUuid(r1, 'body_ex1', child0)
@@ -421,7 +426,7 @@ describe.skipIf(!oc || !solveBytes)('naming-by-construction corpus (real OCC + R
     const exB = { id: 'exB', kind: 'extrude', sketch: '$skB', distance: 5, direction: 'normal', operation: 'new' }
 
     const r1 = h.run({ features: [skA, exA, skB, exB] })
-    const capUuid = mintFaceUuid(capFacePath('exA', 'start'))
+    const capUuid = mintFaceUuid(capFacePath('exA', 'start', rectKey('skA')))
     const q = faceQueryWithUuid(r1, 'body_exA', capUuid)
     expect(q, 'body A cap should carry its UUID').toBeDefined()
 
@@ -446,7 +451,7 @@ describe.skipIf(!oc || !solveBytes)('naming-by-construction corpus (real OCC + R
     const exB = { id: 'exB', kind: 'extrude', sketch: '$skB', distance: 5, direction: 'normal', operation: 'new' }
 
     const r1 = h.run({ features: [skA, exA, skB, exB] })
-    const capUuid = mintFaceUuid(capFacePath('exB', 'start'))
+    const capUuid = mintFaceUuid(capFacePath('exB', 'start', rectKey('skB')))
     const q = faceQueryWithUuid(r1, 'body_exB', capUuid)
     expect(q, 'body B cap should carry its UUID').toBeDefined()
 
