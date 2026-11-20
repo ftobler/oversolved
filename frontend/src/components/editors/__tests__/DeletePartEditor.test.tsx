@@ -98,7 +98,7 @@ describe('DeleteBodyEditor (via FeatureEditor)', () => {
       type: 'add_delete_body_ref', featureId: 'db1', bodyQuery: FACE_EX1,
     })
     // multi: the chip stays armed so the next body can be picked without re-arming.
-    expect(useSketchEditorStore.getState().activePickField).toEqual({ featureId: 'db1', field: 'bodies', multi: true })
+    expect(useSketchEditorStore.getState().activePickField).toEqual({ featureId: 'db1', field: 'bodies', multi: true, names: 'body' })
   })
 
   it('stores a face pick verbatim when it is already an ancestry query', () => {

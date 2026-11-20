@@ -83,6 +83,9 @@ export function usePickField(
     wantKeyOf?: WantKeyOf
     // Names a held value in an "already in" refusal (the chip's own label).
     labelOf?: (heldValue: string) => string
+    // What the field names, carried onto the armed field so a consumer that
+    // lists the document's parts knows the rows are pick targets.
+    names?: 'body'
     // The whole arrival as one plan, for an editor that can dispatch a group.
     onPickBatch?: (batch: PickBatch) => void
   },
@@ -95,6 +98,7 @@ export function usePickField(
   const held = opts?.held
   const labelOf = opts?.labelOf
   const wantKeyOf = opts?.wantKeyOf
+  const names = opts?.names
   const activePickField = useSketchEditorStore(s => s.activePickField)
   const normalSelection = useSketchEditorStore(s => s.normalSelection)
   const isPicking = activePickField?.featureId === featureId && activePickField?.field === field
@@ -212,9 +216,9 @@ export function usePickField(
     if (cur?.featureId === featureId && cur?.field === field) {
       s.setActivePickField(null)
     } else {
-      s.setActivePickField({ featureId, field, multi })
+      s.setActivePickField({ featureId, field, multi, names })
     }
-  }, [featureId, field, multi])
+  }, [featureId, field, multi, names])
 
   // Unconditional arming, unlike `toggle`: idempotent when this field is already
   // the active one (setActivePickField re-arms the same entry), so a caller can
@@ -223,8 +227,8 @@ export function usePickField(
   // unpick path, and the reason no longer describes the field it now shows.
   const activate = useCallback(() => {
     setLastRefusal(null)
-    useSketchEditorStore.getState().setActivePickField({ featureId, field, multi })
-  }, [featureId, field, multi])
+    useSketchEditorStore.getState().setActivePickField({ featureId, field, multi, names })
+  }, [featureId, field, multi, names])
 
   return { isPicking, toggle, activate, refusal }
 }

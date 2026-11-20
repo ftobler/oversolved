@@ -302,7 +302,7 @@ describe('FeatureEditor boolean union picker', () => {
     )
     const chip = document.querySelector('.feature-pick-chip')!
     fireEvent.click(chip)
-    expect(useSketchEditorStore.getState().activePickField).toEqual({ featureId: 'f1', field: 'tools', multi: true })
+    expect(useSketchEditorStore.getState().activePickField).toEqual({ featureId: 'f1', field: 'tools', multi: true, names: 'body' })
     act(() => { useEditorState.setState({ normalSelection: new Set(['@body_a']) }) })
     // One mutation per pick: the applier turns the first one into the base.
     expect(onMutation).toHaveBeenCalledWith({ type: 'add_boolean_tool', featureId: 'f1', tool: '@body_a' })

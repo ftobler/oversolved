@@ -2,7 +2,7 @@ import { useMemo } from 'react'
 import type { Mutation } from '@/types/cad'
 import { PickChip } from '@/components/sketch/PickChip'
 import { usePickField } from '@/hooks/usePickField'
-import { usePartEditorStore } from '@/stores/partEditorStore'
+import { usePartEditorStore, pickLayerParts } from '@/stores/partEditorStore'
 import type { PickFieldWidgetProps } from './fieldTypes'
 import { StatusMessage } from '@/components/shared/StatusMessage'
 import { partsWantKey, identityWantKey, type PickBatch } from '@/utils/query/pickIntake'
@@ -69,13 +69,14 @@ export function PickFieldWidget({
   // geometry is the fix). Values added since the solve simply are not in either
   // set and stay neutral.
   const solveResult = usePartEditorStore(s => s.solveResults?.[fid])
-  const storeParts = usePartEditorStore(s => s.parts)
-  const pickParts = usePartEditorStore(s => s.pickParts)
   // Body resolution reads the PRE-feature pick layer: in a Delete Part edit the
   // preview has already lost the very part being compared, so the preview's
   // bodies would refuse the pick that removes it. An editor opened with no
-  // pick-layer solve (or a host that passes its own bodies) falls back.
-  const effectiveParts = bodies ?? (Object.keys(pickParts).length > 0 ? pickParts : storeParts)
+  // pick-layer solve (or a host that passes its own bodies) falls back. The
+  // Parts card reads the same selector while this field is armed (partEditorStore
+  // selectPartsListParts), so a row click always resolves.
+  const fallbackParts = usePartEditorStore(pickLayerParts)
+  const effectiveParts = bodies ?? fallbackParts
 
   // What the field holds for an arriving pick. A part field wants the body the
   // pick lands on; every other field keeps the stored form of the id, so a
@@ -98,6 +99,7 @@ export function PickFieldWidget({
     features,
     held: normalizedValues,
     wantKeyOf,
+    names: field.names,
     labelOf: field.names === 'body' ? partLabel : undefined,
     onPickBatch: pickBatch,
     validatePick: ownRule === undefined
