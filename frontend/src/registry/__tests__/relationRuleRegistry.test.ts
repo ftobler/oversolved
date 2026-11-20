@@ -106,15 +106,15 @@ describe('face->creator', () => {
     }),
   }
 
-  it('a selected face marks the feature that created it', () => {
+  it('a selected face marks the feature that created it and its part row', () => {
     const hints = partHints([faceQuery('ex1')], features, parts)
-    expect(hints.tree).toEqual(new Set(['@ex1']))
+    expect(hints.tree).toEqual(new Set(['@ex1', '@b1']))
     expect(hints.viewport).toEqual(new Set())
   })
 
-  it('a face and an edge of two features mark both', () => {
+  it('a face and an edge of two features mark both features and both parts', () => {
     const hints = partHints([faceQuery('ex1'), edgeQuery('cut1')], features, parts)
-    expect(hints.tree).toEqual(new Set(['@ex1', '@cut1']))
+    expect(hints.tree).toEqual(new Set(['@ex1', '@cut1', '@b1', '@b2']))
   })
 
   it('a query absent from the index relates nothing', () => {
@@ -131,7 +131,8 @@ describe('face->creator', () => {
         mesh: { vertices: [], faces: [], face_queries: [shared], face_created_by: ['cut1'] },
       }),
     }
-    expect(new Set(partHints([shared], features, parts).tree)).toEqual(new Set(['@ex1', '@cut1']))
+    expect(new Set(partHints([shared], features, parts).tree))
+      .toEqual(new Set(['@ex1', '@cut1', '@b1', '@b2']))
   })
 })
 
@@ -145,7 +146,82 @@ describe('edge->creator', () => {
       }),
     }
     expect(partHints([edgeQuery('fil1')], [extrude('ex1', '@sk1'), extrude('fil1', '@sk1')], parts).tree)
-      .toEqual(new Set(['@fil1']))
+      .toEqual(new Set(['@fil1', '@b1']))
+  })
+})
+
+describe('face->part', () => {
+  const features = [extrude('ex1', '@sk1'), extrude('ex2', '@sk2')]
+  const partWith = (id: string, createdBy: string, faceQueries: string[] = []): PartResult =>
+    part(id, createdBy, {
+      mesh: { vertices: [], faces: [], face_queries: faceQueries, face_created_by: faceQueries.map(() => createdBy) },
+    })
+
+  it('a selected face marks the part it belongs to and the feature that created it', () => {
+    const parts = {
+      body_ex1: partWith('body_ex1', 'ex1', [faceQuery('ex1', 'body_ex1')]),
+      body_ex2: partWith('body_ex2', 'ex2', [faceQuery('ex2', 'body_ex2')]),
+    }
+    const hints = partHints([faceQuery('ex2', 'body_ex2')], features, parts)
+    expect(hints.tree).toContain('@body_ex2')
+    expect(hints.tree).not.toContain('@body_ex1')
+    expect(hints.tree).toContain('@ex2')
+  })
+
+  it('a face query published by two bodies marks both parts', () => {
+    const shared = faceQuery('ex1', 'body_ex1')
+    const parts = {
+      body_ex1: partWith('body_ex1', 'ex1', [shared]),
+      body_ex2: partWith('body_ex2', 'ex1', [shared]),
+    }
+    expect(partHints([shared], features, parts).tree).toContain('@body_ex1')
+    expect(partHints([shared], features, parts).tree).toContain('@body_ex2')
+  })
+
+  it('an owner comes from the shown solve, not from the query ancestry', () => {
+    // A split moved the face to a sibling whose id is not in its ancestry.
+    const parts = {
+      body_ex1_1: partWith('body_ex1_1', 'ex1', [faceQuery('ex1', 'body_ex1')]),
+    }
+    const hints = partHints([faceQuery('ex1', 'body_ex1')], features, parts)
+    expect(hints.tree).toContain('@body_ex1_1')
+    expect(hints.tree).not.toContain('@body_ex1')
+  })
+
+  it('a stale query no body publishes marks no part', () => {
+    const parts = { body_ex1: partWith('body_ex1', 'ex1', [faceQuery('ex1', 'body_ex1')]) }
+    expect(partHints([faceQuery('ghost')], features, parts).tree.size).toBe(0)
+  })
+
+  it('the part hint is tree-only: the viewport buckets stay empty', () => {
+    const parts = { body_ex1: partWith('body_ex1', 'ex1', [faceQuery('ex1', 'body_ex1')]) }
+    const hints = partHints([faceQuery('ex1', 'body_ex1')], features, parts)
+    expect(hints.viewport.size).toBe(0)
+    expect(hints.picked.size).toBe(0)
+    expect(hints.failedPicks.size).toBe(0)
+  })
+})
+
+describe('edge->part', () => {
+  it('a selected edge marks the part it belongs to and the feature that created it', () => {
+    const parts = {
+      body_ex1: part('body_ex1', 'ex1', {
+        edges: [],
+        edge_queries: [edgeQuery('ex1', 'body_ex1')],
+        edge_created_by: ['ex1'],
+      }),
+    }
+    const hints = partHints([edgeQuery('ex1', 'body_ex1')], [extrude('ex1', '@sk1')], parts)
+    expect(hints.tree).toContain('@body_ex1')
+    expect(hints.tree).toContain('@ex1')
+    expect(hints.viewport.size).toBe(0)
+  })
+
+  it('a stale edge query no body publishes marks no part', () => {
+    const parts = {
+      body_ex1: part('body_ex1', 'ex1', { edges: [], edge_queries: [edgeQuery('ex1', 'body_ex1')] }),
+    }
+    expect(partHints([edgeQuery('ghost')], [extrude('ex1', '@sk1')], parts).tree.size).toBe(0)
   })
 })
 
