@@ -237,6 +237,26 @@ describe('command bodies that drive the sketch editor store', () => {
     })
   })
 
+  it('surfaces the lone-operand pair refusal the [e] key press now returns', () => {
+    // One line selected, [e] pressed: the store refuses before authoring, the
+    // command shows its reason, and no mutation reaches the document.
+    setSketchCallback('onMutation', vi.fn())
+    useEditorState.setState({
+      normalSelection: new Set(['entity:Sketch1:L1']),
+      activeFeatureId: 'Sketch1',
+      entityKindMap: { 'entity:Sketch1:L1': 'line' },
+    })
+    const showMessage = vi.fn()
+
+    execute('apply_equal_length', partContext({ showMessage }))
+
+    expect(showMessage).toHaveBeenCalledWith({
+      title: 'Cannot apply constraint',
+      message: 'Equal needs two operands (two lines, or two arcs/circles), got one',
+      variant: 'error',
+    })
+  })
+
   it('a synthetic implemented:false constraint still surfaces the toast', () => {
     const showMessage = vi.fn()
     const applyConstraint = vi.fn()
@@ -247,6 +267,7 @@ describe('command bodies that drive the sketch editor store', () => {
       category: 'geometric',
       hasValue: false,
       refPattern: 'target',
+      operands: 'one',
       renderKind: 'symbol_unknown',
       showInToolbar: true,
       implemented: false,

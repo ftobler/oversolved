@@ -9,6 +9,8 @@ import {
   DIMENSION_RULES,
   resolveDimension,
   isDimensionKind,
+  constraintOperandArity,
+  constraintOperandProblem,
 } from '@/registry/constraintRegistry'
 import {
   ENTITIES,
@@ -124,6 +126,20 @@ describe('constraintRegistry', () => {
       .filter(c => !isConstraintKindName(c.kind) && !LOWERED_KINDS.has(c.kind))
       .map(c => c.kind)
     expect(uncovered).toEqual([])
+  })
+
+  it('every constraint declares a resolvable operand arity', () => {
+    // The arity is a registry fact read by the add-time rule, the command, the
+    // applier and the solve lowering. An unresolved kind would fall back to the
+    // old "at least one" and could store a pair row the solver cannot read, so
+    // the table must stay complete.
+    for (const c of CONSTRAINTS) {
+      expect(constraintOperandArity(c.kind), c.kind).not.toBeNull()
+      expect(['one', 'pair', 'one_or_pair', 'own'], c.kind).toContain(c.operands)
+    }
+    // The sugar kinds are not registry constraints and own their shapes.
+    expect(constraintOperandArity('ngon')).toBeNull()
+    expect(constraintOperandProblem('ngon', 0)).toBeNull()
   })
 })
 

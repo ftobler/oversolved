@@ -92,6 +92,25 @@ describe('golden documents load and migrate', () => {
     expect(second.doc).toEqual(first.doc)
   })
 
+  it('accepts a pair constraint stored with one operand, leaving the refusal to the solve', () => {
+    // The bugreport's document is otherwise sound, so the loader must not lock
+    // the user out of it: the row stays, the lowering names it as a warning, and
+    // the unknown tile stays selectable and deletable.
+    const result = loadPartDoc({
+      version: CURRENT_DOC_VERSION,
+      kind: 'part',
+      features: [{
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_top',
+        entities: [{ id: 'L1', kind: 'line' }, { id: 'L2', kind: 'line' }],
+        initial: { L1: [-10.05, 12.08, 15.69, 12.08], L2: [-8.14, 2.11, 18.21, 8.01] },
+        constraints: [{ id: 'c_equal_length_NQcN7hWJ', kind: 'equal_length', target: '$L2' }],
+      }],
+    }, { name: 'bugreport:unknown_constraint' })
+    expect(result.ok).toBe(true)
+  })
+
   it('keeps a stored Delete Part label instead of relabelling it', () => {
     // `Delete Part` was the default label new documents carried before the UI
     // said part. It is user text stored in the document, so the loader passes

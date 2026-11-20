@@ -14,7 +14,7 @@
 import { createStore } from 'zustand/vanilla'
 import type { FilletCorner, Mutation, PartDoc, PartStyleEntry, SelectionDomain } from '@/types/cad'
 import type { DimensionPick } from '@/registry'
-import { resolveDimension, dimensionTargets, CONSTRAINT_BY_KIND } from '@/registry'
+import { resolveDimension, dimensionTargets, CONSTRAINT_BY_KIND, constraintOperandProblem } from '@/registry'
 import { computeNaturalDimensionValue, computeAnchorRelativePos, resolveDimPoints, computeDimensionSign, computeAnglePlacementIsSupplement } from '@/utils/geometry/dimensionNaturalValue'
 import { deriveSelectionDomain, devOnly, testMode, failLoud } from './stateInvariants'
 import { isDrawingTool } from '@/registry/toolRegistry'
@@ -753,6 +753,15 @@ export const editorState = createStore<EditorState>((set, get) => ({
     // applier and, if the shape rule ever let it through, store `refs: []`,
     // which the loader refuses.
     if (groupTargets !== null && groupTargets.length === 0) return null
+
+    // The operand count is a registry fact, refused here before any projection
+    // is planned: the applier's refusal is a dev-only warning the user never
+    // sees, and a pair kind picked with one operand would otherwise be stored as
+    // a row the solver has no residual for and the canvas can only draw as an
+    // unknown tile. Projection replaces each pick one for one, so the raw
+    // selection carries the count the applier will see.
+    const operandProblem = constraintOperandProblem(kind, (groupTargets ?? picked).length)
+    if (operandProblem !== null) return operandProblem
 
     // A constraint can only name sketch operands. The origin and a B-rep
     // vertex/edge are projected into the active sketch and the constraint names

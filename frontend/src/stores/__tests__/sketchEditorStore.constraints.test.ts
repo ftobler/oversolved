@@ -3,8 +3,6 @@ import { useSketchEditorStore, setSketchCallback, type PendingConstraint } from 
 import { installSketchStoreSetup } from './helpers/sketchEditorStoreTestSetup'
 import { useEditorState } from '@/hooks/useEditorState'
 import { ancestry, emitWire } from '@/utils/query'
-import { classifyPendingAdd } from '@/kernel/features/constraintProbe'
-import type { PartDoc } from '@/types/cad'
 
 describe('sketchEditorStore', () => {
   installSketchStoreSetup()
@@ -395,28 +393,17 @@ describe('sketchEditorStore', () => {
     })
 
     it('emits nothing when the add would drop, leaving no orphan projection', () => {
-      // One-target coincident is dropped by the applier. Its planned origin
-      // projection must go with it, not land as a stray point.
+      // The probe found the drafted add appends nothing (a `dropped` verdict
+      // reaches the store as null). Its planned origin projection must go with
+      // it, not land as a stray point.
       const handler = vi.fn()
       const batch = vi.fn()
-      const doc = {
-        version: 1,
-        kind: 'part',
-        features: [{
-          id: 'S1', kind: 'sketch', plane: '@builtin_plane_front',
-          entities: [{ id: 'l1', kind: 'line' }],
-          initial: { l1: [0, 0, 10, 0] },
-          constraints: [],
-        }],
-      } as unknown as PartDoc
       setSketchCallback('onMutation', handler)
       setSketchCallback('onMutationBatch', batch)
-      setSketchCallback('checkRedundantAdd', (pending) => {
-        const verdict = classifyPendingAdd(doc, pending)
-        return verdict === 'redundant' ? true : verdict === 'dropped' ? null : false
-      })
+      setSketchCallback('checkRedundantAdd', () => null)
       useSketchEditorStore.getState().setActiveFeatureId('S1')
       useSketchEditorStore.getState().toggleNormalSelection('@builtin_origin')
+      useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:l1:start')
 
       expect(useSketchEditorStore.getState().applyConstraint('coincident')).toBeNull()
 
@@ -593,6 +580,72 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().applyConstraint('concentric')
 
       expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('refuses equal picked with one line, naming the two operands it needs', () => {
+      // The bugreport row: one line selected, [e] pressed. The command must name
+      // the refusal (the Cannot apply toast) instead of the applier's dev-only
+      // warning, and emit nothing.
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().setEntityKindMap({ 'entity:Sketch1:L1': 'line' })
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L1')
+
+      expect(useSketchEditorStore.getState().applyConstraint('equal_length'))
+        .toBe('Equal needs two operands (two lines, or two arcs/circles), got one')
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('refuses equal picked with one vertex', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().toggleNormalSelection('vertex:Sketch1:L1:start')
+
+      expect(useSketchEditorStore.getState().applyConstraint('equal_length'))
+        .toBe('Equal needs two operands (two lines, or two arcs/circles), got one')
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('refuses parallel with one line and concentric with one circle', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().setEntityKindMap({
+        'entity:Sketch1:L1': 'line',
+        'entity:Sketch1:C1': 'circle',
+      })
+
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L1')
+      expect(useSketchEditorStore.getState().applyConstraint('parallel'))
+        .toBe('Parallel needs two operands (two lines), got one')
+
+      useSketchEditorStore.getState().clearSelectionAndHover()
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:C1')
+      expect(useSketchEditorStore.getState().applyConstraint('concentric'))
+        .toBe('Concentric needs two operands (two arcs/circles/ellipses), got one')
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('still authors equal for two lines with both operands', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().setEntityKindMap({
+        'entity:Sketch1:L1': 'line',
+        'entity:Sketch1:L2': 'line',
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:L2')
+
+      expect(useSketchEditorStore.getState().applyConstraint('equal_length')).toBeNull()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'add_constraint',
+        featureId: 'Sketch1',
+        kind: 'equal_length',
+        targets: expect.arrayContaining(['entity:Sketch1:L1', 'entity:Sketch1:L2']),
+      })
     })
 
     it('allows equal between two circles (equal radius)', () => {

@@ -19,6 +19,7 @@ import type { PartConstraint, PartFeature, SketchFeature, DroppedSketchConstrain
 import { resolveVertexRef } from '@/types/vertexRef'
 import { colinearShapeProblem, constraintOperandSide } from '@/utils/constraintOperands'
 import { entityPointKeys } from '@/registry/entityRegistry'
+import { constraintOperandProblem } from '@/registry/constraintRegistry'
 import {
   constraintEntityKindProblem,
   type ConstraintKindOperand,
@@ -111,6 +112,17 @@ function lowerConstraint(
   entityInfo: ReadonlyMap<string, EntityLowerInfo>,
 ): Record<string, unknown> | null {
   const out: Record<string, unknown> = { id: c.id, kind: c.kind }
+  // The operand-count half, read from the registry with the same sentence the
+  // add-time rule uses. A pair kind stored with one operand (an older document,
+  // or a hand edit) has no solver row and no render: the canvas falls back to
+  // the unknown tile. Drop it here so the sketch warning names it, and leave the
+  // row in the document so a repair can re-enable it on the next solve.
+  const operandCount = [c.target, c.a, c.b].filter(ref => ref != null).length
+  const operandProblem = constraintOperandProblem(authoredKind, operandCount)
+  if (operandProblem !== null) {
+    dropped.push({ id: c.id, kind: authoredKind, reason: operandProblem })
+    return null
+  }
   // The whole-entity operands, by their CURRENT kind and the field they came
   // from: what the kind-applicability table reads once every ref has resolved.
   // A vertex ref and the origin are point operands, not whole entities; a bare
