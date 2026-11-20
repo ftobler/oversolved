@@ -31,6 +31,10 @@ export interface DrawingToolContext extends ToolContext {
   sketch?: Record<string, Entity>
   otherSketches?: Record<string, Record<string, Entity>>
   ngonSides?: number
+  // World units per screen pixel on the sketch plane, for the vertex snap
+  // gate. Absent in headless callers, whose vertex ref already came from the
+  // press pixel.
+  pixelSize?: number | null
 }
 
 export interface DrawingTool extends Tool {
@@ -68,6 +72,7 @@ export function createDrawingTool(config: DrawingToolConfig): DrawingTool {
         alignmentSnapPoint: context.alignmentSnapPoint,
         alignmentSnapKind: context.alignmentSnapKind,
         ngonSides: context.ngonSides,
+        pixelSize: context.pixelSize,
       }
 
       const result = computeDrawClick(

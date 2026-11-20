@@ -57,6 +57,9 @@ describe('resolveSnapPoint', () => {
   })
 
   it('alignment snap wins over vertex hover', () => {
+    // Standalone, with no resolved snap handed in, the point resolver keeps its
+    // historical priority. The insertion helper always passes the resolved snap,
+    // where a named vertex wins; see the drawAutoConstraints tests.
     const snap = emptySnap()
     snap.hoveredVertexPosition = [10, 20]
     snap.alignmentSnapPoint = [100, 50]
@@ -64,6 +67,16 @@ describe('resolveSnapPoint', () => {
     const result = resolveSnapPoint([5, 99], snap)
     // alignment snap takes priority: x from raw, y from alignment anchor
     expect(result).toEqual([5, 50])
+  })
+
+  it('a resolved coincident wins over an alignment snap', () => {
+    const snap = emptySnap()
+    snap.alignmentSnapPoint = [100, 50]
+    snap.alignmentSnapKind = 'kinda_horizontal'
+    const result = resolveSnapPoint([5, 99], snap, {
+      kind: 'coincident', vertexId: 'vertex:S1:V1:end', at: [10, 20],
+    })
+    expect(result).toEqual([10, 20])
   })
 })
 
@@ -189,6 +202,30 @@ describe('computeDrawClick - line tool', () => {
       expect(result.mutations[0].params).toEqual([5, 5, 0, 0])
     }
     expect(result.gestureComplete).toBe(true)
+  })
+
+  it('closes on a hovered first vertex that published no position', () => {
+    // The sketch vertex hover names the point but carries no coordinate. The
+    // position comes from the entity the ref names, so a closing click a few
+    // units off the stored point still resolves onto it and ends the chain.
+    const sketch: Record<string, Entity> = {
+      L1: { start: [0, 0], end: [5, 0] } as Entity,
+      L2: { start: [5, 0], end: [5, 5] } as Entity,
+    }
+    const snap = emptySnap()
+    snap.hoveredVertexId = 'vertex:S1:L1:start'
+    snap.hoveredSnapKind = 'vertex'
+    const result = computeDrawClick('line', [[0, 0], [5, 0], [5, 5]], [0.08, 0.03], snap, FEATURE, newId, sketch)
+    expect(result.gestureComplete).toBe(true)
+    const add = result.mutations[0]
+    expect(add.type).toBe('add_entity')
+    if (add.type === 'add_entity') {
+      expect(add.params).toEqual([5, 5, 0, 0])
+    }
+    expect(result.mutations[1]).toMatchObject({
+      type: 'add_constraint', kind: 'coincident',
+      targets: [expect.any(String), 'vertex:S1:L1:start'],
+    })
   })
 
   it('second click with start vertex snap emits add_entity_with_constraint', () => {

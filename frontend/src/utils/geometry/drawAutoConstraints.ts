@@ -6,6 +6,8 @@ import type { SnapKind } from '@/registry'
 import { suggestConstraint } from '@/registry'
 import { getEntityKind } from '@/types/cad'
 import { nearestPointOnEntity } from '@/utils/geometry/nearestPoint'
+import { geomPoint } from '@/utils/geometry/geometryMapping'
+import { pickRadiusPx } from '@/picking/screenSpaceScale'
 import { SNAP_EPS } from '@/utils/geometry/snapTolerance'
 
 /** The hover/snap signals a draw click resolves against. Owned here because
@@ -31,6 +33,11 @@ export interface DrawSnapState {
   alignmentSnapKind: 'kinda_horizontal' | 'kinda_vertical' | null
   // Side count for the two-click n-gon tool. Defaults to 6 when absent.
   ngonSides?: number
+  /** World units spanned by one screen pixel on the sketch plane. When set, a
+   *  vertex snap must lie within the ID buffer's pick reach of the click, so a
+   *  hover the pointer has already left cannot claim it. Absent for headless
+   *  callers, whose vertex id was itself resolved at the click pixel. */
+  pixelSize?: number | null
 }
 
 /** The solved geometry a path snap needs to find its foot on a curve. Both
@@ -60,7 +67,7 @@ const SNAPPABLE_PATH_KINDS = new Set(['line', 'circle', 'arc'])
  *  draw point, which is the segment's OWN start, so it constrains the entity and
  *  names no second element at all. */
 export type InsertSnap =
-  | { kind: 'coincident'; vertexId: string }
+  | { kind: 'coincident'; vertexId: string; at: [number, number] }
   | { kind: 'point_on_path'; entityRef: string; at: [number, number] }
   | { kind: 'horizontal' | 'vertical' }
 
@@ -77,23 +84,61 @@ export interface InsertTarget {
   entityRef?: string
 }
 
+/** The named vertex's real position, read from the sketch geometry the caller
+ *  already holds. A sketch vertex hover publishes only an id (the vertex ID
+ *  layer registers no coordinate), and the ref names the entity and key the
+ *  point lives at, so the entity is the authoritative source. The origin ref is
+ *  not a sketch entity; its position comes from the caller (activeOriginLocal). */
+export function vertexPositionAt(ref: string, geo: SketchGeometry = {}): [number, number] | null {
+  if (!ref.startsWith('vertex:')) return null
+  const parts = ref.slice('vertex:'.length).split(':')
+  if (parts.length < 3 || parts[parts.length - 1] === '') return null
+  const featureId = parts[0]
+  const vertexKey = parts[parts.length - 1]
+  const entityId = parts.slice(1, -1).join(':')
+  const entity = geo.otherSketches?.[featureId]?.[entityId] ?? geo.sketch?.[entityId]
+  if (!entity) return null
+  return geomPoint({ [entityId]: entity }, { entity: entityId, point: vertexKey })
+}
+
+/** Two pick reaches, in screen pixels. The ID buffer accepts a mark up to one
+ *  reach away; the second covers a sketch plane seen at an angle, where a
+ *  world-space distance foreshortens on screen. */
+const VERTEX_SNAP_REACH_PX = 2 * (pickRadiusPx() + 1)
+
+/** The position of the hovered vertex: the entity's own coordinate when this
+ *  document can resolve the ref, else whatever the hover published (the origin
+ *  marker publishes its sketch-frame position). */
+function vertexSnapPoint(snap: DrawSnapState, geo: SketchGeometry): [number, number] | null {
+  if (!snap.hoveredVertexId) return null
+  return vertexPositionAt(snap.hoveredVertexId, geo) ?? snap.hoveredVertexPosition
+}
+
 /** The point under the cursor, if the click landed on one that can be named.
  *
- *  Position agreement is checked first so a hover the cursor has already left
- *  cannot claim the click; the id/kind pair is the fallback for hovers that
- *  publish no position (the vertex ID layer registers none). */
+ *  The vertex's own position is compared against the click, never the click
+ *  against itself: a hover the pointer has already left must not claim it. The
+ *  comparison runs in screen-scaled units when the caller knows the pixel size;
+ *  a snap's id came from the press pixel otherwise, so it is taken as evidence.
+ *  A ref whose entity is not in the geometry keeps its id and authors the
+ *  coincident; its point then comes from the raw click and the solver pulls it
+ *  onto the vertex. */
 export function snappableVertexAt(
   snap: DrawSnapState,
   px: number,
   py: number,
+  geo: SketchGeometry = {},
 ): string | null {
-  if (snap.hoveredVertexPosition) {
-    const agrees = Math.abs(px - snap.hoveredVertexPosition[0]) < SNAP_EPS &&
-                   Math.abs(py - snap.hoveredVertexPosition[1]) < SNAP_EPS
-    return agrees ? snap.hoveredVertexId : null
+  const vertexId = snap.hoveredVertexId
+  if (!vertexId) return null
+  const at = vertexSnapPoint(snap, geo)
+  if (!at) return snap.hoveredSnapKind ? vertexId : null
+  const pixelSize = snap.pixelSize
+  if (pixelSize != null && Number.isFinite(pixelSize) && pixelSize > 0) {
+    const reach = VERTEX_SNAP_REACH_PX * pixelSize
+    if (Math.hypot(px - at[0], py - at[1]) > reach) return null
   }
-  if (snap.hoveredVertexId && snap.hoveredSnapKind) return snap.hoveredVertexId
-  return null
+  return vertexId
 }
 
 /** The curve under the cursor and the foot of the cursor on it, if the hovered
@@ -123,14 +168,25 @@ export function snappablePathAt(
   return { entityRef: id, at: foot.position }
 }
 
-/** Resolve what a click asks to record. Alignment wins because it is what moved
- *  the point; a named vertex beats the curve it sits on, because a point pair
- *  says strictly more than a locus. */
+/** Resolve what a click asks to record.
+ *
+ *  A named vertex wins over both the axis and the curve it sits on: a point pair
+ *  says strictly more than a locus, and strictly more than an axis measured
+ *  against the segment's own start. The axis is dropped rather than added
+ *  beside the vertex, because the coincident plus the vertex's own position
+ *  already fixes the end, and a second relation between the two existing points
+ *  could over-constrain them. An alignment still wins over a curve: the point
+ *  lands on the axis the user saw the cursor follow. */
 export function resolveInsertSnap(
   snap: DrawSnapState,
   rawPoint: readonly [number, number],
   geo: SketchGeometry = {},
 ): InsertSnap | null {
+  const vertexId = snappableVertexAt(snap, rawPoint[0], rawPoint[1], geo)
+  if (vertexId) {
+    const at = vertexSnapPoint(snap, geo) ?? [rawPoint[0], rawPoint[1]]
+    return { kind: 'coincident', vertexId, at }
+  }
   if (snap.alignmentSnapPoint && snap.alignmentSnapKind) {
     const kind = suggestConstraint('vertex', snap.alignmentSnapKind)
     // The registry owns the snap -> constraint mapping; anything but the two
@@ -139,9 +195,6 @@ export function resolveInsertSnap(
     if (kind === 'horizontal' || kind === 'vertical') return { kind }
     return null
   }
-  const at = snap.hoveredVertexPosition ?? rawPoint
-  const vertexId = snappableVertexAt(snap, at[0], at[1])
-  if (vertexId) return { kind: 'coincident', vertexId }
 
   const path = snappablePathAt(snap, rawPoint, geo)
   if (path) return { kind: 'point_on_path', entityRef: path.entityRef, at: path.at }
@@ -195,14 +248,17 @@ export function createInsertionHelper(geo: SketchGeometry = {}): InsertionHelper
 }
 
 /** Resolve the effective click position from snap state.
- *  Priority: alignment snap (projected onto axis) > vertex hover > curve foot >
- *  raw cursor. The resolved snap is passed in so the position and the constraint
- *  can never disagree about what the click landed on. */
+ *  Priority: the vertex or curve the resolved snap names, else the alignment
+ *  axis, else the raw cursor. The resolved snap is passed in so the position and
+ *  the constraint can never disagree about what the click landed on; without it
+ *  the historical standalone priority (alignment, then a published vertex
+ *  position) still applies. */
 export function resolveSnapPoint(
   rawPoint: readonly [number, number],
   snap: DrawSnapState,
   resolved: InsertSnap | null = null,
 ): [number, number] {
+  if (resolved?.kind === 'coincident' || resolved?.kind === 'point_on_path') return resolved.at
   if (snap.alignmentSnapPoint && snap.alignmentSnapKind) {
     if (snap.alignmentSnapKind === 'kinda_horizontal') {
       return [rawPoint[0], snap.alignmentSnapPoint[1]]
@@ -210,7 +266,6 @@ export function resolveSnapPoint(
     return [snap.alignmentSnapPoint[0], rawPoint[1]]
   }
   if (snap.hoveredVertexPosition) return snap.hoveredVertexPosition
-  if (resolved?.kind === 'point_on_path') return resolved.at
   return [rawPoint[0], rawPoint[1]]
 }
 
