@@ -1057,13 +1057,13 @@ describe('finding: a projection source takes an inline selector', () => {
     expect(error.message).not.toContain('must be string')
   })
 
-  it('refuses a present non-string kind the selector step left in place', () => {
+  it('refuses a present non-string kind the drive left in place', () => {
     // The drive fills a missing kind from the matched element, but a present
     // value is the author's: a number is refused here, exactly as it is with a
     // string source, instead of being silently replaced by the inferred kind.
     const violation = mutationValueViolation('add_projected_entity', {
       type: 'add_projected_entity', featureId: 'sk2', kind: 5,
-      source: { selector: { kind: 'edge' } },
+      source: '?body_a:edge:1',
     }, { doc: null, fieldSchema: () => null })
     expect(violation?.code).toBe('invalid-mutation')
     expect(violation?.message).toContain('kind must be an entity kind string, got 5')

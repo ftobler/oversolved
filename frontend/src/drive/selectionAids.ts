@@ -41,7 +41,9 @@ function selectorOf(value: unknown): Selector | null {
   return validateSelector(value.selector)
 }
 
-function pickOf(value: unknown): boolean {
+/** Whether a value is the `{selector}` object and nothing else. Exported so the
+ *  applier-side guard and the value rules read one spelling of the aid. */
+export function pickOf(value: unknown): boolean {
   return isRecord(value) && Object.keys(value).length === 1 && isRecord(value.selector)
 }
 
@@ -80,28 +82,6 @@ export function selectorShapeHint(message: string, kind: SelectKind): string {
     `{selector: {kind: "${kind}", where: {${key}: ${sample}}}}`
 }
 
-/**
- * Whether a step names any pick with a selector, so the caller can pay for a
- * solve to resolve it. A step without one never touches the kernel here.
- */
-export function usesSelectionAid(raw: unknown): boolean {
-  if (!isRecord(raw)) return false
-  switch (raw.type) {
-    case 'add_sketch':
-    case 'set_feature_plane':
-      return pickOf(raw.plane)
-    case 'add_shell':
-      return Array.isArray(raw.faces) && raw.faces.some(pickOf)
-    case 'add_fillet':
-    case 'add_chamfer':
-      return Array.isArray(raw.edges) && raw.edges.some(pickOf)
-    case 'add_projected_entity':
-      return pickOf(raw.source)
-    default:
-      return false
-  }
-}
-
 interface PickQueries {
   ok: true
   queries: string[]
@@ -116,20 +96,204 @@ interface PickRefusal {
   message: string
 }
 
-/** How a field holds its picks. `kind: null` accepts whatever element kind the
- *  selector names, because the field takes more than one (a projection source is
- *  an edge, vertex or face) and the caller reads the matched kind back off the
- *  item. `oneOnly` is the sentence a multi-match refusal carries, naming what
- *  the field sits on; null means the field expands to every match. */
-interface PickRule {
-  kind: SelectKind | null
+/** How many element kinds a field takes. `null` accepts whatever kind the
+ *  selector names, because the field takes more than one (a projection source
+ *  is an edge, vertex or face) and the caller reads the matched kind back off
+ *  the item. `oneOnly` is the sentence a multi-match refusal carries, naming
+ *  what the field sits on; null means the field expands to every match. */
+export interface PickRule {
+  kinds: readonly SelectKind[] | null
   oneOnly: string | null
 }
 
-const PLANE_PICK: PickRule = { kind: 'face', oneOnly: 'a sketch plane sits on exactly one face' }
+/** How a pick field holds its selector: a list expands in place to every match,
+ *  a single pick needs exactly one. */
+export type SelectionAidMode = 'list' | 'single'
+
+/** One field of one mutation that takes a selector instead of a query string.
+ *  `path` walks from the step root. A setter keeps its value under `value` and
+ *  names the field in `field`, so the same row shape covers both spellings and
+ *  the two cannot describe different pick rules. */
+export interface SelectionAid {
+  path: readonly string[]
+  field?: string
+  mode: SelectionAidMode
+  rule: PickRule
+  // A projection source with no authored `kind` infers one from the element the
+  // selector matched, which is the only aid whose stored value depends on more
+  // than the query.
+  inferKind?: boolean
+}
+
+const PLANE_PICK: PickRule = { kinds: ['face'], oneOnly: 'a plane pick sits on exactly one face' }
+const FACE_PICK: PickRule = { kinds: ['face'], oneOnly: 'this field takes exactly one face' }
+const EDGE_PICK: PickRule = { kinds: ['edge'], oneOnly: 'this field takes exactly one edge' }
+const VERTEX_PICK: PickRule = { kinds: ['vertex'], oneOnly: 'this field takes exactly one vertex' }
+const EDGE_OR_FACE_PICK: PickRule = {
+  kinds: ['edge', 'face'],
+  oneOnly: 'this field takes exactly one edge or face',
+}
+const FACE_OR_VERTEX_PICK: PickRule = {
+  kinds: ['face', 'vertex'],
+  oneOnly: 'this field takes exactly one face or vertex',
+}
+const ANY_PICK: PickRule = {
+  kinds: null,
+  oneOnly: 'this field takes exactly one edge, vertex or face',
+}
 const PROJECTION_SOURCE_PICK: PickRule = {
-  kind: null,
+  kinds: null,
   oneOnly: 'a projection source is exactly one edge, vertex or face',
+}
+const FACE_LIST: PickRule = { kinds: ['face'], oneOnly: null }
+const EDGE_LIST: PickRule = { kinds: ['edge'], oneOnly: null }
+const ANY_LIST: PickRule = { kinds: null, oneOnly: null }
+
+const pick = (path: string | readonly string[], mode: SelectionAidMode, rule: PickRule): SelectionAid =>
+  ({ path: typeof path === 'string' ? [path] : path, mode, rule })
+const setter = (field: string, mode: SelectionAidMode, rule: PickRule): SelectionAid =>
+  ({ path: ['value'], field, mode, rule })
+
+// The plane definition's point-like fields: each takes a vertex pick, beside the
+// world coordinates `origin` also allows (an array is not a selector).
+const PLANE_VERTEX_FIELDS = ['point', 'p1', 'p2', 'p3', 'origin'] as const
+const PLANE_EDGE_FIELDS = ['edge', 'line'] as const
+
+/**
+ * Every mutation field that takes a selector, keyed by mutation type. The drive
+ * resolves this table and the value rules refuse from it, so a field cannot be
+ * covered on one path and forgotten on the other. A setter's row names the one
+ * field its value is for; an add row walks a static path.
+ */
+export const SELECTION_AIDS: Readonly<Record<string, readonly SelectionAid[]>> = {
+  add_sketch: [pick('plane', 'single', PLANE_PICK)],
+  set_feature_plane: [pick('plane', 'single', PLANE_PICK)],
+  add_projected_entity: [
+    { ...pick('source', 'single', PROJECTION_SOURCE_PICK), inferKind: true },
+  ],
+  add_shell: [pick('faces', 'list', FACE_LIST)],
+  add_fillet: [pick('edges', 'list', EDGE_LIST)],
+  add_chamfer: [pick('edges', 'list', EDGE_LIST)],
+  add_delete_face: [pick('faces', 'list', FACE_LIST)],
+  add_move_face: [pick('faces', 'list', FACE_LIST)],
+  add_instance_pattern: [pick('targets', 'list', ANY_LIST)],
+  add_wrap: [pick('target', 'single', FACE_PICK)],
+  add_extrude: [pick('up_to', 'single', FACE_OR_VERTEX_PICK)],
+  add_revolve: [pick('axis', 'single', EDGE_PICK)],
+  add_mirror: [pick('plane', 'single', PLANE_PICK)],
+  add_split: [pick('plane', 'single', PLANE_PICK)],
+  add_plane: [
+    pick(['definition', 'face'], 'single', FACE_PICK),
+    ...PLANE_EDGE_FIELDS.map(field => pick(['definition', field], 'single', EDGE_PICK)),
+    ...PLANE_VERTEX_FIELDS.map(field => pick(['definition', field], 'single', VERTEX_PICK)),
+  ],
+  add_helix: [pick('reference', 'single', EDGE_OR_FACE_PICK)],
+  add_linear_pattern: [
+    pick('direction_query', 'single', EDGE_OR_FACE_PICK),
+    pick('direction_2_query', 'single', EDGE_OR_FACE_PICK),
+  ],
+  add_circular_pattern: [pick('axis', 'single', EDGE_OR_FACE_PICK)],
+  add_curve_pattern: [pick('normal_ref', 'single', EDGE_OR_FACE_PICK)],
+  add_transform: [
+    pick('rotation_axis', 'single', EDGE_PICK),
+    pick('translation_from', 'single', VERTEX_PICK),
+    pick('translation_to', 'single', VERTEX_PICK),
+    pick('scale_center_from', 'single', VERTEX_PICK),
+  ],
+  add_shell_face: [pick('faceQuery', 'single', FACE_PICK)],
+  add_fillet_edge: [pick('edgeQuery', 'single', EDGE_PICK)],
+  add_chamfer_edge: [pick('edgeQuery', 'single', EDGE_PICK)],
+  add_delete_face_ref: [pick('faceQuery', 'single', FACE_PICK)],
+  add_move_face_ref: [pick('faceQuery', 'single', FACE_PICK)],
+  add_instance_pattern_target: [pick('targetQuery', 'single', ANY_PICK)],
+
+  set_wrap_field: [setter('target', 'single', FACE_PICK)],
+  set_extrude_field: [setter('up_to', 'single', FACE_OR_VERTEX_PICK)],
+  set_revolve_field: [setter('axis', 'single', EDGE_PICK)],
+  set_mirror_field: [setter('plane', 'single', PLANE_PICK)],
+  set_split_field: [setter('plane', 'single', PLANE_PICK)],
+  set_plane_definition_field: [
+    setter('face', 'single', FACE_PICK),
+    ...PLANE_EDGE_FIELDS.map(field => setter(field, 'single', EDGE_PICK)),
+    ...PLANE_VERTEX_FIELDS.map(field => setter(field, 'single', VERTEX_PICK)),
+  ],
+  set_helix_field: [setter('reference', 'single', EDGE_OR_FACE_PICK)],
+  set_linear_pattern_field: [
+    setter('direction_query', 'single', EDGE_OR_FACE_PICK),
+    setter('direction_2_query', 'single', EDGE_OR_FACE_PICK),
+  ],
+  set_circular_pattern_field: [setter('axis', 'single', EDGE_OR_FACE_PICK)],
+  set_curve_pattern_field: [setter('normal_ref', 'single', EDGE_OR_FACE_PICK)],
+  set_transform_field: [
+    setter('rotation_axis', 'single', EDGE_PICK),
+    setter('translation_from', 'single', VERTEX_PICK),
+    setter('translation_to', 'single', VERTEX_PICK),
+    setter('scale_center_from', 'single', VERTEX_PICK),
+  ],
+  set_move_face_field: [setter('faces', 'list', FACE_LIST)],
+  set_instance_pattern_field: [setter('targets', 'list', ANY_LIST)],
+  set_shell_field: [setter('faces', 'list', FACE_LIST)],
+  set_fillet_field: [setter('edges', 'list', EDGE_LIST)],
+  set_chamfer_field: [setter('edges', 'list', EDGE_LIST)],
+}
+
+const NO_AIDS: readonly SelectionAid[] = []
+
+/** The selector fields of one mutation type; empty for a type with none. The
+ *  own-key check keeps a prototype name ('constructor', '__proto__') from
+ *  resolving as a table row, the same guard the catalog uses. */
+export function selectionAidsFor(type: string): readonly SelectionAid[] {
+  return Object.hasOwn(SELECTION_AIDS, type) ? SELECTION_AIDS[type] : NO_AIDS
+}
+
+/** The aid a setter's named field carries, or undefined when that field is not a
+ *  pick the drive resolves. */
+export function selectionAidFor(type: string, field: string): SelectionAid | undefined {
+  return selectionAidsFor(type).find(aid => aid.field === field)
+}
+
+/** Read one aid's value out of a raw step, following its path. */
+export function selectionAidValue(raw: unknown, aid: SelectionAid): unknown {
+  let value: unknown = raw
+  for (const key of aid.path) {
+    if (!isRecord(value)) return undefined
+    value = value[key]
+  }
+  return value
+}
+
+/** Whether the aid names a field this step carries: a setter names one field in
+ *  `field`, while an add's path is static. */
+export function selectionAidApplies(raw: unknown, aid: SelectionAid): boolean {
+  return aid.field === undefined || (isRecord(raw) && raw.field === aid.field)
+}
+
+/** The label a refusal names. A setter's value is one field, so it is labelled
+ *  by that field rather than by the wire key `value`. */
+export function selectionAidLabel(type: string, aid: SelectionAid): string {
+  return aid.field === undefined ? `${type} ${aid.path.join('.')}` : `${type} ${aid.field}`
+}
+
+/** Whether a step names any pick with a selector, so the caller can pay for a
+ *  solve to resolve it. A step without one never touches the kernel here. */
+export function usesSelectionAid(raw: unknown): boolean {
+  return unresolvedSelectionAid(raw) !== null
+}
+
+/** The first covered field still carrying a selector, or null. The applier
+ *  funnel uses this to refuse a selector that bypassed both the drive and the
+ *  value rules, so no document ever stores an authoring aid. */
+export function unresolvedSelectionAid(raw: unknown): string | null {
+  if (!isRecord(raw) || typeof raw.type !== 'string') return null
+  for (const aid of selectionAidsFor(raw.type)) {
+    if (!selectionAidApplies(raw, aid)) continue
+    const value = selectionAidValue(raw, aid)
+    const carries = aid.mode === 'list'
+      ? Array.isArray(value) && value.some(pickOf)
+      : pickOf(value)
+    if (carries) return selectionAidLabel(raw.type, aid)
+  }
+  return null
 }
 
 /** Resolve one `{selector}` pick to the queries it matches. */
@@ -149,7 +313,7 @@ function resolvePick(
       return {
         ok: false,
         code: 'invalid-ref',
-        message: `${label}: ${selectorShapeHint(e.message, declaredSelectorKind(value) ?? rule.kind ?? 'edge')}`,
+        message: `${label}: ${selectorShapeHint(e.message, declaredSelectorKind(value) ?? rule.kinds?.[0] ?? 'edge')}`,
       }
     }
     throw e
@@ -189,25 +353,40 @@ function resolvePick(
         + `so narrow the selector or ${SELECTOR_HINT}`,
     }
   }
-  if (rule.kind !== null) {
-    const wrongKind = items.filter(item => item.kind !== rule.kind)
+  const kinds = rule.kinds
+  if (kinds !== null) {
+    const wrongKind = items.filter(item => !kinds.includes(item.kind))
     if (wrongKind.length > 0) {
       return {
         ok: false,
         code: 'unresolved-ref',
-        message: `${label} selector matched ${wrongKind.length} non-${rule.kind} item(s) `
-          + `(${wrongKind.map(item => item.kind).join(', ')}); only ${rule.kind}s are picks here`,
+        message: `${label} selector matched ${wrongKind.length} ${wrongKindPhrase(kinds)} item(s) `
+          + `(${wrongKind.map(item => item.kind).join(', ')}); ${onlyPhrase(kinds)}`,
       }
     }
   }
   return { ok: true, queries: items.map(item => item.query), items }
 }
 
-function planeStep(raw: RawStep, parts: Record<string, PartResult> | null): SelectionAidResolution {
-  if (!pickOf(raw.plane)) return { ok: true, mutation: raw }
-  const pick = resolvePick(raw.plane, parts, `${raw.type as string} plane`, PLANE_PICK)
-  if (!pick.ok) return pick
-  return { ok: true, mutation: { ...raw, plane: pick.queries[0] } }
+// The refusal sentence for a wrong element kind. One kind keeps the round
+// "non-face"/"only faces are picks here" wording the value rules share; a pair
+// names both so a face selector on an edge field teaches the alternative.
+function wrongKindPhrase(kinds: readonly SelectKind[]): string {
+  return kinds.length === 1 ? `non-${kinds[0]}` : `non-${kinds.join('-or-')}`
+}
+
+function onlyPhrase(kinds: readonly SelectKind[]): string {
+  return kinds.length === 1
+    ? `only ${kinds[0]}s are picks here`
+    : `only ${kinds.join(' or ')} picks are accepted here`
+}
+
+function withValueAt(raw: RawStep, path: readonly string[], value: unknown): RawStep {
+  const [key, ...rest] = path
+  if (key === undefined) return raw
+  if (rest.length === 0) return { ...raw, [key]: value }
+  const child = raw[key]
+  return { ...raw, [key]: withValueAt(isRecord(child) ? child : {}, rest, value) }
 }
 
 /** The sketch entity kind an omitted projection `kind` infers from the element
@@ -221,15 +400,37 @@ function projectedKindOf(item: SelectItem): string {
   return item.kind === 'edge' ? projectedKindForEdge(item.geometry.kind) : 'point'
 }
 
-function sourceStep(raw: RawStep, parts: Record<string, PartResult> | null): SelectionAidResolution {
-  if (!pickOf(raw.source)) return { ok: true, mutation: raw }
-  const pick = resolvePick(raw.source, parts, `${raw.type as string} source`, PROJECTION_SOURCE_PICK)
-  if (!pick.ok) return pick
+/** The single-pick handler: a selector resolves to the one query its rule
+ *  matched. A string or missing value is already the stored form. */
+function singleStep(
+  raw: RawStep,
+  aid: SelectionAid,
+  parts: Record<string, PartResult> | null,
+): SelectionAidResolution {
+  const value = selectionAidValue(raw, aid)
+  if (!pickOf(value)) return { ok: true, mutation: raw }
+  const pickResult = resolvePick(value, parts, selectionAidLabel(raw.type as string, aid), aid.rule)
+  if (!pickResult.ok) return pickResult
+  return { ok: true, mutation: withValueAt(raw, aid.path, pickResult.queries[0]) }
+}
+
+/** The projection-source handler: one pick, plus the entity kind inferred from
+ *  the matched element when the author omitted it. */
+function sourceStep(
+  raw: RawStep,
+  aid: SelectionAid,
+  parts: Record<string, PartResult> | null,
+): SelectionAidResolution {
+  const value = selectionAidValue(raw, aid)
+  if (!pickOf(value)) return { ok: true, mutation: raw }
+  const pickResult = resolvePick(value, parts, selectionAidLabel(raw.type as string, aid), aid.rule)
+  if (!pickResult.ok) return pickResult
   // Fill only a missing kind. A present but wrong one (kind: 5) is left for the
   // value rules to refuse rather than silently corrected here, the same refusal
   // the string source form gets.
-  const kind = raw.kind === undefined ? projectedKindOf(pick.items[0]) : raw.kind
-  return { ok: true, mutation: { ...raw, kind, source: pick.queries[0] } }
+  const kind = raw.kind === undefined ? projectedKindOf(pickResult.items[0]) : raw.kind
+  const resolved = withValueAt(raw, aid.path, pickResult.queries[0])
+  return { ok: true, mutation: { ...resolved, kind } }
 }
 
 // A pick list keeps the authored order: a string entry is already the stored
@@ -237,13 +438,13 @@ function sourceStep(raw: RawStep, parts: Record<string, PartResult> | null): Sel
 // matched, deduped so two selectors naming one edge store it once.
 function pickListStep(
   raw: RawStep,
-  field: string,
+  aid: SelectionAid,
   parts: Record<string, PartResult> | null,
-  kind: SelectKind,
 ): SelectionAidResolution {
-  const entries = raw[field]
+  const entries = selectionAidValue(raw, aid)
   if (!Array.isArray(entries)) return { ok: true, mutation: raw }
   const queries: unknown[] = []
+  const label = selectionAidLabel(raw.type as string, aid)
   for (let i = 0; i < entries.length; i++) {
     const entry = entries[i]
     // A string is already the stored form; any other junk is left to the value
@@ -252,21 +453,26 @@ function pickListStep(
       queries.push(entry)
       continue
     }
-    const pick = resolvePick(entry, parts, `${raw.type as string} ${field}[${i}]`, { kind, oneOnly: null })
-    if (!pick.ok) return pick
-    for (const query of pick.queries) {
+    const pickResult = resolvePick(entry, parts, `${label}[${i}]`, aid.rule)
+    if (!pickResult.ok) return pickResult
+    for (const query of pickResult.queries) {
       if (!queries.includes(query)) queries.push(query)
     }
   }
-  return { ok: true, mutation: { ...raw, [field]: queries } }
+  return { ok: true, mutation: withValueAt(raw, aid.path, queries) }
 }
 
-function shellStep(raw: RawStep, parts: Record<string, PartResult> | null): SelectionAidResolution {
-  return pickListStep(raw, 'faces', parts, 'face')
-}
-
-function edgeStep(raw: RawStep, parts: Record<string, PartResult> | null): SelectionAidResolution {
-  return pickListStep(raw, 'edges', parts, 'edge')
+/** The catalog sentence naming a setter's selector fields, generated from the
+ *  table so a row note cannot promise a field the drive does not resolve. Empty
+ *  for a type with no setter row. */
+export function selectorSetterNote(type: string): string {
+  const fields = selectionAidsFor(type)
+    .filter(aid => aid.field !== undefined)
+    .map(aid => `\`${aid.field}\``)
+  if (fields.length === 0) return ''
+  return `The value of ${fields.join(', ')} also takes \`{selector}\` in place of the query string: `
+    + 'the headless drive resolves it to the query `select` returned before the edit applies, so the '
+    + 'document stores only the query.'
 }
 
 /** Rewrite every selector pick in a part mutation into the query string(s) it
@@ -276,19 +482,19 @@ export function resolveSelectionAids(
   raw: unknown,
   parts: Record<string, PartResult> | null,
 ): SelectionAidResolution {
-  if (!isRecord(raw)) return { ok: true, mutation: raw }
-  switch (raw.type) {
-    case 'add_sketch':
-    case 'set_feature_plane':
-      return planeStep(raw, parts)
-    case 'add_shell':
-      return shellStep(raw, parts)
-    case 'add_fillet':
-    case 'add_chamfer':
-      return edgeStep(raw, parts)
-    case 'add_projected_entity':
-      return sourceStep(raw, parts)
-    default:
-      return { ok: true, mutation: raw }
+  if (!isRecord(raw) || typeof raw.type !== 'string') return { ok: true, mutation: raw }
+  let current = raw
+  for (const aid of selectionAidsFor(raw.type)) {
+    if (!selectionAidApplies(current, aid)) continue
+    // The handler owns one concern: an expandable list, a projection source
+    // whose omitted kind is inferred, or a single pick under one rule.
+    const resolved = aid.mode === 'list'
+      ? pickListStep(current, aid, parts)
+      : aid.inferKind === true
+        ? sourceStep(current, aid, parts)
+        : singleStep(current, aid, parts)
+    if (!resolved.ok) return resolved
+    current = resolved.mutation as RawStep
   }
+  return { ok: true, mutation: current }
 }

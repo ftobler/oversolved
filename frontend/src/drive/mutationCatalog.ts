@@ -20,6 +20,7 @@ import {
 import { entityParamLayoutsSentence } from '@/registry/entityRegistry'
 import { CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 import { mutationValueViolation, EMPTY_REF_CLEARS } from '@/drive/mutationValues'
+import { selectorSetterNote } from '@/drive/selectionAids'
 import { MAX_REPORTED_CREATED_IDS } from '@/drive/scriptRunner'
 import { MAX_PATTERN_INSTANCES, MAX_SKETCH_ENTITIES } from '@/utils/geometry/sketchPattern'
 import { MAX_TEXT_ENTITIES } from '@/utils/geometry/textExpand'
@@ -76,6 +77,8 @@ const str = (note?: string) => ({ type: 'string', required: true, ...(note !== u
 const optStr = (note?: string) => ({ type: 'string', required: false, ...(note !== undefined && { note }) } as const)
 const optNullableStr = (note?: string) =>
   ({ type: 'string', required: false, nullable: true, ...(note !== undefined && { note }) } as const)
+const optNullableQueryOrSelector = (note: string) =>
+  ({ type: 'queryOrSelector', required: false, nullable: true, note } as const)
 const nullableStr = () => ({ type: 'string', required: false, nullable: true } as const)
 const num = (note?: string) => ({ type: 'number', required: true, ...(note !== undefined && { note }) } as const)
 const optNum = (note?: string) => ({ type: 'number', required: false, ...(note !== undefined && { note }) } as const)
@@ -203,8 +206,8 @@ const FIT_SPLINE_TANGENTS_NOTE =
 const FIT_SPLINE_TANGENT_SCALE_NOTE =
   'fit_spline only: true (default) rescales each authored tangent with OCCT\'s `ScaleTangents` (CadQuery ' +
   '`scale=True`); false keeps each tangent\'s length as that end\'s magnitude.'
-const edgeQuery = () => query('An edge query as returned by `select`.')
-const faceQuery = () => query('A face query as returned by `select`.')
+const edgeQuery = () => queryOrSelector('An edge query as returned by `select`, or `{selector}` naming one edge. ' + SINGLE_PICK_SELECTOR_NOTE)
+const faceQuery = () => queryOrSelector('A face query as returned by `select`, or `{selector}` naming one face. ' + SINGLE_PICK_SELECTOR_NOTE)
 const partQuery = () => query('A part id such as body_ex1, or a stored part query; ids keep their stored `body` prefix.')
 
 // A sketch plane resolves through the query repository, so a face query from
@@ -212,8 +215,8 @@ const partQuery = () => query('A part id such as body_ex1, or a stored part quer
 const PLANE_QUERY_NOTE =
   '@<planeId>, a bare plane name (Top, Front, Right), or a face query from `select` '
   + '(the stored ?...:flatface string): a face query places the sketch on that face, origin = face centroid. '
-  + 'Instead of pasting that query string, `plane` also takes the selector itself as `{selector: <a select '
-  + 'selector naming exactly one face>}`; the headless drive resolves it against the settled solve and stores the '
+  + 'Instead of pasting that query string, `plane` also takes `{selector}` (a select selector naming exactly '
+  + 'one face); the headless drive resolves it against the settled solve and stores the '
   + 'query it matched, so the document never carries a selector. '
   + 'The measure reply `frames` map reports the resolved origin and axes; a run reports the ones this call '
   + 'touched or moved, and `frames: "all"` restores every resolved frame.'
@@ -233,8 +236,8 @@ const PROJECTION_VERTEX_KEYS_NOTE =
 const PROJECTION_SOURCE_NOTE =
   'A part edge, vertex or face query from `select` (the stored ?... string), `@builtin_origin`, or a whole '
   + 'entity of another sketch (`@<sketchId>/<entityId>`; ' + PROJECTION_VERTEX_KEYS_NOTE + '). Instead of '
-  + 'pasting a part query, `source` also takes the selector itself as '
-  + '`{selector: <a select selector naming exactly one edge, vertex or face>}`; the headless drive resolves it '
+  + 'pasting a part query, `source` also takes `{selector}` (a select selector naming exactly one edge, vertex '
+  + 'or face); the headless drive resolves it '
   + 'against the settled solve and stores the query it matched, so the document never carries a selector. '
   + 'Only part elements take a selector: `@builtin_origin` and `@<sketchId>/<entityId>` are named directly.'
 
@@ -1054,6 +1057,20 @@ const SELECTOR_SHAPE_NOTE =
   'A selector is `{from?, kind, where}`: `from` names a part (default: every part), `kind` is edge, face or ' +
   'vertex, and `where` holds the predicates, e.g. `{type: "flatface"}` or `{parallel: [0, 0, 1]}`.'
 
+// A single pick field takes the selector itself. Shared so every covered field
+// promises the same one-match rule, and the value rules refuse the same shape.
+const SINGLE_PICK_SELECTOR_NOTE =
+  'Instead of the query string, the field also takes `{selector}`, a select selector naming exactly one ' +
+  'element of the kind it reads; the headless drive resolves it against the settled solve and stores the ' +
+  'query it matched. ' + SELECTOR_SHAPE_NOTE
+
+// A list field takes a selector entry beside its string entries; the entry
+// expands in place to one pick per match, deduped and order kept.
+const LIST_PICK_SELECTOR_NOTE =
+  'An entry may also be `{selector}`, which expands in place to one entry per match, deduped and in match ' +
+  'order; the headless drive resolves it against the settled solve and stores the query strings. ' +
+  SELECTOR_SHAPE_NOTE
+
 // The fillet and chamfer edge list is a pick list like a shell's faces, so each
 // entry takes the same two spellings.
 const EDGE_PICK_LIST_NOTE =
@@ -1107,13 +1124,13 @@ const SHELL_FACES_NOTE =
   'one entry per face it matches, so one entry can open several faces. ' + SELECTOR_SHAPE_NOTE + ' The headless ' +
   'drive resolves a selector against the settled solve before the shell applies; the document stores only query strings.'
 
-// The move-face pick list is still plain query strings (no selector branch has
-// landed for this kind), so the note promises only what the drive accepts.
+// The move-face pick list is the same face list a delete-face row holds, so the
+// note promises the selector entry the drive resolves.
 const MOVE_FACE_INLINE_NOTE =
-  'One call may carry the whole move face: `faces` takes the face queries `select` returned, each moving along ' +
-  'its own outward normal, and `distance` sets the same key `set_move_face_field` does. The distance is signed: ' +
-  'positive adds material along the outward normal and negative removes it. `add_move_face_ref` and ' +
-  '`set_move_face_field` remain for later pick and field edits.'
+  'One call may carry the whole move face: `faces` takes the face queries `select` returned or `{selector}` ' +
+  'entries, each moving along its own outward normal, and `distance` sets the same key `set_move_face_field` ' +
+  'does. The distance is signed: positive adds material along the outward normal and negative removes it. ' +
+  '`add_move_face_ref` and `set_move_face_field` remain for later pick and field edits.'
 
 const VARIABLE_INLINE_NOTE =
   'One call may carry the whole variable: `expression` sets the same key `set_variable_field` does, and `value` ' +
@@ -1401,7 +1418,7 @@ export const MUTATION_CATALOG = {
       kind: optStr(
         'Entity kind: line, circle, arc, ellipse, spline or point. Omit it for a face source (the whole '
         + 'wire is derived; a supplied kind is ignored, so pick one edge if you want a centre point), or '
-        + 'with a {selector} source: the drive infers the kind from the element the selector matched '
+        + 'with a selector source: the drive infers the kind from the element the selector matched '
         + '(an edge keeps its curve kind, a vertex or face projects as point).',
       ),
       source: queryOrSelector(PROJECTION_SOURCE_NOTE),
@@ -1569,12 +1586,19 @@ export const MUTATION_CATALOG = {
     note: PLANE_MODE_NOTE,
     fields: {
       ...featureAddFields(),
-      definition: shapedObj(planeDefinitionSchema(), 'The plane definition object; the schema lists its modes and fields.'),
+      definition: shapedObj(
+        planeDefinitionSchema(),
+        'The plane definition object; the schema lists its modes and fields. The definition\'s `face`, `edge`, ' +
+        '`line`, `point`, `p1`, `p2`, `p3` and `origin` each also take `{selector}` (a select selector naming ' +
+        'exactly one element of the kind that field reads); the drive resolves it before the plane is added. ' +
+        SELECTOR_SHAPE_NOTE,
+      ),
       before: optStr('A feature id; the new plane is inserted directly above it instead of appended.'),
     },
   },
   set_plane_definition_field: {
     summary: 'Set one field of a construction plane definition.',
+    note: selectorSetterNote('set_plane_definition_field'),
     fields: { featureId: str(), field: fieldOf('plane definition', 'set_plane_definition_field'), value: planeDefinitionValue() },
   },
   rename_feature: {
@@ -1600,7 +1624,7 @@ export const MUTATION_CATALOG = {
       twist: optScalar('Degrees of TOTAL rotation of the profile about the sweep axis, spread evenly over distance: positive turns right-handed about the direction of travel, so reverse mirrors the geometry and keeps the same handedness; holes twist with the profile. The axis runs through the sketch origin (a sketch on a face turns about that face\'s centroid, a picked face about its own). Needs termination blind and direction normal or reverse, is refused with a taper, and is bounded at 7200 degrees (the key the document stores as extrude.twist).'),
       direction: optStr('normal | reverse | symmetric; defaults to normal (the key the document stores as extrude.direction).'),
       termination: optNullableStr('blind | up_to | up_to_next | through_all; defaults to blind. `up_to` ends the extrude at the `up_to` element instead of at `distance`; `up_to_next` stops at the first part it meets; `through_all` is a cut sized from the parts it can reach and stores no `distance` (omit it; a stored one is ignored with a warning), and `merge_target` narrows the reach, with `direction: symmetric` cutting both sides of the plane and normal/reverse cutting one (the key the document stores as extrude.termination). A null value clears it, so the add writes no key.'),
-      up_to: optNullableStr('The element an up_to extrude stops at: `@<planeId>`, `@builtin_plane_front`, any part face planar or curved (a face query from `select`, or the viewport\'s `@<bodyId>/face/<n>` fallback), a `select` vertex query, or a sketch point ref (`@<sketchId>/<entityId>/xy`) (the key the document stores as extrude.up_to). Read only when `termination` is `up_to`; otherwise it is ignored. A null or empty value clears it.'),
+      up_to: optNullableQueryOrSelector('The element an up_to extrude stops at: `@<planeId>`, `@builtin_plane_front`, any part face planar or curved (a face query from `select`, or the viewport\'s `@<bodyId>/face/<n>` fallback), a `select` vertex query, or a sketch point ref (`@<sketchId>/<entityId>/xy`) (the key the document stores as extrude.up_to). Read only when `termination` is `up_to`; otherwise it is ignored. A null or empty value clears it. ' + SINGLE_PICK_SELECTOR_NOTE),
       up_to_offset: optNullableScalar('Material-signed distance moved on the stop surface of `up_to` or `up_to_next`: positive outward of the target part\'s material, negative into it; a datum plane or point has no material side, so positive is past it along the extrude. It is a true surface offset along the target normal. Default 0. (the key the document stores as extrude.up_to_offset)'),
       up_to_start: optNullableStr('sketch | surface; absent is sketch. `surface` builds only the slab between the stop surface and its offset, clipped to the profile footprint: the emboss/deboss mode, needing a face target and a non-zero up_to_offset; refused with direction symmetric and a taper (the key the document stores as extrude.up_to_start).'),
       operation: optStr('add | cut | new; absent means add (the key the document stores as extrude.operation).'),
@@ -1609,7 +1633,7 @@ export const MUTATION_CATALOG = {
   },
   set_extrude_field: {
     summary: 'Set one extrude field (distance, direction, operation, ...).',
-    note: EXTRUDE_FIELDS_NOTE,
+    note: EXTRUDE_FIELDS_NOTE + ' ' + selectorSetterNote('set_extrude_field'),
     fields: { featureId: str(), field: fieldOf('extrude', 'set_extrude_field'), value: setterValue('extrude') },
   },
   add_extrude_profile: {
@@ -1627,7 +1651,7 @@ export const MUTATION_CATALOG = {
       ...featureAddFields(),
       sketchQuery: sketchQuery(),
       angle: num(),
-      axis: query(REVOLVE_AXIS_NOTE),
+      axis: queryOrSelector(REVOLVE_AXIS_NOTE + ' ' + SINGLE_PICK_SELECTOR_NOTE),
       direction: optStr('normal | reverse | symmetric; defaults to normal (the key the document stores as revolve.direction).'),
       operation: optStr('add | cut | new; absent means add (the key the document stores as revolve.operation).'),
       merge_target: optStr(MERGE_TARGET_NOTE),
@@ -1635,7 +1659,7 @@ export const MUTATION_CATALOG = {
   },
   set_revolve_field: {
     summary: 'Set one revolve field.',
-    note: REVOLVE_AXIS_NOTE + ' `merge_target`: ' + MERGE_TARGET_NOTE,
+    note: REVOLVE_AXIS_NOTE + ' `merge_target`: ' + MERGE_TARGET_NOTE + ' ' + selectorSetterNote('set_revolve_field'),
     fields: { featureId: str(), field: fieldOf('revolve', 'set_revolve_field'), value: setterValue('revolve') },
   },
   add_wrap: {
@@ -1644,7 +1668,7 @@ export const MUTATION_CATALOG = {
     fields: {
       ...featureAddFields(),
       sketchQuery: sketchQuery(),
-      target: optStr('The face to wrap onto: a face query from `select` or `@<partId>/face/<n>` (the key the document stores as wrap.target). Absent builds nothing and warns.'),
+      target: optQueryOrSelector('The face to wrap onto: a face query from `select` or `@<partId>/face/<n>` (the key the document stores as wrap.target). Absent builds nothing and warns. ' + SINGLE_PICK_SELECTOR_NOTE),
       height: optScalar('Positive distance along the face normal; defaults to 1 (the key the document stores as wrap.height).'),
       operation: optStr('add | cut | new; absent means add (the key the document stores as wrap.operation).'),
       merge_target: optStr(MERGE_TARGET_NOTE),
@@ -1652,7 +1676,7 @@ export const MUTATION_CATALOG = {
   },
   set_wrap_field: {
     summary: 'Set one wrap field (target, height, operation, merge_target).',
-    note: WRAP_NOTE,
+    note: WRAP_NOTE + ' ' + selectorSetterNote('set_wrap_field'),
     fields: { featureId: str(), field: fieldOf('wrap', 'set_wrap_field'), value: setterValue('wrap') },
   },
   add_revolve_profile: {
@@ -1724,10 +1748,12 @@ export const MUTATION_CATALOG = {
   },
   set_fillet_field: {
     summary: 'Set one fillet field, e.g. radius.',
+    note: selectorSetterNote('set_fillet_field'),
     fields: { featureId: str(), field: fieldOf('fillet', 'set_fillet_field'), value: setterValue('fillet') },
   },
   set_chamfer_field: {
     summary: 'Set one chamfer field, e.g. distance.',
+    note: selectorSetterNote('set_chamfer_field'),
     fields: { featureId: str(), field: fieldOf('chamfer', 'set_chamfer_field'), value: setterValue('chamfer') },
   },
   add_fillet_edge: {
@@ -1763,7 +1789,7 @@ export const MUTATION_CATALOG = {
   },
   set_shell_field: {
     summary: 'Set one shell field, e.g. thickness.',
-    note: SHELL_SIGN_NOTE,
+    note: SHELL_SIGN_NOTE + ' ' + selectorSetterNote('set_shell_field'),
     fields: { featureId: str(), field: fieldOf('shell', 'set_shell_field'), value: setterValue('shell') },
   },
   add_shell_face: {
@@ -1779,12 +1805,16 @@ export const MUTATION_CATALOG = {
     note: MOVE_FACE_INLINE_NOTE,
     fields: {
       ...featureAddFields(),
-      faces: optArr('Face queries from `select` (stored as `move_face.faces`); each face moves along its own outward normal.'),
+      faces: optArr(
+        'Face queries from `select` (stored as `move_face.faces`); each face moves along its own outward ' +
+        'normal. ' + LIST_PICK_SELECTOR_NOTE,
+      ),
       distance: optScalar('Signed along each face\'s outward normal: positive adds material, negative removes it; defaults to 5.'),
     },
   },
   set_move_face_field: {
     summary: 'Set one move-face field.',
+    note: selectorSetterNote('set_move_face_field'),
     fields: { featureId: str(), field: fieldOf('move-face', 'set_move_face_field'), value: setterValue('move_face') },
   },
   add_move_face_ref: {
@@ -1797,7 +1827,10 @@ export const MUTATION_CATALOG = {
   },
   add_delete_face: {
     summary: 'Add a delete-face feature, optionally naming faces.',
-    fields: { ...featureAddFields(), faces: optArr() },
+    fields: {
+      ...featureAddFields(),
+      faces: optArr('Face queries from `select` to remove (the key the document stores as delete_face.faces). ' + LIST_PICK_SELECTOR_NOTE),
+    },
   },
   add_delete_face_ref: {
     summary: 'Add a face to delete.',
@@ -1854,7 +1887,7 @@ export const MUTATION_CATALOG = {
       pitch: optScalar(),
       direction_mode: optStr('direction_distance | directive_length | manual; defaults to direction_distance, which reads pitch.'),
       direction: optPoint('A 3-vector. In manual mode it is the whole step vector, and its components accept expressions.'),
-      direction_query: optStr('A straight edge, sketch line or face; overrides direction.'),
+      direction_query: optQueryOrSelector('A straight edge, sketch line or face; overrides direction. ' + SINGLE_PICK_SELECTOR_NOTE),
       invert: optBool(),
       second_direction: optBool('Add the second direction: direction 1 is the column, direction 2 the row.'),
       count_2: optScalar(),
@@ -1862,13 +1895,13 @@ export const MUTATION_CATALOG = {
       pitch_2: optScalar(),
       direction_2_mode: optStr('Direction 2\'s mode, same values as direction_mode.'),
       direction_2: optPoint('Direction 2\'s 3-vector; a manual step vector here too.'),
-      direction_2_query: optStr(),
+      direction_2_query: optQueryOrSelector('Direction 2\'s pick, same kinds as `direction_query`. ' + SINGLE_PICK_SELECTOR_NOTE),
       invert_2: optBool(),
     },
   },
   set_linear_pattern_field: {
     summary: 'Set one linear pattern field, e.g. count, pitch or second direction.',
-    note: LINEAR_PATTERN_NOTE,
+    note: LINEAR_PATTERN_NOTE + ' ' + selectorSetterNote('set_linear_pattern_field'),
     fields: {
       featureId: str(),
       field: fieldOf('linear pattern', 'set_linear_pattern_field'),
@@ -1895,7 +1928,7 @@ export const MUTATION_CATALOG = {
       ),
       angle: optScalar(),
       equal_spacing: optBool('Defaults to true: angle is the full sweep. Off, it is the increment between neighbours.'),
-      axis: optStr('An edge, sketch entity or face ref; overrides the stored origin/direction pair.'),
+      axis: optQueryOrSelector('An edge, sketch entity or face ref; overrides the stored origin/direction pair. ' + SINGLE_PICK_SELECTOR_NOTE),
       axis_origin: optPoint(),
       axis_direction: optPoint(),
       invert_axis: optBool(),
@@ -1903,7 +1936,7 @@ export const MUTATION_CATALOG = {
   },
   set_circular_pattern_field: {
     summary: 'Set one circular pattern field, e.g. count, angle or axis.',
-    note: CIRCULAR_PATTERN_NOTE,
+    note: CIRCULAR_PATTERN_NOTE + ' ' + selectorSetterNote('set_circular_pattern_field'),
     fields: {
       featureId: str(),
       field: fieldOf('circular pattern', 'set_circular_pattern_field'),
@@ -1927,7 +1960,7 @@ export const MUTATION_CATALOG = {
       distance: optScalar('Distance mode only: the arc length between neighbours.'),
       reverse: optBool('Walk the path from its far end.'),
       orientation: optStr('tangent | normal_to | fixed; defaults to tangent.'),
-      normal_ref: optStr('Normal To only: a plane, planar face or straight edge to turn the copies about.'),
+      normal_ref: optQueryOrSelector('Normal To only: a plane, planar face or straight edge to turn the copies about. ' + SINGLE_PICK_SELECTOR_NOTE),
       skip: optAny(
         'Instances to leave out: a list of positive integer indices. The editor text form ("1, 2, 6") is ' +
         'accepted too. Instance 0 is the original and cannot be skipped, and a curve pattern has no grid, ' +
@@ -1937,7 +1970,7 @@ export const MUTATION_CATALOG = {
   },
   set_curve_pattern_field: {
     summary: 'Set one curve pattern field, e.g. count, spacing, distance or orientation.',
-    note: CURVE_PATTERN_NOTE,
+    note: CURVE_PATTERN_NOTE + ' ' + selectorSetterNote('set_curve_pattern_field'),
     fields: {
       featureId: str(),
       field: fieldOf('curve pattern', 'set_curve_pattern_field'),
@@ -1965,7 +1998,7 @@ export const MUTATION_CATALOG = {
       source_feature: optStr('Feature subject: the legacy single-source form of source_features, e.g. @ex1. Still accepted; a list or the singular key, not both.'),
       target_body: optStr('Feature subject: applies every source to this part (stored as `target_body`) instead of the part each source shaped.'),
       sketch: optStr('Deprecated one release: the retired sketch-only form, e.g. @sk1. Rewritten into the leading `targets` entry; send `targets` instead.'),
-      targets: optArr('The points, e.g. ["@sk1", "?@body_ex1@u|...:flatface", "entity:sk2:p1"]. A sketch row stands for all its non-construction points.'),
+      targets: optArr('The points, e.g. ["@sk1", "?@body_ex1@u|...:flatface", "entity:sk2:p1"]. A sketch row stands for all its non-construction points. ' + LIST_PICK_SELECTOR_NOTE),
       reference: optStr('The point the copies are measured from: any pick the target table accepts. Absent, the source sketch\'s only point or the seed\'s centroid.'),
       orientation: optStr('normal | fixed; defaults to normal (turn each copy onto its target\'s normal).'),
       reverse_normal: optBool('Flip every target normal, not the source normal.'),
@@ -1978,7 +2011,7 @@ export const MUTATION_CATALOG = {
   },
   set_instance_pattern_field: {
     summary: 'Set one instance pattern field, e.g. targets, reference or orientation.',
-    note: INSTANCE_PATTERN_NOTE,
+    note: INSTANCE_PATTERN_NOTE + ' ' + selectorSetterNote('set_instance_pattern_field'),
     fields: {
       featureId: str(),
       field: fieldOf('instance pattern', 'set_instance_pattern_field'),
@@ -1988,7 +2021,7 @@ export const MUTATION_CATALOG = {
   add_instance_pattern_target: {
     summary: 'Add a target pick to an instance pattern.',
     note: INSTANCE_TARGET_NOTE,
-    fields: { featureId: str(), targetQuery: query('A target ref. ' + INSTANCE_TARGET_NOTE) },
+    fields: { featureId: str(), targetQuery: queryOrSelector('A target ref, or `{selector}` naming one target. ' + INSTANCE_TARGET_NOTE + ' ' + SINGLE_PICK_SELECTOR_NOTE) },
   },
   remove_instance_pattern_target: {
     summary: 'Remove an instance pattern target by index.',
@@ -2076,8 +2109,8 @@ export const MUTATION_CATALOG = {
       bodies: optArr('Part refs to move (stored as `bodies`, the same array the document stores as transform.bodies). May be empty and edited with add_transform_body later.'),
       operation: optStr('new | replace; absent means new.'),
       translation: optPoint(),
-      translation_from: optStr('A point ref for the translation start.'),
-      translation_to: optStr('A point ref for the translation end.'),
+      translation_from: optQueryOrSelector('A point ref for the translation start. ' + SINGLE_PICK_SELECTOR_NOTE),
+      translation_to: optQueryOrSelector('A point ref for the translation end. ' + SINGLE_PICK_SELECTOR_NOTE),
       rotation_angle: optScalar('Degrees; a number or an expression string.'),
       rotation_euler: optPoint(
         'Extrinsic XYZ degrees as three numbers, e.g. [10, 20, 300]: rotate about world X first, then world Y, then world Z. ' +
@@ -2086,15 +2119,15 @@ export const MUTATION_CATALOG = {
       ),
       rotation_axis_origin: optPoint(),
       rotation_axis_direction: optPoint(),
-      rotation_axis: optStr('A feature-level ref such as @<sketchId>/<entityId>, or an edge query from `select`; overrides the origin/direction pair.'),
+      rotation_axis: optQueryOrSelector('A feature-level ref such as @<sketchId>/<entityId>, or an edge query from `select`; overrides the origin/direction pair. ' + SINGLE_PICK_SELECTOR_NOTE),
       scale: optScalar('A uniform scale, number or expression.'),
       scale_center: optPoint(),
-      scale_center_from: optStr('A point ref for the scale centre.'),
+      scale_center_from: optQueryOrSelector('A point ref for the scale centre. ' + SINGLE_PICK_SELECTOR_NOTE),
     },
   },
   set_transform_field: {
     summary: 'Set one transform field.',
-    note: TRANSFORM_NOTE,
+    note: TRANSFORM_NOTE + ' ' + selectorSetterNote('set_transform_field'),
     fields: { featureId: str(), field: fieldOf('transform', 'set_transform_field'), value: setterValue('transform') },
   },
   add_transform_body: {
@@ -2141,14 +2174,14 @@ export const MUTATION_CATALOG = {
         'operation add or cut, or a hole (always a cut). Applied in feature-log order.',
       ),
       target_body: optStr('The part a mirrored feature copy lands in (stored as `target_body`), when a source shaped more than one.'),
-      plane: optStr('The mirror plane: @builtin_plane_*, a bare name, @<planeId>, or a face query.'),
+      plane: optQueryOrSelector('The mirror plane: @builtin_plane_*, a bare name, @<planeId>, or a face query. ' + SINGLE_PICK_SELECTOR_NOTE),
       keep_original: optBool('Part subject only; defaults to true, and false replaces the source in place. A feature mirror refuses it.'),
       merge: optBool('Part subject only; defaults to true, and false makes the copy its own part. A feature mirror refuses it.'),
     },
   },
   set_mirror_field: {
     summary: 'Set one mirror field.',
-    note: MIRROR_NOTE,
+    note: MIRROR_NOTE + ' ' + selectorSetterNote('set_mirror_field'),
     fields: { featureId: str(), field: fieldOf('mirror', 'set_mirror_field'), value: setterValue('mirror') },
   },
   add_mirror_source: {
@@ -2169,13 +2202,13 @@ export const MUTATION_CATALOG = {
     fields: {
       ...featureAddFields(),
       bodies: optArr('Part refs to cut (stored as `bodies`); a feature ref (@<featureId>) means every part that feature made.'),
-      plane: optStr('The cutting plane: @builtin_plane_*, Front/Top/Right, @<planeFeatureId>, or a ?...:flatface pick.'),
+      plane: optQueryOrSelector('The cutting plane: @builtin_plane_*, Front/Top/Right, @<planeFeatureId>, or a ?...:flatface pick. ' + SINGLE_PICK_SELECTOR_NOTE),
       keep: optStr('above | below | both; absent means above.'),
     },
   },
   set_split_field: {
     summary: 'Set one split field, e.g. plane or keep.',
-    note: SPLIT_NOTE,
+    note: SPLIT_NOTE + ' ' + selectorSetterNote('set_split_field'),
     fields: { featureId: str(), field: fieldOf('split', 'set_split_field'), value: setterValue('split') },
   },
   add_split_body: {
@@ -2216,9 +2249,9 @@ export const MUTATION_CATALOG = {
       'A bare `$<helixId>` is a valid `pathQuery` on a sweep (a thread), see `add_sweep`. ' + HELIX_INLINE_NOTE,
     fields: {
       ...featureAddFields(),
-      reference: optStr(
+      reference: optQueryOrSelector(
         'A picked reference the helix rides on: a cylindrical face, a circular or straight edge, or a ' +
-        'sketch circle or line (see docs/document.md, helix).',
+        'sketch circle or line (see docs/document.md, helix). ' + SINGLE_PICK_SELECTOR_NOTE,
       ),
       radius_mode: optStr('derived (the reference radius) or entered (read `radius`); defaults to derived.'),
       mode: optStr('pitch_turns | pitch_height | turns_height | angle_turns | angle_height; defaults to pitch_turns.'),
@@ -2239,6 +2272,7 @@ export const MUTATION_CATALOG = {
   },
   set_helix_field: {
     summary: 'Set one helix field.',
+    note: selectorSetterNote('set_helix_field'),
     fields: { featureId: str(), field: fieldOf('helix', 'set_helix_field'), value: setterValue('helix') },
   },
   reorder_features: {

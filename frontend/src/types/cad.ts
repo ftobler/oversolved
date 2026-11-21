@@ -1549,6 +1549,26 @@ export type SketchPatternMode = 'linear' | 'grid' | 'rotate' | 'copy'
  *  where it is resolved (the same contract as an assembly mate ref). */
 export type SelectorRef = { selector: unknown }
 
+/** A body pick an author may name with a selector. Only the Mutation union
+ *  carries this form: the drive resolves it to the query string before the
+ *  applier stores the row, so a feature def in the document stays a string. */
+export type PickInput = string | SelectorRef
+export type PickListInput = (string | SelectorRef)[]
+
+/** The plane definition as an add carries it: every point and face field may
+ *  name its element with a selector, while `origin` keeps the world-coordinate
+ *  triple the stored definition allows. */
+export type PlaneDefInput = Omit<PlaneDef, 'face' | 'edge' | 'line' | 'point' | 'p1' | 'p2' | 'p3' | 'origin'> & {
+  face?: PickInput
+  edge?: PickInput
+  line?: PickInput
+  point?: PickInput
+  p1?: PickInput
+  p2?: PickInput
+  p3?: PickInput
+  origin?: PickInput | [number, number, number]
+}
+
 export type Mutation =
   | { type: 'move_vertex'; featureId: string; entityId: string; vertexKey: string; to: Point; solvedGeometry?: Record<string, number[]> }
   | { type: 'move_vertex_with_constraint'; featureId: string; entityId: string; vertexKey: string; to: Point; constraintKind: string; snapVertexId?: string; snapEntityRef?: string; solvedGeometry?: Record<string, number[]> }
@@ -1615,22 +1635,22 @@ export type Mutation =
   | ({ type: 'add_sketch'; featureId: string; label?: string; plane?: string | SelectorRef } & FeatureInsertion)
   | { type: 'delete_feature'; featureId: string }
   | { type: 'set_feature_visibility'; featureId: string; visible: boolean }
-  | ({ type: 'add_plane'; featureId: string; label?: string; definition?: PlaneDef; before?: string } & FeatureInsertion)
-  | { type: 'set_plane_definition_field'; featureId: string; field: string; value: string | number }
+  | ({ type: 'add_plane'; featureId: string; label?: string; definition?: PlaneDefInput; before?: string } & FeatureInsertion)
+  | { type: 'set_plane_definition_field'; featureId: string; field: string; value: string | number | SelectorRef }
   | { type: 'rename_feature'; featureId: string; label: string }
   | { type: 'toggle_sketch_plane_visibility' }
   | { type: 'toggle_plane_visibility' }
-  | ({ type: 'add_extrude'; featureId: string; label?: string; sketchQuery: string; distance?: number; taper?: NumberOrExpr; twist?: NumberOrExpr; direction?: ExtrudeDirection; termination?: ExtrudeTermination | null; up_to?: string | null; up_to_offset?: NumberOrExpr | null; up_to_start?: ExtrudeFeatureDef['up_to_start'] | null; operation?: ExtrudeOperation; merge_target?: string } & FeatureInsertion)
+  | ({ type: 'add_extrude'; featureId: string; label?: string; sketchQuery: string; distance?: number; taper?: NumberOrExpr; twist?: NumberOrExpr; direction?: ExtrudeDirection; termination?: ExtrudeTermination | null; up_to?: PickInput | null; up_to_offset?: NumberOrExpr | null; up_to_start?: ExtrudeFeatureDef['up_to_start'] | null; operation?: ExtrudeOperation; merge_target?: string } & FeatureInsertion)
   | { type: 'set_extrude_field'; featureId: string; field: keyof ExtrudeFeatureDef; value: unknown }
   | { type: 'add_extrude_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_extrude_profile'; featureId: string; index: number }
-  | ({ type: 'add_revolve'; featureId: string; label?: string; sketchQuery: string; angle: number; axis: string; direction?: RevolveDirection; operation?: RevolveFeatureDef['operation']; merge_target?: string } & FeatureInsertion)
+  | ({ type: 'add_revolve'; featureId: string; label?: string; sketchQuery: string; angle: number; axis: PickInput; direction?: RevolveDirection; operation?: RevolveFeatureDef['operation']; merge_target?: string } & FeatureInsertion)
   | { type: 'set_revolve_field'; featureId: string; field: keyof RevolveFeatureDef; value: unknown }
   | { type: 'add_revolve_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_revolve_profile'; featureId: string; index: number }
   | ({ type: 'add_sweep'; featureId: string; label?: string; sketchQuery: string; pathQuery: string; transition?: SweepFeatureDef['transition']; multisection?: boolean; operation?: SweepFeatureDef['operation']; merge_target?: string } & FeatureInsertion)
   | { type: 'set_sweep_field'; featureId: string; field: keyof SweepFeatureDef; value: unknown }
-  | ({ type: 'add_wrap'; featureId: string; label?: string; sketchQuery: string; target?: string; height?: NumberOrExpr; operation?: WrapFeatureDef['operation']; merge_target?: string } & FeatureInsertion)
+  | ({ type: 'add_wrap'; featureId: string; label?: string; sketchQuery: string; target?: PickInput; height?: NumberOrExpr; operation?: WrapFeatureDef['operation']; merge_target?: string } & FeatureInsertion)
   | { type: 'set_wrap_field'; featureId: string; field: keyof WrapFeatureDef; value: unknown }
   | { type: 'add_sweep_profile'; featureId: string; sketchQuery: string }
   | { type: 'remove_sweep_profile'; featureId: string; index: number }
@@ -1641,40 +1661,40 @@ export type Mutation =
   | ({ type: 'add_chamfer'; featureId: string; label?: string; edges?: (string | SelectorRef)[]; distance?: NumberOrExpr } & FeatureInsertion)
   | { type: 'set_fillet_field'; featureId: string; field: keyof FilletFeatureDef; value: unknown }
   | { type: 'set_chamfer_field'; featureId: string; field: keyof ChamferFeatureDef; value: unknown }
-  | { type: 'add_fillet_edge'; featureId: string; edgeQuery: string }
+  | { type: 'add_fillet_edge'; featureId: string; edgeQuery: PickInput }
   | { type: 'remove_fillet_edge'; featureId: string; index: number }
-  | { type: 'add_chamfer_edge'; featureId: string; edgeQuery: string }
+  | { type: 'add_chamfer_edge'; featureId: string; edgeQuery: PickInput }
   | { type: 'remove_chamfer_edge'; featureId: string; index: number }
   | ({ type: 'add_shell'; featureId: string; label?: string; faces?: (string | SelectorRef)[]; thickness?: NumberOrExpr; direction?: ShellDirection; join?: ShellJoin } & FeatureInsertion)
   | { type: 'set_shell_field'; featureId: string; field: keyof ShellFeatureDef; value: unknown }
-  | { type: 'add_shell_face'; featureId: string; faceQuery: string }
+  | { type: 'add_shell_face'; featureId: string; faceQuery: PickInput }
   | { type: 'remove_shell_face'; featureId: string; index: number }
-  | ({ type: 'add_move_face'; featureId: string; label?: string } & Partial<MoveFaceFeatureDef> & FeatureInsertion)
+  | ({ type: 'add_move_face'; featureId: string; label?: string } & Omit<Partial<MoveFaceFeatureDef>, 'faces'> & { faces?: PickListInput } & FeatureInsertion)
   | { type: 'set_move_face_field'; featureId: string; field: keyof MoveFaceFeatureDef; value: unknown }
-  | { type: 'add_move_face_ref'; featureId: string; faceQuery: string }
+  | { type: 'add_move_face_ref'; featureId: string; faceQuery: PickInput }
   | { type: 'remove_move_face_ref'; featureId: string; index: number }
-  | ({ type: 'add_delete_face'; featureId: string; label?: string; faces?: string[] } & FeatureInsertion)
-  | { type: 'add_delete_face_ref'; featureId: string; faceQuery: string }
+  | ({ type: 'add_delete_face'; featureId: string; label?: string; faces?: PickListInput } & FeatureInsertion)
+  | { type: 'add_delete_face_ref'; featureId: string; faceQuery: PickInput }
   | { type: 'remove_delete_face_ref'; featureId: string; index: number }
   | ({ type: 'add_boolean'; featureId: string; label?: string } & Partial<BooleanFeatureDef> & FeatureInsertion)
   | { type: 'set_boolean_field'; featureId: string; field: keyof BooleanFeatureDef; value: unknown }
   | { type: 'add_boolean_tool'; featureId: string; tool: string }
   | { type: 'remove_boolean_tool'; featureId: string; tool: string }
-  | ({ type: 'add_linear_pattern'; featureId: string; label?: string } & Partial<LinearPatternDef> & FeatureInsertion)
+  | ({ type: 'add_linear_pattern'; featureId: string; label?: string } & Omit<Partial<LinearPatternDef>, 'direction_query' | 'direction_2_query'> & { direction_query?: PickInput; direction_2_query?: PickInput } & FeatureInsertion)
   | { type: 'set_linear_pattern_field'; featureId: string; field: keyof LinearPatternDef; value: unknown }
-  | ({ type: 'add_circular_pattern'; featureId: string; label?: string } & Partial<CircularPatternDef> & FeatureInsertion)
+  | ({ type: 'add_circular_pattern'; featureId: string; label?: string } & Omit<Partial<CircularPatternDef>, 'axis'> & { axis?: PickInput } & FeatureInsertion)
   | { type: 'set_circular_pattern_field'; featureId: string; field: keyof CircularPatternDef; value: unknown }
   // The path rides in the add the way the sweep's does; the two chip mutations
   // are the shared ref-list toggle, so a path is picked one curve at a time.
-  | ({ type: 'add_curve_pattern'; featureId: string; label?: string; pathQuery: string } & Omit<Partial<CurvePatternDef>, 'path'> & FeatureInsertion)
+  | ({ type: 'add_curve_pattern'; featureId: string; label?: string; pathQuery: string } & Omit<Partial<CurvePatternDef>, 'path' | 'normal_ref'> & { normal_ref?: PickInput } & FeatureInsertion)
   | { type: 'set_curve_pattern_field'; featureId: string; field: keyof CurvePatternDef; value: unknown }
   | { type: 'add_curve_pattern_path'; featureId: string; pathQuery: string }
   | { type: 'remove_curve_pattern_path'; featureId: string; index: number }
   // The instance pattern's targets ride in the add like the curve path does:
   // one target per chip toggle. Its `sketch` / `targets` fields are inline.
-  | ({ type: 'add_instance_pattern'; featureId: string; label?: string } & Partial<InstancePatternDef> & FeatureInsertion)
+  | ({ type: 'add_instance_pattern'; featureId: string; label?: string } & Omit<Partial<InstancePatternDef>, 'targets'> & { targets?: PickListInput } & FeatureInsertion)
   | { type: 'set_instance_pattern_field'; featureId: string; field: keyof InstancePatternDef; value: unknown }
-  | { type: 'add_instance_pattern_target'; featureId: string; targetQuery: string }
+  | { type: 'add_instance_pattern_target'; featureId: string; targetQuery: PickInput }
   | { type: 'remove_instance_pattern_target'; featureId: string; index: number }
   // One release only: the drive translates a legacy `add_pattern` payload
   // through the loader's own split (utils/core/patternSplit.ts) and replies with
@@ -1688,7 +1708,12 @@ export type Mutation =
   | { type: 'remove_delete_body_ref'; featureId: string; index: number }
   | ({ type: 'add_hole'; featureId: string; label?: string } & Partial<HoleFeatureDef> & FeatureInsertion)
   | { type: 'set_hole_field'; featureId: string; field: keyof HoleFeatureDef; value: unknown }
-  | ({ type: 'add_transform'; featureId: string; label?: string } & Partial<TransformFeatureDef> & FeatureInsertion)
+  | ({ type: 'add_transform'; featureId: string; label?: string } & Omit<Partial<TransformFeatureDef>, 'rotation_axis' | 'translation_from' | 'translation_to' | 'scale_center_from'> & {
+    rotation_axis?: PickInput
+    translation_from?: PickInput
+    translation_to?: PickInput
+    scale_center_from?: PickInput
+  } & FeatureInsertion)
   | { type: 'set_transform_field'; featureId: string; field: keyof TransformFeatureDef; value: unknown }
   | { type: 'add_transform_body'; featureId: string; bodyQuery: string }
   | { type: 'remove_transform_body'; featureId: string; index: number }
@@ -1698,11 +1723,11 @@ export type Mutation =
   | { type: 'set_part_metalness'; bodyId: string; metalness: number }
   | { type: 'set_part_roughness'; bodyId: string; roughness: number }
   | { type: 'set_part_transmission'; bodyId: string; transmission: number }
-  | ({ type: 'add_mirror'; featureId: string; label?: string } & Partial<MirrorFeatureDef> & FeatureInsertion)
+  | ({ type: 'add_mirror'; featureId: string; label?: string } & Omit<Partial<MirrorFeatureDef>, 'plane'> & { plane?: PickInput } & FeatureInsertion)
   | { type: 'set_mirror_field'; featureId: string; field: keyof MirrorFeatureDef; value: unknown }
   | { type: 'add_mirror_source'; featureId: string; sourceFeature: string }
   | { type: 'remove_mirror_source'; featureId: string; index: number }
-  | ({ type: 'add_split'; featureId: string; label?: string; bodies?: string[]; plane?: string; keep?: SplitKeep } & FeatureInsertion)
+  | ({ type: 'add_split'; featureId: string; label?: string; bodies?: string[]; plane?: PickInput; keep?: SplitKeep } & FeatureInsertion)
   | { type: 'set_split_field'; featureId: string; field: keyof SplitFeatureDef; value: unknown }
   | { type: 'add_split_body'; featureId: string; bodyQuery: string }
   | { type: 'remove_split_body'; featureId: string; index: number }
@@ -1710,7 +1735,7 @@ export type Mutation =
   | { type: 'set_variable_field'; featureId: string; field: keyof VariableFeatureDef; value: unknown }
   // `auto_hidden` is the sketch-class show stamp, a feature-level key rather
   // than a helix parameter, so it rides beside Partial<HelixFeatureDef>.
-  | ({ type: 'add_helix'; featureId: string; label?: string } & Partial<HelixFeatureDef> & { auto_hidden?: boolean } & FeatureInsertion)
+  | ({ type: 'add_helix'; featureId: string; label?: string } & Omit<Partial<HelixFeatureDef>, 'reference'> & { reference?: PickInput } & { auto_hidden?: boolean } & FeatureInsertion)
   | { type: 'set_helix_field'; featureId: string; field: keyof HelixFeatureDef; value: unknown }
   // Exactly one of toIndex (an absolute log slot), before or after (a feature id
   // to land next to); the anchors spare a script from counting rows.

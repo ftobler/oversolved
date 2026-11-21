@@ -1,11 +1,9 @@
 // @vitest-environment node
 //
-// The pure half of selector picks in `add_sketch.plane` /
-// `set_feature_plane.plane`, `add_shell.faces`, `add_fillet.edges` /
-// `add_chamfer.edges` and `add_projected_entity.source`: resolveSelectionAids
-// and usesSelectionAid against synthetic solve results. The real half proves the
-// one-step drive path, the chained run's first-step solve, and the refusals
-// (selectionAidsReal.test.ts).
+// The pure half of selector picks on the covered pick fields (drive/selectionAids
+// holds the table): resolveSelectionAids and usesSelectionAid against synthetic
+// solve results. The real half proves the one-step drive path, the chained run's
+// first-step solve, and the refusals (selectionAidsReal.test.ts).
 
 import { describe, it, expect } from 'vitest'
 import type { PartResult, FaceData, EdgeData, PartDoc } from '@/types/cad'
@@ -444,7 +442,85 @@ describe('resolveSelectionAids', () => {
     expect(usesSelectionAid({ type: 'add_chamfer', edges: [zEdgeSelector] })).toBe(true)
     expect(usesSelectionAid({ type: 'add_projected_entity', source: oneEdgeSelector })).toBe(true)
     expect(usesSelectionAid({ type: 'add_projected_entity', source: '@builtin_origin' })).toBe(false)
-    expect(usesSelectionAid({ type: 'add_mirror', plane: planeSelector })).toBe(false)
+    expect(usesSelectionAid({ type: 'add_mirror', plane: planeSelector })).toBe(true)
+    expect(usesSelectionAid({ type: 'add_mirror', plane: '@builtin_plane_top' })).toBe(false)
+  })
+
+  it('expands an instance pattern target selector to every match, any kind', () => {
+    const resolved = resolveSelectionAids(
+      { type: 'add_instance_pattern', featureId: 'ip1', targets: [planeSelector] },
+      twoParts(),
+    )
+    expect(resolved.ok).toBe(true)
+    if (!resolved.ok) return
+    expect((resolved.mutation as { targets: string[] }).targets).toEqual([
+      q('body_a', ['@u|f_0'], 'flatface'),
+      q('body_a', ['@u|f_1'], 'flatface'),
+      q('body_b', ['@u|f_0'], 'flatface'),
+    ])
+  })
+
+  it('resolves a vertex and an edge-or-face pick, and refuses a wrong element kind', () => {
+    const vertex = resolveSelectionAids(
+      { type: 'add_transform', featureId: 'tr1', translation_from: cornerVertexSelector },
+      partsWithSourceShapes(),
+    )
+    expect(vertex.ok).toBe(true)
+    expect(vertex.ok && (vertex.mutation as { translation_from: string }).translation_from)
+      .toBe(q('body_a', ['@u|v_0'], 'vertex'))
+
+    const edge = resolveSelectionAids(
+      { type: 'add_linear_pattern', featureId: 'pt1', direction_query: oneEdgeSelector },
+      partsWithEdges(),
+    )
+    expect(edge.ok).toBe(true)
+    if (!edge.ok) return
+    expect((edge.mutation as { direction_query: string }).direction_query)
+      .toBe(q('body_a', ['@u|e_1'], 'straightedge'))
+
+    const wrong = resolveSelectionAids(
+      { type: 'add_revolve', featureId: 'rv1', axis: cornerVertexSelector },
+      partsWithSourceShapes(),
+    )
+    expect(wrong.ok).toBe(false)
+    if (wrong.ok) return
+    expect(wrong.message).toContain('add_revolve axis')
+    expect(wrong.message).toContain('non-edge')
+  })
+
+  it('resolves a setter value only for the pick field it names', () => {
+    const parts = { body_b: twoParts().body_b }
+    const target = resolveSelectionAids(
+      { type: 'set_wrap_field', featureId: 'wr1', field: 'target', value: planeSelector },
+      parts,
+    )
+    expect(target.ok).toBe(true)
+    expect(target.ok && (target.mutation as { value: string }).value)
+      .toBe(q('body_b', ['@u|f_0'], 'flatface'))
+
+    // A field the table does not cover keeps its value as authored.
+    const height = resolveSelectionAids(
+      { type: 'set_wrap_field', featureId: 'wr1', field: 'height', value: 5 },
+      parts,
+    )
+    expect(height.ok).toBe(true)
+    expect(height.ok && height.mutation).toEqual({ type: 'set_wrap_field', featureId: 'wr1', field: 'height', value: 5 })
+
+    const face = resolveSelectionAids(
+      { type: 'set_plane_definition_field', featureId: 'pl1', field: 'face', value: planeSelector },
+      parts,
+    )
+    expect(face.ok).toBe(true)
+    expect(face.ok && (face.mutation as { value: string }).value)
+      .toBe(q('body_b', ['@u|f_0'], 'flatface'))
+
+    const faces = resolveSelectionAids(
+      { type: 'set_move_face_field', featureId: 'mf1', field: 'faces', value: [planeSelector] },
+      parts,
+    )
+    expect(faces.ok).toBe(true)
+    expect(faces.ok && (faces.mutation as { value: string[] }).value)
+      .toEqual([q('body_b', ['@u|f_0'], 'flatface')])
   })
 
   it('refuses an unresolved selector at the applier instead of dropping it', () => {
