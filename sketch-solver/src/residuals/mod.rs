@@ -209,7 +209,9 @@ impl<'a> Problem<'a> {
     /// The contact a direct coincident pins between two curve operands, if any.
     ///
     /// Static because the survivors gate runs before `Problem` exists and must
-    /// judge a spline tangent by exactly the contact the residual will read.
+    /// judge a spline tangent by the same contact shape the residual reads. The
+    /// gate sees the raw input constraints and the builder the surviving ones;
+    /// a coincident naming a dropped row pins nothing either way.
     /// A spline side must be its `Start` or `End`; a circle contributes its
     /// locus, an arc an endpoint or its locus.
     fn tangent_contact_between<'c>(
@@ -247,11 +249,20 @@ impl<'a> Problem<'a> {
             };
             let first_ep = Self::endpoint_selector(first_kind, p_first);
             let second_ep = Self::endpoint_selector(second_kind, p_second);
+            // A contact needs a real endpoint on one side and either another
+            // endpoint or a locus on the other. A present non-endpoint (a
+            // circle centre, a handle, a fit point) is not a contact: reading it
+            // as one made the radial degenerate and the tangent row vanish.
             match (first_ep, second_ep) {
-                (Some(selector), other) => Some(TangentContact {
+                (Some(selector), Some(other_selector)) => Some(TangentContact {
                     owner: 0,
                     selector,
-                    other_selector: other.unwrap_or(PointSelector::Absent),
+                    other_selector,
+                }),
+                (Some(selector), None) if !p_second.is_present() => Some(TangentContact {
+                    owner: 0,
+                    selector,
+                    other_selector: PointSelector::Absent,
                 }),
                 (None, Some(selector)) if !p_first.is_present() => Some(TangentContact {
                     owner: 1,
@@ -396,6 +407,12 @@ impl<'a> Problem<'a> {
                         let (Some(ka), Some(kb)) = (ka, kb) else {
                             return false;
                         };
+                        // An explicit swapped line/arc role pair lands here with
+                        // the real line in the arc slot; the curve branch would
+                        // read its first params as a centre and radius.
+                        if ka == Kind::Line || kb == Kind::Line {
+                            return false;
+                        }
                         if !tangent_pair_kinds_admitted(ka, kb) {
                             return false;
                         }

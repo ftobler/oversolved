@@ -173,6 +173,8 @@ export async function partDocMockModule(overrides: Record<string, unknown> = {})
         subscribe: () => () => {},
         getDoc: () => null,
         isDirty: () => false,
+        // The handle-drag sink waits on the solve; a mocked page has none.
+        idle: () => Promise.resolve(),
       },
       requestSolve: vi.fn(),
       handleMutation: vi.fn(),

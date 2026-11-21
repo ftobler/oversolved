@@ -195,8 +195,8 @@ export const FIT_SPLINE_TANGENT_MAGNITUDE_NOTE =
 export const FIT_SPLINE_HANDLE_DOF_NOTE =
   'Each stored handle is a solver variable with its own two degrees of freedom, so a tangent at that end ' +
   'fixes only its direction: pin the joint with a coincident plus the tangent, dimension the handle length ' +
-  '(`point_distance` from `start` to `c1`, or `end` to `c2`), and dimension the other handle to close the ' +
-  'last two degrees of freedom.'
+  '(`point_distance` from `start` to `c1`, or `end` to `c2`), and dimension the other handle\'s point by x ' +
+  'and y to close the last two degrees of freedom.'
 const FIT_SPLINE_TANGENTS_NOTE =
   'fit_spline only: [start, end] end tangents, each [tx, ty] or null. ' + FIT_SPLINE_TANGENT_MAGNITUDE_NOTE
   + ' ' + FIT_SPLINE_HANDLE_DOF_NOTE
@@ -719,8 +719,9 @@ const CONSTRAINT_DUPLICATE_NOTE =
 // the pair list.
 export const TANGENT_PAIR_NOTE =
   '`tangent` takes a line with a circle, arc, ellipse or spline, a circle or arc with a circle, arc or ' +
-  'spline, or a spline with another spline. A spline joint needs a coincident at the spline\'s start or ' +
-  'end: without one the tangent is ignored, because the solver has no free spline tangent form.'
+  'spline, or a spline with another spline. A spline with a circle, arc or another spline needs a ' +
+  'coincident at the spline\'s start or end: without one the tangent is ignored, because the solver has ' +
+  'no free spline tangent form there. A line with a spline keeps the free body form.'
 
 const ANGLE_VALUE_NOTE =
   'An `angle` value is the corner the label shows, the angle between the two lines as drawn. ' +
