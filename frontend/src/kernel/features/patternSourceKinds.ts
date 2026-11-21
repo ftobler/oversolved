@@ -1,8 +1,9 @@
 // The one list of feature kinds a feature pattern or a feature mirror repeats.
-// The kernel's tool table, the editor's pick chip and the drive's notes all
-// read it, so admitting a kind is one edit here plus its tool build, never a
-// hand-synced second list. It imports nothing, so an editor module can read it
-// without pulling OCC into the UI bundle.
+// The kernel's tool table and the editor's pick chip read it, so admitting a
+// kind is one edit here plus its leaf's tool build. The drive's catalog notes
+// cannot import it into their prose, so `catalogNotes.test.ts` pins that every
+// source note names the same rule. It imports nothing, so an editor module can
+// read it without pulling OCC into the UI bundle.
 //
 // A hole is on the list because it hands back the per-site cutter it actually
 // cut with; it has no `operation` of its own, so its only meaning is a cut.

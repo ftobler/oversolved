@@ -70,7 +70,7 @@ describe('MIRROR_SCHEMA', () => {
     expect(shown).not.toContain('Merge')
   })
 
-  it('shares the pattern source refusal, so a fillet row is refused too', () => {
+  it('shares the pattern source rule, accepting a hole and refusing a fillet', () => {
     const source = field('source_features')
     expect(source.multi).toBe(true)
     expect(source.addMutationType).toBe('add_mirror_source')

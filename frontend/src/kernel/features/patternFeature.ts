@@ -79,7 +79,7 @@ export interface FeatureCopiesOptions {
 /** The kinds whose leaf builds a tool and routes it through applyPartOperation
  *  with add/cut/new, so `operation: new` hands the same tool back as a body. A
  *  hole has no operation: its tool mode hands back the per-site cutters it
- *  actually cut with, fused into one repeatable shape. */
+ *  actually cut with, compounded and fused where two bores overlap. */
 const TOOL_LEAVES = {
   extrude: solveExtrude,
   revolve: solveRevolve,
@@ -250,6 +250,9 @@ interface SourceTool {
   // A threaded hole's tapped runs, in the source's own coordinates. The copies
   // transform them, so a patterned bore shades as threaded.
   thread?: ThreadDisplayData
+  // A through_all hole's resolved drill axis. Its tool was sized with one span
+  // along this axis, so a copy that turns the axis cannot reach through.
+  throughAxis?: Vec3
 }
 
 /** One transformed tool copy: the shape and the identities it was minted with. */
@@ -565,6 +568,11 @@ function buildSourceTools(
     const builtThread = source.kind === 'hole'
       ? (built as { thread?: ThreadDisplayData }).thread
       : undefined
+    // A through_all hole's tool carries one span, so the leaf must know which
+    // way that span runs to refuse a copy that turns it.
+    const throughAxis = source.kind === 'hole' && (sourceSub.depth_mode as string) === 'through_all'
+      ? (built as { drill_axis?: Vec3 }).drill_axis
+      : undefined
     const sourceTools = Object.values(scratch)
     scratchParts.push(...sourceTools)
     if (sourceTools.length === 0) {
@@ -582,6 +590,7 @@ function buildSourceTools(
         rows: readSourceFaceRows(oc, scope, shape, names.faceNames, names.faceAncestry, names.capAncestry),
         order: order++,
         thread: builtThread,
+        throughAxis,
       })
     }
   }
@@ -637,6 +646,18 @@ function transformedPoint(oc: OccModule, scope: DisposeScope, trsf: OccTrsf, poi
   const p = scope.track(new oc.gp_Pnt_3(point[0], point[1], point[2])) as OccPntValue
   p.Transform(trsf)
   return [p.X(), p.Y(), p.Z()]
+}
+
+/** A copy's transform applied to a direction: two points, so the translation
+ *  cancels. Rigid transforms preserve length (a mirror reflects the sense). */
+function transformedDirection(oc: OccModule, scope: DisposeScope, trsf: OccTrsf, direction: Vec3): Vec3 {
+  const from = transformedPoint(oc, scope, trsf, [0, 0, 0])
+  const to = transformedPoint(oc, scope, trsf, direction)
+  const dx = to[0] - from[0]
+  const dy = to[1] - from[1]
+  const dz = to[2] - from[2]
+  const length = Math.hypot(dx, dy, dz)
+  return length > 1e-12 ? [dx / length, dy / length, dz / length] : [0, 0, 0]
 }
 
 /**
@@ -782,6 +803,26 @@ export function solveFeaturePattern(
       for (const [index, copy] of copies.entries()) {
         for (const tool of planTools) {
           markFeatureStart(featureId)
+          // A through_all hole's tool carries one span along its own axis; a
+          // copy that turns that axis anywhere between parallel and
+          // anti-parallel would cut a shorter chord than the body needs, so it
+          // is refused by name instead of silently leaving a blind bore.
+          if (tool.throughAxis !== undefined) {
+            const copiedAxis = transformedDirection(oc, scope, copy.trsf, tool.throughAxis)
+            const dot = Math.abs(
+              copiedAxis[0] * tool.throughAxis[0] +
+              copiedAxis[1] * tool.throughAxis[1] +
+              copiedAxis[2] * tool.throughAxis[2],
+            )
+            if (dot < 1 - 1e-9) {
+              failures.push(
+                `${noun}: copy ${index + 1} (source '${tool.sourceId}') turns the through_all hole's drill axis, ` +
+                  'so its bore cannot span the body with the tool\'s one span; keep the drill axis parallel or ' +
+                  'use a blind hole',
+              )
+              continue
+            }
+          }
           const { shape: rawShape, builder } = transformCopyWithMapping(oc, scope, tool.shape, copy.trsf)
           const shape = scope.track(rawShape)
           // A copy that lands on its own source changes nothing: the source's

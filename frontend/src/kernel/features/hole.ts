@@ -4,9 +4,9 @@
 //
 // `toolOnly` is the pattern leaf's build: the same sites, direction vote and
 // through_all span resolved against the real store, but the per-site cutters
-// (the ones that actually cut) are compounded, or fused where two sites
-// overlap, and registered as one tool, so a pattern copy carries the hole's
-// style, face roles and cosmetic thread instead of a redrawn circle.
+// (the ones that actually cut) are compounded, fused where two bores overlap,
+// and registered as one tool, so a pattern copy carries the hole's style, face
+// roles and cosmetic thread instead of a redrawn circle.
 //
 // The ref is a pick chip's raw value, so it names either a whole sketch (every
 // non-construction POINT in it) or ONE picked entity. A hole drills points only:
@@ -61,14 +61,45 @@ import { OCC_CONFUSION, TOL_LENGTH_SLACK, TOL_VOLUME_DEGENERATE } from '../solve
 type Dict = Record<string, unknown>
 
 /** The pattern leaf's tool build. The scratch store the solve registers into is
- *  empty, so the real store arrives here: the sites, direction vote and
- *  through_all span must read the body the hole actually cut, and the per-site
- *  cutters become one repeatable tool instead of a sequence of cuts. */
+ *  empty, so the real store arrives here, and the hole's own recorded drill
+ *  state (`holeDrillKey`) supplies the side, through span and cut sites; a
+ *  document with no record falls back to the real body's role names. */
 export interface HoleSolveContext {
+  // The registry's variable context rides this slot for every leaf; naming its
+  // two keys is what keeps `SolveVariableContext` assignable to this type (a
+  // weak type with only `toolOnly` shares no property with it).
   variables?: Record<string, number>
   laterVariables?: Record<string, number>
   toolOnly?: { parts: Record<string, PartSolid> }
 }
+
+/** One drill site the hole's own solve actually cut, with everything a repeat
+ *  needs to rebuild the same cutter: the style-derived sizes, the through
+ *  placement and the tapped run. Plain data, so it rides the repository
+ *  snapshot through every checkpoint. */
+export interface HoleDrillSite {
+  eid: string
+  radius: number
+  center3d: Vec3
+  countersinkDepth: number
+  tipHeight: number
+  airGap: number
+  overhang: number
+  thread: ThreadSiteData | null
+}
+
+/** The drill state a hole records under `holeDrillKey(featureId)` when it
+ *  solves. A pattern's tool build reads it instead of the drilled body: the
+ *  hole's own cut already removed the material a side probe looks for, and a
+ *  later feature may have moved, split or removed the bore entirely. */
+export interface HoleDrillRecord {
+  axis: Vec3
+  throughSpan: number
+  throughMargin: number
+  sites: HoleDrillSite[]
+}
+
+export const holeDrillKey = (featureId: string): string => '_hole_drill_' + featureId
 
 interface HoleResult {
   [key: string]: unknown
@@ -79,6 +110,9 @@ interface HoleResult {
   // The side the hole drilled, as resolved: a through hole under `normal` may
   // have voted `reverse`, which is otherwise only visible by measuring faces.
   direction: 'normal' | 'reverse'
+  // The resolved drill axis, set only by the pattern's tool build so the leaf
+  // can refuse a copy that would turn it.
+  drill_axis?: Vec3
   // The cosmetic thread the drilled bores are for, if the feature names one: its
   // metadata plus one tapped run per drilled site. A cosmetic thread changes
   // no geometry, so this rides the result rather than the body.
@@ -687,6 +721,7 @@ export function solveHole(
   solveContext?: HoleSolveContext,
 ): HoleResult {
   const sub = (feature.hole as Dict) ?? {}
+  const featureId = (feature.id as string) ?? ''
   // Tool mode: the pattern leaf's forced build. It registers one compound tool
   // into the empty `partStore` and reads sites, direction and through_all span
   // from the real store, so the copies carry the tool the source cut with.
@@ -858,12 +893,22 @@ export function solveHole(
   // Read at the first cut: a hole that places nothing never touches the shape.
   let names: ShapeNames | null = null
 
+  // The drill state the hole's own solve recorded. A tool build must read it
+  // rather than the body: the hole's own cut already removed the material a
+  // side probe looks for, so `resolveDrillSide` would read `none` and fall back
+  // to `normal`, flipping a voted `reverse`. The record also freezes the
+  // through span and the cut sites, so a later feature that moves or removes
+  // the bore cannot change the tool.
+  const drillRecord = toolOnly
+    ? (globalRepo.elements.get(holeDrillKey(featureId)) as HoleDrillRecord | undefined)
+    : undefined
+
   let throughMargin = 0.0
   // How far a through-all bore runs inside the body, for the thread display.
   let throughSpan = 0.0
   // The body's edge-sampled AABB, kept for a widened mouth's air-side reach.
   let throughFrame: { center: Vec3; half: Vec3 } | null = null
-  if (depthMode === 'through_all') {
+  if (depthMode === 'through_all' && drillRecord === undefined) {
     const { span, frame } = partSpanAlong(oc, scope, currentShape, axis)
     // A hair past the far face so the bore clears it rather than ending on it.
     throughMargin = span * 1e-3 + 1e-6
@@ -880,20 +925,28 @@ export function solveHole(
   let side: DrillSide = direction === 'reverse' ? 'reverse' : 'normal'
   let otherSideSites: string[] = []
   let probes: Array<{ eid: string; probe: SideProbe }> = []
-  if (depthMode === 'through_all' && throughFrame !== null) {
-    const frame = throughFrame
-    probes = sites.map((s) => ({
-      eid: s.eid,
-      probe: probeSide(oc, scope, currentShape, frame, s.center3d, normal as Vec3, s.radius,
-        style === 'counterbore' ? cbDepth : s.countersinkDepth),
-    }))
-    if (direction !== 'reverse') {
-      const resolved = resolveDrillSide(probes)
-      side = resolved.side
-      otherSideSites = resolved.otherSide
+  let drillAxis: Vec3
+  if (drillRecord !== undefined) {
+    drillAxis = drillRecord.axis
+    side = drillAxis[0] * normal[0] + drillAxis[1] * normal[1] + drillAxis[2] * normal[2] >= 0
+      ? 'normal'
+      : 'reverse'
+  } else {
+    if (depthMode === 'through_all' && throughFrame !== null) {
+      const frame = throughFrame
+      probes = sites.map((s) => ({
+        eid: s.eid,
+        probe: probeSide(oc, scope, currentShape, frame, s.center3d, normal as Vec3, s.radius,
+          style === 'counterbore' ? cbDepth : s.countersinkDepth),
+      }))
+      if (direction !== 'reverse') {
+        const resolved = resolveDrillSide(probes)
+        side = resolved.side
+        otherSideSites = resolved.otherSide
+      }
     }
+    drillAxis = (side === 'normal' ? normal : normal.map((n) => -n)) as Vec3
   }
-  const drillAxis: Vec3 = (side === 'normal' ? normal : normal.map((n) => -n)) as Vec3
   // Whether a site's plane has material on the side the hole does not drill.
   // Such a bore must start exactly on the plane so the material behind stays
   // whole. Every other through bore starts a hair behind its entry: a cutter
@@ -944,6 +997,9 @@ export function solveHole(
     countersinkDepth: number,
     radius: number,
   ): { run: ThreadSiteData | null; boreLength: number; clamped: boolean; untapped: boolean } => {
+    // An unthreaded hole has no tapped run; the placement facts are only read
+    // by the thread warnings.
+    if (thread === null) return { run: null, boreLength: 0, clamped: false, untapped: false }
     // The bore the cosmetic thread (if any) is displayed on: the through
     // portion below the widened mouth, never the counterbore wall or the cone.
     const threadOffset = style === 'counterbore' ? cbDepth : style === 'countersink' ? countersinkDepth : 0
@@ -990,7 +1046,7 @@ export function solveHole(
   // Tool mode: hand the pattern leaf the shape this source cut with instead of
   // cutting. A swallowed or missed site contributes nothing, exactly as the
   // real solve leaves it out of the cut; the kept cutters become one tool,
-  // compounded, and fused only where two kept sites overlap.
+  // compounded, fused where two bores overlap.
   if (toolOnly) {
     const total = drilled.length
     const placed = total - skippedCount
@@ -999,47 +1055,69 @@ export function solveHole(
         `hole: all ${total} drill site(s) in sketch '${sketchId}' have no solved geometry; nothing to place`,
       )
     }
-    // The body has already had the hole's own cut, so a probe against it calls
-    // every site a miss: its material is gone. The body's names say which sites
-    // turned up instead. Each site mints its own role UUIDs before the cut, so
-    // any role that survives on the body (the bore, or a counterbore's wall when
-    // the bore was already open) marks the site as cut; `boreFamily` widens a
-    // role to the pieces a later cut may have split it into. A swallowed or
-    // missed site leaves no role, exactly as it removed nothing.
-    const present = new Set(readPartNames(oc, scope, currentShape, targetPart).faceNames.values())
-    const kept: Array<{
+    type KeptCutter = {
       eid: string
       cutter: Cutter
       run: ThreadSiteData | null
       names: ReturnType<typeof cutterNames>
-    }> = []
-    for (let i = 0; i < sites.length; i++) {
-      const site = sites[i]
-      const place = placeSite(i)
-      const cutter = buildCutter(
-        oc, scope, style, place.start3d, drillAxis, site.center3d, drillAxis, place.airGap, place.overhang,
-        site.radius, place.h, cbRadius, cbDepth, site.countersinkDepth, site.tipHeight,
-      )
-      const names = cutterNames(feature.id as string, sketchId, site.eid, cutter.roles)
-      const cut = [...names.faceNames.values()].some(
-        (uuid) => present.has(uuid) || boreFamily(uuid, present).length > 0,
-      )
-      if (!cut) {
-        scope.release(cutter.shape)
-        continue
+    }
+    const kept: KeptCutter[] = []
+    if (drillRecord !== undefined) {
+      // The hole's own solve recorded exactly which sites cut and how each
+      // cutter sat, so the tool is rebuilt from that rather than from a body a
+      // later feature may have reshaped.
+      for (const site of drillRecord.sites) {
+        const through = depthMode === 'through_all'
+        const start3d = through ? backAlong(site.center3d, drillAxis, site.overhang) : site.center3d
+        const h = through ? drillRecord.throughSpan + 2.0 * site.overhang + drillRecord.throughMargin : depth
+        const cutter = buildCutter(
+          oc, scope, style, start3d, drillAxis, site.center3d, drillAxis, site.airGap, site.overhang,
+          site.radius, h, cbRadius, cbDepth, site.countersinkDepth, site.tipHeight,
+        )
+        kept.push({
+          eid: site.eid,
+          cutter,
+          names: cutterNames(featureId, sketchId, site.eid, cutter.roles),
+          run: site.thread,
+        })
       }
-      kept.push({
-        eid: site.eid,
-        cutter,
-        names,
-        run: siteThread(site.eid, site.center3d, place.airGap, site.countersinkDepth, site.radius).run,
-      })
+    } else {
+      // A document with no record yet: the body has already had the hole's own
+      // cut, so a probe against it calls every site a miss. Its names are the
+      // only witness that a site cut: each site mints its own role UUIDs before
+      // the cut, so any role that survives on the body (the bore, or a
+      // counterbore's wall when the bore was already open) marks the site as
+      // cut; `boreFamily` widens a role to the pieces a later cut may have
+      // split it into. A swallowed or missed site leaves no role.
+      const present = new Set(readPartNames(oc, scope, currentShape, targetPart).faceNames.values())
+      for (let i = 0; i < sites.length; i++) {
+        const site = sites[i]
+        const place = placeSite(i)
+        const cutter = buildCutter(
+          oc, scope, style, place.start3d, drillAxis, site.center3d, drillAxis, place.airGap, place.overhang,
+          site.radius, place.h, cbRadius, cbDepth, site.countersinkDepth, site.tipHeight,
+        )
+        const names = cutterNames(featureId, sketchId, site.eid, cutter.roles)
+        const cut = [...names.faceNames.values()].some(
+          (uuid) => present.has(uuid) || boreFamily(uuid, present).length > 0,
+        )
+        if (!cut) {
+          scope.release(cutter.shape)
+          continue
+        }
+        kept.push({
+          eid: site.eid,
+          cutter,
+          names,
+          run: siteThread(site.eid, site.center3d, place.airGap, site.countersinkDepth, site.radius).run,
+        })
+      }
     }
     const toolThread = thread === null
       ? null
       : kept.map((entry) => entry.run).filter((run): run is ThreadSiteData => run !== null)
     if (kept.length === 0) {
-      return { status: 'ok', body_id: '', body_ids: [], hole_count: 0, direction: side }
+      return { status: 'ok', body_id: '', body_ids: [], hole_count: 0, direction: side, drill_axis: drillAxis }
     }
 
     // Each cutter's faces were named by the roles its own site minted before
@@ -1072,25 +1150,29 @@ export function solveHole(
       for (let i = 1; i < named.length; i++) {
         const next = named[i]
         const fused = booleanWithDiff(oc, scope, accShape, next.shape, 'fuse')
+        const fusedShape = scope.isTracked(fused.shape) ? fused.shape : scope.track(fused.shape)
         // `accNames` is keyed by the current accumulated shape's own faces, so
         // the fuse's history carries each role through to its output face.
         const carried = carryFaceNames(fused.faceOrigin, accNames, next.names.faceNames)
         accAncestry = { ...accAncestry, ...next.names.faceAncestry }
-        accShape = fused.shape
+        // The previous accumulation is consumed by the fuse; only the last one
+        // is the tool.
+        scope.release(accShape)
+        accShape = fusedShape
         accNames = carried
       }
       toolShape = accShape
       merged.faceNames = accNames
       merged.faceAncestry = accAncestry
     }
-    const partId = 'hole_tool_' + (feature.id as string)
+    const partId = 'hole_tool_' + featureId
     const faceUuids = namesToArray(canonicalFaces(oc, scope, toolShape), merged.faceNames)
     if (scope.isTracked(toolShape)) scope.detach(toolShape)
     partStore[partId] = {
       id: partId,
-      created_by: feature.id as string,
+      created_by: featureId,
       modified_by: [],
-      shape: table.register(toolShape, feature.id as string),
+      shape: table.register(toolShape, featureId),
       sketch_id: sketchId,
       brep_diff: null,
       profile_queries: [],
@@ -1103,6 +1185,7 @@ export function solveHole(
       body_ids: [partId],
       hole_count: kept.length,
       direction: side,
+      drill_axis: drillAxis,
     }
     if (thread !== null && toolThread !== null && toolThread.length > 0) {
       result.thread = {
@@ -1135,6 +1218,9 @@ export function solveHole(
   // needs one of these among the sites it overlaps: nothing else explains the
   // empty probe.
   const cutSites = new Set<string>()
+  // The sites that cut, with the exact placement and tapped run, for the
+  // pattern leaf's later tool build.
+  const drillRecordSites: HoleDrillRecord['sites'] = []
   let cutAny = false
   // Set when a missed blind site would cut with the opposite direction, so the
   // all-missed warning can point at `direction` instead of only reporting.
@@ -1233,6 +1319,11 @@ export function solveHole(
     if (tapped.clamped) threadClamped.push(`${eid} (${roundForMessage(tapped.boreLength)})`)
     if (tapped.run !== null) threadSites.push(tapped.run)
     else if (tapped.untapped) threadUntapped.push(eid)
+    // The pattern's tool build reads this instead of the drilled body; the run
+    // is the unwidened one, so a copy can name its own bore.
+    drillRecordSites.push({
+      eid, radius: site.radius, center3d, countersinkDepth, tipHeight, airGap, overhang, thread: tapped.run,
+    })
   }
 
   const total = drilled.length
@@ -1245,6 +1336,14 @@ export function solveHole(
       `hole: all ${total} drill site(s) in sketch '${sketchId}' have no solved geometry; nothing to place`,
     )
   }
+  // The hole's own solved state, for a pattern that comes after it. Plain data,
+  // so it rides the repository snapshot through every checkpoint.
+  globalRepo.register(holeDrillKey(featureId), {
+    axis: drillAxis,
+    throughSpan,
+    throughMargin,
+    sites: drillRecordSites,
+  } satisfies HoleDrillRecord)
 
   // A bore that crosses a gap (a slot, the inside of a U channel) or is cut by
   // a later site of this hole leaves several faces, and the boolean names each

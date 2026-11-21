@@ -1189,11 +1189,15 @@ banner on stdout, so a client config must use the direct node invocation.
   would travel with every rigid copy. A through_all cut is a legal source: its
   tool is measured from the body the copies will cut, so every copy clears the
   same thickness. A hole is a legal source too: its per-site cutters, the ones
-  it actually cut with, are fused into one tool and repeated rigidly, so a copy
-  keeps the hole's style (counterbore, countersink, drill point), its bore and
-  floor face roles and its cosmetic thread. A blind hole and a through_all hole
-  are both admitted; a site the hole swallowed or missed contributes no cutter,
-  exactly as it removed nothing from the source's cut.
+  it actually cut with, are compounded, fused where two bores overlap, into one
+  tool and repeated rigidly, so a copy keeps the hole's style (counterbore,
+  countersink, drill point), its bore and floor face roles and its cosmetic
+  thread. A blind hole and a through_all hole are both admitted; a site the hole
+  swallowed or missed contributes no cutter, exactly as it removed nothing from
+  the source's cut. A through_all hole's tool carries one span along its own
+  drill axis, so a copy whose transform turns that axis (a circular pattern
+  about a non-parallel axis, or an oblique mirror) is refused by name: it would
+  cut a shorter chord than the body needs.
 - A sketch is one profile, and a profile fills even/odd: a loop nested inside
   another is a hole (a disc plus a circle becomes a washer), while loops that
   CROSS each other are filled as their union. A circle meant as a hole that

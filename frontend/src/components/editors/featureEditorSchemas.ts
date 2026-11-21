@@ -606,7 +606,7 @@ export const PATTERN_SOURCE_FIELDS: EditorFieldDef[] = [
   { type: 'pick', key: 'source_body', label: 'Part', transform: resolvePartPickRef, names: 'body',
     showWhen: (d) => d.subject !== 'feature', emptyText: '(pick the part to copy)' },
   // The sources are FEATURE rows, not viewport picks: the chip shows the picked
-  // extrude/revolve/sweep/wrap rows and the feature tree is the pick surface. Every
+  // extrude/revolve/sweep/wrap/hole rows and the feature tree is the pick surface. Every
   // source is reapplied at each grid instance, in the order the sources sit in
   // the feature log; the earliest source's first produced body is the instance-0
   // seed (the count includes it and the grid leaves it in place). The chip's own

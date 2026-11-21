@@ -815,7 +815,7 @@ names under the pattern feature.
   kind: linear_pattern
   linear_pattern:
     subject: feature
-    source_feature: "@ex1"       # required: an earlier extrude, revolve, sweep or wrap
+    source_feature: "@ex1"       # required: an earlier extrude, revolve, sweep, wrap or hole
     count: 3                     # total instances, the source's own included
     pitch: 20.0                  # spacing along direction
     direction: [1, 0, 0]         # or direction_query
@@ -826,10 +826,14 @@ names under the pattern feature.
 `source_feature` must name a feature earlier in the log whose operation is
 `add` or `cut`; a `new` source is refused (it does not add into the body), and
 an `up_to` extrude is refused because its trim would travel with each rigid
-copy. The allowed source kinds are `extrude`, `revolve`, `sweep` and `wrap`; a hole
-pattern is the sketch's own multiple drill sites, and a fillet or shell has no
-standalone tool to repeat. `source_features` is the multi-source spelling and is
-what the editor writes.
+copy. The allowed source kinds are `extrude`, `revolve`, `sweep`, `wrap` and
+`hole`; a hole has no operation and is always a cut, and its per-site cutters
+are repeated as one tool, so a copy keeps its style, bore and floor face roles
+and cosmetic thread. A fillet or shell has no standalone tool to repeat.
+`source_features` is the multi-source spelling and is what the editor writes.
+A through_all hole's tool carries one span along its own drill axis, so a copy
+that turns that axis (a circular pattern about a non-parallel axis, or an
+oblique mirror) is refused by name rather than cutting a shorter chord.
 
 The body is the one the source feature created or modified; when it touched
 more than one (a cut with no merge target reaches every body), the solver
@@ -970,15 +974,15 @@ translates and ignores every normal.
 ```
 
 A `subject: body` mirror reflects the whole body. A `subject: feature` mirror
-instead reapplies one or more earlier extrudes, revolves, sweeps or wraps, reflected
-across the plane, inside the body each source shaped:
+instead reapplies one or more earlier extrudes, revolves, sweeps, wraps or
+holes, reflected across the plane, inside the body each source shaped:
 
 ```yaml
 - id: mir2
   kind: mirror
   mirror:
     subject: feature
-    source_features: ["@ex2"]       # extrude/revolve/sweep/wrap, operation add or cut
+    source_features: ["@ex2"]       # extrude/revolve/sweep/wrap/hole, operation add or cut (a hole is a cut)
     target_body: "@body_ex1"        # optional: the body a source shaped twice
     plane: "@builtin_plane_front"
 ```

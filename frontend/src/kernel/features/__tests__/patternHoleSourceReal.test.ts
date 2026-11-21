@@ -191,6 +191,189 @@ describe.skipIf(!oc || !solveBytes)('a hole as a pattern source (real OCC + Rust
     expect(boreQueries).toHaveLength(6)
   }, 240_000)
 
+  it('keeps the side the hole voted when direction is omitted', () => {
+    // The common face-sketch/top-plane case: no authored direction, so the real
+    // solve probes and votes `reverse`. The pattern's tool build must read that
+    // recorded axis; re-probing the already-drilled body would vote `normal`
+    // and leave five dimples above the top face instead of five bores.
+    const disc = {
+      features: [
+        circleSketch('sk_disc', 0, 0, 30),
+        extrude('ex_disc', '$sk_disc', 10),
+        planeAt('pl_top', 10),
+        pointSketch('sk_hole', 20, 0, '@pl_top'),
+        hole('h1', '$sk_hole', { diameter: 5, depth_mode: 'through_all', target: '@body_ex_disc' }),
+        pattern('pt1', ['h1'], {
+          mode: 'circular', count: 6, axis_origin: [0, 0, 0], axis_direction: [0, 0, 1],
+        }),
+      ],
+    }
+    const r = h.run(disc)
+    expect(h.res(r, 'h1').direction).toBe('reverse')
+    const res = h.res(r, 'pt1')
+    expect(res.status, String(res.exception)).toBe('ok')
+    expect(res.solver_warning).toBeUndefined()
+    // Six through bores in the 60 mm disc: 28274.33 - 1178.10 = 27096.24.
+    expect(volumeAt(r, 'pt1', 'body_ex_disc')).toBeCloseTo(
+      Math.PI * 900 * 10 - 6 * circleBoreVolume(2.5, 10), 4,
+    )
+
+    // The same source mirrored across a vertical mid plane: the reflected copy
+    // must enter from the same face, not turn the voted axis outward.
+    const mirrored = h.run({
+      features: [
+        rectSketch('sk_plate', 40, 20),
+        extrude('ex_plate', '$sk_plate', 10),
+        planeAt('pl_top', 10),
+        pointSketch('sk_hole', 10, 10, '@pl_top'),
+        hole('h1', '$sk_hole', { diameter: 5, depth_mode: 'through_all', target: '@body_ex_plate' }),
+        { id: 'pl_mid', kind: 'plane', definition: { mode: 'offset', plane: '@builtin_plane_right', offset: 20 } },
+        {
+          id: 'mi1', kind: 'mirror',
+          mirror: { subject: 'feature', source_features: ['@h1'], plane: '@pl_mid' },
+        },
+      ],
+    })
+    expect(h.res(mirrored, 'h1').direction).toBe('reverse')
+    const mirrorRes = h.res(mirrored, 'mi1')
+    expect(mirrorRes.status, String(mirrorRes.exception)).toBe('ok')
+    expect(mirrorRes.solver_warning).toBeUndefined()
+    // 40 x 20 x 10 plate minus the source bore and its mirror at x = 30.
+    expect(volumeAt(mirrored, 'mi1', 'body_ex_plate')).toBeCloseTo(
+      40 * 20 * 10 - 2 * circleBoreVolume(2.5, 10), 4,
+    )
+  }, 240_000)
+
+  it('repeats a hole with several drill sites as one compound tool', () => {
+    // Three sites are one tool per instance: six bores for count 2, each with
+    // its own wall. This is the compound branch (the sites do not overlap).
+    const doc = {
+      features: [
+        rectSketch('sk_plate', 200, 40),
+        extrude('ex_plate', '$sk_plate', 5),
+        planeAt('pl_top', 5),
+        {
+          id: 'sk_hole', kind: 'sketch', plane: '@pl_top',
+          entities: [{ id: 'p1', kind: 'point' }, { id: 'p2', kind: 'point' }, { id: 'p3', kind: 'point' }],
+          initial: { p1: [10, 20], p2: [30, 20], p3: [50, 20] },
+          constraints: [],
+        },
+        hole('h1', '$sk_hole', {
+          diameter: 4, depth_mode: 'through_all', direction: 'reverse', target: '@body_ex_plate',
+        }),
+        pattern('pt1', ['h1'], {
+          mode: 'linear', count: 2, pitch: 60, direction: [1, 0, 0],
+        }),
+      ],
+    }
+    const r = h.run(doc)
+    const res = h.res(r, 'pt1')
+    expect(res.status, String(res.exception)).toBe('ok')
+    expect(volumeAt(r, 'pt1', 'body_ex_plate')).toBeCloseTo(
+      200 * 40 * 5 - 6 * circleBoreVolume(2, 5), 4,
+    )
+    // Six bore walls and no other cylinder on a rectangular plate.
+    expect(facesOf(r, 'body_ex_plate').filter((face) => face.surface_type === 'cylinderface')).toHaveLength(6)
+  }, 240_000)
+
+  it('keeps a site the body no longer names when a later feature replaces its bore', () => {
+    // A later concentric cut swallows the h1 bore wall and leaves its own face
+    // there, so a body-role classification at the pattern's log position would
+    // drop the site. The hole's recorded state still knows it cut.
+    const doc = {
+      features: [
+        rectSketch('sk_plate', 40, 20),
+        extrude('ex_plate', '$sk_plate', 5),
+        planeAt('pl_top', 5),
+        pointSketch('sk_hole', 10, 10, '@pl_top'),
+        hole('h1', '$sk_hole', {
+          diameter: 4, depth_mode: 'through_all', direction: 'reverse', target: '@body_ex_plate',
+        }),
+        circleSketch('sk_big', 10, 10, 3, '@pl_top'),
+        {
+          id: 'ex_big', kind: 'extrude',
+          extrude: { sketch: '@sk_big', termination: 'through_all', direction: 'reverse', operation: 'cut' },
+        },
+        pattern('pt1', ['h1'], {
+          mode: 'linear', count: 2, pitch: 10, direction: [1, 0, 0],
+        }),
+      ],
+    }
+    const r = h.run(doc)
+    const res = h.res(r, 'pt1')
+    expect(res.status, String(res.exception)).toBe('ok')
+    // Plate minus the r3 cut at x=10 and the repeated d4 bore at x=20.
+    expect(volumeAt(r, 'pt1', 'body_ex_plate')).toBeCloseTo(
+      40 * 20 * 5 - circleBoreVolume(3, 5) - circleBoreVolume(2, 5), 4,
+    )
+  }, 240_000)
+
+  it('fuses two partially overlapping site cutters into one repeatable tool', () => {
+    // The two d4 bores are 3 mm apart: each leaves material the other does not,
+    // so neither is swallowed, but their cutters overlap. The tool must be one
+    // fused solid, and the copies of the pair remove the same lens-shaped union.
+    const lens = (r: number, d: number): number =>
+      2 * r * r * Math.acos(d / (2 * r)) - (d / 2) * Math.sqrt(4 * r * r - d * d)
+    const pair = (2 * Math.PI * 4 - lens(2, 3)) * 5
+    const doc = {
+      features: [
+        rectSketch('sk_plate', 40, 20),
+        extrude('ex_plate', '$sk_plate', 5),
+        planeAt('pl_top', 5),
+        {
+          id: 'sk_hole', kind: 'sketch', plane: '@pl_top',
+          entities: [{ id: 'p1', kind: 'point' }, { id: 'p2', kind: 'point' }],
+          initial: { p1: [5, 10], p2: [8, 10] },
+          constraints: [],
+        },
+        hole('h1', '$sk_hole', {
+          diameter: 4, depth_mode: 'through_all', direction: 'reverse', target: '@body_ex_plate',
+        }),
+        pattern('pt1', ['h1'], {
+          mode: 'linear', count: 2, pitch: 10, direction: [1, 0, 0],
+        }),
+      ],
+    }
+    const r = h.run(doc)
+    const res = h.res(r, 'pt1')
+    expect(res.status, String(res.exception)).toBe('ok')
+    // The source pair plus its copy at x 15 and 18: 40 x 20 x 5 minus two unions.
+    expect(volumeAt(r, 'pt1', 'body_ex_plate')).toBeCloseTo(40 * 20 * 5 - 2 * pair, 4)
+  }, 240_000)
+
+  it('refuses a copy that turns a through_all hole\'s drill axis', () => {
+    // A through_all tool carries one span along the source's drill axis. A copy
+    // rotated 45 degrees about a perpendicular axis would need a longer span, so
+    // it is refused by name rather than cutting a blind pocket.
+    const doc = {
+      features: [
+        rectSketch('sk_plate', 40, 40, -20, -20),
+        extrude('ex_plate', '$sk_plate', 5),
+        planeAt('pl_top', 5),
+        pointSketch('sk_hole', 0, 0, '@pl_top'),
+        hole('h1', '$sk_hole', {
+          diameter: 5, depth_mode: 'through_all', direction: 'reverse', target: '@body_ex_plate',
+        }),
+        {
+          id: 'pt1', kind: 'circular_pattern',
+          circular_pattern: {
+            subject: 'feature', source_features: ['@h1'], count: 2, angle: 45, equal_spacing: false,
+            axis_origin: [0, 0, 5], axis_direction: [1, 0, 0],
+          },
+        },
+      ],
+    }
+    const r = h.run(doc)
+    const res = h.res(r, 'pt1')
+    expect(res.status).toBe('exception')
+    expect(String(res.exception)).toContain("turns the through_all hole's drill axis")
+    expect(String(res.exception)).toContain('keep the drill axis parallel or use a blind hole')
+    // The source's own bore is still there; the refused copy changed nothing.
+    expect(volumeAt(r, 'pt1', 'body_ex_plate')).toBeCloseTo(
+      40 * 40 * 5 - circleBoreVolume(2.5, 5), 4,
+    )
+  }, 240_000)
+
   it('repeats a counterbored blind hole with its drill point, style intact', () => {
     // Same plate, one counterbored blind hole 6 deep with a drill point. The
     // pattern must remove five times the source's own delta, and every copy
