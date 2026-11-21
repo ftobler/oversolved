@@ -758,7 +758,9 @@ export const editorState = createStore<EditorState>((set, get) => ({
       // A lone constraint tile is not an operand, but it used to answer the
       // command's own arity or shape refusal. Keep that answer instead of a
       // silent ok; a lone plane or feature row has no such command reading and
-      // stays silent.
+      // stays silent. The sentence is deliberately the editor's arity/shape one
+      // (the restored matrix rows pin it), not the applier's closed-list
+      // "takes sketch geometry", which names a stray stored ref.
       const tiles = [...selection].filter(t => t.startsWith('constraint:')).length
       if (tiles === 0) return null
       const countProblem = constraintOperandProblem(kind, tiles)

@@ -488,6 +488,20 @@ describe('finding 5: add_constraint target spelling', () => {
     })).toMatchObject({ ok: true })
   })
 
+  it('refuses a face/edge wrapper the applier would store as a dead inner query', () => {
+    // The applier strips the wrapper and stores `?query`, which the solve then
+    // drops; the editor never sends the wrapper. The drive refuses it up front
+    // instead of reporting an ok that changed nothing usable.
+    for (const wrapper of ['face:sk1:?face', 'edge:sk1:?body:edge']) {
+      const error = refusal({
+        type: 'add_constraint', featureId: 'sk1', kind: 'coincident',
+        targets: ['vertex:sk1:l1:start', wrapper],
+      }, sketchDoc())
+      expect(error.code).toBe('invalid-mutation')
+      expect(error.message).toBe(`Coincident takes sketch geometry; ${wrapper} is not sketch geometry`)
+    }
+  })
+
   it('refuses the sketch plane as an operand, with or without the document', () => {
     // The drive and the applier share the rule, so the sentence a script sees
     // is the one the solve warning carries.

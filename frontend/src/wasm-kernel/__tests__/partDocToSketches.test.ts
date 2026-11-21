@@ -814,22 +814,23 @@ describe('partDocToSketches', () => {
     }])
   })
 
-  it('names a stored face query wrapper as not sketch geometry', () => {
-    // The applier keeps the wrapper's verbatim store path for older documents;
-    // the lowering still names the truth instead of calling the ref stale.
+  it.each(['face:sk1:?face', '?face'])('names a stored %s row as not sketch geometry', (storedRef) => {
+    // The applier strips a face:/edge: wrapper through parseTarget, so the
+    // realistic legacy row is the inner `?query`; both spellings are named
+    // rather than called stale.
     const features: PartFeature[] = [{
       id: 'sk1',
       kind: 'sketch',
       entities: [{ id: 'l1', kind: 'line' }],
       initial: { l1: [0, 0, 10, 0] },
-      constraints: [{ id: 'c_face', kind: 'coincident', a: '$l1start', b: 'face:sk1:?face' }],
+      constraints: [{ id: 'c_face', kind: 'coincident', a: '$l1start', b: storedRef }],
     }]
     const { sketches } = partDocToSketches(features)
     expect(sketches[0].sketch.constraints).toEqual([])
     expect(sketches[0].droppedConstraints).toEqual([{
       id: 'c_face',
       kind: 'coincident',
-      reason: 'Coincident takes sketch geometry; face:sk1:?face is not sketch geometry',
+      reason: `Coincident takes sketch geometry; ${storedRef} is not sketch geometry`,
     }])
   })
 

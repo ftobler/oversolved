@@ -95,10 +95,11 @@ export function isConstraintOperandRef(target: unknown): boolean {
 }
 
 /**
- * The two feature-qualified query wrappers the applier still stores verbatim.
- * They name a B-rep query, not sketch geometry, but an existing pinned test
- * (`yamlMutations.constraints.test.ts`) keeps that store path for older
- * documents; the solve lowering still names them with the operand sentence.
+ * The two feature-qualified query wrappers the applier accepts. `parseTarget`
+ * strips the wrapper and stores its inner `?query` verbatim, so the row names a
+ * B-rep query, not sketch geometry. `addConstraintProblem` keeps that applier
+ * path; the solve lowering names the stored inner query with the operand
+ * sentence, and the drive refuses the wrapper before it is stored.
  */
 export function isLegacyQueryWrapper(target: unknown): boolean {
   return typeof target === 'string'
@@ -360,7 +361,8 @@ export function addConstraintProblem(
   // hears what it is, not that the kind wants another operand. The same rule
   // names the row at the solve lowering; the editor's pick filter drops every
   // non-operand. The face:/edge: wrappers are the one add-time exception: the
-  // applier's pinned verbatim pass-through (see `isLegacyQueryWrapper`).
+  // applier accepts the wrapper and stores its inner query verbatim (see
+  // `isLegacyQueryWrapper`).
   for (const target of targets) {
     if (isLegacyQueryWrapper(target)) continue
     const notGeometry = constraintOperandRefProblem(kind, target)
