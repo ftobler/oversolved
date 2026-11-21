@@ -87,6 +87,15 @@ describe('EntityItem shape dispatch', () => {
     expect(MockLine).not.toHaveBeenCalled()
   })
 
+  it('draws a construction line dashed instead of solid', () => {
+    // The dash is read off the entity, so the live drag preview must carry the
+    // authored flag or the line turns solid for the duration of the drag.
+    renderItem({ ...LINE, construction: true } as Entity)
+
+    expect(MockDashedLine).toHaveBeenCalledTimes(1)
+    expect(MockLine).not.toHaveBeenCalled()
+  })
+
   it('draws a line as two handles and a segment', () => {
     renderItem(LINE as Entity)
 

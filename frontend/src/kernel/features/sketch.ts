@@ -1362,8 +1362,11 @@ export function prepareDragContext(
 }
 
 /** Rebuild a Sketch (for Geometry3D rendering) and a per-entity geometry map
- *  (the pointer-up commit payload) from flattened solver params + layout. */
-function paramsToPreview(
+ *  (the pointer-up commit payload) from flattened solver params + layout.
+ *
+ *  Exported because the live drag preview is what the viewport renders for the
+ *  whole gesture: its style facts are pinned by a viewport-free unit test. */
+export function paramsToPreview(
   params: number[],
   layout: EntityLayout[],
 ): { sketch: Sketch; geometry: Record<string, number[]> } {
@@ -1418,6 +1421,12 @@ function paramsToPreview(
         break
       }
     }
+    // The preview rebuilds every entity from solved params, so the authored
+    // reference flag has to be re-attached: EntityLines reads `construction`
+    // off this sketch to draw the dash, and a construction entity must stay
+    // dashed for every drag frame, exactly as it is at rest.
+    const built = sketch[ent.id]
+    if (ent.construction && built) sketch[ent.id] = { ...built, construction: true }
   }
   return { sketch, geometry }
 }
