@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, fireEvent, act } from '@testing-library/react'
-import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import Viewport from '@/components/Viewport'
 import { clearStaleBandClickConsumed } from '@/components/Viewport/idDispatch/bandClickGuard'
@@ -90,9 +90,6 @@ beforeEach(() => {
     hoveredPickKey: null,
     hoveredVertexId: null,
     hoveredConstraintEntityIds: new Set(),
-  })
-  useSketchUiStore.setState({
-    contextMenu: null,
   })
 })
 

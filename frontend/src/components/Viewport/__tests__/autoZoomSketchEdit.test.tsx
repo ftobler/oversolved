@@ -1,7 +1,6 @@
 import React, { createRef } from 'react'
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, act } from '@testing-library/react'
-import { useSketchUiStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import type { Feature, PartResult } from '@/types/cad'
 import Viewport, { type ViewportHandle } from '@/components/Viewport'
@@ -77,9 +76,6 @@ beforeEach(() => {
   useEditorState.setState({
     clearNormalSelection: () => {},
     setHoveredSelectionId: () => {},
-  })
-  useSketchUiStore.setState({
-    closeContextMenu: () => {},
   })
   usePartEditorStore.setState({
     features: [] as Feature[],

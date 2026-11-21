@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
-import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import Viewport from '@/components/Viewport'
 import { useEditorState } from '@/hooks/useEditorState'
@@ -93,9 +93,6 @@ beforeEach(() => {
     hoveredPickKey: null,
     hoveredVertexId: null,
     hoveredConstraintEntityIds: new Set(),
-  })
-  useSketchUiStore.setState({
-    contextMenu: null,
   })
 })
 

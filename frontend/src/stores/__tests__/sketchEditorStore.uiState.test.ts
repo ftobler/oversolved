@@ -6,23 +6,6 @@ import { useEditorState } from '@/hooks/useEditorState'
 describe('sketchEditorStore', () => {
   installSketchStoreSetup()
 
-  describe('contextMenu', () => {
-    it('starts as null', () => {
-      expect(useSketchUiStore.getState().contextMenu).toBeNull()
-    })
-
-    it('openContextMenu stores position', () => {
-      useSketchUiStore.getState().openContextMenu([100, 200])
-      expect(useSketchUiStore.getState().contextMenu).toEqual([100, 200])
-    })
-
-    it('closeContextMenu clears position', () => {
-      useSketchUiStore.getState().openContextMenu([100, 200])
-      useSketchUiStore.getState().closeContextMenu()
-      expect(useSketchUiStore.getState().contextMenu).toBeNull()
-    })
-  })
-
   describe('hover tracking', () => {
     it('setHoveredVertex updates vertex id and position', () => {
       useSketchEditorStore.getState().setHoveredVertex('vertex:S1:L1:start', [5.5, 10.2], null)

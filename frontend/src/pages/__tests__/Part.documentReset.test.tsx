@@ -93,7 +93,6 @@ describe('Part - document change resets the editor store', () => {
   })
   useSketchUiStore.setState({
     pendingDialog: null,
-    contextMenu: null,
   })
   usePartEditorStore.getState().resetPublishedState()
   })

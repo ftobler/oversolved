@@ -23,7 +23,7 @@ import { useRubberBandSelect } from '@/components/Viewport/useRubberBandSelect'
 import { shouldOpenRubberBand } from '@/components/Viewport/bandStartPolicy'
 import { IdPipeline } from '@/picking/IdPipeline'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
-import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { setSketchCallback } from '@/stores/sketchEditorStore'
 import { useEditorState } from '@/hooks/useEditorState'
 
@@ -87,9 +87,6 @@ async function setup(dimensionPicks: { isVertex: boolean; target: string; entity
     hoveredPickKey: null,
     hoveredVertexId: null,
     hoveredConstraintEntityIds: new Set(),
-  })
-  useSketchUiStore.setState({
-    contextMenu: null,
   })
   return {
     pipeline,
