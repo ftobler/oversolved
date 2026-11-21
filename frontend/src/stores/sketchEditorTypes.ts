@@ -285,6 +285,11 @@ export interface SketchEditorState {
   // construction toggle (or its undo) re-runs the toolbar verdict too.
   constructionEntityKeys: ReadonlySet<string>
   setConstructionEntityKeys: (keys: ReadonlySet<string>) => void
+  // The active sketch's face-projection members as `entity:<sketch>:<id>` keys,
+  // published next to constructionEntityKeys. The construction toolbar reads it
+  // to warn that a member selection flips the whole wire, not one edge.
+  faceProjectionMemberKeys: ReadonlySet<string>
+  setFaceProjectionMemberKeys: (keys: ReadonlySet<string>) => void
   // The corner partner map of the active sketch, keyed by vertex selection id.
   // Published by Geometry3D from the same entities/constraints/initial it
   // renders; filletSelectionPlan reads it so the command gate and the store

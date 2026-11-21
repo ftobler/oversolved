@@ -309,6 +309,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
   isRotating: false,
   entityKindMap: {},
   constructionEntityKeys: new Set(),
+  faceProjectionMemberKeys: new Set(),
   filletCornerMap: {},
   hoveredConstraintEntityIds: new Set(),
   hoveredVertexId: null,
@@ -426,6 +427,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
       // the previous document's entity kinds.
       entityKindMap: {},
       constructionEntityKeys: new Set(),
+      faceProjectionMemberKeys: new Set(),
       filletCornerMap: {},
     })
   },
@@ -711,6 +713,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
 
   setEntityKindMap: (map) => set({ entityKindMap: map }),
   setConstructionEntityKeys: (keys) => set({ constructionEntityKeys: keys }),
+  setFaceProjectionMemberKeys: (keys) => set({ faceProjectionMemberKeys: keys }),
   setFilletCornerMap: (map) => set({ filletCornerMap: map }),
 
   // Reflects the document origin in the active sketch's local frame. Published by

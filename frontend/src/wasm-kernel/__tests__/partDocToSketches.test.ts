@@ -861,6 +861,28 @@ describe('partDocToSketches', () => {
     ])
   })
 
+  it('lowers construction face members as construction geometry only', () => {
+    const feature = {
+      id: 'sk1',
+      kind: 'sketch',
+      plane: '@builtin_plane_front',
+      entities: [{ id: 'row', kind: 'line' }],
+      initial: { row: [0, 0, 10, 0] },
+      constraints: [],
+    } as unknown as PartFeature
+    const facts = {
+      derivedKinds: { m1: 'line', m2: 'line' },
+      derivedInitial: { m1: [0, 0, 5, 0], m2: [0, 5, 5, 5] },
+      derivedConstruction: new Set(['m1']),
+    }
+    const { sketches } = partDocToSketches([feature], [0, 0], [], facts)
+    expect(sketches[0].sketch.entities).toEqual([
+      { id: 'row', kind: 'line', construction: undefined, handles: undefined },
+      { id: 'm1', kind: 'line', construction: true, handles: undefined },
+      { id: 'm2', kind: 'line', construction: undefined, handles: undefined },
+    ])
+  })
+
   it('takes a derived member arity from derivedInitial', () => {
     const feature = {
       id: 'sk1',

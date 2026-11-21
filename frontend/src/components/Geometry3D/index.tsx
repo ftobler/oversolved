@@ -247,6 +247,19 @@ export default function Geometry3D({ featureId, solved, entities, projectionMemb
     setConstructionEntityKeys(new Set(keys))
     return () => setConstructionEntityKeys(new Set())
   }, [isEditing, featureId, entities, setConstructionEntityKeys])
+  const setFaceProjectionMemberKeys = useSketchEditorStore(s => s.setFaceProjectionMemberKeys)
+  useEffect(() => {
+    if (!isEditing) return
+    // Face-projection members are not document rows, so the toolbar cannot read
+    // them off `entities`; the constraint's member map is where they live.
+    const keys = new Set<string>()
+    for (const c of featureDef?.constraints ?? []) {
+      if (c.kind !== 'projection' || c.target !== undefined) continue
+      for (const memberId of Object.values(c.members ?? {})) keys.add(`entity:${featureId}:${memberId}`)
+    }
+    setFaceProjectionMemberKeys(keys)
+    return () => setFaceProjectionMemberKeys(new Set())
+  }, [isEditing, featureId, featureDef?.constraints, setFaceProjectionMemberKeys])
   const setFilletCornerMap = useSketchEditorStore(s => s.setFilletCornerMap)
   useEffect(() => {
     if (!isEditing) return

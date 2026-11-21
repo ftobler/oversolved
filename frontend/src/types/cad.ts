@@ -746,6 +746,10 @@ export interface PartConstraint {
   // `projection` constraint only, face sources: construction tokens the user
   // removed from the projected wire. A re-solve never re-adds one.
   excluded?: string[]
+  // `projection` constraint only, face sources: the whole wire is construction
+  // geometry, so it bounds no profile. One flag for the projection, mirroring
+  // how freeze treats a member id as "the whole face"; absent = profile.
+  construction?: boolean
 }
 
 export interface PartEntityDef {
@@ -1587,6 +1591,9 @@ export type Mutation =
       type: 'add_projected_entity'; featureId: string; kind?: string; source: string | SelectorRef
       entityId?: string; constraintId?: string
       members?: Record<string, string>; excluded?: string[]
+      // Creation-time construction flag: a face source folds it into the
+      // constraint (whole wire), every other source onto the held row.
+      construction?: boolean
     }
   // The optional refs name what a click snapped onto (a `vertex:` ref, or an
   // `entity:` ref for a point on that curve); the writer pins the matching corner

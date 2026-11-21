@@ -392,6 +392,10 @@ export interface SketchProjectionFacts {
   resolvedKinds?: Readonly<Record<string, string>>
   derivedKinds?: Readonly<Record<string, string>>
   derivedInitial?: Readonly<Record<string, number[]>>
+  // The derived members whose owning face projection is construction geometry.
+  // Membership is a fact of the constraint, not of the derived curve, so it
+  // travels with the other per-solve facts instead of being read back off a row.
+  derivedConstruction?: ReadonlySet<string>
 }
 
 /**
@@ -418,9 +422,14 @@ export function partDocToSketches(
     const resolvedKinds = facts.resolvedKinds ?? {}
     const derivedKinds = facts.derivedKinds ?? {}
     const derivedInitial = facts.derivedInitial ?? {}
+    const derivedConstruction = facts.derivedConstruction ?? new Set()
     const entities: NonNullable<SketchFeature['entities']> = [
       ...(feature.entities ?? []),
-      ...Object.entries(derivedKinds).map(([id, kind]) => ({ id, kind })),
+      ...Object.entries(derivedKinds).map(([id, kind]) => ({
+        id,
+        kind,
+        ...(derivedConstruction.has(id) ? { construction: true } : {}),
+      })),
     ]
     const initial = { ...(feature.initial ?? {}), ...derivedInitial }
 
