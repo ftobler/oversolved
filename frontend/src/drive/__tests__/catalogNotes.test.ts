@@ -121,6 +121,19 @@ describe('up-to termination on both extrude rows', () => {
   })
 })
 
+describe('extrude distance under up_to and up_to_next', () => {
+  it('says the length comes from the target, not the stored distance', () => {
+    const note = mutationInfoOf('add_extrude').fields.distance.note!
+    expect(note).toContain('`up_to` and `up_to_next`')
+    expect(note).toContain('not read as the length')
+    expect(note).toContain('Any non-zero value builds the same solid')
+    for (const type of ['add_extrude', 'set_extrude_field'] as const) {
+      expect(mutationInfoOf(type).note, type).toContain('not read as the length')
+      expect(mutationInfoOf(type).note, type).toContain('0 is still refused')
+    }
+  })
+})
+
 describe('extrude taper notes', () => {
   it('names the sign, the wall rule and both refusals on both extrude rows', () => {
     for (const type of ['add_extrude', 'set_extrude_field'] as const) {
