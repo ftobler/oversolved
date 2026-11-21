@@ -228,6 +228,34 @@
   padding: 6px 8px 8px;
 }
 
+/* The open editor and its status mark are two cards in the right column's
+   flow (components/shared/StatusPanel), so the column's gap separates them and
+   a mark pushes the cards below down rather than covering them. */
+.feature-status-panel {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 8px;
+  /* A sibling card, not part of the form; its text reads left. */
+  text-align: left;
+  /* The message stays whole; when the column runs out of room the editor body
+     gives up height and scrolls instead. */
+  flex-shrink: 0;
+}
+
+.feature-status-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* The mark fills the card beside the icon instead of being sized by its text. */
+.feature-status-panel .status-message {
+  flex: 1 1 auto;
+  padding: 0;
+}
+
 /* Frost shows through the open editor's fields; they keep their own dark tint
    for contrast, just at alpha instead of opaque. */
 .feature-edit-panel .feature-field-select,
@@ -1485,9 +1513,10 @@
   gap: 2px;
 }
 
-/* A status mark as a line in an open editor (components/shared/StatusMessage).
+/* A status mark as a line: a field refusal under its control, or the words in
+   the item's status card after the open editor (components/shared/StatusMessage).
    The colours are the tree row's feature-name-error / -warning, so a mark reads
-   the same in the row and in the dialog. */
+   the same in the row, the card and the field. */
 .status-message {
   font-size: 11px;
   padding: 0 4px;

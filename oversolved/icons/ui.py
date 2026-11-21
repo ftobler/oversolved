@@ -165,6 +165,39 @@ def icon_dots(ctx):
     ctx.fill()
 
 
+@icon("frontend/src/assets/icons/status-warning.svg")
+def status_warning(ctx):
+    """Warning triangle for a solver mark, in the status line's amber."""
+    ctx.set_source_rgb(236 / 255, 173 / 255, 43 / 255)
+    ctx.move_to(0.5, 0.14)
+    ctx.line_to(0.94, 0.84)
+    ctx.line_to(0.06, 0.84)
+    ctx.close_path()
+    stroke(ctx, 1.5)
+
+    ctx.move_to(0.5, 0.38)
+    ctx.line_to(0.5, 0.62)
+    stroke(ctx, 2)
+
+    ctx.arc(0.5, 0.73, px(2), 0, 2 * math.pi)
+    ctx.fill()
+
+
+@icon("frontend/src/assets/icons/status-error.svg")
+def status_error(ctx):
+    """Error disc for a solver mark, in the status line's red."""
+    ctx.set_source_rgb(244 / 255, 67 / 255, 54 / 255)
+    ctx.arc(0.5, 0.5, 0.4, 0, 2 * math.pi)
+    stroke(ctx, 1.5)
+
+    ctx.move_to(0.5, 0.28)
+    ctx.line_to(0.5, 0.56)
+    stroke(ctx, 2)
+
+    ctx.arc(0.5, 0.69, px(2), 0, 2 * math.pi)
+    ctx.fill()
+
+
 @icon("frontend/src/assets/icons/rename.svg")
 def icon_rename(ctx):
     """Icon for Rename: a text cursor"""
