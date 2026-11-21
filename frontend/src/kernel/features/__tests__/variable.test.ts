@@ -2,9 +2,10 @@ import { describe, it, expect } from 'vitest'
 import type { PartFeature } from '@/types/cad'
 import {
   solveVariable, isValidVariableName, variableRenameProblem, variableScopeAt, laterVariablesAt,
+  type VariableSolveInput,
 } from '../variable'
 
-function variableFeature(label: string, expression: unknown): Record<string, unknown> {
+function variableFeature(label: string, expression: unknown): VariableSolveInput {
   return { id: 'v1', kind: 'variable', label, variable: { expression } }
 }
 

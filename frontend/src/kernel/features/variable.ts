@@ -77,8 +77,15 @@ function invalidVariableNameProblem(name: string): string {
  *  context. Returns `{ status: 'ok', value, expression }` on success, or
  *  `{ status: 'exception', exception }` for an invalid name, a duplicate name,
  *  a missing/empty expression, or an unevaluable formula. */
+export interface VariableSolveInput {
+  id?: string
+  label?: string
+  kind?: unknown
+  variable?: { expression?: unknown }
+}
+
 export function solveVariable(
-  feature: Record<string, unknown>,
+  feature: VariableSolveInput,
   context: Record<string, number> = {},
   laterVariables: Record<string, number> = {},
 ): Record<string, unknown> {
@@ -93,7 +100,7 @@ export function solveVariable(
     return { status: 'exception', exception: `Duplicate variable name: "${varName}". Variable names must be unique.` }
   }
 
-  const variable = feature.variable as Record<string, unknown> | undefined
+  const variable = feature.variable
   const expression = variable?.expression
   // A plain number is a legal expression (stored numerically); coerce for eval.
   const exprStr = typeof expression === 'number' ? String(expression) : expression
@@ -141,7 +148,7 @@ export function variableScopeAt(
     if (feature.kind !== 'variable' || feature.suppressed) continue
     // The fold is the builder's: solveVariable adds nothing on failure, so a
     // failed variable leaves no name behind for a later one to read.
-    const result = solveVariable(feature as unknown as Record<string, unknown>, scope)
+    const result = solveVariable(feature, scope)
     if (result.status === 'ok' && typeof result.value === 'number') {
       scope[String(feature.label ?? feature.id ?? '')] = result.value
     }
