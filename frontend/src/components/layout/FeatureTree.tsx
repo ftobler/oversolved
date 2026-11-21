@@ -11,11 +11,30 @@ import { isEditableFeatureKind } from '@/components/layout/featureItemKinds'
 import { hasFeatureVisibilityToggle } from '@/components/layout/featureVisibilityKinds'
 import { RollbackSlider } from '@/components/layout/RollbackSlider'
 import { getFeatureIcon } from '@/components/layout/featureIcons'
+import { dropCueEdges, slotAt } from '@/components/layout/featureDropSlot'
+import { shouldActivateDrag } from '@/utils/geometry/dragLogic'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
 import { domHandleProps } from '@/picking'
 import { usePartRelationHints } from '@/hooks/useRelationHint'
 import { UnitText } from '@/components/editors/widgets/UnitLabel'
+
+// Pixels of hold that turns a touch press into a row drag. Below it a touch is
+// a scroll or a tap, never a reorder.
+const TOUCH_LONG_PRESS_MS = 350
+// How close to the list's top or bottom edge a drag starts scrolling it, and how
+// far one animation frame moves it.
+const AUTO_SCROLL_EDGE_PX = 24
+const AUTO_SCROLL_STEP_PX = 8
+
+interface FeatureDragStart {
+  featureId: string
+  fromIndex: number
+  pointerId: number
+  startX: number
+  startY: number
+  pointerType: string
+}
 
 // The features list is one of the part editor's floating cards now: it sizes to
 // its content under a max-height and scrolls internally, with the open feature's
@@ -55,7 +74,20 @@ export function FeatureTree() {
   const [draggedFeatureId, setDraggedFeatureId] = useState<string | null>(null)
   const [draggedRollback, setDraggedRollback] = useState(false)
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null)
+  const [featureDrag, setFeatureDrag] = useState<FeatureDragStart | null>(null)
   const listRef = useRef<HTMLUListElement>(null)
+  // The row the gesture started on: pointer capture is taken there, so the
+  // browser keeps sending the gesture to the tree even off the row.
+  const dragRowRef = useRef<HTMLElement | null>(null)
+  // The click that follows a reorder release must not also select the row. The
+  // flag is consumed by that click (same task as the release) and cleared on a
+  // timer just after, so a click the browser delivers elsewhere cannot eat a
+  // later one; any new press clears it too.
+  const suppressRowClickRef = useRef(false)
+  // The drag effect must not re-subscribe (and drop a pending touch hold) every
+  // time a solve or a rebuild re-renders the tree.
+  const onMutationRef = useRef(onMutation)
+  useEffect(() => { onMutationRef.current = onMutation }, [onMutation])
 
   // null means "end of stack" (edit exit resets to null), and out-of-order
   // deletes can leave a stale position past the end until the owner clamps it.
@@ -65,19 +97,13 @@ export function FeatureTree() {
   // solver invariant depends on that), so the bar must not be draggable.
   const rollbackDraggable = editingFeatureId === null
 
-  // Which slot the bar would land in for a cursor at `clientY`: the first
-  // feature whose upper half the cursor is in, clamped past the built-ins
-  // (the bar can never be parked above Origin/Top/Front/Right).
+  // Which slot the bar would land in for a cursor at `clientY`. Shared with the
+  // feature drag, so a row and the bar can never disagree about a position.
   const rollbackTargetAt = useCallback((clientY: number) => {
     const featureEls = listRef.current?.querySelectorAll('.feature-item') ?? []
-    for (let i = 0; i < featureEls.length; i++) {
-      const rect = featureEls[i].getBoundingClientRect()
-      if (clientY < rect.top + rect.height / 2) {
-        return Math.max(i, BUILTIN_FEATURE_IDS.size)
-      }
-    }
-    return features.length
-  }, [features.length])
+    const rects = Array.from(featureEls, el => el.getBoundingClientRect())
+    return slotAt(rects, clientY, BUILTIN_FEATURE_IDS.size)
+  }, [])
 
   // The rollback bar drags on raw pointer events instead of HTML5 drag-and-drop.
   // Native DnD only completes a drop if the browser processed a preventDefault'd
@@ -114,6 +140,171 @@ export function FeatureTree() {
     }
   }, [draggedRollback, rollbackTargetAt, onSetRollbackPosition, effectiveRollback])
 
+  // Feature rows drag on pointer events too, for the same swallowed-release
+  // reason and because a native drop only existed where a row's `dragover` had
+  // been prevented: the gaps, the rollback bar and the empty tail refused the
+  // drop while the cue kept promising it. The slot comes from the row rects
+  // (`slotAt`), so every pointer position over the list names one.
+  useEffect(() => {
+    if (featureDrag === null) return
+    const gesture = {
+      ...featureDrag,
+      active: false,
+      timer: null as number | null,
+      blocker: null as ((e: TouchEvent) => void) | null,
+      frame: null as number | null,
+      scrollDir: 0 as -1 | 0 | 1,
+      lastX: featureDrag.startX,
+      lastY: featureDrag.startY,
+    }
+
+    const rowRects = () => Array.from(
+      listRef.current?.querySelectorAll<HTMLElement>('.feature-item') ?? [],
+      el => el.getBoundingClientRect(),
+    )
+    // The list's own rect is the cancel boundary: the header above it and the
+    // Parts card below are outside. The empty tail stays inside, because the
+    // list is the flexible card body.
+    const pointerInsideList = (clientX: number, clientY: number) => {
+      const rect = listRef.current?.getBoundingClientRect()
+      if (!rect) return true
+      return clientX >= rect.left && clientX <= rect.right
+        && clientY >= rect.top && clientY <= rect.bottom
+    }
+    const slotFromPointer = (clientX: number, clientY: number) => (
+      pointerInsideList(clientX, clientY)
+        ? slotAt(rowRects(), clientY, BUILTIN_FEATURE_IDS.size)
+        : null
+    )
+    const ownsPointer = (e: PointerEvent) => e.pointerId === gesture.pointerId
+    const updateCue = (clientX: number, clientY: number) => setDropTargetIndex(slotFromPointer(clientX, clientY))
+
+    const finish = () => {
+      const wasActive = gesture.active
+      gesture.active = false
+      gesture.scrollDir = 0
+      if (gesture.timer !== null) window.clearTimeout(gesture.timer)
+      if (gesture.blocker !== null) window.removeEventListener('touchmove', gesture.blocker)
+      if (gesture.frame !== null) cancelAnimationFrame(gesture.frame)
+      const row = dragRowRef.current
+      if (row?.hasPointerCapture?.(gesture.pointerId)) row.releasePointerCapture(gesture.pointerId)
+      // The release's click is dispatched in the same task as pointerup. Clear
+      // the flag on the next task so that click is still suppressed, while a
+      // later click delivered elsewhere (a built-in row, the edited row) is not
+      // eaten.
+      if (wasActive) window.setTimeout(() => { suppressRowClickRef.current = false }, 0)
+      setDraggedFeatureId(null)
+      setDropTargetIndex(null)
+      setFeatureDrag(null)
+    }
+
+    // Native DnD scrolled a long list near its edges; a gesture that can only
+    // reach the visible rows would strand the features past them.
+    const step = () => {
+      gesture.frame = null
+      const list = listRef.current
+      if (!gesture.active || gesture.scrollDir === 0 || !list) return
+      list.scrollTop += gesture.scrollDir * AUTO_SCROLL_STEP_PX
+      updateCue(gesture.lastX, gesture.lastY)
+      gesture.frame = requestAnimationFrame(step)
+    }
+    const updateAutoScroll = (clientX: number, clientY: number) => {
+      const rect = listRef.current?.getBoundingClientRect()
+      let dir: -1 | 0 | 1 = 0
+      if (rect && pointerInsideList(clientX, clientY)) {
+        if (clientY < rect.top + AUTO_SCROLL_EDGE_PX) dir = -1
+        else if (clientY > rect.bottom - AUTO_SCROLL_EDGE_PX) dir = 1
+      }
+      gesture.scrollDir = dir
+      if (dir !== 0 && gesture.frame === null) gesture.frame = requestAnimationFrame(step)
+    }
+
+    const activate = () => {
+      if (gesture.active) return
+      gesture.active = true
+      gesture.timer = null
+      if (gesture.pointerType === 'touch') {
+        // A browser fixes touch-action when the gesture starts, so setting it
+        // now cannot stop a scroll that is already armed; a non-passive
+        // touchmove blocker can. Only the activated hold blocks, so a quick
+        // swipe still scrolls the list.
+        gesture.blocker = (event: TouchEvent) => event.preventDefault()
+        window.addEventListener('touchmove', gesture.blocker, { passive: false })
+      }
+      const row = dragRowRef.current
+      // jsdom has no pointer capture; the window listeners carry the gesture
+      // there. In a browser the capture is what delivers the release when the
+      // pointer is let go outside the window.
+      if (row && typeof row.setPointerCapture === 'function') row.setPointerCapture(gesture.pointerId)
+      suppressRowClickRef.current = true
+      setDraggedFeatureId(gesture.featureId)
+      updateCue(gesture.lastX, gesture.lastY)
+      updateAutoScroll(gesture.lastX, gesture.lastY)
+    }
+
+    const onMove = (e: PointerEvent) => {
+      if (!ownsPointer(e)) return
+      gesture.lastX = e.clientX
+      gesture.lastY = e.clientY
+      if (!gesture.active) {
+        if (!shouldActivateDrag([gesture.startX, gesture.startY], [e.clientX, e.clientY])) return
+        // A finger that travels before the hold is a scroll, not a reorder.
+        if (gesture.pointerType === 'touch') {
+          finish()
+          return
+        }
+        activate()
+        return
+      }
+      updateCue(e.clientX, e.clientY)
+      updateAutoScroll(e.clientX, e.clientY)
+    }
+
+    const onUp = (e: PointerEvent) => {
+      if (!ownsPointer(e)) return
+      const active = gesture.active
+      const slot = active ? slotFromPointer(e.clientX, e.clientY) : null
+      const { featureId, fromIndex } = gesture
+      finish()
+      // A release outside the list cancels. Its own slot and the one right
+      // below it are where the feature already is.
+      if (slot === null || slot === fromIndex || slot === fromIndex + 1) return
+      onMutationRef.current({ type: 'reorder_features', featureId, toIndex: slot })
+    }
+
+    const onCancel = (e: PointerEvent) => {
+      if (ownsPointer(e)) finish()
+    }
+    const onLostCapture = (e: PointerEvent) => {
+      // A capture lost before the release means the pointer went somewhere the
+      // page cannot see; that is a cancel, never a commit.
+      if (ownsPointer(e) && gesture.active) finish()
+    }
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      e.preventDefault()
+      finish()
+    }
+
+    if (gesture.pointerType === 'touch') gesture.timer = window.setTimeout(activate, TOUCH_LONG_PRESS_MS)
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+    window.addEventListener('lostpointercapture', onLostCapture)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      if (gesture.timer !== null) window.clearTimeout(gesture.timer)
+      if (gesture.blocker !== null) window.removeEventListener('touchmove', gesture.blocker)
+      if (gesture.frame !== null) cancelAnimationFrame(gesture.frame)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
+      window.removeEventListener('lostpointercapture', onLostCapture)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [featureDrag])
+
   // Enter/Space on a focused row selects it, mirroring the row's click. Only the
   // row itself reacts: a key event bubbling from an action button inside the row
   // must not re-select the feature.
@@ -147,6 +338,16 @@ export function FeatureTree() {
     if (row && typeof row.scrollIntoView === 'function') row.scrollIntoView({ block: 'nearest' })
   }, [relatedKey, editingFeatureId])
 
+  // The insertion line the live drag promises. Slot `features.length` has no
+  // row below it, so its line is drawn on the last row's bottom; at the bar's
+  // slot the line is drawn on the side the feature will actually land.
+  const draggedIndex = draggedFeatureId === null
+    ? -1
+    : features.findIndex(f => f.id === draggedFeatureId)
+  const cue = dropTargetIndex === null
+    ? { top: null, bottom: null }
+    : dropCueEdges(dropTargetIndex, features.length, effectiveRollback, draggedIndex)
+
   return (
     <div className="sidebar-top glass-panel">
       <div className="sidebar-header">
@@ -177,47 +378,47 @@ export function FeatureTree() {
                 position={effectiveRollback}
                 min={BUILTIN_FEATURE_IDS.size}
                 max={features.length}
-                onGrab={() => setDraggedRollback(true)}
+                onGrab={() => {
+                  if (featureDrag === null) setDraggedRollback(true)
+                }}
                 onSetPosition={onSetRollbackPosition}
               />
             )}
             <li
-              className={`feature-item ${index >= effectiveRollback ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingFeatureId ? 'editing' : ''} ${selection.has(selectionId) ? 'selected' : ''} ${relatedIds.has(selectionId) ? 'related' : ''} ${draggedFeatureId === feature.id ? 'dragging' : ''} ${dropTargetIndex === index ? 'drop-target-top' : ''} ${dropTargetIndex === index + 1 ? 'drop-target-bottom' : ''}`}
+              className={`feature-item ${!isBuiltIn && feature.id !== editingFeatureId ? 'draggable' : ''} ${index >= effectiveRollback ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingFeatureId ? 'editing' : ''} ${selection.has(selectionId) ? 'selected' : ''} ${relatedIds.has(selectionId) ? 'related' : ''} ${draggedFeatureId === feature.id ? 'dragging' : ''} ${cue.top === index ? 'drop-target-top' : ''} ${cue.bottom === index ? 'drop-target-bottom' : ''}`}
               role="option"
               tabIndex={0}
               aria-selected={selection.has(selectionId)}
-              draggable={!isBuiltIn && feature.id !== editingFeatureId}
+              onPointerDown={(e) => {
+                // A new press ends whatever the last release left behind: the
+                // suppression applies only to the click the drag itself made.
+                suppressRowClickRef.current = false
+                if (isBuiltIn || feature.id === editingFeatureId) return
+                if (e.button !== 0 || e.isPrimary === false) return
+                if (featureDrag !== null || draggedRollback) return
+                // The action cluster keeps its own clicks: a press that starts
+                // on the eye, edit, OK, Cancel or menu button is not a grab.
+                if (e.target instanceof Element && e.target.closest('.feature-item-actions')) return
+                dragRowRef.current = e.currentTarget
+                setFeatureDrag({
+                  featureId: feature.id,
+                  fromIndex: index,
+                  pointerId: e.pointerId,
+                  startX: e.clientX,
+                  startY: e.clientY,
+                  pointerType: e.pointerType || 'mouse',
+                })
+              }}
               onDragStart={(e) => {
-                if (isBuiltIn) return
-                setDraggedFeatureId(feature.id)
-                e.dataTransfer.effectAllowed = 'move'
-                e.dataTransfer.setData('text/plain', feature.id)
-              }}
-              onDragOver={(e) => {
-                if (!draggedFeatureId || isBuiltIn) return
+                // The icon is a draggable image by default; a native drag would
+                // cancel the pointer gesture before it starts.
                 e.preventDefault()
-                e.stopPropagation()
-                const rect = e.currentTarget.getBoundingClientRect()
-                const midY = rect.top + rect.height / 2
-                const targetIndex = e.clientY < midY ? index : index + 1
-                setDropTargetIndex(Math.max(targetIndex, BUILTIN_FEATURE_IDS.size))
-              }}
-              onDragEnd={() => {
-                setDraggedFeatureId(null)
-                setDropTargetIndex(null)
-              }}
-              onDrop={(e) => {
-                if (!draggedFeatureId) return
-                e.preventDefault()
-                e.stopPropagation()
-                const fid = e.dataTransfer.getData('text/plain')
-                if (fid && dropTargetIndex !== null && !BUILTIN_FEATURE_IDS.has(fid)) {
-                  onMutation({ type: 'reorder_features', featureId: fid, toIndex: dropTargetIndex })
-                }
-                setDraggedFeatureId(null)
-                setDropTargetIndex(null)
               }}
               onClick={() => {
+                if (suppressRowClickRef.current) {
+                  suppressRowClickRef.current = false  // the drag's release, not a select
+                  return
+                }
                 onToggleSelect(selectionId)
               }}
               onKeyDown={(e) => rowKeyDown(e, () => onToggleSelect(selectionId))}
@@ -293,7 +494,9 @@ export function FeatureTree() {
           position={effectiveRollback}
           min={BUILTIN_FEATURE_IDS.size}
           max={features.length}
-          onGrab={() => setDraggedRollback(true)}
+          onGrab={() => {
+            if (featureDrag === null) setDraggedRollback(true)
+          }}
           onSetPosition={onSetRollbackPosition}
         />
       )}

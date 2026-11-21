@@ -3,7 +3,7 @@ import { screen, fireEvent } from '@testing-library/react'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import {
   makeCallbacks, renderSidebar, resetStores, setupRollbackStore as setupStore,
-  createDragEvent, grabRollback, movePointer, releasePointer, layoutFeatureRows,
+  grabRollback, movePointer, releasePointer, layoutFeatureRows, pressRow,
   builtInFeatures, extrudeFeature, sketchFeature,
 } from './sidebarTestHarness'
 import { useEditorState } from '@/hooks/useEditorState'
@@ -128,30 +128,17 @@ describe('rollback bar drag convergence', () => {
     const features = [...builtInFeatures, sketchFeature, extrudeFeature]
     setupStore(features, 6)
     renderSidebar(makeCallbacks({ onMutation }))
+    layoutFeatureRows()
 
-    const sketchItem = screen.getByText('sk1').closest('.feature-item')!
-    const extrudeItem = screen.getByText('ex1').closest('.feature-item')!
-
-    vi.spyOn(extrudeItem, 'getBoundingClientRect').mockReturnValue({
-      top: 100,
-      left: 0,
-      width: 200,
-      height: 40,
-      bottom: 140,
-      right: 200,
-      x: 0,
-      y: 100,
-      toJSON: () => {},
-    })
-
-    fireEvent(sketchItem, createDragEvent('dragstart', { dataTransferText: 'sk1' }))
-    fireEvent(extrudeItem, createDragEvent('dragover', { clientY: 110 }))
-    fireEvent(extrudeItem, createDragEvent('drop', { dataTransferText: 'sk1' }))
+    // sk1 sits at index 4, ex1 at 5: the lower half of ex1 is slot 6.
+    pressRow(screen.getByText('sk1').closest('.feature-item')!, { clientY: 180 })
+    movePointer(230)
+    releasePointer(230)
 
     expect(onMutation).toHaveBeenCalledWith({
       type: 'reorder_features',
       featureId: 'sk1',
-      toIndex: 5,
+      toIndex: 6,
     })
   })
 
