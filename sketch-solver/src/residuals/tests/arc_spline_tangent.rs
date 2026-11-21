@@ -12,6 +12,24 @@ fn fit_entity(off: usize, points: usize, flags: u8) -> Entity {
     }
 }
 
+/// One entity of `kind` at `off` with params that make a valid tangent operand.
+/// The pair-table test builds its live inputs from this so a table row is not
+/// judged only by the helper it was written against.
+fn tangent_operand(kind: Kind, off: usize) -> (Entity, Vec<f64>) {
+    match kind {
+        Kind::Line => (ent(Kind::Line, off), vec![0.0, 0.0, 3.0, 1.0]),
+        Kind::Circle => (ent(Kind::Circle, off), vec![0.0, 0.0, 5.0]),
+        Kind::Arc => (ent(Kind::Arc, off), vec![0.0, 0.0, 5.0, 0.0, 90.0]),
+        Kind::Ellipse => (ent(Kind::Ellipse, off), vec![0.0, 0.0, 5.0, 3.0, 0.0]),
+        Kind::Spline => (
+            ent(Kind::Spline, off),
+            vec![0.0, 0.0, 1.0, 0.0, 2.0, 0.0, 3.0, 0.0],
+        ),
+        Kind::FitSpline => (fit_entity(off, 3, 0), vec![0.0, 0.0, 1.1, 0.0, 2.2, 0.0]),
+        Kind::Point => (ent(Kind::Point, off), vec![0.0, 0.0]),
+    }
+}
+
 fn abs() -> PointSelector {
     PointSelector::Absent
 }
@@ -170,7 +188,8 @@ fn r3_a_cubic_spline_start_tangent_to_an_arc() {
     assert!(r[2].abs() < 1e-12, "seed tangent row: {}", r[2]);
 
     let mut x = p.x0.clone();
-    x[8] = 6.0; // P2 y
+    // Spline params 5..12 are P1=(5,6), P2=(7,8), P3=(9,10), P4=(11,12).
+    x[8] = 6.0; // P2.y
     let r = p.residuals(&x);
     assert!(
         r[2].abs() > 1e-3,
@@ -294,8 +313,8 @@ fn r6_a_near_tangent_seed_settles_g1_not_a_cusp() {
         0.0,
         5.0,
         0.0,
-        5.0 + 2.0 * c,
-        2.0 * s, // end handle, 10 degrees off vertical
+        5.0 + 2.0 * s,
+        2.0 * c, // end handle, 10 degrees off vertical
     ];
     params.extend_from_slice(&[0.0, 0.0, 5.0]);
     let fit = fit_entity(0, 3, FLAG_HANDLE_END);
@@ -572,9 +591,94 @@ fn r10_a_spline_tangent_without_a_contact_is_dropped() {
 }
 
 #[test]
-fn the_admitted_tangent_pairs_match_the_frontend_table() {
+fn a_centre_coincident_is_not_a_tangent_contact_and_a_later_locus_pins_one() {
+    // Line (0,0)->(3,1), circle centre (2,3) r2.5: the free body row is
+    // 7/sqrt(10) - 2.5. A coincident naming the line end and the circle CENTRE
+    // must not become the tangent contact: that made the radial degenerate and
+    // the row a false zero, and the scan stopped before a later valid locus
+    // coincidence could pin the real contact.
+    let absent = PointSelector::Absent;
+    let tangent = cons(
+        ConstraintKind::Tangent,
+        ab(e_ref(0, absent), e_ref(1, absent)),
+    );
+    let centre = cons(
+        ConstraintKind::Coincident,
+        ab(
+            e_ref(0, PointSelector::End),
+            e_ref(1, PointSelector::Center),
+        ),
+    );
+    let locus = cons(
+        ConstraintKind::Coincident,
+        ab(e_ref(0, PointSelector::End), e_ref(1, absent)),
+    );
+    let entities = || vec![ent(Kind::Line, 0), ent(Kind::Circle, 4)];
+    let params = || vec![0.0, 0.0, 3.0, 1.0, 2.0, 3.0, 2.5];
+
+    let only_centre = input(entities(), params(), vec![centre.clone(), tangent.clone()]);
+    let p = Problem::new(&only_centre);
+    assert!(
+        !p.tangent_contact.contains_key(&(0, 1)),
+        "the centre coincidence was read as a tangent contact"
+    );
+    let r = p.residuals(&p.x0);
+    let body = 7.0 / (10.0_f64).sqrt() - 2.5;
+    assert!((r[2] - body).abs() < 1e-12, "body row {} != {body}", r[2]);
+    assert!(r[2].abs() > 1e-3, "the tangent row collapsed to zero");
+
+    let with_locus = input(entities(), params(), vec![centre, locus, tangent]);
+    let p = Problem::new(&with_locus);
+    assert_eq!(
+        p.tangent_contact.get(&(0, 1)).map(|c| c.selector),
+        Some(PointSelector::End),
+        "the later locus coincidence did not pin the contact"
+    );
+    let r = p.residuals(&p.x0);
+    assert_eq!(
+        r.len(),
+        4,
+        "two centre rows, one locus row, one tangent row"
+    );
+    assert!(
+        r[3].abs() > 1e-3,
+        "the pinned tangent row collapsed to zero"
+    );
+}
+
+#[test]
+fn a_swapped_line_arc_role_pair_is_dropped_by_the_gate() {
+    // Explicit roles name a circle as the line and a real line as the arc. The
+    // curve branch would read the line's params as a centre and radius, so the
+    // gate refuses the pair outright.
+    let c = Constraint {
+        kind_code: ConstraintKind::Tangent.to_u8(),
+        refs: vec![
+            (RefRole::Line, e_ref(0, PointSelector::Absent)),
+            (RefRole::Arc, e_ref(1, PointSelector::Absent)),
+        ],
+        ..Default::default()
+    };
+    let inp = input(
+        vec![ent(Kind::Circle, 0), ent(Kind::Line, 3)],
+        vec![0.0, 0.0, 5.0, 0.0, 0.0, 3.0, 1.0],
+        vec![c],
+    );
+    let p = Problem::new(&inp);
+    assert_eq!(
+        p.constraints().len(),
+        0,
+        "a swapped line/arc role pair must be dropped"
+    );
+    assert!(p.residuals(&p.x0).is_empty());
+}
+
+#[test]
+fn the_admitted_tangent_pairs_match_the_literal_table_and_live_gate() {
     // Keep this literal table in step with TANGENT_KIND_PAIRS in
-    // frontend/src/utils/constraintApplicability.ts.
+    // frontend/src/utils/constraintApplicability.ts. Every row is judged twice:
+    // by the table helper and by the live survivors gate, so a row cannot pass
+    // here while the solver drops the same pair.
     let admitted = [
         (Kind::Line, Kind::Circle),
         (Kind::Line, Kind::Arc),
@@ -600,6 +704,42 @@ fn the_admitted_tangent_pairs_match_the_frontend_table() {
         assert!(
             tangent_pair_kinds_admitted(b, a),
             "{b:?} x {a:?} should be admitted"
+        );
+
+        let (first, first_params) = tangent_operand(a, 0);
+        let (second, second_params) = tangent_operand(b, first_params.len());
+        let mut params = first_params;
+        params.extend(second_params);
+        let mut constraints = Vec::new();
+        if is_spline(a) || is_spline(b) {
+            // A spline side needs its end pinned. The partner's locus (circle)
+            // or start endpoint (arc/spline/line) is enough for the gate.
+            let (spline, other) = if is_spline(a) { (0, 1) } else { (1, 0) };
+            let other_kind = if is_spline(a) { b } else { a };
+            let other_selector = if other_kind == Kind::Circle {
+                PointSelector::Absent
+            } else {
+                PointSelector::Start
+            };
+            constraints.push(cons(
+                ConstraintKind::Coincident,
+                ab(
+                    e_ref(spline, PointSelector::Start),
+                    e_ref(other, other_selector),
+                ),
+            ));
+        }
+        constraints.push(cons(
+            ConstraintKind::Tangent,
+            ab(e_ref(0, abs()), e_ref(1, abs())),
+        ));
+        let inp = input(vec![first, second], params, constraints);
+        let p = Problem::new(&inp);
+        let expected = if is_spline(a) || is_spline(b) { 2 } else { 1 };
+        assert_eq!(
+            p.constraints().len(),
+            expected,
+            "{a:?} x {b:?} was dropped by the live gate"
         );
     }
     for (a, b) in [

@@ -59,7 +59,7 @@ function profileSteps(): ScriptStep[] {
     {
       mutation: {
         type: 'add_entity', featureId: 'sk1', kind: 'fit_spline',
-        params: [60, 50, 65, 55, 70, 52, 75, 45], entityId: 'flank',
+        params: [60, 50, 65, 55, 70, 52, 75, 45], entityId: 'flank1',
       },
     },
     { mutation: { type: 'add_entity', featureId: 'sk1', kind: 'line', params: [75, 45, 0, 0], entityId: 'close' } },
@@ -69,8 +69,8 @@ function profileSteps(): ScriptStep[] {
     // The tangent is authored before its coincident: the add-time pair rule
     // keeps it, the solve ignores it until the shared endpoint exists, and the
     // later coincident revives the same document row.
-    { mutation: { type: 'add_constraint', featureId: 'sk1', kind: 'tangent', targets: ['entity:sk1:belly', 'entity:sk1:flank'] } },
-    { mutation: { type: 'add_constraint', featureId: 'sk1', kind: 'coincident', targets: ['vertex:sk1:belly:end', 'vertex:sk1:flank:start'] } },
+    { mutation: { type: 'add_constraint', featureId: 'sk1', kind: 'tangent', targets: ['entity:sk1:belly', 'entity:sk1:flank1'] } },
+    { mutation: { type: 'add_constraint', featureId: 'sk1', kind: 'coincident', targets: ['vertex:sk1:belly:end', 'vertex:sk1:flank1:start'] } },
   ]
 }
 
@@ -82,17 +82,17 @@ function skeletonSteps(): ScriptStep[] {
     { mutation: { type: 'add_constraint', featureId: 'sk1', kind: 'length', targets: ['entity:sk1:base'], value: 10 } },
     { mutation: { type: 'add_constraint', featureId: 'sk1', kind: 'coincident', targets: ['vertex:sk1:base:end', 'vertex:sk1:belly:start'] } },
     { mutation: { type: 'add_constraint', featureId: 'sk1', kind: 'radius', targets: ['entity:sk1:belly'], value: 50 } },
-    { mutation: { type: 'set_fit_spline_handle', featureId: 'sk1', entityId: 'flank', end: 'start', handle: [60, 45] } },
-    { mutation: { type: 'set_fit_spline_handle', featureId: 'sk1', entityId: 'flank', end: 'end', handle: [80, 40] } },
+    { mutation: { type: 'set_fit_spline_handle', featureId: 'sk1', entityId: 'flank1', end: 'start', handle: [60, 45] } },
+    { mutation: { type: 'set_fit_spline_handle', featureId: 'sk1', entityId: 'flank1', end: 'end', handle: [80, 40] } },
   ]
 }
 
 function dimensionSteps(): ScriptStep[] {
   return [
-    ...dimensionPoint('vertex:sk1:flank:start', 60, 50),
-    ...dimensionPoint('vertex:sk1:flank:fit1', 65, 55),
-    ...dimensionPoint('vertex:sk1:flank:fit2', 70, 52),
-    ...dimensionPoint('vertex:sk1:flank:end', 75, 45),
+    ...dimensionPoint('vertex:sk1:flank1:start', 60, 50),
+    ...dimensionPoint('vertex:sk1:flank1:fit1', 65, 55),
+    ...dimensionPoint('vertex:sk1:flank1:fit2', 70, 52),
+    ...dimensionPoint('vertex:sk1:flank1:end', 75, 45),
   ]
 }
 
@@ -101,11 +101,11 @@ function closeSteps(): ScriptStep[] {
     {
       mutation: {
         type: 'add_constraint', featureId: 'sk1', kind: 'point_distance',
-        targets: ['vertex:sk1:flank:start', 'vertex:sk1:flank:c1'], value: 5,
+        targets: ['vertex:sk1:flank1:start', 'vertex:sk1:flank1:c1'], value: 5,
       },
     },
-    ...dimensionPoint('vertex:sk1:flank:c2', 80, 40),
-    { mutation: { type: 'add_constraint', featureId: 'sk1', kind: 'coincident', targets: ['vertex:sk1:close:start', 'vertex:sk1:flank:end'] } },
+    ...dimensionPoint('vertex:sk1:flank1:c2', 80, 40),
+    { mutation: { type: 'add_constraint', featureId: 'sk1', kind: 'coincident', targets: ['vertex:sk1:close:start', 'vertex:sk1:flank1:end'] } },
     { mutation: { type: 'add_constraint', featureId: 'sk1', kind: 'coincident', targets: ['vertex:sk1:close:end', '@builtin_origin'] } },
     { mutation: { type: 'add_constraint', featureId: 'sk1', kind: 'coincident', targets: ['vertex:sk1:axis:start', '@builtin_origin'] } },
     { mutation: { type: 'add_constraint', featureId: 'sk1', kind: 'vertical', targets: ['entity:sk1:axis'] } },

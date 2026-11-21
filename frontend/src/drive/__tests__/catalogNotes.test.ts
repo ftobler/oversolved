@@ -570,6 +570,8 @@ describe('practice doc cases: fit_spline magnitude and helix sweep path', () => 
       expect(fields.tangents.note, type).toContain('its length is that end\'s magnitude')
       expect(fields.tangents.note, type).toContain('`tangentScale: false` keeps the authored length')
       expect(fields.tangents.note, type).toContain(FIT_SPLINE_HANDLE_DOF_NOTE)
+      expect(fields.tangents.note, type)
+        .toContain("dimension the other handle's point by x and y")
       expect(fields.tangentScale.note, type).toContain('false keeps each tangent\'s length')
     }
   })
@@ -578,6 +580,7 @@ describe('practice doc cases: fit_spline magnitude and helix sweep path', () => 
     expect(mutationInfoOf('add_constraint').note).toContain(TANGENT_PAIR_NOTE)
     expect(TANGENT_PAIR_NOTE).toContain('line with a circle, arc, ellipse or spline')
     expect(TANGENT_PAIR_NOTE).toContain('a coincident at the spline\'s start or end')
+    expect(TANGENT_PAIR_NOTE).toContain('A line with a spline keeps the free body form')
   })
 
   it('names the helix path form and both limits on both pathQuery fields', () => {

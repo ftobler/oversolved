@@ -1154,7 +1154,7 @@ entity) and `{"external_xy": [x, y]}`. The app writes the string form.
 | `normal` | Dot product of directions |
 | `parallel` | Cross product of directions |
 | `angle` | Angle between lines (deg) |
-| `tangent` | Line perpendicular to radius |
+| `tangent` | Line perpendicular to a circle/arc radius; circle/arc to circle/arc at a contact; circle/arc or spline to a spline at a pinned spline end |
 | `equal_length` | Length difference |
 | `point_distance` | Distance minus value |
 | `point_distance_x` | X-component of point-to-point distance minus value |

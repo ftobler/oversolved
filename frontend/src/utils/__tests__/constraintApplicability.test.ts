@@ -103,9 +103,31 @@ describe('constraint entity-kind applicability', () => {
   })
 
   it('keeps the tangent pair table and the Rust gate on the same literal table', () => {
-    // sketch-solver/src/residuals/tests/arc_spline_tangent.rs
-    // `the_admitted_tangent_pairs_match_the_frontend_table` lists the same rows.
-    for (const [a, b] of TANGENT_KIND_PAIRS) {
+    // The Rust test `the_admitted_tangent_pairs_match_the_literal_table_and_live_gate`
+    // lists the same rows and runs them through the live survivors gate. Here
+    // the literal list is the check on the exported table, not a loop over the
+    // table checking itself.
+    const admitted: Array<readonly [string, string]> = [
+      ['line', 'circle'],
+      ['line', 'arc'],
+      ['line', 'ellipse'],
+      ['line', 'spline'],
+      ['line', 'fit_spline'],
+      ['circle', 'arc'],
+      ['circle', 'circle'],
+      ['arc', 'arc'],
+      ['circle', 'spline'],
+      ['circle', 'fit_spline'],
+      ['arc', 'spline'],
+      ['arc', 'fit_spline'],
+      ['spline', 'spline'],
+      ['spline', 'fit_spline'],
+      ['fit_spline', 'fit_spline'],
+    ]
+    const key = (a: string, b: string) => [a, b].sort().join('|')
+    expect(new Set(TANGENT_KIND_PAIRS.map(([a, b]) => key(a, b))))
+      .toEqual(new Set(admitted.map(([a, b]) => key(a, b))))
+    for (const [a, b] of admitted) {
       expect(tangentKindsAdmitted(a, b), `${a} x ${b}`).toBe(true)
       expect(tangentKindsAdmitted(b, a), `${b} x ${a}`).toBe(true)
     }
