@@ -1649,7 +1649,7 @@ export type Mutation =
   | { type: 'set_shell_field'; featureId: string; field: keyof ShellFeatureDef; value: unknown }
   | { type: 'add_shell_face'; featureId: string; faceQuery: string }
   | { type: 'remove_shell_face'; featureId: string; index: number }
-  | ({ type: 'add_move_face'; featureId: string; label?: string } & FeatureInsertion)
+  | ({ type: 'add_move_face'; featureId: string; label?: string } & Partial<MoveFaceFeatureDef> & FeatureInsertion)
   | { type: 'set_move_face_field'; featureId: string; field: keyof MoveFaceFeatureDef; value: unknown }
   | { type: 'add_move_face_ref'; featureId: string; faceQuery: string }
   | { type: 'remove_move_face_ref'; featureId: string; index: number }
@@ -1706,9 +1706,11 @@ export type Mutation =
   | { type: 'set_split_field'; featureId: string; field: keyof SplitFeatureDef; value: unknown }
   | { type: 'add_split_body'; featureId: string; bodyQuery: string }
   | { type: 'remove_split_body'; featureId: string; index: number }
-  | ({ type: 'add_variable'; featureId: string; label?: string } & FeatureInsertion)
+  | ({ type: 'add_variable'; featureId: string; label?: string } & Partial<VariableFeatureDef> & FeatureInsertion)
   | { type: 'set_variable_field'; featureId: string; field: keyof VariableFeatureDef; value: unknown }
-  | ({ type: 'add_helix'; featureId: string; label?: string; reference?: string } & FeatureInsertion)
+  // `auto_hidden` is the sketch-class show stamp, a feature-level key rather
+  // than a helix parameter, so it rides beside Partial<HelixFeatureDef>.
+  | ({ type: 'add_helix'; featureId: string; label?: string } & Partial<HelixFeatureDef> & { auto_hidden?: boolean } & FeatureInsertion)
   | { type: 'set_helix_field'; featureId: string; field: keyof HelixFeatureDef; value: unknown }
   // Exactly one of toIndex (an absolute log slot), before or after (a feature id
   // to land next to); the anchors spare a script from counting rows.

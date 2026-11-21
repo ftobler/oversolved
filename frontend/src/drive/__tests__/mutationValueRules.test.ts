@@ -183,6 +183,8 @@ describe('value rules cover the catalog', () => {
     ['set_move_face_field', { type: 'set_move_face_field', featureId: 'mf1', field: 'distance', value: {} }],
     ['add_move_face_ref', { type: 'add_move_face_ref', featureId: 'mf1', faceQuery: '' }],
     ['remove_move_face_ref', { type: 'remove_move_face_ref', featureId: 'mf1', index: -1 }],
+    ['add_move_face', { type: 'add_move_face', featureId: 'mf1', distance: {} }],
+    ['add_variable', { type: 'add_variable', featureId: 'va1', expression: '' }],
     ['add_delete_face', { type: 'add_delete_face', featureId: 'df1', faces: [''] }],
     ['add_delete_face_ref', { type: 'add_delete_face_ref', featureId: 'df1', faceQuery: '' }],
     ['remove_delete_face_ref', { type: 'remove_delete_face_ref', featureId: 'df1', index: -1 }],
@@ -1275,6 +1277,59 @@ describe('finding: the revolve angle is a positive magnitude', () => {
     expect(validateMutation({
       type: 'add_boolean', featureId: 'bo1', keep_tools: true, clearance: 0.2,
     })).toMatchObject({ ok: true })
+  })
+})
+
+describe('inline fields on move_face, variable and helix', () => {
+  it('accepts the one-step calls', () => {
+    const calls: Array<Record<string, unknown>> = [
+      { type: 'add_move_face', featureId: 'mf1', faces: ['?f1'], distance: 5 },
+      { type: 'add_variable', featureId: 'va1', label: 'w', expression: '40' },
+      {
+        type: 'add_helix', featureId: 'he1', reference: '@ex1/face/0',
+        mode: 'pitch_turns', pitch: 3, turns: 8, offset: 2,
+      },
+    ]
+    for (const call of calls) expect(validateMutation(call), JSON.stringify(call)).toMatchObject({ ok: true })
+  })
+
+  it('refuses an inline enum value with the setter rule and the accepted spellings', () => {
+    const add = refusal({ type: 'add_helix', featureId: 'he1', mode: 'bogus' })
+    const set = refusal({ type: 'set_helix_field', featureId: 'he1', field: 'mode', value: 'bogus' })
+    expect(add.message).toContain('add_helix field "mode"')
+    expect(set.message).toContain('set_helix_field field "mode"')
+    for (const message of [add.message, set.message]) {
+      expect(message).toContain('"pitch_turns"')
+      expect(message).toContain('"angle_height"')
+    }
+  })
+
+  it('refuses an inline distance of the wrong wire type by name', () => {
+    const add = refusal({ type: 'add_move_face', featureId: 'mf1', distance: {} })
+    expect(add.message).toContain('add_move_face')
+    expect(add.message).toContain('"distance"')
+    expect(add.message).toContain('scalar')
+    // A scalar string such as "nope" is a legal expression shape; the solver
+    // gives it the same named refusal on both paths (the real-kernel test pins
+    // that sentence), so the boundary must not invent a second one.
+    expect(validateMutation({ type: 'add_move_face', featureId: 'mf1', distance: 'nope' }))
+      .toMatchObject({ ok: true })
+  })
+
+  it('refuses a blank inline expression with the setter rule', () => {
+    const add = refusal({ type: 'add_variable', featureId: 'va1', expression: '' })
+    const set = refusal({ type: 'set_variable_field', featureId: 'va1', field: 'expression', value: '' })
+    expect(add.message).toContain('add_variable field "expression"')
+    expect(set.message).toContain('set_variable_field field "expression"')
+    for (const message of [add.message, set.message]) expect(message).toContain('must be a value, not an empty string')
+  })
+
+  it('accepts the auto_hidden stamp the setter offers', () => {
+    expect(validateMutation({
+      type: 'add_helix', featureId: 'he1', reference: '@ex1/face/0', auto_hidden: true,
+    })).toMatchObject({ ok: true })
+    expect(refusal({ type: 'add_helix', featureId: 'he1', auto_hidden: 'yes' }).message)
+      .toContain('"auto_hidden"')
   })
 })
 

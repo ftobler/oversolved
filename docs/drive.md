@@ -1156,9 +1156,14 @@ banner on stdout, so a client config must use the direct node invocation.
   source chip pair; `keep_original` and `merge` belong to the body subject and
   are refused on a feature mirror. Both default to true, so an add carrying
   neither keeps the source and fuses the copy into it, and `merge: false` mints
-  the copy as its own `body_<mirrorId>` part. `add_pattern` is the retired
-  single-kind row, kept one release: the drive translates it through the
-  loader's version-9 split and the reply carries a deprecation note.
+  the copy as its own `body_<mirrorId>` part. `add_move_face`, `add_variable`
+  and `add_helix` take their fields inline as well: `faces` and `distance`,
+  `expression` (plus the cached `value` and display `unit`), and every
+  `set_helix_field` field (`reference`, `radius_mode`, `mode`, `hand`,
+  `direction`, `height_from_reference`, `radius`, `pitch`, `turns`, `height`,
+  `helix_angle`, `offset`, `start_angle`, `auto_hidden`). `add_pattern` is the
+  retired single-kind row, kept one release: the drive translates it through
+  the loader's version-9 split and the reply carries a deprecation note.
 - `add_linear_pattern` with `subject: body` (the default) copies `source_body`
   along one direction, or along two when `second_direction: true` (the retired
   rectangular mode: direction 1 is the column, direction 2 the row).

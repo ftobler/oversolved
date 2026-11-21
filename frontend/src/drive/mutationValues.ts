@@ -2221,12 +2221,31 @@ function addDeletePart(raw: RawStep): ValueViolation | null {
   return problem === null ? null : invalid(problem)
 }
 
-function addHelix(raw: RawStep): ValueViolation | null {
+// A move-face pick list is the plain string list the document stores (the
+// selector form has not landed for this kind), so it takes the same non-empty
+// check add_delete_face's faces do. `distance` follows the setter schema.
+function addMoveFace(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  if (raw.faces !== undefined) {
+    const problem = stringListProblem(raw.faces, 'add_move_face field "faces"')
+    if (problem !== null) return invalid(problem)
+  }
+  return inlineFeatureFieldsProblem(raw, ctx, 'move_face', 'set_move_face_field', ['faces'])
+}
+
+function addVariable(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  return inlineFeatureFieldsProblem(raw, ctx, 'variable', 'set_variable_field')
+}
+
+function addHelix(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const reference = raw.reference
-  if (reference === undefined) return null
-  if (typeof reference !== 'string') return invalid(`reference must be a reference string, got ${json(reference)}`)
-  const problem = refValueProblem(reference, 'reference')
-  return problem === null ? null : invalid(problem)
+  if (reference !== undefined) {
+    if (typeof reference !== 'string') return invalid(`reference must be a reference string, got ${json(reference)}`)
+    const problem = refValueProblem(reference, 'reference')
+    if (problem !== null) return invalid(problem)
+  }
+  // Every other inline field is held to the same schema the setter reads, so an
+  // enum spelling or a wrong JSON type gets one rule set on both paths.
+  return inlineFeatureFieldsProblem(raw, ctx, 'helix', 'set_helix_field', ['reference'])
 }
 
 // `add_hole` carries the same fields a setter sets, so each present one is held
@@ -2679,7 +2698,7 @@ export const MUTATION_VALUE_RULES = {
   set_shell_field: fieldValue,
   add_shell_face: queryField('faceQuery'),
   remove_shell_face: indexField('index'),
-  add_move_face: 'none',
+  add_move_face: addMoveFace,
   set_move_face_field: fieldValue,
   add_move_face_ref: queryField('faceQuery'),
   remove_move_face_ref: indexField('index'),
@@ -2727,7 +2746,7 @@ export const MUTATION_VALUE_RULES = {
   set_split_field: setSplitField,
   add_split_body: queryField('bodyQuery'),
   remove_split_body: indexField('index'),
-  add_variable: 'none',
+  add_variable: addVariable,
   set_variable_field: fieldValue,
   add_helix: addHelix,
   set_helix_field: fieldValue,

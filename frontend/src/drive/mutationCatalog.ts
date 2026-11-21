@@ -1104,6 +1104,27 @@ const SHELL_FACES_NOTE =
   'one entry per face it matches, so one entry can open several faces. ' + SELECTOR_SHAPE_NOTE + ' The headless ' +
   'drive resolves a selector against the settled solve before the shell applies; the document stores only query strings.'
 
+// The move-face pick list is still plain query strings (no selector branch has
+// landed for this kind), so the note promises only what the drive accepts.
+const MOVE_FACE_INLINE_NOTE =
+  'One call may carry the whole move face: `faces` takes the face queries `select` returned, each moving along ' +
+  'its own outward normal, and `distance` sets the same key `set_move_face_field` does. The distance is signed: ' +
+  'positive adds material along the outward normal and negative removes it. `add_move_face_ref` and ' +
+  '`set_move_face_field` remain for later pick and field edits.'
+
+const VARIABLE_INLINE_NOTE =
+  'One call may carry the whole variable: `expression` sets the same key `set_variable_field` does, and `value` ' +
+  'and `unit` ride along as the cached result and the display unit (the solver overwrites `value` on its next ' +
+  'solve). The name is the sanitized `label`, so `{label: "w", expression: "40"}` creates `w` = 40.'
+
+const HELIX_INLINE_NOTE =
+  'One call may carry the whole helix: `radius_mode`, `mode`, `hand`, `direction`, `height_from_reference`, ' +
+  '`radius`, `pitch`, `turns`, `height`, `helix_angle`, `offset`, `start_angle` and `auto_hidden` set the same ' +
+  'keys `set_helix_field` does, and every numeric field takes a number or an expression. Defaults are ' +
+  'radius_mode derived, mode pitch_turns, pitch 1, turns 5, height 5, helix_angle 5, offset 0, start_angle 0, ' +
+  'hand right and direction normal. Each mode reads its own pair (pitch and turns, pitch and height, turns and ' +
+  'height, angle and turns, or angle and height); a value for the unused pair is stored and ignored.'
+
 const fieldOf = (label: string, type: FieldSetterType) =>
   str(`The ${label} field to set. Valid fields: ${(setterFieldNames(type) ?? []).join(', ')}.`)
 // A setter value's real type is the named schema field's; name that definition
@@ -1751,8 +1772,13 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), index: num() },
   },
   add_move_face: {
-    summary: 'Add a move-face feature, then add its faces.',
-    fields: featureAddFields(),
+    summary: 'Add a move-face feature, optionally with its faces and distance in the same call.',
+    note: MOVE_FACE_INLINE_NOTE,
+    fields: {
+      ...featureAddFields(),
+      faces: optArr('Face queries from `select` (stored as `move_face.faces`); each face moves along its own outward normal.'),
+      distance: optScalar('Signed along each face\'s outward normal: positive adds material, negative removes it; defaults to 5.'),
+    },
   },
   set_move_face_field: {
     summary: 'Set one move-face field.',
@@ -2158,14 +2184,18 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), index: num() },
   },
   add_variable: {
-    summary: 'Add a variable feature.',
+    summary: 'Add a variable feature, optionally with its expression in the same call.',
     note:
       'A variable must precede every feature that names it: an expression naming a variable defined later is refused with ' +
       '"<field>: variable \'<name>\' is defined after this feature (at index N); move it up with reorder_features". ' +
       'N is the index among the solved (non-builtin) features. `insertAt` and reorder_features.toIndex count the seeded ' +
-      'plane rows, so the first user slot is usually 4; a smaller N clamps there. ' + VARIABLE_NAME_NOTE,
+      'plane rows, so the first user slot is usually 4; a smaller N clamps there. ' + VARIABLE_INLINE_NOTE + ' ' +
+      VARIABLE_NAME_NOTE,
     fields: {
       ...featureAddFields(),
+      expression: optScalar('A number or an expression naming variables defined earlier (stored as `variable.expression`); defaults to 0.'),
+      value: optNum('The cached numeric result; the solver overwrites it on the next solve.'),
+      unit: optStr('An optional display hint such as "mm" or "deg".'),
       insertAt: insertAt(),
     },
   },
@@ -2175,18 +2205,33 @@ export const MUTATION_CATALOG = {
     fields: { featureId: str(), field: fieldOf('variable', 'set_variable_field'), value: setterValue('variable') },
   },
   add_helix: {
-    summary: 'Add a helix feature, optionally from a picked reference.',
+    summary: 'Add a helix feature, optionally from a picked reference and with its fields in the same call.',
     note: 'A helix is a reference curve, not a part. The run or measure reply reports the resolved ' +
       'placement under `curves.<id>` as {origin, axis, start, end, radius, pitch, turns, height, hand}, ' +
       'where `axis` is the climb direction (the reference axis, negated by `direction: reverse`). ' +
       '`@<id>/start` and `@<id>/end` stay valid point refs, e.g. the origin of a sweep profile plane. ' +
-      'A bare `$<helixId>` is a valid `pathQuery` on a sweep (a thread), see `add_sweep`.',
+      'A bare `$<helixId>` is a valid `pathQuery` on a sweep (a thread), see `add_sweep`. ' + HELIX_INLINE_NOTE,
     fields: {
       ...featureAddFields(),
       reference: optStr(
         'A picked reference the helix rides on: a cylindrical face, a circular or straight edge, or a ' +
         'sketch circle or line (see docs/document.md, helix).',
       ),
+      radius_mode: optStr('derived (the reference radius) or entered (read `radius`); defaults to derived.'),
+      mode: optStr('pitch_turns | pitch_height | turns_height | angle_turns | angle_height; defaults to pitch_turns.'),
+      hand: optStr('right | left; defaults to right.'),
+      direction: optStr('normal | reverse: which end of the reference the climb starts at; defaults to normal.'),
+      height_from_reference: optBool(
+        'Span the cylinder face\'s axial extent instead of the authored height, in a mode that reads height.',
+      ),
+      radius: optScalar('The radius when radius_mode is entered.'),
+      pitch: optScalar('Axial travel per turn.'),
+      turns: optScalar('How many turns the helix makes.'),
+      height: optScalar('Axial length of the helix, in a mode that reads height.'),
+      helix_angle: optScalar('The climb angle in degrees, between 0 and 90, in a mode that reads it.'),
+      offset: optScalar('Shift the start along the climb axis from the reference\'s low end.'),
+      start_angle: optScalar('The radial angle of the start point in degrees; 0 is the reference frame\'s x axis.'),
+      auto_hidden: optBool('The sketch-class one-shot hide stamp, set when the user showed a consumed helix.'),
     },
   },
   set_helix_field: {
