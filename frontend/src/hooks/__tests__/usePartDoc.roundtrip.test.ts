@@ -63,6 +63,24 @@ const sketchDoc = (): PartDoc => ({
   }],
 } as unknown as PartDoc)
 
+// A face projection: the construction flag lives on the constraint, not on a
+// member row, so the toggle has to reach the row that owns it.
+const faceProjectionDoc = (): PartDoc => ({
+  version: 1,
+  kind: 'part',
+  features: [{
+    id: 'sk1',
+    kind: 'sketch',
+    entities: [],
+    initial: {},
+    constraints: [{
+      id: 'fp1', kind: 'projection',
+      source: '?2d;@u|e_11111111aaaaaaaaaaaaaaaaaaaaaaaa:flatface',
+      members: { 'u|a': 'fp1.e1', 'u|b': 'fp1.e2' },
+    }],
+  }],
+} as unknown as PartDoc)
+
 const extrudeDoc = (): PartDoc => ({
   version: 1,
   kind: 'part',
@@ -280,6 +298,7 @@ const ROUND_TRIPS: RoundTripCase[] = [
   { name: 'sketch set_constraint_sign', makeDoc: sketchDoc, mutation: { type: 'set_constraint_sign', featureId: 'sk1', constraintId: 'c1', sign: -1 } as Mutation },
   { name: 'sketch delete', makeDoc: sketchDoc, mutation: { type: 'delete', targets: ['entity:sk1:l2'] } as Mutation },
   { name: 'sketch toggle_construction', makeDoc: sketchDoc, mutation: { type: 'toggle_construction', targets: ['entity:sk1:l2'] } as Mutation },
+  { name: 'sketch toggle_construction on a face projection', makeDoc: faceProjectionDoc, mutation: { type: 'toggle_construction', targets: ['entity:sk1:fp1.e1'] } as Mutation },
   { name: 'sketch add_rect', makeDoc: sketchDoc, mutation: { type: 'add_rect', featureId: 'sk1', p0: [0, 0], p1: [5, 5] } as Mutation },
   { name: 'sketch add_center_rect', makeDoc: sketchDoc, mutation: { type: 'add_center_rect', featureId: 'sk1', center: [0, 0], corner: [5, 5] } as Mutation },
   { name: 'sketch add_ngon', makeDoc: sketchDoc, mutation: { type: 'add_ngon', featureId: 'sk1', center: [0, 0], corner: [10, 0], sides: 6 } as Mutation },

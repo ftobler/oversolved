@@ -38,6 +38,12 @@ export default function SketchToolbar({ onResetViewport, onImportDxf, canImportD
   // The mirror verdict also reads which lines are construction, so a toggle or
   // its undo under an unchanged selection must re-run it as well.
   const constructionKeys = useSketchEditorStore(s => s.constructionEntityKeys)
+  // A face-projection member is construction as a whole wire: the button flips
+  // every edge, so its tooltip names the projection when one is selected.
+  const faceProjectionMemberKeys = useSketchEditorStore(s => s.faceProjectionMemberKeys)
+  const normalSelection = useSketchEditorStore(s => s.normalSelection)
+  const faceProjectionSelected = faceProjectionMemberKeys.size > 0
+    && [...normalSelection].some(id => faceProjectionMemberKeys.has(id))
   // The fillet verdict reads the published corner map, so a solve or edit that
   // changes the partners must re-run it even under an unchanged selection.
   const filletCornerMap = useSketchEditorStore(s => s.filletCornerMap)
@@ -96,7 +102,10 @@ export default function SketchToolbar({ onResetViewport, onImportDxf, canImportD
       <NgonTool />
 
       <ToolbarButton
-        title={constructionKey ? `Toggle Construction (${constructionKey})` : 'Toggle Construction'}
+        title={
+          (constructionKey ? `Toggle Construction (${constructionKey})` : 'Toggle Construction')
+          + (faceProjectionSelected ? ' - face projection: every member of the wire flips' : '')
+        }
         icon={iconUrl('constraint-line-swap')}
         onClick={() => registry.execute('toggle_construction')}
         handle="toolbar:toggle_construction"

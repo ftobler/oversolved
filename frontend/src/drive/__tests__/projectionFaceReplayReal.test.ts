@@ -241,4 +241,61 @@ describe.skipIf(!oc || !solveBytes)('face projection replay', () => {
     // rectangle can translate, so compare its extent, not an absolute edge).
     expect(Math.max(...lineXs) - Math.min(...lineXs)).toBeGreaterThanOrEqual(49)
   })
+
+  it('25. add_projected_entity flags construction on a face wire and on an edge row', async () => {
+    const { geometry } = base()
+    const faceSteps = (construction: boolean): ScriptStep[] => [
+      { mutation: { type: 'add_sketch', featureId: 'skP', label: 'Projection', plane: '@builtin_plane_front' } },
+      {
+        mutation: {
+          type: 'add_projected_entity', featureId: 'skP', source: geometry.frontFace,
+          ...(construction ? { construction: true } : {}),
+        },
+      },
+    ]
+    const plain = part()
+    const flagged = part()
+    const plainOutcome = await plain.run(faceSteps(false))
+    const flaggedOutcome = await flagged.run(faceSteps(true))
+    expect(flaggedOutcome.ok).toBe(true)
+    // The flag is not a created thing: the reply names the same ids.
+    expect(flaggedOutcome.steps[1].createdIds).toEqual(plainOutcome.steps[1].createdIds)
+
+    const plainSketch = (plain.getDoc()?.features ?? []).find(f => f.id === 'skP')
+    const flaggedSketch = (flagged.getDoc()?.features ?? []).find(f => f.id === 'skP')
+    if (plainSketch?.kind !== 'sketch' || flaggedSketch?.kind !== 'sketch') {
+      throw new Error('no projection sketch')
+    }
+    const plainFace = (plainSketch.constraints ?? []).find(c => c.kind === 'projection')
+    const flaggedFace = (flaggedSketch.constraints ?? []).find(c => c.kind === 'projection')
+    expect(plainFace?.construction).toBeUndefined()
+    expect(flaggedFace?.construction).toBe(true)
+    expect(flaggedFace?.members).toEqual(plainFace?.members)
+
+    const edgeSteps = (construction: boolean): ScriptStep[] => [
+      { mutation: { type: 'add_sketch', featureId: 'skE', label: 'Edge', plane: '@builtin_plane_front' } },
+      {
+        mutation: {
+          type: 'add_projected_entity', featureId: 'skE', kind: 'line',
+          source: geometry.topFrontEdge, entityId: 'pe1',
+          ...(construction ? { construction: true } : {}),
+        },
+      },
+    ]
+    const plainEdge = part()
+    const flaggedEdge = part()
+    const plainEdgeOutcome = await plainEdge.run(edgeSteps(false))
+    const flaggedEdgeOutcome = await flaggedEdge.run(edgeSteps(true))
+    expect(flaggedEdgeOutcome.ok).toBe(true)
+    expect(flaggedEdgeOutcome.steps[1].createdIds).toEqual(plainEdgeOutcome.steps[1].createdIds)
+
+    const rowOf = (doc: PartDoc | null) => {
+      const sketch = (doc?.features ?? []).find(f => f.id === 'skE')
+      if (sketch?.kind !== 'sketch') throw new Error('no edge sketch')
+      return sketch.entities?.find(e => e.id === 'pe1')
+    }
+    expect(rowOf(plainEdge.getDoc())?.construction).toBeUndefined()
+    expect(rowOf(flaggedEdge.getDoc())?.construction).toBe(true)
+    expect(rowOf(flaggedEdge.getDoc())?.kind).toBe('line')
+  })
 })

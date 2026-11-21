@@ -149,6 +149,9 @@ const CONSTRAINT_SCHEMA: JsonSchema = {
     // cannot express.
     members: { type: 'object', additionalProperties: { type: 'string', minLength: 1 } },
     excluded: { type: 'array', items: { type: 'string', minLength: 1 } },
+    // A face projection's whole wire as construction geometry. Absent means
+    // profile, so a document written before the flag loads unchanged.
+    construction: { type: 'boolean' },
   },
   additionalProperties: true,
   allOf: [

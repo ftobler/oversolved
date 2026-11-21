@@ -653,8 +653,10 @@ banner on stdout, so a client config must use the direct node invocation.
   measure `ok` false, and both are sketch warning rows an export tolerates (see
   below). `fixed` makes a sketch read fully constrained but carries no design
   intent: dimension against projected geometry (`add_projected_entity`; a face
-  projection follows later edits, and deleting the projection constraint freezes
-  its derived members into ordinary geometry), freeze the projection with
+  projection follows later edits, `construction: true` (at creation or via
+  `toggle_construction`) keeps the whole wire out of the profile while it stays
+  dimensionable, and deleting the projection constraint freezes its derived
+  members into ordinary geometry with the same flag), freeze the projection with
   `freeze_projection` to unlink it while keeping its position as fixed geometry,
   or use `@builtin_origin` instead, and reserve `fixed` for deliberately frozen
   geometry such as an imported DXF. An `overconstrained` sketch is a real
@@ -1092,8 +1094,9 @@ banner on stdout, so a client config must use the direct node invocation.
   `keep: "both"` the above half keeps the original body id while every further
   piece becomes a `_1`, `_2` sibling in geometric order, so `@<featureId>`
   still names all of it; `toggle_construction` takes entity targets as
-  `entity:<sketchId>:<entityId>` and `delete` takes entity, vertex or constraint
-  refs (a bare id is refused); `mirror_entities` takes `sourceIds` as bare entity
+  `entity:<sketchId>:<entityId>`, where a face projection's member id or its
+  constraint id flips the whole wire, and `delete` takes entity, vertex or
+  constraint refs (a bare id is refused); `mirror_entities` takes `sourceIds` as bare entity
   ids of one sketch plus `line`, the id of exactly one `line` entity of that same
   sketch (normal or construction) which is the axis and is never mirrored, and
   the mirrored copies are plain authored geometry, not a live mirror relation
@@ -1257,7 +1260,12 @@ banner on stdout, so a client config must use the direct node invocation.
   may then omit `kind`: the drive infers it from the matched element (an edge
   keeps its curve kind; a vertex or face projects as `point`). A FACE source's
   wire is derived as a whole, so a supplied `kind` is ignored; pick one edge if
-  you want a curve or its centre. Only a body
+  you want a curve or its centre. A FACE source is also what
+  `add_projected_entity.construction: true` flags as a whole: the projection is
+  construction geometry (one `construction` flag on the constraint), so its
+  members follow later edits but bound no profile, and a target naming any
+  member or the constraint id flips them all at once with `toggle_construction`.
+  Only a body
   element can be a selector source, because `select` walks bodies;
   `@builtin_origin` and `@<sketchId>/<entityId>` are plain strings.
   A projection that could never resolve is refused at the step, with the cause

@@ -275,6 +275,36 @@ describe('the add and delete appliers', () => {
     expect(sketch.constraints).toHaveLength(1)
   })
 
+  it('flags a created face projection construction and freezes the flag onto its rows', () => {
+    const doc = sketchDoc()
+    const cid = faceProjectionConstraintId(faceSource)!
+    applyAddProjectedEntity(doc, 'sk1', '', faceSource, undefined, undefined, {
+      faceBoundary: () => boundary,
+      construction: true,
+    })
+    const sketch = (doc.features ?? [])[0]
+    if (sketch.kind !== 'sketch') throw new Error('not a sketch')
+    expect(sketch.constraints![0].construction).toBe(true)
+    const rows = Object.values(sketch.constraints![0].members!)
+      .map(id => ({ id, kind: 'line', params: [0, 0, 1, 1] }))
+    applyDeleteElements(doc, [`constraint:sk1:${cid}`], rows)
+    // The frozen rows are ordinary geometry but keep the whole-wire flag, so
+    // the profile builder still skips them.
+    expect(sketch.entities).toHaveLength(rows.length)
+    expect(sketch.entities?.every(entity => entity.construction === true)).toBe(true)
+  })
+
+  it('flags a created single-entity projection construction on the held row', () => {
+    const doc = sketchDoc()
+    applyAddProjectedEntity(doc, 'sk1', 'line', edgeQuery(TOKENS[0]), 'e1', undefined, {
+      construction: true,
+    })
+    const sketch = (doc.features ?? [])[0]
+    if (sketch.kind !== 'sketch') throw new Error('not a sketch')
+    expect(sketch.entities).toEqual([{ id: 'e1', kind: 'line', construction: true }])
+    expect(sketch.constraints?.[0].construction).toBeUndefined()
+  })
+
   it('draws a fresh constraint id past frozen member rows', () => {
     const doc = sketchDoc()
     const cid = faceProjectionConstraintId(faceSource)!

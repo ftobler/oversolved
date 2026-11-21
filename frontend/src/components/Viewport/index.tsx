@@ -722,9 +722,20 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           const { sketch, constraints } = sketchForRender(solveResults?.[f.id], fullFeatureDef)
           // Face-projection members are solve-time entities, not document rows;
           // the editor's kind/selection maps need them alongside the authored
-          // rows or a projected member reads as a ghost.
-          const derivedEntities = Object.values(solveResult?.projection_members ?? {})
-            .flatMap(report => report.entities.map(e => ({ id: e.id, kind: e.kind })))
+          // rows or a projected member reads as a ghost. A construction wire's
+          // members carry the flag so the editor's construction set agrees with
+          // the dashed render.
+          const constructionWires = new Set(
+            (fullFeatureDef.constraints ?? [])
+              .filter(c => c.kind === 'projection' && c.construction === true)
+              .map(c => c.id),
+          )
+          const derivedEntities = Object.entries(solveResult?.projection_members ?? {})
+            .flatMap(([constraintId, report]) => report.entities.map(e => ({
+              id: e.id,
+              kind: e.kind,
+              ...(constructionWires.has(constraintId) ? { construction: true } : {}),
+            })))
           const entities = [...(fullFeatureDef.entities ?? []), ...derivedEntities]
           const isActiveFeature = f.id === activeFeatureId
           return (

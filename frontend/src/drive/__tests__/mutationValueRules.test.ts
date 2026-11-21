@@ -22,7 +22,8 @@ import { applySetPlaneDefinitionField } from '@/utils/yamlMutations/featureAdmin
 import { applySetHoleField } from '@/utils/yamlMutations/featureDefs'
 import { FIELD_SETTER_KIND } from '../mutationCatalog'
 import { EMPTY_REF_CLEARS, mutationValueViolation } from '../mutationValues'
-import { sketchAt, featureById } from '@/testing/featureAccess'
+import { sketchAt, featureAt, featureById } from '@/testing/featureAccess'
+import { deriveMemberIds } from '@/kernel/features/projectionMembers'
 import { Repository, makeAncestryQuery } from '@/kernel/query'
 import { collectExtrudeLoops } from '@/kernel/features/faceProfile'
 
@@ -42,6 +43,14 @@ function sketchDoc(): PartDoc {
       initial: { l1: [0, 0, 10, 0] },
     }],
   })
+}
+
+/** A face-restriction query the projection predicates accept, with the framed
+ *  length the query grammar requires. No live face stands behind it: the value
+ *  rules only read the document rows. */
+function faceSource(): string {
+  const framed = '@u|e_11111111aaaaaaaaaaaaaaaaaaaaaaaa'
+  return `?${framed.length.toString(16)};${framed}:flatface`
 }
 
 // A euclidean point_distance is only wrong at value 0, which the rule can only
@@ -1155,6 +1164,59 @@ describe('finding: toggle_construction target form', () => {
   it('toggles an existing entity when the target names it', () => {
     expect(validateMutation({ type: 'toggle_construction', targets: ['entity:sk1:l1'] }, { doc: sketchDoc() }))
       .toMatchObject({ ok: true })
+  })
+
+  const member = deriveMemberIds('fp1', ['u|a'])[`u|a`]
+  function faceProjectionDoc(): PartDoc {
+    return seedBuiltins({
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [],
+        initial: {},
+        constraints: [{
+          id: 'fp1', kind: 'projection', source: faceSource(), members: { 'u|a': member },
+        }],
+      }],
+    })
+  }
+
+  it('accepts a face projection member id and its constraint id', () => {
+    for (const id of [member, 'fp1']) {
+      expect(validateMutation({ type: 'toggle_construction', targets: [`entity:sk1:${id}`] }, { doc: faceProjectionDoc() }))
+        .toMatchObject({ ok: true })
+    }
+  })
+
+  it('accepts a mixed list of rows and a face projection', () => {
+    const doc = faceProjectionDoc()
+    featureAt(doc, 0, 'sketch').entities = [{ id: 'l1', kind: 'line' }]
+    expect(validateMutation({
+      type: 'toggle_construction',
+      targets: ['entity:sk1:l1', `entity:sk1:${member}`],
+    }, { doc })).toMatchObject({ ok: true })
+  })
+})
+
+describe('finding: add_projected_entity construction flag', () => {
+  it('refuses a non-boolean construction value', () => {
+    const error = refusal({
+      type: 'add_projected_entity', featureId: 'sk1', kind: 'line', source: '?2;@a:straightedge',
+      construction: 'yes',
+    })
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('construction')
+    expect(error.message).toContain('must be boolean')
+  })
+
+  it('accepts a boolean construction value', () => {
+    expect(validateMutation({
+      type: 'add_projected_entity', featureId: 'sk1', kind: 'line', source: '?2;@a:straightedge',
+      construction: true,
+    }, { doc: sketchDoc() })).toMatchObject({ ok: true })
   })
 })
 

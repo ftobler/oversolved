@@ -788,14 +788,16 @@ function freezeProjectionRule(raw: RawStep, ctx: ValueContext): ValueViolation |
   return null
 }
 
-const TOGGLE_ENTITY_FORM = '"entity:<sketchId>:<entityId>"'
+const TOGGLE_ENTITY_FORM =
+  '"entity:<sketchId>:<entityId>" (the form `select` returns for a sketch entity)'
 
 function toggleConstructionTargetProblem(value: unknown, index: number): string | null {
   if (typeof value !== 'string') {
     return `toggle_construction target ${index} must be a reference string, got ${json(value)}`
   }
   const parts = value.split(':')
-  const accepted = `${TOGGLE_ENTITY_FORM} (the form \`select\` returns for a sketch entity)`
+  const accepted = `${TOGGLE_ENTITY_FORM}; a face projection member id and a face projection `
+    + 'constraint id use the same form and flip the whole wire'
   if (parts[0] !== 'entity') {
     return `toggle_construction target ${index} ${json(value)} is not an entity ref; use ${accepted}`
   }
@@ -824,11 +826,16 @@ function toggleConstructionRule(raw: RawStep, ctx: ValueContext): ValueViolation
     if (sketch === undefined) {
       return unknownTarget(`toggle_construction target names no sketch feature ${json(target.featureId)}`)
     }
-    if (!(sketch.entities ?? []).some(entity => entity.id === target.id)) {
-      return unknownTarget(
-        `toggle_construction target names no entity ${json(target.id)} in sketch ${target.featureId}`,
-      )
-    }
+    if ((sketch.entities ?? []).some(entity => entity.id === target.id)) continue
+    // A face projection's member is not a row, and the constraint id is not a
+    // row either: both name the one whole-wire flag.
+    const faceProjection = (sketch.constraints ?? []).find(c =>
+      c.kind === 'projection' && c.target === undefined
+      && (c.id === target.id || Object.values(c.members ?? {}).includes(target.id)))
+    if (faceProjection !== undefined) continue
+    return unknownTarget(
+      `toggle_construction target names no entity ${json(target.id)} in sketch ${target.featureId}`,
+    )
   }
   return null
 }
@@ -941,6 +948,9 @@ function addProjectedEntity(raw: RawStep, ctx: ValueContext): ValueViolation | n
   }
   if (raw.excluded !== undefined && !isStringArray(raw.excluded)) {
     return invalid(`excluded must be a list of construction tokens, got ${json(raw.excluded)}`)
+  }
+  if (raw.construction !== undefined && typeof raw.construction !== 'boolean') {
+    return invalid(`construction must be a boolean, got ${json(raw.construction)}`)
   }
   const idProblem = entityIdProblem(raw, ctx)
   return idProblem === null ? null : invalid(idProblem)

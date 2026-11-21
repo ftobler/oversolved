@@ -106,6 +106,41 @@ describe('projection member validation', () => {
     if (!bad.ok) expect(bad.error.field).toBe('features[0].constraints[0].excluded[0]')
   })
 
+  it('accepts a construction face projection and keeps the key', () => {
+    const members = deriveMemberIds(CID, [TOKEN])
+    const result = loadPartDoc(doc({
+      id: CID, kind: 'projection', source: FACE, members, construction: true,
+    }))
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    expect(result.migrations).toEqual([])
+    const sketch = result.doc.features?.[0]
+    if (sketch?.kind !== 'sketch') throw new Error('not a sketch')
+    expect(sketch.constraints?.[0].construction).toBe(true)
+  })
+
+  it('refuses construction on a held projection or a non-projection by field', () => {
+    const held = loadPartDoc(doc({
+      id: 'proj_c0', kind: 'projection', target: '$p1', source: FACE, construction: true,
+    }))
+    expect(held.ok).toBe(false)
+    if (!held.ok) expect(held.error.field).toBe('features[0].constraints[0].construction')
+    const other = loadPartDoc(doc({
+      id: 'c1', kind: 'horizontal', target: '$l1', construction: true,
+    }))
+    expect(other.ok).toBe(false)
+    if (!other.ok) expect(other.error.field).toBe('features[0].constraints[0].construction')
+  })
+
+  it('refuses a non-boolean construction value', () => {
+    const members = deriveMemberIds(CID, [TOKEN])
+    const result = loadPartDoc(doc({
+      id: CID, kind: 'projection', source: FACE, members, construction: 'yes',
+    }))
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.error.field).toBe('features[0].constraints[0].construction')
+  })
+
   it('refuses members on a non-projection constraint', () => {
     const result = loadPartDoc(doc({
       id: 'c1', kind: 'horizontal', target: '$l1', members: { [TOKEN]: 'x' },

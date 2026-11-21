@@ -1254,6 +1254,20 @@ describe('sketchEditorStore', () => {
       })
     })
 
+    it('dispatches a face projection member as one whole-wire toggle', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:fp1.e1')
+      useSketchEditorStore.getState().toggleConstruction()
+      // One mutation names the member; the applier flips the owning
+      // constraint's flag once, so undo takes back the whole wire together.
+      expect(handler).toHaveBeenCalledTimes(1)
+      expect(handler).toHaveBeenCalledWith({
+        type: 'toggle_construction',
+        targets: ['entity:S1:fp1.e1'],
+      })
+    })
+
     it('does nothing when only non-entity items are selected', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)

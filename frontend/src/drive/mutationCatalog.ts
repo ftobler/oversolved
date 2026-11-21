@@ -1411,8 +1411,10 @@ export const MUTATION_CATALOG = {
       + 'members on every solve, so a later fillet or cut adds or removes members without a new pick. A supplied '
       + '`kind` is ignored for a face source (the whole wire is derived). Seam edges are skipped. Members are not '
       + 'document rows; their ids live in the constraint\'s `members` map and a deleted member is recorded in '
-      + '`excluded`. Delete the constraint to freeze the members into ordinary geometry, or `freeze_projection` '
-      + 'to unlink and pin them in one step. The kind is re-resolved '
+      + '`excluded`. `construction: true` makes the whole wire construction geometry (a face) or the held row '
+      + 'construction (every other source), so it can be dimensioned against without bounding the profile; '
+      + '`toggle_construction` flips it afterwards. Delete the constraint to freeze the members into ordinary '
+      + 'geometry, or `freeze_projection` to unlink and pin them in one step (frozen rows inherit the flag). The kind is re-resolved '
       + 'on every solve, and a constraint that names a point key or a kind the projection\'s CURRENT kind does '
       + 'not have is ignored and reported in `dropped_constraints` (a `diameter` on a circle that tilted to an '
       + 'ellipse); the document keeps the constraint, so a source that changes back re-enables it.',
@@ -1435,6 +1437,10 @@ export const MUTATION_CATALOG = {
           + 'omits the map lets the applier derive it from the last solved face boundary.',
       },
       excluded: optArr('Face sources only: construction tokens the user removed; a later solve never re-adds them.'),
+      construction: optBool(
+        'Create the projection as construction geometry: a face source flags the whole wire, any other '
+        + 'source the held row. It then bounds no profile but can still be dimensioned against.',
+      ),
     },
   },
   add_rect: {
@@ -1565,9 +1571,14 @@ export const MUTATION_CATALOG = {
     },
   },
   toggle_construction: {
-    summary: 'Toggle construction mode on sketch entities.',
+    summary: 'Toggle construction mode on sketch entities or a face projection.',
+    note: 'A face projection is toggled whole-wire: a target naming any of its member ids, or the '
+      + 'projection constraint id, flips the one flag on the constraint, so every edge of the wire changes '
+      + 'together. A mixed list toggles each target it names. An id no row, member or face projection '
+      + 'carries is refused by name.',
     fields: {
-      targets: arr('Entity targets of the form "entity:<sketchId>:<entityId>"; a bare id is refused.'),
+      targets: arr('Entity targets of the form "entity:<sketchId>:<entityId>"; a face projection member id '
+        + 'or the projection constraint id in the same form flips the whole wire. A bare id is refused.'),
     },
   },
   set_feature_plane: {

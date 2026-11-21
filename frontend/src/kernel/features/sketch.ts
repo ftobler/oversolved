@@ -908,15 +908,26 @@ export function solveSketch(
   // is a line) and can address a member id without an in-place document write.
   const derivedKinds: Record<string, string> = {}
   const derivedInitial: Record<string, number[]> = {}
-  for (const report of Object.values(projectionMembers)) {
+  const derivedConstruction = new Set<string>()
+  const pf = loweredFeature as unknown as SketchFeature
+  // Construction is a property of the face projection, whole wire: every member
+  // of a flagged constraint is construction geometry, so the profile builder
+  // skips it while the edges stay available to dimension against.
+  const constructionProjections = new Set(
+    (pf.constraints ?? [])
+      .filter((c) => c.kind === 'projection' && c.construction === true)
+      .map((c) => c.id),
+  )
+  for (const [constraintId, report] of Object.entries(projectionMembers)) {
+    const construction = constructionProjections.has(constraintId)
     for (const member of report.entities) {
       derivedKinds[member.id] = member.kind
       derivedInitial[member.id] = [...member.params]
+      if (construction) derivedConstruction.add(member.id)
     }
   }
-  const pf = loweredFeature as unknown as SketchFeature
   const extract = partDocToSketches([pf], originLocal, pinnedIds, {
-    resolvedKinds, derivedKinds, derivedInitial,
+    resolvedKinds, derivedKinds, derivedInitial, derivedConstruction,
   })
   if (extract.skipped.length) {
     throw new Error(`sketch '${featureId}': ${extract.skipped[0].reason}`)
@@ -998,7 +1009,11 @@ export function solveSketch(
   // culprit is marked `culprit` for the deeper-red paint. Sugar expanded to
   // synthetic ids (ngon/dock) has no authored id on the wire, so its pieces
   // stay unmarked.
-  const memberEntities = Object.entries(derivedKinds).map(([id, kind]) => ({ id, kind }))
+  const memberEntities = Object.entries(derivedKinds).map(([id, kind]) => ({
+    id,
+    kind,
+    ...(derivedConstruction.has(id) ? { construction: true } : {}),
+  }))
   const baseRenderEntities = [...(pf.entities ?? []), ...memberEntities]
   const renderEntities = Object.keys(resolvedKinds).length
     ? baseRenderEntities.map((e) => ({ ...e, kind: resolvedKinds[e.id] ?? e.kind }))
@@ -1118,6 +1133,9 @@ export function pinProjectionTargets(
   derivedMembers?: ReadonlyArray<ProjectionMemberEntity>,
 ): { loweredFeature: SketchFeature; pinnedIds: string[] } {
   const pinned = new Set<string>()
+  // A construction face projection's members stay construction on the preview
+  // paths too, so a drag cannot temporarily rebuild them as a profile curve.
+  const constructionMembers = new Set<string>()
   const constraints = feature.constraints ?? []
   for (const c of constraints) {
     if (c.kind !== 'projection') continue
@@ -1126,7 +1144,10 @@ export function pinProjectionTargets(
     if (id) pinned.add(id)
     // A face projection's members are derived entities, not rows; pinning their
     // ids keeps the drag/probe paths on the same held set the hard solve uses.
-    for (const memberId of Object.values(c.members ?? {})) pinned.add(memberId)
+    for (const memberId of Object.values(c.members ?? {})) {
+      pinned.add(memberId)
+      if (c.construction === true) constructionMembers.add(memberId)
+    }
   }
   // Legacy v5: entities carrying `source` are held.
   for (const e of feature.entities ?? []) {
@@ -1142,7 +1163,11 @@ export function pinProjectionTargets(
     const existing = new Set(entities.map(e => e.id))
     const extra = derivedMembers.filter(member => !existing.has(member.id))
     if (extra.length > 0) {
-      entities = [...entities, ...extra.map(member => ({ id: member.id, kind: member.kind }))]
+      entities = [...entities, ...extra.map(member => ({
+        id: member.id,
+        kind: member.kind,
+        ...(constructionMembers.has(member.id) ? { construction: true } : {}),
+      }))]
       const nextInitial = { ...(initial ?? {}) }
       for (const member of extra) {
         if (nextInitial[member.id] === undefined) nextInitial[member.id] = [...member.params]

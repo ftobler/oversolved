@@ -144,7 +144,64 @@ describe('applyToggleConstruction', () => {
     expect('construction' in entities0(doc)[0]).toBe(false)
     expect(entities0(doc)[1]).toEqual({ id: 'line1', kind: 'line' })
   })
+
+  // A face projection has no member rows: the flag lives on the one constraint,
+  // whole wire, so every member id (and the constraint id) names that flag.
+  const makeFaceProjectionDoc = (): PartDoc => ({
+    version: 1,
+    kind: 'part',
+    features: [{
+      id: 'Sketch1',
+      kind: 'sketch',
+      entities: [],
+      initial: {},
+      constraints: [{
+        id: 'fp1',
+        kind: 'projection',
+        source: FACE_SOURCE,
+        members: { 'u|a': 'fp1.e1', 'u|b': 'fp1.e2' },
+      }],
+    }],
+  })
+
+  it('flips the one flag when the target is the face projection constraint id', () => {
+    const doc = makeFaceProjectionDoc()
+    applyToggleConstruction(doc, ['entity:Sketch1:fp1'])
+    expect(constraints0(doc)[0].construction).toBe(true)
+    applyToggleConstruction(doc, ['entity:Sketch1:fp1'])
+    expect('construction' in constraints0(doc)[0]).toBe(false)
+    expect(doc).toEqual(makeFaceProjectionDoc())
+  })
+
+  it('flips the same flag when the target is any member id', () => {
+    const doc = makeFaceProjectionDoc()
+    applyToggleConstruction(doc, ['entity:Sketch1:fp1.e2'])
+    expect(constraints0(doc)[0].construction).toBe(true)
+    applyToggleConstruction(doc, ['entity:Sketch1:fp1.e1'])
+    expect('construction' in constraints0(doc)[0]).toBe(false)
+  })
+
+  it('flips a wire once even when two of its members are targeted', () => {
+    const doc = makeFaceProjectionDoc()
+    applyToggleConstruction(doc, ['entity:Sketch1:fp1.e1', 'entity:Sketch1:fp1.e2'])
+    expect(constraints0(doc)[0].construction).toBe(true)
+  })
+
+  it('toggles a mixed list of rows and a face projection each', () => {
+    const doc = makeTwoEntityDoc()
+    const face = makeFaceProjectionDoc().features![0]
+    if (face.kind !== 'sketch') throw new Error('not a sketch')
+    featureAt(doc, 0, 'sketch').constraints = face.constraints
+    applyToggleConstruction(doc, ['entity:Sketch1:line1', 'entity:Sketch1:fp1.e1'])
+    expect(entities0(doc).find(e => e.id === 'line1')!.construction).toBe(true)
+    expect(entities0(doc).find(e => e.id === 'pt1')!.construction).toBeUndefined()
+    expect(constraints0(doc)[0].construction).toBe(true)
+  })
 })
+
+// The face-source spelling the projection loader accepts; the applier only
+// reads its type, so no live face has to exist here.
+const FACE_SOURCE = '?15,4,9,15,15,15,15,7;@u|u_ecef3db5d2b83b9c@ex1@body_ex1@sk1/FTWh9huZRvo1rGJ6@sk1/Xkck0RRPy6V4_iVJ@sk1/eKPSVl164lTIlYEW@sk1/usUy8mnQpMYZgmKh@cls_yp:flatface'
 
 describe('applyAddEntityWithConstraint', () => {
   it('adds entity and creates coincident constraint with existing vertex', () => {

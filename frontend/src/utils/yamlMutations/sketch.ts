@@ -614,8 +614,20 @@ export function applyToggleConstruction(doc: PartDoc, targets: string[]): void {
   }
   for (const [fid, eids] of Object.entries(byFeature)) {
     const feature = findSketchFeature(doc, fid)
-    if (!feature?.entities) continue
-    for (const def of feature.entities) {
+    if (!feature) continue
+    // A face projection has no member rows and the flag lives on the
+    // constraint, whole wire: a target naming any one member (or the
+    // constraint id) flips the projection once. Two members of the same wire in
+    // one step must not cancel each other.
+    for (const constraint of feature.constraints ?? []) {
+      if (constraint.kind !== 'projection' || constraint.target !== undefined) continue
+      const members = Object.values(constraint.members ?? {})
+      const namesIt = eids.has(constraint.id) || members.some((id) => eids.has(id))
+      if (!namesIt) continue
+      if (constraint.construction) delete constraint.construction
+      else constraint.construction = true
+    }
+    for (const def of feature.entities ?? []) {
       // A construction point is reference geometry like a construction line:
       // the hole's whole-sketch pick skips it, and a picked one is refused. The
       // toggle is the only way to flag or clear a point's flag, so it applies
@@ -719,7 +731,14 @@ export function applyDeleteElements(
           if (token === undefined || excluded.has(token)) continue
           if (!feature.entities) feature.entities = []
           if (!feature.entities.some(entity => entity.id === row.id)) {
-            feature.entities.push({ id: row.id, kind: row.kind })
+            // The frozen rows inherit the wire's construction flag: the
+            // ordinary geometry must keep bounding no profile, exactly as the
+            // live members did.
+            feature.entities.push({
+              id: row.id,
+              kind: row.kind,
+              ...(constraint.construction === true ? { construction: true } : {}),
+            })
           }
           if (!feature.initial) feature.initial = {}
           feature.initial[row.id] = row.params.map(round)
@@ -917,6 +936,9 @@ export interface AddProjectionOptions {
   faceBoundary?: FaceBoundaryLookup
   members?: Record<string, string>
   excluded?: string[]
+  // Creation-time construction flag: a face source applies it to the whole
+  // wire, a single-entity source to the held row.
+  construction?: boolean
 }
 
 /** True when a supplied map is exactly what the loader would derive for this
@@ -1006,6 +1028,7 @@ export function applyAddProjectedEntity(
       source,
       members,
       ...(excluded.length ? { excluded } : {}),
+      ...(options.construction === true ? { construction: true } : {}),
     })
     feature.constraints = constraints
     return { constraintId: cid, members }
@@ -1022,7 +1045,11 @@ export function applyAddProjectedEntity(
     while (existingCids.has(`${cid}_${i}`)) i++
     cid = `${cid}_${i}`
   }
-  feature.entities.push({ id: eid, kind })
+  feature.entities.push({
+    id: eid,
+    kind,
+    ...(options.construction === true ? { construction: true } : {}),
+  })
   feature.constraints.push({ id: cid, kind: 'projection', target: `$${eid}`, source })
 }
 

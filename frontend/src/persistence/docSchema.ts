@@ -809,8 +809,16 @@ function checkConstraint(value: unknown, field: string): void {
       const excluded = checkList(constraint.excluded, `${field}.excluded`, MAX_FEATURE_LIST)
       eachEntry(excluded, `${field}.excluded`, checkConstructionToken)
     }
+    if (constraint.construction !== undefined) {
+      if (!derivedForm) {
+        fail(`${field}.construction`, `is only valid on a face projection without a target`)
+      }
+      checkBoolean(constraint.construction, `${field}.construction`)
+    }
   } else if (constraint.members !== undefined || constraint.excluded !== undefined) {
     fail(`${field}.members`, `is only valid on a projection constraint`)
+  } else if (constraint.construction !== undefined) {
+    fail(`${field}.construction`, `is only valid on a projection constraint`)
   }
 }
 

@@ -255,6 +255,7 @@ export const mutationHandlers: MutationHandlers = {
       faceBoundary: ctx?.projectionBoundary,
       members: m.members,
       excluded: m.excluded,
+      construction: m.construction,
     })
     // A face add derives its member ids and constraint id here; handing the
     // enriched mutation back lets the session journal it without editing the
