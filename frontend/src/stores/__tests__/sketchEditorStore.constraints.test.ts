@@ -1097,6 +1097,135 @@ describe('sketchEditorStore', () => {
         expect(handler).not.toHaveBeenCalled()
       })
     })
+
+    describe('selection after the apply', () => {
+      it('clears the normal selection once the constraint is authored', () => {
+        const handler = vi.fn()
+        setSketchCallback('onMutation', handler)
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        // A primitive pick claim, so the empty selectedPicks below is not vacuous.
+        useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1', 'S1#L1')
+        expect(useSketchEditorStore.getState().selectedPicks.size).toBe(1)
+
+        expect(useSketchEditorStore.getState().applyConstraint('horizontal')).toBeNull()
+
+        const state = useSketchEditorStore.getState()
+        expect(handler).toHaveBeenCalledOnce()
+        expect(state.normalSelection.size).toBe(0)
+        expect(state.selectedPicks.size).toBe(0)
+        expect(state.selectionDomain).toBe('sketch_2d')
+      })
+
+      it('clears the selection when a projection and the constraint ride one batch', () => {
+        const handler = vi.fn()
+        const batch = vi.fn()
+        setSketchCallback('onMutation', handler)
+        setSketchCallback('onMutationBatch', batch)
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:L1:start')
+        useSketchEditorStore.getState().toggleNormalSelection('@builtin_origin')
+
+        expect(useSketchEditorStore.getState().applyConstraint('coincident')).toBeNull()
+
+        expect(batch).toHaveBeenCalledOnce()
+        expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+      })
+
+      it('clears the filtered non-operands beside the real operands', () => {
+        // The plane/edge pick was never an operand, but the act consumed the
+        // selection as a whole, so it goes too.
+        const handler = vi.fn()
+        setSketchCallback('onMutation', handler)
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+        useSketchEditorStore.getState().toggleNormalSelection('@ex1/edge/0')
+        expect(useSketchEditorStore.getState().selectionDomain).toBe('mixed')
+
+        expect(useSketchEditorStore.getState().applyConstraint('horizontal')).toBeNull()
+
+        expect(handler).toHaveBeenCalledWith({
+          type: 'add_constraint',
+          featureId: 'S1',
+          kind: 'horizontal',
+          targets: ['entity:S1:L1'],
+        })
+        const state = useSketchEditorStore.getState()
+        expect(state.normalSelection.has('@ex1/edge/0')).toBe(false)
+        expect(state.normalSelection.size).toBe(0)
+        expect(state.selectionDomain).toBe('sketch_2d')
+      })
+
+      it('keeps the selection when the operand count refuses', () => {
+        const handler = vi.fn()
+        setSketchCallback('onMutation', handler)
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        useSketchEditorStore.getState().setEntityKindMap({ 'entity:S1:L1': 'line' })
+        useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+
+        expect(useSketchEditorStore.getState().applyConstraint('parallel'))
+          .toBe('Parallel needs two operands (two lines), got one')
+
+        expect(useSketchEditorStore.getState().normalSelection).toEqual(new Set(['entity:S1:L1']))
+        expect(handler).not.toHaveBeenCalled()
+      })
+
+      it('keeps the selection when the redundancy gate refuses the add', () => {
+        const handler = vi.fn()
+        setSketchCallback('onMutation', handler)
+        setSketchCallback('checkRedundantAdd', () => true)
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+
+        expect(useSketchEditorStore.getState().applyConstraint('length')).toMatch(/would overconstrain/i)
+
+        expect(useSketchEditorStore.getState().normalSelection).toEqual(new Set(['entity:S1:L1']))
+        expect(handler).not.toHaveBeenCalled()
+      })
+
+      it('keeps the selection when the probe says the add would append nothing', () => {
+        const handler = vi.fn()
+        const batch = vi.fn()
+        setSketchCallback('onMutation', handler)
+        setSketchCallback('onMutationBatch', batch)
+        setSketchCallback('checkRedundantAdd', () => null)
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        useSketchEditorStore.getState().toggleNormalSelection('@builtin_origin')
+        useSketchEditorStore.getState().toggleNormalSelection('vertex:S1:l1:start')
+
+        expect(useSketchEditorStore.getState().applyConstraint('coincident')).toBeNull()
+
+        expect(batch).not.toHaveBeenCalled()
+        expect(handler).not.toHaveBeenCalled()
+        expect(useSketchEditorStore.getState().normalSelection)
+          .toEqual(new Set(['@builtin_origin', 'vertex:S1:l1:start']))
+      })
+
+      it('leaves the hover standing, the cursor is still over the geometry', () => {
+        const handler = vi.fn()
+        setSketchCallback('onMutation', handler)
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+        useSketchEditorStore.getState().setHoveredSelectionId('entity:S1:L1')
+
+        expect(useSketchEditorStore.getState().applyConstraint('horizontal')).toBeNull()
+
+        expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('entity:S1:L1')
+        expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+      })
+
+      it('clears after a successful group', () => {
+        const handler = vi.fn()
+        setSketchCallback('onMutation', handler)
+        useSketchEditorStore.getState().setActiveFeatureId('S1')
+        useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+        useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L2')
+
+        expect(useSketchEditorStore.getState().applyConstraint('group')).toBeNull()
+
+        expect(handler).toHaveBeenCalledOnce()
+        expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+      })
+    })
   })
 
   describe('toggleConstruction', () => {

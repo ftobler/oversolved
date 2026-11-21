@@ -257,6 +257,46 @@ describe('command bodies that drive the sketch editor store', () => {
     })
   })
 
+  it('apply_horizontal clears the selection once the constraint is authored', () => {
+    setSketchCallback('onMutation', null)
+    const handler = vi.fn()
+    setSketchCallback('onMutation', handler)
+    useEditorState.setState({
+      normalSelection: new Set(['entity:Sketch1:L1']),
+      activeFeatureId: 'Sketch1',
+      entityKindMap: { 'entity:Sketch1:L1': 'line' },
+    })
+    const showMessage = vi.fn()
+
+    execute('apply_horizontal', partContext({ showMessage }))
+
+    expect(handler).toHaveBeenCalledOnce()
+    expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+    expect(showMessage).not.toHaveBeenCalled()
+    setSketchCallback('onMutation', null)
+  })
+
+  it('apply_parallel with one line keeps the selection for the retry', () => {
+    const handler = vi.fn()
+    setSketchCallback('onMutation', handler)
+    useEditorState.setState({
+      normalSelection: new Set(['entity:Sketch1:L1']),
+      activeFeatureId: 'Sketch1',
+      entityKindMap: { 'entity:Sketch1:L1': 'line' },
+    })
+    const showMessage = vi.fn()
+
+    execute('apply_parallel', partContext({ showMessage }))
+
+    expect(showMessage).toHaveBeenCalledWith({
+      title: 'Cannot apply constraint',
+      message: 'Parallel needs two operands (two lines), got one',
+      variant: 'error',
+    })
+    expect(useSketchEditorStore.getState().normalSelection).toEqual(new Set(['entity:Sketch1:L1']))
+    expect(handler).not.toHaveBeenCalled()
+  })
+
   it('a synthetic implemented:false constraint still surfaces the toast', () => {
     const showMessage = vi.fn()
     const applyConstraint = vi.fn()
