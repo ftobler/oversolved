@@ -44,6 +44,22 @@ describe('tree mutation and uuid addressing (I3, A7)', () => {
     expect(entryById(tree, 'a').name).toBe('A Renamed')
   })
 
+  it('accepts a hyphen in a rename, the audit pin for the workspace entry', () => {
+    const tree = treeWith([documentEntry('a', 'A')])
+    renameEntry(tree, 'a', 'my-doc')
+    expect(entryById(tree, 'a').name).toBe('my-doc')
+    expect(tree.manifest.entries.a.path).toBe('documents/my-doc.yaml')
+  })
+
+  // A colliding display name is not refused: pathFor keeps the name and suffixes
+  // the file stem, so the rename lands under a free path instead of dropping.
+  it('suffixes the path stem when the name collides', () => {
+    const tree = treeWith([documentEntry('a', 'A'), documentEntry('b', 'Bracket')])
+    renameEntry(tree, 'a', 'Bracket')
+    expect(entryById(tree, 'a').name).toBe('Bracket')
+    expect(tree.manifest.entries.a.path).toBe('documents/Bracket_1.yaml')
+  })
+
   it('removeEntry hides the entry and keeps it in the trash area', () => {
     const tree = treeWith([documentEntry('a', 'A')])
     removeEntry(tree, 'a')

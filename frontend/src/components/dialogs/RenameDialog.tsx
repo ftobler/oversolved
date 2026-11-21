@@ -11,6 +11,9 @@ export interface RenameDialogProps {
   // the same one-field shape, so the verb and icon are the caller's to set.
   confirmLabel?: string
   icon?: string
+  // Returns the reason the typed name would be refused, or null. Shown under the
+  // field while typing, and OK stays disabled while it is non-null.
+  validate?: (name: string) => string | null
   onRename: (name: string) => void
   onCancel: () => void
 }
@@ -22,12 +25,17 @@ export default function RenameDialog({
   currentName,
   confirmLabel = 'Rename',
   icon = 'edit',
+  validate,
   onRename,
   onCancel,
 }: RenameDialogProps) {
   const [name, setName] = useState(currentName)
   const inputRef = useRef<HTMLInputElement>(null)
   const [wasOpen, setWasOpen] = useState(isOpen)
+  // The prefilled current name is never judged: a legacy document can carry one
+  // the rule would refuse, and an error before the user types reads as their
+  // mistake. Validation starts with the first edit.
+  const [edited, setEdited] = useState(false)
 
   // The dialog stays mounted between renames, so re-seed the field on every open
   // but never while it is open: that would wipe whatever the user typed. This is
@@ -35,7 +43,10 @@ export default function RenameDialog({
   // which would cost a second render pass.
   if (isOpen !== wasOpen) {
     setWasOpen(isOpen)
-    if (isOpen) setName(currentName)
+    if (isOpen) {
+      setName(currentName)
+      setEdited(false)
+    }
   }
 
   // Select the existing name so typing replaces it, which is what the old
@@ -48,9 +59,18 @@ export default function RenameDialog({
   }, [isOpen])
 
   const trimmed = name.trim()
+  const problem = edited && validate ? validate(trimmed) : null
 
   const handleConfirm = () => {
     if (!trimmed) return
+    // A legacy-prefilled label is not judged until the first edit. If it is
+    // invalid, reveal the hint instead of dispatching a confirm the applier
+    // would refuse behind the modal overlay.
+    if (!edited && validate && validate(trimmed) !== null) {
+      setEdited(true)
+      return
+    }
+    if (problem !== null) return
     onRename(trimmed)
   }
 
@@ -70,7 +90,7 @@ export default function RenameDialog({
       onClose={onCancel}
       onConfirm={handleConfirm}
       confirmLabel={confirmLabel}
-      confirmDisabled={!trimmed}
+      confirmDisabled={!trimmed || problem !== null}
     >
       <div className="rename-dialog-field">
         <label className="rename-dialog-label" htmlFor="rename-dialog-input">{label}</label>
@@ -79,9 +99,17 @@ export default function RenameDialog({
           ref={inputRef}
           type="text"
           value={name}
-          onChange={e => setName(e.target.value)}
+          onChange={e => {
+            setEdited(true)
+            setName(e.target.value)
+          }}
           onKeyDown={handleKeyDown}
+          aria-invalid={problem !== null}
+          aria-describedby={problem !== null ? 'rename-dialog-hint' : undefined}
         />
+        {problem !== null && (
+          <div className="rename-dialog-hint" id="rename-dialog-hint" aria-live="polite">{problem}</div>
+        )}
       </div>
     </Dialog>
   )

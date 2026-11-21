@@ -108,6 +108,30 @@ describe('createHeadlessPart', () => {
     expect(result).toMatchObject({ code: 'unsupported' })
   })
 
+  // A headless rename takes the same applier as the dialog, so an invalid
+  // variable name is a refused step carrying the sentence instead of a quiet
+  // no-op the script would read as success.
+  it('reports a refused variable rename with the shared sentence', async () => {
+    const part = createHeadlessPart({
+      doc: {
+        version: 1, kind: 'part',
+        features: [{ id: 'v1', kind: 'variable', label: 'width', variable: { expression: '10' } }],
+      } as PartDoc,
+    })
+    const outcome = await part.run([
+      { mutation: { type: 'rename_feature', featureId: 'v1', label: 'my-var' } },
+    ])
+    expect(outcome.ok).toBe(false)
+    expect(outcome.steps).toHaveLength(1)
+    expect(outcome.steps[0]).toMatchObject({ ok: false, error: { code: 'refused' } })
+    expect(outcome.steps[0].error?.message).toBe(
+      '"my-var" is not a valid variable name: use letters, digits and _ only '
+        + '(a - reads as minus in an expression). Try "my_var".',
+    )
+    const feature = part.getDoc()?.features?.[0] as { label?: string } | undefined
+    expect(feature?.label).toBe('width')
+  })
+
   it('runs mutation steps through the session and command steps through the registry', async () => {
     const part = createHeadlessPart({ doc: emptyDoc() })
     const outcome = await part.run([

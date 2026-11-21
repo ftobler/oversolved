@@ -539,6 +539,11 @@ describe('setMateLabel', () => {
     expect(findMate(doc, 'm1')!.label).toBe('Base')
   })
 
+  it('accepts a hyphen, the audit pin for the mate rename', () => {
+    const doc = setMateLabel(appendMate(emptyDoc, 'fixed', 'm1'), 'm1', 'my-mate')
+    expect(findMate(doc, 'm1')!.label).toBe('my-mate')
+  })
+
   // Clearing a name must not delete the key and fall back to a render ordinal:
   // re-mint the same stable default the mate would have been given at append.
   it('re-mints a stable default when cleared, not a render ordinal', () => {

@@ -5,6 +5,7 @@ import { arrayCountProblem } from '@/persistence/docSchema'
 import { skipValue } from '@/utils/core/patternSkip'
 import { splitPatternDef } from '@/utils/core/patternSplit'
 import { mirrorSubject } from '@/utils/core/mirrorSubject'
+import { sanitizeIdentifier } from '@/kernel/features/variable'
 
 /** Append a feature, lazily initializing the features array. */
 function pushFeature(doc: PartDoc, feature: PartFeature): void {
@@ -1699,15 +1700,6 @@ export function applyRemoveSplitPart(doc: PartDoc, featureId: string, index: num
 }
 
 // ─── Variable ───
-
-/** Replace invalid identifier chars with `_`, prefix leading digits, fallback to `var`. */
-function sanitizeIdentifier(s: string): string {
-  const cleaned = s.replace(/[^A-Za-z0-9_$]/g, '_')
-  // All-underscore (or empty) carries no meaningful name: fall back to `var`.
-  if (!/[A-Za-z0-9$]/.test(cleaned)) return 'var'
-  if (/^[0-9]/.test(cleaned)) return 'var_' + cleaned
-  return cleaned
-}
 
 /** Return `base` sanitized if unused, else append `_2`, `_3`, ... so variable
  *  labels stay unique (the label IS the downstream reference name). */
