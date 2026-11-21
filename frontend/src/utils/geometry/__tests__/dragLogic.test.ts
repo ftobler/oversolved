@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import type { Sketch, SketchFeature, Mutation } from '@/types/cad'
-import { shouldActivateDrag, computeDragMove, computeDragMutation } from '@/utils/geometry/dragLogic'
+import type { Sketch, SketchFeature, Mutation, PartConstraint } from '@/types/cad'
+import { shouldActivateDrag, computeDragMove, computeDragMutation, dragSnapSkips } from '@/utils/geometry/dragLogic'
 import { sketchToVertexCandidates, sketchToEntityCandidates } from '@/utils/geometry/snapDetection'
 import { CLICK_THRESHOLD_PX } from '@/utils/pointerAbstraction'
 import { mutationHandlers } from '@/hooks/mutationDispatch'
@@ -49,15 +49,15 @@ describe('computeDragMove', () => {
   const buildCandidates = (sketch: Sketch, featureId: string, skipEntityId?: string) => {
     const vertexCandidates = sketchToVertexCandidates(sketch, featureId, 'active_sketch')
     const entityCandidates = sketchToEntityCandidates(sketch, featureId, 'active_sketch')
-    const skipIds = new Set<string>()
-    if (skipEntityId) skipIds.add(skipEntityId)
-    return { vertexCandidates, entityCandidates, skipIds }
+    const skips = { vertexIds: new Set<string>(), entityIds: new Set<string>() }
+    if (skipEntityId) skips.entityIds.add(`${featureId}:${skipEntityId}`)
+    return { vertexCandidates, entityCandidates, skips }
   }
 
   it('returns null snap when cursor is far from all entities', () => {
-    const { vertexCandidates, entityCandidates, skipIds } = buildCandidates(makeSketch(), FEATURE, 'L1')
+    const { vertexCandidates, entityCandidates, skips } = buildCandidates(makeSketch(), FEATURE, 'L1')
     const result = computeDragMove(
-      [50, 50], vertexCandidates, entityCandidates, skipIds, makeDrag(), pixPerUnit,
+      [50, 50], vertexCandidates, entityCandidates, skips, makeDrag(), pixPerUnit,
     )
     expect(result.snapTarget).toBeNull()
     expect(result.effectivePosition).toEqual([50, 50])
@@ -66,9 +66,9 @@ describe('computeDragMove', () => {
   it('returns vertex snap when cursor is near another vertex', () => {
     // L2 start is at [10, 0]; cursor near [10, 0] with large threshold
     const drag = makeDrag({ entityId: 'L1' })  // dragging L1, so L2 vertices are candidates
-    const { vertexCandidates, entityCandidates, skipIds } = buildCandidates(makeSketch(), FEATURE, 'L1')
+    const { vertexCandidates, entityCandidates, skips } = buildCandidates(makeSketch(), FEATURE, 'L1')
     const result = computeDragMove(
-      [10.01, 0], vertexCandidates, entityCandidates, skipIds, drag,
+      [10.01, 0], vertexCandidates, entityCandidates, skips, drag,
       1,  // 1 unit per pixel = large radius
     )
     expect(result.snapTarget?.kind).toBe('vertex')
@@ -80,9 +80,9 @@ describe('computeDragMove', () => {
     // pixPerUnit=0.01 -> vertex radius 0.2 wu, entity radius 0.08 wu.
     // Cursor at [5, 0.05] is 0.05 wu from L1 (< entity threshold) but ~5 wu from
     // every vertex (> vertex threshold), so entity snap fires.
-    const { vertexCandidates, entityCandidates, skipIds } = buildCandidates(makeSketch(), FEATURE, '__none__')
+    const { vertexCandidates, entityCandidates, skips } = buildCandidates(makeSketch(), FEATURE, '__none__')
     const result = computeDragMove(
-      [5, 0.05], vertexCandidates, entityCandidates, skipIds, drag,
+      [5, 0.05], vertexCandidates, entityCandidates, skips, drag,
       0.01,
     )
     expect(result.snapTarget?.kind).toBe('entity')
@@ -91,9 +91,9 @@ describe('computeDragMove', () => {
 
   it('effectivePosition equals snap position when snap is active', () => {
     const drag = makeDrag({ entityId: 'L1' })
-    const { vertexCandidates, entityCandidates, skipIds } = buildCandidates(makeSketch(), FEATURE, 'L1')
+    const { vertexCandidates, entityCandidates, skips } = buildCandidates(makeSketch(), FEATURE, 'L1')
     const result = computeDragMove(
-      [10.01, 0.01], vertexCandidates, entityCandidates, skipIds, drag,
+      [10.01, 0.01], vertexCandidates, entityCandidates, skips, drag,
       1,
     )
     if (result.snapTarget) {
@@ -103,9 +103,9 @@ describe('computeDragMove', () => {
 
   it('edge drag returns no snap and uses raw position', () => {
     const drag = makeDrag({ type: 'edge', entityId: 'L1' })
-    const { vertexCandidates, entityCandidates, skipIds } = buildCandidates(makeSketch(), FEATURE, 'L1')
+    const { vertexCandidates, entityCandidates, skips } = buildCandidates(makeSketch(), FEATURE, 'L1')
     const result = computeDragMove(
-      [5, 5], vertexCandidates, entityCandidates, skipIds, drag, pixPerUnit,
+      [5, 5], vertexCandidates, entityCandidates, skips, drag, pixPerUnit,
     )
     expect(result.snapTarget).toBeNull()
     expect(result.effectivePosition).toEqual([5, 5])
@@ -376,6 +376,146 @@ describe('computeDragMutation released on another sketch', () => {
     expect(mutation?.type).toBe('move_vertex')
     if (mutation?.type === 'move_vertex') {
       expect(mutation.to).toEqual([2, 2])
+    }
+  })
+})
+
+// The twist-state report (bugreports/20261120_1925_twist_state.md): L2's start
+// is coincident with L1's end, and three identical point-on-line rows also hold
+// L2's start on L1. Dragging the corner near L1's body used to snap onto L1 and
+// add another identical row on every release.
+const TWIST = 'ZBNaee7JHHPKM_uidYh_3G9K'
+const T_L0 = 'LNHDhTHIvb0r2uj_'
+const T_L1 = 'in5ztTwqd1IVAMbt'
+const T_L2 = 'AQHP4hgUmx9v34-A'
+const T_L3 = 'PO7GJ1C5blvIKeQ3'
+
+const twistSketch = (): Sketch => ({
+  [T_L0]: { start: [0, 0], end: [-3.61953, 3.65477] } as Sketch[string],
+  [T_L1]: { start: [-3.61953, 3.65477], end: [14.298334, 7.967438] } as Sketch[string],
+  [T_L2]: { start: [14.298334, 7.967438], end: [13.094651, 12.968387] } as Sketch[string],
+  [T_L3]: { start: [13.094651, 12.968387], end: [0, 0] } as Sketch[string],
+})
+
+const twistConstraints = (): PartConstraint[] => [
+  { id: 'c1', kind: 'coincident', a: `$${T_L0}start`, b: '@builtin_origin' },
+  { id: 'c2', kind: 'coincident', a: `$${T_L1}start`, b: `$${T_L0}end` },
+  { id: 'c3', kind: 'coincident', a: `$${T_L2}start`, b: `$${T_L1}end` },
+  { id: 'c4', kind: 'coincident', a: `$${T_L3}start`, b: `$${T_L2}end` },
+  { id: 'c5', kind: 'coincident', a: `$${T_L3}end`, b: `$${T_L0}start` },
+  { id: 'c6', kind: 'equal_length', a: `$${T_L1}`, b: `$${T_L3}` },
+  { id: 'c7', kind: 'equal_length', a: `$${T_L2}`, b: `$${T_L0}` },
+  { id: 'c8', kind: 'coincident', a: `$${T_L2}start`, b: `$${T_L1}` },
+  { id: 'c9', kind: 'normal', a: `$${T_L2}`, b: `$${T_L1}` },
+  { id: 'c10', kind: 'coincident', a: `$${T_L2}start`, b: `$${T_L1}` },
+  { id: 'c11', kind: 'coincident', a: `$${T_L2}start`, b: `$${T_L1}` },
+]
+
+const twistDrag = () => makeDrag({
+  vertexId: `vertex:${TWIST}:${T_L2}:start`,
+  featureId: TWIST,
+  entityId: T_L2,
+  vertexKey: 'start',
+  startWorld: [14.298334, 7.967438],
+  currentWorld: [14.298334, 7.967438],
+})
+
+const twistMove = (skips: ReturnType<typeof dragSnapSkips>, cursor: [number, number]) => {
+  const vertices = sketchToVertexCandidates(twistSketch(), TWIST, 'active_sketch')
+  const entities = sketchToEntityCandidates(twistSketch(), TWIST, 'active_sketch')
+  return computeDragMove(cursor, vertices, entities, skips, twistDrag(), 0.01)
+}
+
+describe('dragSnapSkips', () => {
+  it('skips the bonded partner vertex and every entity that owns one', () => {
+    const skips = dragSnapSkips(twistConstraints(), TWIST, twistDrag())
+    expect(skips.vertexIds.has(`vertex:${TWIST}:${T_L1}:end`)).toBe(true)
+    expect(skips.entityIds.has(`${TWIST}:${T_L1}`)).toBe(true)
+    expect(skips.entityIds.has(`${TWIST}:${T_L2}`)).toBe(true)
+  })
+
+  it('does not snap the dragged corner onto the bonded partner line body', () => {
+    const skips = dragSnapSkips(twistConstraints(), TWIST, twistDrag())
+    // A hair off L1's body, 2.7 units from the corner and far from every vertex:
+    // only L1's body is close enough for an entity snap.
+    const result = twistMove(skips, [11.6106544, 7.3305378])
+    expect(result.snapTarget).toBeNull()
+  })
+
+  it('still snaps to a line that is not bonded to the dragged vertex', () => {
+    const skips = dragSnapSkips(twistConstraints(), TWIST, twistDrag())
+    // Midpoint of L3's body, which holds no vertex in the dragged vertex's
+    // coincident cluster.
+    const result = twistMove(skips, [6.5473, 6.4842])
+    expect(result.snapTarget?.kind).toBe('entity')
+    expect(result.snapTarget?.entityRef).toBe(`entity:${TWIST}:${T_L3}`)
+  })
+
+  it('still snaps to a vertex that is not bonded to the dragged vertex', () => {
+    const skips = dragSnapSkips(twistConstraints(), TWIST, twistDrag())
+    // L0's end and L1's start share this point but are two bridges away from the
+    // dragged corner, so one of them stays a vertex candidate.
+    const result = twistMove(skips, [-3.61953, 3.65477])
+    expect(result.snapTarget?.kind).toBe('vertex')
+    expect(result.snapTarget?.vertexId).not.toBe(`vertex:${TWIST}:${T_L1}:end`)
+  })
+
+  it('skips an entity that already holds the dragged vertex point-on-line', () => {
+    const holding: PartConstraint[] = [
+      { id: 'c_hold', kind: 'coincident', a: `$L1start`, b: '$L2' },
+      { id: 'c_hold_rev', kind: 'coincident', a: '$L3', b: `$L1start` },
+    ]
+    const skips = dragSnapSkips(holding, FEATURE, makeDrag())
+    expect(skips.entityIds.has(`${FEATURE}:L2`)).toBe(true)
+    expect(skips.entityIds.has(`${FEATURE}:L3`)).toBe(true)
+  })
+
+  it('an edge drag has nothing to skip', () => {
+    const skips = dragSnapSkips(twistConstraints(), TWIST, twistDrag())
+    const edge = dragSnapSkips(twistConstraints(), TWIST, makeDrag({ type: 'edge', featureId: TWIST }))
+    expect(edge.vertexIds.size).toBe(0)
+    expect(edge.entityIds.size).toBe(0)
+    expect(skips.vertexIds.size).toBeGreaterThan(0)
+  })
+})
+
+describe('the reported line drag path', () => {
+  const coincidentLines = () => makeDoc(makeSketchFixture('S1', {
+    entities: [{ id: 'L1', kind: 'line' }, { id: 'L2', kind: 'line' }],
+    constraints: [{ id: 'c_corner', kind: 'coincident', a: '$L1end', b: '$L2start' }],
+    initial: { L1: [0, 0, 10, 0], L2: [10, 0, 10, 10] },
+  }))
+
+  // The second report's extra row cannot come from a line body drag: that
+  // gesture emits `move_entity`, which authors no constraint. Even a latched
+  // snap target is ignored on the edge branch.
+  it('a line body drag emits move_entity and authors nothing', () => {
+    const doc = coincidentLines()
+    const drag = makeDrag({
+      type: 'edge', startClient: [100, 100], startWorld: [10, 5], currentWorld: [12, 5],
+    })
+    const mutation = computeDragMutation([200, 200], drag, {
+      kind: 'vertex', position: [10, 0], constraintKind: 'coincident', vertexId: 'vertex:S1:L2:start',
+    })
+    expect(mutation?.type).toBe('move_entity')
+    mutationHandlers.move_entity(doc, mutation as Extract<Mutation, { type: 'move_entity' }>)
+    expect((doc.features![0] as SketchFeature).constraints).toHaveLength(1)
+  })
+
+  // What the user perceives as dragging the line is the press on its endpoint
+  // dot; release then commits `move_vertex_with_constraint` carrying the other
+  // line as an entity snap. That is the event that used to add the extra row.
+  it('the endpoint dot drag emits move_vertex_with_constraint with the partner line', () => {
+    const drag = makeDrag({
+      vertexId: 'vertex:S1:L1:end', entityId: 'L1', vertexKey: 'end',
+      startClient: [100, 100], currentWorld: [10, 0],
+    })
+    const mutation = computeDragMutation([200, 200], drag, {
+      kind: 'entity', position: [10, 0], constraintKind: 'coincident', entityRef: 'entity:S1:L2',
+    })
+    expect(mutation?.type).toBe('move_vertex_with_constraint')
+    if (mutation?.type === 'move_vertex_with_constraint') {
+      expect(mutation.snapEntityRef).toBe('entity:S1:L2')
     }
   })
 })

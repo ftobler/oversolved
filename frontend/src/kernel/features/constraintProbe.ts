@@ -14,6 +14,7 @@
  */
 import type { PartConstraint, PartDoc, SketchFeature } from '@/types/cad'
 import { applyAddConstraint, applyAddProjectedEntity } from '@/utils/yamlMutations/sketch'
+import { duplicateConstraintOf } from '@/utils/constraintProblems'
 import type { ProjectionMemberEntity } from './projectionMembers'
 import { probeRedundantConstraint } from './sketch'
 
@@ -106,6 +107,12 @@ export function classifyPendingAdd(
   if (!doc) return 'ok'
   const feature = (doc.features ?? []).find((f) => f.id === pending.featureId)
   if (feature?.kind !== 'sketch') return 'ok'
+  // An exact duplicate is redundant before any solve, and the applier will drop
+  // it. Answering `redundant` here keeps the command's refusal message instead
+  // of turning an authoring attempt into a silent no-op.
+  if (duplicateConstraintOf(feature.constraints, pending.featureId, pending.kind, pending.targets, pending.value) !== null) {
+    return 'redundant'
+  }
   const drafted = draftPendingConstraint(doc, pending)
   if (!drafted) return 'dropped'
   return probeRedundantConstraint(drafted.probeFeature, drafted.draft.id, resolvedKinds, derivedMembers) === true ? 'redundant' : 'ok'

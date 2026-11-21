@@ -47,6 +47,61 @@ function sketchDoc(): PartDoc {
   )
 }
 
+const TWIST = 'ZBNaee7JHHPKM_uidYh_3G9K'
+const TWIST_L0 = 'LNHDhTHIvb0r2uj_'
+const TWIST_L1 = 'in5ztTwqd1IVAMbt'
+const TWIST_L2 = 'AQHP4hgUmx9v34-A'
+const TWIST_L3 = 'PO7GJ1C5blvIKeQ3'
+
+/** The twist-state report's document, geometry and constraint rows verbatim
+ *  (bugreports/20261120_1925_twist_state.md). */
+function twistDoc(): PartDoc {
+  return makeDoc(makeSketch(TWIST, {
+    entities: [
+      { id: TWIST_L0, kind: 'line' },
+      { id: TWIST_L1, kind: 'line' },
+      { id: TWIST_L2, kind: 'line' },
+      { id: TWIST_L3, kind: 'line' },
+    ],
+    constraints: [
+      { id: 'c_coincident_6Ue-MtI1', kind: 'coincident', a: `$${TWIST_L0}start`, b: '@builtin_origin' },
+      { id: 'c_coincident_G4NOC7sw', kind: 'coincident', a: `$${TWIST_L1}start`, b: `$${TWIST_L0}end` },
+      { id: 'c_coincident_TXQH8F5D', kind: 'coincident', a: `$${TWIST_L2}start`, b: `$${TWIST_L1}end` },
+      { id: 'c_coincident_wmWQJlYv', kind: 'coincident', a: `$${TWIST_L3}start`, b: `$${TWIST_L2}end` },
+      { id: 'c_coincident_StKWK44c', kind: 'coincident', a: `$${TWIST_L3}end`, b: `$${TWIST_L0}start` },
+      { id: 'c_equal_length_lAnca0cZ', kind: 'equal_length', a: `$${TWIST_L1}`, b: `$${TWIST_L3}` },
+      { id: 'c_equal_length_BVcW9-6K', kind: 'equal_length', a: `$${TWIST_L2}`, b: `$${TWIST_L0}` },
+      { id: 'c_coincident_5JiT5C_V', kind: 'coincident', a: `$${TWIST_L2}start`, b: `$${TWIST_L1}` },
+      { id: 'c_normal_W5REwRrC', kind: 'normal', a: `$${TWIST_L2}`, b: `$${TWIST_L1}` },
+      { id: 'c_coincident_0YTF4JcL', kind: 'coincident', a: `$${TWIST_L2}start`, b: `$${TWIST_L1}` },
+      { id: 'c_coincident_g-KF2tYy', kind: 'coincident', a: `$${TWIST_L2}start`, b: `$${TWIST_L1}` },
+    ],
+    initial: {
+      [TWIST_L0]: [0, 0, -3.61953, 3.65477],
+      [TWIST_L1]: [-3.61953, 3.65477, 14.298334, 7.967438],
+      [TWIST_L2]: [14.298334, 7.967438, 13.094651, 12.968387],
+      [TWIST_L3]: [13.094651, 12.968387, 0, 0],
+    },
+  }))
+}
+
+/** The second report's shape: two lines joined by a coincident at one corner. */
+function coincidentLinesDoc(): PartDoc {
+  return makeDoc(makeSketch('S1', {
+    entities: [
+      { id: 'L1', kind: 'line' },
+      { id: 'L2', kind: 'line' },
+    ],
+    constraints: [
+      { id: 'c_corner', kind: 'coincident', a: '$L1end', b: '$L2start' },
+    ],
+    initial: {
+      L1: [0, 0, 10, 0],
+      L2: [10, 0, 10, 10],
+    },
+  }))
+}
+
 function feature(doc: PartDoc, id: string) {
   return doc.features?.find(f => f.id === id)
 }
@@ -68,6 +123,55 @@ describe('mutationHandlers forward sketch mutations', () => {
     })
     const cs = sketch1(doc).constraints!
     expect(cs.some(c => c.kind === 'coincident')).toBe(true)
+  })
+
+  // bugreports/20261120_1925_twist_state.md: three identical point-on-line rows
+  // already hold L2's start on L1. The reported payload named the same pair
+  // again; every release used to add a fourth row.
+  it('move_vertex_with_constraint refuses the reported duplicate but still moves the vertex', () => {
+    const doc = twistDoc()
+    const twist = featureById(doc, TWIST, 'sketch')
+    const before = twist.constraints!.length
+    mutationHandlers.move_vertex_with_constraint(doc, {
+      type: 'move_vertex_with_constraint',
+      featureId: TWIST,
+      entityId: TWIST_L2,
+      vertexKey: 'start',
+      to: [14.286942669640055, 7.994273141292004],
+      constraintKind: 'coincident',
+      snapEntityRef: `entity:${TWIST}:${TWIST_L1}`,
+    })
+    expect(twist.constraints!.length).toBe(before)
+    expect(twist.initial![TWIST_L2].slice(0, 2)).toEqual([14.286943, 7.994273])
+  })
+
+  // The second report says repeatedly dragging two lines that are already
+  // coincident adds a row per drag. A line body drag is `move_entity` and can
+  // author nothing; the extra row comes from the vertex drag anchored on the
+  // shared endpoint dot, whose release carries the partner line as an entity
+  // snap. Repeated releases of the same snap used to store the row again.
+  it('a repeated snapped endpoint drag stores one point-on-line row, not one per release', () => {
+    const doc = coincidentLinesDoc()
+    const snapMutation = {
+      type: 'move_vertex_with_constraint' as const,
+      featureId: 'S1',
+      entityId: 'L1',
+      vertexKey: 'end',
+      to: [10, 0] as [number, number],
+      constraintKind: 'coincident',
+      snapEntityRef: 'entity:S1:L2',
+    }
+    mutationHandlers.move_vertex_with_constraint(doc, snapMutation)
+    mutationHandlers.move_vertex_with_constraint(doc, snapMutation)
+    const pointOnLine = sketch1(doc).constraints!
+      .filter(c => c.kind === 'coincident' && (c.b === '$L2' || c.a === '$L2'))
+    expect(pointOnLine).toHaveLength(1)
+  })
+
+  it('move_entity authors no constraint, so a line body drag is not the duplicate path', () => {
+    const doc = coincidentLinesDoc()
+    mutationHandlers.move_entity(doc, { type: 'move_entity', featureId: 'S1', entityId: 'L2', delta: [2, 0] })
+    expect(sketch1(doc).constraints!).toHaveLength(1)
   })
 
   it('move_entity translates by delta', () => {

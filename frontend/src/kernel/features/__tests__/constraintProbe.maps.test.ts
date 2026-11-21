@@ -54,4 +54,13 @@ describe('classifyPendingAdd projection facts', () => {
     expect(probe).toHaveBeenCalledTimes(1)
     expect(probe.mock.calls[0][2]).toBe(empty)
   })
+
+  it('answers redundant for an exact duplicate without asking the solver', () => {
+    const duplicate = doc()
+    const feature = duplicate.features![0]
+    if (feature.kind !== 'sketch') throw new Error('fixture is not a sketch')
+    feature.constraints = [{ id: 'c_same', kind: 'length', target: '$l1', value: 10 }]
+    expect(classifyPendingAdd(duplicate, pending)).toBe('redundant')
+    expect(probe).not.toHaveBeenCalled()
+  })
 })

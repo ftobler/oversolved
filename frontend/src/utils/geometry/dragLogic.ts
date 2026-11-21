@@ -5,7 +5,7 @@ import type { Mutation } from '@/types/cad'
 import type { VertexOrEdgeDrag } from '@/stores/sketchEditorStore'
 import type { SnapTarget, SnapCandidate, EntityCandidate } from '@/utils/geometry/snapDetection'
 import type { CircleDragMode } from '@/kernel/features/circleDragMode'
-import { findSnapTarget, collectVertexTargetsFlat, collectEntityCandidatesFlat } from '@/utils/geometry/snapDetection'
+import { findSnapTarget, collectEntityCandidatesFlat } from '@/utils/geometry/snapDetection'
 import { isPureClick, CLICK_THRESHOLD_PX } from '@/utils/pointerAbstraction'
 import { PART_SNAP_FEAT_PREFIX } from '@/utils/geometry/partSnapProjection'
 import { VERTEX_POINT_KEY_SUFFIXES } from '@/types/vertexKeys'
@@ -23,7 +23,23 @@ export interface DragMoveResult {
   effectivePosition: [number, number]
 }
 
+/** The snap candidates one drag must ignore. A vertex drag's bonded cluster
+ *  moves with the dragged vertex, and every entity that owns one of those points
+ *  passes through the cursor by construction: snapping to it would author a
+ *  point-on-line row that is already satisfied and rank-redundant (the
+ *  twist-state bug). An entity that already holds the vertex by a point-on-line
+ *  coincident is skipped for the same reason. */
+export interface DragSnapSkips {
+  // Composite vertex ids that move with the dragged vertex (exact match).
+  vertexIds: Set<string>
+  // `featureId:entityId` values for the entity candidates.
+  entityIds: Set<string>
+}
+
 const COINCIDENT_VERTEX_KEYS = VERTEX_POINT_KEY_SUFFIXES
+
+const compositeVertexId = (featureId: string, entityId: string, vertexKey: string) =>
+  `vertex:${featureId}:${entityId}:${vertexKey}`
 
 /** Parse a local vertex ref like "$<entityId>start" into its parts.
  *  Returns null for non-local refs (e.g. "@builtin_origin"). */
@@ -49,8 +65,7 @@ export function collectCoincidentVertexIds(
   entityId: string,
   vertexKey: string,
 ): Set<string> {
-  const composite = (e: string, k: string) => `vertex:${featureId}:${e}:${k}`
-  const result = new Set<string>([composite(entityId, vertexKey)])
+  const result = new Set<string>([compositeVertexId(featureId, entityId, vertexKey)])
   // \u0000 is a collision-proof separator (never appears in ids). Keep it as an
   // escape sequence: a literal NUL byte makes git treat the file as binary.
   const visited = new Set<string>([`${entityId}\u0000${vertexKey}`])
@@ -68,11 +83,78 @@ export function collectCoincidentVertexIds(
       const visitKey = `${partner.entityId}\u0000${partner.vertexKey}`
       if (visited.has(visitKey)) continue
       visited.add(visitKey)
-      result.add(composite(partner.entityId, partner.vertexKey))
+      result.add(compositeVertexId(featureId, partner.entityId, partner.vertexKey))
       queue.push(partner)
     }
   }
   return result
+}
+
+/** A constraint ref as the local entity and optional vertex key it names. The
+ *  stored form is `$eid` or `$eid<key>`; the qualified spellings are tolerated
+ *  for a live pick. A ref to another sketch or to a builtin names no local
+ *  entity and yields null. */
+function localEntityRef(
+  ref: unknown,
+  featureId: string,
+): { entityId: string; vertexKey?: string } | null {
+  if (typeof ref !== 'string') return null
+  if (ref.startsWith('$')) {
+    const vertex = parseLocalVertexRef(ref)
+    if (vertex) return vertex
+    return ref.length > 1 ? { entityId: ref.slice(1) } : null
+  }
+  const parts = ref.split(':')
+  if (parts[1] !== featureId) return null
+  if (parts[0] === 'vertex' && parts[2] !== undefined && parts[3] !== undefined) {
+    return { entityId: parts[2], vertexKey: parts[3] }
+  }
+  if (parts[0] === 'entity' && parts[2] !== undefined) return { entityId: parts[2] }
+  return null
+}
+
+/** What a vertex drag must exclude from snapping. The dragged entity is always
+ *  out; so is every entity owning a vertex bonded to the dragged one, because
+ *  that line passes through the dragged point and the snap would author a row
+ *  already implied by the bond. */
+export function dragSnapSkips(
+  constraints: ReadonlyArray<{ kind?: string; a?: unknown; b?: unknown }> | undefined,
+  featureId: string,
+  drag: VertexOrEdgeDrag,
+): DragSnapSkips {
+  const vertexIds = new Set<string>()
+  const entityIds = new Set<string>()
+  // Edge drags never snap, so they have nothing to exclude.
+  if (drag.type !== 'vertex') return { vertexIds, entityIds }
+  entityIds.add(`${featureId}:${drag.entityId}`)
+  const bonded = collectCoincidentVertexIds(constraints ?? [], featureId, drag.entityId, drag.vertexKey)
+  for (const id of bonded) {
+    vertexIds.add(id)
+    // The composite id is `vertex:<featureId>:<entityId>:<key>`; entity ids are
+    // colon-free, so the slice recovers the owner.
+    const parts = id.split(':')
+    const entityId = parts.slice(2, -1).join(':')
+    if (entityId.length > 0) entityIds.add(`${featureId}:${entityId}`)
+  }
+  for (const c of constraints ?? []) {
+    if (c.kind !== 'coincident') continue
+    const a = localEntityRef(c.a, featureId)
+    const b = localEntityRef(c.b, featureId)
+    if (a === null || b === null) continue
+    // A point-on-line row stores one point and one whole entity. When the point
+    // is in the dragged cluster, that entity already holds the dragged vertex,
+    // so snapping to its body would only duplicate the row.
+    if (a.vertexKey !== undefined && b.vertexKey === undefined) {
+      if (bonded.has(compositeVertexId(featureId, a.entityId, a.vertexKey))) {
+        entityIds.add(`${featureId}:${b.entityId}`)
+      }
+    } else if (b.vertexKey !== undefined && a.vertexKey === undefined) {
+      if (bonded.has(compositeVertexId(featureId, b.entityId, b.vertexKey))) {
+        entityIds.add(`${featureId}:${a.entityId}`)
+      }
+    }
+  }
+  return { vertexIds, entityIds }
 }
 
 /** Vertex composite ids that should NOT be drawn or registered for picking
@@ -90,7 +172,6 @@ export function suppressedCoincidentVertexIds(
   constraints: ReadonlyArray<{ kind?: string; a?: unknown; b?: unknown }>,
   featureId: string,
 ): Set<string> {
-  const composite = (e: string, k: string) => `vertex:${featureId}:${e}:${k}`
   // Union-find over composite ids; the root is kept as the smallest id so the
   // leader is stable regardless of constraint order.
   const parent = new Map<string, string>()
@@ -116,7 +197,10 @@ export function suppressedCoincidentVertexIds(
     const pa = parseLocalVertexRef(typeof c.a === 'string' ? c.a : null)
     const pb = parseLocalVertexRef(typeof c.b === 'string' ? c.b : null)
     if (!pa || !pb) continue
-    union(composite(pa.entityId, pa.vertexKey), composite(pb.entityId, pb.vertexKey))
+    union(
+      compositeVertexId(featureId, pa.entityId, pa.vertexKey),
+      compositeVertexId(featureId, pb.entityId, pb.vertexKey),
+    )
   }
   const suppressed = new Set<string>()
   for (const id of parent.keys()) {
@@ -139,12 +223,14 @@ export function shouldActivateDrag(
  *  a plain number so this function has zero Three.js dependencies.
  *
  *  vertexCandidates and entityCandidates are the pre-built flat arrays from the adapter layer.
- *  skipIds identifies entities to exclude from snapping (e.g., the dragged entity). */
+ *  `skips` is dragSnapSkips' verdict: the bonded vertices and the entity bodies the drag
+ *  must not latch onto. The dragged entity's own vertices stay out too, so a drag cannot
+ *  snap onto the other end of the line it is moving. */
 export function computeDragMove(
   localPoint: readonly [number, number],
   vertexCandidates: SnapCandidate[],
   entityCandidates: EntityCandidate[],
-  skipIds: ReadonlySet<string>,
+  skips: DragSnapSkips,
   drag: VertexOrEdgeDrag,
   pixelsPerUnit: number,
 ): DragMoveResult {
@@ -159,8 +245,10 @@ export function computeDragMove(
   }
 
   // Snap detection
-  const filteredVertices = collectVertexTargetsFlat(vertexCandidates, skipIds)
-  const filteredEntities = collectEntityCandidatesFlat(entityCandidates, skipIds)
+  const ownEntity = `:${drag.featureId}:${drag.entityId}:`
+  const filteredVertices = vertexCandidates.filter(t =>
+    !skips.vertexIds.has(t.id) && !t.id.includes(ownEntity))
+  const filteredEntities = collectEntityCandidatesFlat(entityCandidates, skips.entityIds)
   const snapTarget = findSnapTarget(
     filteredVertices,
     filteredEntities,

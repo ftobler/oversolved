@@ -4,8 +4,8 @@
 // names the sentence, and the applier either authors the constraint or leaves
 // the document byte-identical exactly when a problem is returned.
 import { describe, it, expect } from 'vitest'
-import type { PartDoc } from '@/types/cad'
-import { addConstraintProblem, midpointShapeReason } from '@/utils/constraintProblems'
+import type { PartConstraint, PartDoc } from '@/types/cad'
+import { addConstraintProblem, duplicateConstraintOf, midpointShapeReason } from '@/utils/constraintProblems'
 import { CONSTRAINT_BY_KIND, CONSTRAINTS, constraintOperandProblem } from '@/registry'
 import { applyAddConstraint } from '@/utils/yamlMutations'
 import { sketchAt } from '@/testing/featureAccess'
@@ -290,5 +290,79 @@ describe('constraint operand arity', () => {
         sketchAt(shapeDoc()), kind, ['vertex:sk1:ax:start', 'vertex:sk1:ax:end'], undefined,
       )).toBeNull()
     }
+  })
+})
+
+// Every insert path refuses an exact duplicate row, whatever the operand order
+// (the user's rule in bugreports/20261120_1925_twist_state.md).
+describe('duplicate constraint rows', () => {
+  const withRows = (...rows: PartConstraint[]): PartDoc => {
+    const doc = shapeDoc()
+    const feature = doc.features![0]
+    if (feature.kind !== 'sketch') throw new Error('fixture is not a sketch')
+    feature.constraints = rows
+    return doc
+  }
+  const stored: PartConstraint = { id: 'c_stored', kind: 'coincident', a: '$axstart', b: '$bxend' }
+  const pointOnLine: PartConstraint = { id: 'c_on_line', kind: 'coincident', a: '$axstart', b: '$bx' }
+
+  it('refuses the same coincident in the stored operand order', () => {
+    const problem = addConstraintProblem(
+      sketchAt(withRows(stored)), 'coincident',
+      ['vertex:sk1:ax:start', 'vertex:sk1:bx:end'], undefined,
+    )
+    expect(problem).toContain('c_stored')
+  })
+
+  it('refuses the same coincident with the operands reversed', () => {
+    const problem = addConstraintProblem(
+      sketchAt(withRows(stored)), 'coincident',
+      ['vertex:sk1:bx:end', 'vertex:sk1:ax:start'], undefined,
+    )
+    expect(problem).toContain('c_stored')
+  })
+
+  it('refuses a duplicate point-on-line coincident in either order', () => {
+    for (const targets of [
+      ['vertex:sk1:ax:start', 'entity:sk1:bx'],
+      ['entity:sk1:bx', 'vertex:sk1:ax:start'],
+    ]) {
+      const problem = addConstraintProblem(sketchAt(withRows(pointOnLine)), 'coincident', targets, undefined)
+      expect(problem).toContain('c_on_line')
+    }
+  })
+
+  it('the applier leaves the document byte-identical for a duplicate', () => {
+    const doc = withRows(pointOnLine)
+    const before = JSON.stringify(doc)
+    applyAddConstraint(doc, 'sk1', 'coincident', ['entity:sk1:bx', 'vertex:sk1:ax:start'])
+    expect(JSON.stringify(doc)).toBe(before)
+  })
+
+  it('does not treat a different pick as a duplicate', () => {
+    expect(addConstraintProblem(
+      sketchAt(withRows(stored)), 'coincident',
+      ['vertex:sk1:ax:end', 'vertex:sk1:bx:end'], undefined,
+    )).toBeNull()
+  })
+
+  it('duplicateConstraintOf names the row for a reversed symmetric pick', () => {
+    const row = duplicateConstraintOf(
+      [stored], 'sk1', 'coincident', ['vertex:sk1:bx:end', 'vertex:sk1:ax:start'],
+    )
+    expect(row?.id).toBe('c_stored')
+  })
+
+  it('compares a dimension value at the stored precision', () => {
+    const withValue = withRows({ id: 'c_len', kind: 'length', target: '$ax', value: 0.123457 })
+    const feature = withValue.features![0]
+    if (feature.kind !== 'sketch') throw new Error('fixture is not a sketch')
+    expect(duplicateConstraintOf(feature.constraints, 'sk1', 'length', ['$ax'], 0.1234567)?.id)
+      .toBe('c_len')
+  })
+
+  it('does not treat another dimension value as a duplicate', () => {
+    const withValue = withRows({ id: 'c_len', kind: 'length', target: '$ax', value: 10 })
+    expect(addConstraintProblem(sketchAt(withValue), 'length', ['$ax'], 12)).toBeNull()
   })
 })
