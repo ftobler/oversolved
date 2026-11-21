@@ -11,6 +11,7 @@ import { entityPointKeys } from '@/registry/entityRegistry'
 import { constraintOperandProblem } from '@/registry/constraintRegistry'
 import {
   constraintEntityKindProblem,
+  tangentKindProblem,
   type ConstraintKindOperand,
   type ConstraintOperandRole,
 } from './constraintApplicability'
@@ -349,6 +350,47 @@ export function addConstraintProblem(
   // lowering.
   const operandProblem = constraintOperandProblem(kind, targets.length)
   if (operandProblem !== null) return operandProblem
+
+  // A tangent's accepted kinds are a pair table, not a common group, and the
+  // generic operand list below holds whole entities only: a point pick (a
+  // vertex, the origin or a point's xy key) would otherwise leave a one-kind
+  // list that looks admissible. Judge the pick's own kinds here, where every
+  // target is still visible, and fall back to the shared pair table.
+  if (kind === 'tangent') {
+    const kinds: string[] = []
+    let unresolved = false
+    for (const target of targets) {
+      const text = String(target)
+      if (text === '@builtin_origin' || text.startsWith('vertex:')) {
+        kinds.push('point')
+        continue
+      }
+      if (text.startsWith('dock:') || text.startsWith('isect:')) {
+        unresolved = true
+        break
+      }
+      if (text.startsWith('$')) {
+        const resolved = resolveVertexRef(entityIds, text)
+        if (resolved === null) {
+          unresolved = true
+          break
+        }
+        kinds.push(resolved.point !== undefined ? 'point' : kindById.get(resolved.entity) ?? '')
+        continue
+      }
+      const parts = text.split(':')
+      if (parts[0] === 'entity' && parts[1] === featureId && parts[2] !== undefined) {
+        kinds.push(kindById.get(parts[2]) ?? '')
+        continue
+      }
+      unresolved = true
+      break
+    }
+    if (!unresolved && !kinds.includes('')) {
+      const problem = tangentKindProblem(kinds)
+      if (problem !== null) return problem
+    }
+  }
 
   // A well-formed pick whose entity kind the constraint cannot represent has no
   // solver row: a length on an arc, an equal across a line and an ellipse, a

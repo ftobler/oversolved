@@ -15,6 +15,7 @@ import { createStore } from 'zustand/vanilla'
 import type { FilletCorner, Mutation, PartDoc, PartStyleEntry, SelectionDomain } from '@/types/cad'
 import type { DimensionPick } from '@/registry'
 import { resolveDimension, dimensionTargets, CONSTRAINT_BY_KIND, constraintOperandProblem } from '@/registry'
+import { tangentKindProblem } from '@/utils/constraintApplicability'
 import { computeNaturalDimensionValue, computeAnchorRelativePos, resolveDimPoints, computeDimensionSign, computeAnglePlacementIsSupplement } from '@/utils/geometry/dimensionNaturalValue'
 import { deriveSelectionDomain, devOnly, testMode, failLoud } from './stateInvariants'
 import { isDrawingTool } from '@/registry/toolRegistry'
@@ -826,6 +827,23 @@ export const editorState = createStore<EditorState>((set, get) => ({
       if (!allOk) {
         return `${label} cannot be applied to those entity kinds (${kinds.join(', ')}).`
       }
+    }
+
+    // Tangent is heterogeneous: a pair table, not one common group. The same
+    // judgement the applier and the drive read refuses an unusable pair here,
+    // before the mutation exists.
+    if (kind === 'tangent') {
+      const kinds: string[] = []
+      for (const target of targets) {
+        if (target === '@builtin_origin' || target.startsWith('vertex:')) {
+          kinds.push('point')
+        } else if (target.startsWith('entity:')) {
+          const ek = kindOf(target)
+          if (ek !== undefined) kinds.push(ek)
+        }
+      }
+      const problem = tangentKindProblem(kinds)
+      if (problem !== null) return problem
     }
 
     if (kind === 'horizontal' || kind === 'vertical') {

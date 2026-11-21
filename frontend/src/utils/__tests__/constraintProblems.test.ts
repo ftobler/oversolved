@@ -21,6 +21,7 @@ function shapeDoc(): PartDoc {
       initial: {
         ax: [-2, 0, 2, 0], bx: [0, 1, 2, 1], o: [1, 1], p: [3, 3],
         c1: [0, 0, 2], e1: [0, 0, 4, 2, 0], a1: [5, 5, 2, 0, 90], a2: [8, 8, 3, 0, 90],
+        sp1: [0, 0, 1, 0, 2, 0, 3, 0], f1: [0, 0, 1, 1, 2, 0],
       },
       entities: [
         { id: 'ax', kind: 'line' },
@@ -31,6 +32,8 @@ function shapeDoc(): PartDoc {
         { id: 'e1', kind: 'ellipse' },
         { id: 'a1', kind: 'arc' },
         { id: 'a2', kind: 'arc' },
+        { id: 'sp1', kind: 'spline' },
+        { id: 'f1', kind: 'fit_spline' },
       ],
       constraints: [],
     }],
@@ -164,6 +167,15 @@ const cases: Case[] = [
   { name: 'equal_length across a line and an ellipse', kind: 'equal_length', targets: ['$ax', '$e1'],
     problem: 'equal_length does not apply to line and ellipse' },
   { name: 'equal_length on two arcs', kind: 'equal_length', targets: ['$a1', '$a2'], problem: null },
+  // The tangent pair table: a spline is a curve only for this judgement, so the
+  // line/ellipse and circle/arc arms must not swallow an ellipse/curve pair.
+  { name: 'tangent arc and fit_spline', kind: 'tangent', targets: ['$a1', '$f1'], problem: null },
+  { name: 'tangent circle and spline', kind: 'tangent', targets: ['$c1', '$sp1'], problem: null },
+  { name: 'tangent two fit_splines', kind: 'tangent', targets: ['$f1', '$f1'], problem: null },
+  { name: 'tangent ellipse and arc', kind: 'tangent', targets: ['$e1', '$a1'],
+    problem: 'tangent does not apply to ellipse and arc' },
+  { name: 'tangent point and line', kind: 'tangent', targets: ['$o', '$ax'],
+    problem: 'tangent does not apply to point and line' },
   { name: 'concentric circle and ellipse', kind: 'concentric', targets: ['$c1', '$e1'], problem: null },
   { name: 'concentric with a line', kind: 'concentric', targets: ['$c1', '$ax'],
     problem: 'concentric does not apply to circle and line' },
@@ -240,6 +252,9 @@ const IDS_BY_KIND: Record<string, readonly string[]> = {
 /** Two operands a pair kind can take: the first two ids of its first entity-kind
  *  group, or two vertex picks for a kind with no entity-kind restriction. */
 function pairTargets(kind: string): string[] {
+  // Tangent has a pair table rather than a group; a line and a circle is one
+  // legal pair the two-element checks can use.
+  if (kind === 'tangent') return ['entity:sk1:ax', 'entity:sk1:c1']
   const group = CONSTRAINT_BY_KIND.get(kind)?.entityKindGroups?.[0]
   const ids = (group ?? []).flatMap(entityKind => IDS_BY_KIND[entityKind] ?? []).slice(0, 2)
   return ids.length === 2

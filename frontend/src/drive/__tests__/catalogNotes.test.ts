@@ -5,7 +5,7 @@
 // rest of the catalog's notes are, so these pin the sentences a client reads.
 
 import { describe, it, expect } from 'vitest'
-import { MUTATION_CATALOG, mutationInfoOf, FIELD_SETTER_KIND, MUTATION_FAMILY } from '../mutationCatalog'
+import { MUTATION_CATALOG, mutationInfoOf, FIELD_SETTER_KIND, MUTATION_FAMILY, TANGENT_PAIR_NOTE, FIT_SPLINE_HANDLE_DOF_NOTE } from '../mutationCatalog'
 import { ASSEMBLY_MUTATION_CATALOG } from '../assemblyMutationCatalog'
 import { MATE_KINDS, mateParams } from '@/utils/mateKinds'
 import type { MateKind } from '@/types/cad'
@@ -569,8 +569,15 @@ describe('practice doc cases: fit_spline magnitude and helix sweep path', () => 
       const fields = mutationInfoOf(type).fields
       expect(fields.tangents.note, type).toContain('its length is that end\'s magnitude')
       expect(fields.tangents.note, type).toContain('`tangentScale: false` keeps the authored length')
+      expect(fields.tangents.note, type).toContain(FIT_SPLINE_HANDLE_DOF_NOTE)
       expect(fields.tangentScale.note, type).toContain('false keeps each tangent\'s length')
     }
+  })
+
+  it('states the tangent pair table and the spline shared-endpoint rule', () => {
+    expect(mutationInfoOf('add_constraint').note).toContain(TANGENT_PAIR_NOTE)
+    expect(TANGENT_PAIR_NOTE).toContain('line with a circle, arc, ellipse or spline')
+    expect(TANGENT_PAIR_NOTE).toContain('a coincident at the spline\'s start or end')
   })
 
   it('names the helix path form and both limits on both pathQuery fields', () => {

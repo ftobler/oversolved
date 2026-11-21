@@ -116,8 +116,10 @@ export interface ConstraintDef {
    *   - concentric:[['arc', 'circle', 'ellipse']] -- any mix of curves with a centre
    *   - equal:     [['line'], ['arc','circle']] -- two lines (length) OR two
    *                                                curves (radius), never mixed
-   * Constraints whose operands are heterogeneous by design (tangent = line +
-   * curve) leave this undefined; their solver residuals handle the kinds.
+   * Constraints whose operands are heterogeneous by design (tangent = a line
+   * and a curve, or two curves) leave this undefined; their solver residuals
+   * handle the kinds, and tangent carries an explicit pair table in
+   * utils/constraintApplicability.ts.
    * `undefined` means no entity-kind restriction.
    */
   entityKindGroups?: readonly (readonly string[])[]
@@ -240,7 +242,7 @@ export const CONSTRAINTS: readonly ConstraintDef[] = [
   {
     kind: 'tangent',
     label: 'Tangent',
-    description: 'Forces a line to be tangent to a circle or arc at the contact point.',
+    description: 'Forces two curves to be tangent: a line to a circle, arc, ellipse or spline, or a circle, arc or spline end to another at their shared point.',
     category: 'geometric',
     hasValue: false,
     refPattern: 'a_b',

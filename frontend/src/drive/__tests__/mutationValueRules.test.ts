@@ -581,6 +581,44 @@ describe('midpoint operand shapes', () => {
   })
 })
 
+describe('tangent operand shapes', () => {
+  function tangentDoc(): PartDoc {
+    return seedBuiltins({
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [
+          { id: 'e1', kind: 'ellipse' },
+          { id: 'a1', kind: 'arc' },
+          { id: 'f1', kind: 'fit_spline' },
+        ],
+        initial: {
+          e1: [0, 0, 4, 2, 0], a1: [5, 5, 2, 0, 90], f1: [0, 0, 1, 1, 2, 0],
+        },
+      }],
+    })
+  }
+
+  it('refuses the ellipse and arc pair the solver would ignore', () => {
+    const error = refusal({
+      type: 'add_constraint', featureId: 'sk1', kind: 'tangent',
+      targets: ['$e1', '$a1'],
+    }, tangentDoc())
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('tangent does not apply to ellipse and arc')
+  })
+
+  it('accepts an arc with a fit_spline, which the solver gates on a shared end', () => {
+    expect(validateMutation({
+      type: 'add_constraint', featureId: 'sk1', kind: 'tangent',
+      targets: ['$a1', '$f1'],
+    }, { doc: tangentDoc() })).toMatchObject({ ok: true })
+  })
+})
+
 describe('colinear operand shapes', () => {  function colinearDoc(): PartDoc {
     return seedBuiltins({
       version: 1,

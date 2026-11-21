@@ -3,8 +3,10 @@ import { CONSTRAINTS, CONSTRAINT_BY_KIND } from '@/registry/constraintRegistry'
 import { ENTITY_BY_KIND } from '@/registry/entityRegistry'
 import {
   SOLVE_BOUNDARY_KIND_GROUPS,
+  TANGENT_KIND_PAIRS,
   constraintEntityKindGroups,
   constraintEntityKindProblem,
+  tangentKindsAdmitted,
   type ConstraintKindOperand,
   type ConstraintOperandRole,
 } from '@/utils/constraintApplicability'
@@ -85,6 +87,31 @@ describe('constraint entity-kind applicability', () => {
     // A stray extra operand is judged with the pair, never silently ignored.
     expect(constraintEntityKindProblem('horizontal', [at('point', 'a'), at('point', 'b'), at('line', 'operand')]))
       .toBe('horizontal does not apply to point and line')
+  })
+
+  it('judges a tangent by its pair table, not a common group', () => {
+    // A tangent is heterogeneous: the accepted combinations are pairs, so the
+    // one-group walk would refuse every legal mixed pick.
+    expect(constraintEntityKindProblem('tangent', [at('line', 'a'), at('circle', 'b')])).toBeNull()
+    expect(constraintEntityKindProblem('tangent', [at('arc', 'a'), at('fit_spline', 'b')])).toBeNull()
+    expect(constraintEntityKindProblem('tangent', [at('circle', 'a'), at('spline', 'b')])).toBeNull()
+    expect(constraintEntityKindProblem('tangent', [at('fit_spline', 'a'), at('fit_spline', 'b')])).toBeNull()
+    expect(constraintEntityKindProblem('tangent', [at('ellipse', 'a'), at('arc', 'b')]))
+      .toBe('tangent does not apply to ellipse and arc')
+    expect(constraintEntityKindProblem('tangent', [at('point', 'a'), at('line', 'b')]))
+      .toBe('tangent does not apply to point and line')
+  })
+
+  it('keeps the tangent pair table and the Rust gate on the same literal table', () => {
+    // sketch-solver/src/residuals/tests/arc_spline_tangent.rs
+    // `the_admitted_tangent_pairs_match_the_frontend_table` lists the same rows.
+    for (const [a, b] of TANGENT_KIND_PAIRS) {
+      expect(tangentKindsAdmitted(a, b), `${a} x ${b}`).toBe(true)
+      expect(tangentKindsAdmitted(b, a), `${b} x ${a}`).toBe(true)
+    }
+    expect(tangentKindsAdmitted('ellipse', 'arc')).toBe(false)
+    expect(tangentKindsAdmitted('ellipse', 'circle')).toBe(false)
+    expect(tangentKindsAdmitted('point', 'line')).toBe(false)
   })
 
   it('accepts every kind for a constraint with no group and for no operand', () => {

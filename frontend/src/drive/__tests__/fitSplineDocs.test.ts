@@ -6,7 +6,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { FIT_SPLINE_TANGENT_MAGNITUDE_NOTE, SWEEP_HELIX_PATH_NOTE } from '../mutationCatalog'
+import { FIT_SPLINE_HANDLE_DOF_NOTE, FIT_SPLINE_TANGENT_MAGNITUDE_NOTE, SWEEP_HELIX_PATH_NOTE } from '../mutationCatalog'
 
 const DRIVE_DOC = readFileSync(join(__dirname, '../../../../docs/drive.md'), 'utf8')
 const DOCUMENT_DOC = readFileSync(join(__dirname, '../../../../docs/document.md'), 'utf8')
@@ -24,6 +24,10 @@ describe('docs/drive.md fit_spline tangents', () => {
 
   it('quotes the catalogue magnitude sentence verbatim', () => {
     expect(flat(DRIVE_DOC)).toContain(FIT_SPLINE_TANGENT_MAGNITUDE_NOTE)
+  })
+
+  it('quotes the handle degrees-of-freedom recipe verbatim', () => {
+    expect(flat(DRIVE_DOC)).toContain(FIT_SPLINE_HANDLE_DOF_NOTE)
   })
 
   it('spells the handle formulas with the chord span, not the unit-chord form', () => {

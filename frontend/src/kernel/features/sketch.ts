@@ -26,13 +26,17 @@ import type { PartSolid } from '../types3d'
 import { partDocToSketches, type DroppedConstraint } from '@/wasm-kernel/partDocToSketches'
 import { lowerSketch, ORIGIN_ID, type EntityLayout } from '@/wasm-kernel/lowerSketch'
 import {
-  encodeInput, decodeOutput, STATUS_NAME, Status, CONSTRAINT_FLAG, ConstraintKindCode,
+  encodeInput, decodeOutput, STATUS_NAME, Status, CONSTRAINT_FLAG, ConstraintKindCode, Sel,
   type FlatConstraint, type FlatInput, type SolverOutput,
 } from '@/wasm-kernel/codec'
 import { entityVertexIndices, entityCoordPairs, fitSplineHandlesFromFlags } from '@/registry'
 import { deriveConstraints, unflattenGeometry } from '@/utils/geometry/geometryMapping'
 import { ellipseAxisDrag, isEllipseAxisKey, type EllipseAxisKey } from '@/utils/geometry/ellipseAxis'
 import { ignoredConstraintWarning } from '@/utils/constraintProblems'
+import {
+  tangentKindsAdmitted,
+  tangentNeedsSharedEndpointReason,
+} from '@/utils/constraintApplicability'
 import {
   ENTITY_SIZE_FLOOR, degenerateEntityWarning, entitySizeProblem, type DegenerateEntity,
 } from '@/utils/entitySizeProblems'
@@ -722,6 +726,76 @@ const CONSTRAINT_KIND_NAME: Readonly<Record<number, string>> = Object.fromEntrie
   Object.entries(ConstraintKindCode).map(([name, code]) => [code, name]),
 )
 
+/** True when a coincident pins a contact between the two tangent operands in
+ *  the same shape the solver reads: two endpoints, or one endpoint against the
+ *  other side's locus (`Absent`). A spline side must be its start or end. */
+function tangentHasContact(
+  input: FlatInput,
+  layout: EntityLayout[],
+  first: number,
+  second: number,
+): boolean {
+  const isSpline = (kind: string | undefined) => kind === 'spline' || kind === 'fit_spline'
+  const endpoint = (index: number, point: number): boolean => {
+    const kind = layout[index]?.kind
+    return (kind === 'line' || kind === 'arc' || isSpline(kind))
+      && (point === Sel.start || point === Sel.end)
+  }
+  return input.constraints.some(constraint => {
+    if (constraint.kind !== ConstraintKindCode.coincident) return false
+    const refs = constraint.refs.map(entry => entry.ref)
+    if (refs.length !== 2) return false
+    const [a, b] = refs
+    if (a.kind !== 'entity' || b.kind !== 'entity') return false
+    const ordered = a.index === first && b.index === second
+      ? [a, b] as const
+      : a.index === second && b.index === first
+        ? [b, a] as const
+        : null
+    if (ordered === null) return false
+    const [firstRef, secondRef] = ordered
+    const firstEnd = endpoint(firstRef.index, firstRef.point)
+    const secondEnd = endpoint(secondRef.index, secondRef.point)
+    const linked = (firstEnd && (secondEnd || secondRef.point === Sel.absent))
+      || (secondEnd && firstRef.point === Sel.absent)
+    if (!linked) return false
+    // The solver's contact must pin every spline side by an end, and at least
+    // one spline end must be the contact.
+    const firstOk = !isSpline(layout[first]?.kind) || firstEnd
+    const secondOk = !isSpline(layout[second]?.kind) || secondEnd
+    const namesSplineEnd = (isSpline(layout[first]?.kind) && firstEnd)
+      || (isSpline(layout[second]?.kind) && secondEnd)
+    return firstOk && secondOk && namesSplineEnd
+  })
+}
+
+/** The specific drop reason for a spline tangent with no pinned end, or null
+ *  when the row is dropped for some other reason. */
+function splineTangentDropReason(
+  input: FlatInput,
+  layout: EntityLayout[],
+  constraint: FlatConstraint,
+): string | null {
+  const refs = constraint.refs.map(entry => entry.ref)
+  if (refs.length !== 2) return null
+  const [a, b] = refs
+  if (a.kind !== 'entity' || b.kind !== 'entity') return null
+  const firstKind = layout[a.index]?.kind
+  const secondKind = layout[b.index]?.kind
+  if (firstKind === undefined || secondKind === undefined) return null
+  // A line/spline tangent has a free body form, so a drop there is not the
+  // shared-endpoint rule.
+  if (firstKind === 'line' || secondKind === 'line') return null
+  const isSpline = (kind: string) => kind === 'spline' || kind === 'fit_spline'
+  if (!isSpline(firstKind) && !isSpline(secondKind)) return null
+  if (!tangentKindsAdmitted(firstKind, secondKind)) return null
+  if (tangentHasContact(input, layout, a.index, b.index)) return null
+  const partner = isSpline(firstKind) && isSpline(secondKind)
+    ? 'spline'
+    : isSpline(firstKind) ? secondKind : firstKind
+  return tangentNeedsSharedEndpointReason(partner)
+}
+
 /** Why the solver's survivors filter removed a constraint. The wire flag says
  *  only that it was dropped; the flat payload and the entity layout on this
  *  side hold enough to distinguish a stale ref from an unreadable operand. */
@@ -729,6 +803,10 @@ function droppedConstraintReason(input: FlatInput, layout: EntityLayout[], index
   const c: FlatConstraint | undefined = input.constraints[index]
   for (const { ref } of c?.refs ?? []) {
     if (ref.kind === 'entity' && layout[ref.index] === undefined) return 'stale reference'
+  }
+  if (c !== undefined && c.kind === ConstraintKindCode.tangent) {
+    const reason = splineTangentDropReason(input, layout, c)
+    if (reason !== null) return reason
   }
   return 'operand kind'
 }

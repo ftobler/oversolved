@@ -241,6 +241,40 @@ describe('sketchEditorStore', () => {
       expect(handler).not.toHaveBeenCalled()
     })
 
+    it('rejects a tangent of an ellipse and an arc with the pair sentence', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().setEntityKindMap({
+        'entity:Sketch1:E1': 'ellipse',
+        'entity:Sketch1:A1': 'arc',
+        'entity:Sketch1:F1': 'fit_spline',
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:E1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:A1')
+
+      const reason = useSketchEditorStore.getState().applyConstraint('tangent')
+
+      expect(reason).toBe('tangent does not apply to ellipse and arc')
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('accepts a tangent of an arc and a fit_spline', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('Sketch1')
+      useSketchEditorStore.getState().setEntityKindMap({
+        'entity:Sketch1:E1': 'ellipse',
+        'entity:Sketch1:A1': 'arc',
+        'entity:Sketch1:F1': 'fit_spline',
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:A1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:Sketch1:F1')
+
+      expect(useSketchEditorStore.getState().applyConstraint('tangent')).toBeNull()
+      expect(handler).toHaveBeenCalledOnce()
+    })
+
     it('returns null when the constraint is authored', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)
