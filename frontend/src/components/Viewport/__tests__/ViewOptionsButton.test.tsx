@@ -255,7 +255,7 @@ describe('ViewOptionsButton document unit', () => {
   })
 
   it('hides the unit when the page offers no document unit', () => {
-    render(<ViewOptionsButton allowSectionPick={false} />)
+    render(<ViewOptionsButton allowAmbientOcclusion={false} />)
     open()
 
     expect(screen.queryByText('Document')).toBeNull()
@@ -266,66 +266,18 @@ describe('ViewOptionsButton document unit', () => {
 })
 
 describe('ViewOptionsButton Section', () => {
-  it('toggles the section and hides the sub-rows while it is off', () => {
+  it('is the section on switch, with the controls moved to the section card', () => {
     render(<ViewOptionsButton />)
     open()
 
     expect(row('Section')).toHaveAttribute('aria-checked', 'false')
-    expect(screen.queryByRole('group', { name: 'Section plane' })).toBeNull()
-
     fireEvent.click(row('Section'))
     expect(useSectionStore.getState().enabled).toBe(true)
-    expect(screen.getByRole('group', { name: 'Section plane' })).toBeInTheDocument()
-  })
 
-  it('chooses a builtin plane, edits the offset and flips the kept side', () => {
-    render(<ViewOptionsButton />)
-    open()
-    fireEvent.click(row('Section'))
-
-    fireEvent.click(screen.getByRole('button', { name: 'Top' }))
-    expect(useSectionStore.getState().plane).toEqual({ kind: 'builtin', id: 'top' })
-
-    fireEvent.change(screen.getByLabelText('Section offset'), { target: { value: '7.5' } })
-    expect(useSectionStore.getState().offset).toBe(7.5)
-    // An empty box is unfinished input, not a move to zero.
-    fireEvent.change(screen.getByLabelText('Section offset'), { target: { value: '' } })
-    expect(useSectionStore.getState().offset).toBe(7.5)
-
-    fireEvent.click(row('Flip side'))
-    expect(useSectionStore.getState().flipped).toBe(true)
-  })
-
-  it('arms a viewport pick for a face or user plane', () => {
-    render(<ViewOptionsButton />)
-    open()
-    fireEvent.click(row('Section'))
-
-    fireEvent.click(screen.getByRole('button', { name: 'Pick' }))
-    expect(useSectionStore.getState().picking).toBe(true)
-    expect(screen.getByRole('status').textContent).toContain('Click a flat face or a reference plane')
-  })
-
-  it('cancels an armed pick and clears its error from the card', () => {
-    useSectionStore.setState({
-      enabled: true,
-      picking: true,
-      pickError: 'Click a flat face or a reference plane.',
-    })
-    render(<ViewOptionsButton />)
-    open()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Pick' }))
-    expect(useSectionStore.getState().picking).toBe(false)
-    expect(useSectionStore.getState().pickError).toBeNull()
-  })
-
-  it('shows the picked source', () => {
-    useSectionStore.setState({ enabled: true, plane: { kind: 'query', query: '?04;abcd' } })
-    render(<ViewOptionsButton />)
-    open()
-
-    expect(screen.getByRole('button', { name: 'Picked' })).toBeInTheDocument()
+    // One surface owns the controls now; the dropdown only toggles the view.
+    expect(screen.queryByRole('group', { name: 'Section plane' })).toBeNull()
+    expect(screen.queryByLabelText('Section offset')).toBeNull()
+    expect(screen.queryByText('Flip side')).toBeNull()
   })
 
   it('shows the reason an auto-disabled section turned off', () => {
@@ -337,23 +289,6 @@ describe('ViewOptionsButton Section', () => {
     open()
 
     expect(screen.getByRole('status').textContent).toContain('no longer resolves')
-  })
-
-  it('hides the plane pick in the assembly and says where it lives', () => {
-    render(<ViewOptionsButton allowSectionPick={false} />)
-    open()
-    fireEvent.click(row('Section'))
-
-    expect(screen.queryByRole('button', { name: 'Pick' })).toBeNull()
-    expect(screen.getByRole('status').textContent).toContain('part-editor')
-  })
-
-  it('shows a refused face pick reason', () => {
-    useSectionStore.setState({ enabled: true, pickError: 'Pick a flat face or a plane.' })
-    render(<ViewOptionsButton />)
-    open()
-
-    expect(screen.getByRole('status').textContent).toContain('flat face')
   })
 
   it('toasts a pick reason even when the card is closed', () => {

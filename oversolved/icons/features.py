@@ -42,6 +42,26 @@ def feature_plane(ctx):
     _draw_plane_grid(ctx, 0.2, 0.7, 0.8, 0.65, 0.75, 0.2, 0.15, 0.25)
 
 
+@icon("frontend/src/assets/icons/feature-section.svg")
+def feature_section(ctx):
+    # A part cut by a plane: the cube's silhouette with the cutting line across
+    # it, so the card reads as a view of the model, not as a feature that built
+    # it.
+    ctx.move_to(0.5, 0.18)
+    ctx.line_to(0.78, 0.32)
+    ctx.line_to(0.78, 0.6)
+    ctx.line_to(0.5, 0.74)
+    ctx.line_to(0.22, 0.6)
+    ctx.line_to(0.22, 0.32)
+    ctx.close_path()
+    stroke(ctx, 1.5)
+
+    # The plane runs past both sides of the cube, the way a section cut does.
+    ctx.move_to(0.14, 0.5)
+    ctx.line_to(0.86, 0.62)
+    stroke(ctx, 2)
+
+
 @icon("frontend/src/assets/icons/feature-variable.svg")
 def feature_variable(ctx):
     # Variable icon: an italic "x" (left) and an "=" sign (right): x = ...

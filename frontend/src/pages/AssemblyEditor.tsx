@@ -13,6 +13,8 @@ import LoadingOverlay from '@/components/dialogs/LoadingOverlay'
 import EditorErrorBoundary from '@/components/misc/EditorErrorBoundary'
 import AssemblyViewport, { type AssemblyViewportHandle } from '@/components/Viewport/AssemblyViewport'
 import ViewOptionsButton from '@/components/Viewport/ViewOptionsButton'
+import { SectionPanel } from '@/components/Viewport/SectionPanel'
+import { useSectionStore } from '@/stores/sectionStore'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 import { discardUnsavedEdits } from '@/recovery/discardUnsavedEdits'
 import { useOpenEntryInNewTab } from '@/hooks/useOpenEntryInNewTab'
@@ -137,6 +139,11 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   const editingSubject = useAssemblyStore(s => s.editingSubject)
   const editingMateId = editingMateIdOf(editingSubject)
   const editingInstanceHandle = editingInstanceHandleOf(editingSubject)
+  // The section card is viewer state of its own, so it keeps the right column
+  // mounted even when no instance or mate is being edited.
+  const sectionShowing = useSectionStore(
+    s => !s.capturing && (s.enabled || s.disabledReason !== null),
+  )
 
   // The phone drawer's open flag, the part editor's twin: below the breakpoint
   // Part.css hides the tree and the toolbar's one toggle reopens it as a strip
@@ -1012,7 +1019,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
                 readout={<AssemblyMeasurementDisplay measurementIcon={measurementIcon} />}
                 // No Show group: an assembly has no feature tree, so the part
                 // editor alone supplies the document-visibility rows.
-                viewOptions={<ViewOptionsButton allowSectionPick={false} allowAmbientOcclusion={false} />}
+                viewOptions={<ViewOptionsButton allowAmbientOcclusion={false} />}
               />
             </EditorErrorBoundary>
             {/* The assembly solve mirrors useSolverStore.isSolving and claims its
@@ -1063,11 +1070,12 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
                 onRequestRenameMate={(id, currentName) => setRenameMateTarget({ id, currentName })}
               />
             </div>
-            {editingSubject.kind !== 'none' && (
+            {(editingSubject.kind !== 'none' || sectionShowing) && (
               <div className="floating-right">
                 {/* The same stack the part editor uses, so the edit card and
                     its status card keep that column's gap and its phone
-                    scroll behaviour. */}
+                    scroll behaviour. The section card is a sibling of the
+                    edit card, never a part of it. */}
                 <div className="right-overlay-stack">
                   <AssemblyEditPanel
                     editing={editingSubject}
@@ -1082,6 +1090,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
                     renderInstanceEditor={renderInstanceEditor}
                     renderMateEditor={(mate) => renderMateEditor(mate)}
                   />
+                  <SectionPanel allowPick={false} />
                 </div>
               </div>
             )}

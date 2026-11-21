@@ -23,6 +23,7 @@ import RightClickMenu from '@/components/dialogs/RightClickMenu'
 import type { ContextMenuItem } from '@/components/dialogs/RightClickMenu'
 import { PartDocumentPanel } from '@/components/layout/PartDocumentPanel'
 import { FeatureEditPanel } from '@/components/layout/FeatureEditPanel'
+import { SectionPanel } from '@/components/Viewport/SectionPanel'
 import BugReportPanel from '@/components/bugReport/BugReportPanel'
 import { planeSelectionFeatureId as derivePlaneSelectionFeatureId } from '@/pages/planePickSelection'
 import MeasurementDisplay from '@/components/layout/MeasurementDisplay'
@@ -1640,6 +1641,9 @@ export default function Part() {
           rightOverlay={(
             <div className="right-overlay-stack">
               <FeatureEditPanel />
+              {/* Its own card: the section is viewer state, so it stays open
+                  and independent while a feature editor is open beside it. */}
+              <SectionPanel lengthUnit={lengthUnitOf(doc?.length_unit)} />
               <BugReportPanel canPick />
             </div>
           )}
