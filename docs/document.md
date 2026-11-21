@@ -255,7 +255,7 @@ them itself.
   kind: extrude
   extrude:
     sketch: "@sk1"              # or list of refs
-    distance: 10.0              # required unless termination is through_all, which stores none; the legacy `depth` spelling is an alias
+    distance: 10.0              # required unless termination is through_all, which stores none; under up_to and up_to_next it is required but not read as the length; the legacy `depth` spelling is an alias
     taper: 0                    # degrees, + narrows / - widens; absent or 0 is a straight prism
     twist: 0                    # degrees of TOTAL rotation over distance; absent or 0 is a straight prism
     direction: normal           # normal | reverse | symmetric
@@ -266,6 +266,12 @@ them itself.
     up_to_start: sketch         # sketch | surface; surface is the emboss/deboss slab
     merge_target: "@body_ex1"   # optional: the body the result fuses into
 ```
+
+`distance` is required outside `through_all`. Under `up_to` and `up_to_next`
+it is stored but not read as the length (the target decides), and its sign
+has no effect on the direction: any non-zero value builds the same solid. 0
+is still refused: `up_to_next` at once, and `up_to` only once its target
+resolves.
 
 One sketch is one profile, and a profile fills even/odd: a loop nested inside
 another becomes a hole (a disc plus a circle is a washer), while loops that cross

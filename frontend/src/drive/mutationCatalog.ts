@@ -992,7 +992,10 @@ const EXTRUDE_ADD_NOTE =
 // (sprocket, ppp0103 F2, ppp0105 F3).
 const EXTRUDE_FIELDS_NOTE =
   '`direction: symmetric` takes `distance` as the TOTAL length, half on each side of the sketch plane ' +
-  '(distance 10 spans -5..+5); `normal` and `reverse` take it whole on one side. `taper` is the draft ' +
+  '(distance 10 spans -5..+5); `normal` and `reverse` take it whole on one side. Under `up_to` or ' +
+  '`up_to_next` it is stored but not read as the length (the target decides), and its sign has no ' +
+  'effect on the direction: any non-zero value builds the same solid, but 0 is still refused (`up_to_next` at once, ' +
+  'an `up_to` once its target resolves). `taper` is the draft ' +
   'angle in degrees: positive narrows the profile as it travels, negative widens it, and every lateral ' +
   'wall drafts with it, holes included and material-consistent (on a washer a positive taper leans the ' +
   'outer wall in and the hole wall out, so the wall thins toward the top). A taper needs `termination: ' +
@@ -1571,7 +1574,7 @@ export const MUTATION_CATALOG = {
     fields: {
       ...featureAddFields(),
       sketchQuery: sketchQuery(),
-      distance: optNum('Required unless `termination` is `through_all`, which stores no distance at all (the key the document stores as extrude.distance).'),
+      distance: optNum('Required unless `termination` is `through_all`, which stores no distance at all (the key the document stores as extrude.distance). Under `up_to` and `up_to_next` it is stored but not read as the length (the target decides), and its sign has no effect on the direction. Any non-zero value builds the same solid; 0 is still refused, `up_to_next` at once and an `up_to` once its target resolves (an `up_to` that cannot resolve builds nothing).'),
       taper: optScalar('Degrees of draft along the extrude direction: positive narrows the profile, negative widens it, and every lateral wall (holes included) drafts. Needs termination blind and direction normal or reverse; an angle that closes the profile exactly at `distance` builds to an apex (a pyramid, a cone), one that closes to a ridge is refused, and one that collapses the profile before `distance` is refused with the height it would collapse at (the key the document stores as extrude.taper).'),
       twist: optScalar('Degrees of TOTAL rotation of the profile about the sweep axis, spread evenly over distance: positive turns right-handed about the direction of travel, so reverse mirrors the geometry and keeps the same handedness; holes twist with the profile. The axis runs through the sketch origin (a sketch on a face turns about that face\'s centroid, a picked face about its own). Needs termination blind and direction normal or reverse, is refused with a taper, and is bounded at 7200 degrees (the key the document stores as extrude.twist).'),
       direction: optStr('normal | reverse | symmetric; defaults to normal (the key the document stores as extrude.direction).'),
