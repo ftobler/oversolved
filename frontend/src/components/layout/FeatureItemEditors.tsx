@@ -7,8 +7,6 @@ import { useFileMeta } from '@/stores/fileRegistry'
 import { formatBytes } from '@/utils/formatBytes'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { lengthUnitOf } from '@/utils/lengthUnit'
-import { StatusMessage } from '@/components/shared/StatusMessage'
-import { NO_MARK, type StatusMark } from '@/utils/core/statusMark'
 
 interface FeatureItemEditorsProps {
   feature: PartFeature
@@ -19,8 +17,6 @@ interface FeatureItemEditorsProps {
   onMutationBatch?: (mutations: Mutation[]) => void
   features: PartFeature[]
   partLabels: Record<string, string>
-  // The feature's mark from the last solve, the same one its tree row shows.
-  status?: StatusMark
   // The feature's last solve result, for an editor row that shows a solved value.
   solved?: unknown
 }
@@ -43,21 +39,15 @@ function ImportStepFileRow({ fileId }: { fileId: string | undefined }) {
 }
 
 /**
- * The open editor of the feature being edited, headed by the feature's status
- * line. The line is drawn here, once, for every kind (schema editors, plane,
- * sketch plane, STEP import), so no editor carries its own failure display: a
- * failed build reads the same in every dialog and matches the tree row.
+ * The open editor of the feature being edited, for every kind (schema editors,
+ * plane, sketch plane, STEP import). The feature's own status mark is not part
+ * of the form: its host (FeatureEditPanel) draws it as a separate card under
+ * the panel, so no editor carries its own failure display and a mark reads the
+ * same way in every dialog and in the tree row.
  */
-export function FeatureItemEditors({ status = NO_MARK, ...props }: FeatureItemEditorsProps) {
+export function FeatureItemEditors(props: FeatureItemEditorsProps) {
   if (props.editingFeatureId !== props.feature.id) return null
-  const editor = editorFor(props)
-  if (editor === null) return null
-  return (
-    <>
-      <StatusMessage mark={status} />
-      {editor}
-    </>
-  )
+  return editorFor(props)
 }
 
 /**
@@ -84,7 +74,7 @@ function editorFor({
   features,
   partLabels,
   solved,
-}: Omit<FeatureItemEditorsProps, 'status'>) {
+}: FeatureItemEditorsProps) {
   const kind = feature.kind
 
   if (kind === 'plane' && !BUILTIN_FEATURE_IDS.has(feature.id)) {
