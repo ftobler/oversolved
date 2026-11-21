@@ -12,7 +12,9 @@ export interface DimensionTool extends Tool {
   readonly category: 'dimension'
 }
 
-const isPoint = (t: string) => t.startsWith('vertex:') || t.startsWith('@builtin_')
+// The origin is the only builtin that names a point; a builtin plane or any
+// other `@` feature is not a coordinate to dimension against.
+const isPoint = (t: string) => t.startsWith('vertex:') || t === '@builtin_origin'
 
 /**
  * Dimension tool, sticky placement.

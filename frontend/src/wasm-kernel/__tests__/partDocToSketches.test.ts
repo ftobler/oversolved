@@ -775,6 +775,64 @@ describe('partDocToSketches', () => {
     ])
   })
 
+  it('drops a stored plane operand with the operand sentence, not a stale reference', () => {
+    // The reported document: pressing [e] on the carried Top plane authored
+    // `equal_length` with `a: @builtin_plane_top`. The row stays in the
+    // document, but the solve names the true reason it is ignored.
+    const features: PartFeature[] = [{
+      id: 'ZBNaee7JHHPKM_uidYh_3G9K',
+      kind: 'sketch',
+      plane: '@builtin_plane_top',
+      entities: [
+        { id: 'LNHDhTHIvb0r2uj_', kind: 'line' },
+        { id: 'in5ztTwqd1IVAMbt', kind: 'line' },
+        { id: 'AQHP4hgUmx9v34-A', kind: 'line' },
+        { id: 'PO7GJ1C5blvIKeQ3', kind: 'line' },
+      ],
+      initial: {
+        LNHDhTHIvb0r2uj_: [0, 0, -10.100069, 5.63341],
+        in5ztTwqd1IVAMbt: [-10.100069, 5.63341, 0.352596, 23.722263],
+        'AQHP4hgUmx9v34-A': [0.352596, 23.722263, 11.086573, 17.805966],
+        PO7GJ1C5blvIKeQ3: [11.086573, 17.805966, 0, 0],
+      },
+      constraints: [
+        { id: 'c_coincident_6Ue-MtI1', kind: 'coincident', a: '$LNHDhTHIvb0r2uj_start', b: '@builtin_origin' },
+        { id: 'c_coincident_G4NOC7sw', kind: 'coincident', a: '$in5ztTwqd1IVAMbtstart', b: '$LNHDhTHIvb0r2uj_end' },
+        { id: 'c_coincident_TXQH8F5D', kind: 'coincident', a: '$AQHP4hgUmx9v34-Astart', b: '$in5ztTwqd1IVAMbtend' },
+        { id: 'c_coincident_wmWQJlYv', kind: 'coincident', a: '$PO7GJ1C5blvIKeQ3start', b: '$AQHP4hgUmx9v34-Aend' },
+        { id: 'c_coincident_StKWK44c', kind: 'coincident', a: '$PO7GJ1C5blvIKeQ3end', b: '$LNHDhTHIvb0r2uj_start' },
+        { id: 'c_equal_length_5HE4ofd4', kind: 'equal_length', a: '@builtin_plane_top', b: '$AQHP4hgUmx9v34-A' },
+      ],
+    }]
+    const { sketches } = partDocToSketches(features)
+    // The loop's five coincidences still lower; only the plane row is dropped.
+    expect(sketches[0].sketch.constraints).toHaveLength(5)
+    expect(sketches[0].droppedConstraints).toEqual([{
+      id: 'c_equal_length_5HE4ofd4',
+      kind: 'equal_length',
+      reason: 'Equal takes sketch geometry; @builtin_plane_top is a plane',
+    }])
+  })
+
+  it('names a stored face query wrapper as not sketch geometry', () => {
+    // The applier keeps the wrapper's verbatim store path for older documents;
+    // the lowering still names the truth instead of calling the ref stale.
+    const features: PartFeature[] = [{
+      id: 'sk1',
+      kind: 'sketch',
+      entities: [{ id: 'l1', kind: 'line' }],
+      initial: { l1: [0, 0, 10, 0] },
+      constraints: [{ id: 'c_face', kind: 'coincident', a: '$l1start', b: 'face:sk1:?face' }],
+    }]
+    const { sketches } = partDocToSketches(features)
+    expect(sketches[0].sketch.constraints).toEqual([])
+    expect(sketches[0].droppedConstraints).toEqual([{
+      id: 'c_face',
+      kind: 'coincident',
+      reason: 'Coincident takes sketch geometry; face:sk1:?face is not sketch geometry',
+    }])
+  })
+
   it('ignores non-sketch features', () => {
     const features: PartFeature[] = [
       { id: 'ex1', kind: 'extrude', extrude: undefined } as unknown as PartFeature,

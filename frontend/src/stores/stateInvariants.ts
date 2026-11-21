@@ -108,6 +108,12 @@ function isSketchQuery(query: string): boolean {
   return bucketOfId(query) === 'sketch'
 }
 
+/** True for a selection id on the plane axis: a builtin plane or a named
+ *  plane/feature ref (`@<planeId>`), never the origin or a B-rep primitive. */
+export function isPlaneSelectionId(id: string): boolean {
+  return bucketOfId(id) === 'plane'
+}
+
 export function deriveSelectionDomain(ids: ReadonlySet<string>): SelectionDomain {
   if (ids.size === 0) return 'sketch_2d'
   let hasSketch = false

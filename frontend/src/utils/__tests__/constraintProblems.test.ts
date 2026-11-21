@@ -5,7 +5,7 @@
 // the document byte-identical exactly when a problem is returned.
 import { describe, it, expect } from 'vitest'
 import type { PartDoc } from '@/types/cad'
-import { addConstraintProblem, midpointShapeReason } from '@/utils/constraintProblems'
+import { addConstraintProblem, constraintOperandRefProblem, midpointShapeReason } from '@/utils/constraintProblems'
 import { CONSTRAINT_BY_KIND, CONSTRAINTS, constraintOperandProblem } from '@/registry'
 import { applyAddConstraint } from '@/utils/yamlMutations'
 import { sketchAt } from '@/testing/featureAccess'
@@ -129,6 +129,11 @@ const cases: Case[] = [
     kind: 'coincident', targets: ['$oxy'],
     problem: 'Coincident needs two operands, got one',
   },
+  {
+    name: 'equal_length with the sketch plane as an operand',
+    kind: 'equal_length', targets: ['@builtin_plane_top', 'entity:sk1:ax'],
+    problem: 'Equal takes sketch geometry; @builtin_plane_top is a plane',
+  },
   { name: 'length one ref', kind: 'length', targets: ['$ax'], value: 4, problem: null },
   {
     name: 'generic kind with no target',
@@ -215,6 +220,56 @@ describe('addConstraintProblem', () => {
       }
     },
   )
+
+  // The bugreport's row: the sketch's own host plane became operand `a`. A
+  // plane, a named plane, another feature and a face query are not sketch
+  // geometry, so no kind may take one, and the sentence says which kind of
+  // thing the ref is when the name alone can classify it.
+  const NON_SKETCH_TARGETS: ReadonlyArray<readonly [string, string]> = [
+    ['@builtin_plane_top', 'a plane'],
+    ['@builtin_plane_front', 'a plane'],
+    ['@pl1', 'not sketch geometry'],
+    ['@sk1', 'not sketch geometry'],
+    ['@body_ex1/face/0', 'not sketch geometry'],
+    ['?face', 'not sketch geometry'],
+  ]
+
+  it.each(CONSTRAINTS.map(c => c.kind))('%s refuses a non-sketch operand', kind => {
+    const label = CONSTRAINT_BY_KIND.get(kind)!.label
+    for (const [target, noun] of NON_SKETCH_TARGETS) {
+      expect(addConstraintProblem(sketchAt(shapeDoc()), kind, [target], undefined))
+        .toBe(`${label} takes sketch geometry; ${target} is ${noun}`)
+    }
+  })
+
+  it('judges the non-sketch operand without a live document', () => {
+    // The drive and MCP value rule call this with no sketch: the ref shape is
+    // readable on its own, so the plane must still be refused there.
+    expect(addConstraintProblem(undefined, 'equal_length', ['@builtin_plane_top', '$L1'], undefined))
+      .toBe('Equal takes sketch geometry; @builtin_plane_top is a plane')
+  })
+
+  it('accepts the builtin origin where the kind takes a point', () => {
+    const sketch = sketchAt(shapeDoc())
+    expect(addConstraintProblem(sketch, 'coincident', ['@builtin_origin', '$pxy'], undefined)).toBeNull()
+    expect(addConstraintProblem(sketch, 'point_distance', ['@builtin_origin', '$pxy'], 5)).toBeNull()
+    expect(addConstraintProblem(sketch, 'horizontal', ['@builtin_origin', '$oxy'], undefined)).toBeNull()
+    expect(addConstraintProblem(sketch, 'midpoint', ['$ax', '@builtin_origin'], undefined)).toBeNull()
+  })
+
+  it('keeps the pinned face:/edge: wrappers on their add-time verbatim path', () => {
+    // `yamlMutations.constraints.test.ts` pins that these wrappers are stored
+    // verbatim by the applier. The closed-list rule still names them for the
+    // lowering and for the editor filter, so the exception is add-time only.
+    const sketch = sketchAt(shapeDoc())
+    for (const wrapper of ['face:sketch0:?3;@sketch0abc', 'edge:sketch0:?4;@bodyx:edge']) {
+      expect(addConstraintProblem(
+        sketch, 'coincident', ['vertex:sk1:ax:start', wrapper], undefined,
+      )).toBeNull()
+      expect(constraintOperandRefProblem('coincident', wrapper))
+        .toBe(`Coincident takes sketch geometry; ${wrapper} is not sketch geometry`)
+    }
+  })
 
   it('refuses a face-projection member as a group member', () => {
     const doc = shapeDoc()
