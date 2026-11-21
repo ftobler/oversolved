@@ -163,7 +163,8 @@ describe('mutation catalog', () => {
   it('lets a projection source name a selector, with the kind inferred', () => {
     const info = mutationInfoOf('add_projected_entity')
     expect(info.fields.source.type).toBe('queryOrSelector')
-    expect(info.fields.source.note).toContain('{selector: <a select selector naming exactly one edge, vertex or face>}')
+    expect(info.fields.source.note).toContain('{selector}')
+    expect(info.fields.source.note).toContain('naming exactly one edge, vertex or face')
     expect(info.fields.source.note).toContain('document never carries a selector')
     // The drive infers an omitted kind from the element the selector matched,
     // so the row must not keep it required.

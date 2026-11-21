@@ -1,4 +1,4 @@
-import type { PartDoc, Mutation, SelectorRef } from '@/types/cad'
+import type { PartDoc, Mutation, SelectorRef, PlaneDef, PlaneDefInput, PickInput } from '@/types/cad'
 import { isFaceProjectionSource } from '@/kernel/features/projectionMembers'
 import type { FaceBoundaryLookup } from '@/kernel/features/faceBoundary'
 import {
@@ -129,6 +129,7 @@ import {
 import { applyRemoveDanglingContent } from '@/utils/yamlMutations/solveResult'
 import { applyFreezeProjection } from '@/utils/yamlMutations/freezeProjection'
 import { MutationRefusal } from '@/utils/yamlMutations/helpers'
+import { selectionAidFor } from '@/drive/selectionAids'
 
 type MutationHandlers = {
   [K in Mutation['type']]: (
@@ -172,6 +173,42 @@ const resolvedQueries = (value: (string | SelectorRef)[] | undefined): string[] 
     if (typeof entry === 'string') return entry
     throw new Error(UNRESOLVED_PICK)
   })
+
+// A required single pick. The drive resolves it before the applier, so a
+// selector here is the same bypass the optional form refuses.
+const resolvedPick = (value: PickInput): string => {
+  if (typeof value === 'string') return value
+  throw new Error(UNRESOLVED_PICK)
+}
+
+// A setter's value is one field of a feature. The covered pick fields take the
+// selector spelling too, so resolve them by the same table the drive reads; a
+// field the table does not cover (a number, an enum, a skip list) passes
+// through untouched.
+const resolvedSetterValue = (type: Mutation['type'], field: unknown, value: unknown): unknown => {
+  if (typeof field !== 'string' || selectionAidFor(type, field) === undefined) return value
+  if (value === null) return null
+  if (Array.isArray(value)) return resolvedQueries(value as (string | SelectorRef)[])
+  return resolvedQuery(value as string | SelectorRef | undefined)
+}
+
+const PLANE_DEFINITION_PICK_FIELDS = ['face', 'edge', 'line', 'point', 'p1', 'p2', 'p3'] as const
+
+// The plane definition's pick fields are resolved one by one; `origin` may also
+// be world coordinates, which are not a pick.
+function resolvedPlaneDefinition(definition: PlaneDefInput): PlaneDef {
+  const next = { ...definition } as PlaneDef
+  for (const field of PLANE_DEFINITION_PICK_FIELDS) {
+    const value = definition[field]
+    if (value !== undefined) next[field] = resolvedPick(value)
+  }
+  if (definition.origin !== undefined) {
+    next.origin = Array.isArray(definition.origin)
+      ? definition.origin
+      : resolvedPick(definition.origin)
+  }
+  return next
+}
 
 // The drive fills a projection's omitted kind from the element its selector
 // matched, so the applier always receives the pair. This fires both for a
@@ -303,13 +340,14 @@ export const mutationHandlers: MutationHandlers = {
   set_feature_visibility: (next, m) =>
     applySetFeatureVisibility(next, m.featureId, m.visible),
   add_plane: (next, m) => {
-    applyAddPlane(next, m.featureId, m.label, m.definition as Record<string, unknown> | undefined)
+    const definition = m.definition === undefined ? undefined : resolvedPlaneDefinition(m.definition)
+    applyAddPlane(next, m.featureId, m.label, definition as Record<string, unknown> | undefined)
     // `before` inserts the new plane directly above a feature, the one-step
     // fix for a sketch that names a plane defined after it.
     if (m.before !== undefined) applyMoveFeatureBefore(next, m.featureId, m.before)
   },
   set_plane_definition_field: (next, m) =>
-    applySetPlaneDefinitionField(next, m.featureId, m.field, m.value),
+    applySetPlaneDefinitionField(next, m.featureId, m.field, resolvedSetterValue(m.type, m.field, m.value) as string | number),
   rename_feature: (next, m) =>
     applyRenameFeature(next, m.featureId, m.label),
   toggle_sketch_plane_visibility: (next) =>
@@ -322,34 +360,39 @@ export const mutationHandlers: MutationHandlers = {
       twist: m.twist,
       direction: m.direction,
       termination: m.termination,
-      up_to: m.up_to,
+      up_to: m.up_to === null || m.up_to === undefined ? m.up_to : resolvedPick(m.up_to),
       up_to_offset: m.up_to_offset,
       up_to_start: m.up_to_start,
       operation: m.operation,
       merge_target: m.merge_target,
     }),
   set_extrude_field: (next, m) =>
-    applySetExtrudeField(next, m.featureId, m.field, m.value),
+    applySetExtrudeField(next, m.featureId, m.field, resolvedSetterValue(m.type, m.field, m.value)),
   add_extrude_profile: (next, m) =>
     applyAddExtrudeProfile(next, m.featureId, m.sketchQuery),
   remove_extrude_profile: (next, m) =>
     applyRemoveExtrudeProfile(next, m.featureId, m.index),
   add_revolve: (next, m) => {
     const { type: _type, featureId, label, insertAt: _insertAt, sketchQuery, angle, axis, ...inline } = m
-    applyAddRevolve(next, featureId, label, sketchQuery, angle, axis, inline)
+    // The editor's add row seeds no axis (the pick comes later), so undefined
+    // stays undefined; a selector is refused because the drive resolves one.
+    applyAddRevolve(next, featureId, label, sketchQuery, angle, resolvedQuery(axis) as string, inline)
   },
   set_revolve_field: (next, m) =>
-    applySetRevolveField(next, m.featureId, m.field, m.value),
+    applySetRevolveField(next, m.featureId, m.field, resolvedSetterValue(m.type, m.field, m.value)),
   add_revolve_profile: (next, m) =>
     applyAddRevolveProfile(next, m.featureId, m.sketchQuery),
   remove_revolve_profile: (next, m) =>
     applyRemoveRevolveProfile(next, m.featureId, m.index),
   add_wrap: (next, m) => {
-    const { type: _type, featureId, label, insertAt: _insertAt, sketchQuery, ...inline } = m
-    applyAddWrap(next, featureId, label, sketchQuery, inline)
+    const { type: _type, featureId, label, insertAt: _insertAt, sketchQuery, target, ...inline } = m
+    applyAddWrap(next, featureId, label, sketchQuery, {
+      ...inline,
+      target: target === undefined ? undefined : resolvedPick(target),
+    })
   },
   set_wrap_field: (next, m) =>
-    applySetWrapField(next, m.featureId, m.field, m.value),
+    applySetWrapField(next, m.featureId, m.field, resolvedSetterValue(m.type, m.field, m.value)),
   add_sweep: (next, m) => {
     const { type: _type, featureId, label, insertAt: _insertAt, sketchQuery, pathQuery, ...inline } = m
     applyAddSweep(next, featureId, label, sketchQuery, pathQuery, inline)
@@ -371,39 +414,39 @@ export const mutationHandlers: MutationHandlers = {
   add_chamfer: (next, m) =>
     applyAddChamfer(next, m.featureId, m.label, resolvedQueries(m.edges), m.distance),
   set_fillet_field: (next, m) =>
-    applySetFilletField(next, m.featureId, m.field, m.value),
+    applySetFilletField(next, m.featureId, m.field, resolvedSetterValue(m.type, m.field, m.value)),
   set_chamfer_field: (next, m) =>
-    applySetChamferField(next, m.featureId, m.field, m.value),
+    applySetChamferField(next, m.featureId, m.field, resolvedSetterValue(m.type, m.field, m.value)),
   add_fillet_edge: (next, m) =>
-    applyAddFilletEdge(next, m.featureId, m.edgeQuery),
+    applyAddFilletEdge(next, m.featureId, resolvedPick(m.edgeQuery)),
   remove_fillet_edge: (next, m) =>
     applyRemoveFilletEdge(next, m.featureId, m.index),
   add_chamfer_edge: (next, m) =>
-    applyAddChamferEdge(next, m.featureId, m.edgeQuery),
+    applyAddChamferEdge(next, m.featureId, resolvedPick(m.edgeQuery)),
   remove_chamfer_edge: (next, m) =>
     applyRemoveChamferEdge(next, m.featureId, m.index),
   add_shell: (next, m) =>
     applyAddShell(next, m.featureId, m.label, resolvedQueries(m.faces), m.thickness, m.direction, m.join),
   set_shell_field: (next, m) =>
-    applySetShellField(next, m.featureId, m.field, m.value),
+    applySetShellField(next, m.featureId, m.field, resolvedSetterValue(m.type, m.field, m.value)),
   add_shell_face: (next, m) =>
-    applyAddShellFace(next, m.featureId, m.faceQuery),
+    applyAddShellFace(next, m.featureId, resolvedPick(m.faceQuery)),
   remove_shell_face: (next, m) =>
     applyRemoveShellFace(next, m.featureId, m.index),
   add_move_face: (next, m) => {
-    const { type: _type, featureId, label, insertAt: _insertAt, ...inline } = m
-    applyAddMoveFace(next, featureId, label, inline)
+    const { type: _type, featureId, label, insertAt: _insertAt, faces, ...inline } = m
+    applyAddMoveFace(next, featureId, label, { ...inline, faces: resolvedQueries(faces) })
   },
   set_move_face_field: (next, m) =>
-    applySetMoveFaceField(next, m.featureId, m.field, m.value),
+    applySetMoveFaceField(next, m.featureId, m.field, resolvedSetterValue(m.type, m.field, m.value)),
   add_move_face_ref: (next, m) =>
-    applyAddMoveFaceRef(next, m.featureId, m.faceQuery),
+    applyAddMoveFaceRef(next, m.featureId, resolvedPick(m.faceQuery)),
   remove_move_face_ref: (next, m) =>
     applyRemoveMoveFaceRef(next, m.featureId, m.index),
   add_delete_face: (next, m) =>
-    applyAddDeleteFace(next, m.featureId, m.label, m.faces),
+    applyAddDeleteFace(next, m.featureId, m.label, resolvedQueries(m.faces)),
   add_delete_face_ref: (next, m) =>
-    applyAddDeleteFaceRef(next, m.featureId, m.faceQuery),
+    applyAddDeleteFaceRef(next, m.featureId, resolvedPick(m.faceQuery)),
   remove_delete_face_ref: (next, m) =>
     applyRemoveDeleteFaceRef(next, m.featureId, m.index),
   add_boolean: (next, m) => {
@@ -417,35 +460,45 @@ export const mutationHandlers: MutationHandlers = {
   remove_boolean_tool: (next, m) =>
     applyRemoveBooleanTool(next, m.featureId, m.tool),
   add_linear_pattern: (next, m) => {
-    const { type: _type, featureId, label, insertAt: _insertAt, ...inline } = m
-    applyAddLinearPattern(next, featureId, label, inline)
+    const { type: _type, featureId, label, insertAt: _insertAt, direction_query, direction_2_query, ...inline } = m
+    applyAddLinearPattern(next, featureId, label, {
+      ...inline,
+      direction_query: direction_query === undefined ? undefined : resolvedPick(direction_query),
+      direction_2_query: direction_2_query === undefined ? undefined : resolvedPick(direction_2_query),
+    })
   },
   set_linear_pattern_field: (next, m) =>
-    applySetLinearPatternField(next, m.featureId, m.field, m.value),
+    applySetLinearPatternField(next, m.featureId, m.field, resolvedSetterValue(m.type, m.field, m.value)),
   add_circular_pattern: (next, m) => {
-    const { type: _type, featureId, label, insertAt: _insertAt, ...inline } = m
-    applyAddCircularPattern(next, featureId, label, inline)
+    const { type: _type, featureId, label, insertAt: _insertAt, axis, ...inline } = m
+    applyAddCircularPattern(next, featureId, label, {
+      ...inline,
+      axis: axis === undefined ? undefined : resolvedPick(axis),
+    })
   },
   set_circular_pattern_field: (next, m) =>
-    applySetCircularPatternField(next, m.featureId, m.field, m.value),
+    applySetCircularPatternField(next, m.featureId, m.field, resolvedSetterValue(m.type, m.field, m.value)),
   add_curve_pattern: (next, m) => {
-    const { type: _type, featureId, label, insertAt: _insertAt, pathQuery, ...inline } = m
-    applyAddCurvePattern(next, featureId, label, pathQuery, inline)
+    const { type: _type, featureId, label, insertAt: _insertAt, pathQuery, normal_ref, ...inline } = m
+    applyAddCurvePattern(next, featureId, label, pathQuery, {
+      ...inline,
+      normal_ref: normal_ref === undefined ? undefined : resolvedPick(normal_ref),
+    })
   },
   set_curve_pattern_field: (next, m) =>
-    applySetCurvePatternField(next, m.featureId, m.field, m.value),
+    applySetCurvePatternField(next, m.featureId, m.field, resolvedSetterValue(m.type, m.field, m.value)),
   add_curve_pattern_path: (next, m) =>
     applyAddCurvePatternPath(next, m.featureId, m.pathQuery),
   remove_curve_pattern_path: (next, m) =>
     applyRemoveCurvePatternPath(next, m.featureId, m.index),
   add_instance_pattern: (next, m) => {
-    const { type: _type, featureId, label, insertAt: _insertAt, ...inline } = m
-    applyAddInstancePattern(next, featureId, label, inline)
+    const { type: _type, featureId, label, insertAt: _insertAt, targets, ...inline } = m
+    applyAddInstancePattern(next, featureId, label, { ...inline, targets: resolvedQueries(targets) })
   },
   set_instance_pattern_field: (next, m) =>
-    applySetInstancePatternField(next, m.featureId, m.field, m.value),
+    applySetInstancePatternField(next, m.featureId, m.field, resolvedSetterValue(m.type, m.field, m.value)),
   add_instance_pattern_target: (next, m) =>
-    applyAddInstancePatternTarget(next, m.featureId, m.targetQuery),
+    applyAddInstancePatternTarget(next, m.featureId, resolvedPick(m.targetQuery)),
   remove_instance_pattern_target: (next, m) =>
     applyRemoveInstancePatternTarget(next, m.featureId, m.index),
   // The retired alias, translated by the applier through the loader's own
@@ -487,11 +540,20 @@ export const mutationHandlers: MutationHandlers = {
   set_hole_field: (next, m) =>
     applySetHoleField(next, m.featureId, m.field, m.value),
   add_transform: (next, m) => {
-    const { type: _type, featureId, label, insertAt: _insertAt, ...inline } = m
-    applyAddTransform(next, featureId, label, inline)
+    const {
+      type: _type, featureId, label, insertAt: _insertAt, rotation_axis,
+      translation_from, translation_to, scale_center_from, ...inline
+    } = m
+    applyAddTransform(next, featureId, label, {
+      ...inline,
+      rotation_axis: rotation_axis === undefined ? undefined : resolvedPick(rotation_axis),
+      translation_from: translation_from === undefined ? undefined : resolvedPick(translation_from),
+      translation_to: translation_to === undefined ? undefined : resolvedPick(translation_to),
+      scale_center_from: scale_center_from === undefined ? undefined : resolvedPick(scale_center_from),
+    })
   },
   set_transform_field: (next, m) =>
-    applySetTransformField(next, m.featureId, m.field, m.value),
+    applySetTransformField(next, m.featureId, m.field, resolvedSetterValue(m.type, m.field, m.value)),
   add_transform_body: (next, m) =>
     applyAddTransformPart(next, m.featureId, m.bodyQuery),
   remove_transform_body: (next, m) =>
@@ -509,11 +571,14 @@ export const mutationHandlers: MutationHandlers = {
   set_part_transmission: (next, m) =>
     applySetPartTransmission(next, m.bodyId, m.transmission),
   add_mirror: (next, m) => {
-    const { type: _type, featureId, label, insertAt: _insertAt, ...inline } = m
-    applyAddMirror(next, featureId, label, inline)
+    const { type: _type, featureId, label, insertAt: _insertAt, plane, ...inline } = m
+    applyAddMirror(next, featureId, label, {
+      ...inline,
+      plane: plane === undefined ? undefined : resolvedPick(plane),
+    })
   },
   set_mirror_field: (next, m) =>
-    applySetMirrorField(next, m.featureId, m.field, m.value),
+    applySetMirrorField(next, m.featureId, m.field, resolvedSetterValue(m.type, m.field, m.value)),
   // Its own toggle pair, not the pattern's: a mirror stores its sources under
   // its own sub-dict, so reusing add_pattern_source would edit no mirror.
   add_mirror_source: (next, m) =>
@@ -521,9 +586,12 @@ export const mutationHandlers: MutationHandlers = {
   remove_mirror_source: (next, m) =>
     applyRemoveMirrorSource(next, m.featureId, m.index),
   add_split: (next, m) =>
-    applyAddSplit(next, m.featureId, m.label, m.bodies, m.plane, m.keep),
+    applyAddSplit(
+      next, m.featureId, m.label, m.bodies,
+      m.plane === undefined ? undefined : resolvedPick(m.plane), m.keep,
+    ),
   set_split_field: (next, m) =>
-    applySetSplitField(next, m.featureId, m.field, m.value),
+    applySetSplitField(next, m.featureId, m.field, resolvedSetterValue(m.type, m.field, m.value)),
   add_split_body: (next, m) =>
     applyAddSplitPart(next, m.featureId, m.bodyQuery),
   remove_split_body: (next, m) =>
@@ -535,11 +603,14 @@ export const mutationHandlers: MutationHandlers = {
   set_variable_field: (next, m) =>
     applySetVariableField(next, m.featureId, m.field, m.value),
   add_helix: (next, m) => {
-    const { type: _type, featureId, label, insertAt: _insertAt, ...inline } = m
-    applyAddHelix(next, featureId, label, inline)
+    const { type: _type, featureId, label, insertAt: _insertAt, reference, ...inline } = m
+    applyAddHelix(next, featureId, label, {
+      ...inline,
+      reference: reference === undefined ? undefined : resolvedPick(reference),
+    })
   },
   set_helix_field: (next, m) =>
-    applySetHelixField(next, m.featureId, m.field, m.value),
+    applySetHelixField(next, m.featureId, m.field, resolvedSetterValue(m.type, m.field, m.value)),
   reorder_features: (next, m) =>
   {
     const toIndex = m.toIndex ?? reorderAnchorIndex(next, m)

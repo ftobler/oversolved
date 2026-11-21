@@ -47,8 +47,11 @@ import { pickedSketchEntity } from '@/kernel/features/shared/partRef'
 import { circleDrillSiteReason } from '@/kernel/features/shared/drillSite'
 import { isFaceProjectionSource, isProjectionPosition } from '@/kernel/features/projectionMembers'
 import { projectionTargetRef } from '@/utils/yamlMutations/freezeProjection'
-import { SelectorError, validateSelector } from '@/kernel/select'
-import { declaredSelectorKind, selectorShapeHint } from '@/drive/selectionAids'
+import { SelectorError, validateSelector, type SelectKind } from '@/kernel/select'
+import {
+  declaredSelectorKind, selectionAidApplies, selectionAidLabel, selectionAidValue, selectionAidsFor,
+  selectorShapeHint, type PickRule,
+} from '@/drive/selectionAids'
 import { mirrorSubject } from '@/utils/core/mirrorSubject'
 
 export type ValueViolationCode = 'invalid-mutation' | 'unknown-target'
@@ -1276,7 +1279,7 @@ const UNRESOLVED_SELECTOR =
   'a {selector} pick needs the solved parts; the headless drive resolves it before the step runs, '
   + 'so pass the query string `select` returned instead'
 
-function selectorRefProblem(value: unknown, label: string): string | null {
+function selectorRefProblem(value: unknown, label: string, kind: SelectKind = 'edge'): string | null {
   if (!isRecord(value)) return `${label} must be {selector: <a select selector>}, got ${json(value)}`
   const keys = Object.keys(value)
   if (keys.length !== 1 || !isRecord(value.selector)) {
@@ -1286,7 +1289,7 @@ function selectorRefProblem(value: unknown, label: string): string | null {
     validateSelector(value.selector)
   } catch (e) {
     if (e instanceof SelectorError) {
-      return `${label}: ${selectorShapeHint(e.message, declaredSelectorKind(value) ?? 'edge')}`
+      return `${label}: ${selectorShapeHint(e.message, declaredSelectorKind(value) ?? kind)}`
     }
     throw e
   }
@@ -1867,7 +1870,7 @@ function instanceRefProblem(value: unknown, field: string): ValueViolation | nul
 
 function instanceTargetsProblem(value: unknown): ValueViolation | null {
   if (value === undefined || value === null) return null
-  const list = stringListProblem(value, 'targets')
+  const list = pickListProblem(value, 'targets', 'pick')
   if (list !== null) return invalid(list)
   for (let i = 0; i < (value as string[]).length; i++) {
     const problem = pickQueryProblem((value as string[])[i], `targets[${i}]`)
@@ -2203,15 +2206,16 @@ function addChamfer(raw: RawStep): ValueViolation | null {
 // Each pick entry is a query string or a selector the drive resolves. A string
 // is checked like any other reference list; a selector that survives to here is
 // on a surface with no solved bodies, so name that. The noun keeps the refusal
-// specific to the field's element kind.
-function pickListProblem(value: unknown, label: string, noun: 'face' | 'edge'): string | null {
+// specific to the field's element kind; `pick` is the instance pattern's target
+// list, whose entries range over every kind.
+function pickListProblem(value: unknown, label: string, noun: 'face' | 'edge' | 'vertex' | 'pick'): string | null {
   if (!Array.isArray(value)) {
     return `${label} must be a list of ${noun} queries or {selector} entries, got ${json(value)}`
   }
   for (let i = 0; i < value.length; i++) {
     const entry = value[i]
     if (isRecord(entry)) {
-      const problem = selectorRefProblem(entry, `${label}[${i}]`)
+      const problem = selectorRefProblem(entry, `${label}[${i}]`, noun === 'pick' ? 'edge' : noun)
       if (problem !== null) return problem
       continue
     }
@@ -2243,7 +2247,7 @@ function addShell(raw: RawStep): ValueViolation | null {
 
 function addDeleteFace(raw: RawStep): ValueViolation | null {
   if (raw.faces === undefined) return null
-  const problem = stringListProblem(raw.faces, 'faces')
+  const problem = pickListProblem(raw.faces, 'faces', 'face')
   return problem === null ? null : invalid(problem)
 }
 
@@ -2253,12 +2257,12 @@ function addDeletePart(raw: RawStep): ValueViolation | null {
   return problem === null ? null : invalid(problem)
 }
 
-// A move-face pick list is the plain string list the document stores (the
-// selector form has not landed for this kind), so it takes the same non-empty
-// check add_delete_face's faces do. `distance` follows the setter schema.
+// A move-face pick list is the same face list a delete-face row holds, so each
+// entry takes the query string or the selector the drive resolves. `distance`
+// follows the setter schema.
 function addMoveFace(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   if (raw.faces !== undefined) {
-    const problem = stringListProblem(raw.faces, 'add_move_face field "faces"')
+    const problem = pickListProblem(raw.faces, 'add_move_face field "faces"', 'face')
     if (problem !== null) return invalid(problem)
   }
   return inlineFeatureFieldsProblem(raw, ctx, 'move_face', 'set_move_face_field', ['faces'])
@@ -2659,6 +2663,43 @@ function setRevolveField(raw: RawStep, ctx: ValueContext): ValueViolation | null
   return null
 }
 
+// A pick field's selector is resolved by the headless drive before this
+// boundary. A selector that still arrives came from the browser bridge, which
+// has no solved bodies, or from a direct caller: refuse it by name here rather
+// than store the object. The field table is the drive's own, so a covered field
+// cannot be forgotten on this side.
+function selectionAidProblem(raw: RawStep): ValueViolation | null {
+  const type = raw.type
+  if (typeof type !== 'string') return null
+  for (const aid of selectionAidsFor(type)) {
+    if (!selectionAidApplies(raw, aid)) continue
+    const value = selectionAidValue(raw, aid)
+    const label = selectionAidLabel(type, aid)
+    if (aid.mode === 'list') {
+      if (value === undefined) continue
+      const problem = pickListProblem(value, label, aidNoun(aid.rule))
+      if (problem !== null) return invalid(problem)
+    } else if (isRecord(value)) {
+      const problem = selectorRefProblem(value, label, aidHintKind(aid.rule))
+      if (problem !== null) return invalid(problem)
+    }
+  }
+  return null
+}
+
+// A list's entries are one element kind, or any pick for the instance targets;
+// the refusal wording follows the field's narrowed rule.
+function aidNoun(rule: PickRule): 'face' | 'edge' | 'vertex' | 'pick' {
+  const kinds = rule.kinds
+  return kinds !== null && kinds.length === 1 ? kinds[0] : 'pick'
+}
+
+// The kind a shape hint suggests for a malformed selector: the field's own first
+// accepted kind, so a face field teaches a face sample rather than an edge.
+function aidHintKind(rule: PickRule): SelectKind {
+  return rule.kinds?.[0] ?? 'edge'
+}
+
 // ─── the table ───
 
 // One row per mutation type, so a new type cannot be added without deciding
@@ -2800,6 +2841,8 @@ export function mutationValueViolation(
   raw: RawStep,
   ctx: ValueContext,
 ): ValueViolation | null {
+  const aidProblem = selectionAidProblem(raw)
+  if (aidProblem !== null) return aidProblem
   const rule = MUTATION_VALUE_RULES[type] as ValueRule
   return rule === 'none' ? null : rule(raw, ctx)
 }

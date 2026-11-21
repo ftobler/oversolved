@@ -12,6 +12,7 @@ import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { isDimensionKind } from '@/registry/constraintRegistry'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 import { History, type HistoryEntry } from '@/session/History'
+import { unresolvedSelectionAid } from '@/drive/selectionAids'
 import { PART_STYLE_MUTATION_TYPES, GUARD_BYPASS, noOpSliceFor } from '@/session/noOpGuard'
 import { CREATING_MUTATION_TYPES } from '@/types/mutationKinds'
 import { reconcileDirty, type DirtyFacts, type DirtyPin } from '@/session/dirty'
@@ -773,6 +774,16 @@ export class DocSession {
       for (let index = 0; index < appliedMutations.length; index++) {
         const m = appliedMutations[index]
         const handler = Object.hasOwn(handlers, m.type) ? handlers[m.type] : undefined
+        // Every covered pick field is resolved by the headless drive before the
+        // session, and the value rules refuse one on the bridge. A selector that
+        // arrives here came through an internal caller, so fail loudly rather
+        // than let an applier store an authoring aid in the document.
+        const unresolvedPick = unresolvedSelectionAid(m)
+        if (unresolvedPick !== null) {
+          throw new Error(
+            `a {selector} pick reached ${unresolvedPick} unresolved; the drive resolves it before the step runs`,
+          )
+        }
         // A feature add may carry the rollback bar's slot. The handler appends it
         // like every other add, then the row moves into place. Detecting the
         // creation (the id was absent before the handler) keeps this keyed on the
