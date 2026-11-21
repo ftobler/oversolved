@@ -47,6 +47,21 @@ def test_every_committed_svg_has_a_generator(monkeypatch):
     assert not generated - committed, f"generators with no SVG: {sorted(generated - committed)}"
 
 
+def test_context_menu_svgs_render_distinct_pictures(monkeypatch):
+    """A unique file name is not a unique picture: Color and Edit once held one
+    shared drawing under two paths, which a name comparison passes. Comparing
+    the rendered content is what makes every context-menu slot its own icon."""
+    _icons, _icon_cairo = _load(monkeypatch)
+    files = sorted((ROOT / "frontend/src/assets/icons").glob("context-*.svg"))
+    assert files, "the context menu has no icons to compare"
+
+    seen: dict[str, str] = {}
+    for path in files:
+        text = path.read_text().strip()
+        assert text not in seen, f"{path.name} renders the same picture as {seen[text]}"
+        seen[text] = path.name
+
+
 def test_committed_svgs_match_a_fresh_render(tmp_path, monkeypatch):
     """The checked-in SVG is the generator's output, not an older drawing.
 

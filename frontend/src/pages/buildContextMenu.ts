@@ -6,13 +6,19 @@ import { partDisplayName } from '@/utils/core/partDisplayName'
 
 import contextRebuildIcon from '@/assets/icons/context-rebuild.svg'
 import contextHideIcon from '@/assets/icons/context-hide.svg'
+import contextShowIcon from '@/assets/icons/context-show.svg'
+import contextCleanupIcon from '@/assets/icons/context-cleanup.svg'
+import contextSuppressIcon from '@/assets/icons/context-suppress.svg'
+import contextUnsuppressIcon from '@/assets/icons/context-unsuppress.svg'
 import contextExitIcon from '@/assets/icons/context-exit.svg'
 import contextCameraIcon from '@/assets/icons/context-camera.svg'
+import contextNormalSketchIcon from '@/assets/icons/context-normal-sketch.svg'
+import contextConstraintsShowIcon from '@/assets/icons/context-constraints-show.svg'
+import contextConstraintsHideIcon from '@/assets/icons/context-constraints-hide.svg'
 import contextDeleteIcon from '@/assets/icons/context-delete.svg'
 import contextColorIcon from '@/assets/icons/context-color.svg'
 import iconRenameIcon from '@/assets/icons/rename.svg'
 import featureExportIcon from '@/assets/icons/icon-download.svg'
-import constraintTileIcon from '@/assets/icons/constraint-coincident.svg'
 import constraintFixedIcon from '@/assets/icons/constraint-fixed.svg'
 import constraintProjectionIcon from '@/assets/icons/constraint-projection.svg'
 import featureSketchIcon from '@/assets/icons/feature-sketch.svg'
@@ -219,7 +225,7 @@ export function buildPartBoard(
       },
       {
         label: DANGLING_LABEL,
-        icon: contextRebuildIcon,
+        icon: contextCleanupIcon,
         disabled: !input.hasDanglingContent,
         onClick: () => {
           if (input.hasDanglingContent) callbacks.onRemoveDanglingContent()
@@ -227,7 +233,7 @@ export function buildPartBoard(
       },
       {
         label: visibilityIsOn ? 'Hide' : 'Show',
-        icon: contextHideIcon,
+        icon: visibilityIsOn ? contextHideIcon : contextShowIcon,
         disabled: !canToggleVisibility,
         onClick: () => {
           if (featureEye) callbacks.onToggleVisibility(target.id)
@@ -252,7 +258,7 @@ export function buildPartBoard(
       },
       {
         label: target?.suppressed ? 'Unsuppress' : 'Suppress',
-        icon: contextHideIcon,
+        icon: target?.suppressed ? contextUnsuppressIcon : contextSuppressIcon,
         disabled: !canManage,
         onClick: () => {
           if (canManage && featureId) callbacks.onToggleSuppression(featureId, !target?.suppressed)
@@ -309,7 +315,7 @@ export function buildSketchBoard(
       },
       {
         label: 'Normal to sketch',
-        icon: contextCameraIcon,
+        icon: contextNormalSketchIcon,
         onClick: callbacks.onAlignCameraToSketchPlane,
       },
       {
@@ -324,14 +330,14 @@ export function buildSketchBoard(
       },
       {
         label: sketchVisible ? 'Hide' : 'Show',
-        icon: contextHideIcon,
+        icon: sketchVisible ? contextHideIcon : contextShowIcon,
         onClick: () => {
           if (sketchId) callbacks.onToggleVisibility(sketchId)
         },
       },
       {
         label: input.showConstraintTiles ? 'Hide Constraints' : 'Show Constraints',
-        icon: constraintTileIcon,
+        icon: input.showConstraintTiles ? contextConstraintsHideIcon : contextConstraintsShowIcon,
         onClick: callbacks.onToggleConstraintTiles,
       },
       {
