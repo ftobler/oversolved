@@ -42,6 +42,26 @@ describe('RebuildButton', () => {
     expect(container.querySelector('img')).toBeInTheDocument()
   })
 
+  // The container is one inline-flex row, so the DOM order is the visual order:
+  // the total time first, the arrow right of it. A missing label must not turn
+  // that into a bare button with a stray sibling.
+  it('puts the total time left of the arrow, in that order', () => {
+    const { container } = render(
+      <RebuildButton {...defaultProps} featureTimings={{ ex1: 1000, ex2: 740 }} />,
+    )
+    const label = container.querySelector('.rebuild-time-label')
+    expect(label).not.toBeNull()
+    expect(label!.textContent).toBe('1.74s')
+    expect(label!.nextElementSibling).toHaveClass('rebuild-button')
+  })
+
+  it('renders no time label when nothing has been timed', () => {
+    const { container } = render(<RebuildButton {...defaultProps} />)
+    expect(container.querySelector('.rebuild-time-label')).toBeNull()
+    const row = container.querySelector('.rebuild-button-container') as HTMLElement
+    expect(row.firstElementChild).toHaveClass('rebuild-button')
+  })
+
   // A hover-then-navigate-away can unmount while the 500ms hide delay is still
   // pending. Asserting a global clearTimeout was called proves nothing about
   // that timer; the cleanup must actually cancel the one hide work that was
