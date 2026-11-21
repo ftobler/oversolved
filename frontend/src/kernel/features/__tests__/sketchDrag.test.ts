@@ -68,6 +68,23 @@ function constructionLineFeature(sketchId: string): SketchFeature {
   } as unknown as SketchFeature
 }
 
+/** The reported "connected entity" case: a construction line bonded to a normal
+ *  one, so dragging the normal line has to move the construction line through
+ *  the coincident. */
+function connectedConstructionFeature(sketchId: string): SketchFeature {
+  return {
+    id: sketchId, kind: 'sketch', label: 'Connected', plane: '@builtin_plane_front',
+    entities: [
+      { id: 'ref', kind: 'line', construction: true },
+      { id: 'edge', kind: 'line' },
+    ],
+    initial: { ref: [0, 0, 10, 0], edge: [10, 0, 10, 5] },
+    constraints: [
+      { id: 'join', kind: 'coincident', a: { entity: 'ref', point: 'end' }, b: { entity: 'edge', point: 'start' } },
+    ],
+  } as unknown as SketchFeature
+}
+
 // The drag path uses REG_WEIGHT_BASE=1e-3 on all params and
 // REG_WEIGHT_DRAG=5e-2 on the anchor entity -- this biases toward the
 // warm-start, so the dragged vertex stays near (but not exactly at) the
@@ -735,13 +752,16 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
 
   // ─── Construction style across the live preview ───
 
-  it('vertex drag of a connected entity keeps the construction line dashed', () => {
-    // The preview rebuilds every entity, not just the dragged one, so a drag
-    // that never touches the construction line still has to carry its flag.
-    const ctx = prepareDragContext(constructionLineFeature('consVertex'), 'edge', 'start')!
-    const result = solveSketchDrag(ctx, [...ctx.params0], [1, 6])
+  it('vertex drag of a connected entity moves the construction line and keeps it dashed', () => {
+    // The coincident makes the construction line part of the moved geometry;
+    // the preview rebuilds it from solved params, so it has to carry the flag.
+    const ctx = prepareDragContext(connectedConstructionFeature('consVertex'), 'edge', 'start')!
+    const result = solveSketchDrag(ctx, [...ctx.params0], [12, 2])
     expect(result).not.toBeNull()
-    expect(result!.sketch.ref.construction).toBe(true)
+    const ref = result!.sketch.ref as { end: [number, number]; construction?: boolean }
+    expect(ref.end[0]).toBeCloseTo(12, 0)
+    expect(ref.end[1]).toBeCloseTo(2, 0)
+    expect(ref.construction).toBe(true)
     expect(result!.sketch.edge.construction).toBeUndefined()
   })
 
@@ -749,8 +769,10 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
     const ctx = prepareDragContext(constructionLineFeature('consOwnVertex'), 'ref', 'end')!
     const result = solveSketchDrag(ctx, [...ctx.params0], [12, 1])
     expect(result).not.toBeNull()
-    expect(result!.sketch.ref.construction).toBe(true)
-    expect(result!.sketch.ref).toMatchObject({ end: [12, 1] })
+    const ref = result!.sketch.ref as { end: [number, number]; construction?: boolean }
+    expect(ref.end[0]).toBeCloseTo(12, 0)
+    expect(ref.end[1]).toBeCloseTo(1, 0)
+    expect(ref.construction).toBe(true)
   })
 
   it('edge drag of the construction line keeps it construction in the preview', () => {
@@ -758,8 +780,12 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
     const delta: [number, number] = [3, 2]
     const result = solveSketchDrag(ctx, ctx.params0, delta, delta)
     expect(result).not.toBeNull()
-    expect(result!.sketch.ref.construction).toBe(true)
-    expect(result!.sketch.ref).toMatchObject({ start: [3, 2], end: [13, 2] })
+    const ref = result!.sketch.ref as { start: [number, number]; end: [number, number]; construction?: boolean }
+    expect(ref.start[0]).toBeCloseTo(3, 0)
+    expect(ref.start[1]).toBeCloseTo(2, 0)
+    expect(ref.end[0]).toBeCloseTo(13, 0)
+    expect(ref.end[1]).toBeCloseTo(2, 0)
+    expect(ref.construction).toBe(true)
   })
 
   // ─── Circle rim drag: probe the real drag solver to pick translate / radius / locked ───
