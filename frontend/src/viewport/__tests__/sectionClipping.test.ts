@@ -27,7 +27,7 @@ describe('shared section clipping plane', () => {
 
   it('copies the published plane in place so every material sees the update', () => {
     const before = getSectionClipPlane()
-    setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 0, 1], point: [0, 0, 0] }, 3, false))
+    setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 0, 1], point: [0, 0, 0], u: [1, 0, 0], v: [0, 1, 0] }, 3, false))
 
     expect(getSectionClipPlane()).toBe(before)
     expect(isSectionClippingActive()).toBe(true)
@@ -36,15 +36,39 @@ describe('shared section clipping plane', () => {
   })
 
   it('clips the half three discards (positive signed distance)', () => {
-    setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 0, 1], point: [0, 0, 0] }, 0, false))
+    setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 0, 1], point: [0, 0, 0], u: [1, 0, 0], v: [0, 1, 0] }, 0, false))
     expect(isPointClipped([0, 0, 1])).toBe(true)
     expect(isPointClipped([0, 0, -1])).toBe(false)
   })
 
   it('flipping moves the clipped half to the other side', () => {
-    setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 0, 1], point: [0, 0, 0] }, 0, true))
+    setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 0, 1], point: [0, 0, 0], u: [1, 0, 0], v: [0, 1, 0] }, 0, true))
     expect(isPointClipped([0, 0, 1])).toBe(false)
     expect(isPointClipped([0, 0, -1])).toBe(true)
+  })
+
+  it('clips by the shared plane once the section is tilted', () => {
+    const frame = {
+      normal: [0, 0, 1] as [number, number, number],
+      point: [0, 0, 0] as [number, number, number],
+      u: [1, 0, 0] as [number, number, number],
+      v: [0, 1, 0] as [number, number, number],
+    }
+    const tilt = { pitch: 40 * Math.PI / 180, yaw: 0 }
+    const plane = sectionPlaneFromFrame(frame, 0, false, tilt)
+    setSectionClipPlane(plane)
+
+    // A point just on each side of the drawn plane: the CPU predicate must
+    // agree with the plane the materials and the ID layers hand to the GPU.
+    // three clips the negative-distance half, and the unflipped section builds
+    // the plane with the negated tilted normal, so the removed side is the one
+    // the plane's normal points away from.
+    const n = plane.normal
+    const kept: [number, number, number] = [n.x * 0.5, n.y * 0.5, n.z * 0.5]
+    const removed: [number, number, number] = [-n.x * 0.5, -n.y * 0.5, -n.z * 0.5]
+    expect(isPointClipped(kept)).toBe(false)
+    expect(isPointClipped(removed)).toBe(true)
+    expect(plane.distanceToPoint(new THREE.Vector3(...removed))).toBeLessThan(0)
   })
 
   it('attaches and clears the plane list on a built-in material', () => {

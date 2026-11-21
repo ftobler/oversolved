@@ -12,7 +12,9 @@
 // away from the ring it annotates.
 
 import { SNAP_STEP_DEG, snapTickAngles } from '@/utils/gizmoAngleSnap'
-import { RING_RADIUS, RING_TUBE, type GizmoAxisDef } from '@/utils/gizmoPickGeometry'
+import {
+  RING_RADIUS, RING_TUBE, type GizmoRingAxis, type GizmoRingBasis,
+} from '@/utils/gizmoPickGeometry'
 import { quatFromAxisAngle, type Quat, type Vec3 } from '@/utils/transform3d'
 
 const TURN = Math.PI * 2
@@ -53,12 +55,12 @@ const SWEEP_SEGMENT_RAD = TURN / 144
  * the world-axis one the drag applied: the drag's world axis is this local axis
  * carried through the pre-drag pose, so the two conjugate into each other.
  */
-export function dialCounterRotation(def: GizmoAxisDef, swing: number): Quat {
+export function dialCounterRotation(def: GizmoRingAxis, swing: number): Quat {
   return quatFromAxisAngle(def.axis, -swing)
 }
 
 /** A point on the dial's plane, in gizmo-local coordinates. */
-export function dialPoint(def: GizmoAxisDef, angle: number, radius: number): Vec3 {
+export function dialPoint(def: GizmoRingBasis, angle: number, radius: number): Vec3 {
   const c = Math.cos(angle) * radius
   const s = Math.sin(angle) * radius
   const { u, v } = def
@@ -75,7 +77,7 @@ export interface DialTick {
   end: Vec3
 }
 
-export function dialTicks(def: GizmoAxisDef): DialTick[] {
+export function dialTicks(def: GizmoRingBasis): DialTick[] {
   return snapTickAngles().map((angle, i) => {
     const major = i % TICKS_PER_QUARTER === 0
     const length = major ? DIAL_MAJOR_TICK_LENGTH : DIAL_TICK_LENGTH
@@ -96,7 +98,7 @@ export function nearestTickIndex(angle: number): number {
 }
 
 /** Hub-to-rim line, used for both the datum and the live bearing. */
-export function dialSpoke(def: GizmoAxisDef, angle: number): [Vec3, Vec3] {
+export function dialSpoke(def: GizmoRingBasis, angle: number): [Vec3, Vec3] {
   return [[0, 0, 0], dialPoint(def, angle, DIAL_RADIUS)]
 }
 
@@ -121,7 +123,7 @@ export function drawnSweep(swing: number): number {
  * gizmo's local frame, a fan from the hub. Wound off the signed sweep, so a
  * negative swing fans backward rather than the long way round.
  */
-export function dialSweepVertices(def: GizmoAxisDef, datum: number, swing: number): Float32Array {
+export function dialSweepVertices(def: GizmoRingBasis, datum: number, swing: number): Float32Array {
   const sweep = drawnSweep(swing)
   const segments = Math.max(1, Math.ceil(Math.abs(sweep) / SWEEP_SEGMENT_RAD))
   const out = new Float32Array(segments * 9)
@@ -134,7 +136,7 @@ export function dialSweepVertices(def: GizmoAxisDef, datum: number, swing: numbe
 }
 
 /** Where the readout hangs: outside the rim, halfway along the drawn sweep. */
-export function dialReadoutPosition(def: GizmoAxisDef, datum: number, swing: number): Vec3 {
+export function dialReadoutPosition(def: GizmoRingBasis, datum: number, swing: number): Vec3 {
   return dialPoint(def, datum + drawnSweep(swing) / 2, DIAL_READOUT_RADIUS)
 }
 

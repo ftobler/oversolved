@@ -22,7 +22,7 @@ import {
   DIAL_SWEEP_OPACITY, DIAL_TICK_OPACITY, DIAL_TICK_OPACITY_DISARMED,
   TRIAD_COLOR, TRIAD_COLOR_DIM, TRIAD_COLOR_HOVER,
 } from '@/utils/core/gizmoColors'
-import type { GizmoAxisDef } from '@/utils/gizmoPickGeometry'
+import type { GizmoRingAxis } from '@/utils/gizmoPickGeometry'
 
 // The dial is part of the triad, so it stays in the triad's one hue and says
 // everything through brightness instead: dim for the reference marks the drag
@@ -47,7 +47,7 @@ const READOUT_RENDER_ORDER = RENDER_ORDER - 1
 const READOUT_SIZE = DIAL_READOUT_RADIUS * 0.2
 
 interface AngleDialProps {
-  def: GizmoAxisDef
+  def: GizmoRingAxis
   // Bearing the sweep is read from, a quarter turn, measured from `def.u`.
   datum: number
   // The snapped swing the part is receiving, unwrapped and unbounded.
@@ -58,9 +58,18 @@ interface AngleDialProps {
    * the ring. Distinct from `snapped`, which is only this frame's outcome.
    */
   snapArmed: boolean
+  /**
+   * Undo the swing the dial's own group carries. The assembly triad poses its
+   * whole gizmo with the part's LIVE orientation, drag included, so the dial
+   * must turn back into the pointer-down frame. A caller that draws the dial in
+   * a fixed ring frame (the section plane) leaves this off.
+   */
+  counterRotate?: boolean
 }
 
-export default function AngleDial({ def, datum, swing, snapped, snapArmed }: AngleDialProps) {
+export default function AngleDial({
+  def, datum, swing, snapped, snapArmed, counterRotate = true,
+}: AngleDialProps) {
   const ticks = useMemo(() => dialTicks(def), [def])
   const sweep = useMemo(() => dialSweepVertices(def, datum, swing), [def, datum, swing])
   const datumLine = useMemo(() => dialSpoke(def, datum), [def, datum])
@@ -69,7 +78,10 @@ export default function AngleDial({ def, datum, swing, snapped, snapArmed }: Ang
   // The group TriadGizmo nests this in carries the live drag, so without taking
   // that swing back out the dial would ride round with the part it is measuring:
   // see dialCounterRotation. This is what makes the dial a protractor.
-  const counterRotation = useMemo(() => dialCounterRotation(def, swing), [def, swing])
+  const counterRotation = useMemo(
+    () => (counterRotate ? dialCounterRotation(def, swing) : null),
+    [def, swing, counterRotate],
+  )
 
   // While snapped the live line lands exactly on a tick, so lighting that tick
   // up as well makes the click visible even when the line covers it.
@@ -82,7 +94,7 @@ export default function AngleDial({ def, datum, swing, snapped, snapArmed }: Ang
     // collision/ID debug pass (IdDebugOverlay, renderOrder 9999 at groupOrder 0)
     // and paints the dial over it. Each drawn child names RENDER_ORDER itself,
     // which is what actually lifts the dial above the triad and the body.
-    <group quaternion={counterRotation}>
+    <group quaternion={counterRotation ?? undefined}>
       <mesh renderOrder={RENDER_ORDER}>
         <bufferGeometry>
           <bufferAttribute attach="attributes-position" args={[sweep, 3]} />

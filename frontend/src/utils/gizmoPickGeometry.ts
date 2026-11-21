@@ -130,6 +130,16 @@ export const GIZMO_AXES: readonly GizmoAxisDef[] = [
   { name: 'z', axis: [0, 0, 1], u: [1, 0, 0], v: [0, 1, 0] },
 ]
 
+/**
+ * The part of a handle's pose a ring needs: its in-plane companions. A ring
+ * drawn outside the triad (the section plane's) has no axis name, and the dial
+ * and ring helpers only read these two.
+ */
+export type GizmoRingBasis = Pick<GizmoAxisDef, 'u' | 'v'>
+
+/** A ring basis plus the axis it turns about, for the dial's counter-rotation. */
+export type GizmoRingAxis = GizmoRingBasis & { axis: Vec3 }
+
 export function gizmoHandleKey(kind: GizmoHandleKind, axisName: string): string {
   return `gizmo:${kind}:${axisName}`
 }

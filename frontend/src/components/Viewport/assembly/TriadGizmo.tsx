@@ -19,15 +19,15 @@ import { Line } from '@react-three/drei'
 import { useFrame, useThree } from '@react-three/fiber'
 import * as THREE from 'three'
 import AngleDial from '@/components/Viewport/assembly/AngleDial'
+import GizmoRing from '@/components/Viewport/GizmoRing'
 import { useScreenScale } from '@/components/Geometry3D/useScreenScale'
 import type { GizmoDragState } from '@/stores/assemblyStore'
-import { dialPoint } from '@/utils/angleDialGeometry'
 import {
   ARROW_HEAD_BASE, arrowHeadPositions, cylindricalBillboardAngle,
 } from '@/utils/arrowHeadGeometry'
 import {
   GIZMO_AXES, GIZMO_PIXELS, gizmoHandleKey,
-  planeHandleCorners, planeHandleOutline, RING_RADIUS,
+  planeHandleCorners, planeHandleOutline,
   type GizmoAxisDef,
 } from '@/utils/gizmoPickGeometry'
 import {
@@ -57,27 +57,6 @@ const ARROW_ROTATIONS: [number, number, number][] = [
 // the billboarded head is coplanar with the shaft line by construction, so an
 // overlapping stretch would fight it for pixels instead of being hidden by it.
 const SHAFT_POINTS: Vec3[] = [[0, 0, 0], [0, ARROW_HEAD_BASE, 0]]
-
-// Fine enough that the ring reads as a circle rather than a polygon at gizmo
-// scale (RING_RADIUS * GIZMO_PIXELS px radius on screen).
-const RING_LINE_SEGMENTS = 64
-
-/**
- * A closed ring of points around `def`'s u/v plane, reusing the same
- * angle-to-point math the angle dial's ticks are built from (dialPoint), so
- * the drawn ring and the dial that grows out of it never disagree on where
- * the circle sits. Computed once per axis at module scope since GIZMO_AXES is
- * static, rather than recomputed on every TriadGizmo render.
- */
-function ringLinePoints(def: GizmoAxisDef): Vec3[] {
-  const points: Vec3[] = []
-  for (let i = 0; i <= RING_LINE_SEGMENTS; i++) {
-    points.push(dialPoint(def, (i / RING_LINE_SEGMENTS) * Math.PI * 2, RING_RADIUS))
-  }
-  return points
-}
-
-const RING_POINTS: Vec3[][] = GIZMO_AXES.map(ringLinePoints)
 
 interface TriadGizmoProps {
   origin: Vec3
@@ -204,12 +183,7 @@ export default function TriadGizmo({ origin, orientation, hovered, drag }: Triad
               )}
 
               {shows('ring', def.name) && (
-                <Line
-                  points={RING_POINTS[i]}
-                  color={colorFor(gizmoHandleKey('rotate', def.name))}
-                  lineWidth={LINE_WIDTH}
-                  depthTest={false}
-                />
+                <GizmoRing basis={def} color={colorFor(gizmoHandleKey('rotate', def.name))} />
               )}
 
               {shows('plane', def.name) && (

@@ -89,7 +89,7 @@ describe('pickPivotPoint', () => {
     expect(pickPivotPoint(camera, scene, RECT, 500, 350)!.z).toBeCloseTo(20, 9)
 
     // A plane at z = 0 keeps the negative half; the nearest body is cut away.
-    setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 0, 1], point: [0, 0, 0] }, 0, false))
+    setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 0, 1], point: [0, 0, 0], u: [1, 0, 0], v: [0, 1, 0] }, 0, false))
     try {
       expect(pickPivotPoint(camera, scene, RECT, 500, 350)!.z).toBeCloseTo(-20, 9)
     } finally {

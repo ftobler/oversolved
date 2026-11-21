@@ -21,12 +21,10 @@ import {
   intersectRayPlane,
   normalize,
   scale,
-  signedAngleAbout,
   sub,
-  unwrapAngle,
   type Ray,
 } from '@/utils/gizmoMath'
-import { datumAngle, snapArmedAtRadius, snapSwing } from '@/utils/gizmoAngleSnap'
+import { beginRingDrag, moveRingDrag, type RingDragState } from '@/utils/ringDrag'
 import { isStationaryPrimaryClick, type ClickGestureState } from '@/utils/clickGesture'
 import {
   createAssemblyGestureMachine,
@@ -118,21 +116,9 @@ type Gesture =
   | { kind: 'bodyDrag'; grab: Vec3; normal: Vec3 }
   | { kind: 'plane'; grab: Vec3; normal: Vec3 }
   | { kind: 'axis'; axis: Vec3; origin: Vec3; startParam: number }
-  // `swing` is the running total since pointer-down, the one piece of gesture
-  // state carried frame to frame: the measured angle alone tops out at a half
-  // turn, so it is unwrapped against this to let a drag keep going round.
-  // It is the RAW swing, never the snapped one: unwrapping resolves each new
-  // reading against where the cursor was, and resolving it against a tick
-  // instead would let a snap capture the drag.
-  | {
-      kind: 'ring'
-      axis: Vec3
-      axisName: GizmoAxisName
-      origin: Vec3
-      startArm: Vec3
-      swing: number
-      datum: number
-    }
+  // The ring's running swing, datum and grab arm live in the shared drag state
+  // (`utils/ringDrag.ts`), which carries the raw unwrapped total frame to frame.
+  | { kind: 'ring'; axisName: GizmoAxisName; drag: RingDragState }
 
 export interface AssemblyPointerAdapter {
   /**
@@ -245,29 +231,35 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
       return openGesture({ kind: 'axis', axis, origin, startParam }, 'gizmo', pointer)
     }
 
-    // Both remaining modes read the pointer against the plane through the gizmo
-    // normal to `axis`; a ray grazing that plane gives neither a swing arm nor a
-    // grab point, so abandon rather than open a session that measures nothing.
-    const hit = intersectRayPlane(ray, origin, axis)
-    if (!hit) {
-      store.cancelPartManipulation()
-      return false
-    }
-
     if (mode === 'plane') {
+      // The grab must land on the plane through the gizmo normal to `axis`; a
+      // ray grazing it gives no grab point, so abandon rather than open a
+      // session that measures nothing.
+      const hit = intersectRayPlane(ray, origin, axis)
+      if (!hit) {
+        store.cancelPartManipulation()
+        return false
+      }
       // The grab is on the plane already, so the drag needs no other anchor:
       // every later hit lands on the same plane and the difference is the move.
       store.setGizmoDrag({ kind: 'plane', axis: axisName })
       return openGesture({ kind: 'plane', grab: hit, normal: axis }, 'gizmo', pointer)
     }
 
-    const startArm = sub(hit, origin)
-    const datum = datumAngle(signedAngleAbout(axis, reference, startArm))
+    // The shared law re-intersects the ray it was handed, so a grazing ring is
+    // refused here rather than opening a session that measures nothing.
+    const ring = beginRingDrag(ray, origin, axis, reference)
+    if (!ring) {
+      store.cancelPartManipulation()
+      return false
+    }
     // A swing of zero is a multiple of the step, so the dial starts on a tick.
     // Armed by construction: the pointer-down resolved on the ring's own grab
     // region, which is the boundary the gate is drawn at.
-    store.setGizmoDrag({ kind: 'ring', axis: axisName, datum, swing: 0, snapped: true, snapArmed: true })
-    return openGesture({ kind: 'ring', axis, axisName, origin, startArm, swing: 0, datum }, 'gizmo', pointer)
+    store.setGizmoDrag({
+      kind: 'ring', axis: axisName, datum: ring.datum, swing: 0, snapped: true, snapArmed: true,
+    })
+    return openGesture({ kind: 'ring', axisName, drag: ring }, 'gizmo', pointer)
   }
 
   const onPointerMove = (ray: Ray, gizmoWorldScale?: number): void => {
@@ -301,33 +293,21 @@ export function createAssemblyPointerAdapter(store: AssemblyPointerStore): Assem
       return
     }
 
-    const hit = intersectRayPlane(ray, gesture.origin, gesture.axis)
-    if (!hit) return
-    const arm = sub(hit, gesture.origin)
-    const measured = signedAngleAbout(gesture.axis, gesture.startArm, arm)
-    gesture.swing = unwrapAngle(measured, gesture.swing)
-    // How far out the cursor is arms or disarms snapping wholesale: inside the
-    // ring it clicks onto the ticks, outside it the user has pulled away for
-    // fine control and no angle may be touched. The arm is what the angle was
-    // just measured from, so the gate and the swing cannot sample different
-    // points. Arming does not disturb `swing`, which stays the raw unwrapped
-    // total whichever side of the ring the cursor is on.
-    const armed = gizmoWorldScale === undefined
-      || snapArmedAtRadius(Math.hypot(arm[0], arm[1], arm[2]), gizmoWorldScale)
-    const snap = snapSwing(gesture.swing, armed)
+    const moved = moveRingDrag(gesture.drag, ray, gizmoWorldScale)
+    if (!moved) return
     // `moved` follows the angle the part receives, not the cursor's: a wobble
     // small enough to be pulled back onto zero moves nothing, and must leave a
     // click a click.
-    if (snap.angle !== 0) machine.markMoved()
+    if (moved.swing !== 0) machine.markMoved()
     store.setGizmoDrag({
       kind: 'ring',
       axis: gesture.axisName,
-      datum: gesture.datum,
-      swing: snap.angle,
-      snapped: snap.snapped,
-      snapArmed: armed,
+      datum: moved.datum,
+      swing: moved.swing,
+      snapped: moved.snapped,
+      snapArmed: moved.snapArmed,
     })
-    store.rotatePartGizmo(gesture.axis, snap.angle, gesture.origin)
+    store.rotatePartGizmo(gesture.drag.axis, moved.swing, gesture.drag.origin)
   }
 
   const onPointerUp = (pointer: PointerRef, x: number, y: number): GestureOutcome => {

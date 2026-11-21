@@ -5,6 +5,19 @@
 export type BuiltinSectionPlaneId = 'front' | 'top' | 'right'
 
 /**
+ * The section plane's two tilt angles, in radians, about the source frame's own
+ * axes: pitch about `u`, then yaw about the pitched `v`. There is deliberately
+ * no roll, because spinning a plane about its normal does not change the cut.
+ */
+export interface SectionTilt {
+  pitch: number
+  yaw: number
+}
+
+/** Untilted, the state every new source starts in. */
+export const NO_TILT: SectionTilt = { pitch: 0, yaw: 0 }
+
+/**
  * The plane the user chose. `query` covers both a user-defined plane and a
  * planar face: the resolver tries the solve result's plane transform first and
  * the body face frame second, so a query that stops resolving is detectable in

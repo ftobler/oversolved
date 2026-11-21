@@ -53,9 +53,11 @@ describe('useSectionPipelineEffects', () => {
     act(() => useSectionStore.getState().setEnabled(true))
     act(() => useSectionStore.getState().setOffset(4))
     act(() => useSectionStore.getState().toggleFlipped())
+    // A tilt moves the cut just as surely as an offset does.
+    act(() => useSectionStore.getState().setTilt({ pitch: 0.2, yaw: 0 }))
 
-    expect((pipeline.markDirty as ReturnType<typeof vi.fn>).mock.calls.filter(c => c[0] === 'section').length).toBeGreaterThanOrEqual(3)
-    expect(clearHover.mock.calls.length).toBeGreaterThanOrEqual(3)
+    expect((pipeline.markDirty as ReturnType<typeof vi.fn>).mock.calls.filter(c => c[0] === 'section').length).toBeGreaterThanOrEqual(4)
+    expect(clearHover.mock.calls.length).toBeGreaterThanOrEqual(4)
     // The pipeline learns the new state so its ID layers clip and cap.
     expect((pipeline.setSectionActive as ReturnType<typeof vi.fn>).mock.calls.at(-1)).toEqual([true])
   })

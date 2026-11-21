@@ -297,9 +297,13 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   // The assembly has no planar-face frames to resolve a picked section plane
   // against, so the section card does not offer the face/plane pick here. Clear
   // any pick armed in the part editor as the assembly takes over: an armed flag
-  // with no consumer would swallow the next part click.
+  // with no consumer would swallow the next part click. The assembly's section
+  // is builtin, offset and flip only, so a tilt left by the part editor is
+  // dropped too rather than clipping the assembly at an angle its UI cannot
+  // show or clear.
   useEffect(() => {
     useSectionStore.getState().setPicking(false)
+    useSectionStore.getState().resetTilt()
   }, [])
 
   // Same scene-wide auto range as the part viewport: the component bodies each
