@@ -673,8 +673,11 @@ const PATTERN_ALIAS_NOTE =
 // rows that write them say what they mean.
 const MIRROR_NOTE =
   '`subject` selects what is mirrored. `body` (the default, and the only subject an older document has) ' +
-  'reflects the whole part in `body` across `plane`: `keep_original` keeps the source part and `merge` fuses the copy into it, ' +
-  'otherwise the copy is a new part. `feature` mirrors one or more earlier features: an extrude, revolve, sweep or ' +
+  'reflects the whole part in `body` across `plane`: `keep_original` and `merge` both default to true, so a ' +
+  'mirror that carries neither flag keeps the source part and fuses the copy into it. `merge: false` mints the ' +
+  'copy as its own part `body_<mirrorId>`; `keep_original: false` replaces the source in place. A merged copy ' +
+  'that does not reach the source resplits into separate parts, because one part holds one solid. ' +
+  '`feature` mirrors one or more earlier features: an extrude, revolve, sweep or ' +
   'wrap whose operation is add or cut, or a hole (a hole is always a cut), inside the part each source shaped: ' +
   'name them in `source_features`, e.g. ["@ex1", "@ex2"], ' +
   'and `target_body` chooses the part when a source touched more than one. The mirrored copy reapplies the source\'s ' +
@@ -2110,8 +2113,8 @@ export const MUTATION_CATALOG = {
       ),
       target_body: optStr('The part a mirrored feature copy lands in (stored as `target_body`), when a source shaped more than one.'),
       plane: optStr('The mirror plane: @builtin_plane_*, a bare name, @<planeId>, or a face query.'),
-      keep_original: optBool('Part subject only; a feature mirror refuses it.'),
-      merge: optBool('Part subject only; a feature mirror refuses it.'),
+      keep_original: optBool('Part subject only; defaults to true, and false replaces the source in place. A feature mirror refuses it.'),
+      merge: optBool('Part subject only; defaults to true, and false makes the copy its own part. A feature mirror refuses it.'),
     },
   },
   set_mirror_field: {
