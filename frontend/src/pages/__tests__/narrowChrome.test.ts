@@ -231,6 +231,18 @@ describe('phone-width chrome', () => {
     expect(pinned('pages/Part.css', 'display', assemblyCardsOpen, PORTRAIT)).toBe('flex')
   })
 
+  it('leaves the left cards height token to the drawer', () => {
+    // The drawer re-shows the same card column, so it must inherit the base
+    // token instead of restating it. The only media override is the tall
+    // desktop's 85% reset, which a phone never reaches.
+    const overrides = sheet('pages/Part.css')
+      .filter(rule => rule.media !== null)
+      .flatMap(rule => rule.declarations
+        .filter(declaration => declaration.prop === '--left-cards-height')
+        .map(declaration => `${rule.media} { --left-cards-height: ${declaration.value} }`))
+    expect(overrides).toEqual(['(min-height: 1200px) { --left-cards-height: 85% }'])
+  })
+
   it('leaves the navigators and the toolbar alone above the breakpoint', () => {
     const css = 'pages/Part.css'
     expect(pinned(css, 'display', partCards, TOP_LEVEL)).toBe('flex')

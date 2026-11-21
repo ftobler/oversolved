@@ -18,18 +18,40 @@
      (ViewportHud.css) plus a 12px gap. Without it a tall Features/Parts card
      would run over the readout, and the glass would garble the text behind it. */
   --readout-clearance: 28px;
-  /* The two navigator cards (Features/Parts for the part editor, Parts/Mates for
-     the assembly) reserve their height up front instead of hugging their
-     content, so a short list keeps its card at its size and a long one scrolls
-     inside. Together they fill this share of the column; the leftover splits
-     around them, and that is what centers the pair on the left side. The top
-     card takes the larger part of the share (64/36, .document-panel below): it
-     is the list that scrolls in both editors. */
-  --left-cards-height: 85%;
+  /* The most empty space a short viewport may leave above or below the
+     navigator pair, per side. A percentage gap is the right size on a tall
+     column and too big on a short one, because the empty space shrinks with the
+     column while the rows do not: the capped form below spends the spare
+     height on the cards instead. */
+  --left-cards-gap-max: 24px;
+  /* How much of the column the two navigator cards (Features/Parts for the part
+     editor, Parts/Mates for the assembly) take: their old 85% share, or the
+     whole column less the capped outer gap, whichever is more, so a short
+     column hands the leftover to the cards. The top card takes everything the
+     bottom one does not need (.document-panel below): it is the list that
+     scrolls in both editors. On a tall viewport the 85% share is restored
+     below, which keeps the pair centred as on the desktop. */
+  --left-cards-height: max(85%, 100% - 2 * var(--left-cards-gap-max));
   /* A side panel list row is its content plus twice this block padding. Trimmed
      from 8px so a few more rows fit before a list scrolls; the features and
      parts lists both take it, so the two row rhythms cannot drift apart. */
   --list-row-pad-block: 7px;
+}
+
+/* A tall viewport keeps the pair's 85% share and the gap around it: there the
+   percentage gap reads as the desktop's centred look, and the rows it would buy
+   are already on screen. Short viewports keep the capped form above, so browser
+   zoom moves the threshold correctly (media queries see CSS pixels). The 1200px
+   boundary clears a 1080p window's inner height (around 950-1000), so a normal
+   laptop or monitor gets the capped layout and only a truly tall desktop keeps
+   the old look. Crossing it is a deliberate step, not a ramp: the pair gives up
+   15% of the column less the 48px cap in one pixel of viewport height (about
+   120px at the boundary). That is accepted because it only happens while the
+   window is being resized between two desktop sizes. */
+@media (min-height: 1200px) {
+  :root {
+    --left-cards-height: 85%;
+  }
 }
 
 .document-viewer {
@@ -109,14 +131,15 @@
   min-height: 0;
 }
 
-/* The two left cards share --left-cards-height of the column between them (the
-   gap comes out of that share, it is a flex gap inside the panel): each
-   reserves its height up front, so a short list keeps its card at size and a
-   long one scrolls internally. The top card (the part editor's Features, or the
-   assembly's Parts) takes the larger part, 64/36: it is the list that scrolls,
-   while the bottom list is usually a handful of rows the user still needs
-   reachable. The panel itself carries that share and centers in the column (the
-   .floating-left rule above). */
+/* The two left cards share --left-cards-height of the column (the gap comes out
+   of that share, it is a flex gap inside the panel). The top card (Features in
+   the part editor, Parts in the assembly) is the list that scrolls, so it takes
+   everything the bottom card does not use and scrolls internally. The bottom
+   card hugs its list up to its old 36% share instead of reserving that share up
+   front: a part with one body no longer leaves most of the card empty while the
+   list above scrolls. A long list still stops at the share and scrolls inside,
+   and the 60px floor keeps the header and one row reachable. The panel itself
+   carries the share and centers in the column (the .floating-left rule above). */
 .document-panel {
   flex: 0 1 var(--left-cards-height);
   min-height: 0;
@@ -126,13 +149,24 @@
 }
 
 .document-panel > .sidebar-top {
-  flex: 64 1 0;
+  flex: 1 1 0;
   min-height: 0;
 }
 
+/* The percentage cap is load-bearing: it is the only bound that keeps a long
+   bottom list from claiming the top card's height. `max-height` resolves
+   against the panel, whose height is definite from its flex basis in the inset
+   column. Check this in Chrome and Firefox on device, as the plan asks: a
+   browser that treated that height as indefinite would drop the cap, the bottom
+   card would grow to its whole list, and both cards (the top one keeps no
+   floor) would shrink, with the top one able to collapse. The 60px floor only
+   bounds the bottom card, not the top. If a browser drops the cap, move it to
+   a container query unit (`max-height: 36cqh` with `container-type: size` on
+   the panel). */
 .document-panel > .sidebar-bottom {
-  flex: 36 1 0;
-  min-height: 0;
+  flex: 0 1 auto;
+  max-height: 36%;
+  min-height: 60px;
 }
 
 /* The navigator cards float over a bright model, so their row states keep the
