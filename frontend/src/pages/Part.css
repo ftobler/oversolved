@@ -251,12 +251,17 @@
   flex: 1;
 }
 
+/* Titles read left-bound in every navigator card; the rebuild button's auto
+   margin, not justify-content, is what puts it at the right edge. The 28px
+   floor is the button's height, so a header with no button puts its title on
+   the same line as one with it. */
 .sidebar-header {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   padding: 4px 12px;
   padding-bottom: 0px;
+  min-height: 28px;
   font-size: 12px;
   font-weight: 600;
   color: #666;
@@ -312,9 +317,19 @@
   100% { transform: rotate(360deg); }
 }
 
+/* The time and the arrow are one row in the header: the button is a flex box
+   of its own, so an inline-block parent put it on a new line under the label. */
 .rebuild-button-container {
   position: relative;
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Tabular digits keep the arrow from shifting sideways as the number changes. */
+.rebuild-time-label {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 /* dialog */
