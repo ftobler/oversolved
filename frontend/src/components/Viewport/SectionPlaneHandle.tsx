@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSectionStore } from '@/stores/sectionStore'
 import { useFeatureHandleIdRegistration } from '@/picking'
 import { registerFeatureHandleCallbacks } from '@/components/Viewport/idDispatch/featureHandleCallbacks'
@@ -13,12 +14,14 @@ import { shouldActivateDrag } from '@/utils/geometry/dragLogic'
 import { handleColor } from '@/components/Geometry3D/featureHandleMath'
 import { p2w } from '@/utils/geometry/sketchHelpers'
 import {
-  applySectionTiltSwing, offsetFramePoint, sectionOffsetFromTiltedDrag, tiltedSectionFrame,
+  applySectionTiltSwing, offsetFramePoint, sectionOffsetFromTiltedDrag, sectionOutlineBounds,
+  sectionOutlineRect, tiltedSectionFrame,
 } from '@/viewport/sectionPlane'
 import type { SectionTilt } from '@/viewport/sectionTypes'
 import { useSectionClip } from '@/viewport/useSection'
 import ScreenArrow, { TIP } from '@/components/Viewport/ScreenArrow'
 import GizmoRing from '@/components/Viewport/GizmoRing'
+import SectionOutline from '@/components/Viewport/SectionOutline'
 import AngleDial from '@/components/Viewport/assembly/AngleDial'
 import { useAxisDrag } from '@/components/Viewport/useAxisDrag'
 import { beginRingDrag, moveRingDrag, type RingDragState } from '@/utils/ringDrag'
@@ -39,7 +42,9 @@ import type { Vec3 } from '@/utils/transform3d'
 // Tilt is viewer state: nothing here dispatches a Mutation or asks for a solve.
 
 // The faint plane outline is world-sized: it marks a geometric plane, so it
-// should grow and shrink with the model rather than with the camera.
+// grows and shrinks with the model rather than with the camera. The rectangle
+// is fitted to the model's bounds; this is the square kept when there is no
+// geometry to measure, so the section still shows where its plane is.
 const OUTLINE_SIZE = 120
 const OUTLINE_COLOR = '#7fa6c9'
 
@@ -103,14 +108,13 @@ function ringView(key: string, center: Vec3, axis: Vec3, reference: Vec3, radius
   return { key, quaternion, points }
 }
 
-function buildOutlineGeometry(size: number): THREE.BufferGeometry {
-  const half = size / 2
+function buildOutlineGeometry(halfU: number, halfV: number): THREE.BufferGeometry {
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
-    -half, -half, 0,
-     half, -half, 0,
-     half,  half, 0,
-    -half,  half, 0,
+    -halfU, -halfV, 0,
+     halfU, -halfV, 0,
+     halfU,  halfV, 0,
+    -halfU,  halfV, 0,
   ]), 3))
   return geometry
 }
@@ -119,6 +123,10 @@ function buildOutlineGeometry(size: number): THREE.BufferGeometry {
 export default function SectionPlaneHandle() {
   const { camera } = useThree()
   const { active, frame, offset, tilt } = useSectionClip()
+  const parts = usePartEditorStore(s => s.parts)
+  const features = usePartEditorStore(s => s.features)
+  const visibleParts = usePartEditorStore(s => s.visibleParts)
+  const visibleFeatures = usePartEditorStore(s => s.visibleFeatures)
   const capturing = useSectionStore(s => s.capturing)
   const hoveredKey = useSketchEditorStore(s => s.hoveredSelectionId)
   const { pxToWorld, rayFrom, cursorAxisParam, trackZoom } = useAxisDrag()
@@ -133,8 +141,13 @@ export default function SectionPlaneHandle() {
   const pitchRingRef = useRef<THREE.Group>(null)
   const yawRingRef = useRef<THREE.Group>(null)
 
-  const outlineGeometry = useMemo(() => buildOutlineGeometry(OUTLINE_SIZE), [])
-  useEffect(() => () => { outlineGeometry.dispose() }, [outlineGeometry])
+  // The model's extent is a fact about the bodies, not about the plane, so it
+  // is measured once per body change. An offset drag or a tilt only re-projects
+  // these eight corners and never walks a vertex list.
+  const modelBounds = useMemo(
+    () => sectionOutlineBounds({ parts, features, visibleParts, visibleFeatures }),
+    [parts, features, visibleParts, visibleFeatures],
+  )
 
   // The tilted pose: the plane normal and the two axes the rings turn about.
   const tilted = useMemo(() => (frame ? tiltedSectionFrame(frame, tilt) : null), [frame, tilt])
@@ -145,12 +158,30 @@ export default function SectionPlaneHandle() {
     () => (frame ? offsetFramePoint(frame, offset) : null),
     [frame, offset],
   )
+
+  // The fitted rectangle, in the tilted plane's own axes so the fit and the
+  // drawing cannot disagree. No bounds keeps the default square on the anchor.
+  const outlineRect = useMemo(
+    () => (planePoint && tilted ? sectionOutlineRect(modelBounds, planePoint, tilted.u, tilted.v) : null),
+    [modelBounds, planePoint, tilted],
+  )
+
+  // A re-solve that lands on the same bounds must not rebuild the buffer, so
+  // the memo keys on the rounded extents rather than on the float values.
+  const halfU = Math.round((outlineRect?.halfU ?? OUTLINE_SIZE / 2) * 1000) / 1000
+  const halfV = Math.round((outlineRect?.halfV ?? OUTLINE_SIZE / 2) * 1000) / 1000
+  const outlineGeometry = useMemo(() => buildOutlineGeometry(halfU, halfV), [halfU, halfV])
+  useEffect(() => () => { outlineGeometry.dispose() }, [outlineGeometry])
+
   const outlineQuaternion = useMemo(() => {
     if (!tilted) return new THREE.Quaternion()
-    return new THREE.Quaternion().setFromUnitVectors(
-      new THREE.Vector3(0, 0, 1),
+    // The fitted rectangle is measured in `u`/`v`, so the drawn one takes the
+    // same basis: local X is `u`, local Y is `v`, local Z the normal.
+    return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().makeBasis(
+      new THREE.Vector3(...tilted.u),
+      new THREE.Vector3(...tilted.v),
       new THREE.Vector3(...tilted.normal),
-    )
+    ))
   }, [tilted])
   const arrowQuaternion = useMemo(() => {
     if (!tilted) return new THREE.Quaternion()
@@ -403,11 +434,12 @@ export default function SectionPlaneHandle() {
 
   return (
     <group>
-      <group position={planePoint} quaternion={outlineQuaternion}>
-        <lineLoop geometry={outlineGeometry} renderOrder={1000} raycast={() => undefined}>
-          <lineBasicMaterial color={OUTLINE_COLOR} transparent opacity={0.35} depthTest={false} depthWrite={false} />
-        </lineLoop>
-      </group>
+      <SectionOutline
+        geometry={outlineGeometry}
+        center={outlineRect?.center ?? planePoint}
+        quaternion={outlineQuaternion}
+        color={OUTLINE_COLOR}
+      />
       <group position={planePoint} quaternion={arrowQuaternion}>
         <ScreenArrow color={color} headRef={headRef} pixelsPerWorld={pxToWorld} />
       </group>

@@ -4,12 +4,15 @@
 // already has (a builtin direction, a solved user plane, a planar face) rather
 // than authored into the document. This module is the pure half: given a source
 // and the scene's plane/face lookup, produce the normal, point and in-plane axes
-// the one shared THREE.Plane is built from.
+// the one shared THREE.Plane is built from. It also fits the faint guide
+// rectangle: the model's bounds projected onto those same axes.
 import * as THREE from 'three'
-import type { PlaneTransform } from '@/types/cad'
+import type { Feature, PartResult, PlaneTransform } from '@/types/cad'
 import { BUILTIN_PLANES } from '@/kernel/solverConstants'
 import { normalToFrame } from '@/kernel/types3d'
-import { cross, dot, scale, sub, type Vec3 } from '@/utils/vec3'
+import { add, cross, dot, scale, sub, type Vec3 } from '@/utils/vec3'
+import { computeVertexBounds, unionVertexBounds, type VertexBounds } from '@/utils/geometry/vertexBounds'
+import { isPartHiddenByFeature } from '@/utils/partRender'
 import type { BuiltinSectionPlaneId, SectionPlaneSource, SectionTilt } from './sectionTypes'
 import { NO_TILT, tiltedSectionFrame } from './sectionTilt'
 
@@ -130,6 +133,94 @@ export function offsetFramePoint(frame: SectionFrame, offset: number): [number, 
   const [nx, ny, nz] = frame.normal
   const [px, py, pz] = frame.point
   return [px + nx * offset, py + ny * offset, pz + nz * offset]
+}
+
+export interface SectionOutlineRect {
+  center: Vec3
+  halfU: number
+  halfV: number
+}
+
+/**
+ * The outline rectangle for a section plane: the model's bounds projected into
+ * the plane's own 2D axes, grown to include the plane anchor (where the arrow
+ * sits) and padded by a margin. Null when there is no geometry, and the caller
+ * then keeps a default size.
+ *
+ * The eight box corners are exact for a builtin plane and any axis-aligned user
+ * plane. A plane tilted against the model's axes over-estimates by at most the
+ * box's corner reach, which is acceptable for a guide outline and keeps the
+ * measurement cheap enough to repeat on every offset drag.
+ */
+export function sectionOutlineRect(
+  bounds: VertexBounds | null,
+  anchor: Vec3,
+  u: Vec3,
+  v: Vec3,
+): SectionOutlineRect | null {
+  if (!bounds) return null
+  const [minX, minY, minZ] = bounds.min
+  const [maxX, maxY, maxZ] = bounds.max
+
+  // The anchor starts the range, so the arrow's base is always inside the
+  // rectangle even when the plane source (the origin, a far-away user plane)
+  // sits outside the model.
+  let minS = 0, maxS = 0
+  let minT = 0, maxT = 0
+  for (let i = 0; i < 8; i++) {
+    const corner: Vec3 = [
+      i & 1 ? maxX : minX,
+      i & 2 ? maxY : minY,
+      i & 4 ? maxZ : minZ,
+    ]
+    const offset = sub(corner, anchor)
+    const s = dot(offset, u)
+    const t = dot(offset, v)
+    if (s < minS) minS = s
+    if (s > maxS) maxS = s
+    if (t < minT) minT = t
+    if (t > maxT) maxT = t
+  }
+
+  const midS = (minS + maxS) / 2
+  const midT = (minT + maxT) / 2
+  // A tenth of the larger side on every side, with a floor of one world unit:
+  // a thin plate seen edge-on would otherwise get a zero-width rectangle, and a
+  // tiny part an invisible border.
+  const margin = Math.max(0.1 * Math.max(maxS - minS, maxT - minT), 1)
+  return {
+    center: add(anchor, add(scale(u, midS), scale(v, midT))),
+    halfU: (maxS - minS) / 2 + margin,
+    halfV: (maxT - minT) / 2 + margin,
+  }
+}
+
+export interface SectionOutlineParts {
+  parts: Record<string, PartResult> | undefined
+  features: Feature[] | undefined
+  visibleParts: Set<string> | undefined
+  visibleFeatures: ReadonlySet<string> | undefined
+}
+
+/**
+ * The union of the bounds of the parts the viewport draws. A part hidden by its
+ * part row or by its creating feature's eye is skipped while another part is in
+ * view; when every part is hidden the union still measures all of them, because
+ * hiding the model must not shrink the section guide to the default square.
+ * Null when no part has a solved mesh (a sketch-only document, or before the
+ * first solve).
+ */
+export function sectionOutlineBounds(model: SectionOutlineParts): VertexBounds | null {
+  const { parts, features, visibleParts, visibleFeatures } = model
+  const meshed = Object.entries(parts ?? {}).filter(([, part]) => part.mesh?.vertices)
+  const drawn = meshed.filter(([partId, part]) =>
+    (visibleParts === undefined || visibleParts.has(partId))
+    && !isPartHiddenByFeature(part.created_by, features, visibleFeatures))
+  let union: VertexBounds | null = null
+  for (const [, part] of drawn.length > 0 ? drawn : meshed) {
+    union = unionVertexBounds(union, computeVertexBounds(part.mesh!.vertices))
+  }
+  return union
 }
 
 /**

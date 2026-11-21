@@ -12,6 +12,8 @@ import { DEFAULT_SECTION_STATE, useSectionStore } from '@/stores/sectionStore'
 import { TurntableControls } from '@/components/Viewport/turntable'
 import { createPointerClaims } from '@/viewport/pointerClaim'
 import { installPointerEventStub } from '@/testing/pointerEventStub'
+import { computeVertexBounds } from '@/utils/geometry/vertexBounds'
+import type { PartResult } from '@/types/cad'
 
 interface HandleCallbacks {
   onPointerDown: (x: number, y: number) => void
@@ -31,6 +33,9 @@ const seams = vi.hoisted(() => {
     // The dial and the ring line are drei renderers; their props are all this
     // test needs to see.
     dial: null as Record<string, unknown> | null,
+    // The outline is a presentational leaf: capturing its props is how the
+    // fitted geometry, centre and pose stay visible without a WebGL scene.
+    outline: null as Record<string, unknown> | null,
     closestParam: vi.fn(),
     camera: null as unknown as THREE.OrthographicCamera,
     gl: { domElement },
@@ -63,6 +68,16 @@ vi.mock('@/components/Viewport/GizmoRing', () => ({ default: () => null }))
 vi.mock('@/components/Viewport/assembly/AngleDial', () => ({
   default: (props: Record<string, unknown>) => { seams.dial = props; return null },
 }))
+vi.mock('@/components/Viewport/SectionOutline', () => ({
+  default: (props: Record<string, unknown>) => { seams.outline = props; return null },
+}))
+
+// The bounds union is the expensive half of the fit; this counts how often it
+// runs so a drag can be shown to leave it alone.
+vi.mock('@/utils/geometry/vertexBounds', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/utils/geometry/vertexBounds')>()
+  return { ...actual, computeVertexBounds: vi.fn(actual.computeVertexBounds) }
+})
 
 vi.mock('@/utils/gizmoMath', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/utils/gizmoMath')>()),
@@ -73,6 +88,7 @@ import SectionPlaneHandle from '@/components/Viewport/SectionPlaneHandle'
 import {
   SECTION_HANDLE_FEATURE_ID, SECTION_HANDLE_KEY, SECTION_PITCH_RING_KEY, SECTION_YAW_RING_KEY,
 } from '@/viewport/sectionHandle'
+import { builtinSectionFrame, sectionOutlineRect, tiltedSectionFrame } from '@/viewport/sectionPlane'
 import { GIZMO_PIXELS, RING_RADIUS } from '@/utils/gizmoPickGeometry'
 
 const DEG = Math.PI / 180
@@ -91,6 +107,37 @@ function registeredKeys(): string[] {
 
 function pointerMove(clientX: number, clientY: number): void {
   act(() => { window.dispatchEvent(new MouseEvent('pointermove', { clientX, clientY })) })
+}
+
+// A solved body whose vertices are the eight corners of an axis-aligned cube.
+function cubePart(partId: string, size: number): PartResult {
+  const vertices: [number, number, number][] = []
+  for (const x of [0, size]) for (const y of [0, size]) for (const z of [0, size]) vertices.push([x, y, z])
+  return {
+    id: partId,
+    created_by: 'extrude_1',
+    modified_by: [],
+    mesh: { vertices, faces: [] },
+  }
+}
+
+// The outline's own width and height, in the rectangle's local axes.
+function outlineSize(): { u: number; v: number } {
+  expect(seams.outline, 'no outline drawn').not.toBeNull()
+  const geometry = seams.outline!.geometry as THREE.BufferGeometry
+  const array = geometry.getAttribute('position').array as ArrayLike<number>
+  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity
+  for (let i = 0; i < array.length; i += 3) {
+    if (array[i] < minX) minX = array[i]
+    if (array[i] > maxX) maxX = array[i]
+    if (array[i + 1] < minY) minY = array[i + 1]
+    if (array[i + 1] > maxY) maxY = array[i + 1]
+  }
+  return { u: maxX - minX, v: maxY - minY }
+}
+
+function outlineCenter(): number[] {
+  return seams.outline!.center as number[]
 }
 
 // A camera looking straight at the front plane's pitch ring (about +X), so the
@@ -116,7 +163,9 @@ beforeEach(() => {
   seams.registrations = []
   seams.callbacks = new Map()
   seams.dial = null
+  seams.outline = null
   seams.closestParam.mockReset()
+  vi.mocked(computeVertexBounds).mockClear()
   seams.camera = new THREE.OrthographicCamera(-400, 400, 300, -300, -1000, 1000)
   seams.camera.position.set(20, 20, 100)
   seams.camera.updateProjectionMatrix()
@@ -328,5 +377,103 @@ describe('SectionPlaneHandle', () => {
     render(<SectionPlaneHandle />)
     expect(registration(SECTION_HANDLE_KEY)).toMatchObject({ enabled: false })
     expect(seams.callbacks.size).toBe(0)
+  })
+
+  it('fits the outline to a 10 mm part with its margin, not to the fixed square', () => {
+    usePartEditorStore.setState({ parts: { body_1: cubePart('body_1', 10) } })
+    useSectionStore.setState({ enabled: true })
+    render(<SectionPlaneHandle />)
+
+    const { u, v } = outlineSize()
+    // 10 mm plus the 10% (floored at 1) margin on each side.
+    expect(u).toBeCloseTo(12, 6)
+    expect(v).toBeCloseTo(12, 6)
+    expect(outlineCenter()[0]).toBeCloseTo(5, 6)
+    expect(outlineCenter()[1]).toBeCloseTo(5, 6)
+    expect(outlineCenter()[2]).toBeCloseTo(0, 6)
+  })
+
+  it('rebuilds the outline when the model grows', () => {
+    usePartEditorStore.setState({ parts: { body_1: cubePart('body_1', 10) } })
+    useSectionStore.setState({ enabled: true })
+    render(<SectionPlaneHandle />)
+    const small = seams.outline!.geometry
+
+    act(() => { usePartEditorStore.setState({ parts: { body_1: cubePart('body_1', 1000) } }) })
+
+    expect(outlineSize().u).toBeCloseTo(1200, 6)
+    expect(outlineSize().v).toBeCloseTo(1200, 6)
+    expect(seams.outline!.geometry).not.toBe(small)
+  })
+
+  it('does not re-measure the bodies while the offset drags', () => {
+    usePartEditorStore.setState({ parts: { body_1: cubePart('body_1', 10) } })
+    useSectionStore.setState({ enabled: true })
+    render(<SectionPlaneHandle />)
+    expect(vi.mocked(computeVertexBounds)).toHaveBeenCalledTimes(1)
+
+    seams.closestParam.mockReturnValueOnce(5).mockReturnValueOnce(7)
+    act(() => { seams.callbacks.get(SECTION_HANDLE_KEY)!.onPointerDown(100, 100) })
+    pointerMove(130, 100)
+
+    expect(useSectionStore.getState().offset).toBe(2)
+    expect(outlineCenter()[2]).toBeCloseTo(2, 6)
+    // The rectangle moved with the plane, but the vertex lists were not read
+    // again: only the eight-corner projection depends on the offset.
+    expect(vi.mocked(computeVertexBounds)).toHaveBeenCalledTimes(1)
+    act(() => { window.dispatchEvent(new MouseEvent('pointerup')) })
+  })
+
+  it('keeps the 120 default square when there is no geometry', () => {
+    useSectionStore.setState({ enabled: true })
+    render(<SectionPlaneHandle />)
+
+    const { u, v } = outlineSize()
+    expect(u).toBeCloseTo(120, 6)
+    expect(v).toBeCloseTo(120, 6)
+    expect(outlineCenter()).toEqual([0, 0, 0])
+  })
+
+  it('ignores a hidden part while a visible one is drawn', () => {
+    usePartEditorStore.setState({
+      parts: { big: cubePart('big', 1000), small: cubePart('small', 10) },
+      visibleParts: new Set(['small']),
+    })
+    useSectionStore.setState({ enabled: true })
+    render(<SectionPlaneHandle />)
+    expect(outlineSize().u).toBeCloseTo(12, 6)
+
+    act(() => { usePartEditorStore.setState({ visibleParts: new Set(['big']) }) })
+    expect(outlineSize().u).toBeCloseTo(1200, 6)
+  })
+
+  it("draws the fitted rectangle on the tilted plane's own axes", () => {
+    usePartEditorStore.setState({ parts: { body_1: cubePart('body_1', 10) } })
+    const tilt = { pitch: 45 * DEG, yaw: 0 }
+    useSectionStore.setState({ enabled: true, tilt })
+    render(<SectionPlaneHandle />)
+
+    const tilted = tiltedSectionFrame(builtinSectionFrame('front'), tilt)
+    const rect = sectionOutlineRect(
+      { min: [0, 0, 0], max: [10, 10, 10] },
+      [0, 0, 0],
+      tilted.u,
+      tilted.v,
+    )!
+    const { u, v } = outlineSize()
+    // The buffer keys on the rounded extents, so the span can differ from the
+    // exact fit by under the rounding step.
+    expect(u).toBeCloseTo(2 * rect.halfU, 2)
+    expect(v).toBeCloseTo(2 * rect.halfV, 2)
+    for (let i = 0; i < 3; i++) expect(outlineCenter()[i]).toBeCloseTo(rect.center[i], 6)
+
+    // The drawn local X/Y are the very axes the fit measured in.
+    const quaternion = seams.outline!.quaternion as THREE.Quaternion
+    const localX = new THREE.Vector3(1, 0, 0).applyQuaternion(quaternion)
+    const localY = new THREE.Vector3(0, 1, 0).applyQuaternion(quaternion)
+    for (let i = 0; i < 3; i++) {
+      expect(localX.getComponent(i)).toBeCloseTo(tilted.u[i], 6)
+      expect(localY.getComponent(i)).toBeCloseTo(tilted.v[i], 6)
+    }
   })
 })

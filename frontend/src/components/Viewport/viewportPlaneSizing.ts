@@ -1,5 +1,5 @@
 import type { PartResult, Feature, PlaneDef } from '@/types/cad'
-import { computeVertexBounds } from '@/components/Viewport/cameraController'
+import { computeVertexBounds } from '@/utils/geometry/vertexBounds'
 import { DEFAULT_PLANE_SIZE } from '@/components/Viewport/planeConstants'
 
 // Plane sizing and the active-sketch-plane lookup are pure (geometry and
