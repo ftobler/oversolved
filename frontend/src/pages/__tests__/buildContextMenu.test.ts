@@ -939,6 +939,159 @@ describe('sketch board commands', () => {
   })
 })
 
+describe('board icons', () => {
+  // Every slot carries its own picture: a shared icon made two commands look
+  // like one, and a toggle showed the same eye in both of its states.
+  function expectDistinctIcons(items: ContextMenuItem[]) {
+    const icons = items.map(i => i.icon)
+    expect(icons.every(Boolean)).toBe(true)
+    expect(new Set(icons).size).toBe(icons.length)
+  }
+
+  const visibleSketch = [makeFeature({ id: 'sketch1', kind: 'sketch' })]
+  const suppressedSketch = [makeFeature({ id: 'sketch1', kind: 'sketch', suppressed: true })]
+
+  const partFixtures: Array<[string, BuildContextMenuInput]> = [
+    ['visible feature', defaultInput({ targetId: 'sketch1', features: visibleSketch, visibleFeatures: new Set(['sketch1']) })],
+    ['hidden feature', defaultInput({ targetId: 'sketch1', features: visibleSketch, visibleFeatures: new Set() })],
+    ['visible suppressed feature', defaultInput({ targetId: 'sketch1', features: suppressedSketch, visibleFeatures: new Set(['sketch1']) })],
+    ['hidden suppressed feature', defaultInput({ targetId: 'sketch1', features: suppressedSketch, visibleFeatures: new Set() })],
+    ['visible body', defaultInput({ targetId: 'body:b1', partLabels: { b1: 'Body 1' } })],
+    ['hidden body', defaultInput({ targetId: 'body:b1', partLabels: { b1: 'Body 1' }, visibleParts: new Set() })],
+    ['dangling content', defaultInput({ hasDanglingContent: true, targetPartId: 'b1', partLabels: { b1: 'Body 1' } })],
+    ['empty viewport', defaultInput()],
+  ]
+
+  it.each(partFixtures)('gives every part-board slot its own icon: %s', (_state, fixture) => {
+    expectDistinctIcons(buildContextMenu(fixture, defaultCallbacks()).items)
+  })
+
+  const sketchFixtures: Array<[string, BuildContextMenuInput]> = [
+    ['visible sketch, tiles on', defaultInput({
+      features: planeAndSketch,
+      visibleFeatures: new Set(['sketch1']),
+      activeSketchFeatureId: 'sketch1',
+    })],
+    ['hidden sketch, tiles on', defaultInput({
+      features: planeAndSketch,
+      visibleFeatures: new Set(),
+      activeSketchFeatureId: 'sketch1',
+    })],
+    ['visible sketch, tiles off', defaultInput({
+      features: planeAndSketch,
+      visibleFeatures: new Set(['sketch1']),
+      activeSketchFeatureId: 'sketch1',
+      showConstraintTiles: false,
+    })],
+    ['hidden sketch, tiles off', defaultInput({
+      features: planeAndSketch,
+      visibleFeatures: new Set(),
+      activeSketchFeatureId: 'sketch1',
+      showConstraintTiles: false,
+    })],
+    ['projected pick', defaultInput({
+      features: planeAndSketch,
+      visibleFeatures: new Set(['sketch1']),
+      activeSketchFeatureId: 'sketch1',
+      projectedTargetIds: ['entity:sketch1:e1'],
+    })],
+  ]
+
+  it.each(sketchFixtures)('gives every sketch-board slot its own icon: %s', (_state, fixture) => {
+    expectDistinctIcons(buildContextMenu(fixture, defaultCallbacks()).items)
+  })
+
+  it('changes the eye between Hide and Show', () => {
+    const featureVisible = buildContextMenu(
+      defaultInput({ targetId: 'sketch1', features: visibleSketch, visibleFeatures: new Set(['sketch1']) }),
+      defaultCallbacks(),
+    )
+    const featureHidden = buildContextMenu(
+      defaultInput({ targetId: 'sketch1', features: visibleSketch, visibleFeatures: new Set() }),
+      defaultCallbacks(),
+    )
+    expect(findLabel(featureVisible.items, 'Hide')!.icon).not.toBe(findLabel(featureHidden.items, 'Show')!.icon)
+
+    const partVisible = buildContextMenu(defaultInput({ targetId: 'body:b1' }), defaultCallbacks())
+    const partHidden = buildContextMenu(
+      defaultInput({ targetId: 'body:b1', visibleParts: new Set() }),
+      defaultCallbacks(),
+    )
+    expect(findLabel(partVisible.items, 'Hide')!.icon).not.toBe(findLabel(partHidden.items, 'Show')!.icon)
+  })
+
+  it('changes the glyph between Suppress and Unsuppress', () => {
+    const active = buildContextMenu(
+      defaultInput({ targetId: 'sketch1', features: visibleSketch, visibleFeatures: new Set(['sketch1']) }),
+      defaultCallbacks(),
+    )
+    const suppressed = buildContextMenu(
+      defaultInput({ targetId: 'sketch1', features: suppressedSketch, visibleFeatures: new Set(['sketch1']) }),
+      defaultCallbacks(),
+    )
+    expect(findLabel(active.items, 'Suppress')!.icon).not.toBe(findLabel(suppressed.items, 'Unsuppress')!.icon)
+  })
+
+  it('changes the eye between the sketch Hide and Show', () => {
+    const visible = buildContextMenu(
+      defaultInput({ features: planeAndSketch, visibleFeatures: new Set(['sketch1']), activeSketchFeatureId: 'sketch1' }),
+      defaultCallbacks(),
+    )
+    const hidden = buildContextMenu(
+      defaultInput({ features: planeAndSketch, visibleFeatures: new Set(), activeSketchFeatureId: 'sketch1' }),
+      defaultCallbacks(),
+    )
+    expect(findLabel(visible.items, 'Hide')!.icon).not.toBe(findLabel(hidden.items, 'Show')!.icon)
+  })
+
+  it('changes the tile between Show Constraints and Hide Constraints', () => {
+    const shown = buildContextMenu(
+      defaultInput({ activeSketchFeatureId: 'sketch1', showConstraintTiles: true }),
+      defaultCallbacks(),
+    )
+    const hidden = buildContextMenu(
+      defaultInput({ activeSketchFeatureId: 'sketch1', showConstraintTiles: false }),
+      defaultCallbacks(),
+    )
+    expect(findLabel(shown.items, 'Hide Constraints')!.icon)
+      .not.toBe(findLabel(hidden.items, 'Show Constraints')!.icon)
+  })
+
+  it('keeps a command on the same icon in both boards', () => {
+    const part = buildContextMenu(
+      defaultInput({ targetId: 'sketch1', features: visibleSketch, visibleFeatures: new Set(['sketch1']) }),
+      defaultCallbacks(),
+    )
+    const sketch = buildContextMenu(
+      defaultInput({
+        targetId: 'sketch1',
+        features: visibleSketch,
+        visibleFeatures: new Set(['sketch1']),
+        activeSketchFeatureId: 'sketch1',
+      }),
+      defaultCallbacks(),
+    )
+    for (const label of ['Rebuild', 'Normal to', 'Hide']) {
+      expect(findLabel(sketch.items, label)!.icon).toBe(findLabel(part.items, label)!.icon)
+    }
+
+    const partHidden = buildContextMenu(
+      defaultInput({ targetId: 'sketch1', features: visibleSketch, visibleFeatures: new Set() }),
+      defaultCallbacks(),
+    )
+    const sketchHidden = buildContextMenu(
+      defaultInput({
+        targetId: 'sketch1',
+        features: visibleSketch,
+        visibleFeatures: new Set(),
+        activeSketchFeatureId: 'sketch1',
+      }),
+      defaultCallbacks(),
+    )
+    expect(findLabel(sketchHidden.items, 'Show')!.icon).toBe(findLabel(partHidden.items, 'Show')!.icon)
+  })
+})
+
 // The open editor card asks this same predicate before it draws its Rename
 // button, so a built-in and the sketch under edit stay off limits at both ends.
 describe('canManageFeature', () => {

@@ -17,9 +17,20 @@ def context_edit(ctx):
     _pencil(ctx)
 
 
-@icon("frontend/src/assets/icons/context-color.svg", angle=120)
+@icon("frontend/src/assets/icons/context-color.svg")
 def context_color(ctx):
-    _pencil(ctx)
+    """Icon for Color: a paint drop, not the pencil, because colour is a
+    property of the body rather than an edit of its geometry."""
+    ctx.move_to(0.5, 0.12)
+    ctx.curve_to(0.58, 0.30, 0.80, 0.46, 0.80, 0.63)
+    ctx.arc(0.5, 0.63, 0.30, 0, math.pi)
+    ctx.curve_to(0.20, 0.46, 0.42, 0.30, 0.5, 0.12)
+    ctx.close_path()
+    stroke(ctx, 1.5)
+
+    # The shine is what separates a paint drop from a plain teardrop.
+    ctx.arc(0.38, 0.60, 0.10, math.radians(190), math.radians(255))
+    stroke(ctx, 1.0)
 
 
 @icon("frontend/src/assets/icons/feature-origin.svg")
@@ -155,6 +166,35 @@ def context_rebuild(ctx):
     _arrowhead(ctx, end_x + 0.05, end_y + 0.15, math.degrees(end_angle) + 80, px(8))
 
 
+@icon("frontend/src/assets/icons/context-cleanup.svg")
+def context_cleanup(ctx):
+    """Icon for the dangling-content cleanup: a broom, because leftovers are
+    swept out rather than recomputed the way the circular arrow means."""
+    ctx.move_to(0.84, 0.10)
+    ctx.line_to(0.56, 0.46)
+    stroke(ctx, 2)
+
+    # The head is a splayed wedge: the band across the handle, the wider
+    # bristle tips, and the two side edges that make it a brush.
+    bx0, by0 = 0.37, 0.35
+    bx1, by1 = 0.69, 0.59
+    tx0, ty0 = 0.15, 0.63
+    tx1, ty1 = 0.55, 0.87
+    ctx.move_to(bx0, by0)
+    ctx.line_to(bx1, by1)
+    ctx.line_to(tx1, ty1)
+    ctx.line_to(tx0, ty0)
+    ctx.close_path()
+    stroke(ctx, 1.5)
+
+    for t in (0.33, 0.67):
+        p0 = (bx0 + (bx1 - bx0) * t, by0 + (by1 - by0) * t)
+        p1 = (tx0 + (tx1 - tx0) * t, ty0 + (ty1 - ty0) * t)
+        ctx.move_to(*p0)
+        ctx.line_to(*p1)
+    stroke(ctx, 1.5)
+
+
 @icon("frontend/src/assets/icons/context-exit.svg")
 def context_exit(ctx):
     """Icon for Exit Sketch context menu entry: door + arrow."""
@@ -173,10 +213,9 @@ def context_exit(ctx):
     _arrowhead(ctx, 0.8, 0.5, 0, px(4))
 
 
-@icon("frontend/src/assets/icons/context-hide.svg")
-def context_hide(ctx):
-    """Icon for Hide context menu entry: eye with strikethrough."""
-    # Eye outline
+def _eye(ctx):
+    # The open eye both visibility states are built from, so Show and Hide are
+    # one drawing apart.
     ctx.arc(0.5, 0.5, 0.2, 0, 2 * math.pi)
     stroke(ctx, 1.5)
 
@@ -184,16 +223,57 @@ def context_hide(ctx):
     ctx.arc(0.5, 0.5, px(2), 0, 2 * math.pi)
     ctx.fill()
 
+
+@icon("frontend/src/assets/icons/context-hide.svg")
+def context_hide(ctx):
+    """Icon for Hide context menu entry: eye with strikethrough."""
+    _eye(ctx)
+
     # Diagonal strikethrough
     ctx.move_to(0.25, 0.25)
     ctx.line_to(0.75, 0.75)
     stroke(ctx, 1.5)
 
 
+@icon("frontend/src/assets/icons/context-show.svg")
+def context_show(ctx):
+    """Icon for Show context menu entry: the same eye, unstruck."""
+    _eye(ctx)
+
+
 @icon("frontend/src/assets/icons/context-delete.svg")
 def context_delete(ctx):
     """Icon for Delete context menu entry: trash can."""
     _trashcan(ctx)
+
+
+def _suppress_block(ctx):
+    # The feature block both suppression states sit in, so the glyph is what
+    # tells the two apart at 16px.
+    ctx.rectangle(0.16, 0.16, 0.68, 0.68)
+    stroke(ctx, 1.5)
+
+
+@icon("frontend/src/assets/icons/context-suppress.svg")
+def context_suppress(ctx):
+    """Icon for Suppress: a pause bar in the feature block, which sets the
+    feature aside without hiding it."""
+    _suppress_block(ctx)
+    for x in (0.36, 0.55):
+        ctx.rectangle(x, 0.34, 0.09, 0.32)
+        ctx.fill()
+
+
+@icon("frontend/src/assets/icons/context-unsuppress.svg")
+def context_unsuppress(ctx):
+    """Icon for Unsuppress: the same block with a play triangle, so the feature
+    runs again."""
+    _suppress_block(ctx)
+    ctx.move_to(0.38, 0.32)
+    ctx.line_to(0.38, 0.68)
+    ctx.line_to(0.67, 0.5)
+    ctx.close_path()
+    ctx.fill()
 
 
 @icon("frontend/src/assets/icons/feature-delete-body.svg")
@@ -488,6 +568,49 @@ def context_camera(ctx):
     ctx.line_to(0.333333, 0.25)
     ctx.close_path()
     ctx.fill()
+
+
+@icon("frontend/src/assets/icons/context-normal-sketch.svg")
+def context_normal_sketch(ctx):
+    """Icon for Normal to sketch: the sketch plane at a slant with its normal
+    coming out toward the viewer, so it cannot read as the camera."""
+    _draw_plane_grid(ctx, 0.10, 0.78, 0.60, 0.86, 0.88, 0.58, 0.38, 0.50)
+
+    ctx.move_to(0.50, 0.64)
+    ctx.line_to(0.50, 0.26)
+    stroke(ctx, 1.5)
+    _arrowhead(ctx, 0.50, 0.16, -90, px(6))
+
+
+def _constraint_tile(ctx):
+    # The tile frame the constraint marks are drawn in, then the coincident
+    # mark: a point on a line with a dotted line leaving it.
+    ctx.rectangle(0.14, 0.14, 0.72, 0.72)
+    stroke(ctx, 1.5)
+
+    ctx.move_to(0.24, 0.66)
+    ctx.line_to(0.76, 0.66)
+    stroke(ctx, 1.5)
+    ctx.arc(0.50, 0.66, px(2), 0, 2 * math.pi)
+    ctx.fill()
+    draw_dotted_line(ctx, 0.50, 0.66, 0.36, 0.28, 2)
+
+
+@icon("frontend/src/assets/icons/context-constraints-show.svg")
+def context_constraints_show(ctx):
+    """Icon for Show Constraints: a constraint tile on show."""
+    _constraint_tile(ctx)
+
+
+@icon("frontend/src/assets/icons/context-constraints-hide.svg")
+def context_constraints_hide(ctx):
+    """Icon for Hide Constraints: the same tile struck through, because the
+    marks are hidden rather than deleted."""
+    _constraint_tile(ctx)
+
+    ctx.move_to(0.16, 0.84)
+    ctx.line_to(0.84, 0.16)
+    stroke(ctx, 2)
 
 
 @icon("frontend/src/assets/icons/feature-curve-pattern.svg")
