@@ -26,6 +26,13 @@
   --brand-weight: 700;
   --brand-tracking: normal;
 
+  /* One scrollbar for the whole app: no track, a thin muted thumb that lights
+     up under the pointer. The size is the WebKit/Blink width; Firefox only
+     offers the `thin` keyword, which is close to it. */
+  --scrollbar-size: 6px;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.32);
+
   font: 18px/145% var(--sans);
   color-scheme: light dark;
   color: var(--text);
@@ -71,6 +78,36 @@
 
 body {
   margin: 0;
+}
+
+/* Firefox (and any engine without the WebKit pseudo-elements). Chromium 121+
+   also understands these, but there it would switch off the ::-webkit rules
+   below and lose the exact width, so they are scoped away from it. */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+  }
+}
+
+::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+::-webkit-scrollbar-button {
+  display: none;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: calc(var(--scrollbar-size) / 2);
+}
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active {
+  background: var(--scrollbar-thumb-hover);
 }
 
 h1,
