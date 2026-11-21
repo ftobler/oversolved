@@ -7,7 +7,7 @@ import type { LengthUnit, PartDoc, PartFeature } from '@/types/cad'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { findFeature, warn, MutationRefusal } from './helpers'
 import { ensurePatternSources, roundNumericFields, sourceListSubOf, storedNumber, type FieldBag } from './featureDefs'
-import { isValidVariableName } from '@/kernel/features/variable'
+import { variableRenameProblem } from '@/kernel/features/variable'
 import { allConsumedSketchIds } from '@/utils/query/consumedSketches'
 import { docVisibleFeatureIds, isPlaneVisibilityTarget } from '@/utils/featureVisibility'
 import { isSketchClassFeature } from '@/utils/sketchClass'
@@ -189,15 +189,12 @@ export function applyRenameFeature(doc: PartDoc, featureId: string, label: strin
   const feature = findFeature(doc, featureId)
   if (!feature) return
   const trimmed = label.trim()
-  // A variable's label is its reference name: enforce identifier validity and
-  // uniqueness, silently rejecting an invalid or colliding rename (MVP: no UI
-  // hint yet). An empty label is also rejected (variables must stay named).
+  // A variable's label is its reference name: the shared rule names why an
+  // invalid or colliding rename is refused. Throwing is what turns the old
+  // silent drop into the refusal toast (or a refused headless step).
   if (feature.kind === 'variable') {
-    if (!isValidVariableName(trimmed)) return
-    const collision = (doc.features ?? []).some(
-      f => f.id !== featureId && f.kind === 'variable' && f.label === trimmed,
-    )
-    if (collision) return
+    const problem = variableRenameProblem(doc.features ?? [], featureId, trimmed)
+    if (problem !== null) throw new MutationRefusal(problem)
     feature.label = trimmed
     return
   }
