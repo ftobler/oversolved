@@ -5,11 +5,9 @@
 
 export interface LiveValuePump {
   /** Offer a fresh value. Sent at once when idle; otherwise it replaces the
-   *  waiting value, so only the newest survives. */
+   *  waiting value, so only the newest survives. Offering the value that is
+   *  already in flight drops whatever was waiting: the pointer came back. */
   offer(value: number): void
-  /** Send the last value once the in-flight one settles, and resolve after it
-   *  has settled too. A value equal to the last sent one sends nothing. */
-  flush(value: number): Promise<void>
   /** Drop everything waiting. An in-flight send still settles, but its
    *  continuation sends nothing more. */
   cancel(): void
@@ -19,39 +17,28 @@ export interface LiveValuePump {
  * `send` resolves when the solve its value triggered has settled; a non-promise
  * return counts as settled at once. Values are already rounded by the caller,
  * so an equal offer is a pointer jittering inside one commit step and is
- * dropped instead of rebuilding.
- *
- * A gesture release does not go through `flush`: it cancels the pump and sends
- * its final value directly (see FeatureHandles), because the edit session can
- * close before an in-flight solve settles and the release must land inside it.
- * `flush` is the waiting contract for a caller that has no such boundary.
+ * dropped instead of rebuilding. A rejected send is a failed solve the solver
+ * already reports, so it only releases the next value; a synchronous throw is
+ * a caller bug and is surfaced once.
  */
 export function createLiveValuePump(send: (value: number) => unknown): LiveValuePump {
   let inFlight: Promise<unknown> | null = null
   let lastSent: number | null = null
   let waiting: number | null = null
   let cancelled = false
-  let flushTarget: number | null = null
-  let flushResolve: (() => void) | null = null
-  // The flush target was handed to send and its settle completes the flush.
-  let flushSent = false
-
-  function settleFlush(): void {
-    const resolve = flushResolve
-    flushResolve = null
-    flushTarget = null
-    flushSent = false
-    resolve?.()
-  }
+  let reportedThrow = false
 
   function start(value: number): void {
     lastSent = value
     let settled: Promise<unknown>
     try {
-      // Promise.resolve covers both a synchronous send and a non-promise one,
-      // and turns a throwing send into a settled pump rather than a dead one.
+      // Promise.resolve covers both a synchronous send and a non-promise one.
       settled = Promise.resolve(send(value))
-    } catch {
+    } catch (error) {
+      if (!reportedThrow) {
+        reportedThrow = true
+        console.error('[liveValuePump] send threw; the drag continues without it', error)
+      }
       settled = Promise.resolve()
     }
     inFlight = settled
@@ -64,59 +51,30 @@ export function createLiveValuePump(send: (value: number) => unknown): LiveValue
   }
 
   function pump(): void {
-    if (cancelled) {
-      // A cancel during a flush must not leave its caller hanging.
-      if (flushResolve !== null) settleFlush()
-      return
-    }
-    if (inFlight !== null) return
-    if (flushTarget !== null) {
-      const target = flushTarget
-      flushTarget = null
-      if (target === lastSent) {
-        settleFlush()
-        return
-      }
-      flushSent = true
-      start(target)
-      return
-    }
-    if (waiting !== null) {
-      const value = waiting
-      waiting = null
-      if (value !== lastSent) start(value)
-      else pump()
-      return
-    }
-    if (flushSent) settleFlush()
+    if (cancelled || inFlight !== null || waiting === null) return
+    const value = waiting
+    waiting = null
+    // `offer` already drops a value equal to the last sent one; staying total
+    // here keeps that invariant from sending a duplicate if it ever changes.
+    if (value !== lastSent) start(value)
   }
 
   return {
     offer(value) {
-      if (cancelled || value === lastSent) return
+      if (cancelled) return
+      // The pointer returned to the value the in-flight solve is already
+      // building: the waiting value is stale, and sending it after the flight
+      // would rebuild the body at the old value while the arrow reads this one.
+      if (value === lastSent) {
+        waiting = null
+        return
+      }
       waiting = value
       pump()
-    },
-    flush(value) {
-      if (cancelled) return Promise.resolve()
-      // The flush is the last word: a value still waiting is superseded.
-      waiting = null
-      return new Promise<void>(resolve => {
-        if (inFlight === null && value === lastSent) {
-          resolve()
-          return
-        }
-        flushResolve = resolve
-        flushTarget = value
-        pump()
-      })
     },
     cancel() {
       cancelled = true
       waiting = null
-      flushTarget = null
-      flushSent = false
-      if (flushResolve !== null) settleFlush()
     },
   }
 }

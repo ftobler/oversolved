@@ -1141,6 +1141,10 @@ export default function Part() {
     // The constraint command projects a picked body edge by its curve kind; the
     // dimension tool reads the same fact from the hover instead.
     setSketchCallback('resolveEdgeKind', (query: string) => findEdgeKindForQuery(query) ?? null)
+    // The feature arrow asks this before restoring a field on unmount: writing
+    // into a session OK or Cancel already closed would be a second undo entry
+    // or a dirty rewound document.
+    setSketchCallback('isEditSessionOpen', () => session.transactions().some(txn => txn.kind === 'edit'))
     // The delete action's freeze route reads the live document and the solved
     // member rows through this same registration. It must live here with the
     // ports the teardown clears: a separate effect would not re-run when this

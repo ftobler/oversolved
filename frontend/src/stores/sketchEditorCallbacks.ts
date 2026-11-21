@@ -40,6 +40,11 @@ export const sketchCallbacks: {
   // the body dispatch tables. Absent in a headless store use, where an edge
   // projects with the line default.
   resolveEdgeKind: ((query: string) => string | null) | null
+  // Whether an edit transaction is open. A feature arrow's unmount restore
+  // must not write into a session that OK, Cancel or a command already closed:
+  // it would land as a second undo entry or dirty a rewound document. Absent in
+  // a headless store use, where the arrow's own tests keep the restore.
+  isEditSessionOpen: (() => boolean) | null
   // The solved face-projection members for one sketch, so the delete action can
   // freeze them without importing the published part-editor store (this store
   // stays free of the session and the solver). Registered by the Part page's
@@ -73,6 +78,7 @@ export const sketchCallbacks: {
   getProjectedSources: null,
   getProjectionMembers: null,
   resolveEdgeKind: null,
+  isEditSessionOpen: null,
   beginBrepProjection: null,
   cancelBrepProjection: null,
   checkRedundantAdd: null,
@@ -117,6 +123,7 @@ export function setSketchCallback(key: 'getDoc', cb: (() => PartDoc | null) | nu
 export function setSketchCallback(key: 'getProjectedSources', cb: ((featureId: string) => readonly RecordedProjection[] | null) | null): void
 export function setSketchCallback(key: 'getProjectionMembers', cb: ((featureId: string) => Record<string, ProjectionMemberReportData> | null) | null): void
 export function setSketchCallback(key: 'resolveEdgeKind', cb: ((query: string) => string | null) | null): void
+export function setSketchCallback(key: 'isEditSessionOpen', cb: (() => boolean) | null): void
 export function setSketchCallback(key: 'beginBrepProjection' | 'cancelBrepProjection', cb: (() => void) | null): void
 export function setSketchCallback(key: 'checkRedundantAdd', cb: ((pending: PendingConstraint) => boolean | null) | null): void
 export function setSketchCallback(key: 'showMessage', cb: ((payload: SketchMessage) => void) | null): void
@@ -143,6 +150,7 @@ const SESSION_CALLBACK_KEYS = [
   'getProjectedSources',
   'getProjectionMembers',
   'resolveEdgeKind',
+  'isEditSessionOpen',
   'beginBrepProjection',
   'cancelBrepProjection',
   'checkRedundantAdd',

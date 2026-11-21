@@ -75,7 +75,16 @@ function emitFieldMutation(
  * press-time anchor, direction, scale and value, which is everything the arrow
  * needs to stay drawn and to keep mapping the pointer to the same value.
  */
-function dragHandleDescriptor(drag: FeatureHandleDrag): FeatureHandleData {
+function dragHandleDescriptor(drag: {
+  field: string
+  startValue: number
+  axisOrigin: [number, number, number]
+  axisDir: [number, number, number]
+  unitScale: number
+  min: number
+  max?: number
+  handleKind?: 'linear' | 'angular'
+}): FeatureHandleData {
   return {
     kind: drag.handleKind ?? 'linear',
     field: drag.field,
@@ -108,12 +117,36 @@ export default function FeatureHandles() {
   // A live solve of the edited feature can land without a handle (a failing
   // value). The gesture's own press-time descriptor is kept in the drag state,
   // so the arrow stays mounted and draggable from it until the next good solve
-  // installs a fresh one.
+  // installs a fresh one. Only the drag's current value moves during the
+  // gesture, so the descriptor is memoized off the fields that do not.
   const solvedHandle = editingFeatureId ? solveResults?.[editingFeatureId]?.handle : undefined
+  const liveDrag = drag?.type === 'feature_handle' && drag.featureId === editingFeatureId ? drag : null
+  const dragField = liveDrag?.field ?? null
+  const dragStartValue = liveDrag?.startValue ?? 0
+  const dragAxisOrigin = liveDrag?.axisOrigin
+  const dragAxisDir = liveDrag?.axisDir
+  const dragUnitScale = liveDrag?.unitScale ?? 1
+  const dragMin = liveDrag?.min ?? 0
+  const dragMax = liveDrag?.max
+  const dragKind = liveDrag?.handleKind
+  const liveDescriptor = useMemo(
+    () => (dragField === null || !dragAxisOrigin || !dragAxisDir
+      ? null
+      : dragHandleDescriptor({
+        field: dragField,
+        startValue: dragStartValue,
+        axisOrigin: dragAxisOrigin,
+        axisDir: dragAxisDir,
+        unitScale: dragUnitScale,
+        min: dragMin,
+        ...(dragMax !== undefined && { max: dragMax }),
+        ...(dragKind !== undefined && { handleKind: dragKind }),
+      })),
+    [dragField, dragStartValue, dragAxisOrigin, dragAxisDir, dragUnitScale, dragMin, dragMax, dragKind],
+  )
 
   if (!editingFeatureId) return null
-  const liveDrag = drag?.type === 'feature_handle' && drag.featureId === editingFeatureId ? drag : null
-  const handle = solvedHandle ?? (liveDrag ? dragHandleDescriptor(liveDrag) : undefined)
+  const handle = solvedHandle ?? liveDescriptor ?? undefined
   const feature = doc?.features?.find(f => f.id === editingFeatureId)
   if (!handle || !feature) return null
 
@@ -246,10 +279,14 @@ function HandleArrow({ featureId, feature, handle }: {
   const startParamRef = useRef<number | null>(null)
 
   // The live rebuild pump for this gesture, created on the first value that
-  // differs from the start, and the gesture's start value so an abandoned drag
-  // can put the field back.
+  // differs from the start, and the gesture's start so an abandoned drag can
+  // put the field back.
   const pumpRef = useRef<LiveValuePump | null>(null)
   const dragStartValueRef = useRef<number | null>(null)
+  // The authored field value at press: a net-zero drag or an abandon must put
+  // back exactly what the document held, so a stored "5" stays a string and a
+  // value with more than 0.01 decimals keeps its digits.
+  const authoredStartRef = useRef<number | string | null>(null)
 
   const handleMoveRef = useRef<((e: PointerEvent) => void) | null>(null)
   const moveImpl = (e: PointerEvent) => {
@@ -263,6 +300,9 @@ function HandleArrow({ featureId, feature, handle }: {
       startParamRef.current = cursorAxisParam(e, dragPending.axisOrigin, dragPending.axisDir)
       const activated: FeatureHandleDrag = { ...dragPending, currentValue: dragPending.startValue }
       dragStartValueRef.current = activated.startValue
+      authoredStartRef.current = typeof rawStored === 'number' || typeof rawStored === 'string'
+        ? rawStored
+        : null
       st.setDrag(activated)
     }
 
@@ -273,18 +313,17 @@ function HandleArrow({ featureId, feature, handle }: {
     const value = handleValueFromTravel(cur.startValue, t - startParamRef.current, cur.unitScale, cur.min, cur.max)
     st.setDrag({ ...cur, currentValue: value })
 
-    // Every move inside the gesture feeds the pump, but only a value that
-    // rounds to a new step reaches the document: a jitter inside one 0.01 step
-    // rebuilds nothing, and a solver slower than the pointer only ever sees the
-    // newest value (the pump keeps one solve in flight).
+    // The pump appears on the first value that rounds to a new step, so the
+    // activation move itself changes nothing. Once it exists every move feeds
+    // it, including the trip back to the start: the preview must follow the
+    // arrow, not stop at the last step it happened to send. The pump keeps one
+    // solve in flight and drops a jitter inside one 0.01 step.
     const rounded = roundHandleValue(value)
-    if (rounded !== roundHandleValue(cur.startValue)) {
-      if (!pumpRef.current) {
-        pumpRef.current = createLiveValuePump(v =>
-          emitFieldMutation(feature.kind as keyof typeof FIELD_MUTATION_TYPE, featureId, cur.field, v))
-      }
-      pumpRef.current.offer(rounded)
+    if (!pumpRef.current && rounded !== roundHandleValue(cur.startValue)) {
+      pumpRef.current = createLiveValuePump(v =>
+        emitFieldMutation(feature.kind as keyof typeof FIELD_MUTATION_TYPE, featureId, cur.field, v))
     }
+    pumpRef.current?.offer(rounded)
   }
   useEffect(() => { handleMoveRef.current = moveImpl })
 
@@ -303,20 +342,21 @@ function HandleArrow({ featureId, feature, handle }: {
 
     const rounded = shouldCommitHandleRelease(drag.startValue, drag.currentValue)
     const pump = pumpRef.current
+    const authored = authoredStartRef.current
     pumpRef.current = null
     dragStartValueRef.current = null
+    authoredStartRef.current = null
     if (pump) {
       pump.cancel()
       // The release must land inside the edit session that is still open, so
       // the final value is sent now rather than when the in-flight solve
       // settles: OK or Cancel can close the session before that settle, which
       // would apply the release outside the one undo entry. A release back on
-      // the start value sends the exact start value (not its 0.01 rounding, a
-      // stored value may carry more decimals), putting a document moved by live
-      // mutations exactly back where it was.
+      // the start value sends the authored value, restoring a document moved by
+      // live mutations exactly (not its 0.01 rounding).
       emitFieldMutation(
         feature.kind as keyof typeof FIELD_MUTATION_TYPE,
-        featureId, drag.field, rounded ?? drag.startValue,
+        featureId, drag.field, rounded ?? authored ?? drag.startValue,
       )
     } else if (rounded !== null) {
       emitFieldMutation(
@@ -331,40 +371,65 @@ function HandleArrow({ featureId, feature, handle }: {
   }
   useEffect(() => { handleUpRef.current = upImpl })
 
+  // A lost pointer (pointercancel, window blur) ends the gesture as an abandon:
+  // live mutations are already in the document, so they are restored, but only
+  // while the edit session is still open. A missed pointerup must not turn the
+  // restore into a second edit after OK or Cancel closed the session.
+  const handleAbandonRef = useRef<(() => void) | null>(null)
+  const abandonImpl = () => {
+    const st = useSketchEditorStore.getState()
+    const drag = st.drag?.type === 'feature_handle' ? st.drag : null
+    const pending = st.dragPending?.type === 'feature_handle' ? st.dragPending : null
+    if (drag?.featureId !== featureId && pending?.featureId !== featureId) return
+
+    const field = drag?.field ?? pending?.field ?? handle.field
+    const pump = pumpRef.current
+    const authored = authoredStartRef.current
+    const start = dragStartValueRef.current
+    pumpRef.current = null
+    dragStartValueRef.current = null
+    authoredStartRef.current = null
+    pump?.cancel()
+
+    // Only a headless use can lack the port, and a restore without a session
+    // would be a new edit: default to closed.
+    const sessionOpen = getSketchCallback('isEditSessionOpen')?.() ?? false
+    if (pump && start !== null && sessionOpen) {
+      emitFieldMutation(
+        feature.kind as keyof typeof FIELD_MUTATION_TYPE,
+        featureId, field, authored ?? start,
+      )
+    }
+    st.setIsPointerDown(false)
+    st.setDrag(null)
+    st.setDragPending(null)
+    st.setDragStartClient(null)
+    startParamRef.current = null
+  }
+  useEffect(() => { handleAbandonRef.current = abandonImpl })
+
   useEffect(() => {
     if (!gestureLive) return
     const onMove = (e: PointerEvent) => handleMoveRef.current?.(e)
     const onUp = () => handleUpRef.current?.()
+    const onAbandon = () => handleAbandonRef.current?.()
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onAbandon)
+    window.addEventListener('blur', onAbandon)
     return () => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onAbandon)
+      window.removeEventListener('blur', onAbandon)
     }
   }, [gestureLive])
 
   // Unmount mid-gesture (feature closed, rebuild replaced the editor state):
-  // drop any handle drag so the camera can never stay orbit-locked, and put the
-  // field back on its start value because the live mutations may already have
-  // moved it.
+  // drop any handle drag so the camera can never stay orbit-locked, and let the
+  // abandon path put the field back when the edit session is still open.
   useEffect(() => () => {
-    const st = useSketchEditorStore.getState()
-    if (st.drag?.type === 'feature_handle' || st.dragPending?.type === 'feature_handle') {
-      const pump = pumpRef.current
-      pumpRef.current = null
-      pump?.cancel()
-      const start = dragStartValueRef.current
-      dragStartValueRef.current = null
-      if (start !== null) {
-        emitFieldMutation(
-          feature.kind as keyof typeof FIELD_MUTATION_TYPE,
-          featureId, handle.field, start,
-        )
-      }
-      st.setDrag(null)
-      st.setDragPending(null)
-      st.setDragStartClient(null)
-    }
+    handleAbandonRef.current?.()
   }, [feature.kind, featureId, handle.field])
 
   // ─── visuals ───

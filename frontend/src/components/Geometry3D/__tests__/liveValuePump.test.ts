@@ -1,12 +1,12 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { createLiveValuePump } from '@/components/Geometry3D/liveValuePump'
 
 /**
  * The newest-value pump in front of a feature-handle drag: one solve in
- * flight, every later pointer move only replaces the waiting value, and the
- * release (or a flush) is sent once the in-flight one settles. Deferred sends
- * make the settling order explicit; a real solver would only make the timing
- * harder to read, not the contract different.
+ * flight, every later pointer move only replaces the waiting value, and a move
+ * back to the in-flight value drops the stale wait. Deferred sends make the
+ * settling order explicit; a real solver would only make the timing harder to
+ * read, not the contract different.
  */
 
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -19,7 +19,12 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 async function tick(): Promise<void> {
   await Promise.resolve()
   await Promise.resolve()
+  await Promise.resolve()
 }
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 describe('createLiveValuePump', () => {
   it('sends the first value at once and only the newest waiting one when it settles', async () => {
@@ -44,24 +49,7 @@ describe('createLiveValuePump', () => {
     expect(sent).toEqual([1, 3])
   })
 
-  it('does not re-send the value that is already sent or in flight', async () => {
-    const sent: number[] = []
-    const gates: Array<ReturnType<typeof deferred>> = []
-    const pump = createLiveValuePump(v => {
-      sent.push(v)
-      const gate = deferred()
-      gates.push(gate)
-      return gate.promise
-    })
-
-    pump.offer(1)
-    pump.offer(1)
-    gates[0].resolve()
-    await tick()
-    expect(sent).toEqual([1])
-  })
-
-  it('sends the flush value after the in-flight one and resolves once it settles', async () => {
+  it('drops the waiting value when the pointer offers the in-flight one again', async () => {
     const sent: number[] = []
     const gates: Array<ReturnType<typeof deferred>> = []
     const pump = createLiveValuePump(v => {
@@ -73,20 +61,16 @@ describe('createLiveValuePump', () => {
 
     pump.offer(1)
     pump.offer(3)
-    let flushed = false
-    const flush = pump.flush(5).then(() => { flushed = true })
+    // The pointer came back to the value the solve is already building: the
+    // stale 3 must not rebuild the body after it settles.
+    pump.offer(1)
 
     gates[0].resolve()
     await tick()
-    expect(sent).toEqual([1, 5])
-    expect(flushed).toBe(false)
-
-    gates[1].resolve()
-    await flush
-    expect(flushed).toBe(true)
+    expect(sent).toEqual([1])
   })
 
-  it('a flush equal to the last sent value sends nothing and resolves after it settles', async () => {
+  it('does not re-send the value that is already sent', async () => {
     const sent: number[] = []
     const gates: Array<ReturnType<typeof deferred>> = []
     const pump = createLiveValuePump(v => {
@@ -96,14 +80,12 @@ describe('createLiveValuePump', () => {
       return gate.promise
     })
 
-    pump.offer(7)
-    let flushed = false
-    const flush = pump.flush(7).then(() => { flushed = true })
-    expect(flushed).toBe(false)
-
+    pump.offer(1)
     gates[0].resolve()
-    await flush
-    expect(sent).toEqual([7])
+    await tick()
+    pump.offer(1)
+    await tick()
+    expect(sent).toEqual([1])
   })
 
   it('sends nothing after cancel even when the in-flight value settles', async () => {
@@ -122,5 +104,50 @@ describe('createLiveValuePump', () => {
     gates[0].resolve()
     await tick()
     expect(sent).toEqual([1])
+  })
+
+  it('keeps pumping after a rejected send', async () => {
+    const sent: number[] = []
+    const pump = createLiveValuePump(v => {
+      sent.push(v)
+      return v === 1 ? Promise.reject(new Error('solve failed')) : Promise.resolve()
+    })
+
+    pump.offer(1)
+    await tick()
+    pump.offer(2)
+    await tick()
+    expect(sent).toEqual([1, 2])
+  })
+
+  it('surfaces a throwing send once and keeps pumping', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const sent: number[] = []
+    let calls = 0
+    const pump = createLiveValuePump(v => {
+      sent.push(v)
+      calls += 1
+      if (calls <= 2) throw new Error('onMutation threw')
+      return Promise.resolve()
+    })
+
+    expect(() => pump.offer(1)).not.toThrow()
+    pump.offer(2)
+    await tick()
+    pump.offer(3)
+    await tick()
+
+    expect(sent).toEqual([1, 2, 3])
+    expect(error).toHaveBeenCalledTimes(1)
+  })
+
+  it('treats a non-promise send as settled at once', async () => {
+    const sent: number[] = []
+    const pump = createLiveValuePump(v => { sent.push(v) })
+
+    pump.offer(1)
+    pump.offer(2)
+    await tick()
+    expect(sent).toEqual([1, 2])
   })
 })
