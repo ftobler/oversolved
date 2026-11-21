@@ -22,6 +22,7 @@ import {
   applyMirrorEntities,
   applyFilletCorners,
   applyPatternEntities,
+  applyPasteSketchEntities,
   applySetConstraintValue,
   applySetConstraintPos,
   applySetConstraintSign,
@@ -285,6 +286,8 @@ export const mutationHandlers: MutationHandlers = {
     applyFilletCorners(next, m.featureId, m.radius, m.corners),
   pattern_entities: (next, m) =>
     applyPatternEntities(next, m),
+  paste_sketch_entities: (next, m) =>
+    applyPasteSketchEntities(next, m),
   toggle_construction: (next, m) =>
     applyToggleConstruction(next, m.targets),
   set_feature_plane: (next, m) => {

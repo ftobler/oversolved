@@ -26,6 +26,7 @@ const ALL_MUTATION_TYPES = [
   'mirror_entities',
   'fillet_corners',
   'pattern_entities',
+  'paste_sketch_entities',
   'toggle_construction',
   'set_feature_plane',
   'add_sketch',

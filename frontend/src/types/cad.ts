@@ -1542,6 +1542,21 @@ export type FilletCorner = {
  *  utils/geometry/sketchPattern.ts, and the drive refuses a field outside it. */
 export type SketchPatternMode = 'linear' | 'grid' | 'rotate' | 'copy'
 
+/** One clipboard clip of copied sketch entities, the envelope the Copy command
+ *  writes as readable JSON and `paste_sketch_entities` carries. The `kind`
+ *  discriminant reserves the envelope for other document data (a feature, a
+ *  variable) without a second format. `entities` and `initial` name the SOURCE
+ *  sketch's ids, local to the clip; a paste mints fresh ones. The numbers are
+ *  sketch-local 2D in `length_unit`, so a paste into another unit converts. */
+export type SketchEntitiesClip = {
+  oversolved: 1
+  kind: 'sketch-entities'
+  entities: PartEntityDef[]
+  initial: Record<string, number[]>
+  constraints: PartConstraint[]
+  length_unit: LengthUnit
+}
+
 /** An authoring aid: a `select` selector naming the pick. The headless drive
  *  resolves it against the settled solve before the mutation applies and stores
  *  the query string it resolved to; a selector is never persisted. The inner
@@ -1610,6 +1625,10 @@ export type Mutation =
       count?: number; count2?: number; pitch?: number; pitch2?: number; direction?: Point; direction2?: Point
       angle_deg?: number; center?: Point; translate?: Point; targetFeatureId?: string
     }
+  // One clipboard paste, self-contained: the text IS the data, because the
+  // source may be another document or a deleted sketch. `offset` places the
+  // clip's shape in the target sketch's frame.
+  | { type: 'paste_sketch_entities'; featureId: string; clip: SketchEntitiesClip; offset?: Point }
   | { type: 'toggle_construction'; targets: string[] }
   | { type: 'set_feature_plane'; featureId: string; plane: string | SelectorRef }
   | ({ type: 'add_sketch'; featureId: string; label?: string; plane?: string | SelectorRef } & FeatureInsertion)

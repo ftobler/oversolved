@@ -1,7 +1,7 @@
 import { CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS, CONSTRAINT_BY_KIND, ENTITY_BY_ACTIVE_TOOL } from '@/registry'
 import {
   CORE_KEYBINDINGS, KEYMAP, FEATURE_KEYMAP, SKETCH_KEYBINDINGS, SKETCH_KEYMAP,
-  ASSEMBLY_KEYBINDINGS, ASSEMBLY_KEYMAP,
+  ASSEMBLY_KEYBINDINGS, ASSEMBLY_KEYMAP, NATIVE_KEYBINDINGS,
 } from '@/utils/core/commandRegistry'
 
 /**
@@ -12,10 +12,13 @@ import {
  *   - 'sketch'   only while editing a sketch
  *   - 'feature'  only outside a sketch
  *   - 'assembly' only in the assembly editor
+ *   - 'native'   the browser owns the key: the row documents Ctrl+C / Ctrl+V
+ *                without a command spec, because the native clipboard events
+ *                are the handlers
  *   - 'none'     no branch resolves to it, i.e. the page would be advertising a
  *                key that cannot fire. A bug, asserted against in the tests.
  */
-export type KeybindingMode = 'both' | 'sketch' | 'feature' | 'assembly' | 'none'
+export type KeybindingMode = 'both' | 'sketch' | 'feature' | 'assembly' | 'native' | 'none'
 
 export type KeybindingRow = {
   key: string
@@ -35,6 +38,8 @@ export function rowId(row: KeybindingRow): string {
 // Ask the keymaps rather than restating their precedence here, so the page can
 // never drift from what dispatchKey actually resolves.
 export function resolveMode(key: string, command: string): KeybindingMode {
+  // The browser owns these keys; they are listed, never dispatched.
+  if (NATIVE_KEYBINDINGS.some(b => b.key === key && b.command === command)) return 'native'
   const inSketch = (SKETCH_KEYMAP[key] ?? KEYMAP[key]) === command
   const inFeature = (FEATURE_KEYMAP[key] ?? KEYMAP[key]) === command
   const inPart = inSketch || inFeature
@@ -54,6 +59,7 @@ export const MODE_LABEL: Readonly<Record<KeybindingMode, string>> = {
   sketch: 'sketch only',
   feature: 'feature only',
   assembly: 'assembly only',
+  native: 'browser',
   none: 'unreachable',
 }
 
@@ -102,6 +108,12 @@ export function buildKeybindingRows(): KeybindingRow[] {
 
   // Assembly bindings: shared keys plus the assembly-only cancel.
   for (const b of ASSEMBLY_KEYBINDINGS) {
+    rows.push({ key: b.key, command: b.command, label: b.label, description: b.description })
+  }
+
+  // The browser's own clipboard keys: Ctrl+C / Ctrl+V reach the native events,
+  // so the help lists them but no command spec or keymap entry exists.
+  for (const b of NATIVE_KEYBINDINGS) {
     rows.push({ key: b.key, command: b.command, label: b.label, description: b.description })
   }
 

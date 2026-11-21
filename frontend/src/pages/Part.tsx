@@ -16,6 +16,7 @@ import { resolvedKindsOfSketch } from '@/kernel/features/sketch'
 import { docVisibleFeatureIds, visibleFeatureIds } from '@/utils/featureVisibility'
 import { useSketchEditorStore, useSketchUiStore, setSketchCallback, clearSketchCallbacks, sketchOwnedDeleteTargets, deleteMutationFor, type PendingConstraint } from '@/stores/sketchEditorStore'
 import { usePartRelationHints } from '@/hooks/useRelationHint'
+import { useSketchClipboard } from '@/hooks/useSketchClipboard'
 import { useEditorState, editorState } from '@/hooks/useEditorState'
 import { syncRollbackFromDoc } from '@/stores/editorState'
 import { usePartDoc } from '@/hooks/usePartDoc'
@@ -315,6 +316,11 @@ export default function Part() {
     // that would invert the order) is the user's next instruction, not a crash.
     onRefusal: notifyRefusal,
   })
+
+  // Ctrl+C / Ctrl+V ride the native clipboard events; the registry never
+  // dispatches them. One paste is one mutation, so undo and the journal see a
+  // single entry.
+  useSketchClipboard({ doc, solveResults, onMutation: handleMutation, notify })
 
   // The autosave shadow copy of this document's unsaved edits. It reads the
   // session directly (never React state), so the crash flush and the error

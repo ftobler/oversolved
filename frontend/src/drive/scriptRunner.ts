@@ -208,7 +208,7 @@ function malformedStep(index: number, step: unknown): ScriptStepOutcome | null {
 // limit is scoped by step id rather than applied to every reply.
 export const MAX_REPORTED_CREATED_IDS = 200
 const ALWAYS_COUNTED_STEPS = new Set(['import_dxf', 'add_text'])
-const SKETCH_COPY_STEPS = new Set(['mirror_entities', 'pattern_entities', 'fillet_corners'])
+const SKETCH_COPY_STEPS = new Set(['mirror_entities', 'pattern_entities', 'paste_sketch_entities', 'fillet_corners'])
 
 function outcomeFor(index: number, step: unknown, result: ScriptStepResult): ScriptStepOutcome {
   const kind = stepKind(step)

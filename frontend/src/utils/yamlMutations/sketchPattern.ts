@@ -24,10 +24,8 @@
 import type { PartConstraint, PartDoc, PartEntityDef, SketchFeature } from '@/types/cad'
 import {
   warn, round, findSketchFeature, resolveSketch, freshEntityIds, uniqueConstraintId,
-  CONSTRAINT_REF_FIELDS,
 } from './helpers'
-import { isVertexPointKey } from '@/types/vertexKeys'
-import { CARRY_KINDS } from './sketchMirror'
+import { carryConstraints, type CarryTemplate } from './sketchCarry'
 import { resolveBarePlaneId } from '@/kernel/solverConstants'
 import {
   instanceTransforms, transformEntityParams, transformVertexKey, transformVector,
@@ -53,21 +51,6 @@ export interface PatternEntitiesPlan {
 
 export type PatternEntitiesRefusal = { reason: string; code: 'invalid' | 'unknown-target' }
 
-/** One constraint the copies may carry: its operand fields resolved once to
- *  the source each names and the vertex suffix, so each instance only
- *  substitutes ids. */
-interface CarryTemplate {
-  constraint: PartConstraint
-  // prefix is the stored ref's own leading `$` (or nothing for a bare id),
-  // kept so the clone is spelled like its source.
-  operands: { field: keyof PartConstraint; sourceId: string; key: string; prefix: string }[]
-  /** A group's member refs, in anchor-first order, with each member's point key
-   *  so the copy names the transformed image. Pooled separately from `operands`
-   *  because a group has no single-ref field: each member is one entry of its
-   *  `refs` array. */
-  groupRefs?: { sourceId: string; key: string; prefix: string }[]
-}
-
 /** A sketch's plane ref in one spelling: `Front`, `builtin_plane_front` and
  *  `@builtin_plane_front` are one plane, as are `pl1` and `@pl1`. A face query
  *  (`?`) compares as the exact stored string, since the mutation layer has no
@@ -77,86 +60,6 @@ function normalizedPlane(plane: string | undefined): string {
   if (plane.includes('?')) return plane
   const bare = plane.startsWith('@') ? plane.slice(1) : plane
   return '@' + (resolveBarePlaneId(bare) ?? bare)
-}
-
-/** Which source a stored operand names, with its vertex suffix, or null when
- *  it names anything else (another feature, an entity outside the set). */
-function operandSource(ref: string, sourceIds: readonly string[]): { sourceId: string; key: string; prefix: string } | null {
-  if (ref.startsWith('@')) return null
-  const prefix = ref.startsWith('$') ? ref.slice(0, 1) : ''
-  const part = ref.slice(prefix.length)
-  for (const id of sourceIds) {
-    if (part === id) return { sourceId: id, key: '', prefix }
-    // Exact id plus a known vertex suffix, as refMatchesEntity reads it, so
-    // `l10` is never taken for a vertex of `l1`.
-    if (part.startsWith(id) && isVertexPointKey(part.slice(id.length))) {
-      return { sourceId: id, key: part.slice(id.length), prefix }
-    }
-  }
-  return null
-}
-
-/** The carry templates for the source sketch's constraints, dropping (with
- *  one warn each) what the policy never carries. */
-function carryTemplates(constraints: readonly PartConstraint[], sourceIds: readonly string[]): CarryTemplate[] {
-  const out: CarryTemplate[] = []
-  for (const c of constraints) {
-    if (c.kind === 'projection') continue
-    // A group copies as one group per instance, over that instance's copies of
-    // its members, and only when every member is a source. A member may be a
-    // whole entity or a single point of one; the point key rides along so the
-    // copy names the transformed point (a rigid motion keeps a named point in
-    // its slot).
-    if (c.kind === 'group') {
-      const refs = Array.isArray(c.refs) ? c.refs : []
-      const groupRefs: { sourceId: string; key: string; prefix: string }[] = []
-      let outside = refs.length === 0
-      for (const ref of refs) {
-        const hit = typeof ref === 'string' ? operandSource(ref, sourceIds) : null
-        if (hit === null) { outside = true; break }
-        groupRefs.push({ sourceId: hit.sourceId, key: hit.key, prefix: hit.prefix })
-      }
-      if (outside) {
-        warn('pattern_entities: group has a member outside the source set, left on the source', { id: c.id })
-        continue
-      }
-      out.push({ constraint: c, operands: [], groupRefs })
-      continue
-    }
-    const operandFields = CONSTRAINT_REF_FIELDS.filter(f => typeof c[f] === 'string')
-    if (operandFields.length === 0) {
-      // A refs-only sugar constraint (ngon) has no single-ref operand to map;
-      // say so when it reaches a source, as the mirror does.
-      const refs = Array.isArray(c.refs) ? c.refs : []
-      if (refs.some(ref => typeof ref === 'string' && operandSource(ref, sourceIds) !== null)) {
-        warn('pattern_entities: n-ary (sugar) constraint dropped', { id: c.id, kind: c.kind })
-      }
-      continue
-    }
-    const operands: CarryTemplate['operands'] = []
-    let outside = false
-    for (const field of operandFields) {
-      const hit = operandSource(c[field] as string, sourceIds)
-      if (hit === null) { outside = true; break }
-      operands.push({ field, ...hit })
-    }
-    // A constraint that names no source at all is not the pattern's business;
-    // only one that straddles the set and the rest of the sketch is a drop.
-    if (outside) {
-      if (operands.length > 0) warn('pattern_entities: constraint reaches outside the source set, left on the source', { id: c.id, kind: c.kind })
-      continue
-    }
-    if (!CARRY_KINDS.has(c.kind)) {
-      warn('pattern_entities: constraint kind carries no copied form, dropped', { id: c.id, kind: c.kind })
-      continue
-    }
-    if (Array.isArray(c.refs) && c.refs.length > 0) {
-      warn('pattern_entities: n-ary (sugar) constraint dropped', { id: c.id, kind: c.kind })
-      continue
-    }
-    out.push({ constraint: c, operands })
-  }
-  return out
 }
 
 /** One template written for one instance, or null when the instance's
@@ -279,7 +182,7 @@ export function planPatternEntities(doc: PartDoc, step: PatternEntitiesStep): Pa
     }
   }
 
-  const carried = carryTemplates(source.constraints ?? [], [...seen])
+  const carried = carryConstraints(source.constraints ?? [], [...seen], 'pattern', 'pattern_entities').templates
   return { targetId: target.id, sources, transforms, carried }
 }
 

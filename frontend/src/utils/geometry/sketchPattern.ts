@@ -340,6 +340,39 @@ export function transformEntityParams(
   }
 }
 
+/**
+ * One entity's flat params converted to another document unit: every length
+ * scales by `factor`, every angle stays as stored. Used by the clipboard paste,
+ * whose clip names the unit its numbers are in.
+ */
+export function scaleEntityParams(
+  kind: EntityKind | string,
+  params: readonly number[],
+  factor: number,
+  handles?: 'start' | 'end' | 'both',
+): number[] | null {
+  if (!Number.isFinite(factor) || factor <= 0) return null
+  if (!allFinite(params) || canonicalVertexPositions(kind, params, handles) === null) return null
+  const s = (v: number) => v * factor
+  switch (kind) {
+    case 'line':
+      return [s(params[0]), s(params[1]), s(params[2]), s(params[3])].map(round)
+    case 'point':
+      return [s(params[0]), s(params[1])].map(round)
+    case 'circle':
+      return [s(params[0]), s(params[1]), s(params[2])].map(round)
+    case 'arc':
+      return [s(params[0]), s(params[1]), s(params[2]), params[3], params[4]].map(round)
+    case 'ellipse':
+      return [s(params[0]), s(params[1]), s(params[2]), s(params[3]), params[4]].map(round)
+    case 'spline':
+    case 'fit_spline':
+      return params.map(s).map(round)
+    default:
+      return null
+  }
+}
+
 /** The vertex key of the copy that names the image of `key` on the source. A
  *  rigid motion keeps every named vertex in its slot (an arc's start stays its
  *  start, an ellipse's major1 its major1), so this is the identity. It exists
