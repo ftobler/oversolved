@@ -12,17 +12,19 @@ import {
 } from '@/stores/sectionStore'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import type { PartResult } from '@/types/cad'
+import type { PartFeature } from '@/types/cad'
+
+const FEATURES = [
+  { id: 'ex1', kind: 'extrude', label: 'Extrude 1', extrude: { sketch: [], distance: 1 } },
+  { id: 'pln1', kind: 'plane', label: 'Plane 1' },
+] as PartFeature[]
 
 function reset(): void {
   useSectionStore.setState({ ...DEFAULT_SECTION_STATE })
   useSketchEditorStore.setState({ activePickField: null, chipOwnedSelection: new Set() })
   usePartEditorStore.setState({
-    parts: {
-      body_ex1: { id: 'body_ex1', created_by: 'ex1', modified_by: [] } as PartResult,
-    },
     partLabels: { body_ex1: 'Plate' },
-    features: [],
+    features: FEATURES,
   })
 }
 
@@ -115,12 +117,41 @@ describe('SectionPanel plane', () => {
     expect(useSectionStore.getState().picking).toBe(true)
   })
 
-  it('names a picked source by its display name, never the raw query', () => {
-    useSectionStore.setState({ enabled: true, plane: { kind: 'query', query: '@body_ex1' } })
+  it('names a picked body-face query by the face, not the whole part', () => {
+    // A section pick stores the face's key. The body-pick label would answer
+    // "Plate", which hides that a face was picked.
+    useSectionStore.setState({
+      enabled: true,
+      plane: { kind: 'query', query: '@body_ex1/face/3' },
+    })
     render(<SectionPanel />)
 
-    expect(screen.getByRole('button', { name: 'Plate' })).toBeInTheDocument()
-    expect(screen.queryByText('@body_ex1')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Face of Extrude 1' })).toBeInTheDocument()
+    expect(screen.queryByText('Plate')).toBeNull()
+    expect(screen.queryByText('@body_ex1/face/3')).toBeNull()
+  })
+
+  it('names a picked ancestry face query too', () => {
+    useSectionStore.setState({
+      enabled: true,
+      plane: { kind: 'query', query: '?9;@body_ex1:flatface' },
+    })
+    render(<SectionPanel />)
+
+    expect(screen.getByRole('button', { name: 'Face of Extrude 1' })).toBeInTheDocument()
+    expect(screen.queryByText('?9;@body_ex1:flatface')).toBeNull()
+  })
+
+  it('resolves a user plane stored as a bare feature id', () => {
+    // `sectionPickSource` keeps the solve-result key, which has no `@`.
+    useSectionStore.setState({
+      enabled: true,
+      plane: { kind: 'query', query: 'pln1' },
+    })
+    render(<SectionPanel />)
+
+    expect(screen.getByRole('button', { name: 'Plane 1' })).toBeInTheDocument()
+    expect(screen.queryByText('pln1')).toBeNull()
   })
 
   it('shows a refused pick reason', () => {

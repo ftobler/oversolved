@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import type { PartFeature } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { useSectionStore } from '@/stores/sectionStore'
 import { failLoud } from '@/stores/stateInvariants'
 import { isPickAllowed } from '@/utils/query/pickOrder'
 import {
@@ -217,10 +216,6 @@ export function usePickField(
     if (cur?.featureId === featureId && cur?.field === field) {
       s.setActivePickField(null)
     } else {
-      // One viewport click cannot serve two armed picks: an armed section pick
-      // takes priority in the dispatcher, so arming a field disarms it here
-      // rather than in each widget.
-      useSectionStore.getState().cancelPicking()
       s.setActivePickField({ featureId, field, multi, names })
     }
   }, [featureId, field, multi, names])
@@ -232,9 +227,6 @@ export function usePickField(
   // unpick path, and the reason no longer describes the field it now shows.
   const activate = useCallback(() => {
     setLastRefusal(null)
-    // Same one-armed-pick rule as `toggle`: the unconditional re-arm path owes
-    // it too.
-    useSectionStore.getState().cancelPicking()
     useSketchEditorStore.getState().setActivePickField({ featureId, field, multi, names })
   }, [featureId, field, multi, names])
 

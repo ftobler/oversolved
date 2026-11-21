@@ -11,11 +11,12 @@ import { BUILTIN_SECTION_PLANES } from '@/viewport/sectionPlane'
 import {
   SECTION_PICK_HINT,
   SECTION_PICK_UNAVAILABLE_NOTE,
+  sectionCardVisible,
   useSectionStore,
 } from '@/stores/sectionStore'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { partPickLabel } from '@/utils/query/partPickLabel'
+import { queryLabel } from '@/utils/query/queryLabel'
 import { evalExpr } from '@/kernel/evalExpr'
 import { ExpressionInput } from '@/components/editors/widgets/ExpressionInput'
 import { StatusMessage } from '@/components/shared/StatusMessage'
@@ -43,7 +44,7 @@ export function SectionPanel({ allowPick = true, lengthUnit = 'mm' }: SectionPan
   const disabledReason = useSectionStore(s => s.disabledReason)
   const pickError = useSectionStore(s => s.pickError)
   const picking = useSectionStore(s => s.picking)
-  const capturing = useSectionStore(s => s.capturing)
+  const visible = useSectionStore(sectionCardVisible)
   const setEnabled = useSectionStore(s => s.setEnabled)
   const setPlane = useSectionStore(s => s.setPlane)
   const setOffset = useSectionStore(s => s.setOffset)
@@ -51,22 +52,24 @@ export function SectionPanel({ allowPick = true, lengthUnit = 'mm' }: SectionPan
   const setPicking = useSectionStore(s => s.setPicking)
   const cancelPicking = useSectionStore(s => s.cancelPicking)
 
-  // A picked source is named the way a feature tree or a pick chip names it,
-  // so the button never shows a raw query token.
-  const parts = usePartEditorStore(s => s.parts)
+  // A picked face or plane is named the way the tree and pick chips name it.
+  // A face query already carries its query syntax; a user plane's source is the
+  // bare feature id, which the resolver expects as a ref. The body-pick
+  // resolver is wrong here: it names the whole part of a face query.
   const partLabels = usePartEditorStore(s => s.partLabels)
   const features = usePartEditorStore(s => s.features)
-  const pickedLabel = useMemo(
-    () => plane.kind === 'query' ? partPickLabel(plane.query, parts, partLabels, features) : null,
-    [plane, parts, partLabels, features],
-  )
+  const pickedLabel = useMemo(() => {
+    if (plane.kind !== 'query') return null
+    const query = plane.query.startsWith('@') || plane.query.startsWith('?')
+      ? plane.query
+      : `@${plane.query}`
+    return queryLabel(query, features, partLabels)
+  }, [plane, features, partLabels])
 
-  // A thumbnail capture never carries the editor's furniture.
-  if (capturing) return null
-
-  // Nothing to say and nothing to control: an empty frame would only cover the
-  // model.
-  if (!enabled && disabledReason === null) return null
+  // A thumbnail capture never carries the editor's furniture, and an off
+  // section with no reason has nothing to say. The assembly's column reads the
+  // same predicate.
+  if (!visible) return null
 
   const togglePick = () => {
     if (picking) {
@@ -117,8 +120,8 @@ export function SectionPanel({ allowPick = true, lengthUnit = 'mm' }: SectionPan
 
         {enabled && (
           <>
-            <div className="feature-field-row">
-              <span className="feature-field-label">Plane</span>
+            <div className="feature-field-row section-panel-plane-row">
+              <span className="feature-field-label section-panel-plane-label">Plane</span>
               <div className="section-panel-planes" role="group" aria-label="Section plane">
                 {BUILTIN_SECTION_PLANES.map(id => {
                   const chosen = plane.kind === 'builtin' && plane.id === id

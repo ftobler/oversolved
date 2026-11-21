@@ -152,9 +152,9 @@ export default function ViewOptionsButton({ show, onToggleShow, allowAmbientOccl
     }
   }, [open])
 
-  // The card closes on an outside pointer, so a refused or missed viewport pick
-  // cannot rely on the card note being on screen. Toast it as well; the card
-  // still repeats the reason while it is open.
+  // The section card shows this reason inline, but on a phone the right stack
+  // scrolls as one unit and the card can sit off-screen while the user is
+  // picking in the viewport. Toast it as well so a missed pick is never silent.
   useEffect(() => {
     if (sectionPickError) notify(sectionPickError, 'warning')
   }, [sectionPickError, notify])

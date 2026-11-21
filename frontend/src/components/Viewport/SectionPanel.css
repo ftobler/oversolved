@@ -48,6 +48,23 @@
   min-width: 0;
 }
 
+/* The phone card is 240px wide, so an 80px label column leaves each of the
+   four plane buttons about 30px: "Right" clips. Drop the label above the strip
+   and the buttons get the whole row. The editor's phone breakpoint is width or
+   landscape height, the same pair Part.css uses. */
+@media (max-width: 768px), (max-height: 480px) {
+  .feature-field-row.section-panel-plane-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+
+  .section-panel-plane-row .section-panel-plane-label {
+    width: auto;
+    padding-left: 0;
+  }
+}
+
 .section-panel-planes .feature-field-tab {
   flex: 1 1 0;
 }

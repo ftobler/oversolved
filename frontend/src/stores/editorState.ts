@@ -39,6 +39,7 @@ import { sketchCallbacks, requireMutation, dispatchWithheldDelete, pickProjectio
 import { samePoint, validateWithRepair, prunePickClaims } from './sketchEditorHelpers'
 import { activateTool, deactivateTool } from './sketchEditorToolLifecycle'
 import { clampRollbackPosition } from '@/session/DocSession'
+import { useSectionStore } from './sectionStore'
 import { refusalText } from '@/utils/core/statusMark'
 import { cannotEvaluate, positive } from '@/utils/core/valueRules'
 
@@ -1420,6 +1421,14 @@ export const editorState = createStore<EditorState>((set, get) => ({
       if (devOnly || testMode) validateWithRepair(get, set)
       return
     }
+
+    // One viewport click cannot serve two armed picks, and the section pick
+    // takes priority in the dispatcher. Every armer in the app comes through
+    // this action, so disarming the section here covers the pick chips, the
+    // plane editors and the Add Feature buttons alike. Arming the section
+    // itself calls this with null first, so the null branch above leaves it
+    // alone.
+    useSectionStore.getState().cancelPicking()
 
     // Entering a pick abandons any in-flight brep dimension gesture, same as a
     // tool switch: the projections it materialised were scratch work for that

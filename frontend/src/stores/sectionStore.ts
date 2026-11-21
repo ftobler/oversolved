@@ -16,8 +16,8 @@ export interface SectionState {
   // Keep the other half-space.
   flipped: boolean
   // Why an enabled section turned itself off. Set when the picked plane or face
-  // stops resolving after a solve; shown in the dropdown so the row going
-  // unchecked is not silent.
+  // stops resolving after a solve; shown in the section card and the dropdown
+  // note so the row going unchecked is not silent.
   disabledReason: string | null
   // Why the last armed pick was refused (a curved face, for instance). Cleared
   // when the pick is re-armed or succeeds.
@@ -68,6 +68,17 @@ export const SECTION_PICK_HINT = 'Click a flat face or a reference plane in the 
 // offers the builtin planes and says where the pick lives instead of arming
 // one nothing would consume.
 export const SECTION_PICK_UNAVAILABLE_NOTE = 'Use Front, Top or Right here; picking a face or plane is a part-editor action.'
+
+/**
+ * Whether the section card has anything to show. The card itself and the
+ * assembly's right-column predicate both read this, so the column cannot stay
+ * mounted for a card that draws nothing (or drop one that does).
+ */
+export function sectionCardVisible(
+  state: Pick<SectionState, 'enabled' | 'disabledReason' | 'capturing'>,
+): boolean {
+  return !state.capturing && (state.enabled || state.disabledReason !== null)
+}
 
 export const useSectionStore = create<SectionState>((set, get) => ({
   ...DEFAULT_SECTION_STATE,
