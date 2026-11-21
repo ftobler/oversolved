@@ -189,8 +189,17 @@ export const FIT_SPLINE_TANGENT_MAGNITUDE_NOTE =
   'keeps the authored length, while the default `true` replaces it with OCCT\'s `ScaleTangents` value and ' +
   'keeps only the direction. A per-end tangent scalar is the unit direction times that scalar, with ' +
   '`tangentScale: false`.'
+// A stored fit-spline handle is a solved variable, not a read-only tangent: the
+// recipe to close the joint it leaves is the fact an author cannot infer from
+// the arbitrary point they pass. docs/drive.md quotes this sentence verbatim.
+export const FIT_SPLINE_HANDLE_DOF_NOTE =
+  'Each stored handle is a solver variable with its own two degrees of freedom, so a tangent at that end ' +
+  'fixes only its direction: pin the joint with a coincident plus the tangent, dimension the handle length ' +
+  '(`point_distance` from `start` to `c1`, or `end` to `c2`), and dimension the other handle to close the ' +
+  'last two degrees of freedom.'
 const FIT_SPLINE_TANGENTS_NOTE =
   'fit_spline only: [start, end] end tangents, each [tx, ty] or null. ' + FIT_SPLINE_TANGENT_MAGNITUDE_NOTE
+  + ' ' + FIT_SPLINE_HANDLE_DOF_NOTE
 const FIT_SPLINE_TANGENT_SCALE_NOTE =
   'fit_spline only: true (default) rescales each authored tangent with OCCT\'s `ScaleTangents` (CadQuery ' +
   '`scale=True`); false keeps each tangent\'s length as that end\'s magnitude.'
@@ -522,8 +531,9 @@ const PLANE_MODE_NOTE =
 const PATTERN_SOURCE_NOTE =
   '`subject` selects what is repeated. `body` (the default) copies the part in `source_body`; `operation: add` unions each ' +
   'copy into the source part when they intersect, while disjoint copies become separate parts with `_1`, `_2`... ' +
-  'siblings and `operation: new` mints one part per copy. `feature` reapplies one or more earlier extrudes, revolves ' +
-  'or sweeps whose operation is add or cut, inside the part each source shaped. Name them as a list in ' +
+  'siblings and `operation: new` mints one part per copy. `feature` reapplies one or more earlier features ' +
+  'inside the part each source shaped: an extrude, revolve, sweep or wrap whose operation is add or cut, or a hole ' +
+  '(a hole is always a cut). Name them as a list in ' +
   '`source_features`, e.g. ["@ex1", "@ex2"]; the legacy single `source_feature` is still accepted and means a ' +
   'one-element list. Every source is repeated at each instance, in the order the sources sit in the feature log; ' +
   'the first source\'s first produced part is the instance-0 seed. `target_body` ' +
@@ -588,8 +598,9 @@ const INSTANCE_PATTERN_INLINE_NOTE =
 const INSTANCE_PATTERN_NOTE =
   '`subject` selects what is repeated: `body` (the default) copies the part in `source_body`; `operation: add` unions ' +
   'each copy into the source part when they intersect and disjoint copies become separate parts, while ' +
-  '`operation: new` mints one part per copy. `feature` reapplies one or more earlier extrudes, revolves or ' +
-  'sweeps, named in `source_features` (the legacy single `source_feature` is still accepted), inside the ' +
+  '`operation: new` mints one part per copy. `feature` reapplies one or more earlier features (an extrude, revolve, ' +
+  'sweep or wrap with operation add or cut, or a hole, which is always a cut), named in `source_features` (the legacy ' +
+  'single `source_feature` is still accepted), inside the ' +
   'part each source shaped; `target_body` chooses the part when a source touched more than one. There is no ' +
   'count and no centered option: the target list is the instance list. ' +
   'The copies go onto `targets`, ONE list of points: a sketch row expands to its points, and any other ' +
@@ -663,8 +674,9 @@ const PATTERN_ALIAS_NOTE =
 const MIRROR_NOTE =
   '`subject` selects what is mirrored. `body` (the default, and the only subject an older document has) ' +
   'reflects the whole part in `body` across `plane`: `keep_original` keeps the source part and `merge` fuses the copy into it, ' +
-  'otherwise the copy is a new part. `feature` mirrors one or more earlier extrudes, revolves or sweeps whose ' +
-  'operation is add or cut, inside the part each source shaped: name them in `source_features`, e.g. ["@ex1", "@ex2"], ' +
+  'otherwise the copy is a new part. `feature` mirrors one or more earlier features: an extrude, revolve, sweep or ' +
+  'wrap whose operation is add or cut, or a hole (a hole is always a cut), inside the part each source shaped: ' +
+  'name them in `source_features`, e.g. ["@ex1", "@ex2"], ' +
   'and `target_body` chooses the part when a source touched more than one. The mirrored copy reapplies the source\'s ' +
   'own operation in the same part, so `keep_original` and `merge` mean nothing there and are refused. ' +
   'A source that no longer exists or now comes after the mirror is dropped with a named warning; a mirror with no ' +
@@ -688,11 +700,28 @@ const CONSTRAINT_KIND_NOTE =
   'entity) and glues them into their current shape, leaving the set free to move and rotate; it carries no ' +
   'value and deleting it frees the entities.'
 
+// The exact-duplicate refusal shared by every constraint insert. Stated in the
+// `add_constraint` note so a script author knows a repeated step is a no-op with
+// a reason rather than enough to append a second row.
+const CONSTRAINT_DUPLICATE_NOTE =
+  'An exact duplicate of a stored row is refused before anything is written: same kind, same operands ' +
+  '(either order for a symmetric kind), same value and sign. A dimension with a different value is a ' +
+  'conflict, not a duplicate, so it is authored.'
+
 // An angle is the one dimension whose stored value is not the number the label
 // shows: the solver stores the unsigned angle between the two lines' direction
 // vectors, while a label in a supplement wedge shows 180 - that. The appliers
 // translate the mutation value through `angleStoredValue`
 // (utils/geometry/dimensionNaturalValue.ts), so the drive and the UI agree.
+// The tangent's accepted pairs are a table rather than one common group, and a
+// spline pair has a contact requirement the other pairs do not. T4 pins both
+// facts on the add_constraint row, and the TS/Rust table agreement test pins
+// the pair list.
+export const TANGENT_PAIR_NOTE =
+  '`tangent` takes a line with a circle, arc, ellipse or spline, a circle or arc with a circle, arc or ' +
+  'spline, or a spline with another spline. A spline joint needs a coincident at the spline\'s start or ' +
+  'end: without one the tangent is ignored, because the solver has no free spline tangent form.'
+
 const ANGLE_VALUE_NOTE =
   'An `angle` value is the corner the label shows, the angle between the two lines as drawn. ' +
   'The document stores the angle between their direction vectors, theta, which is the same number ' +
@@ -1168,7 +1197,8 @@ export const MUTATION_CATALOG = {
   },
   add_constraint: {
     summary: 'Add a sketch constraint over entity refs.',
-    note: VERTEX_REF_NOTE + ' ' + MIDPOINT_TARGET_NOTE + CONSTRAINT_PROJECTION_NOTE + ' ' + ANGLE_VALUE_NOTE,
+    note: VERTEX_REF_NOTE + ' ' + MIDPOINT_TARGET_NOTE + CONSTRAINT_PROJECTION_NOTE + ' ' + ANGLE_VALUE_NOTE
+      + ' ' + CONSTRAINT_DUPLICATE_NOTE + ' ' + TANGENT_PAIR_NOTE,
     fields: {
       featureId: str(),
       kind: str(CONSTRAINT_KIND_NOTE),
@@ -1778,7 +1808,7 @@ export const MUTATION_CATALOG = {
       subject: optStr('body | feature; defaults to body.'),
       source_body: optStr('Part subject: the part (stored as `source_body`) to copy, e.g. body_ex2.'),
       operation: optStr('Part subject: add | new; defaults to add.'),
-      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve, sweep or wrap with operation add or cut.'),
+      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve, sweep or wrap with operation add or cut, or a hole (a hole is always a cut).'),
       source_feature: optStr('Feature subject: the legacy single-source form of source_features, e.g. @ex1. Still accepted; a list or the singular key, not both.'),
       target_body: optStr('Feature subject: applies every source to this part (stored as `target_body`) instead of the part each source shaped.'),
       count: optScalar(),
@@ -1820,7 +1850,7 @@ export const MUTATION_CATALOG = {
       subject: optStr('body | feature; defaults to body.'),
       source_body: optStr('Part subject: the part (stored as `source_body`) to copy, e.g. body_ex2.'),
       operation: optStr('Part subject: add | new; defaults to add.'),
-      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve, sweep or wrap with operation add or cut.'),
+      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve, sweep or wrap with operation add or cut, or a hole (a hole is always a cut).'),
       source_feature: optStr('Feature subject: the legacy single-source form of source_features, e.g. @ex1. Still accepted; a list or the singular key, not both.'),
       target_body: optStr('Feature subject: applies every source to this part (stored as `target_body`) instead of the part each source shaped.'),
       count: optScalar(),
@@ -1855,7 +1885,7 @@ export const MUTATION_CATALOG = {
       subject: optStr('body | feature; defaults to body.'),
       source_body: optStr('Part subject: the part (stored as `source_body`) to copy, e.g. body_ex2.'),
       operation: optStr('Part subject: add | new; defaults to add.'),
-      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve, sweep or wrap with operation add or cut.'),
+      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve, sweep or wrap with operation add or cut, or a hole (a hole is always a cut).'),
       source_feature: optStr('Feature subject: the legacy single-source form of source_features, e.g. @ex1. Still accepted; a list or the singular key, not both.'),
       target_body: optStr('Feature subject: applies every source to this part (stored as `target_body`) instead of the part each source shaped.'),
       pathQuery: pathQuery(),
@@ -1898,7 +1928,7 @@ export const MUTATION_CATALOG = {
       subject: optStr('body | feature; defaults to body.'),
       source_body: optStr('Part subject: the part (stored as `source_body`) to copy, e.g. body_ex2.'),
       operation: optStr('Part subject: add | new; defaults to add.'),
-      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve, sweep or wrap with operation add or cut.'),
+      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve, sweep or wrap with operation add or cut, or a hole (a hole is always a cut).'),
       source_feature: optStr('Feature subject: the legacy single-source form of source_features, e.g. @ex1. Still accepted; a list or the singular key, not both.'),
       target_body: optStr('Feature subject: applies every source to this part (stored as `target_body`) instead of the part each source shaped.'),
       sketch: optStr('Deprecated one release: the retired sketch-only form, e.g. @sk1. Rewritten into the leading `targets` entry; send `targets` instead.'),
@@ -1940,7 +1970,7 @@ export const MUTATION_CATALOG = {
       subject: optStr('body | feature; defaults to body.'),
       source_body: optStr('Part subject: the part (stored as `source_body`) to copy, e.g. body_ex2.'),
       operation: optStr('Part subject: add | new; defaults to add.'),
-      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve, sweep or wrap with operation add or cut.'),
+      source_features: optArr('Feature subject: the features to repeat, e.g. ["@ex1", "@ex2"]; each is an extrude, revolve, sweep or wrap with operation add or cut, or a hole (a hole is always a cut).'),
       source_feature: optStr('Feature subject: the legacy single-source form of source_features, e.g. @ex1. Still accepted; a list or the singular key, not both.'),
       target_body: optStr('Feature subject: applies every source to this part (stored as `target_body`) instead of the part each source shaped.'),
       mode: optStr('linear | rectangular | circular; defaults to linear. Translated to second_direction or the circular kind.'),
@@ -1977,7 +2007,7 @@ export const MUTATION_CATALOG = {
   add_pattern_source: {
     summary: 'Add a source feature to a feature pattern (toggles an already-listed source out).',
     note: PATTERN_SOURCE_NOTE,
-    fields: { featureId: str(), sourceFeature: str('A feature ref, e.g. @ex1: an extrude, revolve, sweep or wrap with operation add or cut.') },
+    fields: { featureId: str(), sourceFeature: str('A feature ref, e.g. @ex1: an extrude, revolve, sweep or wrap with operation add or cut, or a hole (always a cut).') },
   },
   remove_pattern_source: {
     summary: 'Remove a pattern source by index.',
@@ -2074,8 +2104,8 @@ export const MUTATION_CATALOG = {
       subject: optStr('body | feature; absent means body.'),
       body: optStr('The part (stored as `body`) to mirror, e.g. body_ex2; used when `subject` is `body`.'),
       source_features: optArr(
-        'Feature refs to mirror (feature subject), e.g. ["@ex1", "@ex2"]: earlier extrudes, revolves or sweeps with ' +
-        'operation add or cut. Applied in feature-log order.',
+        'Feature refs to mirror (feature subject), e.g. ["@ex1", "@ex2"]: an extrude, revolve, sweep or wrap with ' +
+        'operation add or cut, or a hole (always a cut). Applied in feature-log order.',
       ),
       target_body: optStr('The part a mirrored feature copy lands in (stored as `target_body`), when a source shaped more than one.'),
       plane: optStr('The mirror plane: @builtin_plane_*, a bare name, @<planeId>, or a face query.'),
@@ -2093,7 +2123,7 @@ export const MUTATION_CATALOG = {
     note: MIRROR_NOTE,
     fields: {
       featureId: str(),
-      sourceFeature: str('A feature ref, e.g. @ex1: an extrude, revolve, sweep or wrap with operation add or cut.'),
+      sourceFeature: str('A feature ref, e.g. @ex1: an extrude, revolve, sweep or wrap with operation add or cut, or a hole (always a cut).'),
     },
   },
   remove_mirror_source: {

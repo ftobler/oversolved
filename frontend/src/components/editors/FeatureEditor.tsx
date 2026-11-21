@@ -43,12 +43,18 @@ interface FeatureEditorProps {
   // The feature's last solve result, for a schema row that shows a solved value
   // (the linear pattern's directive-length spacing) instead of an authored one.
   solved?: unknown
+  // The variables defined before this feature, the scope every number field
+  // resolves an expression against.
+  variables?: Record<string, number>
+  // The variables defined after it, so a forward reference is named as such.
+  laterVariables?: Record<string, number>
 }
 
 // ─── main component ───
 
 export function FeatureEditor({
   feature, onMutation, onMutationBatch, features, partLabels, schema, lengthUnit = 'mm', solved,
+  variables, laterVariables,
 }: FeatureEditorProps) {
   const fid = feature.id
   const raw = (feature as unknown as SchemaData)[schema.subKey] ?? schema.defaults
@@ -94,6 +100,9 @@ export function FeatureEditor({
               onMutation={onMutation}
               mutationType={mutationType}
               lengthUnit={lengthUnit}
+              variables={variables}
+              laterVariables={laterVariables}
+              unitHint={nf.unitHint?.(data)}
             />
           }
           case 'select': {

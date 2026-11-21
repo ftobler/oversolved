@@ -7,9 +7,11 @@
 // transform (options.noun/opName say "mirror" in the messages).
 //
 // Each source's tool is obtained by re-solving the source with its operation
-// forced to `new` into a throwaway body store. Those scratch bodies are released
-// at the end of this solve; they never enter the real store, so no part row or
-// checkpoint sees them.
+// forced to `new` into a throwaway body store. A hole has no operation: its own
+// tool mode hands back the compound of the per-site cutters it actually cut
+// with, named by the hole's bore/floor/mouth roles and carrying its cosmetic
+// thread. Those scratch bodies are released at the end of this solve; they never
+// enter the real store, so no part row or checkpoint sees them.
 //
 // Several sources are a union: every source's tool is applied at every grid
 // instance, in the order the sources sit in the feature log (then each source's
@@ -19,7 +21,7 @@
 // warning on the result; a pattern left with no source is refused by name.
 
 import type { DisposeScope } from '../occ/disposeScope'
-import type { OccModule, OccShape } from '../occ/occTypes'
+import type { OccModule, OccPntValue, OccShape, OccTrsf } from '../occ/occTypes'
 import type { HandleTable } from '../occ/handleTable'
 import type { PartSolid } from '../types3d'
 import type { Repository } from '../query'
@@ -39,10 +41,14 @@ import { solveExtrude } from './extrude'
 import { solveRevolve } from './revolve'
 import { solveSweep } from './sweep'
 import { solveWrap } from './wrap'
+import { solveHole } from './hole'
 import { extractErrorMessage, swallowUnlessTrap } from '../errors'
 import { stripRefSigil } from '@/utils/refSigil'
 import { solidCentroid, type Vec3 } from '../occ/primitives'
+import { arrayInstancePath, mintFaceUuid } from '../constructionName'
+import type { ThreadDisplayData, ThreadSiteData } from '@/types/cad'
 import type { Dict, PatternCopy } from './pattern'
+import { isPatternSourceKind, patternSourceKindSentence, type PatternSourceKind } from './patternSourceKinds'
 
 export interface PatternResult {
   [key: string]: unknown
@@ -52,6 +58,9 @@ export interface PatternResult {
   operation?: string
   solver_warning?: string
   exception?: string
+  // The copies' tapped runs when a source was a threaded hole; the source's
+  // own runs stay on its result.
+  thread?: ThreadDisplayData
 }
 
 /**
@@ -68,27 +77,23 @@ export interface FeatureCopiesOptions {
 }
 
 /** The kinds whose leaf builds a tool and routes it through applyPartOperation
- *  with add/cut/new, so `operation: new` hands the same tool back as a body. */
+ *  with add/cut/new, so `operation: new` hands the same tool back as a body. A
+ *  hole has no operation: its tool mode hands back the per-site cutters it
+ *  actually cut with, compounded and fused where two bores overlap. */
 const TOOL_LEAVES = {
   extrude: solveExtrude,
   revolve: solveRevolve,
   sweep: solveSweep,
   wrap: solveWrap,
-} as const
+  hole: solveHole,
+} satisfies Record<PatternSourceKind, (...args: never[]) => { status: string }>
 
-type ToolKind = keyof typeof TOOL_LEAVES
+type ToolKind = PatternSourceKind
 
+/** The shared kind list is the gate; the satisfies above fails to compile when
+ *  it gains a kind this table lacks, so the two cannot drift apart. */
 function isToolKind(kind: string): kind is ToolKind {
-  return Object.hasOwn(TOOL_LEAVES, kind)
-}
-
-/** What a source has to be, in the caller's own words. The pattern's sentence
- *  predates the shared engine and is pinned by its tests, so it stays literal;
- *  a mirror reads the same rule with its own name. */
-function sourceKindSentence(noun: string): string {
-  return noun === 'pattern'
-    ? 'a feature pattern repeats an extrude, revolve, sweep or wrap'
-    : `a ${noun} source repeats an extrude, revolve, sweep or wrap`
+  return isPatternSourceKind(kind)
 }
 
 /** The sources a feature pattern names, in the authored order. A row written
@@ -155,7 +160,7 @@ function resolveSources(
     const kind = String(source.kind ?? '')
     if (!isToolKind(kind)) {
       throw new Error(
-        `${noun}: '${sourceId}' is a ${kind || 'feature without a kind'}; ` + sourceKindSentence(noun),
+        `${noun}: '${sourceId}' is a ${kind || 'feature without a kind'}; ` + patternSourceKindSentence(noun),
       )
     }
     const resolved = resolveFeatureExpressions(source, variables, laterVariables)
@@ -164,12 +169,20 @@ function resolveSources(
     }
     const feature = resolved.feature
     const sub = (feature[kind] as Dict | undefined) ?? {}
-    const operation = (sub.operation as string) ?? 'add'
-    if (operation !== 'add' && operation !== 'cut') {
-      throw new Error(
-        `${noun}: the source feature '${sourceId}' has operation '${operation}'; ` +
-          'repeat an add or a cut, not a feature that starts a new part',
-      )
+    // A hole has no operation field; its only meaning is a cut. Do not invent
+    // the key on the row: the source's own solve is the authority.
+    let operation: 'add' | 'cut'
+    if (kind === 'hole') {
+      operation = 'cut'
+    } else {
+      const authored = (sub.operation as string) ?? 'add'
+      if (authored !== 'add' && authored !== 'cut') {
+        throw new Error(
+          `${noun}: the source feature '${sourceId}' has operation '${authored}'; ` +
+            'repeat an add or a cut, not a feature that starts a new part',
+        )
+      }
+      operation = authored
     }
     if (kind === 'extrude' && ((sub.termination as string) === 'up_to' || (sub.termination as string) === 'up_to_next')) {
       throw new Error(
@@ -234,6 +247,12 @@ interface SourceTool {
   shape: OccShape
   rows: ReturnType<typeof readSourceFaceRows>
   order: number
+  // A threaded hole's tapped runs, in the source's own coordinates. The copies
+  // transform them, so a patterned bore shades as threaded.
+  thread?: ThreadDisplayData
+  // A through_all hole's resolved drill axis. Its tool was sized with one span
+  // along this axis, so a copy that turns the axis cannot reach through.
+  throughAxis?: Vec3
 }
 
 /** One transformed tool copy: the shape and the identities it was minted with. */
@@ -244,6 +263,13 @@ interface CopyInstance {
   sourceId: string
   shape: OccShape
   names: NameMaps
+  // The instance naming key the copy's UUIDs were minted under, so a thread run
+  // can name the bore face this copy leaves.
+  nameKey: string
+  // The placement itself, for the same reason: a thread run's centre and axis
+  // go through it.
+  trsf: OccTrsf
+  thread?: ThreadDisplayData
 }
 
 /** Merge every selected copy's name maps into one tool map for the batch. */
@@ -270,6 +296,9 @@ interface TargetCopyResult {
   notes: string[]
   partIds: string[]
   appliedCopies: number
+  // The copies that really contributed, so a thread can ride them and not a
+  // skipped instance or a miss.
+  applied: CopyInstance[]
 }
 
 /**
@@ -325,9 +354,10 @@ function applyCopiesToTarget(
 
   // The old per-copy path, kept for the two shapes a batch cannot report per
   // copy: a copy that consumes the target, and a union that leaves islands.
-  const applyIndividually = (): { partIds: string[]; appliedCopies: number } => {
+  const applyIndividually = (): { partIds: string[]; appliedCopies: number; applied: CopyInstance[] } => {
     const attempted = operation === 'cut' ? probeCutHits() : selected
     let appliedCopies = 0
+    const applied: CopyInstance[] = []
     const live = new Set<string>([targetId])
     let consumed = false
     for (const [copyNo, group] of groupByCopy(attempted)) {
@@ -360,6 +390,7 @@ function applyCopiesToTarget(
             precision: target.precision ?? null,
           })
           copyApplied = true
+          applied.push(inst)
           const ids = result.body_ids ?? (result.body_id ? [result.body_id] : [])
           if (ids.length === 0) {
             // The copy consumed the whole target: nothing keeps the id and no
@@ -385,7 +416,7 @@ function applyCopiesToTarget(
       }
       if (copyApplied) appliedCopies++
     }
-    return { partIds: [...live], appliedCopies }
+    return { partIds: [...live], appliedCopies, applied }
   }
 
   // One boolean over every copy. A throw, a consumed target, or a result that
@@ -425,7 +456,7 @@ function applyCopiesToTarget(
       if (shaped.has(index)) kept.push(copy)
       else failures.push(`${copyLabel(copy.copy)}: cut does not intersect any target part - nothing to remove`)
     })
-    if (kept.length === 0) return { partIds: [], appliedCopies: 0, failures, notes }
+    if (kept.length === 0) return { partIds: [], appliedCopies: 0, applied: [], failures, notes }
     selected = kept
   }
 
@@ -464,7 +495,7 @@ function applyCopiesToTarget(
   target.brep_diff = batched.diff
   if (brepDiffIsEmpty(batched.diff)) notes.push(`${noun}: operation produced no geometry change`)
 
-  return { partIds, appliedCopies: groupByCopy(selected).size, failures, notes }
+  return { partIds, appliedCopies: groupByCopy(selected).size, applied: [...selected], failures, notes }
 }
 
 /**
@@ -481,6 +512,7 @@ function buildSourceTools(
   sources: readonly ResolvedSource[],
   globalRepo: Repository,
   partStore: Record<string, PartSolid>,
+  featuresById: Record<string, Dict>,
   solveContext: { variables: Record<string, number>; laterVariables: Record<string, number> },
   scratchParts: PartSolid[],
   noun: string,
@@ -499,7 +531,10 @@ function buildSourceTools(
     const throughAllSource = source.kind === 'extrude' && (sourceSub.termination as string) === 'through_all'
       ? { operation: source.operation, parts: partStore }
       : undefined
-    const toolSub: Dict = { ...sourceSub, operation: 'new' }
+    // A hole has no operation of its own and its tool mode reads the real store
+    // directly, so its sub-def is handed over untouched rather than forced to
+    // `new` (a key the leaf ignores, but the row never carries one).
+    const toolSub: Dict = source.kind === 'hole' ? { ...sourceSub } : { ...sourceSub, operation: 'new' }
     if (throughAllSource === undefined) delete toolSub.merge_target
     const toolFeature: Dict = { ...source.feature, id: source.id, [source.kind]: toolSub }
     const built = source.kind === 'extrude'
@@ -514,13 +549,30 @@ function buildSourceTools(
         ? solveWrap(oc, scope, table, toolFeature, globalRepo, scratch, undefined, {
             ...solveContext, rebuild: { operation: source.operation, parts: partStore },
           })
-        : TOOL_LEAVES[source.kind](oc, scope, table, toolFeature, globalRepo, scratch)
+        : source.kind === 'hole'
+          // The hole has no operation to force: its tool mode resolves the
+          // sites, direction and through_all span against the real store, builds
+          // the per-site cutters it actually cut with, and registers their
+          // compound (or fuse) as the one scratch body, names and thread and all.
+          ? solveHole(
+              oc, scope, table, toolFeature, globalRepo, scratch, featuresById,
+              { ...solveContext, toolOnly: { parts: partStore } },
+            )
+          : TOOL_LEAVES[source.kind](oc, scope, table, toolFeature, globalRepo, scratch)
     if (built.status !== 'ok') {
       throw new Error(
         `${noun}: the source feature '${source.id}' could not provide its tool: ` +
           `${String(built.exception ?? built.status)}`,
       )
     }
+    const builtThread = source.kind === 'hole'
+      ? (built as { thread?: ThreadDisplayData }).thread
+      : undefined
+    // A through_all hole's tool carries one span, so the leaf must know which
+    // way that span runs to refuse a copy that turns it.
+    const throughAxis = source.kind === 'hole' && (sourceSub.depth_mode as string) === 'through_all'
+      ? (built as { drill_axis?: Vec3 }).drill_axis
+      : undefined
     const sourceTools = Object.values(scratch)
     scratchParts.push(...sourceTools)
     if (sourceTools.length === 0) {
@@ -537,6 +589,8 @@ function buildSourceTools(
         shape,
         rows: readSourceFaceRows(oc, scope, shape, names.faceNames, names.faceAncestry, names.capAncestry),
         order: order++,
+        thread: builtThread,
+        throughAxis,
       })
     }
   }
@@ -573,7 +627,7 @@ export function firstSourceToolCentroid(
   const scratchParts: PartSolid[] = []
   try {
     const tools = buildSourceTools(
-      oc, scope, table, [sources[0]], globalRepo, partStore, solveContext, scratchParts, 'pattern',
+      oc, scope, table, [sources[0]], globalRepo, partStore, featuresById, solveContext, scratchParts, 'pattern',
     )
     if (tools.length === 0) return null
     return solidCentroid(oc, scope, tools[0].shape)
@@ -585,6 +639,75 @@ export function firstSourceToolCentroid(
 interface TargetPlan {
   target: PartSolid
   sources: ResolvedSource[]
+}
+
+/** A copy's rigid transform applied to one point. */
+function transformedPoint(oc: OccModule, scope: DisposeScope, trsf: OccTrsf, point: readonly number[]): Vec3 {
+  const p = scope.track(new oc.gp_Pnt_3(point[0], point[1], point[2])) as OccPntValue
+  p.Transform(trsf)
+  return [p.X(), p.Y(), p.Z()]
+}
+
+/** A copy's transform applied to a direction: two points, so the translation
+ *  cancels. Rigid transforms preserve length (a mirror reflects the sense). */
+function transformedDirection(oc: OccModule, scope: DisposeScope, trsf: OccTrsf, direction: Vec3): Vec3 {
+  const from = transformedPoint(oc, scope, trsf, [0, 0, 0])
+  const to = transformedPoint(oc, scope, trsf, direction)
+  const dx = to[0] - from[0]
+  const dy = to[1] - from[1]
+  const dz = to[2] - from[2]
+  const length = Math.hypot(dx, dy, dz)
+  return length > 1e-12 ? [dx / length, dy / length, dz / length] : [0, 0, 0]
+}
+
+/**
+ * The tapped runs the pattern's own result reports: the source hole's runs
+ * carried through each copy that really applied. The centre goes through the
+ * instance transform, the axis is the transformed direction (a mirror reflects
+ * it), and the bore UUID is the copy's remapped bore, so the viewport shades
+ * the wall the pattern left. A skipped instance or a missed copy contributes
+ * nothing, exactly as it contributed no geometry.
+ */
+function threadRunsOfCopies(
+  oc: OccModule,
+  scope: DisposeScope,
+  featureId: string,
+  applied: readonly CopyInstance[],
+): ThreadDisplayData | null {
+  const runs: ThreadSiteData[] = []
+  let meta: Pick<ThreadDisplayData, 'designation' | 'nominal' | 'pitch'> | null = null
+  for (const copy of applied) {
+    if (copy.thread === undefined) continue
+    meta ??= {
+      designation: copy.thread.designation,
+      nominal: copy.thread.nominal,
+      pitch: copy.thread.pitch,
+    }
+    for (const site of copy.thread.sites) {
+      const center = transformedPoint(oc, scope, copy.trsf, site.center)
+      const ahead = transformedPoint(oc, scope, copy.trsf, [
+        site.center[0] + site.axis[0],
+        site.center[1] + site.axis[1],
+        site.center[2] + site.axis[2],
+      ])
+      const dx = ahead[0] - center[0]
+      const dy = ahead[1] - center[1]
+      const dz = ahead[2] - center[2]
+      const length = Math.hypot(dx, dy, dz)
+      if (!(length > 1e-12)) continue
+      runs.push({
+        center: [center[0], center[1], center[2]],
+        axis: [dx / length, dy / length, dz / length],
+        radius: site.radius,
+        length: site.length,
+        // The instance path the copy's face UUIDs were minted under, so the run
+        // names the wall this copy left rather than the source's.
+        bore_uuids: site.bore_uuids.map((uuid) => mintFaceUuid(arrayInstancePath(uuid, featureId, copy.nameKey))),
+      })
+    }
+  }
+  if (meta === null || runs.length === 0) return null
+  return { ...meta, sites: runs }
 }
 
 /**
@@ -664,12 +787,13 @@ export function solveFeaturePattern(
   const scratchParts: PartSolid[] = []
   try {
     const tools = buildSourceTools(
-      oc, scope, table, sources, globalRepo, partStore, solveContext, scratchParts, noun,
+      oc, scope, table, sources, globalRepo, partStore, featuresById, solveContext, scratchParts, noun,
     )
 
     const failures: string[] = []
     const resultIds = new Set<string>()
     const coincident: string[] = []
+    const appliedInstances: CopyInstance[] = []
     let appliedCopies = 0
     const totalCopies = copies.length * sources.length
     for (const plan of plans) {
@@ -679,6 +803,26 @@ export function solveFeaturePattern(
       for (const [index, copy] of copies.entries()) {
         for (const tool of planTools) {
           markFeatureStart(featureId)
+          // A through_all hole's tool carries one span along its own axis; a
+          // copy that turns that axis anywhere between parallel and
+          // anti-parallel would cut a shorter chord than the body needs, so it
+          // is refused by name instead of silently leaving a blind bore.
+          if (tool.throughAxis !== undefined) {
+            const copiedAxis = transformedDirection(oc, scope, copy.trsf, tool.throughAxis)
+            const dot = Math.abs(
+              copiedAxis[0] * tool.throughAxis[0] +
+              copiedAxis[1] * tool.throughAxis[1] +
+              copiedAxis[2] * tool.throughAxis[2],
+            )
+            if (dot < 1 - 1e-9) {
+              failures.push(
+                `${noun}: copy ${index + 1} (source '${tool.sourceId}') turns the through_all hole's drill axis, ` +
+                  'so its bore cannot span the body with the tool\'s one span; keep the drill axis parallel or ' +
+                  'use a blind hole',
+              )
+              continue
+            }
+          }
           const { shape: rawShape, builder } = transformCopyWithMapping(oc, scope, tool.shape, copy.trsf)
           const shape = scope.track(rawShape)
           // A copy that lands on its own source changes nothing: the source's
@@ -696,7 +840,9 @@ export function solveFeaturePattern(
           const nameKey = tools.length > 1 ? `${copy.key}|s${tool.order}` : copy.key
           const names = rebuildNamesForTransformedCopy(oc, scope, shape, tool.rows, featureId, nameKey, builder)
           const list = copiesBySource.get(tool.sourceId)
-          const instanceCopy = { copy: index + 1, sourceId: tool.sourceId, shape, names }
+          const instanceCopy: CopyInstance = {
+            copy: index + 1, sourceId: tool.sourceId, shape, names, nameKey, trsf: copy.trsf, thread: tool.thread,
+          }
           if (list === undefined) copiesBySource.set(tool.sourceId, [instanceCopy])
           else list.push(instanceCopy)
         }
@@ -721,6 +867,7 @@ export function solveFeaturePattern(
         failures.push(...result.failures)
         notes.push(...result.notes)
         appliedCopies += result.appliedCopies
+        appliedInstances.push(...result.applied)
         for (const id of result.partIds) resultIds.add(id)
       }
     }
@@ -750,6 +897,10 @@ export function solveFeaturePattern(
       operation: operations.size === 1 ? [...operations][0] : 'mixed',
       ...extra,
     }
+    // A threaded hole's copies shade their own walls. Only the copies appear
+    // here: the source's own run stays on the source hole's result.
+    const thread = threadRunsOfCopies(oc, scope, featureId, appliedInstances)
+    if (thread !== null) result.thread = thread
     if (failures.length > 0) {
       result.exception = `${noun}: ${appliedCopies}/${totalCopies} copies applied; ${failures.join('; ')}`
     }

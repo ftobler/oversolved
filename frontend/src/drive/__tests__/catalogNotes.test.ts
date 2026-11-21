@@ -5,7 +5,7 @@
 // rest of the catalog's notes are, so these pin the sentences a client reads.
 
 import { describe, it, expect } from 'vitest'
-import { MUTATION_CATALOG, mutationInfoOf, FIELD_SETTER_KIND, MUTATION_FAMILY } from '../mutationCatalog'
+import { MUTATION_CATALOG, mutationInfoOf, FIELD_SETTER_KIND, MUTATION_FAMILY, TANGENT_PAIR_NOTE, FIT_SPLINE_HANDLE_DOF_NOTE } from '../mutationCatalog'
 import { ASSEMBLY_MUTATION_CATALOG } from '../assemblyMutationCatalog'
 import { MATE_KINDS, mateParams } from '@/utils/mateKinds'
 import type { MateKind } from '@/types/cad'
@@ -569,8 +569,15 @@ describe('practice doc cases: fit_spline magnitude and helix sweep path', () => 
       const fields = mutationInfoOf(type).fields
       expect(fields.tangents.note, type).toContain('its length is that end\'s magnitude')
       expect(fields.tangents.note, type).toContain('`tangentScale: false` keeps the authored length')
+      expect(fields.tangents.note, type).toContain(FIT_SPLINE_HANDLE_DOF_NOTE)
       expect(fields.tangentScale.note, type).toContain('false keeps each tangent\'s length')
     }
+  })
+
+  it('states the tangent pair table and the spline shared-endpoint rule', () => {
+    expect(mutationInfoOf('add_constraint').note).toContain(TANGENT_PAIR_NOTE)
+    expect(TANGENT_PAIR_NOTE).toContain('line with a circle, arc, ellipse or spline')
+    expect(TANGENT_PAIR_NOTE).toContain('a coincident at the spline\'s start or end')
   })
 
   it('names the helix path form and both limits on both pathQuery fields', () => {
@@ -644,6 +651,31 @@ describe('vertex keys named per entity kind', () => {
       expect(note).toContain('start/end/center on an arc')
       expect(note).toContain('center/major1/major2/minor1/minor2 on an ellipse')
     }
+  })
+})
+
+// A hole has no operation, so the shared source sentence cannot say "each is an
+// extrude, revolve, sweep or wrap with operation add or cut" any more: the hole
+// is a cut by definition. Every row that names a pattern or mirror source says
+// the hole, and the pick pair says it too.
+describe('a hole is a pattern and mirror source', () => {
+  const sourceRows = [
+    'add_linear_pattern', 'add_circular_pattern', 'add_curve_pattern', 'add_instance_pattern',
+    'add_pattern', 'add_mirror',
+  ] as const
+
+  it.each(sourceRows)('%s names the hole on source_features', (type) => {
+    const note = mutationInfoOf(type).fields.source_features.note!
+    expect(note).toContain('or a hole')
+    expect(note).toContain('always a cut')
+  })
+
+  it.each(['add_linear_pattern', 'add_circular_pattern', 'add_curve_pattern', 'add_instance_pattern', 'add_mirror'] as const)('%s row note names the hole', (type) => {
+    expect(mutationInfoOf(type).note).toContain('or a hole')
+  })
+
+  it.each(['add_pattern_source', 'add_mirror_source'] as const)('%s names the hole on its sourceFeature field', (type) => {
+    expect(mutationInfoOf(type).fields.sourceFeature.note).toContain('or a hole')
   })
 })
 

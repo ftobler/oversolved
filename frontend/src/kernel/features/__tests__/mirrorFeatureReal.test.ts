@@ -345,7 +345,7 @@ describe.skipIf(!oc || !solveBytes)('the mirror feature subject through the buil
     const r = h.run(holedPlate(featureMirror({ source_features: ['@sk_plate'] })))
     const message = String(h.res(r, 'mi1').exception)
     expect(message).toContain("'sk_plate' is a sketch")
-    expect(message).toContain('a mirror source repeats an extrude, revolve, sweep or wrap')
+    expect(message).toContain('a mirror source repeats an extrude, revolve, sweep, wrap or hole')
   })
 
   it('leaves the body subject unchanged when the subject is absent', () => {

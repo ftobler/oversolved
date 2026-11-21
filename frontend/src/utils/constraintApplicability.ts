@@ -36,6 +36,66 @@ export interface ConstraintKindOperand {
 }
 
 /**
+ * The operand-kind pairs a tangent admits, in either order: a line against a
+ * circle, arc, ellipse or spline; a circle or arc against another circle, arc
+ * or spline; and a spline against another spline. The pair alone is not enough
+ * for a spline: it also needs a coincident pinning its end, which the solver
+ * judges once the row exists (the coincident may be authored after the
+ * tangent). Keep this table in step with `tangent_pair_kinds_admitted` in
+ * sketch-solver/src/residuals/geom.rs.
+ */
+export const TANGENT_KIND_PAIRS: readonly (readonly [string, string])[] = [
+  ['line', 'circle'],
+  ['line', 'arc'],
+  ['line', 'ellipse'],
+  ['line', 'spline'],
+  ['line', 'fit_spline'],
+  ['circle', 'arc'],
+  ['circle', 'circle'],
+  ['arc', 'arc'],
+  ['circle', 'spline'],
+  ['circle', 'fit_spline'],
+  ['arc', 'spline'],
+  ['arc', 'fit_spline'],
+  ['spline', 'spline'],
+  ['spline', 'fit_spline'],
+  ['fit_spline', 'fit_spline'],
+]
+
+const TANGENT_PAIR_KEYS: ReadonlySet<string> = new Set(
+  TANGENT_KIND_PAIRS.flatMap(([a, b]) => [`${a}|${b}`, `${b}|${a}`]),
+)
+
+/** True when the unordered kind pair is one a tangent can represent. */
+export function tangentKindsAdmitted(a: string, b: string): boolean {
+  return TANGENT_PAIR_KEYS.has(`${a}|${b}`)
+}
+
+/**
+ * Why a tangent cannot take exactly these whole-entity kinds, or null. A
+ * tangent is heterogeneous by design, so it cannot be a flat
+ * `entityKindGroups` list: its accepted pair set is not "all operands in one
+ * group".
+ */
+export function tangentKindProblem(kinds: readonly string[]): string | null {
+  if (kinds.length !== 2) return null
+  if (tangentKindsAdmitted(kinds[0], kinds[1])) return null
+  return `tangent does not apply to ${[...new Set(kinds)].join(' and ')}`
+}
+
+/**
+ * The dropped-constraint reason for a spline tangent the solve ignored because
+ * no coincident pins its end. It is a shape the kind pair admits but the
+ * solver has no free form for; the authored row stays in the document so adding
+ * the coincident later revives it.
+ */
+export function tangentNeedsSharedEndpointReason(partner: string): string {
+  const article = partner === 'arc' || partner === 'ellipse' ? 'an' : 'a'
+  return `tangent between ${article} ${partner} and a spline needs a shared endpoint `
+    + "(a coincident at the spline's start or end)"
+}
+
+/**
  * The kinds whose operand kinds no registry `entityKindGroups` entry names.
  * Every key is a registry constraint kind, and none may shadow a registry group
  * (the test checks both): where the registry speaks, its entry is the judgement
@@ -91,6 +151,13 @@ export function constraintEntityKindProblem(
   kind: string,
   operands: readonly ConstraintKindOperand[],
 ): string | null {
+  // A tangent is a heterogeneous pair: its accepted combinations are the pair
+  // table, not "every operand in one common group". Judge only the two-whole-
+  // entity form; a point pick is the shape rule's concern and the solver drops
+  // a row it cannot read.
+  if (kind === 'tangent') {
+    return tangentKindProblem(operands.map(operand => operand.kind))
+  }
   const groups = constraintEntityKindGroups(kind)
   if (!groups || operands.length === 0) return null
   const verdict = (

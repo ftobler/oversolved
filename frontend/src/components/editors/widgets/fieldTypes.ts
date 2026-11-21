@@ -27,6 +27,9 @@ export interface NumberFieldDef extends BaseFieldDef {
   // the compiler is the guard. `length` follows the document's unit; the other
   // kinds are fixed words (utils/fieldUnit.ts). `none` is a true ratio.
   quantity: Quantity
+  // A unit word the document already carries, shown in the box when the
+  // quantity has none of its own (a variable's free-form "mm" display hint).
+  unitHint?: (data: SchemaData) => string | undefined
   arrayField?: string
   arrayIndex?: number
   min?: number
@@ -165,6 +168,13 @@ export interface NumberFieldWidgetProps extends WidgetBaseProps {
   mutationType: string
   // The document's unit, for a length field's label.
   lengthUnit?: LengthUnit
+  // The variables defined before this feature, the scope every expression
+  // field resolves against.
+  variables?: Record<string, number>
+  // The variables defined after it, so a forward reference says "below".
+  laterVariables?: Record<string, number>
+  // A document-carried unit word shown beside a quantity that has no unit.
+  unitHint?: string
 }
 
 export interface SelectFieldWidgetProps extends WidgetBaseProps {

@@ -470,13 +470,90 @@ describe('FeatureEditor schema lookup', () => {
   })
 })
 
+describe('FeatureEditor expression scope', () => {
+  function extrudeFeature(distance: string | number): PartFeature {
+    return { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance, direction: 'normal' } } as PartFeature
+  }
+
+  it('shows the variable value and commits the name as the expression string', () => {
+    const onMutation = vi.fn()
+    render(
+      <FeatureEditor
+        feature={extrudeFeature(5)}
+        onMutation={onMutation}
+        schema={EXTRUDE_SCHEMA}
+        variables={{ width: 40 }}
+      />,
+    )
+    const input = screen.getByDisplayValue('5')
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'width' } })
+    expect(screen.getByText('= 40')).toBeInTheDocument()
+    fireEvent.blur(input)
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'set_extrude_field', featureId: 'ex1', field: 'distance', value: 'width',
+    })
+  })
+
+  it('refuses a forward reference with the below wording and dispatches nothing', () => {
+    const onMutation = vi.fn()
+    render(
+      <FeatureEditor
+        feature={extrudeFeature(5)}
+        onMutation={onMutation}
+        schema={EXTRUDE_SCHEMA}
+        variables={{}}
+        laterVariables={{ width: 1 }}
+      />,
+    )
+    const input = screen.getByDisplayValue('5')
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'width*2' } })
+    expect(screen.getByRole('status')).toHaveTextContent('variable "width" is defined below this feature')
+    fireEvent.blur(input)
+    expect(onMutation).not.toHaveBeenCalled()
+  })
+
+  it('explains each spelling the report tried, and commits none of them', () => {
+    const onMutation = vi.fn()
+    render(
+      <FeatureEditor
+        feature={extrudeFeature(5)}
+        onMutation={onMutation}
+        schema={EXTRUDE_SCHEMA}
+        variables={{ width: 40 }}
+      />,
+    )
+    const input = screen.getByDisplayValue('5')
+    const cases: [string, string][] = [
+      ['#var', 'cannot evaluate "#var": write a variable by its bare name, e.g. width*2'],
+      ['{var}', 'cannot evaluate "{var}": write a variable by its bare name, e.g. width*2'],
+      ['$var', 'unknown variable "$var"; defined above this feature: width'],
+    ]
+    for (const [text, reason] of cases) {
+      fireEvent.focus(input)
+      fireEvent.change(input, { target: { value: text } })
+      expect(screen.getByRole('status')).toHaveTextContent(reason)
+      fireEvent.blur(input)
+    }
+    expect(onMutation).not.toHaveBeenCalled()
+  })
+})
+
 describe('VARIABLE_SCHEMA', () => {
-  it('has the expected shape', () => {
+  function variableFeature(expression: string | number): PartFeature {
+    return { id: 'v1', kind: 'variable', label: 'v', variable: { expression } } as PartFeature
+  }
+
+  it('is a standard expression field, not plain text', () => {
     expect(VARIABLE_SCHEMA.mutationPrefix).toBe('set_variable')
     expect(VARIABLE_SCHEMA.subKey).toBe('variable')
-    expect(VARIABLE_SCHEMA.defaults).toEqual({ expression: '0' })
+    expect(VARIABLE_SCHEMA.defaults).toEqual({ expression: 0 })
     const field = VARIABLE_SCHEMA.fields.find(f => f.key === 'expression')
-    expect(field?.type).toBe('text')
+    // A schema guard: the field gave no wheel step and no value readout while
+    // it was text, and it must not drift back.
+    expect(field?.type).toBe('number')
+    expect(field?.type === 'number' && field.quantity).toBe('none')
   })
 
   it('is registered under the variable kind', () => {
@@ -485,11 +562,97 @@ describe('VARIABLE_SCHEMA', () => {
 
   it('dispatches set_variable_field on expression blur', () => {
     const onMutation = vi.fn()
-    const feature: PartFeature = { id: 'v1', kind: 'variable', variable: { expression: '0' } }
-    render(<FeatureEditor feature={feature} onMutation={onMutation} schema={VARIABLE_SCHEMA} />)
+    render(
+      <FeatureEditor
+        feature={variableFeature('0')}
+        onMutation={onMutation}
+        schema={VARIABLE_SCHEMA}
+        variables={{ width: 10 }}
+      />,
+    )
     const input = screen.getByDisplayValue('0')
     fireEvent.change(input, { target: { value: 'width*2' } })
     fireEvent.blur(input)
     expect(onMutation).toHaveBeenCalledWith({ type: 'set_variable_field', featureId: 'v1', field: 'expression', value: 'width*2' })
+  })
+
+  it('wheel-steps a plain expression by one, with no lower bound', () => {
+    const onMutation = vi.fn()
+    const { rerender } = render(
+      <FeatureEditor feature={variableFeature('0')} onMutation={onMutation} schema={VARIABLE_SCHEMA} />,
+    )
+    const input = screen.getByDisplayValue('0')
+    fireEvent.wheel(input, { deltaY: -100 })
+    expect(onMutation).toHaveBeenLastCalledWith({
+      type: 'set_variable_field', featureId: 'v1', field: 'expression', value: 1,
+    })
+
+    rerender(<FeatureEditor feature={variableFeature(1)} onMutation={onMutation} schema={VARIABLE_SCHEMA} />)
+    fireEvent.wheel(screen.getByDisplayValue('1'), { deltaY: 100 })
+    expect(onMutation).toHaveBeenLastCalledWith({
+      type: 'set_variable_field', featureId: 'v1', field: 'expression', value: 0,
+    })
+
+    // A variable may be negative: the wheel has no positive/non-negative rule.
+    rerender(<FeatureEditor feature={variableFeature(0)} onMutation={onMutation} schema={VARIABLE_SCHEMA} />)
+    fireEvent.wheel(screen.getByDisplayValue('0'), { deltaY: 100 })
+    expect(onMutation).toHaveBeenLastCalledWith({
+      type: 'set_variable_field', featureId: 'v1', field: 'expression', value: -1,
+    })
+  })
+
+  it('leaves an expression alone on the wheel, so the panel scrolls', () => {
+    const onMutation = vi.fn()
+    render(
+      <FeatureEditor
+        feature={variableFeature('w*2')}
+        onMutation={onMutation}
+        schema={VARIABLE_SCHEMA}
+        variables={{ w: 10 }}
+      />,
+    )
+    const input = screen.getByDisplayValue('w*2')
+    const ev = new WheelEvent('wheel', { deltaY: -100, bubbles: true, cancelable: true })
+    input.dispatchEvent(ev)
+    expect(onMutation).not.toHaveBeenCalled()
+    expect(ev.defaultPrevented).toBe(false)
+  })
+
+  it('shows the value of an expression over the variables above it', () => {
+    render(
+      <FeatureEditor
+        feature={variableFeature('w*2')}
+        onMutation={vi.fn()}
+        schema={VARIABLE_SCHEMA}
+        variables={{ w: 10 }}
+      />,
+    )
+    expect(screen.getByText('= 20')).toBeInTheDocument()
+  })
+
+  it('refuses a forward reference with the below wording', () => {
+    const onMutation = vi.fn()
+    render(
+      <FeatureEditor
+        feature={variableFeature('depth')}
+        onMutation={onMutation}
+        schema={VARIABLE_SCHEMA}
+        variables={{}}
+        laterVariables={{ depth: 3 }}
+      />,
+    )
+    const input = screen.getByDisplayValue('depth')
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'depth*2' } })
+    expect(screen.getByRole('status')).toHaveTextContent('is defined below this feature')
+    fireEvent.blur(input)
+    expect(onMutation).not.toHaveBeenCalled()
+  })
+
+  it('shows the stored unit as a display hint only', () => {
+    const feature = variableFeature('5')
+    ;(feature as unknown as { variable: Record<string, unknown> }).variable.unit = 'mm'
+    render(<FeatureEditor feature={feature} onMutation={vi.fn()} schema={VARIABLE_SCHEMA} />)
+    expect(screen.getByText('mm')).toBeInTheDocument()
   })
 })

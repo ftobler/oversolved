@@ -243,6 +243,30 @@ describe.skipIf(solveBytes === null)('sketch constraint warning (real solver)', 
     )
   })
 
+  it('names the shared endpoint for a spline tangent the solve ignored', () => {
+    // The pair is legal, so both the applier and the lowering keep the row; the
+    // solver has no free spline tangent, so it drops it with a reason that names
+    // what is missing rather than the generic operand-kind sentence.
+    const feature = emptySketch('Flank')
+    const doc = docOf(feature)
+    applyAddEntity(doc, 'sk1', 'arc', [0, 0, 5, 0, 90], 'a1')
+    applyAddEntity(doc, 'sk1', 'fit_spline', [0, 0, 1, 1, 2, 0], 'f1')
+    applyAddConstraint(doc, 'sk1', 'tangent', ['entity:sk1:a1', 'entity:sk1:f1'])
+
+    const out = solve(feature)
+    expect(out.solver_warning).toContain(
+      'tangent between an arc and a spline needs a shared endpoint '
+      + "(a coincident at the spline's start or end)",
+    )
+    expect(out.dropped_constraints).toEqual([
+      expect.objectContaining({
+        kind: 'tangent',
+        reason: 'tangent between an arc and a spline needs a shared endpoint '
+          + "(a coincident at the spline's start or end)",
+      }),
+    ])
+  })
+
   it('keeps the underconstrained and dropped warnings together', () => {
     const feature = emptySketch()
     const doc = docOf(feature)

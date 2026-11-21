@@ -207,11 +207,14 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
     })
 
-    it('keeps a pre-existing selection when entering a sketch from the part view', () => {
+    it('keeps a pre-existing B-rep selection when entering a sketch from the part view', () => {
+      // The carry-in exists to project a body pick into the sketch; a plane is
+      // dropped because no sketch command can use it (see the selection suite).
+      const edge = '?4,4;@bxx@fyy:edge'
       const s = useSketchEditorStore.getState()
-      s.toggleNormalSelection('@builtin_plane_front')
+      s.toggleNormalSelection(edge)
       s.setActiveFeatureId('S1')
-      expect(useSketchEditorStore.getState().normalSelection.has('@builtin_plane_front')).toBe(true)
+      expect(useSketchEditorStore.getState().normalSelection.has(edge)).toBe(true)
     })
 
     it('leaves selection untouched when the active feature is re-asserted unchanged', () => {

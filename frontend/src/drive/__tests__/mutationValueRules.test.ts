@@ -487,6 +487,37 @@ describe('finding 5: add_constraint target spelling', () => {
       targets: ['entity:sk1:l1', 'vertex:sk1:l1:start'],
     })).toMatchObject({ ok: true })
   })
+
+  it('refuses a face/edge wrapper the applier would store as a dead inner query', () => {
+    // The applier strips the wrapper and stores `?query`, which the solve then
+    // drops; the editor never sends the wrapper. The drive refuses it up front
+    // instead of reporting an ok that changed nothing usable.
+    for (const wrapper of ['face:sk1:?face', 'edge:sk1:?body:edge']) {
+      const error = refusal({
+        type: 'add_constraint', featureId: 'sk1', kind: 'coincident',
+        targets: ['vertex:sk1:l1:start', wrapper],
+      }, sketchDoc())
+      expect(error.code).toBe('invalid-mutation')
+      expect(error.message).toBe(`Coincident takes sketch geometry; ${wrapper} is not sketch geometry`)
+    }
+  })
+
+  it('refuses the sketch plane as an operand, with or without the document', () => {
+    // The drive and the applier share the rule, so the sentence a script sees
+    // is the one the solve warning carries.
+    const error = refusal({
+      type: 'add_constraint', featureId: 'sk1', kind: 'equal_length',
+      targets: ['@builtin_plane_top', '$l1'],
+    }, sketchDoc())
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toBe('Equal takes sketch geometry; @builtin_plane_top is a plane')
+
+    // A shape-only caller still knows an `@` ref is not sketch geometry.
+    expect(refusal({
+      type: 'add_constraint', featureId: 'sk1', kind: 'equal_length',
+      targets: ['@builtin_plane_top', '$l1'],
+    }).message).toBe('Equal takes sketch geometry; @builtin_plane_top is a plane')
+  })
 })
 
 // A target naming another sketch is dead on the wire: the solver resolves
@@ -578,6 +609,44 @@ describe('midpoint operand shapes', () => {
     }, midpointDoc())
     expect(error.code).toBe('invalid-mutation')
     expect(error.message).toContain('horizontal does not apply to line')
+  })
+})
+
+describe('tangent operand shapes', () => {
+  function tangentDoc(): PartDoc {
+    return seedBuiltins({
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_front',
+        entities: [
+          { id: 'e1', kind: 'ellipse' },
+          { id: 'a1', kind: 'arc' },
+          { id: 'f1', kind: 'fit_spline' },
+        ],
+        initial: {
+          e1: [0, 0, 4, 2, 0], a1: [5, 5, 2, 0, 90], f1: [0, 0, 1, 1, 2, 0],
+        },
+      }],
+    })
+  }
+
+  it('refuses the ellipse and arc pair the solver would ignore', () => {
+    const error = refusal({
+      type: 'add_constraint', featureId: 'sk1', kind: 'tangent',
+      targets: ['$e1', '$a1'],
+    }, tangentDoc())
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toContain('tangent does not apply to ellipse and arc')
+  })
+
+  it('accepts an arc with a fit_spline, which the solver gates on a shared end', () => {
+    expect(validateMutation({
+      type: 'add_constraint', featureId: 'sk1', kind: 'tangent',
+      targets: ['$a1', '$f1'],
+    }, { doc: tangentDoc() })).toMatchObject({ ok: true })
   })
 })
 

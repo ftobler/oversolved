@@ -361,6 +361,25 @@ describe('sketchEditorStore', () => {
     })
   })
 
+  describe('null -> sketch carry-in', () => {
+    beforeEach(resetSketchEditorStore)
+
+    it('keeps a projectable B-rep edge and drops a plane the sketch cannot use', () => {
+      // A plane selection made in part view is invisible once the sketch opens
+      // (planes are hidden), so it must not ride in as an operand. A projectable
+      // B-rep edge is the reason the carry-in exists and stays an operand.
+      const edge = '?4,4;@bxx@fyy:edge'
+      useSketchEditorStore.getState().toggleNormalSelection('@builtin_plane_top')
+      useSketchEditorStore.getState().toggleNormalSelection(edge)
+
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+
+      const state = useSketchEditorStore.getState()
+      expect(state.normalSelection.has('@builtin_plane_top')).toBe(false)
+      expect(state.normalSelection.has(edge)).toBe(true)
+    })
+  })
+
   describe('chipOwnedSelection', () => {
     it('starts empty', () => {
       expect(useSketchEditorStore.getState().chipOwnedSelection.size).toBe(0)

@@ -18,6 +18,7 @@ import { booleanJoinList } from '@/utils/core/booleanJoin'
 import { formatSkipList, parseSkipList, SKIP_LIST_TITLE, type SkipEntry } from '@/utils/core/patternSkip'
 import { LINEAR_DIRECTION_MODES, LINEAR_DIRECTION_MODE_LABELS } from '@/utils/core/linearPatternModes'
 import { solvedNumber } from '@/utils/core/solvedValue'
+import { PATTERN_SOURCE_KIND_LIST, isPatternSourceKind } from '@/kernel/features/patternSourceKinds'
 import {
   filterSkippedInstances,
   generatedCount,
@@ -33,7 +34,8 @@ type SchemaData = Record<string, any>
 const showMergeTarget = (d: SchemaData) => d.operation !== 'new'
 
 /** Whether a stored angle asks for a draft. An expression counts as set, the
- *  same rule the drive boundary applies: the editor cannot evaluate it here. */
+ *  same rule the drive boundary applies: this schema predicate has no variable
+ *  scope to evaluate it with. */
 const angleIsSet = (value: unknown): boolean =>
   value !== undefined && value !== null && value !== '' && !(typeof value === 'number' && value === 0)
 
@@ -574,25 +576,24 @@ function patternSkipValue(d: SchemaData): SkipEntry[] {
 
 /**
  * The pattern and mirror source chip's own rule: a source is a whole feature
- * row, not a viewport pick. Only an earlier extrude, revolve, sweep or wrap
- * produces a tool the repeat can reapply (the order and self-reference rule is
- * the pick hook's, shared with every other feature-reference field). The kernel's
- * TOOL_LEAVES (kernel/features/patternFeature.ts) is the same list.
+ * row, not a viewport pick. Only an earlier feature the kernel's tool table can
+ * hand a tool back for produces something the repeat can reapply (the order and
+ * self-reference rule is the pick hook's, shared with every other
+ * feature-reference field). Both read the one shared kind list
+ * (kernel/features/patternSourceKinds.ts), so admitting a kind is one edit.
  */
-const PATTERN_SOURCE_KINDS = ['extrude', 'revolve', 'sweep', 'wrap'] as const
-
 function toolSourcePickRefusal(id: string, features?: readonly PartFeature[]): string | null {
   if (!id.startsWith('@') || id.includes('/')) {
-    return 'pick a feature row (an extrude, revolve, sweep or wrap) in the Features list, not viewport geometry'
+    return `pick a feature row (${PATTERN_SOURCE_KIND_LIST}) in the Features list, not viewport geometry`
   }
   if (features === undefined) return null
   const feature = features.find((candidate) => candidate.id === id.slice(1))
   if (feature === undefined) {
-    return 'pick a feature row (an extrude, revolve, sweep or wrap) in the Features list'
+    return `pick a feature row (${PATTERN_SOURCE_KIND_LIST}) in the Features list`
   }
-  return (PATTERN_SOURCE_KINDS as readonly string[]).includes(feature.kind)
+  return isPatternSourceKind(feature.kind)
     ? null
-    : 'a pattern or mirror source is an extrude, revolve, sweep or wrap'
+    : `a pattern or mirror source is ${PATTERN_SOURCE_KIND_LIST}`
 }
 
 // Both pattern kinds repeat the same thing: one feature, two subjects, one
@@ -606,7 +607,7 @@ export const PATTERN_SOURCE_FIELDS: EditorFieldDef[] = [
   { type: 'pick', key: 'source_body', label: 'Part', transform: resolvePartPickRef, names: 'body',
     showWhen: (d) => d.subject !== 'feature', emptyText: '(pick the part to copy)' },
   // The sources are FEATURE rows, not viewport picks: the chip shows the picked
-  // extrude/revolve/sweep/wrap rows and the feature tree is the pick surface. Every
+  // extrude/revolve/sweep/wrap/hole rows and the feature tree is the pick surface. Every
   // source is reapplied at each grid instance, in the order the sources sit in
   // the feature log; the earliest source's first produced body is the instance-0
   // seed (the count includes it and the grid leaves it in place). The chip's own
@@ -943,11 +944,15 @@ export const DELETE_PART_SCHEMA: FeatureEditorSchema = {
 export const VARIABLE_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_variable',
   subKey: 'variable',
-  defaults: { expression: '0' },
+  defaults: { expression: 0 },
   fields: [
-    // Plain text (not ExpressionInput): a variable expression may reference other
-    // variables the editor cannot resolve locally, so we must not eval-and-revert.
-    { type: 'text', key: 'expression', label: 'Expression', default: '0' },
+    // A variable is ordinary math over the variables defined above it, so it
+    // gets the same expression box as every other number: the wheel steps a
+    // plain number, an expression shows its value, and a name the editor cannot
+    // resolve says so. There is no value rule: a variable may be zero or
+    // negative. The stored `unit` is a display hint only, never a quantity.
+    { type: 'number', key: 'expression', label: 'Expression', default: 0, quantity: 'none',
+      unitHint: (d) => (typeof d.unit === 'string' && d.unit !== '' ? d.unit : undefined) },
   ],
 }
 

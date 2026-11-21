@@ -781,6 +781,12 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     runOperation('rename_mate', { id: featureId, label })
   }, [runOperation])
 
+  // Both the tree menu and the open mate card open the one dialog through this,
+  // so the two ends cannot drift in what they seed it with.
+  const requestRenameMate = useCallback((id: string, currentName: string) => {
+    setRenameMateTarget({ id, currentName })
+  }, [])
+
   // The dialog already trims and refuses an empty name, so whatever arrives here
   // is a label worth writing.
   const handleRenameMateConfirm = useCallback((label: string) => {
@@ -1067,7 +1073,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
                 onCommitMate={handleCommitMate}
                 onCancelMate={handleCancelMate}
                 onDeleteMate={(featureId) => executeCommand('delete_mate', featureId)}
-                onRequestRenameMate={(id, currentName) => setRenameMateTarget({ id, currentName })}
+                onRequestRenameMate={requestRenameMate}
               />
             </div>
             {(editingSubject.kind !== 'none' || sectionShowing) && (
@@ -1087,6 +1093,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
                     onCancelInstance={handleCancelInstance}
                     onCommitMate={handleCommitMate}
                     onCancelMate={handleCancelMate}
+                    onRenameMate={requestRenameMate}
                     renderInstanceEditor={renderInstanceEditor}
                     renderMateEditor={(mate) => renderMateEditor(mate)}
                   />

@@ -104,7 +104,7 @@ export function SectionPanel({ allowPick = true, lengthUnit = 'mm' }: SectionPan
       <div className="feature-edit-panel-body section-panel-body">
         {!enabled && disabledReason !== null && (
           <>
-            <StatusMessage mark={{ failed: true, level: 'error', message: disabledReason }} />
+            <StatusMessage mark={{ level: 'error', message: disabledReason }} />
             <button
               type="button"
               className="section-panel-again"
@@ -156,10 +156,10 @@ export function SectionPanel({ allowPick = true, lengthUnit = 'mm' }: SectionPan
               <div className="section-panel-note" role="status">{SECTION_PICK_UNAVAILABLE_NOTE}</div>
             )}
             {pickError !== null && (
-              <StatusMessage mark={{ failed: true, level: 'error', message: pickError }} />
+              <StatusMessage mark={{ level: 'error', message: pickError }} />
             )}
             {picking && (
-              <StatusMessage mark={{ failed: false, level: 'warning', message: SECTION_PICK_HINT }} />
+              <StatusMessage mark={{ level: 'warning', message: SECTION_PICK_HINT }} />
             )}
 
             <div className="feature-field-row">

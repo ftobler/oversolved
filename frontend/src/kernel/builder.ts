@@ -18,6 +18,7 @@ import {
   type RebuildValidation,
 } from './builderTypes'
 import { stableJson, hashCheckpointSpec, hashResultDict, diffRepoSnapshot } from './builderHash'
+import { laterVariablesAt } from './features/variable'
 import { resolveTouchWarnings } from './resolveTouchWarnings'
 import {
   RESTORE_OWNER,
@@ -57,24 +58,6 @@ function variableValueOf(
   if (typeof value !== 'number' || !isFinite(value)) return null
   const name = String(feature.label ?? feature.id ?? '')
   return name ? { name, value } : null
-}
-
-// Variables defined after the feature being solved, by name and feature index.
-// A name already in the live context is an earlier definition, so it can never
-// be the forward reference an expression is complaining about.
-function laterVariablesFor(
-  features: readonly { kind?: unknown; label?: unknown; id?: unknown }[],
-  fromIndex: number,
-  context: Record<string, number>,
-): Record<string, number> {
-  const later: Record<string, number> = {}
-  for (let i = fromIndex + 1; i < features.length; i++) {
-    const feature = features[i]
-    if (feature.kind !== 'variable') continue
-    const name = String(feature.label ?? feature.id ?? '')
-    if (name !== '' && !(name in context)) later[name] = i
-  }
-  return later
 }
 
 function _normalizeSpec(spec: Record<string, unknown>): Record<string, unknown> {
@@ -478,7 +461,7 @@ export function build(
       const t0 = performance.now()
       const featureResult = deps.trySolveFeature(
         feature, globalRepo, partStore, featuresById, variableContext,
-        laterVariablesFor(features, featureIndex, variableContext),
+        laterVariablesAt(features, featureIndex, variableContext),
       )
       featureResult.solve_ms = performance.now() - t0
       deps.postRegister(globalRepo, fid, feature, featureResult)

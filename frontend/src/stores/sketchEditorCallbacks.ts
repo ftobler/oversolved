@@ -16,7 +16,11 @@ import type { DialogState } from './sketchEditorTypes'
 import { devOnly } from './stateInvariants'
 
 export const sketchCallbacks: {
-  onMutation: ((m: Mutation) => void) | null
+  // The mutation sink. It may return a promise that settles when the solve the
+  // mutation requested has settled, which the live feature-handle pump uses to
+  // keep one rebuild in flight; every other caller ignores the return, so the
+  // type stays open.
+  onMutation: ((m: Mutation) => unknown) | null
   onMutationBatch: ((ms: Mutation[]) => void) | null
   onRebuild: (() => void) | null
   onExitSketch: (() => void) | null
@@ -36,6 +40,11 @@ export const sketchCallbacks: {
   // the body dispatch tables. Absent in a headless store use, where an edge
   // projects with the line default.
   resolveEdgeKind: ((query: string) => string | null) | null
+  // Whether an edit transaction is open. A feature arrow's unmount restore
+  // must not write into a session that OK, Cancel or a command already closed:
+  // it would land as a second undo entry or dirty a rewound document. Absent in
+  // a headless store use, where the arrow's own tests keep the restore.
+  isEditSessionOpen: (() => boolean) | null
   // The solved face-projection members for one sketch, so the delete action can
   // freeze them without importing the published part-editor store (this store
   // stays free of the session and the solver). Registered by the Part page's
@@ -69,6 +78,7 @@ export const sketchCallbacks: {
   getProjectedSources: null,
   getProjectionMembers: null,
   resolveEdgeKind: null,
+  isEditSessionOpen: null,
   beginBrepProjection: null,
   cancelBrepProjection: null,
   checkRedundantAdd: null,
@@ -105,7 +115,7 @@ export interface SketchMessage {
  *  dimension confirm path cannot drift apart. */
 export const CANNOT_APPLY_TITLE = 'Cannot apply constraint'
 
-export function setSketchCallback(key: 'onMutation', cb: ((m: Mutation) => void) | null): void
+export function setSketchCallback(key: 'onMutation', cb: ((m: Mutation) => unknown) | null): void
 export function setSketchCallback(key: 'onMutationBatch', cb: ((ms: Mutation[]) => void) | null): void
 export function setSketchCallback(key: 'onRebuild' | 'onExitSketch', cb: (() => void) | null): void
 export function setSketchCallback(key: 'getSketch', cb: ((featureId: string) => Sketch | null) | null): void
@@ -113,6 +123,7 @@ export function setSketchCallback(key: 'getDoc', cb: (() => PartDoc | null) | nu
 export function setSketchCallback(key: 'getProjectedSources', cb: ((featureId: string) => readonly RecordedProjection[] | null) | null): void
 export function setSketchCallback(key: 'getProjectionMembers', cb: ((featureId: string) => Record<string, ProjectionMemberReportData> | null) | null): void
 export function setSketchCallback(key: 'resolveEdgeKind', cb: ((query: string) => string | null) | null): void
+export function setSketchCallback(key: 'isEditSessionOpen', cb: (() => boolean) | null): void
 export function setSketchCallback(key: 'beginBrepProjection' | 'cancelBrepProjection', cb: (() => void) | null): void
 export function setSketchCallback(key: 'checkRedundantAdd', cb: ((pending: PendingConstraint) => boolean | null) | null): void
 export function setSketchCallback(key: 'showMessage', cb: ((payload: SketchMessage) => void) | null): void
@@ -139,6 +150,7 @@ const SESSION_CALLBACK_KEYS = [
   'getProjectedSources',
   'getProjectionMembers',
   'resolveEdgeKind',
+  'isEditSessionOpen',
   'beginBrepProjection',
   'cancelBrepProjection',
   'checkRedundantAdd',

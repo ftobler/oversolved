@@ -4,17 +4,20 @@
 // headless caller if the rule that refuses can also name it. The applier calls
 // this before it writes anything; the drive rule calls it with or without the
 // live document, judging the shapes only when it can read the entity kinds.
-import type { SketchFeature } from '@/types/cad'
+import type { PartConstraint, SketchFeature } from '@/types/cad'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { resolveVertexRef } from '@/types/vertexRef'
 import { entityPointKeys } from '@/registry/entityRegistry'
-import { constraintOperandProblem } from '@/registry/constraintRegistry'
+import { CONSTRAINT_BY_KIND, constraintOperandProblem } from '@/registry/constraintRegistry'
+import { classifyBrepOperand } from '@/tools/operandProjection'
+import { emitWire, local } from '@/utils/query'
 import {
   constraintEntityKindProblem,
+  tangentKindProblem,
   type ConstraintKindOperand,
   type ConstraintOperandRole,
 } from './constraintApplicability'
-import { pointDistanceZeroProblem } from './yamlMutations/helpers'
+import { pointDistanceZeroProblem, round } from './yamlMutations/helpers'
 import { dimensionSizeProblem } from './entitySizeProblems'
 import {
   COLINEAR_SHAPE_REASON,
@@ -71,6 +74,55 @@ export function foreignConstraintTarget(target: string, featureId: string): bool
   const parts = target.split(':')
   if (parts[0] !== 'entity' && parts[0] !== 'vertex') return false
   return parts[1] !== undefined && parts[1] !== '' && parts[1] !== featureId
+}
+
+/**
+ * True when `target` can be one operand of a sketch constraint: a sketch-local
+ * `$`/`entity:`/`vertex:` ref, the builtin origin, a `dock:`/`isect:` handle, or
+ * a B-rep edge/vertex the editor projects before the applier sees it.
+ *
+ * This is the editor's pick filter. A plane, another feature row, a face/edge
+ * wrapper and a constraint tile are not operands and are dropped silently, so a
+ * carried plane cannot block a real pick.
+ */
+export function isConstraintOperandRef(target: unknown): boolean {
+  if (typeof target !== 'string') return false
+  if (target === '@builtin_origin') return true
+  if (target.startsWith('$') || target.startsWith('dock:') || target.startsWith('isect:')) return true
+  // A feature-qualified sketch ref stays an operand shape even when it names
+  // another sketch: the projection plan and the stale-ref path own that.
+  const parts = target.split(':')
+  if (parts[0] === 'entity' || parts[0] === 'vertex') return true
+  return classifyBrepOperand(target) !== null
+}
+
+/**
+ * The two feature-qualified query wrappers the applier accepts. `parseTarget`
+ * strips the wrapper and stores its inner `?query` verbatim, so the row names a
+ * B-rep query, not sketch geometry. `addConstraintProblem` keeps that applier
+ * path; the solve lowering names the stored inner query with the operand
+ * sentence, and the drive refuses the wrapper before it is stored.
+ */
+export function isLegacyQueryWrapper(target: unknown): boolean {
+  return typeof target === 'string'
+    && (target.startsWith('face:') || target.startsWith('edge:'))
+}
+
+/**
+ * Why a ref cannot be a constraint operand, or null when it can. This is the
+ * closed-list answer for the applier and the lowering: a plane, another feature,
+ * a non-projectable `?` query, a constraint tile and any other spelling are not
+ * sketch geometry. The sentence names the kind of thing when the ref alone
+ * classifies it (a builtin plane is the common case); otherwise it says the pick
+ * is not sketch geometry, which is still more truthful than the lowering's old
+ * `stale reference`.
+ */
+export function constraintOperandRefProblem(kind: string, target: unknown): string | null {
+  if (typeof target !== 'string') return null
+  if (isConstraintOperandRef(target)) return null
+  const label = CONSTRAINT_BY_KIND.get(kind)?.label ?? kind
+  const noun = target.startsWith('@builtin_plane_') ? 'a plane' : 'not sketch geometry'
+  return `${label} takes sketch geometry; ${target} is ${noun}`
 }
 
 /** The one warning sentence for a constraint ignored by either the live-doc
@@ -261,17 +313,126 @@ export function midpointShapeReason(targets: readonly string[]): string {
   return `midpoint needs a line and a point, or three points; got ${JSON.stringify(targets)}`
 }
 
+/** Constraint kinds whose two operands commute, so a stored reversed pair is the
+ *  same row. A dimension between the same two operands is one measurement too,
+ *  whichever pick came first, so the unsigned pair dimensions are here as well
+ *  (their value still has to match). The signed kinds (point_distance_x/y,
+ *  line_distance, angle) are not: their operand order fixes the measured side,
+ *  so a reversed pick is a different row even with the same value. Midpoint is
+ *  not either: its three operand roles differ, and the line/point form is not
+ *  the three-point form. */
+const SYMMETRIC_CONSTRAINT_KINDS: ReadonlySet<string> = new Set([
+  'coincident', 'concentric', 'equal_length', 'parallel', 'normal', 'tangent',
+  'colinear', 'horizontal', 'vertical', 'point_distance', 'radius_difference',
+])
+
+/** The refs a stored row holds, in the order the applier writes them. */
+function storedOperands(c: PartConstraint): string[] {
+  if (typeof c.target === 'string') return [c.target]
+  if (typeof c.a === 'string' || typeof c.b === 'string') {
+    return [c.a, c.b].filter((ref): ref is string => typeof ref === 'string')
+  }
+  if (typeof c.line === 'string') {
+    return [c.line, c.point].filter((ref): ref is string => typeof ref === 'string')
+  }
+  if (typeof c.point_a === 'string') {
+    return [c.point_a, c.point_b, c.point].filter((ref): ref is string => typeof ref === 'string')
+  }
+  if (Array.isArray(c.refs)) return c.refs.filter((ref): ref is string => typeof ref === 'string')
+  return []
+}
+
+/** A pick in the document's stored wire form, so a live `entity:`/`vertex:` pick
+ *  compares equal to the `$` ref an earlier insert wrote. A foreign qualified ref
+ *  is left alone: it names another sketch and never matches this row set. */
+function storedTarget(target: string, featureId: string): string {
+  if (target.startsWith('$') || target.startsWith('@')) return target
+  const parts = target.split(':')
+  if (parts[0] === 'vertex' && parts[1] === featureId && parts[2] !== undefined && parts[3] !== undefined) {
+    return emitWire(local(parts[2], parts[3]))
+  }
+  if (parts[0] === 'entity' && parts[1] === featureId && parts[2] !== undefined) {
+    return emitWire(local(parts[2]))
+  }
+  // An inferred-point handle names a point only after materialization, which
+  // cannot match a stored ref yet; a bare token is the host-local entity
+  // shorthand `parseTarget` also accepts.
+  return target.startsWith('dock:') || target.startsWith('isect:') ? target : emitWire(local(target))
+}
+
+/** The stored sign, normalized the way the applier writes it (any negative is
+ *  -1). An absent sign is its own spelling, not +1: the row the applier wrote
+ *  without one is a different row from the one it wrote with +1. */
+function storedSign(sign: number | undefined): number | undefined {
+  if (sign === undefined || !Number.isFinite(sign)) return undefined
+  return sign < 0 ? -1 : 1
+}
+
 /**
- * Why one `add_constraint` pick cannot be authored, or null when it can. `value`
- * is the step's dimension value when it carries one (the zero point_distance
- * rule lives here too, so a refusal has one source).
- *
- * The caller without a materialized target list may get a null for a list that
- * still holds a `dock:`/`isect:` handle: a handle names a point only after
- * materialization, so refusing on it before then would reject a pick the
- * applier can author. The applier calls this again with the resolved targets.
+ * The stored row this pick would duplicate exactly, or null. A duplicate is the
+ * same kind on the same operands -- same points or entities, in either order for
+ * a symmetric kind, the same member set for a group -- carrying the same value
+ * and sign the applier would store. It is not a redundancy judgement (the rank
+ * probe owns implication), so it needs no geometry and answers the same before a
+ * solve. Every insert path reads it: an exact duplicate removes no degree of
+ * freedom and only piles up rows (the drag-snap bug).
  */
-export function addConstraintProblem(
+export function duplicateConstraintOf(
+  constraints: readonly PartConstraint[] | undefined,
+  featureId: string,
+  kind: string,
+  targets: readonly string[],
+  value?: number,
+  sign?: number,
+): PartConstraint | null {
+  if (constraints === undefined || constraints.length === 0 || targets.length === 0) return null
+  const wanted = targets.map(target => storedTarget(target, featureId))
+  const unordered = SYMMETRIC_CONSTRAINT_KINDS.has(kind) || kind === 'group'
+  const wantedKey = unordered ? [...wanted].sort() : wanted
+  const wantedSign = storedSign(sign)
+  for (const c of constraints) {
+    if (c.kind !== kind) continue
+    // A second dimension with another value is a different row (and a conflict),
+    // not a duplicate; the same stored value on the same operands is the exact
+    // copy. The applier writes the rounded value, so compare that.
+    if (value !== undefined || c.value !== undefined) {
+      if (c.value !== (value === undefined ? undefined : round(value))) continue
+    }
+    if (storedSign(c.sign) !== wantedSign) continue
+    const held = storedOperands(c)
+    if (held.length !== wanted.length) continue
+    const heldKey = unordered ? [...held].sort() : held
+    if (heldKey.every((ref, i) => ref === wantedKey[i])) return c
+  }
+  return null
+}
+
+/**
+ * The duplicate sentence for a pick, or null. Kept beside `constraintShapeProblem`
+ * because the two are composed in order: a malformed or inapplicable pick keeps
+ * its own sentence, and only a well-formed pick can be refused as a duplicate.
+ */
+export function duplicateConstraintProblem(
+  feature: SketchShape | undefined,
+  kind: string,
+  targets: readonly string[],
+  value?: number,
+  sign?: number,
+): string | null {
+  if (feature === undefined) return null
+  const duplicate = duplicateConstraintOf(feature.constraints, feature.id, kind, targets, value, sign)
+  if (duplicate === null) return null
+  return `${kind} on ${targets.join(', ')} is already constraint ${duplicate.id}; a duplicate adds nothing`
+}
+
+/**
+ * The shape and applicability sentence for one `add_constraint` pick, or null.
+ * This is the part that judges the pick itself: operand count, per-kind form and
+ * entity-kind applicability. The duplicate check is composed after it by
+ * `addConstraintProblem`, so a malformed pick never hides behind "already
+ * constraint".
+ */
+function constraintShapeProblem(
   feature: SketchShape | undefined,
   kind: string,
   targets: readonly string[],
@@ -304,6 +465,19 @@ export function addConstraintProblem(
     if (foreign !== undefined) {
       return `constraint targets must be in sketch ${featureId}; project ${foreign} first (add_projected_entity)`
     }
+  }
+
+  // A constraint can only name sketch geometry. This is judged before the count
+  // and the entity-kind table so a plane (the bugreport's carried host plane)
+  // hears what it is, not that the kind wants another operand. The same rule
+  // names the row at the solve lowering; the editor's pick filter drops every
+  // non-operand. The face:/edge: wrappers are the one add-time exception: the
+  // applier accepts the wrapper and stores its inner query verbatim (see
+  // `isLegacyQueryWrapper`).
+  for (const target of targets) {
+    if (isLegacyQueryWrapper(target)) continue
+    const notGeometry = constraintOperandRefProblem(kind, target)
+    if (notGeometry !== null) return notGeometry
   }
 
   if (kind === 'midpoint') {
@@ -350,6 +524,47 @@ export function addConstraintProblem(
   const operandProblem = constraintOperandProblem(kind, targets.length)
   if (operandProblem !== null) return operandProblem
 
+  // A tangent's accepted kinds are a pair table, not a common group, and the
+  // generic operand list below holds whole entities only: a point pick (a
+  // vertex, the origin or a point's xy key) would otherwise leave a one-kind
+  // list that looks admissible. Judge the pick's own kinds here, where every
+  // target is still visible, and fall back to the shared pair table.
+  if (kind === 'tangent') {
+    const kinds: string[] = []
+    let unresolved = false
+    for (const target of targets) {
+      const text = String(target)
+      if (text === '@builtin_origin' || text.startsWith('vertex:')) {
+        kinds.push('point')
+        continue
+      }
+      if (text.startsWith('dock:') || text.startsWith('isect:')) {
+        unresolved = true
+        break
+      }
+      if (text.startsWith('$')) {
+        const resolved = resolveVertexRef(entityIds, text)
+        if (resolved === null) {
+          unresolved = true
+          break
+        }
+        kinds.push(resolved.point !== undefined ? 'point' : kindById.get(resolved.entity) ?? '')
+        continue
+      }
+      const parts = text.split(':')
+      if (parts[0] === 'entity' && parts[1] === featureId && parts[2] !== undefined) {
+        kinds.push(kindById.get(parts[2]) ?? '')
+        continue
+      }
+      unresolved = true
+      break
+    }
+    if (!unresolved && !kinds.includes('')) {
+      const problem = tangentKindProblem(kinds)
+      if (problem !== null) return problem
+    }
+  }
+
   // A well-formed pick whose entity kind the constraint cannot represent has no
   // solver row: a length on an arc, an equal across a line and an ellipse, a
   // horizontal on a point. The one applicability table (constraintApplicability)
@@ -364,4 +579,27 @@ export function addConstraintProblem(
   )
   if (kindProblem !== null) return kindProblem
   return null
+}
+
+/**
+ * Why one `add_constraint` pick cannot be authored, or null when it can. `value`
+ * is the step's dimension value and `sign` its orientation when it carries one
+ * (the zero point_distance rule lives here too, so a refusal has one source).
+ * The shape/applicability judgement runs first, so its sentence is never
+ * preempted; only a well-formed pick is then refused as an exact duplicate.
+ *
+ * The caller without a materialized target list may get a null for a list that
+ * still holds a `dock:`/`isect:` handle: a handle names a point only after
+ * materialization, so refusing on it before then would reject a pick the
+ * applier can author. The applier calls this again with the resolved targets.
+ */
+export function addConstraintProblem(
+  feature: SketchShape | undefined,
+  kind: string,
+  targets: readonly string[],
+  value: number | undefined,
+  sign?: number,
+): string | null {
+  return constraintShapeProblem(feature, kind, targets, value)
+    ?? duplicateConstraintProblem(feature, kind, targets, value, sign)
 }

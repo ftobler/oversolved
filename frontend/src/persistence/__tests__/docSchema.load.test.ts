@@ -111,6 +111,53 @@ describe('golden documents load and migrate', () => {
     expect(result.ok).toBe(true)
   })
 
+  it('accepts a constraint stored with a plane operand, leaving the refusal to the solve', () => {
+    // The user's stored document must open: the row is not a load error, it is
+    // a constraint the lowering names and the tile stays deletable.
+    const result = loadPartDoc({
+      version: CURRENT_DOC_VERSION,
+      kind: 'part',
+      features: [{
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_top',
+        entities: [{ id: 'L1', kind: 'line' }, { id: 'L2', kind: 'line' }],
+        initial: { L1: [0, 0, 10, 0], L2: [0, 0, 8, 6] },
+        constraints: [{
+          id: 'c_equal_length_5HE4ofd4', kind: 'equal_length',
+          a: '@builtin_plane_top', b: '$L2',
+        }],
+      }],
+    }, { name: 'bugreport:plane_operand' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const sketch = result.doc.features?.find(feature => feature.kind === 'sketch')
+    expect(sketch).toMatchObject({
+      constraints: [{
+        id: 'c_equal_length_5HE4ofd4', kind: 'equal_length',
+        a: '@builtin_plane_top', b: '$L2',
+      }],
+    })
+  })
+
+  it('accepts a variable expression stored as an old string and as a number', () => {
+    // The Expression box was plain text before it was a number field, so an old
+    // document stores "5"; the number field stores 5. Both are the same math.
+    const result = loadPartDoc({
+      version: CURRENT_DOC_VERSION,
+      kind: 'part',
+      features: [
+        { id: 'a', kind: 'variable', label: 'a', variable: { expression: '5' } },
+        { id: 'b', kind: 'variable', label: 'b', variable: { expression: 5 } },
+      ],
+    }, { name: 'variable expressions' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const features = result.doc.features as Array<{ variable: { expression: unknown } }>
+    expect(features[0].variable.expression).toBe('5')
+    expect(features[1].variable.expression).toBe(5)
+  })
+
   it('keeps a stored Delete Part label instead of relabelling it', () => {
     // `Delete Part` was the default label new documents carried before the UI
     // said part. It is user text stored in the document, so the loader passes

@@ -85,8 +85,10 @@ const RATCHETS: Ratchet[] = [
     // the count where it is: its one loose record is the named `PartSolveSpec`
     // alias in kernel/solveLocally.ts, and the HUD's solve map is typed through
     // `MeasureContext` instead of a second record.
+    // 366: the variable scope typed `solveVariable`'s input as `VariableSolveInput`
+    // and its sub-def read, replacing two raw-record reads with the shipped shape.
     token: 'Record<string, unknown>',
-    baseline: 368,
+    baseline: 366,
   },
 ]
 

@@ -41,6 +41,19 @@ export interface RenameTarget {
   currentName: string
 }
 
+// Whether an authored feature exposes its management verbs (Rename, Delete,
+// Suppress). A built-in has no author and no place in the doc to change. The
+// sketch under edit is left out on purpose: renaming or deleting it mid-session
+// would fight the edit that owns it. The open editor card asks this same
+// question before drawing its Rename button, so the menu and the card agree.
+export function canManageFeature(
+  featureId: string | undefined,
+  builtInIds: Set<string>,
+  activeSketchFeatureId: string | undefined,
+): boolean {
+  return !!featureId && !builtInIds.has(featureId) && featureId !== activeSketchFeatureId
+}
+
 export interface FaceFrame {
   normal: [number, number, number]
   center: [number, number, number]
@@ -306,16 +319,16 @@ function buildMenuContext(
   const canToggleVisibility = !!visibilityFeature
   const visibilityIsOn = !!visibilityFeature && input.visibleFeatures.has(visibilityFeature.id)
   const canToggleConstraints = !!input.activeSketchFeatureId
-  // The sketch under edit keeps its commands: renaming it would fight the open
-  // session and deleting it would pull the sketch out from under the edit.
-  const canManageFeature = !!featureId && !input.builtInIds.has(featureId)
-    && featureId !== input.activeSketchFeatureId
+  // The sketch under edit is left out of the management verbs: renaming it
+  // would fight the open session and deleting it would pull the sketch out from
+  // under the edit.
+  const canManage = canManageFeature(featureId, input.builtInIds, input.activeSketchFeatureId)
 
   return {
     input, callbacks, featureId, target, surfaceTarget, visibilityFeature,
     canNewSketch, canNormalTo, canRemoveDangling, canEdit, canExitSketch,
     canNormalToSketch, canToggleVisibility, visibilityIsOn, canToggleConstraints,
-    canManageFeature,
+    canManageFeature: canManage,
   }
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { handleValueFromTravel, roundHandleValue, shouldCommitHandleRelease, handleTailLength, labelOffsetPx, handleColor } from '../featureHandleMath'
+import { handleValueFromTravel, roundHandleValue, shouldCommitHandleRelease, handleTailLength, handleDragTravel, labelOffsetPx, handleColor } from '../featureHandleMath'
 import { COLOR_HOVER, COLOR_PREVIEW_EDGE } from '@/utils/core/partColors'
 
 describe('handleValueFromTravel', () => {
@@ -73,6 +73,37 @@ describe('handleTailLength', () => {
 
   it('gives angular handles no tail (a straight shaft would misrepresent the arc)', () => {
     expect(handleTailLength('angular', 180, 2)).toBe(0)
+  })
+})
+
+describe('handleDragTravel', () => {
+  // World travel of the arrow from the freshly solved grab point along its
+  // solved direction. The solved anchor may already have moved with the value,
+  // which is exactly the distance the preview must not add a second time.
+  const press: [number, number, number] = [0, 0, 0]
+
+  it('subtracts the anchor movement of a handle that rides its value (extrude)', () => {
+    // Start 10 at the origin, solved at 15 with the face at 5; the pointer has
+    // also reached 15, so the arrow sits on the solved anchor and does not
+    // travel a second five.
+    expect(handleDragTravel([5, 0, 0], [1, 0, 0], press, 5, 1)).toBeCloseTo(0)
+    // The pointer at 12 while the solve shows 15: three back from the anchor.
+    expect(handleDragTravel([5, 0, 0], [1, 0, 0], press, 2, 1)).toBeCloseTo(-3)
+  })
+
+  it('keeps the pointer travel of a handle with a fixed anchor (fillet, chamfer)', () => {
+    // The picked-edge anchor does not move with the radius, so nothing is
+    // subtracted and the arrow keeps following the pointer.
+    expect(handleDragTravel(press, [1, 0, 0], press, 2, 1)).toBeCloseTo(2)
+  })
+
+  it('applies the press-time unit scale (symmetric extrude: face at distance/2)', () => {
+    // Start 10 puts the symmetric face at 5; the solved distance 20 puts it at
+    // 10, and the pointer at the same value has travelled 5 in its own scale,
+    // so the arrow stays on that face.
+    expect(handleDragTravel([10, 0, 0], [1, 0, 0], [5, 0, 0], 10, 0.5)).toBeCloseTo(0)
+    // Pointer at distance 16: three world units back from the solved face.
+    expect(handleDragTravel([10, 0, 0], [1, 0, 0], [5, 0, 0], 6, 0.5)).toBeCloseTo(-2)
   })
 })
 

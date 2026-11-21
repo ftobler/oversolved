@@ -1,8 +1,19 @@
 import { describe, it, expect } from 'vitest'
-import { solveVariable, isValidVariableName } from '../variable'
+import type { PartFeature } from '@/types/cad'
+import {
+  solveVariable, isValidVariableName, variableRenameProblem, variableScopeAt, laterVariablesAt,
+  type VariableSolveInput,
+} from '../variable'
 
-function variableFeature(label: string, expression: unknown): Record<string, unknown> {
+function variableFeature(label: string, expression: unknown): VariableSolveInput {
   return { id: 'v1', kind: 'variable', label, variable: { expression } }
+}
+
+function renameFeatures(): PartFeature[] {
+  return [
+    { id: 'v1', kind: 'variable', label: 'width', variable: { expression: '1' } },
+    { id: 'v2', kind: 'variable', label: 'height', variable: { expression: '2' } },
+  ] as PartFeature[]
 }
 
 describe('isValidVariableName', () => {
@@ -21,6 +32,63 @@ describe('isValidVariableName', () => {
   it('rejects mathjs reserved constants', () => {
     for (const n of ['pi', 'e', 'i', 'Infinity', 'NaN', 'true', 'false', 'null']) {
       expect(isValidVariableName(n)).toBe(false)
+    }
+  })
+})
+
+describe('variableRenameProblem', () => {
+  it('accepts an identifier, including its own current name', () => {
+    const features = renameFeatures()
+    for (const name of ['width', '_w', 'w2', '$w']) {
+      expect(variableRenameProblem(features, 'v1', name)).toBeNull()
+    }
+  })
+
+  it('names the minus rule and suggests the sanitized name', () => {
+    expect(variableRenameProblem(renameFeatures(), 'v1', 'my-var')).toBe(
+      '"my-var" is not a valid variable name: use letters, digits and _ only '
+        + '(a - reads as minus in an expression). Try "my_var".',
+    )
+  })
+
+  it('names the leading-digit rule', () => {
+    expect(variableRenameProblem(renameFeatures(), 'v1', '2x')).toBe(
+      '"2x" is not a valid variable name: it must start with a letter or _.',
+    )
+  })
+
+  it('refuses a space by the invalid-character rule', () => {
+    expect(variableRenameProblem(renameFeatures(), 'v1', 'a b')).toContain('Try "a_b".')
+  })
+
+  it('refuses a mathjs constant by name', () => {
+    expect(variableRenameProblem(renameFeatures(), 'v1', 'pi')).toBe(
+      '"pi" is a built-in constant and cannot name a variable.',
+    )
+    expect(variableRenameProblem(renameFeatures(), 'v1', 'e')).toBe(
+      '"e" is a built-in constant and cannot name a variable.',
+    )
+  })
+
+  it('requires a name', () => {
+    for (const name of ['', '   ']) {
+      expect(variableRenameProblem(renameFeatures(), 'v1', name)).toBe('A variable needs a name.')
+    }
+  })
+
+  it('refuses another variable\'s name, but not its own', () => {
+    const features = renameFeatures()
+    expect(variableRenameProblem(features, 'v1', 'height')).toBe(
+      'A variable named "height" already exists.',
+    )
+    expect(variableRenameProblem(features, 'v1', 'width')).toBeNull()
+  })
+
+  it('uses no em or en dash, per the code style', () => {
+    const features = renameFeatures()
+    for (const name of ['my-var', '2x', 'a b', 'pi', '', 'height']) {
+      const problem = variableRenameProblem(features, 'v1', name)
+      expect(problem).not.toMatch(/[\u2013\u2014]/)
     }
   })
 })
@@ -83,5 +151,70 @@ describe('solveVariable', () => {
     const r = solveVariable({ kind: 'variable', variable: { expression: '5' } })
     expect(r.status).toBe('exception')
     expect(String(r.exception)).toContain('Invalid variable name')
+  })
+
+  it('accepts a stored number and an old stored string alike', () => {
+    // Old documents store the text field's "5"; the number field stores 5.
+    expect(solveVariable(variableFeature('a', '5'))).toMatchObject({ status: 'ok', value: 5 })
+    expect(solveVariable(variableFeature('a', 5))).toMatchObject({ status: 'ok', value: 5 })
+  })
+})
+
+describe('variableScopeAt', () => {
+  const feature = (id: string, over: Record<string, unknown> = {}): PartFeature =>
+    ({ id, kind: 'variable', label: id, variable: { expression: 0 }, ...over }) as unknown as PartFeature
+  const extrude = { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 5, direction: 'normal' } } as unknown as PartFeature
+  const fillet = { id: 'fi1', kind: 'fillet', fillet: { edges: [], radius: 1 } } as unknown as PartFeature
+
+  it('folds every unsuppressed variable before the index, in order', () => {
+    const w = feature('w', { variable: { expression: 10 } })
+    const h = feature('h', { variable: { expression: 'w*2' } })
+    const features = [w, extrude, h, fillet]
+
+    expect(variableScopeAt(features, 0)).toEqual({})
+    expect(variableScopeAt(features, 1)).toEqual({ w: 10 })
+    expect(variableScopeAt(features, 2)).toEqual({ w: 10 })
+    expect(variableScopeAt(features, 3)).toEqual({ w: 10, h: 20 })
+    // The insertion index past the end is the same as the end of the log.
+    expect(variableScopeAt(features, 4)).toEqual({ w: 10, h: 20 })
+    expect(variableScopeAt(features, 99)).toEqual({ w: 10, h: 20 })
+  })
+
+  it('leaves a suppressed variable out, as the build loop does', () => {
+    const w = feature('w', { variable: { expression: 10 }, suppressed: true })
+    expect(variableScopeAt([w, extrude], 2)).toEqual({})
+  })
+
+  it('adds nothing for a variable that fails to evaluate', () => {
+    const bad = feature('bad', { variable: { expression: '2+/' } })
+    const after = feature('after', { variable: { expression: 'bad+1' } })
+    expect(variableScopeAt([bad, after, extrude], 3)).toEqual({})
+  })
+
+  it('resolves each variable against the ones before it, never a later one', () => {
+    const a = feature('a', { variable: { expression: 'b+1' } })
+    const b = feature('b', { variable: { expression: 10 } })
+    expect(variableScopeAt([a, b, extrude], 2)).toEqual({ b: 10 })
+  })
+
+  it('keeps the first of a duplicate name, since the second one fails', () => {
+    const first = feature('w', { variable: { expression: 10 } })
+    const second = feature('w', { id: 'w2', variable: { expression: 20 } })
+    expect(variableScopeAt([first, second, extrude], 3)).toEqual({ w: 10 })
+  })
+})
+
+describe('laterVariablesAt', () => {
+  const variable = (id: string): PartFeature =>
+    ({ id, kind: 'variable', label: id, variable: { expression: 1 } }) as unknown as PartFeature
+  const extrude = { id: 'ex1', kind: 'extrude', extrude: { sketch: [], distance: 5, direction: 'normal' } } as unknown as PartFeature
+
+  it('names each variable after the index, with its log position', () => {
+    expect(laterVariablesAt([extrude, variable('depth'), extrude], 0)).toEqual({ depth: 1 })
+    expect(laterVariablesAt([extrude, variable('depth')], 1)).toEqual({})
+  })
+
+  it('skips a name already in scope, which is an earlier definition', () => {
+    expect(laterVariablesAt([extrude, variable('width')], 0, { width: 10 })).toEqual({})
   })
 })

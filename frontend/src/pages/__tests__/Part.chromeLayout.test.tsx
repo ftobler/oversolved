@@ -239,7 +239,7 @@ describe('Part editor chrome', () => {
     fireEvent.click(screen.getByTitle('Edit extrude'))
     await enableSection()
 
-    const featureCard = document.querySelector('.right-overlay-stack .feature-edit-panel:not(.section-panel)')!
+    const featureCard = document.querySelector<HTMLElement>('.right-overlay-stack .feature-edit-panel:not(.section-panel)')!
     fireEvent.click(within(featureCard).getByTitle('Cancel'))
 
     await waitFor(() => expect(document.querySelector('.section-panel')).not.toBeNull())

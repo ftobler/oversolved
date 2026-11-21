@@ -15,8 +15,9 @@ import { createStore } from 'zustand/vanilla'
 import type { FilletCorner, Mutation, PartDoc, PartStyleEntry, SelectionDomain } from '@/types/cad'
 import type { DimensionPick } from '@/registry'
 import { resolveDimension, dimensionTargets, CONSTRAINT_BY_KIND, constraintOperandProblem } from '@/registry'
+import { tangentKindProblem } from '@/utils/constraintApplicability'
 import { computeNaturalDimensionValue, computeAnchorRelativePos, resolveDimPoints, computeDimensionSign, computeAnglePlacementIsSupplement } from '@/utils/geometry/dimensionNaturalValue'
-import { deriveSelectionDomain, devOnly, testMode, failLoud } from './stateInvariants'
+import { deriveSelectionDomain, devOnly, testMode, failLoud, isPlaneSelectionId } from './stateInvariants'
 import { isDrawingTool } from '@/registry/toolRegistry'
 import { getToolPickConfig } from '@/registry/toolPickConfig'
 import {
@@ -30,6 +31,7 @@ import { computeDrawFinish } from '@/utils/geometry/drawFinish'
 import { randomId, canonicalLineDistanceTargets, isPointLikeEntityKind, pointDistanceZeroProblem } from '@/utils/yamlMutations/helpers'
 import { groupMembersFromSelection } from '@/utils/groupMembers'
 import { COLINEAR_SHAPE_REASON, colinearShapeProblem } from '@/utils/constraintOperands'
+import { isConstraintOperandRef } from '@/utils/constraintProblems'
 import { dimensionValueRule } from '@/utils/core/dimensionValueRules'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
 import type { DialogState, FilletCornerMap, SketchEditorState } from './sketchEditorTypes'
@@ -680,6 +682,24 @@ export const editorState = createStore<EditorState>((set, get) => ({
     if (state.activeFeatureId !== null && state.activeFeatureId !== id) {
       get().clearSelectionAndHover()
     }
+    // On a null -> feature transition (the editor only passes a sketch id) a
+    // plane picked in part view cannot be used by a sketch command and is
+    // hidden once the sketch opens, so carrying it in leaves the user with a
+    // selection they cannot see (the bugreport's host plane became an operand).
+    // The rest of the carry-in stays: a B-rep pick is what it exists for.
+    if (state.activeFeatureId === null && id !== null) {
+      const planes = new Set([...state.normalSelection].filter(isPlaneSelectionId))
+      if (planes.size > 0) {
+        const next = new Set(state.normalSelection)
+        for (const plane of planes) next.delete(plane)
+        set({
+          normalSelection: next,
+          selectedPicks: prunePickClaims(state.selectedPicks, next),
+          chipOwnedSelection: new Set([...state.chipOwnedSelection].filter(entry => !planes.has(entry))),
+          selectionDomain: deriveSelectionDomain(next),
+        })
+      }
+    }
     set(state => {
       if (state.activeFeatureId !== null && id === null) {
         return { activeFeatureId: id, activeTool: null, drawPoints: [], drawHover: null, drawSnapRefs: [], activeOriginLocal: [0, 0] }
@@ -728,11 +748,30 @@ export const editorState = createStore<EditorState>((set, get) => ({
       if (kind === 'projection') return null
       return t === '@builtin_origin' ? { isVertex: true } : classifyBrepOperand(t)
     }
-    const picked = [...selection].filter(t =>
-      t.startsWith('entity:') || t.startsWith('vertex:') || t.startsWith('constraint:') || t.startsWith('@builtin_') || t.startsWith('dock:') || t.startsWith('isect:')
-      || projectableOperand(t) !== null
-    )
-    if (picked.length === 0) return null
+    // A plane, a feature row or a constraint tile is not sketch geometry and is
+    // ignored, so a stale carry-in cannot block the user's line pick. The
+    // projection command keeps its own exception: a B-rep pick is not
+    // pre-projected for it.
+    const picked = [...selection]
+      .filter(isConstraintOperandRef)
+      .filter(t => kind !== 'projection' || classifyBrepOperand(t) === null)
+    if (picked.length === 0) {
+      // A lone constraint tile is not an operand, but it used to answer the
+      // command's own arity or shape refusal. Keep that answer instead of a
+      // silent ok; a lone plane or feature row has no such command reading and
+      // stays silent. The sentence is deliberately the editor's arity/shape one
+      // (the restored matrix rows pin it), not the applier's closed-list
+      // "takes sketch geometry", which names a stray stored ref.
+      const tiles = [...selection].filter(t => t.startsWith('constraint:')).length
+      if (tiles === 0) return null
+      const countProblem = constraintOperandProblem(kind, tiles)
+      if (countProblem !== null) return countProblem
+      if (kind === 'colinear') {
+        return `${CONSTRAINT_BY_KIND.get(kind)?.label ?? kind} needs two lines or a point and a line.`
+      }
+      if (kind === 'midpoint') return 'Midpoint needs a line and a point, or three points.'
+      return null
+    }
 
     // The Group command reads its selection before any projection planning:
     // the origin, dock/isect handles and projected geometry are not members, and
@@ -826,6 +865,23 @@ export const editorState = createStore<EditorState>((set, get) => ({
       if (!allOk) {
         return `${label} cannot be applied to those entity kinds (${kinds.join(', ')}).`
       }
+    }
+
+    // Tangent is heterogeneous: a pair table, not one common group. The same
+    // judgement the applier and the drive read refuses an unusable pair here,
+    // before the mutation exists.
+    if (kind === 'tangent') {
+      const kinds: string[] = []
+      for (const target of targets) {
+        if (target === '@builtin_origin' || target.startsWith('vertex:')) {
+          kinds.push('point')
+        } else if (target.startsWith('entity:')) {
+          const ek = kindOf(target)
+          if (ek !== undefined) kinds.push(ek)
+        }
+      }
+      const problem = tangentKindProblem(kinds)
+      if (problem !== null) return problem
     }
 
     if (kind === 'horizontal' || kind === 'vertical') {

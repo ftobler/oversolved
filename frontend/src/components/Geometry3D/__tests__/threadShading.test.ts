@@ -34,6 +34,17 @@ describe('collectThreadSites', () => {
     expect(sites!.get('u_a')).toMatchObject({ length: 6, pitch: 1 })
   })
 
+  it('indexes a pattern result that carries its own thread block', () => {
+    // A hole as a pattern source gives the pattern result the copies' runs; the
+    // shading reads the block, not the feature kind.
+    const sites = collectThreadSites(
+      [{ id: 'h1', kind: 'hole' }, { id: 'pt1', kind: 'circular_pattern' }],
+      { h1: holeResult([boreSite('u_src')]), pt1: holeResult([boreSite('u_copy')]) },
+      'mm',
+    )
+    expect([...sites!.keys()]).toEqual(['u_src', 'u_copy'])
+  })
+
   it('indexes every piece of a split bore as the one site', () => {
     const sites = collectThreadSites([{ id: 'h1', kind: 'hole' }], { h1: holeResult([boreSite(['u_p0', 'u_p1'])]) }, 'mm')
     expect(sites!.get('u_p0')).toBe(sites!.get('u_p1'))

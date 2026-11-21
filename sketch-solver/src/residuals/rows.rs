@@ -18,7 +18,7 @@
 //! `RowClass::Unclassified`, which makes both misses non-finite rather than
 //! quietly granting the row a looser target.
 
-use super::geom::is_curve;
+use super::geom::{is_curve, is_spline};
 use super::misc::{is_angle_param, GroupWalk};
 use super::Problem;
 use crate::constraints::{Axis, Constraint, ConstraintKind, Ref, RefRole};
@@ -283,6 +283,13 @@ impl Problem<'_> {
             return Vec::new();
         };
         if !matches!(self.kind_of(first), Kind::Line) {
+            if is_spline(self.kind_of(first)) || is_spline(self.kind_of(second)) {
+                return if self.tangent_contact.contains_key(&(first, second)) {
+                    angular(1, self.curve_spline_len0(first, second))
+                } else {
+                    Vec::new()
+                };
+            }
             if self.tangent_contact.contains_key(&(first, second)) {
                 return angular(1, self.curve_pair_radius0(first, second));
             }

@@ -10,6 +10,31 @@ pub(super) fn is_curve(k: Kind) -> bool {
     matches!(k, Kind::Circle | Kind::Arc)
 }
 
+/// A spline kind whose end tangents come from control points or handles rather
+/// than a centre and radius.
+pub(super) fn is_spline(k: Kind) -> bool {
+    matches!(k, Kind::Spline | Kind::FitSpline)
+}
+
+/// The operand-kind pairs a tangent admits, in either order: a line against a
+/// circle, arc, ellipse or spline; a circle or arc against another circle, arc
+/// or spline; and a spline against another spline. The pair alone is not enough
+/// for a spline: it also needs a pinned end contact (see `Problem::new`'s
+/// survivors gate).
+pub(super) fn tangent_pair_kinds_admitted(a: Kind, b: Kind) -> bool {
+    let others = |k: Kind| {
+        matches!(
+            k,
+            Kind::Circle | Kind::Arc | Kind::Ellipse | Kind::Spline | Kind::FitSpline
+        )
+    };
+    if a == Kind::Line || b == Kind::Line {
+        return others(if a == Kind::Line { b } else { a });
+    }
+    let curve_or_spline = |k: Kind| is_curve(k) || is_spline(k);
+    curve_or_spline(a) && curve_or_spline(b)
+}
+
 /// Kind behind an entity ref; `None` for external refs, which carry their own
 /// coordinates and read nothing from the local param buffer.
 pub(super) fn ref_kind(input: &Input, r: &Ref) -> Option<Kind> {

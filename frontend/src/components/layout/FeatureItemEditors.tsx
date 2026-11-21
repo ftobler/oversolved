@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import type { LengthUnit, PartFeature, Mutation } from '@/types/cad'
 import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import { EDITOR_SCHEMAS } from '@/components/editors/featureEditorSchemas'
@@ -7,6 +8,7 @@ import { useFileMeta } from '@/stores/fileRegistry'
 import { formatBytes } from '@/utils/formatBytes'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { lengthUnitOf } from '@/utils/lengthUnit'
+import { variableScopeAt, laterVariablesAt } from '@/kernel/features/variable'
 
 interface FeatureItemEditorsProps {
   feature: PartFeature
@@ -47,7 +49,30 @@ function ImportStepFileRow({ fileId }: { fileId: string | undefined }) {
  */
 export function FeatureItemEditors(props: FeatureItemEditorsProps) {
   if (props.editingFeatureId !== props.feature.id) return null
-  return editorFor(props)
+  // The scope folds parse every preceding variable, so the child owns them:
+  // this component returns early, and a hook cannot sit after that.
+  return <ScopedEditor {...props} />
+}
+
+/**
+ * The editor body with its variable scope. The fold is the same positional one
+ * the solve uses: a number field resolves only the variables above its own
+ * row. A feature being added is already in the list at its insertion index, so
+ * it needs no special case. Memoized on the feature list and index so typing in
+ * a field does not re-parse the log on every keystroke.
+ */
+function ScopedEditor(props: FeatureItemEditorsProps) {
+  const { feature, features } = props
+  const index = features.findIndex(f => f.id === feature.id)
+  const variables = useMemo(
+    () => (index < 0 ? {} : variableScopeAt(features, index)),
+    [features, index],
+  )
+  const laterVariables = useMemo(
+    () => (index < 0 ? {} : laterVariablesAt(features, index, variables)),
+    [features, index, variables],
+  )
+  return editorFor(props, variables, laterVariables)
 }
 
 /**
@@ -74,7 +99,7 @@ function editorFor({
   features,
   partLabels,
   solved,
-}: FeatureItemEditorsProps) {
+}: FeatureItemEditorsProps, variables: Record<string, number>, laterVariables: Record<string, number>) {
   const kind = feature.kind
 
   if (kind === 'plane' && !BUILTIN_FEATURE_IDS.has(feature.id)) {
@@ -87,6 +112,8 @@ function editorFor({
         features={features}
         partLabels={partLabels}
         lengthUnit={lengthUnitOf(doc?.length_unit)}
+        variables={variables}
+        laterVariables={laterVariables}
       />
     )
   }
@@ -121,6 +148,8 @@ function editorFor({
       schema={schema}
       lengthUnit={lengthUnitOf(doc?.length_unit)}
       solved={solved}
+      variables={variables}
+      laterVariables={laterVariables}
     />
   )
 }

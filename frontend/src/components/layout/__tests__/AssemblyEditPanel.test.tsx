@@ -13,6 +13,7 @@ import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
 import featurePartIcon from '@/assets/icons/feature-part.svg'
 import mateRotatingIcon from '@/assets/icons/mate-rotating.svg'
+import renameIcon from '@/assets/icons/rename.svg'
 
 const instances: PartInstance[] = [
   { handle: 'p1', doc_id: 'doc-p1', doc_rev: 1, transform: { ...IDENTITY_TRANSFORM }, visible: true },
@@ -37,6 +38,7 @@ function makeProps(overrides: Partial<AssemblyEditPanelProps> = {}): AssemblyEdi
     onCancelInstance: vi.fn(),
     onCommitMate: vi.fn(),
     onCancelMate: vi.fn(),
+    onRenameMate: vi.fn(),
     renderInstanceEditor: inst => (
       <PartInstanceEditor
         instance={inst}
@@ -124,6 +126,44 @@ describe('AssemblyEditPanel', () => {
     fireEvent.click(screen.getByTitle('Cancel'))
     expect(props.onCancelMate).toHaveBeenCalledTimes(1)
     expect(props.onCancelInstance).not.toHaveBeenCalled()
+  })
+
+  // A mate is authored, so its card carries the tree menu's Rename. An instance
+  // is named by its part document and has nothing of its own to rename.
+  it('puts Rename left of OK and Cancel on the mate card, with the rename icon', () => {
+    const { container } = renderPanel({ editing: { kind: 'mate', id: 'm1' } })
+
+    const header = container.querySelector('.feature-edit-panel-header') as HTMLElement
+    const titles = Array.from(header.querySelectorAll('button')).map(b => b.getAttribute('title'))
+    expect(titles).toEqual(['Rename', 'OK', 'Cancel'])
+
+    const rename = screen.getByRole('button', { name: 'Rename' })
+    expect(rename.getAttribute('class')).toBe('feature-rename-btn')
+    expect(rename.querySelector('img')!.getAttribute('src')).toBe(renameIcon)
+  })
+
+  it('requests a mate rename carrying the label the card shows', () => {
+    const { props } = renderPanel({ editing: { kind: 'mate', id: 'm1' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
+    expect(props.onRenameMate).toHaveBeenCalledTimes(1)
+    expect(props.onRenameMate).toHaveBeenCalledWith('m1', 'Hinge')
+  })
+
+  it('falls back to the kind label for an unlabeled mate', () => {
+    const { props } = renderPanel({ editing: { kind: 'mate', id: 'm2' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
+    expect(props.onRenameMate).toHaveBeenCalledWith('m2', 'Fixed')
+  })
+
+  it('draws no Rename button on the instance card', () => {
+    const { container } = renderPanel({ editing: { kind: 'instance', handle: 'p1' } })
+    expect(screen.queryByRole('button', { name: 'Rename' })).toBeNull()
+    expect(container.querySelector('.feature-rename-btn')).toBeNull()
+  })
+
+  it('draws no Rename button on the mate card when the page offers no opener', () => {
+    renderPanel({ editing: { kind: 'mate', id: 'm1' }, onRenameMate: undefined })
+    expect(screen.queryByRole('button', { name: 'Rename' })).toBeNull()
   })
 
   it('marks a failed part in its own card below the edit panel', () => {

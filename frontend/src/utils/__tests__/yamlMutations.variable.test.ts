@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { applyAddVariable, applySetVariableField, applyRenameFeature } from '@/utils/yamlMutations'
+import { MutationRefusal } from '@/utils/yamlMutations/helpers'
 import type { PartDoc } from '@/types/cad'
 import { featureAt } from '@/testing/featureAccess'
 
@@ -7,12 +8,24 @@ function emptyDoc(): PartDoc {
   return { features: [] }
 }
 
+function refusalOf(run: () => void): MutationRefusal {
+  try {
+    run()
+  } catch (e) {
+    if (e instanceof MutationRefusal) return e
+    throw e
+  }
+  throw new Error('expected a MutationRefusal')
+}
+
 describe('applyAddVariable', () => {
-  it('creates a variable feature with default expression and label', () => {
+  it('creates a variable feature with the numeric default expression and label', () => {
+    // The number field stores a plain number; seeding the old text "0" would
+    // make a fresh add differ from the field's own first commit.
     const doc = emptyDoc()
     applyAddVariable(doc, 'v1')
     expect(doc.features).toEqual([
-      { id: 'v1', kind: 'variable', label: 'var', variable: { expression: '0' } },
+      { id: 'v1', kind: 'variable', label: 'var', variable: { expression: 0 } },
     ])
   })
 
@@ -75,18 +88,38 @@ describe('applyRenameFeature variable guard', () => {
     expect(doc.features?.[0].label).toBe('height')
   })
 
-  it('rejects an invalid identifier rename', () => {
+  it('accepts an underscore name', () => {
     const doc = emptyDoc()
     applyAddVariable(doc, 'v1', 'width')
-    applyRenameFeature(doc, 'v1', 'my var')
+    applyRenameFeature(doc, 'v1', '_w')
+    expect(doc.features?.[0].label).toBe('_w')
+  })
+
+  it('throws the shared sentence for an invalid identifier and keeps the old label', () => {
+    const doc = emptyDoc()
+    applyAddVariable(doc, 'v1', 'width')
+    const refusal = refusalOf(() => applyRenameFeature(doc, 'v1', 'my-var'))
+    expect(refusal.message).toBe(
+      '"my-var" is not a valid variable name: use letters, digits and _ only '
+        + '(a - reads as minus in an expression). Try "my_var".',
+    )
     expect(doc.features?.[0].label).toBe('width')
   })
 
-  it('rejects a colliding rename', () => {
+  it('throws for a reserved constant and keeps the old label', () => {
+    const doc = emptyDoc()
+    applyAddVariable(doc, 'v1', 'width')
+    const refusal = refusalOf(() => applyRenameFeature(doc, 'v1', 'pi'))
+    expect(refusal.message).toBe('"pi" is a built-in constant and cannot name a variable.')
+    expect(doc.features?.[0].label).toBe('width')
+  })
+
+  it('throws for a colliding rename and keeps the old label', () => {
     const doc = emptyDoc()
     applyAddVariable(doc, 'v1', 'width')
     applyAddVariable(doc, 'v2', 'height')
-    applyRenameFeature(doc, 'v2', 'width')
+    const refusal = refusalOf(() => applyRenameFeature(doc, 'v2', 'width'))
+    expect(refusal.message).toBe('A variable named "width" already exists.')
     expect(doc.features?.[1].label).toBe('height')
   })
 
@@ -94,5 +127,11 @@ describe('applyRenameFeature variable guard', () => {
     const doc: PartDoc = { features: [{ id: 's1', kind: 'sketch', label: 'sketch 1' }] }
     applyRenameFeature(doc, 's1', 'sketch 2')
     expect(doc.features?.[0].label).toBe('sketch 2')
+  })
+
+  it('still accepts a hyphen in a non-variable label, the audit guard', () => {
+    const doc: PartDoc = { features: [{ id: 's1', kind: 'sketch', label: 'sketch 1' }] }
+    applyRenameFeature(doc, 's1', 'my-feature')
+    expect(doc.features?.[0].label).toBe('my-feature')
   })
 })

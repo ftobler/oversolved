@@ -20,6 +20,7 @@ import { resolveVertexRef } from '@/types/vertexRef'
 import { colinearShapeProblem, constraintOperandSide } from '@/utils/constraintOperands'
 import { entityPointKeys } from '@/registry/entityRegistry'
 import { constraintOperandProblem } from '@/registry/constraintRegistry'
+import { constraintOperandRefProblem } from '@/utils/constraintProblems'
 import {
   constraintEntityKindProblem,
   type ConstraintKindOperand,
@@ -134,8 +135,11 @@ function lowerConstraint(
     const resolved = resolveLocal(raw, entityIds, originLocal)
     if (!resolved) {
       // Name the kind the document stores, not the wire kind a lowering may
-      // have substituted (`colinear` arrives here as `coincident`).
-      dropped.push({ id: c.id, kind: authoredKind, reason: 'stale reference' })
+      // have substituted (`colinear` arrives here as `coincident`). A
+      // well-formed non-sketch ref (a plane the bugreport stored as an operand)
+      // is not stale: the operand rule names what it actually is.
+      const reason = constraintOperandRefProblem(authoredKind, raw) ?? 'stale reference'
+      dropped.push({ id: c.id, kind: authoredKind, reason })
       return null
     }
     if ('entity' in resolved) {

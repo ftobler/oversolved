@@ -104,6 +104,10 @@ export default function SectionPlaneHandle() {
     if (!active || !frame || capturing) return
     return registerFeatureHandleCallbacks(SECTION_HANDLE_KEY, {
       onPointerDown: (clientX, clientY) => {
+        // The camera yields through the press claim (viewport/pointerClaim),
+        // not through this store flag: the dispatcher claims the pointer on the
+        // featureHandle layer. Do not "fix" the orbit gate by pushing a fake
+        // dragPending here, that would break the click rule.
         const st = useSketchEditorStore.getState()
         st.setIsPointerDown(true)
         pendingRef.current = {

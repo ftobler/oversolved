@@ -8,6 +8,7 @@ import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
 import { findEdgeKindForQuery } from '@/picking/partDispatchCallbacks'
 import { classifyPendingAdd } from '@/kernel/features/constraintProbe'
+import { variableRenameProblem } from '@/kernel/features/variable'
 import { PROJECTION_NOT_FROZEN_TITLE, projectionNotFrozenMessage } from '@/kernel/features/projectionMembers'
 import { projectedSelectionTargets } from '@/utils/yamlMutations/freezeProjection'
 import { executeCommand } from '@/utils/core/commandRegistry'
@@ -344,6 +345,11 @@ export default function Part() {
   const autosaveError = useAutosaveStore(s => s.error)
 
   const features = useMemo(() => extractFeatures(doc), [doc])
+  // The rename dialog's subject decides whether the variable name rule runs and
+  // which title the gesture reads; a body has its own label rules.
+  const renameFeatureId = renameTarget?.kind === 'feature' ? renameTarget.id : null
+  const renameIsVariable = renameFeatureId !== null
+    && features.some(f => f.id === renameFeatureId && f.kind === 'variable')
   const planeSelectionFeatureId = derivePlaneSelectionFeatureId(activePickField, features)
   const partStyle = useMemo(() => doc?.part_style ?? {}, [doc])
   const { partLabels, partColors } = useMemo(() => {
@@ -1095,7 +1101,13 @@ export default function Part() {
   }, [docRef, solveResults])
 
   useEffect(() => {
-    setSketchCallback('onMutation', handleMutation)
+    // The feature-handle drag pumps live field mutations and waits on the
+    // solve each one requested before sending the next, so the sink hands back
+    // a promise that settles with it. Every other caller ignores the return.
+    setSketchCallback('onMutation', (m) => {
+      handleMutation(m)
+      return session.idle()
+    })
     setSketchCallback('onMutationBatch', commitMutationGroup)
     setSketchCallback('beginBrepProjection', beginBrepProjection)
     setSketchCallback('cancelBrepProjection', cancelBrepProjection)
@@ -1130,6 +1142,10 @@ export default function Part() {
     // The constraint command projects a picked body edge by its curve kind; the
     // dimension tool reads the same fact from the hover instead.
     setSketchCallback('resolveEdgeKind', (query: string) => findEdgeKindForQuery(query) ?? null)
+    // The feature arrow asks this before restoring a field on unmount: writing
+    // into a session OK or Cancel already closed would be a second undo entry
+    // or a dirty rewound document.
+    setSketchCallback('isEditSessionOpen', () => session.transactions().some(txn => txn.kind === 'edit'))
     // The delete action's freeze route reads the live document and the solved
     // member rows through this same registration. It must live here with the
     // ports the teardown clears: a separate effect would not re-run when this
@@ -1140,7 +1156,7 @@ export default function Part() {
     return () => {
       clearSketchCallbacks()
     }
-  }, [handleMutation, commitMutationGroup, beginBrepProjection, cancelBrepProjection, handleRebuild, handleExitSketch, checkRedundantAdd, showMessage, solveResults, docRef])
+  }, [handleMutation, commitMutationGroup, beginBrepProjection, cancelBrepProjection, handleRebuild, handleExitSketch, checkRedundantAdd, showMessage, solveResults, docRef, session])
 
   // The sketch editor store is module-level and survives a Part unmount, so a
   // remounted Part (WorkspacePage keys it by entry) would otherwise inherit the
@@ -1314,21 +1330,25 @@ export default function Part() {
   const handleFeatureRename = useCallback((featureId: string, label: string) => {
     const trimmed = label.trim()
     if (!trimmed) return
-    handleMutation({ type: 'rename_feature', featureId, label: trimmed })
+    return handleMutation({ type: 'rename_feature', featureId, label: trimmed })
   }, [handleMutation])
 
   const handlePartRename = useCallback((partId: string, label: string) => {
     const trimmed = label.trim()
     if (!trimmed) return
-    handleMutation({ type: 'rename_part', bodyId: partId, name: trimmed })
+    return handleMutation({ type: 'rename_part', bodyId: partId, name: trimmed })
   }, [handleMutation])
 
   // The context menu only names what is being renamed; the dialog collects the
   // label and routes it back to the kind's own mutation.
   const handleRenameConfirm = useCallback((name: string) => {
     if (!renameTarget) return
-    if (renameTarget.kind === 'body') handlePartRename(renameTarget.id, name)
-    else handleFeatureRename(renameTarget.id, name)
+    const result = renameTarget.kind === 'body'
+      ? handlePartRename(renameTarget.id, name)
+      : handleFeatureRename(renameTarget.id, name)
+    // A refusal is not a finished gesture: the toast carries the reason and the
+    // dialog keeps the typed name so the user can fix it.
+    if (result && !result.ok && result.code === 'refused') return
     setRenameTarget(null)
   }, [renameTarget, handlePartRename, handleFeatureRename])
 
@@ -1568,6 +1588,7 @@ export default function Part() {
     onToggleVisibility: toggleVisibility,
     onRightClick: handleRightClick,
     onRename: handleFeatureRename,
+    onRequestRename: setRenameTarget,
     onMutation: handleMutation,
     onMutationBatch: commitMutationGroup,
     onSetRollbackPosition: handleUserRollbackChange,
@@ -1659,8 +1680,13 @@ export default function Part() {
       )}
       <RenameDialog
         isOpen={renameTarget !== null}
-        title={renameTarget?.kind === 'body' ? 'Rename Part' : 'Rename Feature'}
+        title={renameTarget?.kind === 'body'
+          ? 'Rename Part'
+          : renameIsVariable ? 'Rename Variable' : 'Rename Feature'}
         currentName={renameTarget?.currentName ?? ''}
+        validate={renameFeatureId !== null && renameIsVariable
+          ? name => variableRenameProblem(features, renameFeatureId, name)
+          : undefined}
         onRename={handleRenameConfirm}
         onCancel={() => setRenameTarget(null)}
       />

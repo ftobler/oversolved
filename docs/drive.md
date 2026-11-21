@@ -988,6 +988,15 @@ banner on stdout, so a client config must use the direct node invocation.
   piece's third control point, hence the minus). `set_fit_spline_handle` writes
   that stored absolute form directly on a later edit; it is not the authoring
   recipe, and its end point differs in sign from the tangent.
+  Each stored handle is a solver variable with its own two degrees of freedom,
+  so a tangent at that end fixes only its direction: pin the joint with a
+  coincident plus the tangent, dimension the handle length (`point_distance`
+  from `start` to `c1`, or `end` to `c2`), and dimension the other handle to
+  close the last two degrees of freedom.
+  `tangent` takes a line with a circle, arc, ellipse or spline, a circle or arc
+  with a circle, arc or spline, or a spline with another spline. A spline joint
+  needs a coincident at the spline's start or end: without one the tangent is
+  ignored, because the solver has no free spline tangent form.
   Guidance that a field list cannot carry lives in the row note: `hole` lists
   its required fields (`sketch`, `diameter`, `depth_mode`) and its optional ones
   (`depth`, `direction`, `target`, `thread`, `style`, `cb_diameter`, `cb_depth`,
@@ -1168,10 +1177,11 @@ banner on stdout, so a client config must use the direct node invocation.
 - Both pattern kinds with `subject: feature` repeat one or more earlier
   FEATUREs' own add or cut inside the body each feature already shaped, so a
   repeated slot or boss needs no separate body and boolean. `source_features`
-  names a list of earlier `extrude`, `revolve` or `sweep` features whose
-  operation is `add` or `cut`, e.g. `["@ex1", "@ex2"]`; the legacy single
-  `source_feature` is still accepted and means a one-element list. Every source
-  is repeated at every instance in the order the sources sit in the feature log
+  names a list of earlier `extrude`, `revolve`, `sweep`, `wrap` or `hole`
+  features; the first four read their `operation` (`add` or `cut`) and a hole
+  is always a cut, so it carries no operation key; e.g. `["@ex1", "@ex2"]`.
+  The legacy single `source_feature` is still accepted and means a one-element
+  list. Every source is repeated at every instance in the order the sources sit in the feature log
   (not the list order), and the first source's first produced body is the
   instance-0 seed. `count` is the TOTAL instance count, including the sources'
   own application (count 2 adds one copy and count 1 is a quiet no-op).
@@ -1187,7 +1197,16 @@ banner on stdout, so a client config must use the direct node invocation.
   name, because a new body is not "inside the existing body" and an up_to trim
   would travel with every rigid copy. A through_all cut is a legal source: its
   tool is measured from the body the copies will cut, so every copy clears the
-  same thickness.
+  same thickness. A hole is a legal source too: its per-site cutters, the ones
+  it actually cut with, are compounded, fused where two bores overlap, into one
+  tool and repeated rigidly, so a copy keeps the hole's style (counterbore,
+  countersink, drill point), its bore and floor face roles and its cosmetic
+  thread. A blind hole and a through_all hole are both admitted; a site the hole
+  swallowed or missed contributes no cutter, exactly as it removed nothing from
+  the source's cut. A through_all hole's tool carries one span along its own
+  drill axis, so a copy whose transform turns that axis (a circular pattern
+  about a non-parallel axis, or an oblique mirror) is refused by name: it would
+  cut a shorter chord than the body needs.
 - A sketch is one profile, and a profile fills even/odd: a loop nested inside
   another is a hole (a disc plus a circle becomes a washer), while loops that
   CROSS each other are filled as their union. A circle meant as a hole that

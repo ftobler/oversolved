@@ -1,5 +1,5 @@
-use super::geom::bezier_deriv;
-use super::Problem;
+use super::geom::{bezier_deriv, is_spline};
+use super::{Problem, TangentContact, P2};
 use crate::constraints::{Constraint, PointSelector, Ref, RefRole};
 use crate::Kind;
 
@@ -41,6 +41,35 @@ impl Problem<'_> {
         (d - (ra + rb), d - (ra - rb).abs())
     }
 
+    /// The unit end tangent of a spline at a pinned end: the Bezier's end
+    /// derivative, or the fit spline's own end derivative (the stored handle's
+    /// direction when it has one, the Lagrange end otherwise).
+    fn spline_end_tangent(&self, x: &[f64], index: u32, selector: PointSelector) -> P2 {
+        let d = match self.kind_of(index) {
+            Kind::Spline => {
+                let sp = self.params(x, index);
+                if selector == PointSelector::End {
+                    bezier_deriv(sp, 1.0)
+                } else {
+                    bezier_deriv(sp, 0.0)
+                }
+            }
+            Kind::FitSpline => {
+                let Some(fit) = self.fit_spline(x, index) else {
+                    return [0.0, 0.0];
+                };
+                if selector == PointSelector::End {
+                    fit.derivative(fit.point_count() - 1)
+                } else {
+                    fit.derivative(0)
+                }
+            }
+            _ => [0.0, 0.0],
+        };
+        let n = (d[0] * d[0] + d[1] * d[1]).sqrt().max(1e-12);
+        [d[0] / n, d[1] / n]
+    }
+
     /// One residual row per tangent.
     ///
     /// Tangency is a direction condition wherever a coincident pins an
@@ -67,6 +96,48 @@ impl Problem<'_> {
         // center distances) and let the type flip mid-solve. The Jacobian comes
         // from the finite-difference fallback.
         if !matches!(self.kind_of(line_idx), Kind::Line) {
+            // A spline partner has no centre or radius; the tangency is read at
+            // its pinned end as the direction of its end handle (fit spline) or
+            // its end control point (Bezier). The circle/arc side contributes
+            // its radial at the contact, the spline side its own end tangent.
+            if is_spline(self.kind_of(line_idx)) || is_spline(self.kind_of(arc_idx)) {
+                let Some(contact) = contact else {
+                    return;
+                };
+                let (spline_idx, other_idx) = if is_spline(self.kind_of(line_idx)) {
+                    (line_idx, arc_idx)
+                } else {
+                    (arc_idx, line_idx)
+                };
+                let spline_sel =
+                    contact_selector(contact, if spline_idx == line_idx { 0 } else { 1 });
+                let other_sel =
+                    contact_selector(contact, if other_idx == line_idx { 0 } else { 1 });
+                let owner = if contact.owner == 0 {
+                    line_idx
+                } else {
+                    arc_idx
+                };
+                let p = self.point(
+                    x,
+                    Ref::Entity {
+                        index: owner,
+                        point: contact.selector,
+                    },
+                );
+                let t = self.spline_end_tangent(x, spline_idx, spline_sel);
+                let seed = self.curve_spline_len0(line_idx, arc_idx);
+                if matches!(self.kind_of(other_idx), Kind::Circle | Kind::Arc) {
+                    // The circle/arc tangent is perpendicular to its radial.
+                    let rd = self.radius_dir(x, other_idx, other_sel, p);
+                    r.push(seed * (rd[0] * t[0] + rd[1] * t[1]));
+                } else if is_spline(self.kind_of(other_idx)) {
+                    // G1: the two end tangents are parallel.
+                    let u = self.spline_end_tangent(x, other_idx, other_sel);
+                    r.push(seed * (u[0] * t[1] - u[1] * t[0]));
+                }
+                return;
+            }
             if let Some(contact) = contact {
                 let owner = if contact.owner == 0 {
                     line_idx
@@ -200,5 +271,14 @@ impl Problem<'_> {
             // Same abs kink, at a zero distance, which pins no valid ellipse.
             r.push(dist.abs() - support);
         }
+    }
+}
+
+/// The selector the contact side `side` (0 or 1) carries.
+fn contact_selector(contact: &TangentContact, side: u8) -> PointSelector {
+    if contact.owner == side {
+        contact.selector
+    } else {
+        contact.other_selector
     }
 }

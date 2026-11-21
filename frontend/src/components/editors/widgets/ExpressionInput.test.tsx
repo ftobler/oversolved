@@ -115,6 +115,17 @@ describe('ExpressionInput', () => {
     expect(screen.queryByRole('status')).toBeNull()
   })
 
+  it('keeps the plain sentence when the host provides no variable scope', () => {
+    // No context is not the same as an empty context: a host without a document
+    // log cannot claim which variables are defined above anything.
+    const { input, onChange } = renderInput({ value: 10 })
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'width' } })
+    expect(screen.getByRole('status')).toHaveTextContent('Value refused: cannot evaluate "width"')
+    fireEvent.blur(input)
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
   it('shows no message for an empty box, which is unfinished, not refused', () => {
     const { input, onChange } = renderInput({ value: 10 })
     fireEvent.focus(input)
@@ -131,6 +142,39 @@ describe('ExpressionInput', () => {
     expect(screen.getByText('= 10')).toBeInTheDocument()
     fireEvent.blur(input)
     expect(onChange).toHaveBeenCalledWith('width*2')
+  })
+
+  it('shows the value of an expression over the scope and commits the string', () => {
+    const { input, onChange } = renderInput({ value: 10, context: { width: 40 } })
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'width/2' } })
+    expect(screen.getByText('= 20')).toBeInTheDocument()
+    fireEvent.blur(input)
+    expect(onChange).toHaveBeenCalledWith('width/2')
+  })
+
+  it('names an unknown variable and the ones the field can use', () => {
+    const { input, onChange } = renderInput({ value: 10, context: { width: 40, height: 5 } })
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'width/2 + depth' } })
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Value refused: unknown variable "depth"; defined above this feature: width, height',
+    )
+    fireEvent.blur(input)
+    expect(onChange).not.toHaveBeenCalled()
+  })
+
+  it('names a forward reference as defined below this feature', () => {
+    const { input, onChange } = renderInput({
+      value: 10, context: { width: 40 }, laterVariables: { depth: 4 },
+    })
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'depth*2' } })
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Value refused: variable "depth" is defined below this feature; move it above this one',
+    )
+    fireEvent.blur(input)
+    expect(onChange).not.toHaveBeenCalled()
   })
 })
 
