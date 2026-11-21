@@ -256,8 +256,13 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     // The same teardown the Escape and unmount effects run: adapter.cancel()
     // clears the pointer machine and the store's manipulation and gizmoDrag, so
     // a drag abandoned from outside the viewport cannot linger as a live gesture.
-    cancelGesture: () => adapter.cancel(),
-  }), [adapter])
+    // The camera claim goes with it, or an Undo-cancelled touch drag would hold
+    // the pointer forever and leave `anyClaimed()` true.
+    cancelGesture: () => {
+      adapter.cancel()
+      pointerClaims.clear()
+    },
+  }), [adapter, pointerClaims])
 
   // The subject's part half as a set, which is what the render groups take so a
   // future multi-part subject widens in the one accessor rather than here. It

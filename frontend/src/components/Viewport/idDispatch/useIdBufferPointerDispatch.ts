@@ -707,10 +707,12 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers, p
       }
       // A primary press starts a new gesture, so secondary ids left by a finger
       // whose click never arrived cannot match a later pointer that reuses them.
-      // The same rule drops a claim stranded by a lost release.
       secondaryPointerIds.clear()
-      pointerClaims?.clear()
       if (e.button !== 0 || !attached) return
+      // Only the primary button opens a handle gesture, so only it drops a claim
+      // stranded by a lost release. Clearing above the button guard would let a
+      // right-button orbit press eat a live left-drag claim.
+      pointerClaims?.clear()
       const hit = resolveSync(e, attached)
       // The press starts the gesture: ownership comes from this hit only (a miss
       // clears it), before the adapter runs so a refusing handle still owns the

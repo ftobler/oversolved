@@ -4,7 +4,7 @@
 // drives the renderer canvas directly, proving right-drag rotates, middle-drag
 // pans, the wheel zooms, and the left button stays free for selection.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { useEffect } from 'react'
+import { createRef, useEffect } from 'react'
 import { render, act } from '@testing-library/react'
 import * as THREE from 'three'
 import { GIZMO_HANDLE_LAYER_NAME } from '@/picking'
@@ -21,6 +21,7 @@ const h = vi.hoisted(() => {
     gl: { domElement },
     scene: null as THREE.Scene | null,
     invalidate: vi.fn(),
+    requestSolve: vi.fn(),
     pipeline: { resolveAllSync: vi.fn(() => [] as unknown[]) },
   }
 })
@@ -52,7 +53,18 @@ vi.mock('@/components/Viewport/EnvLight', () => ({ default: () => null, ENV_INTE
 vi.mock('@/components/Viewport/IdDebugOverlay', () => ({ default: () => null }))
 vi.mock('@/components/misc/CubeGizmo', () => ({ CubeGizmoCanvas: () => null }))
 vi.mock('@/components/Viewport/assembly/AnchorGizmos', () => ({ default: () => null }))
-vi.mock('@/components/Viewport/assembly/AssemblyPartMesh', () => ({ default: () => null }))
+vi.mock('@/components/Viewport/assembly/AssemblyPartMesh', () => ({
+  default: function AssemblyPartMeshStub({ onGrab }: {
+    onGrab?: (point: [number, number, number], event: { pointerId: number; button: number }) => void
+  }) {
+    return (
+      <div
+        data-testid="assembly-part"
+        onPointerDown={e => onGrab?.([0, 0, 0], { pointerId: e.pointerId, button: e.button })}
+      />
+    )
+  },
+}))
 vi.mock('@/components/Viewport/assembly/AssemblyBuiltin', () => ({ default: () => null }))
 vi.mock('@/components/Viewport/assembly/AssemblyPickLayers', () => ({ default: () => null }))
 vi.mock('@/components/Viewport/assembly/AssemblySelectionHighlight', () => ({ default: () => null }))
@@ -60,7 +72,7 @@ vi.mock('@/components/Viewport/assembly/GizmoPickLayer', () => ({ default: () =>
 vi.mock('@/components/Viewport/assembly/RollGuideGizmo', () => ({ default: () => null }))
 vi.mock('@/components/Viewport/assembly/TriadGizmo', () => ({ default: () => null }))
 
-import AssemblyViewport from '../AssemblyViewport'
+import AssemblyViewport, { type AssemblyViewportHandle } from '../AssemblyViewport'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA, setAssemblyCallbacks } from '@/stores/assemblyStore'
 import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
 import { installPointerEventStub } from '@/testing/pointerEventStub'
@@ -125,6 +137,7 @@ beforeEach(() => {
   h.scene = new THREE.Scene()
   resetCamera()
   h.invalidate.mockClear()
+  h.requestSolve.mockClear()
   h.pipeline.resolveAllSync.mockReset()
   h.pipeline.resolveAllSync.mockImplementation(() => [])
   useAssemblyStore.getState().setSnapshot(DEFAULT_ASSEMBLY_EDITOR_DATA)
@@ -132,7 +145,7 @@ beforeEach(() => {
   setAssemblyCallbacks({
     mutateDoc: (_label, fn) => fn(useAssemblyStore.getState().doc!),
     mutateDocSession: (_label, fn) => fn(useAssemblyStore.getState().doc!),
-    requestSolve: vi.fn(),
+    requestSolve: h.requestSolve,
   })
 })
 
@@ -189,6 +202,69 @@ describe('AssemblyViewport turntable', () => {
       touch(h.gl.domElement, 'pointerdown', 6, 300, 300)
       touch(document, 'pointermove', 6, 360, 340)
       touch(document, 'pointerup', 6, 360, 340)
+    })
+    expect(h.camera!.position.distanceTo(posed)).toBeGreaterThan(0.1)
+  })
+
+  it('a touch body grab claims the pointer and leaves the camera alone', () => {
+    // The other assembly session-open path: a body grab, not the triad. It runs
+    // in the mesh's handler before the wrapper's bubble, and the claim is what
+    // holds the camera off until the gesture ends.
+    seedAssembly()
+    const { getByTestId } = render(<AssemblyViewport />)
+    const part = getByTestId('assembly-part')
+    const before = { position: h.camera!.position.toArray(), quaternion: h.camera!.quaternion.toArray() }
+
+    act(() => {
+      touch(h.gl.domElement, 'pointerdown', 8, 40, 40)
+      touch(part, 'pointerdown', 8, 40, 40)
+      touch(part, 'pointermove', 8, 80, 40)
+    })
+
+    expect(useAssemblyStore.getState().manipulation).not.toBeNull()
+    // A body grab is solver-driven: the move asks for the solve that will pull
+    // the part, which proves the gesture reached the drag, not just the press.
+    expect(h.requestSolve).toHaveBeenCalled()
+    expect({ position: h.camera!.position.toArray(), quaternion: h.camera!.quaternion.toArray() }).toEqual(before)
+
+    act(() => {
+      touch(part, 'pointerup', 8, 80, 40)
+    })
+    expect(useAssemblyStore.getState().manipulation).toBeNull()
+
+    const posed = h.camera!.position.clone()
+    act(() => {
+      touch(h.gl.domElement, 'pointerdown', 9, 300, 300)
+      touch(document, 'pointermove', 9, 360, 340)
+      touch(document, 'pointerup', 9, 360, 340)
+    })
+    expect(h.camera!.position.distanceTo(posed)).toBeGreaterThan(0.1)
+  })
+
+  it('cancelGesture drops the claim, so a later drag can orbit again', () => {
+    // Undo ends a manipulation through this handle rather than a pointerup. A
+    // claim left behind would refuse the next drag for the same pointer id.
+    seedAssembly()
+    h.pipeline.resolveAllSync.mockImplementation(() => ([
+      { layer: GIZMO_HANDLE_LAYER_NAME, entityKey: 'gizmo:translate:x' },
+    ]))
+    const ref = createRef<AssemblyViewportHandle>()
+    const { container } = render(<AssemblyViewport ref={ref} />)
+    const el = container.firstChild as Element
+
+    act(() => { touch(el, 'pointerdown', 1, 32, 32) })
+    expect(useAssemblyStore.getState().manipulation).not.toBeNull()
+
+    act(() => { ref.current!.cancelGesture() })
+    expect(useAssemblyStore.getState().manipulation).toBeNull()
+
+    const posed = h.camera!.position.clone()
+    act(() => {
+      // No pointerup follows the cancel, so a stale claim for pointer 1 would
+      // still be in the registry when this right-drag starts.
+      press(h.gl.domElement, 'pointerdown', { button: 2, clientX: 100, clientY: 100 })
+      press(document, 'pointermove', { button: 2, clientX: 160, clientY: 140 })
+      press(document, 'pointerup', { button: 2, clientX: 160, clientY: 140 })
     })
     expect(h.camera!.position.distanceTo(posed)).toBeGreaterThan(0.1)
   })
