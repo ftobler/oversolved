@@ -11,7 +11,7 @@
 // utils/assemblyPointer.ts, and the anchor set under the cursor comes from
 // utils/anchorGizmos.ts, all viewport-free and unit-tested.
 
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState, Suspense } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, Suspense } from 'react'
 import type { ReactNode } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Environment } from '@react-three/drei'
@@ -300,8 +300,10 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   // with no consumer would swallow the next part click. The assembly's section
   // is builtin, offset and flip only, so a tilt left by the part editor is
   // dropped too rather than clipping the assembly at an angle its UI cannot
-  // show or clear.
-  useEffect(() => {
+  // show or clear. Laid out, not passive: the clip plane is published in a
+  // layout effect, so a passive reset would let the first assembly frame paint
+  // the part editor's angled cut.
+  useLayoutEffect(() => {
     useSectionStore.getState().setPicking(false)
     useSectionStore.getState().resetTilt()
   }, [])

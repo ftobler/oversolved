@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import * as THREE from 'three'
 import {
+  applySectionTiltSwing,
   builtinSectionFrame,
   clampSectionTilt,
   offsetFramePoint,
@@ -27,6 +28,11 @@ function expectVec(actual: readonly number[], expected: readonly number[]): void
   expect(actual[0]).toBeCloseTo(expected[0], 10)
   expect(actual[1]).toBeCloseTo(expected[1], 10)
   expect(actual[2]).toBeCloseTo(expected[2], 10)
+}
+
+// The cosine of a tilt's total angle, the same quantity the clamp bounds.
+function reach(tilt: { pitch: number; yaw: number }): number {
+  return Math.cos(tilt.pitch) * Math.cos(tilt.yaw)
 }
 
 function cross(a: readonly number[], b: readonly number[]): Vec3 {
@@ -187,6 +193,37 @@ describe('tilt', () => {
     // A pitch request alone holds at a constant clamp while the yaw is zero.
     expect(clampSectionTilt({ pitch: 120 * DEG, yaw: 0 }).pitch).toBeCloseTo(85 * DEG, 10)
     expect(clampSectionTilt({ pitch: 0, yaw: -120 * DEG }).yaw).toBeCloseTo(-85 * DEG, 10)
+  })
+
+  it('pulls a both-axes-out request back along its own ratio, idempotently', () => {
+    // Both angles are past the limit AND their product is past it too, the case
+    // the per-axis clamp missed: nothing may snap to zero here.
+    const far = { pitch: 100 * DEG, yaw: 200 * DEG }
+    const clamped = clampSectionTilt(far)
+    expect(Math.acos(reach(clamped))).toBeLessThanOrEqual(85 * DEG + 1e-9)
+    expect(clamped.pitch).toBeGreaterThan(60 * DEG)
+    expect(clamped.yaw).toBeGreaterThan(60 * DEG)
+    // The store and the geometry both clamp, so a second pass must not move it.
+    const again = clampSectionTilt(clamped)
+    expect(again.pitch).toBe(clamped.pitch)
+    expect(again.yaw).toBe(clamped.yaw)
+  })
+
+  it('holds a drag at the limit and reports only the swing the plane took', () => {
+    // A pitch drag from a corner where the yaw already spends the whole cone
+    // holds instead of snapping (a hair of float noise is fine).
+    const corner = { pitch: 0, yaw: 85 * DEG }
+    const held = applySectionTiltSwing(corner, 'pitch', 20 * DEG)
+    expect(held.tilt.pitch).toBeLessThan(1e-6)
+    expect(held.tilt.yaw).toBeCloseTo(corner.yaw, 12)
+    expect(held.swing).toBeLessThan(1e-6)
+    // From an inside pose, the drag lands at the limit, not past it, and the
+    // reported swing is what was actually applied.
+    const inside = { pitch: 0, yaw: 50 * DEG }
+    const taken = applySectionTiltSwing(inside, 'pitch', 90 * DEG)
+    expect(reach(taken.tilt)).toBeCloseTo(Math.cos(85 * DEG), 9)
+    expect(taken.swing).toBeGreaterThan(0)
+    expect(taken.swing).toBeLessThan(90 * DEG)
   })
 })
 
