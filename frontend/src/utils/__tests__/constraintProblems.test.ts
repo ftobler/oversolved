@@ -365,4 +365,60 @@ describe('duplicate constraint rows', () => {
     const withValue = withRows({ id: 'c_len', kind: 'length', target: '$ax', value: 10 })
     expect(addConstraintProblem(sketchAt(withValue), 'length', ['$ax'], 12)).toBeNull()
   })
+
+  it('matches a group row by member set, whatever the pick order', () => {
+    const group: PartConstraint = { id: 'c_group', kind: 'group', refs: ['$ax', '$c1'] }
+    expect(duplicateConstraintOf(
+      [group], 'sk1', 'group', ['entity:sk1:c1', 'entity:sk1:ax'],
+    )?.id).toBe('c_group')
+  })
+
+  it('matches an unsigned pair dimension with the operands reversed', () => {
+    const dimension: PartConstraint = { id: 'c_pd', kind: 'point_distance', a: '$oxy', b: '$pxy', value: 3 }
+    expect(duplicateConstraintOf(
+      [dimension], 'sk1', 'point_distance', ['$pxy', '$oxy'], 3,
+    )?.id).toBe('c_pd')
+  })
+
+  it('keeps a signed dimension order-sensitive', () => {
+    const dimension: PartConstraint = {
+      id: 'c_pdx', kind: 'point_distance_x', a: '$oxy', b: '$pxy', value: 3, sign: 1,
+    }
+    expect(duplicateConstraintOf(
+      [dimension], 'sk1', 'point_distance_x', ['$pxy', '$oxy'], 3, 1,
+    )).toBeNull()
+    expect(duplicateConstraintOf(
+      [dimension], 'sk1', 'point_distance_x', ['$oxy', '$pxy'], 3, 1,
+    )?.id).toBe('c_pdx')
+  })
+
+  it('keeps the opposite-side signed dimension distinct', () => {
+    const dimension: PartConstraint = {
+      id: 'c_pdx', kind: 'point_distance_x', a: '$oxy', b: '$pxy', value: 3, sign: 1,
+    }
+    expect(duplicateConstraintOf(
+      [dimension], 'sk1', 'point_distance_x', ['$oxy', '$pxy'], 3, -1,
+    )).toBeNull()
+  })
+
+  it('matches a midpoint stored as line + point, but not the reversed pick', () => {
+    const midpoint: PartConstraint = { id: 'c_mid', kind: 'midpoint', line: '$ax', point: '$oxy' }
+    expect(duplicateConstraintOf([midpoint], 'sk1', 'midpoint', ['$ax', '$oxy'])?.id).toBe('c_mid')
+    expect(duplicateConstraintOf([midpoint], 'sk1', 'midpoint', ['$oxy', '$ax'])).toBeNull()
+  })
+
+  it('matches a midpoint stored as point_a + point_b + point', () => {
+    const midpoint: PartConstraint = {
+      id: 'c_mid3', kind: 'midpoint', point_a: '$axstart', point_b: '$axend', point: '$oxy',
+    }
+    expect(duplicateConstraintOf(
+      [midpoint], 'sk1', 'midpoint', ['$axstart', '$axend', '$oxy'],
+    )?.id).toBe('c_mid3')
+  })
+
+  it('keeps the applicability sentence ahead of the duplicate check', () => {
+    const withDiameter = withRows({ id: 'c_dia', kind: 'diameter', target: '$e1', value: 8 })
+    expect(addConstraintProblem(sketchAt(withDiameter), 'diameter', ['$e1'], 8))
+      .toBe('diameter does not apply to ellipse')
+  })
 })

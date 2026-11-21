@@ -228,9 +228,10 @@ describe('DragPlane vertex snap candidates', () => {
   })
 
   it('does not snap to a coincident partner that moves with the dragged vertex', () => {
-    // lineA:end is bonded to lineB:start by a coincident constraint; the partner
-    // sits on the cursor but is carried along by the solve, so it must not be a
-    // snap target.
+    // lineA:end is bonded to lineB:start by a coincident constraint; lineB runs
+    // through the dragged point, so the partner vertex and lineB's body are both
+    // out. A body snap here would pull the point back onto the line it already
+    // lies on and store a redundant point-on-line row.
     const bonded: Sketch = {
       lineA: { start: [100, 100], end: [1, 0] },
       lineB: { start: [1, 0], end: [-100, -100] },
@@ -246,11 +247,9 @@ describe('DragPlane vertex snap candidates', () => {
 
     move(500, 500)
 
-    // The partner point is not offered, so the point snap loses to the path
-    // snap of the curve it sits on rather than latching onto the moving handle.
-    const snap = useSketchEditorStore.getState().dragSnap
-    expect(snap?.vertexId).toBeUndefined()
-    expect(snap?.kind).toBe('entity')
+    // Both candidates under the cursor move with the drag, so there is no snap
+    // at all.
+    expect(useSketchEditorStore.getState().dragSnap).toBeNull()
   })
 })
 

@@ -24,16 +24,26 @@ export interface DragMoveResult {
 }
 
 /** The snap candidates one drag must ignore. A vertex drag's bonded cluster
- *  moves with the dragged vertex, and every entity that owns one of those points
- *  passes through the cursor by construction: snapping to it would author a
- *  point-on-line row that is already satisfied and rank-redundant (the
- *  twist-state bug). An entity that already holds the vertex by a point-on-line
- *  coincident is skipped for the same reason. */
+ *  moves with the dragged vertex. An entity that owns one of those points passes
+ *  through the dragged point by construction (its partner coincides with it), so
+ *  a snap onto that body pulls the point back onto a line it already lies on and
+ *  only authors a rank-redundant point-on-line row (the twist-state bug). The
+ *  same holds for an entity a constraint already pins the dragged point to. */
 export interface DragSnapSkips {
   // Composite vertex ids that move with the dragged vertex (exact match).
   vertexIds: Set<string>
   // `featureId:entityId` values for the entity candidates.
   entityIds: Set<string>
+}
+
+/** The constraint fields the skip scan reads: the pair refs and the midpoint's
+ *  semantic line/point pair. */
+type SnapConstraintRow = {
+  kind?: string
+  a?: unknown
+  b?: unknown
+  line?: unknown
+  point?: unknown
 }
 
 const COINCIDENT_VERTEX_KEYS = VERTEX_POINT_KEY_SUFFIXES
@@ -118,7 +128,7 @@ function localEntityRef(
  *  that line passes through the dragged point and the snap would author a row
  *  already implied by the bond. */
 export function dragSnapSkips(
-  constraints: ReadonlyArray<{ kind?: string; a?: unknown; b?: unknown }> | undefined,
+  constraints: ReadonlyArray<SnapConstraintRow> | undefined,
   featureId: string,
   drag: VertexOrEdgeDrag,
 ): DragSnapSkips {
@@ -136,22 +146,24 @@ export function dragSnapSkips(
     const entityId = parts.slice(2, -1).join(':')
     if (entityId.length > 0) entityIds.add(`${featureId}:${entityId}`)
   }
+  // A row that pins one point onto a whole entity means the dragged point is
+  // already on that body, so snapping there adds nothing. `coincident` and
+  // `colinear` (point + line) lower to the same point-on-line row; a midpoint's
+  // line/point form pins the line's midpoint to the point, so the point is on
+  // that line too. A line-on-line colinear names no point and is ignored.
+  const holdLineOf = (pointRef: unknown, lineRef: unknown) => {
+    const point = localEntityRef(pointRef, featureId)
+    const line = localEntityRef(lineRef, featureId)
+    if (point?.vertexKey === undefined || line === null || line.vertexKey !== undefined) return
+    if (!bonded.has(compositeVertexId(featureId, point.entityId, point.vertexKey))) return
+    entityIds.add(`${featureId}:${line.entityId}`)
+  }
   for (const c of constraints ?? []) {
-    if (c.kind !== 'coincident') continue
-    const a = localEntityRef(c.a, featureId)
-    const b = localEntityRef(c.b, featureId)
-    if (a === null || b === null) continue
-    // A point-on-line row stores one point and one whole entity. When the point
-    // is in the dragged cluster, that entity already holds the dragged vertex,
-    // so snapping to its body would only duplicate the row.
-    if (a.vertexKey !== undefined && b.vertexKey === undefined) {
-      if (bonded.has(compositeVertexId(featureId, a.entityId, a.vertexKey))) {
-        entityIds.add(`${featureId}:${b.entityId}`)
-      }
-    } else if (b.vertexKey !== undefined && a.vertexKey === undefined) {
-      if (bonded.has(compositeVertexId(featureId, b.entityId, b.vertexKey))) {
-        entityIds.add(`${featureId}:${a.entityId}`)
-      }
+    if (c.kind === 'coincident' || c.kind === 'colinear') {
+      holdLineOf(c.a, c.b)
+      holdLineOf(c.b, c.a)
+    } else if (c.kind === 'midpoint') {
+      holdLineOf(c.point, c.line)
     }
   }
   return { vertexIds, entityIds }

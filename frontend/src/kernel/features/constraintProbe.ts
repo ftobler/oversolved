@@ -41,13 +41,21 @@ export interface PendingConstraintAdd {
   prelude?: readonly ProjectionPrelude[]
 }
 
-/** The probe's draft: a copy of the touched feature with the planned
- *  projections and the pending constraint applied, or null when the add would
- *  no-op. Exported so the prelude contract is testable without a solve. */
-export function draftPendingConstraint(
+/** One draft attempt's outcome. `duplicate` is separate from `dropped` so the
+ *  authoring gate can answer `redundant` (the command's overconstrain message)
+ *  when the applier refused an exact duplicate it could only see after a
+ *  projection resolved, instead of silently no-oping. */
+export type PendingConstraintDraft =
+  | { status: 'drafted'; probeFeature: SketchFeature; draft: PartConstraint }
+  | { status: 'duplicate' }
+  | { status: 'dropped' }
+
+/** The draft attempt behind `draftPendingConstraint`, with the refusal category
+ *  kept. */
+function draftPendingConstraintStatus(
   doc: PartDoc | null,
   pending: PendingConstraintAdd,
-): { probeFeature: SketchFeature; draft: PartConstraint } | null {
+): PendingConstraintDraft | null {
   if (!doc) return null
   const feature = (doc.features ?? []).find((f) => f.id === pending.featureId)
   if (feature?.kind !== 'sketch') return null
@@ -71,14 +79,26 @@ export function draftPendingConstraint(
   // drafted constraint and hide a dropped add (one-target coincident, an
   // unresolvable dock/isect target, an unrecognised midpoint form).
   const before = probeFeature.constraints?.length ?? 0
-  applyAddConstraint(
+  const outcome = applyAddConstraint(
     probeDoc, pending.featureId, pending.kind, pending.targets, pending.value, pending.pos, pending.sign,
   )
+  if (outcome === 'duplicate') return { status: 'duplicate' }
   const after = probeFeature.constraints?.length ?? 0
-  if (after <= before) return null
+  if (outcome !== 'added' || after <= before) return { status: 'dropped' }
   const draft = probeFeature.constraints?.at(-1)
-  if (!draft) return null
-  return { probeFeature, draft }
+  if (!draft) return { status: 'dropped' }
+  return { status: 'drafted', probeFeature, draft }
+}
+
+/** The probe's draft: a copy of the touched feature with the planned
+ *  projections and the pending constraint applied, or null when the add would
+ *  no-op. Exported so the prelude contract is testable without a solve. */
+export function draftPendingConstraint(
+  doc: PartDoc | null,
+  pending: PendingConstraintAdd,
+): { probeFeature: SketchFeature; draft: PartConstraint } | null {
+  const drafted = draftPendingConstraintStatus(doc, pending)
+  return drafted?.status === 'drafted' ? drafted : null
 }
 
 /** What the authoring gate should do with a pending add. */
@@ -88,7 +108,8 @@ export type PendingConstraintVerdict = 'ok' | 'redundant' | 'dropped'
  * Classify a pending constraint add before any mutation is created. `dropped`
  * means the mutation layer would append nothing (the add is malformed for the
  * operand set), so the caller must emit nothing rather than its planned
- * projections.
+ * projections. An exact duplicate is `redundant`, whether the duplicate is
+ * visible in the stored targets or only after the applier resolves a projection.
  *
  * `resolvedKinds` and `derivedMembers` are the last solve's render kinds and
  * face-projection rows. A caller that holds that solve must pass them: the
@@ -107,13 +128,17 @@ export function classifyPendingAdd(
   if (!doc) return 'ok'
   const feature = (doc.features ?? []).find((f) => f.id === pending.featureId)
   if (feature?.kind !== 'sketch') return 'ok'
-  // An exact duplicate is redundant before any solve, and the applier will drop
-  // it. Answering `redundant` here keeps the command's refusal message instead
-  // of turning an authoring attempt into a silent no-op.
-  if (duplicateConstraintOf(feature.constraints, pending.featureId, pending.kind, pending.targets, pending.value) !== null) {
+  // An exact duplicate visible in the stored targets is redundant before any
+  // solve, and the applier will drop it. Answering `redundant` here keeps the
+  // command's refusal message instead of turning an authoring attempt into a
+  // silent no-op.
+  if (duplicateConstraintOf(
+    feature.constraints, pending.featureId, pending.kind, pending.targets, pending.value, pending.sign,
+  ) !== null) {
     return 'redundant'
   }
-  const drafted = draftPendingConstraint(doc, pending)
-  if (!drafted) return 'dropped'
+  const drafted = draftPendingConstraintStatus(doc, pending)
+  if (drafted === null || drafted.status === 'dropped') return 'dropped'
+  if (drafted.status === 'duplicate') return 'redundant'
   return probeRedundantConstraint(drafted.probeFeature, drafted.draft.id, resolvedKinds, derivedMembers) === true ? 'redundant' : 'ok'
 }

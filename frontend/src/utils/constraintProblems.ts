@@ -9,6 +9,7 @@ import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { resolveVertexRef } from '@/types/vertexRef'
 import { entityPointKeys } from '@/registry/entityRegistry'
 import { constraintOperandProblem } from '@/registry/constraintRegistry'
+import { emitWire, local } from '@/utils/query'
 import {
   constraintEntityKindProblem,
   type ConstraintKindOperand,
@@ -263,14 +264,15 @@ export function midpointShapeReason(targets: readonly string[]): string {
 
 /** Constraint kinds whose two operands commute, so a stored reversed pair is the
  *  same row. A dimension between the same two operands is one measurement too,
- *  whichever pick came first, so the dimension kinds are here as well (their
- *  value still has to match). Midpoint is not: its three operand roles differ,
- *  and the line/point form is not the three-point form. */
+ *  whichever pick came first, so the unsigned pair dimensions are here as well
+ *  (their value still has to match). The signed kinds (point_distance_x/y,
+ *  line_distance, angle) are not: their operand order fixes the measured side,
+ *  so a reversed pick is a different row even with the same value. Midpoint is
+ *  not either: its three operand roles differ, and the line/point form is not
+ *  the three-point form. */
 const SYMMETRIC_CONSTRAINT_KINDS: ReadonlySet<string> = new Set([
   'coincident', 'concentric', 'equal_length', 'parallel', 'normal', 'tangent',
-  'colinear', 'horizontal', 'vertical', 'angle',
-  'point_distance', 'point_distance_x', 'point_distance_y',
-  'line_distance', 'radius_difference',
+  'colinear', 'horizontal', 'vertical', 'point_distance', 'radius_difference',
 ])
 
 /** The refs a stored row holds, in the order the applier writes them. */
@@ -296,25 +298,33 @@ function storedTarget(target: string, featureId: string): string {
   if (target.startsWith('$') || target.startsWith('@')) return target
   const parts = target.split(':')
   if (parts[0] === 'vertex' && parts[1] === featureId && parts[2] !== undefined && parts[3] !== undefined) {
-    return `$${parts[2]}${parts[3]}`
+    return emitWire(local(parts[2], parts[3]))
   }
   if (parts[0] === 'entity' && parts[1] === featureId && parts[2] !== undefined) {
-    return `$${parts[2]}`
+    return emitWire(local(parts[2]))
   }
   // An inferred-point handle names a point only after materialization, which
   // cannot match a stored ref yet; a bare token is the host-local entity
   // shorthand `parseTarget` also accepts.
-  return target.startsWith('dock:') || target.startsWith('isect:') ? target : `$${target}`
+  return target.startsWith('dock:') || target.startsWith('isect:') ? target : emitWire(local(target))
+}
+
+/** The stored sign, normalized the way the applier writes it (any negative is
+ *  -1). An absent sign is its own spelling, not +1: the row the applier wrote
+ *  without one is a different row from the one it wrote with +1. */
+function storedSign(sign: number | undefined): number | undefined {
+  if (sign === undefined || !Number.isFinite(sign)) return undefined
+  return sign < 0 ? -1 : 1
 }
 
 /**
  * The stored row this pick would duplicate exactly, or null. A duplicate is the
  * same kind on the same operands -- same points or entities, in either order for
  * a symmetric kind, the same member set for a group -- carrying the same value
- * when either row has one. It is not a redundancy judgement (the rank probe owns
- * implication), so it needs no geometry and answers the same before a solve.
- * Every insert path reads it: an exact duplicate removes no degree of freedom and
- * only piles up rows (the drag-snap bug).
+ * and sign the applier would store. It is not a redundancy judgement (the rank
+ * probe owns implication), so it needs no geometry and answers the same before a
+ * solve. Every insert path reads it: an exact duplicate removes no degree of
+ * freedom and only piles up rows (the drag-snap bug).
  */
 export function duplicateConstraintOf(
   constraints: readonly PartConstraint[] | undefined,
@@ -322,11 +332,13 @@ export function duplicateConstraintOf(
   kind: string,
   targets: readonly string[],
   value?: number,
+  sign?: number,
 ): PartConstraint | null {
   if (constraints === undefined || constraints.length === 0 || targets.length === 0) return null
   const wanted = targets.map(target => storedTarget(target, featureId))
   const unordered = SYMMETRIC_CONSTRAINT_KINDS.has(kind) || kind === 'group'
   const wantedKey = unordered ? [...wanted].sort() : wanted
+  const wantedSign = storedSign(sign)
   for (const c of constraints) {
     if (c.kind !== kind) continue
     // A second dimension with another value is a different row (and a conflict),
@@ -335,6 +347,7 @@ export function duplicateConstraintOf(
     if (value !== undefined || c.value !== undefined) {
       if (c.value !== (value === undefined ? undefined : round(value))) continue
     }
+    if (storedSign(c.sign) !== wantedSign) continue
     const held = storedOperands(c)
     if (held.length !== wanted.length) continue
     const heldKey = unordered ? [...held].sort() : held
@@ -344,16 +357,31 @@ export function duplicateConstraintOf(
 }
 
 /**
- * Why one `add_constraint` pick cannot be authored, or null when it can. `value`
- * is the step's dimension value when it carries one (the zero point_distance
- * rule lives here too, so a refusal has one source).
- *
- * The caller without a materialized target list may get a null for a list that
- * still holds a `dock:`/`isect:` handle: a handle names a point only after
- * materialization, so refusing on it before then would reject a pick the
- * applier can author. The applier calls this again with the resolved targets.
+ * The duplicate sentence for a pick, or null. Kept beside `constraintShapeProblem`
+ * because the two are composed in order: a malformed or inapplicable pick keeps
+ * its own sentence, and only a well-formed pick can be refused as a duplicate.
  */
-export function addConstraintProblem(
+export function duplicateConstraintProblem(
+  feature: SketchShape | undefined,
+  kind: string,
+  targets: readonly string[],
+  value?: number,
+  sign?: number,
+): string | null {
+  if (feature === undefined) return null
+  const duplicate = duplicateConstraintOf(feature.constraints, feature.id, kind, targets, value, sign)
+  if (duplicate === null) return null
+  return `${kind} on ${targets.join(', ')} is already constraint ${duplicate.id}; a duplicate adds nothing`
+}
+
+/**
+ * The shape and applicability sentence for one `add_constraint` pick, or null.
+ * This is the part that judges the pick itself: operand count, per-kind form and
+ * entity-kind applicability. The duplicate check is composed after it by
+ * `addConstraintProblem`, so a malformed pick never hides behind "already
+ * constraint".
+ */
+function constraintShapeProblem(
   feature: SketchShape | undefined,
   kind: string,
   targets: readonly string[],
@@ -385,13 +413,6 @@ export function addConstraintProblem(
     const foreign = targets.find(target => foreignConstraintTarget(String(target), featureId))
     if (foreign !== undefined) {
       return `constraint targets must be in sketch ${featureId}; project ${foreign} first (add_projected_entity)`
-    }
-    // An exact duplicate removes no degree of freedom and only piles up rows.
-    // Refused before the shape rules so every insert path (drag, draw snap,
-    // constraint command, drive) reports the same reason.
-    const duplicate = duplicateConstraintOf(feature.constraints, featureId, kind, targets, value)
-    if (duplicate !== null) {
-      return `${kind} on ${targets.join(', ')} is already constraint ${duplicate.id}; a duplicate adds nothing`
     }
   }
 
@@ -453,4 +474,27 @@ export function addConstraintProblem(
   )
   if (kindProblem !== null) return kindProblem
   return null
+}
+
+/**
+ * Why one `add_constraint` pick cannot be authored, or null when it can. `value`
+ * is the step's dimension value and `sign` its orientation when it carries one
+ * (the zero point_distance rule lives here too, so a refusal has one source).
+ * The shape/applicability judgement runs first, so its sentence is never
+ * preempted; only a well-formed pick is then refused as an exact duplicate.
+ *
+ * The caller without a materialized target list may get a null for a list that
+ * still holds a `dock:`/`isect:` handle: a handle names a point only after
+ * materialization, so refusing on it before then would reject a pick the
+ * applier can author. The applier calls this again with the resolved targets.
+ */
+export function addConstraintProblem(
+  feature: SketchShape | undefined,
+  kind: string,
+  targets: readonly string[],
+  value: number | undefined,
+  sign?: number,
+): string | null {
+  return constraintShapeProblem(feature, kind, targets, value)
+    ?? duplicateConstraintProblem(feature, kind, targets, value, sign)
 }

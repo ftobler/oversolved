@@ -470,6 +470,23 @@ describe('dragSnapSkips', () => {
     expect(skips.entityIds.has(`${FEATURE}:L3`)).toBe(true)
   })
 
+  it('skips the line a colinear or a midpoint holds the dragged vertex on', () => {
+    const holding: PartConstraint[] = [
+      { id: 'c_col', kind: 'colinear', a: `$L1start`, b: '$L2' },
+      { id: 'c_mid', kind: 'midpoint', line: '$L3', point: `$L1start` },
+    ]
+    const skips = dragSnapSkips(holding, FEATURE, makeDrag())
+    expect(skips.entityIds.has(`${FEATURE}:L2`)).toBe(true)
+    expect(skips.entityIds.has(`${FEATURE}:L3`)).toBe(true)
+  })
+
+  it('a line-on-line colinear names no point to hold', () => {
+    const lines: PartConstraint[] = [{ id: 'c_col', kind: 'colinear', a: '$L2', b: '$L3' }]
+    const skips = dragSnapSkips(lines, FEATURE, makeDrag())
+    expect(skips.entityIds.has(`${FEATURE}:L2`)).toBe(false)
+    expect(skips.entityIds.has(`${FEATURE}:L3`)).toBe(false)
+  })
+
   it('an edge drag has nothing to skip', () => {
     const skips = dragSnapSkips(twistConstraints(), TWIST, twistDrag())
     const edge = dragSnapSkips(twistConstraints(), TWIST, makeDrag({ type: 'edge', featureId: TWIST }))
