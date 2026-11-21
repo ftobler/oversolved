@@ -647,6 +647,31 @@ describe('vertex keys named per entity kind', () => {
   })
 })
 
+// A hole has no operation, so the shared source sentence cannot say "each is an
+// extrude, revolve, sweep or wrap with operation add or cut" any more: the hole
+// is a cut by definition. Every row that names a pattern or mirror source says
+// the hole, and the pick pair says it too.
+describe('a hole is a pattern and mirror source', () => {
+  const sourceRows = [
+    'add_linear_pattern', 'add_circular_pattern', 'add_curve_pattern', 'add_instance_pattern',
+    'add_pattern', 'add_mirror',
+  ] as const
+
+  it.each(sourceRows)('%s names the hole on source_features', (type) => {
+    const note = mutationInfoOf(type).fields.source_features.note!
+    expect(note).toContain('or a hole')
+    expect(note).toContain('always a cut')
+  })
+
+  it.each(['add_linear_pattern', 'add_circular_pattern', 'add_curve_pattern', 'add_instance_pattern', 'add_mirror'] as const)('%s row note names the hole', (type) => {
+    expect(mutationInfoOf(type).note).toContain('or a hole')
+  })
+
+  it.each(['add_pattern_source', 'add_mirror_source'] as const)('%s names the hole on its sourceFeature field', (type) => {
+    expect(mutationInfoOf(type).fields.sourceFeature.note).toContain('or a hole')
+  })
+})
+
 describe('angle value is the displayed corner', () => {
   // The bug-1 practice finding: a headless author typed the 45 degree wall they
   // saw and got the direction-vector supplement, so the solver swung the wall.

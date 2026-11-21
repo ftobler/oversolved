@@ -12,6 +12,7 @@ import type { PickFieldDef } from '@/components/editors/widgets/fieldTypes'
 const FEATURES: PartFeature[] = [
   { id: 'ex1', kind: 'extrude', label: 'Extrude 1', extrude: { sketch: [], distance: 1 } },
   { id: 'rv1', kind: 'revolve', label: 'Revolve 1', revolve: { sketch: [], angle: 90 } },
+  { id: 'h1', kind: 'hole', label: 'Hole 1', hole: { sketch: '@sk1', diameter: 5, depth_mode: 'blind' } },
   { id: 'fi1', kind: 'fillet', label: 'Fillet 1', fillet: { edges: [], radius: 1 } },
   { id: 'sk1', kind: 'sketch', label: 'Sketch 1', entities: [], initial: {} },
 ]
@@ -69,7 +70,7 @@ describe('MIRROR_SCHEMA', () => {
     expect(shown).not.toContain('Merge')
   })
 
-  it('shares the pattern source refusal, so a fillet row is refused too', () => {
+  it('shares the pattern source rule, accepting a hole and refusing a fillet', () => {
     const source = field('source_features')
     expect(source.multi).toBe(true)
     expect(source.addMutationType).toBe('add_mirror_source')
@@ -77,8 +78,10 @@ describe('MIRROR_SCHEMA', () => {
     expect(source.removeMutationType).toBe('remove_mirror_source')
     expect(source.validatePick!('@ex1', FEATURES)).toBeNull()
     expect(source.validatePick!('@rv1', FEATURES)).toBeNull()
-    expect(source.validatePick!('@fi1', FEATURES)).toContain('extrude, revolve, sweep or wrap')
-    expect(source.validatePick!('@sk1', FEATURES)).toContain('extrude, revolve, sweep or wrap')
+    // A hole has no operation; its only meaning is a cut, so it repeats too.
+    expect(source.validatePick!('@h1', FEATURES)).toBeNull()
+    expect(source.validatePick!('@fi1', FEATURES)).toContain('extrude, revolve, sweep, wrap or hole')
+    expect(source.validatePick!('@sk1', FEATURES)).toContain('extrude, revolve, sweep, wrap or hole')
     expect(source.validatePick!('@body_ex1', FEATURES)).toContain('feature row')
     expect(source.validatePick!('@ex1/face/0', FEATURES)).toContain('feature row')
   })

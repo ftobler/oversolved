@@ -16,6 +16,7 @@ import { validateNumberFieldValue } from '@/components/editors/widgets/numberFie
 const FEATURES: PartFeature[] = [
   { id: 'ex1', kind: 'extrude', label: 'Extrude 1', extrude: { sketch: [], distance: 1 } },
   { id: 'rv1', kind: 'revolve', label: 'Revolve 1', revolve: { sketch: [], angle: 90 } },
+  { id: 'h1', kind: 'hole', label: 'Hole 1', hole: { sketch: '@sk1', diameter: 5, depth_mode: 'blind' } },
   { id: 'sk1', kind: 'sketch', label: 'Sketch 1', entities: [], initial: {} },
   // The editor rows from here on are at or after the edited pattern: neither is
   // a legal source, and the order rule must refuse them.
@@ -133,11 +134,12 @@ describe('LINEAR_PATTERN_SCHEMA', () => {
     })
   })
 
-  it('refuses a source that is not an earlier extrude, revolve, sweep or wrap', () => {
+  it('refuses a source that is not an earlier extrude, revolve, sweep, wrap or hole', () => {
     const source = field('source_features') as PickFieldDef
     expect(source.validatePick!('@ex1', FEATURES)).toBeNull()
     expect(source.validatePick!('@rv1', FEATURES)).toBeNull()
-    expect(source.validatePick!('@sk1', FEATURES)).toContain('extrude, revolve, sweep or wrap')
+    expect(source.validatePick!('@h1', FEATURES)).toBeNull()
+    expect(source.validatePick!('@sk1', FEATURES)).toContain('extrude, revolve, sweep, wrap or hole')
     expect(source.validatePick!('@body_ex1', FEATURES)).toContain('feature row')
     expect(source.validatePick!('@ex1/face/0', FEATURES)).toContain('feature row')
   })

@@ -43,7 +43,8 @@ export function collectThreadSites(
   if (!solveResults) return null
   const out = new Map<string, ShadedThreadSite>()
   for (const feature of features) {
-    if (feature.kind !== 'hole') continue
+    // Any result with a thread block shades, not just a hole's: a pattern that
+    // repeated a threaded bore carries its own block for the copies.
     const thread = solveResults[feature.id]?.thread
     // A result cached before the sites existed has no array: draw nothing for
     // it rather than throw over a display-only payload.

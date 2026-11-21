@@ -18,6 +18,7 @@ import { booleanJoinList } from '@/utils/core/booleanJoin'
 import { formatSkipList, parseSkipList, SKIP_LIST_TITLE, type SkipEntry } from '@/utils/core/patternSkip'
 import { LINEAR_DIRECTION_MODES, LINEAR_DIRECTION_MODE_LABELS } from '@/utils/core/linearPatternModes'
 import { solvedNumber } from '@/utils/core/solvedValue'
+import { PATTERN_SOURCE_KIND_LIST, isPatternSourceKind } from '@/kernel/features/patternSourceKinds'
 import {
   filterSkippedInstances,
   generatedCount,
@@ -575,25 +576,24 @@ function patternSkipValue(d: SchemaData): SkipEntry[] {
 
 /**
  * The pattern and mirror source chip's own rule: a source is a whole feature
- * row, not a viewport pick. Only an earlier extrude, revolve, sweep or wrap
- * produces a tool the repeat can reapply (the order and self-reference rule is
- * the pick hook's, shared with every other feature-reference field). The kernel's
- * TOOL_LEAVES (kernel/features/patternFeature.ts) is the same list.
+ * row, not a viewport pick. Only an earlier feature the kernel's tool table can
+ * hand a tool back for produces something the repeat can reapply (the order and
+ * self-reference rule is the pick hook's, shared with every other
+ * feature-reference field). Both read the one shared kind list
+ * (kernel/features/patternSourceKinds.ts), so admitting a kind is one edit.
  */
-const PATTERN_SOURCE_KINDS = ['extrude', 'revolve', 'sweep', 'wrap'] as const
-
 function toolSourcePickRefusal(id: string, features?: readonly PartFeature[]): string | null {
   if (!id.startsWith('@') || id.includes('/')) {
-    return 'pick a feature row (an extrude, revolve, sweep or wrap) in the Features list, not viewport geometry'
+    return `pick a feature row (${PATTERN_SOURCE_KIND_LIST}) in the Features list, not viewport geometry`
   }
   if (features === undefined) return null
   const feature = features.find((candidate) => candidate.id === id.slice(1))
   if (feature === undefined) {
-    return 'pick a feature row (an extrude, revolve, sweep or wrap) in the Features list'
+    return `pick a feature row (${PATTERN_SOURCE_KIND_LIST}) in the Features list`
   }
-  return (PATTERN_SOURCE_KINDS as readonly string[]).includes(feature.kind)
+  return isPatternSourceKind(feature.kind)
     ? null
-    : 'a pattern or mirror source is an extrude, revolve, sweep or wrap'
+    : `a pattern or mirror source is ${PATTERN_SOURCE_KIND_LIST}`
 }
 
 // Both pattern kinds repeat the same thing: one feature, two subjects, one
@@ -607,7 +607,7 @@ export const PATTERN_SOURCE_FIELDS: EditorFieldDef[] = [
   { type: 'pick', key: 'source_body', label: 'Part', transform: resolvePartPickRef, names: 'body',
     showWhen: (d) => d.subject !== 'feature', emptyText: '(pick the part to copy)' },
   // The sources are FEATURE rows, not viewport picks: the chip shows the picked
-  // extrude/revolve/sweep/wrap rows and the feature tree is the pick surface. Every
+  // extrude/revolve/sweep/wrap/hole rows and the feature tree is the pick surface. Every
   // source is reapplied at each grid instance, in the order the sources sit in
   // the feature log; the earliest source's first produced body is the instance-0
   // seed (the count includes it and the grid leaves it in place). The chip's own
