@@ -137,8 +137,8 @@ export default function SketchToolbar({ onResetViewport, onImportDxf, canImportD
       <ToolItem def={TOOL_DEFS.project} />
 
       <ToolbarButton
-        title={canImportDxf ? 'Import DXF into this sketch' : 'Open a sketch to import a DXF'}
-        icon={iconUrl('icon-upload')}
+        title="Import DXF"
+        icon={iconUrl('toolbar-import-dxf')}
         disabled={!canImportDxf}
         onClick={onImportDxf}
         handle="toolbar:import_dxf"

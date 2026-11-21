@@ -108,7 +108,7 @@ async function pickDxf(file: { name: string; size: number; text: () => Promise<s
   }) as typeof document.createElement)
   const clickSpy = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => {})
 
-  fireEvent.click(screen.getByTitle('Import DXF into this sketch'))
+  fireEvent.click(screen.getByTitle('Import DXF'))
 
   const input = created[0]
   Object.defineProperty(input, 'files', { value: [file], configurable: true })
