@@ -4,6 +4,7 @@ import { usePartEditorCallbacks } from '@/contexts/PartEditorContext'
 import { featureFailure } from '@/utils/core/featureFailure'
 import { FeatureItemEditors, featureHasEditor } from '@/components/layout/FeatureItemEditors'
 import { getFeatureIcon } from '@/components/layout/featureIcons'
+import { StatusPanel } from '@/components/shared/StatusPanel'
 import '@/components/layout/Glass.css'
 import okIcon from '@/assets/icons/dialog-ok.svg'
 import cancelIcon from '@/assets/icons/dialog-cancel.svg'
@@ -19,7 +20,9 @@ import cancelIcon from '@/assets/icons/dialog-cancel.svg'
  *
  * The body is FeatureItemEditors, unchanged, so every kind (schema editors,
  * plane, sketch plane selector, STEP import) reads exactly as it did in the
- * row, status line included.
+ * row. The feature's solve mark is the one thing kept out of the body: it is
+ * its own glass card after this panel in the right column's flow, so an error
+ * leaves the panel's own markup, size and content untouched.
  */
 export function FeatureEditPanel() {
   const editingFeatureId = useEditorState(s => s.editingFeatureId)
@@ -42,36 +45,42 @@ export function FeatureEditPanel() {
   // (the linear pattern's directive-length spacing). A feature that never
   // solved has none, and the row stays hidden.
   const solved = solveResults[feature.id]
+  const mark = featureFailure(feature.id, solveResults, parts)
 
+  // Two siblings, not a wrapper: the part page mounts this inside the right
+  // overlay stack, whose 12px gap is what separates the panel, the status card
+  // and the bug report card after it.
   return (
-    <div className="glass-panel feature-edit-panel">
-      <div className="feature-edit-panel-header">
-        <img
-          className="feature-icon"
-          src={getFeatureIcon(feature.kind)}
-          alt={feature.kind || 'feature'}
-        />
-        <span className="feature-edit-panel-title">{feature.label || feature.id}</span>
-        <button className="feature-ok-btn" onClick={onEditCommit} title="OK">
-          <img src={okIcon} alt="OK" />
-        </button>
-        <button className="feature-cancel-btn" onClick={onEditCancel} title="Cancel">
-          <img src={cancelIcon} alt="Cancel" />
-        </button>
+    <>
+      <div className="glass-panel feature-edit-panel">
+        <div className="feature-edit-panel-header">
+          <img
+            className="feature-icon"
+            src={getFeatureIcon(feature.kind)}
+            alt={feature.kind || 'feature'}
+          />
+          <span className="feature-edit-panel-title">{feature.label || feature.id}</span>
+          <button className="feature-ok-btn" onClick={onEditCommit} title="OK">
+            <img src={okIcon} alt="OK" />
+          </button>
+          <button className="feature-cancel-btn" onClick={onEditCancel} title="Cancel">
+            <img src={cancelIcon} alt="Cancel" />
+          </button>
+        </div>
+        <div className="feature-edit-panel-body">
+          <FeatureItemEditors
+            feature={feature}
+            editingFeatureId={feature.id}
+            doc={doc}
+            onMutation={onMutation}
+            onMutationBatch={onMutationBatch}
+            features={features}
+            partLabels={partLabels}
+            solved={solved}
+          />
+        </div>
       </div>
-      <div className="feature-edit-panel-body">
-        <FeatureItemEditors
-          feature={feature}
-          editingFeatureId={feature.id}
-          doc={doc}
-          onMutation={onMutation}
-          onMutationBatch={onMutationBatch}
-          features={features}
-          partLabels={partLabels}
-          status={featureFailure(feature.id, solveResults, parts)}
-          solved={solved}
-        />
-      </div>
-    </div>
+      <StatusPanel mark={mark} />
+    </>
   )
 }

@@ -1065,19 +1065,24 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
             </div>
             {editingSubject.kind !== 'none' && (
               <div className="floating-right">
-                <AssemblyEditPanel
-                  editing={editingSubject}
-                  instances={instances}
-                  mates={mates}
-                  status={solveStatus}
-                  labelFor={labelFor}
-                  onCommitInstance={handleCommitInstance}
-                  onCancelInstance={handleCancelInstance}
-                  onCommitMate={handleCommitMate}
-                  onCancelMate={handleCancelMate}
-                  renderInstanceEditor={renderInstanceEditor}
-                  renderMateEditor={(mate) => renderMateEditor(mate)}
-                />
+                {/* The same stack the part editor uses, so the edit card and
+                    its status card keep that column's gap and its phone
+                    scroll behaviour. */}
+                <div className="right-overlay-stack">
+                  <AssemblyEditPanel
+                    editing={editingSubject}
+                    instances={instances}
+                    mates={mates}
+                    status={solveStatus}
+                    labelFor={labelFor}
+                    onCommitInstance={handleCommitInstance}
+                    onCancelInstance={handleCancelInstance}
+                    onCommitMate={handleCommitMate}
+                    onCancelMate={handleCancelMate}
+                    renderInstanceEditor={renderInstanceEditor}
+                    renderMateEditor={(mate) => renderMateEditor(mate)}
+                  />
+                </div>
               </div>
             )}
           </div>
