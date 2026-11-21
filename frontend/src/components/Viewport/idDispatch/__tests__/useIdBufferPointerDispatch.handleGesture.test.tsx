@@ -17,6 +17,7 @@ import { newIdBufferDispatchFixture, disposeIdBufferDispatchFixture } from './id
 import { takeDrawToolClickConsumed } from '../drawToolClickGuard'
 import { takeBandClickConsumed } from '../bandClickGuard'
 import { installPointerEventStub } from '@/testing/pointerEventStub'
+import { createPointerClaims, type PointerClaims } from '@/viewport/pointerClaim'
 
 installPointerEventStub('mouse')
 
@@ -318,6 +319,267 @@ describe('useIdBufferPointerDispatch handle gesture', () => {
       expect(useSketchEditorStore.getState().normalSelection.has(VERTEX_KEY)).toBe(false)
       expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
       expect(wasLastClickConsumedByIdDispatch()).toBe(true)
+    })
+  })
+
+  describe('gesture edge cases', () => {
+    it('a second finger does not drop the handle gesture ownership', async () => {
+      registerFeatureHandleCallbacks(HANDLE_KEY, { onPointerDown: () => {}, onDoubleClick: () => {} })
+      pipeline.resolveSync = vi.fn()
+        .mockReturnValueOnce(handleHit)
+        .mockReturnValue(faceHit)
+
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([FEATURE_HANDLE_LAYER_NAME, FACE_LAYER_NAME]),
+      }))
+
+      await act(async () => {
+        pointerDown(canvas)
+      })
+      const secondFinger = new MouseEvent('pointerdown', { button: 0, clientX: 70, clientY: 90 })
+      Object.defineProperty(secondFinger, 'isPrimary', { value: false })
+      await act(async () => {
+        canvas.dispatchEvent(secondFinger)
+      })
+      await act(async () => {
+        click(canvas)
+      })
+
+      expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+      expect(wasLastClickConsumedByIdDispatch()).toBe(true)
+    })
+
+    it('a second finger click does not consume the primary handle gesture', async () => {
+      registerFeatureHandleCallbacks(HANDLE_KEY, { onPointerDown: () => {}, onDoubleClick: () => {} })
+      pipeline.resolveSync = vi.fn()
+        .mockReturnValueOnce(handleHit)
+        .mockReturnValue(faceHit)
+
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([FEATURE_HANDLE_LAYER_NAME, FACE_LAYER_NAME]),
+      }))
+
+      await act(async () => {
+        pointerDown(canvas)
+      })
+      // The second finger is recognised by its press: the click it produces
+      // carries the same pointerId and, like every browser click, isPrimary false.
+      await act(async () => {
+        canvas.dispatchEvent(new PointerEvent('pointerdown', { button: 0, isPrimary: false, pointerId: 2 }))
+      })
+      await act(async () => {
+        canvas.dispatchEvent(new PointerEvent('click', { button: 0, isPrimary: false, pointerId: 2 }))
+      })
+      expect(wasLastClickConsumedByIdDispatch()).toBe(true)
+      await act(async () => {
+        click(canvas)
+      })
+
+      expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+      expect(wasLastClickConsumedByIdDispatch()).toBe(true)
+    })
+
+    it('a primary press forgets a secondary id whose click never came', async () => {
+      // Otherwise a later pointer reusing that id would have its click swallowed.
+      pipeline.resolveSync = vi.fn().mockReturnValue(faceHit)
+
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([FACE_LAYER_NAME]),
+      }))
+
+      await act(async () => {
+        canvas.dispatchEvent(new PointerEvent('pointerdown', { button: 0, isPrimary: false, pointerId: 1 }))
+        canvas.dispatchEvent(new PointerEvent('pointerdown', { button: 0, isPrimary: true, pointerId: 1 }))
+        canvas.dispatchEvent(new PointerEvent('click', { button: 0, isPrimary: false, pointerId: 1 }))
+      })
+
+      expect(useSketchEditorStore.getState().normalSelection.has(FACE_KEY)).toBe(true)
+    })
+
+    it('arms when this press replaces a dragPending stranded by an earlier gesture', async () => {
+      // A release outside the window can leave a pending drag behind. This
+      // press replaces it, which must still arm the click owner.
+      useSketchEditorStore.getState().setDragPending({
+        type: 'vertex',
+        vertexId: VERTEX_KEY,
+        featureId: 'feat1',
+        entityId: 'line1',
+        vertexKey: 'start',
+        startWorld: [0, 0],
+      })
+      registerDimCallbacks('c1', {
+        onOver: () => {},
+        onOut: () => {},
+        onClick: () => {},
+        onDoubleClick: () => {},
+        onPointerDown: () => {
+          const st = useSketchEditorStore.getState()
+          st.setDragStartClient([30, 40])
+          st.setDragPending({
+            type: 'dim_label',
+            constraintId: 'c1',
+            featureId: 'feat1',
+            anchorWorld: [0, 0],
+            startWorld: [0, 0],
+          })
+        },
+      })
+      pipeline.resolveSync = vi.fn()
+        .mockReturnValueOnce(dimLabelHit)
+        .mockReturnValue(faceHit)
+      // The drag move's hover read goes through resolveAsync, which internally
+      // calls resolveSync; keep it off the sync mock so the click still names
+      // the face.
+      pipeline.resolveAsync = vi.fn().mockResolvedValue(null)
+
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: new Set([DIMENSION_LABEL_LAYER_NAME, FACE_LAYER_NAME]),
+      }))
+
+      await act(async () => {
+        pointerDown(canvas)
+      })
+      expect(useSketchEditorStore.getState().dragPending?.type).toBe('dim_label')
+      act(() => {
+        useSketchEditorStore.getState().setDrag({
+          type: 'dim_label',
+          constraintId: 'c1',
+          featureId: 'feat1',
+          anchorWorld: [0, 0],
+          startWorld: [0, 0],
+          currentWorld: [1, 1],
+        })
+      })
+      await act(async () => {
+        pointerMove(canvas, 1)
+      })
+      act(() => {
+        useSketchEditorStore.getState().setDrag(null)
+      })
+
+      await act(async () => {
+        click(canvas)
+      })
+
+      expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+      expect(wasLastClickConsumedByIdDispatch()).toBe(true)
+    })
+  })
+
+  describe('pointer claims', () => {
+    // The camera asks the claim registry before it moves. The dispatcher is the
+    // one writer, at the press, so the answer never waits for React to commit
+    // the store's drag gate.
+    function touchDown(pointerId: number) {
+      canvas.dispatchEvent(new PointerEvent('pointerdown', {
+        button: 0, isPrimary: true, pointerId, pointerType: 'touch', clientX: 30, clientY: 40,
+      }))
+    }
+
+    function dispatchWithClaims(claims: PointerClaims, layers: ReadonlySet<string>) {
+      renderHook(() => useIdBufferPointerDispatch({
+        glRef: glRef as { current: import('three').WebGLRenderer | null },
+        consumedLayers: layers,
+        pointerClaims: claims,
+      }))
+    }
+
+    it('claims a touch press that lands on a feature handle', async () => {
+      const claims = createPointerClaims()
+      pipeline.resolveSync = vi.fn().mockReturnValue(handleHit)
+      dispatchWithClaims(claims, new Set([FEATURE_HANDLE_LAYER_NAME]))
+
+      await act(async () => { touchDown(7) })
+
+      expect(claims.isClaimed(7)).toBe(true)
+    })
+
+    it('claims a press that armed a sketch vertex drag', async () => {
+      toolRegistry.reset()
+      initializeTools()
+      useEditorState.setState({ activeFeatureId: 'feat1' })
+      const claims = createPointerClaims()
+      pipeline.resolveSync = vi.fn().mockReturnValue(vertexHit)
+      dispatchWithClaims(claims, new Set([SKETCH_VERTEX_LAYER_NAME]))
+
+      await act(async () => { touchDown(7) })
+
+      expect(useSketchEditorStore.getState().dragPending).not.toBeNull()
+      expect(claims.isClaimed(7)).toBe(true)
+    })
+
+    it('does not claim a press on a face that armed no drag', async () => {
+      const claims = createPointerClaims()
+      pipeline.resolveSync = vi.fn().mockReturnValue(faceHit)
+      dispatchWithClaims(claims, new Set([FACE_LAYER_NAME]))
+
+      await act(async () => { touchDown(7) })
+
+      expect(useSketchEditorStore.getState().dragPending).toBeNull()
+      expect(claims.isClaimed(7)).toBe(false)
+    })
+
+    it('clears a stale claim on a fresh primary press that misses', async () => {
+      const claims = createPointerClaims()
+      claims.claim(9)
+      pipeline.resolveSync = vi.fn().mockReturnValue(null)
+      dispatchWithClaims(claims, new Set([FACE_LAYER_NAME]))
+
+      await act(async () => { touchDown(7) })
+
+      expect(claims.isClaimed(9)).toBe(false)
+      expect(claims.isClaimed(7)).toBe(false)
+    })
+
+    it('releases on pointerup and on pointercancel', async () => {
+      const claims = createPointerClaims()
+      pipeline.resolveSync = vi.fn().mockReturnValue(handleHit)
+      dispatchWithClaims(claims, new Set([FEATURE_HANDLE_LAYER_NAME]))
+
+      await act(async () => { touchDown(7) })
+      await act(async () => {
+        canvas.dispatchEvent(new PointerEvent('pointerup', { pointerId: 7, pointerType: 'touch' }))
+      })
+      expect(claims.isClaimed(7)).toBe(false)
+
+      await act(async () => { touchDown(7) })
+      expect(claims.isClaimed(7)).toBe(true)
+      await act(async () => {
+        canvas.dispatchEvent(new PointerEvent('pointercancel', { pointerId: 7, pointerType: 'touch' }))
+      })
+      expect(claims.isClaimed(7)).toBe(false)
+    })
+
+    it('never claims a non-primary press', async () => {
+      const claims = createPointerClaims()
+      pipeline.resolveSync = vi.fn().mockReturnValue(handleHit)
+      dispatchWithClaims(claims, new Set([FEATURE_HANDLE_LAYER_NAME]))
+
+      await act(async () => {
+        canvas.dispatchEvent(new PointerEvent('pointerdown', {
+          button: 0, isPrimary: false, pointerId: 8, pointerType: 'touch', clientX: 30, clientY: 40,
+        }))
+      })
+
+      expect(claims.isClaimed(8)).toBe(false)
+    })
+
+    it('releases a stranded gesture so the camera cannot stay locked', async () => {
+      const claims = createPointerClaims()
+      pipeline.resolveSync = vi.fn().mockReturnValue(handleHit)
+      dispatchWithClaims(claims, new Set([FEATURE_HANDLE_LAYER_NAME]))
+
+      await act(async () => { touchDown(7) })
+      expect(claims.isClaimed(7)).toBe(true)
+      // The pointerup was lost: a move with no button held is all the
+      // dispatcher will ever see of that gesture.
+      await act(async () => { pointerMove(canvas, 0) })
+
+      expect(claims.isClaimed(7)).toBe(false)
     })
   })
 

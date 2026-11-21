@@ -1,7 +1,11 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import * as THREE from 'three'
 import { render, act, cleanup } from '@testing-library/react'
 import { useSketchEditorStore, setSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA } from '@/stores/partEditorStore'
+import { TurntableControls } from '@/components/Viewport/turntable'
+import { createPointerClaims } from '@/viewport/pointerClaim'
+import { installPointerEventStub } from '@/testing/pointerEventStub'
 import type { ExtrudeFeatureDef, FeatureHandleData, PartDoc, PartFeature } from '@/types/cad'
 
 /**
@@ -13,30 +17,35 @@ import type { ExtrudeFeatureDef, FeatureHandleData, PartDoc, PartFeature } from 
  * window-level gesture listeners, with the pure math kept real.
  */
 
-const seams = vi.hoisted(() => ({
-  callbacks: null as {
-    onPointerDown: (x: number, y: number) => void
-    onDoubleClick: (x: number, y: number) => void
-  } | null,
-  registration: null as Record<string, unknown> | null,
-  closestParam: vi.fn(),
-}))
-
-vi.mock('@react-three/fiber', async () => {
-  const three = await import('three')
+const seams = vi.hoisted(() => {
+  const domElement = document.createElement('canvas')
+  Object.defineProperty(domElement, 'clientWidth', { value: 800 })
+  Object.defineProperty(domElement, 'clientHeight', { value: 600 })
+  Object.defineProperty(domElement, 'getBoundingClientRect', {
+    value: () => ({ left: 0, top: 0, width: 800, height: 600 }),
+  })
   return {
-    useFrame: () => {},
-    useThree: () => ({
-      camera: new three.OrthographicCamera(),
-      gl: {
-        domElement: {
-          getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }),
-        },
-      },
-      size: { width: 800, height: 600 },
-    }),
+    callbacks: null as {
+      onPointerDown: (x: number, y: number) => void
+      onDoubleClick: (x: number, y: number) => void
+    } | null,
+    registration: null as Record<string, unknown> | null,
+    closestParam: vi.fn(),
+    camera: null as unknown as THREE.OrthographicCamera,
+    gl: { domElement },
   }
 })
+
+installPointerEventStub('touch')
+
+vi.mock('@react-three/fiber', () => ({
+  useFrame: () => {},
+  useThree: () => ({
+    camera: seams.camera,
+    gl: seams.gl,
+    size: { width: 800, height: 600 },
+  }),
+}))
 
 vi.mock('@react-three/drei', () => ({
   Html: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
@@ -99,6 +108,9 @@ beforeEach(() => {
   seams.callbacks = null
   seams.registration = null
   seams.closestParam.mockReset()
+  seams.camera = new THREE.OrthographicCamera(-400, 400, 300, -300, -1000, 1000)
+  seams.camera.position.set(20, 20, 100)
+  seams.camera.updateProjectionMatrix()
   setSketchCallback('onMutation', null)
   useEditorState.setState({
     drag: null,
@@ -257,6 +269,63 @@ describe('FeatureHandles drag-to-commit gesture', () => {
     })
     expect(useSketchEditorStore.getState().drag).toBeNull()
     expect(useSketchEditorStore.getState().dragPending).toBeNull()
+  })
+
+  it('a touch drag moves the value and leaves the camera where it was', () => {
+    // Same reported bug as the section arrow, one layer up: the store gate that
+    // disables orbit only lands on a React commit, so a move dispatched before
+    // it would rotate. The press claim is what holds the camera off.
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    const camera = seams.camera
+    const controls = new TurntableControls(camera, seams.gl.domElement)
+    controls.azimuth = 0.4
+    controls.elevation = 0.3
+    controls.update()
+    const claims = createPointerClaims()
+    controls.pointerClaimed = id => claims.isClaimed(id)
+    const before = { position: camera.position.toArray(), quaternion: camera.quaternion.toArray() }
+
+    render(<FeatureHandles />)
+
+    act(() => {
+      // The controller saw the press first, as the canvas listener order does.
+      seams.gl.domElement.dispatchEvent(new PointerEvent('pointerdown', {
+        pointerType: 'touch', pointerId: 44, isPrimary: true, button: 0,
+        clientX: 100, clientY: 200, bubbles: true, cancelable: true,
+      }))
+      // The dispatcher routes the press to the arrow and claims the pointer.
+      seams.callbacks!.onPointerDown(100, 200)
+      claims.claim(44)
+      // No commit has run yet, so the arrow's window listener is not bound: this
+      // is the window where only the claim keeps the camera still.
+      document.dispatchEvent(new PointerEvent('pointermove', {
+        pointerType: 'touch', pointerId: 44, clientX: 300, clientY: 200, bubbles: true,
+      }))
+    })
+    expect(useSketchEditorStore.getState().drag).toBeNull()
+    expect({ position: camera.position.toArray(), quaternion: camera.quaternion.toArray() }).toEqual(before)
+
+    seams.closestParam.mockReturnValueOnce(10).mockReturnValueOnce(12)
+    act(() => {
+      document.dispatchEvent(new PointerEvent('pointermove', {
+        pointerType: 'touch', pointerId: 44, clientX: 320, clientY: 200, bubbles: true,
+      }))
+    })
+    expect(useSketchEditorStore.getState().drag).toMatchObject({
+      type: 'feature_handle', featureId: 'F1', field: 'distance', currentValue: 7,
+    })
+    expect({ position: camera.position.toArray(), quaternion: camera.quaternion.toArray() }).toEqual(before)
+
+    act(() => {
+      document.dispatchEvent(new PointerEvent('pointerup', {
+        pointerType: 'touch', pointerId: 44, clientX: 320, clientY: 200, bubbles: true,
+      }))
+    })
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'set_extrude_field', featureId: 'F1', field: 'distance', value: 7,
+    })
+    controls.dispose()
   })
 
   it('a stationary release drops the pending gesture without committing', () => {

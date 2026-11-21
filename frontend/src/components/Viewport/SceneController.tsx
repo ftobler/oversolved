@@ -6,6 +6,7 @@ import { drawCubeGizmo, type GizmoRequest, type Pv, type Hit } from '@/component
 import { orbitView, rollView, snapToDirection } from '@/components/Viewport/cameraController'
 import { deriveOrbitEnabled } from '@/components/Viewport/orbitEnabled'
 import { pickPivotPoint } from '@/components/Viewport/pivotPick'
+import type { PointerClaims } from '@/viewport/pointerClaim'
 import { useViewOptionsStore } from '@/stores/viewOptionsStore'
 import {
   restoreTurntablePose,
@@ -44,6 +45,11 @@ interface SceneControllerProps {
    */
   orbitEnabled?: boolean
   /**
+   * The viewport's registry of pointers a handle press owns. The controller
+   * yields those pointers on every move, so a handle drag never also orbits.
+   */
+  pointerClaims?: PointerClaims
+  /**
    * Fired once the Canvas-owned camera is exposed through cameraRef. The R3F
    * scene tree renders on a later frame than the host component's mount, so a
    * caller that armed work before this render (e.g. a first-solve camera fit)
@@ -52,7 +58,9 @@ interface SceneControllerProps {
   onReady?: () => void
 }
 
-export default function SceneController({ gizmoCanvasRef, pvRef, hoverRef, snapRef, cameraRef, controlsRef, orbitEnabled, onReady }: SceneControllerProps) {
+export default function SceneController({
+  gizmoCanvasRef, pvRef, hoverRef, snapRef, cameraRef, controlsRef, orbitEnabled, pointerClaims, onReady,
+}: SceneControllerProps) {
   const { camera, gl, scene, invalidate } = useThree()
   const ctrlRef = useRef<TurntableControls | null>(null)
   const cameraRefStable = useRef(camera)
@@ -129,6 +137,9 @@ export default function SceneController({ gizmoCanvasRef, pvRef, hoverRef, snapR
       clientY,
     )
     ctrl.orbitAroundCursor = useViewOptionsStore.getState().orbit_around_cursor
+    // The claim is the synchronous half of the orbit gate: a handle press owns
+    // its pointer from the press handler, before any React commit.
+    ctrl.pointerClaimed = pointerClaims ? id => pointerClaims.isClaimed(id) : null
     // The common CAD orbit: it has no pole, so no spin near the top view.
     ctrl.orbitStyle = 'trackball'
     attachControls(ctrl)
@@ -136,7 +147,7 @@ export default function SceneController({ gizmoCanvasRef, pvRef, hoverRef, snapR
       attachControls(null)
       ctrl.dispose()
     }
-  }, [camera, gl, scene, invalidate, setIsRotating, showSeq, attachControls])
+  }, [camera, gl, scene, invalidate, setIsRotating, showSeq, attachControls, pointerClaims])
 
   // The preference is a runtime gate, like `enabled`: toggling it must not
   // rebuild the controller and drop the live pose.
