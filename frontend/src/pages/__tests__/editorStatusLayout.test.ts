@@ -31,6 +31,17 @@ describe('editor status line', () => {
   })
 })
 
+describe('status card in the right column', () => {
+  it('joins the column flow after the edit panel', () => {
+    // In flow with the stack's own gap: a mark pushes the cards below it down,
+    // scrolls with the column on a phone and cannot land over the HUD band.
+    expect(rulePart('.right-overlay-stack')).toMatch(/gap:\s*12px/)
+    const part = rulePart('.feature-status-panel')
+    expect(part).toMatch(/display:\s*flex/)
+    expect(part).not.toMatch(/position:/)
+  })
+})
+
 describe('plane editor frame', () => {
   it('draws no divider above the fields', () => {
     expect(rulePart('.plane-editor')).not.toMatch(/border/)

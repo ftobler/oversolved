@@ -793,6 +793,9 @@ describe('AssemblyEditor (Stage 6b)', () => {
     const card = document.querySelector('.feature-edit-panel') as HTMLElement
     expect(card).not.toBeNull()
     expect(document.querySelector('.floating-right')!.contains(card)).toBe(true)
+    // The card lives in the same flow stack the part editor uses, where its
+    // status card can follow it.
+    expect(document.querySelector('.right-overlay-stack')!.contains(card)).toBe(true)
     expect(card.querySelector('.feature-edit-panel-title')!.textContent).toBe('Bracket')
     // The form is in the card, never in the row it describes.
     expect(card.querySelector('input')).not.toBeNull()

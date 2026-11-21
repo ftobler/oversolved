@@ -1,8 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import { solveVariable, isValidVariableName } from '../variable'
+import type { PartFeature } from '@/types/cad'
+import { solveVariable, isValidVariableName, variableRenameProblem } from '../variable'
 
 function variableFeature(label: string, expression: unknown): Record<string, unknown> {
   return { id: 'v1', kind: 'variable', label, variable: { expression } }
+}
+
+function renameFeatures(): PartFeature[] {
+  return [
+    { id: 'v1', kind: 'variable', label: 'width', variable: { expression: '1' } },
+    { id: 'v2', kind: 'variable', label: 'height', variable: { expression: '2' } },
+  ] as PartFeature[]
 }
 
 describe('isValidVariableName', () => {
@@ -21,6 +29,63 @@ describe('isValidVariableName', () => {
   it('rejects mathjs reserved constants', () => {
     for (const n of ['pi', 'e', 'i', 'Infinity', 'NaN', 'true', 'false', 'null']) {
       expect(isValidVariableName(n)).toBe(false)
+    }
+  })
+})
+
+describe('variableRenameProblem', () => {
+  it('accepts an identifier, including its own current name', () => {
+    const features = renameFeatures()
+    for (const name of ['width', '_w', 'w2', '$w']) {
+      expect(variableRenameProblem(features, 'v1', name)).toBeNull()
+    }
+  })
+
+  it('names the minus rule and suggests the sanitized name', () => {
+    expect(variableRenameProblem(renameFeatures(), 'v1', 'my-var')).toBe(
+      '"my-var" is not a valid variable name: use letters, digits and _ only '
+        + '(a - reads as minus in an expression). Try "my_var".',
+    )
+  })
+
+  it('names the leading-digit rule', () => {
+    expect(variableRenameProblem(renameFeatures(), 'v1', '2x')).toBe(
+      '"2x" is not a valid variable name: it must start with a letter or _.',
+    )
+  })
+
+  it('refuses a space by the invalid-character rule', () => {
+    expect(variableRenameProblem(renameFeatures(), 'v1', 'a b')).toContain('Try "a_b".')
+  })
+
+  it('refuses a mathjs constant by name', () => {
+    expect(variableRenameProblem(renameFeatures(), 'v1', 'pi')).toBe(
+      '"pi" is a built-in constant and cannot name a variable.',
+    )
+    expect(variableRenameProblem(renameFeatures(), 'v1', 'e')).toBe(
+      '"e" is a built-in constant and cannot name a variable.',
+    )
+  })
+
+  it('requires a name', () => {
+    for (const name of ['', '   ']) {
+      expect(variableRenameProblem(renameFeatures(), 'v1', name)).toBe('A variable needs a name.')
+    }
+  })
+
+  it('refuses another variable\'s name, but not its own', () => {
+    const features = renameFeatures()
+    expect(variableRenameProblem(features, 'v1', 'height')).toBe(
+      'A variable named "height" already exists.',
+    )
+    expect(variableRenameProblem(features, 'v1', 'width')).toBeNull()
+  })
+
+  it('uses no em or en dash, per the code style', () => {
+    const features = renameFeatures()
+    for (const name of ['my-var', '2x', 'a b', 'pi', '', 'height']) {
+      const problem = variableRenameProblem(features, 'v1', name)
+      expect(problem).not.toMatch(/[\u2013\u2014]/)
     }
   })
 })

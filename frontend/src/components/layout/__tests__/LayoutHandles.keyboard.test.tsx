@@ -2,8 +2,8 @@
 // rollback position. It is exposed as a slider with arrow-key stepping so it is
 // reachable without a mouse, while the pointer path stays unchanged. The
 // assembly splitter this file once covered went with the floating panels: both
-// editors size their cards to the shared 64/36 panel split and no longer resize
-// one column.
+// editors size their cards to the shared panel split and no longer resize one
+// column.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'

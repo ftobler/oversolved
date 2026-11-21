@@ -4,11 +4,12 @@ import '@/pages/Part.css'
 
 /**
  * The assembly editor's navigator as two floating cards, the part editor's
- * PartDocumentPanel in assembly terms: the Parts card over the Mates card,
- * each reserving its share of the column and scrolling its list internally,
- * so the pair holds its size whatever the lists do. One AssemblyTree instance
- * draws both cards, because the drag reorder and the cross-highlight are one
- * piece of state shared by the two lists.
+ * PartDocumentPanel in assembly terms: the Parts card over the Mates card. The
+ * Parts card takes the height the Mates card does not need, and Mates hugs its
+ * list up to a share, so a short mate list leaves the room to the part rows
+ * that scroll. One AssemblyTree instance draws both cards, because the drag
+ * reorder and the cross-highlight are one piece of state shared by the two
+ * lists.
  */
 export function AssemblyDocumentPanel(props: AssemblyTreeProps) {
   return (

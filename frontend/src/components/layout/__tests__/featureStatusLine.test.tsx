@@ -1,9 +1,9 @@
 /**
  * The feature status model, end to end through the real part panels: one mark
- * per feature (featureFailure), drawn the same way in the tree row and as the
- * first line of the open editor in the floating FeatureEditPanel, for every
- * kind. These pin the few states a user can observe so no editor grows its own
- * failure display again:
+ * per feature (featureFailure), drawn the same way in the tree row and in the
+ * status card under the floating FeatureEditPanel, for every kind. These pin
+ * the few states a user can observe so no editor grows its own failure display
+ * again:
  *   - healthy: no tint, no line
  *   - error: red row, red line, same words
  *   - warning (partial result or solver fallback): amber row, amber line
@@ -51,7 +51,7 @@ function expectSameMark(level: 'error' | 'warning', message: string) {
   const name = document.querySelector('.feature-name')!
   expect(name.classList.contains(`feature-name-${level}`)).toBe(true)
   expect(name.getAttribute('title')).toBe(message)
-  const line = document.querySelector('.feature-edit-panel .status-message')!
+  const line = document.querySelector('.feature-status-panel .status-message')!
   expect(line).not.toBeNull()
   expect(line.classList.contains(`status-message--${level}`)).toBe(true)
   expect(line.textContent).toBe(message)
