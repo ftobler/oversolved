@@ -184,4 +184,30 @@ describe('doc.rollback mirrors the rollback bar', () => {
     expect((docRef.current!.features ?? []).map(f => f.id)).toEqual(['Origin', 'Top', 'Front', 'Right', 'C', 'A', 'B'])
     expect(docRef.current!.rollback).toBe(5)
   })
+
+  it('a reorder from above the bar to below it also leaves the parked index alone', () => {
+    // The other direction of the same rule: A crosses the parked bar downward
+    // and the index stays 5, which now sits between B and A. The feature drag's
+    // cue must promise the side of the bar this ordering actually produces.
+    setDoc({
+      version: 1,
+      kind: 'part',
+      features: [
+        { id: 'Origin', kind: 'origin' },
+        { id: 'Top', kind: 'plane' },
+        { id: 'Front', kind: 'plane' },
+        { id: 'Right', kind: 'plane' },
+        { id: 'A', kind: 'sketch' },
+        { id: 'B', kind: 'extrude' },
+        { id: 'C', kind: 'extrude' },
+      ],
+    } as PartDoc)
+    useEditorState.getState().setRollbackPosition(5)
+    const { result } = renderPartDoc()
+
+    act(() => { result.current.handleMutation({ type: 'reorder_features', featureId: 'A', toIndex: 6 }) })
+
+    expect((docRef.current!.features ?? []).map(f => f.id)).toEqual(['Origin', 'Top', 'Front', 'Right', 'B', 'A', 'C'])
+    expect(docRef.current!.rollback).toBe(5)
+  })
 })
