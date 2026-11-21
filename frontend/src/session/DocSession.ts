@@ -235,9 +235,10 @@ const PREVIEW_COMMIT_FALLBACK: Mutation = { type: 'preview_commit', description:
 // naming every constraint id.
 const COMPACT_CREATED_TYPES = new Set<Mutation['type']>([
   'add_rect', 'add_center_rect', 'add_ngon',
-  // The copy/trim sugar carries a constraint per copy or corner; the reply
-  // keeps the entity order and collapses those to a count like a rect.
-  'mirror_entities', 'pattern_entities', 'fillet_corners',
+  // The copy/trim sugar carries a constraint per copy or corner, and a paste
+  // carries the clip's whole constraint set; the reply keeps the entity order
+  // and collapses those to a count like a rect.
+  'mirror_entities', 'pattern_entities', 'paste_sketch_entities', 'fillet_corners',
 ])
 
 function contentIds(doc: PartDoc): Set<string> {

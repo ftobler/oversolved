@@ -847,6 +847,26 @@ const PATTERN_ENTITIES_NOTE =
   '(Front and @builtin_plane_front are one plane); this never reflects, which is mirror_entities.' +
   CREATED_IDS_REPLY_NOTE
 
+// The clipboard's rules an author cannot read off the payload: where the text
+// comes from, what a free copy means, and the unit conversion. The builder and
+// parser live in utils/clipboard/sketchClipboard.ts, and the carry rule is the
+// one shared with pattern_entities.
+const PASTE_NOTE =
+  'Copies sketch geometry the way Ctrl+C does: the clip is the JSON text the app puts on the clipboard, so it ' +
+  'carries everything needed (ids, parameters, unit) and needs no source sketch. The target sketch may be on ' +
+  'another plane and in another document: parameters are sketch-local 2D, so the same 2D shape lands in the ' +
+  'target frame, and lengths convert when length_unit differs from the document unit. ' +
+  'Fresh entity ids and fresh constraint ids are minted; the step reply\'s createdIds names the new entities. ' +
+  'The clip carries only the constraints that live entirely inside the copied set; a fixed constraint, the ' +
+  'origin, a projected or part edge, a plane, or an entity outside the set is broken on copy, so the pasted ' +
+  'copy is free-floating. A projected entity in the selection is pasted as ordinary geometry of its resolved ' +
+  `kind at its solved position. The sketch holds at most ${MAX_SKETCH_ENTITIES} entities; an over-cap paste ` +
+  'is refused. A malformed clip is refused with the sentence the app shows, e.g. "The clipboard does not hold ' +
+  'Oversolved sketch geometry." A minimal clip is ' +
+  '{"oversolved":1,"kind":"sketch-entities","entities":[{"id":"l1","kind":"line"}],' +
+  '"initial":{"l1":[0,0,10,0]},"constraints":[],"length_unit":"mm"}. ' +
+  CREATED_IDS_REPLY_NOTE
+
 const VARIABLE_NAME_NOTE =
   'An expression refers to a variable by the variable feature\'s `label` (the name; `add_variable` sanitizes it to an ' +
   'identifier and suffixes `_2`, `_3`... on a clash), not by its featureId: `label: width` is used as `width * 2`.'
@@ -1509,6 +1529,15 @@ export const MUTATION_CATALOG = {
       center: optPoint('rotate/copy: the rotation centre in sketch coordinates; default [0, 0].'),
       translate: optPoint('copy: the move applied after the rotation.'),
       targetFeatureId: optStr('copy: another sketch on the same plane to copy into; default the source sketch.'),
+    },
+  },
+  paste_sketch_entities: {
+    summary: 'Paste a clipboard clip of sketch entities, with the constraints that stay inside it, as authored geometry.',
+    note: PASTE_NOTE,
+    fields: {
+      featureId: str('The sketch to paste into; it may be on any plane and in any document unit.'),
+      clip: obj('The clip envelope the Copy command writes: { oversolved: 1, kind: "sketch-entities", entities, initial, constraints, length_unit }.'),
+      offset: optPoint('The [x, y] translation applied to the clip in the target sketch frame, in the target document unit; default [0, 0].'),
     },
   },
   toggle_construction: {
@@ -2290,6 +2319,7 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   mirror_entities: 'sketch',
   fillet_corners: 'sketch',
   pattern_entities: 'sketch',
+  paste_sketch_entities: 'sketch',
   toggle_construction: 'sketch',
   set_feature_plane: 'sketch',
   add_sketch: 'sketch',

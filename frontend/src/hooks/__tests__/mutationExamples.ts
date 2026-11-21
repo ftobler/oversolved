@@ -354,6 +354,19 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
     makeDoc: sketchDoc,
     mutation: { type: 'pattern_entities', featureId: 'sk1', sourceIds: ['l1', 'l2'], mode: 'linear', count: 2, pitch: 20 },
   },
+  paste_sketch_entities: {
+    makeDoc: sketchDoc,
+    mutation: {
+      type: 'paste_sketch_entities', featureId: 'sk1',
+      clip: {
+        oversolved: 1, kind: 'sketch-entities',
+        entities: [{ id: 'cl', kind: 'line' }],
+        initial: { cl: [0, 0, 5, 0] },
+        constraints: [], length_unit: 'mm',
+      },
+      offset: [0, 20],
+    },
+  },
   toggle_construction: {
     makeDoc: sketchDoc,
     mutation: { type: 'toggle_construction', targets: ['entity:sk1:l2'] },

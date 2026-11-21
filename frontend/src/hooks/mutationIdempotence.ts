@@ -142,6 +142,8 @@ export const IDEMPOTENT_MUTATION = {
   fillet_corners: false,
   // pattern_entities mints a fresh block of copies every dispatch.
   pattern_entities: false,
+  // paste_sketch_entities mints fresh entity and constraint ids every dispatch.
+  paste_sketch_entities: false,
   // add_text mints a fresh run of outlines every dispatch. Its applier no-ops
   // only on a run planAddText refuses (bad fields, nothing drawn, a cap), and
   // the drive's value rule refuses that same plan before dispatch.

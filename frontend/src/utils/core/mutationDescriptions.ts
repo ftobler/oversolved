@@ -50,6 +50,8 @@ export function describeMutation(m: Mutation): string {
       return `fillet ${m.corners.length} corner(s) at radius ${m.radius} in ${m.featureId}`
     case 'pattern_entities':
       return `${m.mode} pattern of ${m.sourceIds.length} entity(ies) in ${m.featureId}`
+    case 'paste_sketch_entities':
+      return `paste ${m.clip.entities.length} entities in ${m.featureId}`
     case 'toggle_construction':
       return `toggle construction on ${m.targets.length} element(s)`
     case 'set_feature_plane':

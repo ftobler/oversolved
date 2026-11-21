@@ -39,6 +39,8 @@ export { applyFilletCorners, planFilletCorners, type FilletSketchPlan, type Plan
 
 export { applyPatternEntities, planPatternEntities, type PatternEntitiesStep } from './sketchPattern'
 
+export { applyPasteSketchEntities } from './sketchPaste'
+
 export {
   applyAddExtrude,
   applyAddExtrudeProfile,

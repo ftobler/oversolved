@@ -51,6 +51,26 @@ export const CORE_KEYBINDINGS: readonly CoreKeybinding[] = [
   { key: 'escape',       command: 'cancel_draw',         label: 'Cancel',              description: 'Cancel the entity being drawn, or release the tool when nothing is in progress' },
 ]
 
+// Commands the browser itself owns: Ctrl+C and Ctrl+V must reach the native
+// copy and paste events, so these rows are listed for the keyboard help but are
+// deliberately absent from every keymap. dispatchKey therefore never sees them
+// and never calls preventDefault; useSketchClipboard's document listeners are
+// the handlers. A name here is not a COMMAND_NAMES entry: it is the browser's
+// action, not a registry command.
+export type NativeCommandName = 'copy_sketch_selection' | 'paste_sketch_clipboard'
+
+export interface NativeKeybinding {
+  key: string
+  command: NativeCommandName
+  label: string
+  description: string
+}
+
+export const NATIVE_KEYBINDINGS: readonly NativeKeybinding[] = [
+  { key: 'ctrl+c', command: 'copy_sketch_selection', label: 'Copy', description: 'Copy selected sketch entities to the clipboard' },
+  { key: 'ctrl+v', command: 'paste_sketch_clipboard', label: 'Paste', description: 'Paste sketch entities from the clipboard' },
+]
+
 // Derive the flat key→command record from CORE_KEYBINDINGS.
 const CORE_KEYMAP: Record<string, CommandName> =
   Object.fromEntries(CORE_KEYBINDINGS.map(b => [b.key, b.command]))
@@ -196,7 +216,13 @@ const EDITABLE_TAGS = new Set(['INPUT', 'TEXTAREA', 'SELECT'])
  * whose key is not yet a final character. Central place to extend the guard
  * for any future interactive control.
  */
-export function isEditableTarget(e: KeyboardEvent): boolean {
+export function isEditableTarget(e: {
+  target: EventTarget | null
+  // Keyboard-only fields; a ClipboardEvent leaves them undefined and only the
+  // target decides, which is what a native copy/paste handler needs.
+  isComposing?: boolean
+  key?: string
+}): boolean {
   if (e.isComposing) return true
   if (e.key === 'Unidentified') return true
   // contenteditable is a property, not a tag: a plain <div contenteditable>

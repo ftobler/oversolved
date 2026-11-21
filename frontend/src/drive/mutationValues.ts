@@ -25,6 +25,7 @@ import { BUILTIN_PLANES, resolveBarePlaneId } from '@/kernel/solverConstants'
 import { mirrorAxisFromLineParams, mirrorsToItself } from '@/utils/geometry/mirrorSketch'
 import { planFilletCorners } from '@/utils/yamlMutations/sketchFillet'
 import { planPatternEntities, type PatternEntitiesStep } from '@/utils/yamlMutations/sketchPattern'
+import { validateClip } from '@/utils/clipboard/sketchClipboard'
 import { instanceTransforms } from '@/utils/geometry/sketchPattern'
 import { MAX_FIT_POINTS } from '@/utils/geometry/fitSpline'
 import { DxfImportError, parseDxfProfile } from '@/utils/dxfImport'
@@ -1199,6 +1200,27 @@ function patternEntities(raw: RawStep, ctx: ValueContext): ValueViolation | null
   if ('reason' in plan) {
     const message = `pattern_entities: ${plan.reason}`
     return plan.code === 'unknown-target' ? unknownTarget(message) : invalid(message)
+  }
+  return null
+}
+
+// paste_sketch_entities re-validates the clip at the boundary, so a script gets
+// the same sentence the editor toast shows rather than a malformed row the
+// applier would have to refuse later.
+function pasteSketchEntities(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const clip = validateClip(raw.clip)
+  if ('reason' in clip) return invalid(clip.reason)
+  if (raw.offset !== undefined) {
+    const offset = raw.offset
+    if (!Array.isArray(offset) || offset.length !== 2 || !offset.every(isFiniteNumber)) {
+      return invalid(`offset must be a finite [x, y] point, got ${json(offset)}`)
+    }
+  }
+  const featureId = raw.featureId
+  if (ctx.doc === null || typeof featureId !== 'string') return null
+  const sketch = sketchOf(ctx.doc, featureId)
+  if (sketch === undefined) {
+    return unknownTarget(`paste_sketch_entities names no sketch feature ${json(featureId)}`)
   }
   return null
 }
@@ -2639,6 +2661,7 @@ export const MUTATION_VALUE_RULES = {
   mirror_entities: mirrorEntities,
   fillet_corners: filletCorners,
   pattern_entities: patternEntities,
+  paste_sketch_entities: pasteSketchEntities,
   toggle_construction: toggleConstructionRule,
   set_feature_plane: setFeaturePlane,
   add_sketch: addSketch,
