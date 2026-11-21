@@ -12,18 +12,65 @@
  * in, so this stays trivially unit-testable.
  */
 
+import type { PartFeature } from '@/types/cad'
 import { evalExpr, laterVariableRef } from '../evalExpr'
 
 // mathjs constants that would shadow a builtin if used as a variable name.
 const RESERVED = new Set(['pi', 'e', 'i', 'Infinity', 'NaN', 'true', 'false', 'null'])
+
+// The one identifier shape both name checks read: a letter, `_` or `$` start,
+// then the same set plus digits.
+const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/
+
+/** Replace invalid identifier chars with `_`, prefix leading digits, fallback to `var`.
+ *  Shared by `add_variable` (which rewrites a name silently) and the rename
+ *  hint (which suggests the same name it would create). */
+export function sanitizeIdentifier(s: string): string {
+  const cleaned = s.replace(/[^A-Za-z0-9_$]/g, '_')
+  // All-underscore (or empty) carries no meaningful name: fall back to `var`.
+  if (!/[A-Za-z0-9$]/.test(cleaned)) return 'var'
+  if (/^[0-9]/.test(cleaned)) return 'var_' + cleaned
+  return cleaned
+}
 
 /** True if `name` is a valid JS identifier and not a mathjs reserved constant.
  *  Variable labels become keys in the mathjs evaluate() scope, so they must obey
  *  identifier rules (letter/`_`/`$` start, alphanumeric/`_`/`$` rest). */
 export function isValidVariableName(name: string): boolean {
   if (!name) return false
-  if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) return false
+  if (!IDENTIFIER.test(name)) return false
   return !RESERVED.has(name)
+}
+
+/** Why `name` cannot be variable `featureId`'s new label, or null when it can.
+ *  The rename applier, the rename dialog and the MCP reply all read this one
+ *  sentence, so the user sees the same words wherever the rename is refused. */
+export function variableRenameProblem(
+  features: readonly PartFeature[],
+  featureId: string,
+  name: string,
+): string | null {
+  const trimmed = name.trim()
+  if (!trimmed) return 'A variable needs a name.'
+  if (!IDENTIFIER.test(trimmed)) {
+    if (/^[0-9]/.test(trimmed)) {
+      return `"${trimmed}" is not a valid variable name: it must start with a letter or _.`
+    }
+    return invalidVariableNameProblem(trimmed)
+  }
+  if (RESERVED.has(trimmed)) {
+    return `"${trimmed}" is a built-in constant and cannot name a variable.`
+  }
+  const collision = features.some(
+    f => f.id !== featureId && f.kind === 'variable' && f.label === trimmed,
+  )
+  if (collision) return `A variable named "${trimmed}" already exists.`
+  return null
+}
+
+function invalidVariableNameProblem(name: string): string {
+  return `"${name}" is not a valid variable name: use letters, digits and _ only `
+    + `(a - reads as minus in an expression). Try "${sanitizeIdentifier(name)}".`
 }
 
 /** Evaluate a variable feature's expression against the preceding-variable
@@ -37,8 +84,8 @@ export function solveVariable(
 ): Record<string, unknown> {
   const varName = String(feature.label ?? feature.id ?? '')
 
-  // Defense in depth: the mutation layer also prevents these, but a hand-edited
-  // or imported doc can still carry an invalid or colliding name.
+  // Defense in depth: the mutation layer refuses an invalid or colliding rename
+  // with a message, but a hand-edited or imported doc can still carry one.
   if (!isValidVariableName(varName)) {
     return { status: 'exception', exception: `Invalid variable name: "${varName}". Must be a valid identifier.` }
   }

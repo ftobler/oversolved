@@ -774,6 +774,12 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
     runOperation('rename_mate', { id: featureId, label })
   }, [runOperation])
 
+  // Both the tree menu and the open mate card open the one dialog through this,
+  // so the two ends cannot drift in what they seed it with.
+  const requestRenameMate = useCallback((id: string, currentName: string) => {
+    setRenameMateTarget({ id, currentName })
+  }, [])
+
   // The dialog already trims and refuses an empty name, so whatever arrives here
   // is a label worth writing.
   const handleRenameMateConfirm = useCallback((label: string) => {
@@ -1060,25 +1066,30 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
                 onCommitMate={handleCommitMate}
                 onCancelMate={handleCancelMate}
                 onDeleteMate={(featureId) => executeCommand('delete_mate', featureId)}
-                onRequestRenameMate={(id, currentName) => setRenameMateTarget({ id, currentName })}
+                onRequestRenameMate={requestRenameMate}
               />
             </div>
             {editingSubject.kind !== 'none' && (
               <div className="floating-right">
-                <AssemblyEditPanel
-                  editing={editingSubject}
-                  instances={instances}
-                  mates={mates}
-                  status={solveStatus}
-                  labelFor={labelFor}
-                  onCommitInstance={handleCommitInstance}
-                  onCancelInstance={handleCancelInstance}
-                  onCommitMate={handleCommitMate}
-                  onCancelMate={handleCancelMate}
-                  onRenameMate={(id, currentName) => setRenameMateTarget({ id, currentName })}
-                  renderInstanceEditor={renderInstanceEditor}
-                  renderMateEditor={(mate) => renderMateEditor(mate)}
-                />
+                {/* The same stack the part editor uses, so the edit card and
+                    its status card keep that column's gap and its phone
+                    scroll behaviour. */}
+                <div className="right-overlay-stack">
+                  <AssemblyEditPanel
+                    editing={editingSubject}
+                    instances={instances}
+                    mates={mates}
+                    status={solveStatus}
+                    labelFor={labelFor}
+                    onCommitInstance={handleCommitInstance}
+                    onCancelInstance={handleCancelInstance}
+                    onCommitMate={handleCommitMate}
+                    onCancelMate={handleCancelMate}
+                    onRenameMate={requestRenameMate}
+                    renderInstanceEditor={renderInstanceEditor}
+                    renderMateEditor={(mate) => renderMateEditor(mate)}
+                  />
+                </div>
               </div>
             )}
           </div>

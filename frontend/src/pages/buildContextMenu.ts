@@ -41,10 +41,11 @@ export interface RenameTarget {
   currentName: string
 }
 
-// Whether an authored feature's management verbs are offered at all: a built-in
-// has no author, and the sketch under edit keeps its commands because renaming
-// it would fight the open session. The open editor card asks the same question
-// before it draws its Rename button, so the menu and the card cannot drift.
+// Whether an authored feature exposes its management verbs (Rename, Delete,
+// Suppress). A built-in has no author and no place in the doc to change. The
+// sketch under edit is left out on purpose: renaming or deleting it mid-session
+// would fight the edit that owns it. The open editor card asks this same
+// question before drawing its Rename button, so the menu and the card agree.
 export function canManageFeature(
   featureId: string | undefined,
   builtInIds: Set<string>,
@@ -318,8 +319,9 @@ function buildMenuContext(
   const canToggleVisibility = !!visibilityFeature
   const visibilityIsOn = !!visibilityFeature && input.visibleFeatures.has(visibilityFeature.id)
   const canToggleConstraints = !!input.activeSketchFeatureId
-  // The sketch under edit keeps its commands: renaming it would fight the open
-  // session and deleting it would pull the sketch out from under the edit.
+  // The sketch under edit is left out of the management verbs: renaming it
+  // would fight the open session and deleting it would pull the sketch out from
+  // under the edit.
   const canManage = canManageFeature(featureId, input.builtInIds, input.activeSketchFeatureId)
 
   return {

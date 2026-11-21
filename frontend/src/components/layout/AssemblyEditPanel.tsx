@@ -4,7 +4,7 @@ import type { AssemblySolveStatus } from '@/kernel/solveAssembly'
 import { mateFailure, partFailure, type AssemblyMark } from '@/utils/core/assemblyStatus'
 import type { EditingSubject } from '@/utils/assemblyEditingSubject'
 import { MATE_KIND_LABELS } from '@/utils/mateKinds'
-import { StatusMessage } from '@/components/shared/StatusMessage'
+import { StatusPanel } from '@/components/shared/StatusPanel'
 import { MATE_KIND_ICONS } from '@/components/layout/mateKindIcons'
 import '@/components/layout/Glass.css'
 import okIcon from '@/assets/icons/dialog-ok.svg'
@@ -15,16 +15,17 @@ import featurePartIcon from '@/assets/icons/feature-part.svg'
 /**
  * The open assembly editor as a floating card on the right side of the stage,
  * the part editor's FeatureEditPanel in assembly terms: the subject's icon and
- * name over its OK / Cancel pair, then the same instance or mate editor the
- * tree row used to expand into. The row keeps its `editing` highlight and swaps
- * its pencil for its own OK / Cancel pair, so an edit can be ended at either
- * end; the form itself lives only here.
+ * name over its Rename (mates only) / OK / Cancel row, then the same instance or
+ * mate editor the tree row used to expand into. The row keeps its `editing`
+ * highlight and swaps its pencil for its own OK / Cancel pair, so an edit can be
+ * ended at either end; the form itself lives only here.
  *
  * Presentational: the subject, the doc data it resolves against and both editor
  * bodies arrive as props, so the panel (and its test) needs no viewport and no
  * store. The card reuses the part editor's `.feature-edit-panel*` classes, so
- * the two editors' open cards read identically; the body carries the row's own
- * status mark at the top, exactly as a feature editor does.
+ * the two editors' open cards read identically; the subject's own status mark
+ * is a separate card after it in the same column, exactly as a feature editor
+ * draws it.
  */
 export interface AssemblyEditPanelProps {
   editing: EditingSubject
@@ -61,34 +62,38 @@ interface EditCardProps {
 // The one card frame both subjects share. Splitting it out keeps the instance
 // and mate branches below as plain data resolution, with no duplicated header.
 function EditCard({ icon, alt, title, mark, onCommit, onCancel, onRename, children }: EditCardProps) {
+  // Two siblings: the page mounts this inside the same right overlay stack the
+  // part editor uses, so the status card follows the panel with that gap.
   return (
-    <div className="glass-panel feature-edit-panel">
-      <div className="feature-edit-panel-header">
-        <img className="feature-icon" src={icon} alt={alt} />
-        <span className="feature-edit-panel-title">{title}</span>
-        {onRename && (
-          <button
-            type="button"
-            className="feature-rename-btn"
-            onClick={onRename}
-            title="Rename"
-            aria-label="Rename"
-          >
-            <img src={renameIcon} alt="" />
+    <>
+      <div className="glass-panel feature-edit-panel">
+        <div className="feature-edit-panel-header">
+          <img className="feature-icon" src={icon} alt={alt} />
+          <span className="feature-edit-panel-title">{title}</span>
+          {onRename && (
+            <button
+              type="button"
+              className="feature-rename-btn"
+              onClick={onRename}
+              title="Rename"
+              aria-label="Rename"
+            >
+              <img src={renameIcon} alt="" />
+            </button>
+          )}
+          <button className="feature-ok-btn" onClick={onCommit} title="OK">
+            <img src={okIcon} alt="OK" />
           </button>
-        )}
-        <button className="feature-ok-btn" onClick={onCommit} title="OK">
-          <img src={okIcon} alt="OK" />
-        </button>
-        <button className="feature-cancel-btn" onClick={onCancel} title="Cancel">
-          <img src={cancelIcon} alt="Cancel" />
-        </button>
+          <button className="feature-cancel-btn" onClick={onCancel} title="Cancel">
+            <img src={cancelIcon} alt="Cancel" />
+          </button>
+        </div>
+        <div className="feature-edit-panel-body">
+          {children}
+        </div>
       </div>
-      <div className="feature-edit-panel-body">
-        <StatusMessage mark={mark} />
-        {children}
-      </div>
-    </div>
+      <StatusPanel mark={mark} />
+    </>
   )
 }
 

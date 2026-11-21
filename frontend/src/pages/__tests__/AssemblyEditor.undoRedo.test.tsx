@@ -568,6 +568,43 @@ describe('AssemblyEditor undo/redo', () => {
     expect(undoStack().map(e => e.label)).toEqual(['Add mate', 'Rename mate'])
   })
 
+  // The one-shot commits the open session before it lands, so a pending field
+  // edit and the card rename become two ordered entries and the Cancel after
+  // them has no pin left to rewind: neither the parameter nor the name goes
+  // back. This is accepted assembly behaviour, not the part card's session fold.
+  it('a card rename with a pending field edit commits both; Cancel reverts neither', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    act(() => { executeCommand('insert_mate_fixed') })
+    await tick()
+    expect(undoStack()).toHaveLength(1)
+
+    const id = useAssemblyStore.getState().mates[0].id
+    fireEvent.change(screen.getByLabelText('Offset X, millimetres'), { target: { value: '5' } })
+    await tick()
+    // Coalesced behind the open editor until a structural op closes it.
+    expect(undoStack()).toHaveLength(1)
+
+    fireEvent.click(document.querySelector('.feature-edit-panel .feature-rename-btn')!)
+    const box = document.querySelector('.dialog-component') as HTMLElement
+    fireEvent.change(within(box).getByLabelText('Name'), { target: { value: 'Boss' } })
+    fireEvent.click(within(box).getByRole('button', { name: 'Rename' }))
+    await tick()
+
+    const after = findMate(useAssemblyStore.getState().doc!, id)!
+    expect(after.label).toBe('Boss')
+    expect(after.offset).toEqual({ x: 5 })
+    expect(undoStack().map(e => e.label)).toEqual(['Add mate', 'Edit mate', 'Rename mate'])
+
+    fireEvent.click(cardAction('Cancel'))
+    await tick()
+    const cancelled = findMate(useAssemblyStore.getState().doc!, id)!
+    expect(cancelled.label).toBe('Boss')
+    expect(cancelled.offset).toEqual({ x: 5 })
+    expect(undoStack().map(e => e.label)).toEqual(['Add mate', 'Edit mate', 'Rename mate'])
+  })
+
   it('a card rename accepted with OK stays and undoes back to the old label', async () => {
     renderEditor()
     await tick()
