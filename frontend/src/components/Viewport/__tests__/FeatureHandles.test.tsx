@@ -216,11 +216,34 @@ describe('FeatureHandles double-click edit', () => {
     act(() => seams.callbacks!.onDoubleClick(0, 0))
     const validate = useSketchUiStore.getState().pendingDialog!.validate!
 
-    // The shared value rules' words, the same as a schema field's.
-    expect(validate('abc')).toBe('Value refused: cannot evaluate "abc"')
+    // The shared value rules' words, the same as a schema field's, and the
+    // variable scope of the edited feature: no variable is defined above it.
+    expect(validate('abc')).toBe(
+      'Value refused: unknown variable "abc"; no variables are defined above this feature',
+    )
     expect(validate('0')).toBe('Value refused: must be greater than 0')
     expect(validate('-2')).toBe('Value refused: must be greater than 0')
     expect(validate('12')).toBeNull()
+  })
+
+  it('accepts a variable defined above the feature and refuses an unknown one by name', () => {
+    const width: PartFeature = {
+      id: 'W1', kind: 'variable', label: 'width', variable: { expression: 40 },
+    }
+    usePartEditorStore.setState({
+      ...DEFAULT_PART_EDITOR_DATA,
+      doc: { features: [width, extrudeFeature()] } as unknown as PartDoc,
+      solveResults: { F1: { handle: HANDLE } },
+    })
+    render(<FeatureHandles />)
+    act(() => { seams.callbacks!.onDoubleClick(0, 0) })
+    const validate = useSketchUiStore.getState().pendingDialog!.validate!
+
+    expect(validate('width')).toBeNull()
+    expect(validate('width/2')).toBeNull()
+    expect(validate('nope')).toBe(
+      'Value refused: unknown variable "nope"; defined above this feature: width',
+    )
   })
 
   it('stores a plain number as a number and an expression as the raw string', () => {

@@ -33,13 +33,16 @@ export function UnitLabel({ quantity, lengthUnit = 'mm', hidden = true }: {
  * same box width. `grow` lets the box take a row's spare width; a control sized
  * by its own input (the n-gon side count) leaves it off.
  */
-export function UnitBox({ quantity, lengthUnit = 'mm', grow = true, children }: {
+export function UnitBox({ quantity, lengthUnit = 'mm', grow = true, label: hint, children }: {
   quantity: Quantity
   lengthUnit?: LengthUnit
   grow?: boolean
+  // A document-carried unit word, for a quantity with no unit of its own (a
+  // variable's free-form hint). Display only, exactly as the tree shows it.
+  label?: string
   children: ReactNode
 }) {
-  const label = unitLabel(quantity, lengthUnit)
+  const label = hint ?? unitLabel(quantity, lengthUnit)
   const classes = ['field-unit-box']
   if (grow) classes.push('field-unit-box--grow')
   if (label !== null) classes.push('field-unit-box--with-unit')

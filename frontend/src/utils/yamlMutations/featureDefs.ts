@@ -1722,7 +1722,9 @@ export function applyAddVariable(doc: PartDoc, featureId: string, label?: string
     id: featureId,
     kind: 'variable',
     label: name,
-    variable: { expression: '0' },
+    // The numeric default VARIABLE_SCHEMA's Expression field commits, so a
+    // fresh add shows the same value the field would write on its first edit.
+    variable: { expression: 0 },
   })
 }
 

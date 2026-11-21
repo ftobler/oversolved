@@ -124,7 +124,8 @@ export function laterVariableRef(
       if (found !== null || child.type !== 'SymbolNode') return
       // `sqrt(x)` parses as a FunctionNode whose callee is a SymbolNode. That
       // symbol names a function, not a variable, so it must not win the match.
-      if (parent.type === 'FunctionNode' && (parent as FunctionNode).fn === child) return
+      // A bare `width` is the root SymbolNode and has no parent.
+      if (parent !== null && parent.type === 'FunctionNode' && (parent as FunctionNode).fn === child) return
       const name = (child as SymbolNode).name
       if (Object.hasOwn(laterVariables, name)) found = { name, index: laterVariables[name] }
     })
@@ -132,6 +133,75 @@ export function laterVariableRef(
   } catch {
     return null
   }
+}
+
+/** Why an expression did not evaluate to a finite number, in the terms the
+ *  editor's refusal sentence needs: a syntax or result-type failure, a symbol
+ *  naming a variable defined later, or the first symbol in no scope. */
+export type ExprRefusal =
+  | { kind: 'syntax' }
+  | { kind: 'later'; name: string; index: number }
+  | { kind: 'unknown'; name: string }
+
+/**
+ * Diagnose a failed expression against `context` (the variables visible here)
+ * and `laterVariables` (the ones defined below, by name and index). Null when
+ * the expression does evaluate, which is the caller's cue not to refuse.
+ *
+ * The symbol pass reuses laterVariableRef's rule: mathjs parses the text, and a
+ * FunctionNode's own callee names a function, not a variable, so `sqrt(width)`
+ * reports `width` only. Object and array literals evaluate to a non-number
+ * before any symbol is considered, so `{var}` gets the syntax sentence rather
+ * than a misleading "unknown variable var".
+ */
+export function exprRefusal(
+  expr: string,
+  context: Record<string, number> = {},
+  laterVariables: Record<string, number> = {},
+): ExprRefusal | null {
+  const trimmed = expr.trim()
+  let node: MathNode
+  try {
+    node = math.parse(trimmed)
+  } catch {
+    return { kind: 'syntax' }
+  }
+  if (node.type === 'ObjectNode' || node.type === 'ArrayNode') return { kind: 'syntax' }
+  try {
+    const result = node.evaluate(context)
+    // Units, matrices, complex, booleans and Infinity are all refusals.
+    return typeof result === 'number' && isFinite(result) ? null : { kind: 'syntax' }
+  } catch {
+    // An unknown symbol throws; the symbol pass below names it.
+  }
+  const unknown: string[] = []
+  let laterName: string | null = null
+  let laterIndex = -1
+  node.traverse((child, _path, parent) => {
+    if (child.type !== 'SymbolNode') return
+    // A bare `width` is the root SymbolNode and has no parent.
+    if (parent !== null && parent.type === 'FunctionNode' && (parent as FunctionNode).fn === child) return
+    const name = (child as SymbolNode).name
+    if (Object.hasOwn(context, name)) return
+    if (Object.hasOwn(laterVariables, name)) {
+      if (laterName === null) {
+        laterName = name
+        laterIndex = laterVariables[name]
+      }
+      return
+    }
+    // `pi`, `e`, `i` and the other builtins are mathjs's, not the document's.
+    if (Object.hasOwn(math, name)) return
+    if (!unknown.includes(name)) unknown.push(name)
+  })
+  // An unknown name wins over a later one: a typo left in the expression would
+  // still fail after the user moved the later variable up, so naming the typo
+  // first is the one fix that always helps.
+  if (unknown.length > 0) return { kind: 'unknown', name: unknown[0] }
+  if (laterName !== null) return { kind: 'later', name: laterName, index: laterIndex }
+  // A throw with no unresolved symbol is a runtime failure (a bad function
+  // argument, say): the syntax sentence is the honest one.
+  return { kind: 'syntax' }
 }
 
 /** Evaluate the expression-capable fields of a feature's sub-dict in place.

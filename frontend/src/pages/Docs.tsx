@@ -9,6 +9,7 @@ import '@/pages/Docs.css'
 // material and every visitor is a guest.
 const DOCS_PAGES = [
   { to: '/docs/registry', label: 'Registry' },
+  { to: '/docs/variables', label: 'Variables' },
   { to: '/docs/licenses', label: 'Licenses' },
   { to: '/docs/crash-reports', label: 'Crash reports' },
 ] as const

@@ -12,13 +12,22 @@ import { UnitBox } from './UnitLabel'
 interface ExpressionInputProps {
   value: string | number  // raw stored value (number or expression string)
   onChange: (val: string | number) => void
-  context?: Record<string, number>  // variable scope (named dimensions, params)
+  // Variable scope (named dimensions, params). Undefined means the host has no
+  // document log to read: the refusal then keeps the plain "cannot evaluate"
+  // sentence instead of claiming which names are above the feature.
+  context?: Record<string, number>
+  // The variables defined below this one, so a forward reference is named as
+  // such instead of reading as an unknown name.
+  laterVariables?: Record<string, number>
   // Rule on the evaluated result: null accepts, a string is the refusal reason.
   validate?: (v: number) => string | null
   // What the value measures; the unit is drawn inside the box and said out
   // loud in the accessible name. A ratio (`none`) shows neither.
   quantity?: Quantity
   lengthUnit?: LengthUnit
+  // A document-carried unit word (a variable's "mm" hint), for a quantity that
+  // has no unit of its own.
+  unitHint?: string
   disabled?: boolean
   ariaLabel?: string
 }
@@ -36,7 +45,8 @@ interface ExpressionInputProps {
  *  "must be greater than 0" are told apart instead of both reading as one red
  *  border. */
 export function ExpressionInput({
-  value, onChange, context = {}, validate, quantity = 'none', lengthUnit = 'mm', disabled, ariaLabel,
+  value, onChange, context, laterVariables, validate, quantity = 'none', lengthUnit = 'mm',
+  unitHint, disabled, ariaLabel,
 }: ExpressionInputProps) {
   // null = idle (mirror external value); string = actively editing.
   const [draft, setDraft] = useState<string | null>(null)
@@ -59,7 +69,7 @@ export function ExpressionInput({
   const result = evalExpr(trimmed, context)
   // An empty box is unfinished input, not a refusal: it simply does not commit.
   const reason = trimmed === '' ? null
-    : isNaN(result) ? cannotEvaluate(trimmed)
+    : isNaN(result) ? cannotEvaluate(trimmed, context, laterVariables)
     : validate ? validate(result) : null
   const valid = !isNaN(result) && reason === null
   const isExpression = trimmed !== '' && !PLAIN_NUMBER.test(trimmed)
@@ -75,7 +85,7 @@ export function ExpressionInput({
     <>
       {/* The box carries the unit in its own padding, so the eval readout and a
           refusal line still sit outside it. */}
-      <UnitBox quantity={quantity} lengthUnit={lengthUnit}>
+      <UnitBox quantity={quantity} lengthUnit={lengthUnit} label={unitHint}>
         <input
           ref={wheelRef}
           type="text"

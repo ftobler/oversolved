@@ -140,6 +140,24 @@ describe('golden documents load and migrate', () => {
     })
   })
 
+  it('accepts a variable expression stored as an old string and as a number', () => {
+    // The Expression box was plain text before it was a number field, so an old
+    // document stores "5"; the number field stores 5. Both are the same math.
+    const result = loadPartDoc({
+      version: CURRENT_DOC_VERSION,
+      kind: 'part',
+      features: [
+        { id: 'a', kind: 'variable', label: 'a', variable: { expression: '5' } },
+        { id: 'b', kind: 'variable', label: 'b', variable: { expression: 5 } },
+      ],
+    }, { name: 'variable expressions' })
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+    const features = result.doc.features as Array<{ variable: { expression: unknown } }>
+    expect(features[0].variable.expression).toBe('5')
+    expect(features[1].variable.expression).toBe(5)
+  })
+
   it('keeps a stored Delete Part label instead of relabelling it', () => {
     // `Delete Part` was the default label new documents carried before the UI
     // said part. It is user text stored in the document, so the loader passes

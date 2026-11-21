@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { validateNumberFieldValue } from './numberFieldValidate'
-import { positive, nonNegative, finite, between, expressionRefusal } from '@/utils/core/valueRules'
+import { positive, nonNegative, finite, between, expressionRefusal, cannotEvaluate } from '@/utils/core/valueRules'
+import { exprRefusal } from '@/kernel/evalExpr'
 import type { NumberFieldDef } from './fieldTypes'
 
 function field(over: Partial<NumberFieldDef> = {}): NumberFieldDef {
@@ -69,8 +70,48 @@ describe('shared value rules', () => {
 
   it('expressionRefusal evaluates first, then applies the rule', () => {
     expect(expressionRefusal('2+3', positive)).toBeNull()
+    // A caller with no variable scope keeps the plain sentence.
     expect(expressionRefusal(' 2+/ ', positive)).toBe('cannot evaluate "2+/"')
     expect(expressionRefusal('1-4', positive)).toBe('must be greater than 0')
     expect(expressionRefusal('w*2', positive, { w: 3 })).toBeNull()
+  })
+})
+
+describe('cannotEvaluate with a variable scope', () => {
+  it('names the unknown variable and the ones the field can use', () => {
+    expect(cannotEvaluate('foo*2', { width: 40, height: 10 }))
+      .toBe('unknown variable "foo"; defined above this feature: width, height')
+  })
+
+  it('says so when no variable is defined above the feature', () => {
+    expect(cannotEvaluate('width', {}))
+      .toBe('unknown variable "width"; no variables are defined above this feature')
+  })
+
+  it('names a forward reference as defined below, not unknown', () => {
+    expect(exprRefusal('width*2', {}, { width: 3 })).toEqual({ kind: 'later', name: 'width', index: 3 })
+    expect(cannotEvaluate('width*2', {}, { width: 3 }))
+      .toBe('variable "width" is defined below this feature; move it above this one')
+  })
+
+  it('names the unknown variable when a forward reference sits beside it', () => {
+    expect(cannotEvaluate('width + tpyo', { height: 5 }, { width: 3 }))
+      .toBe('unknown variable "tpyo"; defined above this feature: height')
+  })
+
+  it('gives a bare-name hint for a parse error or a non-number result', () => {
+    const hint = 'write a variable by its bare name, e.g. width*2'
+    expect(cannotEvaluate('#var', {})).toBe(`cannot evaluate "#var": ${hint}`)
+    expect(cannotEvaluate('{var}', {})).toBe(`cannot evaluate "{var}": ${hint}`)
+  })
+
+  it('reads $var as an unknown variable name, as the evaluator does', () => {
+    expect(cannotEvaluate('$var', {})).toBe('unknown variable "$var"; no variables are defined above this feature')
+  })
+
+  it('leaves mathjs constants alone', () => {
+    // Not reachable through a valid field (pi evaluates), but the symbol scan
+    // must not call a builtin unknown if the evaluator ever refuses it.
+    expect(cannotEvaluate('pi*2', {})).toBe('cannot evaluate "pi*2"')
   })
 })

@@ -127,6 +127,25 @@ describe('Part - Cancel on a just-added feature reverts the add', () => {
     expect(userFeatures().filter(f => f.kind === 'extrude')).toHaveLength(1)
   })
 
+  it('Add Variable opens the standard expression field seeded with the numeric default', async () => {
+    await addFeatureAndWait('Add Variable')
+    const added = userFeatures()[0]
+    if (added.kind !== 'variable') throw new Error('expected a variable feature')
+    // The add seeds what the number field would commit: a plain number, not the
+    // old text "0".
+    expect(added.variable.expression).toBe(0)
+
+    // The field is a real expression box, so the wheel steps it through the
+    // normal mutation path. A plain TextField would leave the panel to scroll.
+    const input = screen.getByDisplayValue('0')
+    fireEvent.wheel(input, { deltaY: -100 })
+    await waitFor(() => {
+      const current = userFeatures()[0]
+      if (current.kind !== 'variable') throw new Error('expected a variable feature')
+      expect(current.variable.expression).toBe(1)
+    })
+  })
+
   it('Ctrl+Z while a just-added extrude editor is open removes the just-added feature', async () => {
     renderPart()
     await screen.findByTitle('Feature mode')

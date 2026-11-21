@@ -19,11 +19,13 @@ function refusalOf(run: () => void): MutationRefusal {
 }
 
 describe('applyAddVariable', () => {
-  it('creates a variable feature with default expression and label', () => {
+  it('creates a variable feature with the numeric default expression and label', () => {
+    // The number field stores a plain number; seeding the old text "0" would
+    // make a fresh add differ from the field's own first commit.
     const doc = emptyDoc()
     applyAddVariable(doc, 'v1')
     expect(doc.features).toEqual([
-      { id: 'v1', kind: 'variable', label: 'var', variable: { expression: '0' } },
+      { id: 'v1', kind: 'variable', label: 'var', variable: { expression: 0 } },
     ])
   })
 

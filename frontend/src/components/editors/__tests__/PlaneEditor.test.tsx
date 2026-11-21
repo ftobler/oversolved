@@ -7,7 +7,7 @@
  * See feature/chip-selection-consistency.md.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { act, fireEvent, render } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import { PlaneEditor } from '@/components/editors/PlaneEditor'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import type { PartFeature, PlaneFeature, PlaneDef, Mutation } from '@/types/cad'
@@ -39,6 +39,52 @@ function renderEditor(onMutation: (m: Mutation) => void, definition: PlaneDef) {
     />,
   )
 }
+
+describe('PlaneEditor expression scope', () => {
+  it('accepts a variable defined above the plane in the offset', () => {
+    const onMutation = vi.fn()
+    render(
+      <PlaneEditor
+        feature={plane}
+        featureDef={{ ...plane, definition: { mode: 'offset' } }}
+        onMutation={onMutation}
+        features={[sketch, plane]}
+        partLabels={{}}
+        variables={{ width: 40 }}
+      />,
+    )
+    const offset = screen.getByRole('textbox', { name: 'Offset, millimetres' })
+    fireEvent.focus(offset)
+    fireEvent.change(offset, { target: { value: 'width' } })
+    expect(screen.getByText('= 40')).toBeInTheDocument()
+    fireEvent.blur(offset)
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'set_plane_definition_field', featureId: 'pl1', field: 'offset', value: 'width',
+    })
+  })
+
+  it('refuses an unknown variable by name in the offset', () => {
+    const onMutation = vi.fn()
+    render(
+      <PlaneEditor
+        feature={plane}
+        featureDef={{ ...plane, definition: { mode: 'offset' } }}
+        onMutation={onMutation}
+        features={[sketch, plane]}
+        partLabels={{}}
+        variables={{}}
+      />,
+    )
+    const offset = screen.getByRole('textbox', { name: 'Offset, millimetres' })
+    fireEvent.focus(offset)
+    fireEvent.change(offset, { target: { value: 'nope' } })
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'unknown variable "nope"; no variables are defined above this feature',
+    )
+    fireEvent.blur(offset)
+    expect(onMutation).not.toHaveBeenCalled()
+  })
+})
 
 describe('PlaneEditor pick chips', () => {
   it('mirrors the plane query (not its label) into the selection', () => {

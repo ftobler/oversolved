@@ -12,6 +12,8 @@ import { describe, it, expect } from 'vitest'
 import {
   oc, solveBytes, extrudeTestHarness, rectSketchSk, extrudeSpec, assertMeshBbox, vennBisectSpec,
 } from '../extrudeRealSupport'
+import { applySetExtrudeField, applySetVariableField } from '@/utils/yamlMutations'
+import type { PartDoc } from '@/types/cad'
 
 describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): distance expressions and subdivided regions', () => {
   const h = extrudeTestHarness()
@@ -73,6 +75,29 @@ describe.skipIf(!oc || !solveBytes)('extrude feature (real OCC + Rust solver): d
     const botFlats = fd.filter((f) => f.surface_type === 'flatface' && Math.abs(f.centroid[2]) < 0.1)
     expect(topFlats).toHaveLength(1)
     expect(botFlats).toHaveLength(1)
+  })
+
+  it('keeps a variable-referencing distance parametric across a variable edit', () => {
+    // The reported flow, end to end: the editor commits the expression string,
+    // the solve resolves it, and editing the variable re-resolves the same
+    // stored string on the next build.
+    const doc = {
+      features: [
+        { id: 'w', kind: 'variable', label: 'width', variable: { expression: 40 } },
+        rectSketchSk('sk1', 10, 8),
+        extrudeSpec('sk1', 'ex1', {}),
+      ],
+    } as unknown as PartDoc
+    applySetExtrudeField(doc, 'ex1', 'distance', 'width')
+
+    const first = h.run(doc as unknown as Record<string, unknown>)
+    expect(h.res(first, 'ex1').status).toBe('ok')
+    assertMeshBbox(h.part(first, 'body_ex1').mesh as Record<string, unknown>, [0, 10], [0, 8], [0, 40])
+
+    applySetVariableField(doc, 'w', 'expression', 25)
+    const second = h.run(doc as unknown as Record<string, unknown>)
+    expect(h.res(second, 'ex1').status).toBe('ok')
+    assertMeshBbox(h.part(second, 'body_ex1').mesh as Record<string, unknown>, [0, 10], [0, 8], [0, 25])
   })
 
   it('invalid distance expression surfaces as a feature exception', () => {
