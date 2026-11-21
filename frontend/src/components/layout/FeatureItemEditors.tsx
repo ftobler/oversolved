@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import type { LengthUnit, PartFeature, Mutation } from '@/types/cad'
 import { FeatureEditor } from '@/components/editors/FeatureEditor'
 import { EDITOR_SCHEMAS } from '@/components/editors/featureEditorSchemas'
@@ -8,8 +9,6 @@ import { formatBytes } from '@/utils/formatBytes'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { lengthUnitOf } from '@/utils/lengthUnit'
 import { variableScopeAt, laterVariablesAt } from '@/kernel/features/variable'
-import { StatusMessage } from '@/components/shared/StatusMessage'
-import { NO_MARK, type StatusMark } from '@/utils/core/statusMark'
 
 interface FeatureItemEditorsProps {
   feature: PartFeature
@@ -20,8 +19,6 @@ interface FeatureItemEditorsProps {
   onMutationBatch?: (mutations: Mutation[]) => void
   features: PartFeature[]
   partLabels: Record<string, string>
-  // The feature's mark from the last solve, the same one its tree row shows.
-  status?: StatusMark
   // The feature's last solve result, for an editor row that shows a solved value.
   solved?: unknown
 }
@@ -44,27 +41,38 @@ function ImportStepFileRow({ fileId }: { fileId: string | undefined }) {
 }
 
 /**
- * The open editor of the feature being edited, headed by the feature's status
- * line. The line is drawn here, once, for every kind (schema editors, plane,
- * sketch plane, STEP import), so no editor carries its own failure display: a
- * failed build reads the same in every dialog and matches the tree row.
+ * The open editor of the feature being edited, for every kind (schema editors,
+ * plane, sketch plane, STEP import). The feature's own status mark is not part
+ * of the form: its host (FeatureEditPanel) draws it as a separate card under
+ * the panel, so no editor carries its own failure display and a mark reads the
+ * same way in every dialog and in the tree row.
  */
-export function FeatureItemEditors({ status = NO_MARK, ...props }: FeatureItemEditorsProps) {
+export function FeatureItemEditors(props: FeatureItemEditorsProps) {
   if (props.editingFeatureId !== props.feature.id) return null
-  // The same positional fold the solve uses, read once per render: a number
-  // field resolves only the variables above its own row. A feature being added
-  // is already in the list at its insertion index, so it needs no special case.
-  const index = props.features.findIndex(f => f.id === props.feature.id)
-  const variables = index < 0 ? {} : variableScopeAt(props.features, index)
-  const laterVariables = index < 0 ? {} : laterVariablesAt(props.features, index, variables)
-  const editor = editorFor(props, variables, laterVariables)
-  if (editor === null) return null
-  return (
-    <>
-      <StatusMessage mark={status} />
-      {editor}
-    </>
+  // The scope folds parse every preceding variable, so the child owns them:
+  // this component returns early, and a hook cannot sit after that.
+  return <ScopedEditor {...props} />
+}
+
+/**
+ * The editor body with its variable scope. The fold is the same positional one
+ * the solve uses: a number field resolves only the variables above its own
+ * row. A feature being added is already in the list at its insertion index, so
+ * it needs no special case. Memoized on the feature list and index so typing in
+ * a field does not re-parse the log on every keystroke.
+ */
+function ScopedEditor(props: FeatureItemEditorsProps) {
+  const { feature, features } = props
+  const index = features.findIndex(f => f.id === feature.id)
+  const variables = useMemo(
+    () => (index < 0 ? {} : variableScopeAt(features, index)),
+    [features, index],
   )
+  const laterVariables = useMemo(
+    () => (index < 0 ? {} : laterVariablesAt(features, index, variables)),
+    [features, index, variables],
+  )
+  return editorFor(props, variables, laterVariables)
 }
 
 /**
@@ -91,7 +99,7 @@ function editorFor({
   features,
   partLabels,
   solved,
-}: Omit<FeatureItemEditorsProps, 'status'>, variables: Record<string, number>, laterVariables: Record<string, number>) {
+}: FeatureItemEditorsProps, variables: Record<string, number>, laterVariables: Record<string, number>) {
   const kind = feature.kind
 
   if (kind === 'plane' && !BUILTIN_FEATURE_IDS.has(feature.id)) {

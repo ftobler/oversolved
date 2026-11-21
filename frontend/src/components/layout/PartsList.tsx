@@ -33,7 +33,7 @@ export function PartsList() {
 
   return (
     <div className="sidebar-bottom glass-panel">
-      <div className="sidebar-header">Parts</div>
+      <div className="sidebar-header"><span>Parts</span></div>
       <ul className="parts-list">
         {doc && Object.keys(parts || {}).length === 0 ? (
           <li className="empty">No parts</li>

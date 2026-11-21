@@ -11,8 +11,9 @@
  *     an operation that changed nothing).
  * Every surface renders a mark the same way: the tree row tints its name by
  * level and shows the message on hover, and the open editor shows the same
- * message as a line (components/shared/StatusMessage.tsx). No consumer invents
- * its own severity or wording.
+ * message in its own status card under the panel
+ * (components/shared/StatusPanel.tsx). No consumer invents its own severity or
+ * wording.
  */
 export type StatusLevel = 'error' | 'warning'
 

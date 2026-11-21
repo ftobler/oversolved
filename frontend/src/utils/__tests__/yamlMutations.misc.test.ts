@@ -195,6 +195,12 @@ describe('applyRenamePart', () => {
     // The absent map is created holding exactly the renamed body.
     expect(doc.part_style).toEqual({ body_ex1: { name: 'Name' } })
   })
+
+  it('accepts a hyphen, the audit pin for the non-variable rename', () => {
+    const doc: PartDoc = { version: 1, kind: 'part' }
+    applyRenamePart(doc, 'body_ex1', 'my-part')
+    expect(doc.part_style!.body_ex1.name).toBe('my-part')
+  })
 })
 
 describe('applySetPartColor', () => {

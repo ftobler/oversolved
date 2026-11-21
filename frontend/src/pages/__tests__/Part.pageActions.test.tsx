@@ -34,6 +34,9 @@ const F = vi.hoisted(() => {
       // frame, which no builtin-id lookup can know.
       { id: 'sketch2', kind: 'sketch', label: 'Sketch 2', plane: '@plane1',
         constraints: [{ id: 'proj_face', kind: 'projection', source: '?face', members: { 'u|e_aaaa': 'proj_face.aaaaaaaa' } }] },
+      // The reported rename flow: a variable's label is its expression name, so
+      // the rename dialog owns the identifier rule.
+      { id: 'var1', kind: 'variable', label: 'width', variable: { expression: '10' } },
     ],
     part_style: { 'body-1': { name: 'Body One', color: '#FF0000' } },
   }
@@ -348,6 +351,42 @@ describe('Part page actions', () => {
     fireEvent.click(within(box).getByRole('button', { name: 'Rename' }))
 
     expect(h.handleMutation).toHaveBeenCalledWith({ type: 'rename_feature', featureId: 'extrude1', label: 'Base Extrude' })
+  })
+
+  it('a variable rename names the rule, holds OK and accepts the suggested name', () => {
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('feature-ctx-var1'))
+    fireEvent.click(menuItem('Rename'))
+
+    const box = document.querySelector('.dialog-component') as HTMLElement
+    const input = within(box).getByRole('textbox')
+    expect(within(box).getByText('Rename Variable')).toBeInTheDocument()
+    expect(input).toHaveValue('width')
+
+    fireEvent.change(input, { target: { value: 'my-var' } })
+    expect(within(box).getByText(/is not a valid variable name/)).toBeInTheDocument()
+    expect(within(box).getByRole('button', { name: 'Rename' })).toBeDisabled()
+
+    fireEvent.change(input, { target: { value: 'my_var' } })
+    expect(within(box).queryByText(/is not a valid variable name/)).toBeNull()
+    fireEvent.click(within(box).getByRole('button', { name: 'Rename' }))
+
+    expect(h.handleMutation).toHaveBeenCalledWith({ type: 'rename_feature', featureId: 'var1', label: 'my_var' })
+  })
+
+  it('keeps the rename dialog open when the applier refuses the confirm', () => {
+    h.handleMutation.mockReturnValueOnce({ ok: false, code: 'refused', message: 'refused by the doc' })
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('feature-ctx-extrude1'))
+    fireEvent.click(menuItem('Rename'))
+    const box = document.querySelector('.dialog-component') as HTMLElement
+    fireEvent.change(within(box).getByRole('textbox'), { target: { value: 'Base Extrude' } })
+    fireEvent.click(within(box).getByRole('button', { name: 'Rename' }))
+
+    expect(h.handleMutation).toHaveBeenCalledWith({ type: 'rename_feature', featureId: 'extrude1', label: 'Base Extrude' })
+    expect(within(box).getByRole('textbox')).toBeInTheDocument()
   })
 
   it('offers the cleanup only with flagged content and removes it in one mutation', () => {
