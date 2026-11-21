@@ -682,6 +682,30 @@ describe('a hole is a pattern and mirror source', () => {
   })
 })
 
+// The 2026-11-21 practice sweep read "`merge` fuses the copy into it, otherwise
+// the copy is a new part" as "an absent flag makes a new part", so it expected
+// a second part. Both flags default to true, so the add row and the shared note
+// say so.
+describe('body mirror flags state their defaults', () => {
+  it('names the true default on the keep_original and merge rows', () => {
+    const add = mutationInfoOf('add_mirror')
+    expect(add.fields.keep_original.note).toContain('defaults to true')
+    expect(add.fields.keep_original.note).toContain('false replaces the source in place')
+    expect(add.fields.merge.note).toContain('defaults to true')
+    expect(add.fields.merge.note).toContain('false makes the copy its own part')
+  })
+
+  it('states both defaults and the merge-false part on every row sharing the note', () => {
+    for (const type of ['add_mirror', 'set_mirror_field', 'add_mirror_source'] as const) {
+      const note = mutationInfoOf(type).note!
+      expect(note, type).toContain('`keep_original` and `merge` both default to true')
+      expect(note, type).toContain('keeps the source part and fuses the copy into it')
+      expect(note, type).toContain('`merge: false` mints the copy as its own part `body_<mirrorId>`')
+      expect(note, type).not.toContain('otherwise the copy is a new part')
+    }
+  })
+})
+
 describe('angle value is the displayed corner', () => {
   // The bug-1 practice finding: a headless author typed the 45 degree wall they
   // saw and got the direction-vector supplement, so the solver swung the wall.

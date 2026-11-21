@@ -1154,9 +1154,11 @@ banner on stdout, so a client config must use the direct node invocation.
   `keep_original` and `merge`, so one call replaces the add plus one setter per
   field. `add_mirror_source` / `remove_mirror_source` are the feature mirror's
   source chip pair; `keep_original` and `merge` belong to the body subject and
-  are refused on a feature mirror. `add_pattern` is the retired single-kind row,
-  kept one release: the drive translates it through the loader's version-9 split
-  and the reply carries a deprecation note.
+  are refused on a feature mirror. Both default to true, so an add carrying
+  neither keeps the source and fuses the copy into it, and `merge: false` mints
+  the copy as its own `body_<mirrorId>` part. `add_pattern` is the retired
+  single-kind row, kept one release: the drive translates it through the
+  loader's version-9 split and the reply carries a deprecation note.
 - `add_linear_pattern` with `subject: body` (the default) copies `source_body`
   along one direction, or along two when `second_direction: true` (the retired
   rectangular mode: direction 1 is the column, direction 2 the row).

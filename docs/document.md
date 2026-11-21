@@ -969,11 +969,15 @@ translates and ignores every normal.
     subject: body                   # body (default) | feature
     body: "@body_ex1"               # body subject: required
     plane: "@builtin_plane_front"   # query; required
-    keep_original: true             # false replaces the source in place
-    merge: true                     # fuse mirror into source when keep_original
+    keep_original: true             # default true; false replaces the source in place
+    merge: true                     # default true; false makes the copy its own part
 ```
 
-A `subject: body` mirror reflects the whole body. A `subject: feature` mirror
+A `subject: body` mirror reflects the whole body. `keep_original` and `merge`
+both default to true, so a mirror that carries neither flag keeps the source
+and fuses the copy into it; `merge: false` mints the copy as its own part
+`body_<mirrorId>`. A merged copy that does not reach the source resplits into
+separate parts, because one part holds one solid. A `subject: feature` mirror
 instead reapplies one or more earlier extrudes, revolves, sweeps, wraps or
 holes, reflected across the plane, inside the body each source shaped:
 
