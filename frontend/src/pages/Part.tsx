@@ -1100,7 +1100,13 @@ export default function Part() {
   }, [docRef, solveResults])
 
   useEffect(() => {
-    setSketchCallback('onMutation', handleMutation)
+    // The feature-handle drag pumps live field mutations and waits on the
+    // solve each one requested before sending the next, so the sink hands back
+    // a promise that settles with it. Every other caller ignores the return.
+    setSketchCallback('onMutation', (m) => {
+      handleMutation(m)
+      return session.idle()
+    })
     setSketchCallback('onMutationBatch', commitMutationGroup)
     setSketchCallback('beginBrepProjection', beginBrepProjection)
     setSketchCallback('cancelBrepProjection', cancelBrepProjection)
@@ -1135,6 +1141,10 @@ export default function Part() {
     // The constraint command projects a picked body edge by its curve kind; the
     // dimension tool reads the same fact from the hover instead.
     setSketchCallback('resolveEdgeKind', (query: string) => findEdgeKindForQuery(query) ?? null)
+    // The feature arrow asks this before restoring a field on unmount: writing
+    // into a session OK or Cancel already closed would be a second undo entry
+    // or a dirty rewound document.
+    setSketchCallback('isEditSessionOpen', () => session.transactions().some(txn => txn.kind === 'edit'))
     // The delete action's freeze route reads the live document and the solved
     // member rows through this same registration. It must live here with the
     // ports the teardown clears: a separate effect would not re-run when this
@@ -1145,7 +1155,7 @@ export default function Part() {
     return () => {
       clearSketchCallbacks()
     }
-  }, [handleMutation, commitMutationGroup, beginBrepProjection, cancelBrepProjection, handleRebuild, handleExitSketch, checkRedundantAdd, showMessage, solveResults, docRef])
+  }, [handleMutation, commitMutationGroup, beginBrepProjection, cancelBrepProjection, handleRebuild, handleExitSketch, checkRedundantAdd, showMessage, solveResults, docRef, session])
 
   // The sketch editor store is module-level and survives a Part unmount, so a
   // remounted Part (WorkspacePage keys it by entry) would otherwise inherit the

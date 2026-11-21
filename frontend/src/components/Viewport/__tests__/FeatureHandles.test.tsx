@@ -84,6 +84,21 @@ const HANDLE: FeatureHandleData = {
   min: 0.1,
 }
 
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void
+  const promise = new Promise<void>(r => { resolve = r })
+  return { promise, resolve }
+}
+
+/** Let a settled mutation's pump continuation run. */
+async function settleGate(gate: { resolve: () => void }): Promise<void> {
+  await act(async () => {
+    gate.resolve()
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+}
+
 function extrudeFeature(overrides: Partial<ExtrudeFeatureDef> = {}): PartFeature {
   return {
     id: 'F1',
@@ -112,6 +127,7 @@ beforeEach(() => {
   seams.camera.position.set(20, 20, 100)
   seams.camera.updateProjectionMatrix()
   setSketchCallback('onMutation', null)
+  setSketchCallback('isEditSessionOpen', null)
   useEditorState.setState({
     drag: null,
     dragPending: null,
@@ -394,5 +410,340 @@ describe('FeatureHandles drag-to-commit gesture', () => {
 
     expect(onMutation).not.toHaveBeenCalled()
     expect(useSketchEditorStore.getState().drag).toBeNull()
+  })
+})
+
+/** Pointer moves at the queued axis parameters (fallback: past the axis, no move). */
+function moveAt(param: number) {
+  seams.closestParam.mockReturnValueOnce(param)
+  act(() => {
+    window.dispatchEvent(new MouseEvent('pointermove', { clientX: 300, clientY: 200 }))
+  })
+}
+
+function dispatchedValues(onMutation: ReturnType<typeof vi.fn>): unknown[] {
+  return onMutation.mock.calls.map(call => (call[0] as { value: unknown }).value)
+}
+
+/** Let a pump whose send resolved synchronously issue its next value. */
+async function flushPump(): Promise<void> {
+  await act(async () => {
+    await Promise.resolve()
+    await Promise.resolve()
+  })
+}
+
+describe('FeatureHandles live rebuild while dragging', () => {
+  beforeEach(() => {
+    seams.closestParam.mockReturnValue(null)
+  })
+
+  it('keeps one solve in flight and sends only the newest value', async () => {
+    const gates: Array<ReturnType<typeof deferred>> = []
+    const onMutation = vi.fn(() => {
+      const gate = deferred()
+      gates.push(gate)
+      return gate.promise
+    })
+    setSketchCallback('onMutation', onMutation)
+
+    render(<FeatureHandles />)
+    act(() => seams.callbacks!.onPointerDown(100, 200))
+    // Activation at the start value: the drag is armed but nothing has moved.
+    seams.closestParam.mockReturnValueOnce(10).mockReturnValueOnce(10)
+    act(() => {
+      window.dispatchEvent(new MouseEvent('pointermove', { clientX: 300, clientY: 200 }))
+    })
+    expect(onMutation).not.toHaveBeenCalled()
+
+    // 10.2 is sent; 10.7 and 11.3 only replace the waiting value.
+    moveAt(15.2)
+    moveAt(15.7)
+    moveAt(16.3)
+    expect(dispatchedValues(onMutation)).toEqual([10.2])
+
+    await settleGate(gates[0])
+    expect(dispatchedValues(onMutation)).toEqual([10.2, 11.3])
+
+    // Release at 12: the gesture is over, so the final value is sent at once
+    // and lands inside the still-open edit session.
+    moveAt(17)
+    act(() => { window.dispatchEvent(new MouseEvent('pointerup')) })
+    expect(dispatchedValues(onMutation)).toEqual([10.2, 11.3, 12])
+    expect(useSketchEditorStore.getState().drag).toBeNull()
+  })
+
+  it('keeps the preview following the drag back to the start', async () => {
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    // A stored value can carry more decimals than the 0.01 commit step; the
+    // restore must be exact, not the rounded step.
+    installFeature(extrudeFeature({ distance: 5.125 }))
+    usePartEditorStore.setState({ solveResults: { F1: { handle: { ...HANDLE, value: 5.125 } } } })
+
+    render(<FeatureHandles />)
+    act(() => seams.callbacks!.onPointerDown(100, 200))
+    seams.closestParam.mockReturnValueOnce(10).mockReturnValueOnce(10)
+    act(() => {
+      window.dispatchEvent(new MouseEvent('pointermove', { clientX: 300, clientY: 200 }))
+    })
+    moveAt(18)  // 13.125, committed as its rounded step
+    expect(dispatchedValues(onMutation)).toEqual([13.13])
+    await flushPump()
+
+    // The trip back offers the start step like any other value: the preview
+    // must follow the arrow, not stop at the last step it happened to send.
+    moveAt(10)  // 5.125, rounds to the start step
+    expect(dispatchedValues(onMutation)).toEqual([13.13, 5.13])
+    await flushPump()
+
+    // The release restores the authored value exactly, not its step.
+    act(() => { window.dispatchEvent(new MouseEvent('pointerup')) })
+    expect(dispatchedValues(onMutation)).toEqual([13.13, 5.13, 5.125])
+  })
+
+  it('restores a stored plain-number string as a string', async () => {
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    // The handle evaluates "5" to 5 for the drag, but putting it back as the
+    // number 5 would dirty the document with a spelling change.
+    installFeature(extrudeFeature({ distance: '5' }))
+
+    render(<FeatureHandles />)
+    act(() => seams.callbacks!.onPointerDown(100, 200))
+    seams.closestParam.mockReturnValueOnce(10).mockReturnValueOnce(10)
+    act(() => {
+      window.dispatchEvent(new MouseEvent('pointermove', { clientX: 300, clientY: 200 }))
+    })
+    moveAt(18)  // 13
+    await flushPump()
+    moveAt(10)  // back to the start
+    await flushPump()
+
+    act(() => { window.dispatchEvent(new MouseEvent('pointerup')) })
+    expect(dispatchedValues(onMutation)).toEqual([13, 5, '5'])
+  })
+
+  it('dispatches nothing for a move under the click threshold', () => {
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    seams.closestParam.mockReturnValue(10)
+
+    render(<FeatureHandles />)
+    act(() => seams.callbacks!.onPointerDown(100, 200))
+    act(() => {
+      window.dispatchEvent(new MouseEvent('pointermove', { clientX: 101, clientY: 200 }))
+    })
+    expect(useSketchEditorStore.getState().drag).toBeNull()
+    expect(onMutation).not.toHaveBeenCalled()
+  })
+})
+
+describe('FeatureHandles drag survives its own solves', () => {
+  it('keeps the arrow and the gesture alive while the solve result is missing', async () => {
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    seams.closestParam.mockReturnValue(null)
+
+    const { container, unmount } = render(<FeatureHandles />)
+    act(() => seams.callbacks!.onPointerDown(100, 200))
+    seams.closestParam.mockReturnValueOnce(10).mockReturnValueOnce(10)
+    act(() => {
+      window.dispatchEvent(new MouseEvent('pointermove', { clientX: 300, clientY: 200 }))
+    })
+    moveAt(12)  // 7
+    expect(onMutation).toHaveBeenCalledTimes(1)
+    await flushPump()
+
+    // A failing live solve leaves no handle for the edited feature.
+    act(() => {
+      usePartEditorStore.setState({ solveResults: { F1: {} } })
+    })
+    expect(seams.callbacks).not.toBeNull()
+    expect(container.firstChild).not.toBeNull()
+    expect(useSketchEditorStore.getState().drag).not.toBeNull()
+
+    moveAt(13)  // 8, still priced from the held handle
+    expect(dispatchedValues(onMutation)).toEqual([7, 8])
+    await flushPump()
+
+    // The next good solve installs a fresh handle and the gesture continues.
+    const fresh: FeatureHandleData = { ...HANDLE, value: 8, anchor: [3, 0, 0] }
+    act(() => {
+      usePartEditorStore.setState({ solveResults: { F1: { handle: fresh } } })
+    })
+    expect(seams.callbacks).not.toBeNull()
+    moveAt(14)  // 9
+    expect(dispatchedValues(onMutation)).toEqual([7, 8, 9])
+
+    unmount()
+  })
+})
+
+describe('FeatureHandles ends a lost pointer', () => {
+  it('restores the authored start on unmount while the edit session is open', async () => {
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    setSketchCallback('isEditSessionOpen', () => true)
+    seams.closestParam.mockReturnValue(null)
+
+    const { unmount } = render(<FeatureHandles />)
+    act(() => seams.callbacks!.onPointerDown(100, 200))
+    seams.closestParam.mockReturnValueOnce(10).mockReturnValueOnce(10)
+    act(() => {
+      window.dispatchEvent(new MouseEvent('pointermove', { clientX: 300, clientY: 200 }))
+    })
+    moveAt(12)  // 7 reaches the document
+    await flushPump()
+
+    unmount()
+    expect(dispatchedValues(onMutation)).toEqual([7, 5])
+    expect(useSketchEditorStore.getState().drag).toBeNull()
+    expect(useSketchEditorStore.getState().dragPending).toBeNull()
+  })
+
+  it('drops the drag without a restore once the edit session closed', async () => {
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    setSketchCallback('isEditSessionOpen', () => false)
+    seams.closestParam.mockReturnValue(null)
+
+    const { unmount } = render(<FeatureHandles />)
+    act(() => seams.callbacks!.onPointerDown(100, 200))
+    seams.closestParam.mockReturnValueOnce(10).mockReturnValueOnce(10)
+    act(() => {
+      window.dispatchEvent(new MouseEvent('pointermove', { clientX: 300, clientY: 200 }))
+    })
+    moveAt(12)  // 7
+    await flushPump()
+
+    // OK or Cancel already closed the session: a restore here would be a new
+    // edit, not a rewind, so the drag is only dropped.
+    unmount()
+    expect(dispatchedValues(onMutation)).toEqual([7])
+    expect(useSketchEditorStore.getState().drag).toBeNull()
+  })
+
+  it('restores on pointercancel and stops listening for the lost pointer', () => {
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    setSketchCallback('isEditSessionOpen', () => true)
+    seams.closestParam.mockReturnValue(null)
+
+    render(<FeatureHandles />)
+    act(() => seams.callbacks!.onPointerDown(100, 200))
+    seams.closestParam.mockReturnValueOnce(10).mockReturnValueOnce(10)
+    act(() => {
+      window.dispatchEvent(new MouseEvent('pointermove', { clientX: 300, clientY: 200 }))
+    })
+    moveAt(12)  // 7
+
+    act(() => { window.dispatchEvent(new Event('pointercancel')) })
+    expect(dispatchedValues(onMutation)).toEqual([7, 5])
+    const st = useSketchEditorStore.getState()
+    expect(st.drag).toBeNull()
+    expect(st.dragPending).toBeNull()
+    expect(st.isPointerDown).toBe(false)
+
+    // The gesture is over: a stray move no longer rebuilds.
+    moveAt(13)
+    expect(dispatchedValues(onMutation)).toEqual([7, 5])
+  })
+
+  it('restores when the window loses focus mid-drag', () => {
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    setSketchCallback('isEditSessionOpen', () => true)
+    seams.closestParam.mockReturnValue(null)
+
+    render(<FeatureHandles />)
+    act(() => seams.callbacks!.onPointerDown(100, 200))
+    seams.closestParam.mockReturnValueOnce(10).mockReturnValueOnce(10)
+    act(() => {
+      window.dispatchEvent(new MouseEvent('pointermove', { clientX: 300, clientY: 200 }))
+    })
+    moveAt(12)  // 7
+
+    act(() => { window.dispatchEvent(new Event('blur')) })
+    expect(dispatchedValues(onMutation)).toEqual([7, 5])
+    expect(useSketchEditorStore.getState().drag).toBeNull()
+  })
+})
+
+describe('FeatureHandles measures travel from the solved handle', () => {
+  function grabPoint(container: HTMLElement): [number, number, number] {
+    const group = container.querySelector('group') as HTMLElement | null
+    if (!group) throw new Error('no arrow group rendered')
+    const raw = group.getAttribute('position') ?? ''
+    return raw.split(',').map(Number) as [number, number, number]
+  }
+
+  it('does not add the anchor movement a second time (extrude)', () => {
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    // Start at value 10 with the grab point at the 10 position.
+    installFeature(extrudeFeature({ distance: 10 }))
+    usePartEditorStore.setState({ solveResults: { F1: { handle: { ...HANDLE, value: 10 } } } })
+    seams.closestParam.mockReturnValue(null)
+
+    const { container } = render(<FeatureHandles />)
+    act(() => seams.callbacks!.onPointerDown(100, 200))
+    seams.closestParam.mockReturnValueOnce(0).mockReturnValueOnce(0)
+    act(() => {
+      window.dispatchEvent(new MouseEvent('pointermove', { clientX: 300, clientY: 200 }))
+    })
+    expect(grabPoint(container)[0]).toBeCloseTo(0, 6)
+
+    moveAt(5)  // 15
+    expect(grabPoint(container)[0]).toBeCloseTo(5, 6)
+    // A linear handle keeps its world-sized tail during the drag: the tail
+    // mesh plus the two head meshes.
+    expect(container.querySelectorAll('mesh')).toHaveLength(3)
+
+    // The live solve lands at 15 with the grab point already at 15.
+    const solved: FeatureHandleData = { ...HANDLE, value: 15, anchor: [5, 0, 0] }
+    act(() => {
+      usePartEditorStore.setState({ solveResults: { F1: { handle: solved } } })
+    })
+    expect(grabPoint(container)[0]).toBeCloseTo(5, 6)
+    expect(container.textContent).toContain('15.00')
+  })
+
+  it('does not add the anchor movement a second time (revolve)', () => {
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    installFeature(extrudeFeature())
+    const angular: FeatureHandleData = {
+      kind: 'angular',
+      field: 'angle',
+      anchor: [0, 0, 0],
+      direction: [0, 1, 0],
+      value: 10,
+      unit_scale: 1,
+      min: 0.01,
+      max: 360,
+    }
+    usePartEditorStore.setState({ solveResults: { F1: { handle: angular } } })
+    seams.closestParam.mockReturnValue(null)
+
+    const { container } = render(<FeatureHandles />)
+    act(() => seams.callbacks!.onPointerDown(100, 200))
+    seams.closestParam.mockReturnValueOnce(0).mockReturnValueOnce(0)
+    act(() => {
+      window.dispatchEvent(new MouseEvent('pointermove', { clientX: 300, clientY: 200 }))
+    })
+
+    moveAt(5)  // 15
+    expect(grabPoint(container)[1]).toBeCloseTo(5, 6)
+    // An angular handle deliberately has no straight world tail (it would
+    // misrepresent the swept arc): only the two head meshes are drawn.
+    expect(container.querySelectorAll('mesh')).toHaveLength(2)
+
+    const solved: FeatureHandleData = { ...angular, value: 15, anchor: [0, 5, 0] }
+    act(() => {
+      usePartEditorStore.setState({ solveResults: { F1: { handle: solved } } })
+    })
+    expect(grabPoint(container)[1]).toBeCloseTo(5, 2)
+    expect(container.textContent).toContain('15.00')
   })
 })
