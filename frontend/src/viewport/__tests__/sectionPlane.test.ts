@@ -7,7 +7,6 @@ import {
   sectionFrameKey,
   sectionOffsetFromDrag,
   sectionPlaneFromFrame,
-  sectionSourceLabel,
 } from '@/viewport/sectionPlane'
 
 const NO_SOURCES = {
@@ -23,11 +22,6 @@ describe('builtin section planes', () => {
     for (const frame of [builtinSectionFrame('front'), builtinSectionFrame('top'), builtinSectionFrame('right')]) {
       expect(frame.point).toEqual([0, 0, 0])
     }
-  })
-
-  it('labels the current source for the dropdown', () => {
-    expect(sectionSourceLabel({ kind: 'builtin', id: 'front' })).toBe('Front')
-    expect(sectionSourceLabel({ kind: 'query', query: '?04;abcd' })).toContain('?04;abcd')
   })
 })
 

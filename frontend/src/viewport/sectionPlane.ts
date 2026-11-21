@@ -147,11 +147,3 @@ export function sectionFrameKey(frame: SectionFrame | null): string {
   const f = (v: number): string => v.toFixed(6)
   return `${frame.normal.map(f).join(',')}|${frame.point.map(f).join(',')}`
 }
-
-/** A short label for the dropdown's current source. */
-export function sectionSourceLabel(source: SectionPlaneSource): string {
-  if (source.kind === 'builtin') {
-    return source.id === 'front' ? 'Front' : source.id === 'top' ? 'Top' : 'Right'
-  }
-  return `Picked ${source.query}`
-}

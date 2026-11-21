@@ -560,6 +560,26 @@ describe('usePickField  -  one armed pick', () => {
     spy.activate()
     expect(useSectionStore.getState().picking).toBe(false)
   })
+
+  it('cancels the section from the store action every armer calls', () => {
+    // Plane editors and the Add Feature buttons arm through setActivePickField
+    // directly, bypassing the hook, so the rule has to live in the action.
+    useSectionStore.setState({ enabled: true, picking: true })
+    act(() => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'ex1', field: 'faces' })
+    })
+    expect(useSectionStore.getState().picking).toBe(false)
+  })
+
+  it('leaves an armed section alone when a field is only disarmed', () => {
+    // The section's own arm path calls setActivePickField(null) before setting
+    // its pick; routine disarms must not cancel it.
+    useSectionStore.setState({ enabled: true, picking: true })
+    act(() => {
+      useSketchEditorStore.getState().setActivePickField(null)
+    })
+    expect(useSectionStore.getState().picking).toBe(true)
+  })
 })
 
 describe('usePickField  -  toggle', () => {

@@ -295,8 +295,8 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   const capBands = useMemo(() => capBandsFor(groups), [groups])
 
   // The assembly has no planar-face frames to resolve a picked section plane
-  // against, so the dropdown does not offer the face/plane pick here. Clear any
-  // pick armed in the part editor as the assembly takes over: an armed flag
+  // against, so the section card does not offer the face/plane pick here. Clear
+  // any pick armed in the part editor as the assembly takes over: an armed flag
   // with no consumer would swallow the next part click.
   useEffect(() => {
     useSectionStore.getState().setPicking(false)

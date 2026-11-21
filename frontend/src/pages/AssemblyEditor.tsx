@@ -14,7 +14,7 @@ import EditorErrorBoundary from '@/components/misc/EditorErrorBoundary'
 import AssemblyViewport, { type AssemblyViewportHandle } from '@/components/Viewport/AssemblyViewport'
 import ViewOptionsButton from '@/components/Viewport/ViewOptionsButton'
 import { SectionPanel } from '@/components/Viewport/SectionPanel'
-import { useSectionStore } from '@/stores/sectionStore'
+import { sectionCardVisible, useSectionStore } from '@/stores/sectionStore'
 import { useUnsavedChangesGuard } from '@/hooks/useUnsavedChangesGuard'
 import { discardUnsavedEdits } from '@/recovery/discardUnsavedEdits'
 import { useOpenEntryInNewTab } from '@/hooks/useOpenEntryInNewTab'
@@ -141,9 +141,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
   const editingInstanceHandle = editingInstanceHandleOf(editingSubject)
   // The section card is viewer state of its own, so it keeps the right column
   // mounted even when no instance or mate is being edited.
-  const sectionShowing = useSectionStore(
-    s => !s.capturing && (s.enabled || s.disabledReason !== null),
-  )
+  const sectionShowing = useSectionStore(sectionCardVisible)
 
   // The phone drawer's open flag, the part editor's twin: below the breakpoint
   // Part.css hides the tree and the toolbar's one toggle reopens it as a strip
