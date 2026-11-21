@@ -775,6 +775,233 @@ export function fuseCollinearRuns(loop: LoopEdge[]): LoopEdge[] {
   return runs.map((indices) => mergeRun(edges, indices, false))
 }
 
+/**
+ * Partition one profile's (outer, holes) groups into clusters of regions that
+ * share a boundary edge, so each cluster can be built on its own and the
+ * clusters compounded without a boolean.
+ *
+ * Two groups join only when one of their edges and one of the other's overlap
+ * along a positive length: lines by a collinear shared interval, arcs by the
+ * same circle with overlapping sweeps. A shared vertex alone -- a point touch,
+ * a corner touch, an external or internal tangency -- never joins. That is the
+ * whole point: fusing two prisms that meet only at a point makes BOP split both
+ * walls along the contact line, and no downstream clean can fold those faces
+ * back on every shape. Never fusing them is the fix; regions that really share
+ * a boundary are still fused exactly as before.
+ *
+ * Edges are matched by geometry, not only by their source entity, because a
+ * boundary can be authored twice: two sketches whose rectangles meet along one
+ * side share no entity id, yet their profile is one connected region and must
+ * keep fusing. Within one area surface the traced pieces of an entity are the
+ * common case, and the source ids (including a fused run's `mergedIds`) are
+ * what proves a shared piece for the kinds whose overlap this does not measure
+ * (an ellipse or a spline: two pieces of one authored curve bound both areas).
+ *
+ * Clusters come back in first-group order, each keeping its own groups in
+ * profile order, so a caller that builds them in sequence gives the downstream
+ * part split a stable order. One cluster is the ordinary multi-group profile;
+ * one group per cluster is today's single-group path.
+ *
+ * Pure and OCC-free, so the partition unit-tests without WASM.
+ */
+export function profileClusters(
+  groups: [LoopEdge[], LoopEdge[][]][],
+): [LoopEdge[], LoopEdge[][]][][] {
+  if (groups.length < 2) return groups.map((group) => [group])
+  const parent = groups.map((_, i) => i)
+  const find = (i: number): number => {
+    let root = i
+    while (parent[root] !== root) root = parent[root]
+    while (parent[i] !== root) {
+      const next = parent[i]
+      parent[i] = root
+      i = next
+    }
+    return root
+  }
+  const union = (a: number, b: number): void => {
+    const rootA = find(a)
+    const rootB = find(b)
+    if (rootA !== rootB) parent[Math.max(rootA, rootB)] = Math.min(rootA, rootB)
+  }
+
+  const edges: ProfileClusterEdge[][] = groups.map(([outer, holes]) =>
+    [outer, ...holes].flat().map((edge) => ({
+      edge,
+      source: sourceIds(edge),
+      box: edgeBox(edge),
+    })),
+  )
+  for (let a = 0; a < groups.length; a++) {
+    for (let b = a + 1; b < groups.length; b++) {
+      if (find(a) === find(b)) continue
+      if (!groupsShareBoundary(edges[a], edges[b])) continue
+      union(a, b)
+    }
+  }
+
+  const clusters: [LoopEdge[], LoopEdge[][]][][] = []
+  const slotOf = new Map<number, number>()
+  for (let i = 0; i < groups.length; i++) {
+    const root = find(i)
+    let slot = slotOf.get(root)
+    if (slot === undefined) {
+      slot = clusters.length
+      slotOf.set(root, slot)
+      clusters.push([])
+    }
+    clusters[slot].push(groups[i])
+  }
+  return clusters
+}
+
+/** One loop edge plus the identity and bounds the cluster pass compares it by. */
+interface ProfileClusterEdge {
+  edge: LoopEdge
+  source: string[]
+  // Null when the edge carries no point to bound; such an edge is compared to
+  // every candidate rather than pruned on a box it does not have.
+  box: [number, number, number, number] | null
+}
+
+function groupsShareBoundary(a: ProfileClusterEdge[], b: ProfileClusterEdge[]): boolean {
+  for (const ea of a) {
+    for (const eb of b) {
+      if (ea.box !== null && eb.box !== null && !boxesOverlap(ea.box, eb.box)) continue
+      const sameEntity = ea.source.some((id) => eb.source.includes(id))
+      if (edgesOverlap(ea.edge, eb.edge, sameEntity)) return true
+    }
+  }
+  return false
+}
+
+function boxesOverlap(
+  a: [number, number, number, number],
+  b: [number, number, number, number],
+): boolean {
+  const tol = TOL_LOOP_CLOSURE
+  return a[0] <= b[2] + tol && b[0] <= a[2] + tol && a[1] <= b[3] + tol && b[1] <= a[3] + tol
+}
+
+/** The bounding box an edge can occupy, conservative for every curved kind. */
+function edgeBox(edge: LoopEdge): [number, number, number, number] | null {
+  const kind = String(edge['kind'] ?? 'line')
+  const center = edge['center'] as unknown
+  if (kind === 'arc' && isPoint2(center) && typeof edge['radius'] === 'number') {
+    // A full circle bound: the arc's samples would under-approximate a bulge
+    // between them, and a box that misses geometry lets a real neighbour escape.
+    const r = Math.abs(edge['radius'] as number)
+    return [center[0] - r, center[1] - r, center[0] + r, center[1] + r]
+  }
+  if ((kind === 'ellipse' || kind === 'ellipse_arc') && isPoint2(center)) {
+    const half = Math.max(Math.abs((edge['a'] as number) ?? 0), Math.abs((edge['b'] as number) ?? 0))
+    return [center[0] - half, center[1] - half, center[0] + half, center[1] + half]
+  }
+  const pts: number[][] = []
+  const add = (p: unknown): void => {
+    if (isPoint2(p)) pts.push(p)
+  }
+  add(edge['start'])
+  add(edge['end'])
+  add(edge['c1'])
+  add(edge['c2'])
+  if (Array.isArray(edge['poles'])) for (const pole of edge['poles']) add(pole)
+  if (pts.length === 0) return null
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  for (const p of pts) {
+    minX = Math.min(minX, p[0])
+    minY = Math.min(minY, p[1])
+    maxX = Math.max(maxX, p[0])
+    maxY = Math.max(maxY, p[1])
+  }
+  return [minX, minY, maxX, maxY]
+}
+
+function isPoint2(p: unknown): p is number[] {
+  return Array.isArray(p) && p.length >= 2
+    && typeof p[0] === 'number' && typeof p[1] === 'number'
+}
+
+/**
+ * Whether two loop edges bound the same positive length of boundary. The kind
+ * decides how that is measured; `sameEntity` is the evidence for the kinds this
+ * does not measure, where two pieces traced from one authored curve are the
+ * curve's own boundary on both sides.
+ */
+function edgesOverlap(a: LoopEdge, b: LoopEdge, sameEntity: boolean): boolean {
+  const kindA = String(a['kind'] ?? 'line')
+  const kindB = String(b['kind'] ?? 'line')
+  if (kindA === 'line' && kindB === 'line') return linesOverlap(a, b)
+  if (kindA === 'arc' && kindB === 'arc') return arcsOverlap(a, b)
+  return sameEntity
+}
+
+function linesOverlap(a: LoopEdge, b: LoopEdge): boolean {
+  const a0 = a['start'] as unknown
+  const a1 = a['end'] as unknown
+  const b0 = b['start'] as unknown
+  const b1 = b['end'] as unknown
+  if (!isPoint2(a0) || !isPoint2(a1) || !isPoint2(b0) || !isPoint2(b1)) return false
+  const da = [a1[0] - a0[0], a1[1] - a0[1]]
+  const db = [b1[0] - b0[0], b1[1] - b0[1]]
+  const la = Math.hypot(da[0], da[1])
+  const lb = Math.hypot(db[0], db[1])
+  if (la === 0 || lb === 0) return false
+  // Parallel and on one line: the sine and the perpendicular offset both sit on
+  // the loop-closure rung, so a solver residual still reads collinear while a
+  // drawn offset does not.
+  if (Math.abs(da[0] * db[1] - da[1] * db[0]) > TOL_LOOP_CLOSURE * la * lb) return false
+  if (Math.abs((b0[0] - a0[0]) * da[1] - (b0[1] - a0[1]) * da[0]) / la > TOL_LOOP_CLOSURE) return false
+  const ux = da[0] / la
+  const uy = da[1] / la
+  const tb0 = (b0[0] - a0[0]) * ux + (b0[1] - a0[1]) * uy
+  const tb1 = (b1[0] - a0[0]) * ux + (b1[1] - a0[1]) * uy
+  const lo = Math.max(0, Math.min(tb0, tb1))
+  const hi = Math.min(la, Math.max(tb0, tb1))
+  return hi - lo > TOL_LOOP_CLOSURE
+}
+
+function arcsOverlap(a: LoopEdge, b: LoopEdge): boolean {
+  const ca = a['center'] as unknown
+  const cb = b['center'] as unknown
+  const ra = a['radius'] as unknown
+  const rb = b['radius'] as unknown
+  if (!isPoint2(ca) || !isPoint2(cb) || typeof ra !== 'number' || typeof rb !== 'number') return false
+  if (Math.abs(ra - rb) > TOL_LOOP_CLOSURE) return false
+  if (Math.hypot(ca[0] - cb[0], ca[1] - cb[1]) > TOL_LOOP_CLOSURE) return false
+  const a0 = (a['angle_start_deg'] as number) ?? 0
+  const b0 = (b['angle_start_deg'] as number) ?? 0
+  const sweepA = arcSweepDeg(a0, (a['angle_end_deg'] as number) ?? 0, (a['ccw'] as boolean) ?? true)
+  const sweepB = arcSweepDeg(b0, (b['angle_end_deg'] as number) ?? 0, (b['ccw'] as boolean) ?? true)
+  return arcSweepsOverlapDeg(a0, sweepA, b0, sweepB) > ARC_ANGLE_TOL_DEG
+}
+
+/**
+ * The length two circular sweeps share, in degrees. A sweep is the interval it
+ * covers on the circle, so its sign (winding) is irrelevant: only a positive
+ * shared extent is boundary, and a mere shared endpoint is none.
+ */
+function arcSweepsOverlapDeg(a0: number, sweepA: number, b0: number, sweepB: number): number {
+  if (Math.abs(sweepA) >= 360 - ARC_ANGLE_TOL_DEG) return Math.abs(sweepB)
+  if (Math.abs(sweepB) >= 360 - ARC_ANGLE_TOL_DEG) return Math.abs(sweepA)
+  const aLo = Math.min(a0, a0 + sweepA)
+  const aHi = Math.max(a0, a0 + sweepA)
+  const bLo = Math.min(b0, b0 + sweepB)
+  const bHi = Math.max(b0, b0 + sweepB)
+  let shared = 0
+  // Each sweep is under a turn, so a second overlap is reachable only through
+  // one whole turn of shift.
+  for (const turn of [-360, 0, 360]) {
+    const lo = Math.max(aLo, bLo + turn)
+    const hi = Math.min(aHi, bHi + turn)
+    shared = Math.max(shared, hi - lo)
+  }
+  return shared
+}
+
 /** Source entity ids of one loop edge: its aliases when already merged. */
 function sourceIds(e: LoopEdge): string[] {
   const merged = e['mergedIds']

@@ -34,7 +34,7 @@ import {
   SubShapeMultiIndex,
   type Vec3,
 } from './primitives'
-import { classifyLoops, fuseCollinearRuns, type LoopEdge } from '../profileLoops'
+import { classifyLoops, fuseCollinearRuns, profileClusters, type LoopEdge } from '../profileLoops'
 import {
   booleanWithHistory,
   booleanWithHistoryMany,
@@ -48,7 +48,13 @@ import {
   nameFacesFromNeighbours,
   faceSplitKey,
 } from './constructionLineage'
-import { canonicalFaces, carryFaceNames, emptyShapeNames, type ShapeNames } from './partNames'
+import {
+  canonicalFaces,
+  carryFaceNames,
+  emptyShapeNames,
+  mergeShapeNames,
+  type ShapeNames,
+} from './partNames'
 import { SubShapeMap } from './subshapeIdentity'
 import { noProgress } from './defaultArgs'
 import {
@@ -755,53 +761,65 @@ function perGroupPrismWithLineage(
 }
 
 /**
- * Extrude profile loops to a solid and return (solid + construction-name maps)
- * (mirrors `extrude_profile_with_lineage`). Disjoint loop groups are extruded
- * and fused; nested loops become holes. Lineage tokens are `@sketch_id/entity`.
- * OWNERSHIP: the returned `solid` is UNTRACKED. The caller must `scope.track()`
- * it or hand it to a registrar (`applyPartOperation`, `registerSplitParts`),
- * and is responsible for releasing it. This is the same contract every
- * `occ/primitives.ts` producer keeps; see the module header there.
+ * Combine per-cluster results into one compound with NO boolean.
  *
- * Multi-group extrudes take the "pre-prism profile union" path: the groups'
- * loops are extruded the legacy way (per-group prisms fused + cleaned), which
- * already yields ONE body whose every wall is a single face, but whose emergent
- * hole cylinder carries a non-canonical seam (the documented "8-face defect"
- * when this body is later the target of an add).  We then extract that body's
- * ENTRANCE cap face (which carries a canonical closed-circle hole edge -- a
- * side effect of the clean fusion of the cocylindrical half-cylinder walls),
- * canonicalize any remaining split-hole boundary, and re-prism the resulting
- * single face ONCE.  This rebuilds the same body with a canonical hole seam so a
- * downstream add-fuse that prisms this body's top face merges cleanly.  The
- * legacy per-prism fuse path survives as a fallback for the rare case that the
- * round-trip cannot recover a single canonical face.
+ * The compound is the point of the cluster split: a boolean is what makes BOP
+ * split two point-touching regions' walls along the contact line, so a cluster
+ * boundary must never reach one. Each cluster's names are merged the way
+ * `namedFuse.add` merges them, minus its cap-collision check: that check belongs
+ * inside a cluster, where two regions of one fused body can only be told apart
+ * by their own profile entities, and clusters share no boundary so their cap
+ * names cannot collide. Any cluster's apex is the whole result's apex, matching
+ * the per-group rule that one apex end means the feature registers no top face.
+ *
+ * OWNERSHIP: `parts`' solids are tracked by `scope` and are released here (the
+ * compound holds its own handles); the returned solid is UNTRACKED.
  */
-export function extrudeProfileWithLineage(
+function compoundClusters(
   oc: OccModule,
   scope: DisposeScope,
-  loops: LoopEdge[][],
+  parts: LineageResult[],
+): LineageResult {
+  const compound = scope.track(new oc.TopoDS_Compound())
+  const builder = scope.track(new oc.BRep_Builder())
+  builder.MakeCompound(compound)
+  const names = emptyShapeNames()
+  let apex: Vec3 | null = null
+  for (const part of parts) {
+    builder.Add(compound, part.solid)
+    // The compound holds its own handle to the solid; the per-cluster wrapper
+    // is no longer needed.
+    scope.release(part.solid)
+    mergeShapeNames(names, part)
+    apex ??= part.apex ?? null
+  }
+  return { solid: scope.detach(compound), apex, ...names }
+}
+
+/**
+ * Build one edge-connected cluster of profile groups through today's paths: one
+ * group is a straight prism of its face, several go through the canonical
+ * merged profile and, when that cannot rebuild them, the per-group fuse.
+ *
+ * A taper or twist is decided per cluster: several drafted groups that tile one
+ * region have to draft as that one region (their inner walls would lean or turn
+ * apart), but a cluster that drafts alone has nothing to fuse, so only this
+ * cluster's own merge can refuse it.
+ */
+function extrudeClusterWithLineage(
+  oc: OccModule,
+  scope: DisposeScope,
+  groups: [LoopEdge[], LoopEdge[][]][],
   plane: PlaneLike,
   directionVec: Vec3,
   distance: number,
-  sketchId = '',
-  createdBy = '',
-  taperDeg = 0,
-  twistDeg = 0,
-  precision?: KernelPrecision | null,
+  tokenPrefix: string,
+  createdBy: string,
+  sketchId: string,
+  taperRad: number,
+  twistRad: number,
+  tolerance: MergeTolerance,
 ): LineageResult {
-  // Classification reads the traced pieces (a tangent hole is recognised by the
-  // arcs it shares with its neighbours), so fuse only after the groups exist.
-  const groups = classifyLoops(loops).map(
-    ([outer, holes]): [LoopEdge[], LoopEdge[][]] => [fuseCollinearRuns(outer), holes.map(fuseCollinearRuns)],
-  )
-  if (groups.length === 0) throw new Error('no loops to extrude')
-  const tokenPrefix = sketchId ? `@${sketchId}/` : '@'
-  const taperRad = (taperDeg * Math.PI) / 180
-  const twistRad = (twistDeg * Math.PI) / 180
-  // A multi-group profile's own fuse-and-clean is still a merge of this
-  // sketch's geometry, so it reads the same reported precision.
-  const tolerance = mergeTolerance(precision)
-
   if (groups.length === 1) {
     const [outer, holes] = groups[0]
     const face = sketchLoopsToFace(oc, scope, [outer, ...holes], plane)
@@ -840,11 +858,118 @@ export function extrudeProfileWithLineage(
 }
 
 /**
+ * Extrude profile loops to a solid and return (solid + construction-name maps)
+ * (mirrors `extrude_profile_with_lineage`). Nested loops become holes. Lineage
+ * tokens are `@sketch_id/entity`.
+ *
+ * The groups are first partitioned into edge-connected clusters
+ * (`profileClusters`). A cluster of one group is the single-face prism; a
+ * cluster of adjacent groups takes the "pre-prism profile union" path (the
+ * groups' prisms are fused the legacy way, the entrance cap is extracted and
+ * re-prismed once so its hole seams are canonical). That round trip exists
+ * because the legacy fuse leaves an emergent hole cylinder on a non-canonical
+ * (merged-arc) seam, the documented "8-face defect" when the body is later an
+ * add target; re-prisming the cleaned entrance cap repairs the seam at the
+ * source. A cluster whose union cannot be rebuilt falls back to the per-group
+ * fuse. Clusters are then combined as one compound with NO boolean: regions
+ * that only touch at a point must never meet BOP, because fusing them splits
+ * their walls along the contact line. A single connected profile is one cluster
+ * and keeps today's code path exactly.
+ *
+ * OWNERSHIP: the returned `solid` is UNTRACKED. The caller must `scope.track()`
+ * it or hand it to a registrar (`applyPartOperation`, `registerSplitParts`),
+ * and is responsible for releasing it. This is the same contract every
+ * `occ/primitives.ts` producer keeps; see the module header there.
+ */
+export function extrudeProfileWithLineage(
+  oc: OccModule,
+  scope: DisposeScope,
+  loops: LoopEdge[][],
+  plane: PlaneLike,
+  directionVec: Vec3,
+  distance: number,
+  sketchId = '',
+  createdBy = '',
+  taperDeg = 0,
+  twistDeg = 0,
+  precision?: KernelPrecision | null,
+): LineageResult {
+  // Classification reads the traced pieces (a tangent hole is recognised by the
+  // arcs it shares with its neighbours), so fuse only after the groups exist.
+  const groups = classifyLoops(loops).map(
+    ([outer, holes]): [LoopEdge[], LoopEdge[][]] => [fuseCollinearRuns(outer), holes.map(fuseCollinearRuns)],
+  )
+  if (groups.length === 0) throw new Error('no loops to extrude')
+  const tokenPrefix = sketchId ? `@${sketchId}/` : '@'
+  const taperRad = (taperDeg * Math.PI) / 180
+  const twistRad = (twistDeg * Math.PI) / 180
+  // A multi-group profile's own fuse-and-clean is still a merge of this
+  // sketch's geometry, so it reads the same reported precision.
+  const tolerance = mergeTolerance(precision)
+
+  const clusters = profileClusters(groups)
+  const build = (cluster: [LoopEdge[], LoopEdge[][]][]): LineageResult =>
+    extrudeClusterWithLineage(
+      oc, scope, cluster, plane, directionVec, distance, tokenPrefix, createdBy, sketchId,
+      taperRad, twistRad, tolerance,
+    )
+  if (clusters.length === 1) return build(groups)
+
+  const parts: LineageResult[] = []
+  for (const cluster of clusters) {
+    const part = build(cluster)
+    // Owned here until the compound takes it, so a later cluster's failure
+    // cannot strand an earlier solid.
+    scope.track(part.solid)
+    parts.push(part)
+  }
+  return compoundClusters(oc, scope, parts)
+}
+
+/**
+ * Sweep one edge-connected cluster of profile groups: a single group names
+ * straight off its builder, as a one-group extrude does; several are swept and
+ * fused group by group.
+ */
+function sweepClusterWithLineage(
+  oc: OccModule,
+  scope: DisposeScope,
+  groups: [LoopEdge[], LoopEdge[][]][],
+  plane: PlaneLike,
+  makeBuilder: (face: OccShape) => OccPrismBuilder,
+  tokenPrefix: string,
+  createdBy: string,
+  sketchId: string,
+  tolerance: MergeTolerance,
+): LineageResult {
+  if (groups.length === 1) {
+    // One group names straight off its builder, as a one-group extrude does;
+    // the fuse path below would re-derive the edges with no creator.
+    const [outer, holes] = groups[0]
+    const face = scope.track(sketchLoopsToFace(oc, scope, [outer, ...holes], plane))
+    const builder = makeBuilder(face)
+    if (!builder.IsDone()) throw new Error('sweep builder did not complete')
+    const solid = builder.Shape()
+    const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane, createdBy, sketchId)
+    prefixLineageMaps(lineage, tokenPrefix)
+    scope.release(face)
+    return { solid, ...lineage }
+  }
+  return perGroupPrismWithLineage(
+    oc, scope, groups, plane, makeBuilder, tokenPrefix, createdBy, sketchId, tolerance,
+  )
+}
+
+/**
  * Sweep profile loops with a caller's builder and name the result exactly as an
  * extrude names its prism: one side face per profile entity from the builder's
  * `Generated(profileEdge)`, the two caps from `FirstShape`/`LastShape`, edges
  * from their faces. The wrap's loft is the one caller; it needs no merged
  * profile round trip, because a wrapped group can never be re-prismed.
+ *
+ * Groups are partitioned into edge-connected clusters as the extrude does, and
+ * clusters are compounded without a boolean: two profiles that only touch at a
+ * point must not be fused, or the contact line splits both swept walls.
  * OWNERSHIP: as `extrudeProfileWithLineage`, the returned solid is UNTRACKED.
  */
 export function sweepLoopsWithLineage(
@@ -862,22 +987,22 @@ export function sweepLoopsWithLineage(
   )
   if (groups.length === 0) throw new Error('no loops to sweep')
   const tokenPrefix = sketchId ? `@${sketchId}/` : '@'
-  if (groups.length === 1) {
-    // One group names straight off its builder, as a one-group extrude does;
-    // the fuse path below would re-derive the edges with no creator.
-    const [outer, holes] = groups[0]
-    const face = scope.track(sketchLoopsToFace(oc, scope, [outer, ...holes], plane))
-    const builder = makeBuilder(face)
-    if (!builder.IsDone()) throw new Error('sweep builder did not complete')
-    const solid = builder.Shape()
-    const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane, createdBy, sketchId)
-    prefixLineageMaps(lineage, tokenPrefix)
-    scope.release(face)
-    return { solid, ...lineage }
+  const tolerance = mergeTolerance(precision)
+
+  const clusters = profileClusters(groups)
+  const build = (cluster: [LoopEdge[], LoopEdge[][]][]): LineageResult =>
+    sweepClusterWithLineage(
+      oc, scope, cluster, plane, makeBuilder, tokenPrefix, createdBy, sketchId, tolerance,
+    )
+  if (clusters.length === 1) return build(groups)
+
+  const parts: LineageResult[] = []
+  for (const cluster of clusters) {
+    const part = build(cluster)
+    scope.track(part.solid)
+    parts.push(part)
   }
-  return perGroupPrismWithLineage(
-    oc, scope, groups, plane, makeBuilder, tokenPrefix, createdBy, sketchId, mergeTolerance(precision),
-  )
+  return compoundClusters(oc, scope, parts)
 }
 
 // ─── revolve (the revolve leaf's brep producer) ───
@@ -913,13 +1038,72 @@ export function revolveFace(
 }
 
 /**
+ * Revolve one edge-connected cluster of profile groups: a single group keeps
+ * the raw one-face revolve, several groups are each revolved and fused.
+ * Disjoint groups inside a cluster stay a compound of solids -- the caller
+ * splits them into separate bodies. Adjacent groups (an area an edit cut in
+ * two) fuse into one solid; the clean folds their coplanar seam faces, and a
+ * clean that rejects the compound keeps the raw fused solid.
+ */
+function revolveClusterWithLineage(
+  oc: OccModule,
+  scope: DisposeScope,
+  groups: [LoopEdge[], LoopEdge[][]][],
+  plane: PlaneLike,
+  axisOrigin: Vec3,
+  axisDirection: Vec3,
+  angleRad: number,
+  tokenPrefix: string,
+  createdBy: string,
+  sketchId: string,
+  tolerance: MergeTolerance,
+): LineageResult {
+  if (groups.length === 1) {
+    const [outer, holes] = groups[0]
+    const face = scope.track(sketchLoopsToFace(oc, scope, [outer, ...holes], plane))
+    const ax = makeAxis(oc, scope, axisOrigin, axisDirection)
+    const builder = scope.track(new oc.BRepPrimAPI_MakeRevol_1(face, ax as unknown as OccShape, angleRad, true))
+    if (!builder.IsDone()) throw new Error('revolve builder did not complete')
+    const solid = builder.Shape()
+    const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane, createdBy, sketchId)
+    prefixLineageMaps(lineage, tokenPrefix)
+    // The profile face is dead once the lineage has been read off it.
+    scope.release(face)
+    return { solid, ...lineage }
+  }
+
+  // Multi-group fan-out (mirrors perGroupPrismWithLineage): each group is one
+  // revolve, the solids are fused.
+  const fuse = namedFuse(oc, scope)
+  for (const [outer, holes] of groups) {
+    const face = scope.track(sketchLoopsToFace(oc, scope, [outer, ...holes], plane))
+    const ax = makeAxis(oc, scope, axisOrigin, axisDirection)
+    const builder = scope.track(new oc.BRepPrimAPI_MakeRevol_1(face, ax as unknown as OccShape, angleRad, true))
+    if (!builder.IsDone()) throw new Error('revolve builder did not complete')
+    const part = builder.Shape()
+    // Each group's solid and each fuse output is consumed by the next fuse
+    // except the survivor returned at the end; scope-own them all here and
+    // detach only that survivor, which the caller takes over.
+    scope.track(part)
+    const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane, createdBy, sketchId)
+    prefixLineageMaps(lineage, tokenPrefix)
+    // The profile face is dead once the lineage has been read off it.
+    scope.release(face)
+    fuse.add(part, lineage)
+  }
+  return fuse.finish(true, 'no loops to revolve', tolerance)
+}
+
+/**
  * Revolve profile loops around an axis and return (solid + construction-name
- * maps) (mirrors `revolve_profile_with_lineage`). Disjoint loop groups are
- * revolved and fused; nested loops become holes -- the same fan-out extrude has,
- * so two separate profile areas become a compound the caller side splits into
- * separate bodies (one Part == one OCC solid). A single group keeps the raw
- * one-face revolve. Lineage tokens are `@sketch_id/entity`; a multi-group
- * revolve keeps each group's tokens, merged onto the fused solid.
+ * maps) (mirrors `revolve_profile_with_lineage`). Nested loops become holes --
+ * the same fan-out extrude has. Groups are partitioned into edge-connected
+ * clusters first, each cluster is revolved and fused on its own, and clusters
+ * are compounded without a boolean: two tangent circles revolved about a far
+ * axis are two touching tori, and fusing them would split both surfaces at the
+ * contact circle. A single group keeps the raw one-face revolve. Lineage tokens
+ * are `@sketch_id/entity`; a multi-group revolve keeps each group's tokens,
+ * merged onto its cluster and then the compound.
  * OWNERSHIP: the returned `solid` is UNTRACKED. The caller must `scope.track()`
  * it or hand it to a registrar (`applyPartOperation`, `registerSplitParts`),
  * and is responsible for releasing it. This is the same contract every
@@ -943,44 +1127,22 @@ export function revolveProfileWithLineage(
   if (groups.length === 0) throw new Error('no loops to revolve')
   const tokenPrefix = sketchId ? `@${sketchId}/` : '@'
   const angleRad = (angleDeg * Math.PI) / 180
+  const tolerance = mergeTolerance(precision)
 
-  if (groups.length === 1) {
-    const [outer, holes] = groups[0]
-    const face = scope.track(sketchLoopsToFace(oc, scope, [outer, ...holes], plane))
-    const ax = makeAxis(oc, scope, axisOrigin, axisDirection)
-    const builder = scope.track(new oc.BRepPrimAPI_MakeRevol_1(face, ax as unknown as OccShape, angleRad, true))
-    if (!builder.IsDone()) throw new Error('revolve builder did not complete')
-    const solid = builder.Shape()
-    const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane, createdBy, sketchId)
-    prefixLineageMaps(lineage, tokenPrefix)
-    // The profile face is dead once the lineage has been read off it.
-    scope.release(face)
-    return { solid, ...lineage }
-  }
+  const clusters = profileClusters(groups)
+  const build = (cluster: [LoopEdge[], LoopEdge[][]][]): LineageResult =>
+    revolveClusterWithLineage(
+      oc, scope, cluster, plane, axisOrigin, axisDirection, angleRad, tokenPrefix, createdBy, sketchId, tolerance,
+    )
+  if (clusters.length === 1) return build(groups)
 
-  // Multi-group fan-out (mirrors perGroupPrismWithLineage): each group is one
-  // revolve, the solids are fused. Disjoint groups stay a compound of solids --
-  // the caller splits them into separate bodies. Adjacent groups (an area an
-  // edit cut in two) fuse into one solid; the clean folds their coplanar seam
-  // faces, and a clean that rejects the compound keeps the raw fused solid.
-  const fuse = namedFuse(oc, scope)
-  for (const [outer, holes] of groups) {
-    const face = scope.track(sketchLoopsToFace(oc, scope, [outer, ...holes], plane))
-    const ax = makeAxis(oc, scope, axisOrigin, axisDirection)
-    const builder = scope.track(new oc.BRepPrimAPI_MakeRevol_1(face, ax as unknown as OccShape, angleRad, true))
-    if (!builder.IsDone()) throw new Error('revolve builder did not complete')
-    const part = builder.Shape()
-    // Each group's solid and each fuse output is consumed by the next fuse
-    // except the survivor returned at the end; scope-own them all here and
-    // detach only that survivor, which the caller takes over.
-    scope.track(part)
-    const lineage = buildPrismLineageMap(oc, scope, face, builder, [outer, ...holes], plane, createdBy, sketchId)
-    prefixLineageMaps(lineage, tokenPrefix)
-    // The profile face is dead once the lineage has been read off it.
-    scope.release(face)
-    fuse.add(part, lineage)
+  const parts: LineageResult[] = []
+  for (const cluster of clusters) {
+    const part = build(cluster)
+    scope.track(part.solid)
+    parts.push(part)
   }
-  return fuse.finish(true, 'no loops to revolve', mergeTolerance(precision))
+  return compoundClusters(oc, scope, parts)
 }
 
 // ─── sweep (the sweep leaf's brep producer) ───
