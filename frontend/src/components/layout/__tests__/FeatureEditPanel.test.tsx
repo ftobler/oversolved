@@ -18,6 +18,7 @@ import { usePartEditorStore } from '@/stores/partEditorStore'
 import { PartEditorProvider } from '@/contexts/PartEditorContext'
 import type { PartEditorCallbacks } from '@/contexts/PartEditorContext'
 import { useEditorState } from '@/hooks/useEditorState'
+import renameIcon from '@/assets/icons/rename.svg'
 
 function makeCallbacks(overrides: Partial<PartEditorCallbacks> = {}): PartEditorCallbacks {
   return {
@@ -36,7 +37,7 @@ function makeCallbacks(overrides: Partial<PartEditorCallbacks> = {}): PartEditor
   }
 }
 
-function seedStores(features: PartFeature[], doc: unknown = null) {
+function seedStores(features: PartFeature[], doc: unknown = null, activeSketchFeatureId: string | null = null) {
   usePartEditorStore.setState({
     features,
     visibleFeatures: new Set(features.map(f => f.id)),
@@ -51,6 +52,7 @@ function seedStores(features: PartFeature[], doc: unknown = null) {
   useEditorState.setState({
     rollbackPosition: null,
     editingFeatureId: null,
+    activeSketchFeatureId,
     normalSelection: new Set(),
     activePickField: null,
     modeStack: [],
@@ -62,8 +64,9 @@ function renderPanel(
   editingFeatureId: string | null,
   callbacks: Partial<PartEditorCallbacks> = {},
   doc: unknown = null,
+  activeSketchFeatureId: string | null = null,
 ) {
-  seedStores(features, doc)
+  seedStores(features, doc, activeSketchFeatureId)
   useEditorState.setState({ editingFeatureId })
   return render(
     <PartEditorProvider value={makeCallbacks(callbacks)}>
@@ -114,6 +117,52 @@ describe('FeatureEditPanel', () => {
     fireEvent.click(screen.getByTitle('Cancel'))
     expect(onEditCancel).toHaveBeenCalledTimes(1)
     expect(onEditCommit).toHaveBeenCalledTimes(1)
+  })
+
+  // The card's rename is the tree menu's rename: one dialog, one mutation path.
+  // It sits left of the verdict pair, before the title runs out of room.
+  it('puts Rename left of OK and Cancel with the rename icon and name', () => {
+    renderPanel([extrudeFeature], 'ex1', { onRequestRename: vi.fn() })
+
+    const header = document.querySelector('.feature-edit-panel-header') as HTMLElement
+    const titles = Array.from(header.querySelectorAll('button')).map(b => b.getAttribute('title'))
+    expect(titles).toEqual(['Rename', 'OK', 'Cancel'])
+
+    const rename = screen.getByRole('button', { name: 'Rename' })
+    expect(rename.getAttribute('class')).toBe('feature-rename-btn')
+    expect(rename.querySelector('img')!.getAttribute('src')).toBe(renameIcon)
+  })
+
+  it('requests a rename of the edited feature, named as the title shows it', () => {
+    const onRequestRename = vi.fn()
+    renderPanel([extrudeFeature], 'ex1', { onRequestRename })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
+    expect(onRequestRename).toHaveBeenCalledTimes(1)
+    expect(onRequestRename).toHaveBeenCalledWith({ kind: 'feature', id: 'ex1', currentName: 'Extrude 1' })
+  })
+
+  it('falls back to the feature id for an unlabeled feature', () => {
+    const unlabeled: PartFeature = { ...extrudeFeature, label: undefined }
+    const onRequestRename = vi.fn()
+    renderPanel([unlabeled], 'ex1', { onRequestRename })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
+    expect(onRequestRename).toHaveBeenCalledWith({ kind: 'feature', id: 'ex1', currentName: 'ex1' })
+  })
+
+  it('draws no Rename button when the page offers no rename opener', () => {
+    renderPanel([extrudeFeature], 'ex1')
+    expect(screen.queryByRole('button', { name: 'Rename' })).toBeNull()
+  })
+
+  // The menu refuses to rename the sketch under edit because it would fight the
+  // open session; the card shares that gate, so the sketch's own editor has no
+  // Rename either.
+  it('draws no Rename button for the sketch under edit', () => {
+    const sketch: PartFeature = { id: 'sk1', kind: 'sketch', label: 'Sketch 1', plane: '@builtin_plane_top' }
+    renderPanel([sketch], 'sk1', { onRequestRename: vi.fn() }, { version: 1, kind: 'part', features: [sketch] }, 'sk1')
+    expect(screen.queryByRole('button', { name: 'Rename' })).toBeNull()
   })
 
   it('draws the same solve mark the tree row carries', () => {

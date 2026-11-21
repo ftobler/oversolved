@@ -4,9 +4,12 @@ import { usePartEditorCallbacks } from '@/contexts/PartEditorContext'
 import { featureFailure } from '@/utils/core/featureFailure'
 import { FeatureItemEditors, featureHasEditor } from '@/components/layout/FeatureItemEditors'
 import { getFeatureIcon } from '@/components/layout/featureIcons'
+import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
+import { canManageFeature } from '@/pages/buildContextMenu'
 import '@/components/layout/Glass.css'
 import okIcon from '@/assets/icons/dialog-ok.svg'
 import cancelIcon from '@/assets/icons/dialog-cancel.svg'
+import renameIcon from '@/assets/icons/rename.svg'
 
 /**
  * The open feature editor as a floating card on the right side of the viewport:
@@ -23,12 +26,13 @@ import cancelIcon from '@/assets/icons/dialog-cancel.svg'
  */
 export function FeatureEditPanel() {
   const editingFeatureId = useEditorState(s => s.editingFeatureId)
+  const activeSketchFeatureId = useEditorState(s => s.activeSketchFeatureId)
   const features = usePartEditorStore(s => s.features)
   const doc = usePartEditorStore(s => s.doc)
   const partLabels = usePartEditorStore(s => s.partLabels)
   const solveResults = usePartEditorStore(s => s.solveResults)
   const parts = usePartEditorStore(s => s.parts)
-  const { onEditCommit, onEditCancel, onMutation, onMutationBatch } = usePartEditorCallbacks()
+  const { onEditCommit, onEditCancel, onMutation, onMutationBatch, onRequestRename } = usePartEditorCallbacks()
 
   // Nothing open, or the open id names a feature with no editor body (a
   // built-in plane, say): the panel has nothing to draw and an empty frame
@@ -37,6 +41,12 @@ export function FeatureEditPanel() {
     ? undefined
     : features.find(f => f.id === editingFeatureId)
   if (!feature || !featureHasEditor(feature)) return null
+
+  // The card's Rename is the menu's Rename, gate included: an unmanageable
+  // feature (the sketch under edit) and a headless caller with no dialog opener
+  // both get no button.
+  const canRename = !!onRequestRename
+    && canManageFeature(feature.id, BUILTIN_FEATURE_IDS, activeSketchFeatureId ?? undefined)
 
   // The feature's own last solve result, for a row that shows a solved value
   // (the linear pattern's directive-length spacing). A feature that never
@@ -52,6 +62,21 @@ export function FeatureEditPanel() {
           alt={feature.kind || 'feature'}
         />
         <span className="feature-edit-panel-title">{feature.label || feature.id}</span>
+        {canRename && (
+          <button
+            type="button"
+            className="feature-rename-btn"
+            onClick={() => onRequestRename({
+              kind: 'feature',
+              id: feature.id,
+              currentName: feature.label || feature.id,
+            })}
+            title="Rename"
+            aria-label="Rename"
+          >
+            <img src={renameIcon} alt="" />
+          </button>
+        )}
         <button className="feature-ok-btn" onClick={onEditCommit} title="OK">
           <img src={okIcon} alt="OK" />
         </button>

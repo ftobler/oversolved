@@ -9,6 +9,7 @@ import { MATE_KIND_ICONS } from '@/components/layout/mateKindIcons'
 import '@/components/layout/Glass.css'
 import okIcon from '@/assets/icons/dialog-ok.svg'
 import cancelIcon from '@/assets/icons/dialog-cancel.svg'
+import renameIcon from '@/assets/icons/rename.svg'
 import featurePartIcon from '@/assets/icons/feature-part.svg'
 
 /**
@@ -38,6 +39,10 @@ export interface AssemblyEditPanelProps {
   onCancelInstance: () => void
   onCommitMate: () => void
   onCancelMate: () => void
+  // A mate is authored and can be renamed; an instance is named by its part
+  // document. Only the mate branch hands this on, which is why the instance
+  // card has no Rename button.
+  onRenameMate?: (id: string, currentName: string) => void
   renderInstanceEditor: (instance: PartInstance) => ReactNode
   renderMateEditor: (mate: MateFeature) => ReactNode
 }
@@ -49,17 +54,29 @@ interface EditCardProps {
   mark: AssemblyMark
   onCommit: () => void
   onCancel: () => void
+  onRename?: () => void
   children: ReactNode
 }
 
 // The one card frame both subjects share. Splitting it out keeps the instance
 // and mate branches below as plain data resolution, with no duplicated header.
-function EditCard({ icon, alt, title, mark, onCommit, onCancel, children }: EditCardProps) {
+function EditCard({ icon, alt, title, mark, onCommit, onCancel, onRename, children }: EditCardProps) {
   return (
     <div className="glass-panel feature-edit-panel">
       <div className="feature-edit-panel-header">
         <img className="feature-icon" src={icon} alt={alt} />
         <span className="feature-edit-panel-title">{title}</span>
+        {onRename && (
+          <button
+            type="button"
+            className="feature-rename-btn"
+            onClick={onRename}
+            title="Rename"
+            aria-label="Rename"
+          >
+            <img src={renameIcon} alt="" />
+          </button>
+        )}
         <button className="feature-ok-btn" onClick={onCommit} title="OK">
           <img src={okIcon} alt="OK" />
         </button>
@@ -85,6 +102,7 @@ export function AssemblyEditPanel({
   onCancelInstance,
   onCommitMate,
   onCancelMate,
+  onRenameMate,
   renderInstanceEditor,
   renderMateEditor,
 }: AssemblyEditPanelProps) {
@@ -111,14 +129,18 @@ export function AssemblyEditPanel({
   if (editing.kind === 'mate') {
     const mate = mates.find(m => m.id === editing.id)
     if (!mate) return null
+    // The title and the rename seed are the same expression, so the dialog
+    // always opens on the name the card shows (an unlabeled mate reads by kind).
+    const title = mate.mate.label || MATE_KIND_LABELS[mate.mate.kind]
     return (
       <EditCard
         icon={MATE_KIND_ICONS[mate.mate.kind]}
         alt={mate.mate.kind}
-        title={mate.mate.label || MATE_KIND_LABELS[mate.mate.kind]}
+        title={title}
         mark={mateFailure(mate.id, status ?? null, [mate.mate.ref_a.part, mate.mate.ref_b.part])}
         onCommit={onCommitMate}
         onCancel={onCancelMate}
+        onRename={onRenameMate && (() => onRenameMate(mate.id, title))}
       >
         {renderMateEditor(mate)}
       </EditCard>

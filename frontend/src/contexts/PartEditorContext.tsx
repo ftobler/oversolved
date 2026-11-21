@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react'
 import type { Mutation } from '@/types/cad'
+import type { RenameTarget } from '@/pages/buildContextMenu'
 
 export interface PartEditorCallbacks {
   onToggleSelect: (id: string) => void
@@ -13,6 +14,9 @@ export interface PartEditorCallbacks {
   onToggleVisibility: (featureId: string) => void
   onRightClick: (pos: [number, number], targetId?: string) => void
   onRename?: (featureId: string, label: string) => void
+  // The same dialog opener the tree menu uses: one RenameDialog, one confirm
+  // path. Absent in headless callers, which is why the card hides its button.
+  onRequestRename?: (target: RenameTarget) => void
   onMutation: (mutation: Mutation) => void
   // The editor's group seam: mutations that belong to one user gesture land as
   // one undo step (a pick field's whole arriving lasso).

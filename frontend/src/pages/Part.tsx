@@ -1567,6 +1567,7 @@ export default function Part() {
     onToggleVisibility: toggleVisibility,
     onRightClick: handleRightClick,
     onRename: handleFeatureRename,
+    onRequestRename: setRenameTarget,
     onMutation: handleMutation,
     onMutationBatch: commitMutationGroup,
     onSetRollbackPosition: handleUserRollbackChange,

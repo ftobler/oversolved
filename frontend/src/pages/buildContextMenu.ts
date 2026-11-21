@@ -41,6 +41,18 @@ export interface RenameTarget {
   currentName: string
 }
 
+// Whether an authored feature's management verbs are offered at all: a built-in
+// has no author, and the sketch under edit keeps its commands because renaming
+// it would fight the open session. The open editor card asks the same question
+// before it draws its Rename button, so the menu and the card cannot drift.
+export function canManageFeature(
+  featureId: string | undefined,
+  builtInIds: Set<string>,
+  activeSketchFeatureId: string | undefined,
+): boolean {
+  return !!featureId && !builtInIds.has(featureId) && featureId !== activeSketchFeatureId
+}
+
 export interface FaceFrame {
   normal: [number, number, number]
   center: [number, number, number]
@@ -308,14 +320,13 @@ function buildMenuContext(
   const canToggleConstraints = !!input.activeSketchFeatureId
   // The sketch under edit keeps its commands: renaming it would fight the open
   // session and deleting it would pull the sketch out from under the edit.
-  const canManageFeature = !!featureId && !input.builtInIds.has(featureId)
-    && featureId !== input.activeSketchFeatureId
+  const canManage = canManageFeature(featureId, input.builtInIds, input.activeSketchFeatureId)
 
   return {
     input, callbacks, featureId, target, surfaceTarget, visibilityFeature,
     canNewSketch, canNormalTo, canRemoveDangling, canEdit, canExitSketch,
     canNormalToSketch, canToggleVisibility, visibilityIsOn, canToggleConstraints,
-    canManageFeature,
+    canManageFeature: canManage,
   }
 }
 

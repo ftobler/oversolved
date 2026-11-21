@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { buildContextMenu } from '@/pages/buildContextMenu'
+import { buildContextMenu, canManageFeature } from '@/pages/buildContextMenu'
 import type { BuildContextMenuInput, BuildContextMenuCallbacks, RenameTarget } from '@/pages/buildContextMenu'
 import type { ContextMenuItem } from '@/components/dialogs/RightClickMenu'
 import type { PartFeature } from '@/types/cad'
@@ -565,6 +565,29 @@ describe('buildContextMenu', () => {
     )
     findLabel(result.items, 'Rename')!.onClick()
     expect(seen).toEqual([{ kind: 'feature', id: 'sketch1', currentName: 'Sketch A' }])
+  })
+
+  // The open editor card asks this same predicate before it draws its Rename
+  // button, so a built-in and the sketch under edit stay off limits at both ends.
+  describe('canManageFeature', () => {
+    const builtIns = new Set(['Top'])
+
+    it('refuses a built-in id', () => {
+      expect(canManageFeature('Top', builtIns, undefined)).toBe(false)
+    })
+
+    it('refuses the sketch under edit', () => {
+      expect(canManageFeature('sketch1', builtIns, 'sketch1')).toBe(false)
+    })
+
+    it('allows any other authored feature, including while a sketch is open', () => {
+      expect(canManageFeature('ex1', builtIns, 'sketch1')).toBe(true)
+      expect(canManageFeature('ex1', builtIns, undefined)).toBe(true)
+    })
+
+    it('refuses a menu with no feature target', () => {
+      expect(canManageFeature(undefined, builtIns, undefined)).toBe(false)
+    })
   })
 
   it('calls onRebuild when Rebuild is clicked', () => {

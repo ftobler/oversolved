@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { forwardRef, useImperativeHandle, type ReactNode } from 'react'
-import { screen, fireEvent, act } from '@testing-library/react'
+import { screen, fireEvent, act, within } from '@testing-library/react'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assemblyStore'
 
 const navigateSpy = vi.fn()
@@ -520,7 +520,9 @@ describe('AssemblyEditor undo/redo', () => {
     fireEvent.click(screen.getByText('Rename'))
     const input = screen.getByLabelText('Name') as HTMLInputElement
     fireEvent.change(input, { target: { value: 'top clamp' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
+    // The open card now also has a Rename button, so the dialog's footer is
+    // reached through its own box.
+    fireEvent.click(within(document.querySelector('.dialog-component') as HTMLElement).getByRole('button', { name: 'Rename' }))
     await tick()
 
     const id = useAssemblyStore.getState().mates[0].id
@@ -532,6 +534,63 @@ describe('AssemblyEditor undo/redo', () => {
     await tick()
     // Undo reverts to the mate as inserted, which now carries its minted
     // default label rather than falling back to a render ordinal.
+    expect(findMate(useAssemblyStore.getState().doc!, id)!.label).toBe('Fixed 1')
+  })
+
+  // The card's Rename is the tree menu's Rename: one dialog and one mutation
+  // path. `rename_mate` is a structural one-shot, so it closes any coalesced
+  // session and pushes its own step even while the mate's editor stays open.
+  // Cancel after it therefore has nothing to rewind: the name is already
+  // committed. This pins that, rather than assuming the rename folded.
+  it('renames a mate from its card as a one-shot and Cancel leaves the name', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    act(() => { executeCommand('insert_mate_fixed') })
+    await tick()
+    expect(undoStack()).toHaveLength(1)  // the Add mate step
+
+    const id = useAssemblyStore.getState().mates[0].id
+    fireEvent.click(document.querySelector('.feature-edit-panel .feature-rename-btn')!)
+    const box = document.querySelector('.dialog-component') as HTMLElement
+    fireEvent.change(within(box).getByLabelText('Name'), { target: { value: 'Boss' } })
+    fireEvent.click(within(box).getByRole('button', { name: 'Rename' }))
+    await tick()
+
+    expect(findMate(useAssemblyStore.getState().doc!, id)!.label).toBe('Boss')
+    expect(document.querySelector('.feature-edit-panel-title')!.textContent).toBe('Boss')
+    expect(screen.getByText('Boss', { selector: '.feature-name' })).toBeInTheDocument()
+    expect(undoStack().map(e => e.label)).toEqual(['Add mate', 'Rename mate'])
+
+    fireEvent.click(cardAction('Cancel'))
+    await tick()
+    expect(findMate(useAssemblyStore.getState().doc!, id)!.label).toBe('Boss')
+    expect(undoStack().map(e => e.label)).toEqual(['Add mate', 'Rename mate'])
+  })
+
+  it('a card rename accepted with OK stays and undoes back to the old label', async () => {
+    renderEditor()
+    await tick()
+    await tick()
+    act(() => { executeCommand('insert_mate_fixed') })
+    await tick()
+
+    const id = useAssemblyStore.getState().mates[0].id
+    fireEvent.click(document.querySelector('.feature-edit-panel .feature-rename-btn')!)
+    const box = document.querySelector('.dialog-component') as HTMLElement
+    fireEvent.change(within(box).getByLabelText('Name'), { target: { value: 'Boss' } })
+    fireEvent.click(within(box).getByRole('button', { name: 'Rename' }))
+    await tick()
+
+    fireEvent.click(cardAction('OK'))
+    await tick()
+    await tick()
+    expect(findMate(useAssemblyStore.getState().doc!, id)!.label).toBe('Boss')
+    expect(undoStack().map(e => e.label)).toEqual(['Add mate', 'Rename mate'])
+
+    act(() => { executeCommand('undo') })
+    await tick()
+    await tick()
     expect(findMate(useAssemblyStore.getState().doc!, id)!.label).toBe('Fixed 1')
   })
 
@@ -551,7 +610,7 @@ describe('AssemblyEditor undo/redo', () => {
       fireEvent.click(screen.getByText('Rename'))
       const input = screen.getByLabelText('Name') as HTMLInputElement
       fireEvent.change(input, { target: { value: name } })
-      fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
+      fireEvent.click(within(document.querySelector('.dialog-component') as HTMLElement).getByRole('button', { name: 'Rename' }))
       await tick()
     }
     await renameTo('top clamp')

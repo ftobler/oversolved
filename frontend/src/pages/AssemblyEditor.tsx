@@ -1075,6 +1075,7 @@ export default function AssemblyEditor({ uuid, workspaceId }: { uuid: string; wo
                   onCancelInstance={handleCancelInstance}
                   onCommitMate={handleCommitMate}
                   onCancelMate={handleCancelMate}
+                  onRenameMate={(id, currentName) => setRenameMateTarget({ id, currentName })}
                   renderInstanceEditor={renderInstanceEditor}
                   renderMateEditor={(mate) => renderMateEditor(mate)}
                 />
