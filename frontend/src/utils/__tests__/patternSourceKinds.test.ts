@@ -14,6 +14,9 @@ import {
   applyReorderPickField,
 } from '@/utils/yamlMutations'
 import { MutationRefusal } from '@/utils/yamlMutations/helpers'
+import {
+  PATTERN_SOURCE_KINDS, isPatternSourceKind, patternSourceKindSentence,
+} from '@/kernel/features/patternSourceKinds'
 
 type AddPattern = (doc: PartDoc, featureId: string, fields?: Record<string, unknown>) => void
 
@@ -100,6 +103,46 @@ describe('pattern source appliers cover every PATTERN_KINDS entry', () => {
   it('refuses a source edit on a feature that does not exist', () => {
     expect(() => applyAddPatternSource({ features: [] }, 'pt9', '@ex1'))
       .toThrow(/pt9/)
+  })
+})
+
+describe('a hole is a source like any other', () => {
+  // The shared kind list is the one rule the kernel's tool table, the editor
+  // chip and this applier pair read. A hole has no operation; its only meaning
+  // is a cut, so it is admitted without an `operation` key on the row.
+  it('names the hole in the one shared kind list', () => {
+    expect(PATTERN_SOURCE_KINDS).toEqual(['extrude', 'revolve', 'sweep', 'wrap', 'hole'])
+    expect(isPatternSourceKind('hole')).toBe(true)
+    for (const kind of ['extrude', 'revolve', 'sweep', 'wrap']) expect(isPatternSourceKind(kind)).toBe(true)
+    for (const kind of ['sketch', 'fillet', 'chamfer', 'mirror', 'linear_pattern', '']) {
+      expect(isPatternSourceKind(kind), kind).toBe(false)
+    }
+    expect(patternSourceKindSentence('pattern')).toBe(
+      'a feature pattern repeats an extrude, revolve, sweep, wrap or hole',
+    )
+    expect(patternSourceKindSentence('mirror')).toBe(
+      'a mirror source repeats an extrude, revolve, sweep, wrap or hole',
+    )
+  })
+
+  it.each(PATTERN_KINDS)('%s accepts a hole source row', (kind) => {
+    const doc = addFeature(kind, { source_features: ['@ex1'] })
+    applyAddPatternSource(doc, 'pt1', '@h1')
+    expect(subOf(doc, kind).source_features).toEqual(['@ex1', '@h1'])
+    // The row itself carries no operation: a hole is a cut by definition.
+    expect(subOf(doc, kind)).not.toHaveProperty('operation')
+  })
+
+  it('the mirror accepts a hole source row', () => {
+    const doc: PartDoc = {
+      features: [{
+        id: 'mi1', kind: 'mirror', mirror: { subject: 'feature', source_features: ['@ex1'] },
+      } as unknown as PartFeature],
+    }
+    applyAddMirrorSource(doc, 'mi1', '@h1')
+    const feature = doc.features![0]
+    const sub = feature.kind === 'mirror' ? feature.mirror : undefined
+    expect(sub?.source_features).toEqual(['@ex1', '@h1'])
   })
 })
 
