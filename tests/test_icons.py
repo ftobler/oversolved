@@ -47,6 +47,26 @@ def test_every_committed_svg_has_a_generator(monkeypatch):
     assert not generated - committed, f"generators with no SVG: {sorted(generated - committed)}"
 
 
+def test_committed_svgs_match_a_fresh_render(tmp_path, monkeypatch):
+    """The checked-in SVG is the generator's output, not an older drawing.
+
+    `just icons` rewrites only the files whose bytes changed, and `just
+    frontend` regenerates before anyone can see a diff, so a stale committed
+    file would otherwise ride along silently. Rendering every registry entry
+    into tmp_path is the same pass `just icons` makes, compared byte for byte
+    against what is checked in.
+    """
+    _icons, icon_cairo = _load(monkeypatch)
+    stale = []
+    for path, draw, angle, offset_x, offset_y in icon_cairo._registry:
+        target = tmp_path / pathlib.Path(path).name
+        icon_cairo._draw_one(target, draw, angle, offset_x, offset_y)
+        if (ROOT / path).read_text().strip() != target.read_text().strip():
+            stale.append(pathlib.Path(path).name)
+
+    assert not stale, f"SVGs that do not match their generator: {sorted(stale)}"
+
+
 def test_draw_all_renders_each_registry_entry(tmp_path, monkeypatch):
     _icons, icon_cairo = _load(monkeypatch)
     monkeypatch.setattr(icon_cairo, "_registry", [])

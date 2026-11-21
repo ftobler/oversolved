@@ -285,6 +285,34 @@ def toolbar_offset(ctx):
     ctx.set_dash([])
 
 
+@icon("frontend/src/assets/icons/toolbar-import-dxf.svg")
+def toolbar_import_dxf(ctx):
+    """Import DXF: a picture, a framed image with mountains and a sun."""
+    # The frame keeps viewport-reset's 0.12 margin so the two icons sit on the
+    # same grid at 16 px.
+    x0, x1 = 0.12, 0.88
+    y0, y1 = 0.2, 0.8
+    ctx.move_to(x0, y0)
+    ctx.line_to(x1, y0)
+    ctx.line_to(x1, y1)
+    ctx.line_to(x0, y1)
+    ctx.close_path()
+    stroke(ctx, 1.5)
+
+    # Two peaks rise from the frame's bottom edge, the larger one left of
+    # centre; the valley between them keeps the outline legible at 16 px.
+    ctx.move_to(0.2, y1)
+    ctx.line_to(0.38, 0.48)
+    ctx.line_to(0.5, 0.66)
+    ctx.line_to(0.6, 0.56)
+    ctx.line_to(0.8, y1)
+    stroke(ctx, 1.5)
+
+    # The sun, clear of the smaller peak's right slope.
+    ctx.arc(0.7, 0.34, 0.07, 0, 2 * math.pi)
+    stroke(ctx, 1.5)
+
+
 @icon("frontend/src/assets/icons/toolbar-spline.svg")
 def toolbar_spline(ctx):
     # A cubic spline between its two control points.
