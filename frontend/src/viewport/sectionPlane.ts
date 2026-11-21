@@ -8,8 +8,9 @@
 import * as THREE from 'three'
 import type { PlaneTransform } from '@/types/cad'
 import { BUILTIN_PLANES } from '@/kernel/solverConstants'
+import type { BuiltinSectionPlaneId, SectionPlaneSource } from './sectionTypes'
 
-export type BuiltinSectionPlaneId = 'front' | 'top' | 'right'
+export type { BuiltinSectionPlaneId, SectionPlaneSource } from './sectionTypes'
 
 // Size of the cap quad in world units. The cap is the cut face of an infinite
 // plane; the quad only has to cover the model, so a generously large one keeps
@@ -17,19 +18,6 @@ export type BuiltinSectionPlaneId = 'front' | 'top' | 'right'
 // decides where it paints, so an oversized quad costs nothing visible. Lives
 // here so the visible cap and the ID-buffer cap cannot disagree.
 export const SECTION_CAP_SIZE = 10000
-
-/**
- * The plane the user chose. `query` covers both a user-defined plane and a
- * planar face: the resolver tries the solve result's plane transform first and
- * the body face frame second, so a query that stops resolving is detectable in
- * one place.
- */
-export type SectionPlaneSource =
-  | { kind: 'builtin'; id: BuiltinSectionPlaneId }
-  // `pickKey` is the face primitive that was clicked. Keeping it with the
-  // source means a shared query still resolves to the face the user chose after
-  // a re-solve, not whichever owner registered first.
-  | { kind: 'query'; query: string; pickKey?: string }
 
 export interface SectionFrame {
   // Unit normal of the plane, before offset and flip.

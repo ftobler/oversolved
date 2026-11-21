@@ -2,7 +2,7 @@
 // of the dispatcher so the "which picks may name a section plane" rule is
 // testable without a canvas or an ID buffer.
 import { FACE_LAYER_NAME, PLANE_LAYER_NAME } from '@/picking/layerNames'
-import type { BuiltinSectionPlaneId, SectionPlaneSource } from '@/viewport/sectionPlane'
+import type { BuiltinSectionPlaneId, SectionPlaneSource } from '@/viewport/sectionTypes'
 
 export interface SectionPickCandidate {
   layer: string

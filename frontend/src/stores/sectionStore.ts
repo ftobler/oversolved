@@ -6,7 +6,7 @@
 // options beside it, and a stale one after a reload would be a confusing
 // surprise rather than a restore.
 import { create } from 'zustand'
-import type { SectionPlaneSource } from '@/viewport/sectionPlane'
+import type { SectionPlaneSource } from '@/viewport/sectionTypes'
 
 export interface SectionState {
   enabled: boolean
