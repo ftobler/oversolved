@@ -17,6 +17,7 @@ import ScreenArrow, { SHAFT_RADIUS, SHAFT_START, TIP } from '@/components/Viewpo
 import { useAxisDrag } from '@/components/Viewport/useAxisDrag'
 import { unitLabel } from '@/utils/fieldUnit'
 import { lengthUnitOf } from '@/utils/lengthUnit'
+import { variableScopeAt, laterVariablesAt } from '@/kernel/features/variable'
 
 // The tail behind the grab point is world-sized (it spans the whole feature,
 // extrude origin to end face); only its radius is pixels. The screen-sized head
@@ -82,10 +83,26 @@ export default function FeatureHandles() {
   const editingFeatureId = useEditorState(s => s.editingFeatureId)
   const doc = usePartEditorStore(s => s.doc)
   const solveResults = usePartEditorStore(s => s.solveResults) as Record<string, SketchData> | undefined
+  const features = doc?.features
+
+  // The typed-value prompt is a feature expression field like any other, so it
+  // resolves the same positional scope the editor hands its widgets. Memoized
+  // on the log so the gesture effect does not re-subscribe every render.
+  const index = features === undefined || editingFeatureId === null
+    ? -1
+    : features.findIndex(f => f.id === editingFeatureId)
+  const variables = useMemo(
+    () => (features === undefined || index < 0 ? {} : variableScopeAt(features, index)),
+    [features, index],
+  )
+  const laterVariables = useMemo(
+    () => (features === undefined || index < 0 ? {} : laterVariablesAt(features, index, variables)),
+    [features, index, variables],
+  )
 
   if (!editingFeatureId) return null
   const handle = solveResults?.[editingFeatureId]?.handle
-  const feature = doc?.features?.find(f => f.id === editingFeatureId)
+  const feature = features?.find(f => f.id === editingFeatureId)
   if (!handle || !feature) return null
 
   // Key remount on feature/field change so gesture state never leaks across handles.
@@ -95,14 +112,18 @@ export default function FeatureHandles() {
       featureId={editingFeatureId}
       feature={feature}
       handle={handle}
+      variables={variables}
+      laterVariables={laterVariables}
     />
   )
 }
 
-function HandleArrow({ featureId, feature, handle }: {
+function HandleArrow({ featureId, feature, handle, variables, laterVariables }: {
   featureId: string
   feature: PartFeature
   handle: FeatureHandleData
+  variables: Record<string, number>
+  laterVariables: Record<string, number>
 }) {
   const { camera, size } = useThree()
   const selectionKey = featureHandleKey(featureId, handle.field)
@@ -180,7 +201,7 @@ function HandleArrow({ featureId, feature, handle }: {
           label: `${feature.label || feature.kind} ${handle.field}`,
           defaultValue: String(rawStored ?? handle.value),
           quantity,
-          validate: (input) => refusalText('Value', expressionRefusal(input, positive)),
+          validate: (input) => refusalText('Value', expressionRefusal(input, positive, variables, laterVariables)),
           onConfirm: (input) => {
             // Same convention as ExpressionInput: plain numbers store as
             // numbers, anything else as the raw expression string.
@@ -194,7 +215,7 @@ function HandleArrow({ featureId, feature, handle }: {
         })
       },
     })
-  }, [selectionKey, featureId, feature.label, feature.kind, handle, quantity, draggable, rawStored])
+  }, [selectionKey, featureId, feature.label, feature.kind, handle, quantity, draggable, rawStored, variables, laterVariables])
 
   // ─── gesture: window-level move/up (mirrors DragPlane's handler-ref pattern) ───
   const dragPending = useSketchEditorStore(s => s.dragPending)

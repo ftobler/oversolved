@@ -7,6 +7,7 @@ import { useFileMeta } from '@/stores/fileRegistry'
 import { formatBytes } from '@/utils/formatBytes'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { lengthUnitOf } from '@/utils/lengthUnit'
+import { variableScopeAt, laterVariablesAt } from '@/kernel/features/variable'
 import { StatusMessage } from '@/components/shared/StatusMessage'
 import { NO_MARK, type StatusMark } from '@/utils/core/statusMark'
 
@@ -50,7 +51,13 @@ function ImportStepFileRow({ fileId }: { fileId: string | undefined }) {
  */
 export function FeatureItemEditors({ status = NO_MARK, ...props }: FeatureItemEditorsProps) {
   if (props.editingFeatureId !== props.feature.id) return null
-  const editor = editorFor(props)
+  // The same positional fold the solve uses, read once per render: a number
+  // field resolves only the variables above its own row. A feature being added
+  // is already in the list at its insertion index, so it needs no special case.
+  const index = props.features.findIndex(f => f.id === props.feature.id)
+  const variables = index < 0 ? {} : variableScopeAt(props.features, index)
+  const laterVariables = index < 0 ? {} : laterVariablesAt(props.features, index, variables)
+  const editor = editorFor(props, variables, laterVariables)
   if (editor === null) return null
   return (
     <>
@@ -84,7 +91,7 @@ function editorFor({
   features,
   partLabels,
   solved,
-}: Omit<FeatureItemEditorsProps, 'status'>) {
+}: Omit<FeatureItemEditorsProps, 'status'>, variables: Record<string, number>, laterVariables: Record<string, number>) {
   const kind = feature.kind
 
   if (kind === 'plane' && !BUILTIN_FEATURE_IDS.has(feature.id)) {
@@ -97,6 +104,8 @@ function editorFor({
         features={features}
         partLabels={partLabels}
         lengthUnit={lengthUnitOf(doc?.length_unit)}
+        variables={variables}
+        laterVariables={laterVariables}
       />
     )
   }
@@ -131,6 +140,8 @@ function editorFor({
       schema={schema}
       lengthUnit={lengthUnitOf(doc?.length_unit)}
       solved={solved}
+      variables={variables}
+      laterVariables={laterVariables}
     />
   )
 }

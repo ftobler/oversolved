@@ -12,6 +12,7 @@
  * in, so this stays trivially unit-testable.
  */
 
+import type { PartFeature } from '@/types/cad'
 import { evalExpr, laterVariableRef } from '../evalExpr'
 
 // mathjs constants that would shadow a builtin if used as a variable name.
@@ -68,4 +69,54 @@ export function solveVariable(
     return { status: 'exception', exception: `Cannot evaluate "${exprStr}"` }
   }
   return { status: 'ok', value, expression: exprStr }
+}
+
+/** What the forward-reference scan needs from a log row: the builder hands it
+ *  its wider raw-record shape, the editor hands it typed features. */
+export interface VariableScopeFeature {
+  kind?: unknown
+  label?: unknown
+  id?: unknown
+}
+
+/** The variable values visible to the feature at `index` in the log (or to a
+ *  feature being inserted there): every unsuppressed variable before it,
+ *  evaluated in order against the scope built so far. Pure, no OCC. The editor
+ *  reads the same scope the builder loop gives the solve, and both use
+ *  `solveVariable`, so the two cannot disagree on a failed or duplicate name. */
+export function variableScopeAt(
+  features: readonly PartFeature[],
+  index: number,
+): Record<string, number> {
+  const scope: Record<string, number> = {}
+  const end = Math.max(0, Math.min(index, features.length))
+  for (let i = 0; i < end; i++) {
+    const feature = features[i]
+    if (feature.kind !== 'variable' || feature.suppressed) continue
+    // The fold is the builder's: solveVariable adds nothing on failure, so a
+    // failed variable leaves no name behind for a later one to read.
+    const result = solveVariable(feature as unknown as Record<string, unknown>, scope)
+    if (result.status === 'ok' && typeof result.value === 'number') {
+      scope[String(feature.label ?? feature.id ?? '')] = result.value
+    }
+  }
+  return scope
+}
+
+/** Variables defined after `index`, by name and log position. A name already in
+ *  `context` is an earlier definition, never the forward reference an
+ *  expression could complain about. Shared with the builder loop. */
+export function laterVariablesAt(
+  features: readonly VariableScopeFeature[],
+  index: number,
+  context: Record<string, number> = {},
+): Record<string, number> {
+  const later: Record<string, number> = {}
+  for (let i = index + 1; i < features.length; i++) {
+    const feature = features[i]
+    if (feature.kind !== 'variable') continue
+    const name = String(feature.label ?? feature.id ?? '')
+    if (name !== '' && !(name in context)) later[name] = i
+  }
+  return later
 }

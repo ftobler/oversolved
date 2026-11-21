@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { evalExpr, evalFeatureParams, laterVariableRef, EXPR_FIELDS_BY_KIND } from '../evalExpr'
+import { evalExpr, evalFeatureParams, laterVariableRef, exprRefusal, EXPR_FIELDS_BY_KIND } from '../evalExpr'
 
 describe('evalExpr', () => {
   it('returns a plain number string via the fast path', () => {
@@ -146,6 +146,37 @@ describe('laterVariableRef', () => {
   it('returns null when no later variable is named or the expression does not parse', () => {
     expect(laterVariableRef('2+2', { width: 3 })).toBeNull()
     expect(laterVariableRef('2+/', { width: 3 })).toBeNull()
+  })
+
+  it('finds a bare symbol, which is the root node with no parent', () => {
+    // The traversal callback's parent is null at the root; it must not be read
+    // as a FunctionNode. This is the one-symbol expression a field holds.
+    expect(laterVariableRef('width', { width: 3 })).toEqual({ name: 'width', index: 3 })
+  })
+})
+
+describe('exprRefusal', () => {
+  it('is null for an expression that evaluates', () => {
+    expect(exprRefusal('width*2', { width: 3 })).toBeNull()
+    expect(exprRefusal('pi*2', {})).toBeNull()
+  })
+
+  it('names a syntax failure', () => {
+    expect(exprRefusal('#var', {})).toEqual({ kind: 'syntax' })
+    expect(exprRefusal('2+/', {})).toEqual({ kind: 'syntax' })
+  })
+
+  it('calls an object literal a syntax failure, not an unknown symbol', () => {
+    expect(exprRefusal('{var}', {})).toEqual({ kind: 'syntax' })
+  })
+
+  it('names an unknown symbol, skipping functions and builtins', () => {
+    expect(exprRefusal('sqrt(width) + depth', { width: 3 })).toEqual({ kind: 'unknown', name: 'depth' })
+    expect(exprRefusal('width', {})).toEqual({ kind: 'unknown', name: 'width' })
+  })
+
+  it('prefers a forward reference over an unknown name', () => {
+    expect(exprRefusal('depth + foo', {}, { depth: 4 })).toEqual({ kind: 'later', name: 'depth', index: 4 })
   })
 })
 

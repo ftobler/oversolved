@@ -33,7 +33,8 @@ type SchemaData = Record<string, any>
 const showMergeTarget = (d: SchemaData) => d.operation !== 'new'
 
 /** Whether a stored angle asks for a draft. An expression counts as set, the
- *  same rule the drive boundary applies: the editor cannot evaluate it here. */
+ *  same rule the drive boundary applies: this schema predicate has no variable
+ *  scope to evaluate it with. */
 const angleIsSet = (value: unknown): boolean =>
   value !== undefined && value !== null && value !== '' && !(typeof value === 'number' && value === 0)
 
@@ -943,11 +944,15 @@ export const DELETE_PART_SCHEMA: FeatureEditorSchema = {
 export const VARIABLE_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_variable',
   subKey: 'variable',
-  defaults: { expression: '0' },
+  defaults: { expression: 0 },
   fields: [
-    // Plain text (not ExpressionInput): a variable expression may reference other
-    // variables the editor cannot resolve locally, so we must not eval-and-revert.
-    { type: 'text', key: 'expression', label: 'Expression', default: '0' },
+    // A variable is ordinary math over the variables defined above it, so it
+    // gets the same expression box as every other number: the wheel steps a
+    // plain number, an expression shows its value, and a name the editor cannot
+    // resolve says so. There is no value rule: a variable may be zero or
+    // negative. The stored `unit` is a display hint only, never a quantity.
+    { type: 'number', key: 'expression', label: 'Expression', default: 0, quantity: 'none',
+      unitHint: (d) => (typeof d.unit === 'string' && d.unit !== '' ? d.unit : undefined) },
   ],
 }
 

@@ -6,6 +6,7 @@ import Workspaces from '@/pages/Workspaces'
 import WorkspacePage from '@/pages/WorkspacePage'
 import Docs from '@/pages/Docs'
 import Registry from '@/pages/Registry'
+import Variables from '@/pages/Variables'
 import Licenses from '@/pages/Licenses'
 import CrashReports from '@/pages/CrashReports'
 import '@/components/shared/buttons.css'
@@ -38,6 +39,7 @@ function App() {
         <Route path="/docs" element={<Docs />}>
           <Route index element={<Navigate to="/docs/registry" replace />} />
           <Route path="registry" element={<Registry />} />
+          <Route path="variables" element={<Variables />} />
           <Route path="licenses" element={<Licenses />} />
           {/* The local crash reports: read, export for a bug report, delete. */}
           <Route path="crash-reports" element={<CrashReports />} />

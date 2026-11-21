@@ -15,10 +15,15 @@ interface PlaneEditorProps {
   partLabels: Record<string, string>
   // The document's unit, for the offset row.
   lengthUnit?: LengthUnit
+  // The variables defined before this plane, for its number fields.
+  variables?: Record<string, number>
+  // The variables defined after it, so a forward reference is named as such.
+  laterVariables?: Record<string, number>
 }
 
 export function PlaneEditor({
   feature, featureDef, onMutation, features, partLabels, lengthUnit = 'mm',
+  variables, laterVariables,
 }: PlaneEditorProps) {
   const def: PlaneDef = featureDef?.definition ?? { mode: 'offset' }
   const mode = def.mode ?? 'offset'
@@ -67,6 +72,8 @@ export function PlaneEditor({
         ariaLabel={label}
         quantity={quantity}
         lengthUnit={lengthUnit}
+        context={variables}
+        laterVariables={laterVariables}
         onChange={(v) => onMutation({ type: 'set_plane_definition_field', featureId: fid, field, value: v })}
       />
     </div>

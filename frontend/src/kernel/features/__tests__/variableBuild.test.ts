@@ -7,8 +7,9 @@
 import { describe, it, expect } from 'vitest'
 import { build, type BuildDeps, type FeatureResult } from '../../builder'
 import { Repository } from '../../query'
-import { solveVariable } from '../variable'
+import { solveVariable, variableScopeAt } from '../variable'
 import { resolveFeatureExpressions } from '../../solverRegistry'
+import type { PartFeature } from '@/types/cad'
 
 function deps(): BuildDeps {
   return {
@@ -87,5 +88,37 @@ describe('variable build integration', () => {
     const res = build(spec, { prevState: null }, deps()).result as Record<string, FeatureResult>
     expect(res.a).toMatchObject({ status: 'exception' })
     expect(res.b).toMatchObject({ value: 10 })
+  })
+
+  it('hands each feature the same scope variableScopeAt reports for it', () => {
+    // The editor reads variableScopeAt, the solve reads the builder's live
+    // context. They must agree feature by feature, including a suppressed
+    // variable and one that fails.
+    const features = [
+      { id: 'w', kind: 'variable', label: 'w', variable: { expression: 10 } },
+      { id: 'sk', kind: 'sketch', entities: [], initial: {} },
+      { id: 'bad', kind: 'variable', label: 'bad', variable: { expression: '2+/' } },
+      { id: 'h', kind: 'variable', label: 'h', variable: { expression: 'w*2' } },
+      { id: 'skip', kind: 'variable', label: 'skip', variable: { expression: 7 }, suppressed: true },
+      { id: 'ex1', kind: 'extrude', extrude: { sketch: '', distance: 'w+h' } },
+    ]
+    const seen: Record<string, Record<string, number>> = {}
+    const capture: BuildDeps = {
+      ...deps(),
+      trySolveFeature: (feature, _repo, _partStore, _featuresById, variableContext, laterVariables): FeatureResult => {
+        const ctx = variableContext ?? {}
+        seen[String(feature.id)] = { ...ctx }
+        if (feature.kind === 'variable') return solveVariable(feature, ctx, laterVariables ?? {})
+        if (feature.kind === 'extrude') return { status: 'ok' }
+        return { status: 'ok' }
+      },
+    }
+    build({ features }, { prevState: null }, capture)
+    for (let i = 0; i < features.length; i++) {
+      // The builder never calls a solver for a suppressed row, so there is no
+      // context to compare against.
+      if (features[i].suppressed) continue
+      expect(seen[features[i].id]).toEqual(variableScopeAt(features as unknown as PartFeature[], i))
+    }
   })
 })
