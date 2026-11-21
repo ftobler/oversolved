@@ -153,6 +153,43 @@ describe('buildPickBodies', () => {
     expect(faceBoundaries!.has(1)).toBe(false)
   })
 
+  // A lateral cylinder strip whose seam column is duplicated, like OCC's.
+  function cylinderStripPayload(): MeshPayload {
+    const columns = 4
+    const vertices = new Float32Array((columns + 1) * 2 * 3)
+    for (const [zRow, z] of [0, 1].entries()) {
+      for (let i = 0; i <= columns; i++) {
+        const angle = ((i === columns ? 0 : i) / columns) * 2 * Math.PI
+        const at = (zRow * (columns + 1) + i) * 3
+        vertices[at] = Math.cos(angle)
+        vertices[at + 1] = Math.sin(angle)
+        vertices[at + 2] = z
+      }
+    }
+    const at = (zRow: number, column: number) => zRow * (columns + 1) + column
+    const indices = new Uint32Array(columns * 2 * 3)
+    for (let i = 0; i < columns; i++) {
+      const a = at(0, i), b = at(0, i + 1), c = at(1, i), d = at(1, i + 1)
+      indices.set([a, b, c, b, d, c], i * 6)
+    }
+    return {
+      vertices,
+      indices,
+      faceIdsPerTriangle: new Uint32Array(columns * 2),
+      edges: [],
+    }
+  }
+
+  it('welds the seam of a cylinder lateral face, leaving only its two rims', () => {
+    // The assembly outline runs the same builder as the part editor, over the
+    // solved MeshPayload shim: a seam must stay as invisible here as it is there.
+    const boundary = build(cylinderStripPayload()).faceBoundaries!.get(0)!
+    expect(boundary.length).toBe(2 * 4 * 6)
+    for (let i = 0; i < boundary.length; i += 6) {
+      expect(Math.abs(boundary[i + 2] - boundary[i + 5])).toBeLessThan(1e-6)
+    }
+  })
+
   it('offers no face boundaries for an empty mesh', () => {
     const part = build({
       vertices: new Float32Array(0),
