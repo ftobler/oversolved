@@ -45,6 +45,30 @@ export function shouldCommitHandleRelease(
 }
 
 /**
+ * World travel of the arrow from the freshly solved grab point along its
+ * solved direction, for a drag that has moved `valueDelta` field units since
+ * the press. The solved anchor can already sit at the new value (an extrude's
+ * end face rides the distance), so the pointer travel measured from the
+ * press-time anchor is reduced by however far the anchor itself moved. A fixed
+ * anchor (fillet, chamfer) subtracts nothing and the arrow keeps following the
+ * pointer. Without a live solve the two anchors are the same and this is the
+ * pre-live formula.
+ */
+export function handleDragTravel(
+  solvedAnchor: readonly [number, number, number],
+  direction: readonly [number, number, number],
+  pressAnchor: readonly [number, number, number],
+  valueDelta: number,
+  pressUnitScale: number,
+): number {
+  const anchorAlong =
+    (solvedAnchor[0] - pressAnchor[0]) * direction[0]
+    + (solvedAnchor[1] - pressAnchor[1]) * direction[1]
+    + (solvedAnchor[2] - pressAnchor[2]) * direction[2]
+  return valueDelta * pressUnitScale - anchorAlong
+}
+
+/**
  * World length of the arrow's tail behind the grab point, so the arrow spans
  * the whole feature: a linear handle's anchor sits `value * unitScale` world
  * units from the feature origin (extrude: profile plane, symmetric extrude:

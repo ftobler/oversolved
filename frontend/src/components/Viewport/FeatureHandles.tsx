@@ -7,7 +7,8 @@ import { useEditorState } from '@/hooks/useEditorState'
 import { useSketchEditorStore, useSketchUiStore, getSketchCallback, type FeatureHandleDrag } from '@/stores/sketchEditorStore'
 import { useFeatureHandleIdRegistration, featureHandleKey } from '@/picking'
 import { registerFeatureHandleCallbacks } from '@/components/Viewport/idDispatch/featureHandleCallbacks'
-import { handleValueFromTravel, roundHandleValue, shouldCommitHandleRelease, handleTailLength, labelOffsetPx, handleColor } from '@/components/Geometry3D/featureHandleMath'
+import { handleValueFromTravel, roundHandleValue, shouldCommitHandleRelease, handleTailLength, handleDragTravel, labelOffsetPx, handleColor } from '@/components/Geometry3D/featureHandleMath'
+import { createLiveValuePump, type LiveValuePump } from '@/components/Geometry3D/liveValuePump'
 import { shouldActivateDrag } from '@/utils/geometry/dragLogic'
 import { p2w } from '@/utils/geometry/sketchHelpers'
 import { refusalText } from '@/utils/core/statusMark'
@@ -60,12 +61,31 @@ function emitFieldMutation(
   featureId: string,
   field: string,
   value: number | string,
-): void {
+): unknown {
   const type = FIELD_MUTATION_TYPE[kind]
   if (!type) return
-  getSketchCallback('onMutation')?.({
+  return getSketchCallback('onMutation')?.({
     type, featureId, field, value,
   } as Mutation)
+}
+
+/**
+ * The gesture's own descriptor, for the stretches where a live solve has no
+ * handle to publish (a value that fails to build). The drag captured the
+ * press-time anchor, direction, scale and value, which is everything the arrow
+ * needs to stay drawn and to keep mapping the pointer to the same value.
+ */
+function dragHandleDescriptor(drag: FeatureHandleDrag): FeatureHandleData {
+  return {
+    kind: drag.handleKind ?? 'linear',
+    field: drag.field,
+    anchor: drag.axisOrigin,
+    direction: drag.axisDir,
+    value: drag.startValue,
+    unit_scale: drag.unitScale,
+    min: drag.min,
+    ...(drag.max !== undefined && { max: drag.max }),
+  }
 }
 
 /**
@@ -74,17 +94,26 @@ function emitFieldMutation(
  * Everything geometric (anchor, direction, drag-to-value mapping) comes from
  * the kernel's `handle` descriptor in the feature's solve result; this
  * component renders the arrow, registers its grab point in the featureHandle
- * ID layer, owns the window-level drag gesture, and commits the new value as
- * a `set_<kind>_field` mutation on release (rebuild follows, like every
- * other feature edit).
+ * ID layer, owns the window-level drag gesture, and sends the new value as a
+ * `set_<kind>_field` mutation: live through a newest-value pump while the drag
+ * moves, and once more on release (the rebuild follows, like every other
+ * feature edit).
  */
 export default function FeatureHandles() {
   const editingFeatureId = useEditorState(s => s.editingFeatureId)
   const doc = usePartEditorStore(s => s.doc)
   const solveResults = usePartEditorStore(s => s.solveResults) as Record<string, SketchData> | undefined
+  const drag = useSketchEditorStore(s => s.drag)
+
+  // A live solve of the edited feature can land without a handle (a failing
+  // value). The gesture's own press-time descriptor is kept in the drag state,
+  // so the arrow stays mounted and draggable from it until the next good solve
+  // installs a fresh one.
+  const solvedHandle = editingFeatureId ? solveResults?.[editingFeatureId]?.handle : undefined
 
   if (!editingFeatureId) return null
-  const handle = solveResults?.[editingFeatureId]?.handle
+  const liveDrag = drag?.type === 'feature_handle' && drag.featureId === editingFeatureId ? drag : null
+  const handle = solvedHandle ?? (liveDrag ? dragHandleDescriptor(liveDrag) : undefined)
   const feature = doc?.features?.find(f => f.id === editingFeatureId)
   if (!handle || !feature) return null
 
@@ -126,8 +155,16 @@ function HandleArrow({ featureId, feature, handle }: {
   const [ax, ay, az] = handle.anchor
   const [dx, dy, dz] = handle.direction
 
-  // Grab point rides the drag preview: anchor + direction * value-delta * unitScale.
-  const travel = activeDrag ? (activeDrag.currentValue - activeDrag.startValue) * activeDrag.unitScale : 0
+  // Grab point rides the drag preview. The solved anchor may already have moved
+  // to the value the live solve landed on, so the pointer travel is measured
+  // from the press-time anchor and reduced by that movement, never added on top
+  // of it twice.
+  const travel = activeDrag
+    ? handleDragTravel(
+      handle.anchor, handle.direction, activeDrag.axisOrigin,
+      activeDrag.currentValue - activeDrag.startValue, activeDrag.unitScale,
+    )
+    : 0
   const position: [number, number, number] = [ax + dx * travel, ay + dy * travel, az + dz * travel]
 
   const quaternion = useMemo(
@@ -135,10 +172,12 @@ function HandleArrow({ featureId, feature, handle }: {
     [dx, dy, dz],
   )
 
-  // World-sized tail behind the grab point (feature origin to grab point);
-  // the drag preview stretches it live so the tail always ends at the origin.
-  const tailLen = handleTailLength(handle.kind, handle.value, handle.unit_scale)
-  const tailWorldLen = tailLen + travel
+  // World-sized tail behind the grab point (feature origin to grab point),
+  // sized from the value the pointer shows: a live solve makes the solved value
+  // the anchor of that travel, so sizing it from the solved value plus the
+  // travel would count a moved anchor twice.
+  const tailValue = activeDrag ? activeDrag.currentValue : handle.value
+  const tailLen = handleTailLength(handle.kind, tailValue, handle.unit_scale)
 
   const { pxToWorld, cursorAxisParam, trackZoom } = useAxisDrag()
 
@@ -171,6 +210,7 @@ function HandleArrow({ featureId, feature, handle }: {
           axisDir: handle.direction,
           unitScale: handle.unit_scale,
           min: handle.min,
+          handleKind: handle.kind,
           ...(handle.max !== undefined && { max: handle.max }),
         })
       },
@@ -205,6 +245,12 @@ function HandleArrow({ featureId, feature, handle }: {
   // so the value never jumps by the click-threshold distance.
   const startParamRef = useRef<number | null>(null)
 
+  // The live rebuild pump for this gesture, created on the first value that
+  // differs from the start, and the gesture's start value so an abandoned drag
+  // can put the field back.
+  const pumpRef = useRef<LiveValuePump | null>(null)
+  const dragStartValueRef = useRef<number | null>(null)
+
   const handleMoveRef = useRef<((e: PointerEvent) => void) | null>(null)
   const moveImpl = (e: PointerEvent) => {
     const st = useSketchEditorStore.getState()
@@ -216,6 +262,7 @@ function HandleArrow({ featureId, feature, handle }: {
       && shouldActivateDrag(dragStartClient, [e.clientX, e.clientY])) {
       startParamRef.current = cursorAxisParam(e, dragPending.axisOrigin, dragPending.axisDir)
       const activated: FeatureHandleDrag = { ...dragPending, currentValue: dragPending.startValue }
+      dragStartValueRef.current = activated.startValue
       st.setDrag(activated)
     }
 
@@ -225,6 +272,19 @@ function HandleArrow({ featureId, feature, handle }: {
     if (t === null || startParamRef.current === null) return
     const value = handleValueFromTravel(cur.startValue, t - startParamRef.current, cur.unitScale, cur.min, cur.max)
     st.setDrag({ ...cur, currentValue: value })
+
+    // Every move inside the gesture feeds the pump, but only a value that
+    // rounds to a new step reaches the document: a jitter inside one 0.01 step
+    // rebuilds nothing, and a solver slower than the pointer only ever sees the
+    // newest value (the pump keeps one solve in flight).
+    const rounded = roundHandleValue(value)
+    if (rounded !== roundHandleValue(cur.startValue)) {
+      if (!pumpRef.current) {
+        pumpRef.current = createLiveValuePump(v =>
+          emitFieldMutation(feature.kind as keyof typeof FIELD_MUTATION_TYPE, featureId, cur.field, v))
+      }
+      pumpRef.current.offer(rounded)
+    }
   }
   useEffect(() => { handleMoveRef.current = moveImpl })
 
@@ -242,7 +302,23 @@ function HandleArrow({ featureId, feature, handle }: {
     if (drag?.type !== 'feature_handle' || drag.featureId !== featureId) return
 
     const rounded = shouldCommitHandleRelease(drag.startValue, drag.currentValue)
-    if (rounded !== null) {
+    const pump = pumpRef.current
+    pumpRef.current = null
+    dragStartValueRef.current = null
+    if (pump) {
+      pump.cancel()
+      // The release must land inside the edit session that is still open, so
+      // the final value is sent now rather than when the in-flight solve
+      // settles: OK or Cancel can close the session before that settle, which
+      // would apply the release outside the one undo entry. A release back on
+      // the start value sends the exact start value (not its 0.01 rounding, a
+      // stored value may carry more decimals), putting a document moved by live
+      // mutations exactly back where it was.
+      emitFieldMutation(
+        feature.kind as keyof typeof FIELD_MUTATION_TYPE,
+        featureId, drag.field, rounded ?? drag.startValue,
+      )
+    } else if (rounded !== null) {
       emitFieldMutation(
         feature.kind as keyof typeof FIELD_MUTATION_TYPE,
         featureId, drag.field, rounded,
@@ -268,15 +344,28 @@ function HandleArrow({ featureId, feature, handle }: {
   }, [gestureLive])
 
   // Unmount mid-gesture (feature closed, rebuild replaced the editor state):
-  // drop any handle drag so the camera can never stay orbit-locked.
+  // drop any handle drag so the camera can never stay orbit-locked, and put the
+  // field back on its start value because the live mutations may already have
+  // moved it.
   useEffect(() => () => {
     const st = useSketchEditorStore.getState()
     if (st.drag?.type === 'feature_handle' || st.dragPending?.type === 'feature_handle') {
+      const pump = pumpRef.current
+      pumpRef.current = null
+      pump?.cancel()
+      const start = dragStartValueRef.current
+      dragStartValueRef.current = null
+      if (start !== null) {
+        emitFieldMutation(
+          feature.kind as keyof typeof FIELD_MUTATION_TYPE,
+          featureId, handle.field, start,
+        )
+      }
       st.setDrag(null)
       st.setDragPending(null)
       st.setDragStartClient(null)
     }
-  }, [])
+  }, [feature.kind, featureId, handle.field])
 
   // ─── visuals ───
   const groupRef = useRef<THREE.Group>(null)
@@ -286,7 +375,7 @@ function HandleArrow({ featureId, feature, handle }: {
     groupRef.current?.scale.setScalar(f)
     // The tail's radius is screen-constant but its length is world-sized, so
     // it cannot live in the uniformly rescaled head group.
-    tailRef.current?.scale.set(SHAFT_RADIUS * f, tailWorldLen, SHAFT_RADIUS * f)
+    tailRef.current?.scale.set(SHAFT_RADIUS * f, tailLen, SHAFT_RADIUS * f)
     trackZoom(f)
   })
 
@@ -314,7 +403,7 @@ function HandleArrow({ featureId, feature, handle }: {
       <ScreenArrow
         color={color}
         opacity={opacity}
-        tailLength={tailWorldLen}
+        tailLength={tailLen}
         tailRef={tailRef}
         headStartPx={headStartPx}
         headRef={groupRef}

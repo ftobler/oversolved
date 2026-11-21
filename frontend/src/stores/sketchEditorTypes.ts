@@ -74,6 +74,10 @@ export interface FeatureHandleDrag {
   unitScale: number  // world units per field unit
   min: number
   max?: number
+  // The handle's geometry family, carried so a live solve that fails can keep
+  // the arrow on the gesture's own press-time descriptor instead of unmounting
+  // it mid-drag. Optional for drags built without a solved handle (tests).
+  handleKind?: 'linear' | 'angular'
 }
 
 export type DragState = VertexOrEdgeDrag | DimLabelDrag | FeatureHandleDrag
@@ -105,6 +109,7 @@ export interface FeatureHandleDragPending {
   unitScale: number
   min: number
   max?: number
+  handleKind?: 'linear' | 'angular'
 }
 
 export type DragPendingState = EdgeVertexDragPending | DimLabelDragPending | FeatureHandleDragPending

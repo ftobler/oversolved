@@ -16,7 +16,11 @@ import type { DialogState } from './sketchEditorTypes'
 import { devOnly } from './stateInvariants'
 
 export const sketchCallbacks: {
-  onMutation: ((m: Mutation) => void) | null
+  // The mutation sink. It may return a promise that settles when the solve the
+  // mutation requested has settled, which the live feature-handle pump uses to
+  // keep one rebuild in flight; every other caller ignores the return, so the
+  // type stays open.
+  onMutation: ((m: Mutation) => unknown) | null
   onMutationBatch: ((ms: Mutation[]) => void) | null
   onRebuild: (() => void) | null
   onExitSketch: (() => void) | null
@@ -105,7 +109,7 @@ export interface SketchMessage {
  *  dimension confirm path cannot drift apart. */
 export const CANNOT_APPLY_TITLE = 'Cannot apply constraint'
 
-export function setSketchCallback(key: 'onMutation', cb: ((m: Mutation) => void) | null): void
+export function setSketchCallback(key: 'onMutation', cb: ((m: Mutation) => unknown) | null): void
 export function setSketchCallback(key: 'onMutationBatch', cb: ((ms: Mutation[]) => void) | null): void
 export function setSketchCallback(key: 'onRebuild' | 'onExitSketch', cb: (() => void) | null): void
 export function setSketchCallback(key: 'getSketch', cb: ((featureId: string) => Sketch | null) | null): void
