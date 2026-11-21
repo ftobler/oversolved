@@ -126,32 +126,38 @@ describe('AssemblyEditPanel', () => {
     expect(props.onCancelInstance).not.toHaveBeenCalled()
   })
 
-  it('heads a failed part with its own status mark, above the fields', () => {
+  it('marks a failed part in its own card below the edit panel', () => {
     const { container } = renderPanel({
       editing: { kind: 'instance', handle: 'p1' },
       status: status({ parts: { p1: { failed: true, error: 'part doc not found: p1' } } }),
     })
-    const part = container.querySelector('.feature-edit-panel-body') as HTMLElement
-    const line = part.firstElementChild as HTMLElement
-    expect(line.className).toContain('status-message')
+    const panel = container.querySelector('.feature-edit-panel') as HTMLElement
+    const statusPanel = container.querySelector('.feature-status-panel') as HTMLElement
+    expect(panel.contains(statusPanel)).toBe(false)
+    expect(statusPanel.previousElementSibling).toBe(panel)
+    expect(statusPanel.classList.contains('glass-panel')).toBe(true)
+    const line = statusPanel.querySelector('.status-message') as HTMLElement
     expect(line.className).toContain('status-message--error')
     expect(line.textContent).toBe('part doc not found: p1')
   })
 
-  it('heads a failed mate with its own status mark, above its fields', () => {
+  it('marks a failed mate in its own card below the edit panel', () => {
     const { container } = renderPanel({
       editing: { kind: 'mate', id: 'm1' },
       status: status({ mates: { m1: { stale: true, error: "unsupported mate kind 'worm_gear'" } } }),
     })
-    const part = container.querySelector('.feature-edit-panel-body') as HTMLElement
-    const line = part.firstElementChild as HTMLElement
-    expect(line.className).toContain('status-message')
+    const panel = container.querySelector('.feature-edit-panel') as HTMLElement
+    const statusPanel = container.querySelector('.feature-status-panel') as HTMLElement
+    expect(panel.contains(statusPanel)).toBe(false)
+    expect(statusPanel.previousElementSibling).toBe(panel)
+    const line = statusPanel.querySelector('.status-message') as HTMLElement
     expect(line.className).toContain('status-message--error')
     expect(line.textContent).toBe("unsupported mate kind 'worm_gear'")
   })
 
-  it('draws no status line for a healthy subject', () => {
+  it('draws no status card for a healthy subject', () => {
     const { container } = renderPanel({ editing: { kind: 'mate', id: 'm2' } })
+    expect(container.querySelector('.feature-status-panel')).toBeNull()
     expect(container.querySelector('.status-message')).toBeNull()
   })
 

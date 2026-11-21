@@ -8,6 +8,7 @@ import { parseQuery } from '@/utils/query'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
 import { findEdgeKindForQuery } from '@/picking/partDispatchCallbacks'
 import { classifyPendingAdd } from '@/kernel/features/constraintProbe'
+import { variableRenameProblem } from '@/kernel/features/variable'
 import { PROJECTION_NOT_FROZEN_TITLE, projectionNotFrozenMessage } from '@/kernel/features/projectionMembers'
 import { projectedSelectionTargets } from '@/utils/yamlMutations/freezeProjection'
 import { executeCommand } from '@/utils/core/commandRegistry'
@@ -343,6 +344,11 @@ export default function Part() {
   const autosaveError = useAutosaveStore(s => s.error)
 
   const features = useMemo(() => extractFeatures(doc), [doc])
+  // The rename dialog's subject decides whether the variable name rule runs and
+  // which title the gesture reads; a body has its own label rules.
+  const renameFeatureId = renameTarget?.kind === 'feature' ? renameTarget.id : null
+  const renameIsVariable = renameFeatureId !== null
+    && features.some(f => f.id === renameFeatureId && f.kind === 'variable')
   const planeSelectionFeatureId = derivePlaneSelectionFeatureId(activePickField, features)
   const partStyle = useMemo(() => doc?.part_style ?? {}, [doc])
   const { partLabels, partColors } = useMemo(() => {
@@ -1313,21 +1319,25 @@ export default function Part() {
   const handleFeatureRename = useCallback((featureId: string, label: string) => {
     const trimmed = label.trim()
     if (!trimmed) return
-    handleMutation({ type: 'rename_feature', featureId, label: trimmed })
+    return handleMutation({ type: 'rename_feature', featureId, label: trimmed })
   }, [handleMutation])
 
   const handlePartRename = useCallback((partId: string, label: string) => {
     const trimmed = label.trim()
     if (!trimmed) return
-    handleMutation({ type: 'rename_part', bodyId: partId, name: trimmed })
+    return handleMutation({ type: 'rename_part', bodyId: partId, name: trimmed })
   }, [handleMutation])
 
   // The context menu only names what is being renamed; the dialog collects the
   // label and routes it back to the kind's own mutation.
   const handleRenameConfirm = useCallback((name: string) => {
     if (!renameTarget) return
-    if (renameTarget.kind === 'body') handlePartRename(renameTarget.id, name)
-    else handleFeatureRename(renameTarget.id, name)
+    const result = renameTarget.kind === 'body'
+      ? handlePartRename(renameTarget.id, name)
+      : handleFeatureRename(renameTarget.id, name)
+    // A refusal is not a finished gesture: the toast carries the reason and the
+    // dialog keeps the typed name so the user can fix it.
+    if (result && !result.ok && result.code === 'refused') return
     setRenameTarget(null)
   }, [renameTarget, handlePartRename, handleFeatureRename])
 
@@ -1655,8 +1665,13 @@ export default function Part() {
       )}
       <RenameDialog
         isOpen={renameTarget !== null}
-        title={renameTarget?.kind === 'body' ? 'Rename Part' : 'Rename Feature'}
+        title={renameTarget?.kind === 'body'
+          ? 'Rename Part'
+          : renameIsVariable ? 'Rename Variable' : 'Rename Feature'}
         currentName={renameTarget?.currentName ?? ''}
+        validate={renameFeatureId !== null && renameIsVariable
+          ? name => variableRenameProblem(features, renameFeatureId, name)
+          : undefined}
         onRename={handleRenameConfirm}
         onCancel={() => setRenameTarget(null)}
       />

@@ -101,4 +101,33 @@ describe('usePartDoc reports an applier refusal', () => {
     expect(refusals).toEqual([expect.stringContaining('not a pattern')])
     expect(docRef.current).toEqual(before)
   })
+
+  // The reported bug: an invalid variable rename used to return quietly, so the
+  // dialog closed and the tree kept the old name with no message. The applier now
+  // throws the same sentence the dialog hint shows.
+  it('refuses an invalid variable rename, toasts the sentence and records no undo entry', () => {
+    const refusals: string[] = []
+    const { result } = renderHookStrict(() => usePartDoc('u', {
+      solveOnLoad: false,
+      onRefusal: message => refusals.push(message),
+    }))
+    docRef.current = {
+      version: 1,
+      kind: 'part',
+      features: [{ id: 'v1', kind: 'variable', label: 'width', variable: { expression: '10' } }],
+    }
+    const before = structuredClone(docRef.current)
+
+    const outcome = result.current.handleMutation({
+      type: 'rename_feature', featureId: 'v1', label: 'my-var',
+    })
+    expect(outcome).toMatchObject({ ok: false, code: 'refused' })
+    expect((outcome as { message: string }).message).toBe(
+      '"my-var" is not a valid variable name: use letters, digits and _ only '
+        + '(a - reads as minus in an expression). Try "my_var".',
+    )
+    expect(refusals).toEqual([expect.stringContaining('is not a valid variable name')])
+    expect(docRef.current).toEqual(before)
+    expect(result.current.undoStack).toHaveLength(0)
+  })
 })
