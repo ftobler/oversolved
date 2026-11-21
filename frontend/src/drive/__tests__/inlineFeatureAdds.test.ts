@@ -2,7 +2,8 @@
 //
 // The pure half of the bulk `add_chamfer` / `add_shell` forms: the catalog row
 // and the shell sign note (thickness is a magnitude, `direction` carries the
-// side, and CadQuery's signed thickness maps positive -> outward). The
+// side, and CadQuery's signed thickness maps positive -> outward). It also
+// pins the inline rows of add_move_face, add_variable and add_helix. The
 // built-document half, where one call must produce the same solid as the old
 // feature + pick + field sequence, is inlineFeatureAddsReal.test.ts.
 
@@ -22,6 +23,32 @@ describe('add_revolve / add_sweep / add_transform / add_boolean inline payloads'
       for (const field of fields) expect(info.fields[field], `${type}.${field}`).toBeDefined()
       expect(info.note ?? '', type).not.toContain('follow it with')
     }
+  })
+})
+
+describe('add_move_face / add_variable / add_helix inline payloads', () => {
+  it('publishes the setter fields each add row now fronts', () => {
+    const rows: Array<[Parameters<typeof mutationInfoOf>[0], readonly string[]]> = [
+      ['add_move_face', ['faces', 'distance']],
+      ['add_variable', ['expression', 'value', 'unit']],
+      ['add_helix', [
+        'reference', 'radius_mode', 'mode', 'hand', 'direction', 'height_from_reference',
+        'radius', 'pitch', 'turns', 'height', 'helix_angle', 'offset', 'start_angle', 'auto_hidden',
+      ]],
+    ]
+    for (const [type, fields] of rows) {
+      const info = mutationInfoOf(type)
+      for (const field of fields) expect(info.fields[field], `${type}.${field}`).toBeDefined()
+      expect(info.note ?? '', type).toContain('One call may carry the whole')
+    }
+  })
+
+  it('says which helix fields the default mode reads', () => {
+    const note = mutationInfoOf('add_helix').note!
+    expect(note).toContain('mode pitch_turns')
+    expect(note).toContain('pitch 1')
+    expect(note).toContain('turns 5')
+    expect(note).toContain('stored and ignored')
   })
 })
 

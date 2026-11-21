@@ -674,12 +674,27 @@ export function applyRemoveShellFace(doc: PartDoc, featureId: string, index: num
 
 // ─── Move face ───
 
-export function applyAddMoveFace(doc: PartDoc, featureId: string, label?: string): void {
+const MOVE_FACE_FIELDS: readonly string[] = ['faces', 'distance']
+
+export function applyAddMoveFace(
+  doc: PartDoc,
+  featureId: string,
+  label?: string,
+  inline: Partial<MoveFaceFeatureDef> = {},
+): void {
+  // The pick list is copied for the same journal reason as the fillet's edges;
+  // distance crosses the usual rounding boundary through setFeatureField. The
+  // allow-list drops a replayed key the def does not hold, like the patterns.
+  const move_face: MoveFaceFeatureDef = { faces: [], distance: 5 }
+  const accepted = Object.fromEntries(
+    Object.entries(inline).filter(([field]) => MOVE_FACE_FIELDS.includes(field)),
+  )
+  mergeInlineFields(move_face, accepted as Partial<MoveFaceFeatureDef>)
   pushFeature(doc, {
     id: featureId,
     kind: 'move_face',
     label: label ?? 'Move Face',
-    move_face: { faces: [], distance: 5 },
+    move_face,
   })
 }
 
@@ -1714,17 +1729,30 @@ function uniqueVariableName(base: string, existingVars: PartFeature[]): string {
   return `${name}_${counter}`
 }
 
-export function applyAddVariable(doc: PartDoc, featureId: string, label?: string): void {
+const VARIABLE_FIELDS: readonly string[] = ['expression', 'value', 'unit']
+
+export function applyAddVariable(
+  doc: PartDoc,
+  featureId: string,
+  label?: string,
+  inline: Partial<VariableFeatureDef> = {},
+): void {
   if (!doc.features) doc.features = []
   const existing = doc.features.filter(f => f.kind === 'variable')
   const name = uniqueVariableName(label ?? 'var', existing)
+  // The numeric default VARIABLE_SCHEMA's Expression field commits, so a
+  // fresh add shows the same value the field would write on its first edit.
+  // An inline expression replaces that seed in the same call.
+  const variable: VariableFeatureDef = { expression: 0 }
+  const accepted = Object.fromEntries(
+    Object.entries(inline).filter(([field]) => VARIABLE_FIELDS.includes(field)),
+  )
+  mergeInlineFields(variable, accepted as Partial<VariableFeatureDef>)
   doc.features.push({
     id: featureId,
     kind: 'variable',
     label: name,
-    // The numeric default VARIABLE_SCHEMA's Expression field commits, so a
-    // fresh add shows the same value the field would write on its first edit.
-    variable: { expression: 0 },
+    variable,
   })
 }
 
@@ -1737,14 +1765,20 @@ export function applySetVariableField(
 
 // ─── Helix ───
 
+const HELIX_FIELDS: readonly string[] = [
+  'reference', 'radius_mode', 'mode', 'hand', 'direction', 'height_from_reference',
+  'radius', 'pitch', 'turns', 'height', 'helix_angle', 'offset', 'start_angle', 'auto_hidden',
+]
+
 export function applyAddHelix(
   doc: PartDoc,
   featureId: string,
   label?: string,
-  reference?: string,
+  inline: Partial<HelixFeatureDef> & { auto_hidden?: boolean } = {},
 ): void {
   // Every field is seeded with its default so a mode switch never blanks one;
-  // `reference` rides in when the caller created the helix from a pick.
+  // `reference` and the rest ride in when the caller created the helix from a
+  // pick or carried the whole feature in one call.
   const helix: HelixFeatureDef = {
     radius_mode: 'derived',
     mode: 'pitch_turns',
@@ -1757,8 +1791,23 @@ export function applyAddHelix(
     hand: 'right',
     direction: 'normal',
   }
-  if (reference) helix.reference = reference
-  pushFeature(doc, { id: featureId, kind: 'helix', label: label ?? 'Helix', helix })
+  const accepted = Object.fromEntries(
+    Object.entries(inline).filter(([field]) => field !== 'auto_hidden' && HELIX_FIELDS.includes(field)),
+  )
+  // The setter's angle gate applies here too, judged on the authored value
+  // before the merge rounds it: a literal on either degenerate end would save a
+  // document the loader refuses.
+  if (refuseHelixAngle('helix_angle', accepted.helix_angle, 'applyAddHelix')) return
+  mergeInlineFields(helix, accepted as Partial<HelixFeatureDef>)
+  // `auto_hidden` is the one-shot hide stamp the visibility pass reads off the
+  // feature row, not a helix parameter, so it lands beside the def.
+  pushFeature(doc, {
+    id: featureId,
+    kind: 'helix',
+    label: label ?? 'Helix',
+    helix,
+    ...(inline.auto_hidden !== undefined && { auto_hidden: inline.auto_hidden }),
+  })
 }
 
 export function applySetHelixField(

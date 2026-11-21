@@ -386,8 +386,10 @@ export const mutationHandlers: MutationHandlers = {
     applyAddShellFace(next, m.featureId, m.faceQuery),
   remove_shell_face: (next, m) =>
     applyRemoveShellFace(next, m.featureId, m.index),
-  add_move_face: (next, m) =>
-    applyAddMoveFace(next, m.featureId, m.label),
+  add_move_face: (next, m) => {
+    const { type: _type, featureId, label, insertAt: _insertAt, ...inline } = m
+    applyAddMoveFace(next, featureId, label, inline)
+  },
   set_move_face_field: (next, m) =>
     applySetMoveFaceField(next, m.featureId, m.field, m.value),
   add_move_face_ref: (next, m) =>
@@ -522,12 +524,16 @@ export const mutationHandlers: MutationHandlers = {
     applyAddSplitPart(next, m.featureId, m.bodyQuery),
   remove_split_body: (next, m) =>
     applyRemoveSplitPart(next, m.featureId, m.index),
-  add_variable: (next, m) =>
-    applyAddVariable(next, m.featureId, m.label),
+  add_variable: (next, m) => {
+    const { type: _type, featureId, label, insertAt: _insertAt, ...inline } = m
+    applyAddVariable(next, featureId, label, inline)
+  },
   set_variable_field: (next, m) =>
     applySetVariableField(next, m.featureId, m.field, m.value),
-  add_helix: (next, m) =>
-    applyAddHelix(next, m.featureId, m.label, m.reference),
+  add_helix: (next, m) => {
+    const { type: _type, featureId, label, insertAt: _insertAt, ...inline } = m
+    applyAddHelix(next, featureId, label, inline)
+  },
   set_helix_field: (next, m) =>
     applySetHelixField(next, m.featureId, m.field, m.value),
   reorder_features: (next, m) =>
