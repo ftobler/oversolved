@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createDimensionTool } from '@/tools/DimensionTool'
 import type { DimensionToolContext } from '@/tools/DimensionTool'
+import { resolveDimension } from '@/registry'
 
 function createMockContext(overrides: Partial<DimensionToolContext> = {}): DimensionToolContext {
   return {
@@ -69,6 +70,24 @@ describe('DimensionTool', () => {
       expect(addDimensionPick).toHaveBeenCalledWith({
         isVertex: false, target: 'entity:S1:C1', entityKind: 'circle',
       })
+    })
+
+    it('does not read a plane as a point', () => {
+      const addDimensionPick = vi.fn()
+      const tool = createDimensionTool()
+      const context = createMockContext({
+        addDimensionPick,
+        hoveredSelectionId: '@builtin_plane_top',
+        hoveredEntityKind: null,
+      })
+
+      tool.handlers.onClick!({ clientX: 100, clientY: 100 } as PointerEvent, [0, 0], context)
+
+      expect(addDimensionPick).toHaveBeenCalledWith({
+        isVertex: false, target: '@builtin_plane_top', entityKind: null,
+      })
+      // The recorded pick resolves to no dimension kind, so nothing is authored.
+      expect(resolveDimension([addDimensionPick.mock.calls[0][0]])).toBeNull()
     })
 
     it('does nothing when no target is hovered', () => {

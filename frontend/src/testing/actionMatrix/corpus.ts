@@ -91,8 +91,8 @@ export function corpusDocs(): CorpusDoc[] {
   // no redundancy gate and the status only proves the command still completes.
   const boxWithHole = docs.find(entry => entry.label === 'box_with_hole')
   if (boxWithHole) {
-    const pair = originPairTarget(boxWithHole.spec)
-    if (pair) boxWithHole.extraTargets = [pair]
+    boxWithHole.extraTargets = [originPairTarget(boxWithHole.spec), planePlusLineTarget(boxWithHole.spec)]
+      .filter((target): target is MatrixTarget => target !== null)
   }
   return docs
 }
@@ -119,6 +119,25 @@ function originPairTarget(doc: PartDoc): MatrixTarget | null {
         kind: 'vertex',
         featureId: feature.id,
         selection: ['@builtin_origin', vertex],
+      }
+    }
+  }
+  return null
+}
+
+/** A plane carried beside a sketch line, the bugreport's pick shape: the plane
+ *  is not an operand, so the constraint commands must act on the line alone. */
+function planePlusLineTarget(doc: PartDoc): MatrixTarget | null {
+  for (const feature of doc.features ?? []) {
+    if (feature.kind !== 'sketch') continue
+    for (const entity of feature.entities ?? []) {
+      if (entity.kind !== 'line') continue
+      const line = `entity:${feature.id}:${entity.id}`
+      return {
+        id: `@builtin_plane_top+${line}`,
+        kind: 'entity',
+        featureId: feature.id,
+        selection: ['@builtin_plane_top', line],
       }
     }
   }

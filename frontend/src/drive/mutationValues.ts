@@ -31,7 +31,7 @@ import { DxfImportError, parseDxfProfile } from '@/utils/dxfImport'
 import { textFieldsProblem } from '@/utils/geometry/textExpand'
 import { planAddText, type AddTextFields } from '@/utils/yamlMutations/sketchText'
 import { pointDistanceZeroProblem } from '@/utils/yamlMutations/helpers'
-import { addConstraintProblem } from '@/utils/constraintProblems'
+import { addConstraintProblem, constraintOperandRefProblem, isLegacyQueryWrapper } from '@/utils/constraintProblems'
 import { dimensionSizeProblem, entitySizeProblem } from '@/utils/entitySizeProblems'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { lengthUnitOf } from '@/utils/lengthUnit'
@@ -565,6 +565,15 @@ function addConstraint(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   if (raw.pos !== undefined) {
     const problem = finitePointProblem(raw.pos, 'pos')
     if (problem !== null) return invalid(problem)
+  }
+  // The applier accepts a face:/edge: wrapper and `parseTarget` stores its inner
+  // `?query` verbatim, but the solver cannot resolve that row. The editor drops
+  // the pick, so the drive refuses the wrapper up front instead of reporting an
+  // ok that the next solve ignores.
+  if (typeof kind === 'string') {
+    const wrapper = refs.find(isLegacyQueryWrapper)
+    const wrapperProblem = wrapper === undefined ? null : constraintOperandRefProblem(kind, wrapper)
+    if (wrapperProblem !== null) return invalid(wrapperProblem)
   }
   // One refusal source, with or without a document. A shape-only caller has no
   // entity kinds to read, so addConstraintProblem still judges the zero rule

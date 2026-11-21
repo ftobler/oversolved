@@ -487,6 +487,37 @@ describe('finding 5: add_constraint target spelling', () => {
       targets: ['entity:sk1:l1', 'vertex:sk1:l1:start'],
     })).toMatchObject({ ok: true })
   })
+
+  it('refuses a face/edge wrapper the applier would store as a dead inner query', () => {
+    // The applier strips the wrapper and stores `?query`, which the solve then
+    // drops; the editor never sends the wrapper. The drive refuses it up front
+    // instead of reporting an ok that changed nothing usable.
+    for (const wrapper of ['face:sk1:?face', 'edge:sk1:?body:edge']) {
+      const error = refusal({
+        type: 'add_constraint', featureId: 'sk1', kind: 'coincident',
+        targets: ['vertex:sk1:l1:start', wrapper],
+      }, sketchDoc())
+      expect(error.code).toBe('invalid-mutation')
+      expect(error.message).toBe(`Coincident takes sketch geometry; ${wrapper} is not sketch geometry`)
+    }
+  })
+
+  it('refuses the sketch plane as an operand, with or without the document', () => {
+    // The drive and the applier share the rule, so the sentence a script sees
+    // is the one the solve warning carries.
+    const error = refusal({
+      type: 'add_constraint', featureId: 'sk1', kind: 'equal_length',
+      targets: ['@builtin_plane_top', '$l1'],
+    }, sketchDoc())
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toBe('Equal takes sketch geometry; @builtin_plane_top is a plane')
+
+    // A shape-only caller still knows an `@` ref is not sketch geometry.
+    expect(refusal({
+      type: 'add_constraint', featureId: 'sk1', kind: 'equal_length',
+      targets: ['@builtin_plane_top', '$l1'],
+    }).message).toBe('Equal takes sketch geometry; @builtin_plane_top is a plane')
+  })
 })
 
 // A target naming another sketch is dead on the wire: the solver resolves
