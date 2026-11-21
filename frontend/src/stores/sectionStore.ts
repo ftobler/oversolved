@@ -64,6 +64,10 @@ export const SECTION_SOURCE_GONE_REASON = 'Section off: the picked plane or face
 export const SECTION_FACE_NOT_FLAT_REASON = 'Pick a flat face or a plane.'
 export const SECTION_PICK_MISS_REASON = 'Click a flat face or a reference plane.'
 export const SECTION_PICK_HINT = 'Click a flat face or a reference plane in the viewport.'
+// The assembly resolves no face or plane frames for a section, so its card
+// offers the builtin planes and says where the pick lives instead of arming
+// one nothing would consume.
+export const SECTION_PICK_UNAVAILABLE_NOTE = 'Use Front, Top or Right here; picking a face or plane is a part-editor action.'
 
 export const useSectionStore = create<SectionState>((set, get) => ({
   ...DEFAULT_SECTION_STATE,

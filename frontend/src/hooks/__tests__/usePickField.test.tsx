@@ -12,6 +12,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act, render, fireEvent } from '@testing-library/react'
 import { usePickField } from '@/hooks/usePickField'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { DEFAULT_SECTION_STATE, useSectionStore } from '@/stores/sectionStore'
 import { useEditorState } from '@/hooks/useEditorState'
 import { partsWantKey, type WantKeyOf } from '@/utils/query/pickIntake'
 import type { PartFeature, PartResult } from '@/types/cad'
@@ -30,6 +31,7 @@ beforeEach(() => {
     activeTool: null,
     modeStack: [],
   })
+  useSectionStore.setState({ ...DEFAULT_SECTION_STATE })
 })
 
 /** Minimal render-helper that mounts a component to exercise the hook. */
@@ -544,6 +546,21 @@ describe('usePickField  -  a refusal keeps the chip mirror', () => {
   })
 })
 
+
+describe('usePickField  -  one armed pick', () => {
+  it('arming a feature pick cancels an armed section pick', () => {
+    // Both surfaces arm the same viewport click; they must never coexist.
+    useSectionStore.setState({ enabled: true, picking: true })
+    const spy = mountPickField('sk1', 'plane', vi.fn())
+
+    spy.toggle()
+    expect(useSectionStore.getState().picking).toBe(false)
+
+    useSectionStore.getState().setPicking(true)
+    spy.activate()
+    expect(useSectionStore.getState().picking).toBe(false)
+  })
+})
 
 describe('usePickField  -  toggle', () => {
   it('toggle activates the field when it is not active', () => {

@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { forwardRef, useImperativeHandle, type ReactNode } from 'react'
 import { screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assemblyStore'
+import { DEFAULT_SECTION_STATE, useSectionStore } from '@/stores/sectionStore'
 
 const navigateSpy = vi.fn()
 vi.mock('react-router-dom', () => ({
@@ -182,6 +183,7 @@ describe('AssemblyEditor (Stage 6b)', () => {
     useAssemblyStore.getState().setActiveMateField(null)
     useAssemblyStore.getState().selectMate(null)
     useAssemblyStore.setState({ editingSubject: { kind: 'none' } })
+    useSectionStore.setState({ ...DEFAULT_SECTION_STATE })
     installSessionFromList(h)
   })
 
@@ -800,6 +802,37 @@ describe('AssemblyEditor (Stage 6b)', () => {
     // The form is in the card, never in the row it describes.
     expect(card.querySelector('input')).not.toBeNull()
     expect(document.querySelector('.feature-item.editing input')).toBeNull()
+  })
+
+  it('opens the section card alone in the right column when nothing is being edited', async () => {
+    await renderLoaded()
+    act(() => { useSectionStore.setState({ enabled: true }) })
+
+    const right = document.querySelector('.floating-right')
+    expect(right).not.toBeNull()
+    const stack = right!.querySelector('.right-overlay-stack')
+    expect(stack).not.toBeNull()
+    const cards = stack!.querySelectorAll('.feature-edit-panel')
+    expect(cards).toHaveLength(1)
+    expect(cards[0].classList.contains('section-panel')).toBe(true)
+    // Picking a face or plane is a part-editor action.
+    expect(screen.queryByRole('button', { name: 'Pick' })).toBeNull()
+  })
+
+  it('stacks the section card beside an open mate card', async () => {
+    await renderLoaded()
+    await insertPart('Bracket')
+    act(() => { executeCommand('insert_mate_fixed') })
+    await tick()
+    // A freshly added mate opens its editor card.
+    act(() => { useSectionStore.setState({ enabled: true }) })
+
+    const stack = document.querySelector('.right-overlay-stack')!
+    const cards = stack.querySelectorAll('.feature-edit-panel')
+    expect(cards).toHaveLength(2)
+    expect(stack.querySelector('.section-panel')).not.toBeNull()
+    expect(screen.queryByRole('button', { name: 'Pick' })).toBeNull()
+    expect(useAssemblyStore.getState().editingSubject.kind).toBe('mate')
   })
 
   it('commits from the row OK and closes the card', async () => {

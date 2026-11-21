@@ -12,6 +12,7 @@ import Part from '@/pages/Part'
 import { backendBundle } from '@/adapters/backend'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useBugReportStore } from '@/stores/bugReportStore'
+import { DEFAULT_SECTION_STATE, useSectionStore } from '@/stores/sectionStore'
 import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 
 vi.mock('../../components/Viewport', async () =>
@@ -39,6 +40,16 @@ features:
     extrude: { sketch: '$sk1', distance: 10, direction: 'normal' }
 `
 
+const INCH_EXTRUDE_DOC = `version: 1
+kind: part
+length_unit: inch
+features:
+  - id: ex1
+    kind: extrude
+    label: Extrude 1
+    extrude: { sketch: '$sk1', distance: 10, direction: 'normal' }
+`
+
 function renderPage() {
   return render(
     <MemoryRouter initialEntries={['/documents/doc-1']}>
@@ -57,13 +68,22 @@ async function renderPageLoaded() {
   await waitFor(() => expect(usePartEditorStore.getState().doc).not.toBeNull())
 }
 
+/** Turn the section on and let the card's mount settle before asserting. */
+async function enableSection() {
+  await act(async () => { useSectionStore.setState({ enabled: true }) })
+}
+
 describe('Part editor chrome', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     partDocStoreMock()
+    useSectionStore.setState({ ...DEFAULT_SECTION_STATE })
   })
   afterEach(() => {
-    act(() => { useBugReportStore.getState().discard() })
+    act(() => {
+      useBugReportStore.getState().discard()
+      useSectionStore.setState({ ...DEFAULT_SECTION_STATE })
+    })
     cleanup()
   })
 
@@ -179,5 +199,108 @@ describe('Part editor chrome', () => {
     const stage = document.querySelector('.viewport-stage')!
     expect(stage.contains(panel)).toBe(true)
     expect(document.querySelector('.right-overlay-stack')!.contains(panel)).toBe(true)
+  })
+
+  it('stacks the section card beside the feature editor as its own card', async () => {
+    partDocStoreMock({ content: EXTRUDE_DOC })
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Extrude 1')).toBeInTheDocument())
+    fireEvent.click(screen.getByTitle('Edit extrude'))
+    await enableSection()
+
+    const cards = document.querySelectorAll('.right-overlay-stack > .feature-edit-panel')
+    expect(cards).toHaveLength(2)
+    const section = document.querySelector('.section-panel')!
+    expect(section).not.toBeNull()
+    expect(screen.getByText('Section')).toBeInTheDocument()
+    expect(document.querySelector('.right-overlay-stack')!.contains(section)).toBe(true)
+  })
+
+  it('exiting the section leaves the feature editor open and unchanged', async () => {
+    partDocStoreMock({ content: EXTRUDE_DOC })
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Extrude 1')).toBeInTheDocument())
+    fireEvent.click(screen.getByTitle('Edit extrude'))
+    await enableSection()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Exit section view' }))
+
+    expect(useSectionStore.getState().enabled).toBe(false)
+    expect(document.querySelector('.section-panel')).toBeNull()
+    const featureCard = document.querySelector('.right-overlay-stack .feature-edit-panel:not(.section-panel)')!
+    expect(featureCard).not.toBeNull()
+    expect(featureCard.textContent).toContain('Extrude 1')
+  })
+
+  it('ending the feature edit leaves the section on', async () => {
+    partDocStoreMock({ content: EXTRUDE_DOC })
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Extrude 1')).toBeInTheDocument())
+    fireEvent.click(screen.getByTitle('Edit extrude'))
+    await enableSection()
+
+    const featureCard = document.querySelector<HTMLElement>('.right-overlay-stack .feature-edit-panel:not(.section-panel)')!
+    fireEvent.click(within(featureCard).getByTitle('Cancel'))
+
+    await waitFor(() => expect(document.querySelector('.section-panel')).not.toBeNull())
+    expect(useSectionStore.getState().enabled).toBe(true)
+    expect(document.querySelectorAll('.right-overlay-stack > .feature-edit-panel')).toHaveLength(1)
+  })
+
+  it('section controls change no document and record no undo entry', async () => {
+    const store = partDocStoreMock({ content: EXTRUDE_DOC })
+    renderPage()
+    await waitFor(() => expect(screen.getByText('Extrude 1')).toBeInTheDocument())
+    await enableSection()
+
+    const docBefore = usePartEditorStore.getState().doc
+    const historyBefore = usePartEditorStore.getState().undoStack.length
+
+    fireEvent.click(screen.getByRole('button', { name: 'Top' }))
+    const offset = screen.getByRole('textbox', { name: /Section offset/ })
+    fireEvent.focus(offset)
+    fireEvent.change(offset, { target: { value: '12.5' } })
+    fireEvent.blur(offset)
+    fireEvent.click(screen.getByLabelText('Reverse direction'))
+
+    expect(useSectionStore.getState().plane).toEqual({ kind: 'builtin', id: 'top' })
+    expect(useSectionStore.getState().offset).toBe(12.5)
+    expect(useSectionStore.getState().flipped).toBe(true)
+    // The section is viewer state: the document object and the undo history
+    // are untouched, and nothing asked the store to save.
+    expect(usePartEditorStore.getState().doc).toBe(docBefore)
+    expect(usePartEditorStore.getState().undoStack).toHaveLength(historyBefore)
+    expect(store.save).not.toHaveBeenCalled()
+  })
+
+  it('accepts the offset in millimetres in a millimetre document', async () => {
+    partDocStoreMock({ content: EXTRUDE_DOC })
+    renderPage()
+    await waitFor(() => expect(usePartEditorStore.getState().doc).not.toBeNull())
+    await enableSection()
+
+    const offset = screen.getByRole('textbox', { name: 'Section offset, millimetres' })
+    fireEvent.focus(offset)
+    fireEvent.change(offset, { target: { value: '1' } })
+    fireEvent.blur(offset)
+
+    expect(useSectionStore.getState().offset).toBe(1)
+    expect(screen.getByText('mm')).toBeInTheDocument()
+  })
+
+  it('accepts the offset in the document unit', async () => {
+    partDocStoreMock({ content: INCH_EXTRUDE_DOC })
+    renderPage()
+    await waitFor(() => expect(usePartEditorStore.getState().doc?.length_unit).toBe('inch'))
+    await enableSection()
+
+    const offset = screen.getByRole('textbox', { name: 'Section offset, inches' })
+    fireEvent.focus(offset)
+    fireEvent.change(offset, { target: { value: '1' } })
+    fireEvent.blur(offset)
+
+    // World units are the part's own units, so one typed inch is offset 1.
+    expect(useSectionStore.getState().offset).toBe(1)
+    expect(screen.getByText('in')).toBeInTheDocument()
   })
 })

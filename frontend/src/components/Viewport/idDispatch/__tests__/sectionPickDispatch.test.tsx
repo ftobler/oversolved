@@ -35,7 +35,13 @@ describe('section pick dispatch', () => {
   beforeEach(() => {
     ({ canvas, pipeline, glRef } = newIdBufferDispatchFixture())
     useSectionStore.setState({ ...DEFAULT_SECTION_STATE, enabled: true, picking: true })
-    useSketchEditorStore.setState({ hoveredSelectionId: null, hoveredPickKey: null, normalSelection: new Set() })
+    useSketchEditorStore.setState({
+      hoveredSelectionId: null,
+      hoveredPickKey: null,
+      normalSelection: new Set(),
+      chipOwnedSelection: new Set(),
+      activePickField: null,
+    })
     h.faceFrame.mockReset()
     h.faceFrame.mockReturnValue({ normal: [0, 0, 1], center: [0, 0, 0] })
     pipeline.resolveSync = vi.fn().mockReturnValue(FACE_HIT)
@@ -196,6 +202,25 @@ describe('section pick dispatch', () => {
     })
 
     expect(useSketchEditorStore.getState().normalSelection.has('@Plane1')).toBe(true)
+  })
+
+  it('lands the click in the section, not in an armed feature field', async () => {
+    // The section owns an armed click. If both were armed, the feature field
+    // would consume the same selection; the section wins and the field gets
+    // nothing.
+    useSketchEditorStore.setState({ activePickField: { featureId: 'ex1', field: 'faces' } })
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: glRef as { current: import('three').WebGLRenderer | null },
+      consumedLayers: new Set([FACE_LAYER_NAME, PLANE_LAYER_NAME]),
+    }))
+
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+    })
+
+    expect(useSectionStore.getState().plane).toMatchObject({ kind: 'query', query: '?04;face' })
+    expect(useSectionStore.getState().picking).toBe(false)
+    expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
   })
 
   it('filters hover to faces and planes while the pick is armed', async () => {
