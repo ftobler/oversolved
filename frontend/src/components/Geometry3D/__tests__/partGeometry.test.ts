@@ -101,6 +101,97 @@ describe('buildBodyGeometry', () => {
   })
 })
 
+/** A boundary buffer as segment endpoint pairs, for geometric assertions. */
+function boundarySegments(buffer: Float32Array): [number, number, number][][] {
+  const segments: [number, number, number][][] = []
+  for (let i = 0; i < buffer.length; i += 6) {
+    segments.push([
+      [buffer[i], buffer[i + 1], buffer[i + 2]],
+      [buffer[i + 3], buffer[i + 4], buffer[i + 5]],
+    ])
+  }
+  return segments
+}
+
+/**
+ * A closed strip of quads around the z axis. The seam column is emitted twice,
+ * once at angle 0 and once at angle 2*pi, at the same 3D point but with distinct
+ * vertex indices: this is how OCC tessellates a periodic face, cut open in its
+ * UV domain. `seamOffset` perturbs the duplicate column to model float noise.
+ */
+function cylinderStrip(seamOffset = 0, radius = 1, height = 1): Mesh3D {
+  const columns = 4
+  const vertices: [number, number, number][] = []
+  for (const z of [0, height]) {
+    for (let i = 0; i <= columns; i++) {
+      const angle = ((i === columns ? 0 : i) / columns) * 2 * Math.PI
+      vertices.push([
+        Math.cos(angle) * radius + (i === columns ? seamOffset : 0),
+        Math.sin(angle) * radius + (i === columns ? seamOffset : 0),
+        z,
+      ])
+    }
+  }
+  const at = (zRow: number, column: number) => zRow * (columns + 1) + column
+  const faces: [number, number, number][] = []
+  for (let i = 0; i < columns; i++) {
+    const a = at(0, i), b = at(0, i + 1), c = at(1, i), d = at(1, i + 1)
+    faces.push([a, b, c], [b, d, c])
+  }
+  return { vertices, faces, triangle_to_face: faces.map(() => 0) }
+}
+
+describe('buildFaceBoundarySegments seam weld', () => {
+  it('drops the UV seam of a wrapped strip and keeps only the two rings', () => {
+    const segments = boundarySegments(buildFaceBoundarySegments(cylinderStrip(), 0))
+    expect(segments).toHaveLength(8)
+    // Every surviving segment is a horizontal ring segment.
+    for (const [a, b] of segments) expect(Math.abs(a[2] - b[2])).toBeLessThan(1e-9)
+    // No segment runs down either copy of the seam.
+    const onSeam = ([a, b]: [number, number, number][]) =>
+      Math.abs(a[0] - 1) < 1e-9 && Math.abs(a[1]) < 1e-9
+      && Math.abs(b[0] - 1) < 1e-9 && Math.abs(b[1]) < 1e-9
+    expect(segments.some(onSeam)).toBe(false)
+  })
+
+  it('still welds when the seam copies differ by float noise', () => {
+    const segments = boundarySegments(buildFaceBoundarySegments(cylinderStrip(1e-12), 0))
+    expect(segments).toHaveLength(8)
+  })
+
+  it('does not weld two distinct vertices 1e-4 apart on a 10 mm face', () => {
+    // Radius 5 gives a 10 mm diameter, and the two seam copies are real points.
+    const segments = boundarySegments(buildFaceBoundarySegments(cylinderStrip(1e-4, 5, 10), 0))
+    expect(segments).toHaveLength(10)
+  })
+
+  it('emits no zero-length edge from a duplicated pole fan', () => {
+    const sectors = 6
+    const vertices: [number, number, number][] = []
+    for (let i = 0; i < sectors; i++) {
+      const angle = (i / sectors) * 2 * Math.PI
+      vertices.push([Math.cos(angle), Math.sin(angle), 1])
+    }
+    // One pole vertex per sector, all at the same point: the fan OCC emits at
+    // the pole of a sphere.
+    for (let i = 0; i < sectors; i++) vertices.push([0, 0, 0])
+    const pole = (i: number) => sectors + (i % sectors)
+    const faces: [number, number, number][] = []
+    for (let i = 0; i < sectors; i++) {
+      faces.push([pole(i), pole(i + 1), i])
+      faces.push([pole(i), i, (i + 1) % sectors])
+    }
+    const segments = boundarySegments(buildFaceBoundarySegments(
+      { vertices, faces, triangle_to_face: faces.map(() => 0) }, 0,
+    ))
+    for (const [a, b] of segments) {
+      expect(Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2])).toBeGreaterThan(1e-9)
+    }
+    // The base ring stays the fan's border, one segment per sector.
+    expect(segments).toHaveLength(sectors)
+  })
+})
+
 describe('buildFaceBoundarySegments', () => {
   it('returns empty array when triangle_to_face is missing', () => {
     const result = buildFaceBoundarySegments(CUBE_MESH, 0)
