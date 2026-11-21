@@ -5159,7 +5159,7 @@
     ["box_with_hole","@builtin_origin+vertex:sk1:bottom:start","apply_projection","refused","Projection needs one operand, got two"],
     ["box_with_hole","@builtin_origin+vertex:sk1:bottom:start","apply_radius","refused","Radius needs one operand, got two"],
     ["box_with_hole","@builtin_origin+vertex:sk1:bottom:start","apply_radius_difference","ok",null],
-    ["box_with_hole","@builtin_origin+vertex:sk1:bottom:start","apply_tangent","ok",null],
+    ["box_with_hole","@builtin_origin+vertex:sk1:bottom:start","apply_tangent","refused","tangent does not apply to point"],
     ["box_with_hole","@builtin_origin+vertex:sk1:bottom:start","apply_vertical","ok",null],
     ["box_with_hole","@builtin_origin+vertex:sk1:bottom:start","cancel_draw","ok",null],
     ["box_with_hole","@builtin_origin+vertex:sk1:bottom:start","delete_selected","ok",null],

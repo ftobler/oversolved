@@ -17,7 +17,7 @@ use crate::fit_spline::{split_params, FitSpline, ParamLayout};
 use crate::tolerance::resolution;
 use crate::{Entity, Input, Kind};
 
-use self::geom::{bezier_eval, is_curve, ref_kind};
+use self::geom::{bezier_eval, is_curve, is_spline, ref_kind, tangent_pair_kinds_admitted};
 use std::collections::HashMap;
 
 mod coincident;
@@ -43,6 +43,10 @@ pub(super) struct TangentContact {
     /// 0 for the first operand `tangent_operands` returns, 1 for the second.
     owner: u8,
     selector: PointSelector,
+    /// The other operand's selector at the same coincident: a locus or a point
+    /// it did not name is `Absent`. A spline partner needs its own end
+    /// selector, which the owner's does not carry.
+    other_selector: PointSelector,
 }
 
 pub struct Problem<'a> {
@@ -167,9 +171,9 @@ impl<'a> Problem<'a> {
     /// Only a coincident naming both operands counts: a joint reached through
     /// a third entity leaves the body form alone, which is not singular there
     /// because no coincidence row duplicates it. A selector only names a
-    /// contact when it is a real line or arc endpoint; the other operand may
-    /// be an endpoint (vertex to vertex) or the curve as a locus (its ref
-    /// carries no selector).
+    /// contact when it is a real line, arc or spline endpoint; the other
+    /// operand may be an endpoint (vertex to vertex) or the curve as a locus
+    /// (its ref carries no selector).
     fn build_tangent_contacts(&self) -> HashMap<(u32, u32), TangentContact> {
         let mut contacts = HashMap::new();
         let pairs: Vec<(u32, u32)> = self
@@ -183,62 +187,111 @@ impl<'a> Problem<'a> {
             if !matches!(
                 (self.kind_of(first), self.kind_of(second)),
                 (
-                    Kind::Line | Kind::Circle | Kind::Arc,
-                    Kind::Line | Kind::Circle | Kind::Arc
+                    Kind::Line | Kind::Circle | Kind::Arc | Kind::Spline | Kind::FitSpline,
+                    Kind::Line | Kind::Circle | Kind::Arc | Kind::Spline | Kind::FitSpline
                 )
             ) {
                 continue;
             }
-            let contact = self.constraints.iter().find_map(|c| {
-                if c.kind() != Some(ConstraintKind::Coincident) {
-                    return None;
-                }
-                let (a, b) = (c.ref_for(RefRole::A)?, c.ref_for(RefRole::B)?);
-                let (
-                    Ref::Entity {
-                        index: a_idx,
-                        point: a_pt,
-                    },
-                    Ref::Entity {
-                        index: b_idx,
-                        point: b_pt,
-                    },
-                ) = (a, b)
-                else {
-                    return None;
-                };
-                let (p_first, p_second) = if (a_idx, b_idx) == (first, second) {
-                    (a_pt, b_pt)
-                } else if (a_idx, b_idx) == (second, first) {
-                    (b_pt, a_pt)
-                } else {
-                    return None;
-                };
-                let first_ep = Self::endpoint_selector(self.kind_of(first), p_first);
-                let second_ep = Self::endpoint_selector(self.kind_of(second), p_second);
-                match (first_ep, second_ep) {
-                    (Some(selector), Some(_)) => Some(TangentContact { owner: 0, selector }),
-                    (Some(selector), None) if !p_second.is_present() => {
-                        Some(TangentContact { owner: 0, selector })
-                    }
-                    (None, Some(selector)) if !p_first.is_present() => {
-                        Some(TangentContact { owner: 1, selector })
-                    }
-                    _ => None,
-                }
-            });
-            if let Some(contact) = contact {
-                contacts.insert((first, second), contact);
-            }
+            let Some(contact) = Self::tangent_contact_between(
+                self.entities,
+                self.constraints.iter().copied(),
+                first,
+                second,
+            ) else {
+                continue;
+            };
+            contacts.insert((first, second), contact);
         }
         contacts
     }
 
-    /// The selector when it names a real endpoint of a line or an arc; a
-    /// centre, a locus ref (absent) or a kind with no endpoint is not one.
+    /// The contact a direct coincident pins between two curve operands, if any.
+    ///
+    /// Static because the survivors gate runs before `Problem` exists and must
+    /// judge a spline tangent by exactly the contact the residual will read.
+    /// A spline side must be its `Start` or `End`; a circle contributes its
+    /// locus, an arc an endpoint or its locus.
+    fn tangent_contact_between<'c>(
+        entities: &[Entity],
+        constraints: impl IntoIterator<Item = &'c Constraint>,
+        first: u32,
+        second: u32,
+    ) -> Option<TangentContact> {
+        let first_kind = entities.get(first as usize)?.kind;
+        let second_kind = entities.get(second as usize)?.kind;
+        constraints.into_iter().find_map(|c| {
+            if c.kind() != Some(ConstraintKind::Coincident) {
+                return None;
+            }
+            let (a, b) = (c.ref_for(RefRole::A)?, c.ref_for(RefRole::B)?);
+            let (
+                Ref::Entity {
+                    index: a_idx,
+                    point: a_pt,
+                },
+                Ref::Entity {
+                    index: b_idx,
+                    point: b_pt,
+                },
+            ) = (a, b)
+            else {
+                return None;
+            };
+            let (p_first, p_second) = if (a_idx, b_idx) == (first, second) {
+                (a_pt, b_pt)
+            } else if (a_idx, b_idx) == (second, first) {
+                (b_pt, a_pt)
+            } else {
+                return None;
+            };
+            let first_ep = Self::endpoint_selector(first_kind, p_first);
+            let second_ep = Self::endpoint_selector(second_kind, p_second);
+            match (first_ep, second_ep) {
+                (Some(selector), other) => Some(TangentContact {
+                    owner: 0,
+                    selector,
+                    other_selector: other.unwrap_or(PointSelector::Absent),
+                }),
+                (None, Some(selector)) if !p_first.is_present() => Some(TangentContact {
+                    owner: 1,
+                    selector,
+                    other_selector: PointSelector::Absent,
+                }),
+                _ => None,
+            }
+        })
+    }
+
+    /// True when a contact actually pins a spline END. A pair with two splines
+    /// needs both ends; a circle or arc partner may be a locus or an endpoint.
+    fn spline_contact_ok(first: Kind, second: Kind, contact: &TangentContact) -> bool {
+        let sel_first = if contact.owner == 0 {
+            contact.selector
+        } else {
+            contact.other_selector
+        };
+        let sel_second = if contact.owner == 0 {
+            contact.other_selector
+        } else {
+            contact.selector
+        };
+        let end = |sel| matches!(sel, PointSelector::Start | PointSelector::End);
+        let first_ok = !is_spline(first) || end(sel_first);
+        let second_ok = !is_spline(second) || end(sel_second);
+        let names_spline_end =
+            (is_spline(first) && end(sel_first)) || (is_spline(second) && end(sel_second));
+        first_ok && second_ok && names_spline_end
+    }
+
+    /// The selector when it names a real endpoint of a line, an arc or a
+    /// spline; a centre, a locus ref (absent) or a kind with no endpoint is not
+    /// one.
     fn endpoint_selector(kind: Kind, selector: PointSelector) -> Option<PointSelector> {
-        (matches!(kind, Kind::Line | Kind::Arc)
-            && matches!(selector, PointSelector::Start | PointSelector::End))
+        (matches!(
+            kind,
+            Kind::Line | Kind::Arc | Kind::Spline | Kind::FitSpline
+        ) && matches!(selector, PointSelector::Start | PointSelector::End))
         .then_some(selector)
     }
 
@@ -339,8 +392,33 @@ impl<'a> Problem<'a> {
                     // branch, which reads each radius at slot 2. An ellipse or
                     // spline has that slot but it is not a radius.
                     Some((lr, ar)) => {
-                        ref_kind(input, &lr).is_some_and(is_curve)
-                            && ref_kind(input, &ar).is_some_and(is_curve)
+                        let (ka, kb) = (ref_kind(input, &lr), ref_kind(input, &ar));
+                        let (Some(ka), Some(kb)) = (ka, kb) else {
+                            return false;
+                        };
+                        if !tangent_pair_kinds_admitted(ka, kb) {
+                            return false;
+                        }
+                        // A spline has no free tangent form: it needs the
+                        // coincident that pins its end. Without one the row
+                        // would be a curve-to-curve closest-point solve that
+                        // no authored profile asks for, so the constraint is
+                        // dropped (the host names the shared-endpoint rule).
+                        if !is_spline(ka) && !is_spline(kb) {
+                            return true;
+                        }
+                        let (Ref::Entity { index: a, .. }, Ref::Entity { index: b, .. }) =
+                            (&lr, &ar)
+                        else {
+                            return false;
+                        };
+                        Self::tangent_contact_between(
+                            &input.entities,
+                            input.constraints.iter(),
+                            *a,
+                            *b,
+                        )
+                        .is_some_and(|contact| Self::spline_contact_ok(ka, kb, &contact))
                     }
                     None => true,
                 }

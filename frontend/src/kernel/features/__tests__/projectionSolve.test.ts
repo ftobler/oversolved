@@ -838,12 +838,19 @@ describe('solveSketch reports the constraints it could not use', () => {
     }
     const out = solveSketch(feature, deadRepo(), {} as Record<string, PartSolid>)
     expect(out.status).toBe('fully_constrained')
+    // A feature-qualified ref to another sketch is not sketch geometry here, so
+    // the operand rule names it instead of calling it stale.
     expect(out.dropped_constraints).toEqual([
-      { id: 'c_coincident_oT6KcUj9', kind: 'coincident', reason: 'Coincident takes sketch geometry; @sk1/1yxgoOAo0Q3Xondp is not sketch geometry' },
+      {
+        id: 'c_coincident_oT6KcUj9',
+        kind: 'coincident',
+        reason: 'Coincident takes sketch geometry; @sk1/1yxgoOAo0Q3Xondp is not sketch geometry',
+      },
     ])
     // The plain warning channel keeps the same sentence the tree already shows.
     expect(out.solver_warning).toContain(
-      'constraint c_coincident_oT6KcUj9 (coincident) names operands it cannot use (Coincident takes sketch geometry; @sk1/1yxgoOAo0Q3Xondp is not sketch geometry) and was ignored.',
+      'constraint c_coincident_oT6KcUj9 (coincident) names operands it cannot use '
+      + '(Coincident takes sketch geometry; @sk1/1yxgoOAo0Q3Xondp is not sketch geometry) and was ignored.',
     )
   })
 })

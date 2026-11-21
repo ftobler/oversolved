@@ -111,6 +111,26 @@ impl Problem<'_> {
         ra.min(rb).max(MIN_LEN_REL * self.scale)
     }
 
+    /// Seed length of a contact-pinned curve/spline or spline/spline tangent
+    /// row. The curve side contributes its radius, a spline its fit polyline or
+    /// Bezier control polygon; the row takes the smaller of the two, floored
+    /// like `line_len0`. `curve_pair_radius0` cannot serve here: it reads slot
+    /// 2, which is a spline's second control point, not a radius.
+    pub(super) fn curve_spline_len0(&self, a: u32, b: u32) -> f64 {
+        let len = |index: u32| match self.kind_of(index) {
+            Kind::Circle | Kind::Arc => self.params(&self.x0, index)[2].abs(),
+            Kind::FitSpline => self.fit_len0(index),
+            Kind::Spline => {
+                let ep = self.params(&self.x0, index);
+                (ep[2] - ep[0]).hypot(ep[3] - ep[1])
+                    + (ep[4] - ep[2]).hypot(ep[5] - ep[3])
+                    + (ep[6] - ep[4]).hypot(ep[7] - ep[5])
+            }
+            _ => 0.0,
+        };
+        len(a).min(len(b)).max(MIN_LEN_REL * self.scale)
+    }
+
     /// Seed length of a fit spline: its fit-point polyline, which is the curve's
     /// own scale (the chain lies inside the hull of the points and handles).
     pub(super) fn fit_len0(&self, index: u32) -> f64 {

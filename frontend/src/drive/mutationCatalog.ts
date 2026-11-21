@@ -189,8 +189,17 @@ export const FIT_SPLINE_TANGENT_MAGNITUDE_NOTE =
   'keeps the authored length, while the default `true` replaces it with OCCT\'s `ScaleTangents` value and ' +
   'keeps only the direction. A per-end tangent scalar is the unit direction times that scalar, with ' +
   '`tangentScale: false`.'
+// A stored fit-spline handle is a solved variable, not a read-only tangent: the
+// recipe to close the joint it leaves is the fact an author cannot infer from
+// the arbitrary point they pass. docs/drive.md quotes this sentence verbatim.
+export const FIT_SPLINE_HANDLE_DOF_NOTE =
+  'Each stored handle is a solver variable with its own two degrees of freedom, so a tangent at that end ' +
+  'fixes only its direction: pin the joint with a coincident plus the tangent, dimension the handle length ' +
+  '(`point_distance` from `start` to `c1`, or `end` to `c2`), and dimension the other handle to close the ' +
+  'last two degrees of freedom.'
 const FIT_SPLINE_TANGENTS_NOTE =
   'fit_spline only: [start, end] end tangents, each [tx, ty] or null. ' + FIT_SPLINE_TANGENT_MAGNITUDE_NOTE
+  + ' ' + FIT_SPLINE_HANDLE_DOF_NOTE
 const FIT_SPLINE_TANGENT_SCALE_NOTE =
   'fit_spline only: true (default) rescales each authored tangent with OCCT\'s `ScaleTangents` (CadQuery ' +
   '`scale=True`); false keeps each tangent\'s length as that end\'s magnitude.'
@@ -704,6 +713,15 @@ const CONSTRAINT_DUPLICATE_NOTE =
 // vectors, while a label in a supplement wedge shows 180 - that. The appliers
 // translate the mutation value through `angleStoredValue`
 // (utils/geometry/dimensionNaturalValue.ts), so the drive and the UI agree.
+// The tangent's accepted pairs are a table rather than one common group, and a
+// spline pair has a contact requirement the other pairs do not. T4 pins both
+// facts on the add_constraint row, and the TS/Rust table agreement test pins
+// the pair list.
+export const TANGENT_PAIR_NOTE =
+  '`tangent` takes a line with a circle, arc, ellipse or spline, a circle or arc with a circle, arc or ' +
+  'spline, or a spline with another spline. A spline joint needs a coincident at the spline\'s start or ' +
+  'end: without one the tangent is ignored, because the solver has no free spline tangent form.'
+
 const ANGLE_VALUE_NOTE =
   'An `angle` value is the corner the label shows, the angle between the two lines as drawn. ' +
   'The document stores the angle between their direction vectors, theta, which is the same number ' +
@@ -1180,7 +1198,7 @@ export const MUTATION_CATALOG = {
   add_constraint: {
     summary: 'Add a sketch constraint over entity refs.',
     note: VERTEX_REF_NOTE + ' ' + MIDPOINT_TARGET_NOTE + CONSTRAINT_PROJECTION_NOTE + ' ' + ANGLE_VALUE_NOTE
-      + ' ' + CONSTRAINT_DUPLICATE_NOTE,
+      + ' ' + CONSTRAINT_DUPLICATE_NOTE + ' ' + TANGENT_PAIR_NOTE,
     fields: {
       featureId: str(),
       kind: str(CONSTRAINT_KIND_NOTE),

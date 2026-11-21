@@ -988,6 +988,15 @@ banner on stdout, so a client config must use the direct node invocation.
   piece's third control point, hence the minus). `set_fit_spline_handle` writes
   that stored absolute form directly on a later edit; it is not the authoring
   recipe, and its end point differs in sign from the tangent.
+  Each stored handle is a solver variable with its own two degrees of freedom,
+  so a tangent at that end fixes only its direction: pin the joint with a
+  coincident plus the tangent, dimension the handle length (`point_distance`
+  from `start` to `c1`, or `end` to `c2`), and dimension the other handle to
+  close the last two degrees of freedom.
+  `tangent` takes a line with a circle, arc, ellipse or spline, a circle or arc
+  with a circle, arc or spline, or a spline with another spline. A spline joint
+  needs a coincident at the spline's start or end: without one the tangent is
+  ignored, because the solver has no free spline tangent form.
   Guidance that a field list cannot carry lives in the row note: `hole` lists
   its required fields (`sketch`, `diameter`, `depth_mode`) and its optional ones
   (`depth`, `direction`, `target`, `thread`, `style`, `cb_diameter`, `cb_depth`,
