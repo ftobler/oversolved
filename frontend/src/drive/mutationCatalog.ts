@@ -688,6 +688,14 @@ const CONSTRAINT_KIND_NOTE =
   'entity) and glues them into their current shape, leaving the set free to move and rotate; it carries no ' +
   'value and deleting it frees the entities.'
 
+// The exact-duplicate refusal shared by every constraint insert. Stated in the
+// `add_constraint` note so a script author knows a repeated step is a no-op with
+// a reason rather than enough to append a second row.
+const CONSTRAINT_DUPLICATE_NOTE =
+  'An exact duplicate of a stored row is refused before anything is written: same kind, same operands ' +
+  '(either order for a symmetric kind), same value and sign. A dimension with a different value is a ' +
+  'conflict, not a duplicate, so it is authored.'
+
 // An angle is the one dimension whose stored value is not the number the label
 // shows: the solver stores the unsigned angle between the two lines' direction
 // vectors, while a label in a supplement wedge shows 180 - that. The appliers
@@ -1168,7 +1176,8 @@ export const MUTATION_CATALOG = {
   },
   add_constraint: {
     summary: 'Add a sketch constraint over entity refs.',
-    note: VERTEX_REF_NOTE + ' ' + MIDPOINT_TARGET_NOTE + CONSTRAINT_PROJECTION_NOTE + ' ' + ANGLE_VALUE_NOTE,
+    note: VERTEX_REF_NOTE + ' ' + MIDPOINT_TARGET_NOTE + CONSTRAINT_PROJECTION_NOTE + ' ' + ANGLE_VALUE_NOTE
+      + ' ' + CONSTRAINT_DUPLICATE_NOTE,
     fields: {
       featureId: str(),
       kind: str(CONSTRAINT_KIND_NOTE),

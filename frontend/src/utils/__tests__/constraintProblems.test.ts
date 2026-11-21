@@ -4,8 +4,8 @@
 // names the sentence, and the applier either authors the constraint or leaves
 // the document byte-identical exactly when a problem is returned.
 import { describe, it, expect } from 'vitest'
-import type { PartDoc } from '@/types/cad'
-import { addConstraintProblem, midpointShapeReason } from '@/utils/constraintProblems'
+import type { PartConstraint, PartDoc } from '@/types/cad'
+import { addConstraintProblem, duplicateConstraintOf, midpointShapeReason } from '@/utils/constraintProblems'
 import { CONSTRAINT_BY_KIND, CONSTRAINTS, constraintOperandProblem } from '@/registry'
 import { applyAddConstraint } from '@/utils/yamlMutations'
 import { sketchAt } from '@/testing/featureAccess'
@@ -290,5 +290,135 @@ describe('constraint operand arity', () => {
         sketchAt(shapeDoc()), kind, ['vertex:sk1:ax:start', 'vertex:sk1:ax:end'], undefined,
       )).toBeNull()
     }
+  })
+})
+
+// Every insert path refuses an exact duplicate row, whatever the operand order
+// (the user's rule in bugreports/20261120_1925_twist_state.md).
+describe('duplicate constraint rows', () => {
+  const withRows = (...rows: PartConstraint[]): PartDoc => {
+    const doc = shapeDoc()
+    const feature = doc.features![0]
+    if (feature.kind !== 'sketch') throw new Error('fixture is not a sketch')
+    feature.constraints = rows
+    return doc
+  }
+  const stored: PartConstraint = { id: 'c_stored', kind: 'coincident', a: '$axstart', b: '$bxend' }
+  const pointOnLine: PartConstraint = { id: 'c_on_line', kind: 'coincident', a: '$axstart', b: '$bx' }
+
+  it('refuses the same coincident in the stored operand order', () => {
+    const problem = addConstraintProblem(
+      sketchAt(withRows(stored)), 'coincident',
+      ['vertex:sk1:ax:start', 'vertex:sk1:bx:end'], undefined,
+    )
+    expect(problem).toContain('c_stored')
+  })
+
+  it('refuses the same coincident with the operands reversed', () => {
+    const problem = addConstraintProblem(
+      sketchAt(withRows(stored)), 'coincident',
+      ['vertex:sk1:bx:end', 'vertex:sk1:ax:start'], undefined,
+    )
+    expect(problem).toContain('c_stored')
+  })
+
+  it('refuses a duplicate point-on-line coincident in either order', () => {
+    for (const targets of [
+      ['vertex:sk1:ax:start', 'entity:sk1:bx'],
+      ['entity:sk1:bx', 'vertex:sk1:ax:start'],
+    ]) {
+      const problem = addConstraintProblem(sketchAt(withRows(pointOnLine)), 'coincident', targets, undefined)
+      expect(problem).toContain('c_on_line')
+    }
+  })
+
+  it('the applier leaves the document byte-identical for a duplicate', () => {
+    const doc = withRows(pointOnLine)
+    const before = JSON.stringify(doc)
+    applyAddConstraint(doc, 'sk1', 'coincident', ['entity:sk1:bx', 'vertex:sk1:ax:start'])
+    expect(JSON.stringify(doc)).toBe(before)
+  })
+
+  it('does not treat a different pick as a duplicate', () => {
+    expect(addConstraintProblem(
+      sketchAt(withRows(stored)), 'coincident',
+      ['vertex:sk1:ax:end', 'vertex:sk1:bx:end'], undefined,
+    )).toBeNull()
+  })
+
+  it('duplicateConstraintOf names the row for a reversed symmetric pick', () => {
+    const row = duplicateConstraintOf(
+      [stored], 'sk1', 'coincident', ['vertex:sk1:bx:end', 'vertex:sk1:ax:start'],
+    )
+    expect(row?.id).toBe('c_stored')
+  })
+
+  it('compares a dimension value at the stored precision', () => {
+    const withValue = withRows({ id: 'c_len', kind: 'length', target: '$ax', value: 0.123457 })
+    const feature = withValue.features![0]
+    if (feature.kind !== 'sketch') throw new Error('fixture is not a sketch')
+    expect(duplicateConstraintOf(feature.constraints, 'sk1', 'length', ['$ax'], 0.1234567)?.id)
+      .toBe('c_len')
+  })
+
+  it('does not treat another dimension value as a duplicate', () => {
+    const withValue = withRows({ id: 'c_len', kind: 'length', target: '$ax', value: 10 })
+    expect(addConstraintProblem(sketchAt(withValue), 'length', ['$ax'], 12)).toBeNull()
+  })
+
+  it('matches a group row by member set, whatever the pick order', () => {
+    const group: PartConstraint = { id: 'c_group', kind: 'group', refs: ['$ax', '$c1'] }
+    expect(duplicateConstraintOf(
+      [group], 'sk1', 'group', ['entity:sk1:c1', 'entity:sk1:ax'],
+    )?.id).toBe('c_group')
+  })
+
+  it('matches an unsigned pair dimension with the operands reversed', () => {
+    const dimension: PartConstraint = { id: 'c_pd', kind: 'point_distance', a: '$oxy', b: '$pxy', value: 3 }
+    expect(duplicateConstraintOf(
+      [dimension], 'sk1', 'point_distance', ['$pxy', '$oxy'], 3,
+    )?.id).toBe('c_pd')
+  })
+
+  it('keeps a signed dimension order-sensitive', () => {
+    const dimension: PartConstraint = {
+      id: 'c_pdx', kind: 'point_distance_x', a: '$oxy', b: '$pxy', value: 3, sign: 1,
+    }
+    expect(duplicateConstraintOf(
+      [dimension], 'sk1', 'point_distance_x', ['$pxy', '$oxy'], 3, 1,
+    )).toBeNull()
+    expect(duplicateConstraintOf(
+      [dimension], 'sk1', 'point_distance_x', ['$oxy', '$pxy'], 3, 1,
+    )?.id).toBe('c_pdx')
+  })
+
+  it('keeps the opposite-side signed dimension distinct', () => {
+    const dimension: PartConstraint = {
+      id: 'c_pdx', kind: 'point_distance_x', a: '$oxy', b: '$pxy', value: 3, sign: 1,
+    }
+    expect(duplicateConstraintOf(
+      [dimension], 'sk1', 'point_distance_x', ['$oxy', '$pxy'], 3, -1,
+    )).toBeNull()
+  })
+
+  it('matches a midpoint stored as line + point, but not the reversed pick', () => {
+    const midpoint: PartConstraint = { id: 'c_mid', kind: 'midpoint', line: '$ax', point: '$oxy' }
+    expect(duplicateConstraintOf([midpoint], 'sk1', 'midpoint', ['$ax', '$oxy'])?.id).toBe('c_mid')
+    expect(duplicateConstraintOf([midpoint], 'sk1', 'midpoint', ['$oxy', '$ax'])).toBeNull()
+  })
+
+  it('matches a midpoint stored as point_a + point_b + point', () => {
+    const midpoint: PartConstraint = {
+      id: 'c_mid3', kind: 'midpoint', point_a: '$axstart', point_b: '$axend', point: '$oxy',
+    }
+    expect(duplicateConstraintOf(
+      [midpoint], 'sk1', 'midpoint', ['$axstart', '$axend', '$oxy'],
+    )?.id).toBe('c_mid3')
+  })
+
+  it('keeps the applicability sentence ahead of the duplicate check', () => {
+    const withDiameter = withRows({ id: 'c_dia', kind: 'diameter', target: '$e1', value: 8 })
+    expect(addConstraintProblem(sketchAt(withDiameter), 'diameter', ['$e1'], 8))
+      .toBe('diameter does not apply to ellipse')
   })
 })

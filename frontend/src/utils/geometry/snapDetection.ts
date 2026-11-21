@@ -244,19 +244,6 @@ export function dragSnapCandidates(
   return { vertexCandidates, entityCandidates }
 }
 
-export function collectVertexTargetsFlat(
-  candidates: SnapCandidate[],
-  skipIds: ReadonlySet<string>,
-): SnapCandidate[] {
-  if (skipIds.size === 0) return candidates
-  return candidates.filter(t => {
-    for (const skipId of skipIds) {
-      if (t.id.includes(`:${skipId}:`)) return false
-    }
-    return true
-  })
-}
-
 export function collectEntityCandidatesFlat(
   candidates: EntityCandidate[],
   skipIds: ReadonlySet<string>,
