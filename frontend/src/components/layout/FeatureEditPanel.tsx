@@ -5,13 +5,16 @@ import { featureFailure } from '@/utils/core/featureFailure'
 import { FeatureItemEditors, featureHasEditor } from '@/components/layout/FeatureItemEditors'
 import { getFeatureIcon } from '@/components/layout/featureIcons'
 import { StatusPanel } from '@/components/shared/StatusPanel'
+import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
+import { canManageFeature } from '@/pages/buildContextMenu'
 import '@/components/layout/Glass.css'
 import okIcon from '@/assets/icons/dialog-ok.svg'
 import cancelIcon from '@/assets/icons/dialog-cancel.svg'
+import renameIcon from '@/assets/icons/rename.svg'
 
 /**
  * The open feature editor as a floating card on the right side of the viewport:
- * the feature's icon and name over the OK / Cancel pair, then the
+ * the feature's icon and name over the Rename / OK / Cancel row, then the
  * same editor body the tree row used to carry inline. The row no longer grows
  * a whole form when a feature opens; it keeps its `editing` highlight and swaps
  * its edit button for its own OK / Cancel pair (FeatureItemActions.tsx), so an
@@ -26,12 +29,13 @@ import cancelIcon from '@/assets/icons/dialog-cancel.svg'
  */
 export function FeatureEditPanel() {
   const editingFeatureId = useEditorState(s => s.editingFeatureId)
+  const activeSketchFeatureId = useEditorState(s => s.activeSketchFeatureId)
   const features = usePartEditorStore(s => s.features)
   const doc = usePartEditorStore(s => s.doc)
   const partLabels = usePartEditorStore(s => s.partLabels)
   const solveResults = usePartEditorStore(s => s.solveResults)
   const parts = usePartEditorStore(s => s.parts)
-  const { onEditCommit, onEditCancel, onMutation, onMutationBatch } = usePartEditorCallbacks()
+  const { onEditCommit, onEditCancel, onMutation, onMutationBatch, onRequestRename } = usePartEditorCallbacks()
 
   // Nothing open, or the open id names a feature with no editor body (a
   // built-in plane, say): the panel has nothing to draw and an empty frame
@@ -40,6 +44,15 @@ export function FeatureEditPanel() {
     ? undefined
     : features.find(f => f.id === editingFeatureId)
   if (!feature || !featureHasEditor(feature)) return null
+
+  // The card's Rename is the menu's Rename, gate included: a headless caller
+  // with no dialog opener gets no button. The kind check does not trust the
+  // published activeSketchFeatureId alone: the page writes that one effect
+  // after editingFeatureId, so the sketch's own card must be refused from the
+  // feature in hand, not from a value that can still trail the previous edit.
+  const canRename = !!onRequestRename
+    && feature.kind !== 'sketch'
+    && canManageFeature(feature.id, BUILTIN_FEATURE_IDS, activeSketchFeatureId ?? undefined)
 
   // The feature's own last solve result, for a row that shows a solved value
   // (the linear pattern's directive-length spacing). A feature that never
@@ -60,6 +73,21 @@ export function FeatureEditPanel() {
             alt={feature.kind || 'feature'}
           />
           <span className="feature-edit-panel-title">{feature.label || feature.id}</span>
+          {canRename && (
+            <button
+              type="button"
+              className="feature-rename-btn"
+              onClick={() => onRequestRename({
+                kind: 'feature',
+                id: feature.id,
+                currentName: feature.label || feature.id,
+              })}
+              title="Rename"
+              aria-label="Rename"
+            >
+              <img src={renameIcon} alt="" />
+            </button>
+          )}
           <button className="feature-ok-btn" onClick={onEditCommit} title="OK">
             <img src={okIcon} alt="OK" />
           </button>

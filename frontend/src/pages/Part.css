@@ -557,6 +557,7 @@
 .feature-edit-btn,
 .feature-ok-btn,
 .feature-cancel-btn,
+.feature-rename-btn,
 .feature-visibility-btn,
 .feature-context-btn,
 .part-visibility-btn,
@@ -575,6 +576,7 @@
 .feature-edit-btn img,
 .feature-ok-btn img,
 .feature-cancel-btn img,
+.feature-rename-btn img,
 .feature-visibility-btn img,
 .feature-context-btn img,
 .part-visibility-btn img,
@@ -615,6 +617,16 @@
 
 .feature-cancel-btn:hover {
   background: #4a1e1e;
+}
+
+/* Neutral, so a third icon beside the verdict pair does not read as one. */
+.feature-rename-btn {
+  background: none;
+  border-radius: 4px;
+}
+
+.feature-rename-btn:hover {
+  background: var(--glass-hover-bg);
 }
 
 .feature-item.editing {

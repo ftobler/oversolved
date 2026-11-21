@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { forwardRef, useImperativeHandle, type ReactNode } from 'react'
-import { screen, fireEvent, act, waitFor } from '@testing-library/react'
+import { screen, fireEvent, act, waitFor, within } from '@testing-library/react'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assemblyStore'
 
 const navigateSpy = vi.fn()
@@ -376,7 +376,9 @@ describe('AssemblyEditor mate authoring (Stage 8)', () => {
     expect(input.value).toBe('Fixed 1')
 
     fireEvent.change(input, { target: { value: 'top clamp' } })
-    fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
+    // The open card also carries a Rename button, so the footer is reached
+    // through the dialog's own box.
+    fireEvent.click(within(document.querySelector('.dialog-component') as HTMLElement).getByRole('button', { name: 'Rename' }))
     await tick()
 
     expect(mateDef().label).toBe('top clamp')
