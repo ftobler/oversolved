@@ -18,6 +18,7 @@ import { dispatchSketchClick } from './dispatchSketchClick'
 import { takeDrawToolClickConsumed } from './drawToolClickGuard'
 import { takeBandClickConsumed } from './bandClickGuard'
 import { createHandleGestureOwner } from './handleGestureOwner'
+import type { PointerClaims } from '@/viewport/pointerClaim'
 import { missClearsNormalSelection } from '@/components/Viewport/emptyClickClear'
 import { dimensionLabelDomHit } from '@/picking/dimensionLabelDom'
 import { usePartEditorStore } from '@/stores/partEditorStore'
@@ -105,6 +106,10 @@ interface DispatchParams {
   canvasRef?: RefObject<HTMLCanvasElement | null>
   glRef: RefObject<THREE.WebGLRenderer | null>
   consumedLayers: ReadonlySet<string>
+  // The viewport's registry of pointers a handle press owns. Claimed at the
+  // press so the camera can refuse the pointer before React commits the store
+  // gate. Absent in tests that do not exercise the camera.
+  pointerClaims?: PointerClaims
 }
 
 function cursorFromEvent(e: PointerEvent | MouseEvent, canvas: HTMLCanvasElement): { x: number; y: number } {
@@ -238,7 +243,7 @@ if (import.meta.env?.DEV) {
  * left. Backed by a ref because the real implementation lives inside the
  * effect below and is only assigned once attached.
  */
-export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }: DispatchParams): () => void {
+export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers, pointerClaims }: DispatchParams): () => void {
   const clearHoverRef = useRef<() => void>(() => {})
 
   useEffect(() => {
@@ -447,6 +452,10 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       // or a hover a mid-drag pointerleave cleared, would otherwise stay lit or
       // leave the arrow cold.
       handleGesture.move(e.buttons)
+      // A move with no button held means the release was never seen. Drop the
+      // camera claim with the handle ownership, or a lost pointerup would leave
+      // the camera locked for the rest of the session.
+      if ((e.buttons & 1) === 0) pointerClaims?.clear()
       // Keep the key on exactly the owner's handle state: a stranded release
       // (move with no button held) resets the owner, so it must drop the key
       // too or a later suppressed branch could repaint a dead gesture.
@@ -700,6 +709,10 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       // whose click never arrived cannot match a later pointer that reuses them.
       secondaryPointerIds.clear()
       if (e.button !== 0 || !attached) return
+      // Only the primary button opens a handle gesture, so only it drops a claim
+      // stranded by a lost release. Clearing above the button guard would let a
+      // right-button orbit press eat a live left-drag claim.
+      pointerClaims?.clear()
       const hit = resolveSync(e, attached)
       // The press starts the gesture: ownership comes from this hit only (a miss
       // clears it), before the adapter runs so a refusing handle still owns the
@@ -729,13 +742,30 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       // by an earlier gesture is not this gesture's, so only a set or replace
       // during this press arms the click half of the owner rule.
       const dragPendingAfter = useSketchEditorStore.getState().dragPending
-      handleGesture.noteDragArmed(dragPendingAfter !== null && dragPendingAfter !== dragPendingBefore)
+      const armed = dragPendingAfter !== null && dragPendingAfter !== dragPendingBefore
+      handleGesture.noteDragArmed(armed)
+      // The press owns this pointer for the whole gesture. A handle press owns
+      // it even when the handle refuses the drag (an expression value), which
+      // matches the click owner's rule; a sketch or label drag owns it once the
+      // adapter armed one. The camera reads this synchronously on its next move.
+      if (typeof pe.pointerId === 'number' && (hit.layer === FEATURE_HANDLE_LAYER_NAME || armed)) {
+        pointerClaims?.claim(pe.pointerId)
+      }
+    }
+
+    // A release or a torn-away gesture ends the claim with the gesture. This is
+    // the canvas listener, so an off-canvas release is left to the stranded
+    // move check and the next press's clear.
+    const onPointerUpRelease = (e: PointerEvent) => {
+      if (typeof e.pointerId === 'number') pointerClaims?.release(e.pointerId)
     }
 
     const attach = (c: HTMLCanvasElement) => {
       attached = c
       c.addEventListener('pointermove', onPointerMove)
       c.addEventListener('pointerdown', onPointerDown)
+      c.addEventListener('pointerup', onPointerUpRelease)
+      c.addEventListener('pointercancel', onPointerUpRelease)
       c.addEventListener('click', onClick)
       c.addEventListener('dblclick', onDoubleClick)
       c.addEventListener('contextmenu', onContextMenu)
@@ -771,6 +801,8 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
       if (attached) {
         attached.removeEventListener('pointermove', onPointerMove)
         attached.removeEventListener('pointerdown', onPointerDown)
+        attached.removeEventListener('pointerup', onPointerUpRelease)
+        attached.removeEventListener('pointercancel', onPointerUpRelease)
         attached.removeEventListener('click', onClick)
         attached.removeEventListener('dblclick', onDoubleClick)
         attached.removeEventListener('contextmenu', onContextMenu)
@@ -779,7 +811,7 @@ export function useIdBufferPointerDispatch({ canvasRef, glRef, consumedLayers }:
         attached = null
       }
     }
-  }, [canvasRef, glRef, consumedLayers])
+  }, [canvasRef, glRef, consumedLayers, pointerClaims])
 
   return useCallback(() => { clearHoverRef.current() }, [])
 }

@@ -68,6 +68,7 @@ import { offsetPickParts } from '@/utils/assemblyPick'
 import { readSelection } from '@/utils/assemblySelection'
 import { decideAssemblyHit } from '@/utils/assemblyHitDecision'
 import { HoverScheduler } from '@/picking/HoverScheduler'
+import { createPointerClaims } from '@/viewport/pointerClaim'
 import type { Ray } from '@/utils/gizmoMath'
 import { rotateVector, type Vec3 } from '@/utils/transform3d'
 
@@ -170,6 +171,9 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   // edges, planes for measurement), which is the part editor's normal mode.
   const aiming = useAssemblyStore(s => s.activeMateField !== null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  // The manipulation sessions own their pointer from the press, synchronously;
+  // `orbitEnabled={!manipulating}` only lands on a React commit.
+  const [pointerClaims] = useState(() => createPointerClaims())
   const pipelineRef = useRef<IdPipeline | null>(null)
   const pvRef = useRef<Pv[]>([])
   const hoverRef = useRef<Hit | null>(null)
@@ -252,8 +256,13 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     // The same teardown the Escape and unmount effects run: adapter.cancel()
     // clears the pointer machine and the store's manipulation and gizmoDrag, so
     // a drag abandoned from outside the viewport cannot linger as a live gesture.
-    cancelGesture: () => adapter.cancel(),
-  }), [adapter])
+    // The camera claim goes with it, or an Undo-cancelled touch drag would hold
+    // the pointer forever and leave `anyClaimed()` true.
+    cancelGesture: () => {
+      adapter.cancel()
+      pointerClaims.clear()
+    },
+  }), [adapter, pointerClaims])
 
   // The subject's part half as a set, which is what the render groups take so a
   // future multi-part subject widens in the one accessor rather than here. It
@@ -566,11 +575,14 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     // so the part follows the cursor exactly under any view direction.
     const forward = camera.getWorldDirection(new THREE.Vector3())
     if (adapter.onPartPointerDown(handle, point, [forward.x, forward.y, forward.z], pointer)) {
+      // The grab owns this pointer from here on: on touch the same press is
+      // also a camera gesture, and the store gate is a commit too late.
+      pointerClaims.claim(pointer.id)
       // The ID buffer keeps the solved pose while the drag offsets the drawn
       // part, so anchors held over from before the grab would trail behind it.
       clearHover()
     }
-  }, [adapter, clearHover])
+  }, [adapter, clearHover, pointerClaims])
 
   // The triad's pointer-down, run in the CAPTURE phase. React registers capture
   // listeners on its root container, an ancestor of this div, so this fires
@@ -598,15 +610,20 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     if (adapter.onGizmoPointerDown(
       selectedPartHandle, handle.kind, handle.name, axis, reference, triad.origin, ray, pointerOf(e),
     )) {
+      pointerClaims.claim(e.pointerId)
       clearHover()  // the gizmo moves the part too; same stale-anchor trail
     }
-  }, [adapter, clearHover, rayFromEvent, resolveHitsAt, selectedPartHandle, triad])
+  }, [adapter, clearHover, pointerClaims, rayFromEvent, resolveHitsAt, selectedPartHandle, triad])
 
   // R3F's mesh handlers run on the canvas, whose events bubble here. Capturing
   // the pointer once a gesture has started keeps a drag alive when the cursor
   // grazes the pane edge, and guarantees the release reaches us wherever it
   // lands, otherwise a session would hang with the camera locked.
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    // A stale claim for this id must not survive into a press that opens no
+    // session. A live one is left alone: a body grab or a gizmo press already
+    // claimed it in the target or capture phase of this very event.
+    if (!adapter.isActive()) pointerClaims.release(e.pointerId)
     // Record before the active-gesture early-out: the mesh handler has already
     // opened the grab by the time this bubbles up, so an early return here would
     // lose the down position a plain select needs.
@@ -634,7 +651,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
         )
       }
     }
-  }, [adapter, aiming, resolveHitsAt])
+  }, [adapter, aiming, pointerClaims, resolveHitsAt])
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     // Latch the travel as it happens: an orbit that swings out and comes back
@@ -670,6 +687,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     // that decides whether to deselect arrives later and reads its verdict.
     const outcome = adapter.onPointerUp(pointerOf(e), e.clientX, e.clientY)
     if (!outcome.owned) return
+    pointerClaims.release(e.pointerId)
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
     // Selection mode: a left click that never became a drag toggles the top
     // entity under the cursor into the measurement set. Which gestures are still
@@ -684,7 +702,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     if (click.button !== 0 || click.wasDrag) return
     const target = decideAssemblyHit(resolveHitsAt(e)).entityKey
     if (target !== null) store.toggleSelection(target)
-  }, [adapter, resolveHitsAt])
+  }, [adapter, pointerClaims, resolveHitsAt])
 
   // The browser tore the gesture away (a touch became a scroll, the pointer was
   // lost). Abandon it rather than commit a pose the user never released on.
@@ -695,15 +713,21 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
   // going away cannot abandon the primary's gesture.
   const handlePointerCancel = useCallback((e: React.PointerEvent) => {
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId)
+    // The browser tore the gesture away: the claim goes with it, or the camera
+    // could stay locked with no pointerup left to release it.
+    pointerClaims.release(e.pointerId)
     adapter.pointerCancel(pointerOf(e))
-  }, [adapter])
+  }, [adapter, pointerClaims])
 
   // Unmounting mid-drag means the pointerup never arrives, and both the session
   // and the published gizmoDrag live outside React (a closure and a module-level
   // store), so they would survive into the next mount: the triad would come back
   // narrowed to a handle nobody is holding, with GizmoPickLayer still registering
   // all nine, leaving eight invisible handles that still take clicks.
-  useEffect(() => () => { adapter.cancel() }, [adapter])
+  useEffect(() => () => {
+    adapter.cancel()
+    pointerClaims.clear()
+  }, [adapter, pointerClaims])
 
   // Escape abandons the gesture: the part snaps back to its solved pose and no
   // re-solve runs, the standard out for a drag started by mistake.
@@ -712,10 +736,11 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
       adapter.cancel()
+      pointerClaims.clear()
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [adapter, manipulating])
+  }, [adapter, manipulating, pointerClaims])
 
   const onPointerMissed = useCallback(() => {
     // R3F counts `contextmenu` as a click event, and Chrome on Linux fires it on
@@ -766,6 +791,7 @@ export default forwardRef<AssemblyViewportHandle, AssemblyViewportProps>(functio
           cameraRef={cameraRef}
           controlsRef={controlsRef}
           orbitEnabled={!manipulating}
+          pointerClaims={pointerClaims}
           onReady={onSceneReady}
         />
 

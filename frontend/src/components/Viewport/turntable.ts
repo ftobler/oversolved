@@ -335,6 +335,10 @@ export class TurntableControls {
   // scene owner owns the raycast.
   orbitAroundCursor = true
   pivotPick: ((clientX: number, clientY: number) => THREE.Vector3 | null) | null = null
+  // A press that landed on a handle owns its pointer (viewport/pointerClaim).
+  // The claim is read on every move, not only at the press, so the camera
+  // yields whatever order the press listeners ran in.
+  pointerClaimed: ((pointerId: number) => boolean) | null = null
   onChange: (() => void) | null = null
   onStart: (() => void) | null = null
   onEnd: (() => void) | null = null
@@ -613,6 +617,12 @@ export class TurntableControls {
       this.endGesture()
       return
     }
+    // Same rule for mouse and pen: the claim is the press's, not the input
+    // type's.
+    if (this.pointerClaimed?.(gesture.pointerId)) {
+      this.endGesture()
+      return
+    }
     const dx = e.clientX - gesture.x
     const dy = e.clientY - gesture.y
     gesture.x = e.clientX
@@ -654,8 +664,12 @@ export class TurntableControls {
   }
 
   private beginTouch(e: PointerEvent): void {
-    e.preventDefault()
     const id = pointerIdOf(e)
+    // The dispatcher may have claimed this press already (it runs first when
+    // its listener attached first). Recording the finger would let the first
+    // move rotate once, so a claimed press never becomes a touch point at all.
+    if (this.pointerClaimed?.(id)) return
+    e.preventDefault()
     this.touchPoints.set(id, { x: e.clientX, y: e.clientY })
     if (this.touchPoints.size === 1) {
       this.touchRotate = { pointerId: id, x: e.clientX, y: e.clientY }
@@ -672,6 +686,18 @@ export class TurntableControls {
     if (!this._enabled) {
       this.endTouch()
       return
+    }
+    // A claimed finger is dragging a handle. Drop the whole touch gesture, not
+    // just that pointer: a pinch must not form around a finger the handle owns.
+    // The claim is checked here rather than only at the press because the
+    // dispatcher's claim may land after this controller's pointerdown ran.
+    const claimed = this.pointerClaimed
+    if (claimed) {
+      for (const touchId of this.touchPoints.keys()) {
+        if (!claimed(touchId)) continue
+        this.endTouch()
+        return
+      }
     }
     const id = pointerIdOf(e)
     this.touchPoints.set(id, { x: e.clientX, y: e.clientY })

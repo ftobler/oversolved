@@ -6,12 +6,12 @@
  * never behave like the browser's. The Viewport test files used to copy this
  * stub one file at a time; it lives here now. The pointer-type default stays a
  * caller choice because the copies disagreed on purpose: `'mouse'` models a
- * real mouse pointer, `''` models an event that carries no pointer type, and
- * the Viewport branches on the two (`useRubberBandSelect` only sweeps on
- * `'mouse'`). The guard keeps a real implementation in place if a future
- * jsdom ships one.
+ * real mouse pointer, `'touch'` models a finger (the handle-drag tests need
+ * it), and `''` models an event that carries no pointer type; the Viewport
+ * branches on the values (`useRubberBandSelect` only sweeps on `'mouse'`). The
+ * guard keeps a real implementation in place if a future jsdom ships one.
  */
-export function installPointerEventStub(pointerTypeDefault: 'mouse' | ''): void {
+export function installPointerEventStub(pointerTypeDefault: 'mouse' | 'touch' | ''): void {
   if (typeof window.PointerEvent === 'function') return
   window.PointerEvent = class PointerEventStub extends MouseEvent {
     constructor(type: string, init: PointerEventInit = {}) {

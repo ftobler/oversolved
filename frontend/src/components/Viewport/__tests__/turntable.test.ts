@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import * as THREE from 'three'
 import {
   TurntableControls,
@@ -19,6 +19,7 @@ import {
   turnAbout,
 } from '@/components/Viewport/turntable'
 import { pickPivotPoint } from '@/components/Viewport/pivotPick'
+import { createPointerClaims } from '@/viewport/pointerClaim'
 import { alignToFace, alignToFrame, orbitView, rollView, snapToDirection } from '@/components/Viewport/cameraController'
 
 // The pure half of the orbit law plus the controller against a real camera.
@@ -694,6 +695,110 @@ describe('touch bindings', () => {
 
     touch(document, 'pointermove', { pointerId: 21, clientX: 380, clientY: 300 })
     expect(controls.azimuth).not.toBe(azimuth)
+  })
+})
+
+describe('claimed pointers', () => {
+  function claimedSetup() {
+    const camera = makeCamera()
+    const controls = makeControls(camera)
+    const claims = createPointerClaims()
+    controls.pointerClaimed = id => claims.isClaimed(id)
+    const el = makeElement()
+    controls.connect(el)
+    controls.azimuth = 0.4
+    controls.elevation = 0.3
+    controls.update()
+    return { camera, controls, claims, el }
+  }
+
+  function pose(camera: THREE.Camera): { position: number[]; quaternion: number[] } {
+    return { position: camera.position.toArray(), quaternion: camera.quaternion.toArray() }
+  }
+
+  it('stops rotating when the press is claimed after the controller saw it', () => {
+    // Listener order is not the rule: whichever of the controller and the
+    // dispatcher runs first, the first move must find the claim.
+    const { camera, controls, claims, el } = claimedSetup()
+    const onStart = vi.fn()
+    const onEnd = vi.fn()
+    controls.onStart = onStart
+    controls.onEnd = onEnd
+    const before = pose(camera)
+
+    touch(el, 'pointerdown', { pointerId: 31, clientX: 400, clientY: 300 })
+    expect(onStart).toHaveBeenCalledTimes(1)
+    claims.claim(31)
+    touch(document, 'pointermove', { pointerId: 31, clientX: 460, clientY: 340 })
+
+    expect(pose(camera)).toEqual(before)
+    expect(onEnd).toHaveBeenCalledTimes(1)
+  })
+
+  it('never starts a touch gesture for a pointer claimed before the press', () => {
+    const { camera, controls, claims, el } = claimedSetup()
+    const onStart = vi.fn()
+    const onEnd = vi.fn()
+    controls.onStart = onStart
+    controls.onEnd = onEnd
+    const before = pose(camera)
+
+    claims.claim(32)
+    touch(el, 'pointerdown', { pointerId: 32, clientX: 400, clientY: 300 })
+    touch(document, 'pointermove', { pointerId: 32, clientX: 460, clientY: 340 })
+
+    expect(pose(camera)).toEqual(before)
+    expect(onStart).not.toHaveBeenCalled()
+    expect(onEnd).not.toHaveBeenCalled()
+  })
+
+  it('does not form a pinch around a claimed finger', () => {
+    const { camera, controls, claims, el } = claimedSetup()
+    const before = pose(camera)
+    const zoomBefore = controls.zoom
+    const targetBefore = controls.target.clone()
+
+    touch(el, 'pointerdown', { pointerId: 41, clientX: 300, clientY: 300 })
+    claims.claim(41)
+    touch(el, 'pointerdown', { pointerId: 42, clientX: 500, clientY: 300 })
+    touch(document, 'pointermove', { pointerId: 41, clientX: 260, clientY: 300 })
+    touch(document, 'pointermove', { pointerId: 42, clientX: 540, clientY: 300 })
+
+    expect(pose(camera)).toEqual(before)
+    expect(controls.zoom).toBe(zoomBefore)
+    expect(controls.target.toArray()).toEqual(targetBefore.toArray())
+  })
+
+  it('rotates a fresh touch again once the claim is released', () => {
+    const { camera, controls, claims, el } = claimedSetup()
+    const before = pose(camera)
+
+    claims.claim(51)
+    touch(el, 'pointerdown', { pointerId: 51, clientX: 400, clientY: 300 })
+    touch(document, 'pointermove', { pointerId: 51, clientX: 460, clientY: 340 })
+    expect(pose(camera)).toEqual(before)
+
+    claims.release(51)
+    const azimuthBefore = controls.azimuth
+    touch(el, 'pointerdown', { pointerId: 52, clientX: 400, clientY: 300 })
+    touch(document, 'pointermove', { pointerId: 52, clientX: 460, clientY: 340 })
+    expect(controls.azimuth).not.toBe(azimuthBefore)
+  })
+
+  it('leaves a claimed mouse drag alone too', () => {
+    // The rule has no input-type exception: a right-drag can never claim today,
+    // but the controller asks for every gesture the same way.
+    const { camera, controls, claims, el } = claimedSetup()
+    const onEnd = vi.fn()
+    controls.onEnd = onEnd
+    const before = pose(camera)
+
+    press(el, 'pointerdown', { button: 2, clientX: 400, clientY: 300 })
+    claims.claim(1)
+    press(document, 'pointermove', { button: 2, clientX: 460, clientY: 340 })
+
+    expect(pose(camera)).toEqual(before)
+    expect(onEnd).toHaveBeenCalledTimes(1)
   })
 })
 

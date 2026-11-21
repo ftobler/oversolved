@@ -60,6 +60,7 @@ import { shouldOpenRubberBand } from '@/components/Viewport/bandStartPolicy'
 import { missClearsNormalSelection } from '@/components/Viewport/emptyClickClear'
 import { DEFAULT_PART_ROUGHNESS } from '@/components/Geometry3D/constants'
 import { createClickGestureTracker, isStationaryPrimaryClick } from '@/utils/clickGesture'
+import { createPointerClaims } from '@/viewport/pointerClaim'
 import { useSelectionPointerUpCleanup } from '@/components/interaction/useSelectionPointerUpCleanup'
 import { useDrawToolClickGuardCleanup } from '@/components/Viewport/idDispatch/drawToolClickGuard'
 import { useBandClickGuardCleanup } from '@/components/Viewport/idDispatch/bandClickGuard'
@@ -182,12 +183,15 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   partsRef.current = parts
   const idPipelineRef = useRef<IdPipeline | null>(null)
   const onIdPipelineReady = useCallback((p: IdPipeline) => { idPipelineRef.current = p }, [])
+  // One registry per viewport: the dispatcher claims on a handle press and the
+  // controller reads the claims, so neither pane can freeze the other's camera.
+  const [pointerClaims] = useState(() => createPointerClaims())
 
   // 267.2/267.4/267.5: canvas-level pointer dispatcher backed by the ID buffer.
   // Consumes dimensionLabel, B-rep face/edge/vertex, sketch, plane, and origin
   // layers (the shared PART_EDITOR_CONSUMED_LAYERS set).
   const consumedLayers = PART_EDITOR_CONSUMED_LAYERS
-  const clearIdBufferHover = useIdBufferPointerDispatch({ glRef, consumedLayers })
+  const clearIdBufferHover = useIdBufferPointerDispatch({ glRef, consumedLayers, pointerClaims })
 
   // Shading/Edges change the ID layers, so a toggle has to dirty the buffer and
   // drop the hover that was resolved against the old ones. The registration
@@ -631,6 +635,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
           snapRef={snapRef}
           cameraRef={cameraRef}
           controlsRef={controlsRef}
+          pointerClaims={pointerClaims}
           onReady={onSceneReady}
         />
 
