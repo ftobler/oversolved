@@ -3,7 +3,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { interpolateFitSpline } from '@/utils/geometry/fitSpline'
-import { loopSignedArea, pointInLoop, classifyLoops, subdivideLoops, loopCentroid, loopContainment, dissolveAdjacentLoops, arcSamplePoints, ellipseArcSamplePoints, loopPts, loopGeometryKey, syncFitSplineEnds, CENTROID_ARC_SAMPLES, type LoopEdge } from '../profileLoops'
+import { loopSignedArea, pointInLoop, classifyLoops, subdivideLoops, loopCentroid, loopContainment, dissolveAdjacentLoops, arcSamplePoints, ellipseArcSamplePoints, loopPts, loopGeometryKey, syncFitSplineEnds, fuseCollinearRuns, profileClusters, CENTROID_ARC_SAMPLES, type LoopEdge } from '../profileLoops'
 import { extractProfileLoops } from '../features/shared/profileLoops'
 import { JOINT_SNAP_TOL } from '../solverConstants'
 
@@ -922,6 +922,140 @@ describe('classifyLoops with a duplicated hole', () => {
     const groups = classifyLoops(loops)
     expect(groups).toHaveLength(1)
     expect(groups[0][1]).toHaveLength(2)
+  })
+})
+
+describe('profileClusters', () => {
+  const line = (id: string, x0: number, y0: number, x1: number, y1: number): LoopEdge => ({
+    kind: 'line', id, start: [x0, y0], end: [x1, y1],
+  })
+
+  const arc = (
+    id: string, cx: number, cy: number, r: number, a0: number, a1: number, ccw = true,
+  ): LoopEdge => ({
+    kind: 'arc',
+    id,
+    center: [cx, cy],
+    radius: r,
+    angle_start_deg: a0,
+    angle_end_deg: a1,
+    ccw,
+    start: [cx + r * Math.cos((a0 * Math.PI) / 180), cy + r * Math.sin((a0 * Math.PI) / 180)],
+    end: [cx + r * Math.cos((a1 * Math.PI) / 180), cy + r * Math.sin((a1 * Math.PI) / 180)],
+  })
+
+  // One traced circle: two half-arcs, as the area builder publishes them.
+  const circle = (id: string, cx: number, cy: number, r: number): LoopEdge[] => [
+    arc(id, cx, cy, r, 0, 180),
+    arc(id, cx, cy, r, 180, 360),
+  ]
+
+  const rect = (id: string, x0: number, y0: number, x1: number, y1: number): LoopEdge[] => [
+    line(id + 'b', x0, y0, x1, y0),
+    line(id + 'r', x1, y0, x1, y1),
+    line(id + 't', x1, y1, x0, y1),
+    line(id + 'l', x0, y1, x0, y0),
+  ]
+
+  it('keeps two externally tangent circles apart', () => {
+    // r10 at the origin and r5 at (0, 15) touch at one point. Fusing their
+    // prisms is what split both cylinder walls at the contact line.
+    const groups: [LoopEdge[], LoopEdge[][]][] = [
+      [circle('a', 0, 0, 10), []],
+      [circle('b', 0, 15, 5), []],
+    ]
+    expect(profileClusters(groups)).toHaveLength(2)
+  })
+
+  it('joins the lens and two crescents of two overlapping circles', () => {
+    const up = Math.atan2(Math.sqrt(84), 4) * 180 / Math.PI
+    const down = -up
+    const rightUp = Math.atan2(Math.sqrt(84), -4) * 180 / Math.PI
+    const rightDown = -rightUp
+    // The lens is bounded by the inner arcs of both circles; each crescent
+    // takes the other side of one circle plus the reverse of the lens arc.
+    const lens: LoopEdge[] = [
+      arc('L', 0, 0, 10, down, up),
+      arc('R', 8, 0, 10, rightUp, rightDown),
+    ]
+    const crescentL: LoopEdge[] = [
+      arc('L', 0, 0, 10, up, down + 360),
+      arc('R', 8, 0, 10, rightDown, rightUp, false),
+    ]
+    const crescentR: LoopEdge[] = [
+      arc('R', 8, 0, 10, rightUp, rightDown, false),
+      arc('L', 0, 0, 10, down, up),
+    ]
+    const groups: [LoopEdge[], LoopEdge[][]][] = [[lens, []], [crescentL, []], [crescentR, []]]
+    const clusters = profileClusters(groups)
+    expect(clusters).toHaveLength(1)
+    expect(clusters[0]).toEqual(groups)
+  })
+
+  it('joins rectangles sharing a full edge and keeps a corner touch apart', () => {
+    const left: LoopEdge[] = [
+      line('lb', 0, 0, 10, 0), line('shared', 10, 0, 10, 10),
+      line('lt', 10, 10, 0, 10), line('ll', 0, 10, 0, 0),
+    ]
+    const right: LoopEdge[] = [
+      line('rb', 20, 0, 10, 0), line('rr', 20, 0, 20, 10),
+      line('rt', 20, 10, 10, 10), line('shared', 10, 10, 10, 0),
+    ]
+    // The shared edge is authored once and read backwards by the right loop.
+    expect(profileClusters([[left, []], [right, []]])).toHaveLength(1)
+
+    const cornerA = rect('a', 0, 0, 10, 10)
+    const cornerB = rect('b', 10, 10, 20, 20)
+    expect(profileClusters([[cornerA, []], [cornerB, []]])).toHaveLength(2)
+  })
+
+  it('joins a T-junction split piece that only half overlaps', () => {
+    const whole: LoopEdge[] = [
+      line('shared', 0, 0, 10, 0), line('r', 10, 0, 10, 10),
+      line('t', 10, 10, 0, 10), line('l', 0, 10, 0, 0),
+    ]
+    const half: LoopEdge[] = [
+      line('shared', 5, 0, 10, 0), line('hr', 10, 0, 10, 5),
+      line('ht', 10, 5, 5, 5), line('hl', 5, 5, 5, 0),
+    ]
+    expect(profileClusters([[whole, []], [half, []]])).toHaveLength(1)
+  })
+
+  it('joins a coincident boundary authored by another entity', () => {
+    // Two sketches whose rectangles meet along one side: no entity id is
+    // shared, but the profile is one connected region and must keep fusing.
+    const left = rect('a', 0, 0, 10, 10)
+    const right = rect('b', 10, 0, 20, 10)
+    expect(profileClusters([[left, []], [right, []]])).toHaveLength(1)
+  })
+
+  it('joins an arc piece after fuseCollinearRuns merged its ids', () => {
+    const merged = fuseCollinearRuns([
+      arc('a1', 0, 0, 5, 0, 180),
+      arc('a2', 0, 0, 5, 180, 360),
+    ])
+    expect(merged).toHaveLength(1)
+    const piece: LoopEdge[] = [arc('a1', 0, 0, 5, 0, 90)]
+    expect(profileClusters([[merged, []], [piece, []]])).toHaveLength(1)
+  })
+
+  it('returns clusters in first-group order with holes kept with their outer', () => {
+    const a = rect('a', 0, 0, 10, 10)
+    const b = rect('b', 30, 0, 40, 10)
+    const c = rect('c', 60, 0, 70, 10)
+    const hole = circle('h', 35, 5, 2)
+    const groups: [LoopEdge[], LoopEdge[][]][] = [
+      [a, []], [b, [hole]], [c, []],
+      [rect('d', 10, 0, 20, 10), []],
+    ]
+    // a and d share the edge at x = 10, so their cluster takes a's slot; b's
+    // hole stays with b and the cluster order follows the first group of each.
+    const clusters = profileClusters(groups)
+    expect(clusters).toHaveLength(3)
+    expect(clusters[0]).toEqual([groups[0], groups[3]])
+    expect(clusters[1]).toEqual([groups[1]])
+    expect(clusters[1][0][1]).toEqual([hole])
+    expect(clusters[2]).toEqual([groups[2]])
   })
 })
 

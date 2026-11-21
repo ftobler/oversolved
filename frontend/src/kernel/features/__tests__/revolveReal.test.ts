@@ -478,6 +478,36 @@ describe.skipIf(!oc || !solveBytes)('revolve feature (real OCC + Rust solver)', 
     expect(volumeAt(result, 'rev1', 'body_rev1')).toBeCloseTo((4 / 3) * Math.PI * 37 * 37 * 34, 1)
   })
 
+  it('revolves two tangent circles as two unfused tori', () => {
+    // Both circles sit clear of the axis, so each revolves to a torus; they
+    // touch along the circle their own tangency sweeps. Fusing the two
+    // revolutions split both torus surfaces along that circle, so the profile
+    // must stay two clusters compounded without a boolean.
+    const result = h.run({
+      version: 1, kind: 'part',
+      features: [
+        {
+          id: 'sk1', kind: 'sketch', label: 'Tangent pair', plane: '@builtin_plane_front',
+          entities: [{ id: 'c0', kind: 'circle' }, { id: 'c1', kind: 'circle' }],
+          initial: { c0: [10, 0, 2], c1: [10, 5, 2] },
+          constraints: [
+            { id: 'f0', kind: 'fixed' as const, target: { entity: 'c0' } },
+            { id: 'f1', kind: 'fixed' as const, target: { entity: 'c1' } },
+          ],
+        },
+        revolveSpec('rev1', 'sk1', { angle: 360 }),
+      ],
+    })
+    expect(h.res(result, 'rev1').status).toBe('ok')
+    const ids = Object.keys(result.bodies ?? {})
+      .filter((id) => id === 'body_rev1' || id.startsWith('body_rev1_'))
+      .sort()
+    expect(ids).toHaveLength(2)
+    for (const id of ids) {
+      expect(volumeAt(result, 'rev1', id), id).toBeCloseTo(2 * Math.PI * Math.PI * 10 * 4, 5)
+    }
+  })
+
   it('still refuses an axis line that crosses a circle without splitting it', () => {
     const result = h.run({
       version: 1, kind: 'part',
