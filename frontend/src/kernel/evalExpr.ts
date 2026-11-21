@@ -194,8 +194,11 @@ export function exprRefusal(
     if (Object.hasOwn(math, name)) return
     if (!unknown.includes(name)) unknown.push(name)
   })
-  if (laterName !== null) return { kind: 'later', name: laterName, index: laterIndex }
+  // An unknown name wins over a later one: a typo left in the expression would
+  // still fail after the user moved the later variable up, so naming the typo
+  // first is the one fix that always helps.
   if (unknown.length > 0) return { kind: 'unknown', name: unknown[0] }
+  if (laterName !== null) return { kind: 'later', name: laterName, index: laterIndex }
   // A throw with no unresolved symbol is a runtime failure (a bad function
   // argument, say): the syntax sentence is the honest one.
   return { kind: 'syntax' }

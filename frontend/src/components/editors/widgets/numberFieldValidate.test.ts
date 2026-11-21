@@ -94,6 +94,11 @@ describe('cannotEvaluate with a variable scope', () => {
       .toBe('variable "width" is defined below this feature; move it above this one')
   })
 
+  it('names the unknown variable when a forward reference sits beside it', () => {
+    expect(cannotEvaluate('width + tpyo', { height: 5 }, { width: 3 }))
+      .toBe('unknown variable "tpyo"; defined above this feature: height')
+  })
+
   it('gives a bare-name hint for a parse error or a non-number result', () => {
     const hint = 'write a variable by its bare name, e.g. width*2'
     expect(cannotEvaluate('#var', {})).toBe(`cannot evaluate "#var": ${hint}`)

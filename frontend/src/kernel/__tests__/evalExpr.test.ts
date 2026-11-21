@@ -175,8 +175,11 @@ describe('exprRefusal', () => {
     expect(exprRefusal('width', {})).toEqual({ kind: 'unknown', name: 'width' })
   })
 
-  it('prefers a forward reference over an unknown name', () => {
-    expect(exprRefusal('depth + foo', {}, { depth: 4 })).toEqual({ kind: 'later', name: 'depth', index: 4 })
+  it('names the unknown symbol when a forward reference sits beside it', () => {
+    // Moving the later variable up would still leave the typo, so the typo is
+    // the fix that always helps.
+    expect(exprRefusal('depth + foo', {}, { depth: 4 })).toEqual({ kind: 'unknown', name: 'foo' })
+    expect(exprRefusal('depth*2', {}, { depth: 4 })).toEqual({ kind: 'later', name: 'depth', index: 4 })
   })
 })
 

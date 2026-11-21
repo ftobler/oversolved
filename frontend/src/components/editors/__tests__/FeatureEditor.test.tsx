@@ -637,6 +637,7 @@ describe('VARIABLE_SCHEMA', () => {
         feature={variableFeature('depth')}
         onMutation={onMutation}
         schema={VARIABLE_SCHEMA}
+        variables={{}}
         laterVariables={{ depth: 3 }}
       />,
     )

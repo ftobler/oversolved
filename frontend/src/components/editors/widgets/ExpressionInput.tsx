@@ -12,7 +12,10 @@ import { UnitBox } from './UnitLabel'
 interface ExpressionInputProps {
   value: string | number  // raw stored value (number or expression string)
   onChange: (val: string | number) => void
-  context?: Record<string, number>  // variable scope (named dimensions, params)
+  // Variable scope (named dimensions, params). Undefined means the host has no
+  // document log to read: the refusal then keeps the plain "cannot evaluate"
+  // sentence instead of claiming which names are above the feature.
+  context?: Record<string, number>
   // The variables defined below this one, so a forward reference is named as
   // such instead of reading as an unknown name.
   laterVariables?: Record<string, number>
@@ -42,7 +45,7 @@ interface ExpressionInputProps {
  *  "must be greater than 0" are told apart instead of both reading as one red
  *  border. */
 export function ExpressionInput({
-  value, onChange, context = {}, laterVariables, validate, quantity = 'none', lengthUnit = 'mm',
+  value, onChange, context, laterVariables, validate, quantity = 'none', lengthUnit = 'mm',
   unitHint, disabled, ariaLabel,
 }: ExpressionInputProps) {
   // null = idle (mirror external value); string = actively editing.

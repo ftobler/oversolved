@@ -99,9 +99,7 @@ describe('ExpressionInput', () => {
     const { input } = renderInput({ value: 10, validate: positive })
     fireEvent.focus(input)
     fireEvent.change(input, { target: { value: '2+/' } })
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Value refused: cannot evaluate "2+/": write a variable by its bare name, e.g. width*2',
-    )
+    expect(screen.getByRole('status')).toHaveTextContent('Value refused: cannot evaluate "2+/"')
     fireEvent.change(input, { target: { value: '-5' } })
     expect(screen.getByRole('status')).toHaveTextContent('Value refused: must be greater than 0')
     fireEvent.change(input, { target: { value: '5' } })
@@ -110,12 +108,22 @@ describe('ExpressionInput', () => {
 
   it('marks a stored value that no longer evaluates without calling it refused', () => {
     // A deleted variable or an imported doc: the user refused nothing, so the
-    // field keeps the border and the reason on hover, and no field line. The
-    // reason names the missing variable rather than only the text.
+    // field keeps the border and the reason on hover, and no field line.
     const { input } = renderInput({ value: 'gone*2' })
     expect(input.className).toContain('feature-field-input--error')
-    expect(input.title).toBe('unknown variable "gone"; no variables are defined above this feature')
+    expect(input.title).toBe('cannot evaluate "gone*2"')
     expect(screen.queryByRole('status')).toBeNull()
+  })
+
+  it('keeps the plain sentence when the host provides no variable scope', () => {
+    // No context is not the same as an empty context: a host without a document
+    // log cannot claim which variables are defined above anything.
+    const { input, onChange } = renderInput({ value: 10 })
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: 'width' } })
+    expect(screen.getByRole('status')).toHaveTextContent('Value refused: cannot evaluate "width"')
+    fireEvent.blur(input)
+    expect(onChange).not.toHaveBeenCalled()
   })
 
   it('shows no message for an empty box, which is unfinished, not refused', () => {
