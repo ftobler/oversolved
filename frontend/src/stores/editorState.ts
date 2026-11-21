@@ -959,6 +959,10 @@ export const editorState = createStore<EditorState>((set, get) => ({
       for (const m of projections) onMutation(m)
       onMutation(constraint)
     }
+    // The constraint consumed the operands, so the selection goes with it. Every
+    // refusal above returns before this point and keeps the picks for a retry.
+    // Hover stays: the cursor is still over the geometry that was picked.
+    get().clearNormalSelection()
     return null
   },
 
