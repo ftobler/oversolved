@@ -8,7 +8,7 @@ import { Dot } from '@/components/Geometry3D/VertexDots'
 import { p2w } from '@/utils/geometry/sketchHelpers'
 import { COLOR_SNAP } from '@/components/Geometry3D/constants'
 import { sanitizePointerEvent } from '@/components/Geometry3D/pointerAbstractionAdapters'
-import { computeDragMove, shouldActivateDrag, collectCoincidentVertexIds } from '@/utils/geometry/dragLogic'
+import { computeDragMove, shouldActivateDrag, dragSnapSkips } from '@/utils/geometry/dragLogic'
 import type { PartConstraint, Topology } from '@/types/cad'
 import { buildDragToolContext } from '@/tools/DragTool'
 import { dimLabelCommitOffset } from '@/utils/geometry/dimLabelDrag'
@@ -138,22 +138,13 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
     if (currentDrag.type === 'vertex' && sketch) {
       const pixelsPerUnit = p2w(camera)
       const { vertexCandidates, entityCandidates } = snapCandidates
-      const skipIds = new Set<string>()
-      // Qualify with featureId: candidate ids are `entity:${featureId}:${entityId}`
-      // and `vertex:${featureId}:${entityId}:${key}`. The bare entityId matched
-      // vertices (substring) but never entities (exact compare), so the dragged
-      // entity itself stayed a snap target -- visible when dragging a point.
-      skipIds.add(`${featureId}:${currentDrag.entityId}`)
-      // Coincident partners of the dragged vertex move with it (WASM keeps
-      // them on top of the dragged dot). Excluding them stops the snap indicator
-      // from latching onto a partner sitting under the cursor.
-      const bondedVertexIds = collectCoincidentVertexIds(
-        constraints ?? [], featureId, currentDrag.entityId, currentDrag.vertexKey,
-      )
-      const filteredVertexCandidates = vertexCandidates.filter(c => !bondedVertexIds.has(c.id))
+      // The dragged entity, its coincident partners and any line already
+      // holding the dragged point are all excluded in the pure layer, so the
+      // rule is testable without the viewport.
+      const skips = dragSnapSkips(constraints ?? [], featureId, currentDrag)
 
       const result = computeDragMove(
-        localPoint, filteredVertexCandidates, entityCandidates, skipIds,
+        localPoint, vertexCandidates, entityCandidates, skips,
         currentDrag, pixelsPerUnit,
       )
 

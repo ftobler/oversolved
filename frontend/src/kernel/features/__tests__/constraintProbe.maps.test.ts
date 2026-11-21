@@ -34,6 +34,33 @@ function doc(): PartDoc {
   } as unknown as PartDoc
 }
 
+/** S1 already holds the projection of S2's line L9 and a coincident against it,
+ *  so a second pick of the same foreign line is a duplicate the stored-target
+ *  check cannot see until the applier resolves the projection. */
+function crossSketchDoc(): PartDoc {
+  return {
+    version: 7,
+    kind: 'part',
+    features: [
+      {
+        id: 'S2', kind: 'sketch', plane: '@builtin_plane_front',
+        entities: [{ id: 'L9', kind: 'line' }],
+        initial: { L9: [0, 0, 5, 5] },
+        constraints: [],
+      },
+      {
+        id: 'S1', kind: 'sketch', plane: '@builtin_plane_front',
+        entities: [{ id: 'l1', kind: 'line' }, { id: 'p9', kind: 'line' }],
+        initial: { l1: [0, 0, 10, 0], p9: [0, 0, 5, 5] },
+        constraints: [
+          { id: 'proj_L9', kind: 'projection', target: '$p9', source: '@S2/L9' },
+          { id: 'c_dup', kind: 'coincident', a: '$l1start', b: '$p9' },
+        ],
+      },
+    ],
+  } as unknown as PartDoc
+}
+
 const pending = { featureId: 'sk1', kind: 'length', targets: ['entity:sk1:l1'], value: 10 }
 
 describe('classifyPendingAdd projection facts', () => {
@@ -53,5 +80,24 @@ describe('classifyPendingAdd projection facts', () => {
     expect(classifyPendingAdd(doc(), pending, empty)).toBe('ok')
     expect(probe).toHaveBeenCalledTimes(1)
     expect(probe.mock.calls[0][2]).toBe(empty)
+  })
+
+  it('answers redundant for an exact duplicate without asking the solver', () => {
+    const duplicate = doc()
+    const feature = duplicate.features![0]
+    if (feature.kind !== 'sketch') throw new Error('fixture is not a sketch')
+    feature.constraints = [{ id: 'c_same', kind: 'length', target: '$l1', value: 10 }]
+    expect(classifyPendingAdd(duplicate, pending)).toBe('redundant')
+    expect(probe).not.toHaveBeenCalled()
+  })
+
+  it('answers redundant when a cross-sketch pick only duplicates after projection', () => {
+    const repeat = {
+      featureId: 'S1',
+      kind: 'coincident',
+      targets: ['vertex:S1:l1:start', 'entity:S2:L9'],
+    }
+    expect(classifyPendingAdd(crossSketchDoc(), repeat)).toBe('redundant')
+    expect(probe).not.toHaveBeenCalled()
   })
 })

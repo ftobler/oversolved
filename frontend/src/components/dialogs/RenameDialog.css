@@ -1,10 +1,14 @@
 /* Only the one field lives here. Overlay, header, footer buttons and the base
    input styling come from the shared dialog shell. */
 
+/* A grid keeps the label in the first column and puts the refusal hint on the
+   input's own line below it, without a wrapper element. */
 .rename-dialog-field {
-  display: flex;
+  display: grid;
+  grid-template-columns: auto 1fr;
   align-items: center;
-  gap: 8px;
+  column-gap: 8px;
+  row-gap: 3px;
 }
 
 .rename-dialog-label {
@@ -16,6 +20,15 @@
 }
 
 .rename-dialog-field input {
-  flex: 1;
   min-width: 0;
+}
+
+/* The context-menu error colour, so a refused name reads like the app's other
+   inline validation message. */
+.rename-dialog-hint {
+  grid-column: 2;
+  font-size: 11px;
+  line-height: 1.3;
+  color: #e57373;
+  text-align: left;
 }

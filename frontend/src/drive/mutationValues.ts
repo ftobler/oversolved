@@ -579,6 +579,7 @@ function addConstraint(raw: RawStep, ctx: ValueContext): ValueViolation | null {
       kind,
       refs,
       isFiniteNumber(raw.value) ? raw.value : undefined,
+      isFiniteNumber(raw.sign) ? raw.sign : undefined,
     )
     if (problem !== null) return invalid(problem)
   }

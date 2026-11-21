@@ -11,7 +11,8 @@ import {
 } from '@/utils/entitySizeProblems'
 import { resolveVertexRef } from '@/types/vertexRef'
 import {
-  addConstraintProblem, constraintTargetSide, midpointOperands, midpointShapeReason,
+  addConstraintProblem, constraintTargetSide, duplicateConstraintProblem,
+  midpointOperands, midpointShapeReason,
 } from '@/utils/constraintProblems'
 import { dockLocationOf } from '@/utils/geometry/dockHosts'
 import { angleStoredValue } from '@/utils/geometry/dimensionNaturalValue'
@@ -398,6 +399,12 @@ function _materializeForeignProjections(
   }
 }
 
+/** What `applyAddConstraint` did: appended a row, refused an exact duplicate of
+ *  one, or refused the pick for another reason. The editor's authoring probe
+ *  reads this so a duplicate it could only see after projection resolution is
+ *  reported as redundant rather than silently dropped. */
+export type AddConstraintOutcome = 'added' | 'duplicate' | 'refused'
+
 export function applyAddConstraint(
   doc: PartDoc,
   featureId: string,
@@ -406,19 +413,19 @@ export function applyAddConstraint(
   value?: number,
   pos?: [number, number],
   sign?: number,
-): void {
+): AddConstraintOutcome {
   // A missing feature is a stale id, not a refusal: nothing can be authored.
   // The containers are deliberately not materialized here, so every refusal
   // below leaves the document byte-identical and the session can classify it as
   // a no-op. The constraint list is created only when the constraint is pushed.
   const feature = findSketchFeature(doc, featureId)
-  if (!feature) return
+  if (!feature) return 'refused'
   // Checked before any target is materialized: a refused zero dimension must
   // not leave a promoted point behind.
   const zeroProblem = isConstraintKindName(kind) ? pointDistanceZeroProblem(kind, value) : null
   if (zeroProblem !== null) {
     warn(`applyAddConstraint: ${zeroProblem}`, { featureId, kind, value })
-    return
+    return 'refused'
   }
   // Materialize-on-reference: an inferred-point handle target (`dock:`/`isect:`)
   // promotes to a real point before the constraint is built, so the rest of this
@@ -428,7 +435,7 @@ export function applyAddConstraint(
   const resolved = _resolveInferredTargets(doc, featureId, targets)
   if (!resolved) {
     warn('applyAddConstraint: unresolvable inferred target, skipping', { featureId, kind, targets })
-    return
+    return 'refused'
   }
   targets = resolved
   // One refusal source with the drive rule: the checks used to live in the
@@ -445,7 +452,7 @@ export function applyAddConstraint(
   const projectionPlan = _planForeignTargets(doc, featureId, targets)
   if (!projectionPlan) {
     warn('applyAddConstraint: dropping a pick whose foreign operand does not resolve', { featureId, kind, targets })
-    return
+    return 'refused'
   }
   // A group cannot hold a projection: the projected entity is pinned by its
   // projection, so the group row would fight it, and the loader refuses a
@@ -453,13 +460,17 @@ export function applyAddConstraint(
   // it gets here; this guards a drive or MCP mutation that names one directly.
   if (kind === 'group' && projectionPlan.created.length > 0) {
     warn('applyAddConstraint: a group cannot hold geometry projected from another sketch', { featureId, targets })
-    return
+    return 'refused'
   }
   targets = projectionPlan.targets
-  const problem = addConstraintProblem(feature, kind, targets, value)
+  const problem = addConstraintProblem(feature, kind, targets, value, sign)
   if (problem !== null) {
     warn(`applyAddConstraint: ${problem}`, { featureId, kind, targets })
-    return
+    // The shape rules run first, so a duplicate is only possible once
+    // addConstraintProblem's own shape half is clean.
+    return duplicateConstraintProblem(feature, kind, targets, value, sign) === problem
+      ? 'duplicate'
+      : 'refused'
   }
   // The solver reads `a` as the line for line_distance; a point-first pick was
   // stored inert. Canonicalise here as well as in the editor path, so a drive
@@ -485,7 +496,7 @@ export function applyAddConstraint(
   if (kind === 'midpoint') {
     if (!applyMidpointConstraint(c, targets, pt, featureId, entityIds, kindById)) {
       warn(`applyAddConstraint: ${midpointShapeReason(targets)}`, { featureId, targets })
-      return
+      return 'refused'
     }
   } else if (kind === 'group') {
     // A group stores its whole and point members in `refs` (the n-ary spelling
@@ -550,7 +561,7 @@ export function applyAddConstraint(
       c.target = pt(targets[0])
     } else {
       warn(`applyAddConstraint: ${kind} needs a target`, { featureId, kind, targets })
-      return
+      return 'refused'
     }
   }
   // An angle mutation carries the number the dimension label shows, which is
@@ -588,6 +599,7 @@ export function applyAddConstraint(
   // The constraint is accepted, so the held entities it names can land too. A
   // cross-sketch pick never reaches this line without a projection plan.
   _materializeForeignProjections(doc, featureId, projectionPlan)
+  return 'added'
 }
 
 export function applyToggleConstruction(doc: PartDoc, targets: string[]): void {
