@@ -35,13 +35,12 @@ const mesh: Mesh3D = {
 const noop = () => {}
 const callbacks: BuildContextMenuCallbacks = {
   onRebuild: noop, onRemoveDanglingContent: noop, onToggleVisibility: noop,
-  onToggleSuppression: noop, onEnterEditSketch: noop, onExitSketch: noop,
+  onToggleSuppression: noop, onExitSketch: noop,
   onDeleteFeature: noop, onRequestRename: noop, onAlignToFace: noop,
   onNormalToPlane: noop, onAlignCameraToSketchPlane: noop, onToggleConstraintTiles: noop,
   onSetPartColorPopover: noop, onExportPart: noop, onNewSketchOnPlane: noop,
   onFreezeProjection: noop,
   onTogglePartVisibility: noop,
-  onShowContextMenu: noop,
 }
 
 // The menu keeps a fixed board now, so the surface commands are always present
@@ -51,6 +50,7 @@ function viewportMenuEnabledLabels(): string[] {
   return buildContextMenu({
     pos: [0, 0],
     targetId: undefined,
+    targetPartId: null,
     hoveredSelectionId: s.hoveredSelectionId,
     hoveredFaceNormal: s.hoveredFaceNormal,
     hoveredFaceCenter: s.hoveredFaceCenter,

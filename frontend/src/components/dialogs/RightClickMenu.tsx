@@ -1,6 +1,7 @@
-import { useEffect, useRef, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 import '@/components/dialogs/RightClickMenu.css'
 import { acquireModalEscape } from '@/utils/core/modalEscape'
+import { clampMenuPosition } from '@/components/dialogs/menuPosition'
 
 export interface ContextMenuItem {
   label: string
@@ -76,7 +77,24 @@ export default function RightClickMenu({ items, position, onClose, anchorRef }: 
     }
   }, [onClose, anchorRef])
 
-  const [x, y] = position
+  // The anchor point is the click, but the drawn position is measured and
+  // clamped: a menu opened near the bottom or right edge would otherwise put its
+  // last items outside the window. The layout effect runs before paint, so the
+  // raw point is never seen.
+  const [resolvedPosition, setResolvedPosition] = useState<[number, number]>(position)
+  useLayoutEffect(() => {
+    const el = menuRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    const next = clampMenuPosition(
+      position,
+      { width: rect.width, height: rect.height },
+      { width: window.innerWidth, height: window.innerHeight },
+    )
+    setResolvedPosition(prev => (prev[0] === next[0] && prev[1] === next[1] ? prev : next))
+  }, [position])
+
+  const [x, y] = resolvedPosition
 
   return (
     <div

@@ -338,6 +338,55 @@ describe('Part page actions', () => {
     expect(h.handleMutation).toHaveBeenCalledWith({ type: 'set_feature_suppression', featureId: 'extrude1', suppressed: true })
   })
 
+  it('the feature context menu Unsuppress toggles a suppressed feature back on', () => {
+    const extrude = F.doc.features!.find(f => f.id === 'extrude1') as { suppressed?: boolean }
+    extrude.suppressed = true
+    try {
+      renderPart()
+      fireEvent.click(screen.getByTestId('feature-ctx-extrude1'))
+      fireEvent.click(menuItem('Unsuppress'))
+
+      expect(h.handleMutation).toHaveBeenCalledWith({ type: 'set_feature_suppression', featureId: 'extrude1', suppressed: false })
+    } finally {
+      delete extrude.suppressed
+    }
+  })
+
+  it('the feature context menu Hide routes set_feature_visibility false', () => {
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('feature-ctx-extrude1'))
+    fireEvent.click(menuItem('Hide'))
+
+    expect(h.handleMutation).toHaveBeenCalledWith({ type: 'set_feature_visibility', featureId: 'extrude1', visible: false })
+  })
+
+  it('the feature context menu Show routes set_feature_visibility true for a hidden feature', () => {
+    const extrude = F.doc.features!.find(f => f.id === 'extrude1') as { visible?: boolean }
+    extrude.visible = false
+    try {
+      renderPart()
+      fireEvent.click(screen.getByTestId('feature-ctx-extrude1'))
+      fireEvent.click(menuItem('Show'))
+
+      expect(h.handleMutation).toHaveBeenCalledWith({ type: 'set_feature_visibility', featureId: 'extrude1', visible: true })
+    } finally {
+      delete extrude.visible
+    }
+  })
+
+  it('the feature context menu Delete removes the feature, clears the selection and closes the menu', () => {
+    useEditorState.setState({ normalSelection: new Set(['@plane1']) })
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('feature-ctx-extrude1'))
+    fireEvent.click(menuItem('Delete'))
+
+    expect(h.handleMutation).toHaveBeenCalledWith({ type: 'delete_feature', featureId: 'extrude1' })
+    expect(useEditorState.getState().normalSelection.size).toBe(0)
+    expect(screen.queryByTestId('context-menu')).toBeNull()
+  })
+
   it('the feature context menu Rename seeds and commits a rename_feature mutation', () => {
     renderPart()
 
@@ -469,6 +518,49 @@ describe('Part page actions', () => {
     expect(h.alignFrame).toHaveBeenCalledWith(F.solve.sketch2.plane_transform)
   })
 
+  it('freezes a hovered projection tile to fixed from the sketch menu', () => {
+    useEditorState.setState({
+      editingFeatureId: 'sketch2',
+      rollbackPosition: F.doc.features!.length,
+      hoveredSelectionId: 'constraint:sketch2:proj_face',
+      normalSelection: new Set(),
+    })
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('viewport-ctx'))
+    fireEvent.click(menuItem('Convert to fixed'))
+
+    // The menu selects its picked target before the selection-driven command
+    // runs, so the command does not depend on a live hover.
+    expect(useEditorState.getState().normalSelection.has('constraint:sketch2:proj_face')).toBe(true)
+    expect(h.handleMutation).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'freeze_projection',
+      featureId: 'sketch2',
+      target: 'proj_face',
+      mode: 'fixed',
+    }))
+  })
+
+  it('breaks a hovered projection tile free from the sketch menu', () => {
+    useEditorState.setState({
+      editingFeatureId: 'sketch2',
+      rollbackPosition: F.doc.features!.length,
+      hoveredSelectionId: 'constraint:sketch2:proj_face',
+      normalSelection: new Set(),
+    })
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('viewport-ctx'))
+    fireEvent.click(menuItem('Break link (keep free)'))
+
+    expect(useEditorState.getState().normalSelection.has('constraint:sketch2:proj_face')).toBe(true)
+    expect(h.handleMutation).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'freeze_projection',
+      target: 'proj_face',
+      mode: 'free',
+    }))
+  })
+
   it('a viewport right-click aims Normal to at the one selected plane', () => {
     useEditorState.setState({
     normalSelection: new Set(['@plane1']),
@@ -526,6 +618,72 @@ describe('Part page actions', () => {
     renderPart()
 
     fireEvent.click(screen.getByTestId('body-ctx-body-1'))
+    fireEvent.click(menuItem('Export'))
+
+    expect(h.exportOpen).toHaveBeenCalledWith('body-1', 'Body One')
+  })
+
+  it('the body context menu Hide routes set_body_visibility', () => {
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('body-ctx-body-1'))
+    fireEvent.click(menuItem('Hide'))
+
+    expect(h.handleMutation).toHaveBeenCalledWith({ type: 'set_body_visibility', bodyId: 'body-1', visible: false })
+  })
+
+  it('the body context menu Rename seeds the part name and commits rename_part', () => {
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('body-ctx-body-1'))
+    fireEvent.click(menuItem('Rename'))
+
+    const box = document.querySelector('.dialog-component') as HTMLElement
+    const input = within(box).getByRole('textbox')
+    expect(input).toHaveValue('Body One')
+    fireEvent.change(input, { target: { value: 'Base Part' } })
+    fireEvent.click(within(box).getByRole('button', { name: 'Rename' }))
+
+    expect(h.handleMutation).toHaveBeenCalledWith({ type: 'rename_part', bodyId: 'body-1', name: 'Base Part' })
+  })
+
+  it('a viewport right-click over a body face hides that body', () => {
+    useEditorState.setState({
+      hoveredSelectionId: '@body-1/face/0',
+      hoveredFaceNormal: [0, 0, 1],
+      hoveredFaceCenter: [0, 0, 5],
+    })
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('viewport-ctx'))
+    fireEvent.click(menuItem('Hide'))
+
+    expect(h.handleMutation).toHaveBeenCalledWith({ type: 'set_body_visibility', bodyId: 'body-1', visible: false })
+  })
+
+  it('a viewport right-click over a body face opens the color popover for that body', () => {
+    useEditorState.setState({
+      hoveredSelectionId: '@body-1/face/0',
+      hoveredFaceNormal: [0, 0, 1],
+      hoveredFaceCenter: [0, 0, 5],
+    })
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('viewport-ctx'))
+    fireEvent.click(menuItem('Color'))
+
+    expect(screen.getByPlaceholderText('#RRGGBB')).toBeInTheDocument()
+  })
+
+  it('a viewport right-click over a body face exports that body', () => {
+    useEditorState.setState({
+      hoveredSelectionId: '@body-1/face/0',
+      hoveredFaceNormal: [0, 0, 1],
+      hoveredFaceCenter: [0, 0, 5],
+    })
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('viewport-ctx'))
     fireEvent.click(menuItem('Export'))
 
     expect(h.exportOpen).toHaveBeenCalledWith('body-1', 'Body One')

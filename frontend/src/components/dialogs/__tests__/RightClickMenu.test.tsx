@@ -148,6 +148,39 @@ describe('RightClickMenu disabled items', () => {
   })
 })
 
+// A menu opened near the bottom of the window must not put its last items
+// outside it: the measured size shifts it above (or left of) the click.
+describe('RightClickMenu window clamp', () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  function stubLayout(width: number, height: number, viewportHeight: number) {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+      width, height, top: 0, left: 0, right: width, bottom: height, x: 0, y: 0,
+      toJSON: () => ({}),
+    } as DOMRect)
+    vi.spyOn(window, 'innerWidth', 'get').mockReturnValue(800)
+    vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(viewportHeight)
+  }
+
+  it('renders above the click point when there is no room below', () => {
+    stubLayout(180, 200, 300)
+    render(<RightClickMenu items={items()} position={[40, 280]} onClose={() => {}} />)
+
+    const menu = screen.getByRole('menu')
+    expect(menu.style.top).toBe('80px')
+    expect(menu.style.left).toBe('40px')
+  })
+
+  it('renders left of the click point when there is no room right', () => {
+    stubLayout(180, 200, 800)
+    render(<RightClickMenu items={items()} position={[700, 40]} onClose={() => {}} />)
+
+    const menu = screen.getByRole('menu')
+    expect(menu.style.left).toBe('520px')
+    expect(menu.style.top).toBe('40px')
+  })
+})
+
 // The menu is a stack of buttons, so focus is never an editable target: every
 // document-level command is one keystroke away from running behind it. Escape was
 // already swallowed by this menu's own listener; the claim is what stands the

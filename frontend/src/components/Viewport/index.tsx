@@ -8,7 +8,7 @@ import Geometry3D from '@/components/Geometry3D'
 import { CubeGizmoCanvas } from '@/components/misc/CubeGizmo'
 import '@/components/Viewport/ViewportHud.css'
 import { type GizmoRequest, type Hit, type Pv } from '@/components/misc/CubeGizmo.utils'
-import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useViewOptionsStore } from '@/stores/viewOptionsStore'
 import { useSectionStore } from '@/stores/sectionStore'
 import { useEditorState } from '@/hooks/useEditorState'
@@ -344,8 +344,6 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
     [captureScreenshotForSaving, autoZoomToFit, cancelPendingFit, alignCameraToFrame, alignCameraToFace],
   )
 
-  const closeContextMenu = useSketchUiStore(s => s.closeContextMenu)
-
   // Which button opened the gesture and how far it travelled. Shared with the
   // assembly viewport (utils/clickGesture) so the two editors can never disagree
   // about what counts as a click and what counts as a camera drag.
@@ -381,7 +379,6 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     if (!e.isPrimary) return  // Ignore non-primary pointers (multi-touch)
     clickGesture.current.down(e.pointerId, e.button, e.clientX, e.clientY)
-    if (e.button !== 2) closeContextMenu()
 
     // 268: attempt rubber-band on left-click in empty space.
     if (e.button === 0) {
@@ -408,7 +405,7 @@ export default forwardRef<ViewportHandle, ViewportProps>(function Viewport({
         rubberBand.onPointerDown(e)
       }
     }
-  }, [closeContextMenu, rubberBand])
+  }, [rubberBand])
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     if (!e.isPrimary) return  // Ignore non-primary pointers (multi-touch)

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { render, fireEvent, act } from '@testing-library/react'
-import { useSketchEditorStore, useSketchUiStore, setSketchCallback, clearSketchCallbacks } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, setSketchCallback, clearSketchCallbacks } from '@/stores/sketchEditorStore'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import Viewport from '@/components/Viewport'
 import { clearStaleBandClickConsumed } from '@/components/Viewport/idDispatch/bandClickGuard'
@@ -106,9 +106,6 @@ describe('part editor empty-space click clears the selection', () => {
     hoveredPickKey: null,
     hoveredVertexId: null,
     hoveredConstraintEntityIds: new Set(),
-  })
-  useSketchUiStore.setState({
-    contextMenu: null,
   })
     setLivePipeline(null)
     missedFn.current = null

@@ -78,6 +78,7 @@ import { suggestedCloneName, stepImportLimitError } from '@/stores/documentStore
 import { getFileRegistry } from '@/stores/fileRegistry'
 
 import { normalizeHexColor } from '@/utils/core/partColors'
+import { partIdOfPick } from '@/utils/query/partIdOfPick'
 import { computeEffectiveVisibleParts } from '@/components/Viewport/partUtils'
 import { builtinPlaneTransform, planeTransformNormal, resolvePlaneTransform } from '@/utils/geometry/partSnapProjection'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
@@ -230,7 +231,7 @@ export default function Part() {
       void capturePreview(viewportRef.current?.captureScreenshotForSaving, workspaceId, uuid)
     })
   }, [uuid, workspaceId])
-  const [contextMenu, setContextMenu] = useState<{ position: [number, number]; targetId?: string; items: ContextMenuItem[] } | null>(null)
+  const [contextMenu, setContextMenu] = useState<{ position: [number, number]; items: ContextMenuItem[] } | null>(null)
   const [renameTarget, setRenameTarget] = useState<RenameTarget | null>(null)
   // Non-null while the clone prompt is open; holds the name it was seeded with.
   const [cloneName, setCloneName] = useState<string | null>(null)
@@ -1509,9 +1510,22 @@ export default function Part() {
     const projectedTargetIds = activeFeature?.kind === 'sketch'
       ? projectedSelectionTargets(activeFeature, candidates)
       : []
+    // The body a viewport click acts on, with the hover winning over the
+    // selection: the same precedence resolveSurfaceTarget uses, so a face hover
+    // aims New Sketch at the face and Hide/Color/Export at the body under it. A
+    // tree row names its own feature and no body (its Hide already covers the
+    // bodies it made), and a plane or an ambiguous pick names none.
+    const targetPartId = targetId
+      ? null
+      : store.hoveredSelectionId
+        ? partIdOfPick(store.hoveredSelectionId, bodies)
+        : store.normalSelection.size === 1
+          ? partIdOfPick([...store.normalSelection][0], bodies)
+          : null
     const input: BuildContextMenuInput = {
       pos,
       targetId,
+      targetPartId,
       hoveredSelectionId: store.hoveredSelectionId,
       hoveredFaceNormal: store.hoveredFaceNormal,
       hoveredFaceCenter: store.hoveredFaceCenter,
@@ -1536,7 +1550,6 @@ export default function Part() {
       onRemoveDanglingContent: handleRemoveDanglingContent,
       onToggleVisibility: toggleVisibility,
       onToggleSuppression: toggleSuppression,
-      onEnterEditSketch: enterEditSketch,
       onExitSketch: handleExitSketch,
       onDeleteFeature: handleDeleteFeature,
       onRequestRename: setRenameTarget,
@@ -1561,11 +1574,10 @@ export default function Part() {
         executeCommand('freeze_projection', { mode })
         setContextMenu(null)
       },
-      onShowContextMenu: (items, tid) => setContextMenu({ position: pos, targetId: tid, items }),
     }
     const { items } = buildContextMenu(input, callbacks)
-    setContextMenu({ position: pos, targetId, items })
-  }, [handleRebuild, handleRemoveDanglingContent, toggleVisibility, toggleSuppression, enterEditSketch, handleExitSketch, handleDeleteFeature,
+    setContextMenu({ position: pos, items })
+  }, [handleRebuild, handleRemoveDanglingContent, toggleVisibility, toggleSuppression, handleExitSketch, handleDeleteFeature,
     handleAlignCameraToSketchPlane, handleNormalToPlane, handleNewSketchOnPlane,
     features, visibleFeaturesWithEdit, activeSketchFeatureId, partLabels, hasDanglingContent, bodies,
     effectiveVisibleParts, viewportRef, handleSetPartColorPopover, handleMutation])

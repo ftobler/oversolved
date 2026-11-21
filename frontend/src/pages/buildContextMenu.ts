@@ -6,7 +6,6 @@ import { partDisplayName } from '@/utils/core/partDisplayName'
 
 import contextRebuildIcon from '@/assets/icons/context-rebuild.svg'
 import contextHideIcon from '@/assets/icons/context-hide.svg'
-import contextEditIcon from '@/assets/icons/context-edit.svg'
 import contextExitIcon from '@/assets/icons/context-exit.svg'
 import contextCameraIcon from '@/assets/icons/context-camera.svg'
 import contextDeleteIcon from '@/assets/icons/context-delete.svg'
@@ -18,6 +17,10 @@ import constraintFixedIcon from '@/assets/icons/constraint-fixed.svg'
 import constraintProjectionIcon from '@/assets/icons/constraint-projection.svg'
 import featureSketchIcon from '@/assets/icons/feature-sketch.svg'
 import type { FreezeProjectionMode } from '@/utils/yamlMutations/freezeProjection'
+
+// The dangling-content cleanup's label is long on purpose: it names both things
+// the one command removes, and the row is the only place either is mentioned.
+const DANGLING_LABEL = 'Remove dangling projections / superfluous constraints'
 
 // The query a sketch stores to reference a plane. Built-in planes carry a fixed
 // query id that differs from their feature id ('Front' -> '@builtin_plane_front').
@@ -76,9 +79,22 @@ type SurfaceTarget =
   | { kind: 'plane'; featureId: string; query: string }
   | ({ kind: 'face'; query: string } & FaceFrame)
 
+// The part a body command acts on. Resolved here from the `body:` target the
+// parts list names, or the `targetPartId` the page resolved from a viewport
+// pick. Its label and visibility are read here so the items need no store.
+interface PartTarget {
+  partId: string
+  currentName: string
+  visible: boolean
+}
+
 export interface BuildContextMenuInput {
   pos: [number, number]
   targetId: string | undefined
+  // The single part a viewport right-click resolves to, or null when the pick
+  // names none or several. Ignored whenever `targetId` names a tree row: that
+  // row's own Hide already covers the parts its feature made.
+  targetPartId: string | null
   hoveredSelectionId: string | null
   hoveredFaceNormal: [number, number, number] | null
   hoveredFaceCenter: [number, number, number] | null
@@ -90,8 +106,7 @@ export interface BuildContextMenuInput {
   showConstraintTiles: boolean
   partLabels: Record<string, string>
   // Part ids in store order, for the `part N` fallback when a body has no
-  // stored label. Absent in unit tests; buildBodyMenu synthesises a single
-  // entry so an unlabelled body still reads `part 1`.
+  // stored label. Absent in unit tests, where the label map supplies the order.
   orderedPartIds?: string[]
   builtInIds: Set<string>
   // Part visibility as the list reads it: undefined means nothing is hidden.
@@ -101,8 +116,8 @@ export interface BuildContextMenuInput {
   hasDanglingContent: boolean
   // The selection ids of the projected entities and projection tiles the
   // right-click acts on, resolved by the caller from the picked entity/tile
-  // first and then the current selection. Empty keeps the freeze items out of
-  // the board; the command selects these before it runs.
+  // first and then the current selection. Empty greys the freeze pair; the
+  // command selects these before it runs.
   projectedTargetIds: readonly string[]
 }
 
@@ -111,7 +126,6 @@ export interface BuildContextMenuCallbacks {
   onRemoveDanglingContent: () => void
   onToggleVisibility: (featureId: string) => void
   onToggleSuppression: (featureId: string, suppressed: boolean) => void
-  onEnterEditSketch: (featureId: string) => void
   onExitSketch: () => void
   onDeleteFeature: (featureId: string) => void
   onRequestRename: (target: RenameTarget) => void
@@ -124,93 +138,247 @@ export interface BuildContextMenuCallbacks {
   onTogglePartVisibility: (partId: string, visible: boolean) => void
   onNewSketchOnPlane: (planeQuery: string) => void
   onFreezeProjection: (mode: FreezeProjectionMode, targets: readonly string[]) => void
-  onShowContextMenu: (items: ContextMenuItem[], targetId?: string) => void
 }
 
 export interface BuildContextMenuOutput {
   items: ContextMenuItem[]
 }
 
-// The viewport/feature menu is a fixed board: every command keeps its slot and
-// an unusable one is disabled rather than dropped, so the menu never shifts or
-// changes length under the pointer. A body keeps its own four-item menu.
+// The part editor has exactly two boards, and which one shows depends only on
+// whether a sketch edit owns the viewport. Each board is a fixed list: every
+// command keeps its slot and an unusable one is greyed rather than dropped, so
+// the menu never shifts or changes height under the pointer. There is no third
+// body board: a `body:` target is the body target of the part board.
 export function buildContextMenu(
   input: BuildContextMenuInput,
   callbacks: BuildContextMenuCallbacks,
 ): BuildContextMenuOutput {
-  if (input.targetId?.startsWith('body:')) return buildPartMenu(input, callbacks)
-
-  const ctx = buildMenuContext(input, callbacks)
-  return {
-    items: [
-      ...surfaceItems(ctx),
-      ...rebuildItems(ctx),
-      ...sketchSessionItems(ctx),
-      ...freezeProjectionItems(ctx),
-      ...visibilityItems(ctx),
-      ...managementItems(ctx),
-    ],
-  }
+  return input.activeSketchFeatureId
+    ? buildSketchBoard(input, callbacks)
+    : buildPartBoard(input, callbacks)
 }
 
-/** The body menu is its own four-item board, independent of the feature menu. */
-function buildPartMenu(
+/**
+ * The board for everything outside a sketch edit. A tree row, a viewport
+ * surface and a body are all reachable from it; the surface keeps New Sketch and
+ * Normal to, the body keeps Hide/Color/Export/Rename, and one item can be live
+ * for both at once (a hovered face of a body).
+ */
+export function buildPartBoard(
   input: BuildContextMenuInput,
   callbacks: BuildContextMenuCallbacks,
 ): BuildContextMenuOutput {
-  const partId = input.targetId!.slice('body:'.length)
-  const ordered = [...(input.orderedPartIds ?? Object.keys(input.partLabels))]
-  if (!ordered.includes(partId)) ordered.push(partId)
-  const currentName = partDisplayName(partId, input.partLabels, ordered)
-  const visible = input.visibleParts === undefined || input.visibleParts.has(partId)
+  const featureId = input.targetId
+  const target = featureId ? input.features.find(f => f.id === featureId) : undefined
+  const surfaceTarget = resolveSurfaceTarget(input, target)
+  const part = resolvePartTarget(input)
+
+  // The tree row wins the one Hide/Show slot over a part under the pointer:
+  // hiding a feature hides the parts it made, so the row is the wider command.
+  // The row needs an eye (the origin has none) and a built-in does not lose it,
+  // because the tree offers the same eye on a built-in plane.
+  const featureEye = target !== undefined && hasFeatureVisibilityToggle(target.kind)
+  const visibilityIsOn = featureEye ? input.visibleFeatures.has(target.id) : !!part?.visible
+  const canToggleVisibility = featureEye || part !== null
+  // A `body:` target has no feature at all, so the feature verbs need a real
+  // target as well as the authored-id rule.
+  const canManage = target !== undefined
+    && canManageFeature(featureId, input.builtInIds, input.activeSketchFeatureId)
+
+  const featureRename: RenameTarget | null = canManage && featureId
+    ? { kind: 'feature', id: featureId, currentName: target?.label || featureId }
+    : null
+  const rename = featureRename ?? (part
+    ? { kind: 'body' as const, id: part.partId, currentName: part.currentName }
+    : null)
+
   return {
     items: [
       {
-        label: visible ? 'Hide' : 'Show',
-        icon: contextHideIcon,
-        onClick: () => callbacks.onTogglePartVisibility(partId, !visible),
+        label: 'New Sketch',
+        icon: featureSketchIcon,
+        disabled: !surfaceTarget,
+        onClick: () => {
+          if (surfaceTarget) callbacks.onNewSketchOnPlane(surfaceTarget.query)
+        },
       },
       {
-        label: 'Rename',
-        icon: iconRenameIcon,
-        onClick: () => callbacks.onRequestRename({
-          kind: 'body',
-          id: partId,
-          currentName,
-        }),
+        label: 'Normal to',
+        icon: contextCameraIcon,
+        disabled: !surfaceTarget,
+        onClick: () => {
+          if (!surfaceTarget) return
+          if (surfaceTarget.kind === 'plane') callbacks.onNormalToPlane(surfaceTarget.featureId)
+          else callbacks.onAlignToFace(surfaceTarget.normal, surfaceTarget.center)
+        },
+      },
+      {
+        label: 'Rebuild',
+        icon: contextRebuildIcon,
+        onClick: callbacks.onRebuild,
+      },
+      {
+        label: DANGLING_LABEL,
+        icon: contextRebuildIcon,
+        disabled: !input.hasDanglingContent,
+        onClick: () => {
+          if (input.hasDanglingContent) callbacks.onRemoveDanglingContent()
+        },
+      },
+      {
+        label: visibilityIsOn ? 'Hide' : 'Show',
+        icon: contextHideIcon,
+        disabled: !canToggleVisibility,
+        onClick: () => {
+          if (featureEye) callbacks.onToggleVisibility(target.id)
+          else if (part) callbacks.onTogglePartVisibility(part.partId, !part.visible)
+        },
       },
       {
         label: 'Color',
         icon: contextColorIcon,
-        onClick: () => callbacks.onSetPartColorPopover({ partId, position: input.pos }),
+        disabled: part === null,
+        onClick: () => {
+          if (part) callbacks.onSetPartColorPopover({ partId: part.partId, position: input.pos })
+        },
       },
       {
         label: 'Export',
         icon: featureExportIcon,
-        onClick: () => callbacks.onExportPart(partId, currentName),
+        disabled: part === null,
+        onClick: () => {
+          if (part) callbacks.onExportPart(part.partId, part.currentName)
+        },
+      },
+      {
+        label: target?.suppressed ? 'Unsuppress' : 'Suppress',
+        icon: contextHideIcon,
+        disabled: !canManage,
+        onClick: () => {
+          if (canManage && featureId) callbacks.onToggleSuppression(featureId, !target?.suppressed)
+        },
+      },
+      {
+        label: 'Rename',
+        icon: iconRenameIcon,
+        disabled: rename === null,
+        onClick: () => {
+          if (rename) callbacks.onRequestRename(rename)
+        },
+      },
+      {
+        label: 'Delete',
+        icon: contextDeleteIcon,
+        className: 'right-click-menu-item--delete',
+        disabled: !canManage,
+        onClick: () => {
+          if (canManage && featureId) callbacks.onDeleteFeature(featureId)
+        },
       },
     ],
   }
 }
 
-/** The resolved target and the enable/disable verdict for every fixed slot. */
-interface MenuContext {
-  input: BuildContextMenuInput
-  callbacks: BuildContextMenuCallbacks
-  featureId: string | undefined
-  target: PartFeature | undefined
-  surfaceTarget: SurfaceTarget | null
-  visibilityFeature: PartFeature | undefined
-  canNewSketch: boolean
-  canNormalTo: boolean
-  canRemoveDangling: boolean
-  canEdit: boolean
-  canExitSketch: boolean
-  canNormalToSketch: boolean
-  canToggleVisibility: boolean
-  visibilityIsOn: boolean
-  canToggleConstraints: boolean
-  canManageFeature: boolean
+/**
+ * The board while a sketch edit is open: the session verbs, the freeze pair on
+ * a projected pick, and Normal to. It is the whole menu even for a tree row
+ * clicked during the edit; the row's own eye and double-click rename stay on
+ * the row, and leaving the session is what brings the part board back.
+ */
+export function buildSketchBoard(
+  input: BuildContextMenuInput,
+  callbacks: BuildContextMenuCallbacks,
+): BuildContextMenuOutput {
+  const featureId = input.targetId
+  const target = featureId ? input.features.find(f => f.id === featureId) : undefined
+  const surfaceTarget = resolveSurfaceTarget(input, target)
+  // buildContextMenu picks this board only when a sketch edit is open, so the id
+  // is always there; the guards keep a direct caller honest rather than acting
+  // the edited-sketch commands on an empty id.
+  const sketchId = input.activeSketchFeatureId
+  const sketchVisible = !!sketchId && input.visibleFeatures.has(sketchId)
+  const canFreeze = input.projectedTargetIds.length > 0
+  const targets = input.projectedTargetIds
+
+  return {
+    items: [
+      {
+        label: 'Exit Sketch',
+        icon: contextExitIcon,
+        onClick: callbacks.onExitSketch,
+      },
+      {
+        label: 'Normal to sketch',
+        icon: contextCameraIcon,
+        onClick: callbacks.onAlignCameraToSketchPlane,
+      },
+      {
+        label: 'Normal to',
+        icon: contextCameraIcon,
+        disabled: !surfaceTarget,
+        onClick: () => {
+          if (!surfaceTarget) return
+          if (surfaceTarget.kind === 'plane') callbacks.onNormalToPlane(surfaceTarget.featureId)
+          else callbacks.onAlignToFace(surfaceTarget.normal, surfaceTarget.center)
+        },
+      },
+      {
+        label: sketchVisible ? 'Hide' : 'Show',
+        icon: contextHideIcon,
+        onClick: () => {
+          if (sketchId) callbacks.onToggleVisibility(sketchId)
+        },
+      },
+      {
+        label: input.showConstraintTiles ? 'Hide Constraints' : 'Show Constraints',
+        icon: constraintTileIcon,
+        onClick: callbacks.onToggleConstraintTiles,
+      },
+      {
+        label: 'Convert to fixed',
+        icon: constraintFixedIcon,
+        disabled: !canFreeze,
+        onClick: () => {
+          if (canFreeze) callbacks.onFreezeProjection('fixed', targets)
+        },
+      },
+      {
+        label: 'Break link (keep free)',
+        icon: constraintProjectionIcon,
+        disabled: !canFreeze,
+        onClick: () => {
+          if (canFreeze) callbacks.onFreezeProjection('free', targets)
+        },
+      },
+      {
+        label: 'Rebuild',
+        icon: contextRebuildIcon,
+        onClick: callbacks.onRebuild,
+      },
+    ],
+  }
+}
+
+/**
+ * The single part a right-click acts on, or null. A `body:` target names it
+ * directly; a viewport click carries the id the page resolved from the hover and
+ * the selection. A tree feature target resolves no part: it names a feature, and
+ * the feature's own Hide is the broader command for the parts it made.
+ */
+function resolvePartTarget(input: BuildContextMenuInput): PartTarget | null {
+  const partId = input.targetId?.startsWith('body:')
+    ? input.targetId.slice('body:'.length)
+    : input.targetId
+      ? null
+      : input.targetPartId
+  if (!partId) return null
+  const ordered = [...(input.orderedPartIds ?? Object.keys(input.partLabels))]
+  if (!ordered.includes(partId)) ordered.push(partId)
+  return {
+    partId,
+    currentName: partDisplayName(partId, input.partLabels, ordered),
+    visible: input.visibleParts === undefined || input.visibleParts.has(partId),
+  }
 }
 
 /**
@@ -275,213 +443,4 @@ function resolveSurfaceTarget(
         }
   }
   return null
-}
-
-function buildMenuContext(
-  input: BuildContextMenuInput,
-  callbacks: BuildContextMenuCallbacks,
-): MenuContext {
-  const featureId = input.targetId
-  const target = featureId ? input.features.find(f => f.id === featureId) : undefined
-  const surfaceTarget = resolveSurfaceTarget(input, target)
-
-  // Creating a sketch enters its edit session, which cannot nest inside the
-  // one an active sketch already holds. Exit first.
-  const canNewSketch = !input.activeSketchFeatureId && surfaceTarget !== null
-  const canNormalTo = surfaceTarget !== null
-  // Cleanup is explicit and undoable: the solve path no longer writes the
-  // flagged content out of the doc, so this command is the only way to remove
-  // it, and undo restores it without a re-solve re-deleting. Only offered
-  // outside a sketch edit, where the solve cannot remove what is being edited.
-  const canRemoveDangling = input.hasDanglingContent && !input.activeSketchFeatureId
-  // A rename/Edit gesture names a tree feature. A built-in has no author to edit
-  // and no place in the doc to rename or delete, so it is left out.
-  const canEdit = !!featureId && !!target && !input.builtInIds.has(featureId)
-    && (target.kind === 'plane' || target.kind === 'sketch')
-  const canExitSketch = !!input.activeSketchFeatureId
-  // The tree row of the edited sketch and a bare viewport right-click both
-  // mean "this sketch"; a tree click on any other feature does not.
-  const canNormalToSketch = !!input.activeSketchFeatureId
-    && (!featureId || featureId === input.activeSketchFeatureId)
-  // Hide/Show offers the same set as the tree eye, read from the one per-kind
-  // table, so a body-producing feature's Hide hides the bodies it made. A tree
-  // target wins when its kind has a toggle and it is not the sketch already
-  // under edit; otherwise the edited sketch is the thing on screen to hide or
-  // show. With neither, the slot is greyed.
-  const targetIsHideable = !!featureId && featureId !== input.activeSketchFeatureId
-    && !!target && !input.builtInIds.has(featureId)
-    && hasFeatureVisibilityToggle(target.kind)
-  const visibilityFeature = targetIsHideable
-    ? target
-    : input.activeSketchFeatureId
-      ? input.features.find(f => f.id === input.activeSketchFeatureId)
-      : undefined
-  const canToggleVisibility = !!visibilityFeature
-  const visibilityIsOn = !!visibilityFeature && input.visibleFeatures.has(visibilityFeature.id)
-  const canToggleConstraints = !!input.activeSketchFeatureId
-  // The sketch under edit is left out of the management verbs: renaming it
-  // would fight the open session and deleting it would pull the sketch out from
-  // under the edit.
-  const canManage = canManageFeature(featureId, input.builtInIds, input.activeSketchFeatureId)
-
-  return {
-    input, callbacks, featureId, target, surfaceTarget, visibilityFeature,
-    canNewSketch, canNormalTo, canRemoveDangling, canEdit, canExitSketch,
-    canNormalToSketch, canToggleVisibility, visibilityIsOn, canToggleConstraints,
-    canManageFeature: canManage,
-  }
-}
-
-function surfaceItems(ctx: MenuContext): ContextMenuItem[] {
-  const { callbacks, surfaceTarget, canNewSketch, canNormalTo } = ctx
-  return [
-    {
-      label: 'New Sketch',
-      icon: featureSketchIcon,
-      disabled: !canNewSketch,
-      onClick: () => {
-        if (canNewSketch && surfaceTarget) callbacks.onNewSketchOnPlane(surfaceTarget.query)
-      },
-    },
-    {
-      label: 'Normal to',
-      icon: contextCameraIcon,
-      disabled: !canNormalTo,
-      onClick: () => {
-        if (!canNormalTo || !surfaceTarget) return
-        if (surfaceTarget.kind === 'plane') callbacks.onNormalToPlane(surfaceTarget.featureId)
-        else callbacks.onAlignToFace(surfaceTarget.normal, surfaceTarget.center)
-      },
-    },
-  ]
-}
-
-function rebuildItems(ctx: MenuContext): ContextMenuItem[] {
-  const { callbacks, canRemoveDangling } = ctx
-  return [
-    {
-      label: 'Rebuild',
-      icon: contextRebuildIcon,
-      onClick: callbacks.onRebuild,
-    },
-    {
-      label: 'Remove dangling projections / superfluous constraints',
-      icon: contextRebuildIcon,
-      disabled: !canRemoveDangling,
-      onClick: () => {
-        if (canRemoveDangling) callbacks.onRemoveDanglingContent()
-      },
-    },
-  ]
-}
-
-function sketchSessionItems(ctx: MenuContext): ContextMenuItem[] {
-  const { callbacks, featureId, canEdit, canExitSketch, canNormalToSketch } = ctx
-  return [
-    {
-      label: 'Edit',
-      icon: contextEditIcon,
-      disabled: !canEdit,
-      onClick: () => {
-        if (canEdit && featureId) callbacks.onEnterEditSketch(featureId)
-      },
-    },
-    {
-      label: 'Exit Sketch',
-      icon: contextExitIcon,
-      disabled: !canExitSketch,
-      onClick: () => {
-        if (canExitSketch) callbacks.onExitSketch()
-      },
-    },
-    {
-      label: 'Normal to sketch',
-      icon: contextCameraIcon,
-      disabled: !canNormalToSketch,
-      onClick: () => {
-        if (canNormalToSketch) callbacks.onAlignCameraToSketchPlane()
-      },
-    },
-  ]
-}
-
-// The two freeze gestures are only meaningful on a projection, so they are the
-// one pair the board adds and drops instead of greying: an empty projection
-// pick must not grow two always-dead slots in every sketch menu. The item
-// passes the resolved target ids so the page can select them before the command
-// runs, which keeps the action independent of a live hover.
-function freezeProjectionItems(ctx: MenuContext): ContextMenuItem[] {
-  const { callbacks, input } = ctx
-  if (input.activeSketchFeatureId === undefined || input.projectedTargetIds.length === 0) return []
-  const targets = input.projectedTargetIds
-  return [
-    {
-      label: 'Convert to fixed',
-      icon: constraintFixedIcon,
-      onClick: () => callbacks.onFreezeProjection('fixed', targets),
-    },
-    {
-      label: 'Break link (keep free)',
-      icon: constraintProjectionIcon,
-      onClick: () => callbacks.onFreezeProjection('free', targets),
-    },
-  ]
-}
-
-function visibilityItems(ctx: MenuContext): ContextMenuItem[] {
-  const { callbacks, visibilityFeature, canToggleVisibility, visibilityIsOn } = ctx
-  return [
-    {
-      label: visibilityIsOn ? 'Hide' : 'Show',
-      icon: contextHideIcon,
-      disabled: !canToggleVisibility,
-      onClick: () => {
-        if (canToggleVisibility && visibilityFeature) callbacks.onToggleVisibility(visibilityFeature.id)
-      },
-    },
-  ]
-}
-
-function managementItems(ctx: MenuContext): ContextMenuItem[] {
-  const { input, callbacks, featureId, target, canToggleConstraints, canManageFeature } = ctx
-  return [
-    {
-      label: input.showConstraintTiles ? 'Hide Constraints' : 'Show Constraints',
-      icon: constraintTileIcon,
-      disabled: !canToggleConstraints,
-      onClick: () => {
-        if (canToggleConstraints) callbacks.onToggleConstraintTiles()
-      },
-    },
-    {
-      label: target?.suppressed ? 'Unsuppress' : 'Suppress',
-      icon: contextHideIcon,
-      disabled: !canManageFeature,
-      onClick: () => {
-        if (canManageFeature && featureId) callbacks.onToggleSuppression(featureId, !target?.suppressed)
-      },
-    },
-    {
-      label: 'Rename',
-      icon: iconRenameIcon,
-      disabled: !canManageFeature,
-      onClick: () => {
-        if (!canManageFeature || !featureId) return
-        callbacks.onRequestRename({
-          kind: 'feature',
-          id: featureId,
-          currentName: target?.label || featureId,
-        })
-      },
-    },
-    {
-      label: 'Delete',
-      icon: contextDeleteIcon,
-      className: 'right-click-menu-item--delete',
-      disabled: !canManageFeature,
-      onClick: () => {
-        if (canManageFeature && featureId) callbacks.onDeleteFeature(featureId)
-      },
-    },
-  ]
 }

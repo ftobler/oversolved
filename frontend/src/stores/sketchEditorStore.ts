@@ -1,10 +1,10 @@
 // The sketch editor's UI-facing store: preferences and the pending value
-// dialog / context menu. Everything that is editor state rather than chrome --
-// selection, hover, the active tool, draw state, drag state and the part
-// rollback/edit FSM -- moved to stores/editorState.ts (L2) and is re-exported
-// here under the historical name below, so the many existing importers keep
-// one entry point. The value dialog stays here; editorState reaches it through
-// the sketchCallbacks ports registered at the bottom.
+// dialog. Everything that is editor state rather than chrome -- selection,
+// hover, the active tool, draw state, drag state and the part rollback/edit FSM
+// -- moved to stores/editorState.ts (L2) and is re-exported here under the
+// historical name below, so the many existing importers keep one entry point.
+// The value dialog stays here; editorState reaches it through the sketchCallbacks
+// ports registered at the bottom.
 import { create } from 'zustand'
 import type { DialogState } from './sketchEditorTypes'
 import { sketchCallbacks } from './sketchEditorCallbacks'
@@ -13,19 +13,16 @@ export interface SketchUiState {
   showConstraintTiles: boolean
   ngonSides: number  // side count for the two-click n-gon draw tool
   pendingDialog: DialogState | null
-  contextMenu: [number, number] | null
   setShowConstraintTiles: (show: boolean) => void
   // Clamp to the n-gon range (3..64) so the draw tool and preview never see a
   // degenerate count.
   setNgonSides: (n: number) => void
   openDialog: (opts: DialogState) => void
   closeDialog: () => void
-  openContextMenu: (pos: [number, number]) => void
-  closeContextMenu: () => void
-  // The canonical UI wipe: closes the pending value dialog and the context
-  // menu, leaving user preferences intact. Every "drop the editor's transient
-  // state" call site must delegate here (Part's teardown calls this and the
-  // editor store's resetTransientState together), never hand-list the fields.
+  // The canonical UI wipe: closes the pending value dialog, leaving user
+  // preferences intact. Every "drop the editor's transient state" call site
+  // must delegate here (Part's teardown calls this and the editor store's
+  // resetTransientState together), never hand-list the fields.
   resetTransientState: () => void
 }
 
@@ -33,7 +30,6 @@ export const useSketchUiStore = create<SketchUiState>((set) => ({
   showConstraintTiles: true,
   ngonSides: 6,
   pendingDialog: null,
-  contextMenu: null,
 
   setShowConstraintTiles: (show) => set({ showConstraintTiles: show }),
 
@@ -43,10 +39,8 @@ export const useSketchUiStore = create<SketchUiState>((set) => ({
   // Guarded so the editor-state gesture abort, which fires this on every
   // dimension cancel, does not mint a fresh state and notify with nothing open.
   closeDialog: () => set(s => s.pendingDialog === null ? s : { pendingDialog: null }),
-  openContextMenu: (pos) => set({ contextMenu: pos }),
-  closeContextMenu: () => set({ contextMenu: null }),
 
-  resetTransientState: () => set({ pendingDialog: null, contextMenu: null }),
+  resetTransientState: () => set({ pendingDialog: null }),
 }))
 
 // The editor-state store asks the UI store to open/close the value dialog
