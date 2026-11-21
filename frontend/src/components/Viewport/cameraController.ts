@@ -1,5 +1,6 @@
 import * as THREE from 'three'
 import type { PartResult, PlaneTransform } from '@/types/cad'
+import { computeVertexBounds } from '@/utils/geometry/vertexBounds'
 import { INITIAL_ZOOM } from './cameraConstants'
 import type { TurntableControls } from './turntable'
 import { anglesFromDirection, orbitDirection, rolledBasis, orbitUp } from './turntable'
@@ -332,41 +333,6 @@ export function alignToFace(
 // grabbed the framing is the user's; the pending fit is abandoned, not deferred.
 export function shouldAutoFit(fitted: boolean, partCount: number, manipulating: boolean): boolean {
   return !fitted && partCount > 0 && !manipulating
-}
-
-// Min/max accumulation over a body's vertex list, accepting either the flat
-// Float32Array the kernel hands over or a tuple array from tests and adapters.
-// Non-finite triples are skipped; returns null when no finite vertex was seen so
-// callers can tell "empty" from "origin at zero". The single source for the
-// accumulation shared by zoom-to-fit and the extent helpers in
-// viewportPlaneSizing.ts.
-export interface VertexBounds {
-  min: [number, number, number]
-  max: [number, number, number]
-}
-
-export function computeVertexBounds(
-  vertices: Float32Array | readonly [number, number, number][],
-): VertexBounds | null {
-  let minX = Infinity, maxX = -Infinity
-  let minY = Infinity, maxY = -Infinity
-  let minZ = Infinity, maxZ = -Infinity
-
-  const visit = (x: number, y: number, z: number): void => {
-    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return
-    if (x < minX) minX = x; if (x > maxX) maxX = x
-    if (y < minY) minY = y; if (y > maxY) maxY = y
-    if (z < minZ) minZ = z; if (z > maxZ) maxZ = z
-  }
-
-  if (vertices instanceof Float32Array) {
-    for (let i = 0; i < vertices.length; i += 3) visit(vertices[i], vertices[i + 1], vertices[i + 2])
-  } else {
-    for (const [x, y, z] of vertices) visit(x, y, z)
-  }
-
-  if (!Number.isFinite(minX)) return null
-  return { min: [minX, minY, minZ], max: [maxX, maxY, maxZ] }
 }
 
 // Frame all body geometry (or, failing that, all scene meshes) so it fits the

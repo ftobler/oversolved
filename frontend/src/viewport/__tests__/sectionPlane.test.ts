@@ -9,10 +9,13 @@ import {
   sectionFrameKey,
   sectionOffsetFromDrag,
   sectionOffsetFromTiltedDrag,
+  sectionOutlineBounds,
+  sectionOutlineRect,
   sectionPlaneFromFrame,
   tiltedSectionFrame,
 } from '@/viewport/sectionPlane'
 import { normalToFrame } from '@/kernel/types3d'
+import type { PartFeature, PartResult } from '@/types/cad'
 import type { Vec3 } from '@/utils/vec3'
 
 const NO_SOURCES = {
@@ -177,6 +180,11 @@ describe('tilt', () => {
     // The yaw ring is drawn around the pitched v, and the pitch ring around u.
     expectVec(tilted.yawAxis, pitchedV)
     expectVec(tilted.pitchAxis, [1, 0, 0])
+    // The tilted in-plane axes stay right-handed, and the yawed u is the
+    // pitch axis carried around the pitched v.
+    expectVec(cross(tilted.u, tilted.v), tilted.normal)
+    expectVec(tilted.v, pitchedV)
+    expect(Math.hypot(...tilted.u)).toBeCloseTo(1, 12)
   })
 
   it('clamps any requested tilt to 85 degrees from the source normal', () => {
@@ -320,5 +328,132 @@ describe('sectionOffsetFromTiltedDrag', () => {
 
   it('holds the offset instead of dividing by zero at a degenerate tilt', () => {
     expect(sectionOffsetFromTiltedDrag(4, 2, FRONT, { pitch: 0, yaw: 0 })).toBeCloseTo(6, 12)
+  })
+})
+
+describe('sectionOutlineRect', () => {
+  const BOUNDS = { min: [0, 0, 0] as Vec3, max: [100, 50, 20] as Vec3 }
+
+  it('spans the projected bounds plus a tenth of the larger side', () => {
+    const rect = sectionOutlineRect(BOUNDS, [0, 0, 0], [1, 0, 0], [0, 1, 0])!
+    // s is 0..100 and t is 0..50 relative to the anchor; the margin is 10% of
+    // the larger side.
+    expectVec(rect.center, [50, 25, 0])
+    expect(rect.halfU).toBeCloseTo(60, 12)
+    expect(rect.halfV).toBeCloseTo(35, 12)
+  })
+
+  it('stretches to include an anchor outside the bounds', () => {
+    const anchor: Vec3 = [-200, 0, 0]
+    const rect = sectionOutlineRect(BOUNDS, anchor, [1, 0, 0], [0, 1, 0])!
+    // The model reaches s = 200..300 from that anchor and the anchor is s = 0,
+    // so the rectangle is centred between them and its margin is 10% of 300.
+    expectVec(rect.center, [-50, 25, 0])
+    expect(rect.halfU).toBeCloseTo(180, 12)
+    expect(rect.halfV).toBeCloseTo(55, 12)
+    // The arrow's base is on the plane, inside the drawn rectangle.
+    expect(Math.abs(0 - rect.center[0])).toBeLessThanOrEqual(rect.halfU)
+  })
+
+  it('gives a flat plate a border on both in-plane axes', () => {
+    // On Top the plate's thin Y axis is the normal, so both projected extents
+    // come from the plate's own size.
+    const { u, v } = builtinSectionFrame('top')
+    const rect = sectionOutlineRect({ min: [0, 0, 0], max: [100, 0.01, 100] }, [0, 0, 0], u, v)!
+    expect(rect.halfU).toBeCloseTo(60, 12)
+    expect(rect.halfV).toBeCloseTo(60, 12)
+  })
+
+  it('keeps the one unit margin floor when both extents are near zero', () => {
+    const { u, v } = builtinSectionFrame('top')
+    const rect = sectionOutlineRect({ min: [0, 0, 0], max: [0.2, 0, 0.2] }, [0, 0, 0], u, v)!
+    expect(rect.halfU).toBeCloseTo(1.1, 12)
+    expect(rect.halfV).toBeCloseTo(1.1, 12)
+  })
+
+  it('returns null without geometry, so the caller keeps its default', () => {
+    expect(sectionOutlineRect(null, [0, 0, 0], [1, 0, 0], [0, 1, 0])).toBeNull()
+  })
+
+  it('projects a cube onto a 45 degree tilted basis at the corner reach', () => {
+    const c = Math.SQRT1_2
+    const u: Vec3 = [c, c, 0]
+    const v: Vec3 = [-c, c, 0]
+    const rect = sectionOutlineRect({ min: [0, 0, 0], max: [10, 10, 10] }, [5, 5, 5], u, v)!
+    // Every corner is 5 units from the centre on each axis, so each projection
+    // reaches 5*sqrt2: the 45 degree corner reach, not the axis-aligned 5. The
+    // eight corners are an upper bound for a shape that does not fill its box.
+    const reach = 5 * Math.SQRT2
+    const margin = Math.max(0.1 * 2 * reach, 1)
+    expectVec(rect.center, [5, 5, 5])
+    expect(rect.halfU).toBeCloseTo(reach + margin, 12)
+    expect(rect.halfV).toBeCloseTo(reach + margin, 12)
+  })
+})
+
+describe('sectionOutlineBounds', () => {
+  function solvedPart(id: string, min: Vec3, max: Vec3, createdBy = 'extrude_1'): PartResult {
+    return {
+      id,
+      created_by: createdBy,
+      modified_by: [],
+      mesh: {
+        vertices: [
+          [min[0], min[1], min[2]],
+          [max[0], max[1], max[2]],
+        ],
+        faces: [],
+      },
+    }
+  }
+
+  const NO_VISIBILITY = {
+    features: undefined,
+    visibleParts: undefined,
+    visibleFeatures: undefined,
+  }
+
+  it('unions every drawn part', () => {
+    const bounds = sectionOutlineBounds({
+      ...NO_VISIBILITY,
+      parts: { a: solvedPart('a', [0, 0, 0], [10, 10, 10]), b: solvedPart('b', [20, 0, 0], [30, 5, 5]) },
+    })
+    expect(bounds).toEqual({ min: [0, 0, 0], max: [30, 10, 10] })
+  })
+
+  it('skips a hidden part while another one is drawn', () => {
+    const parts = { a: solvedPart('a', [0, 0, 0], [1000, 10, 10]), b: solvedPart('b', [0, 0, 0], [10, 10, 10]) }
+    const bounds = sectionOutlineBounds({
+      parts, features: undefined, visibleParts: new Set(['b']), visibleFeatures: undefined,
+    })
+    expect(bounds).toEqual({ min: [0, 0, 0], max: [10, 10, 10] })
+  })
+
+  it('still measures every part when the user hid them all', () => {
+    const parts = { a: solvedPart('a', [0, 0, 0], [1000, 10, 10]), b: solvedPart('b', [0, 0, 0], [10, 10, 10]) }
+    const bounds = sectionOutlineBounds({
+      parts, features: undefined, visibleParts: new Set(), visibleFeatures: undefined,
+    })
+    expect(bounds).toEqual({ min: [0, 0, 0], max: [1000, 10, 10] })
+  })
+
+  it('follows a hidden creating feature', () => {
+    const parts = {
+      a: solvedPart('a', [0, 0, 0], [1000, 10, 10], 'extrude_1'),
+      b: solvedPart('b', [0, 0, 0], [10, 10, 10], 'extrude_2'),
+    }
+    const features = [{ id: 'extrude_1' }, { id: 'extrude_2' }] as PartFeature[]
+    const bounds = sectionOutlineBounds({
+      parts, features, visibleParts: undefined, visibleFeatures: new Set(['extrude_2']),
+    })
+    expect(bounds).toEqual({ min: [0, 0, 0], max: [10, 10, 10] })
+  })
+
+  it('is null when no part has a mesh, the sketch-only case', () => {
+    expect(sectionOutlineBounds({ ...NO_VISIBILITY, parts: {} })).toBeNull()
+    expect(sectionOutlineBounds({
+      ...NO_VISIBILITY,
+      parts: { a: { id: 'a', created_by: 'sketch_1', modified_by: [] } },
+    })).toBeNull()
   })
 })

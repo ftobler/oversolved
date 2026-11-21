@@ -124,11 +124,16 @@ export interface SectionOrientation {
 export interface TiltedSectionFrame {
   // The plane normal after the tilt.
   normal: Vec3
+  // The plane's in-plane axes after the tilt, right-handed with `normal`
+  // (`u x v = normal`). The section outline is measured and drawn in these, so
+  // the fitted rectangle and the drawn one cannot disagree.
+  u: Vec3
+  v: Vec3
   // The axis the pitch ring turns about: the source `u`, unchanged by pitch.
   pitchAxis: Vec3
   // The axis the yaw ring turns about: the source `v` carried through the
   // pitch. Yaw turns about this very line, so it is also what the ring is drawn
-  // around.
+  // around. It is also the tilted frame's `v`, because yaw leaves it fixed.
   yawAxis: Vec3
 }
 
@@ -143,7 +148,7 @@ export function tiltedSectionFrame(
   if (clamped.pitch === 0 && clamped.yaw === 0) {
     // The source pose itself, not a re-normalized copy: an untilted section has
     // to stay bit-identical to the pre-tilt plane, whatever the normal is.
-    return { normal: frame.normal, pitchAxis: u, yawAxis: v }
+    return { normal: frame.normal, u, v, pitchAxis: u, yawAxis: v }
   }
   const n = unit(frame.normal)
   const pitchAxis = u
@@ -153,6 +158,10 @@ export function tiltedSectionFrame(
   const pitchedNormal = rotateAbout(u, n, clamped.pitch)
   return {
     normal: rotateAbout(yawAxis, pitchedNormal, clamped.yaw),
+    // Pitch leaves `u` on the pitch axis; yaw then carries it around, while
+    // `v` is the yaw axis itself and therefore holds still.
+    u: rotateAbout(yawAxis, u, clamped.yaw),
+    v: yawAxis,
     pitchAxis,
     yawAxis,
   }
