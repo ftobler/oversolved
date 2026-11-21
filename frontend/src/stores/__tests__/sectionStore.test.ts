@@ -48,6 +48,31 @@ describe('section store', () => {
     expect(useSectionStore.getState().flipped).toBe(false)
   })
 
+  it('resets the tilt when a new source is chosen and on reset', () => {
+    useSectionStore.getState().setTilt({ pitch: 0.4, yaw: 0.2 })
+    expect(useSectionStore.getState().tilt).toEqual({ pitch: 0.4, yaw: 0.2 })
+
+    useSectionStore.getState().setPlane({ kind: 'builtin', id: 'top' })
+    expect(useSectionStore.getState().tilt).toEqual({ pitch: 0, yaw: 0 })
+
+    useSectionStore.getState().setTilt({ pitch: 0.4, yaw: 0.2 })
+    useSectionStore.getState().resetTilt()
+    expect(useSectionStore.getState().tilt).toEqual({ pitch: 0, yaw: 0 })
+
+    useSectionStore.getState().setTilt({ pitch: 0.4, yaw: 0.2 })
+    useSectionStore.getState().reset()
+    expect(useSectionStore.getState().tilt).toEqual({ pitch: 0, yaw: 0 })
+  })
+
+  it('clamps a tilt past 85 degrees and refuses a non-finite one', () => {
+    useSectionStore.getState().setTilt({ pitch: Math.PI / 2, yaw: 0 })
+    expect(useSectionStore.getState().tilt.pitch).toBeCloseTo(85 * Math.PI / 180, 10)
+
+    useSectionStore.getState().setTilt({ pitch: 0.3, yaw: 0 })
+    useSectionStore.getState().setTilt({ pitch: Number.NaN, yaw: 0 })
+    expect(useSectionStore.getState().tilt).toEqual({ pitch: 0.3, yaw: 0 })
+  })
+
   it('refuses a non-finite offset instead of moving the plane to NaN', () => {
     useSectionStore.getState().setOffset(4)
     useSectionStore.getState().setOffset(Number.NaN)

@@ -15,6 +15,7 @@ import {
   sectionFrameKey,
   sectionPlaneFromFrame,
   type SectionFrame,
+  type SectionTilt,
 } from '@/viewport/sectionPlane'
 import { applySectionClipping, setSectionClipPlane } from '@/viewport/sectionClipping'
 
@@ -46,6 +47,7 @@ export interface SectionClipState {
   frame: SectionFrame | null
   offset: number
   flipped: boolean
+  tilt: SectionTilt
 }
 
 /**
@@ -57,14 +59,15 @@ export function useSectionClip(): SectionClipState {
   const enabled = useSectionStore(s => s.enabled)
   const offset = useSectionStore(s => s.offset)
   const flipped = useSectionStore(s => s.flipped)
+  const tilt = useSectionStore(s => s.tilt)
   const frame = useSectionFrame()
   const active = enabled && frame !== null
 
   useLayoutEffect(() => {
-    setSectionClipPlane(active && frame ? sectionPlaneFromFrame(frame, offset, flipped) : null)
-  }, [active, frame, offset, flipped])
+    setSectionClipPlane(active && frame ? sectionPlaneFromFrame(frame, offset, flipped, tilt) : null)
+  }, [active, frame, offset, flipped, tilt])
 
-  return { active, frame, offset, flipped }
+  return { active, frame, offset, flipped, tilt }
 }
 
 /**
@@ -123,6 +126,7 @@ export function useSectionPipelineEffects(clearHover: () => void): void {
   const source = useSectionStore(s => s.plane)
   const offset = useSectionStore(s => s.offset)
   const flipped = useSectionStore(s => s.flipped)
+  const tilt = useSectionStore(s => s.tilt)
   const { active, frame } = useSectionClip()
   const mounted = useRef(false)
 
@@ -148,7 +152,7 @@ export function useSectionPipelineEffects(clearHover: () => void): void {
     })
     // The key is in the deps because a solve can move a picked user plane
     // without any store field changing.
-  }, [enabled, source, offset, flipped, frameKey, clearHover])
+  }, [enabled, source, offset, flipped, tilt, frameKey, clearHover])
 
   useEffect(() => {
     if (enabled && frame === null) useSectionStore.getState().disable(SECTION_SOURCE_GONE_REASON)

@@ -3,14 +3,22 @@
 // A section is a viewing aid, so its plane is derived from data the viewport
 // already has (a builtin direction, a solved user plane, a planar face) rather
 // than authored into the document. This module is the pure half: given a source
-// and the scene's plane/face lookup, produce the normal and point the one
-// shared THREE.Plane is built from.
+// and the scene's plane/face lookup, produce the normal, point and in-plane axes
+// the one shared THREE.Plane is built from.
 import * as THREE from 'three'
 import type { PlaneTransform } from '@/types/cad'
 import { BUILTIN_PLANES } from '@/kernel/solverConstants'
-import type { BuiltinSectionPlaneId, SectionPlaneSource } from './sectionTypes'
+import { normalToFrame } from '@/kernel/types3d'
+import { cross, dot, scale, sub, type Vec3 } from '@/utils/vec3'
+import type { BuiltinSectionPlaneId, SectionPlaneSource, SectionTilt } from './sectionTypes'
+import { NO_TILT, tiltedSectionFrame } from './sectionTilt'
 
 export type { BuiltinSectionPlaneId, SectionPlaneSource } from './sectionTypes'
+export {
+  applySectionTiltSwing, clampSectionTilt, MAX_SECTION_TILT_DEG, NO_TILT,
+  sectionOffsetFromTiltedDrag, tiltedSectionFrame,
+} from './sectionTilt'
+export type { SectionTilt, TiltedSectionFrame } from './sectionTilt'
 
 // Size of the cap quad in world units. The cap is the cut face of an infinite
 // plane; the quad only has to cover the model, so a generously large one keeps
@@ -20,31 +28,45 @@ export type { BuiltinSectionPlaneId, SectionPlaneSource } from './sectionTypes'
 export const SECTION_CAP_SIZE = 10000
 
 export interface SectionFrame {
-  // Unit normal of the plane, before offset and flip.
+  // Unit normal of the plane, before offset, flip and tilt.
   normal: [number, number, number]
   // A point the plane passes through, before offset.
   point: [number, number, number]
+  // Unit in-plane axes of the source, right-handed: `u x v = normal`. They are
+  // the reference a tilt's pitch and yaw are counted from, and the axes a
+  // sketch on the same face would use, so the rings line up with the geometry.
+  u: [number, number, number]
+  v: [number, number, number]
 }
 
 export const BUILTIN_SECTION_PLANES: readonly BuiltinSectionPlaneId[] = ['front', 'top', 'right']
 
-// The builtin sketch planes' own canonical normals, so the section agrees with
-// the plane the user sees when they pick Front/Top/Right in the tree. Sourced
-// from the kernel's one table rather than a second copy.
+// The builtin sketch planes' own canonical normals and axes, so the section
+// agrees with the plane the user sees when they pick Front/Top/Right in the
+// tree. Sourced from the kernel's one table rather than a second copy.
 export function builtinSectionFrame(id: BuiltinSectionPlaneId): SectionFrame {
   const plane = BUILTIN_PLANES[`builtin_plane_${id}`]
   const normal = unitNormal(plane.normal as number[])
-  if (!normal) throw new Error(`builtin section plane ${id} has no usable normal`)
+  const u = unitNormal(plane.x_axis as number[])
+  const v = unitNormal(plane.y_axis as number[])
+  if (!normal || !u || !v) throw new Error(`builtin section plane ${id} has no usable frame`)
   const origin = plane.origin as number[]
-  return { normal, point: [origin[0], origin[1], origin[2]] }
+  return {
+    normal,
+    point: [origin[0], origin[1], origin[2]],
+    u,
+    v,
+  }
 }
 
 export interface SectionFrameSources {
   // The solved transform of a user-defined plane, or null when it is gone.
   planeTransform: (query: string) => Pick<PlaneTransform, 'rotation' | 'origin'> | null | undefined
   // The normal and center of a planar B-rep face, or null when it is gone.
-  // `pickKey` names the exact primitive when a query is shared.
-  faceFrame: (query: string, pickKey?: string) => SectionFrame | null
+  // `pickKey` names the exact primitive when a query is shared. Its in-plane
+  // axes are not carried: a face has no authored spin, so the resolver derives
+  // them from the normal the same way a face sketch does.
+  faceFrame: (query: string, pickKey?: string) => Pick<SectionFrame, 'normal' | 'point'> | null
 }
 
 function unitNormal(normal: readonly number[]): [number, number, number] | null {
@@ -53,6 +75,24 @@ function unitNormal(normal: readonly number[]): [number, number, number] | null 
   const length = Math.hypot(x, y, z)
   if (!(length > 1e-9)) return null
   return [x / length, y / length, z / length]
+}
+
+/**
+ * The in-plane axes for a normal, honouring a transform row when it is usable.
+ *
+ * `u` is the row projected into the plane and `v` is derived from the normal,
+ * so `u x v = normal` holds exactly even if a stored transform is slightly
+ * non-orthonormal. A degenerate row falls back to the sketch convention.
+ */
+function planeAxes(normal: Vec3, uRow?: readonly number[]): { u: Vec3; v: Vec3 } {
+  const fallback = normalToFrame([normal[0], normal[1], normal[2]])
+  const raw = uRow ? unitNormal(uRow) : null
+  if (!raw) return { u: fallback.x_axis, v: fallback.y_axis }
+  const projected = sub(raw, scale(normal, dot(raw, normal)))
+  const u = unitNormal(projected)
+  if (!u) return { u: fallback.x_axis, v: fallback.y_axis }
+  const v = unitNormal(cross(normal, u))
+  return v ? { u, v } : { u: fallback.x_axis, v: fallback.y_axis }
 }
 
 /**
@@ -66,12 +106,14 @@ export function resolveSectionFrame(source: SectionPlaneSource, sources: Section
 
   const transform = sources.planeTransform(source.query)
   if (transform) {
-    // PlaneTransform stores its axes as rows, so the last triplet is the normal.
-    const [, , , , , , nx, ny, nz] = transform.rotation
+    // PlaneTransform stores its axes as rows, so the last triplet is the normal
+    // and the first two are the plane's own x/y.
+    const [x0, x1, x2, , , , nx, ny, nz] = transform.rotation
     const normal = unitNormal([nx, ny, nz])
     if (normal) {
+      const { u, v } = planeAxes(normal, [x0, x1, x2])
       const [px, py, pz] = transform.origin
-      return { normal, point: [px, py, pz] }
+      return { normal, point: [px, py, pz], u, v }
     }
   }
 
@@ -79,7 +121,8 @@ export function resolveSectionFrame(source: SectionPlaneSource, sources: Section
   if (!face) return null
   const normal = unitNormal(face.normal)
   if (!normal) return null
-  return { normal, point: [face.point[0], face.point[1], face.point[2]] }
+  const { u, v } = planeAxes(normal)
+  return { normal, point: [face.point[0], face.point[1], face.point[2]], u, v }
 }
 
 /** Move a frame's point along its own normal. */
@@ -109,17 +152,19 @@ export function sectionOffsetFromDrag(startOffset: number, startParam: number, c
  * viewer. So the plane is built with the negated normal, and `flipped` keeps it
  * pointing at the source normal instead (the near half survives).
  *
- * `offset` slides the plane along the source normal before the orientation is
- * applied, so a positive offset always moves the cut in the same world
- * direction whichever side survives.
+ * `offset` slides the pivot along the SOURCE normal before the tilt is applied,
+ * so a positive offset always moves the cut in the same world direction
+ * whichever side survives. The tilted plane passes through that same pivot with
+ * the tilted normal, so the point under the gizmo stays on the plane.
  */
 export function sectionPlaneFromFrame(
   frame: SectionFrame,
   offset: number,
   flipped: boolean,
+  tilt: SectionTilt = NO_TILT,
   out: THREE.Plane = new THREE.Plane(),
 ): THREE.Plane {
-  const normal = new THREE.Vector3(...frame.normal)
+  const normal = new THREE.Vector3(...tiltedSectionFrame(frame, tilt).normal)
   const point = new THREE.Vector3(...offsetFramePoint(frame, offset))
   out.setFromNormalAndCoplanarPoint(normal, point)
   // Keeping the negative side is the default; flipping negates both fields,
@@ -129,9 +174,12 @@ export function sectionPlaneFromFrame(
 }
 
 /** A value-comparison key for the resolved frame, used to avoid dirtying the
- *  pick buffer on a solve that moved nothing. */
+ *  pick buffer on a solve that moved nothing. The axes are part of it because a
+ *  user plane's in-plane spin can change while its normal does not, and the
+ *  rings and the outline then have to follow. */
 export function sectionFrameKey(frame: SectionFrame | null): string {
   if (!frame) return 'none'
   const f = (v: number): string => v.toFixed(6)
-  return `${frame.normal.map(f).join(',')}|${frame.point.map(f).join(',')}`
+  return `${frame.normal.map(f).join(',')}|${frame.point.map(f).join(',')}|`
+    + `${frame.u.map(f).join(',')}|${frame.v.map(f).join(',')}`
 }

@@ -36,10 +36,18 @@ export interface SectionPanelProps {
 
 const PLANE_LABELS = { front: 'Front', top: 'Top', right: 'Right' } as const
 
+const DEG = Math.PI / 180
+
+/** The store keeps radians; the box reads and writes degrees, one decimal. */
+function tiltDegrees(radians: number): number {
+  return Math.round((radians / DEG) * 10) / 10
+}
+
 export function SectionPanel({ allowPick = true, lengthUnit = 'mm' }: SectionPanelProps) {
   const enabled = useSectionStore(s => s.enabled)
   const plane = useSectionStore(s => s.plane)
   const offset = useSectionStore(s => s.offset)
+  const tilt = useSectionStore(s => s.tilt)
   const flipped = useSectionStore(s => s.flipped)
   const disabledReason = useSectionStore(s => s.disabledReason)
   const pickError = useSectionStore(s => s.pickError)
@@ -48,6 +56,8 @@ export function SectionPanel({ allowPick = true, lengthUnit = 'mm' }: SectionPan
   const setEnabled = useSectionStore(s => s.setEnabled)
   const setPlane = useSectionStore(s => s.setPlane)
   const setOffset = useSectionStore(s => s.setOffset)
+  const setTilt = useSectionStore(s => s.setTilt)
+  const resetTilt = useSectionStore(s => s.resetTilt)
   const setFlipped = useSectionStore(s => s.setFlipped)
   const setPicking = useSectionStore(s => s.setPicking)
   const cancelPicking = useSectionStore(s => s.cancelPicking)
@@ -87,6 +97,19 @@ export function SectionPanel({ allowPick = true, lengthUnit = 'mm' }: SectionPan
   const commitOffset = (value: string | number) => {
     setOffset(typeof value === 'number' ? value : evalExpr(value))
   }
+
+  // The box is in degrees while the store (and the rings) count radians. The
+  // store clamps the requested angle, so an over-steep typed tilt holds at the
+  // same 85 degree limit the drag does.
+  const commitTilt = (axis: 'pitch' | 'yaw') => (value: string | number) => {
+    const degrees = typeof value === 'number' ? value : evalExpr(value)
+    setTilt({ ...tilt, [axis]: degrees * DEG })
+  }
+
+  // The rings live in the part viewport only; the assembly's section stays
+  // builtin, offset and flip. Hiding the rows there keeps the two in step
+  // rather than offering a control with nothing to draw it.
+  const showTilt = allowPick
 
   return (
     <div className="glass-panel feature-edit-panel section-panel">
@@ -175,6 +198,35 @@ export function SectionPanel({ allowPick = true, lengthUnit = 'mm' }: SectionPan
                 ariaLabel="Section offset"
               />
             </div>
+
+            {showTilt && (
+              <>
+                <div className="feature-field-row">
+                  <span className="feature-field-label">Pitch</span>
+                  <ExpressionInput
+                    value={tiltDegrees(tilt.pitch)}
+                    onChange={commitTilt('pitch')}
+                    quantity="angle"
+                    ariaLabel="Section pitch"
+                  />
+                </div>
+                <div className="feature-field-row">
+                  <span className="feature-field-label">Yaw</span>
+                  <ExpressionInput
+                    value={tiltDegrees(tilt.yaw)}
+                    onChange={commitTilt('yaw')}
+                    quantity="angle"
+                    ariaLabel="Section yaw"
+                  />
+                </div>
+                <div className="feature-field-row">
+                  <span className="feature-field-label">Tilt</span>
+                  <button type="button" className="section-panel-again" onClick={resetTilt}>
+                    Reset tilt
+                  </button>
+                </div>
+              </>
+            )}
 
             <div className="feature-field-row">
               <span className="feature-field-label">Reverse</span>

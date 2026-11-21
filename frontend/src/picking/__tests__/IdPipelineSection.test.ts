@@ -81,7 +81,7 @@ describe('IdPipeline section clipping', () => {
   beforeEach(() => resetSectionClippingForTest())
 
   it('clips the face, edge and vertex layers with the shared plane while active', () => {
-    setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 0, 1], point: [0, 0, 0] }, 0, false))
+    setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 0, 1], point: [0, 0, 0], u: [1, 0, 0], v: [0, 1, 0] }, 0, false))
     const p = new IdPipeline({ width: 8, height: 8 })
     registerPart(p)
 
@@ -136,7 +136,7 @@ describe('IdPipeline section cap occluder', () => {
   beforeEach(() => resetSectionClippingForTest())
 
   it('runs the stencil count and fills the cap with the nothing id after the face layer', () => {
-    setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 0, 1], point: [0, 0, 0] }, 0, false))
+    setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 0, 1], point: [0, 0, 0], u: [1, 0, 0], v: [0, 1, 0] }, 0, false))
     const p = new IdPipeline({ width: 8, height: 8 })
     registerPart(p)
     p.setSectionActive(true)
@@ -203,7 +203,7 @@ describe('IdPipeline section cap occluder', () => {
   })
 
   it('draws the unclipped reference curve after the cap, so it depth-tests against the cut face', () => {
-    setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 0, 1], point: [0, 0, 0] }, 0, false))
+    setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 0, 1], point: [0, 0, 0], u: [1, 0, 0], v: [0, 1, 0] }, 0, false))
     const p = new IdPipeline({ width: 8, height: 8 })
     registerPart(p)
     p.setSectionActive(true)

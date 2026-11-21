@@ -29,6 +29,9 @@ function reset(): void {
 }
 
 const offsetBox = () => screen.getByRole('textbox', { name: /Section offset/ }) as HTMLInputElement
+const pitchBox = () => screen.getByRole('textbox', { name: /Section pitch/ }) as HTMLInputElement
+const yawBox = () => screen.getByRole('textbox', { name: /Section yaw/ }) as HTMLInputElement
+const DEG = Math.PI / 180
 
 beforeEach(() => {
   vi.restoreAllMocks()
@@ -167,6 +170,15 @@ describe('SectionPanel plane', () => {
     expect(screen.queryByRole('button', { name: 'Pick' })).toBeNull()
     expect(screen.getByText(SECTION_PICK_UNAVAILABLE_NOTE)).toBeInTheDocument()
   })
+
+  it('hides the tilt rows in the assembly, whose section is builtin, offset and flip', () => {
+    useSectionStore.setState({ enabled: true })
+    render(<SectionPanel allowPick={false} />)
+
+    expect(screen.queryByRole('textbox', { name: /Section pitch/ })).toBeNull()
+    expect(screen.queryByRole('textbox', { name: /Section yaw/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Reset tilt' })).toBeNull()
+  })
 })
 
 describe('SectionPanel offset', () => {
@@ -227,6 +239,46 @@ describe('SectionPanel offset', () => {
 
     expect(screen.getByRole('textbox', { name: 'Section offset, inches' })).toBeInTheDocument()
     expect(screen.getByText('in')).toBeInTheDocument()
+  })
+})
+
+describe('SectionPanel tilt', () => {
+  it('reads and writes the tilt in degrees', () => {
+    useSectionStore.setState({ enabled: true, tilt: { pitch: 30 * DEG, yaw: -12.5 * DEG } })
+    render(<SectionPanel />)
+
+    expect(pitchBox().value).toBe('30')
+    expect(yawBox().value).toBe('-12.5')
+
+    fireEvent.focus(pitchBox())
+    fireEvent.change(pitchBox(), { target: { value: '15' } })
+    fireEvent.blur(pitchBox())
+    expect(useSectionStore.getState().tilt.pitch).toBeCloseTo(15 * DEG, 12)
+
+    fireEvent.focus(yawBox())
+    fireEvent.change(yawBox(), { target: { value: '-10/2' } })
+    fireEvent.blur(yawBox())
+    expect(useSectionStore.getState().tilt.yaw).toBeCloseTo(-5 * DEG, 12)
+  })
+
+  it('clamps a typed tilt to the same 85 degree limit the drag uses', () => {
+    useSectionStore.setState({ enabled: true })
+    render(<SectionPanel />)
+
+    fireEvent.focus(pitchBox())
+    fireEvent.change(pitchBox(), { target: { value: '120' } })
+    fireEvent.blur(pitchBox())
+
+    expect(useSectionStore.getState().tilt.pitch).toBeCloseTo(85 * DEG, 10)
+    expect(pitchBox().value).toBe('85')
+  })
+
+  it('resets both angles from the Reset tilt button', () => {
+    useSectionStore.setState({ enabled: true, tilt: { pitch: 0.4, yaw: 0.2 } })
+    render(<SectionPanel />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reset tilt' }))
+    expect(useSectionStore.getState().tilt).toEqual({ pitch: 0, yaw: 0 })
   })
 })
 

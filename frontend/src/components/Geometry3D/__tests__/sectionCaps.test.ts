@@ -68,7 +68,7 @@ describe('placeSectionCapQuad', () => {
   beforeEach(() => resetSectionClippingForTest())
 
   it('writes the world matrix on the live plane, without a later scene update', () => {
-    setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 0, 1], point: [0, 0, 0] }, 3, false))
+    setSectionClipPlane(sectionPlaneFromFrame({ normal: [0, 0, 1], point: [0, 0, 0], u: [1, 0, 0], v: [0, 1, 0] }, 3, false))
     const plane = getSectionClipPlane()
 
     const parent = new THREE.Group()
@@ -92,5 +92,30 @@ describe('placeSectionCapQuad', () => {
     expect(worldNormal.x).toBeCloseTo(plane.normal.x, 9)
     expect(worldNormal.y).toBeCloseTo(plane.normal.y, 9)
     expect(worldNormal.z).toBeCloseTo(plane.normal.z, 9)
+  })
+
+  it('orients the cap by the tilted plane, not by the source normal', () => {
+    const frame = {
+      normal: [0, 0, 1] as [number, number, number],
+      point: [0, 0, 0] as [number, number, number],
+      u: [1, 0, 0] as [number, number, number],
+      v: [0, 1, 0] as [number, number, number],
+    }
+    setSectionClipPlane(sectionPlaneFromFrame(frame, 2, false, { pitch: 30 * Math.PI / 180, yaw: 0 }))
+    const plane = getSectionClipPlane()
+
+    const parent = new THREE.Group()
+    const quad = new THREE.Mesh(new THREE.PlaneGeometry(1, 1))
+    parent.add(quad)
+    parent.updateMatrixWorld(true)
+    placeSectionCapQuad(quad)
+
+    const worldRotation = new THREE.Quaternion().setFromRotationMatrix(quad.matrixWorld)
+    const worldNormal = new THREE.Vector3(0, 0, 1).applyQuaternion(worldRotation)
+    expect(worldNormal.x).toBeCloseTo(plane.normal.x, 9)
+    expect(worldNormal.y).toBeCloseTo(plane.normal.y, 9)
+    expect(worldNormal.z).toBeCloseTo(plane.normal.z, 9)
+    // The quad really left the source normal.
+    expect(Math.abs(worldNormal.z)).toBeLessThan(0.99)
   })
 })

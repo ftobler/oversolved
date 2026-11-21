@@ -1,59 +1,92 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { useIdPipeline } from './IdPipelineContext'
 import { useRegisteredPart } from './idRegistrationUtils'
 import { FEATURE_HANDLE_LAYER_NAME } from './layerNames'
 import { polylinePickable } from './probeMarks'
 import { clearProbeSource, probeSourceKeys, replaceProbeSource } from './sceneProbeStore'
 import { isDevBuild } from '@/kernel/isDevBuild'
+import type { Vec3 } from '@/utils/vec3'
 
 /** Selection-id key for a feature editing handle. */
 export function featureHandleKey(featureId: string, field: string): string {
   return `fhandle:${featureId}:${field}`
 }
 
-/**
- * Register a feature editing handle's arrow into the featureHandle ID layer
- * as a single line segment from the arrow tail to its tip, both world space
- * (handles are not sketch-plane objects). The layer is priority=80 /
- * no-depth, so the arrow's pixels win over every other layer -- matching the
- * always-on-top visible arrow. The resolver's snap window then gives the
- * whole arrow the same grab slop a vertex point gets, instead of only one
- * point on a much longer visual.
- */
-export function useFeatureHandleIdRegistration(params: {
-  featureId: string
-  field: string
-  start: [number, number, number]
-  end: [number, number, number]
+type FeatureHandleIdentity =
+  | { featureId: string; field: string; key?: undefined }
+  // A handle whose key is already canonical in its own module (the section's
+  // rings use `section:ring:<angle>`), rather than feature/field shaped.
+  | { key: string; featureId?: undefined; field?: undefined }
+
+interface FeatureHandleGeometry {
+  // The arrow's tail and tip, in world space.
+  start?: Vec3
+  end?: Vec3
+  // A closed chain of world points, registered as consecutive segments under
+  // ONE key. A ring is one grab target, not one per sampled segment, so the
+  // resolver's window and the hover/selection id stay per-handle.
+  points?: ReadonlyArray<Vec3>
   enabled?: boolean
-}): void {
+}
+
+/**
+ * Register a feature editing handle into the featureHandle ID layer.
+ *
+ * The layer is priority=80 / no-depth, so the handle's pixels win over every
+ * other layer, matching the always-on-top drawing. The handle is one or more
+ * line segments: an arrow registers its tail-to-tip segment, a ring its closed
+ * chain. The resolver's snap window then gives the whole handle the same grab
+ * slop a vertex point gets, instead of only one point on a much longer visual.
+ */
+export function useFeatureHandleIdRegistration(
+  params: FeatureHandleIdentity & FeatureHandleGeometry,
+): void {
   const pipeline = useIdPipeline()
-  const { featureId, field, enabled = true } = params
-  const [sx, sy, sz] = params.start
-  const [ex, ey, ez] = params.end
+  const { enabled = true } = params
+  const entityKey = params.key !== undefined
+    ? params.key
+    : featureHandleKey(params.featureId, params.field)
 
-  const entityKey = featureHandleKey(featureId, field)
+  // Scalars keep the arrow's effect stable across renders that hand in a fresh
+  // array; the ring path passes a memoized chain.
+  const [sx, sy, sz] = params.start ?? [0, 0, 0]
+  const [ex, ey, ez] = params.end ?? [0, 0, 0]
+  const points = params.points
 
-  // The probe publishes the same arrow segment the layer registers.
+  const geometry = useMemo(() => {
+    const chain: ReadonlyArray<Vec3> = points ?? [[sx, sy, sz], [ex, ey, ez]]
+    if (chain.length < 2) return null
+    const positions = new Float32Array((chain.length - 1) * 6)
+    for (let i = 0; i < chain.length - 1; i++) {
+      positions.set(chain[i], i * 6)
+      positions.set(chain[i + 1], i * 6 + 3)
+    }
+    return { chain, positions }
+  }, [points, sx, sy, sz, ex, ey, ez])
+
+  const registered = enabled && geometry !== null
+
+  // The probe publishes the same segments the layer registers.
   useEffect(() => {
-    if (!enabled) return
+    if (!registered || !geometry) return
     const probeKey = probeSourceKeys.featureHandle(entityKey)
     replaceProbeSource(probeKey, [
-      polylinePickable(FEATURE_HANDLE_LAYER_NAME, entityKey, [[sx, sy, sz], [ex, ey, ez]]),
+      polylinePickable(FEATURE_HANDLE_LAYER_NAME, entityKey, geometry.chain),
     ])
     return () => clearProbeSource(probeKey)
-  }, [enabled, entityKey, sx, sy, sz, ex, ey, ez])
+  }, [registered, entityKey, geometry])
 
   useRegisteredPart(
     pipeline,
-    enabled,
+    registered,
     entityKey,
     (p) => {
+      if (!geometry) return false
       try {
         p.featureHandleLayer.registerPart({
           partKey: entityKey,
-          segmentPositions: new Float32Array([sx, sy, sz, ex, ey, ez]),
-          segmentToEdge: [0],
+          segmentPositions: geometry.positions,
+          segmentToEdge: new Array(geometry.chain.length - 1).fill(0),
           edgeQueries: [entityKey],
         })
         return true
@@ -66,6 +99,6 @@ export function useFeatureHandleIdRegistration(params: {
       }
     },
     (p) => p.featureHandleLayer.unregisterPart(entityKey),
-    [sx, sy, sz, ex, ey, ez],
+    [geometry],
   )
 }

@@ -4,7 +4,7 @@
 import { useCallback, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useThree } from '@react-three/fiber'
-import { closestParamOnAxis } from '@/utils/gizmoMath'
+import { closestParamOnAxis, type Ray } from '@/utils/gizmoMath'
 import { p2w } from '@/utils/geometry/sketchHelpers'
 
 // How far the pixel factor may drift before it is worth a re-render. Only steps
@@ -16,6 +16,9 @@ const ZOOM_STEP_DOWN = 0.8
 export interface AxisDragTools {
   // Pixel-to-world factor at the last quantization step.
   pxToWorld: number
+  // The world ray under a pointer position, or null when the canvas has no
+  // measurable size.
+  rayFrom: (clientX: number, clientY: number) => Ray | null
   // The axis parameter under the cursor, or null when the pointer rays past it.
   cursorAxisParam: (e: PointerEvent, axisPoint: [number, number, number], axisDir: [number, number, number]) => number | null
   // Re-quantize from the live camera; call from useFrame with the fresh factor.
@@ -30,23 +33,29 @@ export function useAxisDrag(): AxisDragTools {
   })
   const raycasterRef = useRef(new THREE.Raycaster())
 
-  const cursorAxisParam = useCallback((
-    e: PointerEvent,
-    axisPoint: [number, number, number],
-    axisDir: [number, number, number],
-  ): number | null => {
+  const rayFrom = useCallback((clientX: number, clientY: number): Ray | null => {
     const rect = gl.domElement.getBoundingClientRect()
     if (rect.width === 0 || rect.height === 0) return null
     const ndc = {
-      x: ((e.clientX - rect.left) / rect.width) * 2 - 1,
-      y: -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      x: ((clientX - rect.left) / rect.width) * 2 - 1,
+      y: -((clientY - rect.top) / rect.height) * 2 + 1,
     }
     const rc = raycasterRef.current
     rc.setFromCamera(new THREE.Vector2(ndc.x, ndc.y), camera)
     const o = rc.ray.origin
     const d = rc.ray.direction
-    return closestParamOnAxis({ origin: [o.x, o.y, o.z], direction: [d.x, d.y, d.z] }, axisPoint, axisDir)
+    return { origin: [o.x, o.y, o.z], direction: [d.x, d.y, d.z] }
   }, [camera, gl])
+
+  const cursorAxisParam = useCallback((
+    e: PointerEvent,
+    axisPoint: [number, number, number],
+    axisDir: [number, number, number],
+  ): number | null => {
+    const ray = rayFrom(e.clientX, e.clientY)
+    if (!ray) return null
+    return closestParamOnAxis(ray, axisPoint, axisDir)
+  }, [rayFrom])
 
   const trackZoom = useCallback((pixelsPerWorld: number) => {
     if (pixelsPerWorld > pxToWorld * ZOOM_STEP_UP || pixelsPerWorld < pxToWorld * ZOOM_STEP_DOWN) {
@@ -54,5 +63,5 @@ export function useAxisDrag(): AxisDragTools {
     }
   }, [pxToWorld])
 
-  return { pxToWorld, cursorAxisParam, trackZoom }
+  return { pxToWorld, rayFrom, cursorAxisParam, trackZoom }
 }

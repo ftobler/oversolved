@@ -6,13 +6,19 @@
 // options beside it, and a stale one after a reload would be a confusing
 // surprise rather than a restore.
 import { create } from 'zustand'
-import type { SectionPlaneSource } from '@/viewport/sectionTypes'
+import { NO_TILT, type SectionPlaneSource, type SectionTilt } from '@/viewport/sectionTypes'
+import { clampSectionTilt } from '@/viewport/sectionTilt'
 
 export interface SectionState {
   enabled: boolean
   plane: SectionPlaneSource
-  // Distance along the plane's normal, world units.
+  // Distance along the SOURCE normal, world units. The tilt pivots about this
+  // point, so the Offset box keeps meaning the same thing once the plane is
+  // turned.
   offset: number
+  // Rotation of the plane about its source frame's own axes, radians. Pitch
+  // turns about `u`, then yaw about the pitched `v`; there is no roll.
+  tilt: SectionTilt
   // Keep the other half-space.
   flipped: boolean
   // Why an enabled section turned itself off. Set when the picked plane or face
@@ -35,6 +41,10 @@ export interface SectionState {
   setEnabled: (on: boolean) => void
   setPlane: (plane: SectionPlaneSource) => void
   setOffset: (value: number) => void
+  // The tilt is clamped to the cone where the plane still cuts along its own
+  // normal (see clampSectionTilt), so no caller can park the section at 90.
+  setTilt: (tilt: SectionTilt) => void
+  resetTilt: () => void
   setFlipped: (flipped: boolean) => void
   toggleFlipped: () => void
   setPicking: (picking: boolean) => void
@@ -52,13 +62,14 @@ export const DEFAULT_SECTION_STATE = {
   enabled: false,
   plane: { kind: 'builtin', id: 'front' } as SectionPlaneSource,
   offset: 0,
+  tilt: NO_TILT,
   flipped: false,
   disabledReason: null,
   pickError: null,
   picking: false,
   resolved: false,
   capturing: false,
-} satisfies Pick<SectionState, 'enabled' | 'plane' | 'offset' | 'flipped' | 'disabledReason' | 'pickError' | 'picking' | 'resolved' | 'capturing'>
+} satisfies Pick<SectionState, 'enabled' | 'plane' | 'offset' | 'tilt' | 'flipped' | 'disabledReason' | 'pickError' | 'picking' | 'resolved' | 'capturing'>
 
 export const SECTION_SOURCE_GONE_REASON = 'Section off: the picked plane or face no longer resolves after the solve.'
 export const SECTION_FACE_NOT_FLAT_REASON = 'Pick a flat face or a plane.'
@@ -85,7 +96,9 @@ export const useSectionStore = create<SectionState>((set, get) => ({
 
   setEnabled: (on) => set({ enabled: on, disabledReason: null, picking: false, pickError: null, resolved: false }),
 
-  setPlane: (plane) => set({ plane, disabledReason: null, pickError: null }),
+  // A new source starts untilted: the old angles were counted from the old
+  // frame's axes and would point the new plane somewhere arbitrary.
+  setPlane: (plane) => set({ plane, tilt: { ...NO_TILT }, disabledReason: null, pickError: null }),
 
   setOffset: (value) => {
     // A non-finite offset would place the plane at NaN and silently clip the
@@ -93,6 +106,15 @@ export const useSectionStore = create<SectionState>((set, get) => ({
     if (!Number.isFinite(value)) return
     set({ offset: value })
   },
+
+  setTilt: (tilt) => {
+    // A non-finite angle would turn the plane's normal into NaN and clip the
+    // whole scene away; hold the previous pose instead, as setOffset does.
+    if (!Number.isFinite(tilt.pitch) || !Number.isFinite(tilt.yaw)) return
+    set({ tilt: clampSectionTilt(tilt) })
+  },
+
+  resetTilt: () => set({ tilt: { ...NO_TILT } }),
 
   setFlipped: (flipped) => set({ flipped }),
 
@@ -119,5 +141,5 @@ export const useSectionStore = create<SectionState>((set, get) => ({
     set({ enabled: false, disabledReason: reason, picking: false, resolved: false })
   },
 
-  reset: () => set({ ...DEFAULT_SECTION_STATE }),
+  reset: () => set({ ...DEFAULT_SECTION_STATE, tilt: { ...NO_TILT } }),
 }))
