@@ -206,6 +206,78 @@ describe('sketchEditorStore', () => {
       })
     })
 
+    it('ignores a carried plane and names the two lines as the operands', () => {
+      // The bugreport path: Top was selected in part view, the sketch opened
+      // with it still selected, and each line click added to that invisible
+      // pick. A plane is never an operand, so the two lines are the pick.
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().setEntityKindMap({
+        'entity:S1:L1': 'line',
+        'entity:S1:L2': 'line',
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('@builtin_plane_top')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L2')
+
+      expect(useSketchEditorStore.getState().applyConstraint('equal_length')).toBeNull()
+
+      expect(handler).toHaveBeenCalledWith({
+        type: 'add_constraint',
+        featureId: 'S1',
+        kind: 'equal_length',
+        targets: ['entity:S1:L1', 'entity:S1:L2'],
+      })
+    })
+
+    it('ignores a carried plane and refuses the lone remaining line by count', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().setEntityKindMap({ 'entity:S1:L1': 'line' })
+      useSketchEditorStore.getState().toggleNormalSelection('@builtin_plane_top')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+
+      expect(useSketchEditorStore.getState().applyConstraint('equal_length'))
+        .toBe('Equal needs two operands (two lines, or two arcs/circles), got one')
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('keeps the arity refusal for a lone constraint tile pick', () => {
+      // A constraint tile is not an operand, but a lone tile still answers the
+      // command's own arity refusal; it must not become a silent ok.
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().toggleNormalSelection('constraint:S1:C1')
+
+      expect(useSketchEditorStore.getState().applyConstraint('equal_length'))
+        .toBe('Equal needs two operands (two lines, or two arcs/circles), got one')
+      expect(handler).not.toHaveBeenCalled()
+    })
+
+    it('ignores a constraint tile beside two lines', () => {
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      useSketchEditorStore.getState().setActiveFeatureId('S1')
+      useSketchEditorStore.getState().setEntityKindMap({
+        'entity:S1:L1': 'line',
+        'entity:S1:L2': 'line',
+      })
+      useSketchEditorStore.getState().toggleNormalSelection('constraint:S1:C1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L1')
+      useSketchEditorStore.getState().toggleNormalSelection('entity:S1:L2')
+
+      expect(useSketchEditorStore.getState().applyConstraint('equal_length')).toBeNull()
+      expect(handler).toHaveBeenCalledWith({
+        type: 'add_constraint',
+        featureId: 'S1',
+        kind: 'equal_length',
+        targets: ['entity:S1:L1', 'entity:S1:L2'],
+      })
+    })
+
     it('rejects parallel between two arcs (entityKinds guard)', () => {
       const handler = vi.fn()
       setSketchCallback('onMutation', handler)

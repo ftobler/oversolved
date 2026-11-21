@@ -75,6 +75,43 @@ describe('applyAddConstraint', () => {
     expect(JSON.stringify(doc)).toBe(before)
   })
 
+  it('leaves the bugreport sketch unchanged when the host plane is named as an operand', () => {
+    // The reported document: a closed four-line loop on Top, every corner
+    // coincident. Pressing [e] with Top still carried in the selection authored
+    // `a: @builtin_plane_top`, a row the solver can only drop.
+    const doc: PartDoc = {
+      version: 1,
+      kind: 'part',
+      features: [{
+        id: 'sk1',
+        kind: 'sketch',
+        plane: '@builtin_plane_top',
+        initial: {
+          L1: [0, 0, -10.100069, 5.63341],
+          L2: [-10.100069, 5.63341, 0.352596, 23.722263],
+          L3: [0.352596, 23.722263, 11.086573, 17.805966],
+          L4: [11.086573, 17.805966, 0, 0],
+        },
+        entities: [
+          { id: 'L1', kind: 'line' },
+          { id: 'L2', kind: 'line' },
+          { id: 'L3', kind: 'line' },
+          { id: 'L4', kind: 'line' },
+        ],
+        constraints: [
+          { id: 'c1', kind: 'coincident', a: '$L1start', b: '@builtin_origin' },
+          { id: 'c2', kind: 'coincident', a: '$L2start', b: '$L1end' },
+          { id: 'c3', kind: 'coincident', a: '$L3start', b: '$L2end' },
+          { id: 'c4', kind: 'coincident', a: '$L4start', b: '$L3end' },
+          { id: 'c5', kind: 'coincident', a: '$L4end', b: '$L1start' },
+        ],
+      }],
+    }
+    const before = JSON.stringify(doc)
+    applyAddConstraint(doc, 'sk1', 'equal_length', ['@builtin_plane_top', '$L3'])
+    expect(JSON.stringify(doc)).toBe(before)
+  })
+
   it('stores a point-first line_distance line-first, keeping the value and sign', () => {
     const doc = makeSampleDoc()
     applyAddConstraint(

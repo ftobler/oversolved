@@ -8,7 +8,8 @@ import type { PartConstraint, SketchFeature } from '@/types/cad'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
 import { resolveVertexRef } from '@/types/vertexRef'
 import { entityPointKeys } from '@/registry/entityRegistry'
-import { constraintOperandProblem } from '@/registry/constraintRegistry'
+import { CONSTRAINT_BY_KIND, constraintOperandProblem } from '@/registry/constraintRegistry'
+import { classifyBrepOperand } from '@/tools/operandProjection'
 import { emitWire, local } from '@/utils/query'
 import {
   constraintEntityKindProblem,
@@ -72,6 +73,55 @@ export function foreignConstraintTarget(target: string, featureId: string): bool
   const parts = target.split(':')
   if (parts[0] !== 'entity' && parts[0] !== 'vertex') return false
   return parts[1] !== undefined && parts[1] !== '' && parts[1] !== featureId
+}
+
+/**
+ * True when `target` can be one operand of a sketch constraint: a sketch-local
+ * `$`/`entity:`/`vertex:` ref, the builtin origin, a `dock:`/`isect:` handle, or
+ * a B-rep edge/vertex the editor projects before the applier sees it.
+ *
+ * This is the editor's pick filter. A plane, another feature row, a face/edge
+ * wrapper and a constraint tile are not operands and are dropped silently, so a
+ * carried plane cannot block a real pick.
+ */
+export function isConstraintOperandRef(target: unknown): boolean {
+  if (typeof target !== 'string') return false
+  if (target === '@builtin_origin') return true
+  if (target.startsWith('$') || target.startsWith('dock:') || target.startsWith('isect:')) return true
+  // A feature-qualified sketch ref stays an operand shape even when it names
+  // another sketch: the projection plan and the stale-ref path own that.
+  const parts = target.split(':')
+  if (parts[0] === 'entity' || parts[0] === 'vertex') return true
+  return classifyBrepOperand(target) !== null
+}
+
+/**
+ * The two feature-qualified query wrappers the applier accepts. `parseTarget`
+ * strips the wrapper and stores its inner `?query` verbatim, so the row names a
+ * B-rep query, not sketch geometry. `addConstraintProblem` keeps that applier
+ * path; the solve lowering names the stored inner query with the operand
+ * sentence, and the drive refuses the wrapper before it is stored.
+ */
+export function isLegacyQueryWrapper(target: unknown): boolean {
+  return typeof target === 'string'
+    && (target.startsWith('face:') || target.startsWith('edge:'))
+}
+
+/**
+ * Why a ref cannot be a constraint operand, or null when it can. This is the
+ * closed-list answer for the applier and the lowering: a plane, another feature,
+ * a non-projectable `?` query, a constraint tile and any other spelling are not
+ * sketch geometry. The sentence names the kind of thing when the ref alone
+ * classifies it (a builtin plane is the common case); otherwise it says the pick
+ * is not sketch geometry, which is still more truthful than the lowering's old
+ * `stale reference`.
+ */
+export function constraintOperandRefProblem(kind: string, target: unknown): string | null {
+  if (typeof target !== 'string') return null
+  if (isConstraintOperandRef(target)) return null
+  const label = CONSTRAINT_BY_KIND.get(kind)?.label ?? kind
+  const noun = target.startsWith('@builtin_plane_') ? 'a plane' : 'not sketch geometry'
+  return `${label} takes sketch geometry; ${target} is ${noun}`
 }
 
 /** The one warning sentence for a constraint ignored by either the live-doc
@@ -414,6 +464,19 @@ function constraintShapeProblem(
     if (foreign !== undefined) {
       return `constraint targets must be in sketch ${featureId}; project ${foreign} first (add_projected_entity)`
     }
+  }
+
+  // A constraint can only name sketch geometry. This is judged before the count
+  // and the entity-kind table so a plane (the bugreport's carried host plane)
+  // hears what it is, not that the kind wants another operand. The same rule
+  // names the row at the solve lowering; the editor's pick filter drops every
+  // non-operand. The face:/edge: wrappers are the one add-time exception: the
+  // applier accepts the wrapper and stores its inner query verbatim (see
+  // `isLegacyQueryWrapper`).
+  for (const target of targets) {
+    if (isLegacyQueryWrapper(target)) continue
+    const notGeometry = constraintOperandRefProblem(kind, target)
+    if (notGeometry !== null) return notGeometry
   }
 
   if (kind === 'midpoint') {
