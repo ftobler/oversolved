@@ -129,6 +129,12 @@ const KNOWN_HANGS: readonly { seed: number; phase: ChainPhase; step: number; kin
 // the chain stops at the array and never records the pinned edge pick. The
 // refusal is the intended answer and is unit-tested; 21 of the 1500 recipes
 // draw such an array, so those chains only lose their tail.
+// Then on 2026-11-22 the table dropped seed 709 steps 1 and 2, seed 853 step 1,
+// seed 1189 step 1, seed 1190 step 2 and seed 1375 step 4: each was a fillet or
+// chamfer edge pick whose UUID survived the growth while its stored @cls_
+// tie-break did not. The stable-ancestry resolver now takes an exact UUID match
+// as identity (14302db3f), so those picks resolve; disabling that line brings
+// all six back with their pinned messages.
 // Two kinds share the pin: a re-mint (the reference goes dead under the +2.5 mm
 // growth) and an unreached pick (a stale pick at an earlier step stopped the
 // perturbed chain, so the reference cannot even be tested). The rate holds at
@@ -181,22 +187,16 @@ const KNOWN_STALE_PICKS: readonly PickPin[] = [
   { seed: 578, step: 5, match: PICK_UNREACHED, note: 'unreached: a stale pick at an earlier step stopped the chain' },
   { seed: 639, step: 5, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth (the mirror step at 2 no longer hangs on OCCT 8)' },
   { seed: 682, step: 3, match: PICK_REMINT_FACE, note: 'face re-mints under the +2.5 mm growth' },
-  { seed: 709, step: 1, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 709, step: 2, match: PICK_UNREACHED, note: 'unreached: a stale pick at an earlier step stopped the chain' },
   { seed: 710, step: 2, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 753, step: 2, match: PICK_REMINT_FACE, note: 'face re-mints under the +2.5 mm growth' },
-  { seed: 853, step: 1, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 893, step: 3, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 893, step: 4, match: PICK_UNREACHED, note: 'unreached: a stale pick at an earlier step stopped the chain' },
   { seed: 951, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 1054, step: 3, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 1054, step: 4, match: PICK_UNREACHED, note: 'unreached: a stale pick at an earlier step stopped the chain' },
   { seed: 1065, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 1189, step: 1, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 1190, step: 2, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 1323, step: 2, match: PICK_REMINT_FACE, note: 'face re-mints under the +2.5 mm growth' },
   { seed: 1350, step: 2, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
-  { seed: 1375, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 1378, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth' },
   { seed: 1469, step: 4, match: PICK_REMINT_EDGE, note: 'edge re-mints under the +2.5 mm growth (the mirror step at 2 no longer hangs on OCCT 8)' },
   {
