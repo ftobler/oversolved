@@ -1,0 +1,46 @@
+{
+  "origin": {
+    "kind": "bug_report",
+    "ref": "bugreports/20261122_0149_regression_on_move_face.md",
+    "date": "2026-11-22"
+  },
+  "license": "own",
+  "severity": "hard",
+  "what": "a 19 x 35 x 27 box whose move_face stores a legacy bottom-cap UUID beside four live side walls",
+  "features": {
+    "default": "ok",
+    "except": {
+      "Origin": "exception",
+      "Top": "exception",
+      "Front": "exception",
+      "Right": "exception",
+      "UHhj-nNoaIzaMMtCc6z7ExwC": "fully_constrained"
+    }
+  },
+  "tolerance": {
+    "rel": 0.000001,
+    "abs": 0.000001
+  },
+  "topology": "strict",
+  "measures": {
+    "bodies": 1,
+    "volume": 26013,
+    "area": 5390,
+    "centroid": [
+      0,
+      12.5,
+      -1.2791700066333325e-16
+    ],
+    "bbox": [
+      -11.5,
+      -2,
+      -19.5,
+      11.5,
+      27,
+      19.5
+    ],
+    "faces": 6,
+    "edges": 12
+  },
+  "snapshot": false
+}

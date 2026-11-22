@@ -13,10 +13,13 @@
 // construction UUID (never by index). An earlier move that consumes a later
 // face reports that face as failed, not a guess.
 // A group the intermediate shape refuses (a neighbour surface an earlier move
-// left unable to cross the next slab), or one with a pick whose UUID is not
-// live (a pre-split document), is applied with every slab selected on the
-// original body in one boolean, which depends on the picked set rather than the
-// list order.
+// left unable to cross the next slab), or one with a pick that resolves to a
+// face carrying no live construction UUID (a true pre-split document), is
+// applied with every slab selected on the original body in one boolean, which
+// depends on the picked set rather than the list order. Two picks that share an
+// edge are refused by name on that path: each slab is bounded by its
+// neighbours on their ORIGINAL surfaces, so the strip beyond a shared edge is
+// never filled.
 
 import type { DisposeScope } from '../occ/disposeScope'
 import type { OccModule, OccShape, OccSubShape } from '../occ/occTypes'
@@ -29,6 +32,7 @@ import { readPartNames, type ShapeNames } from '../occ/partNames'
 import { SubShapeMap } from '../occ/subshapeIdentity'
 import { partOfQuery, makeFaceIndexCache, queryFaceUuid, resolveFacesByQuery } from './shared/faceResolution'
 import {
+  adjacentMoveFacePicks,
   applyMoveFace,
   combineMoveFaceCells,
   faceNormalAndCentroid,
@@ -66,6 +70,8 @@ interface MoveFaceResult {
 
 /** A resolved pick with its cells selected on the original body shape. */
 interface AppliedPick {
+  // The stored query, so a set-path refusal can name the pick the user holds.
+  q: string
   uuid: string | null
   face: OccShape
   cells: MoveFaceCells
@@ -87,10 +93,10 @@ function uuidMap(names: SubShapeMap<string>): Map<string, OccShape> {
 
 /**
  * Solve a move-face feature (the generator `KIND_SOLVER.move_face` dispatches
- * to). Faces are grouped by owning body and applied in list order, with the
- * one-boolean set path described above; a distance of 0 is the identity (no
- * `modified_by`, no resplit). Throws for the errors the builder turns into an
- * `exception` status.
+ * to). Faces are grouped by owning body and applied in canonical pick order,
+ * with the one-boolean set path described above; a distance of 0 is the
+ * identity (no `modified_by`, no resplit). Throws for the errors the builder
+ * turns into an `exception` status.
  */
 export function solveMoveFace(
   oc: OccModule,
@@ -146,28 +152,36 @@ export function solveMoveFace(
     const oldShape = table.get<OccShape>(part.shape)
     const baseNames: ShapeNames = readPartNames(oc, scope, oldShape, part)
     const baseMap = uuidMap(baseNames.faceNames)
-    // A pick that names no live UUID (a document stored before split prism side
-    // faces got their own UUIDs) cannot be re-found on the intermediate shape.
-    // Apply the group as a set on the original body, where the resolver's
-    // stable-ancestry migration separates the dead picks by their classifiers.
-    const needsSet = qlist.some((q) => {
-      const uuid = queryFaceUuid(q)
-      return uuid === null || !baseMap.has(uuid)
+    // Resolve every pick once on the original body BEFORE choosing the route.
+    // A pick whose stored UUID died can still resolve: the legacy cap and
+    // stable-ancestry hand-offs recover the live face from the query's own
+    // lineage. Choosing from the raw UUID sent such a group to the one-boolean
+    // set path, which cannot extend one moved face by the adjacent one and
+    // left a notch at every shared edge (the 2026-11-22 report: 25117 mm3 and
+    // 22 faces instead of the 26013 box). Only a pick that resolves to a face
+    // with NO live construction name is the true pre-split case: its face
+    // cannot be re-found on the intermediate shape by UUID, so the group still
+    // needs the set path.
+    const picks = qlist.map((q, pickIndex) => {
+      const face = resolveFacesByQuery(oc, scope, table, part, indexFor(part), [q], partStore).get(q) ?? null
+      const liveUuid = face === null ? null : (baseNames.faceNames.get(face as OccSubShape) ?? null)
+      return { q, pickIndex, face, liveUuid }
     })
+    const needsSet = picks.some((pick) => pick.face !== null && pick.liveUuid === null)
     // A move of several faces must be a function of the picked SET, not of the
     // order the chips happen to be in. The sequential path below applies the
     // picks one after another, so its result depends on which pick runs first;
     // OCCT 8 tolerates some neighbouring pairs 7.4 refused, so list order and
     // reverse order could take different paths (one sequential, one set) and
     // disagree by 3.75 mm with a different face count (moveFaceRobustnessReal).
-    // Sorting the group by the pick's own construction UUID makes both orders
-    // run the same sequence; a refusal then falls back to the set path exactly
-    // as before. The pick's ORIGINAL index still keys its names, so the minted
-    // `set|N` paths stay the ones the document order (and the set path) mint.
+    // The sort key is the STORED pick UUID (or the query when it names none),
+    // never the resolved live one: a legacy document and the same document
+    // re-picked live then run the same sequence instead of silently changing
+    // order. A refusal still falls back to the set path exactly as before. The
+    // pick's ORIGINAL index still keys its names, so the minted `set|N` paths
+    // stay the ones the document order (and the set path) mint.
     const moveOrder = (q: string): string => queryFaceUuid(q) ?? q
-    const ordered = qlist
-      .map((q, pickIndex) => ({ q, pickIndex }))
-      .sort((a, b) => moveOrder(a.q).localeCompare(moveOrder(b.q)))
+    const ordered = [...picks].sort((a, b) => moveOrder(a.q).localeCompare(moveOrder(b.q)))
     let currentShape = oldShape
     let currentNames = baseNames
     let currentMap = baseMap
@@ -182,30 +196,26 @@ export function solveMoveFace(
     const groupFailed: string[] = []
     const groupRefusals: string[] = []
 
-    if (!needsSet) {
-      for (const { q, pickIndex } of ordered) {
-        const uuid = queryFaceUuid(q)
-        let face: OccShape | null = uuid !== null ? (currentMap.get(uuid) ?? null) : null
-        // First pick (or one whose UUID the intermediate shape dropped): the
-        // full resolver on the ORIGINAL body can recover a face whose UUID
-        // died. Later picks must be found on the CURRENT shape, never a stale
-        // original one.
-        if (face === null && partApplied === 0) {
-          face = resolveFacesByQuery(oc, scope, table, part, indexFor(part), [q], partStore).get(q) ?? null
-        }
-        if (face === null) {
-          // A later pick the intermediate shape no longer carries: when it
-          // still resolves on the ORIGINAL body, an earlier move consumed it
-          // (the geometry is the fix, not the pick); otherwise it is stale.
-          const existedBefore = partApplied > 0 &&
-            (resolveFacesByQuery(oc, scope, table, part, indexFor(part), [q], partStore).get(q) ?? null) !== null
-          if (existedBefore) groupFailed.push(q)
-          else unresolved.push(q)
+    if (distance === 0) {
+      // The identity resolves each pick up front and changes nothing; a pick
+      // that did not resolve is stale, never a consumed one.
+      for (const pick of picks) {
+        if (pick.face === null) unresolved.push(pick.q)
+        else partApplied++
+      }
+    } else if (!needsSet) {
+      for (const { q, pickIndex, face: original, liveUuid } of ordered) {
+        if (original === null) {
+          unresolved.push(q)
           continue
         }
-        if (distance === 0) {
-          // The identity: report the pick as satisfied, change nothing.
-          partApplied++
+        // A later pick must be found on the CURRENT shape by its live UUID,
+        // never the stale original face. It resolved on the ORIGINAL body, so
+        // the intermediate shape dropping it means an earlier move consumed it
+        // (the geometry is the fix, not the pick).
+        const face: OccShape | null = liveUuid !== null ? (currentMap.get(liveUuid) ?? null) : null
+        if (face === null) {
+          groupFailed.push(q)
           continue
         }
         try {
@@ -220,7 +230,7 @@ export function solveMoveFace(
             ]
             handle = linearHandle('distance', anchor, normal, distance, 1, MOVE_FACE_HANDLE_MIN)
           }
-          const movedUuid = currentNames.faceNames.get(face as OccSubShape) ?? uuid
+          const movedUuid = currentNames.faceNames.get(face as OccSubShape) ?? liveUuid
           currentNames = nameMovedFaces(
             oc, scope, featureId, currentNames, res,
             [{ uuid: movedUuid, cells: res.cells, pickIndex }], qlist.length,
@@ -244,33 +254,28 @@ export function solveMoveFace(
       }
     }
 
-    if (needsSet && distance === 0) {
-      // The identity still reports stale picks, but the dead UUID is only
-      // resolved (never applied), so the ancestry migration runs here.
-      for (const q of qlist) {
-        const face = resolveFacesByQuery(oc, scope, table, part, indexFor(part), [q], partStore).get(q) ?? null
-        if (face === null) unresolved.push(q)
-        else partApplied++
-      }
-    }
-
     let committed = false
     if ((refusedHere || needsSet) && distance !== 0) {
       const setPicks: AppliedPick[] = []
       const setFailed: string[] = []
       const setRefusals: string[] = []
-      for (const [pickIndex, q] of qlist.entries()) {
-        const face = resolveFacesByQuery(oc, scope, table, part, indexFor(part), [q], partStore).get(q) ?? null
-        if (face === null) {
-          unresolved.push(q)
+      for (const pick of picks) {
+        if (pick.face === null) {
+          unresolved.push(pick.q)
           continue
         }
-        const uuid = baseNames.faceNames.get(face as OccSubShape) ?? queryFaceUuid(q)
+        const uuid = pick.liveUuid ?? queryFaceUuid(pick.q)
         try {
-          setPicks.push({ uuid, face, cells: moveFaceCells(oc, scope, oldShape, face, distance), pickIndex })
+          setPicks.push({
+            q: pick.q,
+            uuid,
+            face: pick.face,
+            cells: moveFaceCells(oc, scope, oldShape, pick.face, distance),
+            pickIndex: pick.pickIndex,
+          })
         } catch (e) {
           if (e instanceof MoveFaceRefusal) {
-            setFailed.push(q)
+            setFailed.push(pick.q)
             setRefusals.push(e.message)
             continue
           }
@@ -285,6 +290,29 @@ export function solveMoveFace(
       groupRefusals.length = 0
       groupFailed.push(...setFailed)
       groupRefusals.push(...setRefusals)
+      // The one-boolean set move cannot extend one moved face by the other:
+      // each slab is bounded by its neighbours on their ORIGINAL surfaces, so
+      // two picks sharing an edge leave the strip beyond that edge unfilled.
+      // Refuse the adjacent picks by name rather than shipping the notch; the
+      // rest of the group still applies as a set. The direct B-rep move-face
+      // work replaces this slab construction.
+      const adjacency = adjacentMoveFacePicks(oc, scope, setPicks.map((pick) => pick.face))
+      if (adjacency.length > 0) {
+        const refused = new Set<number>()
+        for (const [a, b] of adjacency) {
+          const first = setPicks[a]
+          const second = setPicks[b]
+          groupFailed.push(first.q, second.q)
+          groupRefusals.push(
+            `move_face: picks ${first.q} and ${second.q} share an edge and the one-boolean set move ` +
+            'cannot extend one moved face by the other; re-pick to move them in sequence',
+          )
+          refused.add(a)
+          refused.add(b)
+        }
+        const kept = setPicks.filter((_, index) => !refused.has(index))
+        setPicks.splice(0, setPicks.length, ...kept)
+      }
       if (setPicks.length > 0) {
         const set = combineMoveFaceCells(oc, scope, oldShape, setPicks, distance)
         scope.track(set.shape)

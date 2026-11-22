@@ -540,12 +540,38 @@ export interface ApplyMoveFaceSetResult {
 }
 
 /**
+ * The pick index pairs whose faces share an edge. The set path applies every
+ * slab in one boolean, and each slab is bounded by its picked face's
+ * neighbours on their ORIGINAL surfaces: for two picks that share an edge,
+ * neither slab covers the strip beyond that edge, so the fused result notches
+ * at every shared edge and corner. The leaf uses the pairs to refuse those
+ * picks by name instead of shipping that geometry.
+ */
+export function adjacentMoveFacePicks(
+  oc: OccModule,
+  scope: DisposeScope,
+  faces: OccShape[],
+): [number, number][] {
+  const edges = faces.map((face) => exploreEdges(oc, scope, face))
+  const out: [number, number][] = []
+  for (let i = 0; i < faces.length; i++) {
+    for (let j = i + 1; j < faces.length; j++) {
+      const shares = edges[i].some((a) => edges[j].some((b) => (a as OccSubShape).IsSame(b as OccSubShape)))
+      if (shares) out.push([i, j])
+    }
+  }
+  return out
+}
+
+/**
  * Apply cells that were all selected on the SAME body shape in one boolean.
  * Moving several faces together is a function of the picked set, not its order:
  * computing every slab against the original body and fusing (or cutting) the
  * union avoids the interference a sequential move creates at a shared
  * boundary, where an earlier move can leave a neighbour surface that no longer
- * crosses the next slab.
+ * crosses the next slab. The leaf refuses a set whose picks share an edge
+ * before calling this (see `adjacentMoveFacePicks`): two slabs bounded by each
+ * other's original neighbours leave the strip beyond the shared edge unfilled.
  *
  * The tool is ordered canonically (by each cell's lower bbox corner, then its
  * upper one) before the
