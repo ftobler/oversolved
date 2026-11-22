@@ -65,10 +65,10 @@ describe.skipIf(!oc || !solveBytes)('the re-seated seam at the blend level', () 
 
   it('select by created_by finds exactly one fillet face and one chamfer face', async () => {
     const res = await build()
-    const bodyId = (res!.result[FILLET] as unknown as FeaturePartsResult).body_id!
+    const partId = (res!.result[FILLET] as unknown as FeaturePartsResult).body_id!
     for (const id of [FILLET, CHAMFER]) {
       const picked = selectByPredicate(
-        { from: bodyId, kind: 'face', where: { created_by: id } },
+        { from: partId, kind: 'face', where: { created_by: id } },
         parts(res),
       )
       expect(picked.queries, id).toHaveLength(1)
@@ -77,12 +77,12 @@ describe.skipIf(!oc || !solveBytes)('the re-seated seam at the blend level', () 
 
   it('the body has the folded topology and one seam on the sphere face', async () => {
     const res = await build()
-    const bodyId = (res!.result[FILLET] as unknown as FeaturePartsResult).body_id!
-    const body = parts(res)[bodyId]
-    const faceQueries = body.mesh?.face_queries ?? []
-    const seams = body.mesh?.face_seam_queries ?? []
+    const partId = (res!.result[FILLET] as unknown as FeaturePartsResult).body_id!
+    const part = parts(res)[partId]
+    const faceQueries = part.mesh?.face_queries ?? []
+    const seams = part.mesh?.face_seam_queries ?? []
     expect(faceQueries).toHaveLength(6)
-    expect(body.edge_queries).toHaveLength(17)
+    expect(part.edge_queries).toHaveLength(17)
 
     const sphereIndex = faceQueries.findIndex((q) => q.endsWith(':sphereface'))
     expect(sphereIndex).toBeGreaterThanOrEqual(0)

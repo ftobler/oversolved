@@ -92,7 +92,7 @@ function closeVolume(before: number, after: number): void {
 }
 
 /** The report's profile: a sphere R25 revolved about X. */
-function sphereBody(oc2: OccModule, scope: DisposeScope): OccShape {
+function spherePart(oc2: OccModule, scope: DisposeScope): OccShape {
   const arc = scope.track(makeArcEdge(oc2, scope, [0, 0, 0], [0, 0, 1], [1, 0, 0], 25, 0, Math.PI))
   const line = scope.track(makeLineEdge(oc2, scope, [-25, 0, 0], [25, 0, 0]))
   const wire = scope.track(makeWire(oc2, scope, [arc, line], { requireClosed: true }))
@@ -106,7 +106,7 @@ function sphereBody(oc2: OccModule, scope: DisposeScope): OccShape {
  * the production boolean runs the BOOLEAN preset, which already re-seats it.
  */
 function sphereMinusSlot(oc2: OccModule, scope: DisposeScope, raw = false): OccShape {
-  const sphere = sphereBody(oc2, scope)
+  const sphere = spherePart(oc2, scope)
   const slot = scope.track(makeBoxAt(oc2, scope, [-10, 10, -30], 20, 20, 60))
   const cut = raw
     ? booleanWithHistoryMany(oc2, scope, sphere, [slot], 'cut')
@@ -345,6 +345,26 @@ describe.skipIf(!oc)('reseatSeams', () => {
       expect(result.changed).toBe(false)
       expect(result.shape).toBe(shape)
       expect(isValid(oc!, scope, shape)).toBe(true)
+    } finally {
+      scope.dispose()
+    }
+  }, 60_000)
+
+  it('leaves a torus whose v seam is also cut alone', () => {
+    // A torus is closed in u and v. A notch on the outer equator cuts the u
+    // seam and the v seam at once; rotating the surface moves only u, so the
+    // rebuild cannot clear the v seam and the pass leaves the face (the split
+    // stays, recorded in backlog.md).
+    const scope = new DisposeScope()
+    try {
+      const torus = plainTorus(oc!, scope)
+      const notch = scope.track(makeBoxAt(oc!, scope, [12, -2, -2], 10, 4, 4))
+      const shape = scope.track(booleanWithHistoryMany(oc!, scope, torus, [notch], 'cut').shape)
+      const torusFace = faceOfType(oc!, scope, shape, 'torus')!
+      expect(seamEdges(oc!, scope, torusFace).length).toBeGreaterThanOrEqual(2)
+      const result = reseatSeams(oc!, scope, shape, {})
+      expect(result.changed).toBe(false)
+      expect(result.shape).toBe(shape)
     } finally {
       scope.dispose()
     }

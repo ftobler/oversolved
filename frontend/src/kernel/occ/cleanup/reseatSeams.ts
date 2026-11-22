@@ -152,27 +152,50 @@ function mainAxis(oc: OccModule, scope: DisposeScope, ad: OccSurfaceAdaptor): Ma
 }
 
 /**
- * Does a seam edge end on a boundary vertex that two or more boundary edges
- * share? That is the residual: the rim had to break to meet the seam. A full
+ * The seam edges that end on a boundary vertex two or more boundary edges
+ * share. That is the residual: the rim had to break to meet the seam. A full
  * sphere's seam ends on degenerate pole edges and a plain cylinder's on a
  * single closed cap circle, neither of which counts.
  */
-function seamIsCut(
+function cutSeams(
   oc: OccModule,
   scope: DisposeScope,
   seamEdges: readonly OccSubShape[],
   boundary: ReadonlyArray<{ edge: OccSubShape; vertices: OccSubShape[] }>,
-): boolean {
+): OccSubShape[] {
+  const cut: OccSubShape[] = []
   for (const seam of seamEdges) {
+    let severed = false
     for (const vertex of edgeVertices(oc, scope, seam)) {
       let incident = 0
       for (const { vertices } of boundary) {
         if (vertices.some((v) => v.IsSame(vertex))) incident++
       }
-      if (incident >= 2) return true
+      if (incident >= 2) {
+        severed = true
+        break
+      }
     }
+    if (severed) cut.push(seam)
   }
-  return false
+  return cut
+}
+
+/**
+ * Is the seam a u seam (constant u along its pcurve)? A surface closed in both
+ * directions (a torus) has a u seam and a v seam; rotating the surface about
+ * its axis moves only u, so a cut v seam is out of this pass's reach.
+ */
+function isUSeam(oc: OccModule, scope: DisposeScope, seam: OccShape, face: OccShape): boolean {
+  try {
+    const ad = scope.track(new oc.BRepAdaptor_Curve2d_2(seam, face))
+    const a = scope.track(ad.Value(ad.FirstParameter()))
+    const b = scope.track(ad.Value(ad.LastParameter()))
+    return Math.abs(a.X() - b.X()) <= 1e-6
+  } catch (e) {
+    swallowUnlessTrap(e)
+    return false
+  }
 }
 
 /** The u values the face's boundary occupies, normalised into one period. */
@@ -293,7 +316,12 @@ function candidateFor(oc: OccModule, scope: DisposeScope, face: OccSubShape): Se
     edge,
     vertices: edgeVertices(oc, scope, edge),
   }))
-  if (!seamIsCut(oc, scope, seamEdges, boundaryVertices)) return null
+  const cut = cutSeams(oc, scope, seamEdges, boundaryVertices)
+  if (cut.length === 0) return null
+  // A torus is closed in u and v: a v seam (its pcurve sweeps u) that the
+  // feature also cut cannot be moved by an axis rotation. Leave that face; the
+  // split stays (phase 2).
+  if (cut.some((seam) => !isUSeam(oc, scope, seam, face))) return null
   // Phase 1: a closed boundary edge is shared with a neighbouring face and its
   // vertex sits on the seam; moving that vertex is a topology rewrite, not a
   // seam re-seat.
@@ -384,7 +412,8 @@ function rebuild(oc: OccModule, scope: DisposeScope, candidate: SeamCandidate): 
     swallowUnlessTrap(e)
   }
   if (isReversed(oc, candidate.face)) {
-    face = scope.track((face as unknown as OccOrientableShape).Reversed() as OccSubShape)
+    const reversible: OccShape = face
+    face = scope.track((reversible as OccOrientableShape).Reversed() as OccSubShape)
   }
   return face
 }
