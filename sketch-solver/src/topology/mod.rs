@@ -14,8 +14,8 @@
 //! its standalone island. It emits NO ancestry query strings; the TS layer
 //! decorates the structural output with queries and classifiers in
 //! `frontend/src/kernel/topologyDecorate.ts` (driven by `query.ts`). The loop
-//! sampling helpers here mirror their surviving TS namesakes in
-//! `frontend/src/kernel/profileLoops.ts`.
+//! sampling helpers live in `geom-core` and the TS kernel reaches them through
+//! the `profile_loops_bytes` facade; both languages sample the same edge list.
 //!
 //! Float parity with the original TS source is load-bearing: vertex-merge
 //! order, the surface/edge index ordering, and sort tie-breaks all feed the

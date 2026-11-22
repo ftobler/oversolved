@@ -30,6 +30,9 @@ describeReal('wasm package split', () => {
   it('keeps the sketch solver and topology builder out of the mate package', () => {
     expect(loadPkgNodeExport('solve_sketch_bytes', PKG_MATE)).toBeNull()
     expect(loadPkgNodeExport('detect_topology_bytes', PKG_MATE)).toBeNull()
+    // The pure-geometry family rides the sketch package with the area builder;
+    // the anchor worker must not grow it by accident.
+    expect(loadPkgNodeExport('profile_loops_bytes', PKG_MATE)).toBeNull()
   })
 
   it('rejects a buffer carrying the other format\'s magic', () => {

@@ -35,7 +35,8 @@
 //!   - `REDUNDANT_ROW_REL`: already relative, but to the row's own norm rather
 //!     than to a length: a share of the row a later row may re-use before it
 //!     counts as a driver.
-//!   - the `TOL_TOPOLOGY_*` constants (`topology/mod.rs`): the area builder's
+//!   - the `TOL_TOPOLOGY_*` constants (`geom-core/src/lib.rs`): the area
+//!     builder's
 //!     identity rule and its ladder with the TS side and OCC
 //!     (`OCC_CONFUSION < TOL_LOOP_CLOSURE <= TOL_TOPOLOGY_MERGE`). They are
 //!     rungs of a ladder whose lower rungs are OCC's own compiled-in numbers,
@@ -79,7 +80,7 @@
 //! `feature/kernel-unify-within-contract.md`'s widening cannot merge the raw
 //! report document by itself.
 //!
-//! The area builder's sampled scan (`topology::curve_intersect`) is the one
+//! The area builder's sampled scan (`geom_core::curve_intersect`) is the one
 //! place where an absolute RESOLUTION is deliberate rather than derived:
 //! `SCAN_SAMPLES` samples the scanned curve's parameter domain, ~1/80 of its
 //! size per step. At the resolution above a full turn would need ~1e13

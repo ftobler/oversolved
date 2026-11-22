@@ -19,7 +19,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as rust from '../profileLoopsRust'
 import { profileLoopsAvailable } from '../profileLoopsRust'
-import type { LoopEdge } from '../profileLoops'
+import { CENTROID_ARC_SAMPLES, type LoopEdge } from '../profileLoops'
 
 const HERE = fileURLToPath(new URL('.', import.meta.url))
 const ROOT = join(HERE, '../../../..')
@@ -294,6 +294,10 @@ function expectClose(got: unknown, want: unknown, path: string): void {
 const WRITE = process.env.PROFILE_LOOPS_GOLDEN_WRITE === '1'
 
 describe('profile loops golden', () => {
+  it('pins the centroid sample count to the Rust mirror', () => {
+    expect(CENTROID_ARC_SAMPLES).toBe(64)
+  })
+
   // Only for a NEW case: the frozen expected values are the ratchet, and
   // rewriting them from the implementation under test defeats it.
   it('writes the fixture when asked', () => {

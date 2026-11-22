@@ -651,6 +651,13 @@ mod tests {
     }
 
     #[test]
+    fn the_centroid_sample_count_is_the_ts_mirror_value() {
+        // `kernel/profileLoops.ts` carries the same 64 for the classifier and
+        // the profile dump; both sides pin it so a one-sided change fails.
+        assert_eq!(CENTROID_ARC_SAMPLES, 64);
+    }
+
+    #[test]
     fn signed_area_ccw_positive() {
         assert!((loop_signed_area(&rect(0.0, 0.0, 2.0, 3.0), 1) - 6.0).abs() < 1e-9);
     }
