@@ -35,5 +35,10 @@ export function loadSolverFresh(): SketchSolverBundle | null {
   const solve = mod.solve_sketch_bytes
   if (typeof solve !== 'function') return null
   const topology = mod.detect_topology_bytes
-  return { solve, topology: typeof topology === 'function' ? topology : null }
+  const profileLoops = mod.profile_loops_bytes
+  return {
+    solve,
+    topology: typeof topology === 'function' ? topology : null,
+    profileLoops: typeof profileLoops === 'function' ? profileLoops : null,
+  }
 }

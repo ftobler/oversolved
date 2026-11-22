@@ -8,7 +8,9 @@
 //! Float parity is load-bearing: vertex order, the sample counts and the
 //! containment tie-breaks feed strings the TS decorator builds, and the
 //! `geom-core` golden fixture (generated from the TS implementation) pins the
-//! two sides together.
+//! two sides together. The polygonising sample count is therefore an argument,
+//! not a constant: the coarse 1 is the area builder's historical pass, the
+//! fine 64 is what the profile dump and the even/odd classifier measure.
 
 use crate::curve_split::bezier_point;
 use crate::{radians, TOL_NEAR_ZERO_AREA};
@@ -100,8 +102,52 @@ pub struct BoundaryEdge {
     pub end_vertex: Option<String>,
 }
 
+/// One loop edge as the wire holds it: the geometry plus the start point the
+/// caller's dict carried.
+///
+/// The explicit start matters for a fit spline whose joint was snapped onto a
+/// shared vertex: the dict's `start` can sit up to the merge tolerance off the
+/// first pole, and the TS sampler pushed the dict's start. `None` means "use the
+/// geometry's own start", which is what the area builder's edges always do.
+#[derive(Clone, Debug)]
+pub struct LoopEdge {
+    pub geom: EdgeGeom,
+    pub start: Option<Vec2>,
+}
+
+/// What the loop samplers need from an edge. Implemented by the area builder's
+/// `BoundaryEdge` and by the wire `LoopEdge`; they differ in where the start
+/// point comes from: the area builder derives it from the geometry, the wire
+/// edge carries the dict's own `start` (which a snapped fit-spline joint can
+/// move off its first pole, and which a dict can lack entirely).
+pub trait ProfiledEdge {
+    fn geom(&self) -> &EdgeGeom;
+    /// The point the polygon reader pushes before this edge's interior samples.
+    fn start_point(&self) -> Option<Vec2>;
+}
+
+impl ProfiledEdge for BoundaryEdge {
+    fn geom(&self) -> &EdgeGeom {
+        &self.geom
+    }
+
+    fn start_point(&self) -> Option<Vec2> {
+        self.geom.start()
+    }
+}
+
+impl ProfiledEdge for LoopEdge {
+    fn geom(&self) -> &EdgeGeom {
+        &self.geom
+    }
+
+    fn start_point(&self) -> Option<Vec2> {
+        self.start
+    }
+}
+
 /// n interior points spread along an arc edge (n>=1); empty if not an arc.
-fn arc_sample_points(e: &EdgeGeom, n: usize) -> Vec<Vec2> {
+pub(crate) fn arc_sample_points(e: &EdgeGeom, n: usize) -> Vec<Vec2> {
     if let EdgeGeom::Arc {
         center,
         radius,
@@ -147,7 +193,7 @@ fn arc_sample_points(e: &EdgeGeom, n: usize) -> Vec<Vec2> {
 }
 
 /// n interior points along a cubic-Bezier spline edge; empty if not one.
-fn spline_sample_points(e: &EdgeGeom, n: usize) -> Vec<Vec2> {
+pub(crate) fn spline_sample_points(e: &EdgeGeom, n: usize) -> Vec<Vec2> {
     if let EdgeGeom::Spline { start, c1, c2, end } = *e {
         (0..n)
             .map(|k| {
@@ -210,7 +256,7 @@ pub fn fit_chain_point(poles: &[Vec2], knots: &[f64], u: f64) -> Vec2 {
 }
 
 /// n interior points along a fit-spline chain edge; empty if not one.
-fn fit_spline_sample_points(e: &EdgeGeom, n: usize) -> Vec<Vec2> {
+pub(crate) fn fit_spline_sample_points(e: &EdgeGeom, n: usize) -> Vec<Vec2> {
     if let EdgeGeom::FitSpline { poles, knots } = e {
         let (u0, u1) = (knots[0], knots[knots.len() - 1]);
         (0..n)
@@ -236,7 +282,7 @@ fn fit_spline_is_closed(e: &EdgeGeom) -> bool {
 }
 
 /// n interior points along an elliptical-arc edge; empty if not one.
-fn ellipse_arc_sample_points(e: &EdgeGeom, n: usize) -> Vec<Vec2> {
+pub(crate) fn ellipse_arc_sample_points(e: &EdgeGeom, n: usize) -> Vec<Vec2> {
     if let EdgeGeom::EllipseArc {
         center,
         a,
@@ -274,7 +320,7 @@ fn ellipse_arc_sample_points(e: &EdgeGeom, n: usize) -> Vec<Vec2> {
 }
 
 /// n points spread around a full closed ellipse edge; empty if not one.
-fn ellipse_sample_points(e: &EdgeGeom, n: usize) -> Vec<Vec2> {
+pub(crate) fn ellipse_sample_points(e: &EdgeGeom, n: usize) -> Vec<Vec2> {
     if let EdgeGeom::Ellipse {
         center,
         a,
@@ -301,32 +347,36 @@ fn ellipse_sample_points(e: &EdgeGeom, n: usize) -> Vec<Vec2> {
 }
 
 /// Polygon point list from a loop, inserting arc/spline/ellipse sample points.
-pub fn loop_pts(loop_edges: &[BoundaryEdge], arc_samples: usize) -> Vec<Vec2> {
+pub fn loop_pts<E: ProfiledEdge>(loop_edges: &[E], arc_samples: usize) -> Vec<Vec2> {
     let mut pts: Vec<Vec2> = Vec::new();
     for be in loop_edges {
-        let e = &be.geom;
-        if let Some(s) = e.start() {
+        let e = be.geom();
+        if let Some(s) = be.start_point() {
             pts.push(s);
         }
         pts.extend(arc_sample_points(e, arc_samples));
         pts.extend(ellipse_arc_sample_points(e, arc_samples.max(4)));
         // A self-closing spline (start == end) is a standalone closed loop, so it
         // needs enough points to read as a polygon on its own, like a full ellipse.
-        let spline_n = if spline_is_closed(e) {
-            (arc_samples * 4).max(16)
-        } else {
-            arc_samples
-        };
-        pts.extend(spline_sample_points(e, spline_n));
+        pts.extend(spline_sample_points(
+            e,
+            if spline_is_closed(e) {
+                (arc_samples * 4).max(16)
+            } else {
+                arc_samples
+            },
+        ));
         // A fit-spline chain needs the same treatment: a closed one is a
         // standalone polygon, and a long chain deserves more than the coarse
         // arc count so its lobes read correctly.
-        let fit_n = if fit_spline_is_closed(e) {
-            (arc_samples * 4).max(16)
-        } else {
-            arc_samples.max(8)
-        };
-        pts.extend(fit_spline_sample_points(e, fit_n));
+        pts.extend(fit_spline_sample_points(
+            e,
+            if fit_spline_is_closed(e) {
+                (arc_samples * 4).max(16)
+            } else {
+                arc_samples.max(8)
+            },
+        ));
         // A full ellipse is a standalone closed loop: enough points to read as a
         // polygon on its own, independent of the coarse arc sample count.
         pts.extend(ellipse_sample_points(e, (arc_samples * 4).max(16)));
@@ -335,8 +385,8 @@ pub fn loop_pts(loop_edges: &[BoundaryEdge], arc_samples: usize) -> Vec<Vec2> {
 }
 
 /// Signed 2D area via the shoelace formula. Positive = CCW.
-pub fn loop_signed_area(loop_edges: &[BoundaryEdge]) -> f64 {
-    let pts = loop_pts(loop_edges, 1);
+pub fn loop_signed_area<E: ProfiledEdge>(loop_edges: &[E], arc_samples: usize) -> f64 {
+    let pts = loop_pts(loop_edges, arc_samples);
     let n = pts.len();
     if n < 3 {
         return 0.0;
@@ -376,8 +426,8 @@ pub fn point_in_polygon(pt: Vec2, pts: &[Vec2]) -> bool {
 }
 
 /// Ray-casting point-in-polygon test against a 2D loop.
-pub fn point_in_loop(pt: Vec2, loop_edges: &[BoundaryEdge]) -> bool {
-    point_in_polygon(pt, &loop_pts(loop_edges, 1))
+pub fn point_in_loop<E: ProfiledEdge>(pt: Vec2, loop_edges: &[E], arc_samples: usize) -> bool {
+    point_in_polygon(pt, &loop_pts(loop_edges, arc_samples))
 }
 
 /// Distance from `pt` to a polygon's boundary.
@@ -426,7 +476,7 @@ pub fn point_segment_dist(pt: Vec2, a: Vec2, b: Vec2) -> f64 {
 }
 
 /// Area-weighted centroid of a 2D loop polygon.
-pub fn loop_centroid(loop_edges: &[BoundaryEdge]) -> Vec2 {
+pub fn loop_centroid<E: ProfiledEdge>(loop_edges: &[E]) -> Vec2 {
     let pts = loop_pts(loop_edges, CENTROID_ARC_SAMPLES);
     let n = pts.len();
     if n < 3 {
@@ -461,18 +511,17 @@ pub fn loop_centroid(loop_edges: &[BoundaryEdge]) -> Vec2 {
 /// is rejected). `None` when nothing verifies, so the caller can keep its
 /// centroid-only behaviour.
 ///
-/// The polygon is sampled at one point per edge, like its caller. The TS mirror
-/// threads the profile dump's diagnostic sample count through instead, so its
-/// fine pass can re-run the same containment at CENTROID_ARC_SAMPLES; that pass
-/// has no counterpart here, so the coarse count is hardcoded.
-fn interior_probe(loop_edges: &[BoundaryEdge]) -> Option<Vec2> {
-    let pts = loop_pts(loop_edges, 1);
+/// The polygon is sampled at the caller's `arc_samples`: the profile dump's
+/// fine pass verifies the probe on the same polygon it tests containment with,
+/// and the area builder passes the coarse 1.
+fn interior_probe<E: ProfiledEdge>(loop_edges: &[E], arc_samples: usize) -> Option<Vec2> {
+    let pts = loop_pts(loop_edges, arc_samples);
     let n = pts.len();
     if n < 3 {
         return None;
     }
     let centroid = loop_centroid(loop_edges);
-    if point_in_loop(centroid, loop_edges) {
+    if point_in_loop(centroid, loop_edges, arc_samples) {
         return Some(centroid);
     }
     for i in 0..n {
@@ -493,7 +542,7 @@ fn interior_probe(loop_edges: &[BoundaryEdge]) -> Option<Vec2> {
             let step = len * scale;
             for side in [1.0, -1.0] {
                 let candidate = [m[0] + side * step * nx, m[1] + side * step * ny];
-                if point_in_loop(candidate, loop_edges) {
+                if point_in_loop(candidate, loop_edges, arc_samples) {
                     return Some(candidate);
                 }
             }
@@ -505,14 +554,23 @@ fn interior_probe(loop_edges: &[BoundaryEdge]) -> Option<Vec2> {
 /// For each loop: its immediate `container` (the smallest strictly larger loop
 /// that encloses it, or `None`). The `depth` count is also returned for the
 /// even/odd `classify_loops` model.
-fn loop_containment(loops: &[Vec<BoundaryEdge>]) -> (Vec<usize>, Vec<Option<usize>>) {
+fn loop_containment<E: ProfiledEdge>(
+    loops: &[Vec<E>],
+    arc_samples: usize,
+) -> (Vec<usize>, Vec<Option<usize>>) {
     let n = loops.len();
-    let areas: Vec<f64> = loops.iter().map(|l| loop_signed_area(l).abs()).collect();
+    let areas: Vec<f64> = loops
+        .iter()
+        .map(|l| loop_signed_area(l, arc_samples).abs())
+        .collect();
     let cents: Vec<Vec2> = loops.iter().map(|l| loop_centroid(l)).collect();
     // The centroid is the historical probe and stays the primary one; a
     // concave loop whose centroid sits outside it is backed by a probe that is
     // verified interior, or a hole inside it would be dropped.
-    let probes: Vec<Option<Vec2>> = loops.iter().map(|l| interior_probe(l)).collect();
+    let probes: Vec<Option<Vec2>> = loops
+        .iter()
+        .map(|l| interior_probe(l, arc_samples))
+        .collect();
 
     let mut depth = vec![0usize; n];
     let mut container: Vec<Option<usize>> = vec![None; n];
@@ -522,8 +580,8 @@ fn loop_containment(loops: &[Vec<BoundaryEdge>]) -> (Vec<usize>, Vec<Option<usiz
             if i == j {
                 continue;
             }
-            let held = point_in_loop(cents[i], &loops[j])
-                || probes[i].is_some_and(|p| point_in_loop(p, &loops[j]));
+            let held = point_in_loop(cents[i], &loops[j], arc_samples)
+                || probes[i].is_some_and(|p| point_in_loop(p, &loops[j], arc_samples));
             if areas[j] > areas[i] && held {
                 depth[i] += 1;
                 if areas[j] < best_area {
@@ -536,11 +594,25 @@ fn loop_containment(loops: &[Vec<BoundaryEdge>]) -> (Vec<usize>, Vec<Option<usiz
     (depth, container)
 }
 
+/// The containment analysis the TS classifier reads: per loop, its nesting
+/// depth and its immediate container (`None` for an outer loop).
+///
+/// `arc_samples` is the polygon count the areas and point tests are measured
+/// on. The area builder's own `subdivide_loops` uses the coarse 1; the TS
+/// even/odd classifier passes `CENTROID_ARC_SAMPLES`, because a 1-sample chord
+/// polygon is a shape neither the user nor `loop_centroid` sees.
+pub fn profile_loop_containment<E: ProfiledEdge>(
+    loops: &[Vec<E>],
+    arc_samples: usize,
+) -> (Vec<usize>, Vec<Option<usize>>) {
+    loop_containment(loops, arc_samples)
+}
+
 /// Planar subdivision: every loop bounds its own face whose holes are the loops
 /// immediately nested inside it. Returns, per loop index `oi`, the indices of the
 /// loops whose immediate container is `oi`. The sketch-area model: every visible
 /// region is selectable (unlike the even/odd donut `classify_loops`).
-pub fn subdivide_loops(loops: &[Vec<BoundaryEdge>]) -> Vec<(usize, Vec<usize>)> {
+pub fn subdivide_loops<E: ProfiledEdge>(loops: &[Vec<E>]) -> Vec<(usize, Vec<usize>)> {
     if loops.is_empty() {
         return vec![];
     }
@@ -548,7 +620,7 @@ pub fn subdivide_loops(loops: &[Vec<BoundaryEdge>]) -> Vec<(usize, Vec<usize>)> 
         return vec![(0, vec![])];
     }
     let n = loops.len();
-    let (_depth, container) = loop_containment(loops);
+    let (_depth, container) = loop_containment(loops, 1);
     let mut result = Vec::with_capacity(n);
     for oi in 0..n {
         let holes: Vec<usize> = (0..n).filter(|&i| container[i] == Some(oi)).collect();
@@ -580,7 +652,7 @@ mod tests {
 
     #[test]
     fn signed_area_ccw_positive() {
-        assert!((loop_signed_area(&rect(0.0, 0.0, 2.0, 3.0)) - 6.0).abs() < 1e-9);
+        assert!((loop_signed_area(&rect(0.0, 0.0, 2.0, 3.0), 1) - 6.0).abs() < 1e-9);
     }
 
     #[test]
@@ -592,8 +664,8 @@ mod tests {
     #[test]
     fn point_in_loop_inside_and_outside() {
         let r = rect(0.0, 0.0, 2.0, 2.0);
-        assert!(point_in_loop([1.0, 1.0], &r));
-        assert!(!point_in_loop([3.0, 1.0], &r));
+        assert!(point_in_loop([1.0, 1.0], &r, 1));
+        assert!(!point_in_loop([3.0, 1.0], &r, 1));
     }
 
     #[test]
@@ -616,7 +688,7 @@ mod tests {
             rect(5.0, 5.0, 25.0, 25.0),
             rect(10.0, 10.0, 20.0, 20.0),
         ];
-        let (depth, container) = loop_containment(&loops);
+        let (depth, container) = loop_containment(&loops, 1);
         assert_eq!(depth, vec![0, 1, 2]);
         assert_eq!(container, vec![None, Some(0), Some(1)]);
 
@@ -669,9 +741,15 @@ mod tests {
         // must land somewhere the ray cast accepts as interior.
         let c = c_shape(10.0, 10.0, 2.0, 2.0);
         let centroid = loop_centroid(&c);
-        assert!(!point_in_loop(centroid, &c), "the centroid is in the mouth");
-        let probe = interior_probe(&c).expect("a concave loop has an interior probe");
-        assert!(point_in_loop(probe, &c), "the probe verifies as interior");
+        assert!(
+            !point_in_loop(centroid, &c, 1),
+            "the centroid is in the mouth"
+        );
+        let probe = interior_probe(&c, 1).expect("a concave loop has an interior probe");
+        assert!(
+            point_in_loop(probe, &c, 1),
+            "the probe verifies as interior"
+        );
     }
 
     #[test]
@@ -680,14 +758,14 @@ mod tests {
         // zero-area collinear polygon has 3 points but no candidate the ray
         // cast accepts, so both fall back to the caller's centroid-only path.
         let single = poly(&[[0.0, 0.0]]);
-        assert!(interior_probe(&single).is_none());
+        assert!(interior_probe(&single, 1).is_none());
         let collinear = poly(&[[0.0, 0.0], [1.0, 0.0], [2.0, 0.0]]);
-        assert_eq!(loop_signed_area(&collinear), 0.0);
-        assert!(interior_probe(&collinear).is_none());
+        assert_eq!(loop_signed_area(&collinear, 1), 0.0);
+        assert!(interior_probe(&collinear, 1).is_none());
         // A poisoned coordinate must not seed a step either: the NaN-length
         // edge is skipped and no neighbour candidate verifies.
         let poisoned = poly(&[[0.0, 0.0], [1.0, 0.0], [1.0, f64::NAN]]);
-        assert!(interior_probe(&poisoned).is_none());
+        assert!(interior_probe(&poisoned, 1).is_none());
     }
 
     #[test]
@@ -870,5 +948,44 @@ mod tests {
                 "point off the ellipse: {p:?}"
             );
         }
+    }
+
+    #[test]
+    fn the_arc_sample_count_reaches_area_and_containment() {
+        // A 2-sample chord polygon of a circle reads much smaller than the
+        // circle; the fine count is what the TS classifier measures with, so the
+        // argument has to reach the area and the point test, not just loop_pts.
+        let circle = circle_loop(0.0, 0.0, 10.0);
+        let coarse = loop_signed_area(&circle, 1).abs();
+        let fine = loop_signed_area(&circle, CENTROID_ARC_SAMPLES).abs();
+        assert!(fine > coarse, "coarse {coarse}, fine {fine}");
+        assert!((fine - std::f64::consts::PI * 100.0).abs() < 2.0);
+        // A point just inside the true rim on a diagonal is outside the coarse
+        // axis-aligned diamond the 1-sample polygon builds.
+        let rim = [7.0, 7.0];
+        assert!(!point_in_loop(rim, &circle, 1));
+        assert!(point_in_loop(rim, &circle, CENTROID_ARC_SAMPLES));
+    }
+
+    #[test]
+    fn the_explicit_start_of_a_wire_edge_wins_over_its_first_pole() {
+        // A fit spline whose joint was snapped carries a dict start off its
+        // first pole; the polygon reader pushed the dict start, and the wire
+        // edge has to reproduce that or a snapped joint moves the polygon. A
+        // wire edge with no start pushes nothing at all (the TS dict lacked the
+        // key), even though the geometry's first pole exists.
+        let geom = EdgeGeom::FitSpline {
+            poles: vec![[0.0, 0.0], [1.0, 0.0], [2.0, 0.0], [3.0, 0.0]],
+            knots: vec![0.0, 3.0],
+        };
+        let hinted = LoopEdge {
+            geom: geom.clone(),
+            start: Some([0.000004, 0.0]),
+        };
+        let plain = LoopEdge { geom, start: None };
+        assert_eq!(loop_pts(&[hinted], 1)[0], [0.000004, 0.0]);
+        let plain_pts = loop_pts(&[plain], 1);
+        assert_eq!(plain_pts.len(), 8, "no start push: only the 8 fit samples");
+        assert!((plain_pts[0][0] - 1.0 / 3.0).abs() < 1e-12);
     }
 }

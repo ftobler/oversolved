@@ -35,6 +35,7 @@ function trappingBundle(): SketchSolverBundle | null {
       throw new WebAssembly.RuntimeError('unreachable')
     }) as unknown as SolveBytes,
     topology: real.topology,
+    profileLoops: real.profileLoops,
   }
 }
 
@@ -68,6 +69,7 @@ describe.skipIf(!oc || !firstLoad)('a headless sketch trap (real OCC + pkg-node 
           return fresh.solve(input)
         },
         topology: fresh.topology,
+        profileLoops: fresh.profileLoops,
       }
     })
     // featureDeltas 'all' skips the baseline measurement, so every solve in

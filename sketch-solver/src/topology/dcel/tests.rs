@@ -1208,7 +1208,7 @@ fn a_self_crossing_spline_closes_its_lobe() {
     let area = t
         .surfaces
         .iter()
-        .map(|s| crate::topology::profile_loops::loop_signed_area(&s.boundary))
+        .map(|s| crate::topology::profile_loops::loop_signed_area(&s.boundary, 1))
         .sum::<f64>();
     // Rough magnitude check: the lobe spans about 1.1 by 1.9 world units.
     assert!(
@@ -1235,7 +1235,7 @@ fn a_node_at_the_start_still_slices_its_lobe() {
         "the lobe starts and ends on the node, which is the start vertex"
     );
     assert!(
-        crate::topology::profile_loops::loop_signed_area(boundary) > 0.0,
+        crate::topology::profile_loops::loop_signed_area(boundary, 1) > 0.0,
         "the lobe bounds a positive area"
     );
 }

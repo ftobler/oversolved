@@ -13,5 +13,11 @@ description = "Pure 2D geometry and algorithms shared by the sketch solver and t
 crate-type = ["rlib"]
 
 [dependencies]
-# The byte cursor for the ported families' wire codecs lands with the first
-# port; until then this crate has no dependency at all.
+# The little-endian byte cursor the ported families' wire codecs read and write
+# through: the same one the solvers use, so there is one cursor implementation.
+solver-core.workspace = true
+
+[dev-dependencies]
+# The checked-in golden fixtures are JSON (generated from the TS module); only
+# the test build parses them, so the WASM binary never carries serde.
+serde_json.workspace = true

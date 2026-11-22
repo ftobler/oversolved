@@ -44,7 +44,8 @@ import { solveTopology, reconcileMaterializedContacts, stampAreaBuildability, ty
 import { declaredContacts } from './shared/declaredContacts'
 import { frameToPlaneTransform, projectWorldToFrame, type Frame3D } from '../types3d'
 import { resolveSketchPlane, enrichSketchEntity } from './postRegister'
-import { loadSolverWasm, loadTopologyWasm, resetSolverWasm } from '@/wasm-kernel/solverWasm'
+import { loadProfileLoopsWasm, loadSolverWasm, loadTopologyWasm, resetSolverWasm } from '@/wasm-kernel/solverWasm'
+import { setProfileLoopsBytes } from '../profileLoopsRust'
 import { isKernelTrap, swallowUnlessTrap } from '../errors'
 import { memoizedLoad } from '../occ/memoizedLoad'
 import { resolveDragMode, PROBE_STEP_REL, type CircleDragMode } from './circleDragMode'
@@ -53,7 +54,7 @@ import { reconcileFaceProjection, classifyProjectionSource, isProjectionPosition
 import type { FaceBoundaryLookup } from './faceBoundary'
 import type { PlaneLike } from './shared/planes'
 import type { SolveBytes } from '@/wasm-kernel/codec'
-import type { SketchSolverBundle } from '@/wasm-kernel/wasmTypes'
+import type { ProfileLoopsBytes, SketchSolverBundle } from '@/wasm-kernel/wasmTypes'
 
 type Dict = Record<string, unknown>
 
@@ -145,8 +146,22 @@ const solverCell = memoizedLoad(async (): Promise<SolveBytes | null> => {
     swallowUnlessTrap(e)
     topoLoad = Promise.resolve(null)
   }
-  const [bytes, topo] = await Promise.all([loadSolverWasm(), topoLoad.catch(() => null)])
+  // The profile-loop family rides the same package. Isolate its loader the same
+  // way so a mock without it leaves the facade to its own error.
+  let loopsLoad: Promise<ProfileLoopsBytes | null>
+  try {
+    loopsLoad = loadProfileLoopsWasm?.() ?? Promise.resolve(null)
+  } catch (e) {
+    swallowUnlessTrap(e)
+    loopsLoad = Promise.resolve(null)
+  }
+  const [bytes, topo, loops] = await Promise.all([
+    loadSolverWasm(),
+    topoLoad.catch(() => null),
+    loopsLoad.catch(() => null),
+  ])
   if (topo) topologyBytes = topo
+  setProfileLoopsBytes(loops)
   solverBytes = bytes
   return bytes
 })
@@ -165,6 +180,7 @@ function adoptSketchBundle(bundle: SketchSolverBundle | null): SolveBytes | null
   if (bundle === null) return null
   solverBytes = bundle.solve
   topologyBytes = bundle.topology
+  setProfileLoopsBytes(bundle.profileLoops)
   return bundle.solve
 }
 
@@ -280,6 +296,7 @@ export function resetSketchSolver(): void {
 export function resetSketchSolverAfterTrap(): boolean {
   solverBytes = null
   topologyBytes = null
+  setProfileLoopsBytes(null)
   solverCell.reset()
   if (solverLoader !== null) {
     try {

@@ -20,7 +20,7 @@
  * URL is fetched at runtime instead.
  */
 
-import type { SolveBytes, TopologyBytes } from './wasmTypes'
+import type { ProfileLoopsBytes, SolveBytes, TopologyBytes } from './wasmTypes'
 
 /** wasm-bindgen's init signature since 0.2.93: one options object. The
  *  positional wasm path is still accepted but logs the deprecation warning on
@@ -31,6 +31,7 @@ interface SketchModule {
   default: WasmInit
   solve_sketch_bytes: SolveBytes
   detect_topology_bytes: TopologyBytes
+  profile_loops_bytes: ProfileLoopsBytes
 }
 
 interface MateModule {
@@ -87,6 +88,14 @@ export function loadSolverWasm(base = DEFAULT_BASE): Promise<SolveBytes | null> 
  *  ship in one binary, both being sketch-side concerns. */
 export function loadTopologyWasm(base = DEFAULT_BASE): Promise<TopologyBytes | null> {
   return loadPackage<SketchModule>('sketch_solver', base).then((m) => m?.detect_topology_bytes ?? null)
+}
+
+/** Browser loader for the pure profile-loop family (`profile_loops_bytes`), the
+ *  same sketch package. A build that predates the export resolves to null, so
+ *  the caller leaves the module unwired and the facade throws its own clear
+ *  "run `just wasm`" error rather than this loader failing the solve. */
+export function loadProfileLoopsWasm(base = DEFAULT_BASE): Promise<ProfileLoopsBytes | null> {
+  return loadPackage<SketchModule>('sketch_solver', base).then((m) => m?.profile_loops_bytes ?? null)
 }
 
 /** Browser loader for the Rust mate solver (`solve_mate_bytes`), a separate

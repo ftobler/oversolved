@@ -50,6 +50,7 @@ pub mod curve_intersect;
 pub mod curve_split;
 pub mod profile_loops;
 pub mod tolerance;
+pub mod wire;
 
 pub use profile_loops::{BoundaryEdge, EdgeGeom};
 
