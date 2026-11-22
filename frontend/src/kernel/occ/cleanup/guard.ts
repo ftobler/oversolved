@@ -77,10 +77,12 @@ export function guardShape(
     // A pass whose input has no material cannot be judged by a volume delta:
     // a collapsed shell would pass at ~0 either way.
     if (options.positiveVolume && !(v0 > 1e-9)) return UNSOUND
-    const volumeKept = Math.abs(v1 - v0) <= Math.max(1e-9, 1e-6 * Math.abs(v0))
-    if (!volumeKept) return UNSOUND
+    // Validity is read before the delta so a pass that corrupts orientation is
+    // reported by BRepCheck even when the volume happens to be preserved.
     const demandValidity = options.validity === 'always' || isClosedByVolume(v0)
     if (demandValidity && !shapeIsValid(oc, scope, after)) return UNSOUND
+    const volumeKept = Math.abs(v1 - v0) <= Math.max(1e-9, 1e-6 * Math.abs(v0))
+    if (!volumeKept) return UNSOUND
     if (options.topology) {
       const beforeCounts = topoCounts(oc, scope, before)
       const afterCounts = topoCounts(oc, scope, after)

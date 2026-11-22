@@ -57,6 +57,7 @@ function adoptPass(
     faceOrigin?: readonly FaceOrigin[]
     rebase: SubShapeRebase
   },
+  owned: Set<OccShape>,
 ): PassReport {
   let result
   try {
@@ -74,6 +75,7 @@ function adoptPass(
     const verdict = guardShape(oc, scope, state.shape, result.shape, entry.guard)
     if (!verdict.sound) return { name: entry.name, status: 'rejected' }
   }
+  if (result.shape !== state.shape) owned.add(result.shape)
 
   const previous = state.rebase
   const passRebase = result.rebase
@@ -122,12 +124,15 @@ export function runCleanup(
     rebase: identityRebase,
   }
   const passes: PassReport[] = []
+  // Shapes this pipeline itself tracked. Only those are detached on success: a
+  // caller that tracked its input keeps that ownership as before.
+  const owned = new Set<OccShape>()
   // The validated handle of the last adopted pass, before any later pass
   // replaced the shape: a caller's own whole-shape check may skip exactly that
   // handle, never the final shape a later pass produced.
   let validated: OccShape | null = null
   for (const entry of plan) {
-    const report = adoptPass(oc, scope, entry, state)
+    const report = adoptPass(oc, scope, entry, state, owned)
     passes.push(report)
     if (report.status === 'adopted') {
       validated = state.shape
@@ -136,7 +141,7 @@ export function runCleanup(
     }
   }
   const changed = passes.some((p) => p.status === 'adopted')
-  const shape = scope.isTracked(state.shape) ? scope.detach(state.shape) : state.shape
+  const shape = owned.has(state.shape) ? scope.detach(state.shape) : state.shape
   return {
     shape,
     changed,

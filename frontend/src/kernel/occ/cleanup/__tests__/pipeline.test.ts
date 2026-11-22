@@ -59,8 +59,8 @@ function historyOf(
   modified: Map<FakeShape, FakeShape[]>,
 ): OccHistory {
   return {
-    IsRemoved: (s) => removed.includes(s as unknown as FakeShape),
-    Modified: (s) => listOf(modified.get(s as unknown as FakeShape) ?? []),
+    IsRemoved: (s: OccShape) => removed.includes(s as unknown as FakeShape),
+    Modified: (s: OccShape) => listOf(modified.get(s as unknown as FakeShape) ?? []),
     delete: () => {},
   } as unknown as OccHistory
 }
