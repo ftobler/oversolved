@@ -111,7 +111,8 @@ export interface PartCommandContext {
   // The live session. Undo/redo availability is read from its history, the
   // same stacks the toolbar mirrors.
   session: DocSession | null
-  // The live L2 editor state plus the sketch UI store, read at call time.
+  // The live editor state, read at call time. The page merges the L2 store and
+  // the sketch UI store; a headless run supplies idle defaults.
   state(): PartCommandState
   undo(): void
   redo(): void
