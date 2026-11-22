@@ -36,7 +36,7 @@ a payload that misses the schema), and `enabled(id)` reads the live context.
 `CommandTableView` is the context-free view of a registry that module-level
 dispatch and the toolbar React context hold.
 
-### Registries and dispatch (`commandRegistry.ts`)
+### Registries and dispatch (`hooks/commandRegistry.ts`)
 
 Each mounted page builds one `CommandContext` (the session plus the page's
 action callbacks for the part editor; the operation host plus UI side effects
