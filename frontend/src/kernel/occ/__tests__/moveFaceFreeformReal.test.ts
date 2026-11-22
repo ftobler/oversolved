@@ -1,8 +1,10 @@
 // @vitest-environment node
 //
-// The freeform-neighbour pass matrix: the five `set1` picks of the 2026-11-15
+// The freeform-neighbour pass matrix: the four `set1` picks of the 2026-11-15
 // bug report x d in {+0.5, -0.5, +1, -1}, against the document in
-// fixtures/moveFaceFreeform.json. This is a RATCHET: a cell that passes must
+// fixtures/moveFaceFreeform.json. The set used to have five picks: the chamfer
+// was two seam-split halves, and the residual-seam re-seat folds them into one
+// face. This is a RATCHET: a cell that passes must
 // keep passing, and a cell that starts passing updates the baseline in the same
 // commit. A failing cell must refuse with a MoveFaceRefusal whose diagnosis the
 // test completes with the full rung catalog, so a red cell says which rung
@@ -15,7 +17,7 @@
 // applyMoveFace for these moves; this test re-reads it so the matrix owns the
 // number it ratchets.
 //
-// Baseline: 6 of 20 cells. Pick 1 (slot floor) passes outward because the
+// Baseline: 6 of 16 cells. Pick 1 (slot floor) passes outward because the
 // widened patch is rejected by BRepCheck and the G1 strip bounds the add; its
 // inward cut merges with the material outside the slot at the fillet's tangent
 // footprint and the gate refuses. Pick 2 (left wall) is tangent-bounded: its
@@ -72,10 +74,6 @@ const BASELINE: Record<string, CellResult> = {
   '4/-0.5': 'fail',
   '4/+1': 'fail',
   '4/-1': 'fail',
-  '5/+0.5': 'fail',
-  '5/-0.5': 'fail',
-  '5/+1': 'fail',
-  '5/-1': 'fail',
 }
 
 const D_VALUES = [0.5, -0.5, 1, -1] as const
@@ -125,7 +123,7 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('move face across freeform
 
   afterAll(() => live?.dispose())
 
-  for (let pick = 1; pick <= 5; pick++) {
+  for (let pick = 1; pick <= 4; pick++) {
     for (const d of D_VALUES) {
       const cell = `${pick}/${d > 0 ? '+' : ''}${d}`
       const expected = BASELINE[cell]

@@ -10,7 +10,9 @@
 // The pinned table below is a MEASUREMENT, not a ratchet: a strategy rung that
 // changes an outcome updates the outcome column in the same commit. The pass
 // matrix in moveFaceFreeformReal.test.ts is the ratchet. Canonical edge order
-// makes the neighbour and convexity lists stable.
+// makes the neighbour and convexity lists stable. The table used to have five
+// picks: the chamfer was two seam-split halves, and the residual-seam re-seat
+// folds them into one face, so pick 4 is the chamfer and there is no pick 5.
 //
 // Skips when OCC.js or the Rust solver is absent.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
@@ -162,8 +164,8 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('move face across freeform
       {
         pick: 2,
         type: 'Plane',
-        neighbours: ['Plane', 'BSplineSurface', 'BSplineSurface'],
-        convexity: ['concave', 'tangent', 'tangent'],
+        neighbours: ['Plane', 'BSplineSurface'],
+        convexity: ['concave', 'tangent'],
         outcome: [
           '0.5:refused: tangent neighbour',
           '-0.5:refused: tangent neighbour',
@@ -174,8 +176,8 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('move face across freeform
       {
         pick: 3,
         type: 'Plane',
-        neighbours: ['Plane', 'BSplineSurface', 'BSplineSurface'],
-        convexity: ['concave', 'convex', 'convex'],
+        neighbours: ['Plane', 'BSplineSurface'],
+        convexity: ['concave', 'convex'],
         outcome: [
           '0.5:ok',
           '-0.5:ok',
@@ -184,22 +186,12 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('move face across freeform
         ],
       },
       {
+        // The chamfer's one face (it used to be two seam-split halves, picks 4
+        // and 5; the re-seat folds them).
         pick: 4,
         type: 'BSplineSurface',
-        neighbours: ['BSplineSurface', 'Sphere', 'Plane', 'Plane'],
-        convexity: ['tangent', 'convex', 'convex', 'concave'],
-        outcome: [
-          '0.5:refused: cannot move a BSplineSurface face',
-          '-0.5:refused: cannot move a BSplineSurface face',
-          '1:refused: cannot move a BSplineSurface face',
-          '-1:refused: cannot move a BSplineSurface face',
-        ],
-      },
-      {
-        pick: 5,
-        type: 'BSplineSurface',
-        neighbours: ['Plane', 'Sphere', 'Plane', 'BSplineSurface'],
-        convexity: ['concave', 'convex', 'convex', 'tangent'],
+        neighbours: ['Plane', 'Sphere', 'Plane', 'Plane'],
+        convexity: ['concave', 'convex', 'convex', 'concave'],
         outcome: [
           '0.5:refused: cannot move a BSplineSurface face',
           '-0.5:refused: cannot move a BSplineSurface face',

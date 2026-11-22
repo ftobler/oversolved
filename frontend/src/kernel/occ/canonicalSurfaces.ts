@@ -44,13 +44,13 @@ import type {
 } from './occTypes'
 import { faceCylinderXDirection, faceSurfaceFrame } from './primitives'
 import { guardShape } from './cleanup/guard'
+import { largestFreeGap, MIN_SEAM_GAP } from './cleanup/seamGap'
 import { swallowUnlessTrap } from '../errors'
 import { noProgress } from './defaultArgs'
 
 const FIT_SAMPLES = 7  // grid per direction -> 49 samples per face
 const FIT_TOL = 1e-6  // max radial deviation for "this face IS a cylinder"
 const CLUSTER_TOL = 1e-6  // axis distance / radius delta to share one cylinder
-const MIN_SEAM_GAP = (20 * Math.PI) / 180  // free arc needed to place the U=0 seam
 
 type V3 = [number, number, number]
 const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]]
@@ -242,7 +242,8 @@ function sameSeam(a: CylMember, b: CylMember): boolean {
 /**
  * Seam angle for a cluster: the middle of the largest angular gap the member
  * samples leave free around the shared axis.  Null when the members wrap so
- * far around that no MIN_SEAM_GAP-wide gap remains.
+ * far around that no MIN_SEAM_GAP-wide gap remains. The search itself is shared
+ * with the residual-seam re-seat (`cleanup/seamGap.ts`).
  */
 function seamAngleFor(cluster: CylFit[], e1: V3, e2: V3, c: V3): number | null {
   const angles: number[] = []
@@ -252,17 +253,7 @@ function seamAngleFor(cluster: CylFit[], e1: V3, e2: V3, c: V3): number | null {
       angles.push(Math.atan2(dot(q, e2), dot(q, e1)))
     }
   }
-  angles.sort((a, b) => a - b)
-  let gapStart = angles[angles.length - 1]
-  let gap = angles[0] + 2 * Math.PI - gapStart
-  for (let i = 1; i < angles.length; i++) {
-    if (angles[i] - angles[i - 1] > gap) {
-      gap = angles[i] - angles[i - 1]
-      gapStart = angles[i - 1]
-    }
-  }
-  if (!(gap >= MIN_SEAM_GAP)) return null  // accept-on-within: NaN gaps reject
-  return gapStart + gap / 2
+  return largestFreeGap(angles, MIN_SEAM_GAP)
 }
 
 function countWires(oc: OccModule, scope: DisposeScope, face: OccShape): number {

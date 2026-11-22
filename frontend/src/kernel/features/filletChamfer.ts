@@ -351,6 +351,13 @@ function resolveByStableAncestry(
     const resolved = repo.query(q, null, partStore)
     if (resolved !== null && typeof resolved === 'object' && 'shape' in resolved) {
       const payload = resolved as AncestryEdgePayload
+      // An exact construction-UUID match is identity, not a lineage guess: the
+      // element named is the element that carries the UUID. The stored
+      // classifier is only the tie-break between split siblings, and a merge
+      // that folds those siblings (the seam re-seat folding a rim's two halves)
+      // drops it; demanding it here would refuse the merged edge the UUID still
+      // names.
+      if (repo._lastTier === 'uuid') return payload.shape
       // The repo's classifier tier only runs on 2+ candidates, so a lone
       // lineage-sharing sibling can come back when the true edge dropped out
       // of the candidate set. Validate the stored spatial role before

@@ -439,18 +439,21 @@ describe.skipIf(!oc || !solveBytes)('solveDeleteFace through the builder (real O
     expect(meshOf(h, r, reportPart).face_data?.some((d) => d.surface_type === 'face')).toBe(false)
   }, 300_000)
 
-  it('a refusal on a modifier face reports the rungs in the feature exception', () => {
+  it('deleting the chamfer face heals it as one group now that its rim is whole', () => {
     const features = (fixture.features as Dict[]).filter(
       (f) => f.id !== reportFillet && f.id !== reportChamfer,
     )
     const chamfer = (fixture.features as Dict[]).find((f) => f.id === reportChamfer)!
     const picked = (chamfer.delete_face as { faces: string[] }).faces
-    // One half of the chamfer band only: the split end has no cap, so the wedge
-    // cannot close. The exception has to name every rung.
+    // Before the residual-seam re-seat the chamfer was two seam-split halves
+    // and this pick (one half) refused: the split end had no cap for the wedge,
+    // so the feature had to name every rung. The rim is one edge and the
+    // chamfer one face now, so the same single pick heals.
+    expect(picked).toHaveLength(1)
     features.push({ ...chamfer, delete_face: { faces: [picked[0]] } })
     const r = h.run({ features, part_style: fixture.part_style })
-    expect(h.res(r, reportChamfer).status).toBe('exception')
-    const message = String(h.res(r, reportChamfer).exception ?? '')
-    expect(message).toMatch(/rung 1 .*rung 1b .*rung 2 /s)
+    expect(h.res(r, reportChamfer).status).toBe('ok')
+    const edges = (h.part(r, reportPart).edge_queries as string[]) ?? []
+    expect(edges.some((q) => q.includes('e_29ca332f03bb4c0d'))).toBe(true)
   }, 300_000)
 })
