@@ -17,8 +17,8 @@ import { isPickKeyString } from '@/picking/pickKey'
 import { devOnly, testMode, failLoud } from '@/utils/core/failLoud'
 
 // Re-exported so the many existing callers of the stores module keep working;
-// the canonical definition is the neutral utils leaf, which keeps the CAD
-// kernel from depending on this stores layer for its guard helper.
+// the canonical definition is utils/core/failLoud, which keeps the CAD kernel
+// from depending on this stores layer for its guard helper.
 export { devOnly, testMode, failLoud }
 
 // Drawing-tool id set, derived from the registry so the draw-state invariants
