@@ -52,6 +52,7 @@ function topoCounts(
     const exp = scope.track(new oc.TopExp_Explorer_2(shape, type, E.TopAbs_SHAPE))
     let n = 0
     for (; exp.More(); exp.Next()) n++
+    scope.release(exp)
     return n
   }
   return { solids: count(E.TopAbs_SOLID), faces: count(E.TopAbs_FACE), edges: count(E.TopAbs_EDGE) }
