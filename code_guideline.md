@@ -113,6 +113,24 @@ fall back to, so surface the failure rather than dropping the change silently.
 
 ## 4. Frontend Conventions
 
+### Core and UI Folders
+
+The headless core must run in node with no React, three, DOM or editor store:
+`kernel/`, `drive/`, `session/`, `persistence/`, `registry/`, `workspace/`,
+`wasm-kernel/`, `types/`, `utils/core/`, `utils/query/`, `utils/measure/`,
+`utils/yamlMutations/` and `utils/geometry/`. Everything else (`components/`,
+`pages/`, `picking/`, `hooks/`, `stores/`, `tools/`, `viewport/`, `contexts/`)
+is UI.
+
+`frontend/eslint.config.js` enforces the wall with a `no-restricted-imports`
+rule over every core folder. The `CORE_ALLOW` list is empty: a new file lands on
+the core side only if it imports no UI, and a UI import fails `npm run lint`.
+Tests are exempt; `src/__tests__/coreHeadless.test.ts` imports each core folder
+in the node environment as the runtime backstop. A core service that the UI
+needs gets a React view in `hooks/` and a pure implementation beside its core
+consumer (for example `persistence/fileRegistry/` plus `hooks/useFileMeta.ts`).
+`frontend/scripts/coreSize.mjs` reports the lines per side.
+
 ### Command System
 
 **Rule:** A user action that changes the persisted document must go through the
@@ -122,9 +140,9 @@ interaction state may call the store's own setters directly.
 Document mutations, by editor:
 
 - Sketch: toolbar buttons and shortcuts dispatch `executeCommand(name)` into the
-  command registry (`frontend/src/utils/core/commandRegistry.ts`), whose specs
+  command registry (`frontend/src/hooks/commandRegistry.ts`), whose specs
   are the static `PART_COMMAND_SPECS` table in
-  `frontend/src/pages/commandEntries.ts`. Tool and constraint commands reach the
+  `frontend/src/session/partCommandSpecs.ts`. Tool and constraint commands reach the
   document through the sketch store's `onMutation` callback.
 - Part: feature and style edits call `handleMutation` (the `usePartDoc`
   adapter), both directly and from the command specs; the adapter forwards
@@ -163,7 +181,7 @@ Do not use a raw `setState` to change `doc`, `features`, `instances`, or any
 other persisted-document field; route that through the funnel so undo, redo, and
 the save path see it.
 
-**Keymap construction** (`frontend/src/utils/core/commandRegistry.ts`):
+**Keymap construction** (`frontend/src/utils/core/keymaps.ts`):
 ```ts
 // Core bindings are data so the Registry page can render them.
 export const CORE_KEYBINDINGS: readonly CoreKeybinding[] = [
@@ -292,8 +310,8 @@ draw_all()  # Required at end
 
 The full list is `COMMAND_NAMES` (`frontend/src/utils/core/commandNames.ts`);
 the tables here name the families. Sketch/part families live in
-`PART_COMMAND_SPECS` (`pages/commandEntries.ts`), assembly families in
-`ASSEMBLY_COMMAND_SPECS` (`pages/assemblyCommandEntries.ts`). Every command has
+`PART_COMMAND_SPECS` (`session/partCommandSpecs.ts`), assembly families in
+`ASSEMBLY_COMMAND_SPECS` (`session/assemblyCommandSpecs.ts`). Every command has
 a spec with an enabled predicate and a params schema; a command whose values
 are user-entered takes them as data and the dialog is only a front end.
 
@@ -408,7 +426,8 @@ manifest) and differ in what makes their expectation true:
 ### Command Registry
 
 **Location:** `frontend/src/utils/core/commandSpec.ts` (specs + registry),
-`frontend/src/utils/core/commandRegistry.ts` (keymaps + module-level dispatch)
+`frontend/src/utils/core/keymaps.ts` (key binding data),
+`frontend/src/hooks/commandRegistry.ts` (module-level dispatch)
 
 **Core API:**
 ```ts
@@ -434,8 +453,8 @@ export function dispatchKey(e: KeyboardEvent): boolean
 export function dispatchKeyOutcome(e: KeyboardEvent): DispatchOutcome
 ```
 
-Spec tables live in `frontend/src/pages/commandEntries.ts`
-(`PART_COMMAND_SPECS`) and `frontend/src/pages/assemblyCommandEntries.ts`
+Spec tables live in `frontend/src/session/partCommandSpecs.ts`
+(`PART_COMMAND_SPECS`) and `frontend/src/session/assemblyCommandSpecs.ts`
 (`ASSEMBLY_COMMAND_SPECS`); pages install them through
 `useCommandRegistration(kind, registry, specs)` with a page-built
 `CommandContext`. The legacy `registerCommand`/`clearAllHandlers` pair remains
@@ -460,7 +479,7 @@ as a fallback seam for tests only.
 | Serve the drive surface over MCP | `npm run mcp` | `frontend/scripts/mcpServer.ts` |
 | Run linter | `npm run lint` | `frontend/` |
 | Run type checker | `just mypy` | root |
-| Add new command | add a `CommandSpec` to the editor's table | `frontend/src/pages/commandEntries.ts` / `assemblyCommandEntries.ts` |
+| Add new command | add a `CommandSpec` to the editor's table | `frontend/src/session/partCommandSpecs.ts` / `assemblyCommandSpecs.ts` |
 | Add new feature kind | the compile-time tethers, in order: `PartFeature` (`types/cad.ts`) -> `FEATURE_SCHEMA_BY_KIND` (`persistence/partDocSchema.ts`) -> `FEATURE_DEF_SUBKEY` (`kernel/features/shared/featureParams.ts`) -> `KIND_SOLVER` (`kernel/solverRegistry.ts`); then the runtime tables: `FEATURE_DEF_CHECKS` (`persistence/docSchema.ts`), `IDEMPOTENT_MUTATION`, `FIELD_SETTER_KIND` and the `MUTATION_VALUE_RULES` row, `mutationExamples`, and the editor schema; the untyped lists a solid producer also joins: `consumedSketchIds` (`utils/query/consumedSketches.ts`), `NO_FALLBACK_BREP_KINDS` (`session/sessionDiff.ts`), the icon switch and edit label (`components/layout/featureIcons.ts`, `featureItemKinds.ts`), the command spec + `COMMAND_NAMES` + `npm run docs:commands`, and, for a pattern/mirror source, `TOOL_LEAVES` (`kernel/features/patternFeature.ts`) with `PATTERN_SOURCE_KINDS` and the shared "extrude, revolve, sweep or wrap" sentence; then the ratchets: `npm run regen:action-matrix`, `featureUnionRatchet` counts and the solver-registry kind list | `frontend/src/` |
 | Add new tool | `frontend/src/registry/entityRegistry.ts` | `frontend/src/registry/` |
 | Add new constraint | `frontend/src/registry/constraintRegistry.ts` | `frontend/src/registry/` |
