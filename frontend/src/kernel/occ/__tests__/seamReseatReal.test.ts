@@ -25,7 +25,7 @@ import {
   readSolidEdges,
 } from '../primitives'
 import { revolveFace } from '../prismLineage'
-import { booleanWithDiffMany, cleanWithHistory } from '../booleans'
+import { booleanWithDiffMany, booleanWithHistoryMany, cleanWithHistory } from '../booleans'
 import { runCleanup } from '../cleanup/pipeline'
 import { reseatSeams } from '../cleanup/reseatSeams'
 import type { CleanupPass } from '../cleanup/types'
@@ -89,15 +89,27 @@ function closeVolume(before: number, after: number): void {
   expect(Math.abs(after - before)).toBeLessThanOrEqual(Math.max(1e-9, 1e-6 * Math.abs(before)))
 }
 
-/** The report's part: a sphere R25 revolved about X, a 20 x 20 through-slot. */
-function sphereMinusSlot(oc2: OccModule, scope: DisposeScope): OccShape {
+/** The report's profile: a sphere R25 revolved about X. */
+function sphereBody(oc2: OccModule, scope: DisposeScope): OccShape {
   const arc = scope.track(makeArcEdge(oc2, scope, [0, 0, 0], [0, 0, 1], [1, 0, 0], 25, 0, Math.PI))
   const line = scope.track(makeLineEdge(oc2, scope, [-25, 0, 0], [25, 0, 0]))
   const wire = scope.track(makeWire(oc2, scope, [arc, line], { requireClosed: true }))
   const profile = scope.track(makeFaceFromWire(oc2, scope, wire))
-  const sphere = scope.track(revolveFace(oc2, scope, profile, [0, 0, 0], [1, 0, 0], 360))
+  return scope.track(revolveFace(oc2, scope, profile, [0, 0, 0], [1, 0, 0], 360))
+}
+
+/**
+ * The report's part: a sphere R25 revolved about X, a 20 x 20 through-slot.
+ * Raw (`booleanWithHistoryMany`) is the pre-clean shape the pass is tested on;
+ * the production boolean runs the BOOLEAN preset, which already re-seats it.
+ */
+function sphereMinusSlot(oc2: OccModule, scope: DisposeScope, raw = false): OccShape {
+  const sphere = sphereBody(oc2, scope)
   const slot = scope.track(makeBoxAt(oc2, scope, [-10, 10, -30], 20, 20, 60))
-  return scope.track(booleanWithDiffMany(oc2, scope, sphere, [slot], 'cut').shape)
+  const cut = raw
+    ? booleanWithHistoryMany(oc2, scope, sphere, [slot], 'cut')
+    : booleanWithDiffMany(oc2, scope, sphere, [slot], 'cut')
+  return scope.track(cut.shape)
 }
 
 function plainSphere(oc2: OccModule, scope: DisposeScope): OccShape {
@@ -125,12 +137,15 @@ function plainTorus(oc2: OccModule, scope: DisposeScope): OccShape {
 }
 
 /** The plain torus with a notch cut through its u seam on the tube's top. */
-function torusCutAcrossSeam(oc2: OccModule, scope: DisposeScope): OccShape {
+function torusCutAcrossSeam(oc2: OccModule, scope: DisposeScope, raw = true): OccShape {
   const torus = plainTorus(oc2, scope)
   // Around (15, 0, 5): u=0 (+X) at v=pi/2, away from the v seam at v=0 so only
   // the u seam is cut.
   const notch = scope.track(makeBoxAt(oc2, scope, [13, -2, 3], 4, 4, 5))
-  return scope.track(booleanWithDiffMany(oc2, scope, torus, [notch], 'cut').shape)
+  const cut = raw
+    ? booleanWithHistoryMany(oc2, scope, torus, [notch], 'cut')
+    : booleanWithDiffMany(oc2, scope, torus, [notch], 'cut')
+  return scope.track(cut.shape)
 }
 
 /**
@@ -176,7 +191,7 @@ describe.skipIf(!oc)('reseatSeams', () => {
   it('moves the sphere-minus-slot seam and the clean folds the rim halves', () => {
     const scope = new DisposeScope()
     try {
-      const shape = sphereMinusSlot(oc!, scope)
+      const shape = sphereMinusSlot(oc!, scope, true)
       const sphere = faceOfType(oc!, scope, shape, 'sphere')!
       const before = volumeOfDefault(oc!, scope, shape)
       // Precondition: the report's defect. Two seam pieces ending on the x=10
@@ -212,6 +227,22 @@ describe.skipIf(!oc)('reseatSeams', () => {
       // Each x=+/-10 wall rim is one edge now, and the two y=10 arcs remain.
       expect(openBoundary(oc!, scope, cleanSphere)).toHaveLength(4)
       expect(readSolidEdges(oc!, scope, cleaned)).toHaveLength(7)
+    } finally {
+      scope.dispose()
+    }
+  }, 60_000)
+
+  it('the production boolean already ships the re-seated, folded result', () => {
+    const scope = new DisposeScope()
+    try {
+      const shape = sphereMinusSlot(oc!, scope)
+      const sphere = faceOfType(oc!, scope, shape, 'sphere')!
+      expect(seamEdges(oc!, scope, sphere)).toHaveLength(1)
+      expect(openBoundary(oc!, scope, sphere)).toHaveLength(4)
+      expect(readSolidEdges(oc!, scope, shape)).toHaveLength(7)
+      expect(isValid(oc!, scope, shape)).toBe(true)
+      // The reported volume, within the corpus tolerance.
+      expect(volumeOfDefault(oc!, scope, shape)).toBeCloseTo(56306.83577212492, 5)
     } finally {
       scope.dispose()
     }
@@ -331,7 +362,7 @@ describe.skipIf(!oc)('reseatSeams', () => {
     // sound, un-re-seated solid.
     const scope = new DisposeScope()
     try {
-      const shape = sphereMinusSlot(oc!, scope)
+      const shape = sphereMinusSlot(oc!, scope, true)
       const before = volumeOfDefault(oc!, scope, shape)
       const flipped: CleanupPass = (oc2, s, input, options) => {
         const result = reseatSeams(oc2, s, input, options)
