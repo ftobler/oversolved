@@ -752,10 +752,13 @@ function applyEdgeModifier(
   // (utils/core/featureFailure.ts), so it names a way out rather than a kernel
   // code: the reported document recovers at radius 0.1 where it corrupts at 0.15.
   const INVALID = 'the operation produced invalid geometry; try a smaller radius/distance or fewer edges at once'
-  let heal: ReturnType<typeof healShape> = null
+  // Whether the accepted build is invalid and the layer must heal it at
+  // adoption. The probe below only decides that; its shape is freed at once,
+  // because the heal is re-run after the names and diff exist.
+  let needsHeal = false
   if (!shapeIsValid(oc, scope, built)) {
-    heal = healShape(oc, scope, built)
-    if (heal === null) {
+    const probe = healShape(oc, scope, built)
+    if (probe === null) {
       scope.release(built)
       // A multi-edge set that corrupts may owe it to one edge: isolate it the
       // same way a refused build is, and keep the rest as a partial result.
@@ -765,12 +768,17 @@ function applyEdgeModifier(
       maker = rebuilt.maker
       built = rebuilt.shape
       if (!shapeIsValid(oc, scope, built)) {
-        heal = healShape(oc, scope, built)
-        if (heal === null) {
+        const retry = healShape(oc, scope, built)
+        if (retry === null) {
           scope.release(built)
           return fail(INVALID)
         }
+        scope.release(retry.shape)
+        needsHeal = true
       }
+    } else {
+      scope.release(probe.shape)
+      needsHeal = true
     }
   }
 
@@ -805,9 +813,8 @@ function applyEdgeModifier(
       diff = emptyBrepDiff()
     }
   } catch (e) {
-    // Release both candidate shapes so a throw does not leak either.
+    // Release the candidate shape so a throw does not leak it.
     scope.release(built)
-    if (heal !== null) scope.release(heal.shape)
     throw e
   }
 
@@ -828,9 +835,9 @@ function applyEdgeModifier(
     oc,
     scope,
     { shape: built, names, diff },
-    modifierPlan({ heal: heal === null ? 'skip' : 'required' }),
+    modifierPlan({ heal: needsHeal ? 'required' : 'skip' }),
   )
-  if (heal !== null && passRejected(cleaned, 'heal')) {
+  if (needsHeal && passRejected(cleaned, 'heal')) {
     scope.release(built)
     return fail(INVALID)
   }

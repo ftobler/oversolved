@@ -58,22 +58,24 @@ function adoptPass(
     rebase: SubShapeRebase
   },
   owned: Set<OccShape>,
-): PassReport {
+): { report: PassReport; validated: OccShape | null } {
   let result
   try {
     result = entry.pass(oc, scope, state.shape, entry.options ?? {})
   } catch (e) {
     swallowUnlessTrap(e)
-    return { name: entry.name, status: 'rejected' }
+    return { report: { name: entry.name, status: 'rejected' }, validated: null }
   }
-  if (result.rejected) return { name: entry.name, status: 'rejected' }
-  if (!result.changed) return { name: entry.name, status: 'unchanged' }
+  if (result.rejected) return { report: { name: entry.name, status: 'rejected' }, validated: null }
+  if (!result.changed) return { report: { name: entry.name, status: 'unchanged' }, validated: null }
 
   if (result.shape !== state.shape && !scope.isTracked(result.shape)) scope.track(result.shape)
   markFeatureProgress()
+  let validated: OccShape | null = null
   if (!entry.selfGuarded) {
     const verdict = guardShape(oc, scope, state.shape, result.shape, entry.guard)
-    if (!verdict.sound) return { name: entry.name, status: 'rejected' }
+    if (!verdict.sound) return { report: { name: entry.name, status: 'rejected' }, validated: null }
+    validated = verdict.validated
   }
   if (result.shape !== state.shape) owned.add(result.shape)
 
@@ -97,7 +99,7 @@ function adoptPass(
     if (state.names) state.names = rebaseNames(state.names, passRebase)
   }
   state.shape = result.shape
-  return { name: entry.name, status: 'adopted' }
+  return { report: { name: entry.name, status: 'adopted' }, validated }
 }
 
 /**
@@ -132,10 +134,12 @@ export function runCleanup(
   // handle, never the final shape a later pass produced.
   let validated: OccShape | null = null
   for (const entry of plan) {
-    const report = adoptPass(oc, scope, entry, state, owned)
-    passes.push(report)
-    if (report.status === 'adopted') {
-      validated = state.shape
+    const adopted = adoptPass(oc, scope, entry, state, owned)
+    passes.push(adopted.report)
+    if (adopted.report.status === 'adopted') {
+      // Only a guard verdict names a handle a caller's own check may skip; a
+      // self-guarded pass leaves the previous handle to the caller.
+      if (adopted.validated !== null) validated = adopted.validated
       // Mark after each pass so a long merge keeps the host's stall budget fed.
       markFeatureProgress()
     }
