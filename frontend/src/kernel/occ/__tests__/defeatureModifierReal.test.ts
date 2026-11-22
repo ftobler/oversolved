@@ -322,9 +322,9 @@ describe.skipIf(!oc || !solveBytes || !topologyBytes)('delete face on the report
       return face
     })
     shape = h.table.get<OccShape>(part.shape!)
-    // The picks come chamfer-first, fillet-second, so each connected pair is one
-    // group and the split stays visible in the matrix label.
-    groups = [picked.slice(0, 2), picked.slice(2, 4)]
+    // The picks come chamfer-first, fillet-second; since the seam re-seat each
+    // modifier builds one face, so one pick is one group.
+    groups = [picked.slice(0, 1), picked.slice(1, 2)]
   })
 
   afterAll(() => live?.dispose())

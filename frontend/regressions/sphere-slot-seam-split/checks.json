@@ -1,0 +1,47 @@
+{
+  "origin": {
+    "kind": "bug_report",
+    "ref": "feature/bug-seam-residual-split.md",
+    "date": "2026-11-22"
+  },
+  "license": "own",
+  "severity": "hard",
+  "what": "the report's sphere minus slot with a fillet and a chamfer on the two slot-wall rims: the seam re-seat folds each rim to one edge, so each modifier builds ONE face (6 faces, not 8)",
+  "features": {
+    "default": "ok",
+    "except": {
+      "Origin": "exception",
+      "Top": "exception",
+      "Front": "exception",
+      "Right": "exception",
+      "aXelUZtKwVfTqGryLRTNxZk_": "fully_constrained",
+      "5D87JAeSP7TE4GCEyzyRsXoq": "fully_constrained"
+    }
+  },
+  "tolerance": {
+    "rel": 0.000001,
+    "abs": 0.000001
+  },
+  "topology": "strict",
+  "measures": {
+    "bodies": 1,
+    "volume": 55816.29196849284,
+    "area": 8025.705570030407,
+    "centroid": [
+      0.022693717615821254,
+      -2.760436077846635,
+      1.6283336078507987e-11
+    ],
+    "bbox": [
+      -25,
+      -25,
+      -25,
+      25,
+      21.550076060972685,
+      25
+    ],
+    "faces": 6,
+    "edges": 17
+  },
+  "snapshot": true
+}

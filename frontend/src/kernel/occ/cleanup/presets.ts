@@ -7,32 +7,44 @@
  * does not re-derive them.
  *
  * The `before*` slots are the extension point for a pass added to an existing
- * flow, such as the seam re-seat, which must run after the cylinder pass chose
- * its final surfaces and before the merge folds the rim halves.
+ * flow. The residual-seam re-seat is not a slot user: it is built into both
+ * plans, after the cylinder pass chose its final surfaces (and after a
+ * modifier's heal) and before the merge folds the rim halves it releases.
  */
 
 import type { CleanupPlan, CleanupPlanEntry } from './types'
 import type { CleanTolerances } from './unifySameDomain'
 import { canonicalCylinders } from './canonicalCylinders'
 import { heal } from './heal'
+import { reseatSeams } from './reseatSeams'
 import { unifySameDomain } from './unifySameDomain'
+
+/**
+ * The residual-seam re-seat: always its own guard option (a rebuilt face must
+ * validate even on an open shell, the same demand the cylinder rebuild makes).
+ * It sits before every merge so the merge folds the rim halves it releases.
+ */
+function reseatEntry(): CleanupPlanEntry {
+  return { name: 'reseatSeams', pass: reseatSeams, guard: { validity: 'always' } }
+}
 
 export interface BooleanPlanOptions {
   unifyFaces: boolean
   tolerance?: CleanTolerances
-  // Appended after canonicalisation and before the face merge.
+  // Appended after canonicalisation and before the seam re-seat.
   beforeUnify?: readonly CleanupPlanEntry[]
 }
 
 /**
- * A boolean result: canonicalise cylindrical strips, then fold coincident
- * faces and split edges. `unifyFaces: false` is the imported-STEP gate and
- * keeps the edge merge only.
+ * A boolean result: canonicalise cylindrical strips, re-seat a seam that a
+ * feature rim cut, then fold coincident faces and split edges. `unifyFaces:
+ * false` is the imported-STEP gate and keeps the edge merge only.
  */
 export function booleanPlan(options: BooleanPlanOptions): CleanupPlan {
   return [
     { name: 'canonicalCylinders', pass: canonicalCylinders, selfGuarded: true },
     ...(options.beforeUnify ?? []),
+    reseatEntry(),
     {
       name: 'unifySameDomain',
       pass: unifySameDomain,
@@ -79,15 +91,16 @@ export type HealMode = 'whenInvalid' | 'required' | 'skip'
 
 export interface ModifierPlanOptions {
   heal?: HealMode
-  // Appended after the heal and before the edge merge (the seam re-seat).
+  // Appended after the heal and before the seam re-seat.
   beforeMerge?: readonly CleanupPlanEntry[]
 }
 
 /**
- * A fillet, chamfer, shell or defeature result: heal when invalid, then merge
- * edges only. The face merge stays off so a feature's own face is never folded
- * into a neighbour and stored face UUIDs do not churn; the edge merge is the
- * same always-safe call the imported-STEP boolean path keeps.
+ * A fillet, chamfer, shell or defeature result: heal when invalid, re-seat a
+ * seam the modifier's own result carries, then merge edges only. The face
+ * merge stays off so a feature's own face is never folded into a neighbour and
+ * stored face UUIDs do not churn; the edge merge is the same always-safe call
+ * the imported-STEP boolean path keeps.
  */
 export function modifierPlan(options: ModifierPlanOptions = {}): CleanupPlan {
   const mode = options.heal ?? 'whenInvalid'
@@ -101,6 +114,7 @@ export function modifierPlan(options: ModifierPlanOptions = {}): CleanupPlan {
     })
   }
   plan.push(...(options.beforeMerge ?? []))
+  plan.push(reseatEntry())
   plan.push({
     name: 'unifySameDomain',
     pass: unifySameDomain,

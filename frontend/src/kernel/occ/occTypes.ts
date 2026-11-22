@@ -514,6 +514,10 @@ export interface OccSurfaceAdaptor extends OccDisposable {
   Sphere(): OccAnalyticSphere
   // Only valid when GetType() is GeomAbs_Torus.
   Torus(): OccAnalyticTorus
+  /** The revolution axis. Only valid when GetType() is
+   *  GeomAbs_SurfaceOfRevolution. The seam re-seat rotates such a face's
+   *  surface about it, which shifts u without moving the surface. */
+  AxeOfRevolution(): OccAxisDir
 }
 
 /** gp_Cylinder read accessors (BRepAdaptor_Surface.Cylinder()). */
@@ -666,6 +670,7 @@ export interface OccSubShape extends OccDisposable {
 /** gp_Ax1 read accessors (gp_Circle/gp_Ellipse .Axis()/.XAxis()). By-value
  *  embind return: the proxy owns WASM memory and must be deleted. */
 export interface OccAxisDir extends OccDisposable {
+  Location(): OccXYZ
   Direction(): OccXYZ
 }
 

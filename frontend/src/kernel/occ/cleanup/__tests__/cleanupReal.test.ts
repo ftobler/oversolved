@@ -101,6 +101,8 @@ describe.skipIf(!oc)('the BOOLEAN preset matches the old boolean composition', (
       expect(result.changed).toBe(true)
       expect(result.passes.map((p) => [p.name, p.status])).toEqual([
         ['canonicalCylinders', 'adopted'],
+        // Nothing in this fixture has a seam cut by a feature rim.
+        ['reseatSeams', 'unchanged'],
         ['unifySameDomain', 'adopted'],
       ])
       expect(shapeIsValid(oc!, scope, result.shape)).toBe(true)
@@ -204,7 +206,10 @@ describe.skipIf(!oc)('the MODIFIER preset keeps faces apart', () => {
         modifierPlan({ heal: 'skip' }),
       )
 
-      expect(result.passes).toEqual([{ name: 'unifySameDomain', status: 'adopted' }])
+      expect(result.passes).toEqual([
+        { name: 'reseatSeams', status: 'unchanged' },
+        { name: 'unifySameDomain', status: 'adopted' },
+      ])
       expect(shapeIsValid(oc!, scope, result.shape)).toBe(true)
       expect(volumeOfDefault(oc!, scope, result.shape)).toBeCloseTo(volume, 9)
       // The fillet face must still be its own face, not folded into a
