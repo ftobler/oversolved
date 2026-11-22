@@ -15,7 +15,7 @@
 // remove_dangling_content).
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
-import { renderHookStrict } from '@/utils/testing/renderHookStrict'
+import { renderHookStrict } from '@/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { IDEMPOTENT_MUTATION } from '@/hooks/mutationIdempotence'
 
@@ -32,10 +32,10 @@ import { useEditorState } from '@/hooks/useEditorState'
 const { failLoudMock } = vi.hoisted(() => ({ failLoudMock: vi.fn() }))
 
 // The guard's bodyId diagnostic lives in the shared session module, which
-// imports failLoud from utils/invariants; the store module re-exports it but
+// imports failLoud from utils/core/failLoud; the store module re-exports it but
 // is no longer the path the guard reads, so the mock sits on the source.
-vi.mock('@/utils/invariants', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/utils/invariants')>()
+vi.mock('@/utils/core/failLoud', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/utils/core/failLoud')>()
   return { ...actual, failLoud: failLoudMock }
 })
 

@@ -1,7 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import DisclaimerDialog from '@/components/dialogs/DisclaimerDialog'
 import SplashScreen from '@/components/SplashScreen'
-import { useKernelReady } from '@/kernel/worker/kernelReady'
+import { useKernelReady } from '@/hooks/useKernelReady'
 import Workspaces from '@/pages/Workspaces'
 import WorkspacePage from '@/pages/WorkspacePage'
 import Docs from '@/pages/Docs'

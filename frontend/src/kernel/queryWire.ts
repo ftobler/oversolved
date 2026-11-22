@@ -3,7 +3,7 @@
 // of query.ts so the Repository engine and the codec can evolve separately; the
 // query.ts barrel re-exports the public surface unchanged.
 
-import { failLoud } from '@/utils/invariants'
+import { failLoud } from '@/utils/core/failLoud'
 import { isDevOrTestBuild } from './isDevBuild'
 import { VERTEX_POINT_KEY_SUFFIXES } from '@/types/vertexKeys'
 import type { LocalQuery, AbsoluteQuery, AncestryQuery, Query } from '@/types/query'

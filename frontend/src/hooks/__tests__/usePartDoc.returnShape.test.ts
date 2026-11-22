@@ -6,7 +6,7 @@
 // hook still needs both internally (the doc port and the solve-result port), so
 // this pins that they do not come back out.
 import { describe, it, expect, vi } from 'vitest'
-import { renderHookStrict } from '@/utils/testing/renderHookStrict'
+import { renderHookStrict } from '@/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
 
 vi.mock('@/hooks/useDocumentState', async () => {

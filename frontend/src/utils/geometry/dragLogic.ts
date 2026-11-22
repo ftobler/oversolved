@@ -2,7 +2,7 @@
 // This file must be importable in a plain vitest test without a DOM.
 // See docs/viewport.md "Layer Contracts" and feature/feature_headless_viewport.md.
 import type { Mutation } from '@/types/cad'
-import type { VertexOrEdgeDrag } from '@/stores/sketchEditorStore'
+import type { VertexOrEdgeDrag } from '@/types/drag'
 import type { SnapTarget, SnapCandidate, EntityCandidate } from '@/utils/geometry/snapDetection'
 import type { CircleDragMode } from '@/kernel/features/circleDragMode'
 import { findSnapTarget, collectEntityCandidatesFlat } from '@/utils/geometry/snapDetection'

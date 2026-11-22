@@ -10,7 +10,7 @@
 //
 // It owns the opening pointer, the phase, the click tracker, the source and the
 // moved flag, and nothing else. The ray math and the store writes stay in
-// utils/assemblyPointer.ts, which composes this machine.
+// picking/assemblyPointer.ts, which composes this machine.
 
 import { createClickGestureTracker, type ClickGestureState } from '@/utils/clickGesture'
 

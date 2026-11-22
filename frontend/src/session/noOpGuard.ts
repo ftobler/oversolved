@@ -1,5 +1,5 @@
 import type { PartDoc, Mutation } from '@/types/cad'
-import { failLoud } from '@/utils/invariants'
+import { failLoud } from '@/utils/core/failLoud'
 
 // The no-op slice guard, shared by the hook funnel and the DocSession so the
 // two paths cannot classify a dead step differently. Lifted verbatim from

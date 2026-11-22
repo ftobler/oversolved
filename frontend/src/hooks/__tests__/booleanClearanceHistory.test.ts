@@ -6,7 +6,7 @@
 // clearance round-trips back to ABSENT (not 0).
 import { describe, it, expect, vi } from 'vitest'
 import { act } from '@testing-library/react'
-import { renderHookStrict } from '@/utils/testing/renderHookStrict'
+import { renderHookStrict } from '@/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import type { PartDoc, Mutation } from '@/types/cad'
 

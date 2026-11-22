@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
 import { stringify as stringifyYaml } from 'yaml'
-import { renderHookStrict } from '@/utils/testing/renderHookStrict'
+import { renderHookStrict } from '@/testing/renderHookStrict'
 import { useAssemblyUndoRedo, decideAssemblyMutation } from '@/hooks/useAssemblyUndoRedo'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA, setAssemblyCallbacks } from '@/stores/assemblyStore'
 import { useUnsavedChangesStore, hashSavedText } from '@/stores/unsavedChangesStore'

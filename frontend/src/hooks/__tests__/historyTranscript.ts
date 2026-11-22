@@ -8,7 +8,7 @@
 // and result types are plain data on purpose: a future DocSession driver
 // reuses them unchanged, so nothing here may leak the part hook's shape.
 import { act } from '@testing-library/react'
-import { renderHookStrict } from '@/utils/testing/renderHookStrict'
+import { renderHookStrict } from '@/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
 
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'

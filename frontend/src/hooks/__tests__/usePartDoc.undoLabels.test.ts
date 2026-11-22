@@ -9,7 +9,7 @@
 // is not among them: a preview can no longer be open when a session commits.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
-import { renderHookStrict } from '@/utils/testing/renderHookStrict'
+import { renderHookStrict } from '@/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { useSketchEditorStore, setSketchCallback } from '@/stores/sketchEditorStore'
 import { describeMutation } from '@/utils/core/mutationDescriptions'

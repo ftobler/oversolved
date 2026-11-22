@@ -16,7 +16,7 @@ import type { PlaneLike } from '../features/shared/planes'
 import { POINT_TOL, pointsMatch, uvTo3d } from './prismGeometry'
 import { nameEdgeGroups, type FaceEdgeTable } from './constructionLineage'
 import { SubShapeMap } from './subshapeIdentity'
-import { failLoud } from '@/utils/invariants'
+import { failLoud } from '@/utils/core/failLoud'
 import { isDevBuild } from '../isDevBuild'
 
 /** An OCC edge's endpoints plus (for circles) the center/radius read off it. */

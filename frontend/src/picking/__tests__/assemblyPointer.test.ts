@@ -10,7 +10,7 @@ import {
   DEFAULT_ASSEMBLY_EDITOR_DATA,
 } from '@/stores/assemblyStore'
 import { findInstance } from '@/utils/assemblyMutations'
-import { createAssemblyPointerAdapter, gestureAllowsSelect, missClearPlan, type GizmoMode, type PointerRef } from '@/utils/assemblyPointer'
+import { createAssemblyPointerAdapter, gestureAllowsSelect, missClearPlan, type GizmoMode, type PointerRef } from '@/picking/assemblyPointer'
 import { dialCounterRotation, dialSpoke, dialTicks, nearestTickIndex } from '@/utils/angleDialGeometry'
 import { signedAngleAbout, type Ray } from '@/utils/gizmoMath'
 import { GIZMO_AXES, GIZMO_PIXELS, RING_RADIUS, type GizmoAxisDef, type GizmoAxisName } from '@/utils/gizmoPickGeometry'

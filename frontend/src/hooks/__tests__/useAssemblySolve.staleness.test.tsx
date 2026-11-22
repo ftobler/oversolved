@@ -10,7 +10,7 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { renderHookStrict } from '@/utils/testing/renderHookStrict'
+import { renderHookStrict } from '@/testing/renderHookStrict'
 import type { AssemblyDoc, PartInstance } from '@/types/cad'
 import { IDENTITY_TRANSFORM } from '@/utils/transform3d'
 import { assemblyPartId } from '@/utils/assemblyBodies'

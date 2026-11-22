@@ -16,7 +16,7 @@ import { runAssemblyOperation } from '@/utils/assemblyOperations'
 import { ASSEMBLY_UNDO_LABELS, type AssemblyUndoLabel } from '@/utils/core/assemblyUndoLabels'
 import { captureMateOrientationPatch } from '@/utils/mateCapture'
 import type { AssemblyPickPart } from '@/utils/assemblyPick'
-import type { GizmoAxisName } from '@/utils/gizmoPickGeometry'
+import type { GizmoDragState } from '@/types/drag'
 import { composeTransforms, IDENTITY_TRANSFORM, transformsEqual, type Vec3 } from '@/utils/transform3d'
 
 /** The mate reference slot a pick currently writes into; null when not authoring. */
@@ -25,31 +25,10 @@ export interface MateFieldTarget {
   field: MateRefField
 }
 
-/**
- * The triad gesture in progress, published for the renderer. The gesture itself
- * lives in a closure inside the pointer adapter, which React cannot see, so the
- * triad learns which handle is grabbed (and, for a ring, how far it has swung)
- * from here. `axis` is the part-local axis name, not a world vector, so the
- * renderer matches it against GIZMO_AXES without inverse-rotating anything.
- */
-export type GizmoDragState =
-  | { kind: 'axis'; axis: GizmoAxisName }
-  | { kind: 'plane'; axis: GizmoAxisName }
-  /**
-   * `swing` is the SNAPPED angle the part receives, which is what the dial draws.
-   * `snapped` is this frame's outcome; `snapArmed` is whether snapping could
-   * happen at all, which the cursor's distance from the ring decides. The dial
-   * shows the two differently: a free angle inside the ring still has ticks to
-   * fall onto, a disarmed one has none, and the user must be able to see which.
-   */
-  | {
-      kind: 'ring'
-      axis: GizmoAxisName
-      datum: number
-      swing: number
-      snapped: boolean
-      snapArmed: boolean
-    }
+// The triad gesture shape lives with the model types, so the pointer adapter
+// can read it without importing this store layer. Re-exported for the store's
+// renderer callers.
+export type { GizmoDragState } from '@/types/drag'
 
 /** One entity the ID buffer found under the cursor, resolver-ordered. */
 export interface EntityHit {
@@ -168,7 +147,7 @@ export interface AssemblyEditorData {
   // Live drag/gizmo state; null between manipulations. This is the single
   // React-visible truth for "a drag is live": the viewport derives its orbit
   // lock and render gates from it, and the gesture machine in
-  // utils/assemblyPointer is the only writer, so they cannot drift.
+  // picking/assemblyPointer is the only writer, so they cannot drift.
   manipulation: ManipulationSession | null
   // Which triad handle is being dragged right now; null when none is. Only the
   // gesture machine's open and move transitions publish it.

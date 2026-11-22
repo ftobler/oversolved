@@ -7,7 +7,7 @@
 // Mirrors the undoIntegration harness: the real session, real handlers.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
-import { renderHookStrict } from '@/utils/testing/renderHookStrict'
+import { renderHookStrict } from '@/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
 
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'

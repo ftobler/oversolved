@@ -2,7 +2,7 @@
 // resolver, coercion, gc and the body-scoped eviction helpers. Split out of
 // query.ts; the query.ts barrel re-exports the public surface unchanged.
 
-import { failLoud } from '@/utils/invariants'
+import { failLoud } from '@/utils/core/failLoud'
 import { isDevOrTestBuild } from "./isDevBuild"
 import {
   isClassifierId,

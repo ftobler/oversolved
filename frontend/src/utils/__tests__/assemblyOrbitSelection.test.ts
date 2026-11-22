@@ -14,7 +14,7 @@
 
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assemblyStore'
-import { missClearsSelection } from '@/utils/assemblyPointer'
+import { missClearsSelection } from '@/picking/assemblyPointer'
 import { createClickGestureTracker, type ClickGestureTracker } from '@/utils/clickGesture'
 import { CLICK_THRESHOLD_PX } from '@/components/Geometry3D/constants'
 

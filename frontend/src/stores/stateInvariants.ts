@@ -14,7 +14,7 @@
 import type { SelectionDomain } from '@/types/cad'
 import { drawingToolIds, isDrawingTool } from '@/registry/toolRegistry'
 import { isPickKeyString } from '@/picking/pickKey'
-import { devOnly, testMode, failLoud } from '@/utils/invariants'
+import { devOnly, testMode, failLoud } from '@/utils/core/failLoud'
 
 // Re-exported so the many existing callers of the stores module keep working;
 // the canonical definition is the neutral utils leaf, which keeps the CAD

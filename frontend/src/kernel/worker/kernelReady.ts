@@ -1,14 +1,13 @@
 /**
- * Browser-kernel readiness store. A small external store (read via
- * `useSyncExternalStore`) that reports whether the OCC + Rust solver workers
- * have finished loading. The splash screen gates the whole app on it.
+ * Browser-kernel readiness signal. A small external store that reports whether
+ * the OCC + Rust solver workers have finished loading. The splash screen gates
+ * the whole app on it.
  *
+ * This module owns the signal only; `hooks/useKernelReady` is the React binding.
  * `started` stays false until a warm call happens. While it is false the app
  * is considered ready, so a direct `App` mount in tests (and any environment
  * that never warms) does not hang on a splash that can never resolve.
  */
-
-import { useSyncExternalStore } from 'react'
 
 interface State {
   started: boolean
@@ -51,17 +50,13 @@ function armFallback(): void {
   if (t !== null && typeof t.unref === 'function') t.unref()
 }
 
-function subscribe(callback: () => void): () => void {
+export function subscribeKernelReady(callback: () => void): () => void {
   listeners.add(callback)
   return () => { listeners.delete(callback) }
 }
 
-function getSnapshot(): boolean {
+export function getKernelReadySnapshot(): boolean {
   return isReady()
-}
-
-export function useKernelReady(): boolean {
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot)
 }
 
 export function getKernelReady(): boolean {
