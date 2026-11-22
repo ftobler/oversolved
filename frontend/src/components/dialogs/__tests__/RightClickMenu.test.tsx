@@ -2,7 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import RightClickMenu from '@/components/dialogs/RightClickMenu'
-import { registerCommand, clearAllHandlers, dispatchKey } from '@/utils/core/commandRegistry'
+import { registerCommand, clearAllHandlers, dispatchKey } from '@/hooks/commandRegistry'
 import { modalOwnsEscape, resetModalEscape } from '@/utils/core/modalEscape'
 
 // The menu is used for the library's import door, so it has to work without a

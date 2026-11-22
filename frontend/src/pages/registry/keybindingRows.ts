@@ -2,7 +2,7 @@ import { CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS, CONSTRAINT_BY_KIND, ENTITY_BY_A
 import {
   CORE_KEYBINDINGS, KEYMAP, FEATURE_KEYMAP, SKETCH_KEYBINDINGS, SKETCH_KEYMAP,
   ASSEMBLY_KEYBINDINGS, ASSEMBLY_KEYMAP, NATIVE_KEYBINDINGS,
-} from '@/utils/core/commandRegistry'
+} from '@/hooks/commandRegistry'
 
 /**
  * When a binding is live, mirroring dispatchKey's branches:

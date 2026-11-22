@@ -10,9 +10,9 @@ import {
   buildKeyString,
   dispatchKey,
   isEditableTarget,
-} from '@/utils/core/commandRegistry'
+} from '@/hooks/commandRegistry'
 import { CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS } from '@/registry'
-import { ASSEMBLY_COMMAND_NAMES } from '@/pages/assemblyCommandEntries'
+import { ASSEMBLY_COMMAND_NAMES } from '@/session/assemblyCommandSpecs'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
 import { initializeTools } from '@/tools'

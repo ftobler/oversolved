@@ -83,7 +83,7 @@ vi.mock('@/persistence/previewStore', () => ({
 }))
 vi.mock('@/hooks/usePreview', () => ({ usePreview: () => undefined }))
 
-import { executeCommand } from '@/utils/core/commandRegistry'
+import { executeCommand } from '@/hooks/commandRegistry'
 import { assemblyEntityKey } from '@/utils/anchorCandidates'
 import { findMate } from '@/utils/assemblyMutations'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'

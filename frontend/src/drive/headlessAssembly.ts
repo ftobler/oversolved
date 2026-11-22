@@ -17,7 +17,7 @@ import { History } from '@/session/History'
 import { okResult } from '@/session/result'
 import { CommandRegistry } from '@/utils/core/commandSpec'
 import type { CommandName } from '@/utils/core/commandNames'
-import { ASSEMBLY_COMMAND_SPECS, type AssemblyCommandContext } from '@/pages/assemblyCommandEntries'
+import { ASSEMBLY_COMMAND_SPECS, type AssemblyCommandContext } from '@/session/assemblyCommandSpecs'
 import {
   planAssemblyOperation,
   runAssemblyOperation,

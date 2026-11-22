@@ -3,7 +3,7 @@ import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vite
 import { renderHook, act } from '@testing-library/react'
 import { renderHookStrict } from '@/testing/renderHookStrict'
 import { useCommandRegistration } from '../useCommandRegistration'
-import { clearAllHandlers, executeCommand } from '@/utils/core/commandRegistry'
+import { clearAllHandlers, executeCommand } from '@/hooks/commandRegistry'
 import { CommandRegistry, noParams, type CommandSpec, type CommandContext } from '@/utils/core/commandSpec'
 import { okResult } from '@/session/result'
 import { COMMAND_NAMES, type CommandName } from '@/utils/core/commandNames'

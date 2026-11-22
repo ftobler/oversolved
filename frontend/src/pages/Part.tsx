@@ -11,7 +11,7 @@ import { classifyPendingAdd } from '@/kernel/features/constraintProbe'
 import { variableRenameProblem } from '@/kernel/features/variable'
 import { PROJECTION_NOT_FROZEN_TITLE, projectionNotFrozenMessage } from '@/kernel/features/projectionMembers'
 import { projectedSelectionTargets } from '@/utils/yamlMutations/freezeProjection'
-import { executeCommand } from '@/utils/core/commandRegistry'
+import { executeCommand } from '@/hooks/commandRegistry'
 import { resolvedKindsOfSketch } from '@/kernel/features/sketch'
 import { docVisibleFeatureIds, visibleFeatureIds } from '@/utils/featureVisibility'
 import { useSketchEditorStore, useSketchUiStore, setSketchCallback, clearSketchCallbacks, sketchOwnedDeleteTargets, deleteMutationFor, type PendingConstraint } from '@/stores/sketchEditorStore'
@@ -52,6 +52,7 @@ import {
   type DxfLayerOption, type DxfProfile,
 } from '@/utils/dxfImport'
 import { getSketchState, PART_COMMAND_SPECS, type PartCommandContext, type ShowMessagePayload } from '@/pages/commandEntries'
+import { projectSelection } from '@/tools/projectSelectionCommand'
 import { CommandRegistryProvider } from '@/contexts/CommandRegistryContext'
 import { installDriveSurface } from '@/drive/driveSurface'
 import { DRIVE_ENABLED } from '@/drive/gate'
@@ -1223,6 +1224,7 @@ export default function Part() {
     deleteSelectedFeatures: handleDeleteSelectedFeatures,
     toggleSketchPlaneVisibility: handleToggleSketchPlaneVisibility,
     togglePlaneVisibility: handleTogglePlaneVisibility,
+    projectSelection,
     addFeature: (kind, extra) => handleAddFeature(kind, extra) ?? null,
     showMessage,
   }), [

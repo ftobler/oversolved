@@ -1,4 +1,4 @@
-import { ASSEMBLY_COMMAND_SPECS, type AssemblyCommandContext } from '@/pages/assemblyCommandEntries'
+import { ASSEMBLY_COMMAND_SPECS, type AssemblyCommandContext } from '@/session/assemblyCommandSpecs'
 import { useCommandRegistration } from '@/pages/hooks/useCommandRegistration'
 import type { CommandRegistry } from '@/utils/core/commandSpec'
 

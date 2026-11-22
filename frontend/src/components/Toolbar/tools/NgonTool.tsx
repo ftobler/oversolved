@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
-import { executeCommand } from '@/utils/core/commandRegistry'
+import { executeCommand } from '@/hooks/commandRegistry'
 import ToolbarButton from '@/components/Toolbar/ToolbarButton'
 import { WheelNumberInput } from '@/components/editors/widgets/WheelNumberInput'
 import toolbarNgonIcon from '@/assets/icons/toolbar-ngon.svg'

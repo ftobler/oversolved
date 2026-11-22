@@ -9,7 +9,7 @@
 // Skips when OCC.js or the Rust solver is absent.
 import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { createDocSession } from '@/session/DocSession'
-import { createWorkerSolveScheduler } from '@/hooks/workerSolveScheduler'
+import { createWorkerSolveScheduler } from '@/session/workerSolveScheduler'
 import { createLiveValuePump } from '@/components/Geometry3D/liveValuePump'
 import { solveLocally } from '@/kernel/solveLocally'
 import { loadOcc, resetOcc } from '@/kernel/occ/loadOcc'

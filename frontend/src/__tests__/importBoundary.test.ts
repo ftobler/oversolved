@@ -41,9 +41,6 @@ const FORBIDDEN = ['components', 'stores'].map((dir) => join(SRC, dir))
  * deliberate. Every entry is asserted to still exist and still violate.
  */
 const ALLOWLIST = new Set([
-  // Main-thread service that resolves the active editor's registry from the
-  // editor-mode store; the specs themselves are core data.
-  'utils/core/commandRegistry.ts',
   // Interaction-layer ID registration reading pure geometry / drag helpers from
   // the components tree. Picking is not a neutral leaf; the A-4 edge fixed here
   // is its use of the stores, which is what the rule still guards.

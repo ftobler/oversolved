@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vite
 import { render, fireEvent, act } from '@testing-library/react'
 import MessageDialog from '@/components/dialogs/MessageDialog'
 import Dialog from '@/components/dialogs/Dialog'
-import { clearAllHandlers, dispatchKey } from '@/utils/core/commandRegistry'
+import { clearAllHandlers, dispatchKey } from '@/hooks/commandRegistry'
 import { resetModalEscape } from '@/utils/core/modalEscape'
 import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { initializeTools } from '@/tools'

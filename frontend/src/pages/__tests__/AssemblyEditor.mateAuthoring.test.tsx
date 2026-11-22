@@ -76,11 +76,11 @@ vi.mock('@/persistence/previewStore', () => ({
 }))
 vi.mock('@/hooks/usePreview', () => ({ usePreview: () => undefined }))
 
-import { executeCommand } from '@/utils/core/commandRegistry'
+import { executeCommand } from '@/hooks/commandRegistry'
 import { assemblyEntityKey, type EntityMateRefs } from '@/utils/anchorCandidates'
 import { findMate } from '@/utils/assemblyMutations'
 import { MATE_KINDS } from '@/utils/mateKinds'
-import { insertMateCommand } from '@/pages/assemblyCommandEntries'
+import { insertMateCommand } from '@/session/assemblyCommandSpecs'
 import type { MateKind } from '@/types/cad'
 import { tick, renderEditor, installSessionFromList, cardAction, insertPart } from './AssemblyEditor.harness'
 

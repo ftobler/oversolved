@@ -9,7 +9,7 @@ import { describe, it, expect } from 'vitest'
 import { commandCatalog } from '../commandCatalog'
 import { Field, noParams, objectParams, type ErasedCommandSpec, type CommandContext } from '@/utils/core/commandSpec'
 import type { CommandName } from '@/utils/core/commandNames'
-import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
+import { PART_COMMAND_SPECS } from '@/session/partCommandSpecs'
 
 function spec(id: string, patch: Partial<ErasedCommandSpec<CommandContext>> = {}): ErasedCommandSpec<CommandContext> {
   return {

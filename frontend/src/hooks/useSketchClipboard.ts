@@ -12,7 +12,7 @@
 import { useEffect, useRef } from 'react'
 import type { Mutation, PartDoc, Point, SketchData } from '@/types/cad'
 import type { Result } from '@/session/result'
-import { isEditableTarget } from '@/utils/core/commandRegistry'
+import { isEditableTarget } from '@/hooks/commandRegistry'
 import { MM_PER_LENGTH_UNIT, lengthUnitOf } from '@/utils/lengthUnit'
 import { useEditorState } from '@/hooks/useEditorState'
 import {

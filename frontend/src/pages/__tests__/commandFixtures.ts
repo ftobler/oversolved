@@ -1,7 +1,7 @@
 import { CommandRegistry } from '@/utils/core/commandSpec'
-import { clearEditorCommandRegistry, setEditorCommandRegistry } from '@/utils/core/commandRegistry'
+import { clearEditorCommandRegistry, setEditorCommandRegistry } from '@/hooks/commandRegistry'
 import { getSketchState, PART_COMMAND_SPECS, type PartCommandContext } from '@/pages/commandEntries'
-import { ASSEMBLY_COMMAND_SPECS, type AssemblyCommandContext } from '@/pages/assemblyCommandEntries'
+import { ASSEMBLY_COMMAND_SPECS, type AssemblyCommandContext } from '@/session/assemblyCommandSpecs'
 import type { DocSession } from '@/session/DocSession'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useAssemblyStore } from '@/stores/assemblyStore'
@@ -21,6 +21,7 @@ export function partContext(overrides: Partial<PartCommandContext> = {}): PartCo
     deleteSelectedFeatures: () => {},
     toggleSketchPlaneVisibility: () => {},
     togglePlaneVisibility: () => {},
+    projectSelection: () => false,
     addFeature: () => null,
     showMessage: () => {},
     ...overrides,

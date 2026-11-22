@@ -4,7 +4,7 @@ import {
   COMMAND_TABLE_END, COMMAND_TABLE_START,
 } from '@/pages/registry/commandRows'
 import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
-import { ASSEMBLY_COMMAND_SPECS } from '@/pages/assemblyCommandEntries'
+import { ASSEMBLY_COMMAND_SPECS } from '@/session/assemblyCommandSpecs'
 import { COMMAND_NAMES } from '@/utils/core/commandNames'
 
 // The Registry page is the user-facing contract for commands, exactly as the

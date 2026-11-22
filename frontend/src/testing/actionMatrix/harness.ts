@@ -214,6 +214,7 @@ export function createMatrixHarness(spec: PartDoc, solver: MatrixSolver): Matrix
     deleteSelectedFeatures,
     toggleSketchPlaneVisibility: () => { session.execute({ type: 'toggle_sketch_plane_visibility' }) },
     togglePlaneVisibility: () => { session.execute({ type: 'toggle_plane_visibility' }) },
+    projectSelection: () => false,
     addFeature,
     showMessage: payload => { messages.push(payload) },
   }

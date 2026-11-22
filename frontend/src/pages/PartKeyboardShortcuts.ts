@@ -1,6 +1,6 @@
 import { PART_COMMAND_SPECS, type PartCommandContext } from '@/pages/commandEntries'
 import { useCommandRegistration } from '@/pages/hooks/useCommandRegistration'
-import { executeCommand } from '@/utils/core/commandRegistry'
+import { executeCommand } from '@/hooks/commandRegistry'
 import type { CommandRegistry } from '@/utils/core/commandSpec'
 
 /**

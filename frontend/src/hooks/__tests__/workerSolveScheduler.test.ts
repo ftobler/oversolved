@@ -4,7 +4,7 @@
 // error state. The adapter's equivalence with the session's scheduler suite is
 // what lets DocSession tests trust the fake.
 import { describe, it, expect, vi } from 'vitest'
-import { createWorkerSolveScheduler, type ReSolveFn } from '@/hooks/workerSolveScheduler'
+import { createWorkerSolveScheduler, type ReSolveFn } from '@/session/workerSolveScheduler'
 import type { PartDoc } from '@/types/cad'
 
 const doc = (id: string): PartDoc =>

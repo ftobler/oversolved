@@ -77,7 +77,7 @@ vi.mock('@/persistence/previewStore', () => ({
 }))
 vi.mock('@/hooks/usePreview', () => ({ usePreview: () => undefined }))
 
-import { executeCommand } from '@/utils/core/commandRegistry'
+import { executeCommand } from '@/hooks/commandRegistry'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { getFileRegistry } from '@/persistence/fileRegistry'
 import { resetFakeIndexedDb } from '@/testing/fakeIndexedDb'

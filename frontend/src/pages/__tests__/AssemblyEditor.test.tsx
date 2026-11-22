@@ -91,11 +91,11 @@ vi.mock('@/persistence/previewStore', () => ({
 }))
 vi.mock('@/hooks/usePreview', () => ({ usePreview: () => undefined }))
 
-import { executeCommand, setEditorCommandRegistry } from '@/utils/core/commandRegistry'
+import { executeCommand, setEditorCommandRegistry } from '@/hooks/commandRegistry'
 import { CommandRegistry, objectParams, Field } from '@/utils/core/commandSpec'
 import { errorResult } from '@/session/result'
 import { assemblyContext } from './commandFixtures'
-import type { AssemblyCommandContext } from '@/pages/assemblyCommandEntries'
+import type { AssemblyCommandContext } from '@/session/assemblyCommandSpecs'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import type { WorkspaceSession } from '@/workspace/session'

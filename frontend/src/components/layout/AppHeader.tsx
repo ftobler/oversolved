@@ -5,7 +5,7 @@ import { confirmDiscardUnsavedChanges, useUnsavedChangesStore } from '@/stores/u
 import { useAboutDialogStore } from '@/stores/aboutDialogStore'
 import { useBugReportStore } from '@/stores/bugReportStore'
 import { editorState } from '@/stores/editorState'
-import { isEditableTarget } from '@/utils/core/commandRegistry'
+import { isEditableTarget } from '@/hooks/commandRegistry'
 import { modalOwnsEscape } from '@/utils/core/modalEscape'
 import MessageDialog from '@/components/dialogs/MessageDialog'
 import BugReportPanel from '@/components/bugReport/BugReportPanel'

@@ -5,7 +5,7 @@ import type { AssemblyOperationId, AssemblyOperationInputs } from '@/utils/assem
 import type { MateParamPatch } from '@/utils/assemblyMutations'
 import { okResult, errorResult } from '@/session/result'
 import { errorMessage } from '@/utils/core/errorMessage'
-import { ASSEMBLY_KEYBINDINGS } from '@/utils/core/commandRegistry'
+import { ASSEMBLY_KEYBINDINGS } from '@/utils/core/keymaps'
 import type { CommandName } from '@/utils/core/commandNames'
 import {
   noParams, objectParams, valueParam, Field,
