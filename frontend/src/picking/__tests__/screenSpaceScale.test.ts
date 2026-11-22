@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import {
   worldUnitsPerPixel, pixelCubeHalfExtent, CUBE_CORNER_SIGNS, CUBE_TRIANGLE_INDICES,
 } from '../screenSpaceScale'
-import { p2w } from '@/utils/geometry/sketchHelpers'
+import { p2w } from '@/components/Geometry3D/sketchSceneHelpers'
 
 /** projectionMatrix.elements[5] is the Y scale the shader reads as projectionMatrix[1][1]. */
 function projectionY(camera: THREE.OrthographicCamera | THREE.PerspectiveCamera): number {

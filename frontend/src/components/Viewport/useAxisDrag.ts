@@ -5,7 +5,7 @@ import { useCallback, useRef, useState } from 'react'
 import * as THREE from 'three'
 import { useThree } from '@react-three/fiber'
 import { closestParamOnAxis, type Ray } from '@/utils/gizmoMath'
-import { p2w } from '@/utils/geometry/sketchHelpers'
+import { p2w } from '@/components/Geometry3D/sketchSceneHelpers'
 
 // How far the pixel factor may drift before it is worth a re-render. Only steps
 // of ~25% propagate; the resolver's snap window absorbs the residual error at

@@ -3,7 +3,7 @@ import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import type { Mesh3D, EdgeData } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { p2w } from '@/utils/geometry/sketchHelpers'
+import { p2w } from '@/components/Geometry3D/sketchSceneHelpers'
 import {
   COLOR_PART_DEFAULT,
   COLOR_PART_EDGE, COLOR_PART_EDGE_SEL, COLOR_PART_REMOVED,

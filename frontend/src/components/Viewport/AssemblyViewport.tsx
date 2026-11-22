@@ -61,7 +61,7 @@ import {
 import { captureThumbnail } from '@/components/Viewport/captureThumbnail'
 import { createAssemblyPointerAdapter, gestureAllowsSelect, missClearPlan, missClearsSelection } from '@/picking/assemblyPointer'
 import type { PointerRef } from '@/utils/assemblyGesture'
-import { p2w } from '@/utils/geometry/sketchHelpers'
+import { p2w } from '@/components/Geometry3D/sketchSceneHelpers'
 import { GIZMO_PIXELS, parseGizmoHandleKey } from '@/utils/gizmoPickGeometry'
 import { isManipulable } from '@/utils/partManipulation'
 import { offsetPickParts } from '@/utils/assemblyPick'

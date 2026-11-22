@@ -4,7 +4,7 @@ import type { ThreeEvent } from '@react-three/fiber'
 import type { Topology } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { COLOR_SELECTED, COLOR_INACTIVE, COLOR_HOVER, COLOR_ERROR, highlightState } from '@/components/Geometry3D/constants'
-import { buildSurfaceShapes } from '@/utils/geometry/surfaceShapes'
+import { buildSurfaceShapes } from '@/components/Geometry3D/surfaceShapes'
 
 // 'inactive' = another sketch is being edited (this one is dimmed, no events)
 // 'editing'  = this sketch is being edited (ID buffer owns entity/vertex events)

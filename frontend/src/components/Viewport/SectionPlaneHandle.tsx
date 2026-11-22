@@ -12,7 +12,7 @@ import {
 } from '@/viewport/sectionHandle'
 import { shouldActivateDrag } from '@/utils/geometry/dragLogic'
 import { handleColor } from '@/components/Geometry3D/featureHandleMath'
-import { p2w } from '@/utils/geometry/sketchHelpers'
+import { p2w } from '@/components/Geometry3D/sketchSceneHelpers'
 import {
   applySectionTiltSwing, offsetFramePoint, sectionOffsetFromTiltedDrag, sectionOutlineBounds,
   sectionOutlineRect, tiltedSectionFrame,

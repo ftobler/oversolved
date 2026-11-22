@@ -1,20 +1,19 @@
 import { describe, it, expect } from 'vitest'
-import * as THREE from 'three'
 import {
   pointTo3D,
   getIconUrl,
-  p2w,
   sampleArc,
   sampleArcCCW,
   getEntityBounds,
 } from '@/utils/geometry/sketchHelpers'
 import type { Entity } from '@/types/cad'
 
-// sketchHelpers is pure (THREE math + asset lookup, no DOM). The existing
+// sketchHelpers is pure (geometry math + asset lookup, no DOM). The existing
 // sketchHelpers.test.ts pins sampleEllipse / sampleBezier / ellipseAxisPoints
 // and the spline/ellipse getEntityBounds arms. This file fills the rest:
-// pointTo3D, getIconUrl, p2w, the two arc samplers, and the remaining
-// getEntityBounds arms (line / circle / arc / point).
+// pointTo3D, getIconUrl, the two arc samplers, and the remaining
+// getEntityBounds arms (line / circle / arc / point). p2w moved to
+// components/Geometry3D/sketchSceneHelpers with its own test.
 
 describe('pointTo3D', () => {
   it('lifts a finite 2D point onto the z=0 plane', () => {
@@ -36,18 +35,6 @@ describe('getIconUrl', () => {
     // symbol_ngon -> 'toolbar-ngon', and toolbar-ngon.svg exists in assets.
     const url = getIconUrl('symbol_ngon')
     expect(typeof url).toBe('string')
-  })
-})
-
-describe('p2w (world units per pixel)', () => {
-  it('inverts the zoom for an orthographic camera', () => {
-    const cam = new THREE.OrthographicCamera()
-    cam.zoom = 2
-    expect(p2w(cam)).toBeCloseTo(0.5)
-  })
-
-  it('throws for a camera without an orthographic flag instead of returning 1', () => {
-    expect(() => p2w({} as unknown as THREE.Camera)).toThrow(/orthographic/i)
   })
 })
 
