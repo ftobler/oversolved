@@ -44,8 +44,12 @@ describe.skipIf(!oc)('move-face chain (real OCC)', () => {
       expect(last?.kind).toBe('move-face')
       // A refusal is a legitimate stop on a curved start; the chain must never
       // crash or leave a half-applied body, and a build must be one valid solid.
-      if (last?.status === 'built') expect(last.bodies).toBeGreaterThanOrEqual(1)
-      else expect(last?.status).toBe('refused')
+      // An inward tail may cut the whole body away, which is a build with no
+      // body left; an outward one never removes material.
+      if (last?.status === 'built') {
+        const inward = tail?.kind === 'move-face' && tail.distance < 0
+        expect(last.bodies).toBeGreaterThanOrEqual(inward ? 0 : 1)
+      } else expect(last?.status).toBe('refused')
     }
   }, 240_000)
 })

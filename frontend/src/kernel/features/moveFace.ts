@@ -225,12 +225,35 @@ function solveMoveFaceDirect(
     }
   }
 
+  // An inward move past the far side of a body cuts all of it away. That is the
+  // move the user authored, not a failure: `resplitPart` deletes the body from
+  // the store (the boolean cut's consumed-target convention) and the feature
+  // reports success with no surviving body for that group.
+  const consumed: string[] = []
   for (const commit of commits) {
     const ids = resplitPart(oc, scope, table, partStore, commit.part, commit.shape, featureId, commit.names)
-    if (ids.length === 0) throw new Error('move_face: the move removes the whole part')
+    if (ids.length === 0) {
+      consumed.push(commit.part.id)
+      continue
+    }
     commit.part.brep_diff = commit.diff
     commit.part.modified_by.push(featureId)
     applied.push(...ids)
+  }
+
+  if (applied.length === 0 && consumed.length > 0) {
+    const notApplied = [...new Set([...unresolved, ...failed])]
+    return {
+      status: notApplied.length > 0 ? 'partial' : 'ok',
+      body_id: consumed[0],
+      body_ids: [],
+      ...(notApplied.length > 0 && {
+        unresolved_faces: [...new Set(unresolved)],
+        failed_faces: [...new Set(failed)],
+        exception: `move_face: ${[`${notApplied.length} face(s) could not be applied`, ...refusals].join('; ')}`,
+      }),
+      ...(handle !== null && { handle }),
+    }
   }
 
   if (applied.length === 0) {

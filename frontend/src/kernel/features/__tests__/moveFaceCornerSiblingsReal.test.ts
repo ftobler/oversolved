@@ -122,7 +122,7 @@ describe.skipIf(!oc || !solveBytes)('move face corner and split-sibling reports 
     })
     expectSplitRefusal(r, 'kaq8NQBPIvFccTpLoxMfHDEV')
     // The second feature builds on the refused (unchanged) body and is refused
-    // by the same body-level split guard.
+    // by the same split guard: its pick is itself a split sibling.
     expect(resultOf(r, '3mVx0XBPxQbI51eD-BLbrEhA').status).toBe('partial')
   }, 120000)
 

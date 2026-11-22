@@ -261,6 +261,57 @@ function buildIncidence(oc: OccModule, scope: DisposeScope, part: OccShape): Inc
   return { faces, edges, vertices, edgesOfFace, facesOfEdge, verticesOfEdge, edgesOfVertex, facesOfVertex, verticesOfFace }
 }
 
+/**
+ * Refuse a move that would rebuild a boolean split: two or more faces on ONE
+ * analytic surface (the bite halves, a cap split by a slot).
+ *
+ *   - A picked sibling leaves the shared surface; the result needs a new step
+ *     face between the moved half and the staying one, and the direct tweak
+ *     mints none (the slab route's `|extend|` face is a backlog item).
+ *   - Two siblings the move rebuilds at once (a bore crossing both bite arcs)
+ *     form the multi-arc network whose hand-built shell loses its edge sharing
+ *     and traps in `ShapeFix_Shape`.
+ *
+ * A split elsewhere on the body (a boss overhanging the top face) is neither:
+ * the move never rebuilds it, so it must not block the move. The touched set is
+ * every face across an edge or at a vertex of a pick, which covers every face
+ * the tweak can rebuild or reshape: only those vertices move, and a changed
+ * edge is a picked face's edge or ends at one of them. The edge walk is kept
+ * beside the vertex walk for a closed edge whose vertex list can be empty.
+ */
+function refuseSplitSiblings(oc: OccModule, scope: DisposeScope, inc: Incidence, picks: TweakPick[]): void {
+  const refuse = (): never => {
+    throw new MoveFaceRefusal(
+      'move_face: the body has two faces on one surface (a boolean split); ' +
+      'the direct tweak cannot rebuild the split network without minting a step face',
+    )
+  }
+  const touched: OccShape[] = []
+  const addTouched = (face: OccShape): void => {
+    if (!touched.some((f) => (f as OccSubShape).IsSame(face as OccSubShape))) touched.push(face)
+  }
+  for (const pick of picks) {
+    addTouched(pick.face)
+    for (const edge of inc.edgesOfFace.get(pick.face as OccSubShape) ?? []) {
+      for (const face of inc.facesOfEdge.get(edge as OccSubShape) ?? []) addTouched(face)
+    }
+    for (const vertex of inc.verticesOfFace(pick.face)) {
+      for (const face of inc.facesOfVertex.get(vertex as OccSubShape) ?? []) addTouched(face)
+    }
+  }
+  for (const pick of picks) {
+    for (const face of inc.faces) {
+      if ((face as OccSubShape).IsSame(pick.face as OccSubShape)) continue
+      if (sameAnalyticSurface(oc, scope, pick.face, face)) refuse()
+    }
+  }
+  for (let i = 0; i < touched.length; i++) {
+    for (let j = i + 1; j < touched.length; j++) {
+      if (sameAnalyticSurface(oc, scope, touched[i], touched[j])) refuse()
+    }
+  }
+}
+
 // ─── sections ───
 
 interface SectionCurve {
@@ -415,23 +466,7 @@ function tweakOutward(
   const inc = buildIncidence(oc, scope, part)
   const picked = new IdentityMap<number>()
   picks.forEach((pick, i) => picked.set(pick.face as OccSubShape, i))
-  // A boolean-split body carries two or more faces on ONE analytic surface (the
-  // bite halves, a cap split by a slot). Rebuilding the split network needs a
-  // new face between the moved half and the staying one; the direct tweak mints
-  // none, and the hand-built shell of a multi-arc network is where its rebuild
-  // traps. Refuse the whole move by name rather than crash or ship an open
-  // shell. The old slab route minted an `|extend|` face here; that is a
-  // backlog item for the direct route, not a fallback.
-  for (let i = 0; i < inc.faces.length; i++) {
-    for (let j = i + 1; j < inc.faces.length; j++) {
-      if (sameAnalyticSurface(oc, scope, inc.faces[i], inc.faces[j])) {
-        throw new MoveFaceRefusal(
-          'move_face: the body has two faces on one surface (a boolean split); ' +
-          'the direct tweak cannot rebuild the split network without minting a step face',
-        )
-      }
-    }
-  }
+  refuseSplitSiblings(oc, scope, inc, picks)
   const L = 4 * (bboxDiagonal(oc, scope, part) + Math.max(...picks.map((p) => Math.abs(p.distance))))
 
   // The original surfaces first: the planar collapse clamp below reads the
