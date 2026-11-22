@@ -95,6 +95,7 @@
     "TopTools_ListOfShape",
     "TopoDS",
     "TopoDS_Compound",
+    "TopoDS_Shell",
     "TopoDS_Solid",
     "gp_Ax1",
     "gp_Ax2",

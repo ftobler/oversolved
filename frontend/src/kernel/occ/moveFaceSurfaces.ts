@@ -43,7 +43,7 @@ import type {
   OccSurfaceAdaptor,
 } from './occTypes'
 import { canonicalFaces } from './partNames'
-import { faceCentroid, faceNormal } from './primitives'
+import { faceCentroid, faceNormal, makeBoxAt, makeCylinderWithFaces, shapeBndBox } from './primitives'
 import {
   FACE_CLASSIFIER_GAP_CHECK_TOL,
   FACE_CLASSIFIER_USE_BND_BOX,
@@ -52,6 +52,7 @@ import {
 } from './defaultArgs'
 import { TOL_LENGTH_SLACK, TOL_SURFACE_IDENTITY, TOL_SURFACE_PARALLEL } from '../solverConstants'
 import { add, cross, dot, scale, sub, type Vec3 } from '@/utils/vec3'
+import { makeHalfSpaceBox } from './halfSpace'
 import { rungCatalog } from './moveFaceRungs'
 
 /** A guard refusal. The message reaches the user through the feature failure
@@ -88,6 +89,16 @@ export interface MovedSurface {
   inRegion(region: OccShape, p: Vec3): boolean
   // The handle anchor: a point ON the face plus the outward normal there.
   anchor(): FaceAnchor
+  // The tweak's large face on the moved surface S_d.
+  targetFace(L: number): OccShape
+  // The Geom_Surface of S_d. The caller owns (tracks) the handle.
+  targetSurface(): OccDisposable
+  // True when the body material is on the side of S_d the outward normal
+  // points away from (an outer wall); false for a bore-like face.
+  materialInside: boolean
+  // A solid covering the OUTSIDE of S_d (the boundaryless inward cutter), and
+  // the tool face that lies on S_d, which becomes the moved face.
+  outsideSolid(part: OccShape, L: number): { tool: OccShape; cap: OccShape }
   // The enclosure guard: throws MoveFaceRefusal when the neighbours do not
   // bound the picked face over `cell`'s on-source pieces.
   assertEnclosed(
@@ -210,6 +221,71 @@ function cutShapes(oc: OccModule, scope: DisposeScope, target: OccShape, tool: O
   algo.SetTools(tools)
   algo.Build(noProgress(oc))
   return scope.track(algo.Shape())
+}
+
+const TWO_PI = 2 * Math.PI
+
+/** A cube of half-side `diagonal + L` about the body's bbox centre: the
+ *  finite stand-in for "all of space" the inward cutter is built inside. */
+function bigBoxAround(
+  oc: OccModule,
+  scope: DisposeScope,
+  part: OccShape,
+  L: number,
+): OccShape {
+  const { centre, diagonal } = shapeBndBox(oc, scope, part)
+  const half = diagonal + L
+  return scope.track(makeBoxAt(
+    oc,
+    scope,
+    [centre[0] - half, centre[1] - half, centre[2] - half],
+    2 * half,
+    2 * half,
+    2 * half,
+  ))
+}
+
+/** The one face of `shape` lying on `target`'s surface, or a refusal: the
+ *  inward cutter's cap has to be named before the cut, so a tool that lost it
+ *  must not proceed silently. */
+function faceOnSurface(
+  oc: OccModule,
+  scope: DisposeScope,
+  shape: OccShape,
+  target: OccShape,
+): OccShape {
+  for (const f of canonicalFaces(oc, scope, shape) as OccShape[]) {
+    if (sameAnalyticSurface(oc, scope, f, target)) return f
+  }
+  throw new MoveFaceRefusal('move_face: the inward cutter has no face on the moved surface')
+}
+
+/** A full cone frustum over the body's axial span, for the cone's outside
+ *  solid. `ref` is the target surface's ref radius at the frame origin. */
+function coneOutside(
+  oc: OccModule,
+  scope: DisposeScope,
+  part: OccShape,
+  loc: Vec3,
+  dir: Vec3,
+  semi: number,
+  ref: number,
+  L: number,
+): OccShape {
+  const range = axialRange(oc, scope, part, loc, dir)
+  const cos = Math.cos(semi)
+  const shape = coneFrustum(
+    oc,
+    scope,
+    loc,
+    dir,
+    semi,
+    ref,
+    range.lo / cos - L,
+    range.hi / cos + L,
+  )
+  if (shape === null) throw new MoveFaceRefusal('move_face: the cone cutter is empty')
+  return shape
 }
 
 /** One internal point per piece of a face: a mesh triangle centroid. A face
@@ -677,6 +753,15 @@ function planeSurface(
     if (other.GetType().value !== S.GeomAbs_Plane.value) return false
     return Math.abs(dot(sub(faceCentroid(oc, scope, cf), through), n)) <= TOL_SURFACE_IDENTITY
   }
+  const targetPlaneFace = (L: number): OccShape => {
+    const frame = scope.track(new oc.gp_Ax3_3(
+      scope.track(new oc.gp_Pnt_3(pTarget[0], pTarget[1], pTarget[2])),
+      scope.track(new oc.gp_Dir_5(n[0], n[1], n[2])),
+      scope.track(new oc.gp_Dir_5(pX[0], pX[1], pX[2])),
+    ))
+    const target = scope.track(new oc.gp_Pln_2(frame))
+    return scope.track(new oc.BRepBuilderAPI_MakeFace_9(target, -L, L, -L, L).Face())
+  }
   return {
     kind: 'plane',
     inRegion: (region, p) => pointInFace(oc, scope, region, p, TOL_SURFACE_IDENTITY),
@@ -691,6 +776,13 @@ function planeSurface(
     regionFace: (wire) => planeFromWire(oc, scope, wire),
     outerRegion: () => planeFromWire(oc, scope, scope.track(oc.BRepTools.OuterWire(face))),
     anchor: () => ({ point: c0, normal: n }),
+    targetFace: (L) => targetPlaneFace(L),
+    targetSurface: () => scope.track(oc.BRep_Tool.Surface_2(targetPlaneFace(1))),
+    materialInside: true,
+    outsideSolid: (body) => {
+      const box = makeHalfSpaceBox(oc, scope, pTarget, n, body)
+      return { tool: box.shape, cap: box.base }
+    },
     assertEnclosed: (cell, _sourceFaces, _outerRegion, _innerFaces, L) => {
       if (isUnbounded(oc, scope, cell, pOrigin, pX, pY, L)) {
         throw new MoveFaceRefusal('move_face: the neighbours do not bound the moved face')
@@ -729,6 +821,15 @@ function cylinderSurface(
     return [wrapU(Math.atan2(l[1], l[0])), l[2]]
   }
   const inRegion = (region: OccShape, p: Vec3): boolean => pointInFaceUv(oc, scope, region, uv(p), TOL_SURFACE_IDENTITY, false)
+  const frame = (): OccDisposable => scope.track(new oc.gp_Ax3_3(
+    scope.track(new oc.gp_Pnt_3(origin[0], origin[1], origin[2])),
+    scope.track(new oc.gp_Dir_5(dir[0], dir[1], dir[2])),
+    scope.track(new oc.gp_Dir_5(srf.x[0], srf.x[1], srf.x[2])),
+  ))
+  const targetFace = (L: number): OccShape => {
+    const cyl2 = scope.track(new oc.gp_Cylinder_2(frame(), r2))
+    return scope.track(new oc.BRepBuilderAPI_MakeFace_10(cyl2, 0, TWO_PI, range.lo - L, range.hi + L).Face())
+  }
   return {
     kind: 'cylinder',
     inRegion,
@@ -746,6 +847,23 @@ function cylinderSurface(
     regionFace: (wire) => curvedFaceFromWire(oc, scope, 'cylinder', cyl, wire),
     outerRegion: () => face,
     anchor: () => uvAnchor(oc, scope, face, adaptor),
+    targetFace,
+    targetSurface: () => scope.track(oc.BRep_Tool.Surface_2(targetFace(1))),
+    materialInside: s > 0,
+    outsideSolid: (body, L) => {
+      const prange = axialRange(oc, scope, body, origin, dir)
+      const lo = prange.lo - L
+      const hi = prange.hi + L
+      const base = add(origin, scale(dir, lo))
+      const cylTool = makeCylinderWithFaces(oc, scope, base, dir, r2, hi - lo)
+      if (s > 0) {
+        // An outer wall: the outside is everything beyond the new radius.
+        const tool = cutShapes(oc, scope, bigBoxAround(oc, scope, body, L), cylTool.shape)
+        return { tool, cap: faceOnSurface(oc, scope, tool, targetFace(1)) }
+      }
+      // A bore: the outside is the new bore itself.
+      return { tool: cylTool.shape, cap: cylTool.faces.lateral }
+    },
     assertEnclosed: (_cell, sourceFaces, outerRegion, innerFaces, _L) =>
       assertCurvedEnclosed(oc, scope, inRegion, sourceFaces, outerRegion, innerFaces),
   }
@@ -800,6 +918,15 @@ function coneSurface(
     return [wrapU(Math.atan2(l[1], l[0])), l[2] / Math.cos(semi)]
   }
   const inRegion = (region: OccShape, p: Vec3): boolean => pointInFaceUv(oc, scope, region, uv(p), TOL_SURFACE_IDENTITY, false)
+  const frame = (): OccDisposable => scope.track(new oc.gp_Ax3_3(
+    scope.track(new oc.gp_Pnt_3(loc[0], loc[1], loc[2])),
+    scope.track(new oc.gp_Dir_5(dir[0], dir[1], dir[2])),
+    scope.track(new oc.gp_Dir_5(srf.x[0], srf.x[1], srf.x[2])),
+  ))
+  const targetFace = (L: number): OccShape => {
+    const cone2 = scope.track(new oc.gp_Cone_2(frame(), semi, ref2))
+    return scope.track(new oc.BRepBuilderAPI_MakeFace_11(cone2, 0, TWO_PI, vA - L, vB + L).Face())
+  }
   return {
     kind: 'cone',
     inRegion,
@@ -809,6 +936,17 @@ function coneSurface(
     regionFace: (wire) => curvedFaceFromWire(oc, scope, 'cone', cone, wire),
     outerRegion: () => face,
     anchor: () => uvAnchor(oc, scope, face, adaptor),
+    targetFace,
+    targetSurface: () => scope.track(oc.BRep_Tool.Surface_2(targetFace(1))),
+    materialInside: s > 0,
+    outsideSolid: (body, L) => {
+      const coneTool = coneOutside(oc, scope, body, loc, dir, semi, ref2, L)
+      if (s > 0) {
+        const tool = cutShapes(oc, scope, bigBoxAround(oc, scope, body, L), coneTool)
+        return { tool, cap: faceOnSurface(oc, scope, tool, targetFace(1)) }
+      }
+      return { tool: coneTool, cap: faceOnSurface(oc, scope, coneTool, targetFace(1)) }
+    },
     assertEnclosed: (_cell, sourceFaces, outerRegion, innerFaces, _L) =>
       assertCurvedEnclosed(oc, scope, inRegion, sourceFaces, outerRegion, innerFaces),
   }
@@ -843,6 +981,15 @@ function sphereSurface(
     return [wrapU(Math.atan2(l[1], l[0])), Math.asin(sinV)]
   }
   const inRegion = (region: OccShape, p: Vec3): boolean => pointInFaceUv(oc, scope, region, uv(p), TOL_SURFACE_IDENTITY, false)
+  const frame = (): OccDisposable => scope.track(new oc.gp_Ax3_3(
+    scope.track(new oc.gp_Pnt_3(centre[0], centre[1], centre[2])),
+    scope.track(new oc.gp_Dir_5(srf.z[0], srf.z[1], srf.z[2])),
+    scope.track(new oc.gp_Dir_5(srf.x[0], srf.x[1], srf.x[2])),
+  ))
+  const targetFace = (): OccShape => {
+    const sph2 = scope.track(new oc.gp_Sphere_2(frame(), r2))
+    return scope.track(new oc.BRepBuilderAPI_MakeFace_6(sph2).Face())
+  }
   return {
     kind: 'sphere',
     inRegion,
@@ -857,6 +1004,17 @@ function sphereSurface(
     regionFace: (wire) => curvedFaceFromWire(oc, scope, 'sphere', sph, wire),
     outerRegion: () => face,
     anchor: () => uvAnchor(oc, scope, face, adaptor),
+    targetFace: () => targetFace(),
+    targetSurface: () => scope.track(oc.BRep_Tool.Surface_2(targetFace())),
+    materialInside: s > 0,
+    outsideSolid: (body, L) => {
+      const sphereTool = ball(oc, scope, centre, r2)
+      if (s > 0) {
+        const tool = cutShapes(oc, scope, bigBoxAround(oc, scope, body, L), sphereTool)
+        return { tool, cap: faceOnSurface(oc, scope, tool, targetFace()) }
+      }
+      return { tool: sphereTool, cap: faceOnSurface(oc, scope, sphereTool, targetFace()) }
+    },
     assertEnclosed: (_cell, sourceFaces, outerRegion, innerFaces, _L) =>
       assertCurvedEnclosed(oc, scope, inRegion, sourceFaces, outerRegion, innerFaces),
   }
@@ -904,6 +1062,15 @@ function torusSurface(
     return [wrapU(Math.atan2(l[1], l[0])), Math.atan2(l[2], Math.hypot(l[0], l[1]) - major)]
   }
   const inRegion = (region: OccShape, p: Vec3): boolean => pointInFaceUv(oc, scope, region, uv(p), TOL_SURFACE_IDENTITY, true)
+  const frameAx3 = (): OccDisposable => scope.track(new oc.gp_Ax3_3(
+    scope.track(new oc.gp_Pnt_3(loc[0], loc[1], loc[2])),
+    scope.track(new oc.gp_Dir_5(dir[0], dir[1], dir[2])),
+    scope.track(new oc.gp_Dir_5(srf.x[0], srf.x[1], srf.x[2])),
+  ))
+  const targetFace = (): OccShape => {
+    const tor2 = scope.track(new oc.gp_Torus_2(frameAx3(), major, minor2))
+    return scope.track(new oc.BRepBuilderAPI_MakeFace_7(tor2).Face())
+  }
   return {
     kind: 'torus',
     inRegion,
@@ -918,6 +1085,17 @@ function torusSurface(
     regionFace: (wire) => curvedFaceFromWire(oc, scope, 'torus', tor, wire),
     outerRegion: () => face,
     anchor: () => uvAnchor(oc, scope, face, adaptor),
+    targetFace: () => targetFace(),
+    targetSurface: () => scope.track(oc.BRep_Tool.Surface_2(targetFace())),
+    materialInside: s > 0,
+    outsideSolid: (body, L) => {
+      const torusTool = solidTorus(oc, scope, frameAx3(), major, minor2)
+      if (s > 0) {
+        const tool = cutShapes(oc, scope, bigBoxAround(oc, scope, body, L), torusTool)
+        return { tool, cap: faceOnSurface(oc, scope, tool, targetFace()) }
+      }
+      return { tool: torusTool, cap: faceOnSurface(oc, scope, torusTool, targetFace()) }
+    },
     assertEnclosed: (_cell, sourceFaces, outerRegion, innerFaces, _L) =>
       assertCurvedEnclosed(oc, scope, inRegion, sourceFaces, outerRegion, innerFaces),
   }

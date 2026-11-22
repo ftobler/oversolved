@@ -207,7 +207,7 @@ describe.skipIf(!oc || !solveBytes)('direct move-face spike (real OCC)', () => {
     const base = h.run(baseDoc)
     const part = base._build_state.checkpoints['ItndFzj0p5ptXDPqsLWTaKPm']
       ?.body_store_snapshot?.['body_ItndFzj0p5ptXDPqsLWTaKPm'] as PartSolid | undefined
-    expect(part).toBeDefined()
+    if (!part) throw new Error('the report document has no body after the extrude')
     const scope = new DisposeScope()
     try {
       const index = makeFaceIndexCache(occ, scope, h.table)(part)
@@ -216,7 +216,7 @@ describe.skipIf(!oc || !solveBytes)('direct move-face spike (real OCC)', () => {
         .move_face as { faces: string[] }).faces
       const faces = stored.map((q) => {
         const face = resolveFacesByQuery(occ, scope, h.table, part, index, [q]).get(q)
-        if (face === undefined) throw new Error(`the report pick did not resolve: ${q}`)
+        if (!face) throw new Error(`the report pick did not resolve: ${q}`)
         return face
       })
       expect(faces).toHaveLength(5)
