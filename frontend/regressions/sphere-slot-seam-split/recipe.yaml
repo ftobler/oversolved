@@ -1,0 +1,173 @@
+version: 5
+kind: part
+features:
+  - id: Origin
+    kind: origin
+  - id: Top
+    kind: plane
+    visible: false
+  - id: Front
+    kind: plane
+    visible: false
+  - id: Right
+    kind: plane
+    visible: false
+  - id: aXelUZtKwVfTqGryLRTNxZk_
+    kind: sketch
+    label: sketch 1
+    plane: Front
+    initial:
+      KFYZHKXFBorvvFIj:
+        - 0
+        - 0
+        - 25
+        - 0
+        - 180
+      YVpfwpGiVU2Ua4vf:
+        - -25
+        - 0
+        - 25
+        - 0
+    entities:
+      - id: KFYZHKXFBorvvFIj
+        kind: arc
+      - id: YVpfwpGiVU2Ua4vf
+        kind: line
+    constraints:
+      - id: c_coincident_rv0
+        kind: coincident
+        a: $KFYZHKXFBorvvFIjstart
+        b: $YVpfwpGiVU2Ua4vfend
+      - id: c_coincident_rv1
+        kind: coincident
+        a: $KFYZHKXFBorvvFIjend
+        b: $YVpfwpGiVU2Ua4vfstart
+      - id: c_horizontal_rv
+        kind: horizontal
+        target: $YVpfwpGiVU2Ua4vf
+      - id: c_radius_rv
+        kind: radius
+        target: $KFYZHKXFBorvvFIj
+        value: 25
+      - id: c_coincident_rv_center
+        kind: coincident
+        a: $KFYZHKXFBorvvFIjcenter
+        b: "@builtin_origin"
+      - id: c_point_distance_y_rv
+        kind: point_distance_y
+        a: $KFYZHKXFBorvvFIjstart
+        b: $KFYZHKXFBorvvFIjcenter
+        value: 0
+  - id: q7gebWbwOm9bFgdBKp0BGHfW
+    kind: revolve
+    label: revolve 1
+    revolve:
+      sketch:
+        - $aXelUZtKwVfTqGryLRTNxZk_
+      angle: 360
+      axis: "@aXelUZtKwVfTqGryLRTNxZk_/YVpfwpGiVU2Ua4vf"
+      direction: normal
+      operation: new
+  - id: 5D87JAeSP7TE4GCEyzyRsXoq
+    kind: sketch
+    label: sketch 2
+    plane: Front
+    initial:
+      fKuqz9R_S_bp0ykz:
+        - -10
+        - 10
+        - 10
+        - 10
+      3LVUqmjfbVaOgzeV:
+        - 10
+        - 10
+        - 10
+        - 30
+      TOl-D9GO868TlY1w:
+        - 10
+        - 30
+        - -10
+        - 30
+      jyNLrNTMB7UFI_Lc:
+        - -10
+        - 30
+        - -10
+        - 10
+    entities:
+      - id: fKuqz9R_S_bp0ykz
+        kind: line
+      - id: 3LVUqmjfbVaOgzeV
+        kind: line
+      - id: TOl-D9GO868TlY1w
+        kind: line
+      - id: jyNLrNTMB7UFI_Lc
+        kind: line
+    constraints:
+      - id: c_coincident_sl0
+        kind: coincident
+        a: $fKuqz9R_S_bp0ykzend
+        b: $3LVUqmjfbVaOgzeVstart
+      - id: c_coincident_sl1
+        kind: coincident
+        a: $3LVUqmjfbVaOgzeVend
+        b: $TOl-D9GO868TlY1wstart
+      - id: c_coincident_sl2
+        kind: coincident
+        a: $TOl-D9GO868TlY1wend
+        b: $jyNLrNTMB7UFI_Lcstart
+      - id: c_coincident_sl3
+        kind: coincident
+        a: $jyNLrNTMB7UFI_Lcend
+        b: $fKuqz9R_S_bp0ykzstart
+      - id: c_horizontal_sl0
+        kind: horizontal
+        target: $fKuqz9R_S_bp0ykz
+      - id: c_vertical_sl1
+        kind: vertical
+        target: $3LVUqmjfbVaOgzeV
+      - id: c_horizontal_sl2
+        kind: horizontal
+        target: $TOl-D9GO868TlY1w
+      - id: c_vertical_sl3
+        kind: vertical
+        target: $jyNLrNTMB7UFI_Lc
+      - id: c_length_sl_w
+        kind: length
+        target: $fKuqz9R_S_bp0ykz
+        value: 20
+        pos:
+          - 0
+          - 6
+      - id: c_length_sl_h
+        kind: length
+        target: $3LVUqmjfbVaOgzeV
+        value: 20
+        pos:
+          - 14
+          - 20
+      - id: c_fixed_sl
+        kind: fixed
+        target: $fKuqz9R_S_bp0ykzstart
+  - id: oNhonud35UKeZtglrct9szt_
+    kind: extrude
+    label: extrude 2
+    extrude:
+      sketch:
+        - $5D87JAeSP7TE4GCEyzyRsXoq
+      distance: 60
+      direction: symmetric
+      operation: cut
+  - id: ZlL7SEuteb9Fc2bVVZWzVK_9
+    kind: fillet
+    label: fillet 3
+    fillet:
+      edges:
+        - "?15,19,1e,2a,2a;@u|e_bf1d6c628af3ce6f@oNhonud35UKeZtglrct9szt_@body_q7gebWbwOm9bFgdBKp0BGHfW@5D87JAeSP7TE4GCEyzyRsXoq/jyNLrNTMB7UFI_Lc@aXelUZtKwVfTqGryLRTNxZk_/KFYZHKXFBorvvFIj:edge"
+      radius: 3
+  - id: u3HOk8NICNMY8q6r6SftohCS
+    kind: chamfer
+    label: chamfer 4
+    chamfer:
+      edges:
+        - "?15,19,1e,2a,2a;@u|e_b20154d68215215f@oNhonud35UKeZtglrct9szt_@body_q7gebWbwOm9bFgdBKp0BGHfW@aXelUZtKwVfTqGryLRTNxZk_/KFYZHKXFBorvvFIj@5D87JAeSP7TE4GCEyzyRsXoq/3LVUqmjfbVaOgzeV:edge"
+      distance: 3
