@@ -332,10 +332,12 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     expect(uuids(inc)).toEqual(uuids(full))
   })
 
-  it('an inward move that severs the body yields two bodies via resplitBody', () => {
-    // The U profile's web floor (y=4) moved down to y=0 removes the web between
-    // the pillars; they were joined only there, so the body must resplit into
-    // two pillars seated under distinct sibling ids.
+  it('an inward web floor past the base removes the body (the cutter cannot sever)', () => {
+    // The U profile's web floor (y=4) faces +Y; moving it -4 puts the material
+    // half-space at y <= 0, so the boundaryless cutter removes every pillar
+    // and the web. The old slab route trimmed only the web and split the body;
+    // an intersection with a half-space is connected by construction and can
+    // never yield two bodies, so the feature is an exception, not a resplit.
     const spec = {
       features: [
         uProfileSketch('sk1'),
@@ -346,12 +348,8 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     expect(h.res(base, 'ex1').status).toBe('ok')
     const web = faceQueryWhere(base.bodies, (n, c) => Math.abs(n[1] - 1) < 1e-6 && Math.abs(c[1] - 4) < 1e-6)
     const r = h.run({ features: [...spec.features, { id: 'mf1', kind: 'move_face', move_face: { faces: [web], distance: -4 } }] })
-    expect(h.res(r, 'mf1').status).toBe('ok')
-    const ids = (h.res(r, 'mf1').body_ids as string[]) ?? []
-    expect(ids).toHaveLength(2)
-    // Ordered by centroid in the parent frame: the left pillar keeps the base id.
-    expect(bbox(h.part(r, ids[0])).max[0]).toBeCloseTo(10, 6)
-    expect(bbox(h.part(r, ids[1])).min[0]).toBeCloseTo(20, 6)
+    expect(h.res(r, 'mf1').status).toBe('exception')
+    expect(String(h.res(r, 'mf1').exception ?? '')).toContain('whole part')
   })
 
   it('a top moved past the apex drops the top edge, so a downstream chamfer goes red', () => {

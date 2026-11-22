@@ -760,7 +760,8 @@ function planeSurface(
       scope.track(new oc.gp_Dir_5(pX[0], pX[1], pX[2])),
     ))
     const target = scope.track(new oc.gp_Pln_2(frame))
-    return scope.track(new oc.BRepBuilderAPI_MakeFace_9(target, -L, L, -L, L).Face())
+    const maker = scope.track(new oc.BRepBuilderAPI_MakeFace_9(target, -L, L, -L, L))
+    return scope.track(maker.Face())
   }
   return {
     kind: 'plane',
@@ -779,8 +780,8 @@ function planeSurface(
     targetFace: (L) => targetPlaneFace(L),
     targetSurface: () => scope.track(oc.BRep_Tool.Surface_2(targetPlaneFace(1))),
     materialInside: true,
-    outsideSolid: (body) => {
-      const box = makeHalfSpaceBox(oc, scope, pTarget, n, body)
+    outsideSolid: (part) => {
+      const box = makeHalfSpaceBox(oc, scope, pTarget, n, part)
       return { tool: box.shape, cap: box.base }
     },
     assertEnclosed: (cell, _sourceFaces, _outerRegion, _innerFaces, L) => {
@@ -828,7 +829,8 @@ function cylinderSurface(
   ))
   const targetFace = (L: number): OccShape => {
     const cyl2 = scope.track(new oc.gp_Cylinder_2(frame(), r2))
-    return scope.track(new oc.BRepBuilderAPI_MakeFace_10(cyl2, 0, TWO_PI, range.lo - L, range.hi + L).Face())
+    const maker = scope.track(new oc.BRepBuilderAPI_MakeFace_10(cyl2, 0, TWO_PI, range.lo - L, range.hi + L))
+    return scope.track(maker.Face())
   }
   return {
     kind: 'cylinder',
@@ -850,15 +852,15 @@ function cylinderSurface(
     targetFace,
     targetSurface: () => scope.track(oc.BRep_Tool.Surface_2(targetFace(1))),
     materialInside: s > 0,
-    outsideSolid: (body, L) => {
-      const prange = axialRange(oc, scope, body, origin, dir)
+    outsideSolid: (part, L) => {
+      const prange = axialRange(oc, scope, part, origin, dir)
       const lo = prange.lo - L
       const hi = prange.hi + L
       const base = add(origin, scale(dir, lo))
       const cylTool = makeCylinderWithFaces(oc, scope, base, dir, r2, hi - lo)
       if (s > 0) {
         // An outer wall: the outside is everything beyond the new radius.
-        const tool = cutShapes(oc, scope, bigBoxAround(oc, scope, body, L), cylTool.shape)
+        const tool = cutShapes(oc, scope, bigBoxAround(oc, scope, part, L), cylTool.shape)
         return { tool, cap: faceOnSurface(oc, scope, tool, targetFace(1)) }
       }
       // A bore: the outside is the new bore itself.
@@ -925,7 +927,8 @@ function coneSurface(
   ))
   const targetFace = (L: number): OccShape => {
     const cone2 = scope.track(new oc.gp_Cone_2(frame(), semi, ref2))
-    return scope.track(new oc.BRepBuilderAPI_MakeFace_11(cone2, 0, TWO_PI, vA - L, vB + L).Face())
+    const maker = scope.track(new oc.BRepBuilderAPI_MakeFace_11(cone2, 0, TWO_PI, vA - L, vB + L))
+    return scope.track(maker.Face())
   }
   return {
     kind: 'cone',
@@ -939,10 +942,10 @@ function coneSurface(
     targetFace,
     targetSurface: () => scope.track(oc.BRep_Tool.Surface_2(targetFace(1))),
     materialInside: s > 0,
-    outsideSolid: (body, L) => {
-      const coneTool = coneOutside(oc, scope, body, loc, dir, semi, ref2, L)
+    outsideSolid: (part, L) => {
+      const coneTool = coneOutside(oc, scope, part, loc, dir, semi, ref2, L)
       if (s > 0) {
-        const tool = cutShapes(oc, scope, bigBoxAround(oc, scope, body, L), coneTool)
+        const tool = cutShapes(oc, scope, bigBoxAround(oc, scope, part, L), coneTool)
         return { tool, cap: faceOnSurface(oc, scope, tool, targetFace(1)) }
       }
       return { tool: coneTool, cap: faceOnSurface(oc, scope, coneTool, targetFace(1)) }
@@ -988,7 +991,8 @@ function sphereSurface(
   ))
   const targetFace = (): OccShape => {
     const sph2 = scope.track(new oc.gp_Sphere_2(frame(), r2))
-    return scope.track(new oc.BRepBuilderAPI_MakeFace_6(sph2).Face())
+    const maker = scope.track(new oc.BRepBuilderAPI_MakeFace_6(sph2))
+    return scope.track(maker.Face())
   }
   return {
     kind: 'sphere',
@@ -1007,10 +1011,10 @@ function sphereSurface(
     targetFace: () => targetFace(),
     targetSurface: () => scope.track(oc.BRep_Tool.Surface_2(targetFace())),
     materialInside: s > 0,
-    outsideSolid: (body, L) => {
+    outsideSolid: (part, L) => {
       const sphereTool = ball(oc, scope, centre, r2)
       if (s > 0) {
-        const tool = cutShapes(oc, scope, bigBoxAround(oc, scope, body, L), sphereTool)
+        const tool = cutShapes(oc, scope, bigBoxAround(oc, scope, part, L), sphereTool)
         return { tool, cap: faceOnSurface(oc, scope, tool, targetFace()) }
       }
       return { tool: sphereTool, cap: faceOnSurface(oc, scope, sphereTool, targetFace()) }
@@ -1069,7 +1073,8 @@ function torusSurface(
   ))
   const targetFace = (): OccShape => {
     const tor2 = scope.track(new oc.gp_Torus_2(frameAx3(), major, minor2))
-    return scope.track(new oc.BRepBuilderAPI_MakeFace_7(tor2).Face())
+    const maker = scope.track(new oc.BRepBuilderAPI_MakeFace_7(tor2))
+    return scope.track(maker.Face())
   }
   return {
     kind: 'torus',
@@ -1088,10 +1093,10 @@ function torusSurface(
     targetFace: () => targetFace(),
     targetSurface: () => scope.track(oc.BRep_Tool.Surface_2(targetFace())),
     materialInside: s > 0,
-    outsideSolid: (body, L) => {
+    outsideSolid: (part, L) => {
       const torusTool = solidTorus(oc, scope, frameAx3(), major, minor2)
       if (s > 0) {
-        const tool = cutShapes(oc, scope, bigBoxAround(oc, scope, body, L), torusTool)
+        const tool = cutShapes(oc, scope, bigBoxAround(oc, scope, part, L), torusTool)
         return { tool, cap: faceOnSurface(oc, scope, tool, targetFace()) }
       }
       return { tool: torusTool, cap: faceOnSurface(oc, scope, torusTool, targetFace()) }

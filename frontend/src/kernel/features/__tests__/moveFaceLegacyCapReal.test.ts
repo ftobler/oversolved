@@ -231,13 +231,17 @@ describe.skipIf(!oc || !solveBytes)('move-face legacy cap (real OCC + Rust solve
     expect(uuids(livePart)).toEqual(uuids(legacyPart))
   })
 
-  it('the five picks reversed build the same volume and face count', () => {
+  it('the five picks reversed build the same volume, face count and UUID set', () => {
     const forward = runReport()
     const reverse = runReport([...reportPicks()].reverse())
     expect(h.res(reverse, MOVE_ID).status).toBe('ok')
     expect(volumeAfter(reverse, MOVE_ID)).toBeCloseTo(volumeAfter(forward, MOVE_ID), 6)
     expect(faceQueries(h.part(reverse, PART_ID) as PartView))
       .toHaveLength(faceQueries(h.part(forward, PART_ID) as PartView).length)
+    const uuids = (part: PartView): string[] =>
+      faceQueries(part).map(uuidOf).filter((u): u is string => u !== null).sort()
+    expect(uuids(h.part(reverse, PART_ID) as PartView))
+      .toEqual(uuids(h.part(forward, PART_ID) as PartView))
   })
 
   it('a resolved-but-nameless pick still takes the set path', () => {

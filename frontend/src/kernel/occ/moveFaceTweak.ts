@@ -120,7 +120,7 @@ function originalSurface(oc: OccModule, scope: DisposeScope, face: OccShape): Tw
   if (t === S.GeomAbs_Plane.value) {
     const plane = scope.track(adaptor.Plane())
     const n = normalOf(oc, scope, face)
-    const large = (L: number): OccShape => scope.track(new oc.BRepBuilderAPI_MakeFace_9(plane, -L, L, -L, L).Face())
+    const large = (L: number): OccShape => trackFace(scope, new oc.BRepBuilderAPI_MakeFace_9(plane, -L, L, -L, L))
     return {
       kind: 'plane',
       large,
@@ -130,22 +130,22 @@ function originalSurface(oc: OccModule, scope: DisposeScope, face: OccShape): Tw
   }
   if (t === S.GeomAbs_Cylinder.value) {
     const cyl = scope.track(adaptor.Cylinder())
-    const large = (L: number): OccShape => scope.track(new oc.BRepBuilderAPI_MakeFace_10(cyl, 0, 2 * Math.PI, -L, L).Face())
+    const large = (L: number): OccShape => trackFace(scope, new oc.BRepBuilderAPI_MakeFace_10(cyl, 0, 2 * Math.PI, -L, L))
     return { kind: 'cylinder', large, surface: worldSurface(() => large(1)), plane: null }
   }
   if (t === S.GeomAbs_Cone.value) {
     const cone = scope.track(adaptor.Cone())
-    const large = (L: number): OccShape => scope.track(new oc.BRepBuilderAPI_MakeFace_11(cone, 0, 2 * Math.PI, -2 * L, 2 * L).Face())
+    const large = (L: number): OccShape => trackFace(scope, new oc.BRepBuilderAPI_MakeFace_11(cone, 0, 2 * Math.PI, -2 * L, 2 * L))
     return { kind: 'cone', large, surface: worldSurface(() => large(1)), plane: null }
   }
   if (t === S.GeomAbs_Sphere.value) {
     const sphere = scope.track(adaptor.Sphere())
-    const large = (): OccShape => scope.track(new oc.BRepBuilderAPI_MakeFace_6(sphere).Face())
+    const large = (): OccShape => trackFace(scope, new oc.BRepBuilderAPI_MakeFace_6(sphere))
     return { kind: 'sphere', large, surface: worldSurface(large), plane: null }
   }
   if (t === S.GeomAbs_Torus.value) {
     const torus = scope.track(adaptor.Torus())
-    const large = (): OccShape => scope.track(new oc.BRepBuilderAPI_MakeFace_7(torus).Face())
+    const large = (): OccShape => trackFace(scope, new oc.BRepBuilderAPI_MakeFace_7(torus))
     return { kind: 'torus', large, surface: worldSurface(large), plane: null }
   }
   // A freeform neighbour: its own trimmed surface widened by the generic maker.
@@ -153,10 +153,22 @@ function originalSurface(oc: OccModule, scope: DisposeScope, face: OccShape): Tw
   // a refusal here is the pick's named refusal, not a guess.
   return {
     kind: 'freeform',
-    large: (L) => scope.track(new oc.BRepBuilderAPI_MakeFace_14(scope.track(oc.BRep_Tool.Surface_2(face)), -L, L, -L, L, 1e-7).Face()),
+    large: (L) => {
+      const faceSurface = scope.track(oc.BRep_Tool.Surface_2(face))
+      return trackFace(scope, new oc.BRepBuilderAPI_MakeFace_14(faceSurface, -L, L, -L, L, 1e-7))
+    },
     surface: () => scope.track(oc.BRep_Tool.Surface_2(face)),
     plane: null,
   }
+}
+
+/** Track a face maker and return the face it owns. */
+function trackFace(
+  scope: DisposeScope,
+  maker: { Face(): OccShape } & { delete(): void },
+): OccShape {
+  scope.track(maker)
+  return scope.track(maker.Face())
 }
 
 function movedTweakSurface(
@@ -305,9 +317,7 @@ function unit(v: Vec3): Vec3 | null {
 }
 
 function distanceToShape(oc: OccModule, scope: DisposeScope, p: Vec3, shape: OccShape): number {
-  const vertex = scope.track(new oc.BRepBuilderAPI_MakeVertex(
-    scope.track(new oc.gp_Pnt_3(p[0], p[1], p[2])),
-  ).Vertex())
+  const vertex = trackVertex(oc, scope, p)
   const extrema = scope.track(new oc.BRepExtrema_DistShapeShape_3(
     vertex,
     shape,
@@ -319,10 +329,38 @@ function distanceToShape(oc: OccModule, scope: DisposeScope, p: Vec3, shape: Occ
   return extrema.IsDone() ? extrema.Value() : Infinity
 }
 
-function closestPointOn(oc: OccModule, scope: DisposeScope, p: Vec3, shape: OccShape): Vec3 | null {
-  const vertex = scope.track(new oc.BRepBuilderAPI_MakeVertex(
+/** The frame of a gp_Circ, with the accessor proxies deleted. */
+function circleFrame(
+  scope: DisposeScope,
+  circ: { Location(): { X(): number; Y(): number; Z(): number; delete(): void }; Axis(): { Direction(): { X(): number; Y(): number; Z(): number; delete(): void }; delete(): void }; XAxis(): { Direction(): { X(): number; Y(): number; Z(): number; delete(): void }; delete(): void }; Radius(): number },
+): { center: Vec3; normal: Vec3; xAxis: Vec3; radius: number } {
+  const c = circ.Location()
+  const axis = scope.track(circ.Axis())
+  const axisDir = axis.Direction()
+  const xaxis = scope.track(circ.XAxis())
+  const xdir = xaxis.Direction()
+  const out = {
+    center: [c.X(), c.Y(), c.Z()] as Vec3,
+    normal: [axisDir.X(), axisDir.Y(), axisDir.Z()] as Vec3,
+    xAxis: [xdir.X(), xdir.Y(), xdir.Z()] as Vec3,
+    radius: circ.Radius(),
+  }
+  c.delete()
+  axisDir.delete()
+  xdir.delete()
+  return out
+}
+
+/** A tracked vertex at `p`. */
+function trackVertex(oc: OccModule, scope: DisposeScope, p: Vec3): OccShape {
+  const maker = scope.track(new oc.BRepBuilderAPI_MakeVertex(
     scope.track(new oc.gp_Pnt_3(p[0], p[1], p[2])),
-  ).Vertex())
+  ))
+  return scope.track(maker.Vertex())
+}
+
+function closestPointOn(oc: OccModule, scope: DisposeScope, p: Vec3, shape: OccShape): Vec3 | null {
+  const vertex = trackVertex(oc, scope, p)
   const extrema = scope.track(new oc.BRepExtrema_DistShapeShape_3(
     vertex,
     shape,
@@ -796,22 +834,10 @@ function offsetEdge(
   }
   if (t === C.GeomAbs_Circle.value) {
     const circ = scope.track(adaptor.Circle())
-    const c = circ.Location()
-    const axis = circ.Axis().Direction()
-    const xaxis = circ.XAxis().Direction()
-    const center = movedPoint(oc, scope, owner, d, [c.X(), c.Y(), c.Z()])
-    const radius = circ.Radius() + movedRadiusDelta(oc, scope, owner, d)
-    const out = makeCircleEdge(
-      oc,
-      scope,
-      center,
-      [axis.X(), axis.Y(), axis.Z()],
-      [xaxis.X(), xaxis.Y(), xaxis.Z()],
-      Math.abs(radius),
-    )
-    axis.delete()
-    xaxis.delete()
-    c.delete()
+    const frame = circleFrame(scope, circ)
+    const center = movedPoint(oc, scope, owner, d, frame.center)
+    const radius = frame.radius + movedRadiusDelta(oc, scope, owner, d)
+    const out = makeCircleEdge(oc, scope, center, frame.normal, frame.xAxis, Math.abs(radius))
     return scope.track(out)
   }
   return null
@@ -949,7 +975,8 @@ function planeFace(oc: OccModule, scope: DisposeScope, origin: Vec3, normal: Vec
     scope.track(new oc.gp_Dir_5(x[0], x[1], x[2])),
   ))
   const plane = scope.track(new oc.gp_Pln_2(frame))
-  return scope.track(new oc.BRepBuilderAPI_MakeFace_9(plane, -L, L, -L, L).Face())
+  const maker = scope.track(new oc.BRepBuilderAPI_MakeFace_9(plane, -L, L, -L, L))
+  return scope.track(maker.Face())
 }
 
 function perpendicular(n: Vec3): Vec3 {
@@ -1010,20 +1037,8 @@ function buildTrimmedEdge(
   if (closed || points.length < 2) {
     if (t === C.GeomAbs_Circle.value) {
       const circ = scope.track(adaptor.Circle())
-      const c = circ.Location()
-      const axis = circ.Axis().Direction()
-      const xaxis = circ.XAxis().Direction()
-      const out = makeCircleEdge(
-        oc,
-        scope,
-        [c.X(), c.Y(), c.Z()],
-        [axis.X(), axis.Y(), axis.Z()],
-        [xaxis.X(), xaxis.Y(), xaxis.Z()],
-        circ.Radius(),
-      )
-      axis.delete()
-      xaxis.delete()
-      c.delete()
+      const frame = circleFrame(scope, circ)
+      const out = makeCircleEdge(oc, scope, frame.center, frame.normal, frame.xAxis, frame.radius)
       return scope.track(weld(out))
     }
     // A closed non-circle seam (a sphere meridian) falls through to the
@@ -1035,13 +1050,11 @@ function buildTrimmedEdge(
   }
   if (t === C.GeomAbs_Circle.value) {
     const circ = scope.track(adaptor.Circle())
-    const c = circ.Location()
-    const axisDir = circ.Axis().Direction()
-    const xdir = circ.XAxis().Direction()
-    const center: Vec3 = [c.X(), c.Y(), c.Z()]
-    const normal: Vec3 = [axisDir.X(), axisDir.Y(), axisDir.Z()]
-    const xAxis: Vec3 = [xdir.X(), xdir.Y(), xdir.Z()]
-    const radius = circ.Radius()
+    const frame = circleFrame(scope, circ)
+    const center = frame.center
+    const normal = frame.normal
+    const xAxis = frame.xAxis
+    const radius = frame.radius
     const angleOf = (p: Vec3): number => {
       const rel = sub(p, center)
       const x = dot(rel, xAxis)
@@ -1064,9 +1077,6 @@ function buildTrimmedEdge(
       a0 = a1
       a1 = tmp + 2 * Math.PI
     }
-    axisDir.delete()
-    xdir.delete()
-    c.delete()
     return scope.track(weld(scope.track(makeArcEdge(oc, scope, center, normal, xAxis, radius, a0, a1))))
   }
   // Freeform: sample the section between the parameters nearest the vertices
@@ -1097,7 +1107,7 @@ function weldEdgeVertices(
   const verts: OccShape[] = []
   for (; exp.More(); exp.Next()) {
     const v = scope.track(oc.TopoDS.Vertex_1(scope.track(exp.Current())))
-    const key = String((v as unknown as { HashCode?: (u: number) => number }).HashCode?.(1) ?? 0)
+    const key = String((v as OccSubShape).HashCode?.(1) ?? 0)
     if (seen.has(key)) continue
     seen.add(key)
     verts.push(v)
@@ -1138,7 +1148,8 @@ function polylineEdge(oc: OccModule, scope: DisposeScope, points: Vec3[]): OccSh
   })
   const curve = new oc.Geom_BSplineCurve_1(poles, knots, mult, 1, false)
   const handle = scope.track(new oc.Handle_Geom_Curve_2(curve))
-  return scope.track(new oc.BRepBuilderAPI_MakeEdge_24(handle).Edge())
+  const maker = scope.track(new oc.BRepBuilderAPI_MakeEdge_24(handle))
+  return scope.track(maker.Edge())
 }
 
 /** Rebuild `face` on `surface` from its wires, substituting the changed edges. */
@@ -1302,18 +1313,12 @@ function assembleSolid(oc: OccModule, scope: DisposeScope, faces: OccShape[]): O
   const builder = scope.track(new oc.BRep_Builder())
   builder.MakeShell(shell)
   for (const face of faces) builder.Add(shell, face)
-  // A manual shell carries no closed flag; BRepGProp's OnlyClosed read and
-  // BRepCheck_Shell both trust it. Setting it is what BRepBuilderAPI_MakeSolid
-  // does after counting the free boundaries.
-  const shellFlags = shell as unknown as { Closed?: (value: boolean) => void; Closed_1?: (value: boolean) => void }
-  shellFlags.Closed?.(true)
-  shellFlags.Closed_1?.(true)
+  // A manual shell carries no closed flag; ShapeFix_Shape sets it in
+  // repairSolid. The setter overload is not bound (only the getter is), so
+  // there is nothing to set here.
   const solid = scope.track(new oc.TopoDS_Solid())
   builder.MakeSolid(solid)
   builder.Add(solid, shell)
-  const solidFlags = solid as unknown as { Closed?: (value: boolean) => void; Closed_1?: (value: boolean) => void }
-  solidFlags.Closed?.(true)
-  solidFlags.Closed_1?.(true)
   return solid
 }
 
@@ -1432,7 +1437,6 @@ export function applyMoveFaces(
     changed,
   }
 }
-
 /** ShapeFix_Shape over the assembled shell, with the origin carried through the
  *  fixer's substitution context. Run even on a valid shell: a hand-built shell
  *  carries no closed flag, and BRepGProp's OnlyClosed read (and the cleanup

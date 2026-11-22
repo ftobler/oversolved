@@ -31,9 +31,8 @@ import {
 import { transferBooleanNames } from './booleanLineage'
 import { linearHandle, type FeatureHandle } from './featureHandles'
 import { solveMoveFaceSequential } from './moveFaceSequential'
-import { copyShape } from '../occ/transforms'
 
-type Dict = Record<string, unknown>
+type Dict = { [key: string]: unknown }
 
 /** The handle's lower clamp: move-face is signed, so the drag must pass through
  *  0 and into the negative without the fillet handle's positive floor. A finite
@@ -79,28 +78,15 @@ export function solveMoveFace(
   globalRepo: Repository,
   partStore: Record<string, PartSolid>,
 ): MoveFaceResult {
-  const scratch: Record<string, PartSolid> = {}
-  for (const [id, part] of Object.entries(partStore)) {
-    // A real OCC copy, not a handle clone: committing the scratch body releases
-    // its shape handle, and that must not touch the original the fallback uses.
-    const copy = part.shape === null ? null : copyShape(oc, scope, table.get<OccShape>(part.shape))
-    scratch[id] = {
-      ...structuredClone(part),
-      shape: copy === null ? null : table.register(copy, part.created_by),
-    }
-  }
   try {
-    const res = solveMoveFaceDirect(oc, scope, table, feature, globalRepo, scratch)
-    for (const id of Object.keys(partStore)) if (!(id in scratch)) delete partStore[id]
-    Object.assign(partStore, scratch)
-    return res
+    return solveMoveFaceDirect(oc, scope, table, feature, globalRepo, partStore)
   } catch (e) {
-    const wholePart = e instanceof Error && e.message.includes('removes the whole part')
     // A named move_face failure is the direct route refusing; the class check
     // can fail across a bundler's duplicate module copy, so the message prefix
-    // is the reliable signal.
+    // is the reliable signal. "Removes the whole part" is a real outcome, not a
+    // refusal to retry: the cut already removed the body.
     const named = (e instanceof Error && e.message.startsWith('move_face:')) || e instanceof MoveFaceRefusal
-    if (named || wholePart) {
+    if (named && !(e instanceof Error && e.message.includes('removes the whole part'))) {
       return solveMoveFaceSequential(oc, scope, table, feature, globalRepo, partStore)
     }
     throw e
@@ -151,6 +137,10 @@ function solveMoveFaceDirect(
   const refusals: string[] = []
   const applied: string[] = []
   let handle: FeatureHandle | null = null
+  // The direct construction is pure: nothing is committed until every body's
+  // result is built, so a refusal anywhere leaves the store untouched and the
+  // compatibility route starts from the original shapes.
+  const commits: { part: PartSolid; shape: OccShape; names: ShapeNames; diff: ReturnType<typeof applyMoveFaces>['diff'] }[] = []
 
   for (const [bid, qlist] of groups) {
     let part: PartSolid
@@ -242,11 +232,7 @@ function solveMoveFaceDirect(
         toolCreatedBy: featureId,
         toolUuidScope: null,
       })
-      const ids = resplitPart(oc, scope, table, partStore, part, res.shape, featureId, names)
-      if (ids.length === 0) throw new Error('move_face: the move removes the whole part')
-      part.brep_diff = res.diff
-      part.modified_by.push(featureId)
-      applied.push(...ids)
+      commits.push({ part, shape: res.shape, names, diff: res.diff })
       unresolved.push(...unresolvedHere)
     } catch (e) {
       if (e instanceof MoveFaceRefusal) {
@@ -257,6 +243,14 @@ function solveMoveFaceDirect(
       }
       throw e
     }
+  }
+
+  for (const commit of commits) {
+    const ids = resplitPart(oc, scope, table, partStore, commit.part, commit.shape, featureId, commit.names)
+    if (ids.length === 0) throw new Error('move_face: the move removes the whole part')
+    commit.part.brep_diff = commit.diff
+    commit.part.modified_by.push(featureId)
+    applied.push(...ids)
   }
 
   if (applied.length === 0) {

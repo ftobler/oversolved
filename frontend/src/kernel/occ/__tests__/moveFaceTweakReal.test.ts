@@ -325,7 +325,7 @@ describe.skipIf(!oc)('moveFaceTweak (real OCC)', () => {
   })
 
   it('the +X plate side cuts through the top hole and boss (the user case)', () => {
-    /** 100 x 60 x 10 plate, a through hole at x = 85 and a boss at x = 65. */
+    // 100 x 60 x 10 plate, a through hole at x = 85 and a boss at x = 65.
     const make = (scope: DisposeScope): OccShape => {
       const plate = scope.track(makeBox(occ, scope, 100, 60, 10))
       const hole = scope.track(cylinderSolid(scope, 85, 30, -5, 5, 20))

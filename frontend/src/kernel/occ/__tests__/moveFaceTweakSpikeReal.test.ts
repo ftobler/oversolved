@@ -160,7 +160,7 @@ describe.skipIf(!oc || !solveBytes)('direct move-face spike (real OCC)', () => {
     // plane is a gp_Pln_2, so the tweak needs no transformed copy.
     expect(typeof anyOc.gp_Pln_2).toBe('function')
     // Missing: the plan's named fallbacks. Their absence is the reason the
-    // tweak runs over Common + MakeShell, not a route-B trigger.
+    // tweak runs over Splitter + MakeShell, not a route-B trigger.
     expect(anyOc.GeomAPI_IntSS).toBeUndefined()
     expect(anyOc.BRepAlgoAPI_Section).toBeUndefined()
     expect(anyOc.BRepBuilderAPI_Sewing).toBeUndefined()
