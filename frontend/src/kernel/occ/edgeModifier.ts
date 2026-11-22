@@ -9,9 +9,12 @@
 // the modifying feature.
 
 import { drainList, type DisposeScope } from './disposeScope'
-import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker, OccModifierHistory, OccShapeEnumValue, OccShapeFixShape } from './occTypes'
+import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker, OccModifierHistory } from './occTypes'
+import { shapeIsValid } from './cleanup/guard'
+import { healShape } from './cleanup/heal'
+import { passRejected, runCleanup } from './cleanup/pipeline'
+import { modifierPlan } from './cleanup/presets'
 import { faceCentroid, SubShapeIndexMap } from './primitives'
-import { volumeOfDefault } from './volume'
 import { SubShapeDedup, SubShapeMap } from './subshapeIdentity'
 import { canonicalEdges, canonicalVertices, type ShapeNames } from './partNames'
 import { emptyBrepDiff, type BrepDiff } from '../types3d'
@@ -454,123 +457,14 @@ export function edgeModifierDiff(
   return diff
 }
 
-/** Whole-shape validity, geometric checks included. A throwing analyzer is
- *  not a vote of confidence, so it reads as invalid. */
-export function isValidShape(oc: OccModule, scope: DisposeScope, shape: OccShape): boolean {
-  try {
-    const analyzer = new oc.BRepCheck_Analyzer(shape, true, false, false)
-    try {
-      return analyzer.IsValid_2()
-    } finally {
-      scope.release(analyzer)
-    }
-  } catch (e) {
-    swallowUnlessTrap(e)
-    return false
-  }
-}
-
 /**
- * Repair an invalid modifier result, or null when it cannot be trusted.
- *
- * ShapeFix is a projector, not a rebuilder: the defect it is meant to clear
- * here is a missing pcurve on an edge the blend shares with a corner patch.
- * The guards mirror `canonicalSurfaces`: the healed shape must actually come
- * out valid, keep the same solid/face/edge counts, and hold the same positive
- * volume.
- * A heal that changes the topology count has invented or dropped a face rather
- * than projected a curve, which is the corrupt case wearing a repair, so it is
- * refused. The returned shape is DETACHED, matching `maker.Shape()`: the
- * caller owns it exactly as it owns an unhealed result.
- *
- * ShapeFix re-makes every face rather than editing it in place, so `rebase`
- * maps a sub-shape of the input to its counterpart in the healed shape through
- * the fixer's own substitution context (its history): the hand-off of names
- * keyed by the input's faces and edges.
+ * The healer, the modifier's name/diff rebase and the whole-shape validity read
+ * live in the cleanup layer now; these re-exports keep the modifier module's
+ * public surface for the shell, defeature and test paths.
  */
-export function healShape(
-  oc: OccModule,
-  scope: DisposeScope,
-  shape: OccShape,
-): { shape: OccShape; rebase: (s: OccSubShape) => OccSubShape } | null {
-  const before = topoCounts(oc, scope, shape)
-  let healed: OccShape
-  let fixer: OccShapeFixShape
-  try {
-    fixer = scope.track(new oc.ShapeFix_Shape_2(shape))
-    fixer.Perform(noProgress(oc))
-    healed = scope.track(fixer.Shape())
-  } catch (e) {
-    swallowUnlessTrap(e)
-    return null
-  }
-  const reject = (): null => {
-    scope.release(healed)
-    return null
-  }
-  if (!isValidShape(oc, scope, healed)) return reject()
-  const after = topoCounts(oc, scope, healed)
-  if (after.solids !== before.solids || after.faces !== before.faces || after.edges !== before.edges) {
-    return reject()
-  }
-  // Same geometry before and after the heal: the default rule's correlated
-  // read error cancels in the difference (see volumeOfDefault).
-  const v0 = volumeOfDefault(oc, scope, shape)
-  const v1 = volumeOfDefault(oc, scope, healed)
-  // A build with no material (a shell whose walls meet) is collapsed, not
-  // missing a pcurve, and keeping its ~0 volume would pass the check below.
-  if (!(v0 > 1e-9)) return reject()
-  if (!(Math.abs(v1 - v0) <= Math.max(1e-9, 1e-6 * Math.abs(v0)))) return reject()
-  const context = scope.track(fixer.Context()).get()
-  const E = oc.TopAbs_ShapeEnum
-  return {
-    shape: scope.detach(healed),
-    rebase: (s) => (context ? scope.track(context.Apply(s, E.TopAbs_SHAPE)) as OccSubShape : s),
-  }
-}
-
-/** `names` re-keyed onto another shape's sub-shapes through `rebase`. */
-export function rebaseNames(names: NewNames, rebase: (s: OccSubShape) => OccSubShape): NewNames {
-  const move = (from: Names): Names => {
-    const out: Names = new SubShapeMap()
-    for (const [s, uuid] of from.entries()) out.set(rebase(s), uuid)
-    return out
-  }
-  return { ...names, faceNames: move(names.faceNames), edgeNames: move(names.edgeNames) }
-}
-
-/**
- * `diff` with its output-side lists moved onto the healed shape through
- * `rebase`, so attribution finds the new faces and edges by identity there.
- * The input-side lists name sub-shapes of the old body and stay as they are.
- */
-export function rebaseDiff(diff: BrepDiff, rebase: (s: OccSubShape) => OccSubShape): BrepDiff {
-  const move = (items: unknown[]): unknown[] => items.map((s) => rebase(s as OccSubShape))
-  return {
-    ...diff,
-    new_faces: move(diff.new_faces),
-    inherited_faces: move(diff.inherited_faces),
-    new_edges: move(diff.new_edges),
-    inherited_edges: move(diff.inherited_edges),
-  }
-}
-
-/** Solid/face/edge occurrence counts, the structural fingerprint the heal guard compares. */
-function topoCounts(
-  oc: OccModule,
-  scope: DisposeScope,
-  shape: OccShape,
-): { solids: number; faces: number; edges: number } {
-  const E = oc.TopAbs_ShapeEnum
-  const count = (type: OccShapeEnumValue): number => {
-    const exp = scope.track(new oc.TopExp_Explorer_2(shape, type, E.TopAbs_SHAPE))
-    let n = 0
-    for (; exp.More(); exp.Next()) n++
-    scope.release(exp)
-    return n
-  }
-  return { solids: count(E.TopAbs_SOLID), faces: count(E.TopAbs_FACE), edges: count(E.TopAbs_EDGE) }
-}
+export { shapeIsValid as isValidShape } from './cleanup/guard'
+export { healShape }
+export { rebaseDiff, rebaseNames } from './cleanup/compose'
 
 /** What `addEdge` needs beyond the edge itself. The angle-distance chamfer has
  *  to name a reference face, and the input shape's faces are already walked by
@@ -673,7 +567,7 @@ function applyEdgeModifier(
   const holds = (list: OccShape[]): boolean => {
     const probe = buildFresh(list)
     if (!probe.ok) return false
-    let ok = isValidShape(oc, scope, probe.shape)
+    let ok = shapeIsValid(oc, scope, probe.shape)
     if (!ok) {
       const healed = healShape(oc, scope, probe.shape)
       ok = healed !== null
@@ -727,21 +621,29 @@ function applyEdgeModifier(
   }
 
   /** The fallback's cut, validity-gated like the maker's output: a cut that does
-   *  not validate is refused, and one that heals is adopted healed. The cut's
-   *  names and diff move onto the healed shape through the fixer's history. */
+   *  not validate is refused, and one that heals is adopted healed. The layer
+   *  carries the cut's names and diff onto the healed shape through the fixer's
+   *  history. */
   const acceptCut = (
     cut: { shape: OccShape; names: NewNames | null; diff: BrepDiff },
   ): { shape: OccShape; names: NewNames | null; diff: BrepDiff } | null => {
-    if (isValidShape(oc, scope, cut.shape)) return cut
-    const healed = healShape(oc, scope, cut.shape)
-    if (healed === null) {
+    if (shapeIsValid(oc, scope, cut.shape)) return cut
+    const cleaned = runCleanup(
+      oc,
+      scope,
+      { shape: cut.shape, names: cut.names, diff: cut.diff },
+      modifierPlan({ heal: 'required' }),
+    )
+    if (passRejected(cleaned, 'heal')) {
       scope.release(cut.shape)
       return null
     }
-    const rebased = cut.names === null ? null : rebaseNames(cut.names, healed.rebase)
-    const healedDiff = rebaseDiff(cut.diff, healed.rebase)
     scope.release(cut.shape)
-    return { shape: healed.shape, names: rebased, diff: healedDiff }
+    return {
+      shape: cleaned.shape,
+      names: cleaned.names ?? cut.names,
+      diff: cleaned.diff ?? cut.diff,
+    }
   }
 
   // The leaf's second builder, one cut per refused edge, on the result the
@@ -850,10 +752,13 @@ function applyEdgeModifier(
   // (utils/core/featureFailure.ts), so it names a way out rather than a kernel
   // code: the reported document recovers at radius 0.1 where it corrupts at 0.15.
   const INVALID = 'the operation produced invalid geometry; try a smaller radius/distance or fewer edges at once'
-  let heal: ReturnType<typeof healShape> = null
-  if (!isValidShape(oc, scope, built)) {
-    heal = healShape(oc, scope, built)
-    if (heal === null) {
+  // Whether the accepted build is invalid and the layer must heal it at
+  // adoption. The probe below only decides that; its shape is freed at once,
+  // because the heal is re-run after the names and diff exist.
+  let needsHeal = false
+  if (!shapeIsValid(oc, scope, built)) {
+    const probe = healShape(oc, scope, built)
+    if (probe === null) {
       scope.release(built)
       // A multi-edge set that corrupts may owe it to one edge: isolate it the
       // same way a refused build is, and keep the rest as a partial result.
@@ -862,13 +767,18 @@ function applyEdgeModifier(
       if (rebuilt === null) return fail(INVALID)
       maker = rebuilt.maker
       built = rebuilt.shape
-      if (!isValidShape(oc, scope, built)) {
-        heal = healShape(oc, scope, built)
-        if (heal === null) {
+      if (!shapeIsValid(oc, scope, built)) {
+        const retry = healShape(oc, scope, built)
+        if (retry === null) {
           scope.release(built)
           return fail(INVALID)
         }
+        scope.release(retry.shape)
+        needsHeal = true
       }
+    } else {
+      scope.release(probe.shape)
+      needsHeal = true
     }
   }
 
@@ -903,9 +813,8 @@ function applyEdgeModifier(
       diff = emptyBrepDiff()
     }
   } catch (e) {
-    // Release both candidate shapes so a throw does not leak either.
+    // Release the candidate shape so a throw does not leak it.
     scope.release(built)
-    if (heal !== null) scope.release(heal.shape)
     throw e
   }
 
@@ -917,16 +826,26 @@ function applyEdgeModifier(
   // of 12 on the corner corpus against 6 truly new -- so the builder
   // re-attributed the whole body's ancestry to this feature and evicted the
   // picks stored against it, the same eviction the far-edge rule in
-  // edgeModifierDiff exists to prevent. The names are handed to the healed
-  // shape through the fixer's own history (`rebase`), and so is the diff.
+  // edgeModifierDiff exists to prevent. The cleanup layer carries the names, the
+  // diff and the merge history onto the adopted shape.
   let outShape = built
   let outNames: NewNames | null = names
   let outDiff = diff
-  if (heal !== null) {
-    outNames = names === null ? null : rebaseNames(names, heal.rebase)
-    outDiff = rebaseDiff(diff, heal.rebase)
+  const cleaned = runCleanup(
+    oc,
+    scope,
+    { shape: built, names, diff },
+    modifierPlan({ heal: needsHeal ? 'required' : 'skip' }),
+  )
+  if (needsHeal && passRejected(cleaned, 'heal')) {
     scope.release(built)
-    outShape = heal.shape
+    return fail(INVALID)
+  }
+  outNames = cleaned.names ?? names
+  outDiff = cleaned.diff ?? diff
+  if (cleaned.shape !== built) {
+    scope.release(built)
+    outShape = cleaned.shape
   }
 
   // A refused edge the maker isolated can still build as a prism cut on the

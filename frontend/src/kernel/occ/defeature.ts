@@ -43,13 +43,11 @@ import {
   exploreFaces,
   extractNames,
   edgeModifierDiff,
-  isValidShape,
-  healShape,
-  rebaseNames,
-  rebaseDiff,
   type OldNames,
   type NewNames,
 } from './edgeModifier'
+import { passRejected, runCleanup } from './cleanup/pipeline'
+import { modifierPlan } from './cleanup/presets'
 import { SubShapeDedup, SubShapeMultiIndex, SubShapeIndexMap } from './subshapeIdentity'
 import { faceSurfaceType, FACE_RESTRICTION_TYPES, shapeBndBox } from './primitives'
 import { canonicalEdges } from './partNames'
@@ -668,16 +666,10 @@ export function applyDeleteFacesWithLineage(
     return refuse()
   }
 
-  // Guard 5: heal once if invalid; still invalid -> refuse the whole call.
-  let heal: ReturnType<typeof healShape> = null
-  if (!isValidShape(oc, scope, built)) {
-    heal = healShape(oc, scope, built)
-    if (heal === null) {
-      scope.release(built)
-      for (const g of succeeded) rung1Reason.set(g[0], REASON_INVALID)
-      return refuse()
-    }
-  }
+  // Guard 5 (heal once if invalid; still invalid -> refuse) moved below the
+  // name and diff extraction: the cleanup layer's heal pass carries them onto
+  // the healed shape through the fixer's history, so it has to run after they
+  // exist.
 
   let names: NewNames | null = null
   let diff: BrepDiff
@@ -705,7 +697,6 @@ export function applyDeleteFacesWithLineage(
     }
   } catch (e) {
     scope.release(built)
-    if (heal !== null) scope.release(heal.shape)
     throw e
   }
 
@@ -719,11 +710,27 @@ export function applyDeleteFacesWithLineage(
       reason: ladderText(rung1Reason.get(g[0]) as string, RUNG2_SKIPPED),
     }))
 
-  if (heal !== null) {
-    const rebased = names === null ? null : rebaseNames(names, heal.rebase)
-    const healedDiff = rebaseDiff(diff, heal.rebase)
+  const invalid = !shapeIsValid(oc, scope, built)
+  const cleaned = runCleanup(
+    oc,
+    scope,
+    { shape: built, names, diff },
+    modifierPlan({ heal: invalid ? 'required' : 'skip' }),
+  )
+  if (invalid && passRejected(cleaned, 'heal')) {
     scope.release(built)
-    return { shape: heal.shape, names: rebased, diff: healedDiff, failedGroups, applied: true }
+    for (const g of succeeded) rung1Reason.set(g[0], REASON_INVALID)
+    return refuse()
+  }
+  if (cleaned.shape !== built) {
+    scope.release(built)
+    return {
+      shape: cleaned.shape,
+      names: cleaned.names ?? names,
+      diff: cleaned.diff ?? diff,
+      failedGroups,
+      applied: true,
+    }
   }
   return { shape: scope.detach(built), names, diff, failedGroups, applied: true }
 }
