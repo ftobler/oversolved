@@ -25,14 +25,15 @@ const frontendDir = path.resolve(scriptDir, '..')
 const repoDir = path.resolve(frontendDir, '..')
 const outputPath = path.join(frontendDir, 'public', 'third_party', 'cargo', 'LICENSES.txt')
 
-// The two crates that become WebAssembly. solver-core reaches the bundle only
-// through them, and arrives on its own as a workspace member either way.
+// The two crates that become WebAssembly. solver-core and geom-core reach the
+// bundle only through them, and each arrives on its own as a workspace member
+// either way.
 const SOLVER_MANIFESTS = ['sketch-solver/Cargo.toml', 'mate-solver/Cargo.toml']
 
 // The workspace's own crates are Oversolved, not third-party software. They are
 // covered by the repository's LICENSE.md and must not be listed as dependencies
 // with someone else's terms.
-const OWN_CRATES = new Set(['solver-core', 'sketch-solver', 'mate-solver'])
+const OWN_CRATES = new Set(['solver-core', 'geom-core', 'sketch-solver', 'mate-solver'])
 
 const LICENSE_FILE = /^(LICENSE|LICENCE|COPYING|NOTICE)([-.].*)?$/i
 
@@ -113,10 +114,10 @@ function render(packages) {
   lines.push('not present in the WebAssembly. They are listed rather than filtered out,')
   lines.push('because listing a crate that owes nothing is harmless and the reverse is not.')
   lines.push('')
-  lines.push('Two things are NOT here. Oversolved\'s own crates (solver-core, sketch-solver,')
-  lines.push('mate-solver) are covered by the repository\'s LICENSE.md. The Rust standard')
-  lines.push('library is linked into the WebAssembly but is not a package in any dependency')
-  lines.push('graph, so cargo cannot report it; it is credited in ../toolchain/.')
+  lines.push('Two things are NOT here. Oversolved\'s own crates (solver-core, geom-core,')
+  lines.push('sketch-solver, mate-solver) are covered by the repository\'s LICENSE.md. The Rust')
+  lines.push('standard library is linked into the WebAssembly but is not a package in any')
+  lines.push('dependency graph, so cargo cannot report it; it is credited in ../toolchain/.')
   lines.push('')
   lines.push('Where a crate offers a choice of licenses, every text it ships is reproduced.')
   lines.push('Oversolved takes them under the permissive option, and the crate\'s own terms')

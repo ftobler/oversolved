@@ -229,8 +229,18 @@ function writeEdge(w: ByteWriter, e: LoopEdge): void {
       w.f64(theta)
       break
     }
-    default:
-      fail(`unknown edge kind ${String(kind)}`)
+    default: {
+      // The topology dicts also carry synthetic edges with a `type` and
+      // endpoints but no `kind` (`registerTopFace`'s edge0). The old sampler
+      // read such an edge as "no kind matched": it pushed the start when one
+      // was present and no samples. A zero-length line has exactly that shape,
+      // so the caller's synthetic edge keeps working unchanged.
+      w.u8(EdgeKind.line)
+      const start = geomStart ?? [0, 0]
+      writePoint(w, start)
+      writePoint(w, start)
+      break
+    }
   }
   // The dict's explicit start, trailing every kind: the polygon reader pushes
   // it and nothing else, so an absent key is "no push".

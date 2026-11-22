@@ -12,6 +12,8 @@ import { describe, it, expect, afterAll, beforeAll, vi } from 'vitest'
 import { loadOcc } from '../occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
+import { loadProfileLoops } from '@/wasm-kernel/loadProfileLoops'
+import { setProfileLoopsBytes } from '@/wasm-kernel/profileLoops'
 import {
   solveLocally,
   setOccLoader,
@@ -131,6 +133,9 @@ describe.skipIf(!oc || !solveBytes)('solveLocally kernel trap recovery (real OCC
     // A real reload clears it and the next build succeeds.
     setSketchSolver(solveBytes)
     setSketchTopology(loadTopology())
+    // The trap cleared the profile-loop facade too (it points into the same
+    // module instance); re-inject it with the rest of the package.
+    setProfileLoopsBytes(loadProfileLoops())
     const recovered = await solveLocally(doc(5))
     expect((recovered!.result as Record<string, { status?: string }>).ex1.status).toBe('ok')
   })

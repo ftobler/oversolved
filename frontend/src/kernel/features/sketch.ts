@@ -45,7 +45,7 @@ import { declaredContacts } from './shared/declaredContacts'
 import { frameToPlaneTransform, projectWorldToFrame, type Frame3D } from '../types3d'
 import { resolveSketchPlane, enrichSketchEntity } from './postRegister'
 import { loadProfileLoopsWasm, loadSolverWasm, loadTopologyWasm, resetSolverWasm } from '@/wasm-kernel/solverWasm'
-import { setProfileLoopsBytes } from '../profileLoopsRust'
+import { setProfileLoopsBytes } from '@/wasm-kernel/profileLoops'
 import { isKernelTrap, swallowUnlessTrap } from '../errors'
 import { memoizedLoad } from '../occ/memoizedLoad'
 import { resolveDragMode, PROBE_STEP_REL, type CircleDragMode } from './circleDragMode'
@@ -161,7 +161,10 @@ const solverCell = memoizedLoad(async (): Promise<SolveBytes | null> => {
     loopsLoad.catch(() => null),
   ])
   if (topo) topologyBytes = topo
-  setProfileLoopsBytes(loops)
+  // Only install a facade the loader actually produced: a test mock (or a
+  // build that predates the export) must not clobber one an injected host
+  // already wired, exactly like the topology line above.
+  if (loops) setProfileLoopsBytes(loops)
   solverBytes = bytes
   return bytes
 })

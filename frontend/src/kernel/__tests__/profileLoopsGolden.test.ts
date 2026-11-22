@@ -17,8 +17,8 @@ import { describe, it, expect } from 'vitest'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import * as rust from '../profileLoopsRust'
-import { profileLoopsAvailable } from '../profileLoopsRust'
+import * as rust from '@/wasm-kernel/profileLoops'
+import { profileLoopsAvailable } from '@/wasm-kernel/profileLoops'
 import { CENTROID_ARC_SAMPLES, type LoopEdge } from '../profileLoops'
 
 const HERE = fileURLToPath(new URL('.', import.meta.url))

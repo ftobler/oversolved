@@ -8,7 +8,14 @@
  */
 
 import { loadOcc } from '@/kernel/occ/loadOcc'
+import { loadProfileLoops } from '@/wasm-kernel/loadProfileLoops'
+import { setProfileLoopsBytes } from '@/wasm-kernel/profileLoops'
 import { runChain, runPersistenceCheck } from '@/testing/robustnessFuzz/chain'
+
+// This child parses no vitest setup file: the profile-loop facade (the area
+// builder's profile dump crosses it) has to be wired here, from the same node
+// package the rest of the node tooling uses.
+setProfileLoopsBytes(loadProfileLoops())
 
 /** Loaded once per child; the pool retires a child after one recipe. */
 let occPromise = null

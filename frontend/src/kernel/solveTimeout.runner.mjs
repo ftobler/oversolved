@@ -14,7 +14,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
 import { loadProfileLoops } from '@/wasm-kernel/loadProfileLoops'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
-import { setProfileLoopsBytes } from '@/kernel/profileLoopsRust'
+import { setProfileLoopsBytes } from '@/wasm-kernel/profileLoops'
 import { extractErrorMessage } from '@/kernel/errors'
 
 setOccLoader(loadOcc)

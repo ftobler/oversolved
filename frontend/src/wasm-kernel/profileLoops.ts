@@ -8,12 +8,16 @@
  * golden fixture `geom-core/tests/fixtures/profile_loops.json` pins the
  * behaviour they had, and `profileLoopsGolden.test.ts` replays it on every run.
  *
- * The bytes function is installed by whoever loads the sketch package. In the
- * browser that is `initSketchSolver` (the OCC/solver Worker, where every
- * caller lives); in node it is the test setup, which loads the same package.
- * Nothing on the UI main thread needs these functions, so no WASM package is
- * loaded there for them (see the main-thread decision in
- * `feature/knowledgebase.agent.md`, geom-core section).
+ * The bytes function is installed wherever the sketch package is loaded, so no
+ * caller has to remember it. In the browser that is `initSketchSolver` (the
+ * OCC/solver Worker, where every caller lives); on the node side the package
+ * loaders install it (`loadSolver`/`loadSolverFresh`), and the two forked
+ * runners (`solveTimeout`, `chainTimeout`) wire it with the rest of the
+ * package. The vitest setup file also installs it at module scope, because
+ * `postRegister`'s fixture sweep and `measureReal`'s `beforeAll` sample a loop
+ * before any per-test hook runs. Nothing on the UI main thread needs these
+ * functions, so no WASM package is loaded there for them (see the main-thread
+ * decision in `feature/knowledgebase.agent.md`, geom-core section).
  */
 
 import type { ProfileLoopsBytes } from '@/wasm-kernel/wasmTypes'
@@ -23,6 +27,11 @@ import {
   ProfileLoopOp,
   type LoopEdge,
 } from '@/wasm-kernel/profileLoopsCodec'
+
+// The loop-edge dict type lives with the wire codec (one `Record<string,
+// unknown>` in production, the shape the topology dicts already are); the
+// kernel re-exports it, so callers keep importing it from `kernel/profileLoops`.
+export type { LoopEdge } from '@/wasm-kernel/profileLoopsCodec'
 
 let installed: ProfileLoopsBytes | null = null
 

@@ -9,7 +9,8 @@
 // hand-off happened.
 
 import { JOINT_SNAP_TOL, TOL_LOOP_CLOSURE, TOL_SELECT_DIRECTION } from "./solverConstants"
-import { arcSamplePoints, ellipseArcSamplePoints, loopContainment } from "./profileLoopsRust"
+import { arcSamplePoints, ellipseArcSamplePoints, loopContainment } from "@/wasm-kernel/profileLoops"
+import type { LoopEdge } from "@/wasm-kernel/profileLoops"
 
 export {
   arcSamplePoints,
@@ -23,7 +24,11 @@ export {
   pointInLoop,
   splineSamplePoints,
   subdivideLoops,
-} from "./profileLoopsRust"
+} from "@/wasm-kernel/profileLoops"
+
+// The loop-edge dict type is declared once, with the wire codec; re-exported so
+// every caller keeps importing it from `kernel/profileLoops`.
+export type { LoopEdge } from "@/wasm-kernel/profileLoops"
 
 // Sample count that makes a curved loop read as its true shape rather than as
 // its chord polygon: the centroid uses it, the viewport tessellates boundaries
@@ -32,8 +37,6 @@ export {
 // drifted from what the user sees. Mirrors `CENTROID_ARC_SAMPLES` in
 // `geom-core/src/profile_loops.rs`; a change is a decision on both sides.
 export const CENTROID_ARC_SAMPLES = 64
-
-export type LoopEdge = Record<string, unknown>
 
 /**
  * Edges whose OCC endpoints are pinned to a curve: an arc to its
