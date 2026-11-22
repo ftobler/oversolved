@@ -172,7 +172,7 @@ describe.skipIf(!oc || !solveBytes)('move-face multi-face robustness (real OCC +
       const res = h.res(r, 'mf1')
       expect(res.status, String(res.exception ?? '')).toBe('partial')
       expect((res.failed_faces as string[] | undefined) ?? []).not.toHaveLength(0)
-      expect(String(res.exception ?? '')).toMatch(/two faces on one surface|rebuilt shell|removes the whole part/)
+      expect(String(res.exception ?? '')).toMatch(/two faces on one surface|rebuilt shell/)
       return String(res.exception ?? '')
     }
     expect(refuse([picks.upper])).toContain(picks.upper)
@@ -191,7 +191,7 @@ describe.skipIf(!oc || !solveBytes)('move-face multi-face robustness (real OCC +
       const res = h.res(r, 'mf1')
       expect(res.status, String(res.exception ?? '')).toBe('partial')
       expect((res.failed_faces as string[] | undefined) ?? []).not.toHaveLength(0)
-      expect(String(res.exception ?? '')).toMatch(/two faces on one surface|rebuilt shell|removes the whole part/)
+      expect(String(res.exception ?? '')).toMatch(/two faces on one surface|rebuilt shell/)
       await yieldToEventLoop()
     }
   }, 60000)
@@ -210,7 +210,7 @@ describe.skipIf(!oc || !solveBytes)('move-face multi-face robustness (real OCC +
       const res = h.res(r, 'mf1')
       expect(res.status, String(res.exception ?? '')).toBe('partial')
       expect((res.failed_faces as string[] | undefined) ?? []).not.toHaveLength(0)
-      expect(String(res.exception ?? '')).toMatch(/two faces on one surface|rebuilt shell|removes the whole part/)
+      expect(String(res.exception ?? '')).toMatch(/two faces on one surface|rebuilt shell/)
       expect((res.unresolved_faces as string[] | undefined) ?? []).toEqual([])
       await yieldToEventLoop()
     }
@@ -248,7 +248,7 @@ describe.skipIf(!oc || !solveBytes)('move-face multi-face robustness (real OCC +
         const res = h.res(r, 'mf1')
         expect(res.status, `pair ${i},${j}: ${String(res.exception ?? '')}`).toBe('partial')
         expect((res.failed_faces as string[] | undefined) ?? []).not.toHaveLength(0)
-        expect(String(res.exception ?? '')).toMatch(/two faces on one surface|rebuilt shell|removes the whole part/)
+        expect(String(res.exception ?? '')).toMatch(/two faces on one surface|rebuilt shell/)
         await yieldToEventLoop()
       }
     }
@@ -265,7 +265,7 @@ describe.skipIf(!oc || !solveBytes)('move-face multi-face robustness (real OCC +
       const res = h.res(r, 'mf1')
       expect(res.status, String(res.exception ?? '')).toBe('partial')
       expect((res.failed_faces as string[] | undefined) ?? []).not.toHaveLength(0)
-      expect(String(res.exception ?? '')).toMatch(/two faces on one surface|rebuilt shell|removes the whole part/)
+      expect(String(res.exception ?? '')).toMatch(/two faces on one surface|rebuilt shell/)
       await yieldToEventLoop()
     }
   }, 300000)

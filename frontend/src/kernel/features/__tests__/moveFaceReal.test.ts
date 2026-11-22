@@ -311,12 +311,15 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     expect(bbox(h.part(r3, 'body_ex1')).max[2]).toBeCloseTo(13, 6)
   })
 
-  it('an inward move that removes the whole body is an exception', () => {
+  it('an inward move that removes the whole body succeeds and deletes the body', () => {
+    // Cutting the whole body away is the authored result (the boolean cut's
+    // consumed-target convention), not a refusal: ok, no surviving body.
     const base = h.run(boxSpec())
     const top = faceQueryAt(base.bodies, 'cls_zp')
     const r = h.run({ features: [...boxSpec().features, { id: 'mf1', kind: 'move_face', move_face: { faces: [top], distance: -20 } }] })
-    expect(h.res(r, 'mf1').status).toBe('exception')
-    expect(String(h.res(r, 'mf1').exception ?? '')).toContain('whole part')
+    expect(h.res(r, 'mf1').status).toBe('ok')
+    expect(h.res(r, 'mf1').body_ids).toEqual([])
+    expect((r.bodies as Record<string, unknown>).body_ex1).toBeUndefined()
   })
 
   it('full and incremental builds agree on the moved body face UUIDs', () => {
@@ -337,7 +340,7 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     // half-space at y <= 0, so the boundaryless cutter removes every pillar
     // and the web. The old slab route trimmed only the web and split the body;
     // an intersection with a half-space is connected by construction and can
-    // never yield two bodies, so the feature is an exception, not a resplit.
+    // never yield two bodies, so the body is consumed (ok, deleted), not split.
     const spec = {
       features: [
         uProfileSketch('sk1'),
@@ -348,8 +351,9 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     expect(h.res(base, 'ex1').status).toBe('ok')
     const web = faceQueryWhere(base.bodies, (n, c) => Math.abs(n[1] - 1) < 1e-6 && Math.abs(c[1] - 4) < 1e-6)
     const r = h.run({ features: [...spec.features, { id: 'mf1', kind: 'move_face', move_face: { faces: [web], distance: -4 } }] })
-    expect(h.res(r, 'mf1').status).toBe('exception')
-    expect(String(h.res(r, 'mf1').exception ?? '')).toContain('whole part')
+    expect(h.res(r, 'mf1').status).toBe('ok')
+    expect(h.res(r, 'mf1').body_ids).toEqual([])
+    expect((r.bodies as Record<string, unknown>).body_ex1).toBeUndefined()
   })
 
   it('a top moved past the apex is refused by name (the cone singularity has no direct construction)', () => {
