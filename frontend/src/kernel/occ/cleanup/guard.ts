@@ -82,14 +82,33 @@ export function guardShape(
     const v0 = volumeOfDefault(oc, scope, before)
     const v1 = volumeOfDefault(oc, scope, after)
     // A pass whose input has no material cannot be judged by a volume delta:
-    // a collapsed shell would pass at ~0 either way.
-    if (options.positiveVolume && !(v0 > 1e-9)) return UNSOUND
+    // a collapsed shell would pass at ~0 either way. A mixed-orientation
+    // invalid input can read negative; only a caller that admits that case
+    // (the fillet/chamfer healer) reads its magnitude instead.
+    if (options.positiveVolume) {
+      const material = options.allowMixedOrientation ? Math.abs(v0) : v0
+      if (!(material > 1e-9)) return UNSOUND
+    }
     // Validity is read before the delta so a pass that corrupts orientation is
     // reported by BRepCheck even when the volume happens to be preserved.
     const demandValidity = options.validity === 'always' || isClosedByVolume(v0)
     if (demandValidity && !shapeIsValid(oc, scope, after)) return UNSOUND
+    // A healer's output must carry material on the outward side; an invalid
+    // input may read negative, but the repaired body may not.
+    if (options.positiveVolume && !(v1 > 1e-9)) return UNSOUND
     const volumeKept = Math.abs(v1 - v0) <= Math.max(1e-9, 1e-6 * Math.abs(v0))
-    if (!volumeKept) return UNSOUND
+    // A mixed-orientation invalid input (a fillet whose new face flipped) can
+    // integrate a negative volume; its delta is not a measurement, and the
+    // healer's positive valid output is the evidence. A positive invalid input
+    // (a self-intersecting shell) still has to keep its volume, or the repair
+    // hid a shape change. Only the healer asks for this second read, and only
+    // when the delta already failed, so the boolean path's one-check budget is
+    // unchanged.
+    if (!volumeKept) {
+      const orientationBroken = options.positiveVolume && options.allowMixedOrientation
+        && v0 < 0 && !shapeIsValid(oc, scope, before)
+      if (!orientationBroken) return UNSOUND
+    }
     if (options.topology) {
       const beforeCounts = topoCounts(oc, scope, before)
       const afterCounts = topoCounts(oc, scope, after)

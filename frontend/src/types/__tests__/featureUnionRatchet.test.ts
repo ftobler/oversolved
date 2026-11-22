@@ -87,8 +87,10 @@ const RATCHETS: Ratchet[] = [
     // `MeasureContext` instead of a second record.
     // 366: the variable scope typed `solveVariable`'s input as `VariableSolveInput`
     // and its sub-def read, replacing two raw-record reads with the shipped shape.
+    // 365: the move-face slab/sequential route was deleted; its `Dict` alias was
+    // the one raw record the direct-only leaf no longer needs.
     token: 'Record<string, unknown>',
-    baseline: 366,
+    baseline: 365,
   },
 ]
 

@@ -3,19 +3,15 @@
 // The move-face regression reported on 2026-11-22: a 19 x 35 x 27 box stores
 // four live side-wall UUIDs and a bottom-cap pick minted before caps were keyed
 // by their region entities. The full resolver hands that dead cap off by its
-// verified lineage, but the leaf used to choose its route from the RAW pick
-// UUID, so one dead pick sent the whole group to the one-boolean set path. Each
-// slab there is bounded by the pick's neighbours on their ORIGINAL surfaces, so
-// neighbouring picks leave notches at every shared edge and corner (25117 mm3
-// and 22 faces instead of the 23 x 39 x 29 box).
+// verified lineage, and the direct tweak now applies the whole picked set in
+// one operation, so the resolution is what decides success (the old slab set
+// path notched every shared edge: 25117 mm3 and 22 faces instead of 26013).
 //
-// These tests pin the route on the resolution, not the stored UUID, and pin the
-// set path's refusal to notch adjacent picks silently. The set-path tests force
-// the route by making the sequential apply refuse, the second trigger the plan
-// allows besides a resolved-but-nameless pick.
+// The set path and its adjacent-pick refusal are gone with the slab route; the
+// adjacent-pick test pins that the direct route applies such a group together.
 //
 // Skips when OCC.js or the Rust solver is absent.
-import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest'
+import { describe, it, expect, beforeAll } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { loadOcc } from '../../occ/loadOcc'
@@ -39,24 +35,6 @@ import { partSpecFromText } from '@/utils/partExport'
 import type { BuildResponse } from '../../builder'
 import type { PartSolid } from '../../types3d'
 import type { OccShape } from '../../occ/occTypes'
-
-const { forcedSequentialRefusal } = vi.hoisted(() => ({ forcedSequentialRefusal: { value: false } }))
-
-// The real OCC construction stays in place; only the sequential apply is made
-// to refuse, which is the leaf's second set-path trigger. A refusal is a real
-// MoveFaceRefusal, so the leaf retries the group through its normal fallback.
-vi.mock('../../occ/moveFace', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../../occ/moveFace')>()
-  return {
-    ...actual,
-    applyMoveFace: (...args: Parameters<typeof actual.applyMoveFace>) => {
-      if (forcedSequentialRefusal.value) {
-        throw new actual.MoveFaceRefusal('move_face: forced sequential refusal for the set-path test')
-      }
-      return actual.applyMoveFace(...args)
-    },
-  }
-})
 
 const oc = await loadOcc()
 const solveBytes = loadSolver()
@@ -162,8 +140,6 @@ describe.skipIf(!oc || !solveBytes)('move-face legacy cap (real OCC + Rust solve
     setSketchSolver(solveBytes)
   })
 
-  afterEach(() => { forcedSequentialRefusal.value = false })
-
   // The checkpoint's body volume; the build response carries only the mesh.
   function volumeAfter(result: BuildResponse, lastId: string, partId = PART_ID): number {
     const handle = result._build_state.checkpoints[lastId]?.body_store_snapshot?.[partId]?.shape
@@ -231,20 +207,25 @@ describe.skipIf(!oc || !solveBytes)('move-face legacy cap (real OCC + Rust solve
     expect(uuids(livePart)).toEqual(uuids(legacyPart))
   })
 
-  it('the five picks reversed build the same volume and face count', () => {
+  it('the five picks reversed build the same volume, face count and UUID set', () => {
     const forward = runReport()
     const reverse = runReport([...reportPicks()].reverse())
     expect(h.res(reverse, MOVE_ID).status).toBe('ok')
     expect(volumeAfter(reverse, MOVE_ID)).toBeCloseTo(volumeAfter(forward, MOVE_ID), 6)
     expect(faceQueries(h.part(reverse, PART_ID) as PartView))
       .toHaveLength(faceQueries(h.part(forward, PART_ID) as PartView).length)
+    const uuids = (part: PartView): string[] =>
+      faceQueries(part).map(uuidOf).filter((u): u is string => u !== null).sort()
+    expect(uuids(h.part(reverse, PART_ID) as PartView))
+      .toEqual(uuids(h.part(forward, PART_ID) as PartView))
   })
 
-  it('a resolved-but-nameless pick still takes the set path', () => {
+  it('a resolved-but-nameless pick moves on the direct route', () => {
     // A true pre-split body: every face but the top has a live UUID. The top
     // resolves by its ancestry and classifiers, yet carries no construction
-    // name, so the leaf can only apply the group as one set on the original
-    // body. The top and bottom are not adjacent, so both moves apply.
+    // name. The direct tweak needs no re-find on an intermediate shape, so it
+    // applies both picks together; the old set path existed only because the
+    // sequential route could not re-find a nameless face.
     const scope = new DisposeScope()
     const table = new HandleTable()
     try {
@@ -279,7 +260,7 @@ describe.skipIf(!oc || !solveBytes)('move-face legacy cap (real OCC + Rust solve
     }
   })
 
-  it('the set path refuses adjacent picks by name and still applies a non-adjacent one', () => {
+  it('adjacent picks apply together on the direct route, not through a set refusal', () => {
     const base = h.run(lProfileSpec())
     expect(h.res(base, 'ex1').status).toBe('ok')
     const left = faceQueryWhere(base.bodies, (n, c) =>
@@ -290,30 +271,17 @@ describe.skipIf(!oc || !solveBytes)('move-face legacy cap (real OCC + Rust solve
     const right = faceQueryWhere(base.bodies, (n, c) =>
       Math.abs(n[0] - 1) < 1e-6 && Math.abs(c[0] - 30) < 1e-6)
 
-    // Force the set path for both the control and the group: the sequential
-    // apply refuses, so the leaf retries every group as one boolean.
-    forcedSequentialRefusal.value = true
-    const control = h.run({ features: [
-      ...lProfileSpec().features,
-      { id: 'mf1', kind: 'move_face', move_face: { faces: [right], distance: 5 } },
-    ] })
-    expect(h.res(control, 'mf1').status).toBe('ok')
-    const controlVolume = volumeAfter(control, 'mf1', 'body_ex1')
-
+    // The direct route is one simultaneous operation, so the picks that share
+    // an edge all apply. The old one-boolean set path refused the adjacent pair
+    // by name; that guard is gone with the slab route.
     const grouped = h.run({ features: [
       ...lProfileSpec().features,
       { id: 'mf1', kind: 'move_face', move_face: { faces: [left, top, right], distance: 5 } },
     ] })
     const res = h.res(grouped, 'mf1')
-    expect(res.status).toBe('partial')
-    const failed = (res.failed_faces as string[] | undefined) ?? []
-    expect(failed).toEqual(expect.arrayContaining([left, top]))
-    expect(failed).not.toContain(right)
-    const message = String(res.exception ?? '')
-    expect(message).toContain(left)
-    expect(message).toContain(top)
-    expect(message).toContain('share an edge')
-    // Only the non-adjacent pick was applied: the volume equals its own move.
-    expect(volumeAfter(grouped, 'mf1', 'body_ex1')).toBeCloseTo(controlVolume, 6)
+    expect(res.status, String(res.exception ?? '')).toBe('ok')
+    expect(((res.failed_faces as string[] | undefined) ?? [])).toEqual([])
+    // All three faces grew by the same distance, so the volume grew.
+    expect(volumeAfter(grouped, 'mf1', 'body_ex1')).toBeGreaterThan(volumeAfter(base, 'ex1', 'body_ex1'))
   }, 60000)
 })

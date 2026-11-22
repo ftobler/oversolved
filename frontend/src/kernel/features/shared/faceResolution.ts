@@ -24,7 +24,7 @@ import {
 import { canonicalFaces, assertAligned } from '../../occ/partNames'
 import { faceCentroid, faceSurfaceType, type Vec3 } from '../../occ/primitives'
 import { geometryClassifiers } from '../../geomHash'
-import { mintFaceUuid, sideFacePath, splitFacePath } from '../../constructionName'
+import { mintFaceUuid, moveFaceExtendPath, moveFaceSetExtendPath, sideFacePath, splitFacePath } from '../../constructionName'
 import { partFrame } from '../../occ/tessellation'
 import { resolveLegacyCapQuery } from './legacyCapHandoff'
 
@@ -268,19 +268,56 @@ function resolveByStableAncestry(
   return null
 }
 
+/** How many per-pick set suffixes a dead extension UUID may carry; the old
+ *  producer's pick count is the group size, a bounded handful. */
+const MAX_EXTEND_SET = 64
+
+/**
+ * Verified hand-off for a dead move-face extension UUID
+ * `<feature>|extend|<neighbourUuid>` (or its `|set|<i>` sibling). The direct
+ * tweak no longer mints extension faces: the neighbour itself grew and kept its
+ * UUID. The path names the neighbour, so recompute the hash for every live face
+ * UUID and every move feature the body records; exactly one match is the
+ * neighbour, anything else stays unresolved (never a geometry guess).
+ */
+function resolveExtendHandoff(part: PartSolid, index: FaceIndex, q: string): OccShape | null {
+  const dead = queryFaceUuid(q)
+  if (dead === null || part.shape === null) return null
+  const features = [...new Set([...(part.modified_by ?? []), part.created_by].filter(Boolean))]
+  if (features.length === 0) return null
+  const live = [...new Set((part.face_uuids ?? []).filter((u): u is string => u !== null))]
+  const matches = new Set<string>()
+  for (const feature of features) {
+    for (const uuid of live) {
+      if (mintFaceUuid(moveFaceExtendPath(feature, uuid)) === dead) matches.add(uuid)
+      else {
+        for (let i = 0; i < MAX_EXTEND_SET; i++) {
+          if (mintFaceUuid(moveFaceSetExtendPath(feature, uuid, i)) === dead) {
+            matches.add(uuid)
+            break
+          }
+        }
+      }
+    }
+  }
+  if (matches.size !== 1) return null
+  return index.byUuid.get([...matches][0]) ?? null
+}
+
 /**
  * Resolve face queries to OCC faces on a body, keyed by the query that produced
  * each. A query that matches nothing comes back as null rather than vanishing,
  * so a stale pick can be reported (`unresolved_faces`) and struck through.
  *
  * Only construction identity is consulted: the exact UUID tier first, then the
- * stable-ancestry tier. Geometry never decides which face a query means.
+ * extension hand-off, then the stable-ancestry tier. Geometry never decides
+ * which face a query means.
  */
 export function resolveFacesByQuery(
   _oc: OccModule,
   _scope: DisposeScope,
   _table: HandleTable,
-  _part: PartSolid,
+  part: PartSolid,
   index: FaceIndex,
   faceQueries: string[],
   partStore: Record<string, unknown> | null = null,
@@ -296,6 +333,7 @@ export function resolveFacesByQuery(
     let face: OccShape | null = null
     const uuid = queryFaceUuid(q)
     if (uuid !== null) face = index.byUuid.get(uuid) ?? null
+    if (face === null && uuid !== null) face = resolveExtendHandoff(part, index, q)
     if (face === null && q.startsWith('?')) {
       face = resolveByStableAncestry(index.ancestryRepo, q, partStore)
     }

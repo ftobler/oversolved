@@ -37,6 +37,7 @@ function referencedParts(step: RecipeStep): string[] {
     case 'shell': return [step.target]
     case 'helix': return [step.target]
     case 'split': return [step.target]
+    case 'move-face': return [step.target]
   }
 }
 
@@ -84,6 +85,7 @@ describe('the geometry-fuzz recipe generator', () => {
       case 'shell': return [step.thickness]
       case 'helix': return [step.pitch]
       case 'split': return []
+      case 'move-face': return [step.distance]
     }
   }
 
@@ -103,6 +105,7 @@ describe('the geometry-fuzz recipe generator', () => {
       case 'shell': return [step.face]
       case 'helix': return [step.face, step.turns]
       case 'split': return [step.fraction * 10]
+      case 'move-face': return [step.face]
     }
   }
 
@@ -114,6 +117,18 @@ describe('the geometry-fuzz recipe generator', () => {
       const tailed = generateRecipe(seed, { splitTail: true })
       expect(tailed.steps.slice(0, plain.steps.length)).toEqual(plain.steps)
       expect(tailed.steps).toHaveLength(plain.steps.length + 1)
+    }
+  })
+
+  it('the move-face-tail option leaves the default chain byte-identical', () => {
+    // The tail is drawn from a derived PRNG, so turning the option on cannot
+    // redraw any existing seed's chain.
+    for (let seed = 0; seed < 50; seed++) {
+      const plain = generateRecipe(seed)
+      const tailed = generateRecipe(seed, { moveFaceTail: true })
+      expect(tailed.steps.slice(0, plain.steps.length)).toEqual(plain.steps)
+      expect(tailed.steps).toHaveLength(plain.steps.length + 1)
+      expect(tailed.steps.at(-1)?.kind).toBe('move-face')
     }
   })
 

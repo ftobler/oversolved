@@ -33,6 +33,7 @@ import { solveCurvePattern } from '@/kernel/features/curvePattern'
 import { solveInstancePattern } from '@/kernel/features/instancePattern'
 import { solveMirror } from '@/kernel/features/transformMirror'
 import { solveShell } from '@/kernel/features/shell'
+import { solveMoveFace } from '@/kernel/features/moveFace'
 import { solveHelix } from '@/kernel/features/helix'
 import { solveSplit } from '@/kernel/features/splitByPlane'
 import { extractOccErrorMessage } from '@/kernel/errors'
@@ -886,6 +887,18 @@ function applyStep(
     } as Dict, repoForLeaves, partStore, {
       [sketchId]: { id: sketchId, kind: 'sketch', entities, initial, constraints: [] },
     })
+    return { editedIds: result.body_ids }
+  }
+  if (step.kind === 'move-face') {
+    const part = requirePart(partStore, step.target)
+    const face = expected !== undefined && expected.kind === 'face'
+      ? resolveRecordedFace(oc, scope, table.get<OccShape>(part.shape as OccHandle), part, step.face, expected)
+      : pickFace(facesOf(oc, scope, table.get<OccShape>(part.shape as OccHandle), part), step.face)
+    if (face.query) picks.push({ step: stepIndex, kind: 'face', body: step.target, query: face.query, elementKind: face.surfaceType })
+    const result = solveMoveFace(oc, scope, table, {
+      id: step.id,
+      move_face: { faces: [face.query], distance: step.distance },
+    }, repoForLeaves, partStore)
     return { editedIds: result.body_ids }
   }
   if (step.kind === 'shell') {

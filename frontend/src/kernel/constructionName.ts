@@ -96,26 +96,21 @@ export function shellFacePath(createdBy: string, role: ShellFaceRole, sourceKey:
 }
 
 /**
- * A lateral move-face cell face: `<createdBy>|extend|<neighbourUuid>`, the
- * piece of the neighbour's surface the move extended. Named after the neighbour
- * it extends, so a later resize or parameter edit recomputes the same UUID.
- * After the clean, a lateral merged into its neighbour keeps the neighbour's
- * own UUID (target-first merged-face naming); one that stays separate keeps
- * this geometry-free name.
+ * A lateral move-face cell face: `<createdBy>|extend|<neighbourUuid>`. The
+ * direct tweak never mints one (the neighbour grows in place and keeps its own
+ * UUID); the path is retained because an old document may still pick a dead
+ * extension face, and `faceResolution.ts` hands that UUID off to the neighbour
+ * by recomputing this same hash. Never mint it for a new move.
  */
 export function moveFaceExtendPath(createdBy: string, neighbourUuid: string): string {
   return `${createdBy}|extend|${neighbourUuid}`
 }
 
 /**
- * A lateral cell face in a multi-pick move. Two picks applied in one boolean
- * can extend the same neighbour, which would otherwise mint one name for both
- * pieces and make `transferBooleanNames` read them as split siblings. The pick
- * index keeps each moved face's extension its own. BOTH move paths use it: the
- * sequential path names one pick per boolean and the set path names the group
- * at once, and one scheme keeps their UUIDs equal when an upstream change
- * flips which path runs. A single-pick move keeps `moveFaceExtendPath`
- * unchanged.
+ * A lateral cell face in the old multi-pick move, `<extend>|set|<pickIndex>`.
+ * Like `moveFaceExtendPath`, this is a legacy hand-off input only: the direct
+ * tweak applies every pick in one operation and mints no extension face. Kept so
+ * a dead `|set|N` pick resolves to its neighbour.
  */
 export function moveFaceSetExtendPath(createdBy: string, neighbourUuid: string, pickIndex: number): string {
   return `${moveFaceExtendPath(createdBy, neighbourUuid)}|set|${pickIndex}`

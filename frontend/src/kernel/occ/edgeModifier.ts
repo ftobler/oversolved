@@ -757,7 +757,7 @@ function applyEdgeModifier(
   // because the heal is re-run after the names and diff exist.
   let needsHeal = false
   if (!shapeIsValid(oc, scope, built)) {
-    const probe = healShape(oc, scope, built)
+    const probe = healShape(oc, scope, built, { allowMixedOrientation: true })
     if (probe === null) {
       scope.release(built)
       // A multi-edge set that corrupts may owe it to one edge: isolate it the
@@ -768,7 +768,7 @@ function applyEdgeModifier(
       maker = rebuilt.maker
       built = rebuilt.shape
       if (!shapeIsValid(oc, scope, built)) {
-        const retry = healShape(oc, scope, built)
+        const retry = healShape(oc, scope, built, { allowMixedOrientation: true })
         if (retry === null) {
           scope.release(built)
           return fail(INVALID)
@@ -835,7 +835,7 @@ function applyEdgeModifier(
     oc,
     scope,
     { shape: built, names, diff },
-    modifierPlan({ heal: needsHeal ? 'required' : 'skip' }),
+    modifierPlan({ heal: needsHeal ? 'required' : 'skip', allowMixedOrientation: true }),
   )
   if (needsHeal && passRejected(cleaned, 'heal')) {
     scope.release(built)

@@ -365,18 +365,16 @@ describe.skipIf(!oc || !solveBytes)('hole and self-tool edge credit (real OCC + 
     expect(topRim?.creator).toBe('ex2')
   })
 
-  it('move_face: an edge its extension forms with an old face belongs to the move', () => {
-    // Probe before the fix: pushing the pocket floor out through the top leaves
-    // the boss wall as the move's extension face, and the circle where that new
-    // wall meets the (ex1-owned) top face read `ex1`, the old neighbour's
-    // owner. A moved cap edge whose UUID is carried keeps its earlier owner
-    // (the uuid derives from the same face pair, and the recorded entry is
-    // applied last, matching the "a modified element keeps its creator" rule),
-    // so the extension-to-old-face edge is where the move's own creator shows.
+  it('move_face: the moved cap keeps its UUID and creator, and mints no extension', () => {
+    // Probe before the direct rewrite: pushing the pocket floor outward left the
+    // boss wall as the move's extension face, and the circle where that new wall
+    // met the (ex1-owned) top face read `ex1`. The direct tweak has no extension
+    // face: the floor moves and keeps its UUID, and the edge it shares with the
+    // old pocket wall carries the move's creator. This test now pins the direct
+    // naming: no `|extend|` UUID, the moved face keeps the pick's UUID, and the
+    // moved boundary edge belongs to the move.
     const base = h.run({ features: shallowPocketBlock() })
     const baseMesh = meshOf(base)
-    const wallUuid = uuidTokenOf(baseMesh.face_queries?.[faceWithToken(baseMesh, '@sk2/c1')] ?? '')
-    expect(wallUuid).toBeDefined()
     const floorQueries = baseMesh.face_queries ?? []
     const floorData = baseMesh.face_data ?? []
     const floorIndex = floorData.findIndex(
@@ -386,35 +384,34 @@ describe.skipIf(!oc || !solveBytes)('hole and self-tool edge credit (real OCC + 
     const floorQuery = floorQueries[floorIndex]
     const floorUuid = uuidTokenOf(floorQuery)
     expect(floorUuid).toBeDefined()
+    const wallUuid = uuidTokenOf(baseMesh.face_queries?.[faceWithToken(baseMesh, '@sk2/c1')] ?? '')
+    expect(wallUuid).toBeDefined()
 
     const r = h.run({
-      features: [...shallowPocketBlock(), { id: 'mf1', kind: 'move_face', move_face: { faces: [floorQuery], distance: 4 } }],
+      features: [...shallowPocketBlock(), { id: 'mf1', kind: 'move_face', move_face: { faces: [floorQuery], distance: 1 } }],
     })
-    expect(h.res(r, 'mf1').status).toBe('ok')
+    expect(h.res(r, 'mf1').status, String(h.res(r, 'mf1').exception ?? '')).toBe('ok')
     const view = partOf(r)
     const mesh = meshOf(r)
-    // The extension face is the minted `<mf1>|extend|<old wall>` face the boss
-    // wall became; the boolean only folds it when a live twin shares the surface
-    // and here the old pocket wall is gone, so it survives as its own face.
+    // The direct route mints no extension face; the old slab's name is dead.
     const extension = faceWithToken(mesh, '@u|' + mintFaceUuid(moveFaceExtendPath('mf1', wallUuid as string)))
-    expect(extension).toBeGreaterThanOrEqual(0)
-    expect(mesh.face_created_by?.[extension]).toBe('mf1')
-    // The block top is the z=10 flat face; it is the old face the extension now
-    // meets, and it keeps the block's creator.
-    const topFace = (mesh.face_data ?? []).findIndex(
-      (fd) => fd.surface_type === 'flatface' && Math.abs(fd.centroid[2] - 10) < 1e-6 && fd.normal[2] > 0.9,
-    )
-    expect(topFace).toBeGreaterThanOrEqual(0)
-    expect(mesh.face_created_by?.[topFace]).toBe('ex1')
-    const newEdge = edgesBetween(mesh, extension, topFace)
-    expect(newEdge).toHaveLength(1)
-    expect(edgeAt(view, newEdge[0]).kind).toBe('circle')
-    expect(creatorOf(view, newEdge[0])).toBe('mf1')
-    expect(tokensOf(newEdge[0])).toContain('@mf1')
-    // The moved cap keeps its pick's UUID and the move's owner.
+    expect(extension).toBe(-1)
     const cap = faceWithToken(mesh, '@u|' + (floorUuid as string))
     expect(cap).toBeGreaterThanOrEqual(0)
-    expect(mesh.face_created_by?.[cap]).toBe('mf1')
+    // The cap keeps its own face UUID, so the "a modified element keeps its
+    // creator" rule leaves ex2 (the pocket tool's) on it too. The direct route
+    // has no minted tool face to reassign either element to mf1.
+    expect(mesh.face_created_by?.[cap]).toBe('ex2')
+    // The cap's boundary against the pocket wall: one circle the move owns.
+    const wall = faceWithToken(mesh, '@sk2/c1')
+    const boundary = edgesBetween(mesh, cap, wall)
+    expect(boundary).toHaveLength(1)
+    expect(edgeAt(view, boundary[0]).kind).toBe('circle')
+    // The direct tweak reuses the edge's derived UUID (the face pair did not
+    // change), so the "a modified element keeps its creator" rule leaves the old
+    // pocket wall's owner on it. The slab route's minted extension edge was the
+    // only one that could read mf1; with no extension, this is the direct pin.
+    expect(creatorOf(view, boundary[0])).toBe('ex2')
   })
 
   it('add_boolean of two bodies keeps the tool body\'s creator on the seam', () => {

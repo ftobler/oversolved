@@ -392,6 +392,7 @@ export interface OccFaceClassifier extends OccDisposable {
 export interface OccBRepBuilder extends OccDisposable {
   MakeCompound(compound: OccShape): void
   MakeSolid(solid: OccShape): void
+  MakeShell(shell: OccShape): void
   Add(parent: OccShape, shape: OccShape): void
   // UpdateVertex(V, P, Tol): move a vertex onto P and give it this tolerance.
   // Used by the profile wire builder's targeted joint weld, not general healing.
@@ -822,6 +823,10 @@ export interface OccModule extends OccBaseModule {
   }
   // A default-constructed TopoDS_Solid, filled by BRep_Builder.MakeSolid + Add.
   TopoDS_Solid: new () => OccShape
+  // A default-constructed TopoDS_Shell, filled by BRep_Builder.MakeShell + Add.
+  // The direct move-face assembles its rebuilt faces into one shell this way:
+  // BRepBuilderAPI_Sewing is not bound.
+  TopoDS_Shell: new () => OccShape
   BRepAdaptor_Curve_2: new (edge: OccShape) => OccCurveAdaptor
   GeomAbs_CurveType: {
     GeomAbs_Line: OccEnumValue
@@ -840,6 +845,10 @@ export interface OccModule extends OccBaseModule {
   IntCurvesFace_ShapeIntersector: new () => OccShapeIntersector
   // gp_Ax2(location, N): `_3` is the unbound gp_Dir::D form.
   gp_Ax2_4: new (origin: OccPnt, normal: OccXYZ) => OccDisposable
+  // gp_Pln(location, normal): a plane primitive. Bound in the build (probed
+  // by moveFaceTweakSpikeReal) although the typed slice once omitted it; the
+  // direct move-face builds a moved planar neighbour face with it.
+  gp_Pln_2: new (frame: OccDisposable) => OccDisposable
   // gp_Ax2(location, N, Vx): the 3-arg form used to orient a circle.
   gp_Ax2_2: new (origin: OccPnt, normal: OccXYZ, xDir: OccXYZ) => OccDisposable
   gp_Circ_2: new (axis: OccDisposable, radius: number) => OccDisposable
@@ -879,6 +888,9 @@ export interface OccModule extends OccBaseModule {
   // Geom_Ellipse(elips): the parametric ellipse curve.
   Geom_Ellipse_1: new (elips: OccDisposable) => OccDisposable
   BRepBuilderAPI_MakeEdge_3: new (p1: OccPnt, p2: OccPnt) => OccEdgeBuilder
+  // MakeEdge(Vertex, Vertex): the 1-based declaration slot _2, the edge builder
+  // the direct move-face uses once it has one canonical vertex per solid vertex.
+  BRepBuilderAPI_MakeEdge_2: new (v1: OccShape, v2: OccShape) => OccEdgeBuilder
   BRepBuilderAPI_MakeVertex: new (point: OccPnt) => OccVertexBuilder
   BRepBuilderAPI_MakeEdge_8: new (circle: OccDisposable) => OccEdgeBuilder
   BRepBuilderAPI_MakeEdge_24: new (curve: OccDisposable) => OccEdgeBuilder

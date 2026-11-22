@@ -217,6 +217,19 @@ export interface RecipeSplit {
   keep: 'above' | 'below' | 'both'
 }
 
+export interface RecipeMoveFace {
+  kind: 'move-face'
+  id: string
+  target: string
+  // Index into the target's display-sorted faces; taken modulo the count at run
+  // time. A curved pick may be refused by the direct tweak, which the chain
+  // records as a normal stop.
+  face: number
+  // Signed along the face's outward normal; never 0 (the identity would not
+  // exercise the construction).
+  distance: number
+}
+
 // Deliberately not drawn: `wrap`. Its tool is a ruled loft between two analytic
 // surfaces the closed-form oracles in kernel/occ/__tests__/wrapSolidReal.test.ts
 // and kernel/features/__tests__/wrapReal.test.ts already pin per surface kind,
@@ -238,6 +251,7 @@ export type RecipeStep =
   | RecipeShell
   | RecipeHelix
   | RecipeSplit
+  | RecipeMoveFace
 
 export interface Recipe {
   seed: number
@@ -277,6 +291,11 @@ export interface RecipeOptions {
   // (`seed ^ FEATURE_MIRROR_SALT`). The step synthesises the cut source itself,
   // so the main stream stays untouched and every existing seed keeps its chain.
   featureMirrorTail?: boolean
+  // Append one move-face step from a DERIVED PRNG (`seed ^ MOVE_FACE_SALT`).
+  // Another new seed family: the main stream is untouched, so every existing
+  // pinned seed draws the same chain. The direct tweak refuses some picks (a
+  // curved split sibling, the cone apex), and the chain records that as a stop.
+  moveFaceTail?: boolean
 }
 
 // The number of leading display-sorted edges an edge pick is allowed to land
@@ -468,6 +487,7 @@ export function generateRecipe(seed: number, options: RecipeOptions = {}): Recip
   if (options.curvePatternTail) steps.push(drawCurvePatternTail(seed))
   if (options.instancePatternTail) steps.push(drawInstancePatternTail(seed))
   if (options.featureMirrorTail) steps.push(drawFeatureMirrorTail(seed))
+  if (options.moveFaceTail) steps.push(drawMoveFaceTail(seed))
   return { seed, steps }
 }
 
@@ -552,6 +572,25 @@ export const SPLIT_SALT = 0x5f3a71c9
  * mirrors that feature, which is the path under test.
  */
 export const FEATURE_MIRROR_SALT = 0x2c8d4b61
+
+/**
+ * The one move-face step a `moveFaceTail` recipe appends. Derived from the seed
+ * like the other tails, so the main chain (and every pinned seed) is untouched.
+ * A box's four side and two cap faces are all planar, so the tail reaches a
+ * build; a curved body may refuse, which the chain records as a stop.
+ */
+export const MOVE_FACE_SALT = 0x6b1e94d3
+
+function drawMoveFaceTail(seed: number): RecipeMoveFace {
+  const rnd = makePrng((seed ^ MOVE_FACE_SALT) >>> 0)
+  return {
+    kind: 'move-face',
+    id: 'move_face_tail',
+    target: PRIMARY_PART,
+    face: drawInt(rnd, 0, 3),
+    distance: drawOf(rnd, [-2, -1, 1, 2] as const) * FUZZ_GRID_MM,
+  }
+}
 
 function drawFeatureMirrorTail(seed: number): RecipeFeatureMirror {
   const rnd = makePrng((seed ^ FEATURE_MIRROR_SALT) >>> 0)

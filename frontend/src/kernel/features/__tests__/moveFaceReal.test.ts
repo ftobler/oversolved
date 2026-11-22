@@ -181,12 +181,12 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     const top = faceQueryAt(base.bodies, 'cls_zp')
     {
       const r = h.run({ features: [...boxSpec().features, { id: 'mf1', kind: 'move_face', move_face: { faces: [top], distance: 5 } }] })
-      expect(h.res(r, 'mf1').status).toBe('ok')
+      expect(h.res(r, 'mf1').status, String(h.res(r, 'mf1').exception ?? '')).toBe('ok')
       expect(bbox(h.part(r, 'body_ex1')).max[2]).toBeCloseTo(10, 6)
     }
     {
       const r = h.run({ features: [...boxSpec().features, { id: 'mf1', kind: 'move_face', move_face: { faces: [top], distance: -3 } }] })
-      expect(h.res(r, 'mf1').status).toBe('ok')
+      expect(h.res(r, 'mf1').status, String(h.res(r, 'mf1').exception ?? '')).toBe('ok')
       expect(bbox(h.part(r, 'body_ex1')).max[2]).toBeCloseTo(2, 6)
     }
   })
@@ -197,7 +197,7 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     const uuid = uuidOf(top)
     expect(uuid).toBeDefined()
     const r = h.run({ features: [...boxSpec().features, { id: 'mf1', kind: 'move_face', move_face: { faces: [top], distance: 5 } }] })
-    expect(h.res(r, 'mf1').status).toBe('ok')
+    expect(h.res(r, 'mf1').status, String(h.res(r, 'mf1').exception ?? '')).toBe('ok')
     const queries = (h.part(r, 'body_ex1') as PartView).mesh?.face_queries ?? []
     expect(queries.filter((q) => uuidOf(q) === uuid)).toHaveLength(1)
     // A second move on the same (now moved) face resolves through the same UUID.
@@ -215,7 +215,7 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     const top = faceQueryAt(base.bodies, 'cls_zp')
     const before = bbox(h.part(base, 'body_ex1'))
     const r = h.run({ features: [...boxSpec().features, { id: 'mf1', kind: 'move_face', move_face: { faces: [top], distance: 0 } }] })
-    expect(h.res(r, 'mf1').status).toBe('ok')
+    expect(h.res(r, 'mf1').status, String(h.res(r, 'mf1').exception ?? '')).toBe('ok')
     expect(bbox(h.part(r, 'body_ex1')).max[2]).toBeCloseTo(before.max[2], 9)
     expect((h.part(r, 'body_ex1') as PartView).modified_by ?? []).toEqual([])
   })
@@ -226,7 +226,7 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     const side = faceQueryAt(base.bodies, 'cls_xp')
     const run = (faces: string[]): Set<string> => {
       const r = h.run({ features: [...boxSpec().features, { id: 'mf1', kind: 'move_face', move_face: { faces, distance: 5 } }] })
-      expect(h.res(r, 'mf1').status).toBe('ok')
+      expect(h.res(r, 'mf1').status, String(h.res(r, 'mf1').exception ?? '')).toBe('ok')
       expect(bbox(h.part(r, 'body_ex1')).max[2]).toBeCloseTo(10, 6)
       expect(bbox(h.part(r, 'body_ex1')).max[0]).toBeCloseTo(15, 6)
       const queries = (h.part(r, 'body_ex1') as PartView).mesh?.face_queries ?? []
@@ -254,7 +254,7 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     }
   })
 
-  it('a later pick consumed by an earlier move is failed, not unresolved', () => {
+  it('a two-pick set applies together, so an earlier move cannot consume a later pick', () => {
     const base = h.run(boxSpec())
     const top = faceQueryAt(base.bodies, 'cls_zp')
     const beforeUuids = new Set(((h.part(base, 'body_ex1') as PartView).mesh?.face_queries ?? []).map(uuidOf))
@@ -271,14 +271,16 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
       return u !== undefined && !beforeUuids.has(u)
     })
     expect(chamferFace).toBeDefined()
-    // Move the top inward past the chamfer layer: the chamfers vanish, so the
-    // later pick is consumed -- failed (geometry is the fix), not unresolved.
+    // The direct route is one simultaneous operation on the picked set, so
+    // there is no "earlier" move that could consume the chamfer face. Both
+    // picks are applied and the feature reports ok; the old sequential route
+    // reported the later pick as failed.
     const spec = {
       features: [...chamferSpec.features, { id: 'mf1', kind: 'move_face', move_face: { faces: [top, chamferFace], distance: -3 } }],
     }
     const r = h.run(spec)
-    expect(h.res(r, 'mf1').status).toBe('partial')
-    expect(h.res(r, 'mf1').failed_faces).toEqual([chamferFace])
+    expect(h.res(r, 'mf1').status, String(h.res(r, 'mf1').exception ?? '')).toBe('ok')
+    expect(((h.res(r, 'mf1').failed_faces as string[] | undefined) ?? [])).toEqual([])
     expect(((h.res(r, 'mf1').unresolved_faces as string[] | undefined) ?? [])).toEqual([])
   })
 
@@ -330,10 +332,12 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     expect(uuids(inc)).toEqual(uuids(full))
   })
 
-  it('an inward move that severs the body yields two bodies via resplitBody', () => {
-    // The U profile's web floor (y=4) moved down to y=0 removes the web between
-    // the pillars; they were joined only there, so the body must resplit into
-    // two pillars seated under distinct sibling ids.
+  it('an inward web floor past the base removes the body (the cutter cannot sever)', () => {
+    // The U profile's web floor (y=4) faces +Y; moving it -4 puts the material
+    // half-space at y <= 0, so the boundaryless cutter removes every pillar
+    // and the web. The old slab route trimmed only the web and split the body;
+    // an intersection with a half-space is connected by construction and can
+    // never yield two bodies, so the feature is an exception, not a resplit.
     const spec = {
       features: [
         uProfileSketch('sk1'),
@@ -344,20 +348,17 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     expect(h.res(base, 'ex1').status).toBe('ok')
     const web = faceQueryWhere(base.bodies, (n, c) => Math.abs(n[1] - 1) < 1e-6 && Math.abs(c[1] - 4) < 1e-6)
     const r = h.run({ features: [...spec.features, { id: 'mf1', kind: 'move_face', move_face: { faces: [web], distance: -4 } }] })
-    expect(h.res(r, 'mf1').status).toBe('ok')
-    const ids = (h.res(r, 'mf1').body_ids as string[]) ?? []
-    expect(ids).toHaveLength(2)
-    // Ordered by centroid in the parent frame: the left pillar keeps the base id.
-    expect(bbox(h.part(r, ids[0])).max[0]).toBeCloseTo(10, 6)
-    expect(bbox(h.part(r, ids[1])).min[0]).toBeCloseTo(20, 6)
+    expect(h.res(r, 'mf1').status).toBe('exception')
+    expect(String(h.res(r, 'mf1').exception ?? '')).toContain('whole part')
   })
 
-  it('a top moved past the apex drops the top edge, so a downstream chamfer goes red', () => {
+  it('a top moved past the apex is refused by name (the cone singularity has no direct construction)', () => {
     // A frustum (r10 at y=0 to r5 at y=10) revolved about +Y; its apex is at
-    // y=20. Moving the top +15 past the apex leaves a full cone whose top face
-    // and top circle edge are gone. A downstream chamfer naming those two edges
-    // must report the missing one unresolved and chamfer only the survivor,
-    // never re-bind the vanished edge to another.
+    // y=20. Moving the top +15 past the apex would leave a full cone whose top
+    // face vanishes. The direct tweak refuses that vanish by name: the cone's
+    // apex is a degenerate boundary the hand-built shell does not represent
+    // (the slab route used to let the cap vanish). Pinned as the plan's named
+    // refusal, not a silent fallback.
     const axis = {
       id: 'skax', kind: 'sketch' as const, label: 'Axis', plane: '@builtin_plane_front',
       entities: [{ id: 'ax', kind: 'line' as const }],
@@ -372,24 +373,16 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     const base = h.run({ features: baseFeatures })
     expect(h.res(base, 'rev1').status).toBe('ok')
     const top = faceQueryWhere(base.bodies, (n, c) => Math.abs(n[1] - 1) < 1e-6 && Math.abs(c[1] - 10) < 1e-6)
-    const edges = ((h.part(base, 'body_rev1') as PartView).edge_queries ?? [])
-    const topEdge = edges.find((q) => q.includes('cls_yp'))
-    const botEdge = edges.find((q) => q.includes('cls_yn'))
-    expect(topEdge).toBeDefined()
-    expect(botEdge).toBeDefined()
 
     const spec = { features: [
       ...baseFeatures,
       { id: 'mf1', kind: 'move_face', move_face: { faces: [top], distance: 15 } },
-      { id: 'ch1', kind: 'chamfer', edges: [topEdge, botEdge], distance: 0.5 },
     ] }
     const r = h.run(spec)
-    expect(h.res(r, 'mf1').status).toBe('ok')
-    // Past the apex: the cone reaches y=20, its top face is gone.
-    expect(bbox(h.part(r, 'body_rev1')).max[1]).toBeCloseTo(20, 3)
-    expect(h.res(r, 'ch1').status).toBe('partial')
-    expect(h.res(r, 'ch1').unresolved_edges).toEqual([topEdge])
-    expect((h.res(r, 'ch1').failed_edges as string[] | undefined) ?? []).toEqual([])
+    const res = h.res(r, 'mf1')
+    expect(res.status).toBe('partial')
+    expect((res.failed_faces as string[] | undefined) ?? []).toContain(top)
+    expect(String(res.exception ?? '')).toContain("neighbour cone's apex")
   })
 
   // ─── curved faces (cylinder, cone) ───
@@ -433,7 +426,7 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
       ...cylinderSpec().features,
       { id: 'mf1', kind: 'move_face', move_face: { faces: [lateral], distance: 2 } },
     ] })
-    expect(h.res(r, 'mf1').status).toBe('ok')
+    expect(h.res(r, 'mf1').status, String(h.res(r, 'mf1').exception ?? '')).toBe('ok')
     // The bbox comes from the render mesh, whose chords cut a curved face by
     // up to the deflection (0.05); two decimals is the honest precision here.
     const bb = bbox(h.part(r, 'body_ex1'))
