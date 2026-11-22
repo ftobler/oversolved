@@ -13,6 +13,7 @@
 // FixMissingSeam) are recorded in feature/bug-seam-residual-split.md.
 
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { loadOcc } from '../loadOcc'
 import { DisposeScope } from '../disposeScope'
 import {
@@ -30,6 +31,7 @@ import { runCleanup } from '../cleanup/pipeline'
 import { reseatSeams } from '../cleanup/reseatSeams'
 import type { CleanupPass } from '../cleanup/types'
 import { volumeOfDefault } from '../volume'
+import { stepBytesToShapeWithIdentity } from '../stepIo'
 import type { OccModule, OccShape, OccSubShape, OccOrientableShape } from '../occTypes'
 
 const oc = await loadOcc()
@@ -261,6 +263,25 @@ describe.skipIf(!oc)('reseatSeams', () => {
         // The hot path allocates no replacement and hands the same handle back.
         expect(result.shape).toBe(shape)
       }
+    } finally {
+      scope.dispose()
+    }
+  }, 60_000)
+
+  it('leaves an imported STEP shell alone', () => {
+    // The pass runs on imported bodies too (their boolean targets take the
+    // BOOLEAN preset). On a STEP shell with no seam conflict it is a no-op; if
+    // one ever carried a conflict, the layer's validity guard would reject a
+    // rebuild rather than damage the imported shape.
+    const scope = new DisposeScope()
+    try {
+      const bytes = new Uint8Array(
+        readFileSync(new URL('../__fixtures__/double_with_hole.step', import.meta.url)),
+      )
+      const { shape } = stepBytesToShapeWithIdentity(oc!, scope, bytes)
+      const result = reseatSeams(oc!, scope, shape, {})
+      expect(result.changed).toBe(false)
+      expect(result.shape).toBe(shape)
     } finally {
       scope.dispose()
     }
