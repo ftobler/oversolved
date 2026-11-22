@@ -22,7 +22,7 @@ const h = vi.hoisted(() => {
   }
 })
 
-vi.mock('@/stores/previewStore', () => ({
+vi.mock('@/persistence/previewStore', () => ({
   getPreviewStore: () => ({ put: h.previewPut }),
 }))
 

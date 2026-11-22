@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { getPreviewStore } from './index'
-import { previewKey } from './types'
-import { previewRevision, subscribePreview } from './events'
+import { getPreviewStore } from '@/persistence/previewStore'
+import { previewKey } from '@/persistence/previewStore/types'
+import { previewRevision, subscribePreview } from '@/persistence/previewStore/events'
 
 // The tile's async view of a preview. `undefined` covers both "no preview yet"
 // and "not resolved yet": a thumbnail is cosmetic, so a missing value paints the

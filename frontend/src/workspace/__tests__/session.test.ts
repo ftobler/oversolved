@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import { IdbWorkspaceStore } from '../store'
 import { createWorkspaceSession } from '../session'
 import { IdbCarrier, readWorkspaceMeta, writeWorkspaceMeta } from '../idbCarrier'
-import { getFileRegistry } from '@/stores/fileRegistry'
+import { getFileRegistry } from '@/persistence/fileRegistry'
 import { bytesOf } from './fixtures'
 import { resetWorkspaceIdb } from './idbHarness'
 

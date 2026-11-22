@@ -7,7 +7,7 @@ import { readDirectoryBag, readZipBag, importBag } from '../import'
 import { addReference } from '../refs'
 import { bytesOf, documentEntry, fileEntry, treeWith } from './fixtures'
 import { resetWorkspaceIdb } from './idbHarness'
-import { fakeDirectory } from '@/stores/documentStore/__tests__/fakeFileSystemDirectory'
+import { fakeDirectory } from '@/testing/fakeFileSystemDirectory'
 
 // The assertion C1 suspended: an adopted STEP-like file's bytes travel with the
 // workspace through a zip and back, and the document's reference to it survives

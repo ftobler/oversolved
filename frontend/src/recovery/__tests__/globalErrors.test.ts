@@ -8,7 +8,7 @@ import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import { installGlobalErrorHandlers, type GlobalErrorTarget } from '@/recovery/globalErrors'
 import { listCrashReports } from '@/recovery/crashReports'
-import { resetDbConnection } from '@/stores/documentStore/idb'
+import { resetDbConnection } from '@/persistence/idb'
 
 function freshDb(): void {
   globalThis.indexedDB = new IDBFactory()

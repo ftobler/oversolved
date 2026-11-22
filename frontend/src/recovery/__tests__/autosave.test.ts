@@ -23,7 +23,7 @@ import {
   useAutosaveStore,
 } from '@/recovery/autosave'
 import { readRecoveryJournal, type RecoveryJournalStore } from '@/recovery/journal'
-import { resetDbConnection } from '@/stores/documentStore/idb'
+import { resetDbConnection } from '@/persistence/idb'
 import type { PartDoc, Mutation, SketchData } from '@/types/cad'
 
 function freshDb(): void {

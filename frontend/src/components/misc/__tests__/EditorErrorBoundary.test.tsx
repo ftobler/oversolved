@@ -23,7 +23,7 @@ import { createFakeSolveScheduler } from '@/session/__tests__/fakeSolveScheduler
 import { CommandJournal, journalSink } from '@/drive/journal'
 import { docHashOf } from '@/drive/docHash'
 import { makeDoc, makeSketch } from '@/utils/core/testFixture'
-import { resetDbConnection } from '@/stores/documentStore/idb'
+import { resetDbConnection } from '@/persistence/idb'
 import type { PartDoc, SketchData } from '@/types/cad'
 
 vi.mock('@/utils/core/downloadBlob', () => ({ downloadBlob: vi.fn() }))

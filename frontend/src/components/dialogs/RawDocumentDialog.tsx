@@ -3,7 +3,7 @@
 // cannot open is still a file the user keeps. Plain and viewport-free.
 import Dialog from '@/components/dialogs/Dialog'
 import { downloadBlob } from '@/utils/core/downloadBlob'
-import { secureFilename, UNTITLED_DOC_NAME } from '@/stores/documentStore/secureFilename'
+import { secureFilename, UNTITLED_DOC_NAME } from '@/workspace/secureFilename'
 import type { DocLoadError } from '@/persistence/docSchema'
 import './RawDocumentDialog.css'
 

@@ -12,7 +12,7 @@ import {
   STORE_RECOVERY_JOURNAL,
   idbGetFrom,
   resetDbConnection,
-} from '@/stores/documentStore/idb'
+} from '@/persistence/idb'
 import {
   clearRecoveryJournal,
   idbRecoveryJournal,

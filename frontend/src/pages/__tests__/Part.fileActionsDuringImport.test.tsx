@@ -26,8 +26,8 @@ vi.mock('@/kernel/worker/solverClient', () => ({
   cancelSolver: vi.fn(),
 }))
 
-vi.mock('@/stores/fileRegistry', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/stores/fileRegistry')>()
+vi.mock('@/persistence/fileRegistry', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/persistence/fileRegistry')>()
   return { ...actual, getFileRegistry: () => ({ create: mockRegistryCreate }) }
 })
 

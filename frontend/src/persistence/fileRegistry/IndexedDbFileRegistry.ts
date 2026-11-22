@@ -1,6 +1,6 @@
 import type { FileEntry, FileInput, FileMeta, FileRegistry } from './types'
 import { copyBytes, copyEntry, toFileMeta } from './types'
-import { idbClearFiles, idbDeleteFile, idbGetAllFiles, idbGetFile, idbPutFile } from '@/stores/documentStore/idb'
+import { idbClearFiles, idbDeleteFile, idbGetAllFiles, idbGetFile, idbPutFile } from '@/persistence/idb'
 import { randomUuid } from '@/utils/randomUuid'
 import { bumpFileRegistryRevision } from './events'
 

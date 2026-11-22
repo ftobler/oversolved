@@ -20,7 +20,7 @@ import {
   attachAutosave,
 } from '@/recovery/autosave'
 import { findRecoveryOffer } from '@/recovery/offer'
-import { resetDbConnection } from '@/stores/documentStore/idb'
+import { resetDbConnection } from '@/persistence/idb'
 import type { PartDoc, Mutation, SketchData } from '@/types/cad'
 
 function freshDb(): void {

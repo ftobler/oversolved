@@ -18,7 +18,7 @@ import { createDocSession } from '@/session/DocSession'
 import { createFakeSolveScheduler } from '@/session/__tests__/fakeSolveScheduler'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
-import { MemoryFileRegistry } from '@/stores/fileRegistry'
+import { MemoryFileRegistry } from '@/persistence/fileRegistry'
 import { MAX_UNDO_DEPTH } from '@/config/undoConfig'
 
 import type { PartDoc, SketchData } from '@/types/cad'

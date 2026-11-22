@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, fireEvent } from '@testing-library/react'
-import { usePreview } from '@/stores/previewStore'
+import { usePreview } from '@/hooks/usePreview'
 import DocTilePreview from '@/components/shared/DocTilePreview'
 
-vi.mock('@/stores/previewStore', () => ({ usePreview: vi.fn() }))
+vi.mock('@/hooks/usePreview', () => ({ usePreview: vi.fn() }))
 
 const mockPreview = vi.mocked(usePreview)
 

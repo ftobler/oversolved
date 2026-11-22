@@ -12,7 +12,7 @@ import { usePartEditorStore, DEFAULT_PART_EDITOR_DATA } from '@/stores/partEdito
 import { getSketchCallback, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { useDevSettingsStore } from '@/stores/devSettingsStore'
 import { executeCommand } from '@/utils/core/commandRegistry'
-import { MAX_STEP_IMPORT_BYTES } from '@/stores/documentStore/stepImport'
+import { MAX_STEP_IMPORT_BYTES } from '@/persistence/stepImport'
 import { useEditorState } from '@/hooks/useEditorState'
 import type { PartDoc } from '@/types/cad'
 import { builtinPlaneTransform } from '@/utils/geometry/partSnapProjection'
@@ -76,8 +76,8 @@ const h = vi.hoisted(() => ({
   registryCreate: vi.fn(async () => ({ id: 'file-1' })),
 }))
 
-vi.mock('@/stores/fileRegistry', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/stores/fileRegistry')>()
+vi.mock('@/persistence/fileRegistry', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/persistence/fileRegistry')>()
   return { ...actual, getFileRegistry: () => ({ create: h.registryCreate }) }
 })
 

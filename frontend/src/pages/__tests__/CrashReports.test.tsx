@@ -7,7 +7,7 @@ import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 import CrashReports from '@/pages/CrashReports'
 import { recordCrashReport } from '@/recovery/crashReports'
-import { resetDbConnection } from '@/stores/documentStore/idb'
+import { resetDbConnection } from '@/persistence/idb'
 
 vi.mock('@/utils/core/downloadBlob', () => ({ downloadBlob: vi.fn() }))
 

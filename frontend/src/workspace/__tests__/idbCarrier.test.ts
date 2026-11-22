@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META } from '@/stores/documentStore/idb'
+import { STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_ENTRY_META } from '@/persistence/idb'
 import { IdbCarrier } from '../idbCarrier'
 import { interpretEntry } from '../kinds'
 import { deserializeTree, serializeTree } from '../serializer'

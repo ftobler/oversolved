@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_META } from '@/stores/documentStore/idb'
+import { STORE_WORKSPACE_ENTRIES, STORE_WORKSPACE_META } from '@/persistence/idb'
 import { IdbWorkspaceStore } from '../store'
 import { IdbCarrier } from '../idbCarrier'
 import { EntryReferencedError } from '../errors'

@@ -21,7 +21,7 @@ const storeMock = vi.hoisted(() => ({
 vi.mock('@/workspace/store', () => ({ getWorkspaceStore: () => storeMock }))
 
 const previewMock = vi.hoisted(() => ({ images: new Map<string, string>() }))
-vi.mock('@/stores/previewStore', () => ({
+vi.mock('@/hooks/usePreview', () => ({
   usePreview: (workspace: string, entry: string) => previewMock.images.get(`${workspace}:${entry}`),
 }))
 

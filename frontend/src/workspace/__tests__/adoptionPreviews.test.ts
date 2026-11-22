@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import JSZip from 'jszip'
 import { IdbWorkspaceStore } from '../store'
 import { readZipBag, importBag, MAX_PREVIEW_BYTES } from '../import'
-import { getPreviewStore } from '@/stores/previewStore'
+import { getPreviewStore } from '@/persistence/previewStore'
 import { resetWorkspaceIdb } from './idbHarness'
 
 // J7. A pre-branch library bundle carries its thumbnails as `<doc>.png` beside

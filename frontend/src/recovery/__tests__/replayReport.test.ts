@@ -16,7 +16,7 @@ import { recordCrashReport, type CrashReportRecord } from '@/recovery/crashRepor
 import { crashReportFinalHash, replayCrashReport } from '@/recovery/__tests__/replayReport'
 import { makeDoc, makeSketch } from '@/utils/core/testFixture'
 import { setIdSource } from '@/utils/yamlMutations'
-import { resetDbConnection } from '@/stores/documentStore/idb'
+import { resetDbConnection } from '@/persistence/idb'
 import type { PartDoc, Mutation, SketchData } from '@/types/cad'
 
 afterEach(() => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { STORE_WORKSPACE_META } from '@/stores/documentStore/idb'
+import { STORE_WORKSPACE_META } from '@/persistence/idb'
 import { IdbCarrier, readWorkspaceMeta, writeWorkspaceMeta } from '../idbCarrier'
 import type { WorkspaceTree } from '../types'
 import { bytesOf, documentEntry, fileEntry, treeWith } from './fixtures'

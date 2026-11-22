@@ -4,7 +4,7 @@ import { IdbWorkspaceStore } from '../store'
 import { createWorkspaceSession } from '../session'
 import { liftInlineStepPayloads, migrateInlineStepPayloads } from '../inlineStepMigration'
 import { readWorkspaceMeta } from '../idbCarrier'
-import { getFileRegistry } from '@/stores/fileRegistry'
+import { getFileRegistry } from '@/persistence/fileRegistry'
 import { resetWorkspaceIdb } from './idbHarness'
 
 // The pre-registry `file_data` documents A2 assumed were disposable. They are

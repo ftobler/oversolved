@@ -1,10 +1,10 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import { FeatureItemEditors } from '../FeatureItemEditors'
-import { getFileRegistry } from '@/stores/fileRegistry'
+import { getFileRegistry } from '@/persistence/fileRegistry'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
-import { resetFakeIndexedDb } from '@/stores/documentStore/__tests__/fakeIndexedDb'
-import { resetDbConnection } from '@/stores/documentStore/idb'
+import { resetFakeIndexedDb } from '@/testing/fakeIndexedDb'
+import { resetDbConnection } from '@/persistence/idb'
 import type { PartFeature } from '@/types/cad'
 import type { WorkspaceSession } from '@/workspace/session'
 

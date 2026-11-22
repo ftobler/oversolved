@@ -8,7 +8,7 @@ import type { EntryMeta } from '@/workspace/types'
 // are the editor's one list, the same rows the add_part guard checks. These
 // cases therefore shape `entries` directly, which is exactly what the page
 // hands over.
-vi.mock('@/stores/previewStore', () => ({ usePreview: () => undefined }))
+vi.mock('@/hooks/usePreview', () => ({ usePreview: () => undefined }))
 
 import AssemblyPartPicker from '@/components/dialogs/AssemblyPartPicker'
 

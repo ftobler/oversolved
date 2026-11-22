@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { usePreview } from '@/stores/previewStore'
+import { usePreview } from '@/hooks/usePreview'
 
 // Tile thumbnail. Previews are derived data, so they live in the preview store
 // keyed by (workspace, entry) rather than on the document record (A9, I5). In

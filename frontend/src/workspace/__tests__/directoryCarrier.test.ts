@@ -4,9 +4,9 @@ import { addReference } from '../refs'
 import { removeEntry } from '../tree'
 import { MANIFEST_PATH, TRASH_DIR } from '../paths'
 import type { EntryContent, WorkspaceTree } from '../types'
-import { MemoryDirectory } from '@/stores/documentStore/memoryDirectory'
+import { MemoryDirectory } from '@/workspace/memoryDirectory'
 import { bytesOf, documentEntry, fileEntry, treeWith } from './fixtures'
-import { fakeDirectory } from '@/stores/documentStore/__tests__/fakeFileSystemDirectory'
+import { fakeDirectory } from '@/testing/fakeFileSystemDirectory'
 
 // The folder endpoint's on-disk layout: where each payload lands and in what
 // order they go down. The round-trip contract covers what comes back out;

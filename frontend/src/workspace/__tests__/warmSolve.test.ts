@@ -8,7 +8,7 @@ import { bundleCachePut, resetBundleDbConnection } from '@/kernel/bundleCache'
 import { solveAssembly } from '@/kernel/solveAssembly'
 import { BUNDLE_SCHEMA, type PartBundle } from '@/kernel/partBundle'
 import type { RelayService } from '@/kernel/worker/solverProtocol'
-import { resetDbConnection } from '@/stores/documentStore/idb'
+import { resetDbConnection } from '@/persistence/idb'
 
 // A warm solve must not read a part document out of the carrier. With the
 // bundle cache populated at the workspace entry's own content-hash key, the

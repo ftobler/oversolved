@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import { BrowserRouter } from 'react-router-dom'
-import { getPreviewStore } from '@/stores/previewStore'
+import { getPreviewStore } from '@/persistence/previewStore'
 import { freshLocalDb, seedStore } from './workspacesHarness'
 import Workspaces from '@/pages/Workspaces'
 

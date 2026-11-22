@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { STORE_WORKSPACE_META, idbDeleteFrom } from '@/stores/documentStore/idb'
+import { STORE_WORKSPACE_META, idbDeleteFrom } from '@/persistence/idb'
 import type { WorkspaceCarrier } from '../carrier'
 import type { WorkspaceTree } from '../types'
 import { MemoryCarrier } from '../memoryCarrier'

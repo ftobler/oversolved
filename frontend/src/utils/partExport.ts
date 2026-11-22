@@ -4,8 +4,8 @@
 
 import { exportViaWorker } from '@/kernel/worker/solverClient'
 import { fileIdsMissingFromWorker } from '@/kernel/worker/workerFiles'
-import { getFileRegistry } from '@/stores/fileRegistry'
-import { fileIdsInSpec, resolveFilesSessionFirst } from '@/stores/fileRegistry/resolve'
+import { getFileRegistry } from '@/persistence/fileRegistry'
+import { fileIdsInSpec, resolveFilesSessionFirst } from '@/persistence/fileRegistry/resolve'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { docLoadErrorMessage, loadPartDocText } from '@/persistence/docSchema'
 

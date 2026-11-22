@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest'
 import {
   STORE_WORKSPACE_ENTRIES,
   STORE_WORKSPACE_ENTRY_META,
-} from '@/stores/documentStore/idb'
+} from '@/persistence/idb'
 import { IdbWorkspaceStore } from '../store'
 import { IdbCarrier } from '../idbCarrier'
 import { documentEntry, treeWith } from './fixtures'

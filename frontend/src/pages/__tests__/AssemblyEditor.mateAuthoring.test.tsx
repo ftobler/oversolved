@@ -71,10 +71,10 @@ vi.mock('@/kernel/worker/solverClient', () => ({
   exportAssemblyViaWorker: h.exportAssemblyViaWorker,
 }))
 vi.mock('@/utils/core/downloadBlob', () => ({ downloadBlob: h.downloadBlob }))
-vi.mock('@/stores/previewStore', () => ({
+vi.mock('@/persistence/previewStore', () => ({
   getPreviewStore: () => ({ put: h.previewPut, get: vi.fn(), remove: vi.fn() }),
-  usePreview: () => undefined,
 }))
+vi.mock('@/hooks/usePreview', () => ({ usePreview: () => undefined }))
 
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { assemblyEntityKey, type EntityMateRefs } from '@/utils/anchorCandidates'

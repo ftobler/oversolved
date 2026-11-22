@@ -23,7 +23,7 @@ import { encodeBinaryStl } from '@/kernel/stl'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { backendBundle } from '@/adapters/backend'
 import { docLoadErrorMessage, loadPartDocText } from '@/persistence/docSchema'
-import { fileIdsInParts } from '@/stores/fileRegistry/resolve'
+import { fileIdsInParts } from '@/persistence/fileRegistry/resolve'
 
 /** A loaded PartDoc as the worker spec builder reads it. */
 type PartContent = Record<string, unknown>

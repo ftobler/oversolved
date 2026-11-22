@@ -30,8 +30,8 @@ import {
   idbPutTo,
   idbTransaction,
   idbUpdateFrom,
-} from '@/stores/documentStore/idb'
-import { suggestedCloneName } from '@/stores/documentStore/cloneName'
+} from '@/persistence/idb'
+import { suggestedCloneName } from '@/workspace/cloneName'
 import { randomUuid } from '@/utils/randomUuid'
 import { entrySizeOf } from '@/utils/entrySize'
 import { FORMAT_VERSION, pathFor } from './paths'

@@ -14,12 +14,12 @@ import { addEntry, createTree } from './tree'
 import { addReference, canonicalizeReferences } from './refs'
 import { deserializeTree } from './serializer'
 import { readZipFiles } from './zipCarrier'
-import { buildStepContent } from '@/stores/documentStore/stepImport'
+import { buildStepContent } from '@/persistence/stepImport'
 import { randomId } from '@/utils/yamlMutations'
 import { randomUuid } from '@/utils/randomUuid'
 import { KNOWN_DOC_KINDS, inferDocKind, parseDocKind, type KnownDocKind } from './kinds'
 import { getWorkspaceStore, type WorkspaceStore } from './store'
-import { bytesToBase64, writePreview } from '@/stores/previewStore/capture'
+import { bytesToBase64, writePreview } from '@/persistence/previewStore/capture'
 
 // Adoption: bytes and text from anywhere (a dropped file, a folder, a zip, a
 // legacy `.oversolved` bundle) become a workspace. The classifier parses first

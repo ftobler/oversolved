@@ -72,16 +72,16 @@ vi.mock('@/kernel/worker/solverClient', () => ({
   exportAssemblyViaWorker: h.exportAssemblyViaWorker,
 }))
 vi.mock('@/utils/core/downloadBlob', () => ({ downloadBlob: h.downloadBlob }))
-vi.mock('@/stores/previewStore', () => ({
+vi.mock('@/persistence/previewStore', () => ({
   getPreviewStore: () => ({ put: h.previewPut, get: vi.fn(), remove: vi.fn() }),
-  usePreview: () => undefined,
 }))
+vi.mock('@/hooks/usePreview', () => ({ usePreview: () => undefined }))
 
 import { executeCommand } from '@/utils/core/commandRegistry'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
-import { getFileRegistry } from '@/stores/fileRegistry'
-import { resetFakeIndexedDb } from '@/stores/documentStore/__tests__/fakeIndexedDb'
-import { resetDbConnection } from '@/stores/documentStore/idb'
+import { getFileRegistry } from '@/persistence/fileRegistry'
+import { resetFakeIndexedDb } from '@/testing/fakeIndexedDb'
+import { resetDbConnection } from '@/persistence/idb'
 import { tick, renderEditor, installSessionFromList } from './AssemblyEditor.harness'
 
 // Stage 9: assembly export. Two paths that must not be confused: STEP rebuilds

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef } from 'react'
 import { stringify as stringifyYaml } from 'yaml'
 import { errorMessage } from '@/utils/core/errorMessage'
 import { backendBundle } from '@/adapters/backend'
-import { getPreviewStore } from '@/stores/previewStore'
+import { getPreviewStore } from '@/persistence/previewStore'
 import { useUnsavedChangesStore, hashSavedText } from '@/stores/unsavedChangesStore'
 import { clearRecoveryJournal } from '@/recovery/journal'
 

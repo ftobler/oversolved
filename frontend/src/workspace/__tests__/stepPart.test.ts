@@ -8,7 +8,7 @@ import { parse as parseYaml } from 'yaml'
 import { IdbWorkspaceStore } from '../store'
 import { addStepPart } from '../stepPart'
 import { resetWorkspaceIdb } from './idbHarness'
-import { getFileRegistry } from '@/stores/fileRegistry'
+import { getFileRegistry } from '@/persistence/fileRegistry'
 import { CURRENT_DOC_VERSION } from '@/persistence/docSchema'
 
 const STEP_A = new Uint8Array([0x49, 0x53, 0x4f, 0x2d, 0x31, 0x30, 0x33, 0x30, 0x33])

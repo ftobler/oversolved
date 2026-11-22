@@ -22,7 +22,7 @@ import {
   idbDeleteFrom,
   idbGetAllFrom,
   idbPutTo,
-} from '@/stores/documentStore/idb'
+} from '@/persistence/idb'
 
 export type CrashSource = 'error' | 'rejection' | 'worker' | 'boundary'
 

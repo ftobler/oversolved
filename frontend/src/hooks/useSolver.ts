@@ -13,8 +13,8 @@ import { reconcilePartStyle } from '@/utils/core/partStyle'
 import { solveViaWorker, cancelSolver } from '@/kernel/worker/solverClient'
 import { fileIdsMissingFromWorker } from '@/kernel/worker/workerFiles'
 import { SUPERSEDED_ERROR } from '@/kernel/worker/solverProtocol'
-import { getFileRegistry } from '@/stores/fileRegistry'
-import { fileIdsInSpec, resolveFilesSessionFirst } from '@/stores/fileRegistry/resolve'
+import { getFileRegistry } from '@/persistence/fileRegistry'
+import { fileIdsInSpec, resolveFilesSessionFirst } from '@/persistence/fileRegistry/resolve'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 
 const SKETCH_KINDS = new Set(['sketch', 'plane'])

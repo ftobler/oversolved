@@ -19,7 +19,7 @@ import {
   idbDeleteFrom,
   idbGetFrom,
   idbPutTo,
-} from '@/stores/documentStore/idb'
+} from '@/persistence/idb'
 
 export interface RecoveryJournalRecord {
   docId: string
