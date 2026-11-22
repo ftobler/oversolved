@@ -1,11 +1,11 @@
 /**
  * The TypeScript mirror of the canonical Rust interpolating spline
- * (`sketch-solver/src/fit_spline.rs`).
+ * (`geom-core/src/fit_spline.rs`).
  *
  * It exists for rendering, picking, snapping, the draw preview and the MCP
  * authoring sugar ONLY. The solver residuals and the area builder use the Rust
  * one; the kernel's topology edges come from there. The two are pinned to the
- * same OCP golden fixture (`sketch-solver/src/fit_spline/golden.json`), which
+ * same OCP golden fixture (`geom-core/src/fit_spline/golden.json`), which
  * `fitSpline.test.ts` reads, so a drift fails a test on one side or the other.
  *
  * The construction is the clamped C2 cubic spline OCP's `GeomAPI_Interpolate`

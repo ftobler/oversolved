@@ -31,9 +31,10 @@
 pub mod api;
 pub mod codec;
 pub mod constraints;
-/// The interpolating spline through N fit points (the `fit_spline` entity):
-/// the solver, the area builder and the TS mirror all read this one algorithm.
-pub(crate) mod fit_spline;
+/// The interpolating spline through N fit points (the `fit_spline` entity)
+/// lives in `geom-core` with the rest of the pure geometry; re-exported here so
+/// the solver, the codec and the area builder keep their historical paths.
+pub(crate) use geom_core::fit_spline;
 pub mod residuals;
 pub mod solve;
 #[cfg(test)]

@@ -48,6 +48,9 @@ pub fn pymod(a: f64, b: f64) -> f64 {
 
 pub mod curve_intersect;
 pub mod curve_split;
+/// The interpolating spline through N fit points (the `fit_spline` entity):
+/// the solver, the area builder and the TS mirror all read this one algorithm.
+pub mod fit_spline;
 pub mod profile_loops;
 pub mod tolerance;
 pub mod wire;
