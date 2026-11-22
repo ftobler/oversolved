@@ -70,10 +70,42 @@ export function prismPlan(options: PrismPlanOptions = {}): CleanupPlan {
 }
 
 /**
- * A modifier result as it is cleaned today: the healer, only when the build did
- * not validate. Step 3 of the cleanup-layer plan uses this; the MODIFIER preset
- * replaces it once the edge merge is enabled.
+ * How a modifier plan treats the healer. `whenInvalid` is the plan's own
+ * validity gate; `required` and `skip` are for a caller that already ran that
+ * gate on this exact build, so the layer does not pay a second whole-shape
+ * check only to throw its answer away.
  */
-export function healOnlyPlan(): CleanupPlan {
-  return [{ name: 'heal', pass: heal, options: { onlyIfInvalid: true }, selfGuarded: true }]
+export type HealMode = 'whenInvalid' | 'required' | 'skip'
+
+export interface ModifierPlanOptions {
+  heal?: HealMode
+  // Appended after the heal and before the edge merge (the seam re-seat).
+  beforeMerge?: readonly CleanupPlanEntry[]
+}
+
+/**
+ * A fillet, chamfer, shell or defeature result: heal when invalid, then merge
+ * edges only. The face merge stays off so a feature's own face is never folded
+ * into a neighbour and stored face UUIDs do not churn; the edge merge is the
+ * same always-safe call the imported-STEP boolean path keeps.
+ */
+export function modifierPlan(options: ModifierPlanOptions = {}): CleanupPlan {
+  const mode = options.heal ?? 'whenInvalid'
+  const plan: CleanupPlanEntry[] = []
+  if (mode !== 'skip') {
+    plan.push({
+      name: 'heal',
+      pass: heal,
+      options: { onlyIfInvalid: mode === 'whenInvalid' },
+      selfGuarded: true,
+    })
+  }
+  plan.push(...(options.beforeMerge ?? []))
+  plan.push({
+    name: 'unifySameDomain',
+    pass: unifySameDomain,
+    options: { unifyFaces: false },
+    guard: {},
+  })
+  return plan
 }

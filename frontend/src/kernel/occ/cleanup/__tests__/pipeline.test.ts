@@ -72,6 +72,10 @@ function ocExploring(faces: FakeShape[], edges: FakeShape[] = []): OccModule {
   const kind = { TopAbs_FACE: { value: 3 }, TopAbs_EDGE: { value: 1 }, TopAbs_SHAPE: { value: 8 } }
   return {
     TopAbs_ShapeEnum: kind,
+    TopoDS: {
+      Face_1: (s: OccShape) => s,
+      Edge_1: (s: OccShape) => s,
+    },
     TopExp_Explorer_2: function (shape: OccShape, type: { value: number }) {
       void shape
       const list = type.value === kind.TopAbs_FACE.value

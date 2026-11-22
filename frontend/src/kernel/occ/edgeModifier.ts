@@ -13,7 +13,7 @@ import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker, OccModifie
 import { shapeIsValid } from './cleanup/guard'
 import { healShape } from './cleanup/heal'
 import { passRejected, runCleanup } from './cleanup/pipeline'
-import { healOnlyPlan } from './cleanup/presets'
+import { modifierPlan } from './cleanup/presets'
 import { faceCentroid, SubShapeIndexMap } from './primitives'
 import { SubShapeDedup, SubShapeMap } from './subshapeIdentity'
 import { canonicalEdges, canonicalVertices, type ShapeNames } from './partNames'
@@ -632,7 +632,7 @@ function applyEdgeModifier(
       oc,
       scope,
       { shape: cut.shape, names: cut.names, diff: cut.diff },
-      healOnlyPlan(),
+      modifierPlan({ heal: 'required' }),
     )
     if (passRejected(cleaned, 'heal')) {
       scope.release(cut.shape)
@@ -819,19 +819,24 @@ function applyEdgeModifier(
   // of 12 on the corner corpus against 6 truly new -- so the builder
   // re-attributed the whole body's ancestry to this feature and evicted the
   // picks stored against it, the same eviction the far-edge rule in
-  // edgeModifierDiff exists to prevent. The cleanup layer's heal pass re-runs the
-  // projection and carries the names and the diff through the fixer's history.
+  // edgeModifierDiff exists to prevent. The cleanup layer carries the names, the
+  // diff and the merge history onto the adopted shape.
   let outShape = built
   let outNames: NewNames | null = names
   let outDiff = diff
-  if (heal !== null) {
-    const cleaned = runCleanup(oc, scope, { shape: built, names, diff }, healOnlyPlan())
-    if (passRejected(cleaned, 'heal')) {
-      scope.release(built)
-      return fail(INVALID)
-    }
-    outNames = cleaned.names ?? names
-    outDiff = cleaned.diff ?? diff
+  const cleaned = runCleanup(
+    oc,
+    scope,
+    { shape: built, names, diff },
+    modifierPlan({ heal: heal === null ? 'skip' : 'required' }),
+  )
+  if (heal !== null && passRejected(cleaned, 'heal')) {
+    scope.release(built)
+    return fail(INVALID)
+  }
+  outNames = cleaned.names ?? names
+  outDiff = cleaned.diff ?? diff
+  if (cleaned.shape !== built) {
     scope.release(built)
     outShape = cleaned.shape
   }

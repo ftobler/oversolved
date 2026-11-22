@@ -47,7 +47,7 @@ import {
   type NewNames,
 } from './edgeModifier'
 import { passRejected, runCleanup } from './cleanup/pipeline'
-import { healOnlyPlan } from './cleanup/presets'
+import { modifierPlan } from './cleanup/presets'
 import { SubShapeDedup, SubShapeMultiIndex, SubShapeIndexMap } from './subshapeIdentity'
 import { faceSurfaceType, FACE_RESTRICTION_TYPES, shapeBndBox } from './primitives'
 import { canonicalEdges } from './partNames'
@@ -710,13 +710,19 @@ export function applyDeleteFacesWithLineage(
       reason: ladderText(rung1Reason.get(g[0]) as string, RUNG2_SKIPPED),
     }))
 
-  const cleaned = runCleanup(oc, scope, { shape: built, names, diff }, healOnlyPlan())
-  if (passRejected(cleaned, 'heal')) {
+  const invalid = !shapeIsValid(oc, scope, built)
+  const cleaned = runCleanup(
+    oc,
+    scope,
+    { shape: built, names, diff },
+    modifierPlan({ heal: invalid ? 'required' : 'skip' }),
+  )
+  if (invalid && passRejected(cleaned, 'heal')) {
     scope.release(built)
     for (const g of succeeded) rung1Reason.set(g[0], REASON_INVALID)
     return refuse()
   }
-  if (cleaned.changed) {
+  if (cleaned.shape !== built) {
     scope.release(built)
     return {
       shape: cleaned.shape,

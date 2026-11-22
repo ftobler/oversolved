@@ -173,6 +173,3 @@ export function unchanged(shape: OccShape, rejected = false): {
 } {
   return { shape, changed: false, rebase: identityRebase, rejected }
 }
-
-/** A per-pass mapping helper for tests and passes that need the identity. */
-export const identity: SubShapeRebase = identityRebase

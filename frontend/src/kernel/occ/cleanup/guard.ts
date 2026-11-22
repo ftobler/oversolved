@@ -15,9 +15,15 @@ import type { OccModule, OccShape } from '../occTypes'
 import { volumeOfDefault } from '../volume'
 import { swallowUnlessTrap } from '../../errors'
 
-/** Whole-shape BRepCheck gate, shared by the boolean fallbacks and offsetShape. */
+/** Whole-shape BRepCheck gate, shared by the boolean fallbacks and offsetShape.
+ *  A throwing analyzer is not a vote of confidence, so it reads as invalid. */
 export function shapeIsValid(oc: OccModule, scope: DisposeScope, shape: OccShape): boolean {
-  return scope.track(new oc.BRepCheck_Analyzer(shape, true, false, false)).IsValid_2()
+  try {
+    return scope.track(new oc.BRepCheck_Analyzer(shape, true, false, false)).IsValid_2()
+  } catch (e) {
+    swallowUnlessTrap(e)
+    return false
+  }
 }
 
 /**

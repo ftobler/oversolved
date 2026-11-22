@@ -40,7 +40,7 @@ import {
 } from './edgeModifier'
 import { healShape } from './cleanup/heal'
 import { passRejected, runCleanup } from './cleanup/pipeline'
-import { healOnlyPlan } from './cleanup/presets'
+import { modifierPlan } from './cleanup/presets'
 import { nameNeighboursAndDeriveEdges, shapeNormalFrame, normalizedWorldKey, type NormalFrame } from './constructionLineage'
 import { swallowUnlessTrap } from '../errors'
 import { noProgress } from './defaultArgs'
@@ -416,14 +416,20 @@ function applySealedShell(
     faceNames, edgeNames, faceAncestry, edgeAncestry, capAncestry: {},
     faceOwner: old.faceOwner, edgeOwner: old.edgeOwner,
   }
-  if (!isValidShape(oc, scope, built)) {
-    const cleaned = runCleanup(oc, scope, { shape: built, diff, names }, healOnlyPlan())
-    if (passRejected(cleaned, 'heal')) {
-      scope.release(built)
-      return fail(shape, 'the operation produced invalid geometry; try a smaller thickness')
-    }
-    names = cleaned.names ?? names
-    diff = cleaned.diff ?? diff
+  const invalid = !isValidShape(oc, scope, built)
+  const cleaned = runCleanup(
+    oc,
+    scope,
+    { shape: built, diff, names },
+    modifierPlan({ heal: invalid ? 'required' : 'skip' }),
+  )
+  if (invalid && passRejected(cleaned, 'heal')) {
+    scope.release(built)
+    return fail(shape, 'the operation produced invalid geometry; try a smaller thickness')
+  }
+  names = cleaned.names ?? names
+  diff = cleaned.diff ?? diff
+  if (cleaned.shape !== built) {
     scope.release(built)
     built = cleaned.shape
   }
@@ -551,7 +557,7 @@ export function applyShellWithLineage(
 
   const newFaces = canonicalFaces(oc, scope, built) as OccShape[]
   const newEdges = canonicalEdges(oc, scope, built) as OccShape[]
-  let diff = shellDiff(oldFaces, oldEdges, newFaces, newEdges, closingFaces)
+  const diff = shellDiff(oldFaces, oldEdges, newFaces, newEdges, closingFaces)
 
   let names: NewNames | null = null
   if (oldNames !== null) {
@@ -592,23 +598,40 @@ export function applyShellWithLineage(
   }
 
   if (needsHeal) {
-    const cleaned = runCleanup(oc, scope, { shape: built, names, diff }, healOnlyPlan())
+    // The probe accepted this very build; a refusal here is not expected, and
+    // returning the invalid build would be worse than naming the failure.
+    const cleaned = runCleanup(
+      oc,
+      scope,
+      { shape: built, names, diff },
+      modifierPlan({ heal: 'required' }),
+    )
     if (passRejected(cleaned, 'heal')) {
-      // The probe accepted this very build; a refusal here is not expected, and
-      // returning the invalid build would be worse than naming the failure.
       scope.release(built)
       return fail(shape, invalidReason ?? lastReason)
     }
-    const outShape = cleaned.shape
-    diff = cleaned.diff ?? diff
     scope.release(built)
     return {
-      shape: outShape, success: true, reason: null,
-      names: cleaned.names ?? names, diff, usedJoin,
+      shape: cleaned.shape, success: true, reason: null,
+      names: cleaned.names ?? names, diff: cleaned.diff ?? diff, usedJoin,
       sharpReason: usedJoin === 'arc' ? sharpReason : null,
     }
   }
 
+  const cleaned = runCleanup(
+    oc,
+    scope,
+    { shape: built, names, diff },
+    modifierPlan({ heal: 'skip' }),
+  )
+  if (cleaned.shape !== built) {
+    scope.release(built)
+    return {
+      shape: cleaned.shape, success: true, reason: null,
+      names: cleaned.names ?? names, diff: cleaned.diff ?? diff, usedJoin,
+      sharpReason: usedJoin === 'arc' ? sharpReason : null,
+    }
+  }
   return {
     shape: scope.detach(built),
     success: true, reason: null, names, diff, usedJoin,

@@ -20,11 +20,12 @@ import {
   shapeIsValid,
 } from '../../booleans'
 import { canonicalizeCylinderFaces } from '../../canonicalSurfaces'
+import { applyFilletWithDiff, exploreEdges } from '../../edgeModifier'
 import { mapDiffThroughRebase, mapOriginThroughRebase } from '../compose'
 import { volumeOfDefault } from '../../volume'
 import { emptyShapeNames, type ShapeNames } from '../../partNames'
 import { runCleanup } from '../pipeline'
-import { booleanPlan } from '../presets'
+import { booleanPlan, modifierPlan } from '../presets'
 import type { OccModule, OccShape, OccSubShape } from '../../occTypes'
 
 const oc = await loadOcc()
@@ -33,7 +34,7 @@ function facesOf(oc2: OccModule, scope: DisposeScope, shape: OccShape): OccSubSh
   const E = oc2.TopAbs_ShapeEnum
   const exp = scope.track(new oc2.TopExp_Explorer_2(shape, E.TopAbs_FACE, E.TopAbs_SHAPE))
   const out: OccSubShape[] = []
-  for (; exp.More(); exp.Next()) out.push(scope.track(exp.Current()) as OccSubShape)
+  for (; exp.More(); exp.Next()) out.push(scope.track(oc2.TopoDS.Face_1(exp.Current())) as OccSubShape)
   return out
 }
 
@@ -128,6 +129,103 @@ describe.skipIf(!oc)('the BOOLEAN preset matches the old boolean composition', (
         uuids.add(uuid)
       }
       expect(uuids.size).toBe(resultFaces.length)
+    } finally {
+      scope.dispose()
+    }
+  })
+})
+
+/** Two 20x10x10 boxes sharing a full face: four coplanar face pairs. */
+function fusedCoplanarBoxes(oc2: OccModule, scope: DisposeScope): OccShape {
+  const a = scope.track(new oc2.BRepPrimAPI_MakeBox_2(20, 10, 10)).Shape()
+  const corner = scope.track(new oc2.gp_Pnt_3(20, 0, 0))
+  const b = scope.track(new oc2.BRepPrimAPI_MakeBox_3(corner, 20, 10, 10)).Shape()
+  return scope.track(booleanWithHistoryMany(oc2, scope, a, [b], 'fuse').shape)
+}
+
+/** The one upright straight edge of `shape` (the fillet pick). */
+function verticalEdge(oc2: OccModule, scope: DisposeScope, shape: OccShape): OccShape {
+  for (const edge of exploreEdges(oc2, scope, shape)) {
+    const curve = scope.track(new oc2.BRepAdaptor_Curve_2(edge))
+    if (curve.GetType().value !== oc2.GeomAbs_CurveType.GeomAbs_Line.value) continue
+    const a = scope.track(curve.Value(curve.FirstParameter()))
+    const b = scope.track(curve.Value(curve.LastParameter()))
+    if (Math.abs(a.Z() - b.Z()) > 1e-6) return edge
+  }
+  throw new Error('no vertical edge')
+}
+
+describe.skipIf(!oc)('the MODIFIER preset keeps faces apart', () => {
+  it('does not fold coplanar faces, while BOOLEAN does', () => {
+    const scope = new DisposeScope()
+    try {
+      // A clean may work in place, so each plan gets its own fixture.
+      const shapeForFaces = fusedCoplanarBoxes(oc!, scope)
+      const shape = fusedCoplanarBoxes(oc!, scope)
+      const before = countSubShapes(oc!, scope, shape, oc!.TopAbs_ShapeEnum.TopAbs_FACE)
+      const volume = volumeOfDefault(oc!, scope, shape)
+
+      const faces = runCleanup(
+        oc!, scope, { shape: shapeForFaces }, booleanPlan({ unifyFaces: true }),
+      )
+      const edgesOnly = runCleanup(
+        oc!, scope, { shape }, modifierPlan({ heal: 'skip' }),
+      )
+      expect(countSubShapes(oc!, scope, faces.shape, oc!.TopAbs_ShapeEnum.TopAbs_FACE)).toBe(6)
+      expect(countSubShapes(oc!, scope, edgesOnly.shape, oc!.TopAbs_ShapeEnum.TopAbs_FACE)).toBe(before)
+      expect(shapeIsValid(oc!, scope, edgesOnly.shape)).toBe(true)
+      expect(volumeOfDefault(oc!, scope, edgesOnly.shape)).toBeCloseTo(volume, 9)
+      // Measured on the pinned kernel: the edge-only merge leaves the split
+      // edges of this fuse in place too. The seam plan is the first pass that
+      // gives it an edge to fold; pinning the no-op makes that change visible.
+      expect(countSubShapes(oc!, scope, edgesOnly.shape, oc!.TopAbs_ShapeEnum.TopAbs_EDGE))
+        .toBe(countSubShapes(oc!, scope, shape, oc!.TopAbs_ShapeEnum.TopAbs_EDGE))
+    } finally {
+      scope.dispose()
+    }
+  })
+
+  it('keeps a fillet face across a coplanar neighbour, UUID and all', () => {
+    const scope = new DisposeScope()
+    try {
+      const base = fusedCoplanarBoxes(oc!, scope)
+      const fillet = applyFilletWithDiff(oc!, scope, base, 2, [verticalEdge(oc!, scope, base)])
+      expect(fillet.success).toBe(true)
+      const shape = scope.track(fillet.shape)
+      const names = numberedNames(oc!, scope, shape)
+      const beforeFaces = facesOf(oc!, scope, shape)
+      const beforeEdges = countSubShapes(oc!, scope, shape, oc!.TopAbs_ShapeEnum.TopAbs_EDGE)
+      const volume = volumeOfDefault(oc!, scope, shape)
+
+      const result = runCleanup(
+        oc!,
+        scope,
+        { shape, names },
+        modifierPlan({ heal: 'skip' }),
+      )
+
+      expect(result.passes).toEqual([{ name: 'unifySameDomain', status: 'adopted' }])
+      expect(shapeIsValid(oc!, scope, result.shape)).toBe(true)
+      expect(volumeOfDefault(oc!, scope, result.shape)).toBeCloseTo(volume, 9)
+      // The fillet face must still be its own face, not folded into a
+      // neighbour, and every stored UUID must survive.
+      const afterFaces = facesOf(oc!, scope, result.shape)
+      expect(afterFaces).toHaveLength(beforeFaces.length)
+      expect(countSubShapes(oc!, scope, result.shape, oc!.TopAbs_ShapeEnum.TopAbs_EDGE)).toBe(beforeEdges)
+      expect(result.names?.faceNames.size).toBe(afterFaces.length)
+      const uuids = new Set<string>()
+      for (const [face, uuid] of result.names!.faceNames.entries()) {
+        expect(afterFaces.some((f) => f.IsSame(face))).toBe(true)
+        uuids.add(uuid)
+      }
+      expect(uuids.size).toBe(afterFaces.length)
+      // Precondition: the fixture really carries the fillet's cylindrical face.
+      expect(facesOf(oc!, scope, base).length).toBeLessThan(beforeFaces.length)
+      const cylinders = afterFaces.filter((face) => {
+        const ad = scope.track(new oc!.BRepAdaptor_Surface_2(face, false))
+        return ad.GetType().value === oc!.GeomAbs_SurfaceType.GeomAbs_Cylinder.value
+      })
+      expect(cylinders.length).toBeGreaterThan(0)
     } finally {
       scope.dispose()
     }

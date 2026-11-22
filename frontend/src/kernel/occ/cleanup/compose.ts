@@ -16,7 +16,12 @@ import type { ShapeNames } from '../partNames'
 import { drainList } from '../disposeScope'
 import { SubShapeMap, SubShapeMultiIndex } from '../subshapeIdentity'
 
-/** All sub-shapes of `shape` of the given enum kind, as IsSame-comparable handles. */
+/**
+ * All sub-shapes of `shape` of the given enum kind, as IsSame-comparable
+ * handles. Faces and edges are downcast to TopoDS_Face/Edge: a diff composed
+ * through a pass is later read as a typed pick (defeature takes faces, the
+ * edge index takes edges), and a plain TopoDS_Shape would fail that binding.
+ */
 export function explore(
   oc: OccModule,
   scope: DisposeScope,
@@ -25,8 +30,13 @@ export function explore(
 ): OccSubShape[] {
   const E = oc.TopAbs_ShapeEnum
   const exp = scope.track(new oc.TopExp_Explorer_2(shape, kind, E.TopAbs_SHAPE))
+  const cast = kind === E.TopAbs_FACE
+    ? (s: OccShape): OccShape => oc.TopoDS.Face_1(s)
+    : kind === E.TopAbs_EDGE
+      ? (s: OccShape): OccShape => oc.TopoDS.Edge_1(s)
+      : (s: OccShape): OccShape => s
   const out: OccSubShape[] = []
-  for (; exp.More(); exp.Next()) out.push(scope.track(exp.Current()) as OccSubShape)
+  for (; exp.More(); exp.Next()) out.push(scope.track(cast(exp.Current())) as OccSubShape)
   return out
 }
 
