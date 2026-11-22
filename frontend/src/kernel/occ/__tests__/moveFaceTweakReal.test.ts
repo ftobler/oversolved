@@ -214,7 +214,7 @@ describe.skipIf(!oc)('moveFaceTweak (real OCC)', () => {
       } finally { scope.dispose() }
     }
     const forward = run(stored)
-    expect(Math.abs(forward.volume - 26013) / 26013).toBeLessThan(1e-6)
+    expect(forward.volume, 'report volume').toBeCloseTo(26013, 2)
     expect(forward.faces).toBe(6)
     expect(forward.edges).toBe(12)
     const reverse = run([...stored].reverse())
@@ -429,6 +429,21 @@ describe.skipIf(!oc)('moveFaceTweak (real OCC)', () => {
         expectValid(scope, out)
       } finally { scope.dispose() }
     }
+  })
+
+  it('a moved boss top lands on the box top and the cleanup merges them', () => {
+    const scope = new DisposeScope()
+    try {
+      const box = scope.track(makeBox(occ, scope, 10, 10, 10))
+      const boss = scope.track(cylinderSolid(scope, 5, 5, 10, 3, 2))
+      const part = scope.track(boolParts(scope, box, boss, 'fuse'))
+      const bossTop = pickByNormal(scope, part, [0, 0, 1], (c) => Math.abs(c[2] - 12) < 1e-6)
+      const out = moved(scope, part, [{ face: bossTop, distance: -2 }])
+      // The boss is gone and its top has merged into the box top.
+      expectVolume(scope, out, 1000)
+      expect(canonicalFaces(occ, scope, out)).toHaveLength(6)
+      expectValid(scope, out)
+    } finally { scope.dispose() }
   })
 
   it('the unbounded inward cutter crosses a disconnected lobe (the open point)', () => {

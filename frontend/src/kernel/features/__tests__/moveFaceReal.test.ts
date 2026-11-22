@@ -254,7 +254,7 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
     }
   })
 
-  it('a later pick consumed by an earlier move is failed, not unresolved', () => {
+  it('a two-pick set applies together, so an earlier move cannot consume a later pick', () => {
     const base = h.run(boxSpec())
     const top = faceQueryAt(base.bodies, 'cls_zp')
     const beforeUuids = new Set(((h.part(base, 'body_ex1') as PartView).mesh?.face_queries ?? []).map(uuidOf))
@@ -271,14 +271,16 @@ describe.skipIf(!oc || !solveBytes)('move-face build-level (real OCC + Rust solv
       return u !== undefined && !beforeUuids.has(u)
     })
     expect(chamferFace).toBeDefined()
-    // Move the top inward past the chamfer layer: the chamfers vanish, so the
-    // later pick is consumed -- failed (geometry is the fix), not unresolved.
+    // The direct route is one simultaneous operation on the picked set, so
+    // there is no "earlier" move that could consume the chamfer face. Both
+    // picks are applied and the feature reports ok; the old sequential route
+    // reported the later pick as failed.
     const spec = {
       features: [...chamferSpec.features, { id: 'mf1', kind: 'move_face', move_face: { faces: [top, chamferFace], distance: -3 } }],
     }
     const r = h.run(spec)
-    expect(h.res(r, 'mf1').status).toBe('partial')
-    expect(h.res(r, 'mf1').failed_faces).toEqual([chamferFace])
+    expect(h.res(r, 'mf1').status, String(h.res(r, 'mf1').exception ?? '')).toBe('ok')
+    expect(((h.res(r, 'mf1').failed_faces as string[] | undefined) ?? [])).toEqual([])
     expect(((h.res(r, 'mf1').unresolved_faces as string[] | undefined) ?? [])).toEqual([])
   })
 

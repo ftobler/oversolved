@@ -58,6 +58,7 @@ import { runCleanup } from './cleanup/pipeline'
 import { heal } from './cleanup/heal'
 import { unifySameDomain } from './cleanup/unifySameDomain'
 import { shapeIsValid } from './cleanup/guard'
+import { volumeOfDefault } from './volume'
 import { TOL_SURFACE_IDENTITY } from '../solverConstants'
 import { noProgress } from './defaultArgs'
 import { add, cross, dot, scale, sub } from '@/utils/vec3'
@@ -75,7 +76,7 @@ export interface TweakPick {
 
 /**
  * A final face's source. `fromTool` carries an inward cutter's cap, which has
- * no original face; `pickIndex` names the pick whose UUID the cap takes.
+ * no original face; the leaf names it with the pick that produced it.
  */
 export interface TweakOrigin {
   output: OccSubShape
@@ -87,8 +88,9 @@ export interface TweakResult {
   shape: OccShape
   // Final face -> source face, ready for `transferBooleanNames`.
   faceOrigin: TweakOrigin[]
-  // The source tool faces of the inward caps, so the leaf can name them.
-  toolFacePick: IdentityMap<number>
+  // The source tool faces of the inward caps, mapped to the pick that made
+  // them, so the leaf can name each cap with that pick's UUID.
+  toolFacePick: IdentityMap<TweakPick>
   diff: BrepDiff
   changed: boolean
 }
@@ -194,6 +196,7 @@ interface Incidence {
   verticesOfEdge: IdentityMap<OccShape[]>
   edgesOfVertex: IdentityMap<OccShape[]>
   facesOfVertex: IdentityMap<OccShape[]>
+  verticesOfFace: (face: OccShape) => OccShape[]
 }
 
 function buildIncidence(oc: OccModule, scope: DisposeScope, part: OccShape): Incidence {
@@ -235,7 +238,16 @@ function buildIncidence(oc: OccModule, scope: DisposeScope, part: OccShape): Inc
     }
     facesOfVertex.set(vertex as OccSubShape, list)
   }
-  return { faces, edges, vertices, edgesOfFace, facesOfEdge, verticesOfEdge, edgesOfVertex, facesOfVertex }
+  const verticesOfFace = (face: OccShape): OccShape[] => {
+    const out: OccShape[] = []
+    for (const edge of edgesOfFace.get(face as OccSubShape) ?? []) {
+      for (const vertex of verticesOfEdge.get(edge as OccSubShape) ?? []) {
+        if (!out.some((v) => (v as OccSubShape).IsSame(vertex as OccSubShape))) out.push(vertex)
+      }
+    }
+    return out
+  }
+  return { faces, edges, vertices, edgesOfFace, facesOfEdge, verticesOfEdge, edgesOfVertex, facesOfVertex, verticesOfFace }
 }
 
 // ─── sections ───
@@ -406,6 +418,66 @@ function tweakOutward(
         : movedTweakSurface(oc, scope, face, movedSurface(oc, scope, face, effective[at]), effective[at]),
     )
   }
+  // A picked face whose neighbour ends at a vertex before the moved surface
+  // (a cap moved past a cone's apex) would let the neighbour close before the
+  // face arrives; the tweak cannot express the vanish, so refuse and let the
+  // compatibility route handle it.
+  for (const face of inc.faces) {
+    if (!picked.has(face as OccSubShape)) continue
+    const plane = (originals.get(face as OccSubShape) as TweakSurface).plane
+    if (plane === null) continue
+    const d = effective[picked.get(face as OccSubShape) as number]
+    if (d <= 0) continue
+    const own = new Set<OccShape>()
+    for (const v of inc.verticesOfFace(face)) own.add(v)
+    for (const edge of inc.edgesOfFace.get(face as OccSubShape) ?? []) {
+      for (const neighbour of inc.facesOfEdge.get(edge as OccSubShape) ?? []) {
+        if ((neighbour as OccSubShape).IsSame(face as OccSubShape)) continue
+        // A cone neighbour's surface ends at its apex even when the trimmed
+        // face stops earlier; a move past the apex would build the mirrored
+        // nappe, so the face must vanish instead.
+        const apex = coneApexOf(oc, scope, neighbour)
+        if (apex !== null) {
+          const s = dot(sub(apex, plane.point), plane.normal)
+          if (s > 1e-6 && s < d - 1e-9) {
+            throw new MoveFaceRefusal(
+              'move_face: the move passes a neighbour cone\'s apex; the moved face would vanish',
+            )
+          }
+        }
+        for (const vertex of inc.verticesOfFace(neighbour)) {
+          if ([...own].some((o) => (o as OccSubShape).IsSame(vertex as OccSubShape))) continue
+          const p = vertexPoint(oc, vertex)
+          const s = dot(sub(p, plane.point), plane.normal)
+          if (s > 1e-6 && s < d - 1e-9) {
+            throw new MoveFaceRefusal(
+              'move_face: a neighbour ends before the moved surface; the moved face would vanish',
+            )
+          }
+        }
+      }
+    }
+  }
+
+  // A moved face whose same-surface sibling stays behind leaves a step that
+  // needs a NEW face between them. The direct tweak keeps every UUID and mints
+  // none, so it refuses this by name instead of shipping an open shell; the
+  // step is a backlog item (it would have to mint a face the old slab route
+  // named `|extend|`).
+  for (const face of inc.faces) {
+    if (!picked.has(face as OccSubShape)) continue
+    for (const edge of inc.edgesOfFace.get(face as OccSubShape) ?? []) {
+      for (const other of inc.facesOfEdge.get(edge as OccSubShape) ?? []) {
+        if ((other as OccSubShape).IsSame(face as OccSubShape)) continue
+        if (picked.has(other as OccSubShape)) continue
+        if (!sameAnalyticSurface(oc, scope, face, other)) continue
+        throw new MoveFaceRefusal(
+          'move_face: a picked face shares its own surface with a face that stays behind; ' +
+          'the step between them needs a new face, which the direct tweak does not mint',
+        )
+      }
+    }
+  }
   const surfaceOf = (face: OccShape): TweakSurface => surfaces.get(face as OccSubShape) as TweakSurface
   const isPicked = (face: OccShape): boolean => picked.get(face as OccSubShape) !== undefined
   // A closed picked face (a full sphere or torus) has no boundary edges to
@@ -536,6 +608,16 @@ function tweakOutward(
       const seam = seamPlane(oc, scope, faces[0])
       curves = sectionCurves(oc, scope, surfaceOf(faces[0]).large(L), seam)
     } else if (sameSurface(oc, scope, surfaceOf(faces[0]), surfaceOf(faces[1]))) {
+      // Two faces on one surface (split siblings, or a face landing on a
+      // neighbour's surface). The intersection is the whole surface, so the
+      // edge is mapped onto the moved surface point by point; the cleanup then
+      // folds the coincident faces if they are the same domain.
+      const owner = faces.find((f) => isPicked(f))
+      if (owner === undefined) continue
+      const d = effective[picked.get(owner as OccSubShape) as number]
+      const movedEdge = offsetEdge(oc, scope, edge, owner, d)
+      if (movedEdge === null) continue
+      edgePlans.set(edge as OccSubShape, { oldEdge: edge, newEdge: movedEdge, closed })
       continue
     } else {
       curves = sectionOf(faces[0], faces[1])
@@ -572,6 +654,20 @@ function tweakOutward(
     else canonicalEdge.set(key, plan.newEdge)
   }
 
+  // A picked face none of whose edges could be re-intersected has neighbours
+  // that do not reach the moved surface (a cap moved past a cone's apex). The
+  // face vanishes; the slab route is the compatibility fallback for that case.
+  for (const face of inc.faces) {
+    if (!picked.has(face as OccSubShape)) continue
+    if (closedPicked.has(face as OccSubShape)) continue
+    const faceEdges = inc.edgesOfFace.get(face as OccSubShape) ?? []
+    if (faceEdges.length === 0) continue
+    if (faceEdges.some((e) => edgePlans.get(e as OccSubShape) !== undefined)) continue
+    throw new MoveFaceRefusal(
+      'move_face: the moved face\'s neighbours do not reach its new surface; the face would vanish',
+    )
+  }
+
   // Faces: rebuild every face with a changed edge, reuse the rest.
   const newFaces: OccShape[] = []
   const faceOrigin: TweakOrigin[] = []
@@ -592,7 +688,7 @@ function tweakOutward(
     const rebuilt = pickedFace && (faceEdges.length === 0 || closedPicked.has(face as OccSubShape))
       ? orientedLargeFace(oc, scope, face, surfaceOf(face).large(L))
       : pickedFace || hasCollapse
-        ? rebuildFace(oc, scope, face, surfaceOf(face).surface(), edgePlans, L, surfaceOf(face).kind === 'plane')
+        ? rebuildFace(oc, scope, face, surfaceOf(face), edgePlans, L)
         : reshapeFace(oc, scope, face, edgePlans)
     // A face whose wire collapsed with its edge (the wedge tip at the meeting
     // point) vanishes: the pick's UUID dies and the neighbours already meet.
@@ -674,6 +770,133 @@ function orderChain(oc: OccModule, scope: DisposeScope, edges: OccShape[], tol: 
     current = flip ? ends[found].a : ends[found].b
   }
   return out
+}
+
+/** A new edge on the moved surface from an edge that lies on it, for the
+ *  coincident-surface case where there is no intersection curve. Only the
+ *  straight and circular cases are supported; a refused edge keeps the old
+ *  plan and the feature refuses by the surface kind it cannot map. */
+function offsetEdge(
+  oc: OccModule,
+  scope: DisposeScope,
+  edge: OccShape,
+  owner: OccShape,
+  d: number,
+): OccShape | null {
+  const adaptor = scope.track(new oc.BRepAdaptor_Curve_2(edge))
+  const C = oc.GeomAbs_CurveType
+  const t = adaptor.GetType().value
+  if (t === C.GeomAbs_Line.value) {
+    const a = movedPoint(oc, scope, owner, d, pointAt(adaptor, adaptor.FirstParameter()))
+    const b = movedPoint(oc, scope, owner, d, pointAt(adaptor, adaptor.LastParameter()))
+    return scope.track(scope.track(new oc.BRepBuilderAPI_MakeEdge_3(
+      scope.track(new oc.gp_Pnt_3(a[0], a[1], a[2])),
+      scope.track(new oc.gp_Pnt_3(b[0], b[1], b[2])),
+    )).Edge())
+  }
+  if (t === C.GeomAbs_Circle.value) {
+    const circ = scope.track(adaptor.Circle())
+    const c = circ.Location()
+    const axis = circ.Axis().Direction()
+    const xaxis = circ.XAxis().Direction()
+    const center = movedPoint(oc, scope, owner, d, [c.X(), c.Y(), c.Z()])
+    const radius = circ.Radius() + movedRadiusDelta(oc, scope, owner, d)
+    const out = makeCircleEdge(
+      oc,
+      scope,
+      center,
+      [axis.X(), axis.Y(), axis.Z()],
+      [xaxis.X(), xaxis.Y(), xaxis.Z()],
+      Math.abs(radius),
+    )
+    axis.delete()
+    xaxis.delete()
+    c.delete()
+    return scope.track(out)
+  }
+  return null
+}
+
+/** The radius change a normal move `d` makes on `face`'s surface: the target
+ *  primitive's radius minus the source's. */
+function movedRadiusDelta(oc: OccModule, scope: DisposeScope, face: OccShape, d: number): number {
+  const source = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
+  const target = scope.track(new oc.BRepAdaptor_Surface_2(movedSurface(oc, scope, face, d).targetFace(1), true))
+  const S = oc.GeomAbs_SurfaceType
+  const t = source.GetType().value
+  if (t === S.GeomAbs_Cylinder.value) {
+    return scope.track(target.Cylinder()).Radius() - scope.track(source.Cylinder()).Radius()
+  }
+  if (t === S.GeomAbs_Sphere.value) {
+    return scope.track(target.Sphere()).Radius() - scope.track(source.Sphere()).Radius()
+  }
+  return 0
+}
+
+/** The image of a point on `face`'s surface after the normal move `d`. */
+function movedPoint(
+  oc: OccModule,
+  scope: DisposeScope,
+  face: OccShape,
+  d: number,
+  p: Vec3,
+): Vec3 {
+  const adaptor = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
+  const S = oc.GeomAbs_SurfaceType
+  const t = adaptor.GetType().value
+  if (t === S.GeomAbs_Plane.value) return add(p, scale(faceNormal(oc, scope, face), d))
+  if (t === S.GeomAbs_Cylinder.value) {
+    const cyl = scope.track(adaptor.Cylinder())
+    const dir = takeAxis(cyl.Axis())
+    const pos = scope.track(cyl.Position())
+    const loc = pos.Location()
+    const origin: Vec3 = [loc.X(), loc.Y(), loc.Z()]
+    loc.delete()
+    const rel = sub(p, origin)
+    const axial = scale(dir, dot(rel, dir))
+    const radial = sub(rel, axial)
+    const len = Math.hypot(radial[0], radial[1], radial[2])
+    if (len <= 0) return p
+    const delta = movedRadiusDelta(oc, scope, face, d)
+    return add(p, scale(radial, delta / len))
+  }
+  if (t === S.GeomAbs_Sphere.value) {
+    const sph = scope.track(adaptor.Sphere())
+    const pos = scope.track(sph.Position())
+    const loc = pos.Location()
+    const centre: Vec3 = [loc.X(), loc.Y(), loc.Z()]
+    loc.delete()
+    const rel = sub(p, centre)
+    const len = Math.hypot(rel[0], rel[1], rel[2])
+    if (len <= 0) return p
+    return add(p, scale(rel, movedRadiusDelta(oc, scope, face, d) / len))
+  }
+  return p
+}
+
+function takeAxis(axis: { Direction(): { X(): number; Y(): number; Z(): number; delete(): void }; delete(): void }): Vec3 {
+  const dir = axis.Direction()
+  const out: Vec3 = [dir.X(), dir.Y(), dir.Z()]
+  dir.delete()
+  axis.delete()
+  return out
+}
+
+/** The apex of a cone face's surface, or null for any other kind. */
+function coneApexOf(oc: OccModule, scope: DisposeScope, face: OccShape): Vec3 | null {
+  const adaptor = scope.track(new oc.BRepAdaptor_Surface_2(face, true))
+  if (adaptor.GetType().value !== oc.GeomAbs_SurfaceType.GeomAbs_Cone.value) return null
+  const cone = scope.track(adaptor.Cone())
+  const semi = cone.SemiAngle()
+  const ref = cone.RefRadius()
+  const pos = scope.track(cone.Position())
+  const loc = pos.Location()
+  const origin: Vec3 = [loc.X(), loc.Y(), loc.Z()]
+  const z = pos.Direction()
+  const axis: Vec3 = [z.X(), z.Y(), z.Z()]
+  loc.delete()
+  z.delete()
+  return add(origin, scale(axis, -ref / Math.tan(semi)))
 }
 
 /** A stable key for the unordered pair of faces, by canonical index. */
@@ -923,10 +1146,9 @@ function rebuildFace(
   oc: OccModule,
   scope: DisposeScope,
   face: OccShape,
-  surface: OccDisposable,
+  target: TweakSurface,
   edgePlans: IdentityMap<EdgePlan>,
   L: number,
-  planar: boolean,
 ): OccShape | null {
   const outer = scope.track(oc.BRepTools.OuterWire(face))
   const wires: OccShape[] = []
@@ -962,9 +1184,24 @@ function rebuildFace(
     made.push(closedWire)
     madeEdges.push(orderedEdges)
   }
-  const maker = planar
+  const sample = target.large(1)
+  const sampleAdaptor = scope.track(new oc.BRepAdaptor_Surface_2(sample, true))
+  const G = oc.GeomAbs_SurfaceType
+  const sampleKind = sampleAdaptor.GetType().value
+  // The kind-specific makers are the ones the curved move-face regions already
+  // use; the generic surface one leaves the whole surface bounds and is the
+  // last resort for a freeform neighbour.
+  const maker = target.kind === 'plane'
     ? scope.track(new oc.BRepBuilderAPI_MakeFace_15(made[0], true))
-    : scope.track(new oc.BRepBuilderAPI_MakeFace_21(surface, made[0], true))
+    : sampleKind === G.GeomAbs_Cylinder.value
+      ? scope.track(new oc.BRepBuilderAPI_MakeFace_17(scope.track(sampleAdaptor.Cylinder()), made[0], true))
+      : sampleKind === G.GeomAbs_Cone.value
+        ? scope.track(new oc.BRepBuilderAPI_MakeFace_18(scope.track(sampleAdaptor.Cone()), made[0], true))
+        : sampleKind === G.GeomAbs_Sphere.value
+          ? scope.track(new oc.BRepBuilderAPI_MakeFace_19(scope.track(sampleAdaptor.Sphere()), made[0], true))
+          : sampleKind === G.GeomAbs_Torus.value
+            ? scope.track(new oc.BRepBuilderAPI_MakeFace_20(scope.track(sampleAdaptor.Torus()), made[0], true))
+            : scope.track(new oc.BRepBuilderAPI_MakeFace_21(target.surface(), made[0], true))
   if (!maker.IsDone()) throw new MoveFaceRefusal('move_face: a rebuilt face did not bound on its surface')
   for (let i = 1; i < made.length; i++) maker.Add(made[i])
   let built = scope.track(maker.Face())
@@ -1092,16 +1329,15 @@ function cutInward(
   scope: DisposeScope,
   part: OccShape,
   pick: TweakPick,
-  pickIndex: number,
-): { shape: OccShape; faceOrigin: TweakOrigin[]; toolFacePick: IdentityMap<number>; modified: Set<OccShape> } {
+): { shape: OccShape; faceOrigin: TweakOrigin[]; toolFacePick: IdentityMap<TweakPick>; modified: Set<OccShape> } {
   const surface = movedSurface(oc, scope, pick.face, pick.distance)
   const L = 4 * (bboxDiagonal(oc, scope, part) + Math.abs(pick.distance))
   const { tool, cap } = surface.outsideSolid(part, L)
   const res = booleanWithDiff(oc, scope, part, tool, 'cut')
-  const toolFacePick = new IdentityMap<number>()
+  const toolFacePick = new IdentityMap<TweakPick>()
   const faceOrigin: TweakOrigin[] = res.faceOrigin.map((o) => {
     if (o.fromTool) {
-      if ((o.source as OccSubShape).IsSame(cap as OccSubShape)) toolFacePick.set(o.source, pickIndex)
+      if ((o.source as OccSubShape).IsSame(cap as OccSubShape)) toolFacePick.set(o.source, pick)
       return { output: o.output, source: o.source, fromTool: true }
     }
     return { output: o.output, source: o.source, fromTool: false }
@@ -1149,7 +1385,7 @@ export function applyMoveFaces(
     const identity: TweakOrigin[] = (canonicalFaces(oc, scope, part) as OccShape[]).map((f) => ({
       output: f as OccSubShape, source: f as OccSubShape, fromTool: false,
     }))
-    return { shape: part, faceOrigin: identity, toolFacePick: new IdentityMap<number>(), diff: emptyBrepDiff(), changed: false }
+    return { shape: part, faceOrigin: identity, toolFacePick: new IdentityMap<TweakPick>(), diff: emptyBrepDiff(), changed: false }
   }
 
   let shape = part
@@ -1168,16 +1404,15 @@ export function applyMoveFaces(
     }))
   }
 
-  const toolFacePick = new IdentityMap<number>()
+  const toolFacePick = new IdentityMap<TweakPick>()
   inward.forEach((pick) => {
-    const at = sorted.indexOf(pick)
-    const cut = cutInward(oc, scope, shape, pick, at)
+    const cut = cutInward(oc, scope, shape, pick)
     const originals = cut.modified
       ? [...cut.modified].map((f) => originalFaceOf(faceOrigin, f)).filter((f): f is OccShape => f !== null)
       : []
     faceOrigin = composeOrigin(faceOrigin, cut.faceOrigin)
     for (const original of originals) modified.add(original)
-    for (const [source, index] of cut.toolFacePick.entries()) toolFacePick.set(source, index)
+    for (const [source, value] of cut.toolFacePick.entries()) toolFacePick.set(source, value)
     shape = cut.shape
     changed = true
   })
@@ -1213,18 +1448,28 @@ function repairSolid(
   const edgesBefore = canonicalEdges(oc, scope, shape).length
   let fixed: OccShape
   let context: OccReShape | null = null
-  try {
-    const fixer = scope.track(new oc.ShapeFix_Shape_2(shape))
-    fixer.Perform(noProgress(oc))
-    const rawFixed = scope.track(fixer.Shape())
-    // ShapeFix rebuilds a repaired solid as a lone shell; promote it back, the
-    // same normalisation the offset route uses.
-    fixed = offsetResultSolid(oc, scope, rawFixed) ?? rawFixed
-    const handle = scope.track(fixer.Context())
-    context = handle.get()
-  } catch {
-    if (validBefore) return { shape, faceOrigin }
-    throw new MoveFaceRefusal('move_face: the rebuilt shell could not be oriented')
+  // Prefer the shell repair: ShapeFix is happier reorienting a shell than a
+  // solid wrapper whose closed flag is still unset.
+  const shellFix = repairShell(oc, scope, shape)
+  if (shellFix !== null
+    && canonicalFaces(oc, scope, shellFix.shape).length === facesBefore
+    && canonicalEdges(oc, scope, shellFix.shape).length === edgesBefore) {
+    fixed = shellFix.shape
+    context = shellFix.context
+  } else {
+    try {
+      const fixer = scope.track(new oc.ShapeFix_Shape_2(shape))
+      fixer.Perform(noProgress(oc))
+      const rawFixed = scope.track(fixer.Shape())
+      // ShapeFix rebuilds a repaired solid as a lone shell; promote it back, the
+      // same normalisation the offset route uses.
+      fixed = offsetResultSolid(oc, scope, rawFixed) ?? rawFixed
+      const handle = scope.track(fixer.Context())
+      context = handle.get()
+    } catch (e) {
+      if (validBefore) return { shape, faceOrigin }
+      throw new MoveFaceRefusal(`move_face: the rebuilt shell could not be oriented: ${String(e)}`)
+    }
   }
   const E = oc.TopAbs_ShapeEnum
   if (!shapeIsValid(oc, scope, fixed)) {
@@ -1251,6 +1496,12 @@ function repairSolid(
     source: entry.source,
     fromTool: entry.fromTool,
   }))
+  // A shell repair can settle on the inward orientation: the volume sign is
+  // the one authority, and reversing keeps every sub-shape identity the origin
+  // map is keyed by.
+  if (volumeOfDefault(oc, scope, fixed) < 0) {
+    fixed = scope.track(oc.TopoDS.Solid_1(scope.track((fixed as OccShape & { Reversed(): OccShape }).Reversed())))
+  }
   return { shape: fixed, faceOrigin: mapped }
 }
 
@@ -1287,6 +1538,21 @@ function repairShell(oc: OccModule, scope: DisposeScope, shape: OccShape): { sha
     return null
   }
 }
+
+/** A face's outward normal + a point ON it, for the leaf's handle anchor. A
+ *  planar face anchors at its centroid; a curved one at its UV-domain midpoint
+ *  (a full cylinder's centroid lies on its axis, where the normal is
+ *  undefined). */
+export function faceNormalAndCentroid(
+  oc: OccModule,
+  scope: DisposeScope,
+  face: OccShape,
+): { normal: Vec3; centroid: Vec3 } {
+  const anchor = movedSurface(oc, scope, face, 0).anchor()
+  return { normal: anchor.normal, centroid: anchor.point }
+}
+
+export { MoveFaceRefusal } from './moveFaceSurfaces'
 
 function comparePoint(a: Vec3, b: Vec3): number {
   return a[0] - b[0] || a[1] - b[1] || a[2] - b[2]

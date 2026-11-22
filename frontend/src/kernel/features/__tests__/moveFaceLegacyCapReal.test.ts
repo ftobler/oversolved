@@ -279,7 +279,7 @@ describe.skipIf(!oc || !solveBytes)('move-face legacy cap (real OCC + Rust solve
     }
   })
 
-  it('the set path refuses adjacent picks by name and still applies a non-adjacent one', () => {
+  it('adjacent picks apply together on the direct route, not through a set refusal', () => {
     const base = h.run(lProfileSpec())
     expect(h.res(base, 'ex1').status).toBe('ok')
     const left = faceQueryWhere(base.bodies, (n, c) =>
@@ -290,30 +290,17 @@ describe.skipIf(!oc || !solveBytes)('move-face legacy cap (real OCC + Rust solve
     const right = faceQueryWhere(base.bodies, (n, c) =>
       Math.abs(n[0] - 1) < 1e-6 && Math.abs(c[0] - 30) < 1e-6)
 
-    // Force the set path for both the control and the group: the sequential
-    // apply refuses, so the leaf retries every group as one boolean.
-    forcedSequentialRefusal.value = true
-    const control = h.run({ features: [
-      ...lProfileSpec().features,
-      { id: 'mf1', kind: 'move_face', move_face: { faces: [right], distance: 5 } },
-    ] })
-    expect(h.res(control, 'mf1').status).toBe('ok')
-    const controlVolume = volumeAfter(control, 'mf1', 'body_ex1')
-
+    // The direct route is one simultaneous operation, so the picks that share
+    // an edge all apply. The old one-boolean set path refused the adjacent pair
+    // by name; that guard is gone with the slab route.
     const grouped = h.run({ features: [
       ...lProfileSpec().features,
       { id: 'mf1', kind: 'move_face', move_face: { faces: [left, top, right], distance: 5 } },
     ] })
     const res = h.res(grouped, 'mf1')
-    expect(res.status).toBe('partial')
-    const failed = (res.failed_faces as string[] | undefined) ?? []
-    expect(failed).toEqual(expect.arrayContaining([left, top]))
-    expect(failed).not.toContain(right)
-    const message = String(res.exception ?? '')
-    expect(message).toContain(left)
-    expect(message).toContain(top)
-    expect(message).toContain('share an edge')
-    // Only the non-adjacent pick was applied: the volume equals its own move.
-    expect(volumeAfter(grouped, 'mf1', 'body_ex1')).toBeCloseTo(controlVolume, 6)
+    expect(res.status, String(res.exception ?? '')).toBe('ok')
+    expect(((res.failed_faces as string[] | undefined) ?? [])).toEqual([])
+    // All three faces grew by the same distance, so the volume grew.
+    expect(volumeAfter(grouped, 'mf1', 'body_ex1')).toBeGreaterThan(volumeAfter(base, 'ex1', 'body_ex1'))
   }, 60000)
 })
