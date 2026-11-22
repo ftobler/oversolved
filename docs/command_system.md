@@ -99,7 +99,7 @@ Snap rules for drag; the measurement core (`utils/measure/`) turns picks into
 world primitives and reads the pair table for the HUD. Its rules are pure, so
 they test without a viewport.
 
-### Command Tables (`commandEntries.ts`, `assemblyCommandEntries.ts`)
+### Command Tables (`session/partCommandSpecs.ts`, `session/assemblyCommandSpecs.ts`)
 
 `PART_COMMAND_SPECS` (the sketch/part editor, 61 specs) and
 `ASSEMBLY_COMMAND_SPECS` (the assembly editor, 29 specs) are the single source

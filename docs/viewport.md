@@ -100,7 +100,7 @@ Tools receive sanitized pointer events via `toolRegistry` handlers (`onClick`, `
 
 Not every interaction is a registered tool:
 - **Select** has no registered tool. Idle select is the dispatchSketchClick fallback (`state.toggleNormalSelection(id)` for the clicked entity/vertex) plus the DrawPlane backplane clear on empty-space clicks (`Drawing.tsx`). The toolbar select button dispatches `set_tool_drag`, and `getEffectiveTool(null)` resolves to `'drag'`.
-- **Constraints** have no registered tools. Constraint apply is `apply_<kind>` -> `store.applyConstraint` (`commandEntries.ts`), which owns the target validation. Snap-inferred constraints (vertex→coincident, path→coincident, alignment→horizontal/vertical) are added by the draw gestures.
+- **Constraints** have no registered tools. Constraint apply is `apply_<kind>` -> `store.applyConstraint` (`session/partCommandSpecs.ts`), which owns the target validation. Snap-inferred constraints (vertex→coincident, path→coincident, alignment→horizontal/vertical) are added by the draw gestures.
 
 - **Drag**: threshold-based initiation, vertex/entity/alignment snap via `dragLogic.ts`, creates YAML mutation on release
 - **Draw**: inserts geometry via DrawPlane, snap to vertices/entities, preview rendering. A drawing gesture places points on the primary button only; the fit spline's variable point count is stamped down by Enter, a stationary right click or a double click (`editorState.finishDraw`, sharing the mutation builder a click on its last point uses).
