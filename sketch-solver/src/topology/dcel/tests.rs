@@ -2,8 +2,8 @@ use crate::radians;
 use crate::tolerance::tangent_gap_tol;
 use crate::topology::dcel::{angle_in_arc, degrees, detect_topology, InputEntity, TopoEntity};
 use crate::topology::profile_loops::EdgeGeom;
-use crate::topology::Vec2;
 use crate::topology::TOL_TOPOLOGY_MERGE as MERGE;
+use geom_core::Vec2;
 
 use self::helpers::*;
 

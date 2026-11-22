@@ -261,7 +261,7 @@ rust:
     mkdir -p tmp
     { just rust-fmt && just rust-lint && just rust-test; } 2>&1 | tee tmp/just_rust.log
 
-# Test the Rust solver workspace (solver-core + sketch-solver + mate-solver).
+# Test the Rust solver workspace (solver-core + geom-core + sketch-solver + mate-solver).
 rust-test:
     mkdir -p tmp
     cargo test --workspace 2>&1 | tee tmp/cargo_test.log
@@ -270,7 +270,7 @@ rust-test:
 rust-lint:
     mkdir -p tmp
     cargo clippy --workspace --tests -- -D warnings 2>&1 | tee tmp/cargo_clippy.log
-    .venv/bin/python lint.py solver-core sketch-solver mate-solver --language rust 2>&1 | tee tmp/lint_rust.log
+    .venv/bin/python lint.py solver-core geom-core sketch-solver mate-solver --language rust 2>&1 | tee tmp/lint_rust.log
 
 # Check Rust formatting without rewriting files; CI runs the same command.
 rust-fmt:
@@ -282,7 +282,10 @@ rust-fmt:
 
 # Build both Rust solvers to WASM (web target for frontend + nodejs target for
 # tests). Two crates, two binaries: the sketch/OCC worker and the anchor solver
-# worker each load only their own. See the workspace root Cargo.toml.
+# worker each load only their own. `geom-core` has no package of its own: it is
+# an rlib compiled into the sketch binary (the only Worker that needs 2D
+# geometry), so the anchor solver never pays for it and no extra download is
+# added.
 
 # The sketch-solver nodejs target carries `--features fuzz`: sketchReprosReal.test.ts
 # drives the fuzz-gated oracle export and must not skip in a provisioned tree.

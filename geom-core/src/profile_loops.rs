@@ -1,19 +1,25 @@
-//! Profile-loop helpers: the topology slice of the loop machinery that also
-//! lives (for SVG/3D consumers) in `frontend/src/kernel/profileLoops.ts`:
-//! arc/spline/ellipse sampling, the
-//! polygon point list, containment nesting, signed area and area-weighted
-//! centroid. Only what the slice topology needs is ported.
+//! Profile-loop helpers: arc/spline/ellipse sampling, the polygon point list,
+//! containment nesting, signed area and area-weighted centroid.
 //!
 //! `EdgeGeom`/`BoundaryEdge` are the loop-edge vocabulary the whole pipeline
-//! shares: `dcel` builds them, this module samples them.
+//! shares: the solver's `dcel` builds them, this module samples them, and the
+//! TypeScript kernel reaches them through the `profile_loops_bytes` codec.
+//!
+//! Float parity is load-bearing: vertex order, the sample counts and the
+//! containment tie-breaks feed strings the TS decorator builds, and the
+//! `geom-core` golden fixture (generated from the TS implementation) pins the
+//! two sides together.
 
-use super::curve_split::bezier_point;
-use super::TOL_NEAR_ZERO_AREA;
-use crate::radians;
+use crate::curve_split::bezier_point;
+use crate::{radians, TOL_NEAR_ZERO_AREA};
 
-pub use super::Vec2;
+pub use crate::Vec2;
 
-const CENTROID_ARC_SAMPLES: usize = 64;
+/// Sample count that makes a curved loop read as its true shape rather than as
+/// its chord polygon: the centroid uses it, the viewport tessellates boundaries
+/// at the same 64, and the profile dump re-runs containment at it to measure
+/// how far the coarse 1-sample polygon has drifted from what the user sees.
+pub const CENTROID_ARC_SAMPLES: usize = 64;
 
 /// Geometry of one boundary/half-edge. Mirrors the stringly-typed geom dicts
 /// the original `topology.ts` built (`lineEg`/`arcEg`/`ellipseArcEg`/`splineEg`,

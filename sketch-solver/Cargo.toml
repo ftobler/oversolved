@@ -24,6 +24,10 @@ fuzz = []
 # The LM driver, sparse Jacobian rows, and byte cursors are shared with the mate
 # solver; see the workspace root Cargo.toml for why they live in their own crate.
 solver-core.workspace = true
+# The pure 2D geometry (curve intersection/split, profile loops, the fit spline)
+# lives in its own crate so the TS kernel can reach one implementation through
+# the same WASM binary. It compiles in, it is not a package of its own.
+geom-core.workspace = true
 nalgebra.workspace = true
 
 # serde + serde_json back ONLY the topology boundary (`detect_topology_bytes`):

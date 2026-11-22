@@ -24,6 +24,7 @@ SOURCE_EXTS = (".ts", ".tsx", ".mjs", ".py", ".rs")
 SOURCE_TREES = (
     "frontend/src",
     "frontend/scripts",
+    "geom-core",
     "sketch-solver",
     "mate-solver",
     "solver-core",

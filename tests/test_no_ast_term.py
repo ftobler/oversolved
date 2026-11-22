@@ -27,6 +27,7 @@ TREES = (
     "frontend/src",
     "frontend/scripts",
     "docs",
+    "geom-core",
     "sketch-solver",
     "mate-solver",
     "solver-core",

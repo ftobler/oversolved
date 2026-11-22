@@ -375,10 +375,8 @@ pub struct TopologyOut {
 fn degrees(rad: f64) -> f64 {
     rad * 180.0 / std::f64::consts::PI
 }
-/// Python float modulo (result takes the sign of the divisor).
-pub fn pymod(a: f64, b: f64) -> f64 {
-    ((a % b) + b) % b
-}
+// The radian wrap is shared with the intersection code in `geom-core`.
+pub use geom_core::pymod;
 
 /// True when an arc's stored angles coincide modulo a turn, which the builder
 /// reads as the whole circle (every angle is on it). Shared by `angle_in_arc`
