@@ -11,18 +11,36 @@
 // The naming functions are observed rather than the resulting face UUIDs: an
 // extend name that the boolean merges into an existing face leaves no trace in
 // the body, yet it was still minted and is what the next build feeds back in.
-// A pick with no construction-UUID token forces the set path while still
-// resolving by stable ancestry, so both paths run over the same two faces.
+// Both paths run over the same two faces: the sequential side uses a pick with
+// no construction-UUID token (it resolves by stable ancestry, as a pre-split
+// document does), and the set side is forced by a refused sequential apply
+// because the route now follows the resolution, not the stored UUID.
 //
 // Skips when OCC.js or the Rust solver is absent.
-import { describe, it, expect, beforeAll, vi } from 'vitest'
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'
 import { SharedHarness } from '../../occ/sharedHarness'
 import { setSketchSolver, resetSketchSolver } from '../sketch'
 import { parseAncestry, makeAncestryQuery } from '../../query'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 
-const { minted } = vi.hoisted(() => ({ minted: [] as string[] }))
+const { minted, forcedSequentialRefusal } = vi.hoisted(() => ({
+  minted: [] as string[],
+  forcedSequentialRefusal: { value: false },
+}))
+
+vi.mock('../../occ/moveFace', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../occ/moveFace')>()
+  return {
+    ...actual,
+    applyMoveFace: (...args: Parameters<typeof actual.applyMoveFace>) => {
+      if (forcedSequentialRefusal.value) {
+        throw new actual.MoveFaceRefusal('move_face: forced sequential refusal for the set-path test')
+      }
+      return actual.applyMoveFace(...args)
+    },
+  }
+})
 
 vi.mock('../../constructionName', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../constructionName')>()
@@ -45,10 +63,45 @@ const oc = await loadOcc()
 const solveBytes = loadSolver()
 
 /** The query without its construction-UUID token: resolvable by stable
- *  ancestry, but `needsSet` (a dead UUID) in the leaf. */
+ *  ancestry, exactly how a pre-split document's pick reaches a live face. */
 function withoutUuid(q: string): string {
   const [ids, typeRestriction] = parseAncestry(q)
   return makeAncestryQuery(ids.filter((i) => !i.startsWith('@u|')), typeRestriction)
+}
+
+/** A 10 x 10 x 5 box: the two caps are not adjacent, so the set path applies
+ *  both while the per-pick extend names still mint. */
+function rectSketch(sketchId: string, w: number, h: number) {
+  return {
+    id: sketchId, kind: 'sketch' as const, label: 'Rectangle', plane: '@builtin_plane_front',
+    entities: [
+      { id: 'bottom', kind: 'line' as const }, { id: 'right', kind: 'line' as const },
+      { id: 'top', kind: 'line' as const }, { id: 'left', kind: 'line' as const },
+    ],
+    initial: {
+      bottom: [0, 0, w, 0], right: [w, 0, w, h],
+      top: [w, h, 0, h], left: [0, h, 0, 0],
+    },
+    constraints: [
+      { id: 'c1', kind: 'coincident' as const, a: { entity: 'bottom', point: 'end' as const }, b: { entity: 'right', point: 'start' as const } },
+      { id: 'c2', kind: 'coincident' as const, a: { entity: 'right', point: 'end' as const }, b: { entity: 'top', point: 'start' as const } },
+      { id: 'c3', kind: 'coincident' as const, a: { entity: 'top', point: 'end' as const }, b: { entity: 'left', point: 'start' as const } },
+      { id: 'c4', kind: 'coincident' as const, a: { entity: 'left', point: 'end' as const }, b: { entity: 'bottom', point: 'start' as const } },
+      { id: 'c5', kind: 'horizontal' as const, target: { entity: 'bottom' } },
+      { id: 'c6', kind: 'horizontal' as const, target: { entity: 'top' } },
+      { id: 'c7', kind: 'vertical' as const, target: { entity: 'right' } },
+      { id: 'c8', kind: 'vertical' as const, target: { entity: 'left' } },
+      { id: 'c9', kind: 'length' as const, target: { entity: 'bottom' }, value: w },
+      { id: 'c10', kind: 'length' as const, target: { entity: 'left' }, value: h },
+    ],
+  }
+}
+
+function boxSpec(d = 5): { features: Array<Record<string, unknown>> } {
+  return { features: [
+    rectSketch('sk1', 10, 10),
+    { id: 'ex1', kind: 'extrude', sketch: '$sk1', distance: d, direction: 'normal', operation: 'new' },
+  ] }
 }
 
 /** A cylinder about +Z: circle sketch + extrude along the plane normal. */
@@ -92,29 +145,33 @@ const lateralFace = (parts: Record<string, unknown>): string => {
 
 describe.skipIf(!oc || !solveBytes)('move-face path naming (real OCC + Rust solver)', () => {
   const h = new SharedHarness(oc!)
+  afterEach(() => { forcedSequentialRefusal.value = false })
+
   beforeAll(() => {
     resetSketchSolver()
     setSketchSolver(solveBytes!)
   })
 
   it('a two-pick move mints the same extension names sequentially and as a set', () => {
-    const base = h.run(cylinderSpec())
-    const lateral = lateralFace(base.bodies)
-    const cap = faceAt(base.bodies, 'cls_zp')
+    const base = h.run(boxSpec())
+    const top = faceAt(base.bodies, 'cls_zp')
+    const bottom = faceAt(base.bodies, 'cls_zn')
 
-    const run = (faces: string[]): string[] => {
+    const run = (faces: string[], forceSet = false): string[] => {
       minted.length = 0
+      forcedSequentialRefusal.value = forceSet
       const r = h.run({ features: [
-        ...cylinderSpec().features,
+        ...boxSpec().features,
         { id: 'mf1', kind: 'move_face', move_face: { faces, distance: 2 } },
       ] })
       expect(h.res(r, 'mf1').status).toBe('ok')
       return [...new Set(minted)].sort()
     }
-    const sequential = run([lateral, cap])
-    // The no-UUID wall pick still resolves by its stable ancestry, but a query
-    // without a live construction UUID makes the leaf apply the group as a set.
-    const asSet = run([withoutUuid(lateral), cap])
+    // The no-UUID top pick resolves by its stable ancestry, so the leaf runs
+    // the sequential path; refusing that apply forces the set path over the
+    // same two, non-adjacent caps.
+    const sequential = run([withoutUuid(top), bottom])
+    const asSet = run([withoutUuid(top), bottom], true)
     expect(sequential.length).toBeGreaterThan(0)
     expect(asSet).toEqual(sequential)
     // A multi-pick group names by pick index on both paths.
