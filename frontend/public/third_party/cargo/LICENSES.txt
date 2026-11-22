@@ -10,10 +10,10 @@ as syn and proc-macro2, which run on the machine doing the compiling and are
 not present in the WebAssembly. They are listed rather than filtered out,
 because listing a crate that owes nothing is harmless and the reverse is not.
 
-Two things are NOT here. Oversolved's own crates (solver-core, sketch-solver,
-mate-solver) are covered by the repository's LICENSE.md. The Rust standard
-library is linked into the WebAssembly but is not a package in any dependency
-graph, so cargo cannot report it; it is credited in ../toolchain/.
+Two things are NOT here. Oversolved's own crates (solver-core, geom-core,
+sketch-solver, mate-solver) are covered by the repository's LICENSE.md. The Rust
+standard library is linked into the WebAssembly but is not a package in any
+dependency graph, so cargo cannot report it; it is credited in ../toolchain/.
 
 Where a crate offers a choice of licenses, every text it ships is reproduced.
 Oversolved takes them under the permissive option, and the crate's own terms

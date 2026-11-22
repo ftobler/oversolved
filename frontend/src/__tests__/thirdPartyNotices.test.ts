@@ -152,7 +152,7 @@ describe('third-party notices', () => {
 
     it('do not list the workspace\'s own crates as third-party', () => {
       const bundle = readNotices('cargo', 'LICENSES.txt')
-      for (const own of ['solver-core@', 'sketch-solver@', 'mate-solver@']) {
+      for (const own of ['solver-core@', 'geom-core@', 'sketch-solver@', 'mate-solver@']) {
         expect(bundle, `${own} is Oversolved's own code`).not.toContain(`\n${own}`)
       }
     })

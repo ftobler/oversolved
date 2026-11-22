@@ -1170,3 +1170,24 @@ describe('fit_spline loop sampling', () => {
     expect(loopGeometryKey([reversed])).toBe(loopGeometryKey([edge]))
   })
 })
+
+describe('kindless synthetic edges', () => {
+  // `registerTopFace` stamps a synthetic `edge0` as `{type, start, end}` with
+  // no `kind`. The old TS sampler read it as "no kind matched": the start
+  // entered the polygon and no samples did. The wire codec has to keep that,
+  // or every extrude top-face registration throws.
+  const synthetic: LoopEdge = { type: 'straightedge', start: [0, 0], end: [1, 0] }
+
+  it('contributes its start and no samples to the polygon', () => {
+    expect(loopPts([synthetic])).toEqual([[0, 0]])
+    expect(loopPts([synthetic, { kind: 'line', start: [1, 0], end: [0, 0] }])).toEqual([
+      [0, 0],
+      [1, 0],
+    ])
+  })
+
+  it('has no area and a degenerate centroid, like the old reader', () => {
+    expect(loopSignedArea([synthetic])).toBe(0)
+    expect(loopCentroid([synthetic])).toEqual([0, 0])
+  })
+})

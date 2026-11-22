@@ -5,28 +5,29 @@ import { afterEach, beforeEach, expect } from 'vitest'
 // the browser runs), not the TS fallback. Resolves null on a fresh checkout
 // (no `just wasm`), in which case solveSketch falls back to TS detectTopology.
 //
-// Wired in a beforeEach via DYNAMIC import (not a static top-level import) so
-// `sketch.ts`/`solverWasm` are evaluated inside each test's mocked module
-// context -- a static import here would pre-evaluate them before a test's
+// The profile-loop facade is installed here, at setup-file evaluation, because
+// some suites sample a loop BEFORE the first per-test hook: `postRegister`'s
+// fixture sweep runs at describe collection, and `measureReal` solves in
+// `beforeAll`. A beforeEach-only install left both on the throwing facade.
+const [{ setProfileLoopsBytes }, { loadProfileLoops }] = await Promise.all([
+  import('./wasm-kernel/profileLoops'),
+  import('./wasm-kernel/loadProfileLoops'),
+])
+setProfileLoopsBytes(loadProfileLoops())
+
+// Topology is wired in a beforeEach via DYNAMIC import (not a static top-level
+// import) so `sketch.ts`/`solverWasm` are evaluated inside each test's mocked
+// module context -- a static import here would pre-evaluate them before a test's
 // `vi.mock('@/wasm-kernel/solverWasm', ...)` could intercept. It runs after the
 // test's own resetSketchSolver (which preserves the topology loader), so the
 // Rust path stays wired for the solve.
 beforeEach(async () => {
-  const [
-    { setSketchTopology },
-    { loadTopology },
-    { loadProfileLoops },
-    { setProfileLoopsBytes },
-  ] = await Promise.all([
+  const [{ setSketchTopology }, { loadTopology }] = await Promise.all([
     import('./kernel/features/sketch'),
     import('./wasm-kernel/loadTopology'),
-    import('./wasm-kernel/loadProfileLoops'),
-    import('./kernel/profileLoopsRust'),
   ])
   setSketchTopology(loadTopology())
-  // The pure profile-loop facade crosses the same package. Installing it here
-  // (after each test's own resets) keeps every suite that samples a loop on the
-  // Rust path the browser runs.
+  // Re-install after a test's own reset/trap-recovery hook may have cleared it.
   setProfileLoopsBytes(loadProfileLoops())
 })
 
