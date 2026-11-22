@@ -31,9 +31,10 @@
 pub mod api;
 pub mod codec;
 pub mod constraints;
-/// The interpolating spline through N fit points (the `fit_spline` entity):
-/// the solver, the area builder and the TS mirror all read this one algorithm.
-pub(crate) mod fit_spline;
+/// The interpolating spline through N fit points (the `fit_spline` entity)
+/// lives in `geom-core` with the rest of the pure geometry; re-exported here so
+/// the solver, the codec and the area builder keep their historical paths.
+pub(crate) use geom_core::fit_spline;
 pub mod residuals;
 pub mod solve;
 #[cfg(test)]
@@ -48,27 +49,10 @@ pub mod wasm;
 
 pub use constraints::{Axis, Constraint, ConstraintKind, PointSelector, Ref, RefRole};
 
-/// Degrees->radians factor. Angle params are stored in degrees (the document's
-/// arc-angle convention) and converted at use sites. The `radians`
-/// helper keeps the multiply-then-divide grouping its call sites have always
-/// used, so it is bit-identical to the conversions it replaces.
-pub(crate) const DEG2RAD: f64 = std::f64::consts::PI / 180.0;
-
-pub(crate) fn radians(deg: f64) -> f64 {
-    deg * std::f64::consts::PI / 180.0
-}
-
-/// Floor on the `semi-axis^2` an ellipse conic residual divides by.
-///
-/// A collapsed (or corrupt) semi-axis turns `u*u / (a*a)` into infinity or NaN,
-/// and a single NaN row poisons the entire solve: every LM step from there on
-/// is NaN and the sketch silently stops converging with no error anywhere.
-/// Flooring the denominator keeps the row finite and very large, which pushes
-/// the ellipse back out of the degeneracy instead. A NaN semi-axis floors too:
-/// `f64::max` ignores the NaN operand (IEEE 754 maxNum semantics) and returns
-/// the floor, so the row stays finite. Only a finite tiny axis and a NaN axis
-/// reach the floor; an infinite axis squares to infinity and divides to zero.
-pub(crate) const MIN_SEMI_AXIS_SQ: f64 = 1e-12;
+// The degrees->radians conversion and the ellipse semi-axis floor are shared
+// with the pure geometry crate (the curve and loop code uses the very same
+// numbers); re-exported so this crate's call sites keep their paths.
+pub(crate) use geom_core::{radians, DEG2RAD, MIN_SEMI_AXIS_SQ};
 
 /// Geometric entity kinds the solver understands: seven, the four primitives
 /// (line, circle, arc, point) plus ellipse, the cubic Bezier spline, and the

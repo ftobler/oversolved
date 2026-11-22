@@ -12,12 +12,17 @@ import { solveLocally, setOccLoader } from '@/kernel/solveLocally'
 import { loadOcc } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
+import { loadProfileLoops } from '@/wasm-kernel/loadProfileLoops'
 import { setSketchSolver, setSketchTopology } from '@/kernel/features/sketch'
+import { setProfileLoopsBytes } from '@/kernel/profileLoopsRust'
 import { extractErrorMessage } from '@/kernel/errors'
 
 setOccLoader(loadOcc)
 setSketchSolver(loadSolver())
 setSketchTopology(loadTopology())
+// The profile-loop facade crosses the same package; a solve that builds a
+// sketch area would otherwise throw its "not initialised" error here.
+setProfileLoopsBytes(loadProfileLoops())
 
 process.on('message', async ({ id, spec, options }) => {
   try {

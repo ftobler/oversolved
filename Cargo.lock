@@ -36,6 +36,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
+name = "geom-core"
+version = "0.0.0"
+dependencies = [
+ "serde_json",
+ "solver-core",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -240,6 +248,7 @@ dependencies = [
 name = "sketch-solver"
 version = "0.0.0"
 dependencies = [
+ "geom-core",
  "nalgebra",
  "serde",
  "serde_json",

@@ -3,8 +3,16 @@
 //! This is the canonical implementation of the `fit_spline` entity: the solver
 //! residuals, the area builder's piece expansion and the TypeScript mirror
 //! (`frontend/src/utils/geometry/fitSpline.ts`) all agree with it, and the
-//! golden fixture in `fit_spline/golden.json` (generated from OCP's
-//! `GeomAPI_Interpolate`) pins the agreement.
+//! golden fixture beside this file (generated from OCP's
+//! `GeomAPI_Interpolate`) pins the agreement. Both `cargo test` and the
+//! TypeScript suite read that one fixture.
+//!
+//! The TypeScript mirror stays on the render/pick/snap side: those callers need
+//! an evaluation before any Worker solve exists (a draw preview, a hover
+//! polyline, a closer-point search), so they cannot take the curve from a solve
+//! reply and the main thread does not load a WASM package for it. The Rust copy
+//! is the one the solver and the area builder run; the golden keeps the two in
+//! step.
 //!
 //! The construction is the clamped C2 cubic spline that OCP builds:
 //!

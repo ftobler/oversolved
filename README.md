@@ -16,7 +16,8 @@ A build produces static files that any static host can serve.
   kernel, in a Web Worker. It uses WebAssembly exception handling, so the app
   needs Chrome 95+, Firefox 100+ or Safari 15.2+
 - Rust solvers, WASM: `sketch-solver` (2D sketch constraints), `mate-solver`
-  (assembly mates), on the shared `solver-core`
+  (assembly mates), on the shared `solver-core`; `geom-core` carries the pure
+  2D geometry both the solver and the TypeScript kernel use
 - Python (`oversolved/`) for build-time icon generation only, never deployed
 
 ## Quick start
@@ -47,7 +48,7 @@ without re-running it.
 ## Layout
 
 - `frontend/` - the React app, which is the whole product
-- `sketch-solver/`, `mate-solver/`, `solver-core/` - the Rust solver workspace
+- `sketch-solver/`, `geom-core/`, `mate-solver/`, `solver-core/` - the Rust solver workspace
 - `oversolved/` - icon generation
 - `tests/` - pytest suite for the Python tooling and the docs invariants
 - `docs/` - architecture and setup notes

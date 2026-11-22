@@ -7,7 +7,7 @@ There is no server and no database process.
 
 ## Structure
 - `frontend/` - React app, the whole product (must `cd frontend` before running frontend commands)
-- `sketch-solver/`, `mate-solver/`, `solver-core/` - Rust solver workspace, built to WASM
+- `sketch-solver/`, `geom-core/`, `mate-solver/`, `solver-core/` - Rust solver workspace, built to WASM
 - `oversolved/` - build-time icon generation only (`icons/` package, `icon_cairo.py`; `icons.py` is the launcher)
 - `tests/` - pytest suite for the Python tooling and the docs/config invariants
 - `lint.py` - the project's own comment-style and file-hygiene linter
@@ -59,7 +59,7 @@ rebuild the WASM with `just wasm` before `just frontend`.
 
 ```bash
 just rust-fmt   # cargo fmt --all --check (run `cargo fmt --all` to fix)
-just rust-lint  # clippy -D warnings + lint.py solver-core sketch-solver mate-solver
+just rust-lint  # clippy -D warnings + lint.py solver-core geom-core sketch-solver mate-solver
 just rust-test  # cargo test --workspace, including the in-gate sketch fuzz
 ```
 

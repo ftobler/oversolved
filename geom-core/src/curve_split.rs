@@ -7,7 +7,7 @@
 //! is represented exactly by new control points. An ellipse cut at two eccentric
 //! angles yields the endpoints of the resulting elliptical arc.
 
-pub use super::Vec2;
+pub use crate::Vec2;
 /// The four control points of a cubic Bezier: endpoints P1/P4 plus off-curve
 /// handles P2/P3, in `[p0, c1, c2, p3]` order.
 pub type BezierCtrl = [Vec2; 4];

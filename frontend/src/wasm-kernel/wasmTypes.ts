@@ -14,14 +14,20 @@ export type SolveBytes = (input: Uint8Array) => Uint8Array
 /** The topology/area-builder entry point (`detect_topology_bytes`). */
 export type TopologyBytes = (input: Uint8Array) => Uint8Array
 
+/** The pure profile-loop family (`profile_loops_bytes`): sampling, area,
+ *  centroid, containment, subdivision, bytes in and bytes out. */
+export type ProfileLoopsBytes = (input: Uint8Array) => Uint8Array
+
 /**
  * The sketch solver and the area builder that shares its wasm instance, as one
  * load hands them back. They must come from the SAME instance: `solve_sketch_bytes`
- * and `detect_topology_bytes` are exports of one package and one heap.
+ * and `detect_topology_bytes` are exports of one package and one heap. The
+ * profile-loop family rides the same instance for the same reason.
  */
 export interface SketchSolverBundle {
   solve: SolveBytes
   topology: TopologyBytes | null
+  profileLoops: ProfileLoopsBytes | null
 }
 
 /**
@@ -32,4 +38,5 @@ export interface SketchSolverBundle {
 export interface SketchPkgNodeModule {
   solve_sketch_bytes?: SolveBytes
   detect_topology_bytes?: TopologyBytes
+  profile_loops_bytes?: ProfileLoopsBytes
 }

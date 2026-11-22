@@ -2,7 +2,7 @@
 
 The sketch solver's interpolating spline must match what CadQuery builds through
 `GeomAPI_Interpolate`. OCP is the oracle: this script writes the cases once,
-`sketch-solver/src/fit_spline/golden.json` is committed, and both the Rust and
+`geom-core/src/fit_spline/golden.json` is committed, and both the Rust and
 the TypeScript suites read that file. Regenerate with
 
     .venv/bin/python tests/fit_spline_golden.py
@@ -28,7 +28,7 @@ import pathlib
 from typing import Any
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-GOLDEN = ROOT / "sketch-solver" / "src" / "fit_spline" / "golden.json"
+GOLDEN = ROOT / "geom-core" / "src" / "fit_spline" / "golden.json"
 
 # 9 interior samples per span, at the chord parameter fractions 1/10..9/10.
 SAMPLES_PER_SPAN = 9

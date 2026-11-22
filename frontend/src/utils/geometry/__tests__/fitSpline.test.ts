@@ -6,7 +6,7 @@
  * rather than three hand-written oracles.
  */
 import { describe, expect, it } from 'vitest'
-import golden from '../../../../../sketch-solver/src/fit_spline/golden.json'
+import golden from '../../../../../geom-core/src/fit_spline/golden.json'
 import {
   chordParams,
   FitSplineError,

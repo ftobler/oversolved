@@ -507,7 +507,7 @@ pub(super) fn build_standalone_fit_splines(
         };
         // Standalone loops are published CCW like the circle pass, so the
         // oracle's signed-area check reads a positive face.
-        if crate::topology::profile_loops::loop_signed_area(std::slice::from_ref(&edge)) < 0.0 {
+        if crate::topology::profile_loops::loop_signed_area(std::slice::from_ref(&edge), 1) < 0.0 {
             edge.geom = super::build::rev(&edge.geom);
         }
         Some(vec![edge])

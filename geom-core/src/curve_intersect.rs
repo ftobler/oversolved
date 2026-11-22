@@ -23,14 +23,13 @@
 //! a figure-eight's own crossing splits its lobes apart exactly as a crossing
 //! with another curve would.
 
-use super::curve_split::{bezier_point, ellipse_point_at};
-use super::dcel::pymod;
-use super::{TOL_TOPOLOGY_EPS, TOL_TOPOLOGY_MERGE, TOL_TOPOLOGY_SPLIT, TWO_PI};
-use crate::radians;
+use crate::curve_split::{bezier_point, ellipse_point_at};
+use crate::pymod;
 use crate::tolerance::{tangent_collapse_tol, tangent_gap_tol};
-use crate::MIN_SEMI_AXIS_SQ;
-
-pub use super::Vec2;
+use crate::{
+    radians, Vec2, MIN_SEMI_AXIS_SQ, TOL_TOPOLOGY_EPS, TOL_TOPOLOGY_MERGE, TOL_TOPOLOGY_SPLIT,
+    TWO_PI,
+};
 
 /// One of the four carrier curves the area builder intersects. `Vec2` fields are
 /// the shared 2D point type from the topology module.
@@ -118,9 +117,9 @@ fn semi_axis_floor() -> f64 {
 /// the other end. Comparing magnitudes also avoids squaring a large axis into
 /// overflow.
 ///
-/// `pub(crate)` because the declared-contact parameter recovery divides by the
-/// same axes under its own floor (1e-9, `dcel::contacts`).
-pub(crate) fn usable_semi_axis(axis: f64, floor: f64) -> f64 {
+/// `pub` because the declared-contact parameter recovery in the solver's `dcel`
+/// divides by the same axes under its own floor (1e-9).
+pub fn usable_semi_axis(axis: f64, floor: f64) -> f64 {
     if axis.abs() >= floor {
         axis
     } else if axis < 0.0 {
@@ -207,7 +206,7 @@ fn conic_residual(curve: &Curve) -> Option<Box<dyn Fn(Vec2) -> f64>> {
 /// radius, so half its control-polygon bounding-box diagonal stands in; a line
 /// contributes 0, leaving the caller's absolute floor (its caller pairs it with
 /// a curve that does have a scale).
-pub(crate) fn curve_scale(curve: &Curve) -> f64 {
+pub fn curve_scale(curve: &Curve) -> f64 {
     match *curve {
         Curve::Circle { r, .. } => r.abs(),
         Curve::Ellipse { a, b, .. } => a.abs().min(b.abs()),
@@ -982,7 +981,7 @@ fn ternary(c: &Curve, other: Vec2, lo: f64, hi: f64, periodic: bool) -> f64 {
 /// A coarse grid finds the global minimum (a pair can have several near
 /// approaches), then alternating ternary refinements slide each parameter onto
 /// the foot. Deterministic, no RNG; the scan only has to locate the basin.
-pub(crate) fn closest_hit(a: &Curve, b: &Curve) -> Option<(Hit, f64)> {
+pub fn closest_hit(a: &Curve, b: &Curve) -> Option<(Hit, f64)> {
     const N: usize = 96;
     let (a0, a1) = domain_of(a);
     let (b0, b1) = domain_of(b);

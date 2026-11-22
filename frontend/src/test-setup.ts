@@ -12,11 +12,22 @@ import { afterEach, beforeEach, expect } from 'vitest'
 // test's own resetSketchSolver (which preserves the topology loader), so the
 // Rust path stays wired for the solve.
 beforeEach(async () => {
-  const [{ setSketchTopology }, { loadTopology }] = await Promise.all([
+  const [
+    { setSketchTopology },
+    { loadTopology },
+    { loadProfileLoops },
+    { setProfileLoopsBytes },
+  ] = await Promise.all([
     import('./kernel/features/sketch'),
     import('./wasm-kernel/loadTopology'),
+    import('./wasm-kernel/loadProfileLoops'),
+    import('./kernel/profileLoopsRust'),
   ])
   setSketchTopology(loadTopology())
+  // The pure profile-loop facade crosses the same package. Installing it here
+  // (after each test's own resets) keeps every suite that samples a loop on the
+  // Rust path the browser runs.
+  setProfileLoopsBytes(loadProfileLoops())
 })
 
 // Event-loop starvation watchdog. A test that awaits only settled promises

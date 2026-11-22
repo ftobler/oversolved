@@ -1,0 +1,23 @@
+[package]
+name = "geom-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+description = "Pure 2D geometry and algorithms shared by the sketch solver and the TS kernel: no OCC, no wasm-bindgen."
+
+[lib]
+# rlib only. This crate is compiled INTO a consumer's WASM binary (today
+# `sketch-solver`); it must never grow a wasm-bindgen boundary of its own, so a
+# Worker pays for the code only as part of the binary it already loads.
+crate-type = ["rlib"]
+
+[dependencies]
+# The little-endian byte cursor the ported families' wire codecs read and write
+# through: the same one the solvers use, so there is one cursor implementation.
+solver-core.workspace = true
+
+[dev-dependencies]
+# The checked-in golden fixtures are JSON (generated from the TS module); only
+# the test build parses them, so the WASM binary never carries serde.
+serde_json.workspace = true

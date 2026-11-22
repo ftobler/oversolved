@@ -1,6 +1,6 @@
 """Guard the committed fit-spline golden fixture.
 
-`sketch-solver/src/fit_spline/golden.json` is generated from OCP by
+`geom-core/src/fit_spline/golden.json` is generated from OCP by
 `tests/fit_spline_golden.py` and read by both the Rust and the TypeScript
 suites. The first test pins the file's shape so a truncated or hand-edited
 fixture fails; the second regenerates it when OCP imports and requires an exact
@@ -17,7 +17,7 @@ from typing import Any
 import pytest
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-GOLDEN = ROOT / "sketch-solver" / "src" / "fit_spline" / "golden.json"
+GOLDEN = ROOT / "geom-core" / "src" / "fit_spline" / "golden.json"
 
 spec = importlib.util.spec_from_file_location(
     "fit_spline_golden", ROOT / "tests" / "fit_spline_golden.py"

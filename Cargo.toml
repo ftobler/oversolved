@@ -1,15 +1,18 @@
 # Rust workspace for the CAD solver kernels.
 #
-# Three crates, two WASM binaries. `solver-core` holds what both solvers
+# Four crates, two WASM binaries. `solver-core` holds what both solvers
 # genuinely share (the Levenberg-Marquardt driver, the sparse row type, the
-# little-endian byte cursor); `sketch-solver` and `mate-solver` each compile to
-# their own wasm-pack package so the two Workers that load them (the OCC/sketch
-# builder Worker and the anchor solver Worker) stop paying for each other's
-# code, and so their wire formats can be versioned independently.
+# little-endian byte cursor); `geom-core` holds the pure 2D geometry (curves,
+# profiles, fits) that never touches OCC and compiles INTO the sketch-solver
+# binary rather than shipping as a package of its own; `sketch-solver` and
+# `mate-solver` each compile to their own wasm-pack package so the two Workers
+# that load them (the OCC/sketch builder Worker and the anchor solver Worker)
+# stop paying for each other's code, and so their wire formats can be versioned
+# independently.
 
 [workspace]
 resolver = "2"
-members = ["solver-core", "sketch-solver", "mate-solver"]
+members = ["solver-core", "geom-core", "sketch-solver", "mate-solver"]
 
 [workspace.package]
 version = "0.0.0"
@@ -31,6 +34,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 wasm-bindgen = "0.2"
 solver-core = { path = "solver-core" }
+geom-core = { path = "geom-core" }
 
 # Release profile is workspace-wide: both wasm binaries want the same
 # size/speed treatment.

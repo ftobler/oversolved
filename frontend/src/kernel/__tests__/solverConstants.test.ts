@@ -21,11 +21,11 @@ import {
 } from '../solverConstants'
 import { DEFAULT_MEASURE_TOLERANCE } from '../occ/measureTolerance'
 
-// The topology tolerances are mirrored by value into
-// sketch-solver/src/topology/mod.rs; float parity there is load-bearing
-// (vertex-merge order feeds the query strings). This guard parses the Rust
-// source directly so either side drifting fails here instead of in geometry.
-const RUST_TOPOLOGY_MOD = join(__dirname, '../../../../sketch-solver/src/topology/mod.rs')
+// The topology tolerances are mirrored by value into geom-core/src/lib.rs (the
+// pure geometry crate); float parity there is load-bearing (vertex-merge order
+// feeds the query strings). This guard parses the Rust source directly so
+// either side drifting fails here instead of in geometry.
+const RUST_TOPOLOGY_MOD = join(__dirname, '../../../../geom-core/src/lib.rs')
 // The kernel precision contract's twins live in the tolerance ladder itself:
 // the solver's finish phase and this side must target the same OCC values.
 const RUST_TOLERANCE = join(__dirname, '../../../../sketch-solver/src/tolerance.rs')

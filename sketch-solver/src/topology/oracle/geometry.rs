@@ -9,9 +9,9 @@ use crate::radians;
 use crate::topology::dcel::{pymod, TopologyOut};
 use crate::topology::profile_loops::{BoundaryEdge, EdgeGeom, Vec2};
 use crate::topology::{
-    TOL_FACE_EXISTENCE_MIN_AREA, TOL_NEAR_ZERO_AREA, TOL_TOPOLOGY_EPS as EPS,
-    TOL_TOPOLOGY_MERGE as MERGE, TWO_PI,
+    TOL_FACE_EXISTENCE_MIN_AREA, TOL_TOPOLOGY_EPS as EPS, TOL_TOPOLOGY_MERGE as MERGE, TWO_PI,
 };
+use geom_core::TOL_NEAR_ZERO_AREA;
 
 // ─── Sampling ───
 

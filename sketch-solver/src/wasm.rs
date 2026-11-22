@@ -34,6 +34,16 @@ pub fn check_topology_violations(input: &[u8]) -> Result<Vec<u8>, JsError> {
         .map_err(|e| JsError::new(&format!("oracle error: {e}")))
 }
 
+/// Run the pure profile-loop family (sampling, area, centroid, containment)
+/// from a flat byte buffer, returning a flat byte buffer. See
+/// `geom_core::wire` for the layout: one op byte covers the handful of
+/// functions the TS facade keeps its old signatures for, and the version byte
+/// beside the magic fails a stale js/wasm pairing loudly.
+#[wasm_bindgen]
+pub fn profile_loops_bytes(input: &[u8]) -> Result<Vec<u8>, JsError> {
+    geom_core::wire::profile_loops_bytes(input).map_err(|e| JsError::new(&e.to_string()))
+}
+
 /// Run the sketch area builder (topology) from an ordered `richGeom` JSON
 /// payload, returning the structural topology JSON the TS decorator consumes.
 /// Separate from `solve_sketch_bytes`: topology and solve cross the boundary
