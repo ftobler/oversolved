@@ -66,6 +66,10 @@ describe('Workspaces folder import', () => {
     wrap()
     await clickImportItem('Import folder')
 
+    // Settle on the import's own completion first: the empty workspace row
+    // shows a Gearbox tile before the landing, and a test that ends there leaks
+    // the rest of the import into the next test's fresh database.
+    expect(await screen.findByText(/Copied 1 entries into this workspace/)).toBeInTheDocument()
     // The grid refetched against the adopted workspace: the file that was
     // sitting in the folder is now a live entry and its name labels the tile.
     expect(await screen.findByText('Gearbox')).toBeInTheDocument()
@@ -80,6 +84,8 @@ describe('Workspaces folder import', () => {
 
     wrap()
     await clickImportItem('Import folder')
+    // Wait for the import to finish, not just the first tile (see above).
+    await screen.findByText(/Copied 1 entries into this workspace/)
     await screen.findByText('Gearbox')
 
     expect(screen.queryByTitle(/^Reopen/)).not.toBeInTheDocument()
