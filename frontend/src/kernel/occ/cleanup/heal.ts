@@ -30,6 +30,7 @@ export function healShape(
   oc: OccModule,
   scope: DisposeScope,
   shape: OccShape,
+  options: { allowMixedOrientation?: boolean } = {},
 ): { shape: OccShape; rebase: SubShapeRebase } | null {
   let healed: OccShape
   let fixer: OccShapeFixShape
@@ -45,6 +46,7 @@ export function healShape(
     validity: 'always',
     topology: true,
     positiveVolume: true,
+    allowMixedOrientation: options.allowMixedOrientation === true,
   }).sound) {
     // The healed handle stays in the scope: it is no longer referenced by this
     // call, and the build scope frees it with the other transients.
@@ -71,7 +73,7 @@ export function heal(
   options: PassOptions = {},
 ): PassResult {
   if (options.onlyIfInvalid !== false && shapeIsValid(oc, scope, shape)) return unchanged(shape)
-  const healed = healShape(oc, scope, shape)
+  const healed = healShape(oc, scope, shape, { allowMixedOrientation: options.allowMixedOrientation === true })
   if (healed === null) return unchanged(shape, true)
   return { shape: healed.shape, changed: true, rebase: healed.rebase }
 }

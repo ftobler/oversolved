@@ -55,8 +55,7 @@ import { booleanWithDiff } from './booleans'
 import { movedSurface, sameAnalyticSurface, type MovedSurface, MoveFaceRefusal } from './moveFaceSurfaces'
 import { offsetResultSolid } from './offsetShape'
 import { runCleanup } from './cleanup/pipeline'
-import { heal } from './cleanup/heal'
-import { unifySameDomain } from './cleanup/unifySameDomain'
+import { booleanPlan } from './cleanup/presets'
 import { shapeIsValid } from './cleanup/guard'
 import { volumeOfDefault } from './volume'
 import { TOL_SURFACE_IDENTITY } from '../solverConstants'
@@ -351,6 +350,30 @@ function circleFrame(
   return out
 }
 
+/**
+ * A section circle's frame, with the OLD edge's orientation when the old edge
+ * is also a circle on the same plane. A section cut by a face can hand back a
+ * circle whose axis is the other sign (the plane face's normal, not the cap's);
+ * the points are identical but the parameter runs the other way, and a fillet
+ * on the rebuilt rim then builds inside-out. Keeping the old axis and X axis
+ * makes the new edge start where the old one did, which the cap's pcurve and
+ * the seam vertex also expect.
+ */
+function orientedCircleFrame(
+  oc: OccModule,
+  scope: DisposeScope,
+  oldEdge: OccShape,
+  section: { center: Vec3; normal: Vec3; xAxis: Vec3; radius: number },
+): { center: Vec3; normal: Vec3; xAxis: Vec3; radius: number } {
+  const adaptor = scope.track(new oc.BRepAdaptor_Curve_2(oldEdge))
+  if (adaptor.GetType().value !== oc.GeomAbs_CurveType.GeomAbs_Circle.value) return section
+  const old = circleFrame(scope, scope.track(adaptor.Circle()))
+  // Only when the planes coincide: a moved slanted face can put the old circle
+  // on a different plane, where the old frame is not a valid parametrisation.
+  if (Math.abs(dot(old.normal, section.normal)) < 1 - 1e-9) return section
+  return { center: section.center, normal: old.normal, xAxis: old.xAxis, radius: section.radius }
+}
+
 /** A tracked vertex at `p`. */
 function trackVertex(oc: OccModule, scope: DisposeScope, p: Vec3): OccShape {
   const maker = scope.track(new oc.BRepBuilderAPI_MakeVertex(
@@ -392,6 +415,23 @@ function tweakOutward(
   const inc = buildIncidence(oc, scope, part)
   const picked = new IdentityMap<number>()
   picks.forEach((pick, i) => picked.set(pick.face as OccSubShape, i))
+  // A boolean-split body carries two or more faces on ONE analytic surface (the
+  // bite halves, a cap split by a slot). Rebuilding the split network needs a
+  // new face between the moved half and the staying one; the direct tweak mints
+  // none, and the hand-built shell of a multi-arc network is where its rebuild
+  // traps. Refuse the whole move by name rather than crash or ship an open
+  // shell. The old slab route minted an `|extend|` face here; that is a
+  // backlog item for the direct route, not a fallback.
+  for (let i = 0; i < inc.faces.length; i++) {
+    for (let j = i + 1; j < inc.faces.length; j++) {
+      if (sameAnalyticSurface(oc, scope, inc.faces[i], inc.faces[j])) {
+        throw new MoveFaceRefusal(
+          'move_face: the body has two faces on one surface (a boolean split); ' +
+          'the direct tweak cannot rebuild the split network without minting a step face',
+        )
+      }
+    }
+  }
   const L = 4 * (bboxDiagonal(oc, scope, part) + Math.max(...picks.map((p) => Math.abs(p.distance))))
 
   // The original surfaces first: the planar collapse clamp below reads the
@@ -424,6 +464,21 @@ function tweakOutward(
       }
     }
     let limit = Infinity
+    // A neighbour that ends before the moved surface (a pocket wall ending at
+    // the block top) closes before the picked face arrives: the face vanishes
+    // into the neighbour, so clamp to that end and let the cleanup merge. A cone
+    // neighbour's apex is the same collapse but the direct shell cannot build
+    // the resulting singularity, so it stays the named refusal below.
+    const own = new Set<OccShape>()
+    for (const v of inc.verticesOfFace(pick.face)) own.add(v)
+    for (const neighbour of neighbours) {
+      if (coneApexOf(oc, scope, neighbour) !== null) continue
+      for (const vertex of inc.verticesOfFace(neighbour)) {
+        if ([...own].some((o) => (o as OccSubShape).IsSame(vertex as OccSubShape))) continue
+        const s = dot(sub(vertexPoint(oc, vertex), surface.plane.point), surface.plane.normal)
+        if (s > 1e-9 && s < limit) limit = s
+      }
+    }
     for (let a = 0; a < neighbours.length; a++) {
       for (let b = a + 1; b < neighbours.length; b++) {
         if (a === b) continue
@@ -456,24 +511,19 @@ function tweakOutward(
         : movedTweakSurface(oc, scope, face, movedSurface(oc, scope, face, effective[at]), effective[at]),
     )
   }
-  // A picked face whose neighbour ends at a vertex before the moved surface
-  // (a cap moved past a cone's apex) would let the neighbour close before the
-  // face arrives; the tweak cannot express the vanish, so refuse and let the
-  // compatibility route handle it.
+  // A picked face whose neighbour is a cone ending at its apex before the moved
+  // surface would vanish into the cone's singularity; the direct shell builder
+  // has no construction for that, so it refuses by name. Every other neighbour
+  // that ends before the surface is clamped above.
   for (const face of inc.faces) {
     if (!picked.has(face as OccSubShape)) continue
     const plane = (originals.get(face as OccSubShape) as TweakSurface).plane
     if (plane === null) continue
     const d = effective[picked.get(face as OccSubShape) as number]
     if (d <= 0) continue
-    const own = new Set<OccShape>()
-    for (const v of inc.verticesOfFace(face)) own.add(v)
     for (const edge of inc.edgesOfFace.get(face as OccSubShape) ?? []) {
       for (const neighbour of inc.facesOfEdge.get(edge as OccSubShape) ?? []) {
         if ((neighbour as OccSubShape).IsSame(face as OccSubShape)) continue
-        // A cone neighbour's surface ends at its apex even when the trimmed
-        // face stops earlier; a move past the apex would build the mirrored
-        // nappe, so the face must vanish instead.
         const apex = coneApexOf(oc, scope, neighbour)
         if (apex !== null) {
           const s = dot(sub(apex, plane.point), plane.normal)
@@ -483,39 +533,10 @@ function tweakOutward(
             )
           }
         }
-        for (const vertex of inc.verticesOfFace(neighbour)) {
-          if ([...own].some((o) => (o as OccSubShape).IsSame(vertex as OccSubShape))) continue
-          const p = vertexPoint(oc, vertex)
-          const s = dot(sub(p, plane.point), plane.normal)
-          if (s > 1e-6 && s < d - 1e-9) {
-            throw new MoveFaceRefusal(
-              'move_face: a neighbour ends before the moved surface; the moved face would vanish',
-            )
-          }
-        }
       }
     }
   }
 
-  // A moved face whose same-surface sibling stays behind leaves a step that
-  // needs a NEW face between them. The direct tweak keeps every UUID and mints
-  // none, so it refuses this by name instead of shipping an open shell; the
-  // step is a backlog item (it would have to mint a face the old slab route
-  // named `|extend|`).
-  for (const face of inc.faces) {
-    if (!picked.has(face as OccSubShape)) continue
-    for (const edge of inc.edgesOfFace.get(face as OccSubShape) ?? []) {
-      for (const other of inc.facesOfEdge.get(edge as OccSubShape) ?? []) {
-        if ((other as OccSubShape).IsSame(face as OccSubShape)) continue
-        if (picked.has(other as OccSubShape)) continue
-        if (!sameAnalyticSurface(oc, scope, face, other)) continue
-        throw new MoveFaceRefusal(
-          'move_face: a picked face shares its own surface with a face that stays behind; ' +
-          'the step between them needs a new face, which the direct tweak does not mint',
-        )
-      }
-    }
-  }
   const surfaceOf = (face: OccShape): TweakSurface => surfaces.get(face as OccSubShape) as TweakSurface
   const isPicked = (face: OccShape): boolean => picked.get(face as OccSubShape) !== undefined
   // A closed picked face (a full sphere or torus) has no boundary edges to
@@ -693,8 +714,9 @@ function tweakOutward(
   }
 
   // A picked face none of whose edges could be re-intersected has neighbours
-  // that do not reach the moved surface (a cap moved past a cone's apex). The
-  // face vanishes; the slab route is the compatibility fallback for that case.
+  // that do not reach the moved surface (a cap moved past a cone's apex). It is
+  // refused by name above: the direct shell builder has no construction for the
+  // cone singularity, and there is no slab fallback.
   for (const face of inc.faces) {
     if (!picked.has(face as OccSubShape)) continue
     if (closedPicked.has(face as OccSubShape)) continue
@@ -1037,7 +1059,7 @@ function buildTrimmedEdge(
   if (closed || points.length < 2) {
     if (t === C.GeomAbs_Circle.value) {
       const circ = scope.track(adaptor.Circle())
-      const frame = circleFrame(scope, circ)
+      const frame = orientedCircleFrame(oc, scope, oldEdge, circleFrame(scope, circ))
       const out = makeCircleEdge(oc, scope, frame.center, frame.normal, frame.xAxis, frame.radius)
       return scope.track(weld(out))
     }
@@ -1050,7 +1072,7 @@ function buildTrimmedEdge(
   }
   if (t === C.GeomAbs_Circle.value) {
     const circ = scope.track(adaptor.Circle())
-    const frame = circleFrame(scope, circ)
+    const frame = orientedCircleFrame(oc, scope, oldEdge, circleFrame(scope, circ))
     const center = frame.center
     const normal = frame.normal
     const xAxis = frame.xAxis
@@ -1423,12 +1445,10 @@ export function applyMoveFaces(
   })
 
   const diff = diffFromOrigin(faceOrigin, modified)
-  // The cleanup layer folds a moved face onto a coplanar neighbour (a rejected
-  // pass keeps the previous shape, exactly as the boolean path does).
-  const cleanup = runCleanup(oc, scope, { shape, diff, faceOrigin }, [
-    { name: 'heal', pass: heal, options: { onlyIfInvalid: true }, selfGuarded: true },
-    { name: 'unifySameDomain', pass: unifySameDomain, options: { unifyFaces: true }, guard: {} },
-  ])
+  // The cleanup layer canonicalises the rebuilt cylinders, re-seats a seam the
+  // move cut, and folds a moved face onto a coplanar neighbour. A rejected pass
+  // keeps the previous shape, exactly as the boolean path does.
+  const cleanup = runCleanup(oc, scope, { shape, diff, faceOrigin }, booleanPlan({ unifyFaces: true }))
   return {
     shape: cleanup.shape,
     faceOrigin: (cleanup.faceOrigin ?? faceOrigin) as TweakOrigin[],

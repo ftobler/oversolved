@@ -46,6 +46,8 @@ export interface PassOptions {
   angularTol?: number
   // Heal only when the input is not already valid.
   onlyIfInvalid?: boolean
+  // Admit a negative-volume invalid input whose shell orientation is mixed.
+  allowMixedOrientation?: boolean
 }
 
 export type CleanupPass = (
@@ -66,13 +68,20 @@ export type CleanupPass = (
  * - `topology: true` demands the same solid/face/edge counts, the promise a
  *   projector-like pass (the healer) makes: a heal that invents or drops a
  *   face is corruption wearing a repair.
- * - `positiveVolume: true` refuses a pass whose input has no material (a
- *   collapsed shell), which keeping a ~0 volume would otherwise pass.
+ * - `positiveVolume: true` refuses a pass whose input or result has no
+ *   material (a collapsed shell), which keeping a ~0 volume would otherwise
+ *   pass. The input's magnitude is read, not its sign: a mixed-orientation
+ *   invalid input can integrate negative and the healer reorients it; the
+ *   result must be positive.
  */
 export interface GuardOptions {
   validity?: 'whenClosed' | 'always'
   topology?: boolean
   positiveVolume?: boolean
+  // A mixed-orientation invalid input can integrate a negative volume; the
+  // healer may adopt its positive valid repair. Off by default: a positive but
+  // wrong-volume input (a self-intersecting shell) must still keep its volume.
+  allowMixedOrientation?: boolean
 }
 
 /** One step of a plan: which pass, with which options, under which guard. */

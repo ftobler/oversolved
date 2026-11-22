@@ -30,7 +30,6 @@ import {
 } from '../occ/moveFaceTweak'
 import { transferBooleanNames } from './booleanLineage'
 import { linearHandle, type FeatureHandle } from './featureHandles'
-import { solveMoveFaceSequential } from './moveFaceSequential'
 
 type Dict = { [key: string]: unknown }
 
@@ -64,11 +63,10 @@ interface ResolvedPick {
 }
 
 /**
- * Solve a move-face feature: try the direct tweak first, and fall back to the
- * shipped slab route when the tweak refuses (a same-surface step needs a face
- * the direct route does not mint, or a multi-arc shell it cannot yet rebuild).
- * The direct attempt runs on a scratch copy of the part store, so a refusal
- * never leaves a half-applied body behind.
+ * Solve a move-face feature: the direct tweak, once per body with every pick.
+ * A distance of 0 is the identity (no `modified_by`, no resplit). A pick the
+ * tweak refuses is reported in `failed_faces` by its query; there is no
+ * fallback construction.
  */
 export function solveMoveFace(
   oc: OccModule,
@@ -78,19 +76,7 @@ export function solveMoveFace(
   globalRepo: Repository,
   partStore: Record<string, PartSolid>,
 ): MoveFaceResult {
-  try {
-    return solveMoveFaceDirect(oc, scope, table, feature, globalRepo, partStore)
-  } catch (e) {
-    // A named move_face failure is the direct route refusing; the class check
-    // can fail across a bundler's duplicate module copy, so the message prefix
-    // is the reliable signal. "Removes the whole part" is a real outcome, not a
-    // refusal to retry: the cut already removed the body.
-    const named = (e instanceof Error && e.message.startsWith('move_face:')) || e instanceof MoveFaceRefusal
-    if (named && !(e instanceof Error && e.message.includes('removes the whole part'))) {
-      return solveMoveFaceSequential(oc, scope, table, feature, globalRepo, partStore)
-    }
-    throw e
-  }
+  return solveMoveFaceDirect(oc, scope, table, feature, globalRepo, partStore)
 }
 
 /**
@@ -137,9 +123,12 @@ function solveMoveFaceDirect(
   const refusals: string[] = []
   const applied: string[] = []
   let handle: FeatureHandle | null = null
+  // The body a pure refusal happened on, so an all-refused result can still
+  // name it in the failed_faces answer.
+  let refusedPartId: string | null = null
   // The direct construction is pure: nothing is committed until every body's
   // result is built, so a refusal anywhere leaves the store untouched and the
-  // compatibility route starts from the original shapes.
+  // next body starts from its original shape.
   const commits: { part: PartSolid; shape: OccShape; names: ShapeNames; diff: ReturnType<typeof applyMoveFaces>['diff'] }[] = []
 
   for (const [bid, qlist] of groups) {
@@ -177,19 +166,9 @@ function solveMoveFaceDirect(
       continue
     }
 
-    // The direct route is the planar face's default. A curved pick still takes
-    // the compatibility route: its moved face is proven in isolation (the occ
-    // tests), but a downstream fillet on the rebuilt curved wall rejects the
-    // face's pcurves, and the shipped slab route keeps the corpus green until
-    // that is closed (backlog: direct curved faces, downstream fillet).
-    const curved = picks.some((pick) => {
-      const adaptor = scope.track(new oc.BRepAdaptor_Surface_2(pick.face, true))
-      return adaptor.GetType().value !== oc.GeomAbs_SurfaceType.GeomAbs_Plane.value
-    })
-    if (curved) {
-      throw new MoveFaceRefusal('move_face: a curved pick still takes the compatibility route')
-    }
-
+    // The direct tweak is the only route. Every analytic surface kind and a
+    // freeform neighbour go through it; a pick it cannot build is refused by
+    // name below, never handed to another construction.
     try {
       const res = applyMoveFaces(
         oc,
@@ -237,7 +216,8 @@ function solveMoveFaceDirect(
     } catch (e) {
       if (e instanceof MoveFaceRefusal) {
         failed.push(...picks.map((pick) => pick.q))
-        refusals.push(e.message)
+        refusals.push(`${e.message} [picks: ${picks.map((pick) => pick.q).join(', ')}]`)
+        refusedPartId ??= part.id
         unresolved.push(...unresolvedHere)
         continue
       }
@@ -254,7 +234,18 @@ function solveMoveFaceDirect(
   }
 
   if (applied.length === 0) {
-    if (refusals.length > 0) throw new Error(refusals.join('; '))
+    if (refusals.length > 0) {
+      // A refused geometry is a loud failed_faces answer, the same path a
+      // partial group uses: the pick is named and the body is untouched.
+      return {
+        status: 'partial',
+        body_id: refusedPartId ?? '',
+        body_ids: refusedPartId !== null ? [refusedPartId] : [],
+        unresolved_faces: [...new Set(unresolved)],
+        failed_faces: [...new Set(failed)],
+        exception: `move_face: ${refusals.join('; ')}`,
+      }
+    }
     throw new Error('move_face: no picked face could be applied')
   }
 

@@ -91,6 +91,9 @@ export type HealMode = 'whenInvalid' | 'required' | 'skip'
 
 export interface ModifierPlanOptions {
   heal?: HealMode
+  // Admit a mixed-orientation invalid input (a fillet whose new face flipped).
+  // Off for a shell, whose positive-volume corruption must be refused.
+  allowMixedOrientation?: boolean
   // Appended after the heal and before the seam re-seat.
   beforeMerge?: readonly CleanupPlanEntry[]
 }
@@ -109,7 +112,10 @@ export function modifierPlan(options: ModifierPlanOptions = {}): CleanupPlan {
     plan.push({
       name: 'heal',
       pass: heal,
-      options: { onlyIfInvalid: mode === 'whenInvalid' },
+      options: {
+        onlyIfInvalid: mode === 'whenInvalid',
+        allowMixedOrientation: options.allowMixedOrientation === true,
+      },
       selfGuarded: true,
     })
   }

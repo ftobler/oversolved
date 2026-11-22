@@ -1,14 +1,14 @@
 /**
  * The analytic-surface half of move-face: one descriptor per surface kind, so
- * `moveFaceCells` builds its slab, classifies its cells and anchors its handle
- * through one interface instead of branching on the surface type.
+ * the direct tweak reads the moved surface, its target face and its outside
+ * solid through one interface instead of branching on the surface type. The
+ * slab and cell classifier the old route needed were deleted with it.
  *
  * The meaning of a move is the same on every kind: the picked face moves by the
- * signed distance `d` along its own OUTWARD normal, the faces that bound it
- * extend along their own surfaces and the face may vanish when moved too far.
- * On a curved face "along its own normal" is a uniform offset of the surface.
- * With `s` = +1 for a FORWARD face and -1 for REVERSED (so a positive distance
- * always adds material: a boss wall grows, a bore wall moves toward its axis):
+ * signed distance `d` along its own OUTWARD normal. On a curved face "along its
+ * own normal" is a uniform offset of the surface. With `s` = +1 for a FORWARD
+ * face and -1 for REVERSED (so a positive distance always adds material: a boss
+ * wall grows, a bore wall moves toward its axis):
  *
  *   cylinder | radius r -> r + s*d, same axis
  *   cone     | ref radius R -> R + s*d/cos(semi), same axis and half-angle (a
@@ -18,15 +18,13 @@
  *
  * The cone's `1/cos(semi)` is not a typo either: the gp_Cone ref radius is
  * measured on the plane through the frame origin, not perpendicular to the
- * surface, so a normal-distance move changes it by d/cos(semi). The analytic
- * volumes in occ/__tests__/moveFaceCurvedReal.test.ts pin the sign.
+ * surface, so a normal-distance move changes it by d/cos(semi). The direct
+ * tweak's analytic volumes pin the sign.
  *
- * The slab is the region between the source surface S and the target S_d, built
- * from the analytic primitives plus one boolean: the outer solid minus the
- * inner one. Where the moved surface collapses (a bore closes, a boss is
- * removed completely) the inner solid is omitted, so the face vanishes into a
- * full primitive. The planar slab is unchanged: a large face on the picked
- * plane swept by n*d.
+ * The inward move uses the outside solid below: a solid covering the OUTSIDE of
+ * the moved surface, and the tool face on the moved surface that becomes the
+ * cap. `defeatureWedge.ts` also uses `extendedNeighbourSolid` for a support
+ * face.
  */
 
 import type { DisposeScope } from './disposeScope'
@@ -70,44 +68,15 @@ export interface FaceAnchor {
 
 export interface MovedSurface {
   kind: MoveSurfaceKind
-  // The region between S and S_d as a solid, covering the face's extent and
-  // padded by L.
-  slab(L: number): OccShape
-  // The cell face lies on S.
-  onSource(cf: OccShape): boolean
-  // The cell face lies on S_d (the moved surface).
-  onTarget(cf: OccShape): boolean
-  // A face on S bounded by `wire`, a classification region (one inner
-  // hole/boss loop of the picked face).
-  regionFace(wire: OccShape): OccShape
-  // The face whose IN region covers the picked face's outer-wire area: the
-  // picked face itself for a curved kind (its own classifier, which reports the
-  // inner loops as OUT), the rebuilt outer-wire face for a plane (the shipped
-  // path, whose rebuilt interior includes the loop regions).
-  outerRegion(): OccShape
-  // Is `p` (a point on S, within the mesh deflection) inside `region`?
-  inRegion(region: OccShape, p: Vec3): boolean
   // The handle anchor: a point ON the face plus the outward normal there.
   anchor(): FaceAnchor
   // The tweak's large face on the moved surface S_d.
   targetFace(L: number): OccShape
   // The Geom_Surface of S_d. The caller owns (tracks) the handle.
   targetSurface(): OccDisposable
-  // True when the body material is on the side of S_d the outward normal
-  // points away from (an outer wall); false for a bore-like face.
-  materialInside: boolean
   // A solid covering the OUTSIDE of S_d (the boundaryless inward cutter), and
   // the tool face that lies on S_d, which becomes the moved face.
   outsideSolid(part: OccShape, L: number): { tool: OccShape; cap: OccShape }
-  // The enclosure guard: throws MoveFaceRefusal when the neighbours do not
-  // bound the picked face over `cell`'s on-source pieces.
-  assertEnclosed(
-    cell: OccShape,
-    sourceFaces: OccShape[],
-    outerRegion: OccShape,
-    innerFaces: OccShape[],
-    L: number,
-  ): void
 }
 
 // Surface-identity tolerances live on the ladder in solverConstants. This
@@ -404,16 +373,6 @@ function takeAx3(pos: OccAx3): SurfaceFrame {
   return frame
 }
 
-/** The local coordinates of `p` in a surface frame. */
-function localOf(frame: SurfaceFrame, p: Vec3): Vec3 {
-  const rel = sub(p, frame.origin)
-  return [dot(rel, frame.x), dot(rel, frame.y), dot(rel, frame.z)]
-}
-
-const wrapU = (u: number): number => ((u % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)
-
-// ─── surface identity ───
-
 /** Two unit directions are parallel or antiparallel. */
 function parallel(a: Vec3, b: Vec3): boolean {
   return norm(cross(a, b)) <= TOL_SURFACE_PARALLEL
@@ -486,64 +445,7 @@ export function sameAnalyticSurface(
   return false
 }
 
-// ─── regions ───
-
-/** A face on `wire`'s plane (the outer-wire region or an inner hole/boss loop). */
-function planeFromWire(oc: OccModule, scope: DisposeScope, wire: OccShape): OccShape {
-  const builder = scope.track(new oc.BRepBuilderAPI_MakeFace_15(wire, true))
-  if (!builder.IsDone()) throw new MoveFaceRefusal('move_face: a face loop could not be rebuilt as a planar face')
-  return scope.track(builder.Face())
-}
-
-/** A face on a curved analytic surface with `wire` as its boundary, the curved
- *  counterpart of [[planeFromWire]]. The gp_* surface must be the face's own
- *  (its frame fixes the seam, which the wire's pcurves are written against).
- *  The maker only bounds the face by the wire's UV box; the ShapeFix_Face pass
- *  trims it to the wire (probed: without it the face classifies as the whole
- *  cylinder). */
-function curvedFaceFromWire(
-  oc: OccModule,
-  scope: DisposeScope,
-  kind: 'cylinder' | 'cone' | 'sphere' | 'torus',
-  surface: OccDisposable,
-  wire: OccShape,
-): OccShape {
-  const maker = kind === 'cylinder'
-    ? scope.track(new oc.BRepBuilderAPI_MakeFace_17(surface, wire, true))
-    : kind === 'cone'
-      ? scope.track(new oc.BRepBuilderAPI_MakeFace_18(surface, wire, true))
-      : kind === 'sphere'
-        ? scope.track(new oc.BRepBuilderAPI_MakeFace_19(surface, wire, true))
-        : scope.track(new oc.BRepBuilderAPI_MakeFace_20(surface, wire, true))
-  if (!maker.IsDone()) {
-    throw new MoveFaceRefusal(`move_face: a ${kind} face loop could not be rebuilt on its surface`)
-  }
-  const raw = scope.track(maker.Face())
-  try {
-    const fixer = scope.track(new oc.ShapeFix_Face_2(raw))
-    fixer.FixOrientation_1()
-    fixer.Perform(noProgress(oc))
-    return scope.track(fixer.Face())
-  } finally {
-    raw.delete()
-  }
-}
-
-// ─── slabs ───
-
-function makePrism(
-  oc: OccModule,
-  scope: DisposeScope,
-  profile: OccShape,
-  dir: Vec3,
-  distance: number,
-): OccShape {
-  const vec = scope.track(new oc.gp_Vec_4(dir[0] * distance, dir[1] * distance, dir[2] * distance))
-  const builder = scope.track(new oc.BRepPrimAPI_MakePrism_1(profile, vec, true, true))
-  return scope.track(builder.Shape())
-}
-
-/** The solid ball of `radius` about `centre`. */
+// ─── neighbour split tools ───
 function ball(oc: OccModule, scope: DisposeScope, centre: Vec3, radius: number): OccShape {
   const builder = scope.track(
     new oc.BRepPrimAPI_MakeSphere_5(scope.track(new oc.gp_Pnt_3(centre[0], centre[1], centre[2])), radius),
@@ -615,26 +517,6 @@ function coneFrustum(
   return scope.track(builder.Shape())
 }
 
-/** The region between two parallel cones of the same half-angle: the outer
- *  (larger ref radius) solid minus the inner one, each stopped at its own apex. */
-function coneSlab(
-  oc: OccModule,
-  scope: DisposeScope,
-  loc: Vec3,
-  dir: Vec3,
-  semi: number,
-  refs: [number, number],
-  vLo: number,
-  vHi: number,
-): OccShape {
-  const [inner, outer] = refs[0] <= refs[1] ? refs : [refs[1], refs[0]]
-  const outerShape = coneFrustum(oc, scope, loc, dir, semi, outer, vLo, vHi)
-  if (outerShape === null) throw new MoveFaceRefusal('move_face: the cone slab is empty')
-  const innerShape = coneFrustum(oc, scope, loc, dir, semi, inner, vLo, vHi)
-  if (innerShape === null) return outerShape
-  return cutShapes(oc, scope, outerShape, innerShape)
-}
-
 // ─── neighbour split tools ───
 
 /**
@@ -681,51 +563,6 @@ export function extendedNeighbourSolid(
   return null
 }
 
-// ─── the enclosure guards ───
-
-/** A picked cell reaching the slab's lateral wall (u or v at +-L) is not
- *  enclosed by the neighbours: an open shell the analyse did not catch. */
-function isUnbounded(
-  oc: OccModule,
-  scope: DisposeScope,
-  cell: OccShape,
-  origin: Vec3,
-  xd: Vec3,
-  yd: Vec3,
-  L: number,
-): boolean {
-  // Not a ladder rung: a slack relative to the slab's own half-extent, so it
-  // scales with L the way a wall test on world-distance centroids must.
-  const eps = 1e-6 * L
-  for (const f of canonicalFaces(oc, scope, cell) as OccShape[]) {
-    const c = faceCentroid(oc, scope, f)
-    const rel = sub(c, origin)
-    if (Math.abs(dot(rel, xd)) >= L - eps || Math.abs(dot(rel, yd)) >= L - eps) return true
-  }
-  return false
-}
-
-/** Every representative point of the cell's on-source pieces must classify
- *  inside the picked region (the picked face or an inner loop the hole/boss
- *  rule moves); a point outside means the neighbours did not cut the face's
- *  region off from the rest of the surface. */
-function assertCurvedEnclosed(
-  oc: OccModule,
-  scope: DisposeScope,
-  inRegion: (region: OccShape, p: Vec3) => boolean,
-  sourceFaces: OccShape[],
-  outerRegion: OccShape,
-  innerFaces: OccShape[],
-): void {
-  for (const sf of sourceFaces) {
-    for (const p of representativePoints(oc, scope, sf)) {
-      if (inRegion(outerRegion, p)) continue
-      if (innerFaces.some((loop) => inRegion(loop, p))) continue
-      throw new MoveFaceRefusal('move_face: the neighbours do not bound the moved face')
-    }
-  }
-}
-
 // ─── the per-kind descriptors ───
 
 function planeSurface(
@@ -735,24 +572,15 @@ function planeSurface(
   d: number,
   adaptor: OccSurfaceAdaptor,
 ): MovedSurface {
-  const S = oc.GeomAbs_SurfaceType
-  const plane = scope.track(adaptor.Plane())
   const n = faceNormal(oc, scope, face)
   const c0 = faceCentroid(oc, scope, face)
   const pTarget = add(c0, scale(n, d))
-  // The slab's lateral frame: +-L in the plane's own u/v, the guard's walls.
+  // The target plane keeps the face's own X direction, so its U parameter and
+  // pcurves stay in the same frame the picked face used.
+  const plane = scope.track(adaptor.Plane())
   const position = scope.track(plane.Position())
-  const origin = scope.track(position.Location())
-  const pOrigin: Vec3 = [origin.X(), origin.Y(), origin.Z()]
   const xd = scope.track(position.XDirection())
-  const yd = scope.track(position.YDirection())
   const pX: Vec3 = [xd.X(), xd.Y(), xd.Z()]
-  const pY: Vec3 = [yd.X(), yd.Y(), yd.Z()]
-  const onPlane = (cf: OccShape, through: Vec3): boolean => {
-    const other = scope.track(new oc.BRepAdaptor_Surface_2(cf, true))
-    if (other.GetType().value !== S.GeomAbs_Plane.value) return false
-    return Math.abs(dot(sub(faceCentroid(oc, scope, cf), through), n)) <= TOL_SURFACE_IDENTITY
-  }
   const targetPlaneFace = (L: number): OccShape => {
     const frame = scope.track(new oc.gp_Ax3_3(
       scope.track(new oc.gp_Pnt_3(pTarget[0], pTarget[1], pTarget[2])),
@@ -765,29 +593,12 @@ function planeSurface(
   }
   return {
     kind: 'plane',
-    inRegion: (region, p) => pointInFace(oc, scope, region, p, TOL_SURFACE_IDENTITY),
-    slab: (L) => {
-      // The builder owns the face it makes; tracking the face alone stranded
-      // one builder per slab.
-      const builder = scope.track(new oc.BRepBuilderAPI_MakeFace_9(plane, -L, L, -L, L))
-      return makePrism(oc, scope, scope.track(builder.Face()), n, d)
-    },
-    onSource: (cf) => onPlane(cf, c0),
-    onTarget: (cf) => onPlane(cf, pTarget),
-    regionFace: (wire) => planeFromWire(oc, scope, wire),
-    outerRegion: () => planeFromWire(oc, scope, scope.track(oc.BRepTools.OuterWire(face))),
     anchor: () => ({ point: c0, normal: n }),
     targetFace: (L) => targetPlaneFace(L),
     targetSurface: () => scope.track(oc.BRep_Tool.Surface_2(targetPlaneFace(1))),
-    materialInside: true,
     outsideSolid: (part) => {
       const box = makeHalfSpaceBox(oc, scope, pTarget, n, part)
       return { tool: box.shape, cap: box.base }
-    },
-    assertEnclosed: (cell, _sourceFaces, _outerRegion, _innerFaces, L) => {
-      if (isUnbounded(oc, scope, cell, pOrigin, pX, pY, L)) {
-        throw new MoveFaceRefusal('move_face: the neighbours do not bound the moved face')
-      }
     },
   }
 }
@@ -799,7 +610,6 @@ function cylinderSurface(
   d: number,
   adaptor: OccSurfaceAdaptor,
 ): MovedSurface {
-  const S = oc.GeomAbs_SurfaceType
   const cyl = scope.track(adaptor.Cylinder())
   const r = cyl.Radius()
   const dir = takeAxisDir(cyl.Axis())
@@ -809,19 +619,6 @@ function cylinderSurface(
   // Growing the radius means moving along the outward radial direction.
   const s = offsetSign(oc, scope, face, adaptor, (p) => radialFrom(p, origin, dir))
   const r2 = r + s * d
-  const matches = (cf: OccShape, want: number): boolean => {
-    const other = scope.track(new oc.BRepAdaptor_Surface_2(cf, true))
-    if (other.GetType().value !== S.GeomAbs_Cylinder.value) return false
-    const oc2 = scope.track(other.Cylinder())
-    if (Math.abs(oc2.Radius() - want) > TOL_SURFACE_IDENTITY) return false
-    return sameAxisLine(takeAxisDir(oc2.Axis()), takeAx3(oc2.Position()).origin, dir, origin)
-  }
-  // v is the axial coordinate, u the angle about the Position frame's X axis.
-  const uv = (p: Vec3): [number, number] => {
-    const l = localOf(srf, p)
-    return [wrapU(Math.atan2(l[1], l[0])), l[2]]
-  }
-  const inRegion = (region: OccShape, p: Vec3): boolean => pointInFaceUv(oc, scope, region, uv(p), TOL_SURFACE_IDENTITY, false)
   const frame = (): OccDisposable => scope.track(new oc.gp_Ax3_3(
     scope.track(new oc.gp_Pnt_3(origin[0], origin[1], origin[2])),
     scope.track(new oc.gp_Dir_5(dir[0], dir[1], dir[2])),
@@ -834,24 +631,9 @@ function cylinderSurface(
   }
   return {
     kind: 'cylinder',
-    inRegion,
-    slab: (L) => {
-      const lo = range.lo - L
-      const hi = range.hi + L
-      const outerR = Math.max(r, r2)
-      const innerR = Math.min(r, r2)
-      const outer = solidCylinder(oc, scope, origin, dir, lo, hi, outerR)
-      if (innerR <= TOL_SURFACE_IDENTITY) return outer
-      return cutShapes(oc, scope, outer, solidCylinder(oc, scope, origin, dir, lo, hi, innerR))
-    },
-    onSource: (cf) => matches(cf, r),
-    onTarget: (cf) => matches(cf, r2),
-    regionFace: (wire) => curvedFaceFromWire(oc, scope, 'cylinder', cyl, wire),
-    outerRegion: () => face,
     anchor: () => uvAnchor(oc, scope, face, adaptor),
     targetFace,
     targetSurface: () => scope.track(oc.BRep_Tool.Surface_2(targetFace(1))),
-    materialInside: s > 0,
     outsideSolid: (part, L) => {
       const prange = axialRange(oc, scope, part, origin, dir)
       const lo = prange.lo - L
@@ -866,8 +648,6 @@ function cylinderSurface(
       // A bore: the outside is the new bore itself.
       return { tool: cylTool.shape, cap: cylTool.faces.lateral }
     },
-    assertEnclosed: (_cell, sourceFaces, outerRegion, innerFaces, _L) =>
-      assertCurvedEnclosed(oc, scope, inRegion, sourceFaces, outerRegion, innerFaces),
   }
 }
 
@@ -878,14 +658,12 @@ function coneSurface(
   d: number,
   adaptor: OccSurfaceAdaptor,
 ): MovedSurface {
-  const S = oc.GeomAbs_SurfaceType
   const cone = scope.track(adaptor.Cone())
   const ref = cone.RefRadius()
   const semi = cone.SemiAngle()
   const srf = takeAx3(cone.Position())
   const loc = srf.origin
   const dir = srf.z
-  const axisDir = takeAxisDir(cone.Axis())
   const range = axialRange(oc, scope, face, loc, dir)
   // Growing the ref radius means moving along the cone's natural normal:
   // cos(semi) * radial - sin(semi) * axis.
@@ -904,22 +682,6 @@ function coneSurface(
   const cos = Math.cos(semi)
   const vA = range.lo / cos
   const vB = range.hi / cos
-  const matches = (cf: OccShape, wantRef: number): boolean => {
-    const other = scope.track(new oc.BRepAdaptor_Surface_2(cf, true))
-    if (other.GetType().value !== S.GeomAbs_Cone.value) return false
-    const otherCone = scope.track(other.Cone())
-    if (Math.abs(otherCone.SemiAngle() - semi) > TOL_SURFACE_IDENTITY) return false
-    const wantApex = add(loc, scale(dir, -wantRef / Math.tan(semi)))
-    if (norm(sub(coneApex(otherCone), wantApex)) > TOL_SURFACE_IDENTITY) return false
-    return sameAxisLine(takeAxisDir(otherCone.Axis()), takeAx3(otherCone.Position()).origin, axisDir, loc)
-  }
-  // v is the slant parameter (the gp_Cone Value convention: z = v cos(semi)),
-  // u the angle about the Position frame's X axis.
-  const uv = (p: Vec3): [number, number] => {
-    const l = localOf(srf, p)
-    return [wrapU(Math.atan2(l[1], l[0])), l[2] / Math.cos(semi)]
-  }
-  const inRegion = (region: OccShape, p: Vec3): boolean => pointInFaceUv(oc, scope, region, uv(p), TOL_SURFACE_IDENTITY, false)
   const frame = (): OccDisposable => scope.track(new oc.gp_Ax3_3(
     scope.track(new oc.gp_Pnt_3(loc[0], loc[1], loc[2])),
     scope.track(new oc.gp_Dir_5(dir[0], dir[1], dir[2])),
@@ -932,16 +694,9 @@ function coneSurface(
   }
   return {
     kind: 'cone',
-    inRegion,
-    slab: (L) => coneSlab(oc, scope, loc, dir, semi, [ref, ref2], vA - L, vB + L),
-    onSource: (cf) => matches(cf, ref),
-    onTarget: (cf) => matches(cf, ref2),
-    regionFace: (wire) => curvedFaceFromWire(oc, scope, 'cone', cone, wire),
-    outerRegion: () => face,
     anchor: () => uvAnchor(oc, scope, face, adaptor),
     targetFace,
     targetSurface: () => scope.track(oc.BRep_Tool.Surface_2(targetFace(1))),
-    materialInside: s > 0,
     outsideSolid: (part, L) => {
       const coneTool = coneOutside(oc, scope, part, loc, dir, semi, ref2, L)
       if (s > 0) {
@@ -950,8 +705,6 @@ function coneSurface(
       }
       return { tool: coneTool, cap: faceOnSurface(oc, scope, coneTool, targetFace(1)) }
     },
-    assertEnclosed: (_cell, sourceFaces, outerRegion, innerFaces, _L) =>
-      assertCurvedEnclosed(oc, scope, inRegion, sourceFaces, outerRegion, innerFaces),
   }
 }
 
@@ -962,7 +715,6 @@ function sphereSurface(
   d: number,
   adaptor: OccSurfaceAdaptor,
 ): MovedSurface {
-  const S = oc.GeomAbs_SurfaceType
   const sph = scope.track(adaptor.Sphere())
   const r = sph.Radius()
   const srf = takeAx3(sph.Position())
@@ -970,20 +722,6 @@ function sphereSurface(
   // Growing the radius means moving away from the centre.
   const s = offsetSign(oc, scope, face, adaptor, (p) => sub(p, centre))
   const r2 = r + s * d
-  const matches = (cf: OccShape, want: number): boolean => {
-    const other = scope.track(new oc.BRepAdaptor_Surface_2(cf, true))
-    if (other.GetType().value !== S.GeomAbs_Sphere.value) return false
-    const otherSph = scope.track(other.Sphere())
-    if (Math.abs(otherSph.Radius() - want) > TOL_SURFACE_IDENTITY) return false
-    return norm(sub(takeAx3(otherSph.Position()).origin, centre)) <= TOL_SURFACE_IDENTITY
-  }
-  // v is the polar angle from the equator, u the angle about the frame's X.
-  const uv = (p: Vec3): [number, number] => {
-    const l = localOf(srf, p)
-    const sinV = Math.max(-1, Math.min(1, l[2] / r))
-    return [wrapU(Math.atan2(l[1], l[0])), Math.asin(sinV)]
-  }
-  const inRegion = (region: OccShape, p: Vec3): boolean => pointInFaceUv(oc, scope, region, uv(p), TOL_SURFACE_IDENTITY, false)
   const frame = (): OccDisposable => scope.track(new oc.gp_Ax3_3(
     scope.track(new oc.gp_Pnt_3(centre[0], centre[1], centre[2])),
     scope.track(new oc.gp_Dir_5(srf.z[0], srf.z[1], srf.z[2])),
@@ -996,21 +734,9 @@ function sphereSurface(
   }
   return {
     kind: 'sphere',
-    inRegion,
-    slab: () => {
-      const outer = ball(oc, scope, centre, Math.max(r, r2))
-      const innerR = Math.min(r, r2)
-      if (innerR <= TOL_SURFACE_IDENTITY) return outer
-      return cutShapes(oc, scope, outer, ball(oc, scope, centre, innerR))
-    },
-    onSource: (cf) => matches(cf, r),
-    onTarget: (cf) => matches(cf, r2),
-    regionFace: (wire) => curvedFaceFromWire(oc, scope, 'sphere', sph, wire),
-    outerRegion: () => face,
     anchor: () => uvAnchor(oc, scope, face, adaptor),
     targetFace: () => targetFace(),
     targetSurface: () => scope.track(oc.BRep_Tool.Surface_2(targetFace())),
-    materialInside: s > 0,
     outsideSolid: (part, L) => {
       const sphereTool = ball(oc, scope, centre, r2)
       if (s > 0) {
@@ -1019,8 +745,6 @@ function sphereSurface(
       }
       return { tool: sphereTool, cap: faceOnSurface(oc, scope, sphereTool, targetFace()) }
     },
-    assertEnclosed: (_cell, sourceFaces, outerRegion, innerFaces, _L) =>
-      assertCurvedEnclosed(oc, scope, inRegion, sourceFaces, outerRegion, innerFaces),
   }
 }
 
@@ -1031,7 +755,6 @@ function torusSurface(
   d: number,
   adaptor: OccSurfaceAdaptor,
 ): MovedSurface {
-  const S = oc.GeomAbs_SurfaceType
   const tor = scope.track(adaptor.Torus())
   const major = tor.MajorRadius()
   const minor = tor.MinorRadius()
@@ -1042,7 +765,6 @@ function torusSurface(
   const s = offsetSign(oc, scope, face, adaptor, (p) =>
     sub(p, add(loc, scale(radialFrom(p, loc, dir), major))))
   const minor2 = minor + s * d
-  const axisDir = takeAxisDir(tor.Axis())
   // d === 0 is the anchor read (faceNormalAndCentroid): a pre-existing spindle
   // torus must not refuse there.
   if (d !== 0 && minor2 > major + TOL_SURFACE_IDENTITY) {
@@ -1050,22 +772,6 @@ function torusSurface(
       `move_face: the move would take the torus tube past its major radius (minor ${minor2} > major ${major})`,
     )
   }
-  const matches = (cf: OccShape, want: number): boolean => {
-    const other = scope.track(new oc.BRepAdaptor_Surface_2(cf, true))
-    if (other.GetType().value !== S.GeomAbs_Torus.value) return false
-    const otherTor = scope.track(other.Torus())
-    if (Math.abs(otherTor.MajorRadius() - major) > TOL_SURFACE_IDENTITY) return false
-    if (Math.abs(otherTor.MinorRadius() - want) > TOL_SURFACE_IDENTITY) return false
-    return sameAxisLine(takeAxisDir(otherTor.Axis()), takeAx3(otherTor.Position()).origin, axisDir, loc)
-  }
-  const frame = baseFrame(oc, scope, loc, dir)
-  // u is the angle about the axis, v the tube angle measured from the outer
-  // equator (the gp_Torus Value convention).
-  const uv = (p: Vec3): [number, number] => {
-    const l = localOf(srf, p)
-    return [wrapU(Math.atan2(l[1], l[0])), Math.atan2(l[2], Math.hypot(l[0], l[1]) - major)]
-  }
-  const inRegion = (region: OccShape, p: Vec3): boolean => pointInFaceUv(oc, scope, region, uv(p), TOL_SURFACE_IDENTITY, true)
   const frameAx3 = (): OccDisposable => scope.track(new oc.gp_Ax3_3(
     scope.track(new oc.gp_Pnt_3(loc[0], loc[1], loc[2])),
     scope.track(new oc.gp_Dir_5(dir[0], dir[1], dir[2])),
@@ -1078,21 +784,9 @@ function torusSurface(
   }
   return {
     kind: 'torus',
-    inRegion,
-    slab: () => {
-      const outer = solidTorus(oc, scope, frame, major, Math.max(minor, minor2))
-      const innerR = Math.min(minor, minor2)
-      if (innerR <= TOL_SURFACE_IDENTITY) return outer
-      return cutShapes(oc, scope, outer, solidTorus(oc, scope, frame, major, innerR))
-    },
-    onSource: (cf) => matches(cf, minor),
-    onTarget: (cf) => matches(cf, minor2),
-    regionFace: (wire) => curvedFaceFromWire(oc, scope, 'torus', tor, wire),
-    outerRegion: () => face,
     anchor: () => uvAnchor(oc, scope, face, adaptor),
     targetFace: () => targetFace(),
     targetSurface: () => scope.track(oc.BRep_Tool.Surface_2(targetFace())),
-    materialInside: s > 0,
     outsideSolid: (part, L) => {
       const torusTool = solidTorus(oc, scope, frameAx3(), major, minor2)
       if (s > 0) {
@@ -1101,8 +795,6 @@ function torusSurface(
       }
       return { tool: torusTool, cap: faceOnSurface(oc, scope, torusTool, targetFace()) }
     },
-    assertEnclosed: (_cell, sourceFaces, outerRegion, innerFaces, _L) =>
-      assertCurvedEnclosed(oc, scope, inRegion, sourceFaces, outerRegion, innerFaces),
   }
 }
 

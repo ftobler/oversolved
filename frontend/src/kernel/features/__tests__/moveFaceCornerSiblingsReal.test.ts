@@ -16,11 +16,7 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest'
 import { loadOcc } from '../../occ/loadOcc'
 import { SharedHarness } from '../../occ/sharedHarness'
 import { setSketchSolver, resetSketchSolver } from '../sketch'
-import { parseAncestry } from '../../query'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
-import { DisposeScope } from '../../occ/disposeScope'
-import { volumeOf } from '../../occ/volume'
-import type { OccShape } from '../../occ/occTypes'
 import { solveWithTimeout, disposeWorker } from '../../solveTimeout'
 import type { BuildResponse } from '../../builder'
 
@@ -84,52 +80,8 @@ const TOP_FLAT =
   `?15,19,1e,2a,2a,2a,7;@u|u_9c1f24e62f9dae31@${EX}@${PART}` +
   `@${SK}/0IPnfibogdJZCeul@${SK}/43NO99KuPeLF1spx@${SK}/_yxEcYDVIUOLVgBH@cls_zp:flatface`
 
-interface FaceDatum {
-  surface_type?: string
-  surface_frame?: { radius?: number }
-  centroid?: number[]
-}
-interface PartView {
-  mesh?: { face_queries?: string[]; face_data?: FaceDatum[]; vertices?: number[][] }
-}
-interface Face {
-  query: string
-  data: FaceDatum
-}
-
-const uuidOf = (query: string): string | null => {
-  const token = parseAncestry(query)[0].find((part) => part.startsWith('@u|'))
-  return token === undefined ? null : token.slice(3)
-}
-
-function facesOf(part: PartView): Face[] {
-  const queries = part.mesh?.face_queries ?? []
-  const data = part.mesh?.face_data ?? []
-  return queries.map((query, index) => ({ query, data: data[index] ?? {} }))
-}
-
-function radiusByUuid(part: PartView, uuid: string): number {
-  const face = facesOf(part).find((f) => uuidOf(f.query) === uuid)
-  const radius = face?.data.surface_frame?.radius
-  if (radius === undefined) throw new Error(`no cylinder face for ${uuid}`)
-  return radius
-}
-
-function bbox(verts: number[][]): { min: number[]; max: number[] } {
-  const min = [Infinity, Infinity, Infinity]
-  const max = [-Infinity, -Infinity, -Infinity]
-  for (const v of verts) for (let i = 0; i < 3; i++) {
-    min[i] = Math.min(min[i], v[i])
-    max[i] = Math.max(max[i], v[i])
-  }
-  return { min, max }
-}
-
 function resultOf(result: BuildResponse, id: string): Record<string, unknown> {
   return (result.result as Record<string, Record<string, unknown>>)[id] ?? {}
-}
-function partOf(result: BuildResponse): PartView {
-  return ((result.bodies as Record<string, PartView>)[PART] ?? {})
 }
 
 describe.skipIf(!oc || !solveBytes)('move face corner and split-sibling reports (real OCC)', () => {
@@ -141,20 +93,20 @@ describe.skipIf(!oc || !solveBytes)('move face corner and split-sibling reports 
     setSketchSolver(solveBytes)
   })
 
-  /** Volume of the body the last feature built, read from its checkpoint shape
-   *  (the build response only carries the mesh). */
-  function volumeAfter(result: BuildResponse, lastId: string): number {
-    const handle = result._build_state.checkpoints[lastId]?.body_store_snapshot?.[PART]?.shape
-    if (!handle) throw new Error(`no checkpoint shape for ${lastId}`)
-    const scope = new DisposeScope()
-    try {
-      return volumeOf(oc!, scope, h.table.get<OccShape>(handle))
-    } finally {
-      scope.dispose()
-    }
+  // The 2026-10-20 family all has a boolean-split body (the r25 bite is two
+  // arcs, the bore crosses it). The direct tweak refuses the move by name: a
+  // split network needs a new step face between the moved and staying halves,
+  // and the hand-built shell of a multi-arc body is where its rebuild traps.
+  // The old slab route built these by minting `|extend|` faces; re-testing the
+  // family on the direct route is a backlog item, not a silent fallback.
+  const expectSplitRefusal = (r: BuildResponse, id: string): void => {
+    const result = resultOf(r, id)
+    expect(result.status, String(result.exception ?? '')).toBe('partial')
+    expect((result.failed_faces as string[] | undefined) ?? []).not.toHaveLength(0)
+    expect(String(result.exception ?? '')).toContain('two faces on one surface')
   }
 
-  it('0648: the bore then the upper arc applies cleanly', () => {
+  it('0648: the bore then the upper arc is refused by name', () => {
     const r = h.run({
       features: [
         ...BASE_FEATURES,
@@ -168,21 +120,13 @@ describe.skipIf(!oc || !solveBytes)('move face corner and split-sibling reports 
         },
       ],
     })
-    expect(resultOf(r, 'kaq8NQBPIvFccTpLoxMfHDEV').status).toBe('ok')
-    expect(resultOf(r, '3mVx0XBPxQbI51eD-BLbrEhA').status).toBe('ok')
-
-    const part = partOf(r)
-    const faces = facesOf(part)
-    expect(faces).toHaveLength(6)
-    expect(radiusByUuid(part, 'u_12fe4d96581d211f')).toBeCloseTo(10, 6)
-    expect(radiusByUuid(part, 'u_8fee0efaff178537')).toBeCloseTo(23, 6)
-    expect(radiusByUuid(part, 'u_ddc9b0766a2715e7')).toBeCloseTo(25, 6)
-    const uuids = faces.map((f) => uuidOf(f.query)).filter((u): u is string => u !== null)
-    expect(new Set(uuids).size).toBe(uuids.length)
-    expect(volumeAfter(r, '3mVx0XBPxQbI51eD-BLbrEhA')).toBeCloseTo(11747.93, 1)
+    expectSplitRefusal(r, 'kaq8NQBPIvFccTpLoxMfHDEV')
+    // The second feature builds on the refused (unchanged) body and is refused
+    // by the same body-level split guard.
+    expect(resultOf(r, '3mVx0XBPxQbI51eD-BLbrEhA').status).toBe('partial')
   }, 120000)
 
-  it('0650: two corners move together with no leftover bite or bore pieces', () => {
+  it('0650: two corners together are refused by name', () => {
     const r = h.run({
       features: [
         ...BASE_FEATURES,
@@ -192,24 +136,10 @@ describe.skipIf(!oc || !solveBytes)('move face corner and split-sibling reports 
         },
       ],
     })
-    expect(resultOf(r, 'kaq8NQBPIvFccTpLoxMfHDEV').status).toBe('ok')
-    expect(resultOf(r, 'kaq8NQBPIvFccTpLoxMfHDEV').body_ids).toHaveLength(1)
-
-    const part = partOf(r)
-    const faces = facesOf(part)
-    // The old corner strips were r25 bite pieces and r15 relics; the moved bite
-    // is r20 everywhere and the bore is r10.
-    const bite = faces.filter((f) => f.data.surface_type === 'cylinderface' && f.query.includes('0IPnfibogdJZCeul'))
-    expect(bite).toHaveLength(2)
-    for (const f of bite) expect(f.data.surface_frame?.radius).toBeCloseTo(20, 5)
-    expect(faces.some((f) => f.data.surface_frame?.radius !== undefined && Math.abs(f.data.surface_frame.radius - 15) < 1e-4)).toBe(false)
-    const uuids = faces.map((f) => uuidOf(f.query)).filter((u): u is string => u !== null)
-    expect(new Set(uuids).size).toBe(uuids.length)
-    expect(faces).toHaveLength(7)
-    expect(volumeAfter(r, 'kaq8NQBPIvFccTpLoxMfHDEV')).toBeCloseTo(13043.5, 1)
+    expectSplitRefusal(r, 'kaq8NQBPIvFccTpLoxMfHDEV')
   }, 180000)
 
-  it('0651: the bore and upper arc move cleanly, the lower arc stays', () => {
+  it('0651: the bore and upper arc are refused by name', () => {
     const r = h.run({
       features: [
         ...BASE_FEATURES,
@@ -219,24 +149,10 @@ describe.skipIf(!oc || !solveBytes)('move face corner and split-sibling reports 
         },
       ],
     })
-    expect(resultOf(r, 'kaq8NQBPIvFccTpLoxMfHDEV').status).toBe('ok')
-
-    const part = partOf(r)
-    const faces = facesOf(part)
-    expect(faces).toHaveLength(6)
-    const bite = faces.filter((f) => f.data.surface_type === 'cylinderface' && f.query.includes('0IPnfibogdJZCeul'))
-    const upper = bite.find((f) => (f.data.centroid?.[1] ?? 0) > 0)
-    const lower = bite.find((f) => (f.data.centroid?.[1] ?? 0) < 0)
-    expect(upper?.data.surface_frame?.radius).toBeCloseTo(20, 5)
-    expect(lower?.data.surface_frame?.radius).toBeCloseTo(25, 5)
-    expect(radiusByUuid(part, 'u_12fe4d96581d211f')).toBeCloseTo(10, 6)
-    expect(faces.some((f) => f.data.surface_frame?.radius !== undefined && Math.abs(f.data.surface_frame.radius - 15) < 1e-4)).toBe(false)
-    const uuids = faces.map((f) => uuidOf(f.query)).filter((u): u is string => u !== null)
-    expect(new Set(uuids).size).toBe(uuids.length)
-    expect(volumeAfter(r, 'kaq8NQBPIvFccTpLoxMfHDEV')).toBeCloseTo(12242.1, 1)
+    expectSplitRefusal(r, 'kaq8NQBPIvFccTpLoxMfHDEV')
   }, 180000)
 
-  it('0654: the reported pick order and its reverse finish with the same result', async () => {
+  it('0654: the reported pick order and its reverse are refused by name', async () => {
     const document = (faces: string[]): Record<string, unknown> => ({
       features: [
         ...BASE_FEATURES,
@@ -246,37 +162,15 @@ describe.skipIf(!oc || !solveBytes)('move face corner and split-sibling reports 
         },
       ],
     })
-    // A bounded child, because the pre-fix build spins forever inside the
-    // combined boolean and no in-process test timeout can interrupt WASM.
-    const runOrder = async (faces: string[]): Promise<{ result: BuildResponse; ms: number }> => {
-      const t0 = performance.now()
+    const runOrder = async (faces: string[]): Promise<BuildResponse> => {
       const result = await solveWithTimeout(document(faces), undefined, 30000)
       if (result === null) throw new Error('OCC.js is unavailable')
-      return { result, ms: performance.now() - t0 }
+      return result
     }
     const reported = await runOrder([BORE, TOP_FLAT, UPPER])
     const reverse = await runOrder([UPPER, TOP_FLAT, BORE])
-    expect(resultOf(reported.result, 'ng546yyywJO-kJj-PfZe_1Q4').status).toBe('ok')
-    expect(resultOf(reverse.result, 'ng546yyywJO-kJj-PfZe_1Q4').status).toBe('ok')
-    expect(reported.ms).toBeLessThan(30000)
-    expect(reverse.ms).toBeLessThan(30000)
-
-    const signature = (result: BuildResponse): string[] =>
-      facesOf(partOf(result))
-        .map((f) => `${f.data.surface_type}:${(f.data.surface_frame?.radius ?? 0).toFixed(4)}:${(f.data.centroid ?? []).map((x) => x.toFixed(3)).join(',')}`)
-        .sort()
-    expect(signature(reported.result)).toEqual(signature(reverse.result))
-    expect(signature(reported.result)).toHaveLength(6)
-
-    const part = partOf(reported.result)
-    const radii = facesOf(part).map((f) => f.data.surface_frame?.radius).filter((x): x is number => x !== undefined)
-    expect(radii.filter((r) => Math.abs(r - 20) < 1e-4)).toHaveLength(1)
-    expect(radii.filter((r) => Math.abs(r - 10) < 1e-4)).toHaveLength(1)
-    expect(radii.filter((r) => Math.abs(r - 25) < 1e-4)).toHaveLength(2)
-    // The top face moved from z=10 to z=15.
-    const box = bbox(part.mesh?.vertices ?? [])
-    expect(box.min[2]).toBeCloseTo(0, 6)
-    expect(box.max[2]).toBeCloseTo(15, 6)
+    expectSplitRefusal(reported, 'ng546yyywJO-kJj-PfZe_1Q4')
+    expectSplitRefusal(reverse, 'ng546yyywJO-kJj-PfZe_1Q4')
   }, 90000)
 })
 
