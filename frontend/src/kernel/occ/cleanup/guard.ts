@@ -32,7 +32,7 @@ export function isClosedByVolume(volume: number): boolean {
 
 export interface GuardVerdict {
   sound: boolean
-  /** The checked handle, so a caller's own check can skip this exact shape. */
+  // The checked handle, so a caller's own check can skip this exact shape.
   validated: OccShape | null
 }
 

@@ -39,12 +39,12 @@ export interface PassResult {
 
 /** Options one pass reads. A pass ignores fields it has no use for. */
 export interface PassOptions {
-  /** UnifySameDomain's face merge gate. False keeps the edge merge only. */
+  // UnifySameDomain's face merge gate. False keeps the edge merge only.
   unifyFaces?: boolean
-  /** The merge tolerance pair; absent reads the kernel contract. */
+  // The merge tolerance pair; absent reads the kernel contract.
   linearTol?: number
   angularTol?: number
-  /** Heal only when the input is not already valid. */
+  // Heal only when the input is not already valid.
   onlyIfInvalid?: boolean
 }
 
@@ -110,18 +110,18 @@ export interface PassReport {
 export interface CleanupResult {
   shape: OccShape
   changed: boolean
-  /** Present when the input carried one, composed onto the result. */
+  // Present when the input carried one, composed onto the result.
   diff?: BrepDiff
   names?: ShapeNames | null
   faceOrigin?: readonly FaceOrigin[]
-  /** One row per plan entry, in plan order. */
+  // One row per plan entry, in plan order.
   passes: PassReport[]
   /**
    * The handle the last adopted pass's guard validated, so a caller that must
    * otherwise pay its own whole-shape BRepCheck can skip this exact handle.
    */
   validated: OccShape | null
-  /** Input sub-shape to result sub-shape, the pass one-to-one where possible. */
+  // Input sub-shape to result sub-shape, the pass one-to-one where possible.
   rebase: SubShapeRebase
 }
 

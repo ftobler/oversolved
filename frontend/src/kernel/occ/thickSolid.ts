@@ -35,12 +35,12 @@ import {
   builtFaceOf,
   inheritOldFaceNames,
   isValidShape,
-  healShape,
-  rebaseNames,
-  rebaseDiff,
   type OldNames,
   type NewNames,
 } from './edgeModifier'
+import { healShape } from './cleanup/heal'
+import { passRejected, runCleanup } from './cleanup/pipeline'
+import { healOnlyPlan } from './cleanup/presets'
 import { nameNeighboursAndDeriveEdges, shapeNormalFrame, normalizedWorldKey, type NormalFrame } from './constructionLineage'
 import { swallowUnlessTrap } from '../errors'
 import { noProgress } from './defaultArgs'
@@ -417,15 +417,15 @@ function applySealedShell(
     faceOwner: old.faceOwner, edgeOwner: old.edgeOwner,
   }
   if (!isValidShape(oc, scope, built)) {
-    const heal = healShape(oc, scope, built)
-    if (heal === null) {
+    const cleaned = runCleanup(oc, scope, { shape: built, diff, names }, healOnlyPlan())
+    if (passRejected(cleaned, 'heal')) {
       scope.release(built)
       return fail(shape, 'the operation produced invalid geometry; try a smaller thickness')
     }
-    names = rebaseNames(names, heal.rebase)
-    diff = rebaseDiff(diff, heal.rebase)
+    names = cleaned.names ?? names
+    diff = cleaned.diff ?? diff
     scope.release(built)
-    built = heal.shape
+    built = cleaned.shape
   }
   // The repaired shape is already detached by healShape; the raw build is
   // scope-tracked, so hand it out untracked either way.
@@ -491,7 +491,8 @@ export function applyShellWithLineage(
     ? [oc.GeomAbs_JoinType.GeomAbs_Arc]
     : [oc.GeomAbs_JoinType.GeomAbs_Intersection, oc.GeomAbs_JoinType.GeomAbs_Arc]
   let usedJoin: ShellJoin = join === 'arc' ? 'arc' : 'sharp'
-  let healed: ReturnType<typeof healShape> = null
+  // Whether the chosen join's build is invalid and must be healed at adoption.
+  let needsHeal = false
   for (const j of joinList) {
     const isSharp = j === oc.GeomAbs_JoinType.GeomAbs_Intersection
     try {
@@ -521,8 +522,10 @@ export function applyShellWithLineage(
       if (isValidShape(oc, scope, candidate)) {
         built = candidate
         maker = mk
-        healed = null
+        needsHeal = false
       } else {
+        // The probe decides whether this join is admissible; the cleanup layer
+        // re-runs the heal at adoption, where the names and the diff exist.
         const heal = healShape(oc, scope, candidate)
         if (heal === null) {
           // Invalid and unhealable: drop it and let the next join try.
@@ -531,12 +534,10 @@ export function applyShellWithLineage(
           if (isSharp) sharpReason ??= invalidReason
           continue
         }
+        scope.release(heal.shape)
         built = candidate
         maker = mk
-        healed = heal
-        // The healed shape is detached from the scope; claim it so a throw in
-        // the naming pass still frees it, and hand it out detached below.
-        scope.track(heal.shape)
+        needsHeal = true
       }
       usedJoin = isSharp ? 'sharp' : 'arc'
       break
@@ -590,12 +591,22 @@ export function applyShellWithLineage(
     }
   }
 
-  if (healed !== null) {
-    const rebased = names === null ? null : rebaseNames(names, healed.rebase)
-    diff = rebaseDiff(diff, healed.rebase)
-    const shape = scope.detach(healed.shape)
+  if (needsHeal) {
+    const cleaned = runCleanup(oc, scope, { shape: built, names, diff }, healOnlyPlan())
+    if (passRejected(cleaned, 'heal')) {
+      // The probe accepted this very build; a refusal here is not expected, and
+      // returning the invalid build would be worse than naming the failure.
+      scope.release(built)
+      return fail(shape, invalidReason ?? lastReason)
+    }
+    const outShape = cleaned.shape
+    diff = cleaned.diff ?? diff
     scope.release(built)
-    return { shape, success: true, reason: null, names: rebased, diff, usedJoin, sharpReason: usedJoin === 'arc' ? sharpReason : null }
+    return {
+      shape: outShape, success: true, reason: null,
+      names: cleaned.names ?? names, diff, usedJoin,
+      sharpReason: usedJoin === 'arc' ? sharpReason : null,
+    }
   }
 
   return {

@@ -14,12 +14,13 @@
 import type { CleanupPlan, CleanupPlanEntry } from './types'
 import type { CleanTolerances } from './unifySameDomain'
 import { canonicalCylinders } from './canonicalCylinders'
+import { heal } from './heal'
 import { unifySameDomain } from './unifySameDomain'
 
 export interface BooleanPlanOptions {
   unifyFaces: boolean
   tolerance?: CleanTolerances
-  /** Appended after canonicalisation and before the face merge. */
+  // Appended after canonicalisation and before the face merge.
   beforeUnify?: readonly CleanupPlanEntry[]
 }
 
@@ -47,7 +48,7 @@ export function booleanPlan(options: BooleanPlanOptions): CleanupPlan {
 
 export interface PrismPlanOptions {
   tolerance?: CleanTolerances
-  /** Appended before the merge. */
+  // Appended before the merge.
   beforeUnify?: readonly CleanupPlanEntry[]
 }
 
@@ -66,4 +67,13 @@ export function prismPlan(options: PrismPlanOptions = {}): CleanupPlan {
       guard: {},
     },
   ]
+}
+
+/**
+ * A modifier result as it is cleaned today: the healer, only when the build did
+ * not validate. Step 3 of the cleanup-layer plan uses this; the MODIFIER preset
+ * replaces it once the edge merge is enabled.
+ */
+export function healOnlyPlan(): CleanupPlan {
+  return [{ name: 'heal', pass: heal, options: { onlyIfInvalid: true }, selfGuarded: true }]
 }
