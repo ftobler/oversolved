@@ -1,8 +1,8 @@
 # GitHub site publish, main only. GitHub's full gate is ci-github.yaml, which
 # runs on every push and PR; this file is the deploy, not a second matrix. Its
-# `check` job repeats only the cheap, kernel-free subset (Python tooling, lint,
-# build, vitest without OCC.js) so a manual dispatch or a re-run of this
-# workflow still refuses a broken tree. It does not gate on a `workflow_run` of
+# `check` job repeats only the cheap, OCC-free subset (Python tooling, lint,
+# build, vitest with the Rust solvers but without OCC.js) so a manual dispatch
+# or a re-run of this workflow still refuses a broken tree. It does not gate on a `workflow_run` of
 # ci-github.yaml: Gitea also parses this file, and a trigger it does not
 # implement would break the no-op there. The kernel suites therefore self-skip
 # on this leg; ci-github.yaml is where they run provisioned.
@@ -66,6 +66,22 @@ jobs:
       - name: npm build
         run: npm run build
         working-directory: frontend
+
+      # The profile-loop geometry (centroid, point-in-loop, containment) has no
+      # TS fallback any more: it runs in the Rust core the sketch-solver package
+      # carries, so even the kernel-free tests need the nodejs builds. Same
+      # command as ci-github.yaml; OCC stays unprovisioned, so its suites skip.
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install wasm-pack
+        uses: taiki-e/install-action@v2
+        with:
+          tool: wasm-pack
+      - name: Build WASM solvers (nodejs for vitest)
+        run: |
+          wasm-pack build --target nodejs --out-dir pkg-node --release -- --features fuzz
+          cd ../mate-solver && wasm-pack build --target nodejs --out-dir pkg-node --release
+        working-directory: sketch-solver
 
       - name: npm test (vitest)
         run: npx vitest run
