@@ -38,18 +38,17 @@ import { classifyLoops, fuseCollinearRuns, profileClusters, type LoopEdge } from
 import {
   booleanWithHistory,
   booleanWithHistoryMany,
-  cleanWithHistory,
-  composeOriginThroughClean,
   countSolids,
   shapeIsValid,
 } from './booleans'
+import { passRejected, runCleanup } from './cleanup/pipeline'
+import { prismPlan } from './cleanup/presets'
 import {
   FaceEdgeTable,
   nameFacesFromNeighbours,
   faceSplitKey,
 } from './constructionLineage'
 import {
-  canonicalFaces,
   carryFaceNames,
   emptyShapeNames,
   mergeShapeNames,
@@ -537,22 +536,17 @@ function tryCanonicalMergedProfile(
     // compound of N solids -- the legacy path must keep them as the
     // multi-body output the caller splits apart; bailing here preserves it.
     if (countSolids(oc, scope, solid) !== 1) { scope.release(solid); return { kind: 'disjoint' } }
-    try {
-      const cleaned = cleanWithHistory(oc, scope, solid, true, {
-        linearTol: tolerance.linearTol,
-        angularTol: tolerance.angularTol,
-      }).shape
-      scope.track(cleaned)
-      scope.release(solid)  // the previous running solid is consumed by the clean
-      solid = cleaned
-    } catch (e) {
-      swallowUnlessTrap(e)
-      // The prism-fuse-clean is the legacy path -- the only throw the
-      // diagnostics pinned was the periodic-cylinder face merge (now avoided
-      // here because this solid is the build target, never the add tool). Any
-      // other throw means we cannot get a canonical cap cleanly -> bail.
-      return { kind: 'failed' }
-    }
+    // The prism-fuse-clean is the legacy path; a refused or throwing merge is
+    // the only throw the diagnostics pinned (the periodic-cylinder face merge,
+    // now avoided here because this solid is the build target, never the add
+    // tool). Any refusal means we cannot get a canonical cap cleanly -> bail.
+    const cleaned = runCleanup(oc, scope, { shape: solid }, prismPlan({
+      tolerance: { linearTol: tolerance.linearTol, angularTol: tolerance.angularTol },
+    }))
+    if (passRejected(cleaned, 'unifySameDomain')) { scope.release(solid); return { kind: 'failed' } }
+    scope.track(cleaned.shape)
+    scope.release(solid)  // the previous running solid is consumed by the clean
+    solid = cleaned.shape
     // Find the ENTRANCE cap: a planar face whose normal is anti-parallel to
     // `directionVec` and whose centroid lies on the resolved profile plane
     // through `plane.origin`.  That is the sketch-side cap; priming it back
@@ -684,20 +678,16 @@ function namedFuse(oc: OccModule, scope: DisposeScope) {
       if (solid === null) throw new Error(emptyMessage)
       let out: OccShape = solid
       if (clean) {
-        try {
-          const r = cleanWithHistory(oc, scope, out, true, tolerance === undefined
+        const cleaned = runCleanup(oc, scope, { shape: out, names }, prismPlan(
+          tolerance === undefined
             ? {}
-            : { linearTol: tolerance.linearTol, angularTol: tolerance.angularTol })
-          const cleaned = scope.track(r.shape)
-          const passThrough = canonicalFaces(oc, scope, out).map((f) => ({ output: f, source: f, fromTool: false }))
-          names.faceNames = carryFaceNames(
-            composeOriginThroughClean(oc, scope, passThrough, r.history, cleaned), names.faceNames, null,
-          )
+            : { tolerance: { linearTol: tolerance.linearTol, angularTol: tolerance.angularTol } },
+        ))
+        if (!passRejected(cleaned, 'unifySameDomain')) {
+          scope.track(cleaned.shape)
+          if (cleaned.names) names.faceNames = cleaned.names.faceNames
           scope.release(out)  // the previous running solid is consumed by the clean
-          out = cleaned
-        } catch (e) {
-          swallowUnlessTrap(e)
-          // kept raw solid -- segmentation faces survive but the volume is intact.
+          out = cleaned.shape
         }
       }
       // The prism pass, so an edge's ancestry tokens keep the order every

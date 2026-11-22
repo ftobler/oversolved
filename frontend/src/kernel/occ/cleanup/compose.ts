@@ -212,7 +212,9 @@ export function rebaseDiff(diff: BrepDiff, rebase: SubShapeRebase): BrepDiff {
  * `names` composed through a merging pass's history.
  *
  * A removed sub-shape loses its name. A pass-through keeps the handle it had
- * (the same TShape is still inside the result). Where the pass folded several
+ * (the same TShape is still inside the result). A source the pass split into
+ * several images names none, exactly as `carryFaceNames` treats a split source:
+ * one UUID must never land on two live faces. Where the pass folded several
  * sources into one image the first entry in the input map wins, so map order
  * (never explorer order) decides which UUID survives.
  */
@@ -226,8 +228,9 @@ export function composeNamesThroughHistory(
     for (const [source, uuid] of from.entries()) {
       if (history.IsRemoved(source)) continue
       const mods = drainList(scope, history.Modified(source)) as OccSubShape[]
-      const images = mods.length ? mods : [source]
-      for (const image of images) if (!out.has(image)) out.set(image, uuid)
+      if (mods.length > 1) continue
+      const image = mods.length === 1 ? mods[0] : source
+      if (!out.has(image)) out.set(image, uuid)
     }
     return out
   }
