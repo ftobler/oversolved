@@ -106,6 +106,7 @@
     "gp_Dir2d",
     "gp_Elips",
     "gp_Lin",
+    "gp_Pln",
     "gp_Pnt",
     "gp_Pnt2d",
     "gp_Sphere",

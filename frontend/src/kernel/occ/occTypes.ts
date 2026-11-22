@@ -835,6 +835,10 @@ export interface OccModule extends OccBaseModule {
   IntCurvesFace_ShapeIntersector: new () => OccShapeIntersector
   // gp_Ax2(location, N): `_3` is the unbound gp_Dir::D form.
   gp_Ax2_4: new (origin: OccPnt, normal: OccXYZ) => OccDisposable
+  // gp_Pln(location, normal): a plane primitive. Bound in the build (probed
+  // by moveFaceTweakSpikeReal) although the typed slice once omitted it; the
+  // direct move-face builds a moved planar neighbour face with it.
+  gp_Pln_2: new (origin: OccPnt, normal: OccXYZ) => OccDisposable
   // gp_Ax2(location, N, Vx): the 3-arg form used to orient a circle.
   gp_Ax2_2: new (origin: OccPnt, normal: OccXYZ, xDir: OccXYZ) => OccDisposable
   gp_Circ_2: new (axis: OccDisposable, radius: number) => OccDisposable
