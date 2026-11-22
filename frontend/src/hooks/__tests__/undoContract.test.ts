@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest'
 import { act } from '@testing-library/react'
-import { renderHookStrict } from '@/utils/testing/renderHookStrict'
+import { renderHookStrict } from '@/testing/renderHookStrict'
 import { createDocSession } from '@/session/DocSession'
 import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
 import { createFakeSolveScheduler } from '@/session/__tests__/fakeSolveScheduler'

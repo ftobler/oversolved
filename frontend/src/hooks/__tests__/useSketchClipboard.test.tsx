@@ -10,7 +10,7 @@ import { useSketchClipboard } from '@/hooks/useSketchClipboard'
 import { useEditorState } from '@/hooks/useEditorState'
 import { makeDoc, makeSketch } from '@/utils/core/testFixture'
 import { buildSketchClip, parseClip, serializeClip } from '@/utils/clipboard/sketchClipboard'
-import { dispatchKey } from '@/utils/core/commandRegistry'
+import { dispatchKey } from '@/hooks/commandRegistry'
 import { okResult, type Result } from '@/session/result'
 
 const DOC: PartDoc = makeDoc(makeSketch('sk1', {

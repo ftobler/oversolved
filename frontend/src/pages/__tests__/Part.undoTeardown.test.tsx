@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
-import { executeCommand } from '@/utils/core/commandRegistry'
+import { executeCommand } from '@/hooks/commandRegistry'
 import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 
 import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'

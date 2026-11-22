@@ -86,23 +86,23 @@ vi.mock('@/kernel/worker/solverClient', () => ({
   splitStepViaWorker: h.splitStepViaWorker,
 }))
 vi.mock('@/utils/core/downloadBlob', () => ({ downloadBlob: h.downloadBlob }))
-vi.mock('@/stores/previewStore', () => ({
+vi.mock('@/persistence/previewStore', () => ({
   getPreviewStore: () => ({ put: h.previewPut, get: vi.fn(), remove: vi.fn() }),
-  usePreview: () => undefined,
 }))
+vi.mock('@/hooks/usePreview', () => ({ usePreview: () => undefined }))
 
-import { executeCommand, setEditorCommandRegistry } from '@/utils/core/commandRegistry'
+import { executeCommand, setEditorCommandRegistry } from '@/hooks/commandRegistry'
 import { CommandRegistry, objectParams, Field } from '@/utils/core/commandSpec'
 import { errorResult } from '@/session/result'
 import { assemblyContext } from './commandFixtures'
-import type { AssemblyCommandContext } from '@/pages/assemblyCommandEntries'
+import type { AssemblyCommandContext } from '@/session/assemblyCommandSpecs'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import type { WorkspaceSession } from '@/workspace/session'
 import type { EntryMeta } from '@/workspace/types'
 import { useEditorModeStore } from '@/stores/editorModeStore'
 import { backendBundle } from '@/adapters/backend'
-import { MAX_STEP_IMPORT_BYTES } from '@/stores/documentStore/stepImport'
+import { MAX_STEP_IMPORT_BYTES } from '@/persistence/stepImport'
 import { findMate } from '@/utils/assemblyMutations'
 import { tick, renderEditor, installSessionFromList, insertPart, pickerItem, rowAction, cardAction } from './AssemblyEditor.harness'
 

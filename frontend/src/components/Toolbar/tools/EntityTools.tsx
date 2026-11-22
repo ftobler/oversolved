@@ -1,7 +1,7 @@
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { TOOLBAR_ENTITIES } from '@/registry'
 import type { EntityDef } from '@/registry'
-import { executeCommand } from '@/utils/core/commandRegistry'
+import { executeCommand } from '@/hooks/commandRegistry'
 import { narrowCommandName } from '@/utils/core/commandNames'
 import ToolbarButton from '@/components/Toolbar/ToolbarButton'
 import { iconUrl, shortcutHint } from '@/components/Toolbar/tools/toolUtils'

@@ -6,10 +6,7 @@ import { createWorkspaceSession } from '@/workspace/session'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import { parse as parseYaml } from 'yaml'
 
-vi.mock('@/stores/previewStore', async importOriginal => ({
-  ...(await importOriginal<typeof import('@/stores/previewStore')>()),
-  usePreview: () => undefined,
-}))
+vi.mock('@/hooks/usePreview', () => ({ usePreview: () => undefined }))
 
 import WorkspaceView from '@/pages/WorkspaceView'
 

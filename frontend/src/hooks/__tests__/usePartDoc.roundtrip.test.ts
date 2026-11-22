@@ -10,7 +10,7 @@
 // below because their side effects are what a regression can silently break.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
-import { renderHookStrict } from '@/utils/testing/renderHookStrict'
+import { renderHookStrict } from '@/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
 
 import { migrateLegacyPartPicks } from '@/utils/yamlMutations'

@@ -25,7 +25,7 @@ const storeMock = vi.hoisted(() => ({
 }))
 vi.mock('@/workspace/store', () => ({ getWorkspaceStore: () => storeMock }))
 
-vi.mock('@/stores/previewStore', () => ({ usePreview: () => undefined }))
+vi.mock('@/hooks/usePreview', () => ({ usePreview: () => undefined }))
 
 const workerMock = vi.hoisted(() => ({ dropWorkerFileId: vi.fn() }))
 vi.mock('@/kernel/worker/workerFiles', async importOriginal => ({

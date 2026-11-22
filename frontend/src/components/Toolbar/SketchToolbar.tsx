@@ -1,6 +1,6 @@
 import { useMemo } from 'react'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { CORE_KEYBINDINGS } from '@/utils/core/commandRegistry'
+import { CORE_KEYBINDINGS } from '@/hooks/commandRegistry'
 import { useCommandRegistry } from '@/contexts/CommandRegistryContext'
 import { openFilletDialog, openOffsetDialog, openPatternDialog } from '@/pages/commandEntries'
 import ToolbarButton from '@/components/Toolbar/ToolbarButton'

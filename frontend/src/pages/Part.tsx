@@ -11,7 +11,7 @@ import { classifyPendingAdd } from '@/kernel/features/constraintProbe'
 import { variableRenameProblem } from '@/kernel/features/variable'
 import { PROJECTION_NOT_FROZEN_TITLE, projectionNotFrozenMessage } from '@/kernel/features/projectionMembers'
 import { projectedSelectionTargets } from '@/utils/yamlMutations/freezeProjection'
-import { executeCommand } from '@/utils/core/commandRegistry'
+import { executeCommand } from '@/hooks/commandRegistry'
 import { resolvedKindsOfSketch } from '@/kernel/features/sketch'
 import { docVisibleFeatureIds, visibleFeatureIds } from '@/utils/featureVisibility'
 import { useSketchEditorStore, useSketchUiStore, setSketchCallback, clearSketchCallbacks, sketchOwnedDeleteTargets, deleteMutationFor, type PendingConstraint } from '@/stores/sketchEditorStore'
@@ -20,7 +20,7 @@ import { useSketchClipboard } from '@/hooks/useSketchClipboard'
 import { useEditorState, editorState } from '@/hooks/useEditorState'
 import { syncRollbackFromDoc } from '@/stores/editorState'
 import { usePartDoc } from '@/hooks/usePartDoc'
-import { capturePreview } from '@/stores/previewStore/capture'
+import { capturePreview } from '@/persistence/previewStore/capture'
 import RightClickMenu from '@/components/dialogs/RightClickMenu'
 import type { ContextMenuItem } from '@/components/dialogs/RightClickMenu'
 import { PartDocumentPanel } from '@/components/layout/PartDocumentPanel'
@@ -52,6 +52,7 @@ import {
   type DxfLayerOption, type DxfProfile,
 } from '@/utils/dxfImport'
 import { getSketchState, PART_COMMAND_SPECS, type PartCommandContext, type ShowMessagePayload } from '@/pages/commandEntries'
+import { projectSelection } from '@/tools/projectSelectionCommand'
 import { CommandRegistryProvider } from '@/contexts/CommandRegistryContext'
 import { installDriveSurface } from '@/drive/driveSurface'
 import { DRIVE_ENABLED } from '@/drive/gate'
@@ -74,8 +75,9 @@ import { resolveSelectionNormalTarget } from './selectionNormalTarget'
 import { faceFrameFromSolve } from '@/viewport/faceFrameFromSolve'
 import RenameDialog from '@/components/dialogs/RenameDialog'
 import RawDocumentDialog from '@/components/dialogs/RawDocumentDialog'
-import { suggestedCloneName, stepImportLimitError } from '@/stores/documentStore'
-import { getFileRegistry } from '@/stores/fileRegistry'
+import { suggestedCloneName } from '@/workspace/cloneName'
+import { stepImportLimitError } from '@/persistence/stepImport'
+import { getFileRegistry } from '@/persistence/fileRegistry'
 
 import { normalizeHexColor } from '@/utils/core/partColors'
 import { partIdOfPick } from '@/utils/query/partIdOfPick'
@@ -1222,6 +1224,7 @@ export default function Part() {
     deleteSelectedFeatures: handleDeleteSelectedFeatures,
     toggleSketchPlaneVisibility: handleToggleSketchPlaneVisibility,
     togglePlaneVisibility: handleTogglePlaneVisibility,
+    projectSelection,
     addFeature: (kind, extra) => handleAddFeature(kind, extra) ?? null,
     showMessage,
   }), [

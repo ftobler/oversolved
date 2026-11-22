@@ -4,7 +4,7 @@ import { useIdPipeline } from './IdPipelineContext'
 import type { Topology, PlaneTransform } from '@/types/cad'
 import { buildPlaneMatrix } from './idRegistrationUtils'
 import { planeTransformKey } from './planeTransformKey'
-import { buildSurfaceShapes } from '@/utils/geometry/surfaceShapes'
+import { surfaceShapePoints } from '@/utils/geometry/surfaceShapes'
 import { SKETCH_SURFACE_LAYER_NAME } from './layerNames'
 import { polygonPickables } from './probeMarks'
 import { clearProbeSource, probeSourceKeys, replaceProbeSource } from './sceneProbeStore'
@@ -49,7 +49,22 @@ export function useSketchSurfaceIdRegistration(params: {
 
     const m = buildPlaneMatrix(planeTransform)
     const v = new THREE.Vector3()
-    const surfaces = buildSurfaceShapes(topology)
+    // The outline math is shared with the visible fill; this side owns the
+    // THREE.Shape wrapper because only picking triangulates it.
+    const surfaces = surfaceShapePoints(topology).map(({ pts, holes, query, buildable }) => {
+      const shape = new THREE.Shape()
+      shape.moveTo(pts[0][0], pts[0][1])
+      for (let i = 1; i < pts.length; i++) shape.lineTo(pts[i][0], pts[i][1])
+      shape.closePath()
+      for (const hpts of holes) {
+        const path = new THREE.Path()
+        path.moveTo(hpts[0][0], hpts[0][1])
+        for (let i = 1; i < hpts.length; i++) path.lineTo(hpts[i][0], hpts[i][1])
+        path.closePath()
+        shape.holes.push(path)
+      }
+      return { shape, pts, query, buildable }
+    })
 
     // The probe's area pickables carry the outline in the same plane frame the
     // triangles are registered in.

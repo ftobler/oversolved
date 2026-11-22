@@ -2,7 +2,7 @@
 // resolver. Split out of query.ts so the Repository engine stays under the
 // project's soft file-size limit; Repository imports these back.
 
-import { failLoud } from '@/utils/invariants'
+import { failLoud } from '@/utils/core/failLoud'
 import type { Repository } from './queryRepository'
 
 export class AmbiguousQueryError extends Error {}

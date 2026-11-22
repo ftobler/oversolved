@@ -41,17 +41,6 @@ const FORBIDDEN = ['components', 'stores'].map((dir) => join(SRC, dir))
  * deliberate. Every entry is asserted to still exist and still violate.
  */
 const ALLOWLIST = new Set([
-  // Main-thread services that drive the stores by design.
-  'utils/core/commandRegistry.ts',  // dispatches the keymap's commands onto the editor stores
-  'utils/partExport.ts',            // resolves referenced STEP bytes from the file registry
-  'utils/assemblyExport.ts',        // same file-registry read for assembly export
-  // Type-only store reads: the drag-state shape, erased at runtime.
-  'utils/assemblyPointer.ts',
-  'utils/geometry/edgeDragPreview.ts',
-  'utils/geometry/dragLogic.ts',
-  // Runtime store read, and the invariant helper it needs to fail loud on a
-  // degenerate draw. Both are pure leaves themselves (no React, no UI tree).
-  'utils/geometry/drawLogic.ts',
   // Interaction-layer ID registration reading pure geometry / drag helpers from
   // the components tree. Picking is not a neutral leaf; the A-4 edge fixed here
   // is its use of the stores, which is what the rule still guards.

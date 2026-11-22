@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { executeCommand, clearAllHandlers } from '@/utils/core/commandRegistry'
+import { executeCommand, clearAllHandlers } from '@/hooks/commandRegistry'
 import { useEditorState } from '@/hooks/useEditorState'
 import { installPartRegistry } from '@/pages/__tests__/commandFixtures'
 

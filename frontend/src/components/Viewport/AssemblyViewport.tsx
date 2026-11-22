@@ -8,7 +8,7 @@
 // its own shell over the same scene furniture (SceneController, EnvLight,
 // CubeGizmoCanvas). What the shell computes is nothing: the render list comes
 // from utils/assemblyRender.ts, every gesture goes through
-// utils/assemblyPointer.ts, and the anchor set under the cursor comes from
+// picking/assemblyPointer.ts, and the anchor set under the cursor comes from
 // utils/anchorGizmos.ts, all viewport-free and unit-tested.
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, Suspense } from 'react'
@@ -59,9 +59,9 @@ import {
   partBasesFor,
 } from '@/utils/assemblyRender'
 import { captureThumbnail } from '@/components/Viewport/captureThumbnail'
-import { createAssemblyPointerAdapter, gestureAllowsSelect, missClearPlan, missClearsSelection } from '@/utils/assemblyPointer'
+import { createAssemblyPointerAdapter, gestureAllowsSelect, missClearPlan, missClearsSelection } from '@/picking/assemblyPointer'
 import type { PointerRef } from '@/utils/assemblyGesture'
-import { p2w } from '@/utils/geometry/sketchHelpers'
+import { p2w } from '@/components/Geometry3D/sketchSceneHelpers'
 import { GIZMO_PIXELS, parseGizmoHandleKey } from '@/utils/gizmoPickGeometry'
 import { isManipulable } from '@/utils/partManipulation'
 import { offsetPickParts } from '@/utils/assemblyPick'

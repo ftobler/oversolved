@@ -4,7 +4,7 @@ import type { Topology } from '@/types/cad'
 import { IdPipeline, SKETCH_SURFACE_LAYER_NAME } from '../IdPipeline'
 import { setLivePipeline } from '../IdPipelineContext'
 import { useSketchSurfaceIdRegistration } from '../useSketchSurfaceIdRegistration'
-import { buildSurfaceShapes, SURFACE_TESSELLATION_SEGMENTS } from '@/utils/geometry/surfaceShapes'
+import { buildSurfaceShapes, SURFACE_TESSELLATION_SEGMENTS } from '@/components/Geometry3D/surfaceShapes'
 
 /**
  * The sketch-surface registration hook turns a topology area into a pickable

@@ -5,7 +5,7 @@ import { serializeTree } from '../serializer'
 import type { SerializedFile, WorkspaceTree } from '../types'
 import { addReference } from '../refs'
 import { bytesOf, documentEntry, fileEntry, treeWith } from './fixtures'
-import { fakeDirectory } from '@/stores/documentStore/__tests__/fakeFileSystemDirectory'
+import { fakeDirectory } from '@/testing/fakeFileSystemDirectory'
 
 // I4: one canonical tree, two carriers. The manifest and payloads a folder
 // writes are byte-identical to the ones a zip writes, and the zip pins every

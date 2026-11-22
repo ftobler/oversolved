@@ -4,10 +4,10 @@ import { PATTERN_KINDS } from '@/types/cad'
 import {
   KEYMAP, SKETCH_KEYMAP, FEATURE_KEYMAP, ASSEMBLY_KEYMAP,
   CORE_KEYBINDINGS, ASSEMBLY_KEYBINDINGS,
-} from '@/utils/core/commandRegistry'
+} from '@/hooks/commandRegistry'
 import { CONSTRAINT_SHORTCUTS, ENTITY_SHORTCUTS } from '@/registry'
 import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
-import { ASSEMBLY_COMMAND_SPECS } from '@/pages/assemblyCommandEntries'
+import { ASSEMBLY_COMMAND_SPECS } from '@/session/assemblyCommandSpecs'
 import { TOOL_DEFS } from '@/components/Toolbar/tools/toolsConfig'
 
 // The typed command union is only as good as its list. These tests make the

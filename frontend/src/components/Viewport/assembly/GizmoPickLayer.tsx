@@ -12,7 +12,7 @@ import { useId, useMemo, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { useIdPipeline } from '@/picking'
 import { useRegisteredPart } from '@/picking/idRegistrationUtils'
-import { p2w } from '@/utils/geometry/sketchHelpers'
+import { p2w } from '@/components/Geometry3D/sketchSceneHelpers'
 import { buildGizmoPickGeometry, GIZMO_PIXELS } from '@/utils/gizmoPickGeometry'
 import type { Quat, Vec3 } from '@/utils/transform3d'
 

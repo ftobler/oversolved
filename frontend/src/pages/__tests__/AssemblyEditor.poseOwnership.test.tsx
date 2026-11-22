@@ -5,7 +5,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { forwardRef, useImperativeHandle, type ReactNode } from 'react'
 import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
-import { executeCommand } from '@/utils/core/commandRegistry'
+import { executeCommand } from '@/hooks/commandRegistry'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA } from '@/stores/assemblyStore'
 
 const h = vi.hoisted(() => ({

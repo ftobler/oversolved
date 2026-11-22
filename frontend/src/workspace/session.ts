@@ -1,7 +1,7 @@
 import type { EntryMeta, ReferenceEdges, WorkspaceEntry } from './types'
 import { IdbCarrier, readWorkspaceMeta, savedEntryRecords } from './idbCarrier'
 import { getWorkspaceStore, type WorkspaceStore } from './store'
-import { getFileRegistry } from '@/stores/fileRegistry'
+import { getFileRegistry } from '@/persistence/fileRegistry'
 
 // A session binds the app to one open workspace, so editors and the solve relay
 // read the workspace they are actually in instead of listing every workspace in

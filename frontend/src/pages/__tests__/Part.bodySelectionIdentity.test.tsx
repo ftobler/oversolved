@@ -14,7 +14,7 @@ import { type ReactNode } from 'react'
 import Part from '@/pages/Part'
 import { Wrapper } from '@/__tests__/test-utils'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { executeCommand } from '@/utils/core/commandRegistry'
+import { executeCommand } from '@/hooks/commandRegistry'
 import { useEditorState } from '@/hooks/useEditorState'
 
 // `vi.hoisted`, because the usePartDoc factory below is hoisted above this line

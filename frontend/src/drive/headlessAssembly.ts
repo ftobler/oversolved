@@ -17,7 +17,7 @@ import { History } from '@/session/History'
 import { okResult } from '@/session/result'
 import { CommandRegistry } from '@/utils/core/commandSpec'
 import type { CommandName } from '@/utils/core/commandNames'
-import { ASSEMBLY_COMMAND_SPECS, type AssemblyCommandContext } from '@/pages/assemblyCommandEntries'
+import { ASSEMBLY_COMMAND_SPECS, type AssemblyCommandContext } from '@/session/assemblyCommandSpecs'
 import {
   planAssemblyOperation,
   runAssemblyOperation,
@@ -43,7 +43,7 @@ import { partBundleKey } from '@/workspace/contentHash'
 import { CURRENT_DOC_VERSION } from '@/persistence/docSchema'
 import { stepSeedFor, seededIdSource } from '@/drive/seededIds'
 import { randomId, setIdSource } from '@/utils/yamlMutations'
-import { buildStepDoc } from '@/stores/documentStore/stepImport'
+import { buildStepDoc } from '@/persistence/stepImport'
 import { runScript, type AnnotatedSuccess, type KeptPose, type MateCapture, type ScriptRunOutcome, type ScriptFailure, type StepPartBinding } from '@/drive/scriptRunner'
 import type { AssemblyWireMutation, PartPatternRequest, StepPartRequest } from '@/drive/assemblyMutationCatalog'
 import { expandPartPattern } from '@/drive/assemblyPatternExpand'

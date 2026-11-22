@@ -3,7 +3,7 @@ import type { ConstraintKindName } from '@/wasm-kernel/codec'
 import { fitPointIndex, isVertexPointKey } from '@/types/vertexKeys'
 import { selectionToQuery, parseSelectionId, stripSelectionWrapper } from '@/utils/query/selectionId'
 import { emitWire } from '@/utils/query'
-import { failLoud } from '@/utils/invariants'
+import { failLoud } from '@/utils/core/failLoud'
 
 // The optional chain is the repo-wide rule for import.meta.env (see
 // deployBase.test.ts): this module loads under plain Node through the fuzz

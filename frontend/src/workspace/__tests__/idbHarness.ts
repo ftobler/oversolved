@@ -1,7 +1,7 @@
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
-import { resetDbConnection } from '@/stores/documentStore/idb'
-import { resetPreviewDbConnection } from '@/stores/previewStore/IndexedDbPreviewStore'
+import { resetDbConnection } from '@/persistence/idb'
+import { resetPreviewDbConnection } from '@/persistence/previewStore/IndexedDbPreviewStore'
 import { replaceWorkspaceRows } from '../idbCarrier'
 import type { WorkspaceTree } from '../types'
 

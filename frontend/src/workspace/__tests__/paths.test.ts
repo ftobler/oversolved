@@ -13,7 +13,7 @@ import {
   pathFor,
   assertPathFree,
 } from '../paths'
-import { UNTITLED_DOC_NAME } from '@/stores/documentStore/secureFilename'
+import { UNTITLED_DOC_NAME } from '@/workspace/secureFilename'
 
 describe('isReservedPath', () => {
   it('lets the manifest through: it is the one reserved name the tree holds', () => {

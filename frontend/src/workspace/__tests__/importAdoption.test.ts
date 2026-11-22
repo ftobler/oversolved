@@ -9,7 +9,7 @@ import { addReference } from '../refs'
 import { TRASH_DIR } from '../paths'
 import { bytesOf, documentEntry, fileEntry, treeWith } from './fixtures'
 import { resetWorkspaceIdb } from './idbHarness'
-import { MemoryDirectory } from '@/stores/documentStore/memoryDirectory'
+import { MemoryDirectory } from '@/workspace/memoryDirectory'
 
 // Adoption: the classifier's parse-first rules and the two landing modes. These
 // run against the real IndexedDB workspace seam, so an import is asserted by

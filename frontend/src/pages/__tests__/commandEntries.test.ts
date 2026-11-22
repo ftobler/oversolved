@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
-import { KEYMAP, FEATURE_KEYMAP, SKETCH_KEYMAP } from '@/utils/core/commandRegistry'
+import { KEYMAP, FEATURE_KEYMAP, SKETCH_KEYMAP } from '@/hooks/commandRegistry'
 import { CONSTRAINTS } from '@/registry'
 import { partContext, partRegistry } from './commandFixtures'
 

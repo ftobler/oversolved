@@ -1,6 +1,6 @@
 import type { CommandContext, ErasedCommandSpec } from '@/utils/core/commandSpec'
 import { PART_COMMAND_SPECS } from '@/pages/commandEntries'
-import { ASSEMBLY_COMMAND_SPECS } from '@/pages/assemblyCommandEntries'
+import { ASSEMBLY_COMMAND_SPECS } from '@/session/assemblyCommandSpecs'
 
 // The Registry page's command table and the docs block derive from the same
 // spec tables the editors register, so neither can advertise a command the app

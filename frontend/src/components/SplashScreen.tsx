@@ -5,7 +5,7 @@ import {
   occLoadPercent,
   subscribeOccLoadProgress,
 } from '@/kernel/occ/loadProgress'
-import { useKernelReady } from '@/kernel/worker/kernelReady'
+import { useKernelReady } from '@/hooks/useKernelReady'
 import { SPLASH_TITLE_TEXT, useFontReady } from '@/hooks/useFontReady'
 import './SplashScreen.css'
 

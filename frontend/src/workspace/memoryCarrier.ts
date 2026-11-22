@@ -1,7 +1,7 @@
 import type { ListOptions, WorkspaceCarrier } from './carrier'
 import type { EntryMeta, WorkspaceEntry, WorkspaceTree } from './types'
 import { addEntry, assertTree, cloneTree, entryById, isTrashed, putEntry, removeEntry, restoreEntry } from './tree'
-import { suggestedCloneName } from '@/stores/documentStore/cloneName'
+import { suggestedCloneName } from '@/workspace/cloneName'
 import { randomUuid } from '@/utils/randomUuid'
 
 // The in-memory conformer, written to the carrier seam rather than ported from

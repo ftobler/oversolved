@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useDocumentState } from '@/hooks/useDocumentState'
-import { getPreviewStore } from '@/stores/previewStore'
+import { getPreviewStore } from '@/persistence/previewStore'
 import { IdbWorkspaceStore } from '../store'
 import { resetWorkspaceIdb } from './idbHarness'
 

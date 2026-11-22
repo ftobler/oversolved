@@ -1,6 +1,6 @@
 import { expect, vi } from 'vitest'
 import { act, render, screen, fireEvent, waitFor, within } from '@testing-library/react'
-import { executeCommand } from '@/utils/core/commandRegistry'
+import { executeCommand } from '@/hooks/commandRegistry'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
 import AssemblyEditor from '@/pages/AssemblyEditor'
 import { ToastProvider } from '@/contexts/ToastContext'

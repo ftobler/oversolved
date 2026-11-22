@@ -12,7 +12,7 @@ import type { WorkspaceSession } from '@/workspace/session'
 const storeMock = vi.hoisted(() => ({ list: vi.fn() }))
 vi.mock('@/workspace/store', () => ({ getWorkspaceStore: () => storeMock }))
 
-vi.mock('@/stores/previewStore', () => ({ usePreview: () => undefined }))
+vi.mock('@/hooks/usePreview', () => ({ usePreview: () => undefined }))
 
 import WorkspaceView from '@/pages/WorkspaceView'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'

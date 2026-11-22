@@ -6,7 +6,7 @@
 // was. The session path itself is covered by the applier suites; this pins the
 // UI adapter's answer.
 import { describe, it, expect, vi } from 'vitest'
-import { renderHookStrict } from '@/utils/testing/renderHookStrict'
+import { renderHookStrict } from '@/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { docRef } from './usePartDoc.undoHarness'
 import type { PartDoc } from '@/types/cad'

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { STORE_WORKSPACE_META } from '@/stores/documentStore/idb'
+import { STORE_WORKSPACE_META } from '@/persistence/idb'
 import { IdbCarrier } from '../idbCarrier'
 import { readDirectoryTree, writeDirectoryTree } from '../directoryCarrier'
-import { MemoryDirectory } from '@/stores/documentStore/memoryDirectory'
+import { MemoryDirectory } from '@/workspace/memoryDirectory'
 import { documentEntry, treeWith } from './fixtures'
 import { resetWorkspaceIdb, seedWorkspace } from './idbHarness'
 

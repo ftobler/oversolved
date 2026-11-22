@@ -111,9 +111,7 @@ export interface SketchMessage {
   variant?: 'info' | 'success' | 'error'
 }
 
-/** The dialog title every authoring rejection uses, so the command path and the
- *  dimension confirm path cannot drift apart. */
-export const CANNOT_APPLY_TITLE = 'Cannot apply constraint'
+export { CANNOT_APPLY_TITLE } from '@/utils/core/applyTitles'
 
 export function setSketchCallback(key: 'onMutation', cb: ((m: Mutation) => unknown) | null): void
 export function setSketchCallback(key: 'onMutationBatch', cb: ((ms: Mutation[]) => void) | null): void

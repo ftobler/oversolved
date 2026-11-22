@@ -12,7 +12,7 @@ import { isProperRect, centerRectCorners } from '@/utils/geometry/rectGeometry'
 import { sameSnapVertex } from '@/utils/snapRefs'
 import { finishFitSplineMutations, pointsCoincide } from '@/utils/geometry/drawFinish'
 import type { DrawClickResult } from '@/utils/geometry/drawFinish'
-import { failLoud } from '@/stores/stateInvariants'
+import { failLoud } from '@/utils/core/failLoud'
 
 export type { DrawSnapState }
 export type { DrawClickResult }

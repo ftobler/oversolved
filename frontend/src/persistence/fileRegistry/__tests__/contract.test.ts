@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
-import { resetFakeIndexedDb } from '@/stores/documentStore/__tests__/fakeIndexedDb'
-import { resetDbConnection } from '@/stores/documentStore/idb'
+import { resetFakeIndexedDb } from '@/testing/fakeIndexedDb'
+import { resetDbConnection } from '@/persistence/idb'
 import { IndexedDbFileRegistry } from '../IndexedDbFileRegistry'
 import { MemoryFileRegistry } from '../memoryFileRegistry'
 import type { FileRegistry } from '../types'

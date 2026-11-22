@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
-import { renderHookStrict } from '@/utils/testing/renderHookStrict'
+import { renderHookStrict } from '@/testing/renderHookStrict'
 import { useAssemblyUndoRedo } from '@/hooks/useAssemblyUndoRedo'
 import { assemblyHistory } from '@/stores/assemblyHistory'
 import { useAssemblyStore, DEFAULT_ASSEMBLY_EDITOR_DATA, setAssemblyCallbacks } from '@/stores/assemblyStore'

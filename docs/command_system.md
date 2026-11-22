@@ -36,7 +36,7 @@ a payload that misses the schema), and `enabled(id)` reads the live context.
 `CommandTableView` is the context-free view of a registry that module-level
 dispatch and the toolbar React context hold.
 
-### Registries and dispatch (`commandRegistry.ts`)
+### Registries and dispatch (`hooks/commandRegistry.ts`)
 
 Each mounted page builds one `CommandContext` (the session plus the page's
 action callbacks for the part editor; the operation host plus UI side effects
@@ -99,7 +99,7 @@ Snap rules for drag; the measurement core (`utils/measure/`) turns picks into
 world primitives and reads the pair table for the HUD. Its rules are pure, so
 they test without a viewport.
 
-### Command Tables (`commandEntries.ts`, `assemblyCommandEntries.ts`)
+### Command Tables (`session/partCommandSpecs.ts`, `session/assemblyCommandSpecs.ts`)
 
 `PART_COMMAND_SPECS` (the sketch/part editor, 61 specs) and
 `ASSEMBLY_COMMAND_SPECS` (the assembly editor, 29 specs) are the single source

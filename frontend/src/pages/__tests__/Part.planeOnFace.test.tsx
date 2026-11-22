@@ -17,7 +17,7 @@ import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
 import { Wrapper, partDocStoreMock } from '@/__tests__/test-utils'
 import { usePartEditorStore } from '@/stores/partEditorStore'
-import { executeCommand } from '@/utils/core/commandRegistry'
+import { executeCommand } from '@/hooks/commandRegistry'
 import { useEditorState } from '@/hooks/useEditorState'
 
 vi.mock('../../components/Viewport', () => ({

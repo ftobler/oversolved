@@ -1,4 +1,4 @@
-import { MemoryDirectory, nextMtime } from '../memoryDirectory'
+import { MemoryDirectory, nextMtime } from '@/workspace/memoryDirectory'
 
 // The directory handle the store tests run on: the production in-memory
 // directory (memoryDirectory.ts, which the single-file library also uses) plus

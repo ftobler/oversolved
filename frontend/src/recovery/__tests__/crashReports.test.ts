@@ -22,7 +22,7 @@ import {
 import type { EditorSnapshot } from '@/recovery/autosave'
 import { docHashOf } from '@/drive/docHash'
 import { makeDoc, makeSketch } from '@/utils/core/testFixture'
-import { resetDbConnection } from '@/stores/documentStore/idb'
+import { resetDbConnection } from '@/persistence/idb'
 import type { PartDoc } from '@/types/cad'
 
 function freshDb(): void {

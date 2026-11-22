@@ -14,13 +14,13 @@
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
-import { renderHookStrict } from '@/utils/testing/renderHookStrict'
+import { renderHookStrict } from '@/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { useSolverStore } from '@/stores/solverStore'
 import { useUnsavedChangesStore } from '@/stores/unsavedChangesStore'
-import { resetFakeIndexedDb } from '@/stores/documentStore/__tests__/fakeIndexedDb'
-import { resetDbConnection } from '@/stores/documentStore/idb'
-import { getFileRegistry } from '@/stores/fileRegistry'
+import { resetFakeIndexedDb } from '@/testing/fakeIndexedDb'
+import { resetDbConnection } from '@/persistence/idb'
+import { getFileRegistry } from '@/persistence/fileRegistry'
 import type { PartDoc, Mutation } from '@/types/cad'
 import { editorState } from '@/stores/editorState'
 

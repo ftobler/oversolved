@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { buildKeybindingRows, rowId, resolveMode, MODE_LABEL } from '@/pages/registry/keybindingRows'
-import { KEYMAP, ASSEMBLY_KEYBINDINGS } from '@/utils/core/commandRegistry'
+import { KEYMAP, ASSEMBLY_KEYBINDINGS } from '@/hooks/commandRegistry'
 
 // The Registry page is the user-facing contract for the keyboard. A row that no
 // dispatch path can produce is an advertised lie (this is how `p` -> Parallel

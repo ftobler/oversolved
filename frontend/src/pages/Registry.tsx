@@ -1,6 +1,6 @@
 import { CONSTRAINTS, ENTITIES, DIMENSION_RULES, SNAP_KINDS } from '@/registry'
 import { KERNEL_PAIR_RULES, PAIR_RULES, SINGLE_RULES } from '@/utils/measure/rules'
-import { KEYMAP } from '@/utils/core/commandRegistry'
+import { KEYMAP } from '@/hooks/commandRegistry'
 import '@/pages/Registry.css'
 import { ConstraintsTable } from './registry/ConstraintsTable'
 import { DimensionRulesTable } from './registry/DimensionRulesTable'

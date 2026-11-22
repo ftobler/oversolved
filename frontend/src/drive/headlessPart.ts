@@ -27,13 +27,13 @@ import { cloneDocForUndo } from '@/utils/yamlMutations/undoSnapshot'
 import { MutationRefusal } from '@/utils/yamlMutations/helpers'
 import { projectionTargetRef } from '@/utils/yamlMutations/freezeProjection'
 import { errorResult } from '@/session/result'
-import { createWorkerSolveScheduler, type ReSolveFn } from '@/hooks/workerSolveScheduler'
+import { createWorkerSolveScheduler, type ReSolveFn } from '@/session/workerSolveScheduler'
 import { createDeferredSolveScheduler, type DeferredSolveScheduler } from '@/drive/deferredSolveScheduler'
 import { finalLivePartIds, measureSolveFeatures, solveLocally, type FeatureMeasure } from '@/kernel/solveLocally'
 import { CommandRegistry } from '@/utils/core/commandSpec'
 import type { CommandName } from '@/utils/core/commandNames'
-import { PART_COMMAND_SPECS, getSketchState, type PartCommandContext } from '@/pages/commandEntries'
-import { editorState } from '@/stores/editorState'
+import { PART_COMMAND_SPECS, type PartCommandContext } from '@/session/partCommandSpecs'
+import { HEADLESS_EDITOR_FACTS, createHeadlessCommandState } from '@/drive/headlessCommandState'
 import { partSolvePayload, applySolveToDoc } from '@/drive/solveWriteBack'
 import { journalSink, type CommandJournal } from '@/drive/journal'
 import { runScript, type ScriptRunOutcome, type ScriptStep, type ScriptStepOutcome } from '@/drive/scriptRunner'
@@ -426,10 +426,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
       get: () => solveResultsBox.current,
       set: next => { solveResultsBox.current = next },
     },
-    editorFacts: () => {
-      const state = editorState.getState()
-      return { editingFeatureId: state.editingFeatureId, rollbackPosition: state.rollbackPosition }
-    },
+    editorFacts: () => HEADLESS_EDITOR_FACTS,
     dirtyFacts: () => dirtyFacts,
     docId,
     // A face projection is added with the members the last solve derived from
@@ -452,10 +449,11 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     return { id: `${kind}_${n}`, label: `${kind} ${n}` }
   }
 
+  const commandState = createHeadlessCommandState()
   const context: PartCommandContext = {
     editor: 'part',
     session,
-    state: getSketchState,
+    state: () => commandState,
     undo: () => { session.undo() },
     redo: () => { session.redo() },
     deleteSelectedFeatures: () => {
@@ -466,6 +464,7 @@ export function createHeadlessPart(opts: HeadlessPartOptions): HeadlessPart {
     },
     toggleSketchPlaneVisibility: () => { session.execute({ type: 'toggle_sketch_plane_visibility' }) },
     togglePlaneVisibility: () => { session.execute({ type: 'toggle_plane_visibility' }) },
+    projectSelection: () => false,
     addFeature: (kind, extra) => {
       const next = nextFeatureId(kind)
       return session.execute({

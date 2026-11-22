@@ -27,7 +27,7 @@ import {
   dispatchKey,
   setEditorCommandRegistry,
   type EditorKind,
-} from '@/utils/core/commandRegistry'
+} from '@/hooks/commandRegistry'
 import type { CommandContext, CommandRegistry, ErasedCommandSpec } from '@/utils/core/commandSpec'
 
 export function useCommandRegistration<Ctx extends CommandContext>(

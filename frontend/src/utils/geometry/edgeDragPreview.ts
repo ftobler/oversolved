@@ -3,7 +3,7 @@
 // The dragged entity's vertices are translated by the drag delta.
 // No constraint resolution -- the real solver handles that on pointer-up.
 import type { Sketch } from '@/types/cad'
-import type { VertexOrEdgeDrag } from '@/stores/sketchEditorStore'
+import type { VertexOrEdgeDrag } from '@/types/drag'
 
 function translateEntity(
   sketch: Sketch,

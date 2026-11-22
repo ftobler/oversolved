@@ -10,7 +10,7 @@ import {
   type RecoveryJournalRecord,
 } from '@/recovery/journal'
 import { docHashOf } from '@/drive/docHash'
-import { getPreviewStore } from '@/stores/previewStore'
+import { getPreviewStore } from '@/persistence/previewStore'
 
 export interface RecoveryOffer {
   record: RecoveryJournalRecord

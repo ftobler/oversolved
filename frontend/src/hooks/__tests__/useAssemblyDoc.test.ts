@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
-import { renderHookStrict } from '@/utils/testing/renderHookStrict'
+import { renderHookStrict } from '@/testing/renderHookStrict'
 
 const h = vi.hoisted(() => {
   const make = () => {
@@ -22,7 +22,7 @@ const h = vi.hoisted(() => {
   }
 })
 
-vi.mock('@/stores/previewStore', () => ({
+vi.mock('@/persistence/previewStore', () => ({
   getPreviewStore: () => ({ put: h.previewPut }),
 }))
 

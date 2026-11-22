@@ -37,17 +37,10 @@ export interface DialogState {
   extraAction?: { label: string; onClick: () => void }
 }
 
-// Dragging a geometry vertex or whole edge.
-export interface VertexOrEdgeDrag {
-  type: 'vertex' | 'edge'
-  vertexId: string  // full composite ID (entity ID for edge drags)
-  featureId: string
-  entityId: string
-  vertexKey: string  // "start" | "end" | "center" | "xy" | "edge"
-  startWorld: [number, number]
-  currentWorld: [number, number]
-  startClient: [number, number]  // screen coordinates at pointer-down (for click-vs-drag distinction)
-}
+// The drag state shape lives with the model types, so pure drag math can read
+// it without importing this store layer. Re-exported for the store's callers.
+import type { VertexOrEdgeDrag } from '@/types/drag'
+export type { VertexOrEdgeDrag } from '@/types/drag'
 
 // Dragging a dimension label to reposition it.
 export interface DimLabelDrag {

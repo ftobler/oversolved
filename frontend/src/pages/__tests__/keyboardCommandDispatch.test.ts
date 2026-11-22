@@ -7,7 +7,7 @@ import {
   executeCommand,
   clearAllHandlers,
   dispatchKey,
-} from '@/utils/core/commandRegistry'
+} from '@/hooks/commandRegistry'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
 

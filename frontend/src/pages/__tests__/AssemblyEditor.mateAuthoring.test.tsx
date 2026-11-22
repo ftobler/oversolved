@@ -71,16 +71,16 @@ vi.mock('@/kernel/worker/solverClient', () => ({
   exportAssemblyViaWorker: h.exportAssemblyViaWorker,
 }))
 vi.mock('@/utils/core/downloadBlob', () => ({ downloadBlob: h.downloadBlob }))
-vi.mock('@/stores/previewStore', () => ({
+vi.mock('@/persistence/previewStore', () => ({
   getPreviewStore: () => ({ put: h.previewPut, get: vi.fn(), remove: vi.fn() }),
-  usePreview: () => undefined,
 }))
+vi.mock('@/hooks/usePreview', () => ({ usePreview: () => undefined }))
 
-import { executeCommand } from '@/utils/core/commandRegistry'
+import { executeCommand } from '@/hooks/commandRegistry'
 import { assemblyEntityKey, type EntityMateRefs } from '@/utils/anchorCandidates'
 import { findMate } from '@/utils/assemblyMutations'
 import { MATE_KINDS } from '@/utils/mateKinds'
-import { insertMateCommand } from '@/pages/assemblyCommandEntries'
+import { insertMateCommand } from '@/session/assemblyCommandSpecs'
 import type { MateKind } from '@/types/cad'
 import { tick, renderEditor, installSessionFromList, cardAction, insertPart } from './AssemblyEditor.harness'
 

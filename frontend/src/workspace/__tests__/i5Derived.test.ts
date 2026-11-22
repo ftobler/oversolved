@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { IdbWorkspaceStore } from '../store'
 import { deserializeTree } from '../serializer'
-import { getPreviewStore } from '@/stores/previewStore'
+import { getPreviewStore } from '@/persistence/previewStore'
 import { bundleCacheHas, resetBundleDbConnection } from '@/kernel/bundleCache'
 import { solveAssembly } from '@/kernel/solveAssembly'
 import { BUNDLE_SCHEMA, type PartBundle } from '@/kernel/partBundle'

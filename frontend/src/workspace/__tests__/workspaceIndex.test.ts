@@ -4,7 +4,7 @@ import {
   STORE_WORKSPACE_ENTRY_META,
   STORE_WORKSPACE_SAVED,
   idbTransaction,
-} from '@/stores/documentStore/idb'
+} from '@/persistence/idb'
 import { IdbCarrier, readWorkspaceMeta, workspaceEntryRecords, writeWorkspaceMeta } from '../idbCarrier'
 import { IdbWorkspaceStore } from '../store'
 import { bytesOf, documentEntry, fileEntry, treeWith } from './fixtures'

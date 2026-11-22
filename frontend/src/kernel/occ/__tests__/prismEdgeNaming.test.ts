@@ -13,8 +13,8 @@ import { describe, it, expect, vi } from 'vitest'
 
 const { failLoudMock } = vi.hoisted(() => ({ failLoudMock: vi.fn() }))
 
-vi.mock('@/utils/invariants', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/utils/invariants')>()
+vi.mock('@/utils/core/failLoud', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/utils/core/failLoud')>()
   return { ...actual, failLoud: failLoudMock }
 })
 

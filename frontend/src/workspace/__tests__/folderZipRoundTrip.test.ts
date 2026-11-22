@@ -5,7 +5,7 @@ import { serializeTree } from '../serializer'
 import { removeEntry } from '../tree'
 import { addReference } from '../refs'
 import { bytesOf, documentEntry, fileEntry, treeWith } from './fixtures'
-import { fakeDirectory } from '@/stores/documentStore/__tests__/fakeFileSystemDirectory'
+import { fakeDirectory } from '@/testing/fakeFileSystemDirectory'
 
 // The import/export endpoints, which is all a folder or an archive is: a tree
 // goes out, the same tree comes back. They are held to one contract because

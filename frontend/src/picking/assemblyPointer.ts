@@ -33,7 +33,7 @@ import {
   type PointerRef,
 } from '@/utils/assemblyGesture'
 import type { GizmoAxisName } from '@/utils/gizmoPickGeometry'
-import type { GizmoDragState } from '@/stores/assemblyStore'
+import type { GizmoDragState } from '@/types/drag'
 import type { Vec3 } from '@/utils/transform3d'
 
 export type { GestureOutcome, GestureSource, PointerRef } from '@/utils/assemblyGesture'

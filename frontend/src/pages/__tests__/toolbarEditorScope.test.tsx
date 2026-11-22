@@ -11,7 +11,7 @@ import AssemblyToolbar from '@/pages/AssemblyToolbar'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useAssemblyStore, type AssemblyUndoEntry } from '@/stores/assemblyStore'
 import { useEditorModeStore } from '@/stores/editorModeStore'
-import { clearAllHandlers } from '@/utils/core/commandRegistry'
+import { clearAllHandlers } from '@/hooks/commandRegistry'
 import type { Mutation } from '@/types/cad'
 import { CommandRegistryProvider } from '@/contexts/CommandRegistryContext'
 import {

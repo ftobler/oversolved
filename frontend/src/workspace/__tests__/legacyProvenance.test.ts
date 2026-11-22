@@ -5,7 +5,7 @@ import { importBag, readZipBag } from '../import'
 import { buildZipFromEntries } from '../zipCarrier'
 import { serializeTree } from '../serializer'
 import { MANIFEST_PATH } from '../paths'
-import { STORE_WORKSPACE_META, idbGetFrom, idbPutTo } from '@/stores/documentStore/idb'
+import { STORE_WORKSPACE_META, idbGetFrom, idbPutTo } from '@/persistence/idb'
 import { resetWorkspaceIdb } from './idbHarness'
 
 // A library written while imports kept an origin link carries provenance in a

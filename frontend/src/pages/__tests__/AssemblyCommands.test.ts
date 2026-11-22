@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi } from 'vitest'
-import { renderHookStrict } from '@/utils/testing/renderHookStrict'
+import { renderHookStrict } from '@/testing/renderHookStrict'
 import { useAssemblyCommands } from '@/pages/AssemblyKeyboardShortcuts'
 import {
   ASSEMBLY_COMMAND_NAMES,
@@ -8,7 +8,7 @@ import {
   ASSEMBLY_OPERATION_BY_COMMAND,
   type AssemblyCommandContext,
   type AssemblyCommandName,
-} from '@/pages/assemblyCommandEntries'
+} from '@/session/assemblyCommandSpecs'
 import { ASSEMBLY_OPERATIONS, type AssemblyOperationId } from '@/utils/assemblyOperations'
 import type { CommandRegistry, ErasedCommandSpec } from '@/utils/core/commandSpec'
 import { CommandRegistry as Registry } from '@/utils/core/commandSpec'

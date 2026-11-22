@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor } from '@testing-library/react'
 import { useFileMeta } from '../useFileMeta'
 import { useWorkspaceSessionStore } from '@/stores/workspaceSessionStore'
-import { getFileRegistry } from '@/stores/fileRegistry'
-import { resetFakeIndexedDb } from '@/stores/documentStore/__tests__/fakeIndexedDb'
-import { resetDbConnection } from '@/stores/documentStore/idb'
+import { getFileRegistry } from '@/persistence/fileRegistry'
+import { resetFakeIndexedDb } from '@/testing/fakeIndexedDb'
+import { resetDbConnection } from '@/persistence/idb'
 import type { WorkspaceSession } from '@/workspace/session'
 
 // The feature row's file meta resolves session-first: a STEP adopted from a

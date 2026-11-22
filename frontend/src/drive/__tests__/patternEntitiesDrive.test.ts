@@ -10,7 +10,7 @@ import { describe, it, expect } from 'vitest'
 import { createHeadlessPart } from '../headlessPart'
 import { docHashOf } from '../docHash'
 import { patternSelectionPlan } from '@/stores/editorState'
-import { parsePatternInput } from '@/pages/commandEntries'
+import { parsePatternInput } from '@/session/partCommandSpecs'
 import { mutationValueViolation } from '@/drive/mutationValues'
 import type { PartDoc, SketchFeature } from '@/types/cad'
 

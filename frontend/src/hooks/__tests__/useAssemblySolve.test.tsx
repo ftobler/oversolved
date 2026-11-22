@@ -40,9 +40,9 @@ import { useSolverStore } from '@/stores/solverStore'
 import { assemblyPartId } from '@/utils/assemblyBodies'
 import { assemblyVerdict } from '@/utils/core/assemblyStatus'
 import { DRAG_MATE_ID, DRAG_WEIGHT } from '@/kernel/assemblyDrag'
-import { resetFakeIndexedDb } from '@/stores/documentStore/__tests__/fakeIndexedDb'
-import { resetDbConnection } from '@/stores/documentStore/idb'
-import { getFileRegistry } from '@/stores/fileRegistry'
+import { resetFakeIndexedDb } from '@/testing/fakeIndexedDb'
+import { resetDbConnection } from '@/persistence/idb'
+import { getFileRegistry } from '@/persistence/fileRegistry'
 
 // The relay handlers and currentHashes read the one open workspace session, so a
 // test shapes the session instead of a library-wide store.

@@ -31,7 +31,7 @@ export const COMMAND_NAMES = [
   'pattern_entities',
 
   // Sketch tools: set_tool_<activeTool>. Entity tools come from ENTITIES, the
-  // rest are the compound and selection tools hardcoded in commandEntries.
+  // rest are the compound and selection tools hardcoded in partCommandSpecs.
   'set_tool_select',
   'set_tool_drag',
   'set_tool_line',

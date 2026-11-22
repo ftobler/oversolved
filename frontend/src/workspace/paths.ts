@@ -1,5 +1,5 @@
 import type { EntryKind } from './types'
-import { secureFilename, uniqueStem, UNTITLED_DOC_NAME } from '@/stores/documentStore/secureFilename'
+import { secureFilename, uniqueStem, UNTITLED_DOC_NAME } from '@/workspace/secureFilename'
 
 export const FORMAT_VERSION = 1
 export const MANIFEST_PATH = '.oversolved-manifest.yaml'

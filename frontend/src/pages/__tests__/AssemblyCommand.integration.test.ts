@@ -5,7 +5,7 @@
 // with the live doc and the mutation/solve effects, so the fixture host below
 // is the page's wiring with the store replaced.
 import { describe, it, expect, vi } from 'vitest'
-import { ASSEMBLY_COMMAND_SPECS, type AssemblyCommandContext } from '@/pages/assemblyCommandEntries'
+import { ASSEMBLY_COMMAND_SPECS, type AssemblyCommandContext } from '@/session/assemblyCommandSpecs'
 import { CommandRegistry } from '@/utils/core/commandSpec'
 import { runAssemblyOperation, type AssemblyOperationId, type AssemblyOperationInputs } from '@/utils/assemblyOperations'
 import type { AssemblyDoc } from '@/types/cad'

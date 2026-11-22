@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { STORE_WORKSPACE_ENTRIES } from '@/stores/documentStore/idb'
+import { STORE_WORKSPACE_ENTRIES } from '@/persistence/idb'
 import { IdbWorkspaceStore } from '../store'
 import { IdbCarrier } from '../idbCarrier'
 import { resetWorkspaceIdb } from './idbHarness'

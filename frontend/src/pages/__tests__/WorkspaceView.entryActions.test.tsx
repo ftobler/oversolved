@@ -17,7 +17,7 @@ const storeMock = vi.hoisted(() => ({
 }))
 vi.mock('@/workspace/store', () => ({ getWorkspaceStore: () => storeMock }))
 
-vi.mock('@/stores/previewStore', () => ({ usePreview: () => undefined }))
+vi.mock('@/hooks/usePreview', () => ({ usePreview: () => undefined }))
 
 const exportViaWorker = vi.hoisted(() => vi.fn())
 vi.mock('@/kernel/worker/solverClient', () => ({ exportViaWorker: (...args: unknown[]) => exportViaWorker(...args) }))

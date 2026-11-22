@@ -6,7 +6,6 @@ export { toFileMeta } from './types'
 export { MemoryFileRegistry } from './memoryFileRegistry'
 export { IndexedDbFileRegistry } from './IndexedDbFileRegistry'
 export { fileIdsInSpec, fileIdsInParts, resolveFiles } from './resolve'
-export { useFileMeta } from './useFileMeta'
 
 // The one file registry: IndexedDB, scoped to the origin. A lazy singleton so
 // importing a type from this barrel never opens a database connection; tests

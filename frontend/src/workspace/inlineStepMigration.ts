@@ -6,7 +6,7 @@ import { randomUuid } from '@/utils/randomUuid'
 // Before the uuid-keyed file registry (71fa457a), an `import_step` feature
 // carried its STEP file as inline base64 under `file_data`. The registry landed
 // with no migration on the theory that such a document was disposable (A2, and
-// the v3 note in stores/documentStore/idb.ts). It was not: a real library
+// the v3 note in persistence/idb.ts). It was not: a real library
 // carries them, and each one is a document that exports as tens of megabytes of
 // base64 AND cannot solve at all, because solveImportStep refuses a non-empty
 // `file_data` by name before it looks at anything else.

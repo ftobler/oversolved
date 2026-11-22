@@ -7,7 +7,7 @@
 // suite pins the doc path it dispatches into.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { act } from '@testing-library/react'
-import { renderHookStrict } from '@/utils/testing/renderHookStrict'
+import { renderHookStrict } from '@/testing/renderHookStrict'
 import { usePartDoc } from '@/hooks/usePartDoc'
 import { describeMutation } from '@/utils/core/mutationDescriptions'
 import { lengthUnitOf } from '@/utils/lengthUnit'
