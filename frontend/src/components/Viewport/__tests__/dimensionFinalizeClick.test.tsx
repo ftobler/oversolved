@@ -15,17 +15,41 @@
  * reaches the dispatcher and finalizes.
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
-import type * as THREE from 'three'
+import { render, renderHook, act } from '@testing-library/react'
+import * as THREE from 'three'
 import { useIdBufferPointerDispatch, PART_EDITOR_CONSUMED_LAYERS } from '@/components/Viewport/idDispatch/useIdBufferPointerDispatch'
 import { takeBandClickConsumed, useBandClickGuardCleanup } from '@/components/Viewport/idDispatch/bandClickGuard'
 import { useRubberBandSelect } from '@/components/Viewport/useRubberBandSelect'
 import { shouldOpenRubberBand } from '@/components/Viewport/bandStartPolicy'
 import { IdPipeline } from '@/picking/IdPipeline'
+import { SKETCH_ENTITY_LAYER_NAME } from '@/picking/layerNames'
 import { setLivePipeline } from '@/picking/IdPipelineContext'
-import { useSketchEditorStore } from '@/stores/sketchEditorStore'
+import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
 import { setSketchCallback } from '@/stores/sketchEditorStore'
 import { useEditorState } from '@/hooks/useEditorState'
+import { initializeTools } from '@/tools'
+import { DrawPlane } from '@/components/Geometry3D/Drawing'
+
+// DrawPlane is mounted for the placement-point test only. It owns the window
+// press that records the dimension cursor, so the canvas and camera it reads
+// are per-test values.
+const r3f = vi.hoisted(() => ({ camera: null as unknown, gl: null as unknown }))
+vi.mock('@react-three/fiber', () => ({ useThree: () => ({ camera: r3f.camera, gl: r3f.gl }) }))
+vi.mock('@react-three/drei', () => ({ Line: () => null }))
+vi.mock('@/components/Geometry3D/VertexDots', () => ({ Dot: () => null }))
+vi.mock('@/components/Geometry3D/dimensions', () => ({ DashedLine: () => null }))
+// One world unit per 100 canvas pixels; the placement maths is the subject, not
+// the ray/plane projection (pinned in Drawing.drawPlane.test.tsx).
+const proj = vi.hoisted(() => ({ point: null as { x: number; y: number; z: number } | null }))
+vi.mock('@/components/Geometry3D/dragMathPlane', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/components/Geometry3D/dragMathPlane')>()
+  return {
+    ...actual,
+    projectCursorToSketchPlane: () => proj.point
+      ? ({ x: proj.point.x, y: proj.point.y, z: proj.point.z } as unknown as THREE.Vector3)
+      : null,
+  }
+})
 
 const W = 800
 const H = 600
@@ -195,5 +219,95 @@ describe('dimension finalize click reaches the dispatcher', () => {
     // a no-op (the contract is exercised at the DOM seam, not only in the store).
     await h.fireClick(130, 140)
     expect(spy).toHaveBeenCalledTimes(1)
+  })
+})
+
+// The reported gesture: pick the line, then place the label without moving the
+// cursor. The placement point used to be a move-only side channel, so this
+// click finalized with no cursor and the label landed at the renderer's far
+// default offset until the next move snapped it back.
+describe('a dimension placement click that never moved', () => {
+  let pipeline: IdPipeline
+  let canvas: HTMLCanvasElement
+
+  beforeEach(() => {
+    takeBandClickConsumed()
+    initializeTools()
+  })
+
+  afterEach(() => {
+    setLivePipeline(null)
+    pipeline?.dispose()
+    setSketchCallback('onMutation', null)
+    setSketchCallback('getSketch', null)
+    canvas?.remove()
+    proj.point = null
+    vi.restoreAllMocks()
+  })
+
+  it('lands the label at the press point instead of the default offset', async () => {
+    canvas = makeCanvas()
+    document.body.appendChild(canvas)
+    pipeline = new IdPipeline({ width: W, height: H })
+    setLivePipeline(pipeline)
+    const gl = glStub(canvas)
+    r3f.camera = new THREE.OrthographicCamera(-10, 10, 10, -10, -100, 100)
+    r3f.gl = gl
+    const groupRef = { current: new THREE.Group() }
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    setSketchCallback('getSketch', () => ({ L1: { start: [0, 0], end: [10, 0] } } as never))
+    useEditorState.setState({
+      activeTool: 'dimension',
+      activeFeatureId: 'feat1',
+      dimensionPicks: [],
+      dimensionCursorWorld: null,
+      entityKindMap: { 'entity:feat1:L1': 'line' },
+      normalSelection: new Set(),
+      hoveredSelectionId: null,
+      hoveredVertexId: null,
+      hoveredConstraintEntityIds: new Set(),
+    })
+    let hit: unknown = {
+      id: 1, layer: SKETCH_ENTITY_LAYER_NAME, entityKey: 'entity:feat1:L1',
+      pickKey: 'entity:feat1:L1', distancePx: 0,
+    }
+    pipeline.resolveSync = vi.fn(() => hit as never)
+    pipeline.target.markClean()
+    render(<DrawPlane featureId="feat1" activeFeatureId="feat1" sketchGroupRef={groupRef} />)
+    renderHook(() => useIdBufferPointerDispatch({
+      glRef: { current: gl } as React.RefObject<THREE.WebGLRenderer | null>,
+      consumedLayers: PART_EDITOR_CONSUMED_LAYERS,
+    }))
+
+    // Pick the line: a press and its click, as the browser delivers them.
+    proj.point = { x: 1, y: 1, z: 0 }
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('pointerdown', { button: 0, clientX: 100, clientY: 100, bubbles: true }))
+      canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 100, clientY: 100 }))
+    })
+    expect(useSketchEditorStore.getState().dimensionPicks).toHaveLength(1)
+
+    // The placement click beside the line. No pointermove in between: the press
+    // is the only thing that can name the placement point.
+    hit = null
+    proj.point = { x: 4, y: 4.2, z: 0 }
+    pipeline.target.markClean()
+    await act(async () => {
+      canvas.dispatchEvent(new MouseEvent('pointerdown', { button: 0, clientX: 400, clientY: 420, bubbles: true }))
+      canvas.dispatchEvent(new MouseEvent('click', { button: 0, clientX: 400, clientY: 420 }))
+    })
+
+    const dialog = useSketchUiStore.getState().pendingDialog
+    expect(dialog).not.toBeNull()
+    dialog!.onConfirm('10')
+
+    // Length anchor = midpoint(L1) = (5, 0); the press point (4, 4.2) is the
+    // label's anchor-relative pos, not the 10% extent default.
+    expect(onMutation).toHaveBeenCalledWith({
+      type: 'add_constraint',
+      featureId: 'feat1', kind: 'length', targets: ['entity:feat1:L1'], value: 10,
+      pos: [-1, 4.2],
+    })
   })
 })

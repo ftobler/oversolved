@@ -1112,7 +1112,10 @@ export const editorState = createStore<EditorState>((set, get) => ({
     const resolved = resolveDimension(dimensionPicks, sketch ?? undefined, activeFeatureId)
     if (!resolved) {
       // Vertex-only or otherwise undimensionable: silently drop and let the
-      // user keep picking. Do not deactivate the tool.
+      // user keep picking. Do not deactivate the tool. The placement point
+      // belonged to this attempt; keeping it would place the next dim at an old
+      // press point instead of where the user clicks.
+      set({ dimensionCursorWorld: null })
       return
     }
     const onMutation = requireMutation('finalizeDimensionPlacement')
@@ -1138,6 +1141,13 @@ export const editorState = createStore<EditorState>((set, get) => ({
     // is cleared on tool exit but we want the dispatched pos to point at where
     // the click happened, not at a later cursor position.
     const placementWorld = dimensionCursorWorld
+    // A press always records this now (Drawing.tsx). A null here is a
+    // programmatic finalize or a failed plane projection: keep the no-pos
+    // contract rather than guessing, but say so -- otherwise the renderer's far
+    // default offset is silent and reads as a placement the user made.
+    if (placementWorld === null && devOnly) {
+      console.warn('[editorState] finalizeDimensionPlacement: no press point; the dimension renders at the default offset')
+    }
 
     // Two-vertex point_distance dims: detect the user's drag direction from
     // the placement point and switch the constraint kind accordingly.

@@ -120,7 +120,6 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
   const effectiveTool = activeTool ?? 'drag'
   const drawPoints = useSketchEditorStore(s => s.drawPoints)
   const setDrawHover = useSketchEditorStore(s => s.setDrawHover)
-  const dimensionPicks = useSketchEditorStore(s => s.dimensionPicks)
   const setDimensionCursorWorld = useSketchEditorStore(s => s.setDimensionCursorWorld)
   const clearDraw = useSketchEditorStore(s => s.clearDraw)
   const onMutation = getSketchCallback('onMutation')
@@ -144,12 +143,13 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
     get current() { return meshRef.current?.parent ?? null },
   }
 
-  // Window-level pointermove: bypasses R3F event bubbling so Part3D/Surfaces meshes
-  // cannot block the draw hover cursor. The handler ref is updated every render so the
-  // closure always captures fresh props/derived values without effect dependency issues.
+  // Window-level pointermove and pointerdown: bypasses R3F event bubbling so
+  // Part3D/Surfaces meshes cannot block the draw hover cursor. The handler ref is
+  // updated every render so the closure always captures fresh props/derived values
+  // without effect dependency issues.
   // meshRef is only attached in drawing-tool mode; when null the handler is a no-op.
-  const handleDrawMoveRef = useRef<((e: PointerEvent) => void) | null>(null)
-  handleDrawMoveRef.current = (e: PointerEvent) => {
+  const handleDrawPointerRef = useRef<((e: PointerEvent) => void) | null>(null)
+  handleDrawPointerRef.current = (e: PointerEvent) => {
     const group = resolvedGroupRef.current
     if (!group) return
     // Every visible sketch mounts a DrawPlane, but only the active sketch's
@@ -169,27 +169,37 @@ export function DrawPlane({ featureId, activeFeatureId, sketch, sketchGroupRef, 
     const worldPt = projectCursorToSketchPlane(camera, group, { x: ndcX, y: ndcY })
     if (!worldPt) {
       setDrawHover(null)
-      if (dimensionPicks.length > 0) setDimensionCursorWorld(null)
+      if (effectiveTool === 'dimension') setDimensionCursorWorld(null)
       return
     }
     const sanitized = sanitizePointerEvent({ point: worldPt, clientX: e.clientX, clientY: e.clientY }, resolvedGroupRef)
     setDrawHover(sanitized?.localPoint ?? null)
-    // Mirror the cursor world point for the dimension-placement gesture so the
-    // empty-click finalize can write `pos` at exactly where the user clicked.
-    if (effectiveTool === 'dimension' && dimensionPicks.length > 0 && sanitized?.localPoint) {
+    // The click that places a dimension is the placement point, so the PRESS has
+    // to record it too: pressing on the line after picking it has no move in
+    // between, and touch never hovers at all. The move keeps this live for the
+    // preview; recording from both means the finalize never depends on one.
+    // No picks gate: the value is harmless before the first pick and correct
+    // the moment it lands.
+    if (effectiveTool === 'dimension' && sanitized?.localPoint) {
       setDimensionCursorWorld(sanitized.localPoint)
     }
   }
 
-  // Only the active sketch registers the window listener. Every visible sketch
+  // Only the active sketch registers the window listeners. Every visible sketch
   // mounts a DrawPlane, so registering for all of them stacked N listeners
   // projecting through N planes on every move. The handler's featureId guard
   // stays as a backstop for the commit window where the active feature changes.
   useEffect(() => {
     if (featureId !== activeFeatureId) return
-    const handler = (e: PointerEvent) => handleDrawMoveRef.current?.(e)
+    const handler = (e: PointerEvent) => handleDrawPointerRef.current?.(e)
     window.addEventListener('pointermove', handler)
-    return () => window.removeEventListener('pointermove', handler)
+    // pointerdown precedes the dispatcher's click, so the store holds the exact
+    // press point by the time finalizeDimensionPlacement reads it.
+    window.addEventListener('pointerdown', handler)
+    return () => {
+      window.removeEventListener('pointermove', handler)
+      window.removeEventListener('pointerdown', handler)
+    }
   }, [featureId, activeFeatureId])
 
   if (featureId !== activeFeatureId) return null
