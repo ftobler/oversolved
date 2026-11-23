@@ -1,5 +1,6 @@
 import { useState, useCallback } from 'react'
 import type { PartFeature, PartDoc } from '@/types/cad'
+import { errorResult, type Result } from '@/session/result'
 import { editorState } from '@/stores/editorState'
 import { useEditorState } from '@/hooks/useEditorState'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -32,13 +33,18 @@ export interface UseEditFeatureReturn {
   editingFeatureId: string | null
   editForcedVisible: Set<string>
   resetEditState: (opts?: ResetOpts) => void
-  enterEditFeature: (featureId: string, suppressUndo?: boolean) => void
+  enterEditFeature: (featureId: string, suppressUndo?: boolean) => Result | undefined
   commitEditFeature: () => void
   cancelEditFeature: () => void
   exitEditFeature: () => void
-  enterEditSketch: (featureId: string) => void
+  enterEditSketch: (featureId: string) => Result | undefined
   exitEditSketch: () => void
   clearEditingFeature: () => void
+}
+
+/** The one voice for "you cannot open a suppressed feature's editor". */
+function suppressedEditRefusal(feature: PartFeature): Result {
+  return errorResult('refused', `${feature.label || 'This feature'} is suppressed. Unsuppress it to edit.`)
 }
 
 function computePickBoundary(
@@ -105,9 +111,15 @@ export function useEditFeature({
   // closes the open one FIRST, committing it into its own undo entry. Nesting
   // used to only failLoud-and-clobber the outer snapshot in prod; now it
   // cannot happen at all, because every path funnels through this one function.
-  const enterEditFeature = useCallback((featureId: string, suppressUndo = true) => {
+  const enterEditFeature = useCallback((featureId: string, suppressUndo = true): Result | undefined => {
     const idx = features.findIndex(f => f.id === featureId)
     if (idx < 0) return
+    const feature = features[idx]
+    // A suppressed feature has no solved geometry, so its editor would show
+    // the stored seed and lie about the document. Refuse by name here, the one
+    // entry every gesture funnels through (tree pencil, double-click, page
+    // callers), rather than relying on the disabled button alone.
+    if (feature.suppressed === true) return suppressedEditRefusal(feature)
     const activeEditingId = editorState.getState().editingFeatureId
     if (activeEditingId !== null && activeEditingId !== featureId) {
       // Switching straight from a sketch edit to another feature's leaves the
@@ -164,10 +176,14 @@ export function useEditFeature({
 
   // The mode switch goes first so the sketch toolbar is already up by the time
   // the session opens.
-  const enterEditSketch = useCallback((featureId: string) => {
+  const enterEditSketch = useCallback((featureId: string): Result | undefined => {
+    // Refuse before switching the panel: a suppressed sketch must not leave the
+    // toolbar in sketch mode with no sketch open.
+    const feature = features.find(f => f.id === featureId)
+    if (feature?.suppressed === true) return suppressedEditRefusal(feature)
     setMode('sketch')
-    enterEditFeature(featureId, false)  // sketch: don't suppress undo
-  }, [enterEditFeature, setMode])
+    return enterEditFeature(featureId, false)  // sketch: don't suppress undo
+  }, [features, enterEditFeature, setMode])
 
   const exitEditSketch = useCallback(() => {
     commitEditFeature()  // sketch exits always commit

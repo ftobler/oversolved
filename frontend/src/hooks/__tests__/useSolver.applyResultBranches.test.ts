@@ -118,6 +118,49 @@ describe('applySolveResult branches', () => {
     expect(result.current.solveResults.sk1.plane_transform?.origin).toEqual([0, 0, 0])
   })
 
+  it('maps a suppressed sketch to empty geometry and never reads its stored seed', async () => {
+    // The kernel's hard skip emits a bare status. Reading `initial` here would
+    // draw the whole authored sketch as if it had solved.
+    const { result } = setupHook()
+    mockSolveLocally.mockResolvedValue(response({ sk1: { status: 'suppressed' } }))
+    const doc = makeDoc({
+      features: [{
+        id: 'sk1', kind: 'sketch',
+        entities: [{ id: 'e1', kind: 'line' }],
+        initial: { e1: [0, 0, 10, 0] },
+        constraints: [{ id: 'c1', kind: 'horizontal' }],
+      }],
+    })
+
+    await act(async () => { await result.current.reSolve(doc) })
+
+    expect(result.current.solveResults.sk1).toEqual({ solved: {}, status: 'suppressed' })
+    expect(result.current.solveResults.sk1.constraints).toBeUndefined()
+    expect(result.current.solveResults.sk1.topology).toBeUndefined()
+    expect(mockUnflattenGeometry).not.toHaveBeenCalled()
+  })
+
+  it('keeps the seed geometry for an unsuppressed result that carries none', async () => {
+    // Pinned so the suppression fix does not widen into the failure branch: an
+    // ordinary failed feature still renders its stored seed today.
+    const seed = { seed: true }
+    mockUnflattenGeometry.mockReturnValue(seed)
+    const { result } = setupHook()
+    mockSolveLocally.mockResolvedValue(response({ sk1: { status: 'exception' } }))
+    const doc = makeDoc({
+      features: [{
+        id: 'sk1', kind: 'sketch',
+        entities: [{ id: 'e1', kind: 'line' }],
+        initial: { e1: [0, 0, 10, 0] },
+      }],
+    })
+
+    await act(async () => { await result.current.reSolve(doc) })
+
+    expect(mockUnflattenGeometry).toHaveBeenCalledWith({ e1: [0, 0, 10, 0] }, [{ id: 'e1', kind: 'line' }])
+    expect(result.current.solveResults.sk1.solved).toBe(seed)
+  })
+
   it('defaults only a missing status to exception and keeps a present one', async () => {
     const { result } = setupHook()
     mockSolveLocally.mockResolvedValue(response({

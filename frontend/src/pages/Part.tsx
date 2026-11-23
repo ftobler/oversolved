@@ -5,6 +5,7 @@ import type { PartDoc, PartFeature, Mutation, Sketch, LengthUnit } from '@/types
 import { randomId } from '@/utils/yamlMutations'
 import { isWholePartSelectionId, parseTopoFallbackQuery, stripSelectionWrapper } from '@/utils/query/selectionId'
 import { parseQuery } from '@/utils/query'
+import { selectionSourceFeatureIds } from '@/utils/query/pickOrder'
 import { isFaceRestriction } from '@/kernel/occ/primitives'
 import { findEdgeKindForQuery } from '@/picking/partDispatchCallbacks'
 import { classifyPendingAdd } from '@/kernel/features/constraintProbe'
@@ -1328,14 +1329,32 @@ export default function Part() {
   }, [handleMutation, doc])
 
   const toggleVisibility = useCallback((featureId: string) => {
-    handleMutation({ type: 'set_feature_visibility', featureId, visible: !visibleFeaturesWithEdit.has(featureId) })
+    const feature = features.find(f => f.id === featureId)
+    // A suppressed feature is absent from the drawn set by rule, so the eye
+    // must read its stored flag instead: the setting is kept for the day it is
+    // unsuppressed, and the drawn set would make every press write "true".
+    const shown = feature?.suppressed === true
+      ? feature.visible !== false
+      : visibleFeaturesWithEdit.has(featureId)
+    handleMutation({ type: 'set_feature_visibility', featureId, visible: !shown })
     setContextMenu(null)
-  }, [handleMutation, visibleFeaturesWithEdit])
+  }, [handleMutation, features, visibleFeaturesWithEdit])
 
   const toggleSuppression = useCallback((featureId: string, suppressed: boolean) => {
     handleMutation({ type: 'set_feature_suppression', featureId, suppressed })
+    if (suppressed) {
+      // The feature stops drawing the moment the mutation commits, so any of
+      // its ids still selected would point at nothing. Drop them and leave the
+      // rest of the selection standing; a pick chip's stored values are
+      // document data and stay until the feature reports them failed.
+      const store = useSketchEditorStore.getState()
+      const known = new Set((doc?.features ?? []).map(f => f.id))
+      store.dropFromNormalSelection(
+        [...store.normalSelection].filter(id => selectionSourceFeatureIds(id, known).includes(featureId)),
+      )
+    }
     setContextMenu(null)
-  }, [handleMutation])
+  }, [handleMutation, doc])
 
   const handleFeatureRename = useCallback((featureId: string, label: string) => {
     const trimmed = label.trim()

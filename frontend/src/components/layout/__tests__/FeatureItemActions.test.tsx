@@ -24,7 +24,7 @@ function makeHandlers() {
 /** Renders the actions inside a row whose click selects the feature, so a
  *  bubbling button click is observable as a rowClick call. */
 function renderRow(
-  over: { featureKind: string; isEditing?: boolean },
+  over: { featureKind: string; isEditing?: boolean; isSuppressed?: boolean },
   handlers: Handlers,
 ) {
   const rowClick = vi.fn()
@@ -38,6 +38,7 @@ function renderRow(
         isOrigin={false}
         isVisible={true}
         hasVisibility={true}
+        isSuppressed={over.isSuppressed}
         {...handlers}
       />
     </div>
@@ -70,6 +71,26 @@ describe('FeatureItemActions click isolation', () => {
     expect(handlers.onToggleVisibility).toHaveBeenCalledWith('f1')
     expect(handlers.onRightClick).toHaveBeenCalledTimes(1)
     expect(rowClick).not.toHaveBeenCalled()
+  })
+
+  it('disables the pencil on a suppressed row and says why', () => {
+    const handlers = makeHandlers()
+    renderRow({ featureKind: 'sketch', isSuppressed: true }, handlers)
+    const pencil = document.querySelector('.feature-edit-btn') as HTMLButtonElement
+    expect(pencil.disabled).toBe(true)
+    expect(pencil.title).toBe('Unsuppress to edit')
+    fireEvent.click(pencil)
+    expect(handlers.onEnterEditSketch).not.toHaveBeenCalled()
+  })
+
+  it('dims the eye on a suppressed row but keeps it live', () => {
+    const handlers = makeHandlers()
+    renderRow({ featureKind: 'sketch', isSuppressed: true }, handlers)
+    const eye = document.querySelector('.feature-visibility-btn') as HTMLButtonElement
+    expect(eye.className).toContain('suppressed')
+    expect(eye.disabled).toBe(false)
+    fireEvent.click(eye)
+    expect(handlers.onToggleVisibility).toHaveBeenCalledWith('f1')
   })
 
   it('shows the OK/Cancel pair in the row while the feature is edited', () => {

@@ -595,6 +595,17 @@
   color: #777;
 }
 
+.feature-edit-btn:disabled,
+.feature-edit-btn.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.feature-edit-btn:disabled:hover,
+.feature-edit-btn.disabled:hover {
+  color: #555;
+}
+
 .feature-edit-btn .material-icons-outlined {
   font-size: 20px;
 }
@@ -661,6 +672,12 @@
 .feature-visibility-btn.disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* The eye still toggles the stored flag for the day the feature is unsuppressed,
+   but it cannot change what the suppressed feature draws now. */
+.feature-visibility-btn.suppressed {
+  opacity: 0.4;
 }
 
 .feature-visibility-btn:disabled:hover,

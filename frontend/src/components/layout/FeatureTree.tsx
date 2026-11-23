@@ -368,6 +368,11 @@ export function FeatureTree() {
           // (utils/core/featureFailure.ts). The row and the open editor show
           // this one mark.
           const mark = featureFailure(feature.id, solveResults, parts)
+          // A suppressed feature is not drawn, but its eye shows the stored
+          // visibility, so the row does not read as hidden while the flag is on.
+          const eyeShowsVisible = feature.suppressed === true
+            ? feature.visible !== false
+            : visibleFeatures.has(feature.id)
 
           return (
           <Fragment key={`feature-${feature.id}`}>
@@ -385,7 +390,7 @@ export function FeatureTree() {
               />
             )}
             <li
-              className={`feature-item ${!isBuiltIn && feature.id !== editingFeatureId ? 'draggable' : ''} ${index >= effectiveRollback ? 'rolled-back' : ''} ${!visibleFeatures.has(feature.id) ? 'invisible' : ''} ${feature.id === editingFeatureId ? 'editing' : ''} ${selection.has(selectionId) ? 'selected' : ''} ${relatedIds.has(selectionId) ? 'related' : ''} ${draggedFeatureId === feature.id ? 'dragging' : ''} ${cue.top === index ? 'drop-target-top' : ''} ${cue.bottom === index ? 'drop-target-bottom' : ''}`}
+              className={`feature-item ${!isBuiltIn && feature.id !== editingFeatureId ? 'draggable' : ''} ${index >= effectiveRollback ? 'rolled-back' : ''} ${eyeShowsVisible ? '' : 'invisible'} ${feature.id === editingFeatureId ? 'editing' : ''} ${selection.has(selectionId) ? 'selected' : ''} ${relatedIds.has(selectionId) ? 'related' : ''} ${draggedFeatureId === feature.id ? 'dragging' : ''} ${cue.top === index ? 'drop-target-top' : ''} ${cue.bottom === index ? 'drop-target-bottom' : ''}`}
               role="option"
               tabIndex={0}
               aria-selected={selection.has(selectionId)}
@@ -432,6 +437,9 @@ export function FeatureTree() {
                 // second editor session on the same feature. The Edit button
                 // already hides while editing; the tree must match that guard.
                 if (feature.id === editingFeatureId) return
+                // Suppressed rows have no solved geometry to edit; their pencil
+                // is disabled, and this gesture must not bypass it.
+                if (feature.suppressed === true) return
                 if (feature.kind === 'sketch') {
                   onEnterEditSketch(feature.id)
                 } else if (isEditableFeatureKind(feature.kind)) {
@@ -473,8 +481,9 @@ export function FeatureTree() {
                   isEditing={feature.id === editingFeatureId}
                   isBuiltIn={isBuiltIn}
                   isOrigin={feature.id === 'Origin'}
-                  isVisible={visibleFeatures.has(feature.id)}
+                  isVisible={eyeShowsVisible}
                   hasVisibility={hasFeatureVisibilityToggle(feature.kind)}
+                  isSuppressed={feature.suppressed === true}
                   onEnterEditSketch={onEnterEditSketch}
                   onEnterEditFeature={onEnterEditFeature}
                   onEditCommit={onEditCommit}
