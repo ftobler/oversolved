@@ -211,7 +211,9 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
 
     const dragTool = toolRegistry.get('drag')
     if (!dragTool) {
-      setDrag(null); setDragSnap(null); setDragStartClient(null)
+      // No tool means no mutation was dispatched, so the gesture ends
+      // uncommitted and leaves no held preview.
+      setDrag(null, false); setDragSnap(null); setDragStartClient(null)
       return
     }
     const state = useSketchEditorStore.getState()
