@@ -3,7 +3,7 @@ import * as THREE from 'three'
 import type { ThreeEvent } from '@react-three/fiber'
 import type { Topology } from '@/types/cad'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
-import { COLOR_SELECTED, COLOR_INACTIVE, COLOR_HOVER, COLOR_ERROR, highlightState } from '@/components/Geometry3D/constants'
+import { COLOR_SELECTED, COLOR_INACTIVE, COLOR_HOVER, COLOR_ERROR, highlightState, sketchFillRenderLayer } from '@/components/Geometry3D/constants'
 import { buildSurfaceShapes } from '@/components/Geometry3D/surfaceShapes'
 
 // 'inactive' = another sketch is being edited (this one is dimmed, no events)
@@ -54,6 +54,7 @@ export function SurfaceMesh({ shape, query, mode, buildable = true }: SurfaceMes
   const isSelected = normalSelection.has(query)
   const isHovered = hoveredSelectionId === query
   const { color, opacity } = surfaceFillStyle(mode, isSelected, isHovered, buildable)
+  const fillLayer = sketchFillRenderLayer()
 
   // Decoration only -- never a selection path. The collision-id render pass is
   // the single selection source: a surface click routes through
@@ -69,9 +70,17 @@ export function SurfaceMesh({ shape, query, mode, buildable = true }: SurfaceMes
   return (
     <mesh
       onClick={handleClick}
+      renderOrder={fillLayer.renderOrder}
     >
       <shapeGeometry args={[shape]} />
-      <meshBasicMaterial color={color} transparent opacity={opacity} side={THREE.DoubleSide} depthWrite={false} />
+      <meshBasicMaterial
+        color={color}
+        transparent={fillLayer.transparent}
+        opacity={opacity}
+        side={THREE.DoubleSide}
+        depthTest={fillLayer.depthTest}
+        depthWrite={fillLayer.depthWrite}
+      />
     </mesh>
   )
 }

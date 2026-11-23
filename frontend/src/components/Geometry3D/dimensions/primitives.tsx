@@ -77,7 +77,7 @@ export function ExtensionLine({ start, end, color, overshootPx = EXTENSION_OVERS
 }
 
 // Line with dash/gap sizes in pixels, constant regardless of zoom.
-export function DashedLine({ points, color, lineWidth, dashPx = 7.5, gapPx = 4.5, depthTest, renderOrder, onPointerOver, onPointerOut }: {
+export function DashedLine({ points, color, lineWidth, dashPx = 7.5, gapPx = 4.5, depthTest, renderOrder, transparent, onPointerOver, onPointerOut }: {
   points: [number, number, number][]
   color: string
   lineWidth: number
@@ -85,6 +85,7 @@ export function DashedLine({ points, color, lineWidth, dashPx = 7.5, gapPx = 4.5
   gapPx?: number
   depthTest?: boolean
   renderOrder?: number
+  transparent?: boolean
   onPointerOver?: (e: { stopPropagation: () => void }) => void
   onPointerOut?: () => void
 }) {
@@ -97,5 +98,5 @@ export function DashedLine({ points, color, lineWidth, dashPx = 7.5, gapPx = 4.5
     mat.dashSize = dashPx * scale
     mat.gapSize = gapPx * scale
   })
-  return <Line ref={lineRef} points={points} color={color} lineWidth={lineWidth} dashed dashSize={0.01} gapSize={0.005} depthTest={depthTest} renderOrder={renderOrder} onPointerOver={onPointerOver} onPointerOut={onPointerOut} />
+  return <Line ref={lineRef} points={points} color={color} lineWidth={lineWidth} dashed dashSize={0.01} gapSize={0.005} depthTest={depthTest} renderOrder={renderOrder} transparent={transparent} onPointerOver={onPointerOver} onPointerOut={onPointerOut} />
 }

@@ -2,22 +2,13 @@ import { Line } from '@react-three/drei'
 import * as THREE from 'three'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
 import { useScreenScale } from '@/components/Geometry3D/useScreenScale'
+import { Dot } from '@/components/Geometry3D/DotMesh'
 import { COLOR_HOVER, COLOR_SELECTED, COLOR_CONSTRAINT_HOVER, entityRenderLayer, highlightState } from '@/components/Geometry3D/constants'
 
-/** 10-gon dot with constant pixel radius regardless of zoom.
- *  If billboard=true the dot always faces the camera.
- *  renderOrder and depthTest control z-ordering (use for always-on-top elements). */
-export function Dot({ x, y, px, color, billboard = false, renderOrder = 0, depthTest = true }: {
-  x: number; y: number; px: number; color: string; billboard?: boolean; renderOrder?: number; depthTest?: boolean
-}) {
-  const meshRef = useScreenScale<THREE.Mesh>(px, { billboard })
-  return (
-    <mesh ref={meshRef} position={[x, y, 0]} renderOrder={renderOrder}>
-      <circleGeometry args={[1, 10]} />
-      <meshBasicMaterial color={color} side={THREE.DoubleSide} depthTest={depthTest} transparent={!depthTest} />
-    </mesh>
-  )
-}
+// The dot primitive itself lives beside this file so other overlays (snap,
+// origin, assembly builtin) share it. Re-exported here: every existing import
+// site names VertexDots.
+export { Dot }
 
 // Square highlight rendered at z=0.001 so it's always visible above lines.
 export function VertexHighlight({ x, y, px, color }: { x: number; y: number; px: number; color: string }) {
@@ -59,14 +50,14 @@ export function VertexDot({ x, y, px, baseColor, featureId, entityId, vertexKey,
   const color = state === 'selected' ? COLOR_SELECTED
     : state === 'hovered' ? COLOR_HOVER
     : constraintHovered ? COLOR_CONSTRAINT_HOVER : baseColor
-  const { depthTest, renderOrder } = entityRenderLayer({ isEditing, selected, hovered })
+  const layer = entityRenderLayer({ isEditing, selected, hovered })
 
   // After the hooks (rules-of-hooks): a coincident partner is not drawn -- the
   // cluster leader stands in for it, so the merged point reads as one handle.
   if (vertId && suppressedVertexIds?.has(vertId)) return null
 
   return (
-    <Dot x={x} y={y} px={hovered ? px + 2 : px} color={color} billboard renderOrder={renderOrder} depthTest={depthTest} />
+    <Dot x={x} y={y} px={hovered ? px + 2 : px} color={color} billboard {...layer} />
   )
 }
 

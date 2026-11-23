@@ -56,6 +56,10 @@ export const COLOR_PROJECTED = '#ffca28'  // amber for projected/reference geome
 export const COLOR_SNAP = '#aaaaaa'  // snap indicator during drag (same hue as preview by default)
 
 // Render order (higher = renders on top)
+// The sketch area fill is the one layer below everything else: its polygon runs
+// along the centre of the boundary lines, so it must be painted before they are.
+// Negative on purpose, so every entity layer (idle 0 included) stays above it.
+export const RENDER_ORDER_SKETCH_FILL = -1
 export const RENDER_ORDER_DEFAULT = 0
 export const RENDER_ORDER_EDITING = 10
 export const RENDER_ORDER_HIGHLIGHT = 999

@@ -44,7 +44,7 @@ export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth =
   const lw = hovered ? lineWidth + 1 : lineWidth
   // Single z-ordering decision for this entity. Explicit values (never undefined)
   // so hover/select/deselect each fully reset the layer instead of sticking.
-  const { depthTest, renderOrder } = entityRenderLayer({ isEditing, selected, hovered, hinted })
+  const { depthTest, renderOrder, transparent } = entityRenderLayer({ isEditing, selected, hovered, hinted })
 
   if ('start' in e && 'end' in e && 'radius' in e) {
     const arc = e as Arc
@@ -55,8 +55,8 @@ export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth =
       {/* Picking is handled by the ID buffer (267.5). */}
       <group>
         {construction
-            ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={depthTest} renderOrder={renderOrder} />
-            : <Line points={pts} color={color} lineWidth={lw} depthTest={depthTest} renderOrder={renderOrder} />}
+            ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={depthTest} transparent={transparent} renderOrder={renderOrder} />
+            : <Line points={pts} color={color} lineWidth={lw} depthTest={depthTest} transparent={transparent} renderOrder={renderOrder} />}
         </group>
         <VertexDot x={arc.start[0]} y={arc.start[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} suppressedVertexIds={suppressedVertexIds} vertexKey="start"  isEditing={isEditing} />
         <VertexDot x={arc.end[0]} y={arc.end[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} suppressedVertexIds={suppressedVertexIds} vertexKey="end"  isEditing={isEditing} />
@@ -74,8 +74,8 @@ export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth =
         <group>
 
           {construction
-            ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={depthTest} renderOrder={renderOrder} />
-            : <Line points={pts} color={color} lineWidth={lw} depthTest={depthTest} renderOrder={renderOrder} />}
+            ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={depthTest} transparent={transparent} renderOrder={renderOrder} />
+            : <Line points={pts} color={color} lineWidth={lw} depthTest={depthTest} transparent={transparent} renderOrder={renderOrder} />}
         </group>
         <VertexDot x={line.start[0]} y={line.start[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} suppressedVertexIds={suppressedVertexIds} vertexKey="start"  isEditing={isEditing} />
         <VertexDot x={line.end[0]} y={line.end[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} suppressedVertexIds={suppressedVertexIds} vertexKey="end"  isEditing={isEditing} />
@@ -94,8 +94,8 @@ export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth =
       <>
         <group>
           {construction
-            ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={depthTest} renderOrder={renderOrder} />
-            : <Line points={pts} color={color} lineWidth={lw} depthTest={depthTest} renderOrder={renderOrder} />}
+            ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={depthTest} transparent={transparent} renderOrder={renderOrder} />
+            : <Line points={pts} color={color} lineWidth={lw} depthTest={depthTest} transparent={transparent} renderOrder={renderOrder} />}
         </group>
         <VertexDot x={el.center[0]} y={el.center[1]} px={2.5} baseColor={baseColor} featureId={featureId} entityId={entityId} suppressedVertexIds={suppressedVertexIds} vertexKey="center"  isEditing={isEditing} />
         {ELLIPSE_AXIS_KEYS.map(key => (
@@ -111,14 +111,14 @@ export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth =
     const pts = flat.map(p => [p[0], p[1], 0] as [number, number, number])
     const handleLine = (from: [number, number], to: [number, number]) =>
       construction
-        ? <DashedLine points={[[from[0], from[1], 0], [to[0], to[1], 0]]} color={color} lineWidth={1} depthTest={depthTest} renderOrder={renderOrder} />
-        : <Line points={[[from[0], from[1], 0], [to[0], to[1], 0]]} color={color} lineWidth={1} depthTest={depthTest} renderOrder={renderOrder} />
+        ? <DashedLine points={[[from[0], from[1], 0], [to[0], to[1], 0]]} color={color} lineWidth={1} depthTest={depthTest} transparent={transparent} renderOrder={renderOrder} />
+        : <Line points={[[from[0], from[1], 0], [to[0], to[1], 0]]} color={color} lineWidth={1} depthTest={depthTest} transparent={transparent} renderOrder={renderOrder} />
     return (
       <>
         <group>
           {construction
-            ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={depthTest} renderOrder={renderOrder} />
-            : <Line points={pts} color={color} lineWidth={lw} depthTest={depthTest} renderOrder={renderOrder} />}
+            ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={depthTest} transparent={transparent} renderOrder={renderOrder} />
+            : <Line points={pts} color={color} lineWidth={lw} depthTest={depthTest} transparent={transparent} renderOrder={renderOrder} />}
           {fs.handleStart ? handleLine(fs.points[0], fs.handleStart) : null}
           {fs.handleEnd ? handleLine(fs.points[fs.points.length - 1], fs.handleEnd) : null}
         </group>
@@ -139,8 +139,8 @@ export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth =
       <>
         <group>
           {construction
-            ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={depthTest} renderOrder={renderOrder} />
-            : <Line points={pts} color={color} lineWidth={lw} depthTest={depthTest} renderOrder={renderOrder} />}
+            ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={depthTest} transparent={transparent} renderOrder={renderOrder} />
+            : <Line points={pts} color={color} lineWidth={lw} depthTest={depthTest} transparent={transparent} renderOrder={renderOrder} />}
         </group>
         <VertexDot x={sp.p1[0]} y={sp.p1[1]} px={4} baseColor={baseColor} featureId={featureId} entityId={entityId} suppressedVertexIds={suppressedVertexIds} vertexKey="start" isEditing={isEditing} />
         <VertexDot x={sp.p2[0]} y={sp.p2[1]} px={3} baseColor={baseColor} featureId={featureId} entityId={entityId} suppressedVertexIds={suppressedVertexIds} vertexKey="c1"    isEditing={isEditing} />
@@ -157,8 +157,8 @@ export function EntityItem({ entity, entityId, featureId, baseColor, lineWidth =
         <group>
 
           {construction
-            ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={depthTest} renderOrder={renderOrder} />
-            : <Line points={pts} color={color} lineWidth={lw} depthTest={depthTest} renderOrder={renderOrder} />}
+            ? <DashedLine points={pts} color={color} lineWidth={lw} depthTest={depthTest} transparent={transparent} renderOrder={renderOrder} />
+            : <Line points={pts} color={color} lineWidth={lw} depthTest={depthTest} transparent={transparent} renderOrder={renderOrder} />}
         </group>
         <VertexDot x={circ.center[0]} y={circ.center[1]} px={2.5} baseColor={baseColor} featureId={featureId} entityId={entityId} suppressedVertexIds={suppressedVertexIds} vertexKey="center"  isEditing={isEditing} />
       </>
