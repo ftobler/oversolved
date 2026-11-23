@@ -712,6 +712,46 @@ describe('sketchEditorStore', () => {
       expect(useSketchEditorStore.getState().dimensionCursorWorld).toBeNull()
     })
 
+    it('finalizeDimensionPlacement: a press point on the line commits a zero offset, not the default', () => {
+      // The reported gesture: the line is picked by a click, then the
+      // placement click lands right on the line with no move in between. The
+      // press itself records dimensionCursorWorld (Drawing.tsx), so the finalize
+      // must carry it instead of falling back to the renderer's far offset.
+      const handler = vi.fn()
+      setSketchCallback('onMutation', handler)
+      setSketchCallback('getSketch', () => ({
+        L1: { start: [0, 0], end: [10, 0] },
+      } as never))
+      useEditorState.setState({
+    dimensionPicks: [{ isVertex: false, target: 'entity:S1:L1', entityKind: 'line' }],
+    dimensionCursorWorld: [2, 0],
+  })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([200, 300])
+      useSketchUiStore.getState().pendingDialog!.onConfirm('10')
+      // Length anchor = midpoint(L1) = (5, 0), so the press point is 3 left of
+      // it. A zero y offset is still a real pos and must survive the commit.
+      expect(handler).toHaveBeenCalledWith({
+        type: 'add_constraint',
+        featureId: 'S1', kind: 'length', targets: ['entity:S1:L1'], value: 10,
+        pos: [-3, 0],
+      })
+      setSketchCallback('getSketch', null)
+    })
+
+    it('finalizeDimensionPlacement: an unresolvable pick clears the placement cursor', () => {
+      // A vertex alone resolves no dimension. The placement point belonged to
+      // that abandoned attempt; keeping it would place the next dim at an old
+      // cursor point, the stale-value half of the same bug.
+      useEditorState.setState({
+    dimensionPicks: [{ isVertex: true, target: 'vertex:S1:L1:start' }],
+    dimensionCursorWorld: [5, 7],
+  })
+      useSketchEditorStore.getState().finalizeDimensionPlacement([100, 100])
+      expect(useSketchEditorStore.getState().dimensionCursorWorld).toBeNull()
+      // The picks survive so the user can add the target the dim is missing.
+      expect(useSketchEditorStore.getState().dimensionPicks).toHaveLength(1)
+    })
+
     // ─── point_distance mode switching ───
     // Two-vertex picks with a placementWorld offset switch the constraint kind:
     //   vertical drag → point_distance_x, horizontal drag → point_distance_y

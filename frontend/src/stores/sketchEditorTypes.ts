@@ -305,9 +305,10 @@ export interface SketchEditorState {
   // doc is already being replaced (undo), so no compensating delete is wanted.
   clearBrepProjectionState: () => void
   // Latest cursor position in sketch-local world coords during dim placement.
-  // Written by the R3F-side pointermove projection (see Drawing.tsx); read by
-  // finalizeDimensionPlacement to fill `pos` on the new constraint so the
-  // dim lands at the click point instead of the renderer's default offset.
+  // Written by the R3F-side pointer projection on both pointermove and
+  // pointerdown (see Drawing.tsx); read by finalizeDimensionPlacement to fill
+  // `pos` on the new constraint so the dim lands at the press point instead of
+  // the renderer's default offset.
   dimensionCursorWorld: [number, number] | null
   activePickField: ActivePickField | null
   chipOwnedSelection: Set<string>

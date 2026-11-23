@@ -80,6 +80,11 @@ function move(clientX: number, clientY: number, buttons = 0): void {
   act(() => { window.dispatchEvent(new MouseEvent('pointermove', { clientX, clientY, buttons })) })
 }
 
+// A window-level press, the path DrawPlane listens on for the placement point.
+function press(clientX: number, clientY: number, button = 0): void {
+  act(() => { window.dispatchEvent(new MouseEvent('pointerdown', { clientX, clientY, buttons: 1, button })) })
+}
+
 // A real pointerdown carrying clientX: testing-library's synthetic pointer event
 // does not populate clientX under jsdom, and the commit handler reads it.
 function clickDrawMesh(el: Element, clientX = 100, clientY = 100, button = 0): void {
@@ -90,9 +95,13 @@ function doubleClickDrawMesh(el: Element, clientX = 100, clientY = 100): void {
   act(() => { el.dispatchEvent(new MouseEvent('dblclick', { clientX, clientY, bubbles: true, button: 0 })) })
 }
 
-function stubTool(id: string, onPointerDown?: Tool['handlers']['onPointerDown']): Tool {
+function stubTool(
+  id: string,
+  onPointerDown?: Tool['handlers']['onPointerDown'],
+  category: Tool['category'] = 'drawing',
+): Tool {
   return {
-    id: id as Tool['id'], label: id, category: 'drawing',
+    id: id as Tool['id'], label: id, category,
     activate() {}, deactivate() {},
     handlers: onPointerDown ? { onPointerDown } : {},
   }
@@ -247,6 +256,57 @@ describe('DrawPlane hover projection', () => {
     move(100, 100)
 
     expect(useSketchEditorStore.getState().dimensionCursorWorld).toEqual([7, 8])
+  })
+
+  it('records the dimension cursor before the first pick lands', () => {
+    // The moves that bring the cursor to the line happen while no pick is
+    // settled yet. Gating the record on picks would leave the store null at
+    // the moment the first pick arrives, and nothing would refresh it.
+    toolRegistry.register(stubTool('dimension', undefined, 'dimension'))
+    useEditorState.setState({
+    activeTool: 'dimension',
+    dimensionPicks: [],
+  })
+    proj.point = { x: 7, y: 8, z: 0 }
+    render(<DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />)
+
+    move(100, 100)
+
+    expect(useSketchEditorStore.getState().dimensionCursorWorld).toEqual([7, 8])
+  })
+
+  it('records the press point for a placement click that never moved', () => {
+    // The reported bug: pick the line, then click to place without moving. The
+    // click is the placement point, so the press has to record it; waiting for
+    // a pointermove left the finalize with no pos and the label at the
+    // renderer's default offset.
+    toolRegistry.register(stubTool('dimension', undefined, 'dimension'))
+    useEditorState.setState({
+    activeTool: 'dimension',
+    dimensionPicks: [{ kind: 'line' } as never],
+  })
+    proj.point = { x: 3, y: 4, z: 0 }
+    const { container } = render(
+      <DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />,
+    )
+
+    clickDrawMesh(container.querySelector('mesh')!, 200, 300)
+
+    expect(useSketchEditorStore.getState().dimensionCursorWorld).toEqual([3, 4])
+  })
+
+  it('does not record a press point from a non-active sketch plane', () => {
+    toolRegistry.register(stubTool('dimension', undefined, 'dimension'))
+    useEditorState.setState({
+    activeTool: 'dimension',
+    dimensionPicks: [{ kind: 'line' } as never],
+  })
+    proj.point = { x: 3, y: 4, z: 0 }
+    render(<DrawPlane featureId="S1" activeFeatureId="S2" sketchGroupRef={groupRef} />)
+
+    press(200, 300)
+
+    expect(useSketchEditorStore.getState().dimensionCursorWorld).toBeNull()
   })
 })
 
@@ -648,22 +708,31 @@ describe('DrawPlane stamp-down', () => {
 })
 
 describe('DrawPlane window listener registration', () => {
-  it('attaches the window pointermove listener only for the active sketch', () => {
+  it('attaches the window pointer listeners only for the active sketch', () => {
     toolRegistry.register(stubTool('line'))
     useEditorState.setState({
     activeTool: 'line',
   })
     const addSpy = vi.spyOn(window, 'addEventListener')
-    render(
+    const removeSpy = vi.spyOn(window, 'removeEventListener')
+    const { unmount } = render(
       <>
         <DrawPlane featureId="S1" activeFeatureId="S1" sketchGroupRef={groupRef} />
         <DrawPlane featureId="S2" activeFeatureId="S1" sketchGroupRef={groupRef} />
       </>,
     )
-    // One listener: the inactive plane must not register, or N visible
-    // sketches stack N identical projections per pointer move.
+    // One listener each: the inactive plane must not register, or N visible
+    // sketches stack N identical projections per pointer move. The press is
+    // registered beside the move because the placement click has no move.
     const moves = addSpy.mock.calls.filter(([type]) => type === 'pointermove').length
-    expect(moves).toBe(1)
+    const presses = addSpy.mock.calls.filter(([type]) => type === 'pointerdown').length
+    expect({ moves, presses }).toEqual({ moves: 1, presses: 1 })
+
+    unmount()
+
+    const removed = removeSpy.mock.calls.map(([type]) => type)
+    expect(removed).toEqual(expect.arrayContaining(['pointermove', 'pointerdown']))
     addSpy.mockRestore()
+    removeSpy.mockRestore()
   })
 })
