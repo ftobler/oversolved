@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import type { HelixFeature, SketchFeature, PartFeature } from '@/types/cad'
 import { makeAncestryQuery } from '@/kernel/query'
-import { visibleFeatureIds } from '@/utils/featureVisibility'
+import { docVisibleFeatureIds, visibleFeatureIds } from '@/utils/featureVisibility'
 
 // The query a click on a sketch region commits (topologyDecorate's surface
 // query), so the rule is exercised on the shape real picks store.
@@ -120,6 +120,39 @@ describe('visibleFeatureIds', () => {
     // key); only a sketch-class id may enter the render list through it, and an
     // explicit eye hide always wins.
     expect(visibleFeatureIds(features, { hinted: ['ex1'] }).has('ex1')).toBe(false)
+  })
+})
+
+describe('suppression is a hard skip', () => {
+  it('does not draw a suppressed sketch even with its eye on', () => {
+    const features = [sketch('sk1', { suppressed: true, visible: true })]
+    expect(docVisibleFeatureIds(features).has('sk1')).toBe(false)
+    expect(visibleFeatureIds(features).has('sk1')).toBe(false)
+  })
+
+  it('does not draw a suppressed plane or helix', () => {
+    const features: PartFeature[] = [
+      { id: 'Front', kind: 'plane', suppressed: true },
+      { id: 'hx1', kind: 'helix', helix: {}, suppressed: true },
+    ]
+    expect(visibleFeatureIds(features).has('Front')).toBe(false)
+    expect(visibleFeatureIds(features).has('hx1')).toBe(false)
+  })
+
+  it('no editor override resurrects a suppressed sketch', () => {
+    const features = [
+      sketch('sk1', { suppressed: true }),
+      // A consumer whose editor is open would force its profile on screen.
+      extrude('ex1', [area('sk1')]),
+    ]
+    expect(visibleFeatureIds(features, { forcedVisible: ['sk1'] }).has('sk1')).toBe(false)
+    expect(visibleFeatureIds(features, { editingFeatureId: 'ex1' }).has('sk1')).toBe(false)
+    expect(visibleFeatureIds(features, { hinted: ['sk1'] }).has('sk1')).toBe(false)
+  })
+
+  it('draws the sketch again once suppression is lifted', () => {
+    const features = [sketch('sk1', { suppressed: false })]
+    expect(visibleFeatureIds(features).has('sk1')).toBe(true)
   })
 })
 

@@ -14,6 +14,7 @@ interface FeatureItemActionsProps {
   isOrigin: boolean
   isVisible: boolean
   hasVisibility: boolean
+  isSuppressed?: boolean
   onEnterEditSketch: (id: string) => void
   onEnterEditFeature: (id: string) => void
   onEditCommit: () => void
@@ -35,6 +36,7 @@ export function FeatureItemActions({
   isOrigin,
   isVisible,
   hasVisibility,
+  isSuppressed = false,
   onEnterEditSketch,
   onEnterEditFeature,
   onEditCommit,
@@ -57,15 +59,18 @@ export function FeatureItemActions({
   return (
     <div className="feature-item-actions">
       {canEdit && showEditBtn && (
-        kind === 'sketch' ? (
-          <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditSketch(featureId) }} title="Edit sketch">
-            <img src={contextEditIcon} alt="Edit" />
-          </button>
-        ) : (
-          <button className="feature-edit-btn" onClick={(e) => { e.stopPropagation(); onEnterEditFeature(featureId) }} title={`Edit ${editLabel}`}>
-            <img src={contextEditIcon} alt="Edit" />
-          </button>
-        )
+        <button
+          className={isSuppressed ? 'feature-edit-btn disabled' : 'feature-edit-btn'}
+          disabled={isSuppressed}
+          onClick={(e) => {
+            e.stopPropagation()
+            if (kind === 'sketch') onEnterEditSketch(featureId)
+            else onEnterEditFeature(featureId)
+          }}
+          title={isSuppressed ? 'Unsuppress to edit' : kind === 'sketch' ? 'Edit sketch' : `Edit ${editLabel}`}
+        >
+          <img src={contextEditIcon} alt="Edit" />
+        </button>
       )}
       {canEdit && showExitBtn && (
         <>
@@ -79,7 +84,7 @@ export function FeatureItemActions({
       )}
       {hasVisibility && showVisBtn && (
         <button
-          className="feature-visibility-btn"
+          className={isSuppressed ? 'feature-visibility-btn suppressed' : 'feature-visibility-btn'}
           onClick={(e) => { e.stopPropagation(); onToggleVisibility(featureId) }}
           title={isVisible ? 'Hide' : 'Show'}
         >

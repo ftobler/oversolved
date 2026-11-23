@@ -133,6 +133,14 @@ export function useSolver(
       // Only a sketch solve publishes entities/constraints/initial; for every
       // other kind the authored sketch view of the result stays empty.
       const sketchDef = featureDef?.kind === 'sketch' ? featureDef : undefined
+      // Suppression is the kernel's hard skip: it emits a bare result and no
+      // geometry at all. The branches below must not fill that gap from the
+      // document (the generic branch would hand the viewport the stored
+      // `initial` seed), or a suppressed sketch stays drawn and pickable.
+      if (feature.status === 'suppressed') {
+        results[id] = { solved: {}, status: 'suppressed' }
+        continue
+      }
       if (feature.geometry) {
         // A failed solve still renders below, but it must not move the
         // document: `initial` holds the last satisfied solve.

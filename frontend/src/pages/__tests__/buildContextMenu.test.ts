@@ -192,6 +192,24 @@ describe('part board commands', () => {
     expect(findLabel(result.items, 'Delete')!.disabled).toBe(true)
   })
 
+  it('reads a suppressed feature eye from its stored visibility, not the drawn set', () => {
+    const shown = [makeFeature({ id: 'sketch1', kind: 'sketch', suppressed: true, visible: true })]
+    const shownMenu = buildContextMenu(
+      defaultInput({ targetId: 'sketch1', features: shown }),
+      defaultCallbacks(),
+    )
+    expect(findLabel(shownMenu.items, 'Hide')).toBeTruthy()
+    expect(findLabel(shownMenu.items, 'Show')).toBeUndefined()
+
+    const hidden = [makeFeature({ id: 'sketch1', kind: 'sketch', suppressed: true, visible: false })]
+    const hiddenMenu = buildContextMenu(
+      defaultInput({ targetId: 'sketch1', features: hidden }),
+      defaultCallbacks(),
+    )
+    expect(findLabel(hiddenMenu.items, 'Show')).toBeTruthy()
+    expect(findLabel(hiddenMenu.items, 'Hide')).toBeUndefined()
+  })
+
   it('contains Hide, Color, Export and Rename for a body target, and greys the feature verbs', () => {
     const result = buildContextMenu(
       defaultInput({ targetId: 'body:abc123', partLabels: { abc123: 'MyPart' } }),

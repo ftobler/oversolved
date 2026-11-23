@@ -66,6 +66,23 @@ describe('FeatureTree double-click to edit', () => {
     expect(onEnterEditFeature).not.toHaveBeenCalled()
   })
 
+  it('double-clicking a suppressed row opens nothing and its pencil is disabled', () => {
+    const onEnterEditFeature = vi.fn()
+    const onEnterEditSketch = vi.fn()
+    const features = [...builtInFeatures, { ...sketchFeature, suppressed: true }]
+    setupStore(features)
+    renderSidebar(makeCallbacks({ onEnterEditFeature, onEnterEditSketch }))
+
+    const pencil = screen.getByTitle('Unsuppress to edit') as HTMLButtonElement
+    expect(pencil.disabled).toBe(true)
+
+    const sketchItem = screen.getByText('sk1').closest('.feature-item')!
+    fireEvent.doubleClick(sketchItem)
+
+    expect(onEnterEditSketch).not.toHaveBeenCalled()
+    expect(onEnterEditFeature).not.toHaveBeenCalled()
+  })
+
   it('double-clicking a row action button does not open the editor', () => {
     // After Cancel closes an edit the second click of a double-click can land
     // on the returned edit button; the row must not read that as a request.

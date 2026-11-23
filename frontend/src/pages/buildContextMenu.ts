@@ -184,7 +184,11 @@ export function buildPartBoard(
   // The row needs an eye (the origin has none) and a built-in does not lose it,
   // because the tree offers the same eye on a built-in plane.
   const featureEye = target !== undefined && hasFeatureVisibilityToggle(target.kind)
-  const visibilityIsOn = featureEye ? input.visibleFeatures.has(target.id) : !!part?.visible
+  // A suppressed feature is absent from the drawn set, so the eye reads the
+  // stored flag: it is what takes effect again once unsuppressed.
+  const visibilityIsOn = featureEye
+    ? (target.suppressed === true ? target.visible !== false : input.visibleFeatures.has(target.id))
+    : !!part?.visible
   const canToggleVisibility = featureEye || part !== null
   // A `body:` target has no feature at all, so the feature verbs need a real
   // target as well as the authored-id rule.

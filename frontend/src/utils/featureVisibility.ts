@@ -38,6 +38,9 @@ export function isPlaneVisibilityTarget(feature: PartFeature): boolean {
 
 /** Whether the document itself shows `feature`, before any editor override. */
 function shownInDoc(feature: PartFeature, consumed: ReadonlySet<string>): boolean {
+  // Suppression is a hard skip, not a hide: the solver never produced this
+  // feature's geometry, so there is nothing to draw even if the eye is on.
+  if (feature.suppressed === true) return false
   if (feature.visible === false) return false
   // Consumed, and the user has not shown it since: the auto-hide applies. Only
   // a sketch-class feature carries the one-shot flag; for anything else it can
@@ -100,5 +103,12 @@ export function visibleFeatureIds(features: PartFeature[], edit: EditVisibility 
   }
   const edited = edit.editingFeatureId ? features.find(f => f.id === edit.editingFeatureId) : undefined
   if (edited) for (const id of consumedSketchIds(edited, features)) out.add(id)
+  // No override may resurrect a suppressed feature. Filter once at the end so
+  // forced visibility, a consumer's profile sketch, the armed plane pick and
+  // the relation hint all meet the same rule, and every downstream reader of
+  // this set (render, picks, snapping) sees it.
+  for (const feature of features) {
+    if (feature.suppressed === true) out.delete(feature.id)
+  }
   return out
 }

@@ -2,7 +2,7 @@
 // hands the viewport one id set (the store's visibleFeatures); these tests read
 // it with the viewport mocked out, so the rule holds without a viewport.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react'
 import { MemoryRouter, Routes, Route } from 'react-router-dom'
 import Part from '@/pages/Part'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -94,6 +94,54 @@ features:
     await act(async () => { fireEvent.click(document.querySelector('.feature-item.editing .feature-ok-btn')!) })
     await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBeNull())
     expect(shown('sk1')).toBe(false)
+  })
+
+  it('does not draw or offer a suppressed sketch to the open sketch', async () => {
+    // The viewport draws and registers picks from this same id set, so absent
+    // here means its entity ids are never registered and it cannot be picked.
+    renderPart(`version: 1
+kind: part
+features:
+  - id: sk1
+    kind: sketch
+    label: Sketch 1
+    visible: true
+    suppressed: true
+  - id: sk2
+    kind: sketch
+    label: Sketch 2
+`)
+    await screen.findByTitle('Feature mode')
+    await waitFor(() => expect(shown('sk2')).toBe(true))
+    expect(shown('sk1')).toBe(false)
+
+    const row = [...document.querySelectorAll('.feature-item')]
+      .find(el => el.textContent?.includes('Sketch 2'))!
+    fireEvent.doubleClick(row)
+    await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('sk2'))
+    expect(usePartEditorStore.getState().otherSketches).not.toHaveProperty('sk1')
+  })
+
+  it('keeps a suppressed feature stored visibility in its dimmed eye', async () => {
+    renderPart(`version: 1
+kind: part
+features:
+  - id: sk1
+    kind: sketch
+    label: Sketch 1
+    visible: true
+    suppressed: true
+`)
+    await screen.findByTitle('Feature mode')
+    const row = screen.getByText('Sketch 1').closest('.feature-item') as HTMLElement
+    // The sketch is not drawn, but its stored flag is still visible, so the
+    // eye offers Hide rather than rewriting "visible" to true on every press.
+    fireEvent.click(within(row).getByTitle('Hide'))
+
+    await waitFor(() => {
+      const feature = usePartEditorStore.getState().features.find(f => f.id === 'sk1')
+      expect(feature?.visible).toBe(false)
+    })
   })
 
   it('an extrude inserted off a body face does not bring back the sketch behind that body', async () => {

@@ -338,6 +338,24 @@ describe('Part page actions', () => {
     expect(h.handleMutation).toHaveBeenCalledWith({ type: 'set_feature_suppression', featureId: 'extrude1', suppressed: true })
   })
 
+  it('the feature context menu Suppress drops that feature ids from the selection', () => {
+    useEditorState.setState({
+      normalSelection: new Set([
+        'entity:sketch1:e1',
+        'vertex:sketch1:e1:start',
+        'constraint:sketch1:c1',
+        '@sketch1',
+        '@plane1',
+      ]),
+    })
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('feature-ctx-sketch1'))
+    fireEvent.click(menuItem('Suppress'))
+
+    expect(useEditorState.getState().normalSelection).toEqual(new Set(['@plane1']))
+  })
+
   it('the feature context menu Unsuppress toggles a suppressed feature back on', () => {
     const extrude = F.doc.features!.find(f => f.id === 'extrude1') as { suppressed?: boolean }
     extrude.suppressed = true
