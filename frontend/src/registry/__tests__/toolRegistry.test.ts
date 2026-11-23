@@ -188,7 +188,9 @@ describe('ToolRegistry', () => {
       }
       registry.get('drag')!.handlers.onPointerUp!({ clientX: 200, clientY: 200 } as PointerEvent, [10, 10], null, context)
       expect(onMutation).toHaveBeenCalled()
-      expect(setDrag).toHaveBeenCalledWith(null)
+      // The clear carries the commit verdict in the same call: this gesture has
+      // an onMutation sink and emitted a move, so a solve is coming.
+      expect(setDrag).toHaveBeenCalledWith(null, true)
     })
 
     it('routes onPointerDown through registry for drawing tool', () => {
