@@ -97,3 +97,72 @@ export function radialWitnessStart(
   if (b === null) return null
   return [vx + b * dx, vy + b * dy]
 }
+
+/**
+ * The rotation, in degrees, that lays a dimension's value along its line the
+ * way drafting does: parallel to the line, folded so it never reads upside
+ * down. `screenDx`/`screenDy` are CSS pixel axes (x right, y down), so the
+ * result is exactly what `transform: rotate(<deg>deg)` wants and a positive
+ * value tilts the text clockwise on screen.
+ *
+ * The fold is the half-open range [-90, 90): a line traversed right to left
+ * lands on the same slope as left to right, and either vertical direction
+ * reads bottom to top (-90), so the exact vertical case is pinned rather than
+ * flipping with the traversal direction. A line within 1e-9 of its own length
+ * of vertical (about 6e-8 degrees) is pinned the same way: at the fold's
+ * boundary a 1e-16 pixel of projection noise would otherwise flip the text 180
+ * degrees.
+ */
+export function readableLabelAngle(screenDx: number, screenDy: number): number {
+  if (!Number.isFinite(screenDx) || !Number.isFinite(screenDy)) return 0
+  if (screenDx === 0 && screenDy === 0) return 0
+  if (Math.abs(screenDx) <= 1e-9 * Math.abs(screenDy)) return -90
+  let deg = (Math.atan2(screenDy, screenDx) * 180) / Math.PI
+  while (deg < -90) deg += 180
+  while (deg >= 90) deg -= 180
+  return deg
+}
+
+/** One drawable span of a dimension line, in sketch-plane coordinates. */
+export type LineSegment2D = [[number, number], [number, number]]
+
+/**
+ * Split a linear dimension's line d1 -> d2 around the value's text, returning
+ * the spans that stay drawn: two when the gap lands inside the line, one when
+ * the line is not cut, and none when the text is wider than the line (the
+ * arrows at the ends stay).
+ *
+ * The line is cut only when the label sits ON it: inside the d1..d2 span and
+ * within `perpToleranceWorld` of the line (about half the rendered text
+ * height). A label dragged off to the side, or an outside label sitting on its
+ * leader, keeps the whole line. The cut is centred on the label's projection
+ * onto the line, `gapWorld / 2` either side, and clamped at the ends so a
+ * label at d1 or d2 leaves the one surviving span instead of a reversed one.
+ * A zero-length line has nowhere to cut and no direction to cut along, so it
+ * returns no spans.
+ */
+export function dimensionLineGap(
+  d1: [number, number], d2: [number, number], label: [number, number],
+  gapWorld: number, perpToleranceWorld: number,
+): LineSegment2D[] {
+  const [d1x, d1y] = d1, [d2x, d2y] = d2, [labelX, labelY] = label
+  const dimLen = Math.hypot(d2x - d1x, d2y - d1y)
+  if (dimLen === 0) return []
+  if (!(gapWorld > 0)) return [[d1, d2]]
+
+  const { tLabel, isInside } = computeLinearArrowLayout(d1, d2, label)
+  if (!isInside) return [[d1, d2]]
+  const ux = (d2x - d1x) / dimLen, uy = (d2y - d1y) / dimLen
+  const perp = Math.abs((labelX - d1x) * uy - (labelY - d1y) * ux)
+  if (perp > perpToleranceWorld) return [[d1, d2]]
+  if (gapWorld >= dimLen) return []
+
+  const at = (t: number): [number, number] => [d1x + ux * t, d1y + uy * t]
+  const half = gapWorld / 2
+  const tA = Math.max(0, tLabel - half)
+  const tB = Math.min(dimLen, tLabel + half)
+  const segs: LineSegment2D[] = []
+  if (tA > 0) segs.push([d1, at(tA)])
+  if (tB < dimLen) segs.push([at(tB), d2])
+  return segs
+}

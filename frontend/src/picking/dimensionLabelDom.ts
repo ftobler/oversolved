@@ -1,12 +1,13 @@
 // The dimension label's truthful pick footprint.
 //
 // A label is a DOM overlay (drei `<Html>`), not ID-buffer geometry: its text is
-// laid out by the browser at a constant screen size, horizontal to the screen at
-// every camera pose, and its width depends on the formatted value. The ID pass
-// can only offer a point (the ring) and a circular pick window, so a label wider
-// than that disc lost its outer glyphs: a click there fell through to the
-// geometry behind it or was a viewport miss that cleared the selection, and
-// hover never reached the text at all.
+// laid out by the browser at a constant screen size, and its width depends on
+// the formatted value. A linear dimension rotates its text to follow its line;
+// the other dimension kinds stay horizontal to the screen. The ID pass can only
+// offer a point (the ring) and a circular pick window, so a label wider than
+// that disc lost its outer glyphs: a click there fell through to the geometry
+// behind it or was a viewport miss that cleared the selection, and hover never
+// reached the text at all.
 //
 // So the label registers its own rendered text element here, and the dispatcher
 // asks this registry before it reads the ID buffer. The answer is a synthetic
@@ -21,6 +22,13 @@
 //
 // `pointer-events` stays `none` on the text, so pointer events keep flowing to
 // the canvas listeners that make this check possible.
+//
+// A rotated label (a linear dimension whose value follows its line) is still
+// measured with getBoundingClientRect, which answers the axis-aligned box
+// around the tilted glyphs: that over-covers by up to the label's diagonal.
+// Accepted: this registry is consulted before the ID buffer, so a steeply
+// rotated label's empty corners can win a pick aimed at geometry behind them.
+// A rotated-rectangle test here would be the fix if that ever bites.
 
 import { DIMENSION_LABEL_LAYER_NAME } from './layerNames'
 import type { ResolvedHit } from './IdResolver'

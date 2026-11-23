@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
-  computeLinearArrowLayout, evalExtensionLine, isPointInsideRadius, radialWitnessStart,
+  computeLinearArrowLayout, dimensionLineGap, evalExtensionLine, isPointInsideRadius,
+  radialWitnessStart, readableLabelAngle,
 } from '../dimensionRenderLayout'
 
 describe('computeLinearArrowLayout', () => {
@@ -48,6 +49,117 @@ describe('computeLinearArrowLayout', () => {
     expect(g.dimLen).toBeCloseTo(5, 6)
     expect(g.tLabel).toBeCloseTo(2.5, 6)
     expect(g.isInside).toBe(true)
+  })
+})
+
+describe('readableLabelAngle', () => {
+  // The helper speaks CSS axes (x right, y down) and returns the degrees to
+  // hand to `transform: rotate()`, so a positive value tilts the text
+  // clockwise on the screen.
+
+  it('leaves a horizontal line at zero', () => {
+    expect(readableLabelAngle(10, 0)).toBe(0)
+    expect(readableLabelAngle(-10, 0)).toBe(0)
+  })
+
+  it('tilts counterclockwise for a line rising to the right', () => {
+    // Screen y grows downward, so a rising line has a negative dy.
+    expect(readableLabelAngle(10, -5)).toBeCloseTo(-26.565, 3)
+  })
+
+  it('tilts clockwise for a line falling to the right', () => {
+    expect(readableLabelAngle(10, 5)).toBeCloseTo(26.565, 3)
+  })
+
+  it('folds a right-to-left direction onto the same angle, never upside down', () => {
+    // The same line read from the other end is the same slope, not the
+    // mirrored one.
+    expect(readableLabelAngle(-10, 5)).toBeCloseTo(readableLabelAngle(10, -5), 6)
+    expect(readableLabelAngle(-10, -5)).toBeCloseTo(readableLabelAngle(10, 5), 6)
+  })
+
+  it('reads a vertical line bottom to top whichever way it is traversed', () => {
+    // Pinned: 90 is excluded from the fold, so up-the-screen wins.
+    expect(readableLabelAngle(0, -1)).toBe(-90)
+    expect(readableLabelAngle(0, 1)).toBe(-90)
+    // Projection noise just off vertical lands on the same reading, not a 180
+    // degree flip across the fold's boundary.
+    expect(readableLabelAngle(1e-12, -10)).toBe(-90)
+    expect(readableLabelAngle(-1e-12, -10)).toBe(-90)
+  })
+
+  it('stays inside [-90, 90) for every direction', () => {
+    for (let deg = -180; deg <= 180; deg += 7) {
+      const rad = (deg * Math.PI) / 180
+      const got = readableLabelAngle(Math.cos(rad), Math.sin(rad))
+      expect(got).toBeGreaterThanOrEqual(-90)
+      expect(got).toBeLessThan(90)
+    }
+  })
+
+  it('returns zero for a direction with no screen extent instead of NaN', () => {
+    expect(readableLabelAngle(0, 0)).toBe(0)
+    expect(readableLabelAngle(NaN, 1)).toBe(0)
+    expect(readableLabelAngle(1, Infinity)).toBe(0)
+  })
+})
+
+describe('dimensionLineGap', () => {
+  // A 10 unit dimension line along +X, text 2 world units wide plus padding.
+  const D1: [number, number] = [0, 0]
+  const D2: [number, number] = [10, 0]
+  const GAP = 2
+  const TOL = 1
+
+  it('splits the line around a label sitting on it, gap/2 either side', () => {
+    const segs = dimensionLineGap(D1, D2, [5, 0], GAP, TOL)
+    expect(segs).toHaveLength(2)
+    expect(segs[0]).toEqual([[0, 0], [4, 0]])
+    expect(segs[1]).toEqual([[6, 0], [10, 0]])
+  })
+
+  it('centres the gap on the label along a slanted line', () => {
+    // 3-4-5 direction, length 5, label at the midpoint.
+    const segs = dimensionLineGap([0, 0], [3, 4], [1.5, 2], 1, 1)
+    expect(segs).toHaveLength(2)
+    // 0.5 either side of t=2.5 along (3/5, 4/5).
+    expect(segs[0][1][0]).toBeCloseTo(1.2, 6)
+    expect(segs[0][1][1]).toBeCloseTo(1.6, 6)
+    expect(segs[1][0][0]).toBeCloseTo(1.8, 6)
+    expect(segs[1][0][1]).toBeCloseTo(2.4, 6)
+  })
+
+  it('keeps the whole line for a label dragged off it beyond the tolerance', () => {
+    expect(dimensionLineGap(D1, D2, [5, 5], GAP, TOL)).toEqual([[[0, 0], [10, 0]]])
+  })
+
+  it('still gaps a label inside the tolerance band', () => {
+    expect(dimensionLineGap(D1, D2, [5, 0.5], GAP, TOL)).toHaveLength(2)
+  })
+
+  it('drops the whole line, keeping the arrows, when the gap is wider than it', () => {
+    expect(dimensionLineGap(D1, D2, [5, 0], 20, TOL)).toEqual([])
+  })
+
+  it('keeps the whole line for a label beyond either end', () => {
+    expect(dimensionLineGap(D1, D2, [-2, 0], GAP, TOL)).toEqual([[[0, 0], [10, 0]]])
+    expect(dimensionLineGap(D1, D2, [12, 0], GAP, TOL)).toEqual([[[0, 0], [10, 0]]])
+  })
+
+  it('keeps the whole line when there is no gap to cut', () => {
+    expect(dimensionLineGap(D1, D2, [5, 0], 0, TOL)).toEqual([[[0, 0], [10, 0]]])
+    expect(dimensionLineGap(D1, D2, [5, 0], -1, TOL)).toEqual([[[0, 0], [10, 0]]])
+  })
+
+  it('clamps the split at an end, leaving only the segment that survives', () => {
+    // Label exactly on d1: the near half of the gap has nothing left to draw.
+    expect(dimensionLineGap(D1, D2, [0, 0], GAP, TOL)).toEqual([[[1, 0], [10, 0]]])
+    // Same at d2.
+    expect(dimensionLineGap(D1, D2, [10, 0], GAP, TOL)).toEqual([[[0, 0], [9, 0]]])
+  })
+
+  it('draws nothing for a zero-length dimension line, never NaN', () => {
+    expect(dimensionLineGap([4, 4], [4, 4], [4, 4], 5, TOL)).toEqual([])
   })
 })
 

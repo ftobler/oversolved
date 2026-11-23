@@ -11,6 +11,15 @@ const LABEL_HALO = '0 0 2px #111, 0 0 2px #111'
  * Radius / Diameter / Angle). The text follows the cursor and stays visible
  * while the label is dragged.
  *
+ * `angleDeg` rotates the glyph block about its centre, which is the anchor
+ * `<Html center>` already holds in place, so a linear dimension's value reads
+ * along its line. The caller owns the angle because only it knows the line;
+ * radius, diameter and angle labels omit it and stay upright. Rotation is a
+ * screen-space fact that the camera revises every frame, so the caller may
+ * also keep writing the transform to the published element through
+ * `onTextElement` (including the rendered width it measures there for the
+ * line gap); the prop is the render-time value and the first paint.
+ *
  * The text is pointer-events: none, but it publishes its rendered box to the
  * dimensionLabel hit test (see picking/dimensionLabelDom): that box is the only
  * truthful footprint of text whose screen width depends on the formatted value,
@@ -20,7 +29,7 @@ const LABEL_HALO = '0 0 2px #111, 0 0 2px #111'
  * could only under-cover a long label and would disagree with the box.
  */
 export function DimensionLabel({
-  cid, x, y, label, color, enabled = true, isDragged,
+  cid, x, y, label, color, enabled = true, isDragged, angleDeg, onTextElement,
 }: {
   cid: string
   x: number
@@ -29,6 +38,13 @@ export function DimensionLabel({
   color: string
   enabled?: boolean
   isDragged: boolean
+  // CSS `rotate()` degrees for the glyph block; unset keeps it horizontal.
+  angleDeg?: number
+  // Publishes the glyph block itself, whether or not it is pickable, so a
+  // linear dimension can size the gap in its line from the rendered text and
+  // keep the rotation current. Must be identity-stable: a changing callback
+  // re-attaches the element.
+  onTextElement?: (element: HTMLDivElement | null) => void
 }) {
   // A callback ref, not a passive effect reading `ref.current`: drei's `<Html>`
   // renders its children into a separate React root (ReactDOM.createRoot in a
@@ -42,7 +58,8 @@ export function DimensionLabel({
     unregisterRef.current = element && enabled && !isDragged
       ? registerDimensionLabelElement(cid, element)
       : () => {}
-  }, [cid, enabled, isDragged])
+    onTextElement?.(element)
+  }, [cid, enabled, isDragged, onTextElement])
   useEffect(() => () => { unregisterRef.current() }, [])
 
   return (
@@ -54,7 +71,7 @@ export function DimensionLabel({
         // the canvas color keeps the digits legible where they cross a line.
         // userSelect is always off: the text takes no pointer events, so a
         // selectable variant could only ever be a drag artefact.
-        style={{ color, fontSize: 14, fontFamily: "'Roboto Mono', monospace", background: 'transparent', textShadow: LABEL_HALO, padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap', userSelect: 'none', WebkitUserSelect: 'none' }}
+        style={{ color, fontSize: 14, fontFamily: "'Roboto Mono', monospace", background: 'transparent', textShadow: LABEL_HALO, padding: '0 5px', borderRadius: 2, whiteSpace: 'nowrap', userSelect: 'none', WebkitUserSelect: 'none', transform: angleDeg === undefined ? undefined : `rotate(${angleDeg}deg)` }}
       >
         {label}
       </div>

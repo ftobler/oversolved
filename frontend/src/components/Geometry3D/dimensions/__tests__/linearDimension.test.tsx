@@ -22,10 +22,16 @@ const spies = vi.hoisted(() => ({
   dispatch: [] as Array<Record<string, (...args: unknown[]) => void>>,
 }))
 
-vi.mock('@react-three/fiber', () => ({
-  useThree: () => ({ camera: { isOrthographicCamera: true, zoom: 1 } }),
-  useFrame: vi.fn(),
-}))
+vi.mock('@react-three/fiber', () => {
+  // A camera whose matrices are absent: the layout helpers must read that as
+  // "cannot project yet" and skip the screen pass, which is what keeps this
+  // suite's coordinate assertions render-time only.
+  const state = { camera: { isOrthographicCamera: true, zoom: 1 } }
+  return {
+    useThree: (selector: (s: typeof state) => unknown) => selector(state),
+    useFrame: vi.fn(),
+  }
+})
 vi.mock('@react-three/drei', () => ({
   Line: (props: Record<string, unknown>) => { spies.Line(props); return null },
 }))
@@ -110,8 +116,11 @@ describe('LinearDimension arrow arrangement', () => {
   it('inside: arrows sit at the boundaries pointing outward and no leader is drawn', () => {
     renderDim()
 
-    expect(spies.Line).toHaveBeenCalledTimes(1)
+    // The dimension line is two halves so the frame can cut a gap for the
+    // value; before any frame runs both carry the whole line.
+    expect(spies.Line).toHaveBeenCalledTimes(2)
     expect(points(0)).toEqual([[0, 10, 0], [10, 10, 0]])
+    expect(points(1)).toEqual([[0, 10, 0], [10, 10, 0]])
     expect(spies.Arrowhead.mock.calls.map(c => c[0])).toEqual([
       { tip: [0, 10], from: [10, 10], color: expect.any(String) },
       { tip: [10, 10], from: [0, 10], color: expect.any(String) },
@@ -123,9 +132,10 @@ describe('LinearDimension arrow arrangement', () => {
   it('outside near d1: both arrows point inward and the leader runs from d1 to the label', () => {
     renderDim({ pos: [-10, 0] })
 
-    // Dimension line first, then the leader from d1 to the off-end label.
+    // Two dimension-line halves, then the leader from d1 to the off-end label.
+    expect(spies.Line).toHaveBeenCalledTimes(3)
     expect(points(0)).toEqual([[0, 0, 0], [10, 0, 0]])
-    expect(points(1)).toEqual([[0, 0, 0], [-5, 0, 0]])
+    expect(points(2)).toEqual([[0, 0, 0], [-5, 0, 0]])
     expect(spies.Arrowhead.mock.calls.map(c => c[0])).toEqual([
       { tip: [0, 0], from: [-1, 0], color: expect.any(String) },
       { tip: [10, 0], from: [11, 0], color: expect.any(String) },
@@ -140,7 +150,8 @@ describe('LinearDimension arrow arrangement', () => {
   it('outside near d2: same inward arrows but the leader starts at d2', () => {
     renderDim({ pos: [10, 0] })
 
-    expect(points(1)).toEqual([[10, 0, 0], [15, 0, 0]])
+    expect(spies.Line).toHaveBeenCalledTimes(3)
+    expect(points(2)).toEqual([[10, 0, 0], [15, 0, 0]])
     expect(spies.Label.mock.calls[0][0]).toMatchObject({ x: 15, y: 0 })
   })
 })
@@ -160,7 +171,8 @@ describe('LinearDimension placement override', () => {
     })
 
     expect(spies.Label.mock.calls.at(-1)![0]).toMatchObject({ x: 5, y: 2 })
-    // The last render is the dragged one: a single inside-arrangement dim line.
+    // The last render is the dragged one: the inside-arrangement halves sit at
+    // the dragged offset.
     expect(points(spies.Line.mock.calls.length - 1)).toEqual([[0, 2, 0], [10, 2, 0]])
     expect(spies.Arrowhead.mock.calls.slice(-2).map(c => c[0].tip)).toEqual([[0, 2], [10, 2]])
   })
