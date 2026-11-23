@@ -397,6 +397,114 @@ describe('ConstraintTile group', () => {
   })
 })
 
+// Two constraints at one vertex used to land in two Html anchors at the same
+// world position, because the anchors were grouped per render.entity. The upper
+// tile hid the lower one, and the amber redundancy outline of the redundant
+// row underneath showed through the see-through idle tile on top: the user read
+// the needed constraint as the redundant one and picked the wrong id to delete.
+describe('tiles sharing a position share one anchor', () => {
+  const cornerSketch: Sketch = {
+    L1: { kind: 'lineSegment', start: [0, 0], end: [10, 0] } as Sketch[string],
+    L2: { kind: 'lineSegment', start: [10, 0], end: [10, 10] } as Sketch[string],
+  }
+
+  function anchors(container: HTMLElement): HTMLElement[] {
+    return Array.from(container.querySelectorAll('[data-testid="html-wrapper"]'))
+  }
+
+  function tilesIn(anchor: HTMLElement): HTMLElement[] {
+    return Array.from(anchor.querySelectorAll('img')).map(img => img.parentElement!)
+  }
+
+  function gridOf(anchor: HTMLElement): HTMLElement {
+    return anchor.firstElementChild as HTMLElement
+  }
+
+  function symbol(kind: string, entity: string, at: [number, number] = [10, 0], superfluous = false): Constraints[string] {
+    return { render: { kind, entity, at }, residual: 0, ...(superfluous ? { superfluous: true } : {}) } as Constraints[string]
+  }
+
+  function renderAt(constraints: Constraints) {
+    return render(
+      <ConstraintOverlays
+        constraints={constraints}
+        sketch={cornerSketch}
+        extent={10}
+        featureId="feat1"
+      />,
+    )
+  }
+
+  it('pours two coincidents at one vertex into one anchor, outlining only the redundant one', () => {
+    const constraints: Constraints = {
+      c_driver: symbol('symbol_coincident', 'L1'),
+      c_twin: symbol('symbol_coincident', 'L2', [10, 0], true),
+    }
+    const { container } = renderAt(constraints)
+    const wraps = anchors(container)
+    expect(wraps).toHaveLength(1)
+    const tiles = tilesIn(wraps[0])
+    expect(tiles).toHaveLength(2)
+    expect(tiles.map(t => t.title)).toEqual(['Coincident', 'Coincident (redundant)'])
+    expect(tiles[0].style.outline).toBe('')
+    expect(tiles[1].style.outline).toContain('solid')
+  })
+
+  it('keeps each stacked tile reachable on its own', () => {
+    useEditorState.setState({ normalSelection: new Set() })
+    const constraints: Constraints = {
+      c_driver: symbol('symbol_coincident', 'L1'),
+      c_twin: symbol('symbol_coincident', 'L2', [10, 0], true),
+    }
+    const { container } = renderAt(constraints)
+    const tiles = tilesIn(anchors(container)[0])
+    fireEvent.click(tiles[0])
+    expect(useSketchEditorStore.getState().normalSelection.has('constraint:feat1:c_driver')).toBe(true)
+    fireEvent.click(tiles[1])
+    expect(useSketchEditorStore.getState().normalSelection.has('constraint:feat1:c_twin')).toBe(true)
+  })
+
+  it('lays three constraints at one corner in one authored-order row', () => {
+    const constraints: Constraints = {
+      c_a: symbol('symbol_coincident', 'L1'),
+      c_b: symbol('symbol_tangent', 'L2'),
+      c_c: symbol('symbol_normal', 'L1'),
+    }
+    const { container } = renderAt(constraints)
+    const wraps = anchors(container)
+    expect(wraps).toHaveLength(1)
+    const tiles = tilesIn(wraps[0])
+    expect(tiles).toHaveLength(3)
+    // Authored (map) order, so the later tile never hides the earlier one.
+    expect(tiles.map(t => t.title)).toEqual(['Coincident', 'Tangent', 'Normal'])
+    expect(gridOf(wraps[0]).style.gridTemplateColumns).toBe('repeat(3, 22px)')
+  })
+
+  it('wraps five constraints at one corner into a 3 + 2 grid', () => {
+    const constraints: Constraints = {}
+    for (const id of ['c1', 'c2', 'c3', 'c4', 'c5']) {
+      constraints[id] = symbol('symbol_coincident', 'L1')
+    }
+    const { container } = renderAt(constraints)
+    const wraps = anchors(container)
+    expect(wraps).toHaveLength(1)
+    expect(tilesIn(wraps[0])).toHaveLength(5)
+    // Three columns is the cap; the fourth and fifth tiles take a second row.
+    expect(gridOf(wraps[0]).style.gridTemplateColumns).toBe('repeat(3, 22px)')
+  })
+
+  it('still gives distinct positions distinct anchors', () => {
+    const constraints: Constraints = {
+      c_corner: symbol('symbol_coincident', 'L2', [10, 0]),
+      c_other: symbol('symbol_coincident', 'L1', [0, 0]),
+    }
+    const { container } = renderAt(constraints)
+    const wraps = anchors(container)
+    expect(wraps).toHaveLength(2)
+    expect(wraps.map(w => tilesIn(w).length)).toEqual([1, 1])
+  })
+})
+
 describe('ConstraintTile click selection and unmount cleanup', () => {
   it('clicking a tile selects its composite constraint id', () => {
     useEditorState.setState({

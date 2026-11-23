@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Html } from '@react-three/drei'
 import type { Sketch, Constraints, Entity, PlaneTransform, PartConstraint, DroppedSketchConstraint } from '@/types/cad'
 import { useSketchEditorStore, useSketchUiStore } from '@/stores/sketchEditorStore'
-import { getEntityBounds, ICON_SIZE, ICON_COLS, getIconUrl, groupConstraintsByEntity } from '@/utils/geometry/sketchHelpers'
+import { getEntityBounds, ICON_SIZE, ICON_COLS, getIconUrl } from '@/utils/geometry/sketchHelpers'
 import { renderDimension } from '@/components/Geometry3D/dimensions/renderDimension'
 import { COLOR_SELECTED, COLOR_ERROR_DEEP, LABEL_Z_OFFSET, highlightState } from '@/components/Geometry3D/constants'
 import { findEntitiesAtPoint } from '@/utils/geometry/drawGeometry'
@@ -148,81 +148,96 @@ function droppedConstraintTiles(
   return tiles
 }
 
+interface SymbolTile {
+  url: string
+  title: string
+  key: string
+  highlightIds: string[]
+  superfluous?: boolean
+  culprit?: boolean
+}
+
 export function ConstraintOverlays({ constraints, sketch, extent, featureId, planeTransform, droppedConstraints, authoredConstraints, onSelectionContextMenu }: ConstraintOverlaysProps) {
   const drag = useSketchEditorStore(s => s.drag)
   const isDragging = drag !== null
   const showConstraintTiles = useSketchUiStore(s => s.showConstraintTiles)
   const dimOffset = extent * 0.1
 
-  const byEntity = groupConstraintsByEntity(constraints)
-
   const symbolElements: React.ReactNode[] = []
   const dimElements: React.ReactNode[] = []
 
-  for (const [eid, clist] of Object.entries(byEntity)) {
+  // One anchor per point, sketch-wide. Grouping the anchors by render entity
+  // first put two constraints at the same vertex into two Html anchors at the
+  // same world position: the upper tile hid the lower one, and the amber
+  // outline of a redundant tile underneath showed through the see-through idle
+  // tile above it. Every tile of a joint now shares one grid, in authored
+  // order, so a redundant twin sits beside the driver it duplicates.
+  const atGroups = new Map<string, { at: [number, number]; icons: SymbolTile[] }>()
+
+  for (const [cid, c] of Object.entries(constraints)) {
+    const r = c.render as { kind: string; at?: [number, number]; point?: string; entities?: string[]; points?: string[]; [key: string]: unknown }
+    // The render's entity supplies the fallback anchor and the owning vertex
+    // highlight; it is not a grouping key.
+    const eid = (r.entity as string | undefined) || 'default'
     const entity = sketch[eid] as Entity | undefined
-    const bounds = entity ? getEntityBounds(entity) : { minX: 0, maxX: 0, minY: 0, maxY: 0 }
 
-    // Sub-group symbols by their `at` position so each distinct location gets its own Html anchor.
-    // Key is a rounded grid string; value holds the canonical position and its icon list.
-    const atGroups = new Map<string, { at: [number, number]; icons: { url: string; title: string; key: string; highlightIds: string[]; superfluous?: boolean; culprit?: boolean }[] }>()
+    if (showConstraintTiles && !isDragging && r.kind.startsWith('symbol_')) {
+      const url = getIconUrl(r.kind)
+      if (!url) continue
+      let at: [number, number]
+      if (r.at) at = r.at
+      else if (entity) {
+        const bounds = getEntityBounds(entity)
+        at = [bounds.maxX, bounds.maxY]
+      } else continue  // no position available
+      const atKey = `${Math.round(at[0] * 1000)}_${Math.round(at[1] * 1000)}`
+      if (!atGroups.has(atKey)) atGroups.set(atKey, { at, icons: [] })
 
-    for (const [cid, c] of clist) {
-      const r = c.render as { kind: string; at?: [number, number]; point?: string; entities?: string[]; points?: string[]; [key: string]: unknown }
-
-      if (showConstraintTiles && !isDragging && r.kind.startsWith('symbol_')) {
-        const url = getIconUrl(r.kind)
-        if (!url) continue
-        if (!r.at && !entity) continue  // no position available
-        const at: [number, number] = r.at ?? [bounds.maxX, bounds.maxY]
-        const atKey = `${Math.round(at[0] * 1000)}_${Math.round(at[1] * 1000)}`
-        if (!atGroups.has(atKey)) atGroups.set(atKey, { at, icons: [] })
-
-        // Determine which ids to highlight on hover:
-        //   - vertex-targeted constraint (e.g. fixed on $line1start): highlight just that vertex
-        //   - multi-entity constraint: highlight all involved entities
-        //   - proximity fallback: entities sharing the `at` point
-        //   - last resort: the owning entity
-        let highlightIds: string[]
-        if (r.point != null) {
-          // Vertex-targeted (e.g. fixed on a specific endpoint), use "entityId:vertexKey" format
-          highlightIds = [`${eid}:${r.point}`]
-        } else if (r.points?.length || r.entities?.length) {
-          highlightIds = [...(r.entities ?? []), ...(r.points ?? [])]
-        } else {
-          const atEntities = findEntitiesAtPoint(sketch, at)
-          highlightIds = atEntities.length > 0 ? atEntities : [eid]
-        }
-        // A group's whole members and point members are already split by the
-        // render, so the counts cannot miscount an entity id containing `:`.
-        const title = constraintTileLabel(r.kind, c, r.entities?.length ?? 0, r.points?.length ?? 0)
-        atGroups.get(atKey)!.icons.push({ url, title, key: cid, highlightIds, superfluous: c.superfluous, culprit: c.culprit })
-
+      // Determine which ids to highlight on hover:
+      //   - vertex-targeted constraint (e.g. fixed on $line1start): highlight just that vertex
+      //   - multi-entity constraint: highlight all involved entities
+      //   - proximity fallback: entities sharing the `at` point
+      //   - last resort: the owning entity
+      let highlightIds: string[]
+      if (r.point != null) {
+        // Vertex-targeted (e.g. fixed on a specific endpoint), use "entityId:vertexKey" format
+        highlightIds = [`${eid}:${r.point}`]
+      } else if (r.points?.length || r.entities?.length) {
+        highlightIds = [...(r.entities ?? []), ...(r.points ?? [])]
       } else {
-        // The solve verdicts ride the interaction block so the dimension label
-        // can paint itself: culprit deep red, redundant dimmed amber.
-        const el = renderDimension(cid, r, dimOffset, {
-          featureId, entityId: eid,
-          ...(c.superfluous ? { redundant: true } : {}),
-          ...(c.culprit ? { culprit: true } : {}),
-        }, planeTransform)
-        if (el) dimElements.push(el)
+        const atEntities = findEntitiesAtPoint(sketch, at)
+        highlightIds = atEntities.length > 0 ? atEntities : [eid]
       }
-    }
+      // A group's whole members and point members are already split by the
+      // render, so the counts cannot miscount an entity id containing `:`.
+      const title = constraintTileLabel(r.kind, c, r.entities?.length ?? 0, r.points?.length ?? 0)
+      atGroups.get(atKey)!.icons.push({ url, title, key: cid, highlightIds, superfluous: c.superfluous, culprit: c.culprit })
 
-    for (const [atKey, { at, icons }] of atGroups) {
-      const colWidth = ICON_SIZE + 2
-      const groupWidth = Math.min(ICON_COLS, icons.length) * colWidth
-      symbolElements.push(
-        <Html key={`icons-${eid}-${atKey}`} position={[at[0], at[1], LABEL_Z_OFFSET]} style={{ pointerEvents: 'none' }}>
-          <div style={{ marginLeft: 20, marginTop: -8, display: 'flex', flexWrap: 'wrap', width: groupWidth, gap: 2 }}>
-            {icons.map(({ url, title, key, highlightIds, superfluous, culprit }) => (
-              <ConstraintTile key={key} url={url} title={title} id={key} featureId={featureId} highlightIds={highlightIds} superfluous={superfluous} culprit={culprit} onContextMenu={onSelectionContextMenu ? pos => onSelectionContextMenu(`constraint:${featureId}:${key}`, pos) : undefined} />
-            ))}
-          </div>
-        </Html>
-      )
+    } else {
+      // The solve verdicts ride the interaction block so the dimension label
+      // can paint itself: culprit deep red, redundant dimmed amber.
+      const el = renderDimension(cid, r, dimOffset, {
+        featureId, entityId: eid,
+        ...(c.superfluous ? { redundant: true } : {}),
+        ...(c.culprit ? { culprit: true } : {}),
+      }, planeTransform)
+      if (el) dimElements.push(el)
     }
+  }
+
+  // A joint's tiles form an explicit grid, three per row and further rows
+  // below, so a busy vertex shows every constraint instead of stacking them.
+  for (const [atKey, { at, icons }] of atGroups) {
+    const cols = Math.min(icons.length, ICON_COLS)
+    symbolElements.push(
+      <Html key={`icons-${atKey}`} position={[at[0], at[1], LABEL_Z_OFFSET]} style={{ pointerEvents: 'none' }}>
+        <div style={{ marginLeft: 20, marginTop: -8, display: 'grid', gridTemplateColumns: `repeat(${cols}, ${ICON_SIZE}px)`, width: cols * ICON_SIZE + (cols - 1) * 2, gap: 2 }}>
+          {icons.map(({ url, title, key, highlightIds, superfluous, culprit }) => (
+            <ConstraintTile key={key} url={url} title={title} id={key} featureId={featureId} highlightIds={highlightIds} superfluous={superfluous} culprit={culprit} onContextMenu={onSelectionContextMenu ? pos => onSelectionContextMenu(`constraint:${featureId}:${key}`, pos) : undefined} />
+          ))}
+        </div>
+      </Html>
+    )
   }
 
   // A dropped constraint is an error marker, not decoration: it keeps its red
