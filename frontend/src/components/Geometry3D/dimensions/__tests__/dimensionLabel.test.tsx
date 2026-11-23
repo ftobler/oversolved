@@ -142,6 +142,31 @@ describe('DimensionLabel text', () => {
   })
 })
 
+describe('DimensionLabel rotation', () => {
+  it('rotates the text block by the given angle', async () => {
+    await renderLabel({ angleDeg: 15.5 })
+
+    expect(textDiv().style.transform).toBe('rotate(15.5deg)')
+  })
+
+  it('stays upright when the caller gives no angle', async () => {
+    await renderLabel()
+
+    expect(textDiv().style.transform).toBe('')
+  })
+
+  // jsdom's getBoundingClientRect ignores CSS transforms, so this pins that a
+  // rotated label stays in the pick registry, not the browser's rotated box.
+  it('keeps the label in the pick registry when the caller rotates it', async () => {
+    await renderLabel({ angleDeg: 30 })
+    stubBox(textDiv(), 100, 50)
+
+    expect(dimensionLabelDomHit(140, 60)).toMatchObject({
+      layer: 'dimensionLabel', entityKey: 'dim:c1',
+    })
+  })
+})
+
 describe('DimensionLabel pick footprint', () => {
   it('publishes the rendered text box, so a click on the far glyphs reaches the label', async () => {
     await renderLabel()
