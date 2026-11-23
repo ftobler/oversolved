@@ -1,6 +1,7 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { createDragTool } from '@/tools/DragTool'
 import type { DragToolContext } from '@/tools/DragTool'
+import { setLastDragSolve } from '@/utils/geometry/dragSolveRegistry'
 
 function createMockContext(overrides: Partial<DragToolContext> = {}): DragToolContext {
   return {
@@ -24,6 +25,10 @@ function createMockContext(overrides: Partial<DragToolContext> = {}): DragToolCo
     ...overrides,
   }
 }
+
+afterEach(() => {
+  setLastDragSolve(null)
+})
 
 describe('DragTool', () => {
   describe('onPointerDown', () => {
@@ -151,11 +156,12 @@ describe('DragTool', () => {
 
       tool.handlers.onPointerMove!({ clientX: 200, clientY: 200 } as PointerEvent, [5, 5], null, context)
 
+      // A gesture starts uncommitted; only pointer-up can say a solve is coming.
       expect(setDrag).toHaveBeenCalledWith(expect.objectContaining({
         type: 'edge',
         startWorld: [5, 5],  // resolved from worldPt (cursor position at activation)
         currentWorld: [5, 5],
-      }))
+      }), false)
     })
 
     it('leaves per-move updates to the view once a drag is live', () => {
@@ -261,13 +267,17 @@ describe('DragTool', () => {
         vertexKey: 'start',
         to: [10, 10],
       })
+      // The clear and the commit verdict are one write.
+      expect(setDrag).toHaveBeenCalledWith(null, true)
     })
 
     it('emits move_entity when edge drag completed', () => {
+      const setDrag = vi.fn()
       const onMutation = vi.fn()
       const tool = createDragTool()
       const context = createMockContext({
         onMutation,
+        setDrag,
         dragPending: {
           type: 'edge',
           vertexId: 'entity:S1:L1',
@@ -296,6 +306,75 @@ describe('DragTool', () => {
         entityId: 'L1',
         delta: [5, 6],  // 7-2, 9-3
       })
+      expect(setDrag).toHaveBeenCalledWith(null, true)
+    })
+
+    it('reports no commit for a locked edge drag, which emits no mutation', () => {
+      // A fully constrained circle resolves to 'locked' and commits nothing, so
+      // no solve is coming. The hold must not freeze this gesture's preview.
+      const onMutation = vi.fn()
+      const setDrag = vi.fn()
+      setLastDragSolve({ featureId: 'S1', mode: 'locked' })
+      const tool = createDragTool()
+      const context = createMockContext({
+        onMutation,
+        setDrag,
+        dragPending: {
+          type: 'edge',
+          vertexId: 'entity:S1:C1',
+          featureId: 'S1',
+          entityId: 'C1',
+          vertexKey: '',
+          startWorld: [2, 3],
+        },
+        drag: {
+          type: 'edge',
+          vertexId: 'entity:S1:C1',
+          featureId: 'S1',
+          entityId: 'C1',
+          vertexKey: '',
+          startWorld: [2, 3],
+          currentWorld: [7, 9],
+          startClient: [100, 100],
+        },
+      })
+
+      tool.handlers.onPointerUp!({} as PointerEvent, [7, 9], null, context)
+
+      expect(onMutation).not.toHaveBeenCalled()
+      expect(setDrag).toHaveBeenCalledWith(null, false)
+    })
+
+    it('reports no commit when no onMutation sink is registered', () => {
+      // A mutation exists but nothing will apply it, so no solve is coming.
+      const setDrag = vi.fn()
+      const tool = createDragTool()
+      const context = createMockContext({
+        onMutation: null,
+        setDrag,
+        dragPending: {
+          type: 'edge',
+          vertexId: 'entity:S1:L1',
+          featureId: 'S1',
+          entityId: 'L1',
+          vertexKey: '',
+          startWorld: [2, 3],
+        },
+        drag: {
+          type: 'edge',
+          vertexId: 'entity:S1:L1',
+          featureId: 'S1',
+          entityId: 'L1',
+          vertexKey: '',
+          startWorld: [2, 3],
+          currentWorld: [7, 9],
+          startClient: [100, 100],
+        },
+      })
+
+      tool.handlers.onPointerUp!({} as PointerEvent, [7, 9], null, context)
+
+      expect(setDrag).toHaveBeenCalledWith(null, false)
     })
 
     it('does not emit when movement below threshold', () => {

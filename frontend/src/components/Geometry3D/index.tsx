@@ -34,8 +34,9 @@ import { edgeDragPreview } from '@/utils/geometry/edgeDragPreview'
 // `topology` prop still represents the PRE-drag sketch -- rendering it would
 // draw a self-intersecting area fill and offer stale `isect:` ids for the
 // snap scan / ID picker. `topologyStale` is a single boolean shared by the
-// renderer, the ID-buffer registration, and the snap scan so the three
-// cannot drift. See feature/drag-topology-staleness.md.
+// renderer, the ID-buffer registration, the snap scan and the constraint
+// overlays (tiles + dimensions) so the four cannot drift. See
+// feature/drag-topology-staleness.md.
 import { topologyStale } from '@/components/Geometry3D/dragTopologyGate'
 
 // WASM drag solve: runs the real solver on every drag frame.
@@ -88,6 +89,10 @@ export interface Geometry3DProps {
 export default function Geometry3D({ featureId, solved, entities, projectionMembers, constraints, topology, activeFeatureId, plane, planeTransform, originLocal, solveStatus, entityStatus, otherSketches, featureDef, droppedConstraints, onSelectionContextMenu }: Geometry3DProps) {
   const groupRef = useRef<THREE.Group>(null)
   const drag = useSketchEditorStore(s => s.drag)
+  // Whether the gesture that just ended dispatched a mutation. Read here (not
+  // inferred from a status flag) because it decides whether a frozen preview has
+  // a fresh solve coming to replace it; see the held-preview tracker below.
+  const dragCommitted = useSketchEditorStore(s => s.dragCommitted)
   const isDraggingThis = !!drag && drag.featureId === featureId
 
   const resolvedPlaneTransform: PlaneTransform | undefined = useMemo(
@@ -151,10 +156,15 @@ export default function Geometry3D({ featureId, solved, entities, projectionMemb
   // On pointer-up the committed mutation re-solves asynchronously. Until the
   // fresh `solved` arrives we keep showing the last drag preview, so the geometry
   // doesn't snap back to its pre-drag position for the solver round-trip.
+  // Only a gesture that dispatched a mutation may freeze a preview: a no-commit
+  // gesture (a locked, fully constrained circle) has no solve coming, so it
+  // leaves no hold and falls straight back to `solved` -- otherwise the stale
+  // gate below would stay on forever, hiding the area fill, picking, dimensions
+  // and tiles until the next document edit.
   // Derived synchronously via the "adjust state during render" pattern (no effect,
   // so no one-frame revert). The rule is pure and tested in utils/geometry/heldPreview.
   const [heldState, setHeldState] = useState<HeldPreviewState<Sketch>>({ solved, preview, held: null })
-  const heldPreview = nextHeldPreview(heldState, solved, preview)
+  const heldPreview = nextHeldPreview(heldState, solved, preview, dragCommitted)
   if (heldPreview !== heldState) setHeldState(heldPreview)
   const nextHeld = heldPreview.held
 
@@ -178,11 +188,19 @@ export default function Geometry3D({ featureId, solved, entities, projectionMemb
   //    see feature/drag-topology-staleness.md -- a coincident snap to a stale
   //    `isect:` id at the pre-drag crossing position would commit a
   //    constraint against a position that visually no longer exists).
-  // The single gate is shared by renderer + ID + snap so the three cannot drift.
+  //  - ConstraintOverlays hides the whole solve-derived overlay: the symbol
+  //    tiles, the dropped-constraint error tiles and the dimensions (extension
+  //    lines, arrows, arcs). A dimension's geometry is baked into that solve, so
+  //    it would float at pre-drag coordinates; the tile set and its verdicts are
+  //    the solve's too, and hiding them with the dimensions avoids a mixed
+  //    live/frozen set while the preview moves the geometry.
+  // The single gate is shared by renderer + ID + snap + overlays so they cannot
+  // drift.
   //
   // `dim_label` drags do NOT move geometry (the preview is `solved` itself),
-  // so they are excluded: the area fill and inferred-contact markers must stay
-  // visible while the user repositions a dimension label.
+  // so they are excluded: the area fill, inferred-contact markers and the
+  // dimension being repositioned must stay visible while the user moves a
+  // label.
   const isGeometryDragging = isDraggingThis && drag?.type !== 'dim_label'
   const stale = topologyStale(isGeometryDragging, nextHeld, solved)
 
@@ -342,7 +360,7 @@ export default function Geometry3D({ featureId, solved, entities, projectionMemb
     <group ref={groupRef} rotation={rot} position={pos ?? [0, 0, 0]}>
       {topology && !stale && <TopologySurfaces topology={topology} isEditing={isEditing} activeFeatureId={activeFeatureId} />}
       <EntityLines sketch={displaySketch} featureId={featureId} color={entityStatus ? getEntityColor : baseColor} lineWidth={2} isEditing={isEditing} constraints={featureDef?.constraints} />
-      {(constraints || droppedConstraints?.length) && isEditing && <ConstraintOverlays constraints={constraints ?? {}} sketch={displaySketch} extent={extent} featureId={featureId} planeTransform={resolvedPlaneTransform} droppedConstraints={droppedConstraints} authoredConstraints={featureDef?.constraints} onSelectionContextMenu={onSelectionContextMenu} />}
+      {(constraints || droppedConstraints?.length) && isEditing && <ConstraintOverlays constraints={constraints ?? {}} sketch={displaySketch} extent={extent} featureId={featureId} planeTransform={resolvedPlaneTransform} droppedConstraints={droppedConstraints} authoredConstraints={featureDef?.constraints} onSelectionContextMenu={onSelectionContextMenu} geometryStale={stale} />}
       {isEditing && !stale && <InferredContactMarkers candidates={inferredCandidates} />}
       {isEditing && <DragPlane featureId={featureId} sketch={displaySketch} sketchGroupRef={groupRef} otherSketches={otherSketches} constraints={featureDef?.constraints} topology={stale ? undefined : topology} />}
       {isEditing && <DragSnapIndicator />}

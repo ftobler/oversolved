@@ -108,6 +108,12 @@ interface ConstraintOverlaysProps {
   /** A tile's own right-click: the page opens its context menu with the picked
    *  constraint, so a projected tile can offer the freeze actions. */
   onSelectionContextMenu?: (selectionId: string, pos: [number, number]) => void
+  /** The sketch's geometry has moved out from under the last cold solve: the
+   *  drag preview, or the held preview while the post-drag solve is in flight.
+   *  The dimensions' geometry and the tile set with its verdicts are the
+   *  solve's, so the overlay hides together with the area fill instead of
+   *  showing a mix of live and pre-drag positions. */
+  geometryStale?: boolean
 }
 
 /** One red tile per dropped constraint: the glyph the constraint would have had,
@@ -157,9 +163,7 @@ interface SymbolTile {
   culprit?: boolean
 }
 
-export function ConstraintOverlays({ constraints, sketch, extent, featureId, planeTransform, droppedConstraints, authoredConstraints, onSelectionContextMenu }: ConstraintOverlaysProps) {
-  const drag = useSketchEditorStore(s => s.drag)
-  const isDragging = drag !== null
+export function ConstraintOverlays({ constraints, sketch, extent, featureId, planeTransform, droppedConstraints, authoredConstraints, onSelectionContextMenu, geometryStale = false }: ConstraintOverlaysProps) {
   const showConstraintTiles = useSketchUiStore(s => s.showConstraintTiles)
   const dimOffset = extent * 0.1
 
@@ -175,13 +179,21 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
   const atGroups = new Map<string, { at: [number, number]; icons: SymbolTile[] }>()
 
   for (const [cid, c] of Object.entries(constraints)) {
+    // One gate for the whole solve-derived overlay. A dimension's extension
+    // lines, arrows and arc are baked into its render block, so they would stay
+    // at the pre-drag geometry while the preview moves. A symbol tile usually
+    // anchors on a solved `at`; the no-`at` fallback derives its bounds from the
+    // live display sketch, but the tile set and its verdicts are still the
+    // solve's, so hiding the lot avoids a mixed live/frozen set mid-drag. A
+    // dim_label drag does not move geometry and is not stale.
+    if (geometryStale) continue
     const r = c.render as { kind: string; at?: [number, number]; point?: string; entities?: string[]; points?: string[]; [key: string]: unknown }
     // The render's entity supplies the fallback anchor and the owning vertex
     // highlight; it is not a grouping key.
     const eid = (r.entity as string | undefined) || 'default'
     const entity = sketch[eid] as Entity | undefined
 
-    if (showConstraintTiles && !isDragging && r.kind.startsWith('symbol_')) {
+    if (showConstraintTiles && r.kind.startsWith('symbol_')) {
       const url = getIconUrl(r.kind)
       if (!url) continue
       let at: [number, number]
@@ -243,9 +255,13 @@ export function ConstraintOverlays({ constraints, sketch, extent, featureId, pla
   // A dropped constraint is an error marker, not decoration: it keeps its red
   // tile even when the user hides the ordinary symbols, because hiding it would
   // leave only the tree's warning text to find a row that cannot be deleted from
-  // the canvas. It still goes away during a drag, like every other tile.
+  // the canvas. It still goes away while the geometry is stale: its anchor is
+  // recomputed by computeConstraintRender against the live display sketch, but
+  // the dropped list is the last solve's verdict, so it belongs to the same
+  // solve-derived overlay set rather than sitting alone while every other tile
+  // and dimension is hidden.
   const droppedElements: React.ReactNode[] = []
-  if (!isDragging) {
+  if (!geometryStale) {
     for (const tile of droppedConstraintTiles(droppedConstraints ?? [], authoredConstraints, sketch)) {
       droppedElements.push(
         <Html key={`dropped-${tile.id}`} position={[tile.at[0], tile.at[1], LABEL_Z_OFFSET]} style={{ pointerEvents: 'none' }}>

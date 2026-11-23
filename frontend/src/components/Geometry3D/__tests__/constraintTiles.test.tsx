@@ -66,7 +66,7 @@ const mockConstraints: Constraints = {
   c2: { render: { kind: 'symbol_vertical', at: [5, 0] }, residual: 0 } as Constraints[string],
 }
 
-function renderOverlays(constraints: Constraints = mockConstraints) {
+function renderOverlays(constraints: Constraints = mockConstraints, geometryStale = false) {
   return render(
     <ConstraintOverlays
       constraints={constraints}
@@ -74,6 +74,7 @@ function renderOverlays(constraints: Constraints = mockConstraints) {
       extent={10}
       featureId="feat1"
       planeTransform={{ rotation: [1, 0, 0, 0, 1, 0, 0, 0, 1], origin: [0, 0, 0] }}
+      geometryStale={geometryStale}
     />
   )
 }
@@ -522,5 +523,49 @@ describe('ConstraintTile click selection and unmount cleanup', () => {
     expect(useSketchEditorStore.getState().hoveredConstraintEntityIds.size).toBeGreaterThan(0)
     unmount()
     expect(useSketchEditorStore.getState().hoveredConstraintEntityIds).toEqual(new Set())
+  })
+})
+
+// Every overlay here is derived from the last cold solve: a dimension's
+// extension lines, arrows and arc are baked into its render block, and a tile's
+// anchor is baked into its `at`. While the drag preview (or the held preview
+// after release) shows geometry the solve has not caught up with, those blocks
+// describe the pre-drag sketch, so the whole set hides with the area fill.
+describe('solve-derived overlays hide while the geometry is stale', () => {
+  const dimsAndSymbols: Constraints = {
+    c1: { render: { kind: 'symbol_horizontal', at: [5, 0] }, residual: 0 } as Constraints[string],
+    d1: { render: { kind: 'dim_linear', p1: [0, 0], p2: [10, 0], normal: [0, 1], value: 10 }, residual: 0 } as Constraints[string],
+    d2: { render: { kind: 'dim_angle', p1: [0, 0], p2: [10, 0], p3: [0, 0], p4: [0, 10], value: 90 }, residual: 0 } as Constraints[string],
+  }
+
+  it('renders the dimensions and symbol tiles when the geometry is live', () => {
+    const { container } = renderOverlays(dimsAndSymbols, false)
+    expect(container.querySelectorAll('[data-testid="linear-dim"]')).toHaveLength(1)
+    expect(container.querySelectorAll('[data-testid="angle-dim"]')).toHaveLength(1)
+    expect(container.querySelectorAll('img')).toHaveLength(1)
+  })
+
+  it('hides the dimensions and symbol tiles while the geometry is stale', () => {
+    const { container } = renderOverlays(dimsAndSymbols, true)
+    expect(container.querySelectorAll('[data-testid="linear-dim"]')).toHaveLength(0)
+    expect(container.querySelectorAll('[data-testid="angle-dim"]')).toHaveLength(0)
+    expect(container.querySelectorAll('img')).toHaveLength(0)
+  })
+
+  it('hides a dropped-constraint error tile while the geometry is stale', () => {
+    // The red tile is anchored on an operand position read from the same stale
+    // geometry, so it would float detached exactly like a dimension.
+    const { container } = render(
+      <ConstraintOverlays
+        constraints={{}}
+        sketch={mockSketch}
+        extent={10}
+        featureId="feat1"
+        droppedConstraints={[{ id: 'c_dead', kind: 'coincident', reason: 'stale reference' }]}
+        authoredConstraints={[{ id: 'c_dead', kind: 'coincident', a: '$line1start', b: '@sk1/other' }] as unknown as PartConstraint[]}
+        geometryStale
+      />,
+    )
+    expect(container.querySelector('img')).toBeNull()
   })
 })

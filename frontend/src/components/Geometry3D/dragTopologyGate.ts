@@ -31,7 +31,10 @@ import type { Sketch } from '@/types/cad'
  * Architectural rule: while stale, callers treat `topology` as `undefined`
  * for snap/ID purposes (`useSketchIdRegistration`, `DragPlane`), and suppress
  * `TopologySurfaces` / `useSketchSurfaceIdRegistration` / `InferredContactMarkers`
- * render entirely. The `dock:` half of the inferred-contact set
+ * render entirely. `ConstraintOverlays` hides on the same gate (tiles and
+ * dimensions): a dimension's geometry and the tile set with its verdicts are
+ * the last cold solve's, so a drag would show them at pre-drag positions
+ * exactly like the area fill. The `dock:` half of the inferred-contact set
  * (`sketchToDockCandidates`, derived from live `sketch + constraints + params`)
  * stays valid during a drag and IS still offered; only the `isect:` half reads
  * the stale topology.

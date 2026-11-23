@@ -219,9 +219,18 @@ export interface SketchEditorState {
   dragStartClient: [number, number] | null  // screen coordinates at pointer-down, before drag initiated (for lazy initiation)
   dragPending: DragPendingState | null  // pending drag info from onPointerDown, used for lazy initiation
   dragSnap: SnapTarget | null
+  // Whether the gesture that last ended left a preview worth holding until its
+  // solve lands. Only a geometry-moving drag that dispatched a mutation sets it:
+  // a gesture that committed nothing has no solve coming, and a dim_label drag's
+  // preview is `solved` itself. Written together with the drag in one store
+  // action (see setDrag); the held-preview tracker reads both as one state.
+  dragCommitted: boolean
   alignmentSnapPoint: [number, number] | null
   alignmentSnapKind: 'kinda_horizontal' | 'kinda_vertical' | null
-  setDrag: (drag: DragState | null) => void
+  // `committed` is the gesture-end verdict. It defaults to false on every other
+  // write (a drag start, a per-frame move, a dropped gesture), so only a real
+  // committing pointer-up can leave a hold behind.
+  setDrag: (drag: DragState | null, committed?: boolean) => void
   setDragStartClient: (pos: [number, number] | null) => void
   setDragPending: (pending: DragPendingState | null) => void
   setDragSnap: (snap: SnapTarget | null) => void
