@@ -203,7 +203,9 @@ export function DragPlane({ featureId, sketch, sketchGroupRef, otherSketches, co
           onMutation({ type: 'set_constraint_pos', featureId: currentDrag.featureId, constraintId: currentDrag.constraintId, pos: offset })
         }
       }
-      setDrag(null); setDragSnap(null); setDragStartClient(null)
+      // A label drag's preview is the solved sketch itself, so it never leaves a
+      // hold (and never needs one); end it uncommitted for the hold gate.
+      setDrag(null, false); setDragSnap(null); setDragStartClient(null)
       return
     }
 

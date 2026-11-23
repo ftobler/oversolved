@@ -1,7 +1,8 @@
-// Logic tests for `topologyStale`, the single gate that keeps sketch
-// topology (area fills + free curve-curve intersection points) from being
-// rendered, registered for picking, or offered as snap targets while the
-// geometry has moved out from under the pre-drag topology.
+// Logic tests for `topologyStale`, the single gate that keeps solve-derived
+// sketch overlays from being rendered at pre-drag positions while the geometry
+// has moved out from under them: the area fill and free curve-curve
+// intersection points (topology), and the constraint tiles plus dimensions
+// (a solve-derived render block).
 //
 // See feature/drag-topology-staleness.md. This gate is the architecturally
 // load-bearing piece of the cheap drag-staleness fix: the snap scan reads the

@@ -10,7 +10,7 @@ export interface DragToolContext extends ToolContext {
   drag: { type: 'vertex' | 'edge'; vertexId: string; featureId: string; entityId: string; vertexKey: string; startWorld: Point; currentWorld: Point; startClient: [number, number] } | null
   dragPending: { type: 'vertex' | 'edge'; vertexId: string; featureId: string; entityId: string; vertexKey: string; startWorld: Point } | null
   dragSnap: SnapTarget | null
-  setDrag: (drag: DragToolContext['drag']) => void
+  setDrag: (drag: DragToolContext['drag'], committed?: boolean) => void
   setDragPending: (pending: DragToolContext['dragPending']) => void
   setDragSnap: (snap: SnapTarget | null) => void
   startClient: [number, number] | null
@@ -153,6 +153,10 @@ export function createDragTool(): DragTool {
         // at activation) is a reasonable reference point for computing deltas.
         const resolvedStartWorld = pending.type === 'edge' ? worldPt : pending.startWorld
 
+        // A gesture starts uncommitted: only pointer-up knows whether a
+        // mutation (and so a solve) will actually come out of it. The verdict
+        // rides on the same write as the drag so a render can never see the two
+        // disagree (see setDrag in stores/editorState).
         context.setDrag({
           type: pending.type,
           vertexId: pending.vertexId,
@@ -162,7 +166,7 @@ export function createDragTool(): DragTool {
           startWorld: resolvedStartWorld,
           currentWorld: worldPt,
           startClient: context.startClient,
-        })
+        }, false)
       }
       // No live-drag update here: the caller passes drag: null while activating,
       // and once a drag is live the view owns per-move updates itself. A branch
@@ -183,11 +187,16 @@ export function createDragTool(): DragTool {
       // synchronously in the pointer-up handler -- the rAF loop's cleanup
       // clears the registry only after the store update re-renders.
       const mutation = computeDragMutation(endClient, context.drag, context.dragSnap ?? null, getLastDragSolve())
+      // A locked circle (fully constrained) or a radius drag with no solved
+      // radius emits nothing: there is no mutation and no re-solve, so the
+      // viewport must not freeze this preview waiting for a solve that will
+      // never arrive. Report the outcome on the SAME write that clears the
+      // drag: the held-preview tracker must see both together, because a render
+      // in between would read the old verdict with the cleared drag.
       if (mutation) {
         context.onMutation?.(mutation)
       }
-
-      context.setDrag(null)
+      context.setDrag(null, mutation !== null && context.onMutation != null)
       context.setDragSnap(null)
     },
   }

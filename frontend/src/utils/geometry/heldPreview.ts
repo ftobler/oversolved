@@ -6,6 +6,12 @@
 // `solved` sketch arrives the viewport keeps showing the last drag preview, so
 // the geometry does not snap back to its pre-drag position for the solver
 // round-trip. A new `solved` identity supersedes the hold.
+//
+// The hold is only truthful when the gesture actually committed a mutation: only
+// then is a fresh solve on its way. A gesture that emitted nothing (a locked
+// fully constrained circle, a radius drag with no solved radius) has no solve to
+// release the hold, so it must fall back to `solved` instead of freezing the
+// preview and pinning the drag-staleness gate forever.
 
 export interface HeldPreviewState<T> {
   // The solved sketch the tracker last saw.
@@ -17,11 +23,16 @@ export interface HeldPreviewState<T> {
 }
 
 /** The tracker's next state. Returns the same object when neither input
- *  identity changed, so a render can skip the state write entirely. */
+ *  identity changed, so a render can skip the state write entirely.
+ *
+ *  `committed` is whether the gesture that just ended dispatched a mutation. It
+ *  is only consulted at the drag-end transition; the early return means a
+ *  committed flag flipping while nothing else changes cannot churn the state. */
 export function nextHeldPreview<T>(
   state: HeldPreviewState<T>,
   solved: T,
   preview: T | null,
+  committed: boolean,
 ): HeldPreviewState<T> {
   if (state.solved === solved && state.preview === preview) return state
   const held = state.solved !== solved
@@ -29,8 +40,10 @@ export function nextHeldPreview<T>(
     // now genuinely stale.
     ? null
     : state.preview !== null && preview === null
-      // The drag just ended: freeze its last preview.
-      ? state.preview
+      // The drag just ended. Freeze its last preview only when a mutation went
+      // out; a no-commit gesture clears the hold and shows `solved`, because
+      // nothing moved and no solve is coming to release a frozen preview.
+      ? (committed ? state.preview : null)
       : state.held
   return { solved, preview, held }
 }

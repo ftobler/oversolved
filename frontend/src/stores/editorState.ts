@@ -196,6 +196,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
   dragStartClient: null,
   dragPending: null,
   dragSnap: null,
+  dragCommitted: false,
   isRotating: false,
   entityKindMap: {},
   constructionEntityKeys: new Set(),
@@ -432,7 +433,13 @@ export const editorState = createStore<EditorState>((set, get) => ({
 
   setAlignmentSnap: (point, kind) => set({ alignmentSnapPoint: point, alignmentSnapKind: kind }),
 
-  setDrag: (drag) => set({ drag }),
+  // The drag and its commit verdict are ONE state write on purpose: the
+  // held-preview tracker must see `drag: null` and the verdict together. Two
+  // writes would let a render observe the cleared drag with the previous
+  // verdict and freeze (or drop) the wrong preview. Any write without an
+  // explicit verdict is uncommitted: a drag start, a per-frame update, or a
+  // gesture dropped by clearDragState.
+  setDrag: (drag, committed = false) => set({ drag, dragCommitted: committed }),
   setDragStartClient: (pos) => set({ dragStartClient: pos }),
   setDragPending: (pending) => set({ dragPending: pending }),
   setDragSnap: (snap) => set({ dragSnap: snap }),
@@ -442,6 +449,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
     dragPending: null,
     dragStartClient: null,
     dragSnap: null,
+    dragCommitted: false,
     alignmentSnapPoint: null,
     alignmentSnapKind: null,
     isPointerDown: false,
