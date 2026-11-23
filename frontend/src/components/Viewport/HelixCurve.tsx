@@ -66,7 +66,7 @@ export default function HelixCurve({
     : state === 'hovered' ? COLOR_HOVER
     : state === 'hinted' ? COLOR_HINT
     : isEditing ? COLOR_SOLVED : COLOR_INACTIVE
-  const { depthTest, renderOrder } = entityRenderLayer({ isEditing, selected, hovered, hinted })
+  const { depthTest, renderOrder, transparent } = entityRenderLayer({ isEditing, selected, hovered, hinted })
 
   return (
     <group>
@@ -76,6 +76,7 @@ export default function HelixCurve({
         lineWidth={hovered ? 2 : 1}
         depthTest={depthTest}
         renderOrder={renderOrder}
+        transparent={transparent}
       />
       {isEditing && (
         <mesh position={start} renderOrder={renderOrder}>

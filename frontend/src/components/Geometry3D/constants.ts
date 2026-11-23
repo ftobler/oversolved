@@ -2,6 +2,7 @@ import {
   RENDER_ORDER_DEFAULT,
   RENDER_ORDER_EDITING,
   RENDER_ORDER_HIGHLIGHT,
+  RENDER_ORDER_SKETCH_FILL,
   COLOR_PART_DEFAULT,
   COLOR_PART_SELECTED,
   COLOR_PART_EDGE,
@@ -53,6 +54,7 @@ export {
   RENDER_ORDER_DEFAULT,
   RENDER_ORDER_EDITING,
   RENDER_ORDER_HIGHLIGHT,
+  RENDER_ORDER_SKETCH_FILL,
   EDGE_HIGHLIGHT_LINE_WIDTH,
 } from '@/utils/core/partColors'
 
@@ -115,6 +117,13 @@ export function overlayLineMaterialProps(color: string) {
 //   hovered            -> top of everything (above other editing lines too)
 //   editing only       -> above the B-rep, at the edit layer
 //   visible only       -> depth-tested at its plane (clipped by solids in front)
+//
+// Every state is transparent, at opacity 1. The sketch area fill is a transparent
+// polygon along the centre of the boundary lines, so an opaque line always loses
+// the half of its width under the fill: three draws the whole opaque list before
+// the transparent one, and renderOrder cannot cross that boundary. Putting the
+// lines and dots in the same sorted pass as the fill is what makes the explicit
+// order below load-bearing. Alpha 1 means no visual change on its own.
 export interface EntityLayerState {
   isEditing?: boolean
   selected?: boolean
@@ -124,16 +133,41 @@ export interface EntityLayerState {
 
 export function entityRenderLayer(
   { isEditing = false, selected = false, hovered = false, hinted = false }: EntityLayerState,
-): { depthTest: boolean; renderOrder: number } {
+): { depthTest: boolean; renderOrder: number; transparent: true } {
   const state = highlightState(selected, hovered, hinted)
-  if (state === 'selected') return { depthTest: false, renderOrder: RENDER_ORDER_EDITING }
-  if (state === 'hovered') return { depthTest: false, renderOrder: RENDER_ORDER_HIGHLIGHT }
+  if (state === 'selected') return { depthTest: false, renderOrder: RENDER_ORDER_EDITING, transparent: true }
+  if (state === 'hovered') return { depthTest: false, renderOrder: RENDER_ORDER_HIGHLIGHT, transparent: true }
   // A hinted sketch line is drawn by the hint rather than by its own visibility:
   // the consumption rule hides the sketch but the line still sits inside the
   // body it built, so it needs the edit layer to be seen at all. Hinted B-rep
   // faces are not lifted: they stay depth-tested.
-  if (isEditing || state === 'hinted' || state === 'hinted-failed') return { depthTest: false, renderOrder: RENDER_ORDER_EDITING }
-  return { depthTest: true, renderOrder: RENDER_ORDER_DEFAULT }
+  if (isEditing || state === 'hinted' || state === 'hinted-failed') {
+    return { depthTest: false, renderOrder: RENDER_ORDER_EDITING, transparent: true }
+  }
+  return { depthTest: true, renderOrder: RENDER_ORDER_DEFAULT, transparent: true }
+}
+
+// ─── sketch area fill layering ───
+// One layer for every area polygon. An area's outline is not a separate line:
+// the fill's edge coincides with the sketch entity drawn along it, and that
+// entity sits at the polygon's centre line. The fill therefore has to be the
+// first thing in the sorted pass, below every entity layer, and it must not
+// write depth, or the lines drawn after it at the same z would be cut. It still
+// depth-tests, so a solid body in front still hides it.
+export interface SketchFillLayer {
+  depthTest: true
+  depthWrite: false
+  transparent: true
+  renderOrder: number
+}
+
+export function sketchFillRenderLayer(): SketchFillLayer {
+  return {
+    depthTest: true,
+    depthWrite: false,
+    transparent: true,
+    renderOrder: RENDER_ORDER_SKETCH_FILL,
+  }
 }
 
 // ─── dimension render layering ───

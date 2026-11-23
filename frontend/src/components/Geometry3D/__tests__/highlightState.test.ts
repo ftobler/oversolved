@@ -44,34 +44,34 @@ describe('highlightState precedence', () => {
 describe('entityRenderLayer follows the same precedence', () => {
   it('a hovered entity rises to the highlight layer', () => {
     expect(entityRenderLayer({ hovered: true })).toEqual({
-      depthTest: false, renderOrder: RENDER_ORDER_HIGHLIGHT,
+      depthTest: false, renderOrder: RENDER_ORDER_HIGHLIGHT, transparent: true,
     })
   })
 
   it('a selected entity stays at the edit layer even while hovered', () => {
     expect(entityRenderLayer({ selected: true, hovered: true })).toEqual({
-      depthTest: false, renderOrder: RENDER_ORDER_EDITING,
+      depthTest: false, renderOrder: RENDER_ORDER_EDITING, transparent: true,
     })
   })
 
   it('editing still lifts a hovered entity, and a selected one outranks editing', () => {
     expect(entityRenderLayer({ isEditing: true, hovered: true })).toEqual({
-      depthTest: false, renderOrder: RENDER_ORDER_HIGHLIGHT,
+      depthTest: false, renderOrder: RENDER_ORDER_HIGHLIGHT, transparent: true,
     })
     expect(entityRenderLayer({ isEditing: true, selected: true, hovered: true })).toEqual({
-      depthTest: false, renderOrder: RENDER_ORDER_EDITING,
+      depthTest: false, renderOrder: RENDER_ORDER_EDITING, transparent: true,
     })
   })
 
   it('a hinted sketch line sits at the edit layer, but a hover lifts it above', () => {
     expect(entityRenderLayer({ hinted: true })).toEqual({
-      depthTest: false, renderOrder: RENDER_ORDER_EDITING,
+      depthTest: false, renderOrder: RENDER_ORDER_EDITING, transparent: true,
     })
     expect(entityRenderLayer({ hinted: true, hovered: true })).toEqual({
-      depthTest: false, renderOrder: RENDER_ORDER_HIGHLIGHT,
+      depthTest: false, renderOrder: RENDER_ORDER_HIGHLIGHT, transparent: true,
     })
     expect(entityRenderLayer({ hinted: true, selected: true })).toEqual({
-      depthTest: false, renderOrder: RENDER_ORDER_EDITING,
+      depthTest: false, renderOrder: RENDER_ORDER_EDITING, transparent: true,
     })
   })
 })
