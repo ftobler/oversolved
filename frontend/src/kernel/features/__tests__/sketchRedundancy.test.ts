@@ -152,6 +152,63 @@ describe.skipIf(!solveBytes)('redundant constraints are flagged, not errors', ()
   })
 })
 
+describe.skipIf(!solveBytes)('the point-on-line twin is the flagged row, not the coincident it duplicates', () => {
+  beforeAll(() => setSketchSolver(solveBytes!))
+  afterAll(() => resetSketchSolver())
+
+  /** The report's corner (bugreports/20261123_1834_deletable_constraint.md):
+   *  two lines joined by a point-point coincident, plus a later point-on-line
+   *  coincident of the same vertex onto the line it is already joined to. The
+   *  solver blames the later row, which is right: the point-point joiner is the
+   *  driver and the locus restates it. */
+  function cornerSketch({ twin = true, joint = true }: { twin?: boolean; joint?: boolean } = {}): SketchFeature {
+    const constraints: Dict[] = [
+      { id: 'c_start', kind: 'coincident', a: { entity: 'E4f', point: 'start' }, b: '@builtin_origin' },
+      { id: 'c_h', kind: 'horizontal', target: { entity: 'E4f' } },
+      { id: 'c_len_e', kind: 'length', target: { entity: 'E4f' }, value: 10 },
+      { id: 'c_v', kind: 'vertical', target: { entity: 'rml' } },
+      { id: 'c_len_r', kind: 'length', target: { entity: 'rml' }, value: 10 },
+    ]
+    if (joint) constraints.push({ id: 'c_joint', kind: 'coincident', a: { entity: 'rml', point: 'start' }, b: { entity: 'E4f', point: 'end' } })
+    if (twin) constraints.push({ id: 'c_twin', kind: 'coincident', a: { entity: 'E4f', point: 'end' }, b: { entity: 'rml' } })
+    return {
+      id: 'sk1',
+      kind: 'sketch',
+      label: 'Corner',
+      plane: '@builtin_plane_front',
+      entities: [{ id: 'E4f', kind: 'line' }, { id: 'rml', kind: 'line' }],
+      initial: { E4f: [0, 0, 10, 0], rml: [10, 0, 10, 10] },
+      constraints,
+    } as unknown as SketchFeature
+  }
+
+  it('flags exactly the twin and leaves the sketch fully constrained', () => {
+    const out = solve(cornerSketch())
+    expect(out.status).toBe('fully_constrained')
+    expect(flagged(out)).toEqual(['c_twin'])
+  })
+
+  it('stays fully constrained with the twin gone', () => {
+    const out = solve(cornerSketch({ twin: false }))
+    expect(out.status).toBe('fully_constrained')
+    expect(flagged(out)).toEqual([])
+  })
+
+  it('is underconstrained when the point-point joiner goes and only the twin remains', () => {
+    const out = solve(cornerSketch({ joint: false }))
+    expect(out.status).toBe('underconstrained')
+  })
+
+  it('the authoring gate refuses the twin on this sketch', () => {
+    // The constraint tool's pick is vertex + line, which the probe must read as
+    // the same row the twin would author: implied, so refused as redundant.
+    const doc = { id: 'd1', features: [cornerSketch({ twin: false })] } as unknown as PartDoc
+    expect(classifyPendingAdd(doc, {
+      featureId: 'sk1', kind: 'coincident', targets: ['vertex:sk1:E4f:end', 'entity:sk1:rml'],
+    })).toBe('redundant')
+  })
+})
+
 describe.skipIf(!solveBytes)('authoring probe', () => {
   beforeAll(() => resetSketchSolver())
   afterAll(() => resetSketchSolver())

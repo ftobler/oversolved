@@ -270,6 +270,24 @@ describe('computeDrawClick - line tool', () => {
     }
   })
 
+  it('a press on a bonded corner vertex authors a point pair, not a point-on-line', () => {
+    // The report's twin shape: a vertex that is already joined to a line gets a
+    // second point-on-line row onto that same line. A draw press on the corner
+    // must resolve the named vertex first, so the constraint names the point
+    // pair and never the body the vertex already sits on.
+    const snap = emptySnap()
+    snap.hoveredVertexId = 'vertex:S1:L1:end'
+    snap.hoveredVertexPosition = [10, 0]
+    snap.hoveredSnapKind = 'vertex'
+    snap.hoveredSelectionId = 'entity:S1:L1'
+    const result = computeDrawClick('line', [[0, 0]], [10, 0], snap, FEATURE, () => 'N1')
+    const constraint = result.mutations.find(m => m.type === 'add_constraint')
+    expect(constraint).toBeDefined()
+    if (constraint && constraint.type === 'add_constraint') {
+      expect(constraint.targets).toEqual(['vertex:S1:N1:end', 'vertex:S1:L1:end'])
+    }
+  })
+
   it('both endpoints on distinct vertices emit start and end constraints', () => {
     const snap = emptySnap()
     snap.drawSnapRefs = ['vertex:S1:L1:end']
