@@ -3,6 +3,7 @@ import { render } from '@testing-library/react'
 import type { LineSegment, Sketch, Topology } from '@/types/cad'
 import { useEditorState } from '@/hooks/useEditorState'
 import { usePartEditorStore } from '@/stores/partEditorStore'
+import { initializeTools } from '@/tools'
 
 /**
  * The scene probe for a sketch with areas. It mounts the same components the
@@ -136,12 +137,42 @@ describe.each([
     }
   })
 
-  it('does not let the fill write depth over the lines it shares a plane with', async () => {
+  it('carries the fill layer order and opacity on the area mesh', async () => {
     const { container } = await mountScene({ isEditing })
 
     const fill = fillMeshes(container)[0]
+    // The mesh sorts below every line layer. depthWrite is pinned by the layer
+    // contract in renderOrder.test.tsx: React omits a false attribute on this
+    // stubbed intrinsic, so it cannot be read back from the DOM here.
+    expect(fill.getAttribute('renderorder')).toBe('-1')
     const material = fill.querySelector('meshbasicmaterial')
     expect(material?.getAttribute('opacity')).toBe('0.1')
+  })
+})
+
+describe('draw preview layering', () => {
+  it('puts the live preview line and dots in the transparent pass above the fill', async () => {
+    initializeTools()
+    useEditorState.setState({
+      activeTool: 'line',
+      drawPoints: [[0, 0]],
+      drawSnapRefs: [null],
+      drawHover: [5, 5],
+      hoveredVertexId: null,
+      hoveredVertexPosition: null,
+      hoveredSnapKind: null,
+      hoveredSelectionId: null,
+      alignmentSnapPoint: null,
+      alignmentSnapKind: null,
+    })
+    const { DrawPreview } = await import('@/components/Geometry3D/Drawing')
+    render(<DrawPreview featureId="sk1" activeFeatureId="sk1" />)
+
+    expect(captured.lines).toHaveLength(1)
+    expect(captured.lines[0].transparent).toBe(true)
+    expect(captured.lines[0].renderOrder ?? 0).toBeGreaterThan(-1)
+    expect(captured.dots.length).toBeGreaterThan(0)
+    for (const dot of captured.dots) expect(dot.transparent, 'preview dot pass').toBe(true)
   })
 })
 

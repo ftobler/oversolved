@@ -1341,6 +1341,10 @@ export default function Part() {
   }, [handleMutation, features, visibleFeaturesWithEdit])
 
   const toggleSuppression = useCallback((featureId: string, suppressed: boolean) => {
+    // A suppressed feature has no solve and cannot be edited, so its editor
+    // cannot outlive the suppression. Cancel first: the open preview would
+    // otherwise stay pinned to a feature the next build has already skipped.
+    if (suppressed && editorState.getState().editingFeatureId === featureId) cancelEditFeature()
     handleMutation({ type: 'set_feature_suppression', featureId, suppressed })
     if (suppressed) {
       // The feature stops drawing the moment the mutation commits, so any of
@@ -1354,7 +1358,7 @@ export default function Part() {
       )
     }
     setContextMenu(null)
-  }, [handleMutation, doc])
+  }, [handleMutation, doc, cancelEditFeature])
 
   const handleFeatureRename = useCallback((featureId: string, label: string) => {
     const trimmed = label.trim()

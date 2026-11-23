@@ -17,13 +17,18 @@ export const SHOW_GROUPS: readonly ShowGroup[] = ['planes', 'sketches', 'origin'
  * row agrees with the tree eye and the `y` toggle; origin is the marker alone.
  */
 export function showGroupIds(features: readonly PartFeature[], group: ShowGroup): string[] {
+  // A suppressed member cannot be drawn, so it must be neither counted in the
+  // row's check state nor written by its toggle. Counting it would pin the row
+  // to "not shown" forever, and writing it would spend the stored `visible`
+  // flag the suppressed row's dimmed eye deliberately preserves for unsuppress.
+  const live = features.filter(f => f.suppressed !== true)
   switch (group) {
     case 'planes':
-      return features.filter(isPlaneVisibilityTarget).map(f => f.id)
+      return live.filter(isPlaneVisibilityTarget).map(f => f.id)
     case 'sketches':
-      return features.filter(isSketchClassFeature).map(f => f.id)
+      return live.filter(isSketchClassFeature).map(f => f.id)
     case 'origin':
-      return features.filter(f => f.id === 'Origin').map(f => f.id)
+      return live.filter(f => f.id === 'Origin').map(f => f.id)
   }
 }
 

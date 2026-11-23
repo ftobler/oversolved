@@ -338,6 +338,19 @@ describe('Part page actions', () => {
     expect(h.handleMutation).toHaveBeenCalledWith({ type: 'set_feature_suppression', featureId: 'extrude1', suppressed: true })
   })
 
+  it('the feature context menu Suppress closes the editor when it is that feature', () => {
+    useEditorState.setState({ editingFeatureId: 'extrude1' })
+    renderPart()
+
+    fireEvent.click(screen.getByTestId('feature-ctx-extrude1'))
+    fireEvent.click(menuItem('Suppress'))
+
+    // The solve now skips the feature, so an open editor would show a preview
+    // that no longer exists.
+    expect(useEditorState.getState().editingFeatureId).toBeNull()
+    expect(h.handleMutation).toHaveBeenCalledWith({ type: 'set_feature_suppression', featureId: 'extrude1', suppressed: true })
+  })
+
   it('the feature context menu Suppress drops that feature ids from the selection', () => {
     useEditorState.setState({
       normalSelection: new Set([

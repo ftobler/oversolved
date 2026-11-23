@@ -54,6 +54,26 @@ describe('view options Show groups', () => {
     ])
   })
 
+  it('leaves suppressed members out of a group state and its mutations', () => {
+    // A suppressed member cannot be drawn, so it must not pin the row to
+    // "not shown" or take the row's visibility write, which would spend the
+    // stored flag the dimmed eye on that row preserves.
+    const withSuppressed = [
+      ...features,
+      { id: 'sk3', kind: 'sketch', suppressed: true },
+      { id: 'ex2', kind: 'plane', suppressed: true },
+    ] as unknown as PartFeature[]
+    const drawn = new Set(['Top', 'Front', 'Right', 'ex1', 'sk1', 'sk2', 'helix1', 'Origin'])
+    expect(showGroupIds(withSuppressed, 'sketches')).toEqual(['sk1', 'sk2', 'helix1'])
+    expect(showGroupIds(withSuppressed, 'planes')).toEqual(['Top', 'Front', 'Right', 'ex1'])
+    expect(showGroupState(withSuppressed, drawn, 'sketches').visible).toBe(true)
+    expect(showGroupToggleMutations(withSuppressed, drawn, 'sketches')).toEqual([
+      { type: 'set_feature_visibility', featureId: 'sk1', visible: false },
+      { type: 'set_feature_visibility', featureId: 'sk2', visible: false },
+      { type: 'set_feature_visibility', featureId: 'helix1', visible: false },
+    ])
+  })
+
   it('a checked row hides every member', () => {
     const all = new Set(['Top', 'Front', 'Right', 'ex1', 'sk1', 'sk2', 'helix1', 'Origin'])
     expect(showGroupToggleMutations(features, all, 'sketches')).toEqual([

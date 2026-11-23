@@ -82,12 +82,12 @@ export function DrawPreview({ featureId, activeFeatureId, sketch, otherSketches 
   return (
     <>
       {drawPoints.map((pt, i) => (
-        <Dot key={i} x={pt[0]} y={pt[1]} px={4} color={COLOR_PREVIEW} billboard />
+        <Dot key={i} x={pt[0]} y={pt[1]} px={4} color={COLOR_PREVIEW} billboard transparent />
       ))}
       {cursor && effectiveTool === 'point' && (
-        <Dot x={cursor[0]} y={cursor[1]} px={4} color={COLOR_PREVIEW} billboard />
+        <Dot x={cursor[0]} y={cursor[1]} px={4} color={COLOR_PREVIEW} billboard transparent />
       )}
-      {previewPts && <Line points={previewPts} color={COLOR_PREVIEW} lineWidth={1} />}
+      {previewPts && <Line points={previewPts} color={COLOR_PREVIEW} lineWidth={1} transparent />}
       {alignmentSnapPoint && endpoint && alignmentSnapKind && (
         <DashedLine
           points={[
@@ -96,6 +96,7 @@ export function DrawPreview({ featureId, activeFeatureId, sketch, otherSketches 
           ]}
           color={COLOR_PREVIEW}
           lineWidth={1}
+          transparent
         />
       )}
     </>
