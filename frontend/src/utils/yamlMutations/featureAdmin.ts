@@ -308,13 +308,20 @@ export function applySetPlaneDefinitionField(
   definition[field] = stored
 }
 
-// ─── Pick field reorder ───
+// ─── Pick field list edits ───
 
-/** Rewrite a stored `string | string[]` ref field into the live array the
- *  reorder splices. Returns the array so the caller keeps a reference into the
- *  document; the field is left alone when it was already an array. A missing
- *  sub-def (a raw record naming the kind without it) returns undefined so the
- *  reorder no-ops instead of throwing. */
+/** The closed set of chip keys a pick-list edit may name. The drive's value
+ *  rule and the applier both read it, so a step and a direct call refuse the
+ *  same name with the same list of legal ones. */
+export const PICK_FIELD_NAMES = [
+  'edges', 'faces', 'tools', 'bodies', 'sketch', 'path', 'targets', 'source_features',
+] as const
+
+/** Rewrite a stored `string | string[]` ref field into the live array the list
+ *  edits write through. The array is a reference into the document, not a copy,
+ *  so both a splice and a clear reach the stored field. A missing sub-def (a raw
+ *  record naming the kind without it) returns undefined so the edit no-ops
+ *  instead of throwing. */
 function normalizeStoredRefList(
   sub: { sketch?: string | string[]; path?: string | string[]; targets?: string[] } | undefined,
   field: 'sketch' | 'path' | 'targets',
@@ -327,77 +334,82 @@ function normalizeStoredRefList(
   return list
 }
 
+/** Resolve the pick field's live array. The field names are the chip's own keys:
+ *  an unknown name falls through to undefined, so neither edit invents a key
+ *  on the feature. */
+function pickFieldArrayOf(feature: PartFeature, field: string): unknown[] | undefined {
+  switch (field) {
+    case 'edges':
+      if (feature.kind === 'fillet') return feature.fillet?.edges
+      if (feature.kind === 'chamfer') return feature.chamfer?.edges
+      return undefined
+    case 'faces':
+      if (feature.kind === 'shell') return feature.shell?.faces
+      if (feature.kind === 'move_face') return feature.move_face?.faces
+      if (feature.kind === 'delete_face') return feature.delete_face?.faces
+      return undefined
+    case 'tools':
+      if (feature.kind === 'boolean') return feature.boolean?.tools
+      return undefined
+    case 'bodies':
+      if (feature.kind === 'delete_body') return feature.delete_body?.bodies
+      if (feature.kind === 'transform') return feature.transform?.bodies
+      if (feature.kind === 'split') return feature.split?.bodies
+      return undefined
+    case 'sketch':
+      // A bare-string sketch ref (legacy docs, or hand-authored YAML) is
+      // normalized in place into a one-element array first, so the caller holds
+      // a live reference into the document rather than a throwaway copy.
+      if (feature.kind === 'extrude') return normalizeStoredRefList(feature.extrude, 'sketch')
+      if (feature.kind === 'revolve') return normalizeStoredRefList(feature.revolve, 'sketch')
+      if (feature.kind === 'sweep') return normalizeStoredRefList(feature.sweep, 'sketch')
+      return undefined
+    case 'path':
+      // Same normalize-in-place rationale as 'sketch' above: a sweep path may
+      // be stored as a bare string, and the edit needs a live array.
+      if (feature.kind === 'sweep') return normalizeStoredRefList(feature.sweep, 'path')
+      if (feature.kind === 'curve_pattern') return normalizeStoredRefList(feature.curve_pattern, 'path')
+      return undefined
+    case 'targets':
+      // A target list has no grid and no count: its order IS the numbering the
+      // skip list addresses, so editing it is meaningful.
+      if (feature.kind === 'instance_pattern') return normalizeStoredRefList(feature.instance_pattern, 'targets')
+      return undefined
+    case 'source_features': {
+      // The chip edits the authored list. The kernel still unions the sources
+      // in feature-log order, so this is a presentation edit; the legacy scalar
+      // is normalized in place before the splice. A pattern row names its
+      // sub-dict by its own kind, and a mirror has its own, so both source
+      // chips reach this case.
+      const sub = sourceListSubOf(feature)
+      return sub === null ? undefined : ensurePatternSources(sub)
+    }
+    default:
+      return undefined
+  }
+}
+
 export function applyReorderPickField(doc: PartDoc, featureId: string, field: string, fromIndex: number, toIndex: number): void {
   const feature = doc.features?.find(f => f.id === featureId)
   if (!feature) return
-
-  // The payload reads stay optional: a raw record can name a kind without
-  // carrying its def, and reordering must no-op on it, not throw.
-  let arr: unknown[] | undefined
-  switch (field) {
-    case 'edges':
-      if (feature.kind === 'fillet') arr = feature.fillet?.edges
-      else if (feature.kind === 'chamfer') arr = feature.chamfer?.edges
-      break
-    case 'faces':
-      if (feature.kind === 'shell') arr = feature.shell?.faces
-      else if (feature.kind === 'move_face') arr = feature.move_face?.faces
-      else if (feature.kind === 'delete_face') arr = feature.delete_face?.faces
-      break
-    case 'tools':
-      if (feature.kind === 'boolean') arr = feature.boolean?.tools
-      break
-    case 'bodies':
-      if (feature.kind === 'delete_body') arr = feature.delete_body?.bodies
-      else if (feature.kind === 'transform') arr = feature.transform?.bodies
-      else if (feature.kind === 'split') arr = feature.split?.bodies
-      break
-    case 'sketch':
-      // A bare-string sketch ref (legacy docs, or hand-authored YAML) is
-      // normalized in place into a one-element array first, so `arr` below
-      // is a live reference into the document -- same as every other branch
-      // -- rather than a throwaway copy the trailing splice would mutate
-      // without the change ever reaching the feature.
-      if (feature.kind === 'extrude') {
-        arr = normalizeStoredRefList(feature.extrude, 'sketch')
-      } else if (feature.kind === 'revolve') {
-        arr = normalizeStoredRefList(feature.revolve, 'sketch')
-      } else if (feature.kind === 'sweep') {
-        arr = normalizeStoredRefList(feature.sweep, 'sketch')
-      }
-      break
-    case 'path':
-      // Same normalize-in-place rationale as 'sketch' above: a sweep path may
-      // be stored as a bare string, and the splice needs a live array.
-      if (feature.kind === 'sweep') {
-        arr = normalizeStoredRefList(feature.sweep, 'path')
-      } else if (feature.kind === 'curve_pattern') {
-        arr = normalizeStoredRefList(feature.curve_pattern, 'path')
-      }
-      break
-    case 'targets':
-      // A target list has no grid and no count: its order IS the numbering the
-      // skip list addresses, so reordering it is a meaningful edit.
-      if (feature.kind === 'instance_pattern') {
-        arr = normalizeStoredRefList(feature.instance_pattern, 'targets')
-      }
-      break
-    case 'source_features': {
-      // The chip reorders the authored list. The kernel still unions the
-      // sources in feature-log order, so this is a presentation edit; the
-      // legacy scalar is normalized in place before the splice. A pattern row
-      // names its sub-dict by its own kind, and a mirror has its own, so both
-      // source chips reach this case.
-      const sub = sourceListSubOf(feature)
-      if (sub !== null) arr = ensurePatternSources(sub)
-      break
-    }
-    default:
-      return
-  }
-
+  const arr = pickFieldArrayOf(feature, field)
   if (!arr) return
   if (fromIndex < 0 || fromIndex >= arr.length || toIndex < 0 || toIndex >= arr.length) return
   const [moved] = arr.splice(fromIndex, 1)
   arr.splice(toIndex, 0, moved)
+}
+
+/** Empty one pick field in a single write, so Clear all is one undo step.
+ *  A drive step has already refused an unknown field by name; a direct caller
+ *  gets the same refusal here instead of a silent no-op. */
+export function applyClearPickField(doc: PartDoc, featureId: string, field: string): void {
+  if (!(PICK_FIELD_NAMES as readonly string[]).includes(field)) {
+    warn(`${applyClearPickField.name}: unknown pick field ${JSON.stringify(field)}; use one of ${PICK_FIELD_NAMES.join(', ')}`)
+    return
+  }
+  const feature = doc.features?.find(f => f.id === featureId)
+  if (!feature) return
+  const arr = pickFieldArrayOf(feature, field)
+  if (!arr) return
+  arr.length = 0
 }

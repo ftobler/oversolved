@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, screen, fireEvent, createEvent } from '@testing-library/react'
 import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { PickChip } from '@/components/sketch/PickChip'
@@ -301,6 +301,83 @@ describe('PickChip', () => {
     expect(onReorder).toHaveBeenCalledTimes(1)
     // Source index 2 dropped on the right half of index 0 lands at slot 1.
     expect(onReorder).toHaveBeenCalledWith(2, 1)
+  })
+
+  it('marks the chip box as a vertical list', () => {
+    render(
+      <PickChip
+        values={['@sk1', '@sk2']}
+        isPicking={false}
+        onActivate={vi.fn()}
+        onRemove={vi.fn()}
+      />
+    )
+    expect(document.querySelector('.feature-pick-chip')!.classList.contains('feature-pick-chip-list')).toBe(true)
+  })
+
+  it('uses the vertical half of the target chip to choose the drop slot', () => {
+    const onReorder = vi.fn()
+    render(
+      <PickChip
+        values={['@sk1', '@sk2', '@sk3']}
+        isPicking={false}
+        onActivate={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={onReorder}
+      />
+    )
+    const items = document.querySelectorAll('.feature-pick-chip-item')
+    const dataTransfer = { setData: vi.fn(), effectAllowed: '', getData: vi.fn(() => '2'), dropEffect: '' }
+    const rect = { left: 0, top: 0, right: 100, bottom: 20, width: 100, height: 20, x: 0, y: 0, toJSON: () => ({}) } as DOMRect
+    for (const item of items) vi.spyOn(item, 'getBoundingClientRect').mockReturnValue(rect)
+    fireEvent.dragStart(items[2], { dataTransfer })
+    // jsdom's DragEvent drops the mouse coordinates from its init, so the y has
+    // to be set on the event itself for the vertical hit test to see it.
+    const over = createEvent.dragOver(items[0], { dataTransfer })
+    Object.defineProperty(over, 'clientY', { value: 3 })
+    fireEvent(items[0], over)
+    expect(items[0].classList.contains('drop-target-top')).toBe(true)
+    fireEvent.drop(items[0], { dataTransfer })
+    // The last chip dropped on the top half of the first lands at slot 0.
+    expect(onReorder).toHaveBeenCalledWith(2, 0)
+  })
+
+  it('drops below the target when the pointer is in its lower half', () => {
+    const onReorder = vi.fn()
+    render(
+      <PickChip
+        values={['@sk1', '@sk2', '@sk3']}
+        isPicking={false}
+        onActivate={vi.fn()}
+        onRemove={vi.fn()}
+        onReorder={onReorder}
+      />
+    )
+    const items = document.querySelectorAll('.feature-pick-chip-item')
+    const dataTransfer = { setData: vi.fn(), effectAllowed: '', getData: vi.fn(() => '2'), dropEffect: '' }
+    const rect = { left: 0, top: 0, right: 100, bottom: 20, width: 100, height: 20, x: 0, y: 0, toJSON: () => ({}) } as DOMRect
+    for (const item of items) vi.spyOn(item, 'getBoundingClientRect').mockReturnValue(rect)
+    fireEvent.dragStart(items[2], { dataTransfer })
+    const over = createEvent.dragOver(items[0], { dataTransfer })
+    Object.defineProperty(over, 'clientY', { value: 17 })
+    fireEvent(items[0], over)
+    expect(items[0].classList.contains('drop-target-bottom')).toBe(true)
+    fireEvent.drop(items[0], { dataTransfer })
+    expect(onReorder).toHaveBeenCalledWith(2, 1)
+  })
+
+  it('puts the remove control after the label so it sits at the right end', () => {
+    render(
+      <PickChip
+        values={['a very long pick label that should be clipped']}
+        isPicking={false}
+        onActivate={vi.fn()}
+        onRemove={vi.fn()}
+      />
+    )
+    const item = document.querySelector('.feature-pick-chip-item')!
+    expect(item.lastElementChild!.classList.contains('feature-pick-chip-item-remove')).toBe(true)
+    expect(item.querySelector('.feature-pick-chip-item-text')).toBeTruthy()
   })
 
   it('does not call onReorder when dragged onto itself', () => {

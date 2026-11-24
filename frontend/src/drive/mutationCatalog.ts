@@ -2356,6 +2356,11 @@ export const MUTATION_CATALOG = {
     summary: 'Reorder one pick field of a feature.',
     fields: { featureId: str(), field: str(), fromIndex: num(), toIndex: num() },
   },
+  clear_pick_field: {
+    summary: 'Empty one pick field of a feature in a single undo step.',
+    note: 'The Clear all action of a multi-value field. The field arms itself afterwards, so the next pick lands straight away.',
+    fields: { featureId: str(), field: str() },
+  },
   set_feature_suppression: {
     summary: 'Suppress or unsuppress a feature.',
     fields: { featureId: str(), suppressed: bool() },
@@ -2528,6 +2533,7 @@ export const MUTATION_FAMILY: Record<Mutation['type'], MutationFamily> = {
   reorder_features: 'document',
   set_body_visibility: 'part style',
   reorder_pick_field: 'picks',
+  clear_pick_field: 'picks',
   set_feature_suppression: 'document',
   set_rollback: 'document',
   set_length_unit: 'document',

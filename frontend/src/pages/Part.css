@@ -1499,9 +1499,39 @@
   flex-basis: 100%;
 }
 
-.feature-field-row--stacked > .feature-field-label {
+.feature-field-row--stacked .feature-field-label {
   width: auto;
   height: auto;
+}
+
+/* The label shares a line with Clear all; the chip stack keeps its own line. */
+.feature-field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.feature-pick-clear {
+  margin-left: auto;
+  padding: 0 2px;
+  border: none;
+  background: none;
+  color: #999;
+  cursor: pointer;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+}
+
+.feature-pick-clear:hover {
+  color: #e060b0;
+}
+
+.feature-pick-clear img {
+  width: 12px;
+  height: 12px;
+  filter: invert(0.8);
 }
 
 /* A one-line explanation under a pick chip whose label does not carry the whole
@@ -1521,20 +1551,21 @@
 .feature-pick-chip {
   flex: 1;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   min-height: 20px;
-  max-height: 96px;
+  max-height: 150px;
   border: 1px solid #3a2a3a;
   border-radius: 6px;
   background: transparent;
   cursor: pointer;
-  padding: 4px 4px;
+  padding: 4px;
   gap: 3px;
   font-size: 12px;
   color: #bbb;
   overflow-y: auto;
   overflow-x: hidden;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   box-sizing: border-box;
 }
 
@@ -1565,20 +1596,22 @@
 }
 
 .feature-pick-chip-item {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
   background: #b83b88;
   border: none;
   border-radius: 2px;
   padding: 10px 4px;
   color: #fff;
   flex-shrink: 0;
+  min-width: 0;
   height: 16px;
 }
 
 .feature-pick-chip-item-text {
-  max-width: 120px;
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1626,6 +1659,7 @@
   line-height: 1;
   font-size: 16px;
   flex-shrink: 0;
+  margin-left: auto;
   width: 16px;
   height: 16px;
   display: flex;
@@ -1663,12 +1697,12 @@
   opacity: 0.4;
 }
 
-.feature-pick-chip-item.drop-target-left {
-  border-left: 2px solid #4fc3f7;
+.feature-pick-chip-item.drop-target-top {
+  border-top: 2px solid #4fc3f7;
 }
 
-.feature-pick-chip-item.drop-target-right {
-  border-right: 2px solid #4fc3f7;
+.feature-pick-chip-item.drop-target-bottom {
+  border-bottom: 2px solid #4fc3f7;
 }
 
 /* Relative so the tooltips anchor to the pair. The pair is one flex child of

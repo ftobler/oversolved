@@ -1791,6 +1791,7 @@ export type Mutation =
   | { type: 'reorder_features'; featureId: string; toIndex?: number; before?: string; after?: string }
   | { type: 'set_body_visibility'; bodyId: string; visible: boolean }
   | { type: 'reorder_pick_field'; featureId: string; field: string; fromIndex: number; toIndex: number }
+  | { type: 'clear_pick_field'; featureId: string; field: string }
   | { type: 'set_feature_suppression'; featureId: string; suppressed: boolean }
   | { type: 'set_rollback'; position: number | null }
   // Reinterprets the stored numbers in the named unit; it does not convert them.

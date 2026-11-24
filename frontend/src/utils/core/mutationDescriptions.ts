@@ -246,6 +246,8 @@ export function describeMutation(m: Mutation): string {
       return `${m.visible ? 'show' : 'hide'} part ${m.bodyId}`
     case 'reorder_pick_field':
       return `reorder pick field ${m.field} in ${m.featureId}`
+    case 'clear_pick_field':
+      return `clear pick field ${m.field} in ${m.featureId}`
     case 'set_feature_suppression':
       return `${m.suppressed ? 'suppress' : 'unsuppress'} ${m.featureId}`
     case 'remove_dangling_content':

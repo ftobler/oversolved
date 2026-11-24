@@ -1,4 +1,5 @@
 import { useMemo } from 'react'
+import cancelIcon from '@/assets/icons/dialog-cancel.svg'
 import type { Mutation } from '@/types/cad'
 import { PickChip } from '@/components/sketch/PickChip'
 import { usePickField } from '@/hooks/usePickField'
@@ -118,6 +119,15 @@ export function PickFieldWidget({
     activate()
   }
 
+  // One chip already has its own x. Clear all only earns a place on the label
+  // row once picking one by one would mean more than one click, and only on a
+  // multi field, where emptying the list is the same operation as that x.
+  const canClear = isMulti && normalizedValues.length >= 2
+  const clearAll = () => {
+    onMutation({ type: 'clear_pick_field', featureId: fid, field: field.key } as Mutation)
+    activate()
+  }
+
   const solveSet = (key: string): ReadonlySet<string> | undefined => {
     if (typeof solveResult !== 'object' || solveResult === null) return undefined
     const raw = (solveResult as Record<string, unknown>)[key]
@@ -136,7 +146,14 @@ export function PickFieldWidget({
 
   return (
     <div className="feature-field-row feature-field-row--stacked">
-      <span className="feature-field-label">{field.label}</span>
+      <div className="feature-field-label-row">
+        <span className="feature-field-label">{field.label}</span>
+        {canClear && (
+          <button className="feature-pick-clear" onClick={clearAll} title="Clear all">
+            <img src={cancelIcon} alt="" />
+          </button>
+        )}
+      </div>
       <PickChip
         values={normalizedValues}
         isPicking={pickState.isPicking}

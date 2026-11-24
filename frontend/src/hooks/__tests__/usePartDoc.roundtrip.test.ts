@@ -391,6 +391,7 @@ const ROUND_TRIPS: RoundTripCase[] = [
   { name: 'tree set_feature_suppression', makeDoc: treeDoc, mutation: { type: 'set_feature_suppression', featureId: 'f1', suppressed: true } as Mutation },
   { name: 'tree reorder_features', makeDoc: treeDoc, mutation: { type: 'reorder_features', featureId: 'f2', toIndex: 4 } as Mutation },
   { name: 'tree reorder_pick_field', makeDoc: filletDoc, mutation: { type: 'reorder_pick_field', featureId: 'f1', field: 'edges', fromIndex: 0, toIndex: 1 } as Mutation },
+  { name: 'tree clear_pick_field', makeDoc: filletDoc, mutation: { type: 'clear_pick_field', featureId: 'f1', field: 'edges' } as Mutation },
   { name: 'tree toggle_sketch_plane_visibility', makeDoc: sketchDoc, mutation: { type: 'toggle_sketch_plane_visibility' } as Mutation },
   { name: 'tree toggle_plane_visibility', makeDoc: planeDoc, mutation: { type: 'toggle_plane_visibility' } as Mutation },
 

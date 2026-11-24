@@ -769,6 +769,10 @@ export const MUTATION_EXAMPLES: Record<Mutation['type'], MutationExample> = {
     makeDoc: filletDoc,
     mutation: { type: 'reorder_pick_field', featureId: 'f1', field: 'edges', fromIndex: 0, toIndex: 1 },
   },
+  clear_pick_field: {
+    makeDoc: filletDoc,
+    mutation: { type: 'clear_pick_field', featureId: 'f1', field: 'edges' },
+  },
   toggle_sketch_plane_visibility: {
     makeDoc: sketchDoc,
     mutation: { type: 'toggle_sketch_plane_visibility' },

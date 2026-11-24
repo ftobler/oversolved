@@ -613,6 +613,15 @@ describe('mutationHandlers forward doc-level + part-style mutations', () => {
     }).not.toThrow()
   })
 
+  it('clear_pick_field empties the named field', () => {
+    const doc = makeDoc()
+    mutationHandlers.add_fillet(doc, {
+      type: 'add_fillet', featureId: 'FL', edges: ['@ex/edge/1', '@ex/edge/2'], radius: 0.125,
+    })
+    mutationHandlers.clear_pick_field(doc, { type: 'clear_pick_field', featureId: 'FL', field: 'edges' })
+    expect(fillet(doc)!.edges).toEqual([])
+  })
+
   it('part-style: rename, color, material, visibility', () => {
     const doc = sketchDoc()
     mutationHandlers.rename_part(doc, { type: 'rename_part', bodyId: '@body_1', name: 'Widget' })
