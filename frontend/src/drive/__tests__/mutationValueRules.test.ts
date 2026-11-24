@@ -247,6 +247,7 @@ describe('value rules cover the catalog', () => {
     ['set_helix_field', { type: 'set_helix_field', featureId: 'he1', field: 'hand', value: 'up' }],
     ['reorder_features', { type: 'reorder_features', featureId: 'ex1', toIndex: -1 }],
     ['reorder_pick_field', { type: 'reorder_pick_field', featureId: 'ex1', field: 'sketch', fromIndex: -1, toIndex: 0 }],
+    ['clear_pick_field', { type: 'clear_pick_field', featureId: 'ex1', field: '' }],
     ['set_length_unit', { type: 'set_length_unit', unit: 'in' }],
   ]
 
@@ -263,6 +264,14 @@ describe('value rules cover the catalog', () => {
     expect(['invalid-mutation', 'unknown-target']).toContain(error.code)
     expect(error.message.length).toBeGreaterThan(20)
     expect(error.message).not.toBe(`mutation type "${type}" is invalid`)
+  })
+
+  it('names the bad field and every legal pick field for clear_pick_field', () => {
+    const error = refusal({ type: 'clear_pick_field', featureId: 'ex1', field: 'unknown_field' }, null)
+    expect(error.code).toBe('invalid-mutation')
+    expect(error.message).toBe(
+      'field "unknown_field" is not a pick field; use one of edges, faces, tools, bodies, sketch, path, targets, source_features',
+    )
   })
 
   it('names the refused member index for a bad vertex key', () => {

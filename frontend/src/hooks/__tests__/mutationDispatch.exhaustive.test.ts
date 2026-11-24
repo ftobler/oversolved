@@ -123,6 +123,7 @@ const ALL_MUTATION_TYPES = [
   'set_helix_field',
   'reorder_features',
   'reorder_pick_field',
+  'clear_pick_field',
   'set_feature_suppression',
   'set_rollback',
   'set_length_unit',

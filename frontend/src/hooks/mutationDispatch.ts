@@ -111,6 +111,7 @@ import {
   applyMoveFeatureBefore,
   reorderAnchorIndex,
   applyReorderPickField,
+  applyClearPickField,
   applyAddMirror,
   applySetMirrorField,
   applyAddMirrorSource,
@@ -621,6 +622,8 @@ export const mutationHandlers: MutationHandlers = {
   },
   reorder_pick_field: (next, m) =>
     applyReorderPickField(next, m.featureId, m.field, m.fromIndex, m.toIndex),
+  clear_pick_field: (next, m) =>
+    applyClearPickField(next, m.featureId, m.field),
   set_feature_suppression: (next, m) =>
     applySetFeatureSuppression(next, m.featureId, m.suppressed),
   set_length_unit: (next, m) => applySetLengthUnit(next, m.unit),

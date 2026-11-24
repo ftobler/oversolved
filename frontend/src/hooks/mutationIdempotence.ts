@@ -83,6 +83,8 @@ export const IDEMPOTENT_MUTATION = {
   // back, leaves the order identical.
   reorder_features: true,
   reorder_pick_field: true,
+  // Clearing a field that is already empty writes no new value.
+  clear_pick_field: true,
 
   // The rollback bar dragged to the position the doc already parks, or to the end
   // when the key is absent.

@@ -462,6 +462,16 @@ const inchNoopDoc = (): PartDoc => ({ version: 1, kind: 'part', length_unit: 'in
 // on such a document must stay a byte-identical no-op.
 const metricNoopDoc = (): PartDoc => ({ version: 1, kind: 'part', features: [] }) as unknown as PartDoc
 const pickListNoopDoc = (): PartDoc => ({ version: 1, kind: 'part', features: [{ id: 'b1', kind: 'boolean', boolean: { operation: 'union', target: '', tools: ['@t1', '@t2'] } }] }) as unknown as PartDoc
+// One already-empty pick list for the no-op half, one with chips for the changed
+// half: both halves of the pin stay about the same clear mutation.
+const clearedPickListDoc = (): PartDoc => ({
+  version: 1,
+  kind: 'part',
+  features: [
+    { id: 'b1', kind: 'boolean', boolean: { operation: 'union', target: '', tools: [] } },
+    { id: 'f1', kind: 'fillet', fillet: { edges: ['?e1'], radius: 1 } },
+  ],
+}) as unknown as PartDoc
 
 interface NoOpPinCase {
   name: string
@@ -499,6 +509,7 @@ const NO_OP_PINS: NoOpPinCase[] = [
   { name: 'set_length_unit', makeDoc: inchNoopDoc, same: { type: 'set_length_unit', unit: 'inch' }, changed: { type: 'set_length_unit', unit: 'mm' } },
   { name: 'set_length_unit (mm is the absent field)', makeDoc: metricNoopDoc, same: { type: 'set_length_unit', unit: 'mm' }, changed: { type: 'set_length_unit', unit: 'inch' } },
   { name: 'reorder_pick_field', makeDoc: pickListNoopDoc, same: { type: 'reorder_pick_field', featureId: 'b1', field: 'tools', fromIndex: 9, toIndex: 0 }, changed: { type: 'reorder_pick_field', featureId: 'b1', field: 'tools', fromIndex: 0, toIndex: 1 } },
+  { name: 'clear_pick_field', makeDoc: clearedPickListDoc, same: { type: 'clear_pick_field', featureId: 'b1', field: 'tools' }, changed: { type: 'clear_pick_field', featureId: 'f1', field: 'edges' } },
 ]
 
 describe.each(NO_OP_PINS)('idempotent no-op pin: $name', ({ makeDoc, same, changed }) => {

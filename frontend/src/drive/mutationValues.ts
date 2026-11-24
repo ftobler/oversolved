@@ -32,6 +32,7 @@ import { DxfImportError, parseDxfProfile } from '@/utils/dxfImport'
 import { textFieldsProblem } from '@/utils/geometry/textExpand'
 import { planAddText, type AddTextFields } from '@/utils/yamlMutations/sketchText'
 import { pointDistanceZeroProblem } from '@/utils/yamlMutations/helpers'
+import { PICK_FIELD_NAMES } from '@/utils/yamlMutations/featureAdmin'
 import { addConstraintProblem, constraintOperandRefProblem, isLegacyQueryWrapper } from '@/utils/constraintProblems'
 import { dimensionSizeProblem, entitySizeProblem } from '@/utils/entitySizeProblems'
 import { isConstraintKindName } from '@/wasm-kernel/codec'
@@ -2503,14 +2504,29 @@ function indexField(field: string) {
   }
 }
 
-function reorderPickField(raw: RawStep): ValueViolation | null {
+function pickFieldNameProblem(raw: RawStep): string | null {
   const field = raw.field
-  if (typeof field !== 'string' || field.length === 0) {
-    return invalid(`field must name a pick field, got ${json(field)}`)
-  }
+  return typeof field === 'string' && field.length > 0
+    ? null
+    : `field must name a pick field, got ${json(field)}`
+}
+
+function reorderPickField(raw: RawStep): ValueViolation | null {
+  const problem = pickFieldNameProblem(raw)
+  if (problem !== null) return invalid(problem)
   for (const key of ['fromIndex', 'toIndex']) {
-    const problem = nonNegativeIndexProblem(raw[key], key)
-    if (problem !== null) return invalid(problem)
+    const indexProblem = nonNegativeIndexProblem(raw[key], key)
+    if (indexProblem !== null) return invalid(indexProblem)
+  }
+  return null
+}
+
+function clearPickField(raw: RawStep): ValueViolation | null {
+  const problem = pickFieldNameProblem(raw)
+  if (problem !== null) return invalid(problem)
+  const field = raw.field as string
+  if (!(PICK_FIELD_NAMES as readonly string[]).includes(field)) {
+    return invalid(`field ${json(field)} is not a pick field; use one of ${PICK_FIELD_NAMES.join(', ')}`)
   }
   return null
 }
@@ -2923,6 +2939,7 @@ export const MUTATION_VALUE_RULES = {
   reorder_features: reorderFeatures,
   set_body_visibility: 'none',
   reorder_pick_field: reorderPickField,
+  clear_pick_field: clearPickField,
   set_feature_suppression: 'none',
   set_rollback: 'none',
   set_length_unit: documentLengthUnit,

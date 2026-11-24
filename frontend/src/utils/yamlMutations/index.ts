@@ -150,4 +150,5 @@ export {
   applyAddPlane,
   applySetPlaneDefinitionField,
   applyReorderPickField,
+  applyClearPickField,
 } from './featureAdmin'

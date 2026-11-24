@@ -94,7 +94,9 @@ export function PickChip({
     syncChipSelection(valuesKey === '' ? [] : valuesKey.split('\u0000'))
   }, [isPicking, valuesKey, syncChipSelection])
   const [dropTargetIndex, setDropTargetIndex] = useState<number | null>(null)
-  const [dropSide, setDropSide] = useState<'left' | 'right' | null>(null)
+  // Chips stack in a column, so the drop side is above/below rather than the
+  // left/right of the old wrapping row.
+  const [dropSide, setDropSide] = useState<'top' | 'bottom' | null>(null)
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
     if (!onReorder) return
@@ -108,8 +110,8 @@ export function PickChip({
     e.preventDefault()
     e.dataTransfer.dropEffect = 'move'
     const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect()
-    const x = e.clientX - rect.left
-    const side = x < rect.width / 2 ? 'left' : 'right'
+    const y = e.clientY - rect.top
+    const side = y < rect.height / 2 ? 'top' : 'bottom'
     setDropTargetIndex(index)
     setDropSide(side)
   }
@@ -126,9 +128,9 @@ export function PickChip({
     }
     let insertAt: number
     if (sourceIndex < targetIndex) {
-      insertAt = dropSide === 'right' ? targetIndex : targetIndex - 1
+      insertAt = dropSide === 'bottom' ? targetIndex : targetIndex - 1
     } else {
-      insertAt = dropSide === 'right' ? targetIndex + 1 : targetIndex
+      insertAt = dropSide === 'bottom' ? targetIndex + 1 : targetIndex
     }
     onReorder(sourceIndex, insertAt)
     setDraggingIndex(null)
@@ -142,9 +144,11 @@ export function PickChip({
     setDropSide(null)
   }
 
+  // The list marker names the vertical shell, so hosts that restyle the box and
+  // the layout test can tell it from the old wrapping chip row.
   return (
     <div
-      className={`feature-pick-chip ${isEmpty ? 'empty' : ''} ${isPicking ? 'picking' : ''}`}
+      className={`feature-pick-chip feature-pick-chip-list ${isEmpty ? 'empty' : ''} ${isPicking ? 'picking' : ''}`}
       onClick={(e) => { e.stopPropagation(); onActivate() }}
     >
       {isEmpty && emptyText ? (
