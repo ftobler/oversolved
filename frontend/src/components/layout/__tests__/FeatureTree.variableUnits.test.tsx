@@ -21,13 +21,13 @@ describe('variable rows in the feature tree', () => {
     })
     renderSidebar(makeCallbacks())
     const widthRow = featureRow('v1').querySelector('.feature-name')!
-    expect(widthRow.textContent).toContain("variable 'width' = 20")
+    expect(widthRow.textContent).toContain('width = 20')
     // The hint is the shared unit element, not text glued into the name: the
     // row says its value and the unit beside it.
     expect(widthRow.querySelector('.field-unit')?.textContent).toBe('mm')
     // No unit hint: the value alone, exactly as before.
     const countRow = featureRow('v2').querySelector('.feature-name')!
-    expect(countRow.textContent).toBe("variable 'count' = 3")
+    expect(countRow.textContent).toBe('count = 3')
     expect(countRow.querySelector('.field-unit')).toBeNull()
   })
 
@@ -38,6 +38,6 @@ describe('variable rows in the feature tree', () => {
       solveResults: {},
     })
     renderSidebar(makeCallbacks())
-    expect(featureRow('v1').querySelector('.feature-name')!.textContent).toBe("variable 'width'")
+    expect(featureRow('v1').querySelector('.feature-name')!.textContent).toBe('width')
   })
 })

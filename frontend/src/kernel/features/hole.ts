@@ -1444,14 +1444,16 @@ export function solveHole(
   const partialReasons: string[] = []
   if (skippedCount > 0) {
     partialReasons.push(
-      `hole: ${skippedCount}/${total} point(s) skipped, no XY data for: ${skippedEntityIds.join(', ')}`,
+      `hole: ${skippedCount}/${total} point(s) skipped, no XY data for: `
+      + `${skippedEntityIds.map(siteName).join(', ')}`,
     )
   }
   if (missedSites.length > 0 && missedSites.length < placed) {
     // Some sites cut, some removed nothing: name the misses so the user knows
-    // which picks to move.
+    // which picks to move. The part stays an id: parts have no display names.
     partialReasons.push(
-      `hole: ${missedSites.length}/${placed} drill site(s) did not intersect part '${targetPart.id}': ${missedSites.join(', ')}`,
+      `hole: ${missedSites.length}/${placed} drill site(s) did not intersect part '${targetPart.id}': `
+      + `${missedSites.map(siteName).join(', ')}`,
     )
   }
   if (partialReasons.length > 0) result.exception = partialReasons.join('; ')
@@ -1469,8 +1471,9 @@ export function solveHole(
     // plausible either way. One through hole drills one side; `reverse` is the
     // authored side that silences this.
     const fix = side === 'normal' ? 'set direction: reverse to drill the other way' : 'set direction: reverse to keep it'
+    const sideSites = otherSideSites.map(siteName)
     result.solver_warning =
-      `hole: ${otherSideSites.map(siteName).join(', ')} have material on the other side; ` +
+      `hole: ${sideSites.join(', ')} ${sideSites.length === 1 ? 'has' : 'have'} material on the other side; ` +
       `drilled ${side} at all sites (a through hole drills one side), ${fix}`
   }
   // A body whose sketch solve missed the merge ceiling by more than the ceiling

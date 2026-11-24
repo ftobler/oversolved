@@ -7,6 +7,7 @@ import {
   entityDisplayName,
   entityKindPhrase,
   featureDisplayName,
+  positionWord,
   sketchDisplayName,
 } from '../displayNames'
 
@@ -67,6 +68,21 @@ describe('constraintDisplayName', () => {
   })
 })
 
+describe('positionWord', () => {
+  it('words the first ten and builds a real ordinal after them', () => {
+    expect(positionWord(0)).toBe('first')
+    expect(positionWord(9)).toBe('tenth')
+    expect(positionWord(10)).toBe('11th')
+    expect(positionWord(11)).toBe('12th')
+    expect(positionWord(12)).toBe('13th')
+    expect(positionWord(20)).toBe('21st')
+    expect(positionWord(21)).toBe('22nd')
+    expect(positionWord(22)).toBe('23rd')
+    expect(positionWord(100)).toBe('101st')
+    expect(positionWord(110)).toBe('111th')
+  })
+})
+
 describe('featureDisplayName', () => {
   const features = [
     { id: 'sk1', kind: 'sketch', label: 'Base' },
@@ -89,6 +105,7 @@ describe('featureDisplayName', () => {
       { id: 'pl1', kind: 'plane', label: 'Plane' },
       { id: 'mf1', kind: 'move_face', label: 'move_face 3' },
       { id: 'lp1', kind: 'linear_pattern', label: 'linear_pattern 1' },
+      { id: 'lp2', kind: 'linear_pattern', label: 'Linear Pattern 4' },
       { id: 'sw2', kind: 'sweep', label: 'Sweep 7' },
     ]
     expect(featureDisplayName(rows[0], rows)).toBe("sketch 'SKETCH'")
@@ -96,7 +113,9 @@ describe('featureDisplayName', () => {
     expect(featureDisplayName(rows[2], rows)).toBe('plane 1')
     expect(featureDisplayName(rows[3], rows)).toBe('move face 1')
     expect(featureDisplayName(rows[4], rows)).toBe('linear pattern 1')
-    expect(featureDisplayName(rows[5], rows)).toBe("sweep 'Sweep 7'")
+    // The toolbar writes the title-cased prefix into the generated label.
+    expect(featureDisplayName(rows[5], rows)).toBe('linear pattern 2')
+    expect(featureDisplayName(rows[6], rows)).toBe("sweep 'Sweep 7'")
     // A name that is not the kind word survives, even next to the kind.
     const named = [{ id: 'sk1', kind: 'sketch', label: 'Sketch of the base' }]
     expect(featureDisplayName(named[0], named)).toBe("sketch 'Sketch of the base'")

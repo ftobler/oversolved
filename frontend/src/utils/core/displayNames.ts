@@ -109,14 +109,20 @@ export function featureKindWord(kind: string): string {
 }
 
 /** The word for a 1-based position in a list: `first`, `second`, ... `tenth`,
- *  then the number. Multi-target refusals use it to say which pick failed
- *  without printing the pick's id. */
+ *  then the ordinal (`11th`, `12th`, `13th`, `21st`, ...). Multi-target
+ *  refusals use it to say which pick failed without printing the pick's id. */
 const POSITION_WORDS = [
   'first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth', 'ninth', 'tenth',
 ] as const
 
 export function positionWord(index: number): string {
-  return POSITION_WORDS[index] ?? String(index + 1)
+  if (index >= 0 && index < POSITION_WORDS.length) return POSITION_WORDS[index]
+  const number = index + 1
+  const mod100 = number % 100
+  if (mod100 >= 11 && mod100 <= 13) return `${number}th`
+  const mod10 = number % 10
+  const suffix = mod10 === 1 ? 'st' : mod10 === 2 ? 'nd' : mod10 === 3 ? 'rd' : 'th'
+  return `${number}${suffix}`
 }
 
 /** Normalise a label or kind spelling for the default-label comparison:
@@ -140,15 +146,30 @@ const DEFAULT_LABEL_ALIASES: Readonly<Record<string, readonly string[]>> = {
 }
 
 /**
+ * The title-cased prefix the toolbar add path writes into a generated label for
+ * a kind whose name is more than one word. `pages/Part.tsx` reads the same
+ * table, so the generated `Linear Pattern 5` is recognised as the default shape
+ * here and the tree shows `linear pattern N` instead of quoting it.
+ */
+export const DEFAULT_LABEL_PREFIXES: Readonly<Record<string, string>> = {
+  linear_pattern: 'Linear Pattern',
+  circular_pattern: 'Circular Pattern',
+  curve_pattern: 'Curve Pattern',
+  instance_pattern: 'Instance Pattern',
+}
+
+/**
  * Whether a label merely repeats the kind (an add command's default label:
- * `Sweep` on a sweep, `Move Face` on a move_face, `linear_pattern 1` on a linear
+ * `Sweep` on a sweep, `Move Face` on a move_face, `Linear Pattern 5` on a linear
  * pattern). Such a label says nothing the kind ordinal does not, and its baked
  * number can be stale, so the display name falls back to the ordinal instead.
  *
  * The comparison normalises `_` to a space, so the raw spelling counts too. A
- * deliberate label survives: the capitalised default is matched exactly, but
- * `SKETCH` (different case) and a user-typed `Sweep 7` (the default has no
- * number) are not the default shape.
+ * deliberate label survives: a bare kind is matched only in its exact default
+ * spelling or the raw lowercase one (`SKETCH` differs), and a kind with a number
+ * is matched only when its prefix is the generated one from
+ * `DEFAULT_LABEL_PREFIXES` or the raw lowercase kind, so a user-typed `Sweep 7`
+ * survives.
  */
 function repeatsKindWord(kind: string, label: string, word: string): boolean {
   const match = /^(.+?)(?:\s+(\d+))?$/.exec(label.trim())
@@ -156,9 +177,10 @@ function repeatsKindWord(kind: string, label: string, word: string): boolean {
   const [, labelKind, ordinal] = match
   if (normaliseKindText(labelKind) !== normaliseKindText(word)) return false
   if (ordinal !== undefined) {
-    // Generated `kind N` labels are written in the raw (lowercase/snake)
-    // spelling; a capitalised `Sweep 7` is the author's own label.
+    // The toolbar generates `<prefix> <n>`; a raw lowercase kind is the same
+    // legacy shape. A capitalised kind with a number is the author's own label.
     return labelKind === labelKind.toLowerCase()
+      || labelKind === DEFAULT_LABEL_PREFIXES[kind]
   }
   const defaults = [defaultKindLabel(word), word, ...(DEFAULT_LABEL_ALIASES[kind] ?? [])]
   return defaults.includes(label)

@@ -156,7 +156,9 @@ function patternMemberIds(patternId: string, def: Dict, partStore: Record<string
  * typed for (din_rail F1: raising the count left the new slots floating free).
  * The target is dropped from an expansion, so `target: <source>, tools:
  * [@ar1]` unions or subtracts the copies without naming the source as its own
- * tool. Returns the expanded refs and the pattern ids that were named.
+ * tool. Returns the expanded refs, each one's authored pick position (so a
+ * refusal can say `tool 2` for a chip that expanded to several bodies), and the
+ * pattern ids that were named.
  */
 function expandPatternTools(
   toolRefs: string[],
@@ -164,15 +166,16 @@ function expandPatternTools(
   featureId: string,
   featuresById: Record<string, Dict>,
   partStore: Record<string, PartSolid>,
-): { refs: string[]; namedPatterns: Set<string> } {
+): { refs: string[]; positions: number[]; namedPatterns: Set<string> } {
   const refs: string[] = []
+  const positions: number[] = []
   const namedPatterns = new Set<string>()
   const order = Object.keys(featuresById)
   // A solver unit test may pass only the referenced features, with the
   // boolean's own id absent; then nothing can be proven downstream and every
   // present pattern counts as upstream, the historical behaviour.
   const selfIndex = order.indexOf(featureId)
-  for (const ref of toolRefs) {
+  for (const [authoredIndex, ref] of toolRefs.entries()) {
     const key = stripRefSigil(ref, '@')
     const def = featuresById[key]
     // A body id wins over a feature id of the same spelling. A pattern defined
@@ -183,19 +186,33 @@ function expandPatternTools(
     const upstream = key !== featureId && (selfIndex < 0 || order.indexOf(key) < selfIndex)
     if (def !== undefined && isPartPattern(def) && upstream && !(key in partStore)) {
       namedPatterns.add(key)
-      refs.push(...patternMemberIds(key, def, partStore).filter((id) => id !== targetId))
+      const members = patternMemberIds(key, def, partStore).filter((id) => id !== targetId)
+      refs.push(...members)
+      // Every member of one authored chip reports the chip's position, so a
+      // refusal says "tool 2", not "tool 7" for the seventh expanded body.
+      positions.push(...members.map(() => authoredIndex + 1))
     } else {
       refs.push(ref)
+      positions.push(authoredIndex + 1)
     }
   }
   // A pattern listed twice, or beside its own instance ids, folds each body once.
-  return { refs: [...new Set(refs)], namedPatterns }
+  const seen = new Set<string>()
+  const keptRefs: string[] = []
+  const keptPositions: number[] = []
+  for (let i = 0; i < refs.length; i++) {
+    if (seen.has(refs[i])) continue
+    seen.add(refs[i])
+    keptRefs.push(refs[i])
+    keptPositions.push(positions[i])
+  }
+  return { refs: keptRefs, positions: keptPositions, namedPatterns }
 }
 
 /**
  * A hand-typed tool list that names some but not all of one pattern's bodies,
- * the din_rail F1 trap: the warning names the counts and the pattern ref that
- * follows the count instead.
+ * the din_rail F1 trap: the warning names the counts and the pattern by its
+ * display name, and says to name the pattern itself to take every instance.
  */
 function partialPatternWarnings(
   toolIds: Set<string>,
@@ -224,11 +241,10 @@ function partialPatternWarnings(
   return warnings
 }
 
-/** One resolved tool pick: the body it names and its 1-based authored position,
- *  which is how a refusal names it ("tool 2") now that the pick ref is not
- *  printed. */
+/** One resolved tool pick: the body it names and its 1-based position among the
+ *  authored tool picks (a pattern chip keeps one position for every member it
+ *  expands to), which is how a refusal names it ("tool 2"). */
 interface ToolEntry {
-  ref: string
   part: PartSolid
   position: number
 }
@@ -332,7 +348,7 @@ export function solveBoolean(
 
   const targetPart = resolvePart(targetRef, partStore)
   if (targetPart.shape === null) throw new Error('boolean: the target part has no shape')
-  const { refs: toolRefs, namedPatterns } = expandPatternTools(authoredTools, targetPart.id, featureId, featuresById, partStore)
+  const { refs: toolRefs, positions: toolPositions, namedPatterns } = expandPatternTools(authoredTools, targetPart.id, featureId, featuresById, partStore)
   if (toolRefs.length === 0) {
     throw new Error(`boolean: the pattern tool(s) ${[...namedPatterns].join(', ')} have no part besides the target`)
   }
@@ -370,9 +386,9 @@ export function solveBoolean(
   // treats its picks as a set, so a body listed twice is one tool.
   const symmetric = op === 'fuse' || op === 'common'
   const toolEntries: ToolEntry[] = []
-  for (const toolRef of toolRefs) {
+  for (const [refIndex, toolRef] of toolRefs.entries()) {
     const toolPart = resolvePart(toolRef, partStore)
-    const position = toolEntries.length + 1
+    const position = toolPositions[refIndex]
     if (toolPart.shape === null) throw new Error(`boolean: tool ${position} has no shape`)
     if (toolPart.id === targetPart.id) {
       // The target and the tool resolved to the same body. A union/common is a
@@ -386,7 +402,7 @@ export function solveBoolean(
       )
     }
     if (symmetric && toolEntries.some((entry) => entry.part.id === toolPart.id)) continue
-    toolEntries.push({ ref: toolRef, part: toolPart, position })
+    toolEntries.push({ part: toolPart, position })
   }
 
   // The base anchors the fold. A union/intersect folds the base's connected

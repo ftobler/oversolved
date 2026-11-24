@@ -533,6 +533,7 @@ function buildSourceTools(
   noun: string,
 ): SourceTool[] {
   const tools: SourceTool[] = []
+  const rows = featureRows(featuresById)
   let order = 0
   for (const source of sources) {
     const sourceSub = (source.feature[source.kind] as Dict) ?? {}
@@ -576,7 +577,7 @@ function buildSourceTools(
           : TOOL_LEAVES[source.kind](oc, scope, table, toolFeature, globalRepo, scratch)
     if (built.status !== 'ok') {
       throw new Error(
-        `${noun}: the source feature '${source.id}' could not provide its tool: ` +
+        `${noun}: ${featureDisplayName(source.feature, rows)} could not provide its tool: ` +
           `${String(built.exception ?? built.status)}`,
       )
     }
@@ -591,7 +592,7 @@ function buildSourceTools(
     const sourceTools = Object.values(scratch)
     scratchParts.push(...sourceTools)
     if (sourceTools.length === 0) {
-      throw new Error(`${noun}: the source feature '${source.id}' produced no solid to repeat`)
+      throw new Error(`${noun}: ${featureDisplayName(source.feature, rows)} produced no solid to repeat`)
     }
     // Read once per tool, not per instance: the tool shape does not change
     // between copies.

@@ -3,6 +3,7 @@ import type { ContextMenuItem } from '@/components/dialogs/RightClickMenu'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
 import { hasFeatureVisibilityToggle } from '@/components/layout/featureVisibilityKinds'
 import { partDisplayName } from '@/utils/core/partDisplayName'
+import { featureDisplayName } from '@/utils/core/displayNames'
 
 import contextRebuildIcon from '@/assets/icons/context-rebuild.svg'
 import contextHideIcon from '@/assets/icons/context-hide.svg'
@@ -196,7 +197,13 @@ export function buildPartBoard(
     && canManageFeature(featureId, input.builtInIds, input.activeSketchFeatureId)
 
   const featureRename: RenameTarget | null = canManage && featureId
-    ? { kind: 'feature', id: featureId, currentName: target?.label || featureId }
+    ? {
+        kind: 'feature',
+        id: featureId,
+        currentName: target !== undefined && typeof target.label === 'string' && target.label.trim() !== ''
+          ? target.label
+          : featureDisplayName(target, input.features),
+      }
     : null
   const rename = featureRename ?? (part
     ? { kind: 'body' as const, id: part.partId, currentName: part.currentName }

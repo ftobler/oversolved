@@ -148,10 +148,17 @@ export function planPatternEntities(doc: PartDoc, step: PatternEntitiesStep): Pa
     }
     if (normalizedPlane(source.plane) !== normalizedPlane(other.plane)) {
       const planeName = (ref: unknown): string => {
-        const id = String(ref ?? '').replace(/^@/, '')
-        if (id.startsWith('builtin_plane_')) return id.slice('builtin_plane_'.length)
+        const text = String(ref ?? '')
+        const id = text.replace(/^@/, '')
+        if (id.startsWith('builtin_plane_')) {
+          const suffix = id.slice('builtin_plane_'.length)
+          return suffix.charAt(0).toUpperCase() + suffix.slice(1)
+        }
+        if (text.startsWith('?') || text.startsWith('face:') || text.startsWith('edge:')
+          || /\/face\/|\/edge\//.test(text)) return 'a face query'
         const row = findFeature(doc, id)
-        return row === undefined ? 'a plane' : featureDisplayName(row, rows)
+        if (row !== undefined) return featureDisplayName(row, rows)
+        return 'an unlisted plane'
       }
       return {
         reason: `cannot map between different sketch planes (${planeName(source.plane)} and ${planeName(other.plane)}); `

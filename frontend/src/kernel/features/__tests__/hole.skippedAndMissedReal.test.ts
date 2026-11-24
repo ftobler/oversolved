@@ -14,6 +14,7 @@ import { Repository } from '../../query'
 import { makeBox } from '../../occ/primitives'
 import { solveHole } from '../hole'
 import type { PartSolid } from '../../types3d'
+import { leakedIds } from '@/testing/warningText'
 
 const oc = await loadOcc()
 
@@ -51,10 +52,45 @@ describe.skipIf(!oc)('hole skipped and missed sites (real OCC)', () => {
 
       expect(result.status).toBe('partial')
       expect(result.exception).toBe(
-        'hole: 1/4 point(s) skipped, no XY data for: p4; ' +
-        "hole: 1/3 drill site(s) did not intersect part 'body_t': p3",
+        'hole: 1/4 point(s) skipped, no XY data for: point 4; ' +
+        "hole: 1/3 drill site(s) did not intersect part 'body_t': point 3",
       )
+      expect(leakedIds(String(result.exception))).toEqual([])
       expect(result.hole_count).toBe(2)
+    } finally {
+      table.disposeAll()
+      scope.dispose()
+    }
+  })
+
+  it('names the skipped and missed sites even when their ids are long', () => {
+    const scope = new DisposeScope()
+    const table = new HandleTable()
+    const repo = new Repository()
+    const long = ['pointXyZ0123456789', 'pointAbC0123456789', 'pointQwE0123456789', 'pointRtY0123456789']
+    try {
+      const shape = makeBox(oc!, scope, 20, 20, 20)
+      const part: PartSolid = {
+        id: 'body_t', created_by: 'ex', modified_by: [], shape: table.register(shape, 'ex'),
+        sketch_id: 'sk', brep_diff: null, profile_queries: [],
+      } as PartSolid
+      repo.register('_pt_sk', PLANE)
+      repo.register(`sk/${long[0]}/xy`, { external_xy: [5, 5] })
+      repo.register(`sk/${long[1]}/xy`, { external_xy: [15, 15] })
+      repo.register(`sk/${long[2]}/xy`, { external_xy: [50, 50] })
+      const result = solveHole(oc!, scope, table, {
+        id: 'h1', kind: 'hole',
+        hole: { sketch: '@sk', target: 'body_t', diameter: 2, depth: 5 },
+      }, repo, { body_t: part }, {
+        sk: { entities: long.map((id) => ({ id, kind: 'point' })) },
+      })
+      const message = String(result.exception)
+      expect(message).toBe(
+        'hole: 1/4 point(s) skipped, no XY data for: point 4; ' +
+        "hole: 1/3 drill site(s) did not intersect part 'body_t': point 3",
+      )
+      expect(leakedIds(message)).toEqual([])
+      for (const id of long) expect(message).not.toContain(id)
     } finally {
       table.disposeAll()
       scope.dispose()

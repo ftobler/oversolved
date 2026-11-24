@@ -81,6 +81,7 @@ import { stepImportLimitError } from '@/persistence/stepImport'
 import { getFileRegistry } from '@/persistence/fileRegistry'
 
 import { normalizeHexColor } from '@/utils/core/partColors'
+import { DEFAULT_LABEL_PREFIXES } from '@/utils/core/displayNames'
 import { partIdOfPick } from '@/utils/query/partIdOfPick'
 import { computeEffectiveVisibleParts } from '@/components/Viewport/partUtils'
 import { builtinPlaneTransform, planeTransformNormal, resolvePlaneTransform } from '@/utils/geometry/partSnapProjection'
@@ -796,20 +797,14 @@ export default function Part() {
     if (!doc) return
     closeOpenEditorForAdd()
     const fid = randomId(18)
-    // A snake_case kind reads poorly as a tree row; the two-word kinds get the
-    // label a user would type.
-    const rowLabel: Record<string, string> = {
-      linear_pattern: 'Linear Pattern',
-      circular_pattern: 'Circular Pattern',
-      curve_pattern: 'Curve Pattern',
-      instance_pattern: 'Instance Pattern',
-    }
+    // A snake_case kind reads poorly as a tree row; the shared prefix table in
+    // displayNames is what the tree also reads to recognise this generated label.
     // A delete_body leans on applyAddDeleteBody's own `Delete Part` default
     // rather than the generic kind-plus-number row name, so the toolbar's add
     // and the Delete key label a new row the same way.
     const label = kind === 'delete_body'
       ? undefined
-      : `${rowLabel[kind] ?? kind} ${Object.keys(bodies).length + 1}`
+      : `${DEFAULT_LABEL_PREFIXES[kind] ?? kind} ${Object.keys(bodies).length + 1}`
     const insertAt = newFeatureInsertIndex(features, editorState.getState().rollbackPosition)
     const store = editorState.getState()
     // Start the edit session against the PRE-add doc and let it suppress the
