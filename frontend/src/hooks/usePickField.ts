@@ -10,6 +10,7 @@ import {
   type WantKeyOf,
 } from '@/utils/query/pickIntake'
 import { fieldRefusal, type StatusMark } from '@/utils/core/statusMark'
+import type { SchemaData } from '@/components/editors/widgets/fieldTypes'
 
 /**
  * Layer-2 pick-field consumer. A pick chip is a consumer of normal selection,
@@ -45,7 +46,9 @@ import { fieldRefusal, type StatusMark } from '@/utils/core/statusMark'
  * belongs in the dialog the user is working in, not in a toast detached from
  * the field it explains. The reason travels with the field's rule, so it cannot
  * misstate why the pick was refused. It lasts while the same field stays armed
- * and clears on the next accepted pick or toggle-off.
+ * and clears on the next accepted pick or toggle-off. A rule that reads sibling
+ * chips gets the whole arrival in that field's data key, so one mixed lasso
+ * cannot pass as two same-family clicks.
  *
  * Re-clicking an already-picked element toggles it out of `normalSelection`
  * (the viewport click path is symmetric). A chip-owned id that has dropped out
@@ -74,7 +77,11 @@ export function usePickField(
     multi?: boolean
     onUnpick?: (selectionId: string) => void
     features?: readonly PartFeature[]
-    validatePick?: (selectionId: string, features?: readonly PartFeature[]) => string | null
+    validatePick?: (selectionId: string, features?: readonly PartFeature[], data?: SchemaData) => string | null
+    // The form's current values. A rule that reads its sibling chips gets a
+    // batch view of this field's key, so a lasso cannot split one mixed gesture
+    // into two same-family picks.
+    data?: SchemaData
     // The values the field holds, in chip order. Remove actions are indices into
     // this list; a field without it never plans a removal.
     held?: readonly string[]
@@ -95,6 +102,7 @@ export function usePickField(
   const onPickBatch = opts?.onPickBatch
   const features = opts?.features
   const validatePick = opts?.validatePick
+  const data = opts?.data
   const held = opts?.held
   const labelOf = opts?.labelOf
   const wantKeyOf = opts?.wantKeyOf
@@ -124,13 +132,17 @@ export function usePickField(
     const arriving = [...s.normalSelection].filter(id => !s.chipOwnedSelection.has(id))
     if (arriving.length > 0) {
       const batch = multi ? arriving : arriving.slice(0, 1)
+      // The rule sees the field's held chips PLUS the rest of this arrival. A
+      // lasso is one gesture: without the batch view, a sketch area and a part
+      // face landing together in an empty field would each look same-family.
+      const batchData = { ...data, [field]: [...heldValues, ...batch] }
       // The two refusal guards ride into the plan as refusals of their own, so a
       // refused id is dropped from the batch like a wrong-identity pick.
       const guardedKeyOf: WantKeyOf = (id) => {
         if (features && !isPickAllowed(id, featureId, features)) {
           return { refused: 'can only reference earlier features' }
         }
-        const fieldReason = validatePick ? validatePick(id, features) : null
+        const fieldReason = validatePick ? validatePick(id, features, batchData) : null
         return fieldReason === null ? keyOf(id) : { refused: fieldReason }
       }
       const intake = planPickIntake(batch, heldValues, guardedKeyOf, { labelOf })
@@ -208,7 +220,7 @@ export function usePickField(
       s.clearNormalSelection()
       return
     }
-  }, [normalSelection, isPicking, onPick, onUnpick, multi, features, featureId, field, fieldKey, validatePick, onPickBatch, held, wantKeyOf, labelOf])
+  }, [normalSelection, isPicking, onPick, onUnpick, multi, features, featureId, field, fieldKey, validatePick, onPickBatch, held, wantKeyOf, labelOf, data])
 
   const toggle = useCallback(() => {
     const s = useSketchEditorStore.getState()

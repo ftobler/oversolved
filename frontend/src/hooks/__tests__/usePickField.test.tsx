@@ -47,6 +47,7 @@ function mountPickField(
     onUnpick?: (id: string) => void
     features?: readonly PartFeature[]
     validatePick?: (id: string, features?: readonly PartFeature[], data?: Record<string, unknown>) => string | null
+    data?: Record<string, unknown>
     held?: readonly string[]
     wantKeyOf?: WantKeyOf
     labelOf?: (heldValue: string) => string
@@ -546,6 +547,42 @@ describe('usePickField  -  profile pick rule', () => {
     })
     expect(onPick).toHaveBeenCalledWith(area)
     expect(spy.refusal).toBe('')
+  })
+
+  it('a lasso mixing a sketch area and a part face is refused as one batch', () => {
+    // A box is one gesture. Validating each arrival against only the OLD chips
+    // let both halves of a mixed box through, so the rule now sees the whole
+    // batch as the field's held values while it decides.
+    const onPick = vi.fn()
+    const area = makeAncestryQuery(['@sk1/l1', '@sk1/l2', 'surface:0', '@sk1'], 'flatface')
+    const face = '?9;@ex1face0:flatface'
+    act(() => {
+      useSketchEditorStore.getState().setActivePickField({ featureId: 'ex1', field: 'sketch', multi: true })
+    })
+    const spy = mountPickField('ex1', 'sketch', onPick, {
+      multi: true,
+      features: FEATURES,
+      held: [],
+      data: { sketch: [] },
+      validatePick: profileField.validatePick,
+    })
+
+    act(() => {
+      useSketchEditorStore.getState().setNormalSelection(new Set([area, face]))
+    })
+
+    expect(onPick).not.toHaveBeenCalled()
+    expect(spy.isPicking).toBe(true)
+    expect(spy.refusal).toMatch(
+      /the profile already holds (sketch areas; a part face|part faces; a sketch area) cannot join them/,
+    )
+    expect(useSketchEditorStore.getState().normalSelection.size).toBe(0)
+
+    // The field is still live: a same-family lasso lands.
+    act(() => {
+      useSketchEditorStore.getState().setNormalSelection(new Set([area]))
+    })
+    expect(onPick).toHaveBeenCalledWith(area)
   })
 })
 

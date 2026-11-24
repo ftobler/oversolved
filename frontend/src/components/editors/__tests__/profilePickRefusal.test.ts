@@ -38,6 +38,7 @@ const SKETCH = {
 const FEATURES: PartFeature[] = [SKETCH]
 const FACE = '?9;@body_ex1:flatface'
 const EDGE = '?body_ex1:edge:0'
+const LEGACY_FACE = '?9;@ex1face0:flatface'
 
 function refusal(selectionId: string): string | null {
   return profilePickRefusal(selectionId, FEATURES)
@@ -122,6 +123,9 @@ describe('profilePickRefusal', () => {
     expect(reason).toContain('the profile already holds sketch areas; a part face cannot join them')
     expect(reason).toContain('Clear the profile to switch to part faces')
     for (const id of ['sk5', 'body_ex1', 'sk1']) expect(reason, id).not.toContain(id)
+    // The part face need not carry a `body_` token: legacy and feature face
+    // tokens are the forms viewport picks actually store.
+    expect(profilePickRefusal(LEGACY_FACE, FEATURES, { sketch: ['@sk5'] })).toContain('a part face cannot join them')
   })
 
   it('refuses a sketch area when the profile already holds a part face', () => {
@@ -129,6 +133,8 @@ describe('profilePickRefusal', () => {
     expect(reason).toContain('the profile already holds part faces; a sketch area cannot join them')
     expect(reason).toContain('Clear the profile to switch to sketch areas')
     for (const id of ['sk5', 'body_ex1', 'sk1']) expect(reason, id).not.toContain(id)
+    expect(profilePickRefusal(areaOf(['l1', 'l2', 'l3']), FEATURES, { sketch: [LEGACY_FACE] }))
+      .toContain('a sketch area cannot join them')
   })
 
   it('keeps same-family picks and an empty profile', () => {
@@ -146,6 +152,7 @@ describe('profilePickRefusal', () => {
     // A wrapped face pick carries the same query the chip will store.
     expect(profilePickRefusal(`face:ex1:${FACE}`, FEATURES)).toBeNull()
     expect(profilePickRefusal('face:ex1:?9;@body_ex1:cylinderface', FEATURES)).toContain('a profile face must be flat')
+    expect(profilePickRefusal('?e;@extrude1face0:cylinderface', FEATURES)).toContain('a profile face must be flat')
   })
 })
 

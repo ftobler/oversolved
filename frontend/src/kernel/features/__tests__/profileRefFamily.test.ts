@@ -33,6 +33,12 @@ describe('profileRefFamily', () => {
     for (const refStr of [
       '?9;@body_ex1:flatface', partFace, '@body_ex1/face/0', '@ex1/face/0',
       '?body_ex1:edge:0', makeAncestryQuery([ref('body_ex1'), ref('ex1')], 'straightedge'),
+      // Real picked-face forms need no `body_` token: legacy concatenation,
+      // a bare feature face tag, and the slash fallback all name part faces.
+      '?e,e;@extrude1face0@extrude1face1:flatface',
+      '?9;@ex1face0:face', '?6;@ex1f0:face',
+      '?10;@extrude1/face/3:flatface', '?f;@body_ex1/face0:flatface',
+      '?9;@extrude1:flatface', '?d;@sketch3face0:flatface',
     ]) {
       expect(profileRefFamily(refStr), refStr).toBe('part')
     }
@@ -90,6 +96,7 @@ describe('isNonPlanarProfileFace', () => {
     expect(isNonPlanarProfileFace('?9;@body_ex1:flatface')).toBe(false)
     // A generic `:face` says no kind, so the build stays its judge.
     expect(isNonPlanarProfileFace('?9;@body_ex1:face')).toBe(false)
+    expect(isNonPlanarProfileFace('?e;@extrude1face0:cylinderface')).toBe(true)
     expect(isNonPlanarProfileFace(partFace)).toBe(false)
   })
 
@@ -107,6 +114,8 @@ describe('mixedProfileRefs', () => {
     expect(mixedProfileRefs(['$sk1', sketchArea, 'entity:sk1:l1'])).toBe(false)
     expect(mixedProfileRefs(['?9;@body_ex1:flatface', '?body_ex1:edge:0'])).toBe(false)
     expect(mixedProfileRefs(['$sk1', '?9;@body_ex1:flatface'])).toBe(true)
+    expect(mixedProfileRefs(['$sk1', '?9;@ex1face0:flatface'])).toBe(true)
+    expect(mixedProfileRefs(['?e,e;@extrude1face0@extrude1face1:flatface', '?6;@ex1f0:face'])).toBe(false)
     expect(mixedProfileRefs([])).toBe(false)
   })
 })

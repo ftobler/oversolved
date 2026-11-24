@@ -410,9 +410,9 @@ export function profilePickRefusal(
   if (options.sketchOnly === true && family === 'part') {
     return 'a picked part face or edge cannot be a profile here; pick a sketch area'
   }
-  // Only a picked face carries a surface kind; a sketch area query may also end
-  // in `:face`, but its planarity is a solve fact, not a refusal here.
-  if (family === 'part' && isNonPlanarProfileFace(selectionId)) {
+  // The surface kind rides in the query; a bare `:face` carries no kind and is
+  // left to the build, but an explicit curved kind is refused here.
+  if (isNonPlanarProfileFace(selectionId)) {
     return 'a profile face must be flat; pick a flat face or a sketch area'
   }
   const held = heldProfileRefs(data?.sketch)

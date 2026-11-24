@@ -103,9 +103,8 @@ export function PickFieldWidget({
     names: field.names,
     labelOf: field.names === 'body' ? partLabel : undefined,
     onPickBatch: pickBatch,
-    validatePick: ownRule === undefined
-      ? undefined
-      : (selectionId, featureRows) => ownRule(selectionId, featureRows, data),
+    validatePick: ownRule,
+    data,
   })
   const { toggle, activate } = pickState
 

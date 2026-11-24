@@ -216,7 +216,7 @@ describe('solveExtrude guard paths', () => {
         oc,
         scope,
         table,
-        { id: 'f1', extrude: { sketch: ['@b1/face/0', '$sk'], distance: 3 } },
+        { id: 'f1', extrude: { sketch: ['?9;@ex1face0:flatface', '$sk'], distance: 3 } },
         repo,
         {},
       ),
