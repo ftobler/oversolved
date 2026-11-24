@@ -56,6 +56,7 @@ import { nextHeldPreview, sketchToDisplay, type HeldPreviewState } from '@/utils
 
 // ID-buffer registration
 import { useSketchIdRegistration, useSketchSurfaceIdRegistration, publishProbeSketchPlane } from '@/picking'
+import { sketchPickRegistrationEnabled } from '@/registry/toolPickConfig'
 
 export interface Geometry3DProps {
   featureId: string
@@ -80,19 +81,31 @@ export interface Geometry3DProps {
   /** The authored constraints this sketch's solve could not use; each draws a
    *  red, selectable tile so the dead row can be found and deleted. */
   droppedConstraints?: readonly DroppedSketchConstraint[]
+  /** Whether the viewport draws this sketch (the folded visibility set from
+   *  featureVisibility.ts). Required: the caller already filtered, so passing it
+   *  is a no-op today, and the helper is the second gate for callers that do
+   *  not filter. Only a drawn sketch may register pick ids. */
+  visible: boolean
+  /** The document's suppression flag. A suppressed sketch never registers:
+   *  the solve produced no geometry for it. Required for the same reason as
+   *  `visible`. */
+  suppressed: boolean
   // A constraint tile's own right-click; the tile owns a DOM overlay the canvas
   // listener never sees, so it hands the picked selection id and cursor to the
   // page.
   onSelectionContextMenu?: (selectionId: string, pos: [number, number]) => void
 }
 
-export default function Geometry3D({ featureId, solved, entities, projectionMembers, constraints, topology, activeFeatureId, plane, planeTransform, originLocal, solveStatus, entityStatus, otherSketches, featureDef, droppedConstraints, onSelectionContextMenu }: Geometry3DProps) {
+export default function Geometry3D({ featureId, solved, entities, projectionMembers, constraints, topology, activeFeatureId, plane, planeTransform, originLocal, solveStatus, entityStatus, otherSketches, featureDef, droppedConstraints, visible, suppressed, onSelectionContextMenu }: Geometry3DProps) {
   const groupRef = useRef<THREE.Group>(null)
   const drag = useSketchEditorStore(s => s.drag)
   // Whether the gesture that just ended dispatched a mutation. Read here (not
   // inferred from a status flag) because it decides whether a frozen preview has
   // a fresh solve coming to replace it; see the held-preview tracker below.
   const dragCommitted = useSketchEditorStore(s => s.dragCommitted)
+  // Read here rather than inside the registration block below because the
+  // inactive-sketch pick rule is the tool's policy, not the sketch's.
+  const activeTool = useSketchEditorStore(s => s.activeTool)
   const isDraggingThis = !!drag && drag.featureId === featureId
 
   const resolvedPlaneTransform: PlaneTransform | undefined = useMemo(
@@ -308,20 +321,29 @@ export default function Geometry3D({ featureId, solved, entities, projectionMemb
   // far from `solved` (whole constraint chains move), so re-register from the
   // held sketch once at drag end -- hover/pick then matches what is on screen
   // while the commit solve is in flight.
-  // Inactive sketches stay inert: the ID buffer excludes their layers and
-  // Surfaces.tsx gates its click handler on mode === 'inactive'. When no sketch
-  // is being edited, all sketches register so they stay pickable in the part
-  // viewport.
+  // Inactive sketches stay inert so a click inside one sketch never selects
+  // another's line; the one exception is a tool that declares
+  // picksInactiveSketches (project), which needs a foreign sketch's ids to use
+  // it as a projection source. The rule lives in the pure helper. When no sketch
+  // is being edited, all drawn sketches register so they stay pickable in the
+  // part viewport.
+  const pickRegistrationEnabled = sketchPickRegistrationEnabled({
+    activeFeatureId, isEditing, activeTool, visible, suppressed,
+  })
   useSketchIdRegistration({
     featureId,
     sketch: nextHeld ?? solved,
     planeTransform: resolvedPlaneTransform,
-    enabled: !activeFeatureId || isEditing,
+    enabled: pickRegistrationEnabled,
     constraints: featureDef?.constraints,
     // Treat topology as absent while stale: drops the `isect:` half of the
     // inferred-contact ID registration (pre-drag crossings), keeps the
     // `dock:` half (live-derived from `sketch + constraints + params`).
     topology: stale ? undefined : topology,
+    // Only the edited sketch renders the inferred-contact markers, so only it
+    // offers their ids: an invisible handle on an inactive sketch could win the
+    // project click over the line under it.
+    inferredContacts: isEditing,
   })
 
   useSketchSurfaceIdRegistration({
@@ -333,7 +355,11 @@ export default function Geometry3D({ featureId, solved, entities, projectionMemb
     // held-preview window. Areas are decoration in the first place (see the
     // crossLayerSelection.test.ts inert contract); hiding the layer mid-drag
     // is the safe choice.
-    enabled: (!activeFeatureId || isEditing) && !stale,
+    // An inactive sketch's area layer stays inert even under project: the
+    // project preset excludes sketchSurface, so the click path has nothing to
+    // resolve there. The area layer therefore keeps the historical
+    // "edited sketch or part view" gate rather than the pick-registration rule.
+    enabled: pickRegistrationEnabled && (!activeFeatureId || isEditing) && !stale,
   })
 
   const getEntityColor = (entityId: string): string =>

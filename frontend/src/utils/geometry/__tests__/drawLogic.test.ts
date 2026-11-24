@@ -1031,6 +1031,30 @@ describe('computeDrawClick - project tool', () => {
     expect(result.gestureComplete).toBe(true)
   })
 
+  it('projects a line of another visible sketch with its source ref', () => {
+    // The click path resolves the foreign entity kind from the other sketches
+    // the page published; a line lowers to kind line and the absolute source.
+    const snap = emptySnap()
+    snap.hoveredSelectionId = 'entity:A:L1'
+    const otherSketches = { A: { L1: { start: [0, 0], end: [10, 0] } as Entity } }
+    const result = computeDrawClick('project', [], [0, 0], snap, FEATURE, newId, undefined, otherSketches)
+    expect(result.mutations).toEqual([
+      { type: 'add_projected_entity', featureId: FEATURE, kind: 'line', source: '@A/L1' },
+    ])
+    expect(result.gestureComplete).toBe(true)
+  })
+
+  it('projects an endpoint of another sketch as a point', () => {
+    const snap = emptySnap()
+    snap.hoveredSelectionId = 'vertex:A:L1:end'
+    const otherSketches = { A: { L1: { start: [0, 0], end: [10, 0] } as Entity } }
+    const result = computeDrawClick('project', [], [0, 0], snap, FEATURE, newId, undefined, otherSketches)
+    expect(result.mutations).toEqual([
+      { type: 'add_projected_entity', featureId: FEATURE, kind: 'point', source: '@A/L1/end' },
+    ])
+    expect(result.gestureComplete).toBe(true)
+  })
+
   it('emits add_projected_entity for edge ancestry query pick', () => {
     const snap = emptySnap()
     const ancQuery = '?4,4;@bxx@fyy:straightedge'

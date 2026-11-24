@@ -25,6 +25,58 @@ describe('sketchEditorStore', () => {
       useSketchEditorStore.getState().setActiveTool(null)
       expect(useSketchEditorStore.getState().activeTool).toBeNull()
     })
+
+    it('clears the hover when project disarms', () => {
+      // Project makes inactive sketches pickable; once it disarms those ids
+      // unregister, so a hover left on one has no rendered target. The
+      // dispatcher keeps a hover whose layer the new tool still allows, and
+      // sketchEntity is one, so the store has to drop it here.
+      useSketchEditorStore.getState().setActiveTool('project')
+      useSketchEditorStore.getState().setHoveredSelectionId('entity:A:L1')
+
+      useSketchEditorStore.getState().setActiveTool(null)
+
+      expect(useSketchEditorStore.getState().hoveredSelectionId).toBeNull()
+    })
+
+    it('clears the foreign sketch vertex hover (and every other hover field) when project disarms', () => {
+      // A hovered endpoint is the same invisible target as a hovered line once
+      // the ids unregister. Leaving the vertex fields behind kept a highlighted
+      // dot hot and, because a vertex hover nulls the alignment cursor, left the
+      // guide off until the pointer moved.
+      useSketchEditorStore.getState().setActiveTool('project')
+      useEditorState.setState({
+        hoveredSelectionId: 'vertex:A:L1:end',
+        hoveredPickKey: 'A#L1#end',
+        hoveredConstraintEntityIds: new Set(['entity:A:L1']),
+        hoveredFaceNormal: [0, 0, 1],
+        hoveredFaceCenter: [10, 0, 0],
+      })
+      useSketchEditorStore.getState().setHoveredVertex('vertex:A:L1:end', [10, 0], 'vertex')
+
+      useSketchEditorStore.getState().setActiveTool(null)
+
+      const after = useSketchEditorStore.getState()
+      for (const field of [
+        after.hoveredSelectionId, after.hoveredPickKey, after.hoveredVertexId,
+        after.hoveredVertexPosition, after.hoveredSnapKind, after.hoveredFaceNormal,
+        after.hoveredFaceCenter,
+      ]) {
+        expect(field).toBeNull()
+      }
+      expect(after.hoveredConstraintEntityIds.size).toBe(0)
+    })
+
+    it('keeps a hover when switching between tools that did not make it pickable', () => {
+      useSketchEditorStore.getState().setActiveTool('line')
+      useSketchEditorStore.getState().setHoveredSelectionId('entity:S1:L1')
+      useSketchEditorStore.getState().setHoveredVertex('vertex:S1:L1:end', [10, 0], 'vertex')
+
+      useSketchEditorStore.getState().setActiveTool('circle')
+
+      expect(useSketchEditorStore.getState().hoveredSelectionId).toBe('entity:S1:L1')
+      expect(useSketchEditorStore.getState().hoveredVertexId).toBe('vertex:S1:L1:end')
+    })
   })
 
   describe('setActiveFeatureId', () => {

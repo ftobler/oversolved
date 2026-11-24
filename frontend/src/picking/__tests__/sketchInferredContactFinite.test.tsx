@@ -81,6 +81,30 @@ describe('useSketchIdRegistration inferred-contact finite guard (g4-H2)', () => 
     }
   })
 
+  it('skips every inferred contact for a sketch that is not the edit target', async () => {
+    // Render-and-pick agreement: InferredContactMarkers only draws the edited
+    // sketch's handles, so an inactive sketch must not offer pickable ids whose
+    // handle nothing renders (they could beat the line a project click aims at).
+    const { useSketchIdRegistration } = await import('../useSketchIdRegistration')
+    candidates.push({ id: 'dock:S1:good', position: [1, 1] })
+    const p = new IdPipeline({ width: 64, height: 64 })
+    setLivePipeline(p)
+    try {
+      renderHook(() => useSketchIdRegistration({
+        featureId: 'S1',
+        sketch: cornerSketch(),
+        inferredContacts: false,
+      }))
+
+      expect(p.registry.lookupKey(SKETCH_VERTEX_LAYER_NAME, 'dock:S1:good')).toBeUndefined()
+      // The real vertices still register; only the inferred handle is dropped.
+      expect(p.registry.lookupKey(SKETCH_VERTEX_LAYER_NAME, 'vertex:S1:lineA:start')).toBeDefined()
+    } finally {
+      setLivePipeline(null)
+      p.dispose()
+    }
+  })
+
   it('treats an empty sketch object as a no-op and leaves the buffer clean', async () => {
     const { useSketchIdRegistration } = await import('../useSketchIdRegistration')
     const p = new IdPipeline({ width: 64, height: 64 })

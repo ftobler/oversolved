@@ -202,6 +202,26 @@ describe('projectSelection', () => {
     expect(edgeKind).toHaveBeenCalledWith(EDGE_Q)
     expect(batches[0][0]).toMatchObject({ type: 'add_projected_entity', kind: 'circle', source: EDGE_Q })
   })
+
+  it('lowers another sketch entity picked before the sketch was opened', () => {
+    // The pre-selection path: select a foreign sketch's line in the part view,
+    // open the target sketch, press Project. It shares the source format with
+    // the tool's click path, so the same lowering must land one mutation.
+    const foreign = { L1: { start: [0, 0], end: [10, 0] } } as unknown as Sketch
+    setSketchCallback('getSketch', id => (id === 'SK_A' ? foreign : null))
+    try {
+      useEditorState.setState({
+        normalSelection: new Set(['entity:SK_A:L1']),
+        selectionDomain: 'sketch_2d',
+      })
+      expect(projectSelection(liveProjectionResolvers)).toBe(true)
+      expect(batches[0]).toEqual([
+        { type: 'add_projected_entity', featureId: FEATURE, kind: 'line', source: '@SK_A/L1' },
+      ])
+    } finally {
+      setSketchCallback('getSketch', null)
+    }
+  })
 })
 
 // The default resolver set the Project command runs with: it reads kinds from

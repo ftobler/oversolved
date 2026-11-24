@@ -187,6 +187,23 @@ export const DEFAULT_EDITOR_STATE = {
   activeSketchFeatureId: null,
 } as const
 
+// Every hover field a pointer can leave behind, in one list. Shared by the full
+// selection wipe and the project-disarm transition so neither can forget one: a
+// foreign sketch's endpoint hover is the same invisible target as its line once
+// project stops registering the sketch's ids.
+function hoverReset() {
+  return {
+    hoveredSelectionId: null,
+    hoveredPickKey: null,
+    hoveredConstraintEntityIds: new Set<string>(),
+    hoveredVertexId: null,
+    hoveredVertexPosition: null,
+    hoveredSnapKind: null,
+    hoveredFaceNormal: null,
+    hoveredFaceCenter: null,
+  }
+}
+
 export const editorState = createStore<EditorState>((set, get) => ({
   // Part-side FSM
   ...DEFAULT_EDITOR_STATE,
@@ -286,14 +303,7 @@ export const editorState = createStore<EditorState>((set, get) => ({
     selectedPicks: new Map(),
     chipOwnedSelection: new Set(),
     selectionDomain: 'sketch_2d',
-    hoveredSelectionId: null,
-    hoveredPickKey: null,
-    hoveredConstraintEntityIds: new Set(),
-    hoveredVertexId: null,
-    hoveredVertexPosition: null,
-    hoveredSnapKind: null,
-    hoveredFaceNormal: null,
-    hoveredFaceCenter: null,
+    ...hoverReset(),
   }),
 
   // Guarded so a solve that has nothing to clear does not mint a fresh map and
@@ -488,6 +498,13 @@ export const editorState = createStore<EditorState>((set, get) => ({
       // first click in any tool starts a fresh gesture.
       updates.dimensionPicks = []
       updates.dimensionCursorWorld = null
+      // Leaving project unregisters the inactive sketches it made pickable, so
+      // the hover it left on one has no rendered target any more. Clear the whole
+      // hover bundle, vertex and face fields included: a hovered endpoint is the
+      // same invisible target as a hovered line. The dispatcher's own tool-change
+      // cleanup keeps a hover whose layer the new tool still allows, and
+      // sketchEntity/sketchVertex are both allowed, so the store must drop it.
+      if (prevTool === 'project' && tool !== 'project') Object.assign(updates, hoverReset())
       // A tool whose config requests it (currently only dimension) wipes the
       // current normal selection on enter so the picks the user makes inside
       // the tool aren't contaminated by a pre-existing selection. (Spec: "user

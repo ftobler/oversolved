@@ -118,6 +118,8 @@ function renderGeometry(constraints: Constraints) {
       solved={solved}
       constraints={constraints}
       activeFeatureId={featureId}
+      visible
+      suppressed={false}
     />,
   )
 }
@@ -151,6 +153,8 @@ describe('dimensions while the sketch geometry is stale', () => {
         solved={postSolve}
         constraints={dimensions(12)}
         activeFeatureId={featureId}
+        visible
+        suppressed={false}
       />,
     )
     expect(view.getByTestId('linear-dim-d1').getAttribute('data-value')).toBe('12')
@@ -173,6 +177,8 @@ describe('dimensions while the sketch geometry is stale', () => {
         solved={structuredClone(solved)}
         constraints={withSymbol(dimensions(12))}
         activeFeatureId={featureId}
+        visible
+        suppressed={false}
       />,
     )
     expect(view.container.querySelector('img')).not.toBeNull()
@@ -215,6 +221,8 @@ describe('dimensions while the sketch geometry is stale', () => {
         solved={structuredClone(solved)}
         constraints={withSymbol(dimensions(10))}
         activeFeatureId={featureId}
+        visible
+        suppressed={false}
       />,
     )
     expect(view.queryByTestId('linear-dim-d1')).not.toBeNull()
