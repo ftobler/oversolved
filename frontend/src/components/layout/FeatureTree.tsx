@@ -106,6 +106,11 @@ export function FeatureTree() {
   // deletes can leave a stale position past the end until the owner clamps it.
   // Normalize here so the bar is always drawn at exactly one place.
   const effectiveRollback = Math.min(rollbackPosition ?? features.length, features.length)
+  // During a bar drag the bar leads the pointer: one derived slot drives its
+  // render site, shading and commit, so it can never double, vanish or lag the
+  // cue. A feature drag also computes `dropTargetIndex`, but must not move the
+  // bar: only the bar's own preview applies.
+  const displayedBarSlot = (draggedRollback ? dropTargetIndex : null) ?? effectiveRollback
   // While a feature is edited the rollback is pinned to just after it (the
   // solver invariant depends on that), so the bar must not be draggable.
   const rollbackDraggable = editingFeatureId === null
@@ -369,7 +374,12 @@ export function FeatureTree() {
           <RebuildButton featureTimings={featureTimings} features={features} onClick={onRebuild} isLoading={isRebuilding} validation={validation} />
         )}
       </div>
-      <ul className="features-list" ref={listRef} role="listbox" aria-label="Features">
+      <ul
+        className={`features-list ${draggedRollback || featureDrag !== null ? 'features-list--dragging' : ''}`}
+        ref={listRef}
+        role="listbox"
+        aria-label="Features"
+      >
       {doc && features.length === 0 ? (
         <li className="empty" role="presentation">No features</li>
       ) : (
@@ -389,11 +399,11 @@ export function FeatureTree() {
 
           return (
           <Fragment key={`feature-${feature.id}`}>
-            {effectiveRollback === index && (
+            {displayedBarSlot === index && (
               <RollbackSlider
                 isDragging={draggedRollback}
                 enabled={rollbackDraggable}
-                position={effectiveRollback}
+                position={displayedBarSlot}
                 min={BUILTIN_FEATURE_IDS.size}
                 max={features.length}
                 onGrab={() => {
@@ -403,7 +413,7 @@ export function FeatureTree() {
               />
             )}
             <li
-              className={`feature-item ${!isBuiltIn && feature.id !== editingFeatureId ? 'draggable' : ''} ${index >= effectiveRollback ? 'rolled-back' : ''} ${eyeShowsVisible ? '' : 'invisible'} ${feature.id === editingFeatureId ? 'editing' : ''} ${selection.has(selectionId) ? 'selected' : ''} ${relatedIds.has(selectionId) ? 'related' : ''} ${draggedFeatureId === feature.id ? 'dragging' : ''} ${cue.top === index ? 'drop-target-top' : ''} ${cue.bottom === index ? 'drop-target-bottom' : ''}`}
+              className={`feature-item ${!isBuiltIn && feature.id !== editingFeatureId ? 'draggable' : ''} ${index >= displayedBarSlot ? 'rolled-back' : ''} ${eyeShowsVisible ? '' : 'invisible'} ${feature.id === editingFeatureId ? 'editing' : ''} ${selection.has(selectionId) ? 'selected' : ''} ${relatedIds.has(selectionId) ? 'related' : ''} ${draggedFeatureId === feature.id ? 'dragging' : ''} ${cue.top === index ? 'drop-target-top' : ''} ${cue.bottom === index ? 'drop-target-bottom' : ''}`}
               role="option"
               tabIndex={0}
               aria-selected={selection.has(selectionId)}
@@ -509,11 +519,11 @@ export function FeatureTree() {
           </Fragment>
         )})
       )}
-      {effectiveRollback === features.length && (
+      {displayedBarSlot === features.length && (
         <RollbackSlider
           isDragging={draggedRollback}
           enabled={rollbackDraggable}
-          position={effectiveRollback}
+          position={displayedBarSlot}
           min={BUILTIN_FEATURE_IDS.size}
           max={features.length}
           onGrab={() => {

@@ -32,16 +32,18 @@ export interface DropCueEdges {
  *  sides of its gap. When the slot holds the rollback bar, the feature lands on
  *  the side it is coming from, so only that side is marked: a row dragged down
  *  into the bar's slot lands above the bar, one dragged up lands below it.
- *  `draggedIndex` is negative for the bar's own drag, which marks both sides. */
+ *  A negative `draggedIndex` is the bar's own drag: the bar moves to the slot
+ *  itself, so there is no insertion line to draw. */
 export function dropCueEdges(
   slot: number,
   rowCount: number,
   barSlot: number,
   draggedIndex: number,
 ): DropCueEdges {
+  if (draggedIndex < 0) return { top: null, bottom: null }
   const top = slot < rowCount ? slot : null
   const bottom = slot > 0 ? slot - 1 : null
-  if (slot === barSlot && draggedIndex >= 0) {
+  if (slot === barSlot) {
     if (draggedIndex < barSlot) return { top: null, bottom }
     return { top, bottom: null }
   }

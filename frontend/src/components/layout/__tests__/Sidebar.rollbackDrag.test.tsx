@@ -23,36 +23,56 @@ describe('rollback bar drag convergence', () => {
     expect(rollbackBar.classList.contains('dragging')).toBe(true)
   })
 
-  it('shows drop-target-top when rollback bar dragged to top half of a feature', () => {
-    const features = [...builtInFeatures, extrudeFeature]
-    setupStore(features, 4)
+  it('moves the one bar to the preview slot and drops the edge cue', () => {
+    const features = [...builtInFeatures, sketchFeature, extrudeFeature]
+    setupStore(features, 6)
     renderSidebar()
     layoutFeatureRows()
 
-    const rollbackBar = screen.getByTitle('Rollback')
-    const featureItem = featureRow('ex1')
+    grabRollback(screen.getByTitle('Rollback'))
+    movePointer(170)  // upper half of sk1 (row 4 spans 160..200): preview slot 4
 
-    grabRollback(rollbackBar)
-    movePointer(170)  // upper half of ex1 (row 4 spans 160..200)
-
-    expect(featureItem.classList.contains('drop-target-top')).toBe(true)
-    expect(featureItem.classList.contains('drop-target-bottom')).toBe(false)
+    // The bar is a new DOM node at each slot, so re-query the live one.
+    const movedBar = screen.getByTitle('Rollback')
+    expect(document.querySelectorAll('.rollback-bar')).toHaveLength(1)
+    expect(movedBar.classList.contains('dragging')).toBe(true)
+    expect(movedBar.closest('li')?.nextElementSibling).toBe(featureRow('sk1'))
+    for (const row of document.querySelectorAll('.feature-item')) {
+      expect(row.classList.contains('drop-target-top')).toBe(false)
+      expect(row.classList.contains('drop-target-bottom')).toBe(false)
+    }
   })
 
-  it('shows drop-target-bottom when rollback bar dragged to bottom half of a feature', () => {
-    const features = [...builtInFeatures, extrudeFeature]
-    setupStore(features, 4)
+  it('dims the rows from the preview slot on while the bar is dragged', () => {
+    const features = [...builtInFeatures, sketchFeature, extrudeFeature]
+    setupStore(features, 6)
     renderSidebar()
     layoutFeatureRows()
 
-    const rollbackBar = screen.getByTitle('Rollback')
-    const featureItem = featureRow('ex1')
+    grabRollback(screen.getByTitle('Rollback'))
+    movePointer(170)  // preview slot 4
 
-    grabRollback(rollbackBar)
-    movePointer(190)  // lower half of ex1
+    expect(featureRow('Right').classList.contains('rolled-back')).toBe(false)
+    expect(featureRow('sk1').classList.contains('rolled-back')).toBe(true)
+    expect(featureRow('ex1').classList.contains('rolled-back')).toBe(true)
+  })
 
-    expect(featureItem.classList.contains('drop-target-bottom')).toBe(true)
-    expect(featureItem.classList.contains('drop-target-top')).toBe(false)
+  it('moves the bar back to the committed slot on Escape', () => {
+    const onSetRollbackPosition = vi.fn()
+    const features = [...builtInFeatures, sketchFeature, extrudeFeature]
+    setupStore(features, 6)
+    renderSidebar(makeCallbacks({ onSetRollbackPosition }))
+    layoutFeatureRows()
+
+    grabRollback(screen.getByTitle('Rollback'))
+    movePointer(170)  // preview slot 4
+    expect(screen.getByTitle('Rollback').closest('li')?.nextElementSibling).toBe(featureRow('sk1'))
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    expect(onSetRollbackPosition).not.toHaveBeenCalled()
+    expect(screen.getByTitle('Rollback').closest('li')?.previousElementSibling).toBe(featureRow('ex1'))
+    expect(featureRow('sk1').classList.contains('rolled-back')).toBe(false)
   })
 
   it('calls onSetRollbackPosition with correct index on rollback bar release', () => {
@@ -66,6 +86,7 @@ describe('rollback bar drag convergence', () => {
     movePointer(190)
     releasePointer(190)
 
+    expect(onSetRollbackPosition).toHaveBeenCalledTimes(1)
     expect(onSetRollbackPosition).toHaveBeenCalledWith(5)
   })
 
@@ -102,7 +123,7 @@ describe('rollback bar drag convergence', () => {
     releasePointer(170)
 
     expect(onSetRollbackPosition).not.toHaveBeenCalled()
-    expect(rollbackBar.classList.contains('dragging')).toBe(false)
+    expect(screen.getByTitle('Rollback').classList.contains('dragging')).toBe(false)
   })
 
   it('does not highlight built-in features during rollback bar drag', () => {
@@ -123,7 +144,7 @@ describe('rollback bar drag convergence', () => {
     expect(onSetRollbackPosition).toHaveBeenCalledWith(4)  // clamped past the built-ins
   })
 
-  it('still reorders features when dragging a feature item', () => {
+  it('still reorders features and draws the insertion line on a feature drag', () => {
     const onMutation = vi.fn()
     const features = [...builtInFeatures, sketchFeature, extrudeFeature]
     setupStore(features, 6)
@@ -133,6 +154,8 @@ describe('rollback bar drag convergence', () => {
     // sk1 sits at index 4, ex1 at 5: the lower half of ex1 is slot 6.
     pressRow(featureRow('sk1'), { clientY: 180 })
     movePointer(230)
+    expect(featureRow('ex1').classList.contains('drop-target-bottom')).toBe(true)
+    expect(document.querySelector('.features-list')?.classList.contains('features-list--dragging')).toBe(true)
     releasePointer(230)
 
     expect(onMutation).toHaveBeenCalledWith({
@@ -140,6 +163,35 @@ describe('rollback bar drag convergence', () => {
       featureId: 'sk1',
       toIndex: 6,
     })
+    expect(document.querySelector('.features-list')?.classList.contains('features-list--dragging')).toBe(false)
+  })
+
+  it('keeps the bar at its committed slot while a feature row is dragged', () => {
+    setupStore([...builtInFeatures, sketchFeature, extrudeFeature], 5)
+    renderSidebar()
+    layoutFeatureRows()
+
+    pressRow(featureRow('sk1'), { clientY: 180 })
+    movePointer(230)
+
+    // Slot 6 is the feature's drop target, not the bar's; the bar stays at 5.
+    expect(screen.getByTitle('Rollback').closest('li')?.previousElementSibling).toBe(featureRow('sk1'))
+    expect(featureRow('ex1').classList.contains('rolled-back')).toBe(true)
+  })
+
+  it('adds the no-hover class to the list only while the bar is grabbed', () => {
+    const features = [...builtInFeatures, extrudeFeature]
+    setupStore(features, 4)
+    renderSidebar()
+
+    const list = document.querySelector('.features-list')!
+    expect(list.classList.contains('features-list--dragging')).toBe(false)
+
+    grabRollback(screen.getByTitle('Rollback'))
+    expect(list.classList.contains('features-list--dragging')).toBe(true)
+
+    releasePointer(500)
+    expect(list.classList.contains('features-list--dragging')).toBe(false)
   })
 
   it('renders the rollback bar at the end when rollbackPosition is null', () => {

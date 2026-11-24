@@ -65,7 +65,12 @@ describe('dropCueEdges', () => {
     expect(dropCueEdges(3, 6, 3, 5)).toEqual({ top: 3, bottom: null })
   })
 
-  it('keeps both edges when no feature is being dragged (the bar itself)', () => {
-    expect(dropCueEdges(3, 6, 3, -1)).toEqual({ top: 3, bottom: 2 })
+  it('draws no edge for the bar\'s own drag: the moving bar is the cue', () => {
+    // A negative draggedIndex means the rollback bar, not a feature row, is
+    // being dragged. Its preview slot is shown by the bar itself, so the gap
+    // must not also get the old two-line edge highlight.
+    for (const slot of [0, 1, 3, 6]) {
+      expect(dropCueEdges(slot, 6, 3, -1)).toEqual({ top: null, bottom: null })
+    }
   })
 })
