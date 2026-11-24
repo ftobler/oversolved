@@ -442,10 +442,44 @@ fn the_singular_value_test_names_the_dimension_without_the_finish() {
     );
 }
 
-/// The finish half on its own: a hand-built refused step names its row and
-/// carries its estimate even when the singular-value test cannot fire. This is
-/// the branch's own regression guard, so deleting the finish contribution
-/// cannot pass the suite on the sigma test alone.
+/// The finish's own half, producer side: solving the report fixture and running
+/// the contract finish refuses the tilt's step, and that refusal records the
+/// weak direction with the seeded estimate and the x dimension's row. Deleting
+/// the `WeakDirection` record in `finish_contract` fails here.
+#[test]
+fn the_finish_records_the_refused_step_that_names_the_weak_row() {
+    let (inp, x_dim) = report_sketch_seeded();
+    let problem = Problem::new(&inp);
+    let n = inp.params_initial.len();
+    let mut x = inp.params_initial.clone();
+    let finish = finish_contract(&inp, &problem, &mut x);
+    let weak = finish
+        .weak
+        .as_ref()
+        .expect("the finish refused the tilt's step without recording it");
+    let seed = REPORT_TILT.to_degrees();
+    assert!(
+        weak.estimate >= 0.5 * seed && weak.estimate <= 2.0 * seed,
+        "finish estimate {} deg is not within 2x of the {seed} deg seed tilt",
+        weak.estimate
+    );
+    let jac = problem.jacobian(&x, n);
+    let layout = row_layout(&problem, &x);
+    let owners = constraint_row_wires(&layout, jac.nrows());
+    assert!(
+        weak.rows
+            .iter()
+            .any(|&row| owners.get(row) == Some(&Some(x_dim))),
+        "the refused step did not blame the x dimension: rows {:?}, owners {:?}",
+        weak.rows,
+        owners
+    );
+}
+
+/// The finish half's consumer side: a hand-built refused step names its row and
+/// carries its estimate through `weak_constraints` even when the
+/// singular-value test cannot fire. The producer is pinned above; this guards
+/// the merge and the axis narrowing.
 #[test]
 fn the_finish_branch_names_its_blamed_row_without_the_sigma_test() {
     let (inp, x_dim) = report_sketch_seeded();

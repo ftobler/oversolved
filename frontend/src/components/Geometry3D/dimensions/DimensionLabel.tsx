@@ -83,9 +83,12 @@ export function DimensionLabel({
         {label}
       </div>
       {hovered && title && (
-        // A sibling of the glyph block, not part of it: `onTextElement` measures
-        // the label alone, and the tooltip must not widen the pick footprint.
-        <div style={{ marginTop: 4, padding: '2px 6px', background: '#1b1b1b', color: '#e8e8e8', fontSize: 11, borderRadius: 3, maxWidth: 260, whiteSpace: 'normal', textAlign: 'left' }}>
+        // Out of flow on purpose: the drei wrapper is the containing block, and
+        // an in-flow tooltip would grow the centred block, move the glyphs under
+        // the cursor and make the hover hit box drop it (the sentence would
+        // strobe). Sibling of the glyph block, not part of it, so
+        // `onTextElement` still measures the label alone.
+        <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', width: 'max-content', padding: '2px 6px', background: '#1b1b1b', color: '#e8e8e8', fontSize: 11, borderRadius: 3, maxWidth: 260, whiteSpace: 'normal', textAlign: 'left' }}>
           {title}
         </div>
       )}

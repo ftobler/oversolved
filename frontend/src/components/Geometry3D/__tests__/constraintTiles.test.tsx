@@ -87,8 +87,8 @@ function renderOverlays(
 describe('ConstraintTile user-select', () => {
   it('ConstraintOverlays renders symbol tiles when showConstraintTiles is true', () => {
     useSketchUiStore.setState({
-    showConstraintTiles: true,
-  })
+      showConstraintTiles: true,
+    })
     const { container } = renderOverlays()
     const imgs = container.querySelectorAll('img')
     expect(imgs.length).toBeGreaterThan(0)
@@ -96,8 +96,8 @@ describe('ConstraintTile user-select', () => {
 
   it('ConstraintOverlays hides symbol tiles when showConstraintTiles is false', () => {
     useSketchUiStore.setState({
-    showConstraintTiles: false,
-  })
+      showConstraintTiles: false,
+    })
     const { container } = renderOverlays()
     const imgs = container.querySelectorAll('img')
     expect(imgs.length).toBe(0)
@@ -105,8 +105,8 @@ describe('ConstraintTile user-select', () => {
 
   it('renders dimension overlays regardless of showConstraintTiles', () => {
     useSketchUiStore.setState({
-    showConstraintTiles: false,
-  })
+      showConstraintTiles: false,
+    })
     const dimConstraints: Constraints = {
       d1: { render: { kind: 'dim_linear', p1: [0, 0], p2: [10, 0], normal: [0, 1], value: 10 }, residual: 0 } as Constraints[string],
     }
@@ -117,8 +117,8 @@ describe('ConstraintTile user-select', () => {
 
   it('renders img elements with correct style containing user-select none', () => {
     useSketchUiStore.setState({
-    showConstraintTiles: true,
-  })
+      showConstraintTiles: true,
+    })
     const { container } = renderOverlays()
     const imgs = container.querySelectorAll('img')
     expect(imgs.length).toBeGreaterThan(0)
@@ -140,16 +140,16 @@ describe('ConstraintTile see-through background', () => {
 
   it('an idle tile has a transparent background', () => {
     useEditorState.setState({
-    normalSelection: new Set(),
-  })
+      normalSelection: new Set(),
+    })
     const { container } = renderOverlays()
     expect(tileStyle(container).background).toBe('transparent')
   })
 
   it('a superfluous tile is transparent and keeps its outline marker', () => {
     useEditorState.setState({
-    normalSelection: new Set(),
-  })
+      normalSelection: new Set(),
+    })
     const constraints: Constraints = {
       c1: { render: { kind: 'symbol_horizontal', at: [5, 0] }, residual: 0, superfluous: true } as Constraints[string],
     }
@@ -164,8 +164,8 @@ describe('ConstraintTile see-through background', () => {
     // constraint the solve blamed must stand out inside that, in the one
     // darker red the scene language reserves for culprits.
     useEditorState.setState({
-    normalSelection: new Set(),
-  })
+      normalSelection: new Set(),
+    })
     const constraints: Constraints = {
       c1: { render: { kind: 'symbol_horizontal', at: [5, 0] }, residual: 0.5, culprit: true } as Constraints[string],
     }
@@ -178,8 +178,8 @@ describe('ConstraintTile see-through background', () => {
 
   it('hovering a tile still paints a fill', () => {
     useEditorState.setState({
-    normalSelection: new Set(),
-  })
+      normalSelection: new Set(),
+    })
     const { container } = renderOverlays()
     fireEvent.mouseEnter(container.querySelector('img')!.parentElement!)
     expect(tileStyle(container).background).not.toBe('transparent')
@@ -190,8 +190,8 @@ describe('ConstraintTile see-through background', () => {
     // as a glyph; its hover text is the sentence, named the way the sketch
     // warning names it.
     useEditorState.setState({
-    normalSelection: new Set(),
-  })
+      normalSelection: new Set(),
+    })
     const constraints: Constraints = {
       c1: {
         render: { kind: 'symbol_horizontal', at: [5, 0] },
@@ -539,8 +539,8 @@ describe('tiles sharing a position share one anchor', () => {
 describe('ConstraintTile click selection and unmount cleanup', () => {
   it('clicking a tile selects its composite constraint id', () => {
     useEditorState.setState({
-    normalSelection: new Set(),
-  })
+      normalSelection: new Set(),
+    })
     const { container } = renderOverlays()
     fireEvent.click(container.querySelector('img')!.parentElement!)
     expect(useSketchEditorStore.getState().normalSelection.has('constraint:feat1:c1')).toBe(true)

@@ -150,6 +150,11 @@ describe('DimensionLabel weak tooltip', () => {
     const sentence = "x distance 2 holds the profile only at the arc's extreme, so the profile can rotate by up to 0.045 deg."
     const shown = await renderLabel({ title: sentence, hovered: true })
     expect(labelWrapper().textContent).toContain(sentence)
+    // Out of flow, or the centred block grows under the cursor and the hover
+    // hit box drops it (the sentence would strobe in and out).
+    const tooltip = labelWrapper().querySelectorAll('div')[1]
+    expect(tooltip?.style.position).toBe('absolute')
+    expect(tooltip?.textContent).toBe(sentence)
     shown.unmount()
 
     await act(async () => {})
