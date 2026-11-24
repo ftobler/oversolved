@@ -134,9 +134,12 @@ describe.skipIf(!oc)('a through hole with material on both sides of its plane (r
   it('names the site under the block in the warning, not the clear one', () => {
     const { result } = drill({ direction: 'normal', ...COUNTERBORE })
     const warning = String(result.solver_warning ?? '')
-    expect(warning).toContain('p_under')
+    expect(warning).toBe(
+      'hole: point 1 has material on the other side; drilled reverse at all sites ' +
+      '(a through hole drills one side), set direction: reverse to keep it',
+    )
+    expect(warning).not.toContain('point 2')
     expect(warning).not.toContain('p_clear')
-    expect(warning).toContain('drilled reverse at all sites')
   })
 
   it('ends the cosmetic thread at the plate bottom at both sites', () => {
@@ -170,7 +173,7 @@ describe.skipIf(!oc)('a through hole with material on both sides of its plane (r
     expect(result.direction).toBe('reverse')
     expect(result.hole_count).toBe(1)
     expect(result.status).toBe('partial')
-    expect(String(result.exception)).toContain('p_clear')
+    expect(String(result.exception)).toContain('point 2')
     for (const bore of cylinders.filter(c => near(c.radius, BORE_R))) {
       expect(bore.zMin).toBeGreaterThanOrEqual(5 - 1e-6)
     }

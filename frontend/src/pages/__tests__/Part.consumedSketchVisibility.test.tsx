@@ -133,7 +133,7 @@ features:
     suppressed: true
 `)
     await screen.findByTitle('Feature mode')
-    const row = screen.getByText('Sketch 1').closest('.feature-item') as HTMLElement
+    const row = screen.getByText("sketch 'Sketch 1'").closest('.feature-item') as HTMLElement
     // The sketch is not drawn, but its stored flag is still visible, so the
     // eye offers Hide rather than rewriting "visible" to true on every press.
     fireEvent.click(within(row).getByTitle('Hide'))

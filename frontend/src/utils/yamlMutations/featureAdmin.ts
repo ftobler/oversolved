@@ -12,6 +12,7 @@ import { allConsumedSketchIds } from '@/utils/query/consumedSketches'
 import { docVisibleFeatureIds, isPlaneVisibilityTarget } from '@/utils/featureVisibility'
 import { isSketchClassFeature } from '@/utils/sketchClass'
 import { parseProjectionSketchSource } from '@/kernel/features/projectionMembers'
+import { entityDisplayName, featureDisplayName } from '@/utils/core/displayNames'
 
 export function applyAddSketch(doc: PartDoc, featureId: string, label?: string, plane?: string): void {
   if (!doc.features) doc.features = []
@@ -108,10 +109,17 @@ export function reorderProjectionProblem(doc: PartDoc, featureId: string, toInde
       if (consumerId !== featureId && source.sketchId !== featureId) continue
       const sourceAt = order.indexOf(source.sketchId)
       if (sourceAt < 0 || sourceAt < consumerAt) continue
+      const sourceSketch = features.find(f => f.id === source.sketchId)
+      const movingName = featureDisplayName(features.find(f => f.id === featureId), features)
+      const consumerName = featureDisplayName(consumer, features)
+      const sourceName = featureDisplayName(sourceSketch, features)
+      const projectedName = sourceSketch === undefined
+        ? 'a picked operand'
+        : entityDisplayName(sourceSketch, source.entityId) ?? 'a picked operand'
       const relation = featureId === consumerId
-        ? `above ${source.sketchId}`
-        : featureId === source.sketchId ? `below ${consumerId}` : 'to that position'
-      return `cannot move ${featureId} ${relation}: ${consumerId} projects ${constraint.source} `
+        ? `above ${sourceName}`
+        : featureId === source.sketchId ? `below ${consumerName}` : 'to that position'
+      return `cannot move ${movingName} ${relation}: ${consumerName} projects ${projectedName} `
         + '(a sketch can only project earlier sketches)'
     }
   }

@@ -32,6 +32,9 @@ export interface BuildDeps {
     featureId: string,
     feature: Record<string, unknown>,
     result: FeatureResult,
+    // The document's ordered feature rows, for a display name (a sketch's label
+    // or per-kind ordinal) in the precision record a downstream feature reads.
+    featuresById?: Record<string, Record<string, unknown>>,
   ) => void
   // Create a fresh global repository.
   initGlobalRepo: () => Repository

@@ -149,7 +149,8 @@ describe.skipIf(!ready)('sweep profile refs (real OCC + Rust solver)', () => {
       ],
     })
     const failed = run.features.find(feature => feature.id === 'sw')
-    expect(failed?.message).toMatch(/picked profile edges do not form a closed loop \(sketch lp\)/)
+    expect(failed?.message).toMatch(/the picked profile edges do not form a closed loop in sketch \d+/)
+    expect(failed?.message).not.toContain('lp')
   }, 120_000)
 
   it('refuses a ring section by sketch and loop and names the two-sweep workaround', async () => {
@@ -164,7 +165,7 @@ describe.skipIf(!ready)('sweep profile refs (real OCC + Rust solver)', () => {
       ],
     })
     const failed = run.features.find(feature => feature.id === 'sw')
-    expect(failed?.message).toContain('sweep: sketch ringA, loop 1 has a hole')
+    expect(failed?.message).toContain('sweep: sketch 2, loop 1 has a hole')
     expect(failed?.message).toContain('a multisection section must be one outer loop')
     expect(failed?.message).toContain('second cut feature, naming its merge_target')
   }, 120_000)
@@ -222,9 +223,9 @@ describe.skipIf(!ready)('sweep profile refs (real OCC + Rust solver)', () => {
       ],
     })
     const problem = run.features.find(feature => feature.id === 'sw')
-    expect(problem?.message).toBe(
-      "sketch 'late' is defined after this sweep; move it up with reorder_features {featureId: 'late', before: 'sw'}",
-    )
+    expect(problem?.message).toMatch(/^sketch \d+ is defined after sweep \d+; move it up with `reorder_features` \(before this row\)$/)
+    expect(problem?.message).not.toContain('late')
+    expect(problem?.message).toContain('`reorder_features` (before this row)')
     expect(problem?.message).not.toContain('sketch not found')
   }, 120_000)
 
@@ -247,8 +248,7 @@ describe.skipIf(!ready)('sweep profile refs (real OCC + Rust solver)', () => {
       ],
     })
     const problem = run.features.find(feature => feature.id === 'sw')
-    expect(problem?.message).toBe(
-      "sketch 'latePath' is defined after this sweep; move it up with reorder_features {featureId: 'latePath', before: 'sw'}",
-    )
+    expect(problem?.message).toMatch(/^sketch \d+ is defined after sweep \d+; move it up with `reorder_features` \(before this row\)$/)
+    expect(problem?.message).not.toContain('latePath')
   }, 120_000)
 })

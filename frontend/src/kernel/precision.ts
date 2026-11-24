@@ -35,6 +35,9 @@ export interface KernelPrecision {
   angular: number
   linear: number
   sketch?: string
+  // The sketch as the user reads it (`sketch 2` / `sketch 'Base'`); the warning
+  // names this, never the raw `sketch` id.
+  sketch_name?: string
   weak?: boolean
 }
 
@@ -84,6 +87,7 @@ export function maxPrecision(
     angular: Math.max(a.angular, b.angular),
     linear: Math.max(a.linear, b.linear),
     ...(winner.sketch ? { sketch: winner.sketch } : {}),
+    ...(winner.sketch_name ? { sketch_name: winner.sketch_name } : {}),
     ...(winner.weak ? { weak: true } : {}),
   }
 }
@@ -127,9 +131,11 @@ const tol = (value: number): string => value.toExponential()
 export function precisionCeilingWarning(precision: KernelPrecision): string | null {
   const { ceilingMiss } = mergeTolerance(precision)
   if (ceilingMiss === null) return null
-  const who = precision.sketch
-    ? `sketch ${precision.sketch} solved to`
-    : 'the merged geometry carries'
+  const who = precision.sketch_name
+    ? `${precision.sketch_name} solved to`
+    : precision.sketch
+      ? 'the sketch solved to'
+      : 'the merged geometry carries'
   const parts: string[] = []
   if (ceilingMiss.angular) {
     parts.push(
@@ -144,7 +150,7 @@ export function precisionCeilingWarning(precision: KernelPrecision): string | nu
     )
   }
   const pointer = precision.weak && precision.sketch
-    ? `; see the warning on sketch ${precision.sketch}`
+    ? `; see the warning on ${precision.sketch_name ?? 'the sketch'}`
     : ''
   return parts.join('; ') + pointer
 }
@@ -156,24 +162,28 @@ export function precisionKey(sketchId: string): string {
 }
 
 /** The precision a solve result reports for `sketchId`, or null when the result
- *  carries neither miss (a non-sketch feature, a failed solve). The weak flag
- *  rides along so a downstream ceiling warning can point at that sketch's own
- *  warning. */
+ *  carries neither miss (a non-sketch feature, a failed solve). `sketchName` is
+ *  the sketch as the user reads it, so a downstream warning can name it; the
+ *  weak flag rides along so a downstream ceiling warning can point at that
+ *  sketch's own warning. */
 export function precisionOfSolve(
   result: { angular_miss?: unknown; linear_miss?: unknown; weak_constraints?: unknown },
   sketchId: string,
+  sketchName?: string,
 ): KernelPrecision | null {
   if (!('angular_miss' in result) && !('linear_miss' in result)) return null
   const weak = Array.isArray(result.weak_constraints) && result.weak_constraints.length > 0
-  return contractPrecision(result.angular_miss, result.linear_miss, sketchId, weak)
+  const precision = contractPrecision(result.angular_miss, result.linear_miss, sketchId, weak)
+  return sketchName === undefined ? precision : { ...precision, sketch_name: sketchName }
 }
 
 function isPrecisionRecord(value: unknown): value is KernelPrecision {
   if (value === null || typeof value !== 'object') return false
-  const v = value as Partial<KernelPrecision> & { sketch?: unknown }
+  const v = value as Partial<KernelPrecision> & { sketch?: unknown; sketch_name?: unknown }
   return typeof v.angular === 'number' && Number.isFinite(v.angular)
     && typeof v.linear === 'number' && Number.isFinite(v.linear)
     && (v.sketch === undefined || typeof v.sketch === 'string')
+    && (v.sketch_name === undefined || typeof v.sketch_name === 'string')
     && (v.weak === undefined || typeof v.weak === 'boolean')
 }
 

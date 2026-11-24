@@ -232,7 +232,7 @@ describe.skipIf(!hasOcc)('boolean tools: @array includes the copies an add array
     const union = solveBoolean(oc, r.scope, r.table, {
       id: 'bool2', boolean: { operation: 'union', target: '@body_spoke_1', tools: ['@body_bracket'] },
     }, new Repository(), r.store)
-    expect(union.solver_warning).toContain("union: tool '@body_bracket' does not intersect the target; skipped")
+    expect(union.solver_warning).toContain('union: tool 1 does not intersect the target; skipped')
     expect(r.store.body_bracket?.split_from).toBeUndefined()
 
     const plateBefore = volume(r, 'body_plate')
@@ -316,8 +316,8 @@ describe.skipIf(!hasOcc)('boolean tools: @array includes the copies an add array
     // instances, one used. Before the split siblings were counted the array had
     // one member and the hand list used zero of it, so nothing warned and the
     // din_rail trap (a count raised after the hand list) stayed silent.
-    expect(res.solver_warning).toContain('pattern ca1 has 6 instances, the boolean uses 1')
-    expect(res.solver_warning).toContain("name '@ca1' in tools")
+    expect(res.solver_warning).toContain('circular pattern 1 has 6 instances, the boolean uses 1')
+    expect(res.solver_warning).toContain('name that pattern in tools')
     r.scope.dispose()
   })
 

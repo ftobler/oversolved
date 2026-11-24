@@ -139,7 +139,7 @@ describe('import_dxf at the drive boundary', () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.error.code).toBe('unknown-target')
-    expect(result.error.message).toMatch(/no sketch feature "nope"/)
+    expect(result.error.message).toMatch(/no sketch feature in this document/)
   })
 
   it('admits a valid file and keeps the content as the mutation field', () => {

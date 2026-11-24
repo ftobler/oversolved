@@ -7,6 +7,7 @@ import { getFeatureIcon } from '@/components/layout/featureIcons'
 import { StatusPanel } from '@/components/shared/StatusPanel'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
 import { canManageFeature } from '@/pages/buildContextMenu'
+import { featureDisplayName } from '@/utils/core/displayNames'
 import '@/components/layout/Glass.css'
 import okIcon from '@/assets/icons/dialog-ok.svg'
 import cancelIcon from '@/assets/icons/dialog-cancel.svg'
@@ -59,6 +60,14 @@ export function FeatureEditPanel() {
   // solved has none, and the row stays hidden.
   const solved = solveResults[feature.id]
   const mark = featureFailure(feature.id, solveResults, parts)
+  // The card names the row the same way the tree does. Rename still starts from
+  // the authored label when there is one, so committing it does not fold the
+  // kind prefix into the label; an unlabeled row starts from its ordinal name
+  // instead of the raw feature id.
+  const displayName = featureDisplayName(feature, features)
+  const renameSeed = typeof feature.label === 'string' && feature.label.trim() !== ''
+    ? feature.label
+    : displayName
 
   // Two siblings, not a wrapper: the part page mounts this inside the right
   // overlay stack, whose 12px gap is what separates the panel, the status card
@@ -72,7 +81,7 @@ export function FeatureEditPanel() {
             src={getFeatureIcon(feature.kind)}
             alt={feature.kind || 'feature'}
           />
-          <span className="feature-edit-panel-title">{feature.label || feature.id}</span>
+          <span className="feature-edit-panel-title">{displayName}</span>
           {canRename && (
             <button
               type="button"
@@ -80,7 +89,7 @@ export function FeatureEditPanel() {
               onClick={() => onRequestRename({
                 kind: 'feature',
                 id: feature.id,
-                currentName: feature.label || feature.id,
+                currentName: renameSeed,
               })}
               title="Rename"
               aria-label="Rename"

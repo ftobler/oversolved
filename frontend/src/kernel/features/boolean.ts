@@ -38,6 +38,7 @@ import { offsetSolid, OffsetError } from '../occ/offsetShape'
 import { SubShapeMap } from '../occ/subshapeIdentity'
 import { resplitPart } from './partSplit'
 import { transferBooleanNames } from './booleanLineage'
+import { featureDisplayName, featureRows } from '@/utils/core/displayNames'
 import { readPartNames } from '../occ/partNames'
 import { stripRefSigil } from '@/utils/refSigil'
 import { patternSubject } from '@/utils/core/patternSubject'
@@ -70,9 +71,9 @@ const OP_MAP: Record<string, 'fuse' | 'cut' | 'common'> = {
  * the clearance rather than falling back to an ungrown cut or the generic
  * tangency nudge (decision 6).
  */
-function clearanceFailure(clearance: number, toolRef: string, reason: string): Error {
+function clearanceFailure(clearance: number, toolLabel: string, reason: string): Error {
   return new Error(
-    `boolean: clearance ${clearance} could not be applied to tool '${toolRef}': ${reason}. ` +
+    `boolean: clearance ${clearance} could not be applied to ${toolLabel}: ${reason}. ` +
     "Reduce the clearance; a negative clearance cannot exceed the tool's smallest fillet radius or wall half-thickness.",
   )
 }
@@ -88,12 +89,12 @@ function growTool(
   scope: DisposeScope,
   toolShape: OccShape,
   clearance: number,
-  toolRef: string,
+  toolLabel: string,
 ): { shape: OccShape; faceImage: (src: OccSubShape) => OccSubShape } {
   try {
     return offsetSolid(oc, scope, toolShape, clearance)
   } catch (e) {
-    if (e instanceof OffsetError) throw clearanceFailure(clearance, toolRef, e.message)
+    if (e instanceof OffsetError) throw clearanceFailure(clearance, toolLabel, e.message)
     throw e
   }
 }
@@ -155,7 +156,9 @@ function patternMemberIds(patternId: string, def: Dict, partStore: Record<string
  * typed for (din_rail F1: raising the count left the new slots floating free).
  * The target is dropped from an expansion, so `target: <source>, tools:
  * [@ar1]` unions or subtracts the copies without naming the source as its own
- * tool. Returns the expanded refs and the pattern ids that were named.
+ * tool. Returns the expanded refs, each one's authored pick position (so a
+ * refusal can say `tool 2` for a chip that expanded to several bodies), and the
+ * pattern ids that were named.
  */
 function expandPatternTools(
   toolRefs: string[],
@@ -163,15 +166,16 @@ function expandPatternTools(
   featureId: string,
   featuresById: Record<string, Dict>,
   partStore: Record<string, PartSolid>,
-): { refs: string[]; namedPatterns: Set<string> } {
+): { refs: string[]; positions: number[]; namedPatterns: Set<string> } {
   const refs: string[] = []
+  const positions: number[] = []
   const namedPatterns = new Set<string>()
   const order = Object.keys(featuresById)
   // A solver unit test may pass only the referenced features, with the
   // boolean's own id absent; then nothing can be proven downstream and every
   // present pattern counts as upstream, the historical behaviour.
   const selfIndex = order.indexOf(featureId)
-  for (const ref of toolRefs) {
+  for (const [authoredIndex, ref] of toolRefs.entries()) {
     const key = stripRefSigil(ref, '@')
     const def = featuresById[key]
     // A body id wins over a feature id of the same spelling. A pattern defined
@@ -182,19 +186,33 @@ function expandPatternTools(
     const upstream = key !== featureId && (selfIndex < 0 || order.indexOf(key) < selfIndex)
     if (def !== undefined && isPartPattern(def) && upstream && !(key in partStore)) {
       namedPatterns.add(key)
-      refs.push(...patternMemberIds(key, def, partStore).filter((id) => id !== targetId))
+      const members = patternMemberIds(key, def, partStore).filter((id) => id !== targetId)
+      refs.push(...members)
+      // Every member of one authored chip reports the chip's position, so a
+      // refusal says "tool 2", not "tool 7" for the seventh expanded body.
+      positions.push(...members.map(() => authoredIndex + 1))
     } else {
       refs.push(ref)
+      positions.push(authoredIndex + 1)
     }
   }
   // A pattern listed twice, or beside its own instance ids, folds each body once.
-  return { refs: [...new Set(refs)], namedPatterns }
+  const seen = new Set<string>()
+  const keptRefs: string[] = []
+  const keptPositions: number[] = []
+  for (let i = 0; i < refs.length; i++) {
+    if (seen.has(refs[i])) continue
+    seen.add(refs[i])
+    keptRefs.push(refs[i])
+    keptPositions.push(positions[i])
+  }
+  return { refs: keptRefs, positions: keptPositions, namedPatterns }
 }
 
 /**
  * A hand-typed tool list that names some but not all of one pattern's bodies,
- * the din_rail F1 trap: the warning names the counts and the pattern ref that
- * follows the count instead.
+ * the din_rail F1 trap: the warning names the counts and the pattern by its
+ * display name, and says to name the pattern itself to take every instance.
  */
 function partialPatternWarnings(
   toolIds: Set<string>,
@@ -206,6 +224,7 @@ function partialPatternWarnings(
 ): string[] {
   const warnings: string[] = []
   const order = Object.keys(featuresById)
+  const rows = featureRows(featuresById)
   const selfIndex = order.indexOf(featureId)
   for (const [fid, def] of Object.entries(featuresById)) {
     const upstream = fid !== featureId && (selfIndex < 0 || order.indexOf(fid) < selfIndex)
@@ -214,18 +233,20 @@ function partialPatternWarnings(
     const used = members.filter((id) => toolIds.has(id)).length
     if (used > 0 && used < members.length) {
       warnings.push(
-        `pattern ${fid} has ${members.length} instances, the boolean uses ${used}; ` +
-          `name '@${fid}' in tools to take every instance`,
+        `${featureDisplayName(def, rows)} has ${members.length} instances, the boolean uses ${used}; ` +
+          'name that pattern in tools to take every instance',
       )
     }
   }
   return warnings
 }
 
-/** One resolved tool pick: the authored ref (for a warning) and the body it names. */
+/** One resolved tool pick: the body it names and its 1-based position among the
+ *  authored tool picks (a pattern chip keeps one position for every member it
+ *  expands to), which is how a refusal names it ("tool 2"). */
 interface ToolEntry {
-  ref: string
   part: PartSolid
+  position: number
 }
 
 /**
@@ -326,8 +347,8 @@ export function solveBoolean(
   if (op === undefined) throw new Error(`boolean: unknown operation '${operation}'`)
 
   const targetPart = resolvePart(targetRef, partStore)
-  if (targetPart.shape === null) throw new Error(`boolean: target '${targetRef}' has no shape`)
-  const { refs: toolRefs, namedPatterns } = expandPatternTools(authoredTools, targetPart.id, featureId, featuresById, partStore)
+  if (targetPart.shape === null) throw new Error('boolean: the target part has no shape')
+  const { refs: toolRefs, positions: toolPositions, namedPatterns } = expandPatternTools(authoredTools, targetPart.id, featureId, featuresById, partStore)
   if (toolRefs.length === 0) {
     throw new Error(`boolean: the pattern tool(s) ${[...namedPatterns].join(', ')} have no part besides the target`)
   }
@@ -365,9 +386,10 @@ export function solveBoolean(
   // treats its picks as a set, so a body listed twice is one tool.
   const symmetric = op === 'fuse' || op === 'common'
   const toolEntries: ToolEntry[] = []
-  for (const toolRef of toolRefs) {
+  for (const [refIndex, toolRef] of toolRefs.entries()) {
     const toolPart = resolvePart(toolRef, partStore)
-    if (toolPart.shape === null) throw new Error(`boolean: tool '${toolRef}' has no shape`)
+    const position = toolPositions[refIndex]
+    if (toolPart.shape === null) throw new Error(`boolean: tool ${position} has no shape`)
     if (toolPart.id === targetPart.id) {
       // The target and the tool resolved to the same body. A union/common is a
       // no-op with a real cost, a cut eats the whole target, and the tool
@@ -375,12 +397,12 @@ export function solveBoolean(
       // would release it again. Refuse before any OCC work, even with
       // keep_tools: target-as-tool is a spec error regardless.
       throw new Error(
-        `boolean: tool '${toolRef}' resolves to the target part '${targetPart.id}'; ` +
+        `boolean: tool ${position} resolves to the target part; ` +
         'a part cannot be its own tool',
       )
     }
     if (symmetric && toolEntries.some((entry) => entry.part.id === toolPart.id)) continue
-    toolEntries.push({ ref: toolRef, part: toolPart })
+    toolEntries.push({ part: toolPart, position })
   }
 
   // The base anchors the fold. A union/intersect folds the base's connected
@@ -392,12 +414,12 @@ export function solveBoolean(
       oc, table, op, resultShape, toolEntries, partStore,
     )
     for (const tool of disconnected) {
-      warn(`${operation}: tool '${tool.ref}' does not intersect the target; skipped`)
+      warn(`${operation}: tool ${tool.position} does not intersect the target; skipped`)
     }
     foldEntries = ordered
   }
 
-  for (const { ref: toolRef, part: toolBody } of foldEntries) {
+  for (const { part: toolBody, position: toolPosition } of foldEntries) {
     const toolShape = table.get<OccShape>(toolBody.shape!)
     // A helical band meeting the wall of its coaxial cylinder makes the clean's
     // face merge (ShapeUpgrade_UnifySameDomain with unifyFaces) spin forever;
@@ -418,7 +440,7 @@ export function solveBoolean(
     const toolNames = readPartNames(oc, scope, toolShape, toolBody)
     let cutTool = toolShape
     if (op === 'cut' && clearance !== 0) {
-      const grown = growTool(oc, scope, toolShape, clearance, toolRef)
+      const grown = growTool(oc, scope, toolShape, clearance, `tool ${toolPosition}`)
       cutTool = scope.track(grown.shape)
       const rekeyed = new SubShapeMap<string>()
       for (const [face, uuid] of toolNames.faceNames.entries()) {
@@ -447,9 +469,9 @@ export function solveBoolean(
         // clearance rather than skipping: a missing hole shown as 'ok' is worse
         // than an error (decision 6).
         if (op === 'cut' && clearance < 0) {
-          throw clearanceFailure(clearance, toolRef, 'the shrunk tool does not intersect the target')
+          throw clearanceFailure(clearance, `tool ${toolPosition}`, 'the shrunk tool does not intersect the target')
         }
-        warn(`${operation}: tool '${toolRef}' does not intersect the target; skipped`)
+        warn(`${operation}: tool ${toolPosition} does not intersect the target; skipped`)
         continue
       }
     }
@@ -465,7 +487,7 @@ export function solveBoolean(
       // A clearance growth can push the cut into a tangency the kernel cannot
       // resolve; name the clearance rather than the generic nudge message.
       if (op === 'cut' && clearance !== 0 && e instanceof BooleanSoundnessError) {
-        throw clearanceFailure(clearance, toolRef, e.message)
+        throw clearanceFailure(clearance, `tool ${toolPosition}`, e.message)
       }
       throw e
     }

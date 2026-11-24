@@ -4,7 +4,7 @@ import { usePartEditorStore } from '@/stores/partEditorStore'
 import {
   makeCallbacks, renderSidebar, resetStores, setupRollbackStore as setupStore,
   grabRollback, movePointer, releasePointer, layoutFeatureRows, pressRow,
-  builtInFeatures, extrudeFeature, sketchFeature,
+  builtInFeatures, extrudeFeature, sketchFeature, featureRow,
 } from './sidebarTestHarness'
 import { useEditorState } from '@/hooks/useEditorState'
 
@@ -30,7 +30,7 @@ describe('rollback bar drag convergence', () => {
     layoutFeatureRows()
 
     const rollbackBar = screen.getByTitle('Rollback')
-    const featureItem = screen.getByText('ex1').closest('.feature-item')!
+    const featureItem = featureRow('ex1')
 
     grabRollback(rollbackBar)
     movePointer(170)  // upper half of ex1 (row 4 spans 160..200)
@@ -46,7 +46,7 @@ describe('rollback bar drag convergence', () => {
     layoutFeatureRows()
 
     const rollbackBar = screen.getByTitle('Rollback')
-    const featureItem = screen.getByText('ex1').closest('.feature-item')!
+    const featureItem = featureRow('ex1')
 
     grabRollback(rollbackBar)
     movePointer(190)  // lower half of ex1
@@ -112,7 +112,7 @@ describe('rollback bar drag convergence', () => {
     renderSidebar(makeCallbacks({ onSetRollbackPosition }))
     layoutFeatureRows()
 
-    const originItem = screen.getByText('Origin').closest('.feature-item')!
+    const originItem = featureRow('Origin')
 
     grabRollback(screen.getAllByTitle('Rollback')[0])
     movePointer(10)  // over Origin, which the bar may never be parked above
@@ -131,7 +131,7 @@ describe('rollback bar drag convergence', () => {
     layoutFeatureRows()
 
     // sk1 sits at index 4, ex1 at 5: the lower half of ex1 is slot 6.
-    pressRow(screen.getByText('sk1').closest('.feature-item')!, { clientY: 180 })
+    pressRow(featureRow('sk1'), { clientY: 180 })
     movePointer(230)
     releasePointer(230)
 

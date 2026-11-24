@@ -50,6 +50,7 @@ import {
 import { swallowUnlessTrap } from '../errors'
 import { maxPrecision, sketchPrecision, type KernelPrecision } from '../precision'
 import { MAX_TWIST_DEG, MAX_TWIST_SECTIONS, TWIST_STEP_DEG } from '@/utils/core/twistLimits'
+import { sketchDisplayName, featureRows } from '@/utils/core/displayNames'
 
 type Dict = Record<string, unknown>
 
@@ -477,8 +478,9 @@ export function solveExtrude(
         // Face picks stay out of this guard: each face carries its own 3D frame,
         // and the mixed/coplanar guards below own them.
         throw new Error(
-          `extrude: profile spans two different sketch planes ('${firstSketchId}' and ` +
-          `'${resolved.sketchId}'); build one feature per plane`,
+          `extrude: profile spans two different sketch planes (` +
+          `${sketchDisplayName(firstSketchId, featureRows(featuresById))} and ` +
+          `${sketchDisplayName(resolved.sketchId, featureRows(featuresById))}); build one feature per plane`,
         )
       }
     }

@@ -464,7 +464,7 @@ export function build(
         laterVariablesAt(features, featureIndex, variableContext),
       )
       featureResult.solve_ms = performance.now() - t0
-      deps.postRegister(globalRepo, fid, feature, featureResult)
+      deps.postRegister(globalRepo, fid, feature, featureResult, featuresById)
       result[fid] = featureResult
       const vv = variableValueOf(feature, featureResult)
       if (vv) variableContext[vv.name] = vv.value

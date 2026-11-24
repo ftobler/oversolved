@@ -20,6 +20,14 @@ import {
 import { pointDistanceZeroProblem, round } from './yamlMutations/helpers'
 import { dimensionSizeProblem } from './entitySizeProblems'
 import {
+  constraintDisplayName,
+  entityDisplayName,
+  featureDisplayName,
+  positionWord,
+  type NamingRow,
+  type SketchNamingSource,
+} from '@/utils/core/displayNames'
+import {
   COLINEAR_SHAPE_REASON,
   colinearShapeProblem,
   constraintOperandSide,
@@ -109,6 +117,22 @@ export function isLegacyQueryWrapper(target: unknown): boolean {
 }
 
 /**
+ * The noun for a ref that cannot be a constraint operand. It names what kind of
+ * thing the pick is, never the raw ref: the ref can carry a document id, and
+ * this sentence reaches both the add-time refusal and the solve's ignored-row
+ * warning.
+ */
+function operandRefNoun(target: string): string {
+  if (target.startsWith('@builtin_plane_')) return 'a plane'
+  if (target.startsWith('?') || target.startsWith('face:') || target.startsWith('edge:')
+    || /\/face\/|\/edge\//.test(target)) return 'a face or edge query'
+  // An `entity:`/`vertex:` ref is accepted by `isConstraintOperandRef` and never
+  // reaches this function; an `@<id>/<eid>` fill can name this sketch or another,
+  // and the active sketch id is not a parameter here, so say only what is true.
+  return 'not sketch geometry'
+}
+
+/**
  * Why a ref cannot be a constraint operand, or null when it can. This is the
  * closed-list answer for the applier and the lowering: a plane, another feature,
  * a non-projectable `?` query, a constraint tile and any other spelling are not
@@ -121,23 +145,31 @@ export function constraintOperandRefProblem(kind: string, target: unknown): stri
   if (typeof target !== 'string') return null
   if (isConstraintOperandRef(target)) return null
   const label = CONSTRAINT_BY_KIND.get(kind)?.label ?? kind
-  const noun = target.startsWith('@builtin_plane_') ? 'a plane' : 'not sketch geometry'
-  return `${label} takes sketch geometry; ${target} is ${noun}`
+  return `${label} takes sketch geometry; the picked target is ${operandRefNoun(target)}`
 }
 
 /** The one warning sentence for a constraint ignored by either the live-doc
  *  lowering or the solver's survivors filter. Shared with the editor tile, which
  *  shows the same sentence for a dropped constraint, so the tooltip and the tree
- *  can never disagree about what was ignored. */
-export function ignoredConstraintWarning(id: string, kind: string, reason: string): string {
-  return `constraint ${id} (${kind}) names operands it cannot use (${reason}) and was ignored.`
+ *  can never disagree about what was ignored. The row is named by its kind and
+ *  ordinal ("coincident 4"), the same scheme the entities use; an id the
+ *  authored list does not hold falls back to the kind alone. */
+export function ignoredConstraintWarning(
+  id: string,
+  kind: string,
+  reason: string,
+  sketch?: SketchNamingSource,
+): string {
+  const name = constraintDisplayName(sketch, id)
+  const word = CONSTRAINT_BY_KIND.get(kind)?.label.toLowerCase() ?? kind.replace(/_/g, ' ')
+  const subject = name ?? `${word} constraint`
+  return `${subject} names geometry it cannot use (${reason}) and was ignored.`
 }
 
 /**
  * The user-facing noun for a constraint in the weak warning: the axis-distance
  * family in its own words ("x distance 2"), any other kind as its name and
- * value. Never the id (feature/ui-names-not-ids.md; until the shared display
- * names land this is the kind-and-value form that plan allows).
+ * value. Never the id.
  */
 export function weakConstraintNoun(kind: string | undefined, value: number | undefined): string {
   const measure = value === undefined || !Number.isFinite(value)
@@ -258,20 +290,21 @@ function groupProblem(
       point = resolved?.point
     }
     if (id === null) continue
+    const name = entityDisplayName(feature, id) ?? 'that entity'
     // A face projection's members are derived solve entities, never document
     // rows, so they are not in `entityIds` at all.
     if (projectedMembers.has(id)) {
-      return `group cannot include the projected member "${id}"; delete its projection first`
+      return `group cannot include ${name}; delete its projection first`
     }
     if (!entityIds.has(id)) continue
     if (projected.has(id)) {
-      return `group cannot include the projected entity "${id}"; delete its projection first`
+      return `group cannot include ${name}; delete its projection first`
     }
     if (point !== undefined) {
       const info = infoById.get(id)
       const keys = info === undefined ? undefined : entityPointKeys(info.kind, info.nParams, info.handles)
       if (info !== undefined && keys !== undefined && !keys.has(point)) {
-        return `group cannot hold point "${point}" of ${info.kind} "${id}"; it has no such point`
+        return `group cannot hold the ${point} point of ${name}; it has no such point`
       }
       // A Point's single vertex `xy` is the entity itself: the member is whole,
       // and the applier stores it as `$P`.
@@ -286,7 +319,7 @@ function groupProblem(
   }
   for (const id of whole) {
     if (points.has(id)) {
-      return `group names entity "${id}" both whole and by point; drop the duplicate`
+      return `group names ${entityDisplayName(feature, id) ?? 'that entity'} both whole and by point; drop the duplicate`
     }
   }
   const pointCount = [...points.values()].reduce((n, list) => n + list.length, 0)
@@ -436,6 +469,29 @@ export function duplicateConstraintOf(
 }
 
 /**
+ * One constraint operand as a sentence subject: the entity by kind and ordinal
+ * ("line 2", "line 2 start"), the origin, or a noun for a ref this sketch does
+ * not hold. The raw ref is never printed: it carries the entity id.
+ */
+function operandSubject(target: string, sketch: SketchShape | undefined): string {
+  if (target === '@builtin_origin') return 'the origin'
+  const entity = (id: string): string => entityDisplayName(sketch, id) ?? 'a picked operand'
+  if (target.startsWith('$')) {
+    const resolved = resolveVertexRef(new Set((sketch?.entities ?? []).map(e => e.id)), target)
+    if (resolved === null) return 'a stale operand'
+    const name = entity(resolved.entity)
+    return resolved.point === undefined ? name : `${name} ${resolved.point}`
+  }
+  const parts = target.split(':')
+  if (parts[0] === 'entity') return entity(parts[2] ?? '')
+  if (parts[0] === 'vertex') {
+    const name = entity(parts[2] ?? '')
+    return parts[3] === undefined ? name : `${name} ${parts[3]}`
+  }
+  return 'a picked operand'
+}
+
+/**
  * The duplicate sentence for a pick, or null. Kept beside `constraintShapeProblem`
  * because the two are composed in order: a malformed or inapplicable pick keeps
  * its own sentence, and only a well-formed pick can be refused as a duplicate.
@@ -450,7 +506,9 @@ export function duplicateConstraintProblem(
   if (feature === undefined) return null
   const duplicate = duplicateConstraintOf(feature.constraints, feature.id, kind, targets, value, sign)
   if (duplicate === null) return null
-  return `${kind} on ${targets.join(', ')} is already constraint ${duplicate.id}; a duplicate adds nothing`
+  const name = constraintDisplayName(feature, duplicate.id) ?? 'the same constraint'
+  return `${kind.replace(/_/g, ' ')} on ${targets.map(target => operandSubject(target, feature)).join(', ')} `
+    + `is already ${name}; a duplicate adds nothing`
 }
 
 /**
@@ -465,6 +523,7 @@ function constraintShapeProblem(
   kind: string,
   targets: readonly string[],
   value: number | undefined,
+  features: readonly NamingRow[] = [],
 ): string | null {
   if (isConstraintKindName(kind)) {
     const zero = pointDistanceZeroProblem(kind, value)
@@ -489,9 +548,10 @@ function constraintShapeProblem(
   // judged when the active sketch is known: a shape-only caller cannot classify
   // a feature-qualified ref.
   if (feature !== undefined) {
-    const foreign = targets.find(target => foreignConstraintTarget(String(target), featureId))
-    if (foreign !== undefined) {
-      return `constraint targets must be in sketch ${featureId}; project ${foreign} first (add_projected_entity)`
+    const foreignAt = targets.findIndex(target => foreignConstraintTarget(String(target), featureId))
+    if (foreignAt >= 0) {
+      return `the ${positionWord(foreignAt)} target must be in ${featureDisplayName(feature, features)}; `
+        + `project ${operandSubject(targets[foreignAt], feature)} first (add_projected_entity)`
     }
   }
 
@@ -627,7 +687,8 @@ export function addConstraintProblem(
   targets: readonly string[],
   value: number | undefined,
   sign?: number,
+  features: readonly NamingRow[] = [],
 ): string | null {
-  return constraintShapeProblem(feature, kind, targets, value)
+  return constraintShapeProblem(feature, kind, targets, value, features)
     ?? duplicateConstraintProblem(feature, kind, targets, value, sign)
 }

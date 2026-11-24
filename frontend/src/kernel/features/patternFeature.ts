@@ -42,6 +42,7 @@ import { solveRevolve } from './revolve'
 import { solveSweep } from './sweep'
 import { solveWrap } from './wrap'
 import { solveHole } from './hole'
+import { featureDisplayName, featureKindWord, featureRows, type NamingRow } from '@/utils/core/displayNames'
 import { extractErrorMessage, swallowUnlessTrap } from '../errors'
 import { stripRefSigil } from '@/utils/refSigil'
 import { solidCentroid, type Vec3 } from '../occ/primitives'
@@ -135,37 +136,43 @@ function resolveSources(
   }
   const order = Object.keys(featuresById)
   const patternAt = order.indexOf(patternFeatureId)
+  const rows = featureRows(featuresById)
   const seen = new Set<string>()
   const sources: ResolvedSource[] = []
   const dropped: string[] = []
-  for (const ref of refs) {
+  for (const [refIndex, ref] of refs.entries()) {
     const sourceId = stripRefSigil(ref, '@')
     if (sourceId === '' || seen.has(sourceId)) continue
     seen.add(sourceId)
     const source = featuresById[sourceId]
     if (source === undefined) {
-      dropped.push(`${noun}: source feature '${sourceId}' does not exist; it was dropped`)
+      // The id cannot be named, so name its place in the authored list.
+      dropped.push(
+        `${noun}: source ${refIndex + 1} of ${refs.length} is not in the document; it was dropped`,
+      )
       continue
     }
+    const name = featureDisplayName(source, rows)
     if (patternAt >= 0 && order.indexOf(sourceId) > patternAt) {
       dropped.push(
-        `${noun}: the source feature '${sourceId}' comes after this ${noun}; it was dropped ` +
-          `(move it up with reorder_features {featureId: '${sourceId}', before: '${patternFeatureId}'})`,
+        `${noun}: ${name} comes after this ${noun}; it was dropped ` +
+          '(move it up with `reorder_features` (before this row))',
       )
       continue
     }
     if (source.suppressed === true) {
-      throw new Error(`${noun}: the source feature '${sourceId}' is suppressed; unsuppress it to ${noun} it`)
+      throw new Error(`${noun}: ${name} is suppressed; unsuppress it to ${noun} it`)
     }
     const kind = String(source.kind ?? '')
     if (!isToolKind(kind)) {
       throw new Error(
-        `${noun}: '${sourceId}' is a ${kind || 'feature without a kind'}; ` + patternSourceKindSentence(noun),
+        `${noun}: ${name} is ${kind === '' ? 'a feature without a kind' : `a ${featureKindWord(kind)}`}; `
+        + patternSourceKindSentence(noun),
       )
     }
     const resolved = resolveFeatureExpressions(source, variables, laterVariables)
     if ('exception' in resolved) {
-      throw new Error(`${noun}: the source feature '${sourceId}' has an unresolved value: ${resolved.exception}`)
+      throw new Error(`${noun}: ${name} has an unresolved value: ${resolved.exception}`)
     }
     const feature = resolved.feature
     const sub = (feature[kind] as Dict | undefined) ?? {}
@@ -178,7 +185,7 @@ function resolveSources(
       const authored = (sub.operation as string) ?? 'add'
       if (authored !== 'add' && authored !== 'cut') {
         throw new Error(
-          `${noun}: the source feature '${sourceId}' has operation '${authored}'; ` +
+          `${noun}: ${name} has operation '${authored}'; ` +
             'repeat an add or a cut, not a feature that starts a new part',
         )
       }
@@ -186,7 +193,7 @@ function resolveSources(
     }
     if (kind === 'extrude' && ((sub.termination as string) === 'up_to' || (sub.termination as string) === 'up_to_next')) {
       throw new Error(
-        `${noun}: the source feature '${sourceId}' terminates ${sub.termination}, so its tool is trimmed once and the trim ` +
+        `${noun}: ${name} terminates ${sub.termination}, so its tool is trimmed once and the trim ` +
           'would travel with every copy; use a blind or through_all extrude instead',
       )
     }
@@ -202,7 +209,15 @@ function resolveSources(
  * one is the answer, none and several are refusals that name the fix rather than
  * picking a body by store order.
  */
-function resolvePatternTarget(sourceId: string, explicitRef: string, partStore: Record<string, PartSolid>, noun: string): PartSolid {
+function resolvePatternTarget(
+  sourceId: string,
+  explicitRef: string,
+  partStore: Record<string, PartSolid>,
+  noun: string,
+  rows: readonly NamingRow[] = [],
+  source?: NamingRow,
+): PartSolid {
+  const sourceName = featureDisplayName(source, rows)
   if (explicitRef) {
     try {
       return resolvePart(explicitRef, partStore)
@@ -219,13 +234,13 @@ function resolvePatternTarget(sourceId: string, explicitRef: string, partStore: 
   )
   if (candidates.length === 0) {
     throw new Error(
-      `${noun}: the source feature '${sourceId}' produced no part; ` +
+      `${noun}: ${sourceName} produced no part; ` +
         'check that it solved and comes before this feature',
     )
   }
   if (candidates.length > 1) {
     throw new Error(
-      `${noun}: the source feature '${sourceId}' touched ${candidates.length} parts ` +
+      `${noun}: ${sourceName} touched ${candidates.length} parts ` +
         `(${candidates.map((part) => part.id).join(', ')}); set target_body to one of them`,
     )
   }
@@ -316,7 +331,7 @@ function applyCopiesToTarget(
   copies: readonly CopyInstance[],
   operation: 'add' | 'cut',
   partStore: Record<string, PartSolid>,
-  sourceId: string,
+  sourceName: string,
   noun: string,
   opName: string,
 ): TargetCopyResult {
@@ -324,7 +339,7 @@ function applyCopiesToTarget(
   const failures: string[] = []
   const notes: string[] = []
   const copyLabel = (copy: number): string =>
-    sourceId === '' ? `copy ${copy}` : `copy ${copy} (source '${sourceId}')`
+    sourceName === '' ? `copy ${copy}` : `copy ${copy} (source ${sourceName})`
   let selected = copies
 
   // A missed cut leaves the solid count unchanged, so a miss needs a signal.
@@ -518,6 +533,7 @@ function buildSourceTools(
   noun: string,
 ): SourceTool[] {
   const tools: SourceTool[] = []
+  const rows = featureRows(featuresById)
   let order = 0
   for (const source of sources) {
     const sourceSub = (source.feature[source.kind] as Dict) ?? {}
@@ -561,7 +577,7 @@ function buildSourceTools(
           : TOOL_LEAVES[source.kind](oc, scope, table, toolFeature, globalRepo, scratch)
     if (built.status !== 'ok') {
       throw new Error(
-        `${noun}: the source feature '${source.id}' could not provide its tool: ` +
+        `${noun}: ${featureDisplayName(source.feature, rows)} could not provide its tool: ` +
           `${String(built.exception ?? built.status)}`,
       )
     }
@@ -576,7 +592,7 @@ function buildSourceTools(
     const sourceTools = Object.values(scratch)
     scratchParts.push(...sourceTools)
     if (sourceTools.length === 0) {
-      throw new Error(`${noun}: the source feature '${source.id}' produced no solid to repeat`)
+      throw new Error(`${noun}: ${featureDisplayName(source.feature, rows)} produced no solid to repeat`)
     }
     // Read once per tool, not per instance: the tool shape does not change
     // between copies.
@@ -752,16 +768,24 @@ export function solveFeaturePattern(
   // 1, or a skip list covering every instance) the source problems and the
   // target still have to be named, but no tool needs building at all.
   const explicitTargetRef = (sub.target_body as string) ?? ''
+  const rows = featureRows(featuresById)
   const plans: TargetPlan[] = []
   if (explicitTargetRef) {
-    plans.push({ target: resolvePatternTarget(sources[0].id, explicitTargetRef, partStore, noun), sources })
+    plans.push({
+      target: resolvePatternTarget(
+        sources[0].id, explicitTargetRef, partStore, noun, rows, featuresById[sources[0].id],
+      ),
+      sources,
+    })
   } else {
     // Sources that shaped the same body share one plan, so their tools land
     // in document order on that body. Sources that shaped different bodies
     // each keep their own.
     const byTarget = new Map<string, TargetPlan>()
     for (const source of sources) {
-      const target = resolvePatternTarget(source.id, '', partStore, noun)
+      const target = resolvePatternTarget(
+        source.id, '', partStore, noun, rows, featuresById[source.id],
+      )
       const plan = byTarget.get(target.id)
       if (plan === undefined) byTarget.set(target.id, { target, sources: [source] })
       else plan.sources.push(source)
@@ -852,7 +876,7 @@ export function solveFeaturePattern(
         if (target === undefined) {
           notes.push(
             `${noun}: part '${plan.target.id}' was removed by an earlier source; ` +
-              `'${source.id}' was not applied`,
+              `${featureDisplayName(source.feature, rows)} was not applied`,
           )
           break
         }
@@ -862,7 +886,9 @@ export function solveFeaturePattern(
         if (sourceCopies.length === 0) continue
         const result = applyCopiesToTarget(
           oc, scope, table, featureId, target, sourceCopies,
-          source.operation, partStore, sources.length > 1 ? source.id : '', noun, opName,
+          source.operation, partStore,
+          sources.length > 1 ? featureDisplayName(source.feature, rows) : '',
+          noun, opName,
         )
         failures.push(...result.failures)
         notes.push(...result.notes)

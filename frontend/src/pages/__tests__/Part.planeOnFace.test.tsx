@@ -56,7 +56,7 @@ describe('plane-on-face and the nested edit session guard', () => {
     await screen.findByTitle('Feature mode')
     fireEvent.click(screen.getByTitle('Feature mode'))
 
-    await waitFor(() => expect(screen.getByText('Extrude 1')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("extrude 'Extrude 1'")).toBeInTheDocument())
     fireEvent.click(screen.getByTitle('Edit extrude'))
     await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('ex1'))
 
@@ -72,7 +72,7 @@ describe('plane-on-face and the nested edit session guard', () => {
 
     // ex1's session closed cleanly: no nested-session refusal left it stuck,
     // and its own OK/Cancel are gone because it committed rather than hanging.
-    const ex1Item = screen.getByText('Extrude 1').closest('.feature-item') as HTMLElement
+    const ex1Item = screen.getByText("extrude 'Extrude 1'").closest('.feature-item') as HTMLElement
     expect(within(ex1Item).queryByTitle('OK')).toBeNull()
     expect(within(ex1Item).queryByTitle('Cancel')).toBeNull()
 
@@ -87,7 +87,7 @@ describe('plane-on-face and the nested edit session guard', () => {
     // feature is being edited), so it is the probe. Two toggles net back to
     // the starting state but, if per-action, leave two distinct entries. ex1
     // consumes sk0, so the fixture spends its auto-hide to start it shown.
-    const sk0Item = () => screen.getByText('Sketch 0').closest('.feature-item') as HTMLElement
+    const sk0Item = () => screen.getByText("sketch 'Sketch 0'").closest('.feature-item') as HTMLElement
     fireEvent.click(within(sk0Item()).getByTitle('Hide'))
     await waitFor(() => expect(within(sk0Item()).queryByTitle('Show')).not.toBeNull())
     fireEvent.click(within(sk0Item()).getByTitle('Show'))

@@ -3,7 +3,7 @@
 // the AssemblyTree rows already carry the role="option" pattern.
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent } from '@testing-library/react'
+import { render, fireEvent } from '@testing-library/react'
 import { PartDocumentPanel } from '@/components/layout/PartDocumentPanel'
 import type { PartFeature } from '@/types/cad'
 import { usePartEditorStore } from '@/stores/partEditorStore'
@@ -12,6 +12,12 @@ import { PartEditorProvider } from '@/contexts/PartEditorContext'
 import type { PartEditorCallbacks } from '@/contexts/PartEditorContext'
 import { builtinSelectionId } from '@/components/Geometry3D/utils'
 import { useEditorState } from '@/hooks/useEditorState'
+
+function featureRow(id: string): HTMLElement {
+  const el = document.querySelector(`[data-oversolved-handle="tree:feature:${id}"]`)
+  if (el === null) throw new Error(`no feature row for ${id}`)
+  return el as HTMLElement
+}
 
 function makeCallbacks(overrides: Partial<PartEditorCallbacks> = {}): PartEditorCallbacks {
   return {
@@ -91,7 +97,7 @@ describe('FeatureTree keyboard reachability', () => {
     const onToggleSelect = vi.fn()
     setupStore([...builtInFeatures, extrudeFeature])
     renderSidebar(makeCallbacks({ onToggleSelect }))
-    const row = screen.getByText('ex1').closest('.feature-item') as HTMLElement
+    const row = featureRow('ex1') as HTMLElement
     expect(row.getAttribute('aria-selected')).toBe('false')
 
     row.focus()
@@ -106,7 +112,7 @@ describe('FeatureTree keyboard reachability', () => {
     normalSelection: new Set(['@ex1']),
   })
     renderSidebar()
-    const row = screen.getByText('ex1').closest('.feature-item') as HTMLElement
+    const row = featureRow('ex1') as HTMLElement
     expect(row.getAttribute('aria-selected')).toBe('true')
   })
 
@@ -114,7 +120,7 @@ describe('FeatureTree keyboard reachability', () => {
     const onToggleSelect = vi.fn()
     setupStore([...builtInFeatures, extrudeFeature])
     renderSidebar(makeCallbacks({ onToggleSelect }))
-    const row = screen.getByText('Origin').closest('.feature-item') as HTMLElement
+    const row = featureRow('Origin') as HTMLElement
 
     fireEvent.keyDown(row, { key: ' ' })
 
@@ -127,7 +133,7 @@ describe('FeatureTree keyboard reachability', () => {
     const onToggleSelect = vi.fn()
     setupStore([...builtInFeatures, extrudeFeature])
     renderSidebar(makeCallbacks({ onToggleSelect }))
-    const row = screen.getByText('ex1').closest('.feature-item') as HTMLElement
+    const row = featureRow('ex1') as HTMLElement
     const button = row.querySelector('button') as HTMLElement
 
     fireEvent.keyDown(button, { key: 'Enter' })

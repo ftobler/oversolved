@@ -23,10 +23,11 @@
 
 import type { PartConstraint, PartDoc, PartEntityDef, SketchFeature } from '@/types/cad'
 import {
-  warn, round, findSketchFeature, resolveSketch, freshEntityIds, uniqueConstraintId,
+  warn, round, findFeature, findSketchFeature, resolveSketch, freshEntityIds, uniqueConstraintId,
 } from './helpers'
 import { carryConstraints, type CarryTemplate } from './sketchCarry'
 import { resolveBarePlaneId } from '@/kernel/solverConstants'
+import { entityDisplayName, featureDisplayName } from '@/utils/core/displayNames'
 import {
   instanceTransforms, transformEntityParams, transformVertexKey, transformVector,
   rotatedAxisKind, rotatedAxisDistance, rotatedConstraintAxis, transformFixedOverride,
@@ -118,8 +119,17 @@ function instantiate(
  * the applier are the same verdict with the same words.
  */
 export function planPatternEntities(doc: PartDoc, step: PatternEntitiesStep): PatternEntitiesPlan | PatternEntitiesRefusal {
+  const rows = doc.features ?? []
   const source = findSketchFeature(doc, step.featureId)
-  if (source === undefined) return { reason: `names no sketch feature ${JSON.stringify(step.featureId)}`, code: 'unknown-target' }
+  if (source === undefined) {
+    const other = findFeature(doc, step.featureId)
+    return {
+      reason: other === undefined
+        ? 'names no feature in this document'
+        : `${featureDisplayName(other, rows)} is not a sketch`,
+      code: 'unknown-target',
+    }
+  }
 
   let target: SketchFeature = source
   if (step.targetFeatureId !== undefined && step.targetFeatureId !== step.featureId) {
@@ -128,11 +138,30 @@ export function planPatternEntities(doc: PartDoc, step: PatternEntitiesStep): Pa
     }
     const other = findSketchFeature(doc, step.targetFeatureId)
     if (other === undefined) {
-      return { reason: `targetFeatureId names no sketch feature ${JSON.stringify(step.targetFeatureId)}`, code: 'unknown-target' }
+      const named = findFeature(doc, step.targetFeatureId)
+      return {
+        reason: named === undefined
+          ? 'targetFeatureId names no feature in this document'
+          : `targetFeatureId names ${featureDisplayName(named, rows)}, which is not a sketch`,
+        code: 'unknown-target',
+      }
     }
     if (normalizedPlane(source.plane) !== normalizedPlane(other.plane)) {
+      const planeName = (ref: unknown): string => {
+        const text = String(ref ?? '')
+        const id = text.replace(/^@/, '')
+        if (id.startsWith('builtin_plane_')) {
+          const suffix = id.slice('builtin_plane_'.length)
+          return suffix.charAt(0).toUpperCase() + suffix.slice(1)
+        }
+        if (text.startsWith('?') || text.startsWith('face:') || text.startsWith('edge:')
+          || /\/face\/|\/edge\//.test(text)) return 'a face query'
+        const row = findFeature(doc, id)
+        if (row !== undefined) return featureDisplayName(row, rows)
+        return 'an unlisted plane'
+      }
       return {
-        reason: `cannot map between different sketch planes (${JSON.stringify(source.plane ?? '')} and ${JSON.stringify(other.plane ?? '')}); `
+        reason: `cannot map between different sketch planes (${planeName(source.plane)} and ${planeName(other.plane)}); `
           + 'author the geometry in the target or use add_projected_entity for a part edge',
         code: 'invalid',
       }
@@ -156,7 +185,7 @@ export function planPatternEntities(doc: PartDoc, step: PatternEntitiesStep): Pa
     const def = byId.get(id)
     if (def === undefined) {
       return {
-        reason: `source id ${JSON.stringify(id)} names no entity in sketch ${step.featureId}; use a bare entity id from that sketch`,
+        reason: `the picked source names no entity in ${featureDisplayName(source, rows)}; use a bare entity id from that sketch`,
         code: 'unknown-target',
       }
     }
@@ -166,7 +195,10 @@ export function planPatternEntities(doc: PartDoc, step: PatternEntitiesStep): Pa
     for (const t of transforms) {
       const moved = transformEntityParams(def.kind, block, t, def.handles)
       if (moved === null) {
-        return { reason: `source id ${JSON.stringify(id)} (a ${def.kind}) has no copyable parameter block`, code: 'invalid' }
+        return {
+          reason: `${entityDisplayName(source, id) ?? 'the picked source'} has no copyable parameter block`,
+          code: 'invalid',
+        }
       }
       params.push(moved)
     }
@@ -177,7 +209,7 @@ export function planPatternEntities(doc: PartDoc, step: PatternEntitiesStep): Pa
   const holding = (target.entities ?? []).length
   if (holding + adding > MAX_SKETCH_ENTITIES) {
     return {
-      reason: `would add ${adding} entities to the ${holding} already in sketch ${target.id}; the sketch holds at most ${MAX_SKETCH_ENTITIES}`,
+      reason: `would add ${adding} entities to the ${holding} already in ${featureDisplayName(target, rows)}; the sketch holds at most ${MAX_SKETCH_ENTITIES}`,
       code: 'invalid',
     }
   }

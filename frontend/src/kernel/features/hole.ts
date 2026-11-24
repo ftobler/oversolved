@@ -33,6 +33,8 @@ import type { Repository } from '../query'
 import { parseSketchEntityRef, sketchIdFromQuery, soleEntityInQuery } from './shared/partRef'
 import { HOLE_SITE_WORDING } from './shared/drillSite'
 import { pickedPointSite, sketchPointSites } from './shared/sketchPointSites'
+import type { SketchNaming } from './shared/drillSite'
+import { entityDisplayName, featureRows, sketchDisplayName } from '@/utils/core/displayNames'
 import { resolvePart } from './shared/partResolution'
 import { mergeBrepDiff } from './shared/brepDiff'
 import { stripRefSigil } from '@/utils/refSigil'
@@ -255,16 +257,18 @@ function drillSite(
 
 /** The hole's own prefix around the shared sketch-point site rule. The rule
  *  and its sentences live in shared/sketchPointSites.ts, where the instance
- *  pattern's sketch form reads the same one. */
+ *  pattern's sketch form reads the same one. `names` carries the sketch row and
+ *  the document's feature list, so a refusal names them by display name. */
 function drilledEntities(
   entities: Dict[],
   sketchId: string,
   entityId: string | null,
+  names: SketchNaming,
 ): Dict[] {
   try {
     return entityId === null
-      ? sketchPointSites(entities, sketchId, HOLE_SITE_WORDING)
-      : [pickedPointSite(entities, sketchId, entityId, HOLE_SITE_WORDING)]
+      ? sketchPointSites(entities, sketchId, HOLE_SITE_WORDING, names)
+      : [pickedPointSite(entities, sketchId, entityId, HOLE_SITE_WORDING, names)]
   } catch (e) {
     // A kernel trap must escape unwrapped; only the site rule's own sentence
     // takes the leaf name.
@@ -294,6 +298,32 @@ function projectionSourceOf(sketchFeature: Dict, entityId: string): string | nul
     }
   }
   return null
+}
+
+/**
+ * A projection's source as a sentence subject. The raw ref can carry a sketch
+ * and an entity id, so it is never printed; the name follows the same scheme as
+ * every other row.
+ */
+function projectionSourceName(
+  source: string,
+  sketch: Dict,
+  featuresById: Record<string, Dict>,
+): string {
+  const rows = featureRows(featuresById)
+  if (source === '@builtin_origin') return 'the document origin'
+  if (source.startsWith('@builtin_plane_')) return 'a builtin plane'
+  if (source.startsWith('$')) return entityDisplayName(sketch, source.slice(1)) ?? 'the sketch'
+  if (source.startsWith('@')) {
+    const [sourceSketchId, sourceEid] = source.slice(1).split('/')
+    if (sourceEid === undefined || sourceEid === '') return 'a picked sketch'
+    return `${entityDisplayName(featuresById[sourceSketchId ?? ''], sourceEid) ?? 'a projected entity'} `
+      + `of ${sketchDisplayName(sourceSketchId ?? '', rows)}`
+  }
+  if (source.startsWith('?') || source.startsWith('face:') || source.startsWith('edge:')) {
+    return 'a part face or edge'
+  }
+  return 'the picked source'
 }
 
 /**
@@ -792,7 +822,9 @@ export function solveHole(
 
   const plane = globalRepo.elements.get('_pt_' + sketchId) as PlaneLike | undefined
   if (plane === undefined) {
-    throw new Error(`hole: sketch '${sketchId}' has no plane transform registered`)
+    throw new Error(
+      `hole: ${sketchDisplayName(sketchId, featureRows(featuresById))} has no plane transform registered`,
+    )
   }
   const origin = plane.origin
   const xAxis = plane.x_axis
@@ -813,7 +845,15 @@ export function solveHole(
   }
 
   const sketchFeature = featuresById[sketchId] ?? {}
-  const drilled = drilledEntities((sketchFeature.entities as Dict[]) ?? [], sketchId, entityId)
+  // One display name per drill site, shared by every note below: the cut loop's
+  // thread and side lists, the swallowed-site notes and the merge list.
+  const siteName = (eid: string): string => entityDisplayName(sketchFeature, eid) ?? 'a drill site'
+  const drilled = drilledEntities(
+    (sketchFeature.entities as Dict[]) ?? [],
+    sketchId,
+    entityId,
+    { sketch: sketchFeature, features: featureRows(featuresById) },
+  )
 
   // Each site's position and mouth geometry, settled before any cut so the
   // drill side can be resolved across all of them first. Settled before the
@@ -1052,7 +1092,8 @@ export function solveHole(
     const placed = total - skippedCount
     if (placed === 0) {
       throw new Error(
-        `hole: all ${total} drill site(s) in sketch '${sketchId}' have no solved geometry; nothing to place`,
+        `hole: all ${total} drill site(s) in ${sketchDisplayName(sketchId, featureRows(featuresById))} ` +
+        'have no solved geometry; nothing to place',
       )
     }
     type KeptCutter = {
@@ -1316,9 +1357,9 @@ export function solveHole(
     cutAny = true
     cutSites.add(eid)
     const tapped = siteThread(eid, center3d, airGap, countersinkDepth, site.radius)
-    if (tapped.clamped) threadClamped.push(`${eid} (${roundForMessage(tapped.boreLength)})`)
+    if (tapped.clamped) threadClamped.push(`${siteName(eid)} (${roundForMessage(tapped.boreLength)})`)
     if (tapped.run !== null) threadSites.push(tapped.run)
-    else if (tapped.untapped) threadUntapped.push(eid)
+    else if (tapped.untapped) threadUntapped.push(siteName(eid))
     // The pattern's tool build reads this instead of the drilled body; the run
     // is the unwidened one, so a copy can name its own bore.
     drillRecordSites.push({
@@ -1333,7 +1374,8 @@ export function solveHole(
     // update, so pushing modified_by first would make ancestry re-read the
     // stale diff and pin the PREVIOUS op's sub-shapes on this failed feature.
     throw new Error(
-      `hole: all ${total} drill site(s) in sketch '${sketchId}' have no solved geometry; nothing to place`,
+      `hole: all ${total} drill site(s) in ${sketchDisplayName(sketchId, featureRows(featuresById))} ` +
+      'have no solved geometry; nothing to place',
     )
   }
   // The hole's own solved state, for a pattern that comes after it. Plain data,
@@ -1402,14 +1444,16 @@ export function solveHole(
   const partialReasons: string[] = []
   if (skippedCount > 0) {
     partialReasons.push(
-      `hole: ${skippedCount}/${total} point(s) skipped, no XY data for: ${skippedEntityIds.join(', ')}`,
+      `hole: ${skippedCount}/${total} point(s) skipped, no XY data for: `
+      + `${skippedEntityIds.map(siteName).join(', ')}`,
     )
   }
   if (missedSites.length > 0 && missedSites.length < placed) {
     // Some sites cut, some removed nothing: name the misses so the user knows
-    // which picks to move.
+    // which picks to move. The part stays an id: parts have no display names.
     partialReasons.push(
-      `hole: ${missedSites.length}/${placed} drill site(s) did not intersect part '${targetPart.id}': ${missedSites.join(', ')}`,
+      `hole: ${missedSites.length}/${placed} drill site(s) did not intersect part '${targetPart.id}': `
+      + `${missedSites.map(siteName).join(', ')}`,
     )
   }
   if (partialReasons.length > 0) result.exception = partialReasons.join('; ')
@@ -1427,8 +1471,9 @@ export function solveHole(
     // plausible either way. One through hole drills one side; `reverse` is the
     // authored side that silences this.
     const fix = side === 'normal' ? 'set direction: reverse to drill the other way' : 'set direction: reverse to keep it'
+    const sideSites = otherSideSites.map(siteName)
     result.solver_warning =
-      `hole: sites ${otherSideSites.join(', ')} have material on the other side; ` +
+      `hole: ${sideSites.join(', ')} ${sideSites.length === 1 ? 'has' : 'have'} material on the other side; ` +
       `drilled ${side} at all sites (a through hole drills one side), ${fix}`
   }
   // A body whose sketch solve missed the merge ceiling by more than the ceiling
@@ -1447,17 +1492,18 @@ export function solveHole(
   const swallowedIds = new Set(swallowedSites.map((site) => site.eid))
   for (const site of swallowedSites) {
     const twin = site.earlier[0]
+    const here = siteName(site.eid)
     let note: string
     if (site.coincident) {
       // The parenthesis names the projection a twin duplicates, which is the
       // case the old recipe produced: the projected origin IS the drill site.
       const source = projectionSourceOf(sketchFeature, twin)
-      note = `hole: site ${site.eid} sits on site ${twin} and drills nothing; ` +
-        `one point per hole is enough, delete ${site.eid}` +
-        (source === null ? '' : ` (${twin} is the projection of ${source})`)
+      note = `hole: ${here} sits on ${siteName(twin)} and drills nothing; ` +
+        `one point per hole is enough, delete ${here}` +
+        (source === null ? '' : ` (${siteName(twin)} is projected from ${projectionSourceName(source, sketchFeature, featuresById)})`)
     } else {
-      note = `hole: site ${site.eid} lies inside the bores of sites ${site.earlier.join(', ')} ` +
-        `and drills nothing; move or delete ${site.eid}`
+      note = `hole: ${here} lies inside the bores of ${site.earlier.map(siteName).join(', ')} ` +
+        `and drills nothing; move or delete ${here}`
     }
     result.solver_warning = result.solver_warning === undefined ? note : `${result.solver_warning}; ${note}`
   }
@@ -1468,7 +1514,7 @@ export function solveHole(
     if (swallowedIds.has(later)) continue
     for (const overlap of overlaps) {
       if (swallowedIds.has(overlap.earlier)) continue
-      mergedPairs.push(`sites ${overlap.earlier}, ${later}`)
+      mergedPairs.push(`sites ${siteName(overlap.earlier)}, ${siteName(later)}`)
     }
   }
   if (mergedPairs.length > 0) {

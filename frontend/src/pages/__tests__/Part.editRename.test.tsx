@@ -55,7 +55,7 @@ function renameFromCard(name: string) {
 }
 
 async function openExtrudeEditor({ seedEntry = false } = {}) {
-  await waitFor(() => expect(screen.getByText('Extrude 1', { selector: '.feature-name' })).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByText("extrude 'Extrude 1'", { selector: '.feature-name' })).toBeInTheDocument())
   fireEvent.click(screen.getByTitle('Feature mode'))
   // A mutation made inside the edit session is suppressed from the stack, so a
   // test that needs "the stack as it was on entry" seeds its entry first.
@@ -84,9 +84,9 @@ describe('Part - rename from the open feature card', () => {
     renameFromCard('Boss')
 
     await waitFor(() => {
-      expect(document.querySelector('.feature-edit-panel-title')!.textContent).toBe('Boss')
+      expect(document.querySelector('.feature-edit-panel-title')!.textContent).toBe("extrude 'Boss'")
     })
-    expect(screen.getByText('Boss', { selector: '.feature-name' })).toBeInTheDocument()
+    expect(screen.getByText("extrude 'Boss'", { selector: '.feature-name' })).toBeInTheDocument()
   })
 
   it('Cancel reverts the rename and leaves the undo stack as it was on entry', async () => {
@@ -99,12 +99,12 @@ describe('Part - rename from the open feature card', () => {
     expect(before).toBeGreaterThan(0)
 
     renameFromCard('Boss')
-    await waitFor(() => expect(document.querySelector('.feature-edit-panel-title')!.textContent).toBe('Boss'))
+    await waitFor(() => expect(document.querySelector('.feature-edit-panel-title')!.textContent).toBe("extrude 'Boss'"))
 
     fireEvent.click(cardButton('.feature-cancel-btn'))
 
     await waitFor(() => {
-      expect(screen.getByText('Extrude 1', { selector: '.feature-name' })).toBeInTheDocument()
+      expect(screen.getByText("extrude 'Extrude 1'", { selector: '.feature-name' })).toBeInTheDocument()
     })
     expect(usePartEditorStore.getState().undoStack.length).toBe(before)
     expect(usePartEditorStore.getState().redoStack.length).toBe(0)
@@ -119,17 +119,17 @@ describe('Part - rename from the open feature card', () => {
 
     fireEvent.change(screen.getByLabelText('Distance, millimetres'), { target: { value: '20' } })
     renameFromCard('Boss')
-    await waitFor(() => expect(document.querySelector('.feature-edit-panel-title')!.textContent).toBe('Boss'))
+    await waitFor(() => expect(document.querySelector('.feature-edit-panel-title')!.textContent).toBe("extrude 'Boss'"))
 
     fireEvent.click(cardButton('.feature-ok-btn'))
     await waitFor(() => expect(document.querySelector('.feature-edit-panel')).toBeNull())
 
-    expect(screen.getByText('Boss', { selector: '.feature-name' })).toBeInTheDocument()
+    expect(screen.getByText("extrude 'Boss'", { selector: '.feature-name' })).toBeInTheDocument()
     expect(usePartEditorStore.getState().undoStack.length).toBe(before + 1)
 
     await act(async () => { executeCommand('undo') })
     await waitFor(() => {
-      expect(screen.getByText('Extrude 1', { selector: '.feature-name' })).toBeInTheDocument()
+      expect(screen.getByText("extrude 'Extrude 1'", { selector: '.feature-name' })).toBeInTheDocument()
     })
     const ex1 = usePartEditorStore.getState().features.find(f => f.id === 'ex1')!
     expect(ex1).toMatchObject({ kind: 'extrude', extrude: { distance: 10 } })

@@ -75,7 +75,7 @@ describe('usePartDoc reports an applier refusal', () => {
       type: 'reorder_features', featureId: 'skA', after: 'skB',
     })
     expect(outcome).toMatchObject({ ok: false, code: 'refused' })
-    expect(refusals).toEqual([expect.stringContaining('cannot move skA below skB')])
+    expect(refusals).toEqual([expect.stringContaining('cannot move sketch 1 below sketch 2')])
     expect(docRef.current.features!.map(feature => feature.id)).toEqual(before)
   })
 

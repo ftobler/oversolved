@@ -57,7 +57,7 @@ async function renderPage() {
     { wrapper: Wrapper },
   )
   await waitFor(() => { expect(window.__oversolved).toBeDefined() })
-  await screen.findByText('Fillet 1', { selector: '.feature-name' })
+  await screen.findByText("fillet 'Fillet 1'", { selector: '.feature-name' })
 }
 
 const solveFacts = () => window.__oversolved!.inspect().session.solve
@@ -114,7 +114,7 @@ describe('every solve route reaches the session scheduler', () => {
     const beforeEnter = solveMock.mock.calls.length
     await act(async () => { fireEvent.click(screen.getAllByTitle('Edit fillet')[0]) })
     await waitFor(() => {
-      const row = screen.getByText('Fillet 1', { selector: '.feature-name' }).closest('.feature-item')
+      const row = screen.getByText("fillet 'Fillet 1'", { selector: '.feature-name' }).closest('.feature-item')
       expect(row?.classList.contains('editing')).toBe(true)
     })
     await expectRouteSettles(beforeEnter)
@@ -135,7 +135,7 @@ describe('every solve route reaches the session scheduler', () => {
 
     // 5. The feature menu's Rebuild is the plain one.
     const beforeRebuild = solveMock.mock.calls.length
-    const filletRow = screen.getByText('Fillet 1', { selector: '.feature-name' }).closest('.feature-item') as HTMLElement
+    const filletRow = screen.getByText("fillet 'Fillet 1'", { selector: '.feature-name' }).closest('.feature-item') as HTMLElement
     await act(async () => { fireEvent.click(within(filletRow).getByTitle('More options')) })
     await act(async () => { fireEvent.click(screen.getByRole('menuitem', { name: 'Rebuild' })) })
     await expectRouteSettles(beforeRebuild)

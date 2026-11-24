@@ -1,5 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 import { featureFailure } from '@/utils/core/featureFailure'
+import { featureDisplayName } from '@/utils/core/displayNames'
+import type { PartFeature } from '@/types/cad'
 import { markNameClass } from '@/utils/core/statusMark'
 import { usePartEditorStore } from '@/stores/partEditorStore'
 import { useSketchEditorStore } from '@/stores/sketchEditorStore'
@@ -41,6 +43,17 @@ interface FeatureDragStart {
 // editor body a separate panel on the other side of the viewport
 // (FeatureEditPanel.tsx). The row keeps its `editing` highlight and swaps the
 // edit button for OK / Cancel, so an edit can be ended where it began.
+/** A row's text: the shared display name, except a variable, whose label is its
+ *  own expression name (`width = 20`, not `variable 'width' = 20`). An
+ *  unlabelled variable falls back to the kind ordinal. */
+function treeRowName(feature: PartFeature, features: readonly PartFeature[]): string {
+  if (feature.kind === 'variable') {
+    const label = typeof feature.label === 'string' ? feature.label.trim() : ''
+    return label !== '' ? label : featureDisplayName(feature, features)
+  }
+  return featureDisplayName(feature, features)
+}
+
 export function FeatureTree() {
   const features = usePartEditorStore(s => s.features)
   const doc = usePartEditorStore(s => s.doc)
@@ -466,7 +479,7 @@ export function FeatureTree() {
                       className={`feature-name${markNameClass(mark)}${feature.suppressed ? ' feature-name-suppressed' : ''}`}
                       title={mark.message || undefined}
                     >
-                      {feature.label || feature.id}
+                      {isBuiltIn ? (feature.label || feature.id) : treeRowName(feature, features)}
                       {varValue !== undefined ? ` = ${varValue}` : ''}
                       {/* The stored display hint, drawn as the same muted unit the
                           editors use. It is a free-form document string, not a

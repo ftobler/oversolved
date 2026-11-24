@@ -227,7 +227,11 @@ describe.skipIf(!oc)('mirror precision (real OCC)', () => {
     const row = h.res(result, 'sk1')
     const expected = contractPrecision(row.angular_miss, row.linear_miss, 'sk1')
     expect(expected).toEqual({ angular: OCC_ANGULAR, linear: OCC_CONFUSION, sketch: 'sk1' })
-    expect(lastSnapshot(result).body_ex1.precision).toEqual(expected)
+    // The published record carries the sketch's display name too, so a later
+    // ceiling warning names it without the id.
+    expect(lastSnapshot(result).body_ex1.precision).toEqual({
+      ...expected, sketch_name: "sketch 'Half cube'",
+    })
   })
 
   it('reads an inherited precision: a 5e-11 seam folds only once the record says so', () => {
@@ -274,7 +278,14 @@ describe.skipIf(!oc)('mirror precision (real OCC)', () => {
     const clamped = mirror({ angular: 5e-9, linear: OCC_CONFUSION, sketch: 'sk1' })
     expect(clamped.up).toBe(1)
     expect(clamped.warning).toContain(
-      "sketch sk1 solved to 5e-9 rad, above the kernel's 1e-9 merge ceiling",
+      "the sketch solved to 5e-9 rad, above the kernel's 1e-9 merge ceiling",
+    )
+    // A record that carries the display name reads it instead of the noun.
+    const named = mirror({
+      angular: 5e-9, linear: OCC_CONFUSION, sketch: 'sk1', sketch_name: "sketch 'Half cube'",
+    })
+    expect(named.warning).toContain(
+      "sketch 'Half cube' solved to 5e-9 rad, above the kernel's 1e-9 merge ceiling",
     )
   })
 })

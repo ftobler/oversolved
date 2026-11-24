@@ -23,6 +23,7 @@ import { Repository } from '../../query'
 import { solveHole } from '../hole'
 import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
+import { leakedIds } from '@/testing/warningText'
 
 const oc = await loadOcc()
 
@@ -102,8 +103,11 @@ describe.skipIf(!oc)('a hole site swallowed by an earlier site (real OCC)', () =
     expect(result.hole_count).toBe(1)
     expect(volume).toBeCloseTo(PLATE - COUNTERBORED, 4)
     const warning = String(result.solver_warning)
-    expect(warning).toContain("hole: site p sits on site o and drills nothing; one point per hole is enough, delete p")
-    expect(warning).toContain('(o is the projection of @builtin_origin)')
+    expect(warning).toContain("hole: point 2 sits on point 1 and drills nothing; one point per hole is enough, delete point 2")
+    expect(warning).toContain('(point 1 is projected from the document origin)')
+    expect(leakedIds(warning)).toEqual([])
+    expect(warning).not.toContain("'p'")
+    expect(warning).not.toContain("'o'")
     // One message, not two: the pair's generic merge note is replaced by the
     // swallow note, and the site is never called a miss.
     expect(warning).not.toMatch(/did not intersect/)
@@ -130,7 +134,7 @@ describe.skipIf(!oc)('a hole site swallowed by an earlier site (real OCC)', () =
 
     expect(result.status).toBe('ok')
     expect(result.hole_count).toBe(2)
-    expect(String(result.solver_warning)).toMatch(/drill sites overlap and merge into one cut: sites p1, p2/)
+    expect(String(result.solver_warning)).toMatch(/drill sites overlap and merge into one cut: sites point \d+, point \d+/)
     expect(String(result.solver_warning)).not.toMatch(/did not intersect/)
   })
 
@@ -149,8 +153,30 @@ describe.skipIf(!oc)('a hole site swallowed by an earlier site (real OCC)', () =
     expect(result.hole_count).toBe(6)
     const warning = String(result.solver_warning)
     expect(warning).toContain(
-      'hole: site pc lies inside the bores of sites p1, p2, p3, p4, p5, p6 and drills nothing; move or delete pc',
+      'hole: point 7 lies inside the bores of point 1, point 2, point 3, point 4, point 5, point 6 and drills nothing; move or delete point 7',
     )
+    expect(warning).not.toMatch(/\bpc\b/)
     expect(warning).not.toMatch(/did not intersect/)
+    expect(leakedIds(warning)).toEqual([])
+  })
+
+  it('names a swallowed site even when the fixture ids are long', () => {
+    // Long ids so the leak tripwire can actually fire: the note and the
+    // projection-source clause must name "point 1"/"point 2", never the rows.
+    const origin = 'originXyZ0123456789'
+    const dupe = 'duplicateXyZ0123456789'
+    const { result } = drill(
+      COUNTERBORE,
+      [{ eid: origin, xy: CENTRE }, { eid: dupe, xy: CENTRE }],
+      [{ id: 'proj_origin', kind: 'projection', target: `$${origin}`, source: '@builtin_origin' }],
+    )
+    expect(result.status).toBe('ok')
+    const warning = String(result.solver_warning)
+    expect(warning).toContain(
+      'hole: point 2 sits on point 1 and drills nothing; one point per hole is enough, delete point 2',
+    )
+    expect(warning).toContain('(point 1 is projected from the document origin)')
+    expect(leakedIds(warning)).toEqual([])
+    for (const id of [origin, dupe]) expect(warning).not.toContain(id)
   })
 })

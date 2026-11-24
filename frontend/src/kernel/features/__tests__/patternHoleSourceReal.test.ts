@@ -23,6 +23,7 @@ import { shapeBndBox } from '../../occ/primitives'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { BuildResponse } from '../../builder'
 import type { PartSolid } from '../../types3d'
+import { leakedIds } from '@/testing/warningText'
 import type { ThreadDisplayData } from '@/types/cad'
 import { splitPatternDef } from '@/utils/core/patternSplit'
 
@@ -691,7 +692,7 @@ describe.skipIf(!oc || !solveBytes)('a hole as a pattern source (real OCC + Rust
         pattern('pt1', ['h1'], { mode: 'linear', count: 2, pitch: 10, direction: [1, 0, 0] }),
       ],
     })
-    expect(String(h.res(suppressed, 'pt1').exception)).toContain("source feature 'h1' is suppressed")
+    expect(String(h.res(suppressed, 'pt1').exception)).toContain('is suppressed')
 
     const reordered = h.run({
       features: [
@@ -702,7 +703,7 @@ describe.skipIf(!oc || !solveBytes)('a hole as a pattern source (real OCC + Rust
     })
     const reorderedRes = h.res(reordered, 'pt1')
     expect(reorderedRes.status).toBe('exception')
-    expect(String(reorderedRes.exception)).toContain("source feature 'h1' comes after this pattern")
+    expect(String(reorderedRes.exception)).toContain('comes after this pattern')
     expect(String(reorderedRes.exception)).toContain('reorder_features')
 
     // Every site misses the plate. With an explicit target the source resolves
@@ -719,6 +720,23 @@ describe.skipIf(!oc || !solveBytes)('a hole as a pattern source (real OCC + Rust
       ],
     })
     expect(String(h.res(missed, 'pt1').exception)).toContain('produced no solid to repeat')
+
+    // The same sentence with a long source id: it must name the row, not the id.
+    const longHole = 'holeSourceXyZ0123456789'
+    const longMissed = h.run({
+      features: [
+        ...base,
+        pointSketch('sk_miss', 100, 100, '@pl_top'),
+        holeRow(longHole, { sketch: '$sk_miss' }),
+        pattern('pt1', [longHole], {
+          mode: 'linear', count: 2, pitch: 10, direction: [1, 0, 0], target_body: '@body_ex_plate',
+        }),
+      ],
+    })
+    const longMessage = String(h.res(longMissed, 'pt1').exception)
+    expect(longMessage).toMatch(/hole \d+ produced no solid to repeat/)
+    expect(leakedIds(longMessage)).toEqual([])
+    expect(longMessage).not.toContain(longHole)
 
     // Without a target the hole shaped no body, so the target resolution names
     // that first, with the existing sentence.

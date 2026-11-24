@@ -23,8 +23,8 @@ import { OCC_ANGULAR, OCC_CONFUSION } from '../solverConstants'
 import { initGlobalRepo } from '../query'
 import { clearFeatureGeometryRegistrations, postRegister } from '../features/postRegister'
 
-const p = (angular: number, linear: number, sketch?: string): KernelPrecision => (
-  { angular, linear, ...(sketch ? { sketch } : {}) }
+const p = (angular: number, linear: number, sketch?: string, sketchName?: string): KernelPrecision => (
+  { angular, linear, ...(sketch ? { sketch } : {}), ...(sketchName ? { sketch_name: sketchName } : {}) }
 )
 
 describe('contractPrecision', () => {
@@ -99,9 +99,15 @@ describe('mergeTolerance', () => {
 
 describe('precisionCeilingWarning', () => {
   it('names the sketch, its realised miss and the ceiling', () => {
-    const warning = precisionCeilingWarning(p(3e-9, OCC_CONFUSION, 'sk1'))
+    // A record with no display name gets the noun, never the raw sketch id.
+    const warning = precisionCeilingWarning({ ...p(3e-9, OCC_CONFUSION, 'sk1') })
     expect(warning).toBe(
-      "sketch sk1 solved to 3e-9 rad, above the kernel's 1e-9 merge ceiling; " +
+      "the sketch solved to 3e-9 rad, above the kernel's 1e-9 merge ceiling; " +
+      'near-coplanar faces may stay split',
+    )
+    const named = precisionCeilingWarning(p(3e-9, OCC_CONFUSION, 'sk1', 'sketch 1'))
+    expect(named).toBe(
+      "sketch 1 solved to 3e-9 rad, above the kernel's 1e-9 merge ceiling; " +
       'near-coplanar faces may stay split',
     )
   })
@@ -124,8 +130,8 @@ describe('the sketch precision bridge', () => {
     postRegister(repo, 'sk1', { id: 'sk1', kind: 'sketch' }, {
       status: 'ok', angular_miss: 3e-11, linear_miss: 4e-7,
     })
-    expect(repo.elements.get(precisionKey('sk1'))).toEqual(p(3e-11, 4e-7, 'sk1'))
-    expect(sketchPrecision(repo, 'sk1')).toEqual(p(3e-11, 4e-7, 'sk1'))
+    expect(repo.elements.get(precisionKey('sk1'))).toEqual(p(3e-11, 4e-7, 'sk1', 'the sketch'))
+    expect(sketchPrecision(repo, 'sk1')).toEqual(p(3e-11, 4e-7, 'sk1', 'the sketch'))
   })
 
   it('floors an unmeasured (NaN) solve at the contract', () => {
@@ -133,7 +139,7 @@ describe('the sketch precision bridge', () => {
     postRegister(repo, 'sk1', { id: 'sk1', kind: 'sketch' }, {
       status: 'underconstrained', angular_miss: NaN, linear_miss: NaN,
     })
-    expect(sketchPrecision(repo, 'sk1')).toEqual(p(OCC_ANGULAR, OCC_CONFUSION, 'sk1'))
+    expect(sketchPrecision(repo, 'sk1')).toEqual(p(OCC_ANGULAR, OCC_CONFUSION, 'sk1', 'the sketch'))
   })
 
   it('publishes nothing for a feature whose result carries no miss', () => {
@@ -157,6 +163,14 @@ describe('the sketch precision bridge', () => {
     expect(sketchPrecision(repo, 'missing')).toBeNull()
     expect(sketchPrecision(repo, '')).toBeNull()
     expect(precisionOfSolve({ body_id: 'b' } as Record<string, unknown>, 'sk1')).toBeNull()
+  })
+
+  it('drops a record whose display name is not a string', () => {
+    const repo = initGlobalRepo()
+    repo.register(precisionKey('sk1'), {
+      angular: 3e-11, linear: 4e-7, sketch: 'sk1', sketch_name: 3,
+    })
+    expect(sketchPrecision(repo, 'sk1')).toBeNull()
   })
 
   it('carries the weak flag from the solve through the repo record', () => {

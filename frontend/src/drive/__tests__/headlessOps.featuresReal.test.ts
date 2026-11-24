@@ -144,7 +144,14 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
     expect(result.ok).toBe(true)
     const problem = result.features.find(feature => feature.id === 'sk1')
     expect(problem).toMatchObject({ kind: 'sketch', status: 'underconstrained' })
-    expect(problem!.message).toMatch(/^Underconstrained: 4 degrees of freedom\. Free: /)
+    expect(problem!.message).toMatch(/^Underconstrained: 4 degrees of freedom\. Free: line \d, line \d, line \d, line \d\.$/)
+    // The raw ids ride the row's free list, so a machine can name the rows the
+    // message names for a person.
+    const sketch = (result.doc!.features ?? []).find(feature => feature.id === 'sk1')
+    const ids = sketch !== undefined && sketch.kind === 'sketch' ? (sketch.entities ?? []).map(e => e.id) : []
+    expect(ids).toHaveLength(4)
+    expect(problem!.free).toEqual(ids)
+    for (const id of ids) expect(problem!.message).not.toContain(id)
     const row = result.featureDeltas?.find(delta => delta.id === 'sk1')
     expect(row?.dof).toBe(4)
   }, 120_000)

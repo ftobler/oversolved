@@ -466,7 +466,7 @@ export function applyAddConstraint(
     return 'refused'
   }
   targets = projectionPlan.targets
-  const problem = addConstraintProblem(feature, kind, targets, value, sign)
+  const problem = addConstraintProblem(feature, kind, targets, value, sign, doc.features ?? [])
   if (problem !== null) {
     warn(`applyAddConstraint: ${problem}`, { featureId, kind, targets })
     // The shape rules run first, so a duplicate is only possible once

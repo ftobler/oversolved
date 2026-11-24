@@ -61,7 +61,7 @@ describe('Part - undo inside a sketch keeps the sketch open', () => {
     await screen.findByTitle('Feature mode')
     fireEvent.click(screen.getByTitle('Feature mode'))
 
-    await waitFor(() => expect(screen.getByText('Sketch 1')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("sketch 'Sketch 1'")).toBeInTheDocument())
     fireEvent.click(screen.getByTitle('Edit sketch'))
     await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('sk1'))
     expect(screen.getByTitle('Sketch mode').className).toContain('active')
@@ -84,7 +84,7 @@ describe('Part - undo inside a sketch keeps the sketch open', () => {
         onConfirm: () => {},
       })
     })
-    const sketchRow = screen.getAllByText('Sketch 1')
+    const sketchRow = screen.getAllByText("sketch 'Sketch 1'")
       .map(node => node.closest('.feature-item'))
       .find((node): node is HTMLElement => node !== null)
     expect(sketchRow).toBeDefined()
@@ -115,7 +115,7 @@ describe('Part - undo inside a sketch keeps the sketch open', () => {
     await screen.findByTitle('Feature mode')
     fireEvent.click(screen.getByTitle('Feature mode'))
 
-    await waitFor(() => expect(screen.getByText('Sketch 1')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("sketch 'Sketch 1'")).toBeInTheDocument())
     fireEvent.click(screen.getByTitle('Edit sketch'))
     await waitFor(() => expect(useEditorState.getState().editingFeatureId).toBe('sk1'))
 

@@ -117,14 +117,20 @@ describe('the merge-ceiling warning points at a weak sketch', () => {
       angular: 3e-9,
       linear: 1e-7,
       sketch: 'sk1',
+      sketch_name: 'sketch 1',
       weak: true,
     })
     expect(weak).toContain('near-coplanar faces may stay split')
-    expect(weak).toContain('see the warning on sketch sk1')
-    // Without the flag the text is exactly today's.
-    const plain = precisionCeilingWarning({ angular: 3e-9, linear: 1e-7, sketch: 'sk1' })
+    expect(weak).toContain('see the warning on sketch 1')
+    // Without the flag the text names the sketch and carries no pointer.
+    const plain = precisionCeilingWarning({ angular: 3e-9, linear: 1e-7, sketch: 'sk1', sketch_name: 'sketch 1' })
     expect(plain).toBe(
-      "sketch sk1 solved to 3e-9 rad, above the kernel's 1e-9 merge ceiling; near-coplanar faces may stay split",
+      "sketch 1 solved to 3e-9 rad, above the kernel's 1e-9 merge ceiling; near-coplanar faces may stay split",
+    )
+    // A record without a display name falls back to the noun, never the id.
+    const unnamed = precisionCeilingWarning({ angular: 3e-9, linear: 1e-7, sketch: 'sk1' })
+    expect(unnamed).toBe(
+      "the sketch solved to 3e-9 rad, above the kernel's 1e-9 merge ceiling; near-coplanar faces may stay split",
     )
   })
 })

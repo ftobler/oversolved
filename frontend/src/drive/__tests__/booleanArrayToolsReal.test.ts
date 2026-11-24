@@ -91,7 +91,7 @@ describe.skipIf(!ready)('boolean tools naming a body pattern (real OCC + Rust so
       ],
     })
     const problem = built.features.find(feature => feature.id === 'bo1')
-    expect(problem?.message).toContain('pattern ca1 has 6 instances, the boolean uses 2')
+    expect(problem?.message).toContain('circular pattern 1 has 6 instances, the boolean uses 2')
   }, 120_000)
 
   // A partial tool list is a warning, not a failed build: the boolean still
@@ -109,7 +109,7 @@ describe.skipIf(!ready)('boolean tools naming a body pattern (real OCC + Rust so
     })
     const row = built.featureDeltas?.find(candidate => candidate.id === 'bo1')
     expect(row).toMatchObject({ id: 'bo1', status: 'ok' })
-    expect(row?.warning).toContain('pattern ca1 has 6 instances, the boolean uses 2')
+    expect(row?.warning).toContain('circular pattern 1 has 6 instances, the boolean uses 2')
     // Two slot tools are consumed by the subtract, so the live total drops by
     // four slots: the two that disappear and the two the two tools removed.
     expect(row?.volumeDelta).toBeCloseTo(-4 * SLOT, 3)

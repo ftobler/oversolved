@@ -741,7 +741,7 @@ describe.skipIf(!oc)('solveHole (real OCC)', () => {
 
         expect(result.status).toBe('partial')
         expect(result.hole_count).toBe(1)
-        expect(result.exception).toMatch(/1\/2 drill site\(s\) did not intersect part 'body_t': p2/)
+        expect(result.exception).toMatch(/1\/2 drill site\(s\) did not intersect part 'body_t': point 2/)
         expect(result.solver_warning).toBeUndefined()
         expect(volumeOf(occ, scope, table.get<OccShape>(partStore.body_t.shape!))).toBeLessThan(20 * 20 * 10)
       } finally {

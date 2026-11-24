@@ -99,7 +99,7 @@ describe('FeatureEditPanel', () => {
   it('shows the feature name, its fields and the OK/Cancel pair while editing', () => {
     renderPanel([extrudeFeature], 'ex1')
 
-    expect(screen.getByText('Extrude 1')).toBeInTheDocument()
+    expect(screen.getByText("extrude 'Extrude 1'")).toBeInTheDocument()
     // The schema editor, not a stub: the extrude's Distance field renders.
     expect(screen.getByLabelText('Distance, millimetres')).toBeInTheDocument()
     expect(screen.getByTitle('OK')).toBeInTheDocument()
@@ -145,13 +145,13 @@ describe('FeatureEditPanel', () => {
     expect(onRequestRename).toHaveBeenCalledWith({ kind: 'feature', id: 'ex1', currentName: 'Extrude 1' })
   })
 
-  it('falls back to the feature id for an unlabeled feature', () => {
+  it('falls back to the display name for an unlabeled feature', () => {
     const unlabeled: PartFeature = { ...extrudeFeature, label: undefined }
     const onRequestRename = vi.fn()
     renderPanel([unlabeled], 'ex1', { onRequestRename })
 
     fireEvent.click(screen.getByRole('button', { name: 'Rename' }))
-    expect(onRequestRename).toHaveBeenCalledWith({ kind: 'feature', id: 'ex1', currentName: 'ex1' })
+    expect(onRequestRename).toHaveBeenCalledWith({ kind: 'feature', id: 'ex1', currentName: 'extrude 1' })
   })
 
   it('draws no Rename button when the page offers no rename opener', () => {

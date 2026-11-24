@@ -116,7 +116,7 @@ describe.skipIf(!hasOcc)('boolean union: the tools are a set, not a list order',
       id: 'bool1', boolean: { operation: 'union', target: 'body_a', tools: ['body_far', 'body_b'] },
     }, new Repository(), r.store)
 
-    expect(res.solver_warning).toContain("union: tool 'body_far' does not intersect the target; skipped")
+    expect(res.solver_warning).toContain('union: tool 1 does not intersect the target; skipped')
     expect(res.body_ids).toEqual(['body_a'])
     // The joined pair is one body; the disconnected pick was not consumed.
     expect(Object.keys(r.store).sort()).toEqual(['body_a', 'body_far'])
@@ -136,8 +136,8 @@ describe.skipIf(!hasOcc)('boolean union: the tools are a set, not a list order',
       id: 'bool1', boolean: { operation: 'union', target: 'body_a', tools: ['body_b', 'body_c'] },
     }, new Repository(), r.store)
 
-    expect(res.solver_warning).toContain("tool 'body_b' does not intersect the target; skipped")
-    expect(res.solver_warning).toContain("tool 'body_c' does not intersect the target; skipped")
+    expect(res.solver_warning).toContain('tool 1 does not intersect the target; skipped')
+    expect(res.solver_warning).toContain('tool 2 does not intersect the target; skipped')
     expect(res.body_ids).toEqual(['body_a'])
     expect(Object.keys(r.store).sort()).toEqual(['body_a', 'body_b', 'body_c'])
     expect(volume(r, 'body_a')).toBeCloseTo(1000, 3)

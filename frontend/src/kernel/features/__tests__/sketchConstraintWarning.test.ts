@@ -66,8 +66,14 @@ describe.skipIf(solveBytes === null)('sketch constraint warning (real solver)', 
     // The rectangle constrains its shape but not its size or position: all four
     // lines are free.
     expect(out.solver_warning).toBe(
-      'Underconstrained: 4 degrees of freedom. Free: l1, l2, l3, l4.',
+      'Underconstrained: 4 degrees of freedom. Free: line 1, line 2, line 3, line 4.',
     )
+    // The readable names are the message; the ids ride beside it for a machine.
+    expect(out.free_entities).toEqual(['l1', 'l2', 'l3', 'l4'])
+    for (const entity of feature.entities ?? []) {
+      expect(out.solver_warning).not.toContain(entity.id)
+      expect(out.solver_warning).not.toContain(`'${entity.id}'`)
+    }
   })
 
   it('is fully constrained when the same rectangle is anchored and dimensioned', () => {
@@ -97,8 +103,10 @@ describe.skipIf(solveBytes === null)('sketch constraint warning (real solver)', 
     expect(out.status).toBe('underconstrained')
     expect(out.dof).toBe(14)
     expect(out.solver_warning).toBe(
-      'Underconstrained: 14 degrees of freedom. Free: p1, p2, p3, p4, p5 and 2 more.',
+      'Underconstrained: 14 degrees of freedom. Free: point 1, point 2, point 3, point 4, point 5 and 2 more.',
     )
+    // The ids the names came from stay on the result for a machine to act on.
+    expect(out.free_entities).toEqual(['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7'])
   })
 
   it('anchors and dimensions a rectangle from its one-step sugar', () => {
@@ -228,8 +236,9 @@ describe.skipIf(solveBytes === null)('sketch constraint warning (real solver)', 
     const out = solve(feature)
     expect(out.status).toBe('fully_constrained')
     expect(out.solver_warning).toMatch(
-      /^constraint c_length_\S+ \(length\) names operands it cannot use \(operand kind\) and was ignored\.$/,
+      /^length 1 names geometry it cannot use \(operand kind\) and was ignored\.$/,
     )
+    expect(out.solver_warning).not.toContain('c_length_')
     // The structured twin the editor tiles and the cleanup command read.
     expect(out.dropped_constraints).toHaveLength(1)
     expect(out.dropped_constraints![0]).toMatchObject({ kind: 'length', reason: 'operand kind' })
@@ -247,7 +256,7 @@ describe.skipIf(solveBytes === null)('sketch constraint warning (real solver)', 
     const out = solve(feature)
     expect(out.status).toBe('fully_constrained')
     expect(out.solver_warning).toMatch(
-      /^constraint c_missing \(coincident\) names operands it cannot use \(stale reference\) and was ignored\.$/,
+      /^coincident 2 names geometry it cannot use \(stale reference\) and was ignored\.$/,
     )
     expect(out.dropped_constraints).toEqual([
       { id: 'c_missing', kind: 'coincident', reason: 'stale reference' },
@@ -272,7 +281,7 @@ describe.skipIf(solveBytes === null)('sketch constraint warning (real solver)', 
     const out = solve(feature)
     expect(out.status).toBe('fully_constrained')
     expect(out.solver_warning).toMatch(
-      /^constraint c_colinear_bad \(colinear\) names operands it cannot use \(colinear needs two lines or a point and a line\) and was ignored\.$/,
+      /^colinear 1 names geometry it cannot use \(colinear needs two lines or a point and a line\) and was ignored\.$/,
     )
   })
 
@@ -312,7 +321,7 @@ describe.skipIf(solveBytes === null)('sketch constraint warning (real solver)', 
     const out = solve(feature)
     expect(out.status).toBe('underconstrained')
     expect(out.solver_warning).toContain('Underconstrained:')
-    expect(out.solver_warning).toContain('names operands it cannot use')
+    expect(out.solver_warning).toContain('names geometry it cannot use')
   })
 
   it('never puts the warning on a drag solve', () => {

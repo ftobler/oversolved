@@ -810,7 +810,7 @@ describe('partDocToSketches', () => {
     expect(sketches[0].droppedConstraints).toEqual([{
       id: 'c_equal_length_5HE4ofd4',
       kind: 'equal_length',
-      reason: 'Equal takes sketch geometry; @builtin_plane_top is a plane',
+      reason: 'Equal takes sketch geometry; the picked target is a plane',
     }])
   })
 
@@ -830,7 +830,7 @@ describe('partDocToSketches', () => {
     expect(sketches[0].droppedConstraints).toEqual([{
       id: 'c_face',
       kind: 'coincident',
-      reason: `Coincident takes sketch geometry; ${storedRef} is not sketch geometry`,
+      reason: 'Coincident takes sketch geometry; the picked target is a face or edge query',
     }])
   })
 

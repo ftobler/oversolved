@@ -22,6 +22,7 @@ import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { PlaneLike } from '../shared/planes'
 import type { ThreadDisplayData } from '@/types/cad'
+import { leakedIds } from '@/testing/warningText'
 
 const oc = await loadOcc()
 
@@ -47,13 +48,13 @@ describe.skipIf(!oc)('the cosmetic thread on a hole (real OCC)', () => {
     }
     const parts: Record<string, PartSolid> = { body_b: part }
     const repo = new Repository()
-    repo.register('_pt_sk_h', PLANE)
+    repo.register('_pt_sketchXyZ0123456789', PLANE)
     // A site at the plate's middle, so a blind bore sits wholly inside it.
-    repo.register('sk_h/p1/xy', { external_xy: [5, 5] })
+    repo.register('sketchXyZ0123456789/pointXyZ0123456789/xy', { external_xy: [5, 5] })
     const result = solveHole(occ, scope, table, {
       id: 'h1',
-      hole: { sketch: '@sk_h', direction: 'reverse', target: 'body_b', ...hole },
-    }, repo, parts, { sk_h: { entities: [{ id: 'p1', kind: 'point' }] } })
+      hole: { sketch: '@sketchXyZ0123456789', direction: 'reverse', target: 'body_b', ...hole },
+    }, repo, parts, { sketchXyZ0123456789: { entities: [{ id: 'pointXyZ0123456789', kind: 'point' }] } })
     return { bodies: parts, result }
   }
 
@@ -185,12 +186,12 @@ describe.skipIf(!oc)('the cosmetic thread on a hole (real OCC)', () => {
         }
         const parts: Record<string, PartSolid> = { body_b: part }
         const repo = new Repository()
-        repo.register('_pt_sk_h', PLANE)
-        repo.register('sk_h/p1/xy', { external_xy: [5, 5] })
+        repo.register('_pt_sketchXyZ0123456789', PLANE)
+        repo.register('sketchXyZ0123456789/pointXyZ0123456789/xy', { external_xy: [5, 5] })
         const result = solveHole(occ, scope, table, {
           id: 'h1',
-          hole: { sketch: '@sk_h', direction: 'reverse', target: 'body_b', diameter: 3, depth_mode: 'through_all', thread: M6 },
-        }, repo, parts, { sk_h: { entities: [{ id: 'p1', kind: 'point' }] } })
+          hole: { sketch: '@sketchXyZ0123456789', direction: 'reverse', target: 'body_b', diameter: 3, depth_mode: 'through_all', thread: M6 },
+        }, repo, parts, { sketchXyZ0123456789: { entities: [{ id: 'pointXyZ0123456789', kind: 'point' }] } })
         const [site] = (result.thread as ThreadDisplayData).sites
         expect(site.bore_uuids).toHaveLength(2)
         for (const uuid of site.bore_uuids) expect(parts.body_b.face_uuids).toContain(uuid)
@@ -250,9 +251,13 @@ describe.skipIf(!oc)('the cosmetic thread on a hole (real OCC)', () => {
         })
         expect(result.status).toBe('ok')
         expect((result.thread as ThreadDisplayData).sites[0].length).toBeCloseTo(6, 9)
-        expect(result.solver_warning).toMatch(
-          /thread_depth 9 exceeds the bore at sites p1 \(6\) \(bore length in parentheses\); the thread stops at the bore end/,
+        const warning = String(result.solver_warning)
+        expect(warning).toMatch(
+          /thread_depth 9 exceeds the bore at sites point 1 \(6\) \(bore length in parentheses\); the thread stops at the bore end/,
         )
+        expect(leakedIds(warning)).toEqual([])
+        expect(warning).not.toContain('pointXyZ0123456789')
+        expect(warning).not.toContain('sketchXyZ0123456789')
       } finally {
         scope.dispose()
       }
@@ -283,7 +288,10 @@ describe.skipIf(!oc)('the cosmetic thread on a hole (real OCC)', () => {
         expect(result.status).toBe('ok')
         expect(result.hole_count).toBe(1)
         expect((result.thread as ThreadDisplayData | undefined)?.sites ?? []).toEqual([])
-        expect(result.solver_warning).toMatch(/thread_depth 2 ends above the bore \(inside the counterbore\) at sites p1/)
+        const warning = String(result.solver_warning)
+        expect(warning).toMatch(/thread_depth 2 ends above the bore \(inside the counterbore\) at sites point 1/)
+        expect(leakedIds(warning)).toEqual([])
+        expect(warning).not.toContain('pointXyZ0123456789')
       } finally {
         scope.dispose()
       }
@@ -358,17 +366,17 @@ describe.skipIf(!oc)('the cosmetic thread on a hole (real OCC)', () => {
       const repo = new Repository()
       // A drill site 50 mm off the body: the cutter removes nothing, so the
       // thread must not show there.
-      repo.register('_pt_sk_h', { ...PLANE, origin: [50, 50, 10] })
+      repo.register('_pt_sketchXyZ0123456789', { ...PLANE, origin: [50, 50, 10] })
       // A site at the plate's middle, so a blind bore sits wholly inside it.
-    repo.register('sk_h/p1/xy', { external_xy: [5, 5] })
+    repo.register('sketchXyZ0123456789/pointXyZ0123456789/xy', { external_xy: [5, 5] })
       const result = solveHole(occ, scope, table, {
         id: 'h1',
         hole: {
-          sketch: '@sk_h', direction: 'reverse', target: 'body_b',
+          sketch: '@sketchXyZ0123456789', direction: 'reverse', target: 'body_b',
           diameter: 5, depth_mode: 'blind', depth: 6,
           thread: { designation: 'M6x1', nominal: 6, pitch: 1 },
         },
-      }, repo, parts, { sk_h: { entities: [{ id: 'p1', kind: 'point' }] } })
+      }, repo, parts, { sketchXyZ0123456789: { entities: [{ id: 'pointXyZ0123456789', kind: 'point' }] } })
       expect(result.thread).toBeUndefined()
       expect(result.solver_warning).toMatch(/nothing was removed/)
     } finally {

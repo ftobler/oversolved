@@ -106,7 +106,8 @@ describe.skipIf(!ready)('an x distance at the arc extreme is named, and the scri
     // rad around the tilt), and now points at the sketch's own warning.
     const second = run.features.find(problem => problem.id === SECOND)
     expect(second?.message).toContain('merge ceiling')
-    expect(second?.message).toContain(`see the warning on sketch ${SKETCH}`)
+    expect(second?.message).toMatch(/see the warning on sketch (\d+|'[^']+')/)
+    expect(second?.message).not.toContain(SKETCH)
 
     // The second extrude follows the tilted cap face, and its volume is the
     // cap face's 1x1 over 10, whatever the tilt.

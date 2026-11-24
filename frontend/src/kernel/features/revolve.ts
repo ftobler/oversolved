@@ -23,6 +23,7 @@ import { carryFaceNames, emptyShapeNames, mergeShapeNames } from '../occ/partNam
 import { deriveEdgeNames } from '../occ/constructionLineage'
 import { faceCentroid, type Vec3 } from '../occ/primitives'
 import { loopCentroid, loopPts, pointInLoop } from '../profileLoops'
+import { sketchDisplayName, featureRows } from '@/utils/core/displayNames'
 import { angularHandle } from './featureHandles'
 
 type Dict = Record<string, unknown>
@@ -283,8 +284,9 @@ export function solveRevolve(
         // Face picks stay out of this guard: each face carries its own 3D frame,
         // and the mixed guard below owns them.
         throw new Error(
-          `revolve: profile spans two different sketch planes ('${firstSketchId}' and ` +
-          `'${resolved.sketchId}'); build one feature per plane`,
+          `revolve: profile spans two different sketch planes (` +
+          `${sketchDisplayName(firstSketchId, featureRows(featuresById))} and ` +
+          `${sketchDisplayName(resolved.sketchId, featureRows(featuresById))}); build one feature per plane`,
         )
       }
     }

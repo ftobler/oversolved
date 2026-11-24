@@ -64,7 +64,7 @@ describe('Part - feature body visibility', () => {
     await screen.findByTitle('Feature mode')
     await waitFor(() => expect(shown('sw1')).toBe(true))
 
-    const row = screen.getByText('sw1').closest('.feature-item') as HTMLElement
+    const row = screen.getByText('sweep 1').closest('.feature-item') as HTMLElement
     const eye = row.querySelector('.feature-visibility-btn')
     expect(eye).not.toBeNull()
 

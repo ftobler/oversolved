@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { screen, fireEvent } from '@testing-library/react'
 import {
   makeCallbacks, renderSidebar, resetStores, setupEditingStore as setupStore,
-  builtInFeatures, extrudeFeature, sketchFeature,
+  builtInFeatures, extrudeFeature, sketchFeature, featureRow,
 } from './sidebarTestHarness'
 
 beforeEach(() => {
@@ -17,7 +17,7 @@ describe('FeatureTree double-click to edit', () => {
     setupStore(features)
     renderSidebar(makeCallbacks({ onEnterEditFeature, onEnterEditSketch }))
 
-    const extrudeItem = screen.getByText('ex1').closest('.feature-item')!
+    const extrudeItem = featureRow('ex1')
     fireEvent.doubleClick(extrudeItem)
 
     expect(onEnterEditFeature).toHaveBeenCalledTimes(1)
@@ -32,7 +32,7 @@ describe('FeatureTree double-click to edit', () => {
     setupStore(features)
     renderSidebar(makeCallbacks({ onEnterEditFeature, onEnterEditSketch }))
 
-    const sketchItem = screen.getByText('sk1').closest('.feature-item')!
+    const sketchItem = featureRow('sk1')
     fireEvent.doubleClick(sketchItem)
 
     expect(onEnterEditSketch).toHaveBeenCalledTimes(1)
@@ -47,7 +47,7 @@ describe('FeatureTree double-click to edit', () => {
     setupStore(features)
     renderSidebar(makeCallbacks({ onEnterEditFeature, onEnterEditSketch }))
 
-    const originItem = screen.getByText('Origin').closest('.feature-item')!
+    const originItem = featureRow('Origin')
     fireEvent.doubleClick(originItem)
 
     expect(onEnterEditFeature).not.toHaveBeenCalled()
@@ -60,7 +60,7 @@ describe('FeatureTree double-click to edit', () => {
     setupStore(features, 'ex1')  // ex1 is already the editing feature
     renderSidebar(makeCallbacks({ onEnterEditFeature }))
 
-    const extrudeItem = screen.getByText('ex1').closest('.feature-item')!
+    const extrudeItem = featureRow('ex1')
     fireEvent.doubleClick(extrudeItem)
 
     expect(onEnterEditFeature).not.toHaveBeenCalled()
@@ -76,7 +76,7 @@ describe('FeatureTree double-click to edit', () => {
     const pencil = screen.getByTitle('Unsuppress to edit') as HTMLButtonElement
     expect(pencil.disabled).toBe(true)
 
-    const sketchItem = screen.getByText('sk1').closest('.feature-item')!
+    const sketchItem = featureRow('sk1')
     fireEvent.doubleClick(sketchItem)
 
     expect(onEnterEditSketch).not.toHaveBeenCalled()

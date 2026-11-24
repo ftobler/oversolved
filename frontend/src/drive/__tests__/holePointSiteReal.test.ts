@@ -175,8 +175,8 @@ describe.skipIf(!ready)('the projected origin is the drill site (real OCC + Rust
     expect(built.features.map(feature => feature.id)).toEqual(['h1'])
     const hole = built.features[0]
     expect(hole.status).toBe('ok')
-    expect(hole.message).toContain('sits on site o and drills nothing')
-    expect(hole.message).toContain('(o is the projection of @builtin_origin)')
+    expect(hole.message).toContain('sits on point 1 and drills nothing')
+    expect(hole.message).toContain('(point 1 is projected from the document origin)')
     expect(hole.message).not.toMatch(/did not intersect|merge into one cut/)
   }, 180_000)
 

@@ -49,6 +49,10 @@ export interface FeatureOutcome {
   // this count in its warning; the delta row repeats it so an author sees the
   // number shrink as constraints land.
   dof?: number
+  // A sketch's free entity ids, beside the readable warning that names them.
+  // The message is the sentence a person reads; this list is what a machine
+  // acts on (add a constraint at these rows).
+  free?: string[]
   // A sketch's unresolved projections, split into the rows that kept their last
   // position and the rows that never had one. A soft error: the sketch keeps its
   // status and dof, the row is a warning, and an export still tolerates it.
@@ -72,6 +76,9 @@ export interface FeatureProblem {
   // A sketch's weak constraints, when it has any: the structured ids beside the
   // readable message.
   weak?: Array<{ constraintId: string; moveEstimate: number }>
+  // A sketch's free entity ids, when its warning names them. The message says
+  // "line 1, line 2"; this list says which rows those are.
+  free?: string[]
 }
 
 /**
@@ -169,6 +176,7 @@ export function readSolveOutcomes(
       status?: unknown; exception?: unknown; solver_warning?: unknown; solver_note?: unknown
       resolved_warning?: unknown; direction?: unknown; body_id?: unknown; dof?: unknown
       projection_errors?: unknown; projection_unpositioned?: unknown; weak_constraints?: unknown
+      free_entities?: unknown
     }
     if (typeof row.status !== 'string') continue
     const exception = typeof row.exception === 'string' && row.exception !== '' ? row.exception : undefined
@@ -184,6 +192,7 @@ export function readSolveOutcomes(
     const dof = typeof row.dof === 'number' && Number.isFinite(row.dof) ? row.dof : undefined
     const projectionErrors = projectionErrorReport(row.projection_errors, row.projection_unpositioned)
     const weak = weakReport(row.weak_constraints)
+    const free = idList(row.free_entities)
     outcomes[id] = {
       status: row.status,
       ...(exception !== undefined && { exception }),
@@ -193,6 +202,7 @@ export function readSolveOutcomes(
       ...(direction !== undefined && { direction }),
       ...(partId !== undefined && { bodyId: partId }),
       ...(dof !== undefined && { dof }),
+      ...(free.length > 0 && { free }),
       ...(projectionErrors !== undefined && { projectionErrors }),
       ...(weak !== undefined && { weak }),
     }
@@ -284,6 +294,7 @@ export function featureProblems(
       kind,
       status: outcome.status,
       message: outcome.exception ?? outcome.warning ?? defaultMessage(outcome.status),
+      ...(outcome.free !== undefined && { free: outcome.free }),
       ...(outcome.projectionErrors !== undefined && { projectionErrors: outcome.projectionErrors }),
       ...(outcome.weak !== undefined && { weak: outcome.weak }),
     })

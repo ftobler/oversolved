@@ -174,7 +174,7 @@ describe('solveSketch projection lowering', () => {
     expect(out.status).not.toBe('error')
     expect(out.geometry?.sp0.length).toBeGreaterThan(8)
     expect(out.geometry!.sp0.length).toBeLessThanOrEqual(132)
-    expect(out.solver_warning).toContain('projection proj_sp0: curve fit stopped at')
+    expect(out.solver_warning).toContain('projection 1: curve fit stopped at')
     expect(out.solver_warning).toContain('the closest fit is kept')
   })
 
@@ -258,7 +258,7 @@ describe('solveSketch projection lowering', () => {
     const profileIds = profileEntityIds(out)
     expect(profileIds).not.toContain('stale')
     expect(out.solver_warning).toContain(
-      'projection proj_stale source ?edge;gone did not resolve; '
+      'projection 1 did not resolve; '
       + 'the entity has no position yet and is left out of the profile',
     )
     // Chosen rule for display: the entity is not filtered out of the sketch view,
@@ -288,7 +288,7 @@ describe('solveSketch projection lowering', () => {
     expect(out.geometry?.stale).toBeUndefined()
     expect(profileEntityIds(out)).not.toContain('stale')
     expect(out.solver_warning).toContain(
-      'projection proj_stale source ?edge;gone did not resolve; '
+      'projection 1 did not resolve; '
       + 'the entity has no position yet and is left out of the profile',
     )
   })
@@ -319,7 +319,7 @@ describe('solveSketch projection lowering', () => {
     expect(out.geometry?.held).toBeUndefined()
     expect(profileEntityIds(out)).not.toContain('held')
     expect(out.solver_warning).toContain(
-      'projection proj_held source ?edge;gone did not resolve; '
+      'projection 1 did not resolve; '
       + 'the entity has no position yet and is left out of the profile',
     )
   })
@@ -349,7 +349,7 @@ describe('solveSketch projection lowering', () => {
     expect(out.geometry?.held).toBeUndefined()
     expect(profileEntityIds(out)).not.toContain('held')
     expect(out.solver_warning).toContain(
-      'projection proj_held source ?edge;gone did not resolve; '
+      'projection 1 did not resolve; '
       + 'the entity has no position yet and is left out of the profile',
     )
   })
@@ -411,7 +411,7 @@ describe('solveSketch projection lowering', () => {
     expect(out.geometry?.held).toBeUndefined()
     expect(profileEntityIds(out)).not.toContain('held')
     expect(out.solver_warning).toContain(
-      'projection proj_held source ?edge;gone did not resolve; '
+      'projection 1 did not resolve; '
       + 'the entity has no position yet and is left out of the profile',
     )
   })
@@ -434,7 +434,7 @@ describe('solveSketch projection lowering', () => {
     const out = solveSketch(feature, deadRepo(), {} as Record<string, PartSolid>)
     expect(out.geometry?.held).toEqual([0, 2, 4, 2])
     expect(out.solver_warning).toContain(
-      'projection proj_held source ?edge;gone did not resolve; the entity keeps its last position',
+      'projection 1 did not resolve; the entity keeps its last position',
     )
     expect(profileEntityIds(out)).toContain('held')
   })
@@ -715,7 +715,7 @@ describe('solveSketch projects another sketch\'s whole entity', () => {
     const out = solveSketch(sketchWithProjection('@sk1/nope', 'point'), repoOf(), {} as Record<string, PartSolid>)
     expect(out.projection_errors).toEqual(['proj_held'])
     expect(out.solver_warning).toContain(
-      'projection proj_held source @sk1/nope did not resolve; the entity keeps its last position',
+      'projection 1 did not resolve; the entity keeps its last position',
     )
   })
 
@@ -844,14 +844,17 @@ describe('solveSketch reports the constraints it could not use', () => {
       {
         id: 'c_coincident_oT6KcUj9',
         kind: 'coincident',
-        reason: 'Coincident takes sketch geometry; @sk1/1yxgoOAo0Q3Xondp is not sketch geometry',
+        reason: 'Coincident takes sketch geometry; the picked target is not sketch geometry',
       },
     ])
-    // The plain warning channel keeps the same sentence the tree already shows.
+    // The plain warning channel keeps the same sentence the tree already shows,
+    // with the row named by kind and ordinal and no id anywhere in the text.
     expect(out.solver_warning).toContain(
-      'constraint c_coincident_oT6KcUj9 (coincident) names operands it cannot use '
-      + '(Coincident takes sketch geometry; @sk1/1yxgoOAo0Q3Xondp is not sketch geometry) and was ignored.',
+      'coincident 2 names geometry it cannot use '
+      + '(Coincident takes sketch geometry; the picked target is not sketch geometry) and was ignored.',
     )
+    expect(out.solver_warning).not.toContain('1yxgoOAo0Q3Xondp')
+    expect(out.solver_warning).not.toContain('c_coincident_oT6KcUj9')
   })
 })
 

@@ -145,7 +145,8 @@ describe('orderedPathWorldEdges', () => {
   })
 
   it('throws when a path sketch is unknown', () => {
-    expect(() => orderedPathWorldEdges(['$missing'], new Repository())).toThrow(/path sketch not found/)
+    expect(() => orderedPathWorldEdges(['$missing'], new Repository()))
+      .toThrow(/the path sketch is not in the document; pick the path again/)
   })
 
   it('resolves a line-arc-line spine picked edge-by-edge (bug: sweep_20260613_134746)', () => {
@@ -322,7 +323,7 @@ describe('solveSweep guard paths', () => {
         { sw1: { id: 'sw1', kind: 'sweep' }, s6: { id: 's6', kind: 'sketch' } },
       ),
     ).toThrow(
-      "sketch 's6' is defined after this sweep; move it up with reorder_features {featureId: 's6', before: 'sw1'}",
+      'sketch 1 is defined after sweep 1; move it up with `reorder_features` (before this row)',
     )
   })
 
@@ -358,7 +359,7 @@ describe('solveSweep guard paths', () => {
         { sw1: { id: 'sw1', kind: 'sweep' }, s6: { id: 's6', kind: 'sketch' } },
       ),
     ).toThrow(
-      "sketch 's6' is defined after this sweep; move it up with reorder_features {featureId: 's6', before: 'sw1'}",
+      'sketch 1 is defined after sweep 1; move it up with `reorder_features` (before this row)',
     )
   })
 
@@ -392,7 +393,7 @@ describe('solveSweep guard paths', () => {
         { sw1: { id: 'sw1', kind: 'sweep' }, s6: { id: 's6', kind: 'sketch' } },
       ),
     ).toThrow(
-      "sketch 's6' is defined after this sweep; move it up with reorder_features {featureId: 's6', before: 'sw1'}",
+      'sketch 1 is defined after sweep 1; move it up with `reorder_features` (before this row)',
     )
   })
 
@@ -415,7 +416,7 @@ describe('solveSweep guard paths', () => {
           {},
           featuresById,
         ),
-      ).toThrow(/path sketch not found: "s6"/)
+      ).toThrow(/pick the path again/)
     }
   })
 
@@ -487,7 +488,7 @@ describe('solveSweep guard paths', () => {
         { id: 'sw', sweep: { sketch: ['entity:sk:l1'], path: '$p' } },
         repo, {},
       ),
-    ).toThrow(/do not form a closed loop \(sketch sk\)/)
+    ).toThrow(/do not form a closed loop in the sketch/)
   })
 
   it('reads an undivided picked circle from the surface boundary', () => {
@@ -511,7 +512,7 @@ describe('solveSweep guard paths', () => {
         { id: 'sw', sweep: { sketch: ['entity:sk:c1'], path: '$p' } },
         repo, {},
       ),
-    ).toThrow(/path sketch not found: "p"/)
+    ).toThrow(/pick the path again/)
   })
 
   it('refuses a face profile, which sweep does not support', () => {
@@ -567,7 +568,7 @@ describe('solveSweep guard paths', () => {
         { id: 'sw', sweep: { sketch: ['$skA', '$skB'], path: '$p', multisection: true } },
         new Repository(), {},
       ),
-    ).toThrow(/path sketch not found: "p"/)
+    ).toThrow(/pick the path again/)
   })
 
   it('refuses a multisection section with a hole', () => {
@@ -584,7 +585,7 @@ describe('solveSweep guard paths', () => {
         { id: 'sw', sweep: { sketch: ['$skH', '$skA'], path: '$p', multisection: true } },
         new Repository(), {},
       ),
-    ).toThrow(/sketch skH, loop 1 has a hole/)
+    ).toThrow(/the sketch, loop 1 has a hole/)
     // The refusal gives the way forward, not only the limit.
     expect(() =>
       solveSweep(
@@ -649,7 +650,7 @@ describe('solveSweep guard paths', () => {
         { id: 'sw', sweep: { sketch: ['entity:sk:l1', 'entity:sk:l2', 'entity:sk:l3', 'entity:sk:l4'], path: '$missing' } },
         repo, {},
       ),
-    ).toThrow(/path sketch not found: "missing"/)
+    ).toThrow(/pick the path again/)
   })
 
   it('refuses edge-precise profiles spanning two sketch planes', () => {
@@ -707,14 +708,21 @@ describe('entityLoopDropMessage', () => {
   })
 
   it('names the picked entities that produced no kept loop', () => {
+    const sketch = {
+      id: 'sk1',
+      kind: 'sketch',
+      entities: [{ id: 'rect1', kind: 'line' }, { id: 'rect2', kind: 'line' }],
+    }
     const message = entityLoopDropMessage(
       ['rect1', 'rect2'],
       [[{ entity_id: 'rect1', start: [0, 0], end: [1, 0] }]],
       [{ kind: 'leftover', leftover: 4, total: 8, surface: 0 }],
+      sketch,
     )
     expect(message).toBe(
-      'dropped 1 of 2 picked profile entities whose edges did not form a closed loop: rect2',
+      'dropped 1 of 2 picked profile entities whose edges did not form a closed loop: line 2',
     )
+    expect(message).not.toContain('rect2')
   })
 
   it('recognises a loop edge that carries id instead of entity_id', () => {

@@ -65,9 +65,9 @@ function select(ids: string[]) {
 }
 
 function row(container: HTMLElement, id: string): HTMLElement {
-  const span = [...container.querySelectorAll('.feature-name')].find(n => n.textContent === id)
-  if (!span) throw new Error(`row not found: ${id}`)
-  return span.closest('.feature-item') as HTMLElement
+  const el = container.querySelector(`[data-oversolved-handle="tree:feature:${id}"]`)
+  if (!el) throw new Error(`row not found: ${id}`)
+  return el as HTMLElement
 }
 
 beforeEach(() => {

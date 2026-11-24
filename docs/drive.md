@@ -642,13 +642,16 @@ banner on stdout, so a client config must use the direct node invocation.
   `features` list carries every such feature in feature log order as
   `{ id, kind, status, message }`, where `message` is the kernel's own
   exception or warning text; it is always present and empty for a clean build.
+  A sketch row also carries `free`, the raw ids of the entities still holding
+  DOF, when its warning names them.
   The one-line `summary` repeats it as a `; problems: <id> (<kind>) <status>:
   <message>` suffix, so a client that reads only the summary still sees it.
   A fully constrained sketch is a state and is not listed unless it carries a
   build warning, such as an ignored constraint; that row keeps status
   `fully_constrained` and carries the warning text. An underconstrained sketch
   is a warning row: status `underconstrained`, message
-  `Underconstrained: N degree(s) of freedom.` plus up to five free entity ids,
+  `Underconstrained: N degree(s) of freedom.` plus up to five free entities by
+  name (`line 1, point 2`), the raw ids in the row's `free` list,
   and its `featureDeltas` row carries the same `dof`. Neither makes a run or a
   measure `ok` false, and both are sketch warning rows an export tolerates (see
   below). A fully constrained sketch can also be a warning row when the solve
@@ -1256,9 +1259,9 @@ banner on stdout, so a client config must use the direct node invocation.
   falls back to the XY plane. A face query is resolved after the solve, and a
   plane or face query that does not resolve fails the sketch or `add_plane`
   feature with the cause named: a plane feature defined later in the log (a
-  sketch's message names the one-step fix,
-  `reorder_features {featureId: <planeId>, before: <sketchId>}`) or a face
-  query nothing registers any more. Only an absent or empty query keeps Front.
+  sketch's message names both rows and the one-step fix, `reorder_features`
+  before this row) or a face query nothing registers any more. Only an absent or
+  empty query keeps Front.
   `add_sketch.plane` and `set_feature_plane.plane` also take the selector
   itself, `{selector: <a select selector naming exactly one face>}`: the
   headless drive resolves it against the settled solve and stores the query

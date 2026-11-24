@@ -140,7 +140,7 @@ const cases: Case[] = [
   {
     name: 'equal_length with the sketch plane as an operand',
     kind: 'equal_length', targets: ['@builtin_plane_top', 'entity:sk1:ax'],
-    problem: 'Equal takes sketch geometry; @builtin_plane_top is a plane',
+    problem: 'Equal takes sketch geometry; the picked target is a plane',
   },
   { name: 'length one ref', kind: 'length', targets: ['$ax'], value: 4, problem: null },
   {
@@ -200,7 +200,7 @@ const cases: Case[] = [
   { name: 'group a point entity by its xy', kind: 'group', targets: ['$oxy'], problem: null },
   {
     name: 'group a whole entity and its own point', kind: 'group', targets: ['entity:sk1:ax', '$axend'],
-    problem: 'group names entity "ax" both whole and by point; drop the duplicate',
+    problem: 'group names line 1 both whole and by point; drop the duplicate',
   },
   {
     name: 'group a lone point member', kind: 'group', targets: ['$axend'],
@@ -208,7 +208,7 @@ const cases: Case[] = [
   },
   {
     name: 'group a point key the kind lacks', kind: 'group', targets: ['$axc1', '$c1'],
-    problem: 'group cannot hold point "c1" of line "ax"; it has no such point',
+    problem: 'group cannot hold the c1 point of line 1; it has no such point',
   },
   {
     name: 'group the origin', kind: 'group', targets: ['$ax', '@builtin_origin'],
@@ -247,15 +247,16 @@ describe('addConstraintProblem', () => {
     ['@builtin_plane_front', 'a plane'],
     ['@pl1', 'not sketch geometry'],
     ['@sk1', 'not sketch geometry'],
-    ['@body_ex1/face/0', 'not sketch geometry'],
-    ['?face', 'not sketch geometry'],
+    ['@body_ex1/face/0', 'a face or edge query'],
+    ['?face', 'a face or edge query'],
   ]
 
   it.each(CONSTRAINTS.map(c => c.kind))('%s refuses a non-sketch operand', kind => {
     const label = CONSTRAINT_BY_KIND.get(kind)!.label
     for (const [target, noun] of NON_SKETCH_TARGETS) {
-      expect(addConstraintProblem(sketchAt(shapeDoc()), kind, [target], undefined))
-        .toBe(`${label} takes sketch geometry; ${target} is ${noun}`)
+      const problem = addConstraintProblem(sketchAt(shapeDoc()), kind, [target], undefined)
+      expect(problem).toBe(`${label} takes sketch geometry; the picked target is ${noun}`)
+      expect(problem).not.toContain(target)
     }
   })
 
@@ -263,7 +264,7 @@ describe('addConstraintProblem', () => {
     // The drive and MCP value rule call this with no sketch: the ref shape is
     // readable on its own, so the plane must still be refused there.
     expect(addConstraintProblem(undefined, 'equal_length', ['@builtin_plane_top', '$L1'], undefined))
-      .toBe('Equal takes sketch geometry; @builtin_plane_top is a plane')
+      .toBe('Equal takes sketch geometry; the picked target is a plane')
   })
 
   it('accepts the builtin origin where the kind takes a point', () => {
@@ -284,7 +285,7 @@ describe('addConstraintProblem', () => {
         sketch, 'coincident', ['vertex:sk1:ax:start', wrapper], undefined,
       )).toBeNull()
       expect(constraintOperandRefProblem('coincident', wrapper))
-        .toBe(`Coincident takes sketch geometry; ${wrapper} is not sketch geometry`)
+        .toBe('Coincident takes sketch geometry; the picked target is a face or edge query')
     }
   })
 
@@ -298,7 +299,10 @@ describe('addConstraintProblem', () => {
       members: { 'u|e_aaaa': member },
     }]
     const problem = addConstraintProblem(sketch, 'group', [`entity:sk1:${member}`], undefined)
-    expect(problem).toContain('projected member')
+    // A derived member is not a document row, so it has no display name; the
+    // sentence still refuses it without printing the id.
+    expect(problem).toBe('group cannot include that entity; delete its projection first')
+    expect(problem).not.toContain(member)
   })
 })
 
@@ -386,7 +390,9 @@ describe('duplicate constraint rows', () => {
       sketchAt(withRows(stored)), 'coincident',
       ['vertex:sk1:ax:start', 'vertex:sk1:bx:end'], undefined,
     )
-    expect(problem).toContain('c_stored')
+    expect(problem).toContain('coincident 1')
+    expect(problem).not.toContain('c_stored')
+    expect(problem).toContain('line 1 start, line 2 end')
   })
 
   it('refuses the same coincident with the operands reversed', () => {
@@ -394,7 +400,8 @@ describe('duplicate constraint rows', () => {
       sketchAt(withRows(stored)), 'coincident',
       ['vertex:sk1:bx:end', 'vertex:sk1:ax:start'], undefined,
     )
-    expect(problem).toContain('c_stored')
+    expect(problem).toContain('coincident 1')
+    expect(problem).not.toContain('c_stored')
   })
 
   it('refuses a duplicate point-on-line coincident in either order', () => {
@@ -403,7 +410,8 @@ describe('duplicate constraint rows', () => {
       ['entity:sk1:bx', 'vertex:sk1:ax:start'],
     ]) {
       const problem = addConstraintProblem(sketchAt(withRows(pointOnLine)), 'coincident', targets, undefined)
-      expect(problem).toContain('c_on_line')
+      expect(problem).toContain('coincident 1')
+      expect(problem).not.toContain('c_on_line')
     }
   })
 
