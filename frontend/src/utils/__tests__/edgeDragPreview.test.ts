@@ -175,6 +175,72 @@ describe('edgeDragPreview', () => {
     expect(fit.handleEnd).toEqual([7, 3])
   })
 
+  it('moves every member of a group drag, including a single selected point', () => {
+    const sketch: Sketch = {
+      L1: { start: [0, 0], end: [10, 0] },
+      L2: { start: [0, 5], end: [10, 5] },
+      C1: { center: [3, 3], radius: 2 },
+    } as unknown as Sketch
+    const drag: VertexOrEdgeDrag & { type: 'edge' } = {
+      type: 'edge',
+      vertexId: 'entity:S1:L1',
+      featureId: 'S1',
+      entityId: 'L1',
+      vertexKey: '',
+      startWorld: [0, 0],
+      currentWorld: [4, 2],
+      startClient: [100, 100],
+      group: [
+        { entityId: 'L1', vertexKey: 'edge' },
+        { entityId: 'L2', vertexKey: 'start' },
+        { entityId: 'C1', vertexKey: 'center' },
+      ],
+    }
+
+    const result = edgeDragPreview(sketch, drag)
+
+    const l1 = result.L1 as { start: [number, number]; end: [number, number] }
+    const l2 = result.L2 as { start: [number, number]; end: [number, number] }
+    expect(l1.start).toEqual([4, 2])
+    expect(l1.end).toEqual([14, 2])
+    // A point member moves its own pair only; the rest of its line stays.
+    expect(l2.start).toEqual([4, 7])
+    expect(l2.end).toEqual([10, 5])
+    expect((result.C1 as { center: [number, number] }).center).toEqual([7, 5])
+  })
+
+  it('translates a derived point member as its whole entity', () => {
+    // An arc endpoint is derived from center/radius/angle, so there is no pair
+    // to move on its own; the first version moves the whole arc, and the
+    // fallback preview must agree with the live solver and the commit.
+    const sketch: Sketch = {
+      A1: { center: [0, 0], radius: 5, start: [5, 0], end: [0, 5] },
+    } as unknown as Sketch
+    const drag: VertexOrEdgeDrag & { type: 'edge' } = {
+      type: 'edge',
+      vertexId: 'vertex:S1:A1:start',
+      featureId: 'S1',
+      entityId: 'A1',
+      vertexKey: 'start',
+      startWorld: [0, 0],
+      currentWorld: [2, 1],
+      startClient: [100, 100],
+      group: [
+        { entityId: 'A1', vertexKey: 'start' },
+        { entityId: 'A1', vertexKey: 'end' },
+      ],
+    }
+
+    const result = edgeDragPreview(sketch, drag)
+
+    const arc = result.A1 as {
+      center: [number, number]; start: [number, number]; end: [number, number]
+    }
+    expect(arc.center).toEqual([2, 1])
+    expect(arc.start).toEqual([7, 1])
+    expect(arc.end).toEqual([2, 6])
+  })
+
   it('does not mutate the input sketch', () => {
     const sketch: Sketch = {
       L1: { start: [0, 0], end: [10, 0] },

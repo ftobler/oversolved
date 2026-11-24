@@ -110,6 +110,25 @@ describe('computeDragMove', () => {
     expect(result.snapTarget).toBeNull()
     expect(result.effectivePosition).toEqual([5, 5])
   })
+
+  it('a group drag never snaps, even when pressed on a vertex', () => {
+    // The cursor sits on another line's vertex, which a plain vertex drag
+    // would latch onto and then author a constraint for. A group translation
+    // has no single snap target.
+    const drag = makeDrag({
+      entityId: 'L1',
+      group: [
+        { entityId: 'L1', vertexKey: 'edge' },
+        { entityId: 'L2', vertexKey: 'edge' },
+      ],
+    })
+    const { vertexCandidates, entityCandidates, skips } = buildCandidates(makeSketch(), FEATURE, 'L1')
+    const result = computeDragMove(
+      [10, 0], vertexCandidates, entityCandidates, skips, drag, 1,
+    )
+    expect(result.snapTarget).toBeNull()
+    expect(result.effectivePosition).toEqual([10, 0])
+  })
 })
 
 describe('computeDragMutation', () => {
@@ -178,6 +197,41 @@ describe('computeDragMutation', () => {
     if (result?.type === 'move_entity') {
       expect(result.delta).toEqual([3, 4])
     }
+  })
+
+  it('returns one move_sketch_group with every member for a group drag', () => {
+    const group = [
+      { entityId: 'L1', vertexKey: 'edge' },
+      { entityId: 'L2', vertexKey: 'start' },
+    ]
+    const drag = makeDrag({
+      type: 'edge',
+      startClient: [100, 100],
+      startWorld: [2, 3],
+      currentWorld: [5, 7],
+      group,
+    })
+    const geometry = { L1: [5, 7, 13, 7], L2: [5, 7, 10, 17] }
+    const result = computeDragMutation(
+      [200, 200], drag, { kind: 'vertex', position: [5, 7], constraintKind: 'coincident' },
+      { featureId: FEATURE, geometry },
+    )
+    expect(result).toEqual({
+      type: 'move_sketch_group', featureId: FEATURE, members: group, delta: [3, 4], solvedGeometry: geometry,
+    })
+  })
+
+  it('a group drag that only clicked emits nothing', () => {
+    const drag = makeDrag({
+      type: 'vertex',
+      startClient: [100, 100],
+      currentWorld: [0.5, 0],
+      group: [
+        { entityId: 'L1', vertexKey: 'edge' },
+        { entityId: 'L2', vertexKey: 'edge' },
+      ],
+    })
+    expect(computeDragMutation([100, 100], drag, null)).toBeNull()
   })
 
   // ─── solvedGeometry pass-through (commit the WASM drag frame) ───

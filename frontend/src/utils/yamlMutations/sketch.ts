@@ -1,4 +1,5 @@
 import type { PartDoc, PartConstraint, PartTarget } from '@/types/cad'
+import type { DragMember } from '@/types/drag'
 import { entityVertexIndices, entityCoordPairs, constraintOperandArity } from '@/registry'
 import {
   warn, round, allFinite, findSketchFeature, parseTarget, uniqueConstraintId,
@@ -179,6 +180,98 @@ export function applyMoveVertex(
     }
     params[2] = candidate[2]
     params[ai] = candidate[ai]
+  }
+}
+
+/** One group member resolved against the document: the params block it edits,
+ *  the coordinate pairs to translate, and the pair of a point member (absent
+ *  for a whole entity or a derived point, which translate as a unit). */
+interface ResolvedGroupMember {
+  params: number[]
+  pairs: [number, number][]
+  point?: [number, number]
+}
+
+/** Resolve a member against the document, refusing an unknown entity by name.
+ *  Resolution is separate from the write so a refused member leaves the whole
+ *  commit untouched instead of translating the members before it. */
+function resolveGroupMember(
+  initial: Record<string, number[]>,
+  entities: Array<{ id: string; kind: string; handles?: 'start' | 'end' | 'both' }> | undefined,
+  member: DragMember,
+): ResolvedGroupMember {
+  const params = initial[member.entityId]
+  const def = entities?.find(e => e.id === member.entityId)
+  if (!params || !def) {
+    throw new MutationRefusal(
+      `move_sketch_group names no entity '${member.entityId}' in this sketch`,
+    )
+  }
+  const pairs = entityCoordPairs(def.kind, params.length, def.handles)
+  if (!pairs) {
+    throw new MutationRefusal(
+      `move_sketch_group cannot translate '${member.entityId}': its kind has no coordinate pairs`,
+    )
+  }
+  if (member.vertexKey !== 'edge') {
+    const indices = entityVertexIndices(def.kind, params.length, def.handles)?.[member.vertexKey]
+    if (indices) return { params, pairs, point: indices }
+    // No direct pair: a derived point (arc start/end, ellipse axis end). Fall
+    // through to the whole-entity translation the preview uses for it.
+  }
+  return { params, pairs }
+}
+
+/** Drag commit for a multi-selection: every member translated in one mutation,
+ *  so the whole move is one undo step. With `solvedGeometry` (the live drag)
+ *  the last frame is baked exactly as `move_entity` does, so the document lands
+ *  where the preview showed; without it (a headless step) the members are
+ *  translated by `delta` and the next solve settles them. */
+export function applyMoveSketchGroup(
+  doc: PartDoc,
+  featureId: string,
+  members: DragMember[],
+  delta: [number, number],
+  solvedGeometry?: Record<string, number[]>,
+): void {
+  const [dx, dy] = delta
+  const feature = findSketchFeature(doc, featureId)
+  if (!feature?.initial) return
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
+    warn('applyMoveSketchGroup: ignoring non-finite delta', { featureId, members, delta })
+    return
+  }
+  // The adopted frame already reflects the translated positions, so the delta
+  // must not be applied on top of it (that would translate twice).
+  if (adoptSolvedGeometry(feature.initial, solvedGeometry)) return
+  if (dx === 0 && dy === 0) return
+  // Resolve every member first: a refusal must not leave the earlier members
+  // translated. A whole-entity effect is applied once per entity, however many
+  // of its points were selected (two members of one arc must not move it
+  // twice), and a point member is skipped when its entity already moves whole.
+  const resolved = members.map(member => ({
+    member,
+    target: resolveGroupMember(feature.initial!, feature.entities, member),
+  }))
+  const whole = new Set(
+    resolved
+      .filter(({ target }) => target.point === undefined)
+      .map(({ member }) => member.entityId),
+  )
+  const movedWhole = new Set<string>()
+  for (const { member, target } of resolved) {
+    if (whole.has(member.entityId)) {
+      if (movedWhole.has(member.entityId)) continue
+      movedWhole.add(member.entityId)
+      for (const [xi, yi] of target.pairs) {
+        target.params[xi] = round(target.params[xi] + dx)
+        target.params[yi] = round(target.params[yi] + dy)
+      }
+      continue
+    }
+    const point = target.point!
+    target.params[point[0]] = round(target.params[point[0]] + dx)
+    target.params[point[1]] = round(target.params[point[1]] + dy)
   }
 }
 

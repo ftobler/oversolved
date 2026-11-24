@@ -612,6 +612,45 @@ function moveEntity(raw: RawStep): ValueViolation | null {
   return problem === null ? null : invalid(problem)
 }
 
+function moveSketchGroup(raw: RawStep, ctx: ValueContext): ValueViolation | null {
+  const deltaProblem = finitePointProblem(raw.delta, 'delta')
+  if (deltaProblem !== null) return invalid(deltaProblem)
+  const members = raw.members
+  if (!Array.isArray(members) || members.length === 0) {
+    return invalid(`members must be a non-empty array of {entityId, vertexKey}, got ${json(members)}`)
+  }
+  for (let i = 0; i < members.length; i++) {
+    const member = members[i]
+    if (
+      !isRecord(member)
+      || typeof member.entityId !== 'string' || member.entityId.length === 0
+      || typeof member.vertexKey !== 'string' || member.vertexKey.length === 0
+    ) {
+      return invalid(
+        `members[${i}] must be {entityId, vertexKey} with non-empty strings, got ${json(member)}`,
+      )
+    }
+  }
+  const featureId = raw.featureId
+  // A shape-only caller has no document to check ids against, so the member
+  // shape above is the whole rule there.
+  if (ctx.doc === null || typeof featureId !== 'string') return null
+  const sketch = sketchOf(ctx.doc, featureId)
+  if (sketch === undefined) {
+    return unknownTarget('move_sketch_group names no sketch feature in this document')
+  }
+  const sketchName = featureDisplayName(sketch, ctx.doc.features ?? [])
+  for (let i = 0; i < members.length; i++) {
+    const member = members[i] as { entityId: string }
+    if (!sketch.entities?.some(entity => entity.id === member.entityId)) {
+      return unknownTarget(
+        `move_sketch_group member ${i} names no entity '${member.entityId}' in ${sketchName}`,
+      )
+    }
+  }
+  return null
+}
+
 function resizeCircle(raw: RawStep, ctx: ValueContext): ValueViolation | null {
   const radius = raw.radius
   if (!isFiniteNumber(radius)) {
@@ -2741,6 +2780,7 @@ export const MUTATION_VALUE_RULES = {
   move_vertex: 'none',
   move_vertex_with_constraint: 'none',
   move_entity: moveEntity,
+  move_sketch_group: moveSketchGroup,
   resize_circle: resizeCircle,
   add_constraint: addConstraint,
   set_constraint_value: setConstraintValue,

@@ -1,7 +1,7 @@
 use super::*;
 use crate::constraints::{Constraint, ConstraintKind, PointSelector, Ref, RefRole};
 use crate::test_util::*;
-use crate::{EqualityPin, Kind, Options, Output, Status};
+use crate::{DragAnchor, EqualityPin, Kind, Options, Output, Status};
 
 #[test]
 fn stale_entity_ref_solves_instead_of_panicking() {
@@ -80,12 +80,14 @@ fn vertex_freedom_skips_entity_whose_offset_wraps_the_bounds_check() {
 
 #[test]
 fn drag_anchor_with_overflowing_offset_leaves_base_weights() {
-    // A verbatim stale anchor offset must not wrap through
-    // `offset + count` and bump arbitrary weights; it just gets no firmer
-    // pull, like any other out-of-range anchor block.
+    // A verbatim stale anchor run must not wrap through `offset + count` and
+    // bump arbitrary weights; it is skipped, like any other out-of-range run.
     let inp = Input {
         options: Options {
-            drag_anchor_id: 1,
+            drag_anchors: vec![DragAnchor {
+                param_offset: u32::MAX,
+                param_count: 8,
+            }],
             ..Default::default()
         },
         ..input(
@@ -96,6 +98,37 @@ fn drag_anchor_with_overflowing_offset_leaves_base_weights() {
     };
     let w = drag_reg_weights(&inp, 4);
     assert_eq!(w, vec![REG_WEIGHT_BASE; 4]);
+}
+
+#[test]
+fn every_in_range_anchor_applies_and_out_of_range_runs_are_skipped_one_by_one() {
+    // A group drag sends one run per member. One stale run must not take the
+    // others with it: the line before it and the point after it both stay firm.
+    let inp = input(vec![line(0), point(4), point(6)], vec![0.0; 8], vec![]);
+    let with_stale_between = Input {
+        options: Options {
+            drag_anchors: vec![
+                DragAnchor {
+                    param_offset: 0,
+                    param_count: 4,
+                },
+                DragAnchor {
+                    param_offset: 900,
+                    param_count: 4,
+                },
+                DragAnchor {
+                    param_offset: 6,
+                    param_count: 2,
+                },
+            ],
+            ..Default::default()
+        },
+        ..inp
+    };
+    let w = drag_reg_weights(&with_stale_between, 8);
+    assert_eq!(&w[0..4], &[REG_WEIGHT_DRAG; 4], "the leading line");
+    assert_eq!(&w[4..6], &[REG_WEIGHT_BASE; 2], "the unanchored point");
+    assert_eq!(&w[6..8], &[REG_WEIGHT_DRAG; 2], "the trailing point");
 }
 
 #[test]
@@ -634,11 +667,14 @@ fn point_distance_to_axis_endpoints_dimensions_major_and_minor_radius() {
 }
 
 #[test]
-fn drag_reg_weights_bump_only_the_anchor_entity() {
-    // line (off 0, 4 params) + point (off 4, 2 params); anchor = the point.
+fn drag_reg_weights_bump_only_the_anchor_run() {
+    // line (off 0, 4 params) + point (off 4, 2 params); the anchor is the point.
     let inp = Input {
         options: Options {
-            drag_anchor_id: 1,
+            drag_anchors: vec![DragAnchor {
+                param_offset: 4,
+                param_count: 2,
+            }],
             ..Default::default()
         },
         ..input(vec![line(0), point(4)], vec![0.0; 6], vec![])
@@ -647,6 +683,134 @@ fn drag_reg_weights_bump_only_the_anchor_entity() {
     // The line keeps the base pull; the dragged point is bumped.
     assert_eq!(&w[0..4], &[REG_WEIGHT_BASE; 4]);
     assert_eq!(&w[4..6], &[REG_WEIGHT_DRAG; 2]);
+}
+
+#[test]
+fn a_point_anchor_leaves_the_other_end_of_its_line_on_the_base_weight() {
+    // A selected vertex member anchors only its pair; the far end of the line
+    // must keep the gentle base pull, or a one-vertex selection would act like
+    // a whole-line drag.
+    let inp = Input {
+        options: Options {
+            drag_anchors: vec![DragAnchor {
+                param_offset: 2,
+                param_count: 2,
+            }],
+            ..Default::default()
+        },
+        ..input(vec![line(0)], vec![0.0; 4], vec![])
+    };
+    let w = drag_reg_weights(&inp, 4);
+    assert_eq!(&w[0..2], &[REG_WEIGHT_BASE; 2], "the line's start");
+    assert_eq!(&w[2..4], &[REG_WEIGHT_DRAG; 2], "the dragged end");
+}
+
+#[test]
+fn a_group_of_anchored_lines_both_follow_the_seeded_delta() {
+    // A group drag seeds every member at params0 + delta; with each member
+    // anchored, both lines sit at the translated position (the translation is
+    // a free direction of this constraint set, so there is no pull at all).
+    let inp = Input {
+        options: Options {
+            drag_mode: true,
+            drag_anchors: vec![
+                DragAnchor {
+                    param_offset: 0,
+                    param_count: 4,
+                },
+                DragAnchor {
+                    param_offset: 4,
+                    param_count: 4,
+                },
+            ],
+            skip_status_pass: true,
+        },
+        ..input(
+            vec![line(0), line(4)],
+            vec![3.0, 0.0, 13.0, 0.0, 23.0, 0.0, 33.0, 0.0],
+            vec![
+                c_target(ConstraintKind::Horizontal, 0, PointSelector::Absent),
+                c_target(ConstraintKind::Horizontal, 1, PointSelector::Absent),
+            ],
+        )
+    };
+    let out = solve_sketch(&inp);
+    assert_eq!(out.overall_status, Status::Underconstrained.to_u8());
+    let p = &out.params_solved;
+    for (got, want) in p.iter().zip([3.0, 0.0, 13.0, 0.0, 23.0, 0.0, 33.0, 0.0]) {
+        assert!(
+            (got - want).abs() < 0.05,
+            "group drag moved a member: {p:?}"
+        );
+    }
+}
+
+#[test]
+fn anchoring_every_group_member_shares_a_constraint_pull_instead_of_one_absorbing_it() {
+    // Two lines seeded +3 (the group translation), plus a point distance
+    // between their near ends that wants 5 where the seed holds 10. Anchoring
+    // both members splits the 5-unit correction evenly; anchoring only the
+    // first leaves the second to absorb all of it, which is exactly the
+    // single-anchor behaviour the group contract replaces.
+    let pull = cons_v(
+        ConstraintKind::PointDistance,
+        ab(e_ref(0, PointSelector::End), e_ref(1, PointSelector::Start)),
+        5.0,
+    );
+    let make = |anchors: Vec<DragAnchor>| Input {
+        options: Options {
+            drag_mode: true,
+            drag_anchors: anchors,
+            skip_status_pass: true,
+        },
+        ..input(
+            vec![line(0), line(4)],
+            vec![3.0, 0.0, 13.0, 0.0, 23.0, 0.0, 33.0, 0.0],
+            vec![
+                c_target(ConstraintKind::Horizontal, 0, PointSelector::Absent),
+                c_target(ConstraintKind::Horizontal, 1, PointSelector::Absent),
+                pull.clone(),
+            ],
+        )
+    };
+
+    let both = solve_sketch(&make(vec![
+        DragAnchor {
+            param_offset: 0,
+            param_count: 4,
+        },
+        DragAnchor {
+            param_offset: 4,
+            param_count: 4,
+        },
+    ]));
+    assert_eq!(both.overall_status, Status::Underconstrained.to_u8());
+    let b = &both.params_solved;
+    assert!((b[2] - 15.5).abs() < 0.3, "first line did not share: {b:?}");
+    assert!(
+        (b[4] - 20.5).abs() < 0.3,
+        "second line did not share: {b:?}"
+    );
+    assert!(
+        (b[2] - b[4]).abs() > 1.0,
+        "the two lines must land at different x: {b:?}"
+    );
+
+    let first_only = solve_sketch(&make(vec![DragAnchor {
+        param_offset: 0,
+        param_count: 4,
+    }]));
+    assert_eq!(first_only.overall_status, Status::Underconstrained.to_u8());
+    let o = &first_only.params_solved;
+    assert!((o[2] - 13.0).abs() < 0.1, "the anchored end moved: {o:?}");
+    assert!(
+        (o[4] - 18.0).abs() < 0.3,
+        "the unanchored line did not take the whole pull: {o:?}"
+    );
+    assert!(
+        (o[4] - b[4]).abs() > 1.0,
+        "one anchor must behave differently from two: {o:?} vs {b:?}"
+    );
 }
 
 #[test]
@@ -660,7 +824,10 @@ fn drag_preserves_status_rank_and_feasibility() {
     let make = |drag: bool| Input {
         options: Options {
             drag_mode: drag,
-            drag_anchor_id: 1,
+            drag_anchors: vec![DragAnchor {
+                param_offset: 2,
+                param_count: 2,
+            }],
             ..Default::default()
         },
         ..input(
@@ -769,7 +936,10 @@ fn dragged_point_far_off_a_line_is_not_overconstrained() {
     let inp = Input {
         options: Options {
             drag_mode: true,
-            drag_anchor_id: 1,
+            drag_anchors: vec![DragAnchor {
+                param_offset: 4,
+                param_count: 2,
+            }],
             ..Default::default()
         },
         ..input(
@@ -810,7 +980,10 @@ fn vertical_line_through_origin(drag: bool) -> Input {
     Input {
         options: Options {
             drag_mode: drag,
-            drag_anchor_id: 0,
+            drag_anchors: vec![DragAnchor {
+                param_offset: 0,
+                param_count: 4,
+            }],
             skip_status_pass: drag,
         },
         ..input(
@@ -847,7 +1020,10 @@ fn drag_on_manifold_seed_is_a_no_op() {
     let inp = Input {
         options: Options {
             drag_mode: true,
-            drag_anchor_id: 0,
+            drag_anchors: vec![DragAnchor {
+                param_offset: 0,
+                param_count: 4,
+            }],
             ..Default::default()
         },
         ..input(vec![line(0)], vec![1.0, 2.0, 5.0, 2.0], vec![])
@@ -1934,7 +2110,10 @@ fn the_drag_fast_path_carries_no_moved_report() {
     let mut inp = grid_rectangle(0.1234567);
     inp.options = Options {
         drag_mode: true,
-        drag_anchor_id: 0,
+        drag_anchors: vec![DragAnchor {
+            param_offset: 0,
+            param_count: 4,
+        }],
         skip_status_pass: true,
     };
     let out = solve_sketch(&inp);

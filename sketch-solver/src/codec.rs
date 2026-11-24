@@ -21,7 +21,8 @@
 //!   u32  n_equality_pins
 //!   u8   drag_mode (0/1)
 //!   u8   skip_status_pass (0/1)
-//!   u32  drag_anchor_id
+//!   u32  n_drag_anchors
+//!   n_drag_anchors x { u32 param_offset, u32 param_count }
 //!   f64  seed_quantum        // host storage grid in doc units; 0 disables the moved report
 //!   u32  n_reference         // 0, or n_params (see below)
 //! entities:       n_entities x { u8 kind, u8 flags, u32 param_offset, u32 param_count }
@@ -72,6 +73,13 @@
 //!                 f64 angular_miss, f64 linear_miss
 //! ```
 //!
+//! The `SKGB`/`SKRB` pair replaces the single `drag_anchor_id` entity index
+//! with a counted list of param runs: a group drag holds several members, and a
+//! selected point anchors only its coordinate pair rather than its whole
+//! entity. The header gains a count and the records after it, so a rev 10
+//! buffer decoded by this solver would read the first entity record's bytes as
+//! the count and shift every following block; the magic moves on both sides.
+//!
 //! The `SKGA`/`SKRA` pair adds `weak`, the satisfied constraints that hold
 //! their direction only to second order, each with the rotation it allows in
 //! degrees (see `WeakConstraint`). An older reader would read the new count's
@@ -114,8 +122,8 @@
 //! of the boundary (this file and frontend/src/wasm-kernel/codec.ts) on any
 //! layout change. Invalidating old cached payloads is acceptable and safe
 //! post-wave-1: bundle-cache reads of stale buffers degrade to cold rebuilds.
-pub const MAGIC: u32 = 0x4147_4B53; // "SKGA" in LE memory order
-pub const MAGIC_OUT: u32 = 0x4152_4B53; // "SKRA" in LE memory order
+pub const MAGIC: u32 = 0x4247_4B53; // "SKGB" in LE memory order
+pub const MAGIC_OUT: u32 = 0x4252_4B53; // "SKRB" in LE memory order
 
 /// The rev 1 and rev 2 values (and rev 3, whose output lacked the
 /// per-constraint verdicts). Kept only so tests can assert a stale pairing
@@ -179,11 +187,18 @@ pub const MAGIC_OUT_SKR8: u32 = 0x3852_4B53;
 pub const MAGIC_SKG9: u32 = 0x3947_4B53;
 #[cfg(test)]
 pub const MAGIC_OUT_SKR9: u32 = 0x3952_4B53;
+/// The rev 10 pair. Its input has one `drag_anchor_id` where this layout has a
+/// count and a record list: decoding it here would read the first entity
+/// record's kind bytes as the anchor count and shift every following block.
+#[cfg(test)]
+pub const MAGIC_SKGA: u32 = 0x4147_4B53;
+#[cfg(test)]
+pub const MAGIC_OUT_SKRA: u32 = 0x4152_4B53;
 
 use solver_core::bytes::{Eof, Reader, Writer};
 
 use crate::constraints::{Axis, Constraint, PointSelector, Ref, RefRole};
-use crate::{Diagnostics, Entity, EqualityPin, Input, Kind, Options, Output};
+use crate::{Diagnostics, DragAnchor, Entity, EqualityPin, Input, Kind, Options, Output};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum CodecError {
@@ -245,7 +260,18 @@ pub fn decode_input(buf: &[u8]) -> Result<Input, CodecError> {
     let n_equality_pins = r.u32()? as usize;
     let drag_mode = r.u8()? != 0;
     let skip_status_pass = r.u8()? != 0;
-    let drag_anchor_id = r.u32()?;
+    let n_drag_anchors = r.u32()? as usize;
+    // Record width: offset + count, eight bytes. Capped like every other count
+    // so a corrupt header cannot reserve the heap before the first read fails.
+    let mut drag_anchors = Vec::with_capacity(r.capacity_for(n_drag_anchors, 8));
+    for _ in 0..n_drag_anchors {
+        let param_offset = r.u32()?;
+        let param_count = r.u32()?;
+        drag_anchors.push(DragAnchor {
+            param_offset,
+            param_count,
+        });
+    }
     let seed_quantum = finite(r.f64()?)?;
     let n_reference = r.u32()? as usize;
 
@@ -331,7 +357,7 @@ pub fn decode_input(buf: &[u8]) -> Result<Input, CodecError> {
         seed_quantum,
         options: Options {
             drag_mode,
-            drag_anchor_id,
+            drag_anchors,
             skip_status_pass,
         },
     })
@@ -406,7 +432,11 @@ pub(crate) fn encode_input(input: &Input) -> Vec<u8> {
     w.u32(input.equality_pins.len() as u32);
     w.u8(input.options.drag_mode as u8);
     w.u8(input.options.skip_status_pass as u8);
-    w.u32(input.options.drag_anchor_id);
+    w.u32(input.options.drag_anchors.len() as u32);
+    for anchor in &input.options.drag_anchors {
+        w.u32(anchor.param_offset);
+        w.u32(anchor.param_count);
+    }
     w.f64(input.seed_quantum);
     // A reference vector that is neither absent nor full-length is not a buffer
     // this codec's own decode accepts, so the test encoder writes it verbatim

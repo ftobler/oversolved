@@ -26,7 +26,7 @@ import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { lowerSketch, type EntityLayout } from '@/wasm-kernel/lowerSketch'
 import { partDocToSketches } from '@/wasm-kernel/partDocToSketches'
 import { encodeInput, decodeOutput } from '@/wasm-kernel/codec'
-import { applyMoveVertex, applyMoveEntity } from '@/utils/yamlMutations/sketch'
+import { applyMoveVertex, applyMoveEntity, applyMoveSketchGroup } from '@/utils/yamlMutations/sketch'
 import type { PartDoc, SketchFeature } from '@/types/cad'
 
 const solveBytes = loadSolver()
@@ -152,7 +152,7 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
     // Drag options are baked in, anchored on the dragged entity's layout index.
     expect(ctx!.input.options).toEqual({
       dragMode: true,
-      dragAnchorId: ctx!.layout.indexOf(bottom),
+      dragAnchors: [{ paramOffset: bottom.offset, paramCount: bottom.size }],
       skipStatusPass: true,
     })
   })
@@ -691,6 +691,91 @@ describe.skipIf(!solveBytes)('prepareDragContext + solveSketchDrag (real WASM so
     const naiveStartX = naiveOut.paramsSolved[naiveBottomLayout.offset]
     // The solvedGeometry commit lands the rect further right than the naive commit.
     expect(solvedStartX - naiveStartX).toBeGreaterThan(2)
+  })
+
+  // ─── Group drag ───
+
+  it('builds one anchor per group member, a point member anchoring only its pair', () => {
+    const feature = constructionLineFeature('groupCtx')
+    const ctx = prepareDragContext(feature, 'edge', null, [0, 0], undefined, undefined, [
+      { entityId: 'ref', vertexKey: 'start' },
+      { entityId: 'edge', vertexKey: 'edge' },
+    ])!
+    expect(ctx).not.toBeNull()
+    const ref = ctx.layout.find((l) => l.id === 'ref')!
+    const edge = ctx.layout.find((l) => l.id === 'edge')!
+    expect(ctx.group).toEqual([
+      {
+        anchor: { paramOffset: ref.offset, paramCount: 2 },
+        coordPairs: [[ref.offset, ref.offset + 1]],
+      },
+      {
+        anchor: { paramOffset: edge.offset, paramCount: edge.size },
+        coordPairs: [
+          [edge.offset, edge.offset + 1],
+          [edge.offset + 2, edge.offset + 3],
+        ],
+      },
+    ])
+    expect(ctx.input.options.dragAnchors).toEqual(ctx.group!.map((member) => member.anchor))
+  })
+
+  it('a fully selected rectangle group-drags by the cursor delta', () => {
+    const feature = rectSketchFeature('groupAll')
+    const group = ['bottom', 'right', 'top', 'left'].map((id) => ({ entityId: id, vertexKey: 'edge' }))
+    const ctx = prepareDragContext(feature, 'bottom', null, [0, 0], undefined, undefined, group)!
+    const delta: [number, number] = [3, 1]
+
+    const frame = solveSketchDrag(ctx, ctx.params0, delta, delta)
+    expect(frame).not.toBeNull()
+
+    for (const id of ['bottom', 'right', 'top', 'left']) {
+      const before = feature.initial![id]
+      const after = frame!.geometry[id]
+      for (let i = 0; i < before.length; i += 2) {
+        expect(Math.abs(after[i] - (before[i] + delta[0])), `${id} x${i}`).toBeLessThan(CURSOR_TOL)
+        expect(Math.abs(after[i + 1] - (before[i + 1] + delta[1])), `${id} y${i}`).toBeLessThan(CURSOR_TOL)
+      }
+    }
+    // The rectangle's constraints still hold: the translated shape is a
+    // 10 x 6 rectangle, not a deformed one.
+    const bottom = frame!.sketch.bottom as { start: [number, number]; end: [number, number] }
+    const left = frame!.sketch.left as { start: [number, number]; end: [number, number] }
+    expect(Math.abs(Math.hypot(bottom.end[0] - bottom.start[0], bottom.end[1] - bottom.start[1]) - 10)).toBeLessThan(0.1)
+    expect(Math.abs(Math.hypot(left.end[0] - left.start[0], left.end[1] - left.start[1]) - 6)).toBeLessThan(0.1)
+  })
+
+  it('an unselected side follows the group through its coincidents', () => {
+    const feature = rectSketchFeature('groupThree')
+    // left is deliberately not a member; its length and vertical constraints
+    // plus the corner coincidents must carry it with the moved sides.
+    const group = ['bottom', 'right', 'top'].map((id) => ({ entityId: id, vertexKey: 'edge' }))
+    const ctx = prepareDragContext(feature, 'bottom', null, [0, 0], undefined, undefined, group)!
+    const delta: [number, number] = [4, -2]
+
+    const frame = solveSketchDrag(ctx, ctx.params0, delta, delta)
+    expect(frame).not.toBeNull()
+    const before = feature.initial!.left
+    const after = frame!.geometry.left
+    for (let i = 0; i < before.length; i += 2) {
+      expect(Math.abs(after[i] - (before[i] + delta[0])), `left x${i}`).toBeLessThan(CONSTRAINT_TOL)
+      expect(Math.abs(after[i + 1] - (before[i + 1] + delta[1])), `left y${i}`).toBeLessThan(CONSTRAINT_TOL)
+    }
+    const left = frame!.sketch.left as { start: [number, number]; end: [number, number] }
+    expect(Math.abs(Math.hypot(left.end[0] - left.start[0], left.end[1] - left.start[1]) - 6)).toBeLessThan(0.1)
+  })
+
+  it('a group drag commits through move_sketch_group onto the same geometry', () => {
+    const feature = rectSketchFeature('groupCommit')
+    const group = ['bottom', 'right'].map((id) => ({ entityId: id, vertexKey: 'edge' }))
+    const ctx = prepareDragContext(feature, 'bottom', null, [0, 0], undefined, undefined, group)!
+    const delta: [number, number] = [2, 3]
+    const frame = solveSketchDrag(ctx, ctx.params0, delta, delta)!
+    const doc = { features: [feature] } as unknown as PartDoc
+    applyMoveSketchGroup(doc, 'groupCommit', group, delta, frame.geometry)
+    // The adopted frame is the on-screen state; the delta is not applied twice.
+    feature.initial!.bottom.forEach((v, i) => expect(v).toBeCloseTo(frame.geometry.bottom[i], 6))
+    feature.initial!.right.forEach((v, i) => expect(v).toBeCloseTo(frame.geometry.right[i], 6))
   })
 
   // ─── Commit: the solved frame seeds the hard solve (Part B) ───

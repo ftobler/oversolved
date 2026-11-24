@@ -151,11 +151,25 @@ pub struct EqualityPin {
     pub target: f64,
 }
 
+/// One drag anchor: a contiguous run of params the drag solve holds firm toward
+/// its seed with `REG_WEIGHT_DRAG` instead of the gentle base pull. A whole-
+/// entity member names the entity's block; a selected point names just its
+/// coordinate pair, so the other end of its line keeps the base weight. The host
+/// computes these from the layout it already owns, which keeps the crate blind
+/// to vertices and to string ids.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DragAnchor {
+    pub param_offset: u32,
+    pub param_count: u32,
+}
+
 /// Solve-time options. `drag_mode` + `skip_status_pass` drive the 60 Hz path.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct Options {
     pub drag_mode: bool,
-    pub drag_anchor_id: u32,
+    /// The params given the firm drag regularization. Empty on a hard solve and
+    /// on a malformed drag frame that names no run.
+    pub drag_anchors: Vec<DragAnchor>,
     pub skip_status_pass: bool,
 }
 

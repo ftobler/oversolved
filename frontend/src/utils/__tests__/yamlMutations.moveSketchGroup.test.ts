@@ -1,0 +1,172 @@
+// The group-drag commit: one mutation for the whole selection, so the move is
+// one undo entry. With the live drag's solved frame it bakes that frame (the
+// document lands where the preview showed); without one (the headless path) it
+// translates the members by the delta and lets the next solve settle them.
+import { describe, it, expect } from 'vitest'
+import type { PartDoc, SketchData } from '@/types/cad'
+import { createDocSession, type DocSession, type EditorFacts } from '@/session/DocSession'
+import type { DirtyFacts } from '@/session/dirty'
+import { createFakeSolveScheduler } from '@/session/__tests__/fakeSolveScheduler'
+import { makeDoc, makeSketch } from '@/utils/core/testFixture'
+import { applyMoveSketchGroup } from '@/utils/yamlMutations'
+import { MutationRefusal } from '@/utils/yamlMutations/helpers'
+import { sketchAt } from '@/testing/featureAccess'
+
+function groupDoc(): PartDoc {
+  return makeDoc(makeSketch('sk', {
+    entities: [
+      { id: 'l1', kind: 'line' },
+      { id: 'l2', kind: 'line' },
+      { id: 'a1', kind: 'arc' },
+    ],
+    initial: {
+      l1: [0, 0, 10, 0],
+      l2: [20, 5, 30, 5],
+      a1: [0, 0, 5, 0, 90],
+    },
+    constraints: [],
+  }))
+}
+
+const sketch = (doc: PartDoc) => sketchAt(doc)
+
+function engineFor(doc: PartDoc): { session: DocSession; cell: { current: PartDoc | null } } {
+  const cell: { current: PartDoc | null } = { current: doc }
+  const solve = createFakeSolveScheduler<PartDoc>()
+  const facts: EditorFacts = { editingFeatureId: null, rollbackPosition: null }
+  const dirty: DirtyFacts = { dirty: false, saves: 0, savedHash: null }
+  const solveResults: { current: Record<string, SketchData> } = { current: {} }
+  const session = createDocSession({
+    cloneDoc: source => structuredClone(source),
+    doc: { get: () => cell.current, set: next => { cell.current = next } },
+    solve,
+    solveResults: { get: () => solveResults.current, set: next => { solveResults.current = next } },
+    editorFacts: () => facts,
+    dirtyFacts: () => dirty,
+  })
+  return { session, cell }
+}
+
+describe('move_sketch_group applier', () => {
+  it('translates every whole-entity member by the delta', () => {
+    const doc = groupDoc()
+    applyMoveSketchGroup(doc, 'sk', [
+      { entityId: 'l1', vertexKey: 'edge' },
+      { entityId: 'l2', vertexKey: 'edge' },
+    ], [3, -2])
+    expect(sketch(doc).initial!.l1).toEqual([3, -2, 13, -2])
+    expect(sketch(doc).initial!.l2).toEqual([23, 3, 33, 3])
+  })
+
+  it('moves only the named point of a point member', () => {
+    const doc = groupDoc()
+    applyMoveSketchGroup(doc, 'sk', [
+      { entityId: 'l1', vertexKey: 'end' },
+      { entityId: 'l2', vertexKey: 'edge' },
+    ], [1, 4])
+    // l1.end moved; l1.start stayed, so the line stretches as a single vertex
+    // drag does.
+    expect(sketch(doc).initial!.l1).toEqual([0, 0, 11, 4])
+    expect(sketch(doc).initial!.l2).toEqual([21, 9, 31, 9])
+  })
+
+  it('translates a derived point member as its whole entity', () => {
+    // An arc start is center + radius at an angle, so there is no pair to add a
+    // delta to; the applier, the live preview and the fallback preview all move
+    // the whole arc for this first version.
+    const doc = groupDoc()
+    applyMoveSketchGroup(doc, 'sk', [
+      { entityId: 'a1', vertexKey: 'start' },
+      { entityId: 'l1', vertexKey: 'edge' },
+    ], [2, 1])
+    expect(sketch(doc).initial!.a1).toEqual([2, 1, 5, 0, 90])
+  })
+
+  it('moves an arc once when both of its derived endpoints are members', () => {
+    const doc = groupDoc()
+    applyMoveSketchGroup(doc, 'sk', [
+      { entityId: 'a1', vertexKey: 'start' },
+      { entityId: 'a1', vertexKey: 'end' },
+    ], [2, 1])
+    expect(sketch(doc).initial!.a1).toEqual([2, 1, 5, 0, 90])
+  })
+
+  it('bakes the solved frame instead of applying the delta on top of it', () => {
+    const doc = groupDoc()
+    applyMoveSketchGroup(doc, 'sk', [
+      { entityId: 'l1', vertexKey: 'edge' },
+      { entityId: 'l2', vertexKey: 'edge' },
+    ], [3, -2], {
+      l1: [2.5, -1.5, 12.5, -1.5],
+      l2: [22.5, 3.5, 32.5, 3.5],
+    })
+    expect(sketch(doc).initial!.l1).toEqual([2.5, -1.5, 12.5, -1.5])
+    expect(sketch(doc).initial!.l2).toEqual([22.5, 3.5, 32.5, 3.5])
+  })
+
+  it('refuses an unknown member by name', () => {
+    const doc = groupDoc()
+    const before = JSON.stringify(doc)
+    expect(() => applyMoveSketchGroup(doc, 'sk', [
+      { entityId: 'l1', vertexKey: 'edge' },
+      { entityId: 'ghost', vertexKey: 'edge' },
+    ], [1, 1])).toThrow(MutationRefusal)
+    // l1 must not be half-moved by the refused commit.
+    expect(JSON.stringify(doc)).toBe(before)
+  })
+
+  it('ignores a non-finite delta without touching the document', () => {
+    const doc = groupDoc()
+    const before = JSON.stringify(doc)
+    applyMoveSketchGroup(doc, 'sk', [{ entityId: 'l1', vertexKey: 'edge' }], [Number.NaN, 0])
+    expect(JSON.stringify(doc)).toBe(before)
+  })
+
+  it('names the sketch feature it cannot find without throwing', () => {
+    const doc = groupDoc()
+    const before = JSON.stringify(doc)
+    applyMoveSketchGroup(doc, 'nope', [{ entityId: 'l1', vertexKey: 'edge' }], [1, 1])
+    expect(JSON.stringify(doc)).toBe(before)
+  })
+})
+
+describe('move_sketch_group on the session', () => {
+  it('is one undo entry and undo restores every member', () => {
+    const doc = groupDoc()
+    const { session, cell } = engineFor(doc)
+    const result = session.execute({
+      type: 'move_sketch_group',
+      featureId: 'sk',
+      members: [
+        { entityId: 'l1', vertexKey: 'edge' },
+        { entityId: 'l2', vertexKey: 'start' },
+      ],
+      delta: [5, 2],
+    })
+    expect(result.ok).toBe(true)
+    expect(session.historyEntries().undo).toHaveLength(1)
+    expect(sketch(cell.current!).initial!.l1).toEqual([5, 2, 15, 2])
+    expect(sketch(cell.current!).initial!.l2).toEqual([25, 7, 30, 5])
+
+    expect(session.undo()).toBe(true)
+    expect(sketch(cell.current!).initial!.l1).toEqual([0, 0, 10, 0])
+    expect(sketch(cell.current!).initial!.l2).toEqual([20, 5, 30, 5])
+    expect(session.redo()).toBe(true)
+    expect(sketch(cell.current!).initial!.l1).toEqual([5, 2, 15, 2])
+  })
+
+  it('an unknown member is a refused step that changes nothing', () => {
+    const doc = groupDoc()
+    const { session, cell } = engineFor(doc)
+    // The applier throws a MutationRefusal, which usePartDoc turns into a
+    // failure Result; the session clone and the history are left untouched.
+    expect(() => session.execute({
+      type: 'move_sketch_group',
+      featureId: 'sk',
+      members: [{ entityId: 'ghost', vertexKey: 'edge' }],
+      delta: [1, 1],
+    })).toThrow(MutationRefusal)
+    expect(session.historyEntries().undo).toHaveLength(0)
+    expect(sketch(cell.current!).initial!.l1).toEqual([0, 0, 10, 0])
+  })
+})

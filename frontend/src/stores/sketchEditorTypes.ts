@@ -43,8 +43,8 @@ export interface DialogState {
 
 // The drag state shape lives with the model types, so pure drag math can read
 // it without importing this store layer. Re-exported for the store's callers.
-import type { VertexOrEdgeDrag } from '@/types/drag'
-export type { VertexOrEdgeDrag } from '@/types/drag'
+import type { DragMember, VertexOrEdgeDrag } from '@/types/drag'
+export type { DragMember, VertexOrEdgeDrag } from '@/types/drag'
 
 // Dragging a dimension label to reposition it.
 export interface DimLabelDrag {
@@ -86,6 +86,9 @@ export interface EdgeVertexDragPending {
   entityId: string
   vertexKey: string
   startWorld: [number, number]
+  /** The whole moved set when the pressed element is part of a multi-selection;
+   *  absent for a single drag. */
+  group?: DragMember[]
 }
 
 export interface DimLabelDragPending {

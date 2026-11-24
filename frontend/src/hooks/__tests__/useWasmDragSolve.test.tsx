@@ -47,7 +47,7 @@ function vertexDrag(currentWorld: [number, number]): DragState {
 }
 
 const fakeCtx = {
-  input: { entities: [], params: [0, 0, 10, 0], pinnedMask: [], equalityPins: [], constraints: [], options: { dragMode: true, dragAnchorId: 0, skipStatusPass: true } },
+  input: { entities: [], params: [0, 0, 10, 0], pinnedMask: [], equalityPins: [], constraints: [], options: { dragMode: true, dragAnchors: [{ paramOffset: 0, paramCount: 4 }], skipStatusPass: true } },
   layout: [{ id: 'L1', kind: 'line', offset: 0, size: 4 }],
   params0: [0, 0, 10, 0],
   cursorIndices: [0, 1] as [number, number],
@@ -136,7 +136,7 @@ describe('useWasmDragSolve', () => {
     // Engaged before any rAF tick -- the caller must not show a fallback frame 0.
     expect(result.current.engaged).toBe(true)
     expect(result.current.sketch).toBeNull()
-    expect(mockPrepare).toHaveBeenCalledWith(featureDef, 'L1', 'start', [0, 0], undefined, undefined)
+    expect(mockPrepare).toHaveBeenCalledWith(featureDef, 'L1', 'start', [0, 0], undefined, undefined, undefined)
   })
 
   it('does not engage when the context cannot be built (unmapped vertex)', () => {
@@ -266,7 +266,7 @@ describe('useWasmDragSolve', () => {
     expect(result.current.engaged).toBe(true)
     expect(result.current.sketch).toBeNull()
     // prepareDragContext called with null vertexKey for edge drags.
-    expect(mockPrepare).toHaveBeenCalledWith(featureDef, 'L1', null, [0, 0], undefined, undefined)
+    expect(mockPrepare).toHaveBeenCalledWith(featureDef, 'L1', null, [0, 0], undefined, undefined, undefined)
   })
 
   it('forwards the last solve resolved kinds and derived members to the drag context', () => {
@@ -277,7 +277,38 @@ describe('useWasmDragSolve', () => {
         featureId: 'S1', featureDef, drag: edgeDrag([3, 4]), isDraggingThis: true,
         resolvedKinds, derivedMembers,
       }))
-    expect(mockPrepare).toHaveBeenCalledWith(featureDef, 'L1', null, [0, 0], resolvedKinds, derivedMembers)
+    expect(mockPrepare).toHaveBeenCalledWith(featureDef, 'L1', null, [0, 0], resolvedKinds, derivedMembers, undefined)
+  })
+
+  it('builds the group context once at drag start and translates every frame', () => {
+    const group = [
+      { entityId: 'L1', vertexKey: 'edge' },
+      { entityId: 'L2', vertexKey: 'start' },
+    ]
+    const fakeGroupCtx = {
+      ...fakeEdgeCtx,
+      group: [
+        { anchor: { paramOffset: 0, paramCount: 4 }, coordPairs: [[0, 1], [2, 3]] },
+        { anchor: { paramOffset: 6, paramCount: 2 }, coordPairs: [[6, 7]] },
+      ],
+    }
+    mockPrepare.mockReturnValue(fakeGroupCtx)
+    mockSolve.mockReturnValue(solveResult([3, 4, 13, 4]))
+    const { rerender } = renderHook(
+      ({ drag }) => useWasmDragSolve({ featureId: 'S1', featureDef, drag, isDraggingThis: true }),
+      { initialProps: { drag: { ...edgeDrag([3, 4]), group } as DragState } },
+    )
+    pump()
+    expect(mockPrepare).toHaveBeenCalledTimes(1)
+    expect(mockPrepare).toHaveBeenCalledWith(featureDef, 'L1', null, [0, 0], undefined, undefined, group)
+    // A group drag translates (delta = cursor - start), never pins the vertex.
+    expect(mockSolve).toHaveBeenCalledWith(fakeGroupCtx, fakeGroupCtx.params0, [3, 4], [3, 4])
+
+    // A further pointer move must not rebuild the context: the member list is
+    // fixed for the gesture, so the memo key ignores currentWorld.
+    rerender({ drag: { ...edgeDrag([4, 5]), group } as DragState })
+    pump(2)
+    expect(mockPrepare).toHaveBeenCalledTimes(1)
   })
 
   it('solves edge drags with delta (not cursor pin)', () => {

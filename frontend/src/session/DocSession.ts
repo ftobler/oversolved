@@ -377,7 +377,15 @@ function replacedDimensions(before: PartDoc, after: PartDoc): Array<{ from: stri
   return pairs.length > 0 ? pairs : undefined
 }
 
-function dragAnchorFor(m: Mutation): { featureId: string; entityId: string } | undefined {  return m.type === 'move_vertex' || m.type === 'move_vertex_with_constraint'
+function dragAnchorFor(m: Mutation): { featureId: string; entityId: string } | undefined {
+  // A group move names several members; `drag_anchor` only has to make the
+  // session bypass the checkpoint cache, so the first member's id is enough to
+  // name the sketch. The transient field is ignored by the byte solver path.
+  if (m.type === 'move_sketch_group') {
+    const first = m.members[0]
+    return first === undefined ? undefined : { featureId: m.featureId, entityId: first.entityId }
+  }
+  return m.type === 'move_vertex' || m.type === 'move_vertex_with_constraint'
     || m.type === 'move_entity' || m.type === 'resize_circle'
     ? { featureId: m.featureId, entityId: m.entityId }
     : undefined

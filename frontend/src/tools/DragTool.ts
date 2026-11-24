@@ -1,14 +1,16 @@
 import type { Tool, ToolContext, ToolHandlers } from '@/registry/toolRegistry'
 import type { Point } from '@/types/cad'
 import type { DragState, DragPendingState } from '@/stores/sketchEditorStore'
+import type { DragMember } from '@/types/drag'
 import { shouldActivateDrag, computeDragMutation } from '@/utils/geometry/dragLogic'
+import { groupDragMembers } from '@/utils/geometry/groupDragMembers'
 import { getLastDragSolve } from '@/utils/geometry/dragSolveRegistry'
 import type { SnapTarget } from '@/utils/geometry/snapDetection'
 import { toolModeHandlers } from '@/tools/toolMode'
 
 export interface DragToolContext extends ToolContext {
-  drag: { type: 'vertex' | 'edge'; vertexId: string; featureId: string; entityId: string; vertexKey: string; startWorld: Point; currentWorld: Point; startClient: [number, number] } | null
-  dragPending: { type: 'vertex' | 'edge'; vertexId: string; featureId: string; entityId: string; vertexKey: string; startWorld: Point } | null
+  drag: { type: 'vertex' | 'edge'; vertexId: string; featureId: string; entityId: string; vertexKey: string; startWorld: Point; currentWorld: Point; startClient: [number, number]; group?: DragMember[] } | null
+  dragPending: { type: 'vertex' | 'edge'; vertexId: string; featureId: string; entityId: string; vertexKey: string; startWorld: Point; group?: DragMember[] } | null
   dragSnap: SnapTarget | null
   setDrag: (drag: DragToolContext['drag'], committed?: boolean) => void
   setDragPending: (pending: DragToolContext['dragPending']) => void
@@ -117,24 +119,37 @@ export function createDragTool(): DragTool {
 
       if (hoveredId.startsWith('vertex:')) {
         const parts = hoveredId.split(':')
+        const featureId = parts[1]
+        const entityId = parts.slice(2, -1).join(':')
+        const vertexKey = parts[parts.length - 1]
+        const group = groupDragMembers(context.normalSelection, featureId, {
+          type: 'vertex', entityId, vertexKey,
+        })
         const pending: DragToolContext['dragPending'] = {
           type: 'vertex',
           vertexId: hoveredId,
-          featureId: parts[1],
-          entityId: parts.slice(2, -1).join(':'),
-          vertexKey: parts[parts.length - 1],
+          featureId,
+          entityId,
+          vertexKey,
           startWorld: worldPt,
+          ...(group ? { group } : {}),
         }
         context.setDragPending(pending)
       } else if (hoveredId.startsWith('entity:')) {
         const parts = hoveredId.split(':')
+        const featureId = parts[1]
+        const entityId = parts.slice(2).join(':')
+        const group = groupDragMembers(context.normalSelection, featureId, {
+          type: 'edge', entityId, vertexKey: '',
+        })
         const pending: DragToolContext['dragPending'] = {
           type: 'edge',
           vertexId: hoveredId,
-          featureId: parts[1],
-          entityId: parts.slice(2).join(':'),
+          featureId,
+          entityId,
           vertexKey: '',
           startWorld: [0, 0],
+          ...(group ? { group } : {}),
         }
         context.setDragPending(pending)
       }
@@ -151,7 +166,10 @@ export function createDragTool(): DragTool {
         // For edge drags: resolve startWorld at activation time. The cursor was
         // over the entity when pointerdown fired, so worldPt (the cursor position
         // at activation) is a reasonable reference point for computing deltas.
-        const resolvedStartWorld = pending.type === 'edge' ? worldPt : pending.startWorld
+        // A group drag translates from the same point even when it was pressed
+        // on a vertex, so its first frame does not jump by the press-to-threshold
+        // distance.
+        const resolvedStartWorld = pending.type === 'edge' || pending.group ? worldPt : pending.startWorld
 
         // A gesture starts uncommitted: only pointer-up knows whether a
         // mutation (and so a solve) will actually come out of it. The verdict
@@ -166,6 +184,7 @@ export function createDragTool(): DragTool {
           startWorld: resolvedStartWorld,
           currentWorld: worldPt,
           startClient: context.startClient,
+          ...(pending.group ? { group: pending.group } : {}),
         }, false)
       }
       // No live-drag update here: the caller passes drag: null while activating,

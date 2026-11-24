@@ -105,6 +105,10 @@ describe('value rules cover the catalog', () => {
   // doc-aware rule takes the live document as the case's third entry.
   const WRONG_VALUE_CASES: Array<[Mutation['type'], Record<string, unknown>, PartDoc?]> = [
     ['move_entity', { type: 'move_entity', featureId: 'sk1', entityId: 'l1', delta: [1] }],
+    ['move_sketch_group', { type: 'move_sketch_group', featureId: 'sk1', members: [{ entityId: 'l1', vertexKey: 'edge' }], delta: [1] }],
+    ['move_sketch_group', { type: 'move_sketch_group', featureId: 'sk1', members: [], delta: [1, 1] }],
+    ['move_sketch_group', { type: 'move_sketch_group', featureId: 'sk1', members: [{ entityId: 'l1' }], delta: [1, 1] }],
+    ['move_sketch_group', { type: 'move_sketch_group', featureId: 'sk1', members: [{ entityId: 'ghost', vertexKey: 'edge' }], delta: [1, 1] }, sketchDoc()],
     ['resize_circle', { type: 'resize_circle', featureId: 'sk1', entityId: 'c1', radius: 0 }],
     ['add_constraint', { type: 'add_constraint', featureId: 'sk1', kind: 'coincident', targets: ['$a start'] }],
     ['set_constraint_pos', { type: 'set_constraint_pos', featureId: 'sk1', constraintId: 'c1', pos: [0] }],
@@ -260,8 +264,45 @@ describe('value rules cover the catalog', () => {
     expect(error.message).not.toBe(`mutation type "${type}" is invalid`)
   })
 
-  it('names coincident for a zero euclidean distance and allows a zero axis one', () => {
-    const doc = pointDistanceDoc()
+  it('refuses a move_sketch_group member naming an entity of another sketch, by name', () => {
+    const doc = seedBuiltins({
+      version: 1,
+      kind: 'part',
+      features: [
+        {
+          id: 'sk1',
+          kind: 'sketch',
+          plane: '@builtin_plane_front',
+          entities: [{ id: 'l1', kind: 'line' }],
+          initial: { l1: [0, 0, 10, 0] },
+        },
+        {
+          id: 'sk2',
+          kind: 'sketch',
+          plane: '@builtin_plane_front',
+          entities: [{ id: 'other', kind: 'line' }],
+          initial: { other: [0, 0, 10, 0] },
+        },
+      ],
+    })
+    const error = refusal({
+      type: 'move_sketch_group',
+      featureId: 'sk1',
+      members: [{ entityId: 'l1', vertexKey: 'edge' }, { entityId: 'other', vertexKey: 'edge' }],
+      delta: [2, 0],
+    }, doc)
+    expect(error.code).toBe('unknown-target')
+    expect(error.message).toContain("'other'")
+    // The same members against the right sketch are accepted.
+    expect(validateMutation({
+      type: 'move_sketch_group',
+      featureId: 'sk1',
+      members: [{ entityId: 'l1', vertexKey: 'edge' }],
+      delta: [2, 0],
+    }, { doc })).toMatchObject({ ok: true })
+  })
+
+  it('names coincident for a zero euclidean distance and allows a zero axis one', () => {    const doc = pointDistanceDoc()
     // The add path is shape-only: it refuses without a live document, so this
     // unit test covers the drive refusal the real-kernel suite also pins.
     const add = refusal({

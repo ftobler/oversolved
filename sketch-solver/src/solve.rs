@@ -842,27 +842,26 @@ fn keep_finished_else_restore(
     false
 }
 
-/// Per-param drag regularization weights. Every
-/// param gets `REG_WEIGHT_BASE`; the dragged (anchor) entity's params get the
-/// firmer `REG_WEIGHT_DRAG`. The contract carries a single `drag_anchor_id`
-/// (an entity index); an out-of-range id just leaves the base weights (still a
-/// valid, gentle pull toward the pre-drag state). The caller squares these into
-/// the driver's absolute anchor weights.
+/// Per-param drag regularization weights. Every param gets `REG_WEIGHT_BASE`;
+/// the params inside a drag anchor's run get the firmer `REG_WEIGHT_DRAG`. The
+/// contract carries the runs themselves (a whole entity, or one point's pair),
+/// because a group drag holds several elements and a point member must not
+/// firm up the other end of its line. A run that runs past the buffer, or whose
+/// offset arithmetic would overflow on 32-bit targets, is skipped on its own and
+/// leaves the base pull, exactly the old out-of-range anchor handling. The
+/// caller squares these into the driver's absolute anchor weights.
 fn drag_reg_weights(input: &Input, n: usize) -> Vec<f64> {
     let mut weights = vec![REG_WEIGHT_BASE; n];
-    let anchor = input.options.drag_anchor_id as usize;
-    if let Some(e) = input.entities.get(anchor) {
-        // A stale anchor whose block runs past the buffer (or whose offset
-        // arithmetic would overflow on 32-bit targets) gets only the base
-        // pull, matching the out-of-range handling everywhere else.
-        if let Some(end) = e
-            .param_offset
-            .checked_add(e.param_count)
+    for anchor in &input.options.drag_anchors {
+        let start = anchor.param_offset as usize;
+        let Some(end) = start
+            .checked_add(anchor.param_count as usize)
             .filter(|&end| end <= n)
-        {
-            for w in &mut weights[e.param_offset..end] {
-                *w = REG_WEIGHT_DRAG;
-            }
+        else {
+            continue;
+        };
+        for w in &mut weights[start..end] {
+            *w = REG_WEIGHT_DRAG;
         }
     }
     weights

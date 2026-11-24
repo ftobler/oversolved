@@ -17,6 +17,7 @@ import {
   ConstraintKindCode,
   isConstraintKindName,
   type FlatConstraint,
+  type FlatDragAnchor,
   type FlatInput,
   type FlatRef,
   fitSelectorCode,
@@ -117,7 +118,8 @@ export interface LowerResult {
 
 export interface LowerOptions {
   dragMode?: boolean
-  dragAnchorId?: number
+  // The param runs a drag-frame solve holds firm (Rust `DragAnchor`).
+  dragAnchors?: FlatDragAnchor[]
   skipStatusPass?: boolean
 }
 
@@ -255,8 +257,8 @@ export function pinnedMaskFor(layout: EntityLayout[], pinnedIds: Iterable<string
  * Lower a sketch. Appends the projected origin point (pinned at the plane
  * origin), so DOF accounting and per-entity status come out right.
  *
- * Pass `opts.dragMode = true` and `opts.dragAnchorId` for a drag-frame solve;
- * the default cold-solve options are `{ dragMode: false, dragAnchorId: 0,
+ * Pass `opts.dragMode = true` and `opts.dragAnchors` for a drag-frame solve;
+ * the default cold-solve options are `{ dragMode: false, dragAnchors: [],
  * skipStatusPass: false }`.
  */
 export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
@@ -539,7 +541,7 @@ export function lowerSketch(sk: SketchInput, opts?: LowerOptions): LowerResult {
     constraints,
     options: {
       dragMode: opts?.dragMode ?? false,
-      dragAnchorId: opts?.dragAnchorId ?? 0,
+      dragAnchors: opts?.dragAnchors ?? [],
       skipStatusPass: opts?.skipStatusPass ?? false,
     },
   }

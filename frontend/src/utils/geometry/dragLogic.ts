@@ -248,8 +248,11 @@ export function computeDragMove(
 ): DragMoveResult {
   const [x, y] = localPoint
 
-  if (drag.type !== 'vertex') {
-    // Edge drag: no snap
+  if (drag.type !== 'vertex' || drag.group) {
+    // Edge drag and any group drag: no snap. A group is a translation of
+    // several members, and snapping one vertex of it to a point is a different
+    // gesture (the plain vertex drag) that would also author a constraint the
+    // rest of the group does not share.
     return {
       snapTarget: null,
       effectivePosition: [x, y],
@@ -300,6 +303,17 @@ export function computeDragMutation(
     lastDragSolve && lastDragSolve.featureId === drag.featureId
       ? lastDragSolve.geometry
       : undefined
+
+  // A drag that started on a selected element moves the whole selection by the
+  // cursor delta. This comes before the snap branches on purpose: a group drag
+  // authors no constraint, and one group is one undo entry.
+  if (drag.group && drag.group.length > 1) {
+    const delta: [number, number] = [
+      drag.currentWorld[0] - drag.startWorld[0],
+      drag.currentWorld[1] - drag.startWorld[1],
+    ]
+    return { type: 'move_sketch_group', featureId: drag.featureId, members: drag.group, delta, solvedGeometry }
+  }
 
   if (drag.type === 'edge') {
     // The mode is resolved once at drag activation and latched for the gesture;

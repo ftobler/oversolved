@@ -66,7 +66,16 @@ fn sample_input() -> Input {
         seed_quantum: 1e-6,
         options: Options {
             drag_mode: true,
-            drag_anchor_id: 1,
+            drag_anchors: vec![
+                crate::DragAnchor {
+                    param_offset: 0,
+                    param_count: 4,
+                },
+                crate::DragAnchor {
+                    param_offset: 6,
+                    param_count: 1,
+                },
+            ],
             skip_status_pass: false,
         },
     }
@@ -85,7 +94,21 @@ fn input_round_trips() {
     assert_eq!(decoded.equality_pins[0].param_index, 6);
     assert_eq!(decoded.constraints.len(), 4);
     assert!(decoded.options.drag_mode);
-    assert_eq!(decoded.options.drag_anchor_id, 1);
+    // The anchor runs survive in order, one per drag member; the second run is
+    // a single param, the point-member shape.
+    assert_eq!(
+        decoded.options.drag_anchors,
+        vec![
+            crate::DragAnchor {
+                param_offset: 0,
+                param_count: 4,
+            },
+            crate::DragAnchor {
+                param_offset: 6,
+                param_count: 1,
+            },
+        ]
+    );
     // Bit-exact, not merely close: the grid value is forwarded verbatim.
     assert_eq!(decoded.seed_quantum.to_bits(), input.seed_quantum.to_bits());
 
@@ -560,9 +583,10 @@ fn rev5_output_magic_is_rejected() {
 }
 
 // The fixed-size input header (see module docs): magic, four counts, two
-// u8 flags, the drag anchor, the storage quantum and the reference count. The
-// first entity or constraint record starts right after it, which is what the
-// corruption offsets below rely on.
+// u8 flags, the drag-anchor count, then one 8-byte (offset, count) record per
+// anchor, the storage quantum and the reference count. The first entity or
+// constraint record starts right after it, which is what the corruption offsets
+// below rely on. These buffers carry no anchors, so the header is 38 bytes.
 const HEADER_LEN: usize = 38;
 
 fn one_entity_input() -> Input {
@@ -1122,6 +1146,43 @@ fn the_rev_7_magics_are_rejected() {
     let mut bytes = encode_output(&out);
     bytes[0..4].copy_from_slice(&MAGIC_OUT_SKR7.to_le_bytes());
     assert_eq!(decode_output(&bytes).unwrap_err(), CodecError::BadMagic);
+}
+
+#[test]
+fn the_rev_10_magics_are_rejected() {
+    // Rev 10's input carries one `drag_anchor_id` where this layout has a count
+    // and a record list: decoding it here would read the first entity record as
+    // anchors and shift every following block. The output layout is unchanged,
+    // but the pair is the version handshake and moves together.
+    let mut input_bytes = encode_input(&sample_input());
+    input_bytes[0..4].copy_from_slice(&MAGIC_SKGA.to_le_bytes());
+    assert_eq!(
+        decode_input(&input_bytes).unwrap_err(),
+        CodecError::BadMagic
+    );
+    let out = Output {
+        params_solved: vec![1.0],
+        entity_status: Vec::new(),
+        overall_status: 0,
+        vertex_freedom: Vec::new(),
+        constraint_flags: Vec::new(),
+        constraint_miss: Vec::new(),
+        entity_moved: Vec::new(),
+        weak_constraints: Vec::new(),
+        diagnostics: Diagnostics::default(),
+    };
+    let mut bytes = encode_output(&out);
+    bytes[0..4].copy_from_slice(&MAGIC_OUT_SKRA.to_le_bytes());
+    assert_eq!(decode_output(&bytes).unwrap_err(), CodecError::BadMagic);
+}
+
+#[test]
+fn an_empty_anchor_list_round_trips_as_none() {
+    // The hard solve sends no anchors; the count alone is the whole block, so
+    // the rest of the header stays where rev 10 had it.
+    let input = one_entity_input();
+    let decoded = decode_input(&encode_input(&input)).expect("decode");
+    assert!(decoded.options.drag_anchors.is_empty());
 }
 
 #[test]

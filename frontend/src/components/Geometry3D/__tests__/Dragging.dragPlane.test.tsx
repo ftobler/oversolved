@@ -56,6 +56,8 @@ vi.mock('@/components/Geometry3D/dimensions', () => ({ DashedLine: () => null })
 
 import { DragPlane } from '@/components/Geometry3D/Dragging'
 import { useEditorState } from '@/hooks/useEditorState'
+import { buildDragToolContext } from '@/tools/DragTool'
+import { edgeDragPreview } from '@/utils/geometry/edgeDragPreview'
 
 function makeCanvas(): HTMLCanvasElement {
   const c = document.createElement('canvas')
@@ -364,5 +366,94 @@ describe('DragPlane pointer-up commit', () => {
       type: 'move_vertex', featureId: 'S1', entityId: 'lineA', vertexKey: 'start', to: [5, 6],
     }))
     expect(useSketchEditorStore.getState().drag).toBeNull()
+  })
+})
+
+describe('DragPlane group drag', () => {
+  const sketch: Sketch = {
+    lineA: { start: [0, 0], end: [10, 0] },
+    lineB: { start: [0, 5], end: [10, 5] },
+  }
+
+  // The real pointer-down path: the drag tool builds the pending drag from the
+  // hover and the normal selection, so the group is decided there, not by the
+  // test.
+  function pressOnLineA(
+    normalSelection: string[],
+    onMutation: (mutation: import('@/types/cad').Mutation) => void,
+  ): void {
+    useEditorState.setState({
+      normalSelection: new Set(normalSelection),
+      hoveredVertexId: 'entity:S1:lineA',
+      isPointerDown: true,
+      dragStartClient: [100, 100],
+    })
+    const state = useSketchEditorStore.getState()
+    toolRegistry.get('drag')!.handlers.onPointerDown!({} as PointerEvent, [0, 0], buildDragToolContext(
+      state,
+      { onMutation, setDrag: state.setDrag, setDragPending: state.setDragPending, setDragSnap: state.setDragSnap },
+      { hoveredVertexId: 'entity:S1:lineA', isPointerDown: true, startClient: [100, 100] },
+    ))
+  }
+
+  it('lasso two lines, press one: the preview moves both and release commits one group mutation', () => {
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    render(<DragPlane featureId="S1" sketch={sketch} sketchGroupRef={groupRef} />)
+    act(() => { pressOnLineA(['entity:S1:lineA', 'entity:S1:lineB'], onMutation) })
+
+    const pending = useSketchEditorStore.getState().dragPending
+    expect(pending?.type === 'edge' ? pending.group : undefined).toEqual([
+      { entityId: 'lineA', vertexKey: 'edge' },
+      { entityId: 'lineB', vertexKey: 'edge' },
+    ])
+
+    // Cross the click threshold; the projected cursor is where the drag starts.
+    proj.point = { x: 0, y: 0, z: 0 }
+    move(200, 200)
+    const drag = useSketchEditorStore.getState().drag as VertexOrEdgeDrag
+    expect(drag.group).toHaveLength(2)
+
+    // The viewport's translation fallback (the frame before the WASM preview
+    // lands, or a build without it): BOTH lines move, not only the grabbed one.
+    proj.point = { x: 3, y: 2, z: 0 }
+    move(240, 260)
+    const live = useSketchEditorStore.getState().drag as VertexOrEdgeDrag
+    const preview = edgeDragPreview(sketch, live as VertexOrEdgeDrag & { type: 'edge' })
+    expect((preview.lineA as { start: [number, number] }).start).toEqual([3, 2])
+    expect((preview.lineB as { start: [number, number] }).start).toEqual([3, 7])
+
+    up(240, 260)
+
+    expect(onMutation).toHaveBeenCalledTimes(1)
+    expect(onMutation).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'move_sketch_group',
+      featureId: 'S1',
+      members: [
+        { entityId: 'lineA', vertexKey: 'edge' },
+        { entityId: 'lineB', vertexKey: 'edge' },
+      ],
+      delta: [3, 2],
+    }))
+    expect(useSketchEditorStore.getState().drag).toBeNull()
+  })
+
+  it('pressing an unselected line stays a single drag', () => {
+    const onMutation = vi.fn()
+    setSketchCallback('onMutation', onMutation)
+    render(<DragPlane featureId="S1" sketch={sketch} sketchGroupRef={groupRef} />)
+    act(() => { pressOnLineA(['entity:S1:lineB'], onMutation) })
+
+    const pending = useSketchEditorStore.getState().dragPending
+    expect(pending?.type === 'edge' ? pending.group : undefined).toBeUndefined()
+    proj.point = { x: 0, y: 0, z: 0 }
+    move(200, 200)
+    proj.point = { x: 3, y: 2, z: 0 }
+    move(240, 260)
+    up(240, 260)
+
+    expect(onMutation).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'move_entity', featureId: 'S1', entityId: 'lineA',
+    }))
   })
 })
