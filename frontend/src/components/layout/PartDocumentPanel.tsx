@@ -4,10 +4,10 @@ import '@/components/layout/Glass.css'
 import '@/pages/Part.css'
 
 // The part editor's navigator as two floating cards: Features on top, Parts
-// below. Part.css gives Features everything the Parts card does not take and
-// lets Parts hug its list up to a share, so a part with one body leaves the
-// height to the feature list instead of holding an empty card. The drag
-// splitter is gone; the shared flex rules size the two cards now.
+// below. Part.css reserves a share for the Parts card and gives Features the
+// rest, so the card stays readable with no parts at all and the lists scroll
+// inside their cards. The drag splitter is gone; the shared flex rules size the
+// two cards now.
 export function PartDocumentPanel() {
   return (
     <div className="document-panel">

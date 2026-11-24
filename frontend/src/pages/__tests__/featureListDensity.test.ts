@@ -1,7 +1,8 @@
 // The side panel row spacing is CSS only, and jsdom applies no stylesheet, so
 // the sheet that owns it is the source of truth: the shared token, its value,
-// and both lists consuming it. The height split between the two cards is in
-// the same sheet and is pinned here for the same reason.
+// and both lists consuming it. The height split's tokens and its arithmetic
+// live here; the declarations that actually reach the cards are pinned with
+// the effective-value resolver in narrowChrome.test.ts.
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -9,18 +10,30 @@ import { join } from 'node:path'
 const SRC = join(__dirname, '../..')
 const PART_CSS = readFileSync(join(SRC, 'pages/Part.css'), 'utf8')
 
-// The declarations of the first rule whose selector is exactly `selector`.
+// The declarations of the first rule whose selector is exactly `selector`,
+// wherever it sits (an indented rule inside a media block included).
 function rulePart(selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-  const match = PART_CSS.match(new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`))
+  const match = PART_CSS.match(new RegExp(`(?:^|\\n)[ \\t]*${escaped}[ \\t]*\\{([^}]*)\\}`))
   expect(match, `${selector} rule in pages/Part.css`).not.toBeNull()
   return match![1]
 }
 
-function token(name: string): string {
-  const match = new RegExp(`${name}:\\s*([^;]+);`).exec(rulePart(':root'))
-  expect(match, `${name} in :root`).not.toBeNull()
+// A custom property's value in that rule.
+function declared(selector: string, name: string): string {
+  const match = new RegExp(`${name}:\\s*([^;]+);`).exec(rulePart(selector))
+  expect(match, `${name} on ${selector}`).not.toBeNull()
   return match![1].trim()
+}
+
+function token(name: string): string {
+  return declared(':root', name)
+}
+
+// A pixel token as the number the browser would compute.
+function px(value: string): number {
+  expect(value).toMatch(/^\d+(\.\d+)?px$/)
+  return Number.parseFloat(value)
 }
 
 // The tallest child of a row is the action button pair / slot, sized by the
@@ -89,6 +102,41 @@ describe('side panel height split', () => {
     return Math.max(0.85 * column, column - 2 * gapMax())
   }
 
+  // The card column, not the viewport: .floating-left runs from one floating
+  // inset below the .viewport-stage top to the inset plus the readout clearance
+  // above its bottom, and the stage sits under the app header and the editor
+  // toolbar. Those two bar heights are pinned part by part in
+  // narrowChrome.test.ts, because they are the model's other input: the header
+  // is its 40px buttons plus 6px padding each side and a 1px border (53px), the
+  // part editor's toolbar is also 53 (a 44px mode selector inside 4px padding
+  // and a 1px border), and the assembly's lighter toolbar is 49. CssBaseline
+  // (main.tsx) makes border-box global, so those heights already include the
+  // padding. A test that counted the viewport as the column would allow floors
+  // the real column cannot hold.
+  const APP_HEADER = 53
+  const PART_TOOLBAR = 53
+  const ASSEMBLY_TOOLBAR = 49
+
+  function columnFor(viewport: number, toolbar = PART_TOOLBAR): number {
+    const inset = px(token('--floating-inset'))
+    const clearance = px(token('--readout-clearance'))
+    return viewport - APP_HEADER - toolbar - inset - (inset + clearance)
+  }
+
+  // The panel's own floor: the two card floors plus the gap between them.
+  function panelFloor(top: number, bottom: number): number {
+    return top + bottom + px(token('--left-cards-gap'))
+  }
+
+  // The panel's used height: its share, raised to the floor where the column
+  // can hold it and clamped to the column by min(..., 100%) where it cannot.
+  function panelFor(column: number, floor: number): number {
+    return Math.max(basis(column), Math.min(floor, column))
+  }
+
+  // The open drawer's card column: the only rule that lowers the floors.
+  const DRAWER = '.doc-container.panels-open .floating-left'
+
   it('caps the outer gap on a short column instead of scaling it', () => {
     expect(gapMax()).toBe(24)
     expect(token('--left-cards-height'))
@@ -122,23 +170,102 @@ describe('side panel height split', () => {
     expect(0.15 * 1400).toBeGreaterThan(2 * gapMax())
   })
 
-  it('gives the top card the leftover height and lets the bottom hug its list', () => {
-    // Nothing is reserved for the bottom card up front: it takes its content
-    // height, and the top card grows into the rest.
-    expect(rulePart('.document-panel > .sidebar-top')).toMatch(/flex:\s*1 1 0/)
-
-    const bottom = rulePart('.document-panel > .sidebar-bottom')
-    expect(bottom).toMatch(/flex:\s*0 1 auto/)
-    expect(bottom).toMatch(/max-height:\s*36%/)
+  it('takes the share, the floors and the gap from tokens', () => {
+    // The user asked for the reservation on 2026-11-23: a content hug left the
+    // Parts card at a header and one empty row.
+    expect(token('--left-bottom-share')).toBe('34%')
+    expect(px(token('--left-top-floor'))).toBe(160)
+    expect(px(token('--left-bottom-floor'))).toBe(140)
+    expect(px(token('--left-cards-gap'))).toBe(16)
   })
 
-  it('keeps the bottom card above its minimum on a short column', () => {
-    // 36% of the pair's height at the shortest column still clears the 60px
-    // floor, so the share caps a long list without clamping the card shut. The
-    // top card deliberately keeps no floor of its own; the bottom card keeps
-    // the 60px one.
-    expect(0.36 * basis(400)).toBeGreaterThan(60)
-    expect(rulePart('.document-panel > .sidebar-top')).toMatch(/min-height:\s*0/)
-    expect(rulePart('.document-panel > .sidebar-bottom')).toMatch(/min-height:\s*60px/)
+  it('keeps the parts list scrolling inside the fixed-basis card', () => {
+    const list = rulePart('.parts-list')
+    expect(list).toMatch(/overflow-y:\s*auto/)
+    expect(list).toMatch(/min-height:\s*0/)
+  })
+
+  it('reserves about a third where the column can afford it', () => {
+    // On a tall window the share is above the bottom floor and the rest is
+    // above the top floor, so the token, not a floor, decides both cards.
+    const panel = basis(columnFor(1000))
+    const share = 0.34 * panel
+    expect(share).toBeGreaterThan(px(token('--left-bottom-floor')))
+    expect(panel - share - px(token('--left-cards-gap')))
+      .toBeGreaterThan(px(token('--left-top-floor')))
+  })
+
+  it('keeps the desktop floors inside the shortest desktop column', () => {
+    // 481px is the shortest window that still shows the desktop pair; the
+    // drawer block starts at 480. The part editor's column there is 323, seven
+    // more than the 316 the two floors need, so the panel floor sets the pair
+    // and the clamp never binds on the desktop.
+    const top = px(token('--left-top-floor'))
+    const bottom = px(token('--left-bottom-floor'))
+    const floor = panelFloor(top, bottom)
+    expect(floor).toBe(316)
+    const column = columnFor(481)
+    expect(floor).toBeLessThanOrEqual(column)
+    expect(panelFor(column, floor)).toBe(floor)
+    expect(basis(column)).toBeLessThan(floor)
+
+    // At the floor the share is under the bottom card's floor, so that card
+    // keeps its floor and the top card gets exactly its own.
+    expect(0.34 * floor).toBeLessThan(bottom)
+    expect(floor - bottom - px(token('--left-cards-gap'))).toBe(top)
+  })
+
+  it('clamps the panel to a short drawer column', () => {
+    // 568x320 landscape is a real phone turned sideways: its column is
+    // 320 - 53 - 53 - 52 = 162, under the drawer pair's 208. The clamp stops
+    // the panel at the column so the pair starts at the top (flex-start with
+    // zeroed auto margins) and the cards are what overflow into the scrolling
+    // drawer column; without it the pair would be centered up over the toolbar.
+    const drawerFloor = panelFloor(
+      px(declared(DRAWER, '--left-top-floor')),
+      px(declared(DRAWER, '--left-bottom-floor')),
+    )
+    const column = columnFor(320)
+    expect(column).toBeLessThan(drawerFloor)
+    expect(panelFor(column, drawerFloor)).toBe(column)
+
+    // A drawer column that can hold the pair keeps the floor and never clamps.
+    expect(panelFor(columnFor(390), drawerFloor)).toBe(drawerFloor)
+  })
+
+  it('fits the drawer floors in the drawer column', () => {
+    // The drawer lowers both floors: its column is the viewport less the app
+    // header, the editor toolbar and its insets, 232px in the part editor on an
+    // 844x390 landscape phone (236px in the assembly, whose toolbar is 4px
+    // shorter). A header plus one row is 74px, so each 96px floor has 22px to
+    // spare, the pair with the gap is 208px, and the lists scroll under their
+    // headers.
+    const top = px(declared(DRAWER, '--left-top-floor'))
+    const bottom = px(declared(DRAWER, '--left-bottom-floor'))
+    const headerFloor = px(declared('.sidebar-header', 'min-height'))
+    // The shorthand's first value is the block edge; the bottom edge is 0.
+    const headerPad = Number.parseFloat(declared('.sidebar-header', 'padding'))
+    expect(headerFloor).toBe(28)
+    // The floor already covers the header's 4px top padding (its bottom padding
+    // is zero), so header plus one row is the bound the card floors must hold.
+    expect(headerFloor).toBeGreaterThanOrEqual(headerPad)
+    expect(top).toBe(96)
+    expect(bottom).toBe(96)
+    expect(top - (headerFloor + rowHeight('.feature-item'))).toBe(22)
+    expect(bottom - (headerFloor + rowHeight('.part-item'))).toBe(22)
+
+    const pair = panelFloor(top, bottom)
+    expect(pair).toBe(208)
+    // The requirement, not the column's exact value: the column moves with the
+    // engine's box model, the pair must fit the worst of the two editors.
+    expect(pair).toBeLessThanOrEqual(columnFor(390))
+    expect(pair).toBeLessThanOrEqual(columnFor(390, ASSEMBLY_TOOLBAR))
+    expect(panelFor(columnFor(390), pair)).toBe(pair)
+
+    // A portrait phone's column still affords the reserved share above the
+    // floors, so the drawer keeps its third there.
+    const portrait = basis(columnFor(667))
+    expect(0.34 * portrait).toBeGreaterThan(bottom)
+    expect(portrait - 0.34 * portrait - px(token('--left-cards-gap'))).toBeGreaterThan(top)
   })
 })
