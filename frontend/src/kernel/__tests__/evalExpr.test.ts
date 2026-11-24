@@ -105,6 +105,15 @@ describe('evalFeatureParams', () => {
     expect(sub.thickness).toBe(2.5)
   })
 
+  it('lists and evaluates both chamfer legs', () => {
+    expect(EXPR_FIELDS_BY_KIND.chamfer).toEqual(['distance', 'angle', 'distance2'])
+    const sub: Record<string, unknown> = { kind: 'two_distance', distance: 'w', distance2: 'w / 2', angle: 30 }
+    evalFeatureParams(sub, EXPR_FIELDS_BY_KIND.chamfer, { w: 4 })
+    expect(sub.distance).toBe(4)
+    expect(sub.distance2).toBe(2)
+    expect(sub.angle).toBe(30)
+  })
+
   it('lists and evaluates the move-face distance expression to a signed number', () => {
     expect(EXPR_FIELDS_BY_KIND.move_face).toEqual(['distance'])
     const sub: Record<string, unknown> = { distance: '2*h' }

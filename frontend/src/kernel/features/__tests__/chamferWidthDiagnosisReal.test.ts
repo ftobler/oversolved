@@ -20,6 +20,7 @@ import { partFrame, compareEdgeSortKeys } from '../../occ/tessellation'
 import { Repository } from '../../query'
 import { barePart } from '../shared/partResolution'
 import { solveChamfer } from '../filletChamfer'
+import { chamferSecondLeg, chamferWidthDiagnosis } from '../edgeFailureDiagnosis'
 import type { PartSolid } from '../../types3d'
 import type { OccModule, OccShape } from '../../occ/occTypes'
 import type { EdgeData } from '@/types/cad'
@@ -70,6 +71,18 @@ function isUprightTopEdge(ed: EdgeData): boolean {
   return top && Math.abs(length - 10) < 1e-6
 }
 
+/** The upright's 10 mm top edge as an OCC edge (the measured-width target). */
+function uprightTopEdge(ocm: OccModule, scope: DisposeScope, shape: OccShape): OccShape {
+  for (const e of canonicalEdges(ocm, scope, shape)) {
+    try {
+      if (isUprightTopEdge(edgeToGeom(ocm, scope, e).ed)) return e
+    } catch {
+      // A geometry read that fails cannot be the target this test asks for.
+    }
+  }
+  throw new Error('the bracket has no upright top edge')
+}
+
 describe.skipIf(!hasOcc)('chamfer: a distance wider than the adjacent face names the width', () => {
   function rig(): { scope: DisposeScope; table: HandleTable; store: Record<string, PartSolid> } {
     return { scope: new DisposeScope(), table: new HandleTable(), store: {} }
@@ -105,6 +118,56 @@ describe.skipIf(!hasOcc)('chamfer: a distance wider than the adjacent face names
       chamfer: { edges: [`?body_b:edge:${idx}`], distance: 0.1, kind: 'distance', angle: 45 },
     }, new Repository(), r.store)
     expect(res.status).toBe('ok')
+    r.scope.dispose()
+  })
+
+  it('names the wider leg of a two_distance chamfer that overruns the wall', () => {
+    const r = rig()
+    const part = barePart('body_b', 'b')
+    part.shape = r.table.register(bracket(oc, r.scope), part.created_by)
+    r.store.body_b = part
+    const shape = r.table.get<OccShape>(part.shape!)
+    const edge = uprightTopEdge(oc, r.scope, shape)
+    const message = chamferWidthDiagnosis(oc, r.scope, shape, [edge], 0.1, 0.25)
+    expect(message).toContain('distance 0.25')
+    expect(message).toContain('width 0.2')
+    r.scope.dispose()
+  })
+
+  it('derives an angle_distance second leg of distance * tan(angle) for the width check', () => {
+    const r = rig()
+    const part = barePart('body_b', 'b')
+    part.shape = r.table.register(bracket(oc, r.scope), part.created_by)
+    r.store.body_b = part
+    const shape = r.table.get<OccShape>(part.shape!)
+    const edge = uprightTopEdge(oc, r.scope, shape)
+    // distance 0.1 fits the 0.2 wall; the 80 degree second leg (0.567) does not,
+    // and the message names that leg rather than the authored distance.
+    const message = chamferWidthDiagnosis(oc, r.scope, shape, [edge], 0.1, 0.1 * Math.tan((80 * Math.PI) / 180))
+    expect(message).toContain('width 0.2')
+    expect(message).not.toContain('distance 0.1 ')
+    r.scope.dispose()
+  })
+
+  it('has no second leg at or past a right angle, where tan is unbounded or negative', () => {
+    expect(chamferSecondLeg(1, (30 * Math.PI) / 180)).toBeCloseTo(Math.tan((30 * Math.PI) / 180), 12)
+    expect(chamferSecondLeg(1, Math.PI / 2)).toBeUndefined()
+    expect(chamferSecondLeg(1, (100 * Math.PI) / 180)).toBeUndefined()
+    expect(chamferSecondLeg(1, Number.POSITIVE_INFINITY)).toBeUndefined()
+  })
+
+  it('ignores a non-finite second leg instead of naming a nonsense distance', () => {
+    const r = rig()
+    const part = barePart('body_b', 'b')
+    part.shape = r.table.register(bracket(oc, r.scope), part.created_by)
+    r.store.body_b = part
+    const shape = r.table.get<OccShape>(part.shape!)
+    const edge = uprightTopEdge(oc, r.scope, shape)
+    for (const secondLeg of [Number.POSITIVE_INFINITY, Number.NaN, 0.1 * Math.tan((100 * Math.PI) / 180)]) {
+      // distance 0.1 fits the 0.2 wall, so with no usable second leg there is
+      // nothing to diagnose (above 90 tan is negative and cannot be one).
+      expect(chamferWidthDiagnosis(oc, r.scope, shape, [edge], 0.1, secondLeg)).toBeNull()
+    }
     r.scope.dispose()
   })
 })

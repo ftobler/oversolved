@@ -83,7 +83,7 @@ export const EXPR_FIELDS_BY_KIND: { [K in ExprFieldKind]: readonly (keyof ExprPa
   revolve: ['angle'],
   wrap: ['height'],
   fillet: ['radius'],
-  chamfer: ['distance', 'angle'],
+  chamfer: ['distance', 'angle', 'distance2'],
   shell: ['thickness'],
   move_face: ['distance'],
   hole: ['diameter', 'depth', 'cb_diameter', 'cb_depth', 'cs_angle', 'tip_angle', 'thread_depth'],

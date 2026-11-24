@@ -1002,8 +1002,12 @@ function checkFillet(sub: DocRecord, field: string): void {
 function checkChamfer(sub: DocRecord, field: string): void {
   checkOptional(sub, 'edges', field, checkRefList)
   checkOptional(sub, 'distance', field, checkExpr)
-  checkOptional(sub, 'kind', field, (v, f) => checkEnum(v, f, ['distance', 'angle_distance']))
+  checkOptional(sub, 'kind', field, (v, f) => checkEnum(v, f, ['distance', 'angle_distance', 'two_distance']))
   checkOptional(sub, 'angle', field, checkExpr)
+  checkOptional(sub, 'distance2', field, checkExpr)
+  checkOptional(sub, 'reverse', field, (v, f) => {
+    if (typeof v !== 'boolean') fail(f, `must be a boolean, got ${JSON.stringify(v)}`)
+  })
 }
 
 // A positive NumberOrExpr: a positive finite number, or a string that is either

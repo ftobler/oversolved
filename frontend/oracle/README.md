@@ -24,7 +24,10 @@ two-file layout.
   intersection, so no closed form describes the built shape. The all-edges
   case is covered instead by `08-fillet-all-edges` (the Steiner parallel-body
   formula is exact), with `10-chamfer-one-edge`, `11-chamfer-vertical` and
-  `33-chamfer-vertical-naming` covering chamfers.
+  `33-chamfer-vertical-naming` covering chamfers. `47-chamfer-two-distance`
+  and `48-chamfer-two-distance-reversed` cover the asymmetric kind: the same
+  volume, with the first leg on the reference face and the second on the other,
+  and the reversed case swapping them (the centroid proves the swap).
 - The spheres in cases 22 to 24 are modelled as a semicircular arc plus its
   diameter line, revolved 360 degrees. There is no sphere primitive feature;
   that revolve is the product's own construction path.

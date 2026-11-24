@@ -179,17 +179,33 @@ export const FILLET_SCHEMA: FeatureEditorSchema = {
 export const CHAMFER_SCHEMA: FeatureEditorSchema = {
   mutationPrefix: 'set_chamfer',
   subKey: 'chamfer',
-  defaults: { edges: [], distance: 1, kind: 'distance', angle: 45 },
+  defaults: { edges: [], distance: 1, kind: 'distance', angle: 45, distance2: 1, reverse: false },
+  // A two_distance doc authored without a second leg builds symmetric on
+  // `distance`; show that same value so the field cannot disagree with the
+  // kernel before the user types one.
+  normalize: (raw) => raw.kind === 'two_distance' && (raw.distance2 === undefined || raw.distance2 === null)
+    ? { ...raw, distance2: raw.distance ?? 1 }
+    : raw,
   fields: [
     { type: 'pick', key: 'edges', label: 'Edges', multi: true,
       addMutationType: 'add_chamfer_edge', addValueKey: 'edgeQuery',
       removeMutationType: 'remove_chamfer_edge',
       validatePick: namedEdgePickRefusal },
     { type: 'select', key: 'kind', label: 'Kind', default: 'distance',
-      options: [{ value: 'distance', label: 'Distance' }, { value: 'angle_distance', label: 'Angle + Distance' }] },
+      options: [
+        { value: 'distance', label: 'Distance' },
+        { value: 'two_distance', label: 'Two distances' },
+        { value: 'angle_distance', label: 'Angle + Distance' },
+      ] },
     { type: 'number', key: 'distance', label: 'Distance', default: 1, quantity: 'length', validate: positive },
+    { type: 'number', key: 'distance2', label: 'Distance 2', default: 1, quantity: 'length',
+      showWhen: (d) => d.kind === 'two_distance', validate: positive },
     { type: 'number', key: 'angle', label: 'Angle', default: 45, quantity: 'angle',
       showWhen: (d) => d.kind === 'angle_distance', validate: positive },
+    // Both asymmetric kinds measure `distance` on one face. A plain distance
+    // chamfer is symmetric, so the checkbox stays hidden rather than lying.
+    { type: 'checkbox', key: 'reverse', label: 'Reverse', default: false,
+      showWhen: (d) => d.kind === 'two_distance' || d.kind === 'angle_distance' },
   ],
 }
 

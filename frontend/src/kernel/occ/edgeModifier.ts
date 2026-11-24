@@ -9,7 +9,14 @@
 // the modifying feature.
 
 import { drainList, type DisposeScope } from './disposeScope'
-import type { OccModule, OccShape, OccSubShape, OccEdgeModifierMaker, OccModifierHistory } from './occTypes'
+import type {
+  OccModule,
+  OccShape,
+  OccSubShape,
+  OccEdgeModifierMaker,
+  OccModifierHistory,
+  OccOrientedShape,
+} from './occTypes'
 import { shapeIsValid } from './cleanup/guard'
 import { healShape } from './cleanup/heal'
 import { passRejected, runCleanup } from './cleanup/pipeline'
@@ -872,45 +879,133 @@ function filletSpec(oc: OccModule, radius: number, fallback?: EdgeFallback): Mod
   }
 }
 
-/** First face of `ctx.faces` that the edge belongs to, or null. The face edges
- *  are wrappers of their own, so the match is `IsSame`, not identity; the walk
- *  is cached because every chamfered edge asks the same question of the same
- *  face set. */
-function adjacentFaceLookup(oc: OccModule): (edge: OccShape, ctx: AddEdgeContext) => OccShape | null {
-  let walked: { face: OccShape; edges: OccShape[] }[] | null = null
+/**
+ * The adjacent faces of `edge` as the shape walks them, each with whether the
+ * face's wire uses the edge REVERSED. A manifold edge appears FORWARD in one
+ * face and REVERSED in the other, which is what makes the reference face below
+ * topological rather than a read of OCCT's face order.
+ */
+function adjacentFaceUses(
+  oc: OccModule,
+): (edge: OccShape, ctx: AddEdgeContext) => { face: OccShape; reverse: boolean }[] {
+  // Keyed by the face list, not just filled once: a lookup handed two shapes
+  // (the tests exercise both face orders) must walk the list it was given, and
+  // a stale cache would quietly answer for the first shape only.
+  let cachedFaces: OccShape[] | null = null
+  let walked: { face: OccShape; edges: { edge: OccShape; reverse: boolean }[] }[] | null = null
   return (edge, ctx) => {
-    walked ??= ctx.faces.map((face) => ({ face, edges: exploreEdges(oc, ctx.scope, face) }))
-    for (const { face, edges } of walked) {
-      if (edges.some((fe) => (fe as OccSubShape).IsSame(edge as OccSubShape))) return face
+    if (walked === null || cachedFaces !== ctx.faces) {
+      cachedFaces = ctx.faces
+      walked = ctx.faces.map((face) => ({
+        face,
+        edges: exploreEdges(oc, ctx.scope, face).map((fe) => {
+          // The fake modules in the unit tests carry no Orientation_1; an absent
+          // or unreadable one is treated as FORWARD, so such a shape falls back to
+          // the first-face answer below rather than refusing.
+          let reverse = false
+          try {
+            const orientation = (fe as Partial<OccOrientedShape>).Orientation_1?.()
+            reverse = orientation?.value === oc.TopAbs_Orientation.TopAbs_REVERSED.value
+          } catch (e) {
+            swallowUnlessTrap(e)
+          }
+          return { edge: fe, reverse }
+        }),
+      }))
     }
-    return null
+    const out: { face: OccShape; reverse: boolean }[] = []
+    for (const { face, edges } of walked) {
+      const hit = edges.find((e) => (e.edge as OccSubShape).IsSame(edge as OccSubShape))
+      if (hit !== undefined) out.push({ face, reverse: hit.reverse })
+    }
+    return out
   }
 }
 
-function chamferSpec(
+/**
+ * The face a chamfer measures its first leg on: for a manifold edge, the face
+ * in whose wire the edge is used FORWARD. `reverse` takes the other face.
+ *
+ * OCCT promises no face order, and an upstream edit can permute the face list,
+ * so the old "first face that holds the edge" answer could silently swap the
+ * legs of every angle-distance chamfer. The edge's own use is topological: the
+ * producing feature fixes which way the edge runs, so both faces keep their
+ * FORWARD/REVERSED roles across a rebuild. A seam or single-face edge has one
+ * face and ignores `reverse`. An edge whose two faces report the same use is
+ * non-manifold or odd topology; the first face found keeps today's behaviour
+ * rather than refusing.
+ */
+export function chamferReferenceFace(
   oc: OccModule,
-  distance: number,
-  kind: string,
-  angleDeg: number,
-  fallback?: EdgeFallback,
-): ModifierSpec {
+): (edge: OccShape, ctx: AddEdgeContext, reverse: boolean) => OccShape | null {
+  const usesOf = adjacentFaceUses(oc)
+  return (edge, ctx, reverse) => {
+    const uses = usesOf(edge, ctx)
+    if (uses.length === 0) return null
+    if (uses.length === 1) return uses[0].face
+    const forward = uses.find((u) => !u.reverse)
+    const reversed = uses.find((u) => u.reverse)
+    if (forward === undefined || reversed === undefined) return uses[0].face
+    return reverse ? reversed.face : forward.face
+  }
+}
+
+/** The chamfer kinds the kernel can build. The document's kind field is this
+ *  union; a fourth member must fail the exhaustive switch in `chamferSpec`. */
+export type ChamferKind = 'distance' | 'angle_distance' | 'two_distance'
+
+/** The parameters of one chamfer solve, independent of the document spelling. */
+export interface ChamferParams {
+  kind: ChamferKind
+  distance: number
+  // Two-distance only; absent falls back to `distance` so a doc switched to
+  // the kind before typing builds symmetric instead of failing.
+  distance2?: number
+  // Angle-distance only, degrees.
+  angleDeg?: number
+  // Angle-distance and two-distance: measure the first leg on the other face.
+  reverse?: boolean
+}
+
+function chamferSpec(oc: OccModule, params: ChamferParams, fallback?: EdgeFallback): ModifierSpec {
   // The unit boundary. The document authors the angle in degrees (the editor
   // labels it so, and the schema defaults it to 45), but ChFi3d takes it
   // through C `tan()`, which is radians. This is the only call site that
   // reaches `AddDA`, so the conversion belongs here.
-  const angleRad = angleDeg * (Math.PI / 180)
-  const findFace = adjacentFaceLookup(oc)
+  const angleRad = (params.angleDeg ?? 45) * (Math.PI / 180)
+  const referenceFace = chamferReferenceFace(oc)
+  const secondDistance = params.distance2 ?? params.distance
   return {
     makeMaker: (shape) => new oc.BRepFilletAPI_MakeChamfer(shape),
     addEdge: (maker, edge, ctx) => {
-      if (kind !== 'angle_distance') return maker.Add_2(distance, edge)
-      // AddDA measures the distance on a reference face and takes the angle
-      // from it, so the face is part of the call. Either adjacent face gives a
-      // valid chamfer (they differ only in which leg is `distance`), so the
-      // first one found is a real answer rather than an arbitrary one.
-      const face = findFace(edge, ctx)
-      if (!face) throw new Error('chamfer: the target edge belongs to no face of the shape')
-      maker.AddDA(distance, angleRad, edge, face)
+      const reverse = params.reverse === true
+      switch (params.kind) {
+        case 'distance':
+          maker.Add_2(params.distance, edge)
+          return
+        case 'two_distance': {
+          const face = referenceFace(edge, ctx, reverse)
+          if (!face) throw new Error('chamfer: the target edge belongs to no face of the shape')
+          maker.Add_3(params.distance, secondDistance, edge, face)
+          return
+        }
+        case 'angle_distance': {
+          // AddDA measures the distance on a reference face and takes the angle
+          // from it, so the face is part of the call. Either adjacent face gives
+          // a valid chamfer (they differ only in which leg is `distance`); the
+          // FORWARD rule makes that choice the same one across rebuilds.
+          const face = referenceFace(edge, ctx, reverse)
+          if (!face) throw new Error('chamfer: the target edge belongs to no face of the shape')
+          maker.AddDA(params.distance, angleRad, edge, face)
+          return
+        }
+        default: {
+          // A new ChamferKind must be handled above rather than silently built
+          // as a symmetric chamfer.
+          const unreachable: never = params.kind
+          throw new Error(`chamfer: unhandled kind ${String(unreachable)}`)
+        }
+      }
     },
     fallback,
   }
@@ -946,14 +1041,12 @@ export function applyChamferWithLineage(
   oc: OccModule,
   scope: DisposeScope,
   shape: OccShape,
-  distance: number,
+  params: ChamferParams,
   edges: OccShape[],
-  kind: string,
-  angleDeg: number,
   oldNames: OldNames | null = null,
   fallback?: EdgeFallback,
 ): EdgeModifierResult {
-  return applyEdgeModifier(oc, scope, shape, edges, chamferSpec(oc, distance, kind, angleDeg, fallback), true, oldNames)
+  return applyEdgeModifier(oc, scope, shape, edges, chamferSpec(oc, params, fallback), true, oldNames)
 }
 
 /** Apply a chamfer to `edges`, diff only (mirrors `apply_chamfer_with_diff`). */
@@ -961,10 +1054,8 @@ export function applyChamferWithDiff(
   oc: OccModule,
   scope: DisposeScope,
   shape: OccShape,
-  distance: number,
+  params: ChamferParams,
   edges: OccShape[],
-  kind: string,
-  angleDeg: number,
 ): EdgeModifierResult {
-  return applyEdgeModifier(oc, scope, shape, edges, chamferSpec(oc, distance, kind, angleDeg), false)
+  return applyEdgeModifier(oc, scope, shape, edges, chamferSpec(oc, params), false)
 }

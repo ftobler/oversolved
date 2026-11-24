@@ -412,7 +412,7 @@ export const mutationHandlers: MutationHandlers = {
   add_fillet: (next, m) =>
     applyAddFillet(next, m.featureId, m.label, resolvedQueries(m.edges), m.radius),
   add_chamfer: (next, m) =>
-    applyAddChamfer(next, m.featureId, m.label, resolvedQueries(m.edges), m.distance),
+    applyAddChamfer(next, m.featureId, m.label, resolvedQueries(m.edges), m.distance, m.kind, m.distance2, m.angle, m.reverse),
   set_fillet_field: (next, m) =>
     applySetFilletField(next, m.featureId, m.field, resolvedSetterValue(m.type, m.field, m.value)),
   set_chamfer_field: (next, m) =>

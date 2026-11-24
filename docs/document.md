@@ -500,9 +500,19 @@ a hole.
   chamfer:
     edges: ["?query:edge"]
     distance: 1.0
-    kind: distance              # distance | angle_distance
+    kind: distance              # distance | two_distance | angle_distance
+    distance2: 2.0              # two_distance only, positive
     angle: 45.0                 # angle_distance only, deg
+    reverse: false              # two_distance and angle_distance only
 ```
+
+`distance` is measured on the edge's reference face: the face whose wire uses
+the edge FORWARD (a manifold edge is FORWARD in one adjacent face and REVERSED
+in the other). The rule is topological, so it does not follow the shape's face
+order, which OCCT does not promise. `reverse: true` measures it on the other
+face instead. A plain `distance` chamfer is symmetric and ignores `reverse`; it
+is kept so switching kinds back does not lose it. A `two_distance` chamfer with
+no `distance2` builds symmetric, at `distance` on both faces.
 
 A pick blends its whole tangent chain. OCC's fillet and chamfer continue
 across a joint where two edges meet tangentially (G1), the default of every CAD

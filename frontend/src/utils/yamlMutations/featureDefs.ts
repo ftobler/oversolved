@@ -182,7 +182,16 @@ export function applySetFilletField(doc: PartDoc, featureId: string, field: keyo
 
 export function applySetChamferField(doc: PartDoc, featureId: string, field: keyof ChamferFeatureDef, value: unknown): void {
   const feature = findFeature(doc, featureId)
-  setSubFeatureField(featureId, 'chamfer', feature?.kind === 'chamfer' ? feature.chamfer : undefined, field, value, 'applySetChamferField')
+  const sub = feature?.kind === 'chamfer' ? feature.chamfer : undefined
+  if (!setSubFeatureField(featureId, 'chamfer', sub, field, value, 'applySetChamferField')) return
+  if (sub === undefined) return
+  // The editor shows Distance 2 from the moment Two distances is picked, but
+  // the kernel falls back to `distance` when the key is absent. Seed the shown
+  // value in the same mutation so the field and the built chamfer agree, while
+  // keeping a second leg the document already carries.
+  if (field === 'kind' && value === 'two_distance' && (sub.distance2 === undefined || sub.distance2 === null)) {
+    sub.distance2 = sub.distance ?? 1
+  }
 }
 
 export function applySetBooleanField(doc: PartDoc, featureId: string, field: keyof BooleanFeatureDef, value: unknown): void {
@@ -566,13 +575,23 @@ export function applyAddChamfer(
   label?: string,
   edges?: string[],
   distance?: NumberOrExpr,
+  kind?: ChamferFeatureDef['kind'],
+  distance2?: NumberOrExpr,
+  angle?: NumberOrExpr,
+  reverse?: boolean,
 ): void {
+  const chamfer: ChamferFeatureDef = { edges: [...(edges ?? [])], distance: distance ?? 1, kind: kind ?? 'distance', angle: angle ?? 45 }
+  // The asymmetric fields are stored only when authored: a plain add keeps the
+  // document it always wrote, and a two-distance add without a second leg stays
+  // symmetric on the kernel's own default.
+  if (distance2 !== undefined) chamfer.distance2 = distance2
+  if (reverse === true) chamfer.reverse = true
   const feature: PartFeature = {
     id: featureId,
     kind: 'chamfer',
     label: label ?? 'Chamfer',
     // The pick list is copied for the same journal reason as the fillet's.
-    chamfer: { edges: [...(edges ?? [])], distance: distance ?? 1, kind: 'distance', angle: 45 },
+    chamfer,
   }
   if (!roundNumericFields(feature.chamfer, 'applyAddChamfer')) return
   pushFeature(doc, feature)

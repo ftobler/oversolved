@@ -2220,14 +2220,32 @@ function positiveScalarProblem(value: unknown, label: string): string | null {
   return positiveNumberProblem(value, label)
 }
 
+const CHAMFER_KINDS = ['distance', 'two_distance', 'angle_distance'] as const
+
 function addChamfer(raw: RawStep): ValueViolation | null {
   if (raw.edges !== undefined) {
     const edgesProblem = pickListProblem(raw.edges, 'edges', 'edge')
     if (edgesProblem !== null) return invalid(edgesProblem)
   }
+  if (raw.kind !== undefined) {
+    if (typeof raw.kind !== 'string' || !(CHAMFER_KINDS as readonly string[]).includes(raw.kind)) {
+      return invalid(`kind must be one of ${CHAMFER_KINDS.join(', ')}, got ${json(raw.kind)}`)
+    }
+  }
   if (raw.distance !== undefined) {
     const distanceProblem = positiveScalarProblem(raw.distance, 'distance')
     if (distanceProblem !== null) return invalid(distanceProblem)
+  }
+  if (raw.distance2 !== undefined) {
+    const distance2Problem = positiveScalarProblem(raw.distance2, 'distance2')
+    if (distance2Problem !== null) return invalid(distance2Problem)
+  }
+  if (raw.angle !== undefined) {
+    const angleProblem = positiveScalarProblem(raw.angle, 'angle')
+    if (angleProblem !== null) return invalid(angleProblem)
+  }
+  if (raw.reverse !== undefined && typeof raw.reverse !== 'boolean') {
+    return invalid(`reverse must be a boolean, got ${json(raw.reverse)}`)
   }
   return null
 }

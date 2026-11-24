@@ -1,0 +1,21 @@
+{
+  "method": "One edge two-distance chamfered (d1=1, d2=2): V = a^3 - (d1 d2 / 2) a = 1000 - 10; A = 6a^2 - d1 a - d2 a - d1 d2 + sqrt(d1^2 + d2^2) a (two strips and two end triangles off, chamfer face on); the removed prism's centroid is d1/3 in from the reference face and d2/3 in from the other, so on this min-y/min-z edge (the reference face is the min-z one) the body centroid is (a^3/2 - a d2/3)/V in y and (a^3/2 - a d1/3)/V in z; 7 faces, 15 edges",
+  "bodies": 1,
+  "volume": 990,
+  "area": 590.3606797749979,
+  "centroid": [
+    5,
+    5.043771043771044,
+    5.047138047138047
+  ],
+  "bbox": [
+    0,
+    0,
+    0,
+    10,
+    10,
+    10
+  ],
+  "faces": 7,
+  "edges": 15
+}

@@ -13,7 +13,7 @@
 
 import { describe, it, expect } from 'vitest'
 import { DisposeScope, drainList } from '../disposeScope'
-import { extractNames, applyChamferWithDiff, type NewNames, type OldNames } from '../edgeModifier'
+import { extractNames, applyChamferWithDiff, type ChamferKind, type NewNames, type OldNames } from '../edgeModifier'
 import { emptyBrepDiff } from '../../types3d'
 import { mintFaceUuid, splitFacePath, filletFacePath } from '../../constructionName'
 import { SubShapeIndexMap } from '../primitives'
@@ -173,6 +173,7 @@ function makeMaker(merged: OccShape): OccEdgeModifierMaker {
     }),
     Generated: () => ({ Size: () => 0, delete: () => {} }),
     Add_2: () => {},
+    Add_3: () => {},
     AddDA: () => {},
     Build: () => {},
     IsDone: () => true,
@@ -474,6 +475,9 @@ function makeEdgeOcc(opts: EdgeOccOptions = {}): { oc: OccModule; shape: OccShap
         if (edge === opts.addThrowsFor) throw new Error('addEdge rejected this edge')
         added.push(edge)
       },
+      Add_3: (_d1: number, _d2: number, edge: OccShape): void => {
+        added.push(edge)
+      },
       AddDA: (_d: number, _a: number, edge: OccShape): void => {
         added.push(edge)
       },
@@ -554,9 +558,9 @@ function runChamfer(
   oc: OccModule,
   shape: OccShape,
   edges: EdgeFake[],
-  kind = 'distance',
+  kind: ChamferKind = 'distance',
 ): ReturnType<typeof applyChamferWithDiff> {
-  return applyChamferWithDiff(oc, new DisposeScope(), shape, 1, edges, kind, 45)
+  return applyChamferWithDiff(oc, new DisposeScope(), shape, { kind, distance: 1, angleDeg: 45 }, edges)
 }
 
 describe('applyEdgeModifier guard / error classification', () => {

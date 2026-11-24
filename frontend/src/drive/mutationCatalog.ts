@@ -1107,6 +1107,10 @@ const FILLET_BULK_NOTE =
 const CHAMFER_BULK_NOTE =
   'One call may carry the whole pick: `edges` appends the query strings `select` returned, and `distance` sets the ' +
   'distance in the same step. `add_chamfer_edge` and `set_chamfer_field` remain for later single-edge and field edits. ' +
+  '`kind` is distance (the default, both legs equal), two_distance (`distance` and `distance2`) or angle_distance ' +
+  '(`distance` at `angle` degrees). For the two asymmetric kinds `reverse` measures `distance` on the edge\'s other ' +
+  'face; the unreversed reference face is the one whose wire uses the edge FORWARD, so it does not follow the ' +
+  'shape\'s face order. ' +
   'The chamfer continues along the pick\'s whole tangent chain (OCC joins edges that meet tangentially), so one ' +
   'edge of a rounded loop bevels all of it and the reply notes the edge count. ' + EDGE_PICK_LIST_NOTE
 
@@ -1779,12 +1783,16 @@ export const MUTATION_CATALOG = {
     },
   },
   add_chamfer: {
-    summary: 'Add a chamfer feature, optionally with its edges and distance in the same call.',
+    summary: 'Add a chamfer feature, optionally with its edges, distance and kind in the same call.',
     note: CHAMFER_BULK_NOTE,
     fields: {
       ...featureAddFields(),
       edges: optArr('Edge queries from `select`, or `{selector}` entries such as `edges: [{selector: ...}]` the drive resolves; the same array the document stores as chamfer.edges. ' + SELECTOR_SHAPE_NOTE),
       distance: optScalar('A positive number or an expression string; defaults to 1 when omitted.'),
+      kind: optStr('distance | two_distance | angle_distance; absent means distance.'),
+      distance2: optScalar('Two-distance only: the positive second leg on the other face, a number or expression; absent uses `distance`, so a half-configured two-distance build is symmetric.'),
+      angle: optScalar('Angle-distance only: the positive angle in degrees, a number or expression; absent means 45.'),
+      reverse: optBool('two_distance and angle_distance: measure `distance` on the edge\'s other face. A plain distance chamfer ignores it.'),
     },
   },
   set_fillet_field: {

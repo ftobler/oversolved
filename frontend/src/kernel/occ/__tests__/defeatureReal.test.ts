@@ -135,7 +135,7 @@ describe.skipIf(!oc)('defeature phase-0 probe (real OCC)', () => {
     const scope = new DisposeScope()
     try {
       const base = box(scope)
-      const ch = applyChamferWithDiff(OCC, scope, base, 2, [topEdges(scope, base)[0]], 'distance', 45)
+      const ch = applyChamferWithDiff(OCC, scope, base, { kind: 'distance', distance: 2 }, [topEdges(scope, base)[0]])
       expect(ch.success).toBe(true)
       const shaped = scope.track(ch.shape)
       expect(faceCount(scope, shaped)).toBe(7)

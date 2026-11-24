@@ -7,9 +7,30 @@
 // assertions; this file keeps the generator honest on its own.
 
 import { describe, it, expect } from 'vitest'
+import { createHash } from 'node:crypto'
 import { generateRecipe, perturbStart, FUZZ_GRID_MM, PRIMARY_PART, type RecipeStep } from './recipe'
 
 const SEEDS = 200
+
+/** A canonical JSON value: object keys sorted, arrays kept in order. */
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical)
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const key of Object.keys(value as Record<string, unknown>).sort()) out[key] = canonical((value as Record<string, unknown>)[key])
+    return out
+  }
+  return value
+}
+
+/** One canonical JSON line per seed, newline-joined, no trailing newline. The
+ *  seed is part of the recipe, so a draw inserted before any step changes the
+ *  hash from that seed onward. */
+function recipeStreamHash(): string {
+  const lines: string[] = []
+  for (let seed = 0; seed < 1500; seed++) lines.push(JSON.stringify(canonical(generateRecipe(seed))))
+  return createHash('sha1').update(lines.join('\n')).digest('hex')
+}
 
 // The body ids a step produces, so a later step's refs can be checked to have
 // an earlier producer. Tools are produced and consumed inside one boolean step,
@@ -54,6 +75,34 @@ describe('the geometry-fuzz recipe generator', () => {
     expect(first).not.toBe(second)
   })
 
+  it('keeps the first 1500 recipes byte-identical', () => {
+    // The pin an inserted draw must break: one new rnd() call shifts every
+    // later field of that seed and all the seeds after it.
+    expect(recipeStreamHash()).toBe('4daa7e37df9cefd02e11a48e372ae4041386fc3a')
+  })
+
+  it('covers both chamfer kinds and both reverse values without moving the chain', () => {
+    let plain = 0
+    let twoDistance = 0
+    let reversed = 0
+    for (let seed = 0; seed < SEEDS; seed++) {
+      for (const step of generateRecipe(seed).steps) {
+        if (step.kind !== 'chamfer') continue
+        if (step.chamferKind === 'two_distance') {
+          twoDistance++
+          expect(step.distance2).toBeGreaterThan(0)
+        } else {
+          plain++
+          expect(step.distance2).toBeUndefined()
+        }
+        if (step.reverse) reversed++
+      }
+    }
+    expect(plain).toBeGreaterThan(0)
+    expect(twoDistance).toBeGreaterThan(0)
+    expect(reversed).toBeGreaterThan(0)
+  })
+
   it('every step references only bodies an earlier step produced', () => {
     for (let seed = 0; seed < SEEDS; seed++) {
       const recipe = generateRecipe(seed)
@@ -74,7 +123,7 @@ describe('the geometry-fuzz recipe generator', () => {
       case 'start': return [...step.size, step.arcRadius]
       case 'boolean': return [...step.size]
       case 'fillet': return [step.radius]
-      case 'chamfer': return [step.distance]
+      case 'chamfer': return step.distance2 === undefined ? [step.distance] : [step.distance, step.distance2]
       case 'hole': return [step.diameter, step.depth]
       case 'linear-array': return [step.pitch]
       case 'circular-array': return [step.stepDeg]
