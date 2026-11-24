@@ -203,7 +203,7 @@ describe('through-all termination on both extrude rows', () => {
       const note = mutationInfoOf(type).note!
       expect(note, type).toContain('`termination: through_all`')
       expect(note, type).toContain('stores no `distance`')
-      expect(note, type).toContain('ignored with a warning')
+      expect(note, type).toContain('a passed one is dropped and named in the step note')
       expect(note, type).toContain('`merge_target` narrows the reach')
       expect(note, type).toContain('`operation` must be `cut`')
       expect(note, type).toContain('`direction: symmetric` cuts through all material on BOTH sides')

@@ -136,6 +136,13 @@ export function applySetExtrudeField(doc: PartDoc, featureId: string, field: key
   const feature = findFeature(doc, featureId)
   const sub = feature?.kind === 'extrude' ? feature.extrude : undefined
   if (!setSubFeatureField(featureId, 'extrude', sub, field, value, 'applySetExtrudeField')) return
+  // The distance field is hidden under through_all, so a direct setter write
+  // (a script or a replay, not the editor) must not resurrect a value nobody can
+  // see or clear. Both spellings go: the kernel reads `depth` as its alias.
+  if (sub !== undefined && sub.termination === 'through_all' && (field === 'distance' || field === 'depth')) {
+    delete sub.distance
+    delete sub.depth
+  }
   // The editor hides Taper and Twist once the termination is no longer blind or
   // the direction is symmetric, so the same mutation must clear an angle that
   // would otherwise be invisible and turn the feature red through the kernel's
@@ -153,11 +160,11 @@ export function applySetExtrudeField(doc: PartDoc, featureId: string, field: key
   // refuses a stored surface mode there; clear it with the termination so a
   // hidden field cannot strand the feature.
   if (field === 'termination' && value !== 'up_to' && value !== 'up_to_next') delete sub.up_to_start
-  // A through_all cut stores no distance, so the hidden field is deleted rather
-  // than left behind to warn the solve. The loader reads `depth` as the legacy
-  // alias of the same field, so both spellings go; leaving the termination
-  // settles a legacy `depth` under the current name, then re-seeds the editor
-  // default only when neither spelling held a number.
+  // A through_all cut stores no distance, so neither spelling of the hidden
+  // field may survive the switch: the kernel reads `depth` as the legacy alias
+  // of `distance`. Leaving the termination settles a legacy `depth` under the
+  // current name, then re-seeds the editor default only when neither spelling
+  // held a number.
   if (field === 'termination') {
     if (value === 'through_all') {
       delete sub.distance
@@ -315,9 +322,10 @@ export function applyAddExtrude(
   } = {},
 ): void {
   const termination = inline.termination === null || inline.termination === '' ? undefined : inline.termination
-  // A through_all cut stores no distance: the caller omits it and no key is
-  // written. Every other termination reads the field, so its absence is the
-  // boundary's refusal rather than a silent default depth.
+  // A through_all cut stores no distance: a caller that still passes one has it
+  // dropped (the drive names the drop on the step's note). Every other
+  // termination reads the field, so its absence is the boundary's refusal
+  // rather than a silent default depth.
   if (distance === undefined) {
     if (termination !== 'through_all') {
       warn('applyAddExtrude: distance is required unless termination is through_all', { featureId })
@@ -353,7 +361,7 @@ export function applyAddExtrude(
     label: label ?? 'Extrude',
     extrude: {
       sketch: sketchQuery ? [sketchQuery] : [],
-      ...(distance !== undefined && { distance: round(distance) }),
+      ...(distance !== undefined && termination !== 'through_all' && { distance: round(distance) }),
       direction: inline.direction ?? 'normal',
       // Absent keys stay absent, so a plain add writes the document it always did.
       ...(storedTaper !== undefined && { taper: storedTaper }),

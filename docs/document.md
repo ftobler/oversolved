@@ -345,8 +345,9 @@ with `add`, `up_to` and a positive offset gives the same emboss, and a sketch in
 front with `cut` and a negative offset the same deboss.
 
 `through_all` is a cut that is sized from the live bodies and stores no
-`distance`: a part that later grows is still cut through. A stored `distance` on
-an old document is ignored with a warning on the feature; omit it. With no
+`distance`: a part that later grows is still cut through. A `distance` passed to
+an add is dropped and named in the step note, and the loader settles an old
+document to the clean form; omit it. With no
 `merge_target` every body is a candidate, and `merge_target` narrows both the
 measurement and the cut to one body. It needs a body to cut through, and
 `operation` must be `cut`; add, new and intersect are refused. `normal` and

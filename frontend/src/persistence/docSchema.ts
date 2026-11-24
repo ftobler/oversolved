@@ -22,7 +22,7 @@ import { isLengthUnit } from '@/utils/lengthUnit'
 import { normalizeMateLimitDeg } from '@/utils/mateKinds'
 import { isDocumentConstraintKind } from '@/wasm-kernel/partDocToSketches'
 import { deriveMemberIds, isFaceProjectionSource } from '@/kernel/features/projectionMembers'
-import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateInstancePatternSketch, migrateLegacyPartPicks, migratePatternSourceFeatures, canonicalizeFeatureParams, migrateProjectionConstraints, migrateLineDistanceOperandOrder } from '@/utils/yamlMigrations'
+import { dropDeadAxisConstraints, migrateFeatureRefsToAbsolute, migrateInstancePatternSketch, migrateLegacyPartPicks, migratePatternSourceFeatures, canonicalizeFeatureParams, migrateProjectionConstraints, migrateLineDistanceOperandOrder, normalizeThroughAllDistance } from '@/utils/yamlMigrations'
 import { MAX_ARRAY_COUNT, MAX_ARRAY_CELLS } from '@/utils/core/arrayLimits'
 import { skipProblem } from '@/utils/core/patternSkip'
 import { splitStoredPattern } from '@/utils/core/patternSplit'
@@ -1542,6 +1542,10 @@ function loadRecord<T>(
   raw: unknown,
   opts: LoadOptions,
   validate: (doc: DocRecord) => void,
+  // A shape cleanup that runs at every version stamp, after the ladder's
+  // canonicalization and before validation. It heals the document in place but
+  // is not a migration rung, so it is not reported in `migrations`.
+  normalize?: (doc: DocRecord) => number,
 ): LoadResult<T> {
   const docName = opts.name ?? ''
   try {
@@ -1550,6 +1554,7 @@ function loadRecord<T>(
     // empty mapping. Anything else that is not a mapping is a boundary error.
     const record: DocRecord = raw === null || raw === undefined ? {} : checkRecord(raw, 'document')
     const applied = migrate(record, docVersion(record))
+    normalize?.(record)
     validate(record)
     return { ok: true, doc: record as T, migrations: applied }
   } catch (e) {
@@ -1589,7 +1594,10 @@ function loadText<T>(
 
 /** Validate and migrate a parsed part document. */
 export function loadPartDoc(raw: unknown, opts: LoadOptions = {}): LoadResult<LoadedPartDoc> {
-  return loadRecord<LoadedPartDoc>(raw, opts, validatePart)
+  // The same shape and size gate the validator uses: a hostile sparse list must
+  // not be walked twice, once by the normalizer and once by the checker.
+  return loadRecord<LoadedPartDoc>(raw, opts, validatePart, doc =>
+    isRecordList(doc.features, MAX_FEATURES) ? normalizeThroughAllDistance(doc as unknown as PartDoc) : 0)
 }
 
 /** Validate and migrate part document text. */

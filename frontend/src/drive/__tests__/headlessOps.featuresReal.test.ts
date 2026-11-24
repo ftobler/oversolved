@@ -13,6 +13,7 @@ import { runReply } from '../mcpDocRef'
 import { MUTATION_EXAMPLES } from '../mutationExamples'
 import { HOLE_ALL_SITES_MISS, HOLE_ON_LINE_SKETCH } from './featureFixtures'
 import { nonSketchProblems } from './buildProblems'
+import { THROUGH_ALL_DISTANCE_NOTE } from '../throughAllNote'
 import { loadOcc, occInstalled } from '@/kernel/occ/loadOcc'
 import { loadSolver } from '@/wasm-kernel/loadSolver'
 import { loadTopology } from '@/wasm-kernel/loadTopology'
@@ -423,7 +424,7 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
     expect(measured!.measures.volume).toBeCloseTo(12000 - 25 * 10, 2)
   }, 120_000)
 
-  it('warns and still cuts when a through_all add is handed a distance', async () => {
+  it('drops a distance handed to a through_all add and notes the drop', async () => {
     const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
     const result = await runHeadless({
       doc: emptyDoc(),
@@ -439,21 +440,20 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
         },
       ],
     })
-    // A stored distance is a soft failure: the step lands, the run stays ok, and
-    // the extrude row is listed with the warning rather than an exception.
+    // The step lands as the clean form, and the drive tells the author what it
+    // dropped instead of letting the solve warn about a hidden field.
     expect(result.ok).toBe(true)
-    const problem = result.features.find(feature => feature.id === 'ex2')
-    expect(problem?.status).toBe('ok')
-    expect(problem?.message).toBe(
-      'extrude: through_all takes no distance; the stored value is ignored',
-    )
-    expect(result.featureDeltas?.find(entry => entry.id === 'ex2')?.warning)
-      .toBe('extrude: through_all takes no distance; the stored value is ignored')
+    const stored = result.doc?.features?.find(feature => feature.id === 'ex2')
+    expect(stored?.kind).toBe('extrude')
+    expect(stored?.kind === 'extrude' && stored.extrude.distance).toBeUndefined()
+    expect(result.features.find(feature => feature.id === 'ex2')).toBeUndefined()
+    expect(result.notes).toContainEqual({ ids: ['ex2'], text: THROUGH_ALL_DISTANCE_NOTE })
+    expect(result.featureDeltas?.find(entry => entry.id === 'ex2')?.warning).toBeUndefined()
     const measured = await measureHeadless(result.doc!)
     expect(measured!.measures.volume).toBeCloseTo(12000 - 25 * 10, 2)
   }, 120_000)
 
-  it('warns when set_extrude_field stores a distance on a through_all feature', async () => {
+  it('drops a direct distance set on a through_all feature and notes the drop', async () => {
     const box = MUTATION_EXAMPLES.find(entry => entry.name === 'box')!
     const result = await runHeadless({
       doc: emptyDoc(),
@@ -467,19 +467,17 @@ describe.skipIf(!ready)('headless feature problems (real OCC + Rust solver)', ()
             operation: 'cut', termination: 'through_all',
           },
         },
-        // The setter accepts and stores the field; the solve is what reports
-        // that a through_all cut does not read it.
+        // The hidden field must stay absent even when a script writes it
+        // directly, so the solve has no stale value to ignore.
         { mutation: { type: 'set_extrude_field', featureId: 'ex2', field: 'distance', value: 5 } },
       ],
     })
     expect(result.ok).toBe(true)
     const stored = result.doc?.features?.find(feature => feature.id === 'ex2')
-    expect(stored?.kind === 'extrude' && stored.extrude.distance).toBe(5)
-    const problem = result.features.find(feature => feature.id === 'ex2')
-    expect(problem?.status).toBe('ok')
-    expect(problem?.message).toBe(
-      'extrude: through_all takes no distance; the stored value is ignored',
-    )
+    expect(stored?.kind).toBe('extrude')
+    expect(stored?.kind === 'extrude' && stored.extrude.distance).toBeUndefined()
+    expect(result.features.find(feature => feature.id === 'ex2')).toBeUndefined()
+    expect(result.notes).toContainEqual({ ids: ['ex2'], text: THROUGH_ALL_DISTANCE_NOTE })
     const measured = await measureHeadless(result.doc!)
     expect(measured!.measures.volume).toBeCloseTo(12000 - 25 * 10, 2)
   }, 120_000)

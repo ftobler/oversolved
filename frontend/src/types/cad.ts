@@ -28,7 +28,7 @@ export type ExtrudeFeatureDef = {
   // Required for blind and both up-to stops; only up_to uses it as the fallback
   // when its target does not resolve (up_to_next sizes itself from the first
   // body it meets). A through_all cut sizes itself from the bodies and stores
-  // no distance; a stored one is ignored with a warning.
+  // no distance: the add and setter drop one, and the loader settles old docs.
   distance?: NumberOrExpr
   // Legacy spelling of `distance` a pre-rename document may still store; the
   // loader and the kernel read it as the same field. Never written by a new

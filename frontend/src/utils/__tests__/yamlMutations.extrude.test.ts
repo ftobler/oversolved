@@ -392,9 +392,9 @@ describe('a through_all extrude carries no distance', () => {
   })
 
   it('deletes the legacy depth alias when termination becomes through_all', () => {
-    // A pre-rename document stores `depth`; the loader reads it as the same
-    // field, so a switch that only deleted `distance` would leave the old
-    // spelling behind to warn the solve forever.
+    // A pre-rename document stores `depth`; the kernel reads it as the same
+    // field, so a switch that only deleted `distance` would keep a hidden value
+    // on a feature whose through_all cut never reads it.
     const doc: PartDoc = {
       features: [{
         id: 'ex1', kind: 'extrude',
@@ -430,12 +430,24 @@ describe('a through_all extrude carries no distance', () => {
     expect(extrude0(doc)).not.toHaveProperty('distance')
   })
 
-  it('stores a distance an inline through_all add was handed, so the solve can warn', () => {
+  it('drops a distance an inline through_all add was handed', () => {
     const doc: PartDoc = structuredClone(baseDoc)
     applyAddExtrude(doc, 'ex1', undefined, '$sk1', 0, {
       termination: 'through_all', operation: 'cut',
     })
-    expect(extrude0(doc).distance).toBe(0)
+    expect(extrude0(doc).termination).toBe('through_all')
+    expect(extrude0(doc)).not.toHaveProperty('distance')
+  })
+
+  it('drops a direct distance write on a through_all feature', () => {
+    // The hidden field must not come back through the drive's generic setter:
+    // without this a script can store the same value the termination switch
+    // clears, and the solve would ignore it in silence.
+    const doc = throughAll()
+    applySetExtrudeField(doc, 'ex1', 'distance', 5)
+    expect(extrude0(doc)).not.toHaveProperty('distance')
+    applySetExtrudeField(doc, 'ex1', 'depth', 5)
+    expect(extrude0(doc)).not.toHaveProperty('depth')
   })
 
   it('refuses an absent distance on an inline add that is not through_all', () => {

@@ -17,6 +17,7 @@ import {
 import { runScript, type ScriptFailure, type ScriptRunOutcome, type ScriptStep } from './scriptRunner'
 import { validateMutation } from './mutationCatalog'
 import { instanceSketchAliasNote, patternAliasNote } from './patternAlias'
+import { throughAllDistanceNote } from './throughAllNote'
 import type { JournalEntry, ReproPayload } from './journal'
 
 // The registry failures plus the bridge's own guard for an executor that
@@ -286,13 +287,21 @@ export function createDriveSurface(deps: DriveSurfaceDeps): DriveSurface {
       // The adapter's null means there was no document to apply the step to:
       // a script run before the editor mounted must not report every step ok.
       if (!result) return { ok: false, code: 'no-document', message: 'no document is open to apply the step to' }
+      const doc = deps.doc?.() ?? null
       const alias = result.ok
         ? patternAliasNote(validated.mutation) ?? instanceSketchAliasNote(validated.mutation)
+          ?? throughAllDistanceNote(validated.mutation, doc)
         : null
       const reply = result.ok && result.noOp !== true
-        ? importLayerReply(validated.mutation, deps.doc?.() ?? null)
+        ? importLayerReply(validated.mutation, doc)
         : null
-      const noted = alias === null ? result : { ...result, note: alias }
+      // A step note names its feature so a script built on the browser bridge
+      // sorts it into the reply's notes like a headless step does.
+      const noted = alias === null ? result : {
+        ...result,
+        note: alias,
+        ...('featureId' in validated.mutation ? { noteIds: [validated.mutation.featureId] } : {}),
+      }
       return reply === null ? noted : { ...noted, ...reply }
     } catch (e) {
       return {

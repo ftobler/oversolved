@@ -345,6 +345,33 @@ export function migrateInstancePatternSketch(doc: PartDoc): number {
   return rewritten
 }
 
+// A through_all cut stores no distance; older documents and scripts could write
+// one anyway and the solve used to warn about the hidden field on every load.
+// Unlike a versioned migration this runs on EVERY load, including documents
+// already stamped at the current version: the stale value is not tied to a
+// stamp, and a later save must write the clean form. Loading is not a user edit,
+// so the doc hook never sees a mutation and undo has nothing to record. Both
+// spellings go, because the kernel reads `depth` as the legacy alias.
+export function normalizeThroughAllDistance(doc: PartDoc): number {
+  const features: unknown = doc.features
+  if (!Array.isArray(features)) return 0
+  let rewritten = 0
+  for (const entry of features) {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) continue
+    const feature = entry as { kind?: unknown; extrude?: unknown }
+    if (feature.kind !== 'extrude') continue
+    const sub = feature.extrude
+    if (typeof sub !== 'object' || sub === null || Array.isArray(sub)) continue
+    const extra = sub as { termination?: unknown; distance?: unknown; depth?: unknown }
+    if (extra.termination !== 'through_all') continue
+    if (extra.distance === undefined && extra.depth === undefined) continue
+    delete extra.distance
+    delete extra.depth
+    rewritten += 1
+  }
+  return rewritten
+}
+
 // Aliases covering plausible import names for the same migration.
 export const migrateProjectionConstraint = migrateProjectionConstraints
 export const stepProjectionConstraint = migrateProjectionConstraints

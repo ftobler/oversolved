@@ -118,6 +118,9 @@ describe('solveExtrude guard paths', () => {
     )
     expect(result.status).toBe('error')
     expect(result.exception).toMatch(/no closed profile/)
+    // A stale field is ignored without a warning: no document can author it
+    // now, so a warning would point at something nobody can see or clear.
+    expect(result.solver_warning).toBeUndefined()
   })
 
   it('surfaces an unresolved sketch ref as the collected profile error', () => {

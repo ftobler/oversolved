@@ -319,12 +319,6 @@ function throughAllSweepExtent(
 }
 
 /** Solve an extrude feature into the body store (mirrors `_solve_extrude`). */
-/** The soft failure a through_all cut reports when an old document still stores
- *  a distance. The drive tolerates this exact warning on an otherwise ok row so
- *  the geometry stays exportable; keep the text in one place. */
-export const THROUGH_ALL_DISTANCE_WARNING =
-  'extrude: through_all takes no distance; the stored value is ignored'
-
 export function solveExtrude(
   oc: OccModule,
   scope: DisposeScope,
@@ -364,23 +358,17 @@ export function solveExtrude(
     (sub.distance as number | null | undefined) ?? (sub.depth as number | null | undefined) ?? 1.0,
   )
 
-  // A through_all solve never reads the distance, so a stored one (an old
-  // document, a script that set it after the termination) is a soft failure:
-  // the feature still builds from the bodies, and the warning says the stored
-  // value is ignored. A blind extrude reads it directly. An up_to that cannot be
-  // honoured builds nothing and never reads it either (the early return below),
-  // so the non-zero rule is deferred past that decision instead of throwing over
-  // a value the solve would not use. up_to_next sizes itself at the first body
-  // it meets (UP_TO_REACH) and never reads the value, but the document format
-  // still requires it outside through_all, so a zero is refused there.
-  let distanceWarning: string | undefined
+  // A through_all solve never reads the distance: the add and setter drop it and
+  // the loader normalizes old documents, so a raw caller that still puts one on
+  // the def is simply ignored. A blind extrude reads it directly. An up_to that
+  // cannot be honoured builds nothing and never reads it either (the early
+  // return below), so the non-zero rule is deferred past that decision instead
+  // of throwing over a value the solve would not use. up_to_next sizes itself at
+  // the first body it meets (UP_TO_REACH) and never reads the value, but the
+  // document format still requires it outside through_all, so a zero is refused
+  // there.
   let distanceInvalid = false
-  if (termination === 'through_all') {
-    const storedDistance = sub.distance ?? sub.depth
-    if (storedDistance !== undefined && storedDistance !== null) {
-      distanceWarning = THROUGH_ALL_DISTANCE_WARNING
-    }
-  } else if (!Number.isFinite(distance) || distance === 0) {
+  if (termination !== 'through_all' && (!Number.isFinite(distance) || distance === 0)) {
     // An up_to that cannot be honoured builds nothing and never reads the value,
     // so only its rule is deferred past that decision; every other termination
     // reads `distance` and keeps failing loudly here.
@@ -1051,9 +1039,6 @@ export function solveExtrude(
       : `${result.solver_warning}; ${noChange}`
   }
 
-  // The body operation may have written its own warning (a no-op cut/add).
-  // Compose rather than assign so a through_all distance note is not lost.
-  prependWarning(result, distanceWarning)
   if (upToNote !== undefined) result.solver_note = upToNote
 
   // An add with no explicit merge target fuses into the FIRST body it connects

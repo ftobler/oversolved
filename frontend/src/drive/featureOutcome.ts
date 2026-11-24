@@ -7,7 +7,6 @@
 
 import type { BuildResponse, PartDoc } from '@/types/cad'
 import { BUILTIN_FEATURE_IDS } from '@/utils/builtins'
-import { THROUGH_ALL_DISTANCE_WARNING } from '@/kernel/features/extrude'
 import { STATUS_NAME, Status } from '@/wasm-kernel/codec'
 
 /** One sketch's failing projections, split by whether the held entity still has
@@ -141,24 +140,16 @@ export function isBuiltOutcome(outcome: FeatureOutcome): boolean {
  * mark a hard export error by the back door. A built shell's corner
  * substitution is the same kind of row: the asked-for sharp join was replaced
  * by a rounded one, but the solid is valid and the geometry is complete, so the
- * warning marks the tree without failing the file. A through_all cut that still
- * stores a distance is the same kind of tolerated row: the body is cut through
- * exactly as the document asks, and the text only names the ignored field. An
- * overconstrained sketch is a failed solve, and every other row the problem
- * list carries -- a partial or failed sibling, a missing verdict -- still fails
- * it.
+ * warning marks the tree without failing the file. An overconstrained sketch
+ * is a failed solve, and every other row the problem list carries -- a partial
+ * or failed sibling, a missing verdict -- still fails it.
  */
 export function blocksExport(problem: FeatureProblem): boolean {
   const toleratedSketch = problem.kind === 'sketch'
     && (problem.status === STATUS_NAME[Status.underconstrained]
       || problem.status === STATUS_NAME[Status.fully_constrained])
   const toleratedShell = problem.kind === 'shell' && problem.status === 'ok'
-  // The exact text, not every extrude warning: a warning that says the feature
-  // fell back or cut nothing is still a failed file.
-  const toleratedThroughAllDistance = problem.kind === 'extrude'
-    && problem.status === 'ok'
-    && problem.message === THROUGH_ALL_DISTANCE_WARNING
-  return !toleratedSketch && !toleratedShell && !toleratedThroughAllDistance
+  return !toleratedSketch && !toleratedShell
 }
 
 /**

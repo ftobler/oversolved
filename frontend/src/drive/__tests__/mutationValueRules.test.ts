@@ -2077,7 +2077,7 @@ describe('through_all is a cut termination at the drive boundary', () => {
     }
   })
 
-  it('accepts a stored distance field on a through_all feature, for the kernel warning', () => {
+  it('accepts a distance setter write so the applier can drop it under through_all', () => {
     expect(validateMutation({
       type: 'set_extrude_field', featureId: 'ex1', field: 'distance', value: 0,
     })).toMatchObject({ ok: true })

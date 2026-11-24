@@ -340,8 +340,37 @@ describe('the third extrude termination survives the loader', () => {
     )
     expect(result.ok).toBe(true)
     if (!result.ok) return
-    const feature = (result.doc.features as Array<{ extrude: { termination: string } }>)[0]
+    const feature = (result.doc.features as Array<{ extrude: Record<string, unknown> }>)[0]
     expect(feature.extrude.termination).toBe('through_all')
+    expect(feature.extrude).not.toHaveProperty('distance')
+  })
+
+  it('normalizes a stale distance and depth off a loaded through_all extrude', () => {
+    // A document written before the add path dropped the distance still opens.
+    // The loader settles it to the clean form, at every version stamp, so the
+    // next save carries no value the hidden field can warn about. Loading is not
+    // a user edit and records no migration, only the healed document.
+    for (const version of [1, CURRENT_DOC_VERSION]) {
+      const result = loadPartDoc({
+        version,
+        kind: 'part',
+        features: [{
+          id: 'ex1', kind: 'extrude',
+          extrude: { sketch: '@sk1', distance: 5, depth: 7, operation: 'cut', termination: 'through_all' },
+        }],
+      }, { name: 'Stale Through All' })
+      expect(result.ok, String(version)).toBe(true)
+      if (!result.ok) continue
+      const extra = (result.doc.features as Array<{ extrude: Record<string, unknown> }>)[0].extrude
+      expect(extra.termination).toBe('through_all')
+      expect(extra).not.toHaveProperty('distance')
+      expect(extra).not.toHaveProperty('depth')
+      expect(result.migrations).toEqual([])
+      const reloaded = loadPartDoc(result.doc)
+      expect(reloaded.ok).toBe(true)
+      if (!reloaded.ok) continue
+      expect(reloaded.doc).toEqual(result.doc)
+    }
   })
 
   it('accepts a through_all extrude with no distance and keeps it absent', () => {

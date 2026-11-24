@@ -108,23 +108,21 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
     expect(partVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
   }, 240_000)
 
-  it('builds the same cut when a stored distance is 0 and warns instead of failing', () => {
+  it('builds the same cut when a raw solve carries a stale distance of 0', () => {
+    // The kernel still ignores a field a raw caller put on the def, but it no
+    // longer raises a warning for a state no document can author.
     const result = h.run({ features: [...plate(10), slotSketch(), cut('through_all', { distance: 0 })] })
     const res = h.res(result, 'ex2')
     expect(res.status).toBe('ok')
-    expect(String(res.solver_warning)).toBe(
-      'extrude: through_all takes no distance; the stored value is ignored',
-    )
+    expect(res.solver_warning).toBeUndefined()
     expect(partVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
   }, 240_000)
 
-  it('builds the same cut when a stored distance is 5 and warns the same way', () => {
+  it('builds the same cut when a raw solve carries a stale distance of 5', () => {
     const result = h.run({ features: [...plate(10), slotSketch(), cut('through_all', { distance: 5 })] })
     const res = h.res(result, 'ex2')
     expect(res.status).toBe('ok')
-    expect(String(res.solver_warning)).toBe(
-      'extrude: through_all takes no distance; the stored value is ignored',
-    )
+    expect(res.solver_warning).toBeUndefined()
     expect(partVolume(h, result, 'ex2', 'body_ex1')).toBeCloseTo(11750, 6)
   }, 240_000)
 
@@ -427,9 +425,7 @@ describe.skipIf(!oc || !solveBytes)('extrude through_all (real OCC + Rust solver
     for (const id of ['exY', 'exZ', 'exX']) {
       const res = h.res(result, id)
       expect(res.status, id).toBe('ok')
-      expect(String(res.solver_warning), id).toBe(
-        'extrude: through_all takes no distance; the stored value is ignored',
-      )
+      expect(res.solver_warning, id).toBeUndefined()
     }
     const expected = 1e6 - 259259.2592592593
     const volume = partVolume(h, result, 'exX', 'body_exCube')
