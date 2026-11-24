@@ -10,7 +10,9 @@ const ASSEMBLY_CSS = readFileSync(join(__dirname, '../../../pages/Assembly.css')
 const BLUE = '#4fc3f7'
 const NO_HOVER_GATE = ':where(.features-list:not(.features-list--dragging))'
 
-function ruleBody(css: string, selector: string): string {
+// The declaration part of one CSS rule: jsdom computes no styles, so the test
+// reads that part of the stylesheet instead of asking an element for its look.
+function rulePart(css: string, selector: string): string {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const match = new RegExp(`(?:^|\\n)${escaped}\\s*\\{([^}]*)\\}`, 'm').exec(css)
   if (match === null) throw new Error(`missing CSS rule: ${selector}`)
@@ -25,7 +27,7 @@ function barRules(css: string): string[] {
 
 describe('rollback bar styling', () => {
   it('draws the wave from currentColor through a tiling mask', () => {
-    const base = ruleBody(PART_CSS, '.rollback-bar')
+    const base = rulePart(PART_CSS, '.rollback-bar')
     expect(base).toMatch(/mask-image:\s*var\(--tiling-sine\)/)
     expect(base).toMatch(/background-color:\s*currentColor/)
     expect(base).not.toMatch(/(?:^|;)\s*background:\s*var\(--tiling-sine\)/)
@@ -33,27 +35,27 @@ describe('rollback bar styling', () => {
 
   it('turns the wave blue on hover and while grabbed, without a box', () => {
     for (const selector of ['.rollback-bar:hover', '.rollback-bar.dragging']) {
-      const body = ruleBody(PART_CSS, selector)
-      expect(body).toMatch(new RegExp(`color:\\s*${BLUE}\\b`))
-      expect(body).not.toMatch(/background(?:-color)?\s*:/)
-      expect(body).not.toMatch(/opacity\s*:/)
-      expect(body).not.toMatch(/border(?:-[a-z]+)?-color\s*:/)
+      const part = rulePart(PART_CSS, selector)
+      expect(part).toMatch(new RegExp(`color:\\s*${BLUE}\\b`))
+      expect(part).not.toMatch(/background(?:-color)?\s*:/)
+      expect(part).not.toMatch(/opacity\s*:/)
+      expect(part).not.toMatch(/border(?:-[a-z]+)?-color\s*:/)
     }
   })
 
   it('keeps a disabled bar grey and still, including on hover', () => {
-    const disabled = ruleBody(PART_CSS, '.rollback-bar[aria-disabled="true"]')
+    const disabled = rulePart(PART_CSS, '.rollback-bar[aria-disabled="true"]')
     expect(disabled).toMatch(/cursor:\s*default/)
-    const hover = ruleBody(PART_CSS, '.rollback-bar[aria-disabled="true"]:hover')
+    const hover = rulePart(PART_CSS, '.rollback-bar[aria-disabled="true"]:hover')
     expect(hover).toMatch(/color:\s*gray/)
   })
 
   it('never paints a box, fades or borders the bar in either stylesheet', () => {
     for (const css of [PART_CSS, ASSEMBLY_CSS]) {
-      for (const body of barRules(css)) {
-        expect(body).not.toMatch(/opacity:\s*(?:0\b|0?\.[0-9]+)/)
-        expect(body).not.toMatch(/border(?:-[a-z]+)?-color\s*:/)
-        for (const bg of body.matchAll(/background(?:-color)?\s*:\s*([^;]+);/g)) {
+      for (const part of barRules(css)) {
+        expect(part).not.toMatch(/opacity:\s*(?:0\b|0?\.[0-9]+)/)
+        expect(part).not.toMatch(/border(?:-[a-z]+)?-color\s*:/)
+        for (const bg of part.matchAll(/background(?:-color)?\s*:\s*([^;]+);/g)) {
           expect(bg[1].trim()).toBe('currentColor')
         }
       }
